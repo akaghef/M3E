@@ -177,5 +177,26 @@
     }
   },
   "active": "b17a715ed8af4583",
-  "lastOpenFiles": []
+  "lastOpenFiles": [
+    "software/09_Decisions/ADR_001_Freeplane_First.md",
+    "software/09_Decisions",
+    "software/05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md",
+    "software/05_Freeplane_Integration",
+    "software/04_Architecture/MVC_and_Command.md",
+    "software/04_Architecture/Drag_and_Reparent.md",
+    "software/04_Architecture",
+    "software/03_Spec/Scope_and_Alias.md",
+    "software/03_Spec/Data_Model.md",
+    "software/03_Spec/Band_Spec.md",
+    "software/03_Spec",
+    "software/02_Strategy/MVP_Definition.md",
+    "software/02_Strategy/Current_Pivot_Freeplane_First.md",
+    "software/02_Strategy",
+    "software/01_Vision/Core_Principles.md",
+    "software/01_Vision",
+    "software/00_Home/Home.md",
+    "software/00_Home/Current_Status.md",
+    "software/00_Home",
+    "software/README.md"
+  ]
 }

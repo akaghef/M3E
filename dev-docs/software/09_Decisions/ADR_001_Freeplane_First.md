@@ -1,0 +1,43 @@
+# ADR 001: Freeplane First
+
+## Status
+
+Accepted
+
+## Date
+
+2026-03-13
+
+## Context
+
+M3E の原案には独自エディタ開発が含まれていたが、初期フェーズでそれを主目標にすると、描画・入力制御・永続化・Undo/Redo・操作感の調整に大きく時間を使う。  
+一方で、いま最優先なのは「M3E の思考支援が研究や設計を加速するか」の検証である。
+
+## Decision
+
+当面の M3E は、Freeplane を既存の思考整理基盤として採用し、その外側で構造読解・論点整理・AI 提案を行う。
+
+## Consequences
+
+### Positive
+
+- 日常運用を早く始められる
+- 独自 UI 実装のコストを先送りできる
+- 思考支援そのものの価値検証に集中できる
+
+### Negative
+
+- M3E 固有の scope / alias / command を Freeplane にそのまま載せられない
+- 独自モデルと Freeplane のズレを意識し続ける必要がある
+
+### Follow-up
+
+- Freeplane のデータ構造から M3E 用コンテクストを生成する
+- 提案を差分として提示する
+- 独自エディタが必要になる条件を後で再評価する
+
+## Related
+
+- 方針文書: [../02_Strategy/Current_Pivot_Freeplane_First.md](../02_Strategy/Current_Pivot_Freeplane_First.md)
+- MVP: [../02_Strategy/MVP_Definition.md](../02_Strategy/MVP_Definition.md)
+- 写像: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
