@@ -10,6 +10,7 @@
 - 見た目の追従は ViewState で表現する
 - drop 確定時だけ Command を発行する
 - 最終的な整合性判定は Model が行う
+- React UI はドラッグ状態の表示を補助するが、ドラッグの正本判定は Rendering Layer と Controller 側で扱う
 
 ## 状態遷移
 
@@ -29,7 +30,7 @@
 
 - 仮位置を更新し続ける
 - 候補親のハイライトを更新する
-- View は ViewState に基づいて再描画する
+- Rendering Layer は ViewState に基づいて再描画する
 
 ### 4. pointerup
 
@@ -37,6 +38,13 @@
 - Controller が reparent 用 Command を組み立てる
 - `Model.apply(command)` を呼ぶ
 - 成功後に ViewState をクリアする
+
+## React UI との境界
+
+- ツールバーやサイドパネルは React で保持する
+- ドラッグ対象の可視化や HitTest は Rendering Layer で保持する
+- 選択中ノードの詳細表示は React UI に同期する
+- ドロップ候補の最終意味づけは Controller と Model が持つ
 
 ## Reparent Command の最小要素
 

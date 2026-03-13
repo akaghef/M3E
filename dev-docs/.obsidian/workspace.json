@@ -178,6 +178,11 @@
   },
   "active": "b17a715ed8af4583",
   "lastOpenFiles": [
+    "M3E仕様設計書.md",
+    "software/legacy/README.md",
+    "software/legacy/Canvas_Centric_Architecture.md",
+    "software/legacy",
+    "software/09_Decisions/ADR_002_React_UI_Basis.md",
     "software/09_Decisions/ADR_001_Freeplane_First.md",
     "software/09_Decisions",
     "software/05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md",

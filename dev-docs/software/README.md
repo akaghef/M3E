@@ -1,6 +1,7 @@
 # M3E Software Docs
 
-このディレクトリは、M3E のソフトウェア設計を「入口」「思想」「戦略」「仕様」「アーキテクチャ」「外部連携」「意思決定」に分けて整理したものです。
+このディレクトリは、科学研究を中心とした思考ツールとしての M3E のソフトウェア設計を、「入口」「思想」「戦略」「仕様」「アーキテクチャ」「外部連携」「意思決定」に分けて整理したものです。  
+現行方針と旧方針を混在させないため、廃止済み前提は `legacy/` に分離しています。
 
 ## 読み順
 
@@ -16,6 +17,7 @@
 10. [04_Architecture/Drag_and_Reparent.md](./04_Architecture/Drag_and_Reparent.md)
 11. [05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](./05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
 12. [09_Decisions/ADR_001_Freeplane_First.md](./09_Decisions/ADR_001_Freeplane_First.md)
+13. [09_Decisions/ADR_002_React_UI_Basis.md](./09_Decisions/ADR_002_React_UI_Basis.md)
 
 ## ディレクトリ構成
 
@@ -26,6 +28,7 @@
 - `04_Architecture`: 実装構造と操作設計
 - `05_Freeplane_Integration`: Freeplane を土台にする際の写像
 - `09_Decisions`: ADR
+- `legacy`: 現行では採用しない旧設計要件
 
 ## 文書設計の方針
 
@@ -34,6 +37,7 @@
 - `Spec` は実装に依存しないドメイン制約を書く
 - `Architecture` は UI/状態管理/コマンドの責務分離を書く
 - `Decisions` は採用済み判断の理由と影響を書く
+- `legacy` は歴史的経緯の保管場所であり、現行実装方針ではない
 
 ## 元メモ
 
