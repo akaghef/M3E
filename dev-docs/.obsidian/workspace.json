@@ -11,10 +11,13 @@
             "id": "b17a715ed8af4583",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "グラフビュー"
+              "type": "bases",
+              "state": {
+                "file": "無題のファイル.base",
+                "viewName": "表"
+              },
+              "icon": "lucide-table",
+              "title": "無題のファイル"
             }
           }
         ]
@@ -90,6 +93,7 @@
             "state": {
               "type": "backlink",
               "state": {
+                "file": "無題のファイル.base",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -99,7 +103,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "バックリンク"
+              "title": "無題のファイルへのバックリンク"
             }
           },
           {
@@ -108,11 +112,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
+                "file": "無題のファイル.base",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "アウトゴーイングリンク"
+              "title": "無題のファイルからのアウトゴーイングリンク"
             }
           },
           {
@@ -150,12 +155,13 @@
             "state": {
               "type": "outline",
               "state": {
+                "file": "無題のファイル.base",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "アウトライン"
+              "title": "無題のファイルのアウトライン"
             }
           }
         ]
@@ -178,33 +184,42 @@
   },
   "active": "b17a715ed8af4583",
   "lastOpenFiles": [
+    "use_obsidian.md",
+    "use_freeplane.md",
+    "use_WiseMapping.md",
+    "README.md",
+    "legacy/README.md",
+    "legacy/Canvas_Centric_Architecture.md",
+    "legacy",
+    "09_Decisions/ADR_002_React_UI_Basis.md",
+    "09_Decisions/ADR_001_Freeplane_First.md",
+    "09_Decisions",
+    "05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md",
+    "05_Freeplane_Integration",
+    "04_Architecture/MVC_and_Command.md",
+    "04_Architecture/Drag_and_Reparent.md",
+    "04_Architecture",
+    "03_Spec/Scope_and_Alias.md",
+    "03_Spec/Data_Model.md",
+    "03_Spec/Band_Spec.md",
+    "03_Spec",
+    "02_Strategy/MVP_Definition.md",
+    "02_Strategy/Current_Pivot_Freeplane_First.md",
+    "02_Strategy",
+    "01_Vision/Core_Principles.md",
+    "01_Vision",
+    "00_Home/Home.md",
+    "00_Home/Current_Status.md",
+    "00_Home",
+    "無題のファイル.canvas",
+    "無題のファイル.base",
+    "2026-03-14.md",
     "mindmapsoftwares.md",
     "freeplane/Repository_Structure_Summary.md",
     "freeplane",
     "M3E仕様設計書.md",
     "software/legacy/README.md",
     "software/legacy/Canvas_Centric_Architecture.md",
-    "software/legacy",
-    "software/09_Decisions/ADR_002_React_UI_Basis.md",
-    "software/09_Decisions/ADR_001_Freeplane_First.md",
-    "software/09_Decisions",
-    "software/05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md",
-    "software/05_Freeplane_Integration",
-    "software/04_Architecture/MVC_and_Command.md",
-    "software/04_Architecture/Drag_and_Reparent.md",
-    "software/04_Architecture",
-    "software/03_Spec/Scope_and_Alias.md",
-    "software/03_Spec/Data_Model.md",
-    "software/03_Spec/Band_Spec.md",
-    "software/03_Spec",
-    "software/02_Strategy/MVP_Definition.md",
-    "software/02_Strategy/Current_Pivot_Freeplane_First.md",
-    "software/02_Strategy",
-    "software/01_Vision/Core_Principles.md",
-    "software/01_Vision",
-    "software/00_Home/Home.md",
-    "software/00_Home/Current_Status.md",
-    "software/00_Home",
-    "software/README.md"
+    "software/09_Decisions/ADR_002_React_UI_Basis.md"
   ]
 }
