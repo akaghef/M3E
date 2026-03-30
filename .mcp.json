@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@cyanheads/git-mcp-server"],
+      "env": {
+        "MCP_LOG_LEVEL": "warn",
+        "GIT_SIGN_COMMITS": "false"
+      }
+    }
+  }
+}

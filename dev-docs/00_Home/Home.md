@@ -1,4 +1,11 @@
 # Home
+## Operations
+
+会話や実装中に出た決定を先に保存する場所を追加した。
+
+- 会話の決定は `../06_Operations/Decision_Pool.md`
+- 文書運用ルールは `../06_Operations/Documentation_Rules.md`
+- ここで育てた内容を `Spec` `Architecture` `ADR` へ昇格する
 
 ## M3E とは何か
  M3Eは科学研究のための枠組(フレームワーク)思考​支援を

@@ -1,4 +1,12 @@
 # M3E Software Docs
+## Added Operations Area (2026-03-30)
+
+- `06_Operations/README.md`
+- `06_Operations/Decision_Pool.md`
+- `06_Operations/Documentation_Rules.md`
+
+会話で決まったことは、まず `06_Operations/Decision_Pool.md` に記録する。
+仕様として固まったら `03_Spec` `04_Architecture` `09_Decisions` に昇格する。
 
 このディレクトリは、科学研究を中心とした思考ツールとしての M3E のソフトウェア設計を、「入口」「思想」「戦略」「仕様」「アーキテクチャ」「外部連携」「意思決定」に分けて整理したものです。  
 現行方針と旧方針を混在させないため、廃止済み前提は `legacy/` に分離しています。
