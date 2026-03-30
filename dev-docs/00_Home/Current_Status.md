@@ -25,6 +25,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Layout, rendering, and editing behavior should be separated as much as possible
 - Freeplane is referenced, but M3E owns its own interaction model
 - `.mm` import is part of the MVP path
+- MVP test layers and CI stage rollout are documented in Operations
 
 ## What Is Already Working
 
@@ -49,12 +50,14 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Imported metadata is preserved but not yet rendered in the UI
 - `.mm` support is still MVP-level, not full Freeplane compatibility
 - Some older docs still contain mojibake and need cleanup
+- CI pipeline implementation is not yet fully wired to the documented gates
 
 ## Immediate Next Steps
 
 1. Today: complete MVP visual/UI quality for demo-ready operation
 2. Tomorrow: reform backend/model logic and finalize state boundaries
 3. Day after tomorrow: package MVP and start operation
+4. In parallel: implement Stage A CI and minimum hit-test regression coverage
 
 ## Related Documents
 
@@ -63,6 +66,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Custom engine ADR: [ADR_003_Freeplane_Informed_Custom_Engine.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
 - UI basis ADR: [ADR_002_React_UI_Basis.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_002_React_UI_Basis.md)
 - Decision intake: [Decision_Pool.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Decision_Pool.md)
+- Test and CI/CD guide: [Test_and_CICD_Guide.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Test_and_CICD_Guide.md)
 - Visual design guide: [Visual_Design_Guidelines.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Visual_Design_Guidelines.md)
 - Editing design: [Editing_Design.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Editing_Design.md)
 - Layout algorithm: [Layout_Algorithm.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Layout_Algorithm.md)

@@ -24,8 +24,9 @@
 9. [04_Architecture/MVC_and_Command.md](./04_Architecture/MVC_and_Command.md)
 10. [04_Architecture/Drag_and_Reparent.md](./04_Architecture/Drag_and_Reparent.md)
 11. [05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](./05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
-12. [09_Decisions/ADR_001_Freeplane_First.md](./09_Decisions/ADR_001_Freeplane_First.md)
-13. [09_Decisions/ADR_002_React_UI_Basis.md](./09_Decisions/ADR_002_React_UI_Basis.md)
+12. [06_Operations/Test_and_CICD_Guide.md](./06_Operations/Test_and_CICD_Guide.md)
+13. [09_Decisions/ADR_001_Freeplane_First.md](./09_Decisions/ADR_001_Freeplane_First.md)
+14. [09_Decisions/ADR_002_React_UI_Basis.md](./09_Decisions/ADR_002_React_UI_Basis.md)
 
 ## ディレクトリ構成
 

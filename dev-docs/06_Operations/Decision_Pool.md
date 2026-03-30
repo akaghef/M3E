@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-03-30-004
+
+- Date: 2026-03-30
+- Topic: MVP テストレイヤーと CI 段階導入方針の運用基準化
+- Status: working-agreement
+- Decision: MVP 期間は Test and CI/CD Guide を基準として、Model/SaveLoad/Layout-HitTest を優先しつつ CI Stage A を先行導入する
+- Why: 操作品質の検証とデータ安全性の検証を分離して運用し、壊れ込みの早期検知を可能にするため
+- Next: Stage A の最小 CI ジョブを実装し、PR 前ゲートを運用に組み込む
+- Source: このスレッドでのテスト/CICD 文書拡充依頼
+- Promoted: [Test_and_CICD_Guide.md](./Test_and_CICD_Guide.md)
+
 ## 2026-03-30-003
 
 - Date: 2026-03-30
