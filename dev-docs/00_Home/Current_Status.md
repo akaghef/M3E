@@ -39,6 +39,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Minimal `.mm` import now exists
 - Demo loaders exist for sample JSON and `aircraft.mm`
 - `aircraft.mm` visual check walkthrough now exists for repeatable visual inspection
+- Viewer toolbar can tolerate missing optional controls and now supports `Fit all` / `Focus`
 
 ## What Is Still Open
 

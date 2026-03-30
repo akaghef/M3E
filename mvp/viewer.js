@@ -4,6 +4,8 @@
       const loadAircraftMmBtn = document.getElementById("load-aircraft-mm");
       const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
       const stopVisualCheckBtn = document.getElementById("stop-visual-check");
+      const fitAllBtn = document.getElementById("fit-all");
+      const focusSelectedBtn = document.getElementById("focus-selected");
       const addChildBtn = document.getElementById("add-child");
       const addSiblingBtn = document.getElementById("add-sibling");
       const toggleCollapseBtn = document.getElementById("toggle-collapse");
@@ -206,6 +208,9 @@
       }
 
       function setVisualCheckStatus(lines) {
+        if (!visualCheckEl) {
+          return;
+        }
         visualCheckEl.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines || "");
       }
 
@@ -616,6 +621,25 @@
         return true;
       }
 
+      function fitDocument() {
+        if (!doc) {
+          return false;
+        }
+        render();
+        const boardRect = board.getBoundingClientRect();
+        if (!boardRect.width || !boardRect.height || !contentWidth || !contentHeight) {
+          return false;
+        }
+        const fitX = boardRect.width / contentWidth;
+        const fitY = boardRect.height / contentHeight;
+        const zoom = clampZoom(Math.min(fitX, fitY) * 0.92);
+        viewState.zoom = zoom;
+        viewState.cameraX = (boardRect.width - contentWidth * zoom) / 2;
+        viewState.cameraY = (boardRect.height - contentHeight * zoom) / 2;
+        applyZoom();
+        return true;
+      }
+
       function findNodeIdByText(text) {
         if (!doc) {
           return "";
@@ -779,7 +803,7 @@
         return true;
       }
 
-      loadDefaultBtn.addEventListener("click", async () => {
+      loadDefaultBtn?.addEventListener("click", async () => {
         try {
           const response = await fetch("./data/rapid-sample.json", { cache: "no-store" });
           if (!response.ok) {
@@ -792,7 +816,7 @@
         }
       });
 
-      loadAirplaneBtn.addEventListener("click", async () => {
+      loadAirplaneBtn?.addEventListener("click", async () => {
         try {
           const response = await fetch("./data/airplane-parts-demo.json", { cache: "no-store" });
           if (!response.ok) {
@@ -806,7 +830,7 @@
         }
       });
 
-      loadAircraftMmBtn.addEventListener("click", async () => {
+      loadAircraftMmBtn?.addEventListener("click", async () => {
         try {
           await loadAircraftMmDemo();
         } catch (err) {
@@ -814,11 +838,11 @@
         }
       });
 
-      runAircraftVisualCheckBtn.addEventListener("click", () => {
+      runAircraftVisualCheckBtn?.addEventListener("click", () => {
         runAircraftVisualCheck();
       });
 
-      stopVisualCheckBtn.addEventListener("click", () => {
+      stopVisualCheckBtn?.addEventListener("click", () => {
         stopVisualCheck();
       });
 
@@ -844,54 +868,65 @@
         reader.readAsText(file, "utf-8");
       });
 
-      addChildBtn.addEventListener("click", () => {
+      addChildBtn?.addEventListener("click", () => {
         if (!doc) return;
         addChild();
       });
 
-      addSiblingBtn.addEventListener("click", () => {
+      addSiblingBtn?.addEventListener("click", () => {
         if (!doc) return;
         addSibling();
       });
 
-      toggleCollapseBtn.addEventListener("click", () => {
+      toggleCollapseBtn?.addEventListener("click", () => {
         if (!doc) return;
         toggleCollapse();
       });
 
-      deleteNodeBtn.addEventListener("click", () => {
+      deleteNodeBtn?.addEventListener("click", () => {
         if (!doc) return;
         deleteSelected();
       });
 
-      markReparentBtn.addEventListener("click", () => {
+      markReparentBtn?.addEventListener("click", () => {
         if (!doc) return;
         markReparentSource();
       });
 
-      applyReparentBtn.addEventListener("click", () => {
+      applyReparentBtn?.addEventListener("click", () => {
         if (!doc) return;
         applyReparent();
       });
 
-      downloadBtn.addEventListener("click", () => {
+      downloadBtn?.addEventListener("click", () => {
         if (!doc) return;
         downloadJson();
       });
 
-      zoomOutBtn.addEventListener("click", () => {
+      zoomOutBtn?.addEventListener("click", () => {
         setZoom(viewState.zoom / VIEWER_TUNING.zoom.buttonFactor);
       });
 
-      zoomResetBtn.addEventListener("click", () => {
+      zoomResetBtn?.addEventListener("click", () => {
         setZoom(1);
       });
 
-      zoomInBtn.addEventListener("click", () => {
+      zoomInBtn?.addEventListener("click", () => {
         setZoom(viewState.zoom * VIEWER_TUNING.zoom.buttonFactor);
       });
 
-      applyEditBtn.addEventListener("click", () => {
+      fitAllBtn?.addEventListener("click", () => {
+        fitDocument();
+      });
+
+      focusSelectedBtn?.addEventListener("click", () => {
+        if (!doc || !viewState.selectedNodeId) {
+          return;
+        }
+        centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
+      });
+
+      applyEditBtn?.addEventListener("click", () => {
         if (!doc) return;
         applyEdit();
       });
@@ -1108,5 +1143,5 @@
 
       loadPayload(createEmptyDoc());
       setVisualCheckStatus("Visual check idle");
-      applyZoom();
+      fitDocument() || applyZoom();
 
