@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-03-30-003
+
+- Date: 2026-03-30
+- Topic: Freeplane-first から独自描画エンジン方針へ転換
+- Status: accepted
+- Decision: Freeplane は参考実装および `.mm` 互換入力形式として扱い、描画エンジンと操作系は M3E 側で自作する
+- Why: M3E 固有の研究思考支援 UI は Freeplane の外側の補助レイヤーではなく、表示と操作の設計そのものに宿るため
+- Next: MVP 定義、方針文書、ADR を独自描画前提へ更新する
+- Source: このスレッドでの方針転換の会話
+- Promoted: [../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
+
 ## 2026-03-30-001
 
 - Date: 2026-03-30
