@@ -11,13 +11,14 @@
             "id": "b17a715ed8af4583",
             "type": "leaf",
             "state": {
-              "type": "bases",
+              "type": "markdown",
               "state": {
-                "file": "無題のファイル.base",
-                "viewName": "表"
+                "file": "00_Home/Home.md",
+                "mode": "source",
+                "source": false
               },
-              "icon": "lucide-table",
-              "title": "無題のファイル"
+              "icon": "lucide-file",
+              "title": "Home"
             }
           }
         ]
@@ -184,6 +185,9 @@
   },
   "active": "b17a715ed8af4583",
   "lastOpenFiles": [
+    "00_Home/Current_Status.md",
+    "M3E仕様設計書.md",
+    "無題のファイル.base",
     "use_obsidian.md",
     "use_freeplane.md",
     "use_WiseMapping.md",
@@ -209,17 +213,13 @@
     "01_Vision/Core_Principles.md",
     "01_Vision",
     "00_Home/Home.md",
-    "00_Home/Current_Status.md",
     "00_Home",
     "無題のファイル.canvas",
-    "無題のファイル.base",
     "2026-03-14.md",
     "mindmapsoftwares.md",
     "freeplane/Repository_Structure_Summary.md",
     "freeplane",
-    "M3E仕様設計書.md",
     "software/legacy/README.md",
-    "software/legacy/Canvas_Centric_Architecture.md",
-    "software/09_Decisions/ADR_002_React_UI_Basis.md"
+    "software/legacy/Canvas_Centric_Architecture.md"
   ]
 }
