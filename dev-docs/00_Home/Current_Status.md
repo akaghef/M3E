@@ -40,6 +40,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Demo loaders exist for sample JSON and `aircraft.mm`
 - `aircraft.mm` visual check walkthrough now exists for repeatable visual inspection
 - Viewer toolbar can tolerate missing optional controls and now supports `Fit all` / `Focus`
+- Zoom tuning was adjusted for faster button and wheel response
 
 ## What Is Still Open
 

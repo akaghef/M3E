@@ -29,9 +29,9 @@ const VIEWER_TUNING = {
   zoom: {
     min: 0.15,
     max: 2.5,
-    buttonFactor: 1.22,
-    wheelIntensityCap: 0.55,
-    wheelIntensityDivisor: 360,
+    buttonFactor: 1.32,
+    wheelIntensityCap: 0.72,
+    wheelIntensityDivisor: 260,
   },
   pan: {
     wheelFactor: 1,
