@@ -51,6 +51,13 @@ If any item is missing, task state is still in-progress.
 3. Keep data-safe operations as top priority.
 4. Prefer simple operable UI over architecture expansion.
 
+## Language Policy
+
+1. Agent-user conversation should be in English by default.
+2. Design and development documents under `dev-docs/` should be written in Japanese by default.
+3. Code identifiers, file names, API names, and technical tokens may remain in English where appropriate.
+4. If a document is a design/spec/architecture/ADR document, prefer Japanese prose even when the surrounding conversation is in English.
+
 ## Preferred Task Order (Rapid MVP)
 
 1. Direct editing in viewer (add/edit/delete/reparent).
