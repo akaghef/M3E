@@ -10,6 +10,8 @@
         --grid-line: #e7e7e7;
         --ink: #262626;
         --accent: #7a35ff;
+        --accent-soft: #efe7ff;
+        --danger: #d64b4b;
       }
 
       * {
@@ -33,23 +35,29 @@
       }
 
       .toolbar {
-        display: inline-flex;
+        display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 8px;
         border: 1px solid #ddd;
         border-radius: 10px;
-        background: #ffffffcc;
+        background: #ffffffd9;
         backdrop-filter: blur(4px);
         padding: 8px;
       }
 
       button,
-      input[type="file"] {
+      input[type="file"],
+      input[type="text"] {
         border: 1px solid #d4d4d4;
         border-radius: 8px;
         background: #fff;
         padding: 6px 10px;
         font-size: 13px;
+      }
+
+      input[type="text"] {
+        min-width: 240px;
       }
 
       button {
@@ -62,10 +70,21 @@
         color: #fff;
       }
 
-      .meta {
+      button.danger {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      .meta,
+      .shortcuts,
+      .status {
         margin-top: 8px;
         font-size: 12px;
         color: #5d5d5d;
+      }
+
+      .status {
+        min-height: 18px;
       }
 
       .board {
@@ -93,16 +112,33 @@
         stroke-width: 4;
       }
 
+      .node-hit {
+        fill: transparent;
+        cursor: pointer;
+      }
+
+      .node-hit.selected {
+        fill: var(--accent-soft);
+      }
+
       .label-root {
         font-size: 42px;
         font-weight: 500;
         fill: #232323;
+        pointer-events: none;
       }
 
       .label-node {
         font-size: 44px;
         font-weight: 450;
         fill: #232323;
+        pointer-events: none;
+      }
+
+      .collapsed-indicator {
+        fill: #7f7f7f;
+        font-size: 18px;
+        pointer-events: none;
       }
 
       @media (max-width: 900px) {
@@ -117,9 +153,28 @@
     <div class="app">
       <div class="toolbar">
         <button id="load-default" class="primary">Load default sample</button>
+        <button id="load-airplane">Load airplane demo</button>
         <input id="file-input" type="file" accept=".json,application/json" />
+        <button id="add-child">Add child</button>
+        <button id="add-sibling">Add sibling</button>
+        <button id="toggle-collapse">Toggle collapse</button>
+        <button id="delete-node" class="danger">Delete</button>
+        <button id="download-btn">Download JSON</button>
+        <input id="edit-input" type="text" placeholder="Selected node text" />
+        <button id="apply-edit">Apply text</button>
       </div>
       <div id="meta" class="meta">No data loaded</div>
+      <div class="shortcuts">
+        Shortcuts:
+        Click select |
+        Tab add child |
+        Enter add sibling |
+        F2 edit |
+        Space collapse |
+        Delete remove |
+        Arrow Up/Down visible traversal
+      </div>
+      <div id="status" class="status"></div>
       <div class="board">
         <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
       </div>
@@ -128,7 +183,16 @@
     <script>
       const fileInput = document.getElementById("file-input");
       const loadDefaultBtn = document.getElementById("load-default");
+      const loadAirplaneBtn = document.getElementById("load-airplane");
+      const addChildBtn = document.getElementById("add-child");
+      const addSiblingBtn = document.getElementById("add-sibling");
+      const toggleCollapseBtn = document.getElementById("toggle-collapse");
+      const deleteNodeBtn = document.getElementById("delete-node");
+      const downloadBtn = document.getElementById("download-btn");
+      const applyEditBtn = document.getElementById("apply-edit");
+      const editInput = document.getElementById("edit-input");
       const metaEl = document.getElementById("meta");
+      const statusEl = document.getElementById("status");
       const canvas = document.getElementById("canvas");
 
       const EDGE_COLORS = ["#7a35ff", "#e34ad7", "#5d3cff", "#a146ff", "#6d5dff"];
@@ -140,6 +204,51 @@
       const SIBLING_GAP = 20;
       const LEFT_PAD = 80;
       const TOP_PAD = 90;
+      const NODE_HIT_HEIGHT = 64;
+
+      let doc = null;
+      let visibleOrder = [];
+      let statusTimer = null;
+
+      function nowIso() {
+        return new Date().toISOString();
+      }
+
+      function createEmptyDoc() {
+        const rootId = newId();
+        return {
+          version: 1,
+          savedAt: nowIso(),
+          state: {
+            rootId,
+            selectedId: rootId,
+            nodes: {
+              [rootId]: {
+                id: rootId,
+                parentId: null,
+                children: [],
+                text: "Research Root",
+                collapsed: false,
+              },
+            },
+          },
+        };
+      }
+
+      function ensureDocShape(payload) {
+        const candidate = payload && payload.state ? payload : { version: 1, savedAt: nowIso(), state: payload };
+        if (!candidate || !candidate.state || !candidate.state.nodes || !candidate.state.rootId) {
+          throw new Error("Invalid JSON format");
+        }
+        if (!candidate.state.selectedId || !candidate.state.nodes[candidate.state.selectedId]) {
+          candidate.state.selectedId = candidate.state.rootId;
+        }
+        return candidate;
+      }
+
+      function newId() {
+        return `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      }
 
       function escapeXml(text) {
         return String(text)
@@ -151,7 +260,33 @@
       }
 
       function textWidth(str, fontSize) {
-        return Math.max(80, str.length * fontSize * 0.56);
+        return Math.max(80, String(str || "").length * fontSize * 0.56);
+      }
+
+      function getNode(nodeId) {
+        const node = doc.state.nodes[nodeId];
+        if (!node) {
+          throw new Error(`Node not found: ${nodeId}`);
+        }
+        return node;
+      }
+
+      function setStatus(message, isError = false) {
+        clearTimeout(statusTimer);
+        statusEl.textContent = message;
+        statusEl.style.color = isError ? "var(--danger)" : "#5d5d5d";
+        if (message) {
+          statusTimer = setTimeout(() => {
+            statusEl.textContent = "";
+          }, 2500);
+        }
+      }
+
+      function visibleChildren(node) {
+        if (!node || node.collapsed) {
+          return [];
+        }
+        return node.children || [];
       }
 
       function buildLayout(state) {
@@ -182,8 +317,7 @@
           }
 
           depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] || 0, metrics[nodeId].w);
-
-          (node.children || []).forEach((childId) => visit(childId, depth + 1));
+          visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
         }
 
         visit(state.rootId, 0);
@@ -206,7 +340,7 @@
             return LEAF_HEIGHT;
           }
 
-          const children = node.children || [];
+          const children = visibleChildren(node);
           if (children.length === 0) {
             subtreeHeightCache[nodeId] = LEAF_HEIGHT;
             return LEAF_HEIGHT;
@@ -226,6 +360,8 @@
         }
 
         const pos = {};
+        const order = [];
+
         function place(nodeId, topY) {
           const node = state.nodes[nodeId];
           if (!node) {
@@ -243,9 +379,10 @@
             w: metrics[nodeId].w,
             h: metrics[nodeId].h,
           };
+          order.push(nodeId);
 
           let cursorY = topY;
-          (node.children || []).forEach((childId, i, arr) => {
+          visibleChildren(node).forEach((childId, i, arr) => {
             const childH = place(childId, cursorY);
             cursorY += childH;
             if (i < arr.length - 1) {
@@ -259,23 +396,37 @@
         const totalHeight = place(state.rootId, TOP_PAD);
         return {
           pos,
+          order,
           totalHeight,
           totalWidth: cursorX + 220,
         };
       }
 
-      function buildSvg(state, payload) {
+      function syncEditInput() {
+        if (!doc) {
+          editInput.value = "";
+          return;
+        }
+        const selected = doc.state.nodes[doc.state.selectedId];
+        editInput.value = selected ? selected.text || "" : "";
+      }
+
+      function render() {
+        if (!doc) {
+          metaEl.textContent = "No data loaded";
+          canvas.innerHTML = "";
+          return;
+        }
+
+        const state = doc.state;
         const layout = buildLayout(state);
+        visibleOrder = layout.order;
+
         const pos = layout.pos;
         let maxX = Math.max(1400, layout.totalWidth);
         let maxY = Math.max(760, layout.totalHeight + TOP_PAD + 60);
         let edges = "";
         let nodes = "";
-
-        const root = state.nodes[state.rootId];
-        if (!root) {
-          throw new Error("root not found");
-        }
 
         function drawNode(nodeId) {
           const node = state.nodes[nodeId];
@@ -287,7 +438,7 @@
           maxX = Math.max(maxX, p.x + p.w + 260);
           maxY = Math.max(maxY, p.y + p.h + 80);
 
-          const children = node.children || [];
+          const children = visibleChildren(node);
           children.forEach((childId, i) => {
             const child = pos[childId];
             if (!child) {
@@ -307,6 +458,12 @@
             edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}" />`;
           });
 
+          const hitClass = nodeId === state.selectedId ? "node-hit selected" : "node-hit";
+          const hitX = nodeId === state.rootId ? p.x : p.x - 8;
+          const hitY = p.y - NODE_HIT_HEIGHT / 2;
+          const hitW = nodeId === state.rootId ? p.w : p.w + 36;
+          nodes += `<rect class="${hitClass}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${NODE_HIT_HEIGHT}" rx="12" />`;
+
           if (nodeId === state.rootId) {
             const label = escapeXml(node.text || "(empty)");
             const w = p.w;
@@ -318,8 +475,13 @@
             nodes += `<text class="label-root" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
           } else {
             const label = escapeXml(node.text || "(empty)");
-            const selected = nodeId === state.selectedId ? " style=\"fill:#6f39ff;font-weight:600;\"" : "";
-            nodes += `<text class="label-node" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selected}>${label}</text>`;
+            const selectedStyle = nodeId === state.selectedId ? " style=\"fill:#6f39ff;font-weight:600;\"" : "";
+            nodes += `<text class="label-node" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selectedStyle}>${label}</text>`;
+          }
+
+          if (node.collapsed && (node.children || []).length > 0) {
+            const indicatorX = nodeId === state.rootId ? p.x + p.w + 16 : p.x + p.w + 10;
+            nodes += `<text class="collapsed-indicator" x="${indicatorX}" y="${p.y}" dominant-baseline="middle">+</text>`;
           }
 
           children.forEach((cid) => drawNode(cid));
@@ -332,20 +494,142 @@
         canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
         canvas.innerHTML = `${edges}${nodes}`;
 
-        const version = payload && payload.version ? payload.version : "n/a";
-        const savedAt = payload && payload.savedAt ? payload.savedAt : "n/a";
+        const version = doc.version || "n/a";
+        const savedAt = doc.savedAt || "n/a";
         const nodeCount = Object.keys(state.nodes).length;
-        metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount}`;
+        const selected = state.nodes[state.selectedId];
+        metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? selected.text : "n/a"}`;
+        syncEditInput();
       }
 
-      function render(payload) {
-        const state = payload && payload.state ? payload.state : payload;
-        if (!state || !state.nodes || !state.rootId) {
-          metaEl.textContent = "Invalid JSON format";
-          canvas.innerHTML = "";
+      function selectNode(nodeId) {
+        getNode(nodeId);
+        doc.state.selectedId = nodeId;
+        render();
+      }
+
+      function addChild() {
+        const parentId = doc.state.selectedId;
+        const parent = getNode(parentId);
+        const id = newId();
+        doc.state.nodes[id] = {
+          id,
+          parentId,
+          children: [],
+          text: "New Node",
+          collapsed: false,
+        };
+        parent.children.push(id);
+        parent.collapsed = false;
+        doc.state.selectedId = id;
+        doc.savedAt = nowIso();
+        render();
+        editInput.focus();
+        editInput.select();
+      }
+
+      function addSibling() {
+        const node = getNode(doc.state.selectedId);
+        if (node.parentId === null) {
+          addChild();
           return;
         }
-        buildSvg(state, payload);
+        const parent = getNode(node.parentId);
+        const currentIndex = parent.children.indexOf(node.id);
+        const id = newId();
+        doc.state.nodes[id] = {
+          id,
+          parentId: parent.id,
+          children: [],
+          text: "New Sibling",
+          collapsed: false,
+        };
+        parent.children.splice(currentIndex + 1, 0, id);
+        doc.state.selectedId = id;
+        doc.savedAt = nowIso();
+        render();
+        editInput.focus();
+        editInput.select();
+      }
+
+      function applyEdit() {
+        const node = getNode(doc.state.selectedId);
+        const next = String(editInput.value || "").trim();
+        if (next === "") {
+          setStatus("Node text cannot be empty.", true);
+          syncEditInput();
+          return;
+        }
+        if (node.text === next) {
+          return;
+        }
+        node.text = next;
+        doc.savedAt = nowIso();
+        render();
+      }
+
+      function deleteSelected() {
+        const node = getNode(doc.state.selectedId);
+        if (node.parentId === null) {
+          setStatus("Root node cannot be deleted.", true);
+          return;
+        }
+        const parent = getNode(node.parentId);
+        parent.children = parent.children.filter((id) => id !== node.id);
+        const stack = [node.id];
+        while (stack.length > 0) {
+          const currentId = stack.pop();
+          const current = doc.state.nodes[currentId];
+          if (!current) {
+            continue;
+          }
+          stack.push(...(current.children || []));
+          delete doc.state.nodes[currentId];
+        }
+        doc.state.selectedId = parent.id;
+        doc.savedAt = nowIso();
+        render();
+      }
+
+      function toggleCollapse() {
+        const node = getNode(doc.state.selectedId);
+        if ((node.children || []).length === 0) {
+          return;
+        }
+        node.collapsed = !node.collapsed;
+        doc.savedAt = nowIso();
+        render();
+      }
+
+      function downloadJson() {
+        const blob = new Blob([JSON.stringify({ version: doc.version, savedAt: nowIso(), state: doc.state }, null, 2)], {
+          type: "application/json;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = "rapid-edited.json";
+        anchor.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function selectRelative(offset) {
+        if (!visibleOrder.length) {
+          return;
+        }
+        const currentIndex = Math.max(0, visibleOrder.indexOf(doc.state.selectedId));
+        const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + offset));
+        selectNode(visibleOrder[nextIndex]);
+      }
+
+      function loadPayload(payload) {
+        try {
+          doc = ensureDocShape(payload);
+          render();
+          setStatus("Loaded.");
+        } catch (err) {
+          setStatus(err.message, true);
+        }
       }
 
       loadDefaultBtn.addEventListener("click", async () => {
@@ -355,9 +639,23 @@
             throw new Error(`HTTP ${response.status}`);
           }
           const payload = await response.json();
-          render(payload);
+          loadPayload(payload);
         } catch (err) {
-          metaEl.textContent = `Default load failed (${err.message}). Use file picker.`;
+          setStatus(`Default load failed (${err.message}). Use file picker.`, true);
+        }
+      });
+
+      loadAirplaneBtn.addEventListener("click", async () => {
+        try {
+          const response = await fetch("./data/airplane-parts-demo.json", { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          loadPayload(payload);
+          setStatus("Airplane demo loaded.");
+        } catch (err) {
+          setStatus(`Airplane demo load failed (${err.message}).`, true);
         }
       });
 
@@ -366,18 +664,124 @@
         if (!file) {
           return;
         }
-
         const reader = new FileReader();
         reader.onload = () => {
           try {
             const payload = JSON.parse(reader.result);
-            render(payload);
+            loadPayload(payload);
           } catch (err) {
-            metaEl.textContent = `JSON parse error: ${err.message}`;
+            setStatus(`JSON parse error: ${err.message}`, true);
           }
         };
         reader.readAsText(file, "utf-8");
       });
+
+      addChildBtn.addEventListener("click", () => {
+        if (!doc) return;
+        addChild();
+      });
+
+      addSiblingBtn.addEventListener("click", () => {
+        if (!doc) return;
+        addSibling();
+      });
+
+      toggleCollapseBtn.addEventListener("click", () => {
+        if (!doc) return;
+        toggleCollapse();
+      });
+
+      deleteNodeBtn.addEventListener("click", () => {
+        if (!doc) return;
+        deleteSelected();
+      });
+
+      downloadBtn.addEventListener("click", () => {
+        if (!doc) return;
+        downloadJson();
+      });
+
+      applyEditBtn.addEventListener("click", () => {
+        if (!doc) return;
+        applyEdit();
+      });
+
+      editInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          if (doc) {
+            applyEdit();
+          }
+        }
+      });
+
+      canvas.addEventListener("click", (event) => {
+        const nodeId = event.target && event.target.dataset ? event.target.dataset.nodeId : null;
+        if (doc && nodeId) {
+          selectNode(nodeId);
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (!doc) {
+          return;
+        }
+
+        const activeTag = document.activeElement ? document.activeElement.tagName : "";
+        const editingInput = activeTag === "INPUT" && document.activeElement === editInput;
+
+        if (editingInput) {
+          if (event.key === "Escape") {
+            syncEditInput();
+            canvas.focus?.();
+          }
+          return;
+        }
+
+        if (event.key === "Tab") {
+          event.preventDefault();
+          addChild();
+          return;
+        }
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          addSibling();
+          return;
+        }
+
+        if (event.key === "F2") {
+          event.preventDefault();
+          editInput.focus();
+          editInput.select();
+          return;
+        }
+
+        if (event.key === "Delete" || event.key === "Backspace") {
+          event.preventDefault();
+          deleteSelected();
+          return;
+        }
+
+        if (event.key === " ") {
+          event.preventDefault();
+          toggleCollapse();
+          return;
+        }
+
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          selectRelative(-1);
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          selectRelative(1);
+        }
+      });
+
+      loadPayload(createEmptyDoc());
     </script>
   </body>
 </html>

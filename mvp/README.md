@@ -14,7 +14,6 @@ Initial implementation file:
   - reparent node (cycle-safe)
   - collapse toggle
 - Selection state
-- Undo/Redo
 - Structural validation
 - Save/Load (`version: 1` JSON)
 
@@ -41,6 +40,17 @@ This generates:
 
 The page shows a visual tree with selected node highlight.
 
+## Current keyboard-first editor behavior
+
+- Starts from an editable root immediately, even without loading the sample JSON
+- `Tab`: add child to selected node
+- `Enter`: add sibling to selected node
+- `F2`: edit selected node text
+- `Delete` / `Backspace`: delete selected subtree (root cannot be deleted)
+- `Space`: collapse or expand selected node
+- `Arrow Up` / `Arrow Down`: move through visible nodes
+- `Download JSON`: save the current tree snapshot
+
 ## One-command startup
 
 From repository root, run:
@@ -57,9 +67,21 @@ This single command does all of the following:
 
 Stop with `Ctrl+C`.
 
+## Airplane parts demo
+
+Viewer now includes a demo button for an airplane parts mindmap.
+
+1. Start viewer:
+  - `node mvp/start_viewer.js`
+2. Click:
+  - `Load airplane demo`
+
+Demo file:
+- `mvp/data/airplane-parts-demo.json`
+
 ## Next implementation steps
 
-1. Add keyboard command mapping for Rapid operations.
-2. Add minimal SVG rendering layer.
+1. Split persistent document state from `ViewState`.
+2. Add drag or command-based reparent editing.
 3. Add `.mm` import parser and conversion pipeline.
 4. Add operation latency logs for Rapid performance checks.
