@@ -16,6 +16,7 @@ Initial implementation file:
 - Selection state
 - Structural validation
 - Save/Load (`version: 1` JSON)
+- Minimal Freeplane `.mm` import
 
 ## Run
 
@@ -42,6 +43,7 @@ The page shows a visual tree with selected node highlight.
 
 ## Current keyboard-first editor behavior
 
+- Tuning parameters for zoom, pan, spacing, and layout are centralized near the top of `viewer.html` in `VIEWER_TUNING`
 - Starts from an editable root immediately, even without loading the sample JSON
 - `Tab`: add child to selected node
 - `Enter`: add sibling to selected node
@@ -49,7 +51,10 @@ The page shows a visual tree with selected node highlight.
 - `Delete` / `Backspace`: delete selected subtree (root cannot be deleted)
 - `Space`: collapse or expand selected node
 - `Arrow Up` / `Arrow Down`: move through visible nodes
+- `M`: mark selected node as the node to move
+- `P`: move the marked node under the currently selected node
 - `Download JSON`: save the current tree snapshot
+- File picker accepts `.json` and `.mm`
 
 ## One-command startup
 
@@ -79,9 +84,35 @@ Viewer now includes a demo button for an airplane parts mindmap.
 Demo file:
 - `mvp/data/airplane-parts-demo.json`
 
+## Aircraft `.mm` demo
+
+Viewer also includes a direct demo loader for:
+- `mvp/data/aircraft.mm`
+
+Steps:
+1. Start viewer:
+  - `node mvp/start_viewer.js`
+2. Click:
+  - `Load aircraft.mm demo`
+
+## Freeplane `.mm` import
+
+The file picker now accepts Freeplane `.mm` files.
+
+Imported fields:
+- `TEXT`
+- `FOLDED`
+- `LINK`
+- `richcontent TYPE="DETAILS"`
+- `richcontent TYPE="NOTE"`
+- `attributes/attribute`
+
+Current limitation:
+- Imported metadata is preserved in JSON state, but the viewer still renders `text` only.
+
 ## Next implementation steps
 
 1. Split persistent document state from `ViewState`.
-2. Add drag or command-based reparent editing.
-3. Add `.mm` import parser and conversion pipeline.
+2. Improve the current minimal reparent UI.
+3. Render imported metadata (`details`, `note`, `attributes`, `link`) in the UI.
 4. Add operation latency logs for Rapid performance checks.

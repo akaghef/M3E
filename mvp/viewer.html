@@ -23,10 +23,13 @@
         font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
         color: var(--ink);
         background: var(--grid-bg);
+        overflow: hidden;
       }
 
       .app {
-        min-height: 100vh;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
         background-image:
           linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
           linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
@@ -92,12 +95,22 @@
         border: 1px solid #dfdfdf;
         border-radius: 14px;
         background: #ffffff55;
-        overflow: auto;
-        min-height: 72vh;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        cursor: grab;
+        user-select: none;
+        touch-action: none;
+      }
+
+      .board.panning {
+        cursor: grabbing;
       }
 
       svg {
         display: block;
+        transform-origin: 0 0;
       }
 
       .edge {
@@ -154,11 +167,17 @@
       <div class="toolbar">
         <button id="load-default" class="primary">Load default sample</button>
         <button id="load-airplane">Load airplane demo</button>
-        <input id="file-input" type="file" accept=".json,application/json" />
+        <button id="load-aircraft-mm">Load aircraft.mm demo</button>
+        <input id="file-input" type="file" accept=".json,.mm,application/json,text/xml,application/xml" />
         <button id="add-child">Add child</button>
         <button id="add-sibling">Add sibling</button>
         <button id="toggle-collapse">Toggle collapse</button>
         <button id="delete-node" class="danger">Delete</button>
+        <button id="mark-reparent">Mark move node</button>
+        <button id="apply-reparent">Move under selected</button>
+        <button id="zoom-out">Zoom out</button>
+        <button id="zoom-reset">100%</button>
+        <button id="zoom-in">Zoom in</button>
         <button id="download-btn">Download JSON</button>
         <input id="edit-input" type="text" placeholder="Selected node text" />
         <button id="apply-edit">Apply text</button>
@@ -172,10 +191,11 @@
         F2 edit |
         Space collapse |
         Delete remove |
+        Ctrl/Cmd + wheel zoom |
         Arrow Up/Down visible traversal
       </div>
       <div id="status" class="status"></div>
-      <div class="board">
+      <div id="board" class="board" tabindex="0">
         <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
       </div>
     </div>
@@ -184,34 +204,95 @@
       const fileInput = document.getElementById("file-input");
       const loadDefaultBtn = document.getElementById("load-default");
       const loadAirplaneBtn = document.getElementById("load-airplane");
+      const loadAircraftMmBtn = document.getElementById("load-aircraft-mm");
       const addChildBtn = document.getElementById("add-child");
       const addSiblingBtn = document.getElementById("add-sibling");
       const toggleCollapseBtn = document.getElementById("toggle-collapse");
       const deleteNodeBtn = document.getElementById("delete-node");
+      const markReparentBtn = document.getElementById("mark-reparent");
+      const applyReparentBtn = document.getElementById("apply-reparent");
+      const zoomOutBtn = document.getElementById("zoom-out");
+      const zoomResetBtn = document.getElementById("zoom-reset");
+      const zoomInBtn = document.getElementById("zoom-in");
       const downloadBtn = document.getElementById("download-btn");
       const applyEditBtn = document.getElementById("apply-edit");
       const editInput = document.getElementById("edit-input");
       const metaEl = document.getElementById("meta");
       const statusEl = document.getElementById("status");
+      const board = document.getElementById("board");
       const canvas = document.getElementById("canvas");
 
-      const EDGE_COLORS = ["#7a35ff", "#e34ad7", "#5d3cff", "#a146ff", "#6d5dff"];
-      const ROOT_FONT = 42;
-      const NODE_FONT = 44;
-      const ROOT_HEIGHT = 120;
-      const COLUMN_GAP = 170;
-      const LEAF_HEIGHT = 94;
-      const SIBLING_GAP = 20;
-      const LEFT_PAD = 80;
-      const TOP_PAD = 90;
-      const NODE_HIT_HEIGHT = 64;
+      const VIEWER_TUNING = {
+        palette: {
+          edgeColors: ["#7a35ff", "#e34ad7", "#5d3cff", "#a146ff", "#6d5dff"],
+        },
+        typography: {
+          rootFont: 42,
+          nodeFont: 44,
+        },
+        layout: {
+          rootHeight: 120,
+          columnGap: 170,
+          leafHeight: 94,
+          siblingGap: 20,
+          leftPad: 80,
+          topPad: 90,
+          nodeHitHeight: 64,
+          minCanvasWidth: 1400,
+          minCanvasHeight: 760,
+          canvasRightPad: 220,
+          canvasBottomPad: 60,
+          nodeRightPad: 260,
+          nodeBottomPad: 80,
+          edgeStartPad: 10,
+          edgeEndPad: 14,
+          rootIndicatorPad: 16,
+          nodeIndicatorPad: 10,
+        },
+        zoom: {
+          min: 0.15,
+          max: 2.5,
+          buttonFactor: 1.22,
+          wheelIntensityCap: 0.55,
+          wheelIntensityDivisor: 360,
+        },
+        pan: {
+          wheelFactor: 1,
+          initialCameraX: 40,
+          initialCameraY: 40,
+        },
+      };
 
       let doc = null;
       let visibleOrder = [];
       let statusTimer = null;
+      let contentWidth = 1600;
+      let contentHeight = 900;
+      let viewState = {
+        selectedNodeId: "",
+        zoom: 1,
+        cameraX: VIEWER_TUNING.pan.initialCameraX,
+        cameraY: VIEWER_TUNING.pan.initialCameraY,
+        panState: null,
+        reparentSourceId: "",
+      };
 
       function nowIso() {
         return new Date().toISOString();
+      }
+
+      function createNodeRecord(id, parentId, text = "New Node") {
+        return {
+          id,
+          parentId,
+          children: [],
+          text,
+          collapsed: false,
+          details: "",
+          note: "",
+          attributes: {},
+          link: "",
+        };
       }
 
       function createEmptyDoc() {
@@ -221,15 +302,8 @@
           savedAt: nowIso(),
           state: {
             rootId,
-            selectedId: rootId,
             nodes: {
-              [rootId]: {
-                id: rootId,
-                parentId: null,
-                children: [],
-                text: "Research Root",
-                collapsed: false,
-              },
+              [rootId]: createNodeRecord(rootId, null, "Research Root"),
             },
           },
         };
@@ -240,9 +314,15 @@
         if (!candidate || !candidate.state || !candidate.state.nodes || !candidate.state.rootId) {
           throw new Error("Invalid JSON format");
         }
-        if (!candidate.state.selectedId || !candidate.state.nodes[candidate.state.selectedId]) {
-          candidate.state.selectedId = candidate.state.rootId;
-        }
+        Object.values(candidate.state.nodes).forEach((node) => {
+          node.children = Array.isArray(node.children) ? node.children : [];
+          node.text = node.text || "";
+          node.collapsed = Boolean(node.collapsed);
+          node.details = node.details || "";
+          node.note = node.note || "";
+          node.attributes = node.attributes && typeof node.attributes === "object" ? node.attributes : {};
+          node.link = node.link || "";
+        });
         return candidate;
       }
 
@@ -263,6 +343,83 @@
         return Math.max(80, String(str || "").length * fontSize * 0.56);
       }
 
+      function richContentText(element, type) {
+        const richNodes = Array.from(element.children).filter((child) => {
+          return child.tagName === "richcontent" && (child.getAttribute("TYPE") || "").toUpperCase() === type;
+        });
+        return richNodes
+          .map((node) => (node.textContent || "").replace(/\s+/g, " ").trim())
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      function parseMmText(xmlText) {
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(xmlText, "application/xml");
+        const parserError = xml.querySelector("parsererror");
+        if (parserError) {
+          throw new Error("Invalid .mm XML");
+        }
+
+        const mapNode = xml.querySelector("map > node");
+        if (!mapNode) {
+          throw new Error("No root node found in .mm file");
+        }
+
+        const state = {
+          rootId: "",
+          nodes: {},
+        };
+
+        function convertNode(mmNode, parentId = null) {
+          const id = newId();
+          const text =
+            mmNode.getAttribute("TEXT") ||
+            richContentText(mmNode, "NODE") ||
+            "(empty)";
+          const record = createNodeRecord(id, parentId, text);
+          record.collapsed = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
+          record.link = mmNode.getAttribute("LINK") || "";
+          record.details = richContentText(mmNode, "DETAILS");
+          record.note = richContentText(mmNode, "NOTE");
+
+          const attributesEl = Array.from(mmNode.children).find((child) => child.tagName === "attributes");
+          if (attributesEl) {
+            Array.from(attributesEl.children)
+              .filter((child) => child.tagName === "attribute")
+              .forEach((attribute) => {
+                const key = attribute.getAttribute("NAME");
+                if (!key) {
+                  return;
+                }
+                record.attributes[key] = attribute.getAttribute("VALUE") || "";
+              });
+          }
+
+          state.nodes[id] = record;
+          if (!state.rootId) {
+            state.rootId = id;
+          }
+
+          Array.from(mmNode.children)
+            .filter((child) => child.tagName === "node")
+            .forEach((childNode) => {
+              const childId = convertNode(childNode, id);
+              record.children.push(childId);
+            });
+
+          return id;
+        }
+
+        convertNode(mapNode, null);
+
+        return {
+          version: 1,
+          savedAt: nowIso(),
+          state,
+        };
+      }
+
       function getNode(nodeId) {
         const node = doc.state.nodes[nodeId];
         if (!node) {
@@ -280,6 +437,34 @@
             statusEl.textContent = "";
           }, 2500);
         }
+      }
+
+      function clampZoom(nextZoom) {
+        return Math.min(VIEWER_TUNING.zoom.max, Math.max(VIEWER_TUNING.zoom.min, nextZoom));
+      }
+
+      function applyZoom() {
+        canvas.style.width = `${contentWidth}px`;
+        canvas.style.height = `${contentHeight}px`;
+        canvas.style.transform = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+      }
+
+      function setZoom(nextZoom, anchorClientX = null, anchorClientY = null) {
+        const previousZoom = viewState.zoom;
+        viewState.zoom = clampZoom(nextZoom);
+
+        const boardRect = board.getBoundingClientRect();
+        const pointerX = anchorClientX ?? boardRect.left + boardRect.width / 2;
+        const pointerY = anchorClientY ?? boardRect.top + boardRect.height / 2;
+        const localViewportX = pointerX - boardRect.left;
+        const localViewportY = pointerY - boardRect.top;
+        const contentX = (localViewportX - viewState.cameraX) / previousZoom;
+        const contentY = (localViewportY - viewState.cameraY) / previousZoom;
+
+        viewState.cameraX = localViewportX - contentX * viewState.zoom;
+        viewState.cameraY = localViewportY - contentY * viewState.zoom;
+        applyZoom();
+        setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
       }
 
       function visibleChildren(node) {
@@ -306,12 +491,12 @@
 
           if (nodeId === state.rootId) {
             metrics[nodeId] = {
-              w: Math.max(280, textWidth(node.text || "", ROOT_FONT) + 120),
-              h: ROOT_HEIGHT,
+              w: Math.max(280, textWidth(node.text || "", VIEWER_TUNING.typography.rootFont) + 120),
+              h: VIEWER_TUNING.layout.rootHeight,
             };
           } else {
             metrics[nodeId] = {
-              w: textWidth(node.text || "", NODE_FONT) + 20,
+              w: textWidth(node.text || "", VIEWER_TUNING.typography.nodeFont) + 20,
               h: 56,
             };
           }
@@ -323,10 +508,10 @@
         visit(state.rootId, 0);
 
         const xByDepth = {};
-        let cursorX = LEFT_PAD;
+        let cursorX = VIEWER_TUNING.layout.leftPad;
         for (let d = 0; d <= maxDepth; d += 1) {
           xByDepth[d] = cursorX;
-          cursorX += (depthMaxWidth[d] || 120) + COLUMN_GAP;
+          cursorX += (depthMaxWidth[d] || 120) + VIEWER_TUNING.layout.columnGap;
         }
 
         const subtreeHeightCache = {};
@@ -337,20 +522,20 @@
 
           const node = state.nodes[nodeId];
           if (!node) {
-            return LEAF_HEIGHT;
+            return VIEWER_TUNING.layout.leafHeight;
           }
 
           const children = visibleChildren(node);
           if (children.length === 0) {
-            subtreeHeightCache[nodeId] = LEAF_HEIGHT;
-            return LEAF_HEIGHT;
+            subtreeHeightCache[nodeId] = VIEWER_TUNING.layout.leafHeight;
+            return VIEWER_TUNING.layout.leafHeight;
           }
 
           let sum = 0;
           children.forEach((childId, i) => {
             sum += subtreeHeight(childId);
             if (i < children.length - 1) {
-              sum += SIBLING_GAP;
+              sum += VIEWER_TUNING.layout.siblingGap;
             }
           });
 
@@ -365,7 +550,7 @@
         function place(nodeId, topY) {
           const node = state.nodes[nodeId];
           if (!node) {
-            return LEAF_HEIGHT;
+            return VIEWER_TUNING.layout.leafHeight;
           }
 
           const depth = depthOf[nodeId] || 0;
@@ -386,19 +571,19 @@
             const childH = place(childId, cursorY);
             cursorY += childH;
             if (i < arr.length - 1) {
-              cursorY += SIBLING_GAP;
+              cursorY += VIEWER_TUNING.layout.siblingGap;
             }
           });
 
           return h;
         }
 
-        const totalHeight = place(state.rootId, TOP_PAD);
+        const totalHeight = place(state.rootId, VIEWER_TUNING.layout.topPad);
         return {
           pos,
           order,
           totalHeight,
-          totalWidth: cursorX + 220,
+          totalWidth: cursorX + VIEWER_TUNING.layout.canvasRightPad,
         };
       }
 
@@ -407,7 +592,7 @@
           editInput.value = "";
           return;
         }
-        const selected = doc.state.nodes[doc.state.selectedId];
+        const selected = doc.state.nodes[viewState.selectedNodeId];
         editInput.value = selected ? selected.text || "" : "";
       }
 
@@ -423,8 +608,11 @@
         visibleOrder = layout.order;
 
         const pos = layout.pos;
-        let maxX = Math.max(1400, layout.totalWidth);
-        let maxY = Math.max(760, layout.totalHeight + TOP_PAD + 60);
+        let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
+        let maxY = Math.max(
+          VIEWER_TUNING.layout.minCanvasHeight,
+          layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
+        );
         let edges = "";
         let nodes = "";
 
@@ -435,8 +623,8 @@
             return;
           }
 
-          maxX = Math.max(maxX, p.x + p.w + 260);
-          maxY = Math.max(maxY, p.y + p.h + 80);
+          maxX = Math.max(maxX, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
+          maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
           const children = visibleChildren(node);
           children.forEach((childId, i) => {
@@ -445,10 +633,11 @@
               return;
             }
 
-            const stroke = EDGE_COLORS[(p.depth + i) % EDGE_COLORS.length];
-            const startX = p.x + p.w + 10;
+            const stroke =
+              VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+            const startX = p.x + p.w + VIEWER_TUNING.layout.edgeStartPad;
             const startY = p.y;
-            const endX = child.x - 14;
+            const endX = child.x - VIEWER_TUNING.layout.edgeEndPad;
             const endY = child.y;
             const curve = Math.max(48, (endX - startX) * 0.45);
             const c1x = startX + curve;
@@ -458,11 +647,11 @@
             edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}" />`;
           });
 
-          const hitClass = nodeId === state.selectedId ? "node-hit selected" : "node-hit";
+          const hitClass = nodeId === viewState.selectedNodeId ? "node-hit selected" : "node-hit";
           const hitX = nodeId === state.rootId ? p.x : p.x - 8;
-          const hitY = p.y - NODE_HIT_HEIGHT / 2;
+          const hitY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2;
           const hitW = nodeId === state.rootId ? p.w : p.w + 36;
-          nodes += `<rect class="${hitClass}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${NODE_HIT_HEIGHT}" rx="12" />`;
+          nodes += `<rect class="${hitClass}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
 
           if (nodeId === state.rootId) {
             const label = escapeXml(node.text || "(empty)");
@@ -475,12 +664,15 @@
             nodes += `<text class="label-root" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
           } else {
             const label = escapeXml(node.text || "(empty)");
-            const selectedStyle = nodeId === state.selectedId ? " style=\"fill:#6f39ff;font-weight:600;\"" : "";
+            const selectedStyle = nodeId === viewState.selectedNodeId ? " style=\"fill:#6f39ff;font-weight:600;\"" : "";
             nodes += `<text class="label-node" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selectedStyle}>${label}</text>`;
           }
 
           if (node.collapsed && (node.children || []).length > 0) {
-            const indicatorX = nodeId === state.rootId ? p.x + p.w + 16 : p.x + p.w + 10;
+            const indicatorX =
+              nodeId === state.rootId
+                ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
+                : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
             nodes += `<text class="collapsed-indicator" x="${indicatorX}" y="${p.y}" dominant-baseline="middle">+</text>`;
           }
 
@@ -489,47 +681,44 @@
 
         drawNode(state.rootId);
 
+        contentWidth = maxX;
+        contentHeight = maxY;
         canvas.setAttribute("width", String(maxX));
         canvas.setAttribute("height", String(maxY));
         canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
         canvas.innerHTML = `${edges}${nodes}`;
+        applyZoom();
 
         const version = doc.version || "n/a";
         const savedAt = doc.savedAt || "n/a";
         const nodeCount = Object.keys(state.nodes).length;
-        const selected = state.nodes[state.selectedId];
-        metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? selected.text : "n/a"}`;
+        const selected = state.nodes[viewState.selectedNodeId];
+        const moveNode = state.nodes[viewState.reparentSourceId];
+        metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"}`;
         syncEditInput();
       }
 
       function selectNode(nodeId) {
         getNode(nodeId);
-        doc.state.selectedId = nodeId;
+        viewState.selectedNodeId = nodeId;
         render();
       }
 
       function addChild() {
-        const parentId = doc.state.selectedId;
+        const parentId = viewState.selectedNodeId;
         const parent = getNode(parentId);
         const id = newId();
-        doc.state.nodes[id] = {
-          id,
-          parentId,
-          children: [],
-          text: "New Node",
-          collapsed: false,
-        };
+        doc.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
         parent.children.push(id);
         parent.collapsed = false;
-        doc.state.selectedId = id;
+        viewState.selectedNodeId = id;
         doc.savedAt = nowIso();
         render();
-        editInput.focus();
-        editInput.select();
+        board.focus();
       }
 
       function addSibling() {
-        const node = getNode(doc.state.selectedId);
+        const node = getNode(viewState.selectedNodeId);
         if (node.parentId === null) {
           addChild();
           return;
@@ -537,23 +726,16 @@
         const parent = getNode(node.parentId);
         const currentIndex = parent.children.indexOf(node.id);
         const id = newId();
-        doc.state.nodes[id] = {
-          id,
-          parentId: parent.id,
-          children: [],
-          text: "New Sibling",
-          collapsed: false,
-        };
+        doc.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
         parent.children.splice(currentIndex + 1, 0, id);
-        doc.state.selectedId = id;
+        viewState.selectedNodeId = id;
         doc.savedAt = nowIso();
         render();
-        editInput.focus();
-        editInput.select();
+        board.focus();
       }
 
       function applyEdit() {
-        const node = getNode(doc.state.selectedId);
+        const node = getNode(viewState.selectedNodeId);
         const next = String(editInput.value || "").trim();
         if (next === "") {
           setStatus("Node text cannot be empty.", true);
@@ -569,7 +751,7 @@
       }
 
       function deleteSelected() {
-        const node = getNode(doc.state.selectedId);
+        const node = getNode(viewState.selectedNodeId);
         if (node.parentId === null) {
           setStatus("Root node cannot be deleted.", true);
           return;
@@ -586,13 +768,16 @@
           stack.push(...(current.children || []));
           delete doc.state.nodes[currentId];
         }
-        doc.state.selectedId = parent.id;
+        if (viewState.reparentSourceId === node.id) {
+          viewState.reparentSourceId = "";
+        }
+        viewState.selectedNodeId = parent.id;
         doc.savedAt = nowIso();
         render();
       }
 
       function toggleCollapse() {
-        const node = getNode(doc.state.selectedId);
+        const node = getNode(viewState.selectedNodeId);
         if ((node.children || []).length === 0) {
           return;
         }
@@ -617,7 +802,7 @@
         if (!visibleOrder.length) {
           return;
         }
-        const currentIndex = Math.max(0, visibleOrder.indexOf(doc.state.selectedId));
+        const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
         const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + offset));
         selectNode(visibleOrder[nextIndex]);
       }
@@ -625,11 +810,67 @@
       function loadPayload(payload) {
         try {
           doc = ensureDocShape(payload);
+          viewState.selectedNodeId = doc.state.rootId;
+          viewState.reparentSourceId = "";
           render();
           setStatus("Loaded.");
         } catch (err) {
           setStatus(err.message, true);
         }
+      }
+
+      function isDescendant(candidateParentId, nodeId) {
+        let currentId = candidateParentId;
+        while (currentId) {
+          if (currentId === nodeId) {
+            return true;
+          }
+          const current = doc.state.nodes[currentId];
+          currentId = current ? current.parentId : null;
+        }
+        return false;
+      }
+
+      function markReparentSource() {
+        if (!viewState.selectedNodeId) {
+          return;
+        }
+        viewState.reparentSourceId = viewState.selectedNodeId;
+        setStatus(`Marked move node: ${getNode(viewState.reparentSourceId).text}`);
+        render();
+      }
+
+      function applyReparent() {
+        const sourceId = viewState.reparentSourceId;
+        const targetParentId = viewState.selectedNodeId;
+        if (!sourceId) {
+          setStatus("No move node marked.", true);
+          return;
+        }
+        if (sourceId === targetParentId) {
+          setStatus("Cannot move a node under itself.", true);
+          return;
+        }
+        const sourceNode = getNode(sourceId);
+        if (sourceNode.parentId === null) {
+          setStatus("Root node cannot be moved.", true);
+          return;
+        }
+        if (isDescendant(targetParentId, sourceId)) {
+          setStatus("Cannot move a node under its descendant.", true);
+          return;
+        }
+
+        const oldParent = getNode(sourceNode.parentId);
+        const newParent = getNode(targetParentId);
+        oldParent.children = oldParent.children.filter((id) => id !== sourceId);
+        newParent.children.push(sourceId);
+        newParent.collapsed = false;
+        sourceNode.parentId = targetParentId;
+        viewState.reparentSourceId = "";
+        doc.savedAt = nowIso();
+        setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+        render();
       }
 
       loadDefaultBtn.addEventListener("click", async () => {
@@ -659,6 +900,20 @@
         }
       });
 
+      loadAircraftMmBtn.addEventListener("click", async () => {
+        try {
+          const response = await fetch("./data/aircraft.mm", { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = parseMmText(await response.text());
+          loadPayload(payload);
+          setStatus("aircraft.mm demo loaded.");
+        } catch (err) {
+          setStatus(`aircraft.mm load failed (${err.message}).`, true);
+        }
+      });
+
       fileInput.addEventListener("change", (event) => {
         const file = event.target.files && event.target.files[0];
         if (!file) {
@@ -667,10 +922,15 @@
         const reader = new FileReader();
         reader.onload = () => {
           try {
-            const payload = JSON.parse(reader.result);
+            const text = String(reader.result || "");
+            const isMm = file.name.toLowerCase().endsWith(".mm");
+            const payload = isMm ? parseMmText(text) : JSON.parse(text);
             loadPayload(payload);
+            if (isMm) {
+              setStatus(`Imported .mm file: ${file.name}`);
+            }
           } catch (err) {
-            setStatus(`JSON parse error: ${err.message}`, true);
+            setStatus(`Import error: ${err.message}`, true);
           }
         };
         reader.readAsText(file, "utf-8");
@@ -696,9 +956,31 @@
         deleteSelected();
       });
 
+      markReparentBtn.addEventListener("click", () => {
+        if (!doc) return;
+        markReparentSource();
+      });
+
+      applyReparentBtn.addEventListener("click", () => {
+        if (!doc) return;
+        applyReparent();
+      });
+
       downloadBtn.addEventListener("click", () => {
         if (!doc) return;
         downloadJson();
+      });
+
+      zoomOutBtn.addEventListener("click", () => {
+        setZoom(viewState.zoom / VIEWER_TUNING.zoom.buttonFactor);
+      });
+
+      zoomResetBtn.addEventListener("click", () => {
+        setZoom(1);
+      });
+
+      zoomInBtn.addEventListener("click", () => {
+        setZoom(viewState.zoom * VIEWER_TUNING.zoom.buttonFactor);
       });
 
       applyEditBtn.addEventListener("click", () => {
@@ -719,8 +1001,65 @@
         const nodeId = event.target && event.target.dataset ? event.target.dataset.nodeId : null;
         if (doc && nodeId) {
           selectNode(nodeId);
+          board.focus();
         }
       });
+
+      board.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        if (!event.ctrlKey && !event.metaKey) {
+          viewState.cameraX -= event.deltaX * VIEWER_TUNING.pan.wheelFactor;
+          viewState.cameraY -= event.deltaY * VIEWER_TUNING.pan.wheelFactor;
+          applyZoom();
+          return;
+        }
+        const intensity = Math.min(
+          VIEWER_TUNING.zoom.wheelIntensityCap,
+          Math.abs(event.deltaY) / VIEWER_TUNING.zoom.wheelIntensityDivisor
+        );
+        const factor = Math.exp(-Math.sign(event.deltaY) * intensity);
+        setZoom(viewState.zoom * factor, event.clientX, event.clientY);
+      }, { passive: false });
+
+      board.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        const onNode = event.target && event.target.dataset && event.target.dataset.nodeId;
+        if (onNode) {
+          return;
+        }
+        viewState.panState = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          cameraX: viewState.cameraX,
+          cameraY: viewState.cameraY,
+        };
+        board.classList.add("panning");
+        board.setPointerCapture?.(event.pointerId);
+      });
+
+      board.addEventListener("pointermove", (event) => {
+        if (!viewState.panState || event.pointerId !== viewState.panState.pointerId) {
+          return;
+        }
+        viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
+        viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
+        applyZoom();
+      });
+
+      function endPan(event) {
+        if (!viewState.panState || event.pointerId !== viewState.panState.pointerId) {
+          return;
+        }
+        viewState.panState = null;
+        board.classList.remove("panning");
+        board.releasePointerCapture?.(event.pointerId);
+      }
+
+      board.addEventListener("pointerup", endPan);
+      board.addEventListener("pointercancel", endPan);
 
       document.addEventListener("keydown", (event) => {
         if (!doc) {
@@ -733,7 +1072,7 @@
         if (editingInput) {
           if (event.key === "Escape") {
             syncEditInput();
-            canvas.focus?.();
+            board.focus();
           }
           return;
         }
@@ -763,6 +1102,18 @@
           return;
         }
 
+        if (event.key.toLowerCase() === "m") {
+          event.preventDefault();
+          markReparentSource();
+          return;
+        }
+
+        if (event.key.toLowerCase() === "p") {
+          event.preventDefault();
+          applyReparent();
+          return;
+        }
+
         if (event.key === " ") {
           event.preventDefault();
           toggleCollapse();
@@ -782,6 +1133,7 @@
       });
 
       loadPayload(createEmptyDoc());
+      applyZoom();
     </script>
   </body>
 </html>
