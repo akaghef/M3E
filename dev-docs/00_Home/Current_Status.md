@@ -38,6 +38,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - JSON save/load works
 - Minimal `.mm` import now exists
 - Demo loaders exist for sample JSON and `aircraft.mm`
+- `aircraft.mm` visual check walkthrough now exists for repeatable visual inspection
 
 ## What Is Still Open
 
@@ -97,6 +98,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 ### Demo Readiness (must)
 
 - [ ] Confirm `aircraft.mm` demo renders cleanly
+- [ ] Run `aircraft.mm` visual check and review each checkpoint result
 - [ ] Confirm `airplane-parts-demo.json` works with full edit flow
 - [ ] Prepare a 2-minute walkthrough script (open -> edit -> reparent -> save)
 - [ ] Ensure startup does not block demo flow (`EADDRINUSE` fallback or clear recovery)

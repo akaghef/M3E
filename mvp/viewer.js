@@ -2,6 +2,8 @@
       const loadDefaultBtn = document.getElementById("load-default");
       const loadAirplaneBtn = document.getElementById("load-airplane");
       const loadAircraftMmBtn = document.getElementById("load-aircraft-mm");
+      const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
+      const stopVisualCheckBtn = document.getElementById("stop-visual-check");
       const addChildBtn = document.getElementById("add-child");
       const addSiblingBtn = document.getElementById("add-sibling");
       const toggleCollapseBtn = document.getElementById("toggle-collapse");
@@ -16,6 +18,7 @@
       const editInput = document.getElementById("edit-input");
       const metaEl = document.getElementById("meta");
       const statusEl = document.getElementById("status");
+      const visualCheckEl = document.getElementById("visual-check");
       const board = document.getElementById("board");
       const canvas = document.getElementById("canvas");
 
@@ -24,6 +27,8 @@
       let statusTimer = null;
       let contentWidth = 1600;
       let contentHeight = 900;
+      let lastLayout = null;
+      let visualCheckRunId = 0;
       let viewState = {
         selectedNodeId: "",
         zoom: 1,
@@ -200,6 +205,10 @@
         return Math.min(VIEWER_TUNING.zoom.max, Math.max(VIEWER_TUNING.zoom.min, nextZoom));
       }
 
+      function setVisualCheckStatus(lines) {
+        visualCheckEl.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines || "");
+      }
+
       function applyZoom() {
         canvas.style.width = `${contentWidth}px`;
         canvas.style.height = `${contentHeight}px`;
@@ -362,6 +371,7 @@
 
         const state = doc.state;
         const layout = buildLayout(state);
+        lastLayout = layout;
         visibleOrder = layout.order;
 
         const pos = layout.pos;
@@ -586,6 +596,100 @@
         }
       }
 
+      function resetCamera() {
+        viewState.zoom = 1;
+        viewState.cameraX = VIEWER_TUNING.pan.initialCameraX;
+        viewState.cameraY = VIEWER_TUNING.pan.initialCameraY;
+        applyZoom();
+      }
+
+      function centerOnNode(nodeId, zoom = viewState.zoom) {
+        if (!doc || !lastLayout || !lastLayout.pos[nodeId]) {
+          return false;
+        }
+        const nodePos = lastLayout.pos[nodeId];
+        const boardRect = board.getBoundingClientRect();
+        viewState.zoom = clampZoom(zoom);
+        viewState.cameraX = boardRect.width / 2 - (nodePos.x + nodePos.w / 2) * viewState.zoom;
+        viewState.cameraY = boardRect.height / 2 - nodePos.y * viewState.zoom;
+        applyZoom();
+        return true;
+      }
+
+      function findNodeIdByText(text) {
+        if (!doc) {
+          return "";
+        }
+        const target = String(text || "").trim().toLowerCase();
+        const node = Object.values(doc.state.nodes).find((entry) => String(entry.text || "").trim().toLowerCase() === target);
+        return node ? node.id : "";
+      }
+
+      async function loadAircraftMmDemo() {
+        const response = await fetch("./data/aircraft.mm", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = parseMmText(await response.text());
+        loadPayload(payload);
+        setStatus("aircraft.mm demo loaded.");
+      }
+
+      function stopVisualCheck(message = "Visual check stopped.") {
+        visualCheckRunId += 1;
+        setVisualCheckStatus(message);
+      }
+
+      async function runAircraftVisualCheck() {
+        const runId = visualCheckRunId + 1;
+        visualCheckRunId = runId;
+
+        const steps = [
+          { label: "Load aircraft.mm", run: async () => { await loadAircraftMmDemo(); resetCamera(); centerOnNode(doc.state.rootId, 1); } },
+          { label: "Zoom out for whole-map scan", run: async () => { centerOnNode(doc.state.rootId, 0.72); } },
+          { label: "Select Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); centerOnNode(nodeId, 0.95); } },
+          { label: "Collapse Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (!getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
+          { label: "Expand Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
+          { label: "Select Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); centerOnNode(nodeId, 0.92); } },
+          { label: "Collapse Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); if (!getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.92); } },
+          { label: "Expand Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); if (getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.92); } },
+          { label: "Inspect Main Wing label scale", run: async () => { const nodeId = findNodeIdByText("Main Wing"); selectNode(nodeId); centerOnNode(nodeId, 1.15); } },
+          { label: "Inspect Propeller label scale", run: async () => { const nodeId = findNodeIdByText("Propeller"); selectNode(nodeId); centerOnNode(nodeId, 1.15); } },
+          { label: "Return to root overview", run: async () => { selectNode(doc.state.rootId); centerOnNode(doc.state.rootId, 0.8); } },
+        ];
+
+        function renderProgress(activeIndex) {
+          setVisualCheckStatus(steps.map((step, index) => {
+            if (index < activeIndex) return `[done] ${step.label}`;
+            if (index === activeIndex) return `[run ] ${step.label}`;
+            return `[todo] ${step.label}`;
+          }));
+        }
+
+        try {
+          renderProgress(0);
+          for (let index = 0; index < steps.length; index += 1) {
+            if (visualCheckRunId !== runId) {
+              return;
+            }
+            renderProgress(index);
+            await steps[index].run();
+            await new Promise((resolve) => setTimeout(resolve, 900));
+          }
+          if (visualCheckRunId !== runId) {
+            return;
+          }
+          setVisualCheckStatus(steps.map((step) => `[done] ${step.label}`).concat("Completed: aircraft visual check"));
+          setStatus("Aircraft visual check completed.");
+        } catch (err) {
+          if (visualCheckRunId !== runId) {
+            return;
+          }
+          setVisualCheckStatus(`Aircraft visual check failed: ${err.message}`);
+          setStatus(`Aircraft visual check failed (${err.message}).`, true);
+        }
+      }
+
       function isDescendant(candidateParentId, nodeId) {
         let currentId = candidateParentId;
         while (currentId) {
@@ -704,16 +808,18 @@
 
       loadAircraftMmBtn.addEventListener("click", async () => {
         try {
-          const response = await fetch("./data/aircraft.mm", { cache: "no-store" });
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-          const payload = parseMmText(await response.text());
-          loadPayload(payload);
-          setStatus("aircraft.mm demo loaded.");
+          await loadAircraftMmDemo();
         } catch (err) {
           setStatus(`aircraft.mm load failed (${err.message}).`, true);
         }
+      });
+
+      runAircraftVisualCheckBtn.addEventListener("click", () => {
+        runAircraftVisualCheck();
+      });
+
+      stopVisualCheckBtn.addEventListener("click", () => {
+        stopVisualCheck();
       });
 
       fileInput.addEventListener("change", (event) => {
@@ -1001,5 +1107,6 @@
       });
 
       loadPayload(createEmptyDoc());
+      setVisualCheckStatus("Visual check idle");
       applyZoom();
 

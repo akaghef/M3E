@@ -12,6 +12,8 @@
         <button id="load-default" class="primary">Load default sample</button>
         <button id="load-airplane">Load airplane demo</button>
         <button id="load-aircraft-mm">Load aircraft.mm demo</button>
+        <button id="run-aircraft-visual-check">Run aircraft visual check</button>
+        <button id="stop-visual-check">Stop visual check</button>
         <input id="file-input" type="file" accept=".json,.mm,application/json,text/xml,application/xml" />
         <button id="add-child">Add child</button>
         <button id="add-sibling">Add sibling</button>
@@ -39,6 +41,7 @@
         Arrow Up/Down visible traversal
       </div>
       <div id="status" class="status"></div>
+      <div id="visual-check" class="visual-check">Visual check idle</div>
       <div id="board" class="board" tabindex="0">
         <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
       </div>

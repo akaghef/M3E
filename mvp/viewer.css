@@ -73,14 +73,24 @@
 
       .meta,
       .shortcuts,
-      .status {
+      .status,
+      .visual-check {
         margin-top: 8px;
         font-size: 12px;
         color: #5d5d5d;
       }
 
-      .status {
+      .status,
+      .visual-check {
         min-height: 18px;
+      }
+
+      .visual-check {
+        padding: 8px 10px;
+        border: 1px solid #dfdfdf;
+        border-radius: 10px;
+        background: #ffffffc7;
+        white-space: pre-wrap;
       }
 
       .board {
@@ -125,6 +135,8 @@
 
 .node-hit.selected {
   fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 
 .node-hit.drop-target {

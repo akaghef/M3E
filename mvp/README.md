@@ -98,6 +98,26 @@ Steps:
 2. Click:
   - `Load aircraft.mm demo`
 
+## Aircraft visual check
+
+Viewer includes an automated visual walkthrough for the existing aircraft map.
+
+Steps:
+1. Start viewer:
+  - `node mvp/start_viewer.js`
+2. Click:
+  - `Run aircraft visual check`
+
+What it checks visually:
+- root overview visibility
+- zoomed-out whole-map readability
+- branch selection highlight on `Body` and `Wing`
+- collapse/expand visibility on `Body` and `Wing`
+- label readability on `Main Wing` and `Propeller`
+
+You can stop the sequence at any time with:
+- `Stop visual check`
+
 ## Freeplane `.mm` import
 
 The file picker now accepts Freeplane `.mm` files.
