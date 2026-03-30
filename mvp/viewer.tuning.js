@@ -5,6 +5,7 @@ const VIEWER_TUNING = {
   typography: {
     rootFont: 42,
     nodeFont: 44,
+    maxNodeTextChars: 55,
   },
   layout: {
     rootHeight: 120,

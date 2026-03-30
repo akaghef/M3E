@@ -1,39 +1,39 @@
 {
   "version": 1,
-  "savedAt": "2026-03-30T07:07:43.261Z",
+  "savedAt": "2026-03-30T12:27:20.622Z",
   "state": {
-    "rootId": "n_1774854463259_xg7k31",
-    "selectedId": "n_1774854463261_cihd0i",
+    "rootId": "n_1774873640622_h2k91y",
+    "selectedId": "n_1774873640622_cnrl88",
     "nodes": {
-      "n_1774854463259_xg7k31": {
-        "id": "n_1774854463259_xg7k31",
+      "n_1774873640622_h2k91y": {
+        "id": "n_1774873640622_h2k91y",
         "parentId": null,
         "children": [
-          "n_1774854463261_16vokt",
-          "n_1774854463261_yz9g4e"
+          "n_1774873640622_uwnfzf",
+          "n_1774873640622_m5n56p"
         ],
         "text": "Research Root",
         "collapsed": false
       },
-      "n_1774854463261_16vokt": {
-        "id": "n_1774854463261_16vokt",
-        "parentId": "n_1774854463259_xg7k31",
+      "n_1774873640622_uwnfzf": {
+        "id": "n_1774873640622_uwnfzf",
+        "parentId": "n_1774873640622_h2k91y",
         "children": [
-          "n_1774854463261_cihd0i"
+          "n_1774873640622_cnrl88"
         ],
         "text": "Question",
         "collapsed": false
       },
-      "n_1774854463261_yz9g4e": {
-        "id": "n_1774854463261_yz9g4e",
-        "parentId": "n_1774854463259_xg7k31",
+      "n_1774873640622_m5n56p": {
+        "id": "n_1774873640622_m5n56p",
+        "parentId": "n_1774873640622_h2k91y",
         "children": [],
         "text": "Hypothesis v2",
         "collapsed": false
       },
-      "n_1774854463261_cihd0i": {
-        "id": "n_1774854463261_cihd0i",
-        "parentId": "n_1774854463261_16vokt",
+      "n_1774873640622_cnrl88": {
+        "id": "n_1774873640622_cnrl88",
+        "parentId": "n_1774873640622_uwnfzf",
         "children": [],
         "text": "Background",
         "collapsed": false

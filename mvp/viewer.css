@@ -42,6 +42,13 @@
         padding: 8px;
       }
 
+      .toolbar-sep {
+        color: #ccc;
+        font-size: 18px;
+        user-select: none;
+        padding: 0 2px;
+      }
+
       button,
       input[type="file"],
       input[type="text"] {
@@ -86,6 +93,7 @@
       }
 
       .visual-check {
+        display: none;
         padding: 8px 10px;
         border: 1px solid #dfdfdf;
         border-radius: 10px;
@@ -150,6 +158,13 @@
   fill: #fff1c9;
 }
 
+.node-hit.drag-invalid {
+  fill: #ffe4e4;
+  stroke: var(--danger);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
       .label-root {
         font-size: 42px;
         font-weight: 500;
@@ -165,8 +180,9 @@
       }
 
       .collapsed-indicator {
-        fill: #7f7f7f;
-        font-size: 18px;
+        fill: var(--accent);
+        font-size: 24px;
+        font-weight: bold;
         pointer-events: none;
       }
 
