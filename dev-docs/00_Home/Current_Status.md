@@ -6,92 +6,100 @@
 - Added `06_Operations/Documentation_Rules.md` for documentation handling rules
 - Future conversation decisions should be recorded there before promotion to formal docs
 
-## 現在の結論
+## Current Direction
 
-M3E は現在、Freeplane を参考にしつつ、
-描画エンジンと操作系は独自実装する方針に切り替えた。
-Freeplane は参考実装および `.mm` 互換入力形式として扱い、
-M3E 自身が研究思考支援に適した表示と操作を持つ。
+M3E is currently moving from a `Freeplane-first UI` approach to a `Freeplane-informed custom engine` approach.
 
-独自実装の前提も次のように固定する。
+Freeplane is still important, but mainly as:
 
-- UI 基盤は React コンポーネントで構成する
-- 思考マップ描画は独立したレンダリング層として分離する
-- 初期描画は SVG 先行でよい
-- レイアウト、モデル、描画の境界は最初から分ける
+- a reference implementation
+- a compatible `.mm` import/export target
+- a source of useful node concepts and editing patterns
 
-## いま固定されていること
+The rendering engine, layout behavior, and editing interaction are being implemented on the M3E side.
 
-- 利用環境は Mac 上の個人利用が前提
-- Freeplane は参考実装および `.mm` 互換入力形式として扱う
-- 描画と操作は M3E 側で自作する
-- Flash / Rapid / Deep の三層運用は維持する
-- AI は MVP の対象外とし、後続フェーズで扱う
-- データ消失を避けることが最優先
-- UI 基盤は React を優先する
-- コアロジックはフレームワーク非依存の TypeScript に寄せる
-- 主対象は科学研究の思考過程である
+## What Is Decided
 
-## まだ固定していないこと
+- UI shell is based on `React + TypeScript`
+- Rendering is currently `SVG-first` for MVP speed
+- Layout, rendering, and editing behavior should be separated as much as possible
+- Freeplane is referenced, but M3E owns its own interaction model
+- `.mm` import is part of the MVP path
 
-- Freeplane 連携をファイルベースにするか API/スクリプトベースにするか
-- AI 連携をどのフェーズで再開するか
-- Deep の差分比較をいつ実装するか
-- 描画面を Canvas と SVG のどちらで実装するか
-- autosave と保存形式をどう分けるか
+## What Is Already Working
 
-## いま優先する成果
+- Rapid MVP viewer/editor exists under `mvp/`
+- Root-first editing works in the browser
+- Node add/edit/delete/collapse works
+- Keyboard-first editing works
+- Basic zoom and pan behavior exists
+- Key mapping and drag interaction were updated for better operability
+- JSON save/load works
+- Minimal `.mm` import now exists
+- Demo loaders exist for sample JSON and `aircraft.mm`
 
-1. Freeplane `.mm` の構造を読み取れること
-2. 独自描画面で基本表示と基本編集が成立すること
-3. 本当に簡単に操作可能な導線を作ること
-4. 日常運用で破綻しないこと
+## What Is Still Open
 
-## 次に読む文書
+- `ViewState` is not fully separated from persisted document state in all code paths
+- Minimal `reparent` UI now exists, but still needs refinement
+- Imported metadata is preserved but not yet rendered in the UI
+- `.mm` support is still MVP-level, not full Freeplane compatibility
+- Some older docs still contain mojibake and need cleanup
 
-- 方針の理由: [../02_Strategy/Current_Pivot_Freeplane_First.md](../02_Strategy/Current_Pivot_Freeplane_First.md)
-- MVP の定義: [../02_Strategy/MVP_Definition.md](../02_Strategy/MVP_Definition.md)
-- 採用判断の記録: [../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
-- UI 基盤の判断: [../09_Decisions/ADR_002_React_UI_Basis.md](../09_Decisions/ADR_002_React_UI_Basis.md)
+## Immediate Next Steps
 
-## ドキュメント拡張 To-Do (2026-03-30)
+1. Fix remaining documentation readability issues
+2. Finish separating `ViewState` from persisted document state
+3. Refine the minimal `reparent` UI in the viewer
+4. Improve `.mm` import validation and rendering of imported metadata
 
-### 優先度 A (今週)
+## Related Documents
 
-- [ ] 今週の目標: MVP を作る (進行中)
-- [ ] Phase 1: 読み取り基盤
-- [ ] Freeplane `.mm` 入力を最小実装する
-- [ ] ノード階層パーサを実装する
-- [ ] M3E 最小モデルへ変換する
-- [ ] 循環、欠損親、重複 ID の整合性チェックを実装する
-- [ ] 受け入れ確認: サンプル 10 マップをクラッシュなしで読み取る
-- [x] Phase 2: コア編集機能 (モデル層)
-- [x] ノード追加を実装する
-- [x] ノード編集を実装する
-- [x] ノード削除を実装する
-- [x] 再親付けを実装し、循環を禁止する
-- [x] Undo/Redo を実装する
-- [ ] 受け入れ確認: 連続 30 回の Undo/Redo で状態破綻しない (先送り)
-- [x] Phase 3: コア表示機能 (最小ビューア)
-- [x] ノードと親子エッジの基本描画を実装する
-- [x] 選択ノードの可視化を実装する
-- [ ] パン、ズーム、ノード中心移動を実装する
-- [ ] 500 ノード規模で最低性能を確認する
-- [x] 独自描画面の上で基本編集が成立することを確認する (追加/編集/削除)
-- [x] Phase 4: 保存と保護 (最小)
-- [x] 保存形式に version を付与する
-- [x] 保存前検証を実装する
-- [ ] バックアップ保存を実装する
-- [x] 保存 -> 再読込で同一構造になることを確認する
-- [ ] Phase 5: 操作性の最終調整
-- [ ] 主要操作の導線を短くする
-- [x] 操作ラベルと状態表示を整理する (viewer)
-- [ ] 初見ユーザーで基本操作が完了できることを確認する
+- Direction pivot: [Current_Pivot_Freeplane_First.md](/C:/Users/Akaghef/dev/M3E/dev-docs/02_Strategy/Current_Pivot_Freeplane_First.md)
+- MVP definition: [MVP_Definition.md](/C:/Users/Akaghef/dev/M3E/dev-docs/02_Strategy/MVP_Definition.md)
+- Custom engine ADR: [ADR_003_Freeplane_Informed_Custom_Engine.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
+- UI basis ADR: [ADR_002_React_UI_Basis.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_002_React_UI_Basis.md)
+- Decision intake: [Decision_Pool.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Decision_Pool.md)
 
-### 直近追加タスク (Rapid MVP)
+## Working To-Do (2026-03-30)
 
-- [x] 一コマンド起動を実装する (`node mvp/start_viewer.js`)
-- [x] 参考画像ベースの見た目調整を反映する
-- [x] ノード座標計算を幅・サブツリー高さベースへ修正する
-- [x] ビューア上の直接編集 (追加/編集/削除/折り畳み) を実装する
-- [ ] ビューア上の再親付けを実装する
+### Today Goal
+
+- [ ] Build a near-perfect UI experience for the Rapid MVP viewer
+
+### UI Core (must)
+* [X] ~~*AFEEJF*~~ [2026-03-30]
+- [X] ~~*Keep edit flow fast: `Enter` sibling add, `Shift+Enter` edit start, `Tab` child add*~~ [2026-03-30]
+- [X] ~~*Keep selection stable after every edit action*~~ [2026-03-30]
+- [ ] Improve reparent interaction feedback (target highlight + rejected drop message)
+- [ ] Make delete safer (confirm on non-leaf)
+- [ ] Ensure collapsed/expanded states are always obvious
+
+### View Experience (must)
+
+- [ ] Finalize zoom UX (button + wheel consistency)
+- [x] Finalize pan UX (drag smoothness and boundaries)
+- [ ] Add fit-to-content and focus-selected actions
+- [ ] Keep viewport stable during frequent edits
+- [ ] Remove visual jitter on rapid operations
+
+### Visual Polish (must)
+
+- [ ] Unify spacing and text rhythm across root and child labels
+- [ ] Tune edge curvature and color consistency
+- [ ] Improve selected-state contrast for readability
+- [ ] Handle long node text without layout break
+- [ ] Clean up toolbar density for daily use
+
+### Demo Readiness (must)
+
+- [ ] Confirm `aircraft.mm` demo renders cleanly
+- [ ] Confirm `airplane-parts-demo.json` works with full edit flow
+- [ ] Prepare a 2-minute walkthrough script (open -> edit -> reparent -> save)
+- [ ] Ensure startup does not block demo flow (`EADDRINUSE` fallback or clear recovery)
+
+### Done Criteria (today)
+
+- [ ] First-time user can complete edit operations without verbal help
+- [ ] No obvious visual break during zoom/pan/edit on demo data
+- [ ] UI is judged "demo-ready" by owner review

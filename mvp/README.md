@@ -43,14 +43,17 @@ The page shows a visual tree with selected node highlight.
 
 ## Current keyboard-first editor behavior
 
-- Tuning parameters for zoom, pan, spacing, and layout are centralized near the top of `viewer.html` in `VIEWER_TUNING`
+- Tuning parameters for zoom, pan, spacing, and layout are centralized in `viewer.tuning.js`
 - Starts from an editable root immediately, even without loading the sample JSON
 - `Tab`: add child to selected node
 - `Enter`: add sibling to selected node
-- `F2`: edit selected node text
+- `Shift + Enter`: edit selected node text
+- `Esc`: cancel text editing
+- `F2`: compatibility shortcut for edit
 - `Delete` / `Backspace`: delete selected subtree (root cannot be deleted)
 - `Space`: collapse or expand selected node
 - `Arrow Up` / `Arrow Down`: move through visible nodes
+- Drag a node onto another node: reparent under the drop target
 - `M`: mark selected node as the node to move
 - `P`: move the marked node under the currently selected node
 - `Download JSON`: save the current tree snapshot

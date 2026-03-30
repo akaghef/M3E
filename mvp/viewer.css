@@ -1,0 +1,167 @@
+﻿:root {
+        --grid-bg: #f4f4f4;
+        --grid-line: #e7e7e7;
+        --ink: #262626;
+        --accent: #7a35ff;
+        --accent-soft: #efe7ff;
+        --danger: #d64b4b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+        color: var(--ink);
+        background: var(--grid-bg);
+        overflow: hidden;
+      }
+
+      .app {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background-image:
+          linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+        background-size: 46px 46px;
+        padding: 14px;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: #ffffffd9;
+        backdrop-filter: blur(4px);
+        padding: 8px;
+      }
+
+      button,
+      input[type="file"],
+      input[type="text"] {
+        border: 1px solid #d4d4d4;
+        border-radius: 8px;
+        background: #fff;
+        padding: 6px 10px;
+        font-size: 13px;
+      }
+
+      input[type="text"] {
+        min-width: 240px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button.danger {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      .meta,
+      .shortcuts,
+      .status {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #5d5d5d;
+      }
+
+      .status {
+        min-height: 18px;
+      }
+
+      .board {
+        margin-top: 14px;
+        border: 1px solid #dfdfdf;
+        border-radius: 14px;
+        background: #ffffff55;
+        overflow: hidden;
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        cursor: grab;
+        user-select: none;
+        touch-action: none;
+      }
+
+      .board.panning {
+        cursor: grabbing;
+      }
+
+      svg {
+        display: block;
+        transform-origin: 0 0;
+      }
+
+      .edge {
+        fill: none;
+        stroke-width: 4;
+        stroke-linecap: round;
+      }
+
+      .root-box {
+        fill: #fff;
+        stroke: var(--accent);
+        stroke-width: 4;
+      }
+
+      .node-hit {
+        fill: transparent;
+        cursor: pointer;
+      }
+
+.node-hit.selected {
+  fill: var(--accent-soft);
+}
+
+.node-hit.drop-target {
+  fill: #d9f5e8;
+  stroke: #1b9c64;
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+}
+
+.node-hit.drag-source {
+  fill: #fff1c9;
+}
+
+      .label-root {
+        font-size: 42px;
+        font-weight: 500;
+        fill: #232323;
+        pointer-events: none;
+      }
+
+      .label-node {
+        font-size: 44px;
+        font-weight: 450;
+        fill: #232323;
+        pointer-events: none;
+      }
+
+      .collapsed-indicator {
+        fill: #7f7f7f;
+        font-size: 18px;
+        pointer-events: none;
+      }
+
+      @media (max-width: 900px) {
+        .label-root,
+        .label-node {
+          font-size: 28px;
+        }
+      }
+
