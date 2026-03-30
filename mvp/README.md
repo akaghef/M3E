@@ -1,7 +1,16 @@
 # Rapid MVP Implementation
 
-Initial implementation file:
-- `rapid_mvp.js`
+TypeScript source files are in `src/`. Compiled output goes to `dist/` (git-ignored).
+
+Source layout:
+- `src/shared/types.ts` — shared interfaces (`TreeNode`, `AppState`, `SavedDoc`)
+- `src/node/rapid_mvp.ts` — data model class
+- `src/node/start_viewer.ts` — HTTP server + browser launcher
+- `src/browser/viewer.tuning.ts` — centralized UI/UX constants
+- `src/browser/viewer.globals.d.ts` — browser-side global type declarations
+- `src/browser/viewer.ts` — main browser application
+
+Legacy JS files (`rapid_mvp.js`, `start_viewer.js`, `viewer.js`, `viewer.tuning.js`) are kept for reference and backward compatibility.
 
 ## What is implemented
 
@@ -18,12 +27,26 @@ Initial implementation file:
 - Save/Load (`version: 1` JSON)
 - Minimal Freeplane `.mm` import
 
-## Run
-
-From repository root:
+## Build
 
 ```bash
-node mvp/rapid_mvp.js
+cd mvp
+npm install
+npm run build       # compiles src/ → dist/
+```
+
+Individual targets:
+```bash
+npm run build:node     # Node files only (dist/node/)
+npm run build:browser  # Browser files only (dist/browser/)
+```
+
+## Run (data model only)
+
+After building, from `mvp/`:
+
+```bash
+node dist/node/rapid_mvp.js
 ```
 
 This generates:
@@ -31,11 +54,11 @@ This generates:
 
 ## Visual check in Edge
 
-1. Run sample generation first:
-  - `node mvp/rapid_mvp.js`
-2. Open viewer page in Edge:
-  - `mvp/viewer.html`
-3. Click "Load default sample".
+1. Build and start viewer:
+  - `cd mvp && npm run build && npm start`
+2. Browser opens automatically. Or navigate to:
+  - `http://localhost:4173/viewer.html`
+3. Click "Default" to load the sample.
 4. If default load fails, use file picker and select:
   - `mvp/data/rapid-sample.json`
 
@@ -43,7 +66,7 @@ The page shows a visual tree with selected node highlight.
 
 ## Current keyboard-first editor behavior
 
-- Tuning parameters for zoom, pan, spacing, and layout are centralized in `viewer.tuning.js`
+- Tuning parameters for zoom, pan, spacing, and layout are centralized in `src/browser/viewer.tuning.ts`
 - Starts from an editable root immediately, even without loading the sample JSON
 - `Tab`: add child to selected node
 - `Enter`: add sibling to selected node
@@ -61,17 +84,23 @@ The page shows a visual tree with selected node highlight.
 
 ## One-command startup
 
-From repository root, run:
+From `mvp/` (requires build first):
+
+```bash
+npm start
+```
+
+From repository root (legacy JS, no build required):
 
 ```bash
 node mvp/start_viewer.js
 ```
 
-This single command does all of the following:
+Both commands:
 
-1. Generates `mvp/data/rapid-sample.json`
-2. Starts a local viewer server (`http://localhost:4173/viewer.html`)
-3. Opens the viewer in your browser automatically
+1. Generate `mvp/data/rapid-sample.json`
+2. Start a local viewer server (`http://localhost:4173/viewer.html`)
+3. Open the viewer in your browser automatically
 
 Stop with `Ctrl+C`.
 
@@ -80,7 +109,7 @@ Stop with `Ctrl+C`.
 Viewer now includes a demo button for an airplane parts mindmap.
 
 1. Start viewer:
-  - `node mvp/start_viewer.js`
+  - `cd mvp && npm start`
 2. Click:
   - `Load airplane demo`
 
@@ -94,7 +123,7 @@ Viewer also includes a direct demo loader for:
 
 Steps:
 1. Start viewer:
-  - `node mvp/start_viewer.js`
+  - `cd mvp && npm start`
 2. Click:
   - `Load aircraft.mm demo`
 
@@ -104,7 +133,7 @@ Viewer includes an automated visual walkthrough for the existing aircraft map.
 
 Steps:
 1. Start viewer:
-  - `node mvp/start_viewer.js`
+  - `cd mvp && npm start`
 2. Click:
   - `Run aircraft visual check`
 
@@ -144,7 +173,8 @@ npm run test:visual:update
 
 Notes:
 - `test_server.js` serves the viewer on `http://127.0.0.1:4173/viewer.html` without opening a browser.
-- It also runs `rapid_mvp.js` before serving, so sample JSON is always regenerated for test input.
+- It runs `rapid_mvp.js` (legacy JS) before serving to regenerate sample JSON.
+- It also has a fallback: if `dist/browser/viewer.js` is not found it falls back to the legacy `viewer.js`.
 
 ## Freeplane `.mm` import
 

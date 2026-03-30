@@ -1,13 +1,20 @@
 {
-  "name": "m3e-rapid-mvp-viewer-tests",
+  "name": "m3e-rapid-mvp",
   "private": true,
   "version": "0.1.0",
-  "description": "Visual regression tests for Rapid MVP viewer",
+  "description": "Rapid MVP viewer with TypeScript source",
   "scripts": {
+    "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
+    "build:node": "tsc -p tsconfig.node.json",
+    "build:browser": "tsc -p tsconfig.browser.json",
+    "start": "node dist/node/start_viewer.js",
     "test:visual": "playwright test",
     "test:visual:update": "playwright test --update-snapshots"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.1"
+    "@playwright/test": "^1.54.1",
+    "@types/node": "^18.19.130",
+    "typescript": "^5.4.0",
+    "undici-types": "^5.26.5"
   }
 }
