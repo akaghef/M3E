@@ -6,6 +6,12 @@
 - Added `06_Operations/Documentation_Rules.md` for documentation handling rules
 - Future conversation decisions should be recorded there before promotion to formal docs
 
+## Update Log (2026-03-31)
+
+- `mvp/` に Playwright ベースの visual regression test 基盤を追加
+- 依存関係として `@playwright/test` を追加し、`chromium` ランタイムを導入
+- 記録先: `dev-docs/daily/260331.md`
+
 ## Current Direction
 
 M3E is currently moving from a `Freeplane-first UI` approach to a `Freeplane-informed custom engine` approach.

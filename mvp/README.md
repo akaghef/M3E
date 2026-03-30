@@ -118,6 +118,34 @@ What it checks visually:
 You can stop the sequence at any time with:
 - `Stop visual check`
 
+## Visual regression tests (Playwright)
+
+Visual tests are available under `mvp/tests/visual`.
+
+Setup:
+
+```bash
+cd mvp
+npm install
+npx playwright install chromium
+```
+
+Run tests:
+
+```bash
+npm run test:visual
+```
+
+Create/update screenshot baselines:
+
+```bash
+npm run test:visual:update
+```
+
+Notes:
+- `test_server.js` serves the viewer on `http://127.0.0.1:4173/viewer.html` without opening a browser.
+- It also runs `rapid_mvp.js` before serving, so sample JSON is always regenerated for test input.
+
 ## Freeplane `.mm` import
 
 The file picker now accepts Freeplane `.mm` files.

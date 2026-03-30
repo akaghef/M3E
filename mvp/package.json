@@ -1,0 +1,13 @@
+{
+  "name": "m3e-rapid-mvp-viewer-tests",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Visual regression tests for Rapid MVP viewer",
+  "scripts": {
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1"
+  }
+}
