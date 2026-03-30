@@ -246,3 +246,30 @@ M3E でも MVP でその余地を残す。
 - ドラッグ操作: [./Drag_and_Reparent.md](./Drag_and_Reparent.md)
 - 編集設計: [./Editing_Design.md](./Editing_Design.md)
 - MVP 定義: [../02_Strategy/MVP_Definition.md](../02_Strategy/MVP_Definition.md)
+
+## Edge vs Link
+
+`Edge` and `Link` should be handled in different phases.
+
+### Edge
+
+- generated from tree structure
+- required for structural readability
+- affects placement assumptions
+- belongs to the main layout output
+
+### Link
+
+- generated after layout as an overlay pass
+- does not affect node coordinates
+- may use different routing from structural edges
+- may be toggled separately in the renderer
+
+### Implementation Direction
+
+Recommended pipeline:
+
+1. place nodes from the tree
+2. generate structural `EdgeLayout`
+3. generate overlay `LinkLayout`
+4. render `Edge` first, `Link` second, interaction highlights last

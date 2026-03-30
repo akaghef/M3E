@@ -94,3 +94,30 @@ scope はストレージ単位ではなく認知境界である。
 - scope と alias の意味: [./Scope_and_Alias.md](./Scope_and_Alias.md)
 - MVC と command: [../04_Architecture/MVC_and_Command.md](../04_Architecture/MVC_and_Command.md)
 - Freeplane への写像: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
+
+## Edge and Link Separation
+
+M3E should distinguish `Edge` and `Link` as different concepts.
+
+### Edge
+
+- expresses the primary parent-child tree structure
+- is part of the structural graph
+- participates in layout
+- is always derived from ownership relation
+
+### Link
+
+- expresses non-tree relation between nodes
+- is an overlay relation, not a structural ownership relation
+- does not participate in layout
+- may later support relation type, label, direction, or styling
+
+### Important Note
+
+Freeplane-imported node-level `link` values and future graph-level `Link` relations are not the same thing.
+
+- node-level `link`: external or attached link stored on a node
+- graph-level `Link`: relation line between nodes inside the map
+
+These must remain separate in model design.

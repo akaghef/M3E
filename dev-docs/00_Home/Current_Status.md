@@ -34,6 +34,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Keyboard-first editing works
 - Basic zoom and pan behavior exists
 - Key mapping and drag interaction were updated for better operability
+- Viewer implementation has been modularized (`viewer.html` + `viewer.css` + `viewer.js` + tuning)
 - JSON save/load works
 - Minimal `.mm` import now exists
 - Demo loaders exist for sample JSON and `aircraft.mm`
@@ -48,10 +49,9 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 
 ## Immediate Next Steps
 
-1. Fix remaining documentation readability issues
-2. Finish separating `ViewState` from persisted document state
-3. Refine the minimal `reparent` UI in the viewer
-4. Improve `.mm` import validation and rendering of imported metadata
+1. Today: complete MVP visual/UI quality for demo-ready operation
+2. Tomorrow: reform backend/model logic and finalize state boundaries
+3. Day after tomorrow: package MVP and start operation
 
 ## Related Documents
 
@@ -60,15 +60,18 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Custom engine ADR: [ADR_003_Freeplane_Informed_Custom_Engine.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
 - UI basis ADR: [ADR_002_React_UI_Basis.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_002_React_UI_Basis.md)
 - Decision intake: [Decision_Pool.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Decision_Pool.md)
+- Visual design guide: [Visual_Design_Guidelines.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Visual_Design_Guidelines.md)
+- Editing design: [Editing_Design.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Editing_Design.md)
+- Layout algorithm: [Layout_Algorithm.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Layout_Algorithm.md)
+- Ideas folder: [ideas/README.md](/C:/Users/Akaghef/dev/M3E/dev-docs/ideas/README.md)
 
 ## Working To-Do (2026-03-30)
 
 ### Today Goal
 
-- [ ] Build a near-perfect UI experience for the Rapid MVP viewer
+- [ ] Complete MVP visual/UI quality
 
 ### UI Core (must)
-* [X] ~~*AFEEJF*~~ [2026-03-30]
 - [X] ~~*Keep edit flow fast: `Enter` sibling add, `Shift+Enter` edit start, `Tab` child add*~~ [2026-03-30]
 - [X] ~~*Keep selection stable after every edit action*~~ [2026-03-30]
 - [ ] Improve reparent interaction feedback (target highlight + rejected drop message)
@@ -77,7 +80,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 
 ### View Experience (must)
 
-- [ ] Finalize zoom UX (button + wheel consistency)
+- [x] Finalize zoom UX (button + wheel consistency)
 - [x] Finalize pan UX (drag smoothness and boundaries)
 - [ ] Add fit-to-content and focus-selected actions
 - [ ] Keep viewport stable during frequent edits
@@ -103,3 +106,17 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - [ ] First-time user can complete edit operations without verbal help
 - [ ] No obvious visual break during zoom/pan/edit on demo data
 - [ ] UI is judged "demo-ready" by owner review
+
+### Tomorrow Goal (backend/model reform)
+
+- [ ] Separate persisted document state and `ViewState` in all code paths
+- [ ] Refine reparent logic and cycle safety checks
+- [ ] Standardize model-side validation and error messaging
+- [ ] Stabilize save/load boundary and version handling
+
+### Day-After-Tomorrow Goal (MVP release & operation start)
+
+- [ ] Package MVP for repeatable startup and demo use
+- [ ] Finalize startup recovery for `EADDRINUSE`
+- [ ] Prepare operation checklist (run, recover, verify, log)
+- [ ] Start MVP operation with the fixed demo scenario
