@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(node dist/node/rapid_mvp.js)"
+    ]
+  }
+}
