@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rapid MVP Viewer</title>
+    <style>
+      :root {
+        --grid-bg: #f4f4f4;
+        --grid-line: #e7e7e7;
+        --ink: #262626;
+        --accent: #7a35ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+        color: var(--ink);
+        background: var(--grid-bg);
+      }
+
+      .app {
+        min-height: 100vh;
+        background-image:
+          linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+        background-size: 46px 46px;
+        padding: 14px;
+      }
+
+      .toolbar {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: #ffffffcc;
+        backdrop-filter: blur(4px);
+        padding: 8px;
+      }
+
+      button,
+      input[type="file"] {
+        border: 1px solid #d4d4d4;
+        border-radius: 8px;
+        background: #fff;
+        padding: 6px 10px;
+        font-size: 13px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .meta {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #5d5d5d;
+      }
+
+      .board {
+        margin-top: 14px;
+        border: 1px solid #dfdfdf;
+        border-radius: 14px;
+        background: #ffffff55;
+        overflow: auto;
+        min-height: 72vh;
+      }
+
+      svg {
+        display: block;
+      }
+
+      .edge {
+        fill: none;
+        stroke-width: 4;
+        stroke-linecap: round;
+      }
+
+      .root-box {
+        fill: #fff;
+        stroke: var(--accent);
+        stroke-width: 4;
+      }
+
+      .label-root {
+        font-size: 42px;
+        font-weight: 500;
+        fill: #232323;
+      }
+
+      .label-node {
+        font-size: 44px;
+        font-weight: 450;
+        fill: #232323;
+      }
+
+      @media (max-width: 900px) {
+        .label-root,
+        .label-node {
+          font-size: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="toolbar">
+        <button id="load-default" class="primary">Load default sample</button>
+        <input id="file-input" type="file" accept=".json,application/json" />
+      </div>
+      <div id="meta" class="meta">No data loaded</div>
+      <div class="board">
+        <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
+      </div>
+    </div>
+
+    <script>
+      const fileInput = document.getElementById("file-input");
+      const loadDefaultBtn = document.getElementById("load-default");
+      const metaEl = document.getElementById("meta");
+      const canvas = document.getElementById("canvas");
+
+      const EDGE_COLORS = ["#7a35ff", "#e34ad7", "#5d3cff", "#a146ff", "#6d5dff"];
+      const ROOT_FONT = 42;
+      const NODE_FONT = 44;
+      const ROOT_HEIGHT = 120;
+      const COLUMN_GAP = 170;
+      const LEAF_HEIGHT = 94;
+      const SIBLING_GAP = 20;
+      const LEFT_PAD = 80;
+      const TOP_PAD = 90;
+
+      function escapeXml(text) {
+        return String(text)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function textWidth(str, fontSize) {
+        return Math.max(80, str.length * fontSize * 0.56);
+      }
+
+      function buildLayout(state) {
+        const metrics = {};
+        const depthOf = {};
+        const depthMaxWidth = {};
+        let maxDepth = 0;
+
+        function visit(nodeId, depth) {
+          const node = state.nodes[nodeId];
+          if (!node) {
+            return;
+          }
+
+          maxDepth = Math.max(maxDepth, depth);
+          depthOf[nodeId] = depth;
+
+          if (nodeId === state.rootId) {
+            metrics[nodeId] = {
+              w: Math.max(280, textWidth(node.text || "", ROOT_FONT) + 120),
+              h: ROOT_HEIGHT,
+            };
+          } else {
+            metrics[nodeId] = {
+              w: textWidth(node.text || "", NODE_FONT) + 20,
+              h: 56,
+            };
+          }
+
+          depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] || 0, metrics[nodeId].w);
+
+          (node.children || []).forEach((childId) => visit(childId, depth + 1));
+        }
+
+        visit(state.rootId, 0);
+
+        const xByDepth = {};
+        let cursorX = LEFT_PAD;
+        for (let d = 0; d <= maxDepth; d += 1) {
+          xByDepth[d] = cursorX;
+          cursorX += (depthMaxWidth[d] || 120) + COLUMN_GAP;
+        }
+
+        const subtreeHeightCache = {};
+        function subtreeHeight(nodeId) {
+          if (subtreeHeightCache[nodeId] !== undefined) {
+            return subtreeHeightCache[nodeId];
+          }
+
+          const node = state.nodes[nodeId];
+          if (!node) {
+            return LEAF_HEIGHT;
+          }
+
+          const children = node.children || [];
+          if (children.length === 0) {
+            subtreeHeightCache[nodeId] = LEAF_HEIGHT;
+            return LEAF_HEIGHT;
+          }
+
+          let sum = 0;
+          children.forEach((childId, i) => {
+            sum += subtreeHeight(childId);
+            if (i < children.length - 1) {
+              sum += SIBLING_GAP;
+            }
+          });
+
+          const result = Math.max(sum, metrics[nodeId].h + 24);
+          subtreeHeightCache[nodeId] = result;
+          return result;
+        }
+
+        const pos = {};
+        function place(nodeId, topY) {
+          const node = state.nodes[nodeId];
+          if (!node) {
+            return LEAF_HEIGHT;
+          }
+
+          const depth = depthOf[nodeId] || 0;
+          const h = subtreeHeight(nodeId);
+          const centerY = topY + h / 2;
+
+          pos[nodeId] = {
+            x: xByDepth[depth],
+            y: centerY,
+            depth,
+            w: metrics[nodeId].w,
+            h: metrics[nodeId].h,
+          };
+
+          let cursorY = topY;
+          (node.children || []).forEach((childId, i, arr) => {
+            const childH = place(childId, cursorY);
+            cursorY += childH;
+            if (i < arr.length - 1) {
+              cursorY += SIBLING_GAP;
+            }
+          });
+
+          return h;
+        }
+
+        const totalHeight = place(state.rootId, TOP_PAD);
+        return {
+          pos,
+          totalHeight,
+          totalWidth: cursorX + 220,
+        };
+      }
+
+      function buildSvg(state, payload) {
+        const layout = buildLayout(state);
+        const pos = layout.pos;
+        let maxX = Math.max(1400, layout.totalWidth);
+        let maxY = Math.max(760, layout.totalHeight + TOP_PAD + 60);
+        let edges = "";
+        let nodes = "";
+
+        const root = state.nodes[state.rootId];
+        if (!root) {
+          throw new Error("root not found");
+        }
+
+        function drawNode(nodeId) {
+          const node = state.nodes[nodeId];
+          const p = pos[nodeId];
+          if (!node || !p) {
+            return;
+          }
+
+          maxX = Math.max(maxX, p.x + p.w + 260);
+          maxY = Math.max(maxY, p.y + p.h + 80);
+
+          const children = node.children || [];
+          children.forEach((childId, i) => {
+            const child = pos[childId];
+            if (!child) {
+              return;
+            }
+
+            const stroke = EDGE_COLORS[(p.depth + i) % EDGE_COLORS.length];
+            const startX = p.x + p.w + 10;
+            const startY = p.y;
+            const endX = child.x - 14;
+            const endY = child.y;
+            const curve = Math.max(48, (endX - startX) * 0.45);
+            const c1x = startX + curve;
+            const c1y = startY;
+            const c2x = endX - curve;
+            const c2y = endY;
+            edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}" />`;
+          });
+
+          if (nodeId === state.rootId) {
+            const label = escapeXml(node.text || "(empty)");
+            const w = p.w;
+            const h = p.h;
+            const rx = 60;
+            const x = p.x;
+            const y = p.y - h / 2;
+            nodes += `<rect class="root-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
+            nodes += `<text class="label-root" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
+          } else {
+            const label = escapeXml(node.text || "(empty)");
+            const selected = nodeId === state.selectedId ? " style=\"fill:#6f39ff;font-weight:600;\"" : "";
+            nodes += `<text class="label-node" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selected}>${label}</text>`;
+          }
+
+          children.forEach((cid) => drawNode(cid));
+        }
+
+        drawNode(state.rootId);
+
+        canvas.setAttribute("width", String(maxX));
+        canvas.setAttribute("height", String(maxY));
+        canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
+        canvas.innerHTML = `${edges}${nodes}`;
+
+        const version = payload && payload.version ? payload.version : "n/a";
+        const savedAt = payload && payload.savedAt ? payload.savedAt : "n/a";
+        const nodeCount = Object.keys(state.nodes).length;
+        metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount}`;
+      }
+
+      function render(payload) {
+        const state = payload && payload.state ? payload.state : payload;
+        if (!state || !state.nodes || !state.rootId) {
+          metaEl.textContent = "Invalid JSON format";
+          canvas.innerHTML = "";
+          return;
+        }
+        buildSvg(state, payload);
+      }
+
+      loadDefaultBtn.addEventListener("click", async () => {
+        try {
+          const response = await fetch("./data/rapid-sample.json", { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const payload = await response.json();
+          render(payload);
+        } catch (err) {
+          metaEl.textContent = `Default load failed (${err.message}). Use file picker.`;
+        }
+      });
+
+      fileInput.addEventListener("change", (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) {
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const payload = JSON.parse(reader.result);
+            render(payload);
+          } catch (err) {
+            metaEl.textContent = `JSON parse error: ${err.message}`;
+          }
+        };
+        reader.readAsText(file, "utf-8");
+      });
+    </script>
+  </body>
+</html>
