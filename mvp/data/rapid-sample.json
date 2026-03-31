@@ -1,39 +1,39 @@
 {
   "version": 1,
-  "savedAt": "2026-03-31T03:15:26.485Z",
+  "savedAt": "2026-03-31T04:30:21.807Z",
   "state": {
-    "rootId": "n_1774926926485_691ipt",
-    "selectedId": "n_1774926926485_6rhxiy",
+    "rootId": "n_1774931421806_9yqg0w",
+    "selectedId": "n_1774931421807_sku293",
     "nodes": {
-      "n_1774926926485_691ipt": {
-        "id": "n_1774926926485_691ipt",
+      "n_1774931421806_9yqg0w": {
+        "id": "n_1774931421806_9yqg0w",
         "parentId": null,
         "children": [
-          "n_1774926926485_p85rj5",
-          "n_1774926926485_hllpj5"
+          "n_1774931421807_epjj9f",
+          "n_1774931421807_9h5l5t"
         ],
         "text": "Research Root",
         "collapsed": false
       },
-      "n_1774926926485_p85rj5": {
-        "id": "n_1774926926485_p85rj5",
-        "parentId": "n_1774926926485_691ipt",
+      "n_1774931421807_epjj9f": {
+        "id": "n_1774931421807_epjj9f",
+        "parentId": "n_1774931421806_9yqg0w",
         "children": [
-          "n_1774926926485_6rhxiy"
+          "n_1774931421807_sku293"
         ],
         "text": "Question",
         "collapsed": false
       },
-      "n_1774926926485_hllpj5": {
-        "id": "n_1774926926485_hllpj5",
-        "parentId": "n_1774926926485_691ipt",
+      "n_1774931421807_9h5l5t": {
+        "id": "n_1774931421807_9h5l5t",
+        "parentId": "n_1774931421806_9yqg0w",
         "children": [],
         "text": "Hypothesis v2",
         "collapsed": false
       },
-      "n_1774926926485_6rhxiy": {
-        "id": "n_1774926926485_6rhxiy",
-        "parentId": "n_1774926926485_p85rj5",
+      "n_1774931421807_sku293": {
+        "id": "n_1774931421807_sku293",
+        "parentId": "n_1774931421807_epjj9f",
         "children": [],
         "text": "Background",
         "collapsed": false
