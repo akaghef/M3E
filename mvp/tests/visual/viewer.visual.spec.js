@@ -17,6 +17,30 @@ async function getNodeCount(page) {
   return Number(match[1]);
 }
 
+async function dragNodeLabel(page, sourceText, targetText) {
+  const source = page.locator("text.label-node", { hasText: sourceText }).first();
+  const target = page.locator("text.label-root", { hasText: targetText }).first();
+
+  await expect(source).toBeVisible();
+  await expect(target).toBeVisible();
+
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) {
+    throw new Error("Failed to get source/target bounds for drag operation.");
+  }
+
+  const sourceX = sourceBox.x + sourceBox.width / 2;
+  const sourceY = sourceBox.y + sourceBox.height / 2;
+  const targetX = targetBox.x + targetBox.width / 2;
+  const targetY = targetBox.y + targetBox.height / 2;
+
+  await page.mouse.move(sourceX, sourceY);
+  await page.mouse.down();
+  await page.mouse.move(targetX, targetY, { steps: 12 });
+  await page.mouse.up();
+}
+
 // 目的: デフォルトサンプルを全体表示した状態で、描画の見た目が崩れていないかを比較する。
 test("default sample visual baseline", async ({ page }) => {
   await loadAndStabilize(page, "#load-default");
@@ -57,4 +81,15 @@ test("viewer keyboard undo redo", async ({ page }) => {
   await page.keyboard.press("Control+y");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount + 1}`);
   await expect(page.locator("#meta")).toContainText("selected: New Node");
+});
+
+// 目的: drag reparent で root ノードをターゲットにできることを再現確認する。
+test("viewer drag reparent to root", async ({ page }) => {
+  await loadAndStabilize(page, "#load-default");
+
+  await dragNodeLabel(page, "Background", "Research Root");
+  await expect(page.locator("#status")).toContainText("Moved \"Background\" under \"Research Root\".");
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("#meta")).toContainText("selected: Research Root");
 });

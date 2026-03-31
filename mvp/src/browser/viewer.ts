@@ -535,12 +535,12 @@ function render(): void {
       const rx = 60;
       const x = p.x;
       const y = p.y - h / 2;
-      nodes += `<rect class="root-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
-      nodes += `<text class="label-root" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
+      nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
     } else {
       const label = escapeXml(node.text || "(empty)");
       const selectedStyle = nodeId === viewState.selectedNodeId ? ' style="fill:#6f39ff;font-weight:600;"' : "";
-      nodes += `<text class="label-node" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selectedStyle}>${label}</text>`;
+      nodes += `<text class="label-node" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selectedStyle}>${label}</text>`;
     }
 
     if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
