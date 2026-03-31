@@ -2,3 +2,4 @@ mvp/node_modules/
 mvp/dist/
 .claude/
 mvp/.env
+mvp/data/rapid-sample.json

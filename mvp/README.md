@@ -1,4 +1,8 @@
-# Rapid MVP Implementation
+# M3E Rapid MVP
+
+> **MVP スコープ:** このディレクトリはM3Eプロジェクトの Rapid MVP 実装です。
+> 研究思考支援ツールとして最低限動作する形態を検証することが目的であり、
+> 製品版の機能・品質は保証しません。
 
 TypeScript source files are in `src/`. Compiled output goes to `dist/` (git-ignored).
 
@@ -12,20 +16,36 @@ Source layout:
 
 Legacy JS files (`rapid_mvp.js`, `start_viewer.js`, `viewer.js`, `viewer.tuning.js`) are kept for reference and backward compatibility.
 
-## What is implemented
+## What is implemented (MVP scope)
 
-- Tree node model (`id`, `parentId`, `children`, `text`, `collapsed`)
-- Core edit operations
-  - add node
-  - add sibling
-  - edit node text
-  - delete subtree
-  - reparent node (cycle-safe)
-  - collapse toggle
-- Selection state
-- Structural validation
-- Save/Load (`version: 1` JSON)
-- Minimal Freeplane `.mm` import
+**Data model:**
+- Tree node structure: `id`, `parentId`, `children`, `text`, `collapsed`
+- Extended fields: `details`, `note`, `attributes`, `link` (parsed, stored, not yet rendered in UI)
+- Undo/redo stack (up to 200 history entries)
+- Structural validation (cycle detection on reparent)
+- Save/Load: `version: 1` JSON format
+
+**Edit operations:**
+- Add child node
+- Add sibling node
+- Edit node text (inline)
+- Delete subtree (root node protected)
+- Reparent node (cycle-safe)
+- Collapse/expand toggle
+
+**UI / Viewer:**
+- SVG-based tree rendering on a 1600×900 canvas with grid background
+- Zoom in/out/reset, Fit all, Focus selected
+- Pan (drag on background)
+- Selection highlight
+- Toolbar: Load demos, Add/Delete/Collapse, Reparent (Mark+Apply), Zoom, Edit, Download JSON
+
+**File import/export:**
+- JSON (M3E `SavedDoc` format)
+- Freeplane `.mm` (minimal import: TEXT, FOLDED, LINK, richcontent DETAILS/NOTE, attributes)
+
+**Testing:**
+- Playwright visual regression tests (baselines for default sample + aircraft.mm)
 
 ## Build
 
@@ -41,6 +61,24 @@ npm run build:node     # Node files only (dist/node/)
 npm run build:browser  # Browser files only (dist/browser/)
 ```
 
+## Run (viewer)
+
+```bash
+cd mvp && npm start
+```
+
+This will:
+1. Generate `data/rapid-sample.json`
+2. Start a local HTTP server at `http://localhost:4173`
+3. Open `viewer.html` in your browser automatically
+
+Stop with `Ctrl+C`.
+
+Legacy (no build required):
+```bash
+node mvp/start_viewer.js
+```
+
 ## Run (data model only)
 
 After building, from `mvp/`:
@@ -49,110 +87,46 @@ After building, from `mvp/`:
 node dist/node/rapid_mvp.js
 ```
 
-This generates:
-- `mvp/data/rapid-sample.json`
+Generates `data/rapid-sample.json` without starting the viewer.
 
-## Visual check in Edge
+## Keyboard shortcuts
 
-1. Build and start viewer:
-  - `cd mvp && npm run build && npm start`
-2. Browser opens automatically. Or navigate to:
-  - `http://localhost:4173/viewer.html`
-3. Click "Default" to load the sample.
-4. If default load fails, use file picker and select:
-  - `mvp/data/rapid-sample.json`
+| Key | Action |
+|-----|--------|
+| `Tab` | Add child to selected node |
+| `Enter` | Add sibling to selected node |
+| `Shift+Enter` | Edit selected node text |
+| `F2` | Edit selected node text (alias) |
+| `Esc` | Cancel text editing |
+| `Delete` / `Backspace` | Delete selected subtree (root protected) |
+| `Space` | Collapse/expand selected node |
+| `↑` / `↓` | Navigate through visible nodes |
+| `M` | Mark selected node as move source |
+| `P` | Move marked node under currently selected node |
+| `Ctrl/Cmd + Wheel` | Zoom |
 
-The page shows a visual tree with selected node highlight.
+## Demo data
 
-## Current keyboard-first editor behavior
+| Button | File |
+|--------|------|
+| Default | `data/rapid-sample.json` (regenerated on each startup) |
+| Airplane | `data/airplane-parts-demo.json` |
+| Aircraft.mm | `data/aircraft.mm` (Freeplane format) |
 
-- Tuning parameters for zoom, pan, spacing, and layout are centralized in `src/browser/viewer.tuning.ts`
-- Starts from an editable root immediately, even without loading the sample JSON
-- `Tab`: add child to selected node
-- `Enter`: add sibling to selected node
-- `Shift + Enter`: edit selected node text
-- `Esc`: cancel text editing
-- `F2`: compatibility shortcut for edit
-- `Delete` / `Backspace`: delete selected subtree (root cannot be deleted)
-- `Space`: collapse or expand selected node
-- `Arrow Up` / `Arrow Down`: move through visible nodes
-- Drag a node onto another node: reparent under the drop target
-- `M`: mark selected node as the node to move
-- `P`: move the marked node under the currently selected node
-- `Download JSON`: save the current tree snapshot
-- File picker accepts `.json` and `.mm`
+## Aircraft visual check walkthrough
 
-## One-command startup
+Click **Run aircraft visual check** in the toolbar to step through a repeatable inspection sequence:
+- Root overview
+- Zoomed-out whole-map readability
+- Branch selection on `Body` and `Wing`
+- Collapse/expand visibility
+- Label readability on `Main Wing` and `Propeller`
 
-From `mvp/` (requires build first):
-
-```bash
-npm start
-```
-
-From repository root (legacy JS, no build required):
-
-```bash
-node mvp/start_viewer.js
-```
-
-Both commands:
-
-1. Generate `mvp/data/rapid-sample.json`
-2. Start a local viewer server (`http://localhost:4173/viewer.html`)
-3. Open the viewer in your browser automatically
-
-Stop with `Ctrl+C`.
-
-## Airplane parts demo
-
-Viewer now includes a demo button for an airplane parts mindmap.
-
-1. Start viewer:
-  - `cd mvp && npm start`
-2. Click:
-  - `Load airplane demo`
-
-Demo file:
-- `mvp/data/airplane-parts-demo.json`
-
-## Aircraft `.mm` demo
-
-Viewer also includes a direct demo loader for:
-- `mvp/data/aircraft.mm`
-
-Steps:
-1. Start viewer:
-  - `cd mvp && npm start`
-2. Click:
-  - `Load aircraft.mm demo`
-
-## Aircraft visual check
-
-Viewer includes an automated visual walkthrough for the existing aircraft map.
-
-Steps:
-1. Start viewer:
-  - `cd mvp && npm start`
-2. Click:
-  - `Run aircraft visual check`
-
-What it checks visually:
-- root overview visibility
-- zoomed-out whole-map readability
-- branch selection highlight on `Body` and `Wing`
-- collapse/expand visibility on `Body` and `Wing`
-- label readability on `Main Wing` and `Propeller`
-
-You can stop the sequence at any time with:
-- `Stop visual check`
+Stop at any time with **Stop visual check**.
 
 ## Visual regression tests (Playwright)
 
-Visual tests are available under `mvp/tests/visual`.
-
-Setup:
-
+Setup (first time):
 ```bash
 cd mvp
 npm install
@@ -160,40 +134,34 @@ npx playwright install chromium
 ```
 
 Run tests:
-
 ```bash
 npm run test:visual
 ```
 
-Create/update screenshot baselines:
-
+Update baselines:
 ```bash
 npm run test:visual:update
 ```
 
 Notes:
 - `test_server.js` serves the viewer on `http://127.0.0.1:4173/viewer.html` without opening a browser.
-- It runs `rapid_mvp.js` (legacy JS) before serving to regenerate sample JSON.
-- It also has a fallback: if `dist/browser/viewer.js` is not found it falls back to the legacy `viewer.js`.
+- Falls back to legacy `viewer.js` if `dist/browser/viewer.js` is not found.
 
 ## Freeplane `.mm` import
 
-The file picker now accepts Freeplane `.mm` files.
+Imported fields: `TEXT`, `FOLDED`, `LINK`, `richcontent DETAILS`, `richcontent NOTE`, `attributes`
 
-Imported fields:
-- `TEXT`
-- `FOLDED`
-- `LINK`
-- `richcontent TYPE="DETAILS"`
-- `richcontent TYPE="NOTE"`
-- `attributes/attribute`
+**MVP limitation:** Imported metadata (details, note, attributes, link) is preserved in JSON state but the viewer renders `text` only.
 
-Current limitation:
-- Imported metadata is preserved in JSON state, but the viewer still renders `text` only.
+## MVP limitations and known gaps
 
-## Next implementation steps
+The following are out of MVP scope and deferred:
 
-1. Split persistent document state from `ViewState`.
-2. Improve the current minimal reparent UI.
-3. Render imported metadata (`details`, `note`, `attributes`, `link`) in the UI.
-4. Add operation latency logs for Rapid performance checks.
+- Rendering of metadata fields (details, note, attributes, link) in the viewer
+- Full Freeplane `.mm` compatibility
+- Persistent `ViewState` separation from document state (in progress)
+- Reparent UX improvement (target highlight, rejected drop feedback)
+- Delete confirmation dialog for non-leaf nodes
+- Performance logging for Rapid band checks
+- Stage A CI pipeline
+- Multi-user / server deployment (PostgreSQL deferred)
