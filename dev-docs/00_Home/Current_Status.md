@@ -13,6 +13,14 @@
 - `mvp/` に unit test コマンド（`npm test` / `test:unit:watch` / `test:ci`）を追加
 - GitHub Actions に `mvp/**` 対象の自動テスト（push / pull_request）を追加
 - 記録先: `dev-docs/daily/260331.md`
+- `mvp/src/node/rapid_mvp.ts` に SQLite persistence の最小実装を追加
+	- `saveToSqlite` / `loadFromSqlite` を追加
+	- `documents` テーブル自動初期化を追加
+- `mvp/tests/unit/persistence_db_behavior.test.js` に SQLite 単体テストを追加
+	- round-trip / unsupported version / invalid graph
+- SQLite 依存を追加
+	- `better-sqlite3`
+	- `@types/better-sqlite3`
 
 ## Current Direction
 
@@ -53,6 +61,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Zoom tuning was adjusted for faster button and wheel response
 - Unit tests can run locally with `npm test` and auto-rerun with `npm run test:unit:watch`
 - Stage A CI now runs automated unit tests on push and pull_request for `mvp/**`
+- SQLite persistence の最小保存/読込 API が model 層で動作（unit test 済み）
 
 ## What Is Still Open
 
@@ -133,6 +142,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - [ ] Refine reparent logic and cycle safety checks
 - [ ] Standardize model-side validation and error messaging
 - [ ] Stabilize save/load boundary and version handling
+- [ ] SQLite persistence を UI/サーバー導線へ接続（現状は model 層実装のみ）
 
 ### Day-After-Tomorrow Goal (MVP release & operation start)
 

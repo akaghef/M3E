@@ -2,7 +2,15 @@
 
 import fs from "fs";
 import path from "path";
+import Database from "better-sqlite3";
 import type { TreeNode, AppState, SavedDoc } from "../shared/types";
+
+type SqliteDatabase = InstanceType<typeof Database>;
+
+type SqliteDocumentRow = {
+  version: number;
+  stateJson: string;
+};
 
 class RapidMvpModel {
   state: AppState;
@@ -274,6 +282,24 @@ class RapidMvpModel {
     return model;
   }
 
+  private static openSqlite(dbPath: string): SqliteDatabase {
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const db = new Database(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        version INTEGER NOT NULL,
+        saved_at TEXT NOT NULL,
+        state_json TEXT NOT NULL
+      )
+    `);
+    return db;
+  }
+
   saveToFile(filePath: string): void {
     const data: SavedDoc = {
       version: 1,
@@ -287,6 +313,35 @@ class RapidMvpModel {
     }
 
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+  }
+
+  saveToSqlite(dbPath: string, documentId = "default"): void {
+    const data: SavedDoc = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      state: this.toJSON(),
+    };
+
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      db.prepare(
+        `
+          INSERT INTO documents (id, version, saved_at, state_json)
+          VALUES (@id, @version, @savedAt, @stateJson)
+          ON CONFLICT(id) DO UPDATE SET
+            version = excluded.version,
+            saved_at = excluded.saved_at,
+            state_json = excluded.state_json
+        `,
+      ).run({
+        id: documentId,
+        version: data.version,
+        savedAt: data.savedAt,
+        stateJson: JSON.stringify(data.state),
+      });
+    } finally {
+      db.close();
+    }
   }
 
   static loadFromFile(filePath: string): RapidMvpModel {
@@ -304,6 +359,36 @@ class RapidMvpModel {
     }
 
     return model;
+  }
+
+  static loadFromSqlite(dbPath: string, documentId = "default"): RapidMvpModel {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const row = db
+        .prepare(
+          `
+            SELECT version, state_json AS stateJson
+            FROM documents
+            WHERE id = ?
+          `,
+        )
+        .get(documentId) as SqliteDocumentRow | undefined;
+
+      if (!row || row.version !== 1 || !row.stateJson) {
+        throw new Error("Unsupported or invalid save format.");
+      }
+
+      const parsedState = JSON.parse(row.stateJson) as AppState;
+      const model = RapidMvpModel.fromJSON(parsedState);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        throw new Error(`Invalid model after load: ${errors.join(" | ")}`);
+      }
+
+      return model;
+    } finally {
+      db.close();
+    }
   }
 }
 
@@ -324,6 +409,9 @@ if (require.main === module) {
 
   // Resolve path relative to the mvp/ root, regardless of compiled location.
   const savePath = path.join(path.resolve(__dirname, "..", ".."), "data", "rapid-sample.json");
+  const sqlitePath = path.join(path.resolve(__dirname, "..", ".."), "data", "rapid-mvp.sqlite");
   model.saveToFile(savePath);
+  model.saveToSqlite(sqlitePath, "rapid-sample");
   console.log(`Rapid MVP sample saved: ${savePath}`);
+  console.log(`Rapid MVP sample saved in SQLite: ${sqlitePath} (docId=rapid-sample)`);
 }
