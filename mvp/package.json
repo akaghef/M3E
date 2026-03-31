@@ -8,6 +8,10 @@
     "build:node": "tsc -p tsconfig.node.json",
     "build:browser": "tsc -p tsconfig.browser.json",
     "start": "node dist/node/start_viewer.js",
+    "test": "npm run test:unit",
+    "test:unit": "npm run build:node && node --test tests/unit/*.test.js",
+    "test:unit:watch": "npm run build:node && node --test --watch tests/unit/*.test.js",
+    "test:ci": "npm run test:unit",
     "test:visual": "playwright test",
     "test:visual:update": "playwright test --update-snapshots"
   },

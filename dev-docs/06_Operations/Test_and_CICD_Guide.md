@@ -121,10 +121,14 @@ MVP では段階導入とする。
 - Trigger: push, pull_request
 - Job:
   - Node セットアップ
-  - 依存インストール (必要になった時点)
-  - `node --check mvp/viewer.js`
-  - `node --check mvp/start_viewer.js`
-  - データ整合確認スクリプト (追加後)
+  - `mvp/` の依存インストール (`npm ci`)
+  - `npm run test:ci` (現状は unit tests)
+
+実装済みワークフロー:
+
+- `.github/workflows/mvp-tests.yml`
+- 対象パス: `mvp/**`
+- 実行タイミング: push / pull_request
 
 ### Stage B (次段階)
 

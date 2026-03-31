@@ -10,6 +10,8 @@
 
 - `mvp/` に Playwright ベースの visual regression test 基盤を追加
 - 依存関係として `@playwright/test` を追加し、`chromium` ランタイムを導入
+- `mvp/` に unit test コマンド（`npm test` / `test:unit:watch` / `test:ci`）を追加
+- GitHub Actions に `mvp/**` 対象の自動テスト（push / pull_request）を追加
 - 記録先: `dev-docs/daily/260331.md`
 
 ## Current Direction
@@ -49,6 +51,8 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - `aircraft.mm` visual check walkthrough now exists for repeatable visual inspection
 - Viewer toolbar can tolerate missing optional controls and now supports `Fit all` / `Focus`
 - Zoom tuning was adjusted for faster button and wheel response
+- Unit tests can run locally with `npm test` and auto-rerun with `npm run test:unit:watch`
+- Stage A CI now runs automated unit tests on push and pull_request for `mvp/**`
 
 ## What Is Still Open
 
@@ -57,7 +61,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Imported metadata is preserved but not yet rendered in the UI
 - `.mm` support is still MVP-level, not full Freeplane compatibility
 - Some older docs still contain mojibake and need cleanup
-- CI pipeline implementation is not yet fully wired to the documented gates
+- CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
 
 ## Immediate Next Steps
 
