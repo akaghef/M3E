@@ -5,7 +5,7 @@ const path = require("path");
 const http = require("http");
 const { spawnSync, exec } = require("child_process");
 
-const ROOT = __dirname;
+const ROOT = path.resolve(__dirname, "..");
 const PORT = 4173;
 const DEFAULT_PAGE = "viewer.html";
 
@@ -37,7 +37,7 @@ function safeResolve(urlPath) {
 }
 
 function runSampleGeneration() {
-  const rapidPath = path.join(ROOT, "rapid_mvp.js");
+  const rapidPath = path.join(__dirname, "rapid_mvp.js");
   const run = spawnSync(process.execPath, [rapidPath], {
     cwd: ROOT,
     stdio: "inherit",

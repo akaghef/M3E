@@ -37,7 +37,7 @@ function safeResolve(urlPath) {
 }
 
 function ensureSampleData() {
-  const rapidPath = path.join(ROOT, "rapid_mvp.js");
+  const rapidPath = path.join(ROOT, "legacy", "rapid_mvp.js");
   const run = spawnSync(process.execPath, [rapidPath], {
     cwd: ROOT,
     stdio: "inherit",

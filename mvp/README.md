@@ -14,7 +14,7 @@ Source layout:
 - `src/browser/viewer.globals.d.ts` — browser-side global type declarations
 - `src/browser/viewer.ts` — main browser application
 
-Legacy JS files (`rapid_mvp.js`, `start_viewer.js`, `viewer.js`, `viewer.tuning.js`) are kept for reference and backward compatibility.
+Legacy JS files are grouped under `legacy/` (`legacy/rapid_mvp.js`, `legacy/start_viewer.js`, `legacy/viewer.js`, `legacy/viewer.tuning.js`) for reference and backward compatibility.
 
 ## What is implemented (MVP scope)
 
@@ -76,7 +76,7 @@ Stop with `Ctrl+C`.
 
 Legacy (no build required):
 ```bash
-node mvp/start_viewer.js
+node mvp/legacy/start_viewer.js
 ```
 
 ## Run (data model only)
@@ -145,7 +145,7 @@ npm run test:visual:update
 
 Notes:
 - `test_server.js` serves the viewer on `http://127.0.0.1:4173/viewer.html` without opening a browser.
-- Falls back to legacy `viewer.js` if `dist/browser/viewer.js` is not found.
+- Legacy browser script reference is kept at `legacy/viewer.js`.
 
 ## Freeplane `.mm` import
 

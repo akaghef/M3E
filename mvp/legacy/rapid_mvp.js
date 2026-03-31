@@ -312,7 +312,7 @@ if (require.main === module) {
   }
 
   // Always write under mvp/data regardless of current working directory.
-  const savePath = path.join(__dirname, "data", "rapid-sample.json");
+  const savePath = path.join(__dirname, "..", "data", "rapid-sample.json");
   model.saveToFile(savePath);
   console.log(`Rapid MVP sample saved: ${savePath}`);
 }

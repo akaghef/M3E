@@ -38,6 +38,10 @@
 	- `Ctrl+Shift+Z`, `Ctrl+Y`: redo
 	- browser/legacy の両経路で同じ挙動に統一
 - Playwright visual test に undo/redo キーボード検証を追加
+- legacy JS ファイルを `mvp/legacy/` へ集約
+	- `start_viewer.js` / `rapid_mvp.js` / `viewer.js` / `viewer.tuning.js`
+	- レガシー起動は `node mvp/legacy/start_viewer.js` に統一
+- editor の TypeScript 重複診断回避のため `mvp/src/browser/tsconfig.json` を追加
 
 ## Current Direction
 
