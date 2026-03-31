@@ -23,6 +23,13 @@ const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
 const LOCAL_DOC_ID = "rapid-main";
 const AUTOSAVE_DELAY_MS = 700;
+const MAX_UNDO_STEPS = 100;
+
+interface UndoSnapshot {
+  state: AppState;
+  selectedNodeId: string;
+  reparentSourceId: string;
+}
 
 let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
@@ -33,6 +40,8 @@ let contentWidth = 1600;
 let contentHeight = 900;
 let lastLayout: LayoutResult | null = null;
 let visualCheckRunId = 0;
+let undoStack: UndoSnapshot[] = [];
+let redoStack: UndoSnapshot[] = [];
 let viewState: ViewState = {
   selectedNodeId: "",
   zoom: 1,
@@ -195,6 +204,81 @@ function getNode(nodeId: string): TreeNode {
     throw new Error(`Node not found: ${nodeId}`);
   }
   return node;
+}
+
+function cloneState(state: AppState): AppState {
+  return JSON.parse(JSON.stringify(state)) as AppState;
+}
+
+function pushUndoSnapshot(): void {
+  if (!doc) {
+    return;
+  }
+  undoStack.push({
+    state: cloneState(doc.state),
+    selectedNodeId: viewState.selectedNodeId,
+    reparentSourceId: viewState.reparentSourceId,
+  });
+  if (undoStack.length > MAX_UNDO_STEPS) {
+    undoStack.shift();
+  }
+  redoStack = [];
+}
+
+function undoLastChange(): void {
+  if (!doc || undoStack.length === 0) {
+    setStatus("Nothing to undo.");
+    return;
+  }
+
+  redoStack.push({
+    state: cloneState(doc.state),
+    selectedNodeId: viewState.selectedNodeId,
+    reparentSourceId: viewState.reparentSourceId,
+  });
+  if (redoStack.length > MAX_UNDO_STEPS) {
+    redoStack.shift();
+  }
+
+  const snapshot = undoStack.pop()!;
+  doc.state = snapshot.state;
+  viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
+  viewState.reparentSourceId = snapshot.reparentSourceId && doc.state.nodes[snapshot.reparentSourceId]
+    ? snapshot.reparentSourceId
+    : "";
+  doc.savedAt = nowIso();
+  render();
+  scheduleAutosave();
+  setStatus("Undo applied.");
+  board.focus();
+}
+
+function redoLastChange(): void {
+  if (!doc || redoStack.length === 0) {
+    setStatus("Nothing to redo.");
+    return;
+  }
+
+  undoStack.push({
+    state: cloneState(doc.state),
+    selectedNodeId: viewState.selectedNodeId,
+    reparentSourceId: viewState.reparentSourceId,
+  });
+  if (undoStack.length > MAX_UNDO_STEPS) {
+    undoStack.shift();
+  }
+
+  const snapshot = redoStack.pop()!;
+  doc.state = snapshot.state;
+  viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
+  viewState.reparentSourceId = snapshot.reparentSourceId && doc.state.nodes[snapshot.reparentSourceId]
+    ? snapshot.reparentSourceId
+    : "";
+  doc.savedAt = nowIso();
+  render();
+  scheduleAutosave();
+  setStatus("Redo applied.");
+  board.focus();
 }
 
 function setStatus(message: string, isError = false): void {
@@ -509,6 +593,7 @@ function selectNode(nodeId: string): void {
 function addChild(): void {
   const parentId = viewState.selectedNodeId;
   const parent = getNode(parentId);
+  pushUndoSnapshot();
   const id = newId();
   doc!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
   parent.children.push(id);
@@ -525,6 +610,7 @@ function addSibling(): void {
     return;
   }
   const parent = getNode(node.parentId);
+  pushUndoSnapshot();
   const currentIndex = parent.children.indexOf(node.id);
   const id = newId();
   doc!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
@@ -544,6 +630,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string): boolean {
   if (node.text === next) {
     return true;
   }
+  pushUndoSnapshot();
   node.text = next;
   touchDocument();
   return true;
@@ -612,6 +699,7 @@ function deleteSelected(): void {
     setStatus("Root node cannot be deleted.", true);
     return;
   }
+  pushUndoSnapshot();
   const parent = getNode(node.parentId);
   parent.children = parent.children.filter((id) => id !== node.id);
   const stack: string[] = [node.id];
@@ -636,6 +724,7 @@ function toggleCollapse(): void {
   if ((node.children || []).length === 0) {
     return;
   }
+  pushUndoSnapshot();
   node.collapsed = !node.collapsed;
   touchDocument();
 }
@@ -839,6 +928,8 @@ function selectVertical(direction: -1 | 1): void {
 function loadPayload(payload: unknown): void {
   try {
     doc = ensureDocShape(payload);
+    undoStack = [];
+    redoStack = [];
     viewState.selectedNodeId = doc.state.rootId;
     viewState.reparentSourceId = "";
     render();
@@ -1003,6 +1094,7 @@ function applyReparent(): void {
     return;
   }
 
+  pushUndoSnapshot();
   const oldParent = getNode(sourceNode.parentId);
   const newParent = getNode(targetParentId);
   oldParent.children = oldParent.children.filter((id) => id !== sourceId);
@@ -1035,6 +1127,7 @@ function applyReparentByIds(sourceId: string, targetParentId: string): boolean {
   if (!canReparent(sourceId, targetParentId)) {
     return false;
   }
+  pushUndoSnapshot();
   const sourceNode = getNode(sourceId);
   const oldParent = getNode(sourceNode.parentId!);
   const newParent = getNode(targetParentId);
@@ -1301,6 +1394,24 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (inlineEditor && document.activeElement === inlineEditor.input) {
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    undoLastChange();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && (event.shiftKey && event.key.toLowerCase() === "z")) {
+    event.preventDefault();
+    redoLastChange();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    redoLastChange();
     return;
   }
 

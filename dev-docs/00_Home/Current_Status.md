@@ -33,6 +33,11 @@
 	- `ArrowLeft`: 親へ移動
 	- `ArrowRight`: 子（先頭の可視子）へ移動
 	- `ArrowUp` / `ArrowDown`: sibling 優先、なければ同一 depth 近傍へ移動
+- viewer の undo/redo キーボード操作を実装
+	- `Ctrl+Z`: undo
+	- `Ctrl+Shift+Z`, `Ctrl+Y`: redo
+	- browser/legacy の両経路で同じ挙動に統一
+- Playwright visual test に undo/redo キーボード検証を追加
 
 ## Current Direction
 

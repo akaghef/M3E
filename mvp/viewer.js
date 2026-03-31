@@ -23,6 +23,7 @@
       const visualCheckEl = document.getElementById("visual-check");
       const board = document.getElementById("board");
       const canvas = document.getElementById("canvas");
+      const MAX_UNDO_STEPS = 100;
 
       let doc = null;
       let visibleOrder = [];
@@ -31,6 +32,8 @@
       let contentHeight = 900;
       let lastLayout = null;
       let visualCheckRunId = 0;
+      let undoStack = [];
+      let redoStack = [];
       let viewState = {
         selectedNodeId: "",
         zoom: 1,
@@ -190,6 +193,79 @@
           throw new Error(`Node not found: ${nodeId}`);
         }
         return node;
+      }
+
+      function cloneState(state) {
+        return JSON.parse(JSON.stringify(state));
+      }
+
+      function pushUndoSnapshot() {
+        if (!doc) {
+          return;
+        }
+        undoStack.push({
+          state: cloneState(doc.state),
+          selectedNodeId: viewState.selectedNodeId,
+          reparentSourceId: viewState.reparentSourceId,
+        });
+        if (undoStack.length > MAX_UNDO_STEPS) {
+          undoStack.shift();
+        }
+        redoStack = [];
+      }
+
+      function undoLastChange() {
+        if (!doc || undoStack.length === 0) {
+          setStatus("Nothing to undo.");
+          return;
+        }
+
+        redoStack.push({
+          state: cloneState(doc.state),
+          selectedNodeId: viewState.selectedNodeId,
+          reparentSourceId: viewState.reparentSourceId,
+        });
+        if (redoStack.length > MAX_UNDO_STEPS) {
+          redoStack.shift();
+        }
+
+        const snapshot = undoStack.pop();
+        doc.state = snapshot.state;
+        viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
+        viewState.reparentSourceId = snapshot.reparentSourceId && doc.state.nodes[snapshot.reparentSourceId]
+          ? snapshot.reparentSourceId
+          : "";
+        doc.savedAt = nowIso();
+        render();
+        setStatus("Undo applied.");
+        board.focus();
+      }
+
+      function redoLastChange() {
+        if (!doc || redoStack.length === 0) {
+          setStatus("Nothing to redo.");
+          return;
+        }
+
+        undoStack.push({
+          state: cloneState(doc.state),
+          selectedNodeId: viewState.selectedNodeId,
+          reparentSourceId: viewState.reparentSourceId,
+        });
+        if (undoStack.length > MAX_UNDO_STEPS) {
+          undoStack.shift();
+        }
+
+        const snapshot = redoStack.pop();
+        doc.state = snapshot.state;
+        viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
+        viewState.reparentSourceId = snapshot.reparentSourceId && doc.state.nodes[snapshot.reparentSourceId]
+          ? snapshot.reparentSourceId
+          : "";
+        doc.savedAt = nowIso();
+        render();
+        setStatus("Redo applied.");
+        board.focus();
       }
 
       function setStatus(message, isError = false) {
@@ -489,6 +565,7 @@
       function addChild() {
         const parentId = viewState.selectedNodeId;
         const parent = getNode(parentId);
+        pushUndoSnapshot();
         const id = newId();
         doc.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
         parent.children.push(id);
@@ -506,6 +583,7 @@
           return;
         }
         const parent = getNode(node.parentId);
+        pushUndoSnapshot();
         const currentIndex = parent.children.indexOf(node.id);
         const id = newId();
         doc.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
@@ -527,6 +605,7 @@
         if (node.text === next) {
           return;
         }
+        pushUndoSnapshot();
         node.text = next;
         doc.savedAt = nowIso();
         render();
@@ -538,6 +617,7 @@
           setStatus("Root node cannot be deleted.", true);
           return;
         }
+        pushUndoSnapshot();
         const parent = getNode(node.parentId);
         parent.children = parent.children.filter((id) => id !== node.id);
         const stack = [node.id];
@@ -563,6 +643,7 @@
         if ((node.children || []).length === 0) {
           return;
         }
+        pushUndoSnapshot();
         node.collapsed = !node.collapsed;
         doc.savedAt = nowIso();
         render();
@@ -656,6 +737,8 @@
       function loadPayload(payload) {
         try {
           doc = ensureDocShape(payload);
+          undoStack = [];
+          redoStack = [];
           viewState.selectedNodeId = doc.state.rootId;
           viewState.reparentSourceId = "";
           render();
@@ -820,6 +903,7 @@
           return;
         }
 
+        pushUndoSnapshot();
         const oldParent = getNode(sourceNode.parentId);
         const newParent = getNode(targetParentId);
         oldParent.children = oldParent.children.filter((id) => id !== sourceId);
@@ -853,6 +937,7 @@
         if (!canReparent(sourceId, targetParentId)) {
           return false;
         }
+        pushUndoSnapshot();
         const sourceNode = getNode(sourceId);
         const oldParent = getNode(sourceNode.parentId);
         const newParent = getNode(targetParentId);
@@ -1141,6 +1226,24 @@
             syncEditInput();
             board.focus();
           }
+          return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
+          event.preventDefault();
+          undoLastChange();
+          return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "z") {
+          event.preventDefault();
+          redoLastChange();
+          return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "y") {
+          event.preventDefault();
+          redoLastChange();
           return;
         }
 
