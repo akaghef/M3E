@@ -589,6 +589,70 @@
         selectNode(visibleOrder[nextIndex]);
       }
 
+      function selectParent() {
+        if (!doc) {
+          return;
+        }
+        const node = getNode(viewState.selectedNodeId);
+        if (node.parentId) {
+          selectNode(node.parentId);
+        }
+      }
+
+      function selectChild() {
+        if (!doc) {
+          return;
+        }
+        const node = getNode(viewState.selectedNodeId);
+        const children = visibleChildren(node);
+        if (children.length === 0) {
+          return;
+        }
+        selectNode(children[0]);
+      }
+
+      function selectVertical(direction) {
+        if (!doc || !lastLayout) {
+          selectRelative(direction);
+          return;
+        }
+
+        const currentId = viewState.selectedNodeId;
+        const currentNode = getNode(currentId);
+        if (currentNode.parentId) {
+          const parent = getNode(currentNode.parentId);
+          const siblings = visibleChildren(parent);
+          const siblingIndex = siblings.indexOf(currentId);
+          const nextSiblingIndex = siblingIndex + direction;
+          if (nextSiblingIndex >= 0 && nextSiblingIndex < siblings.length) {
+            selectNode(siblings[nextSiblingIndex]);
+            return;
+          }
+        }
+
+        const currentPos = lastLayout.pos[currentId];
+        if (!currentPos) {
+          selectRelative(direction);
+          return;
+        }
+
+        const sameDepth = visibleOrder
+          .filter((id) => id !== currentId)
+          .filter((id) => (lastLayout.pos[id] || {}).depth === currentPos.depth)
+          .sort((a, b) => lastLayout.pos[a].y - lastLayout.pos[b].y);
+
+        const target = direction < 0
+          ? [...sameDepth].reverse().find((id) => lastLayout.pos[id].y < currentPos.y)
+          : sameDepth.find((id) => lastLayout.pos[id].y > currentPos.y);
+
+        if (target) {
+          selectNode(target);
+          return;
+        }
+
+        selectRelative(direction);
+      }
+
       function loadPayload(payload) {
         try {
           doc = ensureDocShape(payload);
@@ -1131,13 +1195,25 @@
 
         if (event.key === "ArrowUp") {
           event.preventDefault();
-          selectRelative(-1);
+          selectVertical(-1);
           return;
         }
 
         if (event.key === "ArrowDown") {
           event.preventDefault();
-          selectRelative(1);
+          selectVertical(1);
+          return;
+        }
+
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          selectParent();
+          return;
+        }
+
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          selectChild();
         }
       });
 

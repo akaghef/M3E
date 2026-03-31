@@ -771,6 +771,71 @@ function selectRelative(offset: number): void {
   selectNode(visibleOrder[nextIndex]!);
 }
 
+function selectParent(): void {
+  if (!doc) {
+    return;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  if (node.parentId) {
+    selectNode(node.parentId);
+  }
+}
+
+function selectChild(): void {
+  if (!doc) {
+    return;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  const children = visibleChildren(node);
+  if (children.length === 0) {
+    return;
+  }
+  selectNode(children[0]!);
+}
+
+function selectVertical(direction: -1 | 1): void {
+  if (!doc || !lastLayout) {
+    selectRelative(direction);
+    return;
+  }
+  const layout = lastLayout;
+
+  const currentId = viewState.selectedNodeId;
+  const currentNode = getNode(currentId);
+  if (currentNode.parentId) {
+    const parent = getNode(currentNode.parentId);
+    const siblings = visibleChildren(parent);
+    const siblingIndex = siblings.indexOf(currentId);
+    const nextSiblingIndex = siblingIndex + direction;
+    if (nextSiblingIndex >= 0 && nextSiblingIndex < siblings.length) {
+      selectNode(siblings[nextSiblingIndex]!);
+      return;
+    }
+  }
+
+  const currentPos = layout.pos[currentId];
+  if (!currentPos) {
+    selectRelative(direction);
+    return;
+  }
+
+  const sameDepth = visibleOrder
+    .filter((id) => id !== currentId)
+    .filter((id) => layout.pos[id]?.depth === currentPos.depth)
+    .sort((a, b) => layout.pos[a]!.y - layout.pos[b]!.y);
+
+  const target = direction < 0
+    ? [...sameDepth].reverse().find((id) => layout.pos[id]!.y < currentPos.y)
+    : sameDepth.find((id) => layout.pos[id]!.y > currentPos.y);
+
+  if (target) {
+    selectNode(target);
+    return;
+  }
+
+  selectRelative(direction);
+}
+
 function loadPayload(payload: unknown): void {
   try {
     doc = ensureDocShape(payload);
@@ -1288,13 +1353,25 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowUp") {
     event.preventDefault();
-    selectRelative(-1);
+    selectVertical(-1);
     return;
   }
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
-    selectRelative(1);
+    selectVertical(1);
+    return;
+  }
+
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    selectParent();
+    return;
+  }
+
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    selectChild();
   }
 });
 

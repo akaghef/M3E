@@ -29,6 +29,10 @@
 - ノード編集 UX を欄外入力からノード上インライン編集へ変更
 	- `Shift+Enter` / `F2` / ダブルクリックで編集開始
 	- 欄外編集 UI を削除
+- キーボードナビゲーションを構造ベースへ改善
+	- `ArrowLeft`: 親へ移動
+	- `ArrowRight`: 子（先頭の可視子）へ移動
+	- `ArrowUp` / `ArrowDown`: sibling 優先、なければ同一 depth 近傍へ移動
 
 ## Current Direction
 
