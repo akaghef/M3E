@@ -1,526 +1,449 @@
 # M3E コマンド言語仕様
 
-> **設計フェーズ:** この文書はコマンドインターフェースの設計仕様です。
-> 現在の MVP には実装されていません。Beta 以降の実装対象として定義します。
+> **設計フェーズ:** Beta 以降の実装対象。MVP には未実装。
 
 ---
 
-## 目的
+## 方針
 
-マインドマップのすべての操作をテキストコマンドで表現できるようにする。
+**コマンド言語として JavaScript を採用する。**
 
-- キーボードのみで完結する操作フローを支援する
-- スクリプトや自動化ツールからの操作を可能にする
-- 操作ログを人間が読めるテキストとして記録・再現できるようにする
+M3E はブラウザ上の JS/TS で動作しており、モデルオブジェクトをグローバルに露出するだけで
+パーサー実装ゼロのコマンドインターフェースが実現できる。
+
+```javascript
+// ブラウザのコンソール、またはコマンドパネルから直接実行できる
+const hypo = m3e.add(m3e.root, "仮説")
+m3e.attr(hypo, "status", "検証中")
+m3e.focus(hypo)
+```
+
+変数・ループ・条件分岐・エラーハンドリングはすべて JS のセマンティクスに委ねる。
+カスタム DSL は導入しない。
 
 ---
 
-## 構文ルール
+## 露出するグローバルオブジェクト
 
-### 基本形
-
-```
-command arg1 arg2 ...
+```typescript
+window.m3e  // M3E コマンド API
 ```
 
-### 戻り値の代入
+`m3e` はブラウザコンソールおよび将来のコマンドパネルから参照できる。
 
-コマンドがノード ID を返す場合、変数に束縛できます。
+---
 
-```
-$var = command arg1 arg2
-```
+## ノード参照
 
-### 文字列引数
+| 表記 | 型 | 意味 |
+|------|----|------|
+| `m3e.root` | `string` | ルートノードの ID（プロパティ） |
+| `m3e.sel` | `string \| null` | 現在選択中のノード ID（読み取り専用プロパティ） |
+| `m3e.parent(id?)` | `string \| null` | 指定ノードの親 ID。省略すると選択中ノードの親 |
+| `m3e.children(id?)` | `string[]` | 指定ノードの子 ID 配列。省略すると選択中ノードの子 |
+| `m3e.node(id)` | `TreeNode` | ノードオブジェクトの深いコピーを返す（変更しても反映されない） |
+| `const id = ...` | `string` | JS 変数に束縛して後続で再利用 |
 
-スペースを含むラベルはダブルクォートで囲みます。
-
-```
-$id = add @ "研究仮説 A"
-```
-
-### コメント
-
-`#` 以降は無視されます。
-
-```
-add @ 検討中  # あとで整理する
+```javascript
+const root     = m3e.root
+const selected = m3e.sel              // プロパティとして参照
+const parent   = m3e.parent()         // 選択中ノードの親
+const children = m3e.children(root)   // ルートの子 ID 配列
+const node     = m3e.node(selected)   // { id, text, note, ... } の深いコピー
 ```
 
 ---
 
-## ノード参照（Node Reference）
-
-コマンドの引数でノードを指定する方法は次のとおりです。
-
-| 表記 | 意味 |
-|------|------|
-| `@` | 現在選択中のノード |
-| `~` | ルートノード |
-| `@..` | 選択中ノードの親 |
-| `$varname` | 変数に束縛されたノード ID |
-| `n_1234_abc` | ノードの実 ID（直接指定） |
-
----
-
-## コマンド一覧
+## API リファレンス
 
 ### ノード作成
 
-#### `add`
+#### `m3e.add(parentId, label, index?)`
 
-```
-$id = add <parent> <label>
-```
+`parentId` の子ノードを追加し、新しいノード ID を返す。
+`index` を省略すると末尾に追加。
 
-`<parent>` の子ノードを末尾に追加します。
-新しいノードの ID を返します。
-
-```
-$root = ~
-$theme = add $root "研究テーマ"
-$hypo  = add $theme "仮説 A"
+```javascript
+const obs  = m3e.add(m3e.root, "観察事実")
+const hypo = m3e.add(m3e.root, "仮説")
+const h1   = m3e.add(hypo, "温度上昇が主因")
+const top  = m3e.add(m3e.root, "最優先", 0)   // 先頭に挿入
 ```
 
-#### `add-at`
+#### `m3e.sibling(nodeId, label, after?)`
 
-```
-$id = add-at <parent> <index> <label>
-```
+`nodeId` の兄弟ノードを追加し、新しいノード ID を返す。
+`after` を省略または `true` にすると直後、`false` にすると直前。
 
-`<parent>` の子リストの `<index>` 番目（0始まり）に挿入します。
-
+```javascript
+const h2 = m3e.sibling(h1, "土壌劣化が主因")
+const h0 = m3e.sibling(h1, "前置き仮説", false)  // h1 の直前
 ```
-$id = add-at ~ 0 "最優先トピック"
-```
-
-#### `sibling`
-
-```
-$id = sibling <node> <label>
-```
-
-`<node>` の直後に兄弟ノードを追加します。
-
-```
-$alt = sibling $hypo "仮説 B"
-```
-
-#### `sibling-before`
-
-```
-$id = sibling-before <node> <label>
-```
-
-`<node>` の直前に兄弟ノードを追加します。
 
 ---
 
 ### ノード編集
 
-#### `edit`
+#### `m3e.edit(nodeId, newLabel)`
 
-```
-edit <node> <new-label>
-```
+ノードのテキストを変更する。
 
-ノードのテキストを変更します。
-
-```
-edit @ "修正済みラベル"
-edit $hypo "仮説 A（検証済み）"
+```javascript
+m3e.edit(m3e.sel(), "修正済みラベル")
+m3e.edit(h1, "仮説 A（検証済み）")
 ```
 
-#### `del`
+#### `m3e.del(nodeId)`
 
-```
-del <node>
-```
+ノードとその部分木を削除する。ルートノードは削除不可（例外をスロー）。
 
-ノードとその部分木を削除します。ルートノードは削除できません。
-
-```
-del $alt
+```javascript
+m3e.del(h2)
 ```
 
-#### `promote` / `demote`
+#### `m3e.move(nodeId, newParentId, index?)`
 
-```
-promote <node>
-demote <node>
-```
+ノードを別の親の子として再配置する。
+`index` を省略すると末尾に追加。循環する移動は例外をスロー。
 
-兄弟リスト内で1つ上／下に移動します。`move <node> <parent> <index>` の糖衣構文です。
-すでに先頭または末尾のノードに対しては何もしません。
-
-```
-promote @     # 選択中ノードを兄弟リストで1つ上へ
-demote $hypo  # $hypo を兄弟リストで1つ下へ
+```javascript
+m3e.move(h1, obs)       // obs の末尾へ
+m3e.move(h1, obs, 0)    // obs の先頭へ
 ```
 
-#### `clone`
+#### `m3e.promote(nodeId)` / `m3e.demote(nodeId)`
 
-```
-$id = clone <node>
-$id = clone <node> <new-parent>
-```
+兄弟リスト内で1つ上／下に移動する。
+すでに先頭または末尾の場合は何もしない。
 
-ノードとその部分木を複製します。新しいノードの ID を返します。
-`<new-parent>` を省略すると元のノードと同じ親に追加されます。新規ノードには新しい ID が付与されます。
-
-```
-$copy = clone $hypo            # $hypo の兄弟として複製
-$copy = clone $hypo $another   # $another の子として複製
+```javascript
+m3e.promote(m3e.sel())
+m3e.demote(h1)
 ```
 
-#### `move`
+#### `m3e.clone(nodeId, newParentId?)`
 
-```
-move <node> <new-parent>
-move <node> <new-parent> <index>
-```
+ノードとその部分木を再帰的に複製し、新しいノード ID を返す。
+`newParentId` を省略すると元のノードと同じ親に追加される。
 
-ノードを別の親の子として再配置します。
-`<index>` を指定した場合、その位置に挿入します。
-循環する移動（子孫への移動）は拒否されます。
+複製時の各フィールドの扱い：
+- `text`, `details`, `note`, `attributes`, `link` はすべて値としてコピーする
+- `id` と `parentId` は新しい値が付与される（元 ID は引き継がない）
+- `link` フィールドに別ノードの ID が含まれていてもそのまま値コピーする（alias 解決は行わない）
 
-```
-move $hypo $theme        # $theme の末尾へ
-move $hypo $theme 0      # $theme の先頭へ
+```javascript
+const copy  = m3e.clone(h1)          // h1 の兄弟として複製
+const copy2 = m3e.clone(h1, obs)     // obs の子として複製
 ```
 
 ---
 
 ### 選択・ナビゲーション
 
-#### `sel`
+#### `m3e.sel`（プロパティ）
 
-```
-sel <node>
-```
+現在選択中のノード ID を返す読み取り専用プロパティ。
+選択を変更するには `m3e.select(id)` を使う。
 
-指定したノードを選択します。
-
-```
-sel ~
-sel $theme
+```javascript
+const current = m3e.sel             // 取得（プロパティ）
 ```
 
-#### `up` / `down`
+#### `m3e.select(nodeId)`
 
-```
-up
-down
-```
+指定したノードを選択する。
 
-表示ノードを1つ前後に選択を移動します。折り畳まれた部分木はスキップされます。
-
-#### `nav`
-
-```
-nav parent
-nav first
-nav next
-nav prev
+```javascript
+m3e.select(hypo)
+m3e.select(m3e.root)
 ```
 
-ツリー構造上の相対位置へ選択を移動します。`up`/`down` が表示順であるのに対し、`nav` は親子・兄弟関係に沿って移動します。
+#### `m3e.nav(direction)`
 
-| 引数 | 移動先 |
-|------|--------|
-| `parent` | 親ノード（ルートでは無効） |
-| `first` | 最初の子ノード（子がなければ無効） |
-| `next` | 次の兄弟ノード |
-| `prev` | 前の兄弟ノード |
+ツリー構造上の相対位置へ選択を移動する。
 
-```
-nav parent   # @.. へ移動
-nav first    # 選択中の最初の子へ
-nav next     # 次の兄弟へ
+| direction | 移動先 |
+|-----------|--------|
+| `"parent"` | 親ノード |
+| `"first"` | 最初の子ノード |
+| `"last"` | 最後の子ノード |
+| `"next"` | 次の兄弟ノード |
+| `"prev"` | 前の兄弟ノード |
+
+```javascript
+m3e.nav("parent")
+m3e.nav("first")
+m3e.nav("next")
 ```
 
 ---
 
 ### 折り畳み
 
-#### `collapse` / `expand` / `toggle`
+#### `m3e.collapse(nodeId)` / `m3e.expand(nodeId)` / `m3e.toggle(nodeId)`
 
-```
-collapse <node>
-expand <node>
-toggle <node>
-```
-
-```
-collapse ~        # ルートの直下をすべて折り畳む（ルート自体は折り畳めない）
-expand $theme
-toggle @
+```javascript
+m3e.collapse(m3e.root)
+m3e.expand(hypo)
+m3e.toggle(m3e.sel())
 ```
 
-#### `collapse-all` / `expand-all`
+#### `m3e.collapseAll(nodeId?)` / `m3e.expandAll(nodeId?)`
 
-```
-collapse-all
-collapse-all <node>
-expand-all
-expand-all <node>
-```
+指定ノード以下の部分木を一括折り畳み／展開する。
+`nodeId` を省略するとルートから全体が対象。
 
-指定ノード以下の部分木を一括で折り畳み／展開します。引数を省略するとルートからすべてが対象です。
-
-```
-collapse-all          # ツリー全体を折り畳む
-expand-all $theme     # $theme 以下をすべて展開
+```javascript
+m3e.collapseAll()           // ツリー全体を折り畳む
+m3e.expandAll(hypo)         // hypo 以下をすべて展開
 ```
 
 ---
 
 ### 属性・メタデータ
 
-#### `set`
+#### `m3e.set(nodeId, field, value)`
 
-```
-set <node> <field> <value>
-```
+拡張フィールドを設定する。
 
-ノードの拡張フィールドを設定します。
+| field | TreeNode フィールド |
+|-------|-------------------|
+| `"details"` | `details` |
+| `"note"` | `note` |
+| `"link"` | `link` |
 
-| field | 対応する TreeNode フィールド |
-|-------|---------------------------|
-| `details` | `details` |
-| `note` | `note` |
-| `link` | `link` |
-
-```
-set @ note "この仮説は先行研究 X に基づく"
-set $hypo link "https://example.com/paper"
-set @ details "詳細な説明テキスト"
+```javascript
+m3e.set(h1, "note", "先行研究 A, B と整合")
+m3e.set(h1, "link", "https://example.com/paper")
 ```
 
-#### `unset`
+#### `m3e.unset(nodeId, field)`
 
-```
-unset <node> <field>
-```
+拡張フィールドを空文字にクリアする。
 
-`set` で設定した拡張フィールドを空文字にクリアします。
-
-| field | 対象 |
-|-------|------|
-| `details` | details フィールド |
-| `note` | note フィールド |
-| `link` | link フィールド |
-
-```
-unset @ note
-unset $hypo link
+```javascript
+m3e.unset(h1, "note")
 ```
 
-#### `attr`
+#### `m3e.attr(nodeId, key, value)`
 
-```
-attr <node> <key> <value>
-```
+`attributes` マップにキーと値を設定する。
 
-ノードの任意属性（`attributes` マップ）を設定します。
-
-```
-attr @ status "検証中"
-attr @ priority "高"
+```javascript
+m3e.attr(m3e.sel(), "status", "検証中")
+m3e.attr(m3e.sel(), "priority", "高")
 ```
 
-#### `attr-del`
+#### `m3e.attrDel(nodeId, key)`
 
-```
-attr-del <node> <key>
-```
+`attributes` マップから指定キーを削除する。
 
-`attributes` マップから指定キーを削除します。
-
-```
-attr-del @ status
+```javascript
+m3e.attrDel(m3e.sel(), "status")
 ```
 
 ---
 
 ### 履歴
 
-#### `undo` / `redo`
+#### `m3e.undo()` / `m3e.redo()`
 
-```
-undo
-redo
-```
+操作を1ステップ巻き戻し／やり直す。
+スタックが空の場合は `false` を返す（例外はスローしない）。モデルは最大 200 件の履歴を保持する。
 
-操作を1ステップ巻き戻し・やり直しします。
-モデルは最大 200 件の履歴を保持します。
+```javascript
+m3e.undo()
+m3e.undo()
+m3e.redo()
 
-```
-undo
-undo
-redo
-```
-
----
-
-### ビュー操作
-
-#### `fit`
-
-```
-fit
-```
-
-ツリー全体が画面に収まるようにズーム・パンを調整します。
-
-#### `focus`
-
-```
-focus
-focus <node>
-```
-
-指定したノードを画面中央に表示します。引数を省略すると選択中のノードが対象です。
-
-```
-focus $theme
-focus @
-focus
-```
-
-#### `zoom`
-
-```
-zoom <factor>
-zoom reset
-```
-
-`<factor>` は倍率（例: `1.5`, `0.8`）。`reset` で等倍（1.0）に戻します。
-
-```
-zoom 0.5
-zoom reset
+// スタックが空かどうかの確認
+if (!m3e.undo()) console.log("これ以上戻れません")
 ```
 
 ---
 
 ### 読み取り・検索
 
-#### `info`
+#### `m3e.info(nodeId?)`
 
-```
-info
-info <node>
-```
+ノードオブジェクトの深いコピーを返す。
+`nodeId` を省略すると選択中ノードが対象。
+ブラウザコンソールで呼んだ場合は DevTools がオブジェクトを展開表示するため、別途 `console.log` は不要。
 
-ノードの全フィールドを出力します。引数を省略すると選択中のノードが対象です。
+```javascript
+m3e.info()
+// → { id: "n_1234_abc", text: "仮説 A", note: "...", attributes: { status: "検証中" }, ... }
 
-```
-info @
-# → id:       n_1234_abc
-# → text:     仮説 A
-# → parent:   n_0001_xyz
-# → children: [n_5678_def, n_9012_ghi]
-# → note:     先行研究と整合
-# → status:   検証中
-
-info ~
+const data = m3e.info(h1)
+console.log(data.text)
 ```
 
-#### `tree`
+#### `m3e.tree(nodeId?)`
 
-```
-tree
-tree <node>
-```
+指定ノード以下のツリー構造を文字列で返す。
+`nodeId` を省略するとルートから全体。折り畳まれたノードは `[+]` で表示。
+コンソールで確認する場合は `console.log(m3e.tree())` を使う。
 
-指定ノード以下のツリー構造をテキストで出力します。引数を省略するとルートから全体を表示します。
+```javascript
+console.log(m3e.tree())
+// 気候変動と農業生産性
+//   ├─ 観察事実
+//   │   ├─ 収穫量が過去10年で15%減少
+//   │   └─ 降水パターンの変化
+//   └─ 仮説 [+]   ← 折り畳み中
 
-```
-tree
-# → 気候変動と農業生産性
-#   ├─ 観察事実
-#   │   ├─ 収穫量が過去10年で15%減少
-#   │   └─ 降水パターンの変化
-#   └─ 仮説
-#       ├─ 温度上昇が主因
-#       └─ 土壌劣化が主因
-
-tree $hypo
+console.log(m3e.tree(hypo))    // hypo 以下のみ
+const s = m3e.tree()           // 文字列として変数に取ることも可能
 ```
 
-#### `find`
+#### `m3e.find(text)`
 
-```
-$id = find <text>
-```
+テキストが部分一致する最初のノードの ID を返す。
+一致なしの場合は `null` を返す（例外をスローしない）。
 
-テキストが一致する最初のノードの ID を返します。一致がなければ空を返します。
-部分一致で検索します。
-
-```
-$target = find "仮説 A"
-sel $target
-focus $target
+```javascript
+const target = m3e.find("仮説 A")
+if (target) {
+  m3e.sel(target)
+  m3e.focus(target)
+}
 ```
 
-#### `echo`
+#### `m3e.findAll(text)`
 
-```
-echo $var
+テキストが部分一致するすべてのノードの ID 配列を返す。
+一致なしの場合は空配列 `[]` を返す。
+
+```javascript
+const results = m3e.findAll("仮説")
+results.forEach(id => m3e.attr(id, "reviewed", "true"))
 ```
 
-変数の値（ノード ID）を出力します。変数が未定義の場合はエラーを表示します。
+---
 
+### ビュー操作
+
+#### `m3e.fit()`
+
+ツリー全体が画面に収まるようにズーム・パンを調整する。
+
+#### `m3e.focus(nodeId?)`
+
+指定ノードを画面中央に表示する。`nodeId` を省略すると選択中ノードが対象。
+
+```javascript
+m3e.focus(hypo)
+m3e.focus()       // 選択中ノードにフォーカス
 ```
-echo $hypo
-# → n_1234_abc
+
+#### `m3e.zoom(factor)`
+
+ズーム倍率を数値で設定する（例: `0.5`, `1.5`）。
+
+```javascript
+m3e.zoom(0.5)
+m3e.zoom(1.5)
+```
+
+#### `m3e.zoomReset()`
+
+ズームを等倍（1.0）に戻す。
+
+```javascript
+m3e.zoomReset()
+```
+
+#### `m3e.pan(dx, dy)`
+
+キャンバスを指定ピクセル分パンする。
+
+```javascript
+m3e.pan(200, 0)    // 右に 200px
+m3e.pan(0, -100)   // 上に 100px
 ```
 
 ---
 
 ### ドキュメント管理
 
-#### `new`
+#### `m3e.new(rootLabel?)`
 
-```
-new
-new <root-label>
+ツリーを初期化し新しいドキュメントを開始する。
+未保存の変更がある場合は `confirm()` で確認する（ユーザーがキャンセルすれば何もしない）。
+
+```javascript
+m3e.new()
+m3e.new("新しい研究テーマ")
 ```
 
-ツリーを初期化し、新しいドキュメントを開始します。現在の変更は失われます（保存済みの場合のみ実行を推奨）。
+#### `m3e.save(filename?)`
 
+現在のツリーを `SavedDoc`（`version: 1`）形式でブラウザダウンロードとして保存する。
+ブラウザ環境のため任意のパスへの書き込みは行わない。`filename` を省略するとデフォルト名（`m3e-export.json`）を使用する。戻り値なし。
+
+```javascript
+m3e.save()
+m3e.save("research-2026.json")
 ```
-new
-new "新しい研究テーマ"
+
+#### `m3e.load(source)`
+
+JSON または Freeplane `.mm` を読み込む。
+`source` には以下のいずれかを渡す：
+
+| 型 | 動作 |
+|----|------|
+| `string`（URL またはサーバー相対パス） | `fetch()` で取得して読み込む |
+| `File` オブジェクト | File API で読み込む（`<input type="file">` からの参照） |
+
+パスはサーバー起動時のルート（`http://localhost:4173/`）からの相対パス。
+**読み込み後、以前のセッションで使用していた JS 変数（ノード ID）は無効になる。**
+ファイルが見つからない、またはパースに失敗した場合は例外をスロー。
+
+```javascript
+m3e.load("data/rapid-sample.json")   // サーバー相対パス
+m3e.load("data/aircraft.mm")
+
+// File ピッカーから取得した場合
+const [file] = document.querySelector("input").files
+m3e.load(file)
+```
+
+#### `m3e.export(format)`
+
+現在のツリーを指定フォーマットでブラウザダウンロードとして保存する。
+
+| format | 出力 | 状態 |
+|--------|------|------|
+| `"json"` | M3E SavedDoc 形式（`save` と同等） | 実装済み相当 |
+| `"mm"` | Freeplane `.mm` 形式 | **未実装（Beta 以降）** |
+
+```javascript
+m3e.export("json")
+m3e.export("mm")   // 未実装時は例外をスロー: "mm export is not yet implemented"
 ```
 
 ---
 
-### ファイル操作
+## JS を使うことで解決される点
 
-#### `save`
+カスタム DSL では別途定義が必要だった以下の問題が JS のセマンティクスで自動的に解決される。
 
-```
-save
-save <filename>
-```
-
-現在のツリーを `SavedDoc`（`version: 1`）形式で保存します。
-`<filename>` を省略するとデフォルトのパスに保存します。
-
-#### `load`
-
-```
-load <filename>
-```
-
-JSON または Freeplane `.mm` ファイルを読み込みます。
-
-```
-load data/rapid-sample.json
-load data/aircraft.mm
-```
+| 問題 | JS での解決 |
+|------|------------|
+| クォート・エスケープ | JS 文字列リテラルのルールをそのまま使う |
+| 空文字列 | `m3e.edit(id, "")` — JS の空文字列として有効 |
+| `find` が null の場合 | `if (target) { ... }` で標準的に対処 |
+| ループ・繰り返し処理 | `for`, `forEach`, `map` など JS ネイティブ |
+| 条件分岐 | `if`, `switch` など JS ネイティブ |
+| `undo` スタック空 | `false` を返す。`if (!m3e.undo())` で確認可能 |
+| 変数一覧 | ブラウザの DevTools で確認 |
+| スクリプトファイルの実行 | JS ファイルをコンソールに貼り付けまたは `<script>` タグで読み込み |
+| 複雑なエラー処理 | `try { ... } catch (e) { ... }` |
+| `sel` getter/setter 兼用の曖昧さ | `m3e.sel`（プロパティ）と `m3e.select(id)`（メソッド）に分離 |
+| `zoom` の型混在 | `m3e.zoom(factor)` は数値のみ、リセットは `m3e.zoomReset()` に分離 |
+| `node()` の書き換え防止 | `structuredClone()` で深いコピーを返す |
+| `info()`/`tree()` の二重出力 | `info()` は戻り値のみ（DevTools が表示）、`tree()` は文字列を返すのみ |
 
 ---
 
@@ -528,89 +451,97 @@ load data/aircraft.mm
 
 ### 研究ツリーの構築
 
-```
-# ルートを編集してテーマを設定
-edit ~ "気候変動と農業生産性"
+```javascript
+m3e.edit(m3e.root, "気候変動と農業生産性")
 
-# 大分類を追加
-$obs   = add ~ "観察事実"
-$hypo  = add ~ "仮説"
-$exp   = add ~ "実験計画"
+const obs  = m3e.add(m3e.root, "観察事実")
+const hypo = m3e.add(m3e.root, "仮説")
+const exp  = m3e.add(m3e.root, "実験計画")
 
-# 観察事実を入力
-$o1 = add $obs "収穫量が過去10年で15%減少"
-$o2 = add $obs "降水パターンの変化"
-attr $o1 status "確認済み"
-attr $o2 status "要検証"
+const o1 = m3e.add(obs, "収穫量が過去10年で15%減少")
+const o2 = m3e.add(obs, "降水パターンの変化")
+m3e.attr(o1, "status", "確認済み")
+m3e.attr(o2, "status", "要検証")
 
-# 仮説を追加してメモ
-$h1 = add $hypo "温度上昇が主因"
-set $h1 note "先行研究 A, B と整合"
-$h2 = sibling $h1 "土壌劣化が主因"
+const h1 = m3e.add(hypo, "温度上昇が主因")
+m3e.set(h1, "note", "先行研究 A, B と整合")
+const h2 = m3e.sibling(h1, "土壌劣化が主因")
 
-# 実験計画を追加
-$e1 = add $exp "温度と収穫量の相関分析"
-move $e1 $exp 0    # 先頭に移動
+const e1 = m3e.add(exp, "温度と収穫量の相関分析")
+m3e.move(e1, exp, 0)
 
-# ビューを調整
-fit
-focus $hypo
+m3e.fit()
+m3e.focus(hypo)
+m3e.select(hypo)   // sel はプロパティなので変更は select() を使う
 ```
 
-### 既存ノードの検索・更新
+### 検索・一括更新
 
-```
-# テキストでノードを特定して属性を更新
-$target = find "土壌劣化"
-info $target              # 内容を確認してから編集
-
-attr $target status "却下"
-set $target note "データ不足のため保留"
-
-# 誤って変更した場合は undo
-undo
+```javascript
+// "仮説" を含む全ノードに reviewed フラグを立てる
+m3e.findAll("仮説").forEach(id => {
+  m3e.attr(id, "reviewed", "true")
+  console.log(m3e.node(id).text, "→ reviewed")
+})
 ```
 
 ### ツリーの整理
 
+```javascript
+m3e.collapseAll()
+m3e.expandAll(hypo)
+
+m3e.promote(h2)   // 「土壌劣化が主因」を上へ
+
+const h3 = m3e.clone(h1, hypo)
+m3e.edit(h3, "温度と土壌の複合要因")
+
+console.log(m3e.tree(hypo))
 ```
-# 全体を折り畳んでから特定ブランチだけ展開
-collapse-all
-expand-all $hypo
 
-# 仮説の優先順位を変更
-promote $h2    # 「土壌劣化が主因」を上へ
+### エラー処理
 
-# 仮説を複製して別案として派生
-$h3 = clone $h1 $hypo
-edit $h3 "温度と土壌の複合要因"
+```javascript
+// ノードが見つからない場合の安全な処理
+const target = m3e.find("存在しないノード")
+if (!target) {
+  console.warn("ノードが見つかりませんでした")
+} else {
+  m3e.sel(target)
+}
 
-# 構造を確認
-tree $hypo
+// 例外をキャッチして継続
+try {
+  m3e.del(m3e.root)   // ルート削除は例外をスロー
+} catch (e) {
+  console.error(e.message)  // "Root node cannot be deleted."
+}
 ```
 
 ---
 
-## 変数スコープ
+## エラー仕様
 
-- 変数はセッション内で有効です（ページリロードでリセット）
-- `$var = command` で代入し、以降の任意のコマンドで参照できます
-- 同名変数への再代入は可能です
-- 変数名は英数字とアンダースコアのみ使用可能です（`$root_node`, `$h1` 等）
+| 状況 | 動作 |
+|------|------|
+| 存在しないノード ID を渡す | 例外をスロー: `"Node not found: <id>"` |
+| ルートの削除・再配置 | 例外をスロー |
+| 循環する `move` | 例外をスロー: `"Cycle detected"` |
+| `find` / `findAll` で一致なし | `null` / `[]` を返す（例外なし） |
+| `undo` / `redo` でスタック空 | `false` を返す（例外なし） |
+| `load` でファイルが見つからない | 例外をスロー |
+| `new` で未保存変更あり | `confirm()` でユーザー確認。キャンセルで中断 |
+| `load` 後に古い ID を使用 | 次の操作で `"Node not found"` 例外をスロー |
+| 不正な `index` | 末尾挿入にフォールバック（例外なし） |
 
 ---
 
-## エラー処理
+## 実装メモ
 
-| エラー | 動作 |
-|--------|------|
-| 存在しないノード ID | コマンド拒否、メッセージ表示 |
-| ルートの削除・再配置 | コマンド拒否 |
-| 循環する `move` | コマンド拒否（モデル側が検出） |
-| 未定義変数の参照 | コマンド拒否、変数名を表示 |
-| 不正な `<index>` | 末尾挿入にフォールバック |
-
-エラー時も正本（モデルの状態）は変化しません。
+- `window.m3e` は `viewer.ts` の初期化完了後に代入する
+- 各メソッドは既存の `RapidMvpModel` のメソッドを薄くラップする
+- ビュー操作（`fit`, `focus`, `zoom`, `pan`）は `viewer.ts` の既存関数を呼び出す
+- `m3e.node(id)` の戻り値は読み取り専用コピー（直接変更しても反映されない）
 
 ---
 
