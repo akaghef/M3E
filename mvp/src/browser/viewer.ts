@@ -16,8 +16,6 @@ const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
 const downloadBtn = document.getElementById("download-btn");
-const applyEditBtn = document.getElementById("apply-edit");
-const editInput = document.getElementById("edit-input") as HTMLInputElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
@@ -30,6 +28,7 @@ let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+let inlineEditor: { nodeId: string; input: HTMLInputElement } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let lastLayout: LayoutResult | null = null;
@@ -224,6 +223,29 @@ function applyZoom(): void {
   canvas.style.width = `${contentWidth}px`;
   canvas.style.height = `${contentHeight}px`;
   canvas.style.transform = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  syncInlineEditorPosition();
+}
+
+function syncInlineEditorPosition(): void {
+  if (!inlineEditor || !doc || !lastLayout) {
+    return;
+  }
+
+  const nodeId = inlineEditor.nodeId;
+  const nodePos = lastLayout.pos[nodeId];
+  if (!nodePos) {
+    return;
+  }
+
+  const centerX = nodeId === doc.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
+  const centerY = nodePos.y;
+  const left = viewState.cameraX + centerX * viewState.zoom;
+  const top = viewState.cameraY + centerY * viewState.zoom;
+
+  inlineEditor.input.style.left = `${left}px`;
+  inlineEditor.input.style.top = `${top}px`;
+  inlineEditor.input.style.transform = "translate(-50%, -50%)";
+  inlineEditor.input.style.minWidth = `${Math.max(140, nodePos.w * viewState.zoom * 0.6)}px`;
 }
 
 function setZoom(nextZoom: number, anchorClientX: number | null = null, anchorClientY: number | null = null): void {
@@ -364,15 +386,6 @@ function buildLayout(state: AppState): LayoutResult {
   };
 }
 
-function syncEditInput(): void {
-  if (!doc) {
-    editInput.value = "";
-    return;
-  }
-  const selected = doc.state.nodes[viewState.selectedNodeId];
-  editInput.value = selected ? selected.text || "" : "";
-}
-
 function render(): void {
   if (!doc) {
     metaEl.textContent = "No data loaded";
@@ -484,7 +497,7 @@ function render(): void {
   const dragTargetId = viewState.dragState?.targetNodeId;
   const dragTarget = dragTargetId ? state.nodes[dragTargetId] : null;
   metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dragTarget ? dragTarget.text : "none"}`;
-  syncEditInput();
+  syncInlineEditorPosition();
 }
 
 function selectNode(nodeId: string): void {
@@ -521,19 +534,76 @@ function addSibling(): void {
   board.focus();
 }
 
-function applyEdit(): void {
-  const node = getNode(viewState.selectedNodeId);
-  const next = String(editInput.value || "").trim();
+function applyNodeTextEdit(nodeId: string, nextRaw: string): boolean {
+  const node = getNode(nodeId);
+  const next = String(nextRaw || "").trim();
   if (next === "") {
     setStatus("Node text cannot be empty.", true);
-    syncEditInput();
-    return;
+    return false;
   }
   if (node.text === next) {
-    return;
+    return true;
   }
   node.text = next;
   touchDocument();
+  return true;
+}
+
+function stopInlineEdit(commit: boolean): void {
+  if (!inlineEditor) {
+    return;
+  }
+
+  const { nodeId, input } = inlineEditor;
+  const next = input.value;
+  input.remove();
+  inlineEditor = null;
+
+  if (commit) {
+    applyNodeTextEdit(nodeId, next);
+  }
+
+  board.focus();
+}
+
+function startInlineEdit(nodeId: string): void {
+  if (!doc || !lastLayout || !lastLayout.pos[nodeId]) {
+    return;
+  }
+
+  if (inlineEditor) {
+    stopInlineEdit(true);
+  }
+
+  const node = getNode(nodeId);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = node.text || "";
+  input.className = "inline-node-editor";
+  input.setAttribute("aria-label", "Edit node text");
+  board.appendChild(input);
+
+  inlineEditor = { nodeId, input };
+  syncInlineEditorPosition();
+  input.focus();
+  input.select();
+
+  input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      stopInlineEdit(true);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      stopInlineEdit(false);
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    stopInlineEdit(true);
+  });
 }
 
 function deleteSelected(): void {
@@ -1032,26 +1102,6 @@ focusSelectedBtn?.addEventListener("click", () => {
   centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
 });
 
-applyEditBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  applyEdit();
-});
-
-editInput.addEventListener("keydown", (event: KeyboardEvent) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    if (doc) {
-      applyEdit();
-      board.focus();
-    }
-  }
-  if (event.key === "Escape") {
-    event.preventDefault();
-    syncEditInput();
-    board.focus();
-  }
-});
-
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
@@ -1114,6 +1164,15 @@ function finishNodeDrag(event: PointerEvent): void {
 
 canvas.addEventListener("pointerup", finishNodeDrag);
 canvas.addEventListener("pointercancel", finishNodeDrag);
+canvas.addEventListener("dblclick", (event: MouseEvent) => {
+  const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
+    ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
+  if (!doc || !nodeId) {
+    return;
+  }
+  selectNode(nodeId);
+  startInlineEdit(nodeId);
+});
 
 board.addEventListener("wheel", (event: WheelEvent) => {
   event.preventDefault();
@@ -1176,14 +1235,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  const activeTag = document.activeElement ? document.activeElement.tagName : "";
-  const editingInput = activeTag === "INPUT" && document.activeElement === editInput;
-
-  if (editingInput) {
-    if (event.key === "Escape") {
-      syncEditInput();
-      board.focus();
-    }
+  if (inlineEditor && document.activeElement === inlineEditor.input) {
     return;
   }
 
@@ -1196,8 +1248,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "Enter") {
     if (event.shiftKey) {
       event.preventDefault();
-      editInput.focus();
-      editInput.select();
+      startInlineEdit(viewState.selectedNodeId);
       return;
     }
     event.preventDefault();
@@ -1207,8 +1258,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "F2") {
     event.preventDefault();
-    editInput.focus();
-    editInput.select();
+    startInlineEdit(viewState.selectedNodeId);
     return;
   }
 

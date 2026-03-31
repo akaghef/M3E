@@ -186,6 +186,19 @@
         pointer-events: none;
       }
 
+      .inline-node-editor {
+        position: absolute;
+        z-index: 20;
+        border: 2px solid var(--accent);
+        border-radius: 8px;
+        background: #fff;
+        color: #232323;
+        padding: 4px 8px;
+        font-size: 22px;
+        line-height: 1.2;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+      }
+
       @media (max-width: 900px) {
         .label-root,
         .label-node {

@@ -26,6 +26,9 @@
 - `mvp/src/browser/viewer.ts` を SQLite persistence API に接続
 	- 起動時: SQLite 優先ロード（未保存時は sample fallback）
 	- 編集時: autosave（debounce）で SQLite 保存
+- ノード編集 UX を欄外入力からノード上インライン編集へ変更
+	- `Shift+Enter` / `F2` / ダブルクリックで編集開始
+	- 欄外編集 UI を削除
 
 ## Current Direction
 
@@ -68,6 +71,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Stage A CI now runs automated unit tests on push and pull_request for `mvp/**`
 - SQLite persistence の最小保存/読込 API が model 層で動作（unit test 済み）
 - SQLite 保存/読込が viewer の通常導線から利用可能（起動時復元 + autosave）
+- ノードテキスト編集がノード上で完結（欄外編集は廃止）
 
 ## What Is Still Open
 
