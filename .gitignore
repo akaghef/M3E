@@ -1,2 +1,4 @@
 mvp/node_modules/
 mvp/dist/
+.claude/
+mvp/.env

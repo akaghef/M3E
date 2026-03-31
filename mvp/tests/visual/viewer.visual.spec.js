@@ -17,7 +17,8 @@ test("default sample visual baseline", async ({ page }) => {
 // 目的: aircraft.mm 読み込み後に Body 周辺へフォーカスし、主要ラベルと枝の見た目を比較する。
 test("aircraft mm visual baseline", async ({ page }) => {
   await loadAndStabilize(page, "#load-aircraft-mm");
-  await page.getByText("Body", { exact: true }).first().click();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator("#meta")).toContainText("selected: Body");
   await page.click("#focus-selected");
   await page.waitForTimeout(300);
   await expect(page.locator("#board")).toHaveScreenshot("aircraft-mm-body-focus.png");

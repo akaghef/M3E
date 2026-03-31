@@ -32,6 +32,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Freeplane is referenced, but M3E owns its own interaction model
 - `.mm` import is part of the MVP path
 - MVP test layers and CI stage rollout are documented in Operations
+- MVP persistence policy is documented as JSON model + SQLite persistence for Rapid MVP
 
 ## What Is Already Working
 
@@ -70,6 +71,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Direction pivot: [Current_Pivot_Freeplane_First.md](/C:/Users/Akaghef/dev/M3E/dev-docs/02_Strategy/Current_Pivot_Freeplane_First.md)
 - MVP definition: [MVP_Definition.md](/C:/Users/Akaghef/dev/M3E/dev-docs/02_Strategy/MVP_Definition.md)
 - Custom engine ADR: [ADR_003_Freeplane_Informed_Custom_Engine.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
+- SQLite MVP ADR: [ADR_004_SQLite_For_Rapid_MVP.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md)
 - UI basis ADR: [ADR_002_React_UI_Basis.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_002_React_UI_Basis.md)
 - Decision intake: [Decision_Pool.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Decision_Pool.md)
 - Test and CI/CD guide: [Test_and_CICD_Guide.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Test_and_CICD_Guide.md)

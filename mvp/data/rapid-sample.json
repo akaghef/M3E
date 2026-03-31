@@ -1,39 +1,39 @@
 {
   "version": 1,
-  "savedAt": "2026-03-30T23:46:29.606Z",
+  "savedAt": "2026-03-31T03:15:26.485Z",
   "state": {
-    "rootId": "n_1774914389606_jqiz50",
-    "selectedId": "n_1774914389606_114ytq",
+    "rootId": "n_1774926926485_691ipt",
+    "selectedId": "n_1774926926485_6rhxiy",
     "nodes": {
-      "n_1774914389606_jqiz50": {
-        "id": "n_1774914389606_jqiz50",
+      "n_1774926926485_691ipt": {
+        "id": "n_1774926926485_691ipt",
         "parentId": null,
         "children": [
-          "n_1774914389606_5yhvz2",
-          "n_1774914389606_mbgihd"
+          "n_1774926926485_p85rj5",
+          "n_1774926926485_hllpj5"
         ],
         "text": "Research Root",
         "collapsed": false
       },
-      "n_1774914389606_5yhvz2": {
-        "id": "n_1774914389606_5yhvz2",
-        "parentId": "n_1774914389606_jqiz50",
+      "n_1774926926485_p85rj5": {
+        "id": "n_1774926926485_p85rj5",
+        "parentId": "n_1774926926485_691ipt",
         "children": [
-          "n_1774914389606_114ytq"
+          "n_1774926926485_6rhxiy"
         ],
         "text": "Question",
         "collapsed": false
       },
-      "n_1774914389606_mbgihd": {
-        "id": "n_1774914389606_mbgihd",
-        "parentId": "n_1774914389606_jqiz50",
+      "n_1774926926485_hllpj5": {
+        "id": "n_1774926926485_hllpj5",
+        "parentId": "n_1774926926485_691ipt",
         "children": [],
         "text": "Hypothesis v2",
         "collapsed": false
       },
-      "n_1774914389606_114ytq": {
-        "id": "n_1774914389606_114ytq",
-        "parentId": "n_1774914389606_5yhvz2",
+      "n_1774926926485_6rhxiy": {
+        "id": "n_1774926926485_6rhxiy",
+        "parentId": "n_1774926926485_p85rj5",
         "children": [],
         "text": "Background",
         "collapsed": false
