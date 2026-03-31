@@ -54,6 +54,130 @@ const node     = m3e.node(selected)   // { id, text, note, ... } の深いコピ
 
 ---
 
+## 暗黙ターゲット（Implicit Targets）
+
+Excel のアクティブセルのように、**UI で選択中のノードを基準に操作できる**オブジェクト。
+ID を変数に束縛せずに操作したいときに使う。
+
+| オブジェクト | 対象範囲 |
+|-------------|---------|
+| `m3e.active_node` | 選択中の単一ノード |
+| `m3e.active_branch` | 選択中ノードを根とする部分木（ノード＋全子孫） |
+| `m3e.active_scope` | 選択中ノードが属する最寄りの scope（`folder` 型の祖先ノード、なければルート） |
+
+各オブジェクトはメソッドを持つ。また `.id` プロパティで生の ID を取り出せる。
+
+```javascript
+// ID を使う従来の書き方
+const id = m3e.sel
+m3e.edit(id, "新ラベル")
+m3e.collapse(id)
+
+// 暗黙ターゲットを使う書き方（同じ操作）
+m3e.active_node.edit("新ラベル")
+m3e.active_branch.collapse()
+```
+
+### `m3e.active_node` のメソッド
+
+選択中の単一ノードに対して操作する。子孫には影響しない。
+
+| メソッド | 動作 |
+|---------|------|
+| `m3e.active_node.edit(label)` | テキストを変更 |
+| `m3e.active_node.del()` | ノードと部分木を削除 |
+| `m3e.active_node.set(field, value)` | 拡張フィールドを設定 |
+| `m3e.active_node.unset(field)` | 拡張フィールドをクリア |
+| `m3e.active_node.attr(key, value)` | 属性を設定 |
+| `m3e.active_node.attrDel(key)` | 属性を削除 |
+| `m3e.active_node.setType(type)` | ノードタイプを変更 |
+| `m3e.active_node.info()` | ノード情報を返す |
+| `m3e.active_node.id` | ノード ID を返す（プロパティ） |
+
+```javascript
+m3e.active_node.edit("修正済み仮説")
+m3e.active_node.attr("status", "検証中")
+m3e.active_node.set("note", "先行研究 A と整合")
+m3e.active_node.info()
+
+// ID が必要なときは .id で取り出す
+const id = m3e.active_node.id
+m3e.add(id, "子ノード")
+```
+
+### `m3e.active_branch` のメソッド
+
+選択中ノードを根とする部分木全体に対して操作する。
+
+| メソッド | 動作 |
+|---------|------|
+| `m3e.active_branch.collapse()` | 部分木を折り畳む |
+| `m3e.active_branch.expand()` | 部分木をすべて展開 |
+| `m3e.active_branch.move(newParentId)` | 部分木ごと別の親へ移動 |
+| `m3e.active_branch.clone(newParentId?)` | 部分木ごと複製 |
+| `m3e.active_branch.del()` | 部分木ごと削除 |
+| `m3e.active_branch.tree()` | 部分木の構造を文字列で返す |
+| `m3e.active_branch.findAll(text)` | 部分木内を検索 |
+| `m3e.active_branch.id` | 根ノードの ID（プロパティ） |
+
+```javascript
+m3e.active_branch.collapse()
+m3e.active_branch.expand()
+console.log(m3e.active_branch.tree())
+
+// 選択ブランチを別の親に移動
+m3e.active_branch.move(m3e.find("実験計画"))
+
+// ブランチを複製して派生案を作る
+const copy = m3e.active_branch.clone()
+m3e.select(copy)
+m3e.active_node.edit("派生案 B")
+```
+
+### `m3e.active_scope` のメソッド
+
+選択中ノードが属する最寄りの scope（`folder` 型の祖先ノード）に対して操作する。
+scope が存在しない場合はルートが対象になる。
+
+| メソッド | 動作 |
+|---------|------|
+| `m3e.active_scope.info()` | scope のノード情報を返す |
+| `m3e.active_scope.collapse()` | scope 以下を折り畳む |
+| `m3e.active_scope.expand()` | scope 以下をすべて展開 |
+| `m3e.active_scope.tree()` | scope の構造を文字列で返す |
+| `m3e.active_scope.findAll(text)` | scope 内を検索 |
+| `m3e.active_scope.id` | scope の根ノード ID（プロパティ） |
+
+```javascript
+// 今いる scope の構造を確認
+console.log(m3e.active_scope.tree())
+
+// scope 内で検索
+m3e.active_scope.findAll("仮説").forEach(id => m3e.attr(id, "reviewed", "true"))
+
+// scope を折り畳んで俯瞰する
+m3e.active_scope.collapse()
+m3e.focus(m3e.active_scope.id)
+```
+
+### 暗黙ターゲットを引数として渡す
+
+`.id` プロパティで ID が必要な既存メソッドと組み合わせられる。
+
+```javascript
+// 選択ブランチの根に子を追加
+m3e.add(m3e.active_branch.id, "新しい観点")
+
+// 選択ノードの兄弟を追加
+m3e.sibling(m3e.active_node.id, "比較案")
+
+// 選択 scope を基準にビューを合わせる
+m3e.focus(m3e.active_scope.id)
+m3e.select(m3e.active_scope.id)
+```
+
+---
+
 ## API リファレンス
 
 ### ノード作成
@@ -447,6 +571,125 @@ m3e.export("mm")   // 未実装時は例外をスロー: "mm export is not yet i
 
 ---
 
+## 追加コマンド
+
+### マーク選択（複数ノードへの一括操作）
+
+単一選択に加えて、複数ノードをマークし一括操作できる。
+
+#### `m3e.mark(nodeId)` / `m3e.unmark(nodeId)` / `m3e.clearMarks()`
+
+```javascript
+m3e.mark(h1)
+m3e.mark(h2)
+m3e.mark(h3)
+m3e.unmark(h2)         // 解除
+m3e.clearMarks()       // 全解除
+```
+
+#### `m3e.marked`（プロパティ）
+
+マーク済みノード ID の配列を返す（読み取り専用）。
+
+```javascript
+// マーク済み全ノードに属性を一括設定
+m3e.marked.forEach(id => m3e.attr(id, "status", "レビュー済み"))
+
+// マーク済みを全て折り畳む
+m3e.marked.forEach(id => m3e.collapse(id))
+```
+
+---
+
+### 構造クエリ
+
+ツリーの形を数値・配列で問い合わせる。
+
+#### `m3e.depth(nodeId?)`
+
+ルートからの深さを返す。省略すると選択中ノードが対象。
+
+```javascript
+m3e.depth()            // → 3
+m3e.depth(m3e.root)    // → 0
+```
+
+#### `m3e.count(nodeId?)`
+
+部分木のノード総数を返す（自身を含む）。省略すると選択中ノードが対象。
+
+```javascript
+m3e.count(hypo)        // → 12
+m3e.count(m3e.root)    // → ツリー全体のノード数
+```
+
+#### `m3e.leaves(nodeId?)`
+
+部分木内の葉ノード（子を持たないノード）の ID 配列を返す。
+
+```javascript
+m3e.leaves(hypo).forEach(id => m3e.attr(id, "leaf", "true"))
+```
+
+#### `m3e.ancestors(nodeId?)`
+
+対象ノードからルートまでの祖先 ID 配列を返す（近い順）。
+
+```javascript
+m3e.ancestors()        // → ["parent_id", "grandparent_id", ..., "root_id"]
+```
+
+#### `m3e.path(nodeId?)`
+
+ルートから対象ノードまでの ID パスを返す（遠い順）。
+
+```javascript
+m3e.path(m3e.sel)      // → ["root_id", ..., "parent_id", "sel_id"]
+```
+
+---
+
+### 検索・置換
+
+#### `m3e.replaceAll(search, replacement, scopeId?)`
+
+テキストが部分一致するすべてのノードのラベルを置換する。
+`scopeId` を省略するとツリー全体が対象。
+
+```javascript
+m3e.replaceAll("仮説", "Hypothesis")
+m3e.replaceAll("要検証", "要確認", m3e.active_scope.id)
+
+// 件数を確認してから実行
+const targets = m3e.findAll("旧用語")
+console.log(`${targets.length} 件置換します`)
+targets.forEach(id => m3e.edit(id, m3e.node(id).text.replace("旧用語", "新用語")))
+```
+
+---
+
+### ノードタイプの変更
+
+#### `m3e.setType(nodeId, type)`
+
+ノードの type を変更する。
+
+| type | 意味 |
+|------|------|
+| `"text"` | 通常のテキストノード（デフォルト） |
+| `"folder"` | scope の根になるノード |
+| `"alias"` | 別ノードへの参照 |
+| `"image"` | 画像ノード |
+
+```javascript
+m3e.setType(m3e.sel, "folder")     // 現在のノードを scope の根にする
+m3e.active_node.setType("folder")  // 暗黙ターゲット版
+```
+
+`"alias"` に変更する場合は参照先 ID も必要（詳細は Scope_and_Alias.md 参照）。
+
+---
+
 ## 組み合わせ例
 
 ### 研究ツリーの構築
@@ -498,6 +741,33 @@ m3e.edit(h3, "温度と土壌の複合要因")
 
 console.log(m3e.tree(hypo))
 ```
+
+### 暗黙ターゲットを使った対話的操作
+
+```javascript
+// UIで「仮説」ノードを選択した状態でコンソールを開き、そのまま操作する
+
+// 今選んでいるノードを確認
+m3e.active_node.info()
+
+// ラベルを直すだけ
+m3e.active_node.edit("仮説（改訂版）")
+
+// 下の枝を全部展開して構造確認
+m3e.active_branch.expand()
+console.log(m3e.active_branch.tree())
+
+// この scope にある "要検証" を全部探して属性更新
+m3e.active_scope.findAll("要検証").forEach(id => {
+  m3e.attr(id, "status", "着手待ち")
+})
+
+// 別の scope に枝ごと移動
+const dest = m3e.find("実験計画")
+m3e.active_branch.move(dest)
+```
+
+---
 
 ### エラー処理
 

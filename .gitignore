@@ -3,3 +3,5 @@ mvp/dist/
 .claude/
 mvp/.env
 mvp/data/rapid-sample.json
+mvp/data/*.sqlite
+.agents/
