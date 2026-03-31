@@ -4,12 +4,14 @@ import fs from "fs";
 import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
+import { RapidMvpModel } from "./rapid_mvp";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
 const PORT = 4173;
 const DEFAULT_PAGE = "viewer.html";
+const SQLITE_DB_PATH = path.join(ROOT, "data", "rapid-mvp.sqlite");
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -69,8 +71,108 @@ function openBrowser(url: string): void {
   exec(`start "" "${url}"`);
 }
 
+function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+  res.statusCode = statusCode;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(payload));
+}
+
+function parseDocId(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (!pathname.startsWith("/api/docs/")) {
+    return null;
+  }
+  const raw = pathname.slice("/api/docs/".length).trim();
+  if (!raw || raw.includes("/")) {
+    return "";
+  }
+  return decodeURIComponent(raw);
+}
+
+function readRequestBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
+async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, docId: string): Promise<boolean> {
+  if (!docId) {
+    sendJson(res, 400, { error: "Document id is required." });
+    return true;
+  }
+
+  if (req.method === "GET") {
+    try {
+      const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, docId);
+      sendJson(res, 200, {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        state: model.toJSON(),
+      });
+    } catch (err) {
+      const message = (err as Error).message || "Unknown error";
+      if (message === "Document not found.") {
+        sendJson(res, 404, { error: message });
+      } else if (message === "Unsupported or invalid save format." || message.startsWith("Invalid model after load:")) {
+        sendJson(res, 400, { error: message });
+      } else {
+        sendJson(res, 500, { error: message });
+      }
+    }
+    return true;
+  }
+
+  if (req.method === "POST") {
+    try {
+      const rawBody = await readRequestBody(req);
+      const parsed = JSON.parse(rawBody) as { state?: unknown };
+      const candidate = parsed && parsed.state ? parsed : { state: parsed };
+      if (!candidate.state) {
+        sendJson(res, 400, { error: "Invalid JSON format." });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(candidate.state as never);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { error: `Invalid model before save: ${errors.join(" | ")}` });
+        return true;
+      }
+
+      model.saveToSqlite(SQLITE_DB_PATH, docId);
+      sendJson(res, 200, { ok: true, savedAt: new Date().toISOString(), documentId: docId });
+    } catch (err) {
+      const message = (err as Error).message || "Unknown error";
+      if (err instanceof SyntaxError) {
+        sendJson(res, 400, { error: "Invalid JSON body." });
+      } else {
+        sendJson(res, 400, { error: message });
+      }
+    }
+    return true;
+  }
+
+  sendJson(res, 405, { error: "Method not allowed." });
+  return true;
+}
+
 function startServer(): void {
-  const server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
+  const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const docId = parseDocId(req.url ?? "/");
+    if (docId !== null) {
+      await handleApi(req, res, docId);
+      return;
+    }
+
     const target = safeResolve(req.url ?? "/");
     if (!target) {
       res.statusCode = 403;

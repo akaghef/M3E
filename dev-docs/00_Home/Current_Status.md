@@ -21,6 +21,11 @@
 - SQLite 依存を追加
 	- `better-sqlite3`
 	- `@types/better-sqlite3`
+- `mvp/src/node/start_viewer.ts` に SQLite persistence API を追加
+	- `GET /api/docs/:id` / `POST /api/docs/:id`
+- `mvp/src/browser/viewer.ts` を SQLite persistence API に接続
+	- 起動時: SQLite 優先ロード（未保存時は sample fallback）
+	- 編集時: autosave（debounce）で SQLite 保存
 
 ## Current Direction
 
@@ -62,6 +67,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Unit tests can run locally with `npm test` and auto-rerun with `npm run test:unit:watch`
 - Stage A CI now runs automated unit tests on push and pull_request for `mvp/**`
 - SQLite persistence の最小保存/読込 API が model 層で動作（unit test 済み）
+- SQLite 保存/読込が viewer の通常導線から利用可能（起動時復元 + autosave）
 
 ## What Is Still Open
 
@@ -142,7 +148,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - [ ] Refine reparent logic and cycle safety checks
 - [ ] Standardize model-side validation and error messaging
 - [ ] Stabilize save/load boundary and version handling
-- [ ] SQLite persistence を UI/サーバー導線へ接続（現状は model 層実装のみ）
+- [x] ~~SQLite persistence を UI/サーバー導線へ接続（現状は model 層実装のみ）~~ [2026-03-31]
 
 ### Day-After-Tomorrow Goal (MVP release & operation start)
 

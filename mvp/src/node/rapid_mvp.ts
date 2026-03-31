@@ -374,7 +374,11 @@ class RapidMvpModel {
         )
         .get(documentId) as SqliteDocumentRow | undefined;
 
-      if (!row || row.version !== 1 || !row.stateJson) {
+      if (!row) {
+        throw new Error("Document not found.");
+      }
+
+      if (row.version !== 1 || !row.stateJson) {
         throw new Error("Unsupported or invalid save format.");
       }
 

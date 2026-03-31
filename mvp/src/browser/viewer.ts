@@ -23,10 +23,13 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
+const LOCAL_DOC_ID = "rapid-main";
+const AUTOSAVE_DELAY_MS = 700;
 
 let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let lastLayout: LayoutResult | null = null;
@@ -498,8 +501,7 @@ function addChild(): void {
   parent.children.push(id);
   parent.collapsed = false;
   viewState.selectedNodeId = id;
-  doc!.savedAt = nowIso();
-  render();
+  touchDocument();
   board.focus();
 }
 
@@ -515,8 +517,7 @@ function addSibling(): void {
   doc!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
   parent.children.splice(currentIndex + 1, 0, id);
   viewState.selectedNodeId = id;
-  doc!.savedAt = nowIso();
-  render();
+  touchDocument();
   board.focus();
 }
 
@@ -532,8 +533,7 @@ function applyEdit(): void {
     return;
   }
   node.text = next;
-  doc!.savedAt = nowIso();
-  render();
+  touchDocument();
 }
 
 function deleteSelected(): void {
@@ -558,8 +558,7 @@ function deleteSelected(): void {
     viewState.reparentSourceId = "";
   }
   viewState.selectedNodeId = parent.id;
-  doc!.savedAt = nowIso();
-  render();
+  touchDocument();
 }
 
 function toggleCollapse(): void {
@@ -568,8 +567,7 @@ function toggleCollapse(): void {
     return;
   }
   node.collapsed = !node.collapsed;
-  doc!.savedAt = nowIso();
-  render();
+  touchDocument();
 }
 
 function downloadJson(): void {
@@ -582,6 +580,116 @@ function downloadJson(): void {
   anchor.download = "rapid-edited.json";
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function currentDocSnapshot(): SavedDoc {
+  return {
+    version: 1,
+    savedAt: nowIso(),
+    state: doc!.state,
+  };
+}
+
+async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
+  if (!doc) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(currentDocSnapshot()),
+    });
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+    }
+
+    const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
+    doc.savedAt = String(payload.savedAt || nowIso());
+    if (showStatus) {
+      setStatus("Saved locally.");
+    }
+    render();
+    return true;
+  } catch (err) {
+    if (showStatus) {
+      setStatus(`Local save failed (${(err as Error).message}).`, true);
+    }
+    return false;
+  }
+}
+
+async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    if (response.status === 404) {
+      return false;
+    }
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+    }
+
+    const payload = await response.json();
+    loadPayload(payload);
+    if (showStatus) {
+      setStatus("Loaded local document.");
+    }
+    return true;
+  } catch (err) {
+    if (showStatus) {
+      setStatus(`Local load failed (${(err as Error).message}).`, true);
+    }
+    return false;
+  }
+}
+
+function scheduleAutosave(): void {
+  if (!doc) {
+    return;
+  }
+  if (autosaveTimer !== null) {
+    clearTimeout(autosaveTimer);
+  }
+  autosaveTimer = setTimeout(() => {
+    void saveDocToLocalDb(false);
+  }, AUTOSAVE_DELAY_MS);
+}
+
+function touchDocument(): void {
+  if (!doc) {
+    return;
+  }
+  doc.savedAt = nowIso();
+  render();
+  scheduleAutosave();
+}
+
+async function loadDefaultSample(): Promise<void> {
+  const response = await fetch("./data/rapid-sample.json", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  loadPayload(payload);
+}
+
+async function initializeDocument(): Promise<void> {
+  const loadedFromDb = await loadDocFromLocalDb(false);
+  if (loadedFromDb) {
+    return;
+  }
+
+  try {
+    await loadDefaultSample();
+  } catch {
+    loadPayload(createEmptyDoc());
+  }
 }
 
 function selectRelative(offset: number): void {
@@ -767,9 +875,8 @@ function applyReparent(): void {
   newParent.collapsed = false;
   sourceNode.parentId = targetParentId;
   viewState.reparentSourceId = "";
-  doc!.savedAt = nowIso();
+  touchDocument();
   setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
-  render();
 }
 
 function canReparent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
@@ -801,20 +908,14 @@ function applyReparentByIds(sourceId: string, targetParentId: string): boolean {
   newParent.collapsed = false;
   sourceNode.parentId = targetParentId;
   viewState.reparentSourceId = "";
-  doc!.savedAt = nowIso();
+  touchDocument();
   setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
-  render();
   return true;
 }
 
 loadDefaultBtn?.addEventListener("click", async () => {
   try {
-    const response = await fetch("./data/rapid-sample.json", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    loadPayload(payload);
+    await loadDefaultSample();
   } catch (err) {
     setStatus(`Default load failed (${(err as Error).message}). Use file picker.`, true);
   }
@@ -1147,6 +1248,8 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 });
 
-loadPayload(createEmptyDoc());
 setVisualCheckStatus("Visual check idle");
-fitDocument() || applyZoom();
+
+void initializeDocument().then(() => {
+  fitDocument() || applyZoom();
+});
