@@ -6,7 +6,6 @@ interface TreeNode {
   parentId: string | null;
   children: string[];
   text: string;
-  collapsed: boolean;
   details: string;
   note: string;
   attributes: Record<string, string>;
@@ -15,7 +14,6 @@ interface TreeNode {
 
 interface AppState {
   rootId: string;
-  selectedId?: string;
   nodes: Record<string, TreeNode>;
 }
 
@@ -65,4 +63,5 @@ interface ViewState {
   panState: PanState | null;
   reparentSourceId: string;
   dragState: DragState | null;
+  collapsedIds: Set<string>;
 }

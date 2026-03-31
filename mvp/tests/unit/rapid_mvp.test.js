@@ -6,13 +6,12 @@ const path = require("node:path");
 
 const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
 
-test("addNode updates parent children and selectedId", () => {
+test("addNode updates parent children", () => {
   const model = new RapidMvpModel("Root");
   const rootId = model.state.rootId;
 
   const childId = model.addNode(rootId, "Child A");
 
-  assert.equal(model.state.selectedId, childId);
   assert.deepEqual(model.state.nodes[rootId].children, [childId]);
   assert.equal(model.state.nodes[childId].parentId, rootId);
   assert.equal(model.state.nodes[childId].text, "Child A");
@@ -26,7 +25,7 @@ test("addSibling on root throws", () => {
   });
 });
 
-test("deleteNode removes subtree and selects parent", () => {
+test("deleteNode removes subtree", () => {
   const model = new RapidMvpModel("Root");
   const rootId = model.state.rootId;
   const a = model.addNode(rootId, "A");
@@ -34,7 +33,6 @@ test("deleteNode removes subtree and selects parent", () => {
 
   model.deleteNode(a);
 
-  assert.equal(model.state.selectedId, rootId);
   assert.equal(model.state.nodes[a], undefined);
   assert.equal(model.state.nodes[b], undefined);
   assert.deepEqual(model.state.nodes[rootId].children, []);

@@ -28,7 +28,6 @@ const MAX_UNDO_STEPS = 100;
 interface UndoSnapshot {
   state: AppState;
   selectedNodeId: string;
-  reparentSourceId: string;
 }
 
 let doc: SavedDoc | null = null;
@@ -50,6 +49,7 @@ let viewState: ViewState = {
   panState: null,
   reparentSourceId: "",
   dragState: null,
+  collapsedIds: new Set<string>(),
 };
 
 function nowIso(): string {
@@ -62,7 +62,6 @@ function createNodeRecord(id: string, parentId: string | null, text = "New Node"
     parentId,
     children: [],
     text,
-    collapsed: false,
     details: "",
     note: "",
     attributes: {},
@@ -95,7 +94,6 @@ function ensureDocShape(payload: unknown): SavedDoc {
   Object.values(candidate.state.nodes).forEach((node) => {
     node.children = Array.isArray(node.children) ? node.children : [];
     node.text = node.text || "";
-    node.collapsed = Boolean(node.collapsed);
     node.details = node.details || "";
     node.note = node.note || "";
     node.attributes = (node.attributes && typeof node.attributes === "object") ? node.attributes : {};
@@ -156,7 +154,7 @@ function parseMmText(xmlText: string): SavedDoc {
       richContentText(mmNode, "NODE") ||
       "(empty)";
     const record = createNodeRecord(id, parentId, text);
-    record.collapsed = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
+    (record as unknown as Record<string, unknown>)["collapsed"] = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
     record.link = mmNode.getAttribute("LINK") || "";
     record.details = richContentText(mmNode, "DETAILS");
     record.note = richContentText(mmNode, "NOTE");
@@ -217,7 +215,6 @@ function pushUndoSnapshot(): void {
   undoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
-    reparentSourceId: viewState.reparentSourceId,
   });
   if (undoStack.length > MAX_UNDO_STEPS) {
     undoStack.shift();
@@ -234,7 +231,6 @@ function undoLastChange(): void {
   redoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
-    reparentSourceId: viewState.reparentSourceId,
   });
   if (redoStack.length > MAX_UNDO_STEPS) {
     redoStack.shift();
@@ -243,9 +239,7 @@ function undoLastChange(): void {
   const snapshot = undoStack.pop()!;
   doc.state = snapshot.state;
   viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
-  viewState.reparentSourceId = snapshot.reparentSourceId && doc.state.nodes[snapshot.reparentSourceId]
-    ? snapshot.reparentSourceId
-    : "";
+  viewState.reparentSourceId = "";
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
@@ -262,7 +256,6 @@ function redoLastChange(): void {
   undoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
-    reparentSourceId: viewState.reparentSourceId,
   });
   if (undoStack.length > MAX_UNDO_STEPS) {
     undoStack.shift();
@@ -271,9 +264,7 @@ function redoLastChange(): void {
   const snapshot = redoStack.pop()!;
   doc.state = snapshot.state;
   viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
-  viewState.reparentSourceId = snapshot.reparentSourceId && doc.state.nodes[snapshot.reparentSourceId]
-    ? snapshot.reparentSourceId
-    : "";
+  viewState.reparentSourceId = "";
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
@@ -351,7 +342,7 @@ function setZoom(nextZoom: number, anchorClientX: number | null = null, anchorCl
 }
 
 function visibleChildren(node: TreeNode): string[] {
-  if (!node || node.collapsed) {
+  if (!node || viewState.collapsedIds.has(node.id)) {
     return [];
   }
   return node.children || [];
@@ -552,7 +543,7 @@ function render(): void {
       nodes += `<text class="label-node" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selectedStyle}>${label}</text>`;
     }
 
-    if (node.collapsed && (node.children || []).length > 0) {
+    if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
       const indicatorX =
         nodeId === state.rootId
           ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
@@ -597,7 +588,7 @@ function addChild(): void {
   const id = newId();
   doc!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
   parent.children.push(id);
-  parent.collapsed = false;
+  viewState.collapsedIds.delete(parentId);
   viewState.selectedNodeId = id;
   touchDocument();
   board.focus();
@@ -720,13 +711,17 @@ function deleteSelected(): void {
 }
 
 function toggleCollapse(): void {
-  const node = getNode(viewState.selectedNodeId);
+  const nodeId = viewState.selectedNodeId;
+  const node = getNode(nodeId);
   if ((node.children || []).length === 0) {
     return;
   }
-  pushUndoSnapshot();
-  node.collapsed = !node.collapsed;
-  touchDocument();
+  if (viewState.collapsedIds.has(nodeId)) {
+    viewState.collapsedIds.delete(nodeId);
+  } else {
+    viewState.collapsedIds.add(nodeId);
+  }
+  render();
 }
 
 function downloadJson(): void {
@@ -932,6 +927,11 @@ function loadPayload(payload: unknown): void {
     redoStack = [];
     viewState.selectedNodeId = doc.state.rootId;
     viewState.reparentSourceId = "";
+    viewState.collapsedIds = new Set(
+      Object.values(doc.state.nodes)
+        .filter((n) => (n as unknown as Record<string, unknown>)["collapsed"] === true)
+        .map((n) => n.id),
+    );
     render();
     setStatus("Loaded.");
   } catch (err) {
@@ -1010,11 +1010,11 @@ async function runAircraftVisualCheck(): Promise<void> {
     { label: "Load aircraft.mm", run: async () => { await loadAircraftMmDemo(); resetCamera(); centerOnNode(doc!.state.rootId, 1); } },
     { label: "Zoom out for whole-map scan", run: async () => { centerOnNode(doc!.state.rootId, 0.72); } },
     { label: "Select Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); centerOnNode(nodeId, 0.95); } },
-    { label: "Collapse Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (!getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
-    { label: "Expand Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
+    { label: "Collapse Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (!viewState.collapsedIds.has(nodeId)) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
+    { label: "Expand Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (viewState.collapsedIds.has(nodeId)) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
     { label: "Select Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); centerOnNode(nodeId, 0.92); } },
-    { label: "Collapse Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); if (!getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.92); } },
-    { label: "Expand Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); if (getNode(nodeId).collapsed) { toggleCollapse(); } centerOnNode(nodeId, 0.92); } },
+    { label: "Collapse Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); if (!viewState.collapsedIds.has(nodeId)) { toggleCollapse(); } centerOnNode(nodeId, 0.92); } },
+    { label: "Expand Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); if (viewState.collapsedIds.has(nodeId)) { toggleCollapse(); } centerOnNode(nodeId, 0.92); } },
     { label: "Inspect Main Wing label scale", run: async () => { const nodeId = findNodeIdByText("Main Wing"); selectNode(nodeId); centerOnNode(nodeId, 1.15); } },
     { label: "Inspect Propeller label scale", run: async () => { const nodeId = findNodeIdByText("Propeller"); selectNode(nodeId); centerOnNode(nodeId, 1.15); } },
     { label: "Return to root overview", run: async () => { selectNode(doc!.state.rootId); centerOnNode(doc!.state.rootId, 0.8); } },
@@ -1099,7 +1099,7 @@ function applyReparent(): void {
   const newParent = getNode(targetParentId);
   oldParent.children = oldParent.children.filter((id) => id !== sourceId);
   newParent.children.push(sourceId);
-  newParent.collapsed = false;
+  viewState.collapsedIds.delete(targetParentId);
   sourceNode.parentId = targetParentId;
   viewState.reparentSourceId = "";
   touchDocument();
@@ -1133,7 +1133,7 @@ function applyReparentByIds(sourceId: string, targetParentId: string): boolean {
   const newParent = getNode(targetParentId);
   oldParent.children = oldParent.children.filter((id) => id !== sourceId);
   newParent.children.push(sourceId);
-  newParent.collapsed = false;
+  viewState.collapsedIds.delete(targetParentId);
   sourceNode.parentId = targetParentId;
   viewState.reparentSourceId = "";
   touchDocument();

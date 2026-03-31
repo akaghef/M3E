@@ -22,14 +22,12 @@ class RapidMvpModel {
     const rootId = this._newId();
     this.state = {
       rootId,
-      selectedId: rootId,
       nodes: {
         [rootId]: {
           id: rootId,
           parentId: null,
           children: [],
           text: rootText,
-          collapsed: false,
           details: "",
           note: "",
           attributes: {},
@@ -66,11 +64,6 @@ class RapidMvpModel {
     return node;
   }
 
-  selectNode(nodeId: string): void {
-    this._requireNode(nodeId);
-    this.state.selectedId = nodeId;
-  }
-
   addNode(parentId: string, text = "New Node", index: number | null = null): string {
     const parent = this._requireNode(parentId);
     this._pushHistory();
@@ -81,7 +74,6 @@ class RapidMvpModel {
       parentId,
       children: [],
       text,
-      collapsed: false,
       details: "",
       note: "",
       attributes: {},
@@ -96,7 +88,6 @@ class RapidMvpModel {
       parent.children.splice(index, 0, id);
     }
 
-    this.state.selectedId = id;
     return id;
   }
 
@@ -139,8 +130,6 @@ class RapidMvpModel {
       toDelete.push(...currentNode.children);
       delete this.state.nodes[current];
     }
-
-    this.state.selectedId = parent.id;
   }
 
   reparentNode(nodeId: string, newParentId: string, index: number | null = null): void {
@@ -171,13 +160,6 @@ class RapidMvpModel {
     }
 
     node.parentId = newParentId;
-    this.state.selectedId = nodeId;
-  }
-
-  toggleCollapse(nodeId: string): void {
-    const node = this._requireNode(nodeId);
-    this._pushHistory();
-    node.collapsed = !node.collapsed;
   }
 
   undo(): boolean {
