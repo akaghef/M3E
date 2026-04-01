@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-04-01-002
+
+- Date: 2026-04-01
+- Topic: Command Language の将来コマンドパネルに対するセキュリティ要件を先に固定する
+- Status: working-agreement
+- Decision: `Command_Language.md` に Security Model を追加し、`eval` / `Function` 系実行を禁止、AST 検証・権限分離・承認フローを MUST とする
+- Why: コマンドパネル実装時に XSS / コードインジェクション / 外部送信リスクが高いため
+- Next: コマンドパネル実装前に本要件を受け入れ条件としてテスト設計へ落とし込む
+- Source: 2026-04-01 のセキュリティ懸念整理
+- Promoted: [../03_Spec/Command_Language.md](../03_Spec/Command_Language.md)
+
 ## 2026-04-01-001
 
 - Date: 2026-04-01
