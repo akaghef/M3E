@@ -26,16 +26,8 @@ When in doubt about scope boundary, stop and ask `akaghef`.
 
 ## Permitted Operations (No Confirmation Needed)
 
-The following operations may be performed autonomously within the assigned branch:
-
-- Read any file in the repository
-- Edit files under `beta/src/`, `beta/tests/`, `dev-docs/`
-- Run `npm --prefix beta test`
-- Run `npm --prefix beta run build`
-- Run `npm --prefix beta run build:node`
-- Run `npm --prefix beta run build:browser`
-- `git add`, `git commit`, `git push` on the assigned branch
-- Create new files under `beta/src/`, `beta/tests/`, `dev-docs/`
+All operations are permitted autonomously **except those listed below**.
+Proceed without asking for confirmation unless the operation falls into the restricted list.
 
 ---
 
@@ -43,12 +35,10 @@ The following operations may be performed autonomously within the assigned branc
 
 Always pause and request review from `akaghef` before:
 
-- Modifying `scripts/`, `final/`, `mvp/`
-- Modifying `.github/workflows/`
-- `git merge`, `git rebase`, `git reset`
-- Deleting files
-- Changing `package.json` dependencies
-- Any operation on `main`, `dev-beta`, or `origin/*`
+- **Deleting files** (`rm`, `git rm`, `unlink`, or equivalent)
+- `git reset --hard`, `git rebase`, force-push (`git push --force`)
+- Any operation directly on `main` branch
+- Changing `package.json` dependencies (add/remove packages)
 
 ---
 
