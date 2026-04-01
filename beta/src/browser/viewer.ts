@@ -27,6 +27,7 @@ const linearMetaEl = document.getElementById("linear-meta") as HTMLElement;
 const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement;
 const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement;
 const LOCAL_DOC_ID = "rapid-main";
+const CLOUD_DOC_ID = "rapid-main";
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 100;
 
@@ -65,6 +66,7 @@ let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
 let importanceViewMode: ImportanceViewMode = "all";
 let importanceVisibleNodeIds: Set<string> | null = null;
+let cloudSyncEnabled = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -1445,6 +1447,9 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
 
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     doc.savedAt = String(payload.savedAt || nowIso());
+    if (cloudSyncEnabled) {
+      void pushDocToCloud(false);
+    }
     if (showStatus) {
       setStatus("Saved locally.");
     }
@@ -1453,6 +1458,89 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
   } catch (err) {
     if (showStatus) {
       setStatus(`Local save failed (${(err as Error).message}).`, true);
+    }
+    return false;
+  }
+}
+
+async function fetchCloudSyncStatus(): Promise<void> {
+  try {
+    const response = await fetch(`/api/sync/status/${encodeURIComponent(CLOUD_DOC_ID)}`, { cache: "no-store" });
+    if (!response.ok) {
+      cloudSyncEnabled = false;
+      return;
+    }
+    const payload = await response.json().catch(() => ({ enabled: false }));
+    cloudSyncEnabled = Boolean(payload.enabled);
+  } catch {
+    cloudSyncEnabled = false;
+  }
+}
+
+async function pushDocToCloud(showStatus = false): Promise<boolean> {
+  if (!doc || !cloudSyncEnabled) {
+    return false;
+  }
+  try {
+    const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(currentDocSnapshot()),
+    });
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+    }
+
+    const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
+    doc.savedAt = String(payload.savedAt || nowIso());
+    if (showStatus) {
+      setStatus("Cloud sync push completed.");
+    }
+    render();
+    return true;
+  } catch (err) {
+    if (showStatus) {
+      setStatus(`Cloud push failed (${(err as Error).message}).`, true);
+    }
+    return false;
+  }
+}
+
+async function pullDocFromCloud(showStatus = false): Promise<boolean> {
+  if (!cloudSyncEnabled) {
+    return false;
+  }
+  try {
+    const response = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (response.status === 404) {
+      return false;
+    }
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+    }
+
+    const payload = await response.json();
+    loadPayload(payload);
+    if (showStatus) {
+      setStatus("Loaded cloud document.");
+    }
+    return true;
+  } catch (err) {
+    if (showStatus) {
+      setStatus(`Cloud pull failed (${(err as Error).message}).`, true);
     }
     return false;
   }
@@ -1514,6 +1602,13 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
+  await fetchCloudSyncStatus();
+
+  const loadedFromCloud = await pullDocFromCloud(false);
+  if (loadedFromCloud) {
+    return;
+  }
+
   const loadedFromDb = await loadDocFromLocalDb(false);
   if (loadedFromDb) {
     return;

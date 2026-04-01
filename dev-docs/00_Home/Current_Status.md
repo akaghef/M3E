@@ -2,6 +2,15 @@
 
 ## Update Log (2026-04-02)
 
+- `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts`
+	- cloud sync の最小導線（status/pull/push）を追加
+	- `M3E_CLOUD_SYNC=1` 時のみ有効、既存 local-first 導線は維持
+- `beta/README.md`
+	- cloud sync（file-mirror mode）の起動設定を追記
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
 - `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
 	- 重要度ビュー（All / Medium+High / High only）を追加
 	- importance 属性ベースで Tree/Linear 両方を同一ルールでフィルタ

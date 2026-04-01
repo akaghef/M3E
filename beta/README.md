@@ -28,6 +28,29 @@ This will:
 
 Stop with `Ctrl+C`.
 
+### Optional cloud sync (file-mirror mode)
+
+Cloud sync can be enabled as an opt-in mirror layer on top of local SQLite persistence.
+
+Environment variables:
+
+```bash
+M3E_CLOUD_SYNC=1
+M3E_CLOUD_DIR=./data/cloud-sync
+```
+
+Behavior:
+
+- On startup: tries cloud pull first, then falls back to local SQLite/doc sample
+- On save/autosave: keeps local save and additionally pushes to cloud mirror
+- Cloud backend in Beta is file-based (`M3E_CLOUD_DIR`) for local-first validation
+
+Sync API endpoints:
+
+- `GET /api/sync/status/:docId`
+- `POST /api/sync/pull/:docId`
+- `POST /api/sync/push/:docId`
+
 Legacy (no build required):
 ```bash
 node beta/legacy/start_viewer.js

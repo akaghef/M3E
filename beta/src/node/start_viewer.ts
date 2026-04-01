@@ -5,6 +5,7 @@ import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
+import type { AppState, SavedDoc } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
@@ -12,6 +13,10 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const PORT = 4173;
 const DEFAULT_PAGE = "viewer.html";
 const SQLITE_DB_PATH = path.join(ROOT, "data", "rapid-mvp.sqlite");
+const CLOUD_SYNC_ENABLED = process.env.M3E_CLOUD_SYNC === "1";
+const CLOUD_SYNC_DIR = process.env.M3E_CLOUD_DIR
+  ? path.resolve(process.env.M3E_CLOUD_DIR)
+  : path.join(ROOT, "data", "cloud-sync");
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -87,6 +92,32 @@ function parseDocId(urlPath: string): string | null {
     return "";
   }
   return decodeURIComponent(raw);
+}
+
+function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; docId: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/sync\/(status|push|pull)\/([^/]+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    action: match[1] as "status" | "push" | "pull",
+    docId: decodeURIComponent(match[2] || ""),
+  };
+}
+
+function cloudDocPath(docId: string): string {
+  const safeId = docId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return path.join(CLOUD_SYNC_DIR, `${safeId}.json`);
+}
+
+function ensureCloudSyncDir(): void {
+  if (!CLOUD_SYNC_ENABLED) {
+    return;
+  }
+  if (!fs.existsSync(CLOUD_SYNC_DIR)) {
+    fs.mkdirSync(CLOUD_SYNC_DIR, { recursive: true });
+  }
 }
 
 function readRequestBody(req: http.IncomingMessage): Promise<string> {
@@ -165,8 +196,126 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
   return true;
 }
 
+async function handleSyncApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { action: "status" | "push" | "pull"; docId: string },
+): Promise<boolean> {
+  if (!route.docId) {
+    sendJson(res, 400, { error: "Document id is required." });
+    return true;
+  }
+
+  if (!CLOUD_SYNC_ENABLED) {
+    sendJson(res, 200, {
+      enabled: false,
+      mode: "disabled",
+      documentId: route.docId,
+    });
+    return true;
+  }
+
+  ensureCloudSyncDir();
+  const filePath = cloudDocPath(route.docId);
+
+  if (route.action === "status" && req.method === "GET") {
+    const exists = fs.existsSync(filePath);
+    sendJson(res, 200, {
+      enabled: true,
+      mode: "file-mirror",
+      documentId: route.docId,
+      exists,
+      lastSyncedAt: exists ? fs.statSync(filePath).mtime.toISOString() : null,
+    });
+    return true;
+  }
+
+  if (route.action === "pull" && req.method === "POST") {
+    if (!fs.existsSync(filePath)) {
+      sendJson(res, 404, { error: "Cloud document not found." });
+      return true;
+    }
+
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as { version?: number; state?: AppState; savedAt?: string };
+      if (!parsed || parsed.version !== 1 || !parsed.state) {
+        sendJson(res, 400, { error: "Cloud document has unsupported format." });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(parsed.state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { error: `Cloud document is invalid: ${errors.join(" | ")}` });
+        return true;
+      }
+
+      sendJson(res, 200, {
+        ok: true,
+        version: 1,
+        savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
+        state: model.toJSON(),
+        documentId: route.docId,
+      });
+      return true;
+    } catch (err) {
+      sendJson(res, 500, { error: (err as Error).message || "Cloud pull failed." });
+      return true;
+    }
+  }
+
+  if (route.action === "push" && req.method === "POST") {
+    try {
+      const rawBody = await readRequestBody(req);
+      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string };
+      const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
+      if (!candidate.state) {
+        sendJson(res, 400, { error: "Invalid JSON format." });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(candidate.state as never);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { error: `Invalid model before cloud push: ${errors.join(" | ")}` });
+        return true;
+      }
+
+      const payload: SavedDoc = {
+        version: 1,
+        savedAt: String(candidate.savedAt || new Date().toISOString()),
+        state: model.toJSON(),
+      };
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+      sendJson(res, 200, {
+        ok: true,
+        mode: "file-mirror",
+        savedAt: payload.savedAt,
+        documentId: route.docId,
+      });
+      return true;
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        sendJson(res, 400, { error: "Invalid JSON body." });
+        return true;
+      }
+      sendJson(res, 500, { error: (err as Error).message || "Cloud push failed." });
+      return true;
+    }
+  }
+
+  sendJson(res, 405, { error: "Method not allowed." });
+  return true;
+}
+
 function startServer(): void {
   const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const syncRoute = parseSyncRoute(req.url ?? "/");
+    if (syncRoute) {
+      await handleSyncApi(req, res, syncRoute);
+      return;
+    }
+
     const docId = parseDocId(req.url ?? "/");
     if (docId !== null) {
       await handleApi(req, res, docId);
