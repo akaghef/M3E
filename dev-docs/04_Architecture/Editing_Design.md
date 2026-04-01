@@ -11,6 +11,7 @@
 - edit
 - delete
 - reparent
+- marquee selection
 - collapse / expand
 - selection change
 
@@ -24,6 +25,12 @@
 - Controller は操作解釈を行う
 - Model は最終整合性を持つ
 - レイアウト再計算は Command 成功後に行う
+
+## 用語
+
+- `drag pan`: 主ボタンを押したまま空白領域をドラッグして viewport を動かす操作
+- `two-finger pan`: trackpad の二本指移動、または同等のホイール入力で viewport を動かす操作
+- 本文書で `pan` とだけ書く場合は、以後は `two-finger pan` を指す
 
 ## 編集状態
 
@@ -45,6 +52,11 @@
 
 ノードを移動中の状態。
 仮位置と drop 候補は ViewState に保持する。
+
+### MarqueeSelecting
+
+キャンバス上の空白領域から範囲選択を行っている状態。
+選択矩形と暫定選択集合は ViewState に保持する。
 
 ## Command 一覧
 
@@ -159,6 +171,71 @@ drop proposal の定義:
 - 同一親への並べ替えも `ReparentNodeCommand` で表現してよい
 - drop 成功時に親ノードを自動 expand しない
 
+### marquee selection
+
+目的:
+
+- 余白ドラッグを viewport pan ではなく範囲選択へ置き換える
+- 近接ノードをまとめて選択し、後続の delete / move / inspect の前段操作に使えるようにする
+
+処理:
+
+1. 空白領域の `pointerdown` で `MarqueeSelecting` に入る
+2. `pointermove` で選択矩形を ViewState に保持する
+3. 可視ノード矩形との交差判定で暫定選択集合を更新する
+4. `pointerup` で暫定選択集合を `multiSelectedNodeIds` へ反映する
+5. 選択矩形をクリアし、必要なら `anchorNodeId` を更新する
+
+入力ルール:
+
+- ノード上ドラッグは従来どおり `reparent` / `reorder`
+- 空白領域上の主ボタンドラッグは `marquee selection`
+- 単クリック空白は選択解除
+- `Shift` 押下中の marquee は既存選択への追加
+- `Alt` または `Meta/Ctrl` を使う減算選択は MVP では保留としてよい
+
+HitTest ルール:
+
+- 対象は可視ノードのみ
+- 判定単位はラベル文字列ではなくノードの表示矩形全体
+- 部分交差で選択扱いにする
+- collapse された部分木の不可視子は対象外
+
+ViewState 追加候補:
+
+- `marqueeState`
+- `multiSelectedNodeIds`
+- `anchorNodeId`
+
+`marqueeState` の最小要素:
+
+- `pointerId`
+- `startX`
+- `startY`
+- `currentX`
+- `currentY`
+- `mode` (`replace` / `add`)
+- `previewNodeIds`
+
+描画ルール:
+
+- 選択矩形は半透明 fill + 明瞭な border で表示する
+- marquee 中に選択される予定のノードは通常選択と別スタイルで preview 表示する
+- `selectedNodeId` は単一選択の主カーソルとして残し、複数選択時は anchor を優先表示してよい
+
+制約:
+
+- marquee 自体は Command を発行しない
+- marquee 中は Model を更新しない
+- inline edit 中は marquee を開始しない
+- drag reparent と marquee selection は同時に成立させない
+
+パン操作の扱い:
+
+- 主ボタンの空白ドラッグによる `drag pan` は廃止する
+- wheel / trackpad による `two-finger pan` は維持する
+- マウス主体ユーザー向けの代替 viewport 移動ジェスチャは別途決める
+
 ### collapse / expand
 
 処理:
@@ -211,6 +288,7 @@ drop proposal の定義:
 - `anchorNodeId`
 
 MVP では単一選択だけでもよい。
+ただし marquee selection を入れる段階で複数選択の保持は必要になる。
 
 ## Text Editing の扱い
 
@@ -227,16 +305,19 @@ MVP では単一選択だけでもよい。
 - Controller は失敗理由を UI へ返す
 - 失敗時も正本は不変
 - Dragging 中の候補表示は即時に消す
+- marquee 中に候補ノードが 0 件でもエラーにしない
+- marquee 完了時に選択対象が 0 件なら空選択として扱う
 
 ## 実装順
 
 1. selection
-2. add
-3. edit
-4. delete
-5. collapse / expand
-6. reparent
-7. undo / redo
+2. marquee selection
+3. add
+4. edit
+5. delete
+6. collapse / expand
+7. reparent
+8. undo / redo
 
 ## 受け入れ基準
 
@@ -245,6 +326,9 @@ MVP では単一選択だけでもよい。
 - Undo/Redo で構造と順序が戻る
 - drag 中に正本が書き換わらない
 - text 編集中にキャンセルできる
+- 空白ドラッグで marquee が表示され、可視ノードの複数選択が成立する
+- ノードドラッグ時は marquee に遷移せず、従来どおり reparent 系判定が優先される
+- `two-finger pan` が marquee 導入後も壊れない
 
 ## 関連文書
 
