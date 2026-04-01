@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-04-02-002
+
+- Date: 2026-04-02
+- Topic: Linear 変換 UI は Tree 右側パネルで提供する
+- Status: working-agreement
+- Decision: Rapid では Tree の右側に current scope 用 Linear テキストパネルを配置し、Tree 選択と行選択を同期する。Linear 編集は即時反映せず Apply 時に一括反映し、失敗時は fail-closed で中断する。
+- Why: 構造と文章の対応を見やすくしつつ、曖昧入力による部分破壊を防ぐため
+- Next: parser/reconcile の回帰テストを追加して誤変換の再発を防止する
+- Source: 2026-04-02 の UI 仕様確定と実装作業
+- Promoted: [../03_Spec/Linear_Tree_Conversion.md](../03_Spec/Linear_Tree_Conversion.md)
+
+## 2026-04-02-001
+
+- Date: 2026-04-02
+- Topic: Linear <-> Tree 変換を scope 基準で設計する
+- Status: working-agreement
+- Decision: 正本は Tree のまま維持し、Linear は入出力インターフェースとして扱う。既定の変換単位は `currentScopeId` の部分木とし、L1（インデント）を可逆優先、L2（Markdown）を準可逆として段階導入する。
+- Why: 入力速度を上げつつ、主構造（親子）と認知境界（scope）を壊さないため
+- Next: L1 export/import の最小実装と round-trip テストを追加する
+- Source: 2026-04-02 の Linear/Tree 変換ビジョン確認
+- Promoted: [../03_Spec/Linear_Tree_Conversion.md](../03_Spec/Linear_Tree_Conversion.md)
+
 ## 2026-04-01-003
 
 - Date: 2026-04-01

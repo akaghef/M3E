@@ -1,5 +1,81 @@
 # Current Status
 
+## Update Log (2026-04-02)
+
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の成功レスポンスを統一（`ok/mode/documentId`）
+	- 成功系テストでも共通レスポンス契約を検証
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
+
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API のエラーレスポンスを統一（`ok/code/error/documentId`）
+	- 異常系・競合系テストでレスポンススキーマ検証を追加
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
+
+- `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の異常系 HTTP テストを追加（broken JSON / unsupported format / invalid model / method 405）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
+
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の HTTP 統合テストを追加（status/push/pull + conflict/force）
+	- `createAppServer` を公開し、import 時の自動起動副作用を排除
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (24 tests)
+
+- `beta/src/node/cloud_sync.ts` / `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_conflict.test.js`
+	- cloud 競合判定ロジックを分離し、unit test を追加して回帰を固定
+	- `detectCloudConflict` で push 競合条件を明示化（force/未存在/未指定/一致/不一致）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (22 tests)
+
+- `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts` / `beta/viewer.html` / `beta/viewer.css`
+	- cloud 競合解決フロー（savedAt 比較 + `409 CLOUD_CONFLICT` + 手動解決UI）を追加
+	- `Use Local` (force push) / `Use Cloud` (pull) の明示解決導線を実装
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts`
+	- cloud sync の最小導線（status/pull/push）を追加
+	- `M3E_CLOUD_SYNC=1` 時のみ有効、既存 local-first 導線は維持
+- `beta/README.md`
+	- cloud sync（file-mirror mode）の起動設定を追記
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
+	- 重要度ビュー（All / Medium+High / High only）を追加
+	- importance 属性ベースで Tree/Linear 両方を同一ルールでフィルタ
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
+	- Tree 右側に Linear パネル（current scope 対象）を実装
+	- Tree 選択と Linear 行選択の相互同期を追加
+	- Apply で Linear -> Tree 変換を実装（失敗時 fail-closed）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `dev-docs/03_Spec/Linear_Tree_Conversion.md` を追加
+	- Linear <-> Tree 変換のビジョン整合（Tree 正本 / scope 基準 / 可逆性レベル）を定義
+	- L1（インデント）と L2（Markdown）の段階導入方針を明文化
+- `dev-docs/03_Spec/Import_Export.md`
+	- 線形変換仕様への参照を追加
+- `dev-docs/06_Operations/Decision_Pool.md`
+	- 変換方針を working-agreement として登録（2026-04-02-001）
+- 記録先: `dev-docs/daily/260402.md`
+
 ## Update Log (2026-04-01 / Scope and Alias)
 
 - `scope` / `alias` の Beta 実装前提仕様を整理
@@ -40,6 +116,28 @@
 - 記録先: `dev-docs/daily/260401.md`
 
 ## Update Log (2026-04-01)
+
+- `beta/src/node/rapid_mvp.ts`
+	- scope クエリ引数名を `scopeId` から `scopeRootId` に明確化
+	- 挙動は「保存された scopeId 参照」ではなく「部分木 root 指定」であることを整理
+- `beta/tests/unit/rapid_mvp.test.js`
+	- reparent 後に query 結果が構造追従する回帰テストを追加
+	- node-level scope カスケード更新不要であることを検証
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/src/browser/viewer.globals.d.ts` / `beta/src/browser/viewer.ts`
+	- `ViewState` に `currentScopeId` / `scopeHistory` を追加
+	- `EnterScopeCommand` / `ExitScopeCommand` を実装（ViewStateのみ変更、Undo/Redo対象外）
+	- 画面表示と移動対象を `currentScopeId` の部分木に限定
+- `beta/src/node/rapid_mvp.ts`
+	- scope 指定クエリ API（`queryNodeIds(scopeId?)` / `queryNodes(scopeId?)`）を追加
+- `beta/tests/unit/rapid_mvp.test.js`
+	- scope query の unit test を追加
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
 
 - `mvp/src/browser/viewer.tuning.ts` に tuning 項目別コメントを追加
 - ノード縦間隔を調整

@@ -49,7 +49,30 @@
         padding: 0 2px;
       }
 
+      .cloud-sync-badge {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid #d8d8d8;
+        background: #f6f6f6;
+        color: #6b6b6b;
+      }
+
+      .cloud-sync-badge.on {
+        border-color: #7ebf95;
+        background: #e8f7ee;
+        color: #1f7a43;
+      }
+
+      .cloud-sync-badge.conflict {
+        border-color: #e0a35c;
+        background: #fff3e2;
+        color: #a35d16;
+      }
+
       button,
+      select,
       input[type="file"],
       input[type="text"] {
         border: 1px solid #d4d4d4;
@@ -102,7 +125,6 @@
       }
 
       .board {
-        margin-top: 14px;
         border: 1px solid #dfdfdf;
         border-radius: 14px;
         background: #ffffff55;
@@ -113,6 +135,67 @@
         cursor: grab;
         user-select: none;
         touch-action: none;
+      }
+
+      .workspace {
+        margin-top: 14px;
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 380px;
+        gap: 12px;
+      }
+
+      .linear-panel {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #dfdfdf;
+        border-radius: 14px;
+        background: #ffffffd9;
+        backdrop-filter: blur(4px);
+        padding: 10px;
+        min-height: 0;
+      }
+
+      .linear-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .linear-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+
+      .linear-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .linear-meta {
+        margin-top: 8px;
+        min-height: 16px;
+        font-size: 12px;
+        color: #5d5d5d;
+      }
+
+      .linear-text {
+        margin-top: 8px;
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        resize: none;
+        border: 1px solid #d4d4d4;
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #222;
       }
 
       .board.panning {
@@ -269,6 +352,11 @@
       }
 
       @media (max-width: 900px) {
+        .workspace {
+          grid-template-columns: 1fr;
+          grid-template-rows: minmax(0, 1fr) 260px;
+        }
+
         .label-root,
         .label-node {
           font-size: 28px;
