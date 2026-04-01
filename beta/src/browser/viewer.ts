@@ -12,6 +12,7 @@ const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const deleteNodeBtn = document.getElementById("delete-node");
 const markReparentBtn = document.getElementById("mark-reparent");
 const applyReparentBtn = document.getElementById("apply-reparent");
+const importanceViewSelect = document.getElementById("importance-view") as HTMLSelectElement;
 const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
@@ -46,6 +47,8 @@ interface LinearNodeDraft {
   children: LinearNodeDraft[];
 }
 
+type ImportanceViewMode = "all" | "high-plus" | "high-only";
+
 let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -60,6 +63,8 @@ let redoStack: UndoSnapshot[] = [];
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
+let importanceViewMode: ImportanceViewMode = "all";
+let importanceVisibleNodeIds: Set<string> | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -401,7 +406,7 @@ function isNodeInScope(nodeId: string): boolean {
   return false;
 }
 
-function scopeChildren(nodeId: string): string[] {
+function scopedChildrenRaw(nodeId: string): string[] {
   if (!doc) {
     return [];
   }
@@ -410,6 +415,89 @@ function scopeChildren(nodeId: string): string[] {
     return [];
   }
   return (node.children || []).filter((childId) => isNodeInScope(childId));
+}
+
+function importanceScore(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return 0;
+  }
+  const attrs = node.attributes || {};
+  const raw = String(attrs["importance"] ?? attrs["priority"] ?? attrs["重要度"] ?? "").trim().toLowerCase();
+  if (!raw) {
+    return 0;
+  }
+  if (/^[0-9]+$/.test(raw)) {
+    return Math.max(0, Number(raw));
+  }
+  if (raw.includes("critical") || raw.includes("urgent") || raw.includes("highest") || raw.includes("緊急")) {
+    return 4;
+  }
+  if (raw === "h" || raw.includes("high") || raw.includes("top") || raw.includes("高")) {
+    return 3;
+  }
+  if (raw === "m" || raw.includes("medium") || raw.includes("mid") || raw.includes("中")) {
+    return 2;
+  }
+  if (raw === "l" || raw.includes("low") || raw.includes("低")) {
+    return 1;
+  }
+  return 0;
+}
+
+function isNodeVisibleByImportance(nodeId: string): boolean {
+  if (!importanceVisibleNodeIds) {
+    return true;
+  }
+  return importanceVisibleNodeIds.has(nodeId);
+}
+
+function rebuildImportanceVisibility(): void {
+  if (!doc || importanceViewMode === "all") {
+    importanceVisibleNodeIds = null;
+    return;
+  }
+
+  const threshold = importanceViewMode === "high-only" ? 3 : 2;
+  const scopeRootId = normalizedCurrentScopeId();
+  const visible = new Set<string>();
+
+  function walk(nodeId: string): boolean {
+    const node = doc!.state.nodes[nodeId];
+    if (!node) {
+      return false;
+    }
+    const selfMatched = importanceScore(nodeId) >= threshold;
+    let childMatched = false;
+    scopedChildrenRaw(nodeId).forEach((childId) => {
+      if (walk(childId)) {
+        childMatched = true;
+      }
+    });
+    const keep = selfMatched || childMatched;
+    if (keep) {
+      visible.add(nodeId);
+    }
+    return keep;
+  }
+
+  walk(scopeRootId);
+  visible.add(scopeRootId);
+  importanceVisibleNodeIds = visible;
+}
+
+function scopeChildren(nodeId: string): string[] {
+  if (!doc) {
+    return [];
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return [];
+  }
+  return scopedChildrenRaw(nodeId).filter((childId) => isNodeVisibleByImportance(childId));
 }
 
 function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
@@ -497,7 +585,7 @@ function renderLinearPanel(): void {
   const scopeRootId = normalizedCurrentScopeId();
   const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
   const dirtyLabel = linearDirty ? "dirty" : "synced";
-  linearMetaEl.textContent = `scope: ${scopeLabel} | lines: ${linearLineMap.length} | ${dirtyLabel}`;
+  linearMetaEl.textContent = `scope: ${scopeLabel} | importance: ${importanceViewMode} | lines: ${linearLineMap.length} | ${dirtyLabel}`;
   linearApplyBtn.disabled = !linearDirty;
   linearResetBtn.disabled = !linearDirty;
 
@@ -761,6 +849,11 @@ function render(): void {
     return;
   }
 
+  rebuildImportanceVisibility();
+  if (!isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = normalizedCurrentScopeId();
+  }
+
   const state = doc.state;
   const layout = buildLayout(state);
   lastLayout = layout;
@@ -879,7 +972,7 @@ function render(): void {
     const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dropLabel}`;
   syncInlineEditorPosition();
   renderLinearPanel();
 }
@@ -1129,7 +1222,7 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
 
 function selectNode(nodeId: string): void {
   getNode(nodeId);
-  if (!isNodeInScope(nodeId)) {
+  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
     return;
   }
   viewState.selectedNodeId = nodeId;
@@ -1829,6 +1922,14 @@ linearResetBtn?.addEventListener("click", () => {
   linearDirty = false;
   renderLinearPanel();
   setStatus("Linear text reset to tree state.");
+});
+
+importanceViewSelect?.addEventListener("change", () => {
+  const nextMode = importanceViewSelect.value as ImportanceViewMode;
+  importanceViewMode = nextMode;
+  linearDirty = false;
+  render();
+  setStatus(`Importance view: ${nextMode}`);
 });
 
 addChildBtn?.addEventListener("click", () => {

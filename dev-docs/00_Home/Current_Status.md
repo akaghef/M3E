@@ -3,6 +3,13 @@
 ## Update Log (2026-04-02)
 
 - `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
+	- 重要度ビュー（All / Medium+High / High only）を追加
+	- importance 属性ベースで Tree/Linear 両方を同一ルールでフィルタ
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
 	- Tree 右側に Linear パネル（current scope 対象）を実装
 	- Tree 選択と Linear 行選択の相互同期を追加
 	- Apply で Linear -> Tree 変換を実装（失敗時 fail-closed）

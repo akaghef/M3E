@@ -50,6 +50,7 @@
       }
 
       button,
+      select,
       input[type="file"],
       input[type="text"] {
         border: 1px solid #d4d4d4;
