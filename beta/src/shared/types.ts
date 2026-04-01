@@ -3,6 +3,7 @@ export interface TreeNode {
   parentId: string | null;
   children: string[];
   text: string;
+  collapsed: boolean;
   details: string;
   note: string;
   attributes: Record<string, string>;

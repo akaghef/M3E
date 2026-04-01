@@ -51,7 +51,7 @@ interface TreeNode {
   parentId: string | null
   children: string[]     // 順序付き子 ID 配列
   text: string
-  collapsed: boolean
+  collapsed: boolean     // 折り畳み状態。PersistedDocument の一部として保存する
   details: string
   note: string
   attributes: Record<string, string>

@@ -66,6 +66,7 @@ function createNodeRecord(id: string, parentId: string | null, text = "New Node"
     parentId,
     children: [],
     text,
+    collapsed: false,
     details: "",
     note: "",
     attributes: {},
@@ -98,6 +99,7 @@ function ensureDocShape(payload: unknown): SavedDoc {
   Object.values(candidate.state.nodes).forEach((node) => {
     node.children = Array.isArray(node.children) ? node.children : [];
     node.text = node.text || "";
+    node.collapsed = node.collapsed === true;
     node.details = node.details || "";
     node.note = node.note || "";
     node.attributes = (node.attributes && typeof node.attributes === "object") ? node.attributes : {};
@@ -158,7 +160,7 @@ function parseMmText(xmlText: string): SavedDoc {
       richContentText(mmNode, "NODE") ||
       "(empty)";
     const record = createNodeRecord(id, parentId, text);
-    (record as unknown as Record<string, unknown>)["collapsed"] = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
+    record.collapsed = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
     record.link = mmNode.getAttribute("LINK") || "";
     record.details = richContentText(mmNode, "DETAILS");
     record.note = richContentText(mmNode, "NOTE");
@@ -851,6 +853,7 @@ function addChild(): void {
   doc!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
+  parent.collapsed = false;
   viewState.selectedNodeId = id;
   touchDocument();
   board.focus();
@@ -980,10 +983,12 @@ function toggleCollapse(): void {
   }
   if (viewState.collapsedIds.has(nodeId)) {
     viewState.collapsedIds.delete(nodeId);
+    node.collapsed = false;
   } else {
     viewState.collapsedIds.add(nodeId);
+    node.collapsed = true;
   }
-  render();
+  touchDocument();
 }
 
 function downloadJson(): void {
@@ -1191,7 +1196,7 @@ function loadPayload(payload: unknown): void {
     viewState.reparentSourceId = "";
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
-        .filter((n) => (n as unknown as Record<string, unknown>)["collapsed"] === true)
+        .filter((n) => n.collapsed === true)
         .map((n) => n.id),
     );
     render();
@@ -1388,6 +1393,7 @@ function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, tar
   newParent.children.splice(boundedIndex, 0, sourceId);
   if (expandParent) {
     viewState.collapsedIds.delete(targetParentId);
+    newParent.collapsed = false;
   }
   sourceNode.parentId = targetParentId;
   viewState.reparentSourceId = "";

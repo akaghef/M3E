@@ -36,7 +36,6 @@
 `ViewState` はセッション状態であり、次を含む。
 
 - `selectedNodeId`
-- `expandedNodeIds`
 - `viewport`（pan/zoom）
 - `dragState`
 - `hoverState`
@@ -67,10 +66,15 @@
 - `type: "text" | "image" | "folder" | "alias"`
 - `parentId: string | null`
 - `children: string[]`（順序意味あり）
-- `scopeId: string`
+- `collapsed: boolean`（折り畳み状態。ドキュメントに保存する）
 - `content: object`（型ごとに構造を定義）
 - `createdAt: string (ISO8601)`
 - `updatedAt: string (ISO8601)`
+
+補足:
+
+- `scopeId` は保存しない
+- ノードの所属 scope は親子構造から導出する
 
 ### 2.3 型別 MUST
 
@@ -89,6 +93,13 @@
 - alias は実体ノードのみを参照する（alias -> alias 禁止）。
 - 実体ノードは単一 scope にのみ所属する。
 
+### 2.5 Scope 導出 MUST
+
+- ノード所属 scope は `folder` 境界を使って導出する。
+- 導出値は「自分自身を含む祖先列で最も近い `folder` ノード ID」とする。
+- 祖先に `folder` が無い場合は document `rootId` を scope root とみなす。
+- `reparent` 後に scope が変わるノードがあっても、永続データ更新は `parentId` / `children` のみでよい（scope は再導出されるため）。
+
 ---
 
 ## 3. Schema v2 設計
@@ -98,7 +109,6 @@
 v1 は以下が不足している。
 
 - `type`
-- `scopeId`
 - `createdAt` / `updatedAt`
 - `meta`（documentレベル）
 - `content` の型分離（現在は text/details/note/link 併置）
@@ -121,7 +131,6 @@ v2 では MUST 項目を満たす構造へ移行する。
       "type": "text",
       "parentId": null,
       "children": ["n_a"],
-      "scopeId": "scope_root",
       "content": { "text": "Root" },
       "createdAt": "2026-04-01T10:00:00.000Z",
       "updatedAt": "2026-04-01T10:00:00.000Z"
@@ -139,7 +148,7 @@ v2 では MUST 項目を満たす構造へ移行する。
 ### 3.4 v1 -> v2 変換ルール
 
 - `type` が無いノードは `"text"` を付与
-- `scopeId` が無いノードは `"scope_root"` を付与
+- `scopeId` が存在しても保存対象から除外（破棄）
 - `createdAt/updatedAt` は migration 時刻で埋める
 - 既存 `text/details/note/link/attributes` は `content` へ再配置
 - document-level `meta` を新規生成
