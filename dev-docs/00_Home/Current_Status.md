@@ -2,6 +2,16 @@
 
 ## Update Log (2026-04-01)
 
+- `beta/src/node/rapid_mvp.ts`
+	- scope クエリ引数名を `scopeId` から `scopeRootId` に明確化
+	- 挙動は「保存された scopeId 参照」ではなく「部分木 root 指定」であることを整理
+- `beta/tests/unit/rapid_mvp.test.js`
+	- reparent 後に query 結果が構造追従する回帰テストを追加
+	- node-level scope カスケード更新不要であることを検証
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
 - `beta/src/browser/viewer.globals.d.ts` / `beta/src/browser/viewer.ts`
 	- `ViewState` に `currentScopeId` / `scopeHistory` を追加
 	- `EnterScopeCommand` / `ExitScopeCommand` を実装（ViewStateのみ変更、Undo/Redo対象外）
