@@ -26,6 +26,11 @@ const linearTextEl = document.getElementById("linear-text") as HTMLTextAreaEleme
 const linearMetaEl = document.getElementById("linear-meta") as HTMLElement;
 const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement;
 const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement;
+const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
+const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
+const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
+const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
+const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
 const LOCAL_DOC_ID = "rapid-main";
 const CLOUD_DOC_ID = "rapid-main";
 const AUTOSAVE_DELAY_MS = 700;
@@ -67,6 +72,9 @@ let suppressLinearSelectionSync = false;
 let importanceViewMode: ImportanceViewMode = "all";
 let importanceVisibleNodeIds: Set<string> | null = null;
 let cloudSyncEnabled = false;
+let cloudSyncExists = false;
+let cloudSavedAt: string | null = null;
+let cloudConflictPending = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -86,6 +94,33 @@ let viewState: ViewState = {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function updateCloudSyncUi(): void {
+  if (!cloudSyncBadgeEl) {
+    return;
+  }
+
+  cloudSyncBadgeEl.classList.remove("on", "conflict");
+  if (!cloudSyncEnabled) {
+    cloudSyncBadgeEl.textContent = "Cloud: off";
+    if (cloudPullBtn) cloudPullBtn.disabled = true;
+    if (cloudPushBtn) cloudPushBtn.disabled = true;
+    if (cloudUseLocalBtn) cloudUseLocalBtn.hidden = true;
+    if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = true;
+    return;
+  }
+
+  cloudSyncBadgeEl.classList.add(cloudConflictPending ? "conflict" : "on");
+  const savedAtLabel = cloudSavedAt ? cloudSavedAt : "none";
+  cloudSyncBadgeEl.textContent = cloudConflictPending
+    ? `Cloud: conflict (${savedAtLabel})`
+    : `Cloud: on (${savedAtLabel})`;
+
+  if (cloudPullBtn) cloudPullBtn.disabled = false;
+  if (cloudPushBtn) cloudPushBtn.disabled = false;
+  if (cloudUseLocalBtn) cloudUseLocalBtn.hidden = !cloudConflictPending;
+  if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = !cloudConflictPending;
 }
 
 function createNodeRecord(id: string, parentId: string | null, text = "New Node"): TreeNode {
@@ -1468,27 +1503,54 @@ async function fetchCloudSyncStatus(): Promise<void> {
     const response = await fetch(`/api/sync/status/${encodeURIComponent(CLOUD_DOC_ID)}`, { cache: "no-store" });
     if (!response.ok) {
       cloudSyncEnabled = false;
+      cloudSyncExists = false;
+      cloudSavedAt = null;
+      updateCloudSyncUi();
       return;
     }
-    const payload = await response.json().catch(() => ({ enabled: false }));
+    const payload = await response.json().catch(() => ({ enabled: false, exists: false, cloudSavedAt: null }));
     cloudSyncEnabled = Boolean(payload.enabled);
+    cloudSyncExists = Boolean(payload.exists);
+    cloudSavedAt = payload.cloudSavedAt ? String(payload.cloudSavedAt) : null;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
   } catch {
     cloudSyncEnabled = false;
+    cloudSyncExists = false;
+    cloudSavedAt = null;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
   }
 }
 
-async function pushDocToCloud(showStatus = false): Promise<boolean> {
+async function pushDocToCloud(showStatus = false, force = false): Promise<boolean> {
   if (!doc || !cloudSyncEnabled) {
     return false;
   }
   try {
+    const baseSavedAt = cloudSavedAt;
     const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_DOC_ID)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
       },
-      body: JSON.stringify(currentDocSnapshot()),
+      body: JSON.stringify({
+        ...currentDocSnapshot(),
+        baseSavedAt,
+        force,
+      }),
     });
+
+    if (response.status === 409) {
+      const conflict = await response.json().catch(() => ({ cloudSavedAt: null }));
+      cloudConflictPending = true;
+      cloudSavedAt = conflict.cloudSavedAt ? String(conflict.cloudSavedAt) : cloudSavedAt;
+      updateCloudSyncUi();
+      if (showStatus) {
+        setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
+      }
+      return false;
+    }
 
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
@@ -1497,8 +1559,12 @@ async function pushDocToCloud(showStatus = false): Promise<boolean> {
 
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     doc.savedAt = String(payload.savedAt || nowIso());
+    cloudSavedAt = String(payload.savedAt || nowIso());
+    cloudSyncExists = true;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
     if (showStatus) {
-      setStatus("Cloud sync push completed.");
+      setStatus(force ? "Cloud sync force-push completed." : "Cloud sync push completed.");
     }
     render();
     return true;
@@ -1524,6 +1590,9 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     });
 
     if (response.status === 404) {
+      cloudSyncExists = false;
+      cloudSavedAt = null;
+      updateCloudSyncUi();
       return false;
     }
 
@@ -1534,6 +1603,10 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
 
     const payload = await response.json();
     loadPayload(payload);
+    cloudSyncExists = true;
+    cloudSavedAt = payload.savedAt ? String(payload.savedAt) : null;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
     if (showStatus) {
       setStatus("Loaded cloud document.");
     }
@@ -1604,9 +1677,11 @@ async function loadDefaultSample(): Promise<void> {
 async function initializeDocument(): Promise<void> {
   await fetchCloudSyncStatus();
 
-  const loadedFromCloud = await pullDocFromCloud(false);
-  if (loadedFromCloud) {
-    return;
+  if (cloudSyncEnabled && cloudSyncExists) {
+    const loadedFromCloud = await pullDocFromCloud(false);
+    if (loadedFromCloud) {
+      return;
+    }
   }
 
   const loadedFromDb = await loadDocFromLocalDb(false);
@@ -2019,6 +2094,28 @@ linearResetBtn?.addEventListener("click", () => {
   setStatus("Linear text reset to tree state.");
 });
 
+cloudPullBtn?.addEventListener("click", async () => {
+  const pulled = await pullDocFromCloud(true);
+  if (!pulled) {
+    setStatus("Cloud document not found.", true);
+  }
+});
+
+cloudPushBtn?.addEventListener("click", async () => {
+  await pushDocToCloud(true);
+});
+
+cloudUseLocalBtn?.addEventListener("click", async () => {
+  await pushDocToCloud(true, true);
+});
+
+cloudUseCloudBtn?.addEventListener("click", async () => {
+  const pulled = await pullDocFromCloud(true);
+  if (!pulled) {
+    setStatus("Cloud document not found.", true);
+  }
+});
+
 importanceViewSelect?.addEventListener("change", () => {
   const nextMode = importanceViewSelect.value as ImportanceViewMode;
   importanceViewMode = nextMode;
@@ -2335,6 +2432,8 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 });
 
 setVisualCheckStatus("Visual check idle");
+
+updateCloudSyncUi();
 
 void initializeDocument().then(() => {
   fitDocument() || applyZoom();

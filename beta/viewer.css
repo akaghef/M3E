@@ -49,6 +49,28 @@
         padding: 0 2px;
       }
 
+      .cloud-sync-badge {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid #d8d8d8;
+        background: #f6f6f6;
+        color: #6b6b6b;
+      }
+
+      .cloud-sync-badge.on {
+        border-color: #7ebf95;
+        background: #e8f7ee;
+        color: #1f7a43;
+      }
+
+      .cloud-sync-badge.conflict {
+        border-color: #e0a35c;
+        background: #fff3e2;
+        color: #a35d16;
+      }
+
       button,
       select,
       input[type="file"],

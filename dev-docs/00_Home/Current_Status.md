@@ -2,6 +2,13 @@
 
 ## Update Log (2026-04-02)
 
+- `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts` / `beta/viewer.html` / `beta/viewer.css`
+	- cloud 競合解決フロー（savedAt 比較 + `409 CLOUD_CONFLICT` + 手動解決UI）を追加
+	- `Use Local` (force push) / `Use Cloud` (pull) の明示解決導線を実装
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
 - `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts`
 	- cloud sync の最小導線（status/pull/push）を追加
 	- `M3E_CLOUD_SYNC=1` 時のみ有効、既存 local-first 導線は維持

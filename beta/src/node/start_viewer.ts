@@ -120,6 +120,17 @@ function ensureCloudSyncDir(): void {
   }
 }
 
+function readCloudDoc(filePath: string): SavedDoc | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as SavedDoc;
+  if (!parsed || parsed.version !== 1 || !parsed.state) {
+    return null;
+  }
+  return parsed;
+}
+
 function readRequestBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -220,11 +231,13 @@ async function handleSyncApi(
 
   if (route.action === "status" && req.method === "GET") {
     const exists = fs.existsSync(filePath);
+    const cloudDoc = exists ? readCloudDoc(filePath) : null;
     sendJson(res, 200, {
       enabled: true,
       mode: "file-mirror",
       documentId: route.docId,
       exists,
+      cloudSavedAt: cloudDoc?.savedAt ?? null,
       lastSyncedAt: exists ? fs.statSync(filePath).mtime.toISOString() : null,
     });
     return true;
@@ -267,10 +280,29 @@ async function handleSyncApi(
   if (route.action === "push" && req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
       if (!candidate.state) {
         sendJson(res, 400, { error: "Invalid JSON format." });
+        return true;
+      }
+
+      const existingCloudDoc = readCloudDoc(filePath);
+      const baseSavedAt = parsed.baseSavedAt ?? null;
+      const forcePush = Boolean(parsed.force);
+      if (
+        existingCloudDoc &&
+        baseSavedAt &&
+        existingCloudDoc.savedAt !== baseSavedAt &&
+        !forcePush
+      ) {
+        sendJson(res, 409, {
+          error: "Cloud conflict detected.",
+          code: "CLOUD_CONFLICT",
+          cloudSavedAt: existingCloudDoc.savedAt,
+          baseSavedAt,
+          documentId: route.docId,
+        });
         return true;
       }
 
@@ -292,6 +324,7 @@ async function handleSyncApi(
         mode: "file-mirror",
         savedAt: payload.savedAt,
         documentId: route.docId,
+        forced: forcePush,
       });
       return true;
     } catch (err) {
