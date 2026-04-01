@@ -15,6 +15,7 @@ final/node_modules/
 final/dist/
 final/.env
 final/data/*.sqlite
+final/data/rapid-sample.json
 final/test-results/
 
 .claude/
