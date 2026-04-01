@@ -71,6 +71,16 @@
 - [ ] ツールバー密度の整理（日常使いに適した配置）
 - [ ] 折りたたみ状態が常に明確に見えること
 
+### Scope 遷移（仕様確定・実装待ち）
+
+- [ ] `currentScopeId` / `scopeHistory` を ViewState に追加
+- [ ] folder ノードのダブルクリックで EnterScope（text ノードとの動作分岐）
+- [ ] ツールバー「← 戻る」ボタンで ExitScope
+- [ ] ブレッドクラム表示（クリックで直接ジャンプ）
+- [ ] スコープ外ノードの非表示フィルタ
+- [ ] `Alt+Enter` / `Backspace` キーバインド
+- [ ] ViewState のセッション保存・復元（`currentScopeId`）
+
 ### P3 — MVP 完全性
 
 - [ ] ViewState と document state の分離を実装（schema v2 に基づく）
@@ -142,6 +152,7 @@
 
 - MVP definition: [MVP_Definition.md](../02_Strategy/MVP_Definition.md)
 - Band spec: [Band_Spec.md](../03_Spec/Band_Spec.md)
+- Scope transition spec: [Scope_Transition.md](../03_Spec/Scope_Transition.md)
 - AI integration spec: [AI_Integration.md](../03_Spec/AI_Integration.md)
 - Model state/schema v2: [Model_State_And_Schema_V2.md](../03_Spec/Model_State_And_Schema_V2.md)
 - Custom engine ADR: [ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
