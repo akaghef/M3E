@@ -180,6 +180,8 @@ M3E → `.mm` のエクスポートは未実装。以下は将来の設計方針
 
 ## 将来対応候補
 
+Linear <-> Tree 変換の詳細方針は `Linear_Tree_Conversion.md` を参照。
+
 ### インデントテキスト Import
 
 ```
@@ -203,6 +205,7 @@ M3E → `.mm` のエクスポートは未実装。以下は将来の設計方針
 ## 関連文書
 
 - データモデル不変条件: [./Data_Model.md](./Data_Model.md)
+- Linear <-> Tree 変換仕様: [./Linear_Tree_Conversion.md](./Linear_Tree_Conversion.md)
 - Freeplane マッピング方針: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
 - カスタムエンジン採択: [../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
 - SQLite 採択: [../09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md](../09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md)

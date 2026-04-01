@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-04-02-001
+
+- Date: 2026-04-02
+- Topic: Linear <-> Tree 変換を scope 基準で設計する
+- Status: working-agreement
+- Decision: 正本は Tree のまま維持し、Linear は入出力インターフェースとして扱う。既定の変換単位は `currentScopeId` の部分木とし、L1（インデント）を可逆優先、L2（Markdown）を準可逆として段階導入する。
+- Why: 入力速度を上げつつ、主構造（親子）と認知境界（scope）を壊さないため
+- Next: L1 export/import の最小実装と round-trip テストを追加する
+- Source: 2026-04-02 の Linear/Tree 変換ビジョン確認
+- Promoted: [../03_Spec/Linear_Tree_Conversion.md](../03_Spec/Linear_Tree_Conversion.md)
+
 ## 2026-03-30-004
 
 - Date: 2026-03-30

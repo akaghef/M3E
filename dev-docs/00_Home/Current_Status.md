@@ -1,5 +1,16 @@
 # Current Status
 
+## Update Log (2026-04-02)
+
+- `dev-docs/03_Spec/Linear_Tree_Conversion.md` を追加
+	- Linear <-> Tree 変換のビジョン整合（Tree 正本 / scope 基準 / 可逆性レベル）を定義
+	- L1（インデント）と L2（Markdown）の段階導入方針を明文化
+- `dev-docs/03_Spec/Import_Export.md`
+	- 線形変換仕様への参照を追加
+- `dev-docs/06_Operations/Decision_Pool.md`
+	- 変換方針を working-agreement として登録（2026-04-02-001）
+- 記録先: `dev-docs/daily/260402.md`
+
 ## Update Log (2026-04-01)
 
 - `beta/src/node/rapid_mvp.ts`
