@@ -102,7 +102,6 @@
       }
 
       .board {
-        margin-top: 14px;
         border: 1px solid #dfdfdf;
         border-radius: 14px;
         background: #ffffff55;
@@ -113,6 +112,67 @@
         cursor: grab;
         user-select: none;
         touch-action: none;
+      }
+
+      .workspace {
+        margin-top: 14px;
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 380px;
+        gap: 12px;
+      }
+
+      .linear-panel {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #dfdfdf;
+        border-radius: 14px;
+        background: #ffffffd9;
+        backdrop-filter: blur(4px);
+        padding: 10px;
+        min-height: 0;
+      }
+
+      .linear-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .linear-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+
+      .linear-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .linear-meta {
+        margin-top: 8px;
+        min-height: 16px;
+        font-size: 12px;
+        color: #5d5d5d;
+      }
+
+      .linear-text {
+        margin-top: 8px;
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        resize: none;
+        border: 1px solid #d4d4d4;
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #222;
       }
 
       .board.panning {
@@ -208,6 +268,11 @@
       }
 
       @media (max-width: 900px) {
+        .workspace {
+          grid-template-columns: 1fr;
+          grid-template-rows: minmax(0, 1fr) 260px;
+        }
+
         .label-root,
         .label-node {
           font-size: 28px;

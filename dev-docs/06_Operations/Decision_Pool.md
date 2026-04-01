@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-04-02-002
+
+- Date: 2026-04-02
+- Topic: Linear 変換 UI は Tree 右側パネルで提供する
+- Status: working-agreement
+- Decision: Rapid では Tree の右側に current scope 用 Linear テキストパネルを配置し、Tree 選択と行選択を同期する。Linear 編集は即時反映せず Apply 時に一括反映し、失敗時は fail-closed で中断する。
+- Why: 構造と文章の対応を見やすくしつつ、曖昧入力による部分破壊を防ぐため
+- Next: parser/reconcile の回帰テストを追加して誤変換の再発を防止する
+- Source: 2026-04-02 の UI 仕様確定と実装作業
+- Promoted: [../03_Spec/Linear_Tree_Conversion.md](../03_Spec/Linear_Tree_Conversion.md)
+
 ## 2026-04-02-001
 
 - Date: 2026-04-02

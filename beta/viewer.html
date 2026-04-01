@@ -44,8 +44,26 @@
       </div>
       <div id="status" class="status"></div>
       <div id="visual-check" class="visual-check">Visual check idle</div>
-      <div id="board" class="board" tabindex="0">
-        <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
+      <div class="workspace">
+        <div id="board" class="board" tabindex="0">
+          <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
+        </div>
+        <aside class="linear-panel" aria-label="Linear tree editor panel">
+          <div class="linear-panel-header">
+            <div class="linear-title">Linear (Scope)</div>
+            <div class="linear-actions">
+              <button id="linear-reset">Reset</button>
+              <button id="linear-apply" class="primary">Apply</button>
+            </div>
+          </div>
+          <div id="linear-meta" class="linear-meta">Scope text view</div>
+          <textarea
+            id="linear-text"
+            class="linear-text"
+            spellcheck="false"
+            aria-label="Linear text mapped from current tree scope"
+          ></textarea>
+        </aside>
       </div>
     </div>
 
