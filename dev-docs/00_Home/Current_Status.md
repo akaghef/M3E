@@ -2,6 +2,12 @@
 
 ## Update Log (2026-04-02)
 
+- `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の異常系 HTTP テストを追加（broken JSON / unsupported format / invalid model / method 405）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
+
 - `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
 	- sync API の HTTP 統合テストを追加（status/push/pull + conflict/force）
 	- `createAppServer` を公開し、import 時の自動起動副作用を排除

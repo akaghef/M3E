@@ -126,3 +126,62 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
   assert.equal(forcedPush.response.status, 200);
   assert.equal(forcedPush.payload.forced, true);
 });
+
+test("sync pull returns 500 when cloud file JSON is broken", async () => {
+  const docId = "broken-json";
+  const filePath = path.join(tempCloudDir, `${docId}.json`);
+  fs.writeFileSync(filePath, "{ invalid", "utf8");
+
+  const pulled = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({}),
+  });
+
+  assert.equal(pulled.response.status, 500);
+  assert.equal(typeof pulled.payload.error, "string");
+});
+
+test("sync pull returns 400 for unsupported cloud document format", async () => {
+  const docId = "unsupported-format";
+  const filePath = path.join(tempCloudDir, `${docId}.json`);
+  fs.writeFileSync(filePath, JSON.stringify({ version: 99, state: {} }), "utf8");
+
+  const pulled = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({}),
+  });
+
+  assert.equal(pulled.response.status, 400);
+  assert.equal(pulled.payload.error, "Cloud document has unsupported format.");
+});
+
+test("sync push returns 400 for structurally invalid model", async () => {
+  const docId = "invalid-model";
+  const pushed = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ state: { rootId: "missing-root", nodes: {} } }),
+  });
+
+  assert.equal(pushed.response.status, 400);
+  assert.equal(typeof pushed.payload.error, "string");
+});
+
+test("sync endpoints return 405 on unsupported method", async () => {
+  const docId = "method-not-allowed";
+
+  const statusPost = await requestJson(`${baseUrl}/api/sync/status/${docId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({}),
+  });
+  assert.equal(statusPost.response.status, 405);
+
+  const pushGet = await requestJson(`${baseUrl}/api/sync/push/${docId}`);
+  assert.equal(pushGet.response.status, 405);
+
+  const pullGet = await requestJson(`${baseUrl}/api/sync/pull/${docId}`);
+  assert.equal(pullGet.response.status, 405);
+});
