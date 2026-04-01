@@ -14,6 +14,12 @@
         <button id="load-aircraft-mm">Aircraft.mm</button>
         <input id="file-input" type="file" accept=".json,.mm,application/json,text/xml,application/xml" />
         <span class="toolbar-sep">|</span>
+        <div class="mode-switch" aria-label="Thinking mode">
+          <button id="mode-flash" class="mode-btn" type="button">Flash</button>
+          <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
+          <button id="mode-deep" class="mode-btn" type="button">Deep</button>
+        </div>
+        <span class="toolbar-sep">|</span>
         <button id="add-child">Add child</button>
         <button id="add-sibling">Add sibling</button>
         <button id="make-folder">Make folder</button>
@@ -35,12 +41,14 @@
         <span class="toolbar-sep">|</span>
         <button id="download-btn">Download JSON</button>
       </div>
+      <div id="mode-meta" class="meta">mode: Rapid</div>
       <div id="scope-meta" class="meta">scope: root</div>
       <div id="scope-summary" class="meta">outside: none</div>
       <div id="meta" class="meta">No data loaded</div>
       <div class="shortcuts">
         Shortcuts:
         Click select |
+        1/2/3 mode |
         Tab add child |
         Enter add sibling |
         Ctrl/Cmd+] enter scope |

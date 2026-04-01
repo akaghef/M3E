@@ -1,5 +1,22 @@
 # Current Status
 
+## Update Log (2026-04-02 / Flash Rapid Deep UI)
+
+- `beta` viewer に `Flash` / `Rapid` / `Deep` の mode switch UI を追加
+- `beta/viewer.html`
+  - mode switch ボタン群と `mode: ...` meta を追加
+  - `1/2/3` ショートカット表示を追加
+- `beta/src/browser/viewer.globals.d.ts`
+  - `ThinkingMode` 型と `ViewState.thinkingMode` を追加
+- `beta/src/browser/viewer.ts`
+  - 非永続の viewer state として `thinkingMode` を追加
+  - toolbar ボタンと `1/2/3` キーで mode 切替できるように変更
+  - active button / mode meta を同期する処理を追加
+  - document load 時は `Rapid` を既定 mode に戻すようにした
+- `beta/viewer.css`
+  - mode switch の active 状態スタイルを追加
+- 記録先: `dev-docs/daily/260402.md`
+
 ## Update Log (2026-04-02 / Scope Move)
 
 - `beta` viewer に最小 scope 移動を追加

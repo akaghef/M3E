@@ -42,6 +42,27 @@
         padding: 8px;
       }
 
+      .mode-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px;
+        border: 1px solid #d4d4d4;
+        border-radius: 10px;
+        background: #ffffff;
+      }
+
+      .mode-btn {
+        min-width: 72px;
+      }
+
+      .mode-btn.is-active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: #5221b2;
+        font-weight: 700;
+      }
+
       .toolbar-sep {
         color: #ccc;
         font-size: 18px;

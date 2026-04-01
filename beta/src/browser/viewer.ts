@@ -4,6 +4,9 @@ const loadAirplaneBtn = document.getElementById("load-airplane");
 const loadAircraftMmBtn = document.getElementById("load-aircraft-mm");
 const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
 const stopVisualCheckBtn = document.getElementById("stop-visual-check");
+const modeFlashBtn = document.getElementById("mode-flash");
+const modeRapidBtn = document.getElementById("mode-rapid");
+const modeDeepBtn = document.getElementById("mode-deep");
 const fitAllBtn = document.getElementById("fit-all");
 const focusSelectedBtn = document.getElementById("focus-selected");
 const addChildBtn = document.getElementById("add-child");
@@ -21,6 +24,7 @@ const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
 const downloadBtn = document.getElementById("download-btn");
+const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
 const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
@@ -55,6 +59,7 @@ const DRAG_REORDER_PARENT_LANE_PAD = 96;
 let viewState: ViewState = {
   selectedNodeId: "",
   currentScopeRootId: "",
+  thinkingMode: "rapid",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -63,6 +68,36 @@ let viewState: ViewState = {
   dragState: null,
   collapsedIds: new Set<string>(),
 };
+
+function thinkingModeLabel(mode: ThinkingMode): string {
+  switch (mode) {
+    case "flash":
+      return "Flash";
+    case "deep":
+      return "Deep";
+    case "rapid":
+    default:
+      return "Rapid";
+  }
+}
+
+function syncThinkingModeUi(): void {
+  const mode = viewState.thinkingMode;
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)}`;
+  modeFlashBtn?.classList.toggle("is-active", mode === "flash");
+  modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
+  modeDeepBtn?.classList.toggle("is-active", mode === "deep");
+}
+
+function setThinkingMode(mode: ThinkingMode): void {
+  if (viewState.thinkingMode === mode) {
+    syncThinkingModeUi();
+    return;
+  }
+  viewState.thinkingMode = mode;
+  syncThinkingModeUi();
+  setStatus(`Mode: ${thinkingModeLabel(mode)}`);
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -840,6 +875,7 @@ function buildLayout(state: AppState): LayoutResult {
 
 function render(): void {
   if (!doc) {
+    syncThinkingModeUi();
     updateScopeMeta();
     updateScopeSummary();
     metaEl.textContent = "No data loaded";
@@ -993,6 +1029,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   const scopeRoot = currentScopeRootNode();
+  syncThinkingModeUi();
   metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope-root: ${scopeRoot ? uiLabel(scopeRoot) : "n/a"} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
@@ -1631,6 +1668,7 @@ function loadPayload(payload: unknown): void {
     redoStack = [];
     viewState.selectedNodeId = doc.state.rootId;
     viewState.currentScopeRootId = doc.state.rootId;
+    viewState.thinkingMode = "rapid";
     viewState.reparentSourceId = "";
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
@@ -1879,6 +1917,18 @@ runAircraftVisualCheckBtn?.addEventListener("click", () => {
 
 stopVisualCheckBtn?.addEventListener("click", () => {
   stopVisualCheck();
+});
+
+modeFlashBtn?.addEventListener("click", () => {
+  setThinkingMode("flash");
+});
+
+modeRapidBtn?.addEventListener("click", () => {
+  setThinkingMode("rapid");
+});
+
+modeDeepBtn?.addEventListener("click", () => {
+  setThinkingMode("deep");
 });
 
 fileInput.addEventListener("change", (event: Event) => {
@@ -2178,6 +2228,24 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId);
     return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    if (event.key === "1") {
+      event.preventDefault();
+      setThinkingMode("flash");
+      return;
+    }
+    if (event.key === "2") {
+      event.preventDefault();
+      setThinkingMode("rapid");
+      return;
+    }
+    if (event.key === "3") {
+      event.preventDefault();
+      setThinkingMode("deep");
+      return;
+    }
   }
 
   if ((event.ctrlKey || event.metaKey) && event.key === "]") {
