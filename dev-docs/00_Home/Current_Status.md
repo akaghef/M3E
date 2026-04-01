@@ -10,6 +10,10 @@
   - root scope / folder scope / scope 所属規則を追加
   - alias ノードの最低限属性、表示/編集/整合性ルールを追加
   - Beta で固定することと保留事項を分離
+- `scope` / `alias` の訂正を反映
+  - target delete 時は alias を broken 化し、`元の名前 (deleted)` を既定表示にする
+  - alias に write 権限を設定できるようにする
+  - 同一 scope 内 alias を許可する
 - 記録先: `dev-docs/daily/260401.md`
 
 ## Update Log (2026-04-01)
@@ -102,6 +106,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - MVP persistence policy is documented as JSON model + SQLite persistence for Rapid MVP
 - `scope` は `folder` を入口とする認知境界として扱い、実体ノードは単一 scope 所属とする
 - 他 scope への再利用は `alias` 経由のみとし、`alias -> alias` は禁止する
+- alias は同一 scope 内参照も許可し、権限は alias 単位で持てる
 
 ## What Is Already Working
 
@@ -130,7 +135,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Minimal `reparent` UI now exists, but still needs refinement
 - Imported metadata is preserved but not yet rendered in the UI
 - `.mm` support is still MVP-level, not full Freeplane compatibility
-- `scope` / `alias` は仕様整理まで完了で、Beta model/save-load への実装は未着手
+- `scope` / `alias` は仕様訂正まで完了で、Beta model/save-load への実装は未着手
 - Some older docs still contain mojibake and need cleanup
 - CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
 
@@ -155,6 +160,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 3. CI パイプラインを `beta/**` にも対象拡張
 4. Demo 品質: ビジュアルポリッシュ・aircraft.mm クリーンレンダリング
 5. `scope` / `alias` の最小データ構造と save/load バリデーションを Beta model に落とす
+6. broken alias と alias access 権限の最小型を Beta model に追加する
 
 ## Related Documents
 

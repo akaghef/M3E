@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-04-01-002
+
+- Date: 2026-04-01
+- Topic: `scope` / `alias` 仕様の訂正
+- Status: working-agreement
+- Decision: target 実体 delete は alias 残存を理由に拒否せず、alias 側を broken 状態へ遷移させて表示名を `元の名前 (deleted)` とする。alias には write 権限設定を持てるようにし、同一 scope 内 alias も許可する。
+- Why: delete を過度に阻害せず参照喪失を分かりやすく残し、将来の alias 経由編集や同一 scope 内参照の用途を塞がないため
+- Next: `03_Spec/Scope_and_Alias.md` の delete / 権限 / 同一 scope 制約を訂正し、Beta model での最小表現に落とす
+- Source: このスレッドでの仕様修正指示
+- Promoted: [../03_Spec/Scope_and_Alias.md](../03_Spec/Scope_and_Alias.md)
+
 ## 2026-04-01-001
 
 - Date: 2026-04-01
