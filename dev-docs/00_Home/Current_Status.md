@@ -2,6 +2,13 @@
 
 ## Update Log (2026-04-02)
 
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の HTTP 統合テストを追加（status/push/pull + conflict/force）
+	- `createAppServer` を公開し、import 時の自動起動副作用を排除
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (24 tests)
+
 - `beta/src/node/cloud_sync.ts` / `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_conflict.test.js`
 	- cloud 競合判定ロジックを分離し、unit test を追加して回帰を固定
 	- `detectCloudConflict` で push 競合条件を明示化（force/未存在/未指定/一致/不一致）

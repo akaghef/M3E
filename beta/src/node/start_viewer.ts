@@ -338,7 +338,18 @@ async function handleSyncApi(
 }
 
 function startServer(): void {
-  const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+  const server = createAppServer();
+
+  server.listen(PORT, () => {
+    const url = `http://localhost:${PORT}/${DEFAULT_PAGE}`;
+    console.log(`Viewer ready: ${url}`);
+    openBrowser(url);
+    console.log("Press Ctrl+C to stop the server.");
+  });
+}
+
+export function createAppServer(): http.Server {
+  return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const syncRoute = parseSyncRoute(req.url ?? "/");
     if (syncRoute) {
       await handleSyncApi(req, res, syncRoute);
@@ -360,14 +371,9 @@ function startServer(): void {
 
     sendFile(res, target);
   });
-
-  server.listen(PORT, () => {
-    const url = `http://localhost:${PORT}/${DEFAULT_PAGE}`;
-    console.log(`Viewer ready: ${url}`);
-    openBrowser(url);
-    console.log("Press Ctrl+C to stop the server.");
-  });
 }
 
-runSampleGeneration();
-startServer();
+if (require.main === module) {
+  runSampleGeneration();
+  startServer();
+}
