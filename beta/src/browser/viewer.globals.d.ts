@@ -1,15 +1,25 @@
 // Global type declarations for the browser build (script-mode, no module system).
 // ViewerTuning and VIEWER_TUNING are declared in viewer.tuning.ts as globals.
 
+type NodeType = "text" | "image" | "folder" | "alias";
+type AliasAccess = "read" | "write";
+
 interface TreeNode {
   id: string;
   parentId: string | null;
   children: string[];
+  nodeType?: NodeType;
+  scopeId?: string;
   text: string;
   details: string;
   note: string;
   attributes: Record<string, string>;
   link: string;
+  targetNodeId?: string;
+  aliasLabel?: string;
+  access?: AliasAccess;
+  targetSnapshotLabel?: string;
+  isBroken?: boolean;
 }
 
 interface AppState {

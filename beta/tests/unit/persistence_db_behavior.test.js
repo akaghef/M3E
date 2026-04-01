@@ -103,12 +103,60 @@ test("saveToSqlite and loadFromSqlite round-trip", () => {
   const rootId = model.state.rootId;
   const child = model.addNode(rootId, "Child");
   model.editNode(child, "Child Updated");
+  model.addAlias(rootId, child, { aliasLabel: "Child Alias", access: "write" });
 
   const { base, filePath } = makeTempPath("nested", "rapid.sqlite");
   model.saveToSqlite(filePath, "doc-a");
 
   const loaded = RapidMvpModel.loadFromSqlite(filePath, "doc-a");
   assert.deepEqual(loaded.toJSON(), model.toJSON());
+
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test("loadFromFile accepts broken alias with snapshot label", () => {
+  const brokenState = {
+    rootId: "root",
+    nodes: {
+      root: {
+        id: "root",
+        parentId: null,
+        children: ["alias-1"],
+        nodeType: "text",
+        text: "Root",
+        details: "",
+        note: "",
+        attributes: {},
+        link: "",
+      },
+      "alias-1": {
+        id: "alias-1",
+        parentId: "root",
+        children: [],
+        nodeType: "alias",
+        text: "Lost Node (deleted)",
+        details: "",
+        note: "",
+        attributes: {},
+        link: "",
+        targetNodeId: "missing-node",
+        access: "read",
+        targetSnapshotLabel: "Lost Node",
+        isBroken: true,
+      },
+    },
+  };
+
+  const { base, filePath } = makeTempPath("broken-alias.json");
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify({ version: 1, savedAt: new Date().toISOString(), state: brokenState }),
+    "utf8",
+  );
+
+  const loaded = RapidMvpModel.loadFromFile(filePath);
+  assert.equal(loaded.state.nodes["alias-1"].isBroken, true);
+  assert.equal(loaded.state.nodes["alias-1"].targetSnapshotLabel, "Lost Node");
 
   fs.rmSync(base, { recursive: true, force: true });
 });

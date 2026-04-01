@@ -14,6 +14,14 @@
   - target delete 時は alias を broken 化し、`元の名前 (deleted)` を既定表示にする
   - alias に write 権限を設定できるようにする
   - 同一 scope 内 alias を許可する
+- `beta/` の model 最小実装を追加
+  - `TreeNode` に alias 系フィールドを追加
+  - `RapidMvpModel` に `addAlias` と broken alias 化を追加
+  - save/load validation に alias 整合性検証を追加
+- `beta` の unit test を拡張
+  - alias 含み round-trip
+  - broken alias load
+  - `alias -> alias` 禁止
 - 記録先: `dev-docs/daily/260401.md`
 
 ## Update Log (2026-04-01)
@@ -128,6 +136,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - SQLite persistence の最小保存/読込 API が model 層で動作（unit test 済み）
 - SQLite 保存/読込が viewer の通常導線から利用可能（起動時復元 + autosave）
 - ノードテキスト編集がノード上で完結（欄外編集は廃止）
+- Beta model で alias access / broken alias / `alias -> alias` 禁止の最小整合性が入った
 
 ## What Is Still Open
 
@@ -135,7 +144,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Minimal `reparent` UI now exists, but still needs refinement
 - Imported metadata is preserved but not yet rendered in the UI
 - `.mm` support is still MVP-level, not full Freeplane compatibility
-- `scope` / `alias` は仕様訂正まで完了で、Beta model/save-load への実装は未着手
+- `scope` / `alias` の viewer 表示と操作制限は未実装
 - Some older docs still contain mojibake and need cleanup
 - CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
 
@@ -161,6 +170,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 4. Demo 品質: ビジュアルポリッシュ・aircraft.mm クリーンレンダリング
 5. `scope` / `alias` の最小データ構造と save/load バリデーションを Beta model に落とす
 6. broken alias と alias access 権限の最小型を Beta model に追加する
+7. viewer で alias 状態ごとの表示差分と操作制限を入れる
 
 ## Related Documents
 

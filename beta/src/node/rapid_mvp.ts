@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import type { TreeNode, AppState, SavedDoc } from "../shared/types";
+import type { TreeNode, AppState, SavedDoc, AliasAccess } from "../shared/types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -48,6 +48,20 @@ class RapidMvpModel {
     return JSON.parse(JSON.stringify(this.state)) as AppState;
   }
 
+  _normalizeNode(node: TreeNode): TreeNode {
+    const normalizedType = node.nodeType ?? "text";
+    return {
+      ...node,
+      nodeType: normalizedType,
+      scopeId: node.scopeId ?? undefined,
+      targetNodeId: node.targetNodeId ?? undefined,
+      aliasLabel: node.aliasLabel ?? undefined,
+      access: normalizedType === "alias" ? (node.access ?? "read") : undefined,
+      targetSnapshotLabel: node.targetSnapshotLabel ?? undefined,
+      isBroken: normalizedType === "alias" ? Boolean(node.isBroken) : undefined,
+    };
+  }
+
   _pushHistory(): void {
     this.undoStack.push(this._cloneState());
     if (this.undoStack.length > this.maxHistory) {
@@ -61,7 +75,36 @@ class RapidMvpModel {
     if (!node) {
       throw new Error(`Node not found: ${nodeId}`);
     }
-    return node;
+    const normalized = this._normalizeNode(node);
+    this.state.nodes[nodeId] = normalized;
+    return normalized;
+  }
+
+  _replaceNode(node: TreeNode): void {
+    this.state.nodes[node.id] = this._normalizeNode(node);
+  }
+
+  _displayLabel(node: TreeNode): string {
+    if (node.aliasLabel && node.aliasLabel.trim().length > 0) {
+      return node.aliasLabel;
+    }
+    if (node.text && node.text.trim().length > 0) {
+      return node.text;
+    }
+    return "Untitled";
+  }
+
+  _markAliasesBroken(targetNodeId: string, targetLabel: string): void {
+    Object.values(this.state.nodes).forEach((node) => {
+      const normalized = this._normalizeNode(node);
+      if (normalized.nodeType !== "alias" || normalized.targetNodeId !== targetNodeId) {
+        return;
+      }
+      normalized.isBroken = true;
+      normalized.targetSnapshotLabel = targetLabel;
+      normalized.text = `${targetLabel} (deleted)`;
+      this._replaceNode(normalized);
+    });
   }
 
   addNode(parentId: string, text = "New Node", index: number | null = null): string {
@@ -73,6 +116,7 @@ class RapidMvpModel {
       id,
       parentId,
       children: [],
+      nodeType: "text",
       text,
       details: "",
       note: "",
@@ -88,6 +132,44 @@ class RapidMvpModel {
       parent.children.splice(index, 0, id);
     }
 
+    return id;
+  }
+
+  addAlias(parentId: string, targetNodeId: string, options?: {
+    aliasLabel?: string;
+    access?: AliasAccess;
+    scopeId?: string;
+  }): string {
+    const parent = this._requireNode(parentId);
+    const target = this._requireNode(targetNodeId);
+    if (target.nodeType === "alias") {
+      throw new Error("Alias cannot target another alias.");
+    }
+
+    this._pushHistory();
+
+    const id = this._newId();
+    const displayLabel = options?.aliasLabel?.trim() || this._displayLabel(target);
+    const node: TreeNode = {
+      id,
+      parentId,
+      children: [],
+      nodeType: "alias",
+      scopeId: options?.scopeId,
+      text: displayLabel,
+      details: "",
+      note: "",
+      attributes: {},
+      link: "",
+      targetNodeId,
+      aliasLabel: options?.aliasLabel,
+      access: options?.access ?? "read",
+      targetSnapshotLabel: undefined,
+      isBroken: false,
+    };
+
+    this.state.nodes[id] = node;
+    parent.children.push(id);
     return id;
   }
 
@@ -127,6 +209,7 @@ class RapidMvpModel {
       if (!currentNode) {
         continue;
       }
+      this._markAliasesBroken(current, this._displayLabel(this._normalizeNode(currentNode)));
       toDelete.push(...currentNode.children);
       delete this.state.nodes[current];
     }
@@ -207,6 +290,7 @@ class RapidMvpModel {
     }
 
     Object.values(nodes).forEach((node) => {
+      const normalized = this._normalizeNode(node);
       if (node.parentId !== null && !nodes[node.parentId]) {
         errors.push(`Node ${node.id} has missing parent: ${node.parentId}`);
       }
@@ -220,6 +304,45 @@ class RapidMvpModel {
           errors.push(`Parent/child mismatch: ${node.id} -> ${childId}`);
         }
       });
+
+      if (normalized.nodeType === "alias") {
+        if (normalized.children.length > 0) {
+          errors.push(`Alias node ${node.id} cannot have children.`);
+        }
+
+        if (normalized.access !== "read" && normalized.access !== "write") {
+          errors.push(`Alias node ${node.id} has invalid access: ${String(normalized.access)}`);
+        }
+
+        if (!normalized.targetNodeId) {
+          errors.push(`Alias node ${node.id} is missing targetNodeId.`);
+        } else {
+          const target = nodes[normalized.targetNodeId];
+          if (!target) {
+            if (!normalized.isBroken || !normalized.targetSnapshotLabel) {
+              errors.push(`Alias node ${node.id} points to missing target: ${normalized.targetNodeId}`);
+            }
+          } else {
+            const normalizedTarget = this._normalizeNode(target);
+            if (normalizedTarget.nodeType === "alias") {
+              errors.push(`Alias node ${node.id} cannot target alias node ${normalized.targetNodeId}.`);
+            }
+            if (normalized.isBroken) {
+              errors.push(`Alias node ${node.id} is marked broken but target exists.`);
+            }
+          }
+        }
+      } else {
+        if (normalized.targetNodeId) {
+          errors.push(`Non-alias node ${node.id} cannot define targetNodeId.`);
+        }
+        if (normalized.access) {
+          errors.push(`Non-alias node ${node.id} cannot define alias access.`);
+        }
+        if (normalized.isBroken) {
+          errors.push(`Non-alias node ${node.id} cannot be marked broken.`);
+        }
+      }
     });
 
     const visited = new Set<string>();
@@ -259,6 +382,9 @@ class RapidMvpModel {
   static fromJSON(jsonState: AppState): RapidMvpModel {
     const model = new RapidMvpModel("tmp");
     model.state = JSON.parse(JSON.stringify(jsonState)) as AppState;
+    Object.keys(model.state.nodes).forEach((nodeId) => {
+      model.state.nodes[nodeId] = model._normalizeNode(model.state.nodes[nodeId]!);
+    });
     model.undoStack = [];
     model.redoStack = [];
     return model;
