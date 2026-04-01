@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-04-01-001
+
+- Date: 2026-04-01
+- Topic: ユーザーが困る実装問題の集約先を運用で固定する
+- Status: working-agreement
+- Decision: ユーザー影響のある問題は、まず `Decision_Pool.md` に集約し、要約だけを `Current_Status.md`、日次の実施記録を `daily/YYMMDD.md` に書く
+- Why: 問題の詳細、現状サマリ、時系列ログが混在すると追跡が崩れるため
+- Next: 以後の課題登録は本フォーマットで追加し、対応が進んだら `Promoted` を更新する
+- Source: 2026-04-01 の運用整理会話
+- Promoted: -
+
 ## 2026-03-30-004
 
 - Date: 2026-03-30
