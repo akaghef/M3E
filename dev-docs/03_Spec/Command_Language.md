@@ -699,10 +699,10 @@ m3e.path(m3e.sel)      // → ["root_id", ..., "parent_id", "sel_id"]
 
 ### 検索・置換
 
-#### `m3e.replaceAll(search, replacement, scopeId?)`
+#### `m3e.replaceAll(search, replacement, scopeRootId?)`
 
 テキストが部分一致するすべてのノードのラベルを置換する。
-`scopeId` を省略するとツリー全体が対象。
+`scopeRootId` を省略するとツリー全体が対象。
 
 ```javascript
 m3e.replaceAll("仮説", "Hypothesis")

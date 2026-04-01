@@ -32,7 +32,7 @@ scope はストレージ単位ではなく認知境界である。
 - node type
 - 親 ID
 - 子 ID の順序列
-- 所属 scope
+- 所属 scope（構造から導出される）
 - 内容
 - 作成時刻
 - 更新時刻
@@ -71,6 +71,13 @@ scope はストレージ単位ではなく認知境界である。
 
 - 実体ノードは単一 scope にのみ属する
 - 他 scope から直接共有しない
+
+### scope 導出ルール（正規化）
+
+- `scopeId` はノードに永続化しない
+- ノードの所属 scope は、祖先列で最も近い `folder` ノード ID から導出する
+- 祖先に `folder` が無いノードは document `rootId` に属するとみなす
+- `reparent` 時の scope 変更は `parentId` / `children` 更新のみで表現し、scope のカスケード更新は行わない
 
 ### alias 制約
 
