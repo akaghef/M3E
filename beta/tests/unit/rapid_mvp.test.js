@@ -99,3 +99,19 @@ test("queryNodes with unknown scope throws", () => {
     message: "Node not found: missing",
   });
 });
+
+test("reparent updates scope-root query results without any node-level scope cascade", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+  const a1 = model.addNode(a, "A1");
+
+  assert.deepEqual(model.queryNodeIds(a), [a, a1]);
+  assert.deepEqual(model.queryNodeIds(b), [b]);
+
+  model.reparentNode(a1, b);
+
+  assert.deepEqual(model.queryNodeIds(a), [a]);
+  assert.deepEqual(model.queryNodeIds(b), [b, a1]);
+});

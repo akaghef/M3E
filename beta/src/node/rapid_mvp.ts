@@ -196,8 +196,8 @@ class RapidMvpModel {
     return false;
   }
 
-  queryNodeIds(scopeId: string | null = null): string[] {
-    const rootId = scopeId ?? this.state.rootId;
+  queryNodeIds(scopeRootId: string | null = null): string[] {
+    const rootId = scopeRootId ?? this.state.rootId;
     this._requireNode(rootId);
     const result: string[] = [];
     const stack: string[] = [rootId];
@@ -215,8 +215,8 @@ class RapidMvpModel {
     return result;
   }
 
-  queryNodes(scopeId: string | null = null): TreeNode[] {
-    return this.queryNodeIds(scopeId).map((nodeId) => this.state.nodes[nodeId]!);
+  queryNodes(scopeRootId: string | null = null): TreeNode[] {
+    return this.queryNodeIds(scopeRootId).map((nodeId) => this.state.nodes[nodeId]!);
   }
 
   validate(): string[] {
