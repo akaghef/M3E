@@ -121,6 +121,121 @@ M3E should distinguish `Edge` and `Link` as different concepts.
 - does not participate in layout
 - may later support relation type, label, direction, or styling
 
+## Graph-level Link 仕様
+
+### 目的
+
+`Link` は tree の外側にある意味関係を表す。
+
+- 因果
+- 参照
+- 補足
+- 対比
+- 関連
+
+`Link` は親子の `Edge` を置き換えるものではない。
+構造は `Edge`、非木関係は `Link` として分離する。
+
+### 保存単位
+
+`Link` は node に埋め込まず、document 全体の relation 集合として持つ。
+
+```typescript
+interface AppState {
+  rootId: string
+  nodes: Record<string, TreeNode>
+  links?: Record<string, GraphLink>
+}
+
+interface GraphLink {
+  id: string
+  sourceNodeId: string
+  targetNodeId: string
+  relationType?: string
+  label?: string
+  direction?: "none" | "forward" | "backward" | "both"
+  style?: "default" | "dashed" | "soft" | "emphasis"
+}
+```
+
+Beta では `links` は optional でよい。
+未実装 viewer と既存 save data を壊さないためである。
+
+### 不変条件
+
+#### 1. endpoint の存在
+
+- `sourceNodeId` と `targetNodeId` は、保存時点で実在ノードを指す必要がある
+- どちらかが欠けた `Link` は broken relation として保存しない
+
+#### 2. alias endpoint
+
+- `Link` の endpoint は実体ノードを既定対象とする
+- alias ノードを endpoint として許可するかは Beta では保留とする
+- Beta 実装の既定は「alias endpoint を禁止」でよい
+
+#### 3. self link
+
+- `sourceNodeId === targetNodeId` の self link は既定では禁止する
+- 特殊用途が必要になった時だけ再検討する
+
+#### 4. layout 非参加
+
+- `Link` は node 座標決定に影響しない
+- `Link` の追加・削除だけで subtree placement を変えない
+
+#### 5. ownership 非参加
+
+- `Link` は所有権や親子順序を変えない
+- `Link` は `scope` 所属決定の根拠に使わない
+- `Link` は delete / reparent / alias 規則を上書きしない
+
+### node-level `link` との分離
+
+- `TreeNode.link` は URL や外部参照などの node 属性である
+- `GraphLink` は node 間の relation line である
+- 名前が似ていても、保存場所・意味・描画方法は別である
+
+### 操作単位
+
+将来の command 層では、少なくとも以下を分けて持つ。
+
+- `createLink`
+- `updateLink`
+- `deleteLink`
+
+node 編集 command と混在させない。
+
+### delete / move 時の扱い
+
+#### node delete
+
+- endpoint node が削除されたら、接続している `Link` は同時に削除する
+- broken endpoint を持つ `Link` を残さない
+
+#### node move / reparent
+
+- `Link` は endpoint の ID 参照を維持する
+- node が別親や別 scope に移動しても `Link` 自体は消えない
+- ただし viewer は scope 表示ポリシーに応じて非表示にしてよい
+
+### Beta 実装で先に固定すること
+
+- `AppState.links` を relation 集合として持てるようにする
+- endpoint は実体ノードのみを対象とする
+- self link は禁止する
+- layout 非参加を前提に overlay 描画とする
+- node-level `link` と graph-level `Link` を絶対に混同しない
+
+### Beta 実装でまだ保留にすること
+
+- relationType の語彙セット
+- link label の編集 UI
+- arrowhead と direction の表示仕様
+- cross-scope link をどこまで常時表示するか
+- alias endpoint を許可するか
+- `.mm` import/export への写像
+
 ### Important Note
 
 Freeplane-imported node-level `link` values and future graph-level `Link` relations are not the same thing.

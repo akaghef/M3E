@@ -1,167 +1,270 @@
 # Current Status
 
-最終更新: 2026-04-01
+## Update Log (2026-04-01 / Scope and Alias)
 
----
+- `scope` / `alias` の Beta 実装前提仕様を整理
+- `dev-docs/06_Operations/Decision_Pool.md`
+  - `folder` を子 scope の入口とする working-agreement を追加
+  - 実体単一所属、`alias -> alias` 禁止、alias 残存中の target delete 拒否を明文化
+- `dev-docs/03_Spec/Scope_and_Alias.md`
+  - root scope / folder scope / scope 所属規則を追加
+  - alias ノードの最低限属性、表示/編集/整合性ルールを追加
+  - Beta で固定することと保留事項を分離
+- `scope` / `alias` の訂正を反映
+  - target delete 時は alias を broken 化し、`元の名前 (deleted)` を既定表示にする
+  - alias に write 権限を設定できるようにする
+  - 同一 scope 内 alias を許可する
+- `beta/` の model 最小実装を追加
+  - `TreeNode` に alias 系フィールドを追加
+  - `RapidMvpModel` に `addAlias` と broken alias 化を追加
+  - save/load validation に alias 整合性検証を追加
+- `beta` の unit test を拡張
+  - alias 含み round-trip
+  - broken alias load
+  - `alias -> alias` 禁止
+- `Editing_Design.md` に marquee selection 設計を追加
+  - 空白ドラッグは marquee selection、wheel/trackpad は `two-finger pan` として用語分離
+  - marquee 用 ViewState / HitTest / 制約 / 受け入れ基準を追記
+- `beta` viewer に alias 状態表示を追加
+  - `read alias` / `write alias` / `broken alias` の見た目を分離
+  - alias の inline edit を権限別に分岐
+  - target delete 時の broken 化を viewer 側にも反映
+- graph-level `Link` の仕様を追記
+  - `AppState.links` を relation 集合とする方針を追加
+  - node-level `link` 文字列と graph-level `Link` を分離
+  - endpoint / delete / layout 非参加の制約を追加
+- `beta` の graph-level `Link` model を追加
+  - `AppState.links` と `GraphLink` 型を追加
+  - save/load validation と delete 時 cleanup を追加
+  - unit test に `Link` ケースを追加
+- 記録先: `dev-docs/daily/260401.md`
 
-## 開発環境構成
+## Update Log (2026-04-01)
 
-| 環境 | ディレクトリ | 状態 |
-|------|-------------|------|
-| Alpha | `mvp/` | 開発停止（参照・検証用のみ） |
-| Beta | `beta/` | **現行開発環境** |
-| Final | `final/` | 安定版リリース環境（`migrate-from-beta.bat` 経由で反映） |
+- `mvp/src/browser/viewer.tuning.ts` に tuning 項目別コメントを追加
+- ノード縦間隔を調整
+  - `rootHeight: 120 -> 104`
+  - `leafHeight: 94 -> 72`
+  - `siblingGap: 20 -> 2`
+- `npm --prefix mvp run build:browser` を実行し、`dist/browser/viewer.tuning.js` へ反映
+- drag reorder 仕様を `Editing_Design.md` と `Drag_and_Reparent.md` に追記
+- `mvp/src/browser/viewer.ts` の drag drop 判定を `drop proposal` ベースへ変更
+  - ノード中央帯: `reparent`
+  - ノード上下端帯 / sibling 挿入 zone: `reorder`
+  - 同一親内 reorder を index 指定移動として適用
+  - reorder 挿入ラインを表示
+- 記録先: `dev-docs/daily/260401.md`
 
-- 日常起動: `scripts/beta/launch.bat`
-- Final 反映: `scripts/final/migrate-from-beta.bat`
-- Final 起動: `scripts/final/launch.bat`（`M3E_DATA_DIR=%APPDATA%\M3E` が自動設定される）
+## Documentation Operation Update (2026-03-30)
 
----
+- Added `06_Operations/Decision_Pool.md` as the intake point for conversation decisions
+- Added `06_Operations/Documentation_Rules.md` for documentation handling rules
+- Future conversation decisions should be recorded there before promotion to formal docs
 
-## What Is Working
+## Update Log (2026-03-31)
 
-- ノード追加・編集・削除・折りたたみ（キーボードファースト）
-- インライン編集（`Shift+Enter` / `F2` / ダブルクリック）
-- キーボードナビゲーション（構造ベース ArrowLeft/Right/Up/Down）
-- Undo/Redo（`Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`）
-- Zoom/Pan、JSON 保存/読込
-- 最小限の `.mm` インポート
-- SQLite 永続化（起動時復元 + autosave）
-- データディレクトリを `M3E_DATA_DIR` 環境変数で切り替え可能（Final は `%APPDATA%\M3E`）
-- drag sibling reorder（drop proposal ベース、挿入ライン表示）
-- Unit test（`npm test`）、Playwright visual regression test
-- CI: Stage A unit tests（`mvp/**` 対象、`beta/**` 拡張は未着手）
+- `mvp/` に Playwright ベースの visual regression test 基盤を追加
+- 依存関係として `@playwright/test` を追加し、`chromium` ランタイムを導入
+- `mvp/` に unit test コマンド（`npm test` / `test:unit:watch` / `test:ci`）を追加
+- GitHub Actions に `mvp/**` 対象の自動テスト（push / pull_request）を追加
+- 記録先: `dev-docs/daily/260331.md`
+- `mvp/src/node/rapid_mvp.ts` に SQLite persistence の最小実装を追加
+	- `saveToSqlite` / `loadFromSqlite` を追加
+	- `documents` テーブル自動初期化を追加
+- `mvp/tests/unit/persistence_db_behavior.test.js` に SQLite 単体テストを追加
+	- round-trip / unsupported version / invalid graph
+- SQLite 依存を追加
+	- `better-sqlite3`
+	- `@types/better-sqlite3`
+- `mvp/src/node/start_viewer.ts` に SQLite persistence API を追加
+	- `GET /api/docs/:id` / `POST /api/docs/:id`
+- `mvp/src/browser/viewer.ts` を SQLite persistence API に接続
+	- 起動時: SQLite 優先ロード（未保存時は sample fallback）
+	- 編集時: autosave（debounce）で SQLite 保存
+- ノード編集 UX を欄外入力からノード上インライン編集へ変更
+	- `Shift+Enter` / `F2` / ダブルクリックで編集開始
+	- 欄外編集 UI を削除
+- キーボードナビゲーションを構造ベースへ改善
+	- `ArrowLeft`: 親へ移動
+	- `ArrowRight`: 子（先頭の可視子）へ移動
+	- `ArrowUp` / `ArrowDown`: sibling 優先、なければ同一 depth 近傍へ移動
+- viewer の undo/redo キーボード操作を実装
+	- `Ctrl+Z`: undo
+	- `Ctrl+Shift+Z`, `Ctrl+Y`: redo
+	- browser/legacy の両経路で同じ挙動に統一
+- Playwright visual test に undo/redo キーボード検証を追加
+- legacy JS ファイルを `mvp/legacy/` へ集約
+	- `start_viewer.js` / `rapid_mvp.js` / `viewer.js` / `viewer.tuning.js`
+	- レガシー起動は `node mvp/legacy/start_viewer.js` に統一
+- editor の TypeScript 重複診断回避のため `mvp/src/browser/tsconfig.json` を追加
 
----
+## Update Log (2026-04-01)
+
+- 開発ブランチ `dev-beta` を作成し、Beta中心運用へ切替開始
+- `mvp/` (Alpha) -> `beta/` へ実体を同期し、Beta開発環境を明確化
+- `scripts/final/update-and-launch.bat` を追加し、Final 更新+起動を一発化
+- `scripts/README.md` / `final/FINAL_POLICY.md` を更新し、運用導線を明文化
+- 方針: Alpha は参照用、開発は Beta で継続。Final は Beta 検証済みを migration 経由で反映
+
+## Current Direction
+
+M3E is currently moving from a `Freeplane-first UI` approach to a `Freeplane-informed custom engine` approach.
+
+Freeplane is still important, but mainly as:
+
+- a reference implementation
+- a compatible `.mm` import/export target
+- a source of useful node concepts and editing patterns
+
+The rendering engine, layout behavior, and editing interaction are being implemented on the M3E side.
+
+## What Is Decided
+
+- UI shell is based on `React + TypeScript`
+- Rendering is currently `SVG-first` for MVP speed
+- Layout, rendering, and editing behavior should be separated as much as possible
+- Freeplane is referenced, but M3E owns its own interaction model
+- `.mm` import is part of the MVP path
+- MVP test layers and CI stage rollout are documented in Operations
+- MVP persistence policy is documented as JSON model + SQLite persistence for Rapid MVP
+- `scope` は `folder` を入口とする認知境界として扱い、実体ノードは単一 scope 所属とする
+- 他 scope への再利用は `alias` 経由のみとし、`alias -> alias` は禁止する
+- alias は同一 scope 内参照も許可し、権限は alias 単位で持てる
+
+## What Is Already Working
+
+- Rapid MVP viewer/editor exists under `mvp/`
+- Root-first editing works in the browser
+- Node add/edit/delete/collapse works
+- Keyboard-first editing works
+- Basic zoom and two-finger pan behavior exists
+- Key mapping and drag interaction were updated for better operability
+- Viewer implementation has been modularized (`viewer.html` + `viewer.css` + `viewer.js` + tuning)
+- JSON save/load works
+- Minimal `.mm` import now exists
+- Demo loaders exist for sample JSON and `aircraft.mm`
+- `aircraft.mm` visual check walkthrough now exists for repeatable visual inspection
+- Viewer toolbar can tolerate missing optional controls and now supports `Fit all` / `Focus`
+- Zoom tuning was adjusted for faster button and wheel response
+- Unit tests can run locally with `npm test` and auto-rerun with `npm run test:unit:watch`
+- Stage A CI now runs automated unit tests on push and pull_request for `mvp/**`
+- SQLite persistence の最小保存/読込 API が model 層で動作（unit test 済み）
+- SQLite 保存/読込が viewer の通常導線から利用可能（起動時復元 + autosave）
+- ノードテキスト編集がノード上で完結（欄外編集は廃止）
+- Beta model で alias access / broken alias / `alias -> alias` 禁止の最小整合性が入った
+- Beta viewer で alias 状態ごとの最小表示差分と編集制限が入った
+- graph-level `Link` は Beta model/save-load まで入った
+- marquee selection の編集設計は文書化済みで、viewer 実装は未着手
 
 ## What Is Still Open
 
-- ユーザー影響課題（誤操作・混乱・保存不安など）の一元管理運用を継続し、優先度付きで消化する
-	- 集約先: `dev-docs/06_Operations/Decision_Pool.md`
-- CI パイプラインを `beta/**` に拡張（現状は `mvp/**` のみ）
-- `ViewState` と persisted document state の分離が未完
-- Model state 分離と schema v2 設計は完了（実装未着手）
-	- 仕様: `dev-docs/03_Spec/Model_State_And_Schema_V2.md`
-- reparent UI の refinement（ドロップターゲットのハイライト・拒否メッセージ）
-- インポートメタデータの UI 表示未実装
-- `.mm` サポートは MVP レベル（Freeplane 完全互換ではない）
-- fit-to-content / focus-selected アクション未実装
-- デモ品質: ビジュアルポリッシュ、aircraft.mm クリーンレンダリング
+- `ViewState` is not fully separated from persisted document state in all code paths
+- Minimal `reparent` UI now exists, but still needs refinement
+- Imported metadata is preserved but not yet rendered in the UI
+- `.mm` support is still MVP-level, not full Freeplane compatibility
+- `scope` / `alias` の viewer 導線は最小表示まで実装済みで、作成/遷移 UI は未実装
+- alias の作成 UI と `jump to target` は未実装
+- graph-level `Link` の viewer overlay 描画と作成 UI は未実装
+- marquee selection の viewer 実装と viewport 移動代替操作は未実装
+- Some older docs still contain mojibake and need cleanup
+- CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
 
----
+## 開発環境構成（2026-04-01 更新）
 
-## Todo
+3段階の環境を用意した。詳細は `scripts/README.md` および各環境の POLICY.md 参照。
 
-### P5 — 開発インフラ（最優先）
+| 環境 | ディレクトリ | 状態 |
+|------|-------------|------|
+| Alpha | `mvp/` | 開発停止予定（参照・検証用） |
+| Beta | `beta/` | **現行開発環境** |
+| Final | `final/` | 安定版リリース環境 |
 
-- [ ] CI を `beta/**` に拡張（GitHub Actions workflow 更新）
-- [ ] Beta 環境で unit test・visual test が通ることを確認
-- [ ] `npm --prefix beta test` のパスを CI に登録
-- [ ] Beta 用 Playwright baseline スクリーンショットを更新
-- [ ] `EADDRINUSE` 時の起動リカバリ（ポート競合の自動検出・案内）
-
-### P4 — デモ品質
-
-- [ ] ノード間 spacing・text rhythm の統一（root/child のずれ修正）
-- [ ] エッジの曲率・色の一貫性調整
-- [ ] 選択状態のコントラスト改善（選択ノードが一目でわかること）
-- [ ] 長テキストノードのレイアウト崩れ対応
-- [ ] fit-to-content アクション実装
-- [ ] focus-selected アクション実装
-- [ ] `aircraft.mm` のクリーンレンダリング確認・修正
-- [ ] `airplane-parts-demo.json` でフル編集フローを確認
-- [ ] ツールバー密度の整理（日常使いに適した配置）
-- [ ] 折りたたみ状態が常に明確に見えること
-
-### Scope 遷移（仕様確定・実装待ち）
-
-- [ ] `currentScopeId` / `scopeHistory` を ViewState に追加
-- [ ] folder ノードのダブルクリックで EnterScope（text ノードとの動作分岐）
-- [ ] ツールバー「← 戻る」ボタンで ExitScope
-- [ ] ブレッドクラム表示（クリックで直接ジャンプ）
-- [ ] スコープ外ノードの非表示フィルタ
-- [ ] `Alt+Enter` / `Backspace` キーバインド
-- [ ] ViewState のセッション保存・復元（`currentScopeId`）
-
-### P3 — MVP 完全性
-
-- [ ] ViewState と document state の分離を実装（schema v2 に基づく）
-- [ ] インポートメタデータ（details / note / attributes）を UI に表示
-- [ ] スタートアップ時に前回の ViewState（ズーム・選択・スコープ）を復元
-- [ ] デモシナリオ文書作成（open → edit → reparent → save の 2 分ウォークスルー）
-- [ ] reparent のドロップターゲットハイライト
-- [ ] reparent の拒否時フィードバックメッセージ
-- [ ] 非 leaf ノード削除の確認ダイアログ
-- [ ] 500 ノードでの操作性確認
-
-### P2 — テスト・CI 整備（継続）
-
-- [ ] Hit-test のリグレッションカバレッジ追加
-- [ ] SQLite round-trip テストを beta/ の unit test に移植
-- [ ] Playwright visual baseline を beta/ 用に整備
-- [ ] CI Stage B（visual test の自動化）設計・着手
-
-### AI連携 — Phase 0（今すぐ着手可能）
-
-- [ ] Markdown エクスポート実装（インデントツリー形式）
-- [ ] コンテクストパッケージ生成 UI（スコープ選択 → テキスト出力 → クリップボードコピー）
-- [ ] エクスポート出力にスコープ名・深さ制限オプションを追加
-
-### AI連携 — Phase 1（Beta 安定後）
-
-- [ ] Node.js サーバーに AI API プロキシエンドポイントを追加（`POST /api/ai/*`）
-- [ ] `M3E_AI_API_KEY` 環境変数によるキー管理
-- [ ] API キー未設定時に UI で AI 機能を無効化表示
-- [ ] コンテクストパッケージ生成をサーバーサイドで処理
-
-### AI連携 — Phase 2（Flash→Rapid 昇格支援）
-
-- [ ] Flash Inbox UI の実装（種の一覧・昇格導線）
-- [ ] 昇格時の親候補提案（AI による候補リスト表示）
-- [ ] タイトル整形提案（口語テキスト → ノードラベル）
-- [ ] 重複検出（既存ノードとの意味的類似警告）
-- [ ] 提案スキップ・手動昇格パスの保証
-
-### AI連携 — Phase 3（インライン構造提案）
-
-- [ ] 構造改善提案の差分表示 UI（ghosted overlay）
-- [ ] 提案ノードの色分け（追加/削除/移動）
-- [ ] 採用 / 棄却 / 後で確認 の 3 択インターフェース
-- [ ] 部分採用（提案の一部だけ適用）の実装
-- [ ] 分割・統合・順序・親付け替え提案の各種実装
-
-### P1 — 低優先度（deferred）
-
-- [ ] alias 参照の UI 実装
-- [ ] scope（folder world）遷移 UI
-- [ ] 複数タブ並行編集
-- [ ] Deep 差分比較ビュー
-- [ ] Canvas 移行（SVG からの描画層切り替え）
-- [ ] AI Phase 4: Deep 往復連携（構造送信 → 差分取り込み）
-
----
+- Beta には Alpha (mvp/) のソースをコピー済み
+- 起動: `scripts/beta/launch.bat` または `scripts/beta/update-and-launch.bat`
+- Final への反映: `scripts/final/migrate-from-beta.bat`
 
 ## Immediate Next Steps
 
-1. **CI を `beta/**` に拡張**（P5 最優先）
-2. **Markdown エクスポート実装**（AI連携 Phase 0 — 依存なし、今すぐ着手可能）
-3. **Demo 品質**: spacing・edge curvature・selected-state contrast・長テキスト対応
-4. `aircraft.mm` / `airplane-parts-demo.json` のクリーンレンダリング確認
-
----
+1. **最優先**: 開発インフラ・テスト環境・CI の整備（Beta 環境で実施）
+2. Beta 環境でのビルド・テスト動作確認
+3. CI パイプラインを `beta/**` にも対象拡張
+4. Demo 品質: ビジュアルポリッシュ・aircraft.mm クリーンレンダリング
+5. `scope` / `alias` の最小データ構造と save/load バリデーションを Beta model に落とす
+6. broken alias と alias access 権限の最小型を Beta model に追加する
+7. viewer で alias 状態ごとの表示差分と操作制限を入れる
+8. marquee selection とマウス向け viewport 移動代替操作を Beta viewer に入れる
+9. alias 作成導線と `jump to target` 導線を Beta viewer に入れる
+10. `AppState.links` と graph-level `Link` validation を Beta model に追加する
+11. graph-level `Link` の overlay 描画を Beta viewer に追加する
 
 ## Related Documents
 
-- MVP definition: [MVP_Definition.md](../02_Strategy/MVP_Definition.md)
-- Band spec: [Band_Spec.md](../03_Spec/Band_Spec.md)
-- Scope transition spec: [Scope_Transition.md](../03_Spec/Scope_Transition.md)
-- AI integration spec: [AI_Integration.md](../03_Spec/AI_Integration.md)
-- Model state/schema v2: [Model_State_And_Schema_V2.md](../03_Spec/Model_State_And_Schema_V2.md)
-- Custom engine ADR: [ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
-- SQLite MVP ADR: [ADR_004_SQLite_For_Rapid_MVP.md](../09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md)
-- Data dir config ADR: [ADR_005_DataDir_Config.md](../09_Decisions/ADR_005_DataDir_Config.md)
-- Test and CI/CD guide: [Test_and_CICD_Guide.md](../06_Operations/Test_and_CICD_Guide.md)
-- Visual design guide: [Visual_Design_Guidelines.md](../04_Architecture/Visual_Design_Guidelines.md)
-- Editing design: [Editing_Design.md](../04_Architecture/Editing_Design.md)
-- Decision intake: [Decision_Pool.md](../06_Operations/Decision_Pool.md)
-- Worktree separation rules: [Worktree_Separation_Rules.md](./Worktree_Separation_Rules.md)
+- Direction pivot: [Current_Pivot_Freeplane_First.md](/C:/Users/Akaghef/dev/M3E/dev-docs/02_Strategy/Current_Pivot_Freeplane_First.md)
+- MVP definition: [MVP_Definition.md](/C:/Users/Akaghef/dev/M3E/dev-docs/02_Strategy/MVP_Definition.md)
+- Custom engine ADR: [ADR_003_Freeplane_Informed_Custom_Engine.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
+- SQLite MVP ADR: [ADR_004_SQLite_For_Rapid_MVP.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md)
+- UI basis ADR: [ADR_002_React_UI_Basis.md](/C:/Users/Akaghef/dev/M3E/dev-docs/09_Decisions/ADR_002_React_UI_Basis.md)
+- Decision intake: [Decision_Pool.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Decision_Pool.md)
+- Test and CI/CD guide: [Test_and_CICD_Guide.md](/C:/Users/Akaghef/dev/M3E/dev-docs/06_Operations/Test_and_CICD_Guide.md)
+- Visual design guide: [Visual_Design_Guidelines.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Visual_Design_Guidelines.md)
+- Editing design: [Editing_Design.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Editing_Design.md)
+- Layout algorithm: [Layout_Algorithm.md](/C:/Users/Akaghef/dev/M3E/dev-docs/04_Architecture/Layout_Algorithm.md)
+- Ideas folder: [ideas/README.md](/C:/Users/Akaghef/dev/M3E/dev-docs/ideas/README.md)
+
+## Working To-Do (2026-03-30)
+
+### Today Goal
+
+- [ ] Complete MVP visual/UI quality
+
+### UI Core (must)
+- [X] ~~*Keep edit flow fast: `Enter` sibling add, `Shift+Enter` edit start, `Tab` child add*~~ [2026-03-30]
+- [X] ~~*Keep selection stable after every edit action*~~ [2026-03-30]
+- [ ] Improve reparent interaction feedback (target highlight + rejected drop message)
+- [ ] Make delete safer (confirm on non-leaf)
+- [ ] Ensure collapsed/expanded states are always obvious
+
+### View Experience (must)
+
+- [x] Finalize zoom UX (button + wheel consistency)
+- [x] Finalize two-finger pan UX (trackpad / wheel consistency)
+- [ ] Add fit-to-content and focus-selected actions
+- [ ] Keep viewport stable during frequent edits
+- [ ] Remove visual jitter on rapid operations
+
+### Visual Polish (must)
+
+- [ ] Unify spacing and text rhythm across root and child labels
+- [ ] Tune edge curvature and color consistency
+- [ ] Improve selected-state contrast for readability
+- [ ] Handle long node text without layout break
+- [ ] Clean up toolbar density for daily use
+
+### Demo Readiness (must)
+
+- [ ] Confirm `aircraft.mm` demo renders cleanly
+- [ ] Run `aircraft.mm` visual check and review each checkpoint result
+- [ ] Confirm `airplane-parts-demo.json` works with full edit flow
+- [ ] Prepare a 2-minute walkthrough script (open -> edit -> reparent -> save)
+- [ ] Ensure startup does not block demo flow (`EADDRINUSE` fallback or clear recovery)
+
+### Done Criteria (today)
+
+- [ ] First-time user can complete edit operations without verbal help
+- [ ] No obvious visual break during zoom/two-finger pan/edit on demo data
+- [ ] UI is judged "demo-ready" by owner review
+
+### Tomorrow Goal (backend/model reform)
+
+- [ ] Separate persisted document state and `ViewState` in all code paths
+- [ ] Refine reparent logic and cycle safety checks
+- [ ] Standardize model-side validation and error messaging
+- [ ] Stabilize save/load boundary and version handling
+- [x] ~~SQLite persistence を UI/サーバー導線へ接続（現状は model 層実装のみ）~~ [2026-03-31]
+
+### Day-After-Tomorrow Goal (MVP release & operation start)
+
+- [ ] Package MVP for repeatable startup and demo use
+- [ ] Finalize startup recovery for `EADDRINUSE`
+- [ ] Prepare operation checklist (run, recover, verify, log)
+- [ ] Start MVP operation with the fixed demo scenario

@@ -34,7 +34,7 @@ let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-let inlineEditor: { nodeId: string; input: HTMLInputElement } | null = null;
+let inlineEditor: { nodeId: string; input: HTMLInputElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let lastLayout: LayoutResult | null = null;
@@ -67,6 +67,7 @@ function createNodeRecord(id: string, parentId: string | null, text = "New Node"
     id,
     parentId,
     children: [],
+    nodeType: "text",
     text,
     collapsed: false,
     details: "",
@@ -100,12 +101,19 @@ function ensureDocShape(payload: unknown): SavedDoc {
   }
   Object.values(candidate.state.nodes).forEach((node) => {
     node.children = Array.isArray(node.children) ? node.children : [];
+    node.nodeType = node.nodeType || "text";
+    node.scopeId = node.scopeId || undefined;
     node.text = node.text || "";
     node.collapsed = node.collapsed === true;
     node.details = node.details || "";
     node.note = node.note || "";
     node.attributes = (node.attributes && typeof node.attributes === "object") ? node.attributes : {};
     node.link = node.link || "";
+    node.targetNodeId = node.targetNodeId || undefined;
+    node.aliasLabel = node.aliasLabel || undefined;
+    node.access = node.nodeType === "alias" ? (node.access || "read") : undefined;
+    node.targetSnapshotLabel = node.targetSnapshotLabel || undefined;
+    node.isBroken = node.nodeType === "alias" ? Boolean(node.isBroken) : undefined;
   });
   return candidate as SavedDoc;
 }
@@ -210,6 +218,84 @@ function getNode(nodeId: string): TreeNode {
     throw new Error(`Node not found: ${nodeId}`);
   }
   return node;
+}
+
+function isAliasNode(node: TreeNode | null | undefined): boolean {
+  return Boolean(node && node.nodeType === "alias");
+}
+
+function isBrokenAlias(node: TreeNode | null | undefined): boolean {
+  return isAliasNode(node) && Boolean(node!.isBroken);
+}
+
+function aliasAccess(node: TreeNode | null | undefined): AliasAccess {
+  return isAliasNode(node) ? (node!.access || "read") : "read";
+}
+
+function resolveAliasTarget(node: TreeNode | null | undefined): TreeNode | null {
+  if (!isAliasNode(node) || !node!.targetNodeId || !doc) {
+    return null;
+  }
+  return doc.state.nodes[node!.targetNodeId] || null;
+}
+
+function uiLabel(node: TreeNode | null | undefined): string {
+  if (!node) {
+    return "n/a";
+  }
+  if (node.aliasLabel && node.aliasLabel.trim()) {
+    return node.aliasLabel;
+  }
+  if (isBrokenAlias(node)) {
+    const snapshot = node.targetSnapshotLabel || node.text || "Untitled";
+    return `${snapshot} (deleted)`;
+  }
+  if (isAliasNode(node)) {
+    const target = resolveAliasTarget(node);
+    if (target) {
+      return target.text || "Untitled";
+    }
+  }
+  return node.text || "Untitled";
+}
+
+function syncAliasDisplayForTarget(targetNodeId: string): void {
+  if (!doc) {
+    return;
+  }
+  Object.values(doc.state.nodes).forEach((node) => {
+    if (!isAliasNode(node) || node.targetNodeId !== targetNodeId || node.aliasLabel || node.isBroken) {
+      return;
+    }
+    const target = doc!.state.nodes[targetNodeId];
+    if (target) {
+      node.text = target.text;
+    }
+  });
+}
+
+function markAliasesBrokenInViewer(targetNodeId: string, targetLabel: string): void {
+  if (!doc) {
+    return;
+  }
+  Object.values(doc.state.nodes).forEach((node) => {
+    if (!isAliasNode(node) || node.targetNodeId !== targetNodeId) {
+      return;
+    }
+    node.isBroken = true;
+    node.targetSnapshotLabel = targetLabel;
+    node.text = `${targetLabel} (deleted)`;
+  });
+}
+
+function aliasBadge(node: TreeNode): string {
+  if (!isAliasNode(node)) {
+    return "";
+  }
+  if (isBrokenAlias(node)) {
+    return "broken";
+  }
+  return aliasAccess(node) === "write" ? "write" : "read";
 }
 
 function cloneState(state: AppState): AppState {
@@ -350,7 +436,7 @@ function setZoom(nextZoom: number, anchorClientX: number | null = null, anchorCl
 }
 
 function visibleChildren(node: TreeNode): string[] {
-  if (!node || viewState.collapsedIds.has(node.id)) {
+  if (!node || isAliasNode(node) || viewState.collapsedIds.has(node.id)) {
     return [];
   }
   return (node.children || []).filter((childId) => isNodeInScope(childId));
@@ -554,6 +640,10 @@ function render(): void {
     if (nodeId === viewState.selectedNodeId) {
       classNames.push("selected");
     }
+    if (isAliasNode(node)) {
+      classNames.push("alias");
+      classNames.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
+    }
     if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
       classNames.push("drop-target");
     }
@@ -566,7 +656,7 @@ function render(): void {
     nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
 
     if (nodeId === state.rootId) {
-      const label = escapeXml(node.text || "(empty)");
+      const label = escapeXml(uiLabel(node) || "(empty)");
       const w = p.w;
       const h = p.h;
       const rx = 60;
@@ -575,9 +665,20 @@ function render(): void {
       nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
       nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
     } else {
-      const label = escapeXml(node.text || "(empty)");
-      const selectedStyle = nodeId === viewState.selectedNodeId ? ' style="fill:#6f39ff;font-weight:600;"' : "";
-      nodes += `<text class="label-node" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle"${selectedStyle}>${label}</text>`;
+      const label = escapeXml(uiLabel(node) || "(empty)");
+      const labelClasses = ["label-node"];
+      if (nodeId === viewState.selectedNodeId) {
+        labelClasses.push("selected");
+      }
+      if (isAliasNode(node)) {
+        labelClasses.push("alias-label");
+        labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
+      }
+      nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+      const badge = aliasBadge(node);
+      if (badge) {
+        nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
+      }
     }
 
     if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
@@ -622,7 +723,7 @@ function render(): void {
     const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
   syncInlineEditorPosition();
 }
 
@@ -913,6 +1014,10 @@ function ExitScopeCommand(): void {
 function addChild(): void {
   const parentId = viewState.selectedNodeId;
   const parent = getNode(parentId);
+  if (isAliasNode(parent)) {
+    setStatus("Alias nodes cannot own children.", true);
+    return;
+  }
   pushUndoSnapshot();
   const id = newId();
   doc!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
@@ -941,18 +1046,44 @@ function addSibling(): void {
   board.focus();
 }
 
-function applyNodeTextEdit(nodeId: string, nextRaw: string): boolean {
+function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
   const next = String(nextRaw || "").trim();
   if (next === "") {
     setStatus("Node text cannot be empty.", true);
     return false;
   }
+  if (isAliasNode(node)) {
+    if (mode === "target-text") {
+      const target = resolveAliasTarget(node);
+      if (!target || isBrokenAlias(node)) {
+        setStatus("Broken alias cannot edit target text.", true);
+        return false;
+      }
+      if (target.text === next) {
+        return true;
+      }
+      pushUndoSnapshot();
+      target.text = next;
+      syncAliasDisplayForTarget(target.id);
+      touchDocument();
+      return true;
+    }
+    if ((node.aliasLabel || node.text) === next) {
+      return true;
+    }
+    pushUndoSnapshot();
+    node.aliasLabel = next;
+    node.text = next;
+    touchDocument();
+    return true;
+  }
   if (node.text === next) {
     return true;
   }
   pushUndoSnapshot();
   node.text = next;
+  syncAliasDisplayForTarget(node.id);
   touchDocument();
   return true;
 }
@@ -962,13 +1093,13 @@ function stopInlineEdit(commit: boolean): void {
     return;
   }
 
-  const { nodeId, input } = inlineEditor;
+  const { nodeId, input, mode } = inlineEditor;
   const next = input.value;
   input.remove();
   inlineEditor = null;
 
   if (commit) {
-    applyNodeTextEdit(nodeId, next);
+    applyNodeTextEdit(nodeId, next, mode);
   }
 
   board.focus();
@@ -984,14 +1115,17 @@ function startInlineEdit(nodeId: string): void {
   }
 
   const node = getNode(nodeId);
+  const mode = isAliasNode(node)
+    ? ((isBrokenAlias(node) || aliasAccess(node) === "read") ? "alias-label" : "target-text")
+    : "node-text";
   const input = document.createElement("input");
   input.type = "text";
-  input.value = node.text || "";
+  input.value = mode === "target-text" ? (resolveAliasTarget(node)?.text || node.text || "") : uiLabel(node);
   input.className = "inline-node-editor";
-  input.setAttribute("aria-label", "Edit node text");
+  input.setAttribute("aria-label", mode === "target-text" ? "Edit target node text" : "Edit node label");
   board.appendChild(input);
 
-  inlineEditor = { nodeId, input };
+  inlineEditor = { nodeId, input, mode };
   syncInlineEditorPosition();
   input.focus();
   input.select();
@@ -1029,6 +1163,9 @@ function deleteSelected(): void {
     const current = doc!.state.nodes[currentId];
     if (!current) {
       continue;
+    }
+    if (!isAliasNode(current)) {
+      markAliasesBrokenInViewer(currentId, uiLabel(current));
     }
     stack.push(...(current.children || []));
     delete doc!.state.nodes[currentId];

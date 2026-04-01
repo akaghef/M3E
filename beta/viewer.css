@@ -147,6 +147,26 @@
   stroke-width: 2;
 }
 
+.node-hit.alias-read {
+  fill: rgba(56, 115, 255, 0.08);
+  stroke: #3873ff;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.node-hit.alias-write {
+  fill: rgba(17, 153, 92, 0.1);
+  stroke: #11995c;
+  stroke-width: 1.5;
+}
+
+.node-hit.alias-broken {
+  fill: rgba(214, 75, 75, 0.1);
+  stroke: var(--danger);
+  stroke-width: 1.5;
+  stroke-dasharray: 10 6;
+}
+
 .node-hit.drop-target {
   fill: #d9f5e8;
   stroke: #1b9c64;
@@ -185,6 +205,47 @@
         font-weight: 450;
         fill: #232323;
         pointer-events: none;
+      }
+
+      .label-node.selected {
+        fill: #6f39ff;
+        font-weight: 600;
+      }
+
+      .label-node.alias-label {
+        font-style: italic;
+      }
+
+      .label-node.alias-read-label {
+        fill: #2f5fd9;
+      }
+
+      .label-node.alias-write-label {
+        fill: #12774b;
+      }
+
+      .label-node.alias-broken-label {
+        fill: var(--danger);
+      }
+
+      .alias-badge {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        pointer-events: none;
+        text-transform: uppercase;
+      }
+
+      .alias-badge-read {
+        fill: #2f5fd9;
+      }
+
+      .alias-badge-write {
+        fill: #12774b;
+      }
+
+      .alias-badge-broken {
+        fill: var(--danger);
       }
 
       .collapsed-indicator {

@@ -5,27 +5,38 @@
 
 ---
 
+## 2026-04-01-003
+
+- Date: 2026-04-01
+- Topic: graph-level `Link` の Beta 実装前提仕様
+- Status: working-agreement
+- Decision: `Link` は `Edge` と別の overlay relation として `AppState.links` に保持し、node-level `link` 文字列とは分離する。`Link` は layout に参加せず、source/target node ID を参照し、broken endpoint を含む状態は保存時に拒否する。
+- Why: 構造木と非木関係線を混同せず、将来の relation line 実装を最小データ構造から始められるようにするため
+- Next: `03_Spec/Data_Model.md` と import/export 境界文書へ graph-level `Link` の型と保存制約を追加する
+- Source: このスレッドでの `Link` 実装状況確認と仕様追記依頼
+- Promoted: [../03_Spec/Data_Model.md](../03_Spec/Data_Model.md), [../03_Spec/Import_Export.md](../03_Spec/Import_Export.md)
+
 ## 2026-04-01-002
 
 - Date: 2026-04-01
-- Topic: Command Language の将来コマンドパネルに対するセキュリティ要件を先に固定する
+- Topic: `scope` / `alias` 仕様の訂正
 - Status: working-agreement
-- Decision: `Command_Language.md` に Security Model を追加し、`eval` / `Function` 系実行を禁止、AST 検証・権限分離・承認フローを MUST とする
-- Why: コマンドパネル実装時に XSS / コードインジェクション / 外部送信リスクが高いため
-- Next: コマンドパネル実装前に本要件を受け入れ条件としてテスト設計へ落とし込む
-- Source: 2026-04-01 のセキュリティ懸念整理
-- Promoted: [../03_Spec/Command_Language.md](../03_Spec/Command_Language.md)
+- Decision: target 実体 delete は alias 残存を理由に拒否せず、alias 側を broken 状態へ遷移させて表示名を `元の名前 (deleted)` とする。alias には write 権限設定を持てるようにし、同一 scope 内 alias も許可する。
+- Why: delete を過度に阻害せず参照喪失を分かりやすく残し、将来の alias 経由編集や同一 scope 内参照の用途を塞がないため
+- Next: `03_Spec/Scope_and_Alias.md` の delete / 権限 / 同一 scope 制約を訂正し、Beta model での最小表現に落とす
+- Source: このスレッドでの仕様修正指示
+- Promoted: [../03_Spec/Scope_and_Alias.md](../03_Spec/Scope_and_Alias.md)
 
 ## 2026-04-01-001
 
 - Date: 2026-04-01
-- Topic: ユーザーが困る実装問題の集約先を運用で固定する
+- Topic: `scope` と `alias` の Beta 実装前提仕様
 - Status: working-agreement
-- Decision: ユーザー影響のある問題は、まず `Decision_Pool.md` に集約し、要約だけを `Current_Status.md`、日次の実施記録を `daily/YYMMDD.md` に書く
-- Why: 問題の詳細、現状サマリ、時系列ログが混在すると追跡が崩れるため
-- Next: 以後の課題登録は本フォーマットで追加し、対応が進んだら `Promoted` を更新する
-- Source: 2026-04-01 の運用整理会話
-- Promoted: -
+- Decision: `folder` は子 scope の入口ノードとして扱い、実体ノードは単一 scope 所属、他 scope からの再利用は `alias` 経由のみとする。`alias` は read-only 参照ノードで、`alias -> alias` は禁止し、対象実体の削除は alias 解消前は拒否する。
+- Why: 認知境界を UI とモデルの両方で一貫して扱い、複製による整合崩壊と削除事故を防ぐため
+- Next: `03_Spec/Scope_and_Alias.md` を Beta 実装に使える粒度へ拡張し、後続で model/save-load への反映単位を切り出す
+- Source: このスレッドでの `scope` / `alias` 仕様整理依頼
+- Promoted: [../03_Spec/Scope_and_Alias.md](../03_Spec/Scope_and_Alias.md)
 
 ## 2026-03-30-004
 
