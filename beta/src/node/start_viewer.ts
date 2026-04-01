@@ -83,6 +83,23 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.end(JSON.stringify(payload));
 }
 
+function sendSyncError(
+  res: http.ServerResponse,
+  statusCode: number,
+  code: string,
+  message: string,
+  documentId: string,
+  extra: Record<string, unknown> = {},
+): void {
+  sendJson(res, statusCode, {
+    ok: false,
+    code,
+    error: message,
+    documentId,
+    ...extra,
+  });
+}
+
 function parseDocId(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (!pathname.startsWith("/api/docs/")) {
@@ -214,7 +231,7 @@ async function handleSyncApi(
   route: { action: "status" | "push" | "pull"; docId: string },
 ): Promise<boolean> {
   if (!route.docId) {
-    sendJson(res, 400, { error: "Document id is required." });
+    sendSyncError(res, 400, "SYNC_DOC_ID_REQUIRED", "Document id is required.", route.docId);
     return true;
   }
 
@@ -246,21 +263,27 @@ async function handleSyncApi(
 
   if (route.action === "pull" && req.method === "POST") {
     if (!fs.existsSync(filePath)) {
-      sendJson(res, 404, { error: "Cloud document not found." });
+      sendSyncError(res, 404, "SYNC_CLOUD_NOT_FOUND", "Cloud document not found.", route.docId);
       return true;
     }
 
     try {
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as { version?: number; state?: AppState; savedAt?: string };
       if (!parsed || parsed.version !== 1 || !parsed.state) {
-        sendJson(res, 400, { error: "Cloud document has unsupported format." });
+        sendSyncError(res, 400, "SYNC_CLOUD_UNSUPPORTED_FORMAT", "Cloud document has unsupported format.", route.docId);
         return true;
       }
 
       const model = RapidMvpModel.fromJSON(parsed.state);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendJson(res, 400, { error: `Cloud document is invalid: ${errors.join(" | ")}` });
+        sendSyncError(
+          res,
+          400,
+          "SYNC_CLOUD_INVALID_MODEL",
+          `Cloud document is invalid: ${errors.join(" | ")}`,
+          route.docId,
+        );
         return true;
       }
 
@@ -273,7 +296,13 @@ async function handleSyncApi(
       });
       return true;
     } catch (err) {
-      sendJson(res, 500, { error: (err as Error).message || "Cloud pull failed." });
+      sendSyncError(
+        res,
+        500,
+        "SYNC_PULL_FAILED",
+        (err as Error).message || "Cloud pull failed.",
+        route.docId,
+      );
       return true;
     }
   }
@@ -284,7 +313,7 @@ async function handleSyncApi(
       const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
       if (!candidate.state) {
-        sendJson(res, 400, { error: "Invalid JSON format." });
+        sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.docId);
         return true;
       }
 
@@ -292,12 +321,9 @@ async function handleSyncApi(
       const baseSavedAt = parsed.baseSavedAt ?? null;
       const forcePush = Boolean(parsed.force);
       if (detectCloudConflict(existingCloudDoc?.savedAt ?? null, baseSavedAt, forcePush)) {
-        sendJson(res, 409, {
-          error: "Cloud conflict detected.",
-          code: "CLOUD_CONFLICT",
+        sendSyncError(res, 409, "CLOUD_CONFLICT", "Cloud conflict detected.", route.docId, {
           cloudSavedAt: existingCloudDoc?.savedAt ?? null,
           baseSavedAt,
-          documentId: route.docId,
         });
         return true;
       }
@@ -305,7 +331,13 @@ async function handleSyncApi(
       const model = RapidMvpModel.fromJSON(candidate.state as never);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendJson(res, 400, { error: `Invalid model before cloud push: ${errors.join(" | ")}` });
+        sendSyncError(
+          res,
+          400,
+          "SYNC_PUSH_INVALID_MODEL",
+          `Invalid model before cloud push: ${errors.join(" | ")}`,
+          route.docId,
+        );
         return true;
       }
 
@@ -325,15 +357,21 @@ async function handleSyncApi(
       return true;
     } catch (err) {
       if (err instanceof SyntaxError) {
-        sendJson(res, 400, { error: "Invalid JSON body." });
+        sendSyncError(res, 400, "SYNC_INVALID_JSON_BODY", "Invalid JSON body.", route.docId);
         return true;
       }
-      sendJson(res, 500, { error: (err as Error).message || "Cloud push failed." });
+      sendSyncError(
+        res,
+        500,
+        "SYNC_PUSH_FAILED",
+        (err as Error).message || "Cloud push failed.",
+        route.docId,
+      );
       return true;
     }
   }
 
-  sendJson(res, 405, { error: "Method not allowed." });
+  sendSyncError(res, 405, "SYNC_METHOD_NOT_ALLOWED", "Method not allowed.", route.docId);
   return true;
 }
 

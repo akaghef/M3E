@@ -112,6 +112,8 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
   });
   assert.equal(conflictingPush.response.status, 409);
   assert.equal(conflictingPush.payload.code, "CLOUD_CONFLICT");
+  assert.equal(conflictingPush.payload.ok, false);
+  assert.equal(conflictingPush.payload.documentId, docId);
 
   const forcedPush = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
     method: "POST",
@@ -139,6 +141,9 @@ test("sync pull returns 500 when cloud file JSON is broken", async () => {
   });
 
   assert.equal(pulled.response.status, 500);
+  assert.equal(pulled.payload.code, "SYNC_PULL_FAILED");
+  assert.equal(pulled.payload.ok, false);
+  assert.equal(pulled.payload.documentId, docId);
   assert.equal(typeof pulled.payload.error, "string");
 });
 
@@ -154,6 +159,9 @@ test("sync pull returns 400 for unsupported cloud document format", async () => 
   });
 
   assert.equal(pulled.response.status, 400);
+  assert.equal(pulled.payload.code, "SYNC_CLOUD_UNSUPPORTED_FORMAT");
+  assert.equal(pulled.payload.ok, false);
+  assert.equal(pulled.payload.documentId, docId);
   assert.equal(pulled.payload.error, "Cloud document has unsupported format.");
 });
 
@@ -166,6 +174,9 @@ test("sync push returns 400 for structurally invalid model", async () => {
   });
 
   assert.equal(pushed.response.status, 400);
+  assert.equal(pushed.payload.code, "SYNC_PUSH_INVALID_MODEL");
+  assert.equal(pushed.payload.ok, false);
+  assert.equal(pushed.payload.documentId, docId);
   assert.equal(typeof pushed.payload.error, "string");
 });
 
@@ -178,10 +189,19 @@ test("sync endpoints return 405 on unsupported method", async () => {
     body: JSON.stringify({}),
   });
   assert.equal(statusPost.response.status, 405);
+  assert.equal(statusPost.payload.code, "SYNC_METHOD_NOT_ALLOWED");
+  assert.equal(statusPost.payload.ok, false);
+  assert.equal(statusPost.payload.documentId, docId);
 
   const pushGet = await requestJson(`${baseUrl}/api/sync/push/${docId}`);
   assert.equal(pushGet.response.status, 405);
+  assert.equal(pushGet.payload.code, "SYNC_METHOD_NOT_ALLOWED");
+  assert.equal(pushGet.payload.ok, false);
+  assert.equal(pushGet.payload.documentId, docId);
 
   const pullGet = await requestJson(`${baseUrl}/api/sync/pull/${docId}`);
   assert.equal(pullGet.response.status, 405);
+  assert.equal(pullGet.payload.code, "SYNC_METHOD_NOT_ALLOWED");
+  assert.equal(pullGet.payload.ok, false);
+  assert.equal(pullGet.payload.documentId, docId);
 });
