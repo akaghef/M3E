@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-04-01-003
+
+- Date: 2026-04-01
+- Topic: graph-level `Link` の Beta 実装前提仕様
+- Status: working-agreement
+- Decision: `Link` は `Edge` と別の overlay relation として `AppState.links` に保持し、node-level `link` 文字列とは分離する。`Link` は layout に参加せず、source/target node ID を参照し、broken endpoint を含む状態は保存時に拒否する。
+- Why: 構造木と非木関係線を混同せず、将来の relation line 実装を最小データ構造から始められるようにするため
+- Next: `03_Spec/Data_Model.md` と import/export 境界文書へ graph-level `Link` の型と保存制約を追加する
+- Source: このスレッドでの `Link` 実装状況確認と仕様追記依頼
+- Promoted: [../03_Spec/Data_Model.md](../03_Spec/Data_Model.md), [../03_Spec/Import_Export.md](../03_Spec/Import_Export.md)
+
 ## 2026-04-01-002
 
 - Date: 2026-04-01

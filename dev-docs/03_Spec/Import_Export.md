@@ -44,6 +44,7 @@ interface AppState {
   rootId: string
   selectedId?: string
   nodes: Record<string, TreeNode>
+  links?: Record<string, GraphLink>
 }
 
 interface TreeNode {
@@ -56,6 +57,16 @@ interface TreeNode {
   note: string
   attributes: Record<string, string>
   link: string
+}
+
+interface GraphLink {
+  id: string
+  sourceNodeId: string
+  targetNodeId: string
+  relationType?: string
+  label?: string
+  direction?: "none" | "forward" | "backward" | "both"
+  style?: "default" | "dashed" | "soft" | "emphasis"
 }
 ```
 
@@ -70,6 +81,20 @@ interface TreeNode {
 **既知の制限:**
 - ダウンロードファイル名が `rapid-edited.json` 固定（未改善）
 - `selectedId` は保存されるが、読み込み後に UI に反映されるかは実装依存
+- `links` は仕様追加済みだが Beta viewer/save-load では未実装
+
+### Graph-level `Link` の保存方針
+
+- `AppState.links` は graph-level relation line の保存先とする
+- `TreeNode.link` は node-level の外部リンク属性として残す
+- 両者を相互変換しない
+
+**保存制約:**
+
+- `sourceNodeId` / `targetNodeId` は実在ノードを指す必要がある
+- self link は保存しない
+- alias endpoint は Beta では未対応として保存拒否でよい
+- node delete 時に endpoint を失う `Link` は同時削除する
 
 ---
 
@@ -157,6 +182,7 @@ M3E → `.mm` のエクスポートは未実装。以下は将来の設計方針
 | ノード type（`folder` 等） | `attribute NAME="m3e:type"` |
 | alias の参照先 | `attribute NAME="m3e:alias-ref"` |
 | scope 境界 | `folder` 型ノードは Freeplane のクラウドで表現（検討中） |
+| graph-level `Link` | 未定義（Beta では未実装） |
 
 ---
 
