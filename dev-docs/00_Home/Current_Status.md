@@ -1,5 +1,17 @@
 # Current Status
 
+## Update Log (2026-04-01 / Scope and Alias)
+
+- `scope` / `alias` の Beta 実装前提仕様を整理
+- `dev-docs/06_Operations/Decision_Pool.md`
+  - `folder` を子 scope の入口とする working-agreement を追加
+  - 実体単一所属、`alias -> alias` 禁止、alias 残存中の target delete 拒否を明文化
+- `dev-docs/03_Spec/Scope_and_Alias.md`
+  - root scope / folder scope / scope 所属規則を追加
+  - alias ノードの最低限属性、表示/編集/整合性ルールを追加
+  - Beta で固定することと保留事項を分離
+- 記録先: `dev-docs/daily/260401.md`
+
 ## Update Log (2026-04-01)
 
 - `mvp/src/browser/viewer.tuning.ts` に tuning 項目別コメントを追加
@@ -88,6 +100,8 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - `.mm` import is part of the MVP path
 - MVP test layers and CI stage rollout are documented in Operations
 - MVP persistence policy is documented as JSON model + SQLite persistence for Rapid MVP
+- `scope` は `folder` を入口とする認知境界として扱い、実体ノードは単一 scope 所属とする
+- 他 scope への再利用は `alias` 経由のみとし、`alias -> alias` は禁止する
 
 ## What Is Already Working
 
@@ -116,6 +130,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Minimal `reparent` UI now exists, but still needs refinement
 - Imported metadata is preserved but not yet rendered in the UI
 - `.mm` support is still MVP-level, not full Freeplane compatibility
+- `scope` / `alias` は仕様整理まで完了で、Beta model/save-load への実装は未着手
 - Some older docs still contain mojibake and need cleanup
 - CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
 
@@ -139,6 +154,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 2. Beta 環境でのビルド・テスト動作確認
 3. CI パイプラインを `beta/**` にも対象拡張
 4. Demo 品質: ビジュアルポリッシュ・aircraft.mm クリーンレンダリング
+5. `scope` / `alias` の最小データ構造と save/load バリデーションを Beta model に落とす
 
 ## Related Documents
 

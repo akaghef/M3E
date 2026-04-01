@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-04-01-001
+
+- Date: 2026-04-01
+- Topic: `scope` と `alias` の Beta 実装前提仕様
+- Status: working-agreement
+- Decision: `folder` は子 scope の入口ノードとして扱い、実体ノードは単一 scope 所属、他 scope からの再利用は `alias` 経由のみとする。`alias` は read-only 参照ノードで、`alias -> alias` は禁止し、対象実体の削除は alias 解消前は拒否する。
+- Why: 認知境界を UI とモデルの両方で一貫して扱い、複製による整合崩壊と削除事故を防ぐため
+- Next: `03_Spec/Scope_and_Alias.md` を Beta 実装に使える粒度へ拡張し、後続で model/save-load への反映単位を切り出す
+- Source: このスレッドでの `scope` / `alias` 仕様整理依頼
+- Promoted: [../03_Spec/Scope_and_Alias.md](../03_Spec/Scope_and_Alias.md)
+
 ## 2026-03-30-004
 
 - Date: 2026-03-30
