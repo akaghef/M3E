@@ -8,8 +8,11 @@ const fitAllBtn = document.getElementById("fit-all");
 const focusSelectedBtn = document.getElementById("focus-selected");
 const addChildBtn = document.getElementById("add-child");
 const addSiblingBtn = document.getElementById("add-sibling");
+const makeFolderBtn = document.getElementById("make-folder");
 const enterScopeBtn = document.getElementById("enter-scope");
 const exitScopeBtn = document.getElementById("exit-scope");
+const addAliasBtn = document.getElementById("add-alias");
+const jumpTargetBtn = document.getElementById("jump-target");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const deleteNodeBtn = document.getElementById("delete-node");
 const markReparentBtn = document.getElementById("mark-reparent");
@@ -19,6 +22,7 @@ const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
 const downloadBtn = document.getElementById("download-btn");
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
+const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
@@ -238,6 +242,25 @@ function currentScopeRootNode(): TreeNode | null {
   return doc.state.nodes[currentScopeRootId()] || null;
 }
 
+function scopeRootForNode(nodeId: string): string {
+  if (!doc || !doc.state.nodes[nodeId]) {
+    return "";
+  }
+  let cursor: string | null = nodeId;
+  let nearestFolderId: string | null = null;
+  while (cursor) {
+    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    if (!node) {
+      break;
+    }
+    if (isFolderNode(node)) {
+      nearestFolderId = node.id;
+    }
+    cursor = node.parentId ?? null;
+  }
+  return nearestFolderId || doc.state.rootId;
+}
+
 function scopePathIds(scopeRootId: string): string[] {
   if (!doc || !scopeRootId) {
     return [];
@@ -281,6 +304,37 @@ function updateScopeMeta(): void {
     return uiLabel(doc!.state.nodes[nodeId]);
   });
   scopeMetaEl.textContent = `scope: ${parts.join(" / ")}`;
+}
+
+function updateScopeSummary(): void {
+  if (!doc) {
+    scopeSummaryEl.textContent = "outside: n/a";
+    return;
+  }
+  const scopeRootId = currentScopeRootId();
+  const scopeRoot = doc.state.nodes[scopeRootId];
+  if (!scopeRoot) {
+    scopeSummaryEl.textContent = "outside: n/a";
+    return;
+  }
+
+  const parentScopeId = scopeRootId === doc.state.rootId
+    ? null
+    : scopeRoot.parentId
+      ? scopeRootForNode(scopeRoot.parentId)
+      : doc.state.rootId;
+  const parentLabel = parentScopeId
+    ? (parentScopeId === doc.state.rootId ? "root" : uiLabel(doc.state.nodes[parentScopeId]))
+    : "none";
+
+  const childScopeSummaries = (scopeRoot.children || [])
+    .map((childId) => doc!.state.nodes[childId])
+    .filter((node): node is TreeNode => Boolean(node))
+    .filter((node) => isFolderNode(node))
+    .map((node) => `${uiLabel(node)}(${countHiddenDescendants(node.id)})`);
+
+  const childSummary = childScopeSummaries.length > 0 ? childScopeSummaries.join(", ") : "none";
+  scopeSummaryEl.textContent = `outside: parent ${parentLabel} | child scopes ${childSummary}`;
 }
 
 function enterScope(scopeNodeId: string): boolean {
@@ -328,6 +382,90 @@ function exitScope(): boolean {
   render();
   fitDocument();
   setStatus("Returned to parent scope.");
+  board.focus();
+  return true;
+}
+
+function makeSelectedFolder(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  if (isAliasNode(node)) {
+    setStatus("Alias nodes cannot become folders.", true);
+    return false;
+  }
+  if (isFolderNode(node)) {
+    setStatus("Selected node is already a folder scope.");
+    return false;
+  }
+  pushUndoSnapshot();
+  node.nodeType = "folder";
+  touchDocument();
+  setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+  board.focus();
+  return true;
+}
+
+function addAliasInCurrentScope(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const target = getNode(viewState.selectedNodeId);
+  if (isAliasNode(target)) {
+    setStatus("Alias cannot target another alias.", true);
+    return false;
+  }
+  const scopeRoot = currentScopeRootNode();
+  if (!scopeRoot) {
+    return false;
+  }
+  pushUndoSnapshot();
+  const aliasId = newId();
+  doc.state.nodes[aliasId] = {
+    id: aliasId,
+    parentId: scopeRoot.id,
+    children: [],
+    nodeType: "alias",
+    scopeId: scopeRoot.id,
+    text: uiLabel(target),
+    details: "",
+    note: "",
+    attributes: {},
+    link: "",
+    targetNodeId: target.id,
+    aliasLabel: undefined,
+    access: "read",
+    targetSnapshotLabel: undefined,
+    isBroken: false,
+  };
+  scopeRoot.children.push(aliasId);
+  viewState.selectedNodeId = aliasId;
+  touchDocument();
+  setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
+  board.focus();
+  return true;
+}
+
+function jumpToAliasTarget(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  if (!isAliasNode(node)) {
+    setStatus("Selected node is not an alias.", true);
+    return false;
+  }
+  const target = resolveAliasTarget(node);
+  if (!target || isBrokenAlias(node)) {
+    setStatus("Broken alias cannot jump to target.", true);
+    return false;
+  }
+  viewState.currentScopeRootId = scopeRootForNode(target.id);
+  viewState.selectedNodeId = target.id;
+  render();
+  fitDocument();
+  setStatus(`Jumped to target: ${uiLabel(target)}`);
   board.focus();
   return true;
 }
@@ -408,6 +546,13 @@ function aliasBadge(node: TreeNode): string {
     return "broken";
   }
   return aliasAccess(node) === "write" ? "write" : "read";
+}
+
+function nodeBadge(node: TreeNode): string {
+  if (isFolderNode(node) && node.id !== currentScopeRootId()) {
+    return "scope";
+  }
+  return aliasBadge(node);
 }
 
 function cloneState(state: AppState): AppState {
@@ -549,6 +694,9 @@ function setZoom(nextZoom: number, anchorClientX: number | null = null, anchorCl
 
 function visibleChildren(node: TreeNode): string[] {
   if (!node || isAliasNode(node) || viewState.collapsedIds.has(node.id)) {
+    return [];
+  }
+  if (isFolderNode(node) && node.id !== currentScopeRootId()) {
     return [];
   }
   return node.children || [];
@@ -693,6 +841,7 @@ function buildLayout(state: AppState): LayoutResult {
 function render(): void {
   if (!doc) {
     updateScopeMeta();
+    updateScopeSummary();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
     return;
@@ -787,7 +936,7 @@ function render(): void {
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
       }
       nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
-      const badge = aliasBadge(node);
+      const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
       }
@@ -846,6 +995,7 @@ function render(): void {
   const scopeRoot = currentScopeRootNode();
   metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope-root: ${scopeRoot ? uiLabel(scopeRoot) : "n/a"} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
+  updateScopeSummary();
   syncInlineEditorPosition();
 }
 
@@ -865,8 +1015,9 @@ function getNodeHitBounds(nodeId: string): { left: number; right: number; top: n
   if (!p) {
     return null;
   }
-  const left = nodeId === doc.state.rootId ? p.x : p.x - 8;
-  const width = nodeId === doc.state.rootId ? p.w : p.w + 36;
+  const displayRootId = currentScopeRootId();
+  const left = nodeId === displayRootId ? p.x : p.x - 8;
+  const width = nodeId === displayRootId ? p.w : p.w + 36;
   return {
     left,
     right: left + width,
@@ -1763,6 +1914,11 @@ addSiblingBtn?.addEventListener("click", () => {
   addSibling();
 });
 
+makeFolderBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  makeSelectedFolder();
+});
+
 enterScopeBtn?.addEventListener("click", () => {
   if (!doc) return;
   enterScope(viewState.selectedNodeId);
@@ -1771,6 +1927,16 @@ enterScopeBtn?.addEventListener("click", () => {
 exitScopeBtn?.addEventListener("click", () => {
   if (!doc) return;
   exitScope();
+});
+
+addAliasBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  addAliasInCurrentScope();
+});
+
+jumpTargetBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  jumpToAliasTarget();
 });
 
 toggleCollapseBtn?.addEventListener("click", () => {

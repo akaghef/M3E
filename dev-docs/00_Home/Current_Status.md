@@ -10,6 +10,11 @@
   - folder ノードで `enterScope`、親 scope へ `exitScope` を追加
   - `Ctrl/Cmd+]` / `Ctrl/Cmd+[` で scope 移動できるように変更
   - scope breadcrumb 風の meta 表示を追加
+- `beta` viewer に folder / scope summary / alias 導線を追加
+  - `Make folder` で selected node を folder type に変更できるようにした
+  - current scope の親 scope / child scope 一覧を `scope-summary` に表示
+  - current scope root 配下へ alias を追加できるようにした
+  - alias から target 実体へ jump できるようにした
 - 記録先: `dev-docs/daily/260402.md`
 
 ## Update Log (2026-04-02 / Collapsed Badge)
@@ -178,6 +183,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Beta viewer で alias 状態ごとの最小表示差分と編集制限が入った
 - graph-level `Link` は Beta model/save-load まで入った
 - Beta viewer に current scope の最小移動が入った
+- Beta viewer に folder 作成導線、scope 外要約、alias 基本導線が入った
 - marquee selection の編集設計は文書化済みで、viewer 実装は未着手
 
 ## What Is Still Open
@@ -187,9 +193,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Imported metadata is preserved but not yet rendered in the UI
 - `.mm` support is still MVP-level, not full Freeplane compatibility
 - `scope` / `alias` の viewer 導線は最小表示まで実装済みで、作成/遷移 UI は未実装
-- alias の作成 UI と `jump to target` は未実装
 - graph-level `Link` の viewer overlay 描画と作成 UI は未実装
-- folder type の作成導線と scope 外要約表示は未実装
 - marquee selection の viewer 実装と viewport 移動代替操作は未実装
 - Some older docs still contain mojibake and need cleanup
 - CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
@@ -221,7 +225,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 9. alias 作成導線と `jump to target` 導線を Beta viewer に入れる
 10. `AppState.links` と graph-level `Link` validation を Beta model に追加する
 11. graph-level `Link` の overlay 描画を Beta viewer に追加する
-12. folder type の作成導線と scope 外要約表示を Beta viewer に追加する
+12. cross-scope `Link` の表示ポリシーと filter UI を Beta viewer に追加する
 
 ## Related Documents
 

@@ -248,6 +248,10 @@
         fill: var(--danger);
       }
 
+      .alias-badge-scope {
+        fill: #9a6b1f;
+      }
+
       .collapsed-badge {
         fill: #ffffff;
         stroke: var(--accent);
