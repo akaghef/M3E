@@ -47,6 +47,8 @@ const DRAG_REORDER_TAIL = 28;
 const DRAG_REORDER_PARENT_LANE_PAD = 96;
 let viewState: ViewState = {
   selectedNodeId: "",
+  currentScopeId: "",
+  scopeHistory: [],
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -349,7 +351,35 @@ function visibleChildren(node: TreeNode): string[] {
   if (!node || viewState.collapsedIds.has(node.id)) {
     return [];
   }
-  return node.children || [];
+  return (node.children || []).filter((childId) => isNodeInScope(childId));
+}
+
+function normalizedCurrentScopeId(): string {
+  if (!doc) {
+    return "";
+  }
+  if (doc.state.nodes[viewState.currentScopeId]) {
+    return viewState.currentScopeId;
+  }
+  return doc.state.rootId;
+}
+
+function isNodeInScope(nodeId: string): boolean {
+  if (!doc) {
+    return false;
+  }
+  const scopeId = normalizedCurrentScopeId();
+  if (!scopeId) {
+    return false;
+  }
+  let currentId: string | null = nodeId;
+  while (currentId) {
+    if (currentId === scopeId) {
+      return true;
+    }
+    currentId = doc.state.nodes[currentId]?.parentId ?? null;
+  }
+  return false;
 }
 
 function buildLayout(state: AppState): LayoutResult {
@@ -383,7 +413,7 @@ function buildLayout(state: AppState): LayoutResult {
     visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
   }
 
-  visit(state.rootId, 0);
+  visit(normalizedCurrentScopeId(), 0);
 
   const xByDepth: Record<number, number> = {};
   let cursorX = VIEWER_TUNING.layout.leftPad;
@@ -456,7 +486,7 @@ function buildLayout(state: AppState): LayoutResult {
     return h;
   }
 
-  const totalHeight = place(state.rootId, VIEWER_TUNING.layout.topPad);
+  const totalHeight = place(normalizedCurrentScopeId(), VIEWER_TUNING.layout.topPad);
   return {
     pos,
     order,
@@ -559,7 +589,7 @@ function render(): void {
     children.forEach((cid) => drawNode(cid));
   }
 
-  drawNode(state.rootId);
+  drawNode(normalizedCurrentScopeId());
 
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
@@ -590,7 +620,7 @@ function render(): void {
     const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dropLabel}`;
   syncInlineEditorPosition();
 }
 
@@ -839,8 +869,43 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
 
 function selectNode(nodeId: string): void {
   getNode(nodeId);
+  if (!isNodeInScope(nodeId)) {
+    return;
+  }
   viewState.selectedNodeId = nodeId;
   render();
+}
+
+function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
+  if (!doc || !doc.state.nodes[scopeId]) {
+    return;
+  }
+  const currentScopeId = normalizedCurrentScopeId();
+  if (scopeId === currentScopeId) {
+    return;
+  }
+  viewState.scopeHistory.push(currentScopeId);
+  viewState.currentScopeId = scopeId;
+  viewState.reparentSourceId = "";
+  if (!isNodeInScope(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = scopeId;
+  }
+  render();
+  setStatus(`Entered scope: ${getNode(scopeId).text}`);
+}
+
+function ExitScopeCommand(): void {
+  if (!doc || viewState.scopeHistory.length === 0) {
+    return;
+  }
+  const previousScopeId = viewState.scopeHistory.pop()!;
+  viewState.currentScopeId = doc.state.nodes[previousScopeId] ? previousScopeId : doc.state.rootId;
+  viewState.reparentSourceId = "";
+  if (!isNodeInScope(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = viewState.currentScopeId;
+  }
+  render();
+  setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
 }
 
 function addChild(): void {
@@ -1122,7 +1187,7 @@ function selectParent(): void {
     return;
   }
   const node = getNode(viewState.selectedNodeId);
-  if (node.parentId) {
+  if (node.parentId && isNodeInScope(node.parentId)) {
     selectNode(node.parentId);
   }
 }
@@ -1187,6 +1252,8 @@ function loadPayload(payload: unknown): void {
     doc = ensureDocShape(payload);
     undoStack = [];
     redoStack = [];
+    viewState.currentScopeId = doc.state.rootId;
+    viewState.scopeHistory = [];
     viewState.selectedNodeId = doc.state.rootId;
     viewState.reparentSourceId = "";
     viewState.collapsedIds = new Set(
@@ -1591,7 +1658,12 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
     return;
   }
   selectNode(nodeId);
-  startInlineEdit(nodeId);
+      const node = getNode(nodeId);
+      if ((node.children || []).length > 0) {
+        EnterScopeCommand(nodeId);
+        return;
+      }
+      startInlineEdit(nodeId);
 });
 
 board.addEventListener("wheel", (event: WheelEvent) => {
@@ -1701,10 +1773,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (event.key === "Delete" || event.key === "Backspace") {
+        if (event.key === "Backspace" && !inlineEditor && viewState.scopeHistory.length > 0) {
+          event.preventDefault();
+          ExitScopeCommand();
+          return;
+        }
     event.preventDefault();
     deleteSelected();
     return;
   }
+
+      if (event.altKey && event.key === "Enter") {
+        event.preventDefault();
+        EnterScopeCommand();
+        return;
+      }
 
   if (event.key.toLowerCase() === "m") {
     event.preventDefault();

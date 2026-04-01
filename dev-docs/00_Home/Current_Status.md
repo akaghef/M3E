@@ -2,6 +2,18 @@
 
 ## Update Log (2026-04-01)
 
+- `beta/src/browser/viewer.globals.d.ts` / `beta/src/browser/viewer.ts`
+	- `ViewState` に `currentScopeId` / `scopeHistory` を追加
+	- `EnterScopeCommand` / `ExitScopeCommand` を実装（ViewStateのみ変更、Undo/Redo対象外）
+	- 画面表示と移動対象を `currentScopeId` の部分木に限定
+- `beta/src/node/rapid_mvp.ts`
+	- scope 指定クエリ API（`queryNodeIds(scopeId?)` / `queryNodes(scopeId?)`）を追加
+- `beta/tests/unit/rapid_mvp.test.js`
+	- scope query の unit test を追加
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
 - `mvp/src/browser/viewer.tuning.ts` に tuning 項目別コメントを追加
 - ノード縦間隔を調整
   - `rootHeight: 120 -> 104`
