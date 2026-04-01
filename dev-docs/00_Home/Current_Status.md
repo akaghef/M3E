@@ -25,6 +25,10 @@
 - `Editing_Design.md` に marquee selection 設計を追加
   - 空白ドラッグは marquee selection、wheel/trackpad は `two-finger pan` として用語分離
   - marquee 用 ViewState / HitTest / 制約 / 受け入れ基準を追記
+- `beta` viewer に alias 状態表示を追加
+  - `read alias` / `write alias` / `broken alias` の見た目を分離
+  - alias の inline edit を権限別に分岐
+  - target delete 時の broken 化を viewer 側にも反映
 - 記録先: `dev-docs/daily/260401.md`
 
 ## Update Log (2026-04-01)
@@ -140,6 +144,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - SQLite 保存/読込が viewer の通常導線から利用可能（起動時復元 + autosave）
 - ノードテキスト編集がノード上で完結（欄外編集は廃止）
 - Beta model で alias access / broken alias / `alias -> alias` 禁止の最小整合性が入った
+- Beta viewer で alias 状態ごとの最小表示差分と編集制限が入った
 - marquee selection の編集設計は文書化済みで、viewer 実装は未着手
 
 ## What Is Still Open
@@ -148,7 +153,8 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Minimal `reparent` UI now exists, but still needs refinement
 - Imported metadata is preserved but not yet rendered in the UI
 - `.mm` support is still MVP-level, not full Freeplane compatibility
-- `scope` / `alias` の viewer 表示と操作制限は未実装
+- `scope` / `alias` の viewer 導線は最小表示まで実装済みで、作成/遷移 UI は未実装
+- alias の作成 UI と `jump to target` は未実装
 - marquee selection の viewer 実装と viewport 移動代替操作は未実装
 - Some older docs still contain mojibake and need cleanup
 - CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
@@ -177,6 +183,7 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 6. broken alias と alias access 権限の最小型を Beta model に追加する
 7. viewer で alias 状態ごとの表示差分と操作制限を入れる
 8. marquee selection とマウス向け viewport 移動代替操作を Beta viewer に入れる
+9. alias 作成導線と `jump to target` 導線を Beta viewer に入れる
 
 ## Related Documents
 
