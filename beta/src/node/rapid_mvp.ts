@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import type { TreeNode, AppState, SavedDoc, AliasAccess } from "../shared/types";
+import type { TreeNode, AppState, SavedDoc, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -34,6 +34,7 @@ class RapidMvpModel {
           link: "",
         },
       },
+      links: {},
     };
 
     this.undoStack = [];
@@ -62,6 +63,16 @@ class RapidMvpModel {
     };
   }
 
+  _normalizeLink(link: GraphLink): GraphLink {
+    return {
+      ...link,
+      relationType: link.relationType ?? undefined,
+      label: link.label ?? undefined,
+      direction: link.direction ?? "none",
+      style: link.style ?? "default",
+    };
+  }
+
   _pushHistory(): void {
     this.undoStack.push(this._cloneState());
     if (this.undoStack.length > this.maxHistory) {
@@ -82,6 +93,26 @@ class RapidMvpModel {
 
   _replaceNode(node: TreeNode): void {
     this.state.nodes[node.id] = this._normalizeNode(node);
+  }
+
+  _ensureLinks(): Record<string, GraphLink> {
+    if (!this.state.links) {
+      this.state.links = {};
+    }
+    return this.state.links;
+  }
+
+  _deleteLinksForNode(nodeId: string): void {
+    const links = this._ensureLinks();
+    Object.keys(links).forEach((linkId) => {
+      const link = links[linkId];
+      if (!link) {
+        return;
+      }
+      if (link.sourceNodeId === nodeId || link.targetNodeId === nodeId) {
+        delete links[linkId];
+      }
+    });
   }
 
   _displayLabel(node: TreeNode): string {
@@ -173,6 +204,36 @@ class RapidMvpModel {
     return id;
   }
 
+  addLink(sourceNodeId: string, targetNodeId: string, options?: {
+    relationType?: string;
+    label?: string;
+    direction?: LinkDirection;
+    style?: LinkStyle;
+  }): string {
+    const source = this._requireNode(sourceNodeId);
+    const target = this._requireNode(targetNodeId);
+    if (source.nodeType === "alias" || target.nodeType === "alias") {
+      throw new Error("Graph links cannot target alias nodes in Beta.");
+    }
+    if (sourceNodeId === targetNodeId) {
+      throw new Error("Graph links cannot connect a node to itself.");
+    }
+
+    this._pushHistory();
+
+    const id = this._newId();
+    this._ensureLinks()[id] = this._normalizeLink({
+      id,
+      sourceNodeId,
+      targetNodeId,
+      relationType: options?.relationType,
+      label: options?.label,
+      direction: options?.direction,
+      style: options?.style,
+    });
+    return id;
+  }
+
   addSibling(nodeId: string, text = "New Sibling", after = true): string {
     const node = this._requireNode(nodeId);
     if (node.parentId === null) {
@@ -210,6 +271,7 @@ class RapidMvpModel {
         continue;
       }
       this._markAliasesBroken(current, this._displayLabel(this._normalizeNode(currentNode)));
+      this._deleteLinksForNode(current);
       toDelete.push(...currentNode.children);
       delete this.state.nodes[current];
     }
@@ -345,6 +407,34 @@ class RapidMvpModel {
       }
     });
 
+    const links = this.state.links ?? {};
+    Object.values(links).forEach((link) => {
+      const normalized = this._normalizeLink(link);
+      const source = nodes[normalized.sourceNodeId];
+      const target = nodes[normalized.targetNodeId];
+      if (!source) {
+        errors.push(`Link ${normalized.id} has missing source node: ${normalized.sourceNodeId}`);
+      }
+      if (!target) {
+        errors.push(`Link ${normalized.id} has missing target node: ${normalized.targetNodeId}`);
+      }
+      if (normalized.sourceNodeId === normalized.targetNodeId) {
+        errors.push(`Link ${normalized.id} cannot connect a node to itself.`);
+      }
+      if (source && this._normalizeNode(source).nodeType === "alias") {
+        errors.push(`Link ${normalized.id} cannot use alias source node: ${normalized.sourceNodeId}`);
+      }
+      if (target && this._normalizeNode(target).nodeType === "alias") {
+        errors.push(`Link ${normalized.id} cannot use alias target node: ${normalized.targetNodeId}`);
+      }
+      if (!["none", "forward", "backward", "both"].includes(normalized.direction ?? "none")) {
+        errors.push(`Link ${normalized.id} has invalid direction: ${String(normalized.direction)}`);
+      }
+      if (!["default", "dashed", "soft", "emphasis"].includes(normalized.style ?? "default")) {
+        errors.push(`Link ${normalized.id} has invalid style: ${String(normalized.style)}`);
+      }
+    });
+
     const visited = new Set<string>();
     const inStack = new Set<string>();
     const dfs = (nodeId: string): void => {
@@ -384,6 +474,11 @@ class RapidMvpModel {
     model.state = JSON.parse(JSON.stringify(jsonState)) as AppState;
     Object.keys(model.state.nodes).forEach((nodeId) => {
       model.state.nodes[nodeId] = model._normalizeNode(model.state.nodes[nodeId]!);
+    });
+    const links = model.state.links ?? {};
+    model.state.links = {};
+    Object.keys(links).forEach((linkId) => {
+      model.state.links![linkId] = model._normalizeLink(links[linkId]!);
     });
     model.undoStack = [];
     model.redoStack = [];

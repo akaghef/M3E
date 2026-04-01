@@ -3,6 +3,8 @@
 
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
+type GraphLinkDirection = "none" | "forward" | "backward" | "both";
+type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 
 interface TreeNode {
   id: string;
@@ -22,9 +24,20 @@ interface TreeNode {
   isBroken?: boolean;
 }
 
+interface GraphLink {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  relationType?: string;
+  label?: string;
+  direction?: GraphLinkDirection;
+  style?: GraphLinkStyle;
+}
+
 interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
+  links?: Record<string, GraphLink>;
 }
 
 interface SavedDoc {

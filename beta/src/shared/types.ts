@@ -1,5 +1,7 @@
 export type NodeType = "text" | "image" | "folder" | "alias";
 export type AliasAccess = "read" | "write";
+export type LinkDirection = "none" | "forward" | "backward" | "both";
+export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
 
 export interface TreeNode {
   id: string;
@@ -19,9 +21,20 @@ export interface TreeNode {
   isBroken?: boolean;
 }
 
+export interface GraphLink {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  relationType?: string;
+  label?: string;
+  direction?: LinkDirection;
+  style?: LinkStyle;
+}
+
 export interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
+  links?: Record<string, GraphLink>;
 }
 
 export interface SavedDoc {

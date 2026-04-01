@@ -68,6 +68,37 @@ test("addAlias stores access and label", () => {
   assert.equal(model.state.nodes[aliasId].text, "Shortcut");
 });
 
+test("addLink stores graph link in state", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+
+  const linkId = model.addLink(a, b, {
+    relationType: "reference",
+    label: "see also",
+    direction: "forward",
+    style: "dashed",
+  });
+
+  assert.equal(model.state.links[linkId].sourceNodeId, a);
+  assert.equal(model.state.links[linkId].targetNodeId, b);
+  assert.equal(model.state.links[linkId].direction, "forward");
+  assert.equal(model.state.links[linkId].style, "dashed");
+});
+
+test("deleteNode removes graph links touching deleted nodes", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+  const linkId = model.addLink(a, b);
+
+  model.deleteNode(a);
+
+  assert.equal(model.state.links[linkId], undefined);
+});
+
 test("validate rejects alias targeting alias", () => {
   const model = new RapidMvpModel("Root");
   const rootId = model.state.rootId;
@@ -81,6 +112,25 @@ test("validate rejects alias targeting alias", () => {
   model.state.nodes[badAliasId].children = [];
 
   assert.match(model.validate().join(" | "), /cannot target alias node/);
+});
+
+test("validate rejects graph link with alias endpoint", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const targetId = model.addNode(rootId, "Target");
+  const aliasId = model.addAlias(rootId, targetId);
+  const badNodeId = model.addNode(rootId, "Bad");
+  const linkId = "link_bad";
+
+  model.state.links = {
+    [linkId]: {
+      id: linkId,
+      sourceNodeId: aliasId,
+      targetNodeId: badNodeId,
+    },
+  };
+
+  assert.match(model.validate().join(" | "), /cannot use alias source node/);
 });
 
 test("reparentNode rejects cycle", () => {
