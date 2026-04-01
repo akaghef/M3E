@@ -5,6 +5,7 @@ import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
+import { detectCloudConflict } from "./cloud_sync";
 import type { AppState, SavedDoc } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
@@ -290,16 +291,11 @@ async function handleSyncApi(
       const existingCloudDoc = readCloudDoc(filePath);
       const baseSavedAt = parsed.baseSavedAt ?? null;
       const forcePush = Boolean(parsed.force);
-      if (
-        existingCloudDoc &&
-        baseSavedAt &&
-        existingCloudDoc.savedAt !== baseSavedAt &&
-        !forcePush
-      ) {
+      if (detectCloudConflict(existingCloudDoc?.savedAt ?? null, baseSavedAt, forcePush)) {
         sendJson(res, 409, {
           error: "Cloud conflict detected.",
           code: "CLOUD_CONFLICT",
-          cloudSavedAt: existingCloudDoc.savedAt,
+          cloudSavedAt: existingCloudDoc?.savedAt ?? null,
           baseSavedAt,
           documentId: route.docId,
         });

@@ -2,6 +2,13 @@
 
 ## Update Log (2026-04-02)
 
+- `beta/src/node/cloud_sync.ts` / `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_conflict.test.js`
+	- cloud 競合判定ロジックを分離し、unit test を追加して回帰を固定
+	- `detectCloudConflict` で push 競合条件を明示化（force/未存在/未指定/一致/不一致）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (22 tests)
+
 - `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts` / `beta/viewer.html` / `beta/viewer.css`
 	- cloud 競合解決フロー（savedAt 比較 + `409 CLOUD_CONFLICT` + 手動解決UI）を追加
 	- `Use Local` (force push) / `Use Cloud` (pull) の明示解決導線を実装
