@@ -77,6 +77,8 @@ window.m3e  // M3E コマンド API
 - コマンドパネル経由で許可 API 以外が呼べない。
 - 監査ログに操作概要が残り、入力全文が既定で保存されない。
 
+詳細テストケースは `../06_Operations/Command_Panel_Security_Test_Cases.md` を参照。
+
 ---
 
 ## ノード参照

@@ -10,6 +10,8 @@
   どこに何を書くか、いつ正式文書へ移すかの運用ルールをまとめる
 - `Test_and_CICD_Guide.md`
   MVP 期間のテスト戦略と CI/CD 運用の基準を定義する
+- `Command_Panel_Security_Test_Cases.md`
+  コマンドパネル実装前に満たすべきセキュリティ受け入れテストを定義する
 - `Agent_Roles.md`
   エージェント遂行の役割分担と実行順序を定義する
 
