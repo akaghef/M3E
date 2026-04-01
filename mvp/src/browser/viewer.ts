@@ -41,6 +41,10 @@ let lastLayout: LayoutResult | null = null;
 let visualCheckRunId = 0;
 let undoStack: UndoSnapshot[] = [];
 let redoStack: UndoSnapshot[] = [];
+const DRAG_CENTER_BAND_HALF = 20;
+const DRAG_EDGE_BAND = 14;
+const DRAG_REORDER_TAIL = 28;
+const DRAG_REORDER_PARENT_LANE_PAD = 96;
 let viewState: ViewState = {
   selectedNodeId: "",
   zoom: 1,
@@ -480,6 +484,7 @@ function render(): void {
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let edges = "";
+  let overlays = "";
   let nodes = "";
 
   function drawNode(nodeId: string): void {
@@ -517,7 +522,7 @@ function render(): void {
     if (nodeId === viewState.selectedNodeId) {
       classNames.push("selected");
     }
-    if (viewState.dragState && nodeId === viewState.dragState.targetNodeId) {
+    if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
       classNames.push("drop-target");
     }
     if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
@@ -556,12 +561,20 @@ function render(): void {
 
   drawNode(state.rootId);
 
+  if (viewState.dragState?.proposal?.kind === "reorder") {
+    const proposal = viewState.dragState.proposal;
+    const bounds = getReorderLineBounds(proposal.parentId, proposal.index, viewState.dragState.sourceNodeId);
+    if (bounds) {
+      overlays += `<line class="reorder-line" x1="${bounds.x1}" y1="${proposal.lineY}" x2="${bounds.x2}" y2="${proposal.lineY}" />`;
+    }
+  }
+
   contentWidth = maxX;
   contentHeight = maxY;
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${edges}${nodes}`;
+  (canvas as Element).innerHTML = `${edges}${overlays}${nodes}`;
   applyZoom();
 
   const version = doc.version ?? "n/a";
@@ -569,10 +582,259 @@ function render(): void {
   const nodeCount = Object.keys(state.nodes).length;
   const selected = state.nodes[viewState.selectedNodeId];
   const moveNode = state.nodes[viewState.reparentSourceId];
-  const dragTargetId = viewState.dragState?.targetNodeId;
-  const dragTarget = dragTargetId ? state.nodes[dragTargetId] : null;
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dragTarget ? dragTarget.text : "none"}`;
+  const dragProposal = viewState.dragState?.proposal;
+  let dropLabel = "none";
+  if (dragProposal?.kind === "reparent") {
+    dropLabel = `child of ${state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId}`;
+  } else if (dragProposal?.kind === "reorder") {
+    const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
+    dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
+  }
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? selected.text : "n/a"} | move-node: ${moveNode ? moveNode.text : "none"} | drop-target: ${dropLabel}`;
   syncInlineEditorPosition();
+}
+
+function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: number } {
+  const boardRect = board.getBoundingClientRect();
+  return {
+    x: (clientX - boardRect.left - viewState.cameraX) / viewState.zoom,
+    y: (clientY - boardRect.top - viewState.cameraY) / viewState.zoom,
+  };
+}
+
+function getNodeHitBounds(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
+  if (!doc || !lastLayout) {
+    return null;
+  }
+  const p = lastLayout.pos[nodeId];
+  if (!p) {
+    return null;
+  }
+  const left = nodeId === doc.state.rootId ? p.x : p.x - 8;
+  const width = nodeId === doc.state.rootId ? p.w : p.w + 36;
+  return {
+    left,
+    right: left + width,
+    top: p.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
+    bottom: p.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+  };
+}
+
+function findNodeAtCanvasPoint(x: number, y: number): string | null {
+  if (!lastLayout) {
+    return null;
+  }
+  let hitNodeId: string | null = null;
+  visibleOrder.forEach((nodeId) => {
+    const bounds = getNodeHitBounds(nodeId);
+    if (!bounds) {
+      return;
+    }
+    if (x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
+      hitNodeId = nodeId;
+    }
+  });
+  return hitNodeId;
+}
+
+function getVisibleChildrenForDrop(parentId: string, sourceId: string): string[] {
+  const parent = getNode(parentId);
+  const children = visibleChildren(parent);
+  const sourceNode = getNode(sourceId);
+  if (sourceNode.parentId === parentId) {
+    return children.filter((childId) => childId !== sourceId);
+  }
+  return children;
+}
+
+function getReorderLineBounds(parentId: string, index: number, sourceId: string): { x1: number; x2: number } | null {
+  if (!lastLayout) {
+    return null;
+  }
+  const parentPos = lastLayout.pos[parentId];
+  if (!parentPos) {
+    return null;
+  }
+  const children = getVisibleChildrenForDrop(parentId, sourceId);
+  if (children.length === 0) {
+    return null;
+  }
+  const childBounds = children
+    .map((childId) => getNodeHitBounds(childId))
+    .filter((bounds): bounds is { left: number; right: number; top: number; bottom: number } => Boolean(bounds));
+  if (childBounds.length === 0) {
+    return null;
+  }
+  const x1 = Math.min(
+    ...childBounds.map((bounds) => bounds.left),
+    parentPos.x + parentPos.w - DRAG_REORDER_PARENT_LANE_PAD
+  );
+  const x2 = Math.max(...childBounds.map((bounds) => bounds.right)) + 20;
+  return { x1, x2 };
+}
+
+function getSiblingMidpointBand(
+  childBounds: Array<{ id: string; top: number; bottom: number; hitLeft: number; hitRight: number }>,
+  index: number,
+  parentBandBottom: number
+): { startY: number; endY: number; lineY: number } {
+  const current = childBounds[index]!;
+  const prev = childBounds[index - 1];
+  const next = childBounds[index + 1];
+  const prevMid = prev ? (prev.top + prev.bottom) / 2 : parentBandBottom;
+  const currentMid = (current.top + current.bottom) / 2;
+  const nextMid = next ? (next.top + next.bottom) / 2 : current.bottom + DRAG_REORDER_TAIL;
+  return {
+    startY: prev ? (prevMid + currentMid) / 2 : parentBandBottom,
+    endY: (currentMid + nextMid) / 2,
+    lineY: current.top,
+  };
+}
+
+function canDropUnderParent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
+  if (!sourceId || !targetParentId) {
+    return false;
+  }
+  if (sourceId === targetParentId) {
+    return false;
+  }
+  const sourceNode = getNode(sourceId);
+  if (sourceNode.parentId === null) {
+    return false;
+  }
+  if (isDescendant(targetParentId, sourceId)) {
+    return false;
+  }
+  return true;
+}
+
+function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropProposal | null {
+  if (!lastLayout) {
+    return null;
+  }
+  const layout = lastLayout;
+
+  for (const parentId of visibleOrder) {
+    const parentPos = layout.pos[parentId];
+    if (!parentPos || !canDropUnderParent(sourceId, parentId)) {
+      continue;
+    }
+
+    const children = getVisibleChildrenForDrop(parentId, sourceId);
+    if (children.length === 0) {
+      continue;
+    }
+
+    const childBounds = children
+      .map((childId) => {
+        const p = layout.pos[childId];
+        const hit = getNodeHitBounds(childId);
+        if (!p || !hit) {
+          return null;
+        }
+        return {
+          id: childId,
+          top: p.y - VIEWER_TUNING.layout.leafHeight / 2,
+          bottom: p.y + VIEWER_TUNING.layout.leafHeight / 2,
+          hitLeft: hit.left,
+          hitRight: hit.right,
+        };
+      })
+      .filter((entry): entry is { id: string; top: number; bottom: number; hitLeft: number; hitRight: number } => Boolean(entry));
+
+    if (childBounds.length === 0) {
+      continue;
+    }
+
+    const x1 = Math.min(
+      ...childBounds.map((entry) => entry.hitLeft),
+      parentPos.x + parentPos.w - DRAG_REORDER_PARENT_LANE_PAD
+    );
+    const x2 = Math.max(...childBounds.map((entry) => entry.hitRight)) + 20;
+    if (x < x1 || x > x2) {
+      continue;
+    }
+
+    const parentBandBottom = parentPos.y + DRAG_CENTER_BAND_HALF;
+    for (let index = 0; index < childBounds.length; index += 1) {
+      const current = childBounds[index]!;
+      const beforeBand = getSiblingMidpointBand(childBounds, index, parentBandBottom);
+      const isInParentLane = x < current.hitLeft;
+      const beforeStart = isInParentLane ? beforeBand.startY : Math.max(beforeBand.startY, current.top - DRAG_EDGE_BAND);
+      const beforeEnd = isInParentLane ? beforeBand.endY : current.top + DRAG_EDGE_BAND;
+      if (y >= beforeStart && y <= beforeEnd) {
+        return {
+          kind: "reorder",
+          parentId,
+          index,
+          lineY: beforeBand.lineY,
+        };
+      }
+
+      const next = childBounds[index + 1];
+      if (!next) {
+        const tailBottom = current.bottom + DRAG_REORDER_TAIL;
+        if (y >= current.bottom && y <= tailBottom) {
+          return {
+            kind: "reorder",
+            parentId,
+            index: childBounds.length,
+            lineY: (current.bottom + tailBottom) / 2,
+          };
+        }
+        continue;
+      }
+      if (y >= current.bottom && y <= next.top) {
+        return {
+          kind: "reorder",
+          parentId,
+          index: index + 1,
+          lineY: (current.bottom + next.top) / 2,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDropProposal | null {
+  const point = clientToCanvasPoint(clientX, clientY);
+  const targetNodeId = findNodeAtCanvasPoint(point.x, point.y);
+  if (targetNodeId) {
+    const targetPos = lastLayout?.pos[targetNodeId];
+    const targetNode = doc?.state.nodes[targetNodeId];
+    if (targetPos && targetNode?.parentId) {
+      const targetIndex = getVisibleChildrenForDrop(targetNode.parentId, sourceId).indexOf(targetNodeId);
+      const topEdge = targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
+      const bottomEdge = targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+      if (point.y < topEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
+        return {
+          kind: "reorder",
+          parentId: targetNode.parentId,
+          index: targetIndex,
+          lineY: targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
+        };
+      }
+      if (point.y > bottomEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
+        return {
+          kind: "reorder",
+          parentId: targetNode.parentId,
+          index: targetIndex + 1,
+          lineY: targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+        };
+      }
+    }
+
+    if (canDropUnderParent(sourceId, targetNodeId)) {
+      return {
+        kind: "reparent",
+        parentId: targetNodeId,
+      };
+    }
+  }
+
+  return proposeReorderDrop(sourceId, point.x, point.y);
 }
 
 function selectNode(nodeId: string): void {
@@ -1094,50 +1356,47 @@ function applyReparent(): void {
     return;
   }
 
-  pushUndoSnapshot();
-  const oldParent = getNode(sourceNode.parentId);
-  const newParent = getNode(targetParentId);
-  oldParent.children = oldParent.children.filter((id) => id !== sourceId);
-  newParent.children.push(sourceId);
-  viewState.collapsedIds.delete(targetParentId);
-  sourceNode.parentId = targetParentId;
-  viewState.reparentSourceId = "";
-  touchDocument();
-  setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+  applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true);
 }
 
 function canReparent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
-  if (!sourceId || !targetParentId) {
-    return false;
-  }
-  if (sourceId === targetParentId) {
-    return false;
-  }
-  const sourceNode = getNode(sourceId);
-  if (sourceNode.parentId === null) {
-    return false;
-  }
-  if (isDescendant(targetParentId, sourceId)) {
-    return false;
-  }
-  return true;
+  return canDropUnderParent(sourceId, targetParentId);
 }
 
-function applyReparentByIds(sourceId: string, targetParentId: string): boolean {
-  if (!canReparent(sourceId, targetParentId)) {
+function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, targetIndex: number, expandParent: boolean): boolean {
+  if (!canDropUnderParent(sourceId, targetParentId)) {
     return false;
   }
-  pushUndoSnapshot();
   const sourceNode = getNode(sourceId);
   const oldParent = getNode(sourceNode.parentId!);
   const newParent = getNode(targetParentId);
+
+  const oldIndex = oldParent.children.indexOf(sourceId);
+  let normalizedIndex = Math.max(0, Math.min(targetIndex, newParent.children.length));
+  if (oldParent.id === newParent.id && oldIndex >= 0) {
+    if (oldIndex < normalizedIndex) {
+      normalizedIndex -= 1;
+    }
+    if (normalizedIndex === oldIndex) {
+      return false;
+    }
+  }
+
+  pushUndoSnapshot();
   oldParent.children = oldParent.children.filter((id) => id !== sourceId);
-  newParent.children.push(sourceId);
-  viewState.collapsedIds.delete(targetParentId);
+  const boundedIndex = Math.max(0, Math.min(normalizedIndex, newParent.children.length));
+  newParent.children.splice(boundedIndex, 0, sourceId);
+  if (expandParent) {
+    viewState.collapsedIds.delete(targetParentId);
+  }
   sourceNode.parentId = targetParentId;
   viewState.reparentSourceId = "";
   touchDocument();
-  setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+  if (oldParent.id === newParent.id) {
+    setStatus(`Reordered "${sourceNode.text}" in "${newParent.text}".`);
+  } else {
+    setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+  }
   return true;
 }
 
@@ -1269,7 +1528,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   viewState.dragState = {
     pointerId: event.pointerId,
     sourceNodeId: nodeId,
-    targetNodeId: null,
+    proposal: null,
     startX: event.clientX,
     startY: event.clientY,
     dragged: false,
@@ -1288,9 +1547,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   viewState.dragState.dragged = true;
-  const el = document.elementFromPoint(event.clientX, event.clientY);
-  const targetNodeId = (el as HTMLElement | null)?.dataset?.["nodeId"] ?? null;
-  viewState.dragState.targetNodeId = canReparent(viewState.dragState.sourceNodeId, targetNodeId) ? targetNodeId : null;
+  viewState.dragState.proposal = proposeDrop(viewState.dragState.sourceNodeId, event.clientX, event.clientY);
   render();
 });
 
@@ -1298,7 +1555,7 @@ function finishNodeDrag(event: PointerEvent): void {
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
-  const { sourceNodeId, targetNodeId, dragged } = viewState.dragState;
+  const { sourceNodeId, proposal, dragged } = viewState.dragState;
   viewState.dragState = null;
   canvas.releasePointerCapture(event.pointerId);
 
@@ -1308,11 +1565,16 @@ function finishNodeDrag(event: PointerEvent): void {
     return;
   }
 
-  if (targetNodeId && applyReparentByIds(sourceNodeId, targetNodeId)) {
-    viewState.selectedNodeId = sourceNodeId;
-    render();
-    board.focus();
-    return;
+  if (proposal) {
+    const applied = proposal.kind === "reparent"
+      ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
+      : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
+    if (applied) {
+      viewState.selectedNodeId = sourceNodeId;
+      render();
+      board.focus();
+      return;
+    }
   }
 
   setStatus("No valid drop target.", true);

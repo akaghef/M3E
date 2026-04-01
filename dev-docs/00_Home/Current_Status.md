@@ -8,6 +8,12 @@
   - `leafHeight: 94 -> 72`
   - `siblingGap: 20 -> 2`
 - `npm --prefix mvp run build:browser` を実行し、`dist/browser/viewer.tuning.js` へ反映
+- drag reorder 仕様を `Editing_Design.md` と `Drag_and_Reparent.md` に追記
+- `mvp/src/browser/viewer.ts` の drag drop 判定を `drop proposal` ベースへ変更
+  - ノード中央帯: `reparent`
+  - ノード上下端帯 / sibling 挿入 zone: `reorder`
+  - 同一親内 reorder を index 指定移動として適用
+  - reorder 挿入ラインを表示
 - 記録先: `dev-docs/daily/260401.md`
 
 ## Documentation Operation Update (2026-03-30)

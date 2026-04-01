@@ -41,11 +41,23 @@ interface LayoutResult {
 interface DragState {
   pointerId: number;
   sourceNodeId: string;
-  targetNodeId: string | null;
+  proposal: DragDropProposal | null;
   startX: number;
   startY: number;
   dragged: boolean;
 }
+
+type DragDropProposal =
+  | {
+    kind: "reparent";
+    parentId: string;
+  }
+  | {
+    kind: "reorder";
+    parentId: string;
+    index: number;
+    lineY: number;
+  };
 
 interface PanState {
   pointerId: number;

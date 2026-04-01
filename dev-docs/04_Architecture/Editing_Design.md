@@ -140,9 +140,24 @@ MVP では表示再現性のため Command 化してよい。
 
 1. pointerdown で Pressed
 2. 閾値超えで Dragging
-3. HitTest で候補親を更新
-4. pointerup で `ReparentNodeCommand`
+3. HitTest で drop proposal を更新する
+4. pointerup で proposal に応じて `ReparentNodeCommand` を組み立てる
 5. Model が循環と制約を検証する
+
+drop proposal の定義:
+
+- ノード中央帯に drop した場合:
+  - 対象ノードを新しい親とする `reparent`
+- ノード上端帯または下端帯に drop した場合:
+  - 対象ノードの親配下での `reorder`
+- sibling 間の空白帯に drop した場合:
+  - その親配下の gap 位置への `reorder`
+
+補足:
+
+- `reorder` は別操作ではなく、`toParentId` と `toIndex` を伴う `reparent` の一形態として扱う
+- 同一親への並べ替えも `ReparentNodeCommand` で表現してよい
+- drop 成功時に親ノードを自動 expand しない
 
 ### collapse / expand
 
@@ -179,6 +194,7 @@ MVP では表示再現性のため Command 化してよい。
 - scope 制約を壊さないか
 - alias 制約を壊さないか
 - index が妥当か
+- 同一親内 reorder で、削除後基準の `toIndex` が妥当か
 
 ## Undo/Redo 要件
 

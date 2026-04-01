@@ -165,6 +165,14 @@
   stroke-dasharray: 6 4;
 }
 
+.reorder-line {
+  stroke: #1b9c64;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 10 6;
+  pointer-events: none;
+}
+
       .label-root {
         font-size: 42px;
         font-weight: 500;
@@ -205,4 +213,3 @@
           font-size: 28px;
         }
       }
-
