@@ -43,47 +43,79 @@ interface ViewerTuning {
   };
 }
 
+// Centralized viewer constants. Keep these values behavior-focused so layout/zoom
+// tuning can change without scattering magic numbers through the renderer.
 const VIEWER_TUNING: ViewerTuning = {
   palette: {
+    // Ordered edge colors by depth to keep branch separation visually obvious.
     edgeColors: ["#7a35ff", "#e34ad7", "#5d3cff", "#a146ff", "#6d5dff"],
   },
   typography: {
+    // Font size for the root node label.
     rootFont: 42,
+    // Font size for non-root node labels.
     nodeFont: 44,
+    // Hard cap used before truncation/wrapping logic prevents layout blowout.
     maxNodeTextChars: 55,
   },
   layout: {
-    rootHeight: 120,
+    // Baseline block height reserved for the root node.
+    rootHeight: 104,
+    // Horizontal distance between parent and child columns.
     columnGap: 170,
-    leafHeight: 94,
-    siblingGap: 20,
+    // Baseline block height for leaf and regular nodes.
+    leafHeight: 72,
+    // Vertical spacing between sibling nodes.
+    siblingGap: 2,
+    // Left margin before the rendered map begins.
     leftPad: 80,
-    topPad: 90,
+    // Top margin before the rendered map begins.
+    topPad: 10,
+    // Minimum vertical hit area for node interaction.
     nodeHitHeight: 64,
+    // Smallest canvas width even for tiny documents.
     minCanvasWidth: 1400,
+    // Smallest canvas height even for tiny documents.
     minCanvasHeight: 760,
+    // Extra canvas space on the right to avoid clipping during navigation.
     canvasRightPad: 220,
+    // Extra canvas space at the bottom to avoid clipping during navigation.
     canvasBottomPad: 60,
+    // Right-side label padding included in node bounds.
     nodeRightPad: 260,
+    // Bottom-side padding included in node bounds.
     nodeBottomPad: 80,
+    // Offset from the parent node where an edge begins.
     edgeStartPad: 10,
+    // Offset from the child node where an edge terminates.
     edgeEndPad: 14,
+    // Spacing for root-specific expand/collapse or status indicators.
     rootIndicatorPad: 16,
+    // Spacing for non-root expand/collapse or status indicators.
     nodeIndicatorPad: 10,
   },
   zoom: {
+    // Minimum zoom-out level allowed in the viewer.
     min: 0.15,
+    // Maximum zoom-in level allowed in the viewer.
     max: 2.5,
+    // Multiplicative zoom step for toolbar/button controls.
     buttonFactor: 1.32,
+    // Upper bound on wheel-derived zoom intensity per event.
     wheelIntensityCap: 0.72,
+    // Divisor that converts wheel delta into a usable zoom intensity.
     wheelIntensityDivisor: 260,
   },
   pan: {
+    // Scale factor applied to wheel-based panning.
     wheelFactor: 1,
+    // Initial horizontal camera offset on first load.
     initialCameraX: 40,
+    // Initial vertical camera offset on first load.
     initialCameraY: 40,
   },
   drag: {
+    // Minimum drag distance before reparent mode is treated as intentional.
     reparentThreshold: 10,
   },
 };

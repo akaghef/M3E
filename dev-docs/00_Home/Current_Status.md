@@ -1,5 +1,15 @@
 # Current Status
 
+## Update Log (2026-04-01)
+
+- `mvp/src/browser/viewer.tuning.ts` に tuning 項目別コメントを追加
+- ノード縦間隔を調整
+  - `rootHeight: 120 -> 104`
+  - `leafHeight: 94 -> 72`
+  - `siblingGap: 20 -> 2`
+- `npm --prefix mvp run build:browser` を実行し、`dist/browser/viewer.tuning.js` へ反映
+- 記録先: `dev-docs/daily/260401.md`
+
 ## Documentation Operation Update (2026-03-30)
 
 - Added `06_Operations/Decision_Pool.md` as the intake point for conversation decisions
