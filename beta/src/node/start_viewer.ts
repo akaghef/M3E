@@ -237,6 +237,7 @@ async function handleSyncApi(
 
   if (!CLOUD_SYNC_ENABLED) {
     sendJson(res, 200, {
+      ok: true,
       enabled: false,
       mode: "disabled",
       documentId: route.docId,
@@ -251,6 +252,7 @@ async function handleSyncApi(
     const exists = fs.existsSync(filePath);
     const cloudDoc = exists ? readCloudDoc(filePath) : null;
     sendJson(res, 200, {
+      ok: true,
       enabled: true,
       mode: "file-mirror",
       documentId: route.docId,
@@ -289,6 +291,7 @@ async function handleSyncApi(
 
       sendJson(res, 200, {
         ok: true,
+        mode: "file-mirror",
         version: 1,
         savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
         state: model.toJSON(),

@@ -3,6 +3,13 @@
 ## Update Log (2026-04-02)
 
 - `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の成功レスポンスを統一（`ok/mode/documentId`）
+	- 成功系テストでも共通レスポンス契約を検証
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
+
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
 	- sync API のエラーレスポンスを統一（`ok/code/error/documentId`）
 	- 異常系・競合系テストでレスポンススキーマ検証を追加
 - 検証

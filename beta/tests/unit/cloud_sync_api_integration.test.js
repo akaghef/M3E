@@ -54,6 +54,9 @@ test("sync status and push/pull round-trip works in file-mirror mode", async () 
   const docId = "integration-roundtrip";
   const status1 = await requestJson(`${baseUrl}/api/sync/status/${docId}`);
   assert.equal(status1.response.status, 200);
+  assert.equal(status1.payload.ok, true);
+  assert.equal(status1.payload.mode, "file-mirror");
+  assert.equal(status1.payload.documentId, docId);
   assert.equal(status1.payload.enabled, true);
   assert.equal(status1.payload.exists, false);
 
@@ -64,9 +67,14 @@ test("sync status and push/pull round-trip works in file-mirror mode", async () 
   });
   assert.equal(push.response.status, 200);
   assert.equal(push.payload.ok, true);
+  assert.equal(push.payload.mode, "file-mirror");
+  assert.equal(push.payload.documentId, docId);
 
   const status2 = await requestJson(`${baseUrl}/api/sync/status/${docId}`);
   assert.equal(status2.response.status, 200);
+  assert.equal(status2.payload.ok, true);
+  assert.equal(status2.payload.mode, "file-mirror");
+  assert.equal(status2.payload.documentId, docId);
   assert.equal(status2.payload.exists, true);
   assert.equal(status2.payload.cloudSavedAt, "2026-04-02T00:00:00.000Z");
 
@@ -77,6 +85,8 @@ test("sync status and push/pull round-trip works in file-mirror mode", async () 
   });
   assert.equal(pull.response.status, 200);
   assert.equal(pull.payload.ok, true);
+  assert.equal(pull.payload.mode, "file-mirror");
+  assert.equal(pull.payload.documentId, docId);
   assert.equal(pull.payload.state.rootId.length > 0, true);
 });
 
@@ -89,6 +99,9 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
     body: JSON.stringify({ state: createState("First"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
   assert.equal(initialPush.response.status, 200);
+  assert.equal(initialPush.payload.ok, true);
+  assert.equal(initialPush.payload.mode, "file-mirror");
+  assert.equal(initialPush.payload.documentId, docId);
 
   const updatePush = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
     method: "POST",
@@ -100,6 +113,9 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
     }),
   });
   assert.equal(updatePush.response.status, 200);
+  assert.equal(updatePush.payload.ok, true);
+  assert.equal(updatePush.payload.mode, "file-mirror");
+  assert.equal(updatePush.payload.documentId, docId);
 
   const conflictingPush = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
     method: "POST",
@@ -126,6 +142,9 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
     }),
   });
   assert.equal(forcedPush.response.status, 200);
+  assert.equal(forcedPush.payload.ok, true);
+  assert.equal(forcedPush.payload.mode, "file-mirror");
+  assert.equal(forcedPush.payload.documentId, docId);
   assert.equal(forcedPush.payload.forced, true);
 });
 
