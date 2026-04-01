@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npx tsc:*)",
       "Bash(echo \"exit=$?\")",
-      "Bash(node dist/node/rapid_mvp.js)"
+      "Bash(node dist/node/rapid_mvp.js)",
+      "mcp__git__git_log",
+      "mcp__git__git_branch",
+      "mcp__git__git_status"
     ]
   }
 }

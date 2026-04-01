@@ -1,6 +1,6 @@
 # AI連携仕様
 
-最終更新: 2026-04-01
+最終更新: 2026-04-02
 
 ---
 
@@ -157,6 +157,91 @@ Browser → localhost API → Claude API (or local LLM)
 | `POST /api/ai/promote-suggestion` | Flash 昇格候補の取得 |
 | `POST /api/ai/structure-proposal` | 構造改善提案の取得 |
 | `POST /api/ai/context-package` | コンテクストパッケージ生成 |
+
+### Provider 抽象化（DeepSeek subagent 対応）
+
+外部 LLM 連携は provider 依存を避けるため、M3E 内部では共通インターフェースを使う。
+DeepSeek はその 1 provider として実装し、map 内補助は subagent 呼び出しとして扱う。
+
+#### 目的
+
+- map 編集体験を壊さずに、補助機能を「提案」として段階導入する
+- provider 切替（DeepSeek / Claude / local LLM）を UI と API 契約から分離する
+- 送信範囲・承認フロー・監査ログを provider 横断で統一する
+
+#### 非目的
+
+- AI による無承認の正本更新
+- provider 固有 SDK を browser 側に直接埋め込むこと
+- 1 回の呼び出しで複数スコープ全体を書き換えること
+
+#### Subagent の責務（初期スコープ）
+
+| subagent | 入力 | 出力 | map 反映 |
+|---|---|---|---|
+| `suggest-parent` | 対象ノード + 候補親集合 | 親候補ランキング | ユーザー承認後のみ |
+| `title-rewrite` | ノード text/details | 整形タイトル候補 | ユーザー承認後のみ |
+| `duplicate-check` | 対象ノード + 近傍ノード | 重複警告/類似候補 | 警告のみ |
+| `outline-expand` | 選択スコープ | 子ノード案（差分） | 差分採用時のみ |
+
+#### 共通 API 契約（案）
+
+- `POST /api/ai/subagent/:name`
+- Request
+  - `documentId: string`
+  - `scopeId: string`
+  - `provider: "deepseek" | "claude" | "local"`
+  - `input: object`（subagent ごとの payload）
+  - `constraints: { maxTokens?: number; timeoutMs?: number; temperature?: number }`
+- Response（成功）
+  - `ok: true`
+  - `subagent: string`
+  - `provider: string`
+  - `proposal: object`
+  - `requiresApproval: true`
+- Response（失敗）
+  - `ok: false`
+  - `code: string`
+  - `error: string`
+  - `subagent: string`
+  - `provider: string`
+
+#### DeepSeek provider 設定（案）
+
+- 環境変数
+  - `M3E_AI_PROVIDER=deepseek`
+  - `M3E_DEEPSEEK_API_KEY`
+  - `M3E_DEEPSEEK_BASE_URL`（省略時は公式 URL）
+  - `M3E_DEEPSEEK_MODEL`
+- キー未設定時は fail-closed（subagent 機能を無効化して UI で通知）
+
+#### 安全設計（Command Panel 方針との整合）
+
+- 入力制限
+  - subagent は `scopeId` 配下だけを参照可能
+  - 最大ノード数・最大文字数を超える入力は送信前に拒否
+- 出力制限
+  - 返答は構造化 JSON のみ受理（自由文は説明欄に隔離）
+  - 未知フィールドは破棄し、必須フィールド不足時は reject
+- 実行制限
+  - タイムアウト、リトライ回数、レート制限を provider 横断で適用
+  - 失敗時は既存編集フローへ即時フォールバック（fail-closed）
+
+#### 監査ログ（ローカル保存）
+
+- 最低限の記録項目
+  - timestamp / documentId / scopeId / subagent / provider
+  - request hash（生データ全文は既定で保存しない）
+  - result code / latency / token usage
+  - user action（accept/reject/partial）
+
+#### 段階導入計画
+
+1. Provider 抽象 API を追加（実体は既存 provider 1 つで可）
+2. `title-rewrite` と `duplicate-check` から導入
+3. 差分 UI と承認イベントのログ化
+4. DeepSeek provider を追加し A/B 切替
+5. `suggest-parent` / `outline-expand` を順次有効化
 
 ### API キー管理
 
