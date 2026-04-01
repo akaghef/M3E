@@ -78,3 +78,40 @@ test("saveToFile and loadFromFile round-trip", () => {
 
   assert.deepEqual(loaded.toJSON(), model.toJSON());
 });
+
+test("queryNodes returns only subtree under scope", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+  const a1 = model.addNode(a, "A1");
+
+  const scoped = model.queryNodes(a).map((node) => node.id);
+
+  assert.deepEqual(scoped, [a, a1]);
+  assert.equal(scoped.includes(b), false);
+});
+
+test("queryNodes with unknown scope throws", () => {
+  const model = new RapidMvpModel("Root");
+
+  assert.throws(() => model.queryNodes("missing"), {
+    message: "Node not found: missing",
+  });
+});
+
+test("reparent updates scope-root query results without any node-level scope cascade", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+  const a1 = model.addNode(a, "A1");
+
+  assert.deepEqual(model.queryNodeIds(a), [a, a1]);
+  assert.deepEqual(model.queryNodeIds(b), [b]);
+
+  model.reparentNode(a1, b);
+
+  assert.deepEqual(model.queryNodeIds(a), [a]);
+  assert.deepEqual(model.queryNodeIds(b), [b, a1]);
+});

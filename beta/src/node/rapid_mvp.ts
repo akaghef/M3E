@@ -198,6 +198,29 @@ class RapidMvpModel {
     return false;
   }
 
+  queryNodeIds(scopeRootId: string | null = null): string[] {
+    const rootId = scopeRootId ?? this.state.rootId;
+    this._requireNode(rootId);
+    const result: string[] = [];
+    const stack: string[] = [rootId];
+    while (stack.length > 0) {
+      const currentId = stack.pop()!;
+      const node = this.state.nodes[currentId];
+      if (!node) {
+        continue;
+      }
+      result.push(currentId);
+      for (let i = node.children.length - 1; i >= 0; i -= 1) {
+        stack.push(node.children[i]!);
+      }
+    }
+    return result;
+  }
+
+  queryNodes(scopeRootId: string | null = null): TreeNode[] {
+    return this.queryNodeIds(scopeRootId).map((nodeId) => this.state.nodes[nodeId]!);
+  }
+
   validate(): string[] {
     const errors: string[] = [];
     const nodes = this.state.nodes;

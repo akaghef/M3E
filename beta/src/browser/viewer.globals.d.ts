@@ -70,6 +70,8 @@ interface PanState {
 
 interface ViewState {
   selectedNodeId: string;
+  currentScopeId: string;
+  scopeHistory: string[];
   zoom: number;
   cameraX: number;
   cameraY: number;
