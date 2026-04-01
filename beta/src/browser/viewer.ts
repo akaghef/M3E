@@ -438,6 +438,28 @@ function visibleChildren(node: TreeNode): string[] {
   return node.children || [];
 }
 
+function countHiddenDescendants(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return 0;
+  }
+  let count = 0;
+  const stack = [...(node.children || [])];
+  while (stack.length > 0) {
+    const currentId = stack.pop()!;
+    const current = doc.state.nodes[currentId];
+    if (!current) {
+      continue;
+    }
+    count += 1;
+    stack.push(...(current.children || []));
+  }
+  return count;
+}
+
 function buildLayout(state: AppState): LayoutResult {
   const metrics: Record<string, { w: number; h: number }> = {};
   const depthOf: Record<string, number> = {};
@@ -654,7 +676,15 @@ function render(): void {
         nodeId === state.rootId
           ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
           : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
-      nodes += `<text class="collapsed-indicator" x="${indicatorX}" y="${p.y}" dominant-baseline="middle">+</text>`;
+      const hiddenCount = countHiddenDescendants(nodeId);
+      const badgeLabel = String(Math.max(1, hiddenCount));
+      const badgeWidth = Math.max(26, badgeLabel.length * 14 + 14);
+      const badgeHeight = 24;
+      const badgeX = indicatorX - badgeWidth / 2;
+      const badgeY = p.y - badgeHeight / 2;
+      nodes += `<rect class="collapsed-badge" data-collapse-node-id="${nodeId}" x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="${badgeHeight}" rx="12" />`;
+      nodes += `<circle class="collapsed-badge-node" data-collapse-node-id="${nodeId}" cx="${badgeX - 8}" cy="${p.y}" r="8" />`;
+      nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
     }
 
     children.forEach((cid) => drawNode(cid));
@@ -1657,6 +1687,18 @@ focusSelectedBtn?.addEventListener("click", () => {
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
+  const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
+  if (collapseNodeId && event.button === 0) {
+    event.preventDefault();
+    selectNode(collapseNodeId);
+    if (viewState.collapsedIds.has(collapseNodeId)) {
+      viewState.collapsedIds.delete(collapseNodeId);
+      render();
+      setStatus("Expanded collapsed branch.");
+    }
+    board.focus();
+    return;
+  }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
   if (!doc || !nodeId || event.button !== 0) {

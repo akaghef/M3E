@@ -1,5 +1,16 @@
 # Current Status
 
+## Update Log (2026-04-02 / Collapsed Badge)
+
+- `beta` viewer の collapse 表示を count badge 化
+- `beta/src/browser/viewer.ts`
+  - collapse 中ノードの右側に、小さな補助ノード付き count badge を描画
+  - 省略中 subtree の子孫数を集計して表示
+  - badge クリックでそのノードを expand するように変更
+- `beta/viewer.css`
+  - collapsed count badge のスタイルを追加
+- 記録先: `dev-docs/daily/260402.md`
+
 ## Update Log (2026-04-01 / Scope and Alias)
 
 - `scope` / `alias` の Beta 実装前提仕様を整理

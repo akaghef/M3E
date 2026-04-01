@@ -248,10 +248,25 @@
         fill: var(--danger);
       }
 
-      .collapsed-indicator {
+      .collapsed-badge {
+        fill: #ffffff;
+        stroke: var(--accent);
+        stroke-width: 2;
+        cursor: pointer;
+      }
+
+      .collapsed-badge-node {
+        fill: var(--accent-soft);
+        stroke: var(--accent);
+        stroke-width: 2;
+        cursor: pointer;
+      }
+
+      .collapsed-badge-count {
         fill: var(--accent);
-        font-size: 24px;
-        font-weight: bold;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
         pointer-events: none;
       }
 
