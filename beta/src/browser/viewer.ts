@@ -8,6 +8,8 @@ const fitAllBtn = document.getElementById("fit-all");
 const focusSelectedBtn = document.getElementById("focus-selected");
 const addChildBtn = document.getElementById("add-child");
 const addSiblingBtn = document.getElementById("add-sibling");
+const enterScopeBtn = document.getElementById("enter-scope");
+const exitScopeBtn = document.getElementById("exit-scope");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const deleteNodeBtn = document.getElementById("delete-node");
 const markReparentBtn = document.getElementById("mark-reparent");
@@ -16,6 +18,7 @@ const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
 const downloadBtn = document.getElementById("download-btn");
+const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
@@ -47,6 +50,7 @@ const DRAG_REORDER_TAIL = 28;
 const DRAG_REORDER_PARENT_LANE_PAD = 96;
 let viewState: ViewState = {
   selectedNodeId: "",
+  currentScopeRootId: "",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -214,6 +218,118 @@ function getNode(nodeId: string): TreeNode {
     throw new Error(`Node not found: ${nodeId}`);
   }
   return node;
+}
+
+function isFolderNode(node: TreeNode | null | undefined): boolean {
+  return Boolean(node && node.nodeType === "folder");
+}
+
+function currentScopeRootId(): string {
+  if (!doc) {
+    return "";
+  }
+  return viewState.currentScopeRootId || doc.state.rootId;
+}
+
+function currentScopeRootNode(): TreeNode | null {
+  if (!doc) {
+    return null;
+  }
+  return doc.state.nodes[currentScopeRootId()] || null;
+}
+
+function scopePathIds(scopeRootId: string): string[] {
+  if (!doc || !scopeRootId) {
+    return [];
+  }
+  const path: string[] = [];
+  let cursor: string | null = scopeRootId;
+  while (cursor) {
+    path.push(cursor);
+    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    if (!node) {
+      break;
+    }
+    if (cursor === doc.state.rootId) {
+      break;
+    }
+    cursor = node.parentId ?? null;
+    while (cursor) {
+      const parent = doc.state.nodes[cursor];
+      if (!parent) {
+        cursor = null;
+        break;
+      }
+      if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+        break;
+      }
+      cursor = parent.parentId ?? null;
+    }
+  }
+  return path.reverse();
+}
+
+function updateScopeMeta(): void {
+  if (!doc) {
+    scopeMetaEl.textContent = "scope: n/a";
+    return;
+  }
+  const parts = scopePathIds(currentScopeRootId()).map((nodeId) => {
+    if (nodeId === doc!.state.rootId) {
+      return "root";
+    }
+    return uiLabel(doc!.state.nodes[nodeId]);
+  });
+  scopeMetaEl.textContent = `scope: ${parts.join(" / ")}`;
+}
+
+function enterScope(scopeNodeId: string): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(scopeNodeId);
+  if (!isFolderNode(node)) {
+    setStatus("Only folder nodes can open a scope.", true);
+    return false;
+  }
+  viewState.currentScopeRootId = node.id;
+  viewState.selectedNodeId = node.id;
+  render();
+  fitDocument();
+  setStatus(`Entered scope: ${uiLabel(node)}`);
+  board.focus();
+  return true;
+}
+
+function exitScope(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const scopeRoot = currentScopeRootNode();
+  if (!scopeRoot || scopeRoot.id === doc.state.rootId) {
+    setStatus("Already at root scope.");
+    return false;
+  }
+  let nextScopeId = doc.state.rootId;
+  let cursor = scopeRoot.parentId;
+  while (cursor) {
+    const parent = doc.state.nodes[cursor];
+    if (!parent) {
+      break;
+    }
+    if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+      nextScopeId = parent.id;
+      break;
+    }
+    cursor = parent.parentId ?? null;
+  }
+  viewState.currentScopeRootId = nextScopeId;
+  viewState.selectedNodeId = scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId;
+  render();
+  fitDocument();
+  setStatus("Returned to parent scope.");
+  board.focus();
+  return true;
 }
 
 function isAliasNode(node: TreeNode | null | undefined): boolean {
@@ -461,6 +577,7 @@ function countHiddenDescendants(nodeId: string): number {
 }
 
 function buildLayout(state: AppState): LayoutResult {
+  const displayRootId = currentScopeRootId();
   const metrics: Record<string, { w: number; h: number }> = {};
   const depthOf: Record<string, number> = {};
   const depthMaxWidth: Record<number, number> = {};
@@ -491,7 +608,7 @@ function buildLayout(state: AppState): LayoutResult {
     visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
   }
 
-  visit(state.rootId, 0);
+  visit(displayRootId, 0);
 
   const xByDepth: Record<number, number> = {};
   let cursorX = VIEWER_TUNING.layout.leftPad;
@@ -564,7 +681,7 @@ function buildLayout(state: AppState): LayoutResult {
     return h;
   }
 
-  const totalHeight = place(state.rootId, VIEWER_TUNING.layout.topPad);
+  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad);
   return {
     pos,
     order,
@@ -575,15 +692,20 @@ function buildLayout(state: AppState): LayoutResult {
 
 function render(): void {
   if (!doc) {
+    updateScopeMeta();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
     return;
   }
 
   const state = doc.state;
+  if (!viewState.currentScopeRootId || !state.nodes[viewState.currentScopeRootId]) {
+    viewState.currentScopeRootId = state.rootId;
+  }
   const layout = buildLayout(state);
   lastLayout = layout;
   visibleOrder = layout.order;
+  const displayRootId = currentScopeRootId();
 
   const pos = layout.pos;
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -640,12 +762,12 @@ function render(): void {
     if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
       classNames.push("drag-source");
     }
-    const hitX = nodeId === state.rootId ? p.x : p.x - 8;
+    const hitX = nodeId === displayRootId ? p.x : p.x - 8;
     const hitY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2;
-    const hitW = nodeId === state.rootId ? p.w : p.w + 36;
+    const hitW = nodeId === displayRootId ? p.w : p.w + 36;
     nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
 
-    if (nodeId === state.rootId) {
+    if (nodeId === displayRootId) {
       const label = escapeXml(uiLabel(node) || "(empty)");
       const w = p.w;
       const h = p.h;
@@ -673,7 +795,7 @@ function render(): void {
 
     if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
       const indicatorX =
-        nodeId === state.rootId
+        nodeId === displayRootId
           ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
           : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
       const hiddenCount = countHiddenDescendants(nodeId);
@@ -690,7 +812,7 @@ function render(): void {
     children.forEach((cid) => drawNode(cid));
   }
 
-  drawNode(state.rootId);
+  drawNode(displayRootId);
 
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
@@ -721,7 +843,9 @@ function render(): void {
     const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
+  const scopeRoot = currentScopeRootNode();
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope-root: ${scopeRoot ? uiLabel(scopeRoot) : "n/a"} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
+  updateScopeMeta();
   syncInlineEditorPosition();
 }
 
@@ -1355,6 +1479,7 @@ function loadPayload(payload: unknown): void {
     undoStack = [];
     redoStack = [];
     viewState.selectedNodeId = doc.state.rootId;
+    viewState.currentScopeRootId = doc.state.rootId;
     viewState.reparentSourceId = "";
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
@@ -1638,6 +1763,16 @@ addSiblingBtn?.addEventListener("click", () => {
   addSibling();
 });
 
+enterScopeBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  enterScope(viewState.selectedNodeId);
+});
+
+exitScopeBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  exitScope();
+});
+
 toggleCollapseBtn?.addEventListener("click", () => {
   if (!doc) return;
   toggleCollapse();
@@ -1876,6 +2011,18 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "F2") {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId);
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === "]") {
+    event.preventDefault();
+    enterScope(viewState.selectedNodeId);
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === "[") {
+    event.preventDefault();
+    exitScope();
     return;
   }
 
