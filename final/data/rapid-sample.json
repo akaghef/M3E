@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-01T01:38:57.900Z",
+  "state": {
+    "rootId": "n_1775007537900_wd1x1p",
+    "selectedId": "n_1775007537900_vv8b6a",
+    "nodes": {
+      "n_1775007537900_wd1x1p": {
+        "id": "n_1775007537900_wd1x1p",
+        "parentId": null,
+        "children": [
+          "n_1775007537900_ln7ldj",
+          "n_1775007537900_cayvj4"
+        ],
+        "text": "Research Root",
+        "collapsed": false
+      },
+      "n_1775007537900_ln7ldj": {
+        "id": "n_1775007537900_ln7ldj",
+        "parentId": "n_1775007537900_wd1x1p",
+        "children": [
+          "n_1775007537900_vv8b6a"
+        ],
+        "text": "Question",
+        "collapsed": false
+      },
+      "n_1775007537900_cayvj4": {
+        "id": "n_1775007537900_cayvj4",
+        "parentId": "n_1775007537900_wd1x1p",
+        "children": [],
+        "text": "Hypothesis v2",
+        "collapsed": false
+      },
+      "n_1775007537900_vv8b6a": {
+        "id": "n_1775007537900_vv8b6a",
+        "parentId": "n_1775007537900_ln7ldj",
+        "children": [],
+        "text": "Background",
+        "collapsed": false
+      }
+    }
+  }
+}

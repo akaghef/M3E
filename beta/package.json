@@ -1,0 +1,28 @@
+{
+  "name": "m3e-rapid-mvp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Rapid MVP viewer with TypeScript source",
+  "scripts": {
+    "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
+    "build:node": "tsc -p tsconfig.node.json",
+    "build:browser": "tsc -p tsconfig.browser.json",
+    "start": "node dist/node/start_viewer.js",
+    "test": "npm run test:unit",
+    "test:unit": "npm run build:node && node --test tests/unit/*.test.js",
+    "test:unit:watch": "npm run build:node && node --test --watch tests/unit/*.test.js",
+    "test:ci": "npm run test:unit",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^18.19.130",
+    "typescript": "^5.4.0",
+    "undici-types": "^5.26.5"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0"
+  }
+}

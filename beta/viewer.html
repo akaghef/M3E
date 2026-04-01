@@ -1,0 +1,56 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rapid MVP Viewer</title>
+        <link rel="stylesheet" href="./viewer.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div class="toolbar">
+        <button id="load-default" class="primary">Default</button>
+        <button id="load-airplane">Airplane</button>
+        <button id="load-aircraft-mm">Aircraft.mm</button>
+        <input id="file-input" type="file" accept=".json,.mm,application/json,text/xml,application/xml" />
+        <span class="toolbar-sep">|</span>
+        <button id="add-child">Add child</button>
+        <button id="add-sibling">Add sibling</button>
+        <button id="toggle-collapse">Collapse</button>
+        <button id="delete-node" class="danger">Delete</button>
+        <span class="toolbar-sep">|</span>
+        <button id="mark-reparent">Mark move</button>
+        <button id="apply-reparent">Apply move</button>
+        <span class="toolbar-sep">|</span>
+        <button id="zoom-out">−</button>
+        <button id="zoom-reset">100%</button>
+        <button id="zoom-in">+</button>
+        <button id="fit-all">Fit all</button>
+        <button id="focus-selected">Focus</button>
+        <span class="toolbar-sep">|</span>
+        <button id="download-btn">Download JSON</button>
+      </div>
+      <div id="meta" class="meta">No data loaded</div>
+      <div class="shortcuts">
+        Shortcuts:
+        Click select |
+        Tab add child |
+        Enter add sibling |
+        Shift+Enter/F2 edit on node |
+        Space collapse |
+        Delete remove |
+        Ctrl/Cmd + wheel zoom |
+        Arrow Up/Down visible traversal
+      </div>
+      <div id="status" class="status"></div>
+      <div id="visual-check" class="visual-check">Visual check idle</div>
+      <div id="board" class="board" tabindex="0">
+        <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
+      </div>
+    </div>
+
+        <script src="./dist/browser/viewer.tuning.js"></script>
+        <script src="./dist/browser/viewer.js"></script>
+  </body>
+</html>
+

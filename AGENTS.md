@@ -2,8 +2,29 @@
 
 ## Objective
 
-This repository is operated with agent-driven implementation cycles for the Rapid MVP.
+This repository is operated with agent-driven implementation cycles.
 Agents should prioritize small validated changes over broad refactors.
+
+## Environment Structure
+
+| Environment | Directory | Status | Purpose |
+|-------------|-----------|--------|---------|
+| Alpha | `mvp/` | Development stopping | Reference / verification only |
+| Beta | `beta/` | **Active development** | Current dev & daily use |
+| Final | `final/` | Stable release | Production use / distribution |
+
+**Current active development target: `beta/`**
+
+Alpha (`mvp/`) will be frozen soon. New features go into `beta/` only.
+
+### Launch scripts
+
+| Script | Use |
+|--------|-----|
+| `scripts/beta/launch.bat` | Daily use — launch Beta (build required) |
+| `scripts/beta/update-and-launch.bat` | Pull latest → install → build → launch |
+| `scripts/final/migrate-from-beta.bat` | Sync Beta → Final, migrate data, launch |
+| `scripts/alpha/launch.bat` | Launch Alpha (reference only) |
 
 ## Source of Truth
 
@@ -44,12 +65,22 @@ If any item is missing, task state is still in-progress.
    - operations on `main` or release branches
    - secret/credential related operations
 
-## Constraints for MVP Phase
+## Development Phase Constraints
 
-1. AI proposal features are deferred.
-2. Focus on Rapid usability first.
-3. Keep data-safe operations as top priority.
-4. Prefer simple operable UI over architecture expansion.
+### Alpha (mvp/) — Frozen
+1. No new features. Bug fixes only if critical.
+2. Use as reference baseline for Beta.
+
+### Beta (beta/) — Active
+1. Infrastructure and test environment are top priority.
+2. AI proposal features are deferred.
+3. Data-safe operations are top priority.
+4. Prefer stable, operable UI over architecture expansion.
+
+### Final (final/) — Stable
+1. Only receives validated code from Beta via `migrate-from-beta.bat`.
+2. No direct development in `final/`.
+3. All data migrations must be scripted and reversible.
 
 ## Language Policy
 
@@ -58,12 +89,13 @@ If any item is missing, task state is still in-progress.
 3. Code identifiers, file names, API names, and technical tokens may remain in English where appropriate.
 4. If a document is a design/spec/architecture/ADR document, prefer Japanese prose even when the surrounding conversation is in English.
 
-## Preferred Task Order (Rapid MVP)
+## Preferred Task Order (Beta Phase)
 
-1. Direct editing in viewer (add/edit/delete/reparent).
-2. Navigation ergonomics (pan/zoom/focus).
-3. Save/restore robustness.
-4. Performance checks (500 nodes).
+1. **P5 — Infrastructure & CI**: test environment, CI pipeline, deployment scripts.
+2. **P4 — Demo quality**: visual polish, fit-to-content, focus-selected.
+3. **P3 — MVP completeness**: metadata rendering, startup packaging.
+4. **P2 — Dev infrastructure**: Stage A CI, hit-test coverage.
+5. **P1 — Deferred**: reparent feedback UI, delete confirmation dialog.
 
 ## Handoff Format
 

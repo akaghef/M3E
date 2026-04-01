@@ -59,6 +59,14 @@
 	- レガシー起動は `node mvp/legacy/start_viewer.js` に統一
 - editor の TypeScript 重複診断回避のため `mvp/src/browser/tsconfig.json` を追加
 
+## Update Log (2026-04-01)
+
+- 開発ブランチ `dev-beta` を作成し、Beta中心運用へ切替開始
+- `mvp/` (Alpha) -> `beta/` へ実体を同期し、Beta開発環境を明確化
+- `scripts/final/update-and-launch.bat` を追加し、Final 更新+起動を一発化
+- `scripts/README.md` / `final/FINAL_POLICY.md` を更新し、運用導線を明文化
+- 方針: Alpha は参照用、開発は Beta で継続。Final は Beta 検証済みを migration 経由で反映
+
 ## Current Direction
 
 M3E is currently moving from a `Freeplane-first UI` approach to a `Freeplane-informed custom engine` approach.
@@ -111,12 +119,26 @@ The rendering engine, layout behavior, and editing interaction are being impleme
 - Some older docs still contain mojibake and need cleanup
 - CI pipeline is partially wired (Stage A: unit tests on `mvp/**`), but visual/manual gates are still pending
 
+## 開発環境構成（2026-04-01 更新）
+
+3段階の環境を用意した。詳細は `scripts/README.md` および各環境の POLICY.md 参照。
+
+| 環境 | ディレクトリ | 状態 |
+|------|-------------|------|
+| Alpha | `mvp/` | 開発停止予定（参照・検証用） |
+| Beta | `beta/` | **現行開発環境** |
+| Final | `final/` | 安定版リリース環境 |
+
+- Beta には Alpha (mvp/) のソースをコピー済み
+- 起動: `scripts/beta/launch.bat` または `scripts/beta/update-and-launch.bat`
+- Final への反映: `scripts/final/migrate-from-beta.bat`
+
 ## Immediate Next Steps
 
-1. Today: complete MVP visual/UI quality for demo-ready operation
-2. Tomorrow: reform backend/model logic and finalize state boundaries
-3. Day after tomorrow: package MVP and start operation
-4. In parallel: implement Stage A CI and minimum hit-test regression coverage
+1. **最優先**: 開発インフラ・テスト環境・CI の整備（Beta 環境で実施）
+2. Beta 環境でのビルド・テスト動作確認
+3. CI パイプラインを `beta/**` にも対象拡張
+4. Demo 品質: ビジュアルポリッシュ・aircraft.mm クリーンレンダリング
 
 ## Related Documents
 

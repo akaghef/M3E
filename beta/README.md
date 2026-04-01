@@ -1,10 +1,10 @@
-# M3E Rapid MVP
+# M3E Beta
 **This is a memorandum for user. NOT to write here.**
 
 ## Build
 
 ```bash
-cd mvp
+cd beta
 npm install
 npm run build       # compiles src/ → dist/
 ```
@@ -18,7 +18,7 @@ npm run build:browser  # Browser files only (dist/browser/)
 ## Run (viewer)
 
 ```bash
-cd mvp && npm start
+cd beta && npm start
 ```
 
 This will:
@@ -30,12 +30,12 @@ Stop with `Ctrl+C`.
 
 Legacy (no build required):
 ```bash
-node mvp/legacy/start_viewer.js
+node beta/legacy/start_viewer.js
 ```
 
 ## Run (data model only)
 
-After building, from `mvp/`:
+After building, from `beta/`:
 
 ```bash
 node dist/node/rapid_mvp.js
@@ -71,7 +71,7 @@ Generates `data/rapid-sample.json` without starting the viewer.
 
 Setup (first time):
 ```bash
-cd mvp
+cd beta
 npm install
 npx playwright install chromium
 ```
