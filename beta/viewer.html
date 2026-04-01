@@ -8,61 +8,65 @@
   </head>
   <body>
     <div class="app">
-      <div class="toolbar">
-        <button id="load-default" class="primary">Default</button>
-        <button id="load-airplane">Airplane</button>
-        <button id="load-aircraft-mm">Aircraft.mm</button>
-        <input id="file-input" type="file" accept=".json,.mm,application/json,text/xml,application/xml" />
-        <span class="toolbar-sep">|</span>
-        <div class="mode-switch" aria-label="Thinking mode">
-          <button id="mode-flash" class="mode-btn" type="button">Flash</button>
-          <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
-          <button id="mode-deep" class="mode-btn" type="button">Deep</button>
-        </div>
-        <span class="toolbar-sep">|</span>
-        <button id="add-child">Add child</button>
-        <button id="add-sibling">Add sibling</button>
-        <button id="make-folder">Make folder</button>
-        <button id="enter-scope">Enter scope</button>
-        <button id="exit-scope">Back scope</button>
-        <button id="add-alias">Add alias</button>
-        <button id="jump-target">Jump target</button>
-        <button id="toggle-collapse">Collapse</button>
-        <button id="delete-node" class="danger">Delete</button>
-        <span class="toolbar-sep">|</span>
-        <button id="mark-reparent">Mark move</button>
-        <button id="apply-reparent">Apply move</button>
-        <span class="toolbar-sep">|</span>
-        <button id="zoom-out">−</button>
-        <button id="zoom-reset">100%</button>
-        <button id="zoom-in">+</button>
-        <button id="fit-all">Fit all</button>
-        <button id="focus-selected">Focus</button>
-        <span class="toolbar-sep">|</span>
-        <button id="download-btn">Download JSON</button>
-      </div>
-      <div id="mode-meta" class="meta">mode: Rapid</div>
-      <div id="scope-meta" class="meta">scope: root</div>
-      <div id="scope-summary" class="meta">outside: none</div>
-      <div id="meta" class="meta">No data loaded</div>
-      <div class="shortcuts">
-        Shortcuts:
-        Click select |
-        1/2/3 mode |
-        Tab add child |
-        Enter add sibling |
-        Ctrl/Cmd+] enter scope |
-        Ctrl/Cmd+[ back scope |
-        Shift+Enter/F2 edit on node |
-        Space collapse |
-        Delete remove |
-        Ctrl/Cmd + wheel zoom |
-        Arrow Up/Down visible traversal
-      </div>
-      <div id="status" class="status"></div>
-      <div id="visual-check" class="visual-check">Visual check idle</div>
       <div id="board" class="board" tabindex="0">
         <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
+      </div>
+      <div class="overlay-ui">
+        <div class="toolbar">
+          <button id="load-default" class="primary">Default</button>
+          <button id="load-airplane">Airplane</button>
+          <button id="load-aircraft-mm">Aircraft.mm</button>
+          <input id="file-input" type="file" accept=".json,.mm,application/json,text/xml,application/xml" />
+          <span class="toolbar-sep">|</span>
+          <div class="mode-switch" aria-label="Thinking mode">
+            <button id="mode-flash" class="mode-btn" type="button">Flash</button>
+            <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
+            <button id="mode-deep" class="mode-btn" type="button">Deep</button>
+          </div>
+          <span class="toolbar-sep">|</span>
+          <button id="add-child">Add child</button>
+          <button id="add-sibling">Add sibling</button>
+          <button id="make-folder">Make folder</button>
+          <button id="enter-scope">Enter scope</button>
+          <button id="exit-scope">Back scope</button>
+          <button id="add-alias">Add alias</button>
+          <button id="jump-target">Jump target</button>
+          <button id="toggle-collapse">Collapse</button>
+          <button id="delete-node" class="danger">Delete</button>
+          <span class="toolbar-sep">|</span>
+          <button id="mark-reparent">Mark move</button>
+          <button id="apply-reparent">Apply move</button>
+          <span class="toolbar-sep">|</span>
+          <button id="zoom-out">−</button>
+          <button id="zoom-reset">100%</button>
+          <button id="zoom-in">+</button>
+          <button id="fit-all">Fit all</button>
+          <button id="focus-selected">Focus</button>
+          <span class="toolbar-sep">|</span>
+          <button id="download-btn">Download JSON</button>
+        </div>
+        <div class="overlay-meta">
+          <div id="mode-meta" class="meta">mode: Rapid</div>
+          <div id="scope-meta" class="meta">scope: root</div>
+          <div id="scope-summary" class="meta">outside: none</div>
+          <div id="meta" class="meta">No data loaded</div>
+          <div class="shortcuts">
+            Shortcuts:
+            Click select |
+            1/2/3 mode |
+            Tab add child |
+            Enter add sibling |
+            Ctrl/Cmd+] enter scope |
+            Ctrl/Cmd+[ back scope |
+            Shift+Enter/F2 edit on node |
+            Space collapse |
+            Delete remove |
+            Ctrl/Cmd + wheel zoom |
+            Arrow Up/Down visible traversal
+          </div>
+          <div id="status" class="status"></div>
+          <div id="visual-check" class="visual-check">Visual check idle</div>
+        </div>
       </div>
     </div>
 

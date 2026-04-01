@@ -1,5 +1,17 @@
 # Current Status
 
+## Update Log (2026-04-02 / Full Canvas Overlay UI)
+
+- `beta` viewer の canvas を viewport 全面ベースへ変更
+- `beta/viewer.html`
+  - `board` を app 直下へ移し、toolbar / meta / shortcuts / status を overlay UI として再配置
+- `beta/viewer.css`
+  - `.board` を全面配置に変更
+  - toolbar と情報表示を半透明の floating panel に変更
+  - 狭い画面幅でも overlay panel が収まるように最大幅を調整
+- `fit all` の基準領域が toolbar を除いた内側 box ではなく、画面全面 canvas に近い形になった
+- 記録先: `dev-docs/daily/260402.md`
+
 ## Update Log (2026-04-02 / Flash Rapid Deep UI)
 
 - `beta` viewer に `Flash` / `Rapid` / `Deep` の mode switch UI を追加
