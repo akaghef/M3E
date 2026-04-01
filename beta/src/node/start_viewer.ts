@@ -11,7 +11,8 @@ import { RapidMvpModel } from "./rapid_mvp";
 const ROOT = path.resolve(__dirname, "..", "..");
 const PORT = 4173;
 const DEFAULT_PAGE = "viewer.html";
-const SQLITE_DB_PATH = path.join(ROOT, "data", "rapid-mvp.sqlite");
+const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
+const SQLITE_DB_PATH = path.join(DATA_DIR, "rapid-mvp.sqlite");
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",

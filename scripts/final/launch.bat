@@ -9,6 +9,10 @@ REM ============================================================
 
 cd /d "%~dp0\..\.."
 
+REM Final environment stores user data outside app directory by default.
+set "M3E_DATA_DIR=%APPDATA%\M3E"
+if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+
 call npm --prefix final start
 
 if errorlevel 1 (

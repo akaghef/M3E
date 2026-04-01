@@ -19,6 +19,9 @@ REM ============================================================
 
 cd /d "%~dp0\..\.."
 
+if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%APPDATA%\M3E"
+if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+
 echo ============================================================
 echo  M3E Final Migration: Beta ^> Final
 echo ============================================================
@@ -65,12 +68,12 @@ if errorlevel 1 goto :error
 REM --- Step 5: データ migration ---
 echo [5/6] Data migration...
 REM バックアップ
-if exist final\data\m3e.sqlite (
-  if not exist final\data\backup mkdir final\data\backup
+if exist "%M3E_DATA_DIR%\rapid-mvp.sqlite" (
+  if not exist "%M3E_DATA_DIR%\backup" mkdir "%M3E_DATA_DIR%\backup"
   for /f "tokens=1-3 delims=/ " %%a in ("%date%") do set DATESTR=%%c%%b%%a
   for /f "tokens=1-2 delims=: " %%a in ("%time%") do set TIMESTR=%%a%%b
-  copy /Y final\data\m3e.sqlite "final\data\backup\m3e_%DATESTR%_%TIMESTR%.sqlite" > nul
-  echo   Backup saved: final\data\backup\m3e_%DATESTR%_%TIMESTR%.sqlite
+  copy /Y "%M3E_DATA_DIR%\rapid-mvp.sqlite" "%M3E_DATA_DIR%\backup\rapid-mvp_%DATESTR%_%TIMESTR%.sqlite" > nul
+  echo   Backup saved: %M3E_DATA_DIR%\backup\rapid-mvp_%DATESTR%_%TIMESTR%.sqlite
 )
 REM TODO: スキーマ変更が発生した場合は、ここで migration スクリプトを呼び出す
 REM   例: node final/dist/node/migrate.js

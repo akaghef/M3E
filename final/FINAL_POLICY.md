@@ -61,7 +61,8 @@ M3E/
 - ユーザーデータ（`.sqlite`）はリポジトリに含まれない（`.gitignore` で除外）
 - Final更新時、データは自動的に移行される（migration scriptが責任を持つ）
 - 更新前の自動バックアップをmigration script内で行う
-- データファイルの場所: `final/data/m3e.sqlite`
+- データファイルの場所（既定）: `%APPDATA%\M3E\rapid-mvp.sqlite`（`M3E_DATA_DIR` で上書き可能）
+- 重要: `scripts/final/launch.bat` 経由で起動すること（直接 `npm --prefix final start` を実行すると `M3E_DATA_DIR` が未設定となり、アプリディレクトリ配下へ保存される）
 
 ## Final完了イメージ
 

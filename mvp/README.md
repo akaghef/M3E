@@ -1,6 +1,16 @@
 # M3E Rapid MVP
 **This is a memorandum for user. NOT to write here.**
 
+## Important
+
+`mvp/` is Alpha and frozen for development.
+
+- Do not add new features in `mvp/`.
+- Use `beta/` for active development.
+- For daily startup, use `scripts/beta/launch.bat`.
+
+Beta docs: `beta/README.md`
+
 ## Build
 
 ```bash
