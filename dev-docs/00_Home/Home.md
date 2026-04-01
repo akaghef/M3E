@@ -5,6 +5,7 @@
 
 - 会話の決定は `../06_Operations/Decision_Pool.md`
 - 文書運用ルールは `../06_Operations/Documentation_Rules.md`
+- 並行開発時の worktree 分離運用は `./Worktree_Separation_Rules.md`
 - ここで育てた内容を `Spec` `Architecture` `ADR` へ昇格する
 
 ## M3E とは何か
