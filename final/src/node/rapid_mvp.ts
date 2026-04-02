@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import type { TreeNode, AppState, SavedDoc } from "../shared/types";
+import type { TreeNode, AppState, SavedDoc, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -28,12 +28,14 @@ class RapidMvpModel {
           parentId: null,
           children: [],
           text: rootText,
+          collapsed: false,
           details: "",
           note: "",
           attributes: {},
           link: "",
         },
       },
+      links: {},
     };
 
     this.undoStack = [];
@@ -46,6 +48,30 @@ class RapidMvpModel {
 
   _cloneState(): AppState {
     return JSON.parse(JSON.stringify(this.state)) as AppState;
+  }
+
+  _normalizeNode(node: TreeNode): TreeNode {
+    const normalizedType = node.nodeType ?? "text";
+    return {
+      ...node,
+      nodeType: normalizedType,
+      scopeId: node.scopeId ?? undefined,
+      targetNodeId: node.targetNodeId ?? undefined,
+      aliasLabel: node.aliasLabel ?? undefined,
+      access: normalizedType === "alias" ? (node.access ?? "read") : undefined,
+      targetSnapshotLabel: node.targetSnapshotLabel ?? undefined,
+      isBroken: normalizedType === "alias" ? Boolean(node.isBroken) : undefined,
+    };
+  }
+
+  _normalizeLink(link: GraphLink): GraphLink {
+    return {
+      ...link,
+      relationType: link.relationType ?? undefined,
+      label: link.label ?? undefined,
+      direction: link.direction ?? "none",
+      style: link.style ?? "default",
+    };
   }
 
   _pushHistory(): void {
@@ -61,7 +87,56 @@ class RapidMvpModel {
     if (!node) {
       throw new Error(`Node not found: ${nodeId}`);
     }
-    return node;
+    const normalized = this._normalizeNode(node);
+    this.state.nodes[nodeId] = normalized;
+    return normalized;
+  }
+
+  _replaceNode(node: TreeNode): void {
+    this.state.nodes[node.id] = this._normalizeNode(node);
+  }
+
+  _ensureLinks(): Record<string, GraphLink> {
+    if (!this.state.links) {
+      this.state.links = {};
+    }
+    return this.state.links;
+  }
+
+  _deleteLinksForNode(nodeId: string): void {
+    const links = this._ensureLinks();
+    Object.keys(links).forEach((linkId) => {
+      const link = links[linkId];
+      if (!link) {
+        return;
+      }
+      if (link.sourceNodeId === nodeId || link.targetNodeId === nodeId) {
+        delete links[linkId];
+      }
+    });
+  }
+
+  _displayLabel(node: TreeNode): string {
+    if (node.aliasLabel && node.aliasLabel.trim().length > 0) {
+      return node.aliasLabel;
+    }
+    if (node.text && node.text.trim().length > 0) {
+      return node.text;
+    }
+    return "Untitled";
+  }
+
+  _markAliasesBroken(targetNodeId: string, targetLabel: string): void {
+    Object.values(this.state.nodes).forEach((node) => {
+      const normalized = this._normalizeNode(node);
+      if (normalized.nodeType !== "alias" || normalized.targetNodeId !== targetNodeId) {
+        return;
+      }
+      normalized.isBroken = true;
+      normalized.targetSnapshotLabel = targetLabel;
+      normalized.text = `${targetLabel} (deleted)`;
+      this._replaceNode(normalized);
+    });
   }
 
   addNode(parentId: string, text = "New Node", index: number | null = null): string {
@@ -73,7 +148,9 @@ class RapidMvpModel {
       id,
       parentId,
       children: [],
+      nodeType: "text",
       text,
+      collapsed: false,
       details: "",
       note: "",
       attributes: {},
@@ -88,6 +165,75 @@ class RapidMvpModel {
       parent.children.splice(index, 0, id);
     }
 
+    return id;
+  }
+
+  addAlias(parentId: string, targetNodeId: string, options?: {
+    aliasLabel?: string;
+    access?: AliasAccess;
+    scopeId?: string;
+  }): string {
+    const parent = this._requireNode(parentId);
+    const target = this._requireNode(targetNodeId);
+    if (target.nodeType === "alias") {
+      throw new Error("Alias cannot target another alias.");
+    }
+
+    this._pushHistory();
+
+    const id = this._newId();
+    const displayLabel = options?.aliasLabel?.trim() || this._displayLabel(target);
+    const node: TreeNode = {
+      id,
+      parentId,
+      children: [],
+      nodeType: "alias",
+      scopeId: options?.scopeId,
+      text: displayLabel,
+      collapsed: false,
+      details: "",
+      note: "",
+      attributes: {},
+      link: "",
+      targetNodeId,
+      aliasLabel: options?.aliasLabel,
+      access: options?.access ?? "read",
+      targetSnapshotLabel: undefined,
+      isBroken: false,
+    };
+
+    this.state.nodes[id] = node;
+    parent.children.push(id);
+    return id;
+  }
+
+  addLink(sourceNodeId: string, targetNodeId: string, options?: {
+    relationType?: string;
+    label?: string;
+    direction?: LinkDirection;
+    style?: LinkStyle;
+  }): string {
+    const source = this._requireNode(sourceNodeId);
+    const target = this._requireNode(targetNodeId);
+    if (source.nodeType === "alias" || target.nodeType === "alias") {
+      throw new Error("Graph links cannot target alias nodes in Beta.");
+    }
+    if (sourceNodeId === targetNodeId) {
+      throw new Error("Graph links cannot connect a node to itself.");
+    }
+
+    this._pushHistory();
+
+    const id = this._newId();
+    this._ensureLinks()[id] = this._normalizeLink({
+      id,
+      sourceNodeId,
+      targetNodeId,
+      relationType: options?.relationType,
+      label: options?.label,
+      direction: options?.direction,
+      style: options?.style,
+    });
     return id;
   }
 
@@ -127,6 +273,8 @@ class RapidMvpModel {
       if (!currentNode) {
         continue;
       }
+      this._markAliasesBroken(current, this._displayLabel(this._normalizeNode(currentNode)));
+      this._deleteLinksForNode(current);
       toDelete.push(...currentNode.children);
       delete this.state.nodes[current];
     }
@@ -196,6 +344,29 @@ class RapidMvpModel {
     return false;
   }
 
+  queryNodeIds(scopeRootId: string | null = null): string[] {
+    const rootId = scopeRootId ?? this.state.rootId;
+    this._requireNode(rootId);
+    const result: string[] = [];
+    const stack: string[] = [rootId];
+    while (stack.length > 0) {
+      const currentId = stack.pop()!;
+      const node = this.state.nodes[currentId];
+      if (!node) {
+        continue;
+      }
+      result.push(currentId);
+      for (let i = node.children.length - 1; i >= 0; i -= 1) {
+        stack.push(node.children[i]!);
+      }
+    }
+    return result;
+  }
+
+  queryNodes(scopeRootId: string | null = null): TreeNode[] {
+    return this.queryNodeIds(scopeRootId).map((nodeId) => this.state.nodes[nodeId]!);
+  }
+
   validate(): string[] {
     const errors: string[] = [];
     const nodes = this.state.nodes;
@@ -207,6 +378,7 @@ class RapidMvpModel {
     }
 
     Object.values(nodes).forEach((node) => {
+      const normalized = this._normalizeNode(node);
       if (node.parentId !== null && !nodes[node.parentId]) {
         errors.push(`Node ${node.id} has missing parent: ${node.parentId}`);
       }
@@ -220,6 +392,73 @@ class RapidMvpModel {
           errors.push(`Parent/child mismatch: ${node.id} -> ${childId}`);
         }
       });
+
+      if (normalized.nodeType === "alias") {
+        if (normalized.children.length > 0) {
+          errors.push(`Alias node ${node.id} cannot have children.`);
+        }
+
+        if (normalized.access !== "read" && normalized.access !== "write") {
+          errors.push(`Alias node ${node.id} has invalid access: ${String(normalized.access)}`);
+        }
+
+        if (!normalized.targetNodeId) {
+          errors.push(`Alias node ${node.id} is missing targetNodeId.`);
+        } else {
+          const target = nodes[normalized.targetNodeId];
+          if (!target) {
+            if (!normalized.isBroken || !normalized.targetSnapshotLabel) {
+              errors.push(`Alias node ${node.id} points to missing target: ${normalized.targetNodeId}`);
+            }
+          } else {
+            const normalizedTarget = this._normalizeNode(target);
+            if (normalizedTarget.nodeType === "alias") {
+              errors.push(`Alias node ${node.id} cannot target alias node ${normalized.targetNodeId}.`);
+            }
+            if (normalized.isBroken) {
+              errors.push(`Alias node ${node.id} is marked broken but target exists.`);
+            }
+          }
+        }
+      } else {
+        if (normalized.targetNodeId) {
+          errors.push(`Non-alias node ${node.id} cannot define targetNodeId.`);
+        }
+        if (normalized.access) {
+          errors.push(`Non-alias node ${node.id} cannot define alias access.`);
+        }
+        if (normalized.isBroken) {
+          errors.push(`Non-alias node ${node.id} cannot be marked broken.`);
+        }
+      }
+    });
+
+    const links = this.state.links ?? {};
+    Object.values(links).forEach((link) => {
+      const normalized = this._normalizeLink(link);
+      const source = nodes[normalized.sourceNodeId];
+      const target = nodes[normalized.targetNodeId];
+      if (!source) {
+        errors.push(`Link ${normalized.id} has missing source node: ${normalized.sourceNodeId}`);
+      }
+      if (!target) {
+        errors.push(`Link ${normalized.id} has missing target node: ${normalized.targetNodeId}`);
+      }
+      if (normalized.sourceNodeId === normalized.targetNodeId) {
+        errors.push(`Link ${normalized.id} cannot connect a node to itself.`);
+      }
+      if (source && this._normalizeNode(source).nodeType === "alias") {
+        errors.push(`Link ${normalized.id} cannot use alias source node: ${normalized.sourceNodeId}`);
+      }
+      if (target && this._normalizeNode(target).nodeType === "alias") {
+        errors.push(`Link ${normalized.id} cannot use alias target node: ${normalized.targetNodeId}`);
+      }
+      if (!["none", "forward", "backward", "both"].includes(normalized.direction ?? "none")) {
+        errors.push(`Link ${normalized.id} has invalid direction: ${String(normalized.direction)}`);
+      }
+      if (!["default", "dashed", "soft", "emphasis"].includes(normalized.style ?? "default")) {
+        errors.push(`Link ${normalized.id} has invalid style: ${String(normalized.style)}`);
+      }
     });
 
     const visited = new Set<string>();
@@ -259,6 +498,14 @@ class RapidMvpModel {
   static fromJSON(jsonState: AppState): RapidMvpModel {
     const model = new RapidMvpModel("tmp");
     model.state = JSON.parse(JSON.stringify(jsonState)) as AppState;
+    Object.keys(model.state.nodes).forEach((nodeId) => {
+      model.state.nodes[nodeId] = model._normalizeNode(model.state.nodes[nodeId]!);
+    });
+    const links = model.state.links ?? {};
+    model.state.links = {};
+    Object.keys(links).forEach((linkId) => {
+      model.state.links![linkId] = model._normalizeLink(links[linkId]!);
+    });
     model.undoStack = [];
     model.redoStack = [];
     return model;

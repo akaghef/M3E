@@ -1,20 +1,44 @@
 // Global type declarations for the browser build (script-mode, no module system).
 // ViewerTuning and VIEWER_TUNING are declared in viewer.tuning.ts as globals.
 
+type NodeType = "text" | "image" | "folder" | "alias";
+type AliasAccess = "read" | "write";
+type GraphLinkDirection = "none" | "forward" | "backward" | "both";
+type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
+
 interface TreeNode {
   id: string;
   parentId: string | null;
   children: string[];
+  nodeType?: NodeType;
+  scopeId?: string;
   text: string;
+  collapsed: boolean;
   details: string;
   note: string;
   attributes: Record<string, string>;
   link: string;
+  targetNodeId?: string;
+  aliasLabel?: string;
+  access?: AliasAccess;
+  targetSnapshotLabel?: string;
+  isBroken?: boolean;
+}
+
+interface GraphLink {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  relationType?: string;
+  label?: string;
+  direction?: GraphLinkDirection;
+  style?: GraphLinkStyle;
 }
 
 interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
+  links?: Record<string, GraphLink>;
 }
 
 interface SavedDoc {
@@ -69,6 +93,8 @@ interface PanState {
 
 interface ViewState {
   selectedNodeId: string;
+  currentScopeId: string;
+  scopeHistory: string[];
   zoom: number;
   cameraX: number;
   cameraY: number;
