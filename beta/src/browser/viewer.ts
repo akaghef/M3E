@@ -1092,22 +1092,24 @@ function renderLinearPanel(): void {
   }
 
   const scopeRootId = currentLinearMemoScopeId();
-  if (!linearNotesByScope[scopeRootId]) {
-    linearNotesByScope[scopeRootId] = buildLinearFromScope().text;
+  const templateText = buildLinearFromScope().text;
+  if (!(scopeRootId in linearNotesByScope)) {
+    linearNotesByScope[scopeRootId] = templateText;
   }
+  const scopeMemo = linearNotesByScope[scopeRootId] || "";
+  linearDirty = scopeMemo !== templateText;
 
   if (document.activeElement !== linearTextEl) {
-    linearTextEl.value = linearNotesByScope[scopeRootId] || "";
+    linearTextEl.value = scopeMemo;
   }
   linearLineMap = [];
-  linearDirty = false;
 
   const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
   if (linearMetaEl) {
-    linearMetaEl.textContent = `scope memo: ${scopeLabel}`;
+    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
-  if (linearApplyBtn) linearApplyBtn.disabled = true;
-  if (linearResetBtn) linearResetBtn.disabled = true;
+  if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
 }
 
 function parseLinearText(text: string): LinearNodeDraft {
@@ -2721,7 +2723,16 @@ linearTextEl?.addEventListener("input", () => {
   if (!doc) {
     return;
   }
-  linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
+  const scopeRootId = currentLinearMemoScopeId();
+  linearNotesByScope[scopeRootId] = linearTextEl.value;
+  const templateText = buildLinearFromScope().text;
+  linearDirty = linearTextEl.value !== templateText;
+  if (linearMetaEl) {
+    const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
+    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
+  }
+  if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
 });
 
 linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
