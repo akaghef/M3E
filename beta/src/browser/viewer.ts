@@ -4,10 +4,18 @@ const loadAirplaneBtn = document.getElementById("load-airplane");
 const loadAircraftMmBtn = document.getElementById("load-aircraft-mm");
 const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
 const stopVisualCheckBtn = document.getElementById("stop-visual-check");
+const modeFlashBtn = document.getElementById("mode-flash");
+const modeRapidBtn = document.getElementById("mode-rapid");
+const modeDeepBtn = document.getElementById("mode-deep");
 const fitAllBtn = document.getElementById("fit-all");
 const focusSelectedBtn = document.getElementById("focus-selected");
 const addChildBtn = document.getElementById("add-child");
 const addSiblingBtn = document.getElementById("add-sibling");
+const makeFolderBtn = document.getElementById("make-folder");
+const enterScopeBtn = document.getElementById("enter-scope");
+const exitScopeBtn = document.getElementById("exit-scope");
+const addAliasBtn = document.getElementById("add-alias");
+const jumpTargetBtn = document.getElementById("jump-target");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const deleteNodeBtn = document.getElementById("delete-node");
 const markReparentBtn = document.getElementById("mark-reparent");
@@ -17,6 +25,9 @@ const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
 const downloadBtn = document.getElementById("download-btn");
+const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
+const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
+const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
@@ -83,6 +94,8 @@ let viewState: ViewState = {
   selectedNodeId: "",
   currentScopeId: "",
   scopeHistory: [],
+  currentScopeRootId: "",
+  thinkingMode: "rapid",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -91,6 +104,36 @@ let viewState: ViewState = {
   dragState: null,
   collapsedIds: new Set<string>(),
 };
+
+function thinkingModeLabel(mode: ThinkingMode): string {
+  switch (mode) {
+    case "flash":
+      return "Flash";
+    case "deep":
+      return "Deep";
+    case "rapid":
+    default:
+      return "Rapid";
+  }
+}
+
+function syncThinkingModeUi(): void {
+  const mode = viewState.thinkingMode;
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)}`;
+  modeFlashBtn?.classList.toggle("is-active", mode === "flash");
+  modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
+  modeDeepBtn?.classList.toggle("is-active", mode === "deep");
+}
+
+function setThinkingMode(mode: ThinkingMode): void {
+  if (viewState.thinkingMode === mode) {
+    syncThinkingModeUi();
+    return;
+  }
+  viewState.thinkingMode = mode;
+  syncThinkingModeUi();
+  setStatus(`Mode: ${thinkingModeLabel(mode)}`);
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -281,6 +324,252 @@ function getNode(nodeId: string): TreeNode {
   return node;
 }
 
+function isFolderNode(node: TreeNode | null | undefined): boolean {
+  return Boolean(node && node.nodeType === "folder");
+}
+
+function currentScopeRootId(): string {
+  if (!doc) {
+    return "";
+  }
+  return viewState.currentScopeRootId || doc.state.rootId;
+}
+
+function currentScopeRootNode(): TreeNode | null {
+  if (!doc) {
+    return null;
+  }
+  return doc.state.nodes[currentScopeRootId()] || null;
+}
+
+function scopeRootForNode(nodeId: string): string {
+  if (!doc || !doc.state.nodes[nodeId]) {
+    return "";
+  }
+  let cursor: string | null = nodeId;
+  let nearestFolderId: string | null = null;
+  while (cursor) {
+    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    if (!node) {
+      break;
+    }
+    if (isFolderNode(node)) {
+      nearestFolderId = node.id;
+    }
+    cursor = node.parentId ?? null;
+  }
+  return nearestFolderId || doc.state.rootId;
+}
+
+function scopePathIds(scopeRootId: string): string[] {
+  if (!doc || !scopeRootId) {
+    return [];
+  }
+  const path: string[] = [];
+  let cursor: string | null = scopeRootId;
+  while (cursor) {
+    path.push(cursor);
+    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    if (!node) {
+      break;
+    }
+    if (cursor === doc.state.rootId) {
+      break;
+    }
+    cursor = node.parentId ?? null;
+    while (cursor) {
+      const parent = doc.state.nodes[cursor];
+      if (!parent) {
+        cursor = null;
+        break;
+      }
+      if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+        break;
+      }
+      cursor = parent.parentId ?? null;
+    }
+  }
+  return path.reverse();
+}
+
+function updateScopeMeta(): void {
+  if (!doc) {
+    scopeMetaEl.textContent = "scope: n/a";
+    return;
+  }
+  const parts = scopePathIds(currentScopeRootId()).map((nodeId) => {
+    if (nodeId === doc!.state.rootId) {
+      return "root";
+    }
+    return uiLabel(doc!.state.nodes[nodeId]);
+  });
+  scopeMetaEl.textContent = `scope: ${parts.join(" / ")}`;
+}
+
+function updateScopeSummary(): void {
+  if (!doc) {
+    scopeSummaryEl.textContent = "outside: n/a";
+    return;
+  }
+  const scopeRootId = currentScopeRootId();
+  const scopeRoot = doc.state.nodes[scopeRootId];
+  if (!scopeRoot) {
+    scopeSummaryEl.textContent = "outside: n/a";
+    return;
+  }
+
+  const parentScopeId = scopeRootId === doc.state.rootId
+    ? null
+    : scopeRoot.parentId
+      ? scopeRootForNode(scopeRoot.parentId)
+      : doc.state.rootId;
+  const parentLabel = parentScopeId
+    ? (parentScopeId === doc.state.rootId ? "root" : uiLabel(doc.state.nodes[parentScopeId]))
+    : "none";
+
+  const childScopeSummaries = (scopeRoot.children || [])
+    .map((childId) => doc!.state.nodes[childId])
+    .filter((node): node is TreeNode => Boolean(node))
+    .filter((node) => isFolderNode(node))
+    .map((node) => `${uiLabel(node)}(${countHiddenDescendants(node.id)})`);
+
+  const childSummary = childScopeSummaries.length > 0 ? childScopeSummaries.join(", ") : "none";
+  scopeSummaryEl.textContent = `outside: parent ${parentLabel} | child scopes ${childSummary}`;
+}
+
+function enterScope(scopeNodeId: string): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(scopeNodeId);
+  if (!isFolderNode(node)) {
+    setStatus("Only folder nodes can open a scope.", true);
+    return false;
+  }
+  viewState.currentScopeRootId = node.id;
+  viewState.selectedNodeId = node.id;
+  render();
+  fitDocument();
+  setStatus(`Entered scope: ${uiLabel(node)}`);
+  board.focus();
+  return true;
+}
+
+function exitScope(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const scopeRoot = currentScopeRootNode();
+  if (!scopeRoot || scopeRoot.id === doc.state.rootId) {
+    setStatus("Already at root scope.");
+    return false;
+  }
+  let nextScopeId = doc.state.rootId;
+  let cursor = scopeRoot.parentId;
+  while (cursor) {
+    const parent = doc.state.nodes[cursor];
+    if (!parent) {
+      break;
+    }
+    if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+      nextScopeId = parent.id;
+      break;
+    }
+    cursor = parent.parentId ?? null;
+  }
+  viewState.currentScopeRootId = nextScopeId;
+  viewState.selectedNodeId = scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId;
+  render();
+  fitDocument();
+  setStatus("Returned to parent scope.");
+  board.focus();
+  return true;
+}
+
+function makeSelectedFolder(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  if (isAliasNode(node)) {
+    setStatus("Alias nodes cannot become folders.", true);
+    return false;
+  }
+  if (isFolderNode(node)) {
+    setStatus("Selected node is already a folder scope.");
+    return false;
+  }
+  pushUndoSnapshot();
+  node.nodeType = "folder";
+  touchDocument();
+  setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+  board.focus();
+  return true;
+}
+
+function addAliasInCurrentScope(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const target = getNode(viewState.selectedNodeId);
+  if (isAliasNode(target)) {
+    setStatus("Alias cannot target another alias.", true);
+    return false;
+  }
+  const scopeRoot = currentScopeRootNode();
+  if (!scopeRoot) {
+    return false;
+  }
+  pushUndoSnapshot();
+  const aliasId = newId();
+  doc.state.nodes[aliasId] = {
+    id: aliasId,
+    parentId: scopeRoot.id,
+    children: [],
+    nodeType: "alias",
+    scopeId: scopeRoot.id,
+    text: uiLabel(target),
+    details: "",
+    note: "",
+    attributes: {},
+    link: "",
+    targetNodeId: target.id,
+    aliasLabel: undefined,
+    access: "read",
+    targetSnapshotLabel: undefined,
+    isBroken: false,
+  };
+  scopeRoot.children.push(aliasId);
+  viewState.selectedNodeId = aliasId;
+  touchDocument();
+  setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
+  board.focus();
+  return true;
+}
+
+function jumpToAliasTarget(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  if (!isAliasNode(node)) {
+    setStatus("Selected node is not an alias.", true);
+    return false;
+  }
+  const target = resolveAliasTarget(node);
+  if (!target || isBrokenAlias(node)) {
+    setStatus("Broken alias cannot jump to target.", true);
+    return false;
+  }
+  viewState.currentScopeRootId = scopeRootForNode(target.id);
+  viewState.selectedNodeId = target.id;
+  render();
+  fitDocument();
+  setStatus(`Jumped to target: ${uiLabel(target)}`);
+  board.focus();
+  return true;
+}
+
 function isAliasNode(node: TreeNode | null | undefined): boolean {
   return Boolean(node && node.nodeType === "alias");
 }
@@ -357,6 +646,13 @@ function aliasBadge(node: TreeNode): string {
     return "broken";
   }
   return aliasAccess(node) === "write" ? "write" : "read";
+}
+
+function nodeBadge(node: TreeNode): string {
+  if (isFolderNode(node) && node.id !== currentScopeRootId()) {
+    return "scope";
+  }
+  return aliasBadge(node);
 }
 
 function cloneState(state: AppState): AppState {
@@ -853,7 +1149,341 @@ function applyLinearTextToScope(): void {
   }
 }
 
+function importanceScore(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return 0;
+  }
+  const attrs = node.attributes || {};
+  const raw = String(attrs["importance"] ?? attrs["priority"] ?? attrs["重要度"] ?? "").trim().toLowerCase();
+  if (!raw) {
+    return 0;
+  }
+  if (/^[0-9]+$/.test(raw)) {
+    return Math.max(0, Number(raw));
+  }
+  if (raw.includes("critical") || raw.includes("urgent") || raw.includes("highest") || raw.includes("緊急")) {
+    return 4;
+  }
+  if (raw === "h" || raw.includes("high") || raw.includes("top") || raw.includes("高")) {
+    return 3;
+  }
+  if (raw === "m" || raw.includes("medium") || raw.includes("mid") || raw.includes("中")) {
+    return 2;
+  }
+  if (raw === "l" || raw.includes("low") || raw.includes("低")) {
+    return 1;
+  }
+  return 0;
+}
+
+function isNodeVisibleByImportance(nodeId: string): boolean {
+  if (!importanceVisibleNodeIds) {
+    return true;
+  }
+  return importanceVisibleNodeIds.has(nodeId);
+}
+
+function rebuildImportanceVisibility(): void {
+  if (!doc || importanceViewMode === "all") {
+    importanceVisibleNodeIds = null;
+    return;
+  }
+
+  const threshold = importanceViewMode === "high-only" ? 3 : 2;
+  const scopeRootId = normalizedCurrentScopeId();
+  const visible = new Set<string>();
+
+  function walk(nodeId: string): boolean {
+    const node = doc!.state.nodes[nodeId];
+    if (!node) {
+      return false;
+    }
+    const selfMatched = importanceScore(nodeId) >= threshold;
+    let childMatched = false;
+    scopedChildrenRaw(nodeId).forEach((childId) => {
+      if (walk(childId)) {
+        childMatched = true;
+      }
+    });
+    const keep = selfMatched || childMatched;
+    if (keep) {
+      visible.add(nodeId);
+    }
+    return keep;
+  }
+
+  walk(scopeRootId);
+  visible.add(scopeRootId);
+  importanceVisibleNodeIds = visible;
+}
+
+function scopeChildren(nodeId: string): string[] {
+  if (!doc) {
+    return [];
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return [];
+  }
+  return scopedChildrenRaw(nodeId).filter((childId) => isNodeVisibleByImportance(childId));
+}
+
+function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
+  if (!doc) {
+    return { text: "", map: [] };
+  }
+
+  const scopeRootId = normalizedCurrentScopeId();
+  const lines: string[] = [];
+  const map: LinearLineMap[] = [];
+  let cursor = 0;
+
+  function walk(nodeId: string, depth: number): void {
+    const node = doc!.state.nodes[nodeId];
+    if (!node) {
+      return;
+    }
+
+    const line = `${"  ".repeat(depth)}${String(node.text || "").trim() || "(empty)"}`;
+    const lineIndex = lines.length;
+    lines.push(line);
+    const startOffset = cursor;
+    const endOffset = startOffset + line.length;
+    map.push({ nodeId, lineIndex, startOffset, endOffset });
+    cursor = endOffset + 1;
+
+    scopeChildren(nodeId).forEach((childId) => walk(childId, depth + 1));
+  }
+
+  walk(scopeRootId, 0);
+  return {
+    text: lines.join("\n"),
+    map,
+  };
+}
+
+function linearOffsetToLineIndex(text: string, offset: number): number {
+  const safeOffset = Math.max(0, Math.min(offset, text.length));
+  if (safeOffset === 0) {
+    return 0;
+  }
+  let lineIndex = 0;
+  for (let i = 0; i < safeOffset; i += 1) {
+    if (text.charCodeAt(i) === 10) {
+      lineIndex += 1;
+    }
+  }
+  return lineIndex;
+}
+
+function syncLinearCaretToSelectedNode(): void {
+  if (!linearTextEl || linearLineMap.length === 0) {
+    return;
+  }
+  const entry = linearLineMap.find((item) => item.nodeId === viewState.selectedNodeId);
+  if (!entry) {
+    return;
+  }
+  suppressLinearSelectionSync = true;
+  if (document.activeElement === linearTextEl) {
+    linearTextEl.setSelectionRange(entry.startOffset, entry.endOffset);
+  }
+  suppressLinearSelectionSync = false;
+}
+
+function renderLinearPanel(): void {
+  if (!linearTextEl || !linearMetaEl) {
+    return;
+  }
+  if (!doc) {
+    linearTextEl.value = "";
+    linearMetaEl.textContent = "No scope loaded";
+    linearApplyBtn.disabled = true;
+    linearResetBtn.disabled = true;
+    return;
+  }
+
+  const linear = buildLinearFromScope();
+  linearLineMap = linear.map;
+
+  if (!linearDirty) {
+    linearTextEl.value = linear.text;
+  }
+
+  const scopeRootId = normalizedCurrentScopeId();
+  const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
+  const dirtyLabel = linearDirty ? "dirty" : "synced";
+  linearMetaEl.textContent = `scope: ${scopeLabel} | importance: ${importanceViewMode} | lines: ${linearLineMap.length} | ${dirtyLabel}`;
+  linearApplyBtn.disabled = !linearDirty;
+  linearResetBtn.disabled = !linearDirty;
+
+  if (!linearDirty) {
+    syncLinearCaretToSelectedNode();
+  }
+}
+
+function parseLinearText(text: string): LinearNodeDraft {
+  const sourceLines = String(text || "").replaceAll("\r", "").split("\n");
+  const lines = sourceLines
+    .map((raw, index) => ({ raw, index: index + 1 }))
+    .filter((line) => line.raw.trim().length > 0);
+
+  if (lines.length === 0) {
+    throw new Error("リニアテキストが空です。");
+  }
+
+  const stack: LinearNodeDraft[] = [];
+  let root: LinearNodeDraft | null = null;
+  let previousDepth = 0;
+
+  lines.forEach((line, idx) => {
+    if (/\t/.test(line.raw)) {
+      throw new Error(`Invalid indentation at line ${line.index}: tab is not allowed.`);
+    }
+    const leadingSpaces = line.raw.match(/^ */)?.[0].length ?? 0;
+    if (leadingSpaces % 2 !== 0) {
+      throw new Error(`Invalid indentation at line ${line.index}: use multiples of 2 spaces.`);
+    }
+    const depth = Math.floor(leadingSpaces / 2);
+    const label = line.raw.trim();
+    if (!label) {
+      throw new Error(`Empty label at line ${line.index}.`);
+    }
+    if (idx === 0 && depth !== 0) {
+      throw new Error(`Invalid root depth at line ${line.index}: root must start at depth 0.`);
+    }
+    if (idx > 0 && depth > previousDepth + 1) {
+      throw new Error(`Invalid depth transition at line ${line.index}: skipped hierarchy level.`);
+    }
+
+    const node: LinearNodeDraft = {
+      label,
+      children: [],
+    };
+
+    if (depth === 0) {
+      if (root) {
+        throw new Error(`Invalid root at line ${line.index}: multiple root lines are not allowed.`);
+      }
+      root = node;
+    } else {
+      const parent = stack[depth - 1];
+      if (!parent) {
+        throw new Error(`Invalid parent reference at line ${line.index}.`);
+      }
+      parent.children.push(node);
+    }
+
+    stack[depth] = node;
+    stack.length = depth + 1;
+    previousDepth = depth;
+  });
+
+  if (!root) {
+    throw new Error("リニアテキストのルート行がありません。");
+  }
+  return root;
+}
+
+function deleteSubtree(nodeId: string): void {
+  if (!doc) {
+    return;
+  }
+  const stack: string[] = [nodeId];
+  while (stack.length > 0) {
+    const currentId = stack.pop()!;
+    const current = doc.state.nodes[currentId];
+    if (!current) {
+      continue;
+    }
+    stack.push(...(current.children || []));
+    delete doc.state.nodes[currentId];
+  }
+}
+
+function reconcileLinearSubtree(nodeId: string, draft: LinearNodeDraft): void {
+  if (!doc) {
+    return;
+  }
+
+  const node = getNode(nodeId);
+  node.text = draft.label;
+  const existingChildren = [...(node.children || [])];
+  const nextChildren: string[] = [];
+
+  draft.children.forEach((childDraft, index) => {
+    const existingId = existingChildren[index];
+    if (existingId && doc!.state.nodes[existingId]) {
+      reconcileLinearSubtree(existingId, childDraft);
+      nextChildren.push(existingId);
+      return;
+    }
+
+    const newChildId = newId();
+    doc!.state.nodes[newChildId] = createNodeRecord(newChildId, nodeId, childDraft.label);
+    reconcileLinearSubtree(newChildId, childDraft);
+    nextChildren.push(newChildId);
+  });
+
+  existingChildren.slice(draft.children.length).forEach((redundantId) => {
+    deleteSubtree(redundantId);
+  });
+
+  node.children = nextChildren;
+}
+
+function applyLinearTextToScope(): void {
+  if (!doc) {
+    return;
+  }
+  try {
+    const parsed = parseLinearText(linearTextEl.value);
+    const scopeRootId = normalizedCurrentScopeId();
+
+    pushUndoSnapshot();
+    reconcileLinearSubtree(scopeRootId, parsed);
+
+    if (!doc.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId)) {
+      viewState.selectedNodeId = scopeRootId;
+    }
+
+    linearDirty = false;
+    touchDocument();
+    setStatus("リニアテキストを現在スコープへ適用しました。");
+    board.focus();
+  } catch (err) {
+    setStatus(`リニアテキスト適用に失敗: ${(err as Error).message}`, true);
+  }
+}
+
+function countHiddenDescendants(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return 0;
+  }
+  let count = 0;
+  const stack = [...(node.children || [])];
+  while (stack.length > 0) {
+    const currentId = stack.pop()!;
+    const current = doc.state.nodes[currentId];
+    if (!current) {
+      continue;
+    }
+    count += 1;
+    stack.push(...(current.children || []));
+  }
+  return count;
+}
+
 function buildLayout(state: AppState): LayoutResult {
+  const displayRootId = currentScopeRootId();
   const metrics: Record<string, { w: number; h: number }> = {};
   const depthOf: Record<string, number> = {};
   const depthMaxWidth: Record<number, number> = {};
@@ -884,7 +1514,7 @@ function buildLayout(state: AppState): LayoutResult {
     visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
   }
 
-  visit(normalizedCurrentScopeId(), 0);
+  visit(displayRootId, 0);
 
   const xByDepth: Record<number, number> = {};
   let cursorX = VIEWER_TUNING.layout.leftPad;
@@ -957,7 +1587,7 @@ function buildLayout(state: AppState): LayoutResult {
     return h;
   }
 
-  const totalHeight = place(normalizedCurrentScopeId(), VIEWER_TUNING.layout.topPad);
+  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad);
   return {
     pos,
     order,
@@ -968,6 +1598,9 @@ function buildLayout(state: AppState): LayoutResult {
 
 function render(): void {
   if (!doc) {
+    syncThinkingModeUi();
+    updateScopeMeta();
+    updateScopeSummary();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
     renderLinearPanel();
@@ -980,9 +1613,13 @@ function render(): void {
   }
 
   const state = doc.state;
+  if (!viewState.currentScopeRootId || !state.nodes[viewState.currentScopeRootId]) {
+    viewState.currentScopeRootId = state.rootId;
+  }
   const layout = buildLayout(state);
   lastLayout = layout;
   visibleOrder = layout.order;
+  const displayRootId = currentScopeRootId();
 
   const pos = layout.pos;
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -1039,12 +1676,12 @@ function render(): void {
     if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
       classNames.push("drag-source");
     }
-    const hitX = nodeId === state.rootId ? p.x : p.x - 8;
+    const hitX = nodeId === displayRootId ? p.x : p.x - 8;
     const hitY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2;
-    const hitW = nodeId === state.rootId ? p.w : p.w + 36;
+    const hitW = nodeId === displayRootId ? p.w : p.w + 36;
     nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
 
-    if (nodeId === state.rootId) {
+    if (nodeId === displayRootId) {
       const label = escapeXml(uiLabel(node) || "(empty)");
       const w = p.w;
       const h = p.h;
@@ -1064,7 +1701,7 @@ function render(): void {
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
       }
       nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
-      const badge = aliasBadge(node);
+      const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
       }
@@ -1072,16 +1709,24 @@ function render(): void {
 
     if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
       const indicatorX =
-        nodeId === state.rootId
+        nodeId === displayRootId
           ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
           : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
-      nodes += `<text class="collapsed-indicator" x="${indicatorX}" y="${p.y}" dominant-baseline="middle">+</text>`;
+      const hiddenCount = countHiddenDescendants(nodeId);
+      const badgeLabel = String(Math.max(1, hiddenCount));
+      const badgeWidth = Math.max(26, badgeLabel.length * 14 + 14);
+      const badgeHeight = 24;
+      const badgeX = indicatorX - badgeWidth / 2;
+      const badgeY = p.y - badgeHeight / 2;
+      nodes += `<rect class="collapsed-badge" data-collapse-node-id="${nodeId}" x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="${badgeHeight}" rx="12" />`;
+      nodes += `<circle class="collapsed-badge-node" data-collapse-node-id="${nodeId}" cx="${badgeX - 8}" cy="${p.y}" r="8" />`;
+      nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
     }
 
     children.forEach((cid) => drawNode(cid));
   }
 
-  drawNode(normalizedCurrentScopeId());
+  drawNode(displayRootId);
 
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
@@ -1112,7 +1757,10 @@ function render(): void {
     const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
+  syncThinkingModeUi();
   metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
+  updateScopeMeta();
+  updateScopeSummary();
   syncInlineEditorPosition();
   renderLinearPanel();
 }
@@ -1133,8 +1781,9 @@ function getNodeHitBounds(nodeId: string): { left: number; right: number; top: n
   if (!p) {
     return null;
   }
-  const left = nodeId === doc.state.rootId ? p.x : p.x - 8;
-  const width = nodeId === doc.state.rootId ? p.w : p.w + 36;
+  const displayRootId = currentScopeRootId();
+  const left = nodeId === displayRootId ? p.x : p.x - 8;
+  const width = nodeId === displayRootId ? p.w : p.w + 36;
   return {
     left,
     right: left + width,
@@ -1921,6 +2570,8 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeId = doc.state.rootId;
     viewState.scopeHistory = [];
     viewState.selectedNodeId = doc.state.rootId;
+    viewState.currentScopeRootId = doc.state.rootId;
+    viewState.thinkingMode = "rapid";
     viewState.reparentSourceId = "";
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
@@ -2172,6 +2823,18 @@ stopVisualCheckBtn?.addEventListener("click", () => {
   stopVisualCheck();
 });
 
+modeFlashBtn?.addEventListener("click", () => {
+  setThinkingMode("flash");
+});
+
+modeRapidBtn?.addEventListener("click", () => {
+  setThinkingMode("rapid");
+});
+
+modeDeepBtn?.addEventListener("click", () => {
+  setThinkingMode("deep");
+});
+
 fileInput.addEventListener("change", (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files && target.files[0];
@@ -2277,6 +2940,31 @@ addSiblingBtn?.addEventListener("click", () => {
   addSibling();
 });
 
+makeFolderBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  makeSelectedFolder();
+});
+
+enterScopeBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  enterScope(viewState.selectedNodeId);
+});
+
+exitScopeBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  exitScope();
+});
+
+addAliasBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  addAliasInCurrentScope();
+});
+
+jumpTargetBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  jumpToAliasTarget();
+});
+
 toggleCollapseBtn?.addEventListener("click", () => {
   if (!doc) return;
   toggleCollapse();
@@ -2326,6 +3014,18 @@ focusSelectedBtn?.addEventListener("click", () => {
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
+  const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
+  if (collapseNodeId && event.button === 0) {
+    event.preventDefault();
+    selectNode(collapseNodeId);
+    if (viewState.collapsedIds.has(collapseNodeId)) {
+      viewState.collapsedIds.delete(collapseNodeId);
+      render();
+      setStatus("Expanded collapsed branch.");
+    }
+    board.focus();
+    return;
+  }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
   if (!doc || !nodeId || event.button !== 0) {
@@ -2406,6 +3106,9 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
 });
 
 board.addEventListener("wheel", (event: WheelEvent) => {
+  if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
+    return;
+  }
   event.preventDefault();
   if (!event.ctrlKey && !event.metaKey) {
     viewState.cameraX -= event.deltaX * VIEWER_TUNING.pan.wheelFactor;
@@ -2423,6 +3126,9 @@ board.addEventListener("wheel", (event: WheelEvent) => {
 
 board.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) {
+    return;
+  }
+  if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
   }
   const onNode = (event.target as HTMLElement | null)?.dataset?.["nodeId"];
@@ -2512,6 +3218,36 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "F2") {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId);
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    if (event.key === "1") {
+      event.preventDefault();
+      setThinkingMode("flash");
+      return;
+    }
+    if (event.key === "2") {
+      event.preventDefault();
+      setThinkingMode("rapid");
+      return;
+    }
+    if (event.key === "3") {
+      event.preventDefault();
+      setThinkingMode("deep");
+      return;
+    }
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === "]") {
+    event.preventDefault();
+    enterScope(viewState.selectedNodeId);
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === "[") {
+    event.preventDefault();
+    exitScope();
     return;
   }
 

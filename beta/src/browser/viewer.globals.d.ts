@@ -3,6 +3,7 @@
 
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
+type ThinkingMode = "flash" | "rapid" | "deep";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 
@@ -95,6 +96,8 @@ interface ViewState {
   selectedNodeId: string;
   currentScopeId: string;
   scopeHistory: string[];
+  currentScopeRootId: string;
+  thinkingMode: ThinkingMode;
   zoom: number;
   cameraX: number;
   cameraY: number;
