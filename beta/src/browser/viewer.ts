@@ -1000,11 +1000,22 @@ function buildTreeScopeTransformSource(): string {
 
 async function fetchLinearTransformStatus(): Promise<LinearTransformStatus | null> {
   try {
-    const response = await fetch("/api/linear-transform/status", { cache: "no-store" });
+    const response = await fetch("/api/ai/status", { cache: "no-store" });
     if (!response.ok) {
       return null;
     }
-    linearTransformStatus = await response.json() as LinearTransformStatus;
+    const payload = await response.json() as AiStatusResponse;
+    linearTransformStatus = {
+      ok: true,
+      enabled: payload.enabled,
+      configured: payload.configured,
+      provider: payload.provider,
+      transport: payload.transport,
+      model: payload.model,
+      endpoint: payload.endpoint,
+      promptConfigured: Boolean(payload.features["linear-transform"]?.promptConfigured),
+      message: payload.message,
+    };
     return linearTransformStatus;
   } catch {
     return null;
@@ -1017,15 +1028,19 @@ async function requestLinearSubagentTransform(
 ): Promise<LinearTransformResponse> {
   const scopeRootId = normalizedCurrentScopeId();
   const scopeLabel = doc?.state.nodes[scopeRootId]?.text || scopeRootId;
-  const payload: LinearTransformRequest = {
-    direction,
-    sourceText: direction === "tree-to-linear" ? buildTreeScopeTransformSource() : linearTextEl.value,
-    scopeRootId,
-    scopeLabel,
-    instruction: instruction || null,
+  const payload: AiSubagentRequest = {
+    documentId: LOCAL_DOC_ID,
+    scopeId: scopeRootId,
+    mode: "direct-result",
+    input: {
+      direction,
+      sourceText: direction === "tree-to-linear" ? buildTreeScopeTransformSource() : linearTextEl.value,
+      scopeLabel,
+      instruction: instruction || null,
+    },
   };
 
-  const response = await fetch("/api/linear-transform/convert", {
+  const response = await fetch("/api/ai/subagent/linear-transform", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify(payload),
@@ -1034,7 +1049,15 @@ async function requestLinearSubagentTransform(
   if (!response.ok) {
     throw new Error(result.error || "Linear transform request failed.");
   }
-  return result as LinearTransformResponse;
+  return {
+    ok: true,
+    direction,
+    provider: String(result.provider || linearTransformStatus?.provider || "deepseek"),
+    model: String(result.model || linearTransformStatus?.model || ""),
+    outputText: String(result.proposal?.result?.outputText || ""),
+    rawText: String(result.proposal?.result?.rawText || ""),
+    usage: result.usage || undefined,
+  };
 }
 
 function linearOffsetToLineIndex(text: string, offset: number): number {

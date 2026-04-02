@@ -58,6 +58,32 @@ Linear <-> Tree conversion is one feature on top of that provider layer.
 This build provides the integration layer only: shared provider config,
 prompt file loading, status probing, and a proxy API for conversion requests.
 
+Concrete DeepSeek setup:
+
+1. Create a DeepSeek API key.
+2. Store it in Bitwarden.
+3. Put the API key in the Bitwarden item's `password`.
+4. Optionally add custom fields:
+   - `provider=deepseek`
+   - `transport=openai-compatible`
+   - `base_url=https://api.deepseek.com`
+   - `model=deepseek-chat`
+5. Unlock Bitwarden and export `BW_SESSION`.
+6. Launch Beta through:
+
+```powershell
+pwsh -File scripts/beta/launch-with-ai.ps1 -BitwardenItem "m3e-deepseek"
+```
+
+This launcher injects:
+
+- `M3E_AI_ENABLED=1`
+- `M3E_AI_PROVIDER=deepseek`
+- `M3E_AI_TRANSPORT=openai-compatible`
+- `M3E_AI_API_KEY=...`
+- `M3E_AI_BASE_URL=https://api.deepseek.com`
+- `M3E_AI_MODEL=deepseek-chat`
+
 Environment variables:
 
 ```bash
@@ -103,6 +129,26 @@ Linear transform API endpoints:
 
 - `GET /api/linear-transform/status`
 - `POST /api/linear-transform/convert`
+
+Common AI API endpoints:
+
+- `GET /api/ai/status`
+- `POST /api/ai/subagent/linear-transform`
+
+Minimal request example:
+
+```json
+{
+  "documentId": "rapid-main",
+  "scopeId": "root",
+  "mode": "direct-result",
+  "input": {
+    "direction": "tree-to-linear",
+    "sourceText": "- id: root\n  text: \"Root\"",
+    "scopeLabel": "Root"
+  }
+}
+```
 
 Legacy (no build required):
 ```bash

@@ -173,6 +173,9 @@ Bitwarden
 
 ## API 設計原則
 
+共通 API の request / response / error 契約の正本は
+`../03_Spec/AI_Common_API.md` とする。
+
 ### browser は provider を直接呼ばない
 
 理由:

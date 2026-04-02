@@ -96,13 +96,38 @@ test("linear transform convert proxies request to configured subagent", async ()
   process.env.M3E_AI_API_KEY = "test-key";
   process.env.M3E_AI_MODEL = "deepseek-chat";
 
-  const status = await requestJson(`${appBaseUrl}/api/linear-transform/status`);
+  const status = await requestJson(`${appBaseUrl}/api/ai/status`);
   assert.equal(status.response.status, 200);
+  assert.equal(status.payload.ok, true);
   assert.equal(status.payload.enabled, true);
   assert.equal(status.payload.configured, true);
   assert.equal(status.payload.provider, "deepseek");
+  assert.equal(status.payload.features["linear-transform"].available, true);
 
-  const converted = await requestJson(`${appBaseUrl}/api/linear-transform/convert`, {
+  const converted = await requestJson(`${appBaseUrl}/api/ai/subagent/linear-transform`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: "rapid-main",
+      scopeId: "root",
+      mode: "direct-result",
+      input: {
+        direction: "tree-to-linear",
+        sourceText: "- id: root\n  text: \"Root\"",
+        scopeLabel: "Root",
+      },
+    }),
+  });
+  assert.equal(converted.response.status, 200);
+  assert.equal(converted.payload.ok, true);
+  assert.equal(converted.payload.subagent, "linear-transform");
+  assert.equal(converted.payload.provider, "deepseek");
+  assert.equal(converted.payload.model, "deepseek-chat");
+  assert.equal(converted.payload.requiresApproval, false);
+  assert.equal(converted.payload.proposal.kind, "text-transform");
+  assert.equal(converted.payload.proposal.result.outputText, "stubbed-transform:ttl");
+
+  const compatibility = await requestJson(`${appBaseUrl}/api/linear-transform/convert`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
@@ -112,12 +137,8 @@ test("linear transform convert proxies request to configured subagent", async ()
       scopeLabel: "Root",
     }),
   });
-  assert.equal(converted.response.status, 200);
-  assert.equal(converted.payload.ok, true);
-  assert.equal(converted.payload.direction, "tree-to-linear");
-  assert.equal(converted.payload.provider, "deepseek");
-  assert.equal(converted.payload.model, "deepseek-chat");
-  assert.equal(converted.payload.outputText, "stubbed-transform:ttl");
+  assert.equal(compatibility.response.status, 200);
+  assert.equal(compatibility.payload.outputText, "stubbed-transform:ttl");
 });
 
 test("linear transform convert returns 503 when provider config is incomplete", async () => {
@@ -128,16 +149,41 @@ test("linear transform convert returns 503 when provider config is incomplete", 
   delete process.env.M3E_AI_API_KEY;
   delete process.env.M3E_AI_MODEL;
 
-  const converted = await requestJson(`${appBaseUrl}/api/linear-transform/convert`, {
+  const converted = await requestJson(`${appBaseUrl}/api/ai/subagent/linear-transform`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      direction: "linear-to-tree",
-      sourceText: "Root\n  Child",
+      documentId: "rapid-main",
+      scopeId: "root",
+      input: {
+        direction: "linear-to-tree",
+        sourceText: "Root\n  Child",
+      },
     }),
   });
   assert.equal(converted.response.status, 503);
   assert.equal(converted.payload.ok, false);
-  assert.equal(converted.payload.code, "LINEAR_TRANSFORM_FAILED");
+  assert.equal(converted.payload.code, "AI_NOT_CONFIGURED");
   assert.match(converted.payload.error, /not fully configured/);
+});
+
+test("ai subagent returns 404 for unsupported subagent", async () => {
+  process.env.M3E_AI_ENABLED = "1";
+  process.env.M3E_AI_PROVIDER = "deepseek";
+  process.env.M3E_AI_TRANSPORT = "openai-compatible";
+  process.env.M3E_AI_BASE_URL = providerBaseUrl;
+  process.env.M3E_AI_API_KEY = "test-key";
+  process.env.M3E_AI_MODEL = "deepseek-chat";
+
+  const response = await requestJson(`${appBaseUrl}/api/ai/subagent/unknown-agent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: "rapid-main",
+      scopeId: "root",
+      input: {},
+    }),
+  });
+  assert.equal(response.response.status, 404);
+  assert.equal(response.payload.code, "AI_UNSUPPORTED_SUBAGENT");
 });

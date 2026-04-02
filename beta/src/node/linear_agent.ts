@@ -21,6 +21,11 @@ interface LinearAgentConfig {
 }
 
 interface ChatCompletionResponse {
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
   choices?: Array<{
     message?: {
       content?: string | Array<{ type?: string; text?: string }>;
@@ -211,6 +216,11 @@ async function runOpenAiCompatibleTransform(
     model: config.model,
     outputText: text,
     rawText: text,
+    usage: payload.usage ? {
+      inputTokens: payload.usage.prompt_tokens,
+      outputTokens: payload.usage.completion_tokens,
+      totalTokens: payload.usage.total_tokens,
+    } : undefined,
   };
 }
 
