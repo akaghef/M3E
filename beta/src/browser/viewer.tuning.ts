@@ -102,7 +102,7 @@ const VIEWER_TUNING: ViewerTuning = {
     // Multiplicative zoom step for toolbar/button controls.
     buttonFactor: 1.32,
     // Upper bound on wheel-derived zoom intensity per event.
-    wheelIntensityCap: 0.72,
+    wheelIntensityCap: 1.32,
     // Divisor that converts wheel delta into a usable zoom intensity.
     wheelIntensityDivisor: 260,
   },
