@@ -42,6 +42,7 @@ Proceed without asking for confirmation unless the operation falls into the rest
 
 Enforce this protocol once at session start, then continue normally without re-reading full instructions each step.
 
+0. Run `/setrole codex1` or `/setrole codex2` or `/setrole claude` first.
 1. Confirm role and assigned branch.
 2. Run `git branch --show-current` and verify branch alignment.
 3. Confirm worktree/directory alignment.
