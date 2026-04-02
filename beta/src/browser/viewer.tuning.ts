@@ -104,7 +104,7 @@ const VIEWER_TUNING: ViewerTuning = {
     // Upper bound on wheel-derived zoom intensity per event.
     wheelIntensityCap: 1.32,
     // Divisor that converts wheel delta into a usable zoom intensity.
-    wheelIntensityDivisor: 260,
+    wheelIntensityDivisor: 100,
   },
   pan: {
     // Scale factor applied to wheel-based panning.

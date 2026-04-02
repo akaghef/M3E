@@ -33,10 +33,12 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
+const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
+const linearResizeHandleEl = document.getElementById("linear-resize-handle") as HTMLElement | null;
 const linearTextEl = document.getElementById("linear-text") as HTMLTextAreaElement;
-const linearMetaEl = document.getElementById("linear-meta") as HTMLElement;
-const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement;
-const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement;
+const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | null;
+const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement | null;
+const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
@@ -80,6 +82,9 @@ let redoStack: UndoSnapshot[] = [];
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
+const linearNotesByScope: Record<string, string> = {};
+let linearPanelCanvasWidth = 340;
+let linearResizeState: { pointerId: number; startClientX: number; startCanvasWidth: number } | null = null;
 let importanceViewMode: ImportanceViewMode = "all";
 let importanceVisibleNodeIds: Set<string> | null = null;
 let cloudSyncEnabled = false;
@@ -751,6 +756,88 @@ function applyZoom(): void {
   canvas.style.height = `${contentHeight}px`;
   canvas.style.transform = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
   syncInlineEditorPosition();
+  syncLinearPanelPosition();
+}
+
+function syncLinearPanelPosition(): void {
+  if (!linearPanelEl) {
+    return;
+  }
+
+  if (!doc || !lastLayout || visibleOrder.length === 0) {
+    linearPanelEl.style.removeProperty("left");
+    linearPanelEl.style.removeProperty("top");
+    linearPanelEl.style.removeProperty("width");
+    linearPanelEl.style.removeProperty("height");
+    linearPanelEl.style.removeProperty("transform");
+    return;
+  }
+
+  const layout = lastLayout;
+
+  let deepestDepth = -1;
+  let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
+  let deepestTop = VIEWER_TUNING.layout.topPad;
+  visibleOrder.forEach((nodeId) => {
+    const p = layout.pos[nodeId];
+    if (!p) {
+      return;
+    }
+    if (p.depth > deepestDepth) {
+      deepestDepth = p.depth;
+      deepestRightEdge = p.x + p.w;
+      deepestTop = p.y - p.h / 2;
+      return;
+    }
+    if (p.depth === deepestDepth) {
+      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
+      deepestTop = Math.min(deepestTop, p.y - p.h / 2);
+    }
+  });
+
+  const panelCanvasWidth = linearPanelCanvasWidth;
+  let treeMinY = Number.POSITIVE_INFINITY;
+  let treeMaxY = Number.NEGATIVE_INFINITY;
+  visibleOrder.forEach((nodeId) => {
+    const p = layout.pos[nodeId];
+    if (!p) {
+      return;
+    }
+    treeMinY = Math.min(treeMinY, p.y - p.h / 2);
+    treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
+  });
+  if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
+    treeMinY = VIEWER_TUNING.layout.topPad;
+    treeMaxY = treeMinY + 380;
+  }
+  const panelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
+  const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
+  const anchorCanvasX = deepestRightEdge + depthOffset;
+  const anchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+  const zoomScale = viewState.zoom;
+  const panelWidth = panelCanvasWidth * zoomScale;
+  const panelHeight = panelCanvasHeight * zoomScale;
+
+  const panelLeft = viewState.cameraX + anchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + anchorCanvasY * viewState.zoom;
+
+  linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
+  linearPanelEl.style.top = `${Math.round(panelTop)}px`;
+  linearPanelEl.style.width = `${panelCanvasWidth}px`;
+  linearPanelEl.style.height = `${panelCanvasHeight}px`;
+  linearPanelEl.style.transform = `scale(${zoomScale})`;
+}
+
+function captureManualLinearPanelWidth(): void {
+  if (!linearPanelEl || viewState.zoom <= 0) {
+    return;
+  }
+  const renderedWidth = linearPanelEl.getBoundingClientRect().width;
+  if (!Number.isFinite(renderedWidth) || renderedWidth <= 0) {
+    return;
+  }
+  const canvasWidth = renderedWidth / viewState.zoom;
+  linearPanelCanvasWidth = Math.max(220, Math.min(1200, canvasWidth));
 }
 
 function syncInlineEditorPosition(): void {
@@ -930,7 +1017,6 @@ function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
   const scopeRootId = normalizedCurrentScopeId();
   const lines: string[] = [];
   const map: LinearLineMap[] = [];
-  let cursor = 0;
 
   function walk(nodeId: string, depth: number): void {
     const node = doc!.state.nodes[nodeId];
@@ -938,13 +1024,11 @@ function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
       return;
     }
 
-    const line = `${"  ".repeat(depth)}${String(node.text || "").trim() || "(empty)"}`;
-    const lineIndex = lines.length;
-    lines.push(line);
-    const startOffset = cursor;
-    const endOffset = startOffset + line.length;
-    map.push({ nodeId, lineIndex, startOffset, endOffset });
-    cursor = endOffset + 1;
+    const label = String(node.text || "").trim() || "(empty)";
+    const indent = "  ".repeat(depth);
+    lines.push(`${indent}- ${label}`);
+    lines.push(`${indent}  note: `);
+    lines.push("");
 
     scopeChildren(nodeId).forEach((childId) => walk(childId, depth + 1));
   }
@@ -986,34 +1070,36 @@ function syncLinearCaretToSelectedNode(): void {
 }
 
 function renderLinearPanel(): void {
-  if (!linearTextEl || !linearMetaEl) {
+  if (!linearTextEl) {
     return;
   }
   if (!doc) {
     linearTextEl.value = "";
-    linearMetaEl.textContent = "No scope loaded";
-    linearApplyBtn.disabled = true;
-    linearResetBtn.disabled = true;
+    if (linearMetaEl) {
+      linearMetaEl.textContent = "No scope loaded";
+    }
+    if (linearApplyBtn) linearApplyBtn.disabled = true;
+    if (linearResetBtn) linearResetBtn.disabled = true;
     return;
   }
 
-  const linear = buildLinearFromScope();
-  linearLineMap = linear.map;
-
-  if (!linearDirty) {
-    linearTextEl.value = linear.text;
-  }
-
   const scopeRootId = normalizedCurrentScopeId();
-  const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
-  const dirtyLabel = linearDirty ? "dirty" : "synced";
-  linearMetaEl.textContent = `scope: ${scopeLabel} | importance: ${importanceViewMode} | lines: ${linearLineMap.length} | ${dirtyLabel}`;
-  linearApplyBtn.disabled = !linearDirty;
-  linearResetBtn.disabled = !linearDirty;
-
-  if (!linearDirty) {
-    syncLinearCaretToSelectedNode();
+  if (!linearNotesByScope[scopeRootId]) {
+    linearNotesByScope[scopeRootId] = buildLinearFromScope().text;
   }
+
+  if (document.activeElement !== linearTextEl) {
+    linearTextEl.value = linearNotesByScope[scopeRootId] || "";
+  }
+  linearLineMap = [];
+  linearDirty = false;
+
+  const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
+  if (linearMetaEl) {
+    linearMetaEl.textContent = `scope memo: ${scopeLabel}`;
+  }
+  if (linearApplyBtn) linearApplyBtn.disabled = true;
+  if (linearResetBtn) linearResetBtn.disabled = true;
 }
 
 function parseLinearText(text: string): LinearNodeDraft {
@@ -1294,6 +1380,7 @@ function render(): void {
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
     renderLinearPanel();
+    syncLinearPanelPosition();
     return;
   }
 
@@ -2549,33 +2636,73 @@ fileInput.addEventListener("change", (event: Event) => {
 });
 
 linearTextEl?.addEventListener("input", () => {
-  linearDirty = true;
-  renderLinearPanel();
+  if (!doc) {
+    return;
+  }
+  linearNotesByScope[normalizedCurrentScopeId()] = linearTextEl.value;
 });
 
-linearTextEl?.addEventListener("click", () => {
-  if (!doc || linearDirty || suppressLinearSelectionSync) {
+linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
+  if (!doc) {
     return;
   }
-  const lineIndex = linearOffsetToLineIndex(linearTextEl.value, linearTextEl.selectionStart || 0);
-  const entry = linearLineMap.find((line) => line.lineIndex === lineIndex);
-  if (!entry) {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    linearNotesByScope[normalizedCurrentScopeId()] = linearTextEl.value;
+    setStatus("Linear memo saved in current scope.");
     return;
   }
-  selectNode(entry.nodeId);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    linearNotesByScope[normalizedCurrentScopeId()] = buildLinearFromScope().text;
+    renderLinearPanel();
+    setStatus("Linear memo reset to outline template.");
+  }
 });
 
-linearTextEl?.addEventListener("keyup", () => {
-  if (!doc || linearDirty || suppressLinearSelectionSync) {
-    return;
-  }
-  const lineIndex = linearOffsetToLineIndex(linearTextEl.value, linearTextEl.selectionStart || 0);
-  const entry = linearLineMap.find((line) => line.lineIndex === lineIndex);
-  if (!entry) {
-    return;
-  }
-  selectNode(entry.nodeId);
+linearPanelEl?.addEventListener("pointerup", () => {
+  captureManualLinearPanelWidth();
+  syncLinearPanelPosition();
 });
+
+linearResizeHandleEl?.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  linearResizeState = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startCanvasWidth: linearPanelCanvasWidth,
+  };
+  linearResizeHandleEl.setPointerCapture(event.pointerId);
+});
+
+linearResizeHandleEl?.addEventListener("pointermove", (event: PointerEvent) => {
+  if (!linearResizeState || event.pointerId !== linearResizeState.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  const dx = event.clientX - linearResizeState.startClientX;
+  const zoom = Math.max(0.0001, viewState.zoom);
+  const nextWidth = linearResizeState.startCanvasWidth + dx / zoom;
+  linearPanelCanvasWidth = Math.max(220, Math.min(1200, nextWidth));
+  syncLinearPanelPosition();
+});
+
+function endLinearResize(event: PointerEvent): void {
+  if (!linearResizeState || event.pointerId !== linearResizeState.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  linearResizeHandleEl?.releasePointerCapture(event.pointerId);
+  linearResizeState = null;
+  syncLinearPanelPosition();
+}
+
+linearResizeHandleEl?.addEventListener("pointerup", endLinearResize);
+linearResizeHandleEl?.addEventListener("pointercancel", endLinearResize);
 
 linearApplyBtn?.addEventListener("click", () => {
   if (!doc || !linearDirty) {
