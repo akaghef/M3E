@@ -14,7 +14,7 @@ MVP では、Miro の mind map を参考にした
 - auto layout を既定で ON にする
 - ノード移動や再親付け後に、子孫は自動で整列する
 - 手動移動は許すが、MVP では最終的に `Layout nodes` 相当で整列できるようにする
-- horizontal と vertical の両方向を将来視野に入れるが、MVP の標準は horizontal とする
+- depth-axis 展開（左右）と breadth-axis 展開（上下）の両方向を将来視野に入れるが、MVP の標準は `horizontal-right`（depth 軸が右方向）とする
 
 ## 前提
 
@@ -108,16 +108,20 @@ Miro 的な操作感に寄せるため、
 
 ### horizontal-right
 
+depth 軸が右方向、breadth 軸が下方向のレイアウト。
+
 - root を左側に置く
-- 子は右方向へ展開する
-- 兄弟ノードは縦に積む
+- 子（depth 方向）は右方向へ展開する
+- 兄弟ノード（breadth 方向）は縦に積む
 - 親は子部分木の中央付近に置く
 
 ### vertical-down
 
+depth 軸が下方向、breadth 軸が右方向のレイアウト。
+
 - root を上側に置く
-- 子は下方向へ展開する
-- 兄弟ノードは横に並べる
+- 子（depth 方向）は下方向へ展開する
+- 兄弟ノード（breadth 方向）は横に並べる
 - 親は子部分木の中央付近に置く
 
 ## 最小アルゴリズム
@@ -140,15 +144,15 @@ Miro 的な操作感に寄せるため、
 親の基準点から子列の開始位置を求め、
 順番に子へ `x` `y` を配る。
 
-horizontal-right の規則:
+horizontal-right の規則（depth 軸 = X、breadth 軸 = Y）:
 
-- 子の `x = parent.x + parent.width + levelGap`
-- 子の `y` は兄弟列開始位置から順に加算する
+- 子の `x = parent.x + parent.width + levelGap`（depth 方向）
+- 子の `y` は兄弟列開始位置から順に加算する（breadth 方向）
 
-vertical-down の規則:
+vertical-down の規則（depth 軸 = Y、breadth 軸 = X）:
 
-- 子の `y = parent.y + parent.height + levelGap`
-- 子の `x` は兄弟列開始位置から順に加算する
+- 子の `y = parent.y + parent.height + levelGap`（depth 方向）
+- 子の `x` は兄弟列開始位置から順に加算する（breadth 方向）
 
 ## auto layout
 
@@ -239,6 +243,14 @@ M3E でも MVP でその余地を残す。
 
 この方針は、Miro 公式ヘルプの mind map の挙動
 `horizontal / vertical`、`auto layout`、`Layout nodes`、`reassign` を参考にしている。
+
+**軸の定義（本プロジェクト統一用語）:**
+
+| 用語 | 意味 | horizontal-right での方向 |
+|---|---|---|
+| depth 軸 | 親子方向（root → leaf） | 左→右（X 軸） |
+| breadth 軸 | 兄弟方向（同深度の横並び） | 上→下（Y 軸） |
+| abstraction 軸 | 抽象度レベル（将来） | 奥行き |
 
 ## 関連文書
 

@@ -1139,7 +1139,7 @@ function selectChild(): void {
   selectNode(children[0]!);
 }
 
-function selectVertical(direction: -1 | 1): void {
+function selectBreadth(direction: -1 | 1): void {
   if (!doc || !lastLayout) {
     selectRelative(direction);
     return;
@@ -1726,13 +1726,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowUp") {
     event.preventDefault();
-    selectVertical(-1);
+    selectBreadth(-1);
     return;
   }
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
-    selectVertical(1);
+    selectBreadth(1);
     return;
   }
 
