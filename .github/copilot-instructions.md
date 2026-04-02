@@ -22,12 +22,33 @@ Full project specs are in `dev-docs/`. Read relevant specs before starting imple
 **Each agent must only commit to its assigned branch.**
 When in doubt about scope boundary, stop and ask `akaghef`.
 
+### Mandatory Integration Cycle
+
+1. `codex1` / `codex2` push their work to `dev-beta-visual` / `dev-beta-data`.
+2. `claude` merges those changes into `dev-beta`.
+3. Before starting the next task, `codex1` / `codex2` must rebase onto latest `origin/dev-beta`.
+4. Do not continue implementation if your branch is not rebased to current `dev-beta`.
+
 ---
 
 ## Permitted Operations (No Confirmation Needed)
 
 All operations are permitted autonomously **except those listed below**.
 Proceed without asking for confirmation unless the operation falls into the restricted list.
+
+---
+
+## Session Start Protocol (codex1 / codex2 / claude)
+
+Enforce this protocol once at session start, then continue normally without re-reading full instructions each step.
+
+1. Confirm role and assigned branch.
+2. Run `git branch --show-current` and verify branch alignment.
+3. Confirm worktree/directory alignment.
+4. Confirm writable ownership for docs in this cycle.
+5. For `codex1` / `codex2`, before new implementation work, run sync check and rebase against latest `origin/dev-beta`.
+
+During execution, keep only lightweight checks (branch + changed file scope).
 
 ---
 
@@ -100,3 +121,11 @@ A task is complete only when ALL of the following are true:
 2. Unit tests pass (`npm run test:ci`)
 3. Committed and pushed to the assigned branch
 4. `dev-docs/daily/YYMMDD.md` updated with what was done
+
+## Documentation Ownership Split
+
+- UpdateLog entries are appended to `dev-docs/daily/YYMMDD.md`.
+- `dev-docs/00_Home/Current_Status.md` keeps current state only (no long history accumulation).
+- Rough, unrefined tasks are pooled in `dev-docs/06_Operations/Todo_Pool.md`.
+- Manager role updates `Current_Status.md` status items.
+- Subordinate role records completion details in daily notes.

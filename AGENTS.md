@@ -47,13 +47,28 @@ A task is update-complete only when all three are done:
 
 If any item is missing, task state is still in-progress.
 
+## Session Start Gate (One-Time Enforcement)
+
+At the beginning of each session, enforce the role/branch check once, then proceed with normal work.
+Do not repeatedly re-validate the full rule set on every step.
+
+1. Confirm role and branch (`git branch --show-current`).
+2. Confirm assigned worktree/directory.
+3. Confirm writable document ownership for this cycle.
+4. If any check fails, stop and escalate to `akaghef`.
+
+Light checks may continue during work (branch + target file), but full gate is start-of-session only.
+
 ## Agent Workflow
 
 1. Read scope and current status.
 2. Pick one smallest deliverable task.
 3. Implement with minimal changes.
 4. Run a local verification step.
-5. Update docs (daily + current status).
+5. Update docs using split ownership:
+   - UpdateLog goes to `dev-docs/daily/YYMMDD.md`.
+   - `Current_Status.md` keeps current snapshot only.
+   - Rough TODOs go to `dev-docs/06_Operations/Todo_Pool.md`.
 6. Commit with an imperative message.
 
 ## Branch Operation Policy
@@ -64,6 +79,23 @@ If any item is missing, task state is still in-progress.
    - destructive history rewrite (`reset --hard`, force-push, history rewrite)
    - operations on `main` or release branches
    - secret/credential related operations
+
+## Mandatory Integration Protocol (Subordinate -> Manager -> Resume)
+
+1. Subordinate agents (`codex1`, `codex2`) implement and push only to their assigned branches (`dev-beta-visual`, `dev-beta-data`).
+2. Manager agent (`claude`) integrates subordinate results into `dev-beta` by merge.
+3. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` and rebase their branch on top of it.
+4. Subordinates must not resume implementation on stale history.
+
+Recommended command sequence for subordinates:
+
+```bash
+git fetch origin
+git checkout dev-beta-visual   # or dev-beta-data
+git rebase origin/dev-beta
+```
+
+If rebase conflicts cannot be resolved safely, stop and escalate to `akaghef`.
 
 ## Development Phase Constraints
 
