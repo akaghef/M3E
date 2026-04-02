@@ -49,7 +49,30 @@
         padding: 0 2px;
       }
 
+      .cloud-sync-badge {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid #d8d8d8;
+        background: #f6f6f6;
+        color: #6b6b6b;
+      }
+
+      .cloud-sync-badge.on {
+        border-color: #7ebf95;
+        background: #e8f7ee;
+        color: #1f7a43;
+      }
+
+      .cloud-sync-badge.conflict {
+        border-color: #e0a35c;
+        background: #fff3e2;
+        color: #a35d16;
+      }
+
       button,
+      select,
       input[type="file"],
       input[type="text"] {
         border: 1px solid #d4d4d4;
@@ -102,7 +125,6 @@
       }
 
       .board {
-        margin-top: 14px;
         border: 1px solid #dfdfdf;
         border-radius: 14px;
         background: #ffffff55;
@@ -113,6 +135,271 @@
         cursor: grab;
         user-select: none;
         touch-action: none;
+      }
+
+      .workspace {
+        margin-top: 14px;
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 380px;
+        gap: 12px;
+      }
+
+      .workspace.ai-open {
+        grid-template-columns: minmax(0, 1fr) 340px 340px;
+      }
+
+      /* ── AI panel ──────────────────────────────────────────────────────── */
+      .ai-panel {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #dfdfdf;
+        border-radius: 14px;
+        background: #ffffffd9;
+        backdrop-filter: blur(4px);
+        padding: 10px;
+        min-height: 0;
+        gap: 8px;
+      }
+
+      .ai-panel[hidden] { display: none; }
+
+      .ai-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .ai-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+
+      .ai-settings-icon {
+        background: none;
+        border: none;
+        font-size: 15px;
+        cursor: pointer;
+        padding: 2px 4px;
+        color: #6b6b6b;
+      }
+
+      .ai-settings-icon:hover { color: var(--accent); }
+
+      .ai-model-row {
+        display: flex;
+        gap: 6px;
+      }
+
+      .ai-model-row select {
+        flex: 1;
+        font-size: 12px;
+      }
+
+      .ai-settings-subpanel {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 8px;
+        border: 1px solid #e5e5e5;
+        border-radius: 10px;
+        background: #fafafa;
+        font-size: 12px;
+      }
+
+      .ai-settings-subpanel[hidden] { display: none; }
+
+      .ai-settings-title {
+        font-weight: 700;
+        font-size: 12px;
+        margin-bottom: 2px;
+      }
+
+      .ai-settings-subpanel input[type="text"],
+      .ai-settings-subpanel select {
+        min-width: unset;
+        width: 100%;
+        font-size: 12px;
+        padding: 5px 8px;
+      }
+
+      .ai-settings-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 4px;
+      }
+
+      .ai-settings-actions button {
+        font-size: 12px;
+        padding: 4px 10px;
+      }
+
+      .ai-bw-status {
+        font-size: 11px;
+        color: #5d5d5d;
+        min-height: 14px;
+      }
+
+      .ai-bw-status.error { color: var(--danger); }
+      .ai-bw-status.ok { color: #1f7a43; }
+
+      .ai-model-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .ai-model-list li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        padding: 3px 5px;
+        border-radius: 6px;
+        background: #fff;
+        border: 1px solid #e5e5e5;
+      }
+
+      .ai-model-list li .ai-model-item-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .ai-model-list li button {
+        font-size: 10px;
+        padding: 2px 6px;
+        margin-left: 4px;
+      }
+
+      .ai-messages {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px 2px;
+      }
+
+      .ai-msg {
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 8px 10px;
+        border-radius: 10px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .ai-msg.user {
+        background: var(--accent-soft);
+        border: 1px solid #d8ccff;
+        align-self: flex-end;
+        max-width: 90%;
+      }
+
+      .ai-msg.assistant {
+        background: #f6f6f6;
+        border: 1px solid #e5e5e5;
+        align-self: flex-start;
+        max-width: 95%;
+      }
+
+      .ai-msg.error {
+        background: #fff0f0;
+        border: 1px solid #f5c0c0;
+        color: var(--danger);
+      }
+
+      .ai-msg.thinking {
+        color: #999;
+        font-style: italic;
+        background: none;
+        border: none;
+        padding: 4px 2px;
+      }
+
+      .ai-input-row {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .ai-input {
+        width: 100%;
+        resize: none;
+        border: 1px solid #d4d4d4;
+        border-radius: 10px;
+        background: #fff;
+        padding: 8px 10px;
+        font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #222;
+      }
+
+      .ai-input-row button {
+        align-self: flex-end;
+        font-size: 12px;
+        padding: 5px 14px;
+      }
+
+      .linear-panel {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #dfdfdf;
+        border-radius: 14px;
+        background: #ffffffd9;
+        backdrop-filter: blur(4px);
+        padding: 10px;
+        min-height: 0;
+      }
+
+      .linear-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .linear-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+
+      .linear-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .linear-meta {
+        margin-top: 8px;
+        min-height: 16px;
+        font-size: 12px;
+        color: #5d5d5d;
+      }
+
+      .linear-text {
+        margin-top: 8px;
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        resize: none;
+        border: 1px solid #d4d4d4;
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #222;
       }
 
       .board.panning {
@@ -145,6 +432,26 @@
   fill: var(--accent-soft);
   stroke: var(--accent);
   stroke-width: 2;
+}
+
+.node-hit.alias-read {
+  fill: rgba(56, 115, 255, 0.08);
+  stroke: #3873ff;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.node-hit.alias-write {
+  fill: rgba(17, 153, 92, 0.1);
+  stroke: #11995c;
+  stroke-width: 1.5;
+}
+
+.node-hit.alias-broken {
+  fill: rgba(214, 75, 75, 0.1);
+  stroke: var(--danger);
+  stroke-width: 1.5;
+  stroke-dasharray: 10 6;
 }
 
 .node-hit.drop-target {
@@ -187,6 +494,47 @@
         pointer-events: none;
       }
 
+      .label-node.selected {
+        fill: #6f39ff;
+        font-weight: 600;
+      }
+
+      .label-node.alias-label {
+        font-style: italic;
+      }
+
+      .label-node.alias-read-label {
+        fill: #2f5fd9;
+      }
+
+      .label-node.alias-write-label {
+        fill: #12774b;
+      }
+
+      .label-node.alias-broken-label {
+        fill: var(--danger);
+      }
+
+      .alias-badge {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        pointer-events: none;
+        text-transform: uppercase;
+      }
+
+      .alias-badge-read {
+        fill: #2f5fd9;
+      }
+
+      .alias-badge-write {
+        fill: #12774b;
+      }
+
+      .alias-badge-broken {
+        fill: var(--danger);
+      }
+
       .collapsed-indicator {
         fill: var(--accent);
         font-size: 24px;
@@ -208,6 +556,11 @@
       }
 
       @media (max-width: 900px) {
+        .workspace {
+          grid-template-columns: 1fr;
+          grid-template-rows: minmax(0, 1fr) 260px;
+        }
+
         .label-root,
         .label-node {
           font-size: 28px;

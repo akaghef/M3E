@@ -5,13 +5,23 @@ import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
+import { detectCloudConflict } from "./cloud_sync";
+import { getBitwardenStatus, getBitwardenApiKey, callAiModel } from "./ai_integration";
+import type { AppState, SavedDoc } from "../shared/types";
+import type { AiModelConfig, AiModelsFile, AiChatRequest } from "../shared/ai_types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
-const PORT = 4173;
+const PORT = 38482;
 const DEFAULT_PAGE = "viewer.html";
-const SQLITE_DB_PATH = path.join(ROOT, "data", "rapid-mvp.sqlite");
+const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
+const SQLITE_DB_PATH = path.join(DATA_DIR, "rapid-mvp.sqlite");
+const CLOUD_SYNC_ENABLED = process.env.M3E_CLOUD_SYNC === "1";
+const CLOUD_SYNC_DIR = process.env.M3E_CLOUD_DIR
+  ? path.resolve(process.env.M3E_CLOUD_DIR)
+  : path.join(DATA_DIR, "cloud-sync");
+const AI_MODELS_PATH = path.join(DATA_DIR, "ai-models.json");
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -77,6 +87,23 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.end(JSON.stringify(payload));
 }
 
+function sendSyncError(
+  res: http.ServerResponse,
+  statusCode: number,
+  code: string,
+  message: string,
+  documentId: string,
+  extra: Record<string, unknown> = {},
+): void {
+  sendJson(res, statusCode, {
+    ok: false,
+    code,
+    error: message,
+    documentId,
+    ...extra,
+  });
+}
+
 function parseDocId(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (!pathname.startsWith("/api/docs/")) {
@@ -87,6 +114,43 @@ function parseDocId(urlPath: string): string | null {
     return "";
   }
   return decodeURIComponent(raw);
+}
+
+function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; docId: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/sync\/(status|push|pull)\/([^/]+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    action: match[1] as "status" | "push" | "pull",
+    docId: decodeURIComponent(match[2] || ""),
+  };
+}
+
+function cloudDocPath(docId: string): string {
+  const safeId = docId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return path.join(CLOUD_SYNC_DIR, `${safeId}.json`);
+}
+
+function ensureCloudSyncDir(): void {
+  if (!CLOUD_SYNC_ENABLED) {
+    return;
+  }
+  if (!fs.existsSync(CLOUD_SYNC_DIR)) {
+    fs.mkdirSync(CLOUD_SYNC_DIR, { recursive: true });
+  }
+}
+
+function readCloudDoc(filePath: string): SavedDoc | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as SavedDoc;
+  if (!parsed || parsed.version !== 1 || !parsed.state) {
+    return null;
+  }
+  return parsed;
 }
 
 function readRequestBody(req: http.IncomingMessage): Promise<string> {
@@ -165,8 +229,312 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
   return true;
 }
 
+async function handleSyncApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { action: "status" | "push" | "pull"; docId: string },
+): Promise<boolean> {
+  if (!route.docId) {
+    sendSyncError(res, 400, "SYNC_DOC_ID_REQUIRED", "Document id is required.", route.docId);
+    return true;
+  }
+
+  if (!CLOUD_SYNC_ENABLED) {
+    sendJson(res, 200, {
+      ok: true,
+      enabled: false,
+      mode: "disabled",
+      documentId: route.docId,
+    });
+    return true;
+  }
+
+  ensureCloudSyncDir();
+  const filePath = cloudDocPath(route.docId);
+
+  if (route.action === "status" && req.method === "GET") {
+    const exists = fs.existsSync(filePath);
+    const cloudDoc = exists ? readCloudDoc(filePath) : null;
+    sendJson(res, 200, {
+      ok: true,
+      enabled: true,
+      mode: "file-mirror",
+      documentId: route.docId,
+      exists,
+      cloudSavedAt: cloudDoc?.savedAt ?? null,
+      lastSyncedAt: exists ? fs.statSync(filePath).mtime.toISOString() : null,
+    });
+    return true;
+  }
+
+  if (route.action === "pull" && req.method === "POST") {
+    if (!fs.existsSync(filePath)) {
+      sendSyncError(res, 404, "SYNC_CLOUD_NOT_FOUND", "Cloud document not found.", route.docId);
+      return true;
+    }
+
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as { version?: number; state?: AppState; savedAt?: string };
+      if (!parsed || parsed.version !== 1 || !parsed.state) {
+        sendSyncError(res, 400, "SYNC_CLOUD_UNSUPPORTED_FORMAT", "Cloud document has unsupported format.", route.docId);
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(parsed.state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendSyncError(
+          res,
+          400,
+          "SYNC_CLOUD_INVALID_MODEL",
+          `Cloud document is invalid: ${errors.join(" | ")}`,
+          route.docId,
+        );
+        return true;
+      }
+
+      sendJson(res, 200, {
+        ok: true,
+        mode: "file-mirror",
+        version: 1,
+        savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
+        state: model.toJSON(),
+        documentId: route.docId,
+      });
+      return true;
+    } catch (err) {
+      sendSyncError(
+        res,
+        500,
+        "SYNC_PULL_FAILED",
+        (err as Error).message || "Cloud pull failed.",
+        route.docId,
+      );
+      return true;
+    }
+  }
+
+  if (route.action === "push" && req.method === "POST") {
+    try {
+      const rawBody = await readRequestBody(req);
+      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; force?: boolean };
+      const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
+      if (!candidate.state) {
+        sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.docId);
+        return true;
+      }
+
+      const existingCloudDoc = readCloudDoc(filePath);
+      const baseSavedAt = parsed.baseSavedAt ?? null;
+      const forcePush = Boolean(parsed.force);
+      if (detectCloudConflict(existingCloudDoc?.savedAt ?? null, baseSavedAt, forcePush)) {
+        sendSyncError(res, 409, "CLOUD_CONFLICT", "Cloud conflict detected.", route.docId, {
+          cloudSavedAt: existingCloudDoc?.savedAt ?? null,
+          baseSavedAt,
+        });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(candidate.state as never);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendSyncError(
+          res,
+          400,
+          "SYNC_PUSH_INVALID_MODEL",
+          `Invalid model before cloud push: ${errors.join(" | ")}`,
+          route.docId,
+        );
+        return true;
+      }
+
+      const payload: SavedDoc = {
+        version: 1,
+        savedAt: String(candidate.savedAt || new Date().toISOString()),
+        state: model.toJSON(),
+      };
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+      sendJson(res, 200, {
+        ok: true,
+        mode: "file-mirror",
+        savedAt: payload.savedAt,
+        documentId: route.docId,
+        forced: forcePush,
+      });
+      return true;
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        sendSyncError(res, 400, "SYNC_INVALID_JSON_BODY", "Invalid JSON body.", route.docId);
+        return true;
+      }
+      sendSyncError(
+        res,
+        500,
+        "SYNC_PUSH_FAILED",
+        (err as Error).message || "Cloud push failed.",
+        route.docId,
+      );
+      return true;
+    }
+  }
+
+  sendSyncError(res, 405, "SYNC_METHOD_NOT_ALLOWED", "Method not allowed.", route.docId);
+  return true;
+}
+
+// ── AI helpers ──────────────────────────────────────────────────────────────
+
+function loadAiModels(): AiModelConfig[] {
+  if (!fs.existsSync(AI_MODELS_PATH)) return [];
+  try {
+    const raw = JSON.parse(fs.readFileSync(AI_MODELS_PATH, "utf8")) as AiModelsFile;
+    return Array.isArray(raw.models) ? raw.models : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAiModels(models: AiModelConfig[]): void {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  const payload: AiModelsFile = { models };
+  fs.writeFileSync(AI_MODELS_PATH, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function parseAiRoute(urlPath: string): { sub: string; id?: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const m = pathname.match(/^\/api\/ai\/(models|chat|bitwarden\/status)(?:\/([^/]+))?$/);
+  if (!m) return null;
+  return { sub: m[1], id: m[2] };
+}
+
+async function handleAiApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { sub: string; id?: string },
+): Promise<boolean> {
+  // GET /api/ai/bitwarden/status
+  if (route.sub === "bitwarden/status" && req.method === "GET") {
+    const status = getBitwardenStatus();
+    sendJson(res, 200, { ok: true, ...status });
+    return true;
+  }
+
+  // GET /api/ai/models
+  if (route.sub === "models" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, models: loadAiModels() });
+    return true;
+  }
+
+  // POST /api/ai/models  — upsert a model config
+  if (route.sub === "models" && req.method === "POST") {
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Partial<AiModelConfig>;
+      if (!body.name || !body.provider || !body.modelId || !body.bitwardenItemId) {
+        sendJson(res, 400, { ok: false, error: "name, provider, modelId, and bitwardenItemId are required" });
+        return true;
+      }
+      const models = loadAiModels();
+      const existing = models.findIndex((m) => m.id === body.id);
+      const entry: AiModelConfig = {
+        id: body.id ?? `ai-${Date.now()}`,
+        name: body.name,
+        provider: body.provider,
+        modelId: body.modelId,
+        baseUrl: body.baseUrl,
+        bitwardenItemId: body.bitwardenItemId,
+        enabled: body.enabled ?? true,
+      };
+      if (existing >= 0) {
+        models[existing] = entry;
+      } else {
+        models.push(entry);
+      }
+      saveAiModels(models);
+      sendJson(res, 200, { ok: true, model: entry });
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: (err as Error).message });
+    }
+    return true;
+  }
+
+  // DELETE /api/ai/models/:id
+  if (route.sub === "models" && req.method === "DELETE" && route.id) {
+    const models = loadAiModels().filter((m) => m.id !== route.id);
+    saveAiModels(models);
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  // POST /api/ai/chat
+  if (route.sub === "chat" && req.method === "POST") {
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as AiChatRequest;
+      if (!body.modelConfigId || !Array.isArray(body.messages)) {
+        sendJson(res, 400, { ok: false, error: "modelConfigId and messages are required" });
+        return true;
+      }
+      const models = loadAiModels();
+      const config = models.find((m) => m.id === body.modelConfigId && m.enabled);
+      if (!config) {
+        sendJson(res, 404, { ok: false, error: "Model config not found or disabled" });
+        return true;
+      }
+
+      // Inject node context as a system prefix when provided
+      const messages = [...body.messages];
+      if (body.nodeContext && messages.length > 0 && messages[messages.length - 1].role === "user") {
+        const last = messages[messages.length - 1];
+        messages[messages.length - 1] = {
+          role: "user",
+          content: `[Context: ${body.nodeContext}]\n\n${last.content}`,
+        };
+      }
+
+      let apiKey: string;
+      try {
+        apiKey = getBitwardenApiKey(config.bitwardenItemId);
+      } catch (err) {
+        sendJson(res, 500, { ok: false, error: `Bitwarden error: ${(err as Error).message}` });
+        return true;
+      }
+
+      const result = await callAiModel(config, messages, apiKey, body.maxTokens ?? 1024);
+      sendJson(res, result.ok ? 200 : 502, result);
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: (err as Error).message });
+    }
+    return true;
+  }
+
+  sendJson(res, 405, { ok: false, error: "Method not allowed" });
+  return true;
+}
+
 function startServer(): void {
-  const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+  const server = createAppServer();
+
+  server.listen(PORT, () => {
+    const url = `http://localhost:${PORT}/${DEFAULT_PAGE}`;
+    console.log(`Viewer ready: ${url}`);
+    openBrowser(url);
+    console.log("Press Ctrl+C to stop the server.");
+  });
+}
+
+export function createAppServer(): http.Server {
+  return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const aiRoute = parseAiRoute(req.url ?? "/");
+    if (aiRoute) {
+      await handleAiApi(req, res, aiRoute);
+      return;
+    }
+
+    const syncRoute = parseSyncRoute(req.url ?? "/");
+    if (syncRoute) {
+      await handleSyncApi(req, res, syncRoute);
+      return;
+    }
+
     const docId = parseDocId(req.url ?? "/");
     if (docId !== null) {
       await handleApi(req, res, docId);
@@ -182,14 +550,9 @@ function startServer(): void {
 
     sendFile(res, target);
   });
-
-  server.listen(PORT, () => {
-    const url = `http://localhost:${PORT}/${DEFAULT_PAGE}`;
-    console.log(`Viewer ready: ${url}`);
-    openBrowser(url);
-    console.log("Press Ctrl+C to stop the server.");
-  });
 }
 
-runSampleGeneration();
-startServer();
+if (require.main === module) {
+  runSampleGeneration();
+  startServer();
+}

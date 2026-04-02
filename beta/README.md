@@ -23,7 +23,7 @@ cd beta && npm start
 
 This will:
 1. Generate `data/rapid-sample.json`
-2. Start a local HTTP server at `http://localhost:4173`
+2. Start a local HTTP server at `http://localhost:38482`
 3. Open `viewer.html` in your browser automatically
 
 Stop with `Ctrl+C`.
