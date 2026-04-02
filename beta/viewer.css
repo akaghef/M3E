@@ -40,6 +40,8 @@
       }
 
       .toolbar {
+        position: relative;
+        z-index: 5;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
@@ -148,6 +150,8 @@
       }
 
       .overlay-meta {
+        position: relative;
+        z-index: 5;
         display: flex;
         flex-direction: column;
         gap: 6px;
@@ -171,6 +175,9 @@
       }
 
       .board {
+        position: absolute;
+        inset: 0;
+        pointer-events: auto;
         border: 1px solid #dfdfdf;
         border-radius: 14px;
         background: #ffffff55;
@@ -181,15 +188,19 @@
       }
 
       .workspace {
-        margin-top: 14px;
-        flex: 1;
-        min-height: 0;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 380px;
-        gap: 12px;
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: auto;
       }
 
       .linear-panel {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(380px, 42vw);
+        z-index: 3;
         display: flex;
         flex-direction: column;
         border: 1px solid #dfdfdf;
@@ -251,6 +262,7 @@
         width: 100%;
         height: 100%;
         transform-origin: 0 0;
+        pointer-events: auto;
       }
 
       @media (max-width: 900px) {
@@ -266,6 +278,11 @@
         .overlay-meta {
           gap: 4px;
           padding: 10px 12px;
+        }
+
+        .linear-panel {
+          width: min(360px, 100%);
+          max-width: 100%;
         }
       }
 
@@ -433,11 +450,6 @@
       }
 
       @media (max-width: 900px) {
-        .workspace {
-          grid-template-columns: 1fr;
-          grid-template-rows: minmax(0, 1fr) 260px;
-        }
-
         .label-root,
         .label-node {
           font-size: 28px;
