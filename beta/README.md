@@ -70,14 +70,16 @@ Generates `data/rapid-sample.json` without starting the viewer.
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Add child to selected node |
-| `Enter` | Add sibling to selected node |
-| `Shift+Enter` | Edit selected node text |
+| `Tab` | Add child to selected node and start editing the new node |
+| `Enter` | Add sibling to selected node and start editing the new node |
+| `Shift+Enter` | Insert a newline while editing node text |
 | `F2` | Edit selected node text (alias) |
 | `Esc` | Cancel text editing |
-| `Delete` / `Backspace` | Delete selected subtree (root protected) |
+| `Delete` / `Backspace` | Delete selected subtree (root protected). In nested scope, `Backspace` on scope root goes back scope |
 | `Space` | Collapse/expand selected node |
 | `↑` / `↓` | Navigate through visible nodes |
+| `→` | Go deeper: if folder is selected, enter scope; otherwise select first child |
+| `←` | Go shallower: if current scope root is selected, back scope; otherwise select parent |
 | `M` | Mark selected node as move source |
 | `P` | Move marked node under currently selected node |
 | `Ctrl/Cmd + Wheel` | Zoom |

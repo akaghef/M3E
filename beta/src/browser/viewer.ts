@@ -72,7 +72,7 @@ let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-let inlineEditor: { nodeId: string; input: HTMLInputElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
+let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let lastLayout: LayoutResult | null = null;
@@ -1835,6 +1835,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   }
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
+  viewState.currentScopeRootId = scopeId;
   viewState.reparentSourceId = "";
   if (!isNodeInScope(viewState.selectedNodeId)) {
     viewState.selectedNodeId = scopeId;
@@ -1849,6 +1850,7 @@ function ExitScopeCommand(): void {
   }
   const previousScopeId = viewState.scopeHistory.pop()!;
   viewState.currentScopeId = doc.state.nodes[previousScopeId] ? previousScopeId : doc.state.rootId;
+  viewState.currentScopeRootId = viewState.currentScopeId;
   viewState.reparentSourceId = "";
   if (!isNodeInScope(viewState.selectedNodeId)) {
     viewState.selectedNodeId = viewState.currentScopeId;
@@ -1934,7 +1936,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   return true;
 }
 
-function stopInlineEdit(commit: boolean): void {
+function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
   if (!inlineEditor) {
     return;
   }
@@ -1948,7 +1950,26 @@ function stopInlineEdit(commit: boolean): void {
     applyNodeTextEdit(nodeId, next, mode);
   }
 
-  board.focus();
+  if (options?.focusBoard !== false) {
+    board.focus();
+  }
+}
+
+function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
+  if (!doc) {
+    return;
+  }
+  if (direction === "depth") {
+    addChild();
+  } else {
+    addSibling();
+  }
+  startInlineEdit(viewState.selectedNodeId);
+}
+
+function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
+  input.style.height = "auto";
+  input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
 function startInlineEdit(nodeId: string): void {
@@ -1964,8 +1985,8 @@ function startInlineEdit(nodeId: string): void {
   const mode = isAliasNode(node)
     ? ((isBrokenAlias(node) || aliasAccess(node) === "read") ? "alias-label" : "target-text")
     : "node-text";
-  const input = document.createElement("input");
-  input.type = "text";
+  const input = document.createElement("textarea");
+  input.rows = 1;
   input.value = mode === "target-text" ? (resolveAliasTarget(node)?.text || node.text || "") : uiLabel(node);
   input.className = "inline-node-editor";
   input.setAttribute("aria-label", mode === "target-text" ? "Edit target node text" : "Edit node label");
@@ -1973,13 +1994,26 @@ function startInlineEdit(nodeId: string): void {
 
   inlineEditor = { nodeId, input, mode };
   syncInlineEditorPosition();
+  autoSizeInlineEditor(input);
   input.focus();
   input.select();
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
-    if (event.key === "Enter") {
+    if (event.key === "Tab") {
       event.preventDefault();
-      stopInlineEdit(true);
+      stopInlineEdit(true, { focusBoard: false });
+      createNodeByDirectionAndEdit("depth");
+      return;
+    }
+
+    if (event.key === "Enter") {
+      if (event.shiftKey) {
+        // Keep default textarea behavior: Shift+Enter inserts a newline.
+        return;
+      }
+      event.preventDefault();
+      stopInlineEdit(true, { focusBoard: false });
+      createNodeByDirectionAndEdit("breadth");
       return;
     }
 
@@ -1991,6 +2025,10 @@ function startInlineEdit(nodeId: string): void {
 
   input.addEventListener("blur", () => {
     stopInlineEdit(true);
+  });
+
+  input.addEventListener("input", () => {
+    autoSizeInlineEditor(input);
   });
 }
 
@@ -2019,7 +2057,21 @@ function deleteSelected(): void {
   if (viewState.reparentSourceId === node.id) {
     viewState.reparentSourceId = "";
   }
-  viewState.selectedNodeId = parent.id;
+
+  // Keep selection anchored to the closest surviving ancestor (parent first).
+  let nextSelectedId = parent.id;
+  let cursor: string | null = nextSelectedId;
+  while (cursor && !doc!.state.nodes[cursor]) {
+    cursor = cursor === doc!.state.rootId ? null : (doc!.state.nodes[cursor]?.parentId ?? null);
+  }
+  viewState.selectedNodeId = cursor || doc!.state.rootId;
+
+  if (!doc!.state.nodes[viewState.currentScopeId]) {
+    viewState.currentScopeId = viewState.selectedNodeId;
+  }
+  if (!doc!.state.nodes[viewState.currentScopeRootId]) {
+    viewState.currentScopeRootId = viewState.currentScopeId;
+  }
   touchDocument();
 }
 
@@ -3047,18 +3099,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "Tab") {
     event.preventDefault();
-    addChild();
+    createNodeByDirectionAndEdit("depth");
     return;
   }
 
   if (event.key === "Enter") {
-    if (event.shiftKey) {
-      event.preventDefault();
-      startInlineEdit(viewState.selectedNodeId);
-      return;
-    }
     event.preventDefault();
-    addSibling();
+    createNodeByDirectionAndEdit("breadth");
     return;
   }
 
@@ -3099,7 +3146,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (event.key === "Delete" || event.key === "Backspace") {
-        if (event.key === "Backspace" && !inlineEditor && viewState.scopeHistory.length > 0) {
+        if (
+          event.key === "Backspace" &&
+          !inlineEditor &&
+          viewState.scopeHistory.length > 0 &&
+          viewState.selectedNodeId === normalizedCurrentScopeId()
+        ) {
           event.preventDefault();
           ExitScopeCommand();
           return;
@@ -3147,12 +3199,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowLeft") {
     event.preventDefault();
+    if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
+      ExitScopeCommand();
+      return;
+    }
     selectParent();
     return;
   }
 
   if (event.key === "ArrowRight") {
     event.preventDefault();
+    const selected = getNode(viewState.selectedNodeId);
+    if (isFolderNode(selected)) {
+      EnterScopeCommand(selected.id);
+      return;
+    }
     selectChild();
   }
 });
