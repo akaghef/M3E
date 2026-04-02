@@ -1,5 +1,4 @@
 # Current Status
-
 最終更新: 2026-04-02
 
 ## 現在の状態（スナップショット）
@@ -10,8 +9,8 @@
   - 本ファイルは「現在状態」だけを保持
   - 粗い TODO は `dev-docs/06_Operations/Todo_Pool.md` へ集約
 - 役割分担:
-  - 部下（codex1 / codex2）: 実装と daily 追記
-  - 上司（claude）: `Current_Status.md` の status 更新と統合管理
+  - 部下（codex1 / codex2）: 実装と daily 追記。`Current_Status.md` は read-only
+  - 上司（claude）: 部下 daily を参照して `Current_Status.md` の status 更新と統合管理
 
 ## 統合フロー（強制）
 

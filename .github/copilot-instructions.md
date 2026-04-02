@@ -126,6 +126,8 @@ A task is complete only when ALL of the following are true:
 
 - UpdateLog entries are appended to `dev-docs/daily/YYMMDD.md`.
 - `dev-docs/00_Home/Current_Status.md` keeps current state only (no long history accumulation).
+- Subordinate roles (`codex1` / `codex2`) treat `Current_Status.md` as read-only.
+- Manager role (`claude`) updates `Current_Status.md` by referencing subordinate daily entries.
 - Rough, unrefined tasks are pooled in `dev-docs/06_Operations/Todo_Pool.md`.
 - Manager role updates `Current_Status.md` status items.
 - Subordinate role records completion details in daily notes.

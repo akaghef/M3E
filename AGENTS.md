@@ -43,7 +43,7 @@ A task is update-complete only when all three are done:
 
 1. Changes are committed.
 2. Daily note is updated (`dev-docs/daily/YYMMDD.md`).
-3. Current status is updated (`dev-docs/00_Home/Current_Status.md`).
+3. Current status is updated by manager (`dev-docs/00_Home/Current_Status.md`) when status has changed.
 
 If any item is missing, task state is still in-progress.
 
@@ -68,6 +68,8 @@ Light checks may continue during work (branch + target file), but full gate is s
 5. Update docs using split ownership:
    - UpdateLog goes to `dev-docs/daily/YYMMDD.md`.
    - `Current_Status.md` keeps current snapshot only.
+   - Subordinates treat `Current_Status.md` as read-only.
+   - Manager updates `Current_Status.md` by referencing subordinate daily logs.
    - Rough TODOs go to `dev-docs/06_Operations/Todo_Pool.md`.
 6. Commit with an imperative message.
 
