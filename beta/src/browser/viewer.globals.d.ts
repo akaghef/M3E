@@ -66,6 +66,7 @@ interface LayoutResult {
 interface DragState {
   pointerId: number;
   sourceNodeId: string;
+  sourceRootIds: string[];
   proposal: DragDropProposal | null;
   startX: number;
   startY: number;

@@ -458,7 +458,6 @@ function enterScope(scopeNodeId: string): boolean {
   }
   viewState.currentScopeRootId = node.id;
   setSingleSelection(node.id, false);
-  viewState.reparentSourceIds.clear();
   render();
   fitDocument();
   setStatus(`Entered scope: ${uiLabel(node)}`);
@@ -490,7 +489,6 @@ function exitScope(): boolean {
   }
   viewState.currentScopeRootId = nextScopeId;
   setSingleSelection(scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
-  viewState.reparentSourceIds.clear();
   render();
   fitDocument();
   setStatus("Returned to parent scope.");
@@ -576,7 +574,6 @@ function jumpToAliasTarget(): boolean {
   }
   viewState.currentScopeRootId = scopeRootForNode(target.id);
   setSingleSelection(target.id, false);
-  viewState.reparentSourceIds.clear();
   render();
   fitDocument();
   setStatus(`Jumped to target: ${uiLabel(target)}`);
@@ -1857,6 +1854,31 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
   return proposeReorderDrop(sourceId, point.x, point.y);
 }
 
+function canDropAllUnderParent(sourceIds: string[], targetParentId: string): boolean {
+  return sourceIds.every((sourceId) => canDropUnderParent(sourceId, targetParentId));
+}
+
+function proposeDropForSources(sourceIds: string[], clientX: number, clientY: number): DragDropProposal | null {
+  if (sourceIds.length === 0) {
+    return null;
+  }
+  if (sourceIds.length === 1) {
+    return proposeDrop(sourceIds[0]!, clientX, clientY);
+  }
+  const point = clientToCanvasPoint(clientX, clientY);
+  const targetNodeId = findNodeAtCanvasPoint(point.x, point.y);
+  if (!targetNodeId) {
+    return null;
+  }
+  if (!canDropAllUnderParent(sourceIds, targetNodeId)) {
+    return null;
+  }
+  return {
+    kind: "reparent",
+    parentId: targetNodeId,
+  };
+}
+
 function normalizeSelectionState(): void {
   if (!doc) {
     return;
@@ -1994,7 +2016,6 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
   viewState.currentScopeRootId = scopeId;
-  viewState.reparentSourceIds.clear();
   if (!isNodeInScope(viewState.selectedNodeId)) {
     setSingleSelection(scopeId, false);
   }
@@ -2010,7 +2031,6 @@ function ExitScopeCommand(): void {
   const previousScopeId = viewState.scopeHistory.pop()!;
   viewState.currentScopeId = doc.state.nodes[previousScopeId] ? previousScopeId : doc.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
-  viewState.reparentSourceIds.clear();
   if (!isNodeInScope(viewState.selectedNodeId)) {
     setSingleSelection(viewState.currentScopeId, false);
   }
@@ -2221,6 +2241,20 @@ function getSelectionRoots(selectedIds = viewState.selectedNodeIds): string[] {
     const parentId = doc!.state.nodes[nodeId]?.parentId ?? null;
     return !parentId || !selectedSet.has(parentId);
   });
+}
+
+function getMovableSelectionRoots(selectedIds = viewState.selectedNodeIds): string[] {
+  if (!doc) {
+    return [];
+  }
+  const movableIds = new Set<string>();
+  selectedIds.forEach((nodeId) => {
+    const node = doc!.state.nodes[nodeId];
+    if (node && node.parentId !== null) {
+      movableIds.add(nodeId);
+    }
+  });
+  return getSelectionRoots(movableIds);
 }
 
 function deleteSelected(): void {
@@ -2649,7 +2683,12 @@ function selectBreadth(direction: -1 | 1): void {
 }
 
 function extendSelectionBreadth(direction: -1 | 1): void {
-  const target = getBreadthSelectionTarget(direction);
+  if (!visibleOrder.length) {
+    return;
+  }
+  const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+  const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+  const target = visibleOrder[nextIndex] ?? null;
   if (!target) {
     return;
   }
@@ -2661,6 +2700,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
   viewState.selectedNodeIds.add(target);
   render();
+  setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
 function loadPayload(payload: unknown): void {
@@ -2851,14 +2891,52 @@ function markReparentSource(): void {
     return;
   }
   viewState.reparentSourceIds = new Set(viewState.selectedNodeIds);
-  const roots = getSelectionRoots(viewState.reparentSourceIds);
+  const roots = getMovableSelectionRoots(viewState.reparentSourceIds);
   setStatus(`Marked move nodes: ${roots.length}`);
   render();
 }
 
+function sameIdSet(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const id of left) {
+    if (!right.has(id)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function toggleReparentSource(): void {
+  if (!doc) {
+    return;
+  }
+  const nextSourceIds = new Set(viewState.selectedNodeIds);
+  const currentRoots = new Set(getMovableSelectionRoots(viewState.reparentSourceIds));
+  const nextRoots = new Set(getMovableSelectionRoots(nextSourceIds));
+
+  if (nextRoots.size === 0) {
+    viewState.reparentSourceIds.clear();
+    setStatus("No move node selected.", true);
+    render();
+    return;
+  }
+
+  if (sameIdSet(currentRoots, nextRoots)) {
+    viewState.reparentSourceIds.clear();
+    setStatus("Move node mark cleared.");
+    render();
+    return;
+  }
+
+  viewState.reparentSourceIds = nextSourceIds;
+  setStatus(`Marked move nodes: ${nextRoots.size}`);
+  render();
+}
+
 function applyReparent(): void {
-  const sourceRoots = getSelectionRoots(viewState.reparentSourceIds)
-    .filter((nodeId) => getNode(nodeId).parentId !== null);
+  const sourceRoots = getMovableSelectionRoots(viewState.reparentSourceIds);
   const targetParentId = viewState.selectedNodeId;
   if (sourceRoots.length === 0) {
     setStatus("No move node marked.", true);
@@ -2873,17 +2951,28 @@ function applyReparent(): void {
     return;
   }
 
+  pushUndoSnapshot();
+  let movedCount = 0;
   sourceRoots.forEach((sourceId) => {
-    applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true, {
+    const applied = applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true, {
+      withUndo: false,
       withTouch: false,
       withStatus: false,
     });
+    if (applied) {
+      movedCount += 1;
+    }
   });
+
+  if (movedCount === 0) {
+    setStatus("No valid move target for selected nodes.", true);
+    return;
+  }
 
   setSingleSelection(targetParentId, false);
   viewState.reparentSourceIds.clear();
   touchDocument();
-  setStatus(`Moved ${sourceRoots.length} node(s).`);
+  setStatus(`Moved ${movedCount} node(s).`);
 }
 
 function groupSelected(): void {
@@ -2986,7 +3075,7 @@ function copySelected(): void {
 }
 
 function cutSelected(): void {
-  const roots = getSelectionRoots().filter((rootId) => getNode(rootId).parentId !== null);
+  const roots = getMovableSelectionRoots();
   if (roots.length === 0) {
     setStatus("Root node cannot be cut.", true);
     return;
@@ -3425,6 +3514,9 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   viewState.dragState = {
     pointerId: event.pointerId,
     sourceNodeId: nodeId,
+    sourceRootIds: viewState.selectedNodeIds.has(nodeId)
+      ? getMovableSelectionRoots(viewState.selectedNodeIds)
+      : getMovableSelectionRoots(new Set([nodeId])),
     proposal: null,
     startX: event.clientX,
     startY: event.clientY,
@@ -3446,7 +3538,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   viewState.dragState.dragged = true;
-  viewState.dragState.proposal = proposeDrop(viewState.dragState.sourceNodeId, event.clientX, event.clientY);
+  viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
   render();
 });
 
@@ -3454,7 +3546,7 @@ function finishNodeDrag(event: PointerEvent): void {
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
-  const { sourceNodeId, proposal, dragged } = viewState.dragState;
+  const { sourceNodeId, sourceRootIds, proposal, dragged } = viewState.dragState;
   const { toggleKey, shiftKey } = viewState.dragState;
   viewState.dragState = null;
   canvas.releasePointerCapture(event.pointerId);
@@ -3469,14 +3561,37 @@ function finishNodeDrag(event: PointerEvent): void {
   }
 
   if (proposal) {
-    const applied = proposal.kind === "reparent"
-      ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
-      : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
-    if (applied) {
-      setSingleSelection(sourceNodeId, false);
-      render();
-      board.focus();
-      return;
+    if (proposal.kind === "reparent" && sourceRootIds.length > 1) {
+      pushUndoSnapshot();
+      let movedCount = 0;
+      sourceRootIds.forEach((sourceId) => {
+        const applied = applyMoveByParentAndIndex(sourceId, proposal.parentId, getNode(proposal.parentId).children.length, false, {
+          withUndo: false,
+          withTouch: false,
+          withStatus: false,
+        });
+        if (applied) {
+          movedCount += 1;
+        }
+      });
+      if (movedCount > 0) {
+        setSingleSelection(proposal.parentId, false);
+        touchDocument();
+        setStatus(`Moved ${movedCount} node(s).`);
+        render();
+        board.focus();
+        return;
+      }
+    } else {
+      const applied = proposal.kind === "reparent"
+        ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
+        : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
+      if (applied) {
+        setSingleSelection(sourceNodeId, false);
+        render();
+        board.focus();
+        return;
+      }
     }
   }
 
@@ -3696,9 +3811,11 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         return;
       }
 
-  if (event.key.toLowerCase() === "m") {
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
-    markReparentSource();
+    if (!event.repeat) {
+      toggleReparentSource();
+    }
     return;
   }
 
@@ -3753,7 +3870,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "ArrowRight") {
     event.preventDefault();
     const selected = getNode(viewState.selectedNodeId);
-    if (isFolderNode(selected)) {
+    if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
       EnterScopeCommand(selected.id);
       return;
     }
