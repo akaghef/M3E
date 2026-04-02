@@ -1,31 +1,40 @@
-# Current Pivot: Freeplane First
+# Current Pivot: Freeplane-Informed Custom Engine
 
 ## 判断
 
-当面の M3E は、独自エディタを先に作るのではなく、Freeplane を土台にした科学研究向け思考支援レイヤーとして進める。
+当面の M3E は、Freeplane をそのまま土台 UI として使うのではなく、
+Freeplane を参考実装および互換入力形式として扱い、
+描画と操作は M3E 側で自作する方針へ切り替える。
 
 ## 背景
 
-独自エディタを早期に作り込むと、以下のコストが大きい。
+Freeplane-first は、研究支援価値の検証を早く進めるうえでは有効だった。
+しかし、M3E の独自価値が最終的に宿るのは、
+研究思考に合った描画、操作、差分提示の設計そのものにある。
 
-- 描画基盤
-- IME を含む入力制御
-- 保存と復元の信頼性
-- Undo/Redo の整合性
-- 日常運用での操作感の調整
+そのため、今後は次の前提で進める。
 
-これらは重要だが、いま最優先なのは「M3E の研究支援が本当に価値を持つか」の検証である。
+- Freeplane は参考実装として読む
+- `.mm` は互換入力形式として扱う
+- M3E の描画、操作、差分提示は独自実装する
+- レイアウト、モデル、描画を分離して将来拡張しやすくする
 
-## 何を Freeplane に任せるか
+## 何を Freeplane から学ぶか
 
-- 日常の入力
-- 既存のツリー編集
-- 折り畳みと構造閲覧
-- ベースとなるマップ保存
+- `.mm` の構造
+- ノードの `text` `details` `note` `attributes` `link`
+- 折り畳み、保存、既存運用の考え方
+- マインドマップ編集で必要になる最低限の操作要件
 
-## 何を M3E 側で担うか
+## 何を M3E 側で自作するか
 
-- 構造の読み取り
+- 描画エンジン
+- ヒットテスト
+- 選択
+- パン、ズーム
+- ノード追加、編集、削除、再親付け
+- Undo/Redo
+- 構造の読み取りと変換
 - 論点分解
 - 比較軸整理
 - 仮説整理
@@ -35,24 +44,25 @@
 
 ## この方針の利点
 
-- 独自 UI 実装の負債を先送りできる
-- 思考支援の価値検証に集中できる
-- 既存ツール上で日常運用を始めやすい
-- 独自実装が必要かどうかを後で判断できる
+- M3E 固有の思考支援 UI を最初から設計できる
+- Freeplane の制約に縛られずにモデル境界を保てる
+- 描画と操作を一体で設計できる
+- `.mm` 互換を保ちながら独自進化できる
 
 ## この方針の制約
 
-- scope / alias / command を Freeplane がそのまま表現できるわけではない
-- M3E の中核モデルを Freeplane の内部表現に委ねるべきではない
-- 将来的に独自モデルへ戻る余地を残す必要がある
+- 初期の実装コストは Freeplane-first より上がる
+- 描画、入力、永続化、Undo/Redo の品質を自分たちで担保する必要がある
+- Freeplane 互換範囲を意識しつつ独自モデルを保つ必要がある
 
 ## 結論
 
-Freeplane は最終形ではなく、検証フェーズの土台である。  
-M3E の価値は描画そのものではなく、研究構造を読み替えて思考を進めることにある。
+Freeplane は最終形でも土台 UI でもなく、参考実装および互換入力形式である。
+M3E は独自の描画エンジンと操作系を持つ研究思考支援ツールとして進める。
 
 ## 関連文書
 
 - MVP 定義: [./MVP_Definition.md](./MVP_Definition.md)
 - Freeplane との写像: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
-- ADR: [../09_Decisions/ADR_001_Freeplane_First.md](../09_Decisions/ADR_001_Freeplane_First.md)
+- 新 ADR: [../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md](../09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md)
+- 旧 ADR: [../09_Decisions/ADR_001_Freeplane_First.md](../09_Decisions/ADR_001_Freeplane_First.md)

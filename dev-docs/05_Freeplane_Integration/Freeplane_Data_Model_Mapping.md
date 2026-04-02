@@ -14,6 +14,16 @@ Freeplane は基本的に以下の抽象で捉える。
 
 つまり、中心は「根付き木 + ノード属性」である。
 
+MVP で特に参照価値が高いのは、次のノード要素である。
+
+- core text
+- details
+- note
+- attributes
+- link
+
+これらは M3E の研究コンテクスト生成に使いやすい。
+
 ## M3E との対応
 
 ### 対応しやすいもの
@@ -56,6 +66,19 @@ Freeplane は基本的に以下の抽象で捉える。
 - まずは `.mm` 構造を安定して読み取る
 - 構造を自然言語コンテクストへ変換する
 - 提案は Freeplane の正本を書き換える前に人間確認を挟む
+
+## Freeplane から参考にするもの
+
+- XML ベースの `.mm` 構造
+- ノードに details / notes / attributes / links を持てること
+- 折り畳みや表示状態をノード単位で管理する考え方
+- autosave と保存前提の運用
+
+## Freeplane からそのまま持ち込まないもの
+
+- M3E 固有意味を Freeplane 属性へ全面的に埋め込むこと
+- M3E の alias 制約を Freeplane の標準機能で済ませること
+- AI 提案と承認フローを Freeplane 側へ寄せること
 
 ## 境界線
 

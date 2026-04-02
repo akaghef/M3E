@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "savedAt": "2026-03-30T00:00:00.000Z",
+  "state": {
+    "rootId": "aircraft_root",
+    "selectedId": "aircraft_root",
+    "nodes": {
+      "aircraft_root": {
+        "id": "aircraft_root",
+        "parentId": null,
+        "children": [
+          "airframe",
+          "propulsion",
+          "systems",
+          "interior"
+        ],
+        "text": "Aircraft",
+        "collapsed": false
+      },
+      "airframe": {
+        "id": "airframe",
+        "parentId": "aircraft_root",
+        "children": [
+          "fuselage",
+          "wing",
+          "empennage"
+        ],
+        "text": "Airframe",
+        "collapsed": false
+      },
+      "propulsion": {
+        "id": "propulsion",
+        "parentId": "aircraft_root",
+        "children": [],
+        "text": "Propulsion",
+        "collapsed": false
+      },
+      "systems": {
+        "id": "systems",
+        "parentId": "aircraft_root",
+        "children": [
+          "landing_gear",
+          "avionics"
+        ],
+        "text": "Systems",
+        "collapsed": false
+      },
+      "interior": {
+        "id": "interior",
+        "parentId": "aircraft_root",
+        "children": [],
+        "text": "Interior",
+        "collapsed": false
+      },
+      "fuselage": {
+        "id": "fuselage",
+        "parentId": "airframe",
+        "children": [],
+        "text": "Fuselage",
+        "collapsed": false
+      },
+      "wing": {
+        "id": "wing",
+        "parentId": "airframe",
+        "children": [],
+        "text": "Wing",
+        "collapsed": false
+      },
+      "empennage": {
+        "id": "empennage",
+        "parentId": "airframe",
+        "children": [],
+        "text": "Empennage",
+        "collapsed": false
+      },
+      "landing_gear": {
+        "id": "landing_gear",
+        "parentId": "systems",
+        "children": [],
+        "text": "Landing Gear",
+        "collapsed": false
+      },
+      "avionics": {
+        "id": "avionics",
+        "parentId": "systems",
+        "children": [],
+        "text": "Avionics",
+        "collapsed": false
+      }
+    }
+  }
+}
