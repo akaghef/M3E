@@ -20,6 +20,7 @@ Core Principles §5 に従う。
 - 本文書: AI 機能の導入段階、feature 要件、承認フロー
 - `../04_Architecture/AI_Infrastructure.md`: provider 接続、secret 注入、transport、責務分離
 - `./AI_Common_API.md`: 共通 API 契約、error code、proposal/result 正規形
+- `./AI_Use_Cases.md`: ユーザー視点の利用シナリオと優先順位のアイデア集
 
 AI インフラの共通設計は上記 architecture 文書を正本とし、
 本書では feature 側の仕様と段階導入に集中する。
