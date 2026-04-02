@@ -52,6 +52,8 @@ const MAX_UNDO_STEPS = 100;
 interface UndoSnapshot {
   state: AppState;
   selectedNodeId: string;
+  selectedNodeIds: string[];
+  selectionAnchorId: string | null;
 }
 
 interface LinearLineMap {
@@ -97,6 +99,8 @@ const DRAG_REORDER_TAIL = 28;
 const DRAG_REORDER_PARENT_LANE_PAD = 96;
 let viewState: ViewState = {
   selectedNodeId: "",
+  selectedNodeIds: new Set<string>(),
+  selectionAnchorId: null,
   currentScopeId: "",
   scopeHistory: [],
   currentScopeRootId: "",
@@ -105,7 +109,8 @@ let viewState: ViewState = {
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
   panState: null,
-  reparentSourceId: "",
+  clipboardState: null,
+  reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
 };
@@ -452,7 +457,8 @@ function enterScope(scopeNodeId: string): boolean {
     return false;
   }
   viewState.currentScopeRootId = node.id;
-  viewState.selectedNodeId = node.id;
+  setSingleSelection(node.id, false);
+  viewState.reparentSourceIds.clear();
   render();
   fitDocument();
   setStatus(`Entered scope: ${uiLabel(node)}`);
@@ -483,7 +489,8 @@ function exitScope(): boolean {
     cursor = parent.parentId ?? null;
   }
   viewState.currentScopeRootId = nextScopeId;
-  viewState.selectedNodeId = scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId;
+  setSingleSelection(scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
+  viewState.reparentSourceIds.clear();
   render();
   fitDocument();
   setStatus("Returned to parent scope.");
@@ -546,7 +553,7 @@ function addAliasInCurrentScope(): boolean {
     isBroken: false,
   };
   scopeRoot.children.push(aliasId);
-  viewState.selectedNodeId = aliasId;
+  setSingleSelection(aliasId, false);
   touchDocument();
   setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
   board.focus();
@@ -568,7 +575,8 @@ function jumpToAliasTarget(): boolean {
     return false;
   }
   viewState.currentScopeRootId = scopeRootForNode(target.id);
-  viewState.selectedNodeId = target.id;
+  setSingleSelection(target.id, false);
+  viewState.reparentSourceIds.clear();
   render();
   fitDocument();
   setStatus(`Jumped to target: ${uiLabel(target)}`);
@@ -672,6 +680,8 @@ function pushUndoSnapshot(): void {
   undoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    selectionAnchorId: viewState.selectionAnchorId,
   });
   if (undoStack.length > MAX_UNDO_STEPS) {
     undoStack.shift();
@@ -688,6 +698,8 @@ function undoLastChange(): void {
   redoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    selectionAnchorId: viewState.selectionAnchorId,
   });
   if (redoStack.length > MAX_UNDO_STEPS) {
     redoStack.shift();
@@ -695,8 +707,14 @@ function undoLastChange(): void {
 
   const snapshot = undoStack.pop()!;
   doc.state = snapshot.state;
-  viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
-  viewState.reparentSourceId = "";
+  const undoState = doc.state;
+  viewState.selectedNodeId = undoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : undoState.rootId;
+  viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(undoState.nodes[nodeId])));
+  viewState.selectionAnchorId = snapshot.selectionAnchorId && undoState.nodes[snapshot.selectionAnchorId]
+    ? snapshot.selectionAnchorId
+    : null;
+  viewState.reparentSourceIds.clear();
+  normalizeSelectionState();
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
@@ -713,6 +731,8 @@ function redoLastChange(): void {
   undoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    selectionAnchorId: viewState.selectionAnchorId,
   });
   if (undoStack.length > MAX_UNDO_STEPS) {
     undoStack.shift();
@@ -720,8 +740,14 @@ function redoLastChange(): void {
 
   const snapshot = redoStack.pop()!;
   doc.state = snapshot.state;
-  viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
-  viewState.reparentSourceId = "";
+  const redoState = doc.state;
+  viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
+  viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(redoState.nodes[nodeId])));
+  viewState.selectionAnchorId = snapshot.selectionAnchorId && redoState.nodes[snapshot.selectionAnchorId]
+    ? snapshot.selectionAnchorId
+    : null;
+  viewState.reparentSourceIds.clear();
+  normalizeSelectionState();
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
@@ -1409,9 +1435,7 @@ function render(): void {
   }
 
   rebuildImportanceVisibility();
-  if (!isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
-    viewState.selectedNodeId = normalizedCurrentScopeId();
-  }
+  normalizeSelectionState();
 
   const state = doc.state;
   if (!viewState.currentScopeRootId || !state.nodes[viewState.currentScopeRootId]) {
@@ -1464,12 +1488,22 @@ function render(): void {
     });
 
     const classNames = ["node-hit"];
-    if (nodeId === viewState.selectedNodeId) {
+    if (viewState.selectedNodeIds.has(nodeId)) {
       classNames.push("selected");
+      classNames.push("multi-selected");
+    }
+    if (nodeId === viewState.selectedNodeId) {
+      classNames.push("primary-selected");
     }
     if (isAliasNode(node)) {
       classNames.push("alias");
       classNames.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
+    }
+    if (viewState.reparentSourceIds.has(nodeId)) {
+      classNames.push("reparent-source");
+    }
+    if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
+      classNames.push("cut-pending");
     }
     if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
       classNames.push("drop-target");
@@ -1494,8 +1528,11 @@ function render(): void {
     } else {
       const label = escapeXml(uiLabel(node) || "(empty)");
       const labelClasses = ["label-node"];
-      if (nodeId === viewState.selectedNodeId) {
+      if (viewState.selectedNodeIds.has(nodeId)) {
         labelClasses.push("selected");
+      }
+      if (nodeId === viewState.selectedNodeId) {
+        labelClasses.push("primary-selected");
       }
       if (isAliasNode(node)) {
         labelClasses.push("alias-label");
@@ -1556,7 +1593,9 @@ function render(): void {
   const savedAt = doc.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
   const selected = state.nodes[viewState.selectedNodeId];
-  const moveNode = state.nodes[viewState.reparentSourceId];
+  const moveNodes = Array.from(viewState.reparentSourceIds)
+    .map((nodeId) => state.nodes[nodeId])
+    .filter((node): node is TreeNode => Boolean(node));
   const dragProposal = viewState.dragState?.proposal;
   let dropLabel = "none";
   if (dragProposal?.kind === "reparent") {
@@ -1566,7 +1605,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
   updateDocumentTitle();
@@ -1818,13 +1857,130 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
   return proposeReorderDrop(sourceId, point.x, point.y);
 }
 
-function selectNode(nodeId: string): void {
+function normalizeSelectionState(): void {
+  if (!doc) {
+    return;
+  }
+
+  if (!doc.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = normalizedCurrentScopeId();
+  }
+
+  const normalizedSelectedIds = new Set<string>();
+  viewState.selectedNodeIds.forEach((nodeId) => {
+    if (doc!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
+      normalizedSelectedIds.add(nodeId);
+    }
+  });
+  viewState.selectedNodeIds = normalizedSelectedIds;
+
+  if (!viewState.selectedNodeIds.has(viewState.selectedNodeId)) {
+    viewState.selectedNodeIds.add(viewState.selectedNodeId);
+  }
+
+  if (viewState.selectionAnchorId && !viewState.selectedNodeIds.has(viewState.selectionAnchorId)) {
+    viewState.selectionAnchorId = null;
+  }
+
+  const normalizedReparentSourceIds = new Set<string>();
+  viewState.reparentSourceIds.forEach((nodeId) => {
+    if (doc!.state.nodes[nodeId]) {
+      normalizedReparentSourceIds.add(nodeId);
+    }
+  });
+  viewState.reparentSourceIds = normalizedReparentSourceIds;
+
+  if (viewState.clipboardState?.type === "cut") {
+    const normalizedCutSourceIds = new Set<string>();
+    viewState.clipboardState.sourceIds.forEach((nodeId) => {
+      if (doc!.state.nodes[nodeId]) {
+        normalizedCutSourceIds.add(nodeId);
+      }
+    });
+    viewState.clipboardState = normalizedCutSourceIds.size > 0
+      ? { type: "cut", sourceIds: normalizedCutSourceIds }
+      : null;
+  }
+}
+
+function setSingleSelection(nodeId: string, renderNow = true): void {
   getNode(nodeId);
   if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
     return;
   }
   viewState.selectedNodeId = nodeId;
+  viewState.selectedNodeIds = new Set([nodeId]);
+  viewState.selectionAnchorId = null;
+  if (renderNow) {
+    render();
+  }
+}
+
+function getVisibleRangeSelection(anchorId: string, targetId: string): Set<string> {
+  const anchorIndex = visibleOrder.indexOf(anchorId);
+  const targetIndex = visibleOrder.indexOf(targetId);
+  if (anchorIndex < 0 || targetIndex < 0) {
+    return new Set([targetId]);
+  }
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
+  return new Set(visibleOrder.slice(start, end + 1));
+}
+
+function setRangeSelection(targetId: string): void {
+  const anchorId = viewState.selectionAnchorId && doc?.state.nodes[viewState.selectionAnchorId]
+    ? viewState.selectionAnchorId
+    : viewState.selectedNodeId;
+  if (!anchorId) {
+    setSingleSelection(targetId);
+    return;
+  }
+  viewState.selectedNodeId = targetId;
+  viewState.selectionAnchorId = anchorId;
+  viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
+  viewState.selectedNodeIds.add(targetId);
   render();
+}
+
+function toggleNodeSelection(nodeId: string): void {
+  viewState.selectionAnchorId = nodeId;
+  if (viewState.selectedNodeIds.has(nodeId)) {
+    if (viewState.selectedNodeIds.size === 1) {
+      viewState.selectedNodeId = nodeId;
+      render();
+      return;
+    }
+    viewState.selectedNodeIds.delete(nodeId);
+    if (viewState.selectedNodeId === nodeId) {
+      viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
+    }
+    render();
+    return;
+  }
+
+  viewState.selectedNodeIds.add(nodeId);
+  viewState.selectedNodeId = nodeId;
+  render();
+}
+
+function selectNode(nodeId: string): void {
+  setSingleSelection(nodeId);
+}
+
+function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
+  getNode(nodeId);
+  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+    return;
+  }
+  if (options.range) {
+    setRangeSelection(nodeId);
+    return;
+  }
+  if (options.toggle) {
+    toggleNodeSelection(nodeId);
+    return;
+  }
+  setSingleSelection(nodeId);
 }
 
 function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
@@ -1838,10 +1994,11 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
   viewState.currentScopeRootId = scopeId;
-  viewState.reparentSourceId = "";
+  viewState.reparentSourceIds.clear();
   if (!isNodeInScope(viewState.selectedNodeId)) {
-    viewState.selectedNodeId = scopeId;
+    setSingleSelection(scopeId, false);
   }
+  normalizeSelectionState();
   render();
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
 }
@@ -1853,10 +2010,11 @@ function ExitScopeCommand(): void {
   const previousScopeId = viewState.scopeHistory.pop()!;
   viewState.currentScopeId = doc.state.nodes[previousScopeId] ? previousScopeId : doc.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
-  viewState.reparentSourceId = "";
+  viewState.reparentSourceIds.clear();
   if (!isNodeInScope(viewState.selectedNodeId)) {
-    viewState.selectedNodeId = viewState.currentScopeId;
+    setSingleSelection(viewState.currentScopeId, false);
   }
+  normalizeSelectionState();
   render();
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
 }
@@ -1874,7 +2032,7 @@ function addChild(): void {
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
-  viewState.selectedNodeId = id;
+  setSingleSelection(id, false);
   touchDocument();
   board.focus();
 }
@@ -1891,7 +2049,7 @@ function addSibling(): void {
   const id = newId();
   doc!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
   parent.children.splice(currentIndex + 1, 0, id);
-  viewState.selectedNodeId = id;
+  setSingleSelection(id, false);
   touchDocument();
   board.focus();
 }
@@ -2034,39 +2192,81 @@ function startInlineEdit(nodeId: string): void {
   });
 }
 
+function nodeDepth(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const stateNodes = doc.state.nodes;
+  let depth = 0;
+  let cursor: string | null = nodeId;
+  while (cursor) {
+    const node: TreeNode | undefined = stateNodes[cursor];
+    if (!node) {
+      break;
+    }
+    cursor = node.parentId;
+    if (cursor) {
+      depth += 1;
+    }
+  }
+  return depth;
+}
+
+function getSelectionRoots(selectedIds = viewState.selectedNodeIds): string[] {
+  if (!doc) {
+    return [];
+  }
+  const selectedSet = new Set<string>(Array.from(selectedIds).filter((nodeId) => Boolean(doc!.state.nodes[nodeId])));
+  return Array.from(selectedSet).filter((nodeId) => {
+    const parentId = doc!.state.nodes[nodeId]?.parentId ?? null;
+    return !parentId || !selectedSet.has(parentId);
+  });
+}
+
 function deleteSelected(): void {
-  const node = getNode(viewState.selectedNodeId);
-  if (node.parentId === null) {
+  const roots = getSelectionRoots();
+  if (roots.length === 0) {
+    return;
+  }
+
+  const deletableRoots = roots.filter((rootId) => getNode(rootId).parentId !== null);
+  if (deletableRoots.length === 0) {
     setStatus("Root node cannot be deleted.", true);
     return;
   }
-  pushUndoSnapshot();
-  const parent = getNode(node.parentId);
-  parent.children = parent.children.filter((id) => id !== node.id);
-  const stack: string[] = [node.id];
-  while (stack.length > 0) {
-    const currentId = stack.pop()!;
-    const current = doc!.state.nodes[currentId];
-    if (!current) {
-      continue;
-    }
-    if (!isAliasNode(current)) {
-      markAliasesBrokenInViewer(currentId, uiLabel(current));
-    }
-    stack.push(...(current.children || []));
-    delete doc!.state.nodes[currentId];
-  }
-  if (viewState.reparentSourceId === node.id) {
-    viewState.reparentSourceId = "";
-  }
 
-  // Keep selection anchored to the closest surviving ancestor (parent first).
-  let nextSelectedId = parent.id;
-  let cursor: string | null = nextSelectedId;
+  const firstRootParentId = getNode(deletableRoots[0]!).parentId;
+  const sortedRoots = [...deletableRoots].sort((a, b) => nodeDepth(b) - nodeDepth(a));
+  pushUndoSnapshot();
+
+  sortedRoots.forEach((rootId) => {
+    const rootNode = doc!.state.nodes[rootId];
+    if (!rootNode || rootNode.parentId === null) {
+      return;
+    }
+    const parent = getNode(rootNode.parentId);
+    parent.children = parent.children.filter((id) => id !== rootId);
+    const stack: string[] = [rootId];
+    while (stack.length > 0) {
+      const currentId = stack.pop()!;
+      const current = doc!.state.nodes[currentId];
+      if (!current) {
+        continue;
+      }
+      if (!isAliasNode(current)) {
+        markAliasesBrokenInViewer(currentId, uiLabel(current));
+      }
+      stack.push(...(current.children || []));
+      viewState.reparentSourceIds.delete(currentId);
+      delete doc!.state.nodes[currentId];
+    }
+  });
+
+  let cursor: string | null = firstRootParentId ?? doc!.state.rootId;
   while (cursor && !doc!.state.nodes[cursor]) {
     cursor = cursor === doc!.state.rootId ? null : (doc!.state.nodes[cursor]?.parentId ?? null);
   }
-  viewState.selectedNodeId = cursor || doc!.state.rootId;
+  setSingleSelection(cursor || doc!.state.rootId, false);
 
   if (!doc!.state.nodes[viewState.currentScopeId]) {
     viewState.currentScopeId = viewState.selectedNodeId;
@@ -2078,18 +2278,26 @@ function deleteSelected(): void {
 }
 
 function toggleCollapse(): void {
-  const nodeId = viewState.selectedNodeId;
-  const node = getNode(nodeId);
-  if ((node.children || []).length === 0) {
+  const targetIds = Array.from(viewState.selectedNodeIds);
+  const collapsibleIds = targetIds.filter((nodeId) => {
+    const node = getNode(nodeId);
+    return (node.children || []).length > 0;
+  });
+  if (collapsibleIds.length === 0) {
     return;
   }
-  if (viewState.collapsedIds.has(nodeId)) {
-    viewState.collapsedIds.delete(nodeId);
-    node.collapsed = false;
-  } else {
-    viewState.collapsedIds.add(nodeId);
-    node.collapsed = true;
-  }
+
+  const shouldExpand = collapsibleIds.every((nodeId) => viewState.collapsedIds.has(nodeId));
+  collapsibleIds.forEach((nodeId) => {
+    const node = getNode(nodeId);
+    if (shouldExpand) {
+      viewState.collapsedIds.delete(nodeId);
+      node.collapsed = false;
+    } else {
+      viewState.collapsedIds.add(nodeId);
+      node.collapsed = true;
+    }
+  });
   touchDocument();
 }
 
@@ -2379,10 +2587,14 @@ function selectChild(): void {
   selectNode(children[0]!);
 }
 
-function selectBreadth(direction: -1 | 1): void {
+function getBreadthSelectionTarget(direction: -1 | 1): string | null {
   if (!doc || !lastLayout) {
-    selectRelative(direction);
-    return;
+    if (!visibleOrder.length) {
+      return null;
+    }
+    const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+    const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+    return visibleOrder[nextIndex] ?? null;
   }
   const layout = lastLayout;
 
@@ -2394,15 +2606,18 @@ function selectBreadth(direction: -1 | 1): void {
     const siblingIndex = siblings.indexOf(currentId);
     const nextSiblingIndex = siblingIndex + direction;
     if (nextSiblingIndex >= 0 && nextSiblingIndex < siblings.length) {
-      selectNode(siblings[nextSiblingIndex]!);
-      return;
+      return siblings[nextSiblingIndex]!;
     }
   }
 
   const currentPos = layout.pos[currentId];
   if (!currentPos) {
-    selectRelative(direction);
-    return;
+    if (!visibleOrder.length) {
+      return null;
+    }
+    const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+    const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+    return visibleOrder[nextIndex] ?? null;
   }
 
   const sameDepth = visibleOrder
@@ -2415,11 +2630,37 @@ function selectBreadth(direction: -1 | 1): void {
     : sameDepth.find((id) => layout.pos[id]!.y > currentPos.y);
 
   if (target) {
-    selectNode(target);
-    return;
+    return target;
   }
 
-  selectRelative(direction);
+  if (!visibleOrder.length) {
+    return null;
+  }
+  const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+  const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+  return visibleOrder[nextIndex] ?? null;
+}
+
+function selectBreadth(direction: -1 | 1): void {
+  const target = getBreadthSelectionTarget(direction);
+  if (target) {
+    selectNode(target);
+  }
+}
+
+function extendSelectionBreadth(direction: -1 | 1): void {
+  const target = getBreadthSelectionTarget(direction);
+  if (!target) {
+    return;
+  }
+  if (!viewState.selectionAnchorId) {
+    viewState.selectionAnchorId = viewState.selectedNodeId;
+  }
+  viewState.selectedNodeId = target;
+  const anchorId = viewState.selectionAnchorId || viewState.selectedNodeId;
+  viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
+  viewState.selectedNodeIds.add(target);
+  render();
 }
 
 function loadPayload(payload: unknown): void {
@@ -2431,9 +2672,12 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeId = doc.state.rootId;
     viewState.scopeHistory = [];
     viewState.selectedNodeId = doc.state.rootId;
+    viewState.selectedNodeIds = new Set([doc.state.rootId]);
+    viewState.selectionAnchorId = null;
     viewState.currentScopeRootId = doc.state.rootId;
     viewState.thinkingMode = "rapid";
-    viewState.reparentSourceId = "";
+    viewState.clipboardState = null;
+    viewState.reparentSourceIds = new Set<string>();
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
         .filter((n) => n.collapsed === true)
@@ -2571,44 +2815,275 @@ function isDescendant(candidateParentId: string, nodeId: string): boolean {
   return false;
 }
 
+function ancestorPathToRoot(nodeId: string): string[] {
+  if (!doc) {
+    return [];
+  }
+  const path: string[] = [];
+  let cursor: string | null = nodeId;
+  while (cursor) {
+    path.push(cursor);
+    cursor = doc.state.nodes[cursor]?.parentId ?? null;
+  }
+  return path;
+}
+
+function findLowestCommonAncestor(nodeIds: string[]): string | null {
+  if (!doc || nodeIds.length === 0) {
+    return null;
+  }
+  const paths = nodeIds.map((nodeId) => ancestorPathToRoot(nodeId).reverse());
+  const shortestLen = Math.min(...paths.map((path) => path.length));
+  let lca: string | null = null;
+  for (let index = 0; index < shortestLen; index += 1) {
+    const candidate = paths[0]![index]!;
+    if (paths.every((path) => path[index] === candidate)) {
+      lca = candidate;
+      continue;
+    }
+    break;
+  }
+  return lca;
+}
+
 function markReparentSource(): void {
-  if (!viewState.selectedNodeId) {
+  if (!doc || viewState.selectedNodeIds.size === 0) {
     return;
   }
-  viewState.reparentSourceId = viewState.selectedNodeId;
-  setStatus(`Marked move node: ${getNode(viewState.reparentSourceId).text}`);
+  viewState.reparentSourceIds = new Set(viewState.selectedNodeIds);
+  const roots = getSelectionRoots(viewState.reparentSourceIds);
+  setStatus(`Marked move nodes: ${roots.length}`);
   render();
 }
 
 function applyReparent(): void {
-  const sourceId = viewState.reparentSourceId;
+  const sourceRoots = getSelectionRoots(viewState.reparentSourceIds)
+    .filter((nodeId) => getNode(nodeId).parentId !== null);
   const targetParentId = viewState.selectedNodeId;
-  if (!sourceId) {
+  if (sourceRoots.length === 0) {
     setStatus("No move node marked.", true);
     return;
   }
-  if (sourceId === targetParentId) {
+  if (sourceRoots.some((sourceId) => sourceId === targetParentId)) {
     setStatus("Cannot move a node under itself.", true);
     return;
   }
-  const sourceNode = getNode(sourceId);
-  if (sourceNode.parentId === null) {
-    setStatus("Root node cannot be moved.", true);
-    return;
-  }
-  if (isDescendant(targetParentId, sourceId)) {
+  if (sourceRoots.some((sourceId) => isDescendant(targetParentId, sourceId))) {
     setStatus("Cannot move a node under its descendant.", true);
     return;
   }
 
-  applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true);
+  sourceRoots.forEach((sourceId) => {
+    applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true, {
+      withTouch: false,
+      withStatus: false,
+    });
+  });
+
+  setSingleSelection(targetParentId, false);
+  viewState.reparentSourceIds.clear();
+  touchDocument();
+  setStatus(`Moved ${sourceRoots.length} node(s).`);
+}
+
+function groupSelected(): void {
+  if (!doc) {
+    return;
+  }
+  const roots = getSelectionRoots().filter((nodeId) => getNode(nodeId).parentId !== null);
+  if (roots.length <= 1) {
+    setStatus("Select multiple nodes to group.", true);
+    return;
+  }
+
+  const lcaId = findLowestCommonAncestor(roots) || doc.state.rootId;
+  const lca = getNode(lcaId);
+  const childIndexes = roots
+    .map((rootId) => lca.children.indexOf(rootId))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b);
+  const insertIndex = childIndexes.length > 0 ? childIndexes[0]! : lca.children.length;
+
+  pushUndoSnapshot();
+  const newGroupId = newId();
+  doc.state.nodes[newGroupId] = createNodeRecord(newGroupId, lca.id, "");
+  lca.children.splice(insertIndex, 0, newGroupId);
+  roots.forEach((rootId) => {
+    applyMoveByParentAndIndex(rootId, newGroupId, getNode(newGroupId).children.length, true, {
+      withTouch: false,
+      withStatus: false,
+    });
+  });
+
+  setSingleSelection(newGroupId, false);
+  touchDocument();
+  startInlineEdit(newGroupId);
+  setStatus(`Grouped ${roots.length} nodes.`);
+}
+
+function selectAllVisibleInScope(): void {
+  if (!visibleOrder.length) {
+    return;
+  }
+  const firstVisibleId = visibleOrder[0]!;
+  viewState.selectedNodeId = firstVisibleId;
+  viewState.selectedNodeIds = new Set(visibleOrder);
+  viewState.selectionAnchorId = firstVisibleId;
+  render();
+  setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
+}
+
+function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
+  const node = getNode(nodeId);
+  return {
+    text: node.text || "",
+    details: node.details || "",
+    note: node.note || "",
+    attributes: JSON.parse(JSON.stringify(node.attributes || {})) as Record<string, string>,
+    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId)),
+  };
+}
+
+function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot): string {
+  const parent = getNode(parentId);
+  const createdId = newId();
+  doc!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text || "New Node");
+  const created = doc!.state.nodes[createdId]!;
+  created.details = snapshot.details || "";
+  created.note = snapshot.note || "";
+  created.attributes = JSON.parse(JSON.stringify(snapshot.attributes || {})) as Record<string, string>;
+  parent.children.push(createdId);
+  (snapshot.children || []).forEach((childSnapshot) => {
+    cloneSnapshotUnderParent(createdId, childSnapshot);
+  });
+  return createdId;
+}
+
+async function copyTextToSystemClipboard(text: string): Promise<void> {
+  if (!text || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Ignore clipboard permission failures and keep internal clipboard available.
+  }
+}
+
+function copySelected(): void {
+  const roots = getSelectionRoots();
+  if (roots.length === 0) {
+    return;
+  }
+  const snapshots = roots.map((rootId) => toSubtreeSnapshot(rootId));
+  viewState.clipboardState = {
+    type: "copy",
+    snapshots,
+  };
+  void copyTextToSystemClipboard(roots.map((rootId) => uiLabel(getNode(rootId))).join("\n"));
+  render();
+  setStatus(`Copied ${roots.length} node(s).`);
+}
+
+function cutSelected(): void {
+  const roots = getSelectionRoots().filter((rootId) => getNode(rootId).parentId !== null);
+  if (roots.length === 0) {
+    setStatus("Root node cannot be cut.", true);
+    return;
+  }
+  viewState.clipboardState = {
+    type: "cut",
+    sourceIds: new Set(roots),
+  };
+  render();
+  setStatus(`Cut pending: ${roots.length} node(s).`);
+}
+
+function pasteClipboard(): void {
+  if (!doc || !viewState.clipboardState) {
+    setStatus("Clipboard is empty.", true);
+    return;
+  }
+  const targetParentId = viewState.selectedNodeId;
+  const targetParent = getNode(targetParentId);
+  if (isAliasNode(targetParent)) {
+    setStatus("Alias nodes cannot own children.", true);
+    return;
+  }
+
+  if (viewState.clipboardState.type === "copy") {
+    const snapshots = viewState.clipboardState.snapshots;
+    if (!snapshots.length) {
+      setStatus("Clipboard is empty.", true);
+      return;
+    }
+    pushUndoSnapshot();
+    let firstPastedId: string | null = null;
+    snapshots.forEach((snapshot) => {
+      const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot);
+      if (!firstPastedId) {
+        firstPastedId = pastedId;
+      }
+    });
+    if (firstPastedId) {
+      setSingleSelection(firstPastedId, false);
+    }
+    touchDocument();
+    setStatus(`Pasted ${snapshots.length} copied node(s).`);
+    return;
+  }
+
+  const cutRoots = getSelectionRoots(viewState.clipboardState.sourceIds)
+    .filter((nodeId) => getNode(nodeId).parentId !== null);
+  if (cutRoots.length === 0) {
+    viewState.clipboardState = null;
+    render();
+    setStatus("No cut nodes available.", true);
+    return;
+  }
+  if (cutRoots.some((sourceId) => sourceId === targetParentId || isDescendant(targetParentId, sourceId))) {
+    setStatus("Cannot paste cut nodes under their descendant.", true);
+    return;
+  }
+
+  pushUndoSnapshot();
+  cutRoots.forEach((sourceId) => {
+    applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true, {
+      withUndo: false,
+      withTouch: false,
+      withStatus: false,
+    });
+  });
+  setSingleSelection(cutRoots[0]!, false);
+  viewState.clipboardState = null;
+  touchDocument();
+  setStatus(`Moved ${cutRoots.length} cut node(s).`);
+}
+
+function clearCutClipboard(): boolean {
+  if (viewState.clipboardState?.type !== "cut") {
+    return false;
+  }
+  viewState.clipboardState = null;
+  render();
+  setStatus("Cut pending cleared.");
+  return true;
 }
 
 function canReparent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
   return canDropUnderParent(sourceId, targetParentId);
 }
 
-function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, targetIndex: number, expandParent: boolean): boolean {
+function applyMoveByParentAndIndex(
+  sourceId: string,
+  targetParentId: string,
+  targetIndex: number,
+  expandParent: boolean,
+  options?: { withUndo?: boolean; withTouch?: boolean; withStatus?: boolean }
+): boolean {
+  const withUndo = options?.withUndo ?? true;
+  const withTouch = options?.withTouch ?? true;
+  const withStatus = options?.withStatus ?? true;
   if (!canDropUnderParent(sourceId, targetParentId)) {
     return false;
   }
@@ -2627,7 +3102,9 @@ function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, tar
     }
   }
 
-  pushUndoSnapshot();
+  if (withUndo) {
+    pushUndoSnapshot();
+  }
   oldParent.children = oldParent.children.filter((id) => id !== sourceId);
   const boundedIndex = Math.max(0, Math.min(normalizedIndex, newParent.children.length));
   newParent.children.splice(boundedIndex, 0, sourceId);
@@ -2636,12 +3113,16 @@ function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, tar
     newParent.collapsed = false;
   }
   sourceNode.parentId = targetParentId;
-  viewState.reparentSourceId = "";
-  touchDocument();
-  if (oldParent.id === newParent.id) {
-    setStatus(`Reordered "${sourceNode.text}" in "${newParent.text}".`);
-  } else {
-    setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+  viewState.reparentSourceIds.delete(sourceId);
+  if (withTouch) {
+    touchDocument();
+  }
+  if (withStatus) {
+    if (oldParent.id === newParent.id) {
+      setStatus(`Reordered "${sourceNode.text}" in "${newParent.text}".`);
+    } else {
+      setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+    }
   }
   return true;
 }
@@ -2948,6 +3429,8 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     startX: event.clientX,
     startY: event.clientY,
     dragged: false,
+    toggleKey: event.ctrlKey || event.metaKey,
+    shiftKey: event.shiftKey,
   };
   canvas.setPointerCapture(event.pointerId);
 });
@@ -2972,11 +3455,15 @@ function finishNodeDrag(event: PointerEvent): void {
     return;
   }
   const { sourceNodeId, proposal, dragged } = viewState.dragState;
+  const { toggleKey, shiftKey } = viewState.dragState;
   viewState.dragState = null;
   canvas.releasePointerCapture(event.pointerId);
 
   if (!dragged) {
-    selectNode(sourceNodeId);
+    selectByPointerModifiers(sourceNodeId, {
+      toggle: toggleKey,
+      range: shiftKey,
+    });
     board.focus();
     return;
   }
@@ -2986,7 +3473,7 @@ function finishNodeDrag(event: PointerEvent): void {
       ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
       : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
     if (applied) {
-      viewState.selectedNodeId = sourceNodeId;
+      setSingleSelection(sourceNodeId, false);
       render();
       board.focus();
       return;
@@ -3007,12 +3494,12 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
     return;
   }
   selectNode(nodeId);
-      const node = getNode(nodeId);
-      if ((node.children || []).length > 0) {
-        EnterScopeCommand(nodeId);
-        return;
-      }
-      startInlineEdit(nodeId);
+  const node = getNode(nodeId);
+  if ((node.children || []).length > 0) {
+    EnterScopeCommand(nodeId);
+    return;
+  }
+  startInlineEdit(nodeId);
 });
 
 board.addEventListener("wheel", (event: WheelEvent) => {
@@ -3108,6 +3595,37 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    selectAllVisibleInScope();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
+    event.preventDefault();
+    copySelected();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
+    event.preventDefault();
+    cutSelected();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
+    event.preventDefault();
+    pasteClipboard();
+    return;
+  }
+
+  if (event.key === "Escape") {
+    if (clearCutClipboard()) {
+      event.preventDefault();
+    }
+    return;
+  }
+
   if (event.key === "Tab") {
     event.preventDefault();
     createNodeByDirectionAndEdit("depth");
@@ -3198,13 +3716,27 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowUp") {
     event.preventDefault();
+    if (event.shiftKey) {
+      extendSelectionBreadth(-1);
+      return;
+    }
     selectBreadth(-1);
     return;
   }
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
+    if (event.shiftKey) {
+      extendSelectionBreadth(1);
+      return;
+    }
     selectBreadth(1);
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "g") {
+    event.preventDefault();
+    groupSelected();
     return;
   }
 

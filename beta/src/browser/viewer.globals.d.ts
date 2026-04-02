@@ -70,6 +70,8 @@ interface DragState {
   startX: number;
   startY: number;
   dragged: boolean;
+  toggleKey: boolean;
+  shiftKey: boolean;
 }
 
 type DragDropProposal =
@@ -92,8 +94,29 @@ interface PanState {
   cameraY: number;
 }
 
+interface SubtreeSnapshot {
+  text: string;
+  details: string;
+  note: string;
+  attributes: Record<string, string>;
+  children: SubtreeSnapshot[];
+}
+
+type ClipboardState =
+  | {
+    type: "copy";
+    snapshots: SubtreeSnapshot[];
+  }
+  | {
+    type: "cut";
+    sourceIds: Set<string>;
+  }
+  | null;
+
 interface ViewState {
   selectedNodeId: string;
+  selectedNodeIds: Set<string>;
+  selectionAnchorId: string | null;
   currentScopeId: string;
   scopeHistory: string[];
   currentScopeRootId: string;
@@ -102,7 +125,8 @@ interface ViewState {
   cameraX: number;
   cameraY: number;
   panState: PanState | null;
-  reparentSourceId: string;
+  clipboardState: ClipboardState;
+  reparentSourceIds: Set<string>;
   dragState: DragState | null;
   collapsedIds: Set<string>;
 }
