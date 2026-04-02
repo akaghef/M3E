@@ -1,60 +1,88 @@
 # Current Status
 
-## Update Log (2026-04-02 / Full Canvas Overlay UI)
+## Update Log (2026-04-02)
 
-- `beta` viewer の canvas を viewport 全面ベースへ変更
-- `beta/viewer.html`
-  - `board` を app 直下へ移し、toolbar / meta / shortcuts / status を overlay UI として再配置
-- `beta/viewer.css`
-  - `.board` を全面配置に変更
-  - toolbar と情報表示を半透明の floating panel に変更
-  - 狭い画面幅でも overlay panel が収まるように最大幅を調整
-- `fit all` の基準領域が toolbar を除いた内側 box ではなく、画面全面 canvas に近い形になった
-- 記録先: `dev-docs/daily/260402.md`
+- `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
+	- 呼称を「Linear」から「リニアテキスト」に統一（UI 表示/文言）
+	- リニアテキストを右ペイン分離から、マップ同一空間内オーバーレイ配置へ変更
+- `dev-docs/03_Spec/Linear_Tree_Conversion.md`
+	- UI 統合方針を「2ペイン」から「同一空間オーバーレイ」に更新
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (36 tests)
 
-## Update Log (2026-04-02 / Flash Rapid Deep UI)
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の成功レスポンスを統一（`ok/mode/documentId`）
+	- 成功系テストでも共通レスポンス契約を検証
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
 
-- `beta` viewer に `Flash` / `Rapid` / `Deep` の mode switch UI を追加
-- `beta/viewer.html`
-  - mode switch ボタン群と `mode: ...` meta を追加
-  - `1/2/3` ショートカット表示を追加
-- `beta/src/browser/viewer.globals.d.ts`
-  - `ThinkingMode` 型と `ViewState.thinkingMode` を追加
-- `beta/src/browser/viewer.ts`
-  - 非永続の viewer state として `thinkingMode` を追加
-  - toolbar ボタンと `1/2/3` キーで mode 切替できるように変更
-  - active button / mode meta を同期する処理を追加
-  - document load 時は `Rapid` を既定 mode に戻すようにした
-- `beta/viewer.css`
-  - mode switch の active 状態スタイルを追加
-- 記録先: `dev-docs/daily/260402.md`
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API のエラーレスポンスを統一（`ok/code/error/documentId`）
+	- 異常系・競合系テストでレスポンススキーマ検証を追加
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
 
-## Update Log (2026-04-02 / Scope Move)
+- `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の異常系 HTTP テストを追加（broken JSON / unsupported format / invalid model / method 405）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (28 tests)
 
-- `beta` viewer に最小 scope 移動を追加
-- `beta/viewer.html`
-  - `Enter scope` / `Back scope` ボタンを追加
-- `beta/src/browser/viewer.ts`
-  - `currentScopeRootId` を追加し、current scope を表示 root として扱うように変更
-  - folder ノードで `enterScope`、親 scope へ `exitScope` を追加
-  - `Ctrl/Cmd+]` / `Ctrl/Cmd+[` で scope 移動できるように変更
-  - scope breadcrumb 風の meta 表示を追加
-- `beta` viewer に folder / scope summary / alias 導線を追加
-  - `Make folder` で selected node を folder type に変更できるようにした
-  - current scope の親 scope / child scope 一覧を `scope-summary` に表示
-  - current scope root 配下へ alias を追加できるようにした
-  - alias から target 実体へ jump できるようにした
-- 記録先: `dev-docs/daily/260402.md`
+- `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_api_integration.test.js`
+	- sync API の HTTP 統合テストを追加（status/push/pull + conflict/force）
+	- `createAppServer` を公開し、import 時の自動起動副作用を排除
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (24 tests)
 
-## Update Log (2026-04-02 / Collapsed Badge)
+- `beta/src/node/cloud_sync.ts` / `beta/src/node/start_viewer.ts` / `beta/tests/unit/cloud_sync_conflict.test.js`
+	- cloud 競合判定ロジックを分離し、unit test を追加して回帰を固定
+	- `detectCloudConflict` で push 競合条件を明示化（force/未存在/未指定/一致/不一致）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass (22 tests)
 
-- `beta` viewer の collapse 表示を count badge 化
-- `beta/src/browser/viewer.ts`
-  - collapse 中ノードの右側に、小さな補助ノード付き count badge を描画
-  - 省略中 subtree の子孫数を集計して表示
-  - badge クリックでそのノードを expand するように変更
-- `beta/viewer.css`
-  - collapsed count badge のスタイルを追加
+- `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts` / `beta/viewer.html` / `beta/viewer.css`
+	- cloud 競合解決フロー（savedAt 比較 + `409 CLOUD_CONFLICT` + 手動解決UI）を追加
+	- `Use Local` (force push) / `Use Cloud` (pull) の明示解決導線を実装
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/src/node/start_viewer.ts` / `beta/src/browser/viewer.ts`
+	- cloud sync の最小導線（status/pull/push）を追加
+	- `M3E_CLOUD_SYNC=1` 時のみ有効、既存 local-first 導線は維持
+- `beta/README.md`
+	- cloud sync（file-mirror mode）の起動設定を追記
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
+	- 重要度ビュー（All / Medium+High / High only）を追加
+	- importance 属性ベースで Tree/Linear 両方を同一ルールでフィルタ
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/viewer.html` / `beta/viewer.css` / `beta/src/browser/viewer.ts`
+	- Tree 右側に Linear パネル（current scope 対象）を実装
+	- Tree 選択と Linear 行選択の相互同期を追加
+	- Apply で Linear -> Tree 変換を実装（失敗時 fail-closed）
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `dev-docs/03_Spec/Linear_Tree_Conversion.md` を追加
+	- Linear <-> Tree 変換のビジョン整合（Tree 正本 / scope 基準 / 可逆性レベル）を定義
+	- L1（インデント）と L2（Markdown）の段階導入方針を明文化
+- `dev-docs/03_Spec/Import_Export.md`
+	- 線形変換仕様への参照を追加
+- `dev-docs/06_Operations/Decision_Pool.md`
+	- 変換方針を working-agreement として登録（2026-04-02-001）
 - 記録先: `dev-docs/daily/260402.md`
 
 ## Update Log (2026-04-01 / Scope and Alias)
@@ -97,6 +125,28 @@
 - 記録先: `dev-docs/daily/260401.md`
 
 ## Update Log (2026-04-01)
+
+- `beta/src/node/rapid_mvp.ts`
+	- scope クエリ引数名を `scopeId` から `scopeRootId` に明確化
+	- 挙動は「保存された scopeId 参照」ではなく「部分木 root 指定」であることを整理
+- `beta/tests/unit/rapid_mvp.test.js`
+	- reparent 後に query 結果が構造追従する回帰テストを追加
+	- node-level scope カスケード更新不要であることを検証
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
+
+- `beta/src/browser/viewer.globals.d.ts` / `beta/src/browser/viewer.ts`
+	- `ViewState` に `currentScopeId` / `scopeHistory` を追加
+	- `EnterScopeCommand` / `ExitScopeCommand` を実装（ViewStateのみ変更、Undo/Redo対象外）
+	- 画面表示と移動対象を `currentScopeId` の部分木に限定
+- `beta/src/node/rapid_mvp.ts`
+	- scope 指定クエリ API（`queryNodeIds(scopeId?)` / `queryNodes(scopeId?)`）を追加
+- `beta/tests/unit/rapid_mvp.test.js`
+	- scope query の unit test を追加
+- 検証
+	- `npm --prefix beta run build`: pass
+	- `npm --prefix beta run test:ci`: pass
 
 - `mvp/src/browser/viewer.tuning.ts` に tuning 項目別コメントを追加
 - ノード縦間隔を調整

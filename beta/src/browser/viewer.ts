@@ -20,6 +20,7 @@ const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const deleteNodeBtn = document.getElementById("delete-node");
 const markReparentBtn = document.getElementById("mark-reparent");
 const applyReparentBtn = document.getElementById("apply-reparent");
+const importanceViewSelect = document.getElementById("importance-view") as HTMLSelectElement;
 const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
@@ -32,7 +33,17 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
+const linearTextEl = document.getElementById("linear-text") as HTMLTextAreaElement;
+const linearMetaEl = document.getElementById("linear-meta") as HTMLElement;
+const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement;
+const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement;
+const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
+const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
+const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
+const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
+const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
 const LOCAL_DOC_ID = "rapid-main";
+const CLOUD_DOC_ID = "rapid-main";
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 100;
 
@@ -40,6 +51,20 @@ interface UndoSnapshot {
   state: AppState;
   selectedNodeId: string;
 }
+
+interface LinearLineMap {
+  nodeId: string;
+  lineIndex: number;
+  startOffset: number;
+  endOffset: number;
+}
+
+interface LinearNodeDraft {
+  label: string;
+  children: LinearNodeDraft[];
+}
+
+type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
@@ -52,6 +77,15 @@ let lastLayout: LayoutResult | null = null;
 let visualCheckRunId = 0;
 let undoStack: UndoSnapshot[] = [];
 let redoStack: UndoSnapshot[] = [];
+let linearDirty = false;
+let linearLineMap: LinearLineMap[] = [];
+let suppressLinearSelectionSync = false;
+let importanceViewMode: ImportanceViewMode = "all";
+let importanceVisibleNodeIds: Set<string> | null = null;
+let cloudSyncEnabled = false;
+let cloudSyncExists = false;
+let cloudSavedAt: string | null = null;
+let cloudConflictPending = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -103,6 +137,33 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function updateCloudSyncUi(): void {
+  if (!cloudSyncBadgeEl) {
+    return;
+  }
+
+  cloudSyncBadgeEl.classList.remove("on", "conflict");
+  if (!cloudSyncEnabled) {
+    cloudSyncBadgeEl.textContent = "Cloud: off";
+    if (cloudPullBtn) cloudPullBtn.disabled = true;
+    if (cloudPushBtn) cloudPushBtn.disabled = true;
+    if (cloudUseLocalBtn) cloudUseLocalBtn.hidden = true;
+    if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = true;
+    return;
+  }
+
+  cloudSyncBadgeEl.classList.add(cloudConflictPending ? "conflict" : "on");
+  const savedAtLabel = cloudSavedAt ? cloudSavedAt : "none";
+  cloudSyncBadgeEl.textContent = cloudConflictPending
+    ? `Cloud: conflict (${savedAtLabel})`
+    : `Cloud: on (${savedAtLabel})`;
+
+  if (cloudPullBtn) cloudPullBtn.disabled = false;
+  if (cloudPushBtn) cloudPushBtn.disabled = false;
+  if (cloudUseLocalBtn) cloudUseLocalBtn.hidden = !cloudConflictPending;
+  if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = !cloudConflictPending;
+}
+
 function createNodeRecord(id: string, parentId: string | null, text = "New Node"): TreeNode {
   return {
     id,
@@ -110,6 +171,7 @@ function createNodeRecord(id: string, parentId: string | null, text = "New Node"
     children: [],
     nodeType: "text",
     text,
+    collapsed: false,
     details: "",
     note: "",
     attributes: {},
@@ -144,6 +206,7 @@ function ensureDocShape(payload: unknown): SavedDoc {
     node.nodeType = node.nodeType || "text";
     node.scopeId = node.scopeId || undefined;
     node.text = node.text || "";
+    node.collapsed = node.collapsed === true;
     node.details = node.details || "";
     node.note = node.note || "";
     node.attributes = (node.attributes && typeof node.attributes === "object") ? node.attributes : {};
@@ -209,7 +272,7 @@ function parseMmText(xmlText: string): SavedDoc {
       richContentText(mmNode, "NODE") ||
       "(empty)";
     const record = createNodeRecord(id, parentId, text);
-    (record as unknown as Record<string, unknown>)["collapsed"] = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
+    record.collapsed = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
     record.link = mmNode.getAttribute("LINK") || "";
     record.details = richContentText(mmNode, "DETAILS");
     record.note = richContentText(mmNode, "NOTE");
@@ -737,6 +800,317 @@ function visibleChildren(node: TreeNode): string[] {
   return node.children || [];
 }
 
+function importanceScore(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return 0;
+  }
+  const attrs = node.attributes || {};
+  const raw = String(attrs["importance"] ?? attrs["priority"] ?? attrs["重要度"] ?? "").trim().toLowerCase();
+  if (!raw) {
+    return 0;
+  }
+  if (/^[0-9]+$/.test(raw)) {
+    return Math.max(0, Number(raw));
+  }
+  if (raw.includes("critical") || raw.includes("urgent") || raw.includes("highest") || raw.includes("緊急")) {
+    return 4;
+  }
+  if (raw === "h" || raw.includes("high") || raw.includes("top") || raw.includes("高")) {
+    return 3;
+  }
+  if (raw === "m" || raw.includes("medium") || raw.includes("mid") || raw.includes("中")) {
+    return 2;
+  }
+  if (raw === "l" || raw.includes("low") || raw.includes("低")) {
+    return 1;
+  }
+  return 0;
+}
+
+function isNodeVisibleByImportance(nodeId: string): boolean {
+  if (!importanceVisibleNodeIds) {
+    return true;
+  }
+  return importanceVisibleNodeIds.has(nodeId);
+}
+
+function rebuildImportanceVisibility(): void {
+  if (!doc || importanceViewMode === "all") {
+    importanceVisibleNodeIds = null;
+    return;
+  }
+
+  const threshold = importanceViewMode === "high-only" ? 3 : 2;
+  const scopeRootId = normalizedCurrentScopeId();
+  const visible = new Set<string>();
+
+  function walk(nodeId: string): boolean {
+    const node = doc!.state.nodes[nodeId];
+    if (!node) {
+      return false;
+    }
+    const selfMatched = importanceScore(nodeId) >= threshold;
+    let childMatched = false;
+    scopedChildrenRaw(nodeId).forEach((childId) => {
+      if (walk(childId)) {
+        childMatched = true;
+      }
+    });
+    const keep = selfMatched || childMatched;
+    if (keep) {
+      visible.add(nodeId);
+    }
+    return keep;
+  }
+
+  walk(scopeRootId);
+  visible.add(scopeRootId);
+  importanceVisibleNodeIds = visible;
+}
+
+function scopeChildren(nodeId: string): string[] {
+  if (!doc) {
+    return [];
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return [];
+  }
+  return scopedChildrenRaw(nodeId).filter((childId) => isNodeVisibleByImportance(childId));
+}
+
+function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
+  if (!doc) {
+    return { text: "", map: [] };
+  }
+
+  const scopeRootId = normalizedCurrentScopeId();
+  const lines: string[] = [];
+  const map: LinearLineMap[] = [];
+  let cursor = 0;
+
+  function walk(nodeId: string, depth: number): void {
+    const node = doc!.state.nodes[nodeId];
+    if (!node) {
+      return;
+    }
+
+    const line = `${"  ".repeat(depth)}${String(node.text || "").trim() || "(empty)"}`;
+    const lineIndex = lines.length;
+    lines.push(line);
+    const startOffset = cursor;
+    const endOffset = startOffset + line.length;
+    map.push({ nodeId, lineIndex, startOffset, endOffset });
+    cursor = endOffset + 1;
+
+    scopeChildren(nodeId).forEach((childId) => walk(childId, depth + 1));
+  }
+
+  walk(scopeRootId, 0);
+  return {
+    text: lines.join("\n"),
+    map,
+  };
+}
+
+function linearOffsetToLineIndex(text: string, offset: number): number {
+  const safeOffset = Math.max(0, Math.min(offset, text.length));
+  if (safeOffset === 0) {
+    return 0;
+  }
+  let lineIndex = 0;
+  for (let i = 0; i < safeOffset; i += 1) {
+    if (text.charCodeAt(i) === 10) {
+      lineIndex += 1;
+    }
+  }
+  return lineIndex;
+}
+
+function syncLinearCaretToSelectedNode(): void {
+  if (!linearTextEl || linearLineMap.length === 0) {
+    return;
+  }
+  const entry = linearLineMap.find((item) => item.nodeId === viewState.selectedNodeId);
+  if (!entry) {
+    return;
+  }
+  suppressLinearSelectionSync = true;
+  if (document.activeElement === linearTextEl) {
+    linearTextEl.setSelectionRange(entry.startOffset, entry.endOffset);
+  }
+  suppressLinearSelectionSync = false;
+}
+
+function renderLinearPanel(): void {
+  if (!linearTextEl || !linearMetaEl) {
+    return;
+  }
+  if (!doc) {
+    linearTextEl.value = "";
+    linearMetaEl.textContent = "No scope loaded";
+    linearApplyBtn.disabled = true;
+    linearResetBtn.disabled = true;
+    return;
+  }
+
+  const linear = buildLinearFromScope();
+  linearLineMap = linear.map;
+
+  if (!linearDirty) {
+    linearTextEl.value = linear.text;
+  }
+
+  const scopeRootId = normalizedCurrentScopeId();
+  const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
+  const dirtyLabel = linearDirty ? "dirty" : "synced";
+  linearMetaEl.textContent = `scope: ${scopeLabel} | importance: ${importanceViewMode} | lines: ${linearLineMap.length} | ${dirtyLabel}`;
+  linearApplyBtn.disabled = !linearDirty;
+  linearResetBtn.disabled = !linearDirty;
+
+  if (!linearDirty) {
+    syncLinearCaretToSelectedNode();
+  }
+}
+
+function parseLinearText(text: string): LinearNodeDraft {
+  const sourceLines = String(text || "").replaceAll("\r", "").split("\n");
+  const lines = sourceLines
+    .map((raw, index) => ({ raw, index: index + 1 }))
+    .filter((line) => line.raw.trim().length > 0);
+
+  if (lines.length === 0) {
+    throw new Error("リニアテキストが空です。");
+  }
+
+  const stack: LinearNodeDraft[] = [];
+  let root: LinearNodeDraft | null = null;
+  let previousDepth = 0;
+
+  lines.forEach((line, idx) => {
+    if (/\t/.test(line.raw)) {
+      throw new Error(`Invalid indentation at line ${line.index}: tab is not allowed.`);
+    }
+    const leadingSpaces = line.raw.match(/^ */)?.[0].length ?? 0;
+    if (leadingSpaces % 2 !== 0) {
+      throw new Error(`Invalid indentation at line ${line.index}: use multiples of 2 spaces.`);
+    }
+    const depth = Math.floor(leadingSpaces / 2);
+    const label = line.raw.trim();
+    if (!label) {
+      throw new Error(`Empty label at line ${line.index}.`);
+    }
+    if (idx === 0 && depth !== 0) {
+      throw new Error(`Invalid root depth at line ${line.index}: root must start at depth 0.`);
+    }
+    if (idx > 0 && depth > previousDepth + 1) {
+      throw new Error(`Invalid depth transition at line ${line.index}: skipped hierarchy level.`);
+    }
+
+    const node: LinearNodeDraft = {
+      label,
+      children: [],
+    };
+
+    if (depth === 0) {
+      if (root) {
+        throw new Error(`Invalid root at line ${line.index}: multiple root lines are not allowed.`);
+      }
+      root = node;
+    } else {
+      const parent = stack[depth - 1];
+      if (!parent) {
+        throw new Error(`Invalid parent reference at line ${line.index}.`);
+      }
+      parent.children.push(node);
+    }
+
+    stack[depth] = node;
+    stack.length = depth + 1;
+    previousDepth = depth;
+  });
+
+  if (!root) {
+    throw new Error("リニアテキストのルート行がありません。");
+  }
+  return root;
+}
+
+function deleteSubtree(nodeId: string): void {
+  if (!doc) {
+    return;
+  }
+  const stack: string[] = [nodeId];
+  while (stack.length > 0) {
+    const currentId = stack.pop()!;
+    const current = doc.state.nodes[currentId];
+    if (!current) {
+      continue;
+    }
+    stack.push(...(current.children || []));
+    delete doc.state.nodes[currentId];
+  }
+}
+
+function reconcileLinearSubtree(nodeId: string, draft: LinearNodeDraft): void {
+  if (!doc) {
+    return;
+  }
+
+  const node = getNode(nodeId);
+  node.text = draft.label;
+  const existingChildren = [...(node.children || [])];
+  const nextChildren: string[] = [];
+
+  draft.children.forEach((childDraft, index) => {
+    const existingId = existingChildren[index];
+    if (existingId && doc!.state.nodes[existingId]) {
+      reconcileLinearSubtree(existingId, childDraft);
+      nextChildren.push(existingId);
+      return;
+    }
+
+    const newChildId = newId();
+    doc!.state.nodes[newChildId] = createNodeRecord(newChildId, nodeId, childDraft.label);
+    reconcileLinearSubtree(newChildId, childDraft);
+    nextChildren.push(newChildId);
+  });
+
+  existingChildren.slice(draft.children.length).forEach((redundantId) => {
+    deleteSubtree(redundantId);
+  });
+
+  node.children = nextChildren;
+}
+
+function applyLinearTextToScope(): void {
+  if (!doc) {
+    return;
+  }
+  try {
+    const parsed = parseLinearText(linearTextEl.value);
+    const scopeRootId = normalizedCurrentScopeId();
+
+    pushUndoSnapshot();
+    reconcileLinearSubtree(scopeRootId, parsed);
+
+    if (!doc.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId)) {
+      viewState.selectedNodeId = scopeRootId;
+    }
+
+    linearDirty = false;
+    touchDocument();
+    setStatus("リニアテキストを現在スコープへ適用しました。");
+    board.focus();
+  } catch (err) {
+    setStatus(`リニアテキスト適用に失敗: ${(err as Error).message}`, true);
+  }
+}
+
 function countHiddenDescendants(nodeId: string): number {
   if (!doc) {
     return 0;
@@ -880,7 +1254,13 @@ function render(): void {
     updateScopeSummary();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
+    renderLinearPanel();
     return;
+  }
+
+  rebuildImportanceVisibility();
+  if (!isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = normalizedCurrentScopeId();
   }
 
   const state = doc.state;
@@ -1034,6 +1414,7 @@ function render(): void {
   updateScopeMeta();
   updateScopeSummary();
   syncInlineEditorPosition();
+  renderLinearPanel();
 }
 
 function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: number } {
@@ -1282,8 +1663,43 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
 
 function selectNode(nodeId: string): void {
   getNode(nodeId);
+  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+    return;
+  }
   viewState.selectedNodeId = nodeId;
   render();
+}
+
+function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
+  if (!doc || !doc.state.nodes[scopeId]) {
+    return;
+  }
+  const currentScopeId = normalizedCurrentScopeId();
+  if (scopeId === currentScopeId) {
+    return;
+  }
+  viewState.scopeHistory.push(currentScopeId);
+  viewState.currentScopeId = scopeId;
+  viewState.reparentSourceId = "";
+  if (!isNodeInScope(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = scopeId;
+  }
+  render();
+  setStatus(`Entered scope: ${getNode(scopeId).text}`);
+}
+
+function ExitScopeCommand(): void {
+  if (!doc || viewState.scopeHistory.length === 0) {
+    return;
+  }
+  const previousScopeId = viewState.scopeHistory.pop()!;
+  viewState.currentScopeId = doc.state.nodes[previousScopeId] ? previousScopeId : doc.state.rootId;
+  viewState.reparentSourceId = "";
+  if (!isNodeInScope(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = viewState.currentScopeId;
+  }
+  render();
+  setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
 }
 
 function addChild(): void {
@@ -1298,6 +1714,7 @@ function addChild(): void {
   doc!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
+  parent.collapsed = false;
   viewState.selectedNodeId = id;
   touchDocument();
   board.focus();
@@ -1459,10 +1876,12 @@ function toggleCollapse(): void {
   }
   if (viewState.collapsedIds.has(nodeId)) {
     viewState.collapsedIds.delete(nodeId);
+    node.collapsed = false;
   } else {
     viewState.collapsedIds.add(nodeId);
+    node.collapsed = true;
   }
-  render();
+  touchDocument();
 }
 
 function downloadJson(): void {
@@ -1506,6 +1925,9 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
 
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     doc.savedAt = String(payload.savedAt || nowIso());
+    if (cloudSyncEnabled) {
+      void pushDocToCloud(false);
+    }
     if (showStatus) {
       setStatus("Saved locally.");
     }
@@ -1514,6 +1936,127 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
   } catch (err) {
     if (showStatus) {
       setStatus(`Local save failed (${(err as Error).message}).`, true);
+    }
+    return false;
+  }
+}
+
+async function fetchCloudSyncStatus(): Promise<void> {
+  try {
+    const response = await fetch(`/api/sync/status/${encodeURIComponent(CLOUD_DOC_ID)}`, { cache: "no-store" });
+    if (!response.ok) {
+      cloudSyncEnabled = false;
+      cloudSyncExists = false;
+      cloudSavedAt = null;
+      updateCloudSyncUi();
+      return;
+    }
+    const payload = await response.json().catch(() => ({ enabled: false, exists: false, cloudSavedAt: null }));
+    cloudSyncEnabled = Boolean(payload.enabled);
+    cloudSyncExists = Boolean(payload.exists);
+    cloudSavedAt = payload.cloudSavedAt ? String(payload.cloudSavedAt) : null;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
+  } catch {
+    cloudSyncEnabled = false;
+    cloudSyncExists = false;
+    cloudSavedAt = null;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
+  }
+}
+
+async function pushDocToCloud(showStatus = false, force = false): Promise<boolean> {
+  if (!doc || !cloudSyncEnabled) {
+    return false;
+  }
+  try {
+    const baseSavedAt = cloudSavedAt;
+    const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({
+        ...currentDocSnapshot(),
+        baseSavedAt,
+        force,
+      }),
+    });
+
+    if (response.status === 409) {
+      const conflict = await response.json().catch(() => ({ cloudSavedAt: null }));
+      cloudConflictPending = true;
+      cloudSavedAt = conflict.cloudSavedAt ? String(conflict.cloudSavedAt) : cloudSavedAt;
+      updateCloudSyncUi();
+      if (showStatus) {
+        setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
+      }
+      return false;
+    }
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+    }
+
+    const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
+    doc.savedAt = String(payload.savedAt || nowIso());
+    cloudSavedAt = String(payload.savedAt || nowIso());
+    cloudSyncExists = true;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
+    if (showStatus) {
+      setStatus(force ? "Cloud sync force-push completed." : "Cloud sync push completed.");
+    }
+    render();
+    return true;
+  } catch (err) {
+    if (showStatus) {
+      setStatus(`Cloud push failed (${(err as Error).message}).`, true);
+    }
+    return false;
+  }
+}
+
+async function pullDocFromCloud(showStatus = false): Promise<boolean> {
+  if (!cloudSyncEnabled) {
+    return false;
+  }
+  try {
+    const response = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (response.status === 404) {
+      cloudSyncExists = false;
+      cloudSavedAt = null;
+      updateCloudSyncUi();
+      return false;
+    }
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+    }
+
+    const payload = await response.json();
+    loadPayload(payload);
+    cloudSyncExists = true;
+    cloudSavedAt = payload.savedAt ? String(payload.savedAt) : null;
+    cloudConflictPending = false;
+    updateCloudSyncUi();
+    if (showStatus) {
+      setStatus("Loaded cloud document.");
+    }
+    return true;
+  } catch (err) {
+    if (showStatus) {
+      setStatus(`Cloud pull failed (${(err as Error).message}).`, true);
     }
     return false;
   }
@@ -1575,6 +2118,15 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
+  await fetchCloudSyncStatus();
+
+  if (cloudSyncEnabled && cloudSyncExists) {
+    const loadedFromCloud = await pullDocFromCloud(false);
+    if (loadedFromCloud) {
+      return;
+    }
+  }
+
   const loadedFromDb = await loadDocFromLocalDb(false);
   if (loadedFromDb) {
     return;
@@ -1601,7 +2153,7 @@ function selectParent(): void {
     return;
   }
   const node = getNode(viewState.selectedNodeId);
-  if (node.parentId) {
+  if (node.parentId && isNodeInScope(node.parentId)) {
     selectNode(node.parentId);
   }
 }
@@ -1666,13 +2218,16 @@ function loadPayload(payload: unknown): void {
     doc = ensureDocShape(payload);
     undoStack = [];
     redoStack = [];
+    linearDirty = false;
+    viewState.currentScopeId = doc.state.rootId;
+    viewState.scopeHistory = [];
     viewState.selectedNodeId = doc.state.rootId;
     viewState.currentScopeRootId = doc.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.reparentSourceId = "";
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
-        .filter((n) => (n as unknown as Record<string, unknown>)["collapsed"] === true)
+        .filter((n) => n.collapsed === true)
         .map((n) => n.id),
     );
     render();
@@ -1869,6 +2424,7 @@ function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, tar
   newParent.children.splice(boundedIndex, 0, sourceId);
   if (expandParent) {
     viewState.collapsedIds.delete(targetParentId);
+    newParent.collapsed = false;
   }
   sourceNode.parentId = targetParentId;
   viewState.reparentSourceId = "";
@@ -1952,6 +2508,78 @@ fileInput.addEventListener("change", (event: Event) => {
     }
   };
   reader.readAsText(file, "utf-8");
+});
+
+linearTextEl?.addEventListener("input", () => {
+  linearDirty = true;
+  renderLinearPanel();
+});
+
+linearTextEl?.addEventListener("click", () => {
+  if (!doc || linearDirty || suppressLinearSelectionSync) {
+    return;
+  }
+  const lineIndex = linearOffsetToLineIndex(linearTextEl.value, linearTextEl.selectionStart || 0);
+  const entry = linearLineMap.find((line) => line.lineIndex === lineIndex);
+  if (!entry) {
+    return;
+  }
+  selectNode(entry.nodeId);
+});
+
+linearTextEl?.addEventListener("keyup", () => {
+  if (!doc || linearDirty || suppressLinearSelectionSync) {
+    return;
+  }
+  const lineIndex = linearOffsetToLineIndex(linearTextEl.value, linearTextEl.selectionStart || 0);
+  const entry = linearLineMap.find((line) => line.lineIndex === lineIndex);
+  if (!entry) {
+    return;
+  }
+  selectNode(entry.nodeId);
+});
+
+linearApplyBtn?.addEventListener("click", () => {
+  if (!doc || !linearDirty) {
+    return;
+  }
+  applyLinearTextToScope();
+});
+
+linearResetBtn?.addEventListener("click", () => {
+  linearDirty = false;
+  renderLinearPanel();
+  setStatus("リニアテキストをツリー状態にリセットしました。");
+});
+
+cloudPullBtn?.addEventListener("click", async () => {
+  const pulled = await pullDocFromCloud(true);
+  if (!pulled) {
+    setStatus("Cloud document not found.", true);
+  }
+});
+
+cloudPushBtn?.addEventListener("click", async () => {
+  await pushDocToCloud(true);
+});
+
+cloudUseLocalBtn?.addEventListener("click", async () => {
+  await pushDocToCloud(true, true);
+});
+
+cloudUseCloudBtn?.addEventListener("click", async () => {
+  const pulled = await pullDocFromCloud(true);
+  if (!pulled) {
+    setStatus("Cloud document not found.", true);
+  }
+});
+
+importanceViewSelect?.addEventListener("change", () => {
+  const nextMode = importanceViewSelect.value as ImportanceViewMode;
+  importanceViewMode = nextMode;
+  linearDirty = false;
+  render();
+  setStatus(`Importance view: ${nextMode}`);
 });
 
 addChildBtn?.addEventListener("click", () => {
@@ -2121,10 +2749,18 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
     return;
   }
   selectNode(nodeId);
-  startInlineEdit(nodeId);
+      const node = getNode(nodeId);
+      if ((node.children || []).length > 0) {
+        EnterScopeCommand(nodeId);
+        return;
+      }
+      startInlineEdit(nodeId);
 });
 
 board.addEventListener("wheel", (event: WheelEvent) => {
+  if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
+    return;
+  }
   event.preventDefault();
   if (!event.ctrlKey && !event.metaKey) {
     viewState.cameraX -= event.deltaX * VIEWER_TUNING.pan.wheelFactor;
@@ -2142,6 +2778,9 @@ board.addEventListener("wheel", (event: WheelEvent) => {
 
 board.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) {
+    return;
+  }
+  if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
   }
   const onNode = (event.target as HTMLElement | null)?.dataset?.["nodeId"];
@@ -2186,6 +2825,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (inlineEditor && document.activeElement === inlineEditor.input) {
+    return;
+  }
+
+  if (document.activeElement === linearTextEl) {
     return;
   }
 
@@ -2261,10 +2904,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (event.key === "Delete" || event.key === "Backspace") {
+        if (event.key === "Backspace" && !inlineEditor && viewState.scopeHistory.length > 0) {
+          event.preventDefault();
+          ExitScopeCommand();
+          return;
+        }
     event.preventDefault();
     deleteSelected();
     return;
   }
+
+      if (event.altKey && event.key === "Enter") {
+        event.preventDefault();
+        EnterScopeCommand();
+        return;
+      }
 
   if (event.key.toLowerCase() === "m") {
     event.preventDefault();
@@ -2309,6 +2963,8 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 });
 
 setVisualCheckStatus("Visual check idle");
+
+updateCloudSyncUi();
 
 void initializeDocument().then(() => {
   fitDocument() || applyZoom();
