@@ -1380,6 +1380,19 @@ function buildLayout(state: AppState): LayoutResult {
   };
 }
 
+function updateDocumentTitle(): void {
+  const appTitle = "M3E";
+  if (!doc) {
+    document.title = appTitle;
+    return;
+  }
+
+  const scopeId = normalizedCurrentScopeId();
+  const scopeNode = doc.state.nodes[scopeId];
+  const scopeLabel = uiLabel(scopeNode).trim();
+  document.title = scopeLabel ? `${appTitle} - ${scopeLabel}` : appTitle;
+}
+
 function render(): void {
   if (!doc) {
     syncThinkingModeUi();
@@ -1387,6 +1400,7 @@ function render(): void {
     updateScopeSummary();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
+    updateDocumentTitle();
     renderLinearPanel();
     syncLinearPanelPosition();
     return;
@@ -1553,6 +1567,7 @@ function render(): void {
   metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
+  updateDocumentTitle();
   syncInlineEditorPosition();
   renderLinearPanel();
 }
