@@ -6,7 +6,9 @@ import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
 import { detectCloudConflict } from "./cloud_sync";
+import { getBitwardenStatus, getBitwardenApiKey, callAiModel } from "./ai_integration";
 import type { AppState, SavedDoc } from "../shared/types";
+import type { AiModelConfig, AiModelsFile, AiChatRequest } from "../shared/ai_types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
@@ -19,6 +21,7 @@ const CLOUD_SYNC_ENABLED = process.env.M3E_CLOUD_SYNC === "1";
 const CLOUD_SYNC_DIR = process.env.M3E_CLOUD_DIR
   ? path.resolve(process.env.M3E_CLOUD_DIR)
   : path.join(DATA_DIR, "cloud-sync");
+const AI_MODELS_PATH = path.join(DATA_DIR, "ai-models.json");
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -379,6 +382,134 @@ async function handleSyncApi(
   return true;
 }
 
+// ── AI helpers ──────────────────────────────────────────────────────────────
+
+function loadAiModels(): AiModelConfig[] {
+  if (!fs.existsSync(AI_MODELS_PATH)) return [];
+  try {
+    const raw = JSON.parse(fs.readFileSync(AI_MODELS_PATH, "utf8")) as AiModelsFile;
+    return Array.isArray(raw.models) ? raw.models : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAiModels(models: AiModelConfig[]): void {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  const payload: AiModelsFile = { models };
+  fs.writeFileSync(AI_MODELS_PATH, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function parseAiRoute(urlPath: string): { sub: string; id?: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const m = pathname.match(/^\/api\/ai\/(models|chat|bitwarden\/status)(?:\/([^/]+))?$/);
+  if (!m) return null;
+  return { sub: m[1], id: m[2] };
+}
+
+async function handleAiApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { sub: string; id?: string },
+): Promise<boolean> {
+  // GET /api/ai/bitwarden/status
+  if (route.sub === "bitwarden/status" && req.method === "GET") {
+    const status = getBitwardenStatus();
+    sendJson(res, 200, { ok: true, ...status });
+    return true;
+  }
+
+  // GET /api/ai/models
+  if (route.sub === "models" && req.method === "GET") {
+    sendJson(res, 200, { ok: true, models: loadAiModels() });
+    return true;
+  }
+
+  // POST /api/ai/models  — upsert a model config
+  if (route.sub === "models" && req.method === "POST") {
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Partial<AiModelConfig>;
+      if (!body.name || !body.provider || !body.modelId || !body.bitwardenItemId) {
+        sendJson(res, 400, { ok: false, error: "name, provider, modelId, and bitwardenItemId are required" });
+        return true;
+      }
+      const models = loadAiModels();
+      const existing = models.findIndex((m) => m.id === body.id);
+      const entry: AiModelConfig = {
+        id: body.id ?? `ai-${Date.now()}`,
+        name: body.name,
+        provider: body.provider,
+        modelId: body.modelId,
+        baseUrl: body.baseUrl,
+        bitwardenItemId: body.bitwardenItemId,
+        enabled: body.enabled ?? true,
+      };
+      if (existing >= 0) {
+        models[existing] = entry;
+      } else {
+        models.push(entry);
+      }
+      saveAiModels(models);
+      sendJson(res, 200, { ok: true, model: entry });
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: (err as Error).message });
+    }
+    return true;
+  }
+
+  // DELETE /api/ai/models/:id
+  if (route.sub === "models" && req.method === "DELETE" && route.id) {
+    const models = loadAiModels().filter((m) => m.id !== route.id);
+    saveAiModels(models);
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  // POST /api/ai/chat
+  if (route.sub === "chat" && req.method === "POST") {
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as AiChatRequest;
+      if (!body.modelConfigId || !Array.isArray(body.messages)) {
+        sendJson(res, 400, { ok: false, error: "modelConfigId and messages are required" });
+        return true;
+      }
+      const models = loadAiModels();
+      const config = models.find((m) => m.id === body.modelConfigId && m.enabled);
+      if (!config) {
+        sendJson(res, 404, { ok: false, error: "Model config not found or disabled" });
+        return true;
+      }
+
+      // Inject node context as a system prefix when provided
+      const messages = [...body.messages];
+      if (body.nodeContext && messages.length > 0 && messages[messages.length - 1].role === "user") {
+        const last = messages[messages.length - 1];
+        messages[messages.length - 1] = {
+          role: "user",
+          content: `[Context: ${body.nodeContext}]\n\n${last.content}`,
+        };
+      }
+
+      let apiKey: string;
+      try {
+        apiKey = getBitwardenApiKey(config.bitwardenItemId);
+      } catch (err) {
+        sendJson(res, 500, { ok: false, error: `Bitwarden error: ${(err as Error).message}` });
+        return true;
+      }
+
+      const result = await callAiModel(config, messages, apiKey, body.maxTokens ?? 1024);
+      sendJson(res, result.ok ? 200 : 502, result);
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: (err as Error).message });
+    }
+    return true;
+  }
+
+  sendJson(res, 405, { ok: false, error: "Method not allowed" });
+  return true;
+}
+
 function startServer(): void {
   const server = createAppServer();
 
@@ -392,6 +523,12 @@ function startServer(): void {
 
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const aiRoute = parseAiRoute(req.url ?? "/");
+    if (aiRoute) {
+      await handleAiApi(req, res, aiRoute);
+      return;
+    }
+
     const syncRoute = parseSyncRoute(req.url ?? "/");
     if (syncRoute) {
       await handleSyncApi(req, res, syncRoute);

@@ -31,6 +31,25 @@ const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
 const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
 const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
+const aiToggleBtn = document.getElementById("ai-toggle") as HTMLButtonElement;
+const aiPanelEl = document.getElementById("ai-panel") as HTMLElement;
+const aiModelSelect = document.getElementById("ai-model-select") as HTMLSelectElement;
+const aiSettingsBtn = document.getElementById("ai-settings-btn") as HTMLButtonElement;
+const aiSettingsPanelEl = document.getElementById("ai-settings-panel") as HTMLElement;
+const aiCfgIdEl = document.getElementById("ai-cfg-id") as HTMLInputElement;
+const aiCfgNameEl = document.getElementById("ai-cfg-name") as HTMLInputElement;
+const aiCfgProviderEl = document.getElementById("ai-cfg-provider") as HTMLSelectElement;
+const aiCfgModelIdEl = document.getElementById("ai-cfg-model-id") as HTMLInputElement;
+const aiCfgBaseUrlEl = document.getElementById("ai-cfg-base-url") as HTMLInputElement;
+const aiCfgBwItemEl = document.getElementById("ai-cfg-bw-item") as HTMLInputElement;
+const aiCfgSaveBtn = document.getElementById("ai-cfg-save") as HTMLButtonElement;
+const aiCfgCancelBtn = document.getElementById("ai-cfg-cancel") as HTMLButtonElement;
+const aiBwStatusEl = document.getElementById("ai-bw-status") as HTMLElement;
+const aiModelListEl = document.getElementById("ai-model-list") as HTMLElement;
+const aiMessagesEl = document.getElementById("ai-messages") as HTMLElement;
+const aiInputEl = document.getElementById("ai-input") as HTMLTextAreaElement;
+const aiSendBtn = document.getElementById("ai-send-btn") as HTMLButtonElement;
+const workspaceEl = document.querySelector(".workspace") as HTMLElement;
 const LOCAL_DOC_ID = "rapid-main";
 const CLOUD_DOC_ID = "rapid-main";
 const AUTOSAVE_DELAY_MS = 700;
@@ -78,6 +97,24 @@ let cloudConflictPending = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
+
+// ── AI panel state ────────────────────────────────────────────────────────
+interface AiModelConfig {
+  id: string;
+  name: string;
+  provider: "anthropic" | "openai" | "custom";
+  modelId: string;
+  baseUrl?: string;
+  bitwardenItemId: string;
+  enabled: boolean;
+}
+interface AiMessage { role: "user" | "assistant"; content: string; }
+let aiOpen = false;
+let aiModelConfigs: AiModelConfig[] = [];
+let aiSelectedModelId = "";
+let aiChatHistory: AiMessage[] = [];
+let aiSending = false;
+let aiSettingsOpen = false;
 const DRAG_REORDER_PARENT_LANE_PAD = 96;
 let viewState: ViewState = {
   selectedNodeId: "",
@@ -2588,6 +2625,247 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     selectChild();
   }
 });
+
+// ── AI panel ──────────────────────────────────────────────────────────────
+
+function aiEscapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+async function aiLoadModels(): Promise<void> {
+  try {
+    const resp = await fetch("/api/ai/models");
+    const data = (await resp.json()) as { ok: boolean; models?: AiModelConfig[] };
+    aiModelConfigs = data.models ?? [];
+  } catch {
+    aiModelConfigs = [];
+  }
+  aiRenderModelSelect();
+  aiRenderModelList();
+}
+
+function aiRenderModelSelect(): void {
+  const current = aiSelectedModelId;
+  aiModelSelect.innerHTML = '<option value="">Select model...</option>';
+  for (const m of aiModelConfigs.filter((x) => x.enabled)) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.name;
+    aiModelSelect.appendChild(opt);
+  }
+  if (current && aiModelConfigs.some((m) => m.id === current)) {
+    aiModelSelect.value = current;
+  } else {
+    aiSelectedModelId = aiModelConfigs.find((m) => m.enabled)?.id ?? "";
+    aiModelSelect.value = aiSelectedModelId;
+  }
+}
+
+function aiRenderModelList(): void {
+  aiModelListEl.innerHTML = "";
+  for (const m of aiModelConfigs) {
+    const li = document.createElement("li");
+    const span = document.createElement("span");
+    span.className = "ai-model-item-name";
+    span.title = `${m.provider} / ${m.modelId}`;
+    span.textContent = m.name;
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", () => aiOpenEditModel(m));
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "Del";
+    delBtn.className = "danger";
+    delBtn.addEventListener("click", () => void aiDeleteModel(m.id));
+    li.appendChild(span);
+    li.appendChild(editBtn);
+    li.appendChild(delBtn);
+    aiModelListEl.appendChild(li);
+  }
+}
+
+function aiOpenEditModel(m: AiModelConfig): void {
+  aiCfgIdEl.value = m.id;
+  aiCfgNameEl.value = m.name;
+  aiCfgProviderEl.value = m.provider;
+  aiCfgModelIdEl.value = m.modelId;
+  aiCfgBaseUrlEl.value = m.baseUrl ?? "";
+  aiCfgBwItemEl.value = m.bitwardenItemId;
+  if (aiSettingsPanelEl.hidden) {
+    aiSettingsPanelEl.hidden = false;
+    aiSettingsOpen = true;
+  }
+}
+
+async function aiDeleteModel(id: string): Promise<void> {
+  await fetch(`/api/ai/models/${id}`, { method: "DELETE" });
+  if (aiSelectedModelId === id) aiSelectedModelId = "";
+  await aiLoadModels();
+}
+
+async function aiSaveModel(): Promise<void> {
+  const payload: Partial<AiModelConfig> & { id?: string } = {
+    id: aiCfgIdEl.value || undefined,
+    name: aiCfgNameEl.value.trim(),
+    provider: aiCfgProviderEl.value as AiModelConfig["provider"],
+    modelId: aiCfgModelIdEl.value.trim(),
+    baseUrl: aiCfgBaseUrlEl.value.trim() || undefined,
+    bitwardenItemId: aiCfgBwItemEl.value.trim(),
+    enabled: true,
+  };
+  if (!payload.name || !payload.modelId || !payload.bitwardenItemId) {
+    aiBwStatusEl.textContent = "Name, model ID and Bitwarden item ID are required.";
+    aiBwStatusEl.className = "ai-bw-status error";
+    return;
+  }
+  try {
+    const resp = await fetch("/api/ai/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = (await resp.json()) as { ok: boolean; error?: string };
+    if (!data.ok) {
+      aiBwStatusEl.textContent = data.error ?? "Save failed";
+      aiBwStatusEl.className = "ai-bw-status error";
+      return;
+    }
+    aiCfgIdEl.value = "";
+    aiCfgNameEl.value = "";
+    aiCfgModelIdEl.value = "";
+    aiCfgBaseUrlEl.value = "";
+    aiCfgBwItemEl.value = "";
+    aiBwStatusEl.textContent = "Saved.";
+    aiBwStatusEl.className = "ai-bw-status ok";
+    await aiLoadModels();
+  } catch (err) {
+    aiBwStatusEl.textContent = String(err);
+    aiBwStatusEl.className = "ai-bw-status error";
+  }
+}
+
+async function aiCheckBwStatus(): Promise<void> {
+  try {
+    const resp = await fetch("/api/ai/bitwarden/status");
+    const data = (await resp.json()) as { ok: boolean; available: boolean; locked: boolean; error?: string };
+    if (!data.available) {
+      aiBwStatusEl.textContent = "Bitwarden CLI not found. Install bw and add to PATH.";
+      aiBwStatusEl.className = "ai-bw-status error";
+    } else if (data.locked) {
+      aiBwStatusEl.textContent = "Bitwarden vault is locked. Run: bw unlock";
+      aiBwStatusEl.className = "ai-bw-status error";
+    } else {
+      aiBwStatusEl.textContent = "Bitwarden: unlocked";
+      aiBwStatusEl.className = "ai-bw-status ok";
+    }
+  } catch {
+    aiBwStatusEl.textContent = "";
+  }
+}
+
+function aiAppendMessage(role: "user" | "assistant" | "error" | "thinking", text: string): HTMLElement {
+  const div = document.createElement("div");
+  div.className = `ai-msg ${role}`;
+  div.textContent = text;
+  aiMessagesEl.appendChild(div);
+  aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
+  return div;
+}
+
+async function aiSend(): Promise<void> {
+  if (aiSending) return;
+  const text = aiInputEl.value.trim();
+  if (!text) return;
+  if (!aiSelectedModelId) {
+    aiAppendMessage("error", "Select a model first.");
+    return;
+  }
+  aiInputEl.value = "";
+  aiChatHistory.push({ role: "user", content: text });
+  aiAppendMessage("user", text);
+
+  const thinking = aiAppendMessage("thinking", "Thinking…");
+  aiSending = true;
+  aiSendBtn.disabled = true;
+
+  const selectedNode = doc?.state.nodes[viewState.selectedNodeId];
+  const nodeContext = selectedNode ? selectedNode.text : undefined;
+
+  try {
+    const resp = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        modelConfigId: aiSelectedModelId,
+        messages: aiChatHistory.slice(-20),
+        nodeContext,
+        maxTokens: 2048,
+      }),
+    });
+    const data = (await resp.json()) as { ok: boolean; content?: string; error?: string };
+    thinking.remove();
+    if (data.ok && data.content) {
+      aiChatHistory.push({ role: "assistant", content: data.content });
+      aiAppendMessage("assistant", data.content);
+    } else {
+      aiAppendMessage("error", data.error ?? "Request failed");
+      aiChatHistory.pop();
+    }
+  } catch (err) {
+    thinking.remove();
+    aiAppendMessage("error", String(err));
+    aiChatHistory.pop();
+  } finally {
+    aiSending = false;
+    aiSendBtn.disabled = false;
+  }
+}
+
+function aiTogglePanel(): void {
+  aiOpen = !aiOpen;
+  aiPanelEl.hidden = !aiOpen;
+  workspaceEl.classList.toggle("ai-open", aiOpen);
+  if (aiOpen) {
+    void aiLoadModels();
+    void aiCheckBwStatus();
+  }
+}
+
+// AI event listeners
+aiToggleBtn.addEventListener("click", aiTogglePanel);
+
+aiModelSelect.addEventListener("change", () => {
+  aiSelectedModelId = aiModelSelect.value;
+});
+
+aiSettingsBtn.addEventListener("click", () => {
+  aiSettingsOpen = !aiSettingsOpen;
+  aiSettingsPanelEl.hidden = !aiSettingsOpen;
+  if (aiSettingsOpen) void aiCheckBwStatus();
+});
+
+aiCfgSaveBtn.addEventListener("click", () => void aiSaveModel());
+
+aiCfgCancelBtn.addEventListener("click", () => {
+  aiSettingsPanelEl.hidden = true;
+  aiSettingsOpen = false;
+  aiCfgIdEl.value = "";
+  aiCfgNameEl.value = "";
+  aiCfgModelIdEl.value = "";
+  aiCfgBaseUrlEl.value = "";
+  aiCfgBwItemEl.value = "";
+  aiBwStatusEl.textContent = "";
+});
+
+aiSendBtn.addEventListener("click", () => void aiSend());
+
+aiInputEl.addEventListener("keydown", (e: KeyboardEvent) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    void aiSend();
+  }
+});
+
+// ── End AI panel ──────────────────────────────────────────────────────────
 
 setVisualCheckStatus("Visual check idle");
 

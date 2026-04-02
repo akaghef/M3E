@@ -42,6 +42,8 @@
         <button id="focus-selected">Focus</button>
         <span class="toolbar-sep">|</span>
         <button id="download-btn">Download JSON</button>
+        <span class="toolbar-sep">|</span>
+        <button id="ai-toggle">AI</button>
       </div>
       <div id="meta" class="meta">No data loaded</div>
       <div class="shortcuts">
@@ -61,6 +63,41 @@
         <div id="board" class="board" tabindex="0">
           <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
         </div>
+        <aside class="ai-panel" id="ai-panel" aria-label="AI assistant panel" hidden>
+          <div class="ai-panel-header">
+            <span class="ai-title">AI Assistant</span>
+            <button id="ai-settings-btn" class="ai-settings-icon" title="Manage models">&#9881;</button>
+          </div>
+          <div class="ai-model-row">
+            <select id="ai-model-select">
+              <option value="">Select model...</option>
+            </select>
+          </div>
+          <div id="ai-settings-panel" class="ai-settings-subpanel" hidden>
+            <div class="ai-settings-title">Add / Edit Model</div>
+            <input id="ai-cfg-id" type="hidden" />
+            <input id="ai-cfg-name" type="text" placeholder="Name (e.g. Claude Sonnet)" />
+            <select id="ai-cfg-provider">
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+              <option value="custom">Custom (OpenAI-compatible)</option>
+            </select>
+            <input id="ai-cfg-model-id" type="text" placeholder="Model ID (e.g. claude-sonnet-4-6)" />
+            <input id="ai-cfg-base-url" type="text" placeholder="Base URL (custom only)" />
+            <input id="ai-cfg-bw-item" type="text" placeholder="Bitwarden Item ID" />
+            <div class="ai-settings-actions">
+              <button id="ai-cfg-save" class="primary">Save</button>
+              <button id="ai-cfg-cancel">Cancel</button>
+            </div>
+            <div id="ai-bw-status" class="ai-bw-status"></div>
+            <ul id="ai-model-list" class="ai-model-list"></ul>
+          </div>
+          <div id="ai-messages" class="ai-messages"></div>
+          <div class="ai-input-row">
+            <textarea id="ai-input" class="ai-input" placeholder="Ask the AI..." rows="3" spellcheck="false"></textarea>
+            <button id="ai-send-btn" class="primary">Send</button>
+          </div>
+        </aside>
         <aside class="linear-panel" aria-label="Linear tree editor panel">
           <div class="linear-panel-header">
             <div class="linear-title">Linear (Scope)</div>
