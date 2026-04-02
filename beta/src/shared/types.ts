@@ -43,3 +43,35 @@ export interface SavedDoc {
   savedAt: string;
   state: AppState;
 }
+
+export type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
+export type LinearTransformTransport = "openai-compatible" | "mcp";
+
+export interface LinearTransformStatus {
+  ok: true;
+  enabled: boolean;
+  configured: boolean;
+  provider: string | null;
+  transport: LinearTransformTransport;
+  model: string | null;
+  endpoint: string | null;
+  promptConfigured: boolean;
+  message: string;
+}
+
+export interface LinearTransformRequest {
+  direction: LinearTransformDirection;
+  sourceText: string;
+  scopeRootId?: string | null;
+  scopeLabel?: string | null;
+  instruction?: string | null;
+}
+
+export interface LinearTransformResponse {
+  ok: true;
+  direction: LinearTransformDirection;
+  provider: string;
+  model: string;
+  outputText: string;
+  rawText: string;
+}

@@ -48,6 +48,38 @@ interface SavedDoc {
   state: AppState;
 }
 
+type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
+type LinearTransformTransport = "openai-compatible" | "mcp";
+
+interface LinearTransformStatus {
+  ok: true;
+  enabled: boolean;
+  configured: boolean;
+  provider: string | null;
+  transport: LinearTransformTransport;
+  model: string | null;
+  endpoint: string | null;
+  promptConfigured: boolean;
+  message: string;
+}
+
+interface LinearTransformRequest {
+  direction: LinearTransformDirection;
+  sourceText: string;
+  scopeRootId?: string | null;
+  scopeLabel?: string | null;
+  instruction?: string | null;
+}
+
+interface LinearTransformResponse {
+  ok: true;
+  direction: LinearTransformDirection;
+  provider: string;
+  model: string;
+  outputText: string;
+  rawText: string;
+}
+
 interface NodePosition {
   x: number;
   y: number;

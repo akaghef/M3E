@@ -51,6 +51,59 @@ Sync API endpoints:
 - `POST /api/sync/pull/:docId`
 - `POST /api/sync/push/:docId`
 
+### Optional AI infrastructure and linear transform subagent
+
+Beta now treats external model access as shared AI infrastructure.
+Linear <-> Tree conversion is one feature on top of that provider layer.
+This build provides the integration layer only: shared provider config,
+prompt file loading, status probing, and a proxy API for conversion requests.
+
+Environment variables:
+
+```bash
+M3E_AI_ENABLED=1
+M3E_AI_PROVIDER=deepseek
+M3E_AI_TRANSPORT=openai-compatible
+M3E_AI_BASE_URL=https://api.deepseek.com
+M3E_AI_API_KEY=YOUR_API_KEY
+M3E_AI_MODEL=deepseek-chat
+M3E_LINEAR_TRANSFORM_SYSTEM_PROMPT_FILE=./prompts/linear-agent/system.txt
+M3E_LINEAR_TRANSFORM_TREE_TO_LINEAR_PROMPT_FILE=./prompts/linear-agent/tree-to-linear.txt
+M3E_LINEAR_TRANSFORM_LINEAR_TO_TREE_PROMPT_FILE=./prompts/linear-agent/linear-to-tree.txt
+```
+
+Notes:
+
+- `openai-compatible` transport is implemented and intended for DeepSeek-style APIs.
+- `mcp` is reserved in the config surface, but not implemented yet.
+- Provider connection settings live under `M3E_AI_*` so other AI-backed features can reuse the same base config.
+- Prompt files under `beta/prompts/linear-agent/` are placeholders and should be refined later.
+- Legacy `M3E_LINEAR_AGENT_*` env names are still accepted as a temporary fallback.
+
+Bitwarden-based launch:
+
+```powershell
+bw unlock
+$env:BW_SESSION = "<session>"
+pwsh -File scripts/beta/launch-with-ai.ps1 -BitwardenItem "m3e-deepseek"
+```
+
+Expected Bitwarden item shape:
+
+- `password`: API key
+- optional custom fields:
+  - `provider`
+  - `transport`
+  - `base_url`
+  - `model`
+
+The launcher maps those values into shared `M3E_AI_*` env vars before starting Beta.
+
+Linear transform API endpoints:
+
+- `GET /api/linear-transform/status`
+- `POST /api/linear-transform/convert`
+
 Legacy (no build required):
 ```bash
 node beta/legacy/start_viewer.js

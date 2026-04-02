@@ -86,6 +86,7 @@ let cloudSyncEnabled = false;
 let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
 let cloudConflictPending = false;
+let linearTransformStatus: LinearTransformStatus | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -954,6 +955,86 @@ function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
     text: lines.join("\n"),
     map,
   };
+}
+
+function buildTreeScopeTransformSource(): string {
+  if (!doc) {
+    return "";
+  }
+
+  const scopeRootId = normalizedCurrentScopeId();
+  const chunks: string[] = [];
+
+  function walk(nodeId: string, depth: number): void {
+    const node = doc!.state.nodes[nodeId];
+    if (!node) {
+      return;
+    }
+
+    const indent = "  ".repeat(depth);
+    chunks.push(`${indent}- id: ${node.id}`);
+    chunks.push(`${indent}  text: ${JSON.stringify(node.text || "")}`);
+    chunks.push(`${indent}  type: ${node.nodeType || "text"}`);
+    if (node.details) {
+      chunks.push(`${indent}  details: ${JSON.stringify(node.details)}`);
+    }
+    if (node.note) {
+      chunks.push(`${indent}  note: ${JSON.stringify(node.note)}`);
+    }
+    if (node.scopeId) {
+      chunks.push(`${indent}  scopeId: ${JSON.stringify(node.scopeId)}`);
+    }
+    const attributes = Object.entries(node.attributes || {});
+    if (attributes.length > 0) {
+      chunks.push(`${indent}  attributes:`);
+      attributes.forEach(([key, value]) => {
+        chunks.push(`${indent}    ${JSON.stringify(key)}: ${JSON.stringify(value)}`);
+      });
+    }
+    scopeChildren(nodeId).forEach((childId) => walk(childId, depth + 1));
+  }
+
+  walk(scopeRootId, 0);
+  return chunks.join("\n");
+}
+
+async function fetchLinearTransformStatus(): Promise<LinearTransformStatus | null> {
+  try {
+    const response = await fetch("/api/linear-transform/status", { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+    linearTransformStatus = await response.json() as LinearTransformStatus;
+    return linearTransformStatus;
+  } catch {
+    return null;
+  }
+}
+
+async function requestLinearSubagentTransform(
+  direction: LinearTransformDirection,
+  instruction?: string,
+): Promise<LinearTransformResponse> {
+  const scopeRootId = normalizedCurrentScopeId();
+  const scopeLabel = doc?.state.nodes[scopeRootId]?.text || scopeRootId;
+  const payload: LinearTransformRequest = {
+    direction,
+    sourceText: direction === "tree-to-linear" ? buildTreeScopeTransformSource() : linearTextEl.value,
+    scopeRootId,
+    scopeLabel,
+    instruction: instruction || null,
+  };
+
+  const response = await fetch("/api/linear-transform/convert", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || "Linear transform request failed.");
+  }
+  return result as LinearTransformResponse;
 }
 
 function linearOffsetToLineIndex(text: string, offset: number): number {
@@ -2156,6 +2237,7 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
+  await fetchLinearTransformStatus();
   await fetchCloudSyncStatus();
 
   if (cloudSyncEnabled && cloudSyncExists) {

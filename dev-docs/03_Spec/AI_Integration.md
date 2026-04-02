@@ -15,6 +15,16 @@ Core Principles §5 に従う。
 
 ---
 
+## 文書の役割
+
+- 本文書: AI 機能の導入段階、feature 要件、承認フロー
+- `../04_Architecture/AI_Infrastructure.md`: provider 接続、secret 注入、transport、責務分離
+
+AI インフラの共通設計は上記 architecture 文書を正本とし、
+本書では feature 側の仕様と段階導入に集中する。
+
+---
+
 ## 連携フェーズ
 
 ### Phase 0（現行）— 手動コンテクスト出力
@@ -206,13 +216,13 @@ DeepSeek はその 1 provider として実装し、map 内補助は subagent 呼
   - `subagent: string`
   - `provider: string`
 
-#### DeepSeek provider 設定（案）
+#### DeepSeek provider 設定（現行方針）
 
 - 環境変数
   - `M3E_AI_PROVIDER=deepseek`
-  - `M3E_DEEPSEEK_API_KEY`
-  - `M3E_DEEPSEEK_BASE_URL`（省略時は公式 URL）
-  - `M3E_DEEPSEEK_MODEL`
+  - `M3E_AI_API_KEY`
+  - `M3E_AI_BASE_URL`（省略時は公式 URL）
+  - `M3E_AI_MODEL`
 - キー未設定時は fail-closed（subagent 機能を無効化して UI で通知）
 
 #### 安全設計（Command Panel 方針との整合）

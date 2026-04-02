@@ -6,7 +6,8 @@ import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
 import { detectCloudConflict } from "./cloud_sync";
-import type { AppState, SavedDoc } from "../shared/types";
+import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
+import type { AppState, LinearTransformRequest, SavedDoc } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
@@ -123,6 +124,11 @@ function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; 
     action: match[1] as "status" | "push" | "pull",
     docId: decodeURIComponent(match[2] || ""),
   };
+}
+
+function isLinearTransformRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/linear-transform/status" || pathname === "/api/linear-transform/convert";
 }
 
 function cloudDocPath(docId: string): string {
@@ -379,6 +385,79 @@ async function handleSyncApi(
   return true;
 }
 
+async function handleLinearTransformApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+
+  if (pathname === "/api/linear-transform/status") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "LINEAR_TRANSFORM_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+
+    sendJson(res, 200, getLinearTransformStatus());
+    return true;
+  }
+
+  if (pathname === "/api/linear-transform/convert") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "LINEAR_TRANSFORM_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+
+    try {
+      const rawBody = await readRequestBody(req);
+      const parsed = JSON.parse(rawBody) as LinearTransformRequest;
+      if (!parsed || (parsed.direction !== "tree-to-linear" && parsed.direction !== "linear-to-tree")) {
+        sendJson(res, 400, {
+          ok: false,
+          code: "LINEAR_TRANSFORM_INVALID_DIRECTION",
+          error: "Direction must be tree-to-linear or linear-to-tree.",
+        });
+        return true;
+      }
+      if (typeof parsed.sourceText !== "string" || parsed.sourceText.trim().length === 0) {
+        sendJson(res, 400, {
+          ok: false,
+          code: "LINEAR_TRANSFORM_SOURCE_REQUIRED",
+          error: "sourceText is required.",
+        });
+        return true;
+      }
+
+      const result = await runLinearTransform(parsed);
+      sendJson(res, 200, result);
+      return true;
+    } catch (err) {
+      const status = (err as Error).message.includes("not implemented") || (err as Error).message.includes("disabled")
+        || (err as Error).message.includes("not fully configured")
+        ? 503
+        : err instanceof SyntaxError
+          ? 400
+          : 502;
+      sendJson(res, status, {
+        ok: false,
+        code: err instanceof SyntaxError
+          ? "LINEAR_TRANSFORM_INVALID_JSON_BODY"
+          : "LINEAR_TRANSFORM_FAILED",
+        error: err instanceof SyntaxError
+          ? "Invalid JSON body."
+          : ((err as Error).message || "Linear transform failed."),
+      });
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function startServer(): void {
   const server = createAppServer();
 
@@ -392,6 +471,11 @@ function startServer(): void {
 
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    if (isLinearTransformRoute(req.url ?? "/")) {
+      await handleLinearTransformApi(req, res);
+      return;
+    }
+
     const syncRoute = parseSyncRoute(req.url ?? "/");
     if (syncRoute) {
       await handleSyncApi(req, res, syncRoute);
