@@ -884,7 +884,15 @@ function visibleChildren(node: TreeNode): string[] {
   if (!node || isAliasNode(node) || viewState.collapsedIds.has(node.id)) {
     return [];
   }
+  // Folder nodes work as scope boundaries: hide deeper details unless that folder is the active scope root.
+  if (isFolderNode(node) && node.id !== currentScopeRootId()) {
+    return [];
+  }
   return (node.children || []).filter((childId) => isNodeInScope(childId));
+}
+
+function currentLinearMemoScopeId(): string {
+  return normalizedCurrentScopeId();
 }
 
 function normalizedCurrentScopeId(): string {
@@ -1083,7 +1091,7 @@ function renderLinearPanel(): void {
     return;
   }
 
-  const scopeRootId = normalizedCurrentScopeId();
+  const scopeRootId = currentLinearMemoScopeId();
   if (!linearNotesByScope[scopeRootId]) {
     linearNotesByScope[scopeRootId] = buildLinearFromScope().text;
   }
@@ -1476,6 +1484,13 @@ function render(): void {
       if (isAliasNode(node)) {
         labelClasses.push("alias-label");
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
+      }
+      if (isFolderNode(node)) {
+        const folderFrameX = p.x - 14;
+        const folderFrameY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + 6;
+        const folderFrameW = p.w + 28;
+        const folderFrameH = VIEWER_TUNING.layout.nodeHitHeight - 12;
+        nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
       }
       nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
       const badge = nodeBadge(node);
@@ -2639,7 +2654,7 @@ linearTextEl?.addEventListener("input", () => {
   if (!doc) {
     return;
   }
-  linearNotesByScope[normalizedCurrentScopeId()] = linearTextEl.value;
+  linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
 });
 
 linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -2648,13 +2663,13 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   }
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
-    linearNotesByScope[normalizedCurrentScopeId()] = linearTextEl.value;
+    linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
     setStatus("Linear memo saved in current scope.");
     return;
   }
   if (event.key === "Escape") {
     event.preventDefault();
-    linearNotesByScope[normalizedCurrentScopeId()] = buildLinearFromScope().text;
+    linearNotesByScope[currentLinearMemoScopeId()] = buildLinearFromScope().text;
     renderLinearPanel();
     setStatus("Linear memo reset to outline template.");
   }

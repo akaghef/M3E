@@ -296,6 +296,12 @@
         stroke-width: 4;
       }
 
+      .folder-box {
+        fill: #ffffff;
+        stroke: #9a6b1f;
+        stroke-width: 3;
+      }
+
       .node-hit {
         fill: transparent;
         cursor: pointer;
