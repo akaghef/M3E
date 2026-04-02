@@ -9,7 +9,7 @@ import { RapidMvpModel } from "./rapid_mvp";
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
-const PORT = 4173;
+const PORT = 38482;
 const DEFAULT_PAGE = "viewer.html";
 const SQLITE_DB_PATH = path.join(ROOT, "data", "rapid-mvp.sqlite");
 
