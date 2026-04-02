@@ -97,6 +97,24 @@ If checks fail or safe rebase is not possible, stop and escalate to `akaghef`.
    - operations on `main` or release branches
    - secret/credential related operations
 
+## Mandatory Integration Protocol (Subordinate -> PR -> Manager -> Resume)
+
+1. Subordinate agents (`codex1`, `codex2`) implement and push only to assigned branches (`dev-beta-visual`, `dev-beta-data`).
+2. Subordinates create a PR with base `dev-beta` from their assigned branch.
+3. Manager (`claude`) reviews and merges the PR into `dev-beta`.
+4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` and rebase their branch on top of `origin/dev-beta`.
+5. Subordinates must not resume implementation on stale history.
+
+Recommended command sequence for subordinates:
+
+```bash
+git fetch origin
+git checkout dev-beta-visual   # or dev-beta-data
+git rebase origin/dev-beta
+```
+
+If rebase conflicts cannot be resolved safely, stop and escalate to `akaghef`.
+
 ## Development Phase Constraints
 
 ### Alpha (mvp/) — Frozen
