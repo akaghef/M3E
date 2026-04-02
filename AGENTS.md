@@ -49,15 +49,30 @@ If any item is missing, task state is still in-progress.
 
 ## Session Start Gate (One-Time Enforcement)
 
-At the beginning of each session, enforce the role/branch check once, then proceed with normal work.
-Do not repeatedly re-validate the full rule set on every step.
+At session start, run one bootstrap command, then proceed with normal work.
+Do not repeatedly re-run full checks every step.
 
-1. Confirm role and branch (`git branch --show-current`).
-2. Confirm assigned worktree/directory.
-3. Confirm writable document ownership for this cycle.
-4. If any check fails, stop and escalate to `akaghef`.
+For agents that support slash prompts:
 
-Light checks may continue during work (branch + target file), but full gate is start-of-session only.
+- `/setrole codex1`
+- `/setrole codex2`
+- `/setrole claude`
+
+For normal Codex (non-Copilot):
+
+```powershell
+pwsh -File scripts/ops/setrole.ps1 codex1
+# or codex2 / claude
+```
+
+Required checks performed by bootstrap:
+
+1. Role confirmation.
+2. Worktree/directory alignment.
+3. Branch alignment.
+4. For `codex1` / `codex2`: `fetch + rebase origin/dev-beta` before new implementation work.
+
+If checks fail or safe rebase is not possible, stop and escalate to `akaghef`.
 
 ## Agent Workflow
 
@@ -82,12 +97,13 @@ Light checks may continue during work (branch + target file), but full gate is s
    - operations on `main` or release branches
    - secret/credential related operations
 
-## Mandatory Integration Protocol (Subordinate -> Manager -> Resume)
+## Mandatory Integration Protocol (Subordinate -> PR -> Manager -> Resume)
 
-1. Subordinate agents (`codex1`, `codex2`) implement and push only to their assigned branches (`dev-beta-visual`, `dev-beta-data`).
-2. Manager agent (`claude`) integrates subordinate results into `dev-beta` by merge.
-3. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` and rebase their branch on top of it.
-4. Subordinates must not resume implementation on stale history.
+1. Subordinate agents (`codex1`, `codex2`) implement and push only to assigned branches (`dev-beta-visual`, `dev-beta-data`).
+2. Subordinates create a PR with base `dev-beta` from their assigned branch.
+3. Manager (`claude`) reviews and merges the PR into `dev-beta`.
+4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` and rebase their branch on top of `origin/dev-beta`.
+5. Subordinates must not resume implementation on stale history.
 
 Recommended command sequence for subordinates:
 

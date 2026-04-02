@@ -56,6 +56,18 @@ Final を更新して起動する:
   scripts/final/update-and-launch.bat
 ```
 
+## エージェント開始コマンド
+
+通常 codex（non-Copilot）で role/bootstrap を揃える場合は次を実行する。
+
+```powershell
+pwsh -File scripts/ops/setrole.ps1 codex1
+# codex2 / claude も同様
+```
+
+このコマンドは role -> worktree -> branch の整合を確認し、
+`codex1` / `codex2` の場合は `origin/dev-beta` への rebase チェックを実行する。
+
 ## デスクトップから使う
 
 1. `scripts/beta/` を開く
