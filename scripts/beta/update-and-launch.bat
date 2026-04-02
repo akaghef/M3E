@@ -9,6 +9,9 @@ REM ============================================================
 
 cd /d "%~dp0\..\.."
 
+set "M3E_DATA_DIR=%CD%\beta\data"
+if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+
 echo [1/5] Git fetch...
 call git fetch --all
 if errorlevel 1 goto :error

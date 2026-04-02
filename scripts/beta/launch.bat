@@ -9,6 +9,9 @@ REM ============================================================
 
 cd /d "%~dp0\..\.."
 
+set "M3E_DATA_DIR=%CD%\beta\data"
+if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+
 call npm --prefix beta start
 
 if errorlevel 1 (
