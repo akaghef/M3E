@@ -21,25 +21,60 @@
 
       .app {
         height: 100vh;
-        display: flex;
-        flex-direction: column;
+        position: relative;
+        overflow: hidden;
         background-image:
           linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
           linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
         background-size: 46px 46px;
-        padding: 14px;
+      }
+
+      .overlay-ui {
+        position: absolute;
+        inset: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        pointer-events: none;
       }
 
       .toolbar {
+        position: relative;
+        z-index: 5;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 8px;
         border: 1px solid #ddd;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 16px 34px rgba(24, 24, 24, 0.12);
+        padding: 10px;
+        max-width: min(1320px, calc(100vw - 28px));
+        pointer-events: auto;
+      }
+
+      .mode-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px;
+        border: 1px solid #d4d4d4;
         border-radius: 10px;
-        background: #ffffffd9;
-        backdrop-filter: blur(4px);
-        padding: 8px;
+        background: #ffffff;
+      }
+
+      .mode-btn {
+        min-width: 72px;
+      }
+
+      .mode-btn.is-active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: #5221b2;
+        font-weight: 700;
       }
 
       .toolbar-sep {
@@ -105,7 +140,6 @@
       .shortcuts,
       .status,
       .visual-check {
-        margin-top: 8px;
         font-size: 12px;
         color: #5d5d5d;
       }
@@ -113,6 +147,22 @@
       .status,
       .visual-check {
         min-height: 18px;
+      }
+
+      .overlay-meta {
+        position: relative;
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-width: min(520px, calc(100vw - 28px));
+        padding: 12px 14px;
+        border: 1px solid rgba(223, 223, 223, 0.95);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.82);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 12px 28px rgba(24, 24, 24, 0.1);
+        pointer-events: auto;
       }
 
       .visual-check {
@@ -125,77 +175,80 @@
       }
 
       .board {
+        position: absolute;
+        inset: 0;
+        pointer-events: auto;
         border: 1px solid #dfdfdf;
         border-radius: 14px;
         background: #ffffff55;
         overflow: hidden;
-        flex: 1;
-        min-height: 0;
-        position: relative;
         cursor: grab;
         user-select: none;
         touch-action: none;
       }
 
       .workspace {
-        margin-top: 14px;
-        flex: 1;
-        min-height: 0;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 380px;
-        gap: 12px;
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: auto;
       }
 
       .linear-panel {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        width: min(380px, 40vw);
+        transform-origin: top left;
+        z-index: 3;
         display: flex;
-        flex-direction: column;
-        border: 1px solid #dfdfdf;
-        border-radius: 14px;
-        background: #ffffffd9;
-        backdrop-filter: blur(4px);
-        padding: 10px;
+        align-items: stretch;
+        border: none;
+        background: transparent;
+        box-shadow: none;
+        padding: 0;
         min-height: 0;
-      }
-
-      .linear-panel-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .linear-title {
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-      }
-
-      .linear-actions {
-        display: flex;
-        gap: 6px;
-      }
-
-      .linear-meta {
-        margin-top: 8px;
-        min-height: 16px;
-        font-size: 12px;
-        color: #5d5d5d;
+        min-width: 220px;
+        overflow: visible;
       }
 
       .linear-text {
-        margin-top: 8px;
         width: 100%;
         flex: 1;
         min-height: 0;
         resize: none;
-        border: 1px solid #d4d4d4;
-        border-radius: 10px;
+        border: 4px solid var(--accent);
+        border-radius: 34px;
         background: #fff;
-        padding: 10px;
+        padding: 18px 20px;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 13px;
-        line-height: 1.5;
+        font-size: 14px;
+        line-height: 1.45;
         color: #222;
+        box-shadow: 0 8px 18px rgba(24, 24, 24, 0.1);
+        overflow: hidden;
+      }
+
+      .linear-resize-handle {
+        position: absolute;
+        top: 0;
+        right: -10px;
+        width: 20px;
+        height: 100%;
+        cursor: ew-resize;
+        touch-action: none;
+        background: transparent;
+      }
+
+      .linear-resize-handle::before {
+        content: "";
+        position: absolute;
+        top: 8%;
+        bottom: 8%;
+        left: 9px;
+        width: 2px;
+        border-radius: 2px;
+        background: rgba(122, 53, 255, 0.55);
       }
 
       .board.panning {
@@ -204,7 +257,31 @@
 
       svg {
         display: block;
+        width: 100%;
+        height: 100%;
         transform-origin: 0 0;
+        pointer-events: auto;
+      }
+
+      @media (max-width: 900px) {
+        .overlay-ui {
+          inset: 10px;
+        }
+
+        .toolbar,
+        .overlay-meta {
+          max-width: calc(100vw - 20px);
+        }
+
+        .overlay-meta {
+          gap: 4px;
+          padding: 10px 12px;
+        }
+
+        .linear-panel {
+          width: min(360px, 100%);
+          max-width: 100%;
+        }
       }
 
       .edge {
@@ -219,6 +296,12 @@
         stroke-width: 4;
       }
 
+      .folder-box {
+        fill: #ffffff;
+        stroke: #9a6b1f;
+        stroke-width: 3;
+      }
+
       .node-hit {
         fill: transparent;
         cursor: pointer;
@@ -228,6 +311,28 @@
   fill: var(--accent-soft);
   stroke: var(--accent);
   stroke-width: 2;
+}
+
+.node-hit.multi-selected {
+  fill: color-mix(in srgb, var(--accent-soft) 68%, #ffffff 32%);
+  stroke: #9d75ff;
+  stroke-width: 1.6;
+}
+
+.node-hit.primary-selected {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.node-hit.reparent-source {
+  stroke-dasharray: 8 5;
+}
+
+.node-hit.cut-pending {
+  fill: rgba(160, 160, 160, 0.18);
+  stroke: #8a8a8a;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
 }
 
 .node-hit.alias-read {
@@ -295,6 +400,11 @@
         font-weight: 600;
       }
 
+      .label-node.primary-selected {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+      }
+
       .label-node.alias-label {
         font-style: italic;
       }
@@ -331,10 +441,29 @@
         fill: var(--danger);
       }
 
-      .collapsed-indicator {
+      .alias-badge-scope {
+        fill: #9a6b1f;
+      }
+
+      .collapsed-badge {
+        fill: #ffffff;
+        stroke: var(--accent);
+        stroke-width: 2;
+        cursor: pointer;
+      }
+
+      .collapsed-badge-node {
+        fill: var(--accent-soft);
+        stroke: var(--accent);
+        stroke-width: 2;
+        cursor: pointer;
+      }
+
+      .collapsed-badge-count {
         fill: var(--accent);
-        font-size: 24px;
-        font-weight: bold;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
         pointer-events: none;
       }
 
@@ -348,15 +477,13 @@
         padding: 4px 8px;
         font-size: 22px;
         line-height: 1.2;
+        resize: none;
+        overflow: hidden;
+        white-space: pre-wrap;
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
       }
 
       @media (max-width: 900px) {
-        .workspace {
-          grid-template-columns: 1fr;
-          grid-template-rows: minmax(0, 1fr) 260px;
-        }
-
         .label-root,
         .label-node {
           font-size: 28px;

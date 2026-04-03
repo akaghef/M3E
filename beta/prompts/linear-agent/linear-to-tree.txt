@@ -1,0 +1,3 @@
+Convert the provided linear text into an M3E-compatible tree scope representation.
+Preserve ordering and hierarchy.
+Detailed reconciliation rules will be added later.

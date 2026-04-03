@@ -16,12 +16,12 @@ module.exports = defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:38482",
+    baseURL: "http://127.0.0.1:4173",
     viewport: { width: 1600, height: 1000 },
   },
   webServer: {
     command: "node ./test_server.js",
-    url: "http://127.0.0.1:38482/viewer.html",
+    url: "http://127.0.0.1:4173/viewer.html",
     reuseExistingServer: true,
     cwd: __dirname,
     timeout: 30_000,

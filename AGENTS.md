@@ -43,9 +43,36 @@ A task is update-complete only when all three are done:
 
 1. Changes are committed.
 2. Daily note is updated (`dev-docs/daily/YYMMDD.md`).
-3. Current status is updated (`dev-docs/00_Home/Current_Status.md`).
+3. Current status is updated by manager (`dev-docs/00_Home/Current_Status.md`) when status has changed.
 
 If any item is missing, task state is still in-progress.
+
+## Session Start Gate (One-Time Enforcement)
+
+At session start, run one bootstrap command, then proceed with normal work.
+Do not repeatedly re-run full checks every step.
+
+For agents that support slash prompts:
+
+- `/setrole codex1`
+- `/setrole codex2`
+- `/setrole claude`
+
+For normal Codex (non-Copilot):
+
+```powershell
+pwsh -File scripts/ops/setrole.ps1 codex1
+# or codex2 / claude
+```
+
+Required checks performed by bootstrap:
+
+1. Role confirmation.
+2. Worktree/directory alignment.
+3. Branch alignment.
+4. For `codex1` / `codex2`: `fetch + rebase origin/dev-beta` before new implementation work.
+
+If checks fail or safe rebase is not possible, stop and escalate to `akaghef`.
 
 ## Agent Workflow
 
@@ -53,7 +80,12 @@ If any item is missing, task state is still in-progress.
 2. Pick one smallest deliverable task.
 3. Implement with minimal changes.
 4. Run a local verification step.
-5. Update docs (daily + current status).
+5. Update docs using split ownership:
+   - UpdateLog goes to `dev-docs/daily/YYMMDD.md`.
+   - `Current_Status.md` keeps current snapshot only.
+   - Subordinates treat `Current_Status.md` as read-only.
+   - Manager updates `Current_Status.md` by referencing subordinate daily logs.
+   - Rough TODOs go to `dev-docs/06_Operations/Todo_Pool.md`.
 6. Commit with an imperative message.
 
 ## Branch Operation Policy
@@ -64,6 +96,24 @@ If any item is missing, task state is still in-progress.
    - destructive history rewrite (`reset --hard`, force-push, history rewrite)
    - operations on `main` or release branches
    - secret/credential related operations
+
+## Mandatory Integration Protocol (Subordinate -> PR -> Manager -> Resume)
+
+1. Subordinate agents (`codex1`, `codex2`) implement and push only to assigned branches (`dev-beta-visual`, `dev-beta-data`).
+2. Subordinates create a PR with base `dev-beta` from their assigned branch.
+3. Manager (`claude`) reviews and merges the PR into `dev-beta`.
+4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` and rebase their branch on top of `origin/dev-beta`.
+5. Subordinates must not resume implementation on stale history.
+
+Recommended command sequence for subordinates:
+
+```bash
+git fetch origin
+git checkout dev-beta-visual   # or dev-beta-data
+git rebase origin/dev-beta
+```
+
+If rebase conflicts cannot be resolved safely, stop and escalate to `akaghef`.
 
 ## Development Phase Constraints
 

@@ -1,13 +1,14 @@
 @echo off
 setlocal
 
-REM ============================================================
-REM M3E Beta: 更新して起動するスクリプト
-REM - コードの更新を取り込みたい時や、初回セットアップ時に使う
-REM - 失敗したらその場で停止して原因を見やすくする
-REM ============================================================
+REM M3E Beta update-and-launch script.
 
 cd /d "%~dp0\..\.."
+
+set "M3E_DATA_DIR=%CD%\beta\data"
+if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+
+call :kill_port_4173
 
 echo [1/5] Git fetch...
 call git fetch --all
@@ -30,11 +31,20 @@ call npm --prefix beta start
 if errorlevel 1 goto :error
 
 echo.
-echo 完了しました。
+echo Completed.
+exit /b 0
+
+:kill_port_4173
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr :4173 ^| findstr LISTENING') do (
+  if not "%%P"=="0" (
+    echo Stopping existing process on port 4173 ^(PID %%P^)...
+    taskkill /PID %%P /F >nul 2>&1
+  )
+)
 exit /b 0
 
 :error
 echo.
-echo [ERROR] 更新または起動に失敗しました。上のログを確認してください。
+echo [ERROR] Update or launch failed. Check logs above.
 pause
 exit /b 1

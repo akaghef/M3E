@@ -30,7 +30,7 @@ const VIEWER_TUNING = {
     min: 0.15,
     max: 2.5,
     buttonFactor: 1.32,
-    wheelIntensityCap: 0.72,
+    wheelIntensityCap: 1.00,
     wheelIntensityDivisor: 260,
   },
   pan: {

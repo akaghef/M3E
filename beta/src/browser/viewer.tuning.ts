@@ -61,17 +61,17 @@ const VIEWER_TUNING: ViewerTuning = {
   layout: {
     // Baseline block height reserved for the root node.
     rootHeight: 104,
-    // Horizontal distance between parent and child columns.
+    // Depth-axis distance between parent and child columns.
     columnGap: 170,
     // Baseline block height for leaf and regular nodes.
     leafHeight: 72,
-    // Vertical spacing between sibling nodes.
+    // Breadth-axis spacing between sibling nodes.
     siblingGap: 2,
     // Left margin before the rendered map begins.
     leftPad: 80,
     // Top margin before the rendered map begins.
     topPad: 10,
-    // Minimum vertical hit area for node interaction.
+    // Minimum hit area height for node interaction.
     nodeHitHeight: 64,
     // Smallest canvas width even for tiny documents.
     minCanvasWidth: 1400,
@@ -102,16 +102,16 @@ const VIEWER_TUNING: ViewerTuning = {
     // Multiplicative zoom step for toolbar/button controls.
     buttonFactor: 1.32,
     // Upper bound on wheel-derived zoom intensity per event.
-    wheelIntensityCap: 0.72,
+    wheelIntensityCap: 1.32,
     // Divisor that converts wheel delta into a usable zoom intensity.
-    wheelIntensityDivisor: 260,
+    wheelIntensityDivisor: 100,
   },
   pan: {
     // Scale factor applied to wheel-based panning.
     wheelFactor: 1,
-    // Initial horizontal camera offset on first load.
+    // Initial depth-axis (left-right) camera offset on first load.
     initialCameraX: 40,
-    // Initial vertical camera offset on first load.
+    // Initial breadth-axis (up-down) camera offset on first load.
     initialCameraY: 40,
   },
   drag: {

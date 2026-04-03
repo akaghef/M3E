@@ -4,11 +4,20 @@ const loadAirplaneBtn = document.getElementById("load-airplane");
 const loadAircraftMmBtn = document.getElementById("load-aircraft-mm");
 const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
 const stopVisualCheckBtn = document.getElementById("stop-visual-check");
+const modeFlashBtn = document.getElementById("mode-flash");
+const modeRapidBtn = document.getElementById("mode-rapid");
+const modeDeepBtn = document.getElementById("mode-deep");
 const fitAllBtn = document.getElementById("fit-all");
 const focusSelectedBtn = document.getElementById("focus-selected");
 const addChildBtn = document.getElementById("add-child");
 const addSiblingBtn = document.getElementById("add-sibling");
+const makeFolderBtn = document.getElementById("make-folder");
+const enterScopeBtn = document.getElementById("enter-scope");
+const exitScopeBtn = document.getElementById("exit-scope");
+const addAliasBtn = document.getElementById("add-alias");
+const jumpTargetBtn = document.getElementById("jump-target");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
+const aiGenerateTopicsBtn = document.getElementById("ai-generate-topics");
 const deleteNodeBtn = document.getElementById("delete-node");
 const markReparentBtn = document.getElementById("mark-reparent");
 const applyReparentBtn = document.getElementById("apply-reparent");
@@ -17,28 +26,45 @@ const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
 const downloadBtn = document.getElementById("download-btn");
+const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
+const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
+const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
+const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
+const linearResizeHandleEl = document.getElementById("linear-resize-handle") as HTMLElement | null;
 const linearTextEl = document.getElementById("linear-text") as HTMLTextAreaElement;
-const linearMetaEl = document.getElementById("linear-meta") as HTMLElement;
-const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement;
-const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement;
+const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | null;
+const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement | null;
+const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
 const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
 const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
-const LOCAL_DOC_ID = "rapid-main";
-const CLOUD_DOC_ID = "rapid-main";
+
+function normalizeDocId(raw: string | null, fallback: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  return trimmed.replace(/[\\/]/g, "_");
+}
+
+const queryParams = new URLSearchParams(window.location.search);
+const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main");
+const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 100;
 
 interface UndoSnapshot {
   state: AppState;
   selectedNodeId: string;
+  selectedNodeIds: string[];
+  selectionAnchorId: string | null;
 }
 
 interface LinearLineMap {
@@ -59,7 +85,8 @@ let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-let inlineEditor: { nodeId: string; input: HTMLInputElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
+let cycleViewState: "focus" | "fit" = "focus";
+let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let lastLayout: LayoutResult | null = null;
@@ -69,28 +96,67 @@ let redoStack: UndoSnapshot[] = [];
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
+const linearNotesByScope: Record<string, string> = {};
+let linearPanelCanvasWidth = 340;
+let linearResizeState: { pointerId: number; startClientX: number; startCanvasWidth: number } | null = null;
 let importanceViewMode: ImportanceViewMode = "all";
 let importanceVisibleNodeIds: Set<string> | null = null;
 let cloudSyncEnabled = false;
 let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
 let cloudConflictPending = false;
+let linearTransformStatus: LinearTransformStatus | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
 const DRAG_REORDER_PARENT_LANE_PAD = 96;
 let viewState: ViewState = {
   selectedNodeId: "",
+  selectedNodeIds: new Set<string>(),
+  selectionAnchorId: null,
   currentScopeId: "",
   scopeHistory: [],
+  currentScopeRootId: "",
+  thinkingMode: "rapid",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
   panState: null,
-  reparentSourceId: "",
+  clipboardState: null,
+  reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
 };
+
+function thinkingModeLabel(mode: ThinkingMode): string {
+  switch (mode) {
+    case "flash":
+      return "Flash";
+    case "deep":
+      return "Deep";
+    case "rapid":
+    default:
+      return "Rapid";
+  }
+}
+
+function syncThinkingModeUi(): void {
+  const mode = viewState.thinkingMode;
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)}`;
+  modeFlashBtn?.classList.toggle("is-active", mode === "flash");
+  modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
+  modeDeepBtn?.classList.toggle("is-active", mode === "deep");
+}
+
+function setThinkingMode(mode: ThinkingMode): void {
+  if (viewState.thinkingMode === mode) {
+    syncThinkingModeUi();
+    return;
+  }
+  viewState.thinkingMode = mode;
+  syncThinkingModeUi();
+  setStatus(`Mode: ${thinkingModeLabel(mode)}`);
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -281,6 +347,293 @@ function getNode(nodeId: string): TreeNode {
   return node;
 }
 
+function isFolderNode(node: TreeNode | null | undefined): boolean {
+  return Boolean(node && node.nodeType === "folder");
+}
+
+function currentScopeRootId(): string {
+  if (!doc) {
+    return "";
+  }
+  return viewState.currentScopeRootId || doc.state.rootId;
+}
+
+function currentScopeRootNode(): TreeNode | null {
+  if (!doc) {
+    return null;
+  }
+  return doc.state.nodes[currentScopeRootId()] || null;
+}
+
+function scopeRootForNode(nodeId: string): string {
+  if (!doc || !doc.state.nodes[nodeId]) {
+    return "";
+  }
+  let cursor: string | null = nodeId;
+  let nearestFolderId: string | null = null;
+  while (cursor) {
+    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    if (!node) {
+      break;
+    }
+    if (isFolderNode(node)) {
+      nearestFolderId = node.id;
+    }
+    cursor = node.parentId ?? null;
+  }
+  return nearestFolderId || doc.state.rootId;
+}
+
+function scopePathIds(scopeRootId: string): string[] {
+  if (!doc || !scopeRootId) {
+    return [];
+  }
+  const path: string[] = [];
+  let cursor: string | null = scopeRootId;
+  while (cursor) {
+    path.push(cursor);
+    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    if (!node) {
+      break;
+    }
+    if (cursor === doc.state.rootId) {
+      break;
+    }
+    cursor = node.parentId ?? null;
+    while (cursor) {
+      const parent = doc.state.nodes[cursor];
+      if (!parent) {
+        cursor = null;
+        break;
+      }
+      if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+        break;
+      }
+      cursor = parent.parentId ?? null;
+    }
+  }
+  return path.reverse();
+}
+
+function updateScopeMeta(): void {
+  if (!doc) {
+    scopeMetaEl.textContent = "scope: n/a";
+    return;
+  }
+  const parts = scopePathIds(currentScopeRootId()).map((nodeId) => {
+    if (nodeId === doc!.state.rootId) {
+      return "root";
+    }
+    return uiLabel(doc!.state.nodes[nodeId]);
+  });
+  scopeMetaEl.textContent = `scope: ${parts.join(" / ")}`;
+}
+
+function updateScopeSummary(): void {
+  if (!doc) {
+    scopeSummaryEl.textContent = "outside: n/a";
+    return;
+  }
+  const scopeRootId = currentScopeRootId();
+  const scopeRoot = doc.state.nodes[scopeRootId];
+  if (!scopeRoot) {
+    scopeSummaryEl.textContent = "outside: n/a";
+    return;
+  }
+
+  const parentScopeId = scopeRootId === doc.state.rootId
+    ? null
+    : scopeRoot.parentId
+      ? scopeRootForNode(scopeRoot.parentId)
+      : doc.state.rootId;
+  const parentLabel = parentScopeId
+    ? (parentScopeId === doc.state.rootId ? "root" : uiLabel(doc.state.nodes[parentScopeId]))
+    : "none";
+
+  const childScopeSummaries = (scopeRoot.children || [])
+    .map((childId) => doc!.state.nodes[childId])
+    .filter((node): node is TreeNode => Boolean(node))
+    .filter((node) => isFolderNode(node))
+    .map((node) => `${uiLabel(node)}(${countHiddenDescendants(node.id)})`);
+
+  const childSummary = childScopeSummaries.length > 0 ? childScopeSummaries.join(", ") : "none";
+  scopeSummaryEl.textContent = `outside: parent ${parentLabel} | child scopes ${childSummary}`;
+}
+
+function enterScope(scopeNodeId: string): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(scopeNodeId);
+  if (!isFolderNode(node)) {
+    setStatus("Only folder nodes can open a scope.", true);
+    return false;
+  }
+  viewState.currentScopeRootId = node.id;
+  setSingleSelection(node.id, false);
+  render();
+  fitDocument();
+  setStatus(`Entered scope: ${uiLabel(node)}`);
+  board.focus();
+  return true;
+}
+
+function exitScope(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const scopeRoot = currentScopeRootNode();
+  if (!scopeRoot || scopeRoot.id === doc.state.rootId) {
+    setStatus("Already at root scope.");
+    return false;
+  }
+  let nextScopeId = doc.state.rootId;
+  let cursor = scopeRoot.parentId;
+  while (cursor) {
+    const parent = doc.state.nodes[cursor];
+    if (!parent) {
+      break;
+    }
+    if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+      nextScopeId = parent.id;
+      break;
+    }
+    cursor = parent.parentId ?? null;
+  }
+  viewState.currentScopeRootId = nextScopeId;
+  setSingleSelection(scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
+  render();
+  fitDocument();
+  setStatus("Returned to parent scope.");
+  board.focus();
+  return true;
+}
+
+function makeSelectedFolder(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  if (isAliasNode(node)) {
+    setStatus("Alias nodes cannot become folders.", true);
+    return false;
+  }
+  if (isFolderNode(node)) {
+    setStatus("Selected node is already a folder scope.");
+    return false;
+  }
+  pushUndoSnapshot();
+  node.nodeType = "folder";
+  touchDocument();
+  setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+  board.focus();
+  return true;
+}
+
+function addAliasInCurrentScope(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const target = getNode(viewState.selectedNodeId);
+  if (isAliasNode(target)) {
+    setStatus("Alias cannot target another alias.", true);
+    return false;
+  }
+  const scopeRoot = currentScopeRootNode();
+  if (!scopeRoot) {
+    return false;
+  }
+  pushUndoSnapshot();
+  const aliasId = newId();
+  doc.state.nodes[aliasId] = {
+    id: aliasId,
+    parentId: scopeRoot.id,
+    children: [],
+    collapsed: false,
+    nodeType: "alias",
+    scopeId: scopeRoot.id,
+    text: uiLabel(target),
+    details: "",
+    note: "",
+    attributes: {},
+    link: "",
+    targetNodeId: target.id,
+    aliasLabel: undefined,
+    access: "read",
+    targetSnapshotLabel: undefined,
+    isBroken: false,
+  };
+  scopeRoot.children.push(aliasId);
+  setSingleSelection(aliasId, false);
+  touchDocument();
+  setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
+  board.focus();
+  return true;
+}
+
+function addAliasAsChild(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const target = getNode(viewState.selectedNodeId);
+  if (!target) {
+    return false;
+  }
+  if (isAliasNode(target)) {
+    setStatus("Alias cannot target another alias.", true);
+    return false;
+  }
+  pushUndoSnapshot();
+  const aliasId = newId();
+  doc.state.nodes[aliasId] = {
+    id: aliasId,
+    parentId: target.id,
+    children: [],
+    collapsed: false,
+    nodeType: "alias",
+    scopeId: target.scopeId,
+    text: uiLabel(target),
+    details: "",
+    note: "",
+    attributes: {},
+    link: "",
+    targetNodeId: target.id,
+    aliasLabel: undefined,
+    access: "read",
+    targetSnapshotLabel: undefined,
+    isBroken: false,
+  };
+  target.children.push(aliasId);
+  viewState.selectedNodeId = aliasId;
+  touchDocument();
+  setStatus(`Alias created as child of ${uiLabel(target)}.`);
+  board.focus();
+  return true;
+}
+
+function jumpToAliasTarget(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  if (!isAliasNode(node)) {
+    setStatus("Selected node is not an alias.", true);
+    return false;
+  }
+  const target = resolveAliasTarget(node);
+  if (!target || isBrokenAlias(node)) {
+    setStatus("Broken alias cannot jump to target.", true);
+    return false;
+  }
+  viewState.currentScopeRootId = scopeRootForNode(target.id);
+  setSingleSelection(target.id, false);
+  render();
+  fitDocument();
+  setStatus(`Jumped to target: ${uiLabel(target)}`);
+  board.focus();
+  return true;
+}
+
 function isAliasNode(node: TreeNode | null | undefined): boolean {
   return Boolean(node && node.nodeType === "alias");
 }
@@ -359,6 +712,13 @@ function aliasBadge(node: TreeNode): string {
   return aliasAccess(node) === "write" ? "write" : "read";
 }
 
+function nodeBadge(node: TreeNode): string {
+  if (isFolderNode(node) && node.id !== currentScopeRootId()) {
+    return "scope";
+  }
+  return aliasBadge(node);
+}
+
 function cloneState(state: AppState): AppState {
   return JSON.parse(JSON.stringify(state)) as AppState;
 }
@@ -370,6 +730,8 @@ function pushUndoSnapshot(): void {
   undoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    selectionAnchorId: viewState.selectionAnchorId,
   });
   if (undoStack.length > MAX_UNDO_STEPS) {
     undoStack.shift();
@@ -386,6 +748,8 @@ function undoLastChange(): void {
   redoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    selectionAnchorId: viewState.selectionAnchorId,
   });
   if (redoStack.length > MAX_UNDO_STEPS) {
     redoStack.shift();
@@ -393,8 +757,14 @@ function undoLastChange(): void {
 
   const snapshot = undoStack.pop()!;
   doc.state = snapshot.state;
-  viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
-  viewState.reparentSourceId = "";
+  const undoState = doc.state;
+  viewState.selectedNodeId = undoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : undoState.rootId;
+  viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(undoState.nodes[nodeId])));
+  viewState.selectionAnchorId = snapshot.selectionAnchorId && undoState.nodes[snapshot.selectionAnchorId]
+    ? snapshot.selectionAnchorId
+    : null;
+  viewState.reparentSourceIds.clear();
+  normalizeSelectionState();
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
@@ -411,6 +781,8 @@ function redoLastChange(): void {
   undoStack.push({
     state: cloneState(doc.state),
     selectedNodeId: viewState.selectedNodeId,
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    selectionAnchorId: viewState.selectionAnchorId,
   });
   if (undoStack.length > MAX_UNDO_STEPS) {
     undoStack.shift();
@@ -418,8 +790,14 @@ function redoLastChange(): void {
 
   const snapshot = redoStack.pop()!;
   doc.state = snapshot.state;
-  viewState.selectedNodeId = doc.state.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : doc.state.rootId;
-  viewState.reparentSourceId = "";
+  const redoState = doc.state;
+  viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
+  viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(redoState.nodes[nodeId])));
+  viewState.selectionAnchorId = snapshot.selectionAnchorId && redoState.nodes[snapshot.selectionAnchorId]
+    ? snapshot.selectionAnchorId
+    : null;
+  viewState.reparentSourceIds.clear();
+  normalizeSelectionState();
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
@@ -454,6 +832,88 @@ function applyZoom(): void {
   canvas.style.height = `${contentHeight}px`;
   canvas.style.transform = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
   syncInlineEditorPosition();
+  syncLinearPanelPosition();
+}
+
+function syncLinearPanelPosition(): void {
+  if (!linearPanelEl) {
+    return;
+  }
+
+  if (!doc || !lastLayout || visibleOrder.length === 0) {
+    linearPanelEl.style.removeProperty("left");
+    linearPanelEl.style.removeProperty("top");
+    linearPanelEl.style.removeProperty("width");
+    linearPanelEl.style.removeProperty("height");
+    linearPanelEl.style.removeProperty("transform");
+    return;
+  }
+
+  const layout = lastLayout;
+
+  let deepestDepth = -1;
+  let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
+  let deepestTop = VIEWER_TUNING.layout.topPad;
+  visibleOrder.forEach((nodeId) => {
+    const p = layout.pos[nodeId];
+    if (!p) {
+      return;
+    }
+    if (p.depth > deepestDepth) {
+      deepestDepth = p.depth;
+      deepestRightEdge = p.x + p.w;
+      deepestTop = p.y - p.h / 2;
+      return;
+    }
+    if (p.depth === deepestDepth) {
+      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
+      deepestTop = Math.min(deepestTop, p.y - p.h / 2);
+    }
+  });
+
+  const panelCanvasWidth = linearPanelCanvasWidth;
+  let treeMinY = Number.POSITIVE_INFINITY;
+  let treeMaxY = Number.NEGATIVE_INFINITY;
+  visibleOrder.forEach((nodeId) => {
+    const p = layout.pos[nodeId];
+    if (!p) {
+      return;
+    }
+    treeMinY = Math.min(treeMinY, p.y - p.h / 2);
+    treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
+  });
+  if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
+    treeMinY = VIEWER_TUNING.layout.topPad;
+    treeMaxY = treeMinY + 380;
+  }
+  const panelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
+  const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
+  const anchorCanvasX = deepestRightEdge + depthOffset;
+  const anchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+  const zoomScale = viewState.zoom;
+  const panelWidth = panelCanvasWidth * zoomScale;
+  const panelHeight = panelCanvasHeight * zoomScale;
+
+  const panelLeft = viewState.cameraX + anchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + anchorCanvasY * viewState.zoom;
+
+  linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
+  linearPanelEl.style.top = `${Math.round(panelTop)}px`;
+  linearPanelEl.style.width = `${panelCanvasWidth}px`;
+  linearPanelEl.style.height = `${panelCanvasHeight}px`;
+  linearPanelEl.style.transform = `scale(${zoomScale})`;
+}
+
+function captureManualLinearPanelWidth(): void {
+  if (!linearPanelEl || viewState.zoom <= 0) {
+    return;
+  }
+  const renderedWidth = linearPanelEl.getBoundingClientRect().width;
+  if (!Number.isFinite(renderedWidth) || renderedWidth <= 0) {
+    return;
+  }
+  const canvasWidth = renderedWidth / viewState.zoom;
+  linearPanelCanvasWidth = Math.max(220, Math.min(1200, canvasWidth));
 }
 
 function syncInlineEditorPosition(): void {
@@ -500,7 +960,15 @@ function visibleChildren(node: TreeNode): string[] {
   if (!node || isAliasNode(node) || viewState.collapsedIds.has(node.id)) {
     return [];
   }
+  // Folder nodes work as scope boundaries: hide deeper details unless that folder is the active scope root.
+  if (isFolderNode(node) && node.id !== currentScopeRootId()) {
+    return [];
+  }
   return (node.children || []).filter((childId) => isNodeInScope(childId));
+}
+
+function currentLinearMemoScopeId(): string {
+  return normalizedCurrentScopeId();
 }
 
 function normalizedCurrentScopeId(): string {
@@ -633,7 +1101,6 @@ function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
   const scopeRootId = normalizedCurrentScopeId();
   const lines: string[] = [];
   const map: LinearLineMap[] = [];
-  let cursor = 0;
 
   function walk(nodeId: string, depth: number): void {
     const node = doc!.state.nodes[nodeId];
@@ -641,13 +1108,11 @@ function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
       return;
     }
 
-    const line = `${"  ".repeat(depth)}${String(node.text || "").trim() || "(empty)"}`;
-    const lineIndex = lines.length;
-    lines.push(line);
-    const startOffset = cursor;
-    const endOffset = startOffset + line.length;
-    map.push({ nodeId, lineIndex, startOffset, endOffset });
-    cursor = endOffset + 1;
+    const label = String(node.text || "").trim() || "(empty)";
+    const indent = "  ".repeat(depth);
+    lines.push(`${indent}- ${label}`);
+    lines.push(`${indent}  note: `);
+    lines.push("");
 
     scopeChildren(nodeId).forEach((childId) => walk(childId, depth + 1));
   }
@@ -657,6 +1122,200 @@ function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
     text: lines.join("\n"),
     map,
   };
+}
+
+function buildTreeScopeTransformSource(): string {
+  if (!doc) {
+    return "";
+  }
+
+  const scopeRootId = normalizedCurrentScopeId();
+  const chunks: string[] = [];
+
+  function walk(nodeId: string, depth: number): void {
+    const node = doc!.state.nodes[nodeId];
+    if (!node) {
+      return;
+    }
+
+    const indent = "  ".repeat(depth);
+    chunks.push(`${indent}- id: ${node.id}`);
+    chunks.push(`${indent}  text: ${JSON.stringify(node.text || "")}`);
+    chunks.push(`${indent}  type: ${node.nodeType || "text"}`);
+    if (node.details) {
+      chunks.push(`${indent}  details: ${JSON.stringify(node.details)}`);
+    }
+    if (node.note) {
+      chunks.push(`${indent}  note: ${JSON.stringify(node.note)}`);
+    }
+    if (node.scopeId) {
+      chunks.push(`${indent}  scopeId: ${JSON.stringify(node.scopeId)}`);
+    }
+    const attributes = Object.entries(node.attributes || {});
+    if (attributes.length > 0) {
+      chunks.push(`${indent}  attributes:`);
+      attributes.forEach(([key, value]) => {
+        chunks.push(`${indent}    ${JSON.stringify(key)}: ${JSON.stringify(value)}`);
+      });
+    }
+    scopeChildren(nodeId).forEach((childId) => walk(childId, depth + 1));
+  }
+
+  walk(scopeRootId, 0);
+  return chunks.join("\n");
+}
+
+async function fetchLinearTransformStatus(): Promise<LinearTransformStatus | null> {
+  try {
+    const response = await fetch("/api/ai/status", { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json() as AiStatusResponse;
+    linearTransformStatus = {
+      ok: true,
+      enabled: payload.enabled,
+      configured: payload.configured,
+      provider: payload.provider,
+      transport: payload.transport,
+      model: payload.model,
+      endpoint: payload.endpoint,
+      promptConfigured: Boolean(payload.features["linear-transform"]?.promptConfigured),
+      message: payload.message,
+    };
+    return linearTransformStatus;
+  } catch {
+    return null;
+  }
+}
+
+async function requestLinearSubagentTransform(
+  direction: LinearTransformDirection,
+  instruction?: string,
+): Promise<LinearTransformResponse> {
+  const scopeRootId = normalizedCurrentScopeId();
+  const scopeLabel = doc?.state.nodes[scopeRootId]?.text || scopeRootId;
+  const payload: AiSubagentRequest = {
+    documentId: LOCAL_DOC_ID,
+    scopeId: scopeRootId,
+    mode: "direct-result",
+    input: {
+      direction,
+      sourceText: direction === "tree-to-linear" ? buildTreeScopeTransformSource() : linearTextEl.value,
+      scopeLabel,
+      instruction: instruction || null,
+    },
+  };
+
+  const response = await fetch("/api/ai/subagent/linear-transform", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || "Linear transform request failed.");
+  }
+  return {
+    ok: true,
+    direction,
+    provider: String(result.provider || linearTransformStatus?.provider || "deepseek"),
+    model: String(result.model || linearTransformStatus?.model || ""),
+    outputText: String(result.proposal?.result?.outputText || ""),
+    rawText: String(result.proposal?.result?.rawText || ""),
+    usage: result.usage || undefined,
+  };
+}
+
+async function requestTopicSuggestionsForSelectedNode(maxTopics = 5): Promise<string[]> {
+  if (!doc || !viewState.selectedNodeId) {
+    throw new Error("No node is selected.");
+  }
+  const selected = getNode(viewState.selectedNodeId);
+  const payload: AiSubagentRequest = {
+    documentId: LOCAL_DOC_ID,
+    scopeId: normalizedCurrentScopeId(),
+    mode: "proposal",
+    input: {
+      nodeText: selected.text,
+      nodeDetails: selected.details || "",
+      maxTopics,
+    },
+  };
+
+  const response = await fetch("/api/ai/subagent/topic-suggest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String(result.error || "Topic suggestion request failed."));
+  }
+
+  const rawTopics = result.proposal?.result?.topics;
+  if (!Array.isArray(rawTopics)) {
+    return [];
+  }
+  return rawTopics
+    .map((value) => String(value || "").trim())
+    .filter((value) => value.length > 0)
+    .slice(0, maxTopics);
+}
+
+function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
+  if (!doc || !viewState.selectedNodeId || topics.length === 0) {
+    return 0;
+  }
+  const parent = getNode(viewState.selectedNodeId);
+  if (isAliasNode(parent)) {
+    throw new Error("Alias nodes cannot own children.");
+  }
+
+  const existingLabels = new Set(
+    (parent.children || [])
+      .map((childId) => doc!.state.nodes[childId]?.text?.trim().toLowerCase())
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  const normalized = topics
+    .map((topic) => topic.trim())
+    .filter((topic) => topic.length > 0)
+    .filter((topic) => !existingLabels.has(topic.toLowerCase()));
+  if (normalized.length === 0) {
+    return 0;
+  }
+
+  pushUndoSnapshot();
+  normalized.forEach((topic) => {
+    const id = newId();
+    doc!.state.nodes[id] = createNodeRecord(id, parent.id, topic);
+    parent.children.push(id);
+  });
+  viewState.collapsedIds.delete(parent.id);
+  parent.collapsed = false;
+  touchDocument();
+  return normalized.length;
+}
+
+async function generateRelatedTopicsForSelectedNode(): Promise<void> {
+  if (!doc || !viewState.selectedNodeId) {
+    setStatus("Select a node first.", true);
+    return;
+  }
+  try {
+    const topics = await requestTopicSuggestionsForSelectedNode(5);
+    const added = appendTopicSuggestionsToSelectedNode(topics);
+    if (added === 0) {
+      setStatus("No new related topics were suggested.");
+      return;
+    }
+    setStatus(`AI suggested ${added} related topic(s).`);
+    render();
+    board.focus();
+  } catch (err) {
+    setStatus(`AI topic suggestion failed (${(err as Error).message}).`, true);
+  }
 }
 
 function linearOffsetToLineIndex(text: string, offset: number): number {
@@ -689,34 +1348,38 @@ function syncLinearCaretToSelectedNode(): void {
 }
 
 function renderLinearPanel(): void {
-  if (!linearTextEl || !linearMetaEl) {
+  if (!linearTextEl) {
     return;
   }
   if (!doc) {
     linearTextEl.value = "";
-    linearMetaEl.textContent = "No scope loaded";
-    linearApplyBtn.disabled = true;
-    linearResetBtn.disabled = true;
+    if (linearMetaEl) {
+      linearMetaEl.textContent = "No scope loaded";
+    }
+    if (linearApplyBtn) linearApplyBtn.disabled = true;
+    if (linearResetBtn) linearResetBtn.disabled = true;
     return;
   }
 
-  const linear = buildLinearFromScope();
-  linearLineMap = linear.map;
-
-  if (!linearDirty) {
-    linearTextEl.value = linear.text;
+  const scopeRootId = currentLinearMemoScopeId();
+  const templateText = buildLinearFromScope().text;
+  if (!(scopeRootId in linearNotesByScope)) {
+    linearNotesByScope[scopeRootId] = templateText;
   }
+  const scopeMemo = linearNotesByScope[scopeRootId] || "";
+  linearDirty = scopeMemo !== templateText;
 
-  const scopeRootId = normalizedCurrentScopeId();
+  if (document.activeElement !== linearTextEl) {
+    linearTextEl.value = scopeMemo;
+  }
+  linearLineMap = [];
+
   const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
-  const dirtyLabel = linearDirty ? "dirty" : "synced";
-  linearMetaEl.textContent = `scope: ${scopeLabel} | importance: ${importanceViewMode} | lines: ${linearLineMap.length} | ${dirtyLabel}`;
-  linearApplyBtn.disabled = !linearDirty;
-  linearResetBtn.disabled = !linearDirty;
-
-  if (!linearDirty) {
-    syncLinearCaretToSelectedNode();
+  if (linearMetaEl) {
+    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
+  if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
 }
 
 function parseLinearText(text: string): LinearNodeDraft {
@@ -853,7 +1516,30 @@ function applyLinearTextToScope(): void {
   }
 }
 
+function countHiddenDescendants(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node) {
+    return 0;
+  }
+  let count = 0;
+  const stack = [...(node.children || [])];
+  while (stack.length > 0) {
+    const currentId = stack.pop()!;
+    const current = doc.state.nodes[currentId];
+    if (!current) {
+      continue;
+    }
+    count += 1;
+    stack.push(...(current.children || []));
+  }
+  return count;
+}
+
 function buildLayout(state: AppState): LayoutResult {
+  const displayRootId = currentScopeRootId();
   const metrics: Record<string, { w: number; h: number }> = {};
   const depthOf: Record<string, number> = {};
   const depthMaxWidth: Record<number, number> = {};
@@ -884,7 +1570,7 @@ function buildLayout(state: AppState): LayoutResult {
     visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
   }
 
-  visit(normalizedCurrentScopeId(), 0);
+  visit(displayRootId, 0);
 
   const xByDepth: Record<number, number> = {};
   let cursorX = VIEWER_TUNING.layout.leftPad;
@@ -957,7 +1643,7 @@ function buildLayout(state: AppState): LayoutResult {
     return h;
   }
 
-  const totalHeight = place(normalizedCurrentScopeId(), VIEWER_TUNING.layout.topPad);
+  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad);
   return {
     pos,
     order,
@@ -966,23 +1652,43 @@ function buildLayout(state: AppState): LayoutResult {
   };
 }
 
+function updateDocumentTitle(): void {
+  const appTitle = "M3E";
+  if (!doc) {
+    document.title = appTitle;
+    return;
+  }
+
+  const scopeId = normalizedCurrentScopeId();
+  const scopeNode = doc.state.nodes[scopeId];
+  const scopeLabel = uiLabel(scopeNode).trim();
+  document.title = scopeLabel ? `${appTitle} - ${scopeLabel}` : appTitle;
+}
+
 function render(): void {
   if (!doc) {
+    syncThinkingModeUi();
+    updateScopeMeta();
+    updateScopeSummary();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
+    updateDocumentTitle();
     renderLinearPanel();
+    syncLinearPanelPosition();
     return;
   }
 
   rebuildImportanceVisibility();
-  if (!isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
-    viewState.selectedNodeId = normalizedCurrentScopeId();
-  }
+  normalizeSelectionState();
 
   const state = doc.state;
+  if (!viewState.currentScopeRootId || !state.nodes[viewState.currentScopeRootId]) {
+    viewState.currentScopeRootId = state.rootId;
+  }
   const layout = buildLayout(state);
   lastLayout = layout;
   visibleOrder = layout.order;
+  const displayRootId = currentScopeRootId();
 
   const pos = layout.pos;
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -1026,12 +1732,22 @@ function render(): void {
     });
 
     const classNames = ["node-hit"];
-    if (nodeId === viewState.selectedNodeId) {
+    if (viewState.selectedNodeIds.has(nodeId)) {
       classNames.push("selected");
+      classNames.push("multi-selected");
+    }
+    if (nodeId === viewState.selectedNodeId) {
+      classNames.push("primary-selected");
     }
     if (isAliasNode(node)) {
       classNames.push("alias");
       classNames.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
+    }
+    if (viewState.reparentSourceIds.has(nodeId)) {
+      classNames.push("reparent-source");
+    }
+    if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
+      classNames.push("cut-pending");
     }
     if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
       classNames.push("drop-target");
@@ -1039,12 +1755,12 @@ function render(): void {
     if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
       classNames.push("drag-source");
     }
-    const hitX = nodeId === state.rootId ? p.x : p.x - 8;
+    const hitX = nodeId === displayRootId ? p.x : p.x - 8;
     const hitY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2;
-    const hitW = nodeId === state.rootId ? p.w : p.w + 36;
+    const hitW = nodeId === displayRootId ? p.w : p.w + 36;
     nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
 
-    if (nodeId === state.rootId) {
+    if (nodeId === displayRootId) {
       const label = escapeXml(uiLabel(node) || "(empty)");
       const w = p.w;
       const h = p.h;
@@ -1056,15 +1772,25 @@ function render(): void {
     } else {
       const label = escapeXml(uiLabel(node) || "(empty)");
       const labelClasses = ["label-node"];
-      if (nodeId === viewState.selectedNodeId) {
+      if (viewState.selectedNodeIds.has(nodeId)) {
         labelClasses.push("selected");
+      }
+      if (nodeId === viewState.selectedNodeId) {
+        labelClasses.push("primary-selected");
       }
       if (isAliasNode(node)) {
         labelClasses.push("alias-label");
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
       }
+      if (isFolderNode(node)) {
+        const folderFrameX = p.x - 14;
+        const folderFrameY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + 6;
+        const folderFrameW = p.w + 28;
+        const folderFrameH = VIEWER_TUNING.layout.nodeHitHeight - 12;
+        nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
+      }
       nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
-      const badge = aliasBadge(node);
+      const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
       }
@@ -1072,16 +1798,24 @@ function render(): void {
 
     if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
       const indicatorX =
-        nodeId === state.rootId
+        nodeId === displayRootId
           ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
           : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
-      nodes += `<text class="collapsed-indicator" x="${indicatorX}" y="${p.y}" dominant-baseline="middle">+</text>`;
+      const hiddenCount = countHiddenDescendants(nodeId);
+      const badgeLabel = String(Math.max(1, hiddenCount));
+      const badgeWidth = Math.max(26, badgeLabel.length * 14 + 14);
+      const badgeHeight = 24;
+      const badgeX = indicatorX - badgeWidth / 2;
+      const badgeY = p.y - badgeHeight / 2;
+      nodes += `<rect class="collapsed-badge" data-collapse-node-id="${nodeId}" x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="${badgeHeight}" rx="12" />`;
+      nodes += `<circle class="collapsed-badge-node" data-collapse-node-id="${nodeId}" cx="${badgeX - 8}" cy="${p.y}" r="8" />`;
+      nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
     }
 
     children.forEach((cid) => drawNode(cid));
   }
 
-  drawNode(normalizedCurrentScopeId());
+  drawNode(displayRootId);
 
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
@@ -1103,7 +1837,9 @@ function render(): void {
   const savedAt = doc.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
   const selected = state.nodes[viewState.selectedNodeId];
-  const moveNode = state.nodes[viewState.reparentSourceId];
+  const moveNodes = Array.from(viewState.reparentSourceIds)
+    .map((nodeId) => state.nodes[nodeId])
+    .filter((node): node is TreeNode => Boolean(node));
   const dragProposal = viewState.dragState?.proposal;
   let dropLabel = "none";
   if (dragProposal?.kind === "reparent") {
@@ -1112,7 +1848,11 @@ function render(): void {
     const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} | move-node: ${moveNode ? uiLabel(moveNode) : "none"} | drop-target: ${dropLabel}`;
+  syncThinkingModeUi();
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  updateScopeMeta();
+  updateScopeSummary();
+  updateDocumentTitle();
   syncInlineEditorPosition();
   renderLinearPanel();
 }
@@ -1133,8 +1873,9 @@ function getNodeHitBounds(nodeId: string): { left: number; right: number; top: n
   if (!p) {
     return null;
   }
-  const left = nodeId === doc.state.rootId ? p.x : p.x - 8;
-  const width = nodeId === doc.state.rootId ? p.w : p.w + 36;
+  const displayRootId = currentScopeRootId();
+  const left = nodeId === displayRootId ? p.x : p.x - 8;
+  const width = nodeId === displayRootId ? p.w : p.w + 36;
   return {
     left,
     right: left + width,
@@ -1360,13 +2101,155 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
   return proposeReorderDrop(sourceId, point.x, point.y);
 }
 
-function selectNode(nodeId: string): void {
+function canDropAllUnderParent(sourceIds: string[], targetParentId: string): boolean {
+  return sourceIds.every((sourceId) => canDropUnderParent(sourceId, targetParentId));
+}
+
+function proposeDropForSources(sourceIds: string[], clientX: number, clientY: number): DragDropProposal | null {
+  if (sourceIds.length === 0) {
+    return null;
+  }
+  if (sourceIds.length === 1) {
+    return proposeDrop(sourceIds[0]!, clientX, clientY);
+  }
+  const point = clientToCanvasPoint(clientX, clientY);
+  const targetNodeId = findNodeAtCanvasPoint(point.x, point.y);
+  if (!targetNodeId) {
+    return null;
+  }
+  if (!canDropAllUnderParent(sourceIds, targetNodeId)) {
+    return null;
+  }
+  return {
+    kind: "reparent",
+    parentId: targetNodeId,
+  };
+}
+
+function normalizeSelectionState(): void {
+  if (!doc) {
+    return;
+  }
+
+  if (!doc.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+    viewState.selectedNodeId = normalizedCurrentScopeId();
+  }
+
+  const normalizedSelectedIds = new Set<string>();
+  viewState.selectedNodeIds.forEach((nodeId) => {
+    if (doc!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
+      normalizedSelectedIds.add(nodeId);
+    }
+  });
+  viewState.selectedNodeIds = normalizedSelectedIds;
+
+  if (!viewState.selectedNodeIds.has(viewState.selectedNodeId)) {
+    viewState.selectedNodeIds.add(viewState.selectedNodeId);
+  }
+
+  if (viewState.selectionAnchorId && !viewState.selectedNodeIds.has(viewState.selectionAnchorId)) {
+    viewState.selectionAnchorId = null;
+  }
+
+  const normalizedReparentSourceIds = new Set<string>();
+  viewState.reparentSourceIds.forEach((nodeId) => {
+    if (doc!.state.nodes[nodeId]) {
+      normalizedReparentSourceIds.add(nodeId);
+    }
+  });
+  viewState.reparentSourceIds = normalizedReparentSourceIds;
+
+  if (viewState.clipboardState?.type === "cut") {
+    const normalizedCutSourceIds = new Set<string>();
+    viewState.clipboardState.sourceIds.forEach((nodeId) => {
+      if (doc!.state.nodes[nodeId]) {
+        normalizedCutSourceIds.add(nodeId);
+      }
+    });
+    viewState.clipboardState = normalizedCutSourceIds.size > 0
+      ? { type: "cut", sourceIds: normalizedCutSourceIds }
+      : null;
+  }
+}
+
+function setSingleSelection(nodeId: string, renderNow = true): void {
   getNode(nodeId);
   if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
     return;
   }
   viewState.selectedNodeId = nodeId;
+  viewState.selectedNodeIds = new Set([nodeId]);
+  viewState.selectionAnchorId = null;
+  if (renderNow) {
+    render();
+  }
+}
+
+function getVisibleRangeSelection(anchorId: string, targetId: string): Set<string> {
+  const anchorIndex = visibleOrder.indexOf(anchorId);
+  const targetIndex = visibleOrder.indexOf(targetId);
+  if (anchorIndex < 0 || targetIndex < 0) {
+    return new Set([targetId]);
+  }
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
+  return new Set(visibleOrder.slice(start, end + 1));
+}
+
+function setRangeSelection(targetId: string): void {
+  const anchorId = viewState.selectionAnchorId && doc?.state.nodes[viewState.selectionAnchorId]
+    ? viewState.selectionAnchorId
+    : viewState.selectedNodeId;
+  if (!anchorId) {
+    setSingleSelection(targetId);
+    return;
+  }
+  viewState.selectedNodeId = targetId;
+  viewState.selectionAnchorId = anchorId;
+  viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
+  viewState.selectedNodeIds.add(targetId);
   render();
+}
+
+function toggleNodeSelection(nodeId: string): void {
+  viewState.selectionAnchorId = nodeId;
+  if (viewState.selectedNodeIds.has(nodeId)) {
+    if (viewState.selectedNodeIds.size === 1) {
+      viewState.selectedNodeId = nodeId;
+      render();
+      return;
+    }
+    viewState.selectedNodeIds.delete(nodeId);
+    if (viewState.selectedNodeId === nodeId) {
+      viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
+    }
+    render();
+    return;
+  }
+
+  viewState.selectedNodeIds.add(nodeId);
+  viewState.selectedNodeId = nodeId;
+  render();
+}
+
+function selectNode(nodeId: string): void {
+  setSingleSelection(nodeId);
+}
+
+function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
+  getNode(nodeId);
+  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+    return;
+  }
+  if (options.range) {
+    setRangeSelection(nodeId);
+    return;
+  }
+  if (options.toggle) {
+    toggleNodeSelection(nodeId);
+    return;
+  }
+  setSingleSelection(nodeId);
 }
 
 function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
@@ -1379,10 +2262,11 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   }
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
-  viewState.reparentSourceId = "";
+  viewState.currentScopeRootId = scopeId;
   if (!isNodeInScope(viewState.selectedNodeId)) {
-    viewState.selectedNodeId = scopeId;
+    setSingleSelection(scopeId, false);
   }
+  normalizeSelectionState();
   render();
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
 }
@@ -1393,10 +2277,11 @@ function ExitScopeCommand(): void {
   }
   const previousScopeId = viewState.scopeHistory.pop()!;
   viewState.currentScopeId = doc.state.nodes[previousScopeId] ? previousScopeId : doc.state.rootId;
-  viewState.reparentSourceId = "";
+  viewState.currentScopeRootId = viewState.currentScopeId;
   if (!isNodeInScope(viewState.selectedNodeId)) {
-    viewState.selectedNodeId = viewState.currentScopeId;
+    setSingleSelection(viewState.currentScopeId, false);
   }
+  normalizeSelectionState();
   render();
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
 }
@@ -1414,7 +2299,7 @@ function addChild(): void {
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
-  viewState.selectedNodeId = id;
+  setSingleSelection(id, false);
   touchDocument();
   board.focus();
 }
@@ -1431,7 +2316,7 @@ function addSibling(): void {
   const id = newId();
   doc!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
   parent.children.splice(currentIndex + 1, 0, id);
-  viewState.selectedNodeId = id;
+  setSingleSelection(id, false);
   touchDocument();
   board.focus();
 }
@@ -1478,7 +2363,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   return true;
 }
 
-function stopInlineEdit(commit: boolean): void {
+function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
   if (!inlineEditor) {
     return;
   }
@@ -1492,7 +2377,26 @@ function stopInlineEdit(commit: boolean): void {
     applyNodeTextEdit(nodeId, next, mode);
   }
 
-  board.focus();
+  if (options?.focusBoard !== false) {
+    board.focus();
+  }
+}
+
+function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
+  if (!doc) {
+    return;
+  }
+  if (direction === "depth") {
+    addChild();
+  } else {
+    addSibling();
+  }
+  startInlineEdit(viewState.selectedNodeId);
+}
+
+function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
+  input.style.height = "auto";
+  input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
 function startInlineEdit(nodeId: string): void {
@@ -1508,8 +2412,8 @@ function startInlineEdit(nodeId: string): void {
   const mode = isAliasNode(node)
     ? ((isBrokenAlias(node) || aliasAccess(node) === "read") ? "alias-label" : "target-text")
     : "node-text";
-  const input = document.createElement("input");
-  input.type = "text";
+  const input = document.createElement("textarea");
+  input.rows = 1;
   input.value = mode === "target-text" ? (resolveAliasTarget(node)?.text || node.text || "") : uiLabel(node);
   input.className = "inline-node-editor";
   input.setAttribute("aria-label", mode === "target-text" ? "Edit target node text" : "Edit node label");
@@ -1517,13 +2421,26 @@ function startInlineEdit(nodeId: string): void {
 
   inlineEditor = { nodeId, input, mode };
   syncInlineEditorPosition();
+  autoSizeInlineEditor(input);
   input.focus();
   input.select();
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
-    if (event.key === "Enter") {
+    if (event.key === "Tab") {
       event.preventDefault();
-      stopInlineEdit(true);
+      stopInlineEdit(true, { focusBoard: false });
+      createNodeByDirectionAndEdit("depth");
+      return;
+    }
+
+    if (event.key === "Enter") {
+      if (event.shiftKey) {
+        // Keep default textarea behavior: Shift+Enter inserts a newline.
+        return;
+      }
+      event.preventDefault();
+      stopInlineEdit(true, { focusBoard: false });
+      createNodeByDirectionAndEdit("breadth");
       return;
     }
 
@@ -1536,50 +2453,132 @@ function startInlineEdit(nodeId: string): void {
   input.addEventListener("blur", () => {
     stopInlineEdit(true);
   });
+
+  input.addEventListener("input", () => {
+    autoSizeInlineEditor(input);
+  });
+}
+
+function nodeDepth(nodeId: string): number {
+  if (!doc) {
+    return 0;
+  }
+  const stateNodes = doc.state.nodes;
+  let depth = 0;
+  let cursor: string | null = nodeId;
+  while (cursor) {
+    const node: TreeNode | undefined = stateNodes[cursor];
+    if (!node) {
+      break;
+    }
+    cursor = node.parentId;
+    if (cursor) {
+      depth += 1;
+    }
+  }
+  return depth;
+}
+
+function getSelectionRoots(selectedIds = viewState.selectedNodeIds): string[] {
+  if (!doc) {
+    return [];
+  }
+  const selectedSet = new Set<string>(Array.from(selectedIds).filter((nodeId) => Boolean(doc!.state.nodes[nodeId])));
+  return Array.from(selectedSet).filter((nodeId) => {
+    const parentId = doc!.state.nodes[nodeId]?.parentId ?? null;
+    return !parentId || !selectedSet.has(parentId);
+  });
+}
+
+function getMovableSelectionRoots(selectedIds = viewState.selectedNodeIds): string[] {
+  if (!doc) {
+    return [];
+  }
+  const movableIds = new Set<string>();
+  selectedIds.forEach((nodeId) => {
+    const node = doc!.state.nodes[nodeId];
+    if (node && node.parentId !== null) {
+      movableIds.add(nodeId);
+    }
+  });
+  return getSelectionRoots(movableIds);
 }
 
 function deleteSelected(): void {
-  const node = getNode(viewState.selectedNodeId);
-  if (node.parentId === null) {
+  const roots = getSelectionRoots();
+  if (roots.length === 0) {
+    return;
+  }
+
+  const deletableRoots = roots.filter((rootId) => getNode(rootId).parentId !== null);
+  if (deletableRoots.length === 0) {
     setStatus("Root node cannot be deleted.", true);
     return;
   }
+
+  const firstRootParentId = getNode(deletableRoots[0]!).parentId;
+  const sortedRoots = [...deletableRoots].sort((a, b) => nodeDepth(b) - nodeDepth(a));
   pushUndoSnapshot();
-  const parent = getNode(node.parentId);
-  parent.children = parent.children.filter((id) => id !== node.id);
-  const stack: string[] = [node.id];
-  while (stack.length > 0) {
-    const currentId = stack.pop()!;
-    const current = doc!.state.nodes[currentId];
-    if (!current) {
-      continue;
+
+  sortedRoots.forEach((rootId) => {
+    const rootNode = doc!.state.nodes[rootId];
+    if (!rootNode || rootNode.parentId === null) {
+      return;
     }
-    if (!isAliasNode(current)) {
-      markAliasesBrokenInViewer(currentId, uiLabel(current));
+    const parent = getNode(rootNode.parentId);
+    parent.children = parent.children.filter((id) => id !== rootId);
+    const stack: string[] = [rootId];
+    while (stack.length > 0) {
+      const currentId = stack.pop()!;
+      const current = doc!.state.nodes[currentId];
+      if (!current) {
+        continue;
+      }
+      if (!isAliasNode(current)) {
+        markAliasesBrokenInViewer(currentId, uiLabel(current));
+      }
+      stack.push(...(current.children || []));
+      viewState.reparentSourceIds.delete(currentId);
+      delete doc!.state.nodes[currentId];
     }
-    stack.push(...(current.children || []));
-    delete doc!.state.nodes[currentId];
+  });
+
+  let cursor: string | null = firstRootParentId ?? doc!.state.rootId;
+  while (cursor && !doc!.state.nodes[cursor]) {
+    cursor = cursor === doc!.state.rootId ? null : (doc!.state.nodes[cursor]?.parentId ?? null);
   }
-  if (viewState.reparentSourceId === node.id) {
-    viewState.reparentSourceId = "";
+  setSingleSelection(cursor || doc!.state.rootId, false);
+
+  if (!doc!.state.nodes[viewState.currentScopeId]) {
+    viewState.currentScopeId = viewState.selectedNodeId;
   }
-  viewState.selectedNodeId = parent.id;
+  if (!doc!.state.nodes[viewState.currentScopeRootId]) {
+    viewState.currentScopeRootId = viewState.currentScopeId;
+  }
   touchDocument();
 }
 
 function toggleCollapse(): void {
-  const nodeId = viewState.selectedNodeId;
-  const node = getNode(nodeId);
-  if ((node.children || []).length === 0) {
+  const targetIds = Array.from(viewState.selectedNodeIds);
+  const collapsibleIds = targetIds.filter((nodeId) => {
+    const node = getNode(nodeId);
+    return (node.children || []).length > 0;
+  });
+  if (collapsibleIds.length === 0) {
     return;
   }
-  if (viewState.collapsedIds.has(nodeId)) {
-    viewState.collapsedIds.delete(nodeId);
-    node.collapsed = false;
-  } else {
-    viewState.collapsedIds.add(nodeId);
-    node.collapsed = true;
-  }
+
+  const shouldExpand = collapsibleIds.every((nodeId) => viewState.collapsedIds.has(nodeId));
+  collapsibleIds.forEach((nodeId) => {
+    const node = getNode(nodeId);
+    if (shouldExpand) {
+      viewState.collapsedIds.delete(nodeId);
+      node.collapsed = false;
+    } else {
+      viewState.collapsedIds.add(nodeId);
+      node.collapsed = true;
+    }
+  });
   touchDocument();
 }
 
@@ -1817,6 +2816,7 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
+  await fetchLinearTransformStatus();
   await fetchCloudSyncStatus();
 
   if (cloudSyncEnabled && cloudSyncExists) {
@@ -1869,10 +2869,14 @@ function selectChild(): void {
   selectNode(children[0]!);
 }
 
-function selectVertical(direction: -1 | 1): void {
+function getBreadthSelectionTarget(direction: -1 | 1): string | null {
   if (!doc || !lastLayout) {
-    selectRelative(direction);
-    return;
+    if (!visibleOrder.length) {
+      return null;
+    }
+    const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+    const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+    return visibleOrder[nextIndex] ?? null;
   }
   const layout = lastLayout;
 
@@ -1884,15 +2888,18 @@ function selectVertical(direction: -1 | 1): void {
     const siblingIndex = siblings.indexOf(currentId);
     const nextSiblingIndex = siblingIndex + direction;
     if (nextSiblingIndex >= 0 && nextSiblingIndex < siblings.length) {
-      selectNode(siblings[nextSiblingIndex]!);
-      return;
+      return siblings[nextSiblingIndex]!;
     }
   }
 
   const currentPos = layout.pos[currentId];
   if (!currentPos) {
-    selectRelative(direction);
-    return;
+    if (!visibleOrder.length) {
+      return null;
+    }
+    const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+    const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+    return visibleOrder[nextIndex] ?? null;
   }
 
   const sameDepth = visibleOrder
@@ -1905,11 +2912,43 @@ function selectVertical(direction: -1 | 1): void {
     : sameDepth.find((id) => layout.pos[id]!.y > currentPos.y);
 
   if (target) {
-    selectNode(target);
-    return;
+    return target;
   }
 
-  selectRelative(direction);
+  if (!visibleOrder.length) {
+    return null;
+  }
+  const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+  const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+  return visibleOrder[nextIndex] ?? null;
+}
+
+function selectBreadth(direction: -1 | 1): void {
+  const target = getBreadthSelectionTarget(direction);
+  if (target) {
+    selectNode(target);
+  }
+}
+
+function extendSelectionBreadth(direction: -1 | 1): void {
+  if (!visibleOrder.length) {
+    return;
+  }
+  const currentIndex = Math.max(0, visibleOrder.indexOf(viewState.selectedNodeId));
+  const nextIndex = Math.min(visibleOrder.length - 1, Math.max(0, currentIndex + direction));
+  const target = visibleOrder[nextIndex] ?? null;
+  if (!target) {
+    return;
+  }
+  if (!viewState.selectionAnchorId) {
+    viewState.selectionAnchorId = viewState.selectedNodeId;
+  }
+  viewState.selectedNodeId = target;
+  const anchorId = viewState.selectionAnchorId || viewState.selectedNodeId;
+  viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
+  viewState.selectedNodeIds.add(target);
+  render();
+  setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
 function loadPayload(payload: unknown): void {
@@ -1921,7 +2960,12 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeId = doc.state.rootId;
     viewState.scopeHistory = [];
     viewState.selectedNodeId = doc.state.rootId;
-    viewState.reparentSourceId = "";
+    viewState.selectedNodeIds = new Set([doc.state.rootId]);
+    viewState.selectionAnchorId = null;
+    viewState.currentScopeRootId = doc.state.rootId;
+    viewState.thinkingMode = "rapid";
+    viewState.clipboardState = null;
+    viewState.reparentSourceIds = new Set<string>();
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
         .filter((n) => n.collapsed === true)
@@ -2059,44 +3103,332 @@ function isDescendant(candidateParentId: string, nodeId: string): boolean {
   return false;
 }
 
+function ancestorPathToRoot(nodeId: string): string[] {
+  if (!doc) {
+    return [];
+  }
+  const path: string[] = [];
+  let cursor: string | null = nodeId;
+  while (cursor) {
+    path.push(cursor);
+    cursor = doc.state.nodes[cursor]?.parentId ?? null;
+  }
+  return path;
+}
+
+function findLowestCommonAncestor(nodeIds: string[]): string | null {
+  if (!doc || nodeIds.length === 0) {
+    return null;
+  }
+  const paths = nodeIds.map((nodeId) => ancestorPathToRoot(nodeId).reverse());
+  const shortestLen = Math.min(...paths.map((path) => path.length));
+  let lca: string | null = null;
+  for (let index = 0; index < shortestLen; index += 1) {
+    const candidate = paths[0]![index]!;
+    if (paths.every((path) => path[index] === candidate)) {
+      lca = candidate;
+      continue;
+    }
+    break;
+  }
+  return lca;
+}
+
 function markReparentSource(): void {
-  if (!viewState.selectedNodeId) {
+  if (!doc || viewState.selectedNodeIds.size === 0) {
     return;
   }
-  viewState.reparentSourceId = viewState.selectedNodeId;
-  setStatus(`Marked move node: ${getNode(viewState.reparentSourceId).text}`);
+  viewState.reparentSourceIds = new Set(viewState.selectedNodeIds);
+  const roots = getMovableSelectionRoots(viewState.reparentSourceIds);
+  setStatus(`Marked move nodes: ${roots.length}`);
   render();
 }
 
+function sameIdSet(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const id of left) {
+    if (!right.has(id)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function toggleReparentSource(): void {
+  if (!doc) {
+    return;
+  }
+  const nextSourceIds = new Set(viewState.selectedNodeIds);
+  const currentRoots = new Set(getMovableSelectionRoots(viewState.reparentSourceIds));
+  const nextRoots = new Set(getMovableSelectionRoots(nextSourceIds));
+
+  if (nextRoots.size === 0) {
+    viewState.reparentSourceIds.clear();
+    setStatus("No move node selected.", true);
+    render();
+    return;
+  }
+
+  if (sameIdSet(currentRoots, nextRoots)) {
+    viewState.reparentSourceIds.clear();
+    setStatus("Move node mark cleared.");
+    render();
+    return;
+  }
+
+  viewState.reparentSourceIds = nextSourceIds;
+  setStatus(`Marked move nodes: ${nextRoots.size}`);
+  render();
+}
+
+function toggleHoldReparent(): void {
+  if (viewState.reparentSourceId) {
+    applyReparent();
+  } else {
+    markReparentSource();
+  }
+}
+
 function applyReparent(): void {
-  const sourceId = viewState.reparentSourceId;
+  const sourceRoots = getMovableSelectionRoots(viewState.reparentSourceIds);
   const targetParentId = viewState.selectedNodeId;
-  if (!sourceId) {
+  if (sourceRoots.length === 0) {
     setStatus("No move node marked.", true);
     return;
   }
-  if (sourceId === targetParentId) {
+  if (sourceRoots.some((sourceId) => sourceId === targetParentId)) {
     setStatus("Cannot move a node under itself.", true);
     return;
   }
-  const sourceNode = getNode(sourceId);
-  if (sourceNode.parentId === null) {
-    setStatus("Root node cannot be moved.", true);
-    return;
-  }
-  if (isDescendant(targetParentId, sourceId)) {
+  if (sourceRoots.some((sourceId) => isDescendant(targetParentId, sourceId))) {
     setStatus("Cannot move a node under its descendant.", true);
     return;
   }
 
-  applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true);
+  pushUndoSnapshot();
+  let movedCount = 0;
+  sourceRoots.forEach((sourceId) => {
+    const applied = applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true, {
+      withUndo: false,
+      withTouch: false,
+      withStatus: false,
+    });
+    if (applied) {
+      movedCount += 1;
+    }
+  });
+
+  if (movedCount === 0) {
+    setStatus("No valid move target for selected nodes.", true);
+    return;
+  }
+
+  setSingleSelection(targetParentId, false);
+  viewState.reparentSourceIds.clear();
+  touchDocument();
+  setStatus(`Moved ${movedCount} node(s).`);
+}
+
+function groupSelected(): void {
+  if (!doc) {
+    return;
+  }
+  const roots = getSelectionRoots().filter((nodeId) => getNode(nodeId).parentId !== null);
+  if (roots.length <= 1) {
+    setStatus("Select multiple nodes to group.", true);
+    return;
+  }
+
+  const lcaId = findLowestCommonAncestor(roots) || doc.state.rootId;
+  const lca = getNode(lcaId);
+  const childIndexes = roots
+    .map((rootId) => lca.children.indexOf(rootId))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b);
+  const insertIndex = childIndexes.length > 0 ? childIndexes[0]! : lca.children.length;
+
+  pushUndoSnapshot();
+  const newGroupId = newId();
+  doc.state.nodes[newGroupId] = createNodeRecord(newGroupId, lca.id, "");
+  lca.children.splice(insertIndex, 0, newGroupId);
+  roots.forEach((rootId) => {
+    applyMoveByParentAndIndex(rootId, newGroupId, getNode(newGroupId).children.length, true, {
+      withTouch: false,
+      withStatus: false,
+    });
+  });
+
+  setSingleSelection(newGroupId, false);
+  touchDocument();
+  startInlineEdit(newGroupId);
+  setStatus(`Grouped ${roots.length} nodes.`);
+}
+
+function selectAllVisibleInScope(): void {
+  if (!visibleOrder.length) {
+    return;
+  }
+  const firstVisibleId = visibleOrder[0]!;
+  viewState.selectedNodeId = firstVisibleId;
+  viewState.selectedNodeIds = new Set(visibleOrder);
+  viewState.selectionAnchorId = firstVisibleId;
+  render();
+  setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
+}
+
+function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
+  const node = getNode(nodeId);
+  return {
+    text: node.text || "",
+    details: node.details || "",
+    note: node.note || "",
+    attributes: JSON.parse(JSON.stringify(node.attributes || {})) as Record<string, string>,
+    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId)),
+  };
+}
+
+function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot): string {
+  const parent = getNode(parentId);
+  const createdId = newId();
+  doc!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text || "New Node");
+  const created = doc!.state.nodes[createdId]!;
+  created.details = snapshot.details || "";
+  created.note = snapshot.note || "";
+  created.attributes = JSON.parse(JSON.stringify(snapshot.attributes || {})) as Record<string, string>;
+  parent.children.push(createdId);
+  (snapshot.children || []).forEach((childSnapshot) => {
+    cloneSnapshotUnderParent(createdId, childSnapshot);
+  });
+  return createdId;
+}
+
+async function copyTextToSystemClipboard(text: string): Promise<void> {
+  if (!text || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Ignore clipboard permission failures and keep internal clipboard available.
+  }
+}
+
+function copySelected(): void {
+  const roots = getSelectionRoots();
+  if (roots.length === 0) {
+    return;
+  }
+  const snapshots = roots.map((rootId) => toSubtreeSnapshot(rootId));
+  viewState.clipboardState = {
+    type: "copy",
+    snapshots,
+  };
+  void copyTextToSystemClipboard(roots.map((rootId) => uiLabel(getNode(rootId))).join("\n"));
+  render();
+  setStatus(`Copied ${roots.length} node(s).`);
+}
+
+function cutSelected(): void {
+  const roots = getMovableSelectionRoots();
+  if (roots.length === 0) {
+    setStatus("Root node cannot be cut.", true);
+    return;
+  }
+  viewState.clipboardState = {
+    type: "cut",
+    sourceIds: new Set(roots),
+  };
+  render();
+  setStatus(`Cut pending: ${roots.length} node(s).`);
+}
+
+function pasteClipboard(): void {
+  if (!doc || !viewState.clipboardState) {
+    setStatus("Clipboard is empty.", true);
+    return;
+  }
+  const targetParentId = viewState.selectedNodeId;
+  const targetParent = getNode(targetParentId);
+  if (isAliasNode(targetParent)) {
+    setStatus("Alias nodes cannot own children.", true);
+    return;
+  }
+
+  if (viewState.clipboardState.type === "copy") {
+    const snapshots = viewState.clipboardState.snapshots;
+    if (!snapshots.length) {
+      setStatus("Clipboard is empty.", true);
+      return;
+    }
+    pushUndoSnapshot();
+    let firstPastedId: string | null = null;
+    snapshots.forEach((snapshot) => {
+      const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot);
+      if (!firstPastedId) {
+        firstPastedId = pastedId;
+      }
+    });
+    if (firstPastedId) {
+      setSingleSelection(firstPastedId, false);
+    }
+    touchDocument();
+    setStatus(`Pasted ${snapshots.length} copied node(s).`);
+    return;
+  }
+
+  const cutRoots = getSelectionRoots(viewState.clipboardState.sourceIds)
+    .filter((nodeId) => getNode(nodeId).parentId !== null);
+  if (cutRoots.length === 0) {
+    viewState.clipboardState = null;
+    render();
+    setStatus("No cut nodes available.", true);
+    return;
+  }
+  if (cutRoots.some((sourceId) => sourceId === targetParentId || isDescendant(targetParentId, sourceId))) {
+    setStatus("Cannot paste cut nodes under their descendant.", true);
+    return;
+  }
+
+  pushUndoSnapshot();
+  cutRoots.forEach((sourceId) => {
+    applyMoveByParentAndIndex(sourceId, targetParentId, getNode(targetParentId).children.length, true, {
+      withUndo: false,
+      withTouch: false,
+      withStatus: false,
+    });
+  });
+  setSingleSelection(cutRoots[0]!, false);
+  viewState.clipboardState = null;
+  touchDocument();
+  setStatus(`Moved ${cutRoots.length} cut node(s).`);
+}
+
+function clearCutClipboard(): boolean {
+  if (viewState.clipboardState?.type !== "cut") {
+    return false;
+  }
+  viewState.clipboardState = null;
+  render();
+  setStatus("Cut pending cleared.");
+  return true;
 }
 
 function canReparent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
   return canDropUnderParent(sourceId, targetParentId);
 }
 
-function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, targetIndex: number, expandParent: boolean): boolean {
+function applyMoveByParentAndIndex(
+  sourceId: string,
+  targetParentId: string,
+  targetIndex: number,
+  expandParent: boolean,
+  options?: { withUndo?: boolean; withTouch?: boolean; withStatus?: boolean }
+): boolean {
+  const withUndo = options?.withUndo ?? true;
+  const withTouch = options?.withTouch ?? true;
+  const withStatus = options?.withStatus ?? true;
   if (!canDropUnderParent(sourceId, targetParentId)) {
     return false;
   }
@@ -2115,7 +3447,9 @@ function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, tar
     }
   }
 
-  pushUndoSnapshot();
+  if (withUndo) {
+    pushUndoSnapshot();
+  }
   oldParent.children = oldParent.children.filter((id) => id !== sourceId);
   const boundedIndex = Math.max(0, Math.min(normalizedIndex, newParent.children.length));
   newParent.children.splice(boundedIndex, 0, sourceId);
@@ -2124,12 +3458,16 @@ function applyMoveByParentAndIndex(sourceId: string, targetParentId: string, tar
     newParent.collapsed = false;
   }
   sourceNode.parentId = targetParentId;
-  viewState.reparentSourceId = "";
-  touchDocument();
-  if (oldParent.id === newParent.id) {
-    setStatus(`Reordered "${sourceNode.text}" in "${newParent.text}".`);
-  } else {
-    setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+  viewState.reparentSourceIds.delete(sourceId);
+  if (withTouch) {
+    touchDocument();
+  }
+  if (withStatus) {
+    if (oldParent.id === newParent.id) {
+      setStatus(`Reordered "${sourceNode.text}" in "${newParent.text}".`);
+    } else {
+      setStatus(`Moved "${sourceNode.text}" under "${newParent.text}".`);
+    }
   }
   return true;
 }
@@ -2172,6 +3510,18 @@ stopVisualCheckBtn?.addEventListener("click", () => {
   stopVisualCheck();
 });
 
+modeFlashBtn?.addEventListener("click", () => {
+  setThinkingMode("flash");
+});
+
+modeRapidBtn?.addEventListener("click", () => {
+  setThinkingMode("rapid");
+});
+
+modeDeepBtn?.addEventListener("click", () => {
+  setThinkingMode("deep");
+});
+
 fileInput.addEventListener("change", (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files && target.files[0];
@@ -2196,33 +3546,82 @@ fileInput.addEventListener("change", (event: Event) => {
 });
 
 linearTextEl?.addEventListener("input", () => {
-  linearDirty = true;
-  renderLinearPanel();
+  if (!doc) {
+    return;
+  }
+  const scopeRootId = currentLinearMemoScopeId();
+  linearNotesByScope[scopeRootId] = linearTextEl.value;
+  const templateText = buildLinearFromScope().text;
+  linearDirty = linearTextEl.value !== templateText;
+  if (linearMetaEl) {
+    const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
+    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
+  }
+  if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
 });
 
-linearTextEl?.addEventListener("click", () => {
-  if (!doc || linearDirty || suppressLinearSelectionSync) {
+linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
+  if (!doc) {
     return;
   }
-  const lineIndex = linearOffsetToLineIndex(linearTextEl.value, linearTextEl.selectionStart || 0);
-  const entry = linearLineMap.find((line) => line.lineIndex === lineIndex);
-  if (!entry) {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
+    setStatus("Linear memo saved in current scope.");
     return;
   }
-  selectNode(entry.nodeId);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    linearNotesByScope[currentLinearMemoScopeId()] = buildLinearFromScope().text;
+    renderLinearPanel();
+    setStatus("Linear memo reset to outline template.");
+  }
 });
 
-linearTextEl?.addEventListener("keyup", () => {
-  if (!doc || linearDirty || suppressLinearSelectionSync) {
-    return;
-  }
-  const lineIndex = linearOffsetToLineIndex(linearTextEl.value, linearTextEl.selectionStart || 0);
-  const entry = linearLineMap.find((line) => line.lineIndex === lineIndex);
-  if (!entry) {
-    return;
-  }
-  selectNode(entry.nodeId);
+linearPanelEl?.addEventListener("pointerup", () => {
+  captureManualLinearPanelWidth();
+  syncLinearPanelPosition();
 });
+
+linearResizeHandleEl?.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  linearResizeState = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startCanvasWidth: linearPanelCanvasWidth,
+  };
+  linearResizeHandleEl.setPointerCapture(event.pointerId);
+});
+
+linearResizeHandleEl?.addEventListener("pointermove", (event: PointerEvent) => {
+  if (!linearResizeState || event.pointerId !== linearResizeState.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  const dx = event.clientX - linearResizeState.startClientX;
+  const zoom = Math.max(0.0001, viewState.zoom);
+  const nextWidth = linearResizeState.startCanvasWidth + dx / zoom;
+  linearPanelCanvasWidth = Math.max(220, Math.min(1200, nextWidth));
+  syncLinearPanelPosition();
+});
+
+function endLinearResize(event: PointerEvent): void {
+  if (!linearResizeState || event.pointerId !== linearResizeState.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  linearResizeHandleEl?.releasePointerCapture(event.pointerId);
+  linearResizeState = null;
+  syncLinearPanelPosition();
+}
+
+linearResizeHandleEl?.addEventListener("pointerup", endLinearResize);
+linearResizeHandleEl?.addEventListener("pointercancel", endLinearResize);
 
 linearApplyBtn?.addEventListener("click", () => {
   if (!doc || !linearDirty) {
@@ -2277,9 +3676,39 @@ addSiblingBtn?.addEventListener("click", () => {
   addSibling();
 });
 
+makeFolderBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  makeSelectedFolder();
+});
+
+enterScopeBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  enterScope(viewState.selectedNodeId);
+});
+
+exitScopeBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  exitScope();
+});
+
+addAliasBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  addAliasInCurrentScope();
+});
+
+jumpTargetBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  jumpToAliasTarget();
+});
+
 toggleCollapseBtn?.addEventListener("click", () => {
   if (!doc) return;
   toggleCollapse();
+});
+
+aiGenerateTopicsBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  void generateRelatedTopicsForSelectedNode();
 });
 
 deleteNodeBtn?.addEventListener("click", () => {
@@ -2326,6 +3755,18 @@ focusSelectedBtn?.addEventListener("click", () => {
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
+  const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
+  if (collapseNodeId && event.button === 0) {
+    event.preventDefault();
+    selectNode(collapseNodeId);
+    if (viewState.collapsedIds.has(collapseNodeId)) {
+      viewState.collapsedIds.delete(collapseNodeId);
+      render();
+      setStatus("Expanded collapsed branch.");
+    }
+    board.focus();
+    return;
+  }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
   if (!doc || !nodeId || event.button !== 0) {
@@ -2334,10 +3775,15 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   viewState.dragState = {
     pointerId: event.pointerId,
     sourceNodeId: nodeId,
+    sourceRootIds: viewState.selectedNodeIds.has(nodeId)
+      ? getMovableSelectionRoots(viewState.selectedNodeIds)
+      : getMovableSelectionRoots(new Set([nodeId])),
     proposal: null,
     startX: event.clientX,
     startY: event.clientY,
     dragged: false,
+    toggleKey: event.ctrlKey || event.metaKey,
+    shiftKey: event.shiftKey,
   };
   canvas.setPointerCapture(event.pointerId);
 });
@@ -2353,7 +3799,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   viewState.dragState.dragged = true;
-  viewState.dragState.proposal = proposeDrop(viewState.dragState.sourceNodeId, event.clientX, event.clientY);
+  viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
   render();
 });
 
@@ -2361,25 +3807,52 @@ function finishNodeDrag(event: PointerEvent): void {
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
-  const { sourceNodeId, proposal, dragged } = viewState.dragState;
+  const { sourceNodeId, sourceRootIds, proposal, dragged } = viewState.dragState;
+  const { toggleKey, shiftKey } = viewState.dragState;
   viewState.dragState = null;
   canvas.releasePointerCapture(event.pointerId);
 
   if (!dragged) {
-    selectNode(sourceNodeId);
+    selectByPointerModifiers(sourceNodeId, {
+      toggle: toggleKey,
+      range: shiftKey,
+    });
     board.focus();
     return;
   }
 
   if (proposal) {
-    const applied = proposal.kind === "reparent"
-      ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
-      : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
-    if (applied) {
-      viewState.selectedNodeId = sourceNodeId;
-      render();
-      board.focus();
-      return;
+    if (proposal.kind === "reparent" && sourceRootIds.length > 1) {
+      pushUndoSnapshot();
+      let movedCount = 0;
+      sourceRootIds.forEach((sourceId) => {
+        const applied = applyMoveByParentAndIndex(sourceId, proposal.parentId, getNode(proposal.parentId).children.length, false, {
+          withUndo: false,
+          withTouch: false,
+          withStatus: false,
+        });
+        if (applied) {
+          movedCount += 1;
+        }
+      });
+      if (movedCount > 0) {
+        setSingleSelection(proposal.parentId, false);
+        touchDocument();
+        setStatus(`Moved ${movedCount} node(s).`);
+        render();
+        board.focus();
+        return;
+      }
+    } else {
+      const applied = proposal.kind === "reparent"
+        ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
+        : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
+      if (applied) {
+        setSingleSelection(sourceNodeId, false);
+        render();
+        board.focus();
+        return;
+      }
     }
   }
 
@@ -2397,15 +3870,18 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
     return;
   }
   selectNode(nodeId);
-      const node = getNode(nodeId);
-      if ((node.children || []).length > 0) {
-        EnterScopeCommand(nodeId);
-        return;
-      }
-      startInlineEdit(nodeId);
+  const node = getNode(nodeId);
+  if ((node.children || []).length > 0) {
+    EnterScopeCommand(nodeId);
+    return;
+  }
+  startInlineEdit(nodeId);
 });
 
 board.addEventListener("wheel", (event: WheelEvent) => {
+  if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
+    return;
+  }
   event.preventDefault();
   if (!event.ctrlKey && !event.metaKey) {
     viewState.cameraX -= event.deltaX * VIEWER_TUNING.pan.wheelFactor;
@@ -2423,6 +3899,9 @@ board.addEventListener("wheel", (event: WheelEvent) => {
 
 board.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) {
+    return;
+  }
+  if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
   }
   const onNode = (event.target as HTMLElement | null)?.dataset?.["nodeId"];
@@ -2492,20 +3971,46 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    selectAllVisibleInScope();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
+    event.preventDefault();
+    copySelected();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
+    event.preventDefault();
+    cutSelected();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
+    event.preventDefault();
+    pasteClipboard();
+    return;
+  }
+
+  if (event.key === "Escape") {
+    if (clearCutClipboard()) {
+      event.preventDefault();
+    }
+    return;
+  }
+
   if (event.key === "Tab") {
     event.preventDefault();
-    addChild();
+    createNodeByDirectionAndEdit("depth");
     return;
   }
 
   if (event.key === "Enter") {
-    if (event.shiftKey) {
-      event.preventDefault();
-      startInlineEdit(viewState.selectedNodeId);
-      return;
-    }
     event.preventDefault();
-    addSibling();
+    createNodeByDirectionAndEdit("breadth");
     return;
   }
 
@@ -2515,8 +4020,49 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    if (event.key === "1") {
+      event.preventDefault();
+      setThinkingMode("flash");
+      return;
+    }
+    if (event.key === "2") {
+      event.preventDefault();
+      setThinkingMode("rapid");
+      return;
+    }
+    if (event.key === "3") {
+      event.preventDefault();
+      setThinkingMode("deep");
+      return;
+    }
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
+    event.preventDefault();
+    void generateRelatedTopicsForSelectedNode();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === "]") {
+    event.preventDefault();
+    enterScope(viewState.selectedNodeId);
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === "[") {
+    event.preventDefault();
+    exitScope();
+    return;
+  }
+
   if (event.key === "Delete" || event.key === "Backspace") {
-        if (event.key === "Backspace" && !inlineEditor && viewState.scopeHistory.length > 0) {
+        if (
+          event.key === "Backspace" &&
+          !inlineEditor &&
+          viewState.scopeHistory.length > 0 &&
+          viewState.selectedNodeId === normalizedCurrentScopeId()
+        ) {
           event.preventDefault();
           ExitScopeCommand();
           return;
@@ -2532,9 +4078,49 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         return;
       }
 
-  if (event.key.toLowerCase() === "m") {
+<<<<<<< HEAD
+  if (event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
-    markReparentSource();
+    if (cycleViewState === "focus") {
+      if (doc && viewState.selectedNodeId) {
+        centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
+        setStatus("Focus: centered on selected node.");
+      }
+      cycleViewState = "fit";
+    } else {
+      fitDocument();
+      setStatus("Fit all.");
+      cycleViewState = "focus";
+    }
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    addAliasAsChild();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "p") {
+    event.preventDefault();
+    makeSelectedFolder();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    toggleHoldReparent();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "m") {
+=======
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
+>>>>>>> origin/dev-beta
+    event.preventDefault();
+    if (!event.repeat) {
+      toggleReparentSource();
+    }
     return;
   }
 
@@ -2544,7 +4130,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === " ") {
+  if (event.key === " " || (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "e")) {
     event.preventDefault();
     toggleCollapse();
     return;
@@ -2552,24 +4138,47 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowUp") {
     event.preventDefault();
-    selectVertical(-1);
+    if (event.shiftKey) {
+      extendSelectionBreadth(-1);
+      return;
+    }
+    selectBreadth(-1);
     return;
   }
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
-    selectVertical(1);
+    if (event.shiftKey) {
+      extendSelectionBreadth(1);
+      return;
+    }
+    selectBreadth(1);
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "g") {
+    event.preventDefault();
+    groupSelected();
     return;
   }
 
   if (event.key === "ArrowLeft") {
     event.preventDefault();
+    if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
+      ExitScopeCommand();
+      return;
+    }
     selectParent();
     return;
   }
 
   if (event.key === "ArrowRight") {
     event.preventDefault();
+    const selected = getNode(viewState.selectedNodeId);
+    if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
+      EnterScopeCommand(selected.id);
+      return;
+    }
     selectChild();
   }
 });
