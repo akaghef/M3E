@@ -13,7 +13,7 @@ import type { AiSubagentRequest, AppState, LinearTransformRequest, SavedDoc } fr
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
-const PORT = 4173;
+const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "viewer.html";
 const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
 const SQLITE_DB_PATH = path.join(DATA_DIR, "rapid-mvp.sqlite");

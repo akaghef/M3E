@@ -1,5 +1,6 @@
 // @ts-check
 const { defineConfig, devices } = require("@playwright/test");
+const PORT = process.env.M3E_PORT || "4173";
 
 module.exports = defineConfig({
   testDir: "./tests/visual",
@@ -16,12 +17,12 @@ module.exports = defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: `http://127.0.0.1:${PORT}`,
     viewport: { width: 1600, height: 1000 },
   },
   webServer: {
     command: "node ./test_server.js",
-    url: "http://127.0.0.1:4173/viewer.html",
+    url: `http://127.0.0.1:${PORT}/viewer.html`,
     reuseExistingServer: true,
     cwd: __dirname,
     timeout: 30_000,

@@ -21,6 +21,7 @@ cd /d "%~dp0\..\.."
 
 if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%APPDATA%\M3E"
 if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+if "%M3E_PORT%"=="" set "M3E_PORT=38482"
 
 echo ============================================================
 echo  M3E Final Migration: Beta ^> Final
