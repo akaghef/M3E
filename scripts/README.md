@@ -29,6 +29,8 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 |-----------|------|
 | `launch.bat` | Beta を起動（ビルド済み前提）**← 日常利用** |
 | `update-and-launch.bat` | git pull → install → build → 起動 |
+| `install-ollama-gemma3-4b.ps1` | Ollama 導入 + `gemma3:4b` 取得（ローカル AI 準備） |
+| `launch-with-local-gemma.bat` | Bitwarden なしで Ollama + `gemma3:4b` で Beta を起動 |
 | `launch-with-ai.bat` | Bitwarden から AI API key を注入して Beta を起動 |
 | `update-and-launch-with-ai.bat` | 更新後、Bitwarden から AI API key を注入して Beta を起動 |
 

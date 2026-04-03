@@ -31,11 +31,14 @@ test.before(async () => {
     const userMessage = body.messages.find((message) => message.role === "user");
 
     res.setHeader("Content-Type", "application/json; charset=utf-8");
+    const content = userMessage.content.includes("Topic generation request:")
+      ? JSON.stringify({ topics: ["Root cause", "Alternative design", "Validation steps"] })
+      : `stubbed-transform:${userMessage.content.includes("tree-to-linear") ? "ttl" : "ltt"}`;
     res.end(JSON.stringify({
       choices: [
         {
           message: {
-            content: `stubbed-transform:${userMessage.content.includes("tree-to-linear") ? "ttl" : "ltt"}`,
+            content,
           },
         },
       ],
@@ -103,6 +106,7 @@ test("linear transform convert proxies request to configured subagent", async ()
   assert.equal(status.payload.configured, true);
   assert.equal(status.payload.provider, "deepseek");
   assert.equal(status.payload.features["linear-transform"].available, true);
+  assert.equal(status.payload.features["topic-suggest"].available, true);
 
   const converted = await requestJson(`${appBaseUrl}/api/ai/subagent/linear-transform`, {
     method: "POST",
@@ -186,4 +190,37 @@ test("ai subagent returns 404 for unsupported subagent", async () => {
   });
   assert.equal(response.response.status, 404);
   assert.equal(response.payload.code, "AI_UNSUPPORTED_SUBAGENT");
+});
+
+test("topic suggest subagent returns related topics", async () => {
+  process.env.M3E_AI_ENABLED = "1";
+  process.env.M3E_AI_PROVIDER = "ollama";
+  process.env.M3E_AI_TRANSPORT = "openai-compatible";
+  process.env.M3E_AI_BASE_URL = providerBaseUrl;
+  process.env.M3E_AI_API_KEY = "ollama";
+  process.env.M3E_AI_MODEL = "gemma3:4b";
+
+  const response = await requestJson(`${appBaseUrl}/api/ai/subagent/topic-suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: "rapid-main",
+      scopeId: "root",
+      input: {
+        nodeText: "AI infra setup",
+        nodeDetails: "Need local and cloud routing",
+        maxTopics: 3,
+      },
+    }),
+  });
+
+  assert.equal(response.response.status, 200);
+  assert.equal(response.payload.ok, true);
+  assert.equal(response.payload.subagent, "topic-suggest");
+  assert.equal(response.payload.model, "gemma3:4b");
+  assert.deepEqual(response.payload.proposal.result.topics, [
+    "Root cause",
+    "Alternative design",
+    "Validation steps",
+  ]);
 });

@@ -60,24 +60,43 @@ $apiKey = if ($item.login.password) { "$($item.login.password)".Trim() } else { 
 if (-not $apiKey) {
     $apiKey = Get-FieldValue -Item $item -Names @("api_key", "M3E_AI_API_KEY", "deepseek_api_key")
 }
-if (-not $apiKey) {
-    throw "API key was not found in the Bitwarden item password or known custom fields."
-}
 
 $provider = Get-FieldValue -Item $item -Names @("provider", "ai_provider", "M3E_AI_PROVIDER")
 $transport = Get-FieldValue -Item $item -Names @("transport", "ai_transport", "M3E_AI_TRANSPORT")
 $baseUrl = Get-FieldValue -Item $item -Names @("base_url", "endpoint", "M3E_AI_BASE_URL")
 $model = Get-FieldValue -Item $item -Names @("model", "default_model", "M3E_AI_MODEL")
 
+$effectiveProvider = if ($provider) { $provider } else { "deepseek" }
+
+if (-not $apiKey -and $effectiveProvider -eq "ollama") {
+    $apiKey = "ollama"
+}
+if (-not $apiKey) {
+    throw "API key was not found in the Bitwarden item password or known custom fields."
+}
+
 $env:M3E_AI_ENABLED = "1"
 $env:M3E_AI_API_KEY = $apiKey
-$env:M3E_AI_PROVIDER = if ($provider) { $provider } else { "deepseek" }
+$env:M3E_AI_PROVIDER = $effectiveProvider
 $env:M3E_AI_TRANSPORT = if ($transport) { $transport } else { "openai-compatible" }
-$env:M3E_AI_BASE_URL = if ($baseUrl) { $baseUrl } else { "https://api.deepseek.com" }
-$env:M3E_AI_MODEL = if ($model) { $model } else { "deepseek-chat" }
+if ($baseUrl) {
+    $env:M3E_AI_BASE_URL = $baseUrl
+} elseif ($effectiveProvider -eq "ollama") {
+    $env:M3E_AI_BASE_URL = "http://localhost:11434/v1"
+} else {
+    $env:M3E_AI_BASE_URL = "https://api.deepseek.com"
+}
+if ($model) {
+    $env:M3E_AI_MODEL = $model
+} elseif ($effectiveProvider -eq "ollama") {
+    $env:M3E_AI_MODEL = "gemma3:4b"
+} else {
+    $env:M3E_AI_MODEL = "deepseek-chat"
+}
 $env:M3E_LINEAR_TRANSFORM_SYSTEM_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\system.txt"
 $env:M3E_LINEAR_TRANSFORM_TREE_TO_LINEAR_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\tree-to-linear.txt"
 $env:M3E_LINEAR_TRANSFORM_LINEAR_TO_TREE_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\linear-to-tree.txt"
+$env:M3E_TOPIC_SUGGEST_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\topic-agent\topic-suggest.txt"
 $env:M3E_DATA_DIR = Join-Path $repoRoot "beta\data"
 
 if (-not (Test-Path $env:M3E_DATA_DIR)) {
