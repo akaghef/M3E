@@ -85,6 +85,7 @@ let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
@@ -566,6 +567,46 @@ function addAliasInCurrentScope(): boolean {
   setSingleSelection(aliasId, false);
   touchDocument();
   setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
+  board.focus();
+  return true;
+}
+
+function addAliasAsChild(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const target = getNode(viewState.selectedNodeId);
+  if (!target) {
+    return false;
+  }
+  if (isAliasNode(target)) {
+    setStatus("Alias cannot target another alias.", true);
+    return false;
+  }
+  pushUndoSnapshot();
+  const aliasId = newId();
+  doc.state.nodes[aliasId] = {
+    id: aliasId,
+    parentId: target.id,
+    children: [],
+    collapsed: false,
+    nodeType: "alias",
+    scopeId: target.scopeId,
+    text: uiLabel(target),
+    details: "",
+    note: "",
+    attributes: {},
+    link: "",
+    targetNodeId: target.id,
+    aliasLabel: undefined,
+    access: "read",
+    targetSnapshotLabel: undefined,
+    isBroken: false,
+  };
+  target.children.push(aliasId);
+  viewState.selectedNodeId = aliasId;
+  touchDocument();
+  setStatus(`Alias created as child of ${uiLabel(target)}.`);
   board.focus();
   return true;
 }
@@ -3142,6 +3183,14 @@ function toggleReparentSource(): void {
   render();
 }
 
+function toggleHoldReparent(): void {
+  if (viewState.reparentSourceId) {
+    applyReparent();
+  } else {
+    markReparentSource();
+  }
+}
+
 function applyReparent(): void {
   const sourceRoots = getMovableSelectionRoots(viewState.reparentSourceIds);
   const targetParentId = viewState.selectedNodeId;
@@ -4029,7 +4078,45 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         return;
       }
 
+<<<<<<< HEAD
+  if (event.altKey && event.key.toLowerCase() === "v") {
+    event.preventDefault();
+    if (cycleViewState === "focus") {
+      if (doc && viewState.selectedNodeId) {
+        centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
+        setStatus("Focus: centered on selected node.");
+      }
+      cycleViewState = "fit";
+    } else {
+      fitDocument();
+      setStatus("Fit all.");
+      cycleViewState = "focus";
+    }
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    addAliasAsChild();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "p") {
+    event.preventDefault();
+    makeSelectedFolder();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    toggleHoldReparent();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "m") {
+=======
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
+>>>>>>> origin/dev-beta
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
@@ -4043,7 +4130,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === " ") {
+  if (event.key === " " || (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "e")) {
     event.preventDefault();
     toggleCollapse();
     return;
