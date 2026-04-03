@@ -25,7 +25,9 @@ const importanceViewSelect = document.getElementById("importance-view") as HTMLS
 const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
+const toggleMetaPanelBtn = document.getElementById("toggle-meta-panel") as HTMLButtonElement | null;
 const downloadBtn = document.getElementById("download-btn");
+const metaPanelEl = document.querySelector(".meta-panel") as HTMLElement | null;
 const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
 const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
@@ -156,6 +158,23 @@ function setThinkingMode(mode: ThinkingMode): void {
   viewState.thinkingMode = mode;
   syncThinkingModeUi();
   setStatus(`Mode: ${thinkingModeLabel(mode)}`);
+}
+
+function syncMetaPanelToggleUi(): void {
+  if (!toggleMetaPanelBtn || !metaPanelEl) {
+    return;
+  }
+  const isVisible = !metaPanelEl.hidden;
+  toggleMetaPanelBtn.textContent = isVisible ? "Hide meta" : "Show meta";
+  toggleMetaPanelBtn.setAttribute("aria-pressed", isVisible ? "true" : "false");
+}
+
+function toggleMetaPanelVisibility(): void {
+  if (!metaPanelEl) {
+    return;
+  }
+  metaPanelEl.hidden = !metaPanelEl.hidden;
+  syncMetaPanelToggleUi();
 }
 
 function nowIso(): string {
@@ -3754,6 +3773,10 @@ focusSelectedBtn?.addEventListener("click", () => {
   centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
 });
 
+toggleMetaPanelBtn?.addEventListener("click", () => {
+  toggleMetaPanelVisibility();
+});
+
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
@@ -4188,6 +4211,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 });
 
 setVisualCheckStatus("Visual check idle");
+syncMetaPanelToggleUi();
 
 updateCloudSyncUi();
 

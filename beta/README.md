@@ -28,6 +28,11 @@ This will:
 
 Stop with `Ctrl+C`.
 
+### UI terminology
+
+- `meta-panel` (class name): Official name is "メタパネル".
+- This panel shows mode/scope/status metadata and shortcut hints.
+
 ### Optional cloud sync (file-mirror mode)
 
 Cloud sync can be enabled as an opt-in mirror layer on top of local SQLite persistence.
