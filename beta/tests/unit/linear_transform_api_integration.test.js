@@ -58,10 +58,13 @@ test.before(async () => {
 test.after(async () => {
   delete process.env.M3E_AI_ENABLED;
   delete process.env.M3E_AI_PROVIDER;
+  delete process.env.M3E_AI_GATEWAY;
   delete process.env.M3E_AI_TRANSPORT;
   delete process.env.M3E_AI_BASE_URL;
   delete process.env.M3E_AI_API_KEY;
   delete process.env.M3E_AI_MODEL;
+  delete process.env.M3E_AI_DEFAULT_MODEL_ALIAS;
+  delete process.env.M3E_AI_MODEL_REGISTRY_JSON;
 
   if (appServer) {
     await new Promise((resolve, reject) => {
@@ -165,6 +168,55 @@ test("linear transform convert returns 503 when provider config is incomplete", 
   assert.equal(converted.payload.ok, false);
   assert.equal(converted.payload.code, "AI_NOT_CONFIGURED");
   assert.match(converted.payload.error, /not fully configured/);
+});
+
+test("ai status and subagent resolve model alias from registry", async () => {
+  process.env.M3E_AI_ENABLED = "1";
+  process.env.M3E_AI_PROVIDER = "litellm";
+  process.env.M3E_AI_GATEWAY = "litellm";
+  process.env.M3E_AI_TRANSPORT = "openai-compatible";
+  process.env.M3E_AI_BASE_URL = providerBaseUrl;
+  process.env.M3E_AI_API_KEY = "test-key";
+  delete process.env.M3E_AI_MODEL;
+  process.env.M3E_AI_DEFAULT_MODEL_ALIAS = "chat.fast";
+  process.env.M3E_AI_MODEL_REGISTRY_JSON = JSON.stringify({
+    "chat.fast": {
+      label: "Fast Cloud",
+      kind: "chat",
+      privacy: "cloud",
+      capabilities: ["streaming"],
+      targetModel: "deepseek-chat",
+      dataPolicy: "cloud_allowed",
+    },
+  });
+
+  const status = await requestJson(`${appBaseUrl}/api/ai/status`);
+  assert.equal(status.response.status, 200);
+  assert.equal(status.payload.ok, true);
+  assert.equal(status.payload.gateway, "litellm");
+  assert.equal(status.payload.activeModelAlias, "chat.fast");
+  assert.equal(status.payload.model, "deepseek-chat");
+  assert.deepEqual(status.payload.availableModelAliases, ["chat.fast"]);
+
+  const converted = await requestJson(`${appBaseUrl}/api/ai/subagent/linear-transform`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: "rapid-main",
+      scopeId: "root",
+      mode: "direct-result",
+      modelAlias: "chat.fast",
+      input: {
+        direction: "tree-to-linear",
+        sourceText: "- id: root\n  text: \"Root\"",
+      },
+    }),
+  });
+
+  assert.equal(converted.response.status, 200);
+  assert.equal(converted.payload.ok, true);
+  assert.equal(converted.payload.model, "deepseek-chat");
+  assert.equal(converted.payload.resolvedModelAlias, "chat.fast");
 });
 
 test("ai subagent returns 404 for unsupported subagent", async () => {

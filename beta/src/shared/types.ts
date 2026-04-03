@@ -65,6 +65,7 @@ export interface LinearTransformRequest {
   scopeRootId?: string | null;
   scopeLabel?: string | null;
   instruction?: string | null;
+  modelAlias?: string | null;
 }
 
 export interface LinearTransformResponse {
@@ -72,6 +73,7 @@ export interface LinearTransformResponse {
   direction: LinearTransformDirection;
   provider: string;
   model: string;
+  modelAlias?: string | null;
   outputText: string;
   rawText: string;
   usage?: {
@@ -91,8 +93,11 @@ export interface AiStatusResponse {
   enabled: boolean;
   configured: boolean;
   provider: string | null;
+  gateway?: "none" | "litellm";
   transport: LinearTransformTransport;
   model: string | null;
+  activeModelAlias?: string | null;
+  availableModelAliases?: string[];
   endpoint: string | null;
   message: string;
   features: Record<string, AiFeatureStatus>;
@@ -102,6 +107,7 @@ export interface AiSubagentRequest {
   documentId: string;
   scopeId: string;
   provider?: string | null;
+  modelAlias?: string | null;
   mode?: "proposal" | "direct-result";
   input: Record<string, unknown>;
   constraints?: {
@@ -121,6 +127,7 @@ export interface AiSubagentSuccessResponse {
   provider: string;
   transport: LinearTransformTransport;
   model: string;
+  resolvedModelAlias?: string | null;
   mode: "proposal" | "direct-result";
   requiresApproval: boolean;
   proposal: {

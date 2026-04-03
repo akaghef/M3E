@@ -1,5 +1,5 @@
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
-import { loadAiProviderConfigFromEnv } from "./ai_infra";
+import { loadAiProviderConfigFromEnv, resolveAiModelConfig } from "./ai_infra";
 import type {
   AiStatusResponse,
   AiSubagentRequest,
@@ -16,17 +16,21 @@ function isSupportedSubagent(name: string): name is SupportedSubagent {
 export function getAiStatus(): AiStatusResponse {
   const ai = loadAiProviderConfigFromEnv();
   const linear = getLinearTransformStatus();
+  const resolved = resolveAiModelConfig(ai, null);
   const configured = ai.transport === "mcp"
     ? Boolean(ai.mcpServerCommand)
-    : Boolean(ai.baseUrl && ai.apiKey && ai.model);
+    : Boolean(ai.baseUrl && ai.apiKey && (resolved.model || ai.model));
 
   return {
     ok: true,
     enabled: ai.enabled,
     configured,
     provider: ai.provider,
+    gateway: ai.gateway,
     transport: ai.transport,
-    model: ai.model,
+    model: resolved.model || ai.model,
+    activeModelAlias: resolved.alias,
+    availableModelAliases: Object.keys(ai.modelRegistry),
     endpoint: ai.transport === "mcp" ? ai.mcpServerCommand : ai.baseUrl,
     message: configured
       ? "AI infrastructure is configured."
@@ -62,6 +66,9 @@ function normalizeLinearTransformInput(request: AiSubagentRequest): LinearTransf
     scopeRootId: request.scopeId,
     scopeLabel: typeof input.scopeLabel === "string" ? input.scopeLabel : null,
     instruction: typeof input.instruction === "string" ? input.instruction : null,
+    modelAlias: typeof request.modelAlias === "string" && request.modelAlias.trim().length > 0
+      ? request.modelAlias.trim()
+      : null,
   };
 }
 
@@ -93,6 +100,7 @@ export async function runAiSubagent(
       provider: result.provider,
       transport: loadAiProviderConfigFromEnv().transport,
       model: result.model,
+      resolvedModelAlias: result.modelAlias || null,
       mode: request.mode === "direct-result" ? "direct-result" : "proposal",
       requiresApproval: false,
       proposal: {

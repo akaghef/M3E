@@ -102,9 +102,23 @@ Notes:
 
 - `openai-compatible` transport is implemented and intended for DeepSeek-style APIs.
 - `mcp` is reserved in the config surface, but not implemented yet.
+- `M3E_AI_GATEWAY=litellm` can be used to indicate gateway mode in status output.
 - Provider connection settings live under `M3E_AI_*` so other AI-backed features can reuse the same base config.
+- Model alias switching can be configured via `M3E_AI_DEFAULT_MODEL_ALIAS` + `M3E_AI_MODEL_REGISTRY_JSON`.
 - Prompt files under `beta/prompts/linear-agent/` are placeholders and should be refined later.
 - Legacy `M3E_LINEAR_AGENT_*` env names are still accepted as a temporary fallback.
+
+Model alias example:
+
+```bash
+M3E_AI_DEFAULT_MODEL_ALIAS=chat.fast
+M3E_AI_MODEL_REGISTRY_JSON={"chat.fast":{"label":"Fast Cloud","kind":"chat","privacy":"cloud","capabilities":["streaming"],"targetModel":"deepseek-chat","dataPolicy":"cloud_allowed"},"chat.local":{"label":"Gemma Local","kind":"chat","privacy":"local","capabilities":["streaming"],"targetModel":"gemma3:4b","dataPolicy":"local_only"}}
+```
+
+Recommended rollout:
+
+1. Phase 1 (quickest): `Vercel AI SDK + Ollama/OpenAI`.
+2. Phase 2 (infrastructure): add LiteLLM gateway and route local/cloud models through one endpoint.
 
 Bitwarden-based launch:
 
