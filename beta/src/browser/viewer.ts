@@ -98,6 +98,7 @@ let redoStack: UndoSnapshot[] = [];
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
+let suppressInlineBlurCommit = false;
 const linearNotesByScope: Record<string, string> = {};
 let linearPanelCanvasWidth = 340;
 let linearResizeState: { pointerId: number; startClientX: number; startCanvasWidth: number } | null = null;
@@ -2418,7 +2419,7 @@ function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
   input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
-function startInlineEdit(nodeId: string): void {
+function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): void {
   if (!doc || !lastLayout || !lastLayout.pos[nodeId]) {
     return;
   }
@@ -2442,9 +2443,23 @@ function startInlineEdit(nodeId: string): void {
   syncInlineEditorPosition();
   autoSizeInlineEditor(input);
   input.focus();
-  input.select();
+  if (options?.selectAll ?? true) {
+    input.select();
+  } else {
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  }
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+      event.preventDefault();
+      // Equivalent to Esc -> DownArrow -> Enter while editing.
+      stopInlineEdit(false, { focusBoard: false });
+      selectBreadth(1);
+      startInlineEdit(viewState.selectedNodeId, { selectAll: false });
+      return;
+    }
+
     if (event.key === "Tab") {
       event.preventDefault();
       stopInlineEdit(true, { focusBoard: false });
@@ -2458,6 +2473,7 @@ function startInlineEdit(nodeId: string): void {
         return;
       }
       event.preventDefault();
+      suppressInlineBlurCommit = true;
       stopInlineEdit(true, { focusBoard: false });
       createNodeByDirectionAndEdit("breadth");
       return;
@@ -2470,6 +2486,10 @@ function startInlineEdit(nodeId: string): void {
   });
 
   input.addEventListener("blur", () => {
+    if (suppressInlineBlurCommit) {
+      suppressInlineBlurCommit = false;
+      return;
+    }
     stopInlineEdit(true);
   });
 
@@ -4018,6 +4038,15 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+    event.preventDefault();
+    // Equivalent to Esc -> DownArrow -> Enter in normal mode.
+    clearCutClipboard();
+    selectBreadth(1);
+    startInlineEdit(viewState.selectedNodeId, { selectAll: false });
+    return;
+  }
+
   if (event.key === "Escape") {
     if (clearCutClipboard()) {
       event.preventDefault();
@@ -4033,13 +4062,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "Enter") {
     event.preventDefault();
-    createNodeByDirectionAndEdit("breadth");
+    startInlineEdit(viewState.selectedNodeId, { selectAll: event.shiftKey });
     return;
   }
 
   if (event.key === "F2") {
     event.preventDefault();
-    startInlineEdit(viewState.selectedNodeId);
+    startInlineEdit(viewState.selectedNodeId, { selectAll: true });
     return;
   }
 

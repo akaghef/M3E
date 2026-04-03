@@ -225,9 +225,10 @@ Generates `data/rapid-sample.json` without starting the viewer.
 | Key | Action |
 |-----|--------|
 | `Tab` | Add child to selected node and start editing the new node |
-| `Enter` | Add sibling to selected node and start editing the new node |
-| `Shift+Enter` | Insert a newline while editing node text |
-| `F2` | Edit selected node text (alias) |
+| `Enter` | Edit selected node text (cursor at end). While editing, `Enter` confirms and creates a sibling node for continued editing |
+| `Ctrl/Cmd+Enter` | Equivalent to `Esc` + `Down` + `Enter` (cancel current edit/cut, move to next visible node, start edit at cursor end) |
+| `Shift+Enter` | Edit selected node text (select all); while editing, insert newline |
+| `F2` | Edit selected node text (select all) |
 | `Esc` | Cancel text editing |
 | `Delete` / `Backspace` | Delete selected subtree (root protected). In nested scope, `Backspace` on scope root goes back scope |
 | `Space` | Collapse/expand selected node |
