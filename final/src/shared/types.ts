@@ -43,3 +43,108 @@ export interface SavedDoc {
   savedAt: string;
   state: AppState;
 }
+
+export type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
+export type LinearTransformTransport = "openai-compatible" | "mcp";
+
+export interface LinearTransformStatus {
+  ok: true;
+  enabled: boolean;
+  configured: boolean;
+  provider: string | null;
+  transport: LinearTransformTransport;
+  model: string | null;
+  endpoint: string | null;
+  promptConfigured: boolean;
+  message: string;
+}
+
+export interface LinearTransformRequest {
+  direction: LinearTransformDirection;
+  sourceText: string;
+  scopeRootId?: string | null;
+  scopeLabel?: string | null;
+  instruction?: string | null;
+  modelAlias?: string | null;
+}
+
+export interface LinearTransformResponse {
+  ok: true;
+  direction: LinearTransformDirection;
+  provider: string;
+  model: string;
+  modelAlias?: string | null;
+  outputText: string;
+  rawText: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
+}
+
+export interface AiFeatureStatus {
+  available: boolean;
+  promptConfigured: boolean;
+}
+
+export interface AiStatusResponse {
+  ok: true;
+  enabled: boolean;
+  configured: boolean;
+  provider: string | null;
+  gateway?: "none" | "litellm";
+  transport: LinearTransformTransport;
+  model: string | null;
+  activeModelAlias?: string | null;
+  availableModelAliases?: string[];
+  endpoint: string | null;
+  message: string;
+  features: Record<string, AiFeatureStatus>;
+}
+
+export interface AiSubagentRequest {
+  documentId: string;
+  scopeId: string;
+  provider?: string | null;
+  modelAlias?: string | null;
+  mode?: "proposal" | "direct-result";
+  input: Record<string, unknown>;
+  constraints?: {
+    timeoutMs?: number;
+    maxTokens?: number;
+    temperature?: number;
+  };
+  clientContext?: {
+    selectionNodeId?: string;
+    requestId?: string;
+  };
+}
+
+export interface AiSubagentSuccessResponse {
+  ok: true;
+  subagent: string;
+  provider: string;
+  transport: LinearTransformTransport;
+  model: string;
+  resolvedModelAlias?: string | null;
+  mode: "proposal" | "direct-result";
+  requiresApproval: boolean;
+  proposal: {
+    kind: string;
+    summary?: string;
+    result: Record<string, unknown>;
+    warnings?: string[];
+    explanations?: string[];
+  };
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
+  meta: {
+    scopeId: string;
+    documentId: string;
+    latencyMs: number;
+  };
+}

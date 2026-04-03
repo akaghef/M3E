@@ -9,9 +9,10 @@
 |------------|------|------|
 | `addAliasAsChild` | 選択ノードを参照するエイリアスを選択ノード自身の子として作成 | `addAliasInCurrentScope`（scope root の子）とは挿入先が異なる。alias ノードは対象外 |
 | `addChild` | 選択ノードの子を追加して編集開始 | depth 方向に展開 |
-| `addSibling` | 選択ノードの兄弟を追加して編集開始 | breadth 方向に展開 |
+| `addSibling` | 選択ノードの兄弟を追加して編集開始 | breadth 方向に展開。`Enter`（編集モード中）で実行 |
 | `applyReparent` | `markReparent` でマークしたノードを現在の選択ノードの子として移動 | `markReparent` とセットで使用。循環移動は拒否 |
 | `cancelCut` | カット状態（`cut` で予約した移動）をキャンセル | |
+| `cancelAndEditNext` | `Esc` -> `Down` -> `Enter` を連続実行したのと同等の動作 | 通常モードでは cut 解除 -> 次ノード選択 -> 編集開始（文末カーソル）。編集モードでは編集破棄 -> 次ノード選択 -> 編集開始（文末カーソル） |
 | `cycleView` | 1回目: 選択ノードを中央にフォーカス / 2回目: 全体フィット（交互にトグル） | `Alt+V` で連打 |
 | `copy` | 選択ノードの部分木をクリップボードにコピー | システムクリップボードにはテキストラベルをコピー。alias/link メタデータは含まない |
 | `cut` | 選択ノードを移動予約（カット）。`paste` で移動先に確定する | ノードはグレーアウト表示。`Esc` でキャンセル |
@@ -31,7 +32,8 @@
 | `paste` | クリップボードの内容を primary 選択ノードの子として挿入 | `copy` 後 → 部分木をクローン挿入（新 ID 発行）。`cut` 後 → reparent を実行して移動確定（一度きり） |
 | `redo` | 直前の Undo を取り消す（Redo） | |
 | `selectAll` | 現在の scope 内の全可視ノードを選択 | |
-| `startEdit` | 選択ノードのテキスト編集を開始 | 複数選択中は primary のみ対象 |
+| `startEditCursorEnd` | 選択ノードのテキスト編集を開始（カーソルを文末に配置） | `Enter` で起動。複数選択中は primary のみ対象 |
+| `startEditSelectAll` | 選択ノードのテキスト編集を開始（テキスト全選択） | `Shift+Enter` / `F2` で起動。複数選択中は primary のみ対象 |
 | `thinkingDeep` | 思考モードを deep（深掘り）に切り替え | |
 | `thinkingFlash` | 思考モードを flash（素早い発想）に切り替え | |
 | `thinkingRapid` | 思考モードを rapid（標準）に切り替え | |
@@ -62,7 +64,10 @@
 
 | キー | 動作 |
 |------|------|
-| `Enter` | 編集を確定 |
+| `Enter` | 編集を確定し、兄弟ノードを追加してそのまま編集開始 |
+| `Ctrl/Cmd+Enter` | 編集を破棄し、次ノードへ移動して編集開始（`Esc` -> `Down` -> `Enter` 相当） |
 | `Escape` | 編集をキャンセル（変更破棄） |
 | `Shift+Enter` | 改行を挿入 |
 | その他 | ブラウザ標準のテキスト入力（Ctrl+C/V/Z なども通常通り動作） |
+
+補足: sibling 追加は編集モード中の `Enter` に限定し、通常モードの `Enter` は編集開始（文末カーソル）として扱う。

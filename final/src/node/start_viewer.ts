@@ -6,14 +6,14 @@ import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
 import { detectCloudConflict } from "./cloud_sync";
-import { getBitwardenStatus, getBitwardenApiKey, callAiModel } from "./ai_integration";
-import type { AppState, SavedDoc } from "../shared/types";
-import type { AiModelConfig, AiModelsFile, AiChatRequest } from "../shared/ai_types";
+import { getAiStatus, runAiSubagent } from "./ai_subagent";
+import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
+import type { AiSubagentRequest, AppState, LinearTransformRequest, SavedDoc } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
-const PORT = 38482;
+const PORT = 4173;
 const DEFAULT_PAGE = "viewer.html";
 const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
 const SQLITE_DB_PATH = path.join(DATA_DIR, "rapid-mvp.sqlite");
@@ -21,7 +21,6 @@ const CLOUD_SYNC_ENABLED = process.env.M3E_CLOUD_SYNC === "1";
 const CLOUD_SYNC_DIR = process.env.M3E_CLOUD_DIR
   ? path.resolve(process.env.M3E_CLOUD_DIR)
   : path.join(DATA_DIR, "cloud-sync");
-const AI_MODELS_PATH = path.join(DATA_DIR, "ai-models.json");
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -126,6 +125,27 @@ function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; 
     action: match[1] as "status" | "push" | "pull",
     docId: decodeURIComponent(match[2] || ""),
   };
+}
+
+function isLinearTransformRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/linear-transform/status" || pathname === "/api/linear-transform/convert";
+}
+
+function parseAiSubagentRoute(urlPath: string): { subagent: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/ai\/subagent\/([^/]+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    subagent: decodeURIComponent(match[1] || ""),
+  };
+}
+
+function isAiStatusRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/ai/status";
 }
 
 function cloudDocPath(docId: string): string {
@@ -382,132 +402,168 @@ async function handleSyncApi(
   return true;
 }
 
-// ── AI helpers ──────────────────────────────────────────────────────────────
+async function handleLinearTransformApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
 
-function loadAiModels(): AiModelConfig[] {
-  if (!fs.existsSync(AI_MODELS_PATH)) return [];
+  if (pathname === "/api/linear-transform/status") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "LINEAR_TRANSFORM_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+
+    sendJson(res, 200, getLinearTransformStatus());
+    return true;
+  }
+
+  if (pathname === "/api/linear-transform/convert") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "LINEAR_TRANSFORM_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+
+    try {
+      const rawBody = await readRequestBody(req);
+      const parsed = JSON.parse(rawBody) as LinearTransformRequest;
+      if (!parsed || (parsed.direction !== "tree-to-linear" && parsed.direction !== "linear-to-tree")) {
+        sendJson(res, 400, {
+          ok: false,
+          code: "LINEAR_TRANSFORM_INVALID_DIRECTION",
+          error: "Direction must be tree-to-linear or linear-to-tree.",
+        });
+        return true;
+      }
+      if (typeof parsed.sourceText !== "string" || parsed.sourceText.trim().length === 0) {
+        sendJson(res, 400, {
+          ok: false,
+          code: "LINEAR_TRANSFORM_SOURCE_REQUIRED",
+          error: "sourceText is required.",
+        });
+        return true;
+      }
+
+      const result = await runLinearTransform(parsed);
+      sendJson(res, 200, result);
+      return true;
+    } catch (err) {
+      const status = (err as Error).message.includes("not implemented") || (err as Error).message.includes("disabled")
+        || (err as Error).message.includes("not fully configured")
+        ? 503
+        : err instanceof SyntaxError
+          ? 400
+          : 502;
+      sendJson(res, status, {
+        ok: false,
+        code: err instanceof SyntaxError
+          ? "LINEAR_TRANSFORM_INVALID_JSON_BODY"
+          : "LINEAR_TRANSFORM_FAILED",
+        error: err instanceof SyntaxError
+          ? "Invalid JSON body."
+          : ((err as Error).message || "Linear transform failed."),
+      });
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function mapAiErrorToResponse(err: unknown): { status: number; code: string; message: string } {
+  const message = (err as Error)?.message || "AI request failed.";
+  switch (message) {
+    case "AI_DOCUMENT_ID_REQUIRED":
+      return { status: 400, code: message, message: "documentId is required." };
+    case "AI_SCOPE_ID_REQUIRED":
+      return { status: 400, code: message, message: "scopeId is required." };
+    case "AI_INPUT_REQUIRED":
+      return { status: 400, code: message, message: "input is required." };
+    case "AI_INPUT_DIRECTION_REQUIRED":
+      return { status: 400, code: message, message: "input.direction is required." };
+    case "AI_INPUT_DIRECTION_INVALID":
+      return { status: 400, code: message, message: "input.direction must be tree-to-linear or linear-to-tree." };
+    case "AI_INPUT_SOURCE_TEXT_REQUIRED":
+      return { status: 400, code: message, message: "input.sourceText is required." };
+    case "AI_INPUT_NODE_TEXT_REQUIRED":
+      return { status: 400, code: message, message: "input.nodeText is required." };
+    case "AI_UNSUPPORTED_SUBAGENT":
+      return { status: 404, code: message, message: "Unsupported subagent." };
+    default:
+      if (message.includes("disabled")) {
+        return { status: 503, code: "AI_DISABLED", message };
+      }
+      if (message.includes("not fully configured")) {
+        return { status: 503, code: "AI_NOT_CONFIGURED", message };
+      }
+      if (message.includes("not implemented")) {
+        return { status: 503, code: "AI_TRANSPORT_NOT_IMPLEMENTED", message };
+      }
+      return { status: 502, code: "AI_PROVIDER_UNAVAILABLE", message };
+  }
+}
+
+async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  if (isAiStatusRoute(req.url ?? "/")) {
+    if (req.method !== "GET") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "AI_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+    sendJson(res, 200, getAiStatus());
+    return true;
+  }
+
+  const subagentRoute = parseAiSubagentRoute(req.url ?? "/");
+  if (!subagentRoute) {
+    return false;
+  }
+
+  if (req.method !== "POST") {
+    sendJson(res, 405, {
+      ok: false,
+      code: "AI_METHOD_NOT_ALLOWED",
+      error: "Method not allowed.",
+      subagent: subagentRoute.subagent,
+    });
+    return true;
+  }
+
   try {
-    const raw = JSON.parse(fs.readFileSync(AI_MODELS_PATH, "utf8")) as AiModelsFile;
-    return Array.isArray(raw.models) ? raw.models : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveAiModels(models: AiModelConfig[]): void {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  const payload: AiModelsFile = { models };
-  fs.writeFileSync(AI_MODELS_PATH, JSON.stringify(payload, null, 2), "utf8");
-}
-
-function parseAiRoute(urlPath: string): { sub: string; id?: string } | null {
-  const pathname = new URL(urlPath, "http://localhost").pathname;
-  const m = pathname.match(/^\/api\/ai\/(models|chat|bitwarden\/status)(?:\/([^/]+))?$/);
-  if (!m) return null;
-  return { sub: m[1], id: m[2] };
-}
-
-async function handleAiApi(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  route: { sub: string; id?: string },
-): Promise<boolean> {
-  // GET /api/ai/bitwarden/status
-  if (route.sub === "bitwarden/status" && req.method === "GET") {
-    const status = getBitwardenStatus();
-    sendJson(res, 200, { ok: true, ...status });
+    const rawBody = await readRequestBody(req);
+    const parsed = JSON.parse(rawBody) as AiSubagentRequest;
+    const result = await runAiSubagent(subagentRoute.subagent, parsed);
+    sendJson(res, 200, result);
     return true;
-  }
-
-  // GET /api/ai/models
-  if (route.sub === "models" && req.method === "GET") {
-    sendJson(res, 200, { ok: true, models: loadAiModels() });
-    return true;
-  }
-
-  // POST /api/ai/models  — upsert a model config
-  if (route.sub === "models" && req.method === "POST") {
-    try {
-      const body = JSON.parse(await readRequestBody(req)) as Partial<AiModelConfig>;
-      if (!body.name || !body.provider || !body.modelId || !body.bitwardenItemId) {
-        sendJson(res, 400, { ok: false, error: "name, provider, modelId, and bitwardenItemId are required" });
-        return true;
-      }
-      const models = loadAiModels();
-      const existing = models.findIndex((m) => m.id === body.id);
-      const entry: AiModelConfig = {
-        id: body.id ?? `ai-${Date.now()}`,
-        name: body.name,
-        provider: body.provider,
-        modelId: body.modelId,
-        baseUrl: body.baseUrl,
-        bitwardenItemId: body.bitwardenItemId,
-        enabled: body.enabled ?? true,
-      };
-      if (existing >= 0) {
-        models[existing] = entry;
-      } else {
-        models.push(entry);
-      }
-      saveAiModels(models);
-      sendJson(res, 200, { ok: true, model: entry });
-    } catch (err) {
-      sendJson(res, 400, { ok: false, error: (err as Error).message });
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      sendJson(res, 400, {
+        ok: false,
+        code: "AI_INVALID_REQUEST",
+        error: "Invalid JSON body.",
+        subagent: subagentRoute.subagent,
+      });
+      return true;
     }
+    const mapped = mapAiErrorToResponse(err);
+    sendJson(res, mapped.status, {
+      ok: false,
+      code: mapped.code,
+      error: mapped.message,
+      subagent: subagentRoute.subagent,
+      provider: getAiStatus().provider,
+      retryable: mapped.status >= 500,
+    });
     return true;
   }
-
-  // DELETE /api/ai/models/:id
-  if (route.sub === "models" && req.method === "DELETE" && route.id) {
-    const models = loadAiModels().filter((m) => m.id !== route.id);
-    saveAiModels(models);
-    sendJson(res, 200, { ok: true });
-    return true;
-  }
-
-  // POST /api/ai/chat
-  if (route.sub === "chat" && req.method === "POST") {
-    try {
-      const body = JSON.parse(await readRequestBody(req)) as AiChatRequest;
-      if (!body.modelConfigId || !Array.isArray(body.messages)) {
-        sendJson(res, 400, { ok: false, error: "modelConfigId and messages are required" });
-        return true;
-      }
-      const models = loadAiModels();
-      const config = models.find((m) => m.id === body.modelConfigId && m.enabled);
-      if (!config) {
-        sendJson(res, 404, { ok: false, error: "Model config not found or disabled" });
-        return true;
-      }
-
-      // Inject node context as a system prefix when provided
-      const messages = [...body.messages];
-      if (body.nodeContext && messages.length > 0 && messages[messages.length - 1].role === "user") {
-        const last = messages[messages.length - 1];
-        messages[messages.length - 1] = {
-          role: "user",
-          content: `[Context: ${body.nodeContext}]\n\n${last.content}`,
-        };
-      }
-
-      let apiKey: string;
-      try {
-        apiKey = getBitwardenApiKey(config.bitwardenItemId);
-      } catch (err) {
-        sendJson(res, 500, { ok: false, error: `Bitwarden error: ${(err as Error).message}` });
-        return true;
-      }
-
-      const result = await callAiModel(config, messages, apiKey, body.maxTokens ?? 1024);
-      sendJson(res, result.ok ? 200 : 502, result);
-    } catch (err) {
-      sendJson(res, 400, { ok: false, error: (err as Error).message });
-    }
-    return true;
-  }
-
-  sendJson(res, 405, { ok: false, error: "Method not allowed" });
-  return true;
 }
 
 function startServer(): void {
@@ -523,9 +579,13 @@ function startServer(): void {
 
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
-    const aiRoute = parseAiRoute(req.url ?? "/");
-    if (aiRoute) {
-      await handleAiApi(req, res, aiRoute);
+    if (isAiStatusRoute(req.url ?? "/") || parseAiSubagentRoute(req.url ?? "/")) {
+      await handleAiApi(req, res);
+      return;
+    }
+
+    if (isLinearTransformRoute(req.url ?? "/")) {
+      await handleLinearTransformApi(req, res);
       return;
     }
 

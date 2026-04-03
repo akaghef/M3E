@@ -91,17 +91,21 @@
 | キー | アクション |
 |------|------------|
 | `Tab` | `addChild` |
-| `Enter` | `addSibling` |
+| `Enter` | `startEditCursorEnd` |
+| `Shift+Enter` | `startEditSelectAll` |
+| `Ctrl+Enter` | `cancelAndEditNext`（`Esc` -> `Down` -> `Enter` と同等） |
 | `Alt+Enter` | `enterScope` |
 | `Alt+A` | `addAliasAsChild` |
 | `Alt+V` | `cycleView`（focus → fit all のトグル） |
 | `Alt+M` | `holdReparent` |
 | `Alt+P` | `makeFolder` |
-| `F2` | `startEdit` |
+| `F2` | `startEditSelectAll` |
 | `Space` | `toggleCollapse` |
 | `Delete` | `delete` |
 | `Backspace` | `delete` |
 | `Escape` | `cancelCut` |
+
+補足: `addSibling` は通常モードでは割り当てず、編集モード中の `Enter` に限定する。
 
 ---
 
