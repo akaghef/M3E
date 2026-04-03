@@ -149,7 +149,7 @@
         min-height: 18px;
       }
 
-      .overlay-meta {
+      .meta-panel {
         position: relative;
         z-index: 5;
         display: flex;
@@ -269,11 +269,11 @@
         }
 
         .toolbar,
-        .overlay-meta {
+        .meta-panel {
           max-width: calc(100vw - 20px);
         }
 
-        .overlay-meta {
+        .meta-panel {
           gap: 4px;
           padding: 10px 12px;
         }

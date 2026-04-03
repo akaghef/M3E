@@ -12,11 +12,12 @@ cd /d "%~dp0\..\.."
 REM Final environment stores user data outside app directory by default.
 if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%APPDATA%\M3E"
 if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+if "%M3E_PORT%"=="" set "M3E_PORT=38482"
 
-REM Stop stale server process if port 38482 is already in use.
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr :38482 ^| findstr LISTENING') do (
+REM Stop stale server process if configured port is already in use.
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr :%M3E_PORT% ^| findstr LISTENING') do (
   if not "%%P"=="0" (
-    echo Stopping existing process on port 38482 ^(PID %%P^)...
+    echo Stopping existing process on port %M3E_PORT% ^(PID %%P^)...
     taskkill /PID %%P /F >nul 2>&1
   )
 )

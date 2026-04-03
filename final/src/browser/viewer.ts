@@ -25,7 +25,9 @@ const importanceViewSelect = document.getElementById("importance-view") as HTMLS
 const zoomOutBtn = document.getElementById("zoom-out");
 const zoomResetBtn = document.getElementById("zoom-reset");
 const zoomInBtn = document.getElementById("zoom-in");
+const toggleMetaPanelBtn = document.getElementById("toggle-meta-panel") as HTMLButtonElement | null;
 const downloadBtn = document.getElementById("download-btn");
+const metaPanelEl = document.querySelector(".meta-panel") as HTMLElement | null;
 const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
 const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
@@ -96,6 +98,7 @@ let redoStack: UndoSnapshot[] = [];
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
+let suppressInlineBlurCommit = false;
 const linearNotesByScope: Record<string, string> = {};
 let linearPanelCanvasWidth = 340;
 let linearResizeState: { pointerId: number; startClientX: number; startCanvasWidth: number } | null = null;
@@ -156,6 +159,23 @@ function setThinkingMode(mode: ThinkingMode): void {
   viewState.thinkingMode = mode;
   syncThinkingModeUi();
   setStatus(`Mode: ${thinkingModeLabel(mode)}`);
+}
+
+function syncMetaPanelToggleUi(): void {
+  if (!toggleMetaPanelBtn || !metaPanelEl) {
+    return;
+  }
+  const isVisible = !metaPanelEl.hidden;
+  toggleMetaPanelBtn.textContent = isVisible ? "Hide meta" : "Show meta";
+  toggleMetaPanelBtn.setAttribute("aria-pressed", isVisible ? "true" : "false");
+}
+
+function toggleMetaPanelVisibility(): void {
+  if (!metaPanelEl) {
+    return;
+  }
+  metaPanelEl.hidden = !metaPanelEl.hidden;
+  syncMetaPanelToggleUi();
 }
 
 function nowIso(): string {
@@ -2399,7 +2419,7 @@ function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
   input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
-function startInlineEdit(nodeId: string): void {
+function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): void {
   if (!doc || !lastLayout || !lastLayout.pos[nodeId]) {
     return;
   }
@@ -2423,9 +2443,23 @@ function startInlineEdit(nodeId: string): void {
   syncInlineEditorPosition();
   autoSizeInlineEditor(input);
   input.focus();
-  input.select();
+  if (options?.selectAll ?? true) {
+    input.select();
+  } else {
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  }
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+      event.preventDefault();
+      // Equivalent to Esc -> DownArrow -> Enter while editing.
+      stopInlineEdit(false, { focusBoard: false });
+      selectBreadth(1);
+      startInlineEdit(viewState.selectedNodeId, { selectAll: false });
+      return;
+    }
+
     if (event.key === "Tab") {
       event.preventDefault();
       stopInlineEdit(true, { focusBoard: false });
@@ -2439,6 +2473,7 @@ function startInlineEdit(nodeId: string): void {
         return;
       }
       event.preventDefault();
+      suppressInlineBlurCommit = true;
       stopInlineEdit(true, { focusBoard: false });
       createNodeByDirectionAndEdit("breadth");
       return;
@@ -2451,6 +2486,10 @@ function startInlineEdit(nodeId: string): void {
   });
 
   input.addEventListener("blur", () => {
+    if (suppressInlineBlurCommit) {
+      suppressInlineBlurCommit = false;
+      return;
+    }
     stopInlineEdit(true);
   });
 
@@ -3754,6 +3793,10 @@ focusSelectedBtn?.addEventListener("click", () => {
   centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
 });
 
+toggleMetaPanelBtn?.addEventListener("click", () => {
+  toggleMetaPanelVisibility();
+});
+
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
@@ -3995,6 +4038,15 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+    event.preventDefault();
+    // Equivalent to Esc -> DownArrow -> Enter in normal mode.
+    clearCutClipboard();
+    selectBreadth(1);
+    startInlineEdit(viewState.selectedNodeId, { selectAll: false });
+    return;
+  }
+
   if (event.key === "Escape") {
     if (clearCutClipboard()) {
       event.preventDefault();
@@ -4010,13 +4062,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "Enter") {
     event.preventDefault();
-    createNodeByDirectionAndEdit("breadth");
+    startInlineEdit(viewState.selectedNodeId, { selectAll: event.shiftKey });
     return;
   }
 
   if (event.key === "F2") {
     event.preventDefault();
-    startInlineEdit(viewState.selectedNodeId);
+    startInlineEdit(viewState.selectedNodeId, { selectAll: true });
     return;
   }
 
@@ -4188,6 +4240,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 });
 
 setVisualCheckStatus("Visual check idle");
+syncMetaPanelToggleUi();
 
 updateCloudSyncUi();
 
