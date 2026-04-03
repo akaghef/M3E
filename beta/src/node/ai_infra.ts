@@ -34,6 +34,13 @@ export interface ResolvedAiModelConfig {
   profile: AiModelProfile | null;
 }
 
+function isLocalBaseUrl(url: string | null): boolean {
+  if (!url) {
+    return false;
+  }
+  return url.includes("localhost") || url.includes("127.0.0.1");
+}
+
 function pickEnv(primary: string, legacy?: string): string | null {
   const value = process.env[primary]?.trim();
   if (value) {
@@ -138,14 +145,20 @@ export function loadAiProviderConfigFromEnv(): AiProviderConfig {
     ? "mcp"
     : "openai-compatible";
 
+  const provider = pickEnv("M3E_AI_PROVIDER", "M3E_LINEAR_AGENT_PROVIDER") || "deepseek";
+  const baseUrl = pickEnv("M3E_AI_BASE_URL", "M3E_LINEAR_AGENT_BASE_URL");
+  const apiKey = pickEnv("M3E_AI_API_KEY", "M3E_LINEAR_AGENT_API_KEY");
+  const model = pickEnv("M3E_AI_MODEL", "M3E_LINEAR_AGENT_MODEL");
+  const effectiveApiKey = apiKey || ((provider === "ollama" || isLocalBaseUrl(baseUrl)) ? "ollama" : null);
+
   const baseConfig: AiProviderConfig = {
     enabled: (pickEnv("M3E_AI_ENABLED", "M3E_LINEAR_AGENT_ENABLED") || "") === "1",
-    provider: pickEnv("M3E_AI_PROVIDER", "M3E_LINEAR_AGENT_PROVIDER") || "deepseek",
+    provider,
     gateway: pickEnv("M3E_AI_GATEWAY") === "litellm" ? "litellm" : "none",
     transport,
-    baseUrl: pickEnv("M3E_AI_BASE_URL", "M3E_LINEAR_AGENT_BASE_URL"),
-    apiKey: pickEnv("M3E_AI_API_KEY", "M3E_LINEAR_AGENT_API_KEY"),
-    model: pickEnv("M3E_AI_MODEL", "M3E_LINEAR_AGENT_MODEL"),
+    baseUrl,
+    apiKey: effectiveApiKey,
+    model,
     defaultModelAlias: pickEnv("M3E_AI_DEFAULT_MODEL_ALIAS") || null,
     modelRegistry: parseAiModelRegistryFromEnv(),
     mcpServerCommand: pickEnv("M3E_AI_MCP_SERVER", "M3E_LINEAR_AGENT_MCP_SERVER"),

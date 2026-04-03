@@ -84,6 +84,35 @@ This launcher injects:
 - `M3E_AI_BASE_URL=https://api.deepseek.com`
 - `M3E_AI_MODEL=deepseek-chat`
 
+Concrete local Gemma setup (Ollama):
+
+1. Run installer script:
+
+```powershell
+pwsh -File scripts/beta/install-ollama-gemma3-4b.ps1
+```
+
+2. Create Bitwarden item (example name: `m3e-ollama-gemma`) and set:
+  - `password=ollama` (dummy key for OpenAI-compatible auth header)
+  - `provider=ollama`
+  - `transport=openai-compatible`
+  - `base_url=http://localhost:11434/v1`
+  - `model=gemma3:4b`
+
+3. Launch with AI:
+
+```powershell
+bw unlock
+$env:BW_SESSION = "<session>"
+pwsh -File scripts/beta/launch-with-ai.ps1 -BitwardenItem "m3e-ollama-gemma"
+```
+
+Or launch directly without Bitwarden:
+
+```bat
+scripts\beta\launch-with-local-gemma.bat
+```
+
 Environment variables:
 
 ```bash
@@ -148,6 +177,13 @@ Common AI API endpoints:
 
 - `GET /api/ai/status`
 - `POST /api/ai/subagent/linear-transform`
+- `POST /api/ai/subagent/topic-suggest`
+
+Trial feature in viewer:
+
+- Toolbar button: `AI topics`
+- Shortcut: `Ctrl/Cmd+Shift+T`
+- Behavior: calls `topic-suggest` and appends proposed related topics as child nodes of current selection
 
 Minimal request example:
 

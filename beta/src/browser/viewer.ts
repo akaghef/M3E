@@ -17,6 +17,7 @@ const exitScopeBtn = document.getElementById("exit-scope");
 const addAliasBtn = document.getElementById("add-alias");
 const jumpTargetBtn = document.getElementById("jump-target");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
+const aiGenerateTopicsBtn = document.getElementById("ai-generate-topics");
 const deleteNodeBtn = document.getElementById("delete-node");
 const markReparentBtn = document.getElementById("mark-reparent");
 const applyReparentBtn = document.getElementById("apply-reparent");
@@ -84,6 +85,7 @@ let doc: SavedDoc | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
@@ -565,6 +567,46 @@ function addAliasInCurrentScope(): boolean {
   setSingleSelection(aliasId, false);
   touchDocument();
   setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
+  board.focus();
+  return true;
+}
+
+function addAliasAsChild(): boolean {
+  if (!doc) {
+    return false;
+  }
+  const target = getNode(viewState.selectedNodeId);
+  if (!target) {
+    return false;
+  }
+  if (isAliasNode(target)) {
+    setStatus("Alias cannot target another alias.", true);
+    return false;
+  }
+  pushUndoSnapshot();
+  const aliasId = newId();
+  doc.state.nodes[aliasId] = {
+    id: aliasId,
+    parentId: target.id,
+    children: [],
+    collapsed: false,
+    nodeType: "alias",
+    scopeId: target.scopeId,
+    text: uiLabel(target),
+    details: "",
+    note: "",
+    attributes: {},
+    link: "",
+    targetNodeId: target.id,
+    aliasLabel: undefined,
+    access: "read",
+    targetSnapshotLabel: undefined,
+    isBroken: false,
+  };
+  target.children.push(aliasId);
+  viewState.selectedNodeId = aliasId;
+  touchDocument();
+  setStatus(`Alias created as child of ${uiLabel(target)}.`);
   board.focus();
   return true;
 }
@@ -1183,6 +1225,97 @@ async function requestLinearSubagentTransform(
     rawText: String(result.proposal?.result?.rawText || ""),
     usage: result.usage || undefined,
   };
+}
+
+async function requestTopicSuggestionsForSelectedNode(maxTopics = 5): Promise<string[]> {
+  if (!doc || !viewState.selectedNodeId) {
+    throw new Error("No node is selected.");
+  }
+  const selected = getNode(viewState.selectedNodeId);
+  const payload: AiSubagentRequest = {
+    documentId: LOCAL_DOC_ID,
+    scopeId: normalizedCurrentScopeId(),
+    mode: "proposal",
+    input: {
+      nodeText: selected.text,
+      nodeDetails: selected.details || "",
+      maxTopics,
+    },
+  };
+
+  const response = await fetch("/api/ai/subagent/topic-suggest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String(result.error || "Topic suggestion request failed."));
+  }
+
+  const rawTopics = result.proposal?.result?.topics;
+  if (!Array.isArray(rawTopics)) {
+    return [];
+  }
+  return rawTopics
+    .map((value) => String(value || "").trim())
+    .filter((value) => value.length > 0)
+    .slice(0, maxTopics);
+}
+
+function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
+  if (!doc || !viewState.selectedNodeId || topics.length === 0) {
+    return 0;
+  }
+  const parent = getNode(viewState.selectedNodeId);
+  if (isAliasNode(parent)) {
+    throw new Error("Alias nodes cannot own children.");
+  }
+
+  const existingLabels = new Set(
+    (parent.children || [])
+      .map((childId) => doc!.state.nodes[childId]?.text?.trim().toLowerCase())
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  const normalized = topics
+    .map((topic) => topic.trim())
+    .filter((topic) => topic.length > 0)
+    .filter((topic) => !existingLabels.has(topic.toLowerCase()));
+  if (normalized.length === 0) {
+    return 0;
+  }
+
+  pushUndoSnapshot();
+  normalized.forEach((topic) => {
+    const id = newId();
+    doc!.state.nodes[id] = createNodeRecord(id, parent.id, topic);
+    parent.children.push(id);
+  });
+  viewState.collapsedIds.delete(parent.id);
+  parent.collapsed = false;
+  touchDocument();
+  return normalized.length;
+}
+
+async function generateRelatedTopicsForSelectedNode(): Promise<void> {
+  if (!doc || !viewState.selectedNodeId) {
+    setStatus("Select a node first.", true);
+    return;
+  }
+  try {
+    const topics = await requestTopicSuggestionsForSelectedNode(5);
+    const added = appendTopicSuggestionsToSelectedNode(topics);
+    if (added === 0) {
+      setStatus("No new related topics were suggested.");
+      return;
+    }
+    setStatus(`AI suggested ${added} related topic(s).`);
+    render();
+    board.focus();
+  } catch (err) {
+    setStatus(`AI topic suggestion failed (${(err as Error).message}).`, true);
+  }
 }
 
 function linearOffsetToLineIndex(text: string, offset: number): number {
@@ -3050,6 +3183,14 @@ function toggleReparentSource(): void {
   render();
 }
 
+function toggleHoldReparent(): void {
+  if (viewState.reparentSourceIds.size > 0) {
+    applyReparent();
+  } else {
+    markReparentSource();
+  }
+}
+
 function applyReparent(): void {
   const sourceRoots = getMovableSelectionRoots(viewState.reparentSourceIds);
   const targetParentId = viewState.selectedNodeId;
@@ -3565,6 +3706,11 @@ toggleCollapseBtn?.addEventListener("click", () => {
   toggleCollapse();
 });
 
+aiGenerateTopicsBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  void generateRelatedTopicsForSelectedNode();
+});
+
 deleteNodeBtn?.addEventListener("click", () => {
   if (!doc) return;
   deleteSelected();
@@ -3892,6 +4038,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
+    event.preventDefault();
+    void generateRelatedTopicsForSelectedNode();
+    return;
+  }
+
   if ((event.ctrlKey || event.metaKey) && event.key === "]") {
     event.preventDefault();
     enterScope(viewState.selectedNodeId);
@@ -3926,7 +4078,49 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         return;
       }
 
+  if (event.altKey && event.key.toLowerCase() === "v") {
+    event.preventDefault();
+    if (cycleViewState === "focus") {
+      if (doc && viewState.selectedNodeId) {
+        centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
+        setStatus("Focus: centered on selected node.");
+      }
+      cycleViewState = "fit";
+    } else {
+      fitDocument();
+      setStatus("Fit all.");
+      cycleViewState = "focus";
+    }
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    addAliasAsChild();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "p") {
+    event.preventDefault();
+    makeSelectedFolder();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    toggleHoldReparent();
+    return;
+  }
+
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    if (!event.repeat) {
+      toggleReparentSource();
+    }
+    return;
+  }
+
+  if (event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
@@ -3940,7 +4134,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === " ") {
+  if (event.key === " " || (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "e")) {
     event.preventDefault();
     toggleCollapse();
     return;

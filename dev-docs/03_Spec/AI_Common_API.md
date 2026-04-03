@@ -71,6 +71,7 @@ feature ごとに専用 endpoint を持ってもよい。
 |------|------|
 | `GET /api/ai/status` | 実装済み |
 | `POST /api/ai/subagent/linear-transform` | 実装済み |
+| `POST /api/ai/subagent/topic-suggest` | 実装済み |
 | `openai-compatible` transport | 実装済み |
 | `mcp` transport | 未実装 |
 | `title-rewrite` | 未実装 |
@@ -93,6 +94,10 @@ feature ごとに専用 endpoint を持ってもよい。
   "message": "AI infrastructure is configured.",
   "features": {
     "linear-transform": {
+      "available": true,
+      "promptConfigured": true
+    },
+    "topic-suggest": {
       "available": true,
       "promptConfigured": true
     },

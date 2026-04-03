@@ -490,6 +490,8 @@ function mapAiErrorToResponse(err: unknown): { status: number; code: string; mes
       return { status: 400, code: message, message: "input.direction must be tree-to-linear or linear-to-tree." };
     case "AI_INPUT_SOURCE_TEXT_REQUIRED":
       return { status: 400, code: message, message: "input.sourceText is required." };
+    case "AI_INPUT_NODE_TEXT_REQUIRED":
+      return { status: 400, code: message, message: "input.nodeText is required." };
     case "AI_UNSUPPORTED_SUBAGENT":
       return { status: 404, code: message, message: "Unsupported subagent." };
     default:
