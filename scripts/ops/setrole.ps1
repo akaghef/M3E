@@ -10,17 +10,17 @@ $roleMap = @{
     codex1 = @{
         branch = 'dev-beta-visual'
         worktree = 'C:/Users/Akaghef/dev/M3E-dev-beta-visual'
-        needsRebase = $true
+        needsSync = $true
     }
     codex2 = @{
         branch = 'dev-beta-data'
         worktree = 'C:/Users/Akaghef/dev/M3E-dev-beta-data'
-        needsRebase = $true
+        needsSync = $true
     }
     claude = @{
         branch = 'dev-beta'
         worktree = 'C:/Users/Akaghef/dev/M3E'
-        needsRebase = $false
+        needsSync = $false
     }
 }
 
@@ -42,14 +42,14 @@ if ($currentBranch -ne $target.branch) {
     throw "Branch alignment failed. expected=$($target.branch) actual=$currentBranch"
 }
 
-$rebaseResult = 'skipped'
-if ($target.needsRebase) {
+$syncResult = 'skipped'
+if ($target.needsSync) {
     git fetch origin
-    git rebase origin/dev-beta
-    $rebaseResult = 'pass'
+    git reset --hard origin/dev-beta
+    $syncResult = 'pass'
 }
 
 Write-Host "role=$Role"
 Write-Host "worktree=$($target.worktree)"
 Write-Host "branch=$currentBranch"
-Write-Host "rebase=$rebaseResult"
+Write-Host "sync=$syncResult"

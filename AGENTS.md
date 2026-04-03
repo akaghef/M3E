@@ -70,9 +70,9 @@ Required checks performed by bootstrap:
 1. Role confirmation.
 2. Worktree/directory alignment.
 3. Branch alignment.
-4. For `codex1` / `codex2`: `fetch + rebase origin/dev-beta` before new implementation work.
+4. For `codex1` / `codex2`: `fetch + reset --hard origin/dev-beta` before new implementation work.
 
-If checks fail or safe rebase is not possible, stop and escalate to `akaghef`.
+If checks fail or hard reset is not possible, stop and escalate to `akaghef`.
 
 ## Agent Workflow
 
@@ -93,16 +93,27 @@ If checks fail or safe rebase is not possible, stop and escalate to `akaghef`.
 1. On branches starting with `dev-`, agents may perform branch operations autonomously.
 2. Allowed without per-step confirmation: create/switch `dev-*` branches, stage changes, commit, and push.
 3. Exceptions that still require explicit confirmation:
-   - destructive history rewrite (`reset --hard`, force-push, history rewrite)
+   - destructive history rewrite (force-push, arbitrary history rewrite)
+   - `reset --hard` outside of the mandatory sync step (i.e. not `reset --hard origin/dev-beta` at session start)
    - operations on `main` or release branches
    - secret/credential related operations
+
+## beta_update
+
+A task is **beta_update-complete** when all three steps are done in order:
+
+1. `git commit` — changes committed on the current role branch.
+2. `git push origin <branch>` — branch pushed to remote.
+3. PR created with base `dev-beta` — opened and ready for manager review.
+
+Use this term to refer to the full handoff sequence. Subordinates run `beta_update` at the end of each task cycle; manager (`claude`) does not run `beta_update` (managers merge, not PR).
 
 ## Mandatory Integration Protocol (Subordinate -> PR -> Manager -> Resume)
 
 1. Subordinate agents (`codex1`, `codex2`) implement and push only to assigned branches (`dev-beta-visual`, `dev-beta-data`).
 2. Subordinates create a PR with base `dev-beta` from their assigned branch.
 3. Manager (`claude`) reviews and merges the PR into `dev-beta`.
-4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` and rebase their branch on top of `origin/dev-beta`.
+4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` by hard-resetting their branch to `origin/dev-beta`.
 5. Subordinates must not resume implementation on stale history.
 
 Recommended command sequence for subordinates:
@@ -110,10 +121,10 @@ Recommended command sequence for subordinates:
 ```bash
 git fetch origin
 git checkout dev-beta-visual   # or dev-beta-data
-git rebase origin/dev-beta
+git reset --hard origin/dev-beta
 ```
 
-If rebase conflicts cannot be resolved safely, stop and escalate to `akaghef`.
+If hard reset fails or produces unexpected state, stop and escalate to `akaghef`.
 
 ## Development Phase Constraints
 
