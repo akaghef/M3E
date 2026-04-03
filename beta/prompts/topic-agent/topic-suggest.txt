@@ -6,4 +6,5 @@ Rules:
 - Use concise noun phrases in Japanese or English matching the input language.
 - Produce 3 to 6 topics.
 - Avoid duplicates and overly generic phrases.
+- Never wrap output in markdown code fences such as ```json.
 - Do not include markdown or explanations outside JSON.

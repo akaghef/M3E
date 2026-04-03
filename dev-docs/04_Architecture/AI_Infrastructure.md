@@ -274,6 +274,111 @@ feature 固有の prompt は repo 内のファイルか、
 5. MCP transport 実装
 6. feature ごとの approval UI との接続
 
+## 2026-04-03 追加: LLM マルチプロバイダ基盤方針 v0.1
+
+### 目的再定義
+
+M3E の AI 基盤は次を満たすことを目標にする。
+
+1. ローカル/クラウドを同一 API 契約で扱う
+2. モデルを alias で切替できる（Copilot 的な選択体験）
+3. feature 実装は provider 固有名を直接持たない
+4. データポリシー（local only 等）を集中管理する
+
+### 推奨スタック（実務優先）
+
+- App layer: Vercel AI SDK
+- Gateway layer: LiteLLM
+- Local runtime: Ollama（標準）、必要に応じて vLLM / llama-cpp-python
+- Optional cloud aggregator: OpenRouter
+
+この構成の理由:
+
+- Vercel AI SDK は TypeScript 側の provider/model 抽象化と model 管理に向く
+- LiteLLM は複数 provider を OpenAI 互換 endpoint で束ねる gateway に向く
+- Ollama / vLLM / llama-cpp-python はローカル実行面を担い、gateway 配下に置ける
+- OpenRouter は cloud 集約として有用だが、local 実行基盤の代替ではない
+
+### ライブラリ比較（M3E 観点）
+
+| コンポーネント | 主な役割 | M3E での位置付け | 注意点 |
+|---|---|---|---|
+| Vercel AI SDK | TS 側 provider abstraction | App/adapter 層の標準候補 | gateway 機能そのものは持たない |
+| LiteLLM | 統一 gateway/proxy | backend の第一候補 | 運用プロセス（config/key）設計が必要 |
+| Ollama | ローカル LLM 実行 | 開発機での標準 runtime | 大型モデルはメモリ制約に注意 |
+| vLLM | 高速サービング | GPU サーバ向け拡張 | 開発機単体では過剰になりやすい |
+| llama-cpp-python | 軽量ローカル実行 | オフライン検証の補助 | 速度/機能はモデル依存 |
+| OpenRouter | cloud provider 集約 | 任意追加 | local 実行を代替しない |
+
+### フェーズ設計
+
+#### Phase 1（最速検証）
+
+- 構成: `Vercel AI SDK + (Ollama or OpenAI API)`
+- 目的: alias 切替 UI と feature 接続の検証
+- 制約: backend gateway 不在のため、ルーティング/ポリシー集中管理が弱い
+
+#### Phase 2（基盤化）
+
+- 構成: `Vercel AI SDK + LiteLLM + local runtimes + cloud providers`
+- 目的: local/cloud ルーティング、fallback、監査ログの集中化
+- 期待効果: feature 側コードの provider 依存を最小化
+
+### モデル ID 方針（alias 優先）
+
+feature 側では vendor model 名を直接持たない。内部 alias を使う。
+
+例:
+
+- `chat.local.fast`
+- `chat.local.reason`
+- `chat.cloud.fast`
+- `chat.cloud.strong`
+- `embed.default`
+
+alias -> 実モデル名の対応は AI 基盤設定で集中管理する。
+
+### データポリシー方針
+
+request ごとに次のいずれかを明示する。
+
+- `local_only`
+- `cloud_allowed`
+- `cloud_required`
+
+`local_only` は cloud fallback を禁止する。
+
+### 実装メモ（現行 beta）
+
+現行実装では `M3E_AI_MODEL_REGISTRY_JSON` と `M3E_AI_DEFAULT_MODEL_ALIAS` により、
+alias ベースのモデル解決を先行導入する。
+
+例:
+
+```json
+{
+  "chat.fast": {
+    "label": "Fast Cloud",
+    "kind": "chat",
+    "privacy": "cloud",
+    "capabilities": ["streaming", "json"],
+    "targetModel": "deepseek-chat",
+    "dataPolicy": "cloud_allowed"
+  },
+  "chat.local": {
+    "label": "Gemma Local",
+    "kind": "chat",
+    "privacy": "local",
+    "capabilities": ["streaming"],
+    "targetModel": "gemma3:4b",
+    "dataPolicy": "local_only"
+  }
+}
+```
+
+`M3E_AI_GATEWAY=litellm` は運用上の明示フラグとして扱い、
+`/api/ai/status` で可観測にする。
+
 ## 非目標
 
 - AI が無承認で正本を書き換えること

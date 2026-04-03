@@ -76,7 +76,7 @@ pwsh -File scripts/ops/setrole.ps1 codex1
 ```
 
 このコマンドは role -> worktree -> branch の整合を確認し、
-`codex1` / `codex2` の場合は `origin/dev-beta` への rebase チェックを実行する。
+`codex1` / `codex2` の場合は `origin/dev-beta` への hard reset（同期）を実行する。
 
 ## デスクトップから使う
 

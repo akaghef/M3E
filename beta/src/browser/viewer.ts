@@ -3184,7 +3184,7 @@ function toggleReparentSource(): void {
 }
 
 function toggleHoldReparent(): void {
-  if (viewState.reparentSourceId) {
+  if (viewState.reparentSourceIds.size > 0) {
     applyReparent();
   } else {
     markReparentSource();
@@ -4078,7 +4078,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         return;
       }
 
-<<<<<<< HEAD
   if (event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     if (cycleViewState === "focus") {
@@ -4113,10 +4112,15 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key.toLowerCase() === "m") {
-=======
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
->>>>>>> origin/dev-beta
+    event.preventDefault();
+    if (!event.repeat) {
+      toggleReparentSource();
+    }
+    return;
+  }
+
+  if (event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();

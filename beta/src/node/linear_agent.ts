@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { loadAiProviderConfigFromEnv } from "./ai_infra";
+import { loadAiProviderConfigFromEnv, resolveAiModelConfig } from "./ai_infra";
 import type {
   LinearTransformDirection,
   LinearTransformRequest,
@@ -92,6 +92,8 @@ export function loadLinearAgentConfigFromEnv(): LinearAgentConfig {
 
 export function getLinearTransformStatus(): LinearTransformStatus {
   const config = loadLinearAgentConfigFromEnv();
+  const resolvedModel = resolveAiModelConfig(loadAiProviderConfigFromEnv(), null);
+  const effectiveModel = resolvedModel.model || config.model;
   const promptConfigured = Boolean(
     config.directionPrompts["tree-to-linear"] || config.directionPrompts["linear-to-tree"],
   );
@@ -103,7 +105,7 @@ export function getLinearTransformStatus(): LinearTransformStatus {
       configured: false,
       provider: config.provider,
       transport: config.transport,
-      model: config.model,
+      model: effectiveModel,
       endpoint: config.baseUrl,
       promptConfigured,
       message: "Linear transform subagent is disabled.",
@@ -118,7 +120,7 @@ export function getLinearTransformStatus(): LinearTransformStatus {
       configured,
       provider: config.provider,
       transport: config.transport,
-      model: config.model,
+      model: effectiveModel,
       endpoint: config.mcpServerCommand,
       promptConfigured,
       message: configured
@@ -127,14 +129,14 @@ export function getLinearTransformStatus(): LinearTransformStatus {
     };
   }
 
-  const configured = Boolean(config.baseUrl && config.apiKey && config.model);
+  const configured = Boolean(config.baseUrl && config.apiKey && effectiveModel);
   return {
     ok: true,
     enabled: true,
     configured,
     provider: config.provider,
     transport: config.transport,
-    model: config.model,
+    model: effectiveModel,
     endpoint: config.baseUrl,
     promptConfigured,
     message: configured
@@ -183,7 +185,10 @@ async function runOpenAiCompatibleTransform(
   request: LinearTransformRequest,
   config: LinearAgentConfig,
 ): Promise<LinearTransformResponse> {
-  if (!config.baseUrl || !config.apiKey || !config.model) {
+  const resolvedModel = resolveAiModelConfig(loadAiProviderConfigFromEnv(), request.modelAlias);
+  const model = resolvedModel.model || config.model;
+
+  if (!config.baseUrl || !config.apiKey || !model) {
     throw new Error("Linear transform subagent is not fully configured.");
   }
 
@@ -194,7 +199,7 @@ async function runOpenAiCompatibleTransform(
       Authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify({
-      model: config.model,
+      model,
       messages: [
         { role: "system", content: config.systemPrompt },
         { role: "user", content: buildUserPrompt(request, config) },
@@ -213,7 +218,8 @@ async function runOpenAiCompatibleTransform(
     ok: true,
     direction: request.direction,
     provider: config.provider || "deepseek",
-    model: config.model,
+    model,
+    modelAlias: resolvedModel.alias,
     outputText: text,
     rawText: text,
     usage: payload.usage ? {

@@ -85,8 +85,11 @@ feature ごとに専用 endpoint を持ってもよい。
   "enabled": true,
   "configured": true,
   "provider": "deepseek",
+  "gateway": "litellm",
   "transport": "openai-compatible",
   "model": "deepseek-chat",
+  "activeModelAlias": "chat.fast",
+  "availableModelAliases": ["chat.fast", "chat.local"],
   "endpoint": "https://api.deepseek.com",
   "message": "AI infrastructure is configured.",
   "features": {
@@ -116,10 +119,16 @@ feature ごとに専用 endpoint を持ってもよい。
   - provider 接続に必要な設定が揃っているか
 - `provider`
   - `deepseek` など
+- `gateway`
+  - `none` または `litellm`
 - `transport`
   - `openai-compatible` または `mcp`
 - `model`
   - 現在の既定モデル
+- `activeModelAlias`
+  - alias ベース解決時の既定 alias
+- `availableModelAliases`
+  - 基盤に登録された alias 一覧
 - `endpoint`
   - provider endpoint または transport endpoint
 - `message`
@@ -136,6 +145,7 @@ feature ごとに専用 endpoint を持ってもよい。
   "documentId": "rapid-main",
   "scopeId": "n_root",
   "provider": "default",
+  "modelAlias": "chat.fast",
   "mode": "proposal",
   "input": {},
   "constraints": {
@@ -160,6 +170,8 @@ feature ごとに専用 endpoint を持ってもよい。
 
 - `provider: "default" | string`
   - `default` の場合は `M3E_AI_*` の現在設定を使う
+- `modelAlias?: string`
+  - alias registry を使う場合の明示指定
 - `mode: "proposal" | "direct-result"`
   - `proposal`
     - 承認前提の提案を返す
@@ -218,6 +230,7 @@ feature ごとに専用 endpoint を持ってもよい。
   "provider": "deepseek",
   "transport": "openai-compatible",
   "model": "deepseek-chat",
+  "resolvedModelAlias": "chat.fast",
   "mode": "proposal",
   "requiresApproval": true,
   "proposal": {

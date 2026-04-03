@@ -1,5 +1,5 @@
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
-import { loadAiProviderConfigFromEnv } from "./ai_infra";
+import { loadAiProviderConfigFromEnv, resolveAiModelConfig } from "./ai_infra";
 import fs from "fs";
 import path from "path";
 import type {
@@ -30,6 +30,7 @@ interface ChatCompletionResponse {
 const DEFAULT_TOPIC_PROMPT = [
   "You generate related subtopics for the selected M3E node.",
   "Return strict JSON only in this shape: {\"topics\":[\"...\"]}.",
+  "Never wrap JSON in markdown code fences.",
   "Use concise noun phrases, avoid duplicates, and propose 3-6 topics.",
 ].join(" ");
 
@@ -57,17 +58,21 @@ function isSupportedSubagent(name: string): name is SupportedSubagent {
 export function getAiStatus(): AiStatusResponse {
   const ai = loadAiProviderConfigFromEnv();
   const linear = getLinearTransformStatus();
+  const resolved = resolveAiModelConfig(ai, null);
   const configured = ai.transport === "mcp"
     ? Boolean(ai.mcpServerCommand)
-    : Boolean(ai.baseUrl && ai.apiKey && ai.model);
+    : Boolean(ai.baseUrl && ai.apiKey && (resolved.model || ai.model));
 
   return {
     ok: true,
     enabled: ai.enabled,
     configured,
     provider: ai.provider,
+    gateway: ai.gateway,
     transport: ai.transport,
-    model: ai.model,
+    model: resolved.model || ai.model,
+    activeModelAlias: resolved.alias,
+    availableModelAliases: Object.keys(ai.modelRegistry),
     endpoint: ai.transport === "mcp" ? ai.mcpServerCommand : ai.baseUrl,
     message: configured
       ? "AI infrastructure is configured."
@@ -107,6 +112,9 @@ function normalizeLinearTransformInput(request: AiSubagentRequest): LinearTransf
     scopeRootId: request.scopeId,
     scopeLabel: typeof input.scopeLabel === "string" ? input.scopeLabel : null,
     instruction: typeof input.instruction === "string" ? input.instruction : null,
+    modelAlias: typeof request.modelAlias === "string" && request.modelAlias.trim().length > 0
+      ? request.modelAlias.trim()
+      : null,
   };
 }
 
@@ -127,29 +135,60 @@ function extractTextContent(payload: ChatCompletionResponse): string {
   throw new Error("Subagent returned no text content.");
 }
 
+function normalizeTopics(items: unknown[]): string[] {
+  return items
+    .map((item) => String(item || "").trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 8);
+}
+
+function parseTopicsFromJsonCandidate(candidate: string): string[] | null {
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    if (Array.isArray(parsed)) {
+      return normalizeTopics(parsed);
+    }
+    const topics = (parsed as { topics?: unknown[] })?.topics;
+    if (Array.isArray(topics)) {
+      return normalizeTopics(topics);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function parseTopicsFromModelText(rawText: string): string[] {
   const trimmed = rawText.trim();
   if (!trimmed) {
     return [];
   }
-  let parsed: unknown = null;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    // Accept simple bullet/list fallback when provider ignores JSON instruction.
-    return trimmed
-      .split(/\r?\n/)
-      .map((line) => line.replace(/^[-*0-9.\s]+/, "").trim())
-      .filter((line) => line.length > 0)
-      .slice(0, 8);
+
+  const jsonCandidates: string[] = [trimmed];
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    jsonCandidates.push(fenced[1].trim());
   }
-  const topics = (parsed as { topics?: unknown[] })?.topics;
-  if (!Array.isArray(topics)) {
-    return [];
+  const objectLike = trimmed.match(/\{[\s\S]*\}/);
+  if (objectLike?.[0]) {
+    jsonCandidates.push(objectLike[0].trim());
   }
-  return topics
-    .map((item) => String(item || "").trim())
-    .filter((item) => item.length > 0)
+
+  for (const candidate of jsonCandidates) {
+    const topics = parseTopicsFromJsonCandidate(candidate);
+    if (topics && topics.length > 0) {
+      return topics;
+    }
+  }
+
+  // Accept simple bullet/list fallback when provider ignores JSON instruction.
+  return trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !line.startsWith("```"))
+    .map((line) => line.replace(/^[-*0-9.\s]+/, "").trim())
+    .filter((line) => line.length > 0)
     .slice(0, 8);
 }
 
@@ -247,6 +286,7 @@ export async function runAiSubagent(
       provider: result.provider,
       transport: loadAiProviderConfigFromEnv().transport,
       model: result.model,
+      resolvedModelAlias: result.modelAlias || null,
       mode: request.mode === "direct-result" ? "direct-result" : "proposal",
       requiresApproval: false,
       proposal: {
