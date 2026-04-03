@@ -53,6 +53,21 @@ function pickEnv(primary: string, legacy?: string): string | null {
   return fallback || null;
 }
 
+function isAiEnabledByEnv(): boolean {
+  const raw = pickEnv("M3E_AI_ENABLED", "M3E_LINEAR_AGENT_ENABLED");
+  if (!raw) {
+    return true;
+  }
+
+  const normalized = raw.toLowerCase();
+  return !(
+    normalized === "0"
+    || normalized === "false"
+    || normalized === "off"
+    || normalized === "no"
+  );
+}
+
 function parseAiModelRegistryFromEnv(): Record<string, AiModelProfile> {
   const raw = pickEnv("M3E_AI_MODEL_REGISTRY_JSON");
   if (!raw) {
@@ -152,7 +167,7 @@ export function loadAiProviderConfigFromEnv(): AiProviderConfig {
   const effectiveApiKey = apiKey || ((provider === "ollama" || isLocalBaseUrl(baseUrl)) ? "ollama" : null);
 
   const baseConfig: AiProviderConfig = {
-    enabled: (pickEnv("M3E_AI_ENABLED", "M3E_LINEAR_AGENT_ENABLED") || "") === "1",
+    enabled: isAiEnabledByEnv(),
     provider,
     gateway: pickEnv("M3E_AI_GATEWAY") === "litellm" ? "litellm" : "none",
     transport,

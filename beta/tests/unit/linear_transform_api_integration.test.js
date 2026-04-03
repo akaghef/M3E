@@ -81,8 +81,8 @@ test.after(async () => {
   }
 });
 
-test("linear transform status returns disabled when subagent is off", async () => {
-  delete process.env.M3E_AI_ENABLED;
+test("linear transform status returns disabled when subagent is explicitly opted out", async () => {
+  process.env.M3E_AI_ENABLED = "0";
   delete process.env.M3E_AI_BASE_URL;
   delete process.env.M3E_AI_API_KEY;
   delete process.env.M3E_AI_MODEL;
@@ -274,5 +274,60 @@ test("topic suggest subagent returns related topics", async () => {
     "Root cause",
     "Alternative design",
     "Validation steps",
+  ]);
+});
+
+test("topic suggest subagent parses fenced json response", async () => {
+  process.env.M3E_AI_ENABLED = "1";
+  process.env.M3E_AI_PROVIDER = "ollama";
+  process.env.M3E_AI_TRANSPORT = "openai-compatible";
+  process.env.M3E_AI_BASE_URL = providerBaseUrl;
+  process.env.M3E_AI_API_KEY = "ollama";
+  process.env.M3E_AI_MODEL = "gemma3:4b";
+
+  const originalCreateServer = providerServer;
+  await new Promise((resolve, reject) => {
+    providerServer.close((err) => err ? reject(err) : resolve());
+  });
+
+  providerServer = http.createServer(async (req, res) => {
+    if (req.url !== "/chat/completions" || req.method !== "POST") {
+      res.statusCode = 404;
+      res.end("not found");
+      return;
+    }
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const userMessage = body.messages.find((message) => message.role === "user");
+    const content = userMessage.content.includes("Topic generation request:")
+      ? "```json\n{\"topics\":[\"栄養成分分析\",\"食品添加物\",\"食品安全規制\"]}\n```"
+      : "stubbed-transform:ttl";
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.end(JSON.stringify({ choices: [{ message: { content } }] }));
+  });
+  await new Promise((resolve) => providerServer.listen(new URL(providerBaseUrl).port, "127.0.0.1", resolve));
+
+  const response = await requestJson(`${appBaseUrl}/api/ai/subagent/topic-suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: "rapid-main",
+      scopeId: "root",
+      input: {
+        nodeText: "Research Foods",
+        nodeDetails: "Need branch ideas",
+        maxTopics: 3,
+      },
+    }),
+  });
+
+  assert.equal(response.response.status, 200);
+  assert.deepEqual(response.payload.proposal.result.topics, [
+    "栄養成分分析",
+    "食品添加物",
+    "食品安全規制",
   ]);
 });
