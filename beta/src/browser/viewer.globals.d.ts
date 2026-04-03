@@ -48,6 +48,104 @@ interface SavedDoc {
   state: AppState;
 }
 
+type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
+type LinearTransformTransport = "openai-compatible" | "mcp";
+
+interface LinearTransformStatus {
+  ok: true;
+  enabled: boolean;
+  configured: boolean;
+  provider: string | null;
+  transport: LinearTransformTransport;
+  model: string | null;
+  endpoint: string | null;
+  promptConfigured: boolean;
+  message: string;
+}
+
+interface LinearTransformRequest {
+  direction: LinearTransformDirection;
+  sourceText: string;
+  scopeRootId?: string | null;
+  scopeLabel?: string | null;
+  instruction?: string | null;
+}
+
+interface LinearTransformResponse {
+  ok: true;
+  direction: LinearTransformDirection;
+  provider: string;
+  model: string;
+  outputText: string;
+  rawText: string;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
+}
+
+interface AiFeatureStatus {
+  available: boolean;
+  promptConfigured: boolean;
+}
+
+interface AiStatusResponse {
+  ok: true;
+  enabled: boolean;
+  configured: boolean;
+  provider: string | null;
+  transport: LinearTransformTransport;
+  model: string | null;
+  endpoint: string | null;
+  message: string;
+  features: Record<string, AiFeatureStatus>;
+}
+
+interface AiSubagentRequest {
+  documentId: string;
+  scopeId: string;
+  provider?: string | null;
+  mode?: "proposal" | "direct-result";
+  input: Record<string, unknown>;
+  constraints?: {
+    timeoutMs?: number;
+    maxTokens?: number;
+    temperature?: number;
+  };
+  clientContext?: {
+    selectionNodeId?: string;
+    requestId?: string;
+  };
+}
+
+interface AiSubagentSuccessResponse {
+  ok: true;
+  subagent: string;
+  provider: string;
+  transport: LinearTransformTransport;
+  model: string;
+  mode: "proposal" | "direct-result";
+  requiresApproval: boolean;
+  proposal: {
+    kind: string;
+    summary?: string;
+    result: Record<string, unknown>;
+    warnings?: string[];
+    explanations?: string[];
+  };
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
+  meta: {
+    scopeId: string;
+    documentId: string;
+    latencyMs: number;
+  };
+}
+
 interface NodePosition {
   x: number;
   y: number;
