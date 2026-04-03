@@ -44,8 +44,18 @@ const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
 const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
 const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
-const LOCAL_DOC_ID = "rapid-main";
-const CLOUD_DOC_ID = "rapid-main";
+
+function normalizeDocId(raw: string | null, fallback: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  return trimmed.replace(/[\\/]/g, "_");
+}
+
+const queryParams = new URLSearchParams(window.location.search);
+const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main");
+const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 100;
 

@@ -1,7 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
 async function loadAndStabilize(page, buttonId) {
-  await page.goto("/viewer.html");
+  const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const qs = `localDocId=${encodeURIComponent(isolatedDocId)}&cloudDocId=${encodeURIComponent(isolatedDocId)}`;
+  await page.goto(`/viewer.html?${qs}`);
   await page.click(buttonId);
   await expect(page.locator("#meta")).toContainText("nodes:");
   await page.click("#fit-all");
