@@ -1,0 +1,3 @@
+Convert the provided M3E tree scope input into linear text.
+Preserve ordering and intent.
+Detailed formatting rules will be added later.

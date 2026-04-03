@@ -6,7 +6,9 @@ import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
 import { detectCloudConflict } from "./cloud_sync";
-import type { AppState, SavedDoc } from "../shared/types";
+import { getAiStatus, runAiSubagent } from "./ai_subagent";
+import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
+import type { AiSubagentRequest, AppState, LinearTransformRequest, SavedDoc } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
@@ -123,6 +125,27 @@ function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; 
     action: match[1] as "status" | "push" | "pull",
     docId: decodeURIComponent(match[2] || ""),
   };
+}
+
+function isLinearTransformRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/linear-transform/status" || pathname === "/api/linear-transform/convert";
+}
+
+function parseAiSubagentRoute(urlPath: string): { subagent: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/ai\/subagent\/([^/]+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    subagent: decodeURIComponent(match[1] || ""),
+  };
+}
+
+function isAiStatusRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/ai/status";
 }
 
 function cloudDocPath(docId: string): string {
@@ -379,6 +402,170 @@ async function handleSyncApi(
   return true;
 }
 
+async function handleLinearTransformApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+
+  if (pathname === "/api/linear-transform/status") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "LINEAR_TRANSFORM_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+
+    sendJson(res, 200, getLinearTransformStatus());
+    return true;
+  }
+
+  if (pathname === "/api/linear-transform/convert") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "LINEAR_TRANSFORM_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+
+    try {
+      const rawBody = await readRequestBody(req);
+      const parsed = JSON.parse(rawBody) as LinearTransformRequest;
+      if (!parsed || (parsed.direction !== "tree-to-linear" && parsed.direction !== "linear-to-tree")) {
+        sendJson(res, 400, {
+          ok: false,
+          code: "LINEAR_TRANSFORM_INVALID_DIRECTION",
+          error: "Direction must be tree-to-linear or linear-to-tree.",
+        });
+        return true;
+      }
+      if (typeof parsed.sourceText !== "string" || parsed.sourceText.trim().length === 0) {
+        sendJson(res, 400, {
+          ok: false,
+          code: "LINEAR_TRANSFORM_SOURCE_REQUIRED",
+          error: "sourceText is required.",
+        });
+        return true;
+      }
+
+      const result = await runLinearTransform(parsed);
+      sendJson(res, 200, result);
+      return true;
+    } catch (err) {
+      const status = (err as Error).message.includes("not implemented") || (err as Error).message.includes("disabled")
+        || (err as Error).message.includes("not fully configured")
+        ? 503
+        : err instanceof SyntaxError
+          ? 400
+          : 502;
+      sendJson(res, status, {
+        ok: false,
+        code: err instanceof SyntaxError
+          ? "LINEAR_TRANSFORM_INVALID_JSON_BODY"
+          : "LINEAR_TRANSFORM_FAILED",
+        error: err instanceof SyntaxError
+          ? "Invalid JSON body."
+          : ((err as Error).message || "Linear transform failed."),
+      });
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function mapAiErrorToResponse(err: unknown): { status: number; code: string; message: string } {
+  const message = (err as Error)?.message || "AI request failed.";
+  switch (message) {
+    case "AI_DOCUMENT_ID_REQUIRED":
+      return { status: 400, code: message, message: "documentId is required." };
+    case "AI_SCOPE_ID_REQUIRED":
+      return { status: 400, code: message, message: "scopeId is required." };
+    case "AI_INPUT_REQUIRED":
+      return { status: 400, code: message, message: "input is required." };
+    case "AI_INPUT_DIRECTION_REQUIRED":
+      return { status: 400, code: message, message: "input.direction is required." };
+    case "AI_INPUT_DIRECTION_INVALID":
+      return { status: 400, code: message, message: "input.direction must be tree-to-linear or linear-to-tree." };
+    case "AI_INPUT_SOURCE_TEXT_REQUIRED":
+      return { status: 400, code: message, message: "input.sourceText is required." };
+    case "AI_INPUT_NODE_TEXT_REQUIRED":
+      return { status: 400, code: message, message: "input.nodeText is required." };
+    case "AI_UNSUPPORTED_SUBAGENT":
+      return { status: 404, code: message, message: "Unsupported subagent." };
+    default:
+      if (message.includes("disabled")) {
+        return { status: 503, code: "AI_DISABLED", message };
+      }
+      if (message.includes("not fully configured")) {
+        return { status: 503, code: "AI_NOT_CONFIGURED", message };
+      }
+      if (message.includes("not implemented")) {
+        return { status: 503, code: "AI_TRANSPORT_NOT_IMPLEMENTED", message };
+      }
+      return { status: 502, code: "AI_PROVIDER_UNAVAILABLE", message };
+  }
+}
+
+async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  if (isAiStatusRoute(req.url ?? "/")) {
+    if (req.method !== "GET") {
+      sendJson(res, 405, {
+        ok: false,
+        code: "AI_METHOD_NOT_ALLOWED",
+        error: "Method not allowed.",
+      });
+      return true;
+    }
+    sendJson(res, 200, getAiStatus());
+    return true;
+  }
+
+  const subagentRoute = parseAiSubagentRoute(req.url ?? "/");
+  if (!subagentRoute) {
+    return false;
+  }
+
+  if (req.method !== "POST") {
+    sendJson(res, 405, {
+      ok: false,
+      code: "AI_METHOD_NOT_ALLOWED",
+      error: "Method not allowed.",
+      subagent: subagentRoute.subagent,
+    });
+    return true;
+  }
+
+  try {
+    const rawBody = await readRequestBody(req);
+    const parsed = JSON.parse(rawBody) as AiSubagentRequest;
+    const result = await runAiSubagent(subagentRoute.subagent, parsed);
+    sendJson(res, 200, result);
+    return true;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      sendJson(res, 400, {
+        ok: false,
+        code: "AI_INVALID_REQUEST",
+        error: "Invalid JSON body.",
+        subagent: subagentRoute.subagent,
+      });
+      return true;
+    }
+    const mapped = mapAiErrorToResponse(err);
+    sendJson(res, mapped.status, {
+      ok: false,
+      code: mapped.code,
+      error: mapped.message,
+      subagent: subagentRoute.subagent,
+      provider: getAiStatus().provider,
+      retryable: mapped.status >= 500,
+    });
+    return true;
+  }
+}
+
 function startServer(): void {
   const server = createAppServer();
 
@@ -392,6 +579,16 @@ function startServer(): void {
 
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    if (isAiStatusRoute(req.url ?? "/") || parseAiSubagentRoute(req.url ?? "/")) {
+      await handleAiApi(req, res);
+      return;
+    }
+
+    if (isLinearTransformRoute(req.url ?? "/")) {
+      await handleLinearTransformApi(req, res);
+      return;
+    }
+
     const syncRoute = parseSyncRoute(req.url ?? "/");
     if (syncRoute) {
       await handleSyncApi(req, res, syncRoute);

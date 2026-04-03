@@ -313,6 +313,28 @@
   stroke-width: 2;
 }
 
+.node-hit.multi-selected {
+  fill: color-mix(in srgb, var(--accent-soft) 68%, #ffffff 32%);
+  stroke: #9d75ff;
+  stroke-width: 1.6;
+}
+
+.node-hit.primary-selected {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.node-hit.reparent-source {
+  stroke-dasharray: 8 5;
+}
+
+.node-hit.cut-pending {
+  fill: rgba(160, 160, 160, 0.18);
+  stroke: #8a8a8a;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
 .node-hit.alias-read {
   fill: rgba(56, 115, 255, 0.08);
   stroke: #3873ff;
@@ -376,6 +398,11 @@
       .label-node.selected {
         fill: #6f39ff;
         font-weight: 600;
+      }
+
+      .label-node.primary-selected {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
       }
 
       .label-node.alias-label {
@@ -450,6 +477,9 @@
         padding: 4px 8px;
         font-size: 22px;
         line-height: 1.2;
+        resize: none;
+        overflow: hidden;
+        white-space: pre-wrap;
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
       }
 
