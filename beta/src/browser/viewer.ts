@@ -61,6 +61,15 @@ const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main")
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 100;
+const TAB_ID = crypto.randomUUID();
+
+interface BcStateMessage {
+  type: "STATE_UPDATE";
+  fromTabId: string;
+  state: AppState;
+}
+
+let bc: BroadcastChannel | null = null;
 
 interface UndoSnapshot {
   state: AppState;
@@ -2272,6 +2281,16 @@ function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; ra
   setSingleSelection(nodeId);
 }
 
+function updateScopeInUrl(scopeId: string): void {
+  const params = new URLSearchParams(window.location.search);
+  if (!doc || scopeId === doc.state.rootId) {
+    params.delete("scopeId");
+  } else {
+    params.set("scopeId", scopeId);
+  }
+  history.replaceState(null, "", `?${params.toString()}`);
+}
+
 function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   if (!doc || !doc.state.nodes[scopeId]) {
     return;
@@ -2289,6 +2308,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   normalizeSelectionState();
   render();
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
+  updateScopeInUrl(scopeId);
 }
 
 function ExitScopeCommand(): void {
@@ -2304,6 +2324,7 @@ function ExitScopeCommand(): void {
   normalizeSelectionState();
   render();
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
+  updateScopeInUrl(viewState.currentScopeId);
 }
 
 function addChild(): void {
@@ -2836,6 +2857,28 @@ function scheduleAutosave(): void {
   }, AUTOSAVE_DELAY_MS);
 }
 
+function initBroadcastSync(): void {
+  bc = new BroadcastChannel(`m3e-doc-${LOCAL_DOC_ID}`);
+  bc.onmessage = (ev: MessageEvent<BcStateMessage>) => {
+    if (!doc || ev.data.fromTabId === TAB_ID) {
+      return;
+    }
+    if (ev.data.type === "STATE_UPDATE") {
+      doc.state = ev.data.state;
+      render();
+    }
+  };
+  window.addEventListener("beforeunload", () => bc?.close());
+}
+
+function broadcastState(): void {
+  if (!bc || !doc) {
+    return;
+  }
+  const msg: BcStateMessage = { type: "STATE_UPDATE", fromTabId: TAB_ID, state: doc.state };
+  bc.postMessage(msg);
+}
+
 function touchDocument(): void {
   if (!doc) {
     return;
@@ -2843,6 +2886,7 @@ function touchDocument(): void {
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
+  broadcastState();
 }
 
 async function loadDefaultSample(): Promise<void> {
@@ -4245,5 +4289,10 @@ syncMetaPanelToggleUi();
 updateCloudSyncUi();
 
 void initializeDocument().then(() => {
+  initBroadcastSync();
+  const initialScopeId = queryParams.get("scopeId");
+  if (initialScopeId && doc && doc.state.nodes[initialScopeId]) {
+    EnterScopeCommand(initialScopeId);
+  }
   fitDocument() || applyZoom();
 });
