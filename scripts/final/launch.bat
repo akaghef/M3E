@@ -11,7 +11,7 @@ REM ============================================================
 cd /d "%~dp0\..\.."
 
 REM Load saved config (written by install.bat), then apply env overrides.
-set "CONFIG_FILE=%APPDATA%\M3E\m3e.conf"
+set "CONFIG_FILE=%LOCALAPPDATA%\M3E\m3e.conf"
 if exist "%CONFIG_FILE%" (
   for /f "usebackq tokens=1,* delims==" %%A in ("%CONFIG_FILE%") do (
     if "%%A"=="M3E_DATA_DIR" if "!M3E_DATA_DIR!"=="" set "M3E_DATA_DIR=%%B"
@@ -20,7 +20,7 @@ if exist "%CONFIG_FILE%" (
 )
 
 REM Final fallback defaults.
-if "!M3E_DATA_DIR!"=="" set "M3E_DATA_DIR=%APPDATA%\M3E"
+if "!M3E_DATA_DIR!"=="" set "M3E_DATA_DIR=%LOCALAPPDATA%\M3E"
 if "!M3E_PORT!"==""     set "M3E_PORT=38482"
 if not exist "!M3E_DATA_DIR!" mkdir "!M3E_DATA_DIR!"
 
