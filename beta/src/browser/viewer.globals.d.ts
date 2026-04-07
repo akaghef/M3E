@@ -1,6 +1,11 @@
 // Global type declarations for the browser build (script-mode, no module system).
 // ViewerTuning and VIEWER_TUNING are declared in viewer.tuning.ts as globals.
 
+declare const katex: {
+  render(latex: string, element: HTMLElement, options?: { displayMode?: boolean; throwOnError?: boolean }): void;
+  renderToString(latex: string, options?: { displayMode?: boolean; throwOnError?: boolean }): string;
+};
+
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";

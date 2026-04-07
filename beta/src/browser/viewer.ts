@@ -309,6 +309,47 @@ function textWidth(str: string, fontSize: number): number {
   return Math.max(80, normalized.length * fontSize * 0.62);
 }
 
+const LATEX_DISPLAY_RE = /^\$\$([\s\S]+)\$\$$/;
+const LATEX_INLINE_RE = /^\$([^$]+)\$$/;
+
+function isLatexNode(node: TreeNode): boolean {
+  const t = (node.text || "").trim();
+  return LATEX_DISPLAY_RE.test(t) || LATEX_INLINE_RE.test(t);
+}
+
+function latexSource(text: string): { latex: string; displayMode: boolean } {
+  const t = (text || "").trim();
+  const dm = LATEX_DISPLAY_RE.exec(t);
+  if (dm) return { latex: dm[1]!, displayMode: true };
+  const im = LATEX_INLINE_RE.exec(t);
+  return { latex: im ? im[1]! : t, displayMode: false };
+}
+
+const latexMetricsCache = new Map<string, { w: number; h: number }>();
+
+function measureLatex(text: string): { w: number; h: number } {
+  if (latexMetricsCache.has(text)) return latexMetricsCache.get(text)!;
+  const { latex, displayMode } = latexSource(text);
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute;visibility:hidden;top:-9999px;left:-9999px";
+  document.body.appendChild(probe);
+  try {
+    katex.render(latex, probe, { displayMode, throwOnError: false });
+    const result = {
+      w: Math.max(80, probe.offsetWidth + 24),
+      h: Math.max(VIEWER_TUNING.layout.leafHeight, probe.offsetHeight + 16),
+    };
+    latexMetricsCache.set(text, result);
+    return result;
+  } catch {
+    const fallback = { w: textWidth(text, VIEWER_TUNING.typography.nodeFont) + 20, h: 56 };
+    latexMetricsCache.set(text, fallback);
+    return fallback;
+  } finally {
+    probe.remove();
+  }
+}
+
 function richContentText(element: Element, type: string): string {
   const richNodes = Array.from(element.children).filter((child) => {
     return child.tagName === "richcontent" && (child.getAttribute("TYPE") || "").toUpperCase() === type;
@@ -1606,6 +1647,9 @@ function buildLayout(state: AppState): LayoutResult {
         w: Math.max(280, textWidth(node.text || "", VIEWER_TUNING.typography.rootFont) + 120),
         h: VIEWER_TUNING.layout.rootHeight,
       };
+    } else if (isLatexNode(node)) {
+      const m = measureLatex(node.text);
+      metrics[nodeId] = { w: m.w, h: m.h };
     } else {
       metrics[nodeId] = {
         w: textWidth(node.text || "", VIEWER_TUNING.typography.nodeFont) + 20,
@@ -1803,9 +1847,10 @@ function render(): void {
       classNames.push("drag-source");
     }
     const hitX = nodeId === displayRootId ? p.x : p.x - 8;
-    const hitY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2;
+    const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
+    const hitY = p.y - hitH / 2;
     const hitW = nodeId === displayRootId ? p.w : p.w + 36;
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
+    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="12" />`;
 
     if (nodeId === displayRootId) {
       const label = escapeXml(uiLabel(node) || "(empty)");
@@ -1836,7 +1881,15 @@ function render(): void {
         const folderFrameH = VIEWER_TUNING.layout.nodeHitHeight - 12;
         nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
       }
-      nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+      if (isLatexNode(node)) {
+        const { latex, displayMode } = latexSource(node.text);
+        const htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+        const foH = p.h;
+        const foY = p.y - foH / 2;
+        nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
+      } else {
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+      }
       const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
@@ -2444,6 +2497,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
         return true;
       }
       pushUndoSnapshot();
+      latexMetricsCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
       touchDocument();
@@ -2462,6 +2516,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     return true;
   }
   pushUndoSnapshot();
+  latexMetricsCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
   touchDocument();

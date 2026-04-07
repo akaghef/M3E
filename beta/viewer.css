@@ -483,6 +483,17 @@
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
       }
 
+      .latex-node-content {
+        display: flex;
+        align-items: center;
+        height: 100%;
+        padding: 0 4px;
+        box-sizing: border-box;
+        color: var(--ink);
+        font-size: 44px;
+        pointer-events: none;
+      }
+
       @media (max-width: 900px) {
         .label-root,
         .label-node {

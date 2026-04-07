@@ -292,3 +292,31 @@ test("viewer drag reorder above sibling keeps same parent", async ({ page }) => 
   await expect(page.locator("#status")).toContainText("Reordered \"C2-2\" in \"P2\".");
   await expect(page.locator("#meta")).toContainText("selected: C2-2");
 });
+
+// 目的: LaTeX ノードが正しく描画されること、また部分一致は plain text のままであることを視覚的に確認する。
+test("latex rendering visual baseline", async ({ page }) => {
+  const doc = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["n1", "n2", "n3", "n4"], text: "LaTeX test", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n1:   { id: "n1",   parentId: "root", children: [], text: "$a^2$",                  collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n2:   { id: "n2",   parentId: "root", children: [], text: "$$b^2$$",                collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n3:   { id: "n3",   parentId: "root", children: [], text: "not accepted $c^3$",     collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n4:   { id: "n4",   parentId: "root", children: [], text: "$d^3$ not accepted",     collapsed: false, details: "", note: "", attributes: {}, link: "" },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, doc);
+
+  // n1 and n2 are rendered as LaTeX (foreignObject), n3 and n4 stay as plain text labels.
+  await expect(page.locator("foreignObject[data-node-id='n1']")).toBeVisible();
+  await expect(page.locator("foreignObject[data-node-id='n2']")).toBeVisible();
+  await expect(page.locator("text.label-node[data-node-id='n3']")).toBeVisible();
+  await expect(page.locator("text.label-node[data-node-id='n4']")).toBeVisible();
+
+  await expect(page.locator("#board")).toHaveScreenshot("latex-rendering.png");
+});
