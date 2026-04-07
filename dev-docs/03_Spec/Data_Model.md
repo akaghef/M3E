@@ -100,6 +100,7 @@ scope はストレージ単位ではなく認知境界である。
 
 - scope と alias の意味: [./Scope_and_Alias.md](./Scope_and_Alias.md)
 - state分離と schema v2: [./Model_State_And_Schema_V2.md](./Model_State_And_Schema_V2.md)
+- クラウド同期の最小戦略: [./Cloud_Sync.md](./Cloud_Sync.md)
 - MVC と command: [../04_Architecture/MVC_and_Command.md](../04_Architecture/MVC_and_Command.md)
 - Freeplane への写像: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
 
