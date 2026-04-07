@@ -292,6 +292,38 @@
         fill: none;
         stroke-width: 4;
         stroke-linecap: round;
+        pointer-events: none;
+      }
+
+      .graph-link {
+        fill: none;
+        stroke: #2a7188;
+        stroke-width: 3;
+        stroke-linecap: round;
+        opacity: 0.95;
+        pointer-events: none;
+      }
+
+      .graph-link.graph-link-soft {
+        stroke: #7ca6b3;
+        stroke-width: 2.5;
+        opacity: 0.82;
+      }
+
+      .graph-link.graph-link-dashed {
+        stroke-dasharray: 10 7;
+      }
+
+      .graph-link.graph-link-emphasis {
+        stroke: #126e83;
+        stroke-width: 4.5;
+      }
+
+      .graph-link-label {
+        fill: #245567;
+        font-size: 12px;
+        font-weight: 700;
+        pointer-events: none;
       }
 
       .root-box {
@@ -330,6 +362,12 @@
 
 .node-hit.reparent-source {
   stroke-dasharray: 8 5;
+}
+
+.node-hit.link-source {
+  stroke: #2a7188;
+  stroke-width: 3;
+  stroke-dasharray: 5 4;
 }
 
 .node-hit.cut-pending {

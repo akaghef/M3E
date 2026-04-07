@@ -230,6 +230,7 @@ interface ViewState {
   cameraY: number;
   panState: PanState | null;
   clipboardState: ClipboardState;
+  linkSourceNodeId: string;
   reparentSourceIds: Set<string>;
   dragState: DragState | null;
   collapsedIds: Set<string>;

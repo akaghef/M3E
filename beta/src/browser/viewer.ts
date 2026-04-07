@@ -19,6 +19,8 @@ const jumpTargetBtn = document.getElementById("jump-target");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const aiGenerateTopicsBtn = document.getElementById("ai-generate-topics");
 const deleteNodeBtn = document.getElementById("delete-node");
+const markLinkBtn = document.getElementById("mark-link");
+const applyLinkBtn = document.getElementById("apply-link");
 const markReparentBtn = document.getElementById("mark-reparent");
 const applyReparentBtn = document.getElementById("apply-reparent");
 const importanceViewSelect = document.getElementById("importance-view") as HTMLSelectElement;
@@ -135,6 +137,7 @@ let viewState: ViewState = {
   cameraY: VIEWER_TUNING.pan.initialCameraY,
   panState: null,
   clipboardState: null,
+  linkSourceNodeId: "",
   reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
@@ -270,6 +273,25 @@ function ensureDocShape(payload: unknown): SavedDoc {
     node.access = node.nodeType === "alias" ? (node.access || "read") : undefined;
     node.targetSnapshotLabel = node.targetSnapshotLabel || undefined;
     node.isBroken = node.nodeType === "alias" ? Boolean(node.isBroken) : undefined;
+  });
+  const rawLinks = candidate.state.links && typeof candidate.state.links === "object"
+    ? candidate.state.links
+    : {};
+  candidate.state.links = {};
+  Object.entries(rawLinks).forEach(([linkId, link]) => {
+    if (!link || typeof link !== "object") {
+      return;
+    }
+    const record = link as GraphLink;
+    candidate.state.links![linkId] = {
+      id: record.id || linkId,
+      sourceNodeId: String(record.sourceNodeId || ""),
+      targetNodeId: String(record.targetNodeId || ""),
+      relationType: record.relationType || undefined,
+      label: record.label || undefined,
+      direction: record.direction || "none",
+      style: record.style || "default",
+    };
   });
   return candidate as SavedDoc;
 }
@@ -849,6 +871,16 @@ function aliasBadge(node: TreeNode): string {
     return "broken";
   }
   return aliasAccess(node) === "write" ? "write" : "read";
+}
+
+function normalizeGraphLink(link: GraphLink): GraphLink {
+  return {
+    ...link,
+    relationType: link.relationType ?? undefined,
+    label: link.label ?? undefined,
+    direction: link.direction ?? "none",
+    style: link.style ?? "default",
+  };
 }
 
 function nodeBadge(node: TreeNode): string {
@@ -1877,9 +1909,59 @@ function render(): void {
     VIEWER_TUNING.layout.minCanvasHeight,
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
+  let defs = `
+    <defs>
+      <marker id="graph-link-arrow-end" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+        <path d="M 0 1 L 10 6 L 0 11 z" fill="#2a7188" />
+      </marker>
+      <marker id="graph-link-arrow-start" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 10 1 L 0 6 L 10 11 z" fill="#2a7188" />
+      </marker>
+    </defs>`;
   let edges = "";
+  let graphLinks = "";
   let overlays = "";
   let nodes = "";
+
+  Object.values(state.links || {}).forEach((rawLink) => {
+    const link = normalizeGraphLink(rawLink);
+    const source = state.nodes[link.sourceNodeId];
+    const target = state.nodes[link.targetNodeId];
+    const sourcePos = pos[link.sourceNodeId];
+    const targetPos = pos[link.targetNodeId];
+    if (!source || !target || !sourcePos || !targetPos) {
+      return;
+    }
+    if (!isNodeInScope(source.id) || !isNodeInScope(target.id) || !isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id)) {
+      return;
+    }
+
+    const sourceX = sourcePos.x + sourcePos.w * 0.5;
+    const sourceY = sourcePos.y;
+    const targetX = targetPos.x + targetPos.w * 0.5;
+    const targetY = targetPos.y;
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const normalX = -dy / distance;
+    const normalY = dx / distance;
+    const bend = Math.min(96, Math.max(34, distance * 0.18));
+    const controlX = (sourceX + targetX) / 2 + normalX * bend;
+    const controlY = (sourceY + targetY) / 2 + normalY * bend;
+    const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
+    const markerStart = link.direction === "backward" || link.direction === "both"
+      ? ` marker-start="url(#graph-link-arrow-start)"`
+      : "";
+    const markerEnd = link.direction === "forward" || link.direction === "both"
+      ? ` marker-end="url(#graph-link-arrow-end)"`
+      : "";
+    const label = (link.label || link.relationType || "").trim();
+
+    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" d="M ${sourceX} ${sourceY} Q ${controlX} ${controlY}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
+    if (label) {
+      graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 8}" text-anchor="middle">${escapeXml(label)}</text>`;
+    }
+  });
 
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
@@ -1926,6 +2008,9 @@ function render(): void {
     }
     if (viewState.reparentSourceIds.has(nodeId)) {
       classNames.push("reparent-source");
+    }
+    if (viewState.linkSourceNodeId === nodeId) {
+      classNames.push("link-source");
     }
     if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
       classNames.push("cut-pending");
@@ -2032,13 +2117,17 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${edges}${overlays}${nodes}`;
+  (canvas as Element).innerHTML = `${defs}${edges}${graphLinks}${overlays}${nodes}`;
   applyZoom();
 
   const version = doc.version ?? "n/a";
   const savedAt = doc.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
+  const linkCount = Object.values(state.links || {}).filter((link) => pos[link.sourceNodeId] && pos[link.targetNodeId]).length;
   const selected = state.nodes[viewState.selectedNodeId];
+  const linkSourceLabel = viewState.linkSourceNodeId && state.nodes[viewState.linkSourceNodeId]
+    ? uiLabel(state.nodes[viewState.linkSourceNodeId]!)
+    : "none";
   const moveNodes = Array.from(viewState.reparentSourceIds)
     .map((nodeId) => state.nodes[nodeId])
     .filter((node): node is TreeNode => Boolean(node));
@@ -2051,7 +2140,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
   updateDocumentTitle();
@@ -2425,6 +2514,10 @@ function normalizeSelectionState(): void {
       ? { type: "cut", sourceIds: normalizedCutSourceIds }
       : null;
   }
+
+  if (viewState.linkSourceNodeId && !doc.state.nodes[viewState.linkSourceNodeId]) {
+    viewState.linkSourceNodeId = "";
+  }
 }
 
 function setSingleSelection(nodeId: string, renderNow = true): void {
@@ -2585,6 +2678,91 @@ function addSibling(): void {
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
+  board.focus();
+}
+
+function selectedLinkableNode(): TreeNode | null {
+  if (!doc || !viewState.selectedNodeId) {
+    return null;
+  }
+  const node = doc.state.nodes[viewState.selectedNodeId];
+  if (!node || isAliasNode(node)) {
+    return null;
+  }
+  return node;
+}
+
+function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {
+  if (!doc) {
+    return null;
+  }
+  const links = Object.values(doc.state.links || {});
+  return links.find((link) => link.sourceNodeId === sourceNodeId && link.targetNodeId === targetNodeId) || null;
+}
+
+function markLinkSource(): void {
+  if (!doc) {
+    return;
+  }
+  const node = selectedLinkableNode();
+  if (!node) {
+    setStatus("Select a non-alias node to mark link source.", true);
+    return;
+  }
+  if (viewState.linkSourceNodeId === node.id) {
+    viewState.linkSourceNodeId = "";
+    setStatus("Link source mark cleared.");
+    scheduleRender();
+    return;
+  }
+  viewState.linkSourceNodeId = node.id;
+  setStatus(`Marked link source: ${uiLabel(node)}`);
+  scheduleRender();
+}
+
+function applyMarkedLink(): void {
+  if (!doc) {
+    return;
+  }
+  const sourceId = viewState.linkSourceNodeId;
+  if (!sourceId) {
+    setStatus("No link source marked.", true);
+    return;
+  }
+  const source = doc.state.nodes[sourceId];
+  const target = selectedLinkableNode();
+  if (!source || !target) {
+    setStatus("Select a non-alias target node.", true);
+    return;
+  }
+  if (isAliasNode(source)) {
+    setStatus("Alias nodes cannot be graph link endpoints.", true);
+    return;
+  }
+  if (source.id === target.id) {
+    setStatus("Graph links cannot connect a node to itself.", true);
+    return;
+  }
+  if (findExistingGraphLink(source.id, target.id)) {
+    setStatus("That link already exists.");
+    return;
+  }
+
+  pushUndoSnapshot();
+  const linkId = newId();
+  if (!doc.state.links) {
+    doc.state.links = {};
+  }
+  doc.state.links[linkId] = normalizeGraphLink({
+    id: linkId,
+    sourceNodeId: source.id,
+    targetNodeId: target.id,
+    direction: "forward",
+    style: "default",
+  });
+  viewState.linkSourceNodeId = "";
+  touchDocument();
+  setStatus(`Linked ${uiLabel(source)} -> ${uiLabel(target)}.`);
   board.focus();
 }
 
@@ -3278,6 +3456,7 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeRootId = doc.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.clipboardState = null;
+    viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
@@ -4014,6 +4193,16 @@ jumpTargetBtn?.addEventListener("click", () => {
   jumpToAliasTarget();
 });
 
+markLinkBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  markLinkSource();
+});
+
+applyLinkBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  applyMarkedLink();
+});
+
 toggleCollapseBtn?.addEventListener("click", () => {
   if (!doc) return;
   toggleCollapse();
@@ -4455,6 +4644,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
+    }
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    applyMarkedLink();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    if (!event.repeat) {
+      markLinkSource();
     }
     return;
   }
