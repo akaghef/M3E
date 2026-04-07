@@ -1911,12 +1911,6 @@ function render(): void {
   );
   let defs = `
     <defs>
-      <marker id="graph-link-arrow-end" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
-        <path d="M 0 1 L 10 6 L 0 11 z" fill="#2a7188" />
-      </marker>
-      <marker id="graph-link-arrow-start" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-        <path d="M 10 1 L 0 6 L 10 11 z" fill="#2a7188" />
-      </marker>
     </defs>`;
   let edges = "";
   let graphLinks = "";
@@ -1949,15 +1943,26 @@ function render(): void {
     const controlX = (sourceX + targetX) / 2 + normalX * bend;
     const controlY = (sourceY + targetY) / 2 + normalY * bend;
     const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
+    const stroke = VIEWER_TUNING.palette.edgeColors[Math.abs(controlX + controlY) % VIEWER_TUNING.palette.edgeColors.length];
+    const markerEndId = `graph-link-arrow-end-${link.id}`;
+    const markerStartId = `graph-link-arrow-start-${link.id}`;
     const markerStart = link.direction === "backward" || link.direction === "both"
-      ? ` marker-start="url(#graph-link-arrow-start)"`
+      ? ` marker-start="url(#${markerStartId})"`
       : "";
     const markerEnd = link.direction === "forward" || link.direction === "both"
-      ? ` marker-end="url(#graph-link-arrow-end)"`
+      ? ` marker-end="url(#${markerEndId})"`
       : "";
     const label = (link.label || link.relationType || "").trim();
 
-    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" d="M ${sourceX} ${sourceY} Q ${controlX} ${controlY}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
+    defs += `
+      <marker id="${markerEndId}" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+        <path d="M 0 1 L 10 6 L 0 11 z" fill="${stroke}" />
+      </marker>
+      <marker id="${markerStartId}" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
+      </marker>`;
+
+    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="M ${sourceX} ${sourceY} Q ${controlX} ${controlY}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
     if (label) {
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 8}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
