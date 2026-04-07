@@ -51,18 +51,7 @@
 | P2 | Dev infrastructure | Stage A CI、hit-test カバレッジ |
 | P1（後回し） | Deferred | reparent feedback UI、delete confirmation |
 
-## E. MVP 残タスク（MVP_Definition.md Phase 別）
 
-Phase 1〜4 は完了。残り:
-
-| # | Phase | 残タスク | 状態 |
-|---|-------|---------|------|
-| E1 | Phase 5 | 主要操作の導線を短くする | doing |
-| E2 | Phase 5 | 操作ラベルと状態表示の整理 | doing |
-| E3 | Phase 5 | 初見ユーザーでの簡易操作確認 | 未着手 |
-| E4 | MVP後 | AI 提案生成と承認フロー | pooled |
-| E5 | MVP後 | scope / alias の完全実装 | B4+B5 で準備中 |
-| E6 | MVP後 | Deep 差分履歴 | pooled |
 
 ## F. AI / LLM インフラ関連
 
