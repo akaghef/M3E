@@ -23,7 +23,7 @@ const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
 const LOCAL_DOC_ID = "rapid-main";
 const AUTOSAVE_DELAY_MS = 700;
-const MAX_UNDO_STEPS = 100;
+const MAX_UNDO_STEPS = 200;
 
 interface UndoSnapshot {
   state: AppState;

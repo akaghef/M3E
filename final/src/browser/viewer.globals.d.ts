@@ -229,3 +229,105 @@ interface ViewState {
   dragState: DragState | null;
   collapsedIds: Set<string>;
 }
+
+interface M3eActiveNode {
+  readonly id: string;
+  edit(label: string): void;
+  del(): void;
+  set(field: string, value: string): void;
+  unset(field: string): void;
+  attr(key: string, value: string): void;
+  attrDel(key: string): void;
+  setType(type: NodeType): void;
+  info(): TreeNode;
+}
+
+interface M3eActiveBranch {
+  readonly id: string;
+  collapse(): void;
+  expand(): void;
+  move(newParentId: string): void;
+  clone(newParentId?: string): string;
+  del(): void;
+  tree(): string;
+  findAll(text: string): string[];
+}
+
+interface M3eActiveScope {
+  readonly id: string;
+  info(): TreeNode;
+  collapse(): void;
+  expand(): void;
+  tree(): string;
+  findAll(text: string): string[];
+}
+
+interface M3eApi {
+  readonly root: string;
+  readonly sel: string | null;
+  readonly marked: string[];
+  readonly active_node: M3eActiveNode;
+  readonly active_branch: M3eActiveBranch;
+  readonly active_scope: M3eActiveScope;
+
+  parent(id?: string): string | null;
+  children(id?: string): string[];
+  node(id: string): TreeNode;
+  info(nodeId?: string): TreeNode;
+
+  add(parentId: string, label: string, index?: number): string;
+  sibling(nodeId: string, label: string, after?: boolean): string;
+  clone(nodeId: string, newParentId?: string): string;
+  edit(nodeId: string, newLabel: string): void;
+  del(nodeId: string): void;
+  move(nodeId: string, newParentId: string, index?: number): void;
+  promote(nodeId: string): void;
+  demote(nodeId: string): void;
+  setType(nodeId: string, type: NodeType): void;
+
+  select(nodeId: string): void;
+  nav(direction: "parent" | "first" | "last" | "next" | "prev"): void;
+
+  collapse(nodeId: string): void;
+  expand(nodeId: string): void;
+  toggle(nodeId: string): void;
+  collapseAll(nodeId?: string): void;
+  expandAll(nodeId?: string): void;
+
+  set(nodeId: string, field: string, value: string): void;
+  unset(nodeId: string, field: string): void;
+  attr(nodeId: string, key: string, value: string): void;
+  attrDel(nodeId: string, key: string): void;
+
+  undo(): boolean;
+  redo(): boolean;
+
+  find(text: string): string | null;
+  findAll(text: string): string[];
+  tree(nodeId?: string): string;
+  depth(nodeId?: string): number;
+  count(nodeId?: string): number;
+  leaves(nodeId?: string): string[];
+  ancestors(nodeId?: string): string[];
+  path(nodeId?: string): string[];
+  replaceAll(search: string, replacement: string, scopeRootId?: string): number;
+
+  mark(nodeId: string): void;
+  unmark(nodeId: string): void;
+  clearMarks(): void;
+
+  fit(): void;
+  focus(nodeId?: string): void;
+  zoom(factor: number): void;
+  zoomReset(): void;
+  pan(dx: number, dy: number): void;
+
+  "new"(rootLabel?: string): void;
+  save(filename?: string): void;
+  load(source: string | File): Promise<void>;
+  export(format: "json" | "mm"): void;
+}
+
+interface Window {
+  m3e: M3eApi;
+}

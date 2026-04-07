@@ -23,7 +23,7 @@
       const visualCheckEl = document.getElementById("visual-check");
       const board = document.getElementById("board");
       const canvas = document.getElementById("canvas");
-      const MAX_UNDO_STEPS = 100;
+      const MAX_UNDO_STEPS = 200;
 
       let doc = null;
       let visibleOrder = [];

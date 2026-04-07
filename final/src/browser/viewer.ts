@@ -60,7 +60,7 @@ const queryParams = new URLSearchParams(window.location.search);
 const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main");
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
-const MAX_UNDO_STEPS = 100;
+const MAX_UNDO_STEPS = 200;
 
 interface UndoSnapshot {
   state: AppState;
@@ -2334,7 +2334,7 @@ function addSibling(): void {
   pushUndoSnapshot();
   const currentIndex = parent.children.indexOf(node.id);
   const id = newId();
-  doc!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
+  doc!.state.nodes[id] = createNodeRecord(id, parent.id, "    ");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
@@ -2343,11 +2343,7 @@ function addSibling(): void {
 
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
-  const next = String(nextRaw || "").trim();
-  if (next === "") {
-    setStatus("Node text cannot be empty.", true);
-    return false;
-  }
+  const next = String(nextRaw ?? "").trim();
   if (isAliasNode(node)) {
     if (mode === "target-text") {
       const target = resolveAliasTarget(node);
@@ -4243,6 +4239,834 @@ setVisualCheckStatus("Visual check idle");
 syncMetaPanelToggleUi();
 
 updateCloudSyncUi();
+
+// ---------------------------------------------------------------------------
+// window.m3e — Command Language API
+// ---------------------------------------------------------------------------
+
+const m3eMarkedIds = new Set<string>();
+
+function m3eRequireDoc(): SavedDoc {
+  if (!doc) {
+    throw new Error("No document loaded.");
+  }
+  return doc;
+}
+
+function m3eResolveId(nodeId: string | undefined): string {
+  if (nodeId !== undefined) {
+    return nodeId;
+  }
+  const sel = viewState.selectedNodeId;
+  if (!sel) {
+    throw new Error("No node selected.");
+  }
+  return sel;
+}
+
+function m3eGetNode(nodeId: string): TreeNode {
+  const d = m3eRequireDoc();
+  const node = d.state.nodes[nodeId];
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+  return node;
+}
+
+function m3eDeepCopy(node: TreeNode): TreeNode {
+  return JSON.parse(JSON.stringify(node)) as TreeNode;
+}
+
+function m3eBuildTree(nodeId: string, prefix: string, isLast: boolean, isRoot: boolean): string {
+  const d = m3eRequireDoc();
+  const node = d.state.nodes[nodeId];
+  if (!node) {
+    return "";
+  }
+  const label = node.text || "(empty)";
+  const collapsed = viewState.collapsedIds.has(nodeId);
+  const hasChildren = node.children.length > 0;
+
+  let line: string;
+  if (isRoot) {
+    line = label;
+  } else {
+    const branch = isLast ? "\u2514\u2500 " : "\u251C\u2500 ";
+    const suffix = collapsed && hasChildren ? " [+]" : "";
+    line = prefix + branch + label + suffix;
+  }
+
+  const lines = [line];
+
+  if (!collapsed) {
+    const childPrefix = isRoot ? "" : prefix + (isLast ? "   " : "\u2502  ");
+    node.children.forEach((childId, i) => {
+      const childIsLast = i === node.children.length - 1;
+      lines.push(m3eBuildTree(childId, childPrefix, childIsLast, false));
+    });
+  }
+
+  return lines.join("\n");
+}
+
+function m3eCountSubtree(nodeId: string): number {
+  const d = m3eRequireDoc();
+  const node = d.state.nodes[nodeId];
+  if (!node) {
+    return 0;
+  }
+  let total = 1;
+  const stack = [...node.children];
+  while (stack.length > 0) {
+    const cid = stack.pop()!;
+    const child = d.state.nodes[cid];
+    if (child) {
+      total += 1;
+      stack.push(...child.children);
+    }
+  }
+  return total;
+}
+
+function m3eCollectLeaves(nodeId: string): string[] {
+  const d = m3eRequireDoc();
+  const result: string[] = [];
+  const stack = [nodeId];
+  while (stack.length > 0) {
+    const cid = stack.pop()!;
+    const child = d.state.nodes[cid];
+    if (!child) {
+      continue;
+    }
+    if (child.children.length === 0) {
+      result.push(cid);
+    } else {
+      for (let i = child.children.length - 1; i >= 0; i--) {
+        stack.push(child.children[i]!);
+      }
+    }
+  }
+  return result;
+}
+
+function m3eAncestors(nodeId: string): string[] {
+  const d = m3eRequireDoc();
+  const result: string[] = [];
+  let cursor: string | null = d.state.nodes[nodeId]?.parentId ?? null;
+  while (cursor) {
+    result.push(cursor);
+    cursor = d.state.nodes[cursor]?.parentId ?? null;
+  }
+  return result;
+}
+
+function m3ePath(nodeId: string): string[] {
+  const result = m3eAncestors(nodeId);
+  result.reverse();
+  result.push(nodeId);
+  return result;
+}
+
+function m3eFindAll(text: string, scopeRootId?: string): string[] {
+  const d = m3eRequireDoc();
+  const target = String(text || "").toLowerCase();
+  if (!target) {
+    return [];
+  }
+  const rootId = scopeRootId || d.state.rootId;
+  const result: string[] = [];
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const cid = stack.pop()!;
+    const node = d.state.nodes[cid];
+    if (!node) {
+      continue;
+    }
+    if (String(node.text || "").toLowerCase().includes(target)) {
+      result.push(cid);
+    }
+    for (let i = node.children.length - 1; i >= 0; i--) {
+      stack.push(node.children[i]!);
+    }
+  }
+  return result;
+}
+
+function m3eCloneSubtree(nodeId: string, newParentId: string): string {
+  const snapshot = toSubtreeSnapshot(nodeId);
+  const sourceNode = m3eGetNode(nodeId);
+  // Preserve link field in the snapshot
+  const enriched = { ...snapshot, link: sourceNode.link || "" };
+
+  function cloneWithLink(parentId: string, snap: SubtreeSnapshot & { link?: string }): string {
+    const parent = getNode(parentId);
+    const createdId = newId();
+    doc!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snap.text || "New Node");
+    const created = doc!.state.nodes[createdId]!;
+    created.details = snap.details || "";
+    created.note = snap.note || "";
+    created.link = snap.link || "";
+    created.attributes = JSON.parse(JSON.stringify(snap.attributes || {})) as Record<string, string>;
+    parent.children.push(createdId);
+    (snap.children || []).forEach((childSnapshot) => {
+      cloneWithLink(createdId, childSnapshot);
+    });
+    return createdId;
+  }
+
+  return cloneWithLink(newParentId, enriched);
+}
+
+function m3eCollapseAllSubtree(nodeId: string, collapse: boolean): void {
+  const d = m3eRequireDoc();
+  const stack = [nodeId];
+  while (stack.length > 0) {
+    const cid = stack.pop()!;
+    const node = d.state.nodes[cid];
+    if (!node) {
+      continue;
+    }
+    if (node.children.length > 0) {
+      if (collapse) {
+        viewState.collapsedIds.add(cid);
+        node.collapsed = true;
+      } else {
+        viewState.collapsedIds.delete(cid);
+        node.collapsed = false;
+      }
+    }
+    stack.push(...node.children);
+  }
+}
+
+function m3eScopeRootForNode(nodeId: string): string {
+  const d = m3eRequireDoc();
+  let cursor: string | null = nodeId;
+  let nearestFolderId: string | null = null;
+  while (cursor) {
+    const cur: TreeNode | undefined = d.state.nodes[cursor];
+    if (!cur) {
+      break;
+    }
+    if (isFolderNode(cur)) {
+      nearestFolderId = cur.id;
+    }
+    cursor = cur.parentId ?? null;
+  }
+  return nearestFolderId || d.state.rootId;
+}
+
+function m3eExportMm(): void {
+  const d = m3eRequireDoc();
+
+  function nodeToMm(nodeId: string, indent: string): string {
+    const node = d.state.nodes[nodeId];
+    if (!node) {
+      return "";
+    }
+    const textAttr = ` TEXT="${escapeXml(node.text || "")}"`;
+    const foldedAttr = node.collapsed && node.children.length > 0 ? ' FOLDED="true"' : "";
+    const linkAttr = node.link ? ` LINK="${escapeXml(node.link)}"` : "";
+
+    const parts: string[] = [];
+    parts.push(`${indent}<node${textAttr}${foldedAttr}${linkAttr}>`);
+
+    // details
+    if (node.details) {
+      parts.push(`${indent}  <richcontent TYPE="DETAILS"><html><body>${escapeXml(node.details)}</body></html></richcontent>`);
+    }
+    // note
+    if (node.note) {
+      parts.push(`${indent}  <richcontent TYPE="NOTE"><html><body>${escapeXml(node.note)}</body></html></richcontent>`);
+    }
+    // attributes
+    const attrKeys = Object.keys(node.attributes || {});
+    if (attrKeys.length > 0) {
+      parts.push(`${indent}  <attributes>`);
+      attrKeys.forEach((key) => {
+        parts.push(`${indent}    <attribute NAME="${escapeXml(key)}" VALUE="${escapeXml(node.attributes[key] || "")}"/>`);
+      });
+      parts.push(`${indent}  </attributes>`);
+    }
+
+    // children
+    node.children.forEach((childId) => {
+      parts.push(nodeToMm(childId, indent + "  "));
+    });
+
+    parts.push(`${indent}</node>`);
+    return parts.join("\n");
+  }
+
+  const xml = `<map version="freeplane 1.7.0">\n${nodeToMm(d.state.rootId, "")}\n</map>`;
+
+  const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "m3e-export.mm";
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+const m3eApi: M3eApi = {
+  // --- Properties ---
+  get root(): string {
+    return m3eRequireDoc().state.rootId;
+  },
+  get sel(): string | null {
+    return viewState.selectedNodeId || null;
+  },
+  get marked(): string[] {
+    // Clean up stale marks
+    if (doc) {
+      m3eMarkedIds.forEach((id) => {
+        if (!doc!.state.nodes[id]) {
+          m3eMarkedIds.delete(id);
+        }
+      });
+    }
+    return Array.from(m3eMarkedIds);
+  },
+
+  // --- Node reference ---
+  parent(id?: string): string | null {
+    const nodeId = m3eResolveId(id);
+    return m3eGetNode(nodeId).parentId;
+  },
+  children(id?: string): string[] {
+    const nodeId = m3eResolveId(id);
+    return [...m3eGetNode(nodeId).children];
+  },
+  node(id: string): TreeNode {
+    return m3eDeepCopy(m3eGetNode(id));
+  },
+  info(nodeId?: string): TreeNode {
+    const id = m3eResolveId(nodeId);
+    return m3eDeepCopy(m3eGetNode(id));
+  },
+
+  // --- Node creation ---
+  add(parentId: string, label: string, index?: number): string {
+    m3eRequireDoc();
+    const parent = m3eGetNode(parentId);
+    if (isAliasNode(parent)) {
+      throw new Error("Alias nodes cannot own children.");
+    }
+    pushUndoSnapshot();
+    const id = newId();
+    doc!.state.nodes[id] = createNodeRecord(id, parentId, label);
+    if (index !== undefined && index >= 0 && index <= parent.children.length) {
+      parent.children.splice(index, 0, id);
+    } else {
+      parent.children.push(id);
+    }
+    viewState.collapsedIds.delete(parentId);
+    parent.collapsed = false;
+    touchDocument();
+    return id;
+  },
+  sibling(nodeId: string, label: string, after?: boolean): string {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (node.parentId === null) {
+      throw new Error("Root node has no siblings.");
+    }
+    const parent = m3eGetNode(node.parentId);
+    pushUndoSnapshot();
+    const currentIndex = parent.children.indexOf(nodeId);
+    const insertIndex = after === false ? currentIndex : currentIndex + 1;
+    const id = newId();
+    doc!.state.nodes[id] = createNodeRecord(id, parent.id, label);
+    parent.children.splice(insertIndex, 0, id);
+    touchDocument();
+    return id;
+  },
+  clone(nodeId: string, newParentId?: string): string {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    const targetParentId = newParentId || node.parentId;
+    if (!targetParentId) {
+      throw new Error("Cannot clone root without specifying a parent.");
+    }
+    m3eGetNode(targetParentId); // validate parent exists
+    pushUndoSnapshot();
+    const clonedId = m3eCloneSubtree(nodeId, targetParentId);
+    touchDocument();
+    return clonedId;
+  },
+
+  // --- Node editing ---
+  edit(nodeId: string, newLabel: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    const next = String(newLabel ?? "").trim();
+    if (node.text === next) {
+      return;
+    }
+    pushUndoSnapshot();
+    node.text = next;
+    if (isAliasNode(node)) {
+      syncAliasDisplayForTarget(node.targetNodeId || "");
+    }
+    touchDocument();
+  },
+  del(nodeId: string): void {
+    const d = m3eRequireDoc();
+    if (nodeId === d.state.rootId) {
+      throw new Error("Root node cannot be deleted.");
+    }
+    const node = m3eGetNode(nodeId);
+    if (!node.parentId) {
+      throw new Error("Root node cannot be deleted.");
+    }
+    pushUndoSnapshot();
+    const parent = m3eGetNode(node.parentId);
+    const idx = parent.children.indexOf(nodeId);
+    if (idx >= 0) {
+      parent.children.splice(idx, 1);
+    }
+    markAliasesBrokenInViewer(nodeId, node.text);
+    deleteSubtree(nodeId);
+    m3eMarkedIds.delete(nodeId);
+    if (viewState.selectedNodeId === nodeId) {
+      setSingleSelection(parent.id, false);
+    }
+    touchDocument();
+  },
+  move(nodeId: string, newParentId: string, index?: number): void {
+    const d = m3eRequireDoc();
+    if (nodeId === d.state.rootId) {
+      throw new Error("Root node cannot be moved.");
+    }
+    const node = m3eGetNode(nodeId);
+    m3eGetNode(newParentId); // validate
+
+    // Cycle detection
+    let cursor: string | null = newParentId;
+    while (cursor) {
+      if (cursor === nodeId) {
+        throw new Error("Cycle detected");
+      }
+      cursor = d.state.nodes[cursor]?.parentId ?? null;
+    }
+
+    pushUndoSnapshot();
+    // Remove from old parent
+    if (node.parentId) {
+      const oldParent = d.state.nodes[node.parentId];
+      if (oldParent) {
+        const idx = oldParent.children.indexOf(nodeId);
+        if (idx >= 0) {
+          oldParent.children.splice(idx, 1);
+        }
+      }
+    }
+    // Add to new parent
+    node.parentId = newParentId;
+    const newParent = m3eGetNode(newParentId);
+    if (index !== undefined && index >= 0 && index <= newParent.children.length) {
+      newParent.children.splice(index, 0, nodeId);
+    } else {
+      newParent.children.push(nodeId);
+    }
+    touchDocument();
+  },
+  promote(nodeId: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (!node.parentId) {
+      return;
+    }
+    const parent = m3eGetNode(node.parentId);
+    const idx = parent.children.indexOf(nodeId);
+    if (idx <= 0) {
+      return;
+    }
+    pushUndoSnapshot();
+    parent.children.splice(idx, 1);
+    parent.children.splice(idx - 1, 0, nodeId);
+    touchDocument();
+  },
+  demote(nodeId: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (!node.parentId) {
+      return;
+    }
+    const parent = m3eGetNode(node.parentId);
+    const idx = parent.children.indexOf(nodeId);
+    if (idx < 0 || idx >= parent.children.length - 1) {
+      return;
+    }
+    pushUndoSnapshot();
+    parent.children.splice(idx, 1);
+    parent.children.splice(idx + 1, 0, nodeId);
+    touchDocument();
+  },
+  setType(nodeId: string, type: NodeType): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    pushUndoSnapshot();
+    node.nodeType = type;
+    touchDocument();
+  },
+
+  // --- Selection / Navigation ---
+  select(nodeId: string): void {
+    m3eRequireDoc();
+    m3eGetNode(nodeId); // validate
+    setSingleSelection(nodeId);
+  },
+  nav(direction: "parent" | "first" | "last" | "next" | "prev"): void {
+    m3eRequireDoc();
+    const sel = m3eResolveId(undefined);
+    const node = m3eGetNode(sel);
+    let targetId: string | null = null;
+    switch (direction) {
+      case "parent":
+        targetId = node.parentId;
+        break;
+      case "first":
+        targetId = node.children.length > 0 ? node.children[0]! : null;
+        break;
+      case "last":
+        targetId = node.children.length > 0 ? node.children[node.children.length - 1]! : null;
+        break;
+      case "next":
+      case "prev": {
+        if (!node.parentId) {
+          break;
+        }
+        const parent = m3eGetNode(node.parentId);
+        const idx = parent.children.indexOf(sel);
+        const nextIdx = direction === "next" ? idx + 1 : idx - 1;
+        if (nextIdx >= 0 && nextIdx < parent.children.length) {
+          targetId = parent.children[nextIdx]!;
+        }
+        break;
+      }
+    }
+    if (targetId && doc!.state.nodes[targetId]) {
+      setSingleSelection(targetId);
+    }
+  },
+
+  // --- Fold ---
+  collapse(nodeId: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (node.children.length > 0 && !viewState.collapsedIds.has(nodeId)) {
+      viewState.collapsedIds.add(nodeId);
+      node.collapsed = true;
+      touchDocument();
+    }
+  },
+  expand(nodeId: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (viewState.collapsedIds.has(nodeId)) {
+      viewState.collapsedIds.delete(nodeId);
+      node.collapsed = false;
+      touchDocument();
+    }
+  },
+  toggle(nodeId: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (node.children.length === 0) {
+      return;
+    }
+    if (viewState.collapsedIds.has(nodeId)) {
+      viewState.collapsedIds.delete(nodeId);
+      node.collapsed = false;
+    } else {
+      viewState.collapsedIds.add(nodeId);
+      node.collapsed = true;
+    }
+    touchDocument();
+  },
+  collapseAll(nodeId?: string): void {
+    const d = m3eRequireDoc();
+    const rootId = nodeId || d.state.rootId;
+    m3eGetNode(rootId); // validate
+    pushUndoSnapshot();
+    m3eCollapseAllSubtree(rootId, true);
+    touchDocument();
+  },
+  expandAll(nodeId?: string): void {
+    const d = m3eRequireDoc();
+    const rootId = nodeId || d.state.rootId;
+    m3eGetNode(rootId); // validate
+    pushUndoSnapshot();
+    m3eCollapseAllSubtree(rootId, false);
+    touchDocument();
+  },
+
+  // --- Extended fields ---
+  set(nodeId: string, field: string, value: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (field !== "details" && field !== "note" && field !== "link") {
+      throw new Error(`Invalid field: ${field}. Must be "details", "note", or "link".`);
+    }
+    pushUndoSnapshot();
+    node[field] = value;
+    touchDocument();
+  },
+  unset(nodeId: string, field: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    if (field !== "details" && field !== "note" && field !== "link") {
+      throw new Error(`Invalid field: ${field}. Must be "details", "note", or "link".`);
+    }
+    pushUndoSnapshot();
+    node[field] = "";
+    touchDocument();
+  },
+
+  // --- Attributes ---
+  attr(nodeId: string, key: string, value: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    pushUndoSnapshot();
+    if (!node.attributes) {
+      node.attributes = {};
+    }
+    node.attributes[key] = value;
+    touchDocument();
+  },
+  attrDel(nodeId: string, key: string): void {
+    m3eRequireDoc();
+    const node = m3eGetNode(nodeId);
+    pushUndoSnapshot();
+    if (node.attributes) {
+      delete node.attributes[key];
+    }
+    touchDocument();
+  },
+
+  // --- History ---
+  undo(): boolean {
+    if (!doc || undoStack.length === 0) {
+      return false;
+    }
+    undoLastChange();
+    return true;
+  },
+  redo(): boolean {
+    if (!doc || redoStack.length === 0) {
+      return false;
+    }
+    redoLastChange();
+    return true;
+  },
+
+  // --- Search ---
+  find(text: string): string | null {
+    const results = m3eFindAll(text);
+    return results.length > 0 ? results[0]! : null;
+  },
+  findAll(text: string): string[] {
+    m3eRequireDoc();
+    return m3eFindAll(text);
+  },
+
+  // --- Structure queries ---
+  tree(nodeId?: string): string {
+    const d = m3eRequireDoc();
+    const rootId = nodeId || d.state.rootId;
+    m3eGetNode(rootId); // validate
+    return m3eBuildTree(rootId, "", true, true);
+  },
+  depth(nodeId?: string): number {
+    m3eRequireDoc();
+    const id = m3eResolveId(nodeId);
+    return nodeDepth(id);
+  },
+  count(nodeId?: string): number {
+    m3eRequireDoc();
+    const id = m3eResolveId(nodeId);
+    m3eGetNode(id); // validate
+    return m3eCountSubtree(id);
+  },
+  leaves(nodeId?: string): string[] {
+    m3eRequireDoc();
+    const id = m3eResolveId(nodeId);
+    m3eGetNode(id); // validate
+    return m3eCollectLeaves(id);
+  },
+  ancestors(nodeId?: string): string[] {
+    m3eRequireDoc();
+    const id = m3eResolveId(nodeId);
+    m3eGetNode(id); // validate
+    return m3eAncestors(id);
+  },
+  path(nodeId?: string): string[] {
+    m3eRequireDoc();
+    const id = m3eResolveId(nodeId);
+    m3eGetNode(id); // validate
+    return m3ePath(id);
+  },
+
+  // --- Replace ---
+  replaceAll(search: string, replacement: string, scopeRootId?: string): number {
+    const d = m3eRequireDoc();
+    const rootId = scopeRootId || d.state.rootId;
+    m3eGetNode(rootId); // validate
+    const targets = m3eFindAll(search, rootId);
+    if (targets.length === 0) {
+      return 0;
+    }
+    pushUndoSnapshot();
+    const searchStr = String(search || "");
+    targets.forEach((id) => {
+      const node = d.state.nodes[id];
+      if (node) {
+        node.text = node.text.split(searchStr).join(replacement);
+      }
+    });
+    touchDocument();
+    return targets.length;
+  },
+
+  // --- Mark selection ---
+  mark(nodeId: string): void {
+    m3eRequireDoc();
+    m3eGetNode(nodeId); // validate
+    m3eMarkedIds.add(nodeId);
+  },
+  unmark(nodeId: string): void {
+    m3eMarkedIds.delete(nodeId);
+  },
+  clearMarks(): void {
+    m3eMarkedIds.clear();
+  },
+
+  // --- View ---
+  fit(): void {
+    fitDocument();
+  },
+  focus(nodeId?: string): void {
+    m3eRequireDoc();
+    const id = m3eResolveId(nodeId);
+    centerOnNode(id);
+  },
+  zoom(factor: number): void {
+    setZoom(factor);
+  },
+  zoomReset(): void {
+    setZoom(1);
+  },
+  pan(dx: number, dy: number): void {
+    viewState.cameraX += dx;
+    viewState.cameraY += dy;
+    applyZoom();
+  },
+
+  // --- Document management ---
+  "new"(rootLabel?: string): void {
+    if (doc && !confirm("Unsaved changes will be lost. Continue?")) {
+      return;
+    }
+    const newDoc = createEmptyDoc();
+    if (rootLabel) {
+      newDoc.state.nodes[newDoc.state.rootId]!.text = rootLabel;
+    }
+    loadPayload(newDoc);
+    setStatus("New document created.");
+  },
+  save(filename?: string): void {
+    m3eRequireDoc();
+    const blob = new Blob(
+      [JSON.stringify({ version: doc!.version, savedAt: nowIso(), state: doc!.state }, null, 2)],
+      { type: "application/json;charset=utf-8" },
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename || "m3e-export.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  },
+  async load(source: string | File): Promise<void> {
+    if (typeof source === "string") {
+      const response = await fetch(source, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const text = await response.text();
+      if (source.endsWith(".mm")) {
+        loadPayload(parseMmText(text));
+      } else {
+        loadPayload(JSON.parse(text));
+      }
+    } else {
+      const text = await source.text();
+      if (source.name.endsWith(".mm")) {
+        loadPayload(parseMmText(text));
+      } else {
+        loadPayload(JSON.parse(text));
+      }
+    }
+  },
+  export(format: "json" | "mm"): void {
+    if (format === "json") {
+      m3eApi.save();
+      return;
+    }
+    if (format === "mm") {
+      m3eExportMm();
+      return;
+    }
+    throw new Error(`Unsupported export format: ${format}`);
+  },
+
+  // --- Implicit targets ---
+  get active_node(): M3eActiveNode {
+    const id = m3eResolveId(undefined);
+    return {
+      get id() { return id; },
+      edit(label: string) { m3eApi.edit(id, label); },
+      del() { m3eApi.del(id); },
+      set(field: string, value: string) { m3eApi.set(id, field, value); },
+      unset(field: string) { m3eApi.unset(id, field); },
+      attr(key: string, value: string) { m3eApi.attr(id, key, value); },
+      attrDel(key: string) { m3eApi.attrDel(id, key); },
+      setType(type: NodeType) { m3eApi.setType(id, type); },
+      info() { return m3eApi.info(id); },
+    };
+  },
+
+  get active_branch(): M3eActiveBranch {
+    const id = m3eResolveId(undefined);
+    return {
+      get id() { return id; },
+      collapse() { m3eApi.collapseAll(id); },
+      expand() { m3eApi.expandAll(id); },
+      move(newParentId: string) { m3eApi.move(id, newParentId); },
+      clone(newParentId?: string) { return m3eApi.clone(id, newParentId); },
+      del() { m3eApi.del(id); },
+      tree() { return m3eApi.tree(id); },
+      findAll(text: string) { return m3eFindAll(text, id); },
+    };
+  },
+
+  get active_scope(): M3eActiveScope {
+    const sel = m3eResolveId(undefined);
+    const scopeId = m3eScopeRootForNode(sel);
+    return {
+      get id() { return scopeId; },
+      info() { return m3eApi.info(scopeId); },
+      collapse() { m3eApi.collapseAll(scopeId); },
+      expand() { return m3eApi.expandAll(scopeId); },
+      tree() { return m3eApi.tree(scopeId); },
+      findAll(text: string) { return m3eFindAll(text, scopeId); },
+    };
+  },
+};
+
+(window as unknown as { m3e: M3eApi }).m3e = m3eApi;
 
 void initializeDocument().then(() => {
   fitDocument() || applyZoom();

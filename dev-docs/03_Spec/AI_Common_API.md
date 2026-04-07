@@ -163,7 +163,7 @@ feature ごとに専用 endpoint を持ってもよい。
 ### 必須フィールド
 
 - `documentId: string`
-- `scopeId: string`
+- `scopeId: string` — 実行時導出値（永続フィールドではない）。subagent の参照範囲を指定する
 - `input: object`
 
 ### 任意フィールド

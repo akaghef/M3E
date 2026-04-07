@@ -60,7 +60,7 @@ const queryParams = new URLSearchParams(window.location.search);
 const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main");
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
-const MAX_UNDO_STEPS = 100;
+const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
 
 interface BcStateMessage {
