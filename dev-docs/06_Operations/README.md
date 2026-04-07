@@ -8,6 +8,8 @@
   会話中に出た決定、仮決め、保留、確認待ちを時系列で蓄積する
 - `Documentation_Rules.md`
   どこに何を書くか、いつ正式文書へ移すかの運用ルールをまとめる
+- `Commit_Message_Rules.md`
+  コミットメッセージの形式と `type` の使い分けを定義する
 - `Test_and_CICD_Guide.md`
   MVP 期間のテスト戦略と CI/CD 運用の基準を定義する
 - `Command_Panel_Security_Test_Cases.md`

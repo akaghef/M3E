@@ -28,6 +28,8 @@ const MIME_BY_EXT: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".mm": "application/xml; charset=utf-8",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 
 function mimeType(filePath: string): string {

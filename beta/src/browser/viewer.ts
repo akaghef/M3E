@@ -287,8 +287,67 @@ function escapeXml(text: string): string {
     .replaceAll("'", "&#039;");
 }
 
+const TEXT_MEASURE_FONT_FAMILY = "\"Segoe UI\", \"Yu Gothic UI\", sans-serif";
+let textMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+function getTextMeasureContext(): CanvasRenderingContext2D | null {
+  if (textMeasureContext !== undefined) {
+    return textMeasureContext;
+  }
+  const measureCanvas = document.createElement("canvas");
+  textMeasureContext = measureCanvas.getContext("2d");
+  return textMeasureContext;
+}
+
 function textWidth(str: string, fontSize: number): number {
-  return Math.max(80, String(str || "").length * fontSize * 0.56);
+  const normalized = String(str || "");
+  const measureContext = getTextMeasureContext();
+  if (measureContext) {
+    measureContext.font = `${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
+    return Math.max(80, Math.ceil(measureContext.measureText(normalized).width));
+  }
+  return Math.max(80, normalized.length * fontSize * 0.62);
+}
+
+const LATEX_DISPLAY_RE = /^\$\$([\s\S]+)\$\$$/;
+const LATEX_INLINE_RE = /^\$([^$]+)\$$/;
+
+function isLatexNode(node: TreeNode): boolean {
+  const t = (node.text || "").trim();
+  return LATEX_DISPLAY_RE.test(t) || LATEX_INLINE_RE.test(t);
+}
+
+function latexSource(text: string): { latex: string; displayMode: boolean } {
+  const t = (text || "").trim();
+  const dm = LATEX_DISPLAY_RE.exec(t);
+  if (dm) return { latex: dm[1]!, displayMode: true };
+  const im = LATEX_INLINE_RE.exec(t);
+  return { latex: im ? im[1]! : t, displayMode: false };
+}
+
+const latexMetricsCache = new Map<string, { w: number; h: number }>();
+
+function measureLatex(text: string): { w: number; h: number } {
+  if (latexMetricsCache.has(text)) return latexMetricsCache.get(text)!;
+  const { latex, displayMode } = latexSource(text);
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute;visibility:hidden;top:-9999px;left:-9999px";
+  document.body.appendChild(probe);
+  try {
+    katex.render(latex, probe, { displayMode, throwOnError: false });
+    const result = {
+      w: Math.max(80, probe.offsetWidth + 24),
+      h: Math.max(VIEWER_TUNING.layout.leafHeight, probe.offsetHeight + 16),
+    };
+    latexMetricsCache.set(text, result);
+    return result;
+  } catch {
+    const fallback = { w: textWidth(text, VIEWER_TUNING.typography.nodeFont) + 20, h: 56 };
+    latexMetricsCache.set(text, fallback);
+    return fallback;
+  } finally {
+    probe.remove();
+  }
 }
 
 function richContentText(element: Element, type: string): string {
@@ -1588,6 +1647,9 @@ function buildLayout(state: AppState): LayoutResult {
         w: Math.max(280, textWidth(node.text || "", VIEWER_TUNING.typography.rootFont) + 120),
         h: VIEWER_TUNING.layout.rootHeight,
       };
+    } else if (isLatexNode(node)) {
+      const m = measureLatex(node.text);
+      metrics[nodeId] = { w: m.w, h: m.h };
     } else {
       metrics[nodeId] = {
         w: textWidth(node.text || "", VIEWER_TUNING.typography.nodeFont) + 20,
@@ -1785,9 +1847,10 @@ function render(): void {
       classNames.push("drag-source");
     }
     const hitX = nodeId === displayRootId ? p.x : p.x - 8;
-    const hitY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2;
+    const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
+    const hitY = p.y - hitH / 2;
     const hitW = nodeId === displayRootId ? p.w : p.w + 36;
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
+    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="12" />`;
 
     if (nodeId === displayRootId) {
       const label = escapeXml(uiLabel(node) || "(empty)");
@@ -1818,7 +1881,15 @@ function render(): void {
         const folderFrameH = VIEWER_TUNING.layout.nodeHitHeight - 12;
         nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
       }
-      nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+      if (isLatexNode(node)) {
+        const { latex, displayMode } = latexSource(node.text);
+        const htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+        const foH = p.h;
+        const foY = p.y - foH / 2;
+        nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
+      } else {
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+      }
       const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
@@ -1984,6 +2055,25 @@ function getSiblingMidpointBand(
   };
 }
 
+function getNextVisibleNodeTopAtDepth(nodeId: string, depth: number): number | null {
+  if (!lastLayout) {
+    return null;
+  }
+  const currentIndex = visibleOrder.indexOf(nodeId);
+  if (currentIndex < 0) {
+    return null;
+  }
+  for (let index = currentIndex + 1; index < visibleOrder.length; index += 1) {
+    const nextNodeId = visibleOrder[index]!;
+    const nextPos = lastLayout.pos[nextNodeId];
+    if (!nextPos || nextPos.depth !== depth) {
+      continue;
+    }
+    return nextPos.y - VIEWER_TUNING.layout.leafHeight / 2;
+  }
+  return null;
+}
+
 function canDropUnderParent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
   if (!sourceId || !targetParentId) {
     return false;
@@ -1999,6 +2089,22 @@ function canDropUnderParent(sourceId: string | null | undefined, targetParentId:
     return false;
   }
   return true;
+}
+
+function isInExplicitReparentZone(nodeId: string, x: number, y: number): boolean {
+  if (!lastLayout) {
+    return false;
+  }
+  const nodePos = lastLayout.pos[nodeId];
+  if (!nodePos) {
+    return false;
+  }
+  const horizontalInset = Math.min(48, Math.max(14, nodePos.w * 0.2));
+  const left = nodePos.x + horizontalInset;
+  const right = nodePos.x + nodePos.w - horizontalInset;
+  const topEdge = nodePos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
+  const bottomEdge = nodePos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+  return x >= left && x <= right && y >= topEdge && y <= bottomEdge;
 }
 
 function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropProposal | null {
@@ -2048,7 +2154,10 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
       continue;
     }
 
-    const parentBandBottom = parentPos.y + DRAG_CENTER_BAND_HALF;
+    const parentBandBottom = Math.min(
+      parentPos.y + DRAG_CENTER_BAND_HALF,
+      childBounds[0]!.top - DRAG_EDGE_BAND
+    );
     for (let index = 0; index < childBounds.length; index += 1) {
       const current = childBounds[index]!;
       const beforeBand = getSiblingMidpointBand(childBounds, index, parentBandBottom);
@@ -2066,7 +2175,10 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
 
       const next = childBounds[index + 1];
       if (!next) {
-        const tailBottom = current.bottom + DRAG_REORDER_TAIL;
+        const nextSameDepthTop = getNextVisibleNodeTopAtDepth(current.id, parentPos.depth + 1);
+        const tailBottom = nextSameDepthTop === null
+          ? current.bottom + DRAG_REORDER_TAIL
+          : Math.min(current.bottom + DRAG_REORDER_TAIL, nextSameDepthTop);
         if (y >= current.bottom && y <= tailBottom) {
           return {
             kind: "reorder",
@@ -2093,6 +2205,7 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
 
 function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDropProposal | null {
   const point = clientToCanvasPoint(clientX, clientY);
+  const reorderProposal = proposeReorderDrop(sourceId, point.x, point.y);
   const targetNodeId = findNodeAtCanvasPoint(point.x, point.y);
   if (targetNodeId) {
     const targetPos = lastLayout?.pos[targetNodeId];
@@ -2119,7 +2232,11 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
       }
     }
 
-    if (canDropUnderParent(sourceId, targetNodeId)) {
+    if (reorderProposal) {
+      return reorderProposal;
+    }
+
+    if (canDropUnderParent(sourceId, targetNodeId) && isInExplicitReparentZone(targetNodeId, point.x, point.y)) {
       return {
         kind: "reparent",
         parentId: targetNodeId,
@@ -2127,7 +2244,7 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
     }
   }
 
-  return proposeReorderDrop(sourceId, point.x, point.y);
+  return reorderProposal;
 }
 
 function canDropAllUnderParent(sourceIds: string[], targetParentId: string): boolean {
@@ -2380,6 +2497,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
         return true;
       }
       pushUndoSnapshot();
+      latexMetricsCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
       touchDocument();
@@ -2398,6 +2516,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     return true;
   }
   pushUndoSnapshot();
+  latexMetricsCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
   touchDocument();

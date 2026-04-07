@@ -4,6 +4,7 @@
 - `06_Operations/README.md`
 - `06_Operations/Decision_Pool.md`
 - `06_Operations/Documentation_Rules.md`
+- `06_Operations/Commit_Message_Rules.md`
 
 会話で決まったことは、まず `06_Operations/Decision_Pool.md` に記録する。
 仕様として固まったら `03_Spec` `04_Architecture` `09_Decisions` に昇格する。
