@@ -498,6 +498,10 @@
         pointer-events: none;
       }
 
+      .latex-node-content .katex-display {
+        margin: 0;
+      }
+
       @media (max-width: 900px) {
         .label-root,
         .label-node {

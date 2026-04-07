@@ -309,6 +309,39 @@ function textWidth(str: string, fontSize: number): number {
   return Math.max(80, normalized.length * fontSize * 0.62);
 }
 
+function splitLabelLines(text: string): string[] {
+  const lines = String(text || "").replaceAll("\r", "").split("\n");
+  return lines.length > 0 ? lines : [""];
+}
+
+function lineHeightForFont(fontSize: number): number {
+  return Math.ceil(fontSize * 1.2);
+}
+
+function multilineTextStartY(centerY: number, lineCount: number, fontSize: number, lineHeight: number): number {
+  const glyphHeight = Math.ceil(fontSize);
+  const blockHeight = (lineCount - 1) * lineHeight + glyphHeight;
+  const ascent = Math.ceil(fontSize * 0.8);
+  return centerY - blockHeight / 2 + ascent;
+}
+
+function multilineTspans(lines: string[], x: number, lineHeight: number): string {
+  return lines
+    .map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line || " ")}</tspan>`)
+    .join("");
+}
+
+function measureNodeLabel(text: string, fontSize: number): { w: number; h: number } {
+  const lines = splitLabelLines(text);
+  const maxLineWidth = lines.reduce((max, line) => Math.max(max, textWidth(line, fontSize)), 80);
+  const lineHeight = lineHeightForFont(fontSize);
+  const verticalPadding = 24;
+  return {
+    w: maxLineWidth + 20,
+    h: Math.max(VIEWER_TUNING.layout.leafHeight, lines.length * lineHeight + verticalPadding),
+  };
+}
+
 const LATEX_DISPLAY_RE = /^\$\$([\s\S]+)\$\$$/;
 const LATEX_INLINE_RE = /^\$([^$]+)\$$/;
 
@@ -332,13 +365,30 @@ function measureLatex(text: string): { w: number; h: number } {
   if (latexMetricsCache.has(text)) return latexMetricsCache.get(text)!;
   const { latex, displayMode } = latexSource(text);
   const probe = document.createElement("div");
-  probe.style.cssText = "position:absolute;visibility:hidden;top:-9999px;left:-9999px";
+  probe.style.cssText = [
+    "position:absolute",
+    "visibility:hidden",
+    "top:-9999px",
+    "left:-9999px",
+    "display:inline-flex",
+    "align-items:center",
+    "padding:0 4px",
+    "box-sizing:border-box",
+    `font-size:${VIEWER_TUNING.typography.nodeFont}px`,
+    "line-height:1",
+    "white-space:nowrap",
+  ].join(";");
   document.body.appendChild(probe);
   try {
     katex.render(latex, probe, { displayMode, throwOnError: false });
+    const displayBlock = probe.querySelector(".katex-display") as HTMLElement | null;
+    if (displayBlock) {
+      displayBlock.style.margin = "0";
+    }
+    const rect = probe.getBoundingClientRect();
     const result = {
-      w: Math.max(80, probe.offsetWidth + 24),
-      h: Math.max(VIEWER_TUNING.layout.leafHeight, probe.offsetHeight + 16),
+      w: Math.max(80, Math.ceil(rect.width) + 8),
+      h: Math.max(VIEWER_TUNING.layout.leafHeight, Math.ceil(rect.height) + 12),
     };
     latexMetricsCache.set(text, result);
     return result;
@@ -1659,18 +1709,16 @@ function buildLayout(state: AppState): LayoutResult {
     depthOf[nodeId] = depth;
 
     if (nodeId === state.rootId) {
+      const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
       metrics[nodeId] = {
-        w: Math.max(280, textWidth(node.text || "", VIEWER_TUNING.typography.rootFont) + 120),
-        h: VIEWER_TUNING.layout.rootHeight,
+        w: Math.max(280, rootLabelMeasure.w + 100),
+        h: Math.max(VIEWER_TUNING.layout.rootHeight, rootLabelMeasure.h + 8),
       };
     } else if (isLatexNode(node)) {
       const m = measureLatex(node.text);
       metrics[nodeId] = { w: m.w, h: m.h };
     } else {
-      metrics[nodeId] = {
-        w: textWidth(node.text || "", VIEWER_TUNING.typography.nodeFont) + 20,
-        h: 56,
-      };
+      metrics[nodeId] = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.nodeFont);
     }
 
     depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metrics[nodeId]!.w);
@@ -1699,8 +1747,9 @@ function buildLayout(state: AppState): LayoutResult {
 
     const children = visibleChildren(node);
     if (children.length === 0) {
-      subtreeHeightCache[nodeId] = VIEWER_TUNING.layout.leafHeight;
-      return VIEWER_TUNING.layout.leafHeight;
+      const leafSpan = Math.max(VIEWER_TUNING.layout.leafHeight, metrics[nodeId]!.h + 12);
+      subtreeHeightCache[nodeId] = leafSpan;
+      return leafSpan;
     }
 
     let sum = 0;
@@ -1894,16 +1943,20 @@ function render(): void {
     nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="12" />`;
 
     if (nodeId === displayRootId) {
-      const label = escapeXml(uiLabel(node) || "(empty)");
+      const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
+      const rootLineHeight = lineHeightForFont(VIEWER_TUNING.typography.rootFont);
+      const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, VIEWER_TUNING.typography.rootFont, rootLineHeight);
+      const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
       const w = p.w;
       const h = p.h;
       const rx = 60;
       const x = p.x;
       const y = p.y - h / 2;
       nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle">${rootTspans}</text>`;
     } else {
-      const label = escapeXml(uiLabel(node) || "(empty)");
+      const rawLabel = uiLabel(node) || "(empty)";
+      const labelLines = splitLabelLines(rawLabel);
       const labelClasses = ["label-node"];
       if (viewState.selectedNodeIds.has(nodeId)) {
         labelClasses.push("selected");
@@ -1916,10 +1969,11 @@ function render(): void {
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
       }
       if (isFolderNode(node)) {
+        const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
         const folderFrameX = p.x - 14;
-        const folderFrameY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + 6;
+        const folderFrameY = p.y - frameH / 2;
         const folderFrameW = p.w + 28;
-        const folderFrameH = VIEWER_TUNING.layout.nodeHitHeight - 12;
+        const folderFrameH = frameH;
         nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
       }
       if (isLatexNode(node)) {
@@ -1933,7 +1987,10 @@ function render(): void {
         const foY = p.y - foH / 2;
         nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
       } else {
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+        const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
+        const startY = multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
+        const tspans = multilineTspans(labelLines, p.x, lineHeight);
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start">${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
@@ -2010,6 +2067,10 @@ function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: 
   };
 }
 
+function interactionHalfHeight(nodePos: NodePosition): number {
+  return Math.max(VIEWER_TUNING.layout.nodeHitHeight, nodePos.h) / 2;
+}
+
 function getNodeHitBounds(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
   if (!doc || !lastLayout) {
     return null;
@@ -2021,11 +2082,12 @@ function getNodeHitBounds(nodeId: string): { left: number; right: number; top: n
   const displayRootId = currentScopeRootId();
   const left = nodeId === displayRootId ? p.x : p.x - 8;
   const width = nodeId === displayRootId ? p.w : p.w + 36;
+  const halfH = interactionHalfHeight(p);
   return {
     left,
     right: left + width,
-    top: p.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
-    bottom: p.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+    top: p.y - halfH,
+    bottom: p.y + halfH,
   };
 }
 
@@ -2114,7 +2176,7 @@ function getNextVisibleNodeTopAtDepth(nodeId: string, depth: number): number | n
     if (!nextPos || nextPos.depth !== depth) {
       continue;
     }
-    return nextPos.y - VIEWER_TUNING.layout.leafHeight / 2;
+    return nextPos.y - interactionHalfHeight(nextPos);
   }
   return null;
 }
@@ -2147,8 +2209,9 @@ function isInExplicitReparentZone(nodeId: string, x: number, y: number): boolean
   const horizontalInset = Math.min(48, Math.max(14, nodePos.w * 0.2));
   const left = nodePos.x + horizontalInset;
   const right = nodePos.x + nodePos.w - horizontalInset;
-  const topEdge = nodePos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
-  const bottomEdge = nodePos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+  const halfH = interactionHalfHeight(nodePos);
+  const topEdge = nodePos.y - halfH + DRAG_EDGE_BAND;
+  const bottomEdge = nodePos.y + halfH - DRAG_EDGE_BAND;
   return x >= left && x <= right && y >= topEdge && y <= bottomEdge;
 }
 
@@ -2178,8 +2241,8 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
         }
         return {
           id: childId,
-          top: p.y - VIEWER_TUNING.layout.leafHeight / 2,
-          bottom: p.y + VIEWER_TUNING.layout.leafHeight / 2,
+          top: hit.top,
+          bottom: hit.bottom,
           hitLeft: hit.left,
           hitRight: hit.right,
         };
@@ -2257,14 +2320,15 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
     const targetNode = doc?.state.nodes[targetNodeId];
     if (targetPos && targetNode?.parentId) {
       const targetIndex = getVisibleChildrenForDrop(targetNode.parentId, sourceId).indexOf(targetNodeId);
-      const topEdge = targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
-      const bottomEdge = targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+      const targetHalfH = interactionHalfHeight(targetPos);
+      const topEdge = targetPos.y - targetHalfH + DRAG_EDGE_BAND;
+      const bottomEdge = targetPos.y + targetHalfH - DRAG_EDGE_BAND;
       if (point.y < topEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
         return {
           kind: "reorder",
           parentId: targetNode.parentId,
           index: targetIndex,
-          lineY: targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
+          lineY: targetPos.y - targetHalfH,
         };
       }
       if (point.y > bottomEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
@@ -2272,7 +2336,7 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
           kind: "reorder",
           parentId: targetNode.parentId,
           index: targetIndex + 1,
-          lineY: targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+          lineY: targetPos.y + targetHalfH,
         };
       }
     }
