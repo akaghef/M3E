@@ -28,7 +28,9 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 | スクリプト | 用途 |
 |-----------|------|
 | `launch.bat` | Beta を起動（ビルド済み前提）**← 日常利用** |
+| `launch.sh` | Beta を Mac / Linux で起動（ビルド済み前提） |
 | `update-and-launch.bat` | git pull → install → build → 起動 |
+| `update-and-launch.sh` | git pull → install → build → 起動（Mac / Linux） |
 | `install-ollama-gemma3-4b.ps1` | Ollama 導入 + `gemma3:4b` 取得（ローカル AI 準備） |
 | `launch-with-local-gemma.bat` | Bitwarden なしで Ollama + `gemma3:4b` で Beta を起動 |
 | `launch-with-ai.bat` | Bitwarden から AI API key を注入して Beta を起動 |
@@ -41,8 +43,11 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 | スクリプト | 用途 |
 |-----------|------|
 | `launch.bat` | Final を起動（ビルド済み前提）**← 本番利用** |
+| `launch.sh` | Final を Mac / Linux で起動（ビルド済み前提） |
 | `update-and-launch.bat` | Final を更新して起動（migration 実行） |
+| `update-and-launch.sh` | Final を更新して起動（migration 実行、Mac / Linux） |
 | `migrate-from-beta.bat` | Beta → Final の sync・build・data migration・起動 |
+| `migrate-from-beta.sh` | Beta → Final の sync・build・data migration・起動（Mac / Linux） |
 
 ## 推奨運用フロー
 
@@ -66,6 +71,15 @@ Final を更新して起動する:
   scripts/final/update-and-launch.bat
 ```
 
+macOS / Linux:
+```bash
+./scripts/beta/launch.sh
+./scripts/beta/update-and-launch.sh
+./scripts/final/launch.sh
+./scripts/final/migrate-from-beta.sh
+./scripts/final/update-and-launch.sh
+```
+
 ## エージェント開始コマンド
 
 通常 codex（non-Copilot）で role/bootstrap を揃える場合は次を実行する。
@@ -76,13 +90,15 @@ pwsh -File scripts/ops/setrole.ps1 codex1
 ```
 
 このコマンドは role -> worktree -> branch の整合を確認し、
-`codex1` / `codex2` の場合は `origin/dev-beta` への hard reset（同期）を実行する。
+`codex1` / `codex2` の場合は `origin/dev-beta` への rebase チェックを実行する。
 
 ## デスクトップから使う
 
 1. `scripts/beta/` を開く
 2. `launch.bat` を右クリック → `送る` → `デスクトップ (ショートカットを作成)`
 3. ショートカット名を `M3E Beta 起動` などに変更
+
+macOS ではターミナルから `./scripts/beta/launch.sh` を実行する。
 
 ## データの扱い
 
