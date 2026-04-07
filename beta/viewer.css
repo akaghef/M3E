@@ -165,6 +165,10 @@
         pointer-events: auto;
       }
 
+      .meta-panel[hidden] {
+        display: none;
+      }
+
       .visual-check {
         display: none;
         padding: 8px 10px;
