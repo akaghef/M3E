@@ -326,6 +326,7 @@ function latexSource(text: string): { latex: string; displayMode: boolean } {
 }
 
 const latexMetricsCache = new Map<string, { w: number; h: number }>();
+const latexHtmlCache = new Map<string, string>();
 
 function measureLatex(text: string): { w: number; h: number } {
   if (latexMetricsCache.has(text)) return latexMetricsCache.get(text)!;
@@ -915,10 +916,30 @@ function setVisualCheckStatus(lines: string | string[]): void {
   visualCheckEl.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines || "");
 }
 
+let _appliedCanvasWidth = "";
+let _appliedCanvasHeight = "";
+let _appliedCanvasTransform = "";
+let _linearPanelLayoutDirty = true;
+let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
+let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
+let _linearPanelCanvasHeight = 380;
+
 function applyZoom(): void {
-  canvas.style.width = `${contentWidth}px`;
-  canvas.style.height = `${contentHeight}px`;
-  canvas.style.transform = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  const widthValue = `${contentWidth}px`;
+  if (_appliedCanvasWidth !== widthValue) {
+    canvas.style.width = widthValue;
+    _appliedCanvasWidth = widthValue;
+  }
+  const heightValue = `${contentHeight}px`;
+  if (_appliedCanvasHeight !== heightValue) {
+    canvas.style.height = heightValue;
+    _appliedCanvasHeight = heightValue;
+  }
+  const transformValue = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  if (_appliedCanvasTransform !== transformValue) {
+    canvas.style.transform = transformValue;
+    _appliedCanvasTransform = transformValue;
+  }
   syncInlineEditorPosition();
   syncLinearPanelPosition();
 }
@@ -934,56 +955,51 @@ function syncLinearPanelPosition(): void {
     linearPanelEl.style.removeProperty("width");
     linearPanelEl.style.removeProperty("height");
     linearPanelEl.style.removeProperty("transform");
+    _linearPanelLayoutDirty = true;
     return;
   }
 
-  const layout = lastLayout;
-
-  let deepestDepth = -1;
-  let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
-  let deepestTop = VIEWER_TUNING.layout.topPad;
-  visibleOrder.forEach((nodeId) => {
-    const p = layout.pos[nodeId];
-    if (!p) {
-      return;
+  if (_linearPanelLayoutDirty) {
+    const layout = lastLayout;
+    let deepestDepth = -1;
+    let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
+    let treeMinY = Number.POSITIVE_INFINITY;
+    let treeMaxY = Number.NEGATIVE_INFINITY;
+    visibleOrder.forEach((nodeId) => {
+      const p = layout.pos[nodeId];
+      if (!p) {
+        return;
+      }
+      treeMinY = Math.min(treeMinY, p.y - p.h / 2);
+      treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
+      if (p.depth > deepestDepth) {
+        deepestDepth = p.depth;
+        deepestRightEdge = p.x + p.w;
+        return;
+      }
+      if (p.depth === deepestDepth) {
+        deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
+      }
+    });
+    if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
+      treeMinY = VIEWER_TUNING.layout.topPad;
+      treeMaxY = treeMinY + 380;
     }
-    if (p.depth > deepestDepth) {
-      deepestDepth = p.depth;
-      deepestRightEdge = p.x + p.w;
-      deepestTop = p.y - p.h / 2;
-      return;
-    }
-    if (p.depth === deepestDepth) {
-      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
-      deepestTop = Math.min(deepestTop, p.y - p.h / 2);
-    }
-  });
+    const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
+    _linearPanelAnchorCanvasX = deepestRightEdge + depthOffset;
+    _linearPanelAnchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+    _linearPanelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
+    _linearPanelLayoutDirty = false;
+  }
 
   const panelCanvasWidth = linearPanelCanvasWidth;
-  let treeMinY = Number.POSITIVE_INFINITY;
-  let treeMaxY = Number.NEGATIVE_INFINITY;
-  visibleOrder.forEach((nodeId) => {
-    const p = layout.pos[nodeId];
-    if (!p) {
-      return;
-    }
-    treeMinY = Math.min(treeMinY, p.y - p.h / 2);
-    treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
-  });
-  if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
-    treeMinY = VIEWER_TUNING.layout.topPad;
-    treeMaxY = treeMinY + 380;
-  }
-  const panelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
-  const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
-  const anchorCanvasX = deepestRightEdge + depthOffset;
-  const anchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+  const panelCanvasHeight = _linearPanelCanvasHeight;
   const zoomScale = viewState.zoom;
   const panelWidth = panelCanvasWidth * zoomScale;
   const panelHeight = panelCanvasHeight * zoomScale;
 
-  const panelLeft = viewState.cameraX + anchorCanvasX * viewState.zoom;
-  const panelTop = viewState.cameraY + anchorCanvasY * viewState.zoom;
+  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
 
   linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
   linearPanelEl.style.top = `${Math.round(panelTop)}px`;
@@ -1756,6 +1772,30 @@ function updateDocumentTitle(): void {
   document.title = scopeLabel ? `${appTitle} - ${scopeLabel}` : appTitle;
 }
 
+let _renderScheduled = false;
+function scheduleRender(): void {
+  if (_renderScheduled) {
+    return;
+  }
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    render();
+  });
+}
+
+let _zoomApplyScheduled = false;
+function scheduleApplyZoom(): void {
+  if (_zoomApplyScheduled) {
+    return;
+  }
+  _zoomApplyScheduled = true;
+  requestAnimationFrame(() => {
+    _zoomApplyScheduled = false;
+    applyZoom();
+  });
+}
+
 function render(): void {
   if (!doc) {
     syncThinkingModeUi();
@@ -1779,6 +1819,7 @@ function render(): void {
   const layout = buildLayout(state);
   lastLayout = layout;
   visibleOrder = layout.order;
+  _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
 
   const pos = layout.pos;
@@ -1882,8 +1923,12 @@ function render(): void {
         nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
       }
       if (isLatexNode(node)) {
-        const { latex, displayMode } = latexSource(node.text);
-        const htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+        let htmlStr = latexHtmlCache.get(node.text);
+        if (!htmlStr) {
+          const { latex, displayMode } = latexSource(node.text);
+          htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+          latexHtmlCache.set(node.text, htmlStr);
+        }
         const foH = p.h;
         const foY = p.y - foH / 2;
         nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
@@ -2327,7 +2372,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
   if (renderNow) {
-    render();
+    scheduleRender();
   }
 }
 
@@ -2354,7 +2399,7 @@ function setRangeSelection(targetId: string): void {
   viewState.selectionAnchorId = anchorId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
   viewState.selectedNodeIds.add(targetId);
-  render();
+  scheduleRender();
 }
 
 function toggleNodeSelection(nodeId: string): void {
@@ -2362,20 +2407,20 @@ function toggleNodeSelection(nodeId: string): void {
   if (viewState.selectedNodeIds.has(nodeId)) {
     if (viewState.selectedNodeIds.size === 1) {
       viewState.selectedNodeId = nodeId;
-      render();
+      scheduleRender();
       return;
     }
     viewState.selectedNodeIds.delete(nodeId);
     if (viewState.selectedNodeId === nodeId) {
       viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
     }
-    render();
+    scheduleRender();
     return;
   }
 
   viewState.selectedNodeIds.add(nodeId);
   viewState.selectedNodeId = nodeId;
-  render();
+  scheduleRender();
 }
 
 function selectNode(nodeId: string): void {
@@ -2498,6 +2543,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       }
       pushUndoSnapshot();
       latexMetricsCache.delete(target.text);
+      latexHtmlCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
       touchDocument();
@@ -2517,6 +2563,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   }
   pushUndoSnapshot();
   latexMetricsCache.delete(node.text);
+  latexHtmlCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
   touchDocument();
@@ -2808,7 +2855,7 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
     if (showStatus) {
       setStatus("Saved locally.");
     }
-    render();
+    scheduleRender();
     return true;
   } catch (err) {
     if (showStatus) {
@@ -2886,7 +2933,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     if (showStatus) {
       setStatus(force ? "Cloud sync force-push completed." : "Cloud sync push completed.");
     }
-    render();
+    scheduleRender();
     return true;
   } catch (err) {
     if (showStatus) {
@@ -2984,7 +3031,7 @@ function initBroadcastSync(): void {
     }
     if (ev.data.type === "STATE_UPDATE") {
       doc.state = ev.data.state;
-      render();
+      scheduleRender();
     }
   };
   window.addEventListener("beforeunload", () => bc?.close());
@@ -3149,7 +3196,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   const anchorId = viewState.selectionAnchorId || viewState.selectedNodeId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
   viewState.selectedNodeIds.add(target);
-  render();
+  scheduleRender();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
@@ -3343,7 +3390,7 @@ function markReparentSource(): void {
   viewState.reparentSourceIds = new Set(viewState.selectedNodeIds);
   const roots = getMovableSelectionRoots(viewState.reparentSourceIds);
   setStatus(`Marked move nodes: ${roots.length}`);
-  render();
+  scheduleRender();
 }
 
 function sameIdSet(left: Set<string>, right: Set<string>): boolean {
@@ -3369,20 +3416,20 @@ function toggleReparentSource(): void {
   if (nextRoots.size === 0) {
     viewState.reparentSourceIds.clear();
     setStatus("No move node selected.", true);
-    render();
+    scheduleRender();
     return;
   }
 
   if (sameIdSet(currentRoots, nextRoots)) {
     viewState.reparentSourceIds.clear();
     setStatus("Move node mark cleared.");
-    render();
+    scheduleRender();
     return;
   }
 
   viewState.reparentSourceIds = nextSourceIds;
   setStatus(`Marked move nodes: ${nextRoots.size}`);
-  render();
+  scheduleRender();
 }
 
 function toggleHoldReparent(): void {
@@ -3476,7 +3523,7 @@ function selectAllVisibleInScope(): void {
   viewState.selectedNodeId = firstVisibleId;
   viewState.selectedNodeIds = new Set(visibleOrder);
   viewState.selectionAnchorId = firstVisibleId;
-  render();
+  scheduleRender();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
@@ -3528,7 +3575,7 @@ function copySelected(): void {
     snapshots,
   };
   void copyTextToSystemClipboard(roots.map((rootId) => uiLabel(getNode(rootId))).join("\n"));
-  render();
+  scheduleRender();
   setStatus(`Copied ${roots.length} node(s).`);
 }
 
@@ -3542,7 +3589,7 @@ function cutSelected(): void {
     type: "cut",
     sourceIds: new Set(roots),
   };
-  render();
+  scheduleRender();
   setStatus(`Cut pending: ${roots.length} node(s).`);
 }
 
@@ -3584,7 +3631,7 @@ function pasteClipboard(): void {
     .filter((nodeId) => getNode(nodeId).parentId !== null);
   if (cutRoots.length === 0) {
     viewState.clipboardState = null;
-    render();
+    scheduleRender();
     setStatus("No cut nodes available.", true);
     return;
   }
@@ -3612,7 +3659,7 @@ function clearCutClipboard(): boolean {
     return false;
   }
   viewState.clipboardState = null;
-  render();
+  scheduleRender();
   setStatus("Cut pending cleared.");
   return true;
 }
@@ -3864,7 +3911,7 @@ importanceViewSelect?.addEventListener("change", () => {
   const nextMode = importanceViewSelect.value as ImportanceViewMode;
   importanceViewMode = nextMode;
   linearDirty = false;
-  render();
+  scheduleRender();
   setStatus(`Importance view: ${nextMode}`);
 });
 
@@ -3964,10 +4011,10 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
     event.preventDefault();
-    selectNode(collapseNodeId);
+    setSingleSelection(collapseNodeId, false);
     if (viewState.collapsedIds.has(collapseNodeId)) {
       viewState.collapsedIds.delete(collapseNodeId);
-      render();
+      scheduleRender();
       setStatus("Expanded collapsed branch.");
     }
     board.focus();
@@ -4006,7 +4053,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.dragState.dragged = true;
   viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
-  render();
+  scheduleRender();
 });
 
 function finishNodeDrag(event: PointerEvent): void {
@@ -4045,7 +4092,6 @@ function finishNodeDrag(event: PointerEvent): void {
         setSingleSelection(proposal.parentId, false);
         touchDocument();
         setStatus(`Moved ${movedCount} node(s).`);
-        render();
         board.focus();
         return;
       }
@@ -4055,7 +4101,7 @@ function finishNodeDrag(event: PointerEvent): void {
         : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
       if (applied) {
         setSingleSelection(sourceNodeId, false);
-        render();
+        scheduleRender();
         board.focus();
         return;
       }
@@ -4063,7 +4109,7 @@ function finishNodeDrag(event: PointerEvent): void {
   }
 
   setStatus("No valid drop target.", true);
-  render();
+  scheduleRender();
   board.focus();
 }
 
@@ -4098,7 +4144,7 @@ board.addEventListener("wheel", (event: WheelEvent) => {
   if (!event.ctrlKey && !event.metaKey) {
     viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
     viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
-    applyZoom();
+    scheduleApplyZoom();
     return;
   }
   const intensity = Math.min(
@@ -4137,7 +4183,7 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
   viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
-  applyZoom();
+  scheduleApplyZoom();
 });
 
 function endPan(event: PointerEvent): void {
