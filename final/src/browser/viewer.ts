@@ -2272,6 +2272,17 @@ function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; ra
   setSingleSelection(nodeId);
 }
 
+function updateScopeInUrl(scopeId: string): void {
+  const params = new URLSearchParams(window.location.search);
+  if (!doc || scopeId === doc.state.rootId) {
+    params.delete("scopeId");
+  } else {
+    params.set("scopeId", scopeId);
+  }
+  const qs = params.toString();
+  history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+}
+
 function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   if (!doc || !doc.state.nodes[scopeId]) {
     return;
@@ -2288,6 +2299,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   }
   normalizeSelectionState();
   render();
+  updateScopeInUrl(scopeId);
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
 }
 
@@ -2303,6 +2315,7 @@ function ExitScopeCommand(): void {
   }
   normalizeSelectionState();
   render();
+  updateScopeInUrl(viewState.currentScopeId);
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
 }
 
@@ -5069,5 +5082,9 @@ const m3eApi: M3eApi = {
 (window as unknown as { m3e: M3eApi }).m3e = m3eApi;
 
 void initializeDocument().then(() => {
+  const initialScopeId = queryParams.get("scopeId");
+  if (initialScopeId && doc && doc.state.nodes[initialScopeId]) {
+    EnterScopeCommand(initialScopeId);
+  }
   fitDocument() || applyZoom();
 });

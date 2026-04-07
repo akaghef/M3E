@@ -82,13 +82,6 @@
 
 ## 4. 機能実装
 
-### 4.1 LaTeX レンダリング
-- ノードの `text` 全体が `$...$` or `$$...$$` の場合にKaTeXで数式描画
-- 新しい NodeType 不要（デリミタで判定）
-- KaTeX（同期レンダリング、~300KB）を使用
-- Layout統合: `visit()` でのメトリクス計測を `measureLatex()` に分岐
-- Rendering統合: `drawNode()` で `<foreignObject>` + KaTeX HTMLを埋め込み
-- 未決定事項: KaTeX ローカルバンドル vs CDN、エラー時のフォールバック方針
 
 ### 4.2 キャッシング構想
 - 構造が複雑化した際、全範囲ロードはパフォーマンスに影響
