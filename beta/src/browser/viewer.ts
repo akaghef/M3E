@@ -1930,18 +1930,22 @@ function render(): void {
       return;
     }
 
-    const sourceX = sourcePos.x + sourcePos.w * 0.5;
+    const forward = targetPos.x >= sourcePos.x;
+    const sourceX = forward
+      ? sourcePos.x + sourcePos.w + VIEWER_TUNING.layout.edgeStartPad
+      : sourcePos.x - VIEWER_TUNING.layout.edgeEndPad;
     const sourceY = sourcePos.y;
-    const targetX = targetPos.x + targetPos.w * 0.5;
+    const targetX = forward
+      ? targetPos.x - VIEWER_TUNING.layout.edgeEndPad
+      : targetPos.x + targetPos.w + VIEWER_TUNING.layout.edgeStartPad;
     const targetY = targetPos.y;
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
-    const distance = Math.max(1, Math.hypot(dx, dy));
-    const normalX = -dy / distance;
-    const normalY = dx / distance;
-    const bend = Math.min(96, Math.max(34, distance * 0.18));
-    const controlX = (sourceX + targetX) / 2 + normalX * bend;
-    const controlY = (sourceY + targetY) / 2 + normalY * bend;
+    const curve = Math.max(48, Math.abs(targetX - sourceX) * 0.45);
+    const c1x = forward ? sourceX + curve : sourceX - curve;
+    const c1y = sourceY;
+    const c2x = forward ? targetX - curve : targetX + curve;
+    const c2y = targetY;
+    const controlX = (c1x + c2x) / 2;
+    const controlY = (sourceY + targetY) / 2;
     const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
     const stroke = VIEWER_TUNING.palette.edgeColors[Math.abs(controlX + controlY) % VIEWER_TUNING.palette.edgeColors.length];
     const markerEndId = `graph-link-arrow-end-${link.id}`;
@@ -1962,7 +1966,7 @@ function render(): void {
         <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
       </marker>`;
 
-    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="M ${sourceX} ${sourceY} Q ${controlX} ${controlY}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
+    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="M ${sourceX} ${sourceY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
     if (label) {
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 8}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
