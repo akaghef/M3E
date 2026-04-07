@@ -1909,9 +1909,7 @@ function render(): void {
     VIEWER_TUNING.layout.minCanvasHeight,
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
-  let defs = `
-    <defs>
-    </defs>`;
+  let defs = "<defs>";
   let edges = "";
   let graphLinks = "";
   let overlays = "";
@@ -1947,7 +1945,8 @@ function render(): void {
     const controlX = (c1x + c2x) / 2;
     const controlY = (sourceY + targetY) / 2;
     const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
-    const stroke = VIEWER_TUNING.palette.edgeColors[Math.abs(controlX + controlY) % VIEWER_TUNING.palette.edgeColors.length];
+    const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
+    const stroke = VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
     const markerEndId = `graph-link-arrow-end-${link.id}`;
     const markerStartId = `graph-link-arrow-start-${link.id}`;
     const markerStart = link.direction === "backward" || link.direction === "both"
@@ -1971,6 +1970,7 @@ function render(): void {
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 8}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
   });
+  defs += "</defs>";
 
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
