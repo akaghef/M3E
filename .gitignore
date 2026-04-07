@@ -18,7 +18,8 @@ final/data/*.sqlite
 final/data/rapid-sample.json
 final/test-results/
 
-.claude/
+.claude/*
+!.claude/skills/
 .agents/
 dev-docs/ideas/user_memo.md
 memo.md
