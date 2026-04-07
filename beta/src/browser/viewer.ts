@@ -287,8 +287,26 @@ function escapeXml(text: string): string {
     .replaceAll("'", "&#039;");
 }
 
+const TEXT_MEASURE_FONT_FAMILY = "\"Segoe UI\", \"Yu Gothic UI\", sans-serif";
+let textMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+function getTextMeasureContext(): CanvasRenderingContext2D | null {
+  if (textMeasureContext !== undefined) {
+    return textMeasureContext;
+  }
+  const measureCanvas = document.createElement("canvas");
+  textMeasureContext = measureCanvas.getContext("2d");
+  return textMeasureContext;
+}
+
 function textWidth(str: string, fontSize: number): number {
-  return Math.max(80, String(str || "").length * fontSize * 0.56);
+  const normalized = String(str || "");
+  const measureContext = getTextMeasureContext();
+  if (measureContext) {
+    measureContext.font = `${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
+    return Math.max(80, Math.ceil(measureContext.measureText(normalized).width));
+  }
+  return Math.max(80, normalized.length * fontSize * 0.62);
 }
 
 function richContentText(element: Element, type: string): string {
