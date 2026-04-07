@@ -2002,6 +2002,25 @@ function getSiblingMidpointBand(
   };
 }
 
+function getNextVisibleNodeTopAtDepth(nodeId: string, depth: number): number | null {
+  if (!lastLayout) {
+    return null;
+  }
+  const currentIndex = visibleOrder.indexOf(nodeId);
+  if (currentIndex < 0) {
+    return null;
+  }
+  for (let index = currentIndex + 1; index < visibleOrder.length; index += 1) {
+    const nextNodeId = visibleOrder[index]!;
+    const nextPos = lastLayout.pos[nextNodeId];
+    if (!nextPos || nextPos.depth !== depth) {
+      continue;
+    }
+    return nextPos.y - VIEWER_TUNING.layout.leafHeight / 2;
+  }
+  return null;
+}
+
 function canDropUnderParent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
   if (!sourceId || !targetParentId) {
     return false;
@@ -2017,6 +2036,22 @@ function canDropUnderParent(sourceId: string | null | undefined, targetParentId:
     return false;
   }
   return true;
+}
+
+function isInExplicitReparentZone(nodeId: string, x: number, y: number): boolean {
+  if (!lastLayout) {
+    return false;
+  }
+  const nodePos = lastLayout.pos[nodeId];
+  if (!nodePos) {
+    return false;
+  }
+  const horizontalInset = Math.min(48, Math.max(14, nodePos.w * 0.2));
+  const left = nodePos.x + horizontalInset;
+  const right = nodePos.x + nodePos.w - horizontalInset;
+  const topEdge = nodePos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
+  const bottomEdge = nodePos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+  return x >= left && x <= right && y >= topEdge && y <= bottomEdge;
 }
 
 function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropProposal | null {
@@ -2066,7 +2101,10 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
       continue;
     }
 
-    const parentBandBottom = parentPos.y + DRAG_CENTER_BAND_HALF;
+    const parentBandBottom = Math.min(
+      parentPos.y + DRAG_CENTER_BAND_HALF,
+      childBounds[0]!.top - DRAG_EDGE_BAND
+    );
     for (let index = 0; index < childBounds.length; index += 1) {
       const current = childBounds[index]!;
       const beforeBand = getSiblingMidpointBand(childBounds, index, parentBandBottom);
@@ -2084,7 +2122,10 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
 
       const next = childBounds[index + 1];
       if (!next) {
-        const tailBottom = current.bottom + DRAG_REORDER_TAIL;
+        const nextSameDepthTop = getNextVisibleNodeTopAtDepth(current.id, parentPos.depth + 1);
+        const tailBottom = nextSameDepthTop === null
+          ? current.bottom + DRAG_REORDER_TAIL
+          : Math.min(current.bottom + DRAG_REORDER_TAIL, nextSameDepthTop);
         if (y >= current.bottom && y <= tailBottom) {
           return {
             kind: "reorder",
@@ -2111,6 +2152,7 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
 
 function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDropProposal | null {
   const point = clientToCanvasPoint(clientX, clientY);
+  const reorderProposal = proposeReorderDrop(sourceId, point.x, point.y);
   const targetNodeId = findNodeAtCanvasPoint(point.x, point.y);
   if (targetNodeId) {
     const targetPos = lastLayout?.pos[targetNodeId];
@@ -2137,7 +2179,11 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
       }
     }
 
-    if (canDropUnderParent(sourceId, targetNodeId)) {
+    if (reorderProposal) {
+      return reorderProposal;
+    }
+
+    if (canDropUnderParent(sourceId, targetNodeId) && isInExplicitReparentZone(targetNodeId, point.x, point.y)) {
       return {
         kind: "reparent",
         parentId: targetNodeId,
@@ -2145,7 +2191,7 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
     }
   }
 
-  return proposeReorderDrop(sourceId, point.x, point.y);
+  return reorderProposal;
 }
 
 function canDropAllUnderParent(sourceIds: string[], targetParentId: string): boolean {
