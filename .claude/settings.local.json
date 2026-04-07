@@ -6,7 +6,8 @@
       "Bash(node dist/node/rapid_mvp.js)",
       "mcp__git__git_log",
       "mcp__git__git_branch",
-      "mcp__git__git_status"
+      "mcp__git__git_status",
+      "Bash(npx playwright:*)"
     ]
   }
 }
