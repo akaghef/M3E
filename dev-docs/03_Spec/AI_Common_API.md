@@ -460,3 +460,4 @@ Feature endpoint request
 - `./AI_Integration.md`
 - `../04_Architecture/AI_Infrastructure.md`
 - `./Linear_Tree_Conversion.md`
+- REST API 全体仕様（Document API / Sync API / LLM 連携）: [./REST_API.md](./REST_API.md)

@@ -1,9 +1,11 @@
 # Current Status
-最終更新: 2026-04-02
+最終更新: 2026-04-07
 
 ## 現在の状態（スナップショット）
 
 - 開発の主対象: `beta/`
+- MVP Phase 1〜4: 完了（読み取り・編集・描画・保存が動作中）
+- MVP Phase 5: 操作性の最終調整に着手
 - 運用方針:
   - UpdateLog は `dev-docs/daily/YYMMDD.md` に追記
   - 本ファイルは「現在状態」だけを保持
@@ -19,26 +21,39 @@
 3. 部下は次サイクル開始前に `origin/dev-beta` へ rebase
 4. rebase 未実施の stale ブランチでは作業再開しない
 
+## 最近の成果（260403〜260407）
+
+- テストデータ分離（visual テスト時の本番データ上書き防止）
+- AI インフラ: マルチモデル alias / gateway 方針 / Gemma ローカル導入 / topic-suggest subagent
+- UI: メタパネルトグル / 編集開始キー仕様変更（Enter / Shift+Enter / F2）
+- クラウド同期仕様の初期整理（Cloud_Sync.md）
+- REST API 仕様書の新規作成（03_Spec/REST_API.md）
+- LLM 連携パイプライン設計（MCP サーバー経由の安全な read-modify-write）
+
 ## In Progress
 
-- ドキュメント運用を「daily + current snapshot + todo pool」に移行
-- セッション開始ゲート（1回のみ強制）を全体ルールへ反映済み
-- worktree 分離運用とブランチ責務の整合を強化中
+- REST API ドキュメントの整備と LLM 連携の運用検証
+- Todo Pool 運用の定着
+- MVP Phase 5 操作性調整
 
 ## Blocked / Risk
 
-- `dev-docs/daily/260402.md` に競合解消の最終確認が必要
 - role 違反を機械的に止める CI チェックは未導入
+- M3E 起動中に SQLite がロックされる（LLM の直接 DB アクセスは不可 → API 経由で解決済み）
 
-## Next 3
+## Next 5
 
-1. `dev-docs/daily/260402.md` の内容整合を最終確認
-2. branch-role と変更ファイル範囲の CI 検証を追加
-3. `Todo_Pool.md` を実運用し、正式タスク化の流れを固定
+1. CI 検証の導入（branch-role ゲート + Stage A テスト）
+2. Linear↔Tree L1 最小実装と round-trip テスト
+3. MCP サーバーの実運用テストと改善
+4. MVP Phase 5 の操作性調整（導線短縮・ラベル整理）
+5. spec 文書の更新（scope/alias Beta 実装粒度への拡張）
 
 ## 参照
 
 - 運用ルール: `dev-docs/06_Operations/Documentation_Rules.md`
 - worktree 運用: `dev-docs/00_Home/Worktree_Separation_Rules.md`
 - rough task pool: `dev-docs/06_Operations/Todo_Pool.md`
-- 直近ログ: `dev-docs/daily/260402.md`
+- 収集済み TODO: `dev-docs/06_Operations/Todo_Collected_260407.md`
+- REST API 仕様: `dev-docs/03_Spec/REST_API.md`
+- 直近ログ: `dev-docs/daily/260403.md`
