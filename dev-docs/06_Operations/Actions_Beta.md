@@ -14,6 +14,8 @@
 | `cancelCut` | カット状態（`cut` で予約した移動）をキャンセル | |
 | `cancelAndEditNext` | `Esc` -> `Down` -> `Enter` を連続実行したのと同等の動作 | 通常モードでは cut 解除 -> 次ノード選択 -> 編集開始（文末カーソル）。編集モードでは編集破棄 -> 次ノード選択 -> 編集開始（文末カーソル） |
 | `cycleView` | 1回目: 選択ノードを中央にフォーカス / 2回目: 全体フィット（交互にトグル） | `Alt+V` で連打 |
+| `copyNodePath` | 選択ノードのルートからのパス（`A / B / C` 形式）をクリップボードにコピー | `Ctrl+Shift+C` |
+| `copyScopeId` | 現在のスコープの ID をクリップボードにコピー | `Ctrl+Shift+I` |
 | `copy` | 選択ノードの部分木をクリップボードにコピー | システムクリップボードにはテキストラベルをコピー。alias/link メタデータは含まない |
 | `cut` | 選択ノードを移動予約（カット）。`paste` で移動先に確定する | ノードはグレーアウト表示。`Esc` でキャンセル |
 | `delete` | 選択ノードの部分木を削除 | 複数選択中は selection root をすべて削除。root ノードは削除不可。`Backspace` で scope root を選択中かつ scope 履歴あり → scope を一段上に戻る |
@@ -22,7 +24,14 @@
 | `extendSelectionDown` | 選択範囲を breadth 方向に1ノード下へ拡張 | `navigateDown` との違い：単一選択に戻さず範囲を広げる |
 | `extendSelectionUp` | 選択範囲を breadth 方向に1ノード上へ拡張 | `navigateUp` との違い：単一選択に戻さず範囲を広げる |
 | `groupSelected` | 選択ノードを新しい共通親ノードにまとめる | 2ノード以上選択時のみ有効。新ノードの名前入力が開始される |
-| `makeFolder` | 選択ノードを folder スコープに変換 | alias ノード・既に folder のノードは対象外 |
+| `downloadJson` | 現在のドキュメントを JSON ファイルとしてダウンロード | `Ctrl+S` で実行 |
+| `jumpToAliasTarget` | エイリアスノードの参照先ノードへジャンプ | alias 以外では無効 |
+| `toggleFolder` | 選択ノードの folder スコープをトグル（folder ↔ 通常） | alias ノードは対象外。旧名 `makeFolder` |
+| `zoomIn` | ズームイン | `=` / `+` キー |
+| `zoomOut` | ズームアウト | `-` キー |
+| `zoomReset` | ズームを 100% にリセット | `0` キー |
+| `fitAll` | 全ノードが画面に収まるようフィット | `Ctrl+0` |
+| `toggleMetaPanel` | メタパネルの表示/非表示をトグル | `I` キー |
 | `holdReparent` | ホールド未設定 → 選択ノードをホールド。ホールド済み → ホールドノードを現在選択ノードの子として reparent | `Alt+M` でトグル操作。`Esc` でキャンセル |
 | `markReparent` | 選択ノードを reparent の移動元としてマーク | 複数選択中は全選択ノードをマーク。その後 `applyReparent` で実行 |
 | `navigateDown` | breadth 方向（兄弟）で1つ後のノードへ移動 | 単一選択に戻す |
@@ -37,6 +46,7 @@
 | `thinkingDeep` | 思考モードを deep（深掘り）に切り替え | |
 | `thinkingFlash` | 思考モードを flash（素早い発想）に切り替え | |
 | `thinkingRapid` | 思考モードを rapid（標準）に切り替え | |
+| `showShortcutCheatsheet` | ショートカット一覧をオーバーレイ表示 | Ctrl または Alt を単体で 400ms 長押しすると表示。キーを離すと閉じる |
 | `toggleCollapse` | 選択ノードの折り畳み／展開をトグル | 複数選択中は全選択ノードに適用 |
 | `undo` | 直前の操作を取り消す | |
 

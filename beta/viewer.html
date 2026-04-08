@@ -11,56 +11,34 @@
     <div class="app">
       <div class="overlay-ui">
         <div class="toolbar">
-          <button id="load-default" class="primary">Default</button>
-          <button id="load-airplane">Airplane</button>
-          <button id="load-aircraft-mm">Aircraft.mm</button>
-          <input id="file-input" type="file" accept=".json,.mm,.md,.markdown,application/json,text/xml,application/xml,text/markdown,text/plain" />
-          <span class="toolbar-sep">|</span>
+          <div class="hamburger-wrap">
+            <button id="hamburger-btn" class="hamburger-btn" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
+            <div id="hamburger-menu" class="hamburger-menu" hidden>
+              <div class="menu-section">
+                <div class="menu-section-title">Cloud Sync</div>
+                <span id="cloud-sync-badge" class="cloud-sync-badge">Cloud: off</span>
+                <button id="cloud-pull">Pull</button>
+                <button id="cloud-push">Push</button>
+                <button id="cloud-use-local" class="danger" hidden>Use Local</button>
+                <button id="cloud-use-cloud" hidden>Use Cloud</button>
+              </div>
+            </div>
+          </div>
           <div class="mode-switch" aria-label="Thinking mode">
             <button id="mode-flash" class="mode-btn" type="button">Flash</button>
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
-          <span class="toolbar-sep">|</span>
-          <button id="add-child">Add child</button>
-          <button id="add-sibling">Add sibling</button>
-          <button id="make-folder">Make folder</button>
-          <button id="enter-scope">Enter scope</button>
-          <button id="exit-scope">Back scope</button>
-          <button id="add-alias">Add alias</button>
-          <button id="jump-target">Jump target</button>
-          <button id="toggle-collapse">Collapse</button>
-          <button id="ai-generate-topics">AI topics</button>
-          <button id="delete-node" class="danger">Delete</button>
-          <span class="toolbar-sep">|</span>
-          <button id="mark-link">Mark link</button>
-          <button id="apply-link">Add link</button>
-          <span class="toolbar-sep">|</span>
-          <button id="mark-reparent">Mark move</button>
-          <button id="apply-reparent">Apply move</button>
-          <span class="toolbar-sep">|</span>
-          <label for="importance-view">Importance</label>
-          <select id="importance-view">
-            <option value="all">All</option>
-            <option value="high-plus">Medium+High</option>
-            <option value="high-only">High only</option>
-          </select>
-          <span class="toolbar-sep">|</span>
-          <span id="cloud-sync-badge" class="cloud-sync-badge">Cloud: off</span>
-          <button id="cloud-pull">Cloud Pull</button>
-          <button id="cloud-push">Cloud Push</button>
-          <button id="cloud-use-local" class="danger" hidden>Use Local</button>
-          <button id="cloud-use-cloud" hidden>Use Cloud</button>
-          <span class="toolbar-sep">|</span>
-          <button id="zoom-out">−</button>
-          <button id="zoom-reset">100%</button>
-          <button id="zoom-in">+</button>
-          <button id="fit-all">Fit all</button>
-          <button id="focus-selected">Focus</button>
-          <button id="toggle-meta-panel">Show meta</button>
-          <span class="toolbar-sep">|</span>
-          <button id="download-btn">Download JSON</button>
+          <div class="export-wrap">
+            <button id="export-btn" type="button">Export ▾</button>
+            <div id="export-menu" class="export-menu" hidden>
+              <button id="download-btn">JSON</button>
+            </div>
+          </div>
         </div>
+        <!-- hidden elements kept for JS references -->
+        <input id="file-input" type="file" accept=".json,.mm,.md,.markdown,application/json,text/xml,application/xml,text/markdown,text/plain" hidden />
+        <button id="load-default" hidden></button>
         <div class="meta-panel" aria-label="Meta panel" hidden>
           <div id="mode-meta" class="meta">mode: Rapid</div>
           <div id="scope-meta" class="meta">scope: root</div>
@@ -91,6 +69,93 @@
             <div id="linear-resize-handle" class="linear-resize-handle" aria-hidden="true"></div>
           </aside>
         </div>
+      </div>
+      <div id="shortcut-cheatsheet" class="shortcut-cheatsheet">
+        <div class="cheatsheet-header">Keyboard Shortcuts</div>
+        <div class="cheatsheet-body">
+          <div class="cheatsheet-col">
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">Navigation</div>
+              <div class="cheatsheet-row"><kbd>↑↓←→</kbd><span>Move selection</span></div>
+              <div class="cheatsheet-row"><kbd>Shift+↑↓</kbd><span>Extend selection</span></div>
+              <div class="cheatsheet-row"><kbd>J</kbd><span>Deeper (child)</span></div>
+              <div class="cheatsheet-row"><kbd>K</kbd><span>Shallower (parent)</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+V</kbd><span>Toggle focus / fit</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+J</kbd><span>Jump to alias target</span></div>
+            </div>
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">Editing</div>
+              <div class="cheatsheet-row"><kbd>Enter</kbd><span>Edit (cursor end)</span></div>
+              <div class="cheatsheet-row"><kbd>Shift+Enter</kbd><span>Edit (select all)</span></div>
+              <div class="cheatsheet-row"><kbd>F2</kbd><span>Edit (select all)</span></div>
+              <div class="cheatsheet-row"><kbd>Tab</kbd><span>Add child</span></div>
+              <div class="cheatsheet-row"><kbd>Delete</kbd><span>Delete node</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Enter</kbd><span>Next &amp; edit</span></div>
+            </div>
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">View</div>
+              <div class="cheatsheet-row"><kbd>-</kbd><span>Zoom out</span></div>
+              <div class="cheatsheet-row"><kbd>=</kbd><span>Zoom in</span></div>
+              <div class="cheatsheet-row"><kbd>0</kbd><span>Reset zoom (100%)</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+0</kbd><span>Fit all</span></div>
+              <div class="cheatsheet-row"><kbd>I</kbd><span>Toggle meta panel</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+S</kbd><span>Download JSON</span></div>
+            </div>
+          </div>
+          <div class="cheatsheet-col">
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">Clipboard</div>
+              <div class="cheatsheet-row"><kbd>Ctrl+C</kbd><span>Copy</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+X</kbd><span>Cut</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+V</kbd><span>Paste</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Z</kbd><span>Undo</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Y</kbd><span>Redo</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+A</kbd><span>Select all</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Shift+C</kbd><span>Copy node path</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Shift+I</kbd><span>Copy scope ID</span></div>
+              <div class="cheatsheet-row"><kbd>Escape</kbd><span>Cancel cut</span></div>
+            </div>
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">Structure</div>
+              <div class="cheatsheet-row"><kbd>Space</kbd><span>Collapse toggle</span></div>
+              <div class="cheatsheet-row"><kbd>F</kbd><span>Toggle folder</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+G</kbd><span>Group selected</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+A</kbd><span>Add alias</span></div>
+              <div class="cheatsheet-row"><kbd>L</kbd><span>Mark link</span></div>
+              <div class="cheatsheet-row"><kbd>Shift+L</kbd><span>Apply link</span></div>
+              <div class="cheatsheet-row"><kbd>M</kbd> → <kbd>P</kbd><span>Move (reparent)</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+M</kbd><span>Hold reparent</span></div>
+            </div>
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">Thinking Mode</div>
+              <div class="cheatsheet-row"><kbd>1</kbd><span>Flash</span></div>
+              <div class="cheatsheet-row"><kbd>2</kbd><span>Rapid</span></div>
+              <div class="cheatsheet-row"><kbd>3</kbd><span>Deep</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="cheatsheet-automaton">
+          <div class="automaton-node automaton-navigating">Navigating</div>
+          <div class="automaton-arrows">
+            <div class="automaton-arrow automaton-arrow-right">
+              <span class="automaton-label">Enter / F2 / Tab / DblClick</span>
+              <svg viewBox="0 0 120 12" class="automaton-svg"><path d="M0 6 L110 6" /><polygon points="110,1 120,6 110,11" /></svg>
+            </div>
+            <div class="automaton-arrow automaton-arrow-left">
+              <svg viewBox="0 0 120 12" class="automaton-svg"><path d="M10 6 L120 6" /><polygon points="10,1 0,6 10,11" /></svg>
+              <span class="automaton-label">Esc / Blur</span>
+            </div>
+          </div>
+          <div class="automaton-node automaton-editing">Editing</div>
+          <div class="automaton-self-loop">
+            <svg viewBox="0 0 32 80" class="automaton-self-svg">
+              <path d="M0 16 Q28 16, 28 40 Q28 64, 0 64" />
+              <polygon points="4 60 0 68 -4 60" />
+            </svg>
+            <span class="automaton-label">Enter / Tab<br/>Ctrl+Enter</span>
+          </div>
+        </div>
+        <div class="cheatsheet-hint">Release to close</div>
       </div>
     </div>
 

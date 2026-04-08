@@ -14,14 +14,14 @@
 | `b` | — |
 | `c` | — |
 | `d` | — |
-| `e` | `toggleCollapse` |
-| `f` | — |
+| `e` | — |
+| `f` | `toggleFolder` |
 | `g` | — |
 | `h` | — |
-| `i` | — |
-| `j` | — |
-| `k` | — |
-| `l` | — |
+| `i` | `toggleMetaPanel` |
+| `j` | `navigateRight`（子方向 / deeper） |
+| `k` | `navigateLeft`（親方向 / shallower） |
+| `l` | `markLinkSource` |
 | `m` | `markReparent` |
 | `n` | — |
 | `o` | — |
@@ -61,7 +61,7 @@
 | `Ctrl+p` | — |
 | `Ctrl+q` | — |
 | `Ctrl+r` | — |
-| `Ctrl+s` | — |
+| `Ctrl+s` | `downloadJson` |
 | `Ctrl+t` | — |
 | `Ctrl+u` | — |
 | `Ctrl+v` | `paste` |
@@ -69,13 +69,18 @@
 | `Ctrl+x` | `cut` |
 | `Ctrl+y` | `redo` |
 | `Ctrl+z` | `undo` |
+| `Ctrl+Shift+c` | `copyNodePath` |
+| `Ctrl+Shift+i` | `copyScopeId` |
 | `Ctrl+Shift+z` | `redo` |
+| `Ctrl+Shift+t` | `generateRelatedTopics` |
+| `Ctrl+Shift+l` | `applyMarkedLink` |
 | `Ctrl+[` | `exitScope` |
 | `Ctrl+]` | `enterScope` |
+| `Ctrl+0` | `fitAll` |
 
 ---
 
-## 数字キー
+## 数字キー・記号キー
 
 | キー | アクション |
 |------|------------|
@@ -83,6 +88,9 @@
 | `2` | `thinkingRapid` |
 | `3` | `thinkingDeep` |
 | `4`–`9` | — |
+| `0` | `zoomReset` (100%) |
+| `-` | `zoomOut` |
+| `=` / `+` | `zoomIn` |
 
 ---
 
@@ -95,15 +103,19 @@
 | `Shift+Enter` | `startEditSelectAll` |
 | `Ctrl+Enter` | `cancelAndEditNext`（`Esc` -> `Down` -> `Enter` と同等） |
 | `Alt+Enter` | `enterScope` |
+| `Alt+J` | `jumpToAliasTarget` |
 | `Alt+A` | `addAliasAsChild` |
 | `Alt+V` | `cycleView`（focus → fit all のトグル） |
 | `Alt+M` | `holdReparent` |
-| `Alt+P` | `makeFolder` |
+| `Alt+P` | `toggleFolder`（`F` と同じ） |
 | `F2` | `startEditSelectAll` |
 | `Space` | `toggleCollapse` |
 | `Delete` | `delete` |
 | `Backspace` | `delete` |
 | `Escape` | `cancelCut` |
+
+| `Ctrl (hold 400ms)` | `showShortcutCheatsheet` |
+| `Alt (hold 400ms)` | `showShortcutCheatsheet` |
 
 補足: `addSibling` は通常モードでは割り当てず、編集モード中の `Enter` に限定する。
 

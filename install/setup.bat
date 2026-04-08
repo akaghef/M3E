@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal
 chcp 65001 >nul 2>&1
 
 REM ============================================================
@@ -8,6 +8,7 @@ REM  - Downloads portable Node.js automatically (no pre-install needed)
 REM  - Builds the app and creates a desktop shortcut with icon
 REM ============================================================
 
+REM Set ROOT before enabling delayed expansion so ! in paths is safe
 cd /d "%~dp0\.."
 set "ROOT=%cd%"
 
@@ -16,6 +17,8 @@ set "NODE_DIR=%ROOT%\install\node"
 set "NODE_EXE=%NODE_DIR%\node.exe"
 set "NPM_CMD=%NODE_DIR%\npm.cmd"
 set "ICON_SRC=%ROOT%\install\assets\icon.ico"
+
+setlocal EnableDelayedExpansion
 
 echo.
 echo  =============================================
@@ -37,7 +40,7 @@ where node >nul 2>&1
 if %ERRORLEVEL% neq 0 goto :download_node
 
 for /f "tokens=*" %%V in ('node --version 2^>nul') do set "SYS_NODE_VER=%%V"
-echo   System Node.js !SYS_NODE_VER! found.
+echo   System Node.js %SYS_NODE_VER% found.
 set "NODE_EXE=node"
 
 REM Resolve system npm.cmd path safely
@@ -271,4 +274,6 @@ if /i "!LAUNCH_NOW!"=="n" goto :done
 call "%ROOT%\scripts\final\launch.bat"
 :done
 echo.
+echo  Press any key to close this window...
+pause >nul
 exit /b 0
