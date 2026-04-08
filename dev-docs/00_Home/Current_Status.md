@@ -1,5 +1,5 @@
 # Current Status
-最終更新: 2026-04-07
+最終更新: 2026-04-08
 
 ## 現在の状態（スナップショット）
 
@@ -21,14 +21,16 @@
 3. 部下は次サイクル開始前に `origin/dev-beta` へ rebase
 4. rebase 未実施の stale ブランチでは作業再開しない
 
-## 最近の成果（260403〜260407）
+## 最近の成果（260403〜260408）
 
-- テストデータ分離（visual テスト時の本番データ上書き防止）
+- **Graph link 機能**: ノード間の非階層リンクを作成・描画する機能を追加（L / Shift+L キー、ツールバー）
+- **可変高さレイアウト**: multiline label 対応、LaTeX ノードのサイジング改善
+- **パフォーマンス**: scheduleRender / scheduleApplyZoom による rAF バッチ化
+- **クロスブラウザ修正**: wheel deltaMode 正規化（pan/zoom）
+- **開発 skill 整備**: devM3E オーケストレーター、pr-beta / pr-review、m3e-shortcuts skill を追加
 - AI インフラ: マルチモデル alias / gateway 方針 / Gemma ローカル導入 / topic-suggest subagent
-- UI: メタパネルトグル / 編集開始キー仕様変更（Enter / Shift+Enter / F2）
 - クラウド同期仕様の初期整理（Cloud_Sync.md）
 - REST API 仕様書の新規作成（03_Spec/REST_API.md）
-- LLM 連携パイプライン設計（MCP サーバー経由の安全な read-modify-write）
 
 ## In Progress
 
@@ -56,4 +58,4 @@
 - rough task pool: `dev-docs/06_Operations/Todo_Pool.md`
 - 収集済み TODO: `dev-docs/06_Operations/Todo_Collected_260407.md`
 - REST API 仕様: `dev-docs/03_Spec/REST_API.md`
-- 直近ログ: `dev-docs/daily/260403.md`
+- 直近ログ: `dev-docs/daily/260408.md`

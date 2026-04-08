@@ -7,7 +7,26 @@
       "mcp__git__git_log",
       "mcp__git__git_branch",
       "mcp__git__git_status",
-      "Bash(npx playwright:*)"
+      "Bash(npx playwright:*)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr close *)",
+      "Bash(gh pr checkout *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git fetch *)",
+      "Bash(git push origin *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(rm -f */.git/HEAD.lock)",
+      "Bash(npm --prefix beta run *)",
+      "Bash(ls *)"
     ]
   }
 }
