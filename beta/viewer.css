@@ -225,6 +225,14 @@
         flex-direction: column;
         align-items: flex-end;
         gap: 6px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.12s ease;
+      }
+
+      .linear-panel.menu-visible .linear-menu {
+        opacity: 1;
+        pointer-events: auto;
       }
 
       .linear-menu-toggle {

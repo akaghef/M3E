@@ -133,6 +133,7 @@ let cloudConflictPending = false;
 let linearTransformStatus: LinearTransformStatus | null = null;
 let linearTextFontScale = 1;
 let linearAdjustMenuOpen = false;
+let linearMenuVisible = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -324,6 +325,9 @@ function hydrateLinearTextFontScaleFromDocState(): void {
 }
 
 function syncLinearAdjustMenuUi(): void {
+  if (linearPanelEl) {
+    linearPanelEl.classList.toggle("menu-visible", linearMenuVisible || linearAdjustMenuOpen);
+  }
   if (linearAdjustControlsEl) {
     linearAdjustControlsEl.hidden = !linearAdjustMenuOpen;
   }
@@ -4229,6 +4233,7 @@ fileInput.addEventListener("change", (event: Event) => {
 
 linearMenuToggleBtn?.addEventListener("click", (event: MouseEvent) => {
   event.preventDefault();
+  linearMenuVisible = true;
   linearAdjustMenuOpen = !linearAdjustMenuOpen;
   syncLinearAdjustMenuUi();
 });
@@ -4246,6 +4251,16 @@ linearFontIncBtn?.addEventListener("click", (event: MouseEvent) => {
 linearFontResetBtn?.addEventListener("click", (event: MouseEvent) => {
   event.preventDefault();
   setLinearTextFontScale(1);
+});
+
+linearTextEl?.addEventListener("pointerdown", () => {
+  linearMenuVisible = true;
+  syncLinearAdjustMenuUi();
+});
+
+linearTextEl?.addEventListener("focus", () => {
+  linearMenuVisible = true;
+  syncLinearAdjustMenuUi();
 });
 
 linearTextEl?.addEventListener("input", () => {
@@ -4669,13 +4684,11 @@ board.addEventListener("pointerup", endPan);
 board.addEventListener("pointercancel", endPan);
 
 document.addEventListener("pointerdown", (event: PointerEvent) => {
-  if (!linearAdjustMenuOpen) {
-    return;
-  }
   const target = event.target as HTMLElement | null;
-  if (target?.closest("#linear-menu")) {
+  if (target?.closest(".linear-panel")) {
     return;
   }
+  linearMenuVisible = false;
   linearAdjustMenuOpen = false;
   syncLinearAdjustMenuUi();
 });
@@ -4686,6 +4699,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (linearAdjustMenuOpen && event.key === "Escape") {
+    linearMenuVisible = false;
     linearAdjustMenuOpen = false;
     syncLinearAdjustMenuUi();
     event.preventDefault();
