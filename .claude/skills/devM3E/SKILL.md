@@ -137,11 +137,12 @@ npx playwright test
 
 ### 更新完了の定義（Documentation_Rules準拠）
 
-以下3条件を**すべて**満たして初めて「完了」:
+以下4条件を**すべて**満たして初めて「完了」:
 
 1. **コミット済み** — 変更がgit commitされている
 2. **daily更新済み** — `dev-docs/daily/YYMMDD.md` に作業内容が追記されている
 3. **status更新済み** — `dev-docs/00_Home/Current_Status.md` が必要に応じて更新されている
+4. **マップ反映済み** — M3E サーバー起動中なら `dev M3E/status YYMMDD` を REST API で更新する
 
 ### doc-updaterエージェントの責務
 
