@@ -210,6 +210,17 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function isImeComposingEvent(event: KeyboardEvent): boolean {
+  if (event.isComposing) {
+    return true;
+  }
+  const legacy = event as KeyboardEvent & { keyCode?: number };
+  if (legacy.keyCode === 229) {
+    return true;
+  }
+  return event.key === "Process";
+}
+
 function updateCloudSyncUi(): void {
   if (!cloudSyncBadgeEl) {
     return;
@@ -3031,6 +3042,9 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): voi
   }
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (isImeComposingEvent(event)) {
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
       event.preventDefault();
       // Equivalent to Esc -> DownArrow -> Enter while editing.
@@ -4285,6 +4299,9 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!doc) {
     return;
   }
+  if (isImeComposingEvent(event)) {
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
@@ -4687,6 +4704,9 @@ document.addEventListener("pointerdown", (event: PointerEvent) => {
 
 document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!doc) {
+    return;
+  }
+  if (isImeComposingEvent(event)) {
     return;
   }
 
