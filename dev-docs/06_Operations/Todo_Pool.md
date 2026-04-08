@@ -178,12 +178,87 @@
 - Date: 2026-04-08
 - Topic: main マージ + vYYMMDD タグ付与（dev-beta → main プロモーション）
 - Owner: manager
-- State: doing
+- State: done
 - Link: launch-final SKILL.md Step 9
-- Note: main が dev-beta から 22 コミット遅れ。launch-final スキルの新 Step 9 で実行
+- Note: v260408 + v260408-2（final sync 修正含む）完了
 - AssignedTo: claude
 - AssignedPC: rose
 - AssignedAt: 2026-04-08T11:30:00
 - WorkerType: in-session
 - Branch: main
+- StallCycles: 0
+
+---
+
+- Date: 2026-04-08
+- Topic: Team Collaboration Phase 1 実装（エンティティ登録 + scope lock + SSE）
+- Owner: manager
+- State: ready
+- Link: `dev-docs/03_Spec/Team_Collaboration.md`
+- Note: spec ドラフト完了。scope-based priority merge、SSE 通知、100エンティティ対応
+- AssignedTo: -
+- AssignedPC: any
+- AssignedAt: -
+- WorkerType: -
+- Branch: -
+- StallCycles: 0
+
+---
+
+- Date: 2026-04-08
+- Topic: セキュリティ検討: Collab API の CSRF 対策
+- Owner: akaghef
+- State: blocked
+- Link: `dev-docs/03_Spec/Team_Collaboration.md` (セキュリティ検討事項)
+- Note: ブラウザから localhost への cross-origin POST 防止。カスタムヘッダー X-M3E-Token で十分か要判断
+- AssignedTo: -
+- AssignedPC: any
+- AssignedAt: -
+- WorkerType: -
+- Branch: -
+- StallCycles: 0
+
+---
+
+- Date: 2026-04-08
+- Topic: セキュリティ検討: LAN 共有時のアクセス制御
+- Owner: akaghef
+- State: blocked
+- Link: `dev-docs/03_Spec/Team_Collaboration.md` (セキュリティ検討事項)
+- Note: 現在 127.0.0.1 バインドだが、チーム利用で LAN 公開が必要になった場合の認証・暗号化戦略
+- AssignedTo: -
+- AssignedPC: any
+- AssignedAt: -
+- WorkerType: -
+- Branch: -
+- StallCycles: 0
+
+---
+
+- Date: 2026-04-08
+- Topic: セキュリティ検討: エージェント偽装とトークン管理
+- Owner: akaghef
+- State: blocked
+- Link: `dev-docs/03_Spec/Team_Collaboration.md` (セキュリティ検討事項)
+- Note: トークン漏洩によるエージェント偽装リスク。プロセス間分離、トークン有効期限、revocation API の要否
+- AssignedTo: -
+- AssignedPC: any
+- AssignedAt: -
+- WorkerType: -
+- Branch: -
+- StallCycles: 0
+
+---
+
+- Date: 2026-04-08
+- Topic: セキュリティ検討: scope push 時の入力バリデーション
+- Owner: akaghef
+- State: blocked
+- Link: `dev-docs/03_Spec/Team_Collaboration.md` (セキュリティ検討事項)
+- Note: scope 単位の部分 push で不正ノードが混入するリスク。RapidMvpModel.validate() の scope 部分適用が必要か
+- AssignedTo: -
+- AssignedPC: any
+- AssignedAt: -
+- WorkerType: -
+- Branch: -
 - StallCycles: 0
