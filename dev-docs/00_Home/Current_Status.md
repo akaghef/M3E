@@ -36,7 +36,6 @@
 
 - REST API ドキュメントの整備と LLM 連携の運用検証
 - Todo Pool 運用の定着
-- MVP Phase 5 操作性調整
 
 ## Blocked / Risk
 
@@ -48,7 +47,7 @@
 1. CI 検証の導入（branch-role ゲート + Stage A テスト）
 2. Linear↔Tree L1 最小実装と round-trip テスト
 3. MCP サーバーの実運用テストと改善
-4. MVP Phase 5 の操作性調整（導線短縮・ラベル整理）
+4. beta の操作性改善（MVP は凍結、beta 側で進める）
 5. spec 文書の更新（scope/alias Beta 実装粒度への拡張）
 
 ## 参照

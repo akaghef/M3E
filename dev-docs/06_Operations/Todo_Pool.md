@@ -90,9 +90,9 @@
 - Date: 2026-04-07
 - Topic: MVP Phase 5 操作性調整（導線短縮・ラベル整理・初見テスト）
 - Owner: -
-- State: doing
+- State: blocked
 - Link: `dev-docs/02_Strategy/MVP_Definition.md` (Phase 5)
-- Note: E1〜E3。主要操作の導線短縮、操作ラベル整理、初見ユーザーテスト
+- Note: E1〜E3。凍結: MVP は触らない方針（2026-04-08決定）。操作性改善は beta 側で進める
 
 ---
 

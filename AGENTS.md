@@ -9,13 +9,13 @@ Agents should prioritize small validated changes over broad refactors.
 
 | Environment | Directory | Status | Purpose |
 |-------------|-----------|--------|---------|
-| Alpha | `mvp/` | Development stopping | Reference / verification only |
+| Alpha | `mvp/` | **Frozen — do not touch** | Completely ignored (no read/write) |
 | Beta | `beta/` | **Active development** | Current dev & daily use |
 | Final | `final/` | Stable release | Production use / distribution |
 
 **Current active development target: `beta/`**
 
-Alpha (`mvp/`) will be frozen soon. New features go into `beta/` only.
+Alpha (`mvp/`) is permanently frozen. Do not read or write any files under `mvp/`. All development happens in `beta/` only.
 
 ### Launch scripts
 
@@ -128,9 +128,10 @@ If hard reset fails or produces unexpected state, stop and escalate to `akaghef`
 
 ## Development Phase Constraints
 
-### Alpha (mvp/) — Frozen
-1. No new features. Bug fixes only if critical.
-2. Use as reference baseline for Beta.
+### Alpha (mvp/) — Frozen / Do Not Touch
+1. **Do not read or write any files under `mvp/`.** Completely ignore this directory.
+2. No new features, no bug fixes, no reference reads.
+3. Agents must never open, diff, or analyze `mvp/` files for any purpose.
 
 ### Beta (beta/) — Active
 1. Infrastructure and test environment are top priority.
