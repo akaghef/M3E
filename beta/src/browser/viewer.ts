@@ -4293,14 +4293,6 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
     setStatus("Linear memo saved in current scope.");
     return;
   }
-  if (event.key === "Escape") {
-    event.preventDefault();
-    linearNotesByScope[currentLinearMemoScopeId()] = buildLinearFromScope().text;
-    syncLinearNotesToDocState();
-    scheduleAutosave();
-    renderLinearPanel();
-    setStatus("Linear memo reset to outline template.");
-  }
 });
 
 linearPanelEl?.addEventListener("pointerup", () => {
