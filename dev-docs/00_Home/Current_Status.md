@@ -5,7 +5,7 @@
 
 - 開発の主対象: `beta/`
 - MVP Phase 1〜4: 完了（読み取り・編集・描画・保存が動作中）
-- MVP Phase 5: 操作性の最終調整に着手
+- **Team Collaboration Phase 1: 実装中**（エンティティ登録・scope lock・SSE 完了、scope push 実装中）
 - 運用方針:
   - UpdateLog は `dev-docs/daily/YYMMDD.md` に追記
   - 本ファイルは「現在状態」だけを保持
@@ -13,6 +13,7 @@
 - 役割分担:
   - 部下（codex1 / codex2）: 実装と daily 追記。`Current_Status.md` は read-only
   - 上司（claude）: 部下 daily を参照して `Current_Status.md` の status 更新と統合管理
+- リリース: main ブランチ、タグ `v260408-2` が最新
 
 ## 統合フロー（強制）
 
@@ -23,32 +24,36 @@
 
 ## 最近の成果（260403〜260408）
 
+- **Team Collaboration**: scope-based priority merge の仕様策定 + Phase 1 実装（collab.ts, 10 tests pass）
+- **launch-final 拡張**: vYYMMDD タグ規則の明文化、main マージ Step 追加
+- **BroadcastChannel 堅牢化**: feature detection, message validation, cross-tab cloud pull notify
 - **Graph link 機能**: ノード間の非階層リンクを作成・描画する機能を追加（L / Shift+L キー、ツールバー）
 - **可変高さレイアウト**: multiline label 対応、LaTeX ノードのサイジング改善
 - **パフォーマンス**: scheduleRender / scheduleApplyZoom による rAF バッチ化
 - **クロスブラウザ修正**: wheel deltaMode 正規化（pan/zoom）
-- **開発 skill 整備**: devM3E オーケストレーター、pr-beta / pr-review、m3e-shortcuts skill を追加
+- **開発 skill 整備**: devM3E, pr-beta, pr-review, m3e-shortcuts, intensive-develop skill
 - AI インフラ: マルチモデル alias / gateway 方針 / Gemma ローカル導入 / topic-suggest subagent
 - クラウド同期仕様の初期整理（Cloud_Sync.md）
 - REST API 仕様書の新規作成（03_Spec/REST_API.md）
 
 ## In Progress
 
-- REST API ドキュメントの整備と LLM 連携の運用検証
-- Todo Pool 運用の定着
+- **Team Collaboration Phase 1**: scope-level push with auto-merge（サブエージェント実装中）
+- Cloud Sync 競合 UI 改善（T4, codex1 にハンドオフ済み）
 
 ## Blocked / Risk
 
 - role 違反を機械的に止める CI チェックは未導入
+- **セキュリティ検討 4 件** (CSRF, LAN 露出, エージェント偽装, 入力バリデーション) — Todo Pool に blocked で管理中
 - M3E 起動中に SQLite がロックされる（LLM の直接 DB アクセスは不可 → API 経由で解決済み）
 
 ## Next 5
 
-1. CI 検証の導入（branch-role ゲート + Stage A テスト）
-2. Linear↔Tree L1 最小実装と round-trip テスト
-3. MCP サーバーの実運用テストと改善
-4. beta の操作性改善（MVP は凍結、beta 側で進める）
-5. spec 文書の更新（scope/alias Beta 実装粒度への拡張）
+1. **Team Collaboration Phase 1 完了**（scope push + テスト → merge）
+2. Team Collaboration Phase 2（conflict backup, エンティティ UI, 監査ログ）
+3. CI 検証の導入（branch-role ゲート + Stage A テスト）
+4. セキュリティ懸念の判断（CSRF, LAN, トークン管理, バリデーション）
+5. Linear↔Tree L1 最小実装と round-trip テスト
 
 ## 参照
 
@@ -57,4 +62,5 @@
 - rough task pool: `dev-docs/06_Operations/Todo_Pool.md`
 - 収集済み TODO: `dev-docs/06_Operations/Todo_Collected_260407.md`
 - REST API 仕様: `dev-docs/03_Spec/REST_API.md`
+- **Team Collaboration 仕様: `dev-docs/03_Spec/Team_Collaboration.md`**
 - 直近ログ: `dev-docs/daily/260408.md`
