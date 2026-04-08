@@ -47,6 +47,80 @@ A task is update-complete only when all three are done:
 
 If any item is missing, task state is still in-progress.
 
+## Agent Team
+
+3体のエージェントを Agent Teams で並列実行する。
+各エージェントは `.claude/agents/` に定義。Manager (manage) がチームリーダー。
+
+### Agent Definitions
+
+| Agent | File | Branch | Scope |
+|-------|------|--------|-------|
+| visual | `.claude/agents/visual.md` | dev-visual | UI, rendering, CSS, SVG |
+| data | `.claude/agents/data.md` | dev-data | model, controller, API |
+| team | `.claude/agents/team.md` | dev-team | collab, cloud sync |
+
+### How to Launch
+
+```
+1. TeamCreate(team_name: "m3e-dev", description: "M3E development team")
+2. TaskCreate で作業タスクを登録
+3. Agent(team_name: "m3e-dev", name: "visual", subagent_type: "visual")
+   Agent(team_name: "m3e-dev", name: "data",   subagent_type: "data")
+   Agent(team_name: "m3e-dev", name: "team",   subagent_type: "team")
+```
+
+各エージェントは `isolation: worktree` で独立したコピーで作業する。
+タスクは共有タスクリスト (`~/.claude/tasks/m3e-dev/`) で管理。
+メンバーは `SendMessage` で互いに通信可能。
+
+### Team Communication
+
+| 方法 | 用途 |
+|------|------|
+| `SendMessage(to: "visual")` | 特定メンバーへ指示・質問 |
+| `SendMessage(to: "*")` | 全員へブロードキャスト（コスト高、慎重に） |
+| `TaskCreate` / `TaskUpdate` | タスクの作成・状態更新・アサイン |
+| `TaskList` | 全タスクの状態確認 |
+
+### Shared State (Mindmap)
+
+揮発的な情報は M3E マップの `dev M3E/` 配下で共有する:
+
+```
+dev M3E/
+├── tasks/          ← タスク状態 (doing/ready/done-today)
+├── strategy/       ← ロール割り当て
+├── design/         ← 設計判断 (ADR) — 判断が必要な場面でメンバーが書く
+└── scratch/        ← 一時メモ
+```
+
+エージェントは REST API (`http://localhost:38482/api/docs/rapid-main`) 経由で読み書きする。
+設計判断が必要な場合:
+1. エージェントが `dev M3E/design/` に context + options を書く
+2. `SendMessage` で manager に通知
+3. Manager がマインドマップ上で verdict を書く
+4. エージェントに続行を指示
+
+### Integration Flow
+
+```
+1. Manager が TeamCreate → TaskCreate でタスク登録
+2. Agent が共有タスクリストから claim → worktree で作業
+3. Agent が dev-{role} ブランチにコミット・プッシュ → PR 作成
+4. Agent が SendMessage で manager に完了通知
+5. Manager が PR レビュー・マージ
+6. Agent が次タスクを claim → rebase → 作業再開
+```
+
+### Shutdown
+
+作業完了時:
+```
+SendMessage(to: "*", message: { type: "shutdown_request" })
+TeamDelete()
+```
+
 ## Session Start Gate (One-Time Enforcement)
 
 At session start, run one bootstrap command, then proceed with normal work.
@@ -54,15 +128,16 @@ Do not repeatedly re-run full checks every step.
 
 For agents that support slash prompts:
 
-- `/setrole codex1`
-- `/setrole codex2`
-- `/setrole claude`
+- `/setrole visual`
+- `/setrole data`
+- `/setrole team`
+- `/setrole manage`
 
 For normal Codex (non-Copilot):
 
 ```powershell
-pwsh -File scripts/ops/setrole.ps1 codex1
-# or codex2 / claude
+pwsh -File scripts/ops/setrole.ps1 visual
+# or data / team / manage
 ```
 
 Required checks performed by bootstrap:
@@ -70,9 +145,9 @@ Required checks performed by bootstrap:
 1. Role confirmation.
 2. Worktree/directory alignment.
 3. Branch alignment.
-4. For `codex1` / `codex2`: `fetch + reset --hard origin/dev-beta` before new implementation work.
+4. For subordinates: `fetch + rebase origin/dev-beta` before new implementation work.
 
-If checks fail or hard reset is not possible, stop and escalate to `akaghef`.
+If checks fail or rebase is not possible, stop and escalate to `akaghef`.
 
 ## Agent Workflow
 
@@ -110,21 +185,21 @@ Use this term to refer to the full handoff sequence. Subordinates run `beta_upda
 
 ## Mandatory Integration Protocol (Subordinate -> PR -> Manager -> Resume)
 
-1. Subordinate agents (`codex1`, `codex2`) implement and push only to assigned branches (`dev-beta-visual`, `dev-beta-data`).
+1. Subordinate agents (visual, data, team) implement and push only to assigned branches (`dev-visual`, `dev-data`, `dev-team`).
 2. Subordinates create a PR with base `dev-beta` from their assigned branch.
-3. Manager (`claude`) reviews and merges the PR into `dev-beta`.
-4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` by hard-resetting their branch to `origin/dev-beta`.
+3. Manager reviews and merges the PR into `dev-beta`.
+4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` by rebasing.
 5. Subordinates must not resume implementation on stale history.
 
 Recommended command sequence for subordinates:
 
 ```bash
 git fetch origin
-git checkout dev-beta-visual   # or dev-beta-data
-git reset --hard origin/dev-beta
+git checkout dev-visual   # or dev-data / dev-team
+git rebase origin/dev-beta
 ```
 
-If hard reset fails or produces unexpected state, stop and escalate to `akaghef`.
+If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
 
 ## Development Phase Constraints
 

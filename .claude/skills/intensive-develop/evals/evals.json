@@ -1,0 +1,23 @@
+{
+  "skill_name": "intensive-develop",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "intensive tick を1回実行して、Todo Pool の状態を確認してレポートして",
+      "expected_output": "Todo_Pool.md を読み込み、git log と PR 状態を確認し、各タスクの現在状態・停滞状況・次アサイン候補をレポートする。変化がなければ 'no changes' で早期終了する",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "intensive on にして自動巡回���開始して。[TIME]分おきでお願い",
+      "expected_output": "環境チェック → Todo Pool 正規化（新フィールド補完）→ 初回 tick 実行 → loop 設定 → ON 確認メッセージを出す。Todo_Pool.md に AssignedTo 等のフィールドが追加される",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "intensive off で止めて。今日の作業まとめも出して",
+      "expected_output": "loop を停止し、セッション中の完了タスク・現在 doing のタスク・stall warning をまとめたレポートを出す。daily note にセッション記録を追記する",
+      "files": []
+    }
+  ]
+}
