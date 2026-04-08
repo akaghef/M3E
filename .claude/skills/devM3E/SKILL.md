@@ -153,8 +153,8 @@ npx playwright test
 
 ### ブランチ統合フロー
 1. 担当ブランチへpush
-2. base `dev-beta` へのPR作成（`gh pr create`）
-3. ユーザーレビュー or 自動マージ（統合ロール時）
+2. `/pr-beta` skill でPR作成（差分分析・タイトル生成・daily確認を自動化）
+3. `/pr-review` skill でレビュー・マージ・事後処理（spec整合・検証・status更新・rebase指示）
 4. マージ後、担当ブランチをrebase
 
 ---

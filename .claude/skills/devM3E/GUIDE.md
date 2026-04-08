@@ -87,16 +87,51 @@ pooled → ready → doing → done
 
 ## ブランチとPR
 
-### Coworkセッション（統合ロール）
-エージェントが `dev-beta` で直接作業する。PR は不要。
+### PR作成（`/pr-beta`）
 
-### Claude Code / Copilot セッション（visual / data ロール）
-1. エージェントが担当ブランチ（`dev-beta-visual` / `dev-beta-data`）で作業
-2. 完了時にPRを自動作成（base: `dev-beta`）
-3. **あなたがPRをレビューしてマージ**（または統合ロールのエージェントに依頼）
+作業ブランチで実装が終わったら `/pr-beta` または「PR作って」で呼び出す。
 
-### あなたが直接コードを書く場合
-普通にブランチを切ってコミットする。エージェントにレビューを頼むなら「これレビューして」でreviewer エージェントが起動する。
+エージェントが自動で:
+1. ブランチ状態チェック（未コミット警告、dev-beta上なら拒否）
+2. `origin/dev-beta..HEAD` の差分分析
+3. PRタイトル・ボディ生成（コミット履歴から）
+4. daily note 更新チェック（未更新なら確認）
+5. push → `gh pr create --base dev-beta`
+
+Coworkでpushがブロックされた場合はコマンドを提示するので、ローカルターミナルで実行する。
+
+### PRレビュー・マージ（`/pr-review`）
+
+PRが作られたら `/pr-review` または「PRレビューして」で呼び出す。
+
+エージェントが自動で:
+1. PR差分を読み込み
+2. 3観点でレビュー（spec整合・コード品質・運用ルール準拠）
+3. 検証実行（tsc/test/build）
+4. 判定結果を報告（approve / comment / request-changes）
+
+あなたの応答:
+- **「マージして」** → エージェントが `gh pr merge` 実行 + 事後処理（status更新、Todo Pool更新、rebase指示）
+- **「修正して」** → 修正ポイントをPRにコメント、作業者に戻す
+- **「squashで」** → コミット集約マージ
+
+### ロール別フロー
+
+| ロール | 作業ブランチ | PR作成 | レビュー・マージ |
+|-------|------------|--------|---------------|
+| codex1 (visual) | dev-beta-visual | `/pr-beta` | 統合ロールが `/pr-review` |
+| codex2 (data) | dev-beta-data | `/pr-beta` | 統合ロールが `/pr-review` |
+| 統合 (claude/Cowork) | dev-beta | PR不要（直接作業） | — |
+| あなた | 任意のブランチ | `/pr-beta` or 手動 | エージェントに `/pr-review` を依頼 |
+
+### マージ後
+
+マージ完了後、エージェントが自動で:
+- `Current_Status.md` 更新
+- `Todo_Pool.md` の該当項目を `done` に変更
+- 作業者に rebase 指示を通知
+
+永続ブランチ（`dev-beta-visual` / `dev-beta-data`）は削除しない。feature branch は削除される。
 
 ---
 
@@ -116,6 +151,8 @@ pooled → ready → doing → done
 | 「今日はここまで」 | セッション終了手順 |
 | 「〇〇を覚えて」 | メモリに保存 |
 | 「Todo Poolを見せて」 | 現在のプール一覧を表示 |
+| 「/pr-beta」「PR作って」 | 作業ブランチ → dev-beta のPR自動作成 |
+| 「/pr-review」「PRレビューして」 | PRのレビュー・マージ・事後処理 |
 
 ---
 
