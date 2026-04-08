@@ -226,8 +226,8 @@
         background: #fff;
         padding: 18px 20px;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 14px;
-        line-height: 1.45;
+        font-size: var(--linear-text-font-size, 44px);
+        line-height: 1.2;
         color: #222;
         box-shadow: 0 8px 18px rgba(24, 24, 24, 0.1);
         overflow: hidden;

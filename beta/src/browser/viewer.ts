@@ -64,6 +64,7 @@ const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID)
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
+document.documentElement.style.setProperty("--linear-text-font-size", `${VIEWER_TUNING.typography.nodeFont}px`);
 
 interface BcStateMessage {
   type: "STATE_UPDATE";
