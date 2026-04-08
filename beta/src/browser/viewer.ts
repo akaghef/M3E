@@ -39,6 +39,12 @@ const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
 const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
+const linearMenuEl = document.getElementById("linear-menu") as HTMLElement | null;
+const linearMenuToggleBtn = document.getElementById("linear-menu-toggle") as HTMLButtonElement | null;
+const linearAdjustControlsEl = document.getElementById("linear-adjust-controls") as HTMLElement | null;
+const linearFontDecBtn = document.getElementById("linear-font-dec") as HTMLButtonElement | null;
+const linearFontIncBtn = document.getElementById("linear-font-inc") as HTMLButtonElement | null;
+const linearFontResetBtn = document.getElementById("linear-font-reset") as HTMLButtonElement | null;
 const linearResizeHandleEl = document.getElementById("linear-resize-handle") as HTMLElement | null;
 const linearTextEl = document.getElementById("linear-text") as HTMLTextAreaElement;
 const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | null;
@@ -64,7 +70,9 @@ const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID)
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
-document.documentElement.style.setProperty("--linear-text-font-size", `${VIEWER_TUNING.typography.nodeFont}px`);
+const LINEAR_TEXT_FONT_SCALE_MIN = 0.6;
+const LINEAR_TEXT_FONT_SCALE_MAX = 1.4;
+const LINEAR_TEXT_FONT_SCALE_STEP = 0.1;
 
 interface BcStateMessage {
   type: "STATE_UPDATE";
@@ -121,6 +129,8 @@ let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
 let cloudConflictPending = false;
 let linearTransformStatus: LinearTransformStatus | null = null;
+let linearTextFontScale = 1;
+let linearAdjustMenuOpen = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -143,6 +153,8 @@ let viewState: ViewState = {
   dragState: null,
   collapsedIds: new Set<string>(),
 };
+applyLinearTextFontScale(false);
+syncLinearAdjustMenuUi();
 
 function thinkingModeLabel(mode: ThinkingMode): string {
   switch (mode) {
@@ -286,6 +298,52 @@ function hasLinearNotes(notes: Record<string, string> | undefined): boolean {
   return Boolean(notes && Object.keys(notes).length > 0);
 }
 
+function normalizeLinearTextFontScale(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    return 1;
+  }
+  return Math.max(LINEAR_TEXT_FONT_SCALE_MIN, Math.min(LINEAR_TEXT_FONT_SCALE_MAX, n));
+}
+
+function applyLinearTextFontScale(syncToState = true): void {
+  const clamped = normalizeLinearTextFontScale(linearTextFontScale);
+  linearTextFontScale = clamped;
+  const px = Math.round(VIEWER_TUNING.typography.nodeFont * clamped);
+  document.documentElement.style.setProperty("--linear-text-font-size", `${px}px`);
+  if (syncToState && doc) {
+    doc.state.linearTextFontScale = clamped;
+  }
+}
+
+function hydrateLinearTextFontScaleFromDocState(): void {
+  linearTextFontScale = normalizeLinearTextFontScale(doc?.state.linearTextFontScale);
+  applyLinearTextFontScale(false);
+}
+
+function syncLinearAdjustMenuUi(): void {
+  if (linearAdjustControlsEl) {
+    linearAdjustControlsEl.hidden = !linearAdjustMenuOpen;
+  }
+  if (linearMenuToggleBtn) {
+    linearMenuToggleBtn.setAttribute("aria-expanded", linearAdjustMenuOpen ? "true" : "false");
+  }
+}
+
+function setLinearTextFontScale(nextScale: number, showStatus = true): void {
+  const normalized = normalizeLinearTextFontScale(nextScale);
+  if (Math.abs(normalized - linearTextFontScale) < 0.0001) {
+    return;
+  }
+  linearTextFontScale = normalized;
+  applyLinearTextFontScale(true);
+  scheduleAutosave();
+  if (showStatus) {
+    const px = Math.round(VIEWER_TUNING.typography.nodeFont * linearTextFontScale);
+    setStatus(`Linear font: ${px}px (${Math.round(linearTextFontScale * 100)}%).`);
+  }
+}
+
 function ensureDocShape(payload: unknown): SavedDoc {
   const p = payload as Record<string, unknown>;
   const candidate = (p && p["state"])
@@ -330,6 +388,7 @@ function ensureDocShape(payload: unknown): SavedDoc {
     };
   });
   candidate.state.linearNotesByScope = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
+  candidate.state.linearTextFontScale = normalizeLinearTextFontScale(candidate.state.linearTextFontScale);
   return candidate as SavedDoc;
 }
 
@@ -3521,6 +3580,7 @@ function loadPayload(payload: unknown): void {
   try {
     doc = ensureDocShape(payload);
     hydrateLinearNotesFromDocState();
+    hydrateLinearTextFontScaleFromDocState();
     undoStack = [];
     redoStack = [];
     linearDirty = false;
@@ -4113,6 +4173,27 @@ fileInput.addEventListener("change", (event: Event) => {
   reader.readAsText(file, "utf-8");
 });
 
+linearMenuToggleBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  linearAdjustMenuOpen = !linearAdjustMenuOpen;
+  syncLinearAdjustMenuUi();
+});
+
+linearFontDecBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  setLinearTextFontScale(linearTextFontScale - LINEAR_TEXT_FONT_SCALE_STEP);
+});
+
+linearFontIncBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  setLinearTextFontScale(linearTextFontScale + LINEAR_TEXT_FONT_SCALE_STEP);
+});
+
+linearFontResetBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  setLinearTextFontScale(1);
+});
+
 linearTextEl?.addEventListener("input", () => {
   if (!doc) {
     return;
@@ -4533,8 +4614,27 @@ function endPan(event: PointerEvent): void {
 board.addEventListener("pointerup", endPan);
 board.addEventListener("pointercancel", endPan);
 
+document.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (!linearAdjustMenuOpen) {
+    return;
+  }
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("#linear-menu")) {
+    return;
+  }
+  linearAdjustMenuOpen = false;
+  syncLinearAdjustMenuUi();
+});
+
 document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!doc) {
+    return;
+  }
+
+  if (linearAdjustMenuOpen && event.key === "Escape") {
+    linearAdjustMenuOpen = false;
+    syncLinearAdjustMenuUi();
+    event.preventDefault();
     return;
   }
 

@@ -74,6 +74,14 @@
             <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
           </div>
           <aside class="linear-panel" aria-label="Linear tree editor panel">
+            <div id="linear-menu" class="linear-menu">
+              <button id="linear-menu-toggle" class="linear-menu-toggle" type="button" aria-label="Linear settings" aria-expanded="false">☰</button>
+              <div id="linear-adjust-controls" class="linear-adjust-controls" hidden>
+                <button id="linear-font-dec" type="button" aria-label="Decrease linear text font">A-</button>
+                <button id="linear-font-inc" type="button" aria-label="Increase linear text font">A+</button>
+                <button id="linear-font-reset" type="button" aria-label="Reset linear text font">Reset</button>
+              </div>
+            </div>
             <textarea
               id="linear-text"
               class="linear-text"
