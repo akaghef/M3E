@@ -25,3 +25,5 @@ final/test-results/
 dev-docs/ideas/user_memo.md
 memo.md
 beta/tests/visual/viewer.visual.spec.js-snapshots/
+
+tmp_*.json
