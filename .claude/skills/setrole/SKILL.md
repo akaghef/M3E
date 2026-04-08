@@ -32,7 +32,7 @@ role を省略した場合は、現在のブランチ名から自動判定する
 | `data` | dev-data | model・controller・API・永続化 | `beta/src/node/`, `beta/src/shared/` |
 | `data2` | dev-data2 | data の並列ワーカー | `beta/src/node/`, `beta/src/shared/` |
 | `team` | dev-team | Collaboration・Cloud Sync | `beta/src/node/collab.ts`, `beta/src/node/cloud_sync.ts`, `beta/src/node/start_viewer.ts` (collab部分) |
-| `manage` | dev-manage | CI・運用・文書・統合 | `dev-docs/`, `.claude/`, `scripts/`, `AGENTS.md` |
+| `manage` | dev-beta | CI・運用・文書・統合 | `dev-docs/`, `.claude/`, `scripts/`, `AGENTS.md` |
 
 ## 実行フロー
 
@@ -41,12 +41,17 @@ role を省略した場合は、現在のブランチ名から自動判定する
 引数があればそのロールを採用。なければブランチ名からマッピング:
 
 ```
-dev-visual  → visual
-dev-data    → data
-dev-data2   → data2
-dev-team    → team
-dev-manage  → manage
+dev-visual            → visual
+dev-data              → data
+dev-data2             → data2
+dev-team              → team
+dev-beta              → manage
+worktree-agent-*      → (ブランチ名では判定不可。引数必須)
 ```
+
+**Worktree 環境での注意**: `isolation: worktree` で起動されたエージェントは
+`worktree-agent-*` ブランチにいる場合がある。この場合はロール引数が必須。
+引数なし + 不明ブランチ → エラー停止。
 
 マッピングできなければエラーで停止する（不明なブランチでは作業しない）。
 
@@ -57,7 +62,17 @@ git branch --show-current
 ```
 
 現在のブランチがロールの期待ブランチと一致することを確認する。
-一致しない場合はチェックアウトを提案する:
+
+**Worktree 環境**: `worktree-agent-*` ブランチにいる場合は、ロールの期待ブランチに
+チェックアウトし、`origin/dev-beta` で rebase する:
+
+```bash
+git fetch origin
+git checkout dev-visual 2>/dev/null || git checkout -b dev-visual origin/dev-beta
+git rebase origin/dev-beta
+```
+
+**通常環境**: 一致しない場合はチェックアウトを提案する:
 
 ```
 ⚠ 現在 dev-beta にいますが、ロール visual のブランチは dev-visual です。

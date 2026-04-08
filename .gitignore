@@ -20,6 +20,7 @@ final/test-results/
 
 .claude/*
 !.claude/skills/
+!.claude/agents/
 .agents/
 dev-docs/ideas/user_memo.md
 memo.md
