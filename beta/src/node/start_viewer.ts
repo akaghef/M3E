@@ -21,6 +21,9 @@ import {
   broadcastSseEvent,
   incrementDocVersion,
   getDocVersion,
+  mergeScopePush,
+  resetCollab,
+  setDocVersion,
   type CollabRole,
 } from "./collab";
 import type { AiSubagentRequest, AppState, LinearTransformRequest, SavedDoc } from "../shared/types";
@@ -618,6 +621,9 @@ function parseCollabRoute(
   const eventsMatch = rest.match(/^events\/([^/]+)$/);
   if (eventsMatch) return { action: "events", param: decodeURIComponent(eventsMatch[1]) };
 
+  const pushMatch = rest.match(/^push\/([^/]+)$/);
+  if (pushMatch) return { action: "push", param: decodeURIComponent(pushMatch[1]) };
+
   return null;
 }
 
@@ -703,6 +709,29 @@ async function handleCollabApi(
     case "events": {
       if (req.method !== "GET") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       addSseClient(entity.entityId, res);
+      return;
+    }
+    case "push": {
+      if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
+      if (!entity.capabilities.includes("write")) { sendJson(res, 403, { ok: false, error: "Write capability required." }); return; }
+      const docId = route.param;
+      if (!docId) { sendJson(res, 400, { ok: false, error: "Document ID required." }); return; }
+      try {
+        const rawBody = await readRequestBody(req);
+        const body = JSON.parse(rawBody) as { scopeId?: string; lockId?: string; baseVersion?: number; changes?: { nodes?: Record<string, unknown> } };
+        if (!body.scopeId || !body.lockId || body.baseVersion === undefined || !body.changes?.nodes) {
+          sendJson(res, 400, { ok: false, error: "scopeId, lockId, baseVersion, and changes.nodes are required." });
+          return;
+        }
+        const result = mergeScopePush(docId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, SQLITE_DB_PATH);
+        if (!result.ok && result.error === "Scope lock not held.") {
+          sendJson(res, 403, result);
+        } else {
+          sendJson(res, 200, result);
+        }
+      } catch (err) {
+        sendJson(res, 500, { ok: false, error: (err as Error).message || "Push failed." });
+      }
       return;
     }
     default:

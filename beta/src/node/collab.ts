@@ -2,6 +2,8 @@
 
 import http from "http";
 import crypto from "crypto";
+import { RapidMvpModel } from "./rapid_mvp";
+import type { TreeNode } from "../shared/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -281,6 +283,164 @@ export function incrementDocVersion(): number {
 
 export function setDocVersion(v: number): void {
   docVersion = v;
+}
+
+// ---------------------------------------------------------------------------
+// Scope helpers
+// ---------------------------------------------------------------------------
+
+export function findScopeRoot(nodes: Record<string, TreeNode>, nodeId: string, rootId: string): string {
+  let current = nodes[nodeId];
+  while (current) {
+    if (current.nodeType === "folder") return current.id;
+    if (current.parentId === null) return rootId;
+    current = nodes[current.parentId];
+  }
+  return rootId;
+}
+
+export function isInScope(nodes: Record<string, TreeNode>, nodeId: string, scopeId: string, rootId: string): boolean {
+  if (scopeId === rootId) return true;
+  let current = nodes[nodeId];
+  while (current) {
+    if (current.id === scopeId) return true;
+    if (current.parentId === null) return false;
+    current = nodes[current.parentId];
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Scope push / auto-merge
+// ---------------------------------------------------------------------------
+
+export interface MergePushResult {
+  ok: boolean;
+  version: number;
+  applied: string[];
+  rejected: string[];
+  conflicts: Array<{ nodeId: string; winner: string; loser: string }>;
+  error?: string;
+}
+
+export function mergeScopePush(
+  docId: string,
+  scopeId: string,
+  entity: CollabEntity,
+  lockId: string,
+  baseVersion: number,
+  changedNodes: Record<string, TreeNode | null>,
+  sqlitePath: string,
+): MergePushResult {
+  // Check scope lock
+  const lock = scopeLocks.get(scopeId);
+  if (!lock || lock.entityId !== entity.entityId || lock.lockId !== lockId) {
+    return { ok: false, version: docVersion, applied: [], rejected: [], conflicts: [], error: "Scope lock not held." };
+  }
+
+  // Load current doc
+  let model: RapidMvpModel;
+  try {
+    model = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
+  } catch (err) {
+    return { ok: false, version: docVersion, applied: [], rejected: [], conflicts: [], error: (err as Error).message };
+  }
+
+  const nodes = model.state.nodes;
+  const rootId = model.state.rootId;
+  const hasVersionConflict = baseVersion !== docVersion;
+
+  const applied: string[] = [];
+  const rejected: string[] = [];
+  const conflicts: Array<{ nodeId: string; winner: string; loser: string }> = [];
+
+  for (const [nodeId, change] of Object.entries(changedNodes)) {
+    // Scope check
+    if (change !== null) {
+      const existingNode = nodes[nodeId];
+      const checkId = existingNode ? nodeId : change.parentId ?? "";
+      if (checkId && !isInScope(nodes, checkId, scopeId, rootId)) {
+        rejected.push(nodeId);
+        continue;
+      }
+    } else {
+      if (nodes[nodeId] && !isInScope(nodes, nodeId, scopeId, rootId)) {
+        rejected.push(nodeId);
+        continue;
+      }
+    }
+
+    // Version conflict → priority resolution
+    if (hasVersionConflict && nodes[nodeId]) {
+      if (entity.priority < lock.priority) {
+        conflicts.push({ nodeId, winner: "current", loser: entity.entityId });
+        rejected.push(nodeId);
+        continue;
+      }
+    }
+
+    // Apply
+    if (change === null) {
+      if (nodes[nodeId] && nodeId !== rootId) {
+        const parent = nodes[nodeId].parentId;
+        if (parent && nodes[parent]) {
+          nodes[parent].children = nodes[parent].children.filter((c) => c !== nodeId);
+        }
+        const toDelete = [nodeId];
+        while (toDelete.length > 0) {
+          const cur = toDelete.pop()!;
+          if (nodes[cur]) {
+            toDelete.push(...nodes[cur].children);
+            delete nodes[cur];
+          }
+        }
+        applied.push(nodeId);
+      }
+    } else {
+      const existingNode = nodes[nodeId];
+      if (existingNode) {
+        nodes[nodeId] = { ...change, id: nodeId, parentId: existingNode.parentId, children: existingNode.children };
+      } else {
+        nodes[nodeId] = change;
+        const parentId = change.parentId;
+        if (parentId && nodes[parentId] && !nodes[parentId].children.includes(nodeId)) {
+          nodes[parentId].children.push(nodeId);
+        }
+      }
+      applied.push(nodeId);
+    }
+  }
+
+  if (applied.length === 0) {
+    return { ok: true, version: docVersion, applied, rejected, conflicts };
+  }
+
+  // Validate full tree
+  const validationModel = RapidMvpModel.fromJSON(model.state);
+  const errors = validationModel.validate();
+  if (errors.length > 0) {
+    return { ok: false, version: docVersion, applied: [], rejected: Object.keys(changedNodes), conflicts: [], error: `Validation failed: ${errors.join(" | ")}` };
+  }
+
+  // Save + version bump
+  validationModel.saveToSqlite(sqlitePath, docId);
+  const newVersion = ++docVersion;
+
+  broadcastSseEvent("state_update", { docId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
+
+  return { ok: true, version: newVersion, applied, rejected, conflicts };
+}
+
+// ---------------------------------------------------------------------------
+// Reset (for testing)
+// ---------------------------------------------------------------------------
+
+export function resetCollab(): void {
+  entities.clear();
+  tokenIndex.clear();
+  scopeLocks.clear();
+  sseClients.length = 0;
+  docVersion = 0;
 }
 
 // ---------------------------------------------------------------------------
