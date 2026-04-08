@@ -39,6 +39,12 @@ const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
 const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
+const linearMenuEl = document.getElementById("linear-menu") as HTMLElement | null;
+const linearMenuToggleBtn = document.getElementById("linear-menu-toggle") as HTMLButtonElement | null;
+const linearAdjustControlsEl = document.getElementById("linear-adjust-controls") as HTMLElement | null;
+const linearFontDecBtn = document.getElementById("linear-font-dec") as HTMLButtonElement | null;
+const linearFontIncBtn = document.getElementById("linear-font-inc") as HTMLButtonElement | null;
+const linearFontResetBtn = document.getElementById("linear-font-reset") as HTMLButtonElement | null;
 const linearResizeHandleEl = document.getElementById("linear-resize-handle") as HTMLElement | null;
 const linearTextEl = document.getElementById("linear-text") as HTMLTextAreaElement;
 const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | null;
@@ -64,6 +70,11 @@ const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID)
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
+const LINEAR_TEXT_FONT_SCALE_MIN = 0.6;
+const LINEAR_TEXT_FONT_SCALE_MAX = 1.4;
+const LINEAR_TEXT_FONT_SCALE_STEP = 0.1;
+const LINEAR_PANEL_WIDTH_MIN = 220;
+const LINEAR_PANEL_WIDTH_MAX = 2200;
 
 interface BcStateMessage {
   type: "STATE_UPDATE";
@@ -120,6 +131,9 @@ let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
 let cloudConflictPending = false;
 let linearTransformStatus: LinearTransformStatus | null = null;
+let linearTextFontScale = 1;
+let linearAdjustMenuOpen = false;
+let linearMenuVisible = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -142,6 +156,8 @@ let viewState: ViewState = {
   dragState: null,
   collapsedIds: new Set<string>(),
 };
+applyLinearTextFontScale(false);
+syncLinearAdjustMenuUi();
 
 function thinkingModeLabel(mode: ThinkingMode): string {
   switch (mode) {
@@ -192,6 +208,17 @@ function toggleMetaPanelVisibility(): void {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function isImeComposingEvent(event: KeyboardEvent): boolean {
+  if (event.isComposing) {
+    return true;
+  }
+  const legacy = event as KeyboardEvent & { keyCode?: number };
+  if (legacy.keyCode === 229) {
+    return true;
+  }
+  return event.key === "Process";
 }
 
 function updateCloudSyncUi(): void {
@@ -281,6 +308,98 @@ function syncLinearNotesToDocState(): void {
   doc.state.linearNotesByScope = { ...linearNotesByScope };
 }
 
+function hasLinearNotes(notes: Record<string, string> | undefined): boolean {
+  return Boolean(notes && Object.keys(notes).length > 0);
+}
+
+function normalizeLinearTextFontScale(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    return 1;
+  }
+  return Math.max(LINEAR_TEXT_FONT_SCALE_MIN, Math.min(LINEAR_TEXT_FONT_SCALE_MAX, n));
+}
+
+function applyLinearTextFontScale(syncToState = true): void {
+  const clamped = normalizeLinearTextFontScale(linearTextFontScale);
+  linearTextFontScale = clamped;
+  const px = Math.round(VIEWER_TUNING.typography.nodeFont * clamped);
+  document.documentElement.style.setProperty("--linear-text-font-size", `${px}px`);
+  if (syncToState && doc) {
+    doc.state.linearTextFontScale = clamped;
+  }
+}
+
+function hydrateLinearTextFontScaleFromDocState(): void {
+  linearTextFontScale = normalizeLinearTextFontScale(doc?.state.linearTextFontScale);
+  applyLinearTextFontScale(false);
+}
+
+function syncLinearAdjustMenuUi(): void {
+  if (linearPanelEl) {
+    linearPanelEl.classList.toggle("menu-visible", linearMenuVisible || linearAdjustMenuOpen);
+  }
+  if (linearAdjustControlsEl) {
+    linearAdjustControlsEl.hidden = !linearAdjustMenuOpen;
+  }
+  if (linearMenuToggleBtn) {
+    linearMenuToggleBtn.setAttribute("aria-expanded", linearAdjustMenuOpen ? "true" : "false");
+  }
+}
+
+function isMarkdownFilename(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
+function markdownToLinearText(markdown: string): string {
+  const lines = String(markdown || "").replaceAll("\r", "").split("\n");
+  const converted: string[] = [];
+  lines.forEach((rawLine) => {
+    const line = rawLine.replace(/\t/g, "  ").trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return;
+    }
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const depth = Math.max(0, heading[1]!.length - 1);
+      converted.push(`${"  ".repeat(depth)}${heading[2]!.trim()}`);
+      return;
+    }
+    const list = line.match(/^(\s*)(?:[-*+]|\d+\.)\s+(.+)$/);
+    if (list) {
+      const leadingSpaces = list[1]?.length ?? 0;
+      const depth = Math.floor(leadingSpaces / 2);
+      converted.push(`${"  ".repeat(depth)}${list[2]!.trim()}`);
+      return;
+    }
+    const quote = line.match(/^(\s*)>\s*(.+)$/);
+    if (quote) {
+      const leadingSpaces = quote[1]?.length ?? 0;
+      const depth = Math.floor(leadingSpaces / 2);
+      converted.push(`${"  ".repeat(depth)}${quote[2]!.trim()}`);
+      return;
+    }
+    converted.push(trimmed);
+  });
+  return converted.join("\n");
+}
+
+function setLinearTextFontScale(nextScale: number, showStatus = true): void {
+  const normalized = normalizeLinearTextFontScale(nextScale);
+  if (Math.abs(normalized - linearTextFontScale) < 0.0001) {
+    return;
+  }
+  linearTextFontScale = normalized;
+  applyLinearTextFontScale(true);
+  scheduleAutosave();
+  if (showStatus) {
+    const px = Math.round(VIEWER_TUNING.typography.nodeFont * linearTextFontScale);
+    setStatus(`Linear font: ${px}px (${Math.round(linearTextFontScale * 100)}%).`);
+  }
+}
+
 function ensureDocShape(payload: unknown): SavedDoc {
   const p = payload as Record<string, unknown>;
   const candidate = (p && p["state"])
@@ -325,6 +444,7 @@ function ensureDocShape(payload: unknown): SavedDoc {
     };
   });
   candidate.state.linearNotesByScope = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
+  candidate.state.linearTextFontScale = normalizeLinearTextFontScale(candidate.state.linearTextFontScale);
   return candidate as SavedDoc;
 }
 
@@ -1131,7 +1251,7 @@ function captureManualLinearPanelWidth(): void {
     return;
   }
   const canvasWidth = renderedWidth / viewState.zoom;
-  linearPanelCanvasWidth = Math.max(220, Math.min(1200, canvasWidth));
+  linearPanelCanvasWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, canvasWidth));
 }
 
 function syncInlineEditorPosition(): void {
@@ -2922,6 +3042,9 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): voi
   }
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (isImeComposingEvent(event)) {
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
       event.preventDefault();
       // Equivalent to Esc -> DownArrow -> Enter while editing.
@@ -3297,6 +3420,32 @@ async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
   }
 }
 
+async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
+  if (!doc || hasLinearNotes(sanitizeLinearNotesByScope(doc.state.linearNotesByScope))) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    if (response.status === 404 || !response.ok) {
+      return;
+    }
+    const payload = await response.json();
+    const candidate = ensureDocShape(payload);
+    const fallbackNotes = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
+    if (!hasLinearNotes(fallbackNotes)) {
+      return;
+    }
+    Object.keys(linearNotesByScope).forEach((scopeId) => {
+      delete linearNotesByScope[scopeId];
+    });
+    Object.assign(linearNotesByScope, fallbackNotes);
+    syncLinearNotesToDocState();
+    scheduleRender();
+  } catch {
+    // Fallback load is best-effort. Keep current document as-is when unavailable.
+  }
+}
+
 function scheduleAutosave(): void {
   if (!doc) {
     return;
@@ -3368,6 +3517,7 @@ async function initializeDocument(): Promise<void> {
   if (cloudSyncEnabled && cloudSyncExists) {
     const loadedFromCloud = await pullDocFromCloud(false);
     if (loadedFromCloud) {
+      await loadLinearNotesFromLocalDbFallback();
       return;
     }
   }
@@ -3501,6 +3651,7 @@ function loadPayload(payload: unknown): void {
   try {
     doc = ensureDocShape(payload);
     hydrateLinearNotesFromDocState();
+    hydrateLinearTextFontScaleFromDocState();
     undoStack = [];
     redoStack = [];
     linearDirty = false;
@@ -4081,6 +4232,19 @@ fileInput.addEventListener("change", (event: Event) => {
     try {
       const text = String(reader.result || "");
       const isMm = file.name.toLowerCase().endsWith(".mm");
+      const isMd = isMarkdownFilename(file.name);
+      if (isMd) {
+        if (!doc) {
+          loadPayload(createEmptyDoc());
+        }
+        const scopeRootId = currentLinearMemoScopeId();
+        linearNotesByScope[scopeRootId] = markdownToLinearText(text);
+        syncLinearNotesToDocState();
+        scheduleAutosave();
+        renderLinearPanel();
+        setStatus(`Imported .md file to Linear Text: ${file.name}`);
+        return;
+      }
       const payload = isMm ? parseMmText(text) : JSON.parse(text);
       loadPayload(payload);
       if (isMm) {
@@ -4091,6 +4255,38 @@ fileInput.addEventListener("change", (event: Event) => {
     }
   };
   reader.readAsText(file, "utf-8");
+});
+
+linearMenuToggleBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  linearMenuVisible = true;
+  linearAdjustMenuOpen = !linearAdjustMenuOpen;
+  syncLinearAdjustMenuUi();
+});
+
+linearFontDecBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  setLinearTextFontScale(linearTextFontScale - LINEAR_TEXT_FONT_SCALE_STEP);
+});
+
+linearFontIncBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  setLinearTextFontScale(linearTextFontScale + LINEAR_TEXT_FONT_SCALE_STEP);
+});
+
+linearFontResetBtn?.addEventListener("click", (event: MouseEvent) => {
+  event.preventDefault();
+  setLinearTextFontScale(1);
+});
+
+linearTextEl?.addEventListener("pointerdown", () => {
+  linearMenuVisible = true;
+  syncLinearAdjustMenuUi();
+});
+
+linearTextEl?.addEventListener("focus", () => {
+  linearMenuVisible = true;
+  syncLinearAdjustMenuUi();
 });
 
 linearTextEl?.addEventListener("input", () => {
@@ -4115,6 +4311,9 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!doc) {
     return;
   }
+  if (isImeComposingEvent(event)) {
+    return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
@@ -4122,14 +4321,6 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
     scheduleAutosave();
     setStatus("Linear memo saved in current scope.");
     return;
-  }
-  if (event.key === "Escape") {
-    event.preventDefault();
-    linearNotesByScope[currentLinearMemoScopeId()] = buildLinearFromScope().text;
-    syncLinearNotesToDocState();
-    scheduleAutosave();
-    renderLinearPanel();
-    setStatus("Linear memo reset to outline template.");
   }
 });
 
@@ -4160,7 +4351,7 @@ linearResizeHandleEl?.addEventListener("pointermove", (event: PointerEvent) => {
   const dx = event.clientX - linearResizeState.startClientX;
   const zoom = Math.max(0.0001, viewState.zoom);
   const nextWidth = linearResizeState.startCanvasWidth + dx / zoom;
-  linearPanelCanvasWidth = Math.max(220, Math.min(1200, nextWidth));
+  linearPanelCanvasWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, nextWidth));
   syncLinearPanelPosition();
 });
 
@@ -4513,8 +4704,29 @@ function endPan(event: PointerEvent): void {
 board.addEventListener("pointerup", endPan);
 board.addEventListener("pointercancel", endPan);
 
+document.addEventListener("pointerdown", (event: PointerEvent) => {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".linear-panel")) {
+    return;
+  }
+  linearMenuVisible = false;
+  linearAdjustMenuOpen = false;
+  syncLinearAdjustMenuUi();
+});
+
 document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!doc) {
+    return;
+  }
+  if (isImeComposingEvent(event)) {
+    return;
+  }
+
+  if (linearAdjustMenuOpen && event.key === "Escape") {
+    linearMenuVisible = false;
+    linearAdjustMenuOpen = false;
+    syncLinearAdjustMenuUi();
+    event.preventDefault();
     return;
   }
 

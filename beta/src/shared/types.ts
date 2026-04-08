@@ -37,6 +37,7 @@ export interface AppState {
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
   linearNotesByScope?: Record<string, string>;
+  linearTextFontScale?: number;
 }
 
 export interface SavedDoc {

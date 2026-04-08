@@ -216,6 +216,54 @@
         overflow: visible;
       }
 
+      .linear-menu {
+        position: absolute;
+        top: 10px;
+        right: 24px;
+        z-index: 4;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.12s ease;
+      }
+
+      .linear-panel.menu-visible .linear-menu {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .linear-menu-toggle {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid #d5d5d5;
+        background: rgba(255, 255, 255, 0.92);
+        color: #353535;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1;
+        padding: 0;
+      }
+
+      .linear-adjust-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px;
+        border: 1px solid #d8d8d8;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 8px 18px rgba(24, 24, 24, 0.12);
+      }
+
+      .linear-adjust-controls > button {
+        min-width: 52px;
+        padding: 5px 8px;
+      }
+
       .linear-text {
         width: 100%;
         flex: 1;
@@ -224,10 +272,10 @@
         border: 4px solid var(--accent);
         border-radius: 34px;
         background: #fff;
-        padding: 18px 20px;
+        padding: 56px 20px 18px;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 14px;
-        line-height: 1.45;
+        font-size: var(--linear-text-font-size, 44px);
+        line-height: 1.2;
         color: #222;
         box-shadow: 0 8px 18px rgba(24, 24, 24, 0.1);
         overflow: hidden;
