@@ -2,7 +2,7 @@
 
 - AssignedTo: codex1
 - AssignedAt: 2026-04-08T11:45:00
-- Branch: dev-beta-visual
+- Branch: dev-visual
 - Priority: P2
 - AssignedPC: any
 

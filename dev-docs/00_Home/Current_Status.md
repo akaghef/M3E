@@ -13,11 +13,12 @@
 - 役割分担:
   - 部下（codex1 / codex2）: 実装と daily 追記。`Current_Status.md` は read-only
   - 上司（claude）: 部下 daily を参照して `Current_Status.md` の status 更新と統合管理
-- リリース: main ブランチ、タグ `v260408-2` が最新
+- リリース: main ブランチ、タグ `v260408-3` が最新
+- データバージョン: v1（schema version 1）
 
 ## 統合フロー（強制）
 
-1. 部下は担当ブランチ（`dev-beta-visual` / `dev-beta-data`）へ push
+1. 部下は担当ブランチ（`dev-visual` / `dev-data`）へ push
 2. 上司が `dev-beta` へ merge
 3. 部下は次サイクル開始前に `origin/dev-beta` へ rebase
 4. rebase 未実施の stale ブランチでは作業再開しない

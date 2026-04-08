@@ -2,7 +2,7 @@
 
 - AssignedTo: codex2
 - AssignedAt: 2026-04-08T16:00:00
-- Branch: dev-beta-data
+- Branch: dev-data
 - Priority: P1
 - AssignedPC: any
 - Supersedes: handoff_cloud_sync_conflict_ui.md（旧 codex1 向け簡易UI案。本タスクで置換）

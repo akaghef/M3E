@@ -2,7 +2,7 @@
 
 - AssignedTo: {codex1 | codex2 | subagent | akaghef}
 - AssignedAt: {ISO 8601}
-- Branch: {dev-beta-visual | dev-beta-data | feature branch}
+- Branch: {dev-visual | dev-data | feature branch}
 - Priority: {P1-P5}
 - AssignedPC: {hostname | any}
 

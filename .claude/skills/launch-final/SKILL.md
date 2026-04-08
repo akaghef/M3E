@@ -240,13 +240,20 @@ git push origin "$TAG"
 タグ: {TAG} を作成します。push してよいですか？
 ```
 
-### 既存のタグ例
+### 9-3. バージョンレジストリ更新
 
-| タグ | 内容 |
-|------|------|
-| v260402 | 初回リリース |
-| v260402-2 | 同日2回目 |
-| v260403, v260403-2, v260403-3 | 4/3 の3回 |
+タグ付与後、`dev-docs/00_Home/Version_Registry.md` を更新する。
+data schema version とリリースタグの対応を記録する。
+
+```markdown
+| タグ | data schema | 主な変更 |
+|------|-------------|---------|
+| {TAG} | v{N} | {変更サマリー} |
+```
+
+data schema version は `beta/src/shared/types.ts` の `SavedDoc.version` で確認する。
+schema version が変わった場合は **必ず** migration script の有無を確認し、
+Step 10 のデータ移行案内を実施すること。
 
 ---
 

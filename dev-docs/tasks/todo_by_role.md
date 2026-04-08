@@ -31,7 +31,7 @@
 
 ---
 
-## codex1（dev-beta-visual: UI・レンダリング）
+## codex1（dev-visual: UI・レンダリング）
 
 | タスク | 優先度 | 内容 |
 |--------|--------|------|
@@ -45,7 +45,7 @@
 
 ---
 
-## codex2（dev-beta-data: model・controller）
+## codex2（dev-data: model・controller）
 
 | タスク | 優先度 | 内容 |
 |--------|--------|------|
