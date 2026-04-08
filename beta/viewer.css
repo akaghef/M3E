@@ -202,7 +202,8 @@
         position: absolute;
         top: 12px;
         left: 12px;
-        width: min(380px, 40vw);
+        width: 380px;
+        max-width: none;
         transform-origin: top left;
         z-index: 3;
         display: flex;
@@ -331,8 +332,8 @@
         }
 
         .linear-panel {
-          width: min(360px, 100%);
-          max-width: 100%;
+          width: 360px;
+          max-width: none;
         }
       }
 
