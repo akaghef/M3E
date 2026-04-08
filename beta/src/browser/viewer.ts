@@ -19,6 +19,8 @@ const jumpTargetBtn = document.getElementById("jump-target");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const aiGenerateTopicsBtn = document.getElementById("ai-generate-topics");
 const deleteNodeBtn = document.getElementById("delete-node");
+const markLinkBtn = document.getElementById("mark-link");
+const applyLinkBtn = document.getElementById("apply-link");
 const markReparentBtn = document.getElementById("mark-reparent");
 const applyReparentBtn = document.getElementById("apply-reparent");
 const importanceViewSelect = document.getElementById("importance-view") as HTMLSelectElement;
@@ -135,6 +137,7 @@ let viewState: ViewState = {
   cameraY: VIEWER_TUNING.pan.initialCameraY,
   panState: null,
   clipboardState: null,
+  linkSourceNodeId: "",
   reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
@@ -271,6 +274,25 @@ function ensureDocShape(payload: unknown): SavedDoc {
     node.targetSnapshotLabel = node.targetSnapshotLabel || undefined;
     node.isBroken = node.nodeType === "alias" ? Boolean(node.isBroken) : undefined;
   });
+  const rawLinks = candidate.state.links && typeof candidate.state.links === "object"
+    ? candidate.state.links
+    : {};
+  candidate.state.links = {};
+  Object.entries(rawLinks).forEach(([linkId, link]) => {
+    if (!link || typeof link !== "object") {
+      return;
+    }
+    const record = link as GraphLink;
+    candidate.state.links![linkId] = {
+      id: record.id || linkId,
+      sourceNodeId: String(record.sourceNodeId || ""),
+      targetNodeId: String(record.targetNodeId || ""),
+      relationType: record.relationType || undefined,
+      label: record.label || undefined,
+      direction: record.direction || "none",
+      style: record.style || "default",
+    };
+  });
   return candidate as SavedDoc;
 }
 
@@ -309,6 +331,39 @@ function textWidth(str: string, fontSize: number): number {
   return Math.max(80, normalized.length * fontSize * 0.62);
 }
 
+function splitLabelLines(text: string): string[] {
+  const lines = String(text || "").replaceAll("\r", "").split("\n");
+  return lines.length > 0 ? lines : [""];
+}
+
+function lineHeightForFont(fontSize: number): number {
+  return Math.ceil(fontSize * 1.2);
+}
+
+function multilineTextStartY(centerY: number, lineCount: number, fontSize: number, lineHeight: number): number {
+  const glyphHeight = Math.ceil(fontSize);
+  const blockHeight = (lineCount - 1) * lineHeight + glyphHeight;
+  const ascent = Math.ceil(fontSize * 0.8);
+  return centerY - blockHeight / 2 + ascent;
+}
+
+function multilineTspans(lines: string[], x: number, lineHeight: number): string {
+  return lines
+    .map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line || " ")}</tspan>`)
+    .join("");
+}
+
+function measureNodeLabel(text: string, fontSize: number): { w: number; h: number } {
+  const lines = splitLabelLines(text);
+  const maxLineWidth = lines.reduce((max, line) => Math.max(max, textWidth(line, fontSize)), 80);
+  const lineHeight = lineHeightForFont(fontSize);
+  const verticalPadding = 24;
+  return {
+    w: maxLineWidth + 20,
+    h: Math.max(VIEWER_TUNING.layout.leafHeight, lines.length * lineHeight + verticalPadding),
+  };
+}
+
 const LATEX_DISPLAY_RE = /^\$\$([\s\S]+)\$\$$/;
 const LATEX_INLINE_RE = /^\$([^$]+)\$$/;
 
@@ -326,18 +381,36 @@ function latexSource(text: string): { latex: string; displayMode: boolean } {
 }
 
 const latexMetricsCache = new Map<string, { w: number; h: number }>();
+const latexHtmlCache = new Map<string, string>();
 
 function measureLatex(text: string): { w: number; h: number } {
   if (latexMetricsCache.has(text)) return latexMetricsCache.get(text)!;
   const { latex, displayMode } = latexSource(text);
   const probe = document.createElement("div");
-  probe.style.cssText = "position:absolute;visibility:hidden;top:-9999px;left:-9999px";
+  probe.style.cssText = [
+    "position:absolute",
+    "visibility:hidden",
+    "top:-9999px",
+    "left:-9999px",
+    "display:inline-flex",
+    "align-items:center",
+    "padding:0 4px",
+    "box-sizing:border-box",
+    `font-size:${VIEWER_TUNING.typography.nodeFont}px`,
+    "line-height:1",
+    "white-space:nowrap",
+  ].join(";");
   document.body.appendChild(probe);
   try {
     katex.render(latex, probe, { displayMode, throwOnError: false });
+    const displayBlock = probe.querySelector(".katex-display") as HTMLElement | null;
+    if (displayBlock) {
+      displayBlock.style.margin = "0";
+    }
+    const rect = probe.getBoundingClientRect();
     const result = {
-      w: Math.max(80, probe.offsetWidth + 24),
-      h: Math.max(VIEWER_TUNING.layout.leafHeight, probe.offsetHeight + 16),
+      w: Math.max(80, Math.ceil(rect.width) + 8),
+      h: Math.max(VIEWER_TUNING.layout.leafHeight, Math.ceil(rect.height) + 12),
     };
     latexMetricsCache.set(text, result);
     return result;
@@ -800,6 +873,16 @@ function aliasBadge(node: TreeNode): string {
   return aliasAccess(node) === "write" ? "write" : "read";
 }
 
+function normalizeGraphLink(link: GraphLink): GraphLink {
+  return {
+    ...link,
+    relationType: link.relationType ?? undefined,
+    label: link.label ?? undefined,
+    direction: link.direction ?? "none",
+    style: link.style ?? "default",
+  };
+}
+
 function nodeBadge(node: TreeNode): string {
   if (isFolderNode(node) && node.id !== currentScopeRootId()) {
     return "scope";
@@ -915,10 +998,30 @@ function setVisualCheckStatus(lines: string | string[]): void {
   visualCheckEl.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines || "");
 }
 
+let _appliedCanvasWidth = "";
+let _appliedCanvasHeight = "";
+let _appliedCanvasTransform = "";
+let _linearPanelLayoutDirty = true;
+let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
+let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
+let _linearPanelCanvasHeight = 380;
+
 function applyZoom(): void {
-  canvas.style.width = `${contentWidth}px`;
-  canvas.style.height = `${contentHeight}px`;
-  canvas.style.transform = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  const widthValue = `${contentWidth}px`;
+  if (_appliedCanvasWidth !== widthValue) {
+    canvas.style.width = widthValue;
+    _appliedCanvasWidth = widthValue;
+  }
+  const heightValue = `${contentHeight}px`;
+  if (_appliedCanvasHeight !== heightValue) {
+    canvas.style.height = heightValue;
+    _appliedCanvasHeight = heightValue;
+  }
+  const transformValue = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  if (_appliedCanvasTransform !== transformValue) {
+    canvas.style.transform = transformValue;
+    _appliedCanvasTransform = transformValue;
+  }
   syncInlineEditorPosition();
   syncLinearPanelPosition();
 }
@@ -934,56 +1037,51 @@ function syncLinearPanelPosition(): void {
     linearPanelEl.style.removeProperty("width");
     linearPanelEl.style.removeProperty("height");
     linearPanelEl.style.removeProperty("transform");
+    _linearPanelLayoutDirty = true;
     return;
   }
 
-  const layout = lastLayout;
-
-  let deepestDepth = -1;
-  let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
-  let deepestTop = VIEWER_TUNING.layout.topPad;
-  visibleOrder.forEach((nodeId) => {
-    const p = layout.pos[nodeId];
-    if (!p) {
-      return;
+  if (_linearPanelLayoutDirty) {
+    const layout = lastLayout;
+    let deepestDepth = -1;
+    let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
+    let treeMinY = Number.POSITIVE_INFINITY;
+    let treeMaxY = Number.NEGATIVE_INFINITY;
+    visibleOrder.forEach((nodeId) => {
+      const p = layout.pos[nodeId];
+      if (!p) {
+        return;
+      }
+      treeMinY = Math.min(treeMinY, p.y - p.h / 2);
+      treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
+      if (p.depth > deepestDepth) {
+        deepestDepth = p.depth;
+        deepestRightEdge = p.x + p.w;
+        return;
+      }
+      if (p.depth === deepestDepth) {
+        deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
+      }
+    });
+    if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
+      treeMinY = VIEWER_TUNING.layout.topPad;
+      treeMaxY = treeMinY + 380;
     }
-    if (p.depth > deepestDepth) {
-      deepestDepth = p.depth;
-      deepestRightEdge = p.x + p.w;
-      deepestTop = p.y - p.h / 2;
-      return;
-    }
-    if (p.depth === deepestDepth) {
-      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
-      deepestTop = Math.min(deepestTop, p.y - p.h / 2);
-    }
-  });
+    const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
+    _linearPanelAnchorCanvasX = deepestRightEdge + depthOffset;
+    _linearPanelAnchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+    _linearPanelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
+    _linearPanelLayoutDirty = false;
+  }
 
   const panelCanvasWidth = linearPanelCanvasWidth;
-  let treeMinY = Number.POSITIVE_INFINITY;
-  let treeMaxY = Number.NEGATIVE_INFINITY;
-  visibleOrder.forEach((nodeId) => {
-    const p = layout.pos[nodeId];
-    if (!p) {
-      return;
-    }
-    treeMinY = Math.min(treeMinY, p.y - p.h / 2);
-    treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
-  });
-  if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
-    treeMinY = VIEWER_TUNING.layout.topPad;
-    treeMaxY = treeMinY + 380;
-  }
-  const panelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
-  const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
-  const anchorCanvasX = deepestRightEdge + depthOffset;
-  const anchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+  const panelCanvasHeight = _linearPanelCanvasHeight;
   const zoomScale = viewState.zoom;
   const panelWidth = panelCanvasWidth * zoomScale;
   const panelHeight = panelCanvasHeight * zoomScale;
 
-  const panelLeft = viewState.cameraX + anchorCanvasX * viewState.zoom;
-  const panelTop = viewState.cameraY + anchorCanvasY * viewState.zoom;
+  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
 
   linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
   linearPanelEl.style.top = `${Math.round(panelTop)}px`;
@@ -1643,18 +1741,16 @@ function buildLayout(state: AppState): LayoutResult {
     depthOf[nodeId] = depth;
 
     if (nodeId === state.rootId) {
+      const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
       metrics[nodeId] = {
-        w: Math.max(280, textWidth(node.text || "", VIEWER_TUNING.typography.rootFont) + 120),
-        h: VIEWER_TUNING.layout.rootHeight,
+        w: Math.max(280, rootLabelMeasure.w + 100),
+        h: Math.max(VIEWER_TUNING.layout.rootHeight, rootLabelMeasure.h + 8),
       };
     } else if (isLatexNode(node)) {
       const m = measureLatex(node.text);
       metrics[nodeId] = { w: m.w, h: m.h };
     } else {
-      metrics[nodeId] = {
-        w: textWidth(node.text || "", VIEWER_TUNING.typography.nodeFont) + 20,
-        h: 56,
-      };
+      metrics[nodeId] = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.nodeFont);
     }
 
     depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metrics[nodeId]!.w);
@@ -1683,8 +1779,9 @@ function buildLayout(state: AppState): LayoutResult {
 
     const children = visibleChildren(node);
     if (children.length === 0) {
-      subtreeHeightCache[nodeId] = VIEWER_TUNING.layout.leafHeight;
-      return VIEWER_TUNING.layout.leafHeight;
+      const leafSpan = Math.max(VIEWER_TUNING.layout.leafHeight, metrics[nodeId]!.h + 12);
+      subtreeHeightCache[nodeId] = leafSpan;
+      return leafSpan;
     }
 
     let sum = 0;
@@ -1756,6 +1853,30 @@ function updateDocumentTitle(): void {
   document.title = scopeLabel ? `${appTitle} - ${scopeLabel}` : appTitle;
 }
 
+let _renderScheduled = false;
+function scheduleRender(): void {
+  if (_renderScheduled) {
+    return;
+  }
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    render();
+  });
+}
+
+let _zoomApplyScheduled = false;
+function scheduleApplyZoom(): void {
+  if (_zoomApplyScheduled) {
+    return;
+  }
+  _zoomApplyScheduled = true;
+  requestAnimationFrame(() => {
+    _zoomApplyScheduled = false;
+    applyZoom();
+  });
+}
+
 function render(): void {
   if (!doc) {
     syncThinkingModeUi();
@@ -1779,6 +1900,7 @@ function render(): void {
   const layout = buildLayout(state);
   lastLayout = layout;
   visibleOrder = layout.order;
+  _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
 
   const pos = layout.pos;
@@ -1787,9 +1909,68 @@ function render(): void {
     VIEWER_TUNING.layout.minCanvasHeight,
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
+  let defs = "<defs>";
   let edges = "";
+  let graphLinks = "";
   let overlays = "";
   let nodes = "";
+
+  Object.values(state.links || {}).forEach((rawLink) => {
+    const link = normalizeGraphLink(rawLink);
+    const source = state.nodes[link.sourceNodeId];
+    const target = state.nodes[link.targetNodeId];
+    const sourcePos = pos[link.sourceNodeId];
+    const targetPos = pos[link.targetNodeId];
+    if (!source || !target || !sourcePos || !targetPos) {
+      return;
+    }
+    if (!isNodeInScope(source.id) || !isNodeInScope(target.id) || !isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id)) {
+      return;
+    }
+
+    const forward = targetPos.x >= sourcePos.x;
+    const sourceX = forward
+      ? sourcePos.x + sourcePos.w + VIEWER_TUNING.layout.edgeStartPad
+      : sourcePos.x - VIEWER_TUNING.layout.edgeEndPad;
+    const sourceY = sourcePos.y;
+    const targetX = forward
+      ? targetPos.x - VIEWER_TUNING.layout.edgeEndPad
+      : targetPos.x + targetPos.w + VIEWER_TUNING.layout.edgeStartPad;
+    const targetY = targetPos.y;
+    const curve = Math.max(48, Math.abs(targetX - sourceX) * 0.45);
+    const c1x = forward ? sourceX + curve : sourceX - curve;
+    const c1y = sourceY;
+    const c2x = forward ? targetX - curve : targetX + curve;
+    const c2y = targetY;
+    const controlX = (c1x + c2x) / 2;
+    const controlY = (sourceY + targetY) / 2;
+    const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
+    const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
+    const stroke = VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
+    const markerEndId = `graph-link-arrow-end-${link.id}`;
+    const markerStartId = `graph-link-arrow-start-${link.id}`;
+    const markerStart = link.direction === "backward" || link.direction === "both"
+      ? ` marker-start="url(#${markerStartId})"`
+      : "";
+    const markerEnd = link.direction === "forward" || link.direction === "both"
+      ? ` marker-end="url(#${markerEndId})"`
+      : "";
+    const label = (link.label || link.relationType || "").trim();
+
+    defs += `
+      <marker id="${markerEndId}" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+        <path d="M 0 1 L 10 6 L 0 11 z" fill="${stroke}" />
+      </marker>
+      <marker id="${markerStartId}" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
+      </marker>`;
+
+    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="M ${sourceX} ${sourceY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
+    if (label) {
+      graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 8}" text-anchor="middle">${escapeXml(label)}</text>`;
+    }
+  });
+  defs += "</defs>";
 
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
@@ -1837,6 +2018,9 @@ function render(): void {
     if (viewState.reparentSourceIds.has(nodeId)) {
       classNames.push("reparent-source");
     }
+    if (viewState.linkSourceNodeId === nodeId) {
+      classNames.push("link-source");
+    }
     if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
       classNames.push("cut-pending");
     }
@@ -1853,16 +2037,20 @@ function render(): void {
     nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="12" />`;
 
     if (nodeId === displayRootId) {
-      const label = escapeXml(uiLabel(node) || "(empty)");
+      const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
+      const rootLineHeight = lineHeightForFont(VIEWER_TUNING.typography.rootFont);
+      const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, VIEWER_TUNING.typography.rootFont, rootLineHeight);
+      const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
       const w = p.w;
       const h = p.h;
       const rx = 60;
       const x = p.x;
       const y = p.y - h / 2;
       nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle">${rootTspans}</text>`;
     } else {
-      const label = escapeXml(uiLabel(node) || "(empty)");
+      const rawLabel = uiLabel(node) || "(empty)";
+      const labelLines = splitLabelLines(rawLabel);
       const labelClasses = ["label-node"];
       if (viewState.selectedNodeIds.has(nodeId)) {
         labelClasses.push("selected");
@@ -1875,20 +2063,28 @@ function render(): void {
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
       }
       if (isFolderNode(node)) {
+        const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
         const folderFrameX = p.x - 14;
-        const folderFrameY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + 6;
+        const folderFrameY = p.y - frameH / 2;
         const folderFrameW = p.w + 28;
-        const folderFrameH = VIEWER_TUNING.layout.nodeHitHeight - 12;
+        const folderFrameH = frameH;
         nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
       }
       if (isLatexNode(node)) {
-        const { latex, displayMode } = latexSource(node.text);
-        const htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+        let htmlStr = latexHtmlCache.get(node.text);
+        if (!htmlStr) {
+          const { latex, displayMode } = latexSource(node.text);
+          htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+          latexHtmlCache.set(node.text, htmlStr);
+        }
         const foH = p.h;
         const foY = p.y - foH / 2;
         nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
       } else {
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+        const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
+        const startY = multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
+        const tspans = multilineTspans(labelLines, p.x, lineHeight);
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start">${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
@@ -1930,13 +2126,17 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${edges}${overlays}${nodes}`;
+  (canvas as Element).innerHTML = `${defs}${edges}${graphLinks}${overlays}${nodes}`;
   applyZoom();
 
   const version = doc.version ?? "n/a";
   const savedAt = doc.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
+  const linkCount = Object.values(state.links || {}).filter((link) => pos[link.sourceNodeId] && pos[link.targetNodeId]).length;
   const selected = state.nodes[viewState.selectedNodeId];
+  const linkSourceLabel = viewState.linkSourceNodeId && state.nodes[viewState.linkSourceNodeId]
+    ? uiLabel(state.nodes[viewState.linkSourceNodeId]!)
+    : "none";
   const moveNodes = Array.from(viewState.reparentSourceIds)
     .map((nodeId) => state.nodes[nodeId])
     .filter((node): node is TreeNode => Boolean(node));
@@ -1949,7 +2149,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
   updateDocumentTitle();
@@ -1965,6 +2165,10 @@ function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: 
   };
 }
 
+function interactionHalfHeight(nodePos: NodePosition): number {
+  return Math.max(VIEWER_TUNING.layout.nodeHitHeight, nodePos.h) / 2;
+}
+
 function getNodeHitBounds(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
   if (!doc || !lastLayout) {
     return null;
@@ -1976,11 +2180,12 @@ function getNodeHitBounds(nodeId: string): { left: number; right: number; top: n
   const displayRootId = currentScopeRootId();
   const left = nodeId === displayRootId ? p.x : p.x - 8;
   const width = nodeId === displayRootId ? p.w : p.w + 36;
+  const halfH = interactionHalfHeight(p);
   return {
     left,
     right: left + width,
-    top: p.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
-    bottom: p.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+    top: p.y - halfH,
+    bottom: p.y + halfH,
   };
 }
 
@@ -2069,7 +2274,7 @@ function getNextVisibleNodeTopAtDepth(nodeId: string, depth: number): number | n
     if (!nextPos || nextPos.depth !== depth) {
       continue;
     }
-    return nextPos.y - VIEWER_TUNING.layout.leafHeight / 2;
+    return nextPos.y - interactionHalfHeight(nextPos);
   }
   return null;
 }
@@ -2102,8 +2307,9 @@ function isInExplicitReparentZone(nodeId: string, x: number, y: number): boolean
   const horizontalInset = Math.min(48, Math.max(14, nodePos.w * 0.2));
   const left = nodePos.x + horizontalInset;
   const right = nodePos.x + nodePos.w - horizontalInset;
-  const topEdge = nodePos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
-  const bottomEdge = nodePos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+  const halfH = interactionHalfHeight(nodePos);
+  const topEdge = nodePos.y - halfH + DRAG_EDGE_BAND;
+  const bottomEdge = nodePos.y + halfH - DRAG_EDGE_BAND;
   return x >= left && x <= right && y >= topEdge && y <= bottomEdge;
 }
 
@@ -2133,8 +2339,8 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
         }
         return {
           id: childId,
-          top: p.y - VIEWER_TUNING.layout.leafHeight / 2,
-          bottom: p.y + VIEWER_TUNING.layout.leafHeight / 2,
+          top: hit.top,
+          bottom: hit.bottom,
           hitLeft: hit.left,
           hitRight: hit.right,
         };
@@ -2212,14 +2418,15 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
     const targetNode = doc?.state.nodes[targetNodeId];
     if (targetPos && targetNode?.parentId) {
       const targetIndex = getVisibleChildrenForDrop(targetNode.parentId, sourceId).indexOf(targetNodeId);
-      const topEdge = targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
-      const bottomEdge = targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+      const targetHalfH = interactionHalfHeight(targetPos);
+      const topEdge = targetPos.y - targetHalfH + DRAG_EDGE_BAND;
+      const bottomEdge = targetPos.y + targetHalfH - DRAG_EDGE_BAND;
       if (point.y < topEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
         return {
           kind: "reorder",
           parentId: targetNode.parentId,
           index: targetIndex,
-          lineY: targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
+          lineY: targetPos.y - targetHalfH,
         };
       }
       if (point.y > bottomEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
@@ -2227,7 +2434,7 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
           kind: "reorder",
           parentId: targetNode.parentId,
           index: targetIndex + 1,
-          lineY: targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+          lineY: targetPos.y + targetHalfH,
         };
       }
     }
@@ -2316,6 +2523,10 @@ function normalizeSelectionState(): void {
       ? { type: "cut", sourceIds: normalizedCutSourceIds }
       : null;
   }
+
+  if (viewState.linkSourceNodeId && !doc.state.nodes[viewState.linkSourceNodeId]) {
+    viewState.linkSourceNodeId = "";
+  }
 }
 
 function setSingleSelection(nodeId: string, renderNow = true): void {
@@ -2327,7 +2538,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
   if (renderNow) {
-    render();
+    scheduleRender();
   }
 }
 
@@ -2354,7 +2565,7 @@ function setRangeSelection(targetId: string): void {
   viewState.selectionAnchorId = anchorId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
   viewState.selectedNodeIds.add(targetId);
-  render();
+  scheduleRender();
 }
 
 function toggleNodeSelection(nodeId: string): void {
@@ -2362,20 +2573,20 @@ function toggleNodeSelection(nodeId: string): void {
   if (viewState.selectedNodeIds.has(nodeId)) {
     if (viewState.selectedNodeIds.size === 1) {
       viewState.selectedNodeId = nodeId;
-      render();
+      scheduleRender();
       return;
     }
     viewState.selectedNodeIds.delete(nodeId);
     if (viewState.selectedNodeId === nodeId) {
       viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
     }
-    render();
+    scheduleRender();
     return;
   }
 
   viewState.selectedNodeIds.add(nodeId);
   viewState.selectedNodeId = nodeId;
-  render();
+  scheduleRender();
 }
 
 function selectNode(nodeId: string): void {
@@ -2479,6 +2690,91 @@ function addSibling(): void {
   board.focus();
 }
 
+function selectedLinkableNode(): TreeNode | null {
+  if (!doc || !viewState.selectedNodeId) {
+    return null;
+  }
+  const node = doc.state.nodes[viewState.selectedNodeId];
+  if (!node || isAliasNode(node)) {
+    return null;
+  }
+  return node;
+}
+
+function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {
+  if (!doc) {
+    return null;
+  }
+  const links = Object.values(doc.state.links || {});
+  return links.find((link) => link.sourceNodeId === sourceNodeId && link.targetNodeId === targetNodeId) || null;
+}
+
+function markLinkSource(): void {
+  if (!doc) {
+    return;
+  }
+  const node = selectedLinkableNode();
+  if (!node) {
+    setStatus("Select a non-alias node to mark link source.", true);
+    return;
+  }
+  if (viewState.linkSourceNodeId === node.id) {
+    viewState.linkSourceNodeId = "";
+    setStatus("Link source mark cleared.");
+    scheduleRender();
+    return;
+  }
+  viewState.linkSourceNodeId = node.id;
+  setStatus(`Marked link source: ${uiLabel(node)}`);
+  scheduleRender();
+}
+
+function applyMarkedLink(): void {
+  if (!doc) {
+    return;
+  }
+  const sourceId = viewState.linkSourceNodeId;
+  if (!sourceId) {
+    setStatus("No link source marked.", true);
+    return;
+  }
+  const source = doc.state.nodes[sourceId];
+  const target = selectedLinkableNode();
+  if (!source || !target) {
+    setStatus("Select a non-alias target node.", true);
+    return;
+  }
+  if (isAliasNode(source)) {
+    setStatus("Alias nodes cannot be graph link endpoints.", true);
+    return;
+  }
+  if (source.id === target.id) {
+    setStatus("Graph links cannot connect a node to itself.", true);
+    return;
+  }
+  if (findExistingGraphLink(source.id, target.id)) {
+    setStatus("That link already exists.");
+    return;
+  }
+
+  pushUndoSnapshot();
+  const linkId = newId();
+  if (!doc.state.links) {
+    doc.state.links = {};
+  }
+  doc.state.links[linkId] = normalizeGraphLink({
+    id: linkId,
+    sourceNodeId: source.id,
+    targetNodeId: target.id,
+    direction: "forward",
+    style: "default",
+  });
+  viewState.linkSourceNodeId = "";
+  touchDocument();
+  setStatus(`Linked ${uiLabel(source)} -> ${uiLabel(target)}.`);
+  board.focus();
+}
+
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
   const next = String(nextRaw || "").trim();
@@ -2498,6 +2794,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       }
       pushUndoSnapshot();
       latexMetricsCache.delete(target.text);
+      latexHtmlCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
       touchDocument();
@@ -2517,6 +2814,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   }
   pushUndoSnapshot();
   latexMetricsCache.delete(node.text);
+  latexHtmlCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
   touchDocument();
@@ -2808,7 +3106,7 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
     if (showStatus) {
       setStatus("Saved locally.");
     }
-    render();
+    scheduleRender();
     return true;
   } catch (err) {
     if (showStatus) {
@@ -2886,7 +3184,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     if (showStatus) {
       setStatus(force ? "Cloud sync force-push completed." : "Cloud sync push completed.");
     }
-    render();
+    scheduleRender();
     return true;
   } catch (err) {
     if (showStatus) {
@@ -2984,7 +3282,7 @@ function initBroadcastSync(): void {
     }
     if (ev.data.type === "STATE_UPDATE") {
       doc.state = ev.data.state;
-      render();
+      scheduleRender();
     }
   };
   window.addEventListener("beforeunload", () => bc?.close());
@@ -3149,7 +3447,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   const anchorId = viewState.selectionAnchorId || viewState.selectedNodeId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
   viewState.selectedNodeIds.add(target);
-  render();
+  scheduleRender();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
@@ -3167,6 +3465,7 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeRootId = doc.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.clipboardState = null;
+    viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
@@ -3343,7 +3642,7 @@ function markReparentSource(): void {
   viewState.reparentSourceIds = new Set(viewState.selectedNodeIds);
   const roots = getMovableSelectionRoots(viewState.reparentSourceIds);
   setStatus(`Marked move nodes: ${roots.length}`);
-  render();
+  scheduleRender();
 }
 
 function sameIdSet(left: Set<string>, right: Set<string>): boolean {
@@ -3369,20 +3668,20 @@ function toggleReparentSource(): void {
   if (nextRoots.size === 0) {
     viewState.reparentSourceIds.clear();
     setStatus("No move node selected.", true);
-    render();
+    scheduleRender();
     return;
   }
 
   if (sameIdSet(currentRoots, nextRoots)) {
     viewState.reparentSourceIds.clear();
     setStatus("Move node mark cleared.");
-    render();
+    scheduleRender();
     return;
   }
 
   viewState.reparentSourceIds = nextSourceIds;
   setStatus(`Marked move nodes: ${nextRoots.size}`);
-  render();
+  scheduleRender();
 }
 
 function toggleHoldReparent(): void {
@@ -3476,7 +3775,7 @@ function selectAllVisibleInScope(): void {
   viewState.selectedNodeId = firstVisibleId;
   viewState.selectedNodeIds = new Set(visibleOrder);
   viewState.selectionAnchorId = firstVisibleId;
-  render();
+  scheduleRender();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
@@ -3528,7 +3827,7 @@ function copySelected(): void {
     snapshots,
   };
   void copyTextToSystemClipboard(roots.map((rootId) => uiLabel(getNode(rootId))).join("\n"));
-  render();
+  scheduleRender();
   setStatus(`Copied ${roots.length} node(s).`);
 }
 
@@ -3542,7 +3841,7 @@ function cutSelected(): void {
     type: "cut",
     sourceIds: new Set(roots),
   };
-  render();
+  scheduleRender();
   setStatus(`Cut pending: ${roots.length} node(s).`);
 }
 
@@ -3584,7 +3883,7 @@ function pasteClipboard(): void {
     .filter((nodeId) => getNode(nodeId).parentId !== null);
   if (cutRoots.length === 0) {
     viewState.clipboardState = null;
-    render();
+    scheduleRender();
     setStatus("No cut nodes available.", true);
     return;
   }
@@ -3612,7 +3911,7 @@ function clearCutClipboard(): boolean {
     return false;
   }
   viewState.clipboardState = null;
-  render();
+  scheduleRender();
   setStatus("Cut pending cleared.");
   return true;
 }
@@ -3864,7 +4163,7 @@ importanceViewSelect?.addEventListener("change", () => {
   const nextMode = importanceViewSelect.value as ImportanceViewMode;
   importanceViewMode = nextMode;
   linearDirty = false;
-  render();
+  scheduleRender();
   setStatus(`Importance view: ${nextMode}`);
 });
 
@@ -3901,6 +4200,16 @@ addAliasBtn?.addEventListener("click", () => {
 jumpTargetBtn?.addEventListener("click", () => {
   if (!doc) return;
   jumpToAliasTarget();
+});
+
+markLinkBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  markLinkSource();
+});
+
+applyLinkBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  applyMarkedLink();
 });
 
 toggleCollapseBtn?.addEventListener("click", () => {
@@ -3964,10 +4273,10 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
     event.preventDefault();
-    selectNode(collapseNodeId);
+    setSingleSelection(collapseNodeId, false);
     if (viewState.collapsedIds.has(collapseNodeId)) {
       viewState.collapsedIds.delete(collapseNodeId);
-      render();
+      scheduleRender();
       setStatus("Expanded collapsed branch.");
     }
     board.focus();
@@ -4006,7 +4315,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.dragState.dragged = true;
   viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
-  render();
+  scheduleRender();
 });
 
 function finishNodeDrag(event: PointerEvent): void {
@@ -4045,7 +4354,6 @@ function finishNodeDrag(event: PointerEvent): void {
         setSingleSelection(proposal.parentId, false);
         touchDocument();
         setStatus(`Moved ${movedCount} node(s).`);
-        render();
         board.focus();
         return;
       }
@@ -4055,7 +4363,7 @@ function finishNodeDrag(event: PointerEvent): void {
         : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
       if (applied) {
         setSingleSelection(sourceNodeId, false);
-        render();
+        scheduleRender();
         board.focus();
         return;
       }
@@ -4063,7 +4371,7 @@ function finishNodeDrag(event: PointerEvent): void {
   }
 
   setStatus("No valid drop target.", true);
-  render();
+  scheduleRender();
   board.focus();
 }
 
@@ -4089,17 +4397,23 @@ board.addEventListener("wheel", (event: WheelEvent) => {
     return;
   }
   event.preventDefault();
+  // Normalize deltas to pixels so zoom/pan feel identical across browsers and
+  // operating systems. deltaMode=0 (pixel) is left as-is — that is the Mac
+  // trackpad baseline everything else is scaled to match.
+  const deltaScale = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
+  const deltaX = event.deltaX * deltaScale;
+  const deltaY = event.deltaY * deltaScale;
   if (!event.ctrlKey && !event.metaKey) {
-    viewState.cameraX -= event.deltaX * VIEWER_TUNING.pan.wheelFactor;
-    viewState.cameraY -= event.deltaY * VIEWER_TUNING.pan.wheelFactor;
-    applyZoom();
+    viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
+    viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
+    scheduleApplyZoom();
     return;
   }
   const intensity = Math.min(
     VIEWER_TUNING.zoom.wheelIntensityCap,
-    Math.abs(event.deltaY) / VIEWER_TUNING.zoom.wheelIntensityDivisor
+    Math.abs(deltaY) / VIEWER_TUNING.zoom.wheelIntensityDivisor
   );
-  const factor = Math.exp(-Math.sign(event.deltaY) * intensity);
+  const factor = Math.exp(-Math.sign(deltaY) * intensity);
   setZoom(viewState.zoom * factor, event.clientX, event.clientY);
 }, { passive: false });
 
@@ -4131,7 +4445,7 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
   viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
-  applyZoom();
+  scheduleApplyZoom();
 });
 
 function endPan(event: PointerEvent): void {
@@ -4339,6 +4653,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
+    }
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    applyMarkedLink();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    if (!event.repeat) {
+      markLinkSource();
     }
     return;
   }

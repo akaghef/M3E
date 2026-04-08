@@ -28,6 +28,15 @@ async function getSelectedCount(page) {
   return Number(match[1]);
 }
 
+async function getLinkCount(page) {
+  const metaText = await page.locator("#meta").textContent();
+  const match = (metaText || "").match(/links:\s*(\d+)/);
+  if (!match) {
+    throw new Error(`Unable to parse link count from meta: ${metaText}`);
+  }
+  return Number(match[1]);
+}
+
 async function loadJsonDoc(page, doc) {
   const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
   const qs = `localDocId=${encodeURIComponent(isolatedDocId)}&cloudDocId=${encodeURIComponent(isolatedDocId)}`;
@@ -226,6 +235,55 @@ test("viewer multi reparent ignores root in marked sources", async ({ page }) =>
 
   await expect(page.locator("#status")).toContainText("Moved 2 node(s).");
   await expect(page.locator("#meta")).toContainText("selected: New Node");
+});
+
+// 目的: link source をマークして別ノードへ適用すると、graph link が作成され描画されることを確認する。
+test("viewer add graph link by toolbar flow", async ({ page }) => {
+  await loadAndStabilize(page, "#load-default");
+
+  const question = page.locator("text.label-node", { hasText: "Question" }).first();
+  const hypothesis = page.locator("text.label-node", { hasText: "Hypothesis v2" }).first();
+
+  await question.click({ force: true });
+  await page.click("#mark-link");
+  await expect(page.locator("#meta")).toContainText("link-source: Question");
+
+  await hypothesis.click({ force: true });
+  await page.click("#apply-link");
+
+  expect(await getLinkCount(page)).toBe(1);
+  await expect(page.locator("#status")).toContainText("Linked Question -> Hypothesis v2.");
+  await expect(page.locator("path.graph-link")).toHaveCount(1);
+});
+
+// 目的: 保存済み links を含む JSON を読み込んだとき、graph link が描画されることを確認する。
+test("viewer renders persisted graph link", async ({ page }) => {
+  const doc = {
+    version: 1,
+    savedAt: "2026-04-08T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["a", "b"], nodeType: "text", text: "Root", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        a: { id: "a", parentId: "root", children: [], nodeType: "text", text: "A", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        b: { id: "b", parentId: "root", children: [], nodeType: "text", text: "B", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+      },
+      links: {
+        link_1: {
+          id: "link_1",
+          sourceNodeId: "a",
+          targetNodeId: "b",
+          direction: "forward",
+          style: "default",
+        },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, doc);
+
+  expect(await getLinkCount(page)).toBe(1);
+  await expect(page.locator("path.graph-link[data-link-id='link_1']")).toHaveCount(1);
 });
 
 // 目的: Shift+ArrowUp/Down で可視順に選択が拡張されることを確認する。

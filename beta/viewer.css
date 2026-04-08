@@ -165,6 +165,10 @@
         pointer-events: auto;
       }
 
+      .meta-panel[hidden] {
+        display: none;
+      }
+
       .visual-check {
         display: none;
         padding: 8px 10px;
@@ -288,6 +292,35 @@
         fill: none;
         stroke-width: 4;
         stroke-linecap: round;
+        pointer-events: none;
+      }
+
+      .graph-link {
+        fill: none;
+        stroke-width: 3;
+        stroke-linecap: round;
+        opacity: 0.95;
+        pointer-events: none;
+      }
+
+      .graph-link.graph-link-soft {
+        stroke-width: 2.5;
+        opacity: 0.72;
+      }
+
+      .graph-link.graph-link-dashed {
+        stroke-dasharray: 10 7;
+      }
+
+      .graph-link.graph-link-emphasis {
+        stroke-width: 4.5;
+      }
+
+      .graph-link-label {
+        fill: #555;
+        font-size: 12px;
+        font-weight: 700;
+        pointer-events: none;
       }
 
       .root-box {
@@ -326,6 +359,12 @@
 
 .node-hit.reparent-source {
   stroke-dasharray: 8 5;
+}
+
+.node-hit.link-source {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: 5 4;
 }
 
 .node-hit.cut-pending {
@@ -492,6 +531,10 @@
         color: var(--ink);
         font-size: 44px;
         pointer-events: none;
+      }
+
+      .latex-node-content .katex-display {
+        margin: 0;
       }
 
       @media (max-width: 900px) {

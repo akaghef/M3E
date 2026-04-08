@@ -3935,17 +3935,23 @@ board.addEventListener("wheel", (event: WheelEvent) => {
     return;
   }
   event.preventDefault();
+  // Normalize deltas to pixels so zoom/pan feel identical across browsers and
+  // operating systems. deltaMode=0 (pixel) is left as-is — that is the Mac
+  // trackpad baseline everything else is scaled to match.
+  const deltaScale = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
+  const deltaX = event.deltaX * deltaScale;
+  const deltaY = event.deltaY * deltaScale;
   if (!event.ctrlKey && !event.metaKey) {
-    viewState.cameraX -= event.deltaX * VIEWER_TUNING.pan.wheelFactor;
-    viewState.cameraY -= event.deltaY * VIEWER_TUNING.pan.wheelFactor;
+    viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
+    viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
     applyZoom();
     return;
   }
   const intensity = Math.min(
     VIEWER_TUNING.zoom.wheelIntensityCap,
-    Math.abs(event.deltaY) / VIEWER_TUNING.zoom.wheelIntensityDivisor
+    Math.abs(deltaY) / VIEWER_TUNING.zoom.wheelIntensityDivisor
   );
-  const factor = Math.exp(-Math.sign(event.deltaY) * intensity);
+  const factor = Math.exp(-Math.sign(deltaY) * intensity);
   setZoom(viewState.zoom * factor, event.clientX, event.clientY);
 }, { passive: false });
 
