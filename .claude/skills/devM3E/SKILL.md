@@ -140,9 +140,15 @@ npx playwright test
 以下4条件を**すべて**満たして初めて「完了」:
 
 1. **コミット済み** — 変更がgit commitされている
-2. **daily更新済み** — `dev-docs/daily/YYMMDD.md` に作業内容が追記されている
-3. **status更新済み** — `dev-docs/00_Home/Current_Status.md` が必要に応じて更新されている
-4. **マップ反映済み** — M3E サーバー起動中なら `dev M3E/status YYMMDD` を REST API で更新する
+2. **日記追記済み** — M3E ドキュメント `daily-YYMMDD` に作業ログを追記（+ md バックアップ）
+3. **マップタスク更新済み** — `dev M3E/tasks` の doing/ready/done-today を REST API で更新
+4. **status更新済み** — `Current_Status.md` を必要に応じて更新（統合ロールのみ）
+
+### 記録の二層構造
+
+| 永続ログ（作業日記） | M3E ドキュメント `daily-YYMMDD` | 追記のみ、改変しない |
+| 揮発タスク | マップ `dev M3E/tasks` のノード | doing/ready/blocked を自由に書き換え |
+| バックログ | `Todo_Pool.md` | pooled/blocked のみ。doing/ready はマップで管理 |
 
 ### doc-updaterエージェントの責務
 
