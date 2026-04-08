@@ -281,6 +281,10 @@ function syncLinearNotesToDocState(): void {
   doc.state.linearNotesByScope = { ...linearNotesByScope };
 }
 
+function hasLinearNotes(notes: Record<string, string> | undefined): boolean {
+  return Boolean(notes && Object.keys(notes).length > 0);
+}
+
 function ensureDocShape(payload: unknown): SavedDoc {
   const p = payload as Record<string, unknown>;
   const candidate = (p && p["state"])
@@ -3296,6 +3300,32 @@ async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
   }
 }
 
+async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
+  if (!doc || hasLinearNotes(sanitizeLinearNotesByScope(doc.state.linearNotesByScope))) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    if (response.status === 404 || !response.ok) {
+      return;
+    }
+    const payload = await response.json();
+    const candidate = ensureDocShape(payload);
+    const fallbackNotes = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
+    if (!hasLinearNotes(fallbackNotes)) {
+      return;
+    }
+    Object.keys(linearNotesByScope).forEach((scopeId) => {
+      delete linearNotesByScope[scopeId];
+    });
+    Object.assign(linearNotesByScope, fallbackNotes);
+    syncLinearNotesToDocState();
+    scheduleRender();
+  } catch {
+    // Fallback load is best-effort. Keep current document as-is when unavailable.
+  }
+}
+
 function scheduleAutosave(): void {
   if (!doc) {
     return;
@@ -3356,6 +3386,7 @@ async function initializeDocument(): Promise<void> {
   if (cloudSyncEnabled && cloudSyncExists) {
     const loadedFromCloud = await pullDocFromCloud(false);
     if (loadedFromCloud) {
+      await loadLinearNotesFromLocalDbFallback();
       return;
     }
   }
