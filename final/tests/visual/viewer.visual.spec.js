@@ -28,6 +28,29 @@ async function getSelectedCount(page) {
   return Number(match[1]);
 }
 
+async function getLinkCount(page) {
+  const metaText = await page.locator("#meta").textContent();
+  const match = (metaText || "").match(/links:\s*(\d+)/);
+  if (!match) {
+    throw new Error(`Unable to parse link count from meta: ${metaText}`);
+  }
+  return Number(match[1]);
+}
+
+async function loadJsonDoc(page, doc) {
+  const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const qs = `localDocId=${encodeURIComponent(isolatedDocId)}&cloudDocId=${encodeURIComponent(isolatedDocId)}`;
+  await page.goto(`/viewer.html?${qs}`);
+  await page.setInputFiles("#file-input", {
+    name: "reorder-regression.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(doc), "utf8"),
+  });
+  await expect(page.locator("#meta")).toContainText("nodes:");
+  await page.click("#fit-all");
+  await page.waitForTimeout(300);
+}
+
 async function dragNodeLabel(page, sourceText, targetText) {
   const source = page.locator("text.label-node", { hasText: sourceText }).first();
   const target = page.locator("text.label-root", { hasText: targetText }).first();
@@ -214,6 +237,55 @@ test("viewer multi reparent ignores root in marked sources", async ({ page }) =>
   await expect(page.locator("#meta")).toContainText("selected: New Node");
 });
 
+// 目的: link source をマークして別ノードへ適用すると、graph link が作成され描画されることを確認する。
+test("viewer add graph link by toolbar flow", async ({ page }) => {
+  await loadAndStabilize(page, "#load-default");
+
+  const question = page.locator("text.label-node", { hasText: "Question" }).first();
+  const hypothesis = page.locator("text.label-node", { hasText: "Hypothesis v2" }).first();
+
+  await question.click({ force: true });
+  await page.click("#mark-link");
+  await expect(page.locator("#meta")).toContainText("link-source: Question");
+
+  await hypothesis.click({ force: true });
+  await page.click("#apply-link");
+
+  expect(await getLinkCount(page)).toBe(1);
+  await expect(page.locator("#status")).toContainText("Linked Question -> Hypothesis v2.");
+  await expect(page.locator("path.graph-link")).toHaveCount(1);
+});
+
+// 目的: 保存済み links を含む JSON を読み込んだとき、graph link が描画されることを確認する。
+test("viewer renders persisted graph link", async ({ page }) => {
+  const doc = {
+    version: 1,
+    savedAt: "2026-04-08T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["a", "b"], nodeType: "text", text: "Root", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        a: { id: "a", parentId: "root", children: [], nodeType: "text", text: "A", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        b: { id: "b", parentId: "root", children: [], nodeType: "text", text: "B", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+      },
+      links: {
+        link_1: {
+          id: "link_1",
+          sourceNodeId: "a",
+          targetNodeId: "b",
+          direction: "forward",
+          style: "default",
+        },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, doc);
+
+  expect(await getLinkCount(page)).toBe(1);
+  await expect(page.locator("path.graph-link[data-link-id='link_1']")).toHaveCount(1);
+});
+
 // 目的: Shift+ArrowUp/Down で可視順に選択が拡張されることを確認する。
 test("viewer shift arrow expands selection", async ({ page }) => {
   await loadAndStabilize(page, "#load-default");
@@ -228,4 +300,81 @@ test("viewer shift arrow expands selection", async ({ page }) => {
   await page.keyboard.press("Shift+ArrowDown");
   const selectedAfterTwoSteps = await getSelectedCount(page);
   expect(selectedAfterTwoSteps).toBeGreaterThan(selectedAfterOneStep);
+});
+
+// 目的: 子ノードを兄弟の上側レーンへ移動したとき、親ノード外では reparent せず同一親内 reorder を優先する。
+test("viewer drag reorder above sibling keeps same parent", async ({ page }) => {
+  const doc = {
+    version: 1,
+    savedAt: "2026-04-07T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["p1", "p2"], nodeType: "text", text: "おばあさん", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        p1: { id: "p1", parentId: "root", children: ["c1_1", "c1_2", "c1_3"], nodeType: "text", text: "P1", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        c1_1: { id: "c1_1", parentId: "p1", children: [], nodeType: "text", text: "C1-1", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        c1_2: { id: "c1_2", parentId: "p1", children: [], nodeType: "text", text: "C1-2", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        c1_3: { id: "c1_3", parentId: "p1", children: [], nodeType: "text", text: "C1-3", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        p2: { id: "p2", parentId: "root", children: ["c2_1", "c2_2", "c2_3"], nodeType: "text", text: "P2", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        c2_1: { id: "c2_1", parentId: "p2", children: [], nodeType: "text", text: "C2-1", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        c2_2: { id: "c2_2", parentId: "p2", children: [], nodeType: "text", text: "C2-2", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        c2_3: { id: "c2_3", parentId: "p2", children: [], nodeType: "text", text: "C2-3", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, doc);
+
+  const source = page.locator("text.label-node", { hasText: "C2-2" }).first();
+  const target = page.locator("text.label-node", { hasText: "C2-1" }).first();
+
+  await expect(source).toBeVisible();
+  await expect(target).toBeVisible();
+
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) {
+    throw new Error("Failed to get source/target bounds for reorder regression.");
+  }
+
+  const sourceX = sourceBox.x + sourceBox.width / 2;
+  const sourceY = sourceBox.y + sourceBox.height / 2;
+  const targetX = targetBox.x - 24;
+  const targetY = targetBox.y + 4;
+
+  await page.mouse.move(sourceX, sourceY);
+  await page.mouse.down();
+  await page.mouse.move(targetX, targetY, { steps: 12 });
+  await page.mouse.up();
+
+  await expect(page.locator("#status")).toContainText("Reordered \"C2-2\" in \"P2\".");
+  await expect(page.locator("#meta")).toContainText("selected: C2-2");
+});
+
+// 目的: LaTeX ノードが正しく描画されること、また部分一致は plain text のままであることを視覚的に確認する。
+test("latex rendering visual baseline", async ({ page }) => {
+  const doc = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["n1", "n2", "n3", "n4"], text: "LaTeX test", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n1:   { id: "n1",   parentId: "root", children: [], text: "$a^2$",                  collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n2:   { id: "n2",   parentId: "root", children: [], text: "$$b^2$$",                collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n3:   { id: "n3",   parentId: "root", children: [], text: "not accepted $c^3$",     collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        n4:   { id: "n4",   parentId: "root", children: [], text: "$d^3$ not accepted",     collapsed: false, details: "", note: "", attributes: {}, link: "" },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, doc);
+
+  // n1 and n2 are rendered as LaTeX (foreignObject), n3 and n4 stay as plain text labels.
+  await expect(page.locator("foreignObject[data-node-id='n1']")).toBeVisible();
+  await expect(page.locator("foreignObject[data-node-id='n2']")).toBeVisible();
+  await expect(page.locator("text.label-node[data-node-id='n3']")).toBeVisible();
+  await expect(page.locator("text.label-node[data-node-id='n4']")).toBeVisible();
+
+  await expect(page.locator("#board")).toHaveScreenshot("latex-rendering.png");
 });

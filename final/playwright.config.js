@@ -1,6 +1,6 @@
 // @ts-check
 const { defineConfig, devices } = require("@playwright/test");
-const PORT = process.env.M3E_PORT || "38482";
+const PORT = process.env.M3E_PORT || "4173";
 
 module.exports = defineConfig({
   testDir: "./tests/visual",

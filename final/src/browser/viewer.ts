@@ -19,6 +19,8 @@ const jumpTargetBtn = document.getElementById("jump-target");
 const toggleCollapseBtn = document.getElementById("toggle-collapse");
 const aiGenerateTopicsBtn = document.getElementById("ai-generate-topics");
 const deleteNodeBtn = document.getElementById("delete-node");
+const markLinkBtn = document.getElementById("mark-link");
+const applyLinkBtn = document.getElementById("apply-link");
 const markReparentBtn = document.getElementById("mark-reparent");
 const applyReparentBtn = document.getElementById("apply-reparent");
 const importanceViewSelect = document.getElementById("importance-view") as HTMLSelectElement;
@@ -61,6 +63,15 @@ const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main")
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
+const TAB_ID = crypto.randomUUID();
+
+interface BcStateMessage {
+  type: "STATE_UPDATE";
+  fromTabId: string;
+  state: AppState;
+}
+
+let bc: BroadcastChannel | null = null;
 
 interface UndoSnapshot {
   state: AppState;
@@ -126,6 +137,7 @@ let viewState: ViewState = {
   cameraY: VIEWER_TUNING.pan.initialCameraY,
   panState: null,
   clipboardState: null,
+  linkSourceNodeId: "",
   reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
@@ -262,6 +274,25 @@ function ensureDocShape(payload: unknown): SavedDoc {
     node.targetSnapshotLabel = node.targetSnapshotLabel || undefined;
     node.isBroken = node.nodeType === "alias" ? Boolean(node.isBroken) : undefined;
   });
+  const rawLinks = candidate.state.links && typeof candidate.state.links === "object"
+    ? candidate.state.links
+    : {};
+  candidate.state.links = {};
+  Object.entries(rawLinks).forEach(([linkId, link]) => {
+    if (!link || typeof link !== "object") {
+      return;
+    }
+    const record = link as GraphLink;
+    candidate.state.links![linkId] = {
+      id: record.id || linkId,
+      sourceNodeId: String(record.sourceNodeId || ""),
+      targetNodeId: String(record.targetNodeId || ""),
+      relationType: record.relationType || undefined,
+      label: record.label || undefined,
+      direction: record.direction || "none",
+      style: record.style || "default",
+    };
+  });
   return candidate as SavedDoc;
 }
 
@@ -278,8 +309,118 @@ function escapeXml(text: string): string {
     .replaceAll("'", "&#039;");
 }
 
+const TEXT_MEASURE_FONT_FAMILY = "\"Segoe UI\", \"Yu Gothic UI\", sans-serif";
+let textMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+function getTextMeasureContext(): CanvasRenderingContext2D | null {
+  if (textMeasureContext !== undefined) {
+    return textMeasureContext;
+  }
+  const measureCanvas = document.createElement("canvas");
+  textMeasureContext = measureCanvas.getContext("2d");
+  return textMeasureContext;
+}
+
 function textWidth(str: string, fontSize: number): number {
-  return Math.max(80, String(str || "").length * fontSize * 0.56);
+  const normalized = String(str || "");
+  const measureContext = getTextMeasureContext();
+  if (measureContext) {
+    measureContext.font = `${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
+    return Math.max(80, Math.ceil(measureContext.measureText(normalized).width));
+  }
+  return Math.max(80, normalized.length * fontSize * 0.62);
+}
+
+function splitLabelLines(text: string): string[] {
+  const lines = String(text || "").replaceAll("\r", "").split("\n");
+  return lines.length > 0 ? lines : [""];
+}
+
+function lineHeightForFont(fontSize: number): number {
+  return Math.ceil(fontSize * 1.2);
+}
+
+function multilineTextStartY(centerY: number, lineCount: number, fontSize: number, lineHeight: number): number {
+  const glyphHeight = Math.ceil(fontSize);
+  const blockHeight = (lineCount - 1) * lineHeight + glyphHeight;
+  const ascent = Math.ceil(fontSize * 0.8);
+  return centerY - blockHeight / 2 + ascent;
+}
+
+function multilineTspans(lines: string[], x: number, lineHeight: number): string {
+  return lines
+    .map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line || " ")}</tspan>`)
+    .join("");
+}
+
+function measureNodeLabel(text: string, fontSize: number): { w: number; h: number } {
+  const lines = splitLabelLines(text);
+  const maxLineWidth = lines.reduce((max, line) => Math.max(max, textWidth(line, fontSize)), 80);
+  const lineHeight = lineHeightForFont(fontSize);
+  const verticalPadding = 24;
+  return {
+    w: maxLineWidth + 20,
+    h: Math.max(VIEWER_TUNING.layout.leafHeight, lines.length * lineHeight + verticalPadding),
+  };
+}
+
+const LATEX_DISPLAY_RE = /^\$\$([\s\S]+)\$\$$/;
+const LATEX_INLINE_RE = /^\$([^$]+)\$$/;
+
+function isLatexNode(node: TreeNode): boolean {
+  const t = (node.text || "").trim();
+  return LATEX_DISPLAY_RE.test(t) || LATEX_INLINE_RE.test(t);
+}
+
+function latexSource(text: string): { latex: string; displayMode: boolean } {
+  const t = (text || "").trim();
+  const dm = LATEX_DISPLAY_RE.exec(t);
+  if (dm) return { latex: dm[1]!, displayMode: true };
+  const im = LATEX_INLINE_RE.exec(t);
+  return { latex: im ? im[1]! : t, displayMode: false };
+}
+
+const latexMetricsCache = new Map<string, { w: number; h: number }>();
+const latexHtmlCache = new Map<string, string>();
+
+function measureLatex(text: string): { w: number; h: number } {
+  if (latexMetricsCache.has(text)) return latexMetricsCache.get(text)!;
+  const { latex, displayMode } = latexSource(text);
+  const probe = document.createElement("div");
+  probe.style.cssText = [
+    "position:absolute",
+    "visibility:hidden",
+    "top:-9999px",
+    "left:-9999px",
+    "display:inline-flex",
+    "align-items:center",
+    "padding:0 4px",
+    "box-sizing:border-box",
+    `font-size:${VIEWER_TUNING.typography.nodeFont}px`,
+    "line-height:1",
+    "white-space:nowrap",
+  ].join(";");
+  document.body.appendChild(probe);
+  try {
+    katex.render(latex, probe, { displayMode, throwOnError: false });
+    const displayBlock = probe.querySelector(".katex-display") as HTMLElement | null;
+    if (displayBlock) {
+      displayBlock.style.margin = "0";
+    }
+    const rect = probe.getBoundingClientRect();
+    const result = {
+      w: Math.max(80, Math.ceil(rect.width) + 8),
+      h: Math.max(VIEWER_TUNING.layout.leafHeight, Math.ceil(rect.height) + 12),
+    };
+    latexMetricsCache.set(text, result);
+    return result;
+  } catch {
+    const fallback = { w: textWidth(text, VIEWER_TUNING.typography.nodeFont) + 20, h: 56 };
+    latexMetricsCache.set(text, fallback);
+    return fallback;
+  } finally {
+    probe.remove();
+  }
 }
 
 function richContentText(element: Element, type: string): string {
@@ -732,6 +873,16 @@ function aliasBadge(node: TreeNode): string {
   return aliasAccess(node) === "write" ? "write" : "read";
 }
 
+function normalizeGraphLink(link: GraphLink): GraphLink {
+  return {
+    ...link,
+    relationType: link.relationType ?? undefined,
+    label: link.label ?? undefined,
+    direction: link.direction ?? "none",
+    style: link.style ?? "default",
+  };
+}
+
 function nodeBadge(node: TreeNode): string {
   if (isFolderNode(node) && node.id !== currentScopeRootId()) {
     return "scope";
@@ -847,10 +998,30 @@ function setVisualCheckStatus(lines: string | string[]): void {
   visualCheckEl.textContent = Array.isArray(lines) ? lines.join("\n") : String(lines || "");
 }
 
+let _appliedCanvasWidth = "";
+let _appliedCanvasHeight = "";
+let _appliedCanvasTransform = "";
+let _linearPanelLayoutDirty = true;
+let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
+let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
+let _linearPanelCanvasHeight = 380;
+
 function applyZoom(): void {
-  canvas.style.width = `${contentWidth}px`;
-  canvas.style.height = `${contentHeight}px`;
-  canvas.style.transform = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  const widthValue = `${contentWidth}px`;
+  if (_appliedCanvasWidth !== widthValue) {
+    canvas.style.width = widthValue;
+    _appliedCanvasWidth = widthValue;
+  }
+  const heightValue = `${contentHeight}px`;
+  if (_appliedCanvasHeight !== heightValue) {
+    canvas.style.height = heightValue;
+    _appliedCanvasHeight = heightValue;
+  }
+  const transformValue = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  if (_appliedCanvasTransform !== transformValue) {
+    canvas.style.transform = transformValue;
+    _appliedCanvasTransform = transformValue;
+  }
   syncInlineEditorPosition();
   syncLinearPanelPosition();
 }
@@ -866,56 +1037,51 @@ function syncLinearPanelPosition(): void {
     linearPanelEl.style.removeProperty("width");
     linearPanelEl.style.removeProperty("height");
     linearPanelEl.style.removeProperty("transform");
+    _linearPanelLayoutDirty = true;
     return;
   }
 
-  const layout = lastLayout;
-
-  let deepestDepth = -1;
-  let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
-  let deepestTop = VIEWER_TUNING.layout.topPad;
-  visibleOrder.forEach((nodeId) => {
-    const p = layout.pos[nodeId];
-    if (!p) {
-      return;
+  if (_linearPanelLayoutDirty) {
+    const layout = lastLayout;
+    let deepestDepth = -1;
+    let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
+    let treeMinY = Number.POSITIVE_INFINITY;
+    let treeMaxY = Number.NEGATIVE_INFINITY;
+    visibleOrder.forEach((nodeId) => {
+      const p = layout.pos[nodeId];
+      if (!p) {
+        return;
+      }
+      treeMinY = Math.min(treeMinY, p.y - p.h / 2);
+      treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
+      if (p.depth > deepestDepth) {
+        deepestDepth = p.depth;
+        deepestRightEdge = p.x + p.w;
+        return;
+      }
+      if (p.depth === deepestDepth) {
+        deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
+      }
+    });
+    if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
+      treeMinY = VIEWER_TUNING.layout.topPad;
+      treeMaxY = treeMinY + 380;
     }
-    if (p.depth > deepestDepth) {
-      deepestDepth = p.depth;
-      deepestRightEdge = p.x + p.w;
-      deepestTop = p.y - p.h / 2;
-      return;
-    }
-    if (p.depth === deepestDepth) {
-      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
-      deepestTop = Math.min(deepestTop, p.y - p.h / 2);
-    }
-  });
+    const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
+    _linearPanelAnchorCanvasX = deepestRightEdge + depthOffset;
+    _linearPanelAnchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+    _linearPanelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
+    _linearPanelLayoutDirty = false;
+  }
 
   const panelCanvasWidth = linearPanelCanvasWidth;
-  let treeMinY = Number.POSITIVE_INFINITY;
-  let treeMaxY = Number.NEGATIVE_INFINITY;
-  visibleOrder.forEach((nodeId) => {
-    const p = layout.pos[nodeId];
-    if (!p) {
-      return;
-    }
-    treeMinY = Math.min(treeMinY, p.y - p.h / 2);
-    treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
-  });
-  if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
-    treeMinY = VIEWER_TUNING.layout.topPad;
-    treeMaxY = treeMinY + 380;
-  }
-  const panelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
-  const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
-  const anchorCanvasX = deepestRightEdge + depthOffset;
-  const anchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+  const panelCanvasHeight = _linearPanelCanvasHeight;
   const zoomScale = viewState.zoom;
   const panelWidth = panelCanvasWidth * zoomScale;
   const panelHeight = panelCanvasHeight * zoomScale;
 
-  const panelLeft = viewState.cameraX + anchorCanvasX * viewState.zoom;
-  const panelTop = viewState.cameraY + anchorCanvasY * viewState.zoom;
+  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
 
   linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
   linearPanelEl.style.top = `${Math.round(panelTop)}px`;
@@ -1575,15 +1741,16 @@ function buildLayout(state: AppState): LayoutResult {
     depthOf[nodeId] = depth;
 
     if (nodeId === state.rootId) {
+      const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
       metrics[nodeId] = {
-        w: Math.max(280, textWidth(node.text || "", VIEWER_TUNING.typography.rootFont) + 120),
-        h: VIEWER_TUNING.layout.rootHeight,
+        w: Math.max(280, rootLabelMeasure.w + 100),
+        h: Math.max(VIEWER_TUNING.layout.rootHeight, rootLabelMeasure.h + 8),
       };
+    } else if (isLatexNode(node)) {
+      const m = measureLatex(node.text);
+      metrics[nodeId] = { w: m.w, h: m.h };
     } else {
-      metrics[nodeId] = {
-        w: textWidth(node.text || "", VIEWER_TUNING.typography.nodeFont) + 20,
-        h: 56,
-      };
+      metrics[nodeId] = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.nodeFont);
     }
 
     depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metrics[nodeId]!.w);
@@ -1612,8 +1779,9 @@ function buildLayout(state: AppState): LayoutResult {
 
     const children = visibleChildren(node);
     if (children.length === 0) {
-      subtreeHeightCache[nodeId] = VIEWER_TUNING.layout.leafHeight;
-      return VIEWER_TUNING.layout.leafHeight;
+      const leafSpan = Math.max(VIEWER_TUNING.layout.leafHeight, metrics[nodeId]!.h + 12);
+      subtreeHeightCache[nodeId] = leafSpan;
+      return leafSpan;
     }
 
     let sum = 0;
@@ -1685,6 +1853,30 @@ function updateDocumentTitle(): void {
   document.title = scopeLabel ? `${appTitle} - ${scopeLabel}` : appTitle;
 }
 
+let _renderScheduled = false;
+function scheduleRender(): void {
+  if (_renderScheduled) {
+    return;
+  }
+  _renderScheduled = true;
+  requestAnimationFrame(() => {
+    _renderScheduled = false;
+    render();
+  });
+}
+
+let _zoomApplyScheduled = false;
+function scheduleApplyZoom(): void {
+  if (_zoomApplyScheduled) {
+    return;
+  }
+  _zoomApplyScheduled = true;
+  requestAnimationFrame(() => {
+    _zoomApplyScheduled = false;
+    applyZoom();
+  });
+}
+
 function render(): void {
   if (!doc) {
     syncThinkingModeUi();
@@ -1708,6 +1900,7 @@ function render(): void {
   const layout = buildLayout(state);
   lastLayout = layout;
   visibleOrder = layout.order;
+  _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
 
   const pos = layout.pos;
@@ -1716,9 +1909,68 @@ function render(): void {
     VIEWER_TUNING.layout.minCanvasHeight,
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
+  let defs = "<defs>";
   let edges = "";
+  let graphLinks = "";
   let overlays = "";
   let nodes = "";
+
+  Object.values(state.links || {}).forEach((rawLink) => {
+    const link = normalizeGraphLink(rawLink);
+    const source = state.nodes[link.sourceNodeId];
+    const target = state.nodes[link.targetNodeId];
+    const sourcePos = pos[link.sourceNodeId];
+    const targetPos = pos[link.targetNodeId];
+    if (!source || !target || !sourcePos || !targetPos) {
+      return;
+    }
+    if (!isNodeInScope(source.id) || !isNodeInScope(target.id) || !isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id)) {
+      return;
+    }
+
+    const forward = targetPos.x >= sourcePos.x;
+    const sourceX = forward
+      ? sourcePos.x + sourcePos.w + VIEWER_TUNING.layout.edgeStartPad
+      : sourcePos.x - VIEWER_TUNING.layout.edgeEndPad;
+    const sourceY = sourcePos.y;
+    const targetX = forward
+      ? targetPos.x - VIEWER_TUNING.layout.edgeEndPad
+      : targetPos.x + targetPos.w + VIEWER_TUNING.layout.edgeStartPad;
+    const targetY = targetPos.y;
+    const curve = Math.max(48, Math.abs(targetX - sourceX) * 0.45);
+    const c1x = forward ? sourceX + curve : sourceX - curve;
+    const c1y = sourceY;
+    const c2x = forward ? targetX - curve : targetX + curve;
+    const c2y = targetY;
+    const controlX = (c1x + c2x) / 2;
+    const controlY = (sourceY + targetY) / 2;
+    const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
+    const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
+    const stroke = VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
+    const markerEndId = `graph-link-arrow-end-${link.id}`;
+    const markerStartId = `graph-link-arrow-start-${link.id}`;
+    const markerStart = link.direction === "backward" || link.direction === "both"
+      ? ` marker-start="url(#${markerStartId})"`
+      : "";
+    const markerEnd = link.direction === "forward" || link.direction === "both"
+      ? ` marker-end="url(#${markerEndId})"`
+      : "";
+    const label = (link.label || link.relationType || "").trim();
+
+    defs += `
+      <marker id="${markerEndId}" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+        <path d="M 0 1 L 10 6 L 0 11 z" fill="${stroke}" />
+      </marker>
+      <marker id="${markerStartId}" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
+      </marker>`;
+
+    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="M ${sourceX} ${sourceY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
+    if (label) {
+      graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 8}" text-anchor="middle">${escapeXml(label)}</text>`;
+    }
+  });
+  defs += "</defs>";
 
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
@@ -1766,6 +2018,9 @@ function render(): void {
     if (viewState.reparentSourceIds.has(nodeId)) {
       classNames.push("reparent-source");
     }
+    if (viewState.linkSourceNodeId === nodeId) {
+      classNames.push("link-source");
+    }
     if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
       classNames.push("cut-pending");
     }
@@ -1776,21 +2031,26 @@ function render(): void {
       classNames.push("drag-source");
     }
     const hitX = nodeId === displayRootId ? p.x : p.x - 8;
-    const hitY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2;
+    const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
+    const hitY = p.y - hitH / 2;
     const hitW = nodeId === displayRootId ? p.w : p.w + 36;
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${VIEWER_TUNING.layout.nodeHitHeight}" rx="12" />`;
+    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="12" />`;
 
     if (nodeId === displayRootId) {
-      const label = escapeXml(uiLabel(node) || "(empty)");
+      const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
+      const rootLineHeight = lineHeightForFont(VIEWER_TUNING.typography.rootFont);
+      const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, VIEWER_TUNING.typography.rootFont, rootLineHeight);
+      const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
       const w = p.w;
       const h = p.h;
       const rx = 60;
       const x = p.x;
       const y = p.y - h / 2;
       nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle">${rootTspans}</text>`;
     } else {
-      const label = escapeXml(uiLabel(node) || "(empty)");
+      const rawLabel = uiLabel(node) || "(empty)";
+      const labelLines = splitLabelLines(rawLabel);
       const labelClasses = ["label-node"];
       if (viewState.selectedNodeIds.has(nodeId)) {
         labelClasses.push("selected");
@@ -1803,13 +2063,29 @@ function render(): void {
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
       }
       if (isFolderNode(node)) {
+        const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
         const folderFrameX = p.x - 14;
-        const folderFrameY = p.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + 6;
+        const folderFrameY = p.y - frameH / 2;
         const folderFrameW = p.w + 28;
-        const folderFrameH = VIEWER_TUNING.layout.nodeHitHeight - 12;
+        const folderFrameH = frameH;
         nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
       }
-      nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${p.y}" text-anchor="start" dominant-baseline="middle">${label}</text>`;
+      if (isLatexNode(node)) {
+        let htmlStr = latexHtmlCache.get(node.text);
+        if (!htmlStr) {
+          const { latex, displayMode } = latexSource(node.text);
+          htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+          latexHtmlCache.set(node.text, htmlStr);
+        }
+        const foH = p.h;
+        const foY = p.y - foH / 2;
+        nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
+      } else {
+        const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
+        const startY = multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
+        const tspans = multilineTspans(labelLines, p.x, lineHeight);
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start">${tspans}</text>`;
+      }
       const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
@@ -1850,13 +2126,17 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${edges}${overlays}${nodes}`;
+  (canvas as Element).innerHTML = `${defs}${edges}${graphLinks}${overlays}${nodes}`;
   applyZoom();
 
   const version = doc.version ?? "n/a";
   const savedAt = doc.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
+  const linkCount = Object.values(state.links || {}).filter((link) => pos[link.sourceNodeId] && pos[link.targetNodeId]).length;
   const selected = state.nodes[viewState.selectedNodeId];
+  const linkSourceLabel = viewState.linkSourceNodeId && state.nodes[viewState.linkSourceNodeId]
+    ? uiLabel(state.nodes[viewState.linkSourceNodeId]!)
+    : "none";
   const moveNodes = Array.from(viewState.reparentSourceIds)
     .map((nodeId) => state.nodes[nodeId])
     .filter((node): node is TreeNode => Boolean(node));
@@ -1869,7 +2149,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
   updateDocumentTitle();
@@ -1885,6 +2165,10 @@ function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: 
   };
 }
 
+function interactionHalfHeight(nodePos: NodePosition): number {
+  return Math.max(VIEWER_TUNING.layout.nodeHitHeight, nodePos.h) / 2;
+}
+
 function getNodeHitBounds(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
   if (!doc || !lastLayout) {
     return null;
@@ -1896,11 +2180,12 @@ function getNodeHitBounds(nodeId: string): { left: number; right: number; top: n
   const displayRootId = currentScopeRootId();
   const left = nodeId === displayRootId ? p.x : p.x - 8;
   const width = nodeId === displayRootId ? p.w : p.w + 36;
+  const halfH = interactionHalfHeight(p);
   return {
     left,
     right: left + width,
-    top: p.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
-    bottom: p.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+    top: p.y - halfH,
+    bottom: p.y + halfH,
   };
 }
 
@@ -1975,6 +2260,25 @@ function getSiblingMidpointBand(
   };
 }
 
+function getNextVisibleNodeTopAtDepth(nodeId: string, depth: number): number | null {
+  if (!lastLayout) {
+    return null;
+  }
+  const currentIndex = visibleOrder.indexOf(nodeId);
+  if (currentIndex < 0) {
+    return null;
+  }
+  for (let index = currentIndex + 1; index < visibleOrder.length; index += 1) {
+    const nextNodeId = visibleOrder[index]!;
+    const nextPos = lastLayout.pos[nextNodeId];
+    if (!nextPos || nextPos.depth !== depth) {
+      continue;
+    }
+    return nextPos.y - interactionHalfHeight(nextPos);
+  }
+  return null;
+}
+
 function canDropUnderParent(sourceId: string | null | undefined, targetParentId: string | null | undefined): boolean {
   if (!sourceId || !targetParentId) {
     return false;
@@ -1990,6 +2294,23 @@ function canDropUnderParent(sourceId: string | null | undefined, targetParentId:
     return false;
   }
   return true;
+}
+
+function isInExplicitReparentZone(nodeId: string, x: number, y: number): boolean {
+  if (!lastLayout) {
+    return false;
+  }
+  const nodePos = lastLayout.pos[nodeId];
+  if (!nodePos) {
+    return false;
+  }
+  const horizontalInset = Math.min(48, Math.max(14, nodePos.w * 0.2));
+  const left = nodePos.x + horizontalInset;
+  const right = nodePos.x + nodePos.w - horizontalInset;
+  const halfH = interactionHalfHeight(nodePos);
+  const topEdge = nodePos.y - halfH + DRAG_EDGE_BAND;
+  const bottomEdge = nodePos.y + halfH - DRAG_EDGE_BAND;
+  return x >= left && x <= right && y >= topEdge && y <= bottomEdge;
 }
 
 function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropProposal | null {
@@ -2018,8 +2339,8 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
         }
         return {
           id: childId,
-          top: p.y - VIEWER_TUNING.layout.leafHeight / 2,
-          bottom: p.y + VIEWER_TUNING.layout.leafHeight / 2,
+          top: hit.top,
+          bottom: hit.bottom,
           hitLeft: hit.left,
           hitRight: hit.right,
         };
@@ -2039,7 +2360,10 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
       continue;
     }
 
-    const parentBandBottom = parentPos.y + DRAG_CENTER_BAND_HALF;
+    const parentBandBottom = Math.min(
+      parentPos.y + DRAG_CENTER_BAND_HALF,
+      childBounds[0]!.top - DRAG_EDGE_BAND
+    );
     for (let index = 0; index < childBounds.length; index += 1) {
       const current = childBounds[index]!;
       const beforeBand = getSiblingMidpointBand(childBounds, index, parentBandBottom);
@@ -2057,7 +2381,10 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
 
       const next = childBounds[index + 1];
       if (!next) {
-        const tailBottom = current.bottom + DRAG_REORDER_TAIL;
+        const nextSameDepthTop = getNextVisibleNodeTopAtDepth(current.id, parentPos.depth + 1);
+        const tailBottom = nextSameDepthTop === null
+          ? current.bottom + DRAG_REORDER_TAIL
+          : Math.min(current.bottom + DRAG_REORDER_TAIL, nextSameDepthTop);
         if (y >= current.bottom && y <= tailBottom) {
           return {
             kind: "reorder",
@@ -2084,20 +2411,22 @@ function proposeReorderDrop(sourceId: string, x: number, y: number): DragDropPro
 
 function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDropProposal | null {
   const point = clientToCanvasPoint(clientX, clientY);
+  const reorderProposal = proposeReorderDrop(sourceId, point.x, point.y);
   const targetNodeId = findNodeAtCanvasPoint(point.x, point.y);
   if (targetNodeId) {
     const targetPos = lastLayout?.pos[targetNodeId];
     const targetNode = doc?.state.nodes[targetNodeId];
     if (targetPos && targetNode?.parentId) {
       const targetIndex = getVisibleChildrenForDrop(targetNode.parentId, sourceId).indexOf(targetNodeId);
-      const topEdge = targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2 + DRAG_EDGE_BAND;
-      const bottomEdge = targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2 - DRAG_EDGE_BAND;
+      const targetHalfH = interactionHalfHeight(targetPos);
+      const topEdge = targetPos.y - targetHalfH + DRAG_EDGE_BAND;
+      const bottomEdge = targetPos.y + targetHalfH - DRAG_EDGE_BAND;
       if (point.y < topEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
         return {
           kind: "reorder",
           parentId: targetNode.parentId,
           index: targetIndex,
-          lineY: targetPos.y - VIEWER_TUNING.layout.nodeHitHeight / 2,
+          lineY: targetPos.y - targetHalfH,
         };
       }
       if (point.y > bottomEdge && targetIndex >= 0 && canDropUnderParent(sourceId, targetNode.parentId)) {
@@ -2105,12 +2434,16 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
           kind: "reorder",
           parentId: targetNode.parentId,
           index: targetIndex + 1,
-          lineY: targetPos.y + VIEWER_TUNING.layout.nodeHitHeight / 2,
+          lineY: targetPos.y + targetHalfH,
         };
       }
     }
 
-    if (canDropUnderParent(sourceId, targetNodeId)) {
+    if (reorderProposal) {
+      return reorderProposal;
+    }
+
+    if (canDropUnderParent(sourceId, targetNodeId) && isInExplicitReparentZone(targetNodeId, point.x, point.y)) {
       return {
         kind: "reparent",
         parentId: targetNodeId,
@@ -2118,7 +2451,7 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
     }
   }
 
-  return proposeReorderDrop(sourceId, point.x, point.y);
+  return reorderProposal;
 }
 
 function canDropAllUnderParent(sourceIds: string[], targetParentId: string): boolean {
@@ -2190,6 +2523,10 @@ function normalizeSelectionState(): void {
       ? { type: "cut", sourceIds: normalizedCutSourceIds }
       : null;
   }
+
+  if (viewState.linkSourceNodeId && !doc.state.nodes[viewState.linkSourceNodeId]) {
+    viewState.linkSourceNodeId = "";
+  }
 }
 
 function setSingleSelection(nodeId: string, renderNow = true): void {
@@ -2201,7 +2538,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
   if (renderNow) {
-    render();
+    scheduleRender();
   }
 }
 
@@ -2228,7 +2565,7 @@ function setRangeSelection(targetId: string): void {
   viewState.selectionAnchorId = anchorId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
   viewState.selectedNodeIds.add(targetId);
-  render();
+  scheduleRender();
 }
 
 function toggleNodeSelection(nodeId: string): void {
@@ -2236,20 +2573,20 @@ function toggleNodeSelection(nodeId: string): void {
   if (viewState.selectedNodeIds.has(nodeId)) {
     if (viewState.selectedNodeIds.size === 1) {
       viewState.selectedNodeId = nodeId;
-      render();
+      scheduleRender();
       return;
     }
     viewState.selectedNodeIds.delete(nodeId);
     if (viewState.selectedNodeId === nodeId) {
       viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
     }
-    render();
+    scheduleRender();
     return;
   }
 
   viewState.selectedNodeIds.add(nodeId);
   viewState.selectedNodeId = nodeId;
-  render();
+  scheduleRender();
 }
 
 function selectNode(nodeId: string): void {
@@ -2279,8 +2616,7 @@ function updateScopeInUrl(scopeId: string): void {
   } else {
     params.set("scopeId", scopeId);
   }
-  const qs = params.toString();
-  history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  history.replaceState(null, "", `?${params.toString()}`);
 }
 
 function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
@@ -2299,8 +2635,8 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   }
   normalizeSelectionState();
   render();
-  updateScopeInUrl(scopeId);
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
+  updateScopeInUrl(scopeId);
 }
 
 function ExitScopeCommand(): void {
@@ -2315,8 +2651,8 @@ function ExitScopeCommand(): void {
   }
   normalizeSelectionState();
   render();
-  updateScopeInUrl(viewState.currentScopeId);
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
+  updateScopeInUrl(viewState.currentScopeId);
 }
 
 function addChild(): void {
@@ -2347,16 +2683,105 @@ function addSibling(): void {
   pushUndoSnapshot();
   const currentIndex = parent.children.indexOf(node.id);
   const id = newId();
-  doc!.state.nodes[id] = createNodeRecord(id, parent.id, "    ");
+  doc!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
   board.focus();
 }
 
+function selectedLinkableNode(): TreeNode | null {
+  if (!doc || !viewState.selectedNodeId) {
+    return null;
+  }
+  const node = doc.state.nodes[viewState.selectedNodeId];
+  if (!node || isAliasNode(node)) {
+    return null;
+  }
+  return node;
+}
+
+function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {
+  if (!doc) {
+    return null;
+  }
+  const links = Object.values(doc.state.links || {});
+  return links.find((link) => link.sourceNodeId === sourceNodeId && link.targetNodeId === targetNodeId) || null;
+}
+
+function markLinkSource(): void {
+  if (!doc) {
+    return;
+  }
+  const node = selectedLinkableNode();
+  if (!node) {
+    setStatus("Select a non-alias node to mark link source.", true);
+    return;
+  }
+  if (viewState.linkSourceNodeId === node.id) {
+    viewState.linkSourceNodeId = "";
+    setStatus("Link source mark cleared.");
+    scheduleRender();
+    return;
+  }
+  viewState.linkSourceNodeId = node.id;
+  setStatus(`Marked link source: ${uiLabel(node)}`);
+  scheduleRender();
+}
+
+function applyMarkedLink(): void {
+  if (!doc) {
+    return;
+  }
+  const sourceId = viewState.linkSourceNodeId;
+  if (!sourceId) {
+    setStatus("No link source marked.", true);
+    return;
+  }
+  const source = doc.state.nodes[sourceId];
+  const target = selectedLinkableNode();
+  if (!source || !target) {
+    setStatus("Select a non-alias target node.", true);
+    return;
+  }
+  if (isAliasNode(source)) {
+    setStatus("Alias nodes cannot be graph link endpoints.", true);
+    return;
+  }
+  if (source.id === target.id) {
+    setStatus("Graph links cannot connect a node to itself.", true);
+    return;
+  }
+  if (findExistingGraphLink(source.id, target.id)) {
+    setStatus("That link already exists.");
+    return;
+  }
+
+  pushUndoSnapshot();
+  const linkId = newId();
+  if (!doc.state.links) {
+    doc.state.links = {};
+  }
+  doc.state.links[linkId] = normalizeGraphLink({
+    id: linkId,
+    sourceNodeId: source.id,
+    targetNodeId: target.id,
+    direction: "forward",
+    style: "default",
+  });
+  viewState.linkSourceNodeId = "";
+  touchDocument();
+  setStatus(`Linked ${uiLabel(source)} -> ${uiLabel(target)}.`);
+  board.focus();
+}
+
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
-  const next = String(nextRaw ?? "").trim();
+  const next = String(nextRaw || "").trim();
+  if (next === "") {
+    setStatus("Node text cannot be empty.", true);
+    return false;
+  }
   if (isAliasNode(node)) {
     if (mode === "target-text") {
       const target = resolveAliasTarget(node);
@@ -2368,6 +2793,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
         return true;
       }
       pushUndoSnapshot();
+      latexMetricsCache.delete(target.text);
+      latexHtmlCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
       touchDocument();
@@ -2386,6 +2813,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     return true;
   }
   pushUndoSnapshot();
+  latexMetricsCache.delete(node.text);
+  latexHtmlCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
   touchDocument();
@@ -2677,7 +3106,7 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
     if (showStatus) {
       setStatus("Saved locally.");
     }
-    render();
+    scheduleRender();
     return true;
   } catch (err) {
     if (showStatus) {
@@ -2755,7 +3184,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     if (showStatus) {
       setStatus(force ? "Cloud sync force-push completed." : "Cloud sync push completed.");
     }
-    render();
+    scheduleRender();
     return true;
   } catch (err) {
     if (showStatus) {
@@ -2845,6 +3274,28 @@ function scheduleAutosave(): void {
   }, AUTOSAVE_DELAY_MS);
 }
 
+function initBroadcastSync(): void {
+  bc = new BroadcastChannel(`m3e-doc-${LOCAL_DOC_ID}`);
+  bc.onmessage = (ev: MessageEvent<BcStateMessage>) => {
+    if (!doc || ev.data.fromTabId === TAB_ID) {
+      return;
+    }
+    if (ev.data.type === "STATE_UPDATE") {
+      doc.state = ev.data.state;
+      scheduleRender();
+    }
+  };
+  window.addEventListener("beforeunload", () => bc?.close());
+}
+
+function broadcastState(): void {
+  if (!bc || !doc) {
+    return;
+  }
+  const msg: BcStateMessage = { type: "STATE_UPDATE", fromTabId: TAB_ID, state: doc.state };
+  bc.postMessage(msg);
+}
+
 function touchDocument(): void {
   if (!doc) {
     return;
@@ -2852,6 +3303,7 @@ function touchDocument(): void {
   doc.savedAt = nowIso();
   render();
   scheduleAutosave();
+  broadcastState();
 }
 
 async function loadDefaultSample(): Promise<void> {
@@ -2995,7 +3447,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   const anchorId = viewState.selectionAnchorId || viewState.selectedNodeId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
   viewState.selectedNodeIds.add(target);
-  render();
+  scheduleRender();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
@@ -3013,6 +3465,7 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeRootId = doc.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.clipboardState = null;
+    viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
     viewState.collapsedIds = new Set(
       Object.values(doc.state.nodes)
@@ -3189,7 +3642,7 @@ function markReparentSource(): void {
   viewState.reparentSourceIds = new Set(viewState.selectedNodeIds);
   const roots = getMovableSelectionRoots(viewState.reparentSourceIds);
   setStatus(`Marked move nodes: ${roots.length}`);
-  render();
+  scheduleRender();
 }
 
 function sameIdSet(left: Set<string>, right: Set<string>): boolean {
@@ -3215,20 +3668,20 @@ function toggleReparentSource(): void {
   if (nextRoots.size === 0) {
     viewState.reparentSourceIds.clear();
     setStatus("No move node selected.", true);
-    render();
+    scheduleRender();
     return;
   }
 
   if (sameIdSet(currentRoots, nextRoots)) {
     viewState.reparentSourceIds.clear();
     setStatus("Move node mark cleared.");
-    render();
+    scheduleRender();
     return;
   }
 
   viewState.reparentSourceIds = nextSourceIds;
   setStatus(`Marked move nodes: ${nextRoots.size}`);
-  render();
+  scheduleRender();
 }
 
 function toggleHoldReparent(): void {
@@ -3322,7 +3775,7 @@ function selectAllVisibleInScope(): void {
   viewState.selectedNodeId = firstVisibleId;
   viewState.selectedNodeIds = new Set(visibleOrder);
   viewState.selectionAnchorId = firstVisibleId;
-  render();
+  scheduleRender();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
@@ -3374,7 +3827,7 @@ function copySelected(): void {
     snapshots,
   };
   void copyTextToSystemClipboard(roots.map((rootId) => uiLabel(getNode(rootId))).join("\n"));
-  render();
+  scheduleRender();
   setStatus(`Copied ${roots.length} node(s).`);
 }
 
@@ -3388,7 +3841,7 @@ function cutSelected(): void {
     type: "cut",
     sourceIds: new Set(roots),
   };
-  render();
+  scheduleRender();
   setStatus(`Cut pending: ${roots.length} node(s).`);
 }
 
@@ -3430,7 +3883,7 @@ function pasteClipboard(): void {
     .filter((nodeId) => getNode(nodeId).parentId !== null);
   if (cutRoots.length === 0) {
     viewState.clipboardState = null;
-    render();
+    scheduleRender();
     setStatus("No cut nodes available.", true);
     return;
   }
@@ -3458,7 +3911,7 @@ function clearCutClipboard(): boolean {
     return false;
   }
   viewState.clipboardState = null;
-  render();
+  scheduleRender();
   setStatus("Cut pending cleared.");
   return true;
 }
@@ -3710,7 +4163,7 @@ importanceViewSelect?.addEventListener("change", () => {
   const nextMode = importanceViewSelect.value as ImportanceViewMode;
   importanceViewMode = nextMode;
   linearDirty = false;
-  render();
+  scheduleRender();
   setStatus(`Importance view: ${nextMode}`);
 });
 
@@ -3747,6 +4200,16 @@ addAliasBtn?.addEventListener("click", () => {
 jumpTargetBtn?.addEventListener("click", () => {
   if (!doc) return;
   jumpToAliasTarget();
+});
+
+markLinkBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  markLinkSource();
+});
+
+applyLinkBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  applyMarkedLink();
 });
 
 toggleCollapseBtn?.addEventListener("click", () => {
@@ -3810,10 +4273,10 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
     event.preventDefault();
-    selectNode(collapseNodeId);
+    setSingleSelection(collapseNodeId, false);
     if (viewState.collapsedIds.has(collapseNodeId)) {
       viewState.collapsedIds.delete(collapseNodeId);
-      render();
+      scheduleRender();
       setStatus("Expanded collapsed branch.");
     }
     board.focus();
@@ -3852,7 +4315,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.dragState.dragged = true;
   viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
-  render();
+  scheduleRender();
 });
 
 function finishNodeDrag(event: PointerEvent): void {
@@ -3891,7 +4354,6 @@ function finishNodeDrag(event: PointerEvent): void {
         setSingleSelection(proposal.parentId, false);
         touchDocument();
         setStatus(`Moved ${movedCount} node(s).`);
-        render();
         board.focus();
         return;
       }
@@ -3901,7 +4363,7 @@ function finishNodeDrag(event: PointerEvent): void {
         : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
       if (applied) {
         setSingleSelection(sourceNodeId, false);
-        render();
+        scheduleRender();
         board.focus();
         return;
       }
@@ -3909,7 +4371,7 @@ function finishNodeDrag(event: PointerEvent): void {
   }
 
   setStatus("No valid drop target.", true);
-  render();
+  scheduleRender();
   board.focus();
 }
 
@@ -3944,7 +4406,7 @@ board.addEventListener("wheel", (event: WheelEvent) => {
   if (!event.ctrlKey && !event.metaKey) {
     viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
     viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
-    applyZoom();
+    scheduleApplyZoom();
     return;
   }
   const intensity = Math.min(
@@ -3983,7 +4445,7 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
   viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
-  applyZoom();
+  scheduleApplyZoom();
 });
 
 function endPan(event: PointerEvent): void {
@@ -4195,6 +4657,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    applyMarkedLink();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    if (!event.repeat) {
+      markLinkSource();
+    }
+    return;
+  }
+
   if (event.key.toLowerCase() === "p") {
     event.preventDefault();
     applyReparent();
@@ -4259,835 +4735,8 @@ syncMetaPanelToggleUi();
 
 updateCloudSyncUi();
 
-// ---------------------------------------------------------------------------
-// window.m3e — Command Language API
-// ---------------------------------------------------------------------------
-
-const m3eMarkedIds = new Set<string>();
-
-function m3eRequireDoc(): SavedDoc {
-  if (!doc) {
-    throw new Error("No document loaded.");
-  }
-  return doc;
-}
-
-function m3eResolveId(nodeId: string | undefined): string {
-  if (nodeId !== undefined) {
-    return nodeId;
-  }
-  const sel = viewState.selectedNodeId;
-  if (!sel) {
-    throw new Error("No node selected.");
-  }
-  return sel;
-}
-
-function m3eGetNode(nodeId: string): TreeNode {
-  const d = m3eRequireDoc();
-  const node = d.state.nodes[nodeId];
-  if (!node) {
-    throw new Error(`Node not found: ${nodeId}`);
-  }
-  return node;
-}
-
-function m3eDeepCopy(node: TreeNode): TreeNode {
-  return JSON.parse(JSON.stringify(node)) as TreeNode;
-}
-
-function m3eBuildTree(nodeId: string, prefix: string, isLast: boolean, isRoot: boolean): string {
-  const d = m3eRequireDoc();
-  const node = d.state.nodes[nodeId];
-  if (!node) {
-    return "";
-  }
-  const label = node.text || "(empty)";
-  const collapsed = viewState.collapsedIds.has(nodeId);
-  const hasChildren = node.children.length > 0;
-
-  let line: string;
-  if (isRoot) {
-    line = label;
-  } else {
-    const branch = isLast ? "\u2514\u2500 " : "\u251C\u2500 ";
-    const suffix = collapsed && hasChildren ? " [+]" : "";
-    line = prefix + branch + label + suffix;
-  }
-
-  const lines = [line];
-
-  if (!collapsed) {
-    const childPrefix = isRoot ? "" : prefix + (isLast ? "   " : "\u2502  ");
-    node.children.forEach((childId, i) => {
-      const childIsLast = i === node.children.length - 1;
-      lines.push(m3eBuildTree(childId, childPrefix, childIsLast, false));
-    });
-  }
-
-  return lines.join("\n");
-}
-
-function m3eCountSubtree(nodeId: string): number {
-  const d = m3eRequireDoc();
-  const node = d.state.nodes[nodeId];
-  if (!node) {
-    return 0;
-  }
-  let total = 1;
-  const stack = [...node.children];
-  while (stack.length > 0) {
-    const cid = stack.pop()!;
-    const child = d.state.nodes[cid];
-    if (child) {
-      total += 1;
-      stack.push(...child.children);
-    }
-  }
-  return total;
-}
-
-function m3eCollectLeaves(nodeId: string): string[] {
-  const d = m3eRequireDoc();
-  const result: string[] = [];
-  const stack = [nodeId];
-  while (stack.length > 0) {
-    const cid = stack.pop()!;
-    const child = d.state.nodes[cid];
-    if (!child) {
-      continue;
-    }
-    if (child.children.length === 0) {
-      result.push(cid);
-    } else {
-      for (let i = child.children.length - 1; i >= 0; i--) {
-        stack.push(child.children[i]!);
-      }
-    }
-  }
-  return result;
-}
-
-function m3eAncestors(nodeId: string): string[] {
-  const d = m3eRequireDoc();
-  const result: string[] = [];
-  let cursor: string | null = d.state.nodes[nodeId]?.parentId ?? null;
-  while (cursor) {
-    result.push(cursor);
-    cursor = d.state.nodes[cursor]?.parentId ?? null;
-  }
-  return result;
-}
-
-function m3ePath(nodeId: string): string[] {
-  const result = m3eAncestors(nodeId);
-  result.reverse();
-  result.push(nodeId);
-  return result;
-}
-
-function m3eFindAll(text: string, scopeRootId?: string): string[] {
-  const d = m3eRequireDoc();
-  const target = String(text || "").toLowerCase();
-  if (!target) {
-    return [];
-  }
-  const rootId = scopeRootId || d.state.rootId;
-  const result: string[] = [];
-  const stack = [rootId];
-  while (stack.length > 0) {
-    const cid = stack.pop()!;
-    const node = d.state.nodes[cid];
-    if (!node) {
-      continue;
-    }
-    if (String(node.text || "").toLowerCase().includes(target)) {
-      result.push(cid);
-    }
-    for (let i = node.children.length - 1; i >= 0; i--) {
-      stack.push(node.children[i]!);
-    }
-  }
-  return result;
-}
-
-function m3eCloneSubtree(nodeId: string, newParentId: string): string {
-  const snapshot = toSubtreeSnapshot(nodeId);
-  const sourceNode = m3eGetNode(nodeId);
-  // Preserve link field in the snapshot
-  const enriched = { ...snapshot, link: sourceNode.link || "" };
-
-  function cloneWithLink(parentId: string, snap: SubtreeSnapshot & { link?: string }): string {
-    const parent = getNode(parentId);
-    const createdId = newId();
-    doc!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snap.text || "New Node");
-    const created = doc!.state.nodes[createdId]!;
-    created.details = snap.details || "";
-    created.note = snap.note || "";
-    created.link = snap.link || "";
-    created.attributes = JSON.parse(JSON.stringify(snap.attributes || {})) as Record<string, string>;
-    parent.children.push(createdId);
-    (snap.children || []).forEach((childSnapshot) => {
-      cloneWithLink(createdId, childSnapshot);
-    });
-    return createdId;
-  }
-
-  return cloneWithLink(newParentId, enriched);
-}
-
-function m3eCollapseAllSubtree(nodeId: string, collapse: boolean): void {
-  const d = m3eRequireDoc();
-  const stack = [nodeId];
-  while (stack.length > 0) {
-    const cid = stack.pop()!;
-    const node = d.state.nodes[cid];
-    if (!node) {
-      continue;
-    }
-    if (node.children.length > 0) {
-      if (collapse) {
-        viewState.collapsedIds.add(cid);
-        node.collapsed = true;
-      } else {
-        viewState.collapsedIds.delete(cid);
-        node.collapsed = false;
-      }
-    }
-    stack.push(...node.children);
-  }
-}
-
-function m3eScopeRootForNode(nodeId: string): string {
-  const d = m3eRequireDoc();
-  let cursor: string | null = nodeId;
-  let nearestFolderId: string | null = null;
-  while (cursor) {
-    const cur: TreeNode | undefined = d.state.nodes[cursor];
-    if (!cur) {
-      break;
-    }
-    if (isFolderNode(cur)) {
-      nearestFolderId = cur.id;
-    }
-    cursor = cur.parentId ?? null;
-  }
-  return nearestFolderId || d.state.rootId;
-}
-
-function m3eExportMm(): void {
-  const d = m3eRequireDoc();
-
-  function nodeToMm(nodeId: string, indent: string): string {
-    const node = d.state.nodes[nodeId];
-    if (!node) {
-      return "";
-    }
-    const textAttr = ` TEXT="${escapeXml(node.text || "")}"`;
-    const foldedAttr = node.collapsed && node.children.length > 0 ? ' FOLDED="true"' : "";
-    const linkAttr = node.link ? ` LINK="${escapeXml(node.link)}"` : "";
-
-    const parts: string[] = [];
-    parts.push(`${indent}<node${textAttr}${foldedAttr}${linkAttr}>`);
-
-    // details
-    if (node.details) {
-      parts.push(`${indent}  <richcontent TYPE="DETAILS"><html><body>${escapeXml(node.details)}</body></html></richcontent>`);
-    }
-    // note
-    if (node.note) {
-      parts.push(`${indent}  <richcontent TYPE="NOTE"><html><body>${escapeXml(node.note)}</body></html></richcontent>`);
-    }
-    // attributes
-    const attrKeys = Object.keys(node.attributes || {});
-    if (attrKeys.length > 0) {
-      parts.push(`${indent}  <attributes>`);
-      attrKeys.forEach((key) => {
-        parts.push(`${indent}    <attribute NAME="${escapeXml(key)}" VALUE="${escapeXml(node.attributes[key] || "")}"/>`);
-      });
-      parts.push(`${indent}  </attributes>`);
-    }
-
-    // children
-    node.children.forEach((childId) => {
-      parts.push(nodeToMm(childId, indent + "  "));
-    });
-
-    parts.push(`${indent}</node>`);
-    return parts.join("\n");
-  }
-
-  const xml = `<map version="freeplane 1.7.0">\n${nodeToMm(d.state.rootId, "")}\n</map>`;
-
-  const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "m3e-export.mm";
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-const m3eApi: M3eApi = {
-  // --- Properties ---
-  get root(): string {
-    return m3eRequireDoc().state.rootId;
-  },
-  get sel(): string | null {
-    return viewState.selectedNodeId || null;
-  },
-  get marked(): string[] {
-    // Clean up stale marks
-    if (doc) {
-      m3eMarkedIds.forEach((id) => {
-        if (!doc!.state.nodes[id]) {
-          m3eMarkedIds.delete(id);
-        }
-      });
-    }
-    return Array.from(m3eMarkedIds);
-  },
-
-  // --- Node reference ---
-  parent(id?: string): string | null {
-    const nodeId = m3eResolveId(id);
-    return m3eGetNode(nodeId).parentId;
-  },
-  children(id?: string): string[] {
-    const nodeId = m3eResolveId(id);
-    return [...m3eGetNode(nodeId).children];
-  },
-  node(id: string): TreeNode {
-    return m3eDeepCopy(m3eGetNode(id));
-  },
-  info(nodeId?: string): TreeNode {
-    const id = m3eResolveId(nodeId);
-    return m3eDeepCopy(m3eGetNode(id));
-  },
-
-  // --- Node creation ---
-  add(parentId: string, label: string, index?: number): string {
-    m3eRequireDoc();
-    const parent = m3eGetNode(parentId);
-    if (isAliasNode(parent)) {
-      throw new Error("Alias nodes cannot own children.");
-    }
-    pushUndoSnapshot();
-    const id = newId();
-    doc!.state.nodes[id] = createNodeRecord(id, parentId, label);
-    if (index !== undefined && index >= 0 && index <= parent.children.length) {
-      parent.children.splice(index, 0, id);
-    } else {
-      parent.children.push(id);
-    }
-    viewState.collapsedIds.delete(parentId);
-    parent.collapsed = false;
-    touchDocument();
-    return id;
-  },
-  sibling(nodeId: string, label: string, after?: boolean): string {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (node.parentId === null) {
-      throw new Error("Root node has no siblings.");
-    }
-    const parent = m3eGetNode(node.parentId);
-    pushUndoSnapshot();
-    const currentIndex = parent.children.indexOf(nodeId);
-    const insertIndex = after === false ? currentIndex : currentIndex + 1;
-    const id = newId();
-    doc!.state.nodes[id] = createNodeRecord(id, parent.id, label);
-    parent.children.splice(insertIndex, 0, id);
-    touchDocument();
-    return id;
-  },
-  clone(nodeId: string, newParentId?: string): string {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    const targetParentId = newParentId || node.parentId;
-    if (!targetParentId) {
-      throw new Error("Cannot clone root without specifying a parent.");
-    }
-    m3eGetNode(targetParentId); // validate parent exists
-    pushUndoSnapshot();
-    const clonedId = m3eCloneSubtree(nodeId, targetParentId);
-    touchDocument();
-    return clonedId;
-  },
-
-  // --- Node editing ---
-  edit(nodeId: string, newLabel: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    const next = String(newLabel ?? "").trim();
-    if (node.text === next) {
-      return;
-    }
-    pushUndoSnapshot();
-    node.text = next;
-    if (isAliasNode(node)) {
-      syncAliasDisplayForTarget(node.targetNodeId || "");
-    }
-    touchDocument();
-  },
-  del(nodeId: string): void {
-    const d = m3eRequireDoc();
-    if (nodeId === d.state.rootId) {
-      throw new Error("Root node cannot be deleted.");
-    }
-    const node = m3eGetNode(nodeId);
-    if (!node.parentId) {
-      throw new Error("Root node cannot be deleted.");
-    }
-    pushUndoSnapshot();
-    const parent = m3eGetNode(node.parentId);
-    const idx = parent.children.indexOf(nodeId);
-    if (idx >= 0) {
-      parent.children.splice(idx, 1);
-    }
-    markAliasesBrokenInViewer(nodeId, node.text);
-    deleteSubtree(nodeId);
-    m3eMarkedIds.delete(nodeId);
-    if (viewState.selectedNodeId === nodeId) {
-      setSingleSelection(parent.id, false);
-    }
-    touchDocument();
-  },
-  move(nodeId: string, newParentId: string, index?: number): void {
-    const d = m3eRequireDoc();
-    if (nodeId === d.state.rootId) {
-      throw new Error("Root node cannot be moved.");
-    }
-    const node = m3eGetNode(nodeId);
-    m3eGetNode(newParentId); // validate
-
-    // Cycle detection
-    let cursor: string | null = newParentId;
-    while (cursor) {
-      if (cursor === nodeId) {
-        throw new Error("Cycle detected");
-      }
-      cursor = d.state.nodes[cursor]?.parentId ?? null;
-    }
-
-    pushUndoSnapshot();
-    // Remove from old parent
-    if (node.parentId) {
-      const oldParent = d.state.nodes[node.parentId];
-      if (oldParent) {
-        const idx = oldParent.children.indexOf(nodeId);
-        if (idx >= 0) {
-          oldParent.children.splice(idx, 1);
-        }
-      }
-    }
-    // Add to new parent
-    node.parentId = newParentId;
-    const newParent = m3eGetNode(newParentId);
-    if (index !== undefined && index >= 0 && index <= newParent.children.length) {
-      newParent.children.splice(index, 0, nodeId);
-    } else {
-      newParent.children.push(nodeId);
-    }
-    touchDocument();
-  },
-  promote(nodeId: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (!node.parentId) {
-      return;
-    }
-    const parent = m3eGetNode(node.parentId);
-    const idx = parent.children.indexOf(nodeId);
-    if (idx <= 0) {
-      return;
-    }
-    pushUndoSnapshot();
-    parent.children.splice(idx, 1);
-    parent.children.splice(idx - 1, 0, nodeId);
-    touchDocument();
-  },
-  demote(nodeId: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (!node.parentId) {
-      return;
-    }
-    const parent = m3eGetNode(node.parentId);
-    const idx = parent.children.indexOf(nodeId);
-    if (idx < 0 || idx >= parent.children.length - 1) {
-      return;
-    }
-    pushUndoSnapshot();
-    parent.children.splice(idx, 1);
-    parent.children.splice(idx + 1, 0, nodeId);
-    touchDocument();
-  },
-  setType(nodeId: string, type: NodeType): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    pushUndoSnapshot();
-    node.nodeType = type;
-    touchDocument();
-  },
-
-  // --- Selection / Navigation ---
-  select(nodeId: string): void {
-    m3eRequireDoc();
-    m3eGetNode(nodeId); // validate
-    setSingleSelection(nodeId);
-  },
-  nav(direction: "parent" | "first" | "last" | "next" | "prev"): void {
-    m3eRequireDoc();
-    const sel = m3eResolveId(undefined);
-    const node = m3eGetNode(sel);
-    let targetId: string | null = null;
-    switch (direction) {
-      case "parent":
-        targetId = node.parentId;
-        break;
-      case "first":
-        targetId = node.children.length > 0 ? node.children[0]! : null;
-        break;
-      case "last":
-        targetId = node.children.length > 0 ? node.children[node.children.length - 1]! : null;
-        break;
-      case "next":
-      case "prev": {
-        if (!node.parentId) {
-          break;
-        }
-        const parent = m3eGetNode(node.parentId);
-        const idx = parent.children.indexOf(sel);
-        const nextIdx = direction === "next" ? idx + 1 : idx - 1;
-        if (nextIdx >= 0 && nextIdx < parent.children.length) {
-          targetId = parent.children[nextIdx]!;
-        }
-        break;
-      }
-    }
-    if (targetId && doc!.state.nodes[targetId]) {
-      setSingleSelection(targetId);
-    }
-  },
-
-  // --- Fold ---
-  collapse(nodeId: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (node.children.length > 0 && !viewState.collapsedIds.has(nodeId)) {
-      viewState.collapsedIds.add(nodeId);
-      node.collapsed = true;
-      touchDocument();
-    }
-  },
-  expand(nodeId: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (viewState.collapsedIds.has(nodeId)) {
-      viewState.collapsedIds.delete(nodeId);
-      node.collapsed = false;
-      touchDocument();
-    }
-  },
-  toggle(nodeId: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (node.children.length === 0) {
-      return;
-    }
-    if (viewState.collapsedIds.has(nodeId)) {
-      viewState.collapsedIds.delete(nodeId);
-      node.collapsed = false;
-    } else {
-      viewState.collapsedIds.add(nodeId);
-      node.collapsed = true;
-    }
-    touchDocument();
-  },
-  collapseAll(nodeId?: string): void {
-    const d = m3eRequireDoc();
-    const rootId = nodeId || d.state.rootId;
-    m3eGetNode(rootId); // validate
-    pushUndoSnapshot();
-    m3eCollapseAllSubtree(rootId, true);
-    touchDocument();
-  },
-  expandAll(nodeId?: string): void {
-    const d = m3eRequireDoc();
-    const rootId = nodeId || d.state.rootId;
-    m3eGetNode(rootId); // validate
-    pushUndoSnapshot();
-    m3eCollapseAllSubtree(rootId, false);
-    touchDocument();
-  },
-
-  // --- Extended fields ---
-  set(nodeId: string, field: string, value: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (field !== "details" && field !== "note" && field !== "link") {
-      throw new Error(`Invalid field: ${field}. Must be "details", "note", or "link".`);
-    }
-    pushUndoSnapshot();
-    node[field] = value;
-    touchDocument();
-  },
-  unset(nodeId: string, field: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    if (field !== "details" && field !== "note" && field !== "link") {
-      throw new Error(`Invalid field: ${field}. Must be "details", "note", or "link".`);
-    }
-    pushUndoSnapshot();
-    node[field] = "";
-    touchDocument();
-  },
-
-  // --- Attributes ---
-  attr(nodeId: string, key: string, value: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    pushUndoSnapshot();
-    if (!node.attributes) {
-      node.attributes = {};
-    }
-    node.attributes[key] = value;
-    touchDocument();
-  },
-  attrDel(nodeId: string, key: string): void {
-    m3eRequireDoc();
-    const node = m3eGetNode(nodeId);
-    pushUndoSnapshot();
-    if (node.attributes) {
-      delete node.attributes[key];
-    }
-    touchDocument();
-  },
-
-  // --- History ---
-  undo(): boolean {
-    if (!doc || undoStack.length === 0) {
-      return false;
-    }
-    undoLastChange();
-    return true;
-  },
-  redo(): boolean {
-    if (!doc || redoStack.length === 0) {
-      return false;
-    }
-    redoLastChange();
-    return true;
-  },
-
-  // --- Search ---
-  find(text: string): string | null {
-    const results = m3eFindAll(text);
-    return results.length > 0 ? results[0]! : null;
-  },
-  findAll(text: string): string[] {
-    m3eRequireDoc();
-    return m3eFindAll(text);
-  },
-
-  // --- Structure queries ---
-  tree(nodeId?: string): string {
-    const d = m3eRequireDoc();
-    const rootId = nodeId || d.state.rootId;
-    m3eGetNode(rootId); // validate
-    return m3eBuildTree(rootId, "", true, true);
-  },
-  depth(nodeId?: string): number {
-    m3eRequireDoc();
-    const id = m3eResolveId(nodeId);
-    return nodeDepth(id);
-  },
-  count(nodeId?: string): number {
-    m3eRequireDoc();
-    const id = m3eResolveId(nodeId);
-    m3eGetNode(id); // validate
-    return m3eCountSubtree(id);
-  },
-  leaves(nodeId?: string): string[] {
-    m3eRequireDoc();
-    const id = m3eResolveId(nodeId);
-    m3eGetNode(id); // validate
-    return m3eCollectLeaves(id);
-  },
-  ancestors(nodeId?: string): string[] {
-    m3eRequireDoc();
-    const id = m3eResolveId(nodeId);
-    m3eGetNode(id); // validate
-    return m3eAncestors(id);
-  },
-  path(nodeId?: string): string[] {
-    m3eRequireDoc();
-    const id = m3eResolveId(nodeId);
-    m3eGetNode(id); // validate
-    return m3ePath(id);
-  },
-
-  // --- Replace ---
-  replaceAll(search: string, replacement: string, scopeRootId?: string): number {
-    const d = m3eRequireDoc();
-    const rootId = scopeRootId || d.state.rootId;
-    m3eGetNode(rootId); // validate
-    const targets = m3eFindAll(search, rootId);
-    if (targets.length === 0) {
-      return 0;
-    }
-    pushUndoSnapshot();
-    const searchStr = String(search || "");
-    targets.forEach((id) => {
-      const node = d.state.nodes[id];
-      if (node) {
-        node.text = node.text.split(searchStr).join(replacement);
-      }
-    });
-    touchDocument();
-    return targets.length;
-  },
-
-  // --- Mark selection ---
-  mark(nodeId: string): void {
-    m3eRequireDoc();
-    m3eGetNode(nodeId); // validate
-    m3eMarkedIds.add(nodeId);
-  },
-  unmark(nodeId: string): void {
-    m3eMarkedIds.delete(nodeId);
-  },
-  clearMarks(): void {
-    m3eMarkedIds.clear();
-  },
-
-  // --- View ---
-  fit(): void {
-    fitDocument();
-  },
-  focus(nodeId?: string): void {
-    m3eRequireDoc();
-    const id = m3eResolveId(nodeId);
-    centerOnNode(id);
-  },
-  zoom(factor: number): void {
-    setZoom(factor);
-  },
-  zoomReset(): void {
-    setZoom(1);
-  },
-  pan(dx: number, dy: number): void {
-    viewState.cameraX += dx;
-    viewState.cameraY += dy;
-    applyZoom();
-  },
-
-  // --- Document management ---
-  "new"(rootLabel?: string): void {
-    if (doc && !confirm("Unsaved changes will be lost. Continue?")) {
-      return;
-    }
-    const newDoc = createEmptyDoc();
-    if (rootLabel) {
-      newDoc.state.nodes[newDoc.state.rootId]!.text = rootLabel;
-    }
-    loadPayload(newDoc);
-    setStatus("New document created.");
-  },
-  save(filename?: string): void {
-    m3eRequireDoc();
-    const blob = new Blob(
-      [JSON.stringify({ version: doc!.version, savedAt: nowIso(), state: doc!.state }, null, 2)],
-      { type: "application/json;charset=utf-8" },
-    );
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename || "m3e-export.json";
-    anchor.click();
-    URL.revokeObjectURL(url);
-  },
-  async load(source: string | File): Promise<void> {
-    if (typeof source === "string") {
-      const response = await fetch(source, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const text = await response.text();
-      if (source.endsWith(".mm")) {
-        loadPayload(parseMmText(text));
-      } else {
-        loadPayload(JSON.parse(text));
-      }
-    } else {
-      const text = await source.text();
-      if (source.name.endsWith(".mm")) {
-        loadPayload(parseMmText(text));
-      } else {
-        loadPayload(JSON.parse(text));
-      }
-    }
-  },
-  export(format: "json" | "mm"): void {
-    if (format === "json") {
-      m3eApi.save();
-      return;
-    }
-    if (format === "mm") {
-      m3eExportMm();
-      return;
-    }
-    throw new Error(`Unsupported export format: ${format}`);
-  },
-
-  // --- Implicit targets ---
-  get active_node(): M3eActiveNode {
-    const id = m3eResolveId(undefined);
-    return {
-      get id() { return id; },
-      edit(label: string) { m3eApi.edit(id, label); },
-      del() { m3eApi.del(id); },
-      set(field: string, value: string) { m3eApi.set(id, field, value); },
-      unset(field: string) { m3eApi.unset(id, field); },
-      attr(key: string, value: string) { m3eApi.attr(id, key, value); },
-      attrDel(key: string) { m3eApi.attrDel(id, key); },
-      setType(type: NodeType) { m3eApi.setType(id, type); },
-      info() { return m3eApi.info(id); },
-    };
-  },
-
-  get active_branch(): M3eActiveBranch {
-    const id = m3eResolveId(undefined);
-    return {
-      get id() { return id; },
-      collapse() { m3eApi.collapseAll(id); },
-      expand() { m3eApi.expandAll(id); },
-      move(newParentId: string) { m3eApi.move(id, newParentId); },
-      clone(newParentId?: string) { return m3eApi.clone(id, newParentId); },
-      del() { m3eApi.del(id); },
-      tree() { return m3eApi.tree(id); },
-      findAll(text: string) { return m3eFindAll(text, id); },
-    };
-  },
-
-  get active_scope(): M3eActiveScope {
-    const sel = m3eResolveId(undefined);
-    const scopeId = m3eScopeRootForNode(sel);
-    return {
-      get id() { return scopeId; },
-      info() { return m3eApi.info(scopeId); },
-      collapse() { m3eApi.collapseAll(scopeId); },
-      expand() { return m3eApi.expandAll(scopeId); },
-      tree() { return m3eApi.tree(scopeId); },
-      findAll(text: string) { return m3eFindAll(text, scopeId); },
-    };
-  },
-};
-
-(window as unknown as { m3e: M3eApi }).m3e = m3eApi;
-
 void initializeDocument().then(() => {
+  initBroadcastSync();
   const initialScopeId = queryParams.get("scopeId");
   if (initialScopeId && doc && doc.state.nodes[initialScopeId]) {
     EnterScopeCommand(initialScopeId);

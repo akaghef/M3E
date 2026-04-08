@@ -6,7 +6,7 @@ const http = require("http");
 const { spawnSync } = require("child_process");
 
 const ROOT = __dirname;
-const PORT = Number(process.env.M3E_PORT || "38482");
+const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "viewer.html";
 
 const MIME_BY_EXT = {
