@@ -1,15 +1,38 @@
 # M3E — セットアップガイド
 
+## ダウンロード
+
+**[M3E をダウンロード (zip)](https://github.com/akaghef/M3E/archive/refs/heads/main.zip)**
+
+ダウンロード後、展開して以下の手順でセットアップ。
+
+---
+
 ## インストール
+
+### Windows
 
 **`install\setup.bat`** をダブルクリックしてください。
 
-インストーラーが自動で以下を行います:
+### macOS / Linux
+
+ターミナルで以下を実行:
+
+```bash
+bash install/setup.sh
+```
+
+### インストーラーが自動で行うこと
 
 1. Node.js をダウンロード（未インストールの場合）
-2. データ保存先を確認（デフォルト: `%APPDATA%\M3E`）
-3. アプリのビルド
-4. デスクトップショートカット作成
+2. データ保存先を確認
+3. チュートリアルデータの配置（初回のみ）
+4. アプリのビルド
+5. アプリアイコンの生成（自動変換）
+6. デスクトップショートカット作成（アイコン付き）
+   - Windows: `.lnk` ショートカット
+   - macOS: `.app` バンドル
+   - Linux: `.desktop` ファイル
 
 > Node.js のインストールやコマンド操作は不要です。
 
@@ -17,7 +40,7 @@
 
 ## 起動
 
-デスクトップの **M3E** ショートカットをダブルクリック。
+デスクトップの **M3E** をダブルクリック。
 
 ブラウザで `http://localhost:38482/viewer.html` が開きます。
 
@@ -27,26 +50,35 @@
 
 ## 設定変更
 
-設定ファイル: `%APPDATA%\M3E\m3e.conf`
+| OS | 設定ファイル |
+|----|------------|
+| Windows | `%LOCALAPPDATA%\M3E\m3e.conf` |
+| macOS | `~/Library/Application Support/M3E/m3e.conf` |
+| Linux | `~/.config/M3E/m3e.conf` |
 
 ```
-M3E_DATA_DIR=D:\MyDocs\M3E
+M3E_DATA_DIR=/path/to/data
 M3E_PORT=38482
 ```
 
-設定をリセットするには `m3e.conf` を削除して `setup.bat` を再実行。
+設定をリセットするには `m3e.conf` を削除してセットアップを再実行。
 
 ---
 
 ## 配布
 
-zip で共有するだけ。受け取った人は `install\setup.bat` を実行すれば完了。
+上記のダウンロードリンクを共有するだけ。受け取った人は展開してセットアップスクリプトを実行すれば完了。
 
 ### 最小構成
 
 ```
 install/
-final/          (ソースのみ、node_modules/dist は除外)
+  assets/
+    image.jpg       ← アイコン原画
+    tutorial/       ← チュートリアル用サンプルデータ
+  setup.bat
+  setup.sh
+final/              (ソースのみ、node_modules/dist は除外)
 scripts/final/
 LICENSE
 ```
@@ -58,6 +90,6 @@ LICENSE
 | 問題 | 対処 |
 |------|------|
 | ダウンロード失敗 | インターネット接続を確認して再実行 |
-| ビルド失敗 | `setup.bat` を再実行 |
+| ビルド失敗 | セットアップスクリプトを再実行 |
 | ポート使用中 | ランチャーが自動で既存プロセスを停止します |
-| データ場所の確認 | `%APPDATA%\M3E\m3e.conf` を参照 |
+| データ場所の確認 | 上記の設定ファイルを参照 |

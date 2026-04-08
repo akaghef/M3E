@@ -185,8 +185,8 @@ LAUNCH_SCRIPT="$ROOT_DIR/scripts/final/launch.sh"
 chmod +x "$LAUNCH_SCRIPT" 2>/dev/null || true
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  # Create macOS .app bundle
-  APP_DIR="$HOME/Desktop/M3E.app"
+  # Create macOS .app bundle in /Applications (appears in Launchpad)
+  APP_DIR="/Applications/M3E.app"
   APP_CONTENTS="$APP_DIR/Contents"
   APP_MACOS="$APP_CONTENTS/MacOS"
   APP_RESOURCES="$APP_CONTENTS/Resources"
@@ -251,7 +251,8 @@ LAUNCHER
     rm -rf "$(dirname "$ICONSET_DIR")"
   fi
 
-  echo "  macOS app created: ~/Desktop/M3E.app"
+  echo "  macOS app created: /Applications/M3E.app"
+  echo "  (Visible in Launchpad and Spotlight)"
 
 else
   # Linux: create .desktop file
@@ -290,7 +291,7 @@ echo "  ============================================="
 echo ""
 echo "  Data location : $M3E_DATA_DIR"
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  echo "  Launch        : Double-click M3E.app on your Desktop"
+  echo "  Launch        : Launchpad or Spotlight で \"M3E\" を検索"
 else
   echo "  Launch        : Double-click M3E on your Desktop"
 fi
