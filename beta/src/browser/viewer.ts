@@ -73,6 +73,8 @@ const TAB_ID = crypto.randomUUID();
 const LINEAR_TEXT_FONT_SCALE_MIN = 0.6;
 const LINEAR_TEXT_FONT_SCALE_MAX = 1.4;
 const LINEAR_TEXT_FONT_SCALE_STEP = 0.1;
+const LINEAR_PANEL_WIDTH_MIN = 220;
+const LINEAR_PANEL_WIDTH_MAX = 2200;
 
 interface BcStateMessage {
   type: "STATE_UPDATE";
@@ -328,6 +330,45 @@ function syncLinearAdjustMenuUi(): void {
   if (linearMenuToggleBtn) {
     linearMenuToggleBtn.setAttribute("aria-expanded", linearAdjustMenuOpen ? "true" : "false");
   }
+}
+
+function isMarkdownFilename(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
+function markdownToLinearText(markdown: string): string {
+  const lines = String(markdown || "").replaceAll("\r", "").split("\n");
+  const converted: string[] = [];
+  lines.forEach((rawLine) => {
+    const line = rawLine.replace(/\t/g, "  ").trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return;
+    }
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const depth = Math.max(0, heading[1]!.length - 1);
+      converted.push(`${"  ".repeat(depth)}${heading[2]!.trim()}`);
+      return;
+    }
+    const list = line.match(/^(\s*)(?:[-*+]|\d+\.)\s+(.+)$/);
+    if (list) {
+      const leadingSpaces = list[1]?.length ?? 0;
+      const depth = Math.floor(leadingSpaces / 2);
+      converted.push(`${"  ".repeat(depth)}${list[2]!.trim()}`);
+      return;
+    }
+    const quote = line.match(/^(\s*)>\s*(.+)$/);
+    if (quote) {
+      const leadingSpaces = quote[1]?.length ?? 0;
+      const depth = Math.floor(leadingSpaces / 2);
+      converted.push(`${"  ".repeat(depth)}${quote[2]!.trim()}`);
+      return;
+    }
+    converted.push(trimmed);
+  });
+  return converted.join("\n");
 }
 
 function setLinearTextFontScale(nextScale: number, showStatus = true): void {
@@ -1195,7 +1236,7 @@ function captureManualLinearPanelWidth(): void {
     return;
   }
   const canvasWidth = renderedWidth / viewState.zoom;
-  linearPanelCanvasWidth = Math.max(220, Math.min(1200, canvasWidth));
+  linearPanelCanvasWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, canvasWidth));
 }
 
 function syncInlineEditorPosition(): void {
@@ -4161,6 +4202,19 @@ fileInput.addEventListener("change", (event: Event) => {
     try {
       const text = String(reader.result || "");
       const isMm = file.name.toLowerCase().endsWith(".mm");
+      const isMd = isMarkdownFilename(file.name);
+      if (isMd) {
+        if (!doc) {
+          loadPayload(createEmptyDoc());
+        }
+        const scopeRootId = currentLinearMemoScopeId();
+        linearNotesByScope[scopeRootId] = markdownToLinearText(text);
+        syncLinearNotesToDocState();
+        scheduleAutosave();
+        renderLinearPanel();
+        setStatus(`Imported .md file to Linear Text: ${file.name}`);
+        return;
+      }
       const payload = isMm ? parseMmText(text) : JSON.parse(text);
       loadPayload(payload);
       if (isMm) {
@@ -4261,7 +4315,7 @@ linearResizeHandleEl?.addEventListener("pointermove", (event: PointerEvent) => {
   const dx = event.clientX - linearResizeState.startClientX;
   const zoom = Math.max(0.0001, viewState.zoom);
   const nextWidth = linearResizeState.startCanvasWidth + dx / zoom;
-  linearPanelCanvasWidth = Math.max(220, Math.min(1200, nextWidth));
+  linearPanelCanvasWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, nextWidth));
   syncLinearPanelPosition();
 });
 
