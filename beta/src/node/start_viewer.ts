@@ -8,6 +8,21 @@ import { RapidMvpModel } from "./rapid_mvp";
 import { detectCloudConflict } from "./cloud_sync";
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
+import {
+  COLLAB_ENABLED,
+  registerEntity,
+  unregisterEntity,
+  authenticateRequest,
+  heartbeat,
+  getActiveEntities,
+  acquireScopeLock,
+  releaseScopeLock,
+  addSseClient,
+  broadcastSseEvent,
+  incrementDocVersion,
+  getDocVersion,
+  type CollabRole,
+} from "./collab";
 import type { AiSubagentRequest, AppState, LinearTransformRequest, SavedDoc } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
@@ -579,8 +594,130 @@ function startServer(): void {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Collab API
+// ---------------------------------------------------------------------------
+
+function parseCollabRoute(
+  urlPath: string,
+): { action: string; param?: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (!pathname.startsWith("/api/collab/")) return null;
+  const rest = pathname.slice("/api/collab/".length);
+
+  if (rest === "register") return { action: "register" };
+  if (rest === "heartbeat") return { action: "heartbeat" };
+  if (rest === "unregister") return { action: "unregister" };
+
+  const entitiesMatch = rest.match(/^entities\/([^/]+)$/);
+  if (entitiesMatch) return { action: "entities", param: decodeURIComponent(entitiesMatch[1]) };
+
+  const lockMatch = rest.match(/^scope\/([^/]+)\/lock$/);
+  if (lockMatch) return { action: "scope-lock", param: decodeURIComponent(lockMatch[1]) };
+
+  const eventsMatch = rest.match(/^events\/([^/]+)$/);
+  if (eventsMatch) return { action: "events", param: decodeURIComponent(eventsMatch[1]) };
+
+  return null;
+}
+
+async function handleCollabApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { action: string; param?: string },
+): Promise<void> {
+  if (!COLLAB_ENABLED) {
+    sendJson(res, 404, { ok: false, error: "Collaboration not enabled. Set M3E_COLLAB=1." });
+    return;
+  }
+
+  if (route.action === "register" && req.method === "POST") {
+    const rawBody = await readRequestBody(req);
+    const body = JSON.parse(rawBody) as {
+      displayName?: string;
+      role?: CollabRole;
+      capabilities?: ("read" | "write")[];
+    };
+    if (!body.displayName || !body.role) {
+      sendJson(res, 400, { ok: false, error: "displayName and role are required." });
+      return;
+    }
+    const validRoles: CollabRole[] = ["owner", "human", "ai-supervised", "ai", "ai-readonly"];
+    if (!validRoles.includes(body.role)) {
+      sendJson(res, 400, { ok: false, error: `Invalid role. Must be one of: ${validRoles.join(", ")}` });
+      return;
+    }
+    const entity = registerEntity(body.displayName, body.role, body.capabilities ?? ["read", "write"]);
+    sendJson(res, 200, { ok: true, entityId: entity.entityId, token: entity.token, priority: entity.priority });
+    return;
+  }
+
+  const entity = authenticateRequest(req);
+  if (!entity) {
+    sendJson(res, 401, { ok: false, error: "Unauthorized. Provide Authorization: Bearer {token}." });
+    return;
+  }
+
+  switch (route.action) {
+    case "heartbeat": {
+      if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
+      const rawBody = await readRequestBody(req);
+      const body = JSON.parse(rawBody) as { lockIds?: string[] };
+      heartbeat(entity.entityId, body.lockIds ?? []);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    case "unregister": {
+      if (req.method !== "DELETE") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
+      unregisterEntity(entity.entityId);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    case "entities": {
+      if (req.method !== "GET") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
+      const active = getActiveEntities();
+      sendJson(res, 200, {
+        ok: true,
+        entities: active.map((e) => ({ entityId: e.entityId, displayName: e.displayName, role: e.role, priority: e.priority })),
+        docVersion: getDocVersion(),
+      });
+      return;
+    }
+    case "scope-lock": {
+      const scopeId = route.param!;
+      if (req.method === "POST") {
+        if (!entity.capabilities.includes("write")) { sendJson(res, 403, { ok: false, error: "Write capability required." }); return; }
+        const result = acquireScopeLock(scopeId, entity);
+        if (!result.ok) { sendJson(res, result.status, { ok: false, error: result.error }); return; }
+        sendJson(res, 200, { ok: true, lockId: result.lock.lockId, expiresAt: new Date(result.lock.expiresAt).toISOString(), leaseDuration: result.lock.leaseDuration });
+        return;
+      }
+      if (req.method === "DELETE") {
+        const released = releaseScopeLock(scopeId, entity);
+        sendJson(res, released ? 200 : 404, { ok: released, ...(released ? {} : { error: "Lock not found or not owned by you." }) });
+        return;
+      }
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return;
+    }
+    case "events": {
+      if (req.method !== "GET") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
+      addSseClient(entity.entityId, res);
+      return;
+    }
+    default:
+      sendJson(res, 404, { ok: false, error: "Unknown collab endpoint." });
+  }
+}
+
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const collabRoute = parseCollabRoute(req.url ?? "/");
+    if (collabRoute) {
+      await handleCollabApi(req, res, collabRoute);
+      return;
+    }
+
     if (isAiStatusRoute(req.url ?? "/") || parseAiSubagentRoute(req.url ?? "/")) {
       await handleAiApi(req, res);
       return;
