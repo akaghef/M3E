@@ -196,7 +196,61 @@ git push origin dev-beta
 
 ---
 
-## Step 9: データ移行案内
+## Step 9: main マージ & タグ付け
+
+dev-beta の内容を main ブランチへマージし、リリースタグを付与する。
+main = 本番リリース履歴を示すブランチ。
+
+### 9-1. main へマージ
+
+```bash
+git checkout main
+git merge dev-beta -m "merge: dev-beta → main (beta promotion to final)"
+git push origin main
+git checkout dev-beta
+```
+
+マージ方針: **通常マージ**（fast-forward ではなくマージコミットを残す）。
+コンフリクトが発生した場合はユーザーに報告して判断を仰ぐ。
+
+### 9-2. vYYMMDD タグを付与
+
+タグ命名規則: `vYYMMDD`（年2桁 + 月2桁 + 日2桁）
+
+```bash
+# 今日の日付でタグ名を決定（例: v260408）
+TAG="v$(date +%y%m%d)"
+
+# 同日に既存タグがある場合はサフィックスを付ける
+if git tag -l "$TAG" | grep -q .; then
+  # v260408 が存在 → v260408-2, v260408-3, ... と探す
+  N=2
+  while git tag -l "${TAG}-${N}" | grep -q .; do
+    N=$((N + 1))
+  done
+  TAG="${TAG}-${N}"
+fi
+
+git tag "$TAG"
+git push origin "$TAG"
+```
+
+タグはユーザーに確認してから push する:
+```
+タグ: {TAG} を作成します。push してよいですか？
+```
+
+### 既存のタグ例
+
+| タグ | 内容 |
+|------|------|
+| v260402 | 初回リリース |
+| v260402-2 | 同日2回目 |
+| v260403, v260403-2, v260403-3 | 4/3 の3回 |
+
+---
+
+## Step 10: データ移行案内
 
 スキーマ変更を伴う場合、ユーザーに migration 手順を案内する。
 
@@ -235,8 +289,9 @@ beta/ に新しいディレクトリやファイルが追加された場合:
 | やりたいこと | コマンド |
 |-------------|---------|
 | 差分だけ見たい | Step 2 のみ実行 |
-| フル同期 | Step 1-9 を順に実行 |
+| フル同期 + リリース | Step 1-10 を順に実行 |
 | ビルド確認だけ | Step 3-4 を実行 |
+| main マージ + タグのみ | Step 9 を実行 |
 | ユーザーが手動で同期 | `scripts/final/migrate-from-beta.bat` |
 | 起動のみ | `scripts/final/launch.bat` |
 
