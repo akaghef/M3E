@@ -540,6 +540,6 @@
       @media (max-width: 900px) {
         .label-root,
         .label-node {
-          font-size: 28px;
+          /* font-size now controlled by inline SVG attribute from tuning constants */
         }
       }

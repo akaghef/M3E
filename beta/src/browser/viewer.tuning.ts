@@ -64,15 +64,15 @@ const VIEWER_TUNING: ViewerTuning = {
     // Depth-axis distance between parent and child columns.
     columnGap: 170,
     // Baseline block height for leaf and regular nodes.
-    leafHeight: 72,
+    leafHeight: 38,
     // Breadth-axis spacing between sibling nodes.
-    siblingGap: 2,
+    siblingGap: 1,
     // Left margin before the rendered map begins.
     leftPad: 80,
     // Top margin before the rendered map begins.
     topPad: 10,
     // Minimum hit area height for node interaction.
-    nodeHitHeight: 64,
+    nodeHitHeight: 38,
     // Smallest canvas width even for tiny documents.
     minCanvasWidth: 1400,
     // Smallest canvas height even for tiny documents.

@@ -357,7 +357,7 @@ function measureNodeLabel(text: string, fontSize: number): { w: number; h: numbe
   const lines = splitLabelLines(text);
   const maxLineWidth = lines.reduce((max, line) => Math.max(max, textWidth(line, fontSize)), 80);
   const lineHeight = lineHeightForFont(fontSize);
-  const verticalPadding = 24;
+  const verticalPadding = 0;
   return {
     w: maxLineWidth + 20,
     h: Math.max(VIEWER_TUNING.layout.leafHeight, lines.length * lineHeight + verticalPadding),
@@ -2047,7 +2047,7 @@ function render(): void {
       const x = p.x;
       const y = p.y - h / 2;
       nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle">${rootTspans}</text>`;
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${VIEWER_TUNING.typography.rootFont}">${rootTspans}</text>`;
     } else {
       const rawLabel = uiLabel(node) || "(empty)";
       const labelLines = splitLabelLines(rawLabel);
@@ -2084,7 +2084,7 @@ function render(): void {
         const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
         const startY = multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
         const tspans = multilineTspans(labelLines, p.x, lineHeight);
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start">${tspans}</text>`;
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}">${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
