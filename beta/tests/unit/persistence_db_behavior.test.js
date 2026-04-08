@@ -106,6 +106,10 @@ test("saveToSqlite and loadFromSqlite round-trip", () => {
   model.editNode(child, "Child Updated");
   model.addAlias(rootId, child, { aliasLabel: "Child Alias", access: "write" });
   model.addLink(child, sibling, { direction: "forward", style: "soft" });
+  model.state.linearNotesByScope = {
+    [rootId]: "Root memo",
+    [child]: "Child memo",
+  };
 
   const { base, filePath } = makeTempPath("nested", "rapid.sqlite");
   model.saveToSqlite(filePath, "doc-a");

@@ -250,6 +250,37 @@ function createEmptyDoc(): SavedDoc {
   };
 }
 
+function sanitizeLinearNotesByScope(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+  const sanitized: Record<string, string> = {};
+  Object.entries(raw as Record<string, unknown>).forEach(([scopeId, memo]) => {
+    if (!scopeId) {
+      return;
+    }
+    sanitized[scopeId] = String(memo ?? "");
+  });
+  return sanitized;
+}
+
+function hydrateLinearNotesFromDocState(): void {
+  Object.keys(linearNotesByScope).forEach((scopeId) => {
+    delete linearNotesByScope[scopeId];
+  });
+  if (!doc) {
+    return;
+  }
+  Object.assign(linearNotesByScope, sanitizeLinearNotesByScope(doc.state.linearNotesByScope));
+}
+
+function syncLinearNotesToDocState(): void {
+  if (!doc) {
+    return;
+  }
+  doc.state.linearNotesByScope = { ...linearNotesByScope };
+}
+
 function ensureDocShape(payload: unknown): SavedDoc {
   const p = payload as Record<string, unknown>;
   const candidate = (p && p["state"])
@@ -293,6 +324,7 @@ function ensureDocShape(payload: unknown): SavedDoc {
       style: record.style || "default",
     };
   });
+  candidate.state.linearNotesByScope = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
   return candidate as SavedDoc;
 }
 
@@ -1551,6 +1583,7 @@ function renderLinearPanel(): void {
   const templateText = buildLinearFromScope().text;
   if (!(scopeRootId in linearNotesByScope)) {
     linearNotesByScope[scopeRootId] = templateText;
+    syncLinearNotesToDocState();
   }
   const scopeMemo = linearNotesByScope[scopeRootId] || "";
   linearDirty = scopeMemo !== templateText;
@@ -3072,6 +3105,7 @@ function downloadJson(): void {
 }
 
 function currentDocSnapshot(): SavedDoc {
+  syncLinearNotesToDocState();
   return {
     version: 1,
     savedAt: nowIso(),
@@ -3454,6 +3488,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
 function loadPayload(payload: unknown): void {
   try {
     doc = ensureDocShape(payload);
+    hydrateLinearNotesFromDocState();
     undoStack = [];
     redoStack = [];
     linearDirty = false;
@@ -4052,6 +4087,8 @@ linearTextEl?.addEventListener("input", () => {
   }
   const scopeRootId = currentLinearMemoScopeId();
   linearNotesByScope[scopeRootId] = linearTextEl.value;
+  syncLinearNotesToDocState();
+  scheduleAutosave();
   const templateText = buildLinearFromScope().text;
   linearDirty = linearTextEl.value !== templateText;
   if (linearMetaEl) {
@@ -4069,12 +4106,16 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
+    syncLinearNotesToDocState();
+    scheduleAutosave();
     setStatus("Linear memo saved in current scope.");
     return;
   }
   if (event.key === "Escape") {
     event.preventDefault();
     linearNotesByScope[currentLinearMemoScopeId()] = buildLinearFromScope().text;
+    syncLinearNotesToDocState();
+    scheduleAutosave();
     renderLinearPanel();
     setStatus("Linear memo reset to outline template.");
   }

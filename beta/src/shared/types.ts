@@ -36,6 +36,7 @@ export interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
+  linearNotesByScope?: Record<string, string>;
 }
 
 export interface SavedDoc {
