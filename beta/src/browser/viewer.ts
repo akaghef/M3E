@@ -3259,6 +3259,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     cloudSavedAt = payload.savedAt ? String(payload.savedAt) : null;
     cloudConflictPending = false;
     updateCloudSyncUi();
+    broadcastState();
     if (showStatus) {
       setStatus("Loaded cloud document.");
     }
@@ -3308,13 +3309,24 @@ function scheduleAutosave(): void {
   }, AUTOSAVE_DELAY_MS);
 }
 
+function isValidAppState(s: unknown): s is AppState {
+  if (!s || typeof s !== "object") return false;
+  const obj = s as Record<string, unknown>;
+  return typeof obj.rootId === "string" && !!obj.nodes && typeof obj.nodes === "object";
+}
+
 function initBroadcastSync(): void {
-  bc = new BroadcastChannel(`m3e-doc-${LOCAL_DOC_ID}`);
+  if (typeof BroadcastChannel === "undefined") return;
+  try {
+    bc = new BroadcastChannel(`m3e-doc-${LOCAL_DOC_ID}`);
+  } catch {
+    return;
+  }
   bc.onmessage = (ev: MessageEvent<BcStateMessage>) => {
     if (!doc || ev.data.fromTabId === TAB_ID) {
       return;
     }
-    if (ev.data.type === "STATE_UPDATE") {
+    if (ev.data.type === "STATE_UPDATE" && isValidAppState(ev.data.state)) {
       doc.state = ev.data.state;
       scheduleRender();
     }
