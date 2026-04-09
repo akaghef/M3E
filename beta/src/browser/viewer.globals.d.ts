@@ -47,6 +47,7 @@ interface AppState {
   links?: Record<string, GraphLink>;
   linearNotesByScope?: Record<string, string>;
   linearTextFontScale?: number;
+  linearPanelWidth?: number;
 }
 
 interface SavedDoc {

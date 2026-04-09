@@ -422,6 +422,9 @@ function ensureDocShape(payload: unknown): SavedDoc {
   });
   candidate.state.linearNotesByScope = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
   candidate.state.linearTextFontScale = normalizeLinearTextFontScale(candidate.state.linearTextFontScale);
+  if (candidate.state.linearPanelWidth != null) {
+    candidate.state.linearPanelWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, Number(candidate.state.linearPanelWidth) || 340));
+  }
   return candidate as SavedDoc;
 }
 
@@ -1231,6 +1234,9 @@ function captureManualLinearPanelWidth(): void {
   }
   const canvasWidth = renderedWidth / viewState.zoom;
   linearPanelCanvasWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, canvasWidth));
+  if (doc) {
+    doc.state.linearPanelWidth = linearPanelCanvasWidth;
+  }
 }
 
 function syncInlineEditorPosition(): void {
@@ -3631,6 +3637,9 @@ function loadPayload(payload: unknown): void {
     doc = ensureDocShape(payload);
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
+    if (doc.state.linearPanelWidth != null) {
+      linearPanelCanvasWidth = doc.state.linearPanelWidth;
+    }
     undoStack = [];
     redoStack = [];
     linearDirty = false;
@@ -4312,6 +4321,7 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
 linearPanelEl?.addEventListener("pointerup", () => {
   captureManualLinearPanelWidth();
   syncLinearPanelPosition();
+  scheduleAutosave();
 });
 
 linearResizeHandleEl?.addEventListener("pointerdown", (event: PointerEvent) => {
@@ -4348,6 +4358,10 @@ function endLinearResize(event: PointerEvent): void {
   linearResizeHandleEl?.releasePointerCapture(event.pointerId);
   linearResizeState = null;
   syncLinearPanelPosition();
+  if (doc) {
+    doc.state.linearPanelWidth = linearPanelCanvasWidth;
+    scheduleAutosave();
+  }
 }
 
 linearResizeHandleEl?.addEventListener("pointerup", endLinearResize);
