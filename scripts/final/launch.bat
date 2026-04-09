@@ -10,6 +10,7 @@ REM ============================================================
 
 cd /d "%~dp0\..\.."
 set "ROOT=%cd%"
+set "LOG_FILE=%LOCALAPPDATA%\M3E\launch.log"
 
 REM Load saved config (written by setup.bat), then apply env overrides.
 set "CONFIG_FILE=%LOCALAPPDATA%\M3E\m3e.conf"
@@ -33,19 +34,24 @@ for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":!M3E_PORT!" ^| finds
   )
 )
 
-REM Resolve Node/npm path
+REM Resolve Node/npm path and add to PATH
 set "NODE_DIR=%ROOT%\install\node"
+if exist "%NODE_DIR%\node.exe" set "PATH=%NODE_DIR%;%PATH%"
+
 if exist "%NODE_DIR%\npm.cmd" (
-  call "%NODE_DIR%\npm.cmd" --prefix "%ROOT%\final" start
+  set "NPM_CMD=%NODE_DIR%\npm.cmd"
 ) else (
-  call npm --prefix "%ROOT%\final" start
+  set "NPM_CMD=npm"
 )
 
-if %ERRORLEVEL% neq 0 (
-  echo.
-  echo [ERROR] Launch failed.
-  echo   Run install\setup.bat for first-time setup.
-  pause
+REM Launch from final/ directory (avoid --prefix issues)
+pushd "%ROOT%\final"
+call "!NPM_CMD!" start > "!LOG_FILE!" 2>&1
+set "EXIT_CODE=!ERRORLEVEL!"
+popd
+
+if !EXIT_CODE! neq 0 (
+  echo [ERROR] Launch failed. See log: !LOG_FILE! >> "!LOG_FILE!"
   exit /b 1
 )
 
