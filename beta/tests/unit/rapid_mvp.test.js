@@ -195,6 +195,19 @@ test("queryNodes with unknown scope throws", () => {
   });
 });
 
+test("fromJSON handles missing nodes gracefully", () => {
+  const model = RapidMvpModel.fromJSON({ rootId: "r", nodes: undefined, links: {} });
+  assert.deepEqual(model.state.nodes, {});
+});
+
+test("fromJSON handles missing links gracefully", () => {
+  const base = new RapidMvpModel("Root");
+  const json = base.toJSON();
+  delete json.links;
+  const restored = RapidMvpModel.fromJSON(json);
+  assert.deepEqual(restored.state.links, {});
+});
+
 test("reparent updates scope-root query results without any node-level scope cascade", () => {
   const model = new RapidMvpModel("Root");
   const rootId = model.state.rootId;

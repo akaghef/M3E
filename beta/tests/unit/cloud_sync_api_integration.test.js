@@ -224,3 +224,31 @@ test("sync endpoints return 405 on unsupported method", async () => {
   assert.equal(pullGet.payload.ok, false);
   assert.equal(pullGet.payload.documentId, docId);
 });
+
+test("sync push returns 400 (not 500) when state has no nodes", async () => {
+  const docId = "missing-nodes";
+  const pushed = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ state: {}, savedAt: "2026-01-01T00:00:00Z" }),
+  });
+
+  assert.equal(pushed.response.status, 400);
+  assert.equal(pushed.payload.code, "SYNC_PUSH_INVALID_MODEL");
+  assert.equal(pushed.payload.ok, false);
+  assert.equal(pushed.payload.documentId, docId);
+});
+
+test("sync push returns 400 when state is null", async () => {
+  const docId = "null-state";
+  const pushed = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ state: null }),
+  });
+
+  assert.equal(pushed.response.status, 400);
+  assert.equal(pushed.payload.ok, false);
+  // state:null is falsy so body itself becomes candidate.state; it has no nodes field
+  assert.equal(pushed.payload.code, "SYNC_PUSH_INVALID_MODEL");
+});

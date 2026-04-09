@@ -55,6 +55,18 @@ create policy "Authenticated users can delete documents"
   to authenticated
   using (true);
 
+-- 3b. RLS Policies — anon (development only, anon key access)
+--     Remove these before production or when Auth sign-in is wired up.
+
+create policy "Anon can read documents"
+  on public.documents for select to anon using (true);
+create policy "Anon can insert documents"
+  on public.documents for insert to anon with check (true);
+create policy "Anon can update documents"
+  on public.documents for update to anon using (true) with check (true);
+create policy "Anon can delete documents"
+  on public.documents for delete to anon using (true);
+
 -- 4. Auto-update updated_at on row modification
 create or replace function public.handle_updated_at()
 returns trigger as $$

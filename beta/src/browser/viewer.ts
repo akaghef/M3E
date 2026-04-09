@@ -51,7 +51,7 @@ function normalizeDocId(raw: string | null, fallback: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
-const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main");
+const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "akaghef-beta");
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
@@ -5325,9 +5325,6 @@ void initializeDocument().then(() => {
   }
   fitDocument() || applyZoom();
 
-  // Show home screen on startup if no scopeId is specified in URL
-  const hasInitialScope = queryParams.get("scopeId");
-  if (!hasInitialScope && doc) {
-    showHomeScreen();
-  }
+  // Skip home screen — go straight to map root
+  // To open home screen, user can press the toggle shortcut
 });

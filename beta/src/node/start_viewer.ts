@@ -229,8 +229,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
       const rawBody = await readRequestBody(req);
       const parsed = JSON.parse(rawBody) as { state?: unknown };
       const candidate = parsed && parsed.state ? parsed : { state: parsed };
-      if (!candidate.state) {
+      if (!candidate.state || typeof candidate.state !== "object") {
         sendJson(res, 400, { error: "Invalid JSON format." });
+        return true;
+      }
+      if (!(candidate.state as Record<string, unknown>).nodes) {
+        sendJson(res, 400, { error: "Missing required field: nodes." });
         return true;
       }
 
@@ -323,8 +327,12 @@ async function handleSyncApi(
       const rawBody = await readRequestBody(req);
       const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
-      if (!candidate.state) {
+      if (!candidate.state || typeof candidate.state !== "object") {
         sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.docId);
+        return true;
+      }
+      if (!(candidate.state as Record<string, unknown>).nodes) {
+        sendSyncError(res, 400, "SYNC_PUSH_INVALID_MODEL", "Missing required field: nodes.", route.docId);
         return true;
       }
 

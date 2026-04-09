@@ -498,6 +498,9 @@ class RapidMvpModel {
   static fromJSON(jsonState: AppState): RapidMvpModel {
     const model = new RapidMvpModel("tmp");
     model.state = JSON.parse(JSON.stringify(jsonState)) as AppState;
+    if (!model.state.nodes || typeof model.state.nodes !== "object") {
+      model.state.nodes = {};
+    }
     Object.keys(model.state.nodes).forEach((nodeId) => {
       model.state.nodes[nodeId] = model._normalizeNode(model.state.nodes[nodeId]!);
     });
