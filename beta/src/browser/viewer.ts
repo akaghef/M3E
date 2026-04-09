@@ -41,6 +41,17 @@ const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
 const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
 const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
+const entityListPanelEl = document.getElementById("entity-list-panel") as HTMLElement | null;
+const entityListTreeEl = document.getElementById("entity-list-tree") as HTMLElement | null;
+const entityListSearchEl = document.getElementById("entity-list-search") as HTMLInputElement | null;
+const entityListCloseBtn = document.getElementById("entity-list-close") as HTMLButtonElement | null;
+const conflictPanelEl = document.getElementById("conflict-panel") as HTMLElement | null;
+const conflictLocalTreeEl = document.getElementById("conflict-local-tree") as HTMLElement | null;
+const conflictRemoteTreeEl = document.getElementById("conflict-remote-tree") as HTMLElement | null;
+const conflictDiffSummaryEl = document.getElementById("conflict-diff-summary") as HTMLElement | null;
+const conflictCloseBtn = document.getElementById("conflict-close") as HTMLButtonElement | null;
+const conflictUseLocalBtn = document.getElementById("conflict-use-local") as HTMLButtonElement | null;
+const conflictUseRemoteBtn = document.getElementById("conflict-use-remote") as HTMLButtonElement | null;
 
 function normalizeDocId(raw: string | null, fallback: string): string {
   const trimmed = (raw || "").trim();
@@ -121,6 +132,9 @@ let linearTextFontScale = 1;
 let linearAdjustMenuOpen = false;
 let linearMenuVisible = false;
 let homeScreenVisible = false;
+let entityListVisible = false;
+let conflictPanelVisible = false;
+let conflictRemoteState: AppState | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -3026,6 +3040,380 @@ function hideHomeScreen(): void {
   board.focus();
 }
 
+// ---- Entity List Panel ----
+
+function collectEntityTree(parentId: string): { id: string; label: string; nodeType: string; children: ReturnType<typeof collectEntityTree> }[] {
+  if (!doc) {
+    return [];
+  }
+  const parent = doc.state.nodes[parentId];
+  if (!parent) {
+    return [];
+  }
+  const result: { id: string; label: string; nodeType: string; children: ReturnType<typeof collectEntityTree> }[] = [];
+  for (const childId of parent.children || []) {
+    const child = doc.state.nodes[childId];
+    if (!child) {
+      continue;
+    }
+    result.push({
+      id: child.id,
+      label: uiLabel(child),
+      nodeType: child.nodeType || "text",
+      children: collectEntityTree(child.id),
+    });
+  }
+  return result;
+}
+
+function highlightText(text: string, query: string): string {
+  if (!query) {
+    return escapeHtml(text);
+  }
+  const escaped = escapeHtml(text);
+  const escapedQuery = escapeHtml(query);
+  const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  return escaped.replace(regex, '<span class="entity-highlight">$1</span>');
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function filterEntityTree(
+  nodes: ReturnType<typeof collectEntityTree>,
+  query: string,
+): ReturnType<typeof collectEntityTree> {
+  if (!query) {
+    return nodes;
+  }
+  const lowerQuery = query.toLowerCase();
+  const result: ReturnType<typeof collectEntityTree> = [];
+  for (const node of nodes) {
+    const filteredChildren = filterEntityTree(node.children, query);
+    if (node.label.toLowerCase().includes(lowerQuery) || filteredChildren.length > 0) {
+      result.push({
+        ...node,
+        children: filteredChildren,
+      });
+    }
+  }
+  return result;
+}
+
+function renderEntityTree(
+  container: HTMLElement,
+  nodes: ReturnType<typeof collectEntityTree>,
+  query: string,
+  forceExpand: boolean,
+): void {
+  container.innerHTML = "";
+  for (const node of nodes) {
+    const hasChildren = node.children.length > 0;
+
+    const row = document.createElement("div");
+    row.className = "entity-row";
+    if (viewState.selectedNodeId === node.id) {
+      row.classList.add("is-selected");
+    }
+    row.dataset.nodeId = node.id;
+
+    const toggle = document.createElement("button");
+    toggle.className = "entity-toggle" + (hasChildren ? "" : " no-children");
+    toggle.textContent = "\u25B6";
+    toggle.type = "button";
+    if (forceExpand && hasChildren) {
+      toggle.classList.add("expanded");
+    }
+
+    const name = document.createElement("span");
+    name.className = "entity-name";
+    name.innerHTML = highlightText(node.label, query);
+
+    row.appendChild(toggle);
+    row.appendChild(name);
+
+    if (node.nodeType === "folder") {
+      const badge = document.createElement("span");
+      badge.className = "entity-badge entity-badge-folder";
+      badge.textContent = "folder";
+      row.appendChild(badge);
+    } else if (node.nodeType === "alias") {
+      const badge = document.createElement("span");
+      badge.className = "entity-badge entity-badge-alias";
+      badge.textContent = "alias";
+      row.appendChild(badge);
+    }
+
+    container.appendChild(row);
+
+    let childContainer: HTMLElement | null = null;
+    if (hasChildren) {
+      childContainer = document.createElement("div");
+      childContainer.className = "entity-children";
+      childContainer.hidden = !forceExpand;
+      renderEntityTree(childContainer, node.children, query, forceExpand);
+      container.appendChild(childContainer);
+    }
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!childContainer) {
+        return;
+      }
+      const isExpanded = !childContainer.hidden;
+      childContainer.hidden = isExpanded;
+      toggle.classList.toggle("expanded", !isExpanded);
+    });
+
+    row.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".entity-toggle")) {
+        return;
+      }
+      hideEntityListPanel();
+      setSingleSelection(node.id);
+      centerOnNode(node.id, Math.max(1, viewState.zoom));
+      setStatus(`Focused: ${node.label}`);
+    });
+  }
+}
+
+function buildEntityList(query = ""): void {
+  if (!doc || !entityListTreeEl) {
+    return;
+  }
+  const scopeRoot = currentScopeRootId();
+  const allNodes = collectEntityTree(scopeRoot);
+  const filtered = filterEntityTree(allNodes, query);
+  const forceExpand = Boolean(query);
+  renderEntityTree(entityListTreeEl, filtered, query, forceExpand);
+}
+
+function showEntityListPanel(): void {
+  if (!entityListPanelEl || !doc) {
+    return;
+  }
+  entityListVisible = true;
+  entityListPanelEl.hidden = false;
+  if (entityListSearchEl) {
+    entityListSearchEl.value = "";
+  }
+  buildEntityList();
+}
+
+function hideEntityListPanel(): void {
+  if (!entityListPanelEl) {
+    return;
+  }
+  entityListVisible = false;
+  entityListPanelEl.hidden = true;
+  board.focus();
+}
+
+function toggleEntityListPanel(): void {
+  if (entityListVisible) {
+    hideEntityListPanel();
+  } else {
+    showEntityListPanel();
+  }
+}
+
+if (entityListSearchEl) {
+  entityListSearchEl.addEventListener("input", () => {
+    buildEntityList(entityListSearchEl!.value.trim());
+  });
+  entityListSearchEl.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+  });
+}
+
+if (entityListCloseBtn) {
+  entityListCloseBtn.addEventListener("click", () => {
+    hideEntityListPanel();
+  });
+}
+
+// ---- Conflict Panel ----
+
+function collectFlatNodes(state: AppState, rootId: string): { id: string; text: string; depth: number }[] {
+  const result: { id: string; text: string; depth: number }[] = [];
+  const stack: { id: string; depth: number }[] = [{ id: rootId, depth: 0 }];
+  while (stack.length > 0) {
+    const { id, depth } = stack.pop()!;
+    const node = state.nodes[id];
+    if (!node) {
+      continue;
+    }
+    result.push({ id, text: node.text || "Untitled", depth });
+    const children = [...(node.children || [])].reverse();
+    for (const childId of children) {
+      stack.push({ id: childId, depth: depth + 1 });
+    }
+  }
+  return result;
+}
+
+interface ConflictDiffResult {
+  localOnly: Set<string>;
+  remoteOnly: Set<string>;
+  changed: Set<string>;
+  addedCount: number;
+  removedCount: number;
+  changedCount: number;
+}
+
+function diffStates(localState: AppState, remoteState: AppState): ConflictDiffResult {
+  const localIds = new Set(Object.keys(localState.nodes));
+  const remoteIds = new Set(Object.keys(remoteState.nodes));
+
+  const localOnly = new Set<string>();
+  const remoteOnly = new Set<string>();
+  const changed = new Set<string>();
+
+  for (const id of localIds) {
+    if (!remoteIds.has(id)) {
+      localOnly.add(id);
+    }
+  }
+
+  for (const id of remoteIds) {
+    if (!localIds.has(id)) {
+      remoteOnly.add(id);
+    }
+  }
+
+  for (const id of localIds) {
+    if (remoteIds.has(id)) {
+      const localNode = localState.nodes[id];
+      const remoteNode = remoteState.nodes[id];
+      if (localNode.text !== remoteNode.text ||
+          JSON.stringify(localNode.children) !== JSON.stringify(remoteNode.children) ||
+          localNode.parentId !== remoteNode.parentId ||
+          localNode.nodeType !== remoteNode.nodeType) {
+        changed.add(id);
+      }
+    }
+  }
+
+  return {
+    localOnly,
+    remoteOnly,
+    changed,
+    addedCount: remoteOnly.size,
+    removedCount: localOnly.size,
+    changedCount: changed.size,
+  };
+}
+
+function renderConflictTree(
+  container: HTMLElement,
+  flatNodes: { id: string; text: string; depth: number }[],
+  diffClasses: Map<string, string>,
+): void {
+  container.innerHTML = "";
+  for (const node of flatNodes) {
+    const row = document.createElement("div");
+    row.className = "conflict-node-row";
+    const diffClass = diffClasses.get(node.id);
+    if (diffClass) {
+      row.classList.add(diffClass);
+    }
+
+    const indent = document.createElement("span");
+    indent.className = "conflict-node-indent";
+    indent.style.width = `${node.depth * 16}px`;
+
+    const text = document.createElement("span");
+    text.className = "conflict-node-text";
+    text.textContent = node.text;
+
+    row.appendChild(indent);
+    row.appendChild(text);
+    container.appendChild(row);
+  }
+}
+
+function showConflictPanel(remoteState: AppState): void {
+  if (!conflictPanelEl || !conflictLocalTreeEl || !conflictRemoteTreeEl || !conflictDiffSummaryEl || !doc) {
+    return;
+  }
+
+  conflictRemoteState = remoteState;
+  conflictPanelVisible = true;
+  conflictPanelEl.hidden = false;
+
+  const localState = doc.state;
+  const diff = diffStates(localState, remoteState);
+
+  // Build diff class maps
+  const localDiffClasses = new Map<string, string>();
+  const remoteDiffClasses = new Map<string, string>();
+
+  for (const id of diff.localOnly) {
+    localDiffClasses.set(id, "diff-removed");
+  }
+  for (const id of diff.remoteOnly) {
+    remoteDiffClasses.set(id, "diff-added");
+  }
+  for (const id of diff.changed) {
+    localDiffClasses.set(id, "diff-changed");
+    remoteDiffClasses.set(id, "diff-changed");
+  }
+
+  const localFlat = collectFlatNodes(localState, localState.rootId);
+  const remoteFlat = collectFlatNodes(remoteState, remoteState.rootId);
+
+  renderConflictTree(conflictLocalTreeEl, localFlat, localDiffClasses);
+  renderConflictTree(conflictRemoteTreeEl, remoteFlat, remoteDiffClasses);
+
+  const parts: string[] = [];
+  if (diff.addedCount > 0) {
+    parts.push(`${diff.addedCount} node(s) added in remote`);
+  }
+  if (diff.removedCount > 0) {
+    parts.push(`${diff.removedCount} node(s) removed in remote`);
+  }
+  if (diff.changedCount > 0) {
+    parts.push(`${diff.changedCount} node(s) modified`);
+  }
+  if (parts.length === 0) {
+    parts.push("No structural differences detected (metadata may differ).");
+  }
+  conflictDiffSummaryEl.textContent = parts.join(" | ");
+}
+
+function hideConflictPanel(): void {
+  if (!conflictPanelEl) {
+    return;
+  }
+  conflictPanelVisible = false;
+  conflictPanelEl.hidden = true;
+  conflictRemoteState = null;
+  board.focus();
+}
+
+if (conflictCloseBtn) {
+  conflictCloseBtn.addEventListener("click", () => {
+    hideConflictPanel();
+  });
+}
+
+if (conflictUseLocalBtn) {
+  conflictUseLocalBtn.addEventListener("click", () => {
+    hideConflictPanel();
+    pushDocToCloud(true, true);
+  });
+}
+
+if (conflictUseRemoteBtn) {
+  conflictUseRemoteBtn.addEventListener("click", () => {
+    if (conflictRemoteState && doc) {
+      hideConflictPanel();
+      pullDocFromCloud(true);
+    }
+  });
+}
+
 function addChild(): void {
   const parentId = viewState.selectedNodeId;
   const parent = getNode(parentId);
@@ -3541,6 +3929,22 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
       updateCloudSyncUi();
       if (showStatus) {
         setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
+      }
+      // Attempt to fetch remote state to populate conflict panel
+      try {
+        const pullResp = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          body: JSON.stringify({}),
+        });
+        if (pullResp.ok) {
+          const pullPayload = await pullResp.json();
+          if (pullPayload.state) {
+            showConflictPanel(pullPayload.state as AppState);
+          }
+        }
+      } catch {
+        // Conflict panel will not be shown if remote fetch fails
       }
       return false;
     }
@@ -4874,6 +5278,18 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (entityListVisible && event.key === "Escape") {
+    event.preventDefault();
+    hideEntityListPanel();
+    return;
+  }
+
+  if (conflictPanelVisible && event.key === "Escape") {
+    event.preventDefault();
+    hideConflictPanel();
+    return;
+  }
+
   if (homeScreenVisible && event.key === "Escape") {
     event.preventDefault();
     hideHomeScreen();
@@ -5071,6 +5487,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         EnterScopeCommand();
         return;
       }
+
+  if (event.altKey && event.key.toLowerCase() === "e") {
+    event.preventDefault();
+    toggleEntityListPanel();
+    return;
+  }
 
   if (event.altKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
