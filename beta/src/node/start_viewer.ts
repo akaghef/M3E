@@ -35,6 +35,8 @@ import {
   setDocVersion,
   type CollabRole,
 } from "./collab";
+import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
+import { getPresenceList, touchPresence, removePresence } from "./presence";
 import type { AiSubagentRequest, AppState, LinearTransformRequest, SavedDoc } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
@@ -51,6 +53,66 @@ const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
+
+// ---------------------------------------------------------------------------
+// Doc-watch SSE (standalone, independent of collab SSE)
+// ---------------------------------------------------------------------------
+
+interface DocWatchClient {
+  docId: string;
+  res: http.ServerResponse;
+}
+
+const docWatchClients: DocWatchClient[] = [];
+
+function addDocWatchClient(docId: string, res: http.ServerResponse): void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+  docWatchClients.push({ docId, res });
+  res.on("close", () => {
+    const idx = docWatchClients.findIndex((c) => c.res === res);
+    if (idx !== -1) docWatchClients.splice(idx, 1);
+  });
+}
+
+function broadcastDocUpdate(docId: string, savedAt: string, sourceTabId: string | null): void {
+  const payload = JSON.stringify({ docId, savedAt, sourceTabId });
+  const frame = `event: doc_updated\ndata: ${payload}\n\n`;
+  for (let i = docWatchClients.length - 1; i >= 0; i--) {
+    if (docWatchClients[i].docId === docId) {
+      try {
+        docWatchClients[i].res.write(frame);
+      } catch {
+        docWatchClients.splice(i, 1);
+      }
+    }
+  }
+}
+
+function parseDocWatchRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/docs\/([^/]+)\/watch$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
+}
+
+function parseDocAuditRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/docs\/([^/]+)\/audit$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
+}
+
+function parseDocPresenceRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/docs\/([^/]+)\/presence$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
+}
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -246,7 +308,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
       }
 
       model.saveToSqlite(SQLITE_DB_PATH, docId);
-      sendJson(res, 200, { ok: true, savedAt: new Date().toISOString(), documentId: docId });
+      const savedAt = new Date().toISOString();
+      const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+      broadcastDocUpdate(docId, savedAt, sourceTabId);
+      sendJson(res, 200, { ok: true, savedAt, documentId: docId });
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
       if (err instanceof SyntaxError) {
@@ -540,6 +605,9 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
 }
 
 function startServer(): void {
+  // Initialize audit log file for the default document
+  initAuditFile(DATA_DIR, "rapid-main");
+
   const server = createAppServer();
 
   server.listen(PORT, () => {
@@ -561,6 +629,18 @@ function startServer(): void {
       startAutoBackup(SQLITE_DB_PATH, BACKUP_DIR);
     }
     console.log("Press Ctrl+C to stop the server.");
+
+    // Keep SSE connections alive through proxies
+    setInterval(() => {
+      const ping = ": heartbeat\n\n";
+      for (let i = docWatchClients.length - 1; i >= 0; i--) {
+        try {
+          docWatchClients[i].res.write(ping);
+        } catch {
+          docWatchClients.splice(i, 1);
+        }
+      }
+    }, 15_000);
   });
 }
 
@@ -621,6 +701,8 @@ async function handleCollabApi(
       return;
     }
     const entity = registerEntity(body.displayName, body.role, body.capabilities ?? ["read", "write"]);
+    // Track presence for default doc on register
+    touchPresence("rapid-main", entity.entityId, body.displayName, body.role);
     sendJson(res, 200, { ok: true, entityId: entity.entityId, token: entity.token, priority: entity.priority });
     return;
   }
@@ -635,13 +717,17 @@ async function handleCollabApi(
     case "heartbeat": {
       if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       const rawBody = await readRequestBody(req);
-      const body = JSON.parse(rawBody) as { lockIds?: string[] };
+      const body = JSON.parse(rawBody) as { lockIds?: string[]; docId?: string };
       heartbeat(entity.entityId, body.lockIds ?? []);
+      // Refresh presence on heartbeat
+      touchPresence(body.docId ?? "rapid-main", entity.entityId, entity.displayName, entity.role);
       sendJson(res, 200, { ok: true });
       return;
     }
     case "unregister": {
       if (req.method !== "DELETE") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
+      // Remove from all doc presence (use default doc for now)
+      removePresence("rapid-main", entity.entityId);
       unregisterEntity(entity.entityId);
       sendJson(res, 200, { ok: true });
       return;
@@ -691,6 +777,8 @@ async function handleCollabApi(
           return;
         }
         const result = mergeScopePush(docId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, SQLITE_DB_PATH);
+        // Update presence on push
+        touchPresence(docId, entity.entityId, entity.displayName, entity.role);
         if (!result.ok && result.error === "Scope lock not held.") {
           sendJson(res, 403, result);
         } else {
@@ -727,6 +815,43 @@ export function createAppServer(): http.Server {
     const syncRoute = parseSyncRoute(req.url ?? "/");
     if (syncRoute) {
       await handleSyncApi(req, res, syncRoute);
+      return;
+    }
+
+    const watchDocId = parseDocWatchRoute(req.url ?? "/");
+    if (watchDocId !== null) {
+      if (req.method !== "GET") {
+        sendJson(res, 405, { error: "Method not allowed." });
+        return;
+      }
+      addDocWatchClient(watchDocId, res);
+      return;
+    }
+
+    // Audit log endpoint
+    const auditDocId = parseDocAuditRoute(req.url ?? "/");
+    if (auditDocId !== null) {
+      if (req.method !== "GET") {
+        sendJson(res, 405, { error: "Method not allowed." });
+        return;
+      }
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const limitParam = url.searchParams.get("limit");
+      const limit = limitParam ? Math.max(1, Math.min(1000, Number(limitParam) || 100)) : 100;
+      const entries = getRecentAuditEntries(limit);
+      sendJson(res, 200, { ok: true, documentId: auditDocId, count: entries.length, entries });
+      return;
+    }
+
+    // Presence endpoint
+    const presenceDocId = parseDocPresenceRoute(req.url ?? "/");
+    if (presenceDocId !== null) {
+      if (req.method !== "GET") {
+        sendJson(res, 405, { error: "Method not allowed." });
+        return;
+      }
+      const list = getPresenceList(presenceDocId);
+      sendJson(res, 200, { ok: true, documentId: presenceDocId, count: list.length, users: list });
       return;
     }
 
