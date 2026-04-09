@@ -32,6 +32,8 @@ const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | nul
 const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement | null;
 const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement | null;
 const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLElement | null;
+const readonlyBannerEl = document.getElementById("readonly-banner") as HTMLElement | null;
+const shareBtnEl = document.getElementById("share-btn") as HTMLButtonElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
@@ -49,6 +51,8 @@ function normalizeDocId(raw: string | null, fallback: string): string {
 const queryParams = new URLSearchParams(window.location.search);
 const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main");
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
+const CLOUD_DOC_REQUESTED = queryParams.has("cloudDocId");
+const READONLY_REQUESTED = queryParams.get("readonly") === "1";
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
@@ -137,6 +141,7 @@ let viewState: ViewState = {
   reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
+  readOnly: false,
 };
 applyLinearTextFontScale(false);
 syncLinearAdjustMenuUi();
@@ -223,6 +228,45 @@ function updateCloudSyncUi(): void {
   if (cloudPushBtn) cloudPushBtn.disabled = false;
   if (cloudUseLocalBtn) cloudUseLocalBtn.hidden = !cloudConflictPending;
   if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = !cloudConflictPending;
+}
+
+function isReadOnly(): boolean {
+  return viewState.readOnly;
+}
+
+function applyReadOnlyMode(): void {
+  const ro = isReadOnly();
+
+  // Show/hide read-only banner
+  if (readonlyBannerEl) {
+    readonlyBannerEl.hidden = !ro;
+  }
+
+  // Disable linear text editing in read-only mode
+  if (linearTextEl) {
+    linearTextEl.readOnly = ro;
+  }
+
+  // Hide editing toolbar items in read-only mode
+  const editToolbarItems = document.querySelectorAll("[data-edit-only]");
+  editToolbarItems.forEach((el) => {
+    (el as HTMLElement).hidden = ro;
+  });
+
+  // Show share button only in non-read-only mode (editors can share)
+  // Share button is always visible so readers can also re-share
+}
+
+function handleShareClick(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set("cloudDocId", CLOUD_DOC_ID);
+  url.searchParams.set("readonly", "1");
+  // Remove localDocId if present -- shared URL uses cloudDocId
+  url.searchParams.delete("localDocId");
+  navigator.clipboard.writeText(url.toString()).then(
+    () => setStatus("Link copied!"),
+    () => setStatus("Failed to copy link.", true),
+  );
 }
 
 function createNodeRecord(id: string, parentId: string | null, text = "New Node"): TreeNode {
@@ -3499,16 +3543,35 @@ async function initializeDocument(): Promise<void> {
   await fetchLinearTransformStatus();
   await fetchCloudSyncStatus();
 
+  // When cloudDocId is specified in URL, pull from cloud
+  if (CLOUD_DOC_REQUESTED) {
+    const loadedFromCloud = await pullDocFromCloud(true);
+    if (loadedFromCloud) {
+      // Cloud docs default to read-only unless explicitly opted out
+      viewState.readOnly = true;
+      applyReadOnlyMode();
+      return;
+    }
+  }
+
   if (cloudSyncEnabled && cloudSyncExists) {
     const loadedFromCloud = await pullDocFromCloud(false);
     if (loadedFromCloud) {
       await loadLinearNotesFromLocalDbFallback();
+      if (READONLY_REQUESTED) {
+        viewState.readOnly = true;
+        applyReadOnlyMode();
+      }
       return;
     }
   }
 
   const loadedFromDb = await loadDocFromLocalDb(false);
   if (loadedFromDb) {
+    if (READONLY_REQUESTED) {
+      viewState.readOnly = true;
+      applyReadOnlyMode();
+    }
     return;
   }
 
@@ -3516,6 +3579,11 @@ async function initializeDocument(): Promise<void> {
     await loadDefaultSample();
   } catch {
     loadPayload(createEmptyDoc());
+  }
+
+  if (READONLY_REQUESTED) {
+    viewState.readOnly = true;
+    applyReadOnlyMode();
   }
 }
 
@@ -4407,6 +4475,10 @@ downloadBtn?.addEventListener("click", () => {
   downloadJson();
 });
 
+shareBtnEl?.addEventListener("click", () => {
+  handleShareClick();
+});
+
 /* ── Hamburger & Export dropdown toggle ── */
 function toggleDropdown(menu: HTMLElement | null, btn: HTMLElement | null): void {
   if (!menu || !btn) return;
@@ -4448,6 +4520,15 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
   if (!doc || !nodeId || event.button !== 0) {
+    return;
+  }
+  if (isReadOnly()) {
+    // In read-only mode, allow click selection but not drag
+    selectByPointerModifiers(nodeId, {
+      toggle: event.ctrlKey || event.metaKey,
+      range: event.shiftKey,
+    });
+    board.focus();
     return;
   }
   viewState.dragState = {
@@ -4547,7 +4628,9 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
     return;
   }
   selectNode(nodeId);
-  startInlineEdit(nodeId);
+  if (!isReadOnly()) {
+    startInlineEdit(nodeId);
+  }
 });
 
 board.addEventListener("wheel", (event: WheelEvent) => {
@@ -4654,18 +4737,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
+    if (isReadOnly()) return;
     undoLastChange();
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && (event.shiftKey && event.key.toLowerCase() === "z")) {
     event.preventDefault();
+    if (isReadOnly()) return;
     redoLastChange();
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "y") {
     event.preventDefault();
+    if (isReadOnly()) return;
     redoLastChange();
     return;
   }
@@ -4684,19 +4770,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
     event.preventDefault();
+    if (isReadOnly()) return;
     cutSelected();
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
+    if (isReadOnly()) return;
     pasteClipboard();
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
     event.preventDefault();
-    // Equivalent to Esc -> DownArrow -> Enter in normal mode.
+    if (isReadOnly()) return;
     clearCutClipboard();
     selectBreadth(1);
     startInlineEdit(viewState.selectedNodeId, { selectAll: false });
@@ -4712,18 +4800,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "Tab") {
     event.preventDefault();
+    if (isReadOnly()) return;
     createNodeByDirectionAndEdit("depth");
     return;
   }
 
   if (event.key === "Enter") {
     event.preventDefault();
+    if (isReadOnly()) return;
     startInlineEdit(viewState.selectedNodeId, { selectAll: event.shiftKey });
     return;
   }
 
   if (event.key === "F2") {
     event.preventDefault();
+    if (isReadOnly()) return;
     startInlineEdit(viewState.selectedNodeId, { selectAll: true });
     return;
   }
@@ -4766,6 +4857,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
     event.preventDefault();
+    if (isReadOnly()) return;
     void generateRelatedTopicsForSelectedNode();
     return;
   }
@@ -4800,6 +4892,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
           return;
         }
     event.preventDefault();
+    if (isReadOnly()) return;
     deleteSelected();
     return;
   }
@@ -4852,24 +4945,28 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.altKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
+    if (isReadOnly()) return;
     addAliasAsChild();
     return;
   }
 
   if (event.altKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
+    if (isReadOnly()) return;
     makeSelectedFolder();
     return;
   }
 
   if (event.altKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
+    if (isReadOnly()) return;
     toggleHoldReparent();
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
+    if (isReadOnly()) return;
     if (!event.repeat) {
       toggleReparentSource();
     }
@@ -4878,6 +4975,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
     event.preventDefault();
+    if (isReadOnly()) return;
     makeSelectedFolder();
     return;
   }
@@ -4911,6 +5009,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key.toLowerCase() === "m") {
     event.preventDefault();
+    if (isReadOnly()) return;
     if (!event.repeat) {
       toggleReparentSource();
     }
@@ -4919,12 +5018,14 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
+    if (isReadOnly()) return;
     applyMarkedLink();
     return;
   }
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
+    if (isReadOnly()) return;
     if (!event.repeat) {
       markLinkSource();
     }
@@ -4933,6 +5034,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key.toLowerCase() === "p") {
     event.preventDefault();
+    if (isReadOnly()) return;
     applyReparent();
     return;
   }
@@ -4965,6 +5067,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "g") {
     event.preventDefault();
+    if (isReadOnly()) return;
     groupSelected();
     return;
   }

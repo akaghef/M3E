@@ -182,6 +182,38 @@
         color: var(--danger);
       }
 
+      /* ── Read-only banner ── */
+      .readonly-banner {
+        position: relative;
+        z-index: 5;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border: 1px solid #c8daf6;
+        border-radius: 10px;
+        background: #e8f0fe;
+        color: #1a56bb;
+        font-size: 13px;
+        font-weight: 600;
+        pointer-events: auto;
+      }
+
+      .readonly-banner[hidden] {
+        display: none;
+      }
+
+      /* ── Share button ── */
+      .share-btn {
+        border-color: var(--accent);
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .share-btn:hover {
+        background: var(--accent-soft);
+      }
+
       .meta,
       .shortcuts,
       .status,
