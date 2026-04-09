@@ -33,6 +33,10 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 | `POST` | `/api/ai/subagent/{name}` | AI subagent 実行 | AI_Common_API.md |
 | `GET` | `/api/linear-transform/status` | Linear transform ステータス | AI_Common_API.md |
 | `POST` | `/api/linear-transform/convert` | Linear transform 実行 | AI_Common_API.md |
+| `GET` | `/api/sync/backups/{docId}` | 競合バックアップ一覧 | 本文書 |
+| `GET` | `/api/sync/backups/{docId}/{backupId}` | 競合バックアップ取得 | 本文書 |
+| `DELETE` | `/api/sync/backups/{docId}/{backupId}` | 競合バックアップ削除 | 本文書 |
+| `POST` | `/api/sync/backups/{docId}/restore/{backupId}` | 競合バックアップからリストア | 本文書 |
 | `GET` | `/{path}` | 静的ファイル配信 | — |
 
 ---
@@ -225,6 +229,136 @@ Body:
 | 400 | `SYNC_CLOUD_UNSUPPORTED_FORMAT` | フォーマット不正 |
 | 400 | `SYNC_CLOUD_INVALID_MODEL` | バリデーション失敗 |
 | 500 | `SYNC_PULL_FAILED` | ファイル読み込み失敗 |
+
+---
+
+## Conflict Backup API
+
+クラウド同期で競合が発生した際に、ローカル state の自動バックアップを管理する。
+
+### 自動バックアップの動作
+
+以下の状況でローカル state が自動的にバックアップされる:
+
+1. **push 時の競合 (409)**: `POST /api/sync/push/{docId}` で `CLOUD_CONFLICT` が検出された場合、push しようとした state が `cloud-conflict-push` の理由でバックアップされる。レスポンスの `backup` フィールドに `backupId` が含まれる。
+2. **pull 時のローカル保護**: `POST /api/sync/pull/{docId}` のリクエスト body に `localState` を含めた場合、クラウドデータを返す前にローカル state が `cloud-sync-pull` の理由でバックアップされる。
+
+バックアップはドキュメントごとに最大 10 件保持され、超過分は古い順に自動削除される。
+保存先: `{M3E_DATA_DIR}/conflict-backups/`
+
+### `GET /api/sync/backups/{docId}`
+
+指定ドキュメントの競合バックアップ一覧を取得する（新しい順）。
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "documentId": "rapid-main",
+  "backups": [
+    {
+      "backupId": "2026-04-09_12-00-00-000Z_abc123",
+      "documentId": "rapid-main",
+      "reason": "cloud-sync-pull",
+      "createdAt": "2026-04-09T12:00:00.000Z",
+      "savedAt": "2026-04-09T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+### `GET /api/sync/backups/{docId}/{backupId}`
+
+指定バックアップの全データ（state 含む）を取得する。
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "backup": {
+    "version": 1,
+    "backupId": "...",
+    "documentId": "rapid-main",
+    "reason": "cloud-sync-pull",
+    "createdAt": "2026-04-09T12:00:00.000Z",
+    "savedAt": "2026-04-09T12:00:00.000Z",
+    "state": { "rootId": "...", "nodes": { ... }, "links": { ... } }
+  }
+}
+```
+
+#### エラーレスポンス
+
+| status | 条件 |
+|--------|------|
+| 404 | バックアップが存在しない |
+
+### `DELETE /api/sync/backups/{docId}/{backupId}`
+
+指定バックアップを削除する。
+
+#### 成功レスポンス (200)
+
+```json
+{ "ok": true, "deleted": true }
+```
+
+#### エラーレスポンス
+
+| status | 条件 |
+|--------|------|
+| 404 | バックアップが存在しない |
+
+### `POST /api/sync/backups/{docId}/restore/{backupId}`
+
+バックアップの state を SQLite に復元する。
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "restored": true,
+  "backupId": "...",
+  "documentId": "rapid-main",
+  "savedAt": "2026-04-09T12:01:00.000Z"
+}
+```
+
+#### エラーレスポンス
+
+| status | 条件 |
+|--------|------|
+| 400 | バックアップの state がバリデーション失敗 |
+| 404 | バックアップが存在しない |
+| 500 | SQLite 書き込み失敗 |
+
+### `POST /api/sync/pull/{docId}` (拡張)
+
+既存の pull エンドポイントに `localState` フィールドが追加された。
+
+#### リクエスト Body（オプション）
+
+```json
+{
+  "localState": { "rootId": "...", "nodes": { ... } }
+}
+```
+
+`localState` を含む場合、pull レスポンスに `backup` フィールドが付加される:
+
+```json
+{
+  "ok": true,
+  "state": { ... },
+  "backup": {
+    "backupId": "...",
+    "reason": "cloud-sync-pull"
+  }
+}
+```
 
 ---
 

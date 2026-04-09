@@ -6,6 +6,12 @@ import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
 import { detectCloudConflict } from "./cloud_sync";
+import {
+  createConflictBackup,
+  listConflictBackups,
+  getConflictBackup,
+  deleteConflictBackup,
+} from "./conflict_backup";
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
 import {
@@ -149,6 +155,32 @@ function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; 
     action: match[1] as "status" | "push" | "pull",
     docId: decodeURIComponent(match[2] || ""),
   };
+}
+
+function parseBackupRoute(
+  urlPath: string,
+): { action: "list" | "get" | "restore" | "delete"; docId: string; backupId?: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+
+  // GET /api/sync/backups/{docId}
+  const listMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)$/);
+  if (listMatch) {
+    return { action: "list", docId: decodeURIComponent(listMatch[1]) };
+  }
+
+  // GET /api/sync/backups/{docId}/{backupId}
+  const getMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)\/([^/]+)$/);
+  if (getMatch) {
+    return { action: "get", docId: decodeURIComponent(getMatch[1]), backupId: decodeURIComponent(getMatch[2]) };
+  }
+
+  // POST /api/sync/backups/{docId}/restore/{backupId}
+  const restoreMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)\/restore\/([^/]+)$/);
+  if (restoreMatch) {
+    return { action: "restore", docId: decodeURIComponent(restoreMatch[1]), backupId: decodeURIComponent(restoreMatch[2]) };
+  }
+
+  return null;
 }
 
 function isLinearTransformRoute(urlPath: string): boolean {
@@ -318,6 +350,21 @@ async function handleSyncApi(
     }
 
     try {
+      // Read optional localState from request body for conflict backup
+      let localState: AppState | null = null;
+      let backupEntry: { backupId: string; reason: string } | null = null;
+      try {
+        const rawBody = await readRequestBody(req);
+        if (rawBody.trim()) {
+          const body = JSON.parse(rawBody) as { localState?: AppState; reason?: string };
+          if (body.localState) {
+            localState = body.localState;
+          }
+        }
+      } catch {
+        // Body is optional for pull; ignore parse errors
+      }
+
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as { version?: number; state?: AppState; savedAt?: string };
       if (!parsed || parsed.version !== 1 || !parsed.state) {
         sendSyncError(res, 400, "SYNC_CLOUD_UNSUPPORTED_FORMAT", "Cloud document has unsupported format.", route.docId);
@@ -337,6 +384,13 @@ async function handleSyncApi(
         return true;
       }
 
+      // Auto-backup local state before overwriting with cloud data
+      if (localState) {
+        const reason = "cloud-sync-pull";
+        const entry = createConflictBackup(DATA_DIR, route.docId, localState, reason);
+        backupEntry = { backupId: entry.backupId, reason: entry.reason };
+      }
+
       sendJson(res, 200, {
         ok: true,
         mode: "file-mirror",
@@ -344,6 +398,7 @@ async function handleSyncApi(
         savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
         state: model.toJSON(),
         documentId: route.docId,
+        ...(backupEntry ? { backup: backupEntry } : {}),
       });
       return true;
     } catch (err) {
@@ -372,9 +427,25 @@ async function handleSyncApi(
       const baseSavedAt = parsed.baseSavedAt ?? null;
       const forcePush = Boolean(parsed.force);
       if (detectCloudConflict(existingCloudDoc?.savedAt ?? null, baseSavedAt, forcePush)) {
+        // Auto-backup the local state that is about to be rejected
+        let backupEntry: { backupId: string; reason: string } | null = null;
+        if (candidate.state) {
+          try {
+            const entry = createConflictBackup(
+              DATA_DIR,
+              route.docId,
+              candidate.state as AppState,
+              "cloud-conflict-push",
+            );
+            backupEntry = { backupId: entry.backupId, reason: entry.reason };
+          } catch {
+            // Backup failure should not block the conflict response
+          }
+        }
         sendSyncError(res, 409, "CLOUD_CONFLICT", "Cloud conflict detected.", route.docId, {
           cloudSavedAt: existingCloudDoc?.savedAt ?? null,
           baseSavedAt,
+          ...(backupEntry ? { backup: backupEntry } : {}),
         });
         return true;
       }
@@ -423,6 +494,93 @@ async function handleSyncApi(
   }
 
   sendSyncError(res, 405, "SYNC_METHOD_NOT_ALLOWED", "Method not allowed.", route.docId);
+  return true;
+}
+
+async function handleBackupApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { action: "list" | "get" | "restore" | "delete"; docId: string; backupId?: string },
+): Promise<boolean> {
+  if (!route.docId) {
+    sendJson(res, 400, { ok: false, error: "Document id is required." });
+    return true;
+  }
+
+  if (route.action === "list" && req.method === "GET") {
+    const entries = listConflictBackups(DATA_DIR, route.docId);
+    sendJson(res, 200, { ok: true, documentId: route.docId, backups: entries });
+    return true;
+  }
+
+  if (route.action === "get" && req.method === "GET") {
+    if (!route.backupId) {
+      sendJson(res, 400, { ok: false, error: "Backup id is required." });
+      return true;
+    }
+    const backup = getConflictBackup(DATA_DIR, route.docId, route.backupId);
+    if (!backup) {
+      sendJson(res, 404, { ok: false, error: "Backup not found." });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, backup });
+    return true;
+  }
+
+  if (route.action === "get" && req.method === "DELETE") {
+    if (!route.backupId) {
+      sendJson(res, 400, { ok: false, error: "Backup id is required." });
+      return true;
+    }
+    const deleted = deleteConflictBackup(DATA_DIR, route.docId, route.backupId);
+    if (!deleted) {
+      sendJson(res, 404, { ok: false, error: "Backup not found." });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, deleted: true });
+    return true;
+  }
+
+  if (route.action === "restore" && req.method === "POST") {
+    if (!route.backupId) {
+      sendJson(res, 400, { ok: false, error: "Backup id is required." });
+      return true;
+    }
+    const backup = getConflictBackup(DATA_DIR, route.docId, route.backupId);
+    if (!backup) {
+      sendJson(res, 404, { ok: false, error: "Backup not found." });
+      return true;
+    }
+
+    try {
+      const model = RapidMvpModel.fromJSON(backup.state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, {
+          ok: false,
+          error: `Backup state is invalid: ${errors.join(" | ")}`,
+        });
+        return true;
+      }
+
+      model.saveToSqlite(SQLITE_DB_PATH, route.docId);
+      sendJson(res, 200, {
+        ok: true,
+        restored: true,
+        backupId: route.backupId,
+        documentId: route.docId,
+        savedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      sendJson(res, 500, {
+        ok: false,
+        error: (err as Error).message || "Restore failed.",
+      });
+    }
+    return true;
+  }
+
+  sendJson(res, 405, { ok: false, error: "Method not allowed." });
   return true;
 }
 
@@ -763,6 +921,12 @@ export function createAppServer(): http.Server {
 
     if (isLinearTransformRoute(req.url ?? "/")) {
       await handleLinearTransformApi(req, res);
+      return;
+    }
+
+    const backupRoute = parseBackupRoute(req.url ?? "/");
+    if (backupRoute) {
+      await handleBackupApi(req, res, backupRoute);
       return;
     }
 

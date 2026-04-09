@@ -9,6 +9,7 @@ beta/dist/
 beta/.env
 beta/data/rapid-sample.json
 beta/data/*.sqlite
+beta/data/conflict-backups/
 beta/test-results/
 
 final/node_modules/
