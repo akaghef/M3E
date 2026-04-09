@@ -34,21 +34,17 @@ for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":!M3E_PORT!" ^| finds
   )
 )
 
-REM Resolve Node/npm path and add to PATH
+REM Resolve Node path
 set "NODE_DIR=%ROOT%\install\node"
-if exist "%NODE_DIR%\node.exe" set "PATH=%NODE_DIR%;%PATH%"
-
-if exist "%NODE_DIR%\npm.cmd" (
-  set "NPM_CMD=%NODE_DIR%\npm.cmd"
+if exist "%NODE_DIR%\node.exe" (
+  set "NODE_CMD=%NODE_DIR%\node.exe"
 ) else (
-  set "NPM_CMD=npm"
+  set "NODE_CMD=node"
 )
 
-REM Launch from final/ directory (avoid --prefix issues)
-pushd "%ROOT%\final"
-call "!NPM_CMD!" start > "!LOG_FILE!" 2>&1
+REM Launch directly (bypass npm to avoid prefix resolution issues)
+"!NODE_CMD!" "%ROOT%\final\dist\node\start_viewer.js" > "!LOG_FILE!" 2>&1
 set "EXIT_CODE=!ERRORLEVEL!"
-popd
 
 if !EXIT_CODE! neq 0 (
   echo [ERROR] Launch failed. See log: !LOG_FILE! >> "!LOG_FILE!"
