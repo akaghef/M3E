@@ -6,6 +6,12 @@ import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
 import { createBackup, pruneOldBackups, startAutoBackup } from "./backup";
+import {
+  createConflictBackup,
+  listConflictBackups,
+  getConflictBackup,
+  deleteConflictBackup,
+} from "./conflict_backup";
 import { detectCloudConflict } from "./cloud_sync";
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
