@@ -13,6 +13,7 @@
     "test:unit:watch": "npm run build:node && node --test --watch tests/unit/*.test.js",
     "test:ci": "npm run test:unit",
     "test:visual": "playwright test",
+    "test:shortcuts": "playwright test tests/visual/shortcuts.spec.js",
     "test:visual:reparent": "playwright test -g \"viewer range select multi reparent\"",
     "test:visual:selection": "playwright test -g \"viewer shift arrow expands selection\"",
     "test:visual:update": "playwright test --update-snapshots"
