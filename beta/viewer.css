@@ -796,6 +796,181 @@
         color: rgba(255, 255, 255, 0.7);
       }
 
+      /* ── Home Screen ── */
+      .home-screen {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(12px);
+        overflow-y: auto;
+        pointer-events: auto;
+      }
+
+      .home-screen[hidden] {
+        display: none;
+      }
+
+      .home-header {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 20px 28px 12px;
+        border-bottom: 1px solid #e8e8e8;
+      }
+
+      .home-title {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--accent);
+        letter-spacing: 0.02em;
+      }
+
+      .home-body {
+        flex: 1;
+        padding: 20px 28px;
+        max-width: 800px;
+      }
+
+      .home-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .home-section-title {
+        font-size: 14px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+      }
+
+      .home-scope-tree {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .home-scope-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.1s ease;
+      }
+
+      .home-scope-row:hover {
+        background: rgba(122, 53, 255, 0.06);
+      }
+
+      .home-scope-row:active {
+        background: rgba(122, 53, 255, 0.12);
+      }
+
+      .home-scope-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+        color: #999;
+        flex-shrink: 0;
+        transition: transform 0.15s ease;
+        border: none;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+      }
+
+      .home-scope-toggle.expanded {
+        transform: rotate(90deg);
+      }
+
+      .home-scope-toggle.no-children {
+        visibility: hidden;
+      }
+
+      .home-scope-name {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--ink);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .home-scope-count {
+        font-size: 12px;
+        color: #999;
+        flex-shrink: 0;
+      }
+
+      .home-scope-children {
+        padding-left: 20px;
+      }
+
+      .home-scope-children[hidden] {
+        display: none;
+      }
+
+      .home-breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 0 8px;
+        font-size: 12px;
+        color: #888;
+        flex-shrink: 0;
+      }
+
+      .home-breadcrumb-item {
+        cursor: pointer;
+        color: var(--accent);
+        text-decoration: none;
+        border: none;
+        background: none;
+        padding: 2px 4px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: inherit;
+      }
+
+      .home-breadcrumb-item:hover {
+        background: var(--accent-soft);
+      }
+
+      .home-breadcrumb-item.current {
+        color: var(--ink);
+        cursor: default;
+        font-weight: 600;
+      }
+
+      .home-breadcrumb-item.current:hover {
+        background: transparent;
+      }
+
+      .home-breadcrumb-sep {
+        color: #ccc;
+        user-select: none;
+      }
+
+      /* Hide board and linear panel when home screen is visible */
+      .app.home-active .workspace {
+        visibility: hidden;
+      }
+
       @media (max-width: 900px) {
         .label-root,
         .label-node {
