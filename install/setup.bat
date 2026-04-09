@@ -157,18 +157,22 @@ REM ============================================================
 
 echo.
 echo  [1/2] Installing dependencies...
+
+REM Kill stale node processes that may lock .node files
+taskkill /f /im node.exe >nul 2>&1
+
 pushd "%ROOT%\final"
 call "%NPM_CMD%" ci
-if %ERRORLEVEL% neq 0 (
+if !ERRORLEVEL! neq 0 (
   echo.
   echo   npm ci failed. Trying npm install...
   call "%NPM_CMD%" install
-  if %ERRORLEVEL% neq 0 (
-    popd
-    echo   [ERROR] Dependency installation failed.
-    pause
-    exit /b 1
-  )
+)
+if !ERRORLEVEL! neq 0 (
+  popd
+  echo   [ERROR] Dependency installation failed.
+  pause
+  exit /b 1
 )
 echo   Dependencies installed.
 
