@@ -32,6 +32,9 @@ const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | nul
 const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement | null;
 const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement | null;
 const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLElement | null;
+const homeScreenEl = document.getElementById("home-screen") as HTMLElement | null;
+const homeScopeTreeEl = document.getElementById("home-scope-tree") as HTMLElement | null;
+const appEl = document.querySelector(".app") as HTMLElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
@@ -116,6 +119,7 @@ let linearTransformStatus: LinearTransformStatus | null = null;
 let linearTextFontScale = 1;
 let linearAdjustMenuOpen = false;
 let linearMenuVisible = false;
+let homeScreenVisible = false;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -2793,6 +2797,169 @@ function ExitScopeCommand(): void {
   updateScopeInUrl(viewState.currentScopeId);
 }
 
+// ── Home Screen ──
+
+function collectFolderTree(parentId: string): { id: string; label: string; childCount: number; subFolders: ReturnType<typeof collectFolderTree> }[] {
+  if (!doc) {
+    return [];
+  }
+  const parent = doc.state.nodes[parentId];
+  if (!parent) {
+    return [];
+  }
+  const result: { id: string; label: string; childCount: number; subFolders: ReturnType<typeof collectFolderTree> }[] = [];
+  for (const childId of parent.children || []) {
+    const child = doc.state.nodes[childId];
+    if (!child) {
+      continue;
+    }
+    if (isFolderNode(child)) {
+      result.push({
+        id: child.id,
+        label: uiLabel(child),
+        childCount: countHiddenDescendants(child.id),
+        subFolders: collectFolderTree(child.id),
+      });
+    }
+  }
+  return result;
+}
+
+function renderScopeTree(
+  container: HTMLElement,
+  folders: ReturnType<typeof collectFolderTree>,
+): void {
+  container.innerHTML = "";
+  for (const folder of folders) {
+    const hasChildren = folder.subFolders.length > 0;
+
+    const row = document.createElement("div");
+    row.className = "home-scope-row";
+    row.dataset.scopeId = folder.id;
+
+    const toggle = document.createElement("button");
+    toggle.className = "home-scope-toggle" + (hasChildren ? "" : " no-children");
+    toggle.textContent = "\u25B6";
+    toggle.type = "button";
+
+    const name = document.createElement("span");
+    name.className = "home-scope-name";
+    name.textContent = folder.label;
+
+    const count = document.createElement("span");
+    count.className = "home-scope-count";
+    count.textContent = `${folder.childCount} nodes`;
+
+    row.appendChild(toggle);
+    row.appendChild(name);
+    row.appendChild(count);
+    container.appendChild(row);
+
+    let childContainer: HTMLElement | null = null;
+    if (hasChildren) {
+      childContainer = document.createElement("div");
+      childContainer.className = "home-scope-children";
+      childContainer.hidden = true;
+      renderScopeTree(childContainer, folder.subFolders);
+      container.appendChild(childContainer);
+    }
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!childContainer) {
+        return;
+      }
+      const isExpanded = !childContainer.hidden;
+      childContainer.hidden = isExpanded;
+      toggle.classList.toggle("expanded", !isExpanded);
+    });
+
+    row.addEventListener("click", () => {
+      hideHomeScreen();
+      EnterScopeCommand(folder.id);
+    });
+  }
+}
+
+function buildHomeBreadcrumb(): void {
+  if (!doc || !homeScreenEl) {
+    return;
+  }
+  const existingBreadcrumb = homeScreenEl.querySelector(".home-breadcrumb");
+  if (existingBreadcrumb) {
+    existingBreadcrumb.remove();
+  }
+
+  const scopeId = currentScopeRootId();
+  if (!scopeId || scopeId === doc.state.rootId) {
+    return;
+  }
+
+  const pathIds = scopePathIds(scopeId);
+  if (pathIds.length <= 1) {
+    return;
+  }
+
+  const breadcrumb = document.createElement("div");
+  breadcrumb.className = "home-breadcrumb";
+
+  for (let i = 0; i < pathIds.length; i++) {
+    if (i > 0) {
+      const sep = document.createElement("span");
+      sep.className = "home-breadcrumb-sep";
+      sep.textContent = "/";
+      breadcrumb.appendChild(sep);
+    }
+
+    const nodeId = pathIds[i];
+    const isLast = i === pathIds.length - 1;
+    const label = nodeId === doc.state.rootId ? "root" : uiLabel(doc.state.nodes[nodeId]);
+
+    const item = document.createElement("button");
+    item.className = "home-breadcrumb-item" + (isLast ? " current" : "");
+    item.textContent = label;
+    item.type = "button";
+
+    if (!isLast) {
+      item.addEventListener("click", () => {
+        hideHomeScreen();
+        EnterScopeCommand(nodeId);
+      });
+    }
+
+    breadcrumb.appendChild(item);
+  }
+
+  const homeBody = homeScreenEl.querySelector(".home-body");
+  if (homeBody) {
+    homeBody.insertBefore(breadcrumb, homeBody.firstChild);
+  }
+}
+
+function showHomeScreen(): void {
+  if (!homeScreenEl || !homeScopeTreeEl || !doc) {
+    return;
+  }
+  homeScreenVisible = true;
+  homeScreenEl.hidden = false;
+  appEl?.classList.add("home-active");
+
+  const rootId = doc.state.rootId;
+  const folders = collectFolderTree(rootId);
+  renderScopeTree(homeScopeTreeEl, folders);
+  buildHomeBreadcrumb();
+}
+
+function hideHomeScreen(): void {
+  if (!homeScreenEl) {
+    return;
+  }
+  homeScreenVisible = false;
+  homeScreenEl.hidden = true;
+  appEl?.classList.remove("home-active");
+  board.focus();
+}
+
 function addChild(): void {
   const parentId = viewState.selectedNodeId;
   const parent = getNode(parentId);
@@ -4636,6 +4803,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (homeScreenVisible && event.key === "Escape") {
+    event.preventDefault();
+    hideHomeScreen();
+    return;
+  }
+
   if (linearAdjustMenuOpen && event.key === "Escape") {
     linearMenuVisible = false;
     linearAdjustMenuOpen = false;
@@ -4827,6 +5000,16 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         EnterScopeCommand();
         return;
       }
+
+  if (event.altKey && event.key.toLowerCase() === "h") {
+    event.preventDefault();
+    if (homeScreenVisible) {
+      hideHomeScreen();
+    } else {
+      showHomeScreen();
+    }
+    return;
+  }
 
   if (event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
@@ -5070,4 +5253,10 @@ void initializeDocument().then(() => {
     updateScopeInUrl(initialScopeId);
   }
   fitDocument() || applyZoom();
+
+  // Show home screen on startup if no scopeId is specified in URL
+  const hasInitialScope = queryParams.get("scopeId");
+  if (!hasInitialScope && doc) {
+    showHomeScreen();
+  }
 });
