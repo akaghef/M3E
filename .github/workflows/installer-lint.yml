@@ -1,0 +1,56 @@
+name: Installer & Script Lint
+
+on:
+  push:
+    paths:
+      - "install/**"
+      - "scripts/**"
+      - ".github/workflows/installer-lint.yml"
+  pull_request:
+    paths:
+      - "install/**"
+      - "scripts/**"
+      - ".github/workflows/installer-lint.yml"
+
+jobs:
+  lint-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: No ^ line continuations in .bat/.cmd files
+        run: |
+          echo "Checking for ^ line continuations (break with LF line endings)..."
+          if grep -rEn '\^\s*$' --include='*.bat' --include='*.cmd' .; then
+            echo "::error::Found ^ line continuations in .bat/.cmd files. These break when downloaded as ZIP (LF line endings). Inline the command to a single line."
+            exit 1
+          fi
+          echo "OK: no ^ continuations found."
+
+      - name: .bat/.cmd files end with pause or wait before exit
+        run: |
+          echo "Checking that user-facing scripts have pause before exit..."
+          failed=0
+          for f in install/setup.bat; do
+            if ! grep -qE '^\s*pause' "$f"; then
+              echo "::warning file=$f::No 'pause' found - window may close instantly on double-click"
+              failed=1
+            fi
+          done
+          if [ "$failed" -eq 1 ]; then
+            echo "::error::Some installer scripts missing pause before exit."
+            exit 1
+          fi
+          echo "OK: pause found in installer scripts."
+
+      - name: CRLF enforcement in .gitattributes
+        run: |
+          echo "Checking .gitattributes covers .bat/.cmd/.vbs/.ps1..."
+          for ext in bat cmd vbs ps1; do
+            if ! grep -qE "^\*\.$ext\b.*eol=crlf" .gitattributes 2>/dev/null; then
+              echo "::error::.gitattributes missing eol=crlf for *.$ext"
+              exit 1
+            fi
+          done
+          echo "OK: .gitattributes enforces CRLF for all Windows script types."
