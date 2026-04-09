@@ -5053,8 +5053,21 @@ updateCloudSyncUi();
 void initializeDocument().then(() => {
   initBroadcastSync();
   const initialScopeId = queryParams.get("scopeId");
-  if (initialScopeId && doc && doc.state.nodes[initialScopeId]) {
-    EnterScopeCommand(initialScopeId);
+  if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
+    // Build ancestor chain so ExitScopeCommand can step back through each level
+    const ancestors: string[] = [];
+    let cur = doc.state.nodes[initialScopeId];
+    while (cur && cur.parentId && cur.id !== doc.state.rootId) {
+      ancestors.unshift(cur.parentId);
+      cur = doc.state.nodes[cur.parentId];
+    }
+    viewState.scopeHistory = ancestors;
+    viewState.currentScopeId = initialScopeId;
+    viewState.currentScopeRootId = initialScopeId;
+    setSingleSelection(initialScopeId, false);
+    normalizeSelectionState();
+    render();
+    updateScopeInUrl(initialScopeId);
   }
   fitDocument() || applyZoom();
 });
