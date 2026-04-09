@@ -63,8 +63,7 @@ set "NODE_URL=https://nodejs.org/dist/v%NODE_VERSION%/node-v%NODE_VERSION%-win-x
 set "NODE_EXTRACT=%TEMP%\node-v%NODE_VERSION%-win-x64"
 
 REM Download using PowerShell (with progress bar disabled for speed)
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_ZIP%'"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_ZIP%'"
 if %ERRORLEVEL% neq 0 (
   echo.
   echo   [ERROR] Download failed. Please check your internet connection.
@@ -76,8 +75,7 @@ echo   Download complete. Extracting...
 
 REM Extract using PowerShell
 if exist "%NODE_EXTRACT%" rmdir /s /q "%NODE_EXTRACT%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '%NODE_ZIP%' -DestinationPath '%TEMP%' -Force"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '%NODE_ZIP%' -DestinationPath '%TEMP%' -Force"
 if %ERRORLEVEL% neq 0 (
   echo   [ERROR] Extraction failed.
   pause
@@ -187,8 +185,7 @@ if not exist "%ICON_SRC%" (
   echo  Converting app icon...
   set "JPG_SRC=%ROOT%\install\assets\image.jpg"
   if exist "!JPG_SRC!" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-      "$ProgressPreference = 'SilentlyContinue'; Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('%ROOT%\install\assets\image.jpg'); $bmp = New-Object System.Drawing.Bitmap($img, 256, 256); $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon()); $fs = [System.IO.FileStream]::new('%ROOT%\install\assets\icon.ico', [System.IO.FileMode]::Create); $icon.Save($fs); $fs.Close(); $icon.Dispose(); $bmp.Dispose(); $img.Dispose()"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('%ROOT%\install\assets\image.jpg'); $bmp = New-Object System.Drawing.Bitmap($img, 256, 256); $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon()); $fs = [System.IO.FileStream]::new('%ROOT%\install\assets\icon.ico', [System.IO.FileMode]::Create); $icon.Save($fs); $fs.Close(); $icon.Dispose(); $bmp.Dispose(); $img.Dispose()"
     if exist "%ICON_SRC%" (
       echo   Icon created: install\assets\icon.ico
     ) else (
