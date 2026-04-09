@@ -10,11 +10,20 @@
 ## Akaghef がやること
 
 ### 必須（エージェントにはできない）
-- [ ] **Supabase アカウント作成** — https://supabase.com で無料プランを開始
-- [ ] **Supabase プロジェクト作成** — リージョン選択（Tokyo 推奨）
-- [ ] **API キーを取得** — Settings > API から `anon key` と `service_role key` を控える
-- [ ] **環境変数に設定** — `.env` に `SUPABASE_URL` と `SUPABASE_ANON_KEY` を書く
-- [ ] **チームメンバーに URL 共有** — デプロイ後のビューア URL を Slack 等で配布
+- [ ] **Supabase Organization 作成** — https://supabase.com でチーム名の Organization を作成
+- [ ] **Supabase Project 作成** — Organization 内に "m3e" プロジェクト作成（リージョン: Tokyo）
+- [ ] **API キーを取得** — Settings > API Keys タブ（Legacy ではない方）から:
+  - **Publishable key** (`sb_publishable_...`) をコピー ← ※ anon key はレガシー、新しい方を使う
+  - **Project URL** をコピー
+- [ ] **環境変数に設定** — `.env` に以下を書く:
+  ```
+  M3E_SUPABASE_URL=https://xxxxx.supabase.co
+  M3E_SUPABASE_ANON_KEY=sb_publishable_xxxxx
+  M3E_CLOUD_SYNC=1
+  M3E_CLOUD_TRANSPORT=supabase
+  ```
+- [ ] **SQL Editor でスキーマ作成** — `dev-docs/03_Spec/supabase_schema.sql` の内容をコピペ実行
+- [ ] **チームメンバーに URL 共有** — ビューア URL を Slack 等で配布
 
 ### 判断が必要（エージェントが選択肢を用意する）
 - [ ] **同時編集の競合解決方式** — CRDT / OT / branch 分離のどれを採用するか

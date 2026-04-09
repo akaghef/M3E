@@ -1,5 +1,17 @@
 # M3E
 
+科学研究のための思考支援マインドマップツール。
+仮説の分解、前提の比較、設計判断など、構造を持った思考を可視化し、意思決定を加速します。
+
+## ダウンロード
+
+**[M3E をダウンロード (zip)](https://github.com/akaghef/M3E/archive/refs/heads/main.zip)**
+
+ダウンロード後、zip を展開して `install\setup.bat`（Windows）または `bash install/setup.sh`（macOS/Linux）を実行してください。
+Node.js などの事前インストールは不要です。セットアップがすべて自動で準備します。
+
+---
+
 ## マインドマップとは
 
 考えごとをするとき、頭の中では複数のアイデアが絡み合っています。
