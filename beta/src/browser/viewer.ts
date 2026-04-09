@@ -32,6 +32,10 @@ const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | nul
 const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement | null;
 const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement | null;
 const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLElement | null;
+const homeBtn = document.getElementById("home-btn") as HTMLButtonElement | null;
+const homeViewEl = document.getElementById("home-view") as HTMLElement | null;
+const homeBreadcrumbEl = document.getElementById("home-breadcrumb") as HTMLElement | null;
+const homeGridEl = document.getElementById("home-grid") as HTMLElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
@@ -116,6 +120,8 @@ let linearTransformStatus: LinearTransformStatus | null = null;
 let linearTextFontScale = 1;
 let linearAdjustMenuOpen = false;
 let linearMenuVisible = false;
+let homeViewActive = false;
+let homeBrowseScopeId: string | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -801,6 +807,206 @@ function exitScope(): boolean {
   board.focus();
   return true;
 }
+
+// ── Home View ──────────────────────────────────────────────────
+
+function countDescendants(nodeId: string): number {
+  if (!doc) return 0;
+  const node = doc.state.nodes[nodeId];
+  if (!node) return 0;
+  let count = 0;
+  const stack = [...(node.children || [])];
+  while (stack.length) {
+    const id = stack.pop()!;
+    const n = doc.state.nodes[id];
+    if (!n) continue;
+    count++;
+    stack.push(...(n.children || []));
+  }
+  return count;
+}
+
+function countChildFolders(nodeId: string): number {
+  if (!doc) return 0;
+  const node = doc.state.nodes[nodeId];
+  if (!node) return 0;
+  return (node.children || []).filter((cid) => {
+    const child = doc!.state.nodes[cid];
+    return child && isFolderNode(child);
+  }).length;
+}
+
+function renderHomeView(): void {
+  if (!doc || !homeGridEl || !homeBreadcrumbEl) return;
+
+  const state = doc.state;
+  const browseId = homeBrowseScopeId || state.rootId;
+  const browseNode = state.nodes[browseId];
+  if (!browseNode) {
+    homeBrowseScopeId = state.rootId;
+    renderHomeView();
+    return;
+  }
+
+  // Build breadcrumb
+  const crumbIds: string[] = [];
+  let cursor: string | null = browseId;
+  while (cursor) {
+    crumbIds.unshift(cursor);
+    const crumbNode: TreeNode | undefined = state.nodes[cursor];
+    if (!crumbNode || cursor === state.rootId) break;
+    cursor = crumbNode.parentId ?? null;
+  }
+
+  homeBreadcrumbEl.innerHTML = "";
+  crumbIds.forEach((cid, idx) => {
+    if (idx > 0) {
+      const sep = document.createElement("span");
+      sep.className = "home-breadcrumb-sep";
+      sep.textContent = "/";
+      homeBreadcrumbEl!.appendChild(sep);
+    }
+    const item = document.createElement("span");
+    item.className = "home-breadcrumb-item";
+    const isLast = idx === crumbIds.length - 1;
+    if (isLast) {
+      item.classList.add("current");
+    }
+    item.textContent = cid === state.rootId ? "Home" : uiLabel(state.nodes[cid]);
+    if (!isLast) {
+      item.addEventListener("click", () => {
+        homeBrowseScopeId = cid;
+        renderHomeView();
+      });
+    }
+    homeBreadcrumbEl!.appendChild(item);
+  });
+
+  // Build grid cards
+  homeGridEl.innerHTML = "";
+  const children = (browseNode.children || [])
+    .map((cid) => state.nodes[cid])
+    .filter((n): n is TreeNode => Boolean(n));
+
+  if (children.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "home-empty";
+    empty.textContent = "This scope is empty.";
+    homeGridEl.appendChild(empty);
+    return;
+  }
+
+  // Sort: folders first, then by text
+  const sorted = [...children].sort((a, b) => {
+    const aFolder = isFolderNode(a) ? 0 : 1;
+    const bFolder = isFolderNode(b) ? 0 : 1;
+    if (aFolder !== bFolder) return aFolder - bFolder;
+    return (a.text || "").localeCompare(b.text || "");
+  });
+
+  for (const child of sorted) {
+    const isFolder = isFolderNode(child);
+    const card = document.createElement("div");
+    card.className = "home-card";
+    if (!isFolder) card.classList.add("is-leaf");
+
+    // Icon
+    const icon = document.createElement("div");
+    icon.className = "home-card-icon";
+    if (isFolder) {
+      // Folder SVG icon
+      icon.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`;
+    } else {
+      // Document SVG icon
+      icon.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+    }
+    card.appendChild(icon);
+
+    // Title
+    const title = document.createElement("div");
+    title.className = "home-card-title";
+    title.textContent = uiLabel(child);
+    card.appendChild(title);
+
+    // Meta
+    const meta = document.createElement("div");
+    meta.className = "home-card-meta";
+    if (isFolder) {
+      const desc = countDescendants(child.id);
+      const subFolders = countChildFolders(child.id);
+      const parts: string[] = [];
+      if (subFolders > 0) parts.push(`${subFolders} sub-scope${subFolders > 1 ? "s" : ""}`);
+      parts.push(`${desc} item${desc !== 1 ? "s" : ""}`);
+      meta.textContent = parts.join(" / ");
+    } else {
+      const text = (child.text || "").trim();
+      if (text.length > 60) {
+        meta.textContent = text.substring(0, 60) + "...";
+      } else if (child.children && child.children.length > 0) {
+        meta.textContent = `${child.children.length} child${child.children.length > 1 ? "ren" : ""}`;
+      }
+    }
+    card.appendChild(meta);
+
+    // Click handler
+    card.addEventListener("click", () => {
+      if (isFolder) {
+        // Navigate deeper in home view
+        homeBrowseScopeId = child.id;
+        renderHomeView();
+      } else {
+        // Enter this scope in editor and close home
+        hideHomeView();
+        const parentScope = homeBrowseScopeId || doc!.state.rootId;
+        if (parentScope !== doc!.state.rootId) {
+          EnterScopeCommand(parentScope);
+        }
+        setSingleSelection(child.id, false);
+        render();
+        fitDocument();
+      }
+    });
+
+    // Double-click on folder: open scope in editor
+    if (isFolder) {
+      card.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        hideHomeView();
+        EnterScopeCommand(child.id);
+        fitDocument();
+      });
+    }
+
+    homeGridEl!.appendChild(card);
+  }
+}
+
+function showHomeView(): void {
+  if (!homeViewEl) return;
+  homeViewActive = true;
+  homeBrowseScopeId = currentScopeRootId();
+  homeViewEl.hidden = false;
+  homeBtn?.classList.add("is-active");
+  renderHomeView();
+}
+
+function hideHomeView(): void {
+  if (!homeViewEl) return;
+  homeViewActive = false;
+  homeViewEl.hidden = true;
+  homeBtn?.classList.remove("is-active");
+  board.focus();
+}
+
+function toggleHomeView(): void {
+  if (homeViewActive) {
+    hideHomeView();
+  } else {
+    showHomeView();
+  }
+}
+
+// ── End Home View ──────────────────────────────────────────────
 
 function makeSelectedFolder(): boolean {
   if (!doc) {
@@ -4203,6 +4409,10 @@ stopVisualCheckBtn?.addEventListener("click", () => {
   stopVisualCheck();
 });
 
+homeBtn?.addEventListener("click", () => {
+  toggleHomeView();
+});
+
 modeFlashBtn?.addEventListener("click", () => {
   setThinkingMode("flash");
 });
@@ -4744,6 +4954,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
       setThinkingMode("deep");
       return;
     }
+  }
+
+  // Home view toggle: Ctrl+H
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "h") {
+    event.preventDefault();
+    toggleHomeView();
+    return;
+  }
+
+  // Escape closes home view if active
+  if (event.key === "Escape" && homeViewActive) {
+    event.preventDefault();
+    hideHomeView();
+    return;
   }
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {

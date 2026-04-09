@@ -29,6 +29,7 @@
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
+          <button id="home-btn" class="home-btn" type="button" aria-label="Home view">&#8962;</button>
           <div class="export-wrap">
             <button id="export-btn" type="button">Export ▾</button>
             <div id="export-menu" class="export-menu" hidden>
@@ -70,6 +71,10 @@
           </aside>
         </div>
       </div>
+      <div id="home-view" class="home-view" hidden>
+        <div class="home-breadcrumb" id="home-breadcrumb"></div>
+        <div class="home-grid" id="home-grid"></div>
+      </div>
       <div id="shortcut-cheatsheet" class="shortcut-cheatsheet" hidden>
         <div class="cheatsheet-header">Keyboard Shortcuts</div>
         <div class="cheatsheet-body">
@@ -100,6 +105,7 @@
               <div class="cheatsheet-row"><kbd>Ctrl+0</kbd><span>Fit all</span></div>
               <div class="cheatsheet-row"><kbd>I</kbd><span>Toggle meta panel</span></div>
               <div class="cheatsheet-row"><kbd>Ctrl+S</kbd><span>Download JSON</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+H</kbd><span>Toggle Home view</span></div>
             </div>
           </div>
           <div class="cheatsheet-col">
@@ -125,6 +131,12 @@
               <div class="cheatsheet-row"><kbd>Shift+L</kbd><span>Apply link</span></div>
               <div class="cheatsheet-row"><kbd>M</kbd> → <kbd>P</kbd><span>Move (reparent)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+M</kbd><span>Hold reparent</span></div>
+            </div>
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">Scope</div>
+              <div class="cheatsheet-row"><kbd>Ctrl+]</kbd><span>Enter scope</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+[</kbd><span>Exit scope</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+H</kbd><span>Home view</span></div>
             </div>
             <div class="cheatsheet-group">
               <div class="cheatsheet-group-title">Thinking Mode</div>
