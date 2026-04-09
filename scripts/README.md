@@ -105,11 +105,11 @@ macOS ではターミナルから `./scripts/beta/launch.sh` を実行する。
 | 環境 | データファイル |
 |------|-------------|
 | Alpha (mvp) | `mvp/data/rapid-mvp.sqlite` |
-| Beta | `beta/data/m3e.sqlite` |
-| Final | `final/data/m3e.sqlite` |
+| Beta | `%APPDATA%\M3E\M3E_dataV1.sqlite` |
+| Final | `%APPDATA%\M3E\M3E_dataV1.sqlite` |
 
 - `.sqlite` ファイルはリポジトリに含まれない（`.gitignore` で除外）
-- Final migration 時、`m3e.sqlite` は自動バックアップされる（`final/data/backup/`）
+- Final migration 時、`M3E_dataV1.sqlite` は自動バックアップされる（`%APPDATA%\M3E\backup\`）
 
 ## 前提条件
 

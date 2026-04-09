@@ -52,8 +52,9 @@ npm run test:visual    # Playwright ビジュアル回帰テスト
 
 ## データファイル
 
-- 既定の場所: `%APPDATA%\M3E\rapid-mvp.sqlite`
+- 既定の場所: `%APPDATA%\M3E\M3E_dataV1.sqlite`
 - `M3E_DATA_DIR` 環境変数で上書き可能
+- `M3E_DB_FILE` 環境変数でファイル名上書き可能
 - `.sqlite` はリポジトリに含まれない（`.gitignore` で除外）
 
 ## デモデータ

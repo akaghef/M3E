@@ -12,6 +12,8 @@
   コミットメッセージの形式と `type` の使い分けを定義する
 - `Test_and_CICD_Guide.md`
   MVP 期間のテスト戦略と CI/CD 運用の基準を定義する
+- `Distribution_Validation_Balanced_Plan.md`
+  配布物の主軸を installer 化し、Windows Sandbox で自動検証する運用設計を定義する
 - `Command_Panel_Security_Test_Cases.md`
   コマンドパネル実装前に満たすべきセキュリティ受け入れテストを定義する
 - `Agent_Roles.md`

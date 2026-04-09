@@ -100,10 +100,10 @@ echo "[4/6] Build (final)..."
 npm --prefix "$ROOT_DIR/final" run build
 
 echo "[5/6] Data migration..."
-if [[ -f "$M3E_DATA_DIR/rapid-mvp.sqlite" ]]; then
+if [[ -f "$M3E_DATA_DIR/M3E_dataV1.sqlite" ]]; then
   /bin/mkdir -p "$M3E_DATA_DIR/backup"
   timestamp="$(date '+%Y%m%d_%H%M')"
-  /bin/cp "$M3E_DATA_DIR/rapid-mvp.sqlite" "$M3E_DATA_DIR/backup/rapid-mvp_${timestamp}.sqlite"
+  /bin/cp "$M3E_DATA_DIR/M3E_dataV1.sqlite" "$M3E_DATA_DIR/backup/M3E_dataV1_${timestamp}.sqlite"
   echo "  Backup saved to $M3E_DATA_DIR/backup/"
 fi
 echo "  Data migration: no schema changes (pass-through)."

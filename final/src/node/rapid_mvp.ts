@@ -642,7 +642,8 @@ if (require.main === module) {
 
   // Resolve path relative to the mvp/ root, regardless of compiled location.
   const savePath = path.join(path.resolve(__dirname, "..", ".."), "data", "rapid-sample.json");
-  const sqlitePath = path.join(path.resolve(__dirname, "..", ".."), "data", "rapid-mvp.sqlite");
+  const sqliteFile = process.env.M3E_DB_FILE || "M3E_dataV1.sqlite";
+  const sqlitePath = path.join(path.resolve(__dirname, "..", ".."), "data", sqliteFile);
   model.saveToFile(savePath);
   model.saveToSqlite(sqlitePath, "rapid-sample");
   console.log(`Rapid MVP sample saved: ${savePath}`);
