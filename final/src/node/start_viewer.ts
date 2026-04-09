@@ -35,6 +35,8 @@ const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "viewer.html";
 const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
 const SQLITE_DB_PATH = path.join(DATA_DIR, "rapid-mvp.sqlite");
+const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
+const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 const CLOUD_SYNC_ENABLED = process.env.M3E_CLOUD_SYNC === "1";
 const CLOUD_SYNC_DIR = process.env.M3E_CLOUD_DIR
   ? path.resolve(process.env.M3E_CLOUD_DIR)
@@ -590,9 +592,14 @@ function startServer(): void {
   const server = createAppServer();
 
   server.listen(PORT, () => {
-    const url = `http://localhost:${PORT}/${DEFAULT_PAGE}`;
+    const isFirstRun = !fs.existsSync(FIRST_RUN_MARKER);
+    const query = isFirstRun ? `?scopeId=${TUTORIAL_SCOPE_ID}` : "";
+    const url = `http://localhost:${PORT}/${DEFAULT_PAGE}${query}`;
     console.log(`Viewer ready: ${url}`);
     openBrowser(url);
+    if (isFirstRun) {
+      try { fs.writeFileSync(FIRST_RUN_MARKER, new Date().toISOString()); } catch { /* ignore */ }
+    }
     console.log("Press Ctrl+C to stop the server.");
   });
 }

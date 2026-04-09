@@ -4,7 +4,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 PORT=38482
-URL="http://localhost:${PORT}/viewer.html"
+FIRST_RUN_MARKER="${M3E_DATA_DIR:-.}/.m3e-launched"
+if [[ ! -f "$FIRST_RUN_MARKER" ]]; then
+  URL="http://localhost:${PORT}/viewer.html?scopeId=n_1775650869381_rns0cp"
+else
+  URL="http://localhost:${PORT}/viewer.html"
+fi
 
 if [[ -z "${M3E_DATA_DIR:-}" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -53,6 +58,7 @@ APP_PID=$!
 
 if wait_for_server; then
   open "$URL"
+  [[ ! -f "$FIRST_RUN_MARKER" ]] && date -Iseconds > "$FIRST_RUN_MARKER" 2>/dev/null || true
 else
   echo "[WARN] Server did not become ready in time. Open ${URL} manually."
 fi
