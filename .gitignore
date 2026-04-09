@@ -1,3 +1,5 @@
+tmp/
+
 mvp/node_modules/
 mvp/dist/
 mvp/.env
