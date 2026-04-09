@@ -92,6 +92,10 @@ set "NODE_EXE=%NODE_DIR%\node.exe"
 set "NPM_CMD=%NODE_DIR%\npm.cmd"
 
 :node_ready
+
+REM Add portable Node.js to PATH so child processes (node-gyp etc.) can find node
+if exist "%NODE_DIR%\node.exe" set "PATH=%NODE_DIR%;%PATH%"
+
 echo.
 
 REM ============================================================
@@ -153,12 +157,14 @@ REM ============================================================
 
 echo.
 echo  [1/2] Installing dependencies...
-call "%NPM_CMD%" --prefix "%ROOT%\final" ci
+pushd "%ROOT%\final"
+call "%NPM_CMD%" ci
 if %ERRORLEVEL% neq 0 (
   echo.
   echo   npm ci failed. Trying npm install...
-  call "%NPM_CMD%" --prefix "%ROOT%\final" install
+  call "%NPM_CMD%" install
   if %ERRORLEVEL% neq 0 (
+    popd
     echo   [ERROR] Dependency installation failed.
     pause
     exit /b 1
@@ -168,12 +174,14 @@ echo   Dependencies installed.
 
 echo.
 echo  [2/2] Building M3E...
-call "%NPM_CMD%" --prefix "%ROOT%\final" run build
+call "%NPM_CMD%" run build
 if %ERRORLEVEL% neq 0 (
+  popd
   echo   [ERROR] Build failed.
   pause
   exit /b 1
 )
+popd
 echo   Build complete.
 
 REM ============================================================
