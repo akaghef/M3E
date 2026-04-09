@@ -103,7 +103,6 @@
         top: calc(100% + 6px);
         left: 0;
         z-index: 20;
-        display: flex;
         flex-direction: column;
         gap: 6px;
         min-width: 160px;
@@ -112,6 +111,9 @@
         border: 1px solid #ddd;
         border-radius: 10px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      }
+      .hamburger-menu:not([hidden]), .export-menu:not([hidden]) {
+        display: flex;
       }
       .export-menu { left: auto; right: 0; min-width: 100px; }
       .menu-section-title {
@@ -635,20 +637,15 @@
         position: absolute;
         inset: 0;
         z-index: 30;
-        display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         background: rgba(0, 0, 0, 0.45);
         backdrop-filter: blur(4px);
-        opacity: 0;
-        visibility: hidden;
-        transition: opacity 0.15s ease, visibility 0.15s ease;
         pointer-events: none;
       }
-      .shortcut-cheatsheet[data-open] {
-        opacity: 1;
-        visibility: visible;
+      .shortcut-cheatsheet:not([hidden]) {
+        display: flex;
         pointer-events: auto;
       }
       .cheatsheet-header {

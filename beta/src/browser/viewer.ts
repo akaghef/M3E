@@ -4983,12 +4983,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   function showCheatsheet(): void {
     if (!cheatsheetEl) return;
-    cheatsheetEl.dataset.open = "";
+    cheatsheetEl.hidden = false;
   }
 
   function hideCheatsheet(): void {
     if (!cheatsheetEl) return;
-    delete cheatsheetEl.dataset.open;
+    cheatsheetEl.hidden = true;
   }
 
   function clearTimer(): void {
@@ -5016,7 +5016,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   document.addEventListener("keyup", (event: KeyboardEvent) => {
     if (event.key === "Control" || event.key === "Alt" || event.key === "Meta") {
       clearTimer();
-      if (cheatsheetEl && "open" in cheatsheetEl.dataset) {
+      if (cheatsheetEl && !cheatsheetEl.hidden) {
         hideCheatsheet();
       }
     }
@@ -5025,7 +5025,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   // Also hide if window loses focus
   window.addEventListener("blur", () => {
     clearTimer();
-    if (cheatsheetEl && "open" in cheatsheetEl.dataset) {
+    if (cheatsheetEl && !cheatsheetEl.hidden) {
       hideCheatsheet();
     }
   });
