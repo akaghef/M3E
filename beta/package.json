@@ -26,6 +26,7 @@
     "undici-types": "^5.26.5"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.103.0",
     "better-sqlite3": "^12.8.0",
     "katex": "^0.16.45"
   }
