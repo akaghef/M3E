@@ -33,6 +33,8 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 | `POST` | `/api/ai/subagent/{name}` | AI subagent 実行 | AI_Common_API.md |
 | `GET` | `/api/linear-transform/status` | Linear transform ステータス | AI_Common_API.md |
 | `POST` | `/api/linear-transform/convert` | Linear transform 実行 | AI_Common_API.md |
+| `GET` | `/api/docs/{docId}/audit` | 操作監査ログ取得 | 本文書 |
+| `GET` | `/api/docs/{docId}/presence` | 接続ユーザー一覧取得 | 本文書 |
 | `GET` | `/{path}` | 静的ファイル配信 | — |
 
 ---
@@ -146,6 +148,102 @@ Body:
 - Link の `direction` / `style` の値域
 - ツリーの循環検出（DFS）
 - 孤立ノードの検出
+
+---
+
+## Audit Log API
+
+操作監査ログを取得する。ユーザーのノード操作（追加/編集/削除/移動）をタイムスタンプ付きで記録し、直近 N 件をメモリ上のリングバッファに保持する。ファイル永続化は JSON Lines 形式で `{M3E_DATA_DIR}/audit/{docId}.jsonl` に出力される。
+
+### `GET /api/docs/{docId}/audit`
+
+直近の操作監査ログを取得する。
+
+#### リクエスト
+
+パスパラメータ:
+
+- `docId` (string, 必須): ドキュメント識別子
+
+クエリパラメータ:
+
+- `limit` (number, 任意): 取得件数の上限（1-1000、既定: 100）
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "documentId": "rapid-main",
+  "count": 3,
+  "entries": [
+    {
+      "timestamp": "2026-04-10T12:00:00.000Z",
+      "userId": "e_abc123",
+      "operationType": "add",
+      "targetNodeId": "n_1234567890_abc123",
+      "details": { "docId": "rapid-main", "version": 5, "scopeId": "n_root" }
+    }
+  ]
+}
+```
+
+#### AuditEntry フィールド
+
+| フィールド | 型 | 説明 |
+|------------|------|------|
+| `timestamp` | string (ISO 8601) | 操作日時 |
+| `userId` | string | 操作者の entityId |
+| `operationType` | `"add"` \| `"edit"` \| `"delete"` \| `"move"` | 操作種別 |
+| `targetNodeId` | string | 対象ノード ID |
+| `details` | object | 操作の追加情報 |
+
+---
+
+## Presence API
+
+接続中ユーザーの一覧とアクティブ/非アクティブ状態を取得する。Collab API の register/heartbeat/push 操作に連動して自動更新される。60 秒以上操作がないユーザーは `inactive` 状態となる。
+
+### `GET /api/docs/{docId}/presence`
+
+指定ドキュメントの接続ユーザー一覧を取得する。
+
+#### リクエスト
+
+パスパラメータ:
+
+- `docId` (string, 必須): ドキュメント識別子
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "documentId": "rapid-main",
+  "count": 2,
+  "users": [
+    {
+      "entityId": "e_abc123",
+      "displayName": "Alice",
+      "role": "human",
+      "status": "active",
+      "lastOperationAt": "2026-04-10T12:00:00.000Z",
+      "connectedAt": "2026-04-10T11:50:00.000Z"
+    }
+  ]
+}
+```
+
+#### PresenceEntry フィールド
+
+| フィールド | 型 | 説明 |
+|------------|------|------|
+| `entityId` | string | ユーザー識別子 |
+| `displayName` | string | 表示名 |
+| `role` | string | ロール（owner, human, ai 等） |
+| `status` | `"active"` \| `"inactive"` | 状態（60 秒で inactive に遷移） |
+| `lastOperationAt` | string (ISO 8601) | 最終操作日時 |
+| `connectedAt` | string (ISO 8601) | 接続開始日時 |
 
 ---
 

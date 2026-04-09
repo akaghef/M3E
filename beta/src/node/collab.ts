@@ -4,6 +4,7 @@ import http from "http";
 import crypto from "crypto";
 import { RapidMvpModel } from "./rapid_mvp";
 import type { TreeNode } from "../shared/types";
+import { recordAudit, type OperationType } from "./audit_log";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -349,6 +350,7 @@ export function mergeScopePush(
   const nodes = model.state.nodes;
   const rootId = model.state.rootId;
   const hasVersionConflict = baseVersion !== docVersion;
+  const originalNodeIds = new Set(Object.keys(nodes));
 
   const applied: string[] = [];
   const rejected: string[] = [];
@@ -425,6 +427,27 @@ export function mergeScopePush(
   // Save + version bump
   validationModel.saveToSqlite(sqlitePath, docId);
   const newVersion = ++docVersion;
+
+  // Audit log for each applied change
+  for (const nodeId of applied) {
+    const change = changedNodes[nodeId];
+    let opType: OperationType;
+    if (change === null) {
+      opType = "delete";
+    } else if (nodes[nodeId] && change.parentId !== nodes[nodeId]?.parentId) {
+      opType = "move";
+    } else if (!originalNodeIds.has(nodeId)) {
+      opType = "add";
+    } else {
+      opType = "edit";
+    }
+    recordAudit({
+      userId: entity.entityId,
+      operationType: opType,
+      targetNodeId: nodeId,
+      details: { docId, version: newVersion, scopeId },
+    });
+  }
 
   broadcastSseEvent("state_update", { docId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
 
