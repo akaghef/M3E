@@ -18,8 +18,8 @@
                 <div class="menu-section-title">Cloud Sync</div>
                 <span id="cloud-sync-badge" class="cloud-sync-badge">Cloud: off</span>
                 <button id="cloud-pull">Pull</button>
-                <button id="cloud-push">Push</button>
-                <button id="cloud-use-local" class="danger" hidden>Use Local</button>
+                <button id="cloud-push" data-edit-only>Push</button>
+                <button id="cloud-use-local" class="danger" data-edit-only hidden>Use Local</button>
                 <button id="cloud-use-cloud" hidden>Use Cloud</button>
               </div>
             </div>
@@ -29,7 +29,8 @@
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
-          <div class="export-wrap">
+          <button id="share-btn" class="share-btn" type="button">Share</button>
+          <div class="export-wrap" data-edit-only>
             <button id="export-btn" type="button">Export ▾</button>
             <div id="export-menu" class="export-menu" hidden>
               <button id="download-btn">JSON</button>
@@ -37,6 +38,7 @@
             </div>
           </div>
         </div>
+        <div id="readonly-banner" class="readonly-banner" hidden>Read-only view</div>
         <!-- hidden elements kept for JS references -->
         <input id="file-input" type="file" accept=".json,.mm,.md,.markdown,application/json,text/xml,application/xml,text/markdown,text/plain" hidden />
         <button id="load-default" hidden></button>

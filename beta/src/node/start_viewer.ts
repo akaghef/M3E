@@ -1,11 +1,13 @@
 "use strict";
 
+import "dotenv/config";
 import fs from "fs";
 import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
-import { detectCloudConflict } from "./cloud_sync";
+import { detectCloudConflict, loadCloudSyncConfig } from "./cloud_sync";
+import type { CloudSyncTransport } from "../shared/types";
 import { createBackup, pruneOldBackups, startAutoBackup } from "./backup";
 import {
   createConflictBackup,
@@ -46,10 +48,9 @@ const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
-const CLOUD_SYNC_ENABLED = process.env.M3E_CLOUD_SYNC === "1";
-const CLOUD_SYNC_DIR = process.env.M3E_CLOUD_DIR
-  ? path.resolve(process.env.M3E_CLOUD_DIR)
-  : path.join(DATA_DIR, "cloud-sync");
+const cloudSyncConfig = loadCloudSyncConfig();
+const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
+let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -179,30 +180,7 @@ function isAiStatusRoute(urlPath: string): boolean {
   return pathname === "/api/ai/status";
 }
 
-function cloudDocPath(docId: string): string {
-  const safeId = docId.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return path.join(CLOUD_SYNC_DIR, `${safeId}.json`);
-}
-
-function ensureCloudSyncDir(): void {
-  if (!CLOUD_SYNC_ENABLED) {
-    return;
-  }
-  if (!fs.existsSync(CLOUD_SYNC_DIR)) {
-    fs.mkdirSync(CLOUD_SYNC_DIR, { recursive: true });
-  }
-}
-
-function readCloudDoc(filePath: string): SavedDoc | null {
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as SavedDoc;
-  if (!parsed || parsed.version !== 1 || !parsed.state) {
-    return null;
-  }
-  return parsed;
-}
+// Cloud sync helpers removed — now handled by CloudSyncTransport implementations
 
 function readRequestBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -290,7 +268,7 @@ async function handleSyncApi(
     return true;
   }
 
-  if (!CLOUD_SYNC_ENABLED) {
+  if (!CLOUD_SYNC_ENABLED || !cloudTransport) {
     sendJson(res, 200, {
       ok: true,
       enabled: false,
@@ -300,69 +278,44 @@ async function handleSyncApi(
     return true;
   }
 
-  ensureCloudSyncDir();
-  const filePath = cloudDocPath(route.docId);
+  const transport = cloudTransport;
+  const modeLabel = transport.mode === "file" ? "file-mirror" : transport.mode;
 
   if (route.action === "status" && req.method === "GET") {
-    const exists = fs.existsSync(filePath);
-    const cloudDoc = exists ? readCloudDoc(filePath) : null;
-    sendJson(res, 200, {
-      ok: true,
-      enabled: true,
-      mode: "file-mirror",
-      documentId: route.docId,
-      exists,
-      cloudSavedAt: cloudDoc?.savedAt ?? null,
-      lastSyncedAt: exists ? fs.statSync(filePath).mtime.toISOString() : null,
-    });
+    try {
+      const result = await transport.status(route.docId);
+      sendJson(res, 200, { ...result, mode: modeLabel });
+    } catch (err) {
+      sendSyncError(res, 500, "SYNC_STATUS_FAILED", (err as Error).message, route.docId);
+    }
     return true;
   }
 
   if (route.action === "pull" && req.method === "POST") {
-    if (!fs.existsSync(filePath)) {
-      sendSyncError(res, 404, "SYNC_CLOUD_NOT_FOUND", "Cloud document not found.", route.docId);
-      return true;
-    }
-
     try {
-      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as { version?: number; state?: AppState; savedAt?: string };
-      if (!parsed || parsed.version !== 1 || !parsed.state) {
-        sendSyncError(res, 400, "SYNC_CLOUD_UNSUPPORTED_FORMAT", "Cloud document has unsupported format.", route.docId);
+      const result = await transport.pull(route.docId);
+      if (!result.ok) {
+        sendSyncError(res, 404, "SYNC_CLOUD_NOT_FOUND", result.error || "Cloud document not found.", route.docId);
         return true;
       }
-
-      const model = RapidMvpModel.fromJSON(parsed.state);
+      const model = RapidMvpModel.fromJSON(result.state);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendSyncError(
-          res,
-          400,
-          "SYNC_CLOUD_INVALID_MODEL",
-          `Cloud document is invalid: ${errors.join(" | ")}`,
-          route.docId,
-        );
+        sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud document is invalid: ${errors.join(" | ")}`, route.docId);
         return true;
       }
-
       sendJson(res, 200, {
         ok: true,
-        mode: "file-mirror",
+        mode: modeLabel,
         version: 1,
-        savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
+        savedAt: result.savedAt,
         state: model.toJSON(),
         documentId: route.docId,
       });
-      return true;
     } catch (err) {
-      sendSyncError(
-        res,
-        500,
-        "SYNC_PULL_FAILED",
-        (err as Error).message || "Cloud pull failed.",
-        route.docId,
-      );
-      return true;
+      sendSyncError(res, 500, "SYNC_PULL_FAILED", (err as Error).message || "Cloud pull failed.", route.docId);
     }
+    return true;
   }
 
   if (route.action === "push" && req.method === "POST") {
@@ -375,27 +328,10 @@ async function handleSyncApi(
         return true;
       }
 
-      const existingCloudDoc = readCloudDoc(filePath);
-      const baseSavedAt = parsed.baseSavedAt ?? null;
-      const forcePush = Boolean(parsed.force);
-      if (detectCloudConflict(existingCloudDoc?.savedAt ?? null, baseSavedAt, forcePush)) {
-        sendSyncError(res, 409, "CLOUD_CONFLICT", "Cloud conflict detected.", route.docId, {
-          cloudSavedAt: existingCloudDoc?.savedAt ?? null,
-          baseSavedAt,
-        });
-        return true;
-      }
-
       const model = RapidMvpModel.fromJSON(candidate.state as never);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendSyncError(
-          res,
-          400,
-          "SYNC_PUSH_INVALID_MODEL",
-          `Invalid model before cloud push: ${errors.join(" | ")}`,
-          route.docId,
-        );
+        sendSyncError(res, 400, "SYNC_PUSH_INVALID_MODEL", `Invalid model before cloud push: ${errors.join(" | ")}`, route.docId);
         return true;
       }
 
@@ -404,29 +340,27 @@ async function handleSyncApi(
         savedAt: String(candidate.savedAt || new Date().toISOString()),
         state: model.toJSON(),
       };
-      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+      const result = await transport.push(route.docId, payload, parsed.baseSavedAt ?? null, Boolean(parsed.force));
+      if (!result.ok) {
+        const statusCode = result.error?.includes("conflict") || result.error?.includes("Conflict") ? 409 : 500;
+        sendSyncError(res, statusCode, "SYNC_PUSH_FAILED", result.error || "Cloud push failed.", route.docId);
+        return true;
+      }
       sendJson(res, 200, {
         ok: true,
-        mode: "file-mirror",
-        savedAt: payload.savedAt,
+        mode: modeLabel,
+        savedAt: result.savedAt,
         documentId: route.docId,
-        forced: forcePush,
+        forced: result.forced,
       });
-      return true;
     } catch (err) {
       if (err instanceof SyntaxError) {
         sendSyncError(res, 400, "SYNC_INVALID_JSON_BODY", "Invalid JSON body.", route.docId);
         return true;
       }
-      sendSyncError(
-        res,
-        500,
-        "SYNC_PUSH_FAILED",
-        (err as Error).message || "Cloud push failed.",
-        route.docId,
-      );
-      return true;
+      sendSyncError(res, 500, "SYNC_PUSH_FAILED", (err as Error).message || "Cloud push failed.", route.docId);
     }
+    return true;
   }
 
   sendSyncError(res, 405, "SYNC_METHOD_NOT_ALLOWED", "Method not allowed.", route.docId);
