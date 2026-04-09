@@ -5,6 +5,7 @@ import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
+import { createBackup, pruneOldBackups, startAutoBackup } from "./backup";
 import { detectCloudConflict } from "./cloud_sync";
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
@@ -39,6 +40,7 @@ const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const CLOUD_SYNC_ENABLED = process.env.M3E_CLOUD_SYNC === "1";
 const CLOUD_SYNC_DIR = process.env.M3E_CLOUD_DIR
   ? path.resolve(process.env.M3E_CLOUD_DIR)
@@ -602,6 +604,16 @@ function startServer(): void {
     if (isFirstRun) {
       try { fs.writeFileSync(FIRST_RUN_MARKER, new Date().toISOString()); } catch { /* ignore */ }
     }
+
+    // Startup backup + periodic auto-backup
+    if (fs.existsSync(SQLITE_DB_PATH)) {
+      const maxGen = Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || 10;
+      createBackup(SQLITE_DB_PATH, BACKUP_DIR)
+        .then(() => { pruneOldBackups(BACKUP_DIR, maxGen); })
+        .catch((err) => { console.error(`[backup] Startup backup failed: ${(err as Error).message}`); });
+      startAutoBackup(SQLITE_DB_PATH, BACKUP_DIR);
+    }
+
     console.log("Press Ctrl+C to stop the server.");
   });
 }
