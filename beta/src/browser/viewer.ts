@@ -3464,6 +3464,7 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
+        "X-M3E-Tab-Id": TAB_ID,
       },
       body: JSON.stringify(currentDocSnapshot()),
     });
@@ -3707,6 +3708,82 @@ function broadcastState(): void {
   }
   const msg: BcStateMessage = { type: "STATE_UPDATE", fromTabId: TAB_ID, state: doc.state };
   bc.postMessage(msg);
+}
+
+// ---------------------------------------------------------------------------
+// Doc-watch SSE — auto-refresh on external DB changes
+// ---------------------------------------------------------------------------
+
+let docWatchEs: EventSource | null = null;
+let lastAppliedSavedAt: string | null = null;
+
+function initDocWatch(): void {
+  if (docWatchEs) return;
+  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/watch`;
+  docWatchEs = new EventSource(url);
+
+  docWatchEs.addEventListener("doc_updated", (ev: MessageEvent) => {
+    try {
+      const data = JSON.parse(ev.data) as { docId: string; savedAt: string; sourceTabId: string | null };
+      // Ignore our own saves
+      if (data.sourceTabId === TAB_ID) return;
+      // Ignore duplicate events
+      if (data.savedAt === lastAppliedSavedAt) return;
+      // If user has unsaved edits, notify instead of overwriting
+      if (autosaveTimer !== null) {
+        setStatus("External update available — save your edits first.", false);
+        return;
+      }
+      void applyExternalUpdate(data.savedAt);
+    } catch {
+      // ignore malformed events
+    }
+  });
+
+  window.addEventListener("beforeunload", () => docWatchEs?.close());
+}
+
+async function applyExternalUpdate(savedAt: string): Promise<void> {
+  try {
+    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const newDoc = ensureDocShape(payload);
+    // Only apply if actually newer
+    if (doc && newDoc.savedAt <= (doc.savedAt || "")) return;
+    lastAppliedSavedAt = savedAt;
+
+    // Preserve view state
+    const prevScopeId = viewState.currentScopeId;
+    const prevSelectedId = viewState.selectedNodeId;
+    const prevCollapsed = new Set(viewState.collapsedIds);
+    const prevScopeHistory = [...viewState.scopeHistory];
+
+    doc = newDoc;
+    hydrateLinearNotesFromDocState();
+    hydrateLinearTextFontScaleFromDocState();
+    if (doc.state.linearPanelWidth != null) {
+      linearPanelCanvasWidth = doc.state.linearPanelWidth;
+    }
+
+    // Restore view state if nodes still exist
+    if (doc.state.nodes[prevScopeId]) {
+      viewState.currentScopeId = prevScopeId;
+      viewState.currentScopeRootId = prevScopeId;
+      viewState.scopeHistory = prevScopeHistory;
+    }
+    if (doc.state.nodes[prevSelectedId]) {
+      viewState.selectedNodeId = prevSelectedId;
+      viewState.selectedNodeIds = new Set([prevSelectedId]);
+    }
+    viewState.collapsedIds = prevCollapsed;
+
+    render();
+    setStatus("Document updated externally.");
+    broadcastState();
+  } catch {
+    // will retry on next SSE event
+  }
 }
 
 function touchDocument(): void {
@@ -5306,6 +5383,7 @@ updateCloudSyncUi();
 
 void initializeDocument().then(() => {
   initBroadcastSync();
+  initDocWatch();
   const initialScopeId = queryParams.get("scopeId");
   if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level

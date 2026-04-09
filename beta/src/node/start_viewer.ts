@@ -52,6 +52,52 @@ const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 
+// ---------------------------------------------------------------------------
+// Doc-watch SSE (standalone, independent of collab SSE)
+// ---------------------------------------------------------------------------
+
+interface DocWatchClient {
+  docId: string;
+  res: http.ServerResponse;
+}
+
+const docWatchClients: DocWatchClient[] = [];
+
+function addDocWatchClient(docId: string, res: http.ServerResponse): void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+  docWatchClients.push({ docId, res });
+  res.on("close", () => {
+    const idx = docWatchClients.findIndex((c) => c.res === res);
+    if (idx !== -1) docWatchClients.splice(idx, 1);
+  });
+}
+
+function broadcastDocUpdate(docId: string, savedAt: string, sourceTabId: string | null): void {
+  const payload = JSON.stringify({ docId, savedAt, sourceTabId });
+  const frame = `event: doc_updated\ndata: ${payload}\n\n`;
+  for (let i = docWatchClients.length - 1; i >= 0; i--) {
+    if (docWatchClients[i].docId === docId) {
+      try {
+        docWatchClients[i].res.write(frame);
+      } catch {
+        docWatchClients.splice(i, 1);
+      }
+    }
+  }
+}
+
+function parseDocWatchRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/docs\/([^/]+)\/watch$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
+}
+
 const MIME_BY_EXT: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -246,7 +292,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
       }
 
       model.saveToSqlite(SQLITE_DB_PATH, docId);
-      sendJson(res, 200, { ok: true, savedAt: new Date().toISOString(), documentId: docId });
+      const savedAt = new Date().toISOString();
+      const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+      broadcastDocUpdate(docId, savedAt, sourceTabId);
+      sendJson(res, 200, { ok: true, savedAt, documentId: docId });
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
       if (err instanceof SyntaxError) {
@@ -561,6 +610,18 @@ function startServer(): void {
       startAutoBackup(SQLITE_DB_PATH, BACKUP_DIR);
     }
     console.log("Press Ctrl+C to stop the server.");
+
+    // Keep SSE connections alive through proxies
+    setInterval(() => {
+      const ping = ": heartbeat\n\n";
+      for (let i = docWatchClients.length - 1; i >= 0; i--) {
+        try {
+          docWatchClients[i].res.write(ping);
+        } catch {
+          docWatchClients.splice(i, 1);
+        }
+      }
+    }, 15_000);
   });
 }
 
@@ -727,6 +788,16 @@ export function createAppServer(): http.Server {
     const syncRoute = parseSyncRoute(req.url ?? "/");
     if (syncRoute) {
       await handleSyncApi(req, res, syncRoute);
+      return;
+    }
+
+    const watchDocId = parseDocWatchRoute(req.url ?? "/");
+    if (watchDocId !== null) {
+      if (req.method !== "GET") {
+        sendJson(res, 405, { error: "Method not allowed." });
+        return;
+      }
+      addDocWatchClient(watchDocId, res);
       return;
     }
 
