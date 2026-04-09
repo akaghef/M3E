@@ -69,6 +69,12 @@ M3E_PORT=38482
 
 上記のダウンロードリンクを共有するだけ。受け取った人は展開してセットアップスクリプトを実行すれば完了。
 
+なお、運用負担と再現性の観点で、主軸は installer 配布へ移行する。
+設計方針は次を参照:
+
+- `dev-docs/06_Operations/Distribution_Validation_Balanced_Plan.md`
+- 新導線の実装先: `install2/`
+
 ### 最小構成
 
 ```

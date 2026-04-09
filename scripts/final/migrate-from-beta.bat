@@ -13,7 +13,7 @@ REM   5. Data migration (if schema changed)
 REM   6. Launch
 REM
 REM Data:
-REM   - Backs up rapid-mvp.sqlite before migration
+REM   - Backs up M3E_dataV1.sqlite before migration
 REM   - Backup destination: %APPDATA%\M3E\backup\
 REM ============================================================
 
@@ -22,6 +22,7 @@ cd /d "%~dp0\..\.."
 if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%APPDATA%\M3E"
 if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
 if "%M3E_PORT%"=="" set "M3E_PORT=38482"
+set "DB_FILE=M3E_dataV1.sqlite"
 
 echo ============================================================
 echo  M3E Final Migration: Beta ^> Final
@@ -69,12 +70,12 @@ if %errorlevel% neq 0 goto :error
 
 REM --- Step 5: Data migration ---
 echo [5/6] Data migration...
-if exist "%M3E_DATA_DIR%\rapid-mvp.sqlite" (
+if exist "%M3E_DATA_DIR%\%DB_FILE%" (
   if not exist "%M3E_DATA_DIR%\backup" mkdir "%M3E_DATA_DIR%\backup"
   set DATESTAMP=%date:~-4%%date:~3,2%%date:~0,2%
   set TIMESTAMP=%time:~0,2%%time:~3,2%
   set TIMESTAMP=%TIMESTAMP: =0%
-  copy /Y "%M3E_DATA_DIR%\rapid-mvp.sqlite" "%M3E_DATA_DIR%\backup\rapid-mvp_%DATESTAMP%_%TIMESTAMP%.sqlite" > nul
+  copy /Y "%M3E_DATA_DIR%\%DB_FILE%" "%M3E_DATA_DIR%\backup\%DB_FILE:~0,-7%_%DATESTAMP%_%TIMESTAMP%.sqlite" > nul
   echo   Backup saved to %M3E_DATA_DIR%\backup\
 )
 REM TODO: call node final/dist/node/migrate.js when schema changes occur
