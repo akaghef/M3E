@@ -106,6 +106,46 @@ export interface AiStatusResponse {
   features: Record<string, AiFeatureStatus>;
 }
 
+// ---------------------------------------------------------------------------
+// Cloud Sync Transport
+// ---------------------------------------------------------------------------
+
+export interface PushResult {
+  ok: boolean;
+  savedAt: string;
+  documentId: string;
+  forced: boolean;
+  conflict?: boolean;
+  cloudSavedAt?: string | null;
+  error?: string;
+}
+
+export interface PullResult {
+  ok: boolean;
+  version: number;
+  savedAt: string;
+  state: AppState;
+  documentId: string;
+  error?: string;
+}
+
+export interface SyncStatus {
+  ok: boolean;
+  enabled: boolean;
+  mode: string;
+  documentId: string;
+  exists: boolean;
+  cloudSavedAt: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface CloudSyncTransport {
+  readonly mode: string;
+  push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean): Promise<PushResult>;
+  pull(docId: string): Promise<PullResult>;
+  status(docId: string): Promise<SyncStatus>;
+}
+
 export interface AiSubagentRequest {
   documentId: string;
   scopeId: string;
