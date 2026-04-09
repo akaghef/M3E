@@ -1,34 +1,15 @@
 const fileInput = document.getElementById("file-input") as HTMLInputElement;
 const loadDefaultBtn = document.getElementById("load-default");
-const loadAirplaneBtn = document.getElementById("load-airplane");
-const loadAircraftMmBtn = document.getElementById("load-aircraft-mm");
 const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
 const stopVisualCheckBtn = document.getElementById("stop-visual-check");
 const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
-const fitAllBtn = document.getElementById("fit-all");
-const focusSelectedBtn = document.getElementById("focus-selected");
-const addChildBtn = document.getElementById("add-child");
-const addSiblingBtn = document.getElementById("add-sibling");
-const makeFolderBtn = document.getElementById("make-folder");
-const enterScopeBtn = document.getElementById("enter-scope");
-const exitScopeBtn = document.getElementById("exit-scope");
-const addAliasBtn = document.getElementById("add-alias");
-const jumpTargetBtn = document.getElementById("jump-target");
-const toggleCollapseBtn = document.getElementById("toggle-collapse");
-const aiGenerateTopicsBtn = document.getElementById("ai-generate-topics");
-const deleteNodeBtn = document.getElementById("delete-node");
-const markLinkBtn = document.getElementById("mark-link");
-const applyLinkBtn = document.getElementById("apply-link");
-const markReparentBtn = document.getElementById("mark-reparent");
-const applyReparentBtn = document.getElementById("apply-reparent");
-const importanceViewSelect = document.getElementById("importance-view") as HTMLSelectElement;
-const zoomOutBtn = document.getElementById("zoom-out");
-const zoomResetBtn = document.getElementById("zoom-reset");
-const zoomInBtn = document.getElementById("zoom-in");
-const toggleMetaPanelBtn = document.getElementById("toggle-meta-panel") as HTMLButtonElement | null;
 const downloadBtn = document.getElementById("download-btn");
+const hamburgerBtn = document.getElementById("hamburger-btn");
+const hamburgerMenu = document.getElementById("hamburger-menu");
+const exportBtn = document.getElementById("export-btn");
+const exportMenu = document.getElementById("export-menu");
 const metaPanelEl = document.querySelector(".meta-panel") as HTMLElement | null;
 const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
@@ -50,6 +31,7 @@ const linearTextEl = document.getElementById("linear-text") as HTMLTextAreaEleme
 const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | null;
 const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement | null;
 const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement | null;
+const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
@@ -74,7 +56,7 @@ const LINEAR_TEXT_FONT_SCALE_MIN = 0.6;
 const LINEAR_TEXT_FONT_SCALE_MAX = 1.4;
 const LINEAR_TEXT_FONT_SCALE_STEP = 0.1;
 const LINEAR_PANEL_WIDTH_MIN = 220;
-const LINEAR_PANEL_WIDTH_MAX = 2200;
+const LINEAR_PANEL_WIDTH_MAX = 10000;
 
 interface BcStateMessage {
   type: "STATE_UPDATE";
@@ -190,12 +172,7 @@ function setThinkingMode(mode: ThinkingMode): void {
 }
 
 function syncMetaPanelToggleUi(): void {
-  if (!toggleMetaPanelBtn || !metaPanelEl) {
-    return;
-  }
-  const isVisible = !metaPanelEl.hidden;
-  toggleMetaPanelBtn.textContent = isVisible ? "Hide meta" : "Show meta";
-  toggleMetaPanelBtn.setAttribute("aria-pressed", isVisible ? "true" : "false");
+  // no-op: toolbar button removed, meta panel toggled via "I" key
 }
 
 function toggleMetaPanelVisibility(): void {
@@ -831,14 +808,16 @@ function makeSelectedFolder(): boolean {
     setStatus("Alias nodes cannot become folders.", true);
     return false;
   }
-  if (isFolderNode(node)) {
-    setStatus("Selected node is already a folder scope.");
-    return false;
-  }
   pushUndoSnapshot();
-  node.nodeType = "folder";
-  touchDocument();
-  setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+  if (isFolderNode(node)) {
+    node.nodeType = undefined;
+    touchDocument();
+    setStatus(`Removed folder scope: ${uiLabel(node)}`);
+  } else {
+    node.nodeType = "folder";
+    touchDocument();
+    setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+  }
   board.focus();
   return true;
 }
@@ -4014,6 +3993,33 @@ async function copyTextToSystemClipboard(text: string): Promise<void> {
   }
 }
 
+function buildNodePath(nodeId: string): string {
+  if (!doc) return "";
+  const parts: string[] = [];
+  let cursor: string | null = nodeId;
+  while (cursor) {
+    const n: TreeNode | undefined = doc.state.nodes[cursor];
+    if (!n) break;
+    parts.unshift(uiLabel(n));
+    cursor = n.parentId ?? null;
+  }
+  return parts.join(" / ");
+}
+
+function copyNodePath(): void {
+  if (!doc) return;
+  const path = buildNodePath(viewState.selectedNodeId);
+  void copyTextToSystemClipboard(path);
+  setStatus(`Path copied: ${path}`);
+}
+
+function copyScopeId(): void {
+  if (!doc) return;
+  const id = normalizedCurrentScopeId();
+  void copyTextToSystemClipboard(id);
+  setStatus(`Scope ID copied: ${id}`);
+}
+
 function copySelected(): void {
   const roots = getSelectionRoots();
   if (roots.length === 0) {
@@ -4179,27 +4185,6 @@ loadDefaultBtn?.addEventListener("click", async () => {
   }
 });
 
-loadAirplaneBtn?.addEventListener("click", async () => {
-  try {
-    const response = await fetch("./data/airplane-parts-demo.json", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    loadPayload(payload);
-    setStatus("Airplane demo loaded.");
-  } catch (err) {
-    setStatus(`Airplane demo load failed (${(err as Error).message}).`, true);
-  }
-});
-
-loadAircraftMmBtn?.addEventListener("click", async () => {
-  try {
-    await loadAircraftMmDemo();
-  } catch (err) {
-    setStatus(`aircraft.mm load failed (${(err as Error).message}).`, true);
-  }
-});
 
 runAircraftVisualCheckBtn?.addEventListener("click", () => {
   runAircraftVisualCheck();
@@ -4403,114 +4388,34 @@ cloudUseCloudBtn?.addEventListener("click", async () => {
   }
 });
 
-importanceViewSelect?.addEventListener("change", () => {
-  const nextMode = importanceViewSelect.value as ImportanceViewMode;
-  importanceViewMode = nextMode;
-  linearDirty = false;
-  scheduleRender();
-  setStatus(`Importance view: ${nextMode}`);
-});
-
-addChildBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  addChild();
-});
-
-addSiblingBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  addSibling();
-});
-
-makeFolderBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  makeSelectedFolder();
-});
-
-enterScopeBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  enterScope(viewState.selectedNodeId);
-});
-
-exitScopeBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  exitScope();
-});
-
-addAliasBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  addAliasInCurrentScope();
-});
-
-jumpTargetBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  jumpToAliasTarget();
-});
-
-markLinkBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  markLinkSource();
-});
-
-applyLinkBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  applyMarkedLink();
-});
-
-toggleCollapseBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  toggleCollapse();
-});
-
-aiGenerateTopicsBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  void generateRelatedTopicsForSelectedNode();
-});
-
-deleteNodeBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  deleteSelected();
-});
-
-markReparentBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  markReparentSource();
-});
-
-applyReparentBtn?.addEventListener("click", () => {
-  if (!doc) return;
-  applyReparent();
-});
-
 downloadBtn?.addEventListener("click", () => {
   if (!doc) return;
   downloadJson();
 });
 
-zoomOutBtn?.addEventListener("click", () => {
-  setZoom(viewState.zoom / VIEWER_TUNING.zoom.buttonFactor);
+/* ── Hamburger & Export dropdown toggle ── */
+function toggleDropdown(menu: HTMLElement | null, btn: HTMLElement | null): void {
+  if (!menu || !btn) return;
+  const open = menu.hidden;
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+hamburgerBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  exportMenu && (exportMenu.hidden = true);
+  toggleDropdown(hamburgerMenu, hamburgerBtn);
 });
 
-zoomResetBtn?.addEventListener("click", () => {
-  setZoom(1);
+exportBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  hamburgerMenu && (hamburgerMenu.hidden = true);
+  toggleDropdown(exportMenu, exportBtn);
 });
 
-zoomInBtn?.addEventListener("click", () => {
-  setZoom(viewState.zoom * VIEWER_TUNING.zoom.buttonFactor);
-});
-
-fitAllBtn?.addEventListener("click", () => {
-  fitDocument();
-});
-
-focusSelectedBtn?.addEventListener("click", () => {
-  if (!doc || !viewState.selectedNodeId) {
-    return;
-  }
-  centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
-});
-
-toggleMetaPanelBtn?.addEventListener("click", () => {
-  toggleMetaPanelVisibility();
+document.addEventListener("click", () => {
+  if (hamburgerMenu && !hamburgerMenu.hidden) hamburgerMenu.hidden = true;
+  if (exportMenu && !exportMenu.hidden) exportMenu.hidden = true;
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
@@ -4628,11 +4533,6 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
     return;
   }
   selectNode(nodeId);
-  const node = getNode(nodeId);
-  if ((node.children || []).length > 0) {
-    EnterScopeCommand(nodeId);
-    return;
-  }
   startInlineEdit(nodeId);
 });
 
@@ -4832,9 +4732,33 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    downloadJson();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
+    event.preventDefault();
+    copyNodePath();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "i") {
+    event.preventDefault();
+    copyScopeId();
+    return;
+  }
+
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
     event.preventDefault();
     void generateRelatedTopicsForSelectedNode();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "0") {
+    event.preventDefault();
+    fitDocument();
     return;
   }
 
@@ -4866,6 +4790,24 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key === "-") {
+    event.preventDefault();
+    setZoom(viewState.zoom / VIEWER_TUNING.zoom.buttonFactor);
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && (event.key === "=" || event.key === "+")) {
+    event.preventDefault();
+    setZoom(viewState.zoom * VIEWER_TUNING.zoom.buttonFactor);
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key === "0") {
+    event.preventDefault();
+    setZoom(1);
+    return;
+  }
+
       if (event.altKey && event.key === "Enter") {
         event.preventDefault();
         EnterScopeCommand();
@@ -4885,6 +4827,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
       setStatus("Fit all.");
       cycleViewState = "focus";
     }
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "j") {
+    event.preventDefault();
+    jumpToAliasTarget();
     return;
   }
 
@@ -4911,6 +4859,39 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (!event.repeat) {
       toggleReparentSource();
     }
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    makeSelectedFolder();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "i") {
+    event.preventDefault();
+    toggleMetaPanelVisibility();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
+    event.preventDefault();
+    const selected = getNode(viewState.selectedNodeId);
+    if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
+      EnterScopeCommand(selected.id);
+      return;
+    }
+    selectChild();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
+      ExitScopeCommand();
+      return;
+    }
+    selectParent();
     return;
   }
 
@@ -4942,7 +4923,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === " " || (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "e")) {
+  if (event.key === " ") {
     event.preventDefault();
     toggleCollapse();
     return;
@@ -4994,6 +4975,61 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     selectChild();
   }
 });
+
+/* ── Shortcut cheatsheet: show on Ctrl/Alt hold ── */
+{
+  let cheatsheetTimer: ReturnType<typeof setTimeout> | null = null;
+  const HOLD_MS = 400;
+
+  function showCheatsheet(): void {
+    if (!cheatsheetEl) return;
+    cheatsheetEl.hidden = false;
+  }
+
+  function hideCheatsheet(): void {
+    if (!cheatsheetEl) return;
+    cheatsheetEl.hidden = true;
+  }
+
+  function clearTimer(): void {
+    if (cheatsheetTimer !== null) {
+      clearTimeout(cheatsheetTimer);
+      cheatsheetTimer = null;
+    }
+  }
+
+  document.addEventListener("keydown", (event: KeyboardEvent) => {
+    // Only trigger on bare Ctrl or Alt (no other modifier, no repeat)
+    if (event.repeat) return;
+    const isBareMod =
+      (event.key === "Control" && !event.altKey && !event.shiftKey) ||
+      (event.key === "Alt" && !event.ctrlKey && !event.metaKey && !event.shiftKey);
+    if (!isBareMod) {
+      clearTimer();
+      return;
+    }
+    if (cheatsheetTimer === null) {
+      cheatsheetTimer = setTimeout(showCheatsheet, HOLD_MS);
+    }
+  });
+
+  document.addEventListener("keyup", (event: KeyboardEvent) => {
+    if (event.key === "Control" || event.key === "Alt" || event.key === "Meta") {
+      clearTimer();
+      if (cheatsheetEl && !cheatsheetEl.hidden) {
+        hideCheatsheet();
+      }
+    }
+  });
+
+  // Also hide if window loses focus
+  window.addEventListener("blur", () => {
+    clearTimer();
+    if (cheatsheetEl && !cheatsheetEl.hidden) {
+      hideCheatsheet();
+    }
+  });
+}
 
 setVisualCheckStatus("Visual check idle");
 syncMetaPanelToggleUi();
