@@ -5,11 +5,13 @@ on:
     paths:
       - "install/**"
       - "scripts/**"
+      - ".gitattributes"
       - ".github/workflows/installer-lint.yml"
   pull_request:
     paths:
       - "install/**"
       - "scripts/**"
+      - ".gitattributes"
       - ".github/workflows/installer-lint.yml"
 
 jobs:
@@ -19,38 +21,173 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: No ^ line continuations in .bat/.cmd files
+      # ── Line ending safety ──
+
+      - name: No ^ line continuations in .bat/.cmd
         run: |
-          echo "Checking for ^ line continuations (break with LF line endings)..."
+          echo "Checking for ^ line continuations (break with LF)..."
           if grep -rEn '\^\s*$' --include='*.bat' --include='*.cmd' .; then
-            echo "::error::Found ^ line continuations in .bat/.cmd files. These break when downloaded as ZIP (LF line endings). Inline the command to a single line."
+            echo "::error::^ line continuations found. These break when downloaded as ZIP (LF). Inline to a single line."
             exit 1
           fi
-          echo "OK: no ^ continuations found."
+          echo "PASS"
 
-      - name: .bat/.cmd files end with pause or wait before exit
+      - name: .gitattributes enforces CRLF for Windows scripts
         run: |
-          echo "Checking that user-facing scripts have pause before exit..."
-          failed=0
-          for f in install/setup.bat; do
-            if ! grep -qE '^\s*pause' "$f"; then
-              echo "::warning file=$f::No 'pause' found - window may close instantly on double-click"
-              failed=1
-            fi
-          done
-          if [ "$failed" -eq 1 ]; then
-            echo "::error::Some installer scripts missing pause before exit."
-            exit 1
-          fi
-          echo "OK: pause found in installer scripts."
-
-      - name: CRLF enforcement in .gitattributes
-        run: |
-          echo "Checking .gitattributes covers .bat/.cmd/.vbs/.ps1..."
+          echo "Checking .gitattributes eol=crlf coverage..."
           for ext in bat cmd vbs ps1; do
             if ! grep -qE "^\*\.$ext\b.*eol=crlf" .gitattributes 2>/dev/null; then
               echo "::error::.gitattributes missing eol=crlf for *.$ext"
               exit 1
             fi
           done
-          echo "OK: .gitattributes enforces CRLF for all Windows script types."
+          echo "PASS"
+
+      # ── UX: window must not vanish ──
+
+      - name: User-facing installer has pause before exit
+        run: |
+          echo "Checking pause in installer scripts..."
+          for f in install/setup.bat; do
+            if ! grep -qE '^\s*pause' "$f"; then
+              echo "::error file=$f::No 'pause' found — window closes instantly on double-click."
+              exit 1
+            fi
+          done
+          echo "PASS"
+
+      # ── PATH safety for portable Node ──
+
+      - name: Portable Node added to PATH before npm calls
+        run: |
+          echo "Checking PATH setup precedes npm usage..."
+          for f in install/setup.bat; do
+            path_line=$(grep -n 'set "PATH=%NODE_DIR%' "$f" | head -1 | cut -d: -f1)
+            npm_line=$(grep -n 'call.*NPM_CMD.*ci\|call.*NPM_CMD.*install\|call.*NPM_CMD.*build\|call.*NPM_CMD.*start' "$f" | head -1 | cut -d: -f1)
+            if [ -z "$path_line" ]; then
+              echo "::error file=$f::No PATH addition for portable Node found."
+              exit 1
+            fi
+            if [ -n "$npm_line" ] && [ "$path_line" -gt "$npm_line" ]; then
+              echo "::error file=$f::PATH set at line $path_line but npm called at line $npm_line (too late)."
+              exit 1
+            fi
+          done
+          echo "PASS"
+
+      # ── Referenced files must exist ──
+
+      - name: Scripts reference only existing paths
+        run: |
+          echo "Checking that referenced scripts/assets exist..."
+          failed=0
+
+          # setup.bat -> scripts/final/launch-hidden.vbs
+          if ! [ -f scripts/final/launch-hidden.vbs ]; then
+            echo "::error::setup.bat references scripts/final/launch-hidden.vbs but it does not exist"
+            failed=1
+          fi
+
+          # setup.bat -> scripts/final/launch.bat
+          if ! [ -f scripts/final/launch.bat ]; then
+            echo "::error::setup.bat references scripts/final/launch.bat but it does not exist"
+            failed=1
+          fi
+
+          # launch-hidden.vbs -> launch.bat (same dir)
+          if ! [ -f scripts/final/launch.bat ]; then
+            echo "::error::launch-hidden.vbs references launch.bat but it does not exist"
+            failed=1
+          fi
+
+          # update-and-launch.bat -> migrate-from-beta.bat
+          if ! [ -f scripts/final/migrate-from-beta.bat ]; then
+            echo "::error::update-and-launch.bat references migrate-from-beta.bat but it does not exist"
+            failed=1
+          fi
+
+          [ "$failed" -eq 0 ] || exit 1
+          echo "PASS"
+
+      # ── .bat syntax: balanced pushd/popd ──
+
+      - name: Every pushd has at least one matching popd
+        run: |
+          echo "Checking pushd/popd pairing..."
+          failed=0
+          for f in $(find . -name '*.bat' -not -path './.git/*'); do
+            push_count=$(grep -ciE '^\s*pushd\b' "$f" || true)
+            pop_count=$(grep -ciE '^\s*popd\b' "$f" || true)
+            # Each pushd needs at least one popd (error paths may add extras)
+            if [ "$push_count" -gt 0 ] && [ "$pop_count" -lt "$push_count" ]; then
+              echo "::error file=$f::pushd ($push_count) has fewer popd ($pop_count) — directory stack leak"
+              failed=1
+            fi
+            if [ "$push_count" -eq 0 ] && [ "$pop_count" -gt 0 ]; then
+              echo "::error file=$f::popd ($pop_count) without any pushd"
+              failed=1
+            fi
+          done
+          [ "$failed" -eq 0 ] || exit 1
+          echo "PASS"
+
+      # ── .bat syntax: every error path has pause ──
+
+      - name: Error exits have pause (no silent close)
+        run: |
+          echo "Checking error paths have pause..."
+          failed=0
+          for f in install/setup.bat scripts/final/migrate-from-beta.bat; do
+            # Find "exit /b 1" lines and check if pause is within 3 lines before
+            while IFS= read -r line_num; do
+              start=$((line_num - 3))
+              [ "$start" -lt 1 ] && start=1
+              if ! sed -n "${start},${line_num}p" "$f" | grep -qiE '^\s*pause'; then
+                echo "::error file=$f,line=$line_num::exit /b 1 without preceding pause — window will vanish on error."
+                failed=1
+              fi
+            done < <(grep -n 'exit /b 1' "$f" | cut -d: -f1)
+          done
+          [ "$failed" -eq 0 ] || exit 1
+          echo "PASS"
+
+      # ── setup.sh lint ──
+
+      - name: Shell scripts pass shellcheck
+        run: |
+          echo "Running shellcheck on .sh files..."
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            echo "Installing shellcheck..."
+            sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          fi
+          failed=0
+          for f in install/setup.sh; do
+            if [ -f "$f" ]; then
+              if ! shellcheck -e SC2034 "$f"; then
+                failed=1
+              fi
+            fi
+          done
+          [ "$failed" -eq 0 ] || exit 1
+          echo "PASS"
+
+      # ── Node version consistency ──
+
+      - name: Node version consistent across installers
+        run: |
+          echo "Checking Node version consistency..."
+          bat_ver=$(grep -oE 'NODE_VERSION=[0-9]+\.[0-9]+\.[0-9]+' install/setup.bat | head -1 | cut -d= -f2)
+          sh_ver=$(grep -oE 'NODE_VERSION="[0-9]+\.[0-9]+\.[0-9]+"' install/setup.sh | head -1 | tr -d '"' | cut -d= -f2)
+          if [ -z "$bat_ver" ]; then
+            echo "::error::Could not find NODE_VERSION in setup.bat"
+            exit 1
+          fi
+          if [ -z "$sh_ver" ]; then
+            echo "::error::Could not find NODE_VERSION in setup.sh"
+            exit 1
+          fi
+          if [ "$bat_ver" != "$sh_ver" ]; then
+            echo "::error::Node version mismatch: setup.bat=$bat_ver, setup.sh=$sh_ver"
+            exit 1
+          fi
+          echo "PASS (both: $bat_ver)"
