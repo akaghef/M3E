@@ -213,54 +213,30 @@ REM ============================================================
 echo.
 echo  Creating shortcuts...
 
-set "SHORTCUT_VBS=%TEMP%\m3e_shortcut.vbs"
 set "LAUNCH_VBS=%ROOT%\scripts\final\launch-hidden.vbs"
+set "PS_ICON="
+if exist "%ICON_SRC%" set "PS_ICON=$s.IconLocation = '%ICON_SRC%';"
 
-REM Create shortcut helper VBS (reused for desktop + start menu)
-set "ICON_LINE="
-if exist "%ICON_SRC%" set "ICON_LINE=oLink.IconLocation = ""%ICON_SRC%"""
-
-REM --- Desktop shortcut ---
-set "SHORTCUT_PATH=%USERPROFILE%\Desktop\M3E.lnk"
-
-> "%SHORTCUT_VBS%" echo Set oWS = WScript.CreateObject("WScript.Shell")
->>"%SHORTCUT_VBS%" echo Set oLink = oWS.CreateShortcut("%SHORTCUT_PATH%")
->>"%SHORTCUT_VBS%" echo oLink.TargetPath = "wscript.exe"
->>"%SHORTCUT_VBS%" echo oLink.Arguments = """%LAUNCH_VBS%"""
->>"%SHORTCUT_VBS%" echo oLink.WorkingDirectory = "%ROOT%"
->>"%SHORTCUT_VBS%" echo oLink.Description = "M3E Viewer"
-if defined ICON_LINE >>"%SHORTCUT_VBS%" echo !ICON_LINE!
->>"%SHORTCUT_VBS%" echo oLink.Save
-
-cscript //nologo "%SHORTCUT_VBS%" >nul 2>&1
-del "%SHORTCUT_VBS%" >nul 2>&1
-
-if exist "%SHORTCUT_PATH%" (
-  echo   Desktop shortcut created: M3E.lnk
-) else (
-  echo   (Desktop shortcut skipped)
-)
-
-REM --- Start Menu shortcut (appears in "All Apps") ---
+REM Resolve actual Desktop path (may be redirected to OneDrive)
+for /f "usebackq tokens=*" %%D in (`powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"`) do set "DESKTOP_DIR=%%D"
+set "SHORTCUT_PATH=%DESKTOP_DIR%\M3E.lnk"
 set "START_MENU_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 set "START_SHORTCUT=%START_MENU_DIR%\M3E.lnk"
 
-> "%SHORTCUT_VBS%" echo Set oWS = WScript.CreateObject("WScript.Shell")
->>"%SHORTCUT_VBS%" echo Set oLink = oWS.CreateShortcut("%START_SHORTCUT%")
->>"%SHORTCUT_VBS%" echo oLink.TargetPath = "wscript.exe"
->>"%SHORTCUT_VBS%" echo oLink.Arguments = """%LAUNCH_VBS%"""
->>"%SHORTCUT_VBS%" echo oLink.WorkingDirectory = "%ROOT%"
->>"%SHORTCUT_VBS%" echo oLink.Description = "M3E Viewer"
-if defined ICON_LINE >>"%SHORTCUT_VBS%" echo !ICON_LINE!
->>"%SHORTCUT_VBS%" echo oLink.Save
+REM --- Desktop shortcut ---
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%SHORTCUT_PATH%'); $s.TargetPath = 'wscript.exe'; $s.Arguments = '\"%LAUNCH_VBS%\"'; $s.WorkingDirectory = '%ROOT%'; $s.Description = 'M3E Viewer'; %PS_ICON% $s.Save()"
+if exist "%SHORTCUT_PATH%" (
+  echo   Desktop shortcut created: M3E.lnk
+) else (
+  echo   [WARN] Desktop shortcut failed.
+)
 
-cscript //nologo "%SHORTCUT_VBS%" >nul 2>&1
-del "%SHORTCUT_VBS%" >nul 2>&1
-
+REM --- Start Menu shortcut ---
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%START_SHORTCUT%'); $s.TargetPath = 'wscript.exe'; $s.Arguments = '\"%LAUNCH_VBS%\"'; $s.WorkingDirectory = '%ROOT%'; $s.Description = 'M3E Viewer'; %PS_ICON% $s.Save()"
 if exist "%START_SHORTCUT%" (
   echo   Start Menu shortcut created (appears in All Apps)
 ) else (
-  echo   (Start Menu shortcut skipped)
+  echo   [WARN] Start Menu shortcut failed.
 )
 
 if exist "%ICON_SRC%" echo   Icon applied: install\assets\icon.ico
