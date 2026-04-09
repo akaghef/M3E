@@ -6,6 +6,7 @@ const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const downloadBtn = document.getElementById("download-btn");
+const downloadMmBtn = document.getElementById("download-mm-btn");
 const hamburgerBtn = document.getElementById("hamburger-btn");
 const hamburgerMenu = document.getElementById("hamburger-menu");
 const exportBtn = document.getElementById("export-btn");
@@ -3212,6 +3213,73 @@ function downloadJson(): void {
   URL.revokeObjectURL(url);
 }
 
+// ---- .mm (Freeplane/FreeMind) export ----
+
+function escapeXmlAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function mmRichContent(type: string, text: string): string {
+  return `<richcontent TYPE="${type}"><html><body>${escapeXmlAttr(text)}</body></html></richcontent>`;
+}
+
+function mmNodeToXml(node: TreeNode, state: AppState, indent: string): string {
+  if (node.nodeType === "alias") return "";
+
+  const attrs: string[] = [];
+  attrs.push(`TEXT="${escapeXmlAttr(node.text)}"`);
+  if (node.collapsed) attrs.push(`FOLDED="true"`);
+  if (node.link) attrs.push(`LINK="${escapeXmlAttr(node.link)}"`);
+
+  const parts: string[] = [];
+  if (node.details) parts.push(`${indent}  ${mmRichContent("DETAILS", node.details)}`);
+  if (node.note) parts.push(`${indent}  ${mmRichContent("NOTE", node.note)}`);
+
+  const attrEntries = Object.entries(node.attributes || {});
+  for (const [name, value] of attrEntries) {
+    parts.push(`${indent}  <attribute NAME="${escapeXmlAttr(name)}" VALUE="${escapeXmlAttr(value)}"/>`);
+  }
+
+  for (const childId of node.children) {
+    const child = state.nodes[childId];
+    if (child) {
+      const xml = mmNodeToXml(child, state, indent + "  ");
+      if (xml) parts.push(xml);
+    }
+  }
+
+  if (parts.length === 0) return `${indent}<node ${attrs.join(" ")}/>`;
+  return `${indent}<node ${attrs.join(" ")}>\n${parts.join("\n")}\n${indent}</node>`;
+}
+
+function treeToMm(state: AppState): string {
+  const root = state.nodes[state.rootId];
+  if (!root) throw new Error("Root node not found");
+  const body = mmNodeToXml(root, state, "  ");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<map version="freeplane 1.7.0">\n${body}\n</map>\n`;
+}
+
+function downloadMm(): void {
+  const state = doc!.state;
+  const xml = treeToMm(state);
+  const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  const rootText = state.nodes[state.rootId]?.text || "export";
+  const safeName = rootText.replace(/[<>:"/\\|?*]/g, "_").substring(0, 100);
+  anchor.download = `${safeName}.mm`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  setStatus("Exported as .mm (FreeMind/Freeplane)");
+}
+
+// ---- end .mm export ----
+
 function currentDocSnapshot(): SavedDoc {
   syncLinearNotesToDocState();
   return {
@@ -4405,6 +4473,11 @@ cloudUseCloudBtn?.addEventListener("click", async () => {
 downloadBtn?.addEventListener("click", () => {
   if (!doc) return;
   downloadJson();
+});
+
+downloadMmBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  downloadMm();
 });
 
 /* ── Hamburger & Export dropdown toggle ── */
