@@ -27,3 +27,5 @@ memo.md
 beta/tests/visual/viewer.visual.spec.js-snapshots/
 
 tmp_*.json
+
+artifacts/

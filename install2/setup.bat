@@ -81,6 +81,18 @@ if not exist "%CONFIG_DIR%" mkdir "%CONFIG_DIR%"
 call :log " Config saved to: %CONFIG_FILE%"
 
 call :log ""
+call :log " Stopping any running M3E process..."
+set "M3E_PORT=38482"
+for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":!M3E_PORT!" ^| findstr "LISTENING"') do (
+  if not "%%P"=="0" (
+    call :log " Stopping PID %%P on port !M3E_PORT!..."
+    taskkill /PID %%P /F >nul 2>&1
+    REM Wait briefly for file handles to release
+    timeout /t 2 /nobreak >nul 2>&1
+  )
+)
+
+call :log ""
 call :log " [1/2] Installing dependencies..."
 call "%NPM_CMD%" --prefix "%ROOT%\final" ci
 if not !errorlevel! equ 0 (

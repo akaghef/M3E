@@ -1,3 +1,10 @@
+# install2/windows/run-sandbox.ps1
+# Windows Sandbox でインストーラーを検証する（Pro/Enterprise 限定）
+# Home エディションでは自動的に run-local-test.ps1 へフォールバックする
+#
+# 使い方:
+#   powershell -File install2\windows\run-sandbox.ps1 -InstallerPath artifacts\installer\M3E-Setup-vMMYYDD.exe
+
 param(
     [Parameter(Mandatory = $true)]
     [string]$InstallerPath
@@ -5,6 +12,38 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# ── Edition check ────────────────────────────────────────────
+$edition = (Get-WmiObject Win32_OperatingSystem).Caption
+$isHome = $edition -match "Home"
+
+if ($isHome) {
+    Write-Host ""
+    Write-Host "[INFO] Windows Sandbox is not available on this edition:"
+    Write-Host "       $edition"
+    Write-Host ""
+    Write-Host "       Falling back to run-local-test.ps1 ..."
+    Write-Host ""
+    $localTest = Join-Path $PSScriptRoot "run-local-test.ps1"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $localTest -InstallerPath $InstallerPath -SkipBuild
+    exit $LASTEXITCODE
+}
+
+# ── Sandbox availability check ───────────────────────────────
+$sandboxExe = "$env:SystemRoot\System32\WindowsSandbox.exe"
+if (-not (Test-Path $sandboxExe)) {
+    Write-Host ""
+    Write-Host "[ERROR] Windows Sandbox is not enabled."
+    Write-Host "        Enable it with (requires admin + reboot):"
+    Write-Host "        Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM"
+    Write-Host ""
+    Write-Host "        Falling back to run-local-test.ps1 ..."
+    Write-Host ""
+    $localTest = Join-Path $PSScriptRoot "run-local-test.ps1"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $localTest -InstallerPath $InstallerPath -SkipBuild
+    exit $LASTEXITCODE
+}
+
+# ── Sandbox execution ────────────────────────────────────────
 if (-not (Test-Path $InstallerPath)) {
     throw "Installer not found: $InstallerPath"
 }
