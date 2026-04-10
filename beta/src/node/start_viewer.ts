@@ -37,7 +37,24 @@ import {
 } from "./collab";
 import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
 import { getPresenceList, touchPresence, removePresence } from "./presence";
-import type { AiSubagentRequest, AppState, LinearTransformRequest, SavedDoc } from "../shared/types";
+import {
+  ingestSingle,
+  ingestBatch,
+  listDrafts,
+  getDraft,
+  deleteDraft,
+  approveDraft,
+} from "./flash_ingest";
+import type {
+  AiSubagentRequest,
+  AppState,
+  LinearTransformRequest,
+  SavedDoc,
+  FlashIngestRequest,
+  FlashIngestBatchRequest,
+  FlashApproveRequest,
+  FlashDraftStatus,
+} from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
@@ -319,6 +336,162 @@ function parseAiSubagentRoute(urlPath: string): { subagent: string } | null {
 function isAiStatusRoute(urlPath: string): boolean {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   return pathname === "/api/ai/status";
+}
+
+// ---------------------------------------------------------------------------
+// Flash API route parsing
+// ---------------------------------------------------------------------------
+
+type FlashRoute =
+  | { action: "ingest" }
+  | { action: "drafts" }
+  | { action: "draft"; draftId: string }
+  | { action: "approve"; draftId: string }
+  | { action: "delete"; draftId: string }
+  | null;
+
+function parseFlashRoute(urlPath: string, method: string): FlashRoute {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (!pathname.startsWith("/api/flash/")) return null;
+
+  if (pathname === "/api/flash/ingest" && method === "POST") {
+    return { action: "ingest" };
+  }
+
+  if (pathname === "/api/flash/drafts" && method === "GET") {
+    return { action: "drafts" };
+  }
+
+  const draftMatch = pathname.match(/^\/api\/flash\/draft\/([^/]+)$/);
+  if (draftMatch) {
+    const draftId = decodeURIComponent(draftMatch[1]);
+    if (method === "GET") return { action: "draft", draftId };
+    if (method === "DELETE") return { action: "delete", draftId };
+  }
+
+  const approveMatch = pathname.match(/^\/api\/flash\/draft\/([^/]+)\/approve$/);
+  if (approveMatch && method === "POST") {
+    return { action: "approve", draftId: decodeURIComponent(approveMatch[1]) };
+  }
+
+  return null;
+}
+
+async function handleFlashApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: Exclude<FlashRoute, null>,
+): Promise<void> {
+  try {
+    switch (route.action) {
+      case "ingest": {
+        const rawBody = await readRequestBody(req);
+        const parsed = JSON.parse(rawBody);
+
+        // Support batch: { items: [...] }
+        if (parsed && Array.isArray(parsed.items)) {
+          const results = ingestBatch(parsed.items as FlashIngestRequest[]);
+          sendJson(res, 202, {
+            ok: true,
+            drafts: results.map((d) => ({
+              draftId: d.id,
+              status: d.status,
+              title: d.title,
+              nodeCount: d.structured.nodes.length,
+            })),
+            message: `${results.length} draft(s) created.`,
+          });
+          return;
+        }
+
+        // Single ingest
+        const request = parsed as FlashIngestRequest;
+        const draft = ingestSingle(request);
+        sendJson(res, 202, {
+          ok: true,
+          draftId: draft.id,
+          status: draft.status,
+          title: draft.title,
+          nodeCount: draft.structured.nodes.length,
+          message: "Draft created.",
+        });
+        return;
+      }
+
+      case "drafts": {
+        const url = new URL(req.url ?? "/", "http://localhost");
+        const docId = url.searchParams.get("docId") ?? undefined;
+        const status = url.searchParams.get("status") as FlashDraftStatus | undefined;
+        const results = listDrafts({ docId, status: status || undefined });
+        sendJson(res, 200, {
+          ok: true,
+          drafts: results.map((d) => ({
+            id: d.id,
+            docId: d.docId,
+            sourceType: d.sourceType,
+            sourceRef: d.sourceRef,
+            title: d.title,
+            nodeCount: d.structured.nodes.length,
+            status: d.status,
+            createdAt: d.createdAt,
+          })),
+        });
+        return;
+      }
+
+      case "draft": {
+        const draft = getDraft(route.draftId);
+        if (!draft) {
+          sendJson(res, 404, { ok: false, error: `Draft not found: ${route.draftId}` });
+          return;
+        }
+        sendJson(res, 200, { ok: true, draft });
+        return;
+      }
+
+      case "approve": {
+        const rawBody = await readRequestBody(req);
+        const request = JSON.parse(rawBody) as FlashApproveRequest;
+        const draft = getDraft(route.draftId);
+        if (!draft) {
+          sendJson(res, 404, { ok: false, error: `Draft not found: ${route.draftId}` });
+          return;
+        }
+
+        // Load model to commit nodes
+        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, draft.docId);
+        const result = approveDraft(route.draftId, request, model);
+
+        // Save updated model
+        model.saveToSqlite(SQLITE_DB_PATH, draft.docId);
+
+        sendJson(res, 200, {
+          ok: true,
+          committedNodeIds: result.committedNodeIds,
+          parentId: result.parentId,
+          message: `${result.committedNodeIds.length} nodes committed to ${draft.docId}`,
+        });
+        return;
+      }
+
+      case "delete": {
+        const deleted = deleteDraft(route.draftId);
+        if (!deleted) {
+          sendJson(res, 404, { ok: false, error: `Draft not found: ${route.draftId}` });
+          return;
+        }
+        sendJson(res, 200, { ok: true, message: `Draft ${route.draftId} deleted` });
+        return;
+      }
+    }
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      sendJson(res, 400, { ok: false, error: "Invalid JSON body." });
+      return;
+    }
+    const message = (err as Error).message || "Flash API error.";
+    sendJson(res, 400, { ok: false, error: message });
+  }
 }
 
 // Cloud sync helpers removed — now handled by CloudSyncTransport implementations
@@ -987,6 +1160,12 @@ export function createAppServer(): http.Server {
 
     if (isLinearTransformRoute(req.url ?? "/")) {
       await handleLinearTransformApi(req, res);
+      return;
+    }
+
+    const flashRoute = parseFlashRoute(req.url ?? "/", req.method ?? "GET");
+    if (flashRoute) {
+      await handleFlashApi(req, res, flashRoute);
       return;
     }
 
