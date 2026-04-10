@@ -281,10 +281,11 @@ class RapidMvpModel {
   }
 
   reparentNode(nodeId: string, newParentId: string, index: number | null = null): void {
-    const node = this._requireNode(nodeId);
-    const newParent = this._requireNode(newParentId);
+    this._requireNode(nodeId);
+    this._requireNode(newParentId);
 
-    if (node.parentId === null) {
+    const nodeBeforeCheck = this.state.nodes[nodeId]!;
+    if (nodeBeforeCheck.parentId === null) {
       throw new Error("Root node cannot be reparented.");
     }
 
@@ -298,7 +299,11 @@ class RapidMvpModel {
 
     this._pushHistory();
 
-    const oldParent = this._requireNode(node.parentId);
+    // Re-fetch references after _isDescendant / _pushHistory to avoid stale pointers
+    const node = this.state.nodes[nodeId]!;
+    const newParent = this.state.nodes[newParentId]!;
+
+    const oldParent = this._requireNode(node.parentId!);
     oldParent.children = oldParent.children.filter((id) => id !== nodeId);
 
     if (index === null || index < 0 || index > newParent.children.length) {
