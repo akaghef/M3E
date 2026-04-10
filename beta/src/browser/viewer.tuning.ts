@@ -25,6 +25,7 @@ interface ViewerTuning {
     edgeEndPad: number;
     rootIndicatorPad: number;
     nodeIndicatorPad: number;
+    depthOffsetFactor: number;
   };
   zoom: {
     min: number;
@@ -93,6 +94,9 @@ const VIEWER_TUNING: ViewerTuning = {
     rootIndicatorPad: 16,
     // Spacing for non-root expand/collapse or status indicators.
     nodeIndicatorPad: 10,
+    // Blend factor for depth offset: 0.0 = depth-aligned columns (legacy),
+    // 1.0 = fully parent-relative positioning. Intermediate values blend.
+    depthOffsetFactor: 0.5,
   },
   zoom: {
     // Minimum zoom-out level allowed in the viewer.

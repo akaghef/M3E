@@ -1974,7 +1974,14 @@ function buildLayout(state: AppState): LayoutResult {
   const pos: Record<string, NodePosition> = {};
   const order: string[] = [];
 
-  function place(nodeId: string, topY: number): number {
+  const depthOffsetFactor = VIEWER_TUNING.layout.depthOffsetFactor;
+
+  function place(
+    nodeId: string,
+    topY: number,
+    parentX: number | null,
+    parentW: number | null,
+  ): number {
     const node = state.nodes[nodeId];
     if (!node) {
       return VIEWER_TUNING.layout.leafHeight;
@@ -1984,8 +1991,18 @@ function buildLayout(state: AppState): LayoutResult {
     const h = subtreeHeight(nodeId);
     const centerY = topY + h / 2;
 
+    // Blend between depth-aligned X (legacy) and parent-relative X
+    const baseX = xByDepth[depth]!;
+    let nodeX: number;
+    if (parentX === null || parentW === null) {
+      nodeX = baseX; // root node
+    } else {
+      const parentRelX = parentX + parentW + VIEWER_TUNING.layout.columnGap;
+      nodeX = baseX + (parentRelX - baseX) * depthOffsetFactor;
+    }
+
     pos[nodeId] = {
-      x: xByDepth[depth]!,
+      x: nodeX,
       y: centerY,
       depth,
       w: metrics[nodeId]!.w,
@@ -1995,7 +2012,7 @@ function buildLayout(state: AppState): LayoutResult {
 
     let placeCursorY = topY;
     visibleChildren(node).forEach((childId, i, arr) => {
-      const childH = place(childId, placeCursorY);
+      const childH = place(childId, placeCursorY, nodeX, metrics[nodeId]!.w);
       placeCursorY += childH;
       if (i < arr.length - 1) {
         placeCursorY += VIEWER_TUNING.layout.siblingGap;
@@ -2005,12 +2022,20 @@ function buildLayout(state: AppState): LayoutResult {
     return h;
   }
 
-  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad);
+  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad, null, null);
+
+  // Compute totalWidth from placed node positions (parent-relative X may exceed cursorX)
+  let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
+  for (const nodeId of order) {
+    const p = pos[nodeId]!;
+    maxRight = Math.max(maxRight, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
+  }
+
   return {
     pos,
     order,
     totalHeight,
-    totalWidth: cursorX + VIEWER_TUNING.layout.canvasRightPad,
+    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, cursorX + VIEWER_TUNING.layout.canvasRightPad),
   };
 }
 
