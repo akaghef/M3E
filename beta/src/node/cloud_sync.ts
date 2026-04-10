@@ -251,6 +251,7 @@ interface SupabaseQueryBuilder {
 
 interface SupabaseFilterBuilder {
   eq(column: string, value: unknown): SupabaseFilterBuilder;
+  select(columns?: string): SupabaseFilterBuilder;
   single(): Promise<{ data: SupabaseRow | null; error: SupabaseError | null }>;
   maybeSingle(): Promise<{ data: SupabaseRow | null; error: SupabaseError | null }>;
   then?: unknown; // allow awaiting directly
@@ -333,6 +334,9 @@ export class SupabaseTransport implements CloudSyncTransport {
     const nextDocVersion = ((existing?.doc_version as number) ?? 0) + 1;
 
     // Upsert the document
+    // Note: Do not chain .eq().single() after upsert — Supabase v2 upsert
+    // already identifies the row via onConflict, and .single() can error
+    // if the response shape doesn't contain exactly one row.
     const { error: upsertErr } = await client
       .from(this.tableName)
       .upsert(
@@ -346,7 +350,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         },
         { onConflict: "id" },
       )
-      .eq("id", docId)
+      .select()
       .single();
 
     if (upsertErr) {

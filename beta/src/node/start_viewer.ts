@@ -422,12 +422,18 @@ async function handleSyncApi(
   }
 
   if (!CLOUD_SYNC_ENABLED || !cloudTransport) {
-    sendJson(res, 200, {
-      ok: true,
-      enabled: false,
-      mode: "disabled",
-      documentId: route.docId,
-    });
+    if (route.action === "status") {
+      // Status endpoint: return 200 with enabled:false so browser can update UI
+      sendJson(res, 200, {
+        ok: true,
+        enabled: false,
+        mode: "disabled",
+        documentId: route.docId,
+      });
+    } else {
+      // Push/pull endpoints: return 503 so browser knows sync is unavailable
+      sendSyncError(res, 503, "SYNC_DISABLED", "Cloud sync is not enabled on this server.", route.docId);
+    }
     return true;
   }
 
