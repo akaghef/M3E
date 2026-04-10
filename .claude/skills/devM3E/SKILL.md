@@ -159,11 +159,60 @@ npx playwright test
 | `Todo_Pool.md` | 新規発見タスクのプール |
 | `Current_Status.md` | スナップショット更新（統合ロール時のみ） |
 
+### PRマージ後の必須手順
+
+PRが dev-beta にマージされたら、以下を**必ず**実行する:
+
+```bash
+cd beta && npm run build   # dist を最新ソースで再ビルド
+```
+
+beta サーバーが起動中なら再起動も必要:
+```bash
+# サーバー再起動（ポート4173）
+taskkill /PID <beta_pid> /F
+cd beta && M3E_PORT=4173 node dist/node/start_viewer.js
+```
+
+**Why:** dist が古いままだとマージした変更がブラウザに反映されない。04-10 にこれが原因でデータ不整合が発生した。
+
 ### ブランチ統合フロー
 1. 担当ブランチへpush
 2. `/pr-beta` skill でPR作成（差分分析・タイトル生成・daily確認を自動化）
 3. `/pr-review` skill でレビュー・マージ・事後処理（spec整合・検証・status更新・rebase指示）
 4. マージ後、担当ブランチをrebase
+
+---
+
+## Auto Map Sync（ワーカー進捗のマップ自動反映）
+
+**ワーカーの状態が変化するたびに、マップの以下3箇所を更新する。**
+これは devM3E オーケストレーターの常時義務であり、省略不可。
+
+### トリガー条件（強制 — 省略不可）
+
+以下のイベント発生時、**必ず** `/map-update` を実行する。ユーザーに言われる前にやること:
+
+- ワーカー（サブエージェント）の完了通知を受け取った時 → Agent Status + Strategy 進捗
+- ワーカーに新タスクをアサインした時 → Agent Status (working)
+- PR がマージされた時 → Now の完了タスク削除 + Strategy 進捗ノート
+- 設計判断が確定した時 → 該当ノードに記録
+- ワーカーの状態が変わった時（idle→working, working→done 等）
+
+### 更新対象
+
+| 対象 | マップ上の場所 | 更新内容 |
+|------|--------------|---------|
+| **Agent Status** | `DEV > Agent Status` | 各ロールの現在タスク・状態(working/idle/done) |
+| **Strategy** | `DEV > strategy > {カテゴリ}` | タスクの進捗ノート追加、完了タスク削除 |
+| **Today's Goal** | `DEV > strategy > 04-XX Today's Goal` | 各目標の達成状況を反映 |
+
+### 更新手法
+`/map-update` スキルを呼び出すか、直接 `tmp/map_update.mjs` スクリプトを生成・実行する。
+
+### Vision ツリー
+`DEV > Vision` にプロダクトビジョン（Flash/Rapid/Deep）を保持。
+大きな設計判断やロードマップ変更があった場合のみ更新する。
 
 ---
 

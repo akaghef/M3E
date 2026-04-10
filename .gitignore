@@ -11,6 +11,12 @@ beta/dist/
 beta/.env
 beta/data/rapid-sample.json
 beta/data/*.sqlite
+beta/data/audit/
+beta/data/backups/
+beta/data/conflict-backups/
+beta/data/.m3e-launched
+final/data/audit/
+final/data/backups/
 beta/test-results/
 beta/tests/e2e/test-results/
 

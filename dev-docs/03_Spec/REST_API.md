@@ -35,6 +35,11 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 | `POST` | `/api/linear-transform/convert` | Linear transform 実行 | AI_Common_API.md |
 | `GET` | `/api/docs/{docId}/audit` | 操作監査ログ取得 | 本文書 |
 | `GET` | `/api/docs/{docId}/presence` | 接続ユーザー一覧取得 | 本文書 |
+| `POST` | `/api/flash/ingest` | Flash 入力パイプライン開始 | 本文書 |
+| `GET` | `/api/flash/drafts` | Flash ドラフト一覧取得 | 本文書 |
+| `GET` | `/api/flash/draft/{id}` | Flash ドラフト詳細取得 | 本文書 |
+| `POST` | `/api/flash/draft/{id}/approve` | Flash ドラフト承認 | 本文書 |
+| `DELETE` | `/api/flash/draft/{id}` | Flash ドラフト破棄 | 本文書 |
 | `GET` | `/{path}` | 静的ファイル配信 | — |
 
 ---
@@ -332,6 +337,188 @@ Conflict (409) レスポンスには `cloudDocVersion`、`cloudSavedAt`、`remot
 | 400 | `SYNC_CLOUD_UNSUPPORTED_FORMAT` | フォーマット不正 |
 | 400 | `SYNC_CLOUD_INVALID_MODEL` | バリデーション失敗 |
 | 500 | `SYNC_PULL_FAILED` | ファイル読み込み失敗 |
+
+---
+
+## Flash Ingest API
+
+Flash バンドの入力パイプライン。テキストや Markdown を受け取り、ドラフトノードに変換する。
+ドラフトは承認されるまで正本マップに書き込まれない（"AI は提案、人間が確定" 原則）。
+Phase 1 ではテキストと Markdown のみ対応（AI なし）。
+
+### `POST /api/flash/ingest`
+
+入力コンテンツを受け取り、ドラフトを作成する。バッチ対応。
+
+#### リクエスト Body (単一)
+
+```json
+{
+  "docId": "rapid-main",
+  "sourceType": "text",
+  "content": "メモの内容",
+  "options": {
+    "maxDepth": 4,
+    "targetNodeId": "n_existing_node_id"
+  }
+}
+```
+
+| フィールド | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `docId` | string | Yes | 対象ドキュメント ID |
+| `sourceType` | string | Yes | `"text"` or `"markdown"` (Phase 1) |
+| `content` | string | Yes | テキスト本文 |
+| `options.maxDepth` | number | No | 構造化の最大階層数（既定: 4） |
+| `options.targetNodeId` | string | No | 挿入先ノード ID |
+
+#### リクエスト Body (バッチ)
+
+```json
+{
+  "items": [
+    { "docId": "rapid-main", "sourceType": "text", "content": "First" },
+    { "docId": "rapid-main", "sourceType": "markdown", "content": "# Second" }
+  ]
+}
+```
+
+#### 成功レスポンス (202)
+
+```json
+{
+  "ok": true,
+  "draftId": "d_1712745600000_1",
+  "status": "pending",
+  "title": "メモの内容",
+  "nodeCount": 1,
+  "message": "Draft created."
+}
+```
+
+### `GET /api/flash/drafts`
+
+ドラフト一覧を取得する。
+
+#### クエリパラメータ
+
+| パラメータ | 型 | 説明 |
+|-----------|-----|------|
+| `docId` | string | ドキュメント ID でフィルタ |
+| `status` | string | ステータスでフィルタ（`pending`, `approved`, `partial`, `rejected`） |
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "drafts": [
+    {
+      "id": "d_...",
+      "docId": "rapid-main",
+      "sourceType": "text",
+      "sourceRef": "text:inline",
+      "title": "...",
+      "nodeCount": 3,
+      "status": "pending",
+      "createdAt": "2026-04-10T12:00:00Z"
+    }
+  ]
+}
+```
+
+### `GET /api/flash/draft/{id}`
+
+特定ドラフトの詳細（構造化ノード含む）を取得する。
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "draft": {
+    "id": "d_...",
+    "docId": "rapid-main",
+    "sourceType": "markdown",
+    "sourceRef": "markdown:inline",
+    "title": "...",
+    "extractedText": "...",
+    "structured": {
+      "nodes": [
+        {
+          "tempId": "t_001",
+          "parentTempId": null,
+          "text": "Heading",
+          "details": "",
+          "note": "",
+          "confidence": 0.7,
+          "sourceRef": "markdown:inline",
+          "attributes": {}
+        }
+      ],
+      "suggestedParentId": null
+    },
+    "status": "pending",
+    "createdAt": "...",
+    "updatedAt": "..."
+  }
+}
+```
+
+### `POST /api/flash/draft/{id}/approve`
+
+ドラフトを承認し、正本マップにノードを追加する。
+
+#### リクエスト Body
+
+```json
+{
+  "mode": "all",
+  "targetParentId": "n_existing_node_id",
+  "edits": {
+    "t_001": { "text": "修正済みテキスト" }
+  }
+}
+```
+
+| フィールド | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `mode` | string | Yes | `"all"` (全承認) or `"partial"` (部分承認) |
+| `selectedNodeIds` | string[] | `partial` 時 | 承認するノードの tempId リスト |
+| `targetParentId` | string | No | 挿入先ノード ID |
+| `edits` | object | No | 承認前のテキスト修正（キーは tempId） |
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "committedNodeIds": ["n_...", "n_..."],
+  "parentId": "n_inbox_id",
+  "message": "3 nodes committed to rapid-main"
+}
+```
+
+承認されたノードは `_inbox` ノード配下に配置され、以下の Flash attributes が設定される:
+
+- `m3e:band` = `"flash"`
+- `m3e:sourceType` = ソース種別
+- `m3e:confidence` = `"0.7"` (手動入力) / `"0.8"` (編集済み)
+- `m3e:capturedAt` = 承認日時
+- `m3e:status` = `"draft"`
+
+### `DELETE /api/flash/draft/{id}`
+
+ドラフトを破棄する。
+
+#### 成功レスポンス (200)
+
+```json
+{
+  "ok": true,
+  "message": "Draft d_... deleted"
+}
+```
 
 ---
 

@@ -4879,6 +4879,7 @@ function scheduleAutosave(): void {
     clearTimeout(autosaveTimer);
   }
   autosaveTimer = setTimeout(() => {
+    autosaveTimer = null;
     void saveDocToLocalDb(false);
   }, AUTOSAVE_DELAY_MS);
 }

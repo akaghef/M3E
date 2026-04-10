@@ -1,81 +1,126 @@
-# Home
-## Operations
+# M3E — Home
 
-会話や実装中に出た決定を先に保存する場所を追加した。
+最終更新: 2026-04-10
 
-- 会話の決定は `../06_Operations/Decision_Pool.md`
-- 文書運用ルールは `../06_Operations/Documentation_Rules.md`
-- 並行開発時の worktree 分離運用は `./Worktree_Separation_Rules.md`
-- ここで育てた内容を `Spec` `Architecture` `ADR` へ昇格する
+---
 
 ## M3E とは何か
- M3Eは科学研究のための枠組(フレームワーク)思考​支援を
-目的としたGraph構造UIのツールです。目標として
-チャット形式のLLMの進化版となり、世界モデルを構築して
-可視化・外在化し、意思決定を加速することを掲げます。
-特徴としてこの文章のように構造と文章の相互変換、
-構造(情報)の直接的な操作/やり取り、Flash/Rapid/Deepの
-3つの思考の帯域のモード、範疇(Scope)の制御が有ります。
-​
 
-M3E は、科学研究を中心とした思考ツールであり、オフラインでの個人利用を基本としつつ、チームコラボレーションにも対応する。  
-主目的は、研究の論点整理、仮説形成、比較、設計判断を、構造を保ったまま進められるようにすることにある。  
-チーム利用時は、スコープ単位での共有・同期により、各メンバーの思考空間を保ちながら協調作業を可能にする。
+**データ構造・UXを工夫して、研究レベルまでスケーラブルな知識ベースを作る。**
 
-現時点では、独自エディタを先に完成させるのではなく、Freeplane を土台にして思考支援の有効性を検証する方針を採る。  
-独自実装へ進む場合も、UI 全体は React コンポーネントで組み、マップ描画だけを独立したレンダリング層として切り出す。
+M3E は Miro のビジュアルコラボ × Obsidian の構造化知識 × GitHub のバージョン管理を融合した、科学用ナレッジベース。日常のメモから研究レベルの体系的知識まで、一気通貫で扱えるツールを目指す。
+
+### 核心的な問題意識
+
+知識の蓄積は日常〜局所推論レベルでは機能するが、**信頼性の累積ができない**（途中で破綻する）ため、**大域的なレベル（研究レベル）に外挿できない**。この問題を適切なデータ構造 + UX で解決する。
+
+### 設計原則
+
+- **AI は提案、人間が確定する**
+- **ローカルファイル（.md）が正本**。クラウドは同期先
+- **構造は親子を主軸に保つ**。scope で認知境界を制御
+- **オフライン動作が基本**。オンラインでチームコラボ
+
+---
+
+## 3バンド構造: Flash / Rapid / Deep
+
+| バンド | レベル | 特徴 | 信頼度 | 競合参考 |
+|--------|--------|------|--------|---------|
+| **Flash** | 日常 | マルチモーダルキャプチャ。構造は後付け | 低（AI 推定） | Mapify, Apple Notes |
+| **Rapid** | 業務 | グラフ構造、チーム Collab、AI 連携 | 中（人間確認済み） | Miro, Heptabase |
+| **Deep** | 研究 | オントロジー、信頼度付き階層構造、TCL | 高（エビデンス付き） | **競合なし** |
+
+### 昇格パス
+
+```
+Flash → Rapid → Deep
+ 取り込み   構造化    体系化
+ confidence: 0.3 → 0.7 → 0.9+
+```
+
+- Flash で大量に速く取り込む（ファネルの入口）
+- Rapid で構造化して業務に使う
+- Deep で信頼度を上げて研究に使う
+
+### 競合ポジショニング
+
+- **Flash/Rapid の体験は Mapify 等でサチっている**。同じ土俵では勝てない
+- **M3E の差別化は Deep バンド**: 信頼度付き知識、TCL、オントロジー
+- ただし Flash の取り込み速度がないと Deep に到達するデータ量が足りない
+- → Flash は Mapify 並の体験を確保し、Deep で勝つ
+
+---
+
+## 技術スタック
+
+| レイヤー | 技術 | 備考 |
+|---------|------|------|
+| フロントエンド | TypeScript + SVG canvas | React は使わない（現状） |
+| バックエンド | Node.js + Express | ローカルサーバー |
+| データストア | SQLite (キャッシュ) + .md (正本) | Plan B: 単一正本方式 |
+| クラウド同期 | Supabase | scope 単位 push/pull |
+| AI | Anthropic SDK (Claude) | Bitwarden 方式でキー管理 |
+| ファイル監視 | chokidar | .md の外部編集検出 |
+
+---
+
+## データの所在
+
+| 種別 | 保存先 | ポート | 用途 |
+|------|--------|--------|------|
+| 開発データ | beta (SQLite + Supabase) | 4173 | strategy, agent status, Vision |
+| 検証用データ | final/data/ | 38482 | 手動検証 |
+| ユーザーデータ | %APPDATA%/M3E/ | - | Akaghef 個人の本番利用 |
+
+---
+
+## アーキテクチャ
+
+### ローカルファイル強結合（Plan B: 単一正本方式）
+
+```
+.md ファイル（唯一の正本）
+    ↕ read/write
+FileBinding Layer
+    ↕ cache
+SQLite（インデックス/キャッシュ）
+    ↕ push/pull
+Supabase（リモート同期）
+```
+
+- .md 保存 = commit（確定）。staging なし
+- SQLite はインデックスに過ぎない。壊れても .md から再構築
+- Cloud Sync は SQLite キャッシュ経由（CS-2 方式）
+
+### Collab（リアルタイム共同編集）
+
+- ユーザー間の**序列（priority）**が核心。単なるリアルタイム同期ではない
+- Priority Cascade, Auto Merge, Branch Isolate, Last Write Wins, Manual Resolve の 5 戦略
+- scope 単位でのロック・共有
+
+---
+
+## 開発体制
+
+| ロール | 担当領域 | ブランチ |
+|-------|---------|---------|
+| visual | UI・描画・CSS・SVG | worktree |
+| data | model・controller・API・永続化 | worktree |
+| team | Collab・Cloud Sync | worktree |
+| manage | 統合・方針策定・レビュー | dev-beta |
+
+---
 
 ## この文書群の使い方
 
-- 思想から入りたい場合は [../01_Vision/Core_Principles.md](../01_Vision/Core_Principles.md)
-- 今の方針を知りたい場合は [Current_Status.md](./Current_Status.md)
-- 何を作るかを知りたい場合は [../02_Strategy/MVP_Definition.md](../02_Strategy/MVP_Definition.md)
-- 実体モデルを知りたい場合は [../03_Spec/Data_Model.md](../03_Spec/Data_Model.md)
-- スコープ設計を知りたい場合は [../03_Spec/Scope_and_Alias.md](../03_Spec/Scope_and_Alias.md)
-- 実装責務を知りたい場合は [../04_Architecture/MVC_and_Command.md](../04_Architecture/MVC_and_Command.md)
-
-## 全体像
-
-### Vision
-
-M3E の核は次の 4 点である。
-
-- 科学研究を前に進めるための思考支援を主目的にする
-- オフライン動作を基本とし、オンライン時にチームコラボレーションを可能にする
-- 構造は親子を主軸に保つ
-- scope (範疇)で認知境界を制御し、共有の単位としても機能させる
-- alias で他スコープを参照する
-- AI は提案し、人間が確定する
-
-### Strategy
-
-現段階では、科学研究の思考支援として価値があるかの検証を優先する。  
-そのため、編集 UI・描画・永続化を最初から自作せず、Freeplane を既存の思考整理基盤として活用する。
-
-### Spec
-
-仕様の中核は次の通り。
-
-- 実体ノードは永続 ID を持つ
-- 実体ノードは単一スコープに属する
-- alias は参照専用であり alias から alias は辿らない
-- 帯域は Flash / Rapid / Deep の 3 つ
-
-### Architecture
-
-独自実装へ進む場合の基本線は以下で固定する。
-
-- Model が整合性と履歴を持つ
-- Controller が入力を解釈して Command を作る
-- UI shell は React コンポーネントで構成する
-- マップ描画は React から分離した専用レンダリング層として扱う
-- ドラッグ中の一時状態は ViewState に置く
-
-## 読むべき優先順
-
-1. 原則を確認する
-2. 現在のピボットを確認する
-3. MVP の範囲を確認する
-4. 仕様とアーキテクチャに降りる
-5. Freeplane との対応を確認する
-6. 旧前提が必要なら `legacy/` を参照する
+| 知りたいこと | 読むファイル |
+|-------------|------------|
+| 現在の状態 | [Current_Status.md](./Current_Status.md) |
+| 思想・原則 | [../01_Vision/Core_Principles.md](../01_Vision/Core_Principles.md) |
+| 仕様 | [../03_Spec/](../03_Spec/) 配下 |
+| アーキテクチャ | [../04_Architecture/](../04_Architecture/) 配下 |
+| 競合研究 | [../competitive_research/](../competitive_research/) |
+| アイデア・設計提案 | [../ideas/](../ideas/) |
+| 運用ルール | [../06_Operations/](../06_Operations/) |
+| Akaghef 向け手順書 | [../for-akaghef/](../for-akaghef/) |

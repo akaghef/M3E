@@ -10,10 +10,12 @@ M3E マップの開発進捗を効率的に反映するスキル。
 
 ## API
 
-- Base URL: `http://localhost:38482`
-- Document ID: `rapid-main`
-- `GET /api/docs/rapid-main` → 全状態取得
-- `POST /api/docs/rapid-main` → 全状態書き戻し
+- Base URL: `http://localhost:4173`（beta 開発サーバー）
+- Document ID: `akaghef-beta`
+- `GET /api/docs/akaghef-beta` → 全状態取得
+- `POST /api/docs/akaghef-beta` → 全状態書き戻し
+
+> **注意**: final サーバー (4173) ではなく beta サーバー (4173) を使うこと。開発データは beta で管理する。
 
 ## 使い方
 
@@ -31,7 +33,7 @@ M3E マップの開発進捗を効率的に反映するスキル。
 ### Step 1: サーバー確認
 
 ```bash
-curl -sf http://localhost:38482/api/docs/rapid-main -o /dev/null && echo "OK" || echo "SERVER_DOWN"
+curl -sf http://localhost:4173/api/docs/akaghef-beta -o /dev/null && echo "OK" || echo "SERVER_DOWN"
 ```
 
 サーバーが停止していたら「M3E サーバーが停止しています」と報告して終了。
@@ -46,7 +48,7 @@ curl -sf http://localhost:38482/api/docs/rapid-main -o /dev/null && echo "OK" ||
 import http from "http";
 
 const fetch = () => new Promise((resolve, reject) => {
-  http.get("http://localhost:38482/api/docs/rapid-main", res => {
+  http.get("http://localhost:4173/api/docs/akaghef-beta", res => {
     let d = "";
     res.on("data", c => d += c);
     res.on("end", () => resolve(JSON.parse(d)));
@@ -56,8 +58,8 @@ const fetch = () => new Promise((resolve, reject) => {
 const post = (data) => new Promise((resolve, reject) => {
   const body = JSON.stringify(data);
   const req = http.request({
-    hostname: "localhost", port: 38482,
-    path: "/api/docs/rapid-main", method: "POST",
+    hostname: "localhost", port: 4173,
+    path: "/api/docs/akaghef-beta", method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(body) }
   }, res => {
     let d = "";
@@ -158,13 +160,13 @@ DEV フォルダ配下の "Agent Status" フォルダの子ノードを更新す
 
 ```javascript
 for (const [id, n] of Object.entries(nodes)) {
-  if (n.text === "Agent Status" && n.nodeType === "folder") {
+  if (n.text === "Agent Status") {
     for (const childId of n.children) {
       const child = nodes[childId];
       if (!child) continue;
       const role = child.attributes?.role;
       if (role === "data") {
-        child.text = "data: idle（次: Markdown export）";
+        child.text = "[data: idle ; PR#23 Cloud Sync Phase1完了]-[next: Markdown export]";
         child.attributes.status = "idle";
       }
       // 他のロールも同様に更新
@@ -209,7 +211,9 @@ node c:/Users/chiec/dev/M3E/tmp/map_update.mjs
 マップ更新完了:
 - conflict backup save/restore → done + 進捗ノート追加
 - Freeplane .mm export → done + 進捗ノート追加
-- Agent Status: data=idle, visual=working
+- Agent Status:
+  [data: idle ; PR#23完了]-[next: 未定]
+  [visual: working ; entity list UI実装中]-[next: SSE自動更新]
 ```
 
 ## 自動更新ルール: Agent Status
@@ -223,15 +227,26 @@ node c:/Users/chiec/dev/M3E/tmp/map_update.mjs
 2. まだ完了通知が来ていない → `working`
 3. 完了通知が来た → `idle` + 次タスク名
 
-Agent Status の各ノードは以下のフォーマット:
+### Agent Status フォーマット（統一）
+
+各ノードの `text` は以下の形式に統一する:
+
 ```
-{role}: {現在のタスク or 状態}（次: {次のタスク}）
+[{role}: {status} ; {current task}]-[next: {next task}]
 ```
 
+- **role**: エージェント名（data, visual, team, manage, data2 など）
+- **status**: `idle` / `working` / `blocked` の3値
+- **current task**: 直近やったこと or 今やっていること（稼働状況）
+- **next task**: 次にやる予定のタスク。未定なら `未定`
+
 例:
-- `data: Cloud Sync インフラ構築中` (status=working)
-- `data2: idle（次: 未定）` (status=idle)
-- `visual: entity list UI 実装中` (status=working)
+- `[data: idle ; PR#23 Cloud Sync Phase1完了]-[next: 未定]`
+- `[visual: working ; entity list UI実装中]-[next: SSE自動更新]`
+- `[team: working ; PR#23レビュー・マージ中]-[next: —]`
+- `[manage: idle ; 全方針確定]-[next: Miro比較+H1評価基準]`
+
+attributes は従来通り `{ "role": "data", "status": "idle" }` を維持する。
 
 ## 注意事項
 
