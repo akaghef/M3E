@@ -9,6 +9,7 @@
 create table if not exists public.documents (
   id          text        primary key,
   version     int         not null default 1,
+  doc_version int         not null default 0,
   saved_at    timestamptz not null default now(),
   state       jsonb       not null,
   created_at  timestamptz not null default now(),
@@ -83,3 +84,15 @@ create trigger on_documents_update
 
 -- 5. Realtime publication (for future Supabase Realtime subscriptions)
 alter publication supabase_realtime add table public.documents;
+
+-- ==========================================================================
+-- Migration: add doc_version column (if upgrading from earlier schema)
+-- ==========================================================================
+-- Run this if you already have the documents table without doc_version:
+--
+--   alter table public.documents
+--     add column if not exists doc_version int not null default 0;
+--
+--   create index if not exists idx_documents_doc_version
+--     on public.documents (doc_version);
+-- ==========================================================================

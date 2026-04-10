@@ -281,12 +281,18 @@ Body:
   "state": { ... },
   "savedAt": "2026-04-07T12:00:00.000Z",
   "baseSavedAt": "2026-04-07T10:00:00.000Z",
+  "baseDocVersion": 5,
   "force": false
 }
 ```
 
-- `baseSavedAt`: 楽観的競合検出の基準時刻（null 可）
+- `baseSavedAt`: 楽観的競合検出の基準時刻（null 可、`baseDocVersion` がある場合はフォールバック）
+- `baseDocVersion`: 楽観的競合検出の基準バージョン（単調増加整数、推奨）
 - `force`: `true` で競合を無視して上書き
+
+成功レスポンスには `docVersion`（push 後のバージョン番号）が含まれる。
+Conflict (409) レスポンスには `cloudDocVersion`、`cloudSavedAt`、`remoteState` が含まれ、
+ローカル state は自動的に conflict-backup に保存される。
 
 #### エラーコード
 
@@ -311,9 +317,12 @@ Body:
   "version": 1,
   "savedAt": "2026-04-07T10:00:00.000Z",
   "state": { ... },
-  "documentId": "rapid-main"
+  "documentId": "rapid-main",
+  "docVersion": 5
 }
 ```
+
+- `docVersion`: クラウド側の現在のドキュメントバージョン（単調増加整数）。次回 push 時に `baseDocVersion` として送信する。
 
 #### エラーコード
 
