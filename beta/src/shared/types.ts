@@ -151,6 +151,65 @@ export interface CloudSyncTransport {
   status(docId: string): Promise<SyncStatus>;
 }
 
+// ---------------------------------------------------------------------------
+// Flash Ingest Pipeline
+// ---------------------------------------------------------------------------
+
+export type FlashSourceType = "text" | "markdown";
+
+export type FlashDraftStatus = "pending" | "approved" | "partial" | "rejected";
+
+export interface DraftNode {
+  tempId: string;
+  parentTempId: string | null;
+  text: string;
+  details: string;
+  note: string;
+  confidence: number;
+  sourceRef: string;
+  attributes: Record<string, string>;
+}
+
+export interface StructuredDraft {
+  nodes: DraftNode[];
+  suggestedParentId: string | null;
+}
+
+export interface FlashDraft {
+  id: string;
+  docId: string;
+  sourceType: FlashSourceType;
+  sourceRef: string;
+  title: string;
+  extractedText: string;
+  structured: StructuredDraft;
+  status: FlashDraftStatus;
+  approvedNodeIds: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FlashIngestRequest {
+  docId: string;
+  sourceType: FlashSourceType;
+  content: string;
+  options?: {
+    maxDepth?: number;
+    targetNodeId?: string;
+  };
+}
+
+export interface FlashIngestBatchRequest {
+  items: FlashIngestRequest[];
+}
+
+export interface FlashApproveRequest {
+  mode: "all" | "partial";
+  selectedNodeIds?: string[];
+  targetParentId?: string;
+  edits?: Record<string, { text?: string; details?: string; note?: string }>;
+}
+
 export interface AiSubagentRequest {
   documentId: string;
   scopeId: string;
