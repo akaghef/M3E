@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect, beforeAll, afterAll } from "vitest";
 const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -7,7 +6,7 @@ const path = require("node:path");
 
 if (process.env.M3E_COLLAB !== "1") {
   test("collab_push: skipped (M3E_COLLAB not set)", () => {
-    assert.ok(true, "Set M3E_COLLAB=1 to run collab push tests");
+    expect(true).toBe(true);
   });
 } else {
 
@@ -80,7 +79,7 @@ function seedDoc(docId) {
   return { rootId, folderId, child1Id, child2Id, outsideId };
 }
 
-test.before(() => {
+beforeAll(() => {
   return new Promise((resolve) => {
     collab.resetCollab();
     server = createAppServer();
@@ -92,7 +91,7 @@ test.before(() => {
   });
 });
 
-test.after(() => {
+afterAll(() => {
   return new Promise((resolve) => {
     server.close(() => {
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -113,7 +112,7 @@ test("push a new node into a scope succeeds and version increments", async () =>
 
   // Acquire lock
   const lockRes = await request("POST", `/api/collab/scope/${ids.folderId}/lock`, null, auth);
-  assert.equal(lockRes.json.ok, true);
+  expect(lockRes.json.ok).toBe(true);
 
   const newNodeId = "new_child_3";
   const res = await request("POST", `/api/collab/push/${docId}`, {
@@ -126,11 +125,11 @@ test("push a new node into a scope succeeds and version increments", async () =>
     } } },
   }, auth);
 
-  assert.equal(res.status, 200);
-  assert.equal(res.json.ok, true);
-  assert.equal(res.json.version, 2);
-  assert.ok(res.json.applied.includes(newNodeId));
-  assert.equal(res.json.rejected.length, 0);
+  expect(res.status).toBe(200);
+  expect(res.json.ok).toBe(true);
+  expect(res.json.version).toBe(2);
+  expect(res.json.applied.includes(newNodeId)).toBe(true);
+  expect(res.json.rejected.length).toBe(0);
 });
 
 test("push to a scope without lock is rejected (403)", async () => {
@@ -148,8 +147,8 @@ test("push to a scope without lock is rejected (403)", async () => {
     changes: { nodes: { child_1: { id: "child_1", parentId: "folder_a", children: [], nodeType: "text", text: "Updated", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth);
 
-  assert.equal(res.status, 403);
-  assert.equal(res.json.ok, false);
+  expect(res.status).toBe(403);
+  expect(res.json.ok).toBe(false);
 });
 
 test("push node outside scope is rejected", async () => {
@@ -168,9 +167,9 @@ test("push node outside scope is rejected", async () => {
     changes: { nodes: { [ids.outsideId]: { id: ids.outsideId, parentId: ids.rootId, children: [], nodeType: "text", text: "Hacked", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth);
 
-  assert.equal(res.status, 200);
-  assert.ok(res.json.rejected.includes(ids.outsideId));
-  assert.equal(res.json.applied.length, 0);
+  expect(res.status).toBe(200);
+  expect(res.json.rejected.includes(ids.outsideId)).toBe(true);
+  expect(res.json.applied.length).toBe(0);
 });
 
 test("two entities push non-overlapping nodes - both succeed", async () => {
@@ -186,8 +185,8 @@ test("two entities push non-overlapping nodes - both succeed", async () => {
     scopeId: ids.folderId, lockId: lock1.json.lockId, baseVersion: 1,
     changes: { nodes: { merge_a: { id: "merge_a", parentId: ids.folderId, children: [], nodeType: "text", text: "A", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth1);
-  assert.equal(res1.json.ok, true);
-  assert.equal(res1.json.version, 2);
+  expect(res1.json.ok).toBe(true);
+  expect(res1.json.version).toBe(2);
 
   // Release lock1
   await request("DELETE", `/api/collab/scope/${ids.folderId}/lock`, null, auth1);
@@ -201,13 +200,13 @@ test("two entities push non-overlapping nodes - both succeed", async () => {
     scopeId: ids.rootId, lockId: lock2.json.lockId, baseVersion: 2,
     changes: { nodes: { merge_b: { id: "merge_b", parentId: ids.rootId, children: [], nodeType: "text", text: "B", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth2);
-  assert.equal(res2.json.ok, true);
-  assert.equal(res2.json.version, 3);
+  expect(res2.json.ok).toBe(true);
+  expect(res2.json.version).toBe(3);
 
   // Verify both nodes exist
   const model = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
-  assert.ok(model.state.nodes["merge_a"]);
-  assert.ok(model.state.nodes["merge_b"]);
+  expect(model.state.nodes["merge_a"]).toBeTruthy();
+  expect(model.state.nodes["merge_b"]).toBeTruthy();
 });
 
 test("push with stale baseVersion still applies when priority allows", async () => {
@@ -235,8 +234,8 @@ test("push with stale baseVersion still applies when priority allows", async () 
     changes: { nodes: { [ids.child1Id]: { id: ids.child1Id, parentId: ids.folderId, children: [], nodeType: "text", text: "AI Edit", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth2);
 
-  assert.equal(res2.status, 200);
-  assert.equal(res2.json.ok, true);
+  expect(res2.status).toBe(200);
+  expect(res2.json.ok).toBe(true);
 });
 
 }

@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect, beforeAll, afterAll } from "vitest";
 const os = require("node:os");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -28,7 +27,7 @@ function createState(label) {
   return model.toJSON();
 }
 
-test.before(async () => {
+beforeAll(async () => {
   server = createAppServer();
   await new Promise((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -37,7 +36,7 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
 
-test.after(async () => {
+afterAll(async () => {
   if (server) {
     await new Promise((resolve, reject) => {
       server.close((err) => {
@@ -52,10 +51,10 @@ test.after(async () => {
 
 test("backup list returns empty array when no backups exist", async () => {
   const res = await requestJson(`${baseUrl}/api/sync/backups/no-backups`);
-  assert.equal(res.response.status, 200);
-  assert.equal(res.payload.ok, true);
-  assert.equal(res.payload.documentId, "no-backups");
-  assert.deepEqual(res.payload.backups, []);
+  expect(res.response.status).toBe(200);
+  expect(res.payload.ok).toBe(true);
+  expect(res.payload.documentId).toBe("no-backups");
+  expect(res.payload.backups).toEqual([]);
 });
 
 test("pull with localState creates a conflict backup", async () => {
@@ -68,7 +67,7 @@ test("pull with localState creates a conflict backup", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("CloudVersion"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
-  assert.equal(push.response.status, 200);
+  expect(push.response.status).toBe(200);
 
   // Pull with localState to trigger backup
   const pull = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
@@ -76,17 +75,17 @@ test("pull with localState creates a conflict backup", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ localState }),
   });
-  assert.equal(pull.response.status, 200);
-  assert.equal(pull.payload.ok, true);
-  assert.ok(pull.payload.backup);
-  assert.ok(pull.payload.backup.backupId);
-  assert.equal(pull.payload.backup.reason, "cloud-sync-pull");
+  expect(pull.response.status).toBe(200);
+  expect(pull.payload.ok).toBe(true);
+  expect(pull.payload.backup).toBeTruthy();
+  expect(pull.payload.backup.backupId).toBeTruthy();
+  expect(pull.payload.backup.reason).toBe("cloud-sync-pull");
 
   // Verify backup appears in list
   const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
-  assert.equal(list.response.status, 200);
-  assert.equal(list.payload.backups.length, 1);
-  assert.equal(list.payload.backups[0].backupId, pull.payload.backup.backupId);
+  expect(list.response.status).toBe(200);
+  expect(list.payload.backups.length).toBe(1);
+  expect(list.payload.backups[0].backupId).toBe(pull.payload.backup.backupId);
 });
 
 test("pull without localState does not create a backup", async () => {
@@ -105,12 +104,12 @@ test("pull without localState does not create a backup", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({}),
   });
-  assert.equal(pull.response.status, 200);
-  assert.equal(pull.payload.backup, undefined);
+  expect(pull.response.status).toBe(200);
+  expect(pull.payload.backup).toBeUndefined();
 
   // No backup in list
   const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
-  assert.equal(list.payload.backups.length, 0);
+  expect(list.payload.backups.length).toBe(0);
 });
 
 test("push conflict creates a backup of the pushed state", async () => {
@@ -144,15 +143,15 @@ test("push conflict creates a backup of the pushed state", async () => {
       baseSavedAt: "2026-04-02T00:00:00.000Z",
     }),
   });
-  assert.equal(conflict.response.status, 409);
-  assert.equal(conflict.payload.code, "CLOUD_CONFLICT");
-  assert.ok(conflict.payload.backup);
-  assert.ok(conflict.payload.backup.backupId);
-  assert.equal(conflict.payload.backup.reason, "cloud-conflict-push");
+  expect(conflict.response.status).toBe(409);
+  expect(conflict.payload.code).toBe("CLOUD_CONFLICT");
+  expect(conflict.payload.backup).toBeTruthy();
+  expect(conflict.payload.backup.backupId).toBeTruthy();
+  expect(conflict.payload.backup.reason).toBe("cloud-conflict-push");
 
   // Backup should be in list
   const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
-  assert.equal(list.payload.backups.length, 1);
+  expect(list.payload.backups.length).toBe(1);
 });
 
 test("get backup returns full state", async () => {
@@ -176,18 +175,18 @@ test("get backup returns full state", async () => {
 
   // Get the backup
   const get = await requestJson(`${baseUrl}/api/sync/backups/${docId}/${backupId}`);
-  assert.equal(get.response.status, 200);
-  assert.equal(get.payload.ok, true);
-  assert.ok(get.payload.backup);
-  assert.equal(get.payload.backup.backupId, backupId);
-  assert.ok(get.payload.backup.state);
-  assert.ok(get.payload.backup.state.rootId);
+  expect(get.response.status).toBe(200);
+  expect(get.payload.ok).toBe(true);
+  expect(get.payload.backup).toBeTruthy();
+  expect(get.payload.backup.backupId).toBe(backupId);
+  expect(get.payload.backup.state).toBeTruthy();
+  expect(get.payload.backup.state.rootId).toBeTruthy();
 });
 
 test("get nonexistent backup returns 404", async () => {
   const get = await requestJson(`${baseUrl}/api/sync/backups/doc/nonexistent-id`);
-  assert.equal(get.response.status, 404);
-  assert.equal(get.payload.ok, false);
+  expect(get.response.status).toBe(404);
+  expect(get.payload.ok).toBe(false);
 });
 
 test("restore backup saves state to SQLite", async () => {
@@ -214,12 +213,12 @@ test("restore backup saves state to SQLite", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
-  assert.equal(restore.response.status, 200);
-  assert.equal(restore.payload.ok, true);
-  assert.equal(restore.payload.restored, true);
-  assert.equal(restore.payload.backupId, backupId);
-  assert.equal(restore.payload.documentId, docId);
-  assert.ok(restore.payload.savedAt);
+  expect(restore.response.status).toBe(200);
+  expect(restore.payload.ok).toBe(true);
+  expect(restore.payload.restored).toBe(true);
+  expect(restore.payload.backupId).toBe(backupId);
+  expect(restore.payload.documentId).toBe(docId);
+  expect(restore.payload.savedAt).toBeTruthy();
 });
 
 test("delete backup via DELETE method on get endpoint", async () => {
@@ -243,11 +242,11 @@ test("delete backup via DELETE method on get endpoint", async () => {
   const del = await requestJson(`${baseUrl}/api/sync/backups/${docId}/${backupId}`, {
     method: "DELETE",
   });
-  assert.equal(del.response.status, 200);
-  assert.equal(del.payload.ok, true);
-  assert.equal(del.payload.deleted, true);
+  expect(del.response.status).toBe(200);
+  expect(del.payload.ok).toBe(true);
+  expect(del.payload.deleted).toBe(true);
 
   // Verify gone
   const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
-  assert.equal(list.payload.backups.length, 0);
+  expect(list.payload.backups.length).toBe(0);
 });

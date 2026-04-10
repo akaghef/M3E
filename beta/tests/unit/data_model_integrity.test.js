@@ -1,7 +1,6 @@
 "use strict";
 
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect } from "vitest";
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -26,24 +25,17 @@ function assertParentChildConsistency(model) {
   for (const [id, node] of Object.entries(nodes)) {
     // Every child listed in children array must exist and point back
     for (const childId of node.children) {
-      assert.ok(nodes[childId], `Child ${childId} of ${id} does not exist`);
-      assert.equal(
-        nodes[childId].parentId,
-        id,
-        `Child ${childId} parentId should be ${id} but is ${nodes[childId].parentId}`,
-      );
+      expect(nodes[childId]).toBeTruthy();
+      expect(nodes[childId].parentId).toBe(id);
     }
 
     // Every node except root should appear in its parent's children
     if (node.parentId !== null) {
       const parent = nodes[node.parentId];
-      assert.ok(parent, `Parent ${node.parentId} of ${id} does not exist`);
-      assert.ok(
-        parent.children.includes(id),
-        `Node ${id} not found in parent ${node.parentId}'s children`,
-      );
+      expect(parent).toBeTruthy();
+      expect(parent.children.includes(id)).toBe(true);
     } else {
-      assert.equal(id, rootId, "Only root should have null parentId");
+      expect(id).toBe(rootId);
     }
   }
 }
@@ -60,9 +52,9 @@ test("addNode maintains parent-child consistency", () => {
   const a1 = model.addNode(a, "A1");
 
   assertParentChildConsistency(model);
-  assert.equal(Object.keys(model.state.nodes).length, 4);
-  assert.deepEqual(model.state.nodes[rootId].children, [a, b]);
-  assert.deepEqual(model.state.nodes[a].children, [a1]);
+  expect(Object.keys(model.state.nodes).length).toBe(4);
+  expect(model.state.nodes[rootId].children).toEqual([a, b]);
+  expect(model.state.nodes[a].children).toEqual([a1]);
 });
 
 test("addNode at specific index inserts correctly", () => {
@@ -72,7 +64,7 @@ test("addNode at specific index inserts correctly", () => {
   const b = model.addNode(rootId, "B");
   const c = model.addNode(rootId, "C", 1); // between A and B
 
-  assert.deepEqual(model.state.nodes[rootId].children, [a, c, b]);
+  expect(model.state.nodes[rootId].children).toEqual([a, c, b]);
   assertParentChildConsistency(model);
 });
 
@@ -86,11 +78,11 @@ test("deleteNode with deep subtree maintains consistency", () => {
 
   model.deleteNode(a);
 
-  assert.equal(model.state.nodes[a], undefined);
-  assert.equal(model.state.nodes[b], undefined);
-  assert.equal(model.state.nodes[c], undefined);
-  assert.equal(model.state.nodes[d], undefined);
-  assert.deepEqual(model.state.nodes[rootId].children, []);
+  expect(model.state.nodes[a]).toBeUndefined();
+  expect(model.state.nodes[b]).toBeUndefined();
+  expect(model.state.nodes[c]).toBeUndefined();
+  expect(model.state.nodes[d]).toBeUndefined();
+  expect(model.state.nodes[rootId].children).toEqual([]);
   assertParentChildConsistency(model);
 });
 
@@ -103,9 +95,9 @@ test("deleteNode preserves siblings", () => {
 
   model.deleteNode(b);
 
-  assert.deepEqual(model.state.nodes[rootId].children, [a, c]);
-  assert.ok(model.state.nodes[a]);
-  assert.ok(model.state.nodes[c]);
+  expect(model.state.nodes[rootId].children).toEqual([a, c]);
+  expect(model.state.nodes[a]).toBeTruthy();
+  expect(model.state.nodes[c]).toBeTruthy();
   assertParentChildConsistency(model);
 });
 
@@ -119,8 +111,8 @@ test("reparentNode updates children arrays correctly", () => {
   model.reparentNode(a1, b);
 
   // Children arrays are updated correctly
-  assert.deepEqual(model.state.nodes[a].children, []);
-  assert.ok(model.state.nodes[b].children.includes(a1));
+  expect(model.state.nodes[a].children).toEqual([]);
+  expect(model.state.nodes[b].children.includes(a1)).toBe(true);
 });
 
 // Fixed: _isDescendant used to call _requireNode which replaced the node object
@@ -135,8 +127,7 @@ test("reparentNode correctly updates parentId (stale reference bug fixed)", () =
 
   model.reparentNode(a1, b);
 
-  assert.equal(model.state.nodes[a1].parentId, b,
-    "parentId should be updated to new parent after reparent");
+  expect(model.state.nodes[a1].parentId).toBe(b);
 });
 
 test("reparentNode with subtree moves children array correctly", () => {
@@ -150,13 +141,11 @@ test("reparentNode with subtree moves children array correctly", () => {
   model.reparentNode(a, b);
 
   // Children arrays are correct
-  assert.deepEqual(model.state.nodes[rootId].children, [b]);
-  assert.ok(model.state.nodes[b].children.includes(a));
+  expect(model.state.nodes[rootId].children).toEqual([b]);
+  expect(model.state.nodes[b].children.includes(a)).toBe(true);
   // Subtree internal structure unchanged
-  assert.equal(model.state.nodes[a1].parentId, a);
-  assert.equal(model.state.nodes[a1a].parentId, a1);
-  // Note: a.parentId is NOT updated to b due to known stale reference bug
-  // (see "BUG: reparentNode does not update parentId" test)
+  expect(model.state.nodes[a1].parentId).toBe(a);
+  expect(model.state.nodes[a1a].parentId).toBe(a1);
 });
 
 test("reparentNode rejects moving root", () => {
@@ -164,7 +153,7 @@ test("reparentNode rejects moving root", () => {
   const rootId = model.state.rootId;
   const a = model.addNode(rootId, "A");
 
-  assert.throws(() => model.reparentNode(rootId, a));
+  expect(() => model.reparentNode(rootId, a)).toThrow();
 });
 
 // ---------------------------------------------------------------------------
@@ -183,19 +172,19 @@ test("sequence: add, edit, delete keeps consistency", () => {
 
   // Edit
   model.editNode(c, "C-edited");
-  assert.equal(model.state.nodes[c].text, "C-edited");
+  expect(model.state.nodes[c].text).toBe("C-edited");
 
   // Delete D
   model.deleteNode(d);
-  assert.equal(model.state.nodes[d], undefined);
+  expect(model.state.nodes[d]).toBeUndefined();
 
   // Delete C
   model.deleteNode(c);
-  assert.equal(model.state.nodes[c], undefined);
-  assert.deepEqual(model.state.nodes[a].children, []);
+  expect(model.state.nodes[c]).toBeUndefined();
+  expect(model.state.nodes[a].children).toEqual([]);
 
   assertParentChildConsistency(model);
-  assert.deepEqual(validateModel(model), []);
+  expect(validateModel(model)).toEqual([]);
 });
 
 test("sequence: add, delete, undo, redo maintains consistency", () => {
@@ -206,15 +195,15 @@ test("sequence: add, delete, undo, redo maintains consistency", () => {
   const b = model.addNode(rootId, "B");
   model.deleteNode(a);
 
-  assert.equal(model.state.nodes[a], undefined);
+  expect(model.state.nodes[a]).toBeUndefined();
   assertParentChildConsistency(model);
 
   model.undo();
-  assert.ok(model.state.nodes[a]);
+  expect(model.state.nodes[a]).toBeTruthy();
   assertParentChildConsistency(model);
 
   model.redo();
-  assert.equal(model.state.nodes[a], undefined);
+  expect(model.state.nodes[a]).toBeUndefined();
   assertParentChildConsistency(model);
 });
 
@@ -228,7 +217,7 @@ test("validate passes for valid tree", () => {
   model.addNode(rootId, "A");
   model.addNode(rootId, "B");
   const errors = validateModel(model);
-  assert.deepEqual(errors, []);
+  expect(errors).toEqual([]);
 });
 
 test("validate detects orphan node (parentId points to nonexistent node)", () => {
@@ -240,7 +229,7 @@ test("validate detects orphan node (parentId points to nonexistent node)", () =>
   model.state.nodes[a].parentId = "nonexistent";
 
   const errors = validateModel(model);
-  assert.ok(errors.length > 0, "Should detect orphan node");
+  expect(errors.length > 0).toBe(true);
 });
 
 test("validate detects child not listed in parent", () => {
@@ -253,7 +242,7 @@ test("validate detects child not listed in parent", () => {
   model.state.nodes[rootId].children = [a];
 
   const errors = validateModel(model);
-  assert.ok(errors.length > 0, "Should detect child not listed in parent");
+  expect(errors.length > 0).toBe(true);
 });
 
 // ---------------------------------------------------------------------------
@@ -276,20 +265,20 @@ test("SQLite save and load preserves full tree structure", () => {
     model.saveToSqlite(sqlitePath, docId);
     const loaded = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
 
-    assert.equal(loaded.state.rootId, rootId);
-    assert.equal(Object.keys(loaded.state.nodes).length, 4);
-    assert.deepEqual(loaded.state.nodes[rootId].children, [a, b]);
-    assert.deepEqual(loaded.state.nodes[a].children, [a1]);
-    assert.equal(loaded.state.nodes[a1].parentId, a);
+    expect(loaded.state.rootId).toBe(rootId);
+    expect(Object.keys(loaded.state.nodes).length).toBe(4);
+    expect(loaded.state.nodes[rootId].children).toEqual([a, b]);
+    expect(loaded.state.nodes[a].children).toEqual([a1]);
+    expect(loaded.state.nodes[a1].parentId).toBe(a);
 
     // Links preserved
     const links = Object.values(loaded.state.links || {});
-    assert.equal(links.length, 1);
-    assert.equal(links[0].sourceNodeId, a);
-    assert.equal(links[0].targetNodeId, b);
+    expect(links.length).toBe(1);
+    expect(links[0].sourceNodeId).toBe(a);
+    expect(links[0].targetNodeId).toBe(b);
 
     assertParentChildConsistency(loaded);
-    assert.deepEqual(validateModel(loaded), []);
+    expect(validateModel(loaded)).toEqual([]);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -305,9 +294,9 @@ test("JSON save and load preserves full tree structure", () => {
   const json = model.toJSON();
   const restored = RapidMvpModel.fromJSON(json);
 
-  assert.equal(restored.state.rootId, rootId);
-  assert.equal(Object.keys(restored.state.nodes).length, 3);
-  assert.equal(restored.state.nodes[b].text, "B-edited");
+  expect(restored.state.rootId).toBe(rootId);
+  expect(Object.keys(restored.state.nodes).length).toBe(3);
+  expect(restored.state.nodes[b].text).toBe("B-edited");
   assertParentChildConsistency(restored);
 });
 
@@ -321,14 +310,14 @@ test("alias points to valid target after multi-operation", () => {
   const target = model.addNode(rootId, "Target");
   const aliasId = model.addAlias(rootId, target);
 
-  assert.equal(model.state.nodes[aliasId].nodeType, "alias");
-  assert.equal(model.state.nodes[aliasId].targetNodeId, target);
-  assert.ok(!model.state.nodes[aliasId].isBroken);
+  expect(model.state.nodes[aliasId].nodeType).toBe("alias");
+  expect(model.state.nodes[aliasId].targetNodeId).toBe(target);
+  expect(model.state.nodes[aliasId].isBroken).toBeFalsy();
 
   // Delete target -- alias should be marked broken
   model.deleteNode(target);
-  assert.equal(model.state.nodes[aliasId].isBroken, true);
-  assert.match(model.state.nodes[aliasId].text, /deleted/);
+  expect(model.state.nodes[aliasId].isBroken).toBe(true);
+  expect(model.state.nodes[aliasId].text).toMatch(/deleted/);
   assertParentChildConsistency(model);
 });
 
@@ -348,9 +337,9 @@ test("links are cleaned up when either endpoint is deleted", () => {
 
   // Delete B -- both links should be removed
   model.deleteNode(b);
-  assert.equal(model.state.links[link1], undefined);
-  assert.equal(model.state.links[link2], undefined);
-  assert.deepEqual(validateModel(model), []);
+  expect(model.state.links[link1]).toBeUndefined();
+  expect(model.state.links[link2]).toBeUndefined();
+  expect(validateModel(model)).toEqual([]);
 });
 
 test("links survive when nodes are edited but not deleted", () => {
@@ -365,9 +354,9 @@ test("links survive when nodes are edited but not deleted", () => {
   model.editNode(b, "B-edited");
 
   // Link should still exist
-  assert.ok(model.state.links[linkId]);
-  assert.equal(model.state.links[linkId].sourceNodeId, a);
-  assert.equal(model.state.links[linkId].targetNodeId, b);
+  expect(model.state.links[linkId]).toBeTruthy();
+  expect(model.state.links[linkId].sourceNodeId).toBe(a);
+  expect(model.state.links[linkId].targetNodeId).toBe(b);
   assertParentChildConsistency(model);
 });
 
@@ -379,10 +368,10 @@ test("addNode to leaf node makes it a branch", () => {
   const model = createModel("Root");
   const rootId = model.state.rootId;
   const leaf = model.addNode(rootId, "Leaf");
-  assert.deepEqual(model.state.nodes[leaf].children, []);
+  expect(model.state.nodes[leaf].children).toEqual([]);
 
   const child = model.addNode(leaf, "ChildOfLeaf");
-  assert.deepEqual(model.state.nodes[leaf].children, [child]);
+  expect(model.state.nodes[leaf].children).toEqual([child]);
   assertParentChildConsistency(model);
 });
 
@@ -400,14 +389,14 @@ test("multiple undo/redo cycles preserve integrity", () => {
 
   // Undo edit
   model.undo();
-  assert.equal(model.state.nodes[a].text, "A");
+  expect(model.state.nodes[a].text).toBe("A");
   assertParentChildConsistency(model);
 
   // Redo both
   model.redo();
   model.redo();
-  assert.equal(model.state.nodes[a].text, "A2");
-  assert.ok(model.state.nodes[b] || model.state.nodes[Object.keys(model.state.nodes).find(k => model.state.nodes[k].text === "B")]);
+  expect(model.state.nodes[a].text).toBe("A2");
+  expect(model.state.nodes[b] || model.state.nodes[Object.keys(model.state.nodes).find(k => model.state.nodes[k].text === "B")]).toBeTruthy();
   assertParentChildConsistency(model);
 });
 
@@ -422,6 +411,6 @@ test("deeply nested tree (10 levels) validates correctly", () => {
   }
 
   assertParentChildConsistency(model);
-  assert.deepEqual(validateModel(model), []);
-  assert.equal(Object.keys(model.state.nodes).length, 11); // root + 10
+  expect(validateModel(model)).toEqual([]);
+  expect(Object.keys(model.state.nodes).length).toBe(11); // root + 10
 });

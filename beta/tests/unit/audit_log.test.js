@@ -1,7 +1,6 @@
 // @ts-check
 "use strict";
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect } from "vitest";
 
 const { recordAudit, getRecentAuditEntries, getAuditEntriesForNode, resetAuditLog, setBufferSize } = require("../../dist/node/audit_log.js");
 
@@ -13,10 +12,10 @@ test("recordAudit adds entry with timestamp", () => {
     targetNodeId: "n_123",
     details: { text: "hello" },
   });
-  assert.ok(entry.timestamp);
-  assert.equal(entry.userId, "e_test1");
-  assert.equal(entry.operationType, "add");
-  assert.equal(entry.targetNodeId, "n_123");
+  expect(entry.timestamp).toBeTruthy();
+  expect(entry.userId).toBe("e_test1");
+  expect(entry.operationType).toBe("add");
+  expect(entry.targetNodeId).toBe("n_123");
 });
 
 test("getRecentAuditEntries returns entries in order", () => {
@@ -26,9 +25,9 @@ test("getRecentAuditEntries returns entries in order", () => {
   recordAudit({ userId: "u1", operationType: "delete", targetNodeId: "n_3", details: {} });
 
   const entries = getRecentAuditEntries(10);
-  assert.equal(entries.length, 3);
-  assert.equal(entries[0].operationType, "add");
-  assert.equal(entries[2].operationType, "delete");
+  expect(entries.length).toBe(3);
+  expect(entries[0].operationType).toBe("add");
+  expect(entries[2].operationType).toBe("delete");
 });
 
 test("ring buffer enforces max size", () => {
@@ -38,9 +37,9 @@ test("ring buffer enforces max size", () => {
     recordAudit({ userId: "u1", operationType: "add", targetNodeId: `n_${i}`, details: {} });
   }
   const entries = getRecentAuditEntries(10);
-  assert.equal(entries.length, 3);
-  assert.equal(entries[0].targetNodeId, "n_2");
-  assert.equal(entries[2].targetNodeId, "n_4");
+  expect(entries.length).toBe(3);
+  expect(entries[0].targetNodeId).toBe("n_2");
+  expect(entries[2].targetNodeId).toBe("n_4");
   setBufferSize(500); // restore default
 });
 
@@ -51,8 +50,8 @@ test("getAuditEntriesForNode filters by nodeId", () => {
   recordAudit({ userId: "u1", operationType: "edit", targetNodeId: "n_a", details: {} });
 
   const entries = getAuditEntriesForNode("n_a");
-  assert.equal(entries.length, 2);
-  entries.forEach((e) => assert.equal(e.targetNodeId, "n_a"));
+  expect(entries.length).toBe(2);
+  entries.forEach((e) => expect(e.targetNodeId).toBe("n_a"));
 });
 
 test("limit parameter caps returned entries", () => {
@@ -61,6 +60,6 @@ test("limit parameter caps returned entries", () => {
     recordAudit({ userId: "u1", operationType: "add", targetNodeId: `n_${i}`, details: {} });
   }
   const entries = getRecentAuditEntries(3);
-  assert.equal(entries.length, 3);
-  assert.equal(entries[0].targetNodeId, "n_7");
+  expect(entries.length).toBe(3);
+  expect(entries[0].targetNodeId).toBe("n_7");
 });

@@ -10,8 +10,7 @@
 //   4. Supabase restore doc ID inconsistency
 // ---------------------------------------------------------------------------
 
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect, beforeAll, afterAll } from "vitest";
 const http = require("node:http");
 
 const { createAppServer } = require("../../dist/node/start_viewer.js");
@@ -53,7 +52,7 @@ async function getDoc(docId) {
 // Setup / Teardown
 // ---------------------------------------------------------------------------
 
-test.before(async () => {
+beforeAll(async () => {
   server = createAppServer();
   await new Promise((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -62,7 +61,7 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
 
-test.after(async () => {
+afterAll(async () => {
   if (server) {
     await new Promise((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
@@ -76,59 +75,59 @@ test.after(async () => {
 
 test("POST /api/docs/:id with empty state ({}) returns 400", async () => {
   const { response, payload } = await postDoc("safety-empty-state", { state: {} });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error, "Should have an error message");
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });
 
 test("POST /api/docs/:id with empty nodes ({nodes: {}}) returns 400", async () => {
   const { response, payload } = await postDoc("safety-empty-nodes", {
     state: { rootId: "nonexistent", nodes: {} },
   });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error, "Should have an error message");
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });
 
 test("POST /api/docs/:id without state field returns 400", async () => {
   const { response, payload } = await postDoc("safety-no-state", { foo: "bar" });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error);
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });
 
 test("POST /api/docs/:id with state: null returns 400", async () => {
   const { response, payload } = await postDoc("safety-null-state", { state: null });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error);
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });
 
 test("POST /api/docs/:id with state: 'string' returns 400", async () => {
   const { response, payload } = await postDoc("safety-string-state", { state: "not-an-object" });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error);
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });
 
 test("POST /api/docs/:id with valid state returns 200 and correct documentId", async () => {
   const docId = "safety-valid-post";
   const state = createValidState("Safety Test Root");
   const { response, payload } = await postDoc(docId, { state });
-  assert.equal(response.status, 200);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.documentId, docId, "Response documentId must match request docId");
+  expect(response.status).toBe(200);
+  expect(payload.ok).toBe(true);
+  expect(payload.documentId).toBe(docId);
 
   // Verify data is readable back with the same doc ID
   const { response: getRes, payload: getPayload } = await getDoc(docId);
-  assert.equal(getRes.status, 200);
-  assert.ok(getPayload.state);
-  assert.ok(Object.keys(getPayload.state.nodes).length >= 3, "Should have root + 2 children");
+  expect(getRes.status).toBe(200);
+  expect(getPayload.state).toBeTruthy();
+  expect(Object.keys(getPayload.state.nodes).length >= 3).toBe(true);
 });
 
 test("GET /api/docs/:id for non-existent doc returns 404 (no auto-creation)", async () => {
   const { response, payload } = await getDoc("safety-nonexistent-doc-xyz");
-  assert.equal(response.status, 404);
-  assert.ok(payload.error);
+  expect(response.status).toBe(404);
+  expect(payload.error).toBeTruthy();
 
   // Confirm a second GET still returns 404 (not auto-created on first access)
   const { response: r2 } = await getDoc("safety-nonexistent-doc-xyz");
-  assert.equal(r2.status, 404);
+  expect(r2.status).toBe(404);
 });
 
 test("POST /api/docs/:id with invalid JSON body returns 400", async () => {
@@ -137,8 +136,8 @@ test("POST /api/docs/:id with invalid JSON body returns 400", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: "{ this is not json }",
   });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error);
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });
 
 // =========================================================================
@@ -151,29 +150,27 @@ test("POST then GET with same doc ID returns matching data", async () => {
   await postDoc(docId, { state });
 
   const { response, payload } = await getDoc(docId);
-  assert.equal(response.status, 200);
-  assert.equal(payload.state.rootId, state.rootId, "rootId must be preserved");
-  assert.equal(
+  expect(response.status).toBe(200);
+  expect(payload.state.rootId).toBe(state.rootId);
+  expect(
     Object.keys(payload.state.nodes).length,
-    Object.keys(state.nodes).length,
-    "Node count must match after round-trip",
-  );
+  ).toBe(Object.keys(state.nodes).length);
 });
 
 test("doc ID is case-sensitive and preserved exactly", async () => {
   const docId = "Akaghef-Beta";
   const state = createValidState("Case Test");
   const { payload: postPayload } = await postDoc(docId, { state });
-  assert.equal(postPayload.documentId, docId);
+  expect(postPayload.documentId).toBe(docId);
 
   const { response } = await getDoc(docId);
-  assert.equal(response.status, 200);
+  expect(response.status).toBe(200);
 
   // A different casing should NOT find the doc
   const { response: wrongCase } = await getDoc("akaghef-beta");
   // This may be 404 or 200 depending on SQLite collation; we just verify
   // the correct casing works.
-  assert.equal(response.status, 200);
+  expect(response.status).toBe(200);
 });
 
 test("POST to doc ID 'akaghef-beta' is retrievable with exactly that ID", async () => {
@@ -183,9 +180,9 @@ test("POST to doc ID 'akaghef-beta' is retrievable with exactly that ID", async 
   await postDoc(docId, { state });
 
   const { response, payload } = await getDoc(docId);
-  assert.equal(response.status, 200);
-  assert.ok(payload.state.nodes, "Must have nodes");
-  assert.ok(Object.keys(payload.state.nodes).length > 0, "Nodes must not be empty");
+  expect(response.status).toBe(200);
+  expect(payload.state.nodes).toBeTruthy();
+  expect(Object.keys(payload.state.nodes).length > 0).toBe(true);
 });
 
 test("two different doc IDs store independent data", async () => {
@@ -199,7 +196,7 @@ test("two different doc IDs store independent data", async () => {
   const { payload: p2 } = await getDoc("safety-doc-two");
 
   // rootIds are different (each model generates a unique rootId)
-  assert.notEqual(p1.state.rootId, p2.state.rootId, "Different docs must have different rootIds");
+  expect(p1.state.rootId).not.toBe(p2.state.rootId);
 });
 
 // =========================================================================
@@ -213,26 +210,24 @@ test("existing data survives an invalid POST (empty state)", async () => {
 
   // Save valid data first
   const { response: saveRes } = await postDoc(docId, { state });
-  assert.equal(saveRes.status, 200);
+  expect(saveRes.status).toBe(200);
 
   // Attempt to overwrite with empty state -- should be rejected
   const { response: emptyRes } = await postDoc(docId, { state: {} });
-  assert.equal(emptyRes.status, 400);
+  expect(emptyRes.status).toBe(400);
 
   // Attempt with empty nodes -- should be rejected
   const { response: emptyNodesRes } = await postDoc(docId, {
     state: { rootId: "x", nodes: {} },
   });
-  assert.equal(emptyNodesRes.status, 400);
+  expect(emptyNodesRes.status).toBe(400);
 
   // Verify original data is intact
   const { response: getRes, payload: getPayload } = await getDoc(docId);
-  assert.equal(getRes.status, 200);
-  assert.equal(
+  expect(getRes.status).toBe(200);
+  expect(
     Object.keys(getPayload.state.nodes).length,
-    originalNodeCount,
-    "Node count must not change after rejected POSTs",
-  );
+  ).toBe(originalNodeCount);
 });
 
 test("existing data survives a POST with null state", async () => {
@@ -241,10 +236,10 @@ test("existing data survives a POST with null state", async () => {
 
   await postDoc(docId, { state });
   const { response: badRes } = await postDoc(docId, { state: null });
-  assert.equal(badRes.status, 400);
+  expect(badRes.status).toBe(400);
 
   const { payload } = await getDoc(docId);
-  assert.ok(Object.keys(payload.state.nodes).length > 0, "Nodes must survive null POST");
+  expect(Object.keys(payload.state.nodes).length > 0).toBe(true);
 });
 
 test("POST with nodes containing only invalid references is rejected", async () => {
@@ -262,7 +257,7 @@ test("POST with nodes containing only invalid references is rejected", async () 
     },
   });
   // validate() should catch the missing child reference
-  assert.equal(response.status, 400);
+  expect(response.status).toBe(400);
 });
 
 // =========================================================================
@@ -277,29 +272,25 @@ test("simulated map_update flow: GET, add node, POST preserves all nodes", async
 
   // Simulate: GET current state
   const { payload: current } = await getDoc(docId);
-  assert.equal(Object.keys(current.state.nodes).length, originalNodeCount);
+  expect(Object.keys(current.state.nodes).length).toBe(originalNodeCount);
 
   // Simulate: add a node via model
   const model = RapidMvpModel.fromJSON(current.state);
   model.addNode(model.state.rootId, "New Node from map_update");
   const updatedState = model.toJSON();
-  assert.equal(
+  expect(
     Object.keys(updatedState.nodes).length,
-    originalNodeCount + 1,
-    "Should have one more node",
-  );
+  ).toBe(originalNodeCount + 1);
 
   // Simulate: POST back
   const { response: postRes } = await postDoc(docId, { state: updatedState });
-  assert.equal(postRes.status, 200);
+  expect(postRes.status).toBe(200);
 
   // Verify
   const { payload: final } = await getDoc(docId);
-  assert.equal(
+  expect(
     Object.keys(final.state.nodes).length,
-    originalNodeCount + 1,
-    "All nodes including new one must be present after map_update flow",
-  );
+  ).toBe(originalNodeCount + 1);
 });
 
 test("map_update safety guard: POST that would erase all children is blocked", async () => {
@@ -309,7 +300,7 @@ test("map_update safety guard: POST that would erase all children is blocked", a
   model.addNode(model.state.rootId, "Child 2");
   model.addNode(model.state.rootId, "Child 3");
   const state = model.toJSON();
-  assert.ok(Object.keys(state.nodes).length >= 4);
+  expect(Object.keys(state.nodes).length >= 4).toBe(true);
 
   await postDoc(docId, { state });
 
@@ -318,12 +309,12 @@ test("map_update safety guard: POST that would erase all children is blocked", a
   // Server should still accept structurally valid state.
   const rootOnlyModel = new RapidMvpModel("Root with children");
   const rootOnlyState = rootOnlyModel.toJSON();
-  assert.equal(Object.keys(rootOnlyState.nodes).length, 1);
+  expect(Object.keys(rootOnlyState.nodes).length).toBe(1);
 
   const { response } = await postDoc(docId, { state: rootOnlyState });
   // The server accepts this since it's structurally valid (has root + nodes).
   // The map_update client script should check node count BEFORE posting.
-  assert.equal(response.status, 200);
+  expect(response.status).toBe(200);
 });
 
 test("POST with empty body string returns 400", async () => {
@@ -332,8 +323,8 @@ test("POST with empty body string returns 400", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: "",
   });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error);
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });
 
 test("POST with body '{}' (no state field) returns 400", async () => {
@@ -342,6 +333,6 @@ test("POST with body '{}' (no state field) returns 400", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: "{}",
   });
-  assert.equal(response.status, 400);
-  assert.ok(payload.error);
+  expect(response.status).toBe(400);
+  expect(payload.error).toBeTruthy();
 });

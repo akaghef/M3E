@@ -1,7 +1,6 @@
 // @ts-check
 "use strict";
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect } from "vitest";
 
 const { touchPresence, removePresence, getPresenceList, resetPresence } = require("../../dist/node/presence.js");
 
@@ -9,11 +8,11 @@ test("touchPresence creates entry and getPresenceList returns it", () => {
   resetPresence();
   touchPresence("doc1", "e_1", "Alice", "human");
   const list = getPresenceList("doc1");
-  assert.equal(list.length, 1);
-  assert.equal(list[0].entityId, "e_1");
-  assert.equal(list[0].displayName, "Alice");
-  assert.equal(list[0].role, "human");
-  assert.equal(list[0].status, "active");
+  expect(list.length).toBe(1);
+  expect(list[0].entityId).toBe("e_1");
+  expect(list[0].displayName).toBe("Alice");
+  expect(list[0].role).toBe("human");
+  expect(list[0].status).toBe("active");
 });
 
 test("touchPresence updates existing entry", () => {
@@ -21,30 +20,30 @@ test("touchPresence updates existing entry", () => {
   touchPresence("doc1", "e_1", "Alice", "human");
   touchPresence("doc1", "e_1", "Alice Updated", "owner");
   const list = getPresenceList("doc1");
-  assert.equal(list.length, 1);
-  assert.equal(list[0].displayName, "Alice Updated");
-  assert.equal(list[0].role, "owner");
+  expect(list.length).toBe(1);
+  expect(list[0].displayName).toBe("Alice Updated");
+  expect(list[0].role).toBe("owner");
 });
 
 test("removePresence removes entry", () => {
   resetPresence();
   touchPresence("doc1", "e_1", "Alice", "human");
   touchPresence("doc1", "e_2", "Bob", "ai");
-  assert.ok(removePresence("doc1", "e_1"));
+  expect(removePresence("doc1", "e_1")).toBe(true);
   const list = getPresenceList("doc1");
-  assert.equal(list.length, 1);
-  assert.equal(list[0].entityId, "e_2");
+  expect(list.length).toBe(1);
+  expect(list[0].entityId).toBe("e_2");
 });
 
 test("removePresence returns false for unknown entity", () => {
   resetPresence();
-  assert.equal(removePresence("doc1", "e_unknown"), false);
+  expect(removePresence("doc1", "e_unknown")).toBe(false);
 });
 
 test("getPresenceList returns empty for unknown doc", () => {
   resetPresence();
   const list = getPresenceList("nonexistent");
-  assert.equal(list.length, 0);
+  expect(list.length).toBe(0);
 });
 
 test("multiple docs are tracked independently", () => {
@@ -52,8 +51,8 @@ test("multiple docs are tracked independently", () => {
   touchPresence("doc1", "e_1", "Alice", "human");
   touchPresence("doc2", "e_2", "Bob", "ai");
 
-  assert.equal(getPresenceList("doc1").length, 1);
-  assert.equal(getPresenceList("doc2").length, 1);
-  assert.equal(getPresenceList("doc1")[0].entityId, "e_1");
-  assert.equal(getPresenceList("doc2")[0].entityId, "e_2");
+  expect(getPresenceList("doc1").length).toBe(1);
+  expect(getPresenceList("doc2").length).toBe(1);
+  expect(getPresenceList("doc1")[0].entityId).toBe("e_1");
+  expect(getPresenceList("doc2")[0].entityId).toBe("e_2");
 });

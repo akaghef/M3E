@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect, beforeAll, afterAll } from "vitest";
 const http = require("node:http");
 
 const { createAppServer } = require("../../dist/node/start_viewer.js");
@@ -15,7 +14,7 @@ async function requestJson(url, init) {
   return { response, payload };
 }
 
-test.before(async () => {
+beforeAll(async () => {
   providerServer = http.createServer(async (req, res) => {
     if (req.url !== "/chat/completions" || req.method !== "POST") {
       res.statusCode = 404;
@@ -58,7 +57,7 @@ test.before(async () => {
   appBaseUrl = `http://127.0.0.1:${appAddress.port}`;
 });
 
-test.after(async () => {
+afterAll(async () => {
   delete process.env.M3E_AI_ENABLED;
   delete process.env.M3E_AI_PROVIDER;
   delete process.env.M3E_AI_GATEWAY;
@@ -88,10 +87,10 @@ test("linear transform status returns disabled when subagent is explicitly opted
   delete process.env.M3E_AI_MODEL;
 
   const result = await requestJson(`${appBaseUrl}/api/linear-transform/status`);
-  assert.equal(result.response.status, 200);
-  assert.equal(result.payload.ok, true);
-  assert.equal(result.payload.enabled, false);
-  assert.equal(result.payload.configured, false);
+  expect(result.response.status).toBe(200);
+  expect(result.payload.ok).toBe(true);
+  expect(result.payload.enabled).toBe(false);
+  expect(result.payload.configured).toBe(false);
 });
 
 test("linear transform convert proxies request to configured subagent", async () => {
@@ -103,13 +102,13 @@ test("linear transform convert proxies request to configured subagent", async ()
   process.env.M3E_AI_MODEL = "deepseek-chat";
 
   const status = await requestJson(`${appBaseUrl}/api/ai/status`);
-  assert.equal(status.response.status, 200);
-  assert.equal(status.payload.ok, true);
-  assert.equal(status.payload.enabled, true);
-  assert.equal(status.payload.configured, true);
-  assert.equal(status.payload.provider, "deepseek");
-  assert.equal(status.payload.features["linear-transform"].available, true);
-  assert.equal(status.payload.features["topic-suggest"].available, true);
+  expect(status.response.status).toBe(200);
+  expect(status.payload.ok).toBe(true);
+  expect(status.payload.enabled).toBe(true);
+  expect(status.payload.configured).toBe(true);
+  expect(status.payload.provider).toBe("deepseek");
+  expect(status.payload.features["linear-transform"].available).toBe(true);
+  expect(status.payload.features["topic-suggest"].available).toBe(true);
 
   const converted = await requestJson(`${appBaseUrl}/api/ai/subagent/linear-transform`, {
     method: "POST",
@@ -125,14 +124,14 @@ test("linear transform convert proxies request to configured subagent", async ()
       },
     }),
   });
-  assert.equal(converted.response.status, 200);
-  assert.equal(converted.payload.ok, true);
-  assert.equal(converted.payload.subagent, "linear-transform");
-  assert.equal(converted.payload.provider, "deepseek");
-  assert.equal(converted.payload.model, "deepseek-chat");
-  assert.equal(converted.payload.requiresApproval, false);
-  assert.equal(converted.payload.proposal.kind, "text-transform");
-  assert.equal(converted.payload.proposal.result.outputText, "stubbed-transform:ttl");
+  expect(converted.response.status).toBe(200);
+  expect(converted.payload.ok).toBe(true);
+  expect(converted.payload.subagent).toBe("linear-transform");
+  expect(converted.payload.provider).toBe("deepseek");
+  expect(converted.payload.model).toBe("deepseek-chat");
+  expect(converted.payload.requiresApproval).toBe(false);
+  expect(converted.payload.proposal.kind).toBe("text-transform");
+  expect(converted.payload.proposal.result.outputText).toBe("stubbed-transform:ttl");
 
   const compatibility = await requestJson(`${appBaseUrl}/api/linear-transform/convert`, {
     method: "POST",
@@ -144,8 +143,8 @@ test("linear transform convert proxies request to configured subagent", async ()
       scopeLabel: "Root",
     }),
   });
-  assert.equal(compatibility.response.status, 200);
-  assert.equal(compatibility.payload.outputText, "stubbed-transform:ttl");
+  expect(compatibility.response.status).toBe(200);
+  expect(compatibility.payload.outputText).toBe("stubbed-transform:ttl");
 });
 
 test("linear transform convert returns 503 when provider config is incomplete", async () => {
@@ -168,10 +167,10 @@ test("linear transform convert returns 503 when provider config is incomplete", 
       },
     }),
   });
-  assert.equal(converted.response.status, 503);
-  assert.equal(converted.payload.ok, false);
-  assert.equal(converted.payload.code, "AI_NOT_CONFIGURED");
-  assert.match(converted.payload.error, /not fully configured/);
+  expect(converted.response.status).toBe(503);
+  expect(converted.payload.ok).toBe(false);
+  expect(converted.payload.code).toBe("AI_NOT_CONFIGURED");
+  expect(converted.payload.error).toMatch(/not fully configured/);
 });
 
 test("ai status and subagent resolve model alias from registry", async () => {
@@ -195,12 +194,12 @@ test("ai status and subagent resolve model alias from registry", async () => {
   });
 
   const status = await requestJson(`${appBaseUrl}/api/ai/status`);
-  assert.equal(status.response.status, 200);
-  assert.equal(status.payload.ok, true);
-  assert.equal(status.payload.gateway, "litellm");
-  assert.equal(status.payload.activeModelAlias, "chat.fast");
-  assert.equal(status.payload.model, "deepseek-chat");
-  assert.deepEqual(status.payload.availableModelAliases, ["chat.fast"]);
+  expect(status.response.status).toBe(200);
+  expect(status.payload.ok).toBe(true);
+  expect(status.payload.gateway).toBe("litellm");
+  expect(status.payload.activeModelAlias).toBe("chat.fast");
+  expect(status.payload.model).toBe("deepseek-chat");
+  expect(status.payload.availableModelAliases).toEqual(["chat.fast"]);
 
   const converted = await requestJson(`${appBaseUrl}/api/ai/subagent/linear-transform`, {
     method: "POST",
@@ -217,10 +216,10 @@ test("ai status and subagent resolve model alias from registry", async () => {
     }),
   });
 
-  assert.equal(converted.response.status, 200);
-  assert.equal(converted.payload.ok, true);
-  assert.equal(converted.payload.model, "deepseek-chat");
-  assert.equal(converted.payload.resolvedModelAlias, "chat.fast");
+  expect(converted.response.status).toBe(200);
+  expect(converted.payload.ok).toBe(true);
+  expect(converted.payload.model).toBe("deepseek-chat");
+  expect(converted.payload.resolvedModelAlias).toBe("chat.fast");
 });
 
 test("ai subagent returns 404 for unsupported subagent", async () => {
@@ -240,8 +239,8 @@ test("ai subagent returns 404 for unsupported subagent", async () => {
       input: {},
     }),
   });
-  assert.equal(response.response.status, 404);
-  assert.equal(response.payload.code, "AI_UNSUPPORTED_SUBAGENT");
+  expect(response.response.status).toBe(404);
+  expect(response.payload.code).toBe("AI_UNSUPPORTED_SUBAGENT");
 });
 
 test("topic suggest subagent returns related topics", async () => {
@@ -266,11 +265,11 @@ test("topic suggest subagent returns related topics", async () => {
     }),
   });
 
-  assert.equal(response.response.status, 200);
-  assert.equal(response.payload.ok, true);
-  assert.equal(response.payload.subagent, "topic-suggest");
-  assert.equal(response.payload.model, "gemma3:4b");
-  assert.deepEqual(response.payload.proposal.result.topics, [
+  expect(response.response.status).toBe(200);
+  expect(response.payload.ok).toBe(true);
+  expect(response.payload.subagent).toBe("topic-suggest");
+  expect(response.payload.model).toBe("gemma3:4b");
+  expect(response.payload.proposal.result.topics).toEqual([
     "Root cause",
     "Alternative design",
     "Validation steps",
@@ -324,8 +323,8 @@ test("topic suggest subagent parses fenced json response", async () => {
     }),
   });
 
-  assert.equal(response.response.status, 200);
-  assert.deepEqual(response.payload.proposal.result.topics, [
+  expect(response.response.status).toBe(200);
+  expect(response.payload.proposal.result.topics).toEqual([
     "栄養成分分析",
     "食品添加物",
     "食品安全規制",

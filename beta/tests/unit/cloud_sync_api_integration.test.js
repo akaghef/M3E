@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect, beforeAll, afterAll } from "vitest";
 const os = require("node:os");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -26,7 +25,7 @@ function createState(label) {
   return model.toJSON();
 }
 
-test.before(async () => {
+beforeAll(async () => {
   server = createAppServer();
   await new Promise((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -35,7 +34,7 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
 
-test.after(async () => {
+afterAll(async () => {
   if (server) {
     await new Promise((resolve, reject) => {
       server.close((err) => {
@@ -53,41 +52,41 @@ test.after(async () => {
 test("sync status and push/pull round-trip works in file-mirror mode", async () => {
   const docId = "integration-roundtrip";
   const status1 = await requestJson(`${baseUrl}/api/sync/status/${docId}`);
-  assert.equal(status1.response.status, 200);
-  assert.equal(status1.payload.ok, true);
-  assert.equal(status1.payload.mode, "file-mirror");
-  assert.equal(status1.payload.documentId, docId);
-  assert.equal(status1.payload.enabled, true);
-  assert.equal(status1.payload.exists, false);
+  expect(status1.response.status).toBe(200);
+  expect(status1.payload.ok).toBe(true);
+  expect(status1.payload.mode).toBe("file-mirror");
+  expect(status1.payload.documentId).toBe(docId);
+  expect(status1.payload.enabled).toBe(true);
+  expect(status1.payload.exists).toBe(false);
 
   const push = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("A"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
-  assert.equal(push.response.status, 200);
-  assert.equal(push.payload.ok, true);
-  assert.equal(push.payload.mode, "file-mirror");
-  assert.equal(push.payload.documentId, docId);
+  expect(push.response.status).toBe(200);
+  expect(push.payload.ok).toBe(true);
+  expect(push.payload.mode).toBe("file-mirror");
+  expect(push.payload.documentId).toBe(docId);
 
   const status2 = await requestJson(`${baseUrl}/api/sync/status/${docId}`);
-  assert.equal(status2.response.status, 200);
-  assert.equal(status2.payload.ok, true);
-  assert.equal(status2.payload.mode, "file-mirror");
-  assert.equal(status2.payload.documentId, docId);
-  assert.equal(status2.payload.exists, true);
-  assert.equal(status2.payload.cloudSavedAt, "2026-04-02T00:00:00.000Z");
+  expect(status2.response.status).toBe(200);
+  expect(status2.payload.ok).toBe(true);
+  expect(status2.payload.mode).toBe("file-mirror");
+  expect(status2.payload.documentId).toBe(docId);
+  expect(status2.payload.exists).toBe(true);
+  expect(status2.payload.cloudSavedAt).toBe("2026-04-02T00:00:00.000Z");
 
   const pull = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({}),
   });
-  assert.equal(pull.response.status, 200);
-  assert.equal(pull.payload.ok, true);
-  assert.equal(pull.payload.mode, "file-mirror");
-  assert.equal(pull.payload.documentId, docId);
-  assert.equal(pull.payload.state.rootId.length > 0, true);
+  expect(pull.response.status).toBe(200);
+  expect(pull.payload.ok).toBe(true);
+  expect(pull.payload.mode).toBe("file-mirror");
+  expect(pull.payload.documentId).toBe(docId);
+  expect(pull.payload.state.rootId.length > 0).toBe(true);
 });
 
 test("sync push returns 409 on savedAt conflict and force push overrides", async () => {
@@ -98,10 +97,10 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("First"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
-  assert.equal(initialPush.response.status, 200);
-  assert.equal(initialPush.payload.ok, true);
-  assert.equal(initialPush.payload.mode, "file-mirror");
-  assert.equal(initialPush.payload.documentId, docId);
+  expect(initialPush.response.status).toBe(200);
+  expect(initialPush.payload.ok).toBe(true);
+  expect(initialPush.payload.mode).toBe("file-mirror");
+  expect(initialPush.payload.documentId).toBe(docId);
 
   const updatePush = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
     method: "POST",
@@ -112,10 +111,10 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
       baseSavedAt: "2026-04-02T00:00:00.000Z",
     }),
   });
-  assert.equal(updatePush.response.status, 200);
-  assert.equal(updatePush.payload.ok, true);
-  assert.equal(updatePush.payload.mode, "file-mirror");
-  assert.equal(updatePush.payload.documentId, docId);
+  expect(updatePush.response.status).toBe(200);
+  expect(updatePush.payload.ok).toBe(true);
+  expect(updatePush.payload.mode).toBe("file-mirror");
+  expect(updatePush.payload.documentId).toBe(docId);
 
   const conflictingPush = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
     method: "POST",
@@ -126,10 +125,10 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
       baseSavedAt: "2026-04-02T00:00:00.000Z",
     }),
   });
-  assert.equal(conflictingPush.response.status, 409);
-  assert.equal(conflictingPush.payload.code, "CLOUD_CONFLICT");
-  assert.equal(conflictingPush.payload.ok, false);
-  assert.equal(conflictingPush.payload.documentId, docId);
+  expect(conflictingPush.response.status).toBe(409);
+  expect(conflictingPush.payload.code).toBe("CLOUD_CONFLICT");
+  expect(conflictingPush.payload.ok).toBe(false);
+  expect(conflictingPush.payload.documentId).toBe(docId);
 
   const forcedPush = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
     method: "POST",
@@ -141,11 +140,11 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
       force: true,
     }),
   });
-  assert.equal(forcedPush.response.status, 200);
-  assert.equal(forcedPush.payload.ok, true);
-  assert.equal(forcedPush.payload.mode, "file-mirror");
-  assert.equal(forcedPush.payload.documentId, docId);
-  assert.equal(forcedPush.payload.forced, true);
+  expect(forcedPush.response.status).toBe(200);
+  expect(forcedPush.payload.ok).toBe(true);
+  expect(forcedPush.payload.mode).toBe("file-mirror");
+  expect(forcedPush.payload.documentId).toBe(docId);
+  expect(forcedPush.payload.forced).toBe(true);
 });
 
 test("sync pull returns 500 when cloud file JSON is broken", async () => {
@@ -159,11 +158,11 @@ test("sync pull returns 500 when cloud file JSON is broken", async () => {
     body: JSON.stringify({}),
   });
 
-  assert.equal(pulled.response.status, 500);
-  assert.equal(pulled.payload.code, "SYNC_PULL_FAILED");
-  assert.equal(pulled.payload.ok, false);
-  assert.equal(pulled.payload.documentId, docId);
-  assert.equal(typeof pulled.payload.error, "string");
+  expect(pulled.response.status).toBe(500);
+  expect(pulled.payload.code).toBe("SYNC_PULL_FAILED");
+  expect(pulled.payload.ok).toBe(false);
+  expect(pulled.payload.documentId).toBe(docId);
+  expect(typeof pulled.payload.error).toBe("string");
 });
 
 test("sync pull returns 400 for unsupported cloud document format", async () => {
@@ -177,11 +176,11 @@ test("sync pull returns 400 for unsupported cloud document format", async () => 
     body: JSON.stringify({}),
   });
 
-  assert.equal(pulled.response.status, 400);
-  assert.equal(pulled.payload.code, "SYNC_CLOUD_UNSUPPORTED_FORMAT");
-  assert.equal(pulled.payload.ok, false);
-  assert.equal(pulled.payload.documentId, docId);
-  assert.equal(pulled.payload.error, "Cloud document has unsupported format.");
+  expect(pulled.response.status).toBe(400);
+  expect(pulled.payload.code).toBe("SYNC_CLOUD_UNSUPPORTED_FORMAT");
+  expect(pulled.payload.ok).toBe(false);
+  expect(pulled.payload.documentId).toBe(docId);
+  expect(pulled.payload.error).toBe("Cloud document has unsupported format.");
 });
 
 test("sync push returns 400 for structurally invalid model", async () => {
@@ -192,11 +191,11 @@ test("sync push returns 400 for structurally invalid model", async () => {
     body: JSON.stringify({ state: { rootId: "missing-root", nodes: {} } }),
   });
 
-  assert.equal(pushed.response.status, 400);
-  assert.equal(pushed.payload.code, "SYNC_PUSH_INVALID_MODEL");
-  assert.equal(pushed.payload.ok, false);
-  assert.equal(pushed.payload.documentId, docId);
-  assert.equal(typeof pushed.payload.error, "string");
+  expect(pushed.response.status).toBe(400);
+  expect(pushed.payload.code).toBe("SYNC_PUSH_INVALID_MODEL");
+  expect(pushed.payload.ok).toBe(false);
+  expect(pushed.payload.documentId).toBe(docId);
+  expect(typeof pushed.payload.error).toBe("string");
 });
 
 test("sync endpoints return 405 on unsupported method", async () => {
@@ -207,22 +206,22 @@ test("sync endpoints return 405 on unsupported method", async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({}),
   });
-  assert.equal(statusPost.response.status, 405);
-  assert.equal(statusPost.payload.code, "SYNC_METHOD_NOT_ALLOWED");
-  assert.equal(statusPost.payload.ok, false);
-  assert.equal(statusPost.payload.documentId, docId);
+  expect(statusPost.response.status).toBe(405);
+  expect(statusPost.payload.code).toBe("SYNC_METHOD_NOT_ALLOWED");
+  expect(statusPost.payload.ok).toBe(false);
+  expect(statusPost.payload.documentId).toBe(docId);
 
   const pushGet = await requestJson(`${baseUrl}/api/sync/push/${docId}`);
-  assert.equal(pushGet.response.status, 405);
-  assert.equal(pushGet.payload.code, "SYNC_METHOD_NOT_ALLOWED");
-  assert.equal(pushGet.payload.ok, false);
-  assert.equal(pushGet.payload.documentId, docId);
+  expect(pushGet.response.status).toBe(405);
+  expect(pushGet.payload.code).toBe("SYNC_METHOD_NOT_ALLOWED");
+  expect(pushGet.payload.ok).toBe(false);
+  expect(pushGet.payload.documentId).toBe(docId);
 
   const pullGet = await requestJson(`${baseUrl}/api/sync/pull/${docId}`);
-  assert.equal(pullGet.response.status, 405);
-  assert.equal(pullGet.payload.code, "SYNC_METHOD_NOT_ALLOWED");
-  assert.equal(pullGet.payload.ok, false);
-  assert.equal(pullGet.payload.documentId, docId);
+  expect(pullGet.response.status).toBe(405);
+  expect(pullGet.payload.code).toBe("SYNC_METHOD_NOT_ALLOWED");
+  expect(pullGet.payload.ok).toBe(false);
+  expect(pullGet.payload.documentId).toBe(docId);
 });
 
 test("sync push returns 400 (not 500) when state has no nodes", async () => {
@@ -233,10 +232,10 @@ test("sync push returns 400 (not 500) when state has no nodes", async () => {
     body: JSON.stringify({ state: {}, savedAt: "2026-01-01T00:00:00Z" }),
   });
 
-  assert.equal(pushed.response.status, 400);
-  assert.equal(pushed.payload.code, "SYNC_PUSH_INVALID_MODEL");
-  assert.equal(pushed.payload.ok, false);
-  assert.equal(pushed.payload.documentId, docId);
+  expect(pushed.response.status).toBe(400);
+  expect(pushed.payload.code).toBe("SYNC_PUSH_INVALID_MODEL");
+  expect(pushed.payload.ok).toBe(false);
+  expect(pushed.payload.documentId).toBe(docId);
 });
 
 test("sync push returns 400 when state is null", async () => {
@@ -247,8 +246,8 @@ test("sync push returns 400 when state is null", async () => {
     body: JSON.stringify({ state: null }),
   });
 
-  assert.equal(pushed.response.status, 400);
-  assert.equal(pushed.payload.ok, false);
+  expect(pushed.response.status).toBe(400);
+  expect(pushed.payload.ok).toBe(false);
   // state:null is falsy so body itself becomes candidate.state; it has no nodes field
-  assert.equal(pushed.payload.code, "SYNC_PUSH_INVALID_MODEL");
+  expect(pushed.payload.code).toBe("SYNC_PUSH_INVALID_MODEL");
 });
