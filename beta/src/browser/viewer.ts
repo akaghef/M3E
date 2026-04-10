@@ -139,6 +139,19 @@ let presenceEs: EventSource | null = null;
 let changedNodeIds: Set<string> = new Set();
 let conflictPanelVisible = false;
 let conflictRemoteState: AppState | null = null;
+
+// ── Scope Lock State ──
+interface ClientScopeLock {
+  scopeId: string;
+  entityId: string;
+  displayName: string;
+  priority: number;
+}
+let scopeLockMap: Map<string, ClientScopeLock> = new Map(); // scopeId -> lock
+let collabEntityId: string | null = null;
+let collabToken: string | null = null;
+let collabEventSource: EventSource | null = null;
+let activeContextMenu: HTMLElement | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -2191,6 +2204,14 @@ function render(): void {
     if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
       classNames.push("drag-source");
     }
+    // Scope lock visual indicator
+    const nodeLock = scopeLockMap.get(nodeId);
+    if (nodeLock) {
+      classNames.push("scope-locked");
+      if (nodeLock.entityId !== collabEntityId) {
+        classNames.push("scope-locked-by-other");
+      }
+    }
     const hitX = nodeId === displayRootId ? p.x : p.x - 8;
     const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
     const hitY = p.y - hitH / 2;
@@ -2230,6 +2251,13 @@ function render(): void {
         const folderFrameW = p.w + 28;
         const folderFrameH = frameH;
         nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
+        // Lock icon on locked folder nodes
+        if (nodeLock) {
+          const lockIconX = folderFrameX + folderFrameW - 14;
+          const lockIconY = folderFrameY + 14;
+          const lockClass = nodeLock.entityId === collabEntityId ? "lock-icon" : "lock-icon lock-icon-other";
+          nodes += `<text class="${lockClass}" x="${lockIconX}" y="${lockIconY}" text-anchor="middle" dominant-baseline="middle">\uD83D\uDD12</text>`;
+        }
       }
       if (isLatexNode(node)) {
         let htmlStr = latexHtmlCache.get(node.text);
@@ -3142,11 +3170,49 @@ function renderEntityTree(
       badge.className = "entity-badge entity-badge-folder";
       badge.textContent = "folder";
       row.appendChild(badge);
+      // Show lock badge on folder nodes in entity tree
+      const folderLock = scopeLockMap.get(node.id);
+      if (folderLock) {
+        const lockBadge = document.createElement("span");
+        const isOwn = folderLock.entityId === collabEntityId;
+        lockBadge.className = "entity-scope-lock-badge " + (isOwn ? "lock-own" : "lock-other");
+        lockBadge.textContent = isOwn ? "\uD83D\uDD12" : "\uD83D\uDD12";
+        lockBadge.title = `Locked by ${folderLock.displayName}`;
+        row.appendChild(lockBadge);
+      }
     } else if (node.nodeType === "alias") {
+      const actualNode = doc ? doc.state.nodes[node.id] : null;
+      const broken = actualNode ? isBrokenAlias(actualNode) : false;
       const badge = document.createElement("span");
-      badge.className = "entity-badge entity-badge-alias";
-      badge.textContent = "alias";
-      row.appendChild(badge);
+      if (broken) {
+        badge.className = "entity-badge entity-badge-broken";
+        badge.textContent = "broken";
+        row.classList.add("alias-broken-row");
+        // Add repair and delete buttons
+        const repairBtn = document.createElement("button");
+        repairBtn.className = "entity-alias-action-btn repair-btn";
+        repairBtn.textContent = "Repair";
+        repairBtn.title = "Convert to text node";
+        repairBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          repairBrokenAlias(node.id);
+        });
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "entity-alias-action-btn delete-btn";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.title = "Remove broken alias";
+        deleteBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          deleteBrokenAlias(node.id);
+        });
+        row.appendChild(badge);
+        row.appendChild(repairBtn);
+        row.appendChild(deleteBtn);
+      } else {
+        badge.className = "entity-badge entity-badge-alias";
+        badge.textContent = "alias";
+        row.appendChild(badge);
+      }
     }
 
     container.appendChild(row);
@@ -3271,12 +3337,21 @@ function buildEntityScopeList(): void {
 
   rootRow.appendChild(rootIcon);
   rootRow.appendChild(rootName);
+
+  // Lock badge for root scope
+  appendScopeLockBadge(rootRow, rootId);
+
   entityScopeListEl.appendChild(rootRow);
 
   rootRow.addEventListener("click", () => {
     EnterScopeCommand(rootId);
     buildEntityScopeList();
     buildEntityList(entityListSearchEl?.value.trim() || "");
+  });
+
+  rootRow.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    showScopeLockContextMenu(e.clientX, e.clientY, rootId);
   });
 
   // Add folder scopes recursively
@@ -3310,6 +3385,10 @@ function renderEntityScopeItems(
     row.appendChild(icon);
     row.appendChild(name);
     row.appendChild(count);
+
+    // Lock badge for this folder scope
+    appendScopeLockBadge(row, folder.id);
+
     container.appendChild(row);
 
     row.addEventListener("click", () => {
@@ -3318,10 +3397,52 @@ function renderEntityScopeItems(
       buildEntityList(entityListSearchEl?.value.trim() || "");
     });
 
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showScopeLockContextMenu(e.clientX, e.clientY, folder.id);
+    });
+
     if (folder.subFolders.length > 0) {
       renderEntityScopeItems(container, folder.subFolders, currentScope, depth + 1);
     }
   }
+}
+
+function appendScopeLockBadge(row: HTMLElement, scopeId: string): void {
+  const lock = scopeLockMap.get(scopeId);
+  if (!lock) {
+    return;
+  }
+  const badge = document.createElement("span");
+  const isOwn = lock.entityId === collabEntityId;
+  badge.className = "entity-scope-lock-badge " + (isOwn ? "lock-own" : "lock-other");
+  badge.textContent = isOwn ? "\uD83D\uDD12 You" : "\uD83D\uDD12 " + lock.displayName;
+  badge.title = `Locked by ${lock.displayName} (priority ${lock.priority})`;
+  row.appendChild(badge);
+}
+
+function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
+  const lock = scopeLockMap.get(scopeId);
+  const items: { label: string; danger?: boolean; action: () => void }[] = [];
+
+  if (!lock) {
+    items.push({
+      label: "\uD83D\uDD12 Lock this scope",
+      action: () => void acquireScopeLockFromUi(scopeId),
+    });
+  } else if (lock.entityId === collabEntityId) {
+    items.push({
+      label: "\uD83D\uDD13 Unlock this scope",
+      action: () => void releaseScopeLockFromUi(scopeId),
+    });
+  } else {
+    items.push({
+      label: `Locked by ${lock.displayName}`,
+      action: () => { /* no-op, info only */ },
+    });
+  }
+
+  showContextMenu(x, y, items);
 }
 
 // ---- Presence Badges ----
@@ -3446,6 +3567,274 @@ function applyChangeHighlights(): void {
       row.classList.add("has-changes");
     }
   });
+}
+
+// ---- Scope Lock Management ----
+
+function startCollabEventSource(): void {
+  if (collabEventSource || !collabToken || !collabEntityId) {
+    return;
+  }
+  const url = `/api/collab/events/${encodeURIComponent(collabEntityId)}`;
+  const headers = new Headers({ Authorization: `Bearer ${collabToken}` });
+  // EventSource does not support custom headers; use fetch-based SSE instead
+  // For now, try the standard endpoint (auth may be checked via query or cookie)
+  collabEventSource = new EventSource(url);
+
+  collabEventSource.addEventListener("lock_acquired", (event: Event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data);
+      scopeLockMap.set(data.scopeId, {
+        scopeId: data.scopeId,
+        entityId: data.entityId,
+        displayName: data.displayName || data.entityId,
+        priority: data.priority || 0,
+      });
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } catch { /* ignore */ }
+  });
+
+  collabEventSource.addEventListener("lock_released", (event: Event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data);
+      scopeLockMap.delete(data.scopeId);
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } catch { /* ignore */ }
+  });
+
+  collabEventSource.addEventListener("lock_preempted", (event: Event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data);
+      // The old lock holder lost the lock; update to new holder
+      scopeLockMap.set(data.scopeId, {
+        scopeId: data.scopeId,
+        entityId: data.newEntity,
+        displayName: data.newEntity,
+        priority: 0,
+      });
+      if (data.oldEntity === collabEntityId) {
+        setStatus(`Lock on scope preempted by higher-priority entity.`, true);
+      }
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } catch { /* ignore */ }
+  });
+
+  collabEventSource.addEventListener("error", () => {
+    if (collabEventSource) {
+      collabEventSource.close();
+      collabEventSource = null;
+    }
+  });
+}
+
+function stopCollabEventSource(): void {
+  if (collabEventSource) {
+    collabEventSource.close();
+    collabEventSource = null;
+  }
+}
+
+async function acquireScopeLockFromUi(scopeId: string): Promise<void> {
+  if (!collabToken) {
+    setStatus("Collab not registered. Lock unavailable.", true);
+    return;
+  }
+  try {
+    const res = await fetch(`/api/collab/scope/${encodeURIComponent(scopeId)}/lock`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${collabToken}` },
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setStatus(`Scope locked.`);
+      // SSE will update the map, but update eagerly for responsiveness
+      scopeLockMap.set(scopeId, {
+        scopeId,
+        entityId: collabEntityId!,
+        displayName: "You",
+        priority: 0,
+      });
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } else {
+      setStatus(`Lock failed: ${data.error || "Unknown error"}`, true);
+    }
+  } catch (err) {
+    setStatus(`Lock request failed: ${(err as Error).message}`, true);
+  }
+}
+
+async function releaseScopeLockFromUi(scopeId: string): Promise<void> {
+  if (!collabToken) {
+    return;
+  }
+  try {
+    const res = await fetch(`/api/collab/scope/${encodeURIComponent(scopeId)}/lock`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${collabToken}` },
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setStatus(`Scope unlocked.`);
+      scopeLockMap.delete(scopeId);
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } else {
+      setStatus(`Unlock failed: ${data.error || "Unknown error"}`, true);
+    }
+  } catch (err) {
+    setStatus(`Unlock request failed: ${(err as Error).message}`, true);
+  }
+}
+
+// Try to register as collab entity on startup (only when M3E_COLLAB is active)
+function tryCollabRegister(): void {
+  fetch("/api/collab/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ displayName: "Viewer", role: "human", capabilities: ["read", "write"] }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok && data.entityId && data.token) {
+        collabEntityId = data.entityId;
+        collabToken = data.token;
+        startCollabEventSource();
+      }
+    })
+    .catch(() => {
+      // Collab not available, ignore
+    });
+}
+
+// ---- Broken Alias Detection ----
+
+function findBrokenAliases(): { nodeId: string; label: string; targetNodeId: string }[] {
+  if (!doc) {
+    return [];
+  }
+  const result: { nodeId: string; label: string; targetNodeId: string }[] = [];
+  for (const node of Object.values(doc.state.nodes)) {
+    if (node.nodeType !== "alias") {
+      continue;
+    }
+    if (!node.targetNodeId || !doc.state.nodes[node.targetNodeId]) {
+      result.push({
+        nodeId: node.id,
+        label: uiLabel(node),
+        targetNodeId: node.targetNodeId || "",
+      });
+    }
+  }
+  return result;
+}
+
+function deleteBrokenAlias(aliasNodeId: string): void {
+  if (!doc) {
+    return;
+  }
+  const node = doc.state.nodes[aliasNodeId];
+  if (!node) {
+    return;
+  }
+  pushUndoSnapshot();
+  const parentId = node.parentId;
+  if (parentId && doc.state.nodes[parentId]) {
+    doc.state.nodes[parentId].children = doc.state.nodes[parentId].children.filter((c) => c !== aliasNodeId);
+  }
+  delete doc.state.nodes[aliasNodeId];
+  if (viewState.selectedNodeId === aliasNodeId) {
+    viewState.selectedNodeId = parentId || doc.state.rootId;
+    viewState.selectedNodeIds = new Set([viewState.selectedNodeId]);
+  }
+  viewState.selectedNodeIds.delete(aliasNodeId);
+  setStatus(`Deleted broken alias.`);
+  scheduleAutosave();
+  render();
+  if (entityListVisible) {
+    buildEntityList(entityListSearchEl?.value.trim() || "");
+  }
+}
+
+function repairBrokenAlias(aliasNodeId: string): void {
+  if (!doc) {
+    return;
+  }
+  const node = doc.state.nodes[aliasNodeId];
+  if (!node || node.nodeType !== "alias") {
+    return;
+  }
+  // Convert broken alias to a regular text node, keeping the snapshot label
+  pushUndoSnapshot();
+  node.nodeType = "text";
+  node.isBroken = undefined;
+  node.targetNodeId = undefined;
+  node.aliasLabel = undefined;
+  node.access = undefined;
+  node.targetSnapshotLabel = undefined;
+  if (!node.text || node.text.endsWith("(deleted)")) {
+    node.text = node.targetSnapshotLabel || "Repaired node";
+  }
+  setStatus(`Repaired alias: converted to text node.`);
+  scheduleAutosave();
+  render();
+  if (entityListVisible) {
+    buildEntityList(entityListSearchEl?.value.trim() || "");
+  }
+}
+
+// ---- Context Menu ----
+
+function showContextMenu(x: number, y: number, items: { label: string; danger?: boolean; action: () => void }[]): void {
+  hideContextMenu();
+  const menu = document.createElement("div");
+  menu.className = "scope-context-menu";
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = "scope-context-menu-item" + (item.danger ? " danger" : "");
+    row.textContent = item.label;
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hideContextMenu();
+      item.action();
+    });
+    menu.appendChild(row);
+  }
+
+  document.body.appendChild(menu);
+  activeContextMenu = menu;
+
+  // Close on outside click
+  const closeHandler = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      hideContextMenu();
+      document.removeEventListener("click", closeHandler, true);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
+}
+
+function hideContextMenu(): void {
+  if (activeContextMenu) {
+    activeContextMenu.remove();
+    activeContextMenu = null;
+  }
 }
 
 // ---- Conflict Panel ----
@@ -5484,6 +5873,21 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
   startInlineEdit(nodeId);
 });
 
+// Right-click context menu for scope lock on folder nodes
+canvas.addEventListener("contextmenu", (event: MouseEvent) => {
+  const target = event.target as Element | null;
+  const nodeId = target?.closest("[data-node-id]")?.getAttribute("data-node-id");
+  if (!nodeId || !doc) {
+    return;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node || !isFolderNode(node)) {
+    return;
+  }
+  event.preventDefault();
+  showScopeLockContextMenu(event.clientX, event.clientY, nodeId);
+});
+
 board.addEventListener("wheel", (event: WheelEvent) => {
   if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
@@ -6021,6 +6425,7 @@ updateCloudSyncUi();
 void initializeDocument().then(() => {
   initBroadcastSync();
   initDocWatch();
+  tryCollabRegister();
   const initialScopeId = queryParams.get("scopeId");
   if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level

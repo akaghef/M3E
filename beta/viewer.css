@@ -1395,6 +1395,176 @@
         user-select: none;
       }
 
+      /* ── Scope Lock Indicators ── */
+      .node-hit.scope-locked {
+        stroke: #c5890a;
+        stroke-width: 2.5;
+        stroke-dasharray: none;
+      }
+
+      .node-hit.scope-locked-by-other {
+        stroke: #d64b4b;
+        stroke-width: 2.5;
+      }
+
+      .lock-icon {
+        font-size: 12px;
+        fill: #c5890a;
+        pointer-events: none;
+      }
+
+      .lock-icon-other {
+        fill: #d64b4b;
+      }
+
+      .entity-scope-lock-badge {
+        font-size: 9px;
+        font-weight: 600;
+        padding: 1px 4px;
+        border-radius: 3px;
+        flex-shrink: 0;
+        margin-left: auto;
+      }
+
+      .entity-scope-lock-badge.lock-own {
+        background: #fff3e2;
+        color: #9a6b1f;
+      }
+
+      .entity-scope-lock-badge.lock-other {
+        background: #ffe5e5;
+        color: #c0392b;
+      }
+
+      .entity-scope-lock-tooltip {
+        font-size: 10px;
+        color: #999;
+        margin-left: 4px;
+        flex-shrink: 0;
+      }
+
+      /* Lock/Unlock action buttons in entity scope list */
+      .entity-scope-lock-btn {
+        font-size: 10px;
+        padding: 1px 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: #fff;
+        cursor: pointer;
+        flex-shrink: 0;
+        margin-left: 4px;
+        line-height: 1.4;
+        color: var(--ink);
+        opacity: 0;
+        transition: opacity 0.12s ease;
+      }
+
+      .entity-scope-row:hover .entity-scope-lock-btn {
+        opacity: 1;
+      }
+
+      .entity-scope-lock-btn:hover {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+      }
+
+      .entity-scope-lock-btn.unlock-btn {
+        color: var(--danger);
+        border-color: #f0c0c0;
+      }
+
+      .entity-scope-lock-btn.unlock-btn:hover {
+        background: #ffe5e5;
+      }
+
+      /* ── Broken Alias Indicators ── */
+      .entity-badge-broken {
+        background: #ffe5e5;
+        color: #c0392b;
+      }
+
+      .entity-row.alias-broken-row {
+        background: rgba(214, 75, 75, 0.06);
+      }
+
+      .entity-alias-action-btn {
+        font-size: 10px;
+        padding: 1px 5px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: #fff;
+        cursor: pointer;
+        flex-shrink: 0;
+        margin-left: 2px;
+        line-height: 1.4;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+      }
+
+      .entity-row:hover .entity-alias-action-btn {
+        opacity: 1;
+      }
+
+      .entity-alias-action-btn.repair-btn {
+        color: #2f5fd9;
+        border-color: #b8ccf0;
+      }
+
+      .entity-alias-action-btn.repair-btn:hover {
+        background: #e8f0ff;
+      }
+
+      .entity-alias-action-btn.delete-btn {
+        color: var(--danger);
+        border-color: #f0c0c0;
+      }
+
+      .entity-alias-action-btn.delete-btn:hover {
+        background: #ffe5e5;
+      }
+
+      /* ── Context Menu ── */
+      .scope-context-menu {
+        position: fixed;
+        z-index: 100;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        padding: 4px 0;
+        min-width: 160px;
+      }
+
+      .scope-context-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        font-size: 13px;
+        cursor: pointer;
+        color: var(--ink);
+        user-select: none;
+        transition: background 0.08s ease;
+      }
+
+      .scope-context-menu-item:hover {
+        background: rgba(122, 53, 255, 0.06);
+      }
+
+      .scope-context-menu-item.danger {
+        color: var(--danger);
+      }
+
+      .scope-context-menu-item.danger:hover {
+        background: #ffe5e5;
+      }
+
+      .scope-context-menu-sep {
+        height: 1px;
+        background: #eee;
+        margin: 3px 8px;
+      }
+
       /* Hide board and linear panel when home screen is visible */
       .app.home-active .workspace {
         visibility: hidden;
