@@ -123,11 +123,10 @@ test("reparentNode updates children arrays correctly", () => {
   assert.ok(model.state.nodes[b].children.includes(a1));
 });
 
-// Known bug: _isDescendant calls _requireNode which replaces the node object
+// Fixed: _isDescendant used to call _requireNode which replaced the node object
 // in state, causing the local `node` variable in reparentNode to become stale.
-// As a result, `node.parentId = newParentId` updates the stale object, not state.
-// See: _isDescendant -> _requireNode -> _normalizeNode creates new object.
-test("BUG: reparentNode does not update parentId due to stale reference", () => {
+// Fix: reparentNode now re-fetches references after _isDescendant / _pushHistory.
+test("reparentNode correctly updates parentId (stale reference bug fixed)", () => {
   const model = createModel("Root");
   const rootId = model.state.rootId;
   const a = model.addNode(rootId, "A");
@@ -136,9 +135,8 @@ test("BUG: reparentNode does not update parentId due to stale reference", () => 
 
   model.reparentNode(a1, b);
 
-  // This SHOULD be b but is still a due to the stale reference bug
-  assert.equal(model.state.nodes[a1].parentId, a,
-    "parentId is stale (known bug) -- when fixed, change this to assert === b");
+  assert.equal(model.state.nodes[a1].parentId, b,
+    "parentId should be updated to new parent after reparent");
 });
 
 test("reparentNode with subtree moves children array correctly", () => {
