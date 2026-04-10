@@ -378,6 +378,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
         sendJson(res, 400, { error: "Missing required field: nodes." });
         return true;
       }
+      const nodesObj = (candidate.state as Record<string, unknown>).nodes;
+      if (typeof nodesObj === "object" && nodesObj !== null && Object.keys(nodesObj).length === 0) {
+        sendJson(res, 400, { error: "State contains no nodes — refusing to save empty document." });
+        return true;
+      }
 
       const model = RapidMvpModel.fromJSON(candidate.state as never);
       const errors = model.validate();
