@@ -12,6 +12,7 @@ beta/.env
 beta/data/rapid-sample.json
 beta/data/*.sqlite
 beta/test-results/
+beta/tests/e2e/test-results/
 
 final/node_modules/
 final/dist/
