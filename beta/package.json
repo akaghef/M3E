@@ -15,7 +15,9 @@
     "test:visual": "playwright test",
     "test:visual:reparent": "playwright test -g \"viewer range select multi reparent\"",
     "test:visual:selection": "playwright test -g \"viewer shift arrow expands selection\"",
-    "test:visual:update": "playwright test --update-snapshots"
+    "test:visual:update": "playwright test --update-snapshots",
+    "test:e2e": "playwright test --config playwright.e2e.config.js",
+    "test:e2e:headed": "playwright test --config playwright.e2e.config.js --headed"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",
