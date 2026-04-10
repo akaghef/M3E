@@ -45,6 +45,7 @@ export interface SavedDoc {
   version: 1;
   savedAt: string;
   state: AppState;
+  docVersion?: number;
 }
 
 export type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
@@ -117,6 +118,8 @@ export interface PushResult {
   forced: boolean;
   conflict?: boolean;
   cloudSavedAt?: string | null;
+  cloudDocVersion?: number;
+  remoteState?: AppState;
   error?: string;
 }
 
@@ -126,6 +129,7 @@ export interface PullResult {
   savedAt: string;
   state: AppState;
   documentId: string;
+  docVersion?: number;
   error?: string;
 }
 
@@ -136,12 +140,13 @@ export interface SyncStatus {
   documentId: string;
   exists: boolean;
   cloudSavedAt: string | null;
+  cloudDocVersion?: number | null;
   lastSyncedAt: string | null;
 }
 
 export interface CloudSyncTransport {
   readonly mode: string;
-  push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean): Promise<PushResult>;
+  push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
   pull(docId: string): Promise<PullResult>;
   status(docId: string): Promise<SyncStatus>;
 }

@@ -6,7 +6,7 @@ import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
 import { RapidMvpModel } from "./rapid_mvp";
-import { detectCloudConflict, loadCloudSyncConfig } from "./cloud_sync";
+import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
 import type { CloudSyncTransport } from "../shared/types";
 import { createBackup, pruneOldBackups, startAutoBackup } from "./backup";
 import {
@@ -53,6 +53,7 @@ const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
+let autoSyncHandle: AutoSyncHandle | null = null;
 
 // ---------------------------------------------------------------------------
 // Doc-watch SSE (standalone, independent of collab SSE)
@@ -221,6 +222,84 @@ function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; 
   };
 }
 
+function parseBackupRoute(urlPath: string): { docId: string; backupId?: string; action?: "restore" } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  // /api/sync/backups/{docId}/restore/{backupId}
+  const restoreMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)\/restore\/([^/]+)$/);
+  if (restoreMatch) {
+    return { docId: decodeURIComponent(restoreMatch[1]), backupId: decodeURIComponent(restoreMatch[2]), action: "restore" };
+  }
+  // /api/sync/backups/{docId}/{backupId}
+  const singleMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)\/([^/]+)$/);
+  if (singleMatch) {
+    return { docId: decodeURIComponent(singleMatch[1]), backupId: decodeURIComponent(singleMatch[2]) };
+  }
+  // /api/sync/backups/{docId}
+  const listMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)$/);
+  if (listMatch) {
+    return { docId: decodeURIComponent(listMatch[1]) };
+  }
+  return null;
+}
+
+async function handleBackupApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { docId: string; backupId?: string; action?: "restore" },
+): Promise<void> {
+  // Restore endpoint
+  if (route.action === "restore" && route.backupId) {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return;
+    }
+    const backup = getConflictBackup(DATA_DIR, route.docId, route.backupId);
+    if (!backup) {
+      sendJson(res, 404, { ok: false, error: "Backup not found." });
+      return;
+    }
+    // Save the backup state to SQLite
+    const model = RapidMvpModel.fromJSON(backup.state as never);
+    const errors = model.validate();
+    if (errors.length > 0) {
+      sendJson(res, 400, { ok: false, error: `Invalid backup state: ${errors.join(" | ")}` });
+      return;
+    }
+    model.saveToSqlite(SQLITE_DB_PATH, route.docId);
+    const savedAt = new Date().toISOString();
+    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, documentId: route.docId, savedAt });
+    return;
+  }
+
+  // Single backup get/delete
+  if (route.backupId) {
+    if (req.method === "GET") {
+      const backup = getConflictBackup(DATA_DIR, route.docId, route.backupId);
+      if (!backup) {
+        sendJson(res, 404, { ok: false, error: "Backup not found." });
+        return;
+      }
+      sendJson(res, 200, { ok: true, backup });
+      return;
+    }
+    if (req.method === "DELETE") {
+      const deleted = deleteConflictBackup(DATA_DIR, route.docId, route.backupId);
+      sendJson(res, deleted ? 200 : 404, { ok: deleted, deleted, ...(deleted ? {} : { error: "Backup not found." }) });
+      return;
+    }
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return;
+  }
+
+  // List backups
+  if (req.method !== "GET") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return;
+  }
+  const backups = listConflictBackups(DATA_DIR, route.docId);
+  sendJson(res, 200, { ok: true, documentId: route.docId, backups });
+}
+
 function isLinearTransformRoute(urlPath: string): boolean {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   return pathname === "/api/linear-transform/status" || pathname === "/api/linear-transform/convert";
@@ -362,9 +441,24 @@ async function handleSyncApi(
 
   if (route.action === "pull" && req.method === "POST") {
     try {
+      // Parse body to check for localState (for conflict backup)
+      let localState: AppState | null = null;
+      try {
+        const rawBody = await readRequestBody(req);
+        const body = JSON.parse(rawBody) as { localState?: AppState };
+        if (body.localState && typeof body.localState === "object") {
+          localState = body.localState;
+        }
+      } catch {
+        // Empty or invalid body is fine for pull
+      }
+
       const result = await transport.pull(route.docId);
       if (!result.ok) {
-        sendSyncError(res, 404, "SYNC_CLOUD_NOT_FOUND", result.error || "Cloud document not found.", route.docId);
+        const isUnsupported = result.error?.includes("unsupported");
+        const statusCode = isUnsupported ? 400 : 404;
+        const code = isUnsupported ? "SYNC_CLOUD_UNSUPPORTED_FORMAT" : "SYNC_CLOUD_NOT_FOUND";
+        sendSyncError(res, statusCode, code, result.error || "Cloud document not found.", route.docId);
         return true;
       }
       const model = RapidMvpModel.fromJSON(result.state);
@@ -373,6 +467,14 @@ async function handleSyncApi(
         sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud document is invalid: ${errors.join(" | ")}`, route.docId);
         return true;
       }
+
+      // Create conflict backup of local state if provided
+      let backup: { backupId: string; reason: string; createdAt: string } | undefined;
+      if (localState) {
+        const entry = createConflictBackup(DATA_DIR, route.docId, localState, "cloud-sync-pull");
+        backup = { backupId: entry.backupId, reason: entry.reason, createdAt: entry.createdAt };
+      }
+
       sendJson(res, 200, {
         ok: true,
         mode: modeLabel,
@@ -380,6 +482,8 @@ async function handleSyncApi(
         savedAt: result.savedAt,
         state: model.toJSON(),
         documentId: route.docId,
+        docVersion: result.docVersion ?? undefined,
+        ...(backup ? { backup } : {}),
       });
     } catch (err) {
       sendSyncError(res, 500, "SYNC_PULL_FAILED", (err as Error).message || "Cloud pull failed.", route.docId);
@@ -390,7 +494,7 @@ async function handleSyncApi(
   if (route.action === "push" && req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; force?: boolean };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; baseDocVersion?: number | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
       if (!candidate.state || typeof candidate.state !== "object") {
         sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.docId);
@@ -413,10 +517,37 @@ async function handleSyncApi(
         savedAt: String(candidate.savedAt || new Date().toISOString()),
         state: model.toJSON(),
       };
-      const result = await transport.push(route.docId, payload, parsed.baseSavedAt ?? null, Boolean(parsed.force));
+      // Use pushWithConflictBackup for automatic conflict backup creation
+      const result = await pushWithConflictBackup(
+        transport,
+        route.docId,
+        payload,
+        parsed.baseSavedAt ?? null,
+        Boolean(parsed.force),
+        DATA_DIR,
+        parsed.baseDocVersion ?? null,
+      );
       if (!result.ok) {
-        const statusCode = result.error?.includes("conflict") || result.error?.includes("Conflict") ? 409 : 500;
-        sendSyncError(res, statusCode, "SYNC_PUSH_FAILED", result.error || "Cloud push failed.", route.docId);
+        const statusCode = result.conflict ? 409 : 500;
+        const code = result.conflict ? "CLOUD_CONFLICT" : "SYNC_PUSH_FAILED";
+        const extra: Record<string, unknown> = {};
+        if (result.conflict) {
+          extra.cloudSavedAt = result.cloudSavedAt ?? null;
+          extra.cloudDocVersion = result.cloudDocVersion ?? null;
+          if (result.remoteState) {
+            extra.remoteState = result.remoteState;
+          }
+          // pushWithConflictBackup already created a backup; list the latest one
+          const backups = listConflictBackups(DATA_DIR, route.docId);
+          if (backups.length > 0) {
+            extra.backup = {
+              backupId: backups[0].backupId,
+              reason: backups[0].reason,
+              createdAt: backups[0].createdAt,
+            };
+          }
+        }
+        sendSyncError(res, statusCode, code, result.error || "Cloud push failed.", route.docId, extra);
         return true;
       }
       sendJson(res, 200, {
@@ -425,6 +556,7 @@ async function handleSyncApi(
         savedAt: result.savedAt,
         documentId: route.docId,
         forced: result.forced,
+        docVersion: result.cloudDocVersion ?? undefined,
       });
     } catch (err) {
       if (err instanceof SyntaxError) {
@@ -628,6 +760,41 @@ function startServer(): void {
         .catch((err) => { console.error(`[backup] Startup backup failed: ${(err as Error).message}`); });
       startAutoBackup(SQLITE_DB_PATH, BACKUP_DIR);
     }
+    // Auto sync setup
+    if (cloudSyncConfig.autoSync && cloudTransport) {
+      autoSyncHandle = startAutoSync(cloudTransport, cloudSyncConfig.autoSyncIntervalMs, {
+        getLocalState: async () => {
+          try {
+            const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, "rapid-main");
+            return {
+              version: 1,
+              savedAt: new Date().toISOString(),
+              state: model.toJSON(),
+            };
+          } catch {
+            return null;
+          }
+        },
+        getDocId: () => "rapid-main",
+        getBaseSavedAt: () => null,
+        getBaseDocVersion: () => null,
+        onPushSuccess: (result) => {
+          console.log(`[auto-sync] Push succeeded: docVersion=${result.cloudDocVersion ?? "?"}`);
+        },
+        onConflict: (result) => {
+          console.warn(`[auto-sync] Conflict detected: cloudDocVersion=${result.cloudDocVersion ?? "?"}`);
+        },
+        onError: (error) => {
+          console.error(`[auto-sync] Error: ${error}`);
+        },
+        onPullSuccess: (result) => {
+          console.log(`[auto-sync] Initial pull succeeded: docVersion=${result.docVersion ?? "?"}`);
+        },
+        dataDir: DATA_DIR,
+      });
+      console.log(`[auto-sync] Started with interval ${cloudSyncConfig.autoSyncIntervalMs}ms`);
+    }
+
     console.log("Press Ctrl+C to stop the server.");
 
     // Keep SSE connections alive through proxies
@@ -809,6 +976,12 @@ export function createAppServer(): http.Server {
 
     if (isLinearTransformRoute(req.url ?? "/")) {
       await handleLinearTransformApi(req, res);
+      return;
+    }
+
+    const backupRoute = parseBackupRoute(req.url ?? "/");
+    if (backupRoute) {
+      await handleBackupApi(req, res, backupRoute);
       return;
     }
 

@@ -8,19 +8,37 @@ import type {
   SavedDoc,
   SyncStatus,
 } from "../shared/types";
+import { createConflictBackup } from "./conflict_backup";
 
 // ---------------------------------------------------------------------------
 // Conflict detection (shared logic)
 // ---------------------------------------------------------------------------
 
+/**
+ * Detect cloud conflict using docVersion (monotonic integer) as primary,
+ * with savedAt timestamp as fallback for backward compatibility.
+ *
+ * Returns true when the cloud document has been modified since the client
+ * last pulled (i.e., the client's base version/timestamp does not match
+ * the cloud's current version/timestamp).
+ */
 export function detectCloudConflict(
   existingCloudSavedAt: string | null,
   baseSavedAt: string | null,
   forcePush: boolean,
+  cloudDocVersion?: number | null,
+  baseDocVersion?: number | null,
 ): boolean {
   if (forcePush) {
     return false;
   }
+
+  // Prefer docVersion-based comparison when both sides provide it
+  if (cloudDocVersion != null && baseDocVersion != null) {
+    return cloudDocVersion !== baseDocVersion;
+  }
+
+  // Fallback to savedAt timestamp comparison
   if (!existingCloudSavedAt || !baseSavedAt) {
     return false;
   }
@@ -28,8 +46,60 @@ export function detectCloudConflict(
 }
 
 // ---------------------------------------------------------------------------
+// Retry helper — exponential backoff
+// ---------------------------------------------------------------------------
+
+export interface RetryOptions {
+  maxRetries?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+const DEFAULT_RETRY: Required<RetryOptions> = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 30000,
+};
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry an async function with exponential backoff.
+ * Does NOT retry on conflict (409-like) errors — only on transient failures.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  isRetryable: (error: unknown) => boolean,
+  opts?: RetryOptions,
+): Promise<T> {
+  const { maxRetries, initialDelayMs, maxDelayMs } = { ...DEFAULT_RETRY, ...opts };
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt >= maxRetries || !isRetryable(err)) {
+        throw err;
+      }
+      const delay = Math.min(initialDelayMs * Math.pow(2, attempt), maxDelayMs);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError;
+}
+
+// ---------------------------------------------------------------------------
 // FileTransport — file-based cloud sync (existing behaviour, now a class)
 // ---------------------------------------------------------------------------
+
+interface FileDoc extends SavedDoc {
+  docVersion?: number;
+}
 
 export class FileTransport implements CloudSyncTransport {
   readonly mode = "file-mirror";
@@ -45,22 +115,28 @@ export class FileTransport implements CloudSyncTransport {
     return path.join(this.dir, `${safeId}.json`);
   }
 
-  private readDoc(filePath: string): SavedDoc | null {
+  private readDoc(filePath: string): FileDoc | null {
     if (!fs.existsSync(filePath)) {
       return null;
     }
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as SavedDoc;
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as FileDoc;
     if (!parsed || parsed.version !== 1 || !parsed.state) {
       return null;
     }
     return parsed;
   }
 
-  async push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean): Promise<PushResult> {
+  async push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
     const filePath = this.docPath(docId);
     const existing = this.readDoc(filePath);
 
-    if (detectCloudConflict(existing?.savedAt ?? null, baseSavedAt, force)) {
+    if (detectCloudConflict(
+      existing?.savedAt ?? null,
+      baseSavedAt,
+      force,
+      existing?.docVersion ?? null,
+      baseDocVersion ?? null,
+    )) {
       return {
         ok: false,
         savedAt: existing?.savedAt ?? "",
@@ -68,14 +144,20 @@ export class FileTransport implements CloudSyncTransport {
         forced: false,
         conflict: true,
         cloudSavedAt: existing?.savedAt ?? null,
+        cloudDocVersion: existing?.docVersion ?? undefined,
+        remoteState: existing?.state ?? undefined,
         error: "Cloud conflict detected.",
       };
     }
 
-    const payload: SavedDoc = {
+    // Increment docVersion: if existing has one, increment it; otherwise start at 1
+    const nextDocVersion = (existing?.docVersion ?? 0) + 1;
+
+    const payload: FileDoc = {
       version: 1,
       savedAt: doc.savedAt || new Date().toISOString(),
       state: doc.state,
+      docVersion: nextDocVersion,
     };
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
     return {
@@ -83,6 +165,7 @@ export class FileTransport implements CloudSyncTransport {
       savedAt: payload.savedAt,
       documentId: docId,
       forced: force,
+      cloudDocVersion: nextDocVersion,
     };
   }
 
@@ -99,7 +182,7 @@ export class FileTransport implements CloudSyncTransport {
       };
     }
 
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as SavedDoc;
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as FileDoc;
     if (!parsed || parsed.version !== 1 || !parsed.state) {
       return {
         ok: false,
@@ -117,6 +200,7 @@ export class FileTransport implements CloudSyncTransport {
       savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
       state: parsed.state,
       documentId: docId,
+      docVersion: parsed.docVersion ?? undefined,
     };
   }
 
@@ -131,6 +215,7 @@ export class FileTransport implements CloudSyncTransport {
       documentId: docId,
       exists,
       cloudSavedAt: cloudDoc?.savedAt ?? null,
+      cloudDocVersion: cloudDoc?.docVersion ?? null,
       lastSyncedAt: exists ? fs.statSync(filePath).mtime.toISOString() : null,
     };
   }
@@ -147,6 +232,7 @@ export class FileTransport implements CloudSyncTransport {
 interface SupabaseRow {
   id: string;
   version: number;
+  doc_version: number;
   saved_at: string;
   state: Record<string, unknown>;
   created_at?: string;
@@ -198,29 +284,37 @@ export class SupabaseTransport implements CloudSyncTransport {
     return this.client;
   }
 
-  async push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean): Promise<PushResult> {
+  async push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
     const client = await this.getClient();
     const savedAt = doc.savedAt || new Date().toISOString();
 
-    // Check for conflict if not forcing
-    if (!force && baseSavedAt) {
-      const { data: existing, error: fetchErr } = await client
-        .from(this.tableName)
-        .select("saved_at")
-        .eq("id", docId)
-        .maybeSingle();
+    // Fetch existing for conflict check and version increment
+    const { data: existing, error: fetchErr } = await client
+      .from(this.tableName)
+      .select("saved_at,doc_version,state")
+      .eq("id", docId)
+      .maybeSingle();
 
-      if (fetchErr) {
-        return {
-          ok: false,
-          savedAt: "",
-          documentId: docId,
-          forced: false,
-          error: `Supabase fetch error: ${fetchErr.message}`,
-        };
-      }
+    if (fetchErr) {
+      return {
+        ok: false,
+        savedAt: "",
+        documentId: docId,
+        forced: false,
+        error: `Supabase fetch error: ${fetchErr.message}`,
+      };
+    }
 
-      if (existing && detectCloudConflict(existing.saved_at, baseSavedAt, false)) {
+    // Conflict check (unless forcing)
+    if (!force && existing) {
+      const hasConflict = detectCloudConflict(
+        existing.saved_at,
+        baseSavedAt,
+        false,
+        existing.doc_version ?? null,
+        baseDocVersion ?? null,
+      );
+      if (hasConflict) {
         return {
           ok: false,
           savedAt: existing.saved_at,
@@ -228,10 +322,15 @@ export class SupabaseTransport implements CloudSyncTransport {
           forced: false,
           conflict: true,
           cloudSavedAt: existing.saved_at,
+          cloudDocVersion: existing.doc_version ?? undefined,
+          remoteState: existing.state as unknown as AppState,
           error: "Cloud conflict detected.",
         };
       }
     }
+
+    // Increment docVersion
+    const nextDocVersion = ((existing?.doc_version as number) ?? 0) + 1;
 
     // Upsert the document
     const { error: upsertErr } = await client
@@ -240,6 +339,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         {
           id: docId,
           version: doc.version,
+          doc_version: nextDocVersion,
           saved_at: savedAt,
           state: doc.state as unknown as Record<string, unknown>,
           updated_at: new Date().toISOString(),
@@ -264,6 +364,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       savedAt,
       documentId: docId,
       forced: force,
+      cloudDocVersion: nextDocVersion,
     };
   }
 
@@ -304,6 +405,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       savedAt: data.saved_at,
       state: data.state as unknown as AppState,
       documentId: docId,
+      docVersion: data.doc_version ?? undefined,
     };
   }
 
@@ -312,7 +414,7 @@ export class SupabaseTransport implements CloudSyncTransport {
 
     const { data, error } = await client
       .from(this.tableName)
-      .select("saved_at")
+      .select("saved_at,doc_version")
       .eq("id", docId)
       .maybeSingle();
 
@@ -335,6 +437,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       documentId: docId,
       exists: !!data,
       cloudSavedAt: data?.saved_at ?? null,
+      cloudDocVersion: data?.doc_version ?? null,
       lastSyncedAt: data?.saved_at ?? null,
     };
   }
@@ -347,12 +450,17 @@ export class SupabaseTransport implements CloudSyncTransport {
 export interface CloudSyncConfig {
   enabled: boolean;
   transport: CloudSyncTransport | null;
+  autoSync: boolean;
+  autoSyncIntervalMs: number;
 }
 
 export function loadCloudSyncConfig(): CloudSyncConfig {
   const enabled = process.env.M3E_CLOUD_SYNC === "1";
+  const autoSync = process.env.M3E_AUTO_SYNC === "1";
+  const autoSyncIntervalMs = Number(process.env.M3E_AUTO_SYNC_INTERVAL_MS) || 30000;
+
   if (!enabled) {
-    return { enabled: false, transport: null };
+    return { enabled: false, transport: null, autoSync: false, autoSyncIntervalMs };
   }
 
   const transportType = (process.env.M3E_CLOUD_TRANSPORT || "file").toLowerCase();
@@ -364,14 +472,182 @@ export function loadCloudSyncConfig(): CloudSyncConfig {
       console.warn(
         "[cloud_sync] M3E_CLOUD_TRANSPORT=supabase but M3E_SUPABASE_URL or M3E_SUPABASE_ANON_KEY is missing. Falling back to disabled.",
       );
-      return { enabled: false, transport: null };
+      return { enabled: false, transport: null, autoSync: false, autoSyncIntervalMs };
     }
-    return { enabled: true, transport: new SupabaseTransport(url, anonKey) };
+    return { enabled: true, transport: new SupabaseTransport(url, anonKey), autoSync, autoSyncIntervalMs };
   }
 
   // Default: file transport
   const dir = process.env.M3E_CLOUD_DIR
     ? path.resolve(process.env.M3E_CLOUD_DIR)
     : path.join(process.env.M3E_DATA_DIR || ".", "cloud-sync");
-  return { enabled: true, transport: new FileTransport(dir) };
+  return { enabled: true, transport: new FileTransport(dir), autoSync, autoSyncIntervalMs };
+}
+
+// ---------------------------------------------------------------------------
+// Auto Sync — periodic push with debounce
+// ---------------------------------------------------------------------------
+
+export interface AutoSyncHandle {
+  stop(): void;
+  /** Force an immediate push (resets the interval timer). */
+  triggerNow(): void;
+}
+
+export interface AutoSyncCallbacks {
+  /** Return the current local state to be pushed. */
+  getLocalState: () => Promise<SavedDoc | null>;
+  /** Return the current document ID. */
+  getDocId: () => string;
+  /** Return the current baseSavedAt for conflict detection. */
+  getBaseSavedAt: () => string | null;
+  /** Return the current baseDocVersion for conflict detection. */
+  getBaseDocVersion: () => number | null;
+  /** Called when a push succeeds. */
+  onPushSuccess?: (result: PushResult) => void;
+  /** Called when a push fails with conflict. */
+  onConflict?: (result: PushResult) => void;
+  /** Called when a push fails with non-conflict error. */
+  onError?: (error: string) => void;
+  /** Called when initial pull succeeds. */
+  onPullSuccess?: (result: PullResult) => void;
+  /** Data directory for conflict backups. */
+  dataDir?: string;
+}
+
+/**
+ * Start automatic sync: pull on startup, then push at regular intervals.
+ */
+export function startAutoSync(
+  transport: CloudSyncTransport,
+  intervalMs: number,
+  callbacks: AutoSyncCallbacks,
+): AutoSyncHandle {
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let stopped = false;
+
+  const doPush = async (): Promise<void> => {
+    if (stopped) return;
+    try {
+      const doc = await callbacks.getLocalState();
+      if (!doc) return;
+
+      const docId = callbacks.getDocId();
+      const baseSavedAt = callbacks.getBaseSavedAt();
+      const baseDocVersion = callbacks.getBaseDocVersion();
+
+      const result = await withRetry(
+        () => transport.push(docId, doc, baseSavedAt, false, baseDocVersion),
+        (err) => {
+          const msg = (err as Error)?.message ?? "";
+          // Do not retry conflicts
+          return !msg.includes("conflict") && !msg.includes("Conflict");
+        },
+      );
+
+      if (result.ok) {
+        callbacks.onPushSuccess?.(result);
+      } else if (result.conflict) {
+        // Create conflict backup before notifying
+        if (callbacks.dataDir) {
+          createConflictBackup(
+            callbacks.dataDir,
+            callbacks.getDocId(),
+            doc.state,
+            "auto-sync conflict",
+          );
+        }
+        callbacks.onConflict?.(result);
+      } else {
+        callbacks.onError?.(result.error || "Push failed.");
+      }
+    } catch (err) {
+      callbacks.onError?.((err as Error).message || "Auto-sync push error.");
+    }
+  };
+
+  // Initial pull on startup
+  const initialPull = async (): Promise<void> => {
+    try {
+      const docId = callbacks.getDocId();
+      const result = await withRetry(
+        () => transport.pull(docId),
+        () => true, // retry all transient errors on pull
+      );
+      if (result.ok) {
+        callbacks.onPullSuccess?.(result);
+      }
+    } catch (err) {
+      callbacks.onError?.(`Initial pull failed: ${(err as Error).message}`);
+    }
+  };
+
+  // Start: pull first, then begin periodic push
+  initialPull().then(() => {
+    if (stopped) return;
+    timer = setInterval(doPush, intervalMs);
+  });
+
+  return {
+    stop() {
+      stopped = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    },
+    triggerNow() {
+      // Reset timer and push immediately
+      if (timer) {
+        clearInterval(timer);
+      }
+      doPush().then(() => {
+        if (!stopped) {
+          timer = setInterval(doPush, intervalMs);
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Stop auto sync.
+ */
+export function stopAutoSync(handle: AutoSyncHandle): void {
+  handle.stop();
+}
+
+// ---------------------------------------------------------------------------
+// Push with conflict backup — convenience wrapper
+// ---------------------------------------------------------------------------
+
+/**
+ * Push with automatic conflict backup creation.
+ * When push returns a conflict (409), saves the local state as a backup
+ * and returns the conflict result with remoteState for the caller to
+ * decide how to proceed.
+ */
+export async function pushWithConflictBackup(
+  transport: CloudSyncTransport,
+  docId: string,
+  doc: SavedDoc,
+  baseSavedAt: string | null,
+  force: boolean,
+  dataDir: string,
+  baseDocVersion?: number | null,
+): Promise<PushResult> {
+  const result = await withRetry(
+    () => transport.push(docId, doc, baseSavedAt, force, baseDocVersion),
+    (err) => {
+      const msg = (err as Error)?.message ?? "";
+      return !msg.includes("conflict") && !msg.includes("Conflict");
+    },
+  );
+
+  if (!result.ok && result.conflict) {
+    // Save local state as conflict backup before caller pulls remote
+    createConflictBackup(dataDir, docId, doc.state, "cloud-conflict-push");
+  }
+
+  return result;
 }
