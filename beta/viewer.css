@@ -632,11 +632,11 @@
         margin: 0;
       }
 
-      /* ── Entity List Panel ── */
+      /* ── Entity List Panel (left sidebar, Miro Frames-style) ── */
       .entity-list-panel {
         position: absolute;
         top: 60px;
-        right: 14px;
+        left: 14px;
         z-index: 12;
         width: 320px;
         max-height: calc(100vh - 90px);
@@ -805,6 +805,90 @@
         border-radius: 2px;
       }
 
+      /* ── Entity Scope List (Frames-style) ── */
+      .entity-scope-list {
+        padding: 6px 10px 2px;
+        border-bottom: 1px solid #e8e8e8;
+        flex-shrink: 0;
+        max-height: 160px;
+        overflow-y: auto;
+      }
+
+      .entity-scope-list:empty {
+        display: none;
+      }
+
+      .entity-scope-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.08s ease;
+        font-size: 12px;
+        color: var(--ink);
+        line-height: 1.4;
+      }
+
+      .entity-scope-row:hover {
+        background: rgba(122, 53, 255, 0.06);
+      }
+
+      .entity-scope-row.is-current-scope {
+        background: var(--accent-soft);
+        color: #5221b2;
+        font-weight: 600;
+      }
+
+      .entity-scope-icon {
+        flex-shrink: 0;
+        font-size: 11px;
+        color: #9a6b1f;
+      }
+
+      .entity-scope-name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .entity-scope-count {
+        font-size: 10px;
+        color: #999;
+        flex-shrink: 0;
+      }
+
+      /* ── Presence Badge ── */
+      .presence-badge {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        border: 1.5px solid #fff;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+        margin-left: 2px;
+      }
+
+      .presence-badges {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        flex-shrink: 0;
+        margin-left: auto;
+        padding-left: 4px;
+      }
+
+      /* ── Change Highlight (away changes) ── */
+      .entity-row.has-changes {
+        border-left: 3px solid #e0a35c;
+        padding-left: 11px;
+      }
+
       /* ── Conflict Panel ── */
       .conflict-panel {
         position: absolute;
@@ -968,7 +1052,7 @@
       @media (max-width: 900px) {
         .entity-list-panel {
           width: 280px;
-          right: 10px;
+          left: 10px;
           top: 56px;
         }
 

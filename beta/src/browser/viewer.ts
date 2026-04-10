@@ -45,6 +45,7 @@ const entityListPanelEl = document.getElementById("entity-list-panel") as HTMLEl
 const entityListTreeEl = document.getElementById("entity-list-tree") as HTMLElement | null;
 const entityListSearchEl = document.getElementById("entity-list-search") as HTMLInputElement | null;
 const entityListCloseBtn = document.getElementById("entity-list-close") as HTMLButtonElement | null;
+const entityScopeListEl = document.getElementById("entity-scope-list") as HTMLElement | null;
 const conflictPanelEl = document.getElementById("conflict-panel") as HTMLElement | null;
 const conflictLocalTreeEl = document.getElementById("conflict-local-tree") as HTMLElement | null;
 const conflictRemoteTreeEl = document.getElementById("conflict-remote-tree") as HTMLElement | null;
@@ -133,6 +134,9 @@ let linearAdjustMenuOpen = false;
 let linearMenuVisible = false;
 let homeScreenVisible = false;
 let entityListVisible = false;
+let presenceMap: Map<string, { userId: string; color: string; nodeId: string }[]> = new Map();
+let presenceEs: EventSource | null = null;
+let changedNodeIds: Set<string> = new Set();
 let conflictPanelVisible = false;
 let conflictRemoteState: AppState | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
@@ -3187,6 +3191,8 @@ function buildEntityList(query = ""): void {
   const filtered = filterEntityTree(allNodes, query);
   const forceExpand = Boolean(query);
   renderEntityTree(entityListTreeEl, filtered, query, forceExpand);
+  applyPresenceBadges();
+  applyChangeHighlights();
 }
 
 function showEntityListPanel(): void {
@@ -3198,7 +3204,11 @@ function showEntityListPanel(): void {
   if (entityListSearchEl) {
     entityListSearchEl.value = "";
   }
+  buildEntityScopeList();
   buildEntityList();
+  startPresenceWatch();
+  applyPresenceBadges();
+  fetchChangedNodes();
 }
 
 function hideEntityListPanel(): void {
@@ -3207,6 +3217,7 @@ function hideEntityListPanel(): void {
   }
   entityListVisible = false;
   entityListPanelEl.hidden = true;
+  stopPresenceWatch();
   board.focus();
 }
 
@@ -3230,6 +3241,210 @@ if (entityListSearchEl) {
 if (entityListCloseBtn) {
   entityListCloseBtn.addEventListener("click", () => {
     hideEntityListPanel();
+  });
+}
+
+// ---- Entity Scope List (Frames-style) ----
+
+function buildEntityScopeList(): void {
+  if (!entityScopeListEl || !doc) {
+    return;
+  }
+  entityScopeListEl.innerHTML = "";
+
+  const rootId = doc.state.rootId;
+  const folders = collectFolderTree(rootId);
+  const currentScope = currentScopeRootId();
+
+  // Add root scope entry
+  const rootRow = document.createElement("div");
+  rootRow.className = "entity-scope-row" + (currentScope === rootId ? " is-current-scope" : "");
+  rootRow.dataset.scopeId = rootId;
+
+  const rootIcon = document.createElement("span");
+  rootIcon.className = "entity-scope-icon";
+  rootIcon.textContent = "\u25C6";
+
+  const rootName = document.createElement("span");
+  rootName.className = "entity-scope-name";
+  rootName.textContent = uiLabel(doc.state.nodes[rootId]) || "Root";
+
+  rootRow.appendChild(rootIcon);
+  rootRow.appendChild(rootName);
+  entityScopeListEl.appendChild(rootRow);
+
+  rootRow.addEventListener("click", () => {
+    EnterScopeCommand(rootId);
+    buildEntityScopeList();
+    buildEntityList(entityListSearchEl?.value.trim() || "");
+  });
+
+  // Add folder scopes recursively
+  renderEntityScopeItems(entityScopeListEl, folders, currentScope, 1);
+}
+
+function renderEntityScopeItems(
+  container: HTMLElement,
+  folders: ReturnType<typeof collectFolderTree>,
+  currentScope: string,
+  depth: number,
+): void {
+  for (const folder of folders) {
+    const row = document.createElement("div");
+    row.className = "entity-scope-row" + (currentScope === folder.id ? " is-current-scope" : "");
+    row.dataset.scopeId = folder.id;
+    row.style.paddingLeft = `${8 + depth * 12}px`;
+
+    const icon = document.createElement("span");
+    icon.className = "entity-scope-icon";
+    icon.textContent = "\u25C7";
+
+    const name = document.createElement("span");
+    name.className = "entity-scope-name";
+    name.textContent = folder.label;
+
+    const count = document.createElement("span");
+    count.className = "entity-scope-count";
+    count.textContent = `${folder.childCount}`;
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(count);
+    container.appendChild(row);
+
+    row.addEventListener("click", () => {
+      EnterScopeCommand(folder.id);
+      buildEntityScopeList();
+      buildEntityList(entityListSearchEl?.value.trim() || "");
+    });
+
+    if (folder.subFolders.length > 0) {
+      renderEntityScopeItems(container, folder.subFolders, currentScope, depth + 1);
+    }
+  }
+}
+
+// ---- Presence Badges ----
+
+function startPresenceWatch(): void {
+  if (presenceEs) {
+    return;
+  }
+  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/presence`;
+  presenceEs = new EventSource(url);
+  presenceEs.addEventListener("message", (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data && typeof data === "object") {
+        updatePresenceMap(data);
+        if (entityListVisible) {
+          applyPresenceBadges();
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  });
+  presenceEs.addEventListener("error", () => {
+    stopPresenceWatch();
+  });
+}
+
+function stopPresenceWatch(): void {
+  if (presenceEs) {
+    presenceEs.close();
+    presenceEs = null;
+  }
+}
+
+function updatePresenceMap(data: Record<string, unknown>): void {
+  presenceMap.clear();
+  const users = (data as { users?: { userId: string; color?: string; nodeId?: string }[] }).users;
+  if (!Array.isArray(users)) {
+    return;
+  }
+  for (const user of users) {
+    if (!user.nodeId) {
+      continue;
+    }
+    const existing = presenceMap.get(user.nodeId) || [];
+    existing.push({
+      userId: user.userId,
+      color: user.color || "#ff6b6b",
+      nodeId: user.nodeId,
+    });
+    presenceMap.set(user.nodeId, existing);
+  }
+}
+
+function applyPresenceBadges(): void {
+  if (!entityListTreeEl) {
+    return;
+  }
+  // Remove existing badges
+  const existingBadges = entityListTreeEl.querySelectorAll(".presence-badges");
+  existingBadges.forEach((el) => el.remove());
+
+  // Apply new badges
+  presenceMap.forEach((users, nodeId) => {
+    const row = entityListTreeEl!.querySelector(`[data-node-id="${nodeId}"]`);
+    if (!row) {
+      return;
+    }
+    const badgesContainer = document.createElement("span");
+    badgesContainer.className = "presence-badges";
+    for (const user of users.slice(0, 3)) {
+      const badge = document.createElement("span");
+      badge.className = "presence-badge";
+      badge.style.backgroundColor = user.color;
+      badge.title = user.userId;
+      badgesContainer.appendChild(badge);
+    }
+    if (users.length > 3) {
+      const more = document.createElement("span");
+      more.className = "presence-badge";
+      more.style.backgroundColor = "#999";
+      more.title = `+${users.length - 3} more`;
+      badgesContainer.appendChild(more);
+    }
+    row.appendChild(badgesContainer);
+  });
+}
+
+// ---- Away Changes (audit infrastructure) ----
+
+function fetchChangedNodes(): void {
+  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/audit?since=last-session`;
+  fetch(url, { cache: "no-store" })
+    .then((r) => {
+      if (!r.ok) {
+        return null;
+      }
+      return r.json();
+    })
+    .then((data) => {
+      if (!data || !Array.isArray(data.changedNodeIds)) {
+        return;
+      }
+      changedNodeIds = new Set(data.changedNodeIds as string[]);
+      if (entityListVisible) {
+        applyChangeHighlights();
+      }
+    })
+    .catch(() => {
+      // audit endpoint may not exist yet
+    });
+}
+
+function applyChangeHighlights(): void {
+  if (!entityListTreeEl || changedNodeIds.size === 0) {
+    return;
+  }
+  changedNodeIds.forEach((nodeId) => {
+    const row = entityListTreeEl!.querySelector(`[data-node-id="${nodeId}"]`);
+    if (row) {
+      row.classList.add("has-changes");
+    }
   });
 }
 
