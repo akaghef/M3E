@@ -1,7 +1,6 @@
 "use strict";
 
-const { describe, it, before, after } = require("node:test");
-const assert = require("node:assert/strict");
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 const http = require("http");
 
 const { createAppServer } = require("../../dist/node/start_viewer");
@@ -46,7 +45,7 @@ async function request(method, path, body, headers = {}) {
 const COLLAB_ENABLED = process.env.M3E_COLLAB === "1";
 
 describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
-  before(async () => {
+  beforeAll(async () => {
     server = createAppServer();
     await new Promise((resolve) => {
       server.listen(0, "127.0.0.1", () => {
@@ -57,7 +56,7 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     });
   });
 
-  after(() => {
+  afterAll(() => {
     server?.close();
   });
 
@@ -67,11 +66,11 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
       role: "human",
       capabilities: ["read", "write"],
     });
-    assert.equal(res.status, 200);
-    assert.equal(res.json.ok, true);
-    assert.ok(res.json.entityId.startsWith("e_"));
-    assert.ok(res.json.token.startsWith("tok_"));
-    assert.equal(res.json.priority, 100);
+    expect(res.status).toBe(200);
+    expect(res.json.ok).toBe(true);
+    expect(res.json.entityId.startsWith("e_")).toBe(true);
+    expect(res.json.token.startsWith("tok_")).toBe(true);
+    expect(res.json.priority).toBe(100);
   });
 
   it("register rejects invalid role", async () => {
@@ -79,12 +78,12 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
       displayName: "bad",
       role: "superadmin",
     });
-    assert.equal(res.status, 400);
+    expect(res.status).toBe(400);
   });
 
   it("unauthenticated request returns 401", async () => {
     const res = await request("POST", "/api/collab/heartbeat", {});
-    assert.equal(res.status, 401);
+    expect(res.status).toBe(401);
   });
 
   it("authenticated heartbeat succeeds", async () => {
@@ -97,8 +96,8 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     const res = await request("POST", "/api/collab/heartbeat", { lockIds: [] }, {
       Authorization: `Bearer ${token}`,
     });
-    assert.equal(res.status, 200);
-    assert.equal(res.json.ok, true);
+    expect(res.status).toBe(200);
+    expect(res.json.ok).toBe(true);
   });
 
   it("scope lock acquire and release", async () => {
@@ -111,15 +110,15 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
 
     // Acquire
     const lockRes = await request("POST", "/api/collab/scope/folder_123/lock", null, auth);
-    assert.equal(lockRes.status, 200);
-    assert.equal(lockRes.json.ok, true);
-    assert.ok(lockRes.json.lockId.startsWith("lock_"));
-    assert.ok(lockRes.json.expiresAt);
+    expect(lockRes.status).toBe(200);
+    expect(lockRes.json.ok).toBe(true);
+    expect(lockRes.json.lockId.startsWith("lock_")).toBe(true);
+    expect(lockRes.json.expiresAt).toBeTruthy();
 
     // Release
     const releaseRes = await request("DELETE", "/api/collab/scope/folder_123/lock", null, auth);
-    assert.equal(releaseRes.status, 200);
-    assert.equal(releaseRes.json.ok, true);
+    expect(releaseRes.status).toBe(200);
+    expect(releaseRes.json.ok).toBe(true);
   });
 
   it("higher priority preempts lock", async () => {
@@ -138,8 +137,8 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     });
     const humanAuth = { Authorization: `Bearer ${humanReg.json.token}` };
     const preemptRes = await request("POST", "/api/collab/scope/scope_preempt/lock", null, humanAuth);
-    assert.equal(preemptRes.status, 200);
-    assert.equal(preemptRes.json.ok, true);
+    expect(preemptRes.status).toBe(200);
+    expect(preemptRes.json.ok).toBe(true);
   });
 
   it("lower priority cannot preempt lock", async () => {
@@ -151,14 +150,14 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     const humanAuth = { Authorization: `Bearer ${humanReg.json.token}` };
     await request("POST", "/api/collab/scope/scope_no_preempt/lock", null, humanAuth);
 
-    // AI tries to lock → 409
+    // AI tries to lock -> 409
     const aiReg = await request("POST", "/api/collab/register", {
       displayName: "ai-blocked",
       role: "ai",
     });
     const aiAuth = { Authorization: `Bearer ${aiReg.json.token}` };
     const failRes = await request("POST", "/api/collab/scope/scope_no_preempt/lock", null, aiAuth);
-    assert.equal(failRes.status, 409);
+    expect(failRes.status).toBe(409);
   });
 
   it("entities list returns active entities", async () => {
@@ -169,9 +168,9 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     const auth = { Authorization: `Bearer ${reg.json.token}` };
 
     const res = await request("GET", "/api/collab/entities/test-doc", null, auth);
-    assert.equal(res.status, 200);
-    assert.ok(Array.isArray(res.json.entities));
-    assert.ok(res.json.entities.length > 0);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.json.entities)).toBe(true);
+    expect(res.json.entities.length > 0).toBe(true);
   });
 
   it("unregister removes entity", async () => {
@@ -182,11 +181,11 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     const auth = { Authorization: `Bearer ${reg.json.token}` };
 
     const res = await request("DELETE", "/api/collab/unregister", null, auth);
-    assert.equal(res.status, 200);
+    expect(res.status).toBe(200);
 
     // Subsequent request should fail
     const hb = await request("POST", "/api/collab/heartbeat", {}, auth);
-    assert.equal(hb.status, 401);
+    expect(hb.status).toBe(401);
   });
 
   it("SSE endpoint returns event-stream headers", async () => {
@@ -207,7 +206,7 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
           headers: { Authorization: `Bearer ${reg.json.token}` },
         },
         (res) => {
-          assert.equal(res.headers["content-type"], "text/event-stream");
+          expect(res.headers["content-type"]).toBe("text/event-stream");
           res.destroy(); // Close immediately, don't wait for stream
           resolve();
         },
@@ -219,7 +218,7 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
 });
 
 describe("Collab API disabled", { skip: COLLAB_ENABLED }, () => {
-  before(async () => {
+  beforeAll(async () => {
     server = createAppServer();
     await new Promise((resolve) => {
       server.listen(0, "127.0.0.1", () => {
@@ -230,7 +229,7 @@ describe("Collab API disabled", { skip: COLLAB_ENABLED }, () => {
     });
   });
 
-  after(() => {
+  afterAll(() => {
     server?.close();
   });
 
@@ -239,6 +238,6 @@ describe("Collab API disabled", { skip: COLLAB_ENABLED }, () => {
       displayName: "test",
       role: "human",
     });
-    assert.equal(res.status, 404);
+    expect(res.status).toBe(404);
   });
 });

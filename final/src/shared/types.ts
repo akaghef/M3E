@@ -45,6 +45,7 @@ export interface SavedDoc {
   version: 1;
   savedAt: string;
   state: AppState;
+  docVersion?: number;
 }
 
 export type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
@@ -104,6 +105,109 @@ export interface AiStatusResponse {
   endpoint: string | null;
   message: string;
   features: Record<string, AiFeatureStatus>;
+}
+
+// ---------------------------------------------------------------------------
+// Cloud Sync Transport
+// ---------------------------------------------------------------------------
+
+export interface PushResult {
+  ok: boolean;
+  savedAt: string;
+  documentId: string;
+  forced: boolean;
+  conflict?: boolean;
+  cloudSavedAt?: string | null;
+  cloudDocVersion?: number;
+  remoteState?: AppState;
+  error?: string;
+}
+
+export interface PullResult {
+  ok: boolean;
+  version: number;
+  savedAt: string;
+  state: AppState;
+  documentId: string;
+  docVersion?: number;
+  error?: string;
+}
+
+export interface SyncStatus {
+  ok: boolean;
+  enabled: boolean;
+  mode: string;
+  documentId: string;
+  exists: boolean;
+  cloudSavedAt: string | null;
+  cloudDocVersion?: number | null;
+  lastSyncedAt: string | null;
+}
+
+export interface CloudSyncTransport {
+  readonly mode: string;
+  push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
+  pull(docId: string): Promise<PullResult>;
+  status(docId: string): Promise<SyncStatus>;
+}
+
+// ---------------------------------------------------------------------------
+// Flash Ingest Pipeline
+// ---------------------------------------------------------------------------
+
+export type FlashSourceType = "text" | "markdown";
+
+export type FlashDraftStatus = "pending" | "approved" | "partial" | "rejected";
+
+export interface DraftNode {
+  tempId: string;
+  parentTempId: string | null;
+  text: string;
+  details: string;
+  note: string;
+  confidence: number;
+  sourceRef: string;
+  attributes: Record<string, string>;
+}
+
+export interface StructuredDraft {
+  nodes: DraftNode[];
+  suggestedParentId: string | null;
+}
+
+export interface FlashDraft {
+  id: string;
+  docId: string;
+  sourceType: FlashSourceType;
+  sourceRef: string;
+  title: string;
+  extractedText: string;
+  structured: StructuredDraft;
+  status: FlashDraftStatus;
+  approvedNodeIds: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FlashIngestRequest {
+  docId: string;
+  sourceType: FlashSourceType;
+  content: string;
+  options?: {
+    maxDepth?: number;
+    targetNodeId?: string;
+  };
+}
+
+export interface FlashIngestBatchRequest {
+  items: FlashIngestRequest[];
+}
+
+export interface FlashApproveRequest {
+  mode: "all" | "partial";
+  selectedNodeIds?: string[];
+  targetParentId?: string;
+  edits?: Record<string, { text?: string; details?: string; note?: string }>;
 }
 
 export interface AiSubagentRequest {

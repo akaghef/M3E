@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-09T00:00:00.000Z",
+  "state": {
+    "rootId": "root",
+    "nodes": {
+      "root": {
+        "id": "root",
+        "parentId": null,
+        "children": ["child-a", "child-b", "child-c"],
+        "nodeType": "text",
+        "text": "Test Root",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "child-a": {
+        "id": "child-a",
+        "parentId": "root",
+        "children": ["grandchild-a1", "grandchild-a2"],
+        "nodeType": "text",
+        "text": "Child A",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "child-b": {
+        "id": "child-b",
+        "parentId": "root",
+        "children": [],
+        "nodeType": "text",
+        "text": "Child B",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "child-c": {
+        "id": "child-c",
+        "parentId": "root",
+        "children": ["grandchild-c1"],
+        "nodeType": "text",
+        "text": "Child C",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "grandchild-a1": {
+        "id": "grandchild-a1",
+        "parentId": "child-a",
+        "children": [],
+        "nodeType": "text",
+        "text": "Grandchild A1",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "grandchild-a2": {
+        "id": "grandchild-a2",
+        "parentId": "child-a",
+        "children": [],
+        "nodeType": "text",
+        "text": "Grandchild A2",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "grandchild-c1": {
+        "id": "grandchild-c1",
+        "parentId": "child-c",
+        "children": [],
+        "nodeType": "text",
+        "text": "Grandchild C1",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      }
+    }
+  }
+}

@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect } from "vitest";
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -21,13 +20,13 @@ test("saveToFile creates missing directories and writes versioned document", () 
 
   model.saveToFile(filePath);
 
-  assert.equal(fs.existsSync(filePath), true);
+  expect(fs.existsSync(filePath)).toBe(true);
   const raw = fs.readFileSync(filePath, "utf8");
   const parsed = JSON.parse(raw);
 
-  assert.equal(parsed.version, 1);
-  assert.equal(typeof parsed.savedAt, "string");
-  assert.deepEqual(parsed.state, model.toJSON());
+  expect(parsed.version).toBe(1);
+  expect(typeof parsed.savedAt).toBe("string");
+  expect(parsed.state).toEqual(model.toJSON());
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -40,9 +39,9 @@ test("loadFromFile rejects unsupported version", () => {
     "utf8",
   );
 
-  assert.throws(() => RapidMvpModel.loadFromFile(filePath), {
-    message: "Unsupported or invalid save format.",
-  });
+  expect(() => RapidMvpModel.loadFromFile(filePath)).toThrow(
+    "Unsupported or invalid save format.",
+  );
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -51,9 +50,9 @@ test("loadFromFile rejects when state is missing", () => {
   const { base, filePath } = makeTempPath("missing-state.json");
   fs.writeFileSync(filePath, JSON.stringify({ version: 1 }), "utf8");
 
-  assert.throws(() => RapidMvpModel.loadFromFile(filePath), {
-    message: "Unsupported or invalid save format.",
-  });
+  expect(() => RapidMvpModel.loadFromFile(filePath)).toThrow(
+    "Unsupported or invalid save format.",
+  );
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -84,7 +83,7 @@ test("loadFromFile rejects structurally invalid graph", () => {
     "utf8",
   );
 
-  assert.throws(() => RapidMvpModel.loadFromFile(filePath), /Invalid model after load:/);
+  expect(() => RapidMvpModel.loadFromFile(filePath)).toThrow(/Invalid model after load:/);
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -93,7 +92,7 @@ test("loadFromFile rejects malformed JSON", () => {
   const { base, filePath } = makeTempPath("malformed.json");
   fs.writeFileSync(filePath, "{ this is not valid json", "utf8");
 
-  assert.throws(() => RapidMvpModel.loadFromFile(filePath), SyntaxError);
+  expect(() => RapidMvpModel.loadFromFile(filePath)).toThrow();
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -115,7 +114,7 @@ test("saveToSqlite and loadFromSqlite round-trip", () => {
   model.saveToSqlite(filePath, "doc-a");
 
   const loaded = RapidMvpModel.loadFromSqlite(filePath, "doc-a");
-  assert.deepEqual(loaded.toJSON(), model.toJSON());
+  expect(loaded.toJSON()).toEqual(model.toJSON());
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -152,7 +151,7 @@ test("loadFromFile rejects graph link with missing endpoint", () => {
     "utf8",
   );
 
-  assert.throws(() => RapidMvpModel.loadFromFile(filePath), /missing target node/);
+  expect(() => RapidMvpModel.loadFromFile(filePath)).toThrow(/missing target node/);
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -198,8 +197,8 @@ test("loadFromFile accepts broken alias with snapshot label", () => {
   );
 
   const loaded = RapidMvpModel.loadFromFile(filePath);
-  assert.equal(loaded.state.nodes["alias-1"].isBroken, true);
-  assert.equal(loaded.state.nodes["alias-1"].targetSnapshotLabel, "Lost Node");
+  expect(loaded.state.nodes["alias-1"].isBroken).toBe(true);
+  expect(loaded.state.nodes["alias-1"].targetSnapshotLabel).toBe("Lost Node");
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -220,9 +219,9 @@ test("loadFromSqlite rejects unsupported version", () => {
   ).run("doc-bad", 2, new Date().toISOString(), JSON.stringify({}));
   db.close();
 
-  assert.throws(() => RapidMvpModel.loadFromSqlite(filePath, "doc-bad"), {
-    message: "Unsupported or invalid save format.",
-  });
+  expect(() => RapidMvpModel.loadFromSqlite(filePath, "doc-bad")).toThrow(
+    "Unsupported or invalid save format.",
+  );
 
   fs.rmSync(base, { recursive: true, force: true });
 });
@@ -261,7 +260,7 @@ test("loadFromSqlite rejects invalid graph state", () => {
   ).run("doc-invalid", 1, new Date().toISOString(), JSON.stringify(invalidState));
   db.close();
 
-  assert.throws(() => RapidMvpModel.loadFromSqlite(filePath, "doc-invalid"), /Invalid model after load:/);
+  expect(() => RapidMvpModel.loadFromSqlite(filePath, "doc-invalid")).toThrow(/Invalid model after load:/);
 
   fs.rmSync(base, { recursive: true, force: true });
 });

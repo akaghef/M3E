@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect } from "vitest";
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -12,17 +11,17 @@ test("addNode updates parent children", () => {
 
   const childId = model.addNode(rootId, "Child A");
 
-  assert.deepEqual(model.state.nodes[rootId].children, [childId]);
-  assert.equal(model.state.nodes[childId].parentId, rootId);
-  assert.equal(model.state.nodes[childId].text, "Child A");
+  expect(model.state.nodes[rootId].children).toEqual([childId]);
+  expect(model.state.nodes[childId].parentId).toBe(rootId);
+  expect(model.state.nodes[childId].text).toBe("Child A");
 });
 
 test("addSibling on root throws", () => {
   const model = new RapidMvpModel("Root");
 
-  assert.throws(() => model.addSibling(model.state.rootId, "S"), {
-    message: "Root node cannot have siblings.",
-  });
+  expect(() => model.addSibling(model.state.rootId, "S")).toThrow(
+    "Root node cannot have siblings.",
+  );
 });
 
 test("deleteNode removes subtree", () => {
@@ -33,9 +32,9 @@ test("deleteNode removes subtree", () => {
 
   model.deleteNode(a);
 
-  assert.equal(model.state.nodes[a], undefined);
-  assert.equal(model.state.nodes[b], undefined);
-  assert.deepEqual(model.state.nodes[rootId].children, []);
+  expect(model.state.nodes[a]).toBeUndefined();
+  expect(model.state.nodes[b]).toBeUndefined();
+  expect(model.state.nodes[rootId].children).toEqual([]);
 });
 
 test("deleteNode keeps alias as broken reference", () => {
@@ -46,11 +45,11 @@ test("deleteNode keeps alias as broken reference", () => {
 
   model.deleteNode(targetId);
 
-  assert.equal(model.state.nodes[targetId], undefined);
-  assert.equal(model.state.nodes[aliasId].nodeType, "alias");
-  assert.equal(model.state.nodes[aliasId].isBroken, true);
-  assert.equal(model.state.nodes[aliasId].targetSnapshotLabel, "Target");
-  assert.equal(model.state.nodes[aliasId].text, "Target (deleted)");
+  expect(model.state.nodes[targetId]).toBeUndefined();
+  expect(model.state.nodes[aliasId].nodeType).toBe("alias");
+  expect(model.state.nodes[aliasId].isBroken).toBe(true);
+  expect(model.state.nodes[aliasId].targetSnapshotLabel).toBe("Target");
+  expect(model.state.nodes[aliasId].text).toBe("Target (deleted)");
 });
 
 test("addAlias stores access and label", () => {
@@ -62,10 +61,10 @@ test("addAlias stores access and label", () => {
     access: "write",
   });
 
-  assert.equal(model.state.nodes[aliasId].targetNodeId, targetId);
-  assert.equal(model.state.nodes[aliasId].aliasLabel, "Shortcut");
-  assert.equal(model.state.nodes[aliasId].access, "write");
-  assert.equal(model.state.nodes[aliasId].text, "Shortcut");
+  expect(model.state.nodes[aliasId].targetNodeId).toBe(targetId);
+  expect(model.state.nodes[aliasId].aliasLabel).toBe("Shortcut");
+  expect(model.state.nodes[aliasId].access).toBe("write");
+  expect(model.state.nodes[aliasId].text).toBe("Shortcut");
 });
 
 test("addLink stores graph link in state", () => {
@@ -81,10 +80,10 @@ test("addLink stores graph link in state", () => {
     style: "dashed",
   });
 
-  assert.equal(model.state.links[linkId].sourceNodeId, a);
-  assert.equal(model.state.links[linkId].targetNodeId, b);
-  assert.equal(model.state.links[linkId].direction, "forward");
-  assert.equal(model.state.links[linkId].style, "dashed");
+  expect(model.state.links[linkId].sourceNodeId).toBe(a);
+  expect(model.state.links[linkId].targetNodeId).toBe(b);
+  expect(model.state.links[linkId].direction).toBe("forward");
+  expect(model.state.links[linkId].style).toBe("dashed");
 });
 
 test("deleteNode removes graph links touching deleted nodes", () => {
@@ -96,7 +95,7 @@ test("deleteNode removes graph links touching deleted nodes", () => {
 
   model.deleteNode(a);
 
-  assert.equal(model.state.links[linkId], undefined);
+  expect(model.state.links[linkId]).toBeUndefined();
 });
 
 test("validate rejects alias targeting alias", () => {
@@ -111,7 +110,7 @@ test("validate rejects alias targeting alias", () => {
   model.state.nodes[badAliasId].access = "read";
   model.state.nodes[badAliasId].children = [];
 
-  assert.match(model.validate().join(" | "), /cannot target alias node/);
+  expect(model.validate().join(" | ")).toMatch(/cannot target alias node/);
 });
 
 test("validate rejects graph link with alias endpoint", () => {
@@ -130,7 +129,7 @@ test("validate rejects graph link with alias endpoint", () => {
     },
   };
 
-  assert.match(model.validate().join(" | "), /cannot use alias source node/);
+  expect(model.validate().join(" | ")).toMatch(/cannot use alias source node/);
 });
 
 test("reparentNode rejects cycle", () => {
@@ -139,9 +138,9 @@ test("reparentNode rejects cycle", () => {
   const a = model.addNode(rootId, "A");
   const b = model.addNode(a, "B");
 
-  assert.throws(() => model.reparentNode(a, b), {
-    message: "Cycle detected: cannot move node under its descendant.",
-  });
+  expect(() => model.reparentNode(a, b)).toThrow(
+    "Cycle detected: cannot move node under its descendant.",
+  );
 });
 
 test("undo and redo restore previous state", () => {
@@ -150,13 +149,13 @@ test("undo and redo restore previous state", () => {
   const a = model.addNode(rootId, "A");
 
   model.editNode(a, "A2");
-  assert.equal(model.state.nodes[a].text, "A2");
+  expect(model.state.nodes[a].text).toBe("A2");
 
-  assert.equal(model.undo(), true);
-  assert.equal(model.state.nodes[a].text, "A");
+  expect(model.undo()).toBe(true);
+  expect(model.state.nodes[a].text).toBe("A");
 
-  assert.equal(model.redo(), true);
-  assert.equal(model.state.nodes[a].text, "A2");
+  expect(model.redo()).toBe(true);
+  expect(model.state.nodes[a].text).toBe("A2");
 });
 
 test("saveToFile and loadFromFile round-trip", () => {
@@ -171,7 +170,7 @@ test("saveToFile and loadFromFile round-trip", () => {
   model.saveToFile(savePath);
   const loaded = RapidMvpModel.loadFromFile(savePath);
 
-  assert.deepEqual(loaded.toJSON(), model.toJSON());
+  expect(loaded.toJSON()).toEqual(model.toJSON());
 });
 
 test("queryNodes returns only subtree under scope", () => {
@@ -183,16 +182,29 @@ test("queryNodes returns only subtree under scope", () => {
 
   const scoped = model.queryNodes(a).map((node) => node.id);
 
-  assert.deepEqual(scoped, [a, a1]);
-  assert.equal(scoped.includes(b), false);
+  expect(scoped).toEqual([a, a1]);
+  expect(scoped.includes(b)).toBe(false);
 });
 
 test("queryNodes with unknown scope throws", () => {
   const model = new RapidMvpModel("Root");
 
-  assert.throws(() => model.queryNodes("missing"), {
-    message: "Node not found: missing",
-  });
+  expect(() => model.queryNodes("missing")).toThrow(
+    "Node not found: missing",
+  );
+});
+
+test("fromJSON handles missing nodes gracefully", () => {
+  const model = RapidMvpModel.fromJSON({ rootId: "r", nodes: undefined, links: {} });
+  expect(model.state.nodes).toEqual({});
+});
+
+test("fromJSON handles missing links gracefully", () => {
+  const base = new RapidMvpModel("Root");
+  const json = base.toJSON();
+  delete json.links;
+  const restored = RapidMvpModel.fromJSON(json);
+  expect(restored.state.links).toEqual({});
 });
 
 test("reparent updates scope-root query results without any node-level scope cascade", () => {
@@ -202,11 +214,11 @@ test("reparent updates scope-root query results without any node-level scope cas
   const b = model.addNode(rootId, "B");
   const a1 = model.addNode(a, "A1");
 
-  assert.deepEqual(model.queryNodeIds(a), [a, a1]);
-  assert.deepEqual(model.queryNodeIds(b), [b]);
+  expect(model.queryNodeIds(a)).toEqual([a, a1]);
+  expect(model.queryNodeIds(b)).toEqual([b]);
 
   model.reparentNode(a1, b);
 
-  assert.deepEqual(model.queryNodeIds(a), [a]);
-  assert.deepEqual(model.queryNodeIds(b), [b, a1]);
+  expect(model.queryNodeIds(a)).toEqual([a]);
+  expect(model.queryNodeIds(b)).toEqual([b, a1]);
 });

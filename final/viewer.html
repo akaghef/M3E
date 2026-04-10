@@ -18,8 +18,8 @@
                 <div class="menu-section-title">Cloud Sync</div>
                 <span id="cloud-sync-badge" class="cloud-sync-badge">Cloud: off</span>
                 <button id="cloud-pull">Pull</button>
-                <button id="cloud-push">Push</button>
-                <button id="cloud-use-local" class="danger" hidden>Use Local</button>
+                <button id="cloud-push" data-edit-only>Push</button>
+                <button id="cloud-use-local" class="danger" data-edit-only hidden>Use Local</button>
                 <button id="cloud-use-cloud" hidden>Use Cloud</button>
               </div>
             </div>
@@ -29,13 +29,16 @@
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
-          <div class="export-wrap">
+          <button id="share-btn" class="share-btn" type="button">Share</button>
+          <div class="export-wrap" data-edit-only>
             <button id="export-btn" type="button">Export ▾</button>
             <div id="export-menu" class="export-menu" hidden>
               <button id="download-btn">JSON</button>
+              <button id="download-mm-btn">.mm (FreeMind)</button>
             </div>
           </div>
         </div>
+        <div id="readonly-banner" class="readonly-banner" hidden>Read-only view</div>
         <!-- hidden elements kept for JS references -->
         <input id="file-input" type="file" accept=".json,.mm,.md,.markdown,application/json,text/xml,application/xml,text/markdown,text/plain" hidden />
         <button id="load-default" hidden></button>
@@ -70,6 +73,51 @@
           </aside>
         </div>
       </div>
+      <div id="home-screen" class="home-screen" hidden>
+        <div class="home-header">
+          <h1 class="home-title">M3E</h1>
+        </div>
+        <div class="home-body">
+          <div class="home-section-header">
+            <span class="home-section-title">All Scopes</span>
+          </div>
+          <div id="home-scope-tree" class="home-scope-tree"></div>
+        </div>
+      </div>
+      <div id="entity-list-panel" class="entity-list-panel" hidden>
+        <div class="entity-list-header">
+          <span class="entity-list-title">Entities</span>
+          <button id="entity-list-close" class="entity-list-close" type="button" aria-label="Close entity list">&times;</button>
+        </div>
+        <div id="entity-scope-list" class="entity-scope-list"></div>
+        <div class="entity-list-search-wrap">
+          <input id="entity-list-search" class="entity-list-search" type="text" placeholder="Filter nodes..." spellcheck="false" />
+        </div>
+        <div id="entity-list-tree" class="entity-list-tree"></div>
+      </div>
+      <div id="conflict-panel" class="conflict-panel" hidden>
+        <div class="conflict-header">
+          <span class="conflict-title">Conflict Detected</span>
+          <button id="conflict-close" class="conflict-close" type="button" aria-label="Close conflict panel">&times;</button>
+        </div>
+        <div class="conflict-body">
+          <div class="conflict-columns">
+            <div class="conflict-col">
+              <div class="conflict-col-header">Local</div>
+              <div id="conflict-local-tree" class="conflict-tree"></div>
+            </div>
+            <div class="conflict-col">
+              <div class="conflict-col-header">Remote</div>
+              <div id="conflict-remote-tree" class="conflict-tree"></div>
+            </div>
+          </div>
+          <div class="conflict-diff" id="conflict-diff-summary"></div>
+          <div class="conflict-actions">
+            <button id="conflict-use-local" class="danger" type="button">Use Local</button>
+            <button id="conflict-use-remote" class="primary" type="button">Use Remote</button>
+          </div>
+        </div>
+      </div>
       <div id="shortcut-cheatsheet" class="shortcut-cheatsheet" hidden>
         <div class="cheatsheet-header">Keyboard Shortcuts</div>
         <div class="cheatsheet-body">
@@ -80,6 +128,8 @@
               <div class="cheatsheet-row"><kbd>Shift+↑↓</kbd><span>Extend selection</span></div>
               <div class="cheatsheet-row"><kbd>J</kbd><span>Deeper (child)</span></div>
               <div class="cheatsheet-row"><kbd>K</kbd><span>Shallower (parent)</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+H</kbd><span>Home screen</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+E</kbd><span>Entity list panel</span></div>
               <div class="cheatsheet-row"><kbd>Alt+V</kbd><span>Toggle focus / fit</span></div>
               <div class="cheatsheet-row"><kbd>Alt+J</kbd><span>Jump to alias target</span></div>
             </div>

@@ -6,6 +6,7 @@ const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const downloadBtn = document.getElementById("download-btn");
+const downloadMmBtn = document.getElementById("download-mm-btn");
 const hamburgerBtn = document.getElementById("hamburger-btn");
 const hamburgerMenu = document.getElementById("hamburger-menu");
 const exportBtn = document.getElementById("export-btn");
@@ -32,11 +33,26 @@ const linearMetaEl = document.getElementById("linear-meta") as HTMLElement | nul
 const linearApplyBtn = document.getElementById("linear-apply") as HTMLButtonElement | null;
 const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElement | null;
 const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLElement | null;
+const homeScreenEl = document.getElementById("home-screen") as HTMLElement | null;
+const homeScopeTreeEl = document.getElementById("home-scope-tree") as HTMLElement | null;
+const appEl = document.querySelector(".app") as HTMLElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
 const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
 const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
+const entityListPanelEl = document.getElementById("entity-list-panel") as HTMLElement | null;
+const entityListTreeEl = document.getElementById("entity-list-tree") as HTMLElement | null;
+const entityListSearchEl = document.getElementById("entity-list-search") as HTMLInputElement | null;
+const entityListCloseBtn = document.getElementById("entity-list-close") as HTMLButtonElement | null;
+const entityScopeListEl = document.getElementById("entity-scope-list") as HTMLElement | null;
+const conflictPanelEl = document.getElementById("conflict-panel") as HTMLElement | null;
+const conflictLocalTreeEl = document.getElementById("conflict-local-tree") as HTMLElement | null;
+const conflictRemoteTreeEl = document.getElementById("conflict-remote-tree") as HTMLElement | null;
+const conflictDiffSummaryEl = document.getElementById("conflict-diff-summary") as HTMLElement | null;
+const conflictCloseBtn = document.getElementById("conflict-close") as HTMLButtonElement | null;
+const conflictUseLocalBtn = document.getElementById("conflict-use-local") as HTMLButtonElement | null;
+const conflictUseRemoteBtn = document.getElementById("conflict-use-remote") as HTMLButtonElement | null;
 
 function normalizeDocId(raw: string | null, fallback: string): string {
   const trimmed = (raw || "").trim();
@@ -47,7 +63,7 @@ function normalizeDocId(raw: string | null, fallback: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
-const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "rapid-main");
+const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "akaghef-beta");
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
@@ -116,6 +132,26 @@ let linearTransformStatus: LinearTransformStatus | null = null;
 let linearTextFontScale = 1;
 let linearAdjustMenuOpen = false;
 let linearMenuVisible = false;
+let homeScreenVisible = false;
+let entityListVisible = false;
+let presenceMap: Map<string, { userId: string; color: string; nodeId: string }[]> = new Map();
+let presenceEs: EventSource | null = null;
+let changedNodeIds: Set<string> = new Set();
+let conflictPanelVisible = false;
+let conflictRemoteState: AppState | null = null;
+
+// ── Scope Lock State ──
+interface ClientScopeLock {
+  scopeId: string;
+  entityId: string;
+  displayName: string;
+  priority: number;
+}
+let scopeLockMap: Map<string, ClientScopeLock> = new Map(); // scopeId -> lock
+let collabEntityId: string | null = null;
+let collabToken: string | null = null;
+let collabEventSource: EventSource | null = null;
+let activeContextMenu: HTMLElement | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -439,6 +475,150 @@ function escapeXml(text: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+// ── m3e: visual style attributes ──────────────────────────────────────
+
+/** Allowed CSS named colors (subset) and hex pattern for XSS-safe color values. */
+const SAFE_COLOR_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const NAMED_COLORS = new Set([
+  "transparent", "currentcolor",
+  "black", "white", "red", "green", "blue", "yellow", "orange", "purple",
+  "pink", "gray", "grey", "brown", "cyan", "magenta", "lime", "navy",
+  "teal", "maroon", "olive", "aqua", "fuchsia", "silver", "gold",
+  "coral", "salmon", "tomato", "crimson", "indigo", "violet",
+  "turquoise", "tan", "sienna", "peru", "orchid", "plum", "khaki",
+]);
+
+function sanitizeColor(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (NAMED_COLORS.has(v)) return v;
+  if (SAFE_COLOR_RE.test(raw.trim())) return raw.trim();
+  return null;
+}
+
+function sanitizeBorderStyle(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (v === "solid" || v === "dashed" || v === "dotted" || v === "none") return v;
+  return null;
+}
+
+function sanitizeNumeric(raw: string | undefined, min: number, max: number): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(min, Math.min(max, n));
+}
+
+function sanitizeShape(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (v === "rect" || v === "rounded" || v === "pill") return v;
+  return null;
+}
+
+function sanitizeBand(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (v === "flash" || v === "rapid" || v === "deep") return v;
+  return null;
+}
+
+/** Sanitize icon: allow single emoji/short string, strip anything dangerous. */
+function sanitizeIcon(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim();
+  // Allow up to 4 characters (covers multi-codepoint emoji)
+  if (v.length === 0 || [...v].length > 4) return null;
+  return v;
+}
+
+/** Compute confidence badge color: 0=red, 0.5=yellow, 1=green */
+function confidenceColor(c: number): string {
+  if (c <= 0.5) {
+    const r = 220;
+    const g = Math.round(60 + c * 2 * 160);
+    return `rgb(${r},${g},40)`;
+  }
+  const r = Math.round(220 - (c - 0.5) * 2 * 180);
+  const g = Math.round(180 + (c - 0.5) * 2 * 40);
+  return `rgb(${r},${g},40)`;
+}
+
+interface NodeStyleAttrs {
+  bg: string | null;
+  color: string | null;
+  border: string | null;
+  borderStyle: string | null;
+  borderWidth: number | null;
+  shape: string | null;
+  icon: string | null;
+  edgeColor: string | null;
+  edgeStyle: string | null;
+  edgeWidth: number | null;
+  band: string | null;
+  confidence: number | null;
+}
+
+function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
+  return {
+    bg: sanitizeColor(attrs["m3e:bg"]),
+    color: sanitizeColor(attrs["m3e:color"]),
+    border: sanitizeColor(attrs["m3e:border"]),
+    borderStyle: sanitizeBorderStyle(attrs["m3e:border-style"]),
+    borderWidth: sanitizeNumeric(attrs["m3e:border-width"], 0, 8),
+    shape: sanitizeShape(attrs["m3e:shape"]),
+    icon: sanitizeIcon(attrs["m3e:icon"]),
+    edgeColor: sanitizeColor(attrs["m3e:edge-color"]),
+    edgeStyle: sanitizeBorderStyle(attrs["m3e:edge-style"]),
+    edgeWidth: sanitizeNumeric(attrs["m3e:edge-width"], 1, 10),
+    band: sanitizeBand(attrs["m3e:band"]),
+    confidence: sanitizeNumeric(attrs["m3e:confidence"], 0, 1),
+  };
+}
+
+function buildNodeHitStyle(s: NodeStyleAttrs): string {
+  const parts: string[] = [];
+  if (s.bg) parts.push(`fill:${s.bg}`);
+  if (s.border) parts.push(`stroke:${s.border}`);
+  if (s.borderWidth != null) parts.push(`stroke-width:${s.borderWidth}px`);
+  if (s.borderStyle === "dashed") parts.push("stroke-dasharray:8 5");
+  if (s.borderStyle === "dotted") parts.push("stroke-dasharray:3 3");
+  if (s.borderStyle === "none") parts.push("stroke:none");
+  // Band overrides
+  if (s.band === "flash") {
+    parts.push("opacity:0.6");
+    if (!s.borderStyle) parts.push("stroke-dasharray:6 4");
+  } else if (s.band === "deep") {
+    if (s.borderWidth == null) parts.push("stroke-width:4px");
+    if (!s.border) parts.push("stroke:#333");
+  }
+  return parts.length ? parts.join(";") : "";
+}
+
+function buildLabelStyle(s: NodeStyleAttrs): string {
+  const parts: string[] = [];
+  if (s.color) parts.push(`fill:${s.color}`);
+  return parts.length ? parts.join(";") : "";
+}
+
+function buildEdgeStyle(s: NodeStyleAttrs): string {
+  const parts: string[] = [];
+  if (s.edgeColor) parts.push(`stroke:${s.edgeColor}`);
+  if (s.edgeWidth != null) parts.push(`stroke-width:${s.edgeWidth}px`);
+  if (s.edgeStyle === "dashed") parts.push("stroke-dasharray:10 6");
+  if (s.edgeStyle === "dotted") parts.push("stroke-dasharray:3 3");
+  return parts.length ? parts.join(";") : "";
+}
+
+function shapeRx(shape: string | null, isRoot: boolean): number {
+  if (!shape) return isRoot ? 60 : 12;
+  if (shape === "rect") return isRoot ? 8 : 2;
+  if (shape === "rounded") return isRoot ? 24 : 12;
+  if (shape === "pill") return 999;
+  return isRoot ? 60 : 12;
 }
 
 const TEXT_MEASURE_FONT_FAMILY = "\"Segoe UI\", \"Yu Gothic UI\", sans-serif";
@@ -1938,7 +2118,14 @@ function buildLayout(state: AppState): LayoutResult {
   const pos: Record<string, NodePosition> = {};
   const order: string[] = [];
 
-  function place(nodeId: string, topY: number): number {
+  const depthOffsetFactor = VIEWER_TUNING.layout.depthOffsetFactor;
+
+  function place(
+    nodeId: string,
+    topY: number,
+    parentX: number | null,
+    parentW: number | null,
+  ): number {
     const node = state.nodes[nodeId];
     if (!node) {
       return VIEWER_TUNING.layout.leafHeight;
@@ -1948,8 +2135,18 @@ function buildLayout(state: AppState): LayoutResult {
     const h = subtreeHeight(nodeId);
     const centerY = topY + h / 2;
 
+    // Blend between depth-aligned X (legacy) and parent-relative X
+    const baseX = xByDepth[depth]!;
+    let nodeX: number;
+    if (parentX === null || parentW === null) {
+      nodeX = baseX; // root node
+    } else {
+      const parentRelX = parentX + parentW + VIEWER_TUNING.layout.columnGap;
+      nodeX = baseX + (parentRelX - baseX) * depthOffsetFactor;
+    }
+
     pos[nodeId] = {
-      x: xByDepth[depth]!,
+      x: nodeX,
       y: centerY,
       depth,
       w: metrics[nodeId]!.w,
@@ -1959,7 +2156,7 @@ function buildLayout(state: AppState): LayoutResult {
 
     let placeCursorY = topY;
     visibleChildren(node).forEach((childId, i, arr) => {
-      const childH = place(childId, placeCursorY);
+      const childH = place(childId, placeCursorY, nodeX, metrics[nodeId]!.w);
       placeCursorY += childH;
       if (i < arr.length - 1) {
         placeCursorY += VIEWER_TUNING.layout.siblingGap;
@@ -1969,12 +2166,20 @@ function buildLayout(state: AppState): LayoutResult {
     return h;
   }
 
-  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad);
+  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad, null, null);
+
+  // Compute totalWidth from placed node positions (parent-relative X may exceed cursorX)
+  let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
+  for (const nodeId of order) {
+    const p = pos[nodeId]!;
+    maxRight = Math.max(maxRight, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
+  }
+
   return {
     pos,
     order,
     totalHeight,
-    totalWidth: cursorX + VIEWER_TUNING.layout.canvasRightPad,
+    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, cursorX + VIEWER_TUNING.layout.canvasRightPad),
   };
 }
 
@@ -2121,14 +2326,16 @@ function render(): void {
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
     const children = visibleChildren(node);
+    const nodeStyles = readNodeStyleAttrs(node.attributes || {});
     children.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) {
         return;
       }
 
-      const stroke =
+      const defaultStroke =
         VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+      const stroke = nodeStyles.edgeColor || defaultStroke;
       const startX = p.x + p.w + VIEWER_TUNING.layout.edgeStartPad;
       const startY = p.y;
       const endX = child.x - VIEWER_TUNING.layout.edgeEndPad;
@@ -2138,7 +2345,8 @@ function render(): void {
       const c1y = startY;
       const c2x = endX - curve;
       const c2y = endY;
-      edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}" />`;
+      const edgeInline = buildEdgeStyle(nodeStyles);
+      edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
     });
 
     const classNames = ["node-hit"];
@@ -2168,11 +2376,21 @@ function render(): void {
     if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
       classNames.push("drag-source");
     }
+    // Scope lock visual indicator
+    const nodeLock = scopeLockMap.get(nodeId);
+    if (nodeLock) {
+      classNames.push("scope-locked");
+      if (nodeLock.entityId !== collabEntityId) {
+        classNames.push("scope-locked-by-other");
+      }
+    }
     const hitX = nodeId === displayRootId ? p.x : p.x - 8;
     const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
     const hitY = p.y - hitH / 2;
     const hitW = nodeId === displayRootId ? p.w : p.w + 36;
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="12" />`;
+    const hitRx = shapeRx(nodeStyles.shape, nodeId === displayRootId);
+    const hitInline = buildNodeHitStyle(nodeStyles);
+    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="${hitRx}"${hitInline ? ` style="${hitInline}"` : ""} />`;
 
     if (nodeId === displayRootId) {
       const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
@@ -2181,13 +2399,23 @@ function render(): void {
       const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
       const w = p.w;
       const h = p.h;
-      const rx = 60;
+      const rx = shapeRx(nodeStyles.shape, true);
       const x = p.x;
       const y = p.y - h / 2;
-      nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${VIEWER_TUNING.typography.rootFont}">${rootTspans}</text>`;
+      const rootBoxStyle: string[] = [];
+      if (nodeStyles.bg) rootBoxStyle.push(`fill:${nodeStyles.bg}`);
+      if (nodeStyles.border) rootBoxStyle.push(`stroke:${nodeStyles.border}`);
+      if (nodeStyles.borderWidth != null) rootBoxStyle.push(`stroke-width:${nodeStyles.borderWidth}px`);
+      if (nodeStyles.borderStyle === "dashed") rootBoxStyle.push("stroke-dasharray:8 5");
+      if (nodeStyles.borderStyle === "dotted") rootBoxStyle.push("stroke-dasharray:3 3");
+      if (nodeStyles.borderStyle === "none") rootBoxStyle.push("stroke:none");
+      const rootBoxInline = rootBoxStyle.length ? ` style="${rootBoxStyle.join(";")}"` : "";
+      nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${rootBoxInline} />`;
+      const rootLabelInline = buildLabelStyle(nodeStyles);
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${VIEWER_TUNING.typography.rootFont}"${rootLabelInline ? ` style="${rootLabelInline}"` : ""}>${rootTspans}</text>`;
     } else {
-      const rawLabel = uiLabel(node) || "(empty)";
+      const rawLabelBase = uiLabel(node) || "(empty)";
+      const rawLabel = nodeStyles.icon ? nodeStyles.icon + " " + rawLabelBase : rawLabelBase;
       const labelLines = splitLabelLines(rawLabel);
       const labelClasses = ["label-node"];
       if (viewState.selectedNodeIds.has(nodeId)) {
@@ -2206,7 +2434,19 @@ function render(): void {
         const folderFrameY = p.y - frameH / 2;
         const folderFrameW = p.w + 28;
         const folderFrameH = frameH;
-        nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
+        const folderBoxParts: string[] = [];
+        if (nodeStyles.bg) folderBoxParts.push(`fill:${nodeStyles.bg}`);
+        if (nodeStyles.border) folderBoxParts.push(`stroke:${nodeStyles.border}`);
+        if (nodeStyles.borderWidth != null) folderBoxParts.push(`stroke-width:${nodeStyles.borderWidth}px`);
+        const folderBoxInline = folderBoxParts.length ? ` style="${folderBoxParts.join(";")}"` : "";
+        nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8"${folderBoxInline} />`;
+        // Lock icon on locked folder nodes
+        if (nodeLock) {
+          const lockIconX = folderFrameX + folderFrameW - 14;
+          const lockIconY = folderFrameY + 14;
+          const lockClass = nodeLock.entityId === collabEntityId ? "lock-icon" : "lock-icon lock-icon-other";
+          nodes += `<text class="${lockClass}" x="${lockIconX}" y="${lockIconY}" text-anchor="middle" dominant-baseline="middle">\uD83D\uDD12</text>`;
+        }
       }
       if (isLatexNode(node)) {
         let htmlStr = latexHtmlCache.get(node.text);
@@ -2222,11 +2462,20 @@ function render(): void {
         const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
         const startY = multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
         const tspans = multilineTspans(labelLines, p.x, lineHeight);
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}">${tspans}</text>`;
+        const labelInline = buildLabelStyle(nodeStyles);
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}"${labelInline ? ` style="${labelInline}"` : ""}>${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
+      }
+      // Band confidence badge (deep band or explicit confidence)
+      if (nodeStyles.confidence != null) {
+        const cColor = confidenceColor(nodeStyles.confidence);
+        const cLabel = (nodeStyles.confidence * 100).toFixed(0) + "%";
+        const cX = p.x + p.w + (badge ? 60 : 18);
+        nodes += `<rect class="confidence-badge" x="${cX}" y="${p.y - 12}" width="42" height="22" rx="11" style="fill:${cColor}" />`;
+        nodes += `<text class="confidence-badge-text" x="${cX + 21}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(cLabel)}</text>`;
       }
     }
 
@@ -2793,6 +3042,1180 @@ function ExitScopeCommand(): void {
   updateScopeInUrl(viewState.currentScopeId);
 }
 
+// ---- .mm (Freeplane/FreeMind) export ----
+
+function escapeXmlAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function mmRichContent(type: string, text: string): string {
+  return `<richcontent TYPE="${type}"><html><body>${escapeXmlAttr(text)}</body></html></richcontent>`;
+}
+
+function mmNodeToXml(node: TreeNode, state: AppState, indent: string): string {
+  if (node.nodeType === "alias") return "";
+
+  const attrs: string[] = [];
+  attrs.push(`TEXT="${escapeXmlAttr(node.text)}"`);
+  if (node.collapsed) attrs.push(`FOLDED="true"`);
+  if (node.link) attrs.push(`LINK="${escapeXmlAttr(node.link)}"`);
+
+  const parts: string[] = [];
+  if (node.details) parts.push(`${indent}  ${mmRichContent("DETAILS", node.details)}`);
+  if (node.note) parts.push(`${indent}  ${mmRichContent("NOTE", node.note)}`);
+
+  const attrEntries = Object.entries(node.attributes || {});
+  for (const [name, value] of attrEntries) {
+    parts.push(`${indent}  <attribute NAME="${escapeXmlAttr(name)}" VALUE="${escapeXmlAttr(value)}"/>`);
+  }
+
+  for (const childId of node.children) {
+    const child = state.nodes[childId];
+    if (child) {
+      const xml = mmNodeToXml(child, state, indent + "  ");
+      if (xml) parts.push(xml);
+    }
+  }
+
+  if (parts.length === 0) return `${indent}<node ${attrs.join(" ")}/>`;
+  return `${indent}<node ${attrs.join(" ")}>\n${parts.join("\n")}\n${indent}</node>`;
+}
+
+function treeToMm(state: AppState): string {
+  const root = state.nodes[state.rootId];
+  if (!root) throw new Error("Root node not found");
+  const body = mmNodeToXml(root, state, "  ");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<map version="freeplane 1.7.0">\n${body}\n</map>\n`;
+}
+
+function downloadMm(): void {
+  const state = doc!.state;
+  const xml = treeToMm(state);
+  const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  const rootText = state.nodes[state.rootId]?.text || "export";
+  const safeName = rootText.replace(/[<>:"/\\|?*]/g, "_").substring(0, 100);
+  anchor.download = `${safeName}.mm`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  setStatus("Exported as .mm (FreeMind/Freeplane)");
+}
+
+// ── Home Screen ──
+
+function collectFolderTree(parentId: string): { id: string; label: string; childCount: number; subFolders: ReturnType<typeof collectFolderTree> }[] {
+  if (!doc) {
+    return [];
+  }
+  const parent = doc.state.nodes[parentId];
+  if (!parent) {
+    return [];
+  }
+  const result: { id: string; label: string; childCount: number; subFolders: ReturnType<typeof collectFolderTree> }[] = [];
+  for (const childId of parent.children || []) {
+    const child = doc.state.nodes[childId];
+    if (!child) {
+      continue;
+    }
+    if (isFolderNode(child)) {
+      result.push({
+        id: child.id,
+        label: uiLabel(child),
+        childCount: countHiddenDescendants(child.id),
+        subFolders: collectFolderTree(child.id),
+      });
+    }
+  }
+  return result;
+}
+
+function renderScopeTree(
+  container: HTMLElement,
+  folders: ReturnType<typeof collectFolderTree>,
+): void {
+  container.innerHTML = "";
+  for (const folder of folders) {
+    const hasChildren = folder.subFolders.length > 0;
+
+    const row = document.createElement("div");
+    row.className = "home-scope-row";
+    row.dataset.scopeId = folder.id;
+
+    const toggle = document.createElement("button");
+    toggle.className = "home-scope-toggle" + (hasChildren ? "" : " no-children");
+    toggle.textContent = "\u25B6";
+    toggle.type = "button";
+
+    const name = document.createElement("span");
+    name.className = "home-scope-name";
+    name.textContent = folder.label;
+
+    const count = document.createElement("span");
+    count.className = "home-scope-count";
+    count.textContent = `${folder.childCount} nodes`;
+
+    row.appendChild(toggle);
+    row.appendChild(name);
+    row.appendChild(count);
+    container.appendChild(row);
+
+    let childContainer: HTMLElement | null = null;
+    if (hasChildren) {
+      childContainer = document.createElement("div");
+      childContainer.className = "home-scope-children";
+      childContainer.hidden = true;
+      renderScopeTree(childContainer, folder.subFolders);
+      container.appendChild(childContainer);
+    }
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!childContainer) {
+        return;
+      }
+      const isExpanded = !childContainer.hidden;
+      childContainer.hidden = isExpanded;
+      toggle.classList.toggle("expanded", !isExpanded);
+    });
+
+    row.addEventListener("click", () => {
+      hideHomeScreen();
+      EnterScopeCommand(folder.id);
+    });
+  }
+}
+
+function buildHomeBreadcrumb(): void {
+  if (!doc || !homeScreenEl) {
+    return;
+  }
+  const existingBreadcrumb = homeScreenEl.querySelector(".home-breadcrumb");
+  if (existingBreadcrumb) {
+    existingBreadcrumb.remove();
+  }
+
+  const scopeId = currentScopeRootId();
+  if (!scopeId || scopeId === doc.state.rootId) {
+    return;
+  }
+
+  const pathIds = scopePathIds(scopeId);
+  if (pathIds.length <= 1) {
+    return;
+  }
+
+  const breadcrumb = document.createElement("div");
+  breadcrumb.className = "home-breadcrumb";
+
+  for (let i = 0; i < pathIds.length; i++) {
+    if (i > 0) {
+      const sep = document.createElement("span");
+      sep.className = "home-breadcrumb-sep";
+      sep.textContent = "/";
+      breadcrumb.appendChild(sep);
+    }
+
+    const nodeId = pathIds[i];
+    const isLast = i === pathIds.length - 1;
+    const label = nodeId === doc.state.rootId ? "root" : uiLabel(doc.state.nodes[nodeId]);
+
+    const item = document.createElement("button");
+    item.className = "home-breadcrumb-item" + (isLast ? " current" : "");
+    item.textContent = label;
+    item.type = "button";
+
+    if (!isLast) {
+      item.addEventListener("click", () => {
+        hideHomeScreen();
+        EnterScopeCommand(nodeId);
+      });
+    }
+
+    breadcrumb.appendChild(item);
+  }
+
+  const homeBody = homeScreenEl.querySelector(".home-body");
+  if (homeBody) {
+    homeBody.insertBefore(breadcrumb, homeBody.firstChild);
+  }
+}
+
+function showHomeScreen(): void {
+  if (!homeScreenEl || !homeScopeTreeEl || !doc) {
+    return;
+  }
+  homeScreenVisible = true;
+  homeScreenEl.hidden = false;
+  appEl?.classList.add("home-active");
+
+  const rootId = doc.state.rootId;
+  const folders = collectFolderTree(rootId);
+  renderScopeTree(homeScopeTreeEl, folders);
+  buildHomeBreadcrumb();
+}
+
+function hideHomeScreen(): void {
+  if (!homeScreenEl) {
+    return;
+  }
+  homeScreenVisible = false;
+  homeScreenEl.hidden = true;
+  appEl?.classList.remove("home-active");
+  board.focus();
+}
+
+// ---- Entity List Panel ----
+
+function collectEntityTree(parentId: string): { id: string; label: string; nodeType: string; children: ReturnType<typeof collectEntityTree> }[] {
+  if (!doc) {
+    return [];
+  }
+  const parent = doc.state.nodes[parentId];
+  if (!parent) {
+    return [];
+  }
+  const result: { id: string; label: string; nodeType: string; children: ReturnType<typeof collectEntityTree> }[] = [];
+  for (const childId of parent.children || []) {
+    const child = doc.state.nodes[childId];
+    if (!child) {
+      continue;
+    }
+    result.push({
+      id: child.id,
+      label: uiLabel(child),
+      nodeType: child.nodeType || "text",
+      children: collectEntityTree(child.id),
+    });
+  }
+  return result;
+}
+
+function highlightText(text: string, query: string): string {
+  if (!query) {
+    return escapeHtml(text);
+  }
+  const escaped = escapeHtml(text);
+  const escapedQuery = escapeHtml(query);
+  const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  return escaped.replace(regex, '<span class="entity-highlight">$1</span>');
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function filterEntityTree(
+  nodes: ReturnType<typeof collectEntityTree>,
+  query: string,
+): ReturnType<typeof collectEntityTree> {
+  if (!query) {
+    return nodes;
+  }
+  const lowerQuery = query.toLowerCase();
+  const result: ReturnType<typeof collectEntityTree> = [];
+  for (const node of nodes) {
+    const filteredChildren = filterEntityTree(node.children, query);
+    if (node.label.toLowerCase().includes(lowerQuery) || filteredChildren.length > 0) {
+      result.push({
+        ...node,
+        children: filteredChildren,
+      });
+    }
+  }
+  return result;
+}
+
+function renderEntityTree(
+  container: HTMLElement,
+  nodes: ReturnType<typeof collectEntityTree>,
+  query: string,
+  forceExpand: boolean,
+): void {
+  container.innerHTML = "";
+  for (const node of nodes) {
+    const hasChildren = node.children.length > 0;
+
+    const row = document.createElement("div");
+    row.className = "entity-row";
+    if (viewState.selectedNodeId === node.id) {
+      row.classList.add("is-selected");
+    }
+    row.dataset.nodeId = node.id;
+
+    const toggle = document.createElement("button");
+    toggle.className = "entity-toggle" + (hasChildren ? "" : " no-children");
+    toggle.textContent = "\u25B6";
+    toggle.type = "button";
+    if (forceExpand && hasChildren) {
+      toggle.classList.add("expanded");
+    }
+
+    const name = document.createElement("span");
+    name.className = "entity-name";
+    name.innerHTML = highlightText(node.label, query);
+
+    row.appendChild(toggle);
+    row.appendChild(name);
+
+    if (node.nodeType === "folder") {
+      const badge = document.createElement("span");
+      badge.className = "entity-badge entity-badge-folder";
+      badge.textContent = "folder";
+      row.appendChild(badge);
+      // Show lock badge on folder nodes in entity tree
+      const folderLock = scopeLockMap.get(node.id);
+      if (folderLock) {
+        const lockBadge = document.createElement("span");
+        const isOwn = folderLock.entityId === collabEntityId;
+        lockBadge.className = "entity-scope-lock-badge " + (isOwn ? "lock-own" : "lock-other");
+        lockBadge.textContent = isOwn ? "\uD83D\uDD12" : "\uD83D\uDD12";
+        lockBadge.title = `Locked by ${folderLock.displayName}`;
+        row.appendChild(lockBadge);
+      }
+    } else if (node.nodeType === "alias") {
+      const actualNode = doc ? doc.state.nodes[node.id] : null;
+      const broken = actualNode ? isBrokenAlias(actualNode) : false;
+      const badge = document.createElement("span");
+      if (broken) {
+        badge.className = "entity-badge entity-badge-broken";
+        badge.textContent = "broken";
+        row.classList.add("alias-broken-row");
+        // Add repair and delete buttons
+        const repairBtn = document.createElement("button");
+        repairBtn.className = "entity-alias-action-btn repair-btn";
+        repairBtn.textContent = "Repair";
+        repairBtn.title = "Convert to text node";
+        repairBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          repairBrokenAlias(node.id);
+        });
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "entity-alias-action-btn delete-btn";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.title = "Remove broken alias";
+        deleteBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          deleteBrokenAlias(node.id);
+        });
+        row.appendChild(badge);
+        row.appendChild(repairBtn);
+        row.appendChild(deleteBtn);
+      } else {
+        badge.className = "entity-badge entity-badge-alias";
+        badge.textContent = "alias";
+        row.appendChild(badge);
+      }
+    }
+
+    container.appendChild(row);
+
+    let childContainer: HTMLElement | null = null;
+    if (hasChildren) {
+      childContainer = document.createElement("div");
+      childContainer.className = "entity-children";
+      childContainer.hidden = !forceExpand;
+      renderEntityTree(childContainer, node.children, query, forceExpand);
+      container.appendChild(childContainer);
+    }
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!childContainer) {
+        return;
+      }
+      const isExpanded = !childContainer.hidden;
+      childContainer.hidden = isExpanded;
+      toggle.classList.toggle("expanded", !isExpanded);
+    });
+
+    row.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".entity-toggle")) {
+        return;
+      }
+      hideEntityListPanel();
+      setSingleSelection(node.id);
+      centerOnNode(node.id, Math.max(1, viewState.zoom));
+      setStatus(`Focused: ${node.label}`);
+    });
+  }
+}
+
+function buildEntityList(query = ""): void {
+  if (!doc || !entityListTreeEl) {
+    return;
+  }
+  const scopeRoot = currentScopeRootId();
+  const allNodes = collectEntityTree(scopeRoot);
+  const filtered = filterEntityTree(allNodes, query);
+  const forceExpand = Boolean(query);
+  renderEntityTree(entityListTreeEl, filtered, query, forceExpand);
+  applyPresenceBadges();
+  applyChangeHighlights();
+}
+
+function showEntityListPanel(): void {
+  if (!entityListPanelEl || !doc) {
+    return;
+  }
+  entityListVisible = true;
+  entityListPanelEl.hidden = false;
+  if (entityListSearchEl) {
+    entityListSearchEl.value = "";
+  }
+  buildEntityScopeList();
+  buildEntityList();
+  startPresenceWatch();
+  applyPresenceBadges();
+  fetchChangedNodes();
+}
+
+function hideEntityListPanel(): void {
+  if (!entityListPanelEl) {
+    return;
+  }
+  entityListVisible = false;
+  entityListPanelEl.hidden = true;
+  stopPresenceWatch();
+  board.focus();
+}
+
+function toggleEntityListPanel(): void {
+  if (entityListVisible) {
+    hideEntityListPanel();
+  } else {
+    showEntityListPanel();
+  }
+}
+
+if (entityListSearchEl) {
+  entityListSearchEl.addEventListener("input", () => {
+    buildEntityList(entityListSearchEl!.value.trim());
+  });
+  entityListSearchEl.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+  });
+}
+
+if (entityListCloseBtn) {
+  entityListCloseBtn.addEventListener("click", () => {
+    hideEntityListPanel();
+  });
+}
+
+// ---- Entity Scope List (Frames-style) ----
+
+function buildEntityScopeList(): void {
+  if (!entityScopeListEl || !doc) {
+    return;
+  }
+  entityScopeListEl.innerHTML = "";
+
+  const rootId = doc.state.rootId;
+  const folders = collectFolderTree(rootId);
+  const currentScope = currentScopeRootId();
+
+  // Add root scope entry
+  const rootRow = document.createElement("div");
+  rootRow.className = "entity-scope-row" + (currentScope === rootId ? " is-current-scope" : "");
+  rootRow.dataset.scopeId = rootId;
+
+  const rootIcon = document.createElement("span");
+  rootIcon.className = "entity-scope-icon";
+  rootIcon.textContent = "\u25C6";
+
+  const rootName = document.createElement("span");
+  rootName.className = "entity-scope-name";
+  rootName.textContent = uiLabel(doc.state.nodes[rootId]) || "Root";
+
+  rootRow.appendChild(rootIcon);
+  rootRow.appendChild(rootName);
+
+  // Lock badge for root scope
+  appendScopeLockBadge(rootRow, rootId);
+
+  entityScopeListEl.appendChild(rootRow);
+
+  rootRow.addEventListener("click", () => {
+    EnterScopeCommand(rootId);
+    buildEntityScopeList();
+    buildEntityList(entityListSearchEl?.value.trim() || "");
+  });
+
+  rootRow.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    showScopeLockContextMenu(e.clientX, e.clientY, rootId);
+  });
+
+  // Add folder scopes recursively
+  renderEntityScopeItems(entityScopeListEl, folders, currentScope, 1);
+}
+
+function renderEntityScopeItems(
+  container: HTMLElement,
+  folders: ReturnType<typeof collectFolderTree>,
+  currentScope: string,
+  depth: number,
+): void {
+  for (const folder of folders) {
+    const row = document.createElement("div");
+    row.className = "entity-scope-row" + (currentScope === folder.id ? " is-current-scope" : "");
+    row.dataset.scopeId = folder.id;
+    row.style.paddingLeft = `${8 + depth * 12}px`;
+
+    const icon = document.createElement("span");
+    icon.className = "entity-scope-icon";
+    icon.textContent = "\u25C7";
+
+    const name = document.createElement("span");
+    name.className = "entity-scope-name";
+    name.textContent = folder.label;
+
+    const count = document.createElement("span");
+    count.className = "entity-scope-count";
+    count.textContent = `${folder.childCount}`;
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(count);
+
+    // Lock badge for this folder scope
+    appendScopeLockBadge(row, folder.id);
+
+    container.appendChild(row);
+
+    row.addEventListener("click", () => {
+      EnterScopeCommand(folder.id);
+      buildEntityScopeList();
+      buildEntityList(entityListSearchEl?.value.trim() || "");
+    });
+
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showScopeLockContextMenu(e.clientX, e.clientY, folder.id);
+    });
+
+    if (folder.subFolders.length > 0) {
+      renderEntityScopeItems(container, folder.subFolders, currentScope, depth + 1);
+    }
+  }
+}
+
+function appendScopeLockBadge(row: HTMLElement, scopeId: string): void {
+  const lock = scopeLockMap.get(scopeId);
+  if (!lock) {
+    return;
+  }
+  const badge = document.createElement("span");
+  const isOwn = lock.entityId === collabEntityId;
+  badge.className = "entity-scope-lock-badge " + (isOwn ? "lock-own" : "lock-other");
+  badge.textContent = isOwn ? "\uD83D\uDD12 You" : "\uD83D\uDD12 " + lock.displayName;
+  badge.title = `Locked by ${lock.displayName} (priority ${lock.priority})`;
+  row.appendChild(badge);
+}
+
+function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
+  const lock = scopeLockMap.get(scopeId);
+  const items: { label: string; danger?: boolean; action: () => void }[] = [];
+
+  if (!lock) {
+    items.push({
+      label: "\uD83D\uDD12 Lock this scope",
+      action: () => void acquireScopeLockFromUi(scopeId),
+    });
+  } else if (lock.entityId === collabEntityId) {
+    items.push({
+      label: "\uD83D\uDD13 Unlock this scope",
+      action: () => void releaseScopeLockFromUi(scopeId),
+    });
+  } else {
+    items.push({
+      label: `Locked by ${lock.displayName}`,
+      action: () => { /* no-op, info only */ },
+    });
+  }
+
+  showContextMenu(x, y, items);
+}
+
+// ---- Presence Badges ----
+
+function startPresenceWatch(): void {
+  if (presenceEs) {
+    return;
+  }
+  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/presence`;
+  presenceEs = new EventSource(url);
+  presenceEs.addEventListener("message", (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data && typeof data === "object") {
+        updatePresenceMap(data);
+        if (entityListVisible) {
+          applyPresenceBadges();
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  });
+  presenceEs.addEventListener("error", () => {
+    stopPresenceWatch();
+  });
+}
+
+function stopPresenceWatch(): void {
+  if (presenceEs) {
+    presenceEs.close();
+    presenceEs = null;
+  }
+}
+
+function updatePresenceMap(data: Record<string, unknown>): void {
+  presenceMap.clear();
+  const users = (data as { users?: { userId: string; color?: string; nodeId?: string }[] }).users;
+  if (!Array.isArray(users)) {
+    return;
+  }
+  for (const user of users) {
+    if (!user.nodeId) {
+      continue;
+    }
+    const existing = presenceMap.get(user.nodeId) || [];
+    existing.push({
+      userId: user.userId,
+      color: user.color || "#ff6b6b",
+      nodeId: user.nodeId,
+    });
+    presenceMap.set(user.nodeId, existing);
+  }
+}
+
+function applyPresenceBadges(): void {
+  if (!entityListTreeEl) {
+    return;
+  }
+  // Remove existing badges
+  const existingBadges = entityListTreeEl.querySelectorAll(".presence-badges");
+  existingBadges.forEach((el) => el.remove());
+
+  // Apply new badges
+  presenceMap.forEach((users, nodeId) => {
+    const row = entityListTreeEl!.querySelector(`[data-node-id="${nodeId}"]`);
+    if (!row) {
+      return;
+    }
+    const badgesContainer = document.createElement("span");
+    badgesContainer.className = "presence-badges";
+    for (const user of users.slice(0, 3)) {
+      const badge = document.createElement("span");
+      badge.className = "presence-badge";
+      badge.style.backgroundColor = user.color;
+      badge.title = user.userId;
+      badgesContainer.appendChild(badge);
+    }
+    if (users.length > 3) {
+      const more = document.createElement("span");
+      more.className = "presence-badge";
+      more.style.backgroundColor = "#999";
+      more.title = `+${users.length - 3} more`;
+      badgesContainer.appendChild(more);
+    }
+    row.appendChild(badgesContainer);
+  });
+}
+
+// ---- Away Changes (audit infrastructure) ----
+
+function fetchChangedNodes(): void {
+  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/audit?since=last-session`;
+  fetch(url, { cache: "no-store" })
+    .then((r) => {
+      if (!r.ok) {
+        return null;
+      }
+      return r.json();
+    })
+    .then((data) => {
+      if (!data || !Array.isArray(data.changedNodeIds)) {
+        return;
+      }
+      changedNodeIds = new Set(data.changedNodeIds as string[]);
+      if (entityListVisible) {
+        applyChangeHighlights();
+      }
+    })
+    .catch(() => {
+      // audit endpoint may not exist yet
+    });
+}
+
+function applyChangeHighlights(): void {
+  if (!entityListTreeEl || changedNodeIds.size === 0) {
+    return;
+  }
+  changedNodeIds.forEach((nodeId) => {
+    const row = entityListTreeEl!.querySelector(`[data-node-id="${nodeId}"]`);
+    if (row) {
+      row.classList.add("has-changes");
+    }
+  });
+}
+
+// ---- Scope Lock Management ----
+
+function startCollabEventSource(): void {
+  if (collabEventSource || !collabToken || !collabEntityId) {
+    return;
+  }
+  const url = `/api/collab/events/${encodeURIComponent(collabEntityId)}`;
+  const headers = new Headers({ Authorization: `Bearer ${collabToken}` });
+  // EventSource does not support custom headers; use fetch-based SSE instead
+  // For now, try the standard endpoint (auth may be checked via query or cookie)
+  collabEventSource = new EventSource(url);
+
+  collabEventSource.addEventListener("lock_acquired", (event: Event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data);
+      scopeLockMap.set(data.scopeId, {
+        scopeId: data.scopeId,
+        entityId: data.entityId,
+        displayName: data.displayName || data.entityId,
+        priority: data.priority || 0,
+      });
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } catch { /* ignore */ }
+  });
+
+  collabEventSource.addEventListener("lock_released", (event: Event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data);
+      scopeLockMap.delete(data.scopeId);
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } catch { /* ignore */ }
+  });
+
+  collabEventSource.addEventListener("lock_preempted", (event: Event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data);
+      // The old lock holder lost the lock; update to new holder
+      scopeLockMap.set(data.scopeId, {
+        scopeId: data.scopeId,
+        entityId: data.newEntity,
+        displayName: data.newEntity,
+        priority: 0,
+      });
+      if (data.oldEntity === collabEntityId) {
+        setStatus(`Lock on scope preempted by higher-priority entity.`, true);
+      }
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } catch { /* ignore */ }
+  });
+
+  collabEventSource.addEventListener("error", () => {
+    if (collabEventSource) {
+      collabEventSource.close();
+      collabEventSource = null;
+    }
+  });
+}
+
+function stopCollabEventSource(): void {
+  if (collabEventSource) {
+    collabEventSource.close();
+    collabEventSource = null;
+  }
+}
+
+async function acquireScopeLockFromUi(scopeId: string): Promise<void> {
+  if (!collabToken) {
+    setStatus("Collab not registered. Lock unavailable.", true);
+    return;
+  }
+  try {
+    const res = await fetch(`/api/collab/scope/${encodeURIComponent(scopeId)}/lock`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${collabToken}` },
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setStatus(`Scope locked.`);
+      // SSE will update the map, but update eagerly for responsiveness
+      scopeLockMap.set(scopeId, {
+        scopeId,
+        entityId: collabEntityId!,
+        displayName: "You",
+        priority: 0,
+      });
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } else {
+      setStatus(`Lock failed: ${data.error || "Unknown error"}`, true);
+    }
+  } catch (err) {
+    setStatus(`Lock request failed: ${(err as Error).message}`, true);
+  }
+}
+
+async function releaseScopeLockFromUi(scopeId: string): Promise<void> {
+  if (!collabToken) {
+    return;
+  }
+  try {
+    const res = await fetch(`/api/collab/scope/${encodeURIComponent(scopeId)}/lock`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${collabToken}` },
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setStatus(`Scope unlocked.`);
+      scopeLockMap.delete(scopeId);
+      render();
+      if (entityListVisible) {
+        buildEntityScopeList();
+      }
+    } else {
+      setStatus(`Unlock failed: ${data.error || "Unknown error"}`, true);
+    }
+  } catch (err) {
+    setStatus(`Unlock request failed: ${(err as Error).message}`, true);
+  }
+}
+
+// Try to register as collab entity on startup (only when M3E_COLLAB is active)
+function tryCollabRegister(): void {
+  fetch("/api/collab/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ displayName: "Viewer", role: "human", capabilities: ["read", "write"] }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.ok && data.entityId && data.token) {
+        collabEntityId = data.entityId;
+        collabToken = data.token;
+        startCollabEventSource();
+      }
+    })
+    .catch(() => {
+      // Collab not available, ignore
+    });
+}
+
+// ---- Broken Alias Detection ----
+
+function findBrokenAliases(): { nodeId: string; label: string; targetNodeId: string }[] {
+  if (!doc) {
+    return [];
+  }
+  const result: { nodeId: string; label: string; targetNodeId: string }[] = [];
+  for (const node of Object.values(doc.state.nodes)) {
+    if (node.nodeType !== "alias") {
+      continue;
+    }
+    if (!node.targetNodeId || !doc.state.nodes[node.targetNodeId]) {
+      result.push({
+        nodeId: node.id,
+        label: uiLabel(node),
+        targetNodeId: node.targetNodeId || "",
+      });
+    }
+  }
+  return result;
+}
+
+function deleteBrokenAlias(aliasNodeId: string): void {
+  if (!doc) {
+    return;
+  }
+  const node = doc.state.nodes[aliasNodeId];
+  if (!node) {
+    return;
+  }
+  pushUndoSnapshot();
+  const parentId = node.parentId;
+  if (parentId && doc.state.nodes[parentId]) {
+    doc.state.nodes[parentId].children = doc.state.nodes[parentId].children.filter((c) => c !== aliasNodeId);
+  }
+  delete doc.state.nodes[aliasNodeId];
+  if (viewState.selectedNodeId === aliasNodeId) {
+    viewState.selectedNodeId = parentId || doc.state.rootId;
+    viewState.selectedNodeIds = new Set([viewState.selectedNodeId]);
+  }
+  viewState.selectedNodeIds.delete(aliasNodeId);
+  setStatus(`Deleted broken alias.`);
+  scheduleAutosave();
+  render();
+  if (entityListVisible) {
+    buildEntityList(entityListSearchEl?.value.trim() || "");
+  }
+}
+
+function repairBrokenAlias(aliasNodeId: string): void {
+  if (!doc) {
+    return;
+  }
+  const node = doc.state.nodes[aliasNodeId];
+  if (!node || node.nodeType !== "alias") {
+    return;
+  }
+  // Convert broken alias to a regular text node, keeping the snapshot label
+  pushUndoSnapshot();
+  node.nodeType = "text";
+  node.isBroken = undefined;
+  node.targetNodeId = undefined;
+  node.aliasLabel = undefined;
+  node.access = undefined;
+  node.targetSnapshotLabel = undefined;
+  if (!node.text || node.text.endsWith("(deleted)")) {
+    node.text = node.targetSnapshotLabel || "Repaired node";
+  }
+  setStatus(`Repaired alias: converted to text node.`);
+  scheduleAutosave();
+  render();
+  if (entityListVisible) {
+    buildEntityList(entityListSearchEl?.value.trim() || "");
+  }
+}
+
+// ---- Context Menu ----
+
+function showContextMenu(x: number, y: number, items: { label: string; danger?: boolean; action: () => void }[]): void {
+  hideContextMenu();
+  const menu = document.createElement("div");
+  menu.className = "scope-context-menu";
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = "scope-context-menu-item" + (item.danger ? " danger" : "");
+    row.textContent = item.label;
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hideContextMenu();
+      item.action();
+    });
+    menu.appendChild(row);
+  }
+
+  document.body.appendChild(menu);
+  activeContextMenu = menu;
+
+  // Close on outside click
+  const closeHandler = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      hideContextMenu();
+      document.removeEventListener("click", closeHandler, true);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
+}
+
+function hideContextMenu(): void {
+  if (activeContextMenu) {
+    activeContextMenu.remove();
+    activeContextMenu = null;
+  }
+}
+
+// ---- Conflict Panel ----
+
+function collectFlatNodes(state: AppState, rootId: string): { id: string; text: string; depth: number }[] {
+  const result: { id: string; text: string; depth: number }[] = [];
+  const stack: { id: string; depth: number }[] = [{ id: rootId, depth: 0 }];
+  while (stack.length > 0) {
+    const { id, depth } = stack.pop()!;
+    const node = state.nodes[id];
+    if (!node) {
+      continue;
+    }
+    result.push({ id, text: node.text || "Untitled", depth });
+    const children = [...(node.children || [])].reverse();
+    for (const childId of children) {
+      stack.push({ id: childId, depth: depth + 1 });
+    }
+  }
+  return result;
+}
+
+interface ConflictDiffResult {
+  localOnly: Set<string>;
+  remoteOnly: Set<string>;
+  changed: Set<string>;
+  addedCount: number;
+  removedCount: number;
+  changedCount: number;
+}
+
+function diffStates(localState: AppState, remoteState: AppState): ConflictDiffResult {
+  const localIds = new Set(Object.keys(localState.nodes));
+  const remoteIds = new Set(Object.keys(remoteState.nodes));
+
+  const localOnly = new Set<string>();
+  const remoteOnly = new Set<string>();
+  const changed = new Set<string>();
+
+  for (const id of localIds) {
+    if (!remoteIds.has(id)) {
+      localOnly.add(id);
+    }
+  }
+
+  for (const id of remoteIds) {
+    if (!localIds.has(id)) {
+      remoteOnly.add(id);
+    }
+  }
+
+  for (const id of localIds) {
+    if (remoteIds.has(id)) {
+      const localNode = localState.nodes[id];
+      const remoteNode = remoteState.nodes[id];
+      if (localNode.text !== remoteNode.text ||
+          JSON.stringify(localNode.children) !== JSON.stringify(remoteNode.children) ||
+          localNode.parentId !== remoteNode.parentId ||
+          localNode.nodeType !== remoteNode.nodeType) {
+        changed.add(id);
+      }
+    }
+  }
+
+  return {
+    localOnly,
+    remoteOnly,
+    changed,
+    addedCount: remoteOnly.size,
+    removedCount: localOnly.size,
+    changedCount: changed.size,
+  };
+}
+
+function renderConflictTree(
+  container: HTMLElement,
+  flatNodes: { id: string; text: string; depth: number }[],
+  diffClasses: Map<string, string>,
+): void {
+  container.innerHTML = "";
+  for (const node of flatNodes) {
+    const row = document.createElement("div");
+    row.className = "conflict-node-row";
+    const diffClass = diffClasses.get(node.id);
+    if (diffClass) {
+      row.classList.add(diffClass);
+    }
+
+    const indent = document.createElement("span");
+    indent.className = "conflict-node-indent";
+    indent.style.width = `${node.depth * 16}px`;
+
+    const text = document.createElement("span");
+    text.className = "conflict-node-text";
+    text.textContent = node.text;
+
+    row.appendChild(indent);
+    row.appendChild(text);
+    container.appendChild(row);
+  }
+}
+
+function showConflictPanel(remoteState: AppState): void {
+  if (!conflictPanelEl || !conflictLocalTreeEl || !conflictRemoteTreeEl || !conflictDiffSummaryEl || !doc) {
+    return;
+  }
+
+  conflictRemoteState = remoteState;
+  conflictPanelVisible = true;
+  conflictPanelEl.hidden = false;
+
+  const localState = doc.state;
+  const diff = diffStates(localState, remoteState);
+
+  // Build diff class maps
+  const localDiffClasses = new Map<string, string>();
+  const remoteDiffClasses = new Map<string, string>();
+
+  for (const id of diff.localOnly) {
+    localDiffClasses.set(id, "diff-removed");
+  }
+  for (const id of diff.remoteOnly) {
+    remoteDiffClasses.set(id, "diff-added");
+  }
+  for (const id of diff.changed) {
+    localDiffClasses.set(id, "diff-changed");
+    remoteDiffClasses.set(id, "diff-changed");
+  }
+
+  const localFlat = collectFlatNodes(localState, localState.rootId);
+  const remoteFlat = collectFlatNodes(remoteState, remoteState.rootId);
+
+  renderConflictTree(conflictLocalTreeEl, localFlat, localDiffClasses);
+  renderConflictTree(conflictRemoteTreeEl, remoteFlat, remoteDiffClasses);
+
+  const parts: string[] = [];
+  if (diff.addedCount > 0) {
+    parts.push(`${diff.addedCount} node(s) added in remote`);
+  }
+  if (diff.removedCount > 0) {
+    parts.push(`${diff.removedCount} node(s) removed in remote`);
+  }
+  if (diff.changedCount > 0) {
+    parts.push(`${diff.changedCount} node(s) modified`);
+  }
+  if (parts.length === 0) {
+    parts.push("No structural differences detected (metadata may differ).");
+  }
+  conflictDiffSummaryEl.textContent = parts.join(" | ");
+}
+
+function hideConflictPanel(): void {
+  if (!conflictPanelEl) {
+    return;
+  }
+  conflictPanelVisible = false;
+  conflictPanelEl.hidden = true;
+  conflictRemoteState = null;
+  board.focus();
+}
+
+if (conflictCloseBtn) {
+  conflictCloseBtn.addEventListener("click", () => {
+    hideConflictPanel();
+  });
+}
+
+if (conflictUseLocalBtn) {
+  conflictUseLocalBtn.addEventListener("click", () => {
+    hideConflictPanel();
+    pushDocToCloud(true, true);
+  });
+}
+
+if (conflictUseRemoteBtn) {
+  conflictUseRemoteBtn.addEventListener("click", () => {
+    if (conflictRemoteState && doc) {
+      hideConflictPanel();
+      pullDocFromCloud(true);
+    }
+  });
+}
+
 function addChild(): void {
   const parentId = viewState.selectedNodeId;
   const parent = getNode(parentId);
@@ -3231,6 +4654,7 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
+        "X-M3E-Tab-Id": TAB_ID,
       },
       body: JSON.stringify(currentDocSnapshot()),
     });
@@ -3308,6 +4732,22 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
       updateCloudSyncUi();
       if (showStatus) {
         setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
+      }
+      // Attempt to fetch remote state to populate conflict panel
+      try {
+        const pullResp = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          body: JSON.stringify({}),
+        });
+        if (pullResp.ok) {
+          const pullPayload = await pullResp.json();
+          if (pullPayload.state) {
+            showConflictPanel(pullPayload.state as AppState);
+          }
+        }
+      } catch {
+        // Conflict panel will not be shown if remote fetch fails
       }
       return false;
     }
@@ -3439,6 +4879,7 @@ function scheduleAutosave(): void {
     clearTimeout(autosaveTimer);
   }
   autosaveTimer = setTimeout(() => {
+    autosaveTimer = null;
     void saveDocToLocalDb(false);
   }, AUTOSAVE_DELAY_MS);
 }
@@ -3474,6 +4915,82 @@ function broadcastState(): void {
   }
   const msg: BcStateMessage = { type: "STATE_UPDATE", fromTabId: TAB_ID, state: doc.state };
   bc.postMessage(msg);
+}
+
+// ---------------------------------------------------------------------------
+// Doc-watch SSE — auto-refresh on external DB changes
+// ---------------------------------------------------------------------------
+
+let docWatchEs: EventSource | null = null;
+let lastAppliedSavedAt: string | null = null;
+
+function initDocWatch(): void {
+  if (docWatchEs) return;
+  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/watch`;
+  docWatchEs = new EventSource(url);
+
+  docWatchEs.addEventListener("doc_updated", (ev: MessageEvent) => {
+    try {
+      const data = JSON.parse(ev.data) as { docId: string; savedAt: string; sourceTabId: string | null };
+      // Ignore our own saves
+      if (data.sourceTabId === TAB_ID) return;
+      // Ignore duplicate events
+      if (data.savedAt === lastAppliedSavedAt) return;
+      // If user has unsaved edits, notify instead of overwriting
+      if (autosaveTimer !== null) {
+        setStatus("External update available — save your edits first.", false);
+        return;
+      }
+      void applyExternalUpdate(data.savedAt);
+    } catch {
+      // ignore malformed events
+    }
+  });
+
+  window.addEventListener("beforeunload", () => docWatchEs?.close());
+}
+
+async function applyExternalUpdate(savedAt: string): Promise<void> {
+  try {
+    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const newDoc = ensureDocShape(payload);
+    // Only apply if actually newer
+    if (doc && newDoc.savedAt <= (doc.savedAt || "")) return;
+    lastAppliedSavedAt = savedAt;
+
+    // Preserve view state
+    const prevScopeId = viewState.currentScopeId;
+    const prevSelectedId = viewState.selectedNodeId;
+    const prevCollapsed = new Set(viewState.collapsedIds);
+    const prevScopeHistory = [...viewState.scopeHistory];
+
+    doc = newDoc;
+    hydrateLinearNotesFromDocState();
+    hydrateLinearTextFontScaleFromDocState();
+    if (doc.state.linearPanelWidth != null) {
+      linearPanelCanvasWidth = doc.state.linearPanelWidth;
+    }
+
+    // Restore view state if nodes still exist
+    if (doc.state.nodes[prevScopeId]) {
+      viewState.currentScopeId = prevScopeId;
+      viewState.currentScopeRootId = prevScopeId;
+      viewState.scopeHistory = prevScopeHistory;
+    }
+    if (doc.state.nodes[prevSelectedId]) {
+      viewState.selectedNodeId = prevSelectedId;
+      viewState.selectedNodeIds = new Set([prevSelectedId]);
+    }
+    viewState.collapsedIds = prevCollapsed;
+
+    render();
+    setStatus("Document updated externally.");
+    broadcastState();
+  } catch {
+    // will retry on next SSE event
+  }
 }
 
 function touchDocument(): void {
@@ -4407,6 +5924,11 @@ downloadBtn?.addEventListener("click", () => {
   downloadJson();
 });
 
+downloadMmBtn?.addEventListener("click", () => {
+  if (!doc) return;
+  downloadMm();
+});
+
 /* ── Hamburger & Export dropdown toggle ── */
 function toggleDropdown(menu: HTMLElement | null, btn: HTMLElement | null): void {
   if (!menu || !btn) return;
@@ -4550,6 +6072,21 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
   startInlineEdit(nodeId);
 });
 
+// Right-click context menu for scope lock on folder nodes
+canvas.addEventListener("contextmenu", (event: MouseEvent) => {
+  const target = event.target as Element | null;
+  const nodeId = target?.closest("[data-node-id]")?.getAttribute("data-node-id");
+  if (!nodeId || !doc) {
+    return;
+  }
+  const node = doc.state.nodes[nodeId];
+  if (!node || !isFolderNode(node)) {
+    return;
+  }
+  event.preventDefault();
+  showScopeLockContextMenu(event.clientX, event.clientY, nodeId);
+});
+
 board.addEventListener("wheel", (event: WheelEvent) => {
   if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
@@ -4633,6 +6170,24 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
   if (isImeComposingEvent(event)) {
+    return;
+  }
+
+  if (entityListVisible && event.key === "Escape") {
+    event.preventDefault();
+    hideEntityListPanel();
+    return;
+  }
+
+  if (conflictPanelVisible && event.key === "Escape") {
+    event.preventDefault();
+    hideConflictPanel();
+    return;
+  }
+
+  if (homeScreenVisible && event.key === "Escape") {
+    event.preventDefault();
+    hideHomeScreen();
     return;
   }
 
@@ -4827,6 +6382,22 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
         EnterScopeCommand();
         return;
       }
+
+  if (event.altKey && event.key.toLowerCase() === "e") {
+    event.preventDefault();
+    toggleEntityListPanel();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "h") {
+    event.preventDefault();
+    if (homeScreenVisible) {
+      hideHomeScreen();
+    } else {
+      showHomeScreen();
+    }
+    return;
+  }
 
   if (event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
@@ -5052,6 +6623,8 @@ updateCloudSyncUi();
 
 void initializeDocument().then(() => {
   initBroadcastSync();
+  initDocWatch();
+  tryCollabRegister();
   const initialScopeId = queryParams.get("scopeId");
   if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level
@@ -5070,4 +6643,7 @@ void initializeDocument().then(() => {
     updateScopeInUrl(initialScopeId);
   }
   fitDocument() || applyZoom();
+
+  // Skip home screen — go straight to map root
+  // To open home screen, user can press the toggle shortcut
 });
