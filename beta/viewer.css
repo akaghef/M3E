@@ -601,6 +601,19 @@
         pointer-events: none;
       }
 
+      /* ── m3e: visual style badges ── */
+      .confidence-badge {
+        opacity: 0.85;
+        pointer-events: none;
+      }
+
+      .confidence-badge-text {
+        fill: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        pointer-events: none;
+      }
+
       .inline-node-editor {
         position: absolute;
         z-index: 20;

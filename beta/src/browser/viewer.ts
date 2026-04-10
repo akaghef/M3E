@@ -477,6 +477,150 @@ function escapeXml(text: string): string {
     .replaceAll("'", "&#039;");
 }
 
+// ── m3e: visual style attributes ──────────────────────────────────────
+
+/** Allowed CSS named colors (subset) and hex pattern for XSS-safe color values. */
+const SAFE_COLOR_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const NAMED_COLORS = new Set([
+  "transparent", "currentcolor",
+  "black", "white", "red", "green", "blue", "yellow", "orange", "purple",
+  "pink", "gray", "grey", "brown", "cyan", "magenta", "lime", "navy",
+  "teal", "maroon", "olive", "aqua", "fuchsia", "silver", "gold",
+  "coral", "salmon", "tomato", "crimson", "indigo", "violet",
+  "turquoise", "tan", "sienna", "peru", "orchid", "plum", "khaki",
+]);
+
+function sanitizeColor(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (NAMED_COLORS.has(v)) return v;
+  if (SAFE_COLOR_RE.test(raw.trim())) return raw.trim();
+  return null;
+}
+
+function sanitizeBorderStyle(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (v === "solid" || v === "dashed" || v === "dotted" || v === "none") return v;
+  return null;
+}
+
+function sanitizeNumeric(raw: string | undefined, min: number, max: number): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(min, Math.min(max, n));
+}
+
+function sanitizeShape(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (v === "rect" || v === "rounded" || v === "pill") return v;
+  return null;
+}
+
+function sanitizeBand(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (v === "flash" || v === "rapid" || v === "deep") return v;
+  return null;
+}
+
+/** Sanitize icon: allow single emoji/short string, strip anything dangerous. */
+function sanitizeIcon(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const v = raw.trim();
+  // Allow up to 4 characters (covers multi-codepoint emoji)
+  if (v.length === 0 || [...v].length > 4) return null;
+  return v;
+}
+
+/** Compute confidence badge color: 0=red, 0.5=yellow, 1=green */
+function confidenceColor(c: number): string {
+  if (c <= 0.5) {
+    const r = 220;
+    const g = Math.round(60 + c * 2 * 160);
+    return `rgb(${r},${g},40)`;
+  }
+  const r = Math.round(220 - (c - 0.5) * 2 * 180);
+  const g = Math.round(180 + (c - 0.5) * 2 * 40);
+  return `rgb(${r},${g},40)`;
+}
+
+interface NodeStyleAttrs {
+  bg: string | null;
+  color: string | null;
+  border: string | null;
+  borderStyle: string | null;
+  borderWidth: number | null;
+  shape: string | null;
+  icon: string | null;
+  edgeColor: string | null;
+  edgeStyle: string | null;
+  edgeWidth: number | null;
+  band: string | null;
+  confidence: number | null;
+}
+
+function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
+  return {
+    bg: sanitizeColor(attrs["m3e:bg"]),
+    color: sanitizeColor(attrs["m3e:color"]),
+    border: sanitizeColor(attrs["m3e:border"]),
+    borderStyle: sanitizeBorderStyle(attrs["m3e:border-style"]),
+    borderWidth: sanitizeNumeric(attrs["m3e:border-width"], 0, 8),
+    shape: sanitizeShape(attrs["m3e:shape"]),
+    icon: sanitizeIcon(attrs["m3e:icon"]),
+    edgeColor: sanitizeColor(attrs["m3e:edge-color"]),
+    edgeStyle: sanitizeBorderStyle(attrs["m3e:edge-style"]),
+    edgeWidth: sanitizeNumeric(attrs["m3e:edge-width"], 1, 10),
+    band: sanitizeBand(attrs["m3e:band"]),
+    confidence: sanitizeNumeric(attrs["m3e:confidence"], 0, 1),
+  };
+}
+
+function buildNodeHitStyle(s: NodeStyleAttrs): string {
+  const parts: string[] = [];
+  if (s.bg) parts.push(`fill:${s.bg}`);
+  if (s.border) parts.push(`stroke:${s.border}`);
+  if (s.borderWidth != null) parts.push(`stroke-width:${s.borderWidth}px`);
+  if (s.borderStyle === "dashed") parts.push("stroke-dasharray:8 5");
+  if (s.borderStyle === "dotted") parts.push("stroke-dasharray:3 3");
+  if (s.borderStyle === "none") parts.push("stroke:none");
+  // Band overrides
+  if (s.band === "flash") {
+    parts.push("opacity:0.6");
+    if (!s.borderStyle) parts.push("stroke-dasharray:6 4");
+  } else if (s.band === "deep") {
+    if (s.borderWidth == null) parts.push("stroke-width:4px");
+    if (!s.border) parts.push("stroke:#333");
+  }
+  return parts.length ? parts.join(";") : "";
+}
+
+function buildLabelStyle(s: NodeStyleAttrs): string {
+  const parts: string[] = [];
+  if (s.color) parts.push(`fill:${s.color}`);
+  return parts.length ? parts.join(";") : "";
+}
+
+function buildEdgeStyle(s: NodeStyleAttrs): string {
+  const parts: string[] = [];
+  if (s.edgeColor) parts.push(`stroke:${s.edgeColor}`);
+  if (s.edgeWidth != null) parts.push(`stroke-width:${s.edgeWidth}px`);
+  if (s.edgeStyle === "dashed") parts.push("stroke-dasharray:10 6");
+  if (s.edgeStyle === "dotted") parts.push("stroke-dasharray:3 3");
+  return parts.length ? parts.join(";") : "";
+}
+
+function shapeRx(shape: string | null, isRoot: boolean): number {
+  if (!shape) return isRoot ? 60 : 12;
+  if (shape === "rect") return isRoot ? 8 : 2;
+  if (shape === "rounded") return isRoot ? 24 : 12;
+  if (shape === "pill") return 999;
+  return isRoot ? 60 : 12;
+}
+
 const TEXT_MEASURE_FONT_FAMILY = "\"Segoe UI\", \"Yu Gothic UI\", sans-serif";
 let textMeasureContext: CanvasRenderingContext2D | null | undefined;
 
@@ -2182,14 +2326,16 @@ function render(): void {
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
     const children = visibleChildren(node);
+    const nodeStyles = readNodeStyleAttrs(node.attributes || {});
     children.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) {
         return;
       }
 
-      const stroke =
+      const defaultStroke =
         VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+      const stroke = nodeStyles.edgeColor || defaultStroke;
       const startX = p.x + p.w + VIEWER_TUNING.layout.edgeStartPad;
       const startY = p.y;
       const endX = child.x - VIEWER_TUNING.layout.edgeEndPad;
@@ -2199,7 +2345,8 @@ function render(): void {
       const c1y = startY;
       const c2x = endX - curve;
       const c2y = endY;
-      edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}" />`;
+      const edgeInline = buildEdgeStyle(nodeStyles);
+      edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
     });
 
     const classNames = ["node-hit"];
@@ -2241,7 +2388,9 @@ function render(): void {
     const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
     const hitY = p.y - hitH / 2;
     const hitW = nodeId === displayRootId ? p.w : p.w + 36;
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="12" />`;
+    const hitRx = shapeRx(nodeStyles.shape, nodeId === displayRootId);
+    const hitInline = buildNodeHitStyle(nodeStyles);
+    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="${hitRx}"${hitInline ? ` style="${hitInline}"` : ""} />`;
 
     if (nodeId === displayRootId) {
       const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
@@ -2250,13 +2399,23 @@ function render(): void {
       const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
       const w = p.w;
       const h = p.h;
-      const rx = 60;
+      const rx = shapeRx(nodeStyles.shape, true);
       const x = p.x;
       const y = p.y - h / 2;
-      nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" />`;
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${VIEWER_TUNING.typography.rootFont}">${rootTspans}</text>`;
+      const rootBoxStyle: string[] = [];
+      if (nodeStyles.bg) rootBoxStyle.push(`fill:${nodeStyles.bg}`);
+      if (nodeStyles.border) rootBoxStyle.push(`stroke:${nodeStyles.border}`);
+      if (nodeStyles.borderWidth != null) rootBoxStyle.push(`stroke-width:${nodeStyles.borderWidth}px`);
+      if (nodeStyles.borderStyle === "dashed") rootBoxStyle.push("stroke-dasharray:8 5");
+      if (nodeStyles.borderStyle === "dotted") rootBoxStyle.push("stroke-dasharray:3 3");
+      if (nodeStyles.borderStyle === "none") rootBoxStyle.push("stroke:none");
+      const rootBoxInline = rootBoxStyle.length ? ` style="${rootBoxStyle.join(";")}"` : "";
+      nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${rootBoxInline} />`;
+      const rootLabelInline = buildLabelStyle(nodeStyles);
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${VIEWER_TUNING.typography.rootFont}"${rootLabelInline ? ` style="${rootLabelInline}"` : ""}>${rootTspans}</text>`;
     } else {
-      const rawLabel = uiLabel(node) || "(empty)";
+      const rawLabelBase = uiLabel(node) || "(empty)";
+      const rawLabel = nodeStyles.icon ? nodeStyles.icon + " " + rawLabelBase : rawLabelBase;
       const labelLines = splitLabelLines(rawLabel);
       const labelClasses = ["label-node"];
       if (viewState.selectedNodeIds.has(nodeId)) {
@@ -2275,7 +2434,12 @@ function render(): void {
         const folderFrameY = p.y - frameH / 2;
         const folderFrameW = p.w + 28;
         const folderFrameH = frameH;
-        nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8" />`;
+        const folderBoxParts: string[] = [];
+        if (nodeStyles.bg) folderBoxParts.push(`fill:${nodeStyles.bg}`);
+        if (nodeStyles.border) folderBoxParts.push(`stroke:${nodeStyles.border}`);
+        if (nodeStyles.borderWidth != null) folderBoxParts.push(`stroke-width:${nodeStyles.borderWidth}px`);
+        const folderBoxInline = folderBoxParts.length ? ` style="${folderBoxParts.join(";")}"` : "";
+        nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8"${folderBoxInline} />`;
         // Lock icon on locked folder nodes
         if (nodeLock) {
           const lockIconX = folderFrameX + folderFrameW - 14;
@@ -2298,11 +2462,20 @@ function render(): void {
         const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
         const startY = multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
         const tspans = multilineTspans(labelLines, p.x, lineHeight);
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}">${tspans}</text>`;
+        const labelInline = buildLabelStyle(nodeStyles);
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}"${labelInline ? ` style="${labelInline}"` : ""}>${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
         nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
+      }
+      // Band confidence badge (deep band or explicit confidence)
+      if (nodeStyles.confidence != null) {
+        const cColor = confidenceColor(nodeStyles.confidence);
+        const cLabel = (nodeStyles.confidence * 100).toFixed(0) + "%";
+        const cX = p.x + p.w + (badge ? 60 : 18);
+        nodes += `<rect class="confidence-badge" x="${cX}" y="${p.y - 12}" width="42" height="22" rx="11" style="fill:${cColor}" />`;
+        nodes += `<text class="confidence-badge-text" x="${cX + 21}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(cLabel)}</text>`;
       }
     }
 
