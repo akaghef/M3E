@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect, beforeEach, afterEach } from "vitest";
 const os = require("node:os");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -21,11 +20,11 @@ function createState(label) {
   return model.toJSON();
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-backup-test-"));
 });
 
-test.afterEach(() => {
+afterEach(() => {
   fs.rmSync(tempDataDir, { recursive: true, force: true });
 });
 
@@ -33,11 +32,11 @@ test("createConflictBackup saves a backup and returns entry metadata", () => {
   const state = createState("TestNode");
   const entry = createConflictBackup(tempDataDir, "doc-1", state, "cloud-sync-pull");
 
-  assert.ok(entry.backupId);
-  assert.equal(entry.documentId, "doc-1");
-  assert.equal(entry.reason, "cloud-sync-pull");
-  assert.ok(entry.createdAt);
-  assert.ok(entry.savedAt);
+  expect(entry.backupId).toBeTruthy();
+  expect(entry.documentId).toBe("doc-1");
+  expect(entry.reason).toBe("cloud-sync-pull");
+  expect(entry.createdAt).toBeTruthy();
+  expect(entry.savedAt).toBeTruthy();
 });
 
 test("listConflictBackups returns saved backups sorted newest first", () => {
@@ -48,15 +47,15 @@ test("listConflictBackups returns saved backups sorted newest first", () => {
   const entry2 = createConflictBackup(tempDataDir, "doc-1", state2, "reason-2");
 
   const list = listConflictBackups(tempDataDir, "doc-1");
-  assert.equal(list.length, 2);
+  expect(list.length).toBe(2);
   // Newest first
-  assert.equal(list[0].backupId, entry2.backupId);
-  assert.equal(list[1].backupId, entry1.backupId);
+  expect(list[0].backupId).toBe(entry2.backupId);
+  expect(list[1].backupId).toBe(entry1.backupId);
 });
 
 test("listConflictBackups returns empty array when no backups exist", () => {
   const list = listConflictBackups(tempDataDir, "nonexistent");
-  assert.deepEqual(list, []);
+  expect(list).toEqual([]);
 });
 
 test("listConflictBackups filters by documentId", () => {
@@ -64,12 +63,12 @@ test("listConflictBackups filters by documentId", () => {
   createConflictBackup(tempDataDir, "doc-b", createState("B"), "r2");
 
   const listA = listConflictBackups(tempDataDir, "doc-a");
-  assert.equal(listA.length, 1);
-  assert.equal(listA[0].documentId, "doc-a");
+  expect(listA.length).toBe(1);
+  expect(listA[0].documentId).toBe("doc-a");
 
   const listB = listConflictBackups(tempDataDir, "doc-b");
-  assert.equal(listB.length, 1);
-  assert.equal(listB[0].documentId, "doc-b");
+  expect(listB.length).toBe(1);
+  expect(listB[0].documentId).toBe("doc-b");
 });
 
 test("getConflictBackup returns full backup with state", () => {
@@ -77,36 +76,36 @@ test("getConflictBackup returns full backup with state", () => {
   const entry = createConflictBackup(tempDataDir, "doc-1", state, "test-reason");
 
   const full = getConflictBackup(tempDataDir, "doc-1", entry.backupId);
-  assert.ok(full);
-  assert.equal(full.version, 1);
-  assert.equal(full.backupId, entry.backupId);
-  assert.equal(full.documentId, "doc-1");
-  assert.ok(full.state);
-  assert.ok(full.state.rootId);
-  assert.ok(full.state.nodes);
+  expect(full).toBeTruthy();
+  expect(full.version).toBe(1);
+  expect(full.backupId).toBe(entry.backupId);
+  expect(full.documentId).toBe("doc-1");
+  expect(full.state).toBeTruthy();
+  expect(full.state.rootId).toBeTruthy();
+  expect(full.state.nodes).toBeTruthy();
 });
 
 test("getConflictBackup returns null for nonexistent backup", () => {
   const full = getConflictBackup(tempDataDir, "doc-1", "nonexistent-id");
-  assert.equal(full, null);
+  expect(full).toBe(null);
 });
 
 test("deleteConflictBackup removes the backup file", () => {
   const entry = createConflictBackup(tempDataDir, "doc-1", createState("Del"), "r");
 
   const deleted = deleteConflictBackup(tempDataDir, "doc-1", entry.backupId);
-  assert.equal(deleted, true);
+  expect(deleted).toBe(true);
 
   const list = listConflictBackups(tempDataDir, "doc-1");
-  assert.equal(list.length, 0);
+  expect(list.length).toBe(0);
 
   const full = getConflictBackup(tempDataDir, "doc-1", entry.backupId);
-  assert.equal(full, null);
+  expect(full).toBe(null);
 });
 
 test("deleteConflictBackup returns false for nonexistent backup", () => {
   const deleted = deleteConflictBackup(tempDataDir, "doc-1", "nonexistent");
-  assert.equal(deleted, false);
+  expect(deleted).toBe(false);
 });
 
 test("createConflictBackup prunes backups beyond limit of 10", () => {
@@ -115,5 +114,5 @@ test("createConflictBackup prunes backups beyond limit of 10", () => {
   }
 
   const list = listConflictBackups(tempDataDir, "doc-prune");
-  assert.equal(list.length, 10);
+  expect(list.length).toBe(10);
 });

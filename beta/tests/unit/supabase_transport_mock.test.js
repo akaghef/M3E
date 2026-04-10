@@ -1,7 +1,6 @@
 "use strict";
 
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect } from "vitest";
 
 const { SupabaseTransport } = require("../../dist/node/cloud_sync.js");
 
@@ -9,14 +8,9 @@ const { SupabaseTransport } = require("../../dist/node/cloud_sync.js");
 // Mock Supabase client
 // ---------------------------------------------------------------------------
 
-/**
- * Creates a mock SupabaseTransport with an injected fake client.
- * This avoids the dynamic import of @supabase/supabase-js.
- */
 function createMockTransport(mockData) {
   const transport = new SupabaseTransport("https://mock.supabase.co", "mock-key");
 
-  // Build a chainable query builder mock
   function createQueryBuilder(resolveData, resolveError) {
     const builder = {
       select: () => builder,
@@ -36,14 +30,10 @@ function createMockTransport(mockData) {
     },
   };
 
-  // Inject mock client directly
   transport.client = mockClient;
   return transport;
 }
 
-/**
- * Creates a mock transport with per-method control.
- */
 function createDetailedMockTransport(handlers) {
   const transport = new SupabaseTransport("https://mock.supabase.co", "mock-key");
 
@@ -92,7 +82,7 @@ function createDetailedMockTransport(handlers) {
 
 test("SupabaseTransport push succeeds when no conflict", async () => {
   const transport = createDetailedMockTransport({
-    maybeSingle: () => ({ data: null, error: null }), // no existing doc
+    maybeSingle: () => ({ data: null, error: null }),
     upsert: () => ({ data: null, error: null }),
   });
 
@@ -103,9 +93,9 @@ test("SupabaseTransport push succeeds when no conflict", async () => {
   };
 
   const result = await transport.push("doc1", doc, null, false);
-  assert.equal(result.ok, true);
-  assert.equal(result.documentId, "doc1");
-  assert.equal(result.savedAt, "2026-04-10T00:00:00.000Z");
+  expect(result.ok).toBe(true);
+  expect(result.documentId).toBe("doc1");
+  expect(result.savedAt).toBe("2026-04-10T00:00:00.000Z");
 });
 
 test("SupabaseTransport push detects conflict when baseSavedAt differs", async () => {
@@ -124,9 +114,9 @@ test("SupabaseTransport push detects conflict when baseSavedAt differs", async (
   };
 
   const result = await transport.push("doc1", doc, "2026-04-10T00:00:00.000Z", false);
-  assert.equal(result.ok, false);
-  assert.equal(result.conflict, true);
-  assert.equal(result.cloudSavedAt, "2026-04-10T00:00:10.000Z");
+  expect(result.ok).toBe(false);
+  expect(result.conflict).toBe(true);
+  expect(result.cloudSavedAt).toBe("2026-04-10T00:00:10.000Z");
 });
 
 test("SupabaseTransport push skips conflict check when force=true", async () => {
@@ -145,8 +135,8 @@ test("SupabaseTransport push skips conflict check when force=true", async () => 
   };
 
   const result = await transport.push("doc1", doc, "2026-04-10T00:00:00.000Z", true);
-  assert.equal(result.ok, true);
-  assert.equal(result.forced, true);
+  expect(result.ok).toBe(true);
+  expect(result.forced).toBe(true);
 });
 
 test("SupabaseTransport push skips conflict check when baseSavedAt is null", async () => {
@@ -162,7 +152,7 @@ test("SupabaseTransport push skips conflict check when baseSavedAt is null", asy
   };
 
   const result = await transport.push("doc1", doc, null, false);
-  assert.equal(result.ok, true);
+  expect(result.ok).toBe(true);
 });
 
 test("SupabaseTransport push returns error on fetch failure", async () => {
@@ -180,8 +170,8 @@ test("SupabaseTransport push returns error on fetch failure", async () => {
   };
 
   const result = await transport.push("doc1", doc, "2026-04-09T00:00:00.000Z", false);
-  assert.equal(result.ok, false);
-  assert.match(result.error, /connection refused/);
+  expect(result.ok).toBe(false);
+  expect(result.error).toMatch(/connection refused/);
 });
 
 test("SupabaseTransport push returns error on upsert failure", async () => {
@@ -200,8 +190,8 @@ test("SupabaseTransport push returns error on upsert failure", async () => {
   };
 
   const result = await transport.push("doc1", doc, null, false);
-  assert.equal(result.ok, false);
-  assert.match(result.error, /row too large/);
+  expect(result.ok).toBe(false);
+  expect(result.error).toMatch(/row too large/);
 });
 
 test("SupabaseTransport push generates savedAt when doc has none", async () => {
@@ -217,8 +207,8 @@ test("SupabaseTransport push generates savedAt when doc has none", async () => {
   };
 
   const result = await transport.push("doc1", doc, null, false);
-  assert.equal(result.ok, true);
-  assert.ok(result.savedAt.length > 0);
+  expect(result.ok).toBe(true);
+  expect(result.savedAt.length > 0).toBe(true);
 });
 
 // ---------------------------------------------------------------------------
@@ -238,20 +228,20 @@ test("SupabaseTransport pull succeeds with existing doc", async () => {
   });
 
   const result = await transport.pull("doc1");
-  assert.equal(result.ok, true);
-  assert.equal(result.version, 1);
-  assert.equal(result.savedAt, "2026-04-10T00:00:00.000Z");
-  assert.equal(result.state.rootId, "r1");
-  assert.equal(result.documentId, "doc1");
+  expect(result.ok).toBe(true);
+  expect(result.version).toBe(1);
+  expect(result.savedAt).toBe("2026-04-10T00:00:00.000Z");
+  expect(result.state.rootId).toBe("r1");
+  expect(result.documentId).toBe("doc1");
 });
 
 test("SupabaseTransport pull returns error for missing doc", async () => {
   const transport = createMockTransport({ documents: { data: null } });
 
   const result = await transport.pull("missing");
-  assert.equal(result.ok, false);
-  assert.match(result.error, /not found/i);
-  assert.equal(result.documentId, "missing");
+  expect(result.ok).toBe(false);
+  expect(result.error).toMatch(/not found/i);
+  expect(result.documentId).toBe("missing");
 });
 
 test("SupabaseTransport pull returns error on fetch failure", async () => {
@@ -263,8 +253,8 @@ test("SupabaseTransport pull returns error on fetch failure", async () => {
   });
 
   const result = await transport.pull("doc1");
-  assert.equal(result.ok, false);
-  assert.match(result.error, /timeout/);
+  expect(result.ok).toBe(false);
+  expect(result.error).toMatch(/timeout/);
 });
 
 // ---------------------------------------------------------------------------
@@ -279,21 +269,21 @@ test("SupabaseTransport status returns exists=true with savedAt", async () => {
   });
 
   const result = await transport.status("doc1");
-  assert.equal(result.ok, true);
-  assert.equal(result.enabled, true);
-  assert.equal(result.mode, "supabase");
-  assert.equal(result.exists, true);
-  assert.equal(result.cloudSavedAt, "2026-04-10T00:00:00.000Z");
-  assert.equal(result.documentId, "doc1");
+  expect(result.ok).toBe(true);
+  expect(result.enabled).toBe(true);
+  expect(result.mode).toBe("supabase");
+  expect(result.exists).toBe(true);
+  expect(result.cloudSavedAt).toBe("2026-04-10T00:00:00.000Z");
+  expect(result.documentId).toBe("doc1");
 });
 
 test("SupabaseTransport status returns exists=false when no doc", async () => {
   const transport = createMockTransport({ documents: { data: null } });
 
   const result = await transport.status("missing");
-  assert.equal(result.ok, true);
-  assert.equal(result.exists, false);
-  assert.equal(result.cloudSavedAt, null);
+  expect(result.ok).toBe(true);
+  expect(result.exists).toBe(false);
+  expect(result.cloudSavedAt).toBe(null);
 });
 
 test("SupabaseTransport status returns ok=false on error", async () => {
@@ -305,6 +295,6 @@ test("SupabaseTransport status returns ok=false on error", async () => {
   });
 
   const result = await transport.status("doc1");
-  assert.equal(result.ok, false);
-  assert.equal(result.exists, false);
+  expect(result.ok).toBe(false);
+  expect(result.exists).toBe(false);
 });

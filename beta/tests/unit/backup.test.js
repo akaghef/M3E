@@ -1,5 +1,4 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect } from "vitest";
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -29,15 +28,15 @@ test("createBackup produces a file in backupDir", async () => {
 
   const result = await createBackup(dbPath, backupDir);
 
-  assert.ok(fs.existsSync(result), "backup file should exist");
-  assert.ok(result.startsWith(backupDir), "backup should be inside backupDir");
-  assert.match(path.basename(result), /^M3E_dataV1_\d{8}_\d{6}\.sqlite$/);
+  expect(fs.existsSync(result)).toBe(true);
+  expect(result.startsWith(backupDir)).toBe(true);
+  expect(path.basename(result)).toMatch(/^M3E_dataV1_\d{8}_\d{6}\.sqlite$/);
 
   // Verify backup is a valid SQLite file
   const backupDb = new Database(result, { readonly: true });
   const row = backupDb.prepare("SELECT id FROM documents WHERE id = ?").get("default");
   backupDb.close();
-  assert.ok(row, "backup DB should contain the document");
+  expect(row).toBeTruthy();
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -47,9 +46,9 @@ test("createBackup creates backupDir if it does not exist", async () => {
   const dbPath = createTestDb(tmpDir);
   const backupDir = path.join(tmpDir, "nested", "deep", "backups");
 
-  assert.ok(!fs.existsSync(backupDir));
+  expect(fs.existsSync(backupDir)).toBe(false);
   await createBackup(dbPath, backupDir);
-  assert.ok(fs.existsSync(backupDir));
+  expect(fs.existsSync(backupDir)).toBe(true);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -75,14 +74,14 @@ test("pruneOldBackups keeps maxGenerations and deletes oldest", () => {
   pruneOldBackups(backupDir, 3);
 
   const remaining = fs.readdirSync(backupDir).sort();
-  assert.equal(remaining.length, 3);
+  expect(remaining.length).toBe(3);
   // Oldest two should be gone
-  assert.ok(!remaining.includes("M3E_dataV1_20260401_100000.sqlite"));
-  assert.ok(!remaining.includes("M3E_dataV1_20260401_110000.sqlite"));
+  expect(remaining.includes("M3E_dataV1_20260401_100000.sqlite")).toBe(false);
+  expect(remaining.includes("M3E_dataV1_20260401_110000.sqlite")).toBe(false);
   // Newest three should remain
-  assert.ok(remaining.includes("M3E_dataV1_20260401_120000.sqlite"));
-  assert.ok(remaining.includes("M3E_dataV1_20260401_130000.sqlite"));
-  assert.ok(remaining.includes("M3E_dataV1_20260401_140000.sqlite"));
+  expect(remaining.includes("M3E_dataV1_20260401_120000.sqlite")).toBe(true);
+  expect(remaining.includes("M3E_dataV1_20260401_130000.sqlite")).toBe(true);
+  expect(remaining.includes("M3E_dataV1_20260401_140000.sqlite")).toBe(true);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -98,7 +97,7 @@ test("pruneOldBackups does nothing when under limit", () => {
   pruneOldBackups(backupDir, 10);
 
   const remaining = fs.readdirSync(backupDir);
-  assert.equal(remaining.length, 2);
+  expect(remaining.length).toBe(2);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -115,9 +114,9 @@ test("pruneOldBackups ignores non-matching files", () => {
   pruneOldBackups(backupDir, 1);
 
   const remaining = fs.readdirSync(backupDir).sort();
-  assert.equal(remaining.length, 2); // 1 backup + 1 random file
-  assert.ok(remaining.includes("random-file.txt"));
-  assert.ok(remaining.includes("M3E_dataV1_20260401_110000.sqlite"));
+  expect(remaining.length).toBe(2); // 1 backup + 1 random file
+  expect(remaining.includes("random-file.txt")).toBe(true);
+  expect(remaining.includes("M3E_dataV1_20260401_110000.sqlite")).toBe(true);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

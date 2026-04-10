@@ -1,7 +1,6 @@
 "use strict";
 
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, expect, beforeEach } from "vitest";
 
 const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
 const {
@@ -18,18 +17,6 @@ function createModel(rootText) {
   return new RapidMvpModel(rootText || "Root");
 }
 
-/**
- * Build a tree with folder-based scopes:
- *
- *   Root
- *   +-- ScopeA (folder)
- *   |   +-- A1
- *   |   +-- A2
- *   |       +-- A2a
- *   +-- ScopeB (folder)
- *   |   +-- B1
- *   +-- Orphan (text, not in any sub-scope)
- */
 function buildScopedTree() {
   const m = createModel("Root");
   const root = m.state.rootId;
@@ -53,44 +40,40 @@ function buildScopedTree() {
 // Phase 1: Existing scope functionality tests
 // ===========================================================================
 
-// --- Scope entry / exit (queryNodes as scope filter) ---
-
 test("enterScope: queryNodes(scopeRoot) returns only children of that scope", () => {
   const { m, scopeA, a1, a2, a2a, scopeB, b1 } = buildScopedTree();
 
   const scopeANodes = m.queryNodeIds(scopeA);
-  assert.ok(scopeANodes.includes(scopeA));
-  assert.ok(scopeANodes.includes(a1));
-  assert.ok(scopeANodes.includes(a2));
-  assert.ok(scopeANodes.includes(a2a));
-  assert.ok(!scopeANodes.includes(scopeB));
-  assert.ok(!scopeANodes.includes(b1));
+  expect(scopeANodes.includes(scopeA)).toBe(true);
+  expect(scopeANodes.includes(a1)).toBe(true);
+  expect(scopeANodes.includes(a2)).toBe(true);
+  expect(scopeANodes.includes(a2a)).toBe(true);
+  expect(scopeANodes.includes(scopeB)).toBe(false);
+  expect(scopeANodes.includes(b1)).toBe(false);
 });
 
 test("exitScope: queryNodes(root) returns all nodes", () => {
   const { m, root, scopeA, a1, scopeB, b1, orphan } = buildScopedTree();
 
   const allNodes = m.queryNodeIds(root);
-  assert.ok(allNodes.includes(root));
-  assert.ok(allNodes.includes(scopeA));
-  assert.ok(allNodes.includes(a1));
-  assert.ok(allNodes.includes(scopeB));
-  assert.ok(allNodes.includes(b1));
-  assert.ok(allNodes.includes(orphan));
+  expect(allNodes.includes(root)).toBe(true);
+  expect(allNodes.includes(scopeA)).toBe(true);
+  expect(allNodes.includes(a1)).toBe(true);
+  expect(allNodes.includes(scopeB)).toBe(true);
+  expect(allNodes.includes(b1)).toBe(true);
+  expect(allNodes.includes(orphan)).toBe(true);
 });
 
 test("scope enter then exit returns to full tree", () => {
   const { m, root, scopeA, a1, b1 } = buildScopedTree();
 
-  // Simulate enter scope A
   const inScope = m.queryNodeIds(scopeA);
-  assert.ok(inScope.includes(a1));
-  assert.ok(!inScope.includes(b1));
+  expect(inScope.includes(a1)).toBe(true);
+  expect(inScope.includes(b1)).toBe(false);
 
-  // Simulate exit scope (back to root)
   const full = m.queryNodeIds(root);
-  assert.ok(full.includes(a1));
-  assert.ok(full.includes(b1));
+  expect(full.includes(a1)).toBe(true);
+  expect(full.includes(b1)).toBe(true);
 });
 
 // --- Alias creation and broken detection ---
@@ -102,9 +85,9 @@ test("alias creation stores correct targetNodeId", () => {
   const aliasId = m.addAlias(root, target);
 
   const alias = m.state.nodes[aliasId];
-  assert.equal(alias.nodeType, "alias");
-  assert.equal(alias.targetNodeId, target);
-  assert.equal(alias.isBroken, false);
+  expect(alias.nodeType).toBe("alias");
+  expect(alias.targetNodeId).toBe(target);
+  expect(alias.isBroken).toBe(false);
 });
 
 test("alias broken detection triggers on target deletion", () => {
@@ -116,9 +99,9 @@ test("alias broken detection triggers on target deletion", () => {
   m.deleteNode(target);
 
   const alias = m.state.nodes[aliasId];
-  assert.equal(alias.isBroken, true);
-  assert.equal(alias.targetSnapshotLabel, "Important Node");
-  assert.match(alias.text, /deleted/);
+  expect(alias.isBroken).toBe(true);
+  expect(alias.targetSnapshotLabel).toBe("Important Node");
+  expect(alias.text).toMatch(/deleted/);
 });
 
 test("alias cannot target another alias", () => {
@@ -127,9 +110,9 @@ test("alias cannot target another alias", () => {
   const target = m.addNode(root, "Target");
   const aliasId = m.addAlias(root, target);
 
-  assert.throws(() => m.addAlias(root, aliasId), {
-    message: /cannot target another alias/i,
-  });
+  expect(() => m.addAlias(root, aliasId)).toThrow(
+    /cannot target another alias/i,
+  );
 });
 
 test("alias default access is read", () => {
@@ -138,7 +121,7 @@ test("alias default access is read", () => {
   const target = m.addNode(root, "Target");
   const aliasId = m.addAlias(root, target);
 
-  assert.equal(m.state.nodes[aliasId].access, "read");
+  expect(m.state.nodes[aliasId].access).toBe("read");
 });
 
 test("alias with write access is stored correctly", () => {
@@ -147,7 +130,7 @@ test("alias with write access is stored correctly", () => {
   const target = m.addNode(root, "Target");
   const aliasId = m.addAlias(root, target, { access: "write" });
 
-  assert.equal(m.state.nodes[aliasId].access, "write");
+  expect(m.state.nodes[aliasId].access).toBe("write");
 });
 
 // --- Nested scopes ---
@@ -162,15 +145,13 @@ test("nested scopes: folder inside folder creates nested scope", () => {
   m.state.nodes[inner].nodeType = "folder";
   const leaf = m.addNode(inner, "Leaf");
 
-  // Query inner scope
   const innerNodes = m.queryNodeIds(inner);
-  assert.deepEqual(innerNodes, [inner, leaf]);
+  expect(innerNodes).toEqual([inner, leaf]);
 
-  // Query outer scope includes inner
   const outerNodes = m.queryNodeIds(outer);
-  assert.ok(outerNodes.includes(outer));
-  assert.ok(outerNodes.includes(inner));
-  assert.ok(outerNodes.includes(leaf));
+  expect(outerNodes.includes(outer)).toBe(true);
+  expect(outerNodes.includes(inner)).toBe(true);
+  expect(outerNodes.includes(leaf)).toBe(true);
 });
 
 test("nested scopes: deeply nested (3 levels)", () => {
@@ -186,11 +167,11 @@ test("nested scopes: deeply nested (3 levels)", () => {
   const deep = m.addNode(l3, "DeepNode");
 
   const l3Nodes = m.queryNodeIds(l3);
-  assert.deepEqual(l3Nodes, [l3, deep]);
+  expect(l3Nodes).toEqual([l3, deep]);
 
   const l1Nodes = m.queryNodeIds(l1);
-  assert.ok(l1Nodes.includes(deep));
-  assert.equal(l1Nodes.length, 4); // l1, l2, l3, deep
+  expect(l1Nodes.includes(deep)).toBe(true);
+  expect(l1Nodes.length).toBe(4);
 });
 
 // --- Breadcrumb path calculation ---
@@ -199,30 +180,29 @@ test("breadcrumb: path from node to root", () => {
   const { m, root, scopeA, a2, a2a } = buildScopedTree();
   const nodes = m.state.nodes;
 
-  // Compute breadcrumb path by walking parentId
-  const path = [];
+  const breadcrumbPath = [];
   let current = nodes[a2a];
   while (current) {
-    path.unshift(current.id);
+    breadcrumbPath.unshift(current.id);
     if (current.parentId === null) break;
     current = nodes[current.parentId];
   }
 
-  assert.deepEqual(path, [root, scopeA, a2, a2a]);
+  expect(breadcrumbPath).toEqual([root, scopeA, a2, a2a]);
 });
 
 test("breadcrumb: root node has single-element path", () => {
   const m = createModel("Root");
   const root = m.state.rootId;
 
-  const path = [root];
-  assert.equal(path.length, 1);
-  assert.equal(path[0], root);
+  const breadcrumbPath = [root];
+  expect(breadcrumbPath.length).toBe(1);
+  expect(breadcrumbPath[0]).toBe(root);
 });
 
 // --- findScopeRoot ---
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetCollab();
 });
 
@@ -230,21 +210,21 @@ test("findScopeRoot returns folder ancestor", () => {
   const { m, root, scopeA, a1 } = buildScopedTree();
 
   const result = findScopeRoot(m.state.nodes, a1, root);
-  assert.equal(result, scopeA);
+  expect(result).toBe(scopeA);
 });
 
 test("findScopeRoot returns rootId for top-level text node", () => {
   const { m, root, orphan } = buildScopedTree();
 
   const result = findScopeRoot(m.state.nodes, orphan, root);
-  assert.equal(result, root);
+  expect(result).toBe(root);
 });
 
 test("findScopeRoot on folder itself returns that folder", () => {
   const { m, root, scopeA } = buildScopedTree();
 
   const result = findScopeRoot(m.state.nodes, scopeA, root);
-  assert.equal(result, scopeA);
+  expect(result).toBe(scopeA);
 });
 
 test("findScopeRoot with nested folders returns nearest folder", () => {
@@ -258,7 +238,7 @@ test("findScopeRoot with nested folders returns nearest folder", () => {
   const leaf = m.addNode(inner, "Leaf");
 
   const result = findScopeRoot(m.state.nodes, leaf, root);
-  assert.equal(result, inner);
+  expect(result).toBe(inner);
 });
 
 test("findScopeRoot on root returns rootId", () => {
@@ -266,7 +246,7 @@ test("findScopeRoot on root returns rootId", () => {
   const root = m.state.rootId;
 
   const result = findScopeRoot(m.state.nodes, root, root);
-  assert.equal(result, root);
+  expect(result).toBe(root);
 });
 
 // --- isInScope ---
@@ -274,57 +254,53 @@ test("findScopeRoot on root returns rootId", () => {
 test("isInScope returns true for node inside scope", () => {
   const { m, root, scopeA, a1 } = buildScopedTree();
 
-  assert.equal(isInScope(m.state.nodes, a1, scopeA, root), true);
+  expect(isInScope(m.state.nodes, a1, scopeA, root)).toBe(true);
 });
 
 test("isInScope returns false for node outside scope", () => {
   const { m, root, scopeA, b1 } = buildScopedTree();
 
-  assert.equal(isInScope(m.state.nodes, b1, scopeA, root), false);
+  expect(isInScope(m.state.nodes, b1, scopeA, root)).toBe(false);
 });
 
 test("isInScope with rootId always returns true", () => {
   const { m, root, a1, b1, orphan } = buildScopedTree();
 
-  assert.equal(isInScope(m.state.nodes, a1, root, root), true);
-  assert.equal(isInScope(m.state.nodes, b1, root, root), true);
-  assert.equal(isInScope(m.state.nodes, orphan, root, root), true);
+  expect(isInScope(m.state.nodes, a1, root, root)).toBe(true);
+  expect(isInScope(m.state.nodes, b1, root, root)).toBe(true);
+  expect(isInScope(m.state.nodes, orphan, root, root)).toBe(true);
 });
 
 test("isInScope for deeply nested node in outer scope", () => {
   const { m, root, scopeA, a2a } = buildScopedTree();
 
-  assert.equal(isInScope(m.state.nodes, a2a, scopeA, root), true);
+  expect(isInScope(m.state.nodes, a2a, scopeA, root)).toBe(true);
 });
 
 test("isInScope for node at scope boundary (node is the scope itself)", () => {
   const { m, root, scopeA } = buildScopedTree();
 
-  assert.equal(isInScope(m.state.nodes, scopeA, scopeA, root), true);
+  expect(isInScope(m.state.nodes, scopeA, scopeA, root)).toBe(true);
 });
 
 // ===========================================================================
 // Phase 2: scope/alias spec implementation tests
 // ===========================================================================
 
-// --- Cross-scope reparent ---
-
 test("reparent node from one scope to another", () => {
   const { m, root, scopeA, a1, scopeB } = buildScopedTree();
 
   m.reparentNode(a1, scopeB);
 
-  // a1 is now under scopeB
-  assert.equal(m.state.nodes[a1].parentId, scopeB);
-  assert.ok(m.state.nodes[scopeB].children.includes(a1));
-  assert.ok(!m.state.nodes[scopeA].children.includes(a1));
+  expect(m.state.nodes[a1].parentId).toBe(scopeB);
+  expect(m.state.nodes[scopeB].children.includes(a1)).toBe(true);
+  expect(m.state.nodes[scopeA].children.includes(a1)).toBe(false);
 
-  // queryNodes reflects the change
   const scopeANodes = m.queryNodeIds(scopeA);
-  assert.ok(!scopeANodes.includes(a1));
+  expect(scopeANodes.includes(a1)).toBe(false);
 
   const scopeBNodes = m.queryNodeIds(scopeB);
-  assert.ok(scopeBNodes.includes(a1));
+  expect(scopeBNodes.includes(a1)).toBe(true);
 });
 
 test("reparent subtree from one scope to another moves entire subtree", () => {
@@ -332,14 +308,13 @@ test("reparent subtree from one scope to another moves entire subtree", () => {
 
   m.reparentNode(a2, scopeB);
 
-  // a2 and its child a2a both under scopeB now
   const scopeBNodes = m.queryNodeIds(scopeB);
-  assert.ok(scopeBNodes.includes(a2));
-  assert.ok(scopeBNodes.includes(a2a));
+  expect(scopeBNodes.includes(a2)).toBe(true);
+  expect(scopeBNodes.includes(a2a)).toBe(true);
 
   const scopeANodes = m.queryNodeIds(scopeA);
-  assert.ok(!scopeANodes.includes(a2));
-  assert.ok(!scopeANodes.includes(a2a));
+  expect(scopeANodes.includes(a2)).toBe(false);
+  expect(scopeANodes.includes(a2a)).toBe(false);
 });
 
 test("reparent to root level (out of scope)", () => {
@@ -347,9 +322,9 @@ test("reparent to root level (out of scope)", () => {
 
   m.reparentNode(a1, root);
 
-  assert.equal(m.state.nodes[a1].parentId, root);
-  assert.ok(m.state.nodes[root].children.includes(a1));
-  assert.ok(!m.state.nodes[scopeA].children.includes(a1));
+  expect(m.state.nodes[a1].parentId).toBe(root);
+  expect(m.state.nodes[root].children.includes(a1)).toBe(true);
+  expect(m.state.nodes[scopeA].children.includes(a1)).toBe(false);
 });
 
 test("reparent preserves model validity", () => {
@@ -358,7 +333,7 @@ test("reparent preserves model validity", () => {
   m.reparentNode(a1, scopeB);
 
   const errors = m.validate();
-  assert.equal(errors.length, 0, `Validation errors: ${errors.join(", ")}`);
+  expect(errors.length).toBe(0);
 });
 
 // --- Cross-scope alias references ---
@@ -366,17 +341,15 @@ test("reparent preserves model validity", () => {
 test("alias can reference node in different scope", () => {
   const { m, scopeA, a1, scopeB } = buildScopedTree();
 
-  // Create alias in scopeB pointing to a1 (in scopeA)
   const aliasId = m.addAlias(scopeB, a1, { aliasLabel: "Ref to A1" });
 
   const alias = m.state.nodes[aliasId];
-  assert.equal(alias.targetNodeId, a1);
-  assert.equal(alias.nodeType, "alias");
-  assert.equal(alias.parentId, scopeB);
+  expect(alias.targetNodeId).toBe(a1);
+  expect(alias.nodeType).toBe("alias");
+  expect(alias.parentId).toBe(scopeB);
 
-  // Model should still be valid
   const errors = m.validate();
-  assert.equal(errors.length, 0, `Validation errors: ${errors.join(", ")}`);
+  expect(errors.length).toBe(0);
 });
 
 test("cross-scope alias becomes broken when target is deleted", () => {
@@ -386,8 +359,8 @@ test("cross-scope alias becomes broken when target is deleted", () => {
   m.deleteNode(a1);
 
   const alias = m.state.nodes[aliasId];
-  assert.equal(alias.isBroken, true);
-  assert.equal(alias.targetSnapshotLabel, "A1");
+  expect(alias.isBroken).toBe(true);
+  expect(alias.targetSnapshotLabel).toBe("A1");
 });
 
 test("cross-scope alias with scope deletion breaks alias", () => {
@@ -395,11 +368,10 @@ test("cross-scope alias with scope deletion breaks alias", () => {
 
   const aliasId = m.addAlias(scopeB, a1);
 
-  // Delete entire scopeA (which contains a1)
   m.deleteNode(scopeA);
 
   const alias = m.state.nodes[aliasId];
-  assert.equal(alias.isBroken, true);
+  expect(alias.isBroken).toBe(true);
 });
 
 test("multiple aliases from different scopes to same target", () => {
@@ -408,13 +380,12 @@ test("multiple aliases from different scopes to same target", () => {
   const alias1 = m.addAlias(scopeB, a1, { aliasLabel: "Alias1" });
   const alias2 = m.addAlias(root, a1, { aliasLabel: "Alias2" });
 
-  assert.equal(m.state.nodes[alias1].targetNodeId, a1);
-  assert.equal(m.state.nodes[alias2].targetNodeId, a1);
+  expect(m.state.nodes[alias1].targetNodeId).toBe(a1);
+  expect(m.state.nodes[alias2].targetNodeId).toBe(a1);
 
-  // Delete target, both aliases break
   m.deleteNode(a1);
-  assert.equal(m.state.nodes[alias1].isBroken, true);
-  assert.equal(m.state.nodes[alias2].isBroken, true);
+  expect(m.state.nodes[alias1].isBroken).toBe(true);
+  expect(m.state.nodes[alias2].isBroken).toBe(true);
 });
 
 // --- findScopeRoot edge cases ---
@@ -424,7 +395,7 @@ test("findScopeRoot with non-existent nodeId returns rootId", () => {
   const root = m.state.rootId;
 
   const result = findScopeRoot(m.state.nodes, "nonexistent", root);
-  assert.equal(result, root);
+  expect(result).toBe(root);
 });
 
 test("findScopeRoot with text node chain (no folders) returns root", () => {
@@ -435,7 +406,7 @@ test("findScopeRoot with text node chain (no folders) returns root", () => {
   const c = m.addNode(b, "C");
 
   const result = findScopeRoot(m.state.nodes, c, root);
-  assert.equal(result, root);
+  expect(result).toBe(root);
 });
 
 test("findScopeRoot with text between folders returns innermost folder", () => {
@@ -449,10 +420,8 @@ test("findScopeRoot with text between folders returns innermost folder", () => {
   m.state.nodes[folder2].nodeType = "folder";
   const leaf = m.addNode(folder2, "Leaf");
 
-  // Leaf's scope root should be folder2
-  assert.equal(findScopeRoot(m.state.nodes, leaf, root), folder2);
-  // Text1's scope root should be folder1
-  assert.equal(findScopeRoot(m.state.nodes, text1, root), folder1);
+  expect(findScopeRoot(m.state.nodes, leaf, root)).toBe(folder2);
+  expect(findScopeRoot(m.state.nodes, text1, root)).toBe(folder1);
 });
 
 // ===========================================================================
@@ -466,18 +435,16 @@ test("band attribute: can assign flash/rapid/deep to nodes", () => {
   const b = m.addNode(root, "Rapid graph");
   const c = m.addNode(root, "Deep research");
 
-  // Use attributes to store band
   m.state.nodes[a].attributes.band = "flash";
   m.state.nodes[b].attributes.band = "rapid";
   m.state.nodes[c].attributes.band = "deep";
 
-  assert.equal(m.state.nodes[a].attributes.band, "flash");
-  assert.equal(m.state.nodes[b].attributes.band, "rapid");
-  assert.equal(m.state.nodes[c].attributes.band, "deep");
+  expect(m.state.nodes[a].attributes.band).toBe("flash");
+  expect(m.state.nodes[b].attributes.band).toBe("rapid");
+  expect(m.state.nodes[c].attributes.band).toBe("deep");
 
-  // Model should still be valid
   const errors = m.validate();
-  assert.equal(errors.length, 0);
+  expect(errors.length).toBe(0);
 });
 
 test("band filter: queryNodes then filter by band attribute", () => {
@@ -498,9 +465,9 @@ test("band filter: queryNodes then filter by band attribute", () => {
   const rapidNodes = allNodes.filter((n) => n.attributes.band === "rapid");
   const deepNodes = allNodes.filter((n) => n.attributes.band === "deep");
 
-  assert.equal(flashNodes.length, 2);
-  assert.equal(rapidNodes.length, 1);
-  assert.equal(deepNodes.length, 1);
+  expect(flashNodes.length).toBe(2);
+  expect(rapidNodes.length).toBe(1);
+  expect(deepNodes.length).toBe(1);
 });
 
 test("band promotion: flash -> rapid -> deep", () => {
@@ -508,20 +475,17 @@ test("band promotion: flash -> rapid -> deep", () => {
   const root = m.state.rootId;
   const node = m.addNode(root, "Evolving node");
 
-  // Start as flash
   m.state.nodes[node].attributes.band = "flash";
-  assert.equal(m.state.nodes[node].attributes.band, "flash");
+  expect(m.state.nodes[node].attributes.band).toBe("flash");
 
-  // Promote to rapid
   m.state.nodes[node].attributes.band = "rapid";
-  assert.equal(m.state.nodes[node].attributes.band, "rapid");
+  expect(m.state.nodes[node].attributes.band).toBe("rapid");
 
-  // Promote to deep
   m.state.nodes[node].attributes.band = "deep";
-  assert.equal(m.state.nodes[node].attributes.band, "deep");
+  expect(m.state.nodes[node].attributes.band).toBe("deep");
 
   const errors = m.validate();
-  assert.equal(errors.length, 0);
+  expect(errors.length).toBe(0);
 });
 
 test("band filter within scope", () => {
@@ -534,10 +498,10 @@ test("band filter within scope", () => {
   const flashInScope = scopeNodes.filter((n) => n.attributes.band === "flash");
   const rapidInScope = scopeNodes.filter((n) => n.attributes.band === "rapid");
 
-  assert.equal(flashInScope.length, 1);
-  assert.equal(flashInScope[0].id, a1);
-  assert.equal(rapidInScope.length, 1);
-  assert.equal(rapidInScope[0].id, a2);
+  expect(flashInScope.length).toBe(1);
+  expect(flashInScope[0].id).toBe(a1);
+  expect(rapidInScope.length).toBe(1);
+  expect(rapidInScope[0].id).toBe(a2);
 });
 
 test("band: nodes without band attribute are unclassified", () => {
@@ -551,10 +515,9 @@ test("band: nodes without band attribute are unclassified", () => {
   const allNodes = m.queryNodes(root);
   const unclassified = allNodes.filter((n) => !n.attributes.band);
 
-  // Root + b are unclassified
-  assert.ok(unclassified.some((n) => n.id === b));
-  assert.ok(unclassified.some((n) => n.id === root));
-  assert.ok(!unclassified.some((n) => n.id === a));
+  expect(unclassified.some((n) => n.id === b)).toBe(true);
+  expect(unclassified.some((n) => n.id === root)).toBe(true);
+  expect(unclassified.some((n) => n.id === a)).toBe(false);
 });
 
 test("band survives JSON round-trip", () => {
@@ -566,7 +529,7 @@ test("band survives JSON round-trip", () => {
   const json = m.toJSON();
   const restored = RapidMvpModel.fromJSON(json);
 
-  assert.equal(restored.state.nodes[a].attributes.band, "flash");
+  expect(restored.state.nodes[a].attributes.band).toBe("flash");
 });
 
 // ===========================================================================
@@ -579,16 +542,15 @@ test("bookmark: store scope bookmark in linearNotesByScope", () => {
   const scope1 = m.addNode(root, "Scope1");
   m.state.nodes[scope1].nodeType = "folder";
 
-  // Use linearNotesByScope as a bookmark store (existing field)
   if (!m.state.linearNotesByScope) m.state.linearNotesByScope = {};
   m.state.linearNotesByScope["__bookmarks__"] = JSON.stringify([
     { scopeId: scope1, label: "My Bookmark" },
   ]);
 
   const bookmarks = JSON.parse(m.state.linearNotesByScope["__bookmarks__"]);
-  assert.equal(bookmarks.length, 1);
-  assert.equal(bookmarks[0].scopeId, scope1);
-  assert.equal(bookmarks[0].label, "My Bookmark");
+  expect(bookmarks.length).toBe(1);
+  expect(bookmarks[0].scopeId).toBe(scope1);
+  expect(bookmarks[0].label).toBe("My Bookmark");
 });
 
 test("bookmark: multiple bookmarks stored and retrieved", () => {
@@ -602,9 +564,9 @@ test("bookmark: multiple bookmarks stored and retrieved", () => {
   m.state.linearNotesByScope["__bookmarks__"] = JSON.stringify(bookmarks);
 
   const loaded = JSON.parse(m.state.linearNotesByScope["__bookmarks__"]);
-  assert.equal(loaded.length, 2);
-  assert.equal(loaded[0].scopeId, scopeA);
-  assert.equal(loaded[1].scopeId, scopeB);
+  expect(loaded.length).toBe(2);
+  expect(loaded[0].scopeId).toBe(scopeA);
+  expect(loaded[1].scopeId).toBe(scopeB);
 });
 
 test("bookmark: jump to bookmarked scope returns correct nodes", () => {
@@ -617,15 +579,14 @@ test("bookmark: jump to bookmarked scope returns correct nodes", () => {
   ];
   m.state.linearNotesByScope["__bookmarks__"] = JSON.stringify(bookmarks);
 
-  // "Jump" to bookmark = queryNodes with that scopeId
   const jumpA = m.queryNodeIds(bookmarks[0].scopeId);
-  assert.ok(jumpA.includes(a1));
-  assert.ok(jumpA.includes(a2));
-  assert.ok(!jumpA.includes(b1));
+  expect(jumpA.includes(a1)).toBe(true);
+  expect(jumpA.includes(a2)).toBe(true);
+  expect(jumpA.includes(b1)).toBe(false);
 
   const jumpB = m.queryNodeIds(bookmarks[1].scopeId);
-  assert.ok(jumpB.includes(b1));
-  assert.ok(!jumpB.includes(a1));
+  expect(jumpB.includes(b1)).toBe(true);
+  expect(jumpB.includes(a1)).toBe(false);
 });
 
 test("bookmark: survives JSON round-trip", () => {
@@ -639,8 +600,8 @@ test("bookmark: survives JSON round-trip", () => {
   const restored = RapidMvpModel.fromJSON(json);
 
   const loaded = JSON.parse(restored.state.linearNotesByScope["__bookmarks__"]);
-  assert.equal(loaded.length, 1);
-  assert.equal(loaded[0].scopeId, scopeA);
+  expect(loaded.length).toBe(1);
+  expect(loaded[0].scopeId).toBe(scopeA);
 });
 
 test("bookmark: deleted scope bookmark returns empty queryNodes", () => {
@@ -652,10 +613,9 @@ test("bookmark: deleted scope bookmark returns empty queryNodes", () => {
 
   m.deleteNode(scopeA);
 
-  // Trying to jump to deleted scope should throw (node not found)
-  assert.throws(() => m.queryNodeIds(scopeA), {
-    message: /not found/i,
-  });
+  expect(() => m.queryNodeIds(scopeA)).toThrow(
+    /not found/i,
+  );
 });
 
 // ===========================================================================
@@ -669,7 +629,7 @@ test("combined: scoped alias with band attribute validates", () => {
   const aliasId = m.addAlias(scopeB, a1, { aliasLabel: "Rapid Ref", access: "read" });
 
   const errors = m.validate();
-  assert.equal(errors.length, 0, `Validation errors: ${errors.join(", ")}`);
+  expect(errors.length).toBe(0);
 });
 
 test("combined: reparent + alias + band all maintain validity", () => {
@@ -678,16 +638,13 @@ test("combined: reparent + alias + band all maintain validity", () => {
   m.state.nodes[a1].attributes.band = "flash";
   m.state.nodes[a2].attributes.band = "deep";
 
-  // Create cross-scope alias
   const aliasId = m.addAlias(scopeB, a1);
 
-  // Reparent a2 to scopeB
   m.reparentNode(a2, scopeB);
 
   const errors = m.validate();
-  assert.equal(errors.length, 0, `Validation errors: ${errors.join(", ")}`);
+  expect(errors.length).toBe(0);
 
-  // Verify band attributes survived
-  assert.equal(m.state.nodes[a1].attributes.band, "flash");
-  assert.equal(m.state.nodes[a2].attributes.band, "deep");
+  expect(m.state.nodes[a1].attributes.band).toBe("flash");
+  expect(m.state.nodes[a2].attributes.band).toBe("deep");
 });

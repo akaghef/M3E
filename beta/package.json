@@ -9,8 +9,8 @@
     "build:browser": "tsc -p tsconfig.browser.json",
     "start": "node dist/node/start_viewer.js",
     "test": "npm run test:unit",
-    "test:unit": "npm run build:node && node --test tests/unit/*.test.js",
-    "test:unit:watch": "npm run build:node && node --test --watch tests/unit/*.test.js",
+    "test:unit": "npm run build:node && npx vitest run",
+    "test:unit:watch": "npm run build:node && npx vitest --watch",
     "test:ci": "npm run test:unit",
     "test:visual": "playwright test",
     "test:shortcuts": "playwright test tests/visual/shortcuts.spec.js",
@@ -25,7 +25,8 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^18.19.130",
     "typescript": "^5.4.0",
-    "undici-types": "^5.26.5"
+    "undici-types": "^5.26.5",
+    "vitest": "^4.1.4"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
