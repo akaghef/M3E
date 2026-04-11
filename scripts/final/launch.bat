@@ -42,6 +42,19 @@ if exist "%ROOT%\install2\node\node.exe" (
   set "NODE_CMD=%ROOT%\install\node\node.exe"
 )
 
+REM Rebuild native addons if Node.js version changed
+set "NODE_VER_FILE=%ROOT%\final\.node_version"
+for /f "tokens=*" %%V in ('"!NODE_CMD!" -v') do set "CURRENT_NODE_VER=%%V"
+set "LAST_NODE_VER="
+if exist "!NODE_VER_FILE!" for /f "tokens=*" %%V in (!NODE_VER_FILE!) do set "LAST_NODE_VER=%%V"
+if not "!CURRENT_NODE_VER!"=="!LAST_NODE_VER!" (
+  echo Rebuilding native modules for Node.js !CURRENT_NODE_VER!... >> "!LOG_FILE!"
+  pushd "%ROOT%\final"
+  "!NODE_CMD!" -e "require('child_process').execSync('npm rebuild', {stdio:'inherit'})" >> "!LOG_FILE!" 2>&1
+  popd
+  echo !CURRENT_NODE_VER!> "!NODE_VER_FILE!"
+)
+
 REM Launch directly (bypass npm to avoid prefix resolution issues)
 "!NODE_CMD!" "%ROOT%\final\dist\node\start_viewer.js" > "!LOG_FILE!" 2>&1
 set "EXIT_CODE=!ERRORLEVEL!"
