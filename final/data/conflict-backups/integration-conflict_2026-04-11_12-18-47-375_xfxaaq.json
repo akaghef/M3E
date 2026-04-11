@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "backupId": "2026-04-11_12-18-47-375_xfxaaq",
+  "documentId": "integration-conflict",
+  "reason": "cloud-conflict-push",
+  "createdAt": "2026-04-11T12:18:47.375Z",
+  "savedAt": "2026-04-11T12:18:47.375Z",
+  "state": {
+    "rootId": "n_1775909927373_txyz1j",
+    "nodes": {
+      "n_1775909927373_txyz1j": {
+        "id": "n_1775909927373_txyz1j",
+        "parentId": null,
+        "children": [
+          "n_1775909927373_orp635"
+        ],
+        "text": "Root",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": "",
+        "nodeType": "text"
+      },
+      "n_1775909927373_orp635": {
+        "id": "n_1775909927373_orp635",
+        "parentId": "n_1775909927373_txyz1j",
+        "children": [],
+        "nodeType": "text",
+        "text": "Stale",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      }
+    },
+    "links": {}
+  }
+}

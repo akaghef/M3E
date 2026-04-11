@@ -3,7 +3,7 @@
 ;   iscc install\windows\m3e.iss
 
 #define AppName "M3E"
-#define AppVersion "vMMYYDD"
+#define AppVersion "v260411"
 #define AppPublisher "M3E"
 #define RepoRoot "..\.."
 #define AppExe "scripts\\final\\launch.bat"
