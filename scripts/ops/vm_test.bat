@@ -18,7 +18,7 @@ REM ============================================================
 set "VM_NAME=M3E-Test"
 set "SNAPSHOT=clean"
 set "GUEST_USER=m3etest"
-set "GUEST_PASS=8080"
+set "GUEST_PASS=m3etest"
 set "WAIT_BOOT=60"
 set "WAIT_TEST=300"
 
@@ -44,7 +44,7 @@ echo [1/5] Restoring snapshot "%SNAPSHOT%"...
 if errorlevel 1 (
     echo [ERROR] Failed to restore snapshot. Is the VM powered off?
     "%VBOX%" controlvm "%VM_NAME%" poweroff >nul 2>&1
-    timeout /t 5 /nobreak >nul
+    ping -n 6 127.0.0.1 >nul
     "%VBOX%" snapshot "%VM_NAME%" restore "%SNAPSHOT%"
     if errorlevel 1 (
         echo [ERROR] Still failed. Aborting.
@@ -62,7 +62,7 @@ if errorlevel 1 (
 
 REM --- Step 3: Wait for VM to boot ---
 echo [3/5] Waiting %WAIT_BOOT%s for VM to boot...
-timeout /t %WAIT_BOOT% /nobreak >nul
+ping -n %WAIT_BOOT% 127.0.0.1 >nul
 
 REM Verify guest is responsive (retry up to 5 times, 30s apart)
 set /a RETRY=0
@@ -76,7 +76,7 @@ if %RETRY% GEQ 5 (
     exit /b 1
 )
 echo       Guest not ready yet, retry %RETRY%/5... waiting 30s
-timeout /t 30 /nobreak >nul
+ping -n 31 127.0.0.1 >nul
 goto :guest_wait
 :guest_ok
 echo       Guest OS is ready.
@@ -97,16 +97,14 @@ if "%TEST_RC%"=="0" (
     echo       Test exited with code %TEST_RC%.
 )
 
-REM --- Step 5: Power off VM ---
-echo [5/5] Powering off VM...
-"%VBOX%" controlvm "%VM_NAME%" poweroff >nul 2>&1
-timeout /t 3 /nobreak >nul
+REM --- Step 5: Leave VM running for manual inspection ---
+echo [5/5] VM left running for manual inspection.
 
 echo.
 echo ============================================================
-echo  VM Test finished. Check results:
-echo    dir C:\M3E_test_reports\
-echo    type C:\M3E_test_reports\test_*\report.txt
+echo  VM Test finished. VM is still running — check manually.
+echo  To power off: VBoxManage controlvm "%VM_NAME%" poweroff
+echo  Report: type C:\M3E_test_reports\test_*\report.txt
 echo ============================================================
 
 exit /b %TEST_RC%

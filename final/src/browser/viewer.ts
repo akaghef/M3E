@@ -63,7 +63,7 @@ function normalizeDocId(raw: string | null, fallback: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
-const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "akaghef-beta");
+const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "tutorial");
 const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
