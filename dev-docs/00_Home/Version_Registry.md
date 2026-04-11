@@ -15,6 +15,7 @@ launch-final 実行時に更新する。
 | v260408 | v1 | 2026-04-08 | launch-final 拡張, タグ規則明文化 |
 | v260408-2 | v1 | 2026-04-08 | Agent Teams, skill 整備 |
 | v260408-3 | v1 | 2026-04-08 | collab, IME composition, linear text, Resource spec |
+| v260411 | v1 | 2026-04-11 | pinch-zoom, vm-test GUI, install統合, skills追加 |
 
 ## Data Schema Version 履歴
 
