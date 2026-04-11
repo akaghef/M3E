@@ -168,6 +168,7 @@ let viewState: ViewState = {
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
   panState: null,
+  pinchState: null,
   clipboardState: null,
   linkSourceNodeId: "",
   reparentSourceIds: new Set<string>(),
@@ -6112,13 +6113,59 @@ board.addEventListener("wheel", (event: WheelEvent) => {
   setZoom(viewState.zoom * factor, event.clientX, event.clientY);
 }, { passive: false });
 
+// --- Pointer-based pan & pinch-to-zoom ---
+// Tracks all active touch pointers for multi-touch pinch detection.
+const activePointers = new Map<number, { x: number; y: number }>();
+
+function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function startPinch(): void {
+  const ids = Array.from(activePointers.keys());
+  if (ids.length < 2) return;
+  const a = activePointers.get(ids[0])!;
+  const b = activePointers.get(ids[1])!;
+  // Cancel single-finger pan
+  if (viewState.panState) {
+    viewState.panState = null;
+    board.classList.remove("panning");
+  }
+  viewState.pinchState = {
+    pointerA: { id: ids[0], x: a.x, y: a.y },
+    pointerB: { id: ids[1], x: b.x, y: b.y },
+    initialDistance: pointerDistance(a, b),
+    initialZoom: viewState.zoom,
+    initialCameraX: viewState.cameraX,
+    initialCameraY: viewState.cameraY,
+    initialCenterX: (a.x + b.x) / 2,
+    initialCenterY: (a.y + b.y) / 2,
+  };
+}
+
 board.addEventListener("pointerdown", (event: PointerEvent) => {
+  console.log("[pinch-debug] pointerdown", { id: event.pointerId, type: event.pointerType, button: event.button, isPrimary: event.isPrimary, x: event.clientX, y: event.clientY, activeCount: activePointers.size });
   if (event.button !== 0) {
     return;
   }
   if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
   }
+
+  // Track touch pointers for pinch
+  if (event.pointerType === "touch") {
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    board.setPointerCapture(event.pointerId);
+    console.log("[pinch-debug] touch pointer added, activePointers.size =", activePointers.size);
+    if (activePointers.size === 2) {
+      startPinch();
+      console.log("[pinch-debug] pinch started!", viewState.pinchState);
+      return;
+    }
+  }
+
   const onNode = (event.target as HTMLElement | null)?.dataset?.["nodeId"];
   if (onNode) {
     return;
@@ -6135,6 +6182,31 @@ board.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 board.addEventListener("pointermove", (event: PointerEvent) => {
+  // Update tracked pointer position
+  if (event.pointerType === "touch" && activePointers.has(event.pointerId)) {
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  }
+
+  // Pinch-zoom handling
+  if (viewState.pinchState) {
+    const { pointerA, pointerB } = viewState.pinchState;
+    if (event.pointerId !== pointerA.id && event.pointerId !== pointerB.id) return;
+    const a = activePointers.get(pointerA.id);
+    const b = activePointers.get(pointerB.id);
+    if (!a || !b) return;
+
+    const currentDistance = pointerDistance(a, b);
+    const scale = currentDistance / viewState.pinchState.initialDistance;
+    const nextZoom = viewState.pinchState.initialZoom * scale;
+
+    // Zoom anchored to the current midpoint of the two fingers
+    const anchorX = (a.x + b.x) / 2;
+    const anchorY = (a.y + b.y) / 2;
+    setZoom(nextZoom, anchorX, anchorY);
+    return;
+  }
+
+  // Single-pointer pan
   if (!viewState.panState || event.pointerId !== viewState.panState.pointerId) {
     return;
   }
@@ -6143,17 +6215,39 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
   scheduleApplyZoom();
 });
 
-function endPan(event: PointerEvent): void {
-  if (!viewState.panState || event.pointerId !== viewState.panState.pointerId) {
-    return;
+function endPointer(event: PointerEvent): void {
+  // Clean up pinch state
+  if (event.pointerType === "touch") {
+    activePointers.delete(event.pointerId);
+    if (viewState.pinchState) {
+      viewState.pinchState = null;
+      // If one finger remains, start a fresh pan from current position
+      if (activePointers.size === 1) {
+        const [remainingId, pos] = Array.from(activePointers.entries())[0];
+        viewState.panState = {
+          pointerId: remainingId,
+          startX: pos.x,
+          startY: pos.y,
+          cameraX: viewState.cameraX,
+          cameraY: viewState.cameraY,
+        };
+        board.classList.add("panning");
+      }
+      return;
+    }
   }
-  viewState.panState = null;
-  board.classList.remove("panning");
-  board.releasePointerCapture(event.pointerId);
+
+  // Clean up pan state
+  if (viewState.panState && event.pointerId === viewState.panState.pointerId) {
+    viewState.panState = null;
+    board.classList.remove("panning");
+  }
+
+  try { board.releasePointerCapture(event.pointerId); } catch { /* already released */ }
 }
 
-board.addEventListener("pointerup", endPan);
-board.addEventListener("pointercancel", endPan);
+board.addEventListener("pointerup", endPointer);
+board.addEventListener("pointercancel", endPointer);
 
 document.addEventListener("pointerdown", (event: PointerEvent) => {
   const target = event.target as HTMLElement | null;

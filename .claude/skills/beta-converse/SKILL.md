@@ -119,6 +119,23 @@ git push origin --delete <branch>
 よろしいですか?
 ```
 
+### Step 4b: リモートブランチ掃除
+
+ローカル削除後、リモートにも不要ブランチが残っているので掃除する:
+
+```bash
+# main, dev-beta 以外のリモートブランチを一覧
+git branch -r | grep -v "main\|dev-beta\|HEAD"
+
+# 不要なリモートブランチを削除
+git branch -r | grep -v "main\|dev-beta\|HEAD" | sed 's/origin\///' | xargs -I{} git push origin --delete {}
+
+# ローカルの追跡情報を更新
+git fetch --prune
+```
+
+最終確認: `git branch -r` で `origin/main` と `origin/dev-beta` のみであること。
+
 ### Step 5: Push
 
 ```bash
