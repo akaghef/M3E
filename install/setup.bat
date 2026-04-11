@@ -82,10 +82,10 @@ call :log " Config saved to: %CONFIG_FILE%"
 REM Copy tutorial data on first install
 set "TUTORIAL_SRC=%ROOT%\install\assets\tutorial"
 if exist "%TUTORIAL_SRC%" (
-  if not exist "%M3E_DATA_DIR%\tutorial.sqlite" (
+  if not exist "%M3E_DATA_DIR%\M3E_dataV1.sqlite" (
     call :log ""
     call :log " Copying tutorial data (first install)..."
-    xcopy "%TUTORIAL_SRC%\*" "%M3E_DATA_DIR%\" /E /I /Y >nul 2>&1
+    xcopy "%TUTORIAL_SRC%\M3E_dataV1.sqlite" "%M3E_DATA_DIR%\" /E /I /Y >nul 2>&1
     call :log " Tutorial data copied."
   )
 )
