@@ -201,6 +201,17 @@ interface PanState {
   cameraY: number;
 }
 
+interface PinchState {
+  pointerA: { id: number; x: number; y: number };
+  pointerB: { id: number; x: number; y: number };
+  initialDistance: number;
+  initialZoom: number;
+  initialCameraX: number;
+  initialCameraY: number;
+  initialCenterX: number;
+  initialCenterY: number;
+}
+
 interface SubtreeSnapshot {
   text: string;
   details: string;
@@ -232,6 +243,7 @@ interface ViewState {
   cameraX: number;
   cameraY: number;
   panState: PanState | null;
+  pinchState: PinchState | null;
   clipboardState: ClipboardState;
   linkSourceNodeId: string;
   reparentSourceIds: Set<string>;
