@@ -1,6 +1,6 @@
 # M3E — Home
 
-最終更新: 2026-04-10
+最終更新: 2026-04-11
 
 ---
 
@@ -109,6 +109,29 @@ Supabase（リモート同期）
 | data | model・controller・API・永続化 | worktree |
 | team | Collab・Cloud Sync | worktree |
 | manage | 統合・方針策定・レビュー | dev-beta |
+
+---
+
+## リポジトリ構成
+
+```
+M3E/
+├── beta/              ← 開発版（ソース・ビルド・開発データ）
+├── final/             ← 安定版（beta から sync）
+├── mvp/               ← 凍結済み（変更不可）
+├── install/           ← インストーラー（Inno Setup .exe ビルド）
+│   ├── setup.bat      ← セットアップ本体
+│   ├── windows/       ← m3e.iss, ビルド・検証スクリプト
+│   ├── assets/        ← アイコン等
+│   └── artifacts/     ← ビルド済み .exe 出力先
+├── scripts/
+│   ├── beta/          ← beta 起動・更新
+│   ├── final/         ← final 起動・移行
+│   └── ops/           ← テスト・運用（vm_test, build_test_package 等）
+├── dev-docs/          ← 設計・仕様・運用ドキュメント
+├── freeplane/         ← Freeplane 連携
+└── others/            ← その他
+```
 
 ---
 

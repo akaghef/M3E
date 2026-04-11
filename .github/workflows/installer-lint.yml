@@ -161,8 +161,8 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           fi
           failed=0
-          for f in install/setup.sh; do
-            if [ -f "$f" ]; then
+          for f in install/setup.sh install/setup.bat; do
+            if [ -f "$f" ] && [[ "$f" == *.sh ]]; then
               if ! shellcheck -e SC2034 "$f"; then
                 failed=1
               fi
@@ -177,17 +177,15 @@ jobs:
         run: |
           echo "Checking Node version consistency..."
           bat_ver=$(grep -oE 'NODE_VERSION=[0-9]+\.[0-9]+\.[0-9]+' install/setup.bat | head -1 | cut -d= -f2)
-          sh_ver=$(grep -oE 'NODE_VERSION="[0-9]+\.[0-9]+\.[0-9]+"' install/setup.sh | head -1 | tr -d '"' | cut -d= -f2)
           if [ -z "$bat_ver" ]; then
             echo "::error::Could not find NODE_VERSION in setup.bat"
             exit 1
           fi
-          if [ -z "$sh_ver" ]; then
-            echo "::error::Could not find NODE_VERSION in setup.sh"
-            exit 1
+          if [ -f install/setup.sh ]; then
+            sh_ver=$(grep -oE 'NODE_VERSION="[0-9]+\.[0-9]+\.[0-9]+"' install/setup.sh | head -1 | tr -d '"' | cut -d= -f2)
+            if [ -n "$sh_ver" ] && [ "$bat_ver" != "$sh_ver" ]; then
+              echo "::error::Node version mismatch: setup.bat=$bat_ver, setup.sh=$sh_ver"
+              exit 1
+            fi
           fi
-          if [ "$bat_ver" != "$sh_ver" ]; then
-            echo "::error::Node version mismatch: setup.bat=$bat_ver, setup.sh=$sh_ver"
-            exit 1
-          fi
-          echo "PASS (both: $bat_ver)"
+          echo "PASS (setup.bat: $bat_ver)"

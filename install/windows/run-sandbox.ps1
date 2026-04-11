@@ -1,9 +1,9 @@
-# install2/windows/run-sandbox.ps1
+# install/windows/run-sandbox.ps1
 # Windows Sandbox でインストーラーを検証する（Pro/Enterprise 限定）
 # Home エディションでは自動的に run-local-test.ps1 へフォールバックする
 #
 # 使い方:
-#   powershell -File install2\windows\run-sandbox.ps1 -InstallerPath artifacts\installer\M3E-Setup-vMMYYDD.exe
+#   powershell -File install\windows\run-sandbox.ps1 -InstallerPath install\artifacts\M3E-Setup-vMMYYDD.exe
 
 param(
     [Parameter(Mandatory = $true)]

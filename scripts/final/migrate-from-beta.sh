@@ -43,30 +43,8 @@ wait_for_server() {
   return 1
 }
 
-sync_path() {
-  local src="$1"
-  local dest="$2"
-  /usr/bin/rsync -a --delete "$ROOT_DIR/$src" "$ROOT_DIR/$dest"
-}
-
-sync_file() {
-  local src="$1"
-  local dest="$2"
-  /bin/mkdir -p "$(dirname "$ROOT_DIR/$dest")"
-  /bin/cp "$ROOT_DIR/$src" "$ROOT_DIR/$dest"
-}
-
-copy_demo_files() {
-  local pattern
-  shopt -s nullglob
-  for pattern in "$ROOT_DIR"/beta/data/*.json "$ROOT_DIR"/beta/data/*.mm; do
-    /bin/cp "$pattern" "$ROOT_DIR/final/data/"
-  done
-  shopt -u nullglob
-}
-
 echo "============================================================"
-echo " M3E Final Migration: Beta -> Final"
+echo " M3E Final Migration: Beta -> Final (exclude mode)"
 echo "============================================================"
 echo
 
@@ -76,21 +54,26 @@ echo "[1/6] Git fetch & pull..."
 git -C "$ROOT_DIR" fetch --all
 git -C "$ROOT_DIR" pull --ff-only
 
-echo "[2/6] Syncing beta/ source to final/..."
+echo "[2/6] Syncing beta/ -> final/ (exclude mode)..."
 /bin/mkdir -p "$ROOT_DIR/final"
-sync_path "beta/src/" "final/src/"
-sync_path "beta/tests/" "final/tests/"
-sync_path "beta/legacy/" "final/legacy/"
-sync_file "beta/viewer.html" "final/viewer.html"
-sync_file "beta/viewer.css" "final/viewer.css"
-sync_file "beta/package.json" "final/package.json"
-sync_file "beta/package-lock.json" "final/package-lock.json"
-sync_file "beta/tsconfig.browser.json" "final/tsconfig.browser.json"
-sync_file "beta/tsconfig.node.json" "final/tsconfig.node.json"
-sync_file "beta/playwright.config.js" "final/playwright.config.js"
-sync_file "beta/test_server.js" "final/test_server.js"
-/bin/mkdir -p "$ROOT_DIR/final/data"
-copy_demo_files
+/usr/bin/rsync -a --delete \
+  --exclude node_modules \
+  --exclude dist \
+  --exclude .env \
+  --exclude Beta_Policy.md \
+  --exclude prompts \
+  --exclude tmp \
+  --exclude public \
+  --exclude e2e_test_server.js \
+  --exclude playwright.e2e.config.js \
+  --exclude 'data/M3E_dataV1.sqlite' \
+  --exclude 'data/backups' \
+  --exclude 'data/audit' \
+  --exclude 'data/conflict-backups' \
+  --exclude 'data/.m3e-launched' \
+  "$ROOT_DIR/beta/" "$ROOT_DIR/final/"
+# Restore final-only files
+git -C "$ROOT_DIR" checkout -- final/FINAL_POLICY.md 2>/dev/null || true
 echo "  Sync complete."
 
 echo "[3/6] Install dependencies (final)..."

@@ -34,12 +34,12 @@ for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":!M3E_PORT!" ^| finds
   )
 )
 
-REM Resolve Node path
-set "NODE_DIR=%ROOT%\install\node"
-if exist "%NODE_DIR%\node.exe" (
-  set "NODE_CMD=%NODE_DIR%\node.exe"
-) else (
-  set "NODE_CMD=node"
+REM Resolve Node path (check install2 first, then legacy install, then system)
+set "NODE_CMD=node"
+if exist "%ROOT%\install2\node\node.exe" (
+  set "NODE_CMD=%ROOT%\install2\node\node.exe"
+) else if exist "%ROOT%\install\node\node.exe" (
+  set "NODE_CMD=%ROOT%\install\node\node.exe"
 )
 
 REM Launch directly (bypass npm to avoid prefix resolution issues)

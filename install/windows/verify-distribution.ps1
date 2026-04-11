@@ -1,10 +1,10 @@
-# install2/windows/verify-distribution.ps1
+# install/windows/verify-distribution.ps1
 # 配布物の一貫検証エントリポイント
 # ビルド → テスト → レポート をワンコマンドで実行する
 #
 # 使い方:
-#   powershell -File install2\windows\verify-distribution.ps1
-#   powershell -File install2\windows\verify-distribution.ps1 -SkipCleanup   # テスト後に残す
+#   powershell -File install\windows\verify-distribution.ps1
+#   powershell -File install\windows\verify-distribution.ps1 -SkipCleanup   # テスト後に残す
 
 param(
     [switch]$SkipCleanup
@@ -50,7 +50,7 @@ Write-Host "  Inno Setup: $($iscc.Source)"
 
 # Node.js
 $node = Get-Command node -ErrorAction SilentlyContinue
-$portableNode = Join-Path $repoRoot "install2\node\node.exe"
+$portableNode = Join-Path $repoRoot "install\node\node.exe"
 if (-not $node -and -not (Test-Path $portableNode)) {
     Write-Host "[ERROR] Node.js not found."
     exit 1

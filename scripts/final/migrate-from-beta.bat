@@ -1,12 +1,12 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 
 REM ============================================================
-REM M3E Final: Beta -> Final migration script
+REM M3E Final: Beta -> Final migration script (exclude mode)
 REM
 REM Steps:
 REM   1. Git fetch & pull
-REM   2. Sync beta/ source to final/
+REM   2. Sync beta/ -> final/ via robocopy (exclude mode)
 REM   3. npm ci (install dependencies)
 REM   4. Build (npm run build)
 REM   5. Data migration (if schema changed)
@@ -25,34 +25,28 @@ if "%M3E_PORT%"=="" set "M3E_PORT=38482"
 set "DB_FILE=M3E_dataV1.sqlite"
 
 echo ============================================================
-echo  M3E Final Migration: Beta ^> Final
+echo  M3E Final Migration: Beta ^> Final (exclude mode)
 echo ============================================================
 echo.
 
 REM --- Step 1: Git fetch & pull ---
 echo [1/6] Git fetch ^& pull...
 call git fetch --all
-if %errorlevel% neq 0 goto :error
+if !errorlevel! neq 0 goto :error
 call git pull --ff-only
-if %errorlevel% neq 0 goto :error
+if !errorlevel! neq 0 goto :error
 
-REM --- Step 2: Sync beta/ source to final/ ---
-echo [2/6] Syncing beta/ source to final/...
+REM --- Step 2: Sync beta/ -> final/ (exclude mode) ---
+echo [2/6] Syncing beta/ -^> final/ (exclude mode)...
 if not exist final mkdir final
-xcopy /E /I /Y beta\src final\src > nul
-xcopy /E /I /Y beta\tests final\tests > nul
-xcopy /E /I /Y beta\legacy final\legacy > nul
-xcopy /Y beta\viewer.html final\ > nul
-xcopy /Y beta\viewer.css final\ > nul
-xcopy /Y beta\package.json final\ > nul
-xcopy /Y beta\package-lock.json final\ > nul
-xcopy /Y beta\tsconfig.browser.json final\ > nul
-xcopy /Y beta\tsconfig.node.json final\ > nul
-xcopy /Y beta\playwright.config.js final\ > nul
-xcopy /Y beta\test_server.js final\ > nul
-if not exist final\data mkdir final\data
-xcopy /Y beta\data\*.json final\data\ > nul 2>&1
-xcopy /Y beta\data\*.mm final\data\ > nul 2>&1
+robocopy beta\ final\ /MIR /NFL /NDL /NJH /NJS ^
+  /XD node_modules dist prompts tmp public backups audit conflict-backups ^
+  /XF .env Beta_Policy.md e2e_test_server.js playwright.e2e.config.js ^
+     M3E_dataV1.sqlite .m3e-launched
+REM robocopy returns 0-7 for success
+if !errorlevel! GTR 7 goto :error
+REM Restore final-only files
+call git checkout -- final\FINAL_POLICY.md 2>nul
 echo   Sync complete.
 
 REM --- Step 3: Install dependencies ---
@@ -61,21 +55,21 @@ echo   Stopping any running node processes to release file locks...
 taskkill /f /im node.exe > nul 2>&1
 timeout /t 1 /nobreak > nul
 call npm --prefix final ci
-if %errorlevel% neq 0 goto :error
+if !errorlevel! neq 0 goto :error
 
 REM --- Step 4: Build ---
 echo [4/6] Build (final)...
 call npm --prefix final run build
-if %errorlevel% neq 0 goto :error
+if !errorlevel! neq 0 goto :error
 
 REM --- Step 5: Data migration ---
 echo [5/6] Data migration...
 if exist "%M3E_DATA_DIR%\%DB_FILE%" (
   if not exist "%M3E_DATA_DIR%\backup" mkdir "%M3E_DATA_DIR%\backup"
-  set DATESTAMP=%date:~-4%%date:~3,2%%date:~0,2%
-  set TIMESTAMP=%time:~0,2%%time:~3,2%
-  set TIMESTAMP=%TIMESTAMP: =0%
-  copy /Y "%M3E_DATA_DIR%\%DB_FILE%" "%M3E_DATA_DIR%\backup\%DB_FILE:~0,-7%_%DATESTAMP%_%TIMESTAMP%.sqlite" > nul
+  set "DATESTAMP=!date:~-4!!date:~3,2!!date:~0,2!"
+  set "TIMESTAMP=!time:~0,2!!time:~3,2!"
+  set "TIMESTAMP=!TIMESTAMP: =0!"
+  copy /Y "%M3E_DATA_DIR%\%DB_FILE%" "%M3E_DATA_DIR%\backup\%DB_FILE:~0,-7%_!DATESTAMP!_!TIMESTAMP!.sqlite" > nul
   echo   Backup saved to %M3E_DATA_DIR%\backup\
 )
 REM TODO: call node final/dist/node/migrate.js when schema changes occur
@@ -84,7 +78,7 @@ echo   Data migration: no schema changes (pass-through).
 REM --- Step 6: Launch ---
 echo [6/6] Launching Final...
 call npm --prefix final start
-if %errorlevel% neq 0 goto :error
+if !errorlevel! neq 0 goto :error
 
 echo.
 echo Migration and launch completed successfully.

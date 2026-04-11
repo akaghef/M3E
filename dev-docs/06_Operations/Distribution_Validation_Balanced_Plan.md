@@ -50,7 +50,7 @@
 ### 目標コマンド
 
 ```powershell
-pwsh -File install2/windows/build-installer.ps1 -Version vMMYYDD
+pwsh -File install/windows/build-installer.ps1 -Version vMMYYDD
 ```
 
 ### 実行フロー
@@ -65,7 +65,7 @@ pwsh -File install2/windows/build-installer.ps1 -Version vMMYYDD
 
 ### 生成物設計
 
-- `artifacts/installer/M3E-Setup-<version>.exe`
+- `install/artifacts/M3E-Setup-<version>.exe`
 - `artifacts/release-tests/<timestamp>/install.log`
 - `artifacts/release-tests/<timestamp>/launch.log`
 - `artifacts/release-tests/<timestamp>/uninstall.log`
@@ -137,7 +137,7 @@ pwsh -File install2/windows/build-installer.ps1 -Version vMMYYDD
 
 ### Step 1（最短）
 
-- `install2/setup.bat` に無人実行引数を追加
+- `install/setup.bat` に無人実行引数を追加
   - `--silent`
   - `--data-dir`
   - `--no-launch`
@@ -145,13 +145,13 @@ pwsh -File install2/windows/build-installer.ps1 -Version vMMYYDD
 
 ### Step 2（本線化）
 
-- `install2/windows/m3e.iss` を追加
-- `install2/windows/build-installer.ps1` を追加
+- `install/windows/m3e.iss` を追加
+- `install/windows/build-installer.ps1` を追加
 - サイレント導入ログとアンインストールログを取得可能にする
 
 ### Step 3（負担最小運用）
 
-- `install2/windows/run-sandbox.ps1` を追加
+- `install/windows/run-sandbox.ps1` を追加
 - 将来的に `release-check.ps1` を追加し、build -> installer -> sandbox 検証を一括実行する
 
 ## 企業向け拡張（後段）

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-11T10:21:53.934Z",
+  "state": {
+    "rootId": "n_1775902913933_26waay",
+    "nodes": {
+      "n_1775902913933_26waay": {
+        "id": "n_1775902913933_26waay",
+        "parentId": null,
+        "children": [
+          "n_1775902913933_5f25ab",
+          "n_1775902913933_rk1j2v"
+        ],
+        "text": "Research Root",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": "",
+        "nodeType": "text"
+      },
+      "n_1775902913933_5f25ab": {
+        "id": "n_1775902913933_5f25ab",
+        "parentId": "n_1775902913933_26waay",
+        "children": [
+          "n_1775902913933_5u9kpm"
+        ],
+        "nodeType": "text",
+        "text": "Question",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_1775902913933_rk1j2v": {
+        "id": "n_1775902913933_rk1j2v",
+        "parentId": "n_1775902913933_26waay",
+        "children": [],
+        "nodeType": "text",
+        "text": "Hypothesis v2",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_1775902913933_5u9kpm": {
+        "id": "n_1775902913933_5u9kpm",
+        "parentId": "n_1775902913933_5f25ab",
+        "children": [],
+        "nodeType": "text",
+        "text": "Background",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      }
+    },
+    "links": {}
+  }
+}

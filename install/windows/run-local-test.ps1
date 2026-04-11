@@ -1,12 +1,12 @@
-# install2/windows/run-local-test.ps1
+# install/windows/run-local-test.ps1
 # Windows Home 対応のインストーラー検証スクリプト
 # ビルド → サイレントインストール → ファイル検証 → 起動テスト → アンインストール → クリーンアップ
 #
 # 使い方:
-#   powershell -File install2\windows\run-local-test.ps1
-#   powershell -File install2\windows\run-local-test.ps1 -InstallerPath artifacts\installer\M3E-Setup-vMMYYDD.exe
-#   powershell -File install2\windows\run-local-test.ps1 -SkipBuild        # ビルド済みexeを使う
-#   powershell -File install2\windows\run-local-test.ps1 -SkipCleanup      # テスト後に残す
+#   powershell -File install\windows\run-local-test.ps1
+#   powershell -File install\windows\run-local-test.ps1 -InstallerPath install\artifacts\M3E-Setup-vMMYYDD.exe
+#   powershell -File install\windows\run-local-test.ps1 -SkipBuild        # ビルド済みexeを使う
+#   powershell -File install\windows\run-local-test.ps1 -SkipCleanup      # テスト後に残す
 
 param(
     [string]$InstallerPath = "",
@@ -16,7 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$artifactsDir = Join-Path $repoRoot "artifacts\installer"
+$artifactsDir = Join-Path $repoRoot "install\artifacts"
 
 $testTimestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $testDir = Join-Path $env:TEMP "m3e-install-test-$testTimestamp"
@@ -94,7 +94,7 @@ $requiredFiles = @(
     "final\package.json",
     "final\dist\node\start_viewer.js",
     "scripts\final\launch.bat",
-    "install2\setup.bat"
+    "install\setup.bat"
 )
 
 $requiredDirs = @(
