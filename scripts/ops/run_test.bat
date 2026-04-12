@@ -13,7 +13,12 @@ REM ============================================================
 set "PKG_ROOT=%~dp0"
 if "%PKG_ROOT:~-1%"=="\" set "PKG_ROOT=%PKG_ROOT:~0,-1%"
 
-set "SHARED_REPORTS=C:\M3E_test_reports"
+REM Try VBox shared folder first (auto-mount Y:), fall back to local path
+if exist "Y:\" (
+  set "SHARED_REPORTS=Y:"
+) else (
+  set "SHARED_REPORTS=C:\M3E_test_reports"
+)
 for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "TS=%%T"
 if "%TS%"=="" set "TS=%date:~0,4%%date:~5,2%%date:~8,2%_%time:~0,2%%time:~3,2%"
 set "REPORT_DIR=%SHARED_REPORTS%\test_%TS%"
