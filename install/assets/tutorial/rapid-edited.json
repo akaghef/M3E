@@ -1,0 +1,5025 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-11T15:42:45.155Z",
+  "state": {
+    "links": {},
+    "nodes": {
+      "n_s_1775633727197": {
+        "id": "n_s_1775633727197",
+        "link": "",
+        "note": "",
+        "text": "strategy",
+        "details": "戦略ボード: コア機能単位で管理。ノードを並べ替えて優先順位を決定する。attributes に agent/status/priority を記載",
+        "children": [
+          "n_s_1775633727198",
+          "n_s_1775633727204",
+          "n_s_1775633727211",
+          "n_s_1775633727217",
+          "n_s_1775633727222",
+          "n_1775642407984_k1p9ec",
+          "n_s_1775633727227",
+          "n_res_1775647333517_1",
+          "n_upd_1775780880297_22"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548022525_s9nvf4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_s_1775633727198": {
+        "id": "n_s_1775633727198",
+        "link": "",
+        "note": "",
+        "text": "Collaboration & Sync",
+        "details": "マルチユーザー・マルチエージェント協調",
+        "children": [
+          "n_s_1775633727200",
+          "n_s_1775633727201",
+          "n_s_1775633727202",
+          "n_g_1775638686856_11",
+          "n_g_1775638686856_13",
+          "n_g_1775638686856_14"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_s_1775633727200": {
+        "id": "n_s_1775633727200",
+        "link": "",
+        "note": "",
+        "text": "Collab Phase 2: conflict backup + entity UI",
+        "details": "Phase 1 の堅牢化。不採用変更の退避・復元、参加者一覧 UI、監査ログ",
+        "children": [
+          "n_update_1775734959307_1",
+          "n_upd_1775736410841_1",
+          "n_upd_1775780880298_43"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727198",
+        "collapsed": false,
+        "attributes": {
+          "agent": "claude+visual",
+          "status": "ready",
+          "priority": "P1"
+        }
+      },
+      "n_s_1775633727201": {
+        "id": "n_s_1775633727201",
+        "link": "",
+        "note": "",
+        "text": "Cloud Sync conflict UI",
+        "details": "ハンドオフ済み。diff 表示 + 確認ダイアログ。ヒアリング後に着手",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727198",
+        "collapsed": false,
+        "attributes": {
+          "agent": "visual",
+          "status": "ready",
+          "priority": "P1"
+        }
+      },
+      "n_s_1775633727202": {
+        "id": "n_s_1775633727202",
+        "link": "",
+        "note": "",
+        "text": "Scope-based cloud sync (diff転送)",
+        "details": "現在は document 全体の file-mirror。scope 単位差分転送は Phase 3",
+        "children": [
+          "n_upd_1775736410841_2",
+          "n_upd_1775736795722_1",
+          "n_upd_1775780880297_27",
+          "n_upd_1775780880297_28",
+          "n_upd_1775780880297_29",
+          "n_upd_1775780880297_34",
+          "n_upd_1775780880297_38"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727198",
+        "collapsed": false,
+        "attributes": {
+          "agent": "data",
+          "status": "partial"
+        }
+      },
+      "n_s_1775633727204": {
+        "id": "n_s_1775633727204",
+        "link": "",
+        "note": "",
+        "text": "AI Integration",
+        "details": "LLM 連携・サブエージェント",
+        "children": [
+          "n_g_1775638686856_1",
+          "n_g_1775638686856_2",
+          "n_g_1775638686856_3"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_s_1775633727205": {
+        "id": "n_s_1775633727205",
+        "link": "",
+        "note": "",
+        "text": "Linear text transform (AI)",
+        "details": "tree→linear, linear→tree 双方向。OpenAI-compatible API",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_3",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "done"
+        }
+      },
+      "n_s_1775633727206": {
+        "id": "n_s_1775633727206",
+        "link": "",
+        "note": "",
+        "text": "Topic suggestion subagent",
+        "details": "ノード内容からトピック提案",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_3",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "done"
+        }
+      },
+      "n_s_1775633727207": {
+        "id": "n_s_1775633727207",
+        "link": "",
+        "note": "",
+        "text": "MCP server: text CRUD",
+        "details": "Claude Desktop からノード操作",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_1",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "done"
+        }
+      },
+      "n_s_1775633727208": {
+        "id": "n_s_1775633727208",
+        "link": "",
+        "note": "",
+        "text": "MCP: alias / GraphLink / nodeType ops",
+        "details": "scope/alias 実装後に拡張",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_1",
+        "collapsed": false,
+        "attributes": {
+          "agent": "data",
+          "status": "pooled",
+          "priority": "P3"
+        }
+      },
+      "n_s_1775633727209": {
+        "id": "n_s_1775633727209",
+        "link": "",
+        "note": "",
+        "text": "AI subagents: title-rewrite / duplicate-check / suggest-parent",
+        "details": "proposal パターン。インフラ ready",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_3",
+        "collapsed": false,
+        "attributes": {
+          "agent": "subagent",
+          "status": "planned"
+        }
+      },
+      "n_s_1775633727210": {
+        "id": "n_s_1775633727210",
+        "link": "",
+        "note": "",
+        "text": "Gateway Phase 2: LiteLLM multi-model",
+        "details": "設計済み。Phase 1（直接呼び出し）は動作中",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_2",
+        "collapsed": false,
+        "attributes": {
+          "agent": "data",
+          "status": "pooled"
+        }
+      },
+      "n_s_1775633727211": {
+        "id": "n_s_1775633727211",
+        "link": "",
+        "note": "",
+        "text": "Data & Import/Export",
+        "details": "データモデル・外部連携",
+        "children": [
+          "n_s_1775633727212",
+          "n_s_1775633727213",
+          "n_s_1775633727215",
+          "n_s_1775633727216"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_s_1775633727212": {
+        "id": "n_s_1775633727212",
+        "link": "",
+        "note": "",
+        "text": "Obsidian vault read (5-phase import)",
+        "details": "Discovery→Parse→AI Transform→Link Resolution→Persist。spec 完了、実装未着手",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727211",
+        "collapsed": false,
+        "attributes": {
+          "agent": "data",
+          "status": "spec-done",
+          "priority": "P2"
+        }
+      },
+      "n_s_1775633727213": {
+        "id": "n_s_1775633727213",
+        "link": "",
+        "note": "",
+        "text": "Obsidian vault write (逆変換)",
+        "details": "M3E → Obsidian。需要次第",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727211",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "idea"
+        }
+      },
+      "n_s_1775633727215": {
+        "id": "n_s_1775633727215",
+        "link": "",
+        "note": "",
+        "text": "Linear↔Tree L1 round-trip test",
+        "details": "インデント形式の可逆 export/import 検証",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727211",
+        "collapsed": false,
+        "attributes": {
+          "agent": "data",
+          "status": "ready",
+          "priority": "P3"
+        }
+      },
+      "n_s_1775633727216": {
+        "id": "n_s_1775633727216",
+        "link": "",
+        "note": "",
+        "text": "Markdown export/import",
+        "details": "spec に記載。実装未着手",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727211",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "planned"
+        }
+      },
+      "n_s_1775633727217": {
+        "id": "n_s_1775633727217",
+        "link": "",
+        "note": "",
+        "text": "Scope & Structure",
+        "details": "スコープ・エイリアス・構造操作",
+        "children": [
+          "n_s_1775633727218",
+          "n_s_1775633727219",
+          "n_s_1775633727220",
+          "n_s_1775633727221",
+          "n_g_1775638686856_18",
+          "n_g_1775638686856_19"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_s_1775633727218": {
+        "id": "n_s_1775633727218",
+        "link": "",
+        "note": "",
+        "text": "scope/alias spec → Beta impl",
+        "details": "delete/権限/同一scope制約。Collab scope lock と整合必要",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727217",
+        "collapsed": false,
+        "attributes": {
+          "agent": "claude",
+          "status": "ready",
+          "priority": "P2"
+        }
+      },
+      "n_s_1775633727219": {
+        "id": "n_s_1775633727219",
+        "link": "",
+        "note": "",
+        "text": "Scope navigation & breadcrumb",
+        "details": "folder=scope, enter/exit, history stack",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727217",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "done"
+        }
+      },
+      "n_s_1775633727220": {
+        "id": "n_s_1775633727220",
+        "link": "",
+        "note": "",
+        "text": "Alias CRUD & broken detection",
+        "details": "参照作成、ジャンプ、壊れ検出",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727217",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "done"
+        }
+      },
+      "n_s_1775633727221": {
+        "id": "n_s_1775633727221",
+        "link": "",
+        "note": "",
+        "text": "Band density: Flash/Rapid/Deep",
+        "details": "密度モード切替。Rapid のみ実装、Flash/Deep 未着手",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727217",
+        "collapsed": false,
+        "attributes": {
+          "agent": "-",
+          "status": "spec-done"
+        }
+      },
+      "n_s_1775633727222": {
+        "id": "n_s_1775633727222",
+        "link": "",
+        "note": "",
+        "text": "Rendering",
+        "details": "描画・操作性",
+        "children": [
+          "n_1775573158460_2ly8l4",
+          "n_g_1775638686856_20",
+          "n_g_1775638686856_22",
+          "n_g_1775638686856_23"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_s_1775633727225": {
+        "id": "n_s_1775633727225",
+        "link": "",
+        "note": "",
+        "text": "Full-text search & filter",
+        "details": "未実装。importance フィルタ枠組みのみ",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775642407984_k1p9ec",
+        "collapsed": false,
+        "attributes": {
+          "agent": "visual",
+          "status": "planned"
+        }
+      },
+      "n_s_1775633727227": {
+        "id": "n_s_1775633727227",
+        "link": "",
+        "note": "",
+        "text": "Infrastructure",
+        "details": "CI・運用・セキュリティ",
+        "children": [
+          "n_s_1775633727228",
+          "n_s_1775633727229",
+          "n_s_1775633727230",
+          "n_g_1775638686856_24",
+          "n_g_1775638686856_25",
+          "n_g_1775638686856_26"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_s_1775633727228": {
+        "id": "n_s_1775633727228",
+        "link": "",
+        "note": "",
+        "text": "CI Stage A: build + test gate",
+        "details": "PR 前ゲート。npm build + node --test の最小構成",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727227",
+        "collapsed": false,
+        "attributes": {
+          "agent": "claude",
+          "status": "ready",
+          "priority": "P2"
+        }
+      },
+      "n_s_1775633727229": {
+        "id": "n_s_1775633727229",
+        "link": "",
+        "note": "",
+        "text": "Security review (4 items)",
+        "details": "CSRF, LAN, tokens, validation — オーナー判断待ち",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727227",
+        "collapsed": false,
+        "attributes": {
+          "agent": "akaghef",
+          "status": "blocked"
+        }
+      },
+      "n_s_1775633727230": {
+        "id": "n_s_1775633727230",
+        "link": "",
+        "note": "",
+        "text": "launch-final: vYYMMDD tagging",
+        "details": "main merge + tag 自動化済み",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727227",
+        "collapsed": false,
+        "attributes": {
+          "agent": "claude",
+          "status": "done"
+        }
+      },
+      "n_g_1775638686856_1": {
+        "id": "n_g_1775638686856_1",
+        "link": "",
+        "note": "",
+        "text": "MCP Server",
+        "details": "",
+        "children": [
+          "n_s_1775633727207",
+          "n_s_1775633727208",
+          "n_1775573158449_1uvaxa",
+          "n_1775573158452_omu67r",
+          "n_g_1775638686856_4"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_s_1775633727204",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_g_1775638686856_2": {
+        "id": "n_g_1775638686856_2",
+        "link": "",
+        "note": "",
+        "text": "Gateway / LLM",
+        "details": "",
+        "children": [
+          "n_s_1775633727210",
+          "n_1775573158450_g10o5t",
+          "n_1775573158451_mrgpt1",
+          "n_g_1775638686856_5",
+          "n_g_1775638686856_6"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_s_1775633727204",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_g_1775638686856_3": {
+        "id": "n_g_1775638686856_3",
+        "link": "",
+        "note": "",
+        "text": "AI Subagents",
+        "details": "",
+        "children": [
+          "n_s_1775633727205",
+          "n_s_1775633727206",
+          "n_s_1775633727209",
+          "n_g_1775638686856_7",
+          "n_g_1775638686856_8",
+          "n_g_1775638686856_9",
+          "n_g_1775638686856_10"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_s_1775633727204",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_g_1775638686856_4": {
+        "id": "n_g_1775638686856_4",
+        "link": "",
+        "note": "",
+        "text": "Claude Desktop integration test",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_1",
+        "collapsed": false,
+        "attributes": {
+          "agent": "manage",
+          "status": "ready",
+          "priority": "P3"
+        }
+      },
+      "n_g_1775638686856_5": {
+        "id": "n_g_1775638686856_5",
+        "link": "",
+        "note": "",
+        "text": "Phase 1: direct call (done)",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_2",
+        "collapsed": false,
+        "attributes": {
+          "status": "done"
+        }
+      },
+      "n_g_1775638686856_6": {
+        "id": "n_g_1775638686856_6",
+        "link": "",
+        "note": "",
+        "text": "API key rotation design",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_2",
+        "collapsed": false,
+        "attributes": {
+          "status": "idea"
+        }
+      },
+      "n_g_1775638686856_7": {
+        "id": "n_g_1775638686856_7",
+        "link": "",
+        "note": "",
+        "text": "title-rewrite",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_3",
+        "collapsed": false,
+        "attributes": {
+          "status": "planned"
+        }
+      },
+      "n_g_1775638686856_8": {
+        "id": "n_g_1775638686856_8",
+        "link": "",
+        "note": "",
+        "text": "duplicate-check",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_3",
+        "collapsed": false,
+        "attributes": {
+          "status": "planned"
+        }
+      },
+      "n_g_1775638686856_9": {
+        "id": "n_g_1775638686856_9",
+        "link": "",
+        "note": "",
+        "text": "suggest-parent",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_3",
+        "collapsed": false,
+        "attributes": {
+          "status": "planned"
+        }
+      },
+      "n_g_1775638686856_10": {
+        "id": "n_g_1775638686856_10",
+        "link": "",
+        "note": "",
+        "text": "summarize-subtree",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_3",
+        "collapsed": false,
+        "attributes": {
+          "status": "idea"
+        }
+      },
+      "n_g_1775638686856_11": {
+        "id": "n_g_1775638686856_11",
+        "link": "",
+        "note": "",
+        "text": "entity list UI",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727198",
+        "collapsed": false,
+        "attributes": {
+          "agent": "visual",
+          "status": "ready",
+          "priority": "P1"
+        }
+      },
+      "n_g_1775638686856_13": {
+        "id": "n_g_1775638686856_13",
+        "link": "",
+        "note": "",
+        "text": "operation audit log",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727198",
+        "collapsed": false,
+        "attributes": {
+          "agent": "data",
+          "status": "planned"
+        }
+      },
+      "n_g_1775638686856_14": {
+        "id": "n_g_1775638686856_14",
+        "link": "",
+        "note": "",
+        "text": "scope lock + alias consistency",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727198",
+        "collapsed": false,
+        "attributes": {
+          "status": "planned"
+        }
+      },
+      "n_g_1775638686856_18": {
+        "id": "n_g_1775638686856_18",
+        "link": "",
+        "note": "",
+        "text": "scope transition animation",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727217",
+        "collapsed": false,
+        "attributes": {
+          "status": "idea"
+        }
+      },
+      "n_g_1775638686856_19": {
+        "id": "n_g_1775638686856_19",
+        "link": "",
+        "note": "",
+        "text": "scope bookmark",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727217",
+        "collapsed": false,
+        "attributes": {
+          "status": "idea"
+        }
+      },
+      "n_g_1775638686856_20": {
+        "id": "n_g_1775638686856_20",
+        "link": "",
+        "note": "",
+        "text": "dark mode",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727222",
+        "collapsed": false,
+        "attributes": {
+          "status": "idea"
+        }
+      },
+      "n_g_1775638686856_22": {
+        "id": "n_g_1775638686856_22",
+        "link": "",
+        "note": "",
+        "text": "minimap overview",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727222",
+        "collapsed": false,
+        "attributes": {
+          "status": "idea"
+        }
+      },
+      "n_g_1775638686856_23": {
+        "id": "n_g_1775638686856_23",
+        "link": "",
+        "note": "",
+        "text": "Fit-to-content button",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727222",
+        "collapsed": false,
+        "attributes": {
+          "agent": "visual",
+          "status": "ready",
+          "priority": "P4"
+        }
+      },
+      "n_g_1775638686856_24": {
+        "id": "n_g_1775638686856_24",
+        "link": "",
+        "note": "",
+        "text": "E2E test (Playwright)",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727227",
+        "collapsed": false,
+        "attributes": {
+          "agent": "manage",
+          "status": "ready"
+        }
+      },
+      "n_g_1775638686856_25": {
+        "id": "n_g_1775638686856_25",
+        "link": "",
+        "note": "",
+        "text": "branch-role gate (CI)",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727227",
+        "collapsed": false,
+        "attributes": {
+          "agent": "manage",
+          "status": "planned"
+        }
+      },
+      "n_g_1775638686856_26": {
+        "id": "n_g_1775638686856_26",
+        "link": "",
+        "note": "",
+        "text": "npm audit / dependency check",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727227",
+        "collapsed": false,
+        "attributes": {
+          "status": "idea"
+        }
+      },
+      "n_res_1775647333517_1": {
+        "id": "n_res_1775647333517_1",
+        "link": "",
+        "note": "",
+        "text": "Resource",
+        "details": "",
+        "children": [
+          "n_res_1775647333517_2",
+          "n_res_1775647333517_3",
+          "n_res_1775647333517_4",
+          "n_res_1775647333517_5"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {
+          "type": "scope",
+          "status": "open",
+          "created": "2026-04-08T11:22:13.517Z"
+        }
+      },
+      "n_res_1775647333517_2": {
+        "id": "n_res_1775647333517_2",
+        "link": "",
+        "note": "",
+        "text": "Time Management",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_res_1775647333517_1",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_res_1775647333517_3": {
+        "id": "n_res_1775647333517_3",
+        "link": "",
+        "note": "",
+        "text": "Budget / Cost",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_res_1775647333517_1",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_res_1775647333517_4": {
+        "id": "n_res_1775647333517_4",
+        "link": "",
+        "note": "",
+        "text": "Headcount / Roles",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_res_1775647333517_1",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_res_1775647333517_5": {
+        "id": "n_res_1775647333517_5",
+        "link": "",
+        "note": "",
+        "text": "Capacity Planning",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_res_1775647333517_1",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_upd_1775736410841_1": {
+        "id": "n_upd_1775736410841_1",
+        "link": "",
+        "note": "",
+        "text": "04-09 conflict backup 完了。entity UI 未着手",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727200",
+        "collapsed": false,
+        "attributes": {
+          "type": "progress"
+        }
+      },
+      "n_upd_1775736410841_2": {
+        "id": "n_upd_1775736410841_2",
+        "link": "",
+        "note": "",
+        "text": "04-09 CloudSyncTransport 抽象化をdata が実装中",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727202",
+        "collapsed": false,
+        "attributes": {
+          "type": "progress"
+        }
+      },
+      "n_upd_1775736795722_1": {
+        "id": "n_upd_1775736795722_1",
+        "link": "",
+        "note": "",
+        "text": "04-09 CloudSyncTransport抽象化完了。FileTransport実装済み、Http/Supabaseスタブ",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727202",
+        "collapsed": false,
+        "attributes": {
+          "type": "progress"
+        }
+      },
+      "n_1775547979694_t8k38i": {
+        "id": "n_1775547979694_t8k38i",
+        "link": "",
+        "note": "",
+        "text": "ROOT",
+        "details": "",
+        "children": [
+          "n_1775730516392_8hk9do",
+          "n_1775648046404_8mcjvp"
+        ],
+        "nodeType": "text",
+        "parentId": null,
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548013626_auv6b3": {
+        "id": "n_1775548013626_auv6b3",
+        "link": "",
+        "note": "",
+        "text": "HPA",
+        "details": "",
+        "children": [
+          "n_1775720486009_o3dd5y",
+          "n_1775730909770_f9rrms"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775730526320_cnihca",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548022525_s9nvf4": {
+        "id": "n_1775548022525_s9nvf4",
+        "link": "",
+        "note": "",
+        "text": "DEV",
+        "details": "",
+        "children": [
+          "n_1775548057390_e6tlno",
+          "n_s_1775633727197",
+          "n_1775548063613_26a4wu",
+          "n_new_scratch_1775637602039",
+          "n_agent_1775734997211_1",
+          "n_1775548075947_ue7m14",
+          "n_1775649119364_ftksw5",
+          "n_upd_1775780880296_1"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775648046404_8mcjvp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548057390_e6tlno": {
+        "id": "n_1775548057390_e6tlno",
+        "link": "",
+        "note": "",
+        "text": "tasks",
+        "type": "folder",
+        "details": "",
+        "children": [
+          "n_new_doing_1775637602039",
+          "n_new_ready_1775637602039",
+          "n_new_done_1775637602039"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548022525_s9nvf4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548063613_26a4wu": {
+        "id": "n_1775548063613_26a4wu",
+        "link": "",
+        "note": "全ドキュメントへのリンクツリー。正本はdev-docs/配下。",
+        "text": "design",
+        "details": "",
+        "children": [
+          "n_1775577710077_wspx8n",
+          "n_1775577710081_5lyhj7",
+          "n_1775577710083_jbrhfm",
+          "n_1775577710086_upuoio",
+          "n_1775577710101_0nsl1q",
+          "n_1775577710109_xpi1f4",
+          "n_1775577710111_qw50p6",
+          "n_1775577710125_pvjwwt"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548022525_s9nvf4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548075947_ue7m14": {
+        "id": "n_1775548075947_ue7m14",
+        "link": "",
+        "note": "全ソースファイルへのリンク。正本はbeta/src/配下。",
+        "text": "implementation",
+        "details": "",
+        "children": [
+          "n_1775577710131_y1y4av",
+          "n_1775577710135_kirntq",
+          "n_1775577710142_3ii9wr"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548022525_s9nvf4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548084131_t43n1a": {
+        "id": "n_1775548084131_t43n1a",
+        "link": "",
+        "note": "",
+        "text": "mac",
+        "details": "",
+        "children": [
+          "n_1775549025395_egw6d7"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548100500_70xvj6": {
+        "id": "n_1775548100500_70xvj6",
+        "link": "",
+        "note": "",
+        "text": "AI",
+        "details": "",
+        "children": [
+          "n_1775648454781_yzzkth",
+          "n_1775648646404_gffc9z"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548212579_9lm6do": {
+        "id": "n_1775548212579_9lm6do",
+        "link": "",
+        "note": "",
+        "text": "PJ",
+        "details": "",
+        "children": [
+          "n_1775548216701_l4f44n",
+          "n_1775577710144_qkifq8",
+          "n_1775577710147_5zt57c"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548216701_l4f44n": {
+        "id": "n_1775548216701_l4f44n",
+        "link": "",
+        "note": "",
+        "text": "team",
+        "details": "",
+        "children": [
+          "n_1775578087649_pm5pui",
+          "n_1775578102155_28eblh",
+          "n_1775578117664_71jlzs"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548212579_9lm6do",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548229195_g2vssm": {
+        "id": "n_1775548229195_g2vssm",
+        "link": "",
+        "note": "",
+        "text": "git",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548277063_ji05d5": {
+        "id": "n_1775548277063_ji05d5",
+        "link": "",
+        "note": "",
+        "text": "description",
+        "details": "",
+        "children": [
+          "n_1775548281590_5yxp70"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775548281590_5yxp70": {
+        "id": "n_1775548281590_5yxp70",
+        "link": "",
+        "note": "",
+        "text": "tutorial",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548277063_ji05d5",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775549025395_egw6d7": {
+        "id": "n_1775549025395_egw6d7",
+        "link": "",
+        "note": "",
+        "text": "visual",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548084131_t43n1a",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775549088115_sw3hpd": {
+        "id": "n_1775549088115_sw3hpd",
+        "link": "",
+        "note": "",
+        "text": "team collaboration",
+        "details": "",
+        "children": [
+          "n_1775549095034_9u8kn2",
+          "n_1775551018387_nrgn92",
+          "n_1775551029450_ml00b2",
+          "n_1775551038570_vf75zg"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775549095034_9u8kn2": {
+        "id": "n_1775549095034_9u8kn2",
+        "link": "",
+        "note": "",
+        "text": "design",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775549088115_sw3hpd",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775551018387_nrgn92": {
+        "id": "n_1775551018387_nrgn92",
+        "link": "",
+        "note": "",
+        "text": "implementation",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775549088115_sw3hpd",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775551029450_ml00b2": {
+        "id": "n_1775551029450_ml00b2",
+        "link": "",
+        "note": "",
+        "text": "github operation",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775549088115_sw3hpd",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775551038570_vf75zg": {
+        "id": "n_1775551038570_vf75zg",
+        "link": "",
+        "note": "",
+        "text": "merge strategy",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775549088115_sw3hpd",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775573158449_1uvaxa": {
+        "id": "n_1775573158449_1uvaxa",
+        "link": "",
+        "note": "",
+        "text": "MCP server test",
+        "details": "A5/F3: MCP実運用テスト。m3e_mcp_server.pyのClaude Desktop登録と検証",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_1",
+        "collapsed": false,
+        "attributes": {
+          "status": "ready"
+        }
+      },
+      "n_1775573158450_g10o5t": {
+        "id": "n_1775573158450_g10o5t",
+        "link": "",
+        "note": "",
+        "text": "Gateway policy Phase 2",
+        "details": "F1: LiteLLM統合。設計済み・未実装",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_2",
+        "collapsed": false,
+        "attributes": {
+          "status": "pooled"
+        }
+      },
+      "n_1775573158451_mrgpt1": {
+        "id": "n_1775573158451_mrgpt1",
+        "link": "",
+        "note": "",
+        "text": "Bitwarden auto-inject",
+        "details": "F2: 運用中だが改善余地あり",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_2",
+        "collapsed": false,
+        "attributes": {
+          "status": "running"
+        }
+      },
+      "n_1775573158452_omu67r": {
+        "id": "n_1775573158452_omu67r",
+        "link": "",
+        "note": "",
+        "text": "MCP tool extension",
+        "details": "F4: alias/link/nodeType変更。scope/alias Beta実装後",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_g_1775638686856_1",
+        "collapsed": false,
+        "attributes": {
+          "status": "pooled"
+        }
+      },
+      "n_1775573158460_2ly8l4": {
+        "id": "n_1775573158460_2ly8l4",
+        "link": "",
+        "note": "",
+        "text": "SVG architecture",
+        "details": "B7: 04_Architectureに描画IFの境界整理",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727222",
+        "collapsed": false,
+        "attributes": {
+          "status": "ready"
+        }
+      },
+      "n_1775573158461_ecc7p1": {
+        "id": "n_1775573158461_ecc7p1",
+        "link": "",
+        "note": "G: ドキュメント整備",
+        "text": "docs",
+        "details": "",
+        "children": [
+          "n_1775573158462_349drq",
+          "n_1775573158463_eil5wb"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775573158462_349drq": {
+        "id": "n_1775573158462_349drq",
+        "link": "",
+        "note": "",
+        "text": "Command_Reference update",
+        "details": "G2: MVP版のまま。Actions_Beta.mdと乖離あり",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775573158461_ecc7p1",
+        "collapsed": false,
+        "attributes": {
+          "status": "pooled"
+        }
+      },
+      "n_1775573158463_eil5wb": {
+        "id": "n_1775573158463_eil5wb",
+        "link": "",
+        "note": "",
+        "text": "Architecture drawing IF",
+        "details": "G3/B7: 描画IF境界を整理",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775573158461_ecc7p1",
+        "collapsed": false,
+        "attributes": {
+          "status": "ready"
+        }
+      },
+      "n_1775573158464_rj3pnv": {
+        "id": "n_1775573158464_rj3pnv",
+        "link": "",
+        "note": "role: manager",
+        "text": "akaghef",
+        "details": "全体指示・確認・レビュー。負担集中を避け、できる限りAIを自律させる",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775578087649_pm5pui",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775573158465_txo5js": {
+        "id": "n_1775573158465_txo5js",
+        "link": "",
+        "note": "role: general dev",
+        "text": "Claude",
+        "details": "dev-betaブランチ。総合作業: マージ、仕様、タスク管理、finalへの移行",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775578087649_pm5pui",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775573158466_3of1da": {
+        "id": "n_1775573158466_3of1da",
+        "link": "",
+        "note": "role: visual dev",
+        "text": "Codex1",
+        "details": "dev-beta-visualブランチ。visual関連の作業",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775578087649_pm5pui",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775573158467_e5dhat": {
+        "id": "n_1775573158467_e5dhat",
+        "link": "",
+        "note": "role: data dev",
+        "text": "Codex2",
+        "details": "dev-beta-dataブランチ。model, controller関連の作業",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775578087649_pm5pui",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710077_wspx8n": {
+        "id": "n_1775577710077_wspx8n",
+        "link": "",
+        "note": "",
+        "text": "00_Home",
+        "details": "",
+        "children": [
+          "n_1775577710078_f13uvw",
+          "n_1775577710079_ycr9wa",
+          "n_1775577710080_g55ho6"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710078_f13uvw": {
+        "id": "n_1775577710078_f13uvw",
+        "link": "dev-docs/00_Home/Home.md",
+        "note": "",
+        "text": "Home",
+        "details": "ナビゲーションハブ",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710077_wspx8n",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710079_ycr9wa": {
+        "id": "n_1775577710079_ycr9wa",
+        "link": "dev-docs/00_Home/Current_Status.md",
+        "note": "",
+        "text": "Current Status",
+        "details": "プロジェクトの現在状態スナップショット",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710077_wspx8n",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710080_g55ho6": {
+        "id": "n_1775577710080_g55ho6",
+        "link": "dev-docs/00_Home/Worktree_Separation_Rules.md",
+        "note": "",
+        "text": "Worktree Separation",
+        "details": "Worktree分離運用ルール",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710077_wspx8n",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710081_5lyhj7": {
+        "id": "n_1775577710081_5lyhj7",
+        "link": "",
+        "note": "",
+        "text": "01_Vision",
+        "details": "",
+        "children": [
+          "n_1775577710082_qegw44"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710082_qegw44": {
+        "id": "n_1775577710082_qegw44",
+        "link": "dev-docs/01_Vision/Core_Principles.md",
+        "note": "",
+        "text": "Core Principles",
+        "details": "構造を保ったまま思考するための環境の原則",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710081_5lyhj7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710083_jbrhfm": {
+        "id": "n_1775577710083_jbrhfm",
+        "link": "",
+        "note": "",
+        "text": "02_Strategy",
+        "details": "",
+        "children": [
+          "n_1775577710084_qocma7",
+          "n_1775577710085_7q23ui"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710084_qocma7": {
+        "id": "n_1775577710084_qocma7",
+        "link": "dev-docs/02_Strategy/MVP_Definition.md",
+        "note": "",
+        "text": "MVP Definition",
+        "details": "Freeplane参考のMVP定義",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710083_jbrhfm",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710085_7q23ui": {
+        "id": "n_1775577710085_7q23ui",
+        "link": "dev-docs/02_Strategy/Current_Pivot_Freeplane_First.md",
+        "note": "",
+        "text": "Pivot Freeplane First",
+        "details": "Freeplane-Informed Custom Engineへのピボット判断",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710083_jbrhfm",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710086_upuoio": {
+        "id": "n_1775577710086_upuoio",
+        "link": "",
+        "note": "",
+        "text": "03_Spec",
+        "details": "",
+        "children": [
+          "n_1775577710087_wmqxys",
+          "n_1775577710088_fku4v3",
+          "n_1775577710089_4b9too",
+          "n_1775577710090_krpoqc",
+          "n_1775577710091_tiht5g",
+          "n_1775577710092_c8agsu",
+          "n_1775577710093_8bj0z5",
+          "n_1775577710094_08gnnk",
+          "n_1775577710095_r8s48c",
+          "n_1775577710096_as6mxh",
+          "n_1775577710097_2esulo",
+          "n_1775577710098_h52qtq",
+          "n_1775577710099_tlh86p",
+          "n_1775577710100_i7owh5"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710087_wmqxys": {
+        "id": "n_1775577710087_wmqxys",
+        "link": "dev-docs/03_Spec/Data_Model.md",
+        "note": "",
+        "text": "Data Model",
+        "details": "実体モデルの不変条件定義",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710088_fku4v3": {
+        "id": "n_1775577710088_fku4v3",
+        "link": "dev-docs/03_Spec/Scope_and_Alias.md",
+        "note": "",
+        "text": "Scope & Alias",
+        "details": "scope/aliasのBeta実装粒度定義",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710089_4b9too": {
+        "id": "n_1775577710089_4b9too",
+        "link": "dev-docs/03_Spec/Band_Spec.md",
+        "note": "",
+        "text": "Band Spec",
+        "details": "Flash/Rapid/Deep 3帯域の仕様",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710090_krpoqc": {
+        "id": "n_1775577710090_krpoqc",
+        "link": "dev-docs/03_Spec/Cloud_Sync.md",
+        "note": "",
+        "text": "Cloud Sync",
+        "details": "Betaクラウド同期の最小戦略",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710091_tiht5g": {
+        "id": "n_1775577710091_tiht5g",
+        "link": "dev-docs/03_Spec/REST_API.md",
+        "note": "",
+        "text": "REST API",
+        "details": "ローカルREST APIエンドポイント仕様",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710092_c8agsu": {
+        "id": "n_1775577710092_c8agsu",
+        "link": "dev-docs/03_Spec/Import_Export.md",
+        "note": "",
+        "text": "Import Export",
+        "details": "インポート/エクスポート仕様（MVP対応状況含む）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710093_8bj0z5": {
+        "id": "n_1775577710093_8bj0z5",
+        "link": "dev-docs/03_Spec/Command_Language.md",
+        "note": "",
+        "text": "Command Language",
+        "details": "コマンド言語仕様（Beta以降対象）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710094_08gnnk": {
+        "id": "n_1775577710094_08gnnk",
+        "link": "dev-docs/03_Spec/Linear_Tree_Conversion.md",
+        "note": "",
+        "text": "Linear Tree Conversion",
+        "details": "Tree↔Linear相互変換仕様",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710095_r8s48c": {
+        "id": "n_1775577710095_r8s48c",
+        "link": "dev-docs/03_Spec/Model_State_And_Schema_V2.md",
+        "note": "",
+        "text": "Model State V2",
+        "details": "Model State分離とSchema v2",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710096_as6mxh": {
+        "id": "n_1775577710096_as6mxh",
+        "link": "dev-docs/03_Spec/Scope_Transition.md",
+        "note": "",
+        "text": "Scope Transition",
+        "details": "Scope遷移仕様",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710097_2esulo": {
+        "id": "n_1775577710097_2esulo",
+        "link": "dev-docs/03_Spec/AI_Integration.md",
+        "note": "",
+        "text": "AI Integration",
+        "details": "AI連携仕様",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710098_h52qtq": {
+        "id": "n_1775577710098_h52qtq",
+        "link": "dev-docs/03_Spec/AI_Common_API.md",
+        "note": "",
+        "text": "AI Common API",
+        "details": "AI共通API仕様",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710099_tlh86p": {
+        "id": "n_1775577710099_tlh86p",
+        "link": "dev-docs/03_Spec/AI_Use_Cases.md",
+        "note": "",
+        "text": "AI Use Cases",
+        "details": "AI利用シナリオ集",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710100_i7owh5": {
+        "id": "n_1775577710100_i7owh5",
+        "link": "dev-docs/03_Spec/Obsidian_Vault_Integration.md",
+        "note": "",
+        "text": "Obsidian Integration",
+        "details": "Obsidian Vault連携（Import/Export）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710086_upuoio",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710101_0nsl1q": {
+        "id": "n_1775577710101_0nsl1q",
+        "link": "",
+        "note": "",
+        "text": "04_Architecture",
+        "details": "",
+        "children": [
+          "n_1775577710102_pp903r",
+          "n_1775577710103_mizt9n",
+          "n_1775577710104_yj8c8t",
+          "n_1775577710105_e0gj0v",
+          "n_1775577710106_70v9k0",
+          "n_1775577710107_zhotyz",
+          "n_1775577710108_44fdiu"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710102_pp903r": {
+        "id": "n_1775577710102_pp903r",
+        "link": "dev-docs/04_Architecture/AI_Infrastructure.md",
+        "note": "",
+        "text": "AI Infrastructure",
+        "details": "AIインフラ設計（4層構造）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710101_0nsl1q",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710103_mizt9n": {
+        "id": "n_1775577710103_mizt9n",
+        "link": "dev-docs/04_Architecture/Layout_Algorithm.md",
+        "note": "",
+        "text": "Layout Algorithm",
+        "details": "ツリーレイアウトアルゴリズム",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710101_0nsl1q",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710104_yj8c8t": {
+        "id": "n_1775577710104_yj8c8t",
+        "link": "dev-docs/04_Architecture/MVC_and_Command.md",
+        "note": "",
+        "text": "MVC & Command",
+        "details": "MVC+Commandパターン設計",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710101_0nsl1q",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710105_e0gj0v": {
+        "id": "n_1775577710105_e0gj0v",
+        "link": "dev-docs/04_Architecture/Drag_and_Reparent.md",
+        "note": "",
+        "text": "Drag & Reparent",
+        "details": "ドラッグ&リペアレント操作設計",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710101_0nsl1q",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710106_70v9k0": {
+        "id": "n_1775577710106_70v9k0",
+        "link": "dev-docs/04_Architecture/Editing_Design.md",
+        "note": "",
+        "text": "Editing Design",
+        "details": "インプレース編集設計",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710101_0nsl1q",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710107_zhotyz": {
+        "id": "n_1775577710107_zhotyz",
+        "link": "dev-docs/04_Architecture/Multi_Select.md",
+        "note": "",
+        "text": "Multi Select",
+        "details": "複数ノード選択設計",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710101_0nsl1q",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710108_44fdiu": {
+        "id": "n_1775577710108_44fdiu",
+        "link": "dev-docs/04_Architecture/Visual_Design_Guidelines.md",
+        "note": "",
+        "text": "Visual Design",
+        "details": "ビジュアルデザインガイドライン",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710101_0nsl1q",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710109_xpi1f4": {
+        "id": "n_1775577710109_xpi1f4",
+        "link": "",
+        "note": "",
+        "text": "05_Freeplane",
+        "details": "",
+        "children": [
+          "n_1775577710110_wghq8f"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710110_wghq8f": {
+        "id": "n_1775577710110_wghq8f",
+        "link": "dev-docs/05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md",
+        "note": "",
+        "text": "Data Model Mapping",
+        "details": "Freeplane↔M3Eデータモデル対応表",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710109_xpi1f4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710111_qw50p6": {
+        "id": "n_1775577710111_qw50p6",
+        "link": "",
+        "note": "",
+        "text": "06_Operations",
+        "details": "",
+        "children": [
+          "n_1775577710112_saggf5",
+          "n_1775577710113_cwgfy1",
+          "n_1775577710114_c09rti",
+          "n_1775577710115_0zxtjh",
+          "n_1775577710116_q4czja",
+          "n_1775577710117_rwjknx",
+          "n_1775577710118_3hhi3v",
+          "n_1775577710119_1tm32n",
+          "n_1775577710120_uemdsr",
+          "n_1775577710121_x7q99x",
+          "n_1775577710122_1sibje",
+          "n_1775577710123_tip00b",
+          "n_1775577710124_9de03g"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710112_saggf5": {
+        "id": "n_1775577710112_saggf5",
+        "link": "dev-docs/06_Operations/Actions_Beta.md",
+        "note": "",
+        "text": "Actions Beta",
+        "details": "アクション定義（beta）一覧",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710113_cwgfy1": {
+        "id": "n_1775577710113_cwgfy1",
+        "link": "dev-docs/06_Operations/Agent_Roles.md",
+        "note": "",
+        "text": "Agent Roles",
+        "details": "AIエージェント役割提案",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710114_c09rti": {
+        "id": "n_1775577710114_c09rti",
+        "link": "dev-docs/06_Operations/Command_Reference.md",
+        "note": "",
+        "text": "Command Reference",
+        "details": "コマンド操作リファレンス（MVP）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710115_0zxtjh": {
+        "id": "n_1775577710115_0zxtjh",
+        "link": "dev-docs/06_Operations/Commit_Message_Rules.md",
+        "note": "",
+        "text": "Commit Message Rules",
+        "details": "コミットメッセージ規則",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710116_q4czja": {
+        "id": "n_1775577710116_q4czja",
+        "link": "dev-docs/06_Operations/Documentation_Rules.md",
+        "note": "",
+        "text": "Documentation Rules",
+        "details": "ドキュメント言語ポリシーと更新ルール",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710117_rwjknx": {
+        "id": "n_1775577710117_rwjknx",
+        "link": "dev-docs/06_Operations/Decision_Pool.md",
+        "note": "",
+        "text": "Decision Pool",
+        "details": "判断の一時保存場所（正式文書昇格前）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710118_3hhi3v": {
+        "id": "n_1775577710118_3hhi3v",
+        "link": "dev-docs/06_Operations/Test_and_CICD_Guide.md",
+        "note": "",
+        "text": "Test & CI/CD Guide",
+        "details": "テスト・CI/CDガイド",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710119_1tm32n": {
+        "id": "n_1775577710119_1tm32n",
+        "link": "dev-docs/06_Operations/Keybindings_Beta.md",
+        "note": "",
+        "text": "Keybindings Beta",
+        "details": "キーバインドマッピング（beta）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710120_uemdsr": {
+        "id": "n_1775577710120_uemdsr",
+        "link": "dev-docs/06_Operations/Keyboard_Reference_Beta.md",
+        "note": "",
+        "text": "Keyboard Reference",
+        "details": "キーボード操作リファレンス（分割済み）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710121_x7q99x": {
+        "id": "n_1775577710121_x7q99x",
+        "link": "dev-docs/06_Operations/Todo_Pool.md",
+        "note": "",
+        "text": "Todo Pool",
+        "details": "Todoプール",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710122_1sibje": {
+        "id": "n_1775577710122_1sibje",
+        "link": "dev-docs/06_Operations/Todo_Collected_260407.md",
+        "note": "",
+        "text": "Todo Collected 260407",
+        "details": "やるべきこと一覧（2026-04-07更新）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710123_tip00b": {
+        "id": "n_1775577710123_tip00b",
+        "link": "dev-docs/06_Operations/Command_Panel_Security_Test_Cases.md",
+        "note": "",
+        "text": "Security Test Cases",
+        "details": "コマンドパネルセキュリティテストケース",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710124_9de03g": {
+        "id": "n_1775577710124_9de03g",
+        "link": "dev-docs/06_Operations/Integration_Handoff_260401_codex2.md",
+        "note": "",
+        "text": "Codex2 Handoff",
+        "details": "Codex2統合ハンドオフ（2026-04-01）",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710111_qw50p6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710125_pvjwwt": {
+        "id": "n_1775577710125_pvjwwt",
+        "link": "",
+        "note": "",
+        "text": "09_Decisions",
+        "details": "",
+        "children": [
+          "n_1775577710126_vrovsc",
+          "n_1775577710127_rlvd3c",
+          "n_1775577710128_ly3vv9",
+          "n_1775577710129_p53367",
+          "n_1775577710130_8q0vty"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548063613_26a4wu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710126_vrovsc": {
+        "id": "n_1775577710126_vrovsc",
+        "link": "dev-docs/09_Decisions/ADR_001_Freeplane_First.md",
+        "note": "",
+        "text": "ADR-001 Freeplane First",
+        "details": "Freeplane UIを土台にする判断",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710125_pvjwwt",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710127_rlvd3c": {
+        "id": "n_1775577710127_rlvd3c",
+        "link": "dev-docs/09_Decisions/ADR_002_React_UI_Basis.md",
+        "note": "",
+        "text": "ADR-002 React UI Basis",
+        "details": "React UIベースの判断",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710125_pvjwwt",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710128_ly3vv9": {
+        "id": "n_1775577710128_ly3vv9",
+        "link": "dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md",
+        "note": "",
+        "text": "ADR-003 Custom Engine",
+        "details": "Freeplane参考のカスタムエンジン判断",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710125_pvjwwt",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710129_p53367": {
+        "id": "n_1775577710129_p53367",
+        "link": "dev-docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md",
+        "note": "",
+        "text": "ADR-004 SQLite",
+        "details": "Rapid MVPにSQLiteを採用",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710125_pvjwwt",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710130_8q0vty": {
+        "id": "n_1775577710130_8q0vty",
+        "link": "dev-docs/09_Decisions/ADR_005_DataDir_Config.md",
+        "note": "",
+        "text": "ADR-005 DataDir Config",
+        "details": "環境別データディレクトリ設定",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710125_pvjwwt",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710131_y1y4av": {
+        "id": "n_1775577710131_y1y4av",
+        "link": "",
+        "note": "",
+        "text": "browser",
+        "details": "",
+        "children": [
+          "n_1775577710132_p4xi28",
+          "n_1775577710133_v8ply2",
+          "n_1775577710134_y81tuj"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548075947_ue7m14",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710132_p4xi28": {
+        "id": "n_1775577710132_p4xi28",
+        "link": "beta/src/browser/viewer.ts",
+        "note": "",
+        "text": "viewer.ts",
+        "details": "メインUI: SVG描画、ノード操作、インプレース編集",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710131_y1y4av",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710133_v8ply2": {
+        "id": "n_1775577710133_v8ply2",
+        "link": "beta/src/browser/viewer.tuning.ts",
+        "note": "",
+        "text": "viewer.tuning.ts",
+        "details": "UIチューニングパラメータ",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710131_y1y4av",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710134_y81tuj": {
+        "id": "n_1775577710134_y81tuj",
+        "link": "beta/src/browser/viewer.globals.d.ts",
+        "note": "",
+        "text": "viewer.globals.d.ts",
+        "details": "グローバル型定義",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710131_y1y4av",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710135_kirntq": {
+        "id": "n_1775577710135_kirntq",
+        "link": "",
+        "note": "",
+        "text": "node",
+        "details": "",
+        "children": [
+          "n_1775577710136_bqlcye",
+          "n_1775577710137_q0jsvl",
+          "n_1775577710138_1ffijy",
+          "n_1775577710139_ciw49k",
+          "n_1775577710140_fqks12",
+          "n_1775577710141_tnto1w"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548075947_ue7m14",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710136_bqlcye": {
+        "id": "n_1775577710136_bqlcye",
+        "link": "beta/src/node/start_viewer.ts",
+        "note": "",
+        "text": "start_viewer.ts",
+        "details": "HTTPサーバー起動、静的配信、APIルーティング",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710135_kirntq",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710137_q0jsvl": {
+        "id": "n_1775577710137_q0jsvl",
+        "link": "beta/src/node/rapid_mvp.ts",
+        "note": "",
+        "text": "rapid_mvp.ts",
+        "details": "RapidMvpModel: バリデーション、SQLite永続化",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710135_kirntq",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710138_1ffijy": {
+        "id": "n_1775577710138_1ffijy",
+        "link": "beta/src/node/ai_infra.ts",
+        "note": "",
+        "text": "ai_infra.ts",
+        "details": "AI基盤: Provider Adapter、Gateway",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710135_kirntq",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710139_ciw49k": {
+        "id": "n_1775577710139_ciw49k",
+        "link": "beta/src/node/ai_subagent.ts",
+        "note": "",
+        "text": "ai_subagent.ts",
+        "details": "AIサブエージ���ント実行",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710135_kirntq",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710140_fqks12": {
+        "id": "n_1775577710140_fqks12",
+        "link": "beta/src/node/cloud_sync.ts",
+        "note": "",
+        "text": "cloud_sync.ts",
+        "details": "クラウド同期: ファイルベース同期ロジック",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710135_kirntq",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710141_tnto1w": {
+        "id": "n_1775577710141_tnto1w",
+        "link": "beta/src/node/linear_agent.ts",
+        "note": "",
+        "text": "linear_agent.ts",
+        "details": "Linear↔Tree変換エージェント",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710135_kirntq",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710142_3ii9wr": {
+        "id": "n_1775577710142_3ii9wr",
+        "link": "",
+        "note": "",
+        "text": "shared",
+        "details": "",
+        "children": [
+          "n_1775577710143_g5rl4m"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775548075947_ue7m14",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710143_g5rl4m": {
+        "id": "n_1775577710143_g5rl4m",
+        "link": "beta/src/shared/types.ts",
+        "note": "",
+        "text": "types.ts",
+        "details": "TreeNode, GraphLink, AppState等の型定義",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710142_3ii9wr",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710144_qkifq8": {
+        "id": "n_1775577710144_qkifq8",
+        "link": "",
+        "note": "",
+        "text": "strategy",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548212579_9lm6do",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710147_5zt57c": {
+        "id": "n_1775577710147_5zt57c",
+        "link": "",
+        "note": "",
+        "text": "decisions",
+        "details": "",
+        "children": [
+          "n_1775577710148_578a7d",
+          "n_1775577710149_k3fm5w",
+          "n_1775577710150_w29uam",
+          "n_1775577710151_xagn4q"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548212579_9lm6do",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710148_578a7d": {
+        "id": "n_1775577710148_578a7d",
+        "link": "dev-docs/09_Decisions/ADR_001_Freeplane_First.md",
+        "note": "",
+        "text": "ADR-001 Freeplane First",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710147_5zt57c",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710149_k3fm5w": {
+        "id": "n_1775577710149_k3fm5w",
+        "link": "dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md",
+        "note": "",
+        "text": "ADR-003 Custom Engine",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710147_5zt57c",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710150_w29uam": {
+        "id": "n_1775577710150_w29uam",
+        "link": "dev-docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md",
+        "note": "",
+        "text": "ADR-004 SQLite",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710147_5zt57c",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775577710151_xagn4q": {
+        "id": "n_1775577710151_xagn4q",
+        "link": "dev-docs/09_Decisions/ADR_005_DataDir_Config.md",
+        "note": "",
+        "text": "ADR-005 DataDir Config",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775577710147_5zt57c",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775578087649_pm5pui": {
+        "id": "n_1775578087649_pm5pui",
+        "link": "",
+        "note": "",
+        "text": "old",
+        "details": "",
+        "children": [
+          "n_1775573158464_rj3pnv",
+          "n_1775573158465_txo5js",
+          "n_1775573158466_3of1da",
+          "n_1775573158467_e5dhat"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548216701_l4f44n",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775578102155_28eblh": {
+        "id": "n_1775578102155_28eblh",
+        "link": "",
+        "note": "",
+        "text": "member",
+        "details": "",
+        "children": [
+          "n_1775578148944_lshqtj",
+          "n_1775578567297_i8nuls",
+          "n_1775578573317_rmyb0p"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548216701_l4f44n",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775578117664_71jlzs": {
+        "id": "n_1775578117664_71jlzs",
+        "link": "",
+        "note": "",
+        "text": "hierarchy",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548216701_l4f44n",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775578148944_lshqtj": {
+        "id": "n_1775578148944_lshqtj",
+        "link": "",
+        "note": "",
+        "text": "mac-Codex",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775578102155_28eblh",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775578567297_i8nuls": {
+        "id": "n_1775578567297_i8nuls",
+        "link": "",
+        "note": "",
+        "text": "mac-Claude-Pro",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775578102155_28eblh",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775578573317_rmyb0p": {
+        "id": "n_1775578573317_rmyb0p",
+        "link": "",
+        "note": "",
+        "text": "",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775578102155_28eblh",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775642407984_k1p9ec": {
+        "id": "n_1775642407984_k1p9ec",
+        "link": "",
+        "note": "",
+        "text": "UX",
+        "details": "",
+        "children": [
+          "n_s_1775633727225",
+          "n_1775642537952_obgtw0",
+          "n_1775642545499_0my3q0"
+        ],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727197",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775642537952_obgtw0": {
+        "id": "n_1775642537952_obgtw0",
+        "link": "",
+        "note": "",
+        "text": "short cut view",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775642407984_k1p9ec",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775642545499_0my3q0": {
+        "id": "n_1775642545499_0my3q0",
+        "link": "",
+        "note": "",
+        "text": "Button panel",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775642407984_k1p9ec",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648033134_hxfszr": {
+        "id": "n_1775648033134_hxfszr",
+        "link": "",
+        "note": "",
+        "text": "TUTORIAL",
+        "details": "",
+        "children": [
+          "n_1775706842512_ntiu9j",
+          "n_1775648571378_6nkhaa",
+          "n_1775648571400_1h7bcz"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775648046404_8mcjvp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648046404_8mcjvp": {
+        "id": "n_1775648046404_8mcjvp",
+        "link": "",
+        "note": "",
+        "text": "SYSTEM",
+        "details": "",
+        "children": [
+          "n_1775648033134_hxfszr",
+          "n_1775548022525_s9nvf4",
+          "n_1775719388147_pvedny",
+          "n_1775731354900_zdq6vg",
+          "n_1775731394871_qra4jb"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775547979694_t8k38i",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648454781_yzzkth": {
+        "id": "n_1775648454781_yzzkth",
+        "link": "",
+        "note": "",
+        "text": "Tree",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548100500_70xvj6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571378_6nkhaa": {
+        "id": "n_1775648571378_6nkhaa",
+        "link": "",
+        "note": "",
+        "text": "M3Eが目指すもの",
+        "details": "",
+        "children": [
+          "n_1775650869381_rns0cp",
+          "n_1775648571379_zmglf6",
+          "n_1775648571390_dlsmr2",
+          "n_1775648571394_b8t0n7"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648033134_hxfszr",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571379_zmglf6": {
+        "id": "n_1775648571379_zmglf6",
+        "link": "",
+        "note": "",
+        "text": "マインドマップとは",
+        "details": "考えごとの絡まりを「ノード」と「つながり」で目に見えるかたち��広げる手法",
+        "children": [
+          "n_1775648571380_tj9gsu",
+          "n_1775703539875_mf12z4"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648571378_6nkhaa",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571380_tj9gsu": {
+        "id": "n_1775648571380_tj9gsu",
+        "link": "",
+        "note": "",
+        "text": "木構造の基本用語",
+        "details": "",
+        "children": [
+          "n_1775648571381_mx3arq",
+          "n_1775648571382_ch6dt1",
+          "n_1775648571383_udgf66",
+          "n_1775648571384_ve8fk3",
+          "n_1775648571385_prvqns",
+          "n_1775648571386_90dk6j",
+          "n_1775648571387_0da8er",
+          "n_1775648571388_vldw2q"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648571379_zmglf6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571381_mx3arq": {
+        "id": "n_1775648571381_mx3arq",
+        "link": "",
+        "note": "",
+        "text": "ノード：ひとつのボックス。マップの構成単位",
+        "details": "ひとつの考えやメモを入れる箱",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571382_ch6dt1": {
+        "id": "n_1775648571382_ch6dt1",
+        "link": "",
+        "note": "",
+        "text": "根（ルート）：木の一番上にあるノード。中心テーマ",
+        "details": "木の一番上にあるノード。中心テーマ",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571383_udgf66": {
+        "id": "n_1775648571383_udgf66",
+        "link": "",
+        "note": "",
+        "text": "親と子：枝分かれの関係。元が親、先が子",
+        "details": "枝分かれの関係。元が親、先が子",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571384_ve8fk3": {
+        "id": "n_1775648571384_ve8fk3",
+        "link": "",
+        "note": "",
+        "text": "兄弟：同じ親を持つノード同士",
+        "details": "同じ親を持つノード同士",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571385_prvqns": {
+        "id": "n_1775648571385_prvqns",
+        "link": "",
+        "note": "",
+        "text": "子孫と祖先：子・孫・ひ孫…が子孫、逆が祖先",
+        "details": "子・孫・ひ孫…が子孫、逆が祖先",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571386_90dk6j": {
+        "id": "n_1775648571386_90dk6j",
+        "link": "",
+        "note": "",
+        "text": "葉（リーフ）：子を持たない末端ノード",
+        "details": "子を持たない末端ノード",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571387_0da8er": {
+        "id": "n_1775648571387_0da8er",
+        "link": "",
+        "note": "",
+        "text": "深さ：根からの距離。深いほど具体的・詳細",
+        "details": "根からの距離。深いほど具体的・詳細",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571388_vldw2q": {
+        "id": "n_1775648571388_vldw2q",
+        "link": "",
+        "note": "",
+        "text": "折りたたみ：子孫をまとめて隠し、注目部分だけ見渡す",
+        "details": "子孫をまとめて隠し、注目部分だけ見渡す",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571380_tj9gsu",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571390_dlsmr2": {
+        "id": "n_1775648571390_dlsmr2",
+        "link": "",
+        "note": "",
+        "text": "3つの思考モード（開発中）",
+        "details": "同じデータを異なる密度で見るモード",
+        "children": [
+          "n_1775648571391_v6uxk4",
+          "n_1775648571392_w7eksy",
+          "n_1775648571393_21hhux"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648571378_6nkhaa",
+        "collapsed": true,
+        "attributes": {}
+      },
+      "n_1775648571391_v6uxk4": {
+        "id": "n_1775648571391_v6uxk4",
+        "link": "",
+        "note": "",
+        "text": "Flash",
+        "details": "ひらめきや割り込みをすばやく捕まえる。構造より速度優先",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571390_dlsmr2",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571392_w7eksy": {
+        "id": "n_1775648571392_w7eksy",
+        "link": "",
+        "note": "",
+        "text": "Rapid",
+        "details": "日常の作業モード。追加・編集・並べ替えを軽快にこなす",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571390_dlsmr2",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571393_21hhux": {
+        "id": "n_1775648571393_21hhux",
+        "link": "",
+        "note": "",
+        "text": "Deep",
+        "details": "設計レベルの深い思考。前提の明確化、比較の構造化、AI向け文脈整理",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571390_dlsmr2",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571394_b8t0n7": {
+        "id": "n_1775648571394_b8t0n7",
+        "link": "",
+        "note": "",
+        "text": "設計思想",
+        "details": "",
+        "children": [
+          "n_1775648571395_2fqs4c",
+          "n_1775648571396_h3as8b",
+          "n_1775648571397_prs2jb",
+          "n_1775648571398_jhosxk",
+          "n_1775648571399_gjqk2a"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648571378_6nkhaa",
+        "collapsed": true,
+        "attributes": {}
+      },
+      "n_1775648571395_2fqs4c": {
+        "id": "n_1775648571395_2fqs4c",
+        "link": "",
+        "note": "",
+        "text": "科学研究が第一",
+        "details": "汎用メモツールではなく、研究の思考過程を支える",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571394_b8t0n7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571396_h3as8b": {
+        "id": "n_1775648571396_h3as8b",
+        "link": "",
+        "note": "",
+        "text": "構造は親子が主軸",
+        "details": "思考の骨格は親子ツリー。補助的つながりは骨格を壊さない範囲",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571394_b8t0n7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571397_prs2jb": {
+        "id": "n_1775648571397_prs2jb",
+        "link": "",
+        "note": "",
+        "text": "スコープは認知境界",
+        "details": "整理箱ではなく「今の思考に要らないものは見せない」仕組み",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571394_b8t0n7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571398_jhosxk": {
+        "id": "n_1775648571398_jhosxk",
+        "link": "",
+        "note": "",
+        "text": "AI は提案、人間が確定",
+        "details": "AI が勝手に書き換えない。提案は差分、採否は人間",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571394_b8t0n7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571399_gjqk2a": {
+        "id": "n_1775648571399_gjqk2a",
+        "link": "",
+        "note": "",
+        "text": "消えないことが最優先",
+        "details": "便利さよりデータが壊れない・消えないことを重視",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571394_b8t0n7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571400_1h7bcz": {
+        "id": "n_1775648571400_1h7bcz",
+        "link": "",
+        "note": "",
+        "text": "入手・使用",
+        "details": "",
+        "children": [
+          "n_1775648571416_2tsdp3"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648033134_hxfszr",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571416_2tsdp3": {
+        "id": "n_1775648571416_2tsdp3",
+        "link": "",
+        "note": "",
+        "text": "困ったとき",
+        "details": "",
+        "children": [
+          "n_1775648571417_lq51z2",
+          "n_1775648571418_1b66uw",
+          "n_1775648571419_z4xj9p",
+          "n_1775648571420_1mudeq"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648571400_1h7bcz",
+        "collapsed": true,
+        "attributes": {}
+      },
+      "n_1775648571417_lq51z2": {
+        "id": "n_1775648571417_lq51z2",
+        "link": "",
+        "note": "",
+        "text": "ダウンロードが止まる",
+        "details": "インターネット接続を確認して再実行",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571416_2tsdp3",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571418_1b66uw": {
+        "id": "n_1775648571418_1b66uw",
+        "link": "",
+        "note": "",
+        "text": "ビルド失敗",
+        "details": "setup.bat をもう一度実行",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571416_2tsdp3",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571419_z4xj9p": {
+        "id": "n_1775648571419_z4xj9p",
+        "link": "",
+        "note": "",
+        "text": "ブラウザが開かない",
+        "details": "http://localhost:38482/viewer.html を手動で開く",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571416_2tsdp3",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648571420_1mudeq": {
+        "id": "n_1775648571420_1mudeq",
+        "link": "",
+        "note": "",
+        "text": "ポート使用中",
+        "details": "ランチャーが自動対処。解決しなければ PC 再起動",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648571416_2tsdp3",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648646404_gffc9z": {
+        "id": "n_1775648646404_gffc9z",
+        "link": "",
+        "note": "",
+        "text": "Edit",
+        "details": "",
+        "children": [
+          "n_1775648648364_lwsiv1"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548100500_70xvj6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648648364_lwsiv1": {
+        "id": "n_1775648648364_lwsiv1",
+        "link": "",
+        "note": "",
+        "text": "Treeのラフな成形の指示",
+        "details": "",
+        "children": [
+          "n_1775648663241_orp4io"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648646404_gffc9z",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775648663241_orp4io": {
+        "id": "n_1775648663241_orp4io",
+        "link": "",
+        "note": "",
+        "text": "flatten, tall?",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775648648364_lwsiv1",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775649119364_5xixak": {
+        "id": "n_1775649119364_5xixak",
+        "link": "",
+        "note": "",
+        "text": "Linear Text",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_d9v3n3",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775649119364_bp0lt7": {
+        "id": "n_1775649119364_bp0lt7",
+        "link": "",
+        "note": "",
+        "text": "keyboard input of some symbol:  tilde",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ksbbdz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775649119364_d9v3n3": {
+        "id": "n_1775649119364_d9v3n3",
+        "link": "",
+        "note": "",
+        "text": "data",
+        "details": "",
+        "children": [
+          "n_1775649119364_5xixak"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ftksw5",
+        "collapsed": false,
+        "attributes": {
+          "agent": "data"
+        }
+      },
+      "n_1775649119364_eb3qsd": {
+        "id": "n_1775649119364_eb3qsd",
+        "link": "",
+        "note": "",
+        "text": "visual",
+        "details": "",
+        "children": [
+          "n_1775649640619_ndz85j",
+          "n_1775703724604_ocw4pv",
+          "n_1775729797193_g1zxx8"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ftksw5",
+        "collapsed": false,
+        "attributes": {
+          "agent": "visual"
+        }
+      },
+      "n_1775649119364_ftksw5": {
+        "id": "n_1775649119364_ftksw5",
+        "link": "",
+        "note": "",
+        "text": "Bugs",
+        "details": "",
+        "children": [
+          "n_1775649119364_eb3qsd",
+          "n_1775649119364_d9v3n3",
+          "n_1775649119364_ksbbdz",
+          "n_upd_1775780880298_44"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548022525_s9nvf4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775649119364_hfnp0x": {
+        "id": "n_1775649119364_hfnp0x",
+        "link": "",
+        "note": "",
+        "text": "folder node",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ksbbdz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775649119364_ksbbdz": {
+        "id": "n_1775649119364_ksbbdz",
+        "link": "",
+        "note": "",
+        "text": "operation",
+        "details": "",
+        "children": [
+          "n_1775649119364_bp0lt7",
+          "n_1775649119364_hfnp0x",
+          "n_1775652321402_m7dqvi",
+          "n_1775703917945_1czkfm",
+          "n_1775730818640_m8qs3m"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ftksw5",
+        "collapsed": false,
+        "attributes": {
+          "agent": "manage"
+        }
+      },
+      "n_1775649640619_ndz85j": {
+        "id": "n_1775649640619_ndz85j",
+        "link": "",
+        "note": "",
+        "text": "Scope遷移時のカメラ",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_eb3qsd",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869381_rns0cp": {
+        "id": "n_1775650869381_rns0cp",
+        "link": "",
+        "note": "",
+        "text": "M³Eとは？",
+        "details": "",
+        "children": [
+          "n_1775650869382_i54gj2",
+          "n_1775650869386_6y4wub",
+          "n_1775650869391_6lzkwz",
+          "n_1775654045172_sgxd0s"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775648571378_6nkhaa",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869382_i54gj2": {
+        "id": "n_1775650869382_i54gj2",
+        "link": "",
+        "note": "",
+        "text": "概要",
+        "details": "",
+        "children": [
+          "n_1775650869383_l9nvr8",
+          "n_1775650869384_j839rt",
+          "n_1775650869385_pbcyp0"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775650869381_rns0cp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869383_l9nvr8": {
+        "id": "n_1775650869383_l9nvr8",
+        "link": "",
+        "note": "",
+        "text": "科学研究,開発",
+        "details": "科学研究・開発のための思考支援ツール",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869382_i54gj2",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869384_j839rt": {
+        "id": "n_1775650869384_j839rt",
+        "link": "",
+        "note": "",
+        "text": "フレームワーク思考",
+        "details": "構造を持った思考を外に出し、目で見て手で触れるようにする",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869382_i54gj2",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869385_pbcyp0": {
+        "id": "n_1775650869385_pbcyp0",
+        "link": "",
+        "note": "",
+        "text": "Graph/Tree構造",
+        "details": "親子ツリーを骨格とした構造UI",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869382_i54gj2",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869386_6y4wub": {
+        "id": "n_1775650869386_6y4wub",
+        "link": "",
+        "note": "",
+        "text": "目標",
+        "details": "",
+        "children": [
+          "n_1775650869387_n2cacy",
+          "n_1775650869388_0qoqbk",
+          "n_1775650869389_308dci",
+          "n_1775650869390_253ewz"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775650869381_rns0cp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869387_n2cacy": {
+        "id": "n_1775650869387_n2cacy",
+        "link": "",
+        "note": "",
+        "text": "Post-LLM",
+        "details": "対話形式LLMの進化系となる",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869386_6y4wub",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869388_0qoqbk": {
+        "id": "n_1775650869388_0qoqbk",
+        "link": "",
+        "note": "",
+        "text": "世界モデル構築",
+        "details": "知識や思考を可視化・外在化し、世界モデルを構築する",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869386_6y4wub",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869389_308dci": {
+        "id": "n_1775650869389_308dci",
+        "link": "",
+        "note": "",
+        "text": "思考可視化",
+        "details": "頭の中の構造を画面上に展開する",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869386_6y4wub",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869390_253ewz": {
+        "id": "n_1775650869390_253ewz",
+        "link": "",
+        "note": "",
+        "text": "意思決定加速",
+        "details": "構造の可視化により意思決定を加速する",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869386_6y4wub",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869391_6lzkwz": {
+        "id": "n_1775650869391_6lzkwz",
+        "link": "",
+        "note": "",
+        "text": "特徴",
+        "details": "",
+        "children": [
+          "n_1775650869392_gs8kwf",
+          "n_1775650869393_z14axu",
+          "n_1775650869394_uioefp",
+          "n_1775650869395_mwae6s",
+          "n_1775650869396_utjn6h",
+          "n_1775650869397_da0d5g"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775650869381_rns0cp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869392_gs8kwf": {
+        "id": "n_1775650869392_gs8kwf",
+        "link": "",
+        "note": "",
+        "text": "構造の対話・操作",
+        "details": "構造そのものを直接操作できる",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869391_6lzkwz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869393_z14axu": {
+        "id": "n_1775650869393_z14axu",
+        "link": "",
+        "note": "",
+        "text": "思考帯域とスコープ制御",
+        "details": "Flash/Rapid/Deepの3帯域とフォルダーのようなスコープ制御",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869391_6lzkwz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869394_uioefp": {
+        "id": "n_1775650869394_uioefp",
+        "link": "",
+        "note": "",
+        "text": "線形との相互変換",
+        "details": "文章のような線形構造と木���造を相互につなぐ変換機能",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869391_6lzkwz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869395_mwae6s": {
+        "id": "n_1775650869395_mwae6s",
+        "link": "",
+        "note": "",
+        "text": "AI連携(開発中)",
+        "details": "AIは提案、人間が確定。差分として提示",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869391_6lzkwz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869396_utjn6h": {
+        "id": "n_1775650869396_utjn6h",
+        "link": "",
+        "note": "",
+        "text": "チーム運用(開発中)",
+        "details": "複数人での共同編集・運用",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869391_6lzkwz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775650869397_da0d5g": {
+        "id": "n_1775650869397_da0d5g",
+        "link": "",
+        "note": "",
+        "text": "クラウド同期(開発中)",
+        "details": "オフライン機能を核としたクラウド同期",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775650869391_6lzkwz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775652321402_m7dqvi": {
+        "id": "n_1775652321402_m7dqvi",
+        "link": "",
+        "note": "",
+        "text": "reparent node上判定",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ksbbdz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775653977470_xpeoie": {
+        "id": "n_1775653977470_xpeoie",
+        "link": "",
+        "note": "",
+        "text": "←左キー　で\n移動してみてください",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775654045172_sgxd0s",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775654045172_sgxd0s": {
+        "id": "n_1775654045172_sgxd0s",
+        "link": "",
+        "note": "",
+        "text": "←←",
+        "details": "",
+        "children": [
+          "n_1775653977470_xpeoie"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775650869381_rns0cp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703539875_mf12z4": {
+        "id": "n_1775703539875_mf12z4",
+        "link": "",
+        "note": "",
+        "text": "マインドマップの具体例",
+        "details": "",
+        "children": [
+          "n_1775703467712_bioat37",
+          "n_1775703816113_ml61ub"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648571379_zmglf6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703724604_ocw4pv": {
+        "id": "n_1775703724604_ocw4pv",
+        "link": "",
+        "note": "",
+        "text": "レイアウト",
+        "details": "",
+        "children": [
+          "n_1775703737928_tzrzj9"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_eb3qsd",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703737928_tzrzj9": {
+        "id": "n_1775703737928_tzrzj9",
+        "link": "",
+        "note": "",
+        "text": "違う親のノード長が共有される",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703724604_ocw4pv",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703816113_ml61ub": {
+        "id": "n_1775703816113_ml61ub",
+        "link": "",
+        "note": "",
+        "text": "根（浅い）",
+        "details": "",
+        "children": [
+          "n_1775703819140_wnkqq4"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703539875_mf12z4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703819140_wnkqq4": {
+        "id": "n_1775703819140_wnkqq4",
+        "link": "",
+        "note": "",
+        "text": "親（→深さ方向）",
+        "details": "",
+        "children": [
+          "n_1775703826183_4xh4l5",
+          "n_1775703985730_3kuok6",
+          "n_1775704040866_9yufgx"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703816113_ml61ub",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703826183_4xh4l5": {
+        "id": "n_1775703826183_4xh4l5",
+        "link": "",
+        "note": "",
+        "text": "子",
+        "details": "",
+        "children": [
+          "n_1775703835347_xfxjxh",
+          "n_1775704018228_843msm"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703819140_wnkqq4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703835347_xfxjxh": {
+        "id": "n_1775703835347_xfxjxh",
+        "link": "",
+        "note": "",
+        "text": "葉",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703826183_4xh4l5",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703917945_1czkfm": {
+        "id": "n_1775703917945_1czkfm",
+        "link": "",
+        "note": "",
+        "text": "keyboard",
+        "details": "",
+        "children": [
+          "n_1775703922257_zz75fm",
+          "n_1775703943182_c9wj9n",
+          "n_1775703957404_xfyf00",
+          "n_1775721568861_zwe420"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ksbbdz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703922257_zz75fm": {
+        "id": "n_1775703922257_zz75fm",
+        "link": "",
+        "note": "",
+        "text": "editing時のブラウザ系コマンドのトリガー",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703917945_1czkfm",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703943182_c9wj9n": {
+        "id": "n_1775703943182_c9wj9n",
+        "link": "",
+        "note": "",
+        "text": "chromeのコマンドとのダブり確認",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703917945_1czkfm",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703957404_xfyf00": {
+        "id": "n_1775703957404_xfyf00",
+        "link": "",
+        "note": "",
+        "text": "戻るボタンなど編集中のボタンのトリガー",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703917945_1czkfm",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703985730_3kuok6": {
+        "id": "n_1775703985730_3kuok6",
+        "link": "",
+        "note": "",
+        "text": "兄弟\n（↓幅方向）",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703819140_wnkqq4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775704018228_843msm": {
+        "id": "n_1775704018228_843msm",
+        "link": "",
+        "note": "",
+        "text": "深い",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703826183_4xh4l5",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775704040866_9yufgx": {
+        "id": "n_1775704040866_9yufgx",
+        "link": "",
+        "note": "",
+        "text": "省略",
+        "details": "",
+        "children": [
+          "n_1775704047917_rqfwx4"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703819140_wnkqq4",
+        "collapsed": true,
+        "attributes": {}
+      },
+      "n_1775704047917_rqfwx4": {
+        "id": "n_1775704047917_rqfwx4",
+        "link": "",
+        "note": "",
+        "text": "折りたたまれたノード",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775704040866_9yufgx",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775706842512_ntiu9j": {
+        "id": "n_1775706842512_ntiu9j",
+        "link": "",
+        "note": "",
+        "text": "Ctrlキーを長押ししてみてください！",
+        "details": "",
+        "children": [
+          "n_1775706917018_19dno3"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775648033134_hxfszr",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775706917018_19dno3": {
+        "id": "n_1775706917018_19dno3",
+        "link": "",
+        "note": "",
+        "text": "操作方法が表示されます",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775706842512_ntiu9j",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775719388147_pvedny": {
+        "id": "n_1775719388147_pvedny",
+        "link": "",
+        "note": "",
+        "text": "RESOURCES",
+        "details": "",
+        "children": [
+          "n_1775719428841_xad779",
+          "n_1775719430436_9sh9g1"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775648046404_8mcjvp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775719428841_xad779": {
+        "id": "n_1775719428841_xad779",
+        "link": "",
+        "note": "",
+        "text": "New Node",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775719388147_pvedny",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775719430436_9sh9g1": {
+        "id": "n_1775719430436_9sh9g1",
+        "link": "",
+        "note": "",
+        "text": "New Sibling",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775719388147_pvedny",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720082363_cmuwa0": {
+        "id": "n_1775720082363_cmuwa0",
+        "link": "",
+        "note": "",
+        "text": "UX",
+        "details": "",
+        "children": [
+          "n_1775720086543_271o50"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720086543_271o50": {
+        "id": "n_1775720086543_271o50",
+        "link": "",
+        "note": "",
+        "text": "UI",
+        "details": "",
+        "children": [
+          "n_1775720087856_4g8ghf"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775720082363_cmuwa0",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720087856_4g8ghf": {
+        "id": "n_1775720087856_4g8ghf",
+        "link": "",
+        "note": "",
+        "text": "New Node",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775720086543_271o50",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720147323_hozn0m": {
+        "id": "n_1775720147323_hozn0m",
+        "link": "",
+        "note": "",
+        "text": "VISION",
+        "details": "",
+        "children": [
+          "n_1775720149447_d81nnb",
+          "n_1775720805946_lt3d8r",
+          "n_1775720815929_7rlred"
+        ],
+        "nodeType": "text",
+        "parentId": "n_new_scratch_1775637602039",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720149447_d81nnb": {
+        "id": "n_1775720149447_d81nnb",
+        "link": "",
+        "note": "",
+        "text": "数学研究の自動化",
+        "details": "",
+        "children": [
+          "n_1775721116573_bqz044"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775720147323_hozn0m",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720486009_o3dd5y": {
+        "id": "n_1775720486009_o3dd5y",
+        "link": "",
+        "note": "",
+        "text": "Swingby",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548013626_auv6b3",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720805946_lt3d8r": {
+        "id": "n_1775720805946_lt3d8r",
+        "link": "",
+        "note": "",
+        "text": "人力飛行機チーム運用",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775720147323_hozn0m",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775720815929_7rlred": {
+        "id": "n_1775720815929_7rlred",
+        "link": "",
+        "note": "",
+        "text": "企業運用",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775720147323_hozn0m",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775721116573_bqz044": {
+        "id": "n_1775721116573_bqz044",
+        "link": "",
+        "note": "",
+        "text": "New Node",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775720149447_d81nnb",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775721568861_zwe420": {
+        "id": "n_1775721568861_zwe420",
+        "link": "",
+        "note": "",
+        "text": "redo(履歴なし）",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703917945_1czkfm",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775729797193_g1zxx8": {
+        "id": "n_1775729797193_g1zxx8",
+        "link": "",
+        "note": "",
+        "text": "zoom",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_eb3qsd",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730365995_7d1dgr": {
+        "id": "n_1775730365995_7d1dgr",
+        "link": "",
+        "note": "",
+        "text": "work",
+        "details": "",
+        "children": [
+          "n_1775730424033_3f7agz",
+          "n_1775730427722_qtxms4"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775730526320_cnihca",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730366117_xv3cme": {
+        "id": "n_1775730366117_xv3cme",
+        "link": "",
+        "note": "",
+        "text": "study",
+        "details": "",
+        "children": [
+          "n_1775730650102_klri76",
+          "n_1775730652813_utb553",
+          "n_1775730658828_zkcz7n"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775730526320_cnihca",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730366262_x9h9q7": {
+        "id": "n_1775730366262_x9h9q7",
+        "link": "",
+        "note": "",
+        "text": "family",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775730526320_cnihca",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730424033_3f7agz": {
+        "id": "n_1775730424033_3f7agz",
+        "link": "",
+        "note": "",
+        "text": "interview",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775730365995_7d1dgr",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730427722_qtxms4": {
+        "id": "n_1775730427722_qtxms4",
+        "link": "",
+        "note": "",
+        "text": "intern",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775730365995_7d1dgr",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730458052_q82usj": {
+        "id": "n_1775730458052_q82usj",
+        "link": "",
+        "note": "",
+        "text": "programming",
+        "details": "",
+        "children": [
+          "n_1775730462470_bvl0hu"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775730526320_cnihca",
+        "collapsed": true,
+        "attributes": {}
+      },
+      "n_1775730462470_bvl0hu": {
+        "id": "n_1775730462470_bvl0hu",
+        "link": "",
+        "note": "",
+        "text": "MATLAB",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775730458052_q82usj",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730516392_8hk9do": {
+        "id": "n_1775730516392_8hk9do",
+        "link": "",
+        "note": "",
+        "text": "USER",
+        "details": "",
+        "children": [
+          "n_1775730526320_cnihca"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775547979694_t8k38i",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730526320_cnihca": {
+        "id": "n_1775730526320_cnihca",
+        "link": "",
+        "note": "",
+        "text": "Akaghef",
+        "details": "",
+        "children": [
+          "n_1775548013626_auv6b3",
+          "n_1775730365995_7d1dgr",
+          "n_1775730366117_xv3cme",
+          "n_1775730366262_x9h9q7",
+          "n_1775730458052_q82usj"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775730516392_8hk9do",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730650102_klri76": {
+        "id": "n_1775730650102_klri76",
+        "link": "",
+        "note": "",
+        "text": "university",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775730366117_xv3cme",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730652813_utb553": {
+        "id": "n_1775730652813_utb553",
+        "link": "",
+        "note": "",
+        "text": "research",
+        "details": "",
+        "children": [
+          "n_1775838845362_awhi7i",
+          "n_1775838848987_wnc71r"
+        ],
+        "nodeType": "folder",
+        "parentId": "n_1775730366117_xv3cme",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730658828_zkcz7n": {
+        "id": "n_1775730658828_zkcz7n",
+        "link": "",
+        "note": "",
+        "text": "hobby",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775730366117_xv3cme",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730818640_m8qs3m": {
+        "id": "n_1775730818640_m8qs3m",
+        "link": "",
+        "note": "",
+        "text": "map",
+        "details": "",
+        "children": [
+          "n_1775730820595_vji1jc"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775649119364_ksbbdz",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730820595_vji1jc": {
+        "id": "n_1775730820595_vji1jc",
+        "link": "",
+        "note": "",
+        "text": "collapsed nodeへの遷移",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775730818640_m8qs3m",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775730909770_f9rrms": {
+        "id": "n_1775730909770_f9rrms",
+        "link": "",
+        "note": "",
+        "text": "Meister",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548013626_auv6b3",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775731354900_zdq6vg": {
+        "id": "n_1775731354900_zdq6vg",
+        "link": "",
+        "note": "",
+        "text": "TEMPLATE",
+        "details": "",
+        "children": [],
+        "nodeType": "folder",
+        "parentId": "n_1775648046404_8mcjvp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775731394871_qra4jb": {
+        "id": "n_1775731394871_qra4jb",
+        "link": "",
+        "note": "",
+        "text": "PREFERENCE",
+        "details": "",
+        "children": [],
+        "nodeType": "folder",
+        "parentId": "n_1775648046404_8mcjvp",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467712_bioat37": {
+        "id": "n_1775703467712_bioat37",
+        "link": "",
+        "note": "",
+        "text": "生物の分類",
+        "details": "木構造がそのまま分類になる身近な例",
+        "children": [
+          "n_1775703467713_bios42a",
+          "n_1775703467714_bioja5d",
+          "n_1775703467715_bioqrs7"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703539875_mf12z4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467713_bios42a": {
+        "id": "n_1775703467713_bios42a",
+        "link": "",
+        "note": "",
+        "text": "動物",
+        "details": "親。この下に哺乳類・鳥類・魚類（兄弟）がぶら下がる",
+        "children": [
+          "n_1775703467716_biox43y",
+          "n_1775703467717_bioori0",
+          "n_1775703467718_biopdk7"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467712_bioat37",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467714_bioja5d": {
+        "id": "n_1775703467714_bioja5d",
+        "link": "",
+        "note": "",
+        "text": "植物",
+        "details": "「動物」と兄弟の関係",
+        "children": [
+          "n_1775703467719_bioo2vo",
+          "n_1775703467720_bioznj6"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467712_bioat37",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467715_bioqrs7": {
+        "id": "n_1775703467715_bioqrs7",
+        "link": "",
+        "note": "",
+        "text": "菌類",
+        "details": "「動物」「植物」と兄弟の関係",
+        "children": [
+          "n_1775703467731_biolnxu",
+          "n_1775703467732_biom9qd"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467712_bioat37",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467716_biox43y": {
+        "id": "n_1775703467716_biox43y",
+        "link": "",
+        "note": "",
+        "text": "哺乳類",
+        "details": "",
+        "children": [
+          "n_1775703467721_biob8z8",
+          "n_1775703467722_biop213",
+          "n_1775703467723_biojzyy"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467713_bios42a",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467717_bioori0": {
+        "id": "n_1775703467717_bioori0",
+        "link": "",
+        "note": "",
+        "text": "鳥類",
+        "details": "",
+        "children": [
+          "n_1775703467724_bioil80",
+          "n_1775703467725_biorpii"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467713_bios42a",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467718_biopdk7": {
+        "id": "n_1775703467718_biopdk7",
+        "link": "",
+        "note": "",
+        "text": "魚類",
+        "details": "",
+        "children": [
+          "n_1775703467726_bio4vrb",
+          "n_1775703467727_biou7su"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467713_bios42a",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467719_bioo2vo": {
+        "id": "n_1775703467719_bioo2vo",
+        "link": "",
+        "note": "",
+        "text": "被子植物",
+        "details": "",
+        "children": [
+          "n_1775703467728_bio4gu8",
+          "n_1775703467729_bioehug"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467714_bioja5d",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467720_bioznj6": {
+        "id": "n_1775703467720_bioznj6",
+        "link": "",
+        "note": "",
+        "text": "裸子植物",
+        "details": "",
+        "children": [
+          "n_1775703467730_bio2uy4"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775703467714_bioja5d",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467721_biob8z8": {
+        "id": "n_1775703467721_biob8z8",
+        "link": "",
+        "note": "",
+        "text": "ヒト",
+        "details": "葉（リーフ）：子を持たない末端",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467716_biox43y",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467722_biop213": {
+        "id": "n_1775703467722_biop213",
+        "link": "",
+        "note": "",
+        "text": "イヌ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467716_biox43y",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467723_biojzyy": {
+        "id": "n_1775703467723_biojzyy",
+        "link": "",
+        "note": "",
+        "text": "クジラ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467716_biox43y",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467724_bioil80": {
+        "id": "n_1775703467724_bioil80",
+        "link": "",
+        "note": "",
+        "text": "スズメ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467717_bioori0",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467725_biorpii": {
+        "id": "n_1775703467725_biorpii",
+        "link": "",
+        "note": "",
+        "text": "ペンギン",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467717_bioori0",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467726_bio4vrb": {
+        "id": "n_1775703467726_bio4vrb",
+        "link": "",
+        "note": "",
+        "text": "サケ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467718_biopdk7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467727_biou7su": {
+        "id": "n_1775703467727_biou7su",
+        "link": "",
+        "note": "",
+        "text": "マグロ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467718_biopdk7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467728_bio4gu8": {
+        "id": "n_1775703467728_bio4gu8",
+        "link": "",
+        "note": "",
+        "text": "サクラ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467719_bioo2vo",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467729_bioehug": {
+        "id": "n_1775703467729_bioehug",
+        "link": "",
+        "note": "",
+        "text": "イネ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467719_bioo2vo",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467730_bio2uy4": {
+        "id": "n_1775703467730_bio2uy4",
+        "link": "",
+        "note": "",
+        "text": "スギ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467720_bioznj6",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467731_biolnxu": {
+        "id": "n_1775703467731_biolnxu",
+        "link": "",
+        "note": "",
+        "text": "シイタケ",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467715_bioqrs7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_1775703467732_biom9qd": {
+        "id": "n_1775703467732_biom9qd",
+        "link": "",
+        "note": "",
+        "text": "酵母",
+        "details": "葉",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775703467715_bioqrs7",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_agent_1775734997211_1": {
+        "id": "n_agent_1775734997211_1",
+        "link": "",
+        "note": "",
+        "text": "Agent Status",
+        "details": "",
+        "children": [
+          "n_agent_1775734997211_2",
+          "n_agent_1775734997211_3",
+          "n_agent_1775734997211_4",
+          "n_agent_1775734997211_5",
+          "n_agent_1775734997211_6"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548022525_s9nvf4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_agent_1775734997211_2": {
+        "id": "n_agent_1775734997211_2",
+        "link": "",
+        "note": "",
+        "text": "data: Cloud Sync完全版Phase1完了(PR#23)。idle",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_agent_1775734997211_1",
+        "collapsed": false,
+        "attributes": {
+          "role": "data",
+          "status": "idle"
+        }
+      },
+      "n_agent_1775734997211_3": {
+        "id": "n_agent_1775734997211_3",
+        "link": "",
+        "note": "",
+        "text": "data2: テスト63件作成完了(PR#21)。idle",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_agent_1775734997211_1",
+        "collapsed": false,
+        "attributes": {
+          "role": "data2",
+          "status": "idle"
+        }
+      },
+      "n_agent_1775734997211_4": {
+        "id": "n_agent_1775734997211_4",
+        "link": "",
+        "note": "",
+        "text": "visual: entity list UI(PR#19) + SSE自動更新検証OK。idle",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_agent_1775734997211_1",
+        "collapsed": false,
+        "attributes": {
+          "role": "visual",
+          "status": "idle"
+        }
+      },
+      "n_agent_1775734997211_5": {
+        "id": "n_agent_1775734997211_5",
+        "link": "",
+        "note": "",
+        "text": "team: PR#23レビュー・マージ中",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_agent_1775734997211_1",
+        "collapsed": false,
+        "attributes": {
+          "role": "team",
+          "status": "working"
+        }
+      },
+      "n_agent_1775734997211_6": {
+        "id": "n_agent_1775734997211_6",
+        "link": "",
+        "note": "",
+        "text": "manage: 全方針確定。Miro比較+H1評価基準設定予定",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_agent_1775734997211_1",
+        "collapsed": false,
+        "attributes": {
+          "role": "manage",
+          "status": "active"
+        }
+      },
+      "n_new_done_1775637602039": {
+        "id": "n_new_done_1775637602039",
+        "link": "",
+        "note": "",
+        "text": "done-today",
+        "type": "folder",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548057390_e6tlno",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_update_1775734959307_1": {
+        "id": "n_update_1775734959307_1",
+        "link": "",
+        "note": "",
+        "text": "2026-04-09 conflict backup部分 完了。entity UI 未着手",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_s_1775633727200",
+        "collapsed": false,
+        "attributes": {
+          "type": "progress"
+        }
+      },
+      "n_new_doing_1775637602039": {
+        "id": "n_new_doing_1775637602039",
+        "link": "",
+        "note": "",
+        "text": "doing",
+        "type": "folder",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548057390_e6tlno",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_new_ready_1775637602039": {
+        "id": "n_new_ready_1775637602039",
+        "link": "",
+        "note": "",
+        "text": "ready",
+        "type": "folder",
+        "details": "",
+        "children": [],
+        "nodeType": "text",
+        "parentId": "n_1775548057390_e6tlno",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_new_scratch_1775637602039": {
+        "id": "n_new_scratch_1775637602039",
+        "link": "",
+        "note": "",
+        "text": "scratch",
+        "type": "folder",
+        "details": "",
+        "children": [
+          "n_1775548229195_g2vssm",
+          "n_1775549088115_sw3hpd",
+          "n_1775573158461_ecc7p1",
+          "n_1775548084131_t43n1a",
+          "n_1775548100500_70xvj6",
+          "n_1775548277063_ji05d5",
+          "n_1775548212579_9lm6do",
+          "n_1775720082363_cmuwa0",
+          "n_1775720147323_hozn0m"
+        ],
+        "nodeType": "text",
+        "parentId": "n_1775548022525_s9nvf4",
+        "collapsed": false,
+        "attributes": {}
+      },
+      "n_upd_1775780880296_1": {
+        "id": "n_upd_1775780880296_1",
+        "parentId": "n_1775548022525_s9nvf4",
+        "children": [
+          "n_upd_1775780880296_2",
+          "n_upd_1775780880296_6",
+          "n_upd_1775780880296_11",
+          "n_upd_1775780880296_15",
+          "n_upd_1775780880296_19"
+        ],
+        "nodeType": "folder",
+        "text": "Vision",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "type": "vision"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880296_2": {
+        "id": "n_upd_1775780880296_2",
+        "parentId": "n_upd_1775780880296_1",
+        "children": [
+          "n_upd_1775780880296_3",
+          "n_upd_1775780880296_4",
+          "n_upd_1775780880296_5"
+        ],
+        "nodeType": "text",
+        "text": "Flash — 日常マルチモーダルキャプチャ",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "band": "flash"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880296_3": {
+        "id": "n_upd_1775780880296_3",
+        "parentId": "n_upd_1775780880296_2",
+        "children": [],
+        "nodeType": "text",
+        "text": "画像・音声・テキストの即時取り込み",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_4": {
+        "id": "n_upd_1775780880296_4",
+        "parentId": "n_upd_1775780880296_2",
+        "children": [],
+        "nodeType": "text",
+        "text": "構造は後付け（自動分類 / AI タグ）",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_5": {
+        "id": "n_upd_1775780880296_5",
+        "parentId": "n_upd_1775780880296_2",
+        "children": [],
+        "nodeType": "text",
+        "text": "モバイル対応・クイック入力",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_6": {
+        "id": "n_upd_1775780880296_6",
+        "parentId": "n_upd_1775780880296_1",
+        "children": [
+          "n_upd_1775780880296_7",
+          "n_upd_1775780880296_8",
+          "n_upd_1775780880296_9",
+          "n_upd_1775780880296_10"
+        ],
+        "nodeType": "text",
+        "text": "Rapid — 業務グラフ構造（現在地）",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "band": "rapid"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880296_7": {
+        "id": "n_upd_1775780880296_7",
+        "parentId": "n_upd_1775780880296_6",
+        "children": [],
+        "nodeType": "text",
+        "text": "ツリー + 多様なグラフレイアウト",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_8": {
+        "id": "n_upd_1775780880296_8",
+        "parentId": "n_upd_1775780880296_6",
+        "children": [],
+        "nodeType": "text",
+        "text": "フロー図・ネットワーク図・因果図",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_9": {
+        "id": "n_upd_1775780880296_9",
+        "parentId": "n_upd_1775780880296_6",
+        "children": [],
+        "nodeType": "text",
+        "text": "チーム Collab & Cloud Sync",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_10": {
+        "id": "n_upd_1775780880296_10",
+        "parentId": "n_upd_1775780880296_6",
+        "children": [],
+        "nodeType": "text",
+        "text": "AI 連携（MCP / Subagents）",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_11": {
+        "id": "n_upd_1775780880296_11",
+        "parentId": "n_upd_1775780880296_1",
+        "children": [
+          "n_upd_1775780880296_12",
+          "n_upd_1775780880296_13",
+          "n_upd_1775780880296_14"
+        ],
+        "nodeType": "text",
+        "text": "Deep — 研究オントロジー",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "band": "deep"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880296_12": {
+        "id": "n_upd_1775780880296_12",
+        "parentId": "n_upd_1775780880296_11",
+        "children": [],
+        "nodeType": "text",
+        "text": "信頼度 / evidence / temperature 属性",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_13": {
+        "id": "n_upd_1775780880296_13",
+        "parentId": "n_upd_1775780880296_11",
+        "children": [],
+        "nodeType": "text",
+        "text": "体系的知識の階層構造",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_14": {
+        "id": "n_upd_1775780880296_14",
+        "parentId": "n_upd_1775780880296_11",
+        "children": [],
+        "nodeType": "text",
+        "text": "TCL: Tree Compatible Language",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_15": {
+        "id": "n_upd_1775780880296_15",
+        "parentId": "n_upd_1775780880296_1",
+        "children": [
+          "n_upd_1775780880296_16",
+          "n_upd_1775780880296_17",
+          "n_upd_1775780880296_18"
+        ],
+        "nodeType": "text",
+        "text": "昇格パス: Flash → Rapid → Deep",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "type": "core-concept"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880296_16": {
+        "id": "n_upd_1775780880296_16",
+        "parentId": "n_upd_1775780880296_15",
+        "children": [],
+        "nodeType": "text",
+        "text": "日常メモが業務ナレッジに構造化される",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_17": {
+        "id": "n_upd_1775780880296_17",
+        "parentId": "n_upd_1775780880296_15",
+        "children": [],
+        "nodeType": "text",
+        "text": "業務知識が研究レベルの体系に昇格する",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_18": {
+        "id": "n_upd_1775780880296_18",
+        "parentId": "n_upd_1775780880296_15",
+        "children": [],
+        "nodeType": "text",
+        "text": "confidence 累積による自動昇格候補の提示",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_19": {
+        "id": "n_upd_1775780880296_19",
+        "parentId": "n_upd_1775780880296_1",
+        "children": [
+          "n_upd_1775780880296_20",
+          "n_upd_1775780880296_21"
+        ],
+        "nodeType": "text",
+        "text": "チーム活用",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "type": "team"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880296_20": {
+        "id": "n_upd_1775780880296_20",
+        "parentId": "n_upd_1775780880296_19",
+        "children": [],
+        "nodeType": "text",
+        "text": "PI = Deep band, 学生 = Flash band",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880296_21": {
+        "id": "n_upd_1775780880296_21",
+        "parentId": "n_upd_1775780880296_19",
+        "children": [],
+        "nodeType": "text",
+        "text": "25人がURLでマップを読める（次週目標）",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_22": {
+        "id": "n_upd_1775780880297_22",
+        "parentId": "n_s_1775633727197",
+        "children": [
+          "n_upd_1775780880297_23",
+          "n_upd_1775780880297_24",
+          "n_upd_1775780880297_25",
+          "n_upd_1775780880297_26"
+        ],
+        "nodeType": "text",
+        "text": "04-10 Today's Goal",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "type": "daily-goal"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880297_23": {
+        "id": "n_upd_1775780880297_23",
+        "parentId": "n_upd_1775780880297_22",
+        "children": [],
+        "nodeType": "text",
+        "text": "1. Team Collab 機能充実 ✓ (PR#19 UI, PR#20 infra, PR#21 tests)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_24": {
+        "id": "n_upd_1775780880297_24",
+        "parentId": "n_upd_1775780880297_22",
+        "children": [],
+        "nodeType": "text",
+        "text": "2. Cloud Sync 完全版 ✓ (PR#23: conflict改善, backup接続, auto sync, リトライ)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_25": {
+        "id": "n_upd_1775780880297_25",
+        "parentId": "n_upd_1775780880297_22",
+        "children": [],
+        "nodeType": "text",
+        "text": "3. AI Integration さわり（MCP or Gateway）",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_26": {
+        "id": "n_upd_1775780880297_26",
+        "parentId": "n_upd_1775780880297_22",
+        "children": [],
+        "nodeType": "text",
+        "text": "4. テスト環境充実 ✓ (63+30 tests added)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_27": {
+        "id": "n_upd_1775780880297_27",
+        "parentId": "n_s_1775633727202",
+        "children": [],
+        "nodeType": "text",
+        "text": "04-10 Supabase経由2PC間同期動作確認済み",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "type": "progress"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880297_28": {
+        "id": "n_upd_1775780880297_28",
+        "parentId": "n_s_1775633727202",
+        "children": [],
+        "nodeType": "text",
+        "text": "04-10 仕様監査: 30+曖昧点発見→方針確定",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "type": "progress"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880297_29": {
+        "id": "n_upd_1775780880297_29",
+        "parentId": "n_s_1775633727202",
+        "children": [
+          "n_upd_1775780880297_30",
+          "n_upd_1775780880297_31",
+          "n_upd_1775780880297_32",
+          "n_upd_1775780880297_33"
+        ],
+        "nodeType": "text",
+        "text": "P0: 設計根本（確定済み）",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "priority": "P0"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880297_30": {
+        "id": "n_upd_1775780880297_30",
+        "parentId": "n_upd_1775780880297_29",
+        "children": [],
+        "nodeType": "text",
+        "text": "同期粒度: scope単位。短期は全体pushでMVP",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_31": {
+        "id": "n_upd_1775780880297_31",
+        "parentId": "n_upd_1775780880297_29",
+        "children": [],
+        "nodeType": "text",
+        "text": "計算場所: ユーザーPC側。クラウドは保存箱のみ",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_32": {
+        "id": "n_upd_1775780880297_32",
+        "parentId": "n_upd_1775780880297_29",
+        "children": [],
+        "nodeType": "text",
+        "text": "Conflict検出: docVersionベースに改善済み",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_33": {
+        "id": "n_upd_1775780880297_33",
+        "parentId": "n_upd_1775780880297_29",
+        "children": [],
+        "nodeType": "text",
+        "text": "Collab=ユーザー序列。Cloud Sync=永続化",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_34": {
+        "id": "n_upd_1775780880297_34",
+        "parentId": "n_s_1775633727202",
+        "children": [
+          "n_upd_1775780880297_35",
+          "n_upd_1775780880297_36",
+          "n_upd_1775780880297_37"
+        ],
+        "nodeType": "text",
+        "text": "P1: 信頼性（対応済み）",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "priority": "P1"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880297_35": {
+        "id": "n_upd_1775780880297_35",
+        "parentId": "n_upd_1775780880297_34",
+        "children": [],
+        "nodeType": "text",
+        "text": "conflict_backup push失敗時に接続済み(PR#23)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_36": {
+        "id": "n_upd_1775780880297_36",
+        "parentId": "n_upd_1775780880297_34",
+        "children": [],
+        "nodeType": "text",
+        "text": "Auto Sync基盤実装済み(30s interval, PR#23)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_37": {
+        "id": "n_upd_1775780880297_37",
+        "parentId": "n_upd_1775780880297_34",
+        "children": [],
+        "nodeType": "text",
+        "text": "リトライ exponential backoff実装済み(PR#23)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_38": {
+        "id": "n_upd_1775780880297_38",
+        "parentId": "n_s_1775633727202",
+        "children": [
+          "n_upd_1775780880297_39",
+          "n_upd_1775780880297_40",
+          "n_upd_1775780880297_41",
+          "n_upd_1775780880297_42"
+        ],
+        "nodeType": "text",
+        "text": "P2: 確定済み",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "priority": "P2"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880297_39": {
+        "id": "n_upd_1775780880297_39",
+        "parentId": "n_upd_1775780880297_38",
+        "children": [],
+        "nodeType": "text",
+        "text": "RLS: A案 owner_id段階的厳格化",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_40": {
+        "id": "n_upd_1775780880297_40",
+        "parentId": "n_upd_1775780880297_38",
+        "children": [],
+        "nodeType": "text",
+        "text": "リトライ: クライアント側 exponential backoff",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_41": {
+        "id": "n_upd_1775780880297_41",
+        "parentId": "n_upd_1775780880297_38",
+        "children": [],
+        "nodeType": "text",
+        "text": "push粒度: 短期全体→本番前scope化",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880297_42": {
+        "id": "n_upd_1775780880297_42",
+        "parentId": "n_upd_1775780880297_38",
+        "children": [],
+        "nodeType": "text",
+        "text": "backup: SQLite+conflict_backup。将来base snapshot追加",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_upd_1775780880298_43": {
+        "id": "n_upd_1775780880298_43",
+        "parentId": "n_s_1775633727200",
+        "children": [],
+        "nodeType": "text",
+        "text": "04-10 entity list UI + conflict backup UI 実装完了(PR#19)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "type": "progress"
+        },
+        "link": ""
+      },
+      "n_upd_1775780880298_44": {
+        "id": "n_upd_1775780880298_44",
+        "parentId": "n_1775649119364_ftksw5",
+        "children": [],
+        "nodeType": "text",
+        "text": "reparentNode stale reference bug (rapid_mvp.ts:284-310)",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "priority": "P2",
+          "found": "04-10"
+        },
+        "link": ""
+      },
+      "n_1775838845362_awhi7i": {
+        "id": "n_1775838845362_awhi7i",
+        "parentId": "n_1775730652813_utb553",
+        "children": [],
+        "nodeType": "text",
+        "text": "a",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_1775838848987_wnc71r": {
+        "id": "n_1775838848987_wnc71r",
+        "parentId": "n_1775730652813_utb553",
+        "children": [
+          "n_1775838850085_a345sx",
+          "n_1775838851070_yszy9f",
+          "n_1775838851651_cwxl2k",
+          "n_1775838857049_jw2m66"
+        ],
+        "nodeType": "text",
+        "text": "b",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_1775838850085_a345sx": {
+        "id": "n_1775838850085_a345sx",
+        "parentId": "n_1775838848987_wnc71r",
+        "children": [],
+        "nodeType": "text",
+        "text": "c",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_1775838851070_yszy9f": {
+        "id": "n_1775838851070_yszy9f",
+        "parentId": "n_1775838848987_wnc71r",
+        "children": [],
+        "nodeType": "text",
+        "text": "d",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_1775838851651_cwxl2k": {
+        "id": "n_1775838851651_cwxl2k",
+        "parentId": "n_1775838848987_wnc71r",
+        "children": [],
+        "nodeType": "text",
+        "text": "12",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "n_1775838857049_jw2m66": {
+        "id": "n_1775838857049_jw2m66",
+        "parentId": "n_1775838848987_wnc71r",
+        "children": [],
+        "collapsed": false,
+        "nodeType": "alias",
+        "text": "12",
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": "",
+        "targetNodeId": "n_1775838851651_cwxl2k",
+        "access": "read",
+        "isBroken": false
+      }
+    },
+    "rootId": "n_1775547979694_t8k38i",
+    "linearPanelWidth": 1421.12283358,
+    "linearNotesByScope": {
+      "n_s_1775633727197": "- strategy\n  note: \n\n  - Collaboration & Sync\n    note: \n\n    - Collab Phase 1: entity/lock/SSE/push\n      note: \n\n    - Collab Phase 2: conflict backup + entity UI\n      note: \n\n    - Cloud Sync conflict UI\n      note: \n\n    - Scope-based cloud sync (diff転送)\n      note: \n\n    - BroadcastChannel tab sync\n      note: \n\n    - entity list UI\n      note: \n\n    - conflict backup save/restore\n      note: \n\n    - operation audit log\n      note: \n\n    - scope lock + alias consistency\n      note: \n\n  - AI Integration\n    note: \n\n    - MCP Server\n      note: \n\n      - MCP server: text CRUD\n        note: \n\n      - MCP: alias / GraphLink / nodeType ops\n        note: \n\n      - MCP server test\n        note: \n\n      - MCP tool extension\n        note: \n\n      - Claude Desktop integration test\n        note: \n\n    - Gateway / LLM\n      note: \n\n      - Gateway Phase 2: LiteLLM multi-model\n        note: \n\n      - Gateway policy Phase 2\n        note: \n\n      - Bitwarden auto-inject\n        note: \n\n      - Phase 1: direct call (done)\n        note: \n\n      - API key rotation design\n        note: \n\n    - AI Subagents\n      note: \n\n      - Linear text transform (AI)\n        note: \n\n      - Topic suggestion subagent\n        note: \n\n      - AI subagents: title-rewrite / duplicate-check / suggest-parent\n        note: \n\n      - title-rewrite\n        note: \n\n      - duplicate-check\n        note: \n\n      - suggest-parent\n        note: \n\n      - summarize-subtree\n        note: \n\n  - Data & Import/Export\n    note: \n\n    - Obsidian vault read (5-phase import)\n      note: \n\n    - Obsidian vault write (逆変換)\n      note: \n\n    - FreeMind .mm import\n      note: \n\n    - Linear↔Tree L1 round-trip test\n      note: \n\n    - Markdown export/import\n      note: \n\n    - JSON/SQLite dual persistence (done)\n      note: \n\n    - Freeplane .mm export\n      note: \n\n    - SQLite snapshot backup\n      note: \n\n  - Scope & Structure\n    note: \n\n    - scope/alias spec → Beta impl\n      note: \n\n    - Scope navigation & breadcrumb\n      note: \n\n    - Alias CRUD & broken detection\n      note: \n\n    - Band density: Flash/Rapid/Deep\n      note: \n\n    - scope transition animation\n      note: \n\n    - scope bookmark\n      note: \n\n  - Rendering & UX\n    note: \n\n    - LaTeX/KaTeX node rendering\n      note: \n\n    - Graph link rendering\n      note: \n\n    - Full-text search & filter\n      note: \n\n    - Compact node layout\n      note: \n\n    - SVG architecture\n      note: \n\n    - dark mode\n      note: \n\n    - node collapse/expand UX\n      note: \n\n    - minimap overview\n      note: \n\n    - Fit-to-content button\n      note: \n\n  - Infrastructure\n    note: \n\n    - CI Stage A: build + test gate\n      note: \n\n    - Security review (4 items)\n      note: \n\n    - launch-final: vYYMMDD tagging\n      note: \n\n    - E2E test (Playwright)\n      note: \n\n    - branch-role gate (CI)\n      note: \n\n    - npm audit / dependency check\n      note: \n\n  - Bugs\n    note: \n\n    - visual\n      note: \n\n      - zoom sensitivity\n        note: \n\n    - data\n      note: \n\n      - Linear Text\n        note: \n\n    - operation\n      note: \n\n      - keyboard input of some symbol:  tilde\n        note: \n\n      - folder node\n        note: \n\n      - (empty)\n        note: \n",
+      "n_wb_1775632891414": "- _wb\n  note: \n\n  - tasks\n    note: \n\n    - doing\n      note: \n\n      - Team Collab Phase 1: scope push (subagent done, merging)\n        note: \n\n    - done\n      note: \n\n      - v260408-2: main merge + final sync\n        note: \n\n      - BroadcastChannel hardening\n        note: \n\n      - Team Collab spec + entity/lock/SSE\n        note: \n\n      - launch-final: vYYMMDD tagging rule\n        note: \n\n    - ready\n      note: \n\n      - T4: Cloud Sync conflict UI (codex1 handoff)\n        note: \n\n      - Security review: CSRF, LAN, tokens, validation\n        note: \n",
+      "n_g_1775638686856_1": "- MCP Server\n  note: \n\n  - MCP server: text CRUD\n    note: \n\n  - MCP: alias / GraphLink / nodeType ops\n    note: \n\n  - MCP server test\n    note: \n\n  - MCP tool extension\n    note: \n\n  - Claude Desktop integration test\n    note: \n",
+      "n_g_1775638686856_3": "- AI Subagents\n  note: \n\n  - Linear text transform (AI)\n    note: \n\n  - Topic suggestion subagent\n    note: \n\n  - AI subagents: title-rewrite / duplicate-check / suggest-parent\n    note: \n\n  - title-rewrite\n    note: \n\n  - duplicate-check\n    note: \n\n  - suggest-parent\n    note: \n\n  - summarize-subtree\n    note: \n",
+      "n_1775547979694_t8k38i": "",
+      "n_1775548022525_s9nvf4": "- dev M3E\n  note: \n\n  - idea\n    note: \n\n    - AI\n      note: \n\n    - description\n      note: \n\n      - tutorial\n        note: \n\n  - todo\n    note: \n\n    - mom\n      note: \n\n      - git\n        note: \n\n      - AI/LLM\n        note: \n\n        - MCP server test\n          note: \n\n        - Gateway policy Phase 2\n          note: \n\n        - Bitwarden auto-inject\n          note: \n\n        - MCP tool extension\n          note: \n\n      - CI/Infrastructure\n        note: \n\n        - CI Stage A\n          note: \n\n        - test environment\n          note: \n\n      - feature\n        note: \n\n        - Linear↔Tree L1\n          note: \n\n        - parser/reconcile test\n          note: \n\n        - scope/alias Beta\n          note: \n\n        - SVG architecture\n          note: \n\n      - team collaboration\n        note: \n\n        - design\n          note: \n\n        - implementation\n          note: \n\n        - github operation\n          note: \n\n        - merge strategy\n          note: \n\n      - docs\n        note: \n\n        - Command_Reference update\n          note: \n\n        - Architecture drawing IF\n          note: \n\n      - tutorial\n        note: \n\n      - demo quality\n        note: \n\n    - mac\n      note: \n\n      - visual\n        note: \n\n        - link\n          note: \n\n    - bug\n      note: \n\n      - visual\n        note: \n\n        - zoom sensitivity\n          note: \n\n      - data\n        note: \n\n        - Linear Text\n          note: \n\n      - operation\n        note: \n\n        - keyboard input of some symbol:  tilde\n          note: \n\n        - folder node\n          note: \n\n        - (empty)\n          note: \n\n  - design\n    note: \n\n    - 00_Home\n      note: \n\n      - Home\n        note: \n\n      - Current Status\n        note: \n\n      - Worktree Separation\n        note: \n\n    - 01_Vision\n      note: \n\n      - Core Principles\n        note: \n\n    - 02_Strategy\n      note: \n\n      - MVP Definition\n        note: \n\n      - Pivot Freeplane First\n        note: \n\n    - 03_Spec\n      note: \n\n      - Data Model\n        note: \n\n      - Scope & Alias\n        note: \n\n      - Band Spec\n        note: \n\n      - Cloud Sync\n        note: \n\n      - REST API\n        note: \n\n      - Import Export\n        note: \n\n      - Command Language\n        note: \n\n      - Linear Tree Conversion\n        note: \n\n      - Model State V2\n        note: \n\n      - Scope Transition\n        note: \n\n      - AI Integration\n        note: \n\n      - AI Common API\n        note: \n\n      - AI Use Cases\n        note: \n\n      - Obsidian Integration\n        note: \n\n    - 04_Architecture\n      note: \n\n      - AI Infrastructure\n        note: \n\n      - Layout Algorithm\n        note: \n\n      - MVC & Command\n        note: \n\n      - Drag & Reparent\n        note: \n\n      - Editing Design\n        note: \n\n      - Multi Select\n        note: \n\n      - Visual Design\n        note: \n\n    - 05_Freeplane\n      note: \n\n      - Data Model Mapping\n        note: \n\n    - 06_Operations\n      note: \n\n      - Actions Beta\n        note: \n\n      - Agent Roles\n        note: \n\n      - Command Reference\n        note: \n\n      - Commit Message Rules\n        note: \n\n      - Documentation Rules\n        note: \n\n      - Decision Pool\n        note: \n\n      - Test & CI/CD Guide\n        note: \n\n      - Keybindings Beta\n        note: \n\n      - Keyboard Reference\n        note: \n\n      - Todo Pool\n        note: \n\n      - Todo Collected 260407\n        note: \n\n      - Security Test Cases\n        note: \n\n      - Codex2 Handoff\n        note: \n\n    - 09_Decisions\n      note: \n\n      - ADR-001 Freeplane First\n        note: \n\n      - ADR-002 React UI Basis\n        note: \n\n      - ADR-003 Custom Engine\n        note: \n\n      - ADR-004 SQLite\n        note: \n\n      - ADR-005 DataDir Config\n        note: \n\n  - implementation\n    note: \n\n    - browser\n      note: \n\n      - viewer.ts\n        note: \n\n      - viewer.tuning.ts\n        note: \n\n      - viewer.globals.d.ts\n        note: \n\n    - node\n      note: \n\n      - start_viewer.ts\n        note: \n\n      - rapid_mvp.ts\n        note: \n\n      - ai_infra.ts\n        note: \n\n      - ai_subagent.ts\n        note: \n\n      - cloud_sync.ts\n        note: \n\n      - linear_agent.ts\n        note: \n\n    - shared\n      note: \n\n      - types.ts\n        note: \n\n  - PJ\n    note: \n\n    - team\n      note: \n\n      - old\n        note: \n\n        - akaghef\n          note: \n\n        - Claude\n          note: \n\n        - Codex1\n          note: \n\n        - Codex2\n          note: \n\n      - member\n        note: \n\n        - mac-Codex\n          note: \n\n        - mac-Claude-Pro\n          note: \n\n        - (empty)\n          note: \n\n      - hierarchy\n        note: \n\n    - strategy\n      note: \n\n      - MVP Definition\n        note: \n\n      - Core Principles\n        note: \n\n    - decisions\n      note: \n\n      - ADR-001 Freeplane First\n        note: \n\n      - ADR-003 Custom Engine\n        note: \n\n      - ADR-004 SQLite\n        note: \n\n      - ADR-005 DataDir Config\n        note: \n\n  - strategy\n    note: \n\n    - Collaboration & Sync\n      note: \n\n      - Collab Phase 1: entity/lock/SSE/push\n        note: \n\n      - Collab Phase 2: conflict backup + entity UI\n        note: \n\n      - Cloud Sync conflict UI\n        note: \n\n      - Scope-based cloud sync (diff転送)\n        note: \n\n      - BroadcastChannel tab sync\n        note: \n\n    - AI Integration\n      note: \n\n      - Linear text transform (AI)\n        note: \n\n      - Topic suggestion subagent\n        note: \n\n      - MCP server: text CRUD\n        note: \n\n      - MCP: alias / GraphLink / nodeType ops\n        note: \n\n      - AI subagents: title-rewrite / duplicate-check / suggest-parent\n        note: \n\n      - Gateway Phase 2: LiteLLM multi-model\n        note: \n\n    - Data & Import/Export\n      note: \n\n      - Obsidian vault read (5-phase import)\n        note: \n\n      - Obsidian vault write (逆変換)\n        note: \n\n      - FreeMind .mm import\n        note: \n\n      - Linear↔Tree L1 round-trip test\n        note: \n\n      - Markdown export/import\n        note: \n\n    - Scope & Structure\n      note: \n\n      - scope/alias spec → Beta impl\n        note: \n\n      - Scope navigation & breadcrumb\n        note: \n\n      - Alias CRUD & broken detection\n        note: \n\n      - Band density: Flash/Rapid/Deep\n        note: \n\n    - Rendering & UX\n      note: \n\n      - LaTeX/KaTeX node rendering\n        note: \n\n      - Graph link rendering\n        note: \n\n      - Full-text search & filter\n        note: \n\n      - Compact node layout\n        note: \n\n    - Infrastructure\n      note: \n\n      - CI Stage A: build + test gate\n        note: \n\n      - Security review (4 items)\n        note: \n\n      - launch-final: vYYMMDD tagging\n        note: \n",
+      "n_1775548063613_26a4wu": "- design\n  note: \n\n  - 00_Home\n    note: \n\n    - Home\n      note: \n\n    - Current Status\n      note: \n\n    - Worktree Separation\n      note: \n\n  - 01_Vision\n    note: \n\n    - Core Principles\n      note: \n\n  - 02_Strategy\n    note: \n\n    - MVP Definition\n      note: \n\n    - Pivot Freeplane First\n      note: \n\n  - 03_Spec\n    note: \n\n    - Data Model\n      note: \n\n    - Scope & Alias\n      note: \n\n    - Band Spec\n      note: \n\n    - Cloud Sync\n      note: \n\n    - REST API\n      note: \n\n    - Import Export\n      note: \n\n    - Command Language\n      note: \n\n    - Linear Tree Conversion\n      note: \n\n    - Model State V2\n      note: \n\n    - Scope Transition\n      note: \n\n    - AI Integration\n      note: \n\n    - AI Common API\n      note: \n\n    - AI Use Cases\n      note: \n\n    - Obsidian Integration\n      note: \n\n  - 04_Architecture\n    note: \n\n    - AI Infrastructure\n      note: \n\n    - Layout Algorithm\n      note: \n\n    - MVC & Command\n      note: \n\n    - Drag & Reparent\n      note: \n\n    - Editing Design\n      note: \n\n    - Multi Select\n      note: \n\n    - Visual Design\n      note: \n\n  - 05_Freeplane\n    note: \n\n    - Data Model Mapping\n      note: \n\n  - 06_Operations\n    note: \n\n    - Actions Beta\n      note: \n\n    - Agent Roles\n      note: \n\n    - Command Reference\n      note: \n\n    - Commit Message Rules\n      note: \n\n    - Documentation Rules\n      note: \n\n    - Decision Pool\n      note: \n\n    - Test & CI/CD Guide\n      note: \n\n    - Keybindings Beta\n      note: \n\n    - Keyboard Reference\n      note: \n\n    - Todo Pool\n      note: \n\n    - Todo Collected 260407\n      note: \n\n    - Security Test Cases\n      note: \n\n    - Codex2 Handoff\n      note: \n\n  - 09_Decisions\n    note: \n\n    - ADR-001 Freeplane First\n      note: \n\n    - ADR-002 React UI Basis\n      note: \n\n    - ADR-003 Custom Engine\n      note: \n\n    - ADR-004 SQLite\n      note: \n\n    - ADR-005 DataDir Config\n      note: \n",
+      "n_1775548075947_ue7m14": "- implementation\n  note: \n\n  - browser\n    note: \n\n    - viewer.ts\n      note: \n\n    - viewer.tuning.ts\n      note: \n\n    - viewer.globals.d.ts\n      note: \n\n  - node\n    note: \n\n    - start_viewer.ts\n      note: \n\n    - rapid_mvp.ts\n      note: \n\n    - ai_infra.ts\n      note: \n\n    - ai_subagent.ts\n      note: \n\n    - cloud_sync.ts\n      note: \n\n    - linear_agent.ts\n      note: \n\n  - shared\n    note: \n\n    - types.ts\n      note: \n",
+      "n_1775577710077_wspx8n": "- 00_Home\n  note: \n\n  - Home\n    note: \n\n  - Current Status\n    note: \n\n  - Worktree Separation\n    note: \n",
+      "n_1775648033134_hxfszr": "- Tutorial\n  note: \n",
+      "n_1775648571378_6nkhaa": "- M3Eが目指すもの\n  note: \n\n  - M³Eとは？\n    note: \n\n    - 概要\n      note: \n\n      - 科学研究,開発\n        note: \n\n      - フレー��ワーク思考\n        note: \n\n      - Graph/Tree構造\n        note: \n\n    - 目標\n      note: \n\n      - Post-LLM\n        note: \n\n      - 世界モデル構築\n        note: \n\n      - 思考可視化\n        note: \n\n      - 意思決定加速\n        note: \n\n    - 特徴\n      note: \n\n      - 構造の対話・操作\n        note: \n\n      - 思考帯域とスコープ制御\n        note: \n\n      - 線形との相互変換\n        note: \n\n      - AI連携(開発中)\n        note: \n\n      - チーム運用(開発中)\n        note: \n\n      - クラウド同期(開発中)\n        note: \n\n    - ←←\n      note: \n\n      - ←左キー　で\n移動してみてください\n        note: \n\n  - マインドマップとは\n    note: \n\n    - 木構造の基本用語\n      note: \n\n      - ノード：ひとつのボックス。マップの構成単位\n        note: \n\n      - 根（ルート）：木の一番上にあるノード。中心テーマ\n        note: \n\n      - 親と子：枝分かれの関係。元が親、先が子\n        note: \n\n      - 兄弟：同じ親を持つノード同士\n        note: \n\n      - 子孫と祖先：子・孫・ひ孫…が子孫、逆が祖先\n        note: \n\n      - 葉（リーフ）：子を持たない末端ノード\n        note: \n\n      - 深さ：根からの距離。深いほど具体的・詳細\n        note: \n\n      - 折りたたみ：子孫をまとめて隠し、注目部分だけ見渡す\n        note: \n\n    - マインドマップの具体例\n      note: \n\n      - 生物の分類\n        note: \n\n        - 動物\n          note: \n\n          - 哺乳類\n            note: \n\n            - ヒト\n              note: \n\n            - イヌ\n              note: \n\n            - クジラ\n              note: \n\n          - 鳥類\n            note: \n\n            - スズメ\n              note: \n\n            - ペンギン\n              note: \n\n          - 魚類\n            note: \n\n            - サケ\n              note: \n\n            - マグロ\n              note: \n\n        - 植物\n          note: \n\n          - 被子植物\n            note: \n\n            - サクラ\n              note: \n\n            - イネ\n              note: \n\n          - 裸子植物\n            note: \n\n            - スギ\n              note: \n\n        - 菌類\n          note: \n\n          - シイタケ\n            note: \n\n          - 酵母\n            note: \n\n      - 根（浅い）\n        note: \n\n        - 親（→深さ方向）\n          note: \n\n          - 子\n            note: \n\n            - 葉\n              note: \n\n            - 深い\n              note: \n\n          - 兄弟\n（↓幅方向）\n            note: \n\n          - 省略\n            note: \n\n            - 折りたたまれたノード\n              note: \n\n  - 3つの思考モード（開発中）\n    note: \n\n    - Flash\n      note: \n\n    - Rapid\n      note: \n\n    - Deep\n      note: \n\n  - 設計思想\n    note: \n\n    - 科学研究が第一\n      note: \n\n    - 構造は親子が主軸\n      note: \n\n    - スコープは認知境界\n      note: \n\n    - AI は提案、人間が確定\n      note: \n\n    - 消えないことが最優先\n      note: \n",
+      "n_1775650869381_rns0cp": "M3Eは科学研究,開発のためのフレームワーク思考の支援を目的としたGraph/Tree構造UIのツールです。\n\n目標として対話形式のLLMの進化系となり、\n知識や思考を可視化・外在化し、世界モデルを構築し、意思決定を加速することを掲げます。\n\n特徴として、フォルダーのようなスコープ制御機能、この文章のような線形な構造と木構造を相互につなぐ\n変換機能、Flash/Rapid/Deepの3つの思考の帯域を\n備えます。オフライン機能を核として、AI連携、チーム運用、クラウド同期の機能を現在開発中です。",
+      "n_1775719388147_pvedny": "- RESOURCES\n  note: \n\n  - New Node\n    note: \n\n  - New Sibling\n    note: \n",
+      "n_agent_1775734997211_1": "- Agent Status\n  note: \n\n  - data: idle（Cloud Sync infra完了。次タスク待ち）\n    note: \n\n  - data2: ローカルファイル連携設計に着手\n    note: \n\n  - visual: idle（次: entity list UI）\n    note: \n\n  - team: idle\n    note: \n\n  - manage: レビュー + 統合\n    note: \n",
+      "n_wb_doing_1775632891414": "- doing\n  note: \n\n  - Team Collab Phase 1: scope push (subagent done, merging)\n    note: \n",
+      "n_wb_tasks_1775632891414": "- tasks\n  note: \n\n  - doing\n    note: \n\n    - Team Collab Phase 1: scope push (subagent done, merging)\n      note: \n\n  - done\n    note: \n\n    - v260408-2: main merge + final sync\n      note: \n\n    - BroadcastChannel hardening\n      note: \n\n    - Team Collab spec + entity/lock/SSE\n      note: \n\n    - launch-final: vYYMMDD tagging rule\n      note: \n\n  - ready\n    note: \n\n    - T4: Cloud Sync conflict UI (codex1 handoff)\n      note: \n\n    - Security review: CSRF, LAN, tokens, validation\n      note: \n",
+      "n_1775730652813_utb553": "- research\n  note: \n"
+    },
+    "linearTextFontScale": 1.2000000000000002
+  }
+}

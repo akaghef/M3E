@@ -185,6 +185,6 @@ if not errorlevel 1 (
   >> "%REPORT_FILE%" type "%REPORT_DIR%\smoke.txt"
 )
 
-REM Kill test server
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%TEST_PORT% .*LISTENING"') do taskkill /PID %%P /F >nul 2>&1
+REM Leave test server running for manual inspection
+REM for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%TEST_PORT% .*LISTENING"') do taskkill /PID %%P /F >nul 2>&1
 exit /b 0
