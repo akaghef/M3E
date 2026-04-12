@@ -44,8 +44,9 @@ echo [1/6] Creating test package...
 mkdir "%TEST_INSTALL%\payload\app" >nul 2>&1
 mkdir "%TEST_INSTALL%\payload\runtime" >nul 2>&1
 
-REM Copy install scripts
-xcopy /E /I /Y install\windows\* "%TEST_INSTALL%\" >nul
+REM Copy install payload
+xcopy /E /I /Y install\* "%TEST_INSTALL%\install\" >nul
+xcopy /E /I /Y scripts\final\* "%TEST_INSTALL%\scripts\final\" >nul
 if errorlevel 1 goto :fail_step1
 
 REM Copy final build as the "app" payload
@@ -101,7 +102,9 @@ REM === Step 5: Launch and smoke test ===
 echo [5/6] Launch + smoke test...
 
 REM Start server in background
-set "M3E_DATA_DIR=%TEST_M3E_HOME%\M3E\data"
+set "M3E_DATA_DIR=%TEST_M3E_HOME%\M3E\workspaces\main"
+set "M3E_DB_FILE=data.sqlite"
+set "M3E_DOC_ID=main-workspace"
 set "M3E_PORT=%TEST_PORT%"
 start /B "" "%TEST_M3E_HOME%\M3E\runtime\node.exe" "%TEST_M3E_HOME%\M3E\app\dist\node\start_viewer.js" > "%TEST_HOME%\server.log" 2>&1
 

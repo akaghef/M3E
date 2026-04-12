@@ -585,7 +585,7 @@ class RapidMvpModel {
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw) as { version?: number; state?: AppState };
 
-    if (!parsed || parsed.version !== 1 || !parsed.state) {
+    if (!parsed || !parsed.version || parsed.version < 1 || !parsed.state) {
       throw new Error("Unsupported or invalid save format.");
     }
 
@@ -615,7 +615,7 @@ class RapidMvpModel {
         throw new Error("Document not found.");
       }
 
-      if (row.version !== 1 || !row.stateJson) {
+      if (!row.version || row.version < 1 || !row.stateJson) {
         throw new Error("Unsupported or invalid save format.");
       }
 
@@ -648,10 +648,9 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  // Resolve path relative to the mvp/ root, regardless of compiled location.
-  const savePath = path.join(path.resolve(__dirname, "..", ".."), "data", "rapid-sample.json");
-  const sqliteFile = process.env.M3E_DB_FILE || "M3E_dataV1.sqlite";
-  const sqlitePath = path.join(path.resolve(__dirname, "..", ".."), "data", sqliteFile);
+  const assetDir = path.join(path.resolve(__dirname, "..", ".."), "data");
+  const savePath = path.join(assetDir, "rapid-sample.json");
+  const sqlitePath = path.join(assetDir, "rapid-sample.sqlite");
   model.saveToFile(savePath);
   model.saveToSqlite(sqlitePath, "rapid-sample");
   console.log(`Rapid MVP sample saved: ${savePath}`);

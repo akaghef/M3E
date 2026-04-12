@@ -6,13 +6,15 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 PORT=38482
 URL="http://localhost:${PORT}/viewer.html"
 
-if [[ -z "${M3E_DATA_DIR:-}" ]]; then
+if [[ -z "${M3E_HOME:-}" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    export M3E_DATA_DIR="$HOME/Library/Application Support/M3E"
+    export M3E_HOME="$HOME/Library/Application Support/M3E"
   else
-    export M3E_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/M3E"
+    export M3E_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/M3E"
   fi
 fi
+export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/main}"
+export M3E_DB_FILE="${M3E_DB_FILE:-data.sqlite}"
 mkdir -p "$M3E_DATA_DIR"
 
 kill_port() {
@@ -66,7 +68,7 @@ echo "[2/6] Syncing beta/ -> final/ (exclude mode)..."
   --exclude public \
   --exclude e2e_test_server.js \
   --exclude playwright.e2e.config.js \
-  --exclude 'data/M3E_dataV1.sqlite' \
+  --exclude 'data/data.sqlite' \
   --exclude 'data/backups' \
   --exclude 'data/audit' \
   --exclude 'data/conflict-backups' \
@@ -83,10 +85,10 @@ echo "[4/6] Build (final)..."
 npm --prefix "$ROOT_DIR/final" run build
 
 echo "[5/6] Data migration..."
-if [[ -f "$M3E_DATA_DIR/M3E_dataV1.sqlite" ]]; then
+if [[ -f "$M3E_DATA_DIR/$M3E_DB_FILE" ]]; then
   /bin/mkdir -p "$M3E_DATA_DIR/backup"
   timestamp="$(date '+%Y%m%d_%H%M')"
-  /bin/cp "$M3E_DATA_DIR/M3E_dataV1.sqlite" "$M3E_DATA_DIR/backup/M3E_dataV1_${timestamp}.sqlite"
+  /bin/cp "$M3E_DATA_DIR/$M3E_DB_FILE" "$M3E_DATA_DIR/backup/${M3E_DB_FILE%.sqlite}_${timestamp}.sqlite"
   echo "  Backup saved to $M3E_DATA_DIR/backup/"
 fi
 echo "  Data migration: no schema changes (pass-through)."

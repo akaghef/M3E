@@ -13,9 +13,7 @@ import Database from "better-sqlite3";
  * Design ref: dev-docs/design/data_import_export.md section 2.e
  */
 
-const BACKUP_PREFIX = "M3E_dataV1_";
 const BACKUP_SUFFIX = ".sqlite";
-const BACKUP_PATTERN = /^M3E_dataV1_\d{8}_\d{6}\.sqlite$/;
 
 const DEFAULT_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const DEFAULT_MAX_GENERATIONS = 10;
@@ -47,7 +45,8 @@ export async function createBackup(dbPath: string, backupDir: string): Promise<s
   ensureDir(backupDir);
 
   const timestamp = formatTimestamp(new Date());
-  const backupName = `${BACKUP_PREFIX}${timestamp}${BACKUP_SUFFIX}`;
+  const backupBase = path.basename(dbPath, path.extname(dbPath));
+  const backupName = `${backupBase}_${timestamp}${BACKUP_SUFFIX}`;
   const backupPath = path.join(backupDir, backupName);
 
   // Strategy A: better-sqlite3 .backup() — online-safe, no WAL issues
@@ -86,7 +85,7 @@ export function pruneOldBackups(backupDir: string, maxGenerations: number): void
 
   const files = fs
     .readdirSync(backupDir)
-    .filter((name) => BACKUP_PATTERN.test(name))
+    .filter((name) => name.endsWith(BACKUP_SUFFIX) && /^.+_\d{8}_\d{6}\.sqlite$/.test(name))
     .sort(); // lexicographic sort = chronological for YYYYMMDD_HHmmss
 
   const excess = files.length - maxGenerations;

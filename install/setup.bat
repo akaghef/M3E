@@ -13,17 +13,24 @@ set "NODE_VERSION=22.14.0"
 set "NODE_DIR=%ROOT%\install\node"
 set "NODE_EXE=%NODE_DIR%\node.exe"
 set "NPM_CMD=%NODE_DIR%\npm.cmd"
+set "NPM_FLAGS=--legacy-peer-deps"
 
 set "SILENT=0"
 set "NO_LAUNCH=0"
-set "M3E_DATA_DIR="
+set "M3E_HOME="
 set "LOG_FILE="
 
 call :parse_args %*
 if not "%errorlevel%"=="0" exit /b %errorlevel%
 
 if "%SILENT%"=="1" if "%NO_LAUNCH%"=="0" set "NO_LAUNCH=1"
-if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%LOCALAPPDATA%\M3E"
+if "%M3E_HOME%"=="" set "M3E_HOME=%LOCALAPPDATA%\M3E"
+set "M3E_SEED_DIR=%M3E_HOME%\seeds"
+set "M3E_SEED_DB=%M3E_SEED_DIR%\core-seed.sqlite"
+set "M3E_MAIN_DATA_DIR=%M3E_HOME%\workspaces\main"
+set "M3E_MAIN_DB_FILE=data.sqlite"
+set "M3E_MAIN_DB=%M3E_MAIN_DATA_DIR%\%M3E_MAIN_DB_FILE%"
+set "M3E_MAIN_DOC_ID=akaghef-beta"
 
 if defined LOG_FILE call :init_log
 
@@ -68,25 +75,44 @@ call :log " Node.js %NODE_VERSION% installed to install\node\"
 
 :node_ready
 call :log ""
-call :log " Data location: %M3E_DATA_DIR%"
-if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
+call :log " M3E home: %M3E_HOME%"
+if not exist "%M3E_HOME%" mkdir "%M3E_HOME%"
+if not exist "%M3E_SEED_DIR%" mkdir "%M3E_SEED_DIR%"
+if not exist "%M3E_MAIN_DATA_DIR%" mkdir "%M3E_MAIN_DATA_DIR%"
 
 set "CONFIG_DIR=%LOCALAPPDATA%\M3E"
 set "CONFIG_FILE=%CONFIG_DIR%\m3e.conf"
 if not exist "%CONFIG_DIR%" mkdir "%CONFIG_DIR%"
-> "%CONFIG_FILE%" echo M3E_DATA_DIR=%M3E_DATA_DIR%
+> "%CONFIG_FILE%" echo M3E_HOME=%M3E_HOME%
+>>"%CONFIG_FILE%" echo M3E_SEED_DB_PATH=%M3E_SEED_DB%
+>>"%CONFIG_FILE%" echo M3E_MAIN_DATA_DIR=%M3E_MAIN_DATA_DIR%
+>>"%CONFIG_FILE%" echo M3E_MAIN_DB_FILE=%M3E_MAIN_DB_FILE%
+>>"%CONFIG_FILE%" echo M3E_MAIN_DOC_ID=%M3E_MAIN_DOC_ID%
+>>"%CONFIG_FILE%" echo M3E_MAIN_WORKSPACE_ID=main
+>>"%CONFIG_FILE%" echo M3E_DATA_DIR=%M3E_MAIN_DATA_DIR%
+>>"%CONFIG_FILE%" echo M3E_DB_FILE=%M3E_MAIN_DB_FILE%
+>>"%CONFIG_FILE%" echo M3E_DOC_ID=%M3E_MAIN_DOC_ID%
+>>"%CONFIG_FILE%" echo M3E_WORKSPACE_ID=main
 >>"%CONFIG_FILE%" echo M3E_PORT=38482
 >>"%CONFIG_FILE%" echo M3E_ROOT=%ROOT%
 call :log " Config saved to: %CONFIG_FILE%"
 
-REM Copy tutorial data on first install
-set "TUTORIAL_SRC=%ROOT%\install\assets\tutorial"
-if exist "%TUTORIAL_SRC%" (
-  if not exist "%M3E_DATA_DIR%\M3E_dataV1.sqlite" (
+REM Copy seed on first install, then initialize main workspace from it
+set "SEED_SRC=%ROOT%\install\assets\seeds\core-seed.sqlite"
+if exist "%SEED_SRC%" (
+  if not exist "%M3E_SEED_DB%" (
     call :log ""
-    call :log " Copying tutorial data (first install)..."
-    xcopy "%TUTORIAL_SRC%\M3E_dataV1.sqlite" "%M3E_DATA_DIR%\" /E /I /Y >nul 2>&1
-    call :log " Tutorial data copied."
+    call :log " Copying seed data..."
+    copy /Y "%SEED_SRC%" "%M3E_SEED_DB%" >nul
+    call :log " Seed copied to %M3E_SEED_DB%"
+  )
+)
+if exist "%M3E_SEED_DB%" (
+  if not exist "%M3E_MAIN_DB%" (
+    call :log ""
+    call :log " Initializing main workspace from seed..."
+    copy /Y "%M3E_SEED_DB%" "%M3E_MAIN_DB%" >nul
+    call :log " Main workspace initialized."
   )
 )
 
@@ -104,10 +130,10 @@ for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":!M3E_PORT!" ^| finds
 
 call :log ""
 call :log " [1/2] Installing dependencies..."
-call "%NPM_CMD%" --prefix "%ROOT%\final" ci
+call "%NPM_CMD%" --prefix "%ROOT%\final" ci %NPM_FLAGS%
 if not !errorlevel! equ 0 (
   call :log " npm ci failed. Trying npm install..."
-  call "%NPM_CMD%" --prefix "%ROOT%\final" install
+  call "%NPM_CMD%" --prefix "%ROOT%\final" install %NPM_FLAGS%
   if not !errorlevel! equ 0 call :fail "Dependency installation failed."
 )
 call :log " Dependencies installed."
@@ -147,7 +173,8 @@ call :log ""
 call :log "============================================="
 call :log " Setup Complete"
 call :log "============================================="
-call :log " Data location : %M3E_DATA_DIR%"
+call :log " Seed DB      : %M3E_SEED_DB%"
+call :log " Main DB      : %M3E_MAIN_DB%"
 call :log ""
 
 if "%NO_LAUNCH%"=="1" goto :done
@@ -179,7 +206,7 @@ if /i "%~1"=="--data-dir" (
     call :usage
     exit /b 2
   )
-  set "M3E_DATA_DIR=%~2"
+  set "M3E_HOME=%~2"
   shift
   shift
   goto :parse_args
@@ -205,7 +232,7 @@ call :usage
 exit /b 2
 
 :usage
-echo Usage: setup.bat [--silent] [--no-launch] [--data-dir "PATH"] [--log "FILE"]
+echo Usage: setup.bat [--silent] [--no-launch] [--data-dir "M3E_HOME_PATH"] [--log "FILE"]
 exit /b 0
 
 :init_log

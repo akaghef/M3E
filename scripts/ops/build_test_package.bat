@@ -17,13 +17,10 @@ if exist "%PKG%" rmdir /s /q "%PKG%"
 mkdir "%PKG%\payload\app" >nul
 mkdir "%PKG%\payload\runtime" >nul
 
-REM Distribution scripts (install/dist/)
-xcopy /E /I /Y install\dist\* "%PKG%\" >nul
-echo [OK] Distribution scripts
-
-REM Installer definitions (install/windows/)
-xcopy /E /I /Y install\windows\* "%PKG%\" >nul
-echo [OK] Installer definitions
+REM Install/setup payload
+xcopy /E /I /Y install\* "%PKG%\install\" >nul
+xcopy /E /I /Y scripts\final\* "%PKG%\scripts\final\" >nul
+echo [OK] Install payload
 
 REM App (final build)
 xcopy /E /I /Y final\dist "%PKG%\payload\app\dist" >nul
@@ -32,15 +29,6 @@ copy /Y final\package.json "%PKG%\payload\app\" >nul
 copy /Y final\viewer.html "%PKG%\payload\app\" >nul
 copy /Y final\viewer.css "%PKG%\payload\app\" >nul
 echo [OK] App payload
-
-REM Tutorial data
-mkdir "%PKG%\payload\data" >nul 2>&1
-if exist "install\assets\tutorial\M3E_dataV1.sqlite" (
-  copy /Y "install\assets\tutorial\M3E_dataV1.sqlite" "%PKG%\payload\data\" >nul
-  echo [OK] Tutorial data
-) else (
-  echo [WARN] Tutorial data not found
-)
 
 REM Node runtime
 for /f "tokens=*" %%N in ('where node') do (

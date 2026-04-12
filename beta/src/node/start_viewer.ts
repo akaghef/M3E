@@ -62,11 +62,16 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "viewer.html";
 const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
-const DEFAULT_DB_FILE = "M3E_dataV1.sqlite";
+const DEFAULT_DB_FILE = "data.sqlite";
 const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
 const DEFAULT_DOC_ID = process.env.M3E_DOC_ID || "akaghef-beta";
+const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || "sandbox";
+
+// Startup diagnostics — log resolved data paths so misconfigurations are visible
+console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
+console.log(`[M3E] DB_FILE  = ${SQLITE_DB_PATH}`);
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
@@ -929,7 +934,15 @@ function startServer(): void {
 
   server.listen(PORT, () => {
     const isFirstRun = !fs.existsSync(FIRST_RUN_MARKER);
-    const query = isFirstRun ? `?scopeId=${TUTORIAL_SCOPE_ID}` : "";
+    const params = new URLSearchParams({
+      workspaceId: WORKSPACE_ID,
+      localDocId: DEFAULT_DOC_ID,
+      cloudDocId: DEFAULT_DOC_ID,
+    });
+    if (isFirstRun) {
+      params.set("scopeId", TUTORIAL_SCOPE_ID);
+    }
+    const query = `?${params.toString()}`;
     const url = `http://localhost:${PORT}/${DEFAULT_PAGE}${query}`;
     console.log(`Viewer ready: ${url}`);
     openBrowser(url);

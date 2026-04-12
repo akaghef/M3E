@@ -97,10 +97,27 @@ $env:M3E_LINEAR_TRANSFORM_SYSTEM_PROMPT_FILE = Join-Path $repoRoot "beta\prompts
 $env:M3E_LINEAR_TRANSFORM_TREE_TO_LINEAR_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\tree-to-linear.txt"
 $env:M3E_LINEAR_TRANSFORM_LINEAR_TO_TREE_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\linear-to-tree.txt"
 $env:M3E_TOPIC_SUGGEST_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\topic-agent\topic-suggest.txt"
-$env:M3E_DATA_DIR = Join-Path $repoRoot "beta\data"
+$env:M3E_HOME = Join-Path $env:LOCALAPPDATA "M3E"
+$env:M3E_SEED_DB_PATH = Join-Path $env:M3E_HOME "seeds\core-seed.sqlite"
+$env:M3E_DATA_DIR = Join-Path $env:M3E_HOME "workspaces\sandbox"
+$env:M3E_DB_FILE = "data.sqlite"
+$env:M3E_DOC_ID = "akaghef-beta"
+$env:M3E_WORKSPACE_ID = "sandbox"
 
 if (-not (Test-Path $env:M3E_DATA_DIR)) {
     New-Item -ItemType Directory -Path $env:M3E_DATA_DIR | Out-Null
+}
+if (-not (Test-Path (Split-Path $env:M3E_SEED_DB_PATH -Parent))) {
+    New-Item -ItemType Directory -Path (Split-Path $env:M3E_SEED_DB_PATH -Parent) | Out-Null
+}
+if (-not (Test-Path $env:M3E_SEED_DB_PATH)) {
+    $repoSeed = Join-Path $repoRoot "install\assets\seeds\core-seed.sqlite"
+    if (Test-Path $repoSeed) {
+        Copy-Item -Path $repoSeed -Destination $env:M3E_SEED_DB_PATH -Force
+    }
+}
+if (-not (Test-Path (Join-Path $env:M3E_DATA_DIR $env:M3E_DB_FILE)) -and (Test-Path $env:M3E_SEED_DB_PATH)) {
+    Copy-Item -Path $env:M3E_SEED_DB_PATH -Destination (Join-Path $env:M3E_DATA_DIR $env:M3E_DB_FILE) -Force
 }
 
 Stop-Port4173
