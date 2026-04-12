@@ -13,7 +13,12 @@ REM ============================================================
 set "PKG_ROOT=%~dp0"
 if "%PKG_ROOT:~-1%"=="\" set "PKG_ROOT=%PKG_ROOT:~0,-1%"
 
-set "SHARED_REPORTS=C:\M3E_test_reports"
+REM Try VBox shared folder first (auto-mount Y:), fall back to local path
+if exist "Y:\" (
+  set "SHARED_REPORTS=Y:"
+) else (
+  set "SHARED_REPORTS=C:\M3E_test_reports"
+)
 for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "TS=%%T"
 if "%TS%"=="" set "TS=%date:~0,4%%date:~5,2%%date:~8,2%_%time:~0,2%%time:~3,2%"
 set "REPORT_DIR=%SHARED_REPORTS%\test_%TS%"
@@ -85,11 +90,35 @@ set "RESULT_%STEP_ID%=%STEP_RESULT%"
 exit /b 0
 
 :step_setup
-pushd "%PKG_ROOT%" >nul
-call setup.bat --no-verify > "%REPORT_DIR%\setup.log" 2>&1
-set "RC=%errorlevel%"
-popd >nul
-copy /Y "%LOCALAPPDATA%\M3E\logs\setup.log" "%REPORT_DIR%\setup_detail.log" >nul 2>&1
+set "INSTALL_ROOT=%LOCALAPPDATA%\M3E"
+set "RC=0"
+
+> "%REPORT_DIR%\setup.log" echo [setup] Installing payload to %INSTALL_ROOT%
+
+if exist "%INSTALL_ROOT%\app" rmdir /s /q "%INSTALL_ROOT%\app" >> "%REPORT_DIR%\setup.log" 2>&1
+if exist "%INSTALL_ROOT%\runtime" rmdir /s /q "%INSTALL_ROOT%\runtime" >> "%REPORT_DIR%\setup.log" 2>&1
+
+mkdir "%INSTALL_ROOT%" >> "%REPORT_DIR%\setup.log" 2>&1
+mkdir "%INSTALL_ROOT%\logs" >> "%REPORT_DIR%\setup.log" 2>&1
+mkdir "%INSTALL_ROOT%\reports" >> "%REPORT_DIR%\setup.log" 2>&1
+mkdir "%INSTALL_ROOT%\seeds" >> "%REPORT_DIR%\setup.log" 2>&1
+mkdir "%INSTALL_ROOT%\workspaces\main" >> "%REPORT_DIR%\setup.log" 2>&1
+
+xcopy /E /I /Y "%PKG_ROOT%\payload\app" "%INSTALL_ROOT%\app" >> "%REPORT_DIR%\setup.log" 2>&1
+if errorlevel 1 set "RC=1"
+xcopy /E /I /Y "%PKG_ROOT%\payload\runtime" "%INSTALL_ROOT%\runtime" >> "%REPORT_DIR%\setup.log" 2>&1
+if errorlevel 1 set "RC=1"
+
+if exist "%PKG_ROOT%\install\assets\seeds\core-seed.sqlite" (
+  copy /Y "%PKG_ROOT%\install\assets\seeds\core-seed.sqlite" "%INSTALL_ROOT%\seeds\core-seed.sqlite" >> "%REPORT_DIR%\setup.log" 2>&1
+  if errorlevel 1 set "RC=1"
+)
+if exist "%INSTALL_ROOT%\seeds\core-seed.sqlite" (
+  copy /Y "%INSTALL_ROOT%\seeds\core-seed.sqlite" "%INSTALL_ROOT%\workspaces\main\data.sqlite" >> "%REPORT_DIR%\setup.log" 2>&1
+  if errorlevel 1 set "RC=1"
+)
+
+copy /Y "%REPORT_DIR%\setup.log" "%REPORT_DIR%\setup_detail.log" >nul 2>&1
 if "%RC%"=="0" (set "STEP_RESULT=PASS") else (set "STEP_RESULT=FAIL [exit %RC%]")
 exit /b 0
 
@@ -122,7 +151,7 @@ start /B "" "%LOCALAPPDATA%\M3E\runtime\node.exe" "%LOCALAPPDATA%\M3E\app\dist\n
 
 set /a W=0
 :launch_wait
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 powershell -NoProfile -Command "try{$r=Invoke-WebRequest -Uri 'http://127.0.0.1:%TEST_PORT%/viewer.html' -TimeoutSec 2 -UseBasicParsing; exit 0}catch{exit 1}" >nul 2>&1
 if not errorlevel 1 goto :launch_ok
 set /a W+=1

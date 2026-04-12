@@ -18,8 +18,8 @@ REM ============================================================
 set "VM_NAME=M3E-Test"
 set "SNAPSHOT=clean"
 set "GUEST_USER=m3etest"
-set "GUEST_PASS=8080"
-set "WAIT_BOOT=60"
+set "GUEST_PASS=m3etest"
+set "WAIT_BOOT=180"
 set "WAIT_TEST=300"
 
 REM --- VBoxManage full path ---
@@ -67,7 +67,7 @@ timeout /t %WAIT_BOOT% /nobreak >nul
 REM Verify guest is responsive (retry up to 5 times, 30s apart)
 set /a RETRY=0
 :guest_wait
-"%VBOX%" guestcontrol "%VM_NAME%" run --username "%GUEST_USER%" --password "%GUEST_PASS%" --exe "C:\Windows\System32\cmd.exe" -- cmd /c "echo ready" >nul 2>&1
+"%VBOX%" guestcontrol "%VM_NAME%" run --username "%GUEST_USER%" --password "%GUEST_PASS%" --exe "C:\Windows\System32\hostname.exe" --timeout 10000 --wait-stdout >nul 2>&1
 if not errorlevel 1 goto :guest_ok
 set /a RETRY+=1
 if %RETRY% GEQ 5 (
@@ -86,9 +86,9 @@ echo [4/5] Running test inside VM (timeout %WAIT_TEST%s)...
 "%VBOX%" guestcontrol "%VM_NAME%" run ^
     --username "%GUEST_USER%" ^
     --password "%GUEST_PASS%" ^
-    --exe "C:\Windows\System32\cmd.exe" ^
+    --exe "Z:\run_test.bat" ^
     --timeout %WAIT_TEST%000 ^
-    -- cmd /c "Z:\run_test.bat"
+    --wait-stdout
 
 set "TEST_RC=%errorlevel%"
 if "%TEST_RC%"=="0" (
@@ -123,9 +123,9 @@ echo Running test inside VM...
 "%VBOX%" guestcontrol "%VM_NAME%" run ^
     --username "%GUEST_USER%" ^
     --password "%GUEST_PASS%" ^
-    --exe "C:\Windows\System32\cmd.exe" ^
+    --exe "Z:\run_test.bat" ^
     --timeout %WAIT_TEST%000 ^
-    -- cmd /c "Z:\run_test.bat"
+    --wait-stdout
 set "TEST_RC=%errorlevel%"
 echo.
 echo ============================================================

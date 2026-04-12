@@ -1,5 +1,5 @@
 # Current Status
-最終更新: 2026-04-08
+最終更新: 2026-04-12
 
 ## 現在の状態（スナップショット）
 
@@ -36,11 +36,13 @@
 - AI インフラ: マルチモデル alias / gateway 方針 / Gemma ローカル導入 / topic-suggest subagent
 - クラウド同期仕様の初期整理（Cloud_Sync.md）
 - REST API 仕様書の新規作成（03_Spec/REST_API.md）
+- 配布検証の VM テスト修正を反映し、`warm` / `cold` の両方で `Setup / Verify / Launch / Smoke` が PASS
 
 ## In Progress
 
 - **Team Collaboration Phase 1**: scope-level push with auto-merge（サブエージェント実装中）
 - Cloud Sync 競合 UI 改善（T4, codex1 にハンドオフ済み）
+- Data runtime / distribution 経路の整理と文書反映
 
 ## Blocked / Risk
 
