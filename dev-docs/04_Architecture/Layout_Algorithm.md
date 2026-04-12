@@ -257,7 +257,7 @@ M3E でも MVP でその余地を残す。
 - MVC と command: [./MVC_and_Command.md](./MVC_and_Command.md)
 - ドラッグ操作: [./Drag_and_Reparent.md](./Drag_and_Reparent.md)
 - 編集設計: [./Editing_Design.md](./Editing_Design.md)
-- MVP 定義: [../02_Strategy/MVP_Definition.md](../02_Strategy/MVP_Definition.md)
+- 帯域仕様: [../03_Spec/Band_Spec.md](../03_Spec/Band_Spec.md)
 
 ## Edge vs Link
 

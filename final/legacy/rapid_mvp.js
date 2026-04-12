@@ -311,7 +311,7 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  // Always write under mvp/data regardless of current working directory.
+  // Always write under the app data directory regardless of current working directory.
   const savePath = path.join(__dirname, "..", "data", "rapid-sample.json");
   model.saveToFile(savePath);
   console.log(`Rapid MVP sample saved: ${savePath}`);

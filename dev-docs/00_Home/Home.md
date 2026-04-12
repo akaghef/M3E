@@ -118,7 +118,6 @@ Supabase（リモート同期）
 M3E/
 ├── beta/              ← 開発版（ソース・ビルド・開発データ）
 ├── final/             ← 安定版（beta から sync）
-├── mvp/               ← 凍結済み（変更不可）
 ├── install/           ← インストーラー（Inno Setup .exe ビルド）
 │   ├── setup.bat      ← セットアップ本体
 │   ├── windows/       ← m3e.iss, ビルド・検証スクリプト

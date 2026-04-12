@@ -866,6 +866,6 @@ try {
 
 ## 関連文書
 
-- モデルの操作 API: [../../mvp/src/node/rapid_mvp.ts](../../mvp/src/node/rapid_mvp.ts)
+- モデルの操作 API: [../../beta/src/node/rapid_mvp.ts](../../beta/src/node/rapid_mvp.ts)
 - 編集設計: [../04_Architecture/Editing_Design.md](../04_Architecture/Editing_Design.md)
 - コマンド操作リファレンス（現 MVP のキー操作）: [../06_Operations/Command_Reference.md](../06_Operations/Command_Reference.md)

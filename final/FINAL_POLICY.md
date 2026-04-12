@@ -34,11 +34,9 @@ Final間のバージョン更新では、既存のユーザーデータ（`.sqli
 
 ```
 M3E/
-├── mvp/          ← Alpha (開発は停止予定)
 ├── beta/         ← 現行開発環境
 ├── final/        ← 安定版リリース環境（本ドキュメント）
 └── scripts/
-    ├── alpha/    ← alpha 起動スクリプト
     ├── beta/     ← beta 起動・更新スクリプト
     └── final/    ← final 起動・更新・migration スクリプト
 ```

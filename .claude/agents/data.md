@@ -25,7 +25,7 @@ git rebase origin/dev-beta
 | ロール | data |
 | ブランチ | dev-data |
 | スコープ | `beta/src/node/`, `beta/src/shared/` |
-| 禁止 | `mvp/` (完全凍結), `final/`, `beta/src/browser/` |
+| 禁止 | `final/`, `beta/src/browser/` |
 
 ## Task Discovery
 

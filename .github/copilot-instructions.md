@@ -3,8 +3,8 @@
 ## Project Overview
 
 M3E is a local-first research thinking support tool built with React + TypeScript (browser) and Node.js (server).
-Three environments exist: `mvp/` (Alpha, frozen), `beta/` (active development), `final/` (stable release).
-Active development happens in `beta/`. Do not modify `mvp/` or `final/` unless explicitly instructed.
+Two environments exist: `beta/` (active development) and `final/` (stable release).
+Active development happens in `beta/`. Do not modify `final/` unless explicitly instructed.
 
 Full project specs are in `dev-docs/`. Read relevant specs before starting implementation.
 

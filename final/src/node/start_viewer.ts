@@ -57,7 +57,7 @@ import type {
 } from "../shared/types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
-// ROOT must point two levels up to the mvp/ directory.
+// ROOT points two levels up to the app root.
 const ROOT = path.resolve(__dirname, "..", "..");
 const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "viewer.html";

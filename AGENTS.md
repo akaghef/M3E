@@ -9,13 +9,10 @@ Agents should prioritize small validated changes over broad refactors.
 
 | Environment | Directory | Status | Purpose |
 |-------------|-----------|--------|---------|
-| Alpha | `mvp/` | **Frozen — do not touch** | Completely ignored (no read/write) |
 | Beta | `beta/` | **Active development** | Current dev & daily use |
 | Final | `final/` | Stable release | Production use / distribution |
 
 **Current active development target: `beta/`**
-
-Alpha (`mvp/`) is permanently frozen. Do not read or write any files under `mvp/`. All development happens in `beta/` only.
 
 ### Launch scripts
 
@@ -24,12 +21,11 @@ Alpha (`mvp/`) is permanently frozen. Do not read or write any files under `mvp/
 | `scripts/beta/launch.bat` | Daily use — launch Beta (build required) |
 | `scripts/beta/update-and-launch.bat` | Pull latest → install → build → launch |
 | `scripts/final/migrate-from-beta.bat` | Sync Beta → Final, migrate data, launch |
-| `scripts/alpha/launch.bat` | Launch Alpha (reference only) |
 
 ## Source of Truth
 
-1. Strategy and MVP scope:
-   - `dev-docs/02_Strategy/MVP_Definition.md`
+1. Strategy and current direction:
+   - `dev-docs/00_Home/Home.md`
 2. Current priorities and progress:
    - `dev-docs/00_Home/Current_Status.md`
 3. Daily execution log:
@@ -203,11 +199,6 @@ If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
 
 ## Development Phase Constraints
 
-### Alpha (mvp/) — Frozen / Do Not Touch
-1. **Do not read or write any files under `mvp/`.** Completely ignore this directory.
-2. No new features, no bug fixes, no reference reads.
-3. Agents must never open, diff, or analyze `mvp/` files for any purpose.
-
 ### Beta (beta/) — Active
 1. Infrastructure and test environment are top priority.
 2. AI proposal features are deferred.
@@ -230,7 +221,7 @@ If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
 
 1. **P5 — Infrastructure & CI**: test environment, CI pipeline, deployment scripts.
 2. **P4 — Demo quality**: visual polish, fit-to-content, focus-selected.
-3. **P3 — MVP completeness**: metadata rendering, startup packaging.
+3. **P3 — Rapid baseline completeness**: metadata rendering, startup packaging.
 4. **P2 — Dev infrastructure**: Stage A CI, hit-test coverage.
 5. **P1 — Deferred**: reparent feedback UI, delete confirmation dialog.
 

@@ -118,7 +118,6 @@ Scope: {file scope}
 2. ...
 
 ## Constraints
-- mvp/ は完全凍結 — 読まない、書かない
 - beta/ が開発対象
 - final/ は触らない（launch-final の管轄）
 - 担当外ファイルは変更しない

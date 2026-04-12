@@ -18,23 +18,22 @@
 2. [00_Home/Current_Status.md](./00_Home/Current_Status.md)
 3. [01_Vision/Core_Principles.md](./01_Vision/Core_Principles.md)
 4. [02_Strategy/Current_Pivot_Freeplane_First.md](./02_Strategy/Current_Pivot_Freeplane_First.md)
-5. [02_Strategy/MVP_Definition.md](./02_Strategy/MVP_Definition.md)
-6. [03_Spec/Data_Model.md](./03_Spec/Data_Model.md)
-7. [03_Spec/Scope_and_Alias.md](./03_Spec/Scope_and_Alias.md)
-8. [03_Spec/Cloud_Sync.md](./03_Spec/Cloud_Sync.md)
-9. [03_Spec/Band_Spec.md](./03_Spec/Band_Spec.md)
-10. [04_Architecture/MVC_and_Command.md](./04_Architecture/MVC_and_Command.md)
-11. [04_Architecture/Drag_and_Reparent.md](./04_Architecture/Drag_and_Reparent.md)
-12. [05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](./05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
-13. [06_Operations/Test_and_CICD_Guide.md](./06_Operations/Test_and_CICD_Guide.md)
-14. [09_Decisions/ADR_001_Freeplane_First.md](./09_Decisions/ADR_001_Freeplane_First.md)
-15. [09_Decisions/ADR_002_React_UI_Basis.md](./09_Decisions/ADR_002_React_UI_Basis.md)
+5. [03_Spec/Data_Model.md](./03_Spec/Data_Model.md)
+6. [03_Spec/Scope_and_Alias.md](./03_Spec/Scope_and_Alias.md)
+7. [03_Spec/Cloud_Sync.md](./03_Spec/Cloud_Sync.md)
+8. [03_Spec/Band_Spec.md](./03_Spec/Band_Spec.md)
+9. [04_Architecture/MVC_and_Command.md](./04_Architecture/MVC_and_Command.md)
+10. [04_Architecture/Drag_and_Reparent.md](./04_Architecture/Drag_and_Reparent.md)
+11. [05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](./05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
+12. [06_Operations/Test_and_CICD_Guide.md](./06_Operations/Test_and_CICD_Guide.md)
+13. [09_Decisions/ADR_001_Freeplane_First.md](./09_Decisions/ADR_001_Freeplane_First.md)
+14. [09_Decisions/ADR_002_React_UI_Basis.md](./09_Decisions/ADR_002_React_UI_Basis.md)
 
 ## ディレクトリ構成
 
 - `00_Home`: 全体像と現在地
 - `01_Vision`: プロダクトの原則
-- `02_Strategy`: 現在の進め方と MVP
+- `02_Strategy`: 現在の進め方
 - `03_Spec`: ドメイン仕様
 - `04_Architecture`: 実装構造と操作設計
 - `05_Freeplane_Integration`: Freeplane を土台にする際の写像

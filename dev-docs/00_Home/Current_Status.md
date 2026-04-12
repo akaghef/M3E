@@ -43,6 +43,7 @@
 - **Team Collaboration Phase 1**: scope-level push with auto-merge（サブエージェント実装中）
 - Cloud Sync 競合 UI 改善（T4, codex1 にハンドオフ済み）
 - Data runtime / distribution 経路の整理と文書反映
+- legacy `mvp/` / `scripts/alpha` / `scripts/mvp` の削除と運用文書の beta/final 収束
 
 ## Blocked / Risk
 

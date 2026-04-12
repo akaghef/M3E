@@ -1,6 +1,6 @@
-# コマンド操作リファレンス（MVP）
+# コマンド操作リファレンス（Rapid）
 
-> **MVP 用:** このリファレンスは Rapid MVP (`mvp/`) の実装に基づきます。
+> **Rapid 用:** このリファレンスは current beta 実装に基づきます。
 > 未実装の操作は末尾の「未実装・制限事項」に記載します。
 
 ---
@@ -151,4 +151,3 @@
 
 - 編集操作の設計: [../04_Architecture/Editing_Design.md](../04_Architecture/Editing_Design.md)
 - ドラッグ操作の詳細: [../DragOperate.md](../DragOperate.md)
-- 起動方法: [../../mvp/実行.md](../../mvp/実行.md)

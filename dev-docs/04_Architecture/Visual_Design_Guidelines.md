@@ -380,9 +380,9 @@ MVP visual tuning values should be centralized.
 
 Current implementation direction:
 
-- visual tuning constants live in `mvp/viewer.tuning.js`
-- structural CSS lives in `mvp/viewer.css`
-- behavior lives in `mvp/viewer.js`
+- visual tuning constants live in `beta/src/browser/viewer.tuning.ts`
+- structural CSS lives in `beta/viewer.css`
+- behavior lives in `beta/src/browser/viewer.ts`
 
 ### Decision Rule for Future Design Changes
 

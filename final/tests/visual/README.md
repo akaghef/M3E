@@ -2,7 +2,7 @@
 
 ## 概要
 
-このフォルダには、MVP Viewer の見た目崩れを検知するための
+このフォルダには、Final Viewer の見た目崩れを検知するための
 Playwright ベースのビジュアル回帰テストを配置しています。
 
 - テスト本体: `viewer.visual.spec.js`
@@ -33,10 +33,10 @@ Playwright ベースのビジュアル回帰テストを配置しています。
 リポジトリルートから:
 
 ```bash
-npm --prefix mvp run test:visual
+npm --prefix final run test:visual
 ```
 
-`mvp` フォルダ内から:
+`final` フォルダ内から:
 
 ```bash
 npm run test:visual
@@ -47,11 +47,11 @@ npm run test:visual
 見た目の変更を意図的に反映する場合のみ実行します。
 
 ```bash
-npm --prefix mvp run test:visual:update
+npm --prefix final run test:visual:update
 ```
 
 ## 関連ファイル
 
-- `mvp/tests/visual/viewer.visual.spec.js`
-- `mvp/playwright.config.js`
-- `mvp/test_server.js`
+- `final/tests/visual/viewer.visual.spec.js`
+- `final/playwright.config.js`
+- `final/test_server.js`

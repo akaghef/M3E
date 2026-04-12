@@ -119,7 +119,7 @@ CREATE TABLE documents (
 - 読み込み: `state_json` をパースし、SavedDoc と同じ検証を適用
 - JSON 形式は SavedDoc の `state` フィールドと同一
 
-**データファイルの場所:** `mvp/data/rapid-mvp.sqlite`（`.gitignore` で除外）
+**データファイルの場所:** 実行環境が `M3E_DATA_DIR` と `M3E_DB_FILE` で解決する（ランチャー側で設定）
 
 ---
 

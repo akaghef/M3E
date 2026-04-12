@@ -119,14 +119,14 @@
 
 ---
 
-### MVP Phase 5
+### Rapid 操作性調整
 
 - Date: 2026-04-07
-- Topic: MVP Phase 5 操作性調整
+- Topic: Rapid 操作性調整
 - Owner: -
 - State: blocked
-- Link: `dev-docs/02_Strategy/MVP_Definition.md` (Phase 5)
-- Note: MVP は凍結方針（2026-04-08決定）。操作性改善は beta 側で進める
+- Link: `dev-docs/03_Spec/Band_Spec.md`
+- Note: 操作性改善は beta 側で継続する。旧 mvp ディレクトリは削除済み
 
 ---
 

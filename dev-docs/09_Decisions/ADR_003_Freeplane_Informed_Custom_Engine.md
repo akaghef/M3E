@@ -60,7 +60,7 @@ M3E は Freeplane を参考実装および互換入力形式として扱い、
 ## Related
 
 - 方針文書: [../02_Strategy/Current_Pivot_Freeplane_First.md](../02_Strategy/Current_Pivot_Freeplane_First.md)
-- MVP: [../02_Strategy/MVP_Definition.md](../02_Strategy/MVP_Definition.md)
+- 帯域仕様: [../03_Spec/Band_Spec.md](../03_Spec/Band_Spec.md)
 - 写像: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
 - 旧判断: [./ADR_001_Freeplane_First.md](./ADR_001_Freeplane_First.md)
 - UI 基盤判断: [./ADR_002_React_UI_Basis.md](./ADR_002_React_UI_Basis.md)

@@ -25,7 +25,7 @@ git rebase origin/dev-beta
 | ロール | team |
 | ブランチ | dev-team |
 | スコープ | `beta/src/node/collab.ts`, `beta/src/node/cloud_sync.ts`, `beta/src/node/start_viewer.ts` (collab部分) |
-| 禁止 | `mvp/` (完全凍結), `final/`, `beta/src/browser/` |
+| 禁止 | `final/`, `beta/src/browser/` |
 
 ## Task Discovery
 
