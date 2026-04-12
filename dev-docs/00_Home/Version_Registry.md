@@ -8,6 +8,8 @@ launch-final 実行時に更新する。
 | タグ | data schema | 日付 | 主な変更 |
 |------|-------------|------|---------|
 | v260411 | v1 | 2026-04-11 | 初回配布バージョン（修正済み） |
+| v260412-2 | v1 | 2026-04-12 | seed/main/sandbox ランタイム導入、tutorial scope 同梱、final 配布導線更新 |
+| v260412-3 | v1 | 2026-04-12 | VM test 修正反映、配布テスト手順と handoff 文書更新 |
 
 ## Data Schema Version 履歴
 
