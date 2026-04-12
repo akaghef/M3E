@@ -87,6 +87,51 @@ export interface LinearTransformResponse {
   };
 }
 
+export interface VaultImportOptions {
+  maxFiles?: number;
+  maxCharsPerFile?: number;
+  skipAiTransform?: boolean;
+  excludePatterns?: string[];
+}
+
+export interface VaultImportRequest {
+  vaultPath: string;
+  documentId?: string;
+  modelAlias?: string | null;
+  options?: VaultImportOptions;
+}
+
+export type VaultImportPhase = "discovery" | "parse" | "persist";
+
+export interface VaultImportProgress {
+  phase: VaultImportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface VaultImportedFileSummary {
+  relativePath: string;
+  nodeId: string;
+  wikilinkCount: number;
+  truncated: boolean;
+}
+
+export interface VaultImportResult {
+  ok: true;
+  documentId: string;
+  savedAt: string;
+  fileCount: number;
+  folderCount: number;
+  nodeCount: number;
+  truncatedFiles: number;
+  warnings: string[];
+  files: VaultImportedFileSummary[];
+  state: AppState;
+}
+
 export interface AiFeatureStatus {
   available: boolean;
   promptConfigured: boolean;
