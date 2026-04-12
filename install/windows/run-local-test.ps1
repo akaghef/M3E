@@ -129,10 +129,12 @@ Report "config-file" (Test-Path $configFile)
 if (Test-Path $configFile) {
     $confContent = Get-Content $configFile -Raw
     Report "config-has-port" ($confContent -match "M3E_PORT=") "should contain M3E_PORT"
+    Report "config-has-main-dir" ($confContent -match "M3E_MAIN_DATA_DIR=") "should contain M3E_MAIN_DATA_DIR"
+    Report "config-has-seed" ($confContent -match "M3E_SEED_DB_PATH=") "should contain M3E_SEED_DB_PATH"
     Report "config-has-root" ($confContent -match "M3E_ROOT=") "should contain M3E_ROOT"
 }
 
-$dataDir = Join-Path $env:LOCALAPPDATA "M3E"
+$dataDir = Join-Path $env:LOCALAPPDATA "M3E\workspaces\main"
 Report "data-dir-exists" (Test-Path $dataDir)
 
 # ── Step 4: Launch Test ──────────────────────────────────────

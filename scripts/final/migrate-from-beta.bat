@@ -13,16 +13,18 @@ REM   5. Data migration (if schema changed)
 REM   6. Launch
 REM
 REM Data:
-REM   - Backs up M3E_dataV1.sqlite before migration
-REM   - Backup destination: %APPDATA%\M3E\backup\
+REM   - Backs up main workspace data.sqlite before migration
+REM   - Backup destination: %LOCALAPPDATA%\M3E\workspaces\main\backup\
 REM ============================================================
 
 cd /d "%~dp0\..\.."
 
-if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%APPDATA%\M3E"
+if "%M3E_HOME%"=="" set "M3E_HOME=%LOCALAPPDATA%\M3E"
+if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%M3E_HOME%\workspaces\main"
 if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
 if "%M3E_PORT%"=="" set "M3E_PORT=38482"
-set "DB_FILE=M3E_dataV1.sqlite"
+if "%M3E_DB_FILE%"=="" set "M3E_DB_FILE=data.sqlite"
+set "DB_FILE=%M3E_DB_FILE%"
 
 echo ============================================================
 echo  M3E Final Migration: Beta ^> Final (exclude mode)
@@ -42,7 +44,7 @@ if not exist final mkdir final
 robocopy beta\ final\ /MIR /NFL /NDL /NJH /NJS ^
   /XD node_modules dist prompts tmp public backups audit conflict-backups ^
   /XF .env Beta_Policy.md e2e_test_server.js playwright.e2e.config.js ^
-     M3E_dataV1.sqlite .m3e-launched
+     data.sqlite .m3e-launched
 REM robocopy returns 0-7 for success
 if !errorlevel! GTR 7 goto :error
 REM Restore final-only files

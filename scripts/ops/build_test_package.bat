@@ -17,9 +17,10 @@ if exist "%PKG%" rmdir /s /q "%PKG%"
 mkdir "%PKG%\payload\app" >nul
 mkdir "%PKG%\payload\runtime" >nul
 
-REM Install scripts
-xcopy /E /I /Y install\windows\* "%PKG%\" >nul
-echo [OK] Install scripts
+REM Install/setup payload
+xcopy /E /I /Y install\* "%PKG%\install\" >nul
+xcopy /E /I /Y scripts\final\* "%PKG%\scripts\final\" >nul
+echo [OK] Install payload
 
 REM App (final build)
 xcopy /E /I /Y final\dist "%PKG%\payload\app\dist" >nul

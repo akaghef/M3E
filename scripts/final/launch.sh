@@ -3,22 +3,32 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-PORT=38482
-FIRST_RUN_MARKER="${M3E_DATA_DIR:-.}/.m3e-launched"
-if [[ ! -f "$FIRST_RUN_MARKER" ]]; then
-  URL="http://localhost:${PORT}/viewer.html?scopeId=n_1775650869381_rns0cp"
-else
-  URL="http://localhost:${PORT}/viewer.html"
-fi
-
-if [[ -z "${M3E_DATA_DIR:-}" ]]; then
+if [[ -z "${M3E_HOME:-}" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    export M3E_DATA_DIR="$HOME/Library/Application Support/M3E"
+    export M3E_HOME="$HOME/Library/Application Support/M3E"
   else
-    export M3E_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/M3E"
+    export M3E_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/M3E"
   fi
 fi
-mkdir -p "$M3E_DATA_DIR"
+export M3E_SEED_DB_PATH="${M3E_SEED_DB_PATH:-$M3E_HOME/seeds/core-seed.sqlite}"
+export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/main}"
+export M3E_DB_FILE="${M3E_DB_FILE:-data.sqlite}"
+export M3E_DOC_ID="${M3E_DOC_ID:-akaghef-beta}"
+export M3E_WORKSPACE_ID="${M3E_WORKSPACE_ID:-main}"
+export M3E_PORT="${M3E_PORT:-38482}"
+PORT="$M3E_PORT"
+mkdir -p "$M3E_DATA_DIR" "$(dirname "$M3E_SEED_DB_PATH")"
+if [[ ! -f "$M3E_SEED_DB_PATH" && -f "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" ]]; then
+  cp "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" "$M3E_SEED_DB_PATH"
+fi
+if [[ ! -f "$M3E_DATA_DIR/$M3E_DB_FILE" && -f "$M3E_SEED_DB_PATH" ]]; then
+  cp "$M3E_SEED_DB_PATH" "$M3E_DATA_DIR/$M3E_DB_FILE"
+fi
+FIRST_RUN_MARKER="$M3E_DATA_DIR/.m3e-launched"
+URL="http://localhost:${PORT}/viewer.html?workspaceId=${M3E_WORKSPACE_ID}&localDocId=${M3E_DOC_ID}&cloudDocId=${M3E_DOC_ID}"
+if [[ ! -f "$FIRST_RUN_MARKER" ]]; then
+  URL="${URL}&scopeId=n_1775650869381_rns0cp"
+fi
 
 kill_port() {
   local pids

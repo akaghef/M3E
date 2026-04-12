@@ -105,7 +105,9 @@ if "%RC%"=="0" (set "STEP_RESULT=PASS") else (set "STEP_RESULT=FAIL [exit %RC%]"
 exit /b 0
 
 :step_launch
-set "M3E_DATA_DIR=%LOCALAPPDATA%\M3E\data"
+set "M3E_DATA_DIR=%LOCALAPPDATA%\M3E\workspaces\main"
+set "M3E_DB_FILE=data.sqlite"
+set "M3E_DOC_ID=main-workspace"
 set "M3E_PORT=%TEST_PORT%"
 if not exist "%LOCALAPPDATA%\M3E\runtime\node.exe" (
   set "STEP_RESULT=SKIP (runtime not installed)"
