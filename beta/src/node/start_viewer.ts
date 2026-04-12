@@ -45,7 +45,16 @@ import {
   deleteDraft,
   approveDraft,
 } from "./flash_ingest";
+import { exportVaultFromSqlite } from "./vault_exporter";
 import { importVaultToSqlite } from "./vault_importer";
+import {
+  configureVaultWatchEmitter,
+  getVaultWatchStatus,
+  handleDocumentSavedForVaultWatch,
+  listVaultWatchStatuses,
+  startVaultWatch,
+  stopVaultWatch,
+} from "./vault_watch";
 import type {
   AiSubagentRequest,
   AppState,
@@ -57,7 +66,11 @@ import type {
   FlashDraftStatus,
   LinkDirection,
   LinkStyle,
+  VaultExportRequest,
   VaultImportRequest,
+  VaultWatchEvent,
+  VaultWatchStartRequest,
+  VaultWatchStopRequest,
 } from "../shared/types";
 import type {
   DocErrorCode,
@@ -96,6 +109,13 @@ interface DocWatchClient {
 }
 
 const docWatchClients: DocWatchClient[] = [];
+
+interface VaultWatchClient {
+  documentId: string | null;
+  res: http.ServerResponse;
+}
+
+const vaultWatchClients: VaultWatchClient[] = [];
 
 function addDocWatchClient(docId: string, res: http.ServerResponse): void {
   res.writeHead(200, {
@@ -144,6 +164,11 @@ function parseDocPresenceRoute(urlPath: string): string | null {
   const match = pathname.match(/^\/api\/docs\/([^/]+)\/presence$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
+}
+
+function isVaultWatchSseRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/vault/watch";
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -746,12 +771,28 @@ function parseFlashRoute(urlPath: string, method: string): FlashRoute {
 
 type VaultRoute =
   | { action: "import" }
+  | { action: "export" }
+  | { action: "watch-start" }
+  | { action: "watch-stop" }
+  | { action: "status" }
   | null;
 
 function parseVaultRoute(urlPath: string, method: string): VaultRoute {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (pathname === "/api/vault/import" && method === "POST") {
     return { action: "import" };
+  }
+  if (pathname === "/api/vault/export" && method === "POST") {
+    return { action: "export" };
+  }
+  if (pathname === "/api/vault/watch/start" && method === "POST") {
+    return { action: "watch-start" };
+  }
+  if (pathname === "/api/vault/watch" && method === "DELETE") {
+    return { action: "watch-stop" };
+  }
+  if (pathname === "/api/vault/status" && method === "GET") {
+    return { action: "status" };
   }
   return null;
 }
@@ -873,50 +914,142 @@ async function handleFlashApi(
   }
 }
 
+function addVaultWatchClient(documentId: string | null, res: http.ServerResponse): void {
+  beginSse(res);
+  vaultWatchClients.push({ documentId, res });
+  res.on("close", () => {
+    const idx = vaultWatchClients.findIndex((client) => client.res === res);
+    if (idx !== -1) {
+      vaultWatchClients.splice(idx, 1);
+    }
+  });
+}
+
+function broadcastVaultWatchEvent(event: VaultWatchEvent): void {
+  const frame = `event: vault-watch\ndata: ${JSON.stringify(event)}\n\n`;
+  for (let i = vaultWatchClients.length - 1; i >= 0; i -= 1) {
+    const client = vaultWatchClients[i]!;
+    if (client.documentId && client.documentId !== event.documentId) {
+      continue;
+    }
+    try {
+      client.res.write(frame);
+    } catch {
+      vaultWatchClients.splice(i, 1);
+    }
+  }
+}
+
+configureVaultWatchEmitter(broadcastVaultWatchEvent);
+
 async function handleVaultApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   route: Exclude<VaultRoute, null>,
 ): Promise<void> {
-  if (route.action !== "import") {
-    sendJson(res, 404, { ok: false, error: "Unknown vault endpoint." });
-    return;
-  }
-
   try {
-    const rawBody = await readRequestBody(req);
-    const request = JSON.parse(rawBody) as VaultImportRequest;
-    if (!request || typeof request.vaultPath !== "string" || request.vaultPath.trim().length === 0) {
-      sendJson(res, 400, { ok: false, error: "vaultPath is required." });
+    if (route.action === "import") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultImportRequest;
+      if (!request || typeof request.vaultPath !== "string" || request.vaultPath.trim().length === 0) {
+        sendJson(res, 400, { ok: false, error: "vaultPath is required." });
+        return;
+      }
+
+      beginSse(res);
+      const result = await importVaultToSqlite(SQLITE_DB_PATH, request, {
+        onProgress(progress) {
+          sendSseEvent(res, "vault-import-progress", progress);
+        },
+      });
+      broadcastDocUpdate(result.documentId, result.savedAt, null);
+      sendSseEvent(res, "vault-import-complete", {
+        documentId: result.documentId,
+        savedAt: result.savedAt,
+        fileCount: result.fileCount,
+        folderCount: result.folderCount,
+        nodeCount: result.nodeCount,
+        truncatedFiles: result.truncatedFiles,
+        warnings: result.warnings,
+      });
+      res.end();
       return;
     }
 
-    beginSse(res);
-    const result = await importVaultToSqlite(SQLITE_DB_PATH, request, {
-      onProgress(progress) {
-        sendSseEvent(res, "vault-import-progress", progress);
-      },
-    });
-    broadcastDocUpdate(result.documentId, result.savedAt, null);
-    sendSseEvent(res, "vault-import-complete", {
-      documentId: result.documentId,
-      savedAt: result.savedAt,
-      fileCount: result.fileCount,
-      folderCount: result.folderCount,
-      nodeCount: result.nodeCount,
-      truncatedFiles: result.truncatedFiles,
-      warnings: result.warnings,
-    });
-    res.end();
+    if (route.action === "export") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultExportRequest;
+      if (!request?.documentId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "documentId is required." });
+        return;
+      }
+      if (!request.vaultPath?.trim()) {
+        sendJson(res, 400, { ok: false, error: "vaultPath is required." });
+        return;
+      }
+
+      beginSse(res);
+      const result = await exportVaultFromSqlite(SQLITE_DB_PATH, request, {
+        onProgress(progress) {
+          sendSseEvent(res, "vault-export-progress", progress);
+        },
+      });
+      sendSseEvent(res, "vault-export-complete", result);
+      res.end();
+      return;
+    }
+
+    if (route.action === "watch-start") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultWatchStartRequest;
+      const status = startVaultWatch(SQLITE_DB_PATH, request);
+      sendJson(res, 200, status);
+      return;
+    }
+
+    if (route.action === "watch-stop") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultWatchStopRequest;
+      if (!request?.documentId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "documentId is required." });
+        return;
+      }
+      const status = stopVaultWatch(request.documentId);
+      if (!status) {
+        sendJson(res, 404, { ok: false, error: "Watch session not found." });
+        return;
+      }
+      sendJson(res, 200, status);
+      return;
+    }
+
+    if (route.action === "status") {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const documentId = url.searchParams.get("documentId");
+      if (documentId) {
+        const status = getVaultWatchStatus(documentId);
+        if (!status) {
+          sendJson(res, 404, { ok: false, error: "Watch session not found." });
+          return;
+        }
+        sendJson(res, 200, status);
+        return;
+      }
+      sendJson(res, 200, { ok: true, sessions: listVaultWatchStatuses() });
+      return;
+    }
+
+    sendJson(res, 404, { ok: false, error: "Unknown vault endpoint." });
   } catch (err) {
     const message = err instanceof SyntaxError
       ? "Invalid JSON body."
-      : ((err as Error).message || "Vault import failed.");
+      : ((err as Error).message || "Vault request failed.");
     if (!res.headersSent) {
       sendJson(res, err instanceof SyntaxError ? 400 : 400, { ok: false, error: message });
       return;
     }
-    sendSseEvent(res, "vault-import-error", { ok: false, error: message });
+    const eventName = route.action === "export" ? "vault-export-error" : "vault-import-error";
+    sendSseEvent(res, eventName, { ok: false, error: message });
     res.end();
   }
 }
@@ -1174,6 +1307,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastDocUpdate(docId, savedAt, sourceTabId);
+      handleDocumentSavedForVaultWatch(SQLITE_DB_PATH, docId);
       sendJson(res, 200, { ok: true, savedAt, documentId: docId });
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
@@ -1786,6 +1920,12 @@ export function createAppServer(): http.Server {
     const vaultRoute = parseVaultRoute(req.url ?? "/", req.method ?? "GET");
     if (vaultRoute) {
       await handleVaultApi(req, res, vaultRoute);
+      return;
+    }
+
+    if (isVaultWatchSseRoute(req.url ?? "/") && req.method === "GET") {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      addVaultWatchClient(url.searchParams.get("documentId"), res);
       return;
     }
 

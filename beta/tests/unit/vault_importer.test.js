@@ -51,13 +51,16 @@ Line 2
     writeFile(vaultDir, ".obsidian/ignore.md", "# Ignore me");
     writeFile(vaultDir, "assets/image.png", "binary");
 
-    const result = await importVaultToAppState({ vaultPath: vaultDir });
+    const result = await importVaultToAppState({
+      vaultPath: vaultDir,
+      options: { skipAiTransform: true },
+    });
 
     expect(result.ok).toBe(true);
     expect(result.documentId).toMatch(/^vault-/);
     expect(result.fileCount).toBe(2);
     expect(result.folderCount).toBe(4);
-    expect(result.nodeCount).toBe(4);
+    expect(result.nodeCount).toBe(5);
 
     const model = RapidMvpModel.fromJSON(result.state);
     expect(model.validate()).toEqual([]);
@@ -77,6 +80,7 @@ Line 2
     expect(indexNode.attributes.aliases).toBe("Start");
     expect(indexNode.attributes.status).toBe("draft");
     expect(indexNode.details).toContain("# Welcome");
+    expect(Object.values(result.state.nodes).some((node) => node.nodeType === "alias")).toBe(true);
 
     const nestedFile = result.files.find((file) => file.relativePath === "research/note-a.md");
     expect(nestedFile).toBeTruthy();
@@ -97,6 +101,7 @@ test("importVaultToAppState applies maxFiles and maxCharsPerFile limits", async 
       options: {
         maxFiles: 1,
         maxCharsPerFile: 10,
+        skipAiTransform: true,
       },
     });
 
@@ -120,6 +125,7 @@ test("importVaultToSqlite persists imported document", async () => {
     const result = await importVaultToSqlite(dbPath, {
       vaultPath: vaultDir,
       documentId: "vault-test-doc",
+      options: { skipAiTransform: true },
     });
 
     expect(result.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);

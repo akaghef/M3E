@@ -101,7 +101,7 @@ export interface VaultImportRequest {
   options?: VaultImportOptions;
 }
 
-export type VaultImportPhase = "discovery" | "parse" | "persist";
+export type VaultImportPhase = "discovery" | "parse" | "transform" | "links" | "persist";
 
 export interface VaultImportProgress {
   phase: VaultImportPhase;
@@ -130,6 +130,78 @@ export interface VaultImportResult {
   warnings: string[];
   files: VaultImportedFileSummary[];
   state: AppState;
+}
+
+export interface VaultExportOptions {
+  skipAiTransform?: boolean;
+  overwrite?: boolean;
+}
+
+export interface VaultExportRequest {
+  documentId: string;
+  vaultPath: string;
+  nodeId?: string;
+  modelAlias?: string | null;
+  options?: VaultExportOptions;
+}
+
+export type VaultExportPhase = "analysis" | "transform" | "write";
+
+export interface VaultExportProgress {
+  phase: VaultExportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface VaultExportResult {
+  ok: true;
+  documentId: string;
+  vaultPath: string;
+  fileCount: number;
+  folderCount: number;
+  warnings: string[];
+  savedAt: string;
+}
+
+export interface VaultWatchStartRequest {
+  documentId: string;
+  vaultPath: string;
+  modelAlias?: string | null;
+  debounceMs?: number;
+  importOptions?: VaultImportOptions;
+  exportOptions?: VaultExportOptions;
+}
+
+export interface VaultWatchStopRequest {
+  documentId: string;
+}
+
+export type VaultWatchEventType =
+  | "watch-started"
+  | "watch-stopped"
+  | "vault-to-m3e"
+  | "m3e-to-vault"
+  | "watch-error";
+
+export interface VaultWatchEvent {
+  type: VaultWatchEventType;
+  documentId: string;
+  vaultPath: string;
+  timestamp: string;
+  detail?: string;
+}
+
+export interface VaultWatchStatus {
+  ok: true;
+  documentId: string;
+  vaultPath: string;
+  running: boolean;
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  lastError: string | null;
 }
 
 export interface AiFeatureStatus {
