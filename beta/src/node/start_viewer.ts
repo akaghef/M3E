@@ -45,6 +45,7 @@ import {
   deleteDraft,
   approveDraft,
 } from "./flash_ingest";
+import { importVaultToSqlite } from "./vault_importer";
 import type {
   AiSubagentRequest,
   AppState,
@@ -56,6 +57,7 @@ import type {
   FlashDraftStatus,
   LinkDirection,
   LinkStyle,
+  VaultImportRequest,
 } from "../shared/types";
 import type {
   DocErrorCode,
@@ -208,6 +210,19 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
+}
+
+function beginSse(res: http.ServerResponse): void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+}
+
+function sendSseEvent(res: http.ServerResponse, event: string, payload: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
 function sendSyncError(
@@ -729,6 +744,18 @@ function parseFlashRoute(urlPath: string, method: string): FlashRoute {
   return null;
 }
 
+type VaultRoute =
+  | { action: "import" }
+  | null;
+
+function parseVaultRoute(urlPath: string, method: string): VaultRoute {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (pathname === "/api/vault/import" && method === "POST") {
+    return { action: "import" };
+  }
+  return null;
+}
+
 async function handleFlashApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -843,6 +870,54 @@ async function handleFlashApi(
     }
     const message = (err as Error).message || "Flash API error.";
     sendJson(res, 400, { ok: false, error: message });
+  }
+}
+
+async function handleVaultApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: Exclude<VaultRoute, null>,
+): Promise<void> {
+  if (route.action !== "import") {
+    sendJson(res, 404, { ok: false, error: "Unknown vault endpoint." });
+    return;
+  }
+
+  try {
+    const rawBody = await readRequestBody(req);
+    const request = JSON.parse(rawBody) as VaultImportRequest;
+    if (!request || typeof request.vaultPath !== "string" || request.vaultPath.trim().length === 0) {
+      sendJson(res, 400, { ok: false, error: "vaultPath is required." });
+      return;
+    }
+
+    beginSse(res);
+    const result = await importVaultToSqlite(SQLITE_DB_PATH, request, {
+      onProgress(progress) {
+        sendSseEvent(res, "vault-import-progress", progress);
+      },
+    });
+    broadcastDocUpdate(result.documentId, result.savedAt, null);
+    sendSseEvent(res, "vault-import-complete", {
+      documentId: result.documentId,
+      savedAt: result.savedAt,
+      fileCount: result.fileCount,
+      folderCount: result.folderCount,
+      nodeCount: result.nodeCount,
+      truncatedFiles: result.truncatedFiles,
+      warnings: result.warnings,
+    });
+    res.end();
+  } catch (err) {
+    const message = err instanceof SyntaxError
+      ? "Invalid JSON body."
+      : ((err as Error).message || "Vault import failed.");
+    if (!res.headersSent) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, { ok: false, error: message });
+      return;
+    }
+    sendSseEvent(res, "vault-import-error", { ok: false, error: message });
+    res.end();
   }
 }
 
@@ -1705,6 +1780,12 @@ export function createAppServer(): http.Server {
     const flashRoute = parseFlashRoute(req.url ?? "/", req.method ?? "GET");
     if (flashRoute) {
       await handleFlashApi(req, res, flashRoute);
+      return;
+    }
+
+    const vaultRoute = parseVaultRoute(req.url ?? "/", req.method ?? "GET");
+    if (vaultRoute) {
+      await handleVaultApi(req, res, vaultRoute);
       return;
     }
 

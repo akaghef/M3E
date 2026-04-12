@@ -51,6 +51,7 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 | `GET` | `/api/flash/draft/{id}` | Flash ドラフト詳細取得 | 本文書 |
 | `POST` | `/api/flash/draft/{id}/approve` | Flash ドラフト承認 | 本文書 |
 | `DELETE` | `/api/flash/draft/{id}` | Flash ドラフト破棄 | 本文書 |
+| `POST` | `/api/vault/import` | Obsidian Vault one-shot import (P1) | 本文書 |
 | `GET` | `/{path}` | 静的ファイル配信 | — |
 
 ---
@@ -858,6 +859,84 @@ Phase 1 ではテキストと Markdown のみ対応（AI なし）。
   "message": "Draft d_... deleted"
 }
 ```
+
+---
+
+## Vault Import API
+
+Obsidian Vault の `.md` 群を one-shot で M3E ドキュメントに取り込む。
+P1 実装では **AI 変換なし** で、フォルダ構造を folder ノード骨格に変換し、
+各 `.md` は folder ノードとして作成して本文を `details` に保持する。
+
+### `POST /api/vault/import`
+
+Vault import を開始する。レスポンスは SSE ストリーム。
+
+#### リクエスト Body
+
+```json
+{
+  "vaultPath": "C:/Users/user/ObsidianVault",
+  "documentId": "vault-my-notes",
+  "options": {
+    "maxFiles": 500,
+    "maxCharsPerFile": 6000,
+    "excludePatterns": ["templates/**"]
+  }
+}
+```
+
+| フィールド | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `vaultPath` | string | Yes | 取り込み対象 Vault の絶対パス |
+| `documentId` | string | No | 保存先ドキュメント ID。省略時は `vault-{folderName}` |
+| `options.maxFiles` | number | No | 取り込む `.md` 最大数（既定 500） |
+| `options.maxCharsPerFile` | number | No | 各ファイル本文の保持上限（既定 6000 文字） |
+| `options.excludePatterns` | string[] | No | 追加の除外パターン（prefix ベース） |
+
+#### SSE イベント
+
+進捗:
+
+```text
+event: vault-import-progress
+data: {"phase":"discovery","total":12,"message":"Found 12 markdown files."}
+
+event: vault-import-progress
+data: {"phase":"parse","current":3,"total":12,"currentFile":"research/note-a.md","status":"ok"}
+
+event: vault-import-progress
+data: {"phase":"persist","total":12,"message":"Persisting imported vault as vault-my-notes."}
+```
+
+完了:
+
+```text
+event: vault-import-complete
+data: {"documentId":"vault-my-notes","savedAt":"2026-04-13T10:00:00.000Z","fileCount":12,"folderCount":18,"nodeCount":18,"truncatedFiles":1,"warnings":[]}
+```
+
+エラー:
+
+```text
+event: vault-import-error
+data: {"ok":false,"error":"vaultPath must be an absolute path."}
+```
+
+#### 実装上の制約（P1）
+
+- `.obsidian/`, `.trash/`, `.git/`, `node_modules/` は既定で除外
+- symlink は追跡しない
+- frontmatter の `tags`, `aliases` と単純 scalar/array を `attributes` に写す
+- `[[wikilink]]` は現時点では解決せず、件数だけ内部サマリーに保持する
+- 各 `.md` ノードは `nodeType: "folder"` として作成する
+
+#### エラーレスポンス
+
+| status | 条件 |
+|--------|------|
+| 400 | `vaultPath` 未指定 / 相対パス / 存在しないパス |
+| 405 | POST 以外 |
 
 ---
 
