@@ -26,6 +26,8 @@ PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile={#RepoRoot}\{#AppIcon}
 UninstallDisplayIcon={app}\{#AppIcon}
+CloseApplications=force
+RestartIfNeededByRun=no
 
 [Languages]
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"

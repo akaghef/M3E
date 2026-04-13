@@ -74,6 +74,11 @@ del "!NODE_ZIP!" >nul 2>&1
 call :log " Node.js %NODE_VERSION% installed to install\node\"
 
 :node_ready
+REM Ensure portable node is on PATH so child processes (node-gyp, prebuild-install) can find it
+if exist "%NODE_DIR%\node.exe" (
+  set "PATH=%NODE_DIR%;%PATH%"
+)
+
 call :log ""
 call :log " M3E home: %M3E_HOME%"
 if not exist "%M3E_HOME%" mkdir "%M3E_HOME%"
@@ -130,6 +135,16 @@ for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":!M3E_PORT!" ^| finds
 
 call :log ""
 call :log " [1/2] Installing dependencies..."
+REM Remove node_modules first to avoid EPERM on locked files during npm ci
+if exist "%ROOT%\final\node_modules" (
+  call :log " Cleaning previous node_modules..."
+  rmdir /s /q "%ROOT%\final\node_modules" >nul 2>&1
+  if exist "%ROOT%\final\node_modules" (
+    call :log " Retrying cleanup after brief wait..."
+    timeout /t 3 /nobreak >nul 2>&1
+    rmdir /s /q "%ROOT%\final\node_modules" >nul 2>&1
+  )
+)
 call "%NPM_CMD%" --prefix "%ROOT%\final" ci %NPM_FLAGS%
 if not !errorlevel! equ 0 (
   call :log " npm ci failed. Trying npm install..."

@@ -75,6 +75,9 @@ if "!NPM_CMD!"=="" (
     if "!NPM_CMD!"=="" set "NPM_CMD=%%P"
   )
 )
+REM Ensure portable node is on PATH so child processes (node-gyp, prebuild-install) can find it
+for %%N in ("!NODE_CMD!") do set "NODE_BIN_DIR=%%~dpN"
+set "PATH=!NODE_BIN_DIR!;!PATH!"
 
 set "FINAL_DIR=%ROOT%\final"
 set "ENTRY_JS=%FINAL_DIR%\dist\node\start_viewer.js"
