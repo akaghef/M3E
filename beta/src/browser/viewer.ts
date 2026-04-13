@@ -5,12 +5,23 @@ const stopVisualCheckBtn = document.getElementById("stop-visual-check");
 const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
+const importBtn = document.getElementById("import-btn");
+const importMenu = document.getElementById("import-menu");
+const importFileBtn = document.getElementById("import-file-btn") as HTMLButtonElement | null;
+const importVaultBtn = document.getElementById("import-vault-btn") as HTMLButtonElement | null;
 const downloadBtn = document.getElementById("download-btn");
 const downloadMmBtn = document.getElementById("download-mm-btn");
+const exportVaultBtn = document.getElementById("export-vault-btn") as HTMLButtonElement | null;
 const hamburgerBtn = document.getElementById("hamburger-btn");
 const hamburgerMenu = document.getElementById("hamburger-menu");
 const exportBtn = document.getElementById("export-btn");
 const exportMenu = document.getElementById("export-menu");
+const integrateBtn = document.getElementById("integrate-btn");
+const integrateMenu = document.getElementById("integrate-menu");
+const setVaultPathBtn = document.getElementById("set-vault-path-btn") as HTMLButtonElement | null;
+const integrateVaultLiveBtn = document.getElementById("integrate-vault-live-btn") as HTMLButtonElement | null;
+const integrateStopBtn = document.getElementById("integrate-stop-btn") as HTMLButtonElement | null;
+const vaultSyncBadgeEl = document.getElementById("vault-sync-badge") as HTMLElement | null;
 const metaPanelEl = document.querySelector(".meta-panel") as HTMLElement | null;
 const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
@@ -185,6 +196,39 @@ let presenceEs: EventSource | null = null;
 let changedNodeIds: Set<string> = new Set();
 let conflictPanelVisible = false;
 let conflictRemoteState: AppState | null = null;
+type VaultIntegrationMode = "off" | "vault-live";
+interface VaultUiPrefs {
+  vaultPath: string;
+  integrationMode: VaultIntegrationMode;
+  sourceOfTruth: "vault-md";
+}
+interface VaultWatchStatusResponse {
+  ok: true;
+  documentId: string;
+  vaultPath: string;
+  running: boolean;
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  lastError: string | null;
+}
+interface VaultWatchSseEvent {
+  type: "watch-started" | "watch-stopped" | "vault-to-m3e" | "m3e-to-vault" | "watch-error";
+  documentId: string;
+  vaultPath: string;
+  timestamp: string;
+  detail?: string;
+}
+const VAULT_UI_PREFS_KEY = `m3e:vault-ui:${LOCAL_DOC_ID}`;
+let vaultUiPrefs: VaultUiPrefs = {
+  vaultPath: "",
+  integrationMode: "off",
+  sourceOfTruth: "vault-md",
+};
+let vaultWatchEs: EventSource | null = null;
+let vaultWatchRunning = false;
+let vaultLastInboundAt: string | null = null;
+let vaultLastOutboundAt: string | null = null;
+let vaultLastError: string | null = null;
 
 // ── Scope Lock State ──
 interface ClientScopeLock {
@@ -306,6 +350,247 @@ function updateCloudSyncUi(): void {
   if (cloudPushBtn) cloudPushBtn.disabled = false;
   if (cloudUseLocalBtn) cloudUseLocalBtn.hidden = !cloudConflictPending;
   if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = !cloudConflictPending;
+}
+
+function loadVaultUiPrefs(): void {
+  try {
+    const raw = window.localStorage.getItem(VAULT_UI_PREFS_KEY);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw) as Partial<VaultUiPrefs>;
+    vaultUiPrefs = {
+      vaultPath: String(parsed.vaultPath || ""),
+      integrationMode: parsed.integrationMode === "vault-live" ? "vault-live" : "off",
+      sourceOfTruth: "vault-md",
+    };
+  } catch {
+    vaultUiPrefs = {
+      vaultPath: "",
+      integrationMode: "off",
+      sourceOfTruth: "vault-md",
+    };
+  }
+}
+
+function saveVaultUiPrefs(): void {
+  window.localStorage.setItem(VAULT_UI_PREFS_KEY, JSON.stringify(vaultUiPrefs));
+}
+
+function closeToolbarMenus(): void {
+  if (hamburgerMenu && !hamburgerMenu.hidden) hamburgerMenu.hidden = true;
+  if (importMenu && !importMenu.hidden) importMenu.hidden = true;
+  if (exportMenu && !exportMenu.hidden) exportMenu.hidden = true;
+  if (integrateMenu && !integrateMenu.hidden) integrateMenu.hidden = true;
+}
+
+function syncVaultUi(): void {
+  const pathLabel = vaultUiPrefs.vaultPath ? `Vault: ${vaultWatchRunning ? "live" : "ready"}` : "Vault: off";
+  if (vaultSyncBadgeEl) {
+    vaultSyncBadgeEl.textContent = pathLabel;
+    vaultSyncBadgeEl.classList.toggle("on", vaultWatchRunning);
+    vaultSyncBadgeEl.classList.toggle("conflict", Boolean(vaultLastError));
+    if (vaultLastError) {
+      vaultSyncBadgeEl.textContent = "Vault: error";
+    }
+  }
+  integrateVaultLiveBtn?.classList.toggle("is-active", vaultUiPrefs.integrationMode === "vault-live");
+  integrateStopBtn!.disabled = !vaultWatchRunning;
+}
+
+function parseSseFrames(text: string): Array<{ event: string; data: unknown }> {
+  return text
+    .split("\n\n")
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const lines = chunk.split("\n");
+      const event = lines.find((line) => line.startsWith("event: "))?.slice(7) ?? "";
+      const dataText = lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "null";
+      let data: unknown = null;
+      try {
+        data = JSON.parse(dataText);
+      } catch {
+        data = dataText;
+      }
+      return { event, data };
+    })
+    .filter((entry) => Boolean(entry.event));
+}
+
+async function promptVaultPath(defaultValue = ""): Promise<string | null> {
+  const next = window.prompt("Vault path", defaultValue || vaultUiPrefs.vaultPath || "");
+  if (next === null) {
+    return null;
+  }
+  const trimmed = next.trim();
+  if (!trimmed) {
+    setStatus("Vault path is required.", true);
+    return null;
+  }
+  vaultUiPrefs.vaultPath = trimmed;
+  saveVaultUiPrefs();
+  syncVaultUi();
+  return trimmed;
+}
+
+function applyVaultWatchStatus(status: VaultWatchStatusResponse | null): void {
+  vaultWatchRunning = Boolean(status?.running);
+  vaultLastInboundAt = status?.lastInboundAt ?? null;
+  vaultLastOutboundAt = status?.lastOutboundAt ?? null;
+  vaultLastError = status?.lastError ?? null;
+  if (status?.vaultPath) {
+    vaultUiPrefs.vaultPath = status.vaultPath;
+  }
+  syncVaultUi();
+}
+
+async function fetchVaultWatchStatus(): Promise<void> {
+  try {
+    const response = await fetch(`/api/vault/status?documentId=${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    if (response.status === 404) {
+      applyVaultWatchStatus(null);
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json() as VaultWatchStatusResponse;
+    applyVaultWatchStatus(payload);
+  } catch (err) {
+    vaultLastError = (err as Error).message;
+    syncVaultUi();
+  }
+}
+
+function initVaultWatchStream(): void {
+  if (vaultWatchEs) {
+    return;
+  }
+  vaultWatchEs = new EventSource(`/api/vault/watch?documentId=${encodeURIComponent(LOCAL_DOC_ID)}`);
+  vaultWatchEs.addEventListener("vault-watch", (event: MessageEvent) => {
+    try {
+      const payload = JSON.parse(event.data) as VaultWatchSseEvent;
+      if (payload.documentId !== LOCAL_DOC_ID) {
+        return;
+      }
+      if (payload.type === "watch-started") {
+        vaultWatchRunning = true;
+        vaultLastError = null;
+      } else if (payload.type === "watch-stopped") {
+        vaultWatchRunning = false;
+      } else if (payload.type === "vault-to-m3e") {
+        vaultLastInboundAt = payload.timestamp;
+      } else if (payload.type === "m3e-to-vault") {
+        vaultLastOutboundAt = payload.timestamp;
+      } else if (payload.type === "watch-error") {
+        vaultLastError = payload.detail || "Vault watch error";
+      }
+      syncVaultUi();
+      if (payload.detail) {
+        setStatus(payload.detail, payload.type === "watch-error");
+      }
+    } catch {
+      // ignore malformed event
+    }
+  });
+  window.addEventListener("beforeunload", () => vaultWatchEs?.close());
+}
+
+async function runVaultImport(vaultPath: string): Promise<boolean> {
+  const response = await fetch("/api/vault/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      vaultPath,
+      documentId: LOCAL_DOC_ID,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const frames = parseSseFrames(await response.text());
+  const errorFrame = frames.find((frame) => frame.event === "vault-import-error");
+  if (errorFrame) {
+    throw new Error(String((errorFrame.data as { error?: string })?.error || "Vault import failed."));
+  }
+  const complete = frames.find((frame) => frame.event === "vault-import-complete");
+  if (!complete) {
+    throw new Error("Vault import did not complete.");
+  }
+  await loadDocFromLocalDb(false);
+  render();
+  setStatus("Vault import completed.");
+  return true;
+}
+
+async function runVaultExport(vaultPath: string): Promise<boolean> {
+  const response = await fetch("/api/vault/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: LOCAL_DOC_ID,
+      vaultPath,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const frames = parseSseFrames(await response.text());
+  const errorFrame = frames.find((frame) => frame.event === "vault-export-error");
+  if (errorFrame) {
+    throw new Error(String((errorFrame.data as { error?: string })?.error || "Vault export failed."));
+  }
+  const complete = frames.find((frame) => frame.event === "vault-export-complete");
+  if (!complete) {
+    throw new Error("Vault export did not complete.");
+  }
+  setStatus("Vault export completed.");
+  return true;
+}
+
+async function startVaultLiveIntegration(vaultPath: string): Promise<void> {
+  await runVaultImport(vaultPath);
+  const response = await fetch("/api/vault/watch/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: LOCAL_DOC_ID,
+      vaultPath,
+      debounceMs: 1000,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const payload = await response.json() as VaultWatchStatusResponse;
+  applyVaultWatchStatus(payload);
+  vaultUiPrefs.integrationMode = "vault-live";
+  saveVaultUiPrefs();
+  syncVaultUi();
+  setStatus("Vault live integration started. Vault md is the source of truth.");
+}
+
+async function stopVaultLiveIntegration(showStatus = true): Promise<void> {
+  const response = await fetch("/api/vault/watch", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: LOCAL_DOC_ID,
+    }),
+  });
+  if (response.ok) {
+    await response.json().catch(() => null);
+  }
+  vaultUiPrefs.integrationMode = "off";
+  saveVaultUiPrefs();
+  applyVaultWatchStatus(null);
+  if (showStatus) {
+    setStatus("Vault integration stopped.");
+  }
 }
 
 function createNodeRecord(id: string, parentId: string | null, text = "New Node"): TreeNode {
@@ -6189,6 +6474,24 @@ cloudUseCloudBtn?.addEventListener("click", async () => {
   }
 });
 
+importFileBtn?.addEventListener("click", () => {
+  fileInput.click();
+});
+
+importVaultBtn?.addEventListener("click", () => {
+  void (async () => {
+    try {
+      const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+      if (!vaultPath) {
+        return;
+      }
+      await runVaultImport(vaultPath);
+    } catch (err) {
+      setStatus(`Vault import failed (${(err as Error).message}).`, true);
+    }
+  })();
+});
+
 downloadBtn?.addEventListener("click", () => {
   if (!doc) return;
   downloadJson();
@@ -6197,6 +6500,20 @@ downloadBtn?.addEventListener("click", () => {
 downloadMmBtn?.addEventListener("click", () => {
   if (!doc) return;
   downloadMm();
+});
+
+exportVaultBtn?.addEventListener("click", () => {
+  void (async () => {
+    try {
+      const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+      if (!vaultPath) {
+        return;
+      }
+      await runVaultExport(vaultPath);
+    } catch (err) {
+      setStatus(`Vault export failed (${(err as Error).message}).`, true);
+    }
+  })();
 });
 
 /* ── Hamburger & Export dropdown toggle ── */
@@ -6209,19 +6526,54 @@ function toggleDropdown(menu: HTMLElement | null, btn: HTMLElement | null): void
 
 hamburgerBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  exportMenu && (exportMenu.hidden = true);
+  closeToolbarMenus();
   toggleDropdown(hamburgerMenu, hamburgerBtn);
+});
+
+importBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeToolbarMenus();
+  toggleDropdown(importMenu, importBtn);
 });
 
 exportBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  hamburgerMenu && (hamburgerMenu.hidden = true);
+  closeToolbarMenus();
   toggleDropdown(exportMenu, exportBtn);
 });
 
+integrateBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeToolbarMenus();
+  toggleDropdown(integrateMenu, integrateBtn);
+});
+
+setVaultPathBtn?.addEventListener("click", () => {
+  void promptVaultPath(vaultUiPrefs.vaultPath);
+});
+
+integrateVaultLiveBtn?.addEventListener("click", () => {
+  void (async () => {
+    try {
+      const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+      if (!vaultPath) {
+        return;
+      }
+      await startVaultLiveIntegration(vaultPath);
+    } catch (err) {
+      setStatus(`Vault integration failed (${(err as Error).message}).`, true);
+    }
+  })();
+});
+
+integrateStopBtn?.addEventListener("click", () => {
+  void stopVaultLiveIntegration(true).catch((err) => {
+    setStatus(`Failed to stop Vault integration (${(err as Error).message}).`, true);
+  });
+});
+
 document.addEventListener("click", () => {
-  if (hamburgerMenu && !hamburgerMenu.hidden) hamburgerMenu.hidden = true;
-  if (exportMenu && !exportMenu.hidden) exportMenu.hidden = true;
+  closeToolbarMenus();
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
@@ -7005,12 +7357,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
 setVisualCheckStatus("Visual check idle");
 syncMetaPanelToggleUi();
-
+loadVaultUiPrefs();
+syncVaultUi();
 updateCloudSyncUi();
 
 void initializeDocument().then(() => {
   initBroadcastSync();
   initDocWatch();
+  initVaultWatchStream();
+  void fetchVaultWatchStatus().then(() => {
+    if (vaultUiPrefs.integrationMode === "vault-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
+      void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
+        setStatus(`Vault integration resume failed (${(err as Error).message}).`, true);
+      });
+    }
+  });
   tryCollabRegister();
   const initialScopeId = queryParams.get("scopeId");
   if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
