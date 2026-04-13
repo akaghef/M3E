@@ -13,7 +13,7 @@ git log --oneline --since="$SINCE" --all --no-merges 2>/dev/null || echo "(none)
 
 echo ""
 echo "=== BRANCH ACTIVITY ==="
-for branch in dev-beta dev-beta-visual dev-beta-data; do
+for branch in dev-beta dev-visual dev-data dev-data2 dev-team; do
   count=$(git log --oneline --since="$SINCE" "origin/$branch" 2>/dev/null | wc -l | tr -d ' ')
   echo "$branch: $count commits"
 done

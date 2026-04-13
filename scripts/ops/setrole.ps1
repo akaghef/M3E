@@ -1,23 +1,33 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('codex1','codex2','claude')]
+    [ValidateSet('visual','data','data2','team','manage')]
     [string]$Role
 )
 
 $ErrorActionPreference = 'Stop'
 
 $roleMap = @{
-    codex1 = @{
-        branch = 'dev-beta-visual'
-        worktree = 'C:/Users/Akaghef/dev/M3E-dev-beta-visual'
+    visual = @{
+        branch = 'dev-visual'
+        worktree = 'C:/Users/Akaghef/dev/M3E-dev-visual'
         needsSync = $true
     }
-    codex2 = @{
-        branch = 'dev-beta-data'
-        worktree = 'C:/Users/Akaghef/dev/M3E-dev-beta-data'
+    data = @{
+        branch = 'dev-data'
+        worktree = 'C:/Users/Akaghef/dev/M3E'
         needsSync = $true
     }
-    claude = @{
+    data2 = @{
+        branch = 'dev-data2'
+        worktree = 'C:/Users/Akaghef/dev/M3E-dev-data2'
+        needsSync = $true
+    }
+    team = @{
+        branch = 'dev-team'
+        worktree = 'C:/Users/Akaghef/dev/M3E-dev-team'
+        needsSync = $true
+    }
+    manage = @{
         branch = 'dev-beta'
         worktree = 'C:/Users/Akaghef/dev/M3E'
         needsSync = $false

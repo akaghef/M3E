@@ -14,9 +14,11 @@ M3E開発の運用ルール早見表。詳細は各原典を参照。
 
 | ロール | ブランチ | 操作権限 |
 |-------|---------|---------|
-| claude（統合） | dev-beta | フル（merge含む） |
-| codex1（visual） | dev-beta-visual | push/commit。merge不可 |
-| codex2（data） | dev-beta-data | push/commit。merge不可 |
+| manage（統合） | dev-beta | フル（merge含む） |
+| visual | dev-visual | push/commit。merge不可 |
+| data | dev-data | push/commit。merge不可 |
+| data2 | dev-data2 | push/commit。merge不可 |
+| team | dev-team | push/commit。merge不可 |
 
 確認不要: dev-* でのbranch作成/切替, add, commit, push
 確認必要: force push, reset --hard, main/release操作

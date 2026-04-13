@@ -13,7 +13,7 @@ M3Eのコード実装を担当するサブエージェント。
 
 - **task**: 実装するタスクの説明
 - **scope**: 変更対象のファイル・モジュール
-- **branch**: 作業ブランチ（dev-beta-visual / dev-beta-data / dev-beta）
+- **branch**: 作業ブランチ（dev-visual / dev-data / dev-data2 / dev-team / dev-beta）
 - **constraints**: 制約事項（既存APIとの互換、パフォーマンス要件等）
 - **output_dir**: 成果物の出力先（worktree使用時）
 

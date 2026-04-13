@@ -123,8 +123,10 @@ gh pr list --base dev-beta --state merged --json number,title,mergedAt -L 5 2>/d
 
 | タスクの性質 | ワーカー | WorkerType | Branch |
 |-------------|---------|------------|--------|
-| UI・描画・CSS・SVG | codex1 | external-codex | dev-beta-visual |
-| model・API・DB・永続化 | codex2 | external-codex | dev-beta-data |
+| UI・描画・CSS・SVG | visual | external-codex | dev-visual |
+| model・API・DB・永続化 | data | external-codex | dev-data |
+| data 並列ワーカー | data2 | external-codex | dev-data2 |
+| Collaboration / Cloud Sync | team | external-codex | dev-team |
 | 文書更新・spec・CI | claude (self) | in-session | dev-beta |
 | 軽微修正 (<20行) | subagent | in-session | feature branch |
 | 手動テスト・判断が必要 | akaghef | user | any |
@@ -162,11 +164,11 @@ Todo_Pool.md の既存フィールド（Date, Topic, Owner, State, Link, Note）
 intensive mode では以下を使う:
 
 ```markdown
-- AssignedTo: codex1
+- AssignedTo: visual
 - AssignedPC: any
 - AssignedAt: 2026-04-08T14:30:00
 - WorkerType: external-codex
-- Branch: dev-beta-visual
+- Branch: dev-visual
 - StallCycles: 0
 ```
 

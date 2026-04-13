@@ -125,9 +125,11 @@ PR作成後、以下を報告する:
 
 | ロール | ブランチ | PR先 | 備考 |
 |-------|---------|------|------|
-| codex1 (visual) | dev-beta-visual | dev-beta | UI/レンダリング変更 |
-| codex2 (data) | dev-beta-data | dev-beta | model/controller変更 |
-| 統合 (claude) | dev-beta-* feature | dev-beta | 横断的変更 |
+| visual | dev-visual | dev-beta | UI/レンダリング変更 |
+| data | dev-data | dev-beta | model/controller変更 |
+| data2 | dev-data2 | dev-beta | data 並列ワーカー |
+| team | dev-team | dev-beta | Collaboration/Cloud Sync |
+| manage | feature branch | dev-beta | 横断的変更 |
 
 ## daily note の自動チェック
 
