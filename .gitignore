@@ -38,3 +38,7 @@ beta/tests/visual/viewer.visual.spec.js-snapshots/
 tmp_*.json
 
 artifacts/
+
+# Transient outputs from the m3e-map skill (run at repo root)
+/m3e-map.json
+/m3e-map-update.mjs
