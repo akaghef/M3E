@@ -22,6 +22,18 @@ echo [launch] M3E_DB_FILE=%M3E_DB_FILE%
 echo [launch] M3E_DOC_ID=%M3E_DOC_ID%
 echo [launch] M3E_WORKSPACE_ID=%M3E_WORKSPACE_ID%
 
+REM --- Build freshness check: auto-rebuild if beta/src is newer than beta/dist ---
+set "BUILD_STATE=UNKNOWN"
+for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "$d=(Get-Item beta\dist\browser\viewer.js -ErrorAction SilentlyContinue).LastWriteTime; $s=(Get-ChildItem beta\src -Recurse -File -ErrorAction SilentlyContinue | Measure-Object LastWriteTime -Maximum).Maximum; $ds= if($d){$d.ToString('yyyy-MM-dd HH:mm:ss')}else{'(missing)'}; $ss= if($s){$s.ToString('yyyy-MM-dd HH:mm:ss')}else{'(missing)'}; Write-Output ('dist=' + $ds); Write-Output ('src =' + $ss); if(-not $d -or ($s -and $s -gt $d)){ Write-Output 'STATE=STALE' } else { Write-Output 'STATE=FRESH' }"`) do (
+  echo [launch] %%T
+  for /f "tokens=1,2 delims==" %%A in ("%%T") do if /i "%%A"=="STATE" set "BUILD_STATE=%%B"
+)
+if /i "%BUILD_STATE%"=="STALE" (
+  echo [launch] dist is stale — rebuilding beta...
+  call npm --prefix beta run build
+  if errorlevel 1 goto :error
+)
+
 call :kill_port_4173
 
 call npm --prefix beta start
