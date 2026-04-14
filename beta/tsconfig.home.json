@@ -9,6 +9,5 @@
     "declaration": false,
     "types": []
   },
-  "include": ["src/browser/**/*.ts"],
-  "exclude": ["src/browser/home.ts"]
+  "files": ["src/browser/home.ts"]
 }

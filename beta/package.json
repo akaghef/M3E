@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "description": "Rapid MVP viewer with TypeScript source",
   "scripts": {
-    "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
+    "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json && tsc -p tsconfig.home.json",
     "build:node": "tsc -p tsconfig.node.json",
-    "build:browser": "tsc -p tsconfig.browser.json",
+    "build:browser": "tsc -p tsconfig.browser.json && tsc -p tsconfig.home.json",
+    "build:home": "tsc -p tsconfig.home.json",
     "start": "node dist/node/start_viewer.js",
     "test": "npm run test:unit",
     "test:unit": "npm run build:node && npx vitest run",

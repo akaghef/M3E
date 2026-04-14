@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M3E — HOME</title>
+    <link rel="stylesheet" href="./viewer.css" />
+    <link rel="stylesheet" href="./home.css" />
+  </head>
+  <body class="home-page">
+    <div class="home-app">
+      <header class="home-topbar">
+        <div class="home-brand">
+          <span class="home-brand-mark" aria-hidden="true">M3E</span>
+          <span class="home-brand-sub">ドキュメント一覧</span>
+        </div>
+        <div class="home-topbar-actions">
+          <input
+            id="home-search"
+            class="home-search"
+            type="search"
+            placeholder="ラベル / タグで絞り込み"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <label class="home-toggle">
+            <input id="home-show-archived" type="checkbox" />
+            <span>ゴミ箱を表示</span>
+          </label>
+          <button id="home-new" class="home-btn home-btn-primary" type="button">
+            ＋ 新規作成
+          </button>
+        </div>
+      </header>
+
+      <main class="home-main">
+        <div id="home-status" class="home-status" hidden></div>
+        <ul id="home-list" class="home-list" aria-label="ドキュメント一覧"></ul>
+        <div id="home-empty" class="home-empty" hidden>
+          <p>ドキュメントがありません。</p>
+          <p>「＋ 新規作成」から最初のマップを作成してください。</p>
+        </div>
+      </main>
+    </div>
+
+    <!--
+      Per-row template. Cloned by home.ts for each DocSummary.
+      `data-id` is set on the <li> at clone time.
+    -->
+    <template id="home-row-template">
+      <li class="home-row" data-id="">
+        <a class="home-row-link" href="#" data-role="open">
+          <div class="home-thumb-slot" aria-hidden="true">
+            <!-- v1: placeholder. v2 will inject SVG thumbnail here (Q1). -->
+            <span class="home-thumb-placeholder">M3E</span>
+          </div>
+          <div class="home-row-body">
+            <div class="home-row-line1">
+              <span class="home-row-label" data-role="label"></span>
+              <span class="home-row-open-badge" data-role="open-badge" hidden>📖 開いてる</span>
+              <span class="home-row-archived-badge" data-role="archived-badge" hidden>🗑 ゴミ箱</span>
+            </div>
+            <div class="home-row-meta">
+              <span class="home-row-saved" data-role="saved"></span>
+              <span class="home-row-stats" data-role="stats"></span>
+            </div>
+            <div class="home-row-tags" data-role="tags"></div>
+          </div>
+        </a>
+        <div class="home-row-actions">
+          <button class="home-icon-btn" type="button" data-role="rename" title="リネーム">✎</button>
+          <button class="home-icon-btn" type="button" data-role="duplicate" title="複製">⎘</button>
+          <button class="home-icon-btn" type="button" data-role="tags-edit" title="タグ編集">🏷</button>
+          <button class="home-icon-btn home-icon-btn-danger" type="button" data-role="archive" title="ゴミ箱へ">🗑</button>
+          <button class="home-icon-btn" type="button" data-role="restore" title="復元" hidden>↺</button>
+          <button class="home-icon-btn home-icon-btn-danger" type="button" data-role="delete" title="完全削除" hidden>✕</button>
+        </div>
+      </li>
+    </template>
+
+    <script src="./dist/browser/home.js"></script>
+  </body>
+</html>

@@ -1,3 +1,57 @@
+// ---------------------------------------------------------------------------
+// HOME integration (decisions Q6 / Q9). Cross-tab "currently open" notification
+// is broadcast on a well-known channel so the standalone home.html can
+// highlight which docs are open in viewer tabs.
+// ---------------------------------------------------------------------------
+const HOME_BROADCAST_CHANNEL_NAME = "m3e:home:v1";
+const homeBroadcast: BroadcastChannel | null =
+  typeof BroadcastChannel !== "undefined"
+    ? new BroadcastChannel(HOME_BROADCAST_CHANNEL_NAME)
+    : null;
+function currentLocalDocId(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("localDocId");
+  } catch {
+    return null;
+  }
+}
+function announceOpenDoc(): void {
+  if (!homeBroadcast) return;
+  const id = currentLocalDocId();
+  if (!id) return;
+  homeBroadcast.postMessage({ type: "doc-open", docId: id, ts: Date.now() });
+}
+function announceCloseDoc(): void {
+  if (!homeBroadcast) return;
+  const id = currentLocalDocId();
+  if (!id) return;
+  homeBroadcast.postMessage({ type: "doc-close", docId: id, ts: Date.now() });
+}
+function navigateToHome(): void {
+  announceCloseDoc();
+  window.location.href = "./home.html";
+}
+if (homeBroadcast) {
+  homeBroadcast.addEventListener("message", (ev) => {
+    const msg = ev?.data as { type?: string } | null;
+    if (msg && msg.type === "ping") announceOpenDoc();
+  });
+  window.addEventListener("pagehide", () => announceCloseDoc());
+  // Re-announce periodically so HOME can expire stale entries.
+  window.setInterval(announceOpenDoc, 10_000);
+  // Initial announcement after the document settles.
+  window.setTimeout(announceOpenDoc, 0);
+}
+
+const homeNavBtn = document.getElementById("home-btn");
+if (homeNavBtn) {
+  homeNavBtn.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    navigateToHome();
+  });
+}
+
 const fileInput = document.getElementById("file-input") as HTMLInputElement;
 const loadDefaultBtn = document.getElementById("load-default");
 const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
@@ -959,7 +1013,8 @@ function exitScope(): boolean {
   }
   const scopeRoot = currentScopeRootNode();
   if (!scopeRoot || scopeRoot.id === doc.state.rootId) {
-    setStatus("Already at root scope.");
+    // Decision Q6: at root scope, exiting jumps straight to HOME (no toast).
+    navigateToHome();
     return false;
   }
   let nextScopeId = doc.state.rootId;
