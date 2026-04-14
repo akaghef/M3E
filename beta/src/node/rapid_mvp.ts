@@ -231,6 +231,88 @@ class RapidMvpModel {
     return id;
   }
 
+  /**
+   * Change an alias node's access level (read / write).
+   * Per Scope_and_Alias.md: default is read, write aliases can forward edits to target.
+   */
+  setAliasAccess(aliasId: string, access: AliasAccess): void {
+    const node = this._requireNode(aliasId);
+    if (node.nodeType !== "alias") {
+      throw new Error(`Node ${aliasId} is not an alias.`);
+    }
+    if (access !== "read" && access !== "write") {
+      throw new Error(`Invalid alias access: ${String(access)}`);
+    }
+    this._pushHistory();
+    node.access = access;
+  }
+
+  /**
+   * Rename an alias: updates aliasLabel (not target). Per spec, alias rename
+   * is aliasLabel editing by default. Pass empty/undefined to clear aliasLabel
+   * (alias then displays target's current label).
+   */
+  renameAlias(aliasId: string, aliasLabel: string | null | undefined): void {
+    const node = this._requireNode(aliasId);
+    if (node.nodeType !== "alias") {
+      throw new Error(`Node ${aliasId} is not an alias.`);
+    }
+    this._pushHistory();
+    const trimmed = (aliasLabel ?? "").trim();
+    if (trimmed.length === 0) {
+      node.aliasLabel = undefined;
+    } else {
+      node.aliasLabel = trimmed;
+    }
+    // Refresh visible text (not applicable if broken — keep "(deleted)" display)
+    if (!node.isBroken) {
+      if (trimmed.length > 0) {
+        node.text = trimmed;
+      } else if (node.targetNodeId) {
+        const target = this.state.nodes[node.targetNodeId];
+        if (target) node.text = this._displayLabel(target);
+      }
+    }
+  }
+
+  /**
+   * Resolve alias to its canonical target node. Returns null if broken or missing.
+   * alias -> alias chains are already forbidden, so single hop is sufficient.
+   */
+  resolveAliasTarget(aliasId: string): TreeNode | null {
+    const node = this._requireNode(aliasId);
+    if (node.nodeType !== "alias") {
+      throw new Error(`Node ${aliasId} is not an alias.`);
+    }
+    if (node.isBroken || !node.targetNodeId) return null;
+    return this.state.nodes[node.targetNodeId] ?? null;
+  }
+
+  /**
+   * Edit the target node's text through a write-alias. Read-aliases and
+   * broken aliases cannot forward edits. Per spec section "access control".
+   */
+  editViaAlias(aliasId: string, newText: string): void {
+    const node = this._requireNode(aliasId);
+    if (node.nodeType !== "alias") {
+      throw new Error(`Node ${aliasId} is not an alias.`);
+    }
+    if (node.isBroken) {
+      throw new Error(`Alias ${aliasId} is broken; cannot forward edits.`);
+    }
+    if ((node.access ?? "read") !== "write") {
+      throw new Error(`Alias ${aliasId} is read-only; cannot forward edits to target.`);
+    }
+    if (!node.targetNodeId) {
+      throw new Error(`Alias ${aliasId} has no target.`);
+    }
+    const target = this.state.nodes[node.targetNodeId];
+    if (!target) {
+      throw new Error(`Alias ${aliasId} target is missing.`);
+    }
+    this.editNode(target.id, newText);
+  }
+
   addLink(sourceNodeId: string, targetNodeId: string, options?: {
     relationType?: string;
     label?: string;
