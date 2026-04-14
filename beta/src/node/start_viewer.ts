@@ -745,8 +745,43 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
     return true;
   }
 
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const scopeParam = url.searchParams.get("scope");
+  const depthParam = url.searchParams.get("depth");
+
   if (req.method === "GET") {
     try {
+      if (scopeParam && scopeParam.trim().length > 0) {
+        const scopeId = scopeParam.trim();
+        let depth: number | undefined;
+        if (depthParam !== null) {
+          const n = Number(depthParam);
+          if (!Number.isFinite(n) || n < 0) {
+            sendJson(res, 400, {
+              ok: false,
+              error: { code: "SCOPE_INVALID", message: `Invalid depth parameter: ${depthParam}` },
+            });
+            return true;
+          }
+          depth = Math.floor(n);
+        }
+        const result = RapidMvpModel.readScopedState(SQLITE_DB_PATH, docId, scopeId, depth);
+        if (!result.ok) {
+          sendJson(res, 404, { ok: false, error: result.error });
+          return true;
+        }
+        sendJson(res, 200, {
+          version: result.doc.version,
+          savedAt: result.doc.savedAt,
+          state: result.doc.state,
+          scope: {
+            rootId: scopeId,
+            depth: depth === undefined ? null : depth,
+            nodeCount: result.nodeCount,
+          },
+        });
+        return true;
+      }
       const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, docId);
       sendJson(res, 200, {
         version: 1,
@@ -782,6 +817,31 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
       const nodesObj = (candidate.state as Record<string, unknown>).nodes;
       if (typeof nodesObj === "object" && nodesObj !== null && Object.keys(nodesObj).length === 0) {
         sendJson(res, 400, { error: "State contains no nodes — refusing to save empty document." });
+        return true;
+      }
+
+      // Scoped write: only replace the subtree rooted at scope.
+      if (scopeParam && scopeParam.trim().length > 0) {
+        const scopeId = scopeParam.trim();
+        const result = RapidMvpModel.writeScopedState(
+          SQLITE_DB_PATH,
+          docId,
+          scopeId,
+          candidate.state as never,
+        );
+        if (!result.ok) {
+          const status = result.error.code === "SCOPE_NOT_FOUND" ? 404 : 400;
+          sendJson(res, status, { ok: false, error: result.error });
+          return true;
+        }
+        const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+        broadcastDocUpdate(docId, result.savedAt, sourceTabId);
+        sendJson(res, 200, {
+          ok: true,
+          savedAt: result.savedAt,
+          documentId: docId,
+          scope: { rootId: scopeId, replacedNodeCount: result.replacedNodeCount },
+        });
         return true;
       }
 

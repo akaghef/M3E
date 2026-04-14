@@ -295,6 +295,140 @@ Body:
 - ツリーの循環検出（DFS）
 - 孤立ノードの検出
 
+### Scope parameter (`scope=<nodeId>`)
+
+`GET` と `POST` の両方に対して、クエリパラメータ `scope` を指定することで
+ドキュメント全体ではなく **`scope` ノードを root とする部分木（subtree）** に
+対する読み書きへ切り替えられる。
+
+主なユースケースは AI エージェントや人間が「対象のノード ID をコピペして
+部分木だけをやり取りする」ワークフロー。`scope` を付けなかった場合は
+従来通りドキュメント全体を対象とする（互換性あり）。
+
+#### `GET /api/docs/{docId}?scope=<nodeId>&depth=N`
+
+`scope` ノードを root とする部分木を返す。
+
+クエリパラメータ:
+
+- `scope` (string, 必須): 部分木の root として扱うノード ID
+- `depth` (integer, 任意): 下降する階層数
+  - 未指定: 無制限（フル部分木）
+  - `0`: `scope` ノードのみ（子なし）
+  - `N > 0`: `scope` から N 階層下まで
+
+成功レスポンス (200):
+
+```json
+{
+  "version": 1,
+  "savedAt": "2026-04-14T00:00:00.000Z",
+  "state": {
+    "rootId": "<scope>",
+    "nodes": { "<scope>": { ... }, "<descendant>": { ... } },
+    "links": { "<linkId>": { ... } }
+  },
+  "scope": {
+    "rootId": "<scope>",
+    "depth": null,
+    "nodeCount": 3
+  }
+}
+```
+
+- `state.rootId` は必ず `scope` になる。
+- `state.nodes` には `scope` とその子孫のみが含まれる。
+- `state.links` は **両端点が部分木内に存在するリンクだけ** を返す（部分木を
+  またぐリンクは除外される）。
+- レスポンスルートの `scope.rootId` / `scope.depth` / `scope.nodeCount` は
+  クライアントが渡したスコープの確認用。
+
+エラー:
+
+| status | code | 条件 |
+|--------|------|------|
+| 400 | `SCOPE_INVALID` | `depth` が数値として不正 |
+| 404 | `SCOPE_NOT_FOUND` | `scope` に一致するノードがドキュメント内に存在しない |
+
+エラー body 形式:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "SCOPE_NOT_FOUND",
+    "message": "Scope node not found in document: <id>",
+    "details": { "documentId": "...", "scopeId": "..." }
+  }
+}
+```
+
+#### `POST /api/docs/{docId}?scope=<nodeId>`
+
+`scope` ノードを root とする部分木だけを丸ごと置き換える。
+部分木の外側のノード・リンクは保持される。
+
+クエリパラメータ:
+
+- `scope` (string, 必須): 置き換え対象の部分木 root
+
+Body:
+
+```json
+{
+  "state": {
+    "rootId": "<scope>",
+    "nodes": { "<scope>": { ... }, ... },
+    "links": { ... }
+  }
+}
+```
+
+制約（**conservative**。将来的に緩めるのは容易だが、一度通した書き込みを
+遡って拒否することは不可能なため、初版は厳しめ）:
+
+- `state.rootId === scope` 必須。
+- `state.nodes[scope]` 必須。
+- `state.nodes[scope].parentId` は `null` または **保存済みドキュメントでの
+  scope ノードの元の `parentId`** と一致していなければならない。異なる値を
+  渡すと `SCOPE_WRITE_PARENT_MUTATION` で拒否される。
+- 部分木内のノードの `parentId` / `children` は **すべて body 内の nodes を
+  参照していなければならない**。スコープ外のノード ID を参照すると
+  `SCOPE_WRITE_OUTSIDE_REFERENCE` で拒否される。
+- 部分木内の links も両端点が body 内 nodes に含まれる必要がある。
+- 部分木外に既に存在する ID と衝突する新規ノードは拒否される。
+
+成功レスポンス (200):
+
+```json
+{
+  "ok": true,
+  "savedAt": "2026-04-14T00:00:00.000Z",
+  "documentId": "<docId>",
+  "scope": { "rootId": "<scope>", "replacedNodeCount": 5 }
+}
+```
+
+エラー:
+
+| status | code | 条件 |
+|--------|------|------|
+| 404 | `SCOPE_NOT_FOUND` | 保存済みドキュメントに `scope` が存在しない |
+| 400 | `SCOPE_INVALID` | body が不正 / 結果がモデルバリデーションを通らない |
+| 400 | `SCOPE_WRITE_ROOT_MISMATCH` | `state.rootId !== scope` |
+| 400 | `SCOPE_WRITE_OUTSIDE_REFERENCE` | 部分木外のノードを参照している |
+| 400 | `SCOPE_WRITE_PARENT_MUTATION` | scope の親を付け替えようとしている |
+
+エラー body は GET と同じ `{ok:false, error:{code, message, details?}}` 形式。
+
+#### 置換時のリンクの扱い
+
+部分木置換時、**置換前の部分木に触れていたリンク**（いずれかの端点が古い部分木
+に含まれていたもの）はすべて削除される。理由: 旧部分木のノードは削除される
+ため、部分木をまたぐリンクはそのままでは dangling になる。クロススコープな
+リンクを維持したい場合、クライアント側で `scope` を付けずに全ドキュメント
+POST を行うか、置換後に対象のリンクを再作成する必要がある。
+
 ---
 
 ## Audit Log API
