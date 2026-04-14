@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import type { TreeNode, AppState, SavedDoc, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
+import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -863,6 +864,318 @@ class RapidMvpModel {
     } finally {
       db.close();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scoped read / write (agent subtree access)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Collect all node ids in the subtree rooted at `scopeId`, limited to
+   * `depth` levels (0 = scope only, undefined = unlimited).
+   */
+  static collectSubtreeIds(
+    state: AppState,
+    scopeId: string,
+    depth: number | undefined,
+  ): string[] | null {
+    if (!state.nodes[scopeId]) {
+      return null;
+    }
+    const maxDepth = depth === undefined ? Infinity : Math.max(0, Math.floor(depth));
+    const ids: string[] = [];
+    const stack: Array<{ id: string; d: number }> = [{ id: scopeId, d: 0 }];
+    while (stack.length > 0) {
+      const { id, d } = stack.pop()!;
+      const node = state.nodes[id];
+      if (!node) continue;
+      ids.push(id);
+      if (d >= maxDepth) continue;
+      for (let i = node.children.length - 1; i >= 0; i -= 1) {
+        stack.push({ id: node.children[i]!, d: d + 1 });
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Build a SavedDoc containing only the subtree rooted at `scopeId`.
+   * Links are included only when BOTH endpoints are inside the subtree.
+   */
+  static readScopedState(
+    dbPath: string,
+    documentId: string,
+    scopeId: string,
+    depth?: number,
+  ): ScopedReadResult {
+    let model: RapidMvpModel;
+    try {
+      model = RapidMvpModel.loadFromSqlite(dbPath, documentId);
+    } catch (err) {
+      // bubble as standard error — callers distinguish doc-not-found at the handler level
+      throw err;
+    }
+
+    const state = model.toJSON();
+    const ids = RapidMvpModel.collectSubtreeIds(state, scopeId, depth);
+    if (!ids) {
+      return {
+        ok: false,
+        error: {
+          code: "SCOPE_NOT_FOUND",
+          message: `Scope node not found in document: ${scopeId}`,
+          details: { documentId, scopeId },
+        },
+      };
+    }
+    const idSet = new Set(ids);
+    const subNodes: Record<string, TreeNode> = {};
+    for (const id of ids) {
+      const src = state.nodes[id]!;
+      // Deep clone and — for the scope root — detach parent/children above depth limit
+      const clone: TreeNode = JSON.parse(JSON.stringify(src));
+      if (id === scopeId) {
+        clone.parentId = null;
+      }
+      // Filter children to those actually present in the subtree slice
+      clone.children = clone.children.filter((c) => idSet.has(c));
+      subNodes[id] = clone;
+    }
+
+    const subLinks: Record<string, GraphLink> = {};
+    const srcLinks = state.links ?? {};
+    for (const [linkId, link] of Object.entries(srcLinks)) {
+      if (idSet.has(link.sourceNodeId) && idSet.has(link.targetNodeId)) {
+        subLinks[linkId] = { ...link };
+      }
+    }
+
+    const doc: SavedDoc = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      state: {
+        rootId: scopeId,
+        nodes: subNodes,
+        links: subLinks,
+      },
+    };
+    return { ok: true, doc, nodeCount: ids.length };
+  }
+
+  /**
+   * Replace only the subtree rooted at `scopeId` within `documentId`.
+   *
+   * Validation rules (conservative):
+   *   - scopeId must exist in the stored doc
+   *   - incomingState.rootId must equal scopeId
+   *   - incomingState.nodes[scopeId] must exist
+   *   - every child reference inside incoming nodes must also be inside
+   *     incomingState.nodes (no references escaping the subtree)
+   *   - every parentId (except the scope root's own) must also be inside
+   *     incomingState.nodes — scope root's parentId is ignored and the
+   *     stored parent is preserved
+   *   - incoming links may only reference nodes inside the subtree
+   *
+   * On success, nodes outside the subtree are preserved unchanged; nodes
+   * inside the old subtree are removed and replaced by the new subtree,
+   * and links wholly inside the old subtree are removed and replaced by
+   * the new links.
+   */
+  static writeScopedState(
+    dbPath: string,
+    documentId: string,
+    scopeId: string,
+    incomingState: AppState,
+  ): ScopedWriteResult {
+    const model = RapidMvpModel.loadFromSqlite(dbPath, documentId);
+    const stored = model.toJSON();
+
+    if (!stored.nodes[scopeId]) {
+      return {
+        ok: false,
+        error: {
+          code: "SCOPE_NOT_FOUND",
+          message: `Scope node not found in document: ${scopeId}`,
+          details: { documentId, scopeId },
+        },
+      };
+    }
+
+    if (!incomingState || typeof incomingState !== "object") {
+      return {
+        ok: false,
+        error: { code: "SCOPE_INVALID", message: "Missing or invalid incoming state." },
+      };
+    }
+
+    if (incomingState.rootId !== scopeId) {
+      return {
+        ok: false,
+        error: {
+          code: "SCOPE_WRITE_ROOT_MISMATCH",
+          message: `Incoming state.rootId (${incomingState.rootId}) must equal scope (${scopeId}).`,
+        },
+      };
+    }
+
+    const incomingNodes = incomingState.nodes ?? {};
+    const incomingIds = new Set(Object.keys(incomingNodes));
+    if (!incomingNodes[scopeId]) {
+      return {
+        ok: false,
+        error: { code: "SCOPE_INVALID", message: `Incoming nodes missing scope root: ${scopeId}` },
+      };
+    }
+
+    // Disallow references outside the incoming subtree
+    for (const [id, node] of Object.entries(incomingNodes)) {
+      for (const childId of node.children ?? []) {
+        if (!incomingIds.has(childId)) {
+          return {
+            ok: false,
+            error: {
+              code: "SCOPE_WRITE_OUTSIDE_REFERENCE",
+              message: `Node ${id} references child outside subtree: ${childId}`,
+              details: { nodeId: id, childId },
+            },
+          };
+        }
+      }
+      if (id !== scopeId) {
+        if (node.parentId === null || node.parentId === undefined) {
+          return {
+            ok: false,
+            error: {
+              code: "SCOPE_WRITE_OUTSIDE_REFERENCE",
+              message: `Non-root node ${id} must have a parent within the subtree.`,
+              details: { nodeId: id },
+            },
+          };
+        }
+        if (!incomingIds.has(node.parentId)) {
+          return {
+            ok: false,
+            error: {
+              code: "SCOPE_WRITE_OUTSIDE_REFERENCE",
+              message: `Node ${id} references parent outside subtree: ${node.parentId}`,
+              details: { nodeId: id, parentId: node.parentId },
+            },
+          };
+        }
+      }
+    }
+
+    // Links inside the incoming subtree — reject any that reference outside
+    const incomingLinks = incomingState.links ?? {};
+    for (const [linkId, link] of Object.entries(incomingLinks)) {
+      if (!incomingIds.has(link.sourceNodeId) || !incomingIds.has(link.targetNodeId)) {
+        return {
+          ok: false,
+          error: {
+            code: "SCOPE_WRITE_OUTSIDE_REFERENCE",
+            message: `Link ${linkId} references node outside subtree.`,
+            details: { linkId },
+          },
+        };
+      }
+    }
+
+    // Compute the old subtree under scope (full subtree, no depth limit)
+    const oldIds = RapidMvpModel.collectSubtreeIds(stored, scopeId, undefined)!;
+    const oldIdSet = new Set(oldIds);
+
+    // Detect collisions: incoming nodes (other than scopeId) whose ids already
+    // exist OUTSIDE the old subtree would corrupt the doc — reject.
+    for (const id of incomingIds) {
+      if (id === scopeId) continue;
+      if (stored.nodes[id] && !oldIdSet.has(id)) {
+        return {
+          ok: false,
+          error: {
+            code: "SCOPE_WRITE_OUTSIDE_REFERENCE",
+            message: `Incoming node id collides with existing node outside subtree: ${id}`,
+            details: { nodeId: id },
+          },
+        };
+      }
+    }
+
+    // Build merged state:
+    //   - keep stored nodes outside the old subtree
+    //   - swap in incoming nodes for the subtree
+    //   - preserve scope root's original parentId (reject attempts to mutate it)
+    const storedScope = stored.nodes[scopeId]!;
+    const incomingScope = incomingNodes[scopeId]!;
+    if (
+      incomingScope.parentId !== undefined &&
+      incomingScope.parentId !== null &&
+      incomingScope.parentId !== storedScope.parentId
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: "SCOPE_WRITE_PARENT_MUTATION",
+          message: `Cannot mutate scope root's parent. Expected ${storedScope.parentId}, got ${incomingScope.parentId}.`,
+          details: { expected: storedScope.parentId, received: incomingScope.parentId },
+        },
+      };
+    }
+
+    const mergedNodes: Record<string, TreeNode> = {};
+    for (const [id, node] of Object.entries(stored.nodes)) {
+      if (!oldIdSet.has(id)) {
+        mergedNodes[id] = node;
+      }
+    }
+    for (const [id, node] of Object.entries(incomingNodes)) {
+      const clone: TreeNode = JSON.parse(JSON.stringify(node));
+      if (id === scopeId) {
+        clone.parentId = storedScope.parentId;
+      }
+      mergedNodes[id] = clone;
+    }
+
+    // Links: drop any stored link that touches the old subtree (source or target
+    // inside), because those endpoints may no longer exist after replacement.
+    // The caller is expected to re-create cross-subtree links from outside.
+    const mergedLinks: Record<string, GraphLink> = {};
+    const srcLinks = stored.links ?? {};
+    for (const [linkId, link] of Object.entries(srcLinks)) {
+      const touchesOld = oldIdSet.has(link.sourceNodeId) || oldIdSet.has(link.targetNodeId);
+      if (!touchesOld) {
+        mergedLinks[linkId] = link;
+      }
+    }
+    for (const [linkId, link] of Object.entries(incomingLinks)) {
+      mergedLinks[linkId] = link;
+    }
+
+    const mergedState: AppState = {
+      ...stored,
+      rootId: stored.rootId,
+      nodes: mergedNodes,
+      links: mergedLinks,
+    };
+
+    const mergedModel = RapidMvpModel.fromJSON(mergedState);
+    const errors = mergedModel.validate();
+    if (errors.length > 0) {
+      return {
+        ok: false,
+        error: {
+          code: "SCOPE_INVALID",
+          message: `Invalid model after scoped write: ${errors.join(" | ")}`,
+          details: { errors },
+        },
+      };
+    }
+
+    mergedModel.saveToSqlite(dbPath, documentId);
+    return {
+      ok: true,
+      savedAt: new Date().toISOString(),
+      replacedNodeCount: incomingIds.size,
+    };
   }
 
   saveToFile(filePath: string): void {
