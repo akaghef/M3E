@@ -545,6 +545,128 @@ async function handleBackupApi(
   sendJson(res, 200, { ok: true, documentId: route.docId, backups });
 }
 
+// ---------------------------------------------------------------------------
+// Linear-note-box API (per-scope text editor backing store)
+// ---------------------------------------------------------------------------
+
+function parseLinearNoteRoute(urlPath: string): { docId: string; scopeId: string } | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/docs\/([^/]+)\/linear\/([^/]+)$/);
+  if (!match) return null;
+  return {
+    docId: decodeURIComponent(match[1]),
+    scopeId: decodeURIComponent(match[2]),
+  };
+}
+
+async function handleLinearNoteApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: { docId: string; scopeId: string },
+): Promise<void> {
+  const { docId, scopeId } = route;
+  if (!docId || !scopeId) {
+    sendJson(res, 400, { ok: false, error: "Document id and scope id are required." });
+    return;
+  }
+
+  let model: RapidMvpModel;
+  try {
+    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, docId);
+  } catch (err) {
+    const message = (err as Error).message || "Unknown error";
+    if (message === "Document not found.") {
+      sendJson(res, 404, { ok: false, error: message });
+    } else {
+      sendJson(res, 500, { ok: false, error: message });
+    }
+    return;
+  }
+
+  const state = model.toJSON();
+  // Validate scopeId is an existing nodeId.
+  if (!state.nodes || !state.nodes[scopeId]) {
+    sendJson(res, 404, { ok: false, error: `Scope node not found: ${scopeId}` });
+    return;
+  }
+
+  if (req.method === "GET") {
+    const map = state.linearNotesByScope ?? {};
+    const text = typeof map[scopeId] === "string" ? map[scopeId] : "";
+    sendJson(res, 200, { ok: true, scopeId, text });
+    return;
+  }
+
+  if (req.method === "PUT") {
+    let text: string;
+    try {
+      const rawBody = await readRequestBody(req);
+      const parsed = JSON.parse(rawBody) as { text?: unknown };
+      if (typeof parsed.text !== "string") {
+        sendJson(res, 400, { ok: false, error: "Field 'text' (string) is required." });
+        return;
+      }
+      text = parsed.text;
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        sendJson(res, 400, { ok: false, error: "Invalid JSON body." });
+        return;
+      }
+      sendJson(res, 400, { ok: false, error: (err as Error).message || "Invalid body." });
+      return;
+    }
+
+    // Mutate in place: lazy-init the map, write the entry, persist.
+    const nextState: AppState = { ...state };
+    const nextMap: Record<string, string> = { ...(nextState.linearNotesByScope ?? {}) };
+    nextMap[scopeId] = text;
+    nextState.linearNotesByScope = nextMap;
+
+    const nextModel = RapidMvpModel.fromJSON(nextState);
+    const errors = nextModel.validate();
+    if (errors.length > 0) {
+      sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+      return;
+    }
+    nextModel.saveToSqlite(SQLITE_DB_PATH, docId);
+    const savedAt = new Date().toISOString();
+    const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+    incrementDocVersion();
+    broadcastDocUpdate(docId, savedAt, sourceTabId);
+    sendJson(res, 200, { ok: true, scopeId, savedAt });
+    return;
+  }
+
+  if (req.method === "DELETE") {
+    const nextState: AppState = { ...state };
+    const currentMap = nextState.linearNotesByScope ?? {};
+    if (!(scopeId in currentMap)) {
+      // Idempotent: still report ok with savedAt of now but note unchanged.
+      sendJson(res, 200, { ok: true, scopeId, savedAt: new Date().toISOString(), removed: false });
+      return;
+    }
+    const nextMap: Record<string, string> = { ...currentMap };
+    delete nextMap[scopeId];
+    nextState.linearNotesByScope = nextMap;
+
+    const nextModel = RapidMvpModel.fromJSON(nextState);
+    const errors = nextModel.validate();
+    if (errors.length > 0) {
+      sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+      return;
+    }
+    nextModel.saveToSqlite(SQLITE_DB_PATH, docId);
+    const savedAt = new Date().toISOString();
+    const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+    incrementDocVersion();
+    broadcastDocUpdate(docId, savedAt, sourceTabId);
+    sendJson(res, 200, { ok: true, scopeId, savedAt, removed: true });
+    return;
+  }
+
+  sendJson(res, 405, { ok: false, error: "Method not allowed." });
+}
+
 function isLinearTransformRoute(urlPath: string): boolean {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   return pathname === "/api/linear-transform/status" || pathname === "/api/linear-transform/convert";
@@ -1451,6 +1573,12 @@ export function createAppServer(): http.Server {
       }
       const list = getPresenceList(presenceDocId);
       sendJson(res, 200, { ok: true, documentId: presenceDocId, count: list.length, users: list });
+      return;
+    }
+
+    const linearNoteRoute = parseLinearNoteRoute(req.url ?? "/");
+    if (linearNoteRoute) {
+      await handleLinearNoteApi(req, res, linearNoteRoute);
       return;
     }
 

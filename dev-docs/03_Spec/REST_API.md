@@ -34,6 +34,9 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 | `DELETE` | `/api/docs/{docId}` | 物理削除（archived のみ） | 本文書 |
 | `GET` | `/api/docs/{docId}` | ドキュメント読み込み | 本文書 |
 | `POST` | `/api/docs/{docId}` | ドキュメント保存 | 本文書 |
+| `GET` | `/api/docs/{docId}/linear/{scopeId}` | リニアノート取得 | 本文書 |
+| `PUT` | `/api/docs/{docId}/linear/{scopeId}` | リニアノート保存 | 本文書 |
+| `DELETE` | `/api/docs/{docId}/linear/{scopeId}` | リニアノート削除 | 本文書 |
 | `GET` | `/api/sync/status/{docId}` | クラウド同期ステータス | 本文書 |
 | `POST` | `/api/sync/push/{docId}` | クラウドへ push | 本文書 |
 | `POST` | `/api/sync/pull/{docId}` | クラウドから pull | 本文書 |
@@ -294,6 +297,67 @@ Body:
 - Link の `direction` / `style` の値域
 - ツリーの循環検出（DFS）
 - 孤立ノードの検出
+
+---
+
+## Linear Notes API
+
+リニアテキストボックス（スコープ単位の自由記述エリア）を全体ドキュメントの POST ラウンドトリップ無しで編集するための API。
+`AppState.linearNotesByScope: Record<string, string>` を scopeId（= nodeId）単位で読み書きする。
+
+書き込みは in-place で反映され、他のミューテーションと同様に `docVersion` をインクリメントし、
+`/api/docs/{docId}/watch` SSE サブスクライバーに `doc_updated` を通知する。
+
+### `GET /api/docs/{docId}/linear/{scopeId}`
+
+指定スコープのリニアテキストを取得する。未設定なら空文字を返す。
+
+#### 成功レスポンス (200)
+
+```json
+{ "ok": true, "scopeId": "n_xxx", "text": "problem: ..." }
+```
+
+#### エラーレスポンス
+
+| status | 条件 |
+|--------|------|
+| 404 | ドキュメント不在 / scopeId がノードとして存在しない |
+
+### `PUT /api/docs/{docId}/linear/{scopeId}`
+
+指定スコープのリニアテキストを**完全置換**で保存する（追記は client 側の責務）。
+
+#### リクエスト Body
+
+```json
+{ "text": "任意の UTF-8 文字列" }
+```
+
+#### 成功レスポンス (200)
+
+```json
+{ "ok": true, "scopeId": "n_xxx", "savedAt": "2026-04-14T10:00:00.000Z" }
+```
+
+#### エラーレスポンス
+
+| status | 条件 |
+|--------|------|
+| 400 | JSON パース失敗 / `text` が文字列でない / validate エラー |
+| 404 | ドキュメント不在 / scopeId がノードとして存在しない |
+
+### `DELETE /api/docs/{docId}/linear/{scopeId}`
+
+指定スコープのエントリをマップから削除する（キーごと除去）。存在しなかった場合も 200 で返す（冪等）。
+
+#### 成功レスポンス (200)
+
+```json
+{ "ok": true, "scopeId": "n_xxx", "savedAt": "...", "removed": true }
+```
+
+`removed` は実際にキーが存在して削除された場合のみ `true`。
 
 ---
 
