@@ -55,6 +55,10 @@ import type {
   FlashApproveRequest,
   FlashDraftStatus,
 } from "../shared/types";
+import type {
+  DocErrorCode,
+  DocSummary,
+} from "../shared/home_types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
@@ -231,6 +235,224 @@ function parseDocId(urlPath: string): string | null {
     return "";
   }
   return decodeURIComponent(raw);
+}
+
+type HomeRouteAction =
+  | { kind: "list" }
+  | { kind: "new" }
+  | { kind: "duplicate"; docId: string }
+  | { kind: "rename"; docId: string }
+  | { kind: "archive"; docId: string }
+  | { kind: "restore"; docId: string }
+  | { kind: "tags"; docId: string }
+  | { kind: "delete"; docId: string };
+
+function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+
+  if (pathname === "/api/docs" && method === "GET") {
+    return { kind: "list" };
+  }
+  if (pathname === "/api/docs/new" && method === "POST") {
+    return { kind: "new" };
+  }
+
+  const subMatch = pathname.match(/^\/api\/docs\/([^/]+)\/(duplicate|rename|archive|restore|tags)$/);
+  if (subMatch && method === "POST") {
+    const id = decodeURIComponent(subMatch[1]);
+    const action = subMatch[2] as "duplicate" | "rename" | "archive" | "restore" | "tags";
+    return { kind: action, docId: id };
+  }
+
+  // DELETE /api/docs/:id  (single segment, no sub-path)
+  const idMatch = pathname.match(/^\/api\/docs\/([^/]+)$/);
+  if (idMatch && method === "DELETE") {
+    return { kind: "delete", docId: decodeURIComponent(idMatch[1]) };
+  }
+
+  return null;
+}
+
+function sendHomeError(
+  res: http.ServerResponse,
+  status: number,
+  code: DocErrorCode | string,
+  message: string,
+  details?: unknown,
+): void {
+  const payload: { ok: false; error: { code: string; message: string; details?: unknown } } = {
+    ok: false,
+    error: { code, message },
+  };
+  if (details !== undefined) payload.error.details = details;
+  sendJson(res, status, payload);
+}
+
+function newDocId(): string {
+  return `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function handleHomeApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: HomeRouteAction,
+): Promise<boolean> {
+  try {
+    if (route.kind === "list") {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const includeArchived = url.searchParams.get("includeArchived") === "true";
+      const docs = RapidMvpModel.listDocuments(SQLITE_DB_PATH, { includeArchived }) as DocSummary[];
+      sendJson(res, 200, { docs });
+      return true;
+    }
+
+    if (route.kind === "new") {
+      let label: string | undefined;
+      try {
+        const raw = await readRequestBody(req);
+        if (raw.trim().length > 0) {
+          const parsed = JSON.parse(raw) as { label?: unknown };
+          if (parsed && typeof parsed.label === "string") {
+            label = parsed.label.trim();
+          }
+        }
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendHomeError(res, 400, "INVALID_BODY", "Invalid JSON body.");
+          return true;
+        }
+        throw err;
+      }
+      if (label !== undefined && label.length === 0) {
+        sendHomeError(res, 400, "INVALID_LABEL", "Label cannot be empty.");
+        return true;
+      }
+      const id = newDocId();
+      RapidMvpModel.createDocument(SQLITE_DB_PATH, id, label && label.length > 0 ? label : "Untitled");
+      sendJson(res, 200, { ok: true, id });
+      return true;
+    }
+
+    if (route.kind === "duplicate") {
+      if (!RapidMvpModel.documentExists(SQLITE_DB_PATH, route.docId)) {
+        sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+        return true;
+      }
+      const newId = newDocId();
+      RapidMvpModel.duplicateDocument(SQLITE_DB_PATH, route.docId, newId);
+      sendJson(res, 200, { ok: true, id: newId });
+      return true;
+    }
+
+    if (route.kind === "rename") {
+      let label: string;
+      try {
+        const raw = await readRequestBody(req);
+        const parsed = JSON.parse(raw) as { label?: unknown };
+        if (!parsed || typeof parsed.label !== "string") {
+          sendHomeError(res, 400, "INVALID_LABEL", "label (string) is required.");
+          return true;
+        }
+        label = parsed.label;
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendHomeError(res, 400, "INVALID_BODY", "Invalid JSON body.");
+          return true;
+        }
+        throw err;
+      }
+      if (label.trim().length === 0) {
+        sendHomeError(res, 400, "INVALID_LABEL", "Label cannot be empty.");
+        return true;
+      }
+      try {
+        RapidMvpModel.renameDocument(SQLITE_DB_PATH, route.docId, label);
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "Document not found.") {
+          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          return true;
+        }
+        throw err;
+      }
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
+
+    if (route.kind === "archive" || route.kind === "restore") {
+      try {
+        RapidMvpModel.setArchived(SQLITE_DB_PATH, route.docId, route.kind === "archive");
+      } catch (err) {
+        if ((err as Error).message === "Document not found.") {
+          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          return true;
+        }
+        throw err;
+      }
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
+
+    if (route.kind === "tags") {
+      let tags: string[];
+      try {
+        const raw = await readRequestBody(req);
+        const parsed = JSON.parse(raw) as { tags?: unknown };
+        if (!parsed || !Array.isArray(parsed.tags) || !parsed.tags.every((t) => typeof t === "string")) {
+          sendHomeError(res, 400, "INVALID_TAGS", "tags must be a string[].");
+          return true;
+        }
+        tags = parsed.tags as string[];
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendHomeError(res, 400, "INVALID_BODY", "Invalid JSON body.");
+          return true;
+        }
+        throw err;
+      }
+      try {
+        RapidMvpModel.setDocumentTags(SQLITE_DB_PATH, route.docId, tags);
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "Document not found.") {
+          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          return true;
+        }
+        if (msg === "Invalid tags.") {
+          sendHomeError(res, 400, "INVALID_TAGS", msg);
+          return true;
+        }
+        throw err;
+      }
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
+
+    if (route.kind === "delete") {
+      try {
+        RapidMvpModel.deleteDocument(SQLITE_DB_PATH, route.docId);
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "Document not found.") {
+          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          return true;
+        }
+        if (msg === "Document is not archived.") {
+          sendHomeError(res, 409, "NOT_ARCHIVED", "Document must be archived before delete. Call /archive first.");
+          return true;
+        }
+        throw err;
+      }
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
+
+    sendHomeError(res, 405, "METHOD_NOT_ALLOWED", "Method not allowed.");
+    return true;
+  } catch (err) {
+    sendHomeError(res, 500, "INTERNAL_ERROR", (err as Error).message || "Unknown error.");
+    return true;
+  }
 }
 
 function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; docId: string } | null {
@@ -1229,6 +1451,12 @@ export function createAppServer(): http.Server {
       }
       const list = getPresenceList(presenceDocId);
       sendJson(res, 200, { ok: true, documentId: presenceDocId, count: list.length, users: list });
+      return;
+    }
+
+    const homeRoute = parseHomeRoute(req.url ?? "/", req.method ?? "GET");
+    if (homeRoute) {
+      await handleHomeApi(req, res, homeRoute);
       return;
     }
 

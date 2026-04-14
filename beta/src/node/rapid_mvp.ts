@@ -12,6 +12,30 @@ type SqliteDocumentRow = {
   stateJson: string;
 };
 
+type SqliteDocumentListRow = {
+  id: string;
+  version: number;
+  savedAt: string;
+  stateJson: string;
+  tags: string | null;
+  archived: number | null;
+};
+
+export interface DocumentSummary {
+  id: string;
+  label: string;
+  savedAt: string;
+  nodeCount: number;
+  charCount: number;
+  tags: string[];
+  archived: boolean;
+}
+
+export interface ListDocumentsOptions {
+  /** When true, archived documents are also returned. Default: false. */
+  includeArchived?: boolean;
+}
+
 class RapidMvpModel {
   state: AppState;
   undoStack: AppState[];
@@ -534,7 +558,220 @@ class RapidMvpModel {
         state_json TEXT NOT NULL
       )
     `);
+
+    // ALTER TABLE migration for HOME page (tags, archived).
+    // SQLite has no IF NOT EXISTS for ADD COLUMN, so we inspect pragma first.
+    const cols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>;
+    const colNames = new Set(cols.map((c) => c.name));
+    if (!colNames.has("tags")) {
+      db.exec(`ALTER TABLE documents ADD COLUMN tags TEXT`);
+    }
+    if (!colNames.has("archived")) {
+      db.exec(`ALTER TABLE documents ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
+    }
+
     return db;
+  }
+
+  // ---------------------------------------------------------------------------
+  // HOME page support: document-level CRUD & metadata
+  // ---------------------------------------------------------------------------
+
+  private static parseTagsColumn(raw: string | null): string[] {
+    if (!raw) return [];
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((t): t is string => typeof t === "string")
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0);
+        }
+      } catch {
+        // fall through to comma-split
+      }
+    }
+    return trimmed
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  }
+
+  private static computeStateMetrics(stateJson: string): { label: string; nodeCount: number; charCount: number } {
+    let label = "Untitled";
+    let nodeCount = 0;
+    let charCount = 0;
+    try {
+      const state = JSON.parse(stateJson) as Partial<AppState>;
+      const nodes = (state?.nodes ?? {}) as Record<string, TreeNode>;
+      const ids = Object.keys(nodes);
+      nodeCount = ids.length;
+      for (const id of ids) {
+        const n = nodes[id]!;
+        charCount += (n.text?.length ?? 0) + (n.details?.length ?? 0) + (n.note?.length ?? 0);
+      }
+      const rootId = state?.rootId;
+      if (rootId && nodes[rootId] && typeof nodes[rootId]!.text === "string") {
+        const t = nodes[rootId]!.text.trim();
+        if (t.length > 0) label = t;
+      }
+    } catch {
+      // Treat as empty document — keep defaults.
+    }
+    return { label, nodeCount, charCount };
+  }
+
+  static listDocuments(dbPath: string, options: ListDocumentsOptions = {}): DocumentSummary[] {
+    const includeArchived = Boolean(options.includeArchived);
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const sql = includeArchived
+        ? `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived FROM documents ORDER BY saved_at DESC`
+        : `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived FROM documents WHERE COALESCE(archived, 0) = 0 ORDER BY saved_at DESC`;
+      const rows = db.prepare(sql).all() as SqliteDocumentListRow[];
+      return rows.map((row) => {
+        const metrics = RapidMvpModel.computeStateMetrics(row.stateJson);
+        return {
+          id: row.id,
+          label: metrics.label,
+          savedAt: row.savedAt,
+          nodeCount: metrics.nodeCount,
+          charCount: metrics.charCount,
+          tags: RapidMvpModel.parseTagsColumn(row.tags),
+          archived: Number(row.archived ?? 0) === 1,
+        };
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  static documentExists(dbPath: string, documentId: string): boolean {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const row = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(documentId) as { hit: number } | undefined;
+      return Boolean(row);
+    } finally {
+      db.close();
+    }
+  }
+
+  static createDocument(dbPath: string, documentId: string, rootLabel = "Untitled"): void {
+    if (RapidMvpModel.documentExists(dbPath, documentId)) {
+      throw new Error("Document already exists.");
+    }
+    const model = new RapidMvpModel(rootLabel);
+    model.saveToSqlite(dbPath, documentId);
+  }
+
+  static duplicateDocument(dbPath: string, sourceId: string, newId: string): void {
+    if (RapidMvpModel.documentExists(dbPath, newId)) {
+      throw new Error("Document already exists.");
+    }
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const src = db
+        .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson, tags FROM documents WHERE id = ?`)
+        .get(sourceId) as { version: number; savedAt: string; stateJson: string; tags: string | null } | undefined;
+      if (!src) {
+        throw new Error("Document not found.");
+      }
+      db.prepare(
+        `INSERT INTO documents (id, version, saved_at, state_json, tags, archived)
+         VALUES (@id, @version, @savedAt, @stateJson, @tags, 0)`,
+      ).run({
+        id: newId,
+        version: src.version,
+        savedAt: new Date().toISOString(),
+        stateJson: src.stateJson,
+        tags: src.tags,
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  static renameDocument(dbPath: string, documentId: string, newLabel: string): void {
+    const trimmed = newLabel.trim();
+    if (trimmed.length === 0) {
+      throw new Error("Invalid label.");
+    }
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const row = db
+        .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson FROM documents WHERE id = ?`)
+        .get(documentId) as SqliteDocumentRow & { savedAt: string } | undefined;
+      if (!row) {
+        throw new Error("Document not found.");
+      }
+      const state = JSON.parse(row.stateJson) as AppState;
+      const root = state?.nodes?.[state.rootId];
+      if (root) {
+        root.text = trimmed;
+      }
+      db.prepare(
+        `UPDATE documents SET state_json = @stateJson, saved_at = @savedAt WHERE id = @id`,
+      ).run({
+        id: documentId,
+        stateJson: JSON.stringify(state),
+        savedAt: new Date().toISOString(),
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  static setDocumentTags(dbPath: string, documentId: string, tags: string[]): void {
+    if (!Array.isArray(tags) || !tags.every((t) => typeof t === "string")) {
+      throw new Error("Invalid tags.");
+    }
+    const cleaned = Array.from(new Set(tags.map((t) => t.trim()).filter((t) => t.length > 0)));
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const result = db
+        .prepare(`UPDATE documents SET tags = ? WHERE id = ?`)
+        .run(JSON.stringify(cleaned), documentId);
+      if (result.changes === 0) {
+        throw new Error("Document not found.");
+      }
+    } finally {
+      db.close();
+    }
+  }
+
+  static setArchived(dbPath: string, documentId: string, archived: boolean): void {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const result = db
+        .prepare(`UPDATE documents SET archived = ? WHERE id = ?`)
+        .run(archived ? 1 : 0, documentId);
+      if (result.changes === 0) {
+        throw new Error("Document not found.");
+      }
+    } finally {
+      db.close();
+    }
+  }
+
+  static deleteDocument(dbPath: string, documentId: string): void {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const row = db
+        .prepare(`SELECT COALESCE(archived, 0) AS archived FROM documents WHERE id = ?`)
+        .get(documentId) as { archived: number } | undefined;
+      if (!row) {
+        throw new Error("Document not found.");
+      }
+      if (Number(row.archived) !== 1) {
+        throw new Error("Document is not archived.");
+      }
+      db.prepare(`DELETE FROM documents WHERE id = ?`).run(documentId);
+    } finally {
+      db.close();
+    }
   }
 
   saveToFile(filePath: string): void {
