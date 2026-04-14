@@ -5,6 +5,7 @@ import path from "path";
 import { runLinearTransform } from "./linear_agent";
 import { buildSubtreeOutline } from "./indented_text_parser";
 import { RapidMvpModel } from "./rapid_mvp";
+import { validateVaultPath } from "./vault_path";
 import type {
   AppState,
   TreeNode,
@@ -173,9 +174,7 @@ export async function exportVaultFromAppState(
   request: VaultExportRequest,
   hooks?: { onProgress?: (progress: VaultExportProgress) => void },
 ): Promise<VaultExportResult> {
-  if (!request.vaultPath || !path.isAbsolute(request.vaultPath)) {
-    throw new Error("vaultPath must be an absolute path.");
-  }
+  const outputRoot = validateVaultPath(request.vaultPath, { mustExist: false, allowCreate: true });
 
   const exportRootId = request.nodeId || state.rootId;
   const exportRoot = state.nodes[exportRootId];
@@ -190,7 +189,6 @@ export async function exportVaultFromAppState(
     message: `Planned ${exportPlan.files.length} markdown files.`,
   });
 
-  const outputRoot = path.resolve(request.vaultPath);
   await fs.promises.mkdir(outputRoot, { recursive: true });
 
   for (const folder of exportPlan.folders) {

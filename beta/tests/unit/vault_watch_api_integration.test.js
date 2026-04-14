@@ -28,7 +28,8 @@ async function requestJson(url, init) {
 beforeAll(async () => {
   dataDir = tmpDir();
   vaultDir = tmpDir();
-  writeFile(vaultDir, "index.md", "# Start\n\nOriginal body.");
+  writeFile(vaultDir, "index.md", "# Start\n\nLink to [[notes/alpha]].");
+  writeFile(vaultDir, "notes/alpha.md", "# Alpha\n\nOriginal body.");
 
   process.env.M3E_DATA_DIR = dataDir;
   process.env.M3E_DB_FILE = "watch.sqlite";
@@ -85,7 +86,7 @@ test("watch start/status/stop lifecycle works", async () => {
 
   const dbPath = path.join(dataDir, "watch.sqlite");
   const model = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
-  const fileNode = Object.values(model.state.nodes).find((node) => node.attributes["vault:kind"] === "file");
+  const fileNode = Object.values(model.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
   fileNode.details = "Changed from doc save.";
 
   const saved = await requestJson(`${baseUrl}/api/docs/vault-watch-doc`, {
@@ -95,9 +96,19 @@ test("watch start/status/stop lifecycle works", async () => {
   });
   expect(saved.response.status).toBe(200);
 
-  await new Promise((resolve) => setTimeout(resolve, 1200));
-  const exported = fs.readFileSync(path.join(vaultDir, "index.md"), "utf8");
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  const exported = fs.readFileSync(path.join(vaultDir, "notes", "alpha.md"), "utf8");
   expect(exported).toContain("Changed from doc save.");
+
+  fs.rmSync(path.join(vaultDir, "notes", "alpha.md"));
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  const afterDelete = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
+  const deletedNode = Object.values(afterDelete.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
+  expect(deletedNode).toBeTruthy();
+  expect(deletedNode.attributes["vault:status"]).toBe("missing");
+  const brokenAlias = Object.values(afterDelete.state.nodes).find((node) => node.nodeType === "alias");
+  expect(brokenAlias).toBeTruthy();
+  expect(brokenAlias.isBroken).toBe(true);
 
   const stopped = await requestJson(`${baseUrl}/api/vault/watch`, {
     method: "DELETE",

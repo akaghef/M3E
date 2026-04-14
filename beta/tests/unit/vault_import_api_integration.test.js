@@ -107,3 +107,18 @@ test("POST /api/vault/import rejects missing vaultPath", async () => {
   expect(payload.ok).toBe(false);
   expect(payload.error).toMatch(/vaultPath/);
 });
+
+test("POST /api/vault/import rejects protected system paths", async () => {
+  const protectedPath = process.platform === "win32"
+    ? path.join(process.env.SystemRoot || "C:\\Windows", "System32")
+    : "/etc";
+  const response = await fetch(`${baseUrl}/api/vault/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ vaultPath: protectedPath }),
+  });
+  const payload = await response.json();
+  expect(response.status).toBe(400);
+  expect(payload.ok).toBe(false);
+  expect(payload.error).toMatch(/protected system directory/);
+});

@@ -47,8 +47,10 @@ import {
 } from "./flash_ingest";
 import { exportVaultFromSqlite } from "./vault_exporter";
 import { importVaultToSqlite } from "./vault_importer";
+import { validateVaultPath } from "./vault_path";
 import {
   configureVaultWatchEmitter,
+  configureVaultWatchDocUpdateEmitter,
   getVaultWatchStatus,
   handleDocumentSavedForVaultWatch,
   listVaultWatchStatuses,
@@ -817,6 +819,9 @@ function broadcastVaultWatchEvent(event: VaultWatchEvent): void {
 }
 
 configureVaultWatchEmitter(broadcastVaultWatchEvent);
+configureVaultWatchDocUpdateEmitter((documentId, savedAt) => {
+  broadcastDocUpdate(documentId, savedAt, null);
+});
 
 async function handleVaultApi(
   req: http.IncomingMessage,
@@ -831,6 +836,7 @@ async function handleVaultApi(
         sendJson(res, 400, { ok: false, error: "vaultPath is required." });
         return;
       }
+      validateVaultPath(request.vaultPath, { mustExist: true });
 
       beginSse(res);
       const result = await importVaultToSqlite(SQLITE_DB_PATH, request, {
@@ -863,6 +869,7 @@ async function handleVaultApi(
         sendJson(res, 400, { ok: false, error: "vaultPath is required." });
         return;
       }
+      validateVaultPath(request.vaultPath, { mustExist: false, allowCreate: true });
 
       beginSse(res);
       const result = await exportVaultFromSqlite(SQLITE_DB_PATH, request, {
@@ -878,6 +885,7 @@ async function handleVaultApi(
     if (route.action === "watch-start") {
       const rawBody = await readRequestBody(req);
       const request = JSON.parse(rawBody) as VaultWatchStartRequest;
+      validateVaultPath(request.vaultPath, { mustExist: true });
       const status = startVaultWatch(SQLITE_DB_PATH, request);
       sendJson(res, 200, status);
       return;
@@ -955,12 +963,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
 
   if (req.method === "GET") {
     try {
-      const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, docId);
-      sendJson(res, 200, {
-        version: 1,
-        savedAt: new Date().toISOString(),
-        state: model.toJSON(),
-      });
+      const savedDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, docId);
+      sendJson(res, 200, savedDoc);
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
       if (message === "Document not found.") {
@@ -977,7 +981,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
   if (req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; baseSavedAt?: unknown; force?: unknown };
       const candidate = parsed && parsed.state ? parsed : { state: parsed };
       if (!candidate.state || typeof candidate.state !== "object") {
         sendJson(res, 400, { error: "Invalid JSON format." });
@@ -1000,8 +1004,31 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
         return true;
       }
 
+      const force = Boolean(parsed?.force);
+      const baseSavedAt = typeof parsed?.baseSavedAt === "string" ? parsed.baseSavedAt : null;
+      if (!force) {
+        try {
+          const currentDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, docId);
+          if (baseSavedAt && currentDoc.savedAt !== baseSavedAt) {
+            sendJson(res, 409, {
+              ok: false,
+              code: "DOC_CONFLICT",
+              error: "Document changed externally. Choose which version to keep.",
+              documentId: docId,
+              savedAt: currentDoc.savedAt,
+              state: currentDoc.state,
+            });
+            return true;
+          }
+        } catch (err) {
+          if ((err as Error).message !== "Document not found.") {
+            throw err;
+          }
+        }
+      }
+
       model.saveToSqlite(SQLITE_DB_PATH, docId);
-      const savedAt = new Date().toISOString();
+      const savedAt = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, docId).savedAt;
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastDocUpdate(docId, savedAt, sourceTabId);
       handleDocumentSavedForVaultWatch(SQLITE_DB_PATH, docId);

@@ -6,6 +6,7 @@ import { runLinearTransform } from "./linear_agent";
 import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { RapidMvpModel } from "./rapid_mvp";
 import { extractWikilinks, parseFrontmatter, type WikilinkRef } from "./md_reader";
+import { validateVaultPath } from "./vault_path";
 import type {
   AppState,
   TreeNode,
@@ -15,7 +16,7 @@ import type {
   VaultImportedFileSummary,
 } from "../shared/types";
 
-const DEFAULT_MAX_FILES = 500;
+const DEFAULT_MAX_FILES = 1000;
 const DEFAULT_MAX_CHARS_PER_FILE = 6000;
 const DEFAULT_EXCLUDED_DIRS = new Set([".obsidian", ".trash", ".git", "node_modules"]);
 const DEFAULT_IMPORT_INSTRUCTION = [
@@ -338,15 +339,7 @@ export async function importVaultToAppState(
   request: VaultImportRequest,
   hooks?: { onProgress?: (progress: VaultImportProgress) => void },
 ): Promise<VaultImportResult> {
-  const vaultPath = path.resolve(request.vaultPath || "");
-  if (!request.vaultPath || !path.isAbsolute(request.vaultPath)) {
-    throw new Error("vaultPath must be an absolute path.");
-  }
-
-  const stats = await fs.promises.stat(vaultPath).catch(() => null);
-  if (!stats || !stats.isDirectory()) {
-    throw new Error("vaultPath must point to an existing directory.");
-  }
+  const vaultPath = validateVaultPath(request.vaultPath, { mustExist: true });
 
   const documentId = request.documentId?.trim() || buildDefaultDocumentId(vaultPath);
   const nextId = createIdFactory();

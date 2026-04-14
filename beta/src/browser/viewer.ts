@@ -151,6 +151,8 @@ let presenceEs: EventSource | null = null;
 let changedNodeIds: Set<string> = new Set();
 let conflictPanelVisible = false;
 let conflictRemoteState: AppState | null = null;
+let conflictUseLocalAction: (() => void) | null = null;
+let conflictUseRemoteAction: (() => void) | null = null;
 type VaultIntegrationMode = "off" | "vault-live";
 interface VaultUiPrefs {
   vaultPath: string;
@@ -4635,14 +4637,30 @@ function renderConflictTree(
   }
 }
 
-function showConflictPanel(remoteState: AppState): void {
+function showConflictPanel(
+  remoteState: AppState,
+  options?: {
+    localLabel?: string;
+    remoteLabel?: string;
+    onUseLocal?: () => void;
+    onUseRemote?: () => void;
+  },
+): void {
   if (!conflictPanelEl || !conflictLocalTreeEl || !conflictRemoteTreeEl || !conflictDiffSummaryEl || !doc) {
     return;
   }
 
   conflictRemoteState = remoteState;
+  conflictUseLocalAction = options?.onUseLocal ?? null;
+  conflictUseRemoteAction = options?.onUseRemote ?? null;
   conflictPanelVisible = true;
   conflictPanelEl.hidden = false;
+  if (conflictUseLocalBtn) {
+    conflictUseLocalBtn.textContent = options?.localLabel || "Use Local";
+  }
+  if (conflictUseRemoteBtn) {
+    conflictUseRemoteBtn.textContent = options?.remoteLabel || "Use Remote";
+  }
 
   const localState = doc.state;
   const diff = diffStates(localState, remoteState);
@@ -4691,6 +4709,14 @@ function hideConflictPanel(): void {
   conflictPanelVisible = false;
   conflictPanelEl.hidden = true;
   conflictRemoteState = null;
+  conflictUseLocalAction = null;
+  conflictUseRemoteAction = null;
+  if (conflictUseLocalBtn) {
+    conflictUseLocalBtn.textContent = "Use Local";
+  }
+  if (conflictUseRemoteBtn) {
+    conflictUseRemoteBtn.textContent = "Use Remote";
+  }
   board.focus();
 }
 
@@ -4702,16 +4728,27 @@ if (conflictCloseBtn) {
 
 if (conflictUseLocalBtn) {
   conflictUseLocalBtn.addEventListener("click", () => {
+    const action = conflictUseLocalAction;
     hideConflictPanel();
-    pushDocToCloud(true, true);
+    if (action) {
+      action();
+      return;
+    }
+    void pushDocToCloud(true, true);
   });
 }
 
 if (conflictUseRemoteBtn) {
   conflictUseRemoteBtn.addEventListener("click", () => {
+    const action = conflictUseRemoteAction;
+    if (action) {
+      hideConflictPanel();
+      action();
+      return;
+    }
     if (conflictRemoteState && doc) {
       hideConflictPanel();
-      pullDocFromCloud(true);
+      void pullDocFromCloud(true);
     }
   });
 }
@@ -5144,7 +5181,7 @@ function currentDocSnapshot(): SavedDoc {
   };
 }
 
-async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
+async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
   if (!doc) {
     return false;
   }
@@ -5156,8 +5193,42 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
         "Content-Type": "application/json; charset=utf-8",
         "X-M3E-Tab-Id": TAB_ID,
       },
-      body: JSON.stringify(currentDocSnapshot()),
+      body: JSON.stringify({
+        ...currentDocSnapshot(),
+        baseSavedAt: doc.savedAt,
+        force,
+      }),
     });
+
+    if (response.status === 409) {
+      const conflict = await response.json().catch(() => ({ error: "Document conflict." }));
+      const remoteState = (conflict as { state?: AppState }).state;
+      if (remoteState) {
+        showConflictPanel(remoteState, {
+          localLabel: "Use Local",
+          remoteLabel: "Use Vault",
+          onUseLocal: () => {
+            void saveDocToLocalDb(showStatus, true);
+          },
+          onUseRemote: () => {
+            if (!doc) {
+              return;
+            }
+            const savedAt = typeof (conflict as { savedAt?: unknown }).savedAt === "string"
+              ? String((conflict as { savedAt?: string }).savedAt)
+              : nowIso();
+            loadPayload({
+              version: 1,
+              savedAt,
+              state: remoteState,
+            });
+            setStatus("Loaded vault version. Local changes were kept out of the database.", true);
+          },
+        });
+      }
+      setStatus("Vault conflict detected. Choose Use Local or Use Vault.", true);
+      throw new Error(String((conflict as { error?: string }).error || "Document changed externally."));
+    }
 
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
