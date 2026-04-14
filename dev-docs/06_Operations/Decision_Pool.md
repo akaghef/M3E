@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-04-14-001
+
+- Date: 2026-04-14
+- Topic: batch review (17 件) の決定と両立案採用
+- Status: working-agreement
+- Decision:
+  - **Cloud Sync**: auth=email magic link (OAuth 追加は未決) / Q2 DTO=`shared/types.ts` / Q3 conflict=scope-level (subtree 単位で CRDT 差し替え可能な抽象を残す / 未解決) / Q4 Supabase=既存プロジェクト / Q5 暗号化=**user 明示要求まで放置** (no encryption initially)
+  - **Alias Impl**: Q1 write-alias scope = everything incl metadata (将来 per-alias mode toggle で独立保持も両立) / Q2 named wrappers = skip (reparentNode + deleteNode で足りる) / Q3 scoped-API × alias = API 引数で挙動制御 (default 可視、引数で隠す)
+  - **Markdown Viewer**: 基本方針=**軽量** (見出し・強調のみ、表なし、フォントサイズ切替) / Q1 lib=hand-written renderer 継続 / Q2 Mermaid=`beta/public/vendor/mermaid.min.js` vendor / Q3 preview=ノード属性 `markdown:true` で opt-in
+  - **Red Team**: Q1 branch=`dev-red` ベース + `audit/<date>-<domain>` トピック併用 / Q2 autonomy=read-only audit / Q3 初回 scope=full security sweep (CSRF / LAN / 偽装 / 入力検証 / 公開URL / Supabase / APIキー)
+  - **Rapid Deep Binding**: Q1 domain=hierarchical (`math.topology.knot`) / Q2 role=固定リスト (object/representation/move/invariant/theorem/method) / Q3 syntactic=専用テーブル / Q4 span=char offset (v1、将来 token range 昇格) / Q5 encoder=明示ボタンのみ
+  - **Node Decoration**: 保存キー=`attributes['m3e:style']` / swatch=mlx 配色 (importance=yellow tints / urgency=blue tints) / color matrix=mlx Method 2 + ステータス色 (未実行=緑 / 完了=グレー) の重ね合わせ / precedence=view-mode 切替 (`U*I view`=mlx 自動 / 通常=手動) ← 未解決 / hotkey=ノード編集モード内で `r`/`b`/`g` 単打 + テンキーで U*I 一発入力 (要追加議論) ← 未解決
+  - **Link API**: Q1 API shape=dedicated REST endpoints / Q2 duplicate=allow / Q3 self-link=allow (ループ描画ロジックは follow-up)
+- Why: 17 件の review Q を一括解決し、実装を止めずに dispatch を継続するため。両立可能な選択肢は片方を排除せず per-mode / per-arg トグルで将来拡張を残す設計にした
+- Next: map の `reviews/*/Qn` に `selected="yes"` 反映済 (22 Q 削除 + 未解決 5 件残置)。for-akaghef サマリ [../for-akaghef/260414_review_options_summary.md](../for-akaghef/260414_review_options_summary.md) 参照。Node Decoration の未解決 2 件は U*I view mode 実装時に再議論
+- Source: 2026-04-14 の batch レビュー会話、PR #48-#53 dispatch
+- Promoted: （未）
+
+## 2026-04-14-002
+
+- Date: 2026-04-14
+- Topic: X (Twitter) を Tech Radar として M3E に取り込む方針
+- Status: working-agreement
+- Decision:
+  - 用途 = akaghef が like/bookmark した投稿から新ツール情報を吸い上げ、M3E への統合適合性を評価 (adopt/trial/assess/hold rating)
+  - 公式 X MCP は**存在しない** → community `chrislee973/twitter-bookmark-mcp` サイドカー経由で P1 実装 (credential は MCP 側、M3E は API key を持たない)
+  - P2 以降は X API v2 直接 (~$5/月, PPU tier)。scraping は ToS リスクで却下
+  - Entity 抽出 = haiku で post→tool 名抽出、sonnet で統合適合性評価
+  - Storage = map primary (`DEV/Tech Radar/<tool>`)、SQLite cache
+  - Poll = P1 manual trigger、P2 は 6h cron
+  - Scope = P1 bookmarks のみ、likes は P2
+- Why: X が akaghef のツール発見チャネルであり、手動コピペを自動化する価値が高い
+- Next: Q1-Q7 を map `reviews/X Tech Radar/` に pool 済。codex brief [../../backlog/codex-x-tech-radar.md](../../backlog/codex-x-tech-radar.md) 作成済。P1 実装は Q レビュー後に codex dispatch
+- Source: 2026-04-14 PR #53 の team 設計作業
+- Promoted: [../design/x_tech_radar.md](../design/x_tech_radar.md)
+
+---
+
 ## 2026-04-02-002
 
 - Date: 2026-04-02
