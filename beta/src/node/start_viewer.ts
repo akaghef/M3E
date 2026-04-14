@@ -54,6 +54,8 @@ import type {
   FlashIngestBatchRequest,
   FlashApproveRequest,
   FlashDraftStatus,
+  LinkDirection,
+  LinkStyle,
 } from "../shared/types";
 import type {
   DocErrorCode,
@@ -737,6 +739,125 @@ function readRequestBody(req: http.IncomingMessage): Promise<string> {
       reject(err);
     });
   });
+}
+
+type LinkRouteAction =
+  | { kind: "create"; docId: string }
+  | { kind: "delete"; docId: string; linkId: string };
+
+function parseLinkRoute(urlPath: string, method: string): LinkRouteAction | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const createMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/?$/);
+  if (createMatch && method === "POST") {
+    return { kind: "create", docId: decodeURIComponent(createMatch[1]) };
+  }
+  const deleteMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/([^/]+)\/?$/);
+  if (deleteMatch && method === "DELETE") {
+    return {
+      kind: "delete",
+      docId: decodeURIComponent(deleteMatch[1]),
+      linkId: decodeURIComponent(deleteMatch[2]),
+    };
+  }
+  return null;
+}
+
+async function handleLinkApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: LinkRouteAction,
+): Promise<void> {
+  if (!route.docId) {
+    sendJson(res, 400, { ok: false, error: "Document id is required." });
+    return;
+  }
+
+  let model: RapidMvpModel;
+  try {
+    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, route.docId);
+  } catch (err) {
+    const message = (err as Error).message || "Unknown error";
+    if (message === "Document not found.") {
+      sendJson(res, 404, { ok: false, error: message });
+    } else {
+      sendJson(res, 500, { ok: false, error: message });
+    }
+    return;
+  }
+
+  try {
+    if (route.kind === "create") {
+      let body: {
+        sourceNodeId?: unknown;
+        targetNodeId?: unknown;
+        relationType?: unknown;
+        label?: unknown;
+        direction?: unknown;
+        style?: unknown;
+      };
+      try {
+        const raw = await readRequestBody(req);
+        body = raw.trim().length > 0 ? JSON.parse(raw) : {};
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendJson(res, 400, { ok: false, error: "Invalid JSON body." });
+          return;
+        }
+        throw err;
+      }
+      if (typeof body.sourceNodeId !== "string" || typeof body.targetNodeId !== "string") {
+        sendJson(res, 400, { ok: false, error: "sourceNodeId and targetNodeId are required strings." });
+        return;
+      }
+      const options: {
+        relationType?: string;
+        label?: string;
+        direction?: LinkDirection;
+        style?: LinkStyle;
+      } = {};
+      if (typeof body.relationType === "string") options.relationType = body.relationType;
+      if (typeof body.label === "string") options.label = body.label;
+      if (typeof body.direction === "string") options.direction = body.direction as LinkDirection;
+      if (typeof body.style === "string") options.style = body.style as LinkStyle;
+
+      let linkId: string;
+      try {
+        linkId = model.addLink(body.sourceNodeId, body.targetNodeId, options);
+      } catch (err) {
+        sendJson(res, 400, { ok: false, error: (err as Error).message });
+        return;
+      }
+      model.saveToSqlite(SQLITE_DB_PATH, route.docId);
+      const savedAt = new Date().toISOString();
+      const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+      broadcastDocUpdate(route.docId, savedAt, sourceTabId);
+      const link = model.state.links?.[linkId];
+      sendJson(res, 200, { ok: true, link });
+      return;
+    }
+
+    if (route.kind === "delete") {
+      try {
+        model.removeLink(route.linkId);
+      } catch (err) {
+        const message = (err as Error).message || "Unknown error";
+        if (message.startsWith("Link not found")) {
+          sendJson(res, 404, { ok: false, error: message });
+          return;
+        }
+        sendJson(res, 400, { ok: false, error: message });
+        return;
+      }
+      model.saveToSqlite(SQLITE_DB_PATH, route.docId);
+      const savedAt = new Date().toISOString();
+      const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+      broadcastDocUpdate(route.docId, savedAt, sourceTabId);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+  } catch (err) {
+    sendJson(res, 500, { ok: false, error: (err as Error).message || "Unknown error." });
+  }
 }
 
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, docId: string): Promise<boolean> {
@@ -1457,6 +1578,12 @@ export function createAppServer(): http.Server {
     const homeRoute = parseHomeRoute(req.url ?? "/", req.method ?? "GET");
     if (homeRoute) {
       await handleHomeApi(req, res, homeRoute);
+      return;
+    }
+
+    const linkRoute = parseLinkRoute(req.url ?? "/", req.method ?? "GET");
+    if (linkRoute) {
+      await handleLinkApi(req, res, linkRoute);
       return;
     }
 

@@ -86,6 +86,61 @@ test("addLink stores graph link in state", () => {
   expect(model.state.links[linkId].style).toBe("dashed");
 });
 
+test("addLink throws when endpoint nodes are missing", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+
+  expect(() => model.addLink(a, "missing-id")).toThrow();
+  expect(() => model.addLink(a, a)).toThrow(/cannot connect a node to itself/);
+});
+
+test("addLink lazily initializes state.links when undefined", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+  delete model.state.links;
+
+  const linkId = model.addLink(a, b);
+
+  expect(model.state.links[linkId].sourceNodeId).toBe(a);
+});
+
+test("removeLink deletes the specified link", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+  const l1 = model.addLink(a, b);
+  const l2 = model.addLink(b, a);
+
+  model.removeLink(l1);
+
+  expect(model.state.links[l1]).toBeUndefined();
+  expect(model.state.links[l2]).toBeDefined();
+});
+
+test("removeLink throws for unknown link id", () => {
+  const model = new RapidMvpModel("Root");
+
+  expect(() => model.removeLink("missing-link")).toThrow(/Link not found/);
+});
+
+test("addLink allows duplicate links between same pair (tentative policy)", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+  const a = model.addNode(rootId, "A");
+  const b = model.addNode(rootId, "B");
+
+  const l1 = model.addLink(a, b);
+  const l2 = model.addLink(a, b);
+
+  expect(l1).not.toBe(l2);
+  expect(Object.keys(model.state.links)).toContain(l1);
+  expect(Object.keys(model.state.links)).toContain(l2);
+});
+
 test("deleteNode removes graph links touching deleted nodes", () => {
   const model = new RapidMvpModel("Root");
   const rootId = model.state.rootId;
