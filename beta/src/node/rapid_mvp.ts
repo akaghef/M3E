@@ -261,6 +261,15 @@ class RapidMvpModel {
     return id;
   }
 
+  removeLink(linkId: string): void {
+    const links = this._ensureLinks();
+    if (!links[linkId]) {
+      throw new Error(`Link not found: ${linkId}`);
+    }
+    this._pushHistory();
+    delete links[linkId];
+  }
+
   addSibling(nodeId: string, text = "New Sibling", after = true): string {
     const node = this._requireNode(nodeId);
     if (node.parentId === null) {
