@@ -59,15 +59,15 @@ Line 2
     expect(result.ok).toBe(true);
     expect(result.documentId).toMatch(/^vault-/);
     expect(result.fileCount).toBe(2);
-    expect(result.folderCount).toBe(4);
-    expect(result.nodeCount).toBe(5);
+    expect(result.folderCount).toBe(5);
+    expect(result.nodeCount).toBe(6);
 
     const model = RapidMvpModel.fromJSON(result.state);
     expect(model.validate()).toEqual([]);
 
     const root = result.state.nodes[result.state.rootId];
     expect(root.text).toBe(path.basename(vaultDir));
-    expect(root.children.length).toBe(2);
+    expect(root.children.length).toBe(3);
 
     const researchFolder = findNodeByText(result.state, "research");
     expect(researchFolder).toBeTruthy();
@@ -140,4 +140,11 @@ test("importVaultToSqlite persists imported document", async () => {
 
 test("importVaultToAppState rejects relative vault paths", async () => {
   await expect(importVaultToAppState({ vaultPath: "relative/path" })).rejects.toThrow(/absolute path/);
+});
+
+test("importVaultToAppState rejects protected system directories", async () => {
+  const protectedPath = process.platform === "win32"
+    ? path.join(process.env.SystemRoot || "C:\\Windows", "System32")
+    : "/etc";
+  await expect(importVaultToAppState({ vaultPath: protectedPath })).rejects.toThrow(/protected system directory/);
 });
