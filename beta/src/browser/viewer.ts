@@ -53,6 +53,51 @@ const conflictDiffSummaryEl = document.getElementById("conflict-diff-summary") a
 const conflictCloseBtn = document.getElementById("conflict-close") as HTMLButtonElement | null;
 const conflictUseLocalBtn = document.getElementById("conflict-use-local") as HTMLButtonElement | null;
 const conflictUseRemoteBtn = document.getElementById("conflict-use-remote") as HTMLButtonElement | null;
+const markdownPreviewPanelEl = document.getElementById("markdown-preview-panel") as HTMLElement | null;
+const markdownPreviewBodyEl = document.getElementById("markdown-preview-body") as HTMLElement | null;
+const markdownPreviewCloseBtn = document.getElementById("markdown-preview-close") as HTMLButtonElement | null;
+
+function hideMarkdownPreview(): void {
+  if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
+}
+
+function showMarkdownPreview(src: string, title: string): void {
+  if (!markdownPreviewPanelEl || !markdownPreviewBodyEl) return;
+  markdownPreviewPanelEl.hidden = false;
+  const titleEl = markdownPreviewPanelEl.querySelector(".markdown-preview-title") as HTMLElement | null;
+  if (titleEl) titleEl.textContent = title;
+  const mdRender = (globalThis as any).renderMarkdownInto as
+    | ((target: HTMLElement, src: string) => Promise<void>)
+    | undefined;
+  if (typeof mdRender === "function") {
+    void mdRender(markdownPreviewBodyEl, src);
+  } else {
+    markdownPreviewBodyEl.textContent = src;
+  }
+}
+
+function toggleMarkdownPreviewForSelectedNode(): void {
+  if (!markdownPreviewPanelEl) return;
+  if (!markdownPreviewPanelEl.hidden) {
+    hideMarkdownPreview();
+    return;
+  }
+  if (!doc || !viewState.selectedNodeId) {
+    setStatus("No node selected for markdown preview.");
+    return;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  const body = [node.details || "", node.note || ""].filter(Boolean).join("\n\n");
+  if (!body.trim()) {
+    setStatus("Selected node has no details or note.");
+    return;
+  }
+  showMarkdownPreview(body, `Markdown: ${node.text || "(untitled)"}`);
+}
+
+if (markdownPreviewCloseBtn) {
+  markdownPreviewCloseBtn.addEventListener("click", () => hideMarkdownPreview());
+}
 
 function normalizeDocId(raw: string | null, fallback: string): string {
   const trimmed = (raw || "").trim();
@@ -6481,6 +6526,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleEntityListPanel();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    toggleMarkdownPreviewForSelectedNode();
     return;
   }
 

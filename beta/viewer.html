@@ -118,6 +118,13 @@
           </div>
         </div>
       </div>
+      <div id="markdown-preview-panel" class="markdown-preview-panel" hidden>
+        <div class="markdown-preview-header">
+          <span class="markdown-preview-title">Markdown Preview</span>
+          <button id="markdown-preview-close" class="markdown-preview-close" type="button" aria-label="Close markdown preview">&times;</button>
+        </div>
+        <div id="markdown-preview-body" class="markdown-preview-body"></div>
+      </div>
       <div id="shortcut-cheatsheet" class="shortcut-cheatsheet" hidden>
         <div class="cheatsheet-header">Keyboard Shortcuts</div>
         <div class="cheatsheet-body">
@@ -130,6 +137,7 @@
               <div class="cheatsheet-row"><kbd>K</kbd><span>Shallower (parent)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+H</kbd><span>Home screen</span></div>
               <div class="cheatsheet-row"><kbd>Alt+E</kbd><span>Entity list panel</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+D</kbd><span>Markdown preview (details/note)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+V</kbd><span>Toggle focus / fit</span></div>
               <div class="cheatsheet-row"><kbd>Alt+J</kbd><span>Jump to alias target</span></div>
             </div>
@@ -211,6 +219,7 @@
 
         <script src="./public/katex/katex.min.js"></script>
         <script src="./dist/browser/viewer.tuning.js"></script>
+        <script src="./dist/browser/markdown_renderer.js"></script>
         <script src="./dist/browser/viewer.js"></script>
   </body>
 </html>
