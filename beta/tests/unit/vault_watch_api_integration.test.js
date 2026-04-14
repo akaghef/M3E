@@ -118,3 +118,58 @@ test("watch start/status/stop lifecycle works", async () => {
   expect(stopped.response.status).toBe(200);
   expect(stopped.payload.running).toBe(false);
 });
+
+test("watch imports frontmatter and wikilink content changes from vault edits", async () => {
+  const started = await requestJson(`${baseUrl}/api/vault/watch/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      documentId: "vault-watch-doc",
+      vaultPath: vaultDir,
+      debounceMs: 300,
+      importOptions: { skipAiTransform: true },
+      exportOptions: { skipAiTransform: true },
+    }),
+  });
+  expect(started.response.status).toBe(200);
+
+  writeFile(vaultDir, "notes/beta.md", "# Beta\n\nBeta body.");
+  writeFile(vaultDir, "notes/alpha.md", `---
+tags:
+  - updated
+aliases:
+  - Alpha Renamed
+status: review
+---
+
+Updated body with [[notes/beta|Beta Link]].
+`);
+
+  await new Promise((resolve) => setTimeout(resolve, 1800));
+
+  const dbPath = path.join(dataDir, "watch.sqlite");
+  const afterInbound = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
+  const alphaNode = Object.values(afterInbound.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
+  const betaNode = Object.values(afterInbound.state.nodes).find((node) => node.attributes["vault:path"] === "notes/beta.md");
+  expect(alphaNode).toBeTruthy();
+  expect(betaNode).toBeTruthy();
+  expect(alphaNode.attributes.tags).toBe("updated");
+  expect(alphaNode.attributes.aliases).toBe("Alpha Renamed");
+  expect(alphaNode.attributes.status).toBe("review");
+  expect(alphaNode.details).toContain("Updated body with [[notes/beta|Beta Link]].");
+
+  const betaAlias = alphaNode.children
+    .map((childId) => afterInbound.state.nodes[childId])
+    .find((node) => node?.nodeType === "alias" && node.aliasLabel === "Beta Link");
+  expect(betaAlias).toBeTruthy();
+  expect(betaAlias.targetNodeId).toBe(betaNode.id);
+  expect(betaAlias.isBroken).toBeFalsy();
+
+  const stopped = await requestJson(`${baseUrl}/api/vault/watch`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ documentId: "vault-watch-doc" }),
+  });
+  expect(stopped.response.status).toBe(200);
+  expect(stopped.payload.running).toBe(false);
+});

@@ -138,6 +138,89 @@ test("importVaultToSqlite persists imported document", async () => {
   }
 });
 
+test("importVaultToAppState resolves exact, embedded, ambiguous, and broken wikilinks with metadata", async () => {
+  const vaultDir = tmpDir();
+  try {
+    writeFile(vaultDir, "daily.md", `---
+tags:
+  - inbox
+aliases:
+  - Daily Note
+published: true
+priority: 2
+---
+
+Entry body.
+Exact [[refs/exact-note|Exact Label]].
+Unique [[unique-note]].
+Ambiguous [[dup]].
+Missing [[ghost|Ghost Note]].
+Embed ![[media/clip|Preview]].
+`);
+    writeFile(vaultDir, "refs/exact-note.md", "# Exact");
+    writeFile(vaultDir, "unique-note.md", "# Unique");
+    writeFile(vaultDir, "team/dup.md", "# Dup A");
+    writeFile(vaultDir, "archive/dup.md", "# Dup B");
+    writeFile(vaultDir, "media/clip.md", "# Clip");
+
+    const result = await importVaultToAppState({
+      vaultPath: vaultDir,
+      options: { skipAiTransform: true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes("Ambiguous wikilink in daily.md: dup"))).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes("Broken wikilink in daily.md: ghost"))).toBe(true);
+
+    const dailyNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "daily.md");
+    expect(dailyNode).toBeTruthy();
+    expect(dailyNode.attributes.tags).toBe("inbox");
+    expect(dailyNode.attributes.aliases).toBe("Daily Note");
+    expect(dailyNode.attributes.published).toBe("true");
+    expect(dailyNode.attributes.priority).toBe("2");
+
+    const exactNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "refs/exact-note.md");
+    const uniqueNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "unique-note.md");
+    const clipNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "media/clip.md");
+    expect(exactNode).toBeTruthy();
+    expect(uniqueNode).toBeTruthy();
+    expect(clipNode).toBeTruthy();
+
+    const aliases = dailyNode.children.map((childId) => result.state.nodes[childId]).filter((node) => node?.nodeType === "alias");
+    expect(aliases).toHaveLength(5);
+
+    const exactAlias = aliases.find((node) => node.aliasLabel === "Exact Label");
+    expect(exactAlias).toBeTruthy();
+    expect(exactAlias.targetNodeId).toBe(exactNode.id);
+    expect(exactAlias.isBroken).toBeFalsy();
+    expect(exactAlias.collapsed).toBe(true);
+
+    const uniqueAlias = aliases.find((node) => node.text === "unique-note");
+    expect(uniqueAlias).toBeTruthy();
+    expect(uniqueAlias.targetNodeId).toBe(uniqueNode.id);
+    expect(uniqueAlias.isBroken).toBeFalsy();
+
+    const embeddedAlias = aliases.find((node) => node.aliasLabel === "Preview");
+    expect(embeddedAlias).toBeTruthy();
+    expect(embeddedAlias.targetNodeId).toBe(clipNode.id);
+    expect(embeddedAlias.collapsed).toBe(false);
+    expect(embeddedAlias.isBroken).toBeFalsy();
+
+    const ambiguousAlias = aliases.find((node) => node.text === "dup (missing)");
+    expect(ambiguousAlias).toBeTruthy();
+    expect(ambiguousAlias.isBroken).toBe(true);
+    expect(ambiguousAlias.targetNodeId).toBe("missing:dup");
+
+    const brokenAlias = aliases.find((node) => node.aliasLabel === "Ghost Note");
+    expect(brokenAlias).toBeTruthy();
+    expect(brokenAlias.isBroken).toBe(true);
+    expect(brokenAlias.targetNodeId).toBe("missing:ghost");
+    expect(brokenAlias.text).toBe("Ghost Note (missing)");
+  } finally {
+    cleanup(vaultDir);
+  }
+});
+
 test("importVaultToAppState rejects relative vault paths", async () => {
   await expect(importVaultToAppState({ vaultPath: "relative/path" })).rejects.toThrow(/absolute path/);
 });
