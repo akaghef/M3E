@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import type { TreeNode, AppState, SavedDoc, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
+import type { SemanticNode, SemanticEdge, Binding, BindType } from "../shared/binding_types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -570,7 +571,245 @@ class RapidMvpModel {
       db.exec(`ALTER TABLE documents ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
     }
 
+    // Additive migration for the Rapid / Deep / Binding layer.
+    // See dev-docs/03_Spec/Rapid_Deep_Binding.md.
+    // Schema is purely additive; no FK enforcement here — referential integrity
+    // is checked at the model / stub-method layer.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS semantic_nodes (
+        id              TEXT PRIMARY KEY,
+        label           TEXT NOT NULL,
+        domain          TEXT NOT NULL,
+        role            TEXT NOT NULL,
+        level           TEXT NOT NULL,
+        status          TEXT NOT NULL,
+        attributes_json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS semantic_edges (
+        id        TEXT PRIMARY KEY,
+        src       TEXT NOT NULL,
+        dst       TEXT NOT NULL,
+        edge_type TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS bindings (
+        id           TEXT PRIMARY KEY,
+        syntactic_id TEXT NOT NULL,
+        span_start   INTEGER NOT NULL,
+        span_end     INTEGER NOT NULL,
+        semantic_id  TEXT NOT NULL,
+        bind_type    TEXT NOT NULL,
+        confidence   REAL NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_bindings_syntactic ON bindings(syntactic_id);
+      CREATE INDEX IF NOT EXISTS idx_bindings_semantic  ON bindings(semantic_id);
+    `);
+
     return db;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rapid / Deep / Binding — CRUD stubs.
+  //
+  // These are the minimal persistence entry points. No inference, no AI, no
+  // propagation logic — those live in a follow-up PR per the spec (§7).
+  //
+  // Referential integrity is enforced here (not in SQLite) so that the additive
+  // migration never fails on pre-existing DBs.
+  // ---------------------------------------------------------------------------
+
+  private static readonly BIND_TYPES: ReadonlySet<BindType> = new Set<BindType>([
+    "defines", "mentions", "uses", "motivates", "examples", "states", "proves",
+  ]);
+
+  private static validateSemanticNode(node: SemanticNode): void {
+    if (!node || typeof node.id !== "string" || node.id.length === 0) {
+      throw new Error("SemanticNode.id is required.");
+    }
+    if (typeof node.label !== "string") {
+      throw new Error("SemanticNode.label must be a string.");
+    }
+    for (const key of ["domain", "role", "level", "status"] as const) {
+      if (typeof node[key] !== "string" || (node[key] as string).length === 0) {
+        throw new Error(`SemanticNode.${key} is required.`);
+      }
+    }
+    if (!node.attributes || typeof node.attributes !== "object") {
+      throw new Error("SemanticNode.attributes must be an object.");
+    }
+  }
+
+  private static validateBinding(binding: Binding): void {
+    if (!binding || typeof binding.id !== "string" || binding.id.length === 0) {
+      throw new Error("Binding.id is required.");
+    }
+    if (typeof binding.syntacticId !== "string" || binding.syntacticId.length === 0) {
+      throw new Error("Binding.syntacticId is required.");
+    }
+    if (typeof binding.semanticId !== "string" || binding.semanticId.length === 0) {
+      throw new Error("Binding.semanticId is required.");
+    }
+    if (!Number.isInteger(binding.spanStart) || binding.spanStart < 0) {
+      throw new Error("Binding.spanStart must be a non-negative integer.");
+    }
+    if (!Number.isInteger(binding.spanEnd) || binding.spanEnd < binding.spanStart) {
+      throw new Error("Binding.spanEnd must be an integer >= spanStart.");
+    }
+    if (!RapidMvpModel.BIND_TYPES.has(binding.bindType)) {
+      throw new Error(`Binding.bindType is invalid: ${String(binding.bindType)}`);
+    }
+    if (
+      typeof binding.confidence !== "number" ||
+      !Number.isFinite(binding.confidence) ||
+      binding.confidence < 0 ||
+      binding.confidence > 1
+    ) {
+      throw new Error("Binding.confidence must be a finite number in [0, 1].");
+    }
+  }
+
+  static createSemanticNode(dbPath: string, node: SemanticNode): void {
+    RapidMvpModel.validateSemanticNode(node);
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      db.prepare(
+        `INSERT INTO semantic_nodes (id, label, domain, role, level, status, attributes_json)
+         VALUES (@id, @label, @domain, @role, @level, @status, @attributes_json)`,
+      ).run({
+        id: node.id,
+        label: node.label,
+        domain: node.domain,
+        role: node.role,
+        level: node.level,
+        status: node.status,
+        attributes_json: JSON.stringify(node.attributes ?? {}),
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  static addSemanticEdge(dbPath: string, edge: SemanticEdge): void {
+    if (!edge || typeof edge.id !== "string" || edge.id.length === 0) {
+      throw new Error("SemanticEdge.id is required.");
+    }
+    if (typeof edge.src !== "string" || typeof edge.dst !== "string") {
+      throw new Error("SemanticEdge.src and .dst are required.");
+    }
+    if (edge.src === edge.dst) {
+      throw new Error("SemanticEdge cannot connect a node to itself.");
+    }
+    if (typeof edge.edgeType !== "string" || edge.edgeType.length === 0) {
+      throw new Error("SemanticEdge.edgeType is required.");
+    }
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      // Referential check: both endpoints must exist in semantic_nodes.
+      const missing = db
+        .prepare(
+          `SELECT id FROM (SELECT @src AS id UNION ALL SELECT @dst AS id)
+             WHERE id NOT IN (SELECT id FROM semantic_nodes)`,
+        )
+        .all({ src: edge.src, dst: edge.dst }) as Array<{ id: string }>;
+      if (missing.length > 0) {
+        throw new Error(`SemanticEdge references missing semantic_node(s): ${missing.map((r) => r.id).join(", ")}`);
+      }
+      db.prepare(
+        `INSERT INTO semantic_edges (id, src, dst, edge_type)
+         VALUES (@id, @src, @dst, @edge_type)`,
+      ).run({ id: edge.id, src: edge.src, dst: edge.dst, edge_type: edge.edgeType });
+    } finally {
+      db.close();
+    }
+  }
+
+  static addBinding(dbPath: string, binding: Binding): void {
+    RapidMvpModel.validateBinding(binding);
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      // Referential check: semantic node must exist. We do NOT check syntacticId
+      // here because syntactic ids live in state_json (per Q3 tentative choice),
+      // not in a dedicated table yet.
+      const hit = db
+        .prepare(`SELECT 1 AS hit FROM semantic_nodes WHERE id = ?`)
+        .get(binding.semanticId) as { hit: number } | undefined;
+      if (!hit) {
+        throw new Error(`Binding references missing semantic_node: ${binding.semanticId}`);
+      }
+      db.prepare(
+        `INSERT INTO bindings (id, syntactic_id, span_start, span_end, semantic_id, bind_type, confidence)
+         VALUES (@id, @syntactic_id, @span_start, @span_end, @semantic_id, @bind_type, @confidence)`,
+      ).run({
+        id: binding.id,
+        syntactic_id: binding.syntacticId,
+        span_start: binding.spanStart,
+        span_end: binding.spanEnd,
+        semantic_id: binding.semanticId,
+        bind_type: binding.bindType,
+        confidence: binding.confidence,
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  static listBindings(dbPath: string, syntacticId: string): Binding[] {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const rows = db
+        .prepare(
+          `SELECT id, syntactic_id AS syntacticId, span_start AS spanStart,
+                  span_end AS spanEnd, semantic_id AS semanticId,
+                  bind_type AS bindType, confidence
+             FROM bindings WHERE syntactic_id = ? ORDER BY span_start, id`,
+        )
+        .all(syntacticId) as Binding[];
+      return rows;
+    } finally {
+      db.close();
+    }
+  }
+
+  static listOccurrences(dbPath: string, semanticId: string): Binding[] {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const rows = db
+        .prepare(
+          `SELECT id, syntactic_id AS syntacticId, span_start AS spanStart,
+                  span_end AS spanEnd, semantic_id AS semanticId,
+                  bind_type AS bindType, confidence
+             FROM bindings WHERE semantic_id = ? ORDER BY syntactic_id, span_start, id`,
+        )
+        .all(semanticId) as Binding[];
+      return rows;
+    } finally {
+      db.close();
+    }
+  }
+
+  /**
+   * Delete a semantic node.
+   *
+   * Orphan handling per spec §4.3: bindings that reference the deleted node are
+   * NOT cascade-deleted. They remain in the table with a now-dangling
+   * `semantic_id`, so the UI can surface them as "broken" for explicit human
+   * resolution. Edges pointing to/from the node, however, ARE removed — a typed
+   * relation to a non-existent node has no meaningful UI representation.
+   */
+  static deleteSemanticNode(dbPath: string, id: string): void {
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error("id is required.");
+    }
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const result = db.prepare(`DELETE FROM semantic_nodes WHERE id = ?`).run(id);
+      if (result.changes === 0) {
+        throw new Error(`Semantic node not found: ${id}`);
+      }
+      db.prepare(`DELETE FROM semantic_edges WHERE src = ? OR dst = ?`).run(id, id);
+      // bindings are intentionally left orphaned.
+    } finally {
+      db.close();
+    }
   }
 
   // ---------------------------------------------------------------------------
