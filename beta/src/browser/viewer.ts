@@ -198,7 +198,7 @@ let conflictPanelVisible = false;
 let conflictRemoteState: AppState | null = null;
 let conflictUseLocalAction: (() => void) | null = null;
 let conflictUseRemoteAction: (() => void) | null = null;
-type VaultIntegrationMode = "off" | "vault-live";
+type VaultIntegrationMode = "off" | "obsidian-live";
 interface VaultUiPrefs {
   vaultPath: string;
   integrationMode: VaultIntegrationMode;
@@ -208,6 +208,8 @@ interface VaultWatchStatusResponse {
   ok: true;
   documentId: string;
   vaultPath: string;
+  integrationMode: "obsidian-live";
+  sourceOfTruth: "vault-md";
   running: boolean;
   lastInboundAt: string | null;
   lastOutboundAt: string | null;
@@ -361,9 +363,10 @@ function loadVaultUiPrefs(): void {
       return;
     }
     const parsed = JSON.parse(raw) as Partial<VaultUiPrefs>;
+    const storedMode = String(parsed.integrationMode || "");
     vaultUiPrefs = {
       vaultPath: String(parsed.vaultPath || ""),
-      integrationMode: parsed.integrationMode === "vault-live" ? "vault-live" : "off",
+      integrationMode: storedMode === "obsidian-live" || storedMode === "vault-live" ? "obsidian-live" : "off",
       sourceOfTruth: "vault-md",
     };
   } catch {
@@ -387,16 +390,18 @@ function closeToolbarMenus(): void {
 }
 
 function syncVaultUi(): void {
-  const pathLabel = vaultUiPrefs.vaultPath ? `Vault: ${vaultWatchRunning ? "live" : "ready"}` : "Vault: off";
+  const pathLabel = vaultUiPrefs.vaultPath
+    ? `Live: ${vaultWatchRunning ? "on (.md SoT)" : "ready (.md SoT)"}`
+    : "Live: off";
   if (vaultSyncBadgeEl) {
     vaultSyncBadgeEl.textContent = pathLabel;
     vaultSyncBadgeEl.classList.toggle("on", vaultWatchRunning);
     vaultSyncBadgeEl.classList.toggle("conflict", Boolean(vaultLastError));
     if (vaultLastError) {
-      vaultSyncBadgeEl.textContent = "Vault: error";
+      vaultSyncBadgeEl.textContent = "Live: error";
     }
   }
-  integrateVaultLiveBtn?.classList.toggle("is-active", vaultUiPrefs.integrationMode === "vault-live");
+  integrateVaultLiveBtn?.classList.toggle("is-active", vaultUiPrefs.integrationMode === "obsidian-live");
   integrateStopBtn!.disabled = !vaultWatchRunning;
 }
 
@@ -421,7 +426,7 @@ function parseSseFrames(text: string): Array<{ event: string; data: unknown }> {
 }
 
 async function promptVaultPath(defaultValue = ""): Promise<string | null> {
-  const next = window.prompt("Vault path", defaultValue || vaultUiPrefs.vaultPath || "");
+  const next = window.prompt("Vault path for Obsidian Live Mode", defaultValue || vaultUiPrefs.vaultPath || "");
   if (next === null) {
     return null;
   }
@@ -443,6 +448,12 @@ function applyVaultWatchStatus(status: VaultWatchStatusResponse | null): void {
   vaultLastError = status?.lastError ?? null;
   if (status?.vaultPath) {
     vaultUiPrefs.vaultPath = status.vaultPath;
+  }
+  if (status?.integrationMode) {
+    vaultUiPrefs.integrationMode = status.integrationMode;
+  }
+  if (status?.sourceOfTruth) {
+    vaultUiPrefs.sourceOfTruth = status.sourceOfTruth;
   }
   syncVaultUi();
 }
@@ -523,7 +534,7 @@ async function runVaultImport(vaultPath: string): Promise<boolean> {
   }
   await loadDocFromLocalDb(false);
   render();
-  setStatus("Vault import completed.");
+  setStatus("Imported from Vault markdown.");
   return true;
 }
 
@@ -549,7 +560,7 @@ async function runVaultExport(vaultPath: string): Promise<boolean> {
   if (!complete) {
     throw new Error("Vault export did not complete.");
   }
-  setStatus("Vault export completed.");
+  setStatus("Exported to Vault markdown.");
   return true;
 }
 
@@ -570,10 +581,11 @@ async function startVaultLiveIntegration(vaultPath: string): Promise<void> {
   }
   const payload = await response.json() as VaultWatchStatusResponse;
   applyVaultWatchStatus(payload);
-  vaultUiPrefs.integrationMode = "vault-live";
+  vaultUiPrefs.integrationMode = "obsidian-live";
+  vaultUiPrefs.sourceOfTruth = "vault-md";
   saveVaultUiPrefs();
   syncVaultUi();
-  setStatus("Vault live integration started. Vault md is the source of truth.");
+  setStatus("Obsidian Live Mode started. Vault markdown is the source of truth.");
 }
 
 async function stopVaultLiveIntegration(showStatus = true): Promise<void> {
@@ -591,7 +603,7 @@ async function stopVaultLiveIntegration(showStatus = true): Promise<void> {
   saveVaultUiPrefs();
   applyVaultWatchStatus(null);
   if (showStatus) {
-    setStatus("Vault integration stopped.");
+    setStatus("Obsidian Live Mode stopped.");
   }
 }
 
@@ -6632,14 +6644,14 @@ integrateVaultLiveBtn?.addEventListener("click", () => {
       }
       await startVaultLiveIntegration(vaultPath);
     } catch (err) {
-      setStatus(`Vault integration failed (${(err as Error).message}).`, true);
+      setStatus(`Obsidian Live Mode failed (${(err as Error).message}).`, true);
     }
   })();
 });
 
 integrateStopBtn?.addEventListener("click", () => {
   void stopVaultLiveIntegration(true).catch((err) => {
-    setStatus(`Failed to stop Vault integration (${(err as Error).message}).`, true);
+    setStatus(`Failed to stop Obsidian Live Mode (${(err as Error).message}).`, true);
   });
 });
 
@@ -7437,9 +7449,9 @@ void initializeDocument().then(() => {
   initDocWatch();
   initVaultWatchStream();
   void fetchVaultWatchStatus().then(() => {
-    if (vaultUiPrefs.integrationMode === "vault-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
+    if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
       void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
-        setStatus(`Vault integration resume failed (${(err as Error).message}).`, true);
+        setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
       });
     }
   });

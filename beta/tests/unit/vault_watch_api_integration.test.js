@@ -79,10 +79,14 @@ test("watch start/status/stop lifecycle works", async () => {
   });
   expect(started.response.status).toBe(200);
   expect(started.payload.running).toBe(true);
+  expect(started.payload.integrationMode).toBe("obsidian-live");
+  expect(started.payload.sourceOfTruth).toBe("vault-md");
 
   const status = await requestJson(`${baseUrl}/api/vault/status?documentId=vault-watch-doc`);
   expect(status.response.status).toBe(200);
   expect(status.payload.running).toBe(true);
+  expect(status.payload.integrationMode).toBe("obsidian-live");
+  expect(status.payload.sourceOfTruth).toBe("vault-md");
 
   const dbPath = path.join(dataDir, "watch.sqlite");
   const model = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
@@ -95,11 +99,14 @@ test("watch start/status/stop lifecycle works", async () => {
     body: JSON.stringify({ state: model.toJSON() }),
   });
   expect(saved.response.status).toBe(200);
+  expect(saved.payload.integrationMode).toBe("obsidian-live");
+  expect(saved.payload.sourceOfTruth).toBe("vault-md");
+  expect(saved.payload.vaultPath).toBe(vaultDir);
 
-  await new Promise((resolve) => setTimeout(resolve, 2500));
   const exported = fs.readFileSync(path.join(vaultDir, "notes", "alpha.md"), "utf8");
   expect(exported).toContain("Changed from doc save.");
 
+  await new Promise((resolve) => setTimeout(resolve, 2200));
   fs.rmSync(path.join(vaultDir, "notes", "alpha.md"));
   await new Promise((resolve) => setTimeout(resolve, 1200));
   const afterDelete = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
@@ -172,4 +179,6 @@ Updated body with [[notes/beta|Beta Link]].
   });
   expect(stopped.response.status).toBe(200);
   expect(stopped.payload.running).toBe(false);
+  expect(stopped.payload.integrationMode).toBe("obsidian-live");
+  expect(stopped.payload.sourceOfTruth).toBe("vault-md");
 });

@@ -2,11 +2,12 @@
 
 import fs from "fs";
 import path from "path";
-import { exportVaultFromSqlite } from "./vault_exporter";
+import { exportVaultFromAppState, exportVaultFromSqlite } from "./vault_exporter";
 import { importVaultToSqlite } from "./vault_importer";
 import { RapidMvpModel } from "./rapid_mvp";
 import { validateVaultPath } from "./vault_path";
 import type {
+  AppState,
   VaultWatchEvent,
   VaultWatchStartRequest,
   VaultWatchStatus,
@@ -32,6 +33,8 @@ type WatchSession = {
 const sessions = new Map<string, WatchSession>();
 let emitEvent: ((event: VaultWatchEvent) => void) | null = null;
 let emitDocUpdate: ((documentId: string, savedAt: string) => void) | null = null;
+const LIVE_MODE = "obsidian-live" as const;
+const LIVE_SOURCE_OF_TRUTH = "vault-md" as const;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -68,16 +71,33 @@ async function runInboundSync(dbPath: string, session: WatchSession): Promise<vo
   }
 }
 
-async function runOutboundSync(dbPath: string, session: WatchSession): Promise<void> {
-  try {
-    session.suppressEventsUntil = Date.now() + Math.max(2_000, session.debounceMs * 2);
-    await exportVaultFromSqlite(dbPath, {
+async function writeSessionStateToVault(
+  dbPath: string,
+  session: WatchSession,
+  state?: AppState,
+): Promise<string> {
+  session.suppressEventsUntil = Date.now() + Math.max(2_000, session.debounceMs * 2);
+  const result = state
+    ? await exportVaultFromAppState(state, {
+      documentId: session.documentId,
+      vaultPath: session.vaultPath,
+      modelAlias: session.modelAlias ?? null,
+      options: session.exportOptions,
+    })
+    : await exportVaultFromSqlite(dbPath, {
       documentId: session.documentId,
       vaultPath: session.vaultPath,
       modelAlias: session.modelAlias ?? null,
       options: session.exportOptions,
     });
-    session.lastOutboundAt = nowIso();
+  session.lastOutboundAt = result.savedAt;
+  session.lastError = null;
+  return result.savedAt;
+}
+
+async function runOutboundSync(dbPath: string, session: WatchSession): Promise<void> {
+  try {
+    await writeSessionStateToVault(dbPath, session);
     emit("m3e-to-vault", session, "Document saved back to vault.");
   } catch (err) {
     session.lastError = (err as Error).message || "Outbound sync failed.";
@@ -159,6 +179,8 @@ export function stopVaultWatch(documentId: string): VaultWatchStatus | null {
     ok: true,
     documentId,
     vaultPath: session.vaultPath,
+    integrationMode: LIVE_MODE,
+    sourceOfTruth: LIVE_SOURCE_OF_TRUTH,
     running: false,
     lastInboundAt: session.lastInboundAt,
     lastOutboundAt: session.lastOutboundAt,
@@ -180,6 +202,35 @@ export function handleDocumentSavedForVaultWatch(dbPath: string, documentId: str
   }, session.debounceMs);
 }
 
+export async function writeDocumentToVaultNow(
+  dbPath: string,
+  documentId: string,
+  state?: AppState,
+): Promise<{ savedAt: string; vaultPath: string; integrationMode: "obsidian-live"; sourceOfTruth: "vault-md" } | null> {
+  const session = sessions.get(documentId);
+  if (!session) {
+    return null;
+  }
+  if (session.outboundTimer) {
+    clearTimeout(session.outboundTimer);
+    session.outboundTimer = null;
+  }
+  try {
+    const savedAt = await writeSessionStateToVault(dbPath, session, state);
+    emit("m3e-to-vault", session, "Document saved to vault markdown.");
+    return {
+      savedAt,
+      vaultPath: session.vaultPath,
+      integrationMode: LIVE_MODE,
+      sourceOfTruth: LIVE_SOURCE_OF_TRUTH,
+    };
+  } catch (err) {
+    session.lastError = (err as Error).message || "Outbound sync failed.";
+    emit("watch-error", session, session.lastError);
+    throw err;
+  }
+}
+
 export function getVaultWatchStatus(documentId: string): VaultWatchStatus | null {
   const session = sessions.get(documentId);
   if (!session) {
@@ -189,6 +240,8 @@ export function getVaultWatchStatus(documentId: string): VaultWatchStatus | null
     ok: true,
     documentId: session.documentId,
     vaultPath: session.vaultPath,
+    integrationMode: LIVE_MODE,
+    sourceOfTruth: LIVE_SOURCE_OF_TRUTH,
     running: true,
     lastInboundAt: session.lastInboundAt,
     lastOutboundAt: session.lastOutboundAt,
@@ -201,6 +254,8 @@ export function listVaultWatchStatuses(): VaultWatchStatus[] {
     ok: true,
     documentId: session.documentId,
     vaultPath: session.vaultPath,
+    integrationMode: LIVE_MODE,
+    sourceOfTruth: LIVE_SOURCE_OF_TRUTH,
     running: true,
     lastInboundAt: session.lastInboundAt,
     lastOutboundAt: session.lastOutboundAt,

@@ -198,6 +198,8 @@ export interface VaultWatchStatus {
   ok: true;
   documentId: string;
   vaultPath: string;
+  integrationMode: "obsidian-live";
+  sourceOfTruth: "vault-md";
   running: boolean;
   lastInboundAt: string | null;
   lastOutboundAt: string | null;

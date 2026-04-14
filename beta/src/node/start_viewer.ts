@@ -56,6 +56,7 @@ import {
   listVaultWatchStatuses,
   startVaultWatch,
   stopVaultWatch,
+  writeDocumentToVaultNow,
 } from "./vault_watch";
 import type {
   AiSubagentRequest,
@@ -1330,12 +1331,22 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
         }
       }
 
+      const liveWrite = await writeDocumentToVaultNow(SQLITE_DB_PATH, docId, model.toJSON());
       model.saveToSqlite(SQLITE_DB_PATH, docId);
       const savedAt = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, docId).savedAt;
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastDocUpdate(docId, savedAt, sourceTabId);
-      handleDocumentSavedForVaultWatch(SQLITE_DB_PATH, docId);
-      sendJson(res, 200, { ok: true, savedAt, documentId: docId });
+      if (!liveWrite) {
+        handleDocumentSavedForVaultWatch(SQLITE_DB_PATH, docId);
+      }
+      sendJson(res, 200, {
+        ok: true,
+        savedAt,
+        documentId: docId,
+        integrationMode: liveWrite?.integrationMode ?? "off",
+        sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+        ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
+      });
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
       if (err instanceof SyntaxError) {
