@@ -24,6 +24,14 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 
 | メソッド | パス | 概要 | 参照先 |
 |----------|------|------|--------|
+| `GET` | `/api/docs` | ドキュメント一覧（HOME） | 本文書 |
+| `POST` | `/api/docs/new` | ドキュメント新規作成 | 本文書 |
+| `POST` | `/api/docs/{docId}/duplicate` | ドキュメント複製 | 本文書 |
+| `POST` | `/api/docs/{docId}/rename` | ルートラベル変更 | 本文書 |
+| `POST` | `/api/docs/{docId}/archive` | ゴミ箱へ移動 | 本文書 |
+| `POST` | `/api/docs/{docId}/restore` | ゴミ箱から復元 | 本文書 |
+| `POST` | `/api/docs/{docId}/tags` | タグ更新 | 本文書 |
+| `DELETE` | `/api/docs/{docId}` | 物理削除（archived のみ） | 本文書 |
 | `GET` | `/api/docs/{docId}` | ドキュメント読み込み | 本文書 |
 | `POST` | `/api/docs/{docId}` | ドキュメント保存 | 本文書 |
 | `GET` | `/api/sync/status/{docId}` | クラウド同期ステータス | 本文書 |
@@ -41,6 +49,139 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 | `POST` | `/api/flash/draft/{id}/approve` | Flash ドラフト承認 | 本文書 |
 | `DELETE` | `/api/flash/draft/{id}` | Flash ドラフト破棄 | 本文書 |
 | `GET` | `/{path}` | 静的ファイル配信 | — |
+
+---
+
+## Document Management API (HOME)
+
+HOME ページ（一覧 / 新規 / 複製 / 改名 / タグ / アーカイブ / 削除）を支えるドキュメント単位の管理 API。
+個々のドキュメント本文（state）の読み書きは下の Document API を引き続き使う。
+
+DTO 定義は `beta/src/shared/home_types.ts` にある。所有者は data ロール、visual はインポート専用。
+
+### エラー契約
+
+すべての本セクション API は失敗時に下記の構造化エラーを返す（HTTP ステータスコードは 400/404/409/500 のいずれか）。
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "DOC_NOT_FOUND",
+    "message": "Document not found: foo",
+    "details": null
+  }
+}
+```
+
+主な `code`:
+
+- `DOC_NOT_FOUND` (404): 指定 `docId` の行が存在しない
+- `DOC_ALREADY_EXISTS` (409): 新規/複製先 id が既存
+- `INVALID_LABEL` (400): label が空または空白のみ
+- `INVALID_TAGS` (400): tags が string[] でない
+- `INVALID_BODY` (400): JSON パース失敗
+- `NOT_ARCHIVED` (409): 物理削除を archived=0 の doc に対して呼んだ
+- `METHOD_NOT_ALLOWED` (405)
+- `INTERNAL_ERROR` (500)
+
+### `GET /api/docs`
+
+ドキュメント一覧を返す。
+
+クエリパラメータ:
+
+- `includeArchived` (boolean, 任意): `true` でゴミ箱（archived=1）も含む。既定は `false`
+
+成功レスポンス (200):
+
+```json
+{
+  "docs": [
+    {
+      "id": "doc_1234_abcdef",
+      "label": "Research notes",
+      "savedAt": "2026-04-14T11:29:23.052Z",
+      "nodeCount": 42,
+      "charCount": 1830,
+      "tags": ["work", "draft"],
+      "archived": false
+    }
+  ]
+}
+```
+
+`label` はルートノードの text、`nodeCount` / `charCount` は state_json をパースして集計する。
+
+### `POST /api/docs/new`
+
+新規ドキュメントを作成する。
+
+リクエストボディ（任意）:
+
+```json
+{ "label": "新規メモ" }
+```
+
+`label` を省略すると `"Untitled"` が使われる。
+
+成功レスポンス (200):
+
+```json
+{ "ok": true, "id": "doc_1234_abcdef" }
+```
+
+### `POST /api/docs/{docId}/duplicate`
+
+`docId` のドキュメントを複製し、新しい id を返す。state と tags はコピー、archived は 0、savedAt は現在時刻。
+
+成功レスポンス (200):
+
+```json
+{ "ok": true, "id": "doc_5678_xyz123" }
+```
+
+### `POST /api/docs/{docId}/rename`
+
+ドキュメントのルートノード text を更新する（HOME 一覧上のラベルと一致）。
+
+リクエストボディ:
+
+```json
+{ "label": "新しい名前" }
+```
+
+成功レスポンス (200): `{ "ok": true }`
+
+### `POST /api/docs/{docId}/archive`
+
+ドキュメントをゴミ箱に移動（archived=1）。一覧の既定からは消えるが state は保持される。
+
+成功レスポンス (200): `{ "ok": true }`
+
+### `POST /api/docs/{docId}/restore`
+
+ゴミ箱から復元（archived=0）。
+
+成功レスポンス (200): `{ "ok": true }`
+
+### `POST /api/docs/{docId}/tags`
+
+タグを完全置換する。重複・空白文字列は除去。
+
+リクエストボディ:
+
+```json
+{ "tags": ["work", "draft"] }
+```
+
+成功レスポンス (200): `{ "ok": true }`
+
+### `DELETE /api/docs/{docId}`
+
+物理削除。**archived=1 のドキュメントに対してのみ許可**。それ以外は `409 NOT_ARCHIVED` を返す。
+
+成功レスポンス (200): `{ "ok": true }`
 
 ---
 
