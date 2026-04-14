@@ -564,11 +564,76 @@ interface NodeStyleAttrs {
   confidence: number | null;
 }
 
+/**
+ * Parse `attributes["m3e:style"]` — a V1-compatible JSON string storing
+ * decoration fields under a single attribute key (keeps `attributes` as
+ * `Record<string,string>`, no schema change). Returns `{}` on any error.
+ */
+function readNodeStyleJson(attrs: Record<string, string>): {
+  fill?: string;
+  border?: string;
+  text?: string;
+  urgency?: number;
+  importance?: number;
+} {
+  const raw = attrs["m3e:style"];
+  if (!raw || typeof raw !== "string") return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, never>;
+  } catch {
+    return {};
+  }
+}
+
+function clamp01(x: number): number {
+  return Math.max(0, Math.min(1, x));
+}
+
+/**
+ * Derive a fill color via bilinear interpolation across a 2D
+ * (urgency × importance) grid. Matches the matrix in
+ * `dev-docs/ideas/UrgentImportanceView.mlx` (Method 2, blue variant):
+ *   C00 (U=0,I=0) = white   C01 (U=0,I=1) = yellow
+ *   C10 (U=1,I=0) = blue    C11 (U=1,I=1) = red
+ * Inputs accept 0..3 (integer urgency/importance levels) and are normalized to 0..1.
+ */
+function deriveFillFromUrgencyImportance(urgency: number, importance: number): string | null {
+  if (!Number.isFinite(urgency) && !Number.isFinite(importance)) return null;
+  const u = clamp01((Number.isFinite(urgency) ? urgency : 0) / 3);
+  const i = clamp01((Number.isFinite(importance) ? importance : 0) / 3);
+  // C00=white(255,255,255), C01=yellow(255,255,0), C10=blue(0,0,255), C11=red(255,0,0)
+  const w00 = (1 - u) * (1 - i);
+  const w01 = (1 - u) * i;
+  const w10 = u * (1 - i);
+  const w11 = u * i;
+  const r = Math.round(w00 * 255 + w01 * 255 + w10 * 0   + w11 * 255);
+  const g = Math.round(w00 * 255 + w01 * 255 + w10 * 0   + w11 * 0);
+  const b = Math.round(w00 * 255 + w01 * 0   + w10 * 255 + w11 * 0);
+  const hex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
 function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
+  // V1-compatible JSON decoration layer (Miro-style). Takes priority over
+  // legacy m3e:bg/m3e:border/m3e:color if present.
+  const style = readNodeStyleJson(attrs);
+  const jsonFill = typeof style.fill === "string" ? sanitizeColor(style.fill) : null;
+  const jsonBorder = typeof style.border === "string" ? sanitizeColor(style.border) : null;
+  const jsonText = typeof style.text === "string" ? sanitizeColor(style.text) : null;
+  const urgency = typeof style.urgency === "number" ? style.urgency : NaN;
+  const importance = typeof style.importance === "number" ? style.importance : NaN;
+  // Derived fill only applies when explicit fill is absent (both legacy and JSON).
+  const legacyBg = sanitizeColor(attrs["m3e:bg"]);
+  let effectiveBg = jsonFill ?? legacyBg;
+  if (!effectiveBg && (Number.isFinite(urgency) || Number.isFinite(importance))) {
+    effectiveBg = deriveFillFromUrgencyImportance(urgency, importance);
+  }
   return {
-    bg: sanitizeColor(attrs["m3e:bg"]),
-    color: sanitizeColor(attrs["m3e:color"]),
-    border: sanitizeColor(attrs["m3e:border"]),
+    bg: effectiveBg,
+    color: jsonText ?? sanitizeColor(attrs["m3e:color"]),
+    border: jsonBorder ?? sanitizeColor(attrs["m3e:border"]),
     borderStyle: sanitizeBorderStyle(attrs["m3e:border-style"]),
     borderWidth: sanitizeNumeric(attrs["m3e:border-width"], 0, 8),
     shape: sanitizeShape(attrs["m3e:shape"]),
@@ -4037,6 +4102,154 @@ function hideContextMenu(): void {
   }
 }
 
+// ---- Color Palette Popover (Miro-style node decoration) ----
+
+/** Preset swatches: neutral + 4 urgency tints + 4 importance tints + accents. */
+const COLOR_PALETTE_SWATCHES: { label: string; color: string }[] = [
+  { label: "Clear",          color: "" },             // special: clear fill
+  { label: "White",          color: "#ffffff" },
+  { label: "Urgent low",     color: "#ffe5b4" },      // light peach
+  { label: "Urgent mid",     color: "#ffb074" },
+  { label: "Urgent high",    color: "#ff6b4a" },
+  { label: "Urgent top",     color: "#ff0000" },
+  { label: "Important low",  color: "#e1ecff" },      // light blue
+  { label: "Important mid",  color: "#9ec5ff" },
+  { label: "Important high", color: "#5a8dff" },
+  { label: "Important top",  color: "#0000ff" },
+];
+
+let activeColorPalette: HTMLElement | null = null;
+
+/** Update `m3e:style` JSON attribute on a single node. Removes the attribute
+ *  entirely when the resulting object is empty. */
+function updateStyleJson(
+  nodeId: string,
+  mutate: (style: Record<string, unknown>) => void,
+): boolean {
+  if (!doc) return false;
+  const node = doc.state.nodes[nodeId];
+  if (!node) return false;
+  node.attributes = node.attributes || {};
+  const attrs = node.attributes as Record<string, string>;
+  let style: Record<string, unknown> = {};
+  const raw = attrs["m3e:style"];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") style = parsed as Record<string, unknown>;
+    } catch {
+      style = {};
+    }
+  }
+  mutate(style);
+  const hasKeys = Object.keys(style).length > 0;
+  if (hasKeys) {
+    attrs["m3e:style"] = JSON.stringify(style);
+  } else {
+    delete attrs["m3e:style"];
+  }
+  return true;
+}
+
+function applyFillToSelection(color: string | null): void {
+  if (!doc) return;
+  const ids = viewState.selectedNodeIds.size > 0
+    ? Array.from(viewState.selectedNodeIds)
+    : (viewState.selectedNodeId ? [viewState.selectedNodeId] : []);
+  if (ids.length === 0) return;
+  let changed = 0;
+  for (const id of ids) {
+    const ok = updateStyleJson(id, (style) => {
+      if (color === null) {
+        delete style.fill;
+      } else {
+        style.fill = color;
+      }
+    });
+    if (ok) changed++;
+  }
+  if (changed > 0) {
+    setStatus(`Color: ${color === null ? "cleared" : color} on ${changed} node${changed === 1 ? "" : "s"}.`);
+    touchDocument();
+  }
+}
+
+function clearDecorationOnSelection(): void {
+  if (!doc) return;
+  const ids = viewState.selectedNodeIds.size > 0
+    ? Array.from(viewState.selectedNodeIds)
+    : (viewState.selectedNodeId ? [viewState.selectedNodeId] : []);
+  if (ids.length === 0) return;
+  let changed = 0;
+  for (const id of ids) {
+    const ok = updateStyleJson(id, (style) => {
+      delete style.fill;
+      delete style.border;
+      delete style.text;
+    });
+    if (ok) changed++;
+  }
+  if (changed > 0) {
+    setStatus(`Cleared decoration on ${changed} node${changed === 1 ? "" : "s"}.`);
+    touchDocument();
+  }
+}
+
+function hideColorPalette(): void {
+  if (activeColorPalette) {
+    activeColorPalette.remove();
+    activeColorPalette = null;
+  }
+}
+
+function showColorPalette(): void {
+  hideColorPalette();
+  if (!doc) return;
+  const anchorId = viewState.selectedNodeId;
+  if (!anchorId || !lastLayout || !lastLayout.pos[anchorId]) return;
+
+  // Compute screen position near the anchor node.
+  const nodePos = lastLayout.pos[anchorId]!;
+  const boardRect = board.getBoundingClientRect();
+  const screenX = boardRect.left + viewState.cameraX + (nodePos.x + nodePos.w) * viewState.zoom + 8;
+  const screenY = boardRect.top + viewState.cameraY + nodePos.y * viewState.zoom;
+
+  const menu = document.createElement("div");
+  menu.className = "color-palette-popover";
+  menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 220, screenX))}px`;
+  menu.style.top = `${Math.max(8, Math.min(window.innerHeight - 80, screenY))}px`;
+
+  for (const swatch of COLOR_PALETTE_SWATCHES) {
+    const btn = document.createElement("button");
+    btn.className = "color-palette-swatch";
+    btn.type = "button";
+    btn.title = swatch.label;
+    if (swatch.color === "") {
+      btn.classList.add("clear");
+      btn.textContent = "✕";
+    } else {
+      btn.style.background = swatch.color;
+    }
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applyFillToSelection(swatch.color === "" ? null : swatch.color);
+      hideColorPalette();
+    });
+    menu.appendChild(btn);
+  }
+
+  document.body.appendChild(menu);
+  activeColorPalette = menu;
+
+  const closeHandler = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      hideColorPalette();
+      document.removeEventListener("click", closeHandler, true);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
+}
+
 // ---- Conflict Panel ----
 
 function collectFlatNodes(state: AppState, rootId: string): { id: string; text: string; depth: number }[] {
@@ -6286,6 +6499,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (activeColorPalette && event.key === "Escape") {
+    event.preventDefault();
+    hideColorPalette();
+    return;
+  }
+
   if (linearAdjustMenuOpen && event.key === "Escape") {
     linearMenuVisible = false;
     linearAdjustMenuOpen = false;
@@ -6545,6 +6764,18 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
     event.preventDefault();
     makeSelectedFolder();
+    return;
+  }
+
+  // Node color decoration (Phase 1, Miro-style)
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key === "c") {
+    event.preventDefault();
+    showColorPalette();
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key === "C") {
+    event.preventDefault();
+    clearDecorationOnSelection();
     return;
   }
 

@@ -1578,6 +1578,42 @@
         margin: 3px 8px;
       }
 
+      /* ── Color Palette Popover (Miro-style node decoration) ── */
+      .color-palette-popover {
+        position: fixed;
+        z-index: 100;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+        padding: 8px;
+        display: grid;
+        grid-template-columns: repeat(5, 24px);
+        gap: 6px;
+      }
+
+      .color-palette-swatch {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 1px solid rgba(0,0,0,0.18);
+        cursor: pointer;
+        padding: 0;
+        transition: transform 0.08s ease, box-shadow 0.08s ease;
+      }
+
+      .color-palette-swatch:hover {
+        transform: scale(1.15);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+      }
+
+      .color-palette-swatch.clear {
+        background: #fff;
+        color: #888;
+        font-size: 12px;
+        line-height: 1;
+      }
+
       /* Hide board and linear panel when home screen is visible */
       .app.home-active .workspace {
         visibility: hidden;
