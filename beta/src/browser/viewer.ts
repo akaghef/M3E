@@ -948,6 +948,11 @@ function enterScope(scopeNodeId: string): boolean {
   setSingleSelection(node.id, false);
   render();
   fitDocument();
+  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
+  // and board dimensions shifted after the scope change.
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
   setStatus(`Entered scope: ${uiLabel(node)}`);
   board.focus();
   return true;
@@ -979,6 +984,11 @@ function exitScope(): boolean {
   setSingleSelection(scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
   render();
   fitDocument();
+  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
+  // and board dimensions shifted after the scope change.
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
   setStatus("Returned to parent scope.");
   board.focus();
   return true;
