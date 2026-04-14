@@ -1,6 +1,6 @@
 # M3E — Home
 
-最終更新: 2026-04-11
+最終更新: 2026-04-15
 
 ---
 
@@ -17,7 +17,7 @@ M3E は Miro のビジュアルコラボ × Obsidian の構造化知識 × GitHu
 ### 設計原則
 
 - **AI は提案、人間が確定する**
-- **ローカルファイル（.md）が正本**。クラウドは同期先
+- **正本はモードで明示する**。Standalone は SQLite 正本、ローカルファイル連携モードは `.md` 正本
 - **構造は親子を主軸に保つ**。scope で認知境界を制御
 - **オフライン動作が基本**。オンラインでチームコラボ
 
@@ -58,7 +58,7 @@ Flash → Rapid → Deep
 |---------|------|------|
 | フロントエンド | TypeScript + SVG canvas | React は使わない（現状） |
 | バックエンド | Node.js + Express | ローカルサーバー |
-| データストア | SQLite (キャッシュ) + .md (正本) | Plan B: 単一正本方式 |
+| データストア | SQLite + .md | Standalone は SQLite 正本、連携モードは `.md` 正本 |
 | クラウド同期 | Supabase | scope 単位 push/pull |
 | AI | Anthropic SDK (Claude) | Bitwarden 方式でキー管理 |
 | ファイル監視 | chokidar | .md の外部編集検出 |
@@ -77,7 +77,18 @@ Flash → Rapid → Deep
 
 ## アーキテクチャ
 
-### ローカルファイル強結合（Plan B: 単一正本方式）
+### 保存モード
+
+| モード | 主用途 | 正本 | UI 上の位置づけ |
+|-------|--------|------|----------------|
+| Standalone | 通常利用、M3E 単体編集 | SQLite | 既定モード |
+| Import / Export | 単発の取り込み・書き出し | 実行後は各側で独立 | 普段の UI のユーティリティ |
+| ローカルファイル連携モード | Obsidian / Markdown フォルダとの強結合 | `.md` | 明示的に開始する別モード |
+
+- `Import / Export` は変換操作であり、ライブ同期や `.md` 正本を意味しない。
+- `ローカルファイル連携モード` を名乗る場合のみ、`.md` を正本として watch / write-back / conflict policy を有効にする。
+
+### ローカルファイル連携モード（強結合）
 
 ```
 .md ファイル（唯一の正本）
@@ -92,6 +103,7 @@ Supabase（リモート同期）
 - .md 保存 = commit（確定）。staging なし
 - SQLite はインデックスに過ぎない。壊れても .md から再構築
 - Cloud Sync は SQLite キャッシュ経由（CS-2 方式）
+- 普段の `Import / Export` はこのモードに含めない。単発変換として扱う
 
 ### Collab（リアルタイム共同編集）
 
