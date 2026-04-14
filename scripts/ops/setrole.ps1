@@ -14,7 +14,7 @@ $roleMap = @{
     }
     data = @{
         branch = 'dev-data'
-        worktree = 'C:/Users/Akaghef/dev/M3E'
+        worktree = 'C:/Users/Akaghef/dev/M3E-dev-data'
         needsSync = $true
     }
     data2 = @{
@@ -55,7 +55,7 @@ if ($currentBranch -ne $target.branch) {
 $syncResult = 'skipped'
 if ($target.needsSync) {
     git fetch origin
-    git reset --hard origin/dev-beta
+    git rebase origin/dev-beta
     $syncResult = 'pass'
 }
 

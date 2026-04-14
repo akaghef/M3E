@@ -10,10 +10,10 @@ Operate on the M3E mind-map through its local REST API.
 
 ## API Basics
 
-- **Base URL**: `http://localhost:38482` (override with `M3E_PORT` env var)
+- **Base URL**: `http://localhost:4173` (beta — default for dev / agent operations; override with `M3E_PORT` env var. final は 38482)
 - **Content-Type**: `application/json; charset=utf-8`
 - **Auth**: None (local only)
-- **Document ID**: `rapid-main` (the default working document)
+- **Document ID**: `akaghef-beta` (beta の default working document)
 
 ## Workflow
 
@@ -40,8 +40,19 @@ For complex modifications (many nodes), write a temporary Node.js script that co
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/docs/{docId}` | Read entire map state |
-| POST | `/api/docs/{docId}` | Save entire map state (full replace) |
+| GET | `/api/docs/{docId}` | Read entire map state (supports `?scope=<nodeId>&depth=N` for subtree read) |
+| POST | `/api/docs/{docId}` | Save entire map state (supports `?scope=<nodeId>` for subtree write) |
+| GET | `/api/docs/{docId}/resolve?path=Map:Root/...` | Resolve a path string to a `nodeId` |
+
+### Path format (`Map:` convention)
+
+User-copied paths from the viewer (right-click → "Copy path") use the form `Map:Root/Child/Grandchild`. The `Map:` prefix is optional on the API (accepted case-insensitively), and a leading `Root` segment (or the root node's own text) resolves to the document root.
+
+- Success: `{ ok: true, nodeId, matched: ["Root", ...] }`
+- `PATH_NOT_FOUND` (404): no child with that text under the current parent
+- `PATH_AMBIGUOUS` (409): multiple children share the segment text; response includes `candidates: [nodeId, ...]`
+
+Prefer `resolve` + `?scope=<nodeId>` over loading the full state when the user gave you a path.
 
 ### Displaying the Tree
 

@@ -40,10 +40,10 @@
 
 - Date: 2026-04-08
 - Topic: T4 — Cloud Sync conflict 時の diff 表示 + 確認ダイアログ
-- Owner: codex1
+- Owner: visual
 - State: ready
 - Link: `dev-docs/tasks/handoff_cloud_sync_conflict_ui.md`
-- Note: codex1 にハンドオフ済み。ヒアリングセッションで詳細を詰めてから着手
+- Note: visual にハンドオフ済み。ヒアリングセッションで詳細を詰めてから着手
 
 ---
 

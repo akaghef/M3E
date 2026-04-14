@@ -5,14 +5,14 @@ POST replaces the entire document state. **Always read first**, modify, then wri
 ## Save endpoint
 
 ```bash
-curl -s -X POST http://localhost:38482/api/docs/rapid-main \
+curl -s -X POST http://localhost:4173/api/docs/akaghef-beta \
   -H "Content-Type: application/json" \
   -d '{"state": { "rootId": "...", "nodes": {...}, "links": {...} }}'
 ```
 
 Success response:
 ```json
-{ "ok": true, "savedAt": "...", "documentId": "rapid-main" }
+{ "ok": true, "savedAt": "...", "documentId": "akaghef-beta" }
 ```
 
 Error response (invariant violation):
@@ -124,7 +124,7 @@ For complex changes (adding many nodes, restructuring), write a temporary Node.j
 const http = require("http");
 
 // 1. GET current state
-http.get("http://localhost:38482/api/docs/rapid-main", (res) => {
+http.get("http://localhost:4173/api/docs/akaghef-beta", (res) => {
   let data = "";
   res.on("data", c => data += c);
   res.on("end", () => {
@@ -137,7 +137,7 @@ http.get("http://localhost:38482/api/docs/rapid-main", (res) => {
     // 3. POST back
     const body = JSON.stringify({ state });
     const req = http.request({
-      hostname: "localhost", port: 38482,
+      hostname: "localhost", port: 4173,
       path: "/api/docs/rapid-main", method: "POST",
       headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
     }, (res2) => {

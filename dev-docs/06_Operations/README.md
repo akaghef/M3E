@@ -11,7 +11,9 @@
 - `Commit_Message_Rules.md`
   コミットメッセージの形式と `type` の使い分けを定義する
 - `Test_and_CICD_Guide.md`
-  MVP 期間のテスト戦略と CI/CD 運用の基準を定義する
+  テスト戦略と CI/CD 運用の基準を定義する
+- `Rule_Backlog.md`
+  正式ルール化する前の草案プール
 - `Distribution_Validation_Balanced_Plan.md`
   配布物の主軸を installer 化し、Windows Sandbox で自動検証する運用設計を定義する
 - `Command_Panel_Security_Test_Cases.md`
@@ -28,7 +30,7 @@
 
 ## 正式文書との関係
 
-- 長期的な方針は `01_Vision` と `02_Strategy`
+- 長期的な方針は `01_Vision`
 - 仕様の確定は `03_Spec`
 - 実装構造の確定は `04_Architecture`
 - 重要な設計判断の採択は `09_Decisions`

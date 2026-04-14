@@ -32,7 +32,7 @@
 - **可変高さレイアウト**: multiline label 対応、LaTeX ノードのサイジング改善
 - **パフォーマンス**: scheduleRender / scheduleApplyZoom による rAF バッチ化
 - **クロスブラウザ修正**: wheel deltaMode 正規化（pan/zoom）
-- **開発 skill 整備**: devM3E, pr-beta, pr-review, m3e-shortcuts, intensive-develop skill
+- **開発 skill 整備**: devM3E, pr-beta, pr-review, m3e-shortcuts
 - AI インフラ: マルチモデル alias / gateway 方針 / Gemma ローカル導入 / topic-suggest subagent
 - クラウド同期仕様の初期整理（Cloud_Sync.md）
 - REST API 仕様書の新規作成（03_Spec/REST_API.md）

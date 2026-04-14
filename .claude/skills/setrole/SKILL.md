@@ -169,4 +169,4 @@ setrole は devM3E の **Phase 3: Execute** でサブエージェントを起動
 5. 完了後 /pr-beta で PR 作成
 ```
 
-intensive-develop の自動アサインでも、ハンドオフファイル経由でタスクが届く。
+devM3E の自動アサインでも、ハンドオフファイル経由でタスクが届く。

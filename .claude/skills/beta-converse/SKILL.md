@@ -74,7 +74,22 @@ git branch --merged dev-beta
 git log dev-beta..<branch> --oneline
 ```
 
-保護ブランチ（削除しない）: `main`, `dev-beta`
+保護ブランチ（削除しない / `/setrole` 規定ブランチ）:
+`main`, `dev-beta`, `dev-visual`, `dev-data`, `dev-data2`, `dev-team`
+
+### Step 2b: 規定外ブランチの強制整理（既定動作）
+
+beta-converse 起動時は、ユーザーに明示指示されなくても以下を実行する。
+削除対象一覧を提示し確認を取った上で実行する（確認なしで削除はしない）。
+
+1. 保護ブランチ以外のローカル・リモート・ワークツリーを全削除
+   - 未マージでもマージ不能でも削除対象（対応 PR が close 済なら安全）
+   - マージ不能な open PR は先に `gh pr close <n> --comment "..."` する
+   - ワークツリーは `git worktree remove --force <path>` で強制削除
+2. 保護ブランチ（role branches）を `origin/dev-beta` に強制同期
+   - 各 role branch で `git reset --hard origin/dev-beta` → `git push --force-with-lease`
+   - rebase でコンフリクトが出る commit は close 済 PR の残骸なので捨ててよい
+3. 結果として `git branch -r` は 6 本（main + dev-beta + 4 role）のみになる
 
 ### Step 3: ワークツリーの掃除
 

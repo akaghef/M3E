@@ -14,7 +14,12 @@
 - Canvas 中心でアプリ全体を構成する前提
 - 無限平面を起点に UI と描画を同一レイヤーで考える前提
 - 描画技術の理想形を初期段階から優先する前提
+- MVP 段階論（凍結: 2026-04-15）
+- Freeplane ファースト pivot（凍結）
 
 ## 参照文書
 
-- [Canvas_Centric_Architecture.md](./Canvas_Centric_Architecture.md)
+- `Canvas_Centric_Architecture.md` — Canvas 中心設計の旧案
+- `M3E仕様設計書.md`, `M3E仕様2.md` — 初期会話由来の仕様メモ
+- `MVP_Definition.md`, `mvp-cleanup-plan.md` — MVP 段階の残骸
+- `Current_Pivot_Freeplane_First.md` — Freeplane pivot

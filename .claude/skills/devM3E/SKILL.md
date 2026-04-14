@@ -245,42 +245,14 @@ skill-creatorに倣い、情報を3層に分ける:
 
 ---
 
-## Whiteboard（マップ共有ホワイトボード）
+## Canvas（M3E マップを共有思考空間として使う）
 
-M3Eマップを開発の共有思考空間として使う。m3e-map skill の REST API 経由で読み書きする。
+M3E マップを canvas として使う規約は **`canvas-protocol` skill** に一本化。
 
-### 使い方
+固定パス: `ROOT/SYSTEM/DEV/strategy/`, `reviews/`, `decisions/`, `Agent Status/`, `scratch/` 等。
+詳細とプロトコルは canvas-protocol/SKILL.md を参照。
 
-マップのルート直下に `_wb` folder を作り、その配下で作業する:
-
-```
-_wb [folder]
-├── tasks [folder]     ← Todo Pool と同期するタスクボード
-│   ├── doing / ready / done
-├── design [folder]    ← 設計議論の構造化
-├── brainstorm [folder]← アイデア発散→収束
-└── scratch [folder]   ← 一時メモ
-```
-
-### Core Loop との統合
-
-| フェーズ | ホワイトボードの役割 |
-|---------|-------------------|
-| Assess | `_wb/tasks` を読んで進捗可視化 |
-| Plan | タスク選定時に `_wb/tasks` のstatus確認、新タスクを `ready` に追加 |
-| Execute | 実装中の設計メモを `_wb/design` に書く |
-| Verify | 検証結果のサマリーを `_wb/scratch` に一時記録 |
-| Integrate | タスクを `done` に移動、Todo Pool と sync |
-| Review | `_wb/design` の議論ツリーをユーザーに見せる |
-
-### トリガー
-
-- セッション開始時: `_wb` が無ければ whiteboard agent が init を実行
-- タスク完了時: whiteboard agent が `tasks/doing → tasks/done` のノード移動を実行
-- 設計議論時: ユーザーが「マップに書いて」「マップ見せて」と言った時
-- ブレスト時: ユーザーが「アイデア出し」「発散して」と言った時
-
-詳細は `agents/whiteboard.md` を参照。
+**旧 `_wb/` ツリーは廃止**（2026-04-15）。既存の `_wb` ノードは個別に `DEV/` 配下へ移送 or 削除。
 
 ---
 
@@ -295,7 +267,7 @@ _wb [folder]
 | `agents/verifier.md` | テスト・ビルド検証をサブエージェントに委任する時 |
 | `agents/doc-updater.md` | ドキュメント更新をサブエージェントに委任する時 |
 | `agents/reviewer.md` | 差分レビューをサブエージェントに委任する時 |
-| `agents/whiteboard.md` | マップをホワイトボードとして読み書きする時 |
+| `canvas-protocol` skill | マップを canvas として読み書きする時（規約本体） |
 
 ---
 

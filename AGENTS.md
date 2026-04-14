@@ -67,7 +67,7 @@ If any item is missing, task state is still in-progress.
 ```
 
 各エージェントは `isolation: worktree` で独立したコピーで作業する。
-タスクは共有タスクリスト (`~/.claude/tasks/m3e-dev/`) で管理。
+タスクの正本は M3E マップ `ROOT/SYSTEM/DEV/strategy/` と `dev-docs/06_Operations/Todo_Pool.md` の text pool。
 メンバーは `SendMessage` で互いに通信可能。
 
 ### Team Communication
@@ -81,17 +81,18 @@ If any item is missing, task state is still in-progress.
 
 ### Shared State (Mindmap)
 
-揮発的な情報は M3E マップの `dev M3E/` 配下で共有する:
+揮発的な情報は M3E マップの `ROOT/SYSTEM/DEV/` 配下で共有する（canvas-protocol 準拠）:
 
 ```
-dev M3E/
-├── tasks/          ← タスク状態 (doing/ready/done-today)
-├── strategy/       ← ロール割り当て
-├── design/         ← 設計判断 (ADR) — 判断が必要な場面でメンバーが書く
-└── scratch/        ← 一時メモ
+ROOT/SYSTEM/DEV/
+├── strategy/       ← タスクボード（判断はここ。goal/task を枝で詳細化）
+├── reviews/        ← 判断待ちキュー Qn（akaghef が selected="yes" で確定）
+├── decisions/      ← 確定済み判断（reviews から移送）
+├── Agent Status/   ← 各 sub-agent の現在状態
+└── scratch/        ← 一時メモ・アイデア
 ```
 
-エージェントは REST API (`http://localhost:38482/api/docs/rapid-main`) 経由で読み書きする。
+エージェントは REST API (`http://localhost:4173/api/docs/akaghef-beta`) 経由で読み書きする（beta=4173 が default、final=38482 は確認時のみ）。
 設計判断が必要な場合:
 1. エージェントが `dev M3E/design/` に context + options を書く
 2. `SendMessage` で manager に通知

@@ -2,7 +2,7 @@
 name: pr-beta
 description: |
   M3E開発で作業ブランチから dev-beta へのPR（Pull Request）を作成するスキル。
-  subworker（codex1/codex2/feature branch）が作業完了後に統合マネージャーへ
+  sub-agent（visual/data/data2/team/feature branch）が作業完了後に manager へ
   マージ依頼を出すワークフローを自動化する。
   以下の場面でトリガーする:
   - 「/pr-beta」「PRを作って」「dev-betaにマージ」「統合して」と言われたとき
