@@ -29,6 +29,13 @@
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
+          <div class="view-mode-switch" aria-label="View mode">
+            <label for="view-mode-select" class="view-mode-label">View</label>
+            <select id="view-mode-select" class="view-mode-select">
+              <option value="tree">Tree</option>
+              <option value="mermaid-flowchart">Mermaid</option>
+            </select>
+          </div>
           <button id="share-btn" class="share-btn" type="button">Share</button>
           <div class="export-wrap" data-edit-only>
             <button id="export-btn" type="button">Export ▾</button>
@@ -53,6 +60,10 @@
         <div class="workspace">
           <div id="board" class="board" tabindex="0">
             <svg id="canvas" width="1600" height="900" viewBox="0 0 1600 900"></svg>
+            <div id="mermaid-container" class="mermaid-container" hidden>
+              <div id="mermaid-warning" class="mermaid-warning" hidden></div>
+              <div id="mermaid-render" class="mermaid-render"></div>
+            </div>
           </div>
           <aside class="linear-panel" aria-label="Linear tree editor panel">
             <div id="linear-menu" class="linear-menu">
@@ -210,6 +221,7 @@
     </div>
 
         <script src="./public/katex/katex.min.js"></script>
+        <script src="./public/vendor/mermaid.min.js"></script>
         <script src="./dist/browser/viewer.tuning.js"></script>
         <script src="./dist/browser/viewer.js"></script>
   </body>

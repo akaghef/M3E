@@ -6,6 +6,13 @@ declare const katex: {
   renderToString(latex: string, options?: { displayMode?: boolean; throwOnError?: boolean }): string;
 };
 
+declare const mermaid: {
+  initialize(config: Record<string, unknown>): void;
+  render(id: string, source: string): Promise<{ svg: string; bindFunctions?: (el: Element) => void }>;
+};
+
+type ViewMode = "tree" | "mermaid-flowchart";
+
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";

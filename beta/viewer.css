@@ -1589,3 +1589,61 @@
           /* font-size now controlled by inline SVG attribute from tuning constants */
         }
       }
+
+      /* ─────────── View-mode switch ─────────── */
+      .view-mode-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 6px;
+      }
+      .view-mode-label {
+        font-size: 11px;
+        color: #666;
+        user-select: none;
+      }
+      .view-mode-select {
+        font-size: 12px;
+        padding: 2px 4px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        background: #fff;
+        cursor: pointer;
+      }
+
+      /* ─────────── Mermaid container ─────────── */
+      .mermaid-container {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+        background: #fafafa;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      .mermaid-container[hidden] {
+        display: none;
+      }
+      .mermaid-render {
+        min-width: 100%;
+        min-height: 100%;
+      }
+      .mermaid-render svg {
+        max-width: none;
+        height: auto;
+      }
+      .mermaid-warning {
+        background: #fff3cd;
+        border: 1px solid #ffe08a;
+        color: #664d03;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+      .mermaid-warning[hidden] {
+        display: none;
+      }
+      /* Hide SVG canvas when mermaid view active */
+      .board.view-mermaid #canvas {
+        display: none;
+      }

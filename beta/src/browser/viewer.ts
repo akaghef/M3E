@@ -53,6 +53,10 @@ const conflictDiffSummaryEl = document.getElementById("conflict-diff-summary") a
 const conflictCloseBtn = document.getElementById("conflict-close") as HTMLButtonElement | null;
 const conflictUseLocalBtn = document.getElementById("conflict-use-local") as HTMLButtonElement | null;
 const conflictUseRemoteBtn = document.getElementById("conflict-use-remote") as HTMLButtonElement | null;
+const viewModeSelectEl = document.getElementById("view-mode-select") as HTMLSelectElement | null;
+const mermaidContainerEl = document.getElementById("mermaid-container") as HTMLElement | null;
+const mermaidRenderEl = document.getElementById("mermaid-render") as HTMLElement | null;
+const mermaidWarningEl = document.getElementById("mermaid-warning") as HTMLElement | null;
 
 function normalizeDocId(raw: string | null, fallback: string): string {
   const trimmed = (raw || "").trim();
@@ -2199,6 +2203,212 @@ function updateDocumentTitle(): void {
 }
 
 let _renderScheduled = false;
+// ── View-mode (tree vs mermaid-flowchart) ──
+// TENTATIVE: view mode is per-doc, persisted in localStorage under key `m3e:viewMode:<docId>`.
+// Pooled Qn: do we want this in AppState instead? Tentative = localStorage (no schema change).
+const VIEW_MODE_STORAGE_PREFIX = "m3e:viewMode:";
+const MERMAID_NODE_CAP = 200; // TENTATIVE: above this, warn; Mermaid slow >500.
+let _mermaidInitialized = false;
+let _mermaidRenderSeq = 0;
+
+function viewModeStorageKey(): string {
+  return `${VIEW_MODE_STORAGE_PREFIX}${LOCAL_DOC_ID}`;
+}
+
+function readStoredViewMode(): ViewMode | null {
+  try {
+    const raw = localStorage.getItem(viewModeStorageKey());
+    if (raw === "tree" || raw === "mermaid-flowchart") {
+      return raw;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function writeStoredViewMode(mode: ViewMode): void {
+  try {
+    localStorage.setItem(viewModeStorageKey(), mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+// TENTATIVE: "Rapid mode" default detection is ambiguous in the task spec.
+// The task references an existing `rapid_mvp` convention, but no root-level attribute
+// currently encodes that. Tentative = use the current `viewState.thinkingMode === "rapid"`
+// as the signal. Pooled Qn in PR.
+function shouldDefaultToMermaid(): boolean {
+  return viewState.thinkingMode === "rapid";
+}
+
+let currentViewMode: ViewMode = readStoredViewMode() ?? (shouldDefaultToMermaid() ? "mermaid-flowchart" : "tree");
+
+function syncViewModeUi(): void {
+  if (viewModeSelectEl) {
+    viewModeSelectEl.value = currentViewMode;
+  }
+  const isMermaid = currentViewMode === "mermaid-flowchart";
+  if (board) {
+    board.classList.toggle("view-mermaid", isMermaid);
+  }
+  if (mermaidContainerEl) {
+    mermaidContainerEl.hidden = !isMermaid;
+  }
+}
+
+function setViewMode(mode: ViewMode, opts: { persist?: boolean } = {}): void {
+  if (currentViewMode === mode) {
+    syncViewModeUi();
+    return;
+  }
+  currentViewMode = mode;
+  if (opts.persist !== false) {
+    writeStoredViewMode(mode);
+  }
+  syncViewModeUi();
+  setStatus(`View: ${mode}`);
+  scheduleRender();
+}
+
+function cycleViewMode(): void {
+  const order: ViewMode[] = ["tree", "mermaid-flowchart"];
+  const idx = order.indexOf(currentViewMode);
+  const next = order[(idx + 1) % order.length];
+  setViewMode(next);
+}
+
+// Escape helper for Mermaid node text. Mermaid flowchart syntax uses [" ... "] for
+// node labels containing special chars; escape embedded double quotes via HTML entity.
+function escapeMermaidLabel(raw: string): string {
+  const trimmed = (raw || "").replace(/\s+/g, " ").trim() || "·";
+  const capped = trimmed.length > 80 ? trimmed.slice(0, 77) + "..." : trimmed;
+  return capped.replace(/"/g, "&quot;").replace(/[<>]/g, "");
+}
+
+function mermaidNodeId(id: string): string {
+  // Mermaid node IDs must match /[A-Za-z0-9_]/. Prefix + sanitized.
+  return "n_" + id.replace(/[^A-Za-z0-9_]/g, "_");
+}
+
+interface MermaidSource {
+  source: string;
+  nodeCount: number;
+  capped: boolean;
+}
+
+function buildMermaidFlowchartSource(): MermaidSource {
+  if (!doc) {
+    return { source: "flowchart TD\n  empty[\"(no data)\"]", nodeCount: 0, capped: false };
+  }
+  const state = doc.state;
+  const scopeRootId = currentScopeRootId();
+  const nodesInScope: TreeNode[] = [];
+  const visitedIds = new Set<string>();
+  // BFS from scope root, respect collapse and importance, cap total nodes.
+  const queue: string[] = [scopeRootId];
+  let capped = false;
+  while (queue.length > 0 && nodesInScope.length < MERMAID_NODE_CAP) {
+    const id = queue.shift()!;
+    if (visitedIds.has(id)) continue;
+    const node = state.nodes[id];
+    if (!node) continue;
+    if (!isNodeVisibleByImportance(id)) continue;
+    visitedIds.add(id);
+    nodesInScope.push(node);
+    if (!viewState.collapsedIds.has(id) && !node.collapsed) {
+      for (const childId of node.children || []) {
+        if (!visitedIds.has(childId)) queue.push(childId);
+      }
+    }
+  }
+  if (queue.length > 0) {
+    capped = true;
+  }
+
+  const lines: string[] = ["flowchart TD"];
+  for (const node of nodesInScope) {
+    const label = escapeMermaidLabel(uiLabel(node));
+    lines.push(`  ${mermaidNodeId(node.id)}["${label}"]`);
+  }
+  // Parent-child edges
+  for (const node of nodesInScope) {
+    const parentId = node.parentId;
+    if (parentId && visitedIds.has(parentId)) {
+      lines.push(`  ${mermaidNodeId(parentId)} --> ${mermaidNodeId(node.id)}`);
+    }
+  }
+  // Graph links
+  const rawLinks = Object.values(state.links || {});
+  let linkIdx = 0;
+  const dashedIndices: number[] = [];
+  // Mermaid uses `linkStyle N stroke-dasharray: 5 5;` for dashed. Count includes
+  // parent-child edges — compute offset.
+  const parentChildCount = nodesInScope.reduce((acc, n) => acc + (n.parentId && visitedIds.has(n.parentId) ? 1 : 0), 0);
+  for (const rawLink of rawLinks) {
+    const link = normalizeGraphLink(rawLink);
+    if (!visitedIds.has(link.sourceNodeId) || !visitedIds.has(link.targetNodeId)) continue;
+    // TENTATIVE: edge labels off by default (density); flag below for future toggle.
+    const showLabel = false;
+    const labelPart = showLabel && link.label ? `|"${escapeMermaidLabel(link.label)}"|` : "";
+    lines.push(`  ${mermaidNodeId(link.sourceNodeId)} -.->${labelPart} ${mermaidNodeId(link.targetNodeId)}`);
+    if (link.style === "dashed") {
+      dashedIndices.push(parentChildCount + linkIdx);
+    }
+    linkIdx++;
+  }
+  // Style every graph-link as dashed-ish already via `-.->`. Additional dashed style
+  // reserved for explicit style === "dashed". No-op for now.
+  return { source: lines.join("\n"), nodeCount: nodesInScope.length, capped };
+}
+
+function ensureMermaidInitialized(): void {
+  if (_mermaidInitialized) return;
+  if (typeof mermaid === "undefined") return;
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: "default",
+    securityLevel: "strict",
+    flowchart: { useMaxWidth: false, htmlLabels: true, curve: "basis" },
+  });
+  _mermaidInitialized = true;
+}
+
+function renderMermaidView(): void {
+  if (!mermaidRenderEl || !mermaidContainerEl) return;
+  if (typeof mermaid === "undefined") {
+    mermaidRenderEl.textContent = "Mermaid library failed to load.";
+    return;
+  }
+  ensureMermaidInitialized();
+  const { source, nodeCount, capped } = buildMermaidFlowchartSource();
+  if (mermaidWarningEl) {
+    if (capped) {
+      mermaidWarningEl.hidden = false;
+      mermaidWarningEl.textContent = `Showing first ${MERMAID_NODE_CAP} nodes (${nodeCount} visible). Collapse subtrees to focus.`;
+    } else {
+      mermaidWarningEl.hidden = true;
+      mermaidWarningEl.textContent = "";
+    }
+  }
+  const seq = ++_mermaidRenderSeq;
+  const renderId = `mermaid-svg-${seq}`;
+  mermaid
+    .render(renderId, source)
+    .then((result) => {
+      if (seq !== _mermaidRenderSeq) return; // stale
+      mermaidRenderEl.innerHTML = result.svg;
+      if (result.bindFunctions) {
+        result.bindFunctions(mermaidRenderEl);
+      }
+    })
+    .catch((err) => {
+      if (seq !== _mermaidRenderSeq) return;
+      mermaidRenderEl.textContent = `Mermaid render failed: ${(err as Error).message}`;
+    });
+}
+
 function scheduleRender(): void {
   if (_renderScheduled) {
     return;
@@ -2232,6 +2442,7 @@ function render(): void {
     updateDocumentTitle();
     renderLinearPanel();
     syncLinearPanelPosition();
+    syncViewModeUi();
     return;
   }
 
@@ -2544,6 +2755,10 @@ function render(): void {
   updateDocumentTitle();
   syncInlineEditorPosition();
   renderLinearPanel();
+  syncViewModeUi();
+  if (currentViewMode === "mermaid-flowchart") {
+    renderMermaidView();
+  }
 }
 
 function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: number } {
@@ -5734,6 +5949,16 @@ modeDeepBtn?.addEventListener("click", () => {
   setThinkingMode("deep");
 });
 
+viewModeSelectEl?.addEventListener("change", () => {
+  const val = viewModeSelectEl.value;
+  if (val === "tree" || val === "mermaid-flowchart") {
+    setViewMode(val);
+  }
+});
+
+// Initial UI sync for view mode (picks up stored / rapid-default selection made at load).
+syncViewModeUi();
+
 fileInput.addEventListener("change", (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files && target.files[0];
@@ -6392,6 +6617,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "3") {
       event.preventDefault();
       setThinkingMode("deep");
+      return;
+    }
+    // TENTATIVE: `v` cycles view modes. Alternative: dropdown-only. Pooled Qn.
+    if (event.key === "v" || event.key === "V") {
+      event.preventDefault();
+      cycleViewMode();
       return;
     }
   }
