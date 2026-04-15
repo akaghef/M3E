@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M3E - Home</title>
+    <link rel="stylesheet" href="./viewer.css" />
+  </head>
+  <body class="home-page">
+    <header class="home-top">
+      <div class="home-top-inner">
+        <a class="home-logo" aria-label="M3E home" href="./home.html">M3E</a>
+        <div class="home-top-spacer"></div>
+      </div>
+    </header>
+
+    <main class="home-main">
+      <section class="home-section" aria-labelledby="home-create-title">
+        <h2 id="home-create-title" class="home-section-title">Create New</h2>
+        <div class="home-create-grid">
+          <button class="home-create-card" data-create="blank" type="button">
+            <span class="home-create-icon" aria-hidden="true">+</span>
+            <span class="home-create-label">Blank</span>
+            <span class="home-create-sub">Start with an empty map</span>
+          </button>
+          <button class="home-create-card" data-create="vault" type="button">
+            <span class="home-create-icon" aria-hidden="true">📘</span>
+            <span class="home-create-label">Obsidian Vault</span>
+            <span class="home-create-sub">Bind a vault directory</span>
+          </button>
+          <button class="home-create-card" data-create="import" type="button">
+            <span class="home-create-icon" aria-hidden="true">📥</span>
+            <span class="home-create-label">Import .md / JSON</span>
+            <span class="home-create-sub">Upload a file</span>
+          </button>
+        </div>
+        <input
+          id="home-import-input"
+          type="file"
+          accept=".md,.markdown,.json,text/markdown,application/json"
+          hidden
+        />
+      </section>
+
+      <section class="home-section" id="home-pinned-section" hidden>
+        <h2 class="home-section-title">
+          <span class="home-section-icon" aria-hidden="true">★</span>
+          Pinned
+        </h2>
+        <div class="home-pinned-grid" id="home-pinned-grid"></div>
+      </section>
+
+      <section class="home-section" aria-labelledby="home-docs-title">
+        <div class="home-section-head">
+          <h2 id="home-docs-title" class="home-section-title">Maps</h2>
+          <input
+            id="home-search"
+            class="home-search"
+            type="search"
+            placeholder="Search label or #tag..."
+            spellcheck="false"
+            aria-label="Search maps"
+          />
+        </div>
+        <div class="home-doc-list" id="home-doc-list" role="list"></div>
+        <div class="home-empty" id="home-empty" hidden>No maps yet. Create one above.</div>
+      </section>
+
+      <section class="home-section" id="home-archived-section" hidden>
+        <button class="home-archived-toggle" id="home-archived-toggle" type="button" aria-expanded="false">
+          <span class="home-archived-caret" aria-hidden="true">▸</span>
+          <span>Archived</span>
+          <span class="home-archived-count" id="home-archived-count">0</span>
+        </button>
+        <div class="home-doc-list home-doc-list--archived" id="home-archived-list" hidden></div>
+      </section>
+    </main>
+
+    <div class="home-status" id="home-status" role="status" aria-live="polite"></div>
+    <div class="home-menu" id="home-menu" hidden role="menu"></div>
+
+    <script src="./dist/browser/home.js"></script>
+  </body>
+</html>

@@ -21,7 +21,11 @@ type SqliteDocumentListRow = {
   stateJson: string;
   tags: string | null;
   archived: number | null;
+  pinned: number | null;
+  source: string | null;
 };
+
+export type DocumentSource = { kind: "obsidian"; path: string };
 
 export interface DocumentSummary {
   id: string;
@@ -31,6 +35,8 @@ export interface DocumentSummary {
   charCount: number;
   tags: string[];
   archived: boolean;
+  pinned: boolean;
+  source?: DocumentSource;
 }
 
 export interface ListDocumentsOptions {
@@ -662,6 +668,12 @@ class RapidMvpModel {
     if (!colNames.has("archived")) {
       db.exec(`ALTER TABLE documents ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
     }
+    if (!colNames.has("pinned")) {
+      db.exec(`ALTER TABLE documents ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
+    }
+    if (!colNames.has("source")) {
+      db.exec(`ALTER TABLE documents ADD COLUMN source TEXT`);
+    }
 
     return db;
   }
@@ -717,17 +729,38 @@ class RapidMvpModel {
     return { label, nodeCount, charCount };
   }
 
+  private static parseSourceColumn(raw: string | null): DocumentSource | undefined {
+    if (!raw) return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        (parsed as { kind?: unknown }).kind === "obsidian" &&
+        typeof (parsed as { path?: unknown }).path === "string"
+      ) {
+        return { kind: "obsidian", path: (parsed as { path: string }).path };
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
   static listDocuments(dbPath: string, options: ListDocumentsOptions = {}): DocumentSummary[] {
     const includeArchived = Boolean(options.includeArchived);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const sql = includeArchived
-        ? `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived FROM documents ORDER BY saved_at DESC`
-        : `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived FROM documents WHERE COALESCE(archived, 0) = 0 ORDER BY saved_at DESC`;
+        ? `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM documents ORDER BY saved_at DESC`
+        : `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM documents WHERE COALESCE(archived, 0) = 0 ORDER BY saved_at DESC`;
       const rows = db.prepare(sql).all() as SqliteDocumentListRow[];
       return rows.map((row) => {
         const metrics = RapidMvpModel.computeStateMetrics(row.stateJson);
-        return {
+        const source = RapidMvpModel.parseSourceColumn(row.source);
+        const summary: DocumentSummary = {
           id: row.id,
           label: metrics.label,
           savedAt: row.savedAt,
@@ -735,7 +768,12 @@ class RapidMvpModel {
           charCount: metrics.charCount,
           tags: RapidMvpModel.parseTagsColumn(row.tags),
           archived: Number(row.archived ?? 0) === 1,
+          pinned: Number(row.pinned ?? 0) === 1,
         };
+        if (source) {
+          summary.source = source;
+        }
+        return summary;
       });
     } finally {
       db.close();
@@ -849,6 +887,35 @@ class RapidMvpModel {
     }
   }
 
+  static setPinned(dbPath: string, documentId: string, pinned: boolean): void {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const result = db
+        .prepare(`UPDATE documents SET pinned = ? WHERE id = ?`)
+        .run(pinned ? 1 : 0, documentId);
+      if (result.changes === 0) {
+        throw new Error("Document not found.");
+      }
+    } finally {
+      db.close();
+    }
+  }
+
+  static setDocumentSource(dbPath: string, documentId: string, source: DocumentSource | null): void {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const serialized = source ? JSON.stringify(source) : null;
+      const result = db
+        .prepare(`UPDATE documents SET source = ? WHERE id = ?`)
+        .run(serialized, documentId);
+      if (result.changes === 0) {
+        throw new Error("Document not found.");
+      }
+    } finally {
+      db.close();
+    }
+  }
+
   static deleteDocument(dbPath: string, documentId: string): void {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
@@ -924,7 +991,7 @@ class RapidMvpModel {
         ok: false,
         error: {
           code: "SCOPE_NOT_FOUND",
-          message: `Scope node not found in document: ${scopeId}`,
+          message: `Scope node not found in map: ${scopeId}`,
           details: { documentId, scopeId },
         },
       };
@@ -996,7 +1063,7 @@ class RapidMvpModel {
         ok: false,
         error: {
           code: "SCOPE_NOT_FOUND",
-          message: `Scope node not found in document: ${scopeId}`,
+          message: `Scope node not found in map: ${scopeId}`,
           details: { documentId, scopeId },
         },
       };

@@ -26,11 +26,19 @@ export interface MapSummary {
   tags: string[];
   /** True when the map has been moved to the trash (archived=1). */
   archived: boolean;
+  /** True when the user has pinned the map for quick access from HOME. */
+  pinned: boolean;
+  /** Optional external source binding such as an Obsidian vault. */
+  source?: MapSource;
 }
+
+/** External source that a map is coupled to. */
+export type MapSource =
+  | { kind: "obsidian"; path: string };
 
 /** Response body of `GET /api/maps`. */
 export interface MapListResponse {
-  docs: MapSummary[];
+  maps: MapSummary[];
 }
 
 /** Body for `POST /api/maps/new`. */
@@ -49,6 +57,23 @@ export interface MapCreateResponse {
 export interface MapRenameRequest {
   /** New label. Empty / whitespace-only is rejected with INVALID_LABEL. */
   label: string;
+}
+
+/** Body for `PATCH /api/maps/:id/pin`. */
+export interface MapPinRequest {
+  pinned: boolean;
+}
+
+/** Body for `POST /api/maps/import-file`. */
+export interface MapImportFileRequest {
+  filename: string;
+  content: string;
+}
+
+/** Body for `POST /api/maps/import-vault`. */
+export interface MapImportVaultRequest {
+  vaultPath: string;
+  label?: string;
 }
 
 /** Body for `POST /api/maps/:id/tags`. */

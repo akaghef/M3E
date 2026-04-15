@@ -5,9 +5,12 @@ import fs from "fs";
 import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
+import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
+import { parseMdContent } from "./md_reader";
 import type { CloudSyncTransport } from "../shared/types";
+import { parseMapPath, resolveNodePath } from "../shared/path_resolve";
 import { createBackup, pruneOldBackups, startAutoBackup } from "./backup";
 import {
   createConflictBackup,
@@ -74,6 +77,7 @@ import type {
   VaultWatchEvent,
   VaultWatchStartRequest,
   VaultWatchStopRequest,
+  TreeNode,
 } from "../shared/types";
 import type {
   MapErrorCode,
@@ -84,23 +88,84 @@ import type {
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
 const PORT = Number(process.env.M3E_PORT || "4173");
-const DEFAULT_PAGE = "viewer.html";
+const DEFAULT_PAGE = "home.html";
 const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
 const DEFAULT_DB_FILE = "data.sqlite";
 const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
-const DEFAULT_DOC_ID = process.env.M3E_MAP_ID || "akaghef-beta";
-const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || "sandbox";
+const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
+const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
+const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
+const DEFAULT_MAP_LABEL = "開発";
+const DEFAULT_MAP_SLUG = "beta-dev";
+const SECONDARY_MAP_ID = "map_10226A7F0MEKDVNMEXC7HH4GNV";
+const SECONDARY_MAP_LABEL = "研究";
+const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || DEFAULT_WORKSPACE_ID;
+const WORKSPACE_LABEL = process.env.M3E_WORKSPACE_LABEL || DEFAULT_WORKSPACE_LABEL;
+const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || process.env.M3E_DOC_ID || DEFAULT_MAP_ID;
+const ACTIVE_MAP_LABEL = process.env.M3E_MAP_LABEL || DEFAULT_MAP_LABEL;
+const ACTIVE_MAP_SLUG = process.env.M3E_MAP_SLUG || DEFAULT_MAP_SLUG;
+const DEFAULT_DOC_ID = ACTIVE_MAP_ID;
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
 console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
 console.log(`[M3E] DB_FILE  = ${SQLITE_DB_PATH}`);
+console.log(`[M3E] WORKSPACE = ${WORKSPACE_LABEL} (${WORKSPACE_ID})`);
+console.log(`[M3E] MAP = ${ACTIVE_MAP_LABEL} (${ACTIVE_MAP_ID}, slug=${ACTIVE_MAP_SLUG})`);
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
+
+function renameDocumentId(dbPath: string, sourceId: string, targetId: string): boolean {
+  if (sourceId === targetId) return false;
+  const db = new Database(dbPath);
+  try {
+    const source = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(sourceId) as { hit: number } | undefined;
+    if (!source) return false;
+    const target = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(targetId) as { hit: number } | undefined;
+    if (target) return false;
+    db.prepare(`UPDATE documents SET id = ?, saved_at = ? WHERE id = ?`).run(targetId, new Date().toISOString(), sourceId);
+    return true;
+  } finally {
+    db.close();
+  }
+}
+
+function deleteDocumentId(dbPath: string, mapId: string): void {
+  const db = new Database(dbPath);
+  try {
+    db.prepare(`DELETE FROM documents WHERE id = ?`).run(mapId);
+  } finally {
+    db.close();
+  }
+}
+
+function ensureMapDocument(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
+  if (RapidMvpModel.documentExists(dbPath, mapId)) {
+    RapidMvpModel.renameDocument(dbPath, mapId, mapLabel);
+    for (const legacyId of legacyIds) {
+      if (legacyId !== mapId && RapidMvpModel.documentExists(dbPath, legacyId)) {
+        deleteDocumentId(dbPath, legacyId);
+      }
+    }
+    return;
+  }
+  for (const legacyId of legacyIds) {
+    if (renameDocumentId(dbPath, legacyId, mapId)) {
+      RapidMvpModel.renameDocument(dbPath, mapId, mapLabel);
+      for (const staleLegacyId of legacyIds) {
+        if (staleLegacyId !== mapId && RapidMvpModel.documentExists(dbPath, staleLegacyId)) {
+          deleteDocumentId(dbPath, staleLegacyId);
+        }
+      }
+      return;
+    }
+  }
+  RapidMvpModel.createDocument(dbPath, mapId, mapLabel);
+}
 
 // ---------------------------------------------------------------------------
 // Doc-watch SSE (standalone, independent of collab SSE)
@@ -172,6 +237,13 @@ function parseDocPresenceRoute(urlPath: string): string | null {
 function isVaultWatchSseRoute(urlPath: string): boolean {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   return pathname === "/api/vault/watch";
+}
+
+function parseMapResolveRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/resolve$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -285,11 +357,16 @@ function parseDocId(urlPath: string): string | null {
 type HomeRouteAction =
   | { kind: "list" }
   | { kind: "new" }
+  | { kind: "import-file" }
+  | { kind: "import-vault" }
   | { kind: "duplicate"; mapId: string }
   | { kind: "rename"; mapId: string }
   | { kind: "archive"; mapId: string }
   | { kind: "restore"; mapId: string }
   | { kind: "tags"; mapId: string }
+  | { kind: "pin"; mapId: string }
+  | { kind: "bind-vault"; mapId: string }
+  | { kind: "unbind-vault"; mapId: string }
   | { kind: "delete"; mapId: string };
 
 function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null {
@@ -301,16 +378,36 @@ function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null
   if (pathname === "/api/maps/new" && method === "POST") {
     return { kind: "new" };
   }
+  if (pathname === "/api/maps/import-file" && method === "POST") {
+    return { kind: "import-file" };
+  }
+  if (pathname === "/api/maps/import-vault" && method === "POST") {
+    return { kind: "import-vault" };
+  }
 
-  const subMatch = pathname.match(/^\/api\/docs\/([^/]+)\/(duplicate|rename|archive|restore|tags)$/);
+  const subMatch = pathname.match(/^\/api\/maps\/([^/]+)\/(duplicate|rename|archive|restore|tags)$/);
   if (subMatch && method === "POST") {
     const id = decodeURIComponent(subMatch[1]);
     const action = subMatch[2] as "duplicate" | "rename" | "archive" | "restore" | "tags";
     return { kind: action, mapId: id };
   }
 
+  const pinMatch = pathname.match(/^\/api\/maps\/([^/]+)\/pin$/);
+  if (pinMatch && (method === "PATCH" || method === "POST")) {
+    return { kind: "pin", mapId: decodeURIComponent(pinMatch[1]) };
+  }
+
+  const bindMatch = pathname.match(/^\/api\/maps\/([^/]+)\/bind-vault$/);
+  if (bindMatch && method === "POST") {
+    return { kind: "bind-vault", mapId: decodeURIComponent(bindMatch[1]) };
+  }
+  const unbindMatch = pathname.match(/^\/api\/maps\/([^/]+)\/unbind-vault$/);
+  if (unbindMatch && method === "POST") {
+    return { kind: "unbind-vault", mapId: decodeURIComponent(unbindMatch[1]) };
+  }
+
   // DELETE /api/maps/:id  (single segment, no sub-path)
-  const idMatch = pathname.match(/^\/api\/docs\/([^/]+)$/);
+  const idMatch = pathname.match(/^\/api\/maps\/([^/]+)$/);
   if (idMatch && method === "DELETE") {
     return { kind: "delete", mapId: decodeURIComponent(idMatch[1]) };
   }
@@ -335,6 +432,98 @@ function sendHomeError(
 
 function newDocId(): string {
   return `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function newNodeId(): string {
+  return `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildAppStateFromMd(filename: string, content: string): AppState {
+  const baseName = filename.replace(/\.[^.]+$/, "") || "Imported";
+  const parsed = parseMdContent(content, { id: newNodeId(), text: baseName });
+  const rootId = newNodeId();
+  const node = parsed.node;
+  return {
+    rootId,
+    nodes: {
+      [rootId]: {
+        id: rootId,
+        parentId: null,
+        children: [],
+        text: node.text || baseName,
+        collapsed: false,
+        details: typeof node.details === "string" ? node.details : "",
+        note: typeof node.note === "string" ? node.note : "",
+        attributes: { ...(node.attributes ?? {}) },
+        link: typeof node.link === "string" ? node.link : "",
+      },
+    },
+  };
+}
+
+function buildAppStateFromJson(content: string): AppState {
+  const parsed = JSON.parse(content) as unknown;
+  const candidate =
+    parsed && typeof parsed === "object" && "state" in (parsed as Record<string, unknown>)
+      ? ((parsed as { state: unknown }).state as AppState)
+      : (parsed as AppState);
+  if (!candidate || typeof candidate !== "object" || !candidate.nodes || !candidate.rootId) {
+    throw new Error("Invalid M3E JSON: missing rootId/nodes.");
+  }
+  return candidate;
+}
+
+function buildAppStateFromVault(vaultPath: string, rootLabel: string): AppState {
+  const rootId = newNodeId();
+  const nodes: Record<string, TreeNode> = {
+    [rootId]: {
+      id: rootId,
+      parentId: null,
+      children: [],
+      text: rootLabel,
+      collapsed: false,
+      details: `Bound to Obsidian vault: ${vaultPath}`,
+      note: "",
+      attributes: { vault: vaultPath },
+      link: "",
+    },
+  };
+
+  const entries = fs.readdirSync(vaultPath, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const lower = entry.name.toLowerCase();
+    if (!lower.endsWith(".md") && !lower.endsWith(".markdown")) continue;
+    const childId = newNodeId();
+    const fullPath = path.join(vaultPath, entry.name);
+    let parsedNode: ReturnType<typeof parseMdContent>["node"];
+    try {
+      const content = fs.readFileSync(fullPath, "utf8");
+      parsedNode = parseMdContent(content, {
+        id: childId,
+        text: entry.name.replace(/\.[^.]+$/, ""),
+      }).node;
+    } catch {
+      continue;
+    }
+    nodes[childId] = {
+      id: childId,
+      parentId: rootId,
+      children: [],
+      text: parsedNode.text || entry.name,
+      collapsed: false,
+      details: typeof parsedNode.details === "string" ? parsedNode.details : "",
+      note: typeof parsedNode.note === "string" ? parsedNode.note : "",
+      attributes: {
+        ...(parsedNode.attributes ?? {}),
+        "obsidian-file": entry.name,
+      },
+      link: typeof parsedNode.link === "string" ? parsedNode.link : "",
+    };
+    nodes[rootId]!.children.push(childId);
+  }
+
+  return { rootId, nodes };
 }
 
 async function handleHomeApi(
@@ -380,7 +569,7 @@ async function handleHomeApi(
 
     if (route.kind === "duplicate") {
       if (!RapidMvpModel.documentExists(SQLITE_DB_PATH, route.mapId)) {
-        sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
+        sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
         return true;
       }
       const newId = newDocId();
@@ -415,7 +604,7 @@ async function handleHomeApi(
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Document not found.") {
-          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
         throw err;
@@ -429,7 +618,7 @@ async function handleHomeApi(
         RapidMvpModel.setArchived(SQLITE_DB_PATH, route.mapId, route.kind === "archive");
       } catch (err) {
         if ((err as Error).message === "Document not found.") {
-          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
         throw err;
@@ -460,7 +649,7 @@ async function handleHomeApi(
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Document not found.") {
-          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
         if (msg === "Invalid tags.") {
@@ -473,13 +662,182 @@ async function handleHomeApi(
       return true;
     }
 
+    if (route.kind === "pin") {
+      let pinned: boolean;
+      try {
+        const raw = await readRequestBody(req);
+        const parsed = JSON.parse(raw) as { pinned?: unknown };
+        if (typeof parsed?.pinned !== "boolean") {
+          sendHomeError(res, 400, "INVALID_BODY", "pinned (boolean) is required.");
+          return true;
+        }
+        pinned = parsed.pinned;
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendHomeError(res, 400, "INVALID_BODY", "Invalid JSON body.");
+          return true;
+        }
+        throw err;
+      }
+      try {
+        RapidMvpModel.setPinned(SQLITE_DB_PATH, route.mapId, pinned);
+      } catch (err) {
+        if ((err as Error).message === "Document not found.") {
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
+          return true;
+        }
+        throw err;
+      }
+      sendJson(res, 200, { ok: true, pinned });
+      return true;
+    }
+
+    if (route.kind === "bind-vault" || route.kind === "unbind-vault") {
+      if (route.kind === "unbind-vault") {
+        try {
+          RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, route.mapId, null);
+        } catch (err) {
+          if ((err as Error).message === "Document not found.") {
+            sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
+            return true;
+          }
+          throw err;
+        }
+        sendJson(res, 200, { ok: true });
+        return true;
+      }
+
+      let vaultPath = "";
+      try {
+        const raw = await readRequestBody(req);
+        const parsed = JSON.parse(raw) as { vaultPath?: unknown };
+        if (typeof parsed?.vaultPath !== "string" || parsed.vaultPath.trim().length === 0) {
+          sendHomeError(res, 400, "INVALID_BODY", "vaultPath (string) is required.");
+          return true;
+        }
+        vaultPath = parsed.vaultPath.trim();
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendHomeError(res, 400, "INVALID_BODY", "Invalid JSON body.");
+          return true;
+        }
+        throw err;
+      }
+
+      try {
+        RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: vaultPath });
+      } catch (err) {
+        if ((err as Error).message === "Document not found.") {
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
+          return true;
+        }
+        throw err;
+      }
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
+
+    if (route.kind === "import-file") {
+      let filename = "";
+      let content = "";
+      try {
+        const raw = await readRequestBody(req);
+        const parsed = JSON.parse(raw) as { filename?: unknown; content?: unknown };
+        if (typeof parsed?.filename !== "string" || typeof parsed?.content !== "string") {
+          sendHomeError(res, 400, "INVALID_BODY", "filename and content (string) are required.");
+          return true;
+        }
+        filename = parsed.filename.trim();
+        content = parsed.content;
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendHomeError(res, 400, "INVALID_BODY", "Invalid JSON body.");
+          return true;
+        }
+        throw err;
+      }
+
+      if (!filename || content.length === 0) {
+        sendHomeError(res, 400, "INVALID_BODY", "filename and content are required.");
+        return true;
+      }
+
+      let state: AppState;
+      const lower = filename.toLowerCase();
+      try {
+        if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+          state = buildAppStateFromMd(filename, content);
+        } else if (lower.endsWith(".json")) {
+          state = buildAppStateFromJson(content);
+        } else {
+          sendHomeError(res, 400, "INVALID_BODY", "Unsupported file type. Use .md, .markdown, or .json.");
+          return true;
+        }
+      } catch (err) {
+        sendHomeError(res, 400, "INVALID_BODY", (err as Error).message || "Import parse failed.");
+        return true;
+      }
+
+      const id = newDocId();
+      const model = RapidMvpModel.fromJSON(state);
+      model.saveToSqlite(SQLITE_DB_PATH, id);
+      sendJson(res, 200, { ok: true, id });
+      return true;
+    }
+
+    if (route.kind === "import-vault") {
+      let vaultPath = "";
+      let label = "";
+      try {
+        const raw = await readRequestBody(req);
+        const parsed = JSON.parse(raw) as { vaultPath?: unknown; label?: unknown };
+        if (typeof parsed?.vaultPath !== "string" || parsed.vaultPath.trim().length === 0) {
+          sendHomeError(res, 400, "INVALID_BODY", "vaultPath (string) is required.");
+          return true;
+        }
+        vaultPath = parsed.vaultPath.trim();
+        label = typeof parsed.label === "string" ? parsed.label.trim() : "";
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          sendHomeError(res, 400, "INVALID_BODY", "Invalid JSON body.");
+          return true;
+        }
+        throw err;
+      }
+
+      if (!fs.existsSync(vaultPath)) {
+        sendHomeError(res, 400, "INVALID_BODY", `Vault path does not exist: ${vaultPath}`);
+        return true;
+      }
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(vaultPath);
+      } catch (err) {
+        sendHomeError(res, 400, "INVALID_BODY", (err as Error).message || "Could not stat vault path.");
+        return true;
+      }
+      if (!stat.isDirectory()) {
+        sendHomeError(res, 400, "INVALID_BODY", "vaultPath must point to a directory.");
+        return true;
+      }
+
+      const rootLabel = label || path.basename(vaultPath) || "Vault";
+      const state = buildAppStateFromVault(vaultPath, rootLabel);
+      const id = newDocId();
+      const model = RapidMvpModel.fromJSON(state);
+      model.saveToSqlite(SQLITE_DB_PATH, id);
+      RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, id, { kind: "obsidian", path: vaultPath });
+      sendJson(res, 200, { ok: true, id });
+      return true;
+    }
+
     if (route.kind === "delete") {
       try {
         RapidMvpModel.deleteDocument(SQLITE_DB_PATH, route.mapId);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Document not found.") {
-          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
         if (msg === "Document is not archived.") {
@@ -611,7 +969,7 @@ async function handleLinearNoteApi(
 ): Promise<void> {
   const { mapId, scopeId } = route;
   if (!mapId || !scopeId) {
-    sendJson(res, 400, { ok: false, error: "Document id and scope id are required." });
+    sendJson(res, 400, { ok: false, error: "Map id and scope id are required." });
     return;
   }
 
@@ -1699,20 +2057,21 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
 }
 
 function startServer(): void {
+  ensureMapDocument(SQLITE_DB_PATH, ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
+  ensureMapDocument(SQLITE_DB_PATH, SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
   // Initialize audit log file for the default document
-  initAuditFile(DATA_DIR, DEFAULT_DOC_ID);
+  initAuditFile(DATA_DIR, ACTIVE_MAP_ID);
 
   const server = createAppServer();
 
   server.listen(PORT, () => {
     const isFirstRun = !fs.existsSync(FIRST_RUN_MARKER);
-    const params = new URLSearchParams({
-      workspaceId: WORKSPACE_ID,
-      localDocId: DEFAULT_DOC_ID,
-      cloudDocId: DEFAULT_DOC_ID,
-    });
-    if (isFirstRun) {
-      params.set("scopeId", TUTORIAL_SCOPE_ID);
+    const params = new URLSearchParams({ ws: WORKSPACE_ID });
+    if (DEFAULT_PAGE !== "home.html") {
+      params.set("map", ACTIVE_MAP_ID);
+      if (isFirstRun) {
+        params.set("scope", TUTORIAL_SCOPE_ID);
+      }
     }
     const query = `?${params.toString()}`;
     const url = `http://localhost:${PORT}/${DEFAULT_PAGE}${query}`;
@@ -1735,7 +2094,7 @@ function startServer(): void {
       autoSyncHandle = startAutoSync(cloudTransport, cloudSyncConfig.autoSyncIntervalMs, {
         getLocalState: async () => {
           try {
-            const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, DEFAULT_DOC_ID);
+            const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, ACTIVE_MAP_ID);
             return {
               version: 1,
               savedAt: new Date().toISOString(),
@@ -1745,7 +2104,7 @@ function startServer(): void {
             return null;
           }
         },
-        getDocId: () => DEFAULT_DOC_ID,
+        getDocId: () => ACTIVE_MAP_ID,
         getBaseSavedAt: () => null,
         getBaseDocVersion: () => null,
         onPushSuccess: (result) => {
@@ -1839,7 +2198,7 @@ async function handleCollabApi(
     }
     const entity = registerEntity(body.displayName, body.role, body.capabilities ?? ["read", "write"]);
     // Track presence for default doc on register
-    touchPresence(DEFAULT_DOC_ID, entity.entityId, body.displayName, body.role);
+    touchPresence(ACTIVE_MAP_ID, entity.entityId, body.displayName, body.role);
     sendJson(res, 200, { ok: true, entityId: entity.entityId, token: entity.token, priority: entity.priority });
     return;
   }
@@ -1857,14 +2216,14 @@ async function handleCollabApi(
       const body = JSON.parse(rawBody) as { lockIds?: string[]; mapId?: string };
       heartbeat(entity.entityId, body.lockIds ?? []);
       // Refresh presence on heartbeat
-      touchPresence(body.mapId ?? DEFAULT_DOC_ID, entity.entityId, entity.displayName, entity.role);
+      touchPresence(body.mapId ?? ACTIVE_MAP_ID, entity.entityId, entity.displayName, entity.role);
       sendJson(res, 200, { ok: true });
       return;
     }
     case "unregister": {
       if (req.method !== "DELETE") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       // Remove from all doc presence (use default doc for now)
-      removePresence(DEFAULT_DOC_ID, entity.entityId);
+      removePresence(ACTIVE_MAP_ID, entity.entityId);
       unregisterEntity(entity.entityId);
       sendJson(res, 200, { ok: true });
       return;
@@ -2001,6 +2360,48 @@ export function createAppServer(): http.Server {
       const limit = limitParam ? Math.max(1, Math.min(1000, Number(limitParam) || 100)) : 100;
       const entries = getRecentAuditEntries(limit);
       sendJson(res, 200, { ok: true, documentId: auditDocId, count: entries.length, entries });
+      return;
+    }
+
+    // Path resolve endpoint: /api/maps/{mapId}/resolve?path=Map:Root/...
+    const resolveDocId = parseMapResolveRoute(req.url ?? "/");
+    if (resolveDocId !== null) {
+      if (req.method !== "GET") {
+        sendJson(res, 405, { error: "Method not allowed." });
+        return;
+      }
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const rawPath = url.searchParams.get("path");
+      const sep = url.searchParams.get("sep") || "/";
+      if (!rawPath) {
+        sendJson(res, 400, { ok: false, error: { code: "PATH_INVALID", message: "Missing `path` query parameter." } });
+        return;
+      }
+      const parsed = parseMapPath(rawPath, sep);
+      if (!parsed) {
+        sendJson(res, 400, { ok: false, error: { code: "PATH_INVALID", message: "Path is empty after parsing." } });
+        return;
+      }
+      try {
+        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, resolveDocId);
+        const state = model.toJSON();
+        const result = resolveNodePath(state, parsed.segments);
+        if (!result.ok) {
+          const status = result.error.code === "PATH_AMBIGUOUS" ? 409 : 404;
+          sendJson(res, status, { ok: false, error: result.error });
+          return;
+        }
+        sendJson(res, 200, {
+          ok: true,
+          documentId: resolveDocId,
+          nodeId: result.nodeId,
+          matched: result.matched,
+        });
+      } catch (err) {
+        const message = (err as Error).message || "Unknown error";
+        const status = message === "Document not found." ? 404 : 500;
+        sendJson(res, status, { ok: false, error: { code: "DOC_ERROR", message } });
+      }
       return;
     }
 

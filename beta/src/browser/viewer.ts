@@ -22,6 +22,7 @@ const setVaultPathBtn = document.getElementById("set-vault-path-btn") as HTMLBut
 const integrateVaultLiveBtn = document.getElementById("integrate-vault-live-btn") as HTMLButtonElement | null;
 const integrateStopBtn = document.getElementById("integrate-stop-btn") as HTMLButtonElement | null;
 const vaultSyncBadgeEl = document.getElementById("vault-sync-badge") as HTMLElement | null;
+const viewerHomeLinkEl = document.getElementById("viewer-home-link") as HTMLAnchorElement | null;
 const metaPanelEl = document.querySelector(".meta-panel") as HTMLElement | null;
 const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
@@ -118,10 +119,31 @@ function normalizeDocId(raw: string | null, fallback: string): string {
   return trimmed.replace(/[\\/]/g, "_");
 }
 
+function firstQueryParam(params: URLSearchParams, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value && value.trim()) return value;
+  }
+  return null;
+}
+
 const queryParams = new URLSearchParams(window.location.search);
-const WORKSPACE_ID = normalizeDocId(queryParams.get("workspaceId"), "local");
-const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "akaghef-beta");
-const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
+const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
+const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
+const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
+const DEFAULT_MAP_LABEL = "開発";
+const DEFAULT_MAP_SLUG = "beta-dev";
+const SECONDARY_MAP_ID = "map_10226A7F0MEKDVNMEXC7HH4GNV";
+const MAP_META: Record<string, { label: string; slug: string }> = {
+  [DEFAULT_MAP_ID]: { label: DEFAULT_MAP_LABEL, slug: DEFAULT_MAP_SLUG },
+  [SECONDARY_MAP_ID]: { label: "研究", slug: "beta-research" },
+};
+const WORKSPACE_ID = normalizeDocId(firstQueryParam(queryParams, ["ws", "workspaceId"]), DEFAULT_WORKSPACE_ID);
+const WORKSPACE_LABEL = DEFAULT_WORKSPACE_LABEL;
+const LOCAL_DOC_ID = normalizeDocId(firstQueryParam(queryParams, ["map", "localDocId"]), DEFAULT_MAP_ID);
+const CLOUD_DOC_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudDocId"]), LOCAL_DOC_ID);
+const MAP_LABEL = MAP_META[LOCAL_DOC_ID]?.label ?? LOCAL_DOC_ID;
+const MAP_SLUG = MAP_META[LOCAL_DOC_ID]?.slug ?? LOCAL_DOC_ID;
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
@@ -168,6 +190,15 @@ let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
+
+function buildHomeHref(): string {
+  const params = new URLSearchParams({ ws: WORKSPACE_ID });
+  return `./home.html?${params.toString()}`;
+}
+
+if (viewerHomeLinkEl) {
+  viewerHomeLinkEl.href = buildHomeHref();
+}
 let lastLayout: LayoutResult | null = null;
 let visualCheckRunId = 0;
 let undoStack: UndoSnapshot[] = [];
@@ -2957,7 +2988,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `workspace: ${WORKSPACE_ID} | doc: ${LOCAL_DOC_ID} | cloud: ${CLOUD_DOC_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_DOC_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_DOC_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
   updateDocumentTitle();
@@ -3420,9 +3451,11 @@ function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; ra
 function updateScopeInUrl(scopeId: string): void {
   const params = new URLSearchParams(window.location.search);
   if (!doc || scopeId === doc.state.rootId) {
+    params.delete("scope");
     params.delete("scopeId");
   } else {
-    params.set("scopeId", scopeId);
+    params.set("scope", scopeId);
+    params.delete("scopeId");
   }
   history.replaceState(null, "", `?${params.toString()}`);
 }
@@ -4040,9 +4073,46 @@ function appendScopeLockBadge(row: HTMLElement, scopeId: string): void {
   row.appendChild(badge);
 }
 
+function buildMapPath(nodeId: string): string | null {
+  if (!doc) return null;
+  const nodes = doc.state.nodes;
+  const parts: string[] = [];
+  let cur: TreeNode | undefined = nodes[nodeId];
+  let guard = 0;
+  while (cur && guard++ < 10000) {
+    parts.unshift(cur.text ?? "");
+    if (cur.parentId === null || cur.parentId === undefined) break;
+    cur = nodes[cur.parentId];
+  }
+  if (parts.length === 0) return null;
+  return "Map:" + parts.join("/");
+}
+
+async function copyMapPathToClipboard(nodeId: string): Promise<void> {
+  const path = buildMapPath(nodeId);
+  if (!path) return;
+  try {
+    await navigator.clipboard.writeText(path);
+  } catch {
+    // Fallback: textarea + execCommand for older contexts
+    const ta = document.createElement("textarea");
+    ta.value = path;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } finally { ta.remove(); }
+  }
+}
+
 function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
   const lock = scopeLockMap.get(scopeId);
   const items: { label: string; danger?: boolean; action: () => void }[] = [];
+
+  items.push({
+    label: "\uD83D\uDCCB Copy path (Map:Root/\u2026)",
+    action: () => void copyMapPathToClipboard(scopeId),
+  });
 
   if (!lock) {
     items.push({
@@ -7201,11 +7271,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.altKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
-    if (homeScreenVisible) {
-      hideHomeScreen();
-    } else {
-      showHomeScreen();
-    }
+    window.location.href = buildHomeHref();
     return;
   }
 
@@ -7456,7 +7522,7 @@ void initializeDocument().then(() => {
     }
   });
   tryCollabRegister();
-  const initialScopeId = queryParams.get("scopeId");
+  const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
   if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level
     const ancestors: string[] = [];

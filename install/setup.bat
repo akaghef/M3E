@@ -25,12 +25,17 @@ if not "%errorlevel%"=="0" exit /b %errorlevel%
 
 if "%SILENT%"=="1" if "%NO_LAUNCH%"=="0" set "NO_LAUNCH=1"
 if "%M3E_HOME%"=="" set "M3E_HOME=%LOCALAPPDATA%\M3E"
+set "M3E_WORKSPACE_ID=ws_A98E70JM9GAXCVXVMQBW7N0YGZ"
+set "M3E_WORKSPACE_LABEL=Personal"
+set "M3E_MAP_ID=map_09N0MQPFEQN9D4K66VNMT1F69V"
+set "M3E_MAP_LABEL=tutorial"
+set "M3E_MAP_SLUG=final-tutorial"
 set "M3E_SEED_DIR=%M3E_HOME%\seeds"
 set "M3E_SEED_DB=%M3E_SEED_DIR%\core-seed.sqlite"
-set "M3E_MAIN_DATA_DIR=%M3E_HOME%\workspaces\main"
-set "M3E_MAIN_DB_FILE=data.sqlite"
-set "M3E_MAIN_DB=%M3E_MAIN_DATA_DIR%\%M3E_MAIN_DB_FILE%"
-set "M3E_MAIN_DOC_ID=akaghef-beta"
+set "M3E_DATA_DIR=%M3E_HOME%\workspaces\%M3E_WORKSPACE_ID%"
+set "M3E_DB_FILE=data.sqlite"
+set "M3E_DB=%M3E_DATA_DIR%\%M3E_DB_FILE%"
+set "M3E_DOC_ID=%M3E_MAP_ID%"
 
 if defined LOG_FILE call :init_log
 
@@ -83,22 +88,23 @@ call :log ""
 call :log " M3E home: %M3E_HOME%"
 if not exist "%M3E_HOME%" mkdir "%M3E_HOME%"
 if not exist "%M3E_SEED_DIR%" mkdir "%M3E_SEED_DIR%"
-if not exist "%M3E_MAIN_DATA_DIR%" mkdir "%M3E_MAIN_DATA_DIR%"
+if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
 
 set "CONFIG_DIR=%LOCALAPPDATA%\M3E"
 set "CONFIG_FILE=%CONFIG_DIR%\m3e.conf"
 if not exist "%CONFIG_DIR%" mkdir "%CONFIG_DIR%"
 > "%CONFIG_FILE%" echo M3E_HOME=%M3E_HOME%
 >>"%CONFIG_FILE%" echo M3E_SEED_DB_PATH=%M3E_SEED_DB%
->>"%CONFIG_FILE%" echo M3E_MAIN_DATA_DIR=%M3E_MAIN_DATA_DIR%
->>"%CONFIG_FILE%" echo M3E_MAIN_DB_FILE=%M3E_MAIN_DB_FILE%
->>"%CONFIG_FILE%" echo M3E_MAIN_DOC_ID=%M3E_MAIN_DOC_ID%
->>"%CONFIG_FILE%" echo M3E_MAIN_WORKSPACE_ID=main
->>"%CONFIG_FILE%" echo M3E_DATA_DIR=%M3E_MAIN_DATA_DIR%
->>"%CONFIG_FILE%" echo M3E_DB_FILE=%M3E_MAIN_DB_FILE%
->>"%CONFIG_FILE%" echo M3E_DOC_ID=%M3E_MAIN_DOC_ID%
->>"%CONFIG_FILE%" echo M3E_WORKSPACE_ID=main
+>>"%CONFIG_FILE%" echo M3E_DATA_DIR=%M3E_DATA_DIR%
+>>"%CONFIG_FILE%" echo M3E_DB_FILE=%M3E_DB_FILE%
+>>"%CONFIG_FILE%" echo M3E_WORKSPACE_ID=%M3E_WORKSPACE_ID%
+>>"%CONFIG_FILE%" echo M3E_WORKSPACE_LABEL=%M3E_WORKSPACE_LABEL%
+>>"%CONFIG_FILE%" echo M3E_MAP_ID=%M3E_MAP_ID%
+>>"%CONFIG_FILE%" echo M3E_MAP_LABEL=%M3E_MAP_LABEL%
+>>"%CONFIG_FILE%" echo M3E_MAP_SLUG=%M3E_MAP_SLUG%
+>>"%CONFIG_FILE%" echo M3E_DOC_ID=%M3E_DOC_ID%
 >>"%CONFIG_FILE%" echo M3E_PORT=38482
+>>"%CONFIG_FILE%" echo M3E_CHANNEL=final
 >>"%CONFIG_FILE%" echo M3E_ROOT=%ROOT%
 call :log " Config saved to: %CONFIG_FILE%"
 
@@ -113,11 +119,11 @@ if exist "%SEED_SRC%" (
   )
 )
 if exist "%M3E_SEED_DB%" (
-  if not exist "%M3E_MAIN_DB%" (
+  if not exist "%M3E_DB%" (
     call :log ""
-    call :log " Initializing main workspace from seed..."
-    copy /Y "%M3E_SEED_DB%" "%M3E_MAIN_DB%" >nul
-    call :log " Main workspace initialized."
+    call :log " Initializing final workspace from seed..."
+    copy /Y "%M3E_SEED_DB%" "%M3E_DB%" >nul
+    call :log " Final workspace initialized."
   )
 )
 
@@ -189,7 +195,9 @@ call :log "============================================="
 call :log " Setup Complete"
 call :log "============================================="
 call :log " Seed DB      : %M3E_SEED_DB%"
-call :log " Main DB      : %M3E_MAIN_DB%"
+call :log " Workspace ID : %M3E_WORKSPACE_ID%"
+call :log " Map ID       : %M3E_MAP_ID%"
+call :log " Data DB      : %M3E_DB%"
 call :log ""
 
 if "%NO_LAUNCH%"=="1" goto :done

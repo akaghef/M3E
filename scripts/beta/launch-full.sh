@@ -12,10 +12,15 @@ if [[ -z "${M3E_HOME:-}" ]]; then
   fi
 fi
 export M3E_SEED_DB_PATH="${M3E_SEED_DB_PATH:-$M3E_HOME/seeds/core-seed.sqlite}"
-export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/sandbox}"
+export M3E_CHANNEL="${M3E_CHANNEL:-beta}"
+export M3E_WORKSPACE_ID="${M3E_WORKSPACE_ID:-ws_REMH1Z5TFA7S93R3HA0XK58JNR}"
+export M3E_WORKSPACE_LABEL="${M3E_WORKSPACE_LABEL:-Akaghef-personal}"
+export M3E_MAP_ID="${M3E_MAP_ID:-map_BG9BZP6NRDTEH1JYNDFGS6S3T5}"
+export M3E_MAP_LABEL="${M3E_MAP_LABEL:-開発}"
+export M3E_MAP_SLUG="${M3E_MAP_SLUG:-beta-dev}"
+export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/$M3E_WORKSPACE_ID}"
 export M3E_DB_FILE="${M3E_DB_FILE:-data.sqlite}"
-export M3E_DOC_ID="${M3E_DOC_ID:-akaghef-beta}"
-export M3E_WORKSPACE_ID="${M3E_WORKSPACE_ID:-sandbox}"
+export M3E_DOC_ID="${M3E_DOC_ID:-$M3E_MAP_ID}"
 mkdir -p "$M3E_DATA_DIR" "$(dirname "$M3E_SEED_DB_PATH")"
 if [[ ! -f "$M3E_SEED_DB_PATH" && -f "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" ]]; then
   cp "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" "$M3E_SEED_DB_PATH"
@@ -23,7 +28,7 @@ fi
 if [[ ! -f "$M3E_DATA_DIR/$M3E_DB_FILE" && -f "$M3E_SEED_DB_PATH" ]]; then
   cp "$M3E_SEED_DB_PATH" "$M3E_DATA_DIR/$M3E_DB_FILE"
 fi
-URL="http://localhost:${PORT}/viewer.html?workspaceId=${M3E_WORKSPACE_ID}&localDocId=${M3E_DOC_ID}&cloudDocId=${M3E_DOC_ID}"
+URL="http://localhost:${PORT}/viewer.html?ws=${M3E_WORKSPACE_ID}&map=${M3E_DOC_ID}"
 
 # --- Cloud Sync ---
 export M3E_CLOUD_SYNC=1

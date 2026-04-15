@@ -102,7 +102,8 @@ mkdir "%INSTALL_ROOT%" >> "%REPORT_DIR%\setup.log" 2>&1
 mkdir "%INSTALL_ROOT%\logs" >> "%REPORT_DIR%\setup.log" 2>&1
 mkdir "%INSTALL_ROOT%\reports" >> "%REPORT_DIR%\setup.log" 2>&1
 mkdir "%INSTALL_ROOT%\seeds" >> "%REPORT_DIR%\setup.log" 2>&1
-mkdir "%INSTALL_ROOT%\workspaces\main" >> "%REPORT_DIR%\setup.log" 2>&1
+set "M3E_WORKSPACE_ID=ws_A98E70JM9GAXCVXVMQBW7N0YGZ"
+mkdir "%INSTALL_ROOT%\workspaces\%M3E_WORKSPACE_ID%" >> "%REPORT_DIR%\setup.log" 2>&1
 
 xcopy /E /I /Y "%PKG_ROOT%\payload\app" "%INSTALL_ROOT%\app" >> "%REPORT_DIR%\setup.log" 2>&1
 if errorlevel 1 set "RC=1"
@@ -114,7 +115,7 @@ if exist "%PKG_ROOT%\install\assets\seeds\core-seed.sqlite" (
   if errorlevel 1 set "RC=1"
 )
 if exist "%INSTALL_ROOT%\seeds\core-seed.sqlite" (
-  copy /Y "%INSTALL_ROOT%\seeds\core-seed.sqlite" "%INSTALL_ROOT%\workspaces\main\data.sqlite" >> "%REPORT_DIR%\setup.log" 2>&1
+  copy /Y "%INSTALL_ROOT%\seeds\core-seed.sqlite" "%INSTALL_ROOT%\workspaces\%M3E_WORKSPACE_ID%\data.sqlite" >> "%REPORT_DIR%\setup.log" 2>&1
   if errorlevel 1 set "RC=1"
 )
 
@@ -134,9 +135,13 @@ if "%RC%"=="0" (set "STEP_RESULT=PASS") else (set "STEP_RESULT=FAIL [exit %RC%]"
 exit /b 0
 
 :step_launch
-set "M3E_DATA_DIR=%LOCALAPPDATA%\M3E\workspaces\main"
+set "M3E_WORKSPACE_LABEL=Personal"
+set "M3E_MAP_ID=map_09N0MQPFEQN9D4K66VNMT1F69V"
+set "M3E_MAP_LABEL=tutorial"
+set "M3E_MAP_SLUG=final-tutorial"
+set "M3E_DATA_DIR=%LOCALAPPDATA%\M3E\workspaces\%M3E_WORKSPACE_ID%"
 set "M3E_DB_FILE=data.sqlite"
-set "M3E_DOC_ID=main-workspace"
+set "M3E_DOC_ID=%M3E_MAP_ID%"
 set "M3E_PORT=%TEST_PORT%"
 if not exist "%LOCALAPPDATA%\M3E\runtime\node.exe" (
   set "STEP_RESULT=SKIP (runtime not installed)"
