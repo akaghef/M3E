@@ -3,13 +3,19 @@
 ## 目的
 
 確定前の粗い TODO を一時プールし、正式タスク化前の取りこぼしを防ぐ。
+**このファイルが TODO の正本**。他ファイルで TODO を管理しない。
 
 ## 運用ルール
 
 1. 粗いメモでも登録してよい（未分解可）。
-2. 実施完了の詳細は daily note に残す。
-3. `Current_Status.md` には現在の重要項目のみ反映する。
-4. 同じ項目が正式化されたら `Link` に反映先を記録する。
+2. **TODO はこの 1 ファイルに集約する**。`backlog/` や `tomd` は LLM の思考プール専用で TODO は書かない。
+3. 当日処理する課題は [TODO_today.md](TODO_today.md) にコピーして作業。完了したら Pool 側の State を更新。
+4. 実施完了の詳細は daily note に残す。
+5. `Current_Status.md` には現在の重要項目のみ反映する。
+6. 同じ項目が正式化されたら `Link` に反映先を記録する。
+
+## 将来の構想
+- LLM がマップに効率よくアクセスできるようになれば、TODO 自体をマップ上に移す検討をする（現状は Markdown 1 本運用）。
 
 ## 記法
 
@@ -24,6 +30,30 @@
 ---
 
 ## ▶ Ready（着手可能・優先度順）
+
+### P1: AkaghefAlgebra MATLAB→Julia 移植
+
+- Date: 2026-04-15
+- Topic: https://github.com/SSuzukiLab/AkaghefAlgebra を Julia に移植。M3E 上に構成ナレッジを階層的に落としてから作業
+- Owner: akaghef
+- State: ready
+- Link: `backlog/2026-04-15-akaghef-algebra-port.md`
+- Note: Core Principle 0（科学研究を主対象）に直接合致。研究データ本体は M3E 外に置きメタデータ+参照のみ（暫定）。粒度はファイル/アルゴリズム/関数/数式を階層で整理
+- Priority: P1
+
+---
+
+### P1: AkaghefAlgebra 移植用 scope 設計（並走）
+
+- Date: 2026-04-15
+- Topic: `RESEARCH/MATLAB_Port/AkaghefAlgebra/` スコープを切って modules/dependencies/math/port_plan を構成
+- Owner: akaghef
+- State: ready
+- Link: `backlog/2026-04-15-akaghef-algebra-port.md`
+- Note: Core Principle 2（認知境界としての scope）の dogfooding。移植作業で scope 境界の痛みを記録→スコープビュー要件定義に活用
+- Priority: P1
+
+---
 
 ### P1: Team Collaboration Phase 2
 
@@ -131,6 +161,228 @@
 ---
 
 ## 📦 Pooled（未整理）
+
+- Date: 2026-04-15
+- Topic: 研究データ管理方針の確定（M3E 外に置くが「アクセス時に見える」リスク経路を特定）
+- Owner: akaghef
+- State: pooled
+- Link: `backlog/2026-04-15-akaghef-algebra-port.md`
+- Note: 懸念経路候補: キャッシュ / ログ / cloud sync / プレビュー。AkaghefAlgebra 移植 1 サイクル回してから判断
+
+---
+
+- Date: 2026-04-15
+- Topic: Flash モード最小実装（簡易テキストボックスで思いつきプール）
+- Owner: -
+- State: pooled
+- Link: `dev-docs/03_Spec/Band_Spec.md`
+- Note: DEV/Vision の Flash band に合致するが Core Principles の「汎用メモ整理より研究思考」から見ると優先度低。backlog md で当面代用
+
+---
+
+- Date: 2026-04-15
+- Topic: スコープビュー実装
+- Owner: visual
+- State: pooled
+- Link: `dev-docs/03_Spec/Scope_Transition.md`
+- Note: Rapid band 中核機能。AkaghefAlgebra 移植中の要件抽出後に着手
+
+---
+
+- Date: 2026-04-15
+- Topic: インストーラーバグ修正（友人配布ブロッカー）
+- Owner: -
+- State: pooled
+- Link: -
+- Note: 既知バグあり要特定。Core Principle 6（消失バグゼロ優先）に関わる部分のみ優先、配布ニーズは Core の「初期マルチユーザー最適化は反対側」と衝突するため後回し可
+
+---
+
+- Date: 2026-04-13
+- Topic: API コール効率化（回数・コスト削減）
+- Owner: -
+- State: pooled
+- Link: -
+- Note: 対象エンドポイント／頻度の洗い出しから。バッチング／キャッシュ／差分同期が候補
+
+---
+
+- Date: 2026-04-13
+- Topic: HOME スコープ機能の実装
+- Owner: -
+- State: pooled
+- Link: `dev-docs/design/scope-tree-as-system.md`
+- Note: HOME が他スコープに対してどう振る舞うか要定義
+
+---
+
+- Date: 2026-04-13
+- Topic: ドキュメント名の明示表示
+- Owner: visual
+- State: pooled
+- Link: -
+- Note: UI 上で埋もれている。ヘッダー／タブ／ブレッドクラムのどれかは要検討
+
+---
+
+- Date: 2026-04-07
+- Topic: Rapid 操作性調整（Band_Spec 連動）
+- Owner: visual
+- State: pooled
+- Link: `dev-docs/03_Spec/Band_Spec.md`
+- Note: 旧 mvp は削除済み。beta 側で継続
+
+---
+
+- Date: 2026-04-07
+- Topic: Visual polish（spacing, edge curvature, selected-state contrast, long text）
+- Owner: visual
+- State: pooled
+- Link: -
+- Note: todo_by_role.md から統合
+
+---
+
+- Date: 2026-04-07
+- Topic: Fit-to-content / Focus-selected アクション実装
+- Owner: visual
+- State: pooled
+- Link: -
+- Note: P4
+
+---
+
+- Date: 2026-04-07
+- Topic: 帯域切り替え UI（Flash/Rapid/Deep）
+- Owner: visual
+- State: pooled
+- Link: `dev-docs/03_Spec/Band_Spec.md`
+
+---
+
+- Date: 2026-04-07
+- Topic: 重要度ビュー実装
+- Owner: visual
+- State: pooled
+- Link: -
+
+---
+
+- Date: 2026-04-07
+- Topic: reparent UI 改善（ドロップターゲットハイライト + 拒否メッセージ）
+- Owner: visual
+- State: pooled
+- Link: -
+
+---
+
+- Date: 2026-04-07
+- Topic: ViewState と PersistedDocument の完全切り離し
+- Owner: data
+- State: pooled
+- Link: -
+
+---
+
+- Date: 2026-04-07
+- Topic: 具象軸（抽象ノード↔具象ノード）をモデルに組み込む
+- Owner: data
+- State: pooled
+- Link: -
+
+---
+
+- Date: 2026-04-07
+- Topic: Imported metadata レンダリング（メタ情報を UI へ）
+- Owner: data
+- State: pooled
+- Link: -
+
+---
+
+- Date: 2026-04-07
+- Topic: Flash 実装（data 層: データ構造・永続化 / visual 層: レンダリング・インタラクション）
+- Owner: data + visual
+- State: pooled
+- Link: `dev-docs/03_Spec/Band_Spec.md`
+
+---
+
+- Date: 2026-04-07
+- Topic: AI コマンド操作インターフェース設計
+- Owner: data
+- State: pooled
+- Link: `dev-docs/03_Spec/AI_Common_API.md`
+
+---
+
+- Date: 2026-04-07
+- Topic: AI integration 基盤設計（オフライン優先）
+- Owner: data
+- State: pooled
+- Link: `dev-docs/04_Architecture/AI_Infrastructure.md`
+
+---
+
+- Date: 2026-04-07
+- Topic: Local/Cloud データ同期（HTTPS+Bearer, E2E 暗号化）
+- Owner: data
+- State: pooled
+- Link: `dev-docs/03_Spec/Cloud_Sync.md`
+- Note: P1。送受信 E2E 暗号化
+
+---
+
+- Date: 2026-04-07
+- Topic: 同期用 E2E 暗号化（AES-256-GCM、~/.m3e/sync.key）
+- Owner: data
+- State: pooled
+- Link: -
+- Note: Node.js 組み込み crypto のみ。PUT 前に暗号化・GET 後に復号
+
+---
+
+- Date: 2026-04-07
+- Topic: delete confirmation（非葉ノード削除時の確認 UI）
+- Owner: data
+- State: pooled
+- Link: -
+
+---
+
+- Date: 2026-04-07
+- Topic: Claude Desktop 連携の AI agent 役割設定（news fetch / AI manager / security manager）
+- Owner: akaghef（承認）
+- State: pooled
+- Link: `dev-docs/tasks/` (旧 todo_by_role.md 由来)
+- Note: privacy 方針決定後に security manager 設計
+
+---
+
+- Date: 2026-04-02
+- Topic: デモ版ローンチ準備（aircraft.mm / demo JSON クリーンレンダー確認、スタートアップパッケージ）
+- Owner: claude
+- State: pooled
+- Link: -
+
+---
+
+- Date: 2026-04-02
+- Topic: 日常使用ローンチ（Beta を毎日使える状態に）
+- Owner: claude
+- State: pooled
+- Link: -
+- Note: P1（todo_by_role 由来）
+
+---
+
+- Date: 2026-04-07
+- Topic: コード内 TODO: `scripts/final/migrate-from-beta.bat` L80 — schema 変更時に migrate.js を呼ぶ
+- Owner: -
+- State: pooled
+- Link: `scripts/final/migrate-from-beta.bat`
+
+---
 
 - Date: 2026-04-07
 - Topic: MCP ツールに alias / GraphLink / nodeType 変更を追加
