@@ -13,7 +13,7 @@ export interface PresenceEntry {
   connectedAt: string;       // ISO 8601
 }
 
-// docId -> entityId -> entry
+// mapId -> entityId -> entry
 const presenceMap = new Map<string, Map<string, PresenceEntry>>();
 
 const INACTIVE_THRESHOLD_MS = 60_000; // 1 minute without activity -> inactive
@@ -23,15 +23,15 @@ const INACTIVE_THRESHOLD_MS = 60_000; // 1 minute without activity -> inactive
 // ---------------------------------------------------------------------------
 
 export function touchPresence(
-  docId: string,
+  mapId: string,
   entityId: string,
   displayName: string,
   role: string,
 ): PresenceEntry {
-  let docPresence = presenceMap.get(docId);
+  let docPresence = presenceMap.get(mapId);
   if (!docPresence) {
     docPresence = new Map();
-    presenceMap.set(docId, docPresence);
+    presenceMap.set(mapId, docPresence);
   }
 
   const now = new Date().toISOString();
@@ -57,18 +57,18 @@ export function touchPresence(
   return entry;
 }
 
-export function removePresence(docId: string, entityId: string): boolean {
-  const docPresence = presenceMap.get(docId);
+export function removePresence(mapId: string, entityId: string): boolean {
+  const docPresence = presenceMap.get(mapId);
   if (!docPresence) return false;
   const deleted = docPresence.delete(entityId);
   if (docPresence.size === 0) {
-    presenceMap.delete(docId);
+    presenceMap.delete(mapId);
   }
   return deleted;
 }
 
-export function getPresenceList(docId: string): PresenceEntry[] {
-  const docPresence = presenceMap.get(docId);
+export function getPresenceList(mapId: string): PresenceEntry[] {
+  const docPresence = presenceMap.get(mapId);
   if (!docPresence) return [];
 
   const now = Date.now();

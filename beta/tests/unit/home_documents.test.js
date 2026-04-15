@@ -16,7 +16,7 @@ test("listDocuments returns empty array for fresh database", () => {
   expect(docs).toEqual([]);
 });
 
-test("createDocument + listDocuments returns DocSummary", () => {
+test("createDocument + listDocuments returns MapSummary", () => {
   const dbPath = makeTempDb();
   RapidMvpModel.createDocument(dbPath, "doc-a", "Alpha");
   const docs = RapidMvpModel.listDocuments(dbPath);

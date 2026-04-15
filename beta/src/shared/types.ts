@@ -87,6 +87,125 @@ export interface LinearTransformResponse {
   };
 }
 
+export interface VaultImportOptions {
+  maxFiles?: number;
+  maxCharsPerFile?: number;
+  skipAiTransform?: boolean;
+  excludePatterns?: string[];
+}
+
+export interface VaultImportRequest {
+  vaultPath: string;
+  documentId?: string;
+  modelAlias?: string | null;
+  options?: VaultImportOptions;
+}
+
+export type VaultImportPhase = "discovery" | "parse" | "transform" | "links" | "persist";
+
+export interface VaultImportProgress {
+  phase: VaultImportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface VaultImportedFileSummary {
+  relativePath: string;
+  nodeId: string;
+  wikilinkCount: number;
+  truncated: boolean;
+}
+
+export interface VaultImportResult {
+  ok: true;
+  documentId: string;
+  savedAt: string;
+  fileCount: number;
+  folderCount: number;
+  nodeCount: number;
+  truncatedFiles: number;
+  warnings: string[];
+  files: VaultImportedFileSummary[];
+  state: AppState;
+}
+
+export interface VaultExportOptions {
+  skipAiTransform?: boolean;
+  overwrite?: boolean;
+}
+
+export interface VaultExportRequest {
+  documentId: string;
+  vaultPath: string;
+  nodeId?: string;
+  modelAlias?: string | null;
+  options?: VaultExportOptions;
+}
+
+export type VaultExportPhase = "analysis" | "transform" | "write";
+
+export interface VaultExportProgress {
+  phase: VaultExportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface VaultExportResult {
+  ok: true;
+  documentId: string;
+  vaultPath: string;
+  fileCount: number;
+  folderCount: number;
+  warnings: string[];
+  savedAt: string;
+}
+
+export interface VaultWatchStartRequest {
+  documentId: string;
+  vaultPath: string;
+  modelAlias?: string | null;
+  debounceMs?: number;
+  importOptions?: VaultImportOptions;
+  exportOptions?: VaultExportOptions;
+}
+
+export interface VaultWatchStopRequest {
+  documentId: string;
+}
+
+export type VaultWatchEventType =
+  | "watch-started"
+  | "watch-stopped"
+  | "vault-to-m3e"
+  | "m3e-to-vault"
+  | "watch-error";
+
+export interface VaultWatchEvent {
+  type: VaultWatchEventType;
+  documentId: string;
+  vaultPath: string;
+  timestamp: string;
+  detail?: string;
+}
+
+export interface VaultWatchStatus {
+  ok: true;
+  documentId: string;
+  vaultPath: string;
+  integrationMode: "obsidian-live";
+  sourceOfTruth: "vault-md";
+  running: boolean;
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  lastError: string | null;
+}
+
 export interface AiFeatureStatus {
   available: boolean;
   promptConfigured: boolean;
@@ -146,9 +265,9 @@ export interface SyncStatus {
 
 export interface CloudSyncTransport {
   readonly mode: string;
-  push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
-  pull(docId: string): Promise<PullResult>;
-  status(docId: string): Promise<SyncStatus>;
+  push(mapId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
+  pull(mapId: string): Promise<PullResult>;
+  status(mapId: string): Promise<SyncStatus>;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +296,7 @@ export interface StructuredDraft {
 
 export interface FlashDraft {
   id: string;
-  docId: string;
+  mapId: string;
   sourceType: FlashSourceType;
   sourceRef: string;
   title: string;
@@ -190,7 +309,7 @@ export interface FlashDraft {
 }
 
 export interface FlashIngestRequest {
-  docId: string;
+  mapId: string;
   sourceType: FlashSourceType;
   content: string;
   options?: {

@@ -45,6 +45,19 @@ import {
   deleteDraft,
   approveDraft,
 } from "./flash_ingest";
+import { exportVaultFromSqlite } from "./vault_exporter";
+import { importVaultToSqlite } from "./vault_importer";
+import { validateVaultPath } from "./vault_path";
+import {
+  configureVaultWatchEmitter,
+  configureVaultWatchDocUpdateEmitter,
+  getVaultWatchStatus,
+  handleDocumentSavedForVaultWatch,
+  listVaultWatchStatuses,
+  startVaultWatch,
+  stopVaultWatch,
+  writeDocumentToVaultNow,
+} from "./vault_watch";
 import type {
   AiSubagentRequest,
   AppState,
@@ -56,10 +69,15 @@ import type {
   FlashDraftStatus,
   LinkDirection,
   LinkStyle,
+  VaultExportRequest,
+  VaultImportRequest,
+  VaultWatchEvent,
+  VaultWatchStartRequest,
+  VaultWatchStopRequest,
 } from "../shared/types";
 import type {
-  DocErrorCode,
-  DocSummary,
+  MapErrorCode,
+  MapSummary,
 } from "../shared/home_types";
 
 // After compilation, this file lives at dist/node/start_viewer.js.
@@ -72,7 +90,7 @@ const DEFAULT_DB_FILE = "data.sqlite";
 const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
-const DEFAULT_DOC_ID = process.env.M3E_DOC_ID || "akaghef-beta";
+const DEFAULT_DOC_ID = process.env.M3E_MAP_ID || "akaghef-beta";
 const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || "sandbox";
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
@@ -89,31 +107,38 @@ let autoSyncHandle: AutoSyncHandle | null = null;
 // ---------------------------------------------------------------------------
 
 interface DocWatchClient {
-  docId: string;
+  mapId: string;
   res: http.ServerResponse;
 }
 
 const docWatchClients: DocWatchClient[] = [];
 
-function addDocWatchClient(docId: string, res: http.ServerResponse): void {
+interface VaultWatchClient {
+  documentId: string | null;
+  res: http.ServerResponse;
+}
+
+const vaultWatchClients: VaultWatchClient[] = [];
+
+function addDocWatchClient(mapId: string, res: http.ServerResponse): void {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
   res.write(": connected\n\n");
-  docWatchClients.push({ docId, res });
+  docWatchClients.push({ mapId, res });
   res.on("close", () => {
     const idx = docWatchClients.findIndex((c) => c.res === res);
     if (idx !== -1) docWatchClients.splice(idx, 1);
   });
 }
 
-function broadcastDocUpdate(docId: string, savedAt: string, sourceTabId: string | null): void {
-  const payload = JSON.stringify({ docId, savedAt, sourceTabId });
+function broadcastDocUpdate(mapId: string, savedAt: string, sourceTabId: string | null): void {
+  const payload = JSON.stringify({ mapId, savedAt, sourceTabId });
   const frame = `event: doc_updated\ndata: ${payload}\n\n`;
   for (let i = docWatchClients.length - 1; i >= 0; i--) {
-    if (docWatchClients[i].docId === docId) {
+    if (docWatchClients[i].mapId === mapId) {
       try {
         docWatchClients[i].res.write(frame);
       } catch {
@@ -142,6 +167,11 @@ function parseDocPresenceRoute(urlPath: string): string | null {
   const match = pathname.match(/^\/api\/docs\/([^/]+)\/presence$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
+}
+
+function isVaultWatchSseRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/vault/watch";
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -210,6 +240,19 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.end(JSON.stringify(payload));
 }
 
+function beginSse(res: http.ServerResponse): void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+}
+
+function sendSseEvent(res: http.ServerResponse, event: string, payload: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
 function sendSyncError(
   res: http.ServerResponse,
   statusCode: number,
@@ -229,10 +272,10 @@ function sendSyncError(
 
 function parseDocId(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  if (!pathname.startsWith("/api/docs/")) {
+  if (!pathname.startsWith("/api/maps/")) {
     return null;
   }
-  const raw = pathname.slice("/api/docs/".length).trim();
+  const raw = pathname.slice("/api/maps/".length).trim();
   if (!raw || raw.includes("/")) {
     return "";
   }
@@ -242,20 +285,20 @@ function parseDocId(urlPath: string): string | null {
 type HomeRouteAction =
   | { kind: "list" }
   | { kind: "new" }
-  | { kind: "duplicate"; docId: string }
-  | { kind: "rename"; docId: string }
-  | { kind: "archive"; docId: string }
-  | { kind: "restore"; docId: string }
-  | { kind: "tags"; docId: string }
-  | { kind: "delete"; docId: string };
+  | { kind: "duplicate"; mapId: string }
+  | { kind: "rename"; mapId: string }
+  | { kind: "archive"; mapId: string }
+  | { kind: "restore"; mapId: string }
+  | { kind: "tags"; mapId: string }
+  | { kind: "delete"; mapId: string };
 
 function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
 
-  if (pathname === "/api/docs" && method === "GET") {
+  if (pathname === "/api/maps" && method === "GET") {
     return { kind: "list" };
   }
-  if (pathname === "/api/docs/new" && method === "POST") {
+  if (pathname === "/api/maps/new" && method === "POST") {
     return { kind: "new" };
   }
 
@@ -263,13 +306,13 @@ function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null
   if (subMatch && method === "POST") {
     const id = decodeURIComponent(subMatch[1]);
     const action = subMatch[2] as "duplicate" | "rename" | "archive" | "restore" | "tags";
-    return { kind: action, docId: id };
+    return { kind: action, mapId: id };
   }
 
-  // DELETE /api/docs/:id  (single segment, no sub-path)
+  // DELETE /api/maps/:id  (single segment, no sub-path)
   const idMatch = pathname.match(/^\/api\/docs\/([^/]+)$/);
   if (idMatch && method === "DELETE") {
-    return { kind: "delete", docId: decodeURIComponent(idMatch[1]) };
+    return { kind: "delete", mapId: decodeURIComponent(idMatch[1]) };
   }
 
   return null;
@@ -278,7 +321,7 @@ function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null
 function sendHomeError(
   res: http.ServerResponse,
   status: number,
-  code: DocErrorCode | string,
+  code: MapErrorCode | string,
   message: string,
   details?: unknown,
 ): void {
@@ -303,7 +346,7 @@ async function handleHomeApi(
     if (route.kind === "list") {
       const url = new URL(req.url ?? "/", "http://localhost");
       const includeArchived = url.searchParams.get("includeArchived") === "true";
-      const docs = RapidMvpModel.listDocuments(SQLITE_DB_PATH, { includeArchived }) as DocSummary[];
+      const docs = RapidMvpModel.listDocuments(SQLITE_DB_PATH, { includeArchived }) as MapSummary[];
       sendJson(res, 200, { docs });
       return true;
     }
@@ -336,12 +379,12 @@ async function handleHomeApi(
     }
 
     if (route.kind === "duplicate") {
-      if (!RapidMvpModel.documentExists(SQLITE_DB_PATH, route.docId)) {
-        sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+      if (!RapidMvpModel.documentExists(SQLITE_DB_PATH, route.mapId)) {
+        sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
         return true;
       }
       const newId = newDocId();
-      RapidMvpModel.duplicateDocument(SQLITE_DB_PATH, route.docId, newId);
+      RapidMvpModel.duplicateDocument(SQLITE_DB_PATH, route.mapId, newId);
       sendJson(res, 200, { ok: true, id: newId });
       return true;
     }
@@ -368,11 +411,11 @@ async function handleHomeApi(
         return true;
       }
       try {
-        RapidMvpModel.renameDocument(SQLITE_DB_PATH, route.docId, label);
+        RapidMvpModel.renameDocument(SQLITE_DB_PATH, route.mapId, label);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Document not found.") {
-          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
           return true;
         }
         throw err;
@@ -383,10 +426,10 @@ async function handleHomeApi(
 
     if (route.kind === "archive" || route.kind === "restore") {
       try {
-        RapidMvpModel.setArchived(SQLITE_DB_PATH, route.docId, route.kind === "archive");
+        RapidMvpModel.setArchived(SQLITE_DB_PATH, route.mapId, route.kind === "archive");
       } catch (err) {
         if ((err as Error).message === "Document not found.") {
-          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
           return true;
         }
         throw err;
@@ -413,11 +456,11 @@ async function handleHomeApi(
         throw err;
       }
       try {
-        RapidMvpModel.setDocumentTags(SQLITE_DB_PATH, route.docId, tags);
+        RapidMvpModel.setDocumentTags(SQLITE_DB_PATH, route.mapId, tags);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Document not found.") {
-          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
           return true;
         }
         if (msg === "Invalid tags.") {
@@ -432,11 +475,11 @@ async function handleHomeApi(
 
     if (route.kind === "delete") {
       try {
-        RapidMvpModel.deleteDocument(SQLITE_DB_PATH, route.docId);
+        RapidMvpModel.deleteDocument(SQLITE_DB_PATH, route.mapId);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Document not found.") {
-          sendHomeError(res, 404, "DOC_NOT_FOUND", `Document not found: ${route.docId}`);
+          sendHomeError(res, 404, "MAP_NOT_FOUND", `Document not found: ${route.mapId}`);
           return true;
         }
         if (msg === "Document is not archived.") {
@@ -457,7 +500,7 @@ async function handleHomeApi(
   }
 }
 
-function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; docId: string } | null {
+function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; mapId: string } | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   const match = pathname.match(/^\/api\/sync\/(status|push|pull)\/([^/]+)$/);
   if (!match) {
@@ -465,26 +508,26 @@ function parseSyncRoute(urlPath: string): { action: "status" | "push" | "pull"; 
   }
   return {
     action: match[1] as "status" | "push" | "pull",
-    docId: decodeURIComponent(match[2] || ""),
+    mapId: decodeURIComponent(match[2] || ""),
   };
 }
 
-function parseBackupRoute(urlPath: string): { docId: string; backupId?: string; action?: "restore" } | null {
+function parseBackupRoute(urlPath: string): { mapId: string; backupId?: string; action?: "restore" } | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  // /api/sync/backups/{docId}/restore/{backupId}
+  // /api/sync/backups/{mapId}/restore/{backupId}
   const restoreMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)\/restore\/([^/]+)$/);
   if (restoreMatch) {
-    return { docId: decodeURIComponent(restoreMatch[1]), backupId: decodeURIComponent(restoreMatch[2]), action: "restore" };
+    return { mapId: decodeURIComponent(restoreMatch[1]), backupId: decodeURIComponent(restoreMatch[2]), action: "restore" };
   }
-  // /api/sync/backups/{docId}/{backupId}
+  // /api/sync/backups/{mapId}/{backupId}
   const singleMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)\/([^/]+)$/);
   if (singleMatch) {
-    return { docId: decodeURIComponent(singleMatch[1]), backupId: decodeURIComponent(singleMatch[2]) };
+    return { mapId: decodeURIComponent(singleMatch[1]), backupId: decodeURIComponent(singleMatch[2]) };
   }
-  // /api/sync/backups/{docId}
+  // /api/sync/backups/{mapId}
   const listMatch = pathname.match(/^\/api\/sync\/backups\/([^/]+)$/);
   if (listMatch) {
-    return { docId: decodeURIComponent(listMatch[1]) };
+    return { mapId: decodeURIComponent(listMatch[1]) };
   }
   return null;
 }
@@ -492,7 +535,7 @@ function parseBackupRoute(urlPath: string): { docId: string; backupId?: string; 
 async function handleBackupApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  route: { docId: string; backupId?: string; action?: "restore" },
+  route: { mapId: string; backupId?: string; action?: "restore" },
 ): Promise<void> {
   // Restore endpoint
   if (route.action === "restore" && route.backupId) {
@@ -500,7 +543,7 @@ async function handleBackupApi(
       sendJson(res, 405, { ok: false, error: "Method not allowed." });
       return;
     }
-    const backup = getConflictBackup(DATA_DIR, route.docId, route.backupId);
+    const backup = getConflictBackup(DATA_DIR, route.mapId, route.backupId);
     if (!backup) {
       sendJson(res, 404, { ok: false, error: "Backup not found." });
       return;
@@ -512,16 +555,16 @@ async function handleBackupApi(
       sendJson(res, 400, { ok: false, error: `Invalid backup state: ${errors.join(" | ")}` });
       return;
     }
-    model.saveToSqlite(SQLITE_DB_PATH, route.docId);
+    model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
     const savedAt = new Date().toISOString();
-    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, documentId: route.docId, savedAt });
+    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, documentId: route.mapId, savedAt });
     return;
   }
 
   // Single backup get/delete
   if (route.backupId) {
     if (req.method === "GET") {
-      const backup = getConflictBackup(DATA_DIR, route.docId, route.backupId);
+      const backup = getConflictBackup(DATA_DIR, route.mapId, route.backupId);
       if (!backup) {
         sendJson(res, 404, { ok: false, error: "Backup not found." });
         return;
@@ -530,7 +573,7 @@ async function handleBackupApi(
       return;
     }
     if (req.method === "DELETE") {
-      const deleted = deleteConflictBackup(DATA_DIR, route.docId, route.backupId);
+      const deleted = deleteConflictBackup(DATA_DIR, route.mapId, route.backupId);
       sendJson(res, deleted ? 200 : 404, { ok: deleted, deleted, ...(deleted ? {} : { error: "Backup not found." }) });
       return;
     }
@@ -543,20 +586,20 @@ async function handleBackupApi(
     sendJson(res, 405, { ok: false, error: "Method not allowed." });
     return;
   }
-  const backups = listConflictBackups(DATA_DIR, route.docId);
-  sendJson(res, 200, { ok: true, documentId: route.docId, backups });
+  const backups = listConflictBackups(DATA_DIR, route.mapId);
+  sendJson(res, 200, { ok: true, documentId: route.mapId, backups });
 }
 
 // ---------------------------------------------------------------------------
 // Linear-note-box API (per-scope text editor backing store)
 // ---------------------------------------------------------------------------
 
-function parseLinearNoteRoute(urlPath: string): { docId: string; scopeId: string } | null {
+function parseLinearNoteRoute(urlPath: string): { mapId: string; scopeId: string } | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   const match = pathname.match(/^\/api\/docs\/([^/]+)\/linear\/([^/]+)$/);
   if (!match) return null;
   return {
-    docId: decodeURIComponent(match[1]),
+    mapId: decodeURIComponent(match[1]),
     scopeId: decodeURIComponent(match[2]),
   };
 }
@@ -564,17 +607,17 @@ function parseLinearNoteRoute(urlPath: string): { docId: string; scopeId: string
 async function handleLinearNoteApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  route: { docId: string; scopeId: string },
+  route: { mapId: string; scopeId: string },
 ): Promise<void> {
-  const { docId, scopeId } = route;
-  if (!docId || !scopeId) {
+  const { mapId, scopeId } = route;
+  if (!mapId || !scopeId) {
     sendJson(res, 400, { ok: false, error: "Document id and scope id are required." });
     return;
   }
 
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, docId);
+    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
     if (message === "Document not found.") {
@@ -630,11 +673,11 @@ async function handleLinearNoteApi(
       sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
       return;
     }
-    nextModel.saveToSqlite(SQLITE_DB_PATH, docId);
+    nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
     incrementDocVersion();
-    broadcastDocUpdate(docId, savedAt, sourceTabId);
+    broadcastDocUpdate(mapId, savedAt, sourceTabId);
     sendJson(res, 200, { ok: true, scopeId, savedAt });
     return;
   }
@@ -657,11 +700,11 @@ async function handleLinearNoteApi(
       sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
       return;
     }
-    nextModel.saveToSqlite(SQLITE_DB_PATH, docId);
+    nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
     incrementDocVersion();
-    broadcastDocUpdate(docId, savedAt, sourceTabId);
+    broadcastDocUpdate(mapId, savedAt, sourceTabId);
     sendJson(res, 200, { ok: true, scopeId, savedAt, removed: true });
     return;
   }
@@ -729,6 +772,34 @@ function parseFlashRoute(urlPath: string, method: string): FlashRoute {
   return null;
 }
 
+type VaultRoute =
+  | { action: "import" }
+  | { action: "export" }
+  | { action: "watch-start" }
+  | { action: "watch-stop" }
+  | { action: "status" }
+  | null;
+
+function parseVaultRoute(urlPath: string, method: string): VaultRoute {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (pathname === "/api/vault/import" && method === "POST") {
+    return { action: "import" };
+  }
+  if (pathname === "/api/vault/export" && method === "POST") {
+    return { action: "export" };
+  }
+  if (pathname === "/api/vault/watch/start" && method === "POST") {
+    return { action: "watch-start" };
+  }
+  if (pathname === "/api/vault/watch" && method === "DELETE") {
+    return { action: "watch-stop" };
+  }
+  if (pathname === "/api/vault/status" && method === "GET") {
+    return { action: "status" };
+  }
+  return null;
+}
+
 async function handleFlashApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -772,14 +843,14 @@ async function handleFlashApi(
 
       case "drafts": {
         const url = new URL(req.url ?? "/", "http://localhost");
-        const docId = url.searchParams.get("docId") ?? undefined;
+        const mapId = url.searchParams.get("mapId") ?? undefined;
         const status = url.searchParams.get("status") as FlashDraftStatus | undefined;
-        const results = listDrafts({ docId, status: status || undefined });
+        const results = listDrafts({ mapId, status: status || undefined });
         sendJson(res, 200, {
           ok: true,
           drafts: results.map((d) => ({
             id: d.id,
-            docId: d.docId,
+            mapId: d.mapId,
             sourceType: d.sourceType,
             sourceRef: d.sourceRef,
             title: d.title,
@@ -811,17 +882,17 @@ async function handleFlashApi(
         }
 
         // Load model to commit nodes
-        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, draft.docId);
+        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, draft.mapId);
         const result = approveDraft(route.draftId, request, model);
 
         // Save updated model
-        model.saveToSqlite(SQLITE_DB_PATH, draft.docId);
+        model.saveToSqlite(SQLITE_DB_PATH, draft.mapId);
 
         sendJson(res, 200, {
           ok: true,
           committedNodeIds: result.committedNodeIds,
           parentId: result.parentId,
-          message: `${result.committedNodeIds.length} nodes committed to ${draft.docId}`,
+          message: `${result.committedNodeIds.length} nodes committed to ${draft.mapId}`,
         });
         return;
       }
@@ -846,6 +917,152 @@ async function handleFlashApi(
   }
 }
 
+function addVaultWatchClient(documentId: string | null, res: http.ServerResponse): void {
+  beginSse(res);
+  vaultWatchClients.push({ documentId, res });
+  res.on("close", () => {
+    const idx = vaultWatchClients.findIndex((client) => client.res === res);
+    if (idx !== -1) {
+      vaultWatchClients.splice(idx, 1);
+    }
+  });
+}
+
+function broadcastVaultWatchEvent(event: VaultWatchEvent): void {
+  const frame = `event: vault-watch\ndata: ${JSON.stringify(event)}\n\n`;
+  for (let i = vaultWatchClients.length - 1; i >= 0; i -= 1) {
+    const client = vaultWatchClients[i]!;
+    if (client.documentId && client.documentId !== event.documentId) {
+      continue;
+    }
+    try {
+      client.res.write(frame);
+    } catch {
+      vaultWatchClients.splice(i, 1);
+    }
+  }
+}
+
+configureVaultWatchEmitter(broadcastVaultWatchEvent);
+configureVaultWatchDocUpdateEmitter((documentId, savedAt) => {
+  broadcastDocUpdate(documentId, savedAt, null);
+});
+
+async function handleVaultApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: Exclude<VaultRoute, null>,
+): Promise<void> {
+  try {
+    if (route.action === "import") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultImportRequest;
+      if (!request || typeof request.vaultPath !== "string" || request.vaultPath.trim().length === 0) {
+        sendJson(res, 400, { ok: false, error: "vaultPath is required." });
+        return;
+      }
+      validateVaultPath(request.vaultPath, { mustExist: true });
+
+      beginSse(res);
+      const result = await importVaultToSqlite(SQLITE_DB_PATH, request, {
+        onProgress(progress) {
+          sendSseEvent(res, "vault-import-progress", progress);
+        },
+      });
+      broadcastDocUpdate(result.documentId, result.savedAt, null);
+      sendSseEvent(res, "vault-import-complete", {
+        documentId: result.documentId,
+        savedAt: result.savedAt,
+        fileCount: result.fileCount,
+        folderCount: result.folderCount,
+        nodeCount: result.nodeCount,
+        truncatedFiles: result.truncatedFiles,
+        warnings: result.warnings,
+      });
+      res.end();
+      return;
+    }
+
+    if (route.action === "export") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultExportRequest;
+      if (!request?.documentId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "documentId is required." });
+        return;
+      }
+      if (!request.vaultPath?.trim()) {
+        sendJson(res, 400, { ok: false, error: "vaultPath is required." });
+        return;
+      }
+      validateVaultPath(request.vaultPath, { mustExist: false, allowCreate: true });
+
+      beginSse(res);
+      const result = await exportVaultFromSqlite(SQLITE_DB_PATH, request, {
+        onProgress(progress) {
+          sendSseEvent(res, "vault-export-progress", progress);
+        },
+      });
+      sendSseEvent(res, "vault-export-complete", result);
+      res.end();
+      return;
+    }
+
+    if (route.action === "watch-start") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultWatchStartRequest;
+      validateVaultPath(request.vaultPath, { mustExist: true });
+      const status = startVaultWatch(SQLITE_DB_PATH, request);
+      sendJson(res, 200, status);
+      return;
+    }
+
+    if (route.action === "watch-stop") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as VaultWatchStopRequest;
+      if (!request?.documentId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "documentId is required." });
+        return;
+      }
+      const status = stopVaultWatch(request.documentId);
+      if (!status) {
+        sendJson(res, 404, { ok: false, error: "Watch session not found." });
+        return;
+      }
+      sendJson(res, 200, status);
+      return;
+    }
+
+    if (route.action === "status") {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      const documentId = url.searchParams.get("documentId");
+      if (documentId) {
+        const status = getVaultWatchStatus(documentId);
+        if (!status) {
+          sendJson(res, 404, { ok: false, error: "Watch session not found." });
+          return;
+        }
+        sendJson(res, 200, status);
+        return;
+      }
+      sendJson(res, 200, { ok: true, sessions: listVaultWatchStatuses() });
+      return;
+    }
+
+    sendJson(res, 404, { ok: false, error: "Unknown vault endpoint." });
+  } catch (err) {
+    const message = err instanceof SyntaxError
+      ? "Invalid JSON body."
+      : ((err as Error).message || "Vault request failed.");
+    if (!res.headersSent) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, { ok: false, error: message });
+      return;
+    }
+    const eventName = route.action === "export" ? "vault-export-error" : "vault-import-error";
+    sendSseEvent(res, eventName, { ok: false, error: message });
+    res.end();
+  }
+}
+
 // Cloud sync helpers removed — now handled by CloudSyncTransport implementations
 
 function readRequestBody(req: http.IncomingMessage): Promise<string> {
@@ -864,20 +1081,20 @@ function readRequestBody(req: http.IncomingMessage): Promise<string> {
 }
 
 type LinkRouteAction =
-  | { kind: "create"; docId: string }
-  | { kind: "delete"; docId: string; linkId: string };
+  | { kind: "create"; mapId: string }
+  | { kind: "delete"; mapId: string; linkId: string };
 
 function parseLinkRoute(urlPath: string, method: string): LinkRouteAction | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   const createMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/?$/);
   if (createMatch && method === "POST") {
-    return { kind: "create", docId: decodeURIComponent(createMatch[1]) };
+    return { kind: "create", mapId: decodeURIComponent(createMatch[1]) };
   }
   const deleteMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/([^/]+)\/?$/);
   if (deleteMatch && method === "DELETE") {
     return {
       kind: "delete",
-      docId: decodeURIComponent(deleteMatch[1]),
+      mapId: decodeURIComponent(deleteMatch[1]),
       linkId: decodeURIComponent(deleteMatch[2]),
     };
   }
@@ -889,14 +1106,14 @@ async function handleLinkApi(
   res: http.ServerResponse,
   route: LinkRouteAction,
 ): Promise<void> {
-  if (!route.docId) {
+  if (!route.mapId) {
     sendJson(res, 400, { ok: false, error: "Document id is required." });
     return;
   }
 
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, route.docId);
+    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, route.mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
     if (message === "Document not found.") {
@@ -949,10 +1166,10 @@ async function handleLinkApi(
         sendJson(res, 400, { ok: false, error: (err as Error).message });
         return;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.docId);
+      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(route.docId, savedAt, sourceTabId);
+      broadcastDocUpdate(route.mapId, savedAt, sourceTabId);
       const link = model.state.links?.[linkId];
       sendJson(res, 200, { ok: true, link });
       return;
@@ -970,10 +1187,10 @@ async function handleLinkApi(
         sendJson(res, 400, { ok: false, error: message });
         return;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.docId);
+      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(route.docId, savedAt, sourceTabId);
+      broadcastDocUpdate(route.mapId, savedAt, sourceTabId);
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -982,8 +1199,8 @@ async function handleLinkApi(
   }
 }
 
-async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, docId: string): Promise<boolean> {
-  if (!docId) {
+async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
+  if (!mapId) {
     sendJson(res, 400, { error: "Document id is required." });
     return true;
   }
@@ -1008,7 +1225,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
           }
           depth = Math.floor(n);
         }
-        const result = RapidMvpModel.readScopedState(SQLITE_DB_PATH, docId, scopeId, depth);
+        const result = RapidMvpModel.readScopedState(SQLITE_DB_PATH, mapId, scopeId, depth);
         if (!result.ok) {
           sendJson(res, 404, { ok: false, error: result.error });
           return true;
@@ -1025,12 +1242,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
         });
         return true;
       }
-      const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, docId);
-      sendJson(res, 200, {
-        version: 1,
-        savedAt: new Date().toISOString(),
-        state: model.toJSON(),
-      });
+      const savedDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId);
+      sendJson(res, 200, savedDoc);
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
       if (message === "Document not found.") {
@@ -1047,7 +1260,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
   if (req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; baseSavedAt?: unknown; force?: unknown };
       const candidate = parsed && parsed.state ? parsed : { state: parsed };
       if (!candidate.state || typeof candidate.state !== "object") {
         sendJson(res, 400, { error: "Invalid JSON format." });
@@ -1068,7 +1281,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
         const scopeId = scopeParam.trim();
         const result = RapidMvpModel.writeScopedState(
           SQLITE_DB_PATH,
-          docId,
+          mapId,
           scopeId,
           candidate.state as never,
         );
@@ -1078,11 +1291,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
           return true;
         }
         const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-        broadcastDocUpdate(docId, result.savedAt, sourceTabId);
+        broadcastDocUpdate(mapId, result.savedAt, sourceTabId);
         sendJson(res, 200, {
           ok: true,
           savedAt: result.savedAt,
-          documentId: docId,
+          documentId: mapId,
           scope: { rootId: scopeId, replacedNodeCount: result.replacedNodeCount },
         });
         return true;
@@ -1095,11 +1308,45 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
         return true;
       }
 
-      model.saveToSqlite(SQLITE_DB_PATH, docId);
-      const savedAt = new Date().toISOString();
+      const force = Boolean(parsed?.force);
+      const baseSavedAt = typeof parsed?.baseSavedAt === "string" ? parsed.baseSavedAt : null;
+      if (!force) {
+        try {
+          const currentDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId);
+          if (baseSavedAt && currentDoc.savedAt !== baseSavedAt) {
+            sendJson(res, 409, {
+              ok: false,
+              code: "DOC_CONFLICT",
+              error: "Document changed externally. Choose which version to keep.",
+              documentId: mapId,
+              savedAt: currentDoc.savedAt,
+              state: currentDoc.state,
+            });
+            return true;
+          }
+        } catch (err) {
+          if ((err as Error).message !== "Document not found.") {
+            throw err;
+          }
+        }
+      }
+
+      const liveWrite = await writeDocumentToVaultNow(SQLITE_DB_PATH, mapId, model.toJSON());
+      model.saveToSqlite(SQLITE_DB_PATH, mapId);
+      const savedAt = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(docId, savedAt, sourceTabId);
-      sendJson(res, 200, { ok: true, savedAt, documentId: docId });
+      broadcastDocUpdate(mapId, savedAt, sourceTabId);
+      if (!liveWrite) {
+        handleDocumentSavedForVaultWatch(SQLITE_DB_PATH, mapId);
+      }
+      sendJson(res, 200, {
+        ok: true,
+        savedAt,
+        documentId: mapId,
+        integrationMode: liveWrite?.integrationMode ?? "off",
+        sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+        ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
+      });
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
       if (err instanceof SyntaxError) {
@@ -1118,10 +1365,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, do
 async function handleSyncApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  route: { action: "status" | "push" | "pull"; docId: string },
+  route: { action: "status" | "push" | "pull"; mapId: string },
 ): Promise<boolean> {
-  if (!route.docId) {
-    sendSyncError(res, 400, "SYNC_DOC_ID_REQUIRED", "Document id is required.", route.docId);
+  if (!route.mapId) {
+    sendSyncError(res, 400, "SYNC_DOC_ID_REQUIRED", "Document id is required.", route.mapId);
     return true;
   }
 
@@ -1132,11 +1379,11 @@ async function handleSyncApi(
         ok: true,
         enabled: false,
         mode: "disabled",
-        documentId: route.docId,
+        documentId: route.mapId,
       });
     } else {
       // Push/pull endpoints: return 503 so browser knows sync is unavailable
-      sendSyncError(res, 503, "SYNC_DISABLED", "Cloud sync is not enabled on this server.", route.docId);
+      sendSyncError(res, 503, "SYNC_DISABLED", "Cloud sync is not enabled on this server.", route.mapId);
     }
     return true;
   }
@@ -1146,10 +1393,10 @@ async function handleSyncApi(
 
   if (route.action === "status" && req.method === "GET") {
     try {
-      const result = await transport.status(route.docId);
+      const result = await transport.status(route.mapId);
       sendJson(res, 200, { ...result, mode: modeLabel });
     } catch (err) {
-      sendSyncError(res, 500, "SYNC_STATUS_FAILED", (err as Error).message, route.docId);
+      sendSyncError(res, 500, "SYNC_STATUS_FAILED", (err as Error).message, route.mapId);
     }
     return true;
   }
@@ -1168,25 +1415,25 @@ async function handleSyncApi(
         // Empty or invalid body is fine for pull
       }
 
-      const result = await transport.pull(route.docId);
+      const result = await transport.pull(route.mapId);
       if (!result.ok) {
         const isUnsupported = result.error?.includes("unsupported");
         const statusCode = isUnsupported ? 400 : 404;
         const code = isUnsupported ? "SYNC_CLOUD_UNSUPPORTED_FORMAT" : "SYNC_CLOUD_NOT_FOUND";
-        sendSyncError(res, statusCode, code, result.error || "Cloud document not found.", route.docId);
+        sendSyncError(res, statusCode, code, result.error || "Cloud document not found.", route.mapId);
         return true;
       }
       const model = RapidMvpModel.fromJSON(result.state);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud document is invalid: ${errors.join(" | ")}`, route.docId);
+        sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud document is invalid: ${errors.join(" | ")}`, route.mapId);
         return true;
       }
 
       // Create conflict backup of local state if provided
       let backup: { backupId: string; reason: string; createdAt: string } | undefined;
       if (localState) {
-        const entry = createConflictBackup(DATA_DIR, route.docId, localState, "cloud-sync-pull");
+        const entry = createConflictBackup(DATA_DIR, route.mapId, localState, "cloud-sync-pull");
         backup = { backupId: entry.backupId, reason: entry.reason, createdAt: entry.createdAt };
       }
 
@@ -1196,12 +1443,12 @@ async function handleSyncApi(
         version: 1,
         savedAt: result.savedAt,
         state: model.toJSON(),
-        documentId: route.docId,
+        documentId: route.mapId,
         docVersion: result.docVersion ?? undefined,
         ...(backup ? { backup } : {}),
       });
     } catch (err) {
-      sendSyncError(res, 500, "SYNC_PULL_FAILED", (err as Error).message || "Cloud pull failed.", route.docId);
+      sendSyncError(res, 500, "SYNC_PULL_FAILED", (err as Error).message || "Cloud pull failed.", route.mapId);
     }
     return true;
   }
@@ -1212,18 +1459,18 @@ async function handleSyncApi(
       const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; baseDocVersion?: number | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
       if (!candidate.state || typeof candidate.state !== "object") {
-        sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.docId);
+        sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.mapId);
         return true;
       }
       if (!(candidate.state as Record<string, unknown>).nodes) {
-        sendSyncError(res, 400, "SYNC_PUSH_INVALID_MODEL", "Missing required field: nodes.", route.docId);
+        sendSyncError(res, 400, "SYNC_PUSH_INVALID_MODEL", "Missing required field: nodes.", route.mapId);
         return true;
       }
 
       const model = RapidMvpModel.fromJSON(candidate.state as never);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendSyncError(res, 400, "SYNC_PUSH_INVALID_MODEL", `Invalid model before cloud push: ${errors.join(" | ")}`, route.docId);
+        sendSyncError(res, 400, "SYNC_PUSH_INVALID_MODEL", `Invalid model before cloud push: ${errors.join(" | ")}`, route.mapId);
         return true;
       }
 
@@ -1235,7 +1482,7 @@ async function handleSyncApi(
       // Use pushWithConflictBackup for automatic conflict backup creation
       const result = await pushWithConflictBackup(
         transport,
-        route.docId,
+        route.mapId,
         payload,
         parsed.baseSavedAt ?? null,
         Boolean(parsed.force),
@@ -1253,7 +1500,7 @@ async function handleSyncApi(
             extra.remoteState = result.remoteState;
           }
           // pushWithConflictBackup already created a backup; list the latest one
-          const backups = listConflictBackups(DATA_DIR, route.docId);
+          const backups = listConflictBackups(DATA_DIR, route.mapId);
           if (backups.length > 0) {
             extra.backup = {
               backupId: backups[0].backupId,
@@ -1262,28 +1509,28 @@ async function handleSyncApi(
             };
           }
         }
-        sendSyncError(res, statusCode, code, result.error || "Cloud push failed.", route.docId, extra);
+        sendSyncError(res, statusCode, code, result.error || "Cloud push failed.", route.mapId, extra);
         return true;
       }
       sendJson(res, 200, {
         ok: true,
         mode: modeLabel,
         savedAt: result.savedAt,
-        documentId: route.docId,
+        documentId: route.mapId,
         forced: result.forced,
         docVersion: result.cloudDocVersion ?? undefined,
       });
     } catch (err) {
       if (err instanceof SyntaxError) {
-        sendSyncError(res, 400, "SYNC_INVALID_JSON_BODY", "Invalid JSON body.", route.docId);
+        sendSyncError(res, 400, "SYNC_INVALID_JSON_BODY", "Invalid JSON body.", route.mapId);
         return true;
       }
-      sendSyncError(res, 500, "SYNC_PUSH_FAILED", (err as Error).message || "Cloud push failed.", route.docId);
+      sendSyncError(res, 500, "SYNC_PUSH_FAILED", (err as Error).message || "Cloud push failed.", route.mapId);
     }
     return true;
   }
 
-  sendSyncError(res, 405, "SYNC_METHOD_NOT_ALLOWED", "Method not allowed.", route.docId);
+  sendSyncError(res, 405, "SYNC_METHOD_NOT_ALLOWED", "Method not allowed.", route.mapId);
   return true;
 }
 
@@ -1607,10 +1854,10 @@ async function handleCollabApi(
     case "heartbeat": {
       if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       const rawBody = await readRequestBody(req);
-      const body = JSON.parse(rawBody) as { lockIds?: string[]; docId?: string };
+      const body = JSON.parse(rawBody) as { lockIds?: string[]; mapId?: string };
       heartbeat(entity.entityId, body.lockIds ?? []);
       // Refresh presence on heartbeat
-      touchPresence(body.docId ?? DEFAULT_DOC_ID, entity.entityId, entity.displayName, entity.role);
+      touchPresence(body.mapId ?? DEFAULT_DOC_ID, entity.entityId, entity.displayName, entity.role);
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -1657,8 +1904,8 @@ async function handleCollabApi(
     case "push": {
       if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       if (!entity.capabilities.includes("write")) { sendJson(res, 403, { ok: false, error: "Write capability required." }); return; }
-      const docId = route.param;
-      if (!docId) { sendJson(res, 400, { ok: false, error: "Document ID required." }); return; }
+      const mapId = route.param;
+      if (!mapId) { sendJson(res, 400, { ok: false, error: "Document ID required." }); return; }
       try {
         const rawBody = await readRequestBody(req);
         const body = JSON.parse(rawBody) as { scopeId?: string; lockId?: string; baseVersion?: number; changes?: { nodes?: Record<string, unknown> } };
@@ -1666,9 +1913,9 @@ async function handleCollabApi(
           sendJson(res, 400, { ok: false, error: "scopeId, lockId, baseVersion, and changes.nodes are required." });
           return;
         }
-        const result = mergeScopePush(docId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, SQLITE_DB_PATH);
+        const result = mergeScopePush(mapId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, SQLITE_DB_PATH);
         // Update presence on push
-        touchPresence(docId, entity.entityId, entity.displayName, entity.role);
+        touchPresence(mapId, entity.entityId, entity.displayName, entity.role);
         if (!result.ok && result.error === "Scope lock not held.") {
           sendJson(res, 403, result);
         } else {
@@ -1705,6 +1952,18 @@ export function createAppServer(): http.Server {
     const flashRoute = parseFlashRoute(req.url ?? "/", req.method ?? "GET");
     if (flashRoute) {
       await handleFlashApi(req, res, flashRoute);
+      return;
+    }
+
+    const vaultRoute = parseVaultRoute(req.url ?? "/", req.method ?? "GET");
+    if (vaultRoute) {
+      await handleVaultApi(req, res, vaultRoute);
+      return;
+    }
+
+    if (isVaultWatchSseRoute(req.url ?? "/") && req.method === "GET") {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      addVaultWatchClient(url.searchParams.get("documentId"), res);
       return;
     }
 
@@ -1775,9 +2034,9 @@ export function createAppServer(): http.Server {
       return;
     }
 
-    const docId = parseDocId(req.url ?? "/");
-    if (docId !== null) {
-      await handleApi(req, res, docId);
+    const mapId = parseDocId(req.url ?? "/");
+    if (mapId !== null) {
+      await handleApi(req, res, mapId);
       return;
     }
 

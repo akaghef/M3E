@@ -85,7 +85,7 @@
       }
 
       /* ── Hamburger menu ── */
-      .hamburger-wrap, .export-wrap {
+      .hamburger-wrap, .import-wrap, .export-wrap, .integrate-wrap {
         position: relative;
       }
       .hamburger-btn {
@@ -116,6 +116,9 @@
         display: flex;
       }
       .export-menu { left: auto; right: 0; min-width: 100px; }
+      .integrate-menu {
+        min-width: 220px;
+      }
       .menu-section-title {
         font-size: 10px;
         font-weight: 700;
@@ -128,6 +131,13 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+      }
+
+      .integrate-menu button.is-active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: #5221b2;
+        font-weight: 700;
       }
 
       .cloud-sync-badge {

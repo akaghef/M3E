@@ -52,9 +52,9 @@ Behavior:
 
 Sync API endpoints:
 
-- `GET /api/sync/status/:docId`
-- `POST /api/sync/pull/:docId`
-- `POST /api/sync/push/:docId`
+- `GET /api/sync/status/:mapId`
+- `POST /api/sync/pull/:mapId`
+- `POST /api/sync/push/:mapId`
 
 ### Optional AI infrastructure and linear transform subagent
 

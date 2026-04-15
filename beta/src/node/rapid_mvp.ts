@@ -10,6 +10,7 @@ type SqliteDatabase = InstanceType<typeof Database>;
 
 type SqliteDocumentRow = {
   version: number;
+  savedAt?: string;
   stateJson: string;
 };
 
@@ -1240,12 +1241,23 @@ class RapidMvpModel {
   }
 
   static loadFromSqlite(dbPath: string, documentId = "default"): RapidMvpModel {
+    const savedDoc = RapidMvpModel.loadSavedDocFromSqlite(dbPath, documentId);
+    const model = RapidMvpModel.fromJSON(savedDoc.state);
+    const errors = model.validate();
+    if (errors.length > 0) {
+      throw new Error(`Invalid model after load: ${errors.join(" | ")}`);
+    }
+
+    return model;
+  }
+
+  static loadSavedDocFromSqlite(dbPath: string, documentId = "default"): SavedDoc {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
         .prepare(
           `
-            SELECT version, state_json AS stateJson
+            SELECT version, saved_at AS savedAt, state_json AS stateJson
             FROM documents
             WHERE id = ?
           `,
@@ -1256,18 +1268,15 @@ class RapidMvpModel {
         throw new Error("Document not found.");
       }
 
-      if (!row.version || row.version < 1 || !row.stateJson) {
+      if (!row.version || row.version < 1 || !row.stateJson || !row.savedAt) {
         throw new Error("Unsupported or invalid save format.");
       }
 
-      const parsedState = JSON.parse(row.stateJson) as AppState;
-      const model = RapidMvpModel.fromJSON(parsedState);
-      const errors = model.validate();
-      if (errors.length > 0) {
-        throw new Error(`Invalid model after load: ${errors.join(" | ")}`);
-      }
-
-      return model;
+      return {
+        version: 1,
+        savedAt: row.savedAt,
+        state: JSON.parse(row.stateJson) as AppState,
+      };
     } finally {
       db.close();
     }
@@ -1295,5 +1304,5 @@ if (require.main === module) {
   model.saveToFile(savePath);
   model.saveToSqlite(sqlitePath, "rapid-sample");
   console.log(`Rapid MVP sample saved: ${savePath}`);
-  console.log(`Rapid MVP sample saved in SQLite: ${sqlitePath} (docId=rapid-sample)`);
+  console.log(`Rapid MVP sample saved in SQLite: ${sqlitePath} (mapId=rapid-sample)`);
 }

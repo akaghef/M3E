@@ -51,6 +51,12 @@ M3E_ROOT=C:\Users\chiec\dev\M3E
 | `GET` | `/api/flash/draft/{id}` | Flash ドラフト詳細取得 | 本文書 |
 | `POST` | `/api/flash/draft/{id}/approve` | Flash ドラフト承認 | 本文書 |
 | `DELETE` | `/api/flash/draft/{id}` | Flash ドラフト破棄 | 本文書 |
+| `POST` | `/api/vault/import` | Obsidian Vault one-shot import (P1) | 本文書 |
+| `POST` | `/api/vault/export` | Obsidian Vault one-shot export | 本文書 |
+| `POST` | `/api/vault/watch/start` | Vault watch 開始 | 本文書 |
+| `DELETE` | `/api/vault/watch` | Vault watch 停止 | 本文書 |
+| `GET` | `/api/vault/watch` | Vault watch SSE | 本文書 |
+| `GET` | `/api/vault/status` | Vault watch 状態取得 | 本文書 |
 | `GET` | `/{path}` | 静的ファイル配信 | — |
 
 ---
@@ -858,6 +864,185 @@ Phase 1 ではテキストと Markdown のみ対応（AI なし）。
   "message": "Draft d_... deleted"
 }
 ```
+
+---
+
+## Vault Import / Export / Watch API
+
+Obsidian Vault の `.md` 群を M3E ドキュメントと往復し、watch で双方向同期する。
+2026-04-13 時点の backend 実装では:
+
+- Import:
+  - フォルダ構造 -> `nodeType: "folder"` 骨格
+  - `.md` -> file 用 folder ノード
+  - frontmatter -> `attributes`
+  - `[[wikilink]]` -> alias ノード
+  - AI が有効なら `linear-to-tree` を使って本文を subtree 化
+- Export:
+  - file/folder ノードを `.md` / directory に書き戻す
+  - alias ノードを `[[wikilink]]` に戻す
+  - AI が有効なら `tree-to-linear` を使って subtree を Markdown 化
+- Watch:
+  - `fs.watch(recursive)` で Vault -> M3E を再 import
+  - M3E 保存時に debounce して Vault へ export
+
+### `POST /api/vault/import`
+
+Vault import を開始する。レスポンスは SSE ストリーム。
+
+#### リクエスト Body
+
+```json
+{
+  "vaultPath": "C:/Users/user/ObsidianVault",
+  "documentId": "vault-my-notes",
+  "options": {
+    "maxFiles": 500,
+    "maxCharsPerFile": 6000,
+    "excludePatterns": ["templates/**"]
+  }
+}
+```
+
+| フィールド | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| `vaultPath` | string | Yes | 取り込み対象 Vault の絶対パス |
+| `documentId` | string | No | 保存先ドキュメント ID。省略時は `vault-{folderName}` |
+| `options.maxFiles` | number | No | 取り込む `.md` 最大数（既定 500） |
+| `options.maxCharsPerFile` | number | No | 各ファイル本文の保持上限（既定 6000 文字） |
+| `options.excludePatterns` | string[] | No | 追加の除外パターン（prefix ベース） |
+
+#### SSE イベント
+
+進捗:
+
+```text
+event: vault-import-progress
+data: {"phase":"discovery","total":12,"message":"Found 12 markdown files."}
+
+event: vault-import-progress
+data: {"phase":"parse","current":3,"total":12,"currentFile":"research/note-a.md","status":"ok"}
+
+event: vault-import-progress
+data: {"phase":"persist","total":12,"message":"Persisting imported vault as vault-my-notes."}
+```
+
+完了:
+
+```text
+event: vault-import-complete
+data: {"documentId":"vault-my-notes","savedAt":"2026-04-13T10:00:00.000Z","fileCount":12,"folderCount":18,"nodeCount":18,"truncatedFiles":1,"warnings":[]}
+```
+
+エラー:
+
+```text
+event: vault-import-error
+data: {"ok":false,"error":"vaultPath must be an absolute path."}
+```
+
+#### 実装上の制約（P1）
+
+- `.obsidian/`, `.trash/`, `.git/`, `node_modules/` は既定で除外
+- symlink は追跡しない
+- frontmatter の `tags`, `aliases` と単純 scalar/array を `attributes` に写す
+- `[[wikilink]]` は alias ノードに変換する
+- 各 `.md` ノードは `nodeType: "folder"` として作成する
+
+#### エラーレスポンス
+
+| status | 条件 |
+|--------|------|
+| 400 | `vaultPath` 未指定 / 相対パス / 存在しないパス |
+| 405 | POST 以外 |
+
+### `POST /api/vault/export`
+
+M3E ドキュメントを Vault へ書き戻す。レスポンスは SSE ストリーム。
+
+#### リクエスト Body
+
+```json
+{
+  "documentId": "vault-my-notes",
+  "vaultPath": "C:/Users/user/ObsidianVault",
+  "nodeId": "n_optional_subtree_root",
+  "options": {
+    "skipAiTransform": true,
+    "overwrite": true
+  }
+}
+```
+
+#### SSE イベント
+
+```text
+event: vault-export-progress
+data: {"phase":"analysis","total":12,"message":"Planned 12 markdown files."}
+
+event: vault-export-progress
+data: {"phase":"transform","current":1,"total":12,"currentFile":"index.md","status":"ok"}
+
+event: vault-export-progress
+data: {"phase":"write","current":1,"total":12,"currentFile":"index.md","status":"ok"}
+
+event: vault-export-complete
+data: {"ok":true,"documentId":"vault-my-notes","vaultPath":"C:/...","fileCount":12,"folderCount":4,"warnings":[],"savedAt":"..."}
+```
+
+### `POST /api/vault/watch/start`
+
+Vault watch を開始する。
+
+#### リクエスト Body
+
+```json
+{
+  "documentId": "vault-my-notes",
+  "vaultPath": "C:/Users/user/ObsidianVault",
+  "debounceMs": 1000,
+  "importOptions": { "skipAiTransform": true },
+  "exportOptions": { "skipAiTransform": true }
+}
+```
+
+#### 成功レスポンス
+
+```json
+{
+  "ok": true,
+  "documentId": "vault-my-notes",
+  "vaultPath": "C:/Users/user/ObsidianVault",
+  "running": true,
+  "lastInboundAt": null,
+  "lastOutboundAt": null,
+  "lastError": null
+}
+```
+
+### `DELETE /api/vault/watch`
+
+watch を停止する。
+
+```json
+{
+  "documentId": "vault-my-notes"
+}
+```
+
+### `GET /api/vault/watch`
+
+watch イベントの SSE ストリーム。
+`?documentId=...` を付けると対象ドキュメントだけ受信する。
+
+```text
+event: vault-watch
+data: {"type":"watch-started","documentId":"vault-my-notes","vaultPath":"C:/...","timestamp":"...","detail":"Vault watch started."}
+```
+
+### `GET /api/vault/status`
+
+watch 状態を返す。`?documentId=...` 省略時は全 session 一覧。
 
 ---
 

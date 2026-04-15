@@ -20,7 +20,7 @@ function makeTempDb() {
  *         └── B1
  * with a link A1 <-> B1 (crosses subtrees), and a link A1 <-> A2 (inside A).
  */
-function seedDoc(dbPath, docId) {
+function seedDoc(dbPath, mapId) {
   const model = new RapidMvpModel("root");
   const rootId = model.state.rootId;
   const a = model.addNode(rootId, "A");
@@ -30,7 +30,7 @@ function seedDoc(dbPath, docId) {
   const b1 = model.addNode(b, "B1");
   model.addLink(a1, a2, { label: "inside-A" });
   model.addLink(a1, b1, { label: "cross-subtree" });
-  model.saveToSqlite(dbPath, docId);
+  model.saveToSqlite(dbPath, mapId);
   return { rootId, a, a1, a2, b, b1 };
 }
 

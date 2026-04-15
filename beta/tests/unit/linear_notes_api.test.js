@@ -18,7 +18,7 @@ async function requestJson(url, init) {
   return { response, payload };
 }
 
-function seedDoc(docId) {
+function seedDoc(mapId) {
   // Build a minimal valid state and POST it via the whole-doc API so the
   // document row exists in SQLite.
   const model = new RapidMvpModel("Root");
@@ -47,9 +47,9 @@ afterAll(async () => {
   fs.rmSync(tempDataDir, { recursive: true, force: true });
 });
 
-async function ensureDoc(docId) {
-  const seeded = seedDoc(docId);
-  const post = await requestJson(`${baseUrl}/api/docs/${docId}`, {
+async function ensureDoc(mapId) {
+  const seeded = seedDoc(mapId);
+  const post = await requestJson(`${baseUrl}/api/maps/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: seeded.state }),
@@ -59,10 +59,10 @@ async function ensureDoc(docId) {
 }
 
 test("GET returns empty text when linearNotesByScope is unset", async () => {
-  const docId = "linear-get-empty";
-  const seeded = await ensureDoc(docId);
+  const mapId = "linear-get-empty";
+  const seeded = await ensureDoc(mapId);
   const res = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.rootId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.rootId)}`,
   );
   expect(res.response.status).toBe(200);
   expect(res.payload.ok).toBe(true);
@@ -71,11 +71,11 @@ test("GET returns empty text when linearNotesByScope is unset", async () => {
 });
 
 test("PUT then GET round-trips the text", async () => {
-  const docId = "linear-put-get";
-  const seeded = await ensureDoc(docId);
+  const mapId = "linear-put-get";
+  const seeded = await ensureDoc(mapId);
   const body = { text: "problem: X\nthought: try Y" };
   const put = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.childId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.childId)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -88,14 +88,14 @@ test("PUT then GET round-trips the text", async () => {
   expect(typeof put.payload.savedAt).toBe("string");
 
   const get = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.childId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.childId)}`,
   );
   expect(get.response.status).toBe(200);
   expect(get.payload.text).toBe(body.text);
 
   // Full-replace semantics — PUT with shorter text replaces, not appends.
   const put2 = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.childId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.childId)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -104,16 +104,16 @@ test("PUT then GET round-trips the text", async () => {
   );
   expect(put2.response.status).toBe(200);
   const get2 = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.childId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.childId)}`,
   );
   expect(get2.payload.text).toBe("replaced");
 });
 
 test("DELETE clears the entry", async () => {
-  const docId = "linear-delete";
-  const seeded = await ensureDoc(docId);
+  const mapId = "linear-delete";
+  const seeded = await ensureDoc(mapId);
   await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.childId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.childId)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -121,7 +121,7 @@ test("DELETE clears the entry", async () => {
     },
   );
   const del = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.childId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.childId)}`,
     { method: "DELETE" },
   );
   expect(del.response.status).toBe(200);
@@ -129,27 +129,27 @@ test("DELETE clears the entry", async () => {
   expect(del.payload.removed).toBe(true);
 
   const get = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.childId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.childId)}`,
   );
   expect(get.payload.text).toBe("");
 
   // Verify the key was removed (not just set to "") by inspecting the doc state.
-  const docGet = await requestJson(`${baseUrl}/api/docs/${docId}`);
+  const docGet = await requestJson(`${baseUrl}/api/maps/${mapId}`);
   const map = docGet.payload.state.linearNotesByScope ?? {};
   expect(Object.prototype.hasOwnProperty.call(map, seeded.childId)).toBe(false);
 });
 
 test("returns 404 when scopeId is not an existing nodeId", async () => {
-  const docId = "linear-bad-scope";
-  await ensureDoc(docId);
+  const mapId = "linear-bad-scope";
+  await ensureDoc(mapId);
   const res = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/nonexistent-node-id`,
+    `${baseUrl}/api/maps/${mapId}/linear/nonexistent-node-id`,
   );
   expect(res.response.status).toBe(404);
   expect(res.payload.ok).toBe(false);
 
   const put = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/nonexistent-node-id`,
+    `${baseUrl}/api/maps/${mapId}/linear/nonexistent-node-id`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -160,10 +160,10 @@ test("returns 404 when scopeId is not an existing nodeId", async () => {
 });
 
 test("PUT rejects body without text field", async () => {
-  const docId = "linear-bad-body";
-  const seeded = await ensureDoc(docId);
+  const mapId = "linear-bad-body";
+  const seeded = await ensureDoc(mapId);
   const res = await requestJson(
-    `${baseUrl}/api/docs/${docId}/linear/${encodeURIComponent(seeded.rootId)}`,
+    `${baseUrl}/api/maps/${mapId}/linear/${encodeURIComponent(seeded.rootId)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json; charset=utf-8" },

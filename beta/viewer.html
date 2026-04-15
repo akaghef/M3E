@@ -29,12 +29,32 @@
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
+          <div class="import-wrap" data-edit-only>
+            <button id="import-btn" type="button">Import ▾</button>
+            <div id="import-menu" class="export-menu" hidden>
+              <button id="import-file-btn">File...</button>
+              <button id="import-vault-btn">From Vault (.md)...</button>
+            </div>
+          </div>
           <button id="share-btn" class="share-btn" type="button">Share</button>
           <div class="export-wrap" data-edit-only>
             <button id="export-btn" type="button">Export ▾</button>
             <div id="export-menu" class="export-menu" hidden>
               <button id="download-btn">JSON</button>
               <button id="download-mm-btn">.mm (FreeMind)</button>
+              <button id="export-vault-btn">To Vault (.md)...</button>
+            </div>
+          </div>
+          <div class="integrate-wrap" data-edit-only>
+            <button id="integrate-btn" type="button">Live ▾</button>
+            <div id="integrate-menu" class="export-menu integrate-menu" hidden>
+              <div class="menu-section">
+                <div class="menu-section-title">Obsidian Live Mode</div>
+                <span id="vault-sync-badge" class="cloud-sync-badge">Live: off</span>
+                <button id="set-vault-path-btn">Set Vault Path...</button>
+                <button id="integrate-vault-live-btn">Start Live Mode</button>
+                <button id="integrate-stop-btn">Stop Live Mode</button>
+              </div>
             </div>
           </div>
         </div>
