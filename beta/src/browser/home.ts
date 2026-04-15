@@ -123,12 +123,12 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 async function fetchDocs(): Promise<DocSummary[]> {
-  const data = await apiJson<DocListResponse>("/api/docs?includeArchived=true");
+  const data = await apiJson<DocListResponse>("/api/maps?includeArchived=true");
   return Array.isArray(data.docs) ? data.docs : [];
 }
 
 async function createBlank(): Promise<string> {
-  const body = await apiJson<{ ok: true; id: string }>("/api/docs/new", {
+  const body = await apiJson<{ ok: true; id: string }>("/api/maps/new", {
     method: "POST",
     body: JSON.stringify({}),
   });
@@ -137,7 +137,7 @@ async function createBlank(): Promise<string> {
 
 async function importFromFile(file: File): Promise<string> {
   const content = await file.text();
-  const body = await apiJson<{ ok: true; id: string }>("/api/docs/import-file", {
+  const body = await apiJson<{ ok: true; id: string }>("/api/maps/import-file", {
     method: "POST",
     body: JSON.stringify({ filename: file.name, content }),
   });
@@ -145,7 +145,7 @@ async function importFromFile(file: File): Promise<string> {
 }
 
 async function importFromVault(vaultPath: string): Promise<string> {
-  const body = await apiJson<{ ok: true; id: string }>("/api/docs/import-vault", {
+  const body = await apiJson<{ ok: true; id: string }>("/api/maps/import-vault", {
     method: "POST",
     body: JSON.stringify({ vaultPath }),
   });
@@ -153,14 +153,14 @@ async function importFromVault(vaultPath: string): Promise<string> {
 }
 
 async function setPinned(docId: string, pinned: boolean): Promise<void> {
-  await apiJson(`/api/docs/${encodeURIComponent(docId)}/pin`, {
+  await apiJson(`/api/maps/${encodeURIComponent(docId)}/pin`, {
     method: "PATCH",
     body: JSON.stringify({ pinned }),
   });
 }
 
 async function renameDoc(docId: string, label: string): Promise<void> {
-  await apiJson(`/api/docs/${encodeURIComponent(docId)}/rename`, {
+  await apiJson(`/api/maps/${encodeURIComponent(docId)}/rename`, {
     method: "POST",
     body: JSON.stringify({ label }),
   });
@@ -168,33 +168,33 @@ async function renameDoc(docId: string, label: string): Promise<void> {
 
 async function duplicateDoc(docId: string): Promise<string> {
   const body = await apiJson<{ ok: true; id: string }>(
-    `/api/docs/${encodeURIComponent(docId)}/duplicate`,
+    `/api/maps/${encodeURIComponent(docId)}/duplicate`,
     { method: "POST" },
   );
   return body.id;
 }
 
 async function archiveDoc(docId: string): Promise<void> {
-  await apiJson(`/api/docs/${encodeURIComponent(docId)}/archive`, { method: "POST" });
+  await apiJson(`/api/maps/${encodeURIComponent(docId)}/archive`, { method: "POST" });
 }
 
 async function restoreDoc(docId: string): Promise<void> {
-  await apiJson(`/api/docs/${encodeURIComponent(docId)}/restore`, { method: "POST" });
+  await apiJson(`/api/maps/${encodeURIComponent(docId)}/restore`, { method: "POST" });
 }
 
 async function deleteDoc(docId: string): Promise<void> {
-  await apiJson(`/api/docs/${encodeURIComponent(docId)}`, { method: "DELETE" });
+  await apiJson(`/api/maps/${encodeURIComponent(docId)}`, { method: "DELETE" });
 }
 
 async function bindVault(docId: string, vaultPath: string): Promise<void> {
-  await apiJson(`/api/docs/${encodeURIComponent(docId)}/bind-vault`, {
+  await apiJson(`/api/maps/${encodeURIComponent(docId)}/bind-vault`, {
     method: "POST",
     body: JSON.stringify({ vaultPath }),
   });
 }
 
 async function unbindVault(docId: string): Promise<void> {
-  await apiJson(`/api/docs/${encodeURIComponent(docId)}/unbind-vault`, { method: "POST" });
+  await apiJson(`/api/maps/${encodeURIComponent(docId)}/unbind-vault`, { method: "POST" });
 }
 
 function matchesSearch(doc: DocSummary, q: string): boolean {

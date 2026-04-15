@@ -13,7 +13,7 @@ Operate on the M3E mind-map through its local REST API.
 - **Base URL**: `http://localhost:4173` (beta — default for dev / agent operations; override with `M3E_PORT` env var. final は 38482)
 - **Content-Type**: `application/json; charset=utf-8`
 - **Auth**: None (local only)
-- **Document ID**: `akaghef-beta` (beta の default working document)
+- **Map ID**: URL の `?map=<mapId>` から取得。一覧は `GET /api/maps`。Workspace 内 default map は launch.bat の `M3E_MAP_ID` 参照（例: `map_BG9BZP6NRDTEH1JYNDFGS6S3T5`）。
 
 ## Workflow
 
@@ -40,9 +40,9 @@ For complex modifications (many nodes), write a temporary Node.js script that co
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/docs/{docId}` | Read entire map state (supports `?scope=<nodeId>&depth=N` for subtree read) |
-| POST | `/api/docs/{docId}` | Save entire map state (supports `?scope=<nodeId>` for subtree write) |
-| GET | `/api/docs/{docId}/resolve?path=Map:Root/...` | Resolve a path string to a `nodeId` |
+| GET | `/api/maps/{docId}` | Read entire map state (supports `?scope=<nodeId>&depth=N` for subtree read) |
+| POST | `/api/maps/{docId}` | Save entire map state (supports `?scope=<nodeId>` for subtree write) |
+| GET | `/api/maps/{docId}/resolve?path=Map:Root/...` | Resolve a path string to a `nodeId` |
 
 ### Path format (`Map:` convention)
 

@@ -1,0 +1,20 @@
+name = "AkaghefAlgebra"
+uuid = "7b3f2a9e-4c1d-4e8a-9f6b-2d5a7c1e8b04"
+version = "0.0.1-dev"
+authors = ["akaghef <nabaemon@gmail.com>"]
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+
+[compat]
+julia = "1.10"
+Symbolics = "5, 6"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[targets]
+test = ["Test", "Random"]

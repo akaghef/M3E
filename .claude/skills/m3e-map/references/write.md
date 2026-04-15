@@ -5,7 +5,7 @@ POST replaces the entire document state. **Always read first**, modify, then wri
 ## Save endpoint
 
 ```bash
-curl -s -X POST http://localhost:4173/api/docs/akaghef-beta \
+curl -s -X POST http://localhost:4173/api/maps/{mapId} \
   -H "Content-Type: application/json" \
   -d '{"state": { "rootId": "...", "nodes": {...}, "links": {...} }}'
 ```
@@ -124,7 +124,7 @@ For complex changes (adding many nodes, restructuring), write a temporary Node.j
 const http = require("http");
 
 // 1. GET current state
-http.get("http://localhost:4173/api/docs/akaghef-beta", (res) => {
+http.get("http://localhost:4173/api/maps/{mapId}", (res) => {
   let data = "";
   res.on("data", c => data += c);
   res.on("end", () => {
@@ -138,7 +138,7 @@ http.get("http://localhost:4173/api/docs/akaghef-beta", (res) => {
     const body = JSON.stringify({ state });
     const req = http.request({
       hostname: "localhost", port: 4173,
-      path: "/api/docs/rapid-main", method: "POST",
+      path: "/api/maps/rapid-main", method: "POST",
       headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
     }, (res2) => {
       let out = "";

@@ -3,7 +3,7 @@
 ## Fetch the full map
 
 ```bash
-curl -s http://localhost:4173/api/docs/akaghef-beta
+curl -s http://localhost:4173/api/maps/{mapId}
 ```
 
 Response:
@@ -26,7 +26,7 @@ Response:
 Fetch the map and recursively walk from the root:
 
 ```bash
-curl -s http://localhost:4173/api/docs/akaghef-beta | node -e "
+curl -s http://localhost:4173/api/maps/{mapId} | node -e "
 const d = JSON.parse(require('fs').readFileSync(0,'utf8'));
 const nodes = d.state.nodes;
 function tree(id, depth=0) {
@@ -45,7 +45,7 @@ tree(d.state.rootId);
 To show only the subtree under a specific node, find it first:
 
 ```bash
-curl -s http://localhost:4173/api/docs/akaghef-beta | node -e "
+curl -s http://localhost:4173/api/maps/{mapId} | node -e "
 const d = JSON.parse(require('fs').readFileSync(0,'utf8'));
 const nodes = d.state.nodes;
 const target = Object.values(nodes).find(n => n.text === 'SEARCH_TEXT');
@@ -62,7 +62,7 @@ tree(target.id);
 ### Find nodes by text
 
 ```bash
-curl -s http://localhost:4173/api/docs/akaghef-beta | node -e "
+curl -s http://localhost:4173/api/maps/{mapId} | node -e "
 const d = JSON.parse(require('fs').readFileSync(0,'utf8'));
 const matches = Object.values(d.state.nodes).filter(n => n.text.includes('SEARCH'));
 matches.forEach(n => console.log(n.id, n.text));
@@ -72,7 +72,7 @@ matches.forEach(n => console.log(n.id, n.text));
 ### Get node details
 
 ```bash
-curl -s http://localhost:4173/api/docs/akaghef-beta | node -e "
+curl -s http://localhost:4173/api/maps/{mapId} | node -e "
 const d = JSON.parse(require('fs').readFileSync(0,'utf8'));
 const n = d.state.nodes['NODE_ID'];
 console.log(JSON.stringify(n, null, 2));
@@ -82,7 +82,7 @@ console.log(JSON.stringify(n, null, 2));
 ### Count nodes
 
 ```bash
-curl -s http://localhost:4173/api/docs/akaghef-beta | node -e "
+curl -s http://localhost:4173/api/maps/{mapId} | node -e "
 const d = JSON.parse(require('fs').readFileSync(0,'utf8'));
 console.log('Total nodes:', Object.keys(d.state.nodes).length);
 "
@@ -93,7 +93,7 @@ console.log('Total nodes:', Object.keys(d.state.nodes).length);
 When the user gives you a path like `Map:Root/SYSTEM/DEV/reviews/Alias Impl`, use the resolve endpoint instead of walking the tree manually:
 
 ```bash
-curl -s "http://localhost:4173/api/docs/akaghef-beta/resolve?path=Map:Root/SYSTEM/DEV/reviews/Alias%20Impl"
+curl -s "http://localhost:4173/api/maps/{mapId}/resolve?path=Map:Root/SYSTEM/DEV/reviews/Alias%20Impl"
 ```
 
 Success:
@@ -106,12 +106,12 @@ Success:
 - Default separator `/`; pass `&sep=>` or similar if a segment contains `/`
 - On `PATH_AMBIGUOUS` (409), the response includes `candidates: [nodeId, ...]` — surface them to the user
 
-Once you have the `nodeId`, prefer scoped read/write: `GET /api/docs/{docId}?scope=<nodeId>` and `POST ...?scope=<nodeId>`.
+Once you have the `nodeId`, prefer scoped read/write: `GET /api/maps/{docId}?scope=<nodeId>` and `POST ...?scope=<nodeId>`.
 
 ## Check if server is running
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}' http://localhost:4173/api/docs/akaghef-beta
+curl -s -o /dev/null -w '%{http_code}' http://localhost:4173/api/maps/{mapId}
 ```
 
 Returns `200` if running, connection error otherwise. If the server is down, tell the user to start it:
