@@ -11,10 +11,14 @@ if [[ -z "${M3E_HOME:-}" ]]; then
   fi
 fi
 export M3E_SEED_DB_PATH="${M3E_SEED_DB_PATH:-$M3E_HOME/seeds/core-seed.sqlite}"
-export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/main}"
+export M3E_WORKSPACE_ID="${M3E_WORKSPACE_ID:-ws_A98E70JM9GAXCVXVMQBW7N0YGZ}"
+export M3E_WORKSPACE_LABEL="${M3E_WORKSPACE_LABEL:-Personal}"
+export M3E_MAP_ID="${M3E_MAP_ID:-map_09N0MQPFEQN9D4K66VNMT1F69V}"
+export M3E_MAP_LABEL="${M3E_MAP_LABEL:-tutorial}"
+export M3E_MAP_SLUG="${M3E_MAP_SLUG:-final-tutorial}"
+export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/$M3E_WORKSPACE_ID}"
 export M3E_DB_FILE="${M3E_DB_FILE:-data.sqlite}"
-export M3E_DOC_ID="${M3E_DOC_ID:-akaghef-beta}"
-export M3E_WORKSPACE_ID="${M3E_WORKSPACE_ID:-main}"
+export M3E_DOC_ID="${M3E_DOC_ID:-$M3E_MAP_ID}"
 export M3E_PORT="${M3E_PORT:-38482}"
 PORT="$M3E_PORT"
 mkdir -p "$M3E_DATA_DIR" "$(dirname "$M3E_SEED_DB_PATH")"
@@ -25,9 +29,9 @@ if [[ ! -f "$M3E_DATA_DIR/$M3E_DB_FILE" && -f "$M3E_SEED_DB_PATH" ]]; then
   cp "$M3E_SEED_DB_PATH" "$M3E_DATA_DIR/$M3E_DB_FILE"
 fi
 FIRST_RUN_MARKER="$M3E_DATA_DIR/.m3e-launched"
-URL="http://localhost:${PORT}/viewer.html?workspaceId=${M3E_WORKSPACE_ID}&localDocId=${M3E_DOC_ID}&cloudDocId=${M3E_DOC_ID}"
+URL="http://localhost:${PORT}/viewer.html?ws=${M3E_WORKSPACE_ID}&map=${M3E_DOC_ID}"
 if [[ ! -f "$FIRST_RUN_MARKER" ]]; then
-  URL="${URL}&scopeId=n_1775650869381_rns0cp"
+  URL="${URL}&scope=n_1775650869381_rns0cp"
 fi
 
 kill_port() {

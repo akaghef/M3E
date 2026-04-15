@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import http from "http";
 import { spawnSync, exec } from "child_process";
+import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
 import type { CloudSyncTransport } from "../shared/types";
@@ -66,17 +67,109 @@ const DEFAULT_DB_FILE = "data.sqlite";
 const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
-const DEFAULT_DOC_ID = process.env.M3E_DOC_ID || "akaghef-beta";
-const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || "sandbox";
+const DEFAULT_WORKSPACE_ID = "ws_A98E70JM9GAXCVXVMQBW7N0YGZ";
+const DEFAULT_WORKSPACE_LABEL = "Personal";
+const DEFAULT_MAP_ID = "map_09N0MQPFEQN9D4K66VNMT1F69V";
+const DEFAULT_MAP_LABEL = "tutorial";
+const DEFAULT_MAP_SLUG = "final-tutorial";
+const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || DEFAULT_WORKSPACE_ID;
+const WORKSPACE_LABEL = process.env.M3E_WORKSPACE_LABEL || DEFAULT_WORKSPACE_LABEL;
+const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || process.env.M3E_DOC_ID || DEFAULT_MAP_ID;
+const ACTIVE_MAP_LABEL = process.env.M3E_MAP_LABEL || DEFAULT_MAP_LABEL;
+const ACTIVE_MAP_SLUG = process.env.M3E_MAP_SLUG || DEFAULT_MAP_SLUG;
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
 console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
 console.log(`[M3E] DB_FILE  = ${SQLITE_DB_PATH}`);
+console.log(`[M3E] WORKSPACE = ${WORKSPACE_LABEL} (${WORKSPACE_ID})`);
+console.log(`[M3E] MAP = ${ACTIVE_MAP_LABEL} (${ACTIVE_MAP_ID}, slug=${ACTIVE_MAP_SLUG})`);
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
+
+function renameDocumentId(dbPath: string, sourceId: string, targetId: string): boolean {
+  if (sourceId === targetId) return false;
+  const db = new Database(dbPath);
+  try {
+    const source = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(sourceId) as { hit: number } | undefined;
+    if (!source) return false;
+    const target = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(targetId) as { hit: number } | undefined;
+    if (target) return false;
+    db.prepare(`UPDATE documents SET id = ?, saved_at = ? WHERE id = ?`).run(targetId, new Date().toISOString(), sourceId);
+    return true;
+  } finally {
+    db.close();
+  }
+}
+
+function documentExists(dbPath: string, mapId: string): boolean {
+  const db = new Database(dbPath);
+  try {
+    const row = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(mapId) as { hit: number } | undefined;
+    return Boolean(row);
+  } finally {
+    db.close();
+  }
+}
+
+function deleteDocumentId(dbPath: string, mapId: string): void {
+  const db = new Database(dbPath);
+  try {
+    db.prepare(`DELETE FROM documents WHERE id = ?`).run(mapId);
+  } finally {
+    db.close();
+  }
+}
+
+function renameDocumentLabel(dbPath: string, mapId: string, mapLabel: string): void {
+  const trimmed = mapLabel.trim();
+  if (!trimmed) return;
+  const db = new Database(dbPath);
+  try {
+    const row = db.prepare(`SELECT state_json AS stateJson FROM documents WHERE id = ?`).get(mapId) as { stateJson: string } | undefined;
+    if (!row) return;
+    const state = JSON.parse(row.stateJson) as AppState;
+    const root = state?.nodes?.[state.rootId];
+    if (root) {
+      root.text = trimmed;
+    }
+    db.prepare(`UPDATE documents SET state_json = ?, saved_at = ? WHERE id = ?`)
+      .run(JSON.stringify(state), new Date().toISOString(), mapId);
+  } finally {
+    db.close();
+  }
+}
+
+function createDocument(dbPath: string, mapId: string, mapLabel: string): void {
+  const model = new RapidMvpModel(mapLabel);
+  model.saveToSqlite(dbPath, mapId);
+}
+
+function ensureMapDocument(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
+  if (documentExists(dbPath, mapId)) {
+    renameDocumentLabel(dbPath, mapId, mapLabel);
+    for (const legacyId of legacyIds) {
+      if (legacyId !== mapId && documentExists(dbPath, legacyId)) {
+        deleteDocumentId(dbPath, legacyId);
+      }
+    }
+    return;
+  }
+  for (const legacyId of legacyIds) {
+    if (renameDocumentId(dbPath, legacyId, mapId)) {
+      renameDocumentLabel(dbPath, mapId, mapLabel);
+      for (const staleLegacyId of legacyIds) {
+        if (staleLegacyId !== mapId && documentExists(dbPath, staleLegacyId)) {
+          deleteDocumentId(dbPath, staleLegacyId);
+        }
+      }
+      return;
+    }
+  }
+  createDocument(dbPath, mapId, mapLabel);
+}
 
 // ---------------------------------------------------------------------------
 // Doc-watch SSE (standalone, independent of collab SSE)
@@ -927,20 +1020,20 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
 }
 
 function startServer(): void {
+  ensureMapDocument(SQLITE_DB_PATH, ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
   // Initialize audit log file for the default document
-  initAuditFile(DATA_DIR, DEFAULT_DOC_ID);
+  initAuditFile(DATA_DIR, ACTIVE_MAP_ID);
 
   const server = createAppServer();
 
   server.listen(PORT, () => {
     const isFirstRun = !fs.existsSync(FIRST_RUN_MARKER);
     const params = new URLSearchParams({
-      workspaceId: WORKSPACE_ID,
-      localDocId: DEFAULT_DOC_ID,
-      cloudDocId: DEFAULT_DOC_ID,
+      ws: WORKSPACE_ID,
+      map: ACTIVE_MAP_ID,
     });
     if (isFirstRun) {
-      params.set("scopeId", TUTORIAL_SCOPE_ID);
+      params.set("scope", TUTORIAL_SCOPE_ID);
     }
     const query = `?${params.toString()}`;
     const url = `http://localhost:${PORT}/${DEFAULT_PAGE}${query}`;
@@ -963,7 +1056,7 @@ function startServer(): void {
       autoSyncHandle = startAutoSync(cloudTransport, cloudSyncConfig.autoSyncIntervalMs, {
         getLocalState: async () => {
           try {
-            const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, DEFAULT_DOC_ID);
+            const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, ACTIVE_MAP_ID);
             return {
               version: 1,
               savedAt: new Date().toISOString(),
@@ -973,7 +1066,7 @@ function startServer(): void {
             return null;
           }
         },
-        getDocId: () => DEFAULT_DOC_ID,
+        getDocId: () => ACTIVE_MAP_ID,
         getBaseSavedAt: () => null,
         getBaseDocVersion: () => null,
         onPushSuccess: (result) => {
@@ -1067,7 +1160,7 @@ async function handleCollabApi(
     }
     const entity = registerEntity(body.displayName, body.role, body.capabilities ?? ["read", "write"]);
     // Track presence for default doc on register
-    touchPresence(DEFAULT_DOC_ID, entity.entityId, body.displayName, body.role);
+    touchPresence(ACTIVE_MAP_ID, entity.entityId, body.displayName, body.role);
     sendJson(res, 200, { ok: true, entityId: entity.entityId, token: entity.token, priority: entity.priority });
     return;
   }
@@ -1085,14 +1178,14 @@ async function handleCollabApi(
       const body = JSON.parse(rawBody) as { lockIds?: string[]; docId?: string };
       heartbeat(entity.entityId, body.lockIds ?? []);
       // Refresh presence on heartbeat
-      touchPresence(body.docId ?? DEFAULT_DOC_ID, entity.entityId, entity.displayName, entity.role);
+      touchPresence(body.docId ?? ACTIVE_MAP_ID, entity.entityId, entity.displayName, entity.role);
       sendJson(res, 200, { ok: true });
       return;
     }
     case "unregister": {
       if (req.method !== "DELETE") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       // Remove from all doc presence (use default doc for now)
-      removePresence(DEFAULT_DOC_ID, entity.entityId);
+      removePresence(ACTIVE_MAP_ID, entity.entityId);
       unregisterEntity(entity.entityId);
       sendJson(res, 200, { ok: true });
       return;

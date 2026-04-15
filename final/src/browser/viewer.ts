@@ -62,10 +62,29 @@ function normalizeDocId(raw: string | null, fallback: string): string {
   return trimmed.replace(/[\\/]/g, "_");
 }
 
+function firstQueryParam(params: URLSearchParams, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value && value.trim()) return value;
+  }
+  return null;
+}
+
 const queryParams = new URLSearchParams(window.location.search);
-const WORKSPACE_ID = normalizeDocId(queryParams.get("workspaceId"), "local");
-const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "akaghef-beta");
-const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
+const DEFAULT_WORKSPACE_ID = "ws_A98E70JM9GAXCVXVMQBW7N0YGZ";
+const DEFAULT_WORKSPACE_LABEL = "Personal";
+const DEFAULT_MAP_ID = "map_09N0MQPFEQN9D4K66VNMT1F69V";
+const DEFAULT_MAP_LABEL = "tutorial";
+const DEFAULT_MAP_SLUG = "final-tutorial";
+const MAP_META: Record<string, { label: string; slug: string }> = {
+  [DEFAULT_MAP_ID]: { label: DEFAULT_MAP_LABEL, slug: DEFAULT_MAP_SLUG },
+};
+const WORKSPACE_ID = normalizeDocId(firstQueryParam(queryParams, ["ws", "workspaceId"]), DEFAULT_WORKSPACE_ID);
+const WORKSPACE_LABEL = DEFAULT_WORKSPACE_LABEL;
+const LOCAL_DOC_ID = normalizeDocId(firstQueryParam(queryParams, ["map", "localDocId"]), DEFAULT_MAP_ID);
+const CLOUD_DOC_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudDocId"]), LOCAL_DOC_ID);
+const MAP_LABEL = MAP_META[LOCAL_DOC_ID]?.label ?? LOCAL_DOC_ID;
+const MAP_SLUG = MAP_META[LOCAL_DOC_ID]?.slug ?? LOCAL_DOC_ID;
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
@@ -2538,7 +2557,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `workspace: ${WORKSPACE_ID} | doc: ${LOCAL_DOC_ID} | cloud: ${CLOUD_DOC_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_DOC_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_DOC_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
   updateDocumentTitle();
@@ -3001,9 +3020,11 @@ function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; ra
 function updateScopeInUrl(scopeId: string): void {
   const params = new URLSearchParams(window.location.search);
   if (!doc || scopeId === doc.state.rootId) {
+    params.delete("scope");
     params.delete("scopeId");
   } else {
-    params.set("scopeId", scopeId);
+    params.set("scope", scopeId);
+    params.delete("scopeId");
   }
   history.replaceState(null, "", `?${params.toString()}`);
 }
@@ -6720,7 +6741,7 @@ void initializeDocument().then(() => {
   initBroadcastSync();
   initDocWatch();
   tryCollabRegister();
-  const initialScopeId = queryParams.get("scopeId");
+  const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
   if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level
     const ancestors: string[] = [];
