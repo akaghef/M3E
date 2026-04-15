@@ -15,7 +15,7 @@ async function loadViewer(page) {
   await page.goto(`/viewer.html?${qs}`);
   // Wait for the viewer to finish loading: the meta element should contain "nodes:".
   await expect(page.locator("#meta")).toContainText("nodes:", { timeout: 15_000 });
-  return { docId: isolatedDocId };
+  return { mapId: isolatedDocId };
 }
 
 /**
@@ -111,7 +111,7 @@ test("select a node and edit its text via Enter key", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 5: API round-trip - POST /api/docs/:id then GET /api/docs/:id
+// Test 5: API round-trip - POST /api/maps/:id then GET /api/maps/:id
 // ---------------------------------------------------------------------------
 test("API round-trip: POST a document then GET it back", async ({ request }) => {
   const testDocId = `e2e-api-${Date.now()}`;
@@ -151,7 +151,7 @@ test("API round-trip: POST a document then GET it back", async ({ request }) => 
   };
 
   // POST the document.
-  const postResponse = await request.post(`/api/docs/${encodeURIComponent(testDocId)}`, {
+  const postResponse = await request.post(`/api/maps/${encodeURIComponent(testDocId)}`, {
     data: docPayload,
   });
   expect(postResponse.status()).toBe(200);
@@ -159,7 +159,7 @@ test("API round-trip: POST a document then GET it back", async ({ request }) => 
   expect(postBody.ok).toBe(true);
 
   // GET the document back.
-  const getResponse = await request.get(`/api/docs/${encodeURIComponent(testDocId)}`);
+  const getResponse = await request.get(`/api/maps/${encodeURIComponent(testDocId)}`);
   expect(getResponse.status()).toBe(200);
   const getBody = await getResponse.json();
   expect(getBody.version).toBe(1);

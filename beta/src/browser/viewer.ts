@@ -4070,7 +4070,7 @@ function startPresenceWatch(): void {
   if (presenceEs) {
     return;
   }
-  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/presence`;
+  const url = `/api/maps/${encodeURIComponent(LOCAL_DOC_ID)}/presence`;
   presenceEs = new EventSource(url);
   presenceEs.addEventListener("message", (event) => {
     try {
@@ -4154,7 +4154,7 @@ function applyPresenceBadges(): void {
 // ---- Away Changes (audit infrastructure) ----
 
 function fetchChangedNodes(): void {
-  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/audit?since=last-session`;
+  const url = `/api/maps/${encodeURIComponent(LOCAL_DOC_ID)}/audit?since=last-session`;
   fetch(url, { cache: "no-store" })
     .then((r) => {
       if (!r.ok) {
@@ -5254,7 +5254,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
   }
 
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, {
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_DOC_ID)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
@@ -5460,7 +5460,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
 
 async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
     if (response.status === 404) {
       return false;
     }
@@ -5488,7 +5488,7 @@ async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
     return;
   }
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
     if (response.status === 404 || !response.ok) {
       return;
     }
@@ -5564,12 +5564,12 @@ let lastAppliedSavedAt: string | null = null;
 
 function initDocWatch(): void {
   if (docWatchEs) return;
-  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/watch`;
+  const url = `/api/maps/${encodeURIComponent(LOCAL_DOC_ID)}/watch`;
   docWatchEs = new EventSource(url);
 
   docWatchEs.addEventListener("doc_updated", (ev: MessageEvent) => {
     try {
-      const data = JSON.parse(ev.data) as { docId: string; savedAt: string; sourceTabId: string | null };
+      const data = JSON.parse(ev.data) as { mapId: string; savedAt: string; sourceTabId: string | null };
       // Ignore our own saves
       if (data.sourceTabId === TAB_ID) return;
       // Ignore duplicate events
@@ -5590,7 +5590,7 @@ function initDocWatch(): void {
 
 async function applyExternalUpdate(savedAt: string): Promise<void> {
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
     if (!response.ok) return;
     const payload = await response.json();
     const newDoc = ensureDocShape(payload);

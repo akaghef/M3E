@@ -265,9 +265,9 @@ export interface SyncStatus {
 
 export interface CloudSyncTransport {
   readonly mode: string;
-  push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
-  pull(docId: string): Promise<PullResult>;
-  status(docId: string): Promise<SyncStatus>;
+  push(mapId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
+  pull(mapId: string): Promise<PullResult>;
+  status(mapId: string): Promise<SyncStatus>;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ export interface StructuredDraft {
 
 export interface FlashDraft {
   id: string;
-  docId: string;
+  mapId: string;
   sourceType: FlashSourceType;
   sourceRef: string;
   title: string;
@@ -309,7 +309,7 @@ export interface FlashDraft {
 }
 
 export interface FlashIngestRequest {
-  docId: string;
+  mapId: string;
   sourceType: FlashSourceType;
   content: string;
   options?: {

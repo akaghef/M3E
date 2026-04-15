@@ -1,7 +1,7 @@
 import type { AppState, SavedDoc } from "./types";
 
 /**
- * Structured error returned for scope-related failures on /api/docs/{docId}.
+ * Structured error returned for scope-related failures on /api/maps/{mapId}.
  *
  * Shape follows the HOME-API convention:
  *   { ok: false, error: { code, message, details? } }

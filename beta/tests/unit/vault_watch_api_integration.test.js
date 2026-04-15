@@ -93,7 +93,7 @@ test("watch start/status/stop lifecycle works", async () => {
   const fileNode = Object.values(model.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
   fileNode.details = "Changed from doc save.";
 
-  const saved = await requestJson(`${baseUrl}/api/docs/vault-watch-doc`, {
+  const saved = await requestJson(`${baseUrl}/api/maps/vault-watch-doc`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: model.toJSON() }),

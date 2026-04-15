@@ -325,7 +325,7 @@ export interface MergePushResult {
 }
 
 export function mergeScopePush(
-  docId: string,
+  mapId: string,
   scopeId: string,
   entity: CollabEntity,
   lockId: string,
@@ -342,7 +342,7 @@ export function mergeScopePush(
   // Load current doc
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
+    model = RapidMvpModel.loadFromSqlite(sqlitePath, mapId);
   } catch (err) {
     return { ok: false, version: docVersion, applied: [], rejected: [], conflicts: [], error: (err as Error).message };
   }
@@ -425,7 +425,7 @@ export function mergeScopePush(
   }
 
   // Save + version bump
-  validationModel.saveToSqlite(sqlitePath, docId);
+  validationModel.saveToSqlite(sqlitePath, mapId);
   const newVersion = ++docVersion;
 
   // Audit log for each applied change
@@ -445,11 +445,11 @@ export function mergeScopePush(
       userId: entity.entityId,
       operationType: opType,
       targetNodeId: nodeId,
-      details: { docId, version: newVersion, scopeId },
+      details: { mapId, version: newVersion, scopeId },
     });
   }
 
-  broadcastSseEvent("state_update", { docId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
+  broadcastSseEvent("state_update", { mapId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
 
   return { ok: true, version: newVersion, applied, rejected, conflicts };
 }

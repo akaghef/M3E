@@ -36,16 +36,16 @@ async function requestJson(url, init) {
   return { response, payload };
 }
 
-async function postDoc(docId, body) {
-  return requestJson(`${baseUrl}/api/docs/${docId}`, {
+async function postDoc(mapId, body) {
+  return requestJson(`${baseUrl}/api/maps/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify(body),
   });
 }
 
-async function getDoc(docId) {
-  return requestJson(`${baseUrl}/api/docs/${docId}`);
+async function getDoc(mapId) {
+  return requestJson(`${baseUrl}/api/maps/${mapId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,13 +73,13 @@ afterAll(async () => {
 // A. API-level defense tests
 // =========================================================================
 
-test("POST /api/docs/:id with empty state ({}) returns 400", async () => {
+test("POST /api/maps/:id with empty state ({}) returns 400", async () => {
   const { response, payload } = await postDoc("safety-empty-state", { state: {} });
   expect(response.status).toBe(400);
   expect(payload.error).toBeTruthy();
 });
 
-test("POST /api/docs/:id with empty nodes ({nodes: {}}) returns 400", async () => {
+test("POST /api/maps/:id with empty nodes ({nodes: {}}) returns 400", async () => {
   const { response, payload } = await postDoc("safety-empty-nodes", {
     state: { rootId: "nonexistent", nodes: {} },
   });
@@ -87,40 +87,40 @@ test("POST /api/docs/:id with empty nodes ({nodes: {}}) returns 400", async () =
   expect(payload.error).toBeTruthy();
 });
 
-test("POST /api/docs/:id without state field returns 400", async () => {
+test("POST /api/maps/:id without state field returns 400", async () => {
   const { response, payload } = await postDoc("safety-no-state", { foo: "bar" });
   expect(response.status).toBe(400);
   expect(payload.error).toBeTruthy();
 });
 
-test("POST /api/docs/:id with state: null returns 400", async () => {
+test("POST /api/maps/:id with state: null returns 400", async () => {
   const { response, payload } = await postDoc("safety-null-state", { state: null });
   expect(response.status).toBe(400);
   expect(payload.error).toBeTruthy();
 });
 
-test("POST /api/docs/:id with state: 'string' returns 400", async () => {
+test("POST /api/maps/:id with state: 'string' returns 400", async () => {
   const { response, payload } = await postDoc("safety-string-state", { state: "not-an-object" });
   expect(response.status).toBe(400);
   expect(payload.error).toBeTruthy();
 });
 
-test("POST /api/docs/:id with valid state returns 200 and correct documentId", async () => {
-  const docId = "safety-valid-post";
+test("POST /api/maps/:id with valid state returns 200 and correct documentId", async () => {
+  const mapId = "safety-valid-post";
   const state = createValidState("Safety Test Root");
-  const { response, payload } = await postDoc(docId, { state });
+  const { response, payload } = await postDoc(mapId, { state });
   expect(response.status).toBe(200);
   expect(payload.ok).toBe(true);
-  expect(payload.documentId).toBe(docId);
+  expect(payload.documentId).toBe(mapId);
 
   // Verify data is readable back with the same doc ID
-  const { response: getRes, payload: getPayload } = await getDoc(docId);
+  const { response: getRes, payload: getPayload } = await getDoc(mapId);
   expect(getRes.status).toBe(200);
   expect(getPayload.state).toBeTruthy();
   expect(Object.keys(getPayload.state.nodes).length >= 3).toBe(true);
 });
 
-test("GET /api/docs/:id for non-existent doc returns 404 (no auto-creation)", async () => {
+test("GET /api/maps/:id for non-existent doc returns 404 (no auto-creation)", async () => {
   const { response, payload } = await getDoc("safety-nonexistent-doc-xyz");
   expect(response.status).toBe(404);
   expect(payload.error).toBeTruthy();
@@ -130,8 +130,8 @@ test("GET /api/docs/:id for non-existent doc returns 404 (no auto-creation)", as
   expect(r2.status).toBe(404);
 });
 
-test("POST /api/docs/:id with invalid JSON body returns 400", async () => {
-  const { response, payload } = await requestJson(`${baseUrl}/api/docs/safety-bad-json`, {
+test("POST /api/maps/:id with invalid JSON body returns 400", async () => {
+  const { response, payload } = await requestJson(`${baseUrl}/api/maps/safety-bad-json`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: "{ this is not json }",
@@ -145,11 +145,11 @@ test("POST /api/docs/:id with invalid JSON body returns 400", async () => {
 // =========================================================================
 
 test("POST then GET with same doc ID returns matching data", async () => {
-  const docId = "safety-docid-roundtrip";
+  const mapId = "safety-docid-roundtrip";
   const state = createValidState("DocID Test");
-  await postDoc(docId, { state });
+  await postDoc(mapId, { state });
 
-  const { response, payload } = await getDoc(docId);
+  const { response, payload } = await getDoc(mapId);
   expect(response.status).toBe(200);
   expect(payload.state.rootId).toBe(state.rootId);
   expect(
@@ -158,12 +158,12 @@ test("POST then GET with same doc ID returns matching data", async () => {
 });
 
 test("doc ID is case-sensitive and preserved exactly", async () => {
-  const docId = "Akaghef-Beta";
+  const mapId = "Akaghef-Beta";
   const state = createValidState("Case Test");
-  const { payload: postPayload } = await postDoc(docId, { state });
-  expect(postPayload.documentId).toBe(docId);
+  const { payload: postPayload } = await postDoc(mapId, { state });
+  expect(postPayload.documentId).toBe(mapId);
 
-  const { response } = await getDoc(docId);
+  const { response } = await getDoc(mapId);
   expect(response.status).toBe(200);
 
   // A different casing should NOT find the doc
@@ -175,11 +175,11 @@ test("doc ID is case-sensitive and preserved exactly", async () => {
 
 test("POST to doc ID 'akaghef-beta' is retrievable with exactly that ID", async () => {
   // Real-world bug: browser uses 'akaghef-beta' but server stores as 'rapid-main'
-  const docId = "akaghef-beta";
+  const mapId = "akaghef-beta";
   const state = createValidState("Browser Doc");
-  await postDoc(docId, { state });
+  await postDoc(mapId, { state });
 
-  const { response, payload } = await getDoc(docId);
+  const { response, payload } = await getDoc(mapId);
   expect(response.status).toBe(200);
   expect(payload.state.nodes).toBeTruthy();
   expect(Object.keys(payload.state.nodes).length > 0).toBe(true);
@@ -204,26 +204,26 @@ test("two different doc IDs store independent data", async () => {
 // =========================================================================
 
 test("existing data survives an invalid POST (empty state)", async () => {
-  const docId = "safety-survive-empty-post";
+  const mapId = "safety-survive-empty-post";
   const state = createValidState("Precious Data");
   const originalNodeCount = Object.keys(state.nodes).length;
 
   // Save valid data first
-  const { response: saveRes } = await postDoc(docId, { state });
+  const { response: saveRes } = await postDoc(mapId, { state });
   expect(saveRes.status).toBe(200);
 
   // Attempt to overwrite with empty state -- should be rejected
-  const { response: emptyRes } = await postDoc(docId, { state: {} });
+  const { response: emptyRes } = await postDoc(mapId, { state: {} });
   expect(emptyRes.status).toBe(400);
 
   // Attempt with empty nodes -- should be rejected
-  const { response: emptyNodesRes } = await postDoc(docId, {
+  const { response: emptyNodesRes } = await postDoc(mapId, {
     state: { rootId: "x", nodes: {} },
   });
   expect(emptyNodesRes.status).toBe(400);
 
   // Verify original data is intact
-  const { response: getRes, payload: getPayload } = await getDoc(docId);
+  const { response: getRes, payload: getPayload } = await getDoc(mapId);
   expect(getRes.status).toBe(200);
   expect(
     Object.keys(getPayload.state.nodes).length,
@@ -231,14 +231,14 @@ test("existing data survives an invalid POST (empty state)", async () => {
 });
 
 test("existing data survives a POST with null state", async () => {
-  const docId = "safety-survive-null-post";
+  const mapId = "safety-survive-null-post";
   const state = createValidState("Important Data");
 
-  await postDoc(docId, { state });
-  const { response: badRes } = await postDoc(docId, { state: null });
+  await postDoc(mapId, { state });
+  const { response: badRes } = await postDoc(mapId, { state: null });
   expect(badRes.status).toBe(400);
 
-  const { payload } = await getDoc(docId);
+  const { payload } = await getDoc(mapId);
   expect(Object.keys(payload.state.nodes).length > 0).toBe(true);
 });
 
@@ -265,13 +265,13 @@ test("POST with nodes containing only invalid references is rejected", async () 
 // =========================================================================
 
 test("simulated map_update flow: GET, add node, POST preserves all nodes", async () => {
-  const docId = "safety-map-update-flow";
+  const mapId = "safety-map-update-flow";
   const state = createValidState("Map Update Base");
   const originalNodeCount = Object.keys(state.nodes).length;
-  await postDoc(docId, { state });
+  await postDoc(mapId, { state });
 
   // Simulate: GET current state
-  const { payload: current } = await getDoc(docId);
+  const { payload: current } = await getDoc(mapId);
   expect(Object.keys(current.state.nodes).length).toBe(originalNodeCount);
 
   // Simulate: add a node via model
@@ -283,18 +283,18 @@ test("simulated map_update flow: GET, add node, POST preserves all nodes", async
   ).toBe(originalNodeCount + 1);
 
   // Simulate: POST back
-  const { response: postRes } = await postDoc(docId, { state: updatedState });
+  const { response: postRes } = await postDoc(mapId, { state: updatedState });
   expect(postRes.status).toBe(200);
 
   // Verify
-  const { payload: final } = await getDoc(docId);
+  const { payload: final } = await getDoc(mapId);
   expect(
     Object.keys(final.state.nodes).length,
   ).toBe(originalNodeCount + 1);
 });
 
 test("map_update safety guard: POST that would erase all children is blocked", async () => {
-  const docId = "safety-map-update-erase-guard";
+  const mapId = "safety-map-update-erase-guard";
   const model = new RapidMvpModel("Root with children");
   model.addNode(model.state.rootId, "Child 1");
   model.addNode(model.state.rootId, "Child 2");
@@ -302,7 +302,7 @@ test("map_update safety guard: POST that would erase all children is blocked", a
   const state = model.toJSON();
   expect(Object.keys(state.nodes).length >= 4).toBe(true);
 
-  await postDoc(docId, { state });
+  await postDoc(mapId, { state });
 
   // Attempt POST with only root node (children removed) -- this is valid
   // structurally but would be caught by a map_update guard (client-side).
@@ -311,14 +311,14 @@ test("map_update safety guard: POST that would erase all children is blocked", a
   const rootOnlyState = rootOnlyModel.toJSON();
   expect(Object.keys(rootOnlyState.nodes).length).toBe(1);
 
-  const { response } = await postDoc(docId, { state: rootOnlyState });
+  const { response } = await postDoc(mapId, { state: rootOnlyState });
   // The server accepts this since it's structurally valid (has root + nodes).
   // The map_update client script should check node count BEFORE posting.
   expect(response.status).toBe(200);
 });
 
 test("POST with empty body string returns 400", async () => {
-  const { response, payload } = await requestJson(`${baseUrl}/api/docs/safety-empty-body`, {
+  const { response, payload } = await requestJson(`${baseUrl}/api/maps/safety-empty-body`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: "",
@@ -328,7 +328,7 @@ test("POST with empty body string returns 400", async () => {
 });
 
 test("POST with body '{}' (no state field) returns 400", async () => {
-  const { response, payload } = await requestJson(`${baseUrl}/api/docs/safety-no-state-field`, {
+  const { response, payload } = await requestJson(`${baseUrl}/api/maps/safety-no-state-field`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: "{}",

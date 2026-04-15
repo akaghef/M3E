@@ -37,11 +37,11 @@ afterAll(async () => {
   if (dataDir) fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
-test("POST /api/docs/:id returns 409 when baseSavedAt is stale", async () => {
+test("POST /api/maps/:id returns 409 when baseSavedAt is stale", async () => {
   const model = new RapidMvpModel("Root");
   model.addNode(model.state.rootId, "Alpha");
 
-  const firstSave = await fetch(`${baseUrl}/api/docs/conflict-doc`, {
+  const firstSave = await fetch(`${baseUrl}/api/maps/conflict-doc`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: model.toJSON() }),
@@ -51,7 +51,7 @@ test("POST /api/docs/:id returns 409 when baseSavedAt is stale", async () => {
   expect(typeof firstPayload.savedAt).toBe("string");
 
   model.addNode(model.state.rootId, "Beta");
-  const secondSave = await fetch(`${baseUrl}/api/docs/conflict-doc`, {
+  const secondSave = await fetch(`${baseUrl}/api/maps/conflict-doc`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
@@ -64,7 +64,7 @@ test("POST /api/docs/:id returns 409 when baseSavedAt is stale", async () => {
   expect(typeof secondPayload.savedAt).toBe("string");
 
   model.addNode(model.state.rootId, "Gamma");
-  const staleSave = await fetch(`${baseUrl}/api/docs/conflict-doc`, {
+  const staleSave = await fetch(`${baseUrl}/api/maps/conflict-doc`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({

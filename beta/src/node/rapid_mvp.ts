@@ -1304,5 +1304,5 @@ if (require.main === module) {
   model.saveToFile(savePath);
   model.saveToSqlite(sqlitePath, "rapid-sample");
   console.log(`Rapid MVP sample saved: ${savePath}`);
-  console.log(`Rapid MVP sample saved in SQLite: ${sqlitePath} (docId=rapid-sample)`);
+  console.log(`Rapid MVP sample saved in SQLite: ${sqlitePath} (mapId=rapid-sample)`);
 }

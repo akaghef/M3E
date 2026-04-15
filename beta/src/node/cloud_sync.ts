@@ -110,8 +110,8 @@ export class FileTransport implements CloudSyncTransport {
     }
   }
 
-  private docPath(docId: string): string {
-    const safeId = docId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  private docPath(mapId: string): string {
+    const safeId = mapId.replace(/[^a-zA-Z0-9._-]/g, "_");
     return path.join(this.dir, `${safeId}.json`);
   }
 
@@ -126,8 +126,8 @@ export class FileTransport implements CloudSyncTransport {
     return parsed;
   }
 
-  async push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
-    const filePath = this.docPath(docId);
+  async push(mapId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
+    const filePath = this.docPath(mapId);
     const existing = this.readDoc(filePath);
 
     if (detectCloudConflict(
@@ -140,7 +140,7 @@ export class FileTransport implements CloudSyncTransport {
       return {
         ok: false,
         savedAt: existing?.savedAt ?? "",
-        documentId: docId,
+        documentId: mapId,
         forced: false,
         conflict: true,
         cloudSavedAt: existing?.savedAt ?? null,
@@ -163,21 +163,21 @@ export class FileTransport implements CloudSyncTransport {
     return {
       ok: true,
       savedAt: payload.savedAt,
-      documentId: docId,
+      documentId: mapId,
       forced: force,
       cloudDocVersion: nextDocVersion,
     };
   }
 
-  async pull(docId: string): Promise<PullResult> {
-    const filePath = this.docPath(docId);
+  async pull(mapId: string): Promise<PullResult> {
+    const filePath = this.docPath(mapId);
     if (!fs.existsSync(filePath)) {
       return {
         ok: false,
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: docId,
+        documentId: mapId,
         error: "Cloud document not found.",
       };
     }
@@ -189,7 +189,7 @@ export class FileTransport implements CloudSyncTransport {
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: docId,
+        documentId: mapId,
         error: "Cloud document has unsupported format.",
       };
     }
@@ -199,20 +199,20 @@ export class FileTransport implements CloudSyncTransport {
       version: parsed.version,
       savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
       state: parsed.state,
-      documentId: docId,
+      documentId: mapId,
       docVersion: parsed.docVersion ?? undefined,
     };
   }
 
-  async status(docId: string): Promise<SyncStatus> {
-    const filePath = this.docPath(docId);
+  async status(mapId: string): Promise<SyncStatus> {
+    const filePath = this.docPath(mapId);
     const exists = fs.existsSync(filePath);
     const cloudDoc = exists ? this.readDoc(filePath) : null;
     return {
       ok: true,
       enabled: true,
       mode: this.mode,
-      documentId: docId,
+      documentId: mapId,
       exists,
       cloudSavedAt: cloudDoc?.savedAt ?? null,
       cloudDocVersion: cloudDoc?.docVersion ?? null,
@@ -285,7 +285,7 @@ export class SupabaseTransport implements CloudSyncTransport {
     return this.client;
   }
 
-  async push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
+  async push(mapId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
     const client = await this.getClient();
     const savedAt = doc.savedAt || new Date().toISOString();
 
@@ -293,14 +293,14 @@ export class SupabaseTransport implements CloudSyncTransport {
     const { data: existing, error: fetchErr } = await client
       .from(this.tableName)
       .select("saved_at,doc_version,state")
-      .eq("id", docId)
+      .eq("id", mapId)
       .maybeSingle();
 
     if (fetchErr) {
       return {
         ok: false,
         savedAt: "",
-        documentId: docId,
+        documentId: mapId,
         forced: false,
         error: `Supabase fetch error: ${fetchErr.message}`,
       };
@@ -319,7 +319,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         return {
           ok: false,
           savedAt: existing.saved_at,
-          documentId: docId,
+          documentId: mapId,
           forced: false,
           conflict: true,
           cloudSavedAt: existing.saved_at,
@@ -341,7 +341,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       .from(this.tableName)
       .upsert(
         {
-          id: docId,
+          id: mapId,
           version: doc.version,
           doc_version: nextDocVersion,
           saved_at: savedAt,
@@ -357,7 +357,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       return {
         ok: false,
         savedAt: "",
-        documentId: docId,
+        documentId: mapId,
         forced: force,
         error: `Supabase upsert error: ${upsertErr.message}`,
       };
@@ -366,19 +366,19 @@ export class SupabaseTransport implements CloudSyncTransport {
     return {
       ok: true,
       savedAt,
-      documentId: docId,
+      documentId: mapId,
       forced: force,
       cloudDocVersion: nextDocVersion,
     };
   }
 
-  async pull(docId: string): Promise<PullResult> {
+  async pull(mapId: string): Promise<PullResult> {
     const client = await this.getClient();
 
     const { data, error } = await client
       .from(this.tableName)
       .select("*")
-      .eq("id", docId)
+      .eq("id", mapId)
       .maybeSingle();
 
     if (error) {
@@ -387,7 +387,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: docId,
+        documentId: mapId,
         error: `Supabase fetch error: ${error.message}`,
       };
     }
@@ -398,7 +398,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: docId,
+        documentId: mapId,
         error: "Cloud document not found.",
       };
     }
@@ -408,18 +408,18 @@ export class SupabaseTransport implements CloudSyncTransport {
       version: data.version,
       savedAt: data.saved_at,
       state: data.state as unknown as AppState,
-      documentId: docId,
+      documentId: mapId,
       docVersion: data.doc_version ?? undefined,
     };
   }
 
-  async status(docId: string): Promise<SyncStatus> {
+  async status(mapId: string): Promise<SyncStatus> {
     const client = await this.getClient();
 
     const { data, error } = await client
       .from(this.tableName)
       .select("saved_at,doc_version")
-      .eq("id", docId)
+      .eq("id", mapId)
       .maybeSingle();
 
     if (error) {
@@ -427,7 +427,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         ok: false,
         enabled: true,
         mode: this.mode,
-        documentId: docId,
+        documentId: mapId,
         exists: false,
         cloudSavedAt: null,
         lastSyncedAt: null,
@@ -438,7 +438,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       ok: true,
       enabled: true,
       mode: this.mode,
-      documentId: docId,
+      documentId: mapId,
       exists: !!data,
       cloudSavedAt: data?.saved_at ?? null,
       cloudDocVersion: data?.doc_version ?? null,
@@ -536,12 +536,12 @@ export function startAutoSync(
       const doc = await callbacks.getLocalState();
       if (!doc) return;
 
-      const docId = callbacks.getDocId();
+      const mapId = callbacks.getDocId();
       const baseSavedAt = callbacks.getBaseSavedAt();
       const baseDocVersion = callbacks.getBaseDocVersion();
 
       const result = await withRetry(
-        () => transport.push(docId, doc, baseSavedAt, false, baseDocVersion),
+        () => transport.push(mapId, doc, baseSavedAt, false, baseDocVersion),
         (err) => {
           const msg = (err as Error)?.message ?? "";
           // Do not retry conflicts
@@ -573,9 +573,9 @@ export function startAutoSync(
   // Initial pull on startup
   const initialPull = async (): Promise<void> => {
     try {
-      const docId = callbacks.getDocId();
+      const mapId = callbacks.getDocId();
       const result = await withRetry(
-        () => transport.pull(docId),
+        () => transport.pull(mapId),
         () => true, // retry all transient errors on pull
       );
       if (result.ok) {
@@ -633,7 +633,7 @@ export function stopAutoSync(handle: AutoSyncHandle): void {
  */
 export async function pushWithConflictBackup(
   transport: CloudSyncTransport,
-  docId: string,
+  mapId: string,
   doc: SavedDoc,
   baseSavedAt: string | null,
   force: boolean,
@@ -641,7 +641,7 @@ export async function pushWithConflictBackup(
   baseDocVersion?: number | null,
 ): Promise<PushResult> {
   const result = await withRetry(
-    () => transport.push(docId, doc, baseSavedAt, force, baseDocVersion),
+    () => transport.push(mapId, doc, baseSavedAt, force, baseDocVersion),
     (err) => {
       const msg = (err as Error)?.message ?? "";
       return !msg.includes("conflict") && !msg.includes("Conflict");
@@ -650,7 +650,7 @@ export async function pushWithConflictBackup(
 
   if (!result.ok && result.conflict) {
     // Save local state as conflict backup before caller pulls remote
-    createConflictBackup(dataDir, docId, doc.state, "cloud-conflict-push");
+    createConflictBackup(dataDir, mapId, doc.state, "cloud-conflict-push");
   }
 
   return result;
