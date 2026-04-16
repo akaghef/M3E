@@ -157,9 +157,11 @@ interface BcStateMessage {
   type: "STATE_UPDATE";
   fromTabId: string;
   state: AppState;
+  savedAt: string;
 }
 
 let bc: BroadcastChannel | null = null;
+let lastServerSavedAt: string | null = null;
 
 interface UndoSnapshot {
   state: AppState;
@@ -5580,7 +5582,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
       },
       body: JSON.stringify({
         ...currentDocSnapshot(),
-        baseSavedAt: map.savedAt,
+        baseSavedAt: lastServerSavedAt,
         force,
       }),
     });
@@ -5622,6 +5624,8 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
 
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     map.savedAt = String(payload.savedAt || nowIso());
+    lastServerSavedAt = map.savedAt;
+    broadcastState();
     if (cloudSyncEnabled) {
       void pushDocToCloud(false);
     }
@@ -5859,6 +5863,10 @@ function initBroadcastSync(): void {
     }
     if (ev.data.type === "STATE_UPDATE" && isValidAppState(ev.data.state)) {
       map.state = ev.data.state;
+      if (typeof ev.data.savedAt === "string" && ev.data.savedAt) {
+        // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
+        lastServerSavedAt = ev.data.savedAt;
+      }
       scheduleRender();
     }
   };
@@ -5869,7 +5877,12 @@ function broadcastState(): void {
   if (!bc || !map) {
     return;
   }
-  const msg: BcStateMessage = { type: "STATE_UPDATE", fromTabId: TAB_ID, state: map.state };
+  const msg: BcStateMessage = {
+    type: "STATE_UPDATE",
+    fromTabId: TAB_ID,
+    state: map.state,
+    savedAt: lastServerSavedAt || "",
+  };
   bc.postMessage(msg);
 }
 
@@ -5890,6 +5903,11 @@ function initDocWatch(): void {
       const data = JSON.parse(ev.data) as { mapId: string; savedAt: string; sourceTabId: string | null };
       // Ignore our own saves
       if (data.sourceTabId === TAB_ID) return;
+      // Advance the conflict-detection baseline even if we skip state overwrite,
+      // so a pending autosave doesn't 409 against the just-committed server savedAt.
+      if (typeof data.savedAt === "string" && data.savedAt) {
+        lastServerSavedAt = data.savedAt;
+      }
       // Ignore duplicate events
       if (data.savedAt === lastAppliedSavedAt) return;
       // If user has unsaved edits, notify instead of overwriting
@@ -5923,6 +5941,7 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
     const prevScopeHistory = [...viewState.scopeHistory];
 
     map = newDoc;
+    lastServerSavedAt = newDoc.savedAt || lastServerSavedAt;
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
     if (map.state.linearPanelWidth != null) {
@@ -6108,6 +6127,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
 function loadPayload(payload: unknown): void {
   try {
     map = ensureDocShape(payload);
+    lastServerSavedAt = map.savedAt || null;
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
     if (map.state.linearPanelWidth != null) {
