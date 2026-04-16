@@ -6,7 +6,7 @@
 
 ## 出発点: M3E 側の現状（2026-04-16 時点 beta）
 
-### 現在の `GraphLink` 型（[beta/src/shared/types.ts:25-33](beta/src/shared/types.ts#L25-L33)）
+### 現在の `GraphLink` 型（[beta/src/shared/types.ts:25-33](../../../beta/src/shared/types.ts#L25-L33)）
 
 ```typescript
 interface GraphLink {
@@ -57,13 +57,13 @@ interface TreeNode {
 
 ### 変更点
 
-- [beta/src/shared/types.ts:25-33](beta/src/shared/types.ts#L25-L33) `GraphLink` に 2 フィールド追加:
+- [beta/src/shared/types.ts:25-33](../../../beta/src/shared/types.ts#L25-L33) `GraphLink` に 2 フィールド追加:
   ```typescript
   layer?: "syntactic" | "semantic";  // 未指定は "semantic" 扱い
   kind?: string;                      // relationType と重複するなら統合検討
   ```
-- [beta/src/node/rapid_mvp.ts:99-107](beta/src/node/rapid_mvp.ts#L99-L107) の `_normalizeLink()` で未指定時デフォルトを `"semantic"` に
-- [beta/src/node/rapid_mvp.ts:326-354](beta/src/node/rapid_mvp.ts#L326-L354) `addLink()` に options として `layer` / `kind` を渡せるよう拡張
+- [beta/src/node/rapid_mvp.ts:99-107](../../../beta/src/node/rapid_mvp.ts#L99-L107) の `_normalizeLink()` で未指定時デフォルトを `"semantic"` に
+- [beta/src/node/rapid_mvp.ts:326-354](../../../beta/src/node/rapid_mvp.ts#L326-L354) `addLink()` に options として `layer` / `kind` を渡せるよう拡張
 
 ### 既存エッジの扱い
 
@@ -87,14 +87,14 @@ interface TreeNode {
 
 ### 変更点
 
-- [beta/src/browser/viewer.tuning.ts:49-52](beta/src/browser/viewer.tuning.ts#L49-L52) に色パレット追加:
+- [beta/src/browser/viewer.tuning.ts:49-52](../../../beta/src/browser/viewer.tuning.ts#L49-L52) に色パレット追加:
   ```typescript
   syntacticEdgeColors: ["#bbb", "#aaa", "#999"]  // ミュート系
   ```
-- [beta/src/browser/viewer.ts:2876-2936](beta/src/browser/viewer.ts#L2876-L2936) のエッジ描画ループに分岐:
+- [beta/src/browser/viewer.ts:2876-2936](../../../beta/src/browser/viewer.ts#L2876-L2936) のエッジ描画ループに分岐:
   - `link.layer === "syntactic"` なら syntacticEdgeColors パレットと細線・dasharray
   - 既定（semantic）は従来通り
-- [beta/viewer.css](beta/viewer.css) に `.graph-link-syntactic` クラス定義
+- [beta/viewer.css](../../../beta/viewer.css) に `.graph-link-syntactic` クラス定義
 - 矢印マーカーも専用（控えめな三角）を 1 種追加
 
 ### 得られる機能
@@ -121,7 +121,7 @@ interface TreeNode {
 
 ### 変更点
 
-- [beta/src/browser/viewer.ts:2020-2025 付近](beta/src/browser/viewer.ts#L2020) の `isNodeVisibleByImportance` と同系列で `isLinkVisibleByLayer(link)` を追加
+- [beta/src/browser/viewer.ts:2020-2025 付近](../../../beta/src/browser/viewer.ts#L2020) の `isNodeVisibleByImportance` と同系列で `isLinkVisibleByLayer(link)` を追加
 - エッジ描画ループ（viewer.ts:2890）の可視性判定に加える:
   ```typescript
   if (!isLinkVisibleByLayer(link)) return;
@@ -161,7 +161,7 @@ interface TreeNode {
   1. 外部ID（Blueprint の label）と既存ノードの照合・新規ノード作成
   2. エッジを `layer: "syntactic", kind: "uses", direction: "forward"` で一括追加
   3. 既存 syntactic エッジとの重複回避（`(from, to, layer, kind)` で dedup）
-- [beta/src/node/rapid_mvp.ts](beta/src/node/rapid_mvp.ts) に `importDag()` メソッド追加
+- [beta/src/node/rapid_mvp.ts](../../../beta/src/node/rapid_mvp.ts) に `importDag()` メソッド追加
 - CLI or IPC 経由で起動（当面 UI なし）
 
 ### 得られる機能
