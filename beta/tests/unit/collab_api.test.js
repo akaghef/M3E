@@ -167,7 +167,7 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     });
     const auth = { Authorization: `Bearer ${reg.json.token}` };
 
-    const res = await request("GET", "/api/collab/entities/test-doc", null, auth);
+    const res = await request("GET", "/api/collab/entities/test-map", null, auth);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.json.entities)).toBe(true);
     expect(res.json.entities.length > 0).toBe(true);
@@ -196,7 +196,7 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
 
     // Use raw http to check headers without waiting for body to complete
     await new Promise((resolve, reject) => {
-      const url = new URL("/api/collab/events/test-doc", baseUrl);
+      const url = new URL("/api/collab/events/test-map", baseUrl);
       const req = http.request(
         {
           method: "GET",

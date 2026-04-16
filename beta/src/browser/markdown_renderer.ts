@@ -216,7 +216,7 @@ function renderMarkdownToHtml(src: string): { html: string; mermaid: MermaidBloc
  * promise so we only fetch once per session.
  */
 function loadMermaid(): Promise<MermaidLike | null> {
-  if (typeof window === "undefined" || typeof document === "undefined") {
+  if (typeof window === "undefined" || typeof map === "undefined") {
     return Promise.resolve(null);
   }
   const g: any = globalThis as any;

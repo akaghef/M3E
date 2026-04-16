@@ -43,7 +43,7 @@ async function createBlankDoc(label) {
 
 async function listDocs() {
   const { payload } = await request(`${baseUrl}/api/maps?includeArchived=true`);
-  return payload.docs;
+  return payload.maps;
 }
 
 beforeAll(async () => {
@@ -81,9 +81,9 @@ test("bind-vault with a valid directory sets source", async () => {
   expect(res.response.status).toBe(200);
   expect(res.payload.ok).toBe(true);
 
-  const docs = await listDocs();
-  const doc = docs.find((d) => d.id === id);
-  expect(doc.source).toEqual({ kind: "obsidian", path: vaultDir });
+  const maps = await listDocs();
+  const map = maps.find((d) => d.id === id);
+  expect(map.source).toEqual({ kind: "obsidian", path: vaultDir });
 });
 
 test("bind-vault with empty vaultPath returns 400", async () => {
@@ -97,7 +97,7 @@ test("bind-vault with empty vaultPath returns 400", async () => {
   expect(res.payload.error.code).toBe("INVALID_BODY");
 });
 
-test("bind-vault on nonexistent doc returns 404", async () => {
+test("bind-vault on nonexistent map returns 404", async () => {
   const vaultDir = mkTmpDir("m3e-vault-404-");
   const res = await request(`${baseUrl}/api/maps/ghost/bind-vault`, {
     method: "POST",
@@ -132,12 +132,12 @@ test("unbind-vault clears source", async () => {
   expect(res.response.status).toBe(200);
   expect(res.payload.ok).toBe(true);
 
-  const docs = await listDocs();
-  const doc = docs.find((d) => d.id === id);
-  expect(doc.source).toBeUndefined();
+  const maps = await listDocs();
+  const map = maps.find((d) => d.id === id);
+  expect(map.source).toBeUndefined();
 });
 
-test("import-file with .md creates a new doc", async () => {
+test("import-file with .md creates a new map", async () => {
   const beforeDocs = await listDocs();
   const beforeIds = new Set(beforeDocs.map((d) => d.id));
 
@@ -182,8 +182,8 @@ test("import-vault with a directory containing .md files imports + sets source",
   expect(res.response.status).toBe(200);
   expect(res.payload.ok).toBe(true);
 
-  const docs = await listDocs();
-  const fresh = docs.find((d) => d.id === res.payload.id);
+  const maps = await listDocs();
+  const fresh = maps.find((d) => d.id === res.payload.id);
   expect(fresh).toBeTruthy();
   expect(fresh.source).toEqual({ kind: "obsidian", path: vault });
   expect(fresh.nodeCount).toBe(3);

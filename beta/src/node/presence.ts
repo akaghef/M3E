@@ -1,7 +1,7 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
-// Presence tracking — per-document connected user state
+// Presence tracking — per-map connected user state
 // ---------------------------------------------------------------------------
 
 export interface PresenceEntry {
@@ -28,14 +28,14 @@ export function touchPresence(
   displayName: string,
   role: string,
 ): PresenceEntry {
-  let docPresence = presenceMap.get(mapId);
-  if (!docPresence) {
-    docPresence = new Map();
-    presenceMap.set(mapId, docPresence);
+  let mapPresence = presenceMap.get(mapId);
+  if (!mapPresence) {
+    mapPresence = new Map();
+    presenceMap.set(mapId, mapPresence);
   }
 
   const now = new Date().toISOString();
-  const existing = docPresence.get(entityId);
+  const existing = mapPresence.get(entityId);
 
   if (existing) {
     existing.lastOperationAt = now;
@@ -53,28 +53,28 @@ export function touchPresence(
     lastOperationAt: now,
     connectedAt: now,
   };
-  docPresence.set(entityId, entry);
+  mapPresence.set(entityId, entry);
   return entry;
 }
 
 export function removePresence(mapId: string, entityId: string): boolean {
-  const docPresence = presenceMap.get(mapId);
-  if (!docPresence) return false;
-  const deleted = docPresence.delete(entityId);
-  if (docPresence.size === 0) {
+  const mapPresence = presenceMap.get(mapId);
+  if (!mapPresence) return false;
+  const deleted = mapPresence.delete(entityId);
+  if (mapPresence.size === 0) {
     presenceMap.delete(mapId);
   }
   return deleted;
 }
 
 export function getPresenceList(mapId: string): PresenceEntry[] {
-  const docPresence = presenceMap.get(mapId);
-  if (!docPresence) return [];
+  const mapPresence = presenceMap.get(mapId);
+  if (!mapPresence) return [];
 
   const now = Date.now();
   const result: PresenceEntry[] = [];
 
-  for (const entry of docPresence.values()) {
+  for (const entry of mapPresence.values()) {
     // Update status based on inactivity threshold
     const lastOp = new Date(entry.lastOperationAt).getTime();
     if (now - lastOp > INACTIVE_THRESHOLD_MS) {

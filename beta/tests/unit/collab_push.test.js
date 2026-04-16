@@ -75,7 +75,7 @@ function seedDoc(mapId) {
   model.state.nodes[rootId].children = [folderId, outsideId];
 
   model.saveToSqlite(sqlitePath, mapId);
-  collab.setDocVersion(1);
+  collab.setMapVersion(1);
   return { rootId, folderId, child1Id, child2Id, outsideId };
 }
 

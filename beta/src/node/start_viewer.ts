@@ -31,11 +31,11 @@ import {
   releaseScopeLock,
   addSseClient,
   broadcastSseEvent,
-  incrementDocVersion,
-  getDocVersion,
+  incrementMapVersion,
+  getMapVersion,
   mergeScopePush,
   resetCollab,
-  setDocVersion,
+  setMapVersion,
   type CollabRole,
 } from "./collab";
 import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
@@ -53,19 +53,19 @@ import { importVaultToSqlite } from "./vault_importer";
 import { validateVaultPath } from "./vault_path";
 import {
   configureVaultWatchEmitter,
-  configureVaultWatchDocUpdateEmitter,
+  configureVaultWatchMapUpdateEmitter,
   getVaultWatchStatus,
-  handleDocumentSavedForVaultWatch,
+  handleMapSavedForVaultWatch,
   listVaultWatchStatuses,
   startVaultWatch,
   stopVaultWatch,
-  writeDocumentToVaultNow,
+  writeMapToVaultNow,
 } from "./vault_watch";
 import type {
   AiSubagentRequest,
   AppState,
   LinearTransformRequest,
-  SavedDoc,
+  SavedMap,
   FlashIngestRequest,
   FlashIngestBatchRequest,
   FlashApproveRequest,
@@ -103,10 +103,9 @@ const SECONDARY_MAP_ID = "map_10226A7F0MEKDVNMEXC7HH4GNV";
 const SECONDARY_MAP_LABEL = "研究";
 const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || DEFAULT_WORKSPACE_ID;
 const WORKSPACE_LABEL = process.env.M3E_WORKSPACE_LABEL || DEFAULT_WORKSPACE_LABEL;
-const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || process.env.M3E_DOC_ID || DEFAULT_MAP_ID;
+const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || DEFAULT_MAP_ID;
 const ACTIVE_MAP_LABEL = process.env.M3E_MAP_LABEL || DEFAULT_MAP_LABEL;
 const ACTIVE_MAP_SLUG = process.env.M3E_MAP_SLUG || DEFAULT_MAP_SLUG;
-const DEFAULT_DOC_ID = ACTIVE_MAP_ID;
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
 console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
@@ -119,117 +118,117 @@ const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
 
-function renameDocumentId(dbPath: string, sourceId: string, targetId: string): boolean {
+function renameMapId(dbPath: string, sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return false;
   const db = new Database(dbPath);
   try {
-    const source = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(sourceId) as { hit: number } | undefined;
+    const source = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(sourceId) as { hit: number } | undefined;
     if (!source) return false;
-    const target = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(targetId) as { hit: number } | undefined;
+    const target = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(targetId) as { hit: number } | undefined;
     if (target) return false;
-    db.prepare(`UPDATE documents SET id = ?, saved_at = ? WHERE id = ?`).run(targetId, new Date().toISOString(), sourceId);
+    db.prepare(`UPDATE maps SET id = ?, saved_at = ? WHERE id = ?`).run(targetId, new Date().toISOString(), sourceId);
     return true;
   } finally {
     db.close();
   }
 }
 
-function deleteDocumentId(dbPath: string, mapId: string): void {
+function deleteMapId(dbPath: string, mapId: string): void {
   const db = new Database(dbPath);
   try {
-    db.prepare(`DELETE FROM documents WHERE id = ?`).run(mapId);
+    db.prepare(`DELETE FROM maps WHERE id = ?`).run(mapId);
   } finally {
     db.close();
   }
 }
 
-function ensureMapDocument(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
-  if (RapidMvpModel.documentExists(dbPath, mapId)) {
-    RapidMvpModel.renameDocument(dbPath, mapId, mapLabel);
+function ensureMap(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
+  if (RapidMvpModel.mapExists(dbPath, mapId)) {
+    RapidMvpModel.renameMap(dbPath, mapId, mapLabel);
     for (const legacyId of legacyIds) {
-      if (legacyId !== mapId && RapidMvpModel.documentExists(dbPath, legacyId)) {
-        deleteDocumentId(dbPath, legacyId);
+      if (legacyId !== mapId && RapidMvpModel.mapExists(dbPath, legacyId)) {
+        deleteMapId(dbPath, legacyId);
       }
     }
     return;
   }
   for (const legacyId of legacyIds) {
-    if (renameDocumentId(dbPath, legacyId, mapId)) {
-      RapidMvpModel.renameDocument(dbPath, mapId, mapLabel);
+    if (renameMapId(dbPath, legacyId, mapId)) {
+      RapidMvpModel.renameMap(dbPath, mapId, mapLabel);
       for (const staleLegacyId of legacyIds) {
-        if (staleLegacyId !== mapId && RapidMvpModel.documentExists(dbPath, staleLegacyId)) {
-          deleteDocumentId(dbPath, staleLegacyId);
+        if (staleLegacyId !== mapId && RapidMvpModel.mapExists(dbPath, staleLegacyId)) {
+          deleteMapId(dbPath, staleLegacyId);
         }
       }
       return;
     }
   }
-  RapidMvpModel.createDocument(dbPath, mapId, mapLabel);
+  RapidMvpModel.createMap(dbPath, mapId, mapLabel);
 }
 
 // ---------------------------------------------------------------------------
-// Doc-watch SSE (standalone, independent of collab SSE)
+// Map-watch SSE (standalone, independent of collab SSE)
 // ---------------------------------------------------------------------------
 
-interface DocWatchClient {
+interface MapWatchClient {
   mapId: string;
   res: http.ServerResponse;
 }
 
-const docWatchClients: DocWatchClient[] = [];
+const mapWatchClients: MapWatchClient[] = [];
 
 interface VaultWatchClient {
-  documentId: string | null;
+  mapId: string | null;
   res: http.ServerResponse;
 }
 
 const vaultWatchClients: VaultWatchClient[] = [];
 
-function addDocWatchClient(mapId: string, res: http.ServerResponse): void {
+function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
   res.write(": connected\n\n");
-  docWatchClients.push({ mapId, res });
+  mapWatchClients.push({ mapId, res });
   res.on("close", () => {
-    const idx = docWatchClients.findIndex((c) => c.res === res);
-    if (idx !== -1) docWatchClients.splice(idx, 1);
+    const idx = mapWatchClients.findIndex((c) => c.res === res);
+    if (idx !== -1) mapWatchClients.splice(idx, 1);
   });
 }
 
-function broadcastDocUpdate(mapId: string, savedAt: string, sourceTabId: string | null): void {
+function broadcastMapUpdate(mapId: string, savedAt: string, sourceTabId: string | null): void {
   const payload = JSON.stringify({ mapId, savedAt, sourceTabId });
-  const frame = `event: doc_updated\ndata: ${payload}\n\n`;
-  for (let i = docWatchClients.length - 1; i >= 0; i--) {
-    if (docWatchClients[i].mapId === mapId) {
+  const frame = `event: map_updated\ndata: ${payload}\n\n`;
+  for (let i = mapWatchClients.length - 1; i >= 0; i--) {
+    if (mapWatchClients[i].mapId === mapId) {
       try {
-        docWatchClients[i].res.write(frame);
+        mapWatchClients[i].res.write(frame);
       } catch {
-        docWatchClients.splice(i, 1);
+        mapWatchClients.splice(i, 1);
       }
     }
   }
 }
 
-function parseDocWatchRoute(urlPath: string): string | null {
+function parseMapWatchRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/watch$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/watch$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
 
 function parseDocAuditRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/audit$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/audit$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
 
 function parseDocPresenceRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/presence$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/presence$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
@@ -330,19 +329,19 @@ function sendSyncError(
   statusCode: number,
   code: string,
   message: string,
-  documentId: string,
+  mapId: string,
   extra: Record<string, unknown> = {},
 ): void {
   sendJson(res, statusCode, {
     ok: false,
     code,
     error: message,
-    documentId,
+    mapId,
     ...extra,
   });
 }
 
-function parseDocId(urlPath: string): string | null {
+function parseMapId(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (!pathname.startsWith("/api/maps/")) {
     return null;
@@ -431,7 +430,7 @@ function sendHomeError(
 }
 
 function newDocId(): string {
-  return `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `map_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function newNodeId(): string {
@@ -535,8 +534,8 @@ async function handleHomeApi(
     if (route.kind === "list") {
       const url = new URL(req.url ?? "/", "http://localhost");
       const includeArchived = url.searchParams.get("includeArchived") === "true";
-      const docs = RapidMvpModel.listDocuments(SQLITE_DB_PATH, { includeArchived }) as MapSummary[];
-      sendJson(res, 200, { docs });
+      const maps = RapidMvpModel.listMaps(SQLITE_DB_PATH, { includeArchived }) as MapSummary[];
+      sendJson(res, 200, { maps });
       return true;
     }
 
@@ -562,18 +561,18 @@ async function handleHomeApi(
         return true;
       }
       const id = newDocId();
-      RapidMvpModel.createDocument(SQLITE_DB_PATH, id, label && label.length > 0 ? label : "Untitled");
+      RapidMvpModel.createMap(SQLITE_DB_PATH, id, label && label.length > 0 ? label : "Untitled");
       sendJson(res, 200, { ok: true, id });
       return true;
     }
 
     if (route.kind === "duplicate") {
-      if (!RapidMvpModel.documentExists(SQLITE_DB_PATH, route.mapId)) {
+      if (!RapidMvpModel.mapExists(SQLITE_DB_PATH, route.mapId)) {
         sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
         return true;
       }
       const newId = newDocId();
-      RapidMvpModel.duplicateDocument(SQLITE_DB_PATH, route.mapId, newId);
+      RapidMvpModel.duplicateMap(SQLITE_DB_PATH, route.mapId, newId);
       sendJson(res, 200, { ok: true, id: newId });
       return true;
     }
@@ -600,10 +599,10 @@ async function handleHomeApi(
         return true;
       }
       try {
-        RapidMvpModel.renameDocument(SQLITE_DB_PATH, route.mapId, label);
+        RapidMvpModel.renameMap(SQLITE_DB_PATH, route.mapId, label);
       } catch (err) {
         const msg = (err as Error).message;
-        if (msg === "Document not found.") {
+        if (msg === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -617,7 +616,7 @@ async function handleHomeApi(
       try {
         RapidMvpModel.setArchived(SQLITE_DB_PATH, route.mapId, route.kind === "archive");
       } catch (err) {
-        if ((err as Error).message === "Document not found.") {
+        if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -645,10 +644,10 @@ async function handleHomeApi(
         throw err;
       }
       try {
-        RapidMvpModel.setDocumentTags(SQLITE_DB_PATH, route.mapId, tags);
+        RapidMvpModel.setMapTags(SQLITE_DB_PATH, route.mapId, tags);
       } catch (err) {
         const msg = (err as Error).message;
-        if (msg === "Document not found.") {
+        if (msg === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -682,7 +681,7 @@ async function handleHomeApi(
       try {
         RapidMvpModel.setPinned(SQLITE_DB_PATH, route.mapId, pinned);
       } catch (err) {
-        if ((err as Error).message === "Document not found.") {
+        if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -695,9 +694,9 @@ async function handleHomeApi(
     if (route.kind === "bind-vault" || route.kind === "unbind-vault") {
       if (route.kind === "unbind-vault") {
         try {
-          RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, route.mapId, null);
+          RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, null);
         } catch (err) {
-          if ((err as Error).message === "Document not found.") {
+          if ((err as Error).message === "Map not found.") {
             sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
             return true;
           }
@@ -725,9 +724,9 @@ async function handleHomeApi(
       }
 
       try {
-        RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: vaultPath });
+        RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: vaultPath });
       } catch (err) {
-        if ((err as Error).message === "Document not found.") {
+        if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -826,7 +825,7 @@ async function handleHomeApi(
       const id = newDocId();
       const model = RapidMvpModel.fromJSON(state);
       model.saveToSqlite(SQLITE_DB_PATH, id);
-      RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, id, { kind: "obsidian", path: vaultPath });
+      RapidMvpModel.setMapSource(SQLITE_DB_PATH, id, { kind: "obsidian", path: vaultPath });
       sendJson(res, 200, { ok: true, id });
       return true;
     }
@@ -836,12 +835,12 @@ async function handleHomeApi(
         RapidMvpModel.deleteDocument(SQLITE_DB_PATH, route.mapId);
       } catch (err) {
         const msg = (err as Error).message;
-        if (msg === "Document not found.") {
+        if (msg === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
-        if (msg === "Document is not archived.") {
-          sendHomeError(res, 409, "NOT_ARCHIVED", "Document must be archived before delete. Call /archive first.");
+        if (msg === "Map is not archived.") {
+          sendHomeError(res, 409, "NOT_ARCHIVED", "Map must be archived before delete. Call /archive first.");
           return true;
         }
         throw err;
@@ -915,7 +914,7 @@ async function handleBackupApi(
     }
     model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
     const savedAt = new Date().toISOString();
-    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, documentId: route.mapId, savedAt });
+    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, mapId: route.mapId, savedAt });
     return;
   }
 
@@ -945,7 +944,7 @@ async function handleBackupApi(
     return;
   }
   const backups = listConflictBackups(DATA_DIR, route.mapId);
-  sendJson(res, 200, { ok: true, documentId: route.mapId, backups });
+  sendJson(res, 200, { ok: true, mapId: route.mapId, backups });
 }
 
 // ---------------------------------------------------------------------------
@@ -954,7 +953,7 @@ async function handleBackupApi(
 
 function parseLinearNoteRoute(urlPath: string): { mapId: string; scopeId: string } | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/linear\/([^/]+)$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/linear\/([^/]+)$/);
   if (!match) return null;
   return {
     mapId: decodeURIComponent(match[1]),
@@ -978,7 +977,7 @@ async function handleLinearNoteApi(
     model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
-    if (message === "Document not found.") {
+    if (message === "Map not found.") {
       sendJson(res, 404, { ok: false, error: message });
     } else {
       sendJson(res, 500, { ok: false, error: message });
@@ -1034,8 +1033,8 @@ async function handleLinearNoteApi(
     nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-    incrementDocVersion();
-    broadcastDocUpdate(mapId, savedAt, sourceTabId);
+    incrementMapVersion();
+    broadcastMapUpdate(mapId, savedAt, sourceTabId);
     sendJson(res, 200, { ok: true, scopeId, savedAt });
     return;
   }
@@ -1061,8 +1060,8 @@ async function handleLinearNoteApi(
     nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-    incrementDocVersion();
-    broadcastDocUpdate(mapId, savedAt, sourceTabId);
+    incrementMapVersion();
+    broadcastMapUpdate(mapId, savedAt, sourceTabId);
     sendJson(res, 200, { ok: true, scopeId, savedAt, removed: true });
     return;
   }
@@ -1275,9 +1274,9 @@ async function handleFlashApi(
   }
 }
 
-function addVaultWatchClient(documentId: string | null, res: http.ServerResponse): void {
+function addVaultWatchClient(mapId: string | null, res: http.ServerResponse): void {
   beginSse(res);
-  vaultWatchClients.push({ documentId, res });
+  vaultWatchClients.push({ mapId, res });
   res.on("close", () => {
     const idx = vaultWatchClients.findIndex((client) => client.res === res);
     if (idx !== -1) {
@@ -1290,7 +1289,7 @@ function broadcastVaultWatchEvent(event: VaultWatchEvent): void {
   const frame = `event: vault-watch\ndata: ${JSON.stringify(event)}\n\n`;
   for (let i = vaultWatchClients.length - 1; i >= 0; i -= 1) {
     const client = vaultWatchClients[i]!;
-    if (client.documentId && client.documentId !== event.documentId) {
+    if (client.mapId && client.mapId !== event.mapId) {
       continue;
     }
     try {
@@ -1302,8 +1301,8 @@ function broadcastVaultWatchEvent(event: VaultWatchEvent): void {
 }
 
 configureVaultWatchEmitter(broadcastVaultWatchEvent);
-configureVaultWatchDocUpdateEmitter((documentId, savedAt) => {
-  broadcastDocUpdate(documentId, savedAt, null);
+configureVaultWatchMapUpdateEmitter((mapId, savedAt) => {
+  broadcastMapUpdate(mapId, savedAt, null);
 });
 
 async function handleVaultApi(
@@ -1327,9 +1326,9 @@ async function handleVaultApi(
           sendSseEvent(res, "vault-import-progress", progress);
         },
       });
-      broadcastDocUpdate(result.documentId, result.savedAt, null);
+      broadcastMapUpdate(result.mapId, result.savedAt, null);
       sendSseEvent(res, "vault-import-complete", {
-        documentId: result.documentId,
+        mapId: result.mapId,
         savedAt: result.savedAt,
         fileCount: result.fileCount,
         folderCount: result.folderCount,
@@ -1344,8 +1343,8 @@ async function handleVaultApi(
     if (route.action === "export") {
       const rawBody = await readRequestBody(req);
       const request = JSON.parse(rawBody) as VaultExportRequest;
-      if (!request?.documentId?.trim()) {
-        sendJson(res, 400, { ok: false, error: "documentId is required." });
+      if (!request?.mapId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "mapId is required." });
         return;
       }
       if (!request.vaultPath?.trim()) {
@@ -1377,11 +1376,11 @@ async function handleVaultApi(
     if (route.action === "watch-stop") {
       const rawBody = await readRequestBody(req);
       const request = JSON.parse(rawBody) as VaultWatchStopRequest;
-      if (!request?.documentId?.trim()) {
-        sendJson(res, 400, { ok: false, error: "documentId is required." });
+      if (!request?.mapId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "mapId is required." });
         return;
       }
-      const status = stopVaultWatch(request.documentId);
+      const status = stopVaultWatch(request.mapId);
       if (!status) {
         sendJson(res, 404, { ok: false, error: "Watch session not found." });
         return;
@@ -1392,9 +1391,9 @@ async function handleVaultApi(
 
     if (route.action === "status") {
       const url = new URL(req.url ?? "/", "http://localhost");
-      const documentId = url.searchParams.get("documentId");
-      if (documentId) {
-        const status = getVaultWatchStatus(documentId);
+      const mapId = url.searchParams.get("mapId");
+      if (mapId) {
+        const status = getVaultWatchStatus(mapId);
         if (!status) {
           sendJson(res, 404, { ok: false, error: "Watch session not found." });
           return;
@@ -1444,11 +1443,11 @@ type LinkRouteAction =
 
 function parseLinkRoute(urlPath: string, method: string): LinkRouteAction | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const createMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/?$/);
+  const createMatch = pathname.match(/^\/api\/maps\/([^/]+)\/links\/?$/);
   if (createMatch && method === "POST") {
     return { kind: "create", mapId: decodeURIComponent(createMatch[1]) };
   }
-  const deleteMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/([^/]+)\/?$/);
+  const deleteMatch = pathname.match(/^\/api\/maps\/([^/]+)\/links\/([^/]+)\/?$/);
   if (deleteMatch && method === "DELETE") {
     return {
       kind: "delete",
@@ -1465,7 +1464,7 @@ async function handleLinkApi(
   route: LinkRouteAction,
 ): Promise<void> {
   if (!route.mapId) {
-    sendJson(res, 400, { ok: false, error: "Document id is required." });
+    sendJson(res, 400, { ok: false, error: "Map id is required." });
     return;
   }
 
@@ -1474,7 +1473,7 @@ async function handleLinkApi(
     model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, route.mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
-    if (message === "Document not found.") {
+    if (message === "Map not found.") {
       sendJson(res, 404, { ok: false, error: message });
     } else {
       sendJson(res, 500, { ok: false, error: message });
@@ -1527,7 +1526,7 @@ async function handleLinkApi(
       model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(route.mapId, savedAt, sourceTabId);
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       const link = model.state.links?.[linkId];
       sendJson(res, 200, { ok: true, link });
       return;
@@ -1548,7 +1547,7 @@ async function handleLinkApi(
       model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(route.mapId, savedAt, sourceTabId);
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -1559,7 +1558,7 @@ async function handleLinkApi(
 
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
   if (!mapId) {
-    sendJson(res, 400, { error: "Document id is required." });
+    sendJson(res, 400, { error: "Map id is required." });
     return true;
   }
 
@@ -1589,9 +1588,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
           return true;
         }
         sendJson(res, 200, {
-          version: result.doc.version,
-          savedAt: result.doc.savedAt,
-          state: result.doc.state,
+          version: result.map.version,
+          savedAt: result.map.savedAt,
+          state: result.map.state,
           scope: {
             rootId: scopeId,
             depth: depth === undefined ? null : depth,
@@ -1600,11 +1599,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         });
         return true;
       }
-      const savedDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId);
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId);
       sendJson(res, 200, savedDoc);
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
-      if (message === "Document not found.") {
+      if (message === "Map not found.") {
         sendJson(res, 404, { error: message });
       } else if (message === "Unsupported or invalid save format." || message.startsWith("Invalid model after load:")) {
         sendJson(res, 400, { error: message });
@@ -1630,7 +1629,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       }
       const nodesObj = (candidate.state as Record<string, unknown>).nodes;
       if (typeof nodesObj === "object" && nodesObj !== null && Object.keys(nodesObj).length === 0) {
-        sendJson(res, 400, { error: "State contains no nodes — refusing to save empty document." });
+        sendJson(res, 400, { error: "State contains no nodes — refusing to save empty map." });
         return true;
       }
 
@@ -1649,11 +1648,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
           return true;
         }
         const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-        broadcastDocUpdate(mapId, result.savedAt, sourceTabId);
+        broadcastMapUpdate(mapId, result.savedAt, sourceTabId);
         sendJson(res, 200, {
           ok: true,
           savedAt: result.savedAt,
-          documentId: mapId,
+          mapId: mapId,
           scope: { rootId: scopeId, replacedNodeCount: result.replacedNodeCount },
         });
         return true;
@@ -1670,37 +1669,37 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       const baseSavedAt = typeof parsed?.baseSavedAt === "string" ? parsed.baseSavedAt : null;
       if (!force) {
         try {
-          const currentDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId);
+          const currentDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId);
           if (baseSavedAt && currentDoc.savedAt !== baseSavedAt) {
             sendJson(res, 409, {
               ok: false,
               code: "DOC_CONFLICT",
-              error: "Document changed externally. Choose which version to keep.",
-              documentId: mapId,
+              error: "Map changed externally. Choose which version to keep.",
+              mapId: mapId,
               savedAt: currentDoc.savedAt,
               state: currentDoc.state,
             });
             return true;
           }
         } catch (err) {
-          if ((err as Error).message !== "Document not found.") {
+          if ((err as Error).message !== "Map not found.") {
             throw err;
           }
         }
       }
 
-      const liveWrite = await writeDocumentToVaultNow(SQLITE_DB_PATH, mapId, model.toJSON());
+      const liveWrite = await writeMapToVaultNow(SQLITE_DB_PATH, mapId, model.toJSON());
       model.saveToSqlite(SQLITE_DB_PATH, mapId);
-      const savedAt = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(mapId, savedAt, sourceTabId);
+      broadcastMapUpdate(mapId, savedAt, sourceTabId);
       if (!liveWrite) {
-        handleDocumentSavedForVaultWatch(SQLITE_DB_PATH, mapId);
+        handleMapSavedForVaultWatch(SQLITE_DB_PATH, mapId);
       }
       sendJson(res, 200, {
         ok: true,
         savedAt,
-        documentId: mapId,
+        mapId: mapId,
         integrationMode: liveWrite?.integrationMode ?? "off",
         sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
         ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
@@ -1726,7 +1725,7 @@ async function handleSyncApi(
   route: { action: "status" | "push" | "pull"; mapId: string },
 ): Promise<boolean> {
   if (!route.mapId) {
-    sendSyncError(res, 400, "SYNC_DOC_ID_REQUIRED", "Document id is required.", route.mapId);
+    sendSyncError(res, 400, "SYNC_MAP_ID_REQUIRED", "Map id is required.", route.mapId);
     return true;
   }
 
@@ -1737,7 +1736,7 @@ async function handleSyncApi(
         ok: true,
         enabled: false,
         mode: "disabled",
-        documentId: route.mapId,
+        mapId: route.mapId,
       });
     } else {
       // Push/pull endpoints: return 503 so browser knows sync is unavailable
@@ -1778,13 +1777,13 @@ async function handleSyncApi(
         const isUnsupported = result.error?.includes("unsupported");
         const statusCode = isUnsupported ? 400 : 404;
         const code = isUnsupported ? "SYNC_CLOUD_UNSUPPORTED_FORMAT" : "SYNC_CLOUD_NOT_FOUND";
-        sendSyncError(res, statusCode, code, result.error || "Cloud document not found.", route.mapId);
+        sendSyncError(res, statusCode, code, result.error || "Cloud map not found.", route.mapId);
         return true;
       }
       const model = RapidMvpModel.fromJSON(result.state);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud document is invalid: ${errors.join(" | ")}`, route.mapId);
+        sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud map is invalid: ${errors.join(" | ")}`, route.mapId);
         return true;
       }
 
@@ -1801,8 +1800,8 @@ async function handleSyncApi(
         version: 1,
         savedAt: result.savedAt,
         state: model.toJSON(),
-        documentId: route.mapId,
-        docVersion: result.docVersion ?? undefined,
+        mapId: route.mapId,
+        mapVersion: result.mapVersion ?? undefined,
         ...(backup ? { backup } : {}),
       });
     } catch (err) {
@@ -1814,7 +1813,7 @@ async function handleSyncApi(
   if (route.action === "push" && req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; baseDocVersion?: number | null; force?: boolean };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; baseMapVersion?: number | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
       if (!candidate.state || typeof candidate.state !== "object") {
         sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.mapId);
@@ -1832,7 +1831,7 @@ async function handleSyncApi(
         return true;
       }
 
-      const payload: SavedDoc = {
+      const payload: SavedMap = {
         version: 1,
         savedAt: String(candidate.savedAt || new Date().toISOString()),
         state: model.toJSON(),
@@ -1845,7 +1844,7 @@ async function handleSyncApi(
         parsed.baseSavedAt ?? null,
         Boolean(parsed.force),
         DATA_DIR,
-        parsed.baseDocVersion ?? null,
+        parsed.baseMapVersion ?? null,
       );
       if (!result.ok) {
         const statusCode = result.conflict ? 409 : 500;
@@ -1853,7 +1852,7 @@ async function handleSyncApi(
         const extra: Record<string, unknown> = {};
         if (result.conflict) {
           extra.cloudSavedAt = result.cloudSavedAt ?? null;
-          extra.cloudDocVersion = result.cloudDocVersion ?? null;
+          extra.cloudMapVersion = result.cloudMapVersion ?? null;
           if (result.remoteState) {
             extra.remoteState = result.remoteState;
           }
@@ -1874,9 +1873,9 @@ async function handleSyncApi(
         ok: true,
         mode: modeLabel,
         savedAt: result.savedAt,
-        documentId: route.mapId,
+        mapId: route.mapId,
         forced: result.forced,
-        docVersion: result.cloudDocVersion ?? undefined,
+        mapVersion: result.cloudMapVersion ?? undefined,
       });
     } catch (err) {
       if (err instanceof SyntaxError) {
@@ -1969,7 +1968,7 @@ function mapAiErrorToResponse(err: unknown): { status: number; code: string; mes
   const message = (err as Error)?.message || "AI request failed.";
   switch (message) {
     case "AI_DOCUMENT_ID_REQUIRED":
-      return { status: 400, code: message, message: "documentId is required." };
+      return { status: 400, code: message, message: "mapId is required." };
     case "AI_SCOPE_ID_REQUIRED":
       return { status: 400, code: message, message: "scopeId is required." };
     case "AI_INPUT_REQUIRED":
@@ -2057,9 +2056,9 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
 }
 
 function startServer(): void {
-  ensureMapDocument(SQLITE_DB_PATH, ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
-  ensureMapDocument(SQLITE_DB_PATH, SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
-  // Initialize audit log file for the default document
+  ensureMap(SQLITE_DB_PATH, ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
+  ensureMap(SQLITE_DB_PATH, SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
+  // Initialize audit log file for the default map
   initAuditFile(DATA_DIR, ACTIVE_MAP_ID);
 
   const server = createAppServer();
@@ -2108,16 +2107,16 @@ function startServer(): void {
         getBaseSavedAt: () => null,
         getBaseDocVersion: () => null,
         onPushSuccess: (result) => {
-          console.log(`[auto-sync] Push succeeded: docVersion=${result.cloudDocVersion ?? "?"}`);
+          console.log(`[auto-sync] Push succeeded: mapVersion=${result.cloudMapVersion ?? "?"}`);
         },
         onConflict: (result) => {
-          console.warn(`[auto-sync] Conflict detected: cloudDocVersion=${result.cloudDocVersion ?? "?"}`);
+          console.warn(`[auto-sync] Conflict detected: cloudMapVersion=${result.cloudMapVersion ?? "?"}`);
         },
         onError: (error) => {
           console.error(`[auto-sync] Error: ${error}`);
         },
         onPullSuccess: (result) => {
-          console.log(`[auto-sync] Initial pull succeeded: docVersion=${result.docVersion ?? "?"}`);
+          console.log(`[auto-sync] Initial pull succeeded: mapVersion=${result.mapVersion ?? "?"}`);
         },
         dataDir: DATA_DIR,
       });
@@ -2129,11 +2128,11 @@ function startServer(): void {
     // Keep SSE connections alive through proxies
     setInterval(() => {
       const ping = ": heartbeat\n\n";
-      for (let i = docWatchClients.length - 1; i >= 0; i--) {
+      for (let i = mapWatchClients.length - 1; i >= 0; i--) {
         try {
-          docWatchClients[i].res.write(ping);
+          mapWatchClients[i].res.write(ping);
         } catch {
-          docWatchClients.splice(i, 1);
+          mapWatchClients.splice(i, 1);
         }
       }
     }, 15_000);
@@ -2197,7 +2196,7 @@ async function handleCollabApi(
       return;
     }
     const entity = registerEntity(body.displayName, body.role, body.capabilities ?? ["read", "write"]);
-    // Track presence for default doc on register
+    // Track presence for default map on register
     touchPresence(ACTIVE_MAP_ID, entity.entityId, body.displayName, body.role);
     sendJson(res, 200, { ok: true, entityId: entity.entityId, token: entity.token, priority: entity.priority });
     return;
@@ -2222,7 +2221,7 @@ async function handleCollabApi(
     }
     case "unregister": {
       if (req.method !== "DELETE") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
-      // Remove from all doc presence (use default doc for now)
+      // Remove from all map presence (use default map for now)
       removePresence(ACTIVE_MAP_ID, entity.entityId);
       unregisterEntity(entity.entityId);
       sendJson(res, 200, { ok: true });
@@ -2234,7 +2233,7 @@ async function handleCollabApi(
       sendJson(res, 200, {
         ok: true,
         entities: active.map((e) => ({ entityId: e.entityId, displayName: e.displayName, role: e.role, priority: e.priority })),
-        docVersion: getDocVersion(),
+        mapVersion: getMapVersion(),
       });
       return;
     }
@@ -2264,7 +2263,7 @@ async function handleCollabApi(
       if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       if (!entity.capabilities.includes("write")) { sendJson(res, 403, { ok: false, error: "Write capability required." }); return; }
       const mapId = route.param;
-      if (!mapId) { sendJson(res, 400, { ok: false, error: "Document ID required." }); return; }
+      if (!mapId) { sendJson(res, 400, { ok: false, error: "Map ID required." }); return; }
       try {
         const rawBody = await readRequestBody(req);
         const body = JSON.parse(rawBody) as { scopeId?: string; lockId?: string; baseVersion?: number; changes?: { nodes?: Record<string, unknown> } };
@@ -2322,7 +2321,7 @@ export function createAppServer(): http.Server {
 
     if (isVaultWatchSseRoute(req.url ?? "/") && req.method === "GET") {
       const url = new URL(req.url ?? "/", "http://localhost");
-      addVaultWatchClient(url.searchParams.get("documentId"), res);
+      addVaultWatchClient(url.searchParams.get("mapId"), res);
       return;
     }
 
@@ -2338,13 +2337,13 @@ export function createAppServer(): http.Server {
       return;
     }
 
-    const watchDocId = parseDocWatchRoute(req.url ?? "/");
+    const watchDocId = parseMapWatchRoute(req.url ?? "/");
     if (watchDocId !== null) {
       if (req.method !== "GET") {
         sendJson(res, 405, { error: "Method not allowed." });
         return;
       }
-      addDocWatchClient(watchDocId, res);
+      addMapWatchClient(watchDocId, res);
       return;
     }
 
@@ -2359,7 +2358,7 @@ export function createAppServer(): http.Server {
       const limitParam = url.searchParams.get("limit");
       const limit = limitParam ? Math.max(1, Math.min(1000, Number(limitParam) || 100)) : 100;
       const entries = getRecentAuditEntries(limit);
-      sendJson(res, 200, { ok: true, documentId: auditDocId, count: entries.length, entries });
+      sendJson(res, 200, { ok: true, mapId: auditDocId, count: entries.length, entries });
       return;
     }
 
@@ -2393,13 +2392,13 @@ export function createAppServer(): http.Server {
         }
         sendJson(res, 200, {
           ok: true,
-          documentId: resolveDocId,
+          mapId: resolveDocId,
           nodeId: result.nodeId,
           matched: result.matched,
         });
       } catch (err) {
         const message = (err as Error).message || "Unknown error";
-        const status = message === "Document not found." ? 404 : 500;
+        const status = message === "Map not found." ? 404 : 500;
         sendJson(res, status, { ok: false, error: { code: "DOC_ERROR", message } });
       }
       return;
@@ -2413,7 +2412,7 @@ export function createAppServer(): http.Server {
         return;
       }
       const list = getPresenceList(presenceDocId);
-      sendJson(res, 200, { ok: true, documentId: presenceDocId, count: list.length, users: list });
+      sendJson(res, 200, { ok: true, mapId: presenceDocId, count: list.length, users: list });
       return;
     }
 
@@ -2435,7 +2434,7 @@ export function createAppServer(): http.Server {
       return;
     }
 
-    const mapId = parseDocId(req.url ?? "/");
+    const mapId = parseMapId(req.url ?? "/");
     if (mapId !== null) {
       await handleApi(req, res, mapId);
       return;

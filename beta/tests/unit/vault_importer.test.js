@@ -57,7 +57,7 @@ Line 2
     });
 
     expect(result.ok).toBe(true);
-    expect(result.documentId).toMatch(/^vault-/);
+    expect(result.mapId).toMatch(/^vault-/);
     expect(result.fileCount).toBe(2);
     expect(result.folderCount).toBe(5);
     expect(result.nodeCount).toBe(6);
@@ -116,7 +116,7 @@ test("importVaultToAppState applies maxFiles and maxCharsPerFile limits", async 
   }
 });
 
-test("importVaultToSqlite persists imported document", async () => {
+test("importVaultToSqlite persists imported map", async () => {
   const vaultDir = tmpDir();
   const dataDir = tmpDir();
   const dbPath = path.join(dataDir, "vault-test.sqlite");
@@ -124,12 +124,12 @@ test("importVaultToSqlite persists imported document", async () => {
     writeFile(vaultDir, "alpha.md", "# Alpha");
     const result = await importVaultToSqlite(dbPath, {
       vaultPath: vaultDir,
-      documentId: "vault-test-doc",
+      mapId: "vault-test-map",
       options: { skipAiTransform: true },
     });
 
     expect(result.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    const loaded = RapidMvpModel.loadFromSqlite(dbPath, "vault-test-doc");
+    const loaded = RapidMvpModel.loadFromSqlite(dbPath, "vault-test-map");
     expect(loaded.validate()).toEqual([]);
     expect(loaded.state.nodes[loaded.state.rootId].text).toBe(path.basename(vaultDir));
   } finally {

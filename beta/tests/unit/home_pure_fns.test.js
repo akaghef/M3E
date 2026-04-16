@@ -45,7 +45,7 @@ beforeAll(() => {
   relTime = mod.relTime;
 });
 
-function doc(partial) {
+function map(partial) {
   return {
     id: partial.id ?? "x",
     label: partial.label ?? "Label",
@@ -59,36 +59,36 @@ function doc(partial) {
 }
 
 test("matchesSearch: empty query matches everything", () => {
-  expect(matchesSearch(doc({ label: "Anything" }), "")).toBe(true);
+  expect(matchesSearch(map({ label: "Anything" }), "")).toBe(true);
 });
 
 test("matchesSearch: label substring match (case insensitive)", () => {
-  expect(matchesSearch(doc({ label: "Research Notes" }), "resea")).toBe(true);
-  expect(matchesSearch(doc({ label: "Research Notes" }), "RESEA")).toBe(true);
+  expect(matchesSearch(map({ label: "Research Notes" }), "resea")).toBe(true);
+  expect(matchesSearch(map({ label: "Research Notes" }), "RESEA")).toBe(true);
 });
 
 test("matchesSearch: no match", () => {
-  expect(matchesSearch(doc({ label: "Research" }), "zzz")).toBe(false);
+  expect(matchesSearch(map({ label: "Research" }), "zzz")).toBe(false);
 });
 
 test("matchesSearch: tag substring match", () => {
-  expect(matchesSearch(doc({ label: "Foo", tags: ["urgent", "work"] }), "urg")).toBe(true);
+  expect(matchesSearch(map({ label: "Foo", tags: ["urgent", "work"] }), "urg")).toBe(true);
 });
 
 test("matchesSearch: leading # is stripped", () => {
-  expect(matchesSearch(doc({ label: "Foo", tags: ["work"] }), "#work")).toBe(true);
+  expect(matchesSearch(map({ label: "Foo", tags: ["work"] }), "#work")).toBe(true);
 });
 
 test("sortByUpdatedDesc: newest first", () => {
-  const older = doc({ id: "a", savedAt: "2026-01-01T00:00:00Z" });
-  const newer = doc({ id: "b", savedAt: "2026-04-01T00:00:00Z" });
+  const older = map({ id: "a", savedAt: "2026-01-01T00:00:00Z" });
+  const newer = map({ id: "b", savedAt: "2026-04-01T00:00:00Z" });
   const sorted = sortByUpdatedDesc([older, newer]);
   expect(sorted.map((d) => d.id)).toEqual(["b", "a"]);
 });
 
 test("sortByUpdatedDesc: does not mutate input", () => {
-  const d1 = doc({ id: "a", savedAt: "2026-01-01T00:00:00Z" });
-  const d2 = doc({ id: "b", savedAt: "2026-04-01T00:00:00Z" });
+  const d1 = map({ id: "a", savedAt: "2026-01-01T00:00:00Z" });
+  const d2 = map({ id: "b", savedAt: "2026-04-01T00:00:00Z" });
   const input = [d1, d2];
   sortByUpdatedDesc(input);
   expect(input[0].id).toBe("a");
@@ -96,8 +96,8 @@ test("sortByUpdatedDesc: does not mutate input", () => {
 });
 
 test("sortByUpdatedDesc: handles invalid savedAt gracefully", () => {
-  const bad = doc({ id: "bad", savedAt: "not-a-date" });
-  const good = doc({ id: "good", savedAt: "2026-04-01T00:00:00Z" });
+  const bad = map({ id: "bad", savedAt: "not-a-date" });
+  const good = map({ id: "good", savedAt: "2026-04-01T00:00:00Z" });
   const sorted = sortByUpdatedDesc([bad, good]);
   expect(sorted[0].id).toBe("good");
 });

@@ -15,7 +15,7 @@ import type {
 
 type WatchSession = {
   watcher: fs.FSWatcher;
-  documentId: string;
+  mapId: string;
   vaultPath: string;
   modelAlias?: string | null;
   debounceMs: number;
@@ -32,7 +32,7 @@ type WatchSession = {
 
 const sessions = new Map<string, WatchSession>();
 let emitEvent: ((event: VaultWatchEvent) => void) | null = null;
-let emitDocUpdate: ((documentId: string, savedAt: string) => void) | null = null;
+let emitDocUpdate: ((mapId: string, savedAt: string) => void) | null = null;
 const LIVE_MODE = "obsidian-live" as const;
 const LIVE_SOURCE_OF_TRUTH = "vault-md" as const;
 
@@ -43,7 +43,7 @@ function nowIso(): string {
 function emit(type: VaultWatchEvent["type"], session: WatchSession, detail?: string): void {
   emitEvent?.({
     type,
-    documentId: session.documentId,
+    mapId: session.mapId,
     vaultPath: session.vaultPath,
     timestamp: nowIso(),
     detail,
@@ -58,12 +58,12 @@ async function runInboundSync(dbPath: string, session: WatchSession): Promise<vo
   try {
     const result = await importVaultToSqlite(dbPath, {
       vaultPath: session.vaultPath,
-      documentId: session.documentId,
+      mapId: session.mapId,
       modelAlias: session.modelAlias ?? null,
       options: session.importOptions,
     });
     session.lastInboundAt = result.savedAt;
-    emitDocUpdate?.(session.documentId, result.savedAt);
+    emitDocUpdate?.(session.mapId, result.savedAt);
     emit("vault-to-m3e", session, "Vault change imported.");
   } catch (err) {
     session.lastError = (err as Error).message || "Inbound sync failed.";
@@ -79,13 +79,13 @@ async function writeSessionStateToVault(
   session.suppressEventsUntil = Date.now() + Math.max(2_000, session.debounceMs * 2);
   const result = state
     ? await exportVaultFromAppState(state, {
-      documentId: session.documentId,
+      mapId: session.mapId,
       vaultPath: session.vaultPath,
       modelAlias: session.modelAlias ?? null,
       options: session.exportOptions,
     })
     : await exportVaultFromSqlite(dbPath, {
-      documentId: session.documentId,
+      mapId: session.mapId,
       vaultPath: session.vaultPath,
       modelAlias: session.modelAlias ?? null,
       options: session.exportOptions,
@@ -98,7 +98,7 @@ async function writeSessionStateToVault(
 async function runOutboundSync(dbPath: string, session: WatchSession): Promise<void> {
   try {
     await writeSessionStateToVault(dbPath, session);
-    emit("m3e-to-vault", session, "Document saved back to vault.");
+    emit("m3e-to-vault", session, "Map saved back to vault.");
   } catch (err) {
     session.lastError = (err as Error).message || "Outbound sync failed.";
     emit("watch-error", session, session.lastError);
@@ -109,21 +109,21 @@ export function configureVaultWatchEmitter(handler: (event: VaultWatchEvent) => 
   emitEvent = handler;
 }
 
-export function configureVaultWatchDocUpdateEmitter(handler: (documentId: string, savedAt: string) => void): void {
+export function configureVaultWatchMapUpdateEmitter(handler: (mapId: string, savedAt: string) => void): void {
   emitDocUpdate = handler;
 }
 
 export function startVaultWatch(dbPath: string, request: VaultWatchStartRequest): VaultWatchStatus {
-  if (!request.documentId?.trim()) {
-    throw new Error("documentId is required.");
+  if (!request.mapId?.trim()) {
+    throw new Error("mapId is required.");
   }
   const vaultPath = validateVaultPath(request.vaultPath, { mustExist: true });
 
-  stopVaultWatch(request.documentId);
+  stopVaultWatch(request.mapId);
 
   const debounceMs = Math.max(250, request.debounceMs ?? 1000);
   const watcher = fs.watch(vaultPath, { recursive: true }, (_eventType, filename) => {
-    const session = sessions.get(request.documentId);
+    const session = sessions.get(request.mapId);
     if (!session || !isMarkdownFile(filename)) {
       return;
     }
@@ -142,7 +142,7 @@ export function startVaultWatch(dbPath: string, request: VaultWatchStartRequest)
 
   const session: WatchSession = {
     watcher,
-    documentId: request.documentId,
+    mapId: request.mapId,
     vaultPath,
     modelAlias: request.modelAlias ?? null,
     debounceMs,
@@ -156,13 +156,13 @@ export function startVaultWatch(dbPath: string, request: VaultWatchStartRequest)
     lastOutboundAt: null,
     lastError: null,
   };
-  sessions.set(request.documentId, session);
+  sessions.set(request.mapId, session);
   emit("watch-started", session, "Vault watch started.");
-  return getVaultWatchStatus(request.documentId)!;
+  return getVaultWatchStatus(request.mapId)!;
 }
 
-export function stopVaultWatch(documentId: string): VaultWatchStatus | null {
-  const session = sessions.get(documentId);
+export function stopVaultWatch(mapId: string): VaultWatchStatus | null {
+  const session = sessions.get(mapId);
   if (!session) {
     return null;
   }
@@ -173,11 +173,11 @@ export function stopVaultWatch(documentId: string): VaultWatchStatus | null {
     clearTimeout(session.outboundTimer);
   }
   session.watcher.close();
-  sessions.delete(documentId);
+  sessions.delete(mapId);
   emit("watch-stopped", session, "Vault watch stopped.");
   return {
     ok: true,
-    documentId,
+    mapId,
     vaultPath: session.vaultPath,
     integrationMode: LIVE_MODE,
     sourceOfTruth: LIVE_SOURCE_OF_TRUTH,
@@ -188,8 +188,8 @@ export function stopVaultWatch(documentId: string): VaultWatchStatus | null {
   };
 }
 
-export function handleDocumentSavedForVaultWatch(dbPath: string, documentId: string): void {
-  const session = sessions.get(documentId);
+export function handleMapSavedForVaultWatch(dbPath: string, mapId: string): void {
+  const session = sessions.get(mapId);
   if (!session) {
     return;
   }
@@ -202,12 +202,12 @@ export function handleDocumentSavedForVaultWatch(dbPath: string, documentId: str
   }, session.debounceMs);
 }
 
-export async function writeDocumentToVaultNow(
+export async function writeMapToVaultNow(
   dbPath: string,
-  documentId: string,
+  mapId: string,
   state?: AppState,
 ): Promise<{ savedAt: string; vaultPath: string; integrationMode: "obsidian-live"; sourceOfTruth: "vault-md" } | null> {
-  const session = sessions.get(documentId);
+  const session = sessions.get(mapId);
   if (!session) {
     return null;
   }
@@ -217,7 +217,7 @@ export async function writeDocumentToVaultNow(
   }
   try {
     const savedAt = await writeSessionStateToVault(dbPath, session, state);
-    emit("m3e-to-vault", session, "Document saved to vault markdown.");
+    emit("m3e-to-vault", session, "Map saved to vault markdown.");
     return {
       savedAt,
       vaultPath: session.vaultPath,
@@ -231,14 +231,14 @@ export async function writeDocumentToVaultNow(
   }
 }
 
-export function getVaultWatchStatus(documentId: string): VaultWatchStatus | null {
-  const session = sessions.get(documentId);
+export function getVaultWatchStatus(mapId: string): VaultWatchStatus | null {
+  const session = sessions.get(mapId);
   if (!session) {
     return null;
   }
   return {
     ok: true,
-    documentId: session.documentId,
+    mapId: session.mapId,
     vaultPath: session.vaultPath,
     integrationMode: LIVE_MODE,
     sourceOfTruth: LIVE_SOURCE_OF_TRUTH,
@@ -252,7 +252,7 @@ export function getVaultWatchStatus(documentId: string): VaultWatchStatus | null
 export function listVaultWatchStatuses(): VaultWatchStatus[] {
   return [...sessions.values()].map((session) => ({
     ok: true,
-    documentId: session.documentId,
+    mapId: session.mapId,
     vaultPath: session.vaultPath,
     integrationMode: LIVE_MODE,
     sourceOfTruth: LIVE_SOURCE_OF_TRUTH,
@@ -274,10 +274,10 @@ async function processPendingVaultChanges(dbPath: string, session: WatchSession)
   const changedPaths = relativePaths.filter((relativePath) => !deletedPaths.includes(relativePath));
 
   if (deletedPaths.length > 0) {
-    const savedAt = softDeleteMissingVaultFiles(dbPath, session.documentId, deletedPaths);
+    const savedAt = softDeleteMissingVaultFiles(dbPath, session.mapId, deletedPaths);
     if (savedAt) {
       session.lastInboundAt = savedAt;
-      emitDocUpdate?.(session.documentId, savedAt);
+      emitDocUpdate?.(session.mapId, savedAt);
       emit("vault-to-m3e", session, `Vault deletion synced (${deletedPaths.length} file(s) kept as missing placeholders).`);
     }
   }
@@ -287,9 +287,9 @@ async function processPendingVaultChanges(dbPath: string, session: WatchSession)
   }
 }
 
-function softDeleteMissingVaultFiles(dbPath: string, documentId: string, relativePaths: string[]): string | null {
+function softDeleteMissingVaultFiles(dbPath: string, mapId: string, relativePaths: string[]): string | null {
   const normalizedTargets = new Set(relativePaths.map((relativePath) => relativePath.replace(/\\/g, "/")));
-  const model = RapidMvpModel.loadFromSqlite(dbPath, documentId);
+  const model = RapidMvpModel.loadFromSqlite(dbPath, mapId);
   let changed = false;
   const missingAt = nowIso();
   const byPath = new Map<string, typeof model.state.nodes[string]>();
@@ -342,6 +342,6 @@ function softDeleteMissingVaultFiles(dbPath: string, documentId: string, relativ
     return null;
   }
 
-  model.saveToSqlite(dbPath, documentId);
-  return RapidMvpModel.loadSavedDocFromSqlite(dbPath, documentId).savedAt;
+  model.saveToSqlite(dbPath, mapId);
+  return RapidMvpModel.loadSavedMapFromSqlite(dbPath, mapId).savedAt;
 }

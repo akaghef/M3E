@@ -41,11 +41,11 @@ export interface AppState {
   linearPanelWidth?: number;
 }
 
-export interface SavedDoc {
+export interface SavedMap {
   version: 1;
   savedAt: string;
   state: AppState;
-  docVersion?: number;
+  mapVersion?: number;
 }
 
 export type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
@@ -96,7 +96,7 @@ export interface VaultImportOptions {
 
 export interface VaultImportRequest {
   vaultPath: string;
-  documentId?: string;
+  mapId?: string;
   modelAlias?: string | null;
   options?: VaultImportOptions;
 }
@@ -121,7 +121,7 @@ export interface VaultImportedFileSummary {
 
 export interface VaultImportResult {
   ok: true;
-  documentId: string;
+  mapId: string;
   savedAt: string;
   fileCount: number;
   folderCount: number;
@@ -138,7 +138,7 @@ export interface VaultExportOptions {
 }
 
 export interface VaultExportRequest {
-  documentId: string;
+  mapId: string;
   vaultPath: string;
   nodeId?: string;
   modelAlias?: string | null;
@@ -158,7 +158,7 @@ export interface VaultExportProgress {
 
 export interface VaultExportResult {
   ok: true;
-  documentId: string;
+  mapId: string;
   vaultPath: string;
   fileCount: number;
   folderCount: number;
@@ -167,7 +167,7 @@ export interface VaultExportResult {
 }
 
 export interface VaultWatchStartRequest {
-  documentId: string;
+  mapId: string;
   vaultPath: string;
   modelAlias?: string | null;
   debounceMs?: number;
@@ -176,7 +176,7 @@ export interface VaultWatchStartRequest {
 }
 
 export interface VaultWatchStopRequest {
-  documentId: string;
+  mapId: string;
 }
 
 export type VaultWatchEventType =
@@ -188,7 +188,7 @@ export type VaultWatchEventType =
 
 export interface VaultWatchEvent {
   type: VaultWatchEventType;
-  documentId: string;
+  mapId: string;
   vaultPath: string;
   timestamp: string;
   detail?: string;
@@ -196,7 +196,7 @@ export interface VaultWatchEvent {
 
 export interface VaultWatchStatus {
   ok: true;
-  documentId: string;
+  mapId: string;
   vaultPath: string;
   integrationMode: "obsidian-live";
   sourceOfTruth: "vault-md";
@@ -233,11 +233,11 @@ export interface AiStatusResponse {
 export interface PushResult {
   ok: boolean;
   savedAt: string;
-  documentId: string;
+  mapId: string;
   forced: boolean;
   conflict?: boolean;
   cloudSavedAt?: string | null;
-  cloudDocVersion?: number;
+  cloudMapVersion?: number;
   remoteState?: AppState;
   error?: string;
 }
@@ -247,8 +247,8 @@ export interface PullResult {
   version: number;
   savedAt: string;
   state: AppState;
-  documentId: string;
-  docVersion?: number;
+  mapId: string;
+  mapVersion?: number;
   error?: string;
 }
 
@@ -256,16 +256,16 @@ export interface SyncStatus {
   ok: boolean;
   enabled: boolean;
   mode: string;
-  documentId: string;
+  mapId: string;
   exists: boolean;
   cloudSavedAt: string | null;
-  cloudDocVersion?: number | null;
+  cloudMapVersion?: number | null;
   lastSyncedAt: string | null;
 }
 
 export interface CloudSyncTransport {
   readonly mode: string;
-  push(mapId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
+  push(mapId: string, map: SavedMap, baseSavedAt: string | null, force: boolean, baseMapVersion?: number | null): Promise<PushResult>;
   pull(mapId: string): Promise<PullResult>;
   status(mapId: string): Promise<SyncStatus>;
 }
@@ -330,7 +330,7 @@ export interface FlashApproveRequest {
 }
 
 export interface AiSubagentRequest {
-  documentId: string;
+  mapId: string;
   scopeId: string;
   provider?: string | null;
   modelAlias?: string | null;
@@ -370,7 +370,7 @@ export interface AiSubagentSuccessResponse {
   };
   meta: {
     scopeId: string;
-    documentId: string;
+    mapId: string;
     latencyMs: number;
   };
 }

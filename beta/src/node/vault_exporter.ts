@@ -242,7 +242,7 @@ export async function exportVaultFromAppState(
 
   return {
     ok: true,
-    documentId: request.documentId,
+    mapId: request.mapId,
     vaultPath: outputRoot,
     fileCount: exportPlan.files.length,
     folderCount: exportPlan.folders.length,
@@ -256,6 +256,6 @@ export async function exportVaultFromSqlite(
   request: VaultExportRequest,
   hooks?: { onProgress?: (progress: VaultExportProgress) => void },
 ): Promise<VaultExportResult> {
-  const model = RapidMvpModel.loadFromSqlite(dbPath, request.documentId);
+  const model = RapidMvpModel.loadFromSqlite(dbPath, request.mapId);
   return exportVaultFromAppState(model.toJSON(), request, hooks);
 }

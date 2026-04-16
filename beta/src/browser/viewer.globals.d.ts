@@ -50,7 +50,7 @@ interface AppState {
   linearPanelWidth?: number;
 }
 
-interface SavedDoc {
+interface SavedMap {
   version: 1;
   savedAt: string;
   state: AppState;
@@ -111,7 +111,7 @@ interface AiStatusResponse {
 }
 
 interface AiSubagentRequest {
-  documentId: string;
+  mapId: string;
   scopeId: string;
   provider?: string | null;
   mode?: "proposal" | "direct-result";
@@ -149,7 +149,7 @@ interface AiSubagentSuccessResponse {
   };
   meta: {
     scopeId: string;
-    documentId: string;
+    mapId: string;
     latencyMs: number;
   };
 }

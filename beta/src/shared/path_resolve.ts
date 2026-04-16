@@ -50,7 +50,7 @@ export function resolveNodePath(
 ): PathResolveResult {
   const root = state.nodes[state.rootId];
   if (!root) {
-    return { ok: false, error: { code: "PATH_INVALID", message: "Document has no root node." } };
+    return { ok: false, error: { code: "PATH_INVALID", message: "Map has no root node." } };
   }
   if (!Array.isArray(segments) || segments.length === 0) {
     return { ok: false, error: { code: "PATH_INVALID", message: "Empty path." } };

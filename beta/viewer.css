@@ -624,6 +624,47 @@
         pointer-events: none;
       }
 
+      /* ── m3e: status badges ── */
+      .status-badge {
+        opacity: 0.85;
+        pointer-events: none;
+      }
+      .status-badge-text {
+        fill: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        pointer-events: none;
+      }
+
+      /* Status-specific node styles */
+      .node-hit.status-placeholder {
+        fill: rgba(153, 153, 153, 0.06);
+      }
+      .node-hit.status-confirmed {
+        fill: rgba(45, 140, 78, 0.06);
+      }
+      .node-hit.status-contested {
+        fill: rgba(217, 64, 64, 0.06);
+      }
+      .node-hit.status-frozen {
+        fill: rgba(74, 127, 181, 0.06);
+      }
+      .node-hit.status-active {
+        fill: rgba(232, 155, 26, 0.08);
+      }
+      .node-hit.status-review {
+        fill: rgba(155, 89, 182, 0.06);
+      }
+
+      .label-node.status-placeholder {
+        opacity: 0.55;
+      }
+      .label-node.status-frozen {
+        opacity: 0.7;
+      }
+
       .inline-node-editor {
         position: absolute;
         z-index: 20;
@@ -1980,7 +2021,7 @@
         box-shadow: 0 0 0 3px rgba(122, 53, 255, 0.14);
       }
 
-      .home-doc-list {
+      .home-map-list {
         display: flex;
         flex-direction: column;
         gap: 0;
@@ -1990,7 +2031,7 @@
         overflow: hidden;
       }
 
-      .home-doc-row {
+      .home-map-row {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -1998,19 +2039,19 @@
         border-bottom: 1px solid #f0f0f3;
       }
 
-      .home-doc-row:last-child {
+      .home-map-row:last-child {
         border-bottom: none;
       }
 
-      .home-doc-row:hover {
+      .home-map-row:hover {
         background: #fafafb;
       }
 
-      .home-doc-row.is-archived {
+      .home-map-row.is-archived {
         opacity: 0.72;
       }
 
-      .home-doc-pin {
+      .home-map-pin {
         width: 28px;
         height: 28px;
         border: none;
@@ -2022,21 +2063,21 @@
         border-radius: 6px;
       }
 
-      .home-doc-pin:hover {
+      .home-map-pin:hover {
         background: rgba(240, 173, 0, 0.14);
         color: #f0ad00;
       }
 
-      .home-doc-pin.is-pinned {
+      .home-map-pin.is-pinned {
         color: #f0ad00;
       }
 
-      .home-doc-icon {
+      .home-map-icon {
         font-size: 18px;
         flex-shrink: 0;
       }
 
-      .home-doc-body {
+      .home-map-body {
         flex: 1;
         min-width: 0;
         display: flex;
@@ -2044,7 +2085,7 @@
         gap: 2px;
       }
 
-      .home-doc-label {
+      .home-map-label {
         font-size: 15px;
         font-weight: 600;
         color: var(--ink);
@@ -2054,12 +2095,12 @@
         white-space: nowrap;
       }
 
-      .home-doc-label:hover {
+      .home-map-label:hover {
         color: var(--accent);
         text-decoration: underline;
       }
 
-      .home-doc-meta {
+      .home-map-meta {
         font-size: 12px;
         color: #888;
         overflow: hidden;
@@ -2067,14 +2108,14 @@
         white-space: nowrap;
       }
 
-      .home-doc-actions {
+      .home-map-actions {
         display: flex;
         align-items: center;
         gap: 4px;
         flex-shrink: 0;
       }
 
-      .home-doc-action {
+      .home-map-action {
         padding: 5px 10px;
         border: 1px solid transparent;
         border-radius: 6px;
@@ -2085,26 +2126,26 @@
         color: #555;
       }
 
-      .home-doc-action:hover {
+      .home-map-action:hover {
         background: #f0f0f3;
         border-color: #ddd;
       }
 
-      .home-doc-action.primary {
+      .home-map-action.primary {
         border-color: var(--accent);
         color: var(--accent);
         font-weight: 600;
       }
 
-      .home-doc-action.primary:hover {
+      .home-map-action.primary:hover {
         background: var(--accent-soft);
       }
 
-      .home-doc-action.danger {
+      .home-map-action.danger {
         color: #c33;
       }
 
-      .home-doc-action.danger:hover {
+      .home-map-action.danger:hover {
         background: rgba(204, 51, 51, 0.08);
         border-color: #d88;
       }
@@ -2153,7 +2194,7 @@
         font-size: 12px;
       }
 
-      .home-doc-list--archived {
+      .home-map-list--archived {
         margin-top: 10px;
       }
 
@@ -2231,3 +2272,55 @@
       .viewer-logo:hover {
         background: var(--accent-soft);
       }
+
+      /* ── m3e: table view ── */
+      .m3e-table-container {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        overflow: auto;
+        max-height: 780px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      }
+      .m3e-table-view {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .m3e-table-view th {
+        background: #f5f5f7;
+        border-bottom: 2px solid #ddd;
+        padding: 6px 10px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #555;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      .m3e-table-view td {
+        padding: 5px 10px;
+        border-bottom: 1px solid #eee;
+        color: #333;
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .m3e-table-view tr:hover {
+        background: rgba(106, 53, 255, 0.04);
+      }
+      .m3e-table-view .m3e-table-name {
+        font-weight: 500;
+        color: #232323;
+      }
+      .m3e-table-view tr.status-placeholder td { opacity: 0.5; }
+      .m3e-table-view tr.status-confirmed td:first-child { border-left: 3px solid #2d8c4e; }
+      .m3e-table-view tr.status-contested td:first-child { border-left: 3px solid #d94040; }
+      .m3e-table-view tr.status-frozen td { opacity: 0.7; }
+      .m3e-table-view tr.status-active td:first-child { border-left: 3px solid #e89b1a; }
+      .m3e-table-view tr.status-review td:first-child { border-left: 3px solid #9b59b6; }

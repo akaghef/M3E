@@ -39,7 +39,7 @@ async function createBlankDoc(label) {
 async function listDocs(includeArchived = false) {
   const qs = includeArchived ? "?includeArchived=true" : "";
   const { payload } = await request(`${baseUrl}/api/maps${qs}`);
-  return payload.docs;
+  return payload.maps;
 }
 
 beforeAll(async () => {
@@ -60,7 +60,7 @@ afterAll(async () => {
   fs.rmSync(tempDataDir, { recursive: true, force: true });
 });
 
-test("PATCH /api/maps/:id/pin with pinned=true marks the doc pinned", async () => {
+test("PATCH /api/maps/:id/pin with pinned=true marks the map pinned", async () => {
   const id = await createBlankDoc("pin-a");
   const res = await request(`${baseUrl}/api/maps/${id}/pin`, {
     method: "PATCH",
@@ -71,10 +71,10 @@ test("PATCH /api/maps/:id/pin with pinned=true marks the doc pinned", async () =
   expect(res.payload.ok).toBe(true);
   expect(res.payload.pinned).toBe(true);
 
-  const docs = await listDocs();
-  const doc = docs.find((d) => d.id === id);
-  expect(doc).toBeTruthy();
-  expect(doc.pinned).toBe(true);
+  const maps = await listDocs();
+  const map = maps.find((d) => d.id === id);
+  expect(map).toBeTruthy();
+  expect(map.pinned).toBe(true);
 });
 
 test("PATCH /api/maps/:id/pin with pinned=false un-pins", async () => {
@@ -92,9 +92,9 @@ test("PATCH /api/maps/:id/pin with pinned=false un-pins", async () => {
   expect(res.response.status).toBe(200);
   expect(res.payload.pinned).toBe(false);
 
-  const docs = await listDocs();
-  const doc = docs.find((d) => d.id === id);
-  expect(doc.pinned).toBe(false);
+  const maps = await listDocs();
+  const map = maps.find((d) => d.id === id);
+  expect(map.pinned).toBe(false);
 });
 
 test("POST /api/maps/:id/pin also works", async () => {
@@ -108,7 +108,7 @@ test("POST /api/maps/:id/pin also works", async () => {
   expect(res.payload.pinned).toBe(true);
 });
 
-test("pin on nonexistent doc returns 404 MAP_NOT_FOUND", async () => {
+test("pin on nonexistent map returns 404 MAP_NOT_FOUND", async () => {
   const res = await request(`${baseUrl}/api/maps/does-not-exist/pin`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

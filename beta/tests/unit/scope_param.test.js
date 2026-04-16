@@ -11,7 +11,7 @@ function makeTempDb() {
 }
 
 /**
- * Build a doc:
+ * Build a map:
  *     root
  *     ├── A
  *     │   ├── A1
@@ -39,9 +39,9 @@ test("readScopedState returns subtree rooted at scope", () => {
   const ids = seedDoc(dbPath, "d1");
   const result = RapidMvpModel.readScopedState(dbPath, "d1", ids.a);
   expect(result.ok).toBe(true);
-  expect(result.doc.state.rootId).toBe(ids.a);
-  expect(Object.keys(result.doc.state.nodes).sort()).toEqual([ids.a, ids.a1, ids.a2].sort());
-  expect(result.doc.state.nodes[ids.a].parentId).toBe(null);
+  expect(result.map.state.rootId).toBe(ids.a);
+  expect(Object.keys(result.map.state.nodes).sort()).toEqual([ids.a, ids.a1, ids.a2].sort());
+  expect(result.map.state.nodes[ids.a].parentId).toBe(null);
   expect(result.nodeCount).toBe(3);
 });
 
@@ -50,7 +50,7 @@ test("readScopedState excludes links crossing subtree boundary", () => {
   const ids = seedDoc(dbPath, "d1");
   const result = RapidMvpModel.readScopedState(dbPath, "d1", ids.a);
   expect(result.ok).toBe(true);
-  const links = Object.values(result.doc.state.links ?? {});
+  const links = Object.values(result.map.state.links ?? {});
   expect(links.length).toBe(1);
   expect(links[0].label).toBe("inside-A");
 });
@@ -60,8 +60,8 @@ test("readScopedState depth=0 returns only the scope node", () => {
   const ids = seedDoc(dbPath, "d1");
   const result = RapidMvpModel.readScopedState(dbPath, "d1", ids.a, 0);
   expect(result.ok).toBe(true);
-  expect(Object.keys(result.doc.state.nodes)).toEqual([ids.a]);
-  expect(result.doc.state.nodes[ids.a].children).toEqual([]);
+  expect(Object.keys(result.map.state.nodes)).toEqual([ids.a]);
+  expect(result.map.state.nodes[ids.a].children).toEqual([]);
 });
 
 test("readScopedState returns SCOPE_NOT_FOUND for missing scope", () => {

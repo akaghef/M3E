@@ -53,7 +53,7 @@ test("backup list returns empty array when no backups exist", async () => {
   const res = await requestJson(`${baseUrl}/api/sync/backups/no-backups`);
   expect(res.response.status).toBe(200);
   expect(res.payload.ok).toBe(true);
-  expect(res.payload.documentId).toBe("no-backups");
+  expect(res.payload.mapId).toBe("no-backups");
   expect(res.payload.backups).toEqual([]);
 });
 
@@ -184,7 +184,7 @@ test("get backup returns full state", async () => {
 });
 
 test("get nonexistent backup returns 404", async () => {
-  const get = await requestJson(`${baseUrl}/api/sync/backups/doc/nonexistent-id`);
+  const get = await requestJson(`${baseUrl}/api/sync/backups/map/nonexistent-id`);
   expect(get.response.status).toBe(404);
   expect(get.payload.ok).toBe(false);
 });
@@ -217,7 +217,7 @@ test("restore backup saves state to SQLite", async () => {
   expect(restore.payload.ok).toBe(true);
   expect(restore.payload.restored).toBe(true);
   expect(restore.payload.backupId).toBe(backupId);
-  expect(restore.payload.documentId).toBe(mapId);
+  expect(restore.payload.mapId).toBe(mapId);
   expect(restore.payload.savedAt).toBeTruthy();
 });
 

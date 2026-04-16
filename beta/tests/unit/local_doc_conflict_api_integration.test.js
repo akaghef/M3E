@@ -9,13 +9,13 @@ let dataDir;
 let RapidMvpModel;
 
 function tmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "m3e-doc-conflict-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "m3e-map-conflict-"));
 }
 
 beforeAll(async () => {
   dataDir = tmpDir();
   process.env.M3E_DATA_DIR = dataDir;
-  process.env.M3E_DB_FILE = "doc-conflict.sqlite";
+  process.env.M3E_DB_FILE = "map-conflict.sqlite";
 
   const startViewerPath = require.resolve("../../dist/node/start_viewer.js");
   delete require.cache[startViewerPath];
@@ -41,7 +41,7 @@ test("POST /api/maps/:id returns 409 when baseSavedAt is stale", async () => {
   const model = new RapidMvpModel("Root");
   model.addNode(model.state.rootId, "Alpha");
 
-  const firstSave = await fetch(`${baseUrl}/api/maps/conflict-doc`, {
+  const firstSave = await fetch(`${baseUrl}/api/maps/conflict-map`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: model.toJSON() }),
@@ -51,7 +51,7 @@ test("POST /api/maps/:id returns 409 when baseSavedAt is stale", async () => {
   expect(typeof firstPayload.savedAt).toBe("string");
 
   model.addNode(model.state.rootId, "Beta");
-  const secondSave = await fetch(`${baseUrl}/api/maps/conflict-doc`, {
+  const secondSave = await fetch(`${baseUrl}/api/maps/conflict-map`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
@@ -64,7 +64,7 @@ test("POST /api/maps/:id returns 409 when baseSavedAt is stale", async () => {
   expect(typeof secondPayload.savedAt).toBe("string");
 
   model.addNode(model.state.rootId, "Gamma");
-  const staleSave = await fetch(`${baseUrl}/api/maps/conflict-doc`, {
+  const staleSave = await fetch(`${baseUrl}/api/maps/conflict-map`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({

@@ -1,4 +1,4 @@
-import type { AppState, SavedDoc } from "./types";
+import type { AppState, SavedMap } from "./types";
 
 /**
  * Structured error returned for scope-related failures on /api/maps/{mapId}.
@@ -66,7 +66,7 @@ export interface ScopedReadResponse {
 export interface ScopedWriteResponse {
   ok: true;
   savedAt: string;
-  documentId: string;
+  mapId: string;
   scope: {
     rootId: string;
     replacedNodeCount: number;
@@ -75,7 +75,7 @@ export interface ScopedWriteResponse {
 
 /** Internal result type for readScopedState / writeScopedState helpers. */
 export type ScopedReadResult =
-  | { ok: true; doc: SavedDoc; nodeCount: number }
+  | { ok: true; map: SavedMap; nodeCount: number }
   | { ok: false; error: ScopeErrorPayload["error"] };
 
 export type ScopedWriteResult =

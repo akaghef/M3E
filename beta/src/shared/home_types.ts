@@ -12,7 +12,7 @@
 
 /** Summary row returned by `GET /api/maps`. One per map. */
 export interface MapSummary {
-  /** Map id (primary key in the documents table). */
+  /** Map id (primary key in the maps table). */
   id: string;
   /** Display label — root node's text when available, else id. */
   label: string;

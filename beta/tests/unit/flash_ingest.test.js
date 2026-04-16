@@ -146,13 +146,13 @@ test("parsePlainTextToNodes: whitespace only", () => {
 
 test("ingestSingle: creates draft from text", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Quick note",
   });
 
   assert.ok(draft.id.startsWith("d_"));
-  assert.equal(draft.mapId, "test-doc");
+  assert.equal(draft.mapId, "test-map");
   assert.equal(draft.sourceType, "text");
   assert.equal(draft.status, "pending");
   assert.equal(draft.structured.nodes.length, 1);
@@ -162,13 +162,13 @@ test("ingestSingle: creates draft from text", () => {
 
 test("ingestSingle: creates draft from markdown", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "markdown",
-    content: "# My Doc\n## Section A\n- point 1\n- point 2",
+    content: "# My Map\n## Section A\n- point 1\n- point 2",
   });
 
   assert.equal(draft.sourceType, "markdown");
-  assert.equal(draft.title, "My Doc");
+  assert.equal(draft.title, "My Map");
   assert.equal(draft.structured.nodes.length, 4);
 });
 
@@ -188,7 +188,7 @@ test("ingestSingle: throws on unsupported sourceType", () => {
 
 test("ingestSingle: stores draft in memory", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Test",
   });
@@ -215,9 +215,9 @@ test("ingestSingle: uses targetNodeId as suggestedParentId", () => {
 
 test("ingestBatch: creates multiple drafts", () => {
   const results = ingestBatch([
-    { mapId: "doc1", sourceType: "text", content: "First" },
-    { mapId: "doc1", sourceType: "text", content: "Second" },
-    { mapId: "doc2", sourceType: "markdown", content: "# Third" },
+    { mapId: "map1", sourceType: "text", content: "First" },
+    { mapId: "map1", sourceType: "text", content: "Second" },
+    { mapId: "map2", sourceType: "markdown", content: "# Third" },
   ]);
 
   assert.equal(results.length, 3);
@@ -272,7 +272,7 @@ test("deleteDraft: returns false for nonexistent", () => {
 
 test("approveDraft: full approval adds nodes to model", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "markdown",
     content: "# Topic\n- Point A\n- Point B",
   });
@@ -299,7 +299,7 @@ test("approveDraft: full approval adds nodes to model", () => {
 
 test("approveDraft: partial approval with ancestor auto-include", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "markdown",
     content: "# Root Topic\n## Sub Topic\n- Detail",
   });
@@ -324,7 +324,7 @@ test("approveDraft: partial approval with ancestor auto-include", () => {
 
 test("approveDraft: with edits adjusts text and confidence", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Original text",
   });
@@ -348,7 +348,7 @@ test("approveDraft: with edits adjusts text and confidence", () => {
 
 test("approveDraft: throws for non-pending draft", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Test",
   });
@@ -373,12 +373,12 @@ test("approveDraft: throws for nonexistent draft", () => {
 
 test("approveDraft: _inbox node is created once and reused", () => {
   const draft1 = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "First",
   });
   const draft2 = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Second",
   });
@@ -401,7 +401,7 @@ test("approveDraft: _inbox node is created once and reused", () => {
 
 test("approveDraft: confidence is 0.7 for manual input", () => {
   const draft = ingestSingle({
-    mapId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Manual note",
   });

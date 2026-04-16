@@ -341,7 +341,7 @@ export async function importVaultToAppState(
 ): Promise<VaultImportResult> {
   const vaultPath = validateVaultPath(request.vaultPath, { mustExist: true });
 
-  const documentId = request.documentId?.trim() || buildDefaultDocumentId(vaultPath);
+  const mapId = request.mapId?.trim() || buildDefaultDocumentId(vaultPath);
   const nextId = createIdFactory();
   const rootId = nextId();
   const rootNode = createFolderNode(rootId, null, path.basename(vaultPath) || vaultPath, "folder", "");
@@ -419,12 +419,12 @@ export async function importVaultToAppState(
   hooks?.onProgress?.({
     phase: "persist",
     total: ctx.pendingFiles.length,
-    message: `Persisting imported vault as ${documentId}.`,
+    message: `Persisting imported vault as ${mapId}.`,
   });
 
   return {
     ok: true,
-    documentId,
+    mapId,
     savedAt: "",
     fileCount: ctx.pendingFiles.length,
     folderCount: ctx.folderCount,
@@ -443,7 +443,7 @@ export async function importVaultToSqlite(
 ): Promise<VaultImportResult> {
   const result = await importVaultToAppState(request, hooks);
   const model = RapidMvpModel.fromJSON(result.state);
-  model.saveToSqlite(dbPath, result.documentId);
+  model.saveToSqlite(dbPath, result.mapId);
   return {
     ...result,
     savedAt: new Date().toISOString(),

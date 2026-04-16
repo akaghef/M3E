@@ -74,9 +74,9 @@ const VIEWER_TUNING: ViewerTuning = {
     topPad: 10,
     // Minimum hit area height for node interaction.
     nodeHitHeight: 38,
-    // Smallest canvas width even for tiny documents.
+    // Smallest canvas width even for tiny maps.
     minCanvasWidth: 1400,
-    // Smallest canvas height even for tiny documents.
+    // Smallest canvas height even for tiny maps.
     minCanvasHeight: 760,
     // Extra canvas space on the right to avoid clipping during navigation.
     canvasRightPad: 220,

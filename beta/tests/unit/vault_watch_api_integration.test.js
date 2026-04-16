@@ -49,7 +49,7 @@ beforeAll(async () => {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
       vaultPath: vaultDir,
-      documentId: "vault-watch-doc",
+      mapId: "vault-watch-map",
       options: { skipAiTransform: true },
     }),
   }).then((response) => response.text());
@@ -70,7 +70,7 @@ test("watch start/status/stop lifecycle works", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "vault-watch-doc",
+      mapId: "vault-watch-map",
       vaultPath: vaultDir,
       debounceMs: 300,
       importOptions: { skipAiTransform: true },
@@ -82,18 +82,18 @@ test("watch start/status/stop lifecycle works", async () => {
   expect(started.payload.integrationMode).toBe("obsidian-live");
   expect(started.payload.sourceOfTruth).toBe("vault-md");
 
-  const status = await requestJson(`${baseUrl}/api/vault/status?documentId=vault-watch-doc`);
+  const status = await requestJson(`${baseUrl}/api/vault/status?mapId=vault-watch-map`);
   expect(status.response.status).toBe(200);
   expect(status.payload.running).toBe(true);
   expect(status.payload.integrationMode).toBe("obsidian-live");
   expect(status.payload.sourceOfTruth).toBe("vault-md");
 
   const dbPath = path.join(dataDir, "watch.sqlite");
-  const model = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
+  const model = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-map");
   const fileNode = Object.values(model.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
-  fileNode.details = "Changed from doc save.";
+  fileNode.details = "Changed from map save.";
 
-  const saved = await requestJson(`${baseUrl}/api/maps/vault-watch-doc`, {
+  const saved = await requestJson(`${baseUrl}/api/maps/vault-watch-map`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: model.toJSON() }),
@@ -104,12 +104,12 @@ test("watch start/status/stop lifecycle works", async () => {
   expect(saved.payload.vaultPath).toBe(vaultDir);
 
   const exported = fs.readFileSync(path.join(vaultDir, "notes", "alpha.md"), "utf8");
-  expect(exported).toContain("Changed from doc save.");
+  expect(exported).toContain("Changed from map save.");
 
   await new Promise((resolve) => setTimeout(resolve, 2200));
   fs.rmSync(path.join(vaultDir, "notes", "alpha.md"));
   await new Promise((resolve) => setTimeout(resolve, 1200));
-  const afterDelete = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
+  const afterDelete = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-map");
   const deletedNode = Object.values(afterDelete.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
   expect(deletedNode).toBeTruthy();
   expect(deletedNode.attributes["vault:status"]).toBe("missing");
@@ -120,7 +120,7 @@ test("watch start/status/stop lifecycle works", async () => {
   const stopped = await requestJson(`${baseUrl}/api/vault/watch`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ documentId: "vault-watch-doc" }),
+    body: JSON.stringify({ mapId: "vault-watch-map" }),
   });
   expect(stopped.response.status).toBe(200);
   expect(stopped.payload.running).toBe(false);
@@ -131,7 +131,7 @@ test("watch imports frontmatter and wikilink content changes from vault edits", 
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "vault-watch-doc",
+      mapId: "vault-watch-map",
       vaultPath: vaultDir,
       debounceMs: 300,
       importOptions: { skipAiTransform: true },
@@ -155,7 +155,7 @@ Updated body with [[notes/beta|Beta Link]].
   await new Promise((resolve) => setTimeout(resolve, 1800));
 
   const dbPath = path.join(dataDir, "watch.sqlite");
-  const afterInbound = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-doc");
+  const afterInbound = RapidMvpModel.loadFromSqlite(dbPath, "vault-watch-map");
   const alphaNode = Object.values(afterInbound.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
   const betaNode = Object.values(afterInbound.state.nodes).find((node) => node.attributes["vault:path"] === "notes/beta.md");
   expect(alphaNode).toBeTruthy();
@@ -175,7 +175,7 @@ Updated body with [[notes/beta|Beta Link]].
   const stopped = await requestJson(`${baseUrl}/api/vault/watch`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ documentId: "vault-watch-doc" }),
+    body: JSON.stringify({ mapId: "vault-watch-map" }),
   });
   expect(stopped.response.status).toBe(200);
   expect(stopped.payload.running).toBe(false);

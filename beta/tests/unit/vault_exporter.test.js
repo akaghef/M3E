@@ -27,12 +27,12 @@ test("exportVaultFromSqlite writes markdown files and preserves wikilinks", asyn
     const dbPath = path.join(dataDir, "export.sqlite");
     await importVaultToSqlite(dbPath, {
       vaultPath: sourceVault,
-      documentId: "vault-export-doc",
+      mapId: "vault-export-map",
       options: { skipAiTransform: true },
     });
 
     const result = await exportVaultFromSqlite(dbPath, {
-      documentId: "vault-export-doc",
+      mapId: "vault-export-map",
       vaultPath: outVault,
       options: { skipAiTransform: true },
     });
@@ -74,12 +74,12 @@ Missing [[ghost]].
     const dbPath = path.join(dataDir, "export-fidelity.sqlite");
     await importVaultToSqlite(dbPath, {
       vaultPath: sourceVault,
-      documentId: "vault-export-fidelity-doc",
+      mapId: "vault-export-fidelity-map",
       options: { skipAiTransform: true },
     });
 
     const result = await exportVaultFromSqlite(dbPath, {
-      documentId: "vault-export-fidelity-doc",
+      mapId: "vault-export-fidelity-map",
       vaultPath: outVault,
       options: { skipAiTransform: true },
     });

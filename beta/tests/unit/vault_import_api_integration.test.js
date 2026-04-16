@@ -67,13 +67,13 @@ afterAll(async () => {
   if (dataDir) fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
-test("POST /api/vault/import streams progress and persists document", async () => {
+test("POST /api/vault/import streams progress and persists map", async () => {
   const response = await fetch(`${baseUrl}/api/vault/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
       vaultPath: vaultDir,
-      documentId: "vault-api-doc",
+      mapId: "vault-api-map",
     }),
   });
 
@@ -86,11 +86,11 @@ test("POST /api/vault/import streams progress and persists document", async () =
 
   const complete = events.find((entry) => entry.event === "vault-import-complete");
   expect(complete).toBeTruthy();
-  expect(complete.data.documentId).toBe("vault-api-doc");
+  expect(complete.data.mapId).toBe("vault-api-map");
   expect(complete.data.fileCount).toBe(2);
 
   const dbPath = path.join(dataDir, "vault-api.sqlite");
-  const loaded = RapidMvpModel.loadFromSqlite(dbPath, "vault-api-doc");
+  const loaded = RapidMvpModel.loadFromSqlite(dbPath, "vault-api-map");
   expect(loaded.validate()).toEqual([]);
   expect(Object.values(loaded.state.nodes).some((node) => node.text === "index")).toBe(true);
   expect(Object.values(loaded.state.nodes).some((node) => node.text === "child")).toBe(true);

@@ -19,8 +19,8 @@ async function requestJson(url, init) {
 }
 
 function seedDoc(mapId) {
-  // Build a minimal valid state and POST it via the whole-doc API so the
-  // document row exists in SQLite.
+  // Build a minimal valid state and POST it via the whole-map API so the
+  // map row exists in SQLite.
   const model = new RapidMvpModel("Root");
   const childId = model.addNode(model.state.rootId, "Child A");
   return { state: model.toJSON(), rootId: model.state.rootId, childId };
@@ -133,9 +133,9 @@ test("DELETE clears the entry", async () => {
   );
   expect(get.payload.text).toBe("");
 
-  // Verify the key was removed (not just set to "") by inspecting the doc state.
-  const docGet = await requestJson(`${baseUrl}/api/maps/${mapId}`);
-  const map = docGet.payload.state.linearNotesByScope ?? {};
+  // Verify the key was removed (not just set to "") by inspecting the map state.
+  const mapGet = await requestJson(`${baseUrl}/api/maps/${mapId}`);
+  const map = mapGet.payload.state.linearNotesByScope ?? {};
   expect(Object.prototype.hasOwnProperty.call(map, seeded.childId)).toBe(false);
 });
 

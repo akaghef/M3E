@@ -3,18 +3,18 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import type { TreeNode, AppState, SavedDoc, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
+import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
-type SqliteDocumentRow = {
+type SqliteMapRow = {
   version: number;
   savedAt?: string;
   stateJson: string;
 };
 
-type SqliteDocumentListRow = {
+type SqliteMapListRow = {
   id: string;
   version: number;
   savedAt: string;
@@ -25,9 +25,9 @@ type SqliteDocumentListRow = {
   source: string | null;
 };
 
-export type DocumentSource = { kind: "obsidian"; path: string };
+export type MapSource = { kind: "obsidian"; path: string };
 
-export interface DocumentSummary {
+export interface MapSummaryInternal {
   id: string;
   label: string;
   savedAt: string;
@@ -36,11 +36,11 @@ export interface DocumentSummary {
   tags: string[];
   archived: boolean;
   pinned: boolean;
-  source?: DocumentSource;
+  source?: MapSource;
 }
 
-export interface ListDocumentsOptions {
-  /** When true, archived documents are also returned. Default: false. */
+export interface ListMapsOptions {
+  /** When true, archived maps are also returned. Default: false. */
   includeArchived?: boolean;
 }
 
@@ -166,7 +166,9 @@ class RapidMvpModel {
       }
       normalized.isBroken = true;
       normalized.targetSnapshotLabel = targetLabel;
-      normalized.text = `${targetLabel} (deleted)`;
+      normalized.text = normalized.aliasLabel
+        ? `${normalized.aliasLabel} → ${targetLabel} (deleted)`
+        : `${targetLabel} (deleted)`;
       this._replaceNode(normalized);
     });
   }
@@ -495,6 +497,16 @@ class RapidMvpModel {
     return this.queryNodeIds(scopeRootId).map((nodeId) => this.state.nodes[nodeId]!);
   }
 
+  /**
+   * Find all alias nodes that point to the given canonical node.
+   * Returns array of alias node IDs. Useful for reverse-lookup / coverage views.
+   */
+  getAliasesFor(targetNodeId: string): string[] {
+    return Object.values(this.state.nodes)
+      .filter((n) => n.nodeType === "alias" && n.targetNodeId === targetNodeId)
+      .map((n) => n.id);
+  }
+
   validate(): string[] {
     const errors: string[] = [];
     const nodes = this.state.nodes;
@@ -679,7 +691,7 @@ class RapidMvpModel {
   }
 
   // ---------------------------------------------------------------------------
-  // HOME page support: document-level CRUD & metadata
+  // HOME page support: map-level CRUD & metadata
   // ---------------------------------------------------------------------------
 
   private static parseTagsColumn(raw: string | null): string[] {
@@ -724,12 +736,12 @@ class RapidMvpModel {
         if (t.length > 0) label = t;
       }
     } catch {
-      // Treat as empty document — keep defaults.
+      // Treat as empty map — keep defaults.
     }
     return { label, nodeCount, charCount };
   }
 
-  private static parseSourceColumn(raw: string | null): DocumentSource | undefined {
+  private static parseSourceColumn(raw: string | null): MapSource | undefined {
     if (!raw) return undefined;
     const trimmed = raw.trim();
     if (!trimmed) return undefined;
@@ -749,18 +761,18 @@ class RapidMvpModel {
     return undefined;
   }
 
-  static listDocuments(dbPath: string, options: ListDocumentsOptions = {}): DocumentSummary[] {
+  static listMaps(dbPath: string, options: ListMapsOptions = {}): MapSummaryInternal[] {
     const includeArchived = Boolean(options.includeArchived);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const sql = includeArchived
         ? `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM documents ORDER BY saved_at DESC`
         : `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM documents WHERE COALESCE(archived, 0) = 0 ORDER BY saved_at DESC`;
-      const rows = db.prepare(sql).all() as SqliteDocumentListRow[];
+      const rows = db.prepare(sql).all() as SqliteMapListRow[];
       return rows.map((row) => {
         const metrics = RapidMvpModel.computeStateMetrics(row.stateJson);
         const source = RapidMvpModel.parseSourceColumn(row.source);
-        const summary: DocumentSummary = {
+        const summary: MapSummaryInternal = {
           id: row.id,
           label: metrics.label,
           savedAt: row.savedAt,
@@ -780,27 +792,27 @@ class RapidMvpModel {
     }
   }
 
-  static documentExists(dbPath: string, documentId: string): boolean {
+  static mapExists(dbPath: string, mapId: string): boolean {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
-      const row = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(documentId) as { hit: number } | undefined;
+      const row = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(mapId) as { hit: number } | undefined;
       return Boolean(row);
     } finally {
       db.close();
     }
   }
 
-  static createDocument(dbPath: string, documentId: string, rootLabel = "Untitled"): void {
-    if (RapidMvpModel.documentExists(dbPath, documentId)) {
-      throw new Error("Document already exists.");
+  static createMap(dbPath: string, mapId: string, rootLabel = "Untitled"): void {
+    if (RapidMvpModel.mapExists(dbPath, mapId)) {
+      throw new Error("Map already exists.");
     }
     const model = new RapidMvpModel(rootLabel);
-    model.saveToSqlite(dbPath, documentId);
+    model.saveToSqlite(dbPath, mapId);
   }
 
-  static duplicateDocument(dbPath: string, sourceId: string, newId: string): void {
-    if (RapidMvpModel.documentExists(dbPath, newId)) {
-      throw new Error("Document already exists.");
+  static duplicateMap(dbPath: string, sourceId: string, newId: string): void {
+    if (RapidMvpModel.mapExists(dbPath, newId)) {
+      throw new Error("Map already exists.");
     }
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
@@ -808,7 +820,7 @@ class RapidMvpModel {
         .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson, tags FROM documents WHERE id = ?`)
         .get(sourceId) as { version: number; savedAt: string; stateJson: string; tags: string | null } | undefined;
       if (!src) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
       db.prepare(
         `INSERT INTO documents (id, version, saved_at, state_json, tags, archived)
@@ -825,7 +837,7 @@ class RapidMvpModel {
     }
   }
 
-  static renameDocument(dbPath: string, documentId: string, newLabel: string): void {
+  static renameMap(dbPath: string, mapId: string, newLabel: string): void {
     const trimmed = newLabel.trim();
     if (trimmed.length === 0) {
       throw new Error("Invalid label.");
@@ -834,9 +846,9 @@ class RapidMvpModel {
     try {
       const row = db
         .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson FROM documents WHERE id = ?`)
-        .get(documentId) as SqliteDocumentRow & { savedAt: string } | undefined;
+        .get(mapId) as SqliteMapRow & { savedAt: string } | undefined;
       if (!row) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
       const state = JSON.parse(row.stateJson) as AppState;
       const root = state?.nodes?.[state.rootId];
@@ -846,7 +858,7 @@ class RapidMvpModel {
       db.prepare(
         `UPDATE documents SET state_json = @stateJson, saved_at = @savedAt WHERE id = @id`,
       ).run({
-        id: documentId,
+        id: mapId,
         stateJson: JSON.stringify(state),
         savedAt: new Date().toISOString(),
       });
@@ -855,7 +867,7 @@ class RapidMvpModel {
     }
   }
 
-  static setDocumentTags(dbPath: string, documentId: string, tags: string[]): void {
+  static setMapTags(dbPath: string, mapId: string, tags: string[]): void {
     if (!Array.isArray(tags) || !tags.every((t) => typeof t === "string")) {
       throw new Error("Invalid tags.");
     }
@@ -864,71 +876,71 @@ class RapidMvpModel {
     try {
       const result = db
         .prepare(`UPDATE documents SET tags = ? WHERE id = ?`)
-        .run(JSON.stringify(cleaned), documentId);
+        .run(JSON.stringify(cleaned), mapId);
       if (result.changes === 0) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
     } finally {
       db.close();
     }
   }
 
-  static setArchived(dbPath: string, documentId: string, archived: boolean): void {
+  static setArchived(dbPath: string, mapId: string, archived: boolean): void {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
         .prepare(`UPDATE documents SET archived = ? WHERE id = ?`)
-        .run(archived ? 1 : 0, documentId);
+        .run(archived ? 1 : 0, mapId);
       if (result.changes === 0) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
     } finally {
       db.close();
     }
   }
 
-  static setPinned(dbPath: string, documentId: string, pinned: boolean): void {
+  static setPinned(dbPath: string, mapId: string, pinned: boolean): void {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
         .prepare(`UPDATE documents SET pinned = ? WHERE id = ?`)
-        .run(pinned ? 1 : 0, documentId);
+        .run(pinned ? 1 : 0, mapId);
       if (result.changes === 0) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
     } finally {
       db.close();
     }
   }
 
-  static setDocumentSource(dbPath: string, documentId: string, source: DocumentSource | null): void {
+  static setMapSource(dbPath: string, mapId: string, source: MapSource | null): void {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const serialized = source ? JSON.stringify(source) : null;
       const result = db
         .prepare(`UPDATE documents SET source = ? WHERE id = ?`)
-        .run(serialized, documentId);
+        .run(serialized, mapId);
       if (result.changes === 0) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
     } finally {
       db.close();
     }
   }
 
-  static deleteDocument(dbPath: string, documentId: string): void {
+  static deleteDocument(dbPath: string, mapId: string): void {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
         .prepare(`SELECT COALESCE(archived, 0) AS archived FROM documents WHERE id = ?`)
-        .get(documentId) as { archived: number } | undefined;
+        .get(mapId) as { archived: number } | undefined;
       if (!row) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
       if (Number(row.archived) !== 1) {
-        throw new Error("Document is not archived.");
+        throw new Error("Map is not archived.");
       }
-      db.prepare(`DELETE FROM documents WHERE id = ?`).run(documentId);
+      db.prepare(`DELETE FROM documents WHERE id = ?`).run(mapId);
     } finally {
       db.close();
     }
@@ -967,20 +979,20 @@ class RapidMvpModel {
   }
 
   /**
-   * Build a SavedDoc containing only the subtree rooted at `scopeId`.
+   * Build a SavedMap containing only the subtree rooted at `scopeId`.
    * Links are included only when BOTH endpoints are inside the subtree.
    */
   static readScopedState(
     dbPath: string,
-    documentId: string,
+    mapId: string,
     scopeId: string,
     depth?: number,
   ): ScopedReadResult {
     let model: RapidMvpModel;
     try {
-      model = RapidMvpModel.loadFromSqlite(dbPath, documentId);
+      model = RapidMvpModel.loadFromSqlite(dbPath, mapId);
     } catch (err) {
-      // bubble as standard error — callers distinguish doc-not-found at the handler level
+      // bubble as standard error — callers distinguish map-not-found at the handler level
       throw err;
     }
 
@@ -992,7 +1004,7 @@ class RapidMvpModel {
         error: {
           code: "SCOPE_NOT_FOUND",
           message: `Scope node not found in map: ${scopeId}`,
-          details: { documentId, scopeId },
+          details: { mapId, scopeId },
         },
       };
     }
@@ -1018,7 +1030,7 @@ class RapidMvpModel {
       }
     }
 
-    const doc: SavedDoc = {
+    const map: SavedMap = {
       version: 1,
       savedAt: new Date().toISOString(),
       state: {
@@ -1027,14 +1039,14 @@ class RapidMvpModel {
         links: subLinks,
       },
     };
-    return { ok: true, doc, nodeCount: ids.length };
+    return { ok: true, map, nodeCount: ids.length };
   }
 
   /**
-   * Replace only the subtree rooted at `scopeId` within `documentId`.
+   * Replace only the subtree rooted at `scopeId` within `mapId`.
    *
    * Validation rules (conservative):
-   *   - scopeId must exist in the stored doc
+   *   - scopeId must exist in the stored map
    *   - incomingState.rootId must equal scopeId
    *   - incomingState.nodes[scopeId] must exist
    *   - every child reference inside incoming nodes must also be inside
@@ -1051,11 +1063,11 @@ class RapidMvpModel {
    */
   static writeScopedState(
     dbPath: string,
-    documentId: string,
+    mapId: string,
     scopeId: string,
     incomingState: AppState,
   ): ScopedWriteResult {
-    const model = RapidMvpModel.loadFromSqlite(dbPath, documentId);
+    const model = RapidMvpModel.loadFromSqlite(dbPath, mapId);
     const stored = model.toJSON();
 
     if (!stored.nodes[scopeId]) {
@@ -1064,7 +1076,7 @@ class RapidMvpModel {
         error: {
           code: "SCOPE_NOT_FOUND",
           message: `Scope node not found in map: ${scopeId}`,
-          details: { documentId, scopeId },
+          details: { mapId, scopeId },
         },
       };
     }
@@ -1153,7 +1165,7 @@ class RapidMvpModel {
     const oldIdSet = new Set(oldIds);
 
     // Detect collisions: incoming nodes (other than scopeId) whose ids already
-    // exist OUTSIDE the old subtree would corrupt the doc — reject.
+    // exist OUTSIDE the old subtree would corrupt the map — reject.
     for (const id of incomingIds) {
       if (id === scopeId) continue;
       if (stored.nodes[id] && !oldIdSet.has(id)) {
@@ -1238,7 +1250,7 @@ class RapidMvpModel {
       };
     }
 
-    mergedModel.saveToSqlite(dbPath, documentId);
+    mergedModel.saveToSqlite(dbPath, mapId);
     return {
       ok: true,
       savedAt: new Date().toISOString(),
@@ -1247,7 +1259,7 @@ class RapidMvpModel {
   }
 
   saveToFile(filePath: string): void {
-    const data: SavedDoc = {
+    const data: SavedMap = {
       version: 1,
       savedAt: new Date().toISOString(),
       state: this.toJSON(),
@@ -1261,8 +1273,8 @@ class RapidMvpModel {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
   }
 
-  saveToSqlite(dbPath: string, documentId = "default"): void {
-    const data: SavedDoc = {
+  saveToSqlite(dbPath: string, mapId = "default"): void {
+    const data: SavedMap = {
       version: 1,
       savedAt: new Date().toISOString(),
       state: this.toJSON(),
@@ -1280,7 +1292,7 @@ class RapidMvpModel {
             state_json = excluded.state_json
         `,
       ).run({
-        id: documentId,
+        id: mapId,
         version: data.version,
         savedAt: data.savedAt,
         stateJson: JSON.stringify(data.state),
@@ -1307,8 +1319,8 @@ class RapidMvpModel {
     return model;
   }
 
-  static loadFromSqlite(dbPath: string, documentId = "default"): RapidMvpModel {
-    const savedDoc = RapidMvpModel.loadSavedDocFromSqlite(dbPath, documentId);
+  static loadFromSqlite(dbPath: string, mapId = "default"): RapidMvpModel {
+    const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(dbPath, mapId);
     const model = RapidMvpModel.fromJSON(savedDoc.state);
     const errors = model.validate();
     if (errors.length > 0) {
@@ -1318,7 +1330,7 @@ class RapidMvpModel {
     return model;
   }
 
-  static loadSavedDocFromSqlite(dbPath: string, documentId = "default"): SavedDoc {
+  static loadSavedMapFromSqlite(dbPath: string, mapId = "default"): SavedMap {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
@@ -1329,10 +1341,10 @@ class RapidMvpModel {
             WHERE id = ?
           `,
         )
-        .get(documentId) as SqliteDocumentRow | undefined;
+        .get(mapId) as SqliteMapRow | undefined;
 
       if (!row) {
-        throw new Error("Document not found.");
+        throw new Error("Map not found.");
       }
 
       if (!row.version || row.version < 1 || !row.stateJson || !row.savedAt) {

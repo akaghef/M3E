@@ -55,7 +55,7 @@ test("sync status and push/pull round-trip works in file-mirror mode", async () 
   expect(status1.response.status).toBe(200);
   expect(status1.payload.ok).toBe(true);
   expect(status1.payload.mode).toBe("file-mirror");
-  expect(status1.payload.documentId).toBe(mapId);
+  expect(status1.payload.mapId).toBe(mapId);
   expect(status1.payload.enabled).toBe(true);
   expect(status1.payload.exists).toBe(false);
 
@@ -67,13 +67,13 @@ test("sync status and push/pull round-trip works in file-mirror mode", async () 
   expect(push.response.status).toBe(200);
   expect(push.payload.ok).toBe(true);
   expect(push.payload.mode).toBe("file-mirror");
-  expect(push.payload.documentId).toBe(mapId);
+  expect(push.payload.mapId).toBe(mapId);
 
   const status2 = await requestJson(`${baseUrl}/api/sync/status/${mapId}`);
   expect(status2.response.status).toBe(200);
   expect(status2.payload.ok).toBe(true);
   expect(status2.payload.mode).toBe("file-mirror");
-  expect(status2.payload.documentId).toBe(mapId);
+  expect(status2.payload.mapId).toBe(mapId);
   expect(status2.payload.exists).toBe(true);
   expect(status2.payload.cloudSavedAt).toBe("2026-04-02T00:00:00.000Z");
 
@@ -85,7 +85,7 @@ test("sync status and push/pull round-trip works in file-mirror mode", async () 
   expect(pull.response.status).toBe(200);
   expect(pull.payload.ok).toBe(true);
   expect(pull.payload.mode).toBe("file-mirror");
-  expect(pull.payload.documentId).toBe(mapId);
+  expect(pull.payload.mapId).toBe(mapId);
   expect(pull.payload.state.rootId.length > 0).toBe(true);
 });
 
@@ -100,7 +100,7 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
   expect(initialPush.response.status).toBe(200);
   expect(initialPush.payload.ok).toBe(true);
   expect(initialPush.payload.mode).toBe("file-mirror");
-  expect(initialPush.payload.documentId).toBe(mapId);
+  expect(initialPush.payload.mapId).toBe(mapId);
 
   const updatePush = await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
@@ -114,7 +114,7 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
   expect(updatePush.response.status).toBe(200);
   expect(updatePush.payload.ok).toBe(true);
   expect(updatePush.payload.mode).toBe("file-mirror");
-  expect(updatePush.payload.documentId).toBe(mapId);
+  expect(updatePush.payload.mapId).toBe(mapId);
 
   const conflictingPush = await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
@@ -128,7 +128,7 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
   expect(conflictingPush.response.status).toBe(409);
   expect(conflictingPush.payload.code).toBe("CLOUD_CONFLICT");
   expect(conflictingPush.payload.ok).toBe(false);
-  expect(conflictingPush.payload.documentId).toBe(mapId);
+  expect(conflictingPush.payload.mapId).toBe(mapId);
 
   const forcedPush = await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
@@ -143,7 +143,7 @@ test("sync push returns 409 on savedAt conflict and force push overrides", async
   expect(forcedPush.response.status).toBe(200);
   expect(forcedPush.payload.ok).toBe(true);
   expect(forcedPush.payload.mode).toBe("file-mirror");
-  expect(forcedPush.payload.documentId).toBe(mapId);
+  expect(forcedPush.payload.mapId).toBe(mapId);
   expect(forcedPush.payload.forced).toBe(true);
 });
 
@@ -161,11 +161,11 @@ test("sync pull returns 500 when cloud file JSON is broken", async () => {
   expect(pulled.response.status).toBe(500);
   expect(pulled.payload.code).toBe("SYNC_PULL_FAILED");
   expect(pulled.payload.ok).toBe(false);
-  expect(pulled.payload.documentId).toBe(mapId);
+  expect(pulled.payload.mapId).toBe(mapId);
   expect(typeof pulled.payload.error).toBe("string");
 });
 
-test("sync pull returns 400 for unsupported cloud document format", async () => {
+test("sync pull returns 400 for unsupported cloud map format", async () => {
   const mapId = "unsupported-format";
   const filePath = path.join(tempCloudDir, `${mapId}.json`);
   fs.writeFileSync(filePath, JSON.stringify({ version: 99, state: {} }), "utf8");
@@ -179,8 +179,8 @@ test("sync pull returns 400 for unsupported cloud document format", async () => 
   expect(pulled.response.status).toBe(400);
   expect(pulled.payload.code).toBe("SYNC_CLOUD_UNSUPPORTED_FORMAT");
   expect(pulled.payload.ok).toBe(false);
-  expect(pulled.payload.documentId).toBe(mapId);
-  expect(pulled.payload.error).toBe("Cloud document has unsupported format.");
+  expect(pulled.payload.mapId).toBe(mapId);
+  expect(pulled.payload.error).toBe("Cloud map has unsupported format.");
 });
 
 test("sync push returns 400 for structurally invalid model", async () => {
@@ -194,7 +194,7 @@ test("sync push returns 400 for structurally invalid model", async () => {
   expect(pushed.response.status).toBe(400);
   expect(pushed.payload.code).toBe("SYNC_PUSH_INVALID_MODEL");
   expect(pushed.payload.ok).toBe(false);
-  expect(pushed.payload.documentId).toBe(mapId);
+  expect(pushed.payload.mapId).toBe(mapId);
   expect(typeof pushed.payload.error).toBe("string");
 });
 
@@ -209,19 +209,19 @@ test("sync endpoints return 405 on unsupported method", async () => {
   expect(statusPost.response.status).toBe(405);
   expect(statusPost.payload.code).toBe("SYNC_METHOD_NOT_ALLOWED");
   expect(statusPost.payload.ok).toBe(false);
-  expect(statusPost.payload.documentId).toBe(mapId);
+  expect(statusPost.payload.mapId).toBe(mapId);
 
   const pushGet = await requestJson(`${baseUrl}/api/sync/push/${mapId}`);
   expect(pushGet.response.status).toBe(405);
   expect(pushGet.payload.code).toBe("SYNC_METHOD_NOT_ALLOWED");
   expect(pushGet.payload.ok).toBe(false);
-  expect(pushGet.payload.documentId).toBe(mapId);
+  expect(pushGet.payload.mapId).toBe(mapId);
 
   const pullGet = await requestJson(`${baseUrl}/api/sync/pull/${mapId}`);
   expect(pullGet.response.status).toBe(405);
   expect(pullGet.payload.code).toBe("SYNC_METHOD_NOT_ALLOWED");
   expect(pullGet.payload.ok).toBe(false);
-  expect(pullGet.payload.documentId).toBe(mapId);
+  expect(pullGet.payload.mapId).toBe(mapId);
 });
 
 test("sync push returns 400 (not 500) when state has no nodes", async () => {
@@ -235,7 +235,7 @@ test("sync push returns 400 (not 500) when state has no nodes", async () => {
   expect(pushed.response.status).toBe(400);
   expect(pushed.payload.code).toBe("SYNC_PUSH_INVALID_MODEL");
   expect(pushed.payload.ok).toBe(false);
-  expect(pushed.payload.documentId).toBe(mapId);
+  expect(pushed.payload.mapId).toBe(mapId);
 });
 
 test("sync push returns 400 when state is null", async () => {
