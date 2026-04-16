@@ -10,7 +10,8 @@
 
 ## 収録物
 
-- `Core_Principles.md` — 中核原則（帯域・scope・alias・親子主構造・AI は提案のみ・消失バグゼロ）
+- `Core_Principles.md` — 中核原則（帯域・scope・alias・親子主構造・AI は提案のみ・消失バグゼロ・関係の二層）
+- `Axes.md` — M3E の二軸（帯域 Flash/Rapid/Deep × 関係 Syntax/Semantic）
 
 ## 置かないもの
 
