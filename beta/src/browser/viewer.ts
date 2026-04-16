@@ -2218,6 +2218,77 @@ async function requestTopicSuggestionsForSelectedNode(maxTopics = 5): Promise<st
     .slice(0, maxTopics);
 }
 
+/** Build a structured query prompt about the selected node for pasting into Claude */
+function buildNodeQueryPrompt(): string | null {
+  if (!doc || !viewState.selectedNodeId) return null;
+  const state = doc.state;
+  const node = getNode(viewState.selectedNodeId);
+  if (!node) return null;
+
+  // Build ancestor path
+  const ancestors: string[] = [];
+  let curId: string | null = node.parentId;
+  while (curId && curId !== state.rootId) {
+    const ancestor = state.nodes[curId];
+    if (!ancestor) break;
+    ancestors.unshift(ancestor.text);
+    curId = ancestor.parentId;
+  }
+  const nodePath = [...ancestors, node.text].join(" > ");
+
+  // Collect attributes
+  const attrLines = Object.entries(node.attributes || {})
+    .filter(([k]) => !k.startsWith("m3e:"))
+    .map(([k, v]) => `  ${k}: ${v}`)
+    .join("\n");
+
+  // Collect graph links
+  const links = Object.values(state.links || {})
+    .filter((l) => l.sourceNodeId === node.id || l.targetNodeId === node.id)
+    .map((l) => {
+      const other = l.sourceNodeId === node.id
+        ? state.nodes[l.targetNodeId]
+        : state.nodes[l.sourceNodeId];
+      const dir = l.sourceNodeId === node.id ? "\u2192" : "\u2190";
+      const rel = l.relationType || l.label || "";
+      return `  ${dir} ${rel ? rel + ": " : ""}${other?.text || "(unknown)"}`;
+    })
+    .join("\n");
+
+  // Collect children (first 10)
+  const children = (node.children || [])
+    .slice(0, 10)
+    .map((cid: string) => state.nodes[cid]?.text || "(empty)")
+    .join(", ");
+  const childSuffix = (node.children || []).length > 10 ? ` (+${(node.children || []).length - 10} more)` : "";
+
+  let prompt = `# M3E Node Query\n\n`;
+  prompt += `**Node:** ${node.text}\n`;
+  prompt += `**Path:** ${nodePath}\n`;
+  if (node.details) prompt += `**Details:** ${node.details}\n`;
+  if (node.note) prompt += `**Note:** ${node.note}\n`;
+  if (attrLines) prompt += `**Attributes:**\n${attrLines}\n`;
+  if (links) prompt += `**Links:**\n${links}\n`;
+  if (children) prompt += `**Children:** ${children}${childSuffix}\n`;
+  prompt += `\n---\nPlease explain this node, identify missing information, and suggest how it relates to its parent concepts.\n`;
+
+  return prompt;
+}
+
+async function copyNodeQueryToClipboard(): Promise<void> {
+  const prompt = buildNodeQueryPrompt();
+  if (!prompt) {
+    setStatus("No node selected.", true);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(prompt);
+    setStatus("Node query copied to clipboard \u2014 paste into Claude.");
+  } catch {
+    setStatus("Failed to copy to clipboard.", true);
+  }
+}
+
 function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
   if (!doc || !viewState.selectedNodeId || topics.length === 0) {
     return 0;
@@ -7344,6 +7415,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "i") {
     event.preventDefault();
     toggleMetaPanelVisibility();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "?") {
+    event.preventDefault();
+    copyNodeQueryToClipboard();
     return;
   }
 
