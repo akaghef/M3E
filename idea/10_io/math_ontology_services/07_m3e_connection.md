@@ -47,19 +47,45 @@
 - M3E マップを RDF / OMDoc / Wikidata 形式でエクスポート
 - 外部サービスに投入する側に回る
 
-### P8. 二層エッジモデル（syntax × semantic）
-- **問題意識**: Blueprint / Lean / Make 系は **syntax graph**（エッジ 1 種類 = 「uses / 依存」）しか持てない。
-  M3E が目指すのは **semantic graph**（エッジが「一般化」「双対」「類比」「動機」「歴史的先行」等、多種類）。
-  両者は構造が似ているが、意味層が全く違う（→ [01_landscape.md](01_landscape.md) レイヤ説明を参照）。
-- **方針**: M3E のノード間リンクを **2 層** に分ける:
-  - 層 α: `syntactic` — 外部 DAG（Blueprint / Stacks / Lean 依存）から機械的に取込むエッジ。種別 1 つ（uses）。色・矢印固定
-  - 層 β: `semantic` — ユーザ / AI が意味を与えたエッジ。種別複数（generalizes / dual / example_of / motivates / contradicts / analogous_to …）
-- **表示**: 既存の viewer で **層フィルタ**（「syntax だけ」「semantic だけ」「両方」）を切替
-- **同一ノード**: Blueprint のボックスと M3E の概念ノードが同じ mathematical object を指すなら、同一ノードに両エッジが刺さる
-- **実装示唆**: `edge.layer: "syntactic" | "semantic"`, `edge.kind: string`（semantic のみ必須）
-- **関連**: SKOS `broader/narrower/related`, Wikidata properties, OWL object properties が semantic 層の語彙候補
-- **M3E の差別化**: 既存の L1 は syntax のみ、L2（nLab）は semantic を自然言語で書くだけ、L3 OWL/SKOS は semantic 形式化できるが UX が硬い。
-  **M3E = semantic graph を手元で可視化・編集する層** という位置取りがクリアになる
+### P8. Deep 帯域の関係線を多種エッジで育てる（帯域観で再定義）
+
+**[訂正]** 以前「二層エッジモデル」と呼んだものは、M3E に既に存在する **edge（親子 = Rapid 骨格）** と **関係線 GraphLink（Deep の芽）** の二分を、Deep 側で多種エッジ化する話。新概念ではなく、既存構造の成長。
+
+- **問題意識の再整理**:
+  - Rapid 帯域（M3E 現状の中心）は既に成立: 親子 edge による syntax tree
+  - Deep 帯域はまだ芽の段階: GraphLink（関係線）に `relationType?: string` があるだけ
+  - Blueprint / Lean / Make 依存 = **Deep の「uses 1 種に痩せた形」**（[docs/01_Vision/Axes.md](../../../docs/01_Vision/Axes.md) 明記）
+  - nLab / Wikidata / 研究者の頭 = **Deep の本来形**（多種エッジ）
+  - M3E は Deep の本来形を目指す → GraphLink の多種化・意味付与を育てる
+
+- **方針**:
+  - **親子 edge** は Rapid の骨格として維持。変更しない
+  - **GraphLink** を Deep 帯域の本格 semantic graph の媒体として育てる:
+    - `relationType` を自由文字列のまま or 固定語彙化するかは未決（Q13）
+    - 「一般化 / 双対 / 例 / 動機 / 類比 / 矛盾 / 先行 / uses / see_also」等を扱えるようにする
+  - **外部 DAG（Blueprint / Stacks）の取込は GraphLink に入る**（relationType = "uses" で痩せた形のまま流入）
+  - 層分割ではなく **同じ GraphLink の中に kind で分岐**
+
+- **表示**:
+  - Rapid 骨格（親子 edge）と Deep 関係線（GraphLink）は既存通り別スタイル
+  - GraphLink 内部で kind 別の色・線種（uses = 地味、semantic = 派手 等）
+  - kind フィルタ（後述 Phase）で「uses だけ」「意味関係だけ」切替
+
+- **実装示唆**:
+  - `GraphLink.relationType` を活用（既に自由文字列、型変更不要）
+  - 推奨語彙を別途定義（語彙ファイル / Glossary 追記）
+  - 既存 `style` は表示ヒント用として共存
+
+- **体系化 / 射影との接続**:
+  - **体系化** (Rapid → Deep): Rapid 文書群の親子 tree から、概念レベルの関係線を引き出して Deep に取り込む → GraphLink 多種化が前提
+  - **射影** (Deep → Rapid): Deep の semantic graph から目的別の説明順序を切り出す → kind 情報を使って「引用は uses、一般化は背景、双対は対比」等のテンプレ分岐が可能
+  - project_projection_vision の科研費出力はこの射影の応用
+
+- **M3E の位置取り**:
+  - L1 外部系（Blueprint 等）= uses 単エッジの痩せた Deep
+  - L2 外部系（nLab 等）= 意味を自然言語で書いただけの Deep
+  - L3 OWL/SKOS = 意味を形式化できるが UX 硬い
+  - **M3E = 個人研究者の手元で Deep を編集・可視化し、Rapid へ射影する環境**。この隙間に立つ
 
 ## 優先順位の見立て（推しだが決定ではない）
 
@@ -78,7 +104,7 @@
 
 ## 組み合わせ高効果ペア
 
-- **⭐ P8 二層エッジ × A3 Blueprint × K5 nLab**: Blueprint から syntax 層、nLab から semantic 層を取込み、同一定理ノードに 2 層重ねる（最有力接続構想）
+- **⭐ P8 Deep 関係線育成 × A3 Blueprint × K5 nLab**: Blueprint の痩せた Deep（uses のみ）と nLab の多種意味 Deep を同じ GraphLink 層に流入させ、kind で区別。体系化の素材として両方を活かす
 - **S11 arXiv × S1 MSC × S8 OpenAlex**: 論文 → 分野コード → 引用グラフの三点セット
 - **S15 researchmap × S16 KAKEN × S11 arXiv**: 日本研究者のフルプロファイル
 - **A3 Blueprint × B1 Lean4 × M3E**: 自然言語 blueprint を M3E で書いて Lean に落とす流れ（**ただし Blueprint は syntax 層のみ、semantic は別途 M3E で付与する前提**）
@@ -131,9 +157,13 @@
 6. **project_projection_vision の科研費出力** との最短経路は L4（書誌）→ researchmap + KAKEN ルート
 7. **世界モデル側** の素材は L2 知識ベース（OEIS, nLab, Stacks）が最も豊富
 8. **M3E は Blueprint × Wikidata × 研究者ノート** の三点を繋ぐ位置取りが面白い
-9. **syntax graph vs semantic graph の区別** が本ブレスト全体で最重要の発見。
-   - Blueprint / Lean 依存 / Make = syntax（エッジ 1 種）
-   - nLab / Wikidata / 研究者の頭 = semantic（エッジ多種）
-   - **M3E は semantic 側の住人**、Blueprint は syntax 側の住人
-   - 「思想 90% 一致」ではなく「**構造 90% 一致、意味層 0% 一致**」が正確
-10. **P8 二層エッジモデル** はこの区別を M3E に直接反映させる設計。優先度高く検討対象
+9. **帯域軸との整合が本ブレスト最重要の観点**（[Axes.md](../../../docs/01_Vision/Axes.md)）
+   - Rapid = 文書 1 の syntax tree（親子 edge）
+   - Deep = 文書群の semantic graph（多種エッジの関係線）
+   - Blueprint / Lean / Make 依存は **Deep の「uses 1 種に痩せた形」**。Rapid ではない
+   - M3E は Deep の本来形（多種エッジ）を目指す位置取り
+10. **M3E に二層は既に存在する** — 新しく作る必要はなく育てる話
+    - **edge**（親子）= Rapid 骨格、維持
+    - **GraphLink（関係線）** = Deep の芽、多種化で育成
+    - P8 はこの既存二分の Deep 側（GraphLink）に意味種別を与える実装
+11. **本ブレストの価値の焦点**: Deep 帯域の素材供給源（nLab / Stacks / Wikidata / Blueprint）を体系化の材料に、射影で科研費等の Rapid 出力を生成する project_projection_vision の地ならし
