@@ -2,7 +2,7 @@
 """Task dependency graph tool. Reasons over projects/deps.json.
 
 Usage:
-    python scripts/deps/deps.py <command> [args] [--json]
+    python .claude/skills/sort-task/deps.py <command> [args] [--json]
 
 Queries (open tasks only, except 'info'):
     sort                     priority-weighted topological order
@@ -33,7 +33,7 @@ except ImportError:
     sys.stderr.write("networkx not installed. Run: python -m pip install networkx\n")
     sys.exit(2)
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DEPS_PATH = ROOT / "projects" / "deps.json"
 
 DONE_STATES = {"done", "cancelled"}
