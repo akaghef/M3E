@@ -1,4 +1,5 @@
 ---
+pj_id: PJ01
 project: AlgLibMove
 date: 2026-04-15
 topic: AlgLibMove — プロジェクト概要
@@ -31,6 +32,7 @@ MATLAB 製 Hopf 代数ライブラリ [AkaghefAlgebra](https://github.com/SSuzuk
 ## ドキュメント構成
 
 - [plan.md](plan.md) — 実行計画本体（Phase A–D、12 scope カタログ、運用ルール、本日の着手手順）
+- [DOGFOOD_SNAPSHOT_INDEX.md](DOGFOOD_SNAPSHOT_INDEX.md) — 2026-04-16 時点の反省・行動計画 8 ファイルへの読み順ガイド
 - `port_log/`（マップ内、サブツリー）— 作業中の痛み・決定・機能要求の一次記録
 
 ## セッション起動プロトコル
