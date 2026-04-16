@@ -7,8 +7,7 @@ module HopfCore
 using LinearAlgebra
 
 export HopfAlgebra, FiniteHopf, mul, unit, comul, counit, antipode,
-       basis_dim, verifyHopf, dualHopf, pairing_matrix,
-       @calcTE
+       basis_dim, verifyHopf, dualHopf, pairing_matrix
 
 # ---------------------------------------------------------------------------
 # Abstract type
@@ -40,9 +39,15 @@ end
 
 basis_dim(H::FiniteHopf) = H.n
 
+@inline _default_atol(::Type{<:Integer}) = 0.0
+@inline _default_atol(::Type{<:Rational}) = 0.0
+@inline _default_atol(::Type{T}) where {T<:AbstractFloat} = sqrt(eps(T))
+@inline _default_atol(::Type{Complex{T}}) where {T<:AbstractFloat} = sqrt(eps(T))
+@inline _default_atol(::Type{<:Number}) = 0.0
+
 # ---------------------------------------------------------------------------
-# Minimal tensor-expression helper (readable wrapper). Uses einsum-style
-# contraction built on explicit loops; enough for small finite Hopf algebras.
+# Minimal tensor-expression helper (readable wrapper). Kept locally for the
+# current Hopf experiments; Stage C.6 may still replace this with TensorDSL.
 # ---------------------------------------------------------------------------
 
 """
@@ -60,26 +65,28 @@ macro calcTE(assign)
     out_sym = lhs.args[1]
     out_idx = lhs.args[2:end]
 
-    # Collect (tensor, indices) pairs from RHS (product of refs).
     refs = Expr[]
     function collect!(e)
         if e isa Expr && e.head === :ref
             push!(refs, e)
         elseif e isa Expr && e.head === :call && e.args[1] === :*
-            for a in e.args[2:end]; collect!(a); end
+            for a in e.args[2:end]
+                collect!(a)
+            end
         else
             error("Unsupported @calcTE RHS form: $e")
         end
     end
     collect!(rhs)
 
-    # Collect all indices and which tensor/axis they first appear on.
     idx_source = Dict{Symbol,Tuple{Symbol,Int}}()
     all_idx = Symbol[]
     for r in refs
         tname = r.args[1]
         for (k, ix) in enumerate(r.args[2:end])
-            if !(ix in all_idx); push!(all_idx, ix); end
+            if !(ix in all_idx)
+                push!(all_idx, ix)
+            end
             if !haskey(idx_source, ix)
                 idx_source[ix] = (tname, k)
             end
@@ -87,21 +94,15 @@ macro calcTE(assign)
     end
     inner_idx = setdiff(all_idx, out_idx)
 
-    # Build size expressions: size(T, k)
-    size_expr(ix) = let (t,k) = idx_source[ix]; :(size($t, $k)); end
+    size_expr(ix) = let (t, k) = idx_source[ix]
+        :(size($t, $k))
+    end
     out_sizes = [size_expr(ix) for ix in out_idx]
 
-    # Build nested loops: outer over out_idx, inner over contracted idx, accumulate.
     acc = gensym(:acc)
-    body = quote
-        $acc = zero(eltype($(refs[1].args[1])))
+    inner_loop = quote
         $acc += $rhs
     end
-    # Actually simpler: start acc=0, then acc += rhs inside innermost.
-    body = quote
-        $acc += $rhs
-    end
-    inner_loop = body
     for ix in reverse(inner_idx)
         inner_loop = quote
             for $ix in 1:$(size_expr(ix))
@@ -109,12 +110,11 @@ macro calcTE(assign)
             end
         end
     end
-    outer_body = quote
-        $acc = zero(promote_type($(map(r->:(eltype($(r.args[1]))), refs)...)))
+    outer_loop = quote
+        $acc = zero(promote_type($(map(r -> :(eltype($(r.args[1]))), refs)...)))
         $inner_loop
         $out_sym[$(out_idx...)] = $acc
     end
-    outer_loop = outer_body
     for ix in reverse(out_idx)
         outer_loop = quote
             for $ix in 1:$(size_expr(ix))
@@ -123,7 +123,7 @@ macro calcTE(assign)
         end
     end
 
-    alloc = :($out_sym = Array{promote_type($(map(r->:(eltype($(r.args[1]))), refs)...))}(undef, $(out_sizes...)))
+    alloc = :($out_sym = Array{promote_type($(map(r -> :(eltype($(r.args[1]))), refs)...))}(undef, $(out_sizes...)))
     return esc(quote
         $alloc
         $outer_loop
@@ -176,16 +176,21 @@ antipode(H::FiniteHopf{T}, a::AbstractVector) where {T} = H.S * collect(a)
 """
     verifyHopf(H; atol=1e-10) -> NamedTuple of Bools
 
-1. assoc    : (e_i*e_j)*e_k == e_i*(e_j*e_k)
-2. coassoc  : (Δ⊗id)∘Δ == (id⊗Δ)∘Δ on basis
-3. Δ_algHom : Δ(e_i*e_j) == Δ(e_i) · Δ(e_j)  (tensor product of algebras)
-4. antipode : μ∘(S⊗id)∘Δ(x) = η·ε(x) = μ∘(id⊗S)∘Δ(x)  on basis
-Also: unit/counit axioms (ε∘η=1, (ε⊗id)Δ=id=(id⊗ε)Δ).
+1. assoc       : (e_i*e_j)*e_k == e_i*(e_j*e_k)
+2. unit        : μ(η⊗id)=id=μ(id⊗η)
+3. coassoc     : (Δ⊗id)∘Δ == (id⊗Δ)∘Δ on basis
+4. Δ_algHom    : Δ(e_i*e_j) == Δ(e_i) · Δ(e_j)  (tensor product of algebras)
+5. counit      : (ε⊗id)Δ=id=(id⊗ε)Δ
+6. unit_scalar : ε∘η = 1
+7. antipode    : μ∘(S⊗id)∘Δ(x) = η·ε(x) = μ∘(id⊗S)∘Δ(x)
+
+Because the structure maps are linear or bilinear, checking them on a basis is
+sufficient for a finite-dimensional presentation by structure constants.
 """
-function verifyHopf(H::FiniteHopf{T}; atol=sqrt(eps(real(T <: Complex ? real(T) : float(real(T)))))) where {T}
+function verifyHopf(H::FiniteHopf{T}; atol=_default_atol(T)) where {T}
     n = H.n
     tol = atol
-    ok(a, b) = isapprox(a, b; atol=tol)
+    ok(a, b) = iszero(tol) ? a == b : isapprox(a, b; atol=tol)
 
     basis = [begin v = zeros(T,n); v[k]=one(T); v end for k in 1:n]
 
@@ -244,7 +249,12 @@ function verifyHopf(H::FiniteHopf{T}; atol=sqrt(eps(real(T <: Complex ? real(T) 
     end
 
     # unit/counit
-    unit_ok  = ok(counit(H, H.η), one(T))
+    unit_ok = true
+    for k in 1:n
+        (ok(mul(H, H.η, basis[k]), basis[k]) &&
+         ok(mul(H, basis[k], H.η), basis[k])) || (unit_ok = false; break)
+    end
+    unit_scalar_ok = ok(counit(H, H.η), one(T))
     # (ε⊗id)Δ(x) = x  and (id⊗ε)Δ(x) = x
     counit_id = true
     for k in 1:n
@@ -272,9 +282,10 @@ function verifyHopf(H::FiniteHopf{T}; atol=sqrt(eps(real(T <: Complex ? real(T) 
         (ok(lhs1, target) && ok(lhs2, target)) || (antip = false; break)
     end
 
-    (assoc=assoc, coassoc=coassoc, alghom=alghom, counit=counit_id,
-     unit=unit_ok, antipode=antip,
-     all = assoc && coassoc && alghom && counit_id && unit_ok && antip)
+    (assoc=assoc, unit=unit_ok, coassoc=coassoc, alghom=alghom,
+     counit=counit_id, unit_scalar=unit_scalar_ok, antipode=antip,
+     all = assoc && unit_ok && coassoc && alghom && counit_id &&
+           unit_scalar_ok && antip)
 end
 
 # ---------------------------------------------------------------------------

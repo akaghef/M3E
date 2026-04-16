@@ -75,23 +75,26 @@ function TaftAlg(n::Int, ω::T = exp(2π*im/n)) where {T<:Number}
     end
 
     # Antipode: S is an anti-algebra hom. S(g)=g^{-1}, S(x)=-g^{-1}x.
-    # S(g^a x^b) = S(x)^b S(g)^a = (-g^{-1}x)^b g^{-a}
-    # Expand (-g^{-1}x)^b step by step using xg = ω gx i.e. g^{-1}x = ω x g^{-1}? Check:
-    #   xg = ω gx  =>  g^{-1} x g = ω x  =>  g^{-1} x = ω x g^{-1}.
-    # So (-g^{-1}x)^b = (-1)^b * (g^{-1}x)^b.
-    # (g^{-1}x)^2 = g^{-1}x g^{-1}x = g^{-1}(xg^{-1})x = g^{-1}(ω^{-1} g^{-1} x) x = ω^{-1} g^{-2} x^2
-    # In general (g^{-1}x)^b = ω^{-(0+1+…+(b-1))} g^{-b} x^b = ω^{-b(b-1)/2} g^{-b} x^b.
-    # Then S(g^a x^b) = (-1)^b ω^{-b(b-1)/2} g^{-b} x^b g^{-a}
-    #                = (-1)^b ω^{-b(b-1)/2} g^{-b} (ω^{-b a} g^{-a} x^b)  [using x^b g^c = ω^{b c}? careful: x g = ω^{-1}... no]
-    # Original relation xg = ω gx, so g x = ω^{-1} x g. Then x g^{-1} = ω^{-1} g^{-1} x is above.
-    # x^b g^c: move g^c leftward through b x's: each swap x g = ω^{-1} g x, so x^b g^c = ω^{-b c} g^c x^b.
-    # Hence g^{-b} x^b g^{-a} = g^{-b} ω^{-b(-a)} g^{-a} x^b = ω^{a b} g^{-(a+b)} x^b
-    # So S(g^a x^b) = (-1)^b ω^{-b(b-1)/2} ω^{a b} g^{-(a+b)} x^b
-    #              = (-1)^b ω^{ab - b(b-1)/2} g^{-(a+b) mod n} x^b
+    # S(g^a x^b) = S(x)^b S(g)^a = (-g^{-1}x)^b g^{-a}.
+    #
+    # Commutation (all derived from xg = ω gx):
+    #   gx = ω^{-1} xg                     — slide x left past g
+    #   x g^c = ω^c g^c x                  — by induction on c
+    #   x^b g^c = ω^{bc} g^c x^b           — by induction on b
+    #   g^{-1} x = ω x g^{-1}              — from xg = ω gx, conjugate by g^{-1} on the left
+    #
+    # So (g^{-1}x)^b = ω^{b(b-1)/2} x^b g^{-b}? Let's redo without mistake:
+    #   (g^{-1}x)(g^{-1}x) = g^{-1}(x g^{-1})x = g^{-1}(ω^{-1} g^{-1} x)x = ω^{-1} g^{-2} x^2
+    # and inductively (g^{-1}x)^b = ω^{-b(b-1)/2} g^{-b} x^b.
+    # Therefore  S(g^a x^b) = (-1)^b · ω^{-b(b-1)/2} · g^{-b} x^b · g^{-a}.
+    # Finally, sliding g^{-a} left past x^b using  x^b g^c = ω^{bc} g^c x^b  with c=-a:
+    #   g^{-b} x^b g^{-a} = g^{-b} · ω^{-ab} g^{-a} x^b = ω^{-ab} g^{-(a+b)} x^b.
+    # Hence  S(g^a x^b) = (-1)^b · ω^{-ab - b(b-1)/2} · g^{-(a+b) mod n} x^b.
+    # Sanity check n=2 (ω=-1): S(x)=-gx, S(g)=g, S(gx)=x — matches Sweedler.
     S = zeros(CT, dim, dim)
     for a in 0:n-1, b in 0:n-1
         src = _idx(a,b,n)
-        exp_ω = a*b - div(b*(b-1), 2)  # Note: b(b-1)/2 integer
+        exp_ω = -a*b - div(b*(b-1), 2)
         coef = ((-1)^b) * ω^exp_ω
         tgt_a = mod(-(a+b), n)
         tgt_b = b
