@@ -237,6 +237,17 @@ reshapeはそういうものだ。負債ではなく、当然の結果。Uq(sl2+
 2. **B' クラスタを一括深掘り**（calcTE と同フォーマットで open_question 生成）
 3. **#24 の refactor 境界線ポリシーを文書化**（プロジェクト運用規約化）
 
+# 追補 (2026-04-16) — AlgLibMove 実装開始後に判明した debt
+
+| id | 項目 | 重大 | 難度 | 波及 | 備考 |
+|---|---|---|---|---|---|
+| ext-1 | `julia/src/Hopf/` サブツリーが設計階層 (Vector.VHD/CGA, Examples/) に未配置 | 3 | 2 | 3 | Stage C.4 gate で再配置。AkaghefAlgebra.jl の `include` に TEMP 注記必要 |
+| ext-2 | HopfCore の `@calcTE` 自前実装 (dead code) と TensorDSL.CalcTE 計画の衝突 | 2 | 1 | 2 | 2026-04-16 時点で export 除外のみ。本体削除は TensorDSL 実装時 |
+| ext-3 | Taft で ω を ComplexF64 強制、scalar_type_decision.md (Symbolics 採用) と逸脱 | 3 | 3 | 3 | `TaftAlg(n, ω::T)` の T に Num を許すためには qbinom/promote を書き直す必要 |
+| ext-4 | `verifyHopf` の atol 式が非浮動型 (Rational/Num) で MethodError | 2 | 1 | 2 | `_default_atol(::Type)` dispatch で解消 |
+
+詳細: [backlog/design_integrity_review_hopf_hd.md](../../../backlog/design_integrity_review_hopf_hd.md)
+
 # TODO
 
 - [ ] #12 実コード調査
