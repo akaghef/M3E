@@ -45,7 +45,7 @@ dev-beta ブランチに未コミット変更がある場合:
 
 1. `git status` で変更内容を確認
 2. `git diff` と `git diff --cached` で内容を把握
-3. 変更をステージング（`beta/`, `.claude/skills/`, `dev-docs/` 等をグループ分け）
+3. 変更をステージング（`beta/`, `.claude/skills/`, `docs/` 等をグループ分け）
 4. 適切なコミットメッセージでコミット
 
 コミットは内容ごとにまとめる。全部を一つの巨大コミットにしない。
@@ -163,7 +163,7 @@ git push origin dev-beta
 
 ```
 beta-converse 完了:
-- コミット: 2件（skills更新, dev-docs追加）
+- コミット: 2件（skills更新, docs追加）
 - マージ: 3ブランチ → dev-beta
 - 削除: 8ブランチ（ローカル+リモート）, 6ワークツリー
 - 保留: 1ブランチ（dev-data-flash: 未マージ）

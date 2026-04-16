@@ -272,7 +272,7 @@ git checkout dev-beta
 
 ### バージョンレジストリ更新
 
-タグ付与後、`dev-docs/00_Home/Version_Registry.md` を更新する。
+タグ付与後、`docs/00_Home/Version_Registry.md` を更新する。
 
 ```markdown
 | タグ | data schema | 主な変更 |

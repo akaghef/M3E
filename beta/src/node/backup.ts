@@ -10,7 +10,7 @@ import Database from "better-sqlite3";
  * Primary strategy: better-sqlite3 `.backup()` API (online-safe).
  * Fallback: `fs.copyFileSync()` when `.backup()` is unavailable.
  *
- * Design ref: dev-docs/design/data_import_export.md section 2.e
+ * Design ref: docs/design/data_import_export.md section 2.e
  */
 
 const BACKUP_SUFFIX = ".sqlite";

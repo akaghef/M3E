@@ -49,7 +49,7 @@ git rebase origin/dev-beta
    ```
 4. API 追加・変更がある場合は REST API spec も確認:
    ```bash
-   cat dev-docs/03_Spec/REST_API.md
+   cat docs/03_Spec/REST_API.md
    ```
 5. コミット（imperative形式）
 6. マップ更新 — `dev M3E/tasks/doing` → `dev M3E/tasks/done-today` に移動
@@ -76,7 +76,7 @@ git rebase origin/dev-beta
 ## Constraints
 
 - `rapid_mvp.ts` のモデル変更は `validate()` の整合性に影響 — テスト必須
-- `start_viewer.ts` の API 追加は REST API spec (`dev-docs/03_Spec/REST_API.md`) も更新する
+- `start_viewer.ts` の API 追加は REST API spec (`docs/03_Spec/REST_API.md`) も更新する
 - data2 と同じファイルを同時編集しない（タスク単位で分離）
 - 担当外ファイル（browser/）は絶対に変更しない
 - 設計判断が必要な場合は `dev M3E/design/` にメモを残して終了する（勝手に決めない）

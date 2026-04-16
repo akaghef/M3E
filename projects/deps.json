@@ -1,0 +1,21 @@
+{
+  "tasks": [
+    {"id": "PJ-00", "title": "AlgLibMove dogfood", "state": "active"},
+    {"id": "PJ-01", "title": "TrustEng", "state": "draft"},
+    {"id": "PJ-02", "title": "HarnessTranspose", "state": "draft"},
+    {"id": "PJ-03", "title": "DogfoodDeep", "state": "draft"},
+    {"id": "PJ-04", "title": "InfoGather", "state": "draft"},
+    {"id": "PJ-05", "title": "ObserveSelf", "state": "draft"},
+    {"id": "PJ-06", "title": "PrivacyLayer", "state": "draft"},
+    {"id": "PJ-07", "title": "Projection", "state": "draft"},
+    {"id": "PJ-08", "title": "AdoptionEng", "state": "draft"}
+  ],
+  "deps": [
+    ["PJ-01", "PJ-02"],
+    ["PJ-01", "PJ-03"],
+    ["PJ-04", "PJ-02"],
+    ["PJ-04", "PJ-07"],
+    ["PJ-06", "PJ-07"],
+    ["PJ-08", "PJ-02"]
+  ]
+}

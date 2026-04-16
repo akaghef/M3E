@@ -1,7 +1,7 @@
 # X Tech Radar — Codex Task Brief
 
 *2026-04-14 — handoff to codex once akaghef resolves Q1-Q7*
-*Design: [dev-docs/design/x_tech_radar.md](../dev-docs/design/x_tech_radar.md)*
+*Design: [docs/design/x_tech_radar.md](../docs/design/x_tech_radar.md)*
 *Base branch: `dev-beta` | Work branch suggestion: `dev-data` (pipeline lives server-side)*
 
 ## 1. Current status
@@ -118,7 +118,7 @@ Codex: do **not** guess these; wait for `selected="yes"` on map.
 
 ## 6. Reference
 
-- Design: [dev-docs/design/x_tech_radar.md](../dev-docs/design/x_tech_radar.md)
+- Design: [docs/design/x_tech_radar.md](../docs/design/x_tech_radar.md)
 - Related backlog: [backlog/obsidian-integration-manual-test.md](obsidian-integration-manual-test.md) — structural template this brief mirrors.
 - External:
   - X API pricing (Feb 2026 PPU): https://docs.x.com/x-api/getting-started/pricing

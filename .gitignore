@@ -32,7 +32,7 @@ final/test-results/
 !.claude/skills/
 !.claude/agents/
 .agents/
-dev-docs/ideas/user_memo.md
+docs/ideas/user_memo.md
 memo.md
 beta/tests/visual/viewer.visual.spec.js-snapshots/
 

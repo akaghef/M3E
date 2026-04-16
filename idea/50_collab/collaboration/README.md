@@ -117,7 +117,7 @@
    automation_obstacles/05 の NM4「Google Docs 級の協調エディタはやらない」と整合。
 3. **既存 collab.ts / presence.ts は既に骨格を持つ** — 完全な書き直しではなく、UX 層と
    ハンドオフ trail の追加が現実的。
-4. **agent ↔ human の引き継ぎ UI が弱点** — 現状は dev-docs / TODO に散る。
+4. **agent ↔ human の引き継ぎ UI が弱点** — 現状は docs / TODO に散る。
    M3E マップ上で「投げて受ける」フローが作れれば dogfood 価値が高い。
 5. **発言権モード（U12）はプレゼン用と「集中ファシリ用」両用** — 個人作業時に
    「俺だけ操作」というモード切替も同じ機構で実現できる可能性。

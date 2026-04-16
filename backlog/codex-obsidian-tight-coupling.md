@@ -9,8 +9,8 @@ M3E マップと Obsidian Vault の **双方向ライブ同期** を実装する
 
 ## 仕様書
 
-- [dev-docs/03_Spec/Obsidian_Vault_Integration.md](../dev-docs/03_Spec/Obsidian_Vault_Integration.md) — Import/Export の5フェーズ仕様（既存）
-- [dev-docs/design/local_file_integration.md](../dev-docs/design/local_file_integration.md) — ローカルファイル統合の全体設計
+- [docs/03_Spec/Obsidian_Vault_Integration.md](../docs/03_Spec/Obsidian_Vault_Integration.md) — Import/Export の5フェーズ仕様（既存）
+- [docs/design/local_file_integration.md](../docs/design/local_file_integration.md) — ローカルファイル統合の全体設計
 
 ## マップ上の位置
 

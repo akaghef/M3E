@@ -151,7 +151,7 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 - 大量の生ログ (PR description / dailies に書く)
 - コミット SHA 列挙 (git に任せる)
 - 一時的な debug 出力
-- 本来 dev-docs/ に書くべき設計文書 (canvas は判断・進捗のみ)
+- 本来 docs/ に書くべき設計文書 (canvas は判断・進捗のみ)
 
 ## Reference
 

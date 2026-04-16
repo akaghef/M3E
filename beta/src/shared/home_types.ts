@@ -6,7 +6,7 @@
  * Owner: data role. visual imports these read-only.
  * If visual needs an extension, file a request and let data update this file.
  *
- * See dev-docs/03_Spec/REST_API.md "Map Management API" section
+ * See docs/03_Spec/REST_API.md "Map Management API" section
  * and M3E map node "HOME Re-implementation" for the design context.
  */
 

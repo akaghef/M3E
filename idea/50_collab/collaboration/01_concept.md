@@ -97,7 +97,7 @@ M3E の差別化軸候補:
 協調機能を **入れない** とどうなるかも検討する（フェアな比較のため）:
 
 - 共著者は zip / git で渡し、Slack でコメント → M3E は自己専用ツール
-- AI agent との連携は dev-docs/backlog の md 経由
+- AI agent との連携は docs/backlog の md 経由
 - 引き継ぎは Agent Status ノードへの手動更新
 
 利点: シンプル、戦線が広がらない、外部ツールの強みを活かせる

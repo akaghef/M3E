@@ -32,7 +32,7 @@ role を省略した場合は、現在のブランチ名から自動判定する
 | `data` | dev-data | model・controller・API・永続化 | `beta/src/node/`, `beta/src/shared/` |
 | `data2` | dev-data2 | data の並列ワーカー | `beta/src/node/`, `beta/src/shared/` |
 | `team` | dev-team | Collaboration・Cloud Sync | `beta/src/node/collab.ts`, `beta/src/node/cloud_sync.ts`, `beta/src/node/start_viewer.ts` (collab部分) |
-| `manage` | dev-beta | CI・運用・文書・統合 | `dev-docs/`, `.claude/`, `scripts/`, `AGENTS.md` |
+| `manage` | dev-beta | CI・運用・文書・統合 | `docs/`, `.claude/`, `scripts/`, `AGENTS.md` |
 
 ## 実行フロー
 
@@ -99,7 +99,7 @@ curl -sf http://localhost:38482/api/docs/rapid-main
 #### 3b. ハンドオフファイルをスキャン
 
 ```bash
-ls dev-docs/tasks/handoff_*.md
+ls docs/tasks/handoff_*.md
 ```
 
 各ファイルの先頭を読み、`AssignedTo` が自分のロール名に一致するものを抽出する。
@@ -144,7 +144,7 @@ Branch: {branch}
 
 ### data / data2
 - `rapid_mvp.ts` のモデル変更は `validate()` の整合性に影響する。テスト必須
-- `start_viewer.ts` のAPI追加はREST API spec (`dev-docs/03_Spec/REST_API.md`) も更新する
+- `start_viewer.ts` のAPI追加はREST API spec (`docs/03_Spec/REST_API.md`) も更新する
 - data と data2 が同じファイルを同時編集しないよう、タスク単位で分離する
 
 ### team

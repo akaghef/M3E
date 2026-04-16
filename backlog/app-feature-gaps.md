@@ -58,7 +58,7 @@ Home 画面実装後の会話で出た「アプリとして普通あるべきで
 - alias 参照の一覧 / リンク切れ検出
 
 ## コンテキスト
-- Home 画面仕様書 [dev-docs/03_Spec/Home_Screen.md](dev-docs/03_Spec/Home_Screen.md) 実装完了後の会話で列挙した
+- Home 画面仕様書 [docs/03_Spec/Home_Screen.md](docs/03_Spec/Home_Screen.md) 実装完了後の会話で列挙した
 - ユーザーの指示は「一旦バックログに積む」— 優先度・タスク化は未定
 - scratch ノードではなくファイルにしたのは量が多く、カテゴリ分けして保持したかったため
 

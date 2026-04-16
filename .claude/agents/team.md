@@ -80,6 +80,6 @@ git rebase origin/dev-beta
 ## Constraints
 
 - `collab.ts` の変更は SSE の動作にも影響 — ブラウザ確認が必要な場合はメモを残す
-- Cloud Sync の競合解決ロジックは `dev-docs/03_Spec/Cloud_Sync_Conflict_Resolution.md` を参照
+- Cloud Sync の競合解決ロジックは `docs/03_Spec/Cloud_Sync_Conflict_Resolution.md` を参照
 - 担当外ファイル（browser/）は絶対に変更しない
 - 設計判断が必要な場合は `dev M3E/design/` にメモを残して終了する（勝手に決めない）

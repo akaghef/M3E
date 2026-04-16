@@ -978,7 +978,7 @@ function clamp01(x: number): number {
 /**
  * Derive a fill color via bilinear interpolation across a 2D
  * (urgency × importance) grid. Matches the matrix in
- * `dev-docs/ideas/UrgentImportanceView.mlx` (Method 2, blue variant):
+ * `docs/ideas/UrgentImportanceView.mlx` (Method 2, blue variant):
  *   C00 (U=0,I=0) = white   C01 (U=0,I=1) = yellow
  *   C10 (U=1,I=0) = blue    C11 (U=1,I=1) = red
  * Inputs accept 0..3 (integer urgency/importance levels) and are normalized to 0..1.

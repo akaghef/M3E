@@ -13,7 +13,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "dev-docs/00_Home/Current_Status.md",
+                "file": "docs/00_Home/Current_Status.md",
                 "mode": "source",
                 "source": false
               },
@@ -183,12 +183,12 @@
   "active": "c06933e3ecb783aa",
   "lastOpenFiles": [
     "LICENSE",
-    "dev-docs/daily/sed7y2B2T",
-    "dev-docs/06_Operations/Command_Panel_Security_Test_Cases.md",
-    "dev-docs/ideas/260401_memo.md",
-    "dev-docs/ideas/260401_important_goal.md",
-    "dev-docs/03_Spec/Scope_Transition.md",
-    "dev-docs/00_Home/Worktree_Separation_Rules.md",
-    "dev-docs/mindmapsoftwares.md"
+    "docs/daily/sed7y2B2T",
+    "docs/06_Operations/Command_Panel_Security_Test_Cases.md",
+    "docs/ideas/260401_memo.md",
+    "docs/ideas/260401_important_goal.md",
+    "docs/03_Spec/Scope_Transition.md",
+    "docs/00_Home/Worktree_Separation_Rules.md",
+    "docs/mindmapsoftwares.md"
   ]
 }

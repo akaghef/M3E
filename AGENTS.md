@@ -25,21 +25,21 @@ Agents should prioritize small validated changes over broad refactors.
 ## Source of Truth
 
 1. Strategy and current direction:
-   - `dev-docs/00_Home/Home.md`
+   - `docs/00_Home/Home.md`
 2. Current priorities and progress:
-   - `dev-docs/00_Home/Current_Status.md`
+   - `docs/00_Home/Current_Status.md`
 3. Daily execution log:
-   - `dev-docs/daily/YYMMDD.md`
+   - `docs/daily/YYMMDD.md`
 4. Operations rules:
-   - `dev-docs/06_Operations/Documentation_Rules.md`
+   - `docs/06_Operations/Documentation_Rules.md`
 
 ## Definition of Update-Complete
 
 A task is update-complete only when all three are done:
 
 1. Changes are committed.
-2. Daily note is updated (`dev-docs/daily/YYMMDD.md`).
-3. Current status is updated by manager (`dev-docs/00_Home/Current_Status.md`) when status has changed.
+2. Daily note is updated (`docs/daily/YYMMDD.md`).
+3. Current status is updated by manager (`docs/00_Home/Current_Status.md`) when status has changed.
 
 If any item is missing, task state is still in-progress.
 
@@ -67,7 +67,7 @@ If any item is missing, task state is still in-progress.
 ```
 
 各エージェントは `isolation: worktree` で独立したコピーで作業する。
-タスクの正本は M3E マップ `ROOT/SYSTEM/DEV/strategy/` と `dev-docs/06_Operations/Todo_Pool.md` の text pool。
+タスクの正本は M3E マップ `ROOT/SYSTEM/DEV/strategy/` と `docs/06_Operations/Todo_Pool.md` の text pool。
 メンバーは `SendMessage` で互いに通信可能。
 
 ### Team Communication
@@ -153,11 +153,11 @@ If checks fail or rebase is not possible, stop and escalate to `akaghef`.
 3. Implement with minimal changes.
 4. Run a local verification step.
 5. Update docs using split ownership:
-   - UpdateLog goes to `dev-docs/daily/YYMMDD.md`.
+   - UpdateLog goes to `docs/daily/YYMMDD.md`.
    - `Current_Status.md` keeps current snapshot only.
    - Subordinates treat `Current_Status.md` as read-only.
    - Manager updates `Current_Status.md` by referencing subordinate daily logs.
-   - Rough TODOs go to `dev-docs/06_Operations/Todo_Pool.md`.
+   - Rough TODOs go to `docs/06_Operations/Todo_Pool.md`.
 6. Commit with an imperative message.
 
 ## Branch Operation Policy
@@ -214,7 +214,7 @@ If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
 ## Language Policy
 
 1. Agent-user conversation should be in English by default.
-2. Design and development documents under `dev-docs/` should be written in Japanese by default.
+2. Design and development documents under `docs/` should be written in Japanese by default.
 3. Code identifiers, file names, API names, and technical tokens may remain in English where appropriate.
 4. If a document is a design/spec/architecture/ADR document, prefer Japanese prose even when the surrounding conversation is in English.
 

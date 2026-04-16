@@ -30,7 +30,7 @@ devM3E では以下の3条件を満たしたときに「完了」となる。
 - **修正して** → Execute に戻る
 
 ### 2. Daily Note
-エージェント（doc-updater）が `dev-docs/daily/YYMMDD.md` を自動更新する。
+エージェント（doc-updater）が `docs/daily/YYMMDD.md` を自動更新する。
 内容に不足があれば「〇〇も追記して」と指示する。
 
 ### 3. Current Status
