@@ -2767,6 +2767,62 @@ function render(): void {
   });
   defs += "</defs>";
 
+  /**
+   * Render children of a node as an HTML table via foreignObject.
+   * Columns are auto-derived from the union of all children's attribute keys
+   * (excluding m3e: internal attributes). First column is always the node text.
+   */
+  function renderTableView(parentId: string, parentPos: { x: number; y: number; w: number; h: number }): string {
+    const parent = state.nodes[parentId];
+    if (!parent || parent.children.length === 0) return "";
+
+    const childNodes = parent.children
+      .map((cid) => state.nodes[cid])
+      .filter((n): n is TreeNode => !!n);
+
+    // Collect column keys from all children's attributes (exclude m3e: internals)
+    const colSet = new Set<string>();
+    for (const child of childNodes) {
+      for (const key of Object.keys(child.attributes || {})) {
+        if (!key.startsWith("m3e:")) colSet.add(key);
+      }
+      if (child.details) colSet.add("_details");
+    }
+    const columns = Array.from(colSet).sort();
+
+    // Build HTML table
+    const esc = (s: string) => escapeXml(s);
+
+    let html = `<table class="m3e-table-view"><thead><tr><th>Name</th>`;
+    for (const col of columns) {
+      html += `<th>${esc(col === "_details" ? "Details" : col)}</th>`;
+    }
+    html += `</tr></thead><tbody>`;
+
+    for (const child of childNodes) {
+      const statusClass = child.attributes?.["m3e:status"] ? ` class="status-${esc(child.attributes["m3e:status"])}"` : "";
+      html += `<tr data-node-id="${esc(child.id)}"${statusClass}>`;
+      html += `<td class="m3e-table-name">${esc(child.text || "(empty)")}</td>`;
+      for (const col of columns) {
+        if (col === "_details") {
+          html += `<td>${esc(child.details || "")}</td>`;
+        } else {
+          html += `<td>${esc(child.attributes?.[col] || "")}</td>`;
+        }
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+
+    // Size: estimate based on columns and rows
+    const tableW = Math.max(columns.length * 150 + 200, 600);
+    const tableH = Math.min((childNodes.length + 1) * 32 + 16, 800);
+    const foX = parentPos.x - 20;
+    const foY = parentPos.y + parentPos.h / 2 + 20;
+
+    return `<foreignObject x="${foX}" y="${foY}" width="${tableW}" height="${tableH}"><div xmlns="http://www.w3.org/1999/xhtml" class="m3e-table-container">${html}</div></foreignObject>`;
+  }
+
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
     const p = pos[nodeId];
@@ -2947,7 +3003,14 @@ function render(): void {
       nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
     }
 
-    children.forEach((cid) => drawNode(cid));
+    // Table view mode: render children as table instead of tree
+    const viewType = node.attributes?.["m3e:view-type"];
+    if (viewType === "table" && children.length > 0 && nodeId !== displayRootId) {
+      // Skip recursive tree rendering for children — they'll be shown as table
+      nodes += renderTableView(nodeId, p);
+    } else {
+      children.forEach((cid) => drawNode(cid));
+    }
   }
 
   drawNode(displayRootId);
