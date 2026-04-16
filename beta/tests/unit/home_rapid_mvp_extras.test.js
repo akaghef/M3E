@@ -27,19 +27,19 @@ test("setPinned(false) flips pinned back to false", () => {
   expect(maps[0].pinned).toBe(false);
 });
 
-test("setDocumentSource stores a MapSource and surfaces it on listMaps", () => {
+test("setMapSource stores a MapSource and surfaces it on listMaps", () => {
   const dbPath = makeTempDb();
   RapidMvpModel.createMap(dbPath, "s1", "S");
-  RapidMvpModel.setDocumentSource(dbPath, "s1", { kind: "obsidian", path: "/tmp/vault" });
+  RapidMvpModel.setMapSource(dbPath, "s1", { kind: "obsidian", path: "/tmp/vault" });
   const maps = RapidMvpModel.listMaps(dbPath);
   expect(maps[0].source).toEqual({ kind: "obsidian", path: "/tmp/vault" });
 });
 
-test("setDocumentSource(null) clears the source field", () => {
+test("setMapSource(null) clears the source field", () => {
   const dbPath = makeTempDb();
   RapidMvpModel.createMap(dbPath, "s1", "S");
-  RapidMvpModel.setDocumentSource(dbPath, "s1", { kind: "obsidian", path: "/tmp/vault" });
-  RapidMvpModel.setDocumentSource(dbPath, "s1", null);
+  RapidMvpModel.setMapSource(dbPath, "s1", { kind: "obsidian", path: "/tmp/vault" });
+  RapidMvpModel.setMapSource(dbPath, "s1", null);
   const maps = RapidMvpModel.listMaps(dbPath);
   expect(maps[0].source).toBeUndefined();
 });
@@ -91,7 +91,7 @@ test("duplicateMap does not inherit pinned/source from the source", () => {
   const dbPath = makeTempDb();
   RapidMvpModel.createMap(dbPath, "src", "Src");
   RapidMvpModel.setPinned(dbPath, "src", true);
-  RapidMvpModel.setDocumentSource(dbPath, "src", { kind: "obsidian", path: "/tmp/vault" });
+  RapidMvpModel.setMapSource(dbPath, "src", { kind: "obsidian", path: "/tmp/vault" });
   RapidMvpModel.duplicateMap(dbPath, "src", "dup");
 
   const maps = RapidMvpModel.listMaps(dbPath);

@@ -661,8 +661,19 @@ class RapidMvpModel {
     }
 
     const db = new Database(dbPath);
+
+    // One-shot migration: legacy `documents` table -> `maps`.
+    // Why: historical name predates the map-only vocabulary switch.
+    const legacy = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name IN ('documents','maps')`)
+      .all() as Array<{ name: string }>;
+    const legacyNames = new Set(legacy.map((r) => r.name));
+    if (legacyNames.has("documents") && !legacyNames.has("maps")) {
+      db.exec(`ALTER TABLE documents RENAME TO maps`);
+    }
+
     db.exec(`
-      CREATE TABLE IF NOT EXISTS documents (
+      CREATE TABLE IF NOT EXISTS maps (
         id TEXT PRIMARY KEY,
         version INTEGER NOT NULL,
         saved_at TEXT NOT NULL,
@@ -670,21 +681,19 @@ class RapidMvpModel {
       )
     `);
 
-    // ALTER TABLE migration for HOME page (tags, archived).
-    // SQLite has no IF NOT EXISTS for ADD COLUMN, so we inspect pragma first.
-    const cols = db.prepare(`PRAGMA table_info(documents)`).all() as Array<{ name: string }>;
+    const cols = db.prepare(`PRAGMA table_info(maps)`).all() as Array<{ name: string }>;
     const colNames = new Set(cols.map((c) => c.name));
     if (!colNames.has("tags")) {
-      db.exec(`ALTER TABLE documents ADD COLUMN tags TEXT`);
+      db.exec(`ALTER TABLE maps ADD COLUMN tags TEXT`);
     }
     if (!colNames.has("archived")) {
-      db.exec(`ALTER TABLE documents ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
+      db.exec(`ALTER TABLE maps ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
     }
     if (!colNames.has("pinned")) {
-      db.exec(`ALTER TABLE documents ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
+      db.exec(`ALTER TABLE maps ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`);
     }
     if (!colNames.has("source")) {
-      db.exec(`ALTER TABLE documents ADD COLUMN source TEXT`);
+      db.exec(`ALTER TABLE maps ADD COLUMN source TEXT`);
     }
 
     return db;
@@ -766,8 +775,8 @@ class RapidMvpModel {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const sql = includeArchived
-        ? `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM documents ORDER BY saved_at DESC`
-        : `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM documents WHERE COALESCE(archived, 0) = 0 ORDER BY saved_at DESC`;
+        ? `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM maps ORDER BY saved_at DESC`
+        : `SELECT id, version, saved_at AS savedAt, state_json AS stateJson, tags, archived, pinned, source FROM maps WHERE COALESCE(archived, 0) = 0 ORDER BY saved_at DESC`;
       const rows = db.prepare(sql).all() as SqliteMapListRow[];
       return rows.map((row) => {
         const metrics = RapidMvpModel.computeStateMetrics(row.stateJson);
@@ -795,7 +804,7 @@ class RapidMvpModel {
   static mapExists(dbPath: string, mapId: string): boolean {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
-      const row = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(mapId) as { hit: number } | undefined;
+      const row = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(mapId) as { hit: number } | undefined;
       return Boolean(row);
     } finally {
       db.close();
@@ -817,13 +826,13 @@ class RapidMvpModel {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const src = db
-        .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson, tags FROM documents WHERE id = ?`)
+        .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson, tags FROM maps WHERE id = ?`)
         .get(sourceId) as { version: number; savedAt: string; stateJson: string; tags: string | null } | undefined;
       if (!src) {
         throw new Error("Map not found.");
       }
       db.prepare(
-        `INSERT INTO documents (id, version, saved_at, state_json, tags, archived)
+        `INSERT INTO maps (id, version, saved_at, state_json, tags, archived)
          VALUES (@id, @version, @savedAt, @stateJson, @tags, 0)`,
       ).run({
         id: newId,
@@ -845,7 +854,7 @@ class RapidMvpModel {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
-        .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson FROM documents WHERE id = ?`)
+        .prepare(`SELECT version, saved_at AS savedAt, state_json AS stateJson FROM maps WHERE id = ?`)
         .get(mapId) as SqliteMapRow & { savedAt: string } | undefined;
       if (!row) {
         throw new Error("Map not found.");
@@ -856,7 +865,7 @@ class RapidMvpModel {
         root.text = trimmed;
       }
       db.prepare(
-        `UPDATE documents SET state_json = @stateJson, saved_at = @savedAt WHERE id = @id`,
+        `UPDATE maps SET state_json = @stateJson, saved_at = @savedAt WHERE id = @id`,
       ).run({
         id: mapId,
         stateJson: JSON.stringify(state),
@@ -875,7 +884,7 @@ class RapidMvpModel {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
-        .prepare(`UPDATE documents SET tags = ? WHERE id = ?`)
+        .prepare(`UPDATE maps SET tags = ? WHERE id = ?`)
         .run(JSON.stringify(cleaned), mapId);
       if (result.changes === 0) {
         throw new Error("Map not found.");
@@ -889,7 +898,7 @@ class RapidMvpModel {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
-        .prepare(`UPDATE documents SET archived = ? WHERE id = ?`)
+        .prepare(`UPDATE maps SET archived = ? WHERE id = ?`)
         .run(archived ? 1 : 0, mapId);
       if (result.changes === 0) {
         throw new Error("Map not found.");
@@ -903,7 +912,7 @@ class RapidMvpModel {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
-        .prepare(`UPDATE documents SET pinned = ? WHERE id = ?`)
+        .prepare(`UPDATE maps SET pinned = ? WHERE id = ?`)
         .run(pinned ? 1 : 0, mapId);
       if (result.changes === 0) {
         throw new Error("Map not found.");
@@ -918,7 +927,7 @@ class RapidMvpModel {
     try {
       const serialized = source ? JSON.stringify(source) : null;
       const result = db
-        .prepare(`UPDATE documents SET source = ? WHERE id = ?`)
+        .prepare(`UPDATE maps SET source = ? WHERE id = ?`)
         .run(serialized, mapId);
       if (result.changes === 0) {
         throw new Error("Map not found.");
@@ -928,11 +937,11 @@ class RapidMvpModel {
     }
   }
 
-  static deleteDocument(dbPath: string, mapId: string): void {
+  static deleteMap(dbPath: string, mapId: string): void {
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
-        .prepare(`SELECT COALESCE(archived, 0) AS archived FROM documents WHERE id = ?`)
+        .prepare(`SELECT COALESCE(archived, 0) AS archived FROM maps WHERE id = ?`)
         .get(mapId) as { archived: number } | undefined;
       if (!row) {
         throw new Error("Map not found.");
@@ -940,7 +949,7 @@ class RapidMvpModel {
       if (Number(row.archived) !== 1) {
         throw new Error("Map is not archived.");
       }
-      db.prepare(`DELETE FROM documents WHERE id = ?`).run(mapId);
+      db.prepare(`DELETE FROM maps WHERE id = ?`).run(mapId);
     } finally {
       db.close();
     }
@@ -1284,7 +1293,7 @@ class RapidMvpModel {
     try {
       db.prepare(
         `
-          INSERT INTO documents (id, version, saved_at, state_json)
+          INSERT INTO maps (id, version, saved_at, state_json)
           VALUES (@id, @version, @savedAt, @stateJson)
           ON CONFLICT(id) DO UPDATE SET
             version = excluded.version,
@@ -1337,7 +1346,7 @@ class RapidMvpModel {
         .prepare(
           `
             SELECT version, saved_at AS savedAt, state_json AS stateJson
-            FROM documents
+            FROM maps
             WHERE id = ?
           `,
         )

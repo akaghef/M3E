@@ -70,12 +70,12 @@ test("archive hides maps from default list and restore brings them back", () => 
   expect(RapidMvpModel.listMaps(dbPath).length).toBe(1);
 });
 
-test("deleteMapument requires archived state", () => {
+test("deleteMap requires archived state", () => {
   const dbPath = makeTempDb();
   RapidMvpModel.createMap(dbPath, "d", "Doomed");
-  expect(() => RapidMvpModel.deleteMapument(dbPath, "d")).toThrow(/not archived/);
+  expect(() => RapidMvpModel.deleteMap(dbPath, "d")).toThrow(/not archived/);
   RapidMvpModel.setArchived(dbPath, "d", true);
-  RapidMvpModel.deleteMapument(dbPath, "d");
+  RapidMvpModel.deleteMap(dbPath, "d");
   expect(RapidMvpModel.mapExists(dbPath, "d")).toBe(false);
 });
 

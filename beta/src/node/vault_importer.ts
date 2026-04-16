@@ -60,7 +60,7 @@ function toPosixRelative(rootPath: string, absolutePath: string): string {
   return path.relative(rootPath, absolutePath).split(path.sep).join("/");
 }
 
-function buildDefaultDocumentId(vaultPath: string): string {
+function buildDefaultMapId(vaultPath: string): string {
   const baseName = path.basename(vaultPath).trim() || "vault";
   const slug = baseName
     .normalize("NFKC")
@@ -341,7 +341,7 @@ export async function importVaultToAppState(
 ): Promise<VaultImportResult> {
   const vaultPath = validateVaultPath(request.vaultPath, { mustExist: true });
 
-  const mapId = request.mapId?.trim() || buildDefaultDocumentId(vaultPath);
+  const mapId = request.mapId?.trim() || buildDefaultMapId(vaultPath);
   const nextId = createIdFactory();
   const rootId = nextId();
   const rootNode = createFolderNode(rootId, null, path.basename(vaultPath) || vaultPath, "folder", "");

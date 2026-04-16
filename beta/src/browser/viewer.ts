@@ -2803,7 +2803,7 @@ function buildLayout(state: AppState): LayoutResult {
   };
 }
 
-function updateDocumentTitle(): void {
+function updateMapTitle(): void {
   const appTitle = "M3E";
   if (!map) {
     document.title = appTitle;
@@ -2847,7 +2847,7 @@ function render(): void {
     updateScopeSummary();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
-    updateDocumentTitle();
+    updateMapTitle();
     renderLinearPanel();
     syncLinearPanelPosition();
     return;
@@ -3239,7 +3239,7 @@ function render(): void {
   metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
-  updateDocumentTitle();
+  updateMapTitle();
   syncInlineEditorPosition();
   renderLinearPanel();
 }

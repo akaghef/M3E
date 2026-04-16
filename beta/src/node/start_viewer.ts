@@ -832,7 +832,7 @@ async function handleHomeApi(
 
     if (route.kind === "delete") {
       try {
-        RapidMvpModel.deleteDocument(SQLITE_DB_PATH, route.mapId);
+        RapidMvpModel.deleteMap(SQLITE_DB_PATH, route.mapId);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Map not found.") {
