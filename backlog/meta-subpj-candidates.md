@@ -4,11 +4,17 @@
 
 sub-PJ は通し番号 `PJ{NN}` で採番し、活性化した順に連番を振る。
 
+### ブランチ・ディレクトリ規約
+
+- **ブランチ**: `prj/{NN}_{Name}` （例: `prj/02_MathOntoBridge`）
+- **作業ディレクトリ**: `projects/PJ{NN}_{Name}/` （`projects/` 配下に統一）
+
 | ID | 名称 | 状態 | 場所 |
 |---|---|---|---|
 | `PJ00` | M3E 本体 | 継続中 | このリポジトリ全体 |
-| `PJ01` | AlgLibMove | 進行中 (prj/AlgLibMove ブランチ) | `docs/projects/PJ01_AlgLibMove/` |
-| `PJ02+` | 未定 | - | 活性化時に `docs/projects/PJ{NN}_{Name}/` を作成 |
+| `PJ01` | AlgLibMove | 進行中 (prj/AlgLibMove ブランチ) | `projects/PJ01_AlgLibMove/` |
+| `PJ02` | MathOntoBridge | 進行中 (prj/02_MathOntoBridge ブランチ、列挙番号 PJ-101) | `projects/PJ02_MathOntoBridge/` |
+| `PJ03+` | 未定 | - | 活性化時に `projects/PJ{NN}_{Name}/` を作成 |
 
 本ファイル下部の候補一覧（TrustEng 以下）は **未活性の候補ラベル**。活性化判断時に次の連番 (`PJ02` 以降) を採番し直す。以下の `PJ-01` 〜 `PJ-07` は暫定的な候補識別子として本ファイル内でのみ使用する。
 
@@ -95,7 +101,7 @@ sub-PJ は通し番号 `PJ{NN}` で採番し、活性化した順に連番を振
 
 ## 未決論点
 
-- sub-PJ を「形式」として固めるか（`projects/<pj_name>/` 統一構造 + ライフサイクル状態）
+- ~~sub-PJ を「形式」として固めるか~~ → **決定済**: `projects/PJ{NN}_{Name}/` に統一、ブランチは `prj/{NN}_{Name}`
 - M3Eマップ上の sub-PJ 表現（strategy board レーン / 独立マップ）
 - 次に立てる sub-PJ の選定 — PJ-01 を基盤として先行するか、PJ-02 の自己改善ループを回しながら育てるか
 
