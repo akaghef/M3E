@@ -136,6 +136,7 @@ export interface BlueprintImportOptions {
   skipProofUses?: boolean;
   proofUsesRelationType?: string;
   layoutMode?: "chapter-tree" | "dag";
+  dagSourceGrouping?: "none" | "chapter";
 }
 
 export interface BlueprintImportRequest {

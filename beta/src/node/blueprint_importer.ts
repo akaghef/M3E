@@ -18,9 +18,11 @@ const STATEMENT_ENVIRONMENTS = ["definition", "lemma", "proposition", "theorem",
 const STATEMENT_ENVIRONMENT_PATTERN = STATEMENT_ENVIRONMENTS.join("|");
 const DEFAULT_PROOF_RELATION_TYPE = "uses_in_proof";
 const DEFAULT_LAYOUT_MODE = "chapter-tree";
+const DEFAULT_DAG_SOURCE_GROUPING = "chapter";
 
 type StatementKind = typeof STATEMENT_ENVIRONMENTS[number];
 type BlueprintLayoutMode = "chapter-tree" | "dag";
+type DagSourceGroupingMode = "none" | "chapter";
 
 type BlueprintLayout = {
   sourceRoot: string;
@@ -333,6 +335,10 @@ function resolveLayoutMode(request: BlueprintImportRequest): BlueprintLayoutMode
   return request.options?.layoutMode === "dag" ? "dag" : DEFAULT_LAYOUT_MODE;
 }
 
+function resolveDagSourceGroupingMode(request: BlueprintImportRequest): DagSourceGroupingMode {
+  return request.options?.dagSourceGrouping === "none" ? "none" : DEFAULT_DAG_SOURCE_GROUPING;
+}
+
 function createChapterNode(id: string, parentId: string, text: string, relativePath: string): TreeNode {
   return {
     id,
@@ -346,6 +352,24 @@ function createChapterNode(id: string, parentId: string, text: string, relativeP
     attributes: {
       "blueprint:path": relativePath,
       "blueprint:kind": "chapter",
+    },
+    link: "",
+  };
+}
+
+function createDagSourceGroupNode(id: string, parentId: string, chapter: ParsedChapter): TreeNode {
+  return {
+    id,
+    parentId,
+    children: [],
+    text: chapter.chapterTitle,
+    collapsed: false,
+    details: "",
+    note: "Synthetic source-group anchor for DAG layout.",
+    attributes: {
+      "blueprint:path": chapter.relativePath,
+      "blueprint:kind": "chapter-source-group",
+      "dag:role": "source-group",
     },
     link: "",
   };
@@ -455,6 +479,7 @@ export async function importBlueprintToAppState(
 ): Promise<BlueprintImportResult> {
   const layout = resolveBlueprintLayout(request.blueprintPath);
   const layoutMode = resolveLayoutMode(request);
+  const dagSourceGroupingMode = resolveDagSourceGroupingMode(request);
   const mapId = request.mapId?.trim() || buildDefaultMapId(layout.sourceRoot);
   const rootLabel = loadProjectLabel(layout, request);
   const chapterFiles = loadChapterFiles(layout);
@@ -506,9 +531,11 @@ export async function importBlueprintToAppState(
   const statementRecords: StatementRecord[] = [];
   const chapterSummaries: BlueprintImportedChapterSummary[] = [];
   const proofRelationType = request.options?.proofUsesRelationType?.trim() || DEFAULT_PROOF_RELATION_TYPE;
+  const chapterByKey = new Map<string, ParsedChapter>();
 
   let statementOrder = 0;
   for (const chapter of parsedChapters) {
+    chapterByKey.set(chapter.chapterKey, chapter);
     const chapterId = `bp_ch_${safeNodeToken(chapter.chapterKey, "chapter")}`;
     if (layoutMode === "chapter-tree") {
       const chapterNode = createChapterNode(chapterId, rootId, chapter.chapterTitle, chapter.relativePath);
@@ -666,17 +693,41 @@ export async function importBlueprintToAppState(
     for (const record of statementRecords) {
       nodes[record.nodeId]!.children = [];
     }
+    const sourceGroupIdByChapterKey = new Map<string, string>();
+    const ensureSourceGroup = (chapterKey: string): string | null => {
+      if (dagSourceGroupingMode !== "chapter") {
+        return null;
+      }
+      const existing = sourceGroupIdByChapterKey.get(chapterKey);
+      if (existing) {
+        return existing;
+      }
+      const chapter = chapterByKey.get(chapterKey);
+      if (!chapter) {
+        return null;
+      }
+      const groupId = `bp_srcgrp_${safeNodeToken(chapter.chapterKey, "chapter")}`;
+      const groupNode = createDagSourceGroupNode(groupId, rootId, chapter);
+      nodes[groupId] = groupNode;
+      nodes[rootId]!.children.push(groupId);
+      sourceGroupIdByChapterKey.set(chapterKey, groupId);
+      return groupId;
+    };
     for (const nodeId of topoOrder) {
       const record = recordByNodeId.get(nodeId);
       if (!record) continue;
       const parentId = chooseDagParent(record, incomingUses.get(nodeId) ?? [], layerByNodeId, recordByNodeId);
       dagParentByNodeId.set(nodeId, parentId);
       const node = nodes[nodeId]!;
-      node.parentId = parentId ?? rootId;
+      const structuralParentId = parentId ?? ensureSourceGroup(record.statement.chapterKey) ?? rootId;
+      node.parentId = structuralParentId;
       node.attributes["dag:layer"] = String(layerByNodeId.get(nodeId) ?? 0);
       node.attributes["dag:role"] = parentId ? "derived" : "root";
-      if (parentId) {
-        nodes[parentId]!.children.push(nodeId);
+      if (!parentId && structuralParentId !== rootId) {
+        node.attributes["dag:source-group"] = structuralParentId;
+      }
+      if (structuralParentId) {
+        nodes[structuralParentId]!.children.push(nodeId);
       } else {
         nodes[rootId]!.children.push(nodeId);
       }

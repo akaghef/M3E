@@ -116,7 +116,7 @@ test("importBlueprintToAppState parses chapter files into statements and graph l
   }
 });
 
-test("importBlueprintToAppState supports DAG layout with spanning tree plus overlay links", async () => {
+test("importBlueprintToAppState supports DAG layout with source grouping anchors", async () => {
   const blueprintDir = tmpDir();
   try {
     writeFile(blueprintDir, "web.tex", `\\documentclass{report}
@@ -159,7 +159,7 @@ test("importBlueprintToAppState supports DAG layout with spanning tree plus over
     expect(result.ok).toBe(true);
     expect(result.chapterCount).toBe(1);
     expect(result.statementCount).toBe(4);
-    expect(result.nodeCount).toBe(5);
+    expect(result.nodeCount).toBe(6);
     expect(result.linkCount).toBe(1);
 
     const model = RapidMvpModel.fromJSON(result.state);
@@ -167,18 +167,22 @@ test("importBlueprintToAppState supports DAG layout with spanning tree plus over
 
     const root = result.state.nodes[result.state.rootId];
     expect(root.attributes["blueprint:layout"]).toBe("dag");
+    const sourceGroup = Object.values(result.state.nodes).find((node) => node.attributes?.["blueprint:kind"] === "chapter-source-group");
+    expect(sourceGroup).toBeTruthy();
+    expect(sourceGroup.parentId).toBe(result.state.rootId);
 
     const seedNode = findNodeByAttr(result.state, "blueprint_label", "seed");
     const auxNode = findNodeByAttr(result.state, "blueprint_label", "aux");
     const growthNode = findNodeByAttr(result.state, "blueprint_label", "growth");
     const harvestNode = findNodeByAttr(result.state, "blueprint_label", "harvest");
 
-    expect(seedNode.parentId).toBe(result.state.rootId);
-    expect(auxNode.parentId).toBe(result.state.rootId);
+    expect(seedNode.parentId).toBe(sourceGroup.id);
+    expect(auxNode.parentId).toBe(sourceGroup.id);
     expect(growthNode.parentId).toBe(seedNode.id);
     expect(harvestNode.parentId).toBe(growthNode.id);
     expect(growthNode.attributes["dag:layer"]).toBe("1");
     expect(harvestNode.attributes["dag:layer"]).toBe("2");
+    expect(seedNode.attributes["dag:source-group"]).toBe(sourceGroup.id);
 
     const usesLinks = Object.values(result.state.links).filter((link) => link.relationType === "uses");
     expect(usesLinks).toHaveLength(1);

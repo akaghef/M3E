@@ -139,6 +139,7 @@ test("POST /api/blueprint/import accepts dag layout mode", async () => {
   const loaded = RapidMvpModel.loadFromSqlite(dbPath, "blueprint-api-map-dag");
   expect(loaded.validate()).toEqual([]);
   expect(loaded.state.nodes[loaded.state.rootId].attributes["blueprint:layout"]).toBe("dag");
+  expect(Object.values(loaded.state.nodes).some((node) => node.attributes?.["blueprint:kind"] === "chapter-source-group")).toBe(true);
   expect(Object.values(loaded.state.nodes).some((node) => node.attributes?.["dag:layer"] === "1")).toBe(true);
   expect(Object.values(loaded.state.links ?? {})).toHaveLength(0);
 });
