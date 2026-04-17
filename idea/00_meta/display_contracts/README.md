@@ -17,9 +17,13 @@ M3E の map 書き込みで、AI が **人間にレビューしやすい表示**
 
 - [01_facet_type_contract_table.md](01_facet_type_contract_table.md) — facet type ごとの display 契約表
 - [02_flow_contract.md](02_flow_contract.md) — 処理フロー / 時間軸 facet の具体契約
+- [03_reviews_contract.md](03_reviews_contract.md) — reviews facet の具体契約
+- [04_dependency_contract.md](04_dependency_contract.md) — dependency facet の具体契約
 
 ## キーメッセージ
 
 - `facet` 自体は PJ 固有だが、`facet type` の契約は先に固定できる
 - 人間向けの reviewability を主目的にすると、色や anchor も表示契約に含めるべき
 - `flow` / `timeseries` 系では「主時間軸は depth」が最初の強い規約になる
+- `reviews` では unscoped + context anchoring + triage coloring が基本になる
+- `dependency` では spanning tree + GraphLink が基本になる
