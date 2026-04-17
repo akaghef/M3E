@@ -1,6 +1,6 @@
 # REST API 仕様
 
-最終更新: 2026-04-07
+最終更新: 2026-04-17
 
 ## 目的
 
@@ -258,6 +258,25 @@ map の現在 state を取得する。
 map の state を保存する。
 サーバー側で `RapidMvpModel.fromJSON()` → `validate()` を実行し、
 バリデーション通過後のみ SQLite に永続化する。
+
+### DAG の表現規約
+
+M3E の保存モデルは木構造を正本とする。したがって、依存関係グラフや証明 DAG のような
+「複数親を持つ概念構造」を保存する場合は、**tree + link overlay** として表現する。
+
+運用規約:
+
+1. `parentId` / `children` には DAG 全体の **spanning tree** を書く
+2. spanning tree に採用しなかった残りの辺は `state.links` に書く
+3. 依存方向を持つ link は `sourceNodeId = 前提`, `targetNodeId = 帰結`,
+   `direction = "forward"` を推奨する
+4. chapter / category / group は depth を歪める場合、親子構造ではなく
+   `attributes`・色・`note` に退避する
+5. `?scope=` を使う部分読み書きでは scope 外を指す link が落ちるため、
+   1つの DAG は可能な限り同一 scope 内に置く
+
+この規約により、viewer は tree edge で depth を安定して計算しつつ、
+`state.links` を補助線として重ねて DAG の多重依存を表示できる。
 
 #### リクエスト
 
