@@ -94,6 +94,8 @@ M3E を実行画面として使う PJ は、原則として **1 つの master ma
 
 運用上の原則:
 
+- runtime は **既定で必須** とする。使わない場合のみ、README と plan.md の両方に
+  `runtime_opt_out: {理由}` を明記して opt-out しろ
 - 3 view は **別 map ではなく同一 master map の別 scope** を第一選択とする
 - Progress Board は **summary であっても traceability 必須**。task ノードから Review / Workspace の現物へ alias で辿れること
 - map から chat へ送信できない間は、review 完了や phase gate の通知は **人間が手動で chat に送る**

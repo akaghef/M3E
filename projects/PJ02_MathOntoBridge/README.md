@@ -52,7 +52,7 @@ M3E 上で **semantic tree**（意味の木）と **syntax tree**（構文の木
 | 列挙番号（pj-vision-100） | `PJ-101` |
 | ブランチ | `prj/02_MathOntoBridge`（dev-beta から分岐） |
 | worktree | なし（PJ01 並列回避。段階進行） |
-| M3E マップ | DEV map 内 DAG レーンに登録（独立マップは当面作らない） |
+| M3E マップ | `PJ02 Runtime` を正本とする 3-view runtime（Progress Board / Review / Active Workspace） |
 | Kickoff | 2026-04-17 |
 | ブレスト原典 | [idea/10_io/math_ontology_services/](../../idea/10_io/math_ontology_services/) |
 | 実装見積り原典 | [idea/10_io/math_ontology_services/08_implementation_feasibility.md](../../idea/10_io/math_ontology_services/08_implementation_feasibility.md) |
@@ -62,6 +62,7 @@ M3E 上で **semantic tree**（意味の木）と **syntax tree**（構文の木
 - [plan.md](plan.md) — Phase 0〜4 実行計画（kind 語彙 / 描画 / フィルタ / importer / 語彙固定）
 - [prior_art.md](prior_art.md) — 既存考察の全文集約（typed_edges / ontology_data_structure / 競合調査 / scalable KB vision）
 - [blueprint_facets.md](blueprint_facets.md) — Blueprint の色分け、design/implementation facet、scope+alias による相互参照
+- [runtime/README.md](runtime/README.md) — 3-view runtime の運用、renderer、state sync
 - [../../idea/10_io/math_ontology_services/](../../idea/10_io/math_ontology_services/) — 事前ブレスト 8 ファイル（01 landscape 〜 08 feasibility）
 - [../../backlog/mathlib4-blueprint-overview.md](../../backlog/mathlib4-blueprint-overview.md) — Blueprint 構造と M3E 対応表
 
@@ -89,6 +90,7 @@ M3E 上で **semantic tree**（意味の木）と **syntax tree**（構文の木
 ## 運用ルール（要点）
 
 - **ambiguity は pool**: 未決は reviews/Qn ノードに積み、tentative default で進める
+- **開始点は runtime**: `/sub-pj start` 相当の開始時は、README / plan に加えて `PJ02 Runtime` の `Progress Board / Review / Active Workspace` を読む
 - **Phase 分離**: Phase 0-1 を最小ユニットとして先行完遂、Phase 3 以降は実データを見てから判断
 - **PJ02 は foundation**: 完全なサービスは PJ02 の範囲外。基盤が動けば成功
 - **研究でもある**: 実装と並行して、edge protocol が数学知識の構造化に有効かを検証する
