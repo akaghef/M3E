@@ -71,6 +71,11 @@ type ResolvedDependency = {
   dependentLabel: string;
 };
 
+type ImplementationReference = {
+  decl: string;
+  records: StatementRecord[];
+};
+
 function slugify(value: string, fallback: string): string {
   const slug = value
     .normalize("NFKC")
@@ -242,6 +247,10 @@ function extractLeanDecl(body: string): string {
   return parts.join(", ");
 }
 
+function splitLeanDecls(value: string): string[] {
+  return splitCommaSeparated(value);
+}
+
 function stripControlMacros(body: string): string {
   return normalizeDisplayText(
     body
@@ -345,6 +354,10 @@ function resolveDagFacetLayoutMode(request: BlueprintImportRequest): DagFacetLay
   return request.options?.dagFacetLayout === "scoped" ? "scoped" : DEFAULT_DAG_FACET_LAYOUT;
 }
 
+function shouldIncludeImplementationScope(request: BlueprintImportRequest): boolean {
+  return request.options?.includeImplementationScope !== false;
+}
+
 function createChapterNode(id: string, parentId: string, text: string, relativePath: string): TreeNode {
   return {
     id,
@@ -411,6 +424,53 @@ function createAliasNode(id: string, parentId: string, targetNodeId: string, tex
     attributes: {
       "blueprint:path": chapter.relativePath,
       "blueprint:kind": "chapter-alias",
+    },
+    link: "",
+    targetNodeId,
+    access: "read",
+    isBroken: false,
+  };
+}
+
+function createImplementationNode(id: string, parentId: string, decl: string): TreeNode {
+  const namespace = normalizeDisplayText(decl.split(".")[0] ?? "") || "global";
+  return {
+    id,
+    parentId,
+    children: [],
+    text: decl,
+    collapsed: false,
+    details: "",
+    note: "Lean declaration referenced from blueprint.",
+    attributes: {
+      "blueprint:kind": "implementation-node",
+      "implementation:namespace": namespace,
+      lean4_decl: decl,
+    },
+    link: "",
+  };
+}
+
+function createImplementationAliasNode(
+  id: string,
+  parentId: string,
+  targetNodeId: string,
+  statement: ParsedStatement,
+): TreeNode {
+  const displayTitle = statement.title || statement.primaryLabel;
+  return {
+    id,
+    parentId,
+    children: [],
+    nodeType: "alias",
+    text: `${titleCaseKind(statement.kind)}: ${displayTitle}`,
+    collapsed: false,
+    details: "",
+    note: "",
+    attributes: {
+      "blueprint:path": statement.relativePath,
+      "blueprint:kind": "implementation-alias",
+      blueprint_label: statement.primaryLabel,
     },
     link: "",
     targetNodeId,
@@ -525,6 +585,7 @@ export async function importBlueprintToAppState(
   const layoutMode = resolveLayoutMode(request);
   const dagSourceGroupingMode = resolveDagSourceGroupingMode(request);
   const dagFacetLayoutMode = resolveDagFacetLayoutMode(request);
+  const includeImplementationScope = shouldIncludeImplementationScope(request);
   const mapId = request.mapId?.trim() || buildDefaultMapId(layout.sourceRoot);
   const rootLabel = loadProjectLabel(layout, request);
   const chapterFiles = loadChapterFiles(layout);
@@ -580,6 +641,7 @@ export async function importBlueprintToAppState(
   const chapterByKey = new Map<string, ParsedChapter>();
   let dependencyScopeId: string | null = null;
   let chapterScopeId: string | null = null;
+  let implementationScopeId: string | null = null;
   const chapterFacetFolderIdByKey = new Map<string, string>();
 
   if (layoutMode === "dag" && dagFacetLayoutMode === "scoped") {
@@ -698,6 +760,74 @@ export async function importBlueprintToAppState(
     resolveTargets(record.statement.uses, validUsesByDependent);
     if (!request.options?.skipProofUses) {
       resolveTargets(record.statement.proofUses, validProofUsesByDependent);
+    }
+  }
+
+  const implementationReferences = new Map<string, ImplementationReference>();
+  for (const record of statementRecords) {
+    const decls = splitLeanDecls(record.statement.leanDecl);
+    for (const decl of decls) {
+      const existing = implementationReferences.get(decl);
+      if (existing) {
+        existing.records.push(record);
+      } else {
+        implementationReferences.set(decl, {
+          decl,
+          records: [record],
+        });
+      }
+    }
+  }
+
+  if (
+    layoutMode === "dag"
+    && dagFacetLayoutMode === "scoped"
+    && includeImplementationScope
+    && implementationReferences.size > 0
+  ) {
+    implementationScopeId = "bp_scope_implementation";
+    nodes[implementationScopeId] = createScopeFolderNode(
+      implementationScopeId,
+      rootId,
+      "Implementation",
+      "implementation-scope",
+    );
+    nodes[rootId]!.children.push(implementationScopeId);
+
+    const namespaceFolderIdByName = new Map<string, string>();
+    const ensureNamespaceFolder = (decl: string): string => {
+      const namespace = normalizeDisplayText(decl.split(".")[0] ?? "") || "global";
+      const existing = namespaceFolderIdByName.get(namespace);
+      if (existing) {
+        return existing;
+      }
+      const namespaceId = `bp_impl_ns_${safeNodeToken(namespace, "namespace")}`;
+      const namespaceNode = createScopeFolderNode(namespaceId, implementationScopeId!, namespace, "implementation-namespace");
+      nodes[namespaceId] = namespaceNode;
+      nodes[implementationScopeId!]!.children.push(namespaceId);
+      namespaceFolderIdByName.set(namespace, namespaceId);
+      return namespaceId;
+    };
+
+    const sortedDecls = [...implementationReferences.keys()].sort((a, b) => a.localeCompare(b));
+    for (const decl of sortedDecls) {
+      const namespaceFolderId = ensureNamespaceFolder(decl);
+      const implNodeId = `bp_impl_${safeNodeToken(decl, "implementation")}`;
+      const implNode = createImplementationNode(implNodeId, namespaceFolderId, decl);
+      nodes[implNodeId] = implNode;
+      nodes[namespaceFolderId]!.children.push(implNodeId);
+
+      const seenTargets = new Set<string>();
+      for (const record of implementationReferences.get(decl)!.records) {
+        if (seenTargets.has(record.nodeId)) {
+          continue;
+        }
+        seenTargets.add(record.nodeId);
+        const aliasId = `bp_impl_alias_${safeNodeToken(decl, "implementation")}_${safeNodeToken(record.statement.primaryLabel, "statement")}`;
+        const aliasNode = createImplementationAliasNode(aliasId, implNodeId, record.nodeId, record.statement);
+        nodes[aliasId] = aliasNode;
+        nodes[implNodeId]!.children.push(aliasId);
+      }
     }
   }
 

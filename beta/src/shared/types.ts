@@ -138,6 +138,7 @@ export interface BlueprintImportOptions {
   layoutMode?: "chapter-tree" | "dag";
   dagSourceGrouping?: "none" | "chapter";
   dagFacetLayout?: "mixed" | "scoped";
+  includeImplementationScope?: boolean;
 }
 
 export interface BlueprintImportRequest {

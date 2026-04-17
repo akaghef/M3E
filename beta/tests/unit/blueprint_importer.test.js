@@ -252,6 +252,75 @@ test("importBlueprintToAppState supports scoped DAG facets with chapter aliases"
   }
 });
 
+test("importBlueprintToAppState adds implementation scope aliases for Lean declarations in scoped DAG mode", async () => {
+  const blueprintDir = tmpDir();
+  try {
+    writeFile(blueprintDir, "web.tex", `\\documentclass{report}
+\\title{Implementation Facet}
+`);
+    writeFile(blueprintDir, "chapter/main.tex", `\\input{chapter/core}
+`);
+    writeFile(blueprintDir, "chapter/core.tex", `\\chapter{Core}
+\\begin{definition}[Seed]\\label{seed}\\lean{Demo.seed} Seed body.\\end{definition}
+\\begin{lemma}[Growth]\\label{growth}\\uses{seed}\\lean{Demo.growth, Demo.shared} Growth body.\\end{lemma}
+\\begin{theorem}[Harvest]\\label{harvest}\\uses{growth}\\lean{Demo.shared} Harvest body.\\end{theorem}
+`);
+
+    const result = await importBlueprintToAppState({
+      blueprintPath: blueprintDir,
+      options: {
+        layoutMode: "dag",
+        dagFacetLayout: "scoped",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+
+    const model = RapidMvpModel.fromJSON(result.state);
+    expect(model.validate()).toEqual([]);
+
+    const root = result.state.nodes[result.state.rootId];
+    expect(root.children).toHaveLength(3);
+
+    const implementationScope = Object.values(result.state.nodes).find(
+      (node) => node.attributes?.["blueprint:kind"] === "implementation-scope",
+    );
+    expect(implementationScope).toBeTruthy();
+
+    const demoNamespace = Object.values(result.state.nodes).find(
+      (node) => node.parentId === implementationScope.id && node.text === "Demo",
+    );
+    expect(demoNamespace).toBeTruthy();
+
+    const implSeed = Object.values(result.state.nodes).find(
+      (node) => node.parentId === demoNamespace.id && node.attributes?.lean4_decl === "Demo.seed",
+    );
+    const implGrowth = Object.values(result.state.nodes).find(
+      (node) => node.parentId === demoNamespace.id && node.attributes?.lean4_decl === "Demo.growth",
+    );
+    const implShared = Object.values(result.state.nodes).find(
+      (node) => node.parentId === demoNamespace.id && node.attributes?.lean4_decl === "Demo.shared",
+    );
+    expect(implSeed).toBeTruthy();
+    expect(implGrowth).toBeTruthy();
+    expect(implShared).toBeTruthy();
+
+    const seedNode = findNodeByAttr(result.state, "blueprint_label", "seed");
+    const growthNode = findNodeByAttr(result.state, "blueprint_label", "growth");
+    const harvestNode = findNodeByAttr(result.state, "blueprint_label", "harvest");
+    const implementationAliases = Object.values(result.state.nodes).filter(
+      (node) => node.attributes?.["blueprint:kind"] === "implementation-alias",
+    );
+    expect(implementationAliases).toHaveLength(4);
+    expect(implementationAliases.some((node) => node.parentId === implSeed.id && node.targetNodeId === seedNode.id)).toBe(true);
+    expect(implementationAliases.some((node) => node.parentId === implGrowth.id && node.targetNodeId === growthNode.id)).toBe(true);
+    expect(implementationAliases.some((node) => node.parentId === implShared.id && node.targetNodeId === growthNode.id)).toBe(true);
+    expect(implementationAliases.some((node) => node.parentId === implShared.id && node.targetNodeId === harvestNode.id)).toBe(true);
+  } finally {
+    cleanup(blueprintDir);
+  }
+});
+
 test("importBlueprintToSqlite persists imported blueprint map", async () => {
   const blueprintDir = tmpDir();
   const dataDir = tmpDir();

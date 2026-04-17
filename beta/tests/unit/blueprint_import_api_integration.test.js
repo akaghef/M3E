@@ -171,3 +171,40 @@ test("POST /api/blueprint/import accepts scoped DAG facet layout", async () => {
   expect(Object.values(loaded.state.nodes).some((node) => node.attributes?.["blueprint:kind"] === "dependency-scope")).toBe(true);
   expect(Object.values(loaded.state.nodes).some((node) => node.nodeType === "alias")).toBe(true);
 });
+
+test("POST /api/blueprint/import includes implementation scope in scoped DAG mode", async () => {
+  writeFile(blueprintDir, "chapter/core.tex", `\\chapter{Core}
+\\begin{definition}[Seed]\\label{seed-def}\\lean{Demo.seed} Seed body.\\end{definition}
+\\begin{lemma}[Growth]\\label{growth}\\uses{seed-def}\\lean{Demo.growth, Demo.shared} Growth body.\\end{lemma}
+`);
+
+  const response = await fetch(`${baseUrl}/api/blueprint/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      blueprintPath: blueprintDir,
+      mapId: "blueprint-api-map-dag-implementation",
+      options: {
+        layoutMode: "dag",
+        dagFacetLayout: "scoped",
+      },
+    }),
+  });
+
+  expect(response.status).toBe(200);
+  const events = parseSse(await response.text());
+  const complete = events.find((entry) => entry.event === "blueprint-import-complete");
+  expect(complete).toBeTruthy();
+  expect(complete.data.mapId).toBe("blueprint-api-map-dag-implementation");
+
+  const dbPath = path.join(dataDir, "blueprint-api.sqlite");
+  const loaded = RapidMvpModel.loadFromSqlite(dbPath, "blueprint-api-map-dag-implementation");
+  expect(loaded.validate()).toEqual([]);
+  expect(Object.values(loaded.state.nodes).some((node) => node.attributes?.["blueprint:kind"] === "implementation-scope")).toBe(true);
+  expect(Object.values(loaded.state.nodes).some((node) => node.attributes?.lean4_decl === "Demo.shared")).toBe(true);
+  expect(
+    Object.values(loaded.state.nodes).some(
+      (node) => node.attributes?.["blueprint:kind"] === "implementation-alias" && node.targetNodeId,
+    ),
+  ).toBe(true);
+});
