@@ -143,3 +143,31 @@ test("POST /api/blueprint/import accepts dag layout mode", async () => {
   expect(Object.values(loaded.state.nodes).some((node) => node.attributes?.["dag:layer"] === "1")).toBe(true);
   expect(Object.values(loaded.state.links ?? {})).toHaveLength(0);
 });
+
+test("POST /api/blueprint/import accepts scoped DAG facet layout", async () => {
+  const response = await fetch(`${baseUrl}/api/blueprint/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      blueprintPath: blueprintDir,
+      mapId: "blueprint-api-map-dag-scoped",
+      options: {
+        layoutMode: "dag",
+        dagFacetLayout: "scoped",
+      },
+    }),
+  });
+
+  expect(response.status).toBe(200);
+  const events = parseSse(await response.text());
+  const complete = events.find((entry) => entry.event === "blueprint-import-complete");
+  expect(complete).toBeTruthy();
+  expect(complete.data.mapId).toBe("blueprint-api-map-dag-scoped");
+
+  const dbPath = path.join(dataDir, "blueprint-api.sqlite");
+  const loaded = RapidMvpModel.loadFromSqlite(dbPath, "blueprint-api-map-dag-scoped");
+  expect(loaded.validate()).toEqual([]);
+  expect(loaded.state.nodes[loaded.state.rootId].attributes["blueprint:facet-layout"]).toBe("scoped");
+  expect(Object.values(loaded.state.nodes).some((node) => node.attributes?.["blueprint:kind"] === "dependency-scope")).toBe(true);
+  expect(Object.values(loaded.state.nodes).some((node) => node.nodeType === "alias")).toBe(true);
+});

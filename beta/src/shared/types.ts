@@ -137,6 +137,7 @@ export interface BlueprintImportOptions {
   proofUsesRelationType?: string;
   layoutMode?: "chapter-tree" | "dag";
   dagSourceGrouping?: "none" | "chapter";
+  dagFacetLayout?: "mixed" | "scoped";
 }
 
 export interface BlueprintImportRequest {

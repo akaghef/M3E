@@ -19,10 +19,12 @@ const STATEMENT_ENVIRONMENT_PATTERN = STATEMENT_ENVIRONMENTS.join("|");
 const DEFAULT_PROOF_RELATION_TYPE = "uses_in_proof";
 const DEFAULT_LAYOUT_MODE = "chapter-tree";
 const DEFAULT_DAG_SOURCE_GROUPING = "chapter";
+const DEFAULT_DAG_FACET_LAYOUT = "mixed";
 
 type StatementKind = typeof STATEMENT_ENVIRONMENTS[number];
 type BlueprintLayoutMode = "chapter-tree" | "dag";
 type DagSourceGroupingMode = "none" | "chapter";
+type DagFacetLayoutMode = "mixed" | "scoped";
 
 type BlueprintLayout = {
   sourceRoot: string;
@@ -339,6 +341,10 @@ function resolveDagSourceGroupingMode(request: BlueprintImportRequest): DagSourc
   return request.options?.dagSourceGrouping === "none" ? "none" : DEFAULT_DAG_SOURCE_GROUPING;
 }
 
+function resolveDagFacetLayoutMode(request: BlueprintImportRequest): DagFacetLayoutMode {
+  return request.options?.dagFacetLayout === "scoped" ? "scoped" : DEFAULT_DAG_FACET_LAYOUT;
+}
+
 function createChapterNode(id: string, parentId: string, text: string, relativePath: string): TreeNode {
   return {
     id,
@@ -372,6 +378,44 @@ function createDagSourceGroupNode(id: string, parentId: string, chapter: ParsedC
       "dag:role": "source-group",
     },
     link: "",
+  };
+}
+
+function createScopeFolderNode(id: string, parentId: string, text: string, kind: string): TreeNode {
+  return {
+    id,
+    parentId,
+    children: [],
+    nodeType: "folder",
+    text,
+    collapsed: false,
+    details: "",
+    note: "",
+    attributes: {
+      "blueprint:kind": kind,
+    },
+    link: "",
+  };
+}
+
+function createAliasNode(id: string, parentId: string, targetNodeId: string, text: string, chapter: ParsedChapter): TreeNode {
+  return {
+    id,
+    parentId,
+    children: [],
+    nodeType: "alias",
+    text,
+    collapsed: false,
+    details: "",
+    note: "",
+    attributes: {
+      "blueprint:path": chapter.relativePath,
+      "blueprint:kind": "chapter-alias",
+    },
+    link: "",
+    targetNodeId,
+    access: "read",
+    isBroken: false,
   };
 }
 
@@ -480,6 +524,7 @@ export async function importBlueprintToAppState(
   const layout = resolveBlueprintLayout(request.blueprintPath);
   const layoutMode = resolveLayoutMode(request);
   const dagSourceGroupingMode = resolveDagSourceGroupingMode(request);
+  const dagFacetLayoutMode = resolveDagFacetLayoutMode(request);
   const mapId = request.mapId?.trim() || buildDefaultMapId(layout.sourceRoot);
   const rootLabel = loadProjectLabel(layout, request);
   const chapterFiles = loadChapterFiles(layout);
@@ -520,6 +565,7 @@ export async function importBlueprintToAppState(
         source: "leanblueprint",
         project: rootLabel.replace(/\s+Blueprint$/, ""),
         "blueprint:layout": layoutMode,
+        "blueprint:facet-layout": dagFacetLayoutMode,
       },
       link: "",
     },
@@ -532,6 +578,17 @@ export async function importBlueprintToAppState(
   const chapterSummaries: BlueprintImportedChapterSummary[] = [];
   const proofRelationType = request.options?.proofUsesRelationType?.trim() || DEFAULT_PROOF_RELATION_TYPE;
   const chapterByKey = new Map<string, ParsedChapter>();
+  let dependencyScopeId: string | null = null;
+  let chapterScopeId: string | null = null;
+  const chapterFacetFolderIdByKey = new Map<string, string>();
+
+  if (layoutMode === "dag" && dagFacetLayoutMode === "scoped") {
+    dependencyScopeId = "bp_scope_dependency";
+    chapterScopeId = "bp_scope_chapter";
+    nodes[dependencyScopeId] = createScopeFolderNode(dependencyScopeId, rootId, "Dependency", "dependency-scope");
+    nodes[chapterScopeId] = createScopeFolderNode(chapterScopeId, rootId, "By Chapter", "chapter-scope");
+    nodes[rootId]!.children.push(dependencyScopeId, chapterScopeId);
+  }
 
   let statementOrder = 0;
   for (const chapter of parsedChapters) {
@@ -541,6 +598,13 @@ export async function importBlueprintToAppState(
       const chapterNode = createChapterNode(chapterId, rootId, chapter.chapterTitle, chapter.relativePath);
       nodes[chapterId] = chapterNode;
       nodes[rootId]!.children.push(chapterId);
+    } else if (layoutMode === "dag" && dagFacetLayoutMode === "scoped" && chapterScopeId) {
+      const chapterFolderId = `bp_facet_ch_${safeNodeToken(chapter.chapterKey, "chapter")}`;
+      const chapterFolder = createScopeFolderNode(chapterFolderId, chapterScopeId, chapter.chapterTitle, "chapter-facet");
+      chapterFolder.attributes["blueprint:path"] = chapter.relativePath;
+      nodes[chapterFolderId] = chapterFolder;
+      nodes[chapterScopeId]!.children.push(chapterFolderId);
+      chapterFacetFolderIdByKey.set(chapter.chapterKey, chapterFolderId);
     }
 
     for (const statement of chapter.statements) {
@@ -549,7 +613,9 @@ export async function importBlueprintToAppState(
         warnings.push(`Duplicate statement node id for label ${statement.primaryLabel}; keeping first occurrence.`);
         continue;
       }
-      const parentId = layoutMode === "chapter-tree" ? chapterId : rootId;
+      const parentId = layoutMode === "chapter-tree"
+        ? chapterId
+        : (dependencyScopeId ?? rootId);
       const node = createStatementNode(nodeId, parentId, statement);
       nodes[nodeId] = node;
       if (layoutMode === "chapter-tree") {
@@ -571,6 +637,16 @@ export async function importBlueprintToAppState(
           continue;
         }
         labelToNodeId.set(label, nodeId);
+      }
+
+      if (layoutMode === "dag" && dagFacetLayoutMode === "scoped") {
+        const chapterFolderId = chapterFacetFolderIdByKey.get(chapter.chapterKey);
+        if (chapterFolderId) {
+          const aliasId = `bp_alias_${safeNodeToken(chapter.chapterKey, "chapter")}_${safeNodeToken(statement.primaryLabel, "statement")}`;
+          const aliasNode = createAliasNode(aliasId, chapterFolderId, nodeId, node.text, chapter);
+          nodes[aliasId] = aliasNode;
+          nodes[chapterFolderId]!.children.push(aliasId);
+        }
       }
     }
   }
@@ -689,13 +765,18 @@ export async function importBlueprintToAppState(
       layerByNodeId.set(nodeId, nextLayer);
     }
 
-    nodes[rootId]!.children = [];
+    if (dagFacetLayoutMode !== "scoped") {
+      nodes[rootId]!.children = [];
+    }
+    if (dependencyScopeId) {
+      nodes[dependencyScopeId]!.children = [];
+    }
     for (const record of statementRecords) {
       nodes[record.nodeId]!.children = [];
     }
     const sourceGroupIdByChapterKey = new Map<string, string>();
     const ensureSourceGroup = (chapterKey: string): string | null => {
-      if (dagSourceGroupingMode !== "chapter") {
+      if (dagFacetLayoutMode === "scoped" || dagSourceGroupingMode !== "chapter") {
         return null;
       }
       const existing = sourceGroupIdByChapterKey.get(chapterKey);
@@ -719,11 +800,11 @@ export async function importBlueprintToAppState(
       const parentId = chooseDagParent(record, incomingUses.get(nodeId) ?? [], layerByNodeId, recordByNodeId);
       dagParentByNodeId.set(nodeId, parentId);
       const node = nodes[nodeId]!;
-      const structuralParentId = parentId ?? ensureSourceGroup(record.statement.chapterKey) ?? rootId;
+      const structuralParentId = parentId ?? ensureSourceGroup(record.statement.chapterKey) ?? dependencyScopeId ?? rootId;
       node.parentId = structuralParentId;
       node.attributes["dag:layer"] = String(layerByNodeId.get(nodeId) ?? 0);
       node.attributes["dag:role"] = parentId ? "derived" : "root";
-      if (!parentId && structuralParentId !== rootId) {
+      if (!parentId && structuralParentId !== rootId && structuralParentId !== dependencyScopeId) {
         node.attributes["dag:source-group"] = structuralParentId;
       }
       if (structuralParentId) {
@@ -769,9 +850,14 @@ export async function importBlueprintToAppState(
     }
 
     const chapterId = `bp_ch_${safeNodeToken(chapter.chapterKey, "chapter")}`;
+    const chapterSummaryId = layoutMode === "chapter-tree"
+      ? chapterId
+      : (dagFacetLayoutMode === "scoped"
+        ? (chapterFacetFolderIdByKey.get(chapter.chapterKey) || "")
+        : "");
     chapterSummaries.push({
       relativePath: chapter.relativePath,
-      chapterNodeId: layoutMode === "chapter-tree" ? chapterId : "",
+      chapterNodeId: chapterSummaryId,
       statementCount: chapter.statements.length,
       linkCount: chapterLinkCount,
     });

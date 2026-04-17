@@ -193,6 +193,65 @@ test("importBlueprintToAppState supports DAG layout with source grouping anchors
   }
 });
 
+test("importBlueprintToAppState supports scoped DAG facets with chapter aliases", async () => {
+  const blueprintDir = tmpDir();
+  try {
+    writeFile(blueprintDir, "web.tex", `\\documentclass{report}
+\\title{Scoped DAG}
+`);
+    writeFile(blueprintDir, "chapter/main.tex", `\\input{chapter/alpha}
+\\input{chapter/beta}
+`);
+    writeFile(blueprintDir, "chapter/alpha.tex", `\\chapter{Alpha}
+\\begin{definition}[Seed]\\label{seed} Seed body.\\end{definition}
+\\begin{lemma}[Growth]\\label{growth}\\uses{seed} Growth body.\\end{lemma}
+`);
+    writeFile(blueprintDir, "chapter/beta.tex", `\\chapter{Beta}
+\\begin{theorem}[Harvest]\\label{harvest}\\uses{growth} Harvest body.\\end{theorem}
+`);
+
+    const result = await importBlueprintToAppState({
+      blueprintPath: blueprintDir,
+      options: {
+        layoutMode: "dag",
+        dagFacetLayout: "scoped",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.nodeCount).toBe(11);
+    expect(result.linkCount).toBe(0);
+
+    const model = RapidMvpModel.fromJSON(result.state);
+    expect(model.validate()).toEqual([]);
+
+    const root = result.state.nodes[result.state.rootId];
+    expect(root.attributes["blueprint:facet-layout"]).toBe("scoped");
+
+    const dependencyScope = Object.values(result.state.nodes).find((node) => node.attributes?.["blueprint:kind"] === "dependency-scope");
+    const chapterScope = Object.values(result.state.nodes).find((node) => node.attributes?.["blueprint:kind"] === "chapter-scope");
+    expect(dependencyScope).toBeTruthy();
+    expect(chapterScope).toBeTruthy();
+    expect(root.children).toEqual([dependencyScope.id, chapterScope.id]);
+    expect(chapterScope.children).toHaveLength(2);
+
+    const seedNode = findNodeByAttr(result.state, "blueprint_label", "seed");
+    const growthNode = findNodeByAttr(result.state, "blueprint_label", "growth");
+    const harvestNode = findNodeByAttr(result.state, "blueprint_label", "harvest");
+    expect(seedNode.parentId).toBe(dependencyScope.id);
+    expect(growthNode.parentId).toBe(seedNode.id);
+    expect(harvestNode.parentId).toBe(growthNode.id);
+
+    const aliases = Object.values(result.state.nodes).filter((node) => node.nodeType === "alias");
+    expect(aliases).toHaveLength(3);
+    expect(aliases.some((node) => node.targetNodeId === seedNode.id)).toBe(true);
+    expect(aliases.some((node) => node.targetNodeId === growthNode.id)).toBe(true);
+    expect(aliases.some((node) => node.targetNodeId === harvestNode.id)).toBe(true);
+  } finally {
+    cleanup(blueprintDir);
+  }
+});
+
 test("importBlueprintToSqlite persists imported blueprint map", async () => {
   const blueprintDir = tmpDir();
   const dataDir = tmpDir();
