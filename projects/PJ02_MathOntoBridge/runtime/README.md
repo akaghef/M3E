@@ -37,6 +37,16 @@ PJ02 を M3E 上で実際に回すための最小 runtime system。
 4. `Review` の Q 状態が変わると board が自動で追従
 5. phase gate は人間が `次フェーズへ` を出す
 
+## Safety
+
+`render_runtime_map.mjs` は既定では **既存の `PJ02 Runtime` map を上書きしない**。
+
+- map が未作成なら新規生成
+- 同名 map が既にあるなら **中断して終了**
+- 本当に再構築したいときだけ `--force-reset` を付ける
+
+`--force-reset` 時は上書き前に `tmp/runtime_map_backups/` へ JSON backup を書く。
+
 ## 手動通知
 
 現状、map から chat へは送信できない。
@@ -54,5 +64,9 @@ PJ02 を M3E 上で実際に回すための最小 runtime system。
 ## 補足
 
 `node projects/PJ02_MathOntoBridge/runtime/render_runtime_map.mjs`
+
+既存 map を明示的に再構築する場合:
+
+`node projects/PJ02_MathOntoBridge/runtime/render_runtime_map.mjs --force-reset`
 
 `node projects/PJ02_MathOntoBridge/runtime/sync_runtime_state.mjs --watch`

@@ -10,6 +10,8 @@ const runtimeDir = __dirname;
 const specPath = path.join(runtimeDir, "runtime_spec.json");
 const apiBase = `http://127.0.0.1:${process.env.M3E_PORT || "4173"}`;
 const workspaceId = process.env.M3E_WS || "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
+const runtimeBackupDir = path.join(repoRoot, "tmp", "runtime_map_backups");
+const forceReset = process.argv.includes("--force-reset");
 
 function sanitizeId(value) {
   return String(value || "")
@@ -61,11 +63,11 @@ async function loadSpec() {
   return JSON.parse(raw);
 }
 
-async function ensureMapId(label) {
+async function ensureMap(label) {
   const mapsPayload = await fetchJson(`${apiBase}/api/maps`);
   const existing = (mapsPayload.maps || []).find((map) => map.label === label);
   if (existing) {
-    return existing.id;
+    return { mapId: existing.id, created: false, summary: existing };
   }
   const created = await fetchJson(`${apiBase}/api/maps/new`, {
     method: "POST",
@@ -78,7 +80,19 @@ async function ensureMapId(label) {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ label }),
   });
-  return mapId;
+  return { mapId, created: true, summary: { id: mapId, label } };
+}
+
+async function loadMap(mapId) {
+  return fetchJson(`${apiBase}/api/maps/${encodeURIComponent(mapId)}`);
+}
+
+async function writeBackup(mapId, label, mapPayload) {
+  await fs.mkdir(runtimeBackupDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = path.join(runtimeBackupDir, `${sanitizeId(label)}_${sanitizeId(mapId)}_${stamp}.json`);
+  await fs.writeFile(backupPath, JSON.stringify(mapPayload, null, 2), "utf8");
+  return backupPath;
 }
 
 function taskStateStyle(state) {
@@ -536,7 +550,25 @@ function buildState(spec, mapId) {
 
 async function main() {
   const spec = await loadSpec();
-  const mapId = await ensureMapId(spec.mapLabel);
+  const { mapId, created, summary } = await ensureMap(spec.mapLabel);
+  let backupPath = null;
+  if (!created) {
+    const currentMap = await loadMap(mapId);
+    if (!forceReset) {
+      console.error(JSON.stringify({
+        ok: false,
+        reason: "existing-map-protected",
+        mapId,
+        label: spec.mapLabel,
+        savedAt: currentMap.savedAt,
+        nodeCount: Object.keys(currentMap.state?.nodes || {}).length,
+        message: "Existing runtime map detected. Refusing to overwrite. Re-run with --force-reset after reviewing the map.",
+      }, null, 2));
+      process.exitCode = 2;
+      return;
+    }
+    backupPath = await writeBackup(mapId, spec.mapLabel, currentMap);
+  }
   const state = buildState(spec, mapId);
   const payload = {
     version: 1,
@@ -559,10 +591,14 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     mapId,
+    created,
+    forceReset,
+    backupPath,
     savedAt: saved.savedAt,
     urls,
     nodeCount: Object.keys(state.nodes).length,
     linkCount: Object.keys(state.links || {}).length,
+    previousSummary: created ? null : summary,
   }, null, 2));
 }
 
