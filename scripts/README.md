@@ -39,6 +39,12 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 | `migrate-from-beta.bat` | Beta → Final の sync・build・data migration・起動 |
 | `migrate-from-beta.sh` | Beta → Final の sync・build・data migration・起動（Mac / Linux） |
 
+補足:
+
+- `scripts/final/launch.bat` は mode-aware。
+- `M3E_LAUNCH_MODE=personal` なら通常の local Final を起動する。
+- `M3E_LAUNCH_MODE=swingby` なら shared Swingby server を browser で開く。
+
 ## 推奨運用フロー
 
 ```
