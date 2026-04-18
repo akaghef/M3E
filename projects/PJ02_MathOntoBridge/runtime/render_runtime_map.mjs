@@ -259,6 +259,9 @@ function buildState(spec, mapId) {
   addNode(makeNode(progressMetaId, "Meta", progressScopeId, {
     nodeType: "folder",
     attributes: {
+      label: "Meta",
+      summary: "Phase / gate / handshake / counts / views anchor for the Progress Board.",
+      kind: "meta-anchor",
       "m3e:style": styleObject("#f5f5f5", "#9ec5ff"),
       "m3e:synthetic": "anchor",
       "runtime:kind": "meta-anchor",
@@ -268,6 +271,9 @@ function buildState(spec, mapId) {
   addNode(makeNode(progressDagId, "Task DAG", progressScopeId, {
     nodeType: "folder",
     attributes: {
+      label: "Task DAG",
+      summary: "Spanning tree of PJ02 tasks. Deepest prerequisite is parent; remaining deps live as links.",
+      kind: "dag-root",
       "m3e:style": styleObject("#ffffff", "#5a8dff"),
       "runtime:kind": "task-dag",
     },
@@ -278,6 +284,9 @@ function buildState(spec, mapId) {
     details: spec.currentPhase,
     note: spec.currentPhase,
     attributes: {
+      label: "Current Phase",
+      summary: spec.currentPhase,
+      kind: "meta",
       "m3e:style": styleObject("#ffffff", "#5a8dff"),
       "runtime:kind": "meta",
     },
@@ -287,6 +296,9 @@ function buildState(spec, mapId) {
     details: spec.nextGate,
     note: "human gate",
     attributes: {
+      label: "Next Gate",
+      summary: spec.nextGate,
+      kind: "meta",
       "m3e:style": styleObject("#fff3cd", "#d58900"),
       "runtime:kind": "meta",
     },
@@ -296,6 +308,9 @@ function buildState(spec, mapId) {
     details: spec.manualHandshake,
     note: "manual only",
     attributes: {
+      label: "Chat Handshake",
+      summary: spec.manualHandshake,
+      kind: "meta",
       "m3e:style": styleObject("#ffffff", "#bdbdbd"),
       "runtime:kind": "meta",
     },
@@ -305,6 +320,9 @@ function buildState(spec, mapId) {
     details: "Counts will be updated by sync_runtime_state.mjs.",
     note: "pending sync",
     attributes: {
+      label: "Board Summary",
+      summary: "Task counts by state; refreshed by sync_runtime_state.mjs.",
+      kind: "meta",
       "m3e:style": styleObject("#ffffff", "#9ec5ff"),
       "runtime:kind": "meta",
     },
@@ -318,6 +336,9 @@ function buildState(spec, mapId) {
     ].join("\n\n"),
     note: "3-window runtime",
     attributes: {
+      label: "Open These Views",
+      summary: "Viewer URLs for Progress / Review / Active Workspace scopes.",
+      kind: "meta",
       "m3e:style": styleObject("#ffffff", "#2d8c4e"),
       "runtime:kind": "meta",
     },
@@ -463,14 +484,57 @@ function buildState(spec, mapId) {
     }
   }
 
+  const rawTasks = spec.tasks || [];
+  const tasksById = new Map(rawTasks.map((t) => [t.id, t]));
+  const depthCache = new Map();
+  function taskDepth(id) {
+    if (depthCache.has(id)) return depthCache.get(id);
+    const task = tasksById.get(id);
+    if (!task) return 0;
+    const deps = task.dependsOn || [];
+    if (deps.length === 0) {
+      depthCache.set(id, 0);
+      return 0;
+    }
+    let maxDepth = 0;
+    for (const dep of deps) {
+      const d = taskDepth(dep);
+      if (d + 1 > maxDepth) maxDepth = d + 1;
+    }
+    depthCache.set(id, maxDepth);
+    return maxDepth;
+  }
+  for (const task of rawTasks) taskDepth(task.id);
+
+  function pickDeepestDep(task) {
+    const deps = task.dependsOn || [];
+    if (deps.length === 0) return null;
+    let best = null;
+    let bestDepth = -1;
+    for (const dep of deps) {
+      const d = depthCache.get(dep) ?? 0;
+      if (d > bestDepth) {
+        bestDepth = d;
+        best = dep;
+      }
+    }
+    return best;
+  }
+
   const taskNodeIds = {};
   const taskLinkPairs = new Set();
-  const sortedTasks = [...(spec.tasks || [])];
+  const sortedTasks = [...rawTasks].sort((a, b) => {
+    const da = depthCache.get(a.id) ?? 0;
+    const db = depthCache.get(b.id) ?? 0;
+    if (da !== db) return da - db;
+    return rawTasks.indexOf(a) - rawTasks.indexOf(b);
+  });
   for (const task of sortedTasks) {
     const taskNodeId = `task_${sanitizeId(task.id)}`;
     taskNodeIds[task.id] = taskNodeId;
-    const parentTaskId = (task.dependsOn || []).length > 0 ? task.dependsOn[task.dependsOn.length - 1] : null;
+    const parentTaskId = pickDeepestDep(task);
     const parentId = parentTaskId ? taskNodeIds[parentTaskId] : progressDagId;
+    const deps = task.dependsOn || [];
     addNode(makeNode(taskNodeId, task.title, parentId, {
       nodeType: "folder",
       note: `${task.baseState} | phase=${task.phase}`,
@@ -481,13 +545,17 @@ function buildState(spec, mapId) {
         `Phase: \`${task.phase}\``,
       ].join("\n"),
       attributes: {
+        label: task.title,
+        summary: task.summary,
+        kind: "task",
+        dep_count: String(deps.length),
         status: task.baseState,
         "m3e:style": taskStateStyle(task.baseState === "gate" ? "review" : task.baseState),
         "runtime:kind": "task",
         "runtime:id": task.id,
         "runtime:phase": task.phase,
         "runtime:base-state": task.baseState,
-        "runtime:deps": (task.dependsOn || []).join(","),
+        "runtime:deps": deps.join(","),
         "runtime:review-refs": (task.reviewRefs || []).join(","),
         "runtime:workspace-refs": (task.workspaceRefs || []).join(","),
       },
@@ -523,7 +591,7 @@ function buildState(spec, mapId) {
       }));
     }
 
-    const extraDeps = (task.dependsOn || []).slice(0, -1);
+    const extraDeps = deps.filter((d) => d !== parentTaskId);
     for (const depId of extraDeps) {
       const sourceTaskNodeId = taskNodeIds[depId];
       if (!sourceTaskNodeId) continue;
