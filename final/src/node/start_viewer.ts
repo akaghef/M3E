@@ -119,6 +119,14 @@ const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
+console.log(`[M3E] CLOUD_SYNC = ${CLOUD_SYNC_ENABLED ? "enabled" : "disabled"}`);
+console.log(`[M3E] CLOUD_TRANSPORT = ${process.env.M3E_CLOUD_TRANSPORT || "file"}`);
+console.log(`[M3E] AUTO_SYNC = ${process.env.M3E_AUTO_SYNC === "1" ? "enabled" : "disabled"} (${process.env.M3E_AUTO_SYNC_INTERVAL_MS || "30000"}ms)`);
+if ((process.env.M3E_CLOUD_TRANSPORT || "").toLowerCase() === "supabase") {
+  console.log(`[M3E] SUPABASE_URL = ${process.env.M3E_SUPABASE_URL || "(missing)"}`);
+  console.log(`[M3E] SUPABASE_KEY = ${process.env.M3E_SUPABASE_ANON_KEY ? "(set)" : "(missing)"}`);
+}
+console.log("[M3E] NOTE = Home map list is local SQLite; cloud sync is per-map via Pull/Push.");
 
 function renameMapId(dbPath: string, sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return false;
