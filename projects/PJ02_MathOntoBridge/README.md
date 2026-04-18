@@ -30,19 +30,30 @@ M3E 上で **semantic tree**（意味の木）と **syntax tree**（構文の木
 | M3E での対応 | Deep 帯域の edge protocol | Blueprint dep_graph の取込 |
 | 担当 | PJ02 コア（Claude + akaghef） | Codex に委任 |
 
-### PJ02 のスコープ
+## 目標
 
-- **In**: edge に意味を載せるプロトコル（edge protocol）の設計と最小実装。semantic tree の基盤
-- **In**: syntax tree（Blueprint）の取込インターフェース設計。実装は Codex 委任
-- **Out**: 外部オントロジーサービス全接続（arXiv / Wikidata / zbMATH 等）→ 将来の別 PJ
-- **Out**: 射影パイプライン（科研費出力）→ PJ-07 Projection
-- **Out**: Lean サーバ常駐連携 → 別リポ/プラグイン
+### 達成する目標（PJ02 で完遂）
 
-## 主成果物
+| # | 目標 | 完了の定義（成功基準） | 担当 |
+|---|---|---|---|
+| G1 | **Edge protocol を最小実装する** — 親子 edge と GraphLink の両方に kind を載せる共通プロトコル | `relationType` kind 語彙 (uses / generalizes / dual / example_of / motivates / contradicts / see_also...) が beta で型として定義され、kind 別描画が viewer で可視化される | Claude（plan.md Phase 0-1） |
+| G2 | **Syntax tree（Blueprint）取込のインターフェースを設計する** | mathlib4 Blueprint `dep_graph.json` を M3E ノード/リンクに変換する I/F が設計され、Codex に委任可能な仕様書として確定 | Claude 設計 / Codex 実装 |
+| G3 | **既存考察を設計判断に統合する** | `prior_art.md` に集約した typed_edges / ontology 議論が、G1 の語彙選定と G2 の I/F 設計に明示的に反映される | Claude |
+| G4 | **Deep 帯域の表現力が dogfood 可能になる** | PJ02 自体（および M3E 上の他の研究）で、edge kind を使い分けた semantic graph 編集が日常運用に乗る | akaghef + Claude |
 
-1. **Edge protocol** — 親子 edge と GraphLink の両方に意味を載せる共通プロトコル（edgeType + relationType kind 語彙）
-2. **Syntax tree import interface** — mathlib4 Blueprint dep_graph を M3E に流し込むローダの設計（Codex が実装）
-3. **既存考察の統合** — [prior_art.md](prior_art.md) に集約した typed_edges / ontology 考察を設計判断に反映
+### 非目標（PJ02 の範囲外 → 将来の別 PJ）
+
+- 外部オントロジーサービス全接続（arXiv / Wikidata / zbMATH / KAKEN / researchmap）
+- 射影パイプライン（科研費出力）→ PJ-07 Projection
+- Lean サーバ常駐連携 → プラグイン/別リポ
+- Wikidata への書込み（逆方向フロー）
+- OMDoc 完全採用（export のみ将来検討）
+
+### 全体の成功条件
+
+- **基盤として動く**: G1-G3 が完了し、PJ-07 Projection や PJ-04 InfoGather が「Deep semantic graph がある」前提で計画できる
+- **研究としての知見**: edge protocol が数学知識の構造化に有効か / 不足か、の評価レポートが残る
+- **完全なサービスは PJ02 の範囲外**: foundation が動けば成功
 
 ## メタ情報
 
