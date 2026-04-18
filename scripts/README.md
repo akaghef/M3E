@@ -34,6 +34,8 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 |-----------|------|
 | `launch.bat` | Final を起動（ビルド済み前提）**← 本番利用** |
 | `launch.sh` | Final を Mac / Linux で起動（ビルド済み前提） |
+| `configure-cloud-sync-mode.bat` | 同じ Final 製品を team cloud / Supabase sync 用に設定 |
+| `configure-personal-mode.bat` | Final を personal/local 用設定に戻す |
 | `update-and-launch.bat` | Final を更新して起動（migration 実行） |
 | `update-and-launch.sh` | Final を更新して起動（migration 実行、Mac / Linux） |
 | `migrate-from-beta.bat` | Beta → Final の sync・build・data migration・起動 |
@@ -44,6 +46,9 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 - `scripts/final/launch.bat` は mode-aware。
 - `M3E_LAUNCH_MODE=personal` なら通常の local Final を起動する。
 - `M3E_LAUNCH_MODE=remote` なら設定済みの remote workspace を browser で開く。
+- `configure-cloud-sync-mode.bat` は `%LOCALAPPDATA%\M3E\m3e.conf` に
+  `M3E_CLOUD_*` / `M3E_SUPABASE_*` を書き込み、同じ Final 製品を
+  team cloud client として使えるようにする。
 
 ## 推奨運用フロー
 

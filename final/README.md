@@ -1,4 +1,4 @@
-# M3E Beta
+# M3E Final
 **This is a memorandum for user. NOT to write here.**
 
 ## Build
@@ -33,22 +33,51 @@ Stop with `Ctrl+C`.
 - `meta-panel` (class name): Official name is "メタパネル".
 - This panel shows mode/scope/status metadata and shortcut hints.
 
-### Optional cloud sync (file-mirror mode)
+### Optional cloud sync
 
-Cloud sync can be enabled as an opt-in mirror layer on top of local SQLite persistence.
+Cloud sync can be enabled as an opt-in layer on top of local SQLite persistence.
 
 Environment variables:
 
 ```bash
 M3E_CLOUD_SYNC=1
+M3E_CLOUD_TRANSPORT=file
 M3E_CLOUD_DIR=./data/cloud-sync
+```
+
+Supabase mode:
+
+```bash
+M3E_CLOUD_SYNC=1
+M3E_CLOUD_TRANSPORT=supabase
+M3E_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+M3E_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+M3E_AUTO_SYNC=0
+M3E_AUTO_SYNC_INTERVAL_MS=8000
 ```
 
 Behavior:
 
 - On startup: tries cloud pull first, then falls back to local SQLite/doc sample
 - On save/autosave: keeps local save and additionally pushes to cloud mirror
-- Cloud backend in Beta is file-based (`M3E_CLOUD_DIR`) for local-first validation
+- Supported transports:
+  - `file` via `M3E_CLOUD_DIR`
+  - `supabase` via `M3E_SUPABASE_URL` / `M3E_SUPABASE_ANON_KEY`
+
+Recommended team rollout:
+
+1. Use the same `final` product on every device.
+2. Configure all clients with the same `workspace id` and `map id`.
+3. Start with `M3E_AUTO_SYNC=0` and use explicit `Pull` / `Push`.
+4. Enable auto-sync only after conflict behavior is acceptable.
+
+Helper scripts:
+
+```bat
+scripts\final\configure-cloud-sync-mode.bat <supabase-url> <anon-key> [workspace-id] [workspace-label] [map-id] [map-label] [map-slug] [auto-sync]
+scripts\final\configure-personal-mode.bat
+scripts\final\launch.bat
+```
 
 Sync API endpoints:
 

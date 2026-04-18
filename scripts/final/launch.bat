@@ -35,6 +35,13 @@ if exist "%CONFIG_FILE%" (
     if "%%A"=="M3E_REMOTE_BASE_URL" if "!M3E_REMOTE_BASE_URL!"=="" set "M3E_REMOTE_BASE_URL=%%B"
     if "%%A"=="M3E_REMOTE_WORKSPACE_ID" if "!M3E_REMOTE_WORKSPACE_ID!"=="" set "M3E_REMOTE_WORKSPACE_ID=%%B"
     if "%%A"=="M3E_REMOTE_MAP_ID" if "!M3E_REMOTE_MAP_ID!"=="" set "M3E_REMOTE_MAP_ID=%%B"
+    if "%%A"=="M3E_CLOUD_SYNC"    if "!M3E_CLOUD_SYNC!"==""    set "M3E_CLOUD_SYNC=%%B"
+    if "%%A"=="M3E_CLOUD_TRANSPORT" if "!M3E_CLOUD_TRANSPORT!"=="" set "M3E_CLOUD_TRANSPORT=%%B"
+    if "%%A"=="M3E_CLOUD_DIR"     if "!M3E_CLOUD_DIR!"==""     set "M3E_CLOUD_DIR=%%B"
+    if "%%A"=="M3E_SUPABASE_URL"  if "!M3E_SUPABASE_URL!"==""  set "M3E_SUPABASE_URL=%%B"
+    if "%%A"=="M3E_SUPABASE_ANON_KEY" if "!M3E_SUPABASE_ANON_KEY!"=="" set "M3E_SUPABASE_ANON_KEY=%%B"
+    if "%%A"=="M3E_AUTO_SYNC"     if "!M3E_AUTO_SYNC!"==""     set "M3E_AUTO_SYNC=%%B"
+    if "%%A"=="M3E_AUTO_SYNC_INTERVAL_MS" if "!M3E_AUTO_SYNC_INTERVAL_MS!"=="" set "M3E_AUTO_SYNC_INTERVAL_MS=%%B"
   )
 )
 
@@ -57,6 +64,11 @@ if "!M3E_MAIN_WORKSPACE_ID!"=="" set "M3E_MAIN_WORKSPACE_ID=!M3E_WORKSPACE_ID!"
 if "!M3E_REMOTE_BASE_URL!"==""  set "M3E_REMOTE_BASE_URL=http://127.0.0.1:4173"
 if "!M3E_REMOTE_WORKSPACE_ID!"=="" set "M3E_REMOTE_WORKSPACE_ID=!M3E_WORKSPACE_ID!"
 if "!M3E_REMOTE_MAP_ID!"==""    set "M3E_REMOTE_MAP_ID="
+if "!M3E_CLOUD_SYNC!"==""       set "M3E_CLOUD_SYNC=0"
+if "!M3E_CLOUD_TRANSPORT!"==""  set "M3E_CLOUD_TRANSPORT=file"
+if "!M3E_CLOUD_DIR!"==""        set "M3E_CLOUD_DIR=!M3E_DATA_DIR!\cloud-sync"
+if "!M3E_AUTO_SYNC!"==""        set "M3E_AUTO_SYNC=0"
+if "!M3E_AUTO_SYNC_INTERVAL_MS!"=="" set "M3E_AUTO_SYNC_INTERVAL_MS=30000"
 set "M3E_DOC_ID=!M3E_MAP_ID!"
 set "LOG_FILE=!M3E_HOME!\launch.log"
 
