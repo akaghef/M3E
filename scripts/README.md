@@ -43,7 +43,7 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 
 - `scripts/final/launch.bat` は mode-aware。
 - `M3E_LAUNCH_MODE=personal` なら通常の local Final を起動する。
-- `M3E_LAUNCH_MODE=swingby` なら shared Swingby server を browser で開く。
+- `M3E_LAUNCH_MODE=remote` なら設定済みの remote workspace を browser で開く。
 
 ## 推奨運用フロー
 

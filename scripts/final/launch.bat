@@ -32,9 +32,9 @@ if exist "%CONFIG_FILE%" (
     if "%%A"=="M3E_MAIN_WORKSPACE_ID" if "!M3E_MAIN_WORKSPACE_ID!"=="" set "M3E_MAIN_WORKSPACE_ID=%%B"
     if "%%A"=="M3E_PORT"          if "!M3E_PORT!"==""          set "M3E_PORT=%%B"
     if "%%A"=="M3E_LAUNCH_MODE"   if "!M3E_LAUNCH_MODE!"==""   set "M3E_LAUNCH_MODE=%%B"
-    if "%%A"=="M3E_SWINGBY_BASE_URL" if "!M3E_SWINGBY_BASE_URL!"=="" set "M3E_SWINGBY_BASE_URL=%%B"
-    if "%%A"=="M3E_SWINGBY_WORKSPACE_ID" if "!M3E_SWINGBY_WORKSPACE_ID!"=="" set "M3E_SWINGBY_WORKSPACE_ID=%%B"
-    if "%%A"=="M3E_SWINGBY_MAP_ID" if "!M3E_SWINGBY_MAP_ID!"=="" set "M3E_SWINGBY_MAP_ID=%%B"
+    if "%%A"=="M3E_REMOTE_BASE_URL" if "!M3E_REMOTE_BASE_URL!"=="" set "M3E_REMOTE_BASE_URL=%%B"
+    if "%%A"=="M3E_REMOTE_WORKSPACE_ID" if "!M3E_REMOTE_WORKSPACE_ID!"=="" set "M3E_REMOTE_WORKSPACE_ID=%%B"
+    if "%%A"=="M3E_REMOTE_MAP_ID" if "!M3E_REMOTE_MAP_ID!"=="" set "M3E_REMOTE_MAP_ID=%%B"
   )
 )
 
@@ -54,13 +54,13 @@ if "!M3E_MAIN_DATA_DIR!"==""    set "M3E_MAIN_DATA_DIR=!M3E_DATA_DIR!"
 if "!M3E_MAIN_DB_FILE!"==""     set "M3E_MAIN_DB_FILE=!M3E_DB_FILE!"
 if "!M3E_MAIN_DOC_ID!"==""      set "M3E_MAIN_DOC_ID=!M3E_MAP_ID!"
 if "!M3E_MAIN_WORKSPACE_ID!"=="" set "M3E_MAIN_WORKSPACE_ID=!M3E_WORKSPACE_ID!"
-if "!M3E_SWINGBY_BASE_URL!"=="" set "M3E_SWINGBY_BASE_URL=http://127.0.0.1:4173"
-if "!M3E_SWINGBY_WORKSPACE_ID!"=="" set "M3E_SWINGBY_WORKSPACE_ID=ws_team_swingby"
-if "!M3E_SWINGBY_MAP_ID!"==""   set "M3E_SWINGBY_MAP_ID=map_team_swingby_home"
+if "!M3E_REMOTE_BASE_URL!"==""  set "M3E_REMOTE_BASE_URL=http://127.0.0.1:4173"
+if "!M3E_REMOTE_WORKSPACE_ID!"=="" set "M3E_REMOTE_WORKSPACE_ID=!M3E_WORKSPACE_ID!"
+if "!M3E_REMOTE_MAP_ID!"==""    set "M3E_REMOTE_MAP_ID="
 set "M3E_DOC_ID=!M3E_MAP_ID!"
 set "LOG_FILE=!M3E_HOME!\launch.log"
 
-if /i "!M3E_LAUNCH_MODE!"=="swingby" goto :launch_swingby
+if /i "!M3E_LAUNCH_MODE!"=="remote" goto :launch_remote
 
 if not exist "!M3E_HOME!" mkdir "!M3E_HOME!"
 if not exist "!M3E_DATA_DIR!" mkdir "!M3E_DATA_DIR!"
@@ -146,13 +146,13 @@ if !EXIT_CODE! neq 0 (
 
 exit /b 0
 
-:launch_swingby
-set "BASE=!M3E_SWINGBY_BASE_URL!"
+:launch_remote
+set "BASE=!M3E_REMOTE_BASE_URL!"
 if "!BASE:~-1!"=="/" set "BASE=!BASE:~0,-1!"
-set "SWINGBY_URL=!BASE!/viewer.html?ws=!M3E_SWINGBY_WORKSPACE_ID!&map=!M3E_SWINGBY_MAP_ID!"
-echo [launch] mode=swingby
-echo [launch] opening !SWINGBY_URL!
-start "" "!SWINGBY_URL!"
+set "REMOTE_URL=!BASE!/home.html?ws=!M3E_REMOTE_WORKSPACE_ID!"
+echo [launch] mode=remote
+echo [launch] opening !REMOTE_URL!
+start "" "!REMOTE_URL!"
 exit /b 0
 
 :repair_dependencies
