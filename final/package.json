@@ -23,7 +23,7 @@
   "devDependencies": {
     "@playwright/test": "^1.54.1",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^18.19.130",
+    "@types/node": "^22.0.0",
     "typescript": "^5.4.0",
     "undici-types": "^5.26.5",
     "vitest": "^4.1.4"

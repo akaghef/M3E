@@ -6,7 +6,7 @@ test("detectCloudConflict returns false when force push is enabled", () => {
   expect(detectCloudConflict("2026-04-02T00:00:10.000Z", "2026-04-02T00:00:00.000Z", true)).toBe(false);
 });
 
-test("detectCloudConflict returns false when cloud doc does not exist", () => {
+test("detectCloudConflict returns false when cloud map does not exist", () => {
   expect(detectCloudConflict(null, "2026-04-02T00:00:00.000Z", false)).toBe(false);
 });
 

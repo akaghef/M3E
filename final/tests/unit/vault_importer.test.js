@@ -1,0 +1,233 @@
+import { test, expect } from "vitest";
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const { importVaultToAppState, importVaultToSqlite } = require("../../dist/node/vault_importer.js");
+const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
+
+function tmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "m3e-vault-import-"));
+}
+
+function writeFile(rootDir, relativePath, content) {
+  const absolutePath = path.join(rootDir, relativePath);
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  fs.writeFileSync(absolutePath, content, "utf8");
+  return absolutePath;
+}
+
+function cleanup(dirPath) {
+  fs.rmSync(dirPath, { recursive: true, force: true });
+}
+
+function findNodeByText(state, text) {
+  return Object.values(state.nodes).find((node) => node.text === text);
+}
+
+test("importVaultToAppState builds folder/file skeleton and maps frontmatter metadata", async () => {
+  const vaultDir = tmpDir();
+  try {
+    writeFile(vaultDir, "index.md", `---
+tags:
+  - home
+aliases:
+  - Start
+status: draft
+---
+
+# Welcome
+
+This is the index note with [[research/note-a]].
+`);
+    writeFile(vaultDir, "research/note-a.md", `---
+tags:
+  - research
+---
+
+Line 1
+Line 2
+`);
+    writeFile(vaultDir, ".obsidian/ignore.md", "# Ignore me");
+    writeFile(vaultDir, "assets/image.png", "binary");
+
+    const result = await importVaultToAppState({
+      vaultPath: vaultDir,
+      options: { skipAiTransform: true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.mapId).toMatch(/^vault-/);
+    expect(result.fileCount).toBe(2);
+    expect(result.folderCount).toBe(5);
+    expect(result.nodeCount).toBe(6);
+
+    const model = RapidMvpModel.fromJSON(result.state);
+    expect(model.validate()).toEqual([]);
+
+    const root = result.state.nodes[result.state.rootId];
+    expect(root.text).toBe(path.basename(vaultDir));
+    expect(root.children.length).toBe(3);
+
+    const researchFolder = findNodeByText(result.state, "research");
+    expect(researchFolder).toBeTruthy();
+    expect(researchFolder.nodeType).toBe("folder");
+
+    const indexNode = findNodeByText(result.state, "index");
+    expect(indexNode).toBeTruthy();
+    expect(indexNode.nodeType).toBe("folder");
+    expect(indexNode.attributes.tags).toBe("home");
+    expect(indexNode.attributes.aliases).toBe("Start");
+    expect(indexNode.attributes.status).toBe("draft");
+    expect(indexNode.details).toContain("# Welcome");
+    expect(Object.values(result.state.nodes).some((node) => node.nodeType === "alias")).toBe(true);
+
+    const nestedFile = result.files.find((file) => file.relativePath === "research/note-a.md");
+    expect(nestedFile).toBeTruthy();
+    expect(nestedFile.wikilinkCount).toBe(0);
+  } finally {
+    cleanup(vaultDir);
+  }
+});
+
+test("importVaultToAppState applies maxFiles and maxCharsPerFile limits", async () => {
+  const vaultDir = tmpDir();
+  try {
+    writeFile(vaultDir, "a.md", "A".repeat(50));
+    writeFile(vaultDir, "b.md", "B".repeat(50));
+
+    const result = await importVaultToAppState({
+      vaultPath: vaultDir,
+      options: {
+        maxFiles: 1,
+        maxCharsPerFile: 10,
+        skipAiTransform: true,
+      },
+    });
+
+    expect(result.fileCount).toBe(1);
+    expect(result.truncatedFiles).toBe(1);
+    expect(result.warnings.some((warning) => warning.includes("File limit exceeded"))).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes("Truncated"))).toBe(true);
+    const importedNode = result.state.nodes[result.files[0].nodeId];
+    expect(importedNode.details.length).toBe(10);
+  } finally {
+    cleanup(vaultDir);
+  }
+});
+
+test("importVaultToSqlite persists imported map", async () => {
+  const vaultDir = tmpDir();
+  const dataDir = tmpDir();
+  const dbPath = path.join(dataDir, "vault-test.sqlite");
+  try {
+    writeFile(vaultDir, "alpha.md", "# Alpha");
+    const result = await importVaultToSqlite(dbPath, {
+      vaultPath: vaultDir,
+      mapId: "vault-test-map",
+      options: { skipAiTransform: true },
+    });
+
+    expect(result.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const loaded = RapidMvpModel.loadFromSqlite(dbPath, "vault-test-map");
+    expect(loaded.validate()).toEqual([]);
+    expect(loaded.state.nodes[loaded.state.rootId].text).toBe(path.basename(vaultDir));
+  } finally {
+    cleanup(vaultDir);
+    cleanup(dataDir);
+  }
+});
+
+test("importVaultToAppState resolves exact, embedded, ambiguous, and broken wikilinks with metadata", async () => {
+  const vaultDir = tmpDir();
+  try {
+    writeFile(vaultDir, "daily.md", `---
+tags:
+  - inbox
+aliases:
+  - Daily Note
+published: true
+priority: 2
+---
+
+Entry body.
+Exact [[refs/exact-note|Exact Label]].
+Unique [[unique-note]].
+Ambiguous [[dup]].
+Missing [[ghost|Ghost Note]].
+Embed ![[media/clip|Preview]].
+`);
+    writeFile(vaultDir, "refs/exact-note.md", "# Exact");
+    writeFile(vaultDir, "unique-note.md", "# Unique");
+    writeFile(vaultDir, "team/dup.md", "# Dup A");
+    writeFile(vaultDir, "archive/dup.md", "# Dup B");
+    writeFile(vaultDir, "media/clip.md", "# Clip");
+
+    const result = await importVaultToAppState({
+      vaultPath: vaultDir,
+      options: { skipAiTransform: true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes("Ambiguous wikilink in daily.md: dup"))).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes("Broken wikilink in daily.md: ghost"))).toBe(true);
+
+    const dailyNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "daily.md");
+    expect(dailyNode).toBeTruthy();
+    expect(dailyNode.attributes.tags).toBe("inbox");
+    expect(dailyNode.attributes.aliases).toBe("Daily Note");
+    expect(dailyNode.attributes.published).toBe("true");
+    expect(dailyNode.attributes.priority).toBe("2");
+
+    const exactNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "refs/exact-note.md");
+    const uniqueNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "unique-note.md");
+    const clipNode = Object.values(result.state.nodes).find((node) => node.attributes["vault:path"] === "media/clip.md");
+    expect(exactNode).toBeTruthy();
+    expect(uniqueNode).toBeTruthy();
+    expect(clipNode).toBeTruthy();
+
+    const aliases = dailyNode.children.map((childId) => result.state.nodes[childId]).filter((node) => node?.nodeType === "alias");
+    expect(aliases).toHaveLength(5);
+
+    const exactAlias = aliases.find((node) => node.aliasLabel === "Exact Label");
+    expect(exactAlias).toBeTruthy();
+    expect(exactAlias.targetNodeId).toBe(exactNode.id);
+    expect(exactAlias.isBroken).toBeFalsy();
+    expect(exactAlias.collapsed).toBe(true);
+
+    const uniqueAlias = aliases.find((node) => node.text === "unique-note");
+    expect(uniqueAlias).toBeTruthy();
+    expect(uniqueAlias.targetNodeId).toBe(uniqueNode.id);
+    expect(uniqueAlias.isBroken).toBeFalsy();
+
+    const embeddedAlias = aliases.find((node) => node.aliasLabel === "Preview");
+    expect(embeddedAlias).toBeTruthy();
+    expect(embeddedAlias.targetNodeId).toBe(clipNode.id);
+    expect(embeddedAlias.collapsed).toBe(false);
+    expect(embeddedAlias.isBroken).toBeFalsy();
+
+    const ambiguousAlias = aliases.find((node) => node.text === "dup (missing)");
+    expect(ambiguousAlias).toBeTruthy();
+    expect(ambiguousAlias.isBroken).toBe(true);
+    expect(ambiguousAlias.targetNodeId).toBe("missing:dup");
+
+    const brokenAlias = aliases.find((node) => node.aliasLabel === "Ghost Note");
+    expect(brokenAlias).toBeTruthy();
+    expect(brokenAlias.isBroken).toBe(true);
+    expect(brokenAlias.targetNodeId).toBe("missing:ghost");
+    expect(brokenAlias.text).toBe("Ghost Note (missing)");
+  } finally {
+    cleanup(vaultDir);
+  }
+});
+
+test("importVaultToAppState rejects relative vault paths", async () => {
+  await expect(importVaultToAppState({ vaultPath: "relative/path" })).rejects.toThrow(/absolute path/);
+});
+
+test("importVaultToAppState rejects protected system directories", async () => {
+  const protectedPath = process.platform === "win32"
+    ? path.join(process.env.SystemRoot || "C:\\Windows", "System32")
+    : "/etc";
+  await expect(importVaultToAppState({ vaultPath: protectedPath })).rejects.toThrow(/protected system directory/);
+});
