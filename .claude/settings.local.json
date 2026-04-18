@@ -23,13 +23,49 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/session-start.sh",
+            "statusMessage": "Injecting sub-pj resume context..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/prompt-prj-check.sh",
+            "statusMessage": "Checking prj/* branch guardrails..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/stop-check.sh",
+            "statusMessage": "Checking sub-pj writeback before stop..."
+          }
+        ]
+      }
+    ],
     "PostCompact": [
       {
         "matcher": "auto",
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostCompact\",\"additionalContext\":\"[compaction-recovery] Compaction just happened. If you are working on a sub-PJ (branch prj/*), immediately write a progress summary to the PJ plan.md progress log: (1) what was done so far, (2) what to do next, (3) any pending decisions or ambiguity pool items. Check git branch to identify the active PJ.\"}}'",
+            "command": "bash scripts/hooks/post-compact.sh",
             "statusMessage": "Injecting compaction recovery reminder..."
           }
         ]

@@ -1,81 +1,42 @@
 ---
 name: sub-pj
 description: |
-  sub-PJ（M3E内のサブプロジェクト）のライフサイクル全体を管理するスキル。
-  立ち上げ（kickoff）からセッション開始/終了、Phase遷移、反省まで。
+  sub-PJ 用のメタスキル。自分では長い手順を抱えず、要求を plan 段階か do 段階に振り分ける。
   以下の場面でトリガーする:
-  - 「新しいPJを立ち上げる」「PJ作る」「sub-pj kickoff」と言われたとき
-  - 「PJセッション開始」「今日の作業開始」+ PJ名と言われたとき
-  - 「Phase遷移」「ゲート確認」「次のPhaseに進めるか」と言われたとき
-  - 「セッション終了」「ハンドオフ」「作業おわり」+ PJ名と言われたとき
-  - 「振り返り」「反省」「retrospective」と言われたとき
-  - 「plan作って」「計画を詰めよう」と言われたとき
   - 「/sub-pj」と直接呼ばれたとき
+  - 「sub-pj で進めて」「PJ の型で回して」と言われたとき
+  - kickoff / planning / runtime / gate のどちらを使うか曖昧なとき
 ---
 
-# sub-pj — Sub-Project Lifecycle Manager
+# sub-pj — Meta Router
 
-sub-PJ の立ち上げから完了までを phase ベースで管理する。
+`sub-pj` は dispatcher。
+実務は次の 2 skill に振り分ける。
 
-## PJ ライフサイクル
+## Core Terms
 
-```
- 0_kickoff ──→ 1_planning ──→ 2_session ←──→ 3_gate
-                                                 │
-                                                 ↓
-                                            4_complete
-```
+- `plan`: kickoff / planning / gate。何をやるか、どこまでやるか、何を正本にするかを固める段階
+- `do`: runtime / resume / generator / evaluator。固めた plan を自走ループで消化する段階
+- `gate`: 人間専権。Claude は readiness を示すが、通過は人間が決める
 
-| Phase | 状態 | いつ入るか |
-|-------|------|-----------|
-| **0 kickoff** | PJ が存在しない | 「新しい PJ」「立ち上げ」 |
-| **1 planning** | README/plan.md が骨格のみ | kickoff 直後、または plan の詳細化指示時 |
-| **2 session** | 日常の作業サイクル | セッション開始/終了 |
-| **3 gate** | Phase 遷移の判定 | 「次の Phase に進めるか」 |
-| **4 complete** | PJ 完了・振り返り | 全 Phase 完了時、または「振り返り」指示時 |
+## Routing
 
-## サブコマンドと読むファイル
+| ユーザー意図 | 振り分け先 |
+|---|---|
+| 新 PJ を立ち上げる | `sub-pj-plan` |
+| plan を詰める / Gate 1 / Gate 2 を確認する | `sub-pj-plan` |
+| Phase 遷移の readiness を確認する | `sub-pj-plan` |
+| 今日の作業開始 / resume / 自走ループ / handoff | `sub-pj-do` |
+| Generator / Evaluator を回したい | `sub-pj-do` |
 
-| コマンド | Phase | 読む L2 |
-|----------|-------|---------|
-| `/sub-pj kickoff` | 0 | `phase/0_kickoff.md` + `protocol.md` |
-| `/sub-pj plan [PJ]` | 1 | `phase/1_planning.md` |
-| `/sub-pj start [PJ]` | 2 | `phase/2_session.md` + `protocol.md` |
-| `/sub-pj end [PJ]` | 2 | `phase/2_session.md` |
-| `/sub-pj gate [PJ]` | 3 | `phase/3_gate.md` |
-| `/sub-pj retro [PJ]` | 4 | `phase/4_complete.md` |
-| `/sub-pj` | — | この SKILL.md → phase 推定 |
+## Reading Order
 
-PJ名を省略 → ブランチ名 `prj/{NN}_{Name}` から推定。
+1. まずこのファイルで `plan` と `do` のどちらかを決める
+2. 実際の手順は対応する skill に移る
+3. 両方必要なら `plan -> do` の順に直列で使う
 
-## Progressive Disclosure
+## Guardrails
 
-| 層 | ファイル | 読むタイミング |
-|----|---------|--------------|
-| **L1** | `SKILL.md` | 常に（phase ルーティング） |
-| **L2** | `protocol.md` | phase 0, 2 で読む（PJ 遂行プロトコル正本） |
-| **L2** | `phase/0_kickoff.md` | PJ 立ち上げ時 |
-| **L2** | `phase/1_planning.md` | plan.md 肉付け時 |
-| **L2** | `phase/2_session.md` | セッション開始/終了時 |
-| **L2** | `phase/3_gate.md` | Phase 遷移判定時 |
-| **L2** | `phase/4_complete.md` | PJ 完了・振り返り時 |
-| **L3** | `references/overview.md` | 人間向け PJ ライフサイクル全体図 |
-| **L3** | `references/facet/*.md` | facet タイプ別スコープ粒度・レイアウト |
-| **L3** | `references/lessons.md` | plan 策定時・retro 時 |
-| **L3** | `references/examples.md` | 新 PJ 設計の参考が必要な時 |
-
-## Phase 推定（引数なし時）
-
-1. PJ 特定 → README の `status` と plan.md の進捗ログを読む
-2. README が存在しない → **phase 0**
-3. plan.md の Phase 設計が骨格のみ → **phase 1**
-4. ユーザー発言に「遷移」「gate」 → **phase 3**
-5. ユーザー発言に「振り返り」「完了」 → **phase 4**
-6. それ以外 → **phase 2**（デフォルト: 作業サイクル）
-
-## 禁則
-
-- Phase 遷移をユーザー承認なしに実行しない
-- ビジョンを勝手に解釈・補足しない（不明瞭なら質問する）
-- PJ 固有の深い内容をテンプレートで埋めない（対話で詰める）
-- protocol.md を勝手に改訂しない（2 PJ 以上で検証されたパターンのみ、ユーザー承認後）
+- `sub-pj` 自体は重い手順を再掲しない
+- gate は常に人間手動
+- `do` 側は gate を実行せず、ready を報告して止まる

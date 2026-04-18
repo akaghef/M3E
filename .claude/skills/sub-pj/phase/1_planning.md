@@ -216,6 +216,29 @@ runtime を使わない場合のみ、README と plan.md の両方に
 `runtime_opt_out: {理由}` を書いて opt-out しろ。
 理由がない限り、「あとで考える」は認めるな。
 
+### 7. facet bootstrap を設計しろ
+
+Gate 2 を通したら、そのまま `do` に渡せるように map 初期化の設計まで決めろ。
+
+各 facet について最低限これを決めろ:
+
+- **scope 名**: どこに置くか
+- **anchor**: 何で束ねるか
+- **exemplar**: 代表ノード 1 個
+- **書き込み主体**: Generator / Evaluator / 人間の誰が触るか
+
+最低限の初期化単位は:
+
+- `Progress Board`
+- `Review`
+- `Active Workspace`
+- `Evaluation Board`（使う場合）
+- 各 facet の空 scope / anchor / exemplar
+
+とする。
+
+`do` 開始時に Generator が「どこに書けばよいか」で迷う状態を残すな。
+
 ---
 
 ## ★ Gate 2: 実行計画確定
@@ -230,6 +253,9 @@ runtime を使わない場合のみ、README と plan.md の両方に
 - [ ] runtime readiness が決まっている
   - 3-view runtime を使う
   - もしくは `runtime_opt_out` が README / plan.md の両方にある
+- [ ] do 開始前の facet bootstrap 方針が決まっている
+  - どの facet を使うか
+  - どの scope / anchor を初期化するか
 
 すべて揃っていたら、ユーザーに確認しろ:
 
@@ -241,12 +267,14 @@ Gate 2（実行計画確定）の確認です:
 - facet: {K} 個（マップ使用時）
 - 運用ルール: 策定済み
 - runtime: {3-view runtime / opt-out}
+- bootstrap: {facet 数} facet / {scope 数} scope を初期化
 
 これで実行計画を確定し、作業に入りますか？
-OKなら `/sub-pj start` でセッション開始です。
+OKなら map を初期化してから `/sub-pj start` でセッション開始です。
 ```
 
 ユーザーが承認したら、plan.md の status を `exploring` → `ready` に変更しろ。
+さらに、決定済み facet に基づいて runtime / workspace を初期化し、`do` へ handoff しろ。
 
 ---
 
