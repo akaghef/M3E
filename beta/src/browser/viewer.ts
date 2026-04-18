@@ -29,6 +29,7 @@ const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
 const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
+const modeBadgeEl = document.getElementById("mode-badge") as HTMLElement | null;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
@@ -301,6 +302,7 @@ let viewState: ViewState = {
   reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
+  reviewMode: false,
 };
 applyLinearTextFontScale(false);
 syncLinearAdjustMenuUi();
@@ -937,6 +939,7 @@ interface NodeStyleAttrs {
   edgeColor: string | null;
   edgeStyle: string | null;
   edgeWidth: number | null;
+  edgeLabel: string | null;
   band: string | null;
   confidence: number | null;
   status: string | null;
@@ -1027,6 +1030,7 @@ function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
     edgeColor: sanitizeColor(attrs["m3e:edge-color"]),
     edgeStyle: sanitizeBorderStyle(attrs["m3e:edge-style"]),
     edgeWidth: sanitizeNumeric(attrs["m3e:edge-width"], 1, 10),
+    edgeLabel: (attrs["m3e:edge-label"] || "").trim() || null,
     band: sanitizeBand(attrs["m3e:band"]),
     confidence: sanitizeNumeric(attrs["m3e:confidence"], 0, 1),
     status: sanitizeStatus(style.status) ?? sanitizeStatus(attrs["m3e:status"]),
@@ -1052,12 +1056,12 @@ function buildNodeHitStyle(s: NodeStyleAttrs): string {
   // Status-based default decoration (only if no explicit bg/border)
   if (s.status && !s.bg && !s.border) {
     switch (s.status) {
-      case "placeholder": parts.push("stroke:#999;stroke-dasharray:4 4;stroke-width:1px"); break;
-      case "confirmed": parts.push("stroke:#2d8c4e;stroke-width:2px"); break;
-      case "contested": parts.push("stroke:#d94040;stroke-width:2px"); break;
-      case "frozen": parts.push("stroke:#4a7fb5;stroke-width:1.5px;stroke-dasharray:2 3"); break;
-      case "active": parts.push("stroke:#e89b1a;stroke-width:2.5px"); break;
-      case "review": parts.push("stroke:#9b59b6;stroke-width:2px;stroke-dasharray:6 3"); break;
+      case "placeholder": parts.push("stroke:#999;stroke-dasharray:4 4;stroke-width:3px"); break;
+      case "confirmed": parts.push("stroke:#2d8c4e;stroke-width:6px"); break;
+      case "contested": parts.push("stroke:#d94040;stroke-width:6px"); break;
+      case "frozen": parts.push("stroke:#4a7fb5;stroke-width:4.5px;stroke-dasharray:2 3"); break;
+      case "active": parts.push("stroke:#e89b1a;stroke-width:7.5px"); break;
+      case "review": parts.push("stroke:#9b59b6;stroke-width:6px;stroke-dasharray:6 3"); break;
     }
   }
   return parts.length ? parts.join(";") : "";
@@ -2843,6 +2847,7 @@ function scheduleApplyZoom(): void {
 }
 
 function render(): void {
+  updateModeBadge();
   if (!map) {
     syncThinkingModeUi();
     updateScopeMeta();
@@ -3025,6 +3030,15 @@ function render(): void {
       const c2y = endY;
       const edgeInline = buildEdgeStyle(nodeStyles);
       edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
+
+      // Edge label — stored on the child node (parent is unique per child)
+      const childNode = state.nodes[childId];
+      const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
+      if (childStyles.edgeLabel) {
+        const labelX = (c1x + c2x) / 2;
+        const labelY = (startY + endY) / 2 - 8;
+        edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
+      }
     });
 
     const classNames = ["node-hit"];
@@ -5968,6 +5982,71 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
   }
 }
 
+// ── Review Mode ──────────────────────────────────────────────
+
+function advanceToNextVisibleNode(): void {
+  const sel = viewState.selectedNodeId;
+  const idx = visibleOrder.indexOf(sel);
+  if (idx < 0 || idx >= visibleOrder.length - 1) return;
+  const next = visibleOrder[idx + 1];
+  if (next) setSingleSelection(next);
+}
+
+function reviewAccept(): void {
+  if (!map) return;
+  const sel = viewState.selectedNodeId;
+  const node = map.state.nodes[sel];
+  if (!node) { setStatus("No node selected.", true); return; }
+  updateStyleJson(sel, (s) => { s.border = "#2d8c4e"; });
+  touchDocument();
+  setStatus(`Accepted: ${node.text.substring(0, 40)}`);
+  advanceToNextVisibleNode();
+}
+
+function reviewReject(): void {
+  if (!map) return;
+  const sel = viewState.selectedNodeId;
+  const node = map.state.nodes[sel];
+  if (!node) { setStatus("No node selected.", true); return; }
+  updateStyleJson(sel, (s) => { s.border = "#d94040"; });
+  touchDocument();
+  setStatus(`Rejected: ${node.text.substring(0, 40)}`);
+  advanceToNextVisibleNode();
+}
+
+function reviewExplain(): void {
+  if (!map) return;
+  const sel = viewState.selectedNodeId;
+  const node = map.state.nodes[sel];
+  if (!node) return;
+  const details = node.details || node.note || "(no details)";
+  setStatus(details.substring(0, 200));
+  viewState.collapsedIds.delete(sel);
+  node.collapsed = false;
+  render();
+}
+
+function updateModeBadge(): void {
+  if (!modeBadgeEl) return;
+  if (viewState.reviewMode) {
+    modeBadgeEl.textContent = "REVIEW";
+    modeBadgeEl.classList.add("review");
+  } else {
+    modeBadgeEl.textContent = "EDIT";
+    modeBadgeEl.classList.remove("review");
+  }
+}
+
+function toggleReviewMode(): void {
+  viewState.reviewMode = !viewState.reviewMode;
+  if (viewState.reviewMode) {
+    setStatus("REVIEW MODE — [a]ccept(green) [x]reject(red) [e]xplain [Esc]exit");
+  } else {
+    setStatus("Review mode off.");
+  }
+  render();
+}
+
 function touchDocument(): void {
   if (!map) {
     return;
@@ -7346,6 +7425,41 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (document.activeElement === linearTextEl) {
+    return;
+  }
+
+  // ── Review Mode keybindings ──
+  if (viewState.reviewMode) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      viewState.reviewMode = false;
+      setStatus("Review mode off.");
+      render();
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+      if (event.key === "a") {
+        event.preventDefault();
+        reviewAccept();
+        return;
+      }
+      if (event.key === "x") {
+        event.preventDefault();
+        reviewReject();
+        return;
+      }
+      if (event.key === "e") {
+        event.preventDefault();
+        reviewExplain();
+        return;
+      }
+    }
+    // Arrow keys fall through to normal navigation
+  }
+  // Toggle review mode with bare R (when not already in review mode)
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "r" && !viewState.reviewMode) {
+    event.preventDefault();
+    toggleReviewMode();
     return;
   }
 

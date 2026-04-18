@@ -12,12 +12,28 @@
       "Bash(rm -f /tmp/*)",
       "Bash(rm -rf node_modules/.cache/*)",
       "Bash(rm -rf */node_modules/.cache/*)",
-      "Bash(rm -rf /tmp/*)"
+      "Bash(rm -rf /tmp/*)",
+      "WebSearch",
+      "WebFetch"
     ],
     "deny": [
       "Bash(rm *)",
       "Bash(rm -r *)",
       "Bash(rm -rf *)"
+    ]
+  },
+  "hooks": {
+    "PostCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostCompact\",\"additionalContext\":\"[compaction-recovery] Compaction just happened. If you are working on a sub-PJ (branch prj/*), immediately write a progress summary to the PJ plan.md progress log: (1) what was done so far, (2) what to do next, (3) any pending decisions or ambiguity pool items. Check git branch to identify the active PJ.\"}}'",
+            "statusMessage": "Injecting compaction recovery reminder..."
+          }
+        ]
+      }
     ]
   }
 }

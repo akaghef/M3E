@@ -249,4 +249,5 @@ interface ViewState {
   reparentSourceIds: Set<string>;
   dragState: DragState | null;
   collapsedIds: Set<string>;
+  reviewMode: boolean;
 }

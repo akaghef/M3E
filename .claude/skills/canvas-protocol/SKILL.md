@@ -146,7 +146,14 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 - 曖昧点遭遇時 — reviews/Qn として起票し人間に escalate
 - 完了通知 — devM3E Phase 5 (Integrate) と連動して canvas 反映
 
-## 8. What NOT to write to canvas
+## 8. Link / Alias ルール
+
+- **scope をまたぐ link は張るな。** 異なる scope 間の関係は alias（`nodeType: "alias"`）で示せ
+- link（GraphLink）は同一 scope 内でのみ使え
+- alias は参照先ノードの「別の場所での出現」を表す。alias 経由で関係を可視化する
+- 詳細は `m3e-map` skill の `references/data-model.md` Critical Invariants §7 を参照
+
+## 9. What NOT to write to canvas
 
 - 大量の生ログ (PR description / dailies に書く)
 - コミット SHA 列挙 (git に任せる)

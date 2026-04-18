@@ -135,7 +135,7 @@
 1–100 とは系統が異なる。M3E を特定ドメイン（数学・研究分野・業務）に適用する世界モデル構築 PJ。
 PJ-00 (AlgLibMove) もこの系統に属する retrofit。今後このセクションに追加していく。
 
-**PJ101. 数学オントロジーブリッジ** — Lean4/mathlib, nLab, Stacks, Wikidata, zbMATH 等の既存数学オントロジーサービスを M3E Deep 帯域の GraphLink に流入させ、科研費出力（射影）の substrate を作る。ブレスト展開済 → [idea/10_io/math_ontology_services/](../idea/10_io/math_ontology_services/)。#4 InfoGather / #7 Projection / #3 DogfoodDeep と交差する横串 PJ。
+**PJ101. 数学オントロジーブリッジ** — Lean4/mathlib, nLab, Stacks, Wikidata, zbMATH 等の既存数学オントロジーサービスを M3E Deep 帯域の GraphLink に流入させ、科研費出力（射影）の substrate を作る。ブレスト展開済 → [idea/10_io/math_ontology_services/](../idea/10_io/math_ontology_services/)。#4 InfoGather / #7 Projection / #3 DogfoodDeep と交差する横串 PJ。**2026-04-17 正式採番 = `PJ02_MathOntoBridge`** → [projects/PJ02_MathOntoBridge/](../projects/PJ02_MathOntoBridge/)。
 
 ## 整理メモ
 
