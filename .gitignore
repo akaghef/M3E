@@ -43,3 +43,6 @@ artifacts/
 # Transient outputs from the m3e-map skill (run at repo root)
 /m3e-map.json
 /m3e-map-update.mjs
+
+# External repo clones referenced by sub-projects
+projects/PJ02_MathOntoBridge/pfr/

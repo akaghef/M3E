@@ -25,6 +25,8 @@ M3E の外部参照・統合候補として網羅的に並べる。
 - [06_ai_math_bridges.md](06_ai_math_bridges.md) — AI × 数学 × オントロジー（LeanDojo / AlphaProof / ProofNet / Formal Abstracts …）
 - [07_m3e_connection.md](07_m3e_connection.md) — M3E との接続候補・組み合わせパターン・未決質問
 - [08_implementation_feasibility.md](08_implementation_feasibility.md) — P8 二層エッジモデルの実装コスト試算（4 段階、〜950 行）
+- [09_blueprint_facets.md](09_blueprint_facets.md) — Blueprint の色分け、design/implementation facet、scope+alias による相互参照
+- [10_anchoring.md](10_anchoring.md) — synthetic node による表示整理（anchoring）の用語整理
 
 ## 全体俯瞰（5 レイヤ）
 

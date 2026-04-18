@@ -162,6 +162,39 @@
         color: #a35d16;
       }
 
+      .mode-badge {
+        position: fixed;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        padding: 8px 20px;
+        border-radius: 999px;
+        border: 2px solid #d8d8d8;
+        background: #f6f6f6;
+        color: #6b6b6b;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .mode-badge.review {
+        font-size: 28px;
+        padding: 12px 28px;
+        border: 3px solid #9b59b6;
+        background: #f3e8f8;
+        color: #6a3a82;
+        box-shadow: 0 2px 12px rgba(155, 89, 182, 0.4);
+        animation: mode-badge-pulse 2s ease-in-out infinite;
+      }
+
+      @keyframes mode-badge-pulse {
+        0%, 100% { box-shadow: 0 2px 12px rgba(155, 89, 182, 0.4); }
+        50% { box-shadow: 0 2px 24px rgba(155, 89, 182, 0.7); }
+      }
+
       button,
       select,
       input[type="file"],
@@ -419,6 +452,13 @@
 
       .graph-link.graph-link-emphasis {
         stroke-width: 4.5;
+      }
+
+      .edge-label {
+        fill: #666;
+        font-size: 11px;
+        font-weight: 600;
+        pointer-events: none;
       }
 
       .graph-link-label {

@@ -132,6 +132,53 @@ export interface VaultImportResult {
   state: AppState;
 }
 
+export interface BlueprintImportOptions {
+  skipProofUses?: boolean;
+  proofUsesRelationType?: string;
+  layoutMode?: "chapter-tree" | "dag";
+  dagSourceGrouping?: "none" | "chapter";
+  dagFacetLayout?: "mixed" | "scoped";
+  includeImplementationScope?: boolean;
+}
+
+export interface BlueprintImportRequest {
+  blueprintPath: string;
+  mapId?: string;
+  label?: string;
+  options?: BlueprintImportOptions;
+}
+
+export type BlueprintImportPhase = "discovery" | "parse" | "links" | "persist";
+
+export interface BlueprintImportProgress {
+  phase: BlueprintImportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface BlueprintImportedChapterSummary {
+  relativePath: string;
+  chapterNodeId: string;
+  statementCount: number;
+  linkCount: number;
+}
+
+export interface BlueprintImportResult {
+  ok: true;
+  mapId: string;
+  savedAt: string;
+  chapterCount: number;
+  statementCount: number;
+  nodeCount: number;
+  linkCount: number;
+  warnings: string[];
+  chapters: BlueprintImportedChapterSummary[];
+  state: AppState;
+}
+
 export interface VaultExportOptions {
   skipAiTransform?: boolean;
   overwrite?: boolean;

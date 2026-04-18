@@ -130,6 +130,42 @@ parent.children = parent.children.filter(c => c !== childId);
 parent.children.unshift(childId); // move to front
 ```
 
+## Write a DAG
+
+M3E does not store a free-form DAG directly in `children`. The reliable pattern is:
+
+1. Build a **spanning tree** of the DAG in `parentId` / `children`
+2. Store every non-tree edge in `state.links`
+3. Keep grouping metadata (`chapter`, `topic`, `phase`, etc.) in `attributes` or
+   style, not in the structural parent chain, when you want depth to follow the DAG
+
+Minimal recipe:
+
+```javascript
+function addDagLink(state, sourceNodeId, targetNodeId, relationType = "depends_on") {
+  state.links ||= {};
+  const linkId = `l_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  state.links[linkId] = {
+    id: linkId,
+    sourceNodeId,   // prerequisite
+    targetNodeId,   // dependent
+    relationType,
+    direction: "forward",
+    style: "default",
+  };
+}
+```
+
+Recommended conversion policy:
+
+- Choose one prerequisite per node as the structural parent so vertical depth tracks
+  the main dependency chain.
+- Prefer the deepest available prerequisite as that parent.
+- Attach source/root nodes with no prerequisite directly under one shared DAG root.
+- Put all other prerequisites into `state.links`.
+- Keep the whole DAG under one scope if you need scoped reads/writes to preserve the
+  overlay links.
+
 ## Bulk script template
 
 For complex changes, write a one-shot script to `%TEMP%` and run it:
@@ -221,5 +257,8 @@ Before POSTing, verify:
 - [ ] Every node's `parentId` points to a node that lists it in `children`
 - [ ] Root node has `parentId: null`
 - [ ] No node references a deleted node
+- [ ] Structural `parentId` / `children` still form a tree even if the conceptual model is a DAG
 - [ ] `links` endpoints reference existing non-alias nodes
+- [ ] DAG-style links use a consistent direction (`source = prerequisite`, `target = dependent`, `direction = "forward"`)
+- [ ] Nodes that must keep their overlay links after scoped reads/writes live inside the same scope
 - [ ] `m3e:style` JSON keys preserved on partial updates (don't overwrite `border` when changing `fill`)

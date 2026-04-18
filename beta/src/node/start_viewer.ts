@@ -48,6 +48,7 @@ import {
   deleteDraft,
   approveDraft,
 } from "./flash_ingest";
+import { importBlueprintToSqlite } from "./blueprint_importer";
 import { exportVaultFromSqlite } from "./vault_exporter";
 import { importVaultToSqlite } from "./vault_importer";
 import { validateVaultPath } from "./vault_path";
@@ -64,6 +65,7 @@ import {
 import type {
   AiSubagentRequest,
   AppState,
+  BlueprintImportRequest,
   LinearTransformRequest,
   SavedMap,
   FlashIngestRequest,
@@ -1137,6 +1139,10 @@ type VaultRoute =
   | { action: "status" }
   | null;
 
+type BlueprintRoute =
+  | { action: "import" }
+  | null;
+
 function parseVaultRoute(urlPath: string, method: string): VaultRoute {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (pathname === "/api/vault/import" && method === "POST") {
@@ -1153,6 +1159,14 @@ function parseVaultRoute(urlPath: string, method: string): VaultRoute {
   }
   if (pathname === "/api/vault/status" && method === "GET") {
     return { action: "status" };
+  }
+  return null;
+}
+
+function parseBlueprintRoute(urlPath: string, method: string): BlueprintRoute {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (pathname === "/api/blueprint/import" && method === "POST") {
+    return { action: "import" };
   }
   return null;
 }
@@ -1417,6 +1431,44 @@ async function handleVaultApi(
     const eventName = route.action === "export" ? "vault-export-error" : "vault-import-error";
     sendSseEvent(res, eventName, { ok: false, error: message });
     res.end();
+  }
+}
+
+async function handleBlueprintApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: Exclude<BlueprintRoute, null>,
+): Promise<void> {
+  try {
+    if (route.action === "import") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as BlueprintImportRequest;
+      if (!request || typeof request.blueprintPath !== "string" || request.blueprintPath.trim().length === 0) {
+        sendJson(res, 400, { ok: false, error: "blueprintPath is required." });
+        return;
+      }
+
+      beginSse(res);
+      const result = await importBlueprintToSqlite(SQLITE_DB_PATH, request, {
+        onProgress(progress) {
+          sendSseEvent(res, "blueprint-import-progress", progress);
+        },
+      });
+      broadcastMapUpdate(result.mapId, result.savedAt, null);
+      sendSseEvent(res, "blueprint-import-complete", {
+        mapId: result.mapId,
+        savedAt: result.savedAt,
+        chapterCount: result.chapterCount,
+        statementCount: result.statementCount,
+        nodeCount: result.nodeCount,
+        linkCount: result.linkCount,
+        warnings: result.warnings,
+      });
+      res.end();
+      return;
+    }
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: (err as Error).message || "Blueprint import failed." });
   }
 }
 
@@ -2316,6 +2368,12 @@ export function createAppServer(): http.Server {
     const vaultRoute = parseVaultRoute(req.url ?? "/", req.method ?? "GET");
     if (vaultRoute) {
       await handleVaultApi(req, res, vaultRoute);
+      return;
+    }
+
+    const blueprintRoute = parseBlueprintRoute(req.url ?? "/", req.method ?? "GET");
+    if (blueprintRoute) {
+      await handleBlueprintApi(req, res, blueprintRoute);
       return;
     }
 
