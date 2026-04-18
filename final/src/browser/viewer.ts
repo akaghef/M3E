@@ -147,7 +147,16 @@ const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
 const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
-const TAB_ID = crypto.randomUUID();
+function createTabId(): string {
+  const maybeRandomUuid = globalThis.crypto?.randomUUID;
+  if (typeof maybeRandomUuid === "function") {
+    return maybeRandomUuid.call(globalThis.crypto);
+  }
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `tab_${Date.now().toString(36)}_${randomPart}`;
+}
+
+const TAB_ID = createTabId();
 const LINEAR_TEXT_FONT_SCALE_MIN = 0.6;
 const LINEAR_TEXT_FONT_SCALE_MAX = 1.4;
 const LINEAR_TEXT_FONT_SCALE_STEP = 0.1;
