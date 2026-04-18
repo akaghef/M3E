@@ -46,15 +46,15 @@ M3E_CLOUD_DIR=./data/cloud-sync
 
 Behavior:
 
-- On startup: tries cloud pull first, then falls back to local SQLite/doc sample
+- On startup: tries cloud pull first, then falls back to local SQLite/map sample
 - On save/autosave: keeps local save and additionally pushes to cloud mirror
 - Cloud backend in Beta is file-based (`M3E_CLOUD_DIR`) for local-first validation
 
 Sync API endpoints:
 
-- `GET /api/sync/status/:docId`
-- `POST /api/sync/pull/:docId`
-- `POST /api/sync/push/:docId`
+- `GET /api/sync/status/:mapId`
+- `POST /api/sync/pull/:mapId`
+- `POST /api/sync/push/:mapId`
 
 ### Optional AI infrastructure and linear transform subagent
 
@@ -194,7 +194,7 @@ Minimal request example:
 
 ```json
 {
-  "documentId": "rapid-main",
+  "mapId": "rapid-main",
   "scopeId": "root",
   "mode": "direct-result",
   "input": {

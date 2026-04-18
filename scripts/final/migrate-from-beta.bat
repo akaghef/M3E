@@ -14,13 +14,13 @@ REM   6. Launch
 REM
 REM Data:
 REM   - Backs up main workspace data.sqlite before migration
-REM   - Backup destination: %LOCALAPPDATA%\M3E\workspaces\main\backup\
+REM   - Backup destination: %LOCALAPPDATA%\M3E\workspaces\ws_A98E70JM9GAXCVXVMQBW7N0YGZ\backup\
 REM ============================================================
 
 cd /d "%~dp0\..\.."
 
 if "%M3E_HOME%"=="" set "M3E_HOME=%LOCALAPPDATA%\M3E"
-if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%M3E_HOME%\workspaces\main"
+if "%M3E_DATA_DIR%"=="" set "M3E_DATA_DIR=%M3E_HOME%\workspaces\ws_A98E70JM9GAXCVXVMQBW7N0YGZ"
 if not exist "%M3E_DATA_DIR%" mkdir "%M3E_DATA_DIR%"
 if "%M3E_PORT%"=="" set "M3E_PORT=38482"
 if "%M3E_DB_FILE%"=="" set "M3E_DB_FILE=data.sqlite"

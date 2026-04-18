@@ -1,0 +1,1126 @@
+{
+  "exportedAt": "2026-04-14T00:25:37.436Z",
+  "sourceDb": "C:/Users/Akaghef/data/M3E/rapid-mvp.sqlite",
+  "sourceDocSavedAt": "2026-04-05T13:35:10.940Z",
+  "rootId": "n_1775394076217_d83f66",
+  "nodes": {
+    "n_1775394076217_d83f66": {
+      "id": "n_1775394076217_d83f66",
+      "parentId": "n_1775394072501_oosscm",
+      "children": [
+        "n_1775394085771_wia2xu"
+      ],
+      "nodeType": "folder",
+      "text": "定例会",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394085771_wia2xu": {
+      "id": "n_1775394085771_wia2xu",
+      "parentId": "n_1775394076217_d83f66",
+      "children": [
+        "n_1775395988152_tohkyz",
+        "n_1775395809445_etqxwb"
+      ],
+      "nodeType": "folder",
+      "text": "2604",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395988152_tohkyz": {
+      "id": "n_1775395988152_tohkyz",
+      "parentId": "n_1775394085771_wia2xu",
+      "children": [
+        "n_1775394439534_tjdufv",
+        "n_1775395318561_ovpcvk",
+        "n_1775395395252_lk1cak",
+        "n_1775395024958_b0w75b",
+        "n_1775396069195_f58ljy"
+      ],
+      "nodeType": "text",
+      "text": "全体",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394439534_tjdufv": {
+      "id": "n_1775394439534_tjdufv",
+      "parentId": "n_1775395988152_tohkyz",
+      "children": [
+        "n_1775394462930_yk232e"
+      ],
+      "nodeType": "text",
+      "text": "重要連絡",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394462930_yk232e": {
+      "id": "n_1775394462930_yk232e",
+      "parentId": "n_1775394439534_tjdufv",
+      "children": [
+        "n_1775395339701_c81euo"
+      ],
+      "nodeType": "text",
+      "text": "**鳥コン落ちた！！！**",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395339701_c81euo": {
+      "id": "n_1775395339701_c81euo",
+      "parentId": "n_1775394462930_yk232e",
+      "children": [],
+      "nodeType": "text",
+      "text": "来年も頑張りましょう",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395318561_ovpcvk": {
+      "id": "n_1775395318561_ovpcvk",
+      "parentId": "n_1775395988152_tohkyz",
+      "children": [
+        "n_1775395322980_o2k8xr",
+        "n_1775395363622_dkajq1",
+        "n_1775395702951_vw57bo"
+      ],
+      "nodeType": "text",
+      "text": "プロマネ",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395322980_o2k8xr": {
+      "id": "n_1775395322980_o2k8xr",
+      "parentId": "n_1775395318561_ovpcvk",
+      "children": [],
+      "nodeType": "text",
+      "text": "計画を立て直し中",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395363622_dkajq1": {
+      "id": "n_1775395363622_dkajq1",
+      "parentId": "n_1775395318561_ovpcvk",
+      "children": [],
+      "nodeType": "text",
+      "text": "ロールアウト時期の方針を決めたい",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395702951_vw57bo": {
+      "id": "n_1775395702951_vw57bo",
+      "parentId": "n_1775395318561_ovpcvk",
+      "children": [
+        "n_1775395709555_rq5nua"
+      ],
+      "nodeType": "text",
+      "text": "宿",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395709555_rq5nua": {
+      "id": "n_1775395709555_rq5nua",
+      "parentId": "n_1775395702951_vw57bo",
+      "children": [],
+      "nodeType": "text",
+      "text": "13人分はある",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395395252_lk1cak": {
+      "id": "n_1775395395252_lk1cak",
+      "parentId": "n_1775395988152_tohkyz",
+      "children": [
+        "n_1775395397392_6rizyq",
+        "n_1775395417665_nrvsfh",
+        "n_1775395426585_hvb8r3",
+        "n_1775395525339_ru0ldl",
+        "n_1775395622032_byxce2"
+      ],
+      "nodeType": "text",
+      "text": "会計",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395397392_6rizyq": {
+      "id": "n_1775395397392_6rizyq",
+      "parentId": "n_1775395395252_lk1cak",
+      "children": [],
+      "nodeType": "text",
+      "text": "8月部費を2月",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395417665_nrvsfh": {
+      "id": "n_1775395417665_nrvsfh",
+      "parentId": "n_1775395395252_lk1cak",
+      "children": [],
+      "nodeType": "text",
+      "text": "38万円残高",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395426585_hvb8r3": {
+      "id": "n_1775395426585_hvb8r3",
+      "parentId": "n_1775395395252_lk1cak",
+      "children": [
+        "n_1775395510098_s0khv4"
+      ],
+      "nodeType": "text",
+      "text": "TF関連の費用に関する議論",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395510098_s0khv4": {
+      "id": "n_1775395510098_s0khv4",
+      "parentId": "n_1775395426585_hvb8r3",
+      "children": [],
+      "nodeType": "text",
+      "text": "全然足りない！(トラック代)",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395525339_ru0ldl": {
+      "id": "n_1775395525339_ru0ldl",
+      "parentId": "n_1775395395252_lk1cak",
+      "children": [],
+      "nodeType": "text",
+      "text": "2月～　分の部費を回収する",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395622032_byxce2": {
+      "id": "n_1775395622032_byxce2",
+      "parentId": "n_1775395395252_lk1cak",
+      "children": [],
+      "nodeType": "text",
+      "text": "3月入部の人は2月分を回収しない",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395024958_b0w75b": {
+      "id": "n_1775395024958_b0w75b",
+      "parentId": "n_1775395988152_tohkyz",
+      "children": [
+        "n_1775395028166_1takay",
+        "n_1775395076791_40xmrm",
+        "n_1775395105882_m6xtq0",
+        "n_1775395116651_gyqmdo",
+        "n_1775395137244_26c4c4",
+        "n_1775395154607_2ledrz",
+        "n_1775395182022_20m2wr",
+        "n_1775395196089_6t0eb0",
+        "n_1775395218316_iri5gf",
+        "n_1775395241733_81wle2"
+      ],
+      "nodeType": "text",
+      "text": "広報",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395028166_1takay": {
+      "id": "n_1775395028166_1takay",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [
+        "n_1775395031749_03eptx",
+        "n_1775395039608_z2gm67",
+        "n_1775395054928_zqbsvx",
+        "n_1775395065219_jjvplr"
+      ],
+      "nodeType": "text",
+      "text": "パーカー",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395031749_03eptx": {
+      "id": "n_1775395031749_03eptx",
+      "parentId": "n_1775395028166_1takay",
+      "children": [],
+      "nodeType": "text",
+      "text": "一般募集をして締め切りした",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395039608_z2gm67": {
+      "id": "n_1775395039608_z2gm67",
+      "parentId": "n_1775395028166_1takay",
+      "children": [],
+      "nodeType": "text",
+      "text": "今後は月曜日に発送日判明　、配布",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395054928_zqbsvx": {
+      "id": "n_1775395054928_zqbsvx",
+      "parentId": "n_1775395028166_1takay",
+      "children": [],
+      "nodeType": "text",
+      "text": "入金は伊藤に",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395065219_jjvplr": {
+      "id": "n_1775395065219_jjvplr",
+      "parentId": "n_1775395028166_1takay",
+      "children": [],
+      "nodeType": "text",
+      "text": "戸田で梱包と発想",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395076791_40xmrm": {
+      "id": "n_1775395076791_40xmrm",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [
+        "n_1775395081968_t5xzoi",
+        "n_1775395092630_i12v36",
+        "n_1775395104199_fkpq2a"
+      ],
+      "nodeType": "text",
+      "text": "ウィンブレ",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395081968_t5xzoi": {
+      "id": "n_1775395081968_t5xzoi",
+      "parentId": "n_1775395076791_40xmrm",
+      "children": [],
+      "nodeType": "text",
+      "text": "1枚サンプルを送ってもらって加工している",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395092630_i12v36": {
+      "id": "n_1775395092630_i12v36",
+      "parentId": "n_1775395076791_40xmrm",
+      "children": [],
+      "nodeType": "text",
+      "text": "秋にまた考える",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395104199_fkpq2a": {
+      "id": "n_1775395104199_fkpq2a",
+      "parentId": "n_1775395076791_40xmrm",
+      "children": [],
+      "nodeType": "text",
+      "text": "New Sibling",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395105882_m6xtq0": {
+      "id": "n_1775395105882_m6xtq0",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [],
+      "nodeType": "text",
+      "text": "富士川のカギ届いた",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395116651_gyqmdo": {
+      "id": "n_1775395116651_gyqmdo",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [
+        "n_1775395120504_vyrvtn"
+      ],
+      "nodeType": "text",
+      "text": "mtgをした",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395120504_vyrvtn": {
+      "id": "n_1775395120504_vyrvtn",
+      "parentId": "n_1775395116651_gyqmdo",
+      "children": [],
+      "nodeType": "text",
+      "text": "毎週木曜9時からmtg",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395137244_26c4c4": {
+      "id": "n_1775395137244_26c4c4",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [
+        "n_1775395145448_cr502f"
+      ],
+      "nodeType": "text",
+      "text": "飛行会について",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395145448_cr502f": {
+      "id": "n_1775395145448_cr502f",
+      "parentId": "n_1775395137244_26c4c4",
+      "children": [],
+      "nodeType": "text",
+      "text": "参加はしないという決定",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395154607_2ledrz": {
+      "id": "n_1775395154607_2ledrz",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [
+        "n_1775395158023_8afa41",
+        "n_1775395172937_dnyink"
+      ],
+      "nodeType": "text",
+      "text": "部品展示会",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395158023_8afa41": {
+      "id": "n_1775395158023_8afa41",
+      "parentId": "n_1775395154607_2ledrz",
+      "children": [],
+      "nodeType": "text",
+      "text": "来年であざみ野が主催しない場合に主導することを検討",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395172937_dnyink": {
+      "id": "n_1775395172937_dnyink",
+      "parentId": "n_1775395154607_2ledrz",
+      "children": [],
+      "nodeType": "text",
+      "text": "開催地は関東or関西",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395182022_20m2wr": {
+      "id": "n_1775395182022_20m2wr",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [
+        "n_1775395189251_ees2ue"
+      ],
+      "nodeType": "text",
+      "text": "準会員制度について",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395189251_ees2ue": {
+      "id": "n_1775395189251_ees2ue",
+      "parentId": "n_1775395182022_20m2wr",
+      "children": [],
+      "nodeType": "text",
+      "text": "制度撤廃を検討",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395196089_6t0eb0": {
+      "id": "n_1775395196089_6t0eb0",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [],
+      "nodeType": "text",
+      "text": "タオル,Tシャツの製作",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395218316_iri5gf": {
+      "id": "n_1775395218316_iri5gf",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [],
+      "nodeType": "text",
+      "text": "9月のしんかんはこれから",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395241733_81wle2": {
+      "id": "n_1775395241733_81wle2",
+      "parentId": "n_1775395024958_b0w75b",
+      "children": [],
+      "nodeType": "text",
+      "text": "法人化は6月以降",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775396069195_f58ljy": {
+      "id": "n_1775396069195_f58ljy",
+      "parentId": "n_1775395988152_tohkyz",
+      "children": [],
+      "nodeType": "text",
+      "text": "New Node",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395809445_etqxwb": {
+      "id": "n_1775395809445_etqxwb",
+      "parentId": "n_1775394085771_wia2xu",
+      "children": [
+        "n_1775394105493_a4xtw7",
+        "n_1775394383355_ezxn8c",
+        "n_1775394371209_gd741k",
+        "n_1775394401512_lmw1zr",
+        "n_1775394371772_rwpfuh",
+        "n_1775394424038_iw9kx9",
+        "n_1775394932709_i1bryv"
+      ],
+      "nodeType": "text",
+      "text": "製作",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394105493_a4xtw7": {
+      "id": "n_1775394105493_a4xtw7",
+      "parentId": "n_1775395809445_etqxwb",
+      "children": [
+        "n_1775394403619_972kas",
+        "n_1775394420142_he8kj3",
+        "n_1775394475848_ocv100",
+        "n_1775394513802_ry4wpg",
+        "n_1775394535792_qn9ys3"
+      ],
+      "nodeType": "text",
+      "text": "翼班",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394403619_972kas": {
+      "id": "n_1775394403619_972kas",
+      "parentId": "n_1775394105493_a4xtw7",
+      "children": [],
+      "nodeType": "text",
+      "text": "Eマンドレル開始したが壊れた",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394420142_he8kj3": {
+      "id": "n_1775394420142_he8kj3",
+      "parentId": "n_1775394105493_a4xtw7",
+      "children": [],
+      "nodeType": "text",
+      "text": "リブの修正",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394475848_ocv100": {
+      "id": "n_1775394475848_ocv100",
+      "parentId": "n_1775394105493_a4xtw7",
+      "children": [],
+      "nodeType": "text",
+      "text": "ストラットはDまで終わった(パテ、オーバーレイは今やってる）",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394513802_ry4wpg": {
+      "id": "n_1775394513802_ry4wpg",
+      "parentId": "n_1775394105493_a4xtw7",
+      "children": [],
+      "nodeType": "text",
+      "text": "今後は4月中に荷重試験やりたい",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394535792_qn9ys3": {
+      "id": "n_1775394535792_qn9ys3",
+      "parentId": "n_1775394105493_a4xtw7",
+      "children": [],
+      "nodeType": "text",
+      "text": "リアスパ届いた",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394383355_ezxn8c": {
+      "id": "n_1775394383355_ezxn8c",
+      "parentId": "n_1775395809445_etqxwb",
+      "children": [
+        "n_1775394572782_6pqvlz",
+        "n_1775394590494_jf9ycx",
+        "n_1775394607916_e8vz3m",
+        "n_1775394628657_e23k9e",
+        "n_1775394638166_9w0fmx"
+      ],
+      "nodeType": "text",
+      "text": "フレーム班",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394572782_6pqvlz": {
+      "id": "n_1775394572782_6pqvlz",
+      "parentId": "n_1775394383355_ezxn8c",
+      "children": [],
+      "nodeType": "text",
+      "text": "ピラーの型を作ってる",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394590494_jf9ycx": {
+      "id": "n_1775394590494_jf9ycx",
+      "parentId": "n_1775394383355_ezxn8c",
+      "children": [],
+      "nodeType": "text",
+      "text": "ゲルコートを磨いた",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394607916_e8vz3m": {
+      "id": "n_1775394607916_e8vz3m",
+      "parentId": "n_1775394383355_ezxn8c",
+      "children": [],
+      "nodeType": "text",
+      "text": "メインマウントを付けるためのスリーブの処理をしてる",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394628657_e23k9e": {
+      "id": "n_1775394628657_e23k9e",
+      "parentId": "n_1775394383355_ezxn8c",
+      "children": [],
+      "nodeType": "text",
+      "text": "4月はメインマウント、ピラーの完成",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394638166_9w0fmx": {
+      "id": "n_1775394638166_9w0fmx",
+      "parentId": "n_1775394383355_ezxn8c",
+      "children": [],
+      "nodeType": "text",
+      "text": "ピラーの積層が完了したらMeisterの炉で焼成をする",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394371209_gd741k": {
+      "id": "n_1775394371209_gd741k",
+      "parentId": "n_1775395809445_etqxwb",
+      "children": [
+        "n_1775394675086_p8pw1e",
+        "n_1775394684420_5blaer"
+      ],
+      "nodeType": "text",
+      "text": "プロペラ班",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394675086_p8pw1e": {
+      "id": "n_1775394675086_p8pw1e",
+      "parentId": "n_1775394371209_gd741k",
+      "children": [],
+      "nodeType": "text",
+      "text": "型に石膏を詰めて接着",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394684420_5blaer": {
+      "id": "n_1775394684420_5blaer",
+      "parentId": "n_1775394371209_gd741k",
+      "children": [
+        "n_1775394696937_uczndm"
+      ],
+      "nodeType": "text",
+      "text": "Q.戸田の試験はいつか？",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394696937_uczndm": {
+      "id": "n_1775394696937_uczndm",
+      "parentId": "n_1775394684420_5blaer",
+      "children": [],
+      "nodeType": "text",
+      "text": "こくぴの完成次第　GW以降の見込み",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394401512_lmw1zr": {
+      "id": "n_1775394401512_lmw1zr",
+      "parentId": "n_1775395809445_etqxwb",
+      "children": [
+        "n_1775394734809_gvsq49",
+        "n_1775394742809_q71unx",
+        "n_1775394745877_486vp2",
+        "n_1775394775947_rund2a"
+      ],
+      "nodeType": "text",
+      "text": "フェアリング班",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394734809_gvsq49": {
+      "id": "n_1775394734809_gvsq49",
+      "parentId": "n_1775394401512_lmw1zr",
+      "children": [],
+      "nodeType": "text",
+      "text": "外形けずりだし",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394742809_q71unx": {
+      "id": "n_1775394742809_q71unx",
+      "parentId": "n_1775394401512_lmw1zr",
+      "children": [],
+      "nodeType": "text",
+      "text": "ｗんぐれっと",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394745877_486vp2": {
+      "id": "n_1775394745877_486vp2",
+      "parentId": "n_1775394401512_lmw1zr",
+      "children": [],
+      "nodeType": "text",
+      "text": "フレームのジグデータ",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394775947_rund2a": {
+      "id": "n_1775394775947_rund2a",
+      "parentId": "n_1775394401512_lmw1zr",
+      "children": [
+        "n_1775394753587_pz4z79",
+        "n_1775394765244_xxwibz",
+        "n_1775394770779_144s0u"
+      ],
+      "nodeType": "text",
+      "text": "今後やること",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394753587_pz4z79": {
+      "id": "n_1775394753587_pz4z79",
+      "parentId": "n_1775394775947_rund2a",
+      "children": [],
+      "nodeType": "text",
+      "text": "翼胴フィレット作成",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394765244_xxwibz": {
+      "id": "n_1775394765244_xxwibz",
+      "parentId": "n_1775394775947_rund2a",
+      "children": [],
+      "nodeType": "text",
+      "text": "CFDの操作",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394770779_144s0u": {
+      "id": "n_1775394770779_144s0u",
+      "parentId": "n_1775394775947_rund2a",
+      "children": [],
+      "nodeType": "text",
+      "text": "アウトレットの検討",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394371772_rwpfuh": {
+      "id": "n_1775394371772_rwpfuh",
+      "parentId": "n_1775395809445_etqxwb",
+      "children": [
+        "n_1775394792932_exbn3k",
+        "n_1775394806183_i178bs",
+        "n_1775394815247_2vr9v7",
+        "n_1775394820068_m145q4",
+        "n_1775394830164_f57vbs"
+      ],
+      "nodeType": "text",
+      "text": "駆動班",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394792932_exbn3k": {
+      "id": "n_1775394792932_exbn3k",
+      "parentId": "n_1775394371772_rwpfuh",
+      "children": [],
+      "nodeType": "text",
+      "text": "ペラシャ製作",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394806183_i178bs": {
+      "id": "n_1775394806183_i178bs",
+      "parentId": "n_1775394371772_rwpfuh",
+      "children": [],
+      "nodeType": "text",
+      "text": "ギアボックス一部の部品",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394815247_2vr9v7": {
+      "id": "n_1775394815247_2vr9v7",
+      "parentId": "n_1775394371772_rwpfuh",
+      "children": [],
+      "nodeType": "text",
+      "text": "スラストストッパー",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394820068_m145q4": {
+      "id": "n_1775394820068_m145q4",
+      "parentId": "n_1775394371772_rwpfuh",
+      "children": [],
+      "nodeType": "text",
+      "text": "ギヤボックスの設計を完了",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394830164_f57vbs": {
+      "id": "n_1775394830164_f57vbs",
+      "parentId": "n_1775394371772_rwpfuh",
+      "children": [
+        "n_1775394832346_vjv3mv",
+        "n_1775394842620_maxm6s",
+        "n_1775394852570_7h85ff"
+      ],
+      "nodeType": "text",
+      "text": "今後",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394832346_vjv3mv": {
+      "id": "n_1775394832346_vjv3mv",
+      "parentId": "n_1775394830164_f57vbs",
+      "children": [],
+      "nodeType": "text",
+      "text": "フレーム図面が届いた",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394842620_maxm6s": {
+      "id": "n_1775394842620_maxm6s",
+      "parentId": "n_1775394830164_f57vbs",
+      "children": [],
+      "nodeType": "text",
+      "text": "プーリーの設計着手",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394852570_7h85ff": {
+      "id": "n_1775394852570_7h85ff",
+      "parentId": "n_1775394830164_f57vbs",
+      "children": [],
+      "nodeType": "text",
+      "text": "福島で加工を依頼する人と話す（回転試験律速に関与）",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394424038_iw9kx9": {
+      "id": "n_1775394424038_iw9kx9",
+      "parentId": "n_1775395809445_etqxwb",
+      "children": [
+        "n_1775394887621_ryifvw",
+        "n_1775394910629_0xywc7"
+      ],
+      "nodeType": "text",
+      "text": "尾翼班",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394887621_ryifvw": {
+      "id": "n_1775394887621_ryifvw",
+      "parentId": "n_1775394424038_iw9kx9",
+      "children": [],
+      "nodeType": "text",
+      "text": "D-boxを試作する3Dプリンタ型を作成",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394910629_0xywc7": {
+      "id": "n_1775394910629_0xywc7",
+      "parentId": "n_1775394424038_iw9kx9",
+      "children": [],
+      "nodeType": "text",
+      "text": "桁を使う場合の一次構造の設計をした（使わんかも)",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394932709_i1bryv": {
+      "id": "n_1775394932709_i1bryv",
+      "parentId": "n_1775395809445_etqxwb",
+      "children": [
+        "n_1775394941372_mx9kkb",
+        "n_1775394947749_atbat5",
+        "n_1775394990953_bgnd5e",
+        "n_1775395001389_n67skm"
+      ],
+      "nodeType": "text",
+      "text": "電装班",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394941372_mx9kkb": {
+      "id": "n_1775394941372_mx9kkb",
+      "parentId": "n_1775394932709_i1bryv",
+      "children": [],
+      "nodeType": "text",
+      "text": "トリム機構の機構の構成をした",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394947749_atbat5": {
+      "id": "n_1775394947749_atbat5",
+      "parentId": "n_1775394932709_i1bryv",
+      "children": [],
+      "nodeType": "text",
+      "text": "スマホのディスプレイを作った",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775394990953_bgnd5e": {
+      "id": "n_1775394990953_bgnd5e",
+      "parentId": "n_1775394932709_i1bryv",
+      "children": [],
+      "nodeType": "text",
+      "text": "3Dプリンタでこれから作る",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    },
+    "n_1775395001389_n67skm": {
+      "id": "n_1775395001389_n67skm",
+      "parentId": "n_1775394932709_i1bryv",
+      "children": [],
+      "nodeType": "text",
+      "text": "バックエンド側もこれから",
+      "collapsed": false,
+      "details": "",
+      "note": "",
+      "attributes": {},
+      "link": ""
+    }
+  }
+}

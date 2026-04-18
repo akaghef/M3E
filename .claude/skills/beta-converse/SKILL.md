@@ -45,7 +45,7 @@ dev-beta ブランチに未コミット変更がある場合:
 
 1. `git status` で変更内容を確認
 2. `git diff` と `git diff --cached` で内容を把握
-3. 変更をステージング（`beta/`, `.claude/skills/`, `dev-docs/` 等をグループ分け）
+3. 変更をステージング（`beta/`, `.claude/skills/`, `docs/` 等をグループ分け）
 4. 適切なコミットメッセージでコミット
 
 コミットは内容ごとにまとめる。全部を一つの巨大コミットにしない。
@@ -74,7 +74,22 @@ git branch --merged dev-beta
 git log dev-beta..<branch> --oneline
 ```
 
-保護ブランチ（削除しない）: `main`, `dev-beta`
+保護ブランチ（削除しない / `/setrole` 規定ブランチ）:
+`main`, `dev-beta`, `dev-visual`, `dev-data`, `dev-data2`, `dev-team`
+
+### Step 2b: 規定外ブランチの強制整理（既定動作）
+
+beta-converse 起動時は、ユーザーに明示指示されなくても以下を実行する。
+削除対象一覧を提示し確認を取った上で実行する（確認なしで削除はしない）。
+
+1. 保護ブランチ以外のローカル・リモート・ワークツリーを全削除
+   - 未マージでもマージ不能でも削除対象（対応 PR が close 済なら安全）
+   - マージ不能な open PR は先に `gh pr close <n> --comment "..."` する
+   - ワークツリーは `git worktree remove --force <path>` で強制削除
+2. 保護ブランチ（role branches）を `origin/dev-beta` に強制同期
+   - 各 role branch で `git reset --hard origin/dev-beta` → `git push --force-with-lease`
+   - rebase でコンフリクトが出る commit は close 済 PR の残骸なので捨ててよい
+3. 結果として `git branch -r` は 6 本（main + dev-beta + 4 role）のみになる
 
 ### Step 3: ワークツリーの掃除
 
@@ -148,7 +163,7 @@ git push origin dev-beta
 
 ```
 beta-converse 完了:
-- コミット: 2件（skills更新, dev-docs追加）
+- コミット: 2件（skills更新, docs追加）
 - マージ: 3ブランチ → dev-beta
 - 削除: 8ブランチ（ローカル+リモート）, 6ワークツリー
 - 保留: 1ブランチ（dev-data-flash: 未マージ）

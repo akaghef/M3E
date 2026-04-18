@@ -139,7 +139,7 @@ design/
 
 ### action: sync（Todo Pool同期）
 
-マップの `tasks` スコープと `dev-docs/06_Operations/Todo_Pool.md` を同期する。
+マップの `tasks` スコープと `docs/06_Operations/Todo_Pool.md` を同期する。
 
 1. Todo Pool を読み取り
 2. マップの `tasks` サブツリーを読み取り

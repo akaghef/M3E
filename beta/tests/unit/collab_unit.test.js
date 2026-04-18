@@ -13,9 +13,9 @@ const {
   getScopeLocks,
   findScopeRoot,
   isInScope,
-  getDocVersion,
-  incrementDocVersion,
-  setDocVersion,
+  getMapVersion,
+  incrementMapVersion,
+  setMapVersion,
   resetCollab,
 } = require("../../dist/node/collab.js");
 
@@ -298,16 +298,16 @@ test("isInScope returns true for any node when scope is root", () => {
 // ---------------------------------------------------------------------------
 
 test("version starts at 0 after reset", () => {
-  expect(getDocVersion()).toBe(0);
+  expect(getMapVersion()).toBe(0);
 });
 
-test("incrementDocVersion increments and returns new value", () => {
-  expect(incrementDocVersion()).toBe(1);
-  expect(incrementDocVersion()).toBe(2);
-  expect(getDocVersion()).toBe(2);
+test("incrementMapVersion increments and returns new value", () => {
+  expect(incrementMapVersion()).toBe(1);
+  expect(incrementMapVersion()).toBe(2);
+  expect(getMapVersion()).toBe(2);
 });
 
-test("setDocVersion sets arbitrary value", () => {
-  setDocVersion(42);
-  expect(getDocVersion()).toBe(42);
+test("setMapVersion sets arbitrary value", () => {
+  setMapVersion(42);
+  expect(getMapVersion()).toBe(42);
 });

@@ -2,7 +2,7 @@
 name: pr-beta
 description: |
   M3E開発で作業ブランチから dev-beta へのPR（Pull Request）を作成するスキル。
-  subworker（codex1/codex2/feature branch）が作業完了後に統合マネージャーへ
+  sub-agent（visual/data/data2/team/feature branch）が作業完了後に manager へ
   マージ依頼を出すワークフローを自動化する。
   以下の場面でトリガーする:
   - 「/pr-beta」「PRを作って」「dev-betaにマージ」「統合して」と言われたとき
@@ -60,7 +60,7 @@ git diff --name-only origin/dev-beta..HEAD
 
 差分を分析して以下を特定する:
 - 変更の主題（何を実装/修正したか）
-- 影響範囲（beta/, dev-docs/, scripts/ 等）
+- 影響範囲（beta/, docs/, scripts/ 等）
 - 関連する spec/architecture 文書
 
 ### Step 3: PRタイトルとボディの生成
@@ -98,7 +98,7 @@ git diff --name-only origin/dev-beta..HEAD
 {該当しないものは削除}
 
 ## daily 更新
-- [ ] dev-docs/daily/YYMMDD.md 更新済み
+- [ ] docs/daily/YYMMDD.md 更新済み
 ```
 
 ### Step 4: Push & PR作成
@@ -125,13 +125,15 @@ PR作成後、以下を報告する:
 
 | ロール | ブランチ | PR先 | 備考 |
 |-------|---------|------|------|
-| codex1 (visual) | dev-beta-visual | dev-beta | UI/レンダリング変更 |
-| codex2 (data) | dev-beta-data | dev-beta | model/controller変更 |
-| 統合 (claude) | dev-beta-* feature | dev-beta | 横断的変更 |
+| visual | dev-visual | dev-beta | UI/レンダリング変更 |
+| data | dev-data | dev-beta | model/controller変更 |
+| data2 | dev-data2 | dev-beta | data 並列ワーカー |
+| team | dev-team | dev-beta | Collaboration/Cloud Sync |
+| manage | feature branch | dev-beta | 横断的変更 |
 
 ## daily note の自動チェック
 
-PR作成前に、今日の daily note (`dev-docs/daily/YYMMDD.md`) が更新されているか確認する。
+PR作成前に、今日の daily note (`docs/daily/YYMMDD.md`) が更新されているか確認する。
 
 - 更新済み → そのまま続行
 - 未更新 → 「daily note が未更新。更新してからPR作成する？」とユーザーに確認

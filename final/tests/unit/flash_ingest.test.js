@@ -146,13 +146,13 @@ test("parsePlainTextToNodes: whitespace only", () => {
 
 test("ingestSingle: creates draft from text", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Quick note",
   });
 
   assert.ok(draft.id.startsWith("d_"));
-  assert.equal(draft.docId, "test-doc");
+  assert.equal(draft.mapId, "test-map");
   assert.equal(draft.sourceType, "text");
   assert.equal(draft.status, "pending");
   assert.equal(draft.structured.nodes.length, 1);
@@ -162,33 +162,33 @@ test("ingestSingle: creates draft from text", () => {
 
 test("ingestSingle: creates draft from markdown", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "markdown",
-    content: "# My Doc\n## Section A\n- point 1\n- point 2",
+    content: "# My Map\n## Section A\n- point 1\n- point 2",
   });
 
   assert.equal(draft.sourceType, "markdown");
-  assert.equal(draft.title, "My Doc");
+  assert.equal(draft.title, "My Map");
   assert.equal(draft.structured.nodes.length, 4);
 });
 
 test("ingestSingle: throws on empty content", () => {
   assert.throws(
-    () => ingestSingle({ docId: "test", sourceType: "text", content: "" }),
-    { message: "docId and content are required." },
+    () => ingestSingle({ mapId: "test", sourceType: "text", content: "" }),
+    { message: "mapId and content are required." },
   );
 });
 
 test("ingestSingle: throws on unsupported sourceType", () => {
   assert.throws(
-    () => ingestSingle({ docId: "test", sourceType: "pdf", content: "data" }),
+    () => ingestSingle({ mapId: "test", sourceType: "pdf", content: "data" }),
     /Unsupported sourceType/,
   );
 });
 
 test("ingestSingle: stores draft in memory", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Test",
   });
@@ -200,7 +200,7 @@ test("ingestSingle: stores draft in memory", () => {
 
 test("ingestSingle: uses targetNodeId as suggestedParentId", () => {
   const draft = ingestSingle({
-    docId: "test",
+    mapId: "test",
     sourceType: "text",
     content: "Note",
     options: { targetNodeId: "n_existing_123" },
@@ -215,9 +215,9 @@ test("ingestSingle: uses targetNodeId as suggestedParentId", () => {
 
 test("ingestBatch: creates multiple drafts", () => {
   const results = ingestBatch([
-    { docId: "doc1", sourceType: "text", content: "First" },
-    { docId: "doc1", sourceType: "text", content: "Second" },
-    { docId: "doc2", sourceType: "markdown", content: "# Third" },
+    { mapId: "map1", sourceType: "text", content: "First" },
+    { mapId: "map1", sourceType: "text", content: "Second" },
+    { mapId: "map2", sourceType: "markdown", content: "# Third" },
   ]);
 
   assert.equal(results.length, 3);
@@ -237,24 +237,24 @@ test("ingestBatch: throws on empty array", () => {
 // ---------------------------------------------------------------------------
 
 test("listDrafts: returns all drafts", () => {
-  ingestSingle({ docId: "a", sourceType: "text", content: "One" });
-  ingestSingle({ docId: "b", sourceType: "text", content: "Two" });
+  ingestSingle({ mapId: "a", sourceType: "text", content: "One" });
+  ingestSingle({ mapId: "b", sourceType: "text", content: "Two" });
 
   const all = listDrafts();
   assert.equal(all.length, 2);
 });
 
-test("listDrafts: filters by docId", () => {
-  ingestSingle({ docId: "a", sourceType: "text", content: "One" });
-  ingestSingle({ docId: "b", sourceType: "text", content: "Two" });
+test("listDrafts: filters by mapId", () => {
+  ingestSingle({ mapId: "a", sourceType: "text", content: "One" });
+  ingestSingle({ mapId: "b", sourceType: "text", content: "Two" });
 
-  const filtered = listDrafts({ docId: "a" });
+  const filtered = listDrafts({ mapId: "a" });
   assert.equal(filtered.length, 1);
-  assert.equal(filtered[0].docId, "a");
+  assert.equal(filtered[0].mapId, "a");
 });
 
 test("deleteDraft: removes draft", () => {
-  const draft = ingestSingle({ docId: "a", sourceType: "text", content: "Del" });
+  const draft = ingestSingle({ mapId: "a", sourceType: "text", content: "Del" });
   assert.ok(getDraft(draft.id));
 
   const result = deleteDraft(draft.id);
@@ -272,7 +272,7 @@ test("deleteDraft: returns false for nonexistent", () => {
 
 test("approveDraft: full approval adds nodes to model", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "markdown",
     content: "# Topic\n- Point A\n- Point B",
   });
@@ -299,7 +299,7 @@ test("approveDraft: full approval adds nodes to model", () => {
 
 test("approveDraft: partial approval with ancestor auto-include", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "markdown",
     content: "# Root Topic\n## Sub Topic\n- Detail",
   });
@@ -324,7 +324,7 @@ test("approveDraft: partial approval with ancestor auto-include", () => {
 
 test("approveDraft: with edits adjusts text and confidence", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Original text",
   });
@@ -348,7 +348,7 @@ test("approveDraft: with edits adjusts text and confidence", () => {
 
 test("approveDraft: throws for non-pending draft", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Test",
   });
@@ -373,12 +373,12 @@ test("approveDraft: throws for nonexistent draft", () => {
 
 test("approveDraft: _inbox node is created once and reused", () => {
   const draft1 = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "First",
   });
   const draft2 = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Second",
   });
@@ -401,7 +401,7 @@ test("approveDraft: _inbox node is created once and reused", () => {
 
 test("approveDraft: confidence is 0.7 for manual input", () => {
   const draft = ingestSingle({
-    docId: "test-doc",
+    mapId: "test-map",
     sourceType: "text",
     content: "Manual note",
   });
@@ -422,7 +422,7 @@ test("Flash API: POST /api/flash/ingest returns 202", async () => {
   const server = createAppServer();
 
   const body = JSON.stringify({
-    docId: "api-test",
+    mapId: "api-test",
     sourceType: "text",
     content: "API test content",
   });

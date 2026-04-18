@@ -5,23 +5,25 @@ M3E開発の運用ルール早見表。詳細は各原典を参照。
 ## 更新完了の3条件
 
 1. コミット済み
-2. `dev-docs/daily/YYMMDD.md` 追記済み
+2. `docs/daily/YYMMDD.md` 追記済み
 3. `Current_Status.md` 更新済み（統合ロールのみ）
 
-→ 原典: `dev-docs/06_Operations/Documentation_Rules.md`
+→ 原典: `docs/06_Operations/Documentation_Rules.md`
 
 ## ブランチ運用
 
 | ロール | ブランチ | 操作権限 |
 |-------|---------|---------|
-| claude（統合） | dev-beta | フル（merge含む） |
-| codex1（visual） | dev-beta-visual | push/commit。merge不可 |
-| codex2（data） | dev-beta-data | push/commit。merge不可 |
+| manage（統合） | dev-beta | フル（merge含む） |
+| visual | dev-visual | push/commit。merge不可 |
+| data | dev-data | push/commit。merge不可 |
+| data2 | dev-data2 | push/commit。merge不可 |
+| team | dev-team | push/commit。merge不可 |
 
 確認不要: dev-* でのbranch作成/切替, add, commit, push
 確認必要: force push, reset --hard, main/release操作
 
-→ 原典: `dev-docs/00_Home/Worktree_Separation_Rules.md`
+→ 原典: `docs/00_Home/Worktree_Separation_Rules.md`
 
 ## 統合フロー
 
@@ -43,7 +45,7 @@ M3E開発の運用ルール早見表。詳細は各原典を参照。
 2. 確定した内容だけ Spec/Architecture/ADR に昇格
 3. 昇格したら Promoted フィールドに反映先を記録
 
-→ 原典: `dev-docs/06_Operations/Decision_Pool.md`
+→ 原典: `docs/06_Operations/Decision_Pool.md`
 
 ## Todo Pool のState遷移
 

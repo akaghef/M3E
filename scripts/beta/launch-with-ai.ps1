@@ -98,11 +98,16 @@ $env:M3E_LINEAR_TRANSFORM_TREE_TO_LINEAR_PROMPT_FILE = Join-Path $repoRoot "beta
 $env:M3E_LINEAR_TRANSFORM_LINEAR_TO_TREE_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\linear-to-tree.txt"
 $env:M3E_TOPIC_SUGGEST_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\topic-agent\topic-suggest.txt"
 $env:M3E_HOME = Join-Path $env:LOCALAPPDATA "M3E"
+$env:M3E_CHANNEL = "beta"
+$env:M3E_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR"
+$env:M3E_WORKSPACE_LABEL = "Akaghef-personal"
+$env:M3E_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
+$env:M3E_MAP_LABEL = "開発"
+$env:M3E_MAP_SLUG = "beta-dev"
 $env:M3E_SEED_DB_PATH = Join-Path $env:M3E_HOME "seeds\core-seed.sqlite"
-$env:M3E_DATA_DIR = Join-Path $env:M3E_HOME "workspaces\sandbox"
+$env:M3E_DATA_DIR = Join-Path $env:M3E_HOME ("workspaces\" + $env:M3E_WORKSPACE_ID)
 $env:M3E_DB_FILE = "data.sqlite"
-$env:M3E_DOC_ID = "akaghef-beta"
-$env:M3E_WORKSPACE_ID = "sandbox"
+$env:M3E_MAP_ID = $env:M3E_MAP_ID
 
 if (-not (Test-Path $env:M3E_DATA_DIR)) {
     New-Item -ItemType Directory -Path $env:M3E_DATA_DIR | Out-Null

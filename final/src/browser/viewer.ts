@@ -5,18 +5,31 @@ const stopVisualCheckBtn = document.getElementById("stop-visual-check");
 const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
+const importBtn = document.getElementById("import-btn");
+const importMenu = document.getElementById("import-menu");
+const importFileBtn = document.getElementById("import-file-btn") as HTMLButtonElement | null;
+const importVaultBtn = document.getElementById("import-vault-btn") as HTMLButtonElement | null;
 const downloadBtn = document.getElementById("download-btn");
 const downloadMmBtn = document.getElementById("download-mm-btn");
+const exportVaultBtn = document.getElementById("export-vault-btn") as HTMLButtonElement | null;
 const hamburgerBtn = document.getElementById("hamburger-btn");
 const hamburgerMenu = document.getElementById("hamburger-menu");
 const exportBtn = document.getElementById("export-btn");
 const exportMenu = document.getElementById("export-menu");
+const integrateBtn = document.getElementById("integrate-btn");
+const integrateMenu = document.getElementById("integrate-menu");
+const setVaultPathBtn = document.getElementById("set-vault-path-btn") as HTMLButtonElement | null;
+const integrateVaultLiveBtn = document.getElementById("integrate-vault-live-btn") as HTMLButtonElement | null;
+const integrateStopBtn = document.getElementById("integrate-stop-btn") as HTMLButtonElement | null;
+const vaultSyncBadgeEl = document.getElementById("vault-sync-badge") as HTMLElement | null;
+const viewerHomeLinkEl = document.getElementById("viewer-home-link") as HTMLAnchorElement | null;
 const metaPanelEl = document.querySelector(".meta-panel") as HTMLElement | null;
 const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
 const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
 const metaEl = document.getElementById("meta") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
+const modeBadgeEl = document.getElementById("mode-badge") as HTMLElement | null;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
@@ -53,6 +66,51 @@ const conflictDiffSummaryEl = document.getElementById("conflict-diff-summary") a
 const conflictCloseBtn = document.getElementById("conflict-close") as HTMLButtonElement | null;
 const conflictUseLocalBtn = document.getElementById("conflict-use-local") as HTMLButtonElement | null;
 const conflictUseRemoteBtn = document.getElementById("conflict-use-remote") as HTMLButtonElement | null;
+const markdownPreviewPanelEl = document.getElementById("markdown-preview-panel") as HTMLElement | null;
+const markdownPreviewBodyEl = document.getElementById("markdown-preview-body") as HTMLElement | null;
+const markdownPreviewCloseBtn = document.getElementById("markdown-preview-close") as HTMLButtonElement | null;
+
+function hideMarkdownPreview(): void {
+  if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
+}
+
+function showMarkdownPreview(src: string, title: string): void {
+  if (!markdownPreviewPanelEl || !markdownPreviewBodyEl) return;
+  markdownPreviewPanelEl.hidden = false;
+  const titleEl = markdownPreviewPanelEl.querySelector(".markdown-preview-title") as HTMLElement | null;
+  if (titleEl) titleEl.textContent = title;
+  const mdRender = (globalThis as any).renderMarkdownInto as
+    | ((target: HTMLElement, src: string) => Promise<void>)
+    | undefined;
+  if (typeof mdRender === "function") {
+    void mdRender(markdownPreviewBodyEl, src);
+  } else {
+    markdownPreviewBodyEl.textContent = src;
+  }
+}
+
+function toggleMarkdownPreviewForSelectedNode(): void {
+  if (!markdownPreviewPanelEl) return;
+  if (!markdownPreviewPanelEl.hidden) {
+    hideMarkdownPreview();
+    return;
+  }
+  if (!map || !viewState.selectedNodeId) {
+    setStatus("No node selected for markdown preview.");
+    return;
+  }
+  const node = getNode(viewState.selectedNodeId);
+  const body = [node.details || "", node.note || ""].filter(Boolean).join("\n\n");
+  if (!body.trim()) {
+    setStatus("Selected node has no details or note.");
+    return;
+  }
+  showMarkdownPreview(body, `Markdown: ${node.text || "(untitled)"}`);
+}
+
+if (markdownPreviewCloseBtn) {
+  markdownPreviewCloseBtn.addEventListener("click", () => hideMarkdownPreview());
+}
 
 function normalizeDocId(raw: string | null, fallback: string): string {
   const trimmed = (raw || "").trim();
@@ -62,10 +120,31 @@ function normalizeDocId(raw: string | null, fallback: string): string {
   return trimmed.replace(/[\\/]/g, "_");
 }
 
+function firstQueryParam(params: URLSearchParams, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value && value.trim()) return value;
+  }
+  return null;
+}
+
 const queryParams = new URLSearchParams(window.location.search);
-const WORKSPACE_ID = normalizeDocId(queryParams.get("workspaceId"), "local");
-const LOCAL_DOC_ID = normalizeDocId(queryParams.get("localDocId"), "akaghef-beta");
-const CLOUD_DOC_ID = normalizeDocId(queryParams.get("cloudDocId"), LOCAL_DOC_ID);
+const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
+const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
+const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
+const DEFAULT_MAP_LABEL = "開発";
+const DEFAULT_MAP_SLUG = "beta-dev";
+const SECONDARY_MAP_ID = "map_10226A7F0MEKDVNMEXC7HH4GNV";
+const MAP_META: Record<string, { label: string; slug: string }> = {
+  [DEFAULT_MAP_ID]: { label: DEFAULT_MAP_LABEL, slug: DEFAULT_MAP_SLUG },
+  [SECONDARY_MAP_ID]: { label: "研究", slug: "beta-research" },
+};
+const WORKSPACE_ID = normalizeDocId(firstQueryParam(queryParams, ["ws", "workspaceId"]), DEFAULT_WORKSPACE_ID);
+const WORKSPACE_LABEL = DEFAULT_WORKSPACE_LABEL;
+const LOCAL_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["map", "localMapId"]), DEFAULT_MAP_ID);
+const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
+const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
+const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
@@ -79,9 +158,11 @@ interface BcStateMessage {
   type: "STATE_UPDATE";
   fromTabId: string;
   state: AppState;
+  savedAt: string;
 }
 
 let bc: BroadcastChannel | null = null;
+let lastServerSavedAt: string | null = null;
 
 interface UndoSnapshot {
   state: AppState;
@@ -104,7 +185,7 @@ interface LinearNodeDraft {
 
 type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
-let doc: SavedDoc | null = null;
+let map: SavedMap | null = null;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -112,6 +193,15 @@ let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
+
+function buildHomeHref(): string {
+  const params = new URLSearchParams({ ws: WORKSPACE_ID });
+  return `./home.html?${params.toString()}`;
+}
+
+if (viewerHomeLinkEl) {
+  viewerHomeLinkEl.href = buildHomeHref();
+}
 let lastLayout: LayoutResult | null = null;
 let visualCheckRunId = 0;
 let undoStack: UndoSnapshot[] = [];
@@ -140,6 +230,43 @@ let presenceEs: EventSource | null = null;
 let changedNodeIds: Set<string> = new Set();
 let conflictPanelVisible = false;
 let conflictRemoteState: AppState | null = null;
+let conflictUseLocalAction: (() => void) | null = null;
+let conflictUseRemoteAction: (() => void) | null = null;
+type VaultIntegrationMode = "off" | "obsidian-live";
+interface VaultUiPrefs {
+  vaultPath: string;
+  integrationMode: VaultIntegrationMode;
+  sourceOfTruth: "vault-md";
+}
+interface VaultWatchStatusResponse {
+  ok: true;
+  mapId: string;
+  vaultPath: string;
+  integrationMode: "obsidian-live";
+  sourceOfTruth: "vault-md";
+  running: boolean;
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  lastError: string | null;
+}
+interface VaultWatchSseEvent {
+  type: "watch-started" | "watch-stopped" | "vault-to-m3e" | "m3e-to-vault" | "watch-error";
+  mapId: string;
+  vaultPath: string;
+  timestamp: string;
+  detail?: string;
+}
+const VAULT_UI_PREFS_KEY = `m3e:vault-ui:${LOCAL_MAP_ID}`;
+let vaultUiPrefs: VaultUiPrefs = {
+  vaultPath: "",
+  integrationMode: "off",
+  sourceOfTruth: "vault-md",
+};
+let vaultWatchEs: EventSource | null = null;
+let vaultWatchRunning = false;
+let vaultLastInboundAt: string | null = null;
+let vaultLastOutboundAt: string | null = null;
+let vaultLastError: string | null = null;
 
 // ── Scope Lock State ──
 interface ClientScopeLock {
@@ -175,6 +302,7 @@ let viewState: ViewState = {
   reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
+  reviewMode: false,
 };
 applyLinearTextFontScale(false);
 syncLinearAdjustMenuUi();
@@ -263,6 +391,257 @@ function updateCloudSyncUi(): void {
   if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = !cloudConflictPending;
 }
 
+function loadVaultUiPrefs(): void {
+  try {
+    const raw = window.localStorage.getItem(VAULT_UI_PREFS_KEY);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw) as Partial<VaultUiPrefs>;
+    const storedMode = String(parsed.integrationMode || "");
+    vaultUiPrefs = {
+      vaultPath: String(parsed.vaultPath || ""),
+      integrationMode: storedMode === "obsidian-live" || storedMode === "vault-live" ? "obsidian-live" : "off",
+      sourceOfTruth: "vault-md",
+    };
+  } catch {
+    vaultUiPrefs = {
+      vaultPath: "",
+      integrationMode: "off",
+      sourceOfTruth: "vault-md",
+    };
+  }
+}
+
+function saveVaultUiPrefs(): void {
+  window.localStorage.setItem(VAULT_UI_PREFS_KEY, JSON.stringify(vaultUiPrefs));
+}
+
+function closeToolbarMenus(): void {
+  if (hamburgerMenu && !hamburgerMenu.hidden) hamburgerMenu.hidden = true;
+  if (importMenu && !importMenu.hidden) importMenu.hidden = true;
+  if (exportMenu && !exportMenu.hidden) exportMenu.hidden = true;
+  if (integrateMenu && !integrateMenu.hidden) integrateMenu.hidden = true;
+}
+
+function syncVaultUi(): void {
+  const pathLabel = vaultUiPrefs.vaultPath
+    ? `Live: ${vaultWatchRunning ? "on (.md SoT)" : "ready (.md SoT)"}`
+    : "Live: off";
+  if (vaultSyncBadgeEl) {
+    vaultSyncBadgeEl.textContent = pathLabel;
+    vaultSyncBadgeEl.classList.toggle("on", vaultWatchRunning);
+    vaultSyncBadgeEl.classList.toggle("conflict", Boolean(vaultLastError));
+    if (vaultLastError) {
+      vaultSyncBadgeEl.textContent = "Live: error";
+    }
+  }
+  integrateVaultLiveBtn?.classList.toggle("is-active", vaultUiPrefs.integrationMode === "obsidian-live");
+  integrateStopBtn!.disabled = !vaultWatchRunning;
+}
+
+function parseSseFrames(text: string): Array<{ event: string; data: unknown }> {
+  return text
+    .split("\n\n")
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const lines = chunk.split("\n");
+      const event = lines.find((line) => line.startsWith("event: "))?.slice(7) ?? "";
+      const dataText = lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "null";
+      let data: unknown = null;
+      try {
+        data = JSON.parse(dataText);
+      } catch {
+        data = dataText;
+      }
+      return { event, data };
+    })
+    .filter((entry) => Boolean(entry.event));
+}
+
+async function promptVaultPath(defaultValue = ""): Promise<string | null> {
+  const next = window.prompt("Vault path for Obsidian Live Mode", defaultValue || vaultUiPrefs.vaultPath || "");
+  if (next === null) {
+    return null;
+  }
+  const trimmed = next.trim();
+  if (!trimmed) {
+    setStatus("Vault path is required.", true);
+    return null;
+  }
+  vaultUiPrefs.vaultPath = trimmed;
+  saveVaultUiPrefs();
+  syncVaultUi();
+  return trimmed;
+}
+
+function applyVaultWatchStatus(status: VaultWatchStatusResponse | null): void {
+  vaultWatchRunning = Boolean(status?.running);
+  vaultLastInboundAt = status?.lastInboundAt ?? null;
+  vaultLastOutboundAt = status?.lastOutboundAt ?? null;
+  vaultLastError = status?.lastError ?? null;
+  if (status?.vaultPath) {
+    vaultUiPrefs.vaultPath = status.vaultPath;
+  }
+  if (status?.integrationMode) {
+    vaultUiPrefs.integrationMode = status.integrationMode;
+  }
+  if (status?.sourceOfTruth) {
+    vaultUiPrefs.sourceOfTruth = status.sourceOfTruth;
+  }
+  syncVaultUi();
+}
+
+async function fetchVaultWatchStatus(): Promise<void> {
+  try {
+    const response = await fetch(`/api/vault/status?mapId=${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
+    if (response.status === 404) {
+      applyVaultWatchStatus(null);
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json() as VaultWatchStatusResponse;
+    applyVaultWatchStatus(payload);
+  } catch (err) {
+    vaultLastError = (err as Error).message;
+    syncVaultUi();
+  }
+}
+
+function initVaultWatchStream(): void {
+  if (vaultWatchEs) {
+    return;
+  }
+  vaultWatchEs = new EventSource(`/api/vault/watch?mapId=${encodeURIComponent(LOCAL_MAP_ID)}`);
+  vaultWatchEs.addEventListener("vault-watch", (event: MessageEvent) => {
+    try {
+      const payload = JSON.parse(event.data) as VaultWatchSseEvent;
+      if (payload.mapId !== LOCAL_MAP_ID) {
+        return;
+      }
+      if (payload.type === "watch-started") {
+        vaultWatchRunning = true;
+        vaultLastError = null;
+      } else if (payload.type === "watch-stopped") {
+        vaultWatchRunning = false;
+      } else if (payload.type === "vault-to-m3e") {
+        vaultLastInboundAt = payload.timestamp;
+      } else if (payload.type === "m3e-to-vault") {
+        vaultLastOutboundAt = payload.timestamp;
+      } else if (payload.type === "watch-error") {
+        vaultLastError = payload.detail || "Vault watch error";
+      }
+      syncVaultUi();
+      if (payload.detail) {
+        setStatus(payload.detail, payload.type === "watch-error");
+      }
+    } catch {
+      // ignore malformed event
+    }
+  });
+  window.addEventListener("beforeunload", () => vaultWatchEs?.close());
+}
+
+async function runVaultImport(vaultPath: string): Promise<boolean> {
+  const response = await fetch("/api/vault/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      vaultPath,
+      mapId: LOCAL_MAP_ID,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const frames = parseSseFrames(await response.text());
+  const errorFrame = frames.find((frame) => frame.event === "vault-import-error");
+  if (errorFrame) {
+    throw new Error(String((errorFrame.data as { error?: string })?.error || "Vault import failed."));
+  }
+  const complete = frames.find((frame) => frame.event === "vault-import-complete");
+  if (!complete) {
+    throw new Error("Vault import did not complete.");
+  }
+  await loadDocFromLocalDb(false);
+  render();
+  setStatus("Imported from Vault markdown.");
+  return true;
+}
+
+async function runVaultExport(vaultPath: string): Promise<boolean> {
+  const response = await fetch("/api/vault/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      mapId: LOCAL_MAP_ID,
+      vaultPath,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const frames = parseSseFrames(await response.text());
+  const errorFrame = frames.find((frame) => frame.event === "vault-export-error");
+  if (errorFrame) {
+    throw new Error(String((errorFrame.data as { error?: string })?.error || "Vault export failed."));
+  }
+  const complete = frames.find((frame) => frame.event === "vault-export-complete");
+  if (!complete) {
+    throw new Error("Vault export did not complete.");
+  }
+  setStatus("Exported to Vault markdown.");
+  return true;
+}
+
+async function startVaultLiveIntegration(vaultPath: string): Promise<void> {
+  await runVaultImport(vaultPath);
+  const response = await fetch("/api/vault/watch/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      mapId: LOCAL_MAP_ID,
+      vaultPath,
+      debounceMs: 1000,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const payload = await response.json() as VaultWatchStatusResponse;
+  applyVaultWatchStatus(payload);
+  vaultUiPrefs.integrationMode = "obsidian-live";
+  vaultUiPrefs.sourceOfTruth = "vault-md";
+  saveVaultUiPrefs();
+  syncVaultUi();
+  setStatus("Obsidian Live Mode started. Vault markdown is the source of truth.");
+}
+
+async function stopVaultLiveIntegration(showStatus = true): Promise<void> {
+  const response = await fetch("/api/vault/watch", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      mapId: LOCAL_MAP_ID,
+    }),
+  });
+  if (response.ok) {
+    await response.json().catch(() => null);
+  }
+  vaultUiPrefs.integrationMode = "off";
+  saveVaultUiPrefs();
+  applyVaultWatchStatus(null);
+  if (showStatus) {
+    setStatus("Obsidian Live Mode stopped.");
+  }
+}
+
 function createNodeRecord(id: string, parentId: string | null, text = "New Node"): TreeNode {
   return {
     id,
@@ -278,7 +657,7 @@ function createNodeRecord(id: string, parentId: string | null, text = "New Node"
   };
 }
 
-function createEmptyDoc(): SavedDoc {
+function createEmptyDoc(): SavedMap {
   const rootId = newId();
   return {
     version: 1,
@@ -310,17 +689,17 @@ function hydrateLinearNotesFromDocState(): void {
   Object.keys(linearNotesByScope).forEach((scopeId) => {
     delete linearNotesByScope[scopeId];
   });
-  if (!doc) {
+  if (!map) {
     return;
   }
-  Object.assign(linearNotesByScope, sanitizeLinearNotesByScope(doc.state.linearNotesByScope));
+  Object.assign(linearNotesByScope, sanitizeLinearNotesByScope(map.state.linearNotesByScope));
 }
 
 function syncLinearNotesToDocState(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
-  doc.state.linearNotesByScope = { ...linearNotesByScope };
+  map.state.linearNotesByScope = { ...linearNotesByScope };
 }
 
 function hasLinearNotes(notes: Record<string, string> | undefined): boolean {
@@ -340,13 +719,13 @@ function applyLinearTextFontScale(syncToState = true): void {
   linearTextFontScale = clamped;
   const px = Math.round(VIEWER_TUNING.typography.nodeFont * clamped);
   document.documentElement.style.setProperty("--linear-text-font-size", `${px}px`);
-  if (syncToState && doc) {
-    doc.state.linearTextFontScale = clamped;
+  if (syncToState && map) {
+    map.state.linearTextFontScale = clamped;
   }
 }
 
 function hydrateLinearTextFontScaleFromDocState(): void {
-  linearTextFontScale = normalizeLinearTextFontScale(doc?.state.linearTextFontScale);
+  linearTextFontScale = normalizeLinearTextFontScale(map?.state.linearTextFontScale);
   applyLinearTextFontScale(false);
 }
 
@@ -415,7 +794,7 @@ function setLinearTextFontScale(nextScale: number, showStatus = true): void {
   }
 }
 
-function ensureDocShape(payload: unknown): SavedDoc {
+function ensureDocShape(payload: unknown): SavedMap {
   const p = payload as Record<string, unknown>;
   const candidate = (p && p["state"])
     ? p as { version: 1; savedAt: string; state: AppState }
@@ -463,7 +842,7 @@ function ensureDocShape(payload: unknown): SavedDoc {
   if (candidate.state.linearPanelWidth != null) {
     candidate.state.linearPanelWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, Number(candidate.state.linearPanelWidth) || 340));
   }
-  return candidate as SavedDoc;
+  return candidate as SavedMap;
 }
 
 function newId(): string {
@@ -560,15 +939,90 @@ interface NodeStyleAttrs {
   edgeColor: string | null;
   edgeStyle: string | null;
   edgeWidth: number | null;
+  edgeLabel: string | null;
   band: string | null;
   confidence: number | null;
+  status: string | null;
+}
+
+const VALID_STATUSES = new Set(["placeholder", "confirmed", "contested", "frozen", "active", "review"]);
+function sanitizeStatus(raw: string | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const s = raw.trim().toLowerCase();
+  return VALID_STATUSES.has(s) ? s : null;
+}
+
+/**
+ * Parse `attributes["m3e:style"]` — a V1-compatible JSON string storing
+ * decoration fields under a single attribute key (keeps `attributes` as
+ * `Record<string,string>`, no schema change). Returns `{}` on any error.
+ */
+function readNodeStyleJson(attrs: Record<string, string>): {
+  fill?: string;
+  border?: string;
+  text?: string;
+  urgency?: number;
+  importance?: number;
+  status?: string;
+} {
+  const raw = attrs["m3e:style"];
+  if (!raw || typeof raw !== "string") return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, never>;
+  } catch {
+    return {};
+  }
+}
+
+function clamp01(x: number): number {
+  return Math.max(0, Math.min(1, x));
+}
+
+/**
+ * Derive a fill color via bilinear interpolation across a 2D
+ * (urgency × importance) grid. Matches the matrix in
+ * `docs/ideas/UrgentImportanceView.mlx` (Method 2, blue variant):
+ *   C00 (U=0,I=0) = white   C01 (U=0,I=1) = yellow
+ *   C10 (U=1,I=0) = blue    C11 (U=1,I=1) = red
+ * Inputs accept 0..3 (integer urgency/importance levels) and are normalized to 0..1.
+ */
+function deriveFillFromUrgencyImportance(urgency: number, importance: number): string | null {
+  if (!Number.isFinite(urgency) && !Number.isFinite(importance)) return null;
+  const u = clamp01((Number.isFinite(urgency) ? urgency : 0) / 3);
+  const i = clamp01((Number.isFinite(importance) ? importance : 0) / 3);
+  // C00=white(255,255,255), C01=yellow(255,255,0), C10=blue(0,0,255), C11=red(255,0,0)
+  const w00 = (1 - u) * (1 - i);
+  const w01 = (1 - u) * i;
+  const w10 = u * (1 - i);
+  const w11 = u * i;
+  const r = Math.round(w00 * 255 + w01 * 255 + w10 * 0   + w11 * 255);
+  const g = Math.round(w00 * 255 + w01 * 255 + w10 * 0   + w11 * 0);
+  const b = Math.round(w00 * 255 + w01 * 0   + w10 * 255 + w11 * 0);
+  const hex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
 function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
+  // V1-compatible JSON decoration layer (Miro-style). Takes priority over
+  // legacy m3e:bg/m3e:border/m3e:color if present.
+  const style = readNodeStyleJson(attrs);
+  const jsonFill = typeof style.fill === "string" ? sanitizeColor(style.fill) : null;
+  const jsonBorder = typeof style.border === "string" ? sanitizeColor(style.border) : null;
+  const jsonText = typeof style.text === "string" ? sanitizeColor(style.text) : null;
+  const urgency = typeof style.urgency === "number" ? style.urgency : NaN;
+  const importance = typeof style.importance === "number" ? style.importance : NaN;
+  // Derived fill only applies when explicit fill is absent (both legacy and JSON).
+  const legacyBg = sanitizeColor(attrs["m3e:bg"]);
+  let effectiveBg = jsonFill ?? legacyBg;
+  if (!effectiveBg && (Number.isFinite(urgency) || Number.isFinite(importance))) {
+    effectiveBg = deriveFillFromUrgencyImportance(urgency, importance);
+  }
   return {
-    bg: sanitizeColor(attrs["m3e:bg"]),
-    color: sanitizeColor(attrs["m3e:color"]),
-    border: sanitizeColor(attrs["m3e:border"]),
+    bg: effectiveBg,
+    color: jsonText ?? sanitizeColor(attrs["m3e:color"]),
+    border: jsonBorder ?? sanitizeColor(attrs["m3e:border"]),
     borderStyle: sanitizeBorderStyle(attrs["m3e:border-style"]),
     borderWidth: sanitizeNumeric(attrs["m3e:border-width"], 0, 8),
     shape: sanitizeShape(attrs["m3e:shape"]),
@@ -576,8 +1030,10 @@ function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
     edgeColor: sanitizeColor(attrs["m3e:edge-color"]),
     edgeStyle: sanitizeBorderStyle(attrs["m3e:edge-style"]),
     edgeWidth: sanitizeNumeric(attrs["m3e:edge-width"], 1, 10),
+    edgeLabel: (attrs["m3e:edge-label"] || "").trim() || null,
     band: sanitizeBand(attrs["m3e:band"]),
     confidence: sanitizeNumeric(attrs["m3e:confidence"], 0, 1),
+    status: sanitizeStatus(style.status) ?? sanitizeStatus(attrs["m3e:status"]),
   };
 }
 
@@ -596,6 +1052,17 @@ function buildNodeHitStyle(s: NodeStyleAttrs): string {
   } else if (s.band === "deep") {
     if (s.borderWidth == null) parts.push("stroke-width:4px");
     if (!s.border) parts.push("stroke:#333");
+  }
+  // Status-based default decoration (only if no explicit bg/border)
+  if (s.status && !s.bg && !s.border) {
+    switch (s.status) {
+      case "placeholder": parts.push("stroke:#999;stroke-dasharray:4 4;stroke-width:3px"); break;
+      case "confirmed": parts.push("stroke:#2d8c4e;stroke-width:6px"); break;
+      case "contested": parts.push("stroke:#d94040;stroke-width:6px"); break;
+      case "frozen": parts.push("stroke:#4a7fb5;stroke-width:4.5px;stroke-dasharray:2 3"); break;
+      case "active": parts.push("stroke:#e89b1a;stroke-width:7.5px"); break;
+      case "review": parts.push("stroke:#9b59b6;stroke-width:6px;stroke-dasharray:6 3"); break;
+    }
   }
   return parts.length ? parts.join(";") : "";
 }
@@ -747,7 +1214,7 @@ function richContentText(element: Element, type: string): string {
     .join("\n");
 }
 
-function parseMmText(xmlText: string): SavedDoc {
+function parseMmText(xmlText: string): SavedMap {
   const parser = new DOMParser();
   const xml = parser.parseFromString(xmlText, "application/xml");
   const parserError = xml.querySelector("parsererror");
@@ -815,7 +1282,7 @@ function parseMmText(xmlText: string): SavedDoc {
 }
 
 function getNode(nodeId: string): TreeNode {
-  const node = doc!.state.nodes[nodeId];
+  const node = map!.state.nodes[nodeId];
   if (!node) {
     throw new Error(`Node not found: ${nodeId}`);
   }
@@ -827,27 +1294,27 @@ function isFolderNode(node: TreeNode | null | undefined): boolean {
 }
 
 function currentScopeRootId(): string {
-  if (!doc) {
+  if (!map) {
     return "";
   }
-  return viewState.currentScopeRootId || doc.state.rootId;
+  return viewState.currentScopeRootId || map.state.rootId;
 }
 
 function currentScopeRootNode(): TreeNode | null {
-  if (!doc) {
+  if (!map) {
     return null;
   }
-  return doc.state.nodes[currentScopeRootId()] || null;
+  return map.state.nodes[currentScopeRootId()] || null;
 }
 
 function scopeRootForNode(nodeId: string): string {
-  if (!doc || !doc.state.nodes[nodeId]) {
+  if (!map || !map.state.nodes[nodeId]) {
     return "";
   }
   let cursor: string | null = nodeId;
   let nearestFolderId: string | null = null;
   while (cursor) {
-    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    const node: TreeNode | undefined = map.state.nodes[cursor];
     if (!node) {
       break;
     }
@@ -856,32 +1323,32 @@ function scopeRootForNode(nodeId: string): string {
     }
     cursor = node.parentId ?? null;
   }
-  return nearestFolderId || doc.state.rootId;
+  return nearestFolderId || map.state.rootId;
 }
 
 function scopePathIds(scopeRootId: string): string[] {
-  if (!doc || !scopeRootId) {
+  if (!map || !scopeRootId) {
     return [];
   }
   const path: string[] = [];
   let cursor: string | null = scopeRootId;
   while (cursor) {
     path.push(cursor);
-    const node: TreeNode | undefined = doc.state.nodes[cursor];
+    const node: TreeNode | undefined = map.state.nodes[cursor];
     if (!node) {
       break;
     }
-    if (cursor === doc.state.rootId) {
+    if (cursor === map.state.rootId) {
       break;
     }
     cursor = node.parentId ?? null;
     while (cursor) {
-      const parent = doc.state.nodes[cursor];
+      const parent = map.state.nodes[cursor];
       if (!parent) {
         cursor = null;
         break;
       }
-      if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+      if (parent.id === map.state.rootId || isFolderNode(parent)) {
         break;
       }
       cursor = parent.parentId ?? null;
@@ -891,42 +1358,42 @@ function scopePathIds(scopeRootId: string): string[] {
 }
 
 function updateScopeMeta(): void {
-  if (!doc) {
+  if (!map) {
     scopeMetaEl.textContent = "scope: n/a";
     return;
   }
   const parts = scopePathIds(currentScopeRootId()).map((nodeId) => {
-    if (nodeId === doc!.state.rootId) {
+    if (nodeId === map!.state.rootId) {
       return "root";
     }
-    return uiLabel(doc!.state.nodes[nodeId]);
+    return uiLabel(map!.state.nodes[nodeId]);
   });
   scopeMetaEl.textContent = `scope: ${parts.join(" / ")}`;
 }
 
 function updateScopeSummary(): void {
-  if (!doc) {
+  if (!map) {
     scopeSummaryEl.textContent = "outside: n/a";
     return;
   }
   const scopeRootId = currentScopeRootId();
-  const scopeRoot = doc.state.nodes[scopeRootId];
+  const scopeRoot = map.state.nodes[scopeRootId];
   if (!scopeRoot) {
     scopeSummaryEl.textContent = "outside: n/a";
     return;
   }
 
-  const parentScopeId = scopeRootId === doc.state.rootId
+  const parentScopeId = scopeRootId === map.state.rootId
     ? null
     : scopeRoot.parentId
       ? scopeRootForNode(scopeRoot.parentId)
-      : doc.state.rootId;
+      : map.state.rootId;
   const parentLabel = parentScopeId
-    ? (parentScopeId === doc.state.rootId ? "root" : uiLabel(doc.state.nodes[parentScopeId]))
+    ? (parentScopeId === map.state.rootId ? "root" : uiLabel(map.state.nodes[parentScopeId]))
     : "none";
 
   const childScopeSummaries = (scopeRoot.children || [])
-    .map((childId) => doc!.state.nodes[childId])
+    .map((childId) => map!.state.nodes[childId])
     .filter((node): node is TreeNode => Boolean(node))
     .filter((node) => isFolderNode(node))
     .map((node) => `${uiLabel(node)}(${countHiddenDescendants(node.id)})`);
@@ -936,7 +1403,7 @@ function updateScopeSummary(): void {
 }
 
 function enterScope(scopeNodeId: string): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   const node = getNode(scopeNodeId);
@@ -948,44 +1415,54 @@ function enterScope(scopeNodeId: string): boolean {
   setSingleSelection(node.id, false);
   render();
   fitDocument();
+  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
+  // and board dimensions shifted after the scope change.
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
   setStatus(`Entered scope: ${uiLabel(node)}`);
   board.focus();
   return true;
 }
 
 function exitScope(): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   const scopeRoot = currentScopeRootNode();
-  if (!scopeRoot || scopeRoot.id === doc.state.rootId) {
+  if (!scopeRoot || scopeRoot.id === map.state.rootId) {
     setStatus("Already at root scope.");
     return false;
   }
-  let nextScopeId = doc.state.rootId;
+  let nextScopeId = map.state.rootId;
   let cursor = scopeRoot.parentId;
   while (cursor) {
-    const parent = doc.state.nodes[cursor];
+    const parent = map.state.nodes[cursor];
     if (!parent) {
       break;
     }
-    if (parent.id === doc.state.rootId || isFolderNode(parent)) {
+    if (parent.id === map.state.rootId || isFolderNode(parent)) {
       nextScopeId = parent.id;
       break;
     }
     cursor = parent.parentId ?? null;
   }
   viewState.currentScopeRootId = nextScopeId;
-  setSingleSelection(scopeRoot.parentId && doc.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
+  setSingleSelection(scopeRoot.parentId && map.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
   render();
   fitDocument();
+  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
+  // and board dimensions shifted after the scope change.
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
   setStatus("Returned to parent scope.");
   board.focus();
   return true;
 }
 
 function makeSelectedFolder(): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   const node = getNode(viewState.selectedNodeId);
@@ -1008,7 +1485,7 @@ function makeSelectedFolder(): boolean {
 }
 
 function addAliasInCurrentScope(): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   const target = getNode(viewState.selectedNodeId);
@@ -1022,7 +1499,7 @@ function addAliasInCurrentScope(): boolean {
   }
   pushUndoSnapshot();
   const aliasId = newId();
-  doc.state.nodes[aliasId] = {
+  map.state.nodes[aliasId] = {
     id: aliasId,
     parentId: scopeRoot.id,
     children: [],
@@ -1049,7 +1526,7 @@ function addAliasInCurrentScope(): boolean {
 }
 
 function addAliasAsChild(): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   const target = getNode(viewState.selectedNodeId);
@@ -1062,7 +1539,7 @@ function addAliasAsChild(): boolean {
   }
   pushUndoSnapshot();
   const aliasId = newId();
-  doc.state.nodes[aliasId] = {
+  map.state.nodes[aliasId] = {
     id: aliasId,
     parentId: target.id,
     children: [],
@@ -1089,7 +1566,7 @@ function addAliasAsChild(): boolean {
 }
 
 function jumpToAliasTarget(): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   const node = getNode(viewState.selectedNodeId);
@@ -1124,10 +1601,10 @@ function aliasAccess(node: TreeNode | null | undefined): AliasAccess {
 }
 
 function resolveAliasTarget(node: TreeNode | null | undefined): TreeNode | null {
-  if (!isAliasNode(node) || !node!.targetNodeId || !doc) {
+  if (!isAliasNode(node) || !node!.targetNodeId || !map) {
     return null;
   }
-  return doc.state.nodes[node!.targetNodeId] || null;
+  return map.state.nodes[node!.targetNodeId] || null;
 }
 
 function uiLabel(node: TreeNode | null | undefined): string {
@@ -1151,14 +1628,14 @@ function uiLabel(node: TreeNode | null | undefined): string {
 }
 
 function syncAliasDisplayForTarget(targetNodeId: string): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
-  Object.values(doc.state.nodes).forEach((node) => {
+  Object.values(map.state.nodes).forEach((node) => {
     if (!isAliasNode(node) || node.targetNodeId !== targetNodeId || node.aliasLabel || node.isBroken) {
       return;
     }
-    const target = doc!.state.nodes[targetNodeId];
+    const target = map!.state.nodes[targetNodeId];
     if (target) {
       node.text = target.text;
     }
@@ -1166,10 +1643,10 @@ function syncAliasDisplayForTarget(targetNodeId: string): void {
 }
 
 function markAliasesBrokenInViewer(targetNodeId: string, targetLabel: string): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
-  Object.values(doc.state.nodes).forEach((node) => {
+  Object.values(map.state.nodes).forEach((node) => {
     if (!isAliasNode(node) || node.targetNodeId !== targetNodeId) {
       return;
     }
@@ -1211,11 +1688,11 @@ function cloneState(state: AppState): AppState {
 }
 
 function pushUndoSnapshot(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   undoStack.push({
-    state: cloneState(doc.state),
+    state: cloneState(map.state),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -1227,13 +1704,13 @@ function pushUndoSnapshot(): void {
 }
 
 function undoLastChange(): void {
-  if (!doc || undoStack.length === 0) {
+  if (!map || undoStack.length === 0) {
     setStatus("Nothing to undo.");
     return;
   }
 
   redoStack.push({
-    state: cloneState(doc.state),
+    state: cloneState(map.state),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -1243,8 +1720,8 @@ function undoLastChange(): void {
   }
 
   const snapshot = undoStack.pop()!;
-  doc.state = snapshot.state;
-  const undoState = doc.state;
+  map.state = snapshot.state;
+  const undoState = map.state;
   viewState.selectedNodeId = undoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : undoState.rootId;
   viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(undoState.nodes[nodeId])));
   viewState.selectionAnchorId = snapshot.selectionAnchorId && undoState.nodes[snapshot.selectionAnchorId]
@@ -1252,7 +1729,7 @@ function undoLastChange(): void {
     : null;
   viewState.reparentSourceIds.clear();
   normalizeSelectionState();
-  doc.savedAt = nowIso();
+  map.savedAt = nowIso();
   render();
   scheduleAutosave();
   setStatus("Undo applied.");
@@ -1260,13 +1737,13 @@ function undoLastChange(): void {
 }
 
 function redoLastChange(): void {
-  if (!doc || redoStack.length === 0) {
+  if (!map || redoStack.length === 0) {
     setStatus("Nothing to redo.");
     return;
   }
 
   undoStack.push({
-    state: cloneState(doc.state),
+    state: cloneState(map.state),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -1276,8 +1753,8 @@ function redoLastChange(): void {
   }
 
   const snapshot = redoStack.pop()!;
-  doc.state = snapshot.state;
-  const redoState = doc.state;
+  map.state = snapshot.state;
+  const redoState = map.state;
   viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
   viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(redoState.nodes[nodeId])));
   viewState.selectionAnchorId = snapshot.selectionAnchorId && redoState.nodes[snapshot.selectionAnchorId]
@@ -1285,7 +1762,7 @@ function redoLastChange(): void {
     : null;
   viewState.reparentSourceIds.clear();
   normalizeSelectionState();
-  doc.savedAt = nowIso();
+  map.savedAt = nowIso();
   render();
   scheduleAutosave();
   setStatus("Redo applied.");
@@ -1347,7 +1824,7 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (!doc || !lastLayout || visibleOrder.length === 0) {
+  if (!map || !lastLayout || visibleOrder.length === 0) {
     linearPanelEl.style.removeProperty("left");
     linearPanelEl.style.removeProperty("top");
     linearPanelEl.style.removeProperty("width");
@@ -1416,13 +1893,13 @@ function captureManualLinearPanelWidth(): void {
   }
   const canvasWidth = renderedWidth / viewState.zoom;
   linearPanelCanvasWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, canvasWidth));
-  if (doc) {
-    doc.state.linearPanelWidth = linearPanelCanvasWidth;
+  if (map) {
+    map.state.linearPanelWidth = linearPanelCanvasWidth;
   }
 }
 
 function syncInlineEditorPosition(): void {
-  if (!inlineEditor || !doc || !lastLayout) {
+  if (!inlineEditor || !map || !lastLayout) {
     return;
   }
 
@@ -1432,7 +1909,7 @@ function syncInlineEditorPosition(): void {
     return;
   }
 
-  const centerX = nodeId === doc.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
+  const centerX = nodeId === map.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
   const centerY = nodePos.y;
   const left = viewState.cameraX + centerX * viewState.zoom;
   const top = viewState.cameraY + centerY * viewState.zoom;
@@ -1477,17 +1954,17 @@ function currentLinearMemoScopeId(): string {
 }
 
 function normalizedCurrentScopeId(): string {
-  if (!doc) {
+  if (!map) {
     return "";
   }
-  if (doc.state.nodes[viewState.currentScopeId]) {
+  if (map.state.nodes[viewState.currentScopeId]) {
     return viewState.currentScopeId;
   }
-  return doc.state.rootId;
+  return map.state.rootId;
 }
 
 function isNodeInScope(nodeId: string): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   const scopeId = normalizedCurrentScopeId();
@@ -1499,16 +1976,16 @@ function isNodeInScope(nodeId: string): boolean {
     if (currentId === scopeId) {
       return true;
     }
-    currentId = doc.state.nodes[currentId]?.parentId ?? null;
+    currentId = map.state.nodes[currentId]?.parentId ?? null;
   }
   return false;
 }
 
 function scopedChildrenRaw(nodeId: string): string[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
-  const node = doc.state.nodes[nodeId];
+  const node = map.state.nodes[nodeId];
   if (!node) {
     return [];
   }
@@ -1516,10 +1993,10 @@ function scopedChildrenRaw(nodeId: string): string[] {
 }
 
 function importanceScore(nodeId: string): number {
-  if (!doc) {
+  if (!map) {
     return 0;
   }
-  const node = doc.state.nodes[nodeId];
+  const node = map.state.nodes[nodeId];
   if (!node) {
     return 0;
   }
@@ -1554,7 +2031,7 @@ function isNodeVisibleByImportance(nodeId: string): boolean {
 }
 
 function rebuildImportanceVisibility(): void {
-  if (!doc || importanceViewMode === "all") {
+  if (!map || importanceViewMode === "all") {
     importanceVisibleNodeIds = null;
     return;
   }
@@ -1564,7 +2041,7 @@ function rebuildImportanceVisibility(): void {
   const visible = new Set<string>();
 
   function walk(nodeId: string): boolean {
-    const node = doc!.state.nodes[nodeId];
+    const node = map!.state.nodes[nodeId];
     if (!node) {
       return false;
     }
@@ -1588,10 +2065,10 @@ function rebuildImportanceVisibility(): void {
 }
 
 function scopeChildren(nodeId: string): string[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
-  const node = doc.state.nodes[nodeId];
+  const node = map.state.nodes[nodeId];
   if (!node) {
     return [];
   }
@@ -1599,16 +2076,16 @@ function scopeChildren(nodeId: string): string[] {
 }
 
 function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
-  if (!doc) {
+  if (!map) {
     return { text: "", map: [] };
   }
 
   const scopeRootId = normalizedCurrentScopeId();
   const lines: string[] = [];
-  const map: LinearLineMap[] = [];
+  const lineMap: LinearLineMap[] = [];
 
   function walk(nodeId: string, depth: number): void {
-    const node = doc!.state.nodes[nodeId];
+    const node = map!.state.nodes[nodeId];
     if (!node) {
       return;
     }
@@ -1625,12 +2102,12 @@ function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
   walk(scopeRootId, 0);
   return {
     text: lines.join("\n"),
-    map,
+    map: lineMap,
   };
 }
 
 function buildTreeScopeTransformSource(): string {
-  if (!doc) {
+  if (!map) {
     return "";
   }
 
@@ -1638,7 +2115,7 @@ function buildTreeScopeTransformSource(): string {
   const chunks: string[] = [];
 
   function walk(nodeId: string, depth: number): void {
-    const node = doc!.state.nodes[nodeId];
+    const node = map!.state.nodes[nodeId];
     if (!node) {
       return;
     }
@@ -1699,9 +2176,9 @@ async function requestLinearSubagentTransform(
   instruction?: string,
 ): Promise<LinearTransformResponse> {
   const scopeRootId = normalizedCurrentScopeId();
-  const scopeLabel = doc?.state.nodes[scopeRootId]?.text || scopeRootId;
+  const scopeLabel = map?.state.nodes[scopeRootId]?.text || scopeRootId;
   const payload: AiSubagentRequest = {
-    documentId: LOCAL_DOC_ID,
+    mapId: LOCAL_MAP_ID,
     scopeId: scopeRootId,
     mode: "direct-result",
     input: {
@@ -1733,12 +2210,12 @@ async function requestLinearSubagentTransform(
 }
 
 async function requestTopicSuggestionsForSelectedNode(maxTopics = 5): Promise<string[]> {
-  if (!doc || !viewState.selectedNodeId) {
+  if (!map || !viewState.selectedNodeId) {
     throw new Error("No node is selected.");
   }
   const selected = getNode(viewState.selectedNodeId);
   const payload: AiSubagentRequest = {
-    documentId: LOCAL_DOC_ID,
+    mapId: LOCAL_MAP_ID,
     scopeId: normalizedCurrentScopeId(),
     mode: "proposal",
     input: {
@@ -1768,8 +2245,155 @@ async function requestTopicSuggestionsForSelectedNode(maxTopics = 5): Promise<st
     .slice(0, maxTopics);
 }
 
+/** Build a structured query prompt about the selected node for pasting into Claude */
+function buildNodeQueryPrompt(): string | null {
+  if (!map || !viewState.selectedNodeId) return null;
+  const state = map.state;
+  const node = getNode(viewState.selectedNodeId);
+  if (!node) return null;
+
+  // Build ancestor path
+  const ancestors: string[] = [];
+  let curId: string | null = node.parentId;
+  while (curId && curId !== state.rootId) {
+    const ancestor = state.nodes[curId];
+    if (!ancestor) break;
+    ancestors.unshift(ancestor.text);
+    curId = ancestor.parentId;
+  }
+  const nodePath = [...ancestors, node.text].join(" > ");
+
+  // Collect attributes
+  const attrLines = Object.entries(node.attributes || {})
+    .filter(([k]) => !k.startsWith("m3e:"))
+    .map(([k, v]) => `  ${k}: ${v}`)
+    .join("\n");
+
+  // Collect graph links
+  const links = Object.values(state.links || {})
+    .filter((l) => l.sourceNodeId === node.id || l.targetNodeId === node.id)
+    .map((l) => {
+      const other = l.sourceNodeId === node.id
+        ? state.nodes[l.targetNodeId]
+        : state.nodes[l.sourceNodeId];
+      const dir = l.sourceNodeId === node.id ? "\u2192" : "\u2190";
+      const rel = l.relationType || l.label || "";
+      return `  ${dir} ${rel ? rel + ": " : ""}${other?.text || "(unknown)"}`;
+    })
+    .join("\n");
+
+  // Collect children (first 10)
+  const children = (node.children || [])
+    .slice(0, 10)
+    .map((cid: string) => state.nodes[cid]?.text || "(empty)")
+    .join(", ");
+  const childSuffix = (node.children || []).length > 10 ? ` (+${(node.children || []).length - 10} more)` : "";
+
+  let prompt = `# M3E Node Query\n\n`;
+  prompt += `**Node:** ${node.text}\n`;
+  prompt += `**Path:** ${nodePath}\n`;
+  if (node.details) prompt += `**Details:** ${node.details}\n`;
+  if (node.note) prompt += `**Note:** ${node.note}\n`;
+  if (attrLines) prompt += `**Attributes:**\n${attrLines}\n`;
+  if (links) prompt += `**Links:**\n${links}\n`;
+  if (children) prompt += `**Children:** ${children}${childSuffix}\n`;
+  prompt += `\n---\nPlease explain this node, identify missing information, and suggest how it relates to its parent concepts.\n`;
+
+  return prompt;
+}
+
+async function copyNodeQueryToClipboard(): Promise<void> {
+  const prompt = buildNodeQueryPrompt();
+  if (!prompt) {
+    setStatus("No node selected.", true);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(prompt);
+    setStatus("Node query copied to clipboard \u2014 paste into Claude.");
+  } catch {
+    setStatus("Failed to copy to clipboard.", true);
+  }
+}
+
+/** Compute and display scope-level statistics as a dashboard overlay */
+function showScopeDashboard(): void {
+  if (!map) { setStatus("No map loaded.", true); return; }
+  const state = map.state;
+  const scopeId = normalizedCurrentScopeId();
+  const scopeNode = state.nodes[scopeId];
+  if (!scopeNode) { setStatus("No scope node.", true); return; }
+
+  // Collect all nodes in current scope via BFS
+  const ids: string[] = [];
+  const stack = [scopeId];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    const n = state.nodes[id];
+    if (!n) continue;
+    ids.push(id);
+    for (const cid of n.children || []) stack.push(cid);
+  }
+
+  // Aggregate stats
+  const total = ids.length;
+  let aliasCount = 0;
+  let folderCount = 0;
+  let withDetails = 0;
+  let withLinks = 0;
+  const statusCounts: Record<string, number> = {};
+  const linkSet = new Set<string>();
+
+  for (const id of ids) {
+    const n = state.nodes[id]!;
+    if (n.nodeType === "alias") aliasCount++;
+    if (n.nodeType === "folder") folderCount++;
+    if (n.details && n.details.trim().length > 0) withDetails++;
+    const st = n.attributes?.["m3e:status"];
+    if (st) statusCounts[st] = (statusCounts[st] || 0) + 1;
+  }
+
+  // Count links touching this scope
+  for (const link of Object.values(state.links || {})) {
+    const idSet = new Set(ids);
+    if (idSet.has(link.sourceNodeId) || idSet.has(link.targetNodeId)) {
+      linkSet.add(link.id);
+    }
+  }
+
+  // Build dashboard text
+  const lines: string[] = [];
+  lines.push(`\u2500\u2500 Scope Dashboard: ${scopeNode.text} \u2500\u2500`);
+  lines.push(`Nodes: ${total}  |  Folders: ${folderCount}  |  Aliases: ${aliasCount}`);
+  lines.push(`With details: ${withDetails}/${total} (${total > 0 ? Math.round(withDetails/total*100) : 0}%)`);
+  lines.push(`Links: ${linkSet.size}`);
+  if (Object.keys(statusCounts).length > 0) {
+    const statusLine = Object.entries(statusCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([s, c]) => `${s}:${c}`)
+      .join("  ");
+    lines.push(`Status: ${statusLine}`);
+  } else {
+    lines.push(`Status: (none tagged)`);
+  }
+
+  // Depth stats
+  let maxDepth = 0;
+  const depthStack: Array<{ id: string; d: number }> = [{ id: scopeId, d: 0 }];
+  while (depthStack.length > 0) {
+    const { id, d } = depthStack.pop()!;
+    if (d > maxDepth) maxDepth = d;
+    const n = state.nodes[id];
+    if (n) for (const cid of n.children || []) depthStack.push({ id: cid, d: d + 1 });
+  }
+  lines.push(`Max depth: ${maxDepth}`);
+
+  setVisualCheckStatus(lines);
+  setTimeout(() => setVisualCheckStatus(""), 8000);
+}
+
 function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
-  if (!doc || !viewState.selectedNodeId || topics.length === 0) {
+  if (!map || !viewState.selectedNodeId || topics.length === 0) {
     return 0;
   }
   const parent = getNode(viewState.selectedNodeId);
@@ -1779,7 +2403,7 @@ function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
 
   const existingLabels = new Set(
     (parent.children || [])
-      .map((childId) => doc!.state.nodes[childId]?.text?.trim().toLowerCase())
+      .map((childId) => map!.state.nodes[childId]?.text?.trim().toLowerCase())
       .filter((value): value is string => Boolean(value)),
   );
 
@@ -1794,7 +2418,7 @@ function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
   pushUndoSnapshot();
   normalized.forEach((topic) => {
     const id = newId();
-    doc!.state.nodes[id] = createNodeRecord(id, parent.id, topic);
+    map!.state.nodes[id] = createNodeRecord(id, parent.id, topic);
     parent.children.push(id);
   });
   viewState.collapsedIds.delete(parent.id);
@@ -1804,7 +2428,7 @@ function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
 }
 
 async function generateRelatedTopicsForSelectedNode(): Promise<void> {
-  if (!doc || !viewState.selectedNodeId) {
+  if (!map || !viewState.selectedNodeId) {
     setStatus("Select a node first.", true);
     return;
   }
@@ -1856,7 +2480,7 @@ function renderLinearPanel(): void {
   if (!linearTextEl) {
     return;
   }
-  if (!doc) {
+  if (!map) {
     linearTextEl.value = "";
     if (linearMetaEl) {
       linearMetaEl.textContent = "No scope loaded";
@@ -1880,7 +2504,7 @@ function renderLinearPanel(): void {
   }
   linearLineMap = [];
 
-  const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
+  const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
   if (linearMetaEl) {
     linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
@@ -1952,23 +2576,23 @@ function parseLinearText(text: string): LinearNodeDraft {
 }
 
 function deleteSubtree(nodeId: string): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const stack: string[] = [nodeId];
   while (stack.length > 0) {
     const currentId = stack.pop()!;
-    const current = doc.state.nodes[currentId];
+    const current = map.state.nodes[currentId];
     if (!current) {
       continue;
     }
     stack.push(...(current.children || []));
-    delete doc.state.nodes[currentId];
+    delete map.state.nodes[currentId];
   }
 }
 
 function reconcileLinearSubtree(nodeId: string, draft: LinearNodeDraft): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
 
@@ -1979,14 +2603,14 @@ function reconcileLinearSubtree(nodeId: string, draft: LinearNodeDraft): void {
 
   draft.children.forEach((childDraft, index) => {
     const existingId = existingChildren[index];
-    if (existingId && doc!.state.nodes[existingId]) {
+    if (existingId && map!.state.nodes[existingId]) {
       reconcileLinearSubtree(existingId, childDraft);
       nextChildren.push(existingId);
       return;
     }
 
     const newChildId = newId();
-    doc!.state.nodes[newChildId] = createNodeRecord(newChildId, nodeId, childDraft.label);
+    map!.state.nodes[newChildId] = createNodeRecord(newChildId, nodeId, childDraft.label);
     reconcileLinearSubtree(newChildId, childDraft);
     nextChildren.push(newChildId);
   });
@@ -1999,7 +2623,7 @@ function reconcileLinearSubtree(nodeId: string, draft: LinearNodeDraft): void {
 }
 
 function applyLinearTextToScope(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   try {
@@ -2009,7 +2633,7 @@ function applyLinearTextToScope(): void {
     pushUndoSnapshot();
     reconcileLinearSubtree(scopeRootId, parsed);
 
-    if (!doc.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId)) {
+    if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId)) {
       viewState.selectedNodeId = scopeRootId;
     }
 
@@ -2023,10 +2647,10 @@ function applyLinearTextToScope(): void {
 }
 
 function countHiddenDescendants(nodeId: string): number {
-  if (!doc) {
+  if (!map) {
     return 0;
   }
-  const node = doc.state.nodes[nodeId];
+  const node = map.state.nodes[nodeId];
   if (!node) {
     return 0;
   }
@@ -2034,7 +2658,7 @@ function countHiddenDescendants(nodeId: string): number {
   const stack = [...(node.children || [])];
   while (stack.length > 0) {
     const currentId = stack.pop()!;
-    const current = doc.state.nodes[currentId];
+    const current = map.state.nodes[currentId];
     if (!current) {
       continue;
     }
@@ -2185,15 +2809,15 @@ function buildLayout(state: AppState): LayoutResult {
   };
 }
 
-function updateDocumentTitle(): void {
+function updateMapTitle(): void {
   const appTitle = "M3E";
-  if (!doc) {
+  if (!map) {
     document.title = appTitle;
     return;
   }
 
   const scopeId = normalizedCurrentScopeId();
-  const scopeNode = doc.state.nodes[scopeId];
+  const scopeNode = map.state.nodes[scopeId];
   const scopeLabel = uiLabel(scopeNode).trim();
   document.title = scopeLabel ? `${appTitle} - ${scopeLabel}` : appTitle;
 }
@@ -2223,13 +2847,14 @@ function scheduleApplyZoom(): void {
 }
 
 function render(): void {
-  if (!doc) {
+  updateModeBadge();
+  if (!map) {
     syncThinkingModeUi();
     updateScopeMeta();
     updateScopeSummary();
     metaEl.textContent = "No data loaded";
     (canvas as Element).innerHTML = "";
-    updateDocumentTitle();
+    updateMapTitle();
     renderLinearPanel();
     syncLinearPanelPosition();
     return;
@@ -2238,7 +2863,7 @@ function render(): void {
   rebuildImportanceVisibility();
   normalizeSelectionState();
 
-  const state = doc.state;
+  const state = map.state;
   if (!viewState.currentScopeRootId || !state.nodes[viewState.currentScopeRootId]) {
     viewState.currentScopeRootId = state.rootId;
   }
@@ -2317,6 +2942,62 @@ function render(): void {
   });
   defs += "</defs>";
 
+  /**
+   * Render children of a node as an HTML table via foreignObject.
+   * Columns are auto-derived from the union of all children's attribute keys
+   * (excluding m3e: internal attributes). First column is always the node text.
+   */
+  function renderTableView(parentId: string, parentPos: { x: number; y: number; w: number; h: number }): string {
+    const parent = state.nodes[parentId];
+    if (!parent || parent.children.length === 0) return "";
+
+    const childNodes = parent.children
+      .map((cid) => state.nodes[cid])
+      .filter((n): n is TreeNode => !!n);
+
+    // Collect column keys from all children's attributes (exclude m3e: internals)
+    const colSet = new Set<string>();
+    for (const child of childNodes) {
+      for (const key of Object.keys(child.attributes || {})) {
+        if (!key.startsWith("m3e:")) colSet.add(key);
+      }
+      if (child.details) colSet.add("_details");
+    }
+    const columns = Array.from(colSet).sort();
+
+    // Build HTML table
+    const esc = (s: string) => escapeXml(s);
+
+    let html = `<table class="m3e-table-view"><thead><tr><th>Name</th>`;
+    for (const col of columns) {
+      html += `<th>${esc(col === "_details" ? "Details" : col)}</th>`;
+    }
+    html += `</tr></thead><tbody>`;
+
+    for (const child of childNodes) {
+      const statusClass = child.attributes?.["m3e:status"] ? ` class="status-${esc(child.attributes["m3e:status"])}"` : "";
+      html += `<tr data-node-id="${esc(child.id)}"${statusClass}>`;
+      html += `<td class="m3e-table-name">${esc(child.text || "(empty)")}</td>`;
+      for (const col of columns) {
+        if (col === "_details") {
+          html += `<td>${esc(child.details || "")}</td>`;
+        } else {
+          html += `<td>${esc(child.attributes?.[col] || "")}</td>`;
+        }
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+
+    // Size: estimate based on columns and rows
+    const tableW = Math.max(columns.length * 150 + 200, 600);
+    const tableH = Math.min((childNodes.length + 1) * 32 + 16, 800);
+    const foX = parentPos.x - 20;
+    const foY = parentPos.y + parentPos.h / 2 + 20;
+
+    return `<foreignObject x="${foX}" y="${foY}" width="${tableW}" height="${tableH}"><div xmlns="http://www.w3.org/1999/xhtml" class="m3e-table-container">${html}</div></foreignObject>`;
+  }
+
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
     const p = pos[nodeId];
@@ -2349,6 +3030,15 @@ function render(): void {
       const c2y = endY;
       const edgeInline = buildEdgeStyle(nodeStyles);
       edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
+
+      // Edge label — stored on the child node (parent is unique per child)
+      const childNode = state.nodes[childId];
+      const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
+      if (childStyles.edgeLabel) {
+        const labelX = (c1x + c2x) / 2;
+        const labelY = (startY + endY) / 2 - 8;
+        edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
+      }
     });
 
     const classNames = ["node-hit"];
@@ -2362,6 +3052,9 @@ function render(): void {
     if (isAliasNode(node)) {
       classNames.push("alias");
       classNames.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
+    }
+    if (nodeStyles.status) {
+      classNames.push(`status-${nodeStyles.status}`);
     }
     if (viewState.reparentSourceIds.has(nodeId)) {
       classNames.push("reparent-source");
@@ -2430,6 +3123,9 @@ function render(): void {
         labelClasses.push("alias-label");
         labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
       }
+      if (nodeStyles.status) {
+        labelClasses.push(`status-${nodeStyles.status}`);
+      }
       if (isFolderNode(node)) {
         const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
         const folderFrameX = p.x - 14;
@@ -2479,6 +3175,17 @@ function render(): void {
         nodes += `<rect class="confidence-badge" x="${cX}" y="${p.y - 12}" width="42" height="22" rx="11" style="fill:${cColor}" />`;
         nodes += `<text class="confidence-badge-text" x="${cX + 21}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(cLabel)}</text>`;
       }
+      // Status badge
+      if (nodeStyles.status) {
+        const statusColors: Record<string, string> = {
+          placeholder: "#999", confirmed: "#2d8c4e", contested: "#d94040",
+          frozen: "#4a7fb5", active: "#e89b1a", review: "#9b59b6",
+        };
+        const sColor = statusColors[nodeStyles.status] || "#666";
+        const sX = p.x + p.w + (badge ? 60 : 18) + (nodeStyles.confidence != null ? 56 : 0);
+        nodes += `<rect class="status-badge" x="${sX}" y="${p.y - 12}" width="${nodeStyles.status.length * 8 + 12}" height="22" rx="11" style="fill:${sColor}" />`;
+        nodes += `<text class="status-badge-text" x="${sX + nodeStyles.status.length * 4 + 6}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(nodeStyles.status)}</text>`;
+      }
     }
 
     if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
@@ -2497,7 +3204,14 @@ function render(): void {
       nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
     }
 
-    children.forEach((cid) => drawNode(cid));
+    // Table view mode: render children as table instead of tree
+    const viewType = node.attributes?.["m3e:view-type"];
+    if (viewType === "table" && children.length > 0 && nodeId !== displayRootId) {
+      // Skip recursive tree rendering for children — they'll be shown as table
+      nodes += renderTableView(nodeId, p);
+    } else {
+      children.forEach((cid) => drawNode(cid));
+    }
   }
 
   drawNode(displayRootId);
@@ -2518,8 +3232,8 @@ function render(): void {
   (canvas as Element).innerHTML = `${defs}${edges}${graphLinks}${overlays}${nodes}`;
   applyZoom();
 
-  const version = doc.version ?? "n/a";
-  const savedAt = doc.savedAt ?? "n/a";
+  const version = map.version ?? "n/a";
+  const savedAt = map.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
   const linkCount = Object.values(state.links || {}).filter((link) => pos[link.sourceNodeId] && pos[link.targetNodeId]).length;
   const selected = state.nodes[viewState.selectedNodeId];
@@ -2538,10 +3252,10 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `workspace: ${WORKSPACE_ID} | doc: ${LOCAL_DOC_ID} | cloud: ${CLOUD_DOC_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
-  updateDocumentTitle();
+  updateMapTitle();
   syncInlineEditorPosition();
   renderLinearPanel();
 }
@@ -2559,7 +3273,7 @@ function interactionHalfHeight(nodePos: NodePosition): number {
 }
 
 function getNodeHitBounds(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
-  if (!doc || !lastLayout) {
+  if (!map || !lastLayout) {
     return null;
   }
   const p = lastLayout.pos[nodeId];
@@ -2804,7 +3518,7 @@ function proposeDrop(sourceId: string, clientX: number, clientY: number): DragDr
   const targetNodeId = findNodeAtCanvasPoint(point.x, point.y);
   if (targetNodeId) {
     const targetPos = lastLayout?.pos[targetNodeId];
-    const targetNode = doc?.state.nodes[targetNodeId];
+    const targetNode = map?.state.nodes[targetNodeId];
     if (targetPos && targetNode?.parentId) {
       const targetIndex = getVisibleChildrenForDrop(targetNode.parentId, sourceId).indexOf(targetNodeId);
       const targetHalfH = interactionHalfHeight(targetPos);
@@ -2869,17 +3583,17 @@ function proposeDropForSources(sourceIds: string[], clientX: number, clientY: nu
 }
 
 function normalizeSelectionState(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
 
-  if (!doc.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+  if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
     viewState.selectedNodeId = normalizedCurrentScopeId();
   }
 
   const normalizedSelectedIds = new Set<string>();
   viewState.selectedNodeIds.forEach((nodeId) => {
-    if (doc!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
+    if (map!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
       normalizedSelectedIds.add(nodeId);
     }
   });
@@ -2895,7 +3609,7 @@ function normalizeSelectionState(): void {
 
   const normalizedReparentSourceIds = new Set<string>();
   viewState.reparentSourceIds.forEach((nodeId) => {
-    if (doc!.state.nodes[nodeId]) {
+    if (map!.state.nodes[nodeId]) {
       normalizedReparentSourceIds.add(nodeId);
     }
   });
@@ -2904,7 +3618,7 @@ function normalizeSelectionState(): void {
   if (viewState.clipboardState?.type === "cut") {
     const normalizedCutSourceIds = new Set<string>();
     viewState.clipboardState.sourceIds.forEach((nodeId) => {
-      if (doc!.state.nodes[nodeId]) {
+      if (map!.state.nodes[nodeId]) {
         normalizedCutSourceIds.add(nodeId);
       }
     });
@@ -2913,7 +3627,7 @@ function normalizeSelectionState(): void {
       : null;
   }
 
-  if (viewState.linkSourceNodeId && !doc.state.nodes[viewState.linkSourceNodeId]) {
+  if (viewState.linkSourceNodeId && !map.state.nodes[viewState.linkSourceNodeId]) {
     viewState.linkSourceNodeId = "";
   }
 }
@@ -2943,7 +3657,7 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 }
 
 function setRangeSelection(targetId: string): void {
-  const anchorId = viewState.selectionAnchorId && doc?.state.nodes[viewState.selectionAnchorId]
+  const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
     ? viewState.selectionAnchorId
     : viewState.selectedNodeId;
   if (!anchorId) {
@@ -3000,16 +3714,18 @@ function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; ra
 
 function updateScopeInUrl(scopeId: string): void {
   const params = new URLSearchParams(window.location.search);
-  if (!doc || scopeId === doc.state.rootId) {
+  if (!map || scopeId === map.state.rootId) {
+    params.delete("scope");
     params.delete("scopeId");
   } else {
-    params.set("scopeId", scopeId);
+    params.set("scope", scopeId);
+    params.delete("scopeId");
   }
   history.replaceState(null, "", `?${params.toString()}`);
 }
 
 function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
-  if (!doc || !doc.state.nodes[scopeId]) {
+  if (!map || !map.state.nodes[scopeId]) {
     return;
   }
   const currentScopeId = normalizedCurrentScopeId();
@@ -3029,11 +3745,11 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
 }
 
 function ExitScopeCommand(): void {
-  if (!doc || viewState.scopeHistory.length === 0) {
+  if (!map || viewState.scopeHistory.length === 0) {
     return;
   }
   const previousScopeId = viewState.scopeHistory.pop()!;
-  viewState.currentScopeId = doc.state.nodes[previousScopeId] ? previousScopeId : doc.state.rootId;
+  viewState.currentScopeId = map.state.nodes[previousScopeId] ? previousScopeId : map.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
   if (!isNodeInScope(viewState.selectedNodeId)) {
     setSingleSelection(viewState.currentScopeId, false);
@@ -3095,7 +3811,7 @@ function treeToMm(state: AppState): string {
 }
 
 function downloadMm(): void {
-  const state = doc!.state;
+  const state = map!.state;
   const xml = treeToMm(state);
   const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -3112,16 +3828,16 @@ function downloadMm(): void {
 // ── Home Screen ──
 
 function collectFolderTree(parentId: string): { id: string; label: string; childCount: number; subFolders: ReturnType<typeof collectFolderTree> }[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
-  const parent = doc.state.nodes[parentId];
+  const parent = map.state.nodes[parentId];
   if (!parent) {
     return [];
   }
   const result: { id: string; label: string; childCount: number; subFolders: ReturnType<typeof collectFolderTree> }[] = [];
   for (const childId of parent.children || []) {
-    const child = doc.state.nodes[childId];
+    const child = map.state.nodes[childId];
     if (!child) {
       continue;
     }
@@ -3194,7 +3910,7 @@ function renderScopeTree(
 }
 
 function buildHomeBreadcrumb(): void {
-  if (!doc || !homeScreenEl) {
+  if (!map || !homeScreenEl) {
     return;
   }
   const existingBreadcrumb = homeScreenEl.querySelector(".home-breadcrumb");
@@ -3203,7 +3919,7 @@ function buildHomeBreadcrumb(): void {
   }
 
   const scopeId = currentScopeRootId();
-  if (!scopeId || scopeId === doc.state.rootId) {
+  if (!scopeId || scopeId === map.state.rootId) {
     return;
   }
 
@@ -3225,7 +3941,7 @@ function buildHomeBreadcrumb(): void {
 
     const nodeId = pathIds[i];
     const isLast = i === pathIds.length - 1;
-    const label = nodeId === doc.state.rootId ? "root" : uiLabel(doc.state.nodes[nodeId]);
+    const label = nodeId === map.state.rootId ? "root" : uiLabel(map.state.nodes[nodeId]);
 
     const item = document.createElement("button");
     item.className = "home-breadcrumb-item" + (isLast ? " current" : "");
@@ -3249,14 +3965,14 @@ function buildHomeBreadcrumb(): void {
 }
 
 function showHomeScreen(): void {
-  if (!homeScreenEl || !homeScopeTreeEl || !doc) {
+  if (!homeScreenEl || !homeScopeTreeEl || !map) {
     return;
   }
   homeScreenVisible = true;
   homeScreenEl.hidden = false;
   appEl?.classList.add("home-active");
 
-  const rootId = doc.state.rootId;
+  const rootId = map.state.rootId;
   const folders = collectFolderTree(rootId);
   renderScopeTree(homeScopeTreeEl, folders);
   buildHomeBreadcrumb();
@@ -3275,16 +3991,16 @@ function hideHomeScreen(): void {
 // ---- Entity List Panel ----
 
 function collectEntityTree(parentId: string): { id: string; label: string; nodeType: string; children: ReturnType<typeof collectEntityTree> }[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
-  const parent = doc.state.nodes[parentId];
+  const parent = map.state.nodes[parentId];
   if (!parent) {
     return [];
   }
   const result: { id: string; label: string; nodeType: string; children: ReturnType<typeof collectEntityTree> }[] = [];
   for (const childId of parent.children || []) {
-    const child = doc.state.nodes[childId];
+    const child = map.state.nodes[childId];
     if (!child) {
       continue;
     }
@@ -3381,7 +4097,7 @@ function renderEntityTree(
         row.appendChild(lockBadge);
       }
     } else if (node.nodeType === "alias") {
-      const actualNode = doc ? doc.state.nodes[node.id] : null;
+      const actualNode = map ? map.state.nodes[node.id] : null;
       const broken = actualNode ? isBrokenAlias(actualNode) : false;
       const badge = document.createElement("span");
       if (broken) {
@@ -3449,7 +4165,7 @@ function renderEntityTree(
 }
 
 function buildEntityList(query = ""): void {
-  if (!doc || !entityListTreeEl) {
+  if (!map || !entityListTreeEl) {
     return;
   }
   const scopeRoot = currentScopeRootId();
@@ -3462,7 +4178,7 @@ function buildEntityList(query = ""): void {
 }
 
 function showEntityListPanel(): void {
-  if (!entityListPanelEl || !doc) {
+  if (!entityListPanelEl || !map) {
     return;
   }
   entityListVisible = true;
@@ -3513,12 +4229,12 @@ if (entityListCloseBtn) {
 // ---- Entity Scope List (Frames-style) ----
 
 function buildEntityScopeList(): void {
-  if (!entityScopeListEl || !doc) {
+  if (!entityScopeListEl || !map) {
     return;
   }
   entityScopeListEl.innerHTML = "";
 
-  const rootId = doc.state.rootId;
+  const rootId = map.state.rootId;
   const folders = collectFolderTree(rootId);
   const currentScope = currentScopeRootId();
 
@@ -3533,7 +4249,7 @@ function buildEntityScopeList(): void {
 
   const rootName = document.createElement("span");
   rootName.className = "entity-scope-name";
-  rootName.textContent = uiLabel(doc.state.nodes[rootId]) || "Root";
+  rootName.textContent = uiLabel(map.state.nodes[rootId]) || "Root";
 
   rootRow.appendChild(rootIcon);
   rootRow.appendChild(rootName);
@@ -3621,9 +4337,46 @@ function appendScopeLockBadge(row: HTMLElement, scopeId: string): void {
   row.appendChild(badge);
 }
 
+function buildMapPath(nodeId: string): string | null {
+  if (!map) return null;
+  const nodes = map.state.nodes;
+  const parts: string[] = [];
+  let cur: TreeNode | undefined = nodes[nodeId];
+  let guard = 0;
+  while (cur && guard++ < 10000) {
+    parts.unshift(cur.text ?? "");
+    if (cur.parentId === null || cur.parentId === undefined) break;
+    cur = nodes[cur.parentId];
+  }
+  if (parts.length === 0) return null;
+  return "Map:" + parts.join("/");
+}
+
+async function copyMapPathToClipboard(nodeId: string): Promise<void> {
+  const path = buildMapPath(nodeId);
+  if (!path) return;
+  try {
+    await navigator.clipboard.writeText(path);
+  } catch {
+    // Fallback: textarea + execCommand for older contexts
+    const ta = document.createElement("textarea");
+    ta.value = path;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } finally { ta.remove(); }
+  }
+}
+
 function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
   const lock = scopeLockMap.get(scopeId);
   const items: { label: string; danger?: boolean; action: () => void }[] = [];
+
+  items.push({
+    label: "\uD83D\uDCCB Copy path (Map:Root/\u2026)",
+    action: () => void copyMapPathToClipboard(scopeId),
+  });
 
   if (!lock) {
     items.push({
@@ -3651,7 +4404,7 @@ function startPresenceWatch(): void {
   if (presenceEs) {
     return;
   }
-  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/presence`;
+  const url = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/presence`;
   presenceEs = new EventSource(url);
   presenceEs.addEventListener("message", (event) => {
     try {
@@ -3735,7 +4488,7 @@ function applyPresenceBadges(): void {
 // ---- Away Changes (audit infrastructure) ----
 
 function fetchChangedNodes(): void {
-  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/audit?since=last-session`;
+  const url = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/audit?since=last-session`;
   fetch(url, { cache: "no-store" })
     .then((r) => {
       if (!r.ok) {
@@ -3923,15 +4676,15 @@ function tryCollabRegister(): void {
 // ---- Broken Alias Detection ----
 
 function findBrokenAliases(): { nodeId: string; label: string; targetNodeId: string }[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
   const result: { nodeId: string; label: string; targetNodeId: string }[] = [];
-  for (const node of Object.values(doc.state.nodes)) {
+  for (const node of Object.values(map.state.nodes)) {
     if (node.nodeType !== "alias") {
       continue;
     }
-    if (!node.targetNodeId || !doc.state.nodes[node.targetNodeId]) {
+    if (!node.targetNodeId || !map.state.nodes[node.targetNodeId]) {
       result.push({
         nodeId: node.id,
         label: uiLabel(node),
@@ -3943,21 +4696,21 @@ function findBrokenAliases(): { nodeId: string; label: string; targetNodeId: str
 }
 
 function deleteBrokenAlias(aliasNodeId: string): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
-  const node = doc.state.nodes[aliasNodeId];
+  const node = map.state.nodes[aliasNodeId];
   if (!node) {
     return;
   }
   pushUndoSnapshot();
   const parentId = node.parentId;
-  if (parentId && doc.state.nodes[parentId]) {
-    doc.state.nodes[parentId].children = doc.state.nodes[parentId].children.filter((c) => c !== aliasNodeId);
+  if (parentId && map.state.nodes[parentId]) {
+    map.state.nodes[parentId].children = map.state.nodes[parentId].children.filter((c) => c !== aliasNodeId);
   }
-  delete doc.state.nodes[aliasNodeId];
+  delete map.state.nodes[aliasNodeId];
   if (viewState.selectedNodeId === aliasNodeId) {
-    viewState.selectedNodeId = parentId || doc.state.rootId;
+    viewState.selectedNodeId = parentId || map.state.rootId;
     viewState.selectedNodeIds = new Set([viewState.selectedNodeId]);
   }
   viewState.selectedNodeIds.delete(aliasNodeId);
@@ -3970,10 +4723,10 @@ function deleteBrokenAlias(aliasNodeId: string): void {
 }
 
 function repairBrokenAlias(aliasNodeId: string): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
-  const node = doc.state.nodes[aliasNodeId];
+  const node = map.state.nodes[aliasNodeId];
   if (!node || node.nodeType !== "alias") {
     return;
   }
@@ -4035,6 +4788,154 @@ function hideContextMenu(): void {
     activeContextMenu.remove();
     activeContextMenu = null;
   }
+}
+
+// ---- Color Palette Popover (Miro-style node decoration) ----
+
+/** Preset swatches: neutral + 4 urgency tints + 4 importance tints + accents. */
+const COLOR_PALETTE_SWATCHES: { label: string; color: string }[] = [
+  { label: "Clear",          color: "" },             // special: clear fill
+  { label: "White",          color: "#ffffff" },
+  { label: "Urgent low",     color: "#ffe5b4" },      // light peach
+  { label: "Urgent mid",     color: "#ffb074" },
+  { label: "Urgent high",    color: "#ff6b4a" },
+  { label: "Urgent top",     color: "#ff0000" },
+  { label: "Important low",  color: "#e1ecff" },      // light blue
+  { label: "Important mid",  color: "#9ec5ff" },
+  { label: "Important high", color: "#5a8dff" },
+  { label: "Important top",  color: "#0000ff" },
+];
+
+let activeColorPalette: HTMLElement | null = null;
+
+/** Update `m3e:style` JSON attribute on a single node. Removes the attribute
+ *  entirely when the resulting object is empty. */
+function updateStyleJson(
+  nodeId: string,
+  mutate: (style: Record<string, unknown>) => void,
+): boolean {
+  if (!map) return false;
+  const node = map.state.nodes[nodeId];
+  if (!node) return false;
+  node.attributes = node.attributes || {};
+  const attrs = node.attributes as Record<string, string>;
+  let style: Record<string, unknown> = {};
+  const raw = attrs["m3e:style"];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") style = parsed as Record<string, unknown>;
+    } catch {
+      style = {};
+    }
+  }
+  mutate(style);
+  const hasKeys = Object.keys(style).length > 0;
+  if (hasKeys) {
+    attrs["m3e:style"] = JSON.stringify(style);
+  } else {
+    delete attrs["m3e:style"];
+  }
+  return true;
+}
+
+function applyFillToSelection(color: string | null): void {
+  if (!map) return;
+  const ids = viewState.selectedNodeIds.size > 0
+    ? Array.from(viewState.selectedNodeIds)
+    : (viewState.selectedNodeId ? [viewState.selectedNodeId] : []);
+  if (ids.length === 0) return;
+  let changed = 0;
+  for (const id of ids) {
+    const ok = updateStyleJson(id, (style) => {
+      if (color === null) {
+        delete style.fill;
+      } else {
+        style.fill = color;
+      }
+    });
+    if (ok) changed++;
+  }
+  if (changed > 0) {
+    setStatus(`Color: ${color === null ? "cleared" : color} on ${changed} node${changed === 1 ? "" : "s"}.`);
+    touchDocument();
+  }
+}
+
+function clearDecorationOnSelection(): void {
+  if (!map) return;
+  const ids = viewState.selectedNodeIds.size > 0
+    ? Array.from(viewState.selectedNodeIds)
+    : (viewState.selectedNodeId ? [viewState.selectedNodeId] : []);
+  if (ids.length === 0) return;
+  let changed = 0;
+  for (const id of ids) {
+    const ok = updateStyleJson(id, (style) => {
+      delete style.fill;
+      delete style.border;
+      delete style.text;
+    });
+    if (ok) changed++;
+  }
+  if (changed > 0) {
+    setStatus(`Cleared decoration on ${changed} node${changed === 1 ? "" : "s"}.`);
+    touchDocument();
+  }
+}
+
+function hideColorPalette(): void {
+  if (activeColorPalette) {
+    activeColorPalette.remove();
+    activeColorPalette = null;
+  }
+}
+
+function showColorPalette(): void {
+  hideColorPalette();
+  if (!map) return;
+  const anchorId = viewState.selectedNodeId;
+  if (!anchorId || !lastLayout || !lastLayout.pos[anchorId]) return;
+
+  // Compute screen position near the anchor node.
+  const nodePos = lastLayout.pos[anchorId]!;
+  const boardRect = board.getBoundingClientRect();
+  const screenX = boardRect.left + viewState.cameraX + (nodePos.x + nodePos.w) * viewState.zoom + 8;
+  const screenY = boardRect.top + viewState.cameraY + nodePos.y * viewState.zoom;
+
+  const menu = document.createElement("div");
+  menu.className = "color-palette-popover";
+  menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 220, screenX))}px`;
+  menu.style.top = `${Math.max(8, Math.min(window.innerHeight - 80, screenY))}px`;
+
+  for (const swatch of COLOR_PALETTE_SWATCHES) {
+    const btn = document.createElement("button");
+    btn.className = "color-palette-swatch";
+    btn.type = "button";
+    btn.title = swatch.label;
+    if (swatch.color === "") {
+      btn.classList.add("clear");
+      btn.textContent = "✕";
+    } else {
+      btn.style.background = swatch.color;
+    }
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applyFillToSelection(swatch.color === "" ? null : swatch.color);
+      hideColorPalette();
+    });
+    menu.appendChild(btn);
+  }
+
+  document.body.appendChild(menu);
+  activeColorPalette = menu;
+
+  const closeHandler = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      hideColorPalette();
+      document.removeEventListener("click", closeHandler, true);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
 }
 
 // ---- Conflict Panel ----
@@ -4137,16 +5038,32 @@ function renderConflictTree(
   }
 }
 
-function showConflictPanel(remoteState: AppState): void {
-  if (!conflictPanelEl || !conflictLocalTreeEl || !conflictRemoteTreeEl || !conflictDiffSummaryEl || !doc) {
+function showConflictPanel(
+  remoteState: AppState,
+  options?: {
+    localLabel?: string;
+    remoteLabel?: string;
+    onUseLocal?: () => void;
+    onUseRemote?: () => void;
+  },
+): void {
+  if (!conflictPanelEl || !conflictLocalTreeEl || !conflictRemoteTreeEl || !conflictDiffSummaryEl || !map) {
     return;
   }
 
   conflictRemoteState = remoteState;
+  conflictUseLocalAction = options?.onUseLocal ?? null;
+  conflictUseRemoteAction = options?.onUseRemote ?? null;
   conflictPanelVisible = true;
   conflictPanelEl.hidden = false;
+  if (conflictUseLocalBtn) {
+    conflictUseLocalBtn.textContent = options?.localLabel || "Use Local";
+  }
+  if (conflictUseRemoteBtn) {
+    conflictUseRemoteBtn.textContent = options?.remoteLabel || "Use Remote";
+  }
 
-  const localState = doc.state;
+  const localState = map.state;
   const diff = diffStates(localState, remoteState);
 
   // Build diff class maps
@@ -4193,6 +5110,14 @@ function hideConflictPanel(): void {
   conflictPanelVisible = false;
   conflictPanelEl.hidden = true;
   conflictRemoteState = null;
+  conflictUseLocalAction = null;
+  conflictUseRemoteAction = null;
+  if (conflictUseLocalBtn) {
+    conflictUseLocalBtn.textContent = "Use Local";
+  }
+  if (conflictUseRemoteBtn) {
+    conflictUseRemoteBtn.textContent = "Use Remote";
+  }
   board.focus();
 }
 
@@ -4204,16 +5129,27 @@ if (conflictCloseBtn) {
 
 if (conflictUseLocalBtn) {
   conflictUseLocalBtn.addEventListener("click", () => {
+    const action = conflictUseLocalAction;
     hideConflictPanel();
-    pushDocToCloud(true, true);
+    if (action) {
+      action();
+      return;
+    }
+    void pushDocToCloud(true, true);
   });
 }
 
 if (conflictUseRemoteBtn) {
   conflictUseRemoteBtn.addEventListener("click", () => {
-    if (conflictRemoteState && doc) {
+    const action = conflictUseRemoteAction;
+    if (action) {
       hideConflictPanel();
-      pullDocFromCloud(true);
+      action();
+      return;
+    }
+    if (conflictRemoteState && map) {
+      hideConflictPanel();
+      void pullDocFromCloud(true);
     }
   });
 }
@@ -4227,7 +5163,7 @@ function addChild(): void {
   }
   pushUndoSnapshot();
   const id = newId();
-  doc!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
+  map!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
@@ -4246,7 +5182,7 @@ function addSibling(): void {
   pushUndoSnapshot();
   const currentIndex = parent.children.indexOf(node.id);
   const id = newId();
-  doc!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
+  map!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
@@ -4254,10 +5190,10 @@ function addSibling(): void {
 }
 
 function selectedLinkableNode(): TreeNode | null {
-  if (!doc || !viewState.selectedNodeId) {
+  if (!map || !viewState.selectedNodeId) {
     return null;
   }
-  const node = doc.state.nodes[viewState.selectedNodeId];
+  const node = map.state.nodes[viewState.selectedNodeId];
   if (!node || isAliasNode(node)) {
     return null;
   }
@@ -4265,15 +5201,15 @@ function selectedLinkableNode(): TreeNode | null {
 }
 
 function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {
-  if (!doc) {
+  if (!map) {
     return null;
   }
-  const links = Object.values(doc.state.links || {});
+  const links = Object.values(map.state.links || {});
   return links.find((link) => link.sourceNodeId === sourceNodeId && link.targetNodeId === targetNodeId) || null;
 }
 
 function markLinkSource(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const node = selectedLinkableNode();
@@ -4293,7 +5229,7 @@ function markLinkSource(): void {
 }
 
 function applyMarkedLink(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const sourceId = viewState.linkSourceNodeId;
@@ -4301,7 +5237,7 @@ function applyMarkedLink(): void {
     setStatus("No link source marked.", true);
     return;
   }
-  const source = doc.state.nodes[sourceId];
+  const source = map.state.nodes[sourceId];
   const target = selectedLinkableNode();
   if (!source || !target) {
     setStatus("Select a non-alias target node.", true);
@@ -4322,10 +5258,10 @@ function applyMarkedLink(): void {
 
   pushUndoSnapshot();
   const linkId = newId();
-  if (!doc.state.links) {
-    doc.state.links = {};
+  if (!map.state.links) {
+    map.state.links = {};
   }
-  doc.state.links[linkId] = normalizeGraphLink({
+  map.state.links[linkId] = normalizeGraphLink({
     id: linkId,
     sourceNodeId: source.id,
     targetNodeId: target.id,
@@ -4404,7 +5340,7 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
 }
 
 function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   if (direction === "depth") {
@@ -4421,7 +5357,7 @@ function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
 }
 
 function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): void {
-  if (!doc || !lastLayout || !lastLayout.pos[nodeId]) {
+  if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
     return;
   }
 
@@ -4503,10 +5439,10 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): voi
 }
 
 function nodeDepth(nodeId: string): number {
-  if (!doc) {
+  if (!map) {
     return 0;
   }
-  const stateNodes = doc.state.nodes;
+  const stateNodes = map.state.nodes;
   let depth = 0;
   let cursor: string | null = nodeId;
   while (cursor) {
@@ -4523,23 +5459,23 @@ function nodeDepth(nodeId: string): number {
 }
 
 function getSelectionRoots(selectedIds = viewState.selectedNodeIds): string[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
-  const selectedSet = new Set<string>(Array.from(selectedIds).filter((nodeId) => Boolean(doc!.state.nodes[nodeId])));
+  const selectedSet = new Set<string>(Array.from(selectedIds).filter((nodeId) => Boolean(map!.state.nodes[nodeId])));
   return Array.from(selectedSet).filter((nodeId) => {
-    const parentId = doc!.state.nodes[nodeId]?.parentId ?? null;
+    const parentId = map!.state.nodes[nodeId]?.parentId ?? null;
     return !parentId || !selectedSet.has(parentId);
   });
 }
 
 function getMovableSelectionRoots(selectedIds = viewState.selectedNodeIds): string[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
   const movableIds = new Set<string>();
   selectedIds.forEach((nodeId) => {
-    const node = doc!.state.nodes[nodeId];
+    const node = map!.state.nodes[nodeId];
     if (node && node.parentId !== null) {
       movableIds.add(nodeId);
     }
@@ -4564,7 +5500,7 @@ function deleteSelected(): void {
   pushUndoSnapshot();
 
   sortedRoots.forEach((rootId) => {
-    const rootNode = doc!.state.nodes[rootId];
+    const rootNode = map!.state.nodes[rootId];
     if (!rootNode || rootNode.parentId === null) {
       return;
     }
@@ -4573,7 +5509,7 @@ function deleteSelected(): void {
     const stack: string[] = [rootId];
     while (stack.length > 0) {
       const currentId = stack.pop()!;
-      const current = doc!.state.nodes[currentId];
+      const current = map!.state.nodes[currentId];
       if (!current) {
         continue;
       }
@@ -4582,20 +5518,20 @@ function deleteSelected(): void {
       }
       stack.push(...(current.children || []));
       viewState.reparentSourceIds.delete(currentId);
-      delete doc!.state.nodes[currentId];
+      delete map!.state.nodes[currentId];
     }
   });
 
-  let cursor: string | null = firstRootParentId ?? doc!.state.rootId;
-  while (cursor && !doc!.state.nodes[cursor]) {
-    cursor = cursor === doc!.state.rootId ? null : (doc!.state.nodes[cursor]?.parentId ?? null);
+  let cursor: string | null = firstRootParentId ?? map!.state.rootId;
+  while (cursor && !map!.state.nodes[cursor]) {
+    cursor = cursor === map!.state.rootId ? null : (map!.state.nodes[cursor]?.parentId ?? null);
   }
-  setSingleSelection(cursor || doc!.state.rootId, false);
+  setSingleSelection(cursor || map!.state.rootId, false);
 
-  if (!doc!.state.nodes[viewState.currentScopeId]) {
+  if (!map!.state.nodes[viewState.currentScopeId]) {
     viewState.currentScopeId = viewState.selectedNodeId;
   }
-  if (!doc!.state.nodes[viewState.currentScopeRootId]) {
+  if (!map!.state.nodes[viewState.currentScopeRootId]) {
     viewState.currentScopeRootId = viewState.currentScopeId;
   }
   touchDocument();
@@ -4626,7 +5562,7 @@ function toggleCollapse(): void {
 }
 
 function downloadJson(): void {
-  const blob = new Blob([JSON.stringify({ version: doc!.version, savedAt: nowIso(), state: doc!.state }, null, 2)], {
+  const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state: map!.state }, null, 2)], {
     type: "application/json;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);
@@ -4637,29 +5573,63 @@ function downloadJson(): void {
   URL.revokeObjectURL(url);
 }
 
-function currentDocSnapshot(): SavedDoc {
+function currentDocSnapshot(): SavedMap {
   syncLinearNotesToDocState();
   return {
     version: 1,
     savedAt: nowIso(),
-    state: doc!.state,
+    state: map!.state,
   };
 }
 
-async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
-  if (!doc) {
+async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
+  if (!map) {
     return false;
   }
 
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, {
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "X-M3E-Tab-Id": TAB_ID,
       },
-      body: JSON.stringify(currentDocSnapshot()),
+      body: JSON.stringify({
+        ...currentDocSnapshot(),
+        baseSavedAt: lastServerSavedAt,
+        force,
+      }),
     });
+
+    if (response.status === 409) {
+      const conflict = await response.json().catch(() => ({ error: "Map conflict." }));
+      const remoteState = (conflict as { state?: AppState }).state;
+      if (remoteState) {
+        showConflictPanel(remoteState, {
+          localLabel: "Use Local",
+          remoteLabel: "Use Vault",
+          onUseLocal: () => {
+            void saveDocToLocalDb(showStatus, true);
+          },
+          onUseRemote: () => {
+            if (!map) {
+              return;
+            }
+            const savedAt = typeof (conflict as { savedAt?: unknown }).savedAt === "string"
+              ? String((conflict as { savedAt?: string }).savedAt)
+              : nowIso();
+            loadPayload({
+              version: 1,
+              savedAt,
+              state: remoteState,
+            });
+            setStatus("Loaded vault version. Local changes were kept out of the database.", true);
+          },
+        });
+      }
+      setStatus("Vault conflict detected. Choose Use Local or Use Vault.", true);
+      throw new Error(String((conflict as { error?: string }).error || "Map changed externally."));
+    }
 
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
@@ -4667,7 +5637,9 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
     }
 
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
-    doc.savedAt = String(payload.savedAt || nowIso());
+    map.savedAt = String(payload.savedAt || nowIso());
+    lastServerSavedAt = map.savedAt;
+    broadcastState();
     if (cloudSyncEnabled) {
       void pushDocToCloud(false);
     }
@@ -4686,7 +5658,7 @@ async function saveDocToLocalDb(showStatus = false): Promise<boolean> {
 
 async function fetchCloudSyncStatus(): Promise<void> {
   try {
-    const response = await fetch(`/api/sync/status/${encodeURIComponent(CLOUD_DOC_ID)}`, { cache: "no-store" });
+    const response = await fetch(`/api/sync/status/${encodeURIComponent(CLOUD_MAP_ID)}`, { cache: "no-store" });
     if (!response.ok) {
       cloudSyncEnabled = false;
       cloudSyncExists = false;
@@ -4710,12 +5682,12 @@ async function fetchCloudSyncStatus(): Promise<void> {
 }
 
 async function pushDocToCloud(showStatus = false, force = false): Promise<boolean> {
-  if (!doc || !cloudSyncEnabled) {
+  if (!map || !cloudSyncEnabled) {
     return false;
   }
   try {
     const baseSavedAt = cloudSavedAt;
-    const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+    const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_MAP_ID)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
@@ -4737,7 +5709,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
       }
       // Attempt to fetch remote state to populate conflict panel
       try {
-        const pullResp = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+        const pullResp = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_MAP_ID)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json; charset=utf-8" },
           body: JSON.stringify({}),
@@ -4760,7 +5732,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     }
 
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
-    doc.savedAt = String(payload.savedAt || nowIso());
+    map.savedAt = String(payload.savedAt || nowIso());
     cloudSavedAt = String(payload.savedAt || nowIso());
     cloudSyncExists = true;
     cloudConflictPending = false;
@@ -4783,7 +5755,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     return false;
   }
   try {
-    const response = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_DOC_ID)}`, {
+    const response = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_MAP_ID)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
@@ -4811,7 +5783,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     updateCloudSyncUi();
     broadcastState();
     if (showStatus) {
-      setStatus("Loaded cloud document.");
+      setStatus("Loaded cloud map.");
     }
     return true;
   } catch (err) {
@@ -4824,7 +5796,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
 
 async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
     if (response.status === 404) {
       return false;
     }
@@ -4836,7 +5808,7 @@ async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
     const payload = await response.json();
     loadPayload(payload);
     if (showStatus) {
-      setStatus("Loaded local document.");
+      setStatus("Loaded local map.");
     }
     return true;
   } catch (err) {
@@ -4848,11 +5820,11 @@ async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
 }
 
 async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
-  if (!doc || hasLinearNotes(sanitizeLinearNotesByScope(doc.state.linearNotesByScope))) {
+  if (!map || hasLinearNotes(sanitizeLinearNotesByScope(map.state.linearNotesByScope))) {
     return;
   }
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
     if (response.status === 404 || !response.ok) {
       return;
     }
@@ -4869,12 +5841,12 @@ async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
     syncLinearNotesToDocState();
     scheduleRender();
   } catch {
-    // Fallback load is best-effort. Keep current document as-is when unavailable.
+    // Fallback load is best-effort. Keep current map as-is when unavailable.
   }
 }
 
 function scheduleAutosave(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   if (autosaveTimer !== null) {
@@ -4895,16 +5867,20 @@ function isValidAppState(s: unknown): s is AppState {
 function initBroadcastSync(): void {
   if (typeof BroadcastChannel === "undefined") return;
   try {
-    bc = new BroadcastChannel(`m3e-doc-${LOCAL_DOC_ID}`);
+    bc = new BroadcastChannel(`m3e-map-${LOCAL_MAP_ID}`);
   } catch {
     return;
   }
   bc.onmessage = (ev: MessageEvent<BcStateMessage>) => {
-    if (!doc || ev.data.fromTabId === TAB_ID) {
+    if (!map || ev.data.fromTabId === TAB_ID) {
       return;
     }
     if (ev.data.type === "STATE_UPDATE" && isValidAppState(ev.data.state)) {
-      doc.state = ev.data.state;
+      map.state = ev.data.state;
+      if (typeof ev.data.savedAt === "string" && ev.data.savedAt) {
+        // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
+        lastServerSavedAt = ev.data.savedAt;
+      }
       scheduleRender();
     }
   };
@@ -4912,30 +5888,40 @@ function initBroadcastSync(): void {
 }
 
 function broadcastState(): void {
-  if (!bc || !doc) {
+  if (!bc || !map) {
     return;
   }
-  const msg: BcStateMessage = { type: "STATE_UPDATE", fromTabId: TAB_ID, state: doc.state };
+  const msg: BcStateMessage = {
+    type: "STATE_UPDATE",
+    fromTabId: TAB_ID,
+    state: map.state,
+    savedAt: lastServerSavedAt || "",
+  };
   bc.postMessage(msg);
 }
 
 // ---------------------------------------------------------------------------
-// Doc-watch SSE — auto-refresh on external DB changes
+// Map-watch SSE — auto-refresh on external DB changes
 // ---------------------------------------------------------------------------
 
-let docWatchEs: EventSource | null = null;
+let mapWatchEs: EventSource | null = null;
 let lastAppliedSavedAt: string | null = null;
 
 function initDocWatch(): void {
-  if (docWatchEs) return;
-  const url = `/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}/watch`;
-  docWatchEs = new EventSource(url);
+  if (mapWatchEs) return;
+  const url = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/watch`;
+  mapWatchEs = new EventSource(url);
 
-  docWatchEs.addEventListener("doc_updated", (ev: MessageEvent) => {
+  mapWatchEs.addEventListener("map_updated", (ev: MessageEvent) => {
     try {
-      const data = JSON.parse(ev.data) as { docId: string; savedAt: string; sourceTabId: string | null };
+      const data = JSON.parse(ev.data) as { mapId: string; savedAt: string; sourceTabId: string | null };
       // Ignore our own saves
       if (data.sourceTabId === TAB_ID) return;
+      // Advance the conflict-detection baseline even if we skip state overwrite,
+      // so a pending autosave doesn't 409 against the just-committed server savedAt.
+      if (typeof data.savedAt === "string" && data.savedAt) {
+        lastServerSavedAt = data.savedAt;
+      }
       // Ignore duplicate events
       if (data.savedAt === lastAppliedSavedAt) return;
       // If user has unsaved edits, notify instead of overwriting
@@ -4949,17 +5935,17 @@ function initDocWatch(): void {
     }
   });
 
-  window.addEventListener("beforeunload", () => docWatchEs?.close());
+  window.addEventListener("beforeunload", () => mapWatchEs?.close());
 }
 
 async function applyExternalUpdate(savedAt: string): Promise<void> {
   try {
-    const response = await fetch(`/api/docs/${encodeURIComponent(LOCAL_DOC_ID)}`, { cache: "no-store" });
+    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
     if (!response.ok) return;
     const payload = await response.json();
     const newDoc = ensureDocShape(payload);
     // Only apply if actually newer
-    if (doc && newDoc.savedAt <= (doc.savedAt || "")) return;
+    if (map && newDoc.savedAt <= (map.savedAt || "")) return;
     lastAppliedSavedAt = savedAt;
 
     // Preserve view state
@@ -4968,38 +5954,161 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
     const prevCollapsed = new Set(viewState.collapsedIds);
     const prevScopeHistory = [...viewState.scopeHistory];
 
-    doc = newDoc;
+    map = newDoc;
+    lastServerSavedAt = newDoc.savedAt || lastServerSavedAt;
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
-    if (doc.state.linearPanelWidth != null) {
-      linearPanelCanvasWidth = doc.state.linearPanelWidth;
+    if (map.state.linearPanelWidth != null) {
+      linearPanelCanvasWidth = map.state.linearPanelWidth;
     }
 
     // Restore view state if nodes still exist
-    if (doc.state.nodes[prevScopeId]) {
+    if (map.state.nodes[prevScopeId]) {
       viewState.currentScopeId = prevScopeId;
       viewState.currentScopeRootId = prevScopeId;
       viewState.scopeHistory = prevScopeHistory;
     }
-    if (doc.state.nodes[prevSelectedId]) {
+    if (map.state.nodes[prevSelectedId]) {
       viewState.selectedNodeId = prevSelectedId;
       viewState.selectedNodeIds = new Set([prevSelectedId]);
     }
     viewState.collapsedIds = prevCollapsed;
 
     render();
-    setStatus("Document updated externally.");
+    setStatus("Map updated externally.");
     broadcastState();
   } catch {
     // will retry on next SSE event
   }
 }
 
+// ── Review Mode ──────────────────────────────────────────────
+
+function advanceToNextVisibleNode(): void {
+  const sel = viewState.selectedNodeId;
+  const idx = visibleOrder.indexOf(sel);
+  if (idx < 0 || idx >= visibleOrder.length - 1) return;
+  const next = visibleOrder[idx + 1];
+  if (next) setSingleSelection(next);
+}
+
+function ensureNodeAttributes(node: TreeNode): Record<string, string> {
+  node.attributes = node.attributes || {};
+  return node.attributes as Record<string, string>;
+}
+
+function resolveReviewQuestionNode(node: TreeNode): TreeNode {
+  if (!map) return node;
+  if (node.attributes?.["runtime:kind"] === "review-question") {
+    return node;
+  }
+  if (node.parentId) {
+    const parent = map.state.nodes[node.parentId];
+    if (parent?.attributes?.["runtime:kind"] === "review-question") {
+      return parent;
+    }
+  }
+  return node;
+}
+
+function reviewAccept(): void {
+  if (!map) return;
+  const sel = viewState.selectedNodeId;
+  const node = map.state.nodes[sel];
+  if (!node || !node.parentId) { setStatus("Select an option node to accept.", true); return; }
+  const parent = map.state.nodes[node.parentId];
+  if (!parent) { setStatus("Parent question not found.", true); return; }
+
+  const optionAttrs = ensureNodeAttributes(node);
+  optionAttrs["selected"] = "yes";
+
+  for (const childId of parent.children) {
+    if (childId === node.id) continue;
+    const sibling = map.state.nodes[childId];
+    if (!sibling) continue;
+    const siblingAttrs = ensureNodeAttributes(sibling);
+    delete siblingAttrs["selected"];
+  }
+
+  const parentAttrs = ensureNodeAttributes(parent);
+  parentAttrs["status"] = "decided";
+  parentAttrs["decided"] = nowIso();
+
+  updateStyleJson(parent.id, (s) => {
+    s.fill = "#d4edda";
+    s.border = "#2d8c4e";
+  });
+  updateStyleJson(sel, (s) => { s.border = "#2d8c4e"; });
+  touchDocument();
+  setStatus(`Accepted: ${node.text.substring(0, 40)}`);
+  advanceToNextVisibleNode();
+}
+
+function reviewReject(): void {
+  if (!map) return;
+  const sel = viewState.selectedNodeId;
+  const node = map.state.nodes[sel];
+  if (!node) { setStatus("No node selected.", true); return; }
+
+  const qNode = resolveReviewQuestionNode(node);
+  const qAttrs = ensureNodeAttributes(qNode);
+  qAttrs["status"] = "rejected";
+  qAttrs["decided"] = nowIso();
+
+  for (const childId of qNode.children) {
+    const child = map.state.nodes[childId];
+    if (!child) continue;
+    const childAttrs = ensureNodeAttributes(child);
+    delete childAttrs["selected"];
+  }
+
+  updateStyleJson(qNode.id, (s) => {
+    s.fill = "#f8d7da";
+    s.border = "#d94040";
+  });
+  touchDocument();
+  setStatus(`Rejected: ${qNode.text.substring(0, 40)}`);
+  advanceToNextVisibleNode();
+}
+
+function reviewExplain(): void {
+  if (!map) return;
+  const sel = viewState.selectedNodeId;
+  const node = map.state.nodes[sel];
+  if (!node) return;
+  const details = node.details || node.note || "(no details)";
+  setStatus(details.substring(0, 200));
+  viewState.collapsedIds.delete(sel);
+  node.collapsed = false;
+  render();
+}
+
+function updateModeBadge(): void {
+  if (!modeBadgeEl) return;
+  if (viewState.reviewMode) {
+    modeBadgeEl.textContent = "REVIEW";
+    modeBadgeEl.classList.add("review");
+  } else {
+    modeBadgeEl.textContent = "EDIT";
+    modeBadgeEl.classList.remove("review");
+  }
+}
+
+function toggleReviewMode(): void {
+  viewState.reviewMode = !viewState.reviewMode;
+  if (viewState.reviewMode) {
+    setStatus("REVIEW MODE — [a]ccept(green) [x]reject(red) [e]xplain [Esc]exit");
+  } else {
+    setStatus("Review mode off.");
+  }
+  render();
+}
+
 function touchDocument(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
-  doc.savedAt = nowIso();
+  map.savedAt = nowIso();
   render();
   scheduleAutosave();
   broadcastState();
@@ -5048,7 +6157,7 @@ function selectRelative(offset: number): void {
 }
 
 function selectParent(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const node = getNode(viewState.selectedNodeId);
@@ -5058,7 +6167,7 @@ function selectParent(): void {
 }
 
 function selectChild(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const node = getNode(viewState.selectedNodeId);
@@ -5070,7 +6179,7 @@ function selectChild(): void {
 }
 
 function getBreadthSelectionTarget(direction: -1 | 1): string | null {
-  if (!doc || !lastLayout) {
+  if (!map || !lastLayout) {
     if (!visibleOrder.length) {
       return null;
     }
@@ -5153,27 +6262,28 @@ function extendSelectionBreadth(direction: -1 | 1): void {
 
 function loadPayload(payload: unknown): void {
   try {
-    doc = ensureDocShape(payload);
+    map = ensureDocShape(payload);
+    lastServerSavedAt = map.savedAt || null;
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
-    if (doc.state.linearPanelWidth != null) {
-      linearPanelCanvasWidth = doc.state.linearPanelWidth;
+    if (map.state.linearPanelWidth != null) {
+      linearPanelCanvasWidth = map.state.linearPanelWidth;
     }
     undoStack = [];
     redoStack = [];
     linearDirty = false;
-    viewState.currentScopeId = doc.state.rootId;
+    viewState.currentScopeId = map.state.rootId;
     viewState.scopeHistory = [];
-    viewState.selectedNodeId = doc.state.rootId;
-    viewState.selectedNodeIds = new Set([doc.state.rootId]);
+    viewState.selectedNodeId = map.state.rootId;
+    viewState.selectedNodeIds = new Set([map.state.rootId]);
     viewState.selectionAnchorId = null;
-    viewState.currentScopeRootId = doc.state.rootId;
+    viewState.currentScopeRootId = map.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.clipboardState = null;
     viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
     viewState.collapsedIds = new Set(
-      Object.values(doc.state.nodes)
+      Object.values(map.state.nodes)
         .filter((n) => n.collapsed === true)
         .map((n) => n.id),
     );
@@ -5192,7 +6302,7 @@ function resetCamera(): void {
 }
 
 function centerOnNode(nodeId: string, zoom = viewState.zoom): boolean {
-  if (!doc || !lastLayout || !lastLayout.pos[nodeId]) {
+  if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
     return false;
   }
   const nodePos = lastLayout.pos[nodeId]!;
@@ -5205,7 +6315,7 @@ function centerOnNode(nodeId: string, zoom = viewState.zoom): boolean {
 }
 
 function fitDocument(): boolean {
-  if (!doc) {
+  if (!map) {
     return false;
   }
   render();
@@ -5224,11 +6334,11 @@ function fitDocument(): boolean {
 }
 
 function findNodeIdByText(text: string): string {
-  if (!doc) {
+  if (!map) {
     return "";
   }
   const target = String(text || "").trim().toLowerCase();
-  const node = Object.values(doc.state.nodes).find((entry) => String(entry.text || "").trim().toLowerCase() === target);
+  const node = Object.values(map.state.nodes).find((entry) => String(entry.text || "").trim().toLowerCase() === target);
   return node ? node.id : "";
 }
 
@@ -5252,8 +6362,8 @@ async function runAircraftVisualCheck(): Promise<void> {
   visualCheckRunId = runId;
 
   const steps: Array<{ label: string; run: () => Promise<void> }> = [
-    { label: "Load aircraft.mm", run: async () => { await loadAircraftMmDemo(); resetCamera(); centerOnNode(doc!.state.rootId, 1); } },
-    { label: "Zoom out for whole-map scan", run: async () => { centerOnNode(doc!.state.rootId, 0.72); } },
+    { label: "Load aircraft.mm", run: async () => { await loadAircraftMmDemo(); resetCamera(); centerOnNode(map!.state.rootId, 1); } },
+    { label: "Zoom out for whole-map scan", run: async () => { centerOnNode(map!.state.rootId, 0.72); } },
     { label: "Select Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); centerOnNode(nodeId, 0.95); } },
     { label: "Collapse Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (!viewState.collapsedIds.has(nodeId)) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
     { label: "Expand Body branch", run: async () => { const nodeId = findNodeIdByText("Body"); selectNode(nodeId); if (viewState.collapsedIds.has(nodeId)) { toggleCollapse(); } centerOnNode(nodeId, 0.95); } },
@@ -5262,7 +6372,7 @@ async function runAircraftVisualCheck(): Promise<void> {
     { label: "Expand Wing branch", run: async () => { const nodeId = findNodeIdByText("Wing"); selectNode(nodeId); if (viewState.collapsedIds.has(nodeId)) { toggleCollapse(); } centerOnNode(nodeId, 0.92); } },
     { label: "Inspect Main Wing label scale", run: async () => { const nodeId = findNodeIdByText("Main Wing"); selectNode(nodeId); centerOnNode(nodeId, 1.15); } },
     { label: "Inspect Propeller label scale", run: async () => { const nodeId = findNodeIdByText("Propeller"); selectNode(nodeId); centerOnNode(nodeId, 1.15); } },
-    { label: "Return to root overview", run: async () => { selectNode(doc!.state.rootId); centerOnNode(doc!.state.rootId, 0.8); } },
+    { label: "Return to root overview", run: async () => { selectNode(map!.state.rootId); centerOnNode(map!.state.rootId, 0.8); } },
   ];
 
   function renderProgress(activeIndex: number): void {
@@ -5303,27 +6413,27 @@ function isDescendant(candidateParentId: string, nodeId: string): boolean {
     if (currentId === nodeId) {
       return true;
     }
-    const current: TreeNode | undefined = doc!.state.nodes[currentId];
+    const current: TreeNode | undefined = map!.state.nodes[currentId];
     currentId = current ? current.parentId : null;
   }
   return false;
 }
 
 function ancestorPathToRoot(nodeId: string): string[] {
-  if (!doc) {
+  if (!map) {
     return [];
   }
   const path: string[] = [];
   let cursor: string | null = nodeId;
   while (cursor) {
     path.push(cursor);
-    cursor = doc.state.nodes[cursor]?.parentId ?? null;
+    cursor = map.state.nodes[cursor]?.parentId ?? null;
   }
   return path;
 }
 
 function findLowestCommonAncestor(nodeIds: string[]): string | null {
-  if (!doc || nodeIds.length === 0) {
+  if (!map || nodeIds.length === 0) {
     return null;
   }
   const paths = nodeIds.map((nodeId) => ancestorPathToRoot(nodeId).reverse());
@@ -5341,7 +6451,7 @@ function findLowestCommonAncestor(nodeIds: string[]): string | null {
 }
 
 function markReparentSource(): void {
-  if (!doc || viewState.selectedNodeIds.size === 0) {
+  if (!map || viewState.selectedNodeIds.size === 0) {
     return;
   }
   viewState.reparentSourceIds = new Set(viewState.selectedNodeIds);
@@ -5363,7 +6473,7 @@ function sameIdSet(left: Set<string>, right: Set<string>): boolean {
 }
 
 function toggleReparentSource(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const nextSourceIds = new Set(viewState.selectedNodeIds);
@@ -5438,7 +6548,7 @@ function applyReparent(): void {
 }
 
 function groupSelected(): void {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const roots = getSelectionRoots().filter((nodeId) => getNode(nodeId).parentId !== null);
@@ -5447,7 +6557,7 @@ function groupSelected(): void {
     return;
   }
 
-  const lcaId = findLowestCommonAncestor(roots) || doc.state.rootId;
+  const lcaId = findLowestCommonAncestor(roots) || map.state.rootId;
   const lca = getNode(lcaId);
   const childIndexes = roots
     .map((rootId) => lca.children.indexOf(rootId))
@@ -5457,7 +6567,7 @@ function groupSelected(): void {
 
   pushUndoSnapshot();
   const newGroupId = newId();
-  doc.state.nodes[newGroupId] = createNodeRecord(newGroupId, lca.id, "");
+  map.state.nodes[newGroupId] = createNodeRecord(newGroupId, lca.id, "");
   lca.children.splice(insertIndex, 0, newGroupId);
   roots.forEach((rootId) => {
     applyMoveByParentAndIndex(rootId, newGroupId, getNode(newGroupId).children.length, true, {
@@ -5498,8 +6608,8 @@ function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
 function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot): string {
   const parent = getNode(parentId);
   const createdId = newId();
-  doc!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text || "New Node");
-  const created = doc!.state.nodes[createdId]!;
+  map!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text || "New Node");
+  const created = map!.state.nodes[createdId]!;
   created.details = snapshot.details || "";
   created.note = snapshot.note || "";
   created.attributes = JSON.parse(JSON.stringify(snapshot.attributes || {})) as Record<string, string>;
@@ -5522,11 +6632,11 @@ async function copyTextToSystemClipboard(text: string): Promise<void> {
 }
 
 function buildNodePath(nodeId: string): string {
-  if (!doc) return "";
+  if (!map) return "";
   const parts: string[] = [];
   let cursor: string | null = nodeId;
   while (cursor) {
-    const n: TreeNode | undefined = doc.state.nodes[cursor];
+    const n: TreeNode | undefined = map.state.nodes[cursor];
     if (!n) break;
     parts.unshift(uiLabel(n));
     cursor = n.parentId ?? null;
@@ -5535,14 +6645,14 @@ function buildNodePath(nodeId: string): string {
 }
 
 function copyNodePath(): void {
-  if (!doc) return;
+  if (!map) return;
   const path = buildNodePath(viewState.selectedNodeId);
   void copyTextToSystemClipboard(path);
   setStatus(`Path copied: ${path}`);
 }
 
 function copyScopeId(): void {
-  if (!doc) return;
+  if (!map) return;
   const id = normalizedCurrentScopeId();
   void copyTextToSystemClipboard(id);
   setStatus(`Scope ID copied: ${id}`);
@@ -5578,7 +6688,7 @@ function cutSelected(): void {
 }
 
 function pasteClipboard(): void {
-  if (!doc || !viewState.clipboardState) {
+  if (!map || !viewState.clipboardState) {
     setStatus("Clipboard is empty.", true);
     return;
   }
@@ -5747,7 +6857,7 @@ fileInput.addEventListener("change", (event: Event) => {
       const isMm = file.name.toLowerCase().endsWith(".mm");
       const isMd = isMarkdownFilename(file.name);
       if (isMd) {
-        if (!doc) {
+        if (!map) {
           loadPayload(createEmptyDoc());
         }
         const scopeRootId = currentLinearMemoScopeId();
@@ -5803,7 +6913,7 @@ linearTextEl?.addEventListener("focus", () => {
 });
 
 linearTextEl?.addEventListener("input", () => {
-  if (!doc) {
+  if (!map) {
     return;
   }
   const scopeRootId = currentLinearMemoScopeId();
@@ -5813,7 +6923,7 @@ linearTextEl?.addEventListener("input", () => {
   const templateText = buildLinearFromScope().text;
   linearDirty = linearTextEl.value !== templateText;
   if (linearMetaEl) {
-    const scopeLabel = doc.state.nodes[scopeRootId]?.text || scopeRootId;
+    const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
     linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
@@ -5821,7 +6931,7 @@ linearTextEl?.addEventListener("input", () => {
 });
 
 linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
-  if (!doc) {
+  if (!map) {
     return;
   }
   if (isImeComposingEvent(event)) {
@@ -5877,8 +6987,8 @@ function endLinearResize(event: PointerEvent): void {
   linearResizeHandleEl?.releasePointerCapture(event.pointerId);
   linearResizeState = null;
   syncLinearPanelPosition();
-  if (doc) {
-    doc.state.linearPanelWidth = linearPanelCanvasWidth;
+  if (map) {
+    map.state.linearPanelWidth = linearPanelCanvasWidth;
     scheduleAutosave();
   }
 }
@@ -5887,7 +6997,7 @@ linearResizeHandleEl?.addEventListener("pointerup", endLinearResize);
 linearResizeHandleEl?.addEventListener("pointercancel", endLinearResize);
 
 linearApplyBtn?.addEventListener("click", () => {
-  if (!doc || !linearDirty) {
+  if (!map || !linearDirty) {
     return;
   }
   applyLinearTextToScope();
@@ -5902,7 +7012,7 @@ linearResetBtn?.addEventListener("click", () => {
 cloudPullBtn?.addEventListener("click", async () => {
   const pulled = await pullDocFromCloud(true);
   if (!pulled) {
-    setStatus("Cloud document not found.", true);
+    setStatus("Cloud map not found.", true);
   }
 });
 
@@ -5917,18 +7027,50 @@ cloudUseLocalBtn?.addEventListener("click", async () => {
 cloudUseCloudBtn?.addEventListener("click", async () => {
   const pulled = await pullDocFromCloud(true);
   if (!pulled) {
-    setStatus("Cloud document not found.", true);
+    setStatus("Cloud map not found.", true);
   }
 });
 
+importFileBtn?.addEventListener("click", () => {
+  fileInput.click();
+});
+
+importVaultBtn?.addEventListener("click", () => {
+  void (async () => {
+    try {
+      const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+      if (!vaultPath) {
+        return;
+      }
+      await runVaultImport(vaultPath);
+    } catch (err) {
+      setStatus(`Vault import failed (${(err as Error).message}).`, true);
+    }
+  })();
+});
+
 downloadBtn?.addEventListener("click", () => {
-  if (!doc) return;
+  if (!map) return;
   downloadJson();
 });
 
 downloadMmBtn?.addEventListener("click", () => {
-  if (!doc) return;
+  if (!map) return;
   downloadMm();
+});
+
+exportVaultBtn?.addEventListener("click", () => {
+  void (async () => {
+    try {
+      const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+      if (!vaultPath) {
+        return;
+      }
+      await runVaultExport(vaultPath);
+    } catch (err) {
+      setStatus(`Vault export failed (${(err as Error).message}).`, true);
+    }
+  })();
 });
 
 /* ── Hamburger & Export dropdown toggle ── */
@@ -5941,19 +7083,54 @@ function toggleDropdown(menu: HTMLElement | null, btn: HTMLElement | null): void
 
 hamburgerBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  exportMenu && (exportMenu.hidden = true);
+  closeToolbarMenus();
   toggleDropdown(hamburgerMenu, hamburgerBtn);
+});
+
+importBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeToolbarMenus();
+  toggleDropdown(importMenu, importBtn);
 });
 
 exportBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  hamburgerMenu && (hamburgerMenu.hidden = true);
+  closeToolbarMenus();
   toggleDropdown(exportMenu, exportBtn);
 });
 
+integrateBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeToolbarMenus();
+  toggleDropdown(integrateMenu, integrateBtn);
+});
+
+setVaultPathBtn?.addEventListener("click", () => {
+  void promptVaultPath(vaultUiPrefs.vaultPath);
+});
+
+integrateVaultLiveBtn?.addEventListener("click", () => {
+  void (async () => {
+    try {
+      const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+      if (!vaultPath) {
+        return;
+      }
+      await startVaultLiveIntegration(vaultPath);
+    } catch (err) {
+      setStatus(`Obsidian Live Mode failed (${(err as Error).message}).`, true);
+    }
+  })();
+});
+
+integrateStopBtn?.addEventListener("click", () => {
+  void stopVaultLiveIntegration(true).catch((err) => {
+    setStatus(`Failed to stop Obsidian Live Mode (${(err as Error).message}).`, true);
+  });
+});
+
 document.addEventListener("click", () => {
-  if (hamburgerMenu && !hamburgerMenu.hidden) hamburgerMenu.hidden = true;
-  if (exportMenu && !exportMenu.hidden) exportMenu.hidden = true;
+  closeToolbarMenus();
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
@@ -5971,7 +7148,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
-  if (!doc || !nodeId || event.button !== 0) {
+  if (!map || !nodeId || event.button !== 0) {
     return;
   }
   viewState.dragState = {
@@ -6067,7 +7244,7 @@ canvas.addEventListener("pointercancel", finishNodeDrag);
 canvas.addEventListener("dblclick", (event: MouseEvent) => {
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
-  if (!doc || !nodeId) {
+  if (!map || !nodeId) {
     return;
   }
   selectNode(nodeId);
@@ -6078,10 +7255,10 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
 canvas.addEventListener("contextmenu", (event: MouseEvent) => {
   const target = event.target as Element | null;
   const nodeId = target?.closest("[data-node-id]")?.getAttribute("data-node-id");
-  if (!nodeId || !doc) {
+  if (!nodeId || !map) {
     return;
   }
-  const node = doc.state.nodes[nodeId];
+  const node = map.state.nodes[nodeId];
   if (!node || !isFolderNode(node)) {
     return;
   }
@@ -6261,7 +7438,7 @@ document.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 document.addEventListener("keydown", (event: KeyboardEvent) => {
-  if (!doc) {
+  if (!map) {
     return;
   }
   if (isImeComposingEvent(event)) {
@@ -6286,6 +7463,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (activeColorPalette && event.key === "Escape") {
+    event.preventDefault();
+    hideColorPalette();
+    return;
+  }
+
   if (linearAdjustMenuOpen && event.key === "Escape") {
     linearMenuVisible = false;
     linearAdjustMenuOpen = false;
@@ -6299,6 +7482,41 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (document.activeElement === linearTextEl) {
+    return;
+  }
+
+  // ── Review Mode keybindings ──
+  if (viewState.reviewMode) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      viewState.reviewMode = false;
+      setStatus("Review mode off.");
+      render();
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+      if (event.key === "a") {
+        event.preventDefault();
+        reviewAccept();
+        return;
+      }
+      if (event.key === "x") {
+        event.preventDefault();
+        reviewReject();
+        return;
+      }
+      if (event.key === "e") {
+        event.preventDefault();
+        reviewExplain();
+        return;
+      }
+    }
+    // Arrow keys fall through to normal navigation
+  }
+  // Toggle review mode with bare R (when not already in review mode)
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "r" && !viewState.reviewMode) {
+    event.preventDefault();
+    toggleReviewMode();
     return;
   }
 
@@ -6420,6 +7638,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    showScopeDashboard();
+    return;
+  }
+
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "0") {
     event.preventDefault();
     fitDocument();
@@ -6484,20 +7708,22 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (event.altKey && event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    toggleMarkdownPreviewForSelectedNode();
+    return;
+  }
+
   if (event.altKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
-    if (homeScreenVisible) {
-      hideHomeScreen();
-    } else {
-      showHomeScreen();
-    }
+    window.location.href = buildHomeHref();
     return;
   }
 
   if (event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     if (cycleViewState === "focus") {
-      if (doc && viewState.selectedNodeId) {
+      if (map && viewState.selectedNodeId) {
         centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
         setStatus("Focus: centered on selected node.");
       }
@@ -6548,9 +7774,27 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  // Node color decoration (Phase 1, Miro-style)
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key === "c") {
+    event.preventDefault();
+    showColorPalette();
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key === "C") {
+    event.preventDefault();
+    clearDecorationOnSelection();
+    return;
+  }
+
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "i") {
     event.preventDefault();
     toggleMetaPanelVisibility();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "?") {
+    event.preventDefault();
+    copyNodeQueryToClipboard();
     return;
   }
 
@@ -6713,21 +7957,30 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
 setVisualCheckStatus("Visual check idle");
 syncMetaPanelToggleUi();
-
+loadVaultUiPrefs();
+syncVaultUi();
 updateCloudSyncUi();
 
 void initializeDocument().then(() => {
   initBroadcastSync();
   initDocWatch();
+  initVaultWatchStream();
+  void fetchVaultWatchStatus().then(() => {
+    if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
+      void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
+        setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
+      });
+    }
+  });
   tryCollabRegister();
-  const initialScopeId = queryParams.get("scopeId");
-  if (initialScopeId && doc && doc.state.nodes[initialScopeId] && initialScopeId !== doc.state.rootId) {
+  const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
+  if (initialScopeId && map && map.state.nodes[initialScopeId] && initialScopeId !== map.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level
     const ancestors: string[] = [];
-    let cur = doc.state.nodes[initialScopeId];
-    while (cur && cur.parentId && cur.id !== doc.state.rootId) {
+    let cur = map.state.nodes[initialScopeId];
+    while (cur && cur.parentId && cur.id !== map.state.rootId) {
       ancestors.unshift(cur.parentId);
-      cur = doc.state.nodes[cur.parentId];
+      cur = map.state.nodes[cur.parentId];
     }
     viewState.scopeHistory = ancestors;
     viewState.currentScopeId = initialScopeId;

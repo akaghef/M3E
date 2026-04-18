@@ -2,11 +2,11 @@
 
 import fs from "fs";
 import path from "path";
-import type { AppState, SavedDoc } from "../shared/types";
+import type { AppState, SavedMap } from "../shared/types";
 
 export interface ConflictBackupEntry {
   backupId: string;
-  documentId: string;
+  mapId: string;
   reason: string;
   createdAt: string;
   savedAt: string;
@@ -30,16 +30,16 @@ function ensureBackupDir(dataDir: string): void {
   }
 }
 
-function backupFileName(documentId: string, backupId: string): string {
-  const safeDocId = documentId.replace(/[^a-zA-Z0-9._-]/g, "_");
+function backupFileName(mapId: string, backupId: string): string {
+  const safeDocId = mapId.replace(/[^a-zA-Z0-9._-]/g, "_");
   return `${safeDocId}_${backupId}.json`;
 }
 
 function parseBackupFileName(
   fileName: string,
-  documentId: string,
+  mapId: string,
 ): string | null {
-  const safeDocId = documentId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const safeDocId = mapId.replace(/[^a-zA-Z0-9._-]/g, "_");
   const prefix = `${safeDocId}_`;
   if (!fileName.startsWith(prefix) || !fileName.endsWith(".json")) {
     return null;
@@ -59,7 +59,7 @@ function generateBackupId(): string {
  */
 export function createConflictBackup(
   dataDir: string,
-  documentId: string,
+  mapId: string,
   localState: AppState,
   reason: string,
 ): ConflictBackupEntry {
@@ -71,22 +71,22 @@ export function createConflictBackup(
   const entry: ConflictBackupFull = {
     version: 1,
     backupId,
-    documentId,
+    mapId,
     reason,
     createdAt: now,
     savedAt: now,
     state: localState,
   };
 
-  const filePath = path.join(backupDir(dataDir), backupFileName(documentId, backupId));
+  const filePath = path.join(backupDir(dataDir), backupFileName(mapId, backupId));
   fs.writeFileSync(filePath, JSON.stringify(entry, null, 2), "utf8");
 
-  // Enforce max backups per document
-  pruneOldBackups(dataDir, documentId);
+  // Enforce max backups per map
+  pruneOldBackups(dataDir, mapId);
 
   return {
     backupId: entry.backupId,
-    documentId: entry.documentId,
+    mapId: entry.mapId,
     reason: entry.reason,
     createdAt: entry.createdAt,
     savedAt: entry.savedAt,
@@ -94,11 +94,11 @@ export function createConflictBackup(
 }
 
 /**
- * List all conflict backups for a document, newest first.
+ * List all conflict backups for a map, newest first.
  */
 export function listConflictBackups(
   dataDir: string,
-  documentId: string,
+  mapId: string,
 ): ConflictBackupEntry[] {
   const dir = backupDir(dataDir);
   if (!fs.existsSync(dir)) {
@@ -109,16 +109,16 @@ export function listConflictBackups(
   const entries: ConflictBackupEntry[] = [];
 
   for (const file of files) {
-    const bid = parseBackupFileName(file, documentId);
+    const bid = parseBackupFileName(file, mapId);
     if (!bid) continue;
 
     try {
       const raw = fs.readFileSync(path.join(dir, file), "utf8");
       const parsed = JSON.parse(raw) as ConflictBackupFull;
-      if (parsed.version === 1 && parsed.documentId === documentId) {
+      if (parsed.version === 1 && parsed.mapId === mapId) {
         entries.push({
           backupId: parsed.backupId,
-          documentId: parsed.documentId,
+          mapId: parsed.mapId,
           reason: parsed.reason,
           createdAt: parsed.createdAt,
           savedAt: parsed.savedAt,
@@ -139,11 +139,11 @@ export function listConflictBackups(
  */
 export function getConflictBackup(
   dataDir: string,
-  documentId: string,
+  mapId: string,
   backupId: string,
 ): ConflictBackupFull | null {
   const dir = backupDir(dataDir);
-  const filePath = path.join(dir, backupFileName(documentId, backupId));
+  const filePath = path.join(dir, backupFileName(mapId, backupId));
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -151,7 +151,7 @@ export function getConflictBackup(
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw) as ConflictBackupFull;
-    if (parsed.version === 1 && parsed.documentId === documentId) {
+    if (parsed.version === 1 && parsed.mapId === mapId) {
       return parsed;
     }
   } catch {
@@ -165,11 +165,11 @@ export function getConflictBackup(
  */
 export function deleteConflictBackup(
   dataDir: string,
-  documentId: string,
+  mapId: string,
   backupId: string,
 ): boolean {
   const dir = backupDir(dataDir);
-  const filePath = path.join(dir, backupFileName(documentId, backupId));
+  const filePath = path.join(dir, backupFileName(mapId, backupId));
   if (!fs.existsSync(filePath)) {
     return false;
   }
@@ -181,8 +181,8 @@ export function deleteConflictBackup(
 /**
  * Remove oldest backups when count exceeds MAX_BACKUPS_PER_DOC.
  */
-function pruneOldBackups(dataDir: string, documentId: string): void {
-  const entries = listConflictBackups(dataDir, documentId);
+function pruneOldBackups(dataDir: string, mapId: string): void {
+  const entries = listConflictBackups(dataDir, mapId);
   if (entries.length <= MAX_BACKUPS_PER_DOC) {
     return;
   }
@@ -190,6 +190,6 @@ function pruneOldBackups(dataDir: string, documentId: string): void {
   // entries is sorted newest first; remove from the end
   const toRemove = entries.slice(MAX_BACKUPS_PER_DOC);
   for (const entry of toRemove) {
-    deleteConflictBackup(dataDir, documentId, entry.backupId);
+    deleteConflictBackup(dataDir, mapId, entry.backupId);
   }
 }

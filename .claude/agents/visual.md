@@ -25,7 +25,7 @@ git rebase origin/dev-beta
 | ロール | visual |
 | ブランチ | dev-visual |
 | スコープ | `beta/src/browser/`, `beta/viewer.css`, `beta/viewer.html` |
-| 禁止 | `mvp/` (完全凍結), `final/`, `beta/src/node/`, `beta/src/shared/` |
+| 禁止 | `final/`, `beta/src/node/`, `beta/src/shared/` |
 
 ## Task Discovery
 

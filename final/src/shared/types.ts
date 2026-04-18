@@ -41,11 +41,11 @@ export interface AppState {
   linearPanelWidth?: number;
 }
 
-export interface SavedDoc {
+export interface SavedMap {
   version: 1;
   savedAt: string;
   state: AppState;
-  docVersion?: number;
+  mapVersion?: number;
 }
 
 export type LinearTransformDirection = "tree-to-linear" | "linear-to-tree";
@@ -87,6 +87,172 @@ export interface LinearTransformResponse {
   };
 }
 
+export interface VaultImportOptions {
+  maxFiles?: number;
+  maxCharsPerFile?: number;
+  skipAiTransform?: boolean;
+  excludePatterns?: string[];
+}
+
+export interface VaultImportRequest {
+  vaultPath: string;
+  mapId?: string;
+  modelAlias?: string | null;
+  options?: VaultImportOptions;
+}
+
+export type VaultImportPhase = "discovery" | "parse" | "transform" | "links" | "persist";
+
+export interface VaultImportProgress {
+  phase: VaultImportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface VaultImportedFileSummary {
+  relativePath: string;
+  nodeId: string;
+  wikilinkCount: number;
+  truncated: boolean;
+}
+
+export interface VaultImportResult {
+  ok: true;
+  mapId: string;
+  savedAt: string;
+  fileCount: number;
+  folderCount: number;
+  nodeCount: number;
+  truncatedFiles: number;
+  warnings: string[];
+  files: VaultImportedFileSummary[];
+  state: AppState;
+}
+
+export interface BlueprintImportOptions {
+  skipProofUses?: boolean;
+  proofUsesRelationType?: string;
+  layoutMode?: "chapter-tree" | "dag";
+  dagSourceGrouping?: "none" | "chapter";
+  dagFacetLayout?: "mixed" | "scoped";
+  includeImplementationScope?: boolean;
+}
+
+export interface BlueprintImportRequest {
+  blueprintPath: string;
+  mapId?: string;
+  label?: string;
+  options?: BlueprintImportOptions;
+}
+
+export type BlueprintImportPhase = "discovery" | "parse" | "links" | "persist";
+
+export interface BlueprintImportProgress {
+  phase: BlueprintImportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface BlueprintImportedChapterSummary {
+  relativePath: string;
+  chapterNodeId: string;
+  statementCount: number;
+  linkCount: number;
+}
+
+export interface BlueprintImportResult {
+  ok: true;
+  mapId: string;
+  savedAt: string;
+  chapterCount: number;
+  statementCount: number;
+  nodeCount: number;
+  linkCount: number;
+  warnings: string[];
+  chapters: BlueprintImportedChapterSummary[];
+  state: AppState;
+}
+
+export interface VaultExportOptions {
+  skipAiTransform?: boolean;
+  overwrite?: boolean;
+}
+
+export interface VaultExportRequest {
+  mapId: string;
+  vaultPath: string;
+  nodeId?: string;
+  modelAlias?: string | null;
+  options?: VaultExportOptions;
+}
+
+export type VaultExportPhase = "analysis" | "transform" | "write";
+
+export interface VaultExportProgress {
+  phase: VaultExportPhase;
+  total?: number;
+  current?: number;
+  currentFile?: string;
+  status?: "ok";
+  message?: string;
+}
+
+export interface VaultExportResult {
+  ok: true;
+  mapId: string;
+  vaultPath: string;
+  fileCount: number;
+  folderCount: number;
+  warnings: string[];
+  savedAt: string;
+}
+
+export interface VaultWatchStartRequest {
+  mapId: string;
+  vaultPath: string;
+  modelAlias?: string | null;
+  debounceMs?: number;
+  importOptions?: VaultImportOptions;
+  exportOptions?: VaultExportOptions;
+}
+
+export interface VaultWatchStopRequest {
+  mapId: string;
+}
+
+export type VaultWatchEventType =
+  | "watch-started"
+  | "watch-stopped"
+  | "vault-to-m3e"
+  | "m3e-to-vault"
+  | "watch-error";
+
+export interface VaultWatchEvent {
+  type: VaultWatchEventType;
+  mapId: string;
+  vaultPath: string;
+  timestamp: string;
+  detail?: string;
+}
+
+export interface VaultWatchStatus {
+  ok: true;
+  mapId: string;
+  vaultPath: string;
+  integrationMode: "obsidian-live";
+  sourceOfTruth: "vault-md";
+  running: boolean;
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  lastError: string | null;
+}
+
 export interface AiFeatureStatus {
   available: boolean;
   promptConfigured: boolean;
@@ -114,11 +280,11 @@ export interface AiStatusResponse {
 export interface PushResult {
   ok: boolean;
   savedAt: string;
-  documentId: string;
+  mapId: string;
   forced: boolean;
   conflict?: boolean;
   cloudSavedAt?: string | null;
-  cloudDocVersion?: number;
+  cloudMapVersion?: number;
   remoteState?: AppState;
   error?: string;
 }
@@ -128,8 +294,8 @@ export interface PullResult {
   version: number;
   savedAt: string;
   state: AppState;
-  documentId: string;
-  docVersion?: number;
+  mapId: string;
+  mapVersion?: number;
   error?: string;
 }
 
@@ -137,18 +303,18 @@ export interface SyncStatus {
   ok: boolean;
   enabled: boolean;
   mode: string;
-  documentId: string;
+  mapId: string;
   exists: boolean;
   cloudSavedAt: string | null;
-  cloudDocVersion?: number | null;
+  cloudMapVersion?: number | null;
   lastSyncedAt: string | null;
 }
 
 export interface CloudSyncTransport {
   readonly mode: string;
-  push(docId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult>;
-  pull(docId: string): Promise<PullResult>;
-  status(docId: string): Promise<SyncStatus>;
+  push(mapId: string, map: SavedMap, baseSavedAt: string | null, force: boolean, baseMapVersion?: number | null): Promise<PushResult>;
+  pull(mapId: string): Promise<PullResult>;
+  status(mapId: string): Promise<SyncStatus>;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +343,7 @@ export interface StructuredDraft {
 
 export interface FlashDraft {
   id: string;
-  docId: string;
+  mapId: string;
   sourceType: FlashSourceType;
   sourceRef: string;
   title: string;
@@ -190,7 +356,7 @@ export interface FlashDraft {
 }
 
 export interface FlashIngestRequest {
-  docId: string;
+  mapId: string;
   sourceType: FlashSourceType;
   content: string;
   options?: {
@@ -211,7 +377,7 @@ export interface FlashApproveRequest {
 }
 
 export interface AiSubagentRequest {
-  documentId: string;
+  mapId: string;
   scopeId: string;
   provider?: string | null;
   modelAlias?: string | null;
@@ -251,7 +417,7 @@ export interface AiSubagentSuccessResponse {
   };
   meta: {
     scopeId: string;
-    documentId: string;
+    mapId: string;
     latencyMs: number;
   };
 }

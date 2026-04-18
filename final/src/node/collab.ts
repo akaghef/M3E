@@ -53,7 +53,7 @@ const entities = new Map<string, CollabEntity>(); // entityId -> entity
 const tokenIndex = new Map<string, string>(); // token -> entityId
 const scopeLocks = new Map<string, ScopeLock>(); // scopeId -> lock
 const sseClients: SseClient[] = [];
-let docVersion = 0;
+let mapVersion = 0;
 
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 const DEFAULT_LEASE_SEC = 30;
@@ -274,16 +274,16 @@ export function broadcastSseEvent(event: string, data: unknown): void {
 // Version
 // ---------------------------------------------------------------------------
 
-export function getDocVersion(): number {
-  return docVersion;
+export function getMapVersion(): number {
+  return mapVersion;
 }
 
-export function incrementDocVersion(): number {
-  return ++docVersion;
+export function incrementMapVersion(): number {
+  return ++mapVersion;
 }
 
-export function setDocVersion(v: number): void {
-  docVersion = v;
+export function setMapVersion(v: number): void {
+  mapVersion = v;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +325,7 @@ export interface MergePushResult {
 }
 
 export function mergeScopePush(
-  docId: string,
+  mapId: string,
   scopeId: string,
   entity: CollabEntity,
   lockId: string,
@@ -336,20 +336,20 @@ export function mergeScopePush(
   // Check scope lock
   const lock = scopeLocks.get(scopeId);
   if (!lock || lock.entityId !== entity.entityId || lock.lockId !== lockId) {
-    return { ok: false, version: docVersion, applied: [], rejected: [], conflicts: [], error: "Scope lock not held." };
+    return { ok: false, version: mapVersion, applied: [], rejected: [], conflicts: [], error: "Scope lock not held." };
   }
 
-  // Load current doc
+  // Load current map
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
+    model = RapidMvpModel.loadFromSqlite(sqlitePath, mapId);
   } catch (err) {
-    return { ok: false, version: docVersion, applied: [], rejected: [], conflicts: [], error: (err as Error).message };
+    return { ok: false, version: mapVersion, applied: [], rejected: [], conflicts: [], error: (err as Error).message };
   }
 
   const nodes = model.state.nodes;
   const rootId = model.state.rootId;
-  const hasVersionConflict = baseVersion !== docVersion;
+  const hasVersionConflict = baseVersion !== mapVersion;
   const originalNodeIds = new Set(Object.keys(nodes));
 
   const applied: string[] = [];
@@ -414,19 +414,19 @@ export function mergeScopePush(
   }
 
   if (applied.length === 0) {
-    return { ok: true, version: docVersion, applied, rejected, conflicts };
+    return { ok: true, version: mapVersion, applied, rejected, conflicts };
   }
 
   // Validate full tree
   const validationModel = RapidMvpModel.fromJSON(model.state);
   const errors = validationModel.validate();
   if (errors.length > 0) {
-    return { ok: false, version: docVersion, applied: [], rejected: Object.keys(changedNodes), conflicts: [], error: `Validation failed: ${errors.join(" | ")}` };
+    return { ok: false, version: mapVersion, applied: [], rejected: Object.keys(changedNodes), conflicts: [], error: `Validation failed: ${errors.join(" | ")}` };
   }
 
   // Save + version bump
-  validationModel.saveToSqlite(sqlitePath, docId);
-  const newVersion = ++docVersion;
+  validationModel.saveToSqlite(sqlitePath, mapId);
+  const newVersion = ++mapVersion;
 
   // Audit log for each applied change
   for (const nodeId of applied) {
@@ -445,11 +445,11 @@ export function mergeScopePush(
       userId: entity.entityId,
       operationType: opType,
       targetNodeId: nodeId,
-      details: { docId, version: newVersion, scopeId },
+      details: { mapId, version: newVersion, scopeId },
     });
   }
 
-  broadcastSseEvent("state_update", { docId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
+  broadcastSseEvent("state_update", { mapId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
 
   return { ok: true, version: newVersion, applied, rejected, conflicts };
 }
@@ -463,7 +463,7 @@ export function resetCollab(): void {
   tokenIndex.clear();
   scopeLocks.clear();
   sseClients.length = 0;
-  docVersion = 0;
+  mapVersion = 0;
 }
 
 // ---------------------------------------------------------------------------

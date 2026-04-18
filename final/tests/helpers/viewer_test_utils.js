@@ -2,7 +2,7 @@
 /**
  * Shared test utilities for M3E viewer Playwright tests.
  *
- * Provides helpers to launch the viewer with a fixed JSON document,
+ * Provides helpers to launch the viewer with a fixed JSON map,
  * query DOM state (#meta, #status, node elements), and send keyboard
  * events in a consistent way.
  */
@@ -13,19 +13,19 @@ const path = require("path");
 const FIXTURE_PATH = path.resolve(__dirname, "..", "fixtures", "shortcut_test.json");
 
 /**
- * Load a JSON document into the viewer using the file-input mechanism.
- * If no doc is given, loads the standard shortcut_test.json fixture.
+ * Load a JSON map into the viewer using the file-input mechanism.
+ * If no map is given, loads the standard shortcut_test.json fixture.
  *
  * @param {import("@playwright/test").Page} page
- * @param {object} [doc] - Optional JSON document object. Falls back to fixture file.
+ * @param {object} [map] - Optional JSON map object. Falls back to fixture file.
  * @returns {Promise<void>}
  */
-async function launchViewer(page, doc) {
+async function launchViewer(page, map) {
   const isolatedDocId = `shortcut-test-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `localDocId=${encodeURIComponent(isolatedDocId)}&cloudDocId=${encodeURIComponent(isolatedDocId)}`;
+  const qs = `localMapId=${encodeURIComponent(isolatedDocId)}&cloudMapId=${encodeURIComponent(isolatedDocId)}`;
   await page.goto(`/viewer.html?${qs}`);
 
-  const payload = doc || JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
+  const payload = map || JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
 
   await page.setInputFiles("#file-input", {
     name: "shortcut-test.json",
@@ -34,7 +34,7 @@ async function launchViewer(page, doc) {
   });
 
   await expect(page.locator("#meta")).toContainText("nodes:");
-  // Use Alt+V to fit document (no #fit-all button in current UI).
+  // Use Alt+V to fit map (no #fit-all button in current UI).
   await page.click("#board");
   await page.keyboard.press("Alt+v");
   await page.waitForTimeout(300);

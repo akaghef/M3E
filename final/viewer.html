@@ -11,6 +11,7 @@
     <div class="app">
       <div class="overlay-ui">
         <div class="toolbar">
+          <a id="viewer-home-link" class="viewer-logo" href="./home.html" aria-label="Open home">M3E</a>
           <div class="hamburger-wrap">
             <button id="hamburger-btn" class="hamburger-btn" type="button" aria-label="Menu" aria-expanded="false">&#9776;</button>
             <div id="hamburger-menu" class="hamburger-menu" hidden>
@@ -29,16 +30,37 @@
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
+          <div class="import-wrap" data-edit-only>
+            <button id="import-btn" type="button">Import ▾</button>
+            <div id="import-menu" class="export-menu" hidden>
+              <button id="import-file-btn">File...</button>
+              <button id="import-vault-btn">From Vault (.md)...</button>
+            </div>
+          </div>
           <button id="share-btn" class="share-btn" type="button">Share</button>
           <div class="export-wrap" data-edit-only>
             <button id="export-btn" type="button">Export ▾</button>
             <div id="export-menu" class="export-menu" hidden>
               <button id="download-btn">JSON</button>
               <button id="download-mm-btn">.mm (FreeMind)</button>
+              <button id="export-vault-btn">To Vault (.md)...</button>
+            </div>
+          </div>
+          <div class="integrate-wrap" data-edit-only>
+            <button id="integrate-btn" type="button">Live ▾</button>
+            <div id="integrate-menu" class="export-menu integrate-menu" hidden>
+              <div class="menu-section">
+                <div class="menu-section-title">Obsidian Live Mode</div>
+                <span id="vault-sync-badge" class="cloud-sync-badge">Live: off</span>
+                <button id="set-vault-path-btn">Set Vault Path...</button>
+                <button id="integrate-vault-live-btn">Start Live Mode</button>
+                <button id="integrate-stop-btn">Stop Live Mode</button>
+              </div>
             </div>
           </div>
         </div>
         <div id="readonly-banner" class="readonly-banner" hidden>Read-only view</div>
+        <div id="mode-badge" class="mode-badge" aria-live="polite">EDIT</div>
         <!-- hidden elements kept for JS references -->
         <input id="file-input" type="file" accept=".json,.mm,.md,.markdown,application/json,text/xml,application/xml,text/markdown,text/plain" hidden />
         <button id="load-default" hidden></button>
@@ -118,6 +140,13 @@
           </div>
         </div>
       </div>
+      <div id="markdown-preview-panel" class="markdown-preview-panel" hidden>
+        <div class="markdown-preview-header">
+          <span class="markdown-preview-title">Markdown Preview</span>
+          <button id="markdown-preview-close" class="markdown-preview-close" type="button" aria-label="Close markdown preview">&times;</button>
+        </div>
+        <div id="markdown-preview-body" class="markdown-preview-body"></div>
+      </div>
       <div id="shortcut-cheatsheet" class="shortcut-cheatsheet" hidden>
         <div class="cheatsheet-header">Keyboard Shortcuts</div>
         <div class="cheatsheet-body">
@@ -128,8 +157,9 @@
               <div class="cheatsheet-row"><kbd>Shift+↑↓</kbd><span>Extend selection</span></div>
               <div class="cheatsheet-row"><kbd>J</kbd><span>Deeper (child)</span></div>
               <div class="cheatsheet-row"><kbd>K</kbd><span>Shallower (parent)</span></div>
-              <div class="cheatsheet-row"><kbd>Alt+H</kbd><span>Home screen</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+H</kbd><span>Open Home (map list)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+E</kbd><span>Entity list panel</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+D</kbd><span>Markdown preview (details/note)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+V</kbd><span>Toggle focus / fit</span></div>
               <div class="cheatsheet-row"><kbd>Alt+J</kbd><span>Jump to alias target</span></div>
             </div>
@@ -211,6 +241,7 @@
 
         <script src="./public/katex/katex.min.js"></script>
         <script src="./dist/browser/viewer.tuning.js"></script>
+        <script src="./dist/browser/markdown_renderer.js"></script>
         <script src="./dist/browser/viewer.js"></script>
   </body>
 </html>

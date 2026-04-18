@@ -215,7 +215,7 @@ async function runTopicSuggestSubagent(
 
   const userPrompt = [
     "Topic generation request:",
-    `DocumentId: ${request.documentId}`,
+    `MapId: ${request.mapId}`,
     `ScopeId: ${request.scopeId}`,
     `NodeText: ${nodeText}`,
     `NodeDetails: ${nodeDetails || "(none)"}`,
@@ -267,7 +267,7 @@ export async function runAiSubagent(
   }
 
   const startedAt = Date.now();
-  if (!request.documentId || request.documentId.trim().length === 0) {
+  if (!request.mapId || request.mapId.trim().length === 0) {
     throw new Error("AI_DOCUMENT_ID_REQUIRED");
   }
   if (!request.scopeId || request.scopeId.trim().length === 0) {
@@ -303,7 +303,7 @@ export async function runAiSubagent(
       usage: result.usage,
       meta: {
         scopeId: request.scopeId,
-        documentId: request.documentId,
+        mapId: request.mapId,
         latencyMs: Date.now() - startedAt,
       },
     };
@@ -330,7 +330,7 @@ export async function runAiSubagent(
       usage: result.usage,
       meta: {
         scopeId: request.scopeId,
-        documentId: request.documentId,
+        mapId: request.mapId,
         latencyMs: Date.now() - startedAt,
       },
     };

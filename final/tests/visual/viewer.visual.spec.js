@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 
 async function loadAndStabilize(page, buttonId) {
   const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `localDocId=${encodeURIComponent(isolatedDocId)}&cloudDocId=${encodeURIComponent(isolatedDocId)}`;
+  const qs = `localMapId=${encodeURIComponent(isolatedDocId)}&cloudMapId=${encodeURIComponent(isolatedDocId)}`;
   await page.goto(`/viewer.html?${qs}`);
   await page.click(buttonId);
   await expect(page.locator("#meta")).toContainText("nodes:");
@@ -37,14 +37,14 @@ async function getLinkCount(page) {
   return Number(match[1]);
 }
 
-async function loadJsonDoc(page, doc) {
+async function loadJsonDoc(page, map) {
   const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `localDocId=${encodeURIComponent(isolatedDocId)}&cloudDocId=${encodeURIComponent(isolatedDocId)}`;
+  const qs = `localMapId=${encodeURIComponent(isolatedDocId)}&cloudMapId=${encodeURIComponent(isolatedDocId)}`;
   await page.goto(`/viewer.html?${qs}`);
   await page.setInputFiles("#file-input", {
     name: "reorder-regression.json",
     mimeType: "application/json",
-    buffer: Buffer.from(JSON.stringify(doc), "utf8"),
+    buffer: Buffer.from(JSON.stringify(map), "utf8"),
   });
   await expect(page.locator("#meta")).toContainText("nodes:");
   await page.click("#fit-all");
@@ -258,7 +258,7 @@ test("viewer add graph link by toolbar flow", async ({ page }) => {
 
 // 目的: 保存済み links を含む JSON を読み込んだとき、graph link が描画されることを確認する。
 test("viewer renders persisted graph link", async ({ page }) => {
-  const doc = {
+  const map = {
     version: 1,
     savedAt: "2026-04-08T00:00:00.000Z",
     state: {
@@ -280,7 +280,7 @@ test("viewer renders persisted graph link", async ({ page }) => {
     },
   };
 
-  await loadJsonDoc(page, doc);
+  await loadJsonDoc(page, map);
 
   expect(await getLinkCount(page)).toBe(1);
   await expect(page.locator("path.graph-link[data-link-id='link_1']")).toHaveCount(1);
@@ -304,7 +304,7 @@ test("viewer shift arrow expands selection", async ({ page }) => {
 
 // 目的: 子ノードを兄弟の上側レーンへ移動したとき、親ノード外では reparent せず同一親内 reorder を優先する。
 test("viewer drag reorder above sibling keeps same parent", async ({ page }) => {
-  const doc = {
+  const map = {
     version: 1,
     savedAt: "2026-04-07T00:00:00.000Z",
     state: {
@@ -323,7 +323,7 @@ test("viewer drag reorder above sibling keeps same parent", async ({ page }) => 
     },
   };
 
-  await loadJsonDoc(page, doc);
+  await loadJsonDoc(page, map);
 
   const source = page.locator("text.label-node", { hasText: "C2-2" }).first();
   const target = page.locator("text.label-node", { hasText: "C2-1" }).first();
@@ -353,7 +353,7 @@ test("viewer drag reorder above sibling keeps same parent", async ({ page }) => 
 
 // 目的: LaTeX ノードが正しく描画されること、また部分一致は plain text のままであることを視覚的に確認する。
 test("latex rendering visual baseline", async ({ page }) => {
-  const doc = {
+  const map = {
     version: 1,
     savedAt: new Date().toISOString(),
     state: {
@@ -368,7 +368,7 @@ test("latex rendering visual baseline", async ({ page }) => {
     },
   };
 
-  await loadJsonDoc(page, doc);
+  await loadJsonDoc(page, map);
 
   // n1 and n2 are rendered as LaTeX (foreignObject), n3 and n4 stay as plain text labels.
   await expect(page.locator("foreignObject[data-node-id='n1']")).toBeVisible();

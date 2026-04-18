@@ -966,7 +966,7 @@
       "n_1775548063613_26a4wu": {
         "id": "n_1775548063613_26a4wu",
         "link": "",
-        "note": "全ドキュメントへのリンクツリー。正本はdev-docs/配下。",
+        "note": "全ドキュメントへのリンクツリー。正本はdocs/配下。",
         "text": "design",
         "details": "",
         "children": [
@@ -1355,7 +1355,7 @@
       },
       "n_1775577710078_f13uvw": {
         "id": "n_1775577710078_f13uvw",
-        "link": "dev-docs/00_Home/Home.md",
+        "link": "docs/00_Home/Home.md",
         "note": "",
         "text": "Home",
         "details": "ナビゲーションハブ",
@@ -1367,7 +1367,7 @@
       },
       "n_1775577710079_ycr9wa": {
         "id": "n_1775577710079_ycr9wa",
-        "link": "dev-docs/00_Home/Current_Status.md",
+        "link": "docs/00_Home/Current_Status.md",
         "note": "",
         "text": "Current Status",
         "details": "プロジェクトの現在状態スナップショット",
@@ -1379,7 +1379,7 @@
       },
       "n_1775577710080_g55ho6": {
         "id": "n_1775577710080_g55ho6",
-        "link": "dev-docs/00_Home/Worktree_Separation_Rules.md",
+        "link": "docs/00_Home/Worktree_Separation_Rules.md",
         "note": "",
         "text": "Worktree Separation",
         "details": "Worktree分離運用ルール",
@@ -1405,7 +1405,7 @@
       },
       "n_1775577710082_qegw44": {
         "id": "n_1775577710082_qegw44",
-        "link": "dev-docs/01_Vision/Core_Principles.md",
+        "link": "docs/01_Vision/Core_Principles.md",
         "note": "",
         "text": "Core Principles",
         "details": "構造を保ったまま思考するための環境の原則",
@@ -1432,7 +1432,7 @@
       },
       "n_1775577710084_qocma7": {
         "id": "n_1775577710084_qocma7",
-        "link": "dev-docs/02_Strategy/MVP_Definition.md",
+        "link": "docs/03_Spec/Band_Spec.md",
         "note": "",
         "text": "MVP Definition",
         "details": "Freeplane参考のMVP定義",
@@ -1444,7 +1444,7 @@
       },
       "n_1775577710085_7q23ui": {
         "id": "n_1775577710085_7q23ui",
-        "link": "dev-docs/02_Strategy/Current_Pivot_Freeplane_First.md",
+        "link": "docs/02_Strategy/Current_Pivot_Freeplane_First.md",
         "note": "",
         "text": "Pivot Freeplane First",
         "details": "Freeplane-Informed Custom Engineへのピボット判断",
@@ -1483,7 +1483,7 @@
       },
       "n_1775577710087_wmqxys": {
         "id": "n_1775577710087_wmqxys",
-        "link": "dev-docs/03_Spec/Data_Model.md",
+        "link": "docs/03_Spec/Data_Model.md",
         "note": "",
         "text": "Data Model",
         "details": "実体モデルの不変条件定義",
@@ -1495,7 +1495,7 @@
       },
       "n_1775577710088_fku4v3": {
         "id": "n_1775577710088_fku4v3",
-        "link": "dev-docs/03_Spec/Scope_and_Alias.md",
+        "link": "docs/03_Spec/Scope_and_Alias.md",
         "note": "",
         "text": "Scope & Alias",
         "details": "scope/aliasのBeta実装粒度定義",
@@ -1507,7 +1507,7 @@
       },
       "n_1775577710089_4b9too": {
         "id": "n_1775577710089_4b9too",
-        "link": "dev-docs/03_Spec/Band_Spec.md",
+        "link": "docs/03_Spec/Band_Spec.md",
         "note": "",
         "text": "Band Spec",
         "details": "Flash/Rapid/Deep 3帯域の仕様",
@@ -1519,7 +1519,7 @@
       },
       "n_1775577710090_krpoqc": {
         "id": "n_1775577710090_krpoqc",
-        "link": "dev-docs/03_Spec/Cloud_Sync.md",
+        "link": "docs/03_Spec/Cloud_Sync.md",
         "note": "",
         "text": "Cloud Sync",
         "details": "Betaクラウド同期の最小戦略",
@@ -1531,7 +1531,7 @@
       },
       "n_1775577710091_tiht5g": {
         "id": "n_1775577710091_tiht5g",
-        "link": "dev-docs/03_Spec/REST_API.md",
+        "link": "docs/03_Spec/REST_API.md",
         "note": "",
         "text": "REST API",
         "details": "ローカルREST APIエンドポイント仕様",
@@ -1543,7 +1543,7 @@
       },
       "n_1775577710092_c8agsu": {
         "id": "n_1775577710092_c8agsu",
-        "link": "dev-docs/03_Spec/Import_Export.md",
+        "link": "docs/03_Spec/Import_Export.md",
         "note": "",
         "text": "Import Export",
         "details": "インポート/エクスポート仕様（MVP対応状況含む）",
@@ -1555,7 +1555,7 @@
       },
       "n_1775577710093_8bj0z5": {
         "id": "n_1775577710093_8bj0z5",
-        "link": "dev-docs/03_Spec/Command_Language.md",
+        "link": "docs/03_Spec/Command_Language.md",
         "note": "",
         "text": "Command Language",
         "details": "コマンド言語仕様（Beta以降対象）",
@@ -1567,7 +1567,7 @@
       },
       "n_1775577710094_08gnnk": {
         "id": "n_1775577710094_08gnnk",
-        "link": "dev-docs/03_Spec/Linear_Tree_Conversion.md",
+        "link": "docs/03_Spec/Linear_Tree_Conversion.md",
         "note": "",
         "text": "Linear Tree Conversion",
         "details": "Tree↔Linear相互変換仕様",
@@ -1579,7 +1579,7 @@
       },
       "n_1775577710095_r8s48c": {
         "id": "n_1775577710095_r8s48c",
-        "link": "dev-docs/03_Spec/Model_State_And_Schema_V2.md",
+        "link": "docs/03_Spec/Model_State_And_Schema_V2.md",
         "note": "",
         "text": "Model State V2",
         "details": "Model State分離とSchema v2",
@@ -1591,7 +1591,7 @@
       },
       "n_1775577710096_as6mxh": {
         "id": "n_1775577710096_as6mxh",
-        "link": "dev-docs/03_Spec/Scope_Transition.md",
+        "link": "docs/03_Spec/Scope_Transition.md",
         "note": "",
         "text": "Scope Transition",
         "details": "Scope遷移仕様",
@@ -1603,7 +1603,7 @@
       },
       "n_1775577710097_2esulo": {
         "id": "n_1775577710097_2esulo",
-        "link": "dev-docs/03_Spec/AI_Integration.md",
+        "link": "docs/03_Spec/AI_Integration.md",
         "note": "",
         "text": "AI Integration",
         "details": "AI連携仕様",
@@ -1615,7 +1615,7 @@
       },
       "n_1775577710098_h52qtq": {
         "id": "n_1775577710098_h52qtq",
-        "link": "dev-docs/03_Spec/AI_Common_API.md",
+        "link": "docs/03_Spec/AI_Common_API.md",
         "note": "",
         "text": "AI Common API",
         "details": "AI共通API仕様",
@@ -1627,7 +1627,7 @@
       },
       "n_1775577710099_tlh86p": {
         "id": "n_1775577710099_tlh86p",
-        "link": "dev-docs/03_Spec/AI_Use_Cases.md",
+        "link": "docs/03_Spec/AI_Use_Cases.md",
         "note": "",
         "text": "AI Use Cases",
         "details": "AI利用シナリオ集",
@@ -1639,7 +1639,7 @@
       },
       "n_1775577710100_i7owh5": {
         "id": "n_1775577710100_i7owh5",
-        "link": "dev-docs/03_Spec/Obsidian_Vault_Integration.md",
+        "link": "docs/03_Spec/Obsidian_Vault_Integration.md",
         "note": "",
         "text": "Obsidian Integration",
         "details": "Obsidian Vault連携（Import/Export）",
@@ -1671,7 +1671,7 @@
       },
       "n_1775577710102_pp903r": {
         "id": "n_1775577710102_pp903r",
-        "link": "dev-docs/04_Architecture/AI_Infrastructure.md",
+        "link": "docs/04_Architecture/AI_Infrastructure.md",
         "note": "",
         "text": "AI Infrastructure",
         "details": "AIインフラ設計（4層構造）",
@@ -1683,7 +1683,7 @@
       },
       "n_1775577710103_mizt9n": {
         "id": "n_1775577710103_mizt9n",
-        "link": "dev-docs/04_Architecture/Layout_Algorithm.md",
+        "link": "docs/04_Architecture/Layout_Algorithm.md",
         "note": "",
         "text": "Layout Algorithm",
         "details": "ツリーレイアウトアルゴリズム",
@@ -1695,7 +1695,7 @@
       },
       "n_1775577710104_yj8c8t": {
         "id": "n_1775577710104_yj8c8t",
-        "link": "dev-docs/04_Architecture/MVC_and_Command.md",
+        "link": "docs/04_Architecture/MVC_and_Command.md",
         "note": "",
         "text": "MVC & Command",
         "details": "MVC+Commandパターン設計",
@@ -1707,7 +1707,7 @@
       },
       "n_1775577710105_e0gj0v": {
         "id": "n_1775577710105_e0gj0v",
-        "link": "dev-docs/04_Architecture/Drag_and_Reparent.md",
+        "link": "docs/04_Architecture/Drag_and_Reparent.md",
         "note": "",
         "text": "Drag & Reparent",
         "details": "ドラッグ&リペアレント操作設計",
@@ -1719,7 +1719,7 @@
       },
       "n_1775577710106_70v9k0": {
         "id": "n_1775577710106_70v9k0",
-        "link": "dev-docs/04_Architecture/Editing_Design.md",
+        "link": "docs/04_Architecture/Editing_Design.md",
         "note": "",
         "text": "Editing Design",
         "details": "インプレース編集設計",
@@ -1731,7 +1731,7 @@
       },
       "n_1775577710107_zhotyz": {
         "id": "n_1775577710107_zhotyz",
-        "link": "dev-docs/04_Architecture/Multi_Select.md",
+        "link": "docs/04_Architecture/Multi_Select.md",
         "note": "",
         "text": "Multi Select",
         "details": "複数ノード選択設計",
@@ -1743,7 +1743,7 @@
       },
       "n_1775577710108_44fdiu": {
         "id": "n_1775577710108_44fdiu",
-        "link": "dev-docs/04_Architecture/Visual_Design_Guidelines.md",
+        "link": "docs/04_Architecture/Visual_Design_Guidelines.md",
         "note": "",
         "text": "Visual Design",
         "details": "ビジュアルデザインガイドライン",
@@ -1769,7 +1769,7 @@
       },
       "n_1775577710110_wghq8f": {
         "id": "n_1775577710110_wghq8f",
-        "link": "dev-docs/05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md",
+        "link": "docs/05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md",
         "note": "",
         "text": "Data Model Mapping",
         "details": "Freeplane↔M3Eデータモデル対応表",
@@ -1807,7 +1807,7 @@
       },
       "n_1775577710112_saggf5": {
         "id": "n_1775577710112_saggf5",
-        "link": "dev-docs/06_Operations/Actions_Beta.md",
+        "link": "docs/06_Operations/Actions_Beta.md",
         "note": "",
         "text": "Actions Beta",
         "details": "アクション定義（beta）一覧",
@@ -1819,7 +1819,7 @@
       },
       "n_1775577710113_cwgfy1": {
         "id": "n_1775577710113_cwgfy1",
-        "link": "dev-docs/06_Operations/Agent_Roles.md",
+        "link": "docs/06_Operations/Agent_Roles.md",
         "note": "",
         "text": "Agent Roles",
         "details": "AIエージェント役割提案",
@@ -1831,7 +1831,7 @@
       },
       "n_1775577710114_c09rti": {
         "id": "n_1775577710114_c09rti",
-        "link": "dev-docs/06_Operations/Command_Reference.md",
+        "link": "docs/06_Operations/Command_Reference.md",
         "note": "",
         "text": "Command Reference",
         "details": "コマンド操作リファレンス（MVP）",
@@ -1843,7 +1843,7 @@
       },
       "n_1775577710115_0zxtjh": {
         "id": "n_1775577710115_0zxtjh",
-        "link": "dev-docs/06_Operations/Commit_Message_Rules.md",
+        "link": "docs/06_Operations/Commit_Message_Rules.md",
         "note": "",
         "text": "Commit Message Rules",
         "details": "コミットメッセージ規則",
@@ -1855,7 +1855,7 @@
       },
       "n_1775577710116_q4czja": {
         "id": "n_1775577710116_q4czja",
-        "link": "dev-docs/06_Operations/Documentation_Rules.md",
+        "link": "docs/06_Operations/Documentation_Rules.md",
         "note": "",
         "text": "Documentation Rules",
         "details": "ドキュメント言語ポリシーと更新ルール",
@@ -1867,7 +1867,7 @@
       },
       "n_1775577710117_rwjknx": {
         "id": "n_1775577710117_rwjknx",
-        "link": "dev-docs/06_Operations/Decision_Pool.md",
+        "link": "docs/06_Operations/Decision_Pool.md",
         "note": "",
         "text": "Decision Pool",
         "details": "判断の一時保存場所（正式文書昇格前）",
@@ -1879,7 +1879,7 @@
       },
       "n_1775577710118_3hhi3v": {
         "id": "n_1775577710118_3hhi3v",
-        "link": "dev-docs/06_Operations/Test_and_CICD_Guide.md",
+        "link": "docs/06_Operations/Test_and_CICD_Guide.md",
         "note": "",
         "text": "Test & CI/CD Guide",
         "details": "テスト・CI/CDガイド",
@@ -1891,7 +1891,7 @@
       },
       "n_1775577710119_1tm32n": {
         "id": "n_1775577710119_1tm32n",
-        "link": "dev-docs/06_Operations/Keybindings_Beta.md",
+        "link": "docs/06_Operations/Keybindings_Beta.md",
         "note": "",
         "text": "Keybindings Beta",
         "details": "キーバインドマッピング（beta）",
@@ -1903,7 +1903,7 @@
       },
       "n_1775577710120_uemdsr": {
         "id": "n_1775577710120_uemdsr",
-        "link": "dev-docs/06_Operations/Keyboard_Reference_Beta.md",
+        "link": "docs/06_Operations/Keyboard_Reference_Beta.md",
         "note": "",
         "text": "Keyboard Reference",
         "details": "キーボード操作リファレンス（分割済み）",
@@ -1915,7 +1915,7 @@
       },
       "n_1775577710121_x7q99x": {
         "id": "n_1775577710121_x7q99x",
-        "link": "dev-docs/06_Operations/Todo_Pool.md",
+        "link": "docs/06_Operations/Todo_Pool.md",
         "note": "",
         "text": "Todo Pool",
         "details": "Todoプール",
@@ -1927,7 +1927,7 @@
       },
       "n_1775577710122_1sibje": {
         "id": "n_1775577710122_1sibje",
-        "link": "dev-docs/06_Operations/Todo_Collected_260407.md",
+        "link": "docs/06_Operations/Todo_Collected_260407.md",
         "note": "",
         "text": "Todo Collected 260407",
         "details": "やるべきこと一覧（2026-04-07更新）",
@@ -1939,7 +1939,7 @@
       },
       "n_1775577710123_tip00b": {
         "id": "n_1775577710123_tip00b",
-        "link": "dev-docs/06_Operations/Command_Panel_Security_Test_Cases.md",
+        "link": "docs/06_Operations/Command_Panel_Security_Test_Cases.md",
         "note": "",
         "text": "Security Test Cases",
         "details": "コマンドパネルセキュリティテストケース",
@@ -1951,7 +1951,7 @@
       },
       "n_1775577710124_9de03g": {
         "id": "n_1775577710124_9de03g",
-        "link": "dev-docs/06_Operations/Integration_Handoff_260401_codex2.md",
+        "link": "docs/06_Operations/Integration_Handoff_260401_codex2.md",
         "note": "",
         "text": "Codex2 Handoff",
         "details": "Codex2統合ハンドオフ（2026-04-01）",
@@ -1981,7 +1981,7 @@
       },
       "n_1775577710126_vrovsc": {
         "id": "n_1775577710126_vrovsc",
-        "link": "dev-docs/09_Decisions/ADR_001_Freeplane_First.md",
+        "link": "docs/09_Decisions/ADR_001_Freeplane_First.md",
         "note": "",
         "text": "ADR-001 Freeplane First",
         "details": "Freeplane UIを土台にする判断",
@@ -1993,7 +1993,7 @@
       },
       "n_1775577710127_rlvd3c": {
         "id": "n_1775577710127_rlvd3c",
-        "link": "dev-docs/09_Decisions/ADR_002_React_UI_Basis.md",
+        "link": "docs/09_Decisions/ADR_002_React_UI_Basis.md",
         "note": "",
         "text": "ADR-002 React UI Basis",
         "details": "React UIベースの判断",
@@ -2005,7 +2005,7 @@
       },
       "n_1775577710128_ly3vv9": {
         "id": "n_1775577710128_ly3vv9",
-        "link": "dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md",
+        "link": "docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md",
         "note": "",
         "text": "ADR-003 Custom Engine",
         "details": "Freeplane参考のカスタムエンジン判断",
@@ -2017,7 +2017,7 @@
       },
       "n_1775577710129_p53367": {
         "id": "n_1775577710129_p53367",
-        "link": "dev-docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md",
+        "link": "docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md",
         "note": "",
         "text": "ADR-004 SQLite",
         "details": "Rapid MVPにSQLiteを採用",
@@ -2029,7 +2029,7 @@
       },
       "n_1775577710130_8q0vty": {
         "id": "n_1775577710130_8q0vty",
-        "link": "dev-docs/09_Decisions/ADR_005_DataDir_Config.md",
+        "link": "docs/09_Decisions/ADR_005_DataDir_Config.md",
         "note": "",
         "text": "ADR-005 DataDir Config",
         "details": "環境別データディレクトリ設定",
@@ -2239,7 +2239,7 @@
       },
       "n_1775577710148_578a7d": {
         "id": "n_1775577710148_578a7d",
-        "link": "dev-docs/09_Decisions/ADR_001_Freeplane_First.md",
+        "link": "docs/09_Decisions/ADR_001_Freeplane_First.md",
         "note": "",
         "text": "ADR-001 Freeplane First",
         "details": "",
@@ -2251,7 +2251,7 @@
       },
       "n_1775577710149_k3fm5w": {
         "id": "n_1775577710149_k3fm5w",
-        "link": "dev-docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md",
+        "link": "docs/09_Decisions/ADR_003_Freeplane_Informed_Custom_Engine.md",
         "note": "",
         "text": "ADR-003 Custom Engine",
         "details": "",
@@ -2263,7 +2263,7 @@
       },
       "n_1775577710150_w29uam": {
         "id": "n_1775577710150_w29uam",
-        "link": "dev-docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md",
+        "link": "docs/09_Decisions/ADR_004_SQLite_For_Rapid_MVP.md",
         "note": "",
         "text": "ADR-004 SQLite",
         "details": "",
@@ -2275,7 +2275,7 @@
       },
       "n_1775577710151_xagn4q": {
         "id": "n_1775577710151_xagn4q",
-        "link": "dev-docs/09_Decisions/ADR_005_DataDir_Config.md",
+        "link": "docs/09_Decisions/ADR_005_DataDir_Config.md",
         "note": "",
         "text": "ADR-005 DataDir Config",
         "details": "",

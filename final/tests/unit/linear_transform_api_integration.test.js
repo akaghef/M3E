@@ -114,7 +114,7 @@ test("linear transform convert proxies request to configured subagent", async ()
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "rapid-main",
+      mapId: "rapid-main",
       scopeId: "root",
       mode: "direct-result",
       input: {
@@ -159,7 +159,7 @@ test("linear transform convert returns 503 when provider config is incomplete", 
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "rapid-main",
+      mapId: "rapid-main",
       scopeId: "root",
       input: {
         direction: "linear-to-tree",
@@ -205,7 +205,7 @@ test("ai status and subagent resolve model alias from registry", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "rapid-main",
+      mapId: "rapid-main",
       scopeId: "root",
       mode: "direct-result",
       modelAlias: "chat.fast",
@@ -234,7 +234,7 @@ test("ai subagent returns 404 for unsupported subagent", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "rapid-main",
+      mapId: "rapid-main",
       scopeId: "root",
       input: {},
     }),
@@ -255,7 +255,7 @@ test("topic suggest subagent returns related topics", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "rapid-main",
+      mapId: "rapid-main",
       scopeId: "root",
       input: {
         nodeText: "AI infra setup",
@@ -313,7 +313,7 @@ test("topic suggest subagent parses fenced json response", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      documentId: "rapid-main",
+      mapId: "rapid-main",
       scopeId: "root",
       input: {
         nodeText: "Research Foods",

@@ -1,4 +1,5 @@
 tmp/
+node_modules/
 
 mvp/node_modules/
 mvp/dist/
@@ -31,10 +32,17 @@ final/test-results/
 !.claude/skills/
 !.claude/agents/
 .agents/
-dev-docs/ideas/user_memo.md
+docs/ideas/user_memo.md
 memo.md
 beta/tests/visual/viewer.visual.spec.js-snapshots/
 
 tmp_*.json
 
 artifacts/
+
+# Transient outputs from the m3e-map skill (run at repo root)
+/m3e-map.json
+/m3e-map-update.mjs
+
+# External repo clones referenced by sub-projects
+projects/PJ02_MathOntoBridge/pfr/

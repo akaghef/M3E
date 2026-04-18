@@ -275,10 +275,10 @@ function extractTitle(sourceType: FlashSourceType, content: string): string {
 // ---------------------------------------------------------------------------
 
 export function ingestSingle(request: FlashIngestRequest): FlashDraft {
-  const { docId, sourceType, content, options } = request;
+  const { mapId, sourceType, content, options } = request;
 
-  if (!docId || !content || !content.trim()) {
-    throw new Error("docId and content are required.");
+  if (!mapId || !content || !content.trim()) {
+    throw new Error("mapId and content are required.");
   }
 
   if (sourceType !== "text" && sourceType !== "markdown") {
@@ -302,7 +302,7 @@ export function ingestSingle(request: FlashIngestRequest): FlashDraft {
 
   const draft: FlashDraft = {
     id: draftId,
-    docId,
+    mapId,
     sourceType,
     sourceRef,
     title,
@@ -335,13 +335,13 @@ export function ingestBatch(
 // ---------------------------------------------------------------------------
 
 export function listDrafts(filters?: {
-  docId?: string;
+  mapId?: string;
   status?: FlashDraftStatus;
 }): FlashDraft[] {
   let result = Array.from(drafts.values());
 
-  if (filters?.docId) {
-    result = result.filter((d) => d.docId === filters.docId);
+  if (filters?.mapId) {
+    result = result.filter((d) => d.mapId === filters.mapId);
   }
   if (filters?.status) {
     result = result.filter((d) => d.status === filters.status);

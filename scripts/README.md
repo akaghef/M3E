@@ -6,20 +6,10 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 
 | 環境 | ディレクトリ | 状態 | 用途 |
 |------|-------------|------|------|
-| Alpha | `mvp/` | 開発停止予定 | 参照・検証のみ |
 | Beta | `beta/` | **現行開発** | 継続開発・日常利用 |
 | Final | `final/` | 安定版 | 本番運用・配布 |
 
 ## スクリプト一覧
-
-### Alpha (`scripts/alpha/`)
-
-> Alpha は MVP と同義。新機能追加は停止予定。参照・検証専用。
-
-| スクリプト | 用途 |
-|-----------|------|
-| `launch.bat` | Alpha を起動（ビルド済み前提） |
-| `update-and-launch.bat` | 初回セットアップ・依存更新時のみ使用 |
 
 ### Beta (`scripts/beta/`)
 
@@ -104,7 +94,6 @@ macOS ではターミナルから `./scripts/beta/launch.sh` を実行する。
 
 | 環境 | データファイル |
 |------|-------------|
-| Alpha (mvp) | `mvp/data/rapid-mvp.sqlite` |
 | Beta | `%APPDATA%\M3E\M3E_dataV1.sqlite` |
 | Final | `%APPDATA%\M3E\M3E_dataV1.sqlite` |
 

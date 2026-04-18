@@ -9,13 +9,10 @@ Agents should prioritize small validated changes over broad refactors.
 
 | Environment | Directory | Status | Purpose |
 |-------------|-----------|--------|---------|
-| Alpha | `mvp/` | **Frozen — do not touch** | Completely ignored (no read/write) |
 | Beta | `beta/` | **Active development** | Current dev & daily use |
 | Final | `final/` | Stable release | Production use / distribution |
 
 **Current active development target: `beta/`**
-
-Alpha (`mvp/`) is permanently frozen. Do not read or write any files under `mvp/`. All development happens in `beta/` only.
 
 ### Launch scripts
 
@@ -24,26 +21,25 @@ Alpha (`mvp/`) is permanently frozen. Do not read or write any files under `mvp/
 | `scripts/beta/launch.bat` | Daily use — launch Beta (build required) |
 | `scripts/beta/update-and-launch.bat` | Pull latest → install → build → launch |
 | `scripts/final/migrate-from-beta.bat` | Sync Beta → Final, migrate data, launch |
-| `scripts/alpha/launch.bat` | Launch Alpha (reference only) |
 
 ## Source of Truth
 
-1. Strategy and MVP scope:
-   - `dev-docs/02_Strategy/MVP_Definition.md`
+1. Strategy and current direction:
+   - `docs/00_Home/Home.md`
 2. Current priorities and progress:
-   - `dev-docs/00_Home/Current_Status.md`
+   - `docs/00_Home/Current_Status.md`
 3. Daily execution log:
-   - `dev-docs/daily/YYMMDD.md`
+   - `docs/daily/YYMMDD.md`
 4. Operations rules:
-   - `dev-docs/06_Operations/Documentation_Rules.md`
+   - `docs/06_Operations/Documentation_Rules.md`
 
 ## Definition of Update-Complete
 
 A task is update-complete only when all three are done:
 
 1. Changes are committed.
-2. Daily note is updated (`dev-docs/daily/YYMMDD.md`).
-3. Current status is updated by manager (`dev-docs/00_Home/Current_Status.md`) when status has changed.
+2. Daily note is updated (`docs/daily/YYMMDD.md`).
+3. Current status is updated by manager (`docs/00_Home/Current_Status.md`) when status has changed.
 
 If any item is missing, task state is still in-progress.
 
@@ -71,7 +67,7 @@ If any item is missing, task state is still in-progress.
 ```
 
 各エージェントは `isolation: worktree` で独立したコピーで作業する。
-タスクは共有タスクリスト (`~/.claude/tasks/m3e-dev/`) で管理。
+タスクの正本は M3E マップ `ROOT/SYSTEM/DEV/strategy/` と `docs/06_Operations/Todo_Pool.md` の text pool。
 メンバーは `SendMessage` で互いに通信可能。
 
 ### Team Communication
@@ -85,17 +81,18 @@ If any item is missing, task state is still in-progress.
 
 ### Shared State (Mindmap)
 
-揮発的な情報は M3E マップの `dev M3E/` 配下で共有する:
+揮発的な情報は M3E マップの `ROOT/SYSTEM/DEV/` 配下で共有する（canvas-protocol 準拠）:
 
 ```
-dev M3E/
-├── tasks/          ← タスク状態 (doing/ready/done-today)
-├── strategy/       ← ロール割り当て
-├── design/         ← 設計判断 (ADR) — 判断が必要な場面でメンバーが書く
-└── scratch/        ← 一時メモ
+ROOT/SYSTEM/DEV/
+├── strategy/       ← タスクボード（判断はここ。goal/task を枝で詳細化）
+├── reviews/        ← 判断待ちキュー Qn（akaghef が selected="yes" で確定）
+├── decisions/      ← 確定済み判断（reviews から移送）
+├── Agent Status/   ← 各 sub-agent の現在状態
+└── scratch/        ← 一時メモ・アイデア
 ```
 
-エージェントは REST API (`http://localhost:38482/api/docs/rapid-main`) 経由で読み書きする。
+エージェントは REST API (`http://localhost:4173/api/docs/akaghef-beta`) 経由で読み書きする（beta=4173 が default、final=38482 は確認時のみ）。
 設計判断が必要な場合:
 1. エージェントが `dev M3E/design/` に context + options を書く
 2. `SendMessage` で manager に通知
@@ -156,11 +153,11 @@ If checks fail or rebase is not possible, stop and escalate to `akaghef`.
 3. Implement with minimal changes.
 4. Run a local verification step.
 5. Update docs using split ownership:
-   - UpdateLog goes to `dev-docs/daily/YYMMDD.md`.
+   - UpdateLog goes to `docs/daily/YYMMDD.md`.
    - `Current_Status.md` keeps current snapshot only.
    - Subordinates treat `Current_Status.md` as read-only.
    - Manager updates `Current_Status.md` by referencing subordinate daily logs.
-   - Rough TODOs go to `dev-docs/06_Operations/Todo_Pool.md`.
+   - Rough TODOs go to `docs/06_Operations/Todo_Pool.md`.
 6. Commit with an imperative message.
 
 ## Branch Operation Policy
@@ -203,11 +200,6 @@ If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
 
 ## Development Phase Constraints
 
-### Alpha (mvp/) — Frozen / Do Not Touch
-1. **Do not read or write any files under `mvp/`.** Completely ignore this directory.
-2. No new features, no bug fixes, no reference reads.
-3. Agents must never open, diff, or analyze `mvp/` files for any purpose.
-
 ### Beta (beta/) — Active
 1. Infrastructure and test environment are top priority.
 2. AI proposal features are deferred.
@@ -222,7 +214,7 @@ If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
 ## Language Policy
 
 1. Agent-user conversation should be in English by default.
-2. Design and development documents under `dev-docs/` should be written in Japanese by default.
+2. Design and development documents under `docs/` should be written in Japanese by default.
 3. Code identifiers, file names, API names, and technical tokens may remain in English where appropriate.
 4. If a document is a design/spec/architecture/ADR document, prefer Japanese prose even when the surrounding conversation is in English.
 
@@ -230,7 +222,7 @@ If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
 
 1. **P5 — Infrastructure & CI**: test environment, CI pipeline, deployment scripts.
 2. **P4 — Demo quality**: visual polish, fit-to-content, focus-selected.
-3. **P3 — MVP completeness**: metadata rendering, startup packaging.
+3. **P3 — Rapid baseline completeness**: metadata rendering, startup packaging.
 4. **P2 — Dev infrastructure**: Stage A CI, hit-test coverage.
 5. **P1 — Deferred**: reparent feedback UI, delete confirmation dialog.
 
