@@ -54,6 +54,12 @@ const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
 const cloudPushBtn = document.getElementById("cloud-push") as HTMLButtonElement;
 const cloudUseLocalBtn = document.getElementById("cloud-use-local") as HTMLButtonElement;
 const cloudUseCloudBtn = document.getElementById("cloud-use-cloud") as HTMLButtonElement;
+const collabSyncBadgeEl = document.getElementById("collab-sync-badge") as HTMLElement | null;
+const collabDisplayNameInputEl = document.getElementById("collab-display-name") as HTMLInputElement | null;
+const collabJoinTokenInputEl = document.getElementById("collab-join-token") as HTMLInputElement | null;
+const collabMetaEl = document.getElementById("collab-meta") as HTMLElement | null;
+const collabJoinBtn = document.getElementById("collab-join-btn") as HTMLButtonElement | null;
+const collabLeaveBtn = document.getElementById("collab-leave-btn") as HTMLButtonElement | null;
 const entityListPanelEl = document.getElementById("entity-list-panel") as HTMLElement | null;
 const entityListTreeEl = document.getElementById("entity-list-tree") as HTMLElement | null;
 const entityListSearchEl = document.getElementById("entity-list-search") as HTMLInputElement | null;
@@ -145,6 +151,7 @@ const LOCAL_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["map", "localM
 const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
 const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
 const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
+const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 const TAB_ID = crypto.randomUUID();
@@ -274,11 +281,27 @@ interface ClientScopeLock {
   entityId: string;
   displayName: string;
   priority: number;
+  lockId?: string;
+}
+interface CollabConfigResponse {
+  ok: true;
+  enabled: boolean;
+  requiresJoinToken: boolean;
+  workspaceId: string;
+  workspaceLabel: string;
+  mapId: string;
+  mapLabel: string;
+}
+interface CollabPrefs {
+  displayName: string;
+  joinToken: string;
 }
 let scopeLockMap: Map<string, ClientScopeLock> = new Map(); // scopeId -> lock
 let collabEntityId: string | null = null;
 let collabToken: string | null = null;
 let collabEventSource: EventSource | null = null;
+let collabConfig: CollabConfigResponse | null = null;
+let collabHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let activeContextMenu: HTMLElement | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
@@ -4522,26 +4545,198 @@ function applyChangeHighlights(): void {
   });
 }
 
+function loadCollabPrefs(): CollabPrefs {
+  try {
+    const raw = window.localStorage.getItem(COLLAB_PREFS_KEY);
+    if (!raw) return { displayName: "", joinToken: "" };
+    const parsed = JSON.parse(raw) as Partial<CollabPrefs>;
+    return {
+      displayName: typeof parsed.displayName === "string" ? parsed.displayName : "",
+      joinToken: typeof parsed.joinToken === "string" ? parsed.joinToken : "",
+    };
+  } catch {
+    return { displayName: "", joinToken: "" };
+  }
+}
+
+function saveCollabPrefs(prefs: CollabPrefs): void {
+  window.localStorage.setItem(COLLAB_PREFS_KEY, JSON.stringify(prefs));
+}
+
+function syncCollabUi(): void {
+  const prefs = loadCollabPrefs();
+  if (collabDisplayNameInputEl && !collabDisplayNameInputEl.value && prefs.displayName) {
+    collabDisplayNameInputEl.value = prefs.displayName;
+  }
+  if (collabJoinTokenInputEl) {
+    if (!collabJoinTokenInputEl.value && prefs.joinToken) {
+      collabJoinTokenInputEl.value = prefs.joinToken;
+    }
+    collabJoinTokenInputEl.hidden = !(collabConfig?.requiresJoinToken ?? false);
+  }
+  if (collabMetaEl) {
+    collabMetaEl.textContent = collabConfig
+      ? `Workspace: ${collabConfig.workspaceId} | Map: ${collabConfig.mapLabel}`
+      : "Workspace: n/a";
+  }
+  if (collabSyncBadgeEl) {
+    collabSyncBadgeEl.classList.remove("on", "conflict");
+    if (!collabConfig?.enabled) {
+      collabSyncBadgeEl.textContent = "Collab: off";
+    } else if (collabEntityId && collabToken) {
+      collabSyncBadgeEl.textContent = "Collab: joined";
+      collabSyncBadgeEl.classList.add("on");
+    } else if (collabConfig.requiresJoinToken) {
+      collabSyncBadgeEl.textContent = "Collab: join required";
+      collabSyncBadgeEl.classList.add("conflict");
+    } else {
+      collabSyncBadgeEl.textContent = "Collab: ready";
+    }
+  }
+  if (collabJoinBtn) {
+    collabJoinBtn.disabled = !collabConfig?.enabled;
+  }
+  if (collabLeaveBtn) {
+    collabLeaveBtn.disabled = !collabEntityId;
+  }
+}
+
+async function fetchCollabConfig(): Promise<void> {
+  try {
+    const res = await fetch("/api/collab/config", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json() as CollabConfigResponse;
+      if (data.ok) {
+        collabConfig = data;
+      }
+    } else {
+      collabConfig = null;
+    }
+  } catch {
+    collabConfig = null;
+  }
+  syncCollabUi();
+}
+
+function stopCollabHeartbeat(): void {
+  if (collabHeartbeatTimer) {
+    clearInterval(collabHeartbeatTimer);
+    collabHeartbeatTimer = null;
+  }
+}
+
+function startCollabHeartbeat(): void {
+  stopCollabHeartbeat();
+  if (!collabToken) {
+    return;
+  }
+  collabHeartbeatTimer = setInterval(() => {
+    if (!collabToken) return;
+    const ownLockIds = Array.from(scopeLockMap.values())
+      .filter((lock) => lock.entityId === collabEntityId)
+      .map((lock) => lock.lockId)
+      .filter((lockId): lockId is string => Boolean(lockId));
+    void fetch("/api/collab/heartbeat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${collabToken}`,
+      },
+      body: JSON.stringify({ lockIds: ownLockIds, mapId: LOCAL_MAP_ID }),
+    }).catch(() => undefined);
+  }, 10_000);
+}
+
+async function unregisterCollabEntity(showStatus = false): Promise<void> {
+  stopCollabHeartbeat();
+  stopCollabEventSource();
+  if (collabToken) {
+    try {
+      await fetch("/api/collab/unregister", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${collabToken}` },
+      });
+    } catch {
+      // ignore unregister errors on reconnect/shutdown
+    }
+  }
+  collabEntityId = null;
+  collabToken = null;
+  scopeLockMap.clear();
+  syncCollabUi();
+  if (showStatus) {
+    setStatus("Left team collaboration.");
+  }
+}
+
+async function registerCollabEntity(displayName: string, joinToken: string): Promise<boolean> {
+  if (!collabConfig?.enabled) {
+    setStatus("Collaboration is not enabled on this server.", true);
+    return false;
+  }
+  const trimmedName = displayName.trim();
+  const trimmedJoinToken = joinToken.trim();
+  if (!trimmedName) {
+    setStatus("Display name is required.", true);
+    return false;
+  }
+  if (collabConfig.requiresJoinToken && !trimmedJoinToken) {
+    setStatus("Join token is required.", true);
+    return false;
+  }
+  await unregisterCollabEntity(false);
+  try {
+    const res = await fetch("/api/collab/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        displayName: trimmedName,
+        role: "human",
+        capabilities: ["read", "write"],
+        joinToken: trimmedJoinToken || undefined,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok || !data.entityId || !data.token) {
+      setStatus(`Collab join failed: ${data?.error || `HTTP ${res.status}`}`, true);
+      syncCollabUi();
+      return false;
+    }
+    collabEntityId = data.entityId;
+    collabToken = data.token;
+    saveCollabPrefs({ displayName: trimmedName, joinToken: trimmedJoinToken });
+    startCollabEventSource();
+    startCollabHeartbeat();
+    syncCollabUi();
+    setStatus(`Joined team collaboration as ${trimmedName}.`);
+    return true;
+  } catch (err) {
+    setStatus(`Collab join failed: ${(err as Error).message}`, true);
+    syncCollabUi();
+    return false;
+  }
+}
+
 // ---- Scope Lock Management ----
 
 function startCollabEventSource(): void {
   if (collabEventSource || !collabToken || !collabEntityId) {
     return;
   }
-  const url = `/api/collab/events/${encodeURIComponent(collabEntityId)}`;
-  const headers = new Headers({ Authorization: `Bearer ${collabToken}` });
-  // EventSource does not support custom headers; use fetch-based SSE instead
-  // For now, try the standard endpoint (auth may be checked via query or cookie)
+  const params = new URLSearchParams({ token: collabToken });
+  const url = `/api/collab/events/${encodeURIComponent(collabEntityId)}?${params.toString()}`;
   collabEventSource = new EventSource(url);
 
   collabEventSource.addEventListener("lock_acquired", (event: Event) => {
     try {
       const data = JSON.parse((event as MessageEvent).data);
+      const existing = scopeLockMap.get(data.scopeId);
       scopeLockMap.set(data.scopeId, {
         scopeId: data.scopeId,
         entityId: data.entityId,
         displayName: data.displayName || data.entityId,
         priority: data.priority || 0,
+        lockId: existing && existing.entityId === data.entityId ? existing.lockId : undefined,
       });
       render();
       if (entityListVisible) {
@@ -4615,6 +4810,7 @@ async function acquireScopeLockFromUi(scopeId: string): Promise<void> {
         entityId: collabEntityId!,
         displayName: "You",
         priority: 0,
+        lockId: data.lockId,
       });
       render();
       if (entityListVisible) {
@@ -4655,22 +4851,28 @@ async function releaseScopeLockFromUi(scopeId: string): Promise<void> {
 
 // Try to register as collab entity on startup (only when M3E_COLLAB is active)
 function tryCollabRegister(): void {
-  fetch("/api/collab/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ displayName: "Viewer", role: "human", capabilities: ["read", "write"] }),
-  })
-    .then((r) => r.json())
-    .then((data) => {
-      if (data.ok && data.entityId && data.token) {
-        collabEntityId = data.entityId;
-        collabToken = data.token;
-        startCollabEventSource();
-      }
-    })
-    .catch(() => {
-      // Collab not available, ignore
-    });
+  const prefs = loadCollabPrefs();
+  const displayName = prefs.displayName || "Viewer";
+  const joinToken = prefs.joinToken || "";
+  if (collabConfig?.requiresJoinToken && !joinToken) {
+    syncCollabUi();
+    return;
+  }
+  void registerCollabEntity(displayName, joinToken);
+}
+
+if (collabJoinBtn) {
+  collabJoinBtn.addEventListener("click", () => {
+    const displayName = collabDisplayNameInputEl?.value || "";
+    const joinToken = collabJoinTokenInputEl?.value || "";
+    void registerCollabEntity(displayName, joinToken);
+  });
+}
+
+if (collabLeaveBtn) {
+  collabLeaveBtn.addEventListener("click", () => {
+    void unregisterCollabEntity(true);
+  });
 }
 
 // ---- Broken Alias Detection ----
@@ -7972,7 +8174,9 @@ void initializeDocument().then(() => {
       });
     }
   });
-  tryCollabRegister();
+  void fetchCollabConfig().then(() => {
+    tryCollabRegister();
+  });
   const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
   if (initialScopeId && map && map.state.nodes[initialScopeId] && initialScopeId !== map.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level
@@ -7994,4 +8198,10 @@ void initializeDocument().then(() => {
 
   // Skip home screen — go straight to map root
   // To open home screen, user can press the toggle shortcut
+});
+
+window.addEventListener("beforeunload", () => {
+  if (collabToken) {
+    void unregisterCollabEntity(false);
+  }
 });

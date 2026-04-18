@@ -73,6 +73,16 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
     expect(res.json.priority).toBe(100);
   });
 
+  it("config returns workspace and join-token requirements", async () => {
+    const res = await request("GET", "/api/collab/config");
+    expect(res.status).toBe(200);
+    expect(res.json.ok).toBe(true);
+    expect(typeof res.json.enabled).toBe("boolean");
+    expect(typeof res.json.requiresJoinToken).toBe("boolean");
+    expect(typeof res.json.workspaceId).toBe("string");
+    expect(typeof res.json.mapId).toBe("string");
+  });
+
   it("register rejects invalid role", async () => {
     const res = await request("POST", "/api/collab/register", {
       displayName: "bad",
@@ -208,6 +218,32 @@ describe("Collab API", { skip: !COLLAB_ENABLED }, () => {
         (res) => {
           expect(res.headers["content-type"]).toBe("text/event-stream");
           res.destroy(); // Close immediately, don't wait for stream
+          resolve();
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  });
+
+  it("SSE endpoint accepts token via query string for EventSource clients", async () => {
+    const reg = await request("POST", "/api/collab/register", {
+      displayName: "sse-query-test",
+      role: "human",
+    });
+
+    await new Promise((resolve, reject) => {
+      const url = new URL(`/api/collab/events/test-map?token=${encodeURIComponent(reg.json.token)}`, baseUrl);
+      const req = http.request(
+        {
+          method: "GET",
+          hostname: url.hostname,
+          port: url.port,
+          path: `${url.pathname}${url.search}`,
+        },
+        (res) => {
+          expect(res.headers["content-type"]).toBe("text/event-stream");
+          res.destroy();
           resolve();
         },
       );
