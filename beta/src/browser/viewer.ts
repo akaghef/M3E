@@ -5992,11 +5992,52 @@ function advanceToNextVisibleNode(): void {
   if (next) setSingleSelection(next);
 }
 
+function ensureNodeAttributes(node: TreeNode): Record<string, string> {
+  node.attributes = node.attributes || {};
+  return node.attributes as Record<string, string>;
+}
+
+function resolveReviewQuestionNode(node: TreeNode): TreeNode {
+  if (!map) return node;
+  if (node.attributes?.["runtime:kind"] === "review-question") {
+    return node;
+  }
+  if (node.parentId) {
+    const parent = map.state.nodes[node.parentId];
+    if (parent?.attributes?.["runtime:kind"] === "review-question") {
+      return parent;
+    }
+  }
+  return node;
+}
+
 function reviewAccept(): void {
   if (!map) return;
   const sel = viewState.selectedNodeId;
   const node = map.state.nodes[sel];
-  if (!node) { setStatus("No node selected.", true); return; }
+  if (!node || !node.parentId) { setStatus("Select an option node to accept.", true); return; }
+  const parent = map.state.nodes[node.parentId];
+  if (!parent) { setStatus("Parent question not found.", true); return; }
+
+  const optionAttrs = ensureNodeAttributes(node);
+  optionAttrs["selected"] = "yes";
+
+  for (const childId of parent.children) {
+    if (childId === node.id) continue;
+    const sibling = map.state.nodes[childId];
+    if (!sibling) continue;
+    const siblingAttrs = ensureNodeAttributes(sibling);
+    delete siblingAttrs["selected"];
+  }
+
+  const parentAttrs = ensureNodeAttributes(parent);
+  parentAttrs["status"] = "decided";
+  parentAttrs["decided"] = nowIso();
+
+  updateStyleJson(parent.id, (s) => {
+    s.fill = "#d4edda";
+    s.border = "#2d8c4e";
+  });
   updateStyleJson(sel, (s) => { s.border = "#2d8c4e"; });
   touchDocument();
   setStatus(`Accepted: ${node.text.substring(0, 40)}`);
@@ -6008,9 +6049,25 @@ function reviewReject(): void {
   const sel = viewState.selectedNodeId;
   const node = map.state.nodes[sel];
   if (!node) { setStatus("No node selected.", true); return; }
-  updateStyleJson(sel, (s) => { s.border = "#d94040"; });
+
+  const qNode = resolveReviewQuestionNode(node);
+  const qAttrs = ensureNodeAttributes(qNode);
+  qAttrs["status"] = "rejected";
+  qAttrs["decided"] = nowIso();
+
+  for (const childId of qNode.children) {
+    const child = map.state.nodes[childId];
+    if (!child) continue;
+    const childAttrs = ensureNodeAttributes(child);
+    delete childAttrs["selected"];
+  }
+
+  updateStyleJson(qNode.id, (s) => {
+    s.fill = "#f8d7da";
+    s.border = "#d94040";
+  });
   touchDocument();
-  setStatus(`Rejected: ${node.text.substring(0, 40)}`);
+  setStatus(`Rejected: ${qNode.text.substring(0, 40)}`);
   advanceToNextVisibleNode();
 }
 
