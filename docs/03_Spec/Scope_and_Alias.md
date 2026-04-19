@@ -221,6 +221,6 @@ alias は参照ノード（reference）である（分類の定義は Data_Model
 
 ## 関連文書
 
-- 原則: [../01_Vision/Core_Principles.md](../01_Vision/Core_Principles.md)
+- 原則: [../01_Vision/Principle.md](../01_Vision/Principle.md)
 - 実体モデル: [./Data_Model.md](./Data_Model.md)
 - Freeplane 境界: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)

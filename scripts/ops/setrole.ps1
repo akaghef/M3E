@@ -36,6 +36,12 @@ $roleMap = @{
 
 $target = $roleMap[$Role]
 
+$contextFiles = @(
+    'docs/00_Home/Agent_Brief.md',
+    'docs/00_Home/Current_Status.md',
+    'docs/00_Home/Glossary.md'
+)
+
 if (-not (Test-Path $target.worktree)) {
     throw "Expected worktree not found: $($target.worktree)"
 }
@@ -59,7 +65,22 @@ if ($target.needsSync) {
     $syncResult = 'pass'
 }
 
+$missingContext = $contextFiles | Where-Object { -not (Test-Path $_) }
+if ($missingContext.Count -gt 0) {
+    throw "Missing mandatory context files: $($missingContext -join ', ')"
+}
+
 Write-Host "role=$Role"
 Write-Host "worktree=$($target.worktree)"
 Write-Host "branch=$currentBranch"
 Write-Host "sync=$syncResult"
+Write-Host 'context=required'
+Write-Host 'read_next='
+foreach ($path in $contextFiles) {
+    Write-Host "  - $path"
+}
+Write-Host 'context_check='
+Write-Host '  1. vision relevant to the task'
+Write-Host '  2. current active focus/status touched by the task'
+Write-Host '  3. relevant glossary terms'
+Write-Host '  4. why the task fits current priorities'

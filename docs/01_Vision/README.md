@@ -1,19 +1,25 @@
 # 01_Vision/
 
-**役割**: M3E の中核原則・思想。**普段は読まない**。設計判断が割れた時に参照する。
+**役割**: M3E の `Planning Hierarchy` 上位層を置く場所。原則・未達ギャップ・攻略方針を階層ごとに分けて管理する。
 
 ## 読むタイミング
 
-- 仕様の方向性で迷った時（例: scope の概念を壊す実装案が出た）
+- 上位判断の意味を確認したい時
+- 仕様の方向性で迷った時
 - 新機能が M3E の思想と整合するか確認したい時
 - 新人（新 agent）のオンボーディング
 
 ## 収録物
 
-- `Core_Principles.md` — 中核原則（帯域・scope・alias・親子主構造・AI は提案のみ・消失バグゼロ・関係の二層）
-- `Axes.md` — M3E の二軸（帯域 Flash/Rapid/Deep × 関係 Syntax/Semantic）
+- `Principle.md` — Principle 層の入口
+- `Vision.md` — Vision 層の入口
+- `Strategy.md` — Strategy 層の入口
+- `Weekly_Advance.md` — 週ごとの進み方
+- `Core_Principles.md` — 旧ファイル名からの互換案内
+- `Axes.md` — M3E の帯域軸
 
 ## 置かないもの
 
 - 機能仕様 → `03_Spec/`
 - 実装手法 → `04_Architecture/`
+- 日次状態 → `00_Home/Current_Status.md`

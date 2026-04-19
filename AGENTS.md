@@ -33,6 +33,25 @@ Agents should prioritize small validated changes over broad refactors.
 4. Operations rules:
    - `docs/06_Operations/Documentation_Rules.md`
 
+## Mandatory Session Context
+
+Before any analysis, planning, or implementation, the agent must load the current project context from:
+
+1. `docs/00_Home/Agent_Brief.md`
+2. `docs/00_Home/Current_Status.md`
+3. `docs/00_Home/Glossary.md`
+
+`Home.md` remains the long-form source of truth. `Agent_Brief.md` is the mandatory short-form bootstrap summary for session start and re-orientation.
+
+The agent must not begin work until it can state, in its own words:
+
+1. the current product vision relevant to the task,
+2. the current active development focus,
+3. the glossary terms that matter for the task,
+4. how the requested work fits current status and priorities.
+
+If this context check is missing, the task is considered not started.
+
 ## Definition of Update-Complete
 
 A task is update-complete only when all three are done:
@@ -143,6 +162,8 @@ Required checks performed by bootstrap:
 2. Worktree/directory alignment.
 3. Branch alignment.
 4. For subordinates: `fetch + rebase origin/dev-beta` before new implementation work.
+5. Mandatory session context paths are shown and must be read before implementation.
+6. Agent must emit a short context check before proceeding.
 
 If checks fail or rebase is not possible, stop and escalate to `akaghef`.
 

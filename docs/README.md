@@ -16,7 +16,7 @@
 
 1. [00_Home/Home.md](./00_Home/Home.md)
 2. [00_Home/Current_Status.md](./00_Home/Current_Status.md)
-3. [01_Vision/Core_Principles.md](./01_Vision/Core_Principles.md)
+3. [01_Vision/Principle.md](./01_Vision/Principle.md)
 4. [02_Strategy/Current_Pivot_Freeplane_First.md](./02_Strategy/Current_Pivot_Freeplane_First.md)
 5. [03_Spec/Data_Model.md](./03_Spec/Data_Model.md)
 6. [03_Spec/Scope_and_Alias.md](./03_Spec/Scope_and_Alias.md)
