@@ -31,11 +31,23 @@ if exist "%CONFIG_FILE%" (
     if "%%A"=="M3E_MAIN_DOC_ID"   if "!M3E_MAIN_DOC_ID!"==""   set "M3E_MAIN_DOC_ID=%%B"
     if "%%A"=="M3E_MAIN_WORKSPACE_ID" if "!M3E_MAIN_WORKSPACE_ID!"=="" set "M3E_MAIN_WORKSPACE_ID=%%B"
     if "%%A"=="M3E_PORT"          if "!M3E_PORT!"==""          set "M3E_PORT=%%B"
+    if "%%A"=="M3E_LAUNCH_MODE"   if "!M3E_LAUNCH_MODE!"==""   set "M3E_LAUNCH_MODE=%%B"
+    if "%%A"=="M3E_REMOTE_BASE_URL" if "!M3E_REMOTE_BASE_URL!"=="" set "M3E_REMOTE_BASE_URL=%%B"
+    if "%%A"=="M3E_REMOTE_WORKSPACE_ID" if "!M3E_REMOTE_WORKSPACE_ID!"=="" set "M3E_REMOTE_WORKSPACE_ID=%%B"
+    if "%%A"=="M3E_REMOTE_MAP_ID" if "!M3E_REMOTE_MAP_ID!"=="" set "M3E_REMOTE_MAP_ID=%%B"
+    if "%%A"=="M3E_CLOUD_SYNC"    if "!M3E_CLOUD_SYNC!"==""    set "M3E_CLOUD_SYNC=%%B"
+    if "%%A"=="M3E_CLOUD_TRANSPORT" if "!M3E_CLOUD_TRANSPORT!"=="" set "M3E_CLOUD_TRANSPORT=%%B"
+    if "%%A"=="M3E_CLOUD_DIR"     if "!M3E_CLOUD_DIR!"==""     set "M3E_CLOUD_DIR=%%B"
+    if "%%A"=="M3E_SUPABASE_URL"  if "!M3E_SUPABASE_URL!"==""  set "M3E_SUPABASE_URL=%%B"
+    if "%%A"=="M3E_SUPABASE_ANON_KEY" if "!M3E_SUPABASE_ANON_KEY!"=="" set "M3E_SUPABASE_ANON_KEY=%%B"
+    if "%%A"=="M3E_AUTO_SYNC"     if "!M3E_AUTO_SYNC!"==""     set "M3E_AUTO_SYNC=%%B"
+    if "%%A"=="M3E_AUTO_SYNC_INTERVAL_MS" if "!M3E_AUTO_SYNC_INTERVAL_MS!"=="" set "M3E_AUTO_SYNC_INTERVAL_MS=%%B"
   )
 )
 
 REM Final fallback defaults.
 if "!M3E_HOME!"==""             set "M3E_HOME=%LOCALAPPDATA%\M3E"
+if "!M3E_LAUNCH_MODE!"==""      set "M3E_LAUNCH_MODE=personal"
 if "!M3E_SEED_DB_PATH!"==""     set "M3E_SEED_DB_PATH=!M3E_HOME!\seeds\core-seed.sqlite"
 if "!M3E_WORKSPACE_ID!"==""     set "M3E_WORKSPACE_ID=ws_A98E70JM9GAXCVXVMQBW7N0YGZ"
 if "!M3E_WORKSPACE_LABEL!"==""  set "M3E_WORKSPACE_LABEL=Personal"
@@ -49,8 +61,19 @@ if "!M3E_MAIN_DATA_DIR!"==""    set "M3E_MAIN_DATA_DIR=!M3E_DATA_DIR!"
 if "!M3E_MAIN_DB_FILE!"==""     set "M3E_MAIN_DB_FILE=!M3E_DB_FILE!"
 if "!M3E_MAIN_DOC_ID!"==""      set "M3E_MAIN_DOC_ID=!M3E_MAP_ID!"
 if "!M3E_MAIN_WORKSPACE_ID!"=="" set "M3E_MAIN_WORKSPACE_ID=!M3E_WORKSPACE_ID!"
+if "!M3E_REMOTE_BASE_URL!"==""  set "M3E_REMOTE_BASE_URL=http://127.0.0.1:4173"
+if "!M3E_REMOTE_WORKSPACE_ID!"=="" set "M3E_REMOTE_WORKSPACE_ID=!M3E_WORKSPACE_ID!"
+if "!M3E_REMOTE_MAP_ID!"==""    set "M3E_REMOTE_MAP_ID="
+if "!M3E_CLOUD_SYNC!"==""       set "M3E_CLOUD_SYNC=0"
+if "!M3E_CLOUD_TRANSPORT!"==""  set "M3E_CLOUD_TRANSPORT=file"
+if "!M3E_CLOUD_DIR!"==""        set "M3E_CLOUD_DIR=!M3E_DATA_DIR!\cloud-sync"
+if "!M3E_AUTO_SYNC!"==""        set "M3E_AUTO_SYNC=0"
+if "!M3E_AUTO_SYNC_INTERVAL_MS!"=="" set "M3E_AUTO_SYNC_INTERVAL_MS=30000"
 set "M3E_DOC_ID=!M3E_MAP_ID!"
 set "LOG_FILE=!M3E_HOME!\launch.log"
+
+if /i "!M3E_LAUNCH_MODE!"=="remote" goto :launch_remote
+
 if not exist "!M3E_HOME!" mkdir "!M3E_HOME!"
 if not exist "!M3E_DATA_DIR!" mkdir "!M3E_DATA_DIR!"
 for %%D in ("!M3E_SEED_DB_PATH!") do if not exist "%%~dpD" mkdir "%%~dpD" >nul 2>&1
@@ -133,6 +156,15 @@ if !EXIT_CODE! neq 0 (
   exit /b 1
 )
 
+exit /b 0
+
+:launch_remote
+set "BASE=!M3E_REMOTE_BASE_URL!"
+if "!BASE:~-1!"=="/" set "BASE=!BASE:~0,-1!"
+set "REMOTE_URL=!BASE!/home.html?ws=!M3E_REMOTE_WORKSPACE_ID!"
+echo [launch] mode=remote
+echo [launch] opening !REMOTE_URL!
+start "" "!REMOTE_URL!"
 exit /b 0
 
 :repair_dependencies

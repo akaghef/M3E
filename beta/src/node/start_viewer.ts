@@ -108,6 +108,7 @@ const WORKSPACE_LABEL = process.env.M3E_WORKSPACE_LABEL || DEFAULT_WORKSPACE_LAB
 const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || DEFAULT_MAP_ID;
 const ACTIVE_MAP_LABEL = process.env.M3E_MAP_LABEL || DEFAULT_MAP_LABEL;
 const ACTIVE_MAP_SLUG = process.env.M3E_MAP_SLUG || DEFAULT_MAP_SLUG;
+const COLLAB_JOIN_TOKEN = (process.env.M3E_COLLAB_JOIN_TOKEN || "").trim();
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
 console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
@@ -2203,6 +2204,7 @@ function parseCollabRoute(
   const rest = pathname.slice("/api/collab/".length);
 
   if (rest === "register") return { action: "register" };
+  if (rest === "config") return { action: "config" };
   if (rest === "heartbeat") return { action: "heartbeat" };
   if (rest === "unregister") return { action: "unregister" };
 
@@ -2231,16 +2233,37 @@ async function handleCollabApi(
     return;
   }
 
+  if (route.action === "config" && req.method === "GET") {
+    sendJson(res, 200, {
+      ok: true,
+      enabled: true,
+      requiresJoinToken: Boolean(COLLAB_JOIN_TOKEN),
+      workspaceId: WORKSPACE_ID,
+      workspaceLabel: WORKSPACE_LABEL,
+      mapId: ACTIVE_MAP_ID,
+      mapLabel: ACTIVE_MAP_LABEL,
+    });
+    return;
+  }
+
   if (route.action === "register" && req.method === "POST") {
     const rawBody = await readRequestBody(req);
     const body = JSON.parse(rawBody) as {
       displayName?: string;
       role?: CollabRole;
       capabilities?: ("read" | "write")[];
+      joinToken?: string;
     };
     if (!body.displayName || !body.role) {
       sendJson(res, 400, { ok: false, error: "displayName and role are required." });
       return;
+    }
+    if (COLLAB_JOIN_TOKEN) {
+      const submitted = (body.joinToken || "").trim();
+      if (submitted !== COLLAB_JOIN_TOKEN) {
+        sendJson(res, 403, { ok: false, error: "Invalid join token." });
+        return;
+      }
     }
     const validRoles: CollabRole[] = ["owner", "human", "ai-supervised", "ai", "ai-readonly"];
     if (!validRoles.includes(body.role)) {

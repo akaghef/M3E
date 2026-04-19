@@ -121,8 +121,22 @@ export function unregisterEntity(entityId: string): boolean {
 
 export function authenticateRequest(req: http.IncomingMessage): CollabEntity | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-  const token = authHeader.slice(7);
+  let token: string | null = null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else {
+    const rawUrl = req.url ?? "/";
+    try {
+      const parsed = new URL(rawUrl, "http://localhost");
+      const queryToken = parsed.searchParams.get("token");
+      if (queryToken && queryToken.trim()) {
+        token = queryToken.trim();
+      }
+    } catch {
+      token = null;
+    }
+  }
+  if (!token) return null;
   const entityId = tokenIndex.get(token);
   if (!entityId) return null;
   const entity = entities.get(entityId);
