@@ -1797,6 +1797,7 @@ async function handleSyncApi(
         enabled: false,
         mode: "disabled",
         mapId: route.mapId,
+        autoSync: false,
       });
     } else {
       // Push/pull endpoints: return 503 so browser knows sync is unavailable
@@ -1811,7 +1812,7 @@ async function handleSyncApi(
   if (route.action === "status" && req.method === "GET") {
     try {
       const result = await transport.status(route.mapId);
-      sendJson(res, 200, { ...result, mode: modeLabel });
+      sendJson(res, 200, { ...result, mode: modeLabel, autoSync: cloudSyncConfig.autoSync });
     } catch (err) {
       sendSyncError(res, 500, "SYNC_STATUS_FAILED", (err as Error).message, route.mapId);
     }

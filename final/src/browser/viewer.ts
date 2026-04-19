@@ -228,6 +228,8 @@ let cloudSyncEnabled = false;
 let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
 let cloudConflictPending = false;
+let cloudAutoSyncEnabled = false;
+let cloudPushInFlight: Promise<boolean> | null = null;
 let linearTransformStatus: LinearTransformStatus | null = null;
 let linearTextFontScale = 1;
 let linearAdjustMenuOpen = false;
@@ -5649,7 +5651,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     map.savedAt = String(payload.savedAt || nowIso());
     lastServerSavedAt = map.savedAt;
     broadcastState();
-    if (cloudSyncEnabled) {
+    if (cloudSyncEnabled && cloudAutoSyncEnabled) {
       void pushDocToCloud(false);
     }
     if (showStatus) {
@@ -5675,16 +5677,18 @@ async function fetchCloudSyncStatus(): Promise<void> {
       updateCloudSyncUi();
       return;
     }
-    const payload = await response.json().catch(() => ({ enabled: false, exists: false, cloudSavedAt: null }));
+    const payload = await response.json().catch(() => ({ enabled: false, exists: false, cloudSavedAt: null, autoSync: false }));
     cloudSyncEnabled = Boolean(payload.enabled);
     cloudSyncExists = Boolean(payload.exists);
     cloudSavedAt = payload.cloudSavedAt ? String(payload.cloudSavedAt) : null;
+    cloudAutoSyncEnabled = Boolean(payload.autoSync);
     cloudConflictPending = false;
     updateCloudSyncUi();
   } catch {
     cloudSyncEnabled = false;
     cloudSyncExists = false;
     cloudSavedAt = null;
+    cloudAutoSyncEnabled = false;
     cloudConflictPending = false;
     updateCloudSyncUi();
   }
@@ -5694,69 +5698,78 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
   if (!map || !cloudSyncEnabled) {
     return false;
   }
-  try {
-    const baseSavedAt = cloudSavedAt;
-    const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_MAP_ID)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-      },
-      body: JSON.stringify({
-        ...currentDocSnapshot(),
-        baseSavedAt,
-        force,
-      }),
-    });
+  if (cloudPushInFlight) {
+    return await cloudPushInFlight;
+  }
+  const task = (async () => {
+    try {
+      const baseSavedAt = cloudSavedAt;
+      const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_MAP_ID)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+        },
+        body: JSON.stringify({
+          ...currentDocSnapshot(),
+          baseSavedAt,
+          force,
+        }),
+      });
 
-    if (response.status === 409) {
-      const conflict = await response.json().catch(() => ({ cloudSavedAt: null }));
-      cloudConflictPending = true;
-      cloudSavedAt = conflict.cloudSavedAt ? String(conflict.cloudSavedAt) : cloudSavedAt;
+      if (response.status === 409) {
+        const conflict = await response.json().catch(() => ({ cloudSavedAt: null }));
+        cloudConflictPending = true;
+        cloudSavedAt = conflict.cloudSavedAt ? String(conflict.cloudSavedAt) : cloudSavedAt;
+        updateCloudSyncUi();
+        if (showStatus) {
+          setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
+        }
+        // Attempt to fetch remote state to populate conflict panel
+        try {
+          const pullResp = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_MAP_ID)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json; charset=utf-8" },
+            body: JSON.stringify({}),
+          });
+          if (pullResp.ok) {
+            const pullPayload = await pullResp.json();
+            if (pullPayload.state) {
+              showConflictPanel(pullPayload.state as AppState);
+            }
+          }
+        } catch {
+          // Conflict panel will not be shown if remote fetch fails
+        }
+        return false;
+      }
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+      }
+
+      const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
+      map.savedAt = String(payload.savedAt || nowIso());
+      cloudSavedAt = String(payload.savedAt || nowIso());
+      cloudSyncExists = true;
+      cloudConflictPending = false;
       updateCloudSyncUi();
       if (showStatus) {
-        setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
+        setStatus(force ? "Cloud sync force-push completed." : "Cloud sync push completed.");
       }
-      // Attempt to fetch remote state to populate conflict panel
-      try {
-        const pullResp = await fetch(`/api/sync/pull/${encodeURIComponent(CLOUD_MAP_ID)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json; charset=utf-8" },
-          body: JSON.stringify({}),
-        });
-        if (pullResp.ok) {
-          const pullPayload = await pullResp.json();
-          if (pullPayload.state) {
-            showConflictPanel(pullPayload.state as AppState);
-          }
-        }
-      } catch {
-        // Conflict panel will not be shown if remote fetch fails
+      scheduleRender();
+      return true;
+    } catch (err) {
+      if (showStatus) {
+        setStatus(`Cloud push failed (${(err as Error).message}).`, true);
       }
       return false;
     }
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
-    }
-
-    const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
-    map.savedAt = String(payload.savedAt || nowIso());
-    cloudSavedAt = String(payload.savedAt || nowIso());
-    cloudSyncExists = true;
-    cloudConflictPending = false;
-    updateCloudSyncUi();
-    if (showStatus) {
-      setStatus(force ? "Cloud sync force-push completed." : "Cloud sync push completed.");
-    }
-    scheduleRender();
-    return true;
-  } catch (err) {
-    if (showStatus) {
-      setStatus(`Cloud push failed (${(err as Error).message}).`, true);
-    }
-    return false;
-  }
+  })();
+  cloudPushInFlight = task.finally(() => {
+    cloudPushInFlight = null;
+  });
+  return await cloudPushInFlight;
 }
 
 async function pullDocFromCloud(showStatus = false): Promise<boolean> {
