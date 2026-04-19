@@ -1,5 +1,5 @@
 # Current Status
-最終更新: 2026-04-12
+最終更新: 2026-04-19
 
 ## 現在の状態（スナップショット）
 
@@ -13,7 +13,7 @@
 - 役割分担:
   - 部下（codex1 / codex2）: 実装と daily 追記。`Current_Status.md` は read-only
   - 上司（claude）: 部下 daily を参照して `Current_Status.md` の status 更新と統合管理
-- リリース: main ブランチ、タグ `v260408-3` が最新
+- リリース: main ブランチ、タグ `v260419-2` が最新
 - データバージョン: v1（schema version 1）
 
 ## 統合フロー（強制）
@@ -22,6 +22,13 @@
 2. 上司が `dev-beta` へ merge
 3. 部下は次サイクル開始前に `origin/dev-beta` へ rebase
 4. rebase 未実施の stale ブランチでは作業再開しない
+
+## 最近の成果（260419）
+
+- **Final cloud sync packaging**: 同一 `final` 製品で personal / team cloud を切り替えられる packaging を追加
+- **Supabase team cloud 導線**: `configure-cloud-sync-mode.bat` により team cloud client 設定を永続化可能にした
+- **Cloud sync diagnostics**: 起動時の cloud sync 解決値と `diagnose-cloud-sync.bat` を追加
+- **Self-conflict 緩和**: `M3E_AUTO_SYNC=0` では保存時 cloud push を止め、同一タブ内 push を直列化
 
 ## 最近の成果（260403〜260408）
 

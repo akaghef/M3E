@@ -10,6 +10,8 @@ launch-final 実行時に更新する。
 | v260411 | v1 | 2026-04-11 | 初回配布バージョン（修正済み） |
 | v260412-2 | v1 | 2026-04-12 | seed/main/sandbox ランタイム導入、tutorial scope 同梱、final 配布導線更新 |
 | v260412-3 | v1 | 2026-04-12 | VM test 修正反映、配布テスト手順と handoff 文書更新 |
+| v260419 | v1 | 2026-04-19 | sub-pj の plan/do ハーネス、PJ02 runtime、team collab 導線の初回反映 |
+| v260419-2 | v1 | 2026-04-19 | final の generic cloud sync packaging、Supabase team cloud 導線、cloud sync 診断、self-conflict 緩和 |
 
 ## Data Schema Version 履歴
 
