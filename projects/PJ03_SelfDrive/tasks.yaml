@@ -1,0 +1,102 @@
+- id: T-0-1
+  phase: 0
+  verb: extract
+  target: "human intervention points from PJ01/PJ02 sessions and retrospectives"
+  done_when:
+    - "projects/PJ03_SelfDrive/data/friction_raw.md exists with at least 15 intervention points"
+    - "each entry cites source (session file / commit / retrospective section)"
+  eval_required: true
+  eval_criteria:
+    - "citations are verifiable (file path + line or section)"
+    - "no invented interventions not grounded in source material"
+    - "coverage spans both PJ01 and PJ02"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/data"
+  facet: document
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-0-2
+  phase: 0
+  verb: classify
+  target: "friction categories and frequency"
+  done_when:
+    - "projects/PJ03_SelfDrive/data/friction_classified.md exists"
+    - "axes defined: trigger (task-edge / gate / resume / error / ambiguity / env) x cause (info-gap / decision / protocol-hole)"
+    - "each raw entry mapped to axes"
+  eval_required: true
+  eval_criteria:
+    - "classification is mutually exclusive within each axis"
+    - "frequency count matches raw entries"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/data"
+  facet: document
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-0-3
+  phase: 0
+  verb: design
+  target: "harness MVP requirements"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/harness_mvp_spec.md exists"
+    - "each friction category has a proposed mechanism (tool / hook / skill / convention)"
+    - "non-functional requirements are listed (recovery, observability, idempotency)"
+  eval_required: true
+  eval_criteria:
+    - "mechanism choices are justified against existing tools (ScheduleWakeup / /loop / hooks / resume-cheatsheet)"
+    - "no proposal requires features that do not exist in the harness runtime"
+    - "rejected alternatives are recorded with reason"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-0-4
+  phase: 0
+  verb: enumerate
+  target: "escalation boundary candidates"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/escalation_boundaries.md exists"
+    - "each boundary has: trigger, detection method, human notification format"
+  eval_required: false
+  eval_criteria:
+    - "boundaries cover Phase gate, env collapse, scope drift, destructive ops"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: null
+
+- id: T-0-5
+  phase: 0
+  verb: gate-check
+  target: "Phase 0 readiness for Gate 1"
+  done_when:
+    - "friction_raw, friction_classified, harness_mvp_spec, escalation_boundaries are all present"
+    - "plan.md 確定事項 section updated with Phase 0 decisions"
+    - "open reviews count and tentative defaults recorded"
+  eval_required: false
+  eval_criteria:
+    - "human can decide Gate 1 from plan.md alone"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  status: pending
+  round: 0
+  round_max: 1
+  last_feedback: null
+  blocker: null

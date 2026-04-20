@@ -16,7 +16,8 @@
 | `PJ00` | M3E 本体 | 継続中 | このリポジトリ全体 |
 | `PJ01` | AlgLibMove | 進行中 (prj/AlgLibMove ブランチ) | `projects/PJ01_AlgLibMove/` |
 | `PJ02` | MathOntoBridge | 進行中 (prj/02_MathOntoBridge ブランチ、列挙番号 PJ-101) | `projects/PJ02_MathOntoBridge/` |
-| `PJ03+` | 未定 | - | 活性化時に `projects/PJ{NN}_{Name}/` を作成 |
+| `PJ03` | SelfDrive | 進行中 (prj/03_SelfDrive ブランチ、kickoff 2026-04-20) | `projects/PJ03_SelfDrive/` |
+| `PJ04+` | 未定 | - | 活性化時に `projects/PJ{NN}_{Name}/` を作成 |
 
 本ファイル下部の候補一覧（TrustEng 以下）は **未活性の候補ラベル**。活性化判断時に次の連番 (`PJ02` 以降) を採番し直す。以下の `PJ-01` 〜 `PJ-07` は暫定的な候補識別子として本ファイル内でのみ使用する。
 
