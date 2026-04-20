@@ -1,8 +1,9 @@
-# Qn_initial — harness runtime host choice
+# Qn_initial — workflow runner timer host choice
 
-- **status**: open
+- **status**: resolution-proposed (akaghef decision pending at Gate 1)
 - **phase**: 0
 - **pooled**: 2026-04-20
+- **resolution-proposed**: 2026-04-21 — T-0-3 `legacy_asset_mapping.md` に「ScheduleWakeup = one-shot sleeping / CronCreate = 繰返し sleeping」として反映済。`WorkflowNode` の `wakeup_mechanism` tag で区別する方針を T-1-1 で型化。Gate 1 で akaghef が option 3（併用）を正式確定する前提。
 
 ## 問
 

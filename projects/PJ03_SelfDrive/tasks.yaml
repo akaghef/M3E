@@ -23,10 +23,10 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: pending
-  round: 0
+  status: done
+  round: 1
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass (2026-04-21)"
   blocker: null
 
 - id: T-0-2
@@ -46,10 +46,10 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: pending
-  round: 0
+  status: done
+  round: 1
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass (2026-04-21)"
   blocker: null
 
 - id: T-0-3
@@ -69,10 +69,10 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: pending
-  round: 0
+  status: done
+  round: 1
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass (2026-04-21)"
   blocker: null
 
 - id: T-0-4
@@ -92,10 +92,10 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: pending
-  round: 0
+  status: done
+  round: 1
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass (2026-04-21)"
   blocker: null
 
 - id: T-0-5

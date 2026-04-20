@@ -1,7 +1,7 @@
 ---
 pj_id: PJ03
 project: SelfDrive
-status: reframed
+status: reframing
 date: 2026-04-20
 ---
 
@@ -9,219 +9,94 @@ date: 2026-04-20
 
 ## TL;DR
 
-SelfDrive は、可視化PJではない。主目的は **既存ツールを流用して、M3E に最小の Agent workflow 作成・実行能力を持ち込むこと** である。
+現行の plan は、目的、手段、流用方針、実装対象が混線しているため、いったん立て直す。
 
-そのために、
+SelfDrive の主題は **可視化** ではなく **Agent workflow をどう作るか** に置く。
+同時に、M3E の Vision は **システムから 1 task までを相似形で扱えること**、そのために **静的構造だけでなく動的 state machine を内包すること** と定義する。
 
-- **LangGraph 的な state / node / edge / checkpoint** を workflow 骨格として採用し、
-- **Hermes 的な自己改善ループ** を運用様式として取り込み、
-- 既存の `tasks.yaml`、`resume-cheatsheet.md`、`reviews/`、hooks、ScheduleWakeup を暫定 runtime として使う。
+したがって、この PJ はまず
 
-可視化は後段でよい。まず必要なのは、agent workflow を **作れる・回せる・止まっても再開できる** ことだ。
+1. 何を正本にするか
+2. 何を流用し、何を自作するか
+3. workflow をどの粒度で持つか
+4. M3E にどう統合するか
+
+を確定する再設計フェーズから始める。
 
 ## 軸
 
-**M3E は、システムから 1 task までを相似な構造として扱える環境を目指す。そのために、静的 tree だけでなく、動的 Agent workflow も同じ世界観で保持できなければならない。**
+**M3E は、システム、PJ、論点、1 task を相似な構造として扱える環境を目指す。そのために、静的 tree だけでなく、動的 workflow / state machine を同じ世界観で持てる必要がある。**
 
-SelfDrive は、その最初の実証PJである。
+## 現在の問題
 
-## 背景
+現行 plan には次の混線がある。
 
-現状の M3E は、scope、tree、alias、Command、Undo/Redo、保存整合性には強いが、**動的 Agent workflow を正本として持てない**。
+### 1. 目的と手段の混線
 
-その結果、
+- SelfDrive の目的が「workflow engine 作成」なのか「可視化」なのかが曖昧
+- LangGraph / Hermes が目的なのか、参考実装なのか、流用対象なのかが曖昧
 
-- DAG 風の静的整理には向く
-- しかし loop、retry、conditional edge、checkpoint、resume、subagent 分岐を自然に持てない
-- stop / blocked / eval / escalate が、構造ではなく暗黙運用へ散っている
-- SelfDrive も、現状では hook と規約の組み合わせでしかなく、workflow authoring の核がない
+### 2. 正本の混線
 
-これが最大の問題である。
+- `tasks.yaml` や hooks を正本として扱うのか
+- それとも別の workflow model を正本として持つのか
+- その境界が曖昧
+
+### 3. M3E 本体との境界の混線
+
+- SelfDrive が独立ハーネスPJなのか
+- M3E への state machine 導入PJなのか
+- 両者が混ざっている
+
+### 4. 流用方針の未固定
+
+- 既存の外部ツールを流用する範囲
+- 手元の既存資産を流用する範囲
+- 独自実装の最小核
+- この3つが整理されていない
 
 ## 再定義
 
-SelfDrive は「sub-pj protocol を無人で回す harness PJ」ではなく、次のPJとして再定義する。
+SelfDrive は次のPJとして再定義する。
 
-**既存ツールを流用しながら、M3E の中に最小の Agent workflow engine を持ち込むPJ。**
+**M3E に state machine / Agent workflow を持ち込むための設計・実装方針を確定し、最小の 1 workflow を成立させるPJ。**
 
-ここでいう engine は、豪華な実行基盤ではない。最低限、次を持つ。
+ここで重要なのは、いきなり完成実装に入ることではない。
+まず **設計上の分岐を潰すこと** が先である。
 
-- State schema
-- Workflow node
-- Conditional edge
-- Checkpoint / resume
-- Blocked / sleeping / escalated / done の区別
-- Evaluator を含む loop
+## 先に決めるべきこと
 
-## grok 下調べから採るもの
+### D1. workflow の正本
 
-### 1. LangGraph から採るもの
+次のどれを正本にするかを先に決める。
 
-LangGraph の価値は可視化ではなく、**workflow の骨格を state machine として明示できること**にある。
+- A: `tasks.yaml` 拡張
+- B: 別の workflow schema を定義
+- C: 外部 workflow tool を正本とし、M3E は viewer / editor になる
 
-今回採るのは次の考え方である。
+### D2. 流用方針
 
-- state を型として持つ
-- node を関数単位で分ける
-- edge を条件つきで張る
-- checkpoint を持つ
-- 再開可能にする
-- human approval を edge condition として扱う
+次の3層を分けて決める。
 
-### 2. Hermes から採るもの
+- 外部ツールの流用
+- 手元資産の流用
+- M3E 独自実装
 
-Hermes の価値は、自己改善ループにある。
+### D3. workflow の最小粒度
 
-今回採るのは次の考え方である。
+最初に扱う単位を固定する。
 
-- 実行結果から次回用の知見を残す
-- skill / note / review を蓄積して次回を速くする
-- 一度の execution を単発で終わらせず、継続的に改善する
+- 1 task
+- 1 sub-pj
+- 1 PJ
 
-これは M3E では、`reviews/`、`resume-cheatsheet.md`、`tasks.yaml` 更新規律として取り込める。
+このPJでは、最初は **1 task** に固定する。
 
-### 3. Guardrails 的発想から採るもの
+### D4. state machine の最小集合
 
-workflow が壊れないために、未知 state、scope 外参照、不正 edge、無効 payload は fail-closed にする。
+状態を増やしすぎず、最初に必要な state を固定する。
 
-## 今回の方針
-
-### 第一原則
-
-**既存ツールを流用できるところは流用し、独自実装は workflow authoring の核に限定する。**
-
-### 第二原則
-
-**可視化はサブ。まず workflow を作れることが先。**
-
-### 第三原則
-
-**LangGraph そのものを埋め込むことが目標ではない。LangGraph 的骨格を、M3E と整合する形で取り込むことが目標である。**
-
-## 今回使う範囲のツール
-
-### A. workflow 骨格
-
-最小の state machine モデルを定義する。
-
-必要要素:
-
-- `WorkflowState`
-- `WorkflowNode`
-- `WorkflowEdge`
-- `EdgeCondition`
-- `Checkpoint`
-- `RunContext`
-
-### B. 既存 runtime として流用するもの
-
-- `tasks.yaml`
-- `resume-cheatsheet.md`
-- `reviews/Qn_*.md`
-- `ScheduleWakeup`
-- SessionStart / PostCompact / Stop hooks
-- `sub-pj-do`
-
-これらは engine の代替ではなく、**最初の persistence / recovery / trigger 層**として使う。
-
-### C. 今回使わないもの
-
-- 新規DB
-- 外部 orchestrator
-- LangGraph Studio のような本格可視化
-- M3E 全面改修
-- 汎用マルチPJ対応
-
-## データ構造の最小案
-
-### WorkflowState
-
-```ts
-interface WorkflowState {
-  id: string
-  kind: "pending" | "ready" | "in_progress" | "eval_pending" | "blocked" | "sleeping" | "escalated" | "done" | "failed"
-  reason?: string
-  updatedAt: string
-}
-```
-
-### WorkflowNode
-
-```ts
-interface WorkflowNode {
-  id: string
-  label: string
-  role: "generator" | "evaluator" | "router" | "human" | "system"
-  actionRef?: string
-}
-```
-
-### WorkflowEdge
-
-```ts
-interface WorkflowEdge {
-  id: string
-  sourceNodeId: string
-  targetNodeId: string
-  condition: string
-  onState: WorkflowState["kind"]
-}
-```
-
-### Checkpoint
-
-```ts
-interface Checkpoint {
-  workflowId: string
-  currentNodeId: string
-  currentState: WorkflowState["kind"]
-  resumeRef?: string
-  savedAt: string
-}
-```
-
-### RunContext
-
-```ts
-interface RunContext {
-  taskId: string
-  scopeId: string
-  reviewRefs: string[]
-  wakeupAt?: string
-  evaluatorRequired?: boolean
-}
-```
-
-## 既存資産との写像
-
-### tasks.yaml
-
-- task 単位の現在 state を保持する暫定正本
-- `pending / in_progress / done / blocked` を workflow state に拡張する起点
-
-### resume-cheatsheet.md
-
-- checkpoint 復元用の human-readable summary
-- Hermes 的な「次回高速化メモ」の役割を持たせる
-
-### reviews/Qn_*.md
-
-- unresolved issue
-- blocked / ambiguity / evaluator feedback の蓄積先
-
-### ScheduleWakeup
-
-- sleeping -> ready 遷移の runtime
-
-### hooks
-
-- SessionStart: restore
-- PostCompact: checkpoint reload
-- Stop: invalid stop の検知
-
-## 最小 workflow モデル
-
-今回の最小状態集合は次とする。
+候補:
 
 - pending
 - ready
@@ -233,191 +108,178 @@ interface RunContext {
 - done
 - failed
 
-### 基本遷移
+### D5. M3E 統合境界
 
-- pending -> ready
-- ready -> in_progress
-- in_progress -> eval_pending
-- eval_pending -> done
-- eval_pending -> in_progress
-- in_progress -> blocked
-- blocked -> sleeping
-- blocked -> escalated
-- sleeping -> ready
-- 任意 -> failed
+workflow を M3E にどう置くかを決める。
 
-### 解釈
+- tree の外側の runtime として置く
+- 1 scope の内部構造として置く
+- tree + overlay relation として置く
 
-- stop は中立概念ではなく、必ず blocked / sleeping / escalated / failed に落とす
-- evaluator は外部イベントではなく loop の一部
-- human approval は edge condition
-- wakeup は sleeping の回復 edge
+M3E の哲学に従うなら、最終的には **1 scope の内部に置く** 方向が本命。
+ただし最初から完全統合しなくてよい。
 
-## 戦略
+## 流用方針の整理
 
-### S1. 既存流用優先
+### 1. 外部ツール
 
-LangGraph や Hermes の考え方を採るが、まずは既存ファイル規約と hooks の上に載せる。
+流用候補を先に調べ、採否を決める。
 
-### S2. workflow authoring 優先
+候補:
 
-可視化より先に、workflow を定義・編集・実行できる最小表現を作る。
+- LangGraph
+- Hermes
+- Guardrails / Pydantic 系
+- その他 workflow / agent orchestration tool
 
-### S3. stop reason の正規化
+### 2. 手元資産
 
-E1/E2/E3 を含め、停止理由をすべて既知 state に写像する。
+暫定 runtime / adapter として使う候補。
 
-### S4. checkpoint 先行
+- `tasks.yaml`
+- `resume-cheatsheet.md`
+- `reviews/Qn_*.md`
+- ScheduleWakeup
+- SessionStart / PostCompact / Stop hooks
+- `sub-pj-do`
 
-自走より先に resume 可能性を担保する。中断後に続けられない workflow は不採用。
+### 3. 独自実装
 
-### S5. evaluator の内在化
+本当に必要な核だけに絞る。
 
-Generator と Evaluator を同一 workflow 上に置き、state 遷移でつなぐ。
+候補:
 
-### S6. reviews の Hermes 化
+- M3E 内 workflow schema
+- M3E <-> workflow engine adapter
+- scope 内への最小表示
+- state 編集 UI
 
-review を単なる保留メモでなく、次回高速化の学習資産として扱う。
+## 仮説
 
-### S7. tasks.yaml の state machine 化
+現時点での有力仮説は次である。
 
-現行 state を workflow state にマッピングし、曖昧な運用を減らす。
+1. LangGraph 的な state / edge / checkpoint の骨格は流用価値が高い
+2. Hermes 的な自己改善ループは運用規律として流用価値が高い
+3. hooks / tasks / reviews は engine 本体ではなく adapter / runtime 補助層として使うのが自然
+4. 可視化は engine の後でよい
 
-### S8. trigger の意味づけ固定
-
-ScheduleWakeup は timer ではなく transition runtime として扱う。
-
-### S9. hook の格下げ
-
-hook は正本ではなく runtime guard と位置づける。
-
-### S10. 1 task で試す
-
-最初は 1 workflow / 1 task のみ。複数 task 同時実行は後回し。
-
-### S11. 自己参照 dogfood
-
-PJ03 自身の進行をこの workflow engine で回す。
-
-### S12. Guardrails 的制約
-
-未知 state、無効 edge、scope 外参照、欠損 checkpoint は reject する。
-
-### S13. static / dynamic 分離
-
-tree を壊さず、workflow は overlay または別 view として持つ。
-
-### S14. 粒度横断検証
-
-task、sub-pj、PJ の 3 粒度で同型性が保てるかを検証する。
-
-### S15. 可視化は後置
-
-workflow 表示は engine が回った後に追加する。今は current state と next edge の表示で十分。
+ただし、これはまだ **仮説** であり、plan では前提にせず、Phase 0 で比較評価する。
 
 ## フェーズ
 
-### Phase 0 — 再設計
+### Phase 0 — 設計分岐の確定
 
 目的:
 
-- grok 由来の考え方を採り込み、PJ を workflow engine 開発へ再定義する
-- 既存資産を state / edge / checkpoint / review に写像する
+- 目的と手段の混線を解く
+- 正本、流用方針、最小粒度、統合境界を固定する
 
 成果物:
 
-- 最小 state set
-- edge 一覧
-- 現行資産との対応表
-- stop reason taxonomy
+- Decision memo 1: workflow 正本
+- Decision memo 2: 外部ツール採否
+- Decision memo 3: 手元資産の役割
+- Decision memo 4: 最小 state set
+- Decision memo 5: M3E 統合境界
 
-### Phase 1 — 最小 workflow engine
+### Phase 1 — 最小 workflow specification
 
 目的:
 
-- 1 task 分の workflow を定義し、実際に回す
+- 1 task 用の最小 workflow model を定義する
 
 成果物:
 
-- state transitions
-- evaluator loop
-- checkpoint / resume
-- blocked / sleeping / escalated の区別
+- state 定義
+- edge 定義
+- checkpoint 定義
+- blocked / sleeping / escalated の意味定義
+- evaluator loop の定義
 
-### Phase 2 — Hermes 的改善ループ
+### Phase 2 — 実行基盤の仮接続
 
 目的:
 
-- 実行結果を review / cheatsheet に落とし、次回高速化を起こす
+- Phase 1 の spec を、既存 runtime または外部ツールに仮接続する
 
 成果物:
 
-- review update rule
-- cheatsheet update rule
-- retry / reflection loop
+- adapter 実装方針
+- resume / wakeup / stop の接続方式
+- 1 task の試運転
 
-### Phase 3 — 最小表示
+### Phase 3 — M3E 統合
 
 目的:
 
-- current state と next edge を 1 scope 内で確認できるようにする
+- 1 scope の中で workflow を扱う最小統合を作る
 
 成果物:
 
-- current workflow summary
-- blocked reason summary
-- wakeup / escalation visibility
-
-### Phase 4 — 粒度拡張
-
-目的:
-
-- 1 task で作った workflow モデルを sub-pj / PJ に広げる
-
-成果物:
-
-- 粒度横断例
-- 相似性の確認
+- workflow summary view
+- current state 表示
+- next transition 表示
+- blocked reason 表示
 
 ## 成功基準
 
 ### 最小成功
 
-- 1 task が workflow として定義できる
-- state transition が回る
-- evaluator loop が回る
-- checkpoint / resume が成立する
-- stop reason が必ず既知 state に分類される
+- 設計分岐が確定する
+- 1 task 用 workflow spec が書ける
+- stop / blocked / wakeup / eval が state machine として記述できる
 
 ### 中間成功
 
-- reviews と cheatsheet が次回高速化に効く
-- SelfDrive 自身を自己参照で回せる
+- 1 task workflow が実際に回る
+- checkpoint / resume が成立する
 
 ### 最終成功
 
-- task / sub-pj / PJ を同型 workflow として扱える
-- M3E が静的 tree 整理だけでなく、Agent workflow を扱える構造環境になる
+- M3E が静的整理だけでなく、動的 workflow を scope 内で扱える方向へ進む
 
 ## 非目標
 
-- いきなり LangGraph 互換製品を作ること
-- まず可視化から入ること
-- 新 infra を大量導入すること
-- M3E 全体のデータ構造を今回で確定し切ること
+- いきなり完成エンジンを実装すること
+- いきなり可視化を作り込むこと
+- いきなり複数PJを回すこと
+- このPJだけで M3E 全体の最終アーキテクチャを確定すること
 
 ## 直近タスク
 
-1. 最小 state set を確定する
-2. tasks.yaml の現行 state を workflow state に写像する
-3. stop reason taxonomy を作る
-4. checkpoint 構造を決める
-5. evaluator loop を 1 task で試す
-6. review / cheatsheet 更新規律を決める
-7. その後に最小表示を足す
+1. 現行 plan の論点を分解する
+2. 外部ツール候補を整理する
+3. 手元資産の役割を一覧化する
+4. workflow 正本の候補を 3 案に絞る
+5. 1 task 用 state set を仮決めする
+
+## 確定事項（2026-04-21 Phase 0 T-0-1..T-0-4 完了 / akaghef Gate 1 承認待ち）
+
+Phase 0 の設計分岐 4 本を確定。各成果物は `docs/` 配下の独立 md を正本とする。
+
+| 論点 | 結論 | 正本 |
+|---|---|---|
+| **D4 最小 state set** | 9 state: pending / ready / in_progress / eval_pending / blocked / sleeping / escalated / done / failed | [docs/workflow_state_set.md](docs/workflow_state_set.md) |
+| **基本遷移** | 17 edges（E01..E17）、fail-closed、terminal 不可逆、human/machine/timer trigger 区別 | [docs/workflow_edges.md](docs/workflow_edges.md) |
+| **D2 流用方針（手元資産）** | tasks.yaml=primary checkpoint / resume-cheatsheet=human summary / reviews=判断負債プール / ScheduleWakeup=one-shot sleeping / CronCreate=繰返し sleeping / hooks=resume entry・compact 復旧・停止ガード / sub-pj-do=engine の thin wrapper（長期） | [docs/legacy_asset_mapping.md](docs/legacy_asset_mapping.md) |
+| **停止理由 taxonomy** | 停止理由 → blocked / sleeping / escalated / failed の exactly one に写像。E1/E2/E3 は必ず escalated。4 問 rubric で新規理由を分類 | [docs/stop_reason_taxonomy.md](docs/stop_reason_taxonomy.md) |
+| **Qn_initial runtime timer host** | ScheduleWakeup + CronCreate 併用（役割分担: inner loop=ScheduleWakeup / outer monitor=Cron）— Gate 1 で akaghef 正式確定予定 | [reviews/Qn_initial.md](reviews/Qn_initial.md) |
+
+### 却下した代替案
+
+- `paused` / `queued` / `reviewing` state の追加 → `blocked` / `ready` / `escalated` に吸収（state 数膨張を防ぐ）
+- plan.md §基本遷移 セクション先行執筆 → 成果物を `docs/` に集約、plan.md は索引のみ（SSOT 違反回避）
+- ScheduleWakeup のみ採用 → Claude Code idle 時の continuity 要件を満たせない
+
+### Phase 1 への handoff
+
+- T-1-1 (`WorkflowState` / `WorkflowEdge` / `Checkpoint` / `RunContext` TypeScript 型): 9 state + 17 edge をそのまま union / struct に落とす
+- T-1-3 runner: `workflow_edges.md` の表外遷移を fail-closed で拒否、writeback 対象は `tasks.yaml`（primary）+ `resume-cheatsheet.md`（human summary）
+- T-1-4 evaluator loop: round 判定は E06/E07（`round + 1 <= round_max` で retry、超過で blocked）
+- T-1-5 checkpoint: primary = tasks.yaml、PostCompact/SessionStart の復旧は resume-cheatsheet.md を経由
 
 ## メモ
 
-LangGraph は構造の流用元であり、Hermes は自走様式の流用元である。
-今回の正解は、どちらか片方ではなく、**LangGraph 的 workflow 骨格 + Hermes 的自己改善ループ + 既存 runtime 流用** の組み合わせにある。
+今は実装よりも、設計の分岐を潰す段階である。
+plan の立て直しとは、作業項目を増やすことではなく、**何を決める plan なのかを明確にすること**である。
 
