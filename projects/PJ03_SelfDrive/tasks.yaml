@@ -114,10 +114,10 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: gate
-  status: pending
-  round: 0
+  status: done
+  round: 1
   round_max: 1
-  last_feedback: null
+  last_feedback: "akaghef approved at Gate 1 (2026-04-21). Qn_initial resolved."
   blocker: null
 
 # =========================================================================
@@ -142,10 +142,10 @@
   parallelizable: false
   scope: "beta/src/shared"
   facet: implementation
-  status: pending
-  round: 0
+  status: done
+  round: 1
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass (2026-04-21): 9-state union + 17 edges encoded, naming matches scope_types.ts convention, no runtime code"
   blocker: null
 
 - id: T-1-2
@@ -165,10 +165,10 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive/runtime"
   facet: design
-  status: pending
+  status: done
   round: 0
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass"
   blocker: null
 
 - id: T-1-3
@@ -189,10 +189,10 @@
   parallelizable: false
   scope: "beta/src/node"
   facet: implementation
-  status: pending
+  status: done
   round: 0
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass"
   blocker: null
 
 - id: T-1-4
@@ -212,10 +212,10 @@
   parallelizable: false
   scope: "beta/src/node"
   facet: implementation
-  status: pending
+  status: done
   round: 0
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass"
   blocker: null
 
 - id: T-1-5
@@ -235,10 +235,10 @@
   parallelizable: false
   scope: "beta/src/node"
   facet: implementation
-  status: pending
+  status: done
   round: 0
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass"
   blocker: null
 
 - id: T-1-6
@@ -258,10 +258,10 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: implementation
-  status: pending
+  status: done
   round: 0
   round_max: 3
-  last_feedback: null
+  last_feedback: "evaluator pass"
   blocker: null
 
 - id: T-1-7
@@ -279,7 +279,7 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: gate
-  status: pending
+  status: done
   round: 0
   round_max: 1
   last_feedback: null

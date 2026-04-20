@@ -278,6 +278,41 @@ Phase 0 の設計分岐 4 本を確定。各成果物は `docs/` 配下の独立
 - T-1-4 evaluator loop: round 判定は E06/E07（`round + 1 <= round_max` で retry、超過で blocked）
 - T-1-5 checkpoint: primary = tasks.yaml、PostCompact/SessionStart の復旧は resume-cheatsheet.md を経由
 
+## Phase 1 結論（2026-04-21 T-1-1..T-1-6 完了 / akaghef Gate 2 承認待ち）
+
+Phase 1 の 最小 workflow engine が dogfood で成立。
+
+### 最小成功 5 項目の達成根拠
+
+| 基準 | 根拠 artifact |
+|---|---|
+| 設計分岐が確定する | Phase 0 確定事項（state set / edges / legacy mapping / stop taxonomy） |
+| 1 task 用 workflow spec が書ける | [beta/src/shared/workflow_types.ts](../../beta/src/shared/workflow_types.ts) (T-1-1) + [runtime/workflow_example.json](runtime/workflow_example.json) (T-1-2) |
+| stop / blocked / wakeup / eval が state machine として記述できる | [docs/workflow_edges.md](docs/workflow_edges.md) 17 edges + [docs/stop_reason_taxonomy.md](docs/stop_reason_taxonomy.md) 4 問 rubric |
+| 1 task workflow が実際に回る | T-1-6 dogfood: T-1-2/T-1-3/T-1-4/T-1-5 の 4 task を runner 経由で pending→done（[artifacts/dogfood_run_01.md](artifacts/dogfood_run_01.md)） |
+| checkpoint / resume が成立する | `loadCheckpoint` / `pickNextTask` / `--resume` CLI 動作、corrupt checkpoint は 3 段階の明示 Error（[docs/resume_protocol.md](docs/resume_protocol.md)） |
+
+### Phase 2 (Hermes 改善ループ) 着手条件
+
+着手可能とみなす条件:
+
+- T-1-1..T-1-6 全 pass（現況）
+- runner が tasks.yaml を破壊せずに writeback できる（T-1-3 eval で確認、T-1-6 で実観察）
+- blocked への経路が実観察されている（`--demo` Scenario B で確認）
+- sleeping / escalated / failed の code-reachability が確認済（Gate 2 Evaluator コメント通り、実稼働観察は Phase 2 で）
+
+残課題（Phase 2 で最初に扱う候補）:
+
+- SessionStart / PostCompact hook の自動配線（現状は CLI 手動）
+- Generator / Evaluator 起動そのものを runner が orchestrate（現状は Manager が subagent を起動し verdict を runner に注入）
+- sleeping / escalated / failed の実稼働観察と runbook
+- Hermes 的な feedback の「次 round generator prompt に反映」ロジック
+
+### 却下した代替案
+
+- T-1-7 を runner を通さず手動 done にする → dogfood の連続性が切れるため却下。runner 経由で E04 (eval_required=false 経路) を通して done 化
+- Generator/Evaluator を runner が直接呼ぶ → Phase 1 では sprint 膨張、先送り
+
 ## メモ
 
 今は実装よりも、設計の分岐を潰す段階である。
