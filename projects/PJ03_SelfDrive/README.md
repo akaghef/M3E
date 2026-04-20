@@ -9,47 +9,46 @@ related: plan.md
 
 # PJ03 — SelfDrive
 
-定義した PJ 進行フローを agent が確実に自動履行するための自走ハーネスを作る。
+M3E に state machine / Agent workflow を持ち込むための設計・実装方針を確定し、最小の 1 workflow を成立させる PJ。最終的に PJ03 自身の 1 task を自前 workflow engine で回す dogfood で成立を示す。
 
 ## Vision
 
 ### 問題
 
-すべてのステップが摩擦になっている。ユーザーが毎回「次のタスクへ」「Phase 進めて」「resume して」と指示しないと agent が動かない。sub-pj protocol には自動運転の原則があるが、実際には gate・task 間・session 再開・エラー回復のあらゆる境界で人間を呼ぶ。結果として akaghef が agent 開発そのもののボトルネックになっている。
+現在の sub-pj 運用は、静的な `tasks.yaml` + hooks + resume-cheatsheet の組み合わせで回っているが、状態遷移・checkpoint・stop 理由の分類・evaluator loop が散在し、どこが「正本」かが曖昧。結果として次のようになる:
+
+- 同じ停止理由が blocked / sleeping / escalated のどれになるか場当たり的
+- resume 時にどの state から再開すべきかが曖昧
+- evaluator round loop が sub-pj-do の指示文字列に埋め込まれており、機械可読ではない
+- M3E の vision（システム〜1 task まで相似形で扱う）と静的 tree が噛み合わない
 
 ### 完了像
 
-定義された PJ 進行フロー（sub-pj protocol の kickoff → planning → do → gate → retrospective）を、agent が **人間介入なし** で履行する。人間が介入するのは以下に限定される:
-
-- Phase 遷移判定（Gate 1 / Gate 2）
-- 環境・前提崩壊のエスカレーション
-- スコープ逸脱判断
-- outer loop の方向性修正
-
-それ以外（task 間遷移、round loop、resume、軽微なエラー回復、ambiguity pooling）は harness が自律で回す。
+1 task 単位の workflow を、state / edge / checkpoint を持つ明示的な state machine として記述・実行できる。最小 engine が PJ03 自身の task を 1 本 dogfood で回しきる。設計上の分岐（正本・流用方針・最小粒度・M3E 統合境界）が確定し、Phase 1 以降の実装根拠になる。
 
 ### In Scope
 
-- 自走ハーネスの設計・実装
-- 既存 PJ フロー（sub-pj-plan / sub-pj-do / sub-pj skills）の自動履行機構
-- ScheduleWakeup / /loop / hooks / resume-cheatsheet の連携
-- 摩擦発生点の実観察と分類
-- Evaluator / Generator の自律 round loop
-- エスカレーション境界の機械判定
+- workflow state set / edge set / checkpoint 構造の確定
+- 現行資産（tasks.yaml / hooks / ScheduleWakeup / reviews / resume-cheatsheet）の workflow element へのマッピング
+- stop reason taxonomy（sub-pj-guard E1/E2/E3 を含む）
+- TypeScript 型定義と最小 runner (`beta/src/shared` / `beta/src/node`)
+- Generator / Evaluator / Router 構造の engine への落とし込み
+- 1 task dogfood run による成立確認
 
 ### Out of Scope
 
 - 可視化の強化（現状 poor のままでよい）
-- M3E 本体の UI / viewer 改善
+- M3E 本体の UI / viewer 改善（Phase 3 の最小統合を除く）
 - 並列マルチ sub-PJ 実行
 - LLM モデル選定・切替
 - sub-pj protocol 自体の大幅改訂（改善提案は backlog に pool）
+- 完成形 engine の実装（まずは 1 task が回ることを優先）
 
 ## 主成果物
 
-1. **摩擦インベントリ** — PJ01/PJ02 の進行で人間介入が必要だった箇所の分類表
-2. **自走ハーネス MVP** — 1 PJ を 1 日無人で進行させられる最小構成
-3. **エスカレーション境界仕様** — どの条件で人間を呼び戻すかの機械判定ルール
+1. **設計分岐の確定 memo 群** — workflow state set / edge / legacy asset mapping / stop taxonomy の 4 本（Phase 0 成果物、`docs/` 配下）
+2. **最小 workflow engine** — `beta/src/shared/workflow_types.ts` + `beta/src/node/workflow_runner.ts`。state transition / evaluator loop / checkpoint-resume を含む
+3. **dogfood run log** — PJ03 自身の 1 task を engine 経由で回した実行ログ（`artifacts/dogfood_run_01.md`）
 
 ## メタ情報
 
@@ -76,9 +75,10 @@ related: plan.md
 | 領域 | 人間（akaghef） | Claude | Codex |
 |---|---|---|---|
 | ビジョン / 方向性 | ◎ | × | — |
-| 摩擦観察・分類 | △ 仕上げ確認 | ◎ | △ レビュー |
-| harness 設計 | △ 承認 | ◎ | △ 代替案 |
-| harness 実装 | × | ◎ | △ rescue |
+| 設計分岐決定（正本・流用・統合境界） | ◎ Gate で承認 | ◎ 候補整理・比較 | △ レビュー |
+| workflow spec 設計 | △ 承認 | ◎ | △ 代替案 |
+| engine 実装 | × | ◎ | △ rescue |
+| dogfood run 監査 | ◎ 結果確認 | ◎ 実行・記録 | — |
 | Phase 遷移判定 | **◎ 必ず人間** | × 勝手に進めない | — |
 | 環境崩壊エスカレーション | ◎ 最終判断 | ◎ 検知・報告 | — |
 
@@ -98,17 +98,21 @@ related: plan.md
 
 ## 運用ルール（要点）
 
-- 自走ハーネス開発中は、この PJ 自体が dogfood 対象になる。harness の欠陥は即 `reviews/` へ
-- 摩擦観察は PJ01 / PJ02 の sessions ログを 1 次資料とする。憶測で分類しない
-- harness の最小構成は「ScheduleWakeup + resume-cheatsheet + tasks.yaml」の 3 点で成立させる。追加要素は必要性が見えてから
+- workflow engine 開発中は、この PJ 自体が dogfood 対象になる。engine の欠陥や仕様穴は即 `reviews/` へ pool
+- Phase 0 の設計 memo は実装より先に書く。実装が memo を追い越したら memo を先に更新する
+- engine の最小構成は「9 state set + edge table + tasks.yaml writeback + checkpoint」の 4 点で成立させる。追加要素は必要性が見えてから
+- `tasks.yaml` は workflow instance の永続化先であり、手動編集は dogfood run 外でのみ許可（run 中は runner が正本）
 
 ## Future Work
 
-- 並列マルチ PJ 実行（複数 worktree の harness 協調）
-- harness の UI 可視化（Evaluation Board 拡張）
+- workflow engine の複数 task 並列実行（現在は 1 task dogfood のみ）
+- Hermes 的な自己改善ループの engine 化（evaluator の提案を次 round に反映）
+- M3E の 1 scope 内に workflow instance を埋め込む完全統合（Phase 3 の延長）
+- workflow instance の UI 可視化（Evaluation Board 拡張）
 - 自動 retrospective 生成（session ログ → 反省抽出）
-- M3E 本体への harness 機能統合（Resource 型として）
 
 ## 進捗ログ
 
 - 2026-04-20: kickoff。skeleton 生成、branch `prj/03_SelfDrive` 作成
+- 2026-04-20: plan.md reframe（friction-harness → workflow engine dogfood）、tasks.yaml v2 生成
+- 2026-04-21: Qn2_stale_docs tentative default 適用。README.md Vision / 主成果物 / 役割分担 / 運用ルール / Future Work と runtime/README.md の View 役割を workflow engine フレームに整合

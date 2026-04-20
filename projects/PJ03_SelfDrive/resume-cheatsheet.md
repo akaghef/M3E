@@ -4,12 +4,12 @@
 - Next task: `T-0-1` finalize 最小 workflow state set (9 states)
 - Parallel-ready: `T-0-1`, `T-0-2`, `T-0-3`, `T-0-4` are independent
 - Gate 0→1: `T-0-5` consolidates Phase 0 artifacts; Gate 1 is human
-- Open reviews: 2
+- Open reviews: 1
   - `Qn_initial` — runtime host choice (ScheduleWakeup + CronCreate 併用 / tentative)
-  - `Qn2_stale_docs` — README.md / runtime/README.md 旧フレーム残置 (tentative: rewrite before Gate 1)
+  - `Qn2_stale_docs` — RESOLVED 2026-04-21 (option 1: Claude が README/runtime 整合)
 - Latest commit: (pending first PJ03 reframed commit)
-- Agent Status: idle → set to working on resume
-- Last session: 2026-04-20 plan.md reframed → tasks.yaml regenerated (v2: workflow engine dogfood)
+- Agent Status: idle → ready to start T-0-1..T-0-4 inner loop
+- Last session: 2026-04-21 Qn2 tentative default 適用。README.md / runtime/README.md を workflow engine フレームに整合。Phase 0 inner loop 着手可能。
 - Archived: `tasks_v1_friction.yaml.bak` (旧 friction-observation 5 tasks)
 
 ## Inner loop expectation
