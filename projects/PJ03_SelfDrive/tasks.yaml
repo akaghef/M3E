@@ -267,20 +267,107 @@
 - id: T-1-7
   phase: 1
   verb: gate-check
-  target: "Phase 1 readiness for Gate 2"
+  target: "Phase 1 readiness for Gate 2 (REJECTED 2026-04-21; re-gate after T-1-8..T-1-11)"
   done_when:
     - "plan.md §成功基準 最小成功 5 項目を T-1-1..T-1-6 の artifact から根拠づきで評価"
     - "plan.md 確定事項 に Phase 1 結論を追記"
     - "Phase 2 (Hermes 改善ループ) の着手条件が整理されている"
     - "Gate 2 readiness summary posted to chat (akaghef approves / rejects)"
+    - "Qn3_gate2_rework の P1..P4 すべて resolve"
   eval_required: false
   eval_criteria:
     - "a reader can confirm 最小成功 5 項目から plan.md + artifacts だけで判断できる"
+    - "persistence gap / reducer-vs-engine / 条件 observable / example 降格 の 4 論点に明示的回答がある"
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: gate
-  status: done
+  status: blocked
+  round: 1
+  round_max: 1
+  last_feedback: "akaghef rejected Gate 2 (2026-04-21): persistence gap, runner-is-reducer, FIFO pickNextTask, sleeping/escalated runtime semantics missing, node graph unused, regex writeback fragile, round definition ambiguous, code-reachable claim too weak. See reviews/Qn3_gate2_rework.md"
+  blocker: "Qn3_gate2_rework — P1..P4 方針確定 + T-1-8..T-1-11 完了まで"
+
+# =========================================================================
+# Phase 1.5: Gate 2 rework (Qn3 P1..P4) — 方針確定後に具体化
+# =========================================================================
+
+- id: T-1-8
+  phase: 1
+  verb: decide
+  target: "checkpoint persistence 正本の場所 (P1)"
+  done_when:
+    - "tasks.yaml 拡張 / 別機械正本 / それ以外 の採否が plan.md 確定事項に記録"
+    - "採用案で escalationKind / wakeupAt / wakeupMechanism / failureReason / dependencies をどう永続化するか明記"
+  eval_required: false
+  eval_criteria:
+    - "WorkflowState の全 invariant が resume 後も検査可能"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  status: pending
   round: 0
   round_max: 1
   last_feedback: null
-  blocker: null
+  blocker: "akaghef が P1 方針を指示するまで pending"
+
+- id: T-1-9
+  phase: 1
+  verb: decide
+  target: "runner 責務境界 (P2)"
+  done_when:
+    - "reducer / orchestrator / engine のどれを目指すか plan.md 確定事項に記録"
+    - "採用した呼称で workflow_runner を rename、または責務を拡張"
+    - "呼称と dogfood 主張の整合を確認（過大評価が無い）"
+  eval_required: false
+  eval_criteria:
+    - "ドキュメントとコードの責務宣言が一致"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 1
+  last_feedback: null
+  blocker: "akaghef が P2 方針を指示するまで pending"
+
+- id: T-1-10
+  phase: 1
+  verb: implement
+  target: "edge 条件の runtime 観測化 (P3)"
+  done_when:
+    - "E01: dependencies field を tasks schema に追加、pickNextTask が観測"
+    - "E08/E09: clock 参照で wakeup_fired を自動検出"
+    - "E10/E11: escalation_detected を runner が条件から判定（E1 = 全 task done 等）"
+    - "E12-E16: reviews/Qn との紐付け field を checkpoint に追加、human signal が review 参照を要求"
+    - "Evaluator の re-run で 3 停止カテゴリが実稼働で観察可能"
+  eval_required: true
+  eval_criteria:
+    - "各 edge の条件がコードから導出できる（signal 注入に依存しない）"
+    - "sleeping / escalated 各 1 回の実稼働観察を dogfood_run_02 に記録"
+  parallelizable: false
+  scope: "beta/src"
+  facet: implementation
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "T-1-8, T-1-9 後"
+
+- id: T-1-11
+  phase: 1
+  verb: decide
+  target: "workflow_example.json の処遇 (P4)"
+  done_when:
+    - "実行入力に昇格 (runner が node graph を読む) / artifact 降格 (docs/ に移動 + description 化) の採否が plan.md に記録"
+    - "採用案に沿った file 配置と reducer/engine との binding が実装または明記"
+  eval_required: false
+  eval_criteria:
+    - "二重表現（仕様と実装の乖離）が解消"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 1
+  last_feedback: null
+  blocker: "akaghef が P4 方針を指示するまで pending"

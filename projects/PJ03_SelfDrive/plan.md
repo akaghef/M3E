@@ -278,7 +278,24 @@ Phase 0 の設計分岐 4 本を確定。各成果物は `docs/` 配下の独立
 - T-1-4 evaluator loop: round 判定は E06/E07（`round + 1 <= round_max` で retry、超過で blocked）
 - T-1-5 checkpoint: primary = tasks.yaml、PostCompact/SessionStart の復旧は resume-cheatsheet.md を経由
 
-## Phase 1 結論（2026-04-21 T-1-1..T-1-6 完了 / akaghef Gate 2 承認待ち）
+## Phase 1 結論（REJECTED 2026-04-21 akaghef; see Qn3_gate2_rework）
+
+**Gate 2 差戻**。以下の主張は撤回し、[reviews/Qn3_gate2_rework.md](reviews/Qn3_gate2_rework.md) の P1..P4 決定後に再 gate する。
+撤回理由の要点:
+
+1. SSOT 宣言と実装の矛盾（escalationKind / wakeupAt / wakeupMechanism / failureReason / dependencies が checkpoint 永続化から欠落）
+2. runner は signal reducer で engine ではない。「1 task workflow が実際に回る」は過大評価
+3. sleeping / escalated の runtime semantics（clock 参照・review 紐付け）未実装
+4. workflow_example.json が実行から参照されず、仕様と実装が二重表現
+5. applyWriteback の regex surgical replace は checkpoint 正本として脆い
+6. round semantics が E06 のみ定義で曖昧
+7. code-reachable を gate 根拠にしたのは不十分
+
+rework tasks: T-1-8 (P1 persistence)、T-1-9 (P2 runner 責務)、T-1-10 (P3 条件 observable)、T-1-11 (P4 example 処遇)。T-1-7 は status=blocked（blocker=Qn3）。
+
+以下は撤回された旧結論記録（参照のみ、信頼しない）:
+
+## Phase 1 結論（旧・撤回済）
 
 Phase 1 の 最小 workflow engine が dogfood で成立。
 

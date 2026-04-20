@@ -12,16 +12,16 @@
 
 ## Narrative (human-maintained)
 
-- Phase: 0 — 設計分岐の確定（T-0-1..T-0-4 done、T-0-5 gate-check ready）
-- Next task: `T-0-5` gate-check (Gate 1 readiness consolidation) — akaghef 承認待ち
-- Parallel-ready: 無し（Gate 1 を挟む）
-- Gate 0→1: T-0-5 の Gate 1 readiness report を akaghef が承認 → Phase 1 tasks.yaml 具体化
+- Phase: 1 (Gate 2 REJECTED 2026-04-21) → 1.5 rework 中
+- Next task: `T-1-8` decide checkpoint persistence 正本 — akaghef P1 方針指示待ち
+- Gate 2: REJECTED — 8 指摘点を Qn3 に pool、T-1-8..T-1-11 (P1-P4) 起票
 - Open reviews: 1
-  - `Qn_initial` — resolution-proposed (option 3: ScheduleWakeup + CronCreate 併用、Gate 1 で確定)
+  - `Qn3_gate2_rework` — open (akaghef P1-P4 方針指示待ち)
+  - `Qn_initial` — resolved 2026-04-21 (Gate 1 で確定)
   - `Qn2_stale_docs` — resolved 2026-04-21
-- Latest commit: `fcf951a docs(PJ03): align README and runtime docs to reframed workflow engine frame (Qn2)`
-- Agent Status: working → Gate 1 readiness 報告で一時待機
-- Last session: 2026-04-21 T-0-1..T-0-4 docs 4 本生成 → Evaluator 4/4 pass → plan.md 確定事項追記
+- Latest commit: `35e9633 feat(PJ03): Phase 1 complete — minimal workflow engine + dogfood run` (Gate 2 差戻で claim 撤回)
+- Agent Status: working → Gate 2 rework 準備中
+- Last session: 2026-04-21 T-1-1..T-1-6 runner + dogfood → Gate 2 emit → akaghef 差戻 (persistence gap / reducer-vs-engine / FIFO pickNextTask / sleeping clock 欠 / escalated flag 化 / node graph unused / regex writeback 脆 / round 曖昧)
 
 ## Phase 0 成果物 (authoritative)
 
@@ -38,9 +38,8 @@
 
 ## Inner loop expectation
 
-- Gate 1 が akaghef 承認されたら T-0-5 を done にして Phase 1 に入る
-- Phase 1 は T-1-1（TypeScript 型定義）から着手。parallelizable: false
-- T-1-1..T-1-6 は sequential、T-1-7 で Gate 2
+- Phase 1 (旧) は T-1-1..T-1-6 完了・T-1-7 blocked で停止
+- Phase 1.5 rework: akaghef が P1..P4 方針を指示 → T-1-8..T-1-11 起票 → T-1-10 で実装 → 再 gate
 
 ## Stop conditions
 
