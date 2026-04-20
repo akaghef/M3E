@@ -1,18 +1,28 @@
+# PJ03 SelfDrive — sprint contracts (reframed: workflow engine dogfood)
+# Old friction-observation tasks archived at tasks_v1_friction.yaml.bak
+
+# =========================================================================
+# Phase 0: 再設計成果物の確定
+# plan.md は reframed 済み。Phase 0 成果物 4 本を独立ドキュメントに固定する。
+# =========================================================================
+
 - id: T-0-1
   phase: 0
-  verb: extract
-  target: "human intervention points from PJ01/PJ02 sessions and retrospectives"
+  verb: finalize
+  target: "最小 workflow state set"
   done_when:
-    - "projects/PJ03_SelfDrive/data/friction_raw.md exists with at least 15 intervention points"
-    - "each entry cites source (session file / commit / retrospective section)"
+    - "projects/PJ03_SelfDrive/docs/workflow_state_set.md exists"
+    - "9 states documented: pending, ready, in_progress, eval_pending, blocked, sleeping, escalated, done, failed"
+    - "each state has: meaning (1-2 lines), entry condition, exit condition, invariant"
+    - "table cross-references plan.md §データ構造の最小案 WorkflowState.kind"
   eval_required: true
   eval_criteria:
-    - "citations are verifiable (file path + line or section)"
-    - "no invented interventions not grounded in source material"
-    - "coverage spans both PJ01 and PJ02"
-  parallelizable: false
-  scope: "projects/PJ03_SelfDrive/data"
-  facet: document
+    - "state coverage is exhaustive (no stop reason falls outside the 9 states)"
+    - "state boundaries are disjoint (no overlap in meaning)"
+    - "invariants are falsifiable (can be checked mechanically)"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
   status: pending
   round: 0
   round_max: 3
@@ -21,19 +31,21 @@
 
 - id: T-0-2
   phase: 0
-  verb: classify
-  target: "friction categories and frequency"
+  verb: enumerate
+  target: "allowed workflow edges"
   done_when:
-    - "projects/PJ03_SelfDrive/data/friction_classified.md exists"
-    - "axes defined: trigger (task-edge / gate / resume / error / ambiguity / env) x cause (info-gap / decision / protocol-hole)"
-    - "each raw entry mapped to axes"
+    - "projects/PJ03_SelfDrive/docs/workflow_edges.md exists"
+    - "all 10 edges from plan.md §基本遷移 are tabulated"
+    - "each row has: edge_id, source_state, target_state, condition, trigger (machine/human/timer)"
+    - "unreachable state combinations are listed as explicit rejections"
   eval_required: true
   eval_criteria:
-    - "classification is mutually exclusive within each axis"
-    - "frequency count matches raw entries"
-  parallelizable: false
-  scope: "projects/PJ03_SelfDrive/data"
-  facet: document
+    - "edges are consistent with T-0-1 state set"
+    - "every state (except failed) has at least one incoming and outgoing edge"
+    - "human approval edges are flagged distinctly from machine edges"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
   status: pending
   round: 0
   round_max: 3
@@ -42,19 +54,19 @@
 
 - id: T-0-3
   phase: 0
-  verb: gap-analyze
-  target: "existing hooks vs required behavior"
+  verb: map
+  target: "現行資産 → workflow element"
   done_when:
-    - "projects/PJ03_SelfDrive/docs/hook_gap_table.md exists"
-    - "each of the 4 hooks (session-start / prompt-prj-check / post-compact / stop-check) has current vs required behavior"
-    - "gap rows are mapped to friction categories from T-0-2"
-    - "harness MVP requirements section added: minimal fill-in proposals per gap"
+    - "projects/PJ03_SelfDrive/docs/legacy_asset_mapping.md exists"
+    - "mapping table covers: tasks.yaml, resume-cheatsheet.md, reviews/Qn_*.md, ScheduleWakeup, SessionStart/PostCompact/Stop hooks, sub-pj-do"
+    - "each asset row maps to: state(s) it writes, edge(s) it triggers, checkpoint role"
+    - "gaps (assets not yet mapped) are explicitly listed"
   eval_required: true
   eval_criteria:
-    - "current behavior descriptions are grounded in actual hook source (cite line ranges)"
-    - "required behavior is justified by a friction entry, not invented"
-    - "rejected alternatives (e.g. external orchestrator) are recorded with reason"
-  parallelizable: false
+    - "mapping is verifiable against actual file contents (cite paths)"
+    - "no invented assets"
+    - "coverage of tentative runtime hosts from Qn_initial (ScheduleWakeup + CronCreate) is explicit"
+  parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
   status: pending
@@ -65,20 +77,24 @@
 
 - id: T-0-4
   phase: 0
-  verb: enumerate
-  target: "escalation boundary candidates"
+  verb: taxonomize
+  target: "stop reason"
   done_when:
-    - "projects/PJ03_SelfDrive/docs/escalation_boundaries.md exists"
-    - "each boundary has: trigger, detection method, human notification format"
-  eval_required: false
+    - "projects/PJ03_SelfDrive/docs/stop_reason_taxonomy.md exists"
+    - "covers sub-pj-guard E1/E2/E3 + plan.md §S3 stop reasons"
+    - "each stop reason maps to exactly one of: blocked, sleeping, escalated, failed"
+    - "decision rubric is included (how to classify a new stop reason)"
+  eval_required: true
   eval_criteria:
-    - "boundaries cover Phase gate, env collapse, scope drift, destructive ops"
+    - "mapping is mutually exclusive (one stop reason → one target state)"
+    - "recovery path is named for each non-failed category"
+    - "E1/E2/E3 are preserved as escalated (per sub-pj-guard contract)"
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
   status: pending
   round: 0
-  round_max: 2
+  round_max: 3
   last_feedback: null
   blocker: null
 
@@ -87,12 +103,179 @@
   verb: gate-check
   target: "Phase 0 readiness for Gate 1"
   done_when:
-    - "friction_raw, friction_classified, harness_mvp_spec, escalation_boundaries are all present"
-    - "plan.md 確定事項 section updated with Phase 0 decisions"
-    - "open reviews count and tentative defaults recorded"
+    - "T-0-1..T-0-4 all done"
+    - "plan.md 確定事項 section appended with: state set, edge list ref, legacy mapping ref, stop taxonomy ref"
+    - "Qn_initial (runtime host choice) has a concrete resolution proposal for akaghef"
+    - "reviews/ open count + tentative defaults summarized in resume-cheatsheet.md"
+    - "Gate 1 readiness summary posted to chat (akaghef approves / rejects)"
   eval_required: false
   eval_criteria:
-    - "human can decide Gate 1 from plan.md alone"
+    - "a reader with no context can judge Gate 1 from plan.md 確定事項 alone"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  status: pending
+  round: 0
+  round_max: 1
+  last_feedback: null
+  blocker: null
+
+# =========================================================================
+# Phase 1: 最小 workflow engine
+# dogfood target: PJ03 自身の 1 task を engine で進める（plan.md §S11）
+# =========================================================================
+
+- id: T-1-1
+  phase: 1
+  verb: define-types
+  target: "TypeScript type skeletons for workflow engine"
+  done_when:
+    - "beta/src/shared/workflow_types.ts exists"
+    - "exports: WorkflowState, WorkflowNode, WorkflowEdge, Checkpoint, RunContext (per plan.md §データ構造の最小案)"
+    - "WorkflowState.kind uses the 9-state union from T-0-1"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "types are structurally identical to plan.md interfaces (no silent extensions)"
+    - "naming follows beta/src/shared convention (see types.ts / scope_types.ts)"
+    - "no runtime code added to workflow_types.ts (types + const only)"
+  parallelizable: false
+  scope: "beta/src/shared"
+  facet: implementation
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-1-2
+  phase: 1
+  verb: encode
+  target: "1-task workflow as Node+Edge instance"
+  done_when:
+    - "projects/PJ03_SelfDrive/runtime/workflow_example.ts (or .json) exists"
+    - "encodes one PJ03 task (e.g. T-1-3) as: WorkflowNode set + WorkflowEdge set"
+    - "nodes cover generator, evaluator, router roles at minimum"
+    - "edges cover pending → ready → in_progress → eval_pending → done + blocked escape"
+  eval_required: true
+  eval_criteria:
+    - "encoded instance validates against types from T-1-1"
+    - "the task is actually one from tasks.yaml (not a toy example)"
+    - "graph has no orphan nodes or edges"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/runtime"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-1-3
+  phase: 1
+  verb: implement
+  target: "state transition runner"
+  done_when:
+    - "beta/src/node/workflow_runner.ts exists"
+    - "reads tasks.yaml → returns current Checkpoint per task"
+    - "applies one step: given current state, select allowed edge, return next state"
+    - "writes back updated status/round/last_feedback to tasks.yaml"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "runner rejects invalid edges (fail-closed per plan.md §S12 Guardrails)"
+    - "writeback preserves YAML structure (no reordering, no field loss)"
+    - "dry-run mode exists for non-destructive inspection"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-1-4
+  phase: 1
+  verb: integrate
+  target: "evaluator loop in runner"
+  done_when:
+    - "runner distinguishes generator vs evaluator nodes"
+    - "pending → in_progress → eval_pending → done / back-to-in_progress cycle works"
+    - "round increments on evaluator fail; round > round_max transitions to blocked"
+    - "demo run on one synthetic task completes the full cycle"
+  eval_required: true
+  eval_criteria:
+    - "evaluator verdict persists in last_feedback"
+    - "round_max enforcement is exact (off-by-one checked)"
+    - "blocked transition does not lose state (checkpoint stays intact)"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-1-5
+  phase: 1
+  verb: implement
+  target: "checkpoint / resume"
+  done_when:
+    - "Checkpoint is persisted to tasks.yaml (currentState, round) + resume-cheatsheet.md (human summary)"
+    - "runner can be invoked with --resume and continues from last checkpoint"
+    - "PostCompact / SessionStart reload path documented (even if hook wiring is later)"
+    - "resume test: kill runner mid-transition, relaunch, verify same node resumes"
+  eval_required: true
+  eval_criteria:
+    - "checkpoint is idempotent (re-saving the same state is a no-op)"
+    - "resume never double-fires a side effect (Generator is not re-run after success)"
+    - "corrupt checkpoint produces a clear error, not silent reset"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-1-6
+  phase: 1
+  verb: dogfood
+  target: "self-apply runner to one PJ03 task"
+  done_when:
+    - "runner executes at least one real PJ03 task (proposed: T-1-1 or a later Phase 2 task) end-to-end"
+    - "tasks.yaml reflects actual state transitions written by runner, not manual edits"
+    - "resume-cheatsheet.md is updated by runner, not by hand"
+    - "dogfood log (projects/PJ03_SelfDrive/artifacts/dogfood_run_01.md) records observed transitions"
+  eval_required: true
+  eval_criteria:
+    - "no manual tasks.yaml edit during the dogfood run"
+    - "observed transitions match T-0-2 edge table"
+    - "all 4 stop categories (blocked/sleeping/escalated/failed) are reachable, even if only one is hit this run"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: implementation
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-1-7
+  phase: 1
+  verb: gate-check
+  target: "Phase 1 readiness for Gate 2"
+  done_when:
+    - "plan.md §成功基準 最小成功 5 項目を T-1-1..T-1-6 の artifact から根拠づきで評価"
+    - "plan.md 確定事項 に Phase 1 結論を追記"
+    - "Phase 2 (Hermes 改善ループ) の着手条件が整理されている"
+    - "Gate 2 readiness summary posted to chat (akaghef approves / rejects)"
+  eval_required: false
+  eval_criteria:
+    - "a reader can confirm 最小成功 5 項目から plan.md + artifacts だけで判断できる"
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: gate

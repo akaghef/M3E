@@ -366,6 +366,17 @@ export function mergeScopePush(
   const hasVersionConflict = baseVersion !== mapVersion;
   const originalNodeIds = new Set(Object.keys(nodes));
 
+  if (hasVersionConflict) {
+    return {
+      ok: false,
+      version: mapVersion,
+      applied: [],
+      rejected: Object.keys(changedNodes),
+      conflicts: [{ nodeId: scopeId, winner: "current", loser: entity.entityId }],
+      error: "Version conflict.",
+    };
+  }
+
   const applied: string[] = [];
   const rejected: string[] = [];
   const conflicts: Array<{ nodeId: string; winner: string; loser: string }> = [];
@@ -381,15 +392,6 @@ export function mergeScopePush(
       }
     } else {
       if (nodes[nodeId] && !isInScope(nodes, nodeId, scopeId, rootId)) {
-        rejected.push(nodeId);
-        continue;
-      }
-    }
-
-    // Version conflict → priority resolution
-    if (hasVersionConflict && nodes[nodeId]) {
-      if (entity.priority < lock.priority) {
-        conflicts.push({ nodeId, winner: "current", loser: entity.entityId });
         rejected.push(nodeId);
         continue;
       }

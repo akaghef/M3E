@@ -301,6 +301,14 @@ interface CollabConfigResponse {
   mapId: string;
   mapLabel: string;
 }
+interface CollabPushResponse {
+  ok: boolean;
+  version: number;
+  applied: string[];
+  rejected: string[];
+  conflicts: Array<{ nodeId: string; winner: string; loser: string }>;
+  error?: string;
+}
 interface CollabPrefs {
   displayName: string;
   joinToken: string;
@@ -4610,6 +4618,144 @@ function syncCollabUi(): void {
   }
 }
 
+function getOwnedScopeLock(scopeId: string): ClientScopeLock | null {
+  const lock = scopeLockMap.get(scopeId);
+  if (!lock || lock.entityId !== collabEntityId || !lock.lockId) {
+    return null;
+  }
+  return lock;
+}
+
+function cloneNodeForCollab(nodeId: string): TreeNode | null {
+  if (!map) {
+    return null;
+  }
+  const node = map.state.nodes[nodeId];
+  if (!node) {
+    return null;
+  }
+  return {
+    ...node,
+    children: [...(node.children || [])],
+    attributes: { ...(node.attributes || {}) },
+  };
+}
+
+function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
+  const changes: Record<string, TreeNode> = {};
+  if (!map || !map.state.nodes[scopeId]) {
+    return changes;
+  }
+  const stack = [scopeId];
+  const seen = new Set<string>();
+  while (stack.length > 0) {
+    const nodeId = stack.pop()!;
+    if (seen.has(nodeId)) {
+      continue;
+    }
+    seen.add(nodeId);
+    const snapshot = cloneNodeForCollab(nodeId);
+    if (!snapshot) {
+      continue;
+    }
+    changes[nodeId] = snapshot;
+    for (const childId of snapshot.children || []) {
+      if (!seen.has(childId)) {
+        stack.push(childId);
+      }
+    }
+  }
+  return changes;
+}
+
+async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
+  if (!map || !collabToken || !collabEntityId) {
+    return false;
+  }
+  const mapWithVersion = map as SavedMap & { mapVersion?: number };
+  const scopeId = currentScopeRootId();
+  const lock = getOwnedScopeLock(scopeId);
+  if (!lock) {
+    return false;
+  }
+  const nodes = collectScopeNodeChanges(scopeId);
+  if (Object.keys(nodes).length === 0) {
+    return false;
+  }
+  const pushNodesWithBaseVersion = async (baseVersion: number): Promise<CollabPushResponse> => {
+    const res = await fetch(`/api/collab/push/${encodeURIComponent(LOCAL_MAP_ID)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        Authorization: `Bearer ${collabToken}`,
+        "X-M3E-Tab-Id": TAB_ID,
+      },
+      body: JSON.stringify({
+        scopeId,
+        lockId: lock.lockId,
+        baseVersion,
+        changes: { nodes },
+      }),
+    });
+    const payload = await res.json().catch(() => ({ ok: false, version: baseVersion, applied: [], rejected: [], conflicts: [], error: `HTTP ${res.status}` })) as CollabPushResponse;
+    if (!res.ok) {
+      payload.ok = false;
+      if (!payload.error) {
+        payload.error = `HTTP ${res.status}`;
+      }
+    }
+    return payload;
+  };
+
+  try {
+    const payload = await pushNodesWithBaseVersion(mapWithVersion.mapVersion ?? 0);
+    if (!payload.ok) {
+      if (payload.error === "Version conflict.") {
+        const remoteResponse = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
+        if (remoteResponse.ok) {
+          const remotePayload = ensureDocShape(await remoteResponse.json()) as SavedMap & { mapVersion?: number };
+          showConflictPanel(remotePayload.state, {
+            localLabel: "Use Local",
+            remoteLabel: "Use Team",
+            onUseLocal: () => {
+              void (async () => {
+                const retry = await pushNodesWithBaseVersion(remotePayload.mapVersion ?? 0);
+                if (retry.ok) {
+                  mapWithVersion.mapVersion = retry.version;
+                  void loadDocFromLocalDb(false);
+                  setStatus(`Collab push completed (${retry.applied.length} nodes).`);
+                } else {
+                  setStatus(`Collab push failed: ${retry.error || "Unknown error"}`, true);
+                }
+              })();
+            },
+            onUseRemote: () => {
+              loadPayload(remotePayload);
+              setStatus("Loaded team version.");
+            },
+          });
+          setStatus("Collab conflict detected. Choose Use Local or Use Team.", true);
+          return false;
+        }
+      }
+      if (showStatus) {
+        setStatus(`Collab push failed: ${payload.error || "Unknown error"}`, true);
+      }
+      return false;
+    }
+    mapWithVersion.mapVersion = payload.version;
+    if (showStatus) {
+      setStatus(`Collab push completed (${payload.applied.length} nodes).`);
+    }
+    return true;
+  } catch (err) {
+    if (showStatus) {
+      setStatus(`Collab push failed: ${(err as Error).message}`, true);
+    }
+    return false;
+  }
+}
+
 async function fetchCollabConfig(): Promise<void> {
   try {
     const res = await fetch("/api/collab/config", { cache: "no-store" });
@@ -4783,6 +4929,25 @@ function startCollabEventSource(): void {
         buildEntityScopeList();
       }
     } catch { /* ignore */ }
+  });
+
+  collabEventSource.addEventListener("state_update", (event: Event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data) as { version?: number; entityId?: string };
+      if (map && typeof data.version === "number") {
+        (map as SavedMap & { mapVersion?: number }).mapVersion = data.version;
+      }
+      if (data.entityId === collabEntityId) {
+        return;
+      }
+      if (autosaveTimer !== null) {
+        setStatus("Collab update available — save your edits first.", false);
+        return;
+      }
+      void loadDocFromLocalDb(false);
+    } catch {
+      // ignore malformed state updates
+    }
   });
 
   collabEventSource.addEventListener("error", () => {
@@ -5798,6 +5963,10 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     return false;
   }
 
+  if (collabEntityId && collabToken && !force) {
+    return await pushCurrentScopeToCollab(showStatus);
+  }
+
   try {
     const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, {
       method: "POST",
@@ -5849,8 +6018,14 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
 
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     map.savedAt = String(payload.savedAt || nowIso());
+    if (typeof payload.mapVersion === "number") {
+      (map as SavedMap & { mapVersion?: number }).mapVersion = Number(payload.mapVersion);
+    }
     lastServerSavedAt = map.savedAt;
     broadcastState();
+    if (collabEntityId && collabToken) {
+      void pushCurrentScopeToCollab(false);
+    }
     if (cloudSyncEnabled) {
       void pushDocToCloud(false);
     }

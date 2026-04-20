@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "backupId": "2026-04-18_18-04-08-695_dniihz",
+  "mapId": "integration-conflict",
+  "reason": "cloud-conflict-push",
+  "createdAt": "2026-04-18T18:04:08.695Z",
+  "savedAt": "2026-04-18T18:04:08.695Z",
+  "state": {
+    "rootId": "n_1776535448692_ku5ax9",
+    "nodes": {
+      "n_1776535448692_ku5ax9": {
+        "id": "n_1776535448692_ku5ax9",
+        "parentId": null,
+        "children": [
+          "n_1776535448692_8u4sen"
+        ],
+        "text": "Root",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": "",
+        "nodeType": "text"
+      },
+      "n_1776535448692_8u4sen": {
+        "id": "n_1776535448692_8u4sen",
+        "parentId": "n_1776535448692_ku5ax9",
+        "children": [],
+        "nodeType": "text",
+        "text": "Stale",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      }
+    },
+    "links": {}
+  }
+}

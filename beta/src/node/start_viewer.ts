@@ -39,6 +39,13 @@ import {
   type CollabRole,
 } from "./collab";
 import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
+import {
+  appendPerfLog,
+  normalizeRoute,
+  extractMapId,
+  isSseRoute,
+  buildClientTag,
+} from "./perf_log";
 import { getPresenceList, touchPresence, removePresence } from "./presence";
 import {
   ingestSingle,
@@ -312,6 +319,81 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
+}
+
+function instrumentRequestForPerfLog(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const started = process.hrtime.bigint();
+  const startedWallMs = Date.now();
+  const urlRaw = req.url ?? "/";
+  const parsed = new URL(urlRaw, "http://localhost");
+  const pathname = parsed.pathname;
+  const method = req.method ?? "GET";
+  const route = normalizeRoute(method, pathname);
+  const sse = isSseRoute(route);
+
+  let ttfbMs: number | null = null;
+  let resBytes = 0;
+  let written = false;
+
+  const elapsedMs = (): number => {
+    const diffNs = Number(process.hrtime.bigint() - started);
+    return Math.round(diffNs / 1_000_000);
+  };
+
+  const origWrite = res.write.bind(res) as typeof res.write;
+  const origEnd = res.end.bind(res) as typeof res.end;
+
+  res.write = function patchedWrite(this: http.ServerResponse, chunk: unknown, ...rest: unknown[]): boolean {
+    if (ttfbMs === null) ttfbMs = elapsedMs();
+    if (chunk !== null && chunk !== undefined) {
+      try {
+        resBytes += Buffer.byteLength(chunk as Buffer | string);
+      } catch {
+        // ignore size accounting errors
+      }
+    }
+    return (origWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+  } as typeof res.write;
+
+  res.end = function patchedEnd(this: http.ServerResponse, chunk?: unknown, ...rest: unknown[]): http.ServerResponse {
+    if (ttfbMs === null) ttfbMs = elapsedMs();
+    if (chunk !== null && chunk !== undefined) {
+      try {
+        resBytes += Buffer.byteLength(chunk as Buffer | string);
+      } catch {
+        // ignore
+      }
+    }
+    return (origEnd as (...args: unknown[]) => http.ServerResponse)(chunk, ...rest);
+  } as typeof res.end;
+
+  const writeLog = (): void => {
+    if (written) return;
+    written = true;
+    try {
+      appendPerfLog({
+        ts: new Date(startedWallMs).toISOString(),
+        method,
+        path: pathname,
+        route,
+        status: res.statusCode || 0,
+        duration_ms: elapsedMs(),
+        ttfb_ms: ttfbMs,
+        req_bytes: req.headers["content-length"] ? Number(req.headers["content-length"]) || null : null,
+        res_bytes: resBytes,
+        map_id: extractMapId(pathname),
+        scope: parsed.searchParams.get("scope"),
+        client: buildClientTag(req.headers),
+        sse,
+        error_code: null,
+      });
+    } catch {
+      // never let perf logging break requests
+    }
+  };
+
+  res.on("finish", writeLog);
+  res.on("close", writeLog);
 }
 
 function beginSse(res: http.ServerResponse): void {
@@ -2352,6 +2434,11 @@ async function handleCollabApi(
         if (!result.ok && result.error === "Scope lock not held.") {
           sendJson(res, 403, result);
         } else {
+          if (result.ok) {
+            const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+            const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+            broadcastMapUpdate(mapId, savedAt, sourceTabId);
+          }
           sendJson(res, 200, result);
         }
       } catch (err) {
@@ -2366,6 +2453,7 @@ async function handleCollabApi(
 
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    instrumentRequestForPerfLog(req, res);
     const collabRoute = parseCollabRoute(req.url ?? "/");
     if (collabRoute) {
       await handleCollabApi(req, res, collabRoute);

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "backupId": "2026-04-18_18-04-45-797_moseke",
+  "mapId": "integration-conflict",
+  "reason": "cloud-conflict-push",
+  "createdAt": "2026-04-18T18:04:45.797Z",
+  "savedAt": "2026-04-18T18:04:45.797Z",
+  "state": {
+    "rootId": "n_1776535485795_1na02r",
+    "nodes": {
+      "n_1776535485795_1na02r": {
+        "id": "n_1776535485795_1na02r",
+        "parentId": null,
+        "children": [
+          "n_1776535485795_pg0pt5"
+        ],
+        "text": "Root",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": "",
+        "nodeType": "text"
+      },
+      "n_1776535485795_pg0pt5": {
+        "id": "n_1776535485795_pg0pt5",
+        "parentId": "n_1776535485795_1na02r",
+        "children": [],
+        "nodeType": "text",
+        "text": "Stale",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      }
+    },
+    "links": {}
+  }
+}

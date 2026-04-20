@@ -20,6 +20,10 @@
   コマンドパネル実装前に満たすべきセキュリティ受け入れテストを定義する
 - `Agent_Roles.md`
   エージェント遂行の役割分担と実行順序を定義する
+- `Version_Registry.md`
+  リリースタグと data schema バージョンの対応表。launch-final 実行時に更新する
+- `Release_Notes_v*.md`
+  個別リリースノート。launch-final が main 反映時に追加する
 
 ## この場所の役割
 

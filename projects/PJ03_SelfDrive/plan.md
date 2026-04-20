@@ -1,7 +1,7 @@
 ---
 pj_id: PJ03
 project: SelfDrive
-status: exploring
+status: reframed
 date: 2026-04-20
 ---
 
@@ -9,243 +9,415 @@ date: 2026-04-20
 
 ## TL;DR
 
-定義済みの sub-pj protocol を agent が無人で履行する harness を作る。Phase 0 で摩擦を実測・分類、Phase 1 で MVP harness を 1 PJ 上で稼働、Phase 2 で inner loop 自律化（Generator/Evaluator）、Phase 3 でエスカレーション境界を機械化。
+SelfDrive は、可視化PJではない。主目的は **既存ツールを流用して、M3E に最小の Agent workflow 作成・実行能力を持ち込むこと** である。
 
-## ゴールと成功基準
+そのために、
 
-### ゴール
+- **LangGraph 的な state / node / edge / checkpoint** を workflow 骨格として採用し、
+- **Hermes 的な自己改善ループ** を運用様式として取り込み、
+- 既存の `tasks.yaml`、`resume-cheatsheet.md`、`reviews/`、hooks、ScheduleWakeup を暫定 runtime として使う。
 
-akaghef が介入しない時間帯に、agent が PJ を前進させている状態を作る。
+可視化は後段でよい。まず必要なのは、agent workflow を **作れる・回せる・止まっても再開できる** ことだ。
 
-### 成功基準
+## 軸
 
-1. 1 つの PJ（候補: 新規 dummy PJ or PJ02 の残タスク）を、人間指示 0 回で 1 task 以上進められる
-2. inner loop が round_max まで自律で回り、blocked / done のどちらかに到達する
-3. エスカレーション境界（env collapse / scope / phase gate）を Claude 側が機械判定し、該当時のみ人間に報告
+**M3E は、システムから 1 task までを相似な構造として扱える環境を目指す。そのために、静的 tree だけでなく、動的 Agent workflow も同じ世界観で保持できなければならない。**
 
-## スコープ
+SelfDrive は、その最初の実証PJである。
 
-- **In**: harness の設計・実装・dogfood 検証、摩擦分類、エスカレーション判定
-- **Out**: 可視化、M3E 本体改修、並列 PJ、モデル選定
+## 背景
 
-## 作業者向け必須情報
+現状の M3E は、scope、tree、alias、Command、Undo/Redo、保存整合性には強いが、**動的 Agent workflow を正本として持てない**。
 
-### 対象
+その結果、
 
-自走ハーネス = **ルール + ファイル規約 + トリガー** の集合。触るのは以下のみ:
+- DAG 風の静的整理には向く
+- しかし loop、retry、conditional edge、checkpoint、resume、subagent 分岐を自然に持てない
+- stop / blocked / eval / escalate が、構造ではなく暗黙運用へ散っている
+- SelfDrive も、現状では hook と規約の組み合わせでしかなく、workflow authoring の核がない
 
-| 要素 | パス | 優先度 | 触れ方 |
-|---|---|---|---|
-| sub-pj-do skill | `.claude/skills/sub-pj-do/` | P0 | 本文補強（loop 明確化、stop 判定厳密化） |
-| sub-pj phase docs | `.claude/skills/sub-pj/phase/*.md` | P0 | escalation.md / 2_session.md を中心に整備 |
-| Stop hook | `scripts/hooks/stop-check.sh`（存在未確認） | P0 | E1/E2/E3 以外の停止を検知・block or warn |
-| PostCompact hook | `.claude/settings.json` or hook dir | P1 | resume-cheatsheet 再読込を注入 |
-| SessionStart hook | 既存稼働中 | P1 | prj/* guard 注入（既に動いている） |
-| tasks.yaml / resume-cheatsheet | `projects/PJ{NN}/` | P0 | 規約を壊さず運用で読み書き |
-| reviews/Qn_*.md | `projects/PJ{NN}/reviews/` | P1 | ambiguity pool の定着 |
+これが最大の問題である。
 
-**非対象**: M3E 本体（beta/, final/）、viewer.ts、map サーバ、可視化 UI。
+## 再定義
 
-### ドメイン固有の注意点
+SelfDrive は「sub-pj protocol を無人で回す harness PJ」ではなく、次のPJとして再定義する。
 
-- **prj/* ブランチでは止まるな**: UserPromptSubmit hook が guard 注入する。E1/E2/E3 以外で停止は protocol 違反
-- **cache window (5 分)**: ScheduleWakeup は 60-270s か 1200s+ の二択。中間（300s）は最悪
-- **compact は不可避**: 長時間自走するほど起きる。PostCompact で resume-cheatsheet を読み直す導線を切らすな
-- **tasks.yaml は実装後に動かすな**: sprint contract は実行前に固定。drift 禁止
-- **reviews pool の粒度**: 1 論点 = 1 file。まとめると batch review が機能しない
-- **dogfood の循環**: harness が壊れると harness を直す session も止まる。escape hatch を必ず残す（env var や手動 skill 起動）
+**既存ツールを流用しながら、M3E の中に最小の Agent workflow engine を持ち込むPJ。**
 
-### 前提知識
+ここでいう engine は、豪華な実行基盤ではない。最低限、次を持つ。
 
-- sub-pj protocol の全体（`.claude/skills/sub-pj/protocol.md`）
-- Claude Code の hooks 仕組み（SessionStart / UserPromptSubmit / Stop / PostCompact）
-- ScheduleWakeup tool の cache window 規則
-- subagent 委任（Task tool, generator.md / evaluator.md）
-- tasks.yaml の state machine（pending / in_progress / done / blocked + round）
+- State schema
+- Workflow node
+- Conditional edge
+- Checkpoint / resume
+- Blocked / sleeping / escalated / done の区別
+- Evaluator を含む loop
 
-### 関連スキル
+## grok 下調べから採るもの
 
-- `sub-pj-plan`（Phase 0-1 計画）
-- `sub-pj-do`（Phase 2 セッション実行）— 強化対象
-- `sub-pj`（メタ。gate / retro の窓口）
-- `update-config`（hook 追加・変更時）
-- `setrole`（dogfood 対象 PJ セッション開始）
+### 1. LangGraph から採るもの
 
-### 作業環境注意事項
+LangGraph の価値は可視化ではなく、**workflow の骨格を state machine として明示できること**にある。
 
-- Windows bash（Unix syntax 使用、`/dev/null` / forward slash）
-- Claude Code は VSCode 拡張として稼働中
-- 既存の hook が設定済みかは未確認（Phase 0 の T-0-3 で棚卸し）
-- `scripts/hooks/` ディレクトリの有無も未確認（なければ新設）
+今回採るのは次の考え方である。
 
-## 探索ログ
+- state を型として持つ
+- node を関数単位で分ける
+- edge を条件つきで張る
+- checkpoint を持つ
+- 再開可能にする
+- human approval を edge condition として扱う
 
-### 2026-04-20 — kickoff
+### 2. Hermes から採るもの
 
-- 既存の自走要素の棚卸し対象:
-  - `ScheduleWakeup` tool（dynamic /loop のペース制御）
-  - `CronCreate` / `/loop` skill（固定周期トリガー）
-  - hooks（SessionStart / PostCompact / Stop）
-  - `resume-cheatsheet.md` / `tasks.yaml` 正本構造
-  - `sub-pj-do` skill（Generator/Evaluator round loop 記述あり）
-- 既知の摩擦候補（仮説、Phase 0 で実測検証）:
-  - task 間遷移で「次どれ？」と人間に聞く
-  - round_max 到達時に即停止して報告
-  - compact 後に context を失って作業停止
-  - ambiguity で pool せず止まる
-  - error 発生時に root cause 追わず止まる
+Hermes の価値は、自己改善ループにある。
 
-### 2026-04-20 — hooks inventory (既存調査)
+今回採るのは次の考え方である。
 
-実地確認の結果、`scripts/hooks/` に 4 ファイル全部存在し稼働中:
+- 実行結果から次回用の知見を残す
+- skill / note / review を蓄積して次回を速くする
+- 一度の execution を単発で終わらせず、継続的に改善する
 
-| hook | 現状挙動 | Phase 0 で埋めるべきギャップ |
-|---|---|---|
-| `session-start.sh` | prj/* なら resume.md + resume-cheatsheet + tasks.yaml + 2_session.md loop へ誘導する context を注入 | ほぼ十分 |
-| `prompt-prj-check.sh` | prj/* で E1/E2/E3 以外で止めるなという guard を毎 prompt 注入 | ほぼ十分 |
-| `post-compact.sh` | prj/* で resume.md 再読 + plan.md 更新 + resume-cheatsheet 再生成 + tasks.yaml から続行 | ほぼ十分 |
-| `stop-check.sh` | prj/* かつ worktree dirty かつ tasks.yaml/resume-cheatsheet が HEAD から変更されてない時のみ writeback リマインダー | **弱い**。E1/E2/E3 以外の停止を検知しない。停止理由のタグ付けが無い |
+これは M3E では、`reviews/`、`resume-cheatsheet.md`、`tasks.yaml` 更新規律として取り込める。
 
-**影響**: 想定より infra は揃っている。Phase 0 の焦点は「hook を新設」ではなく「**既存 hook の穴を特定**」にシフト。
+### 3. Guardrails 的発想から採るもの
 
-真の未整備領域（仮説）:
-- **自動 re-wake**: stop 後に次 prompt を待つ構造。ScheduleWakeup を skill 本文で起動する導線が未確立
-- **stop 理由タグ**: 「何故止まったか」が log に残らない。violation 検知不能
-- **Generator/Evaluator の自動起動**: subagent 委任のトリガーが skill 本文頼み。tasks.yaml の `eval_required: true` を確実に拾う機構が未検証
-- **reviews pool の定着**: pool の書式はあるが、実運用で積まれているか未観察
+workflow が壊れないために、未知 state、scope 外参照、不正 edge、無効 payload は fail-closed にする。
 
-### 2026-04-20 — strategy
+## 今回の方針
 
-**自走の分解**: "self-drive" はプロダクトではなく挙動。harness = **ルール + ファイル規約 + トリガー** の組で、ルール追従を default にする装置。
+### 第一原則
 
-構成要素 4 軸:
+**既存ツールを流用できるところは流用し、独自実装は workflow authoring の核に限定する。**
 
-| 軸 | 役割 | 既存要素 |
-|---|---|---|
-| **Trigger** | 誰が Claude を起こすか | ScheduleWakeup (dynamic), CronCreate, user prompt |
-| **State** | 「次に何をやるか」の正本 | tasks.yaml, resume-cheatsheet.md, reviews/Qn_*.md |
-| **Loop controller** | 次アクションを選ぶ規則 | sub-pj-do skill, escalation.md |
-| **Recovery** | compact / resume 越しの文脈生存 | PostCompact hook, Stop hook, resume-cheatsheet |
+### 第二原則
 
-**摩擦 = 4 軸のどこかの不足/断絶** と仮説立て。Phase 0 で実測検証。
+**可視化はサブ。まず workflow を作れることが先。**
 
-### 戦略案の比較
+### 第三原則
 
-**メインプラン A**: ルールベース harness（既存ツール合成）
-- 新しい実行基盤を作らず、ScheduleWakeup + hooks + tasks.yaml + resume-cheatsheet + sub-pj-do skill を合成して「規律で自走する」形にする
-- 不足があれば skill 本文 / hook 内容 / file 規約を強化して埋める
-- pros: 新 infra ゼロ、即 dogfood、rollback が容易（skill/hook を戻すだけ）
-- cons: Claude の規律依存。drift 発生時の検出が弱い
+**LangGraph そのものを埋め込むことが目標ではない。LangGraph 的骨格を、M3E と整合する形で取り込むことが目標である。**
 
-**サブプラン B**: 外部コントローラ（Node/bash script）
-- tasks.yaml を読んで Claude CLI を headless で叩くコントローラを書く
-- Claude は worker、controller は外に置く
-- pros: 決定論的、テスト可能、drift に強い
-- cons: headless CLI orchestration 必須、工数大、interactive flow と並立しづらい
+## 今回使う範囲のツール
 
-**サブプラン C**: ハイブリッド（段階移行）
-- Phase 0-2 は A、Phase 3 で A が drift したら B の要素を追加
-- pros: データ駆動で infra 投下、overshoot しにくい
-- cons: A のルール群を後で script 化する手戻りが少量発生
+### A. workflow 骨格
 
-**推奨: メインプラン A**（採用時に C へ自然移行可能）
+最小の state machine モデルを定義する。
 
-根拠:
-1. **Phase 0 の観察結果次第で投資量を決める**のが合理的。今 B を選ぶと「摩擦が実はルール不足だった」場合に過剰投資
-2. **PJ03 自体が dogfood**。agent が sub-pj protocol を履行する挙動を強化する = PJ のゴールそのもの
-3. **rollback コストが最小**。skill / hook は git 管理、revert で即元通り
-4. drift 検出は Phase 3 のエスカレーション境界機械化で別途扱う
+必要要素:
 
-### 技術選定
+- `WorkflowState`
+- `WorkflowNode`
+- `WorkflowEdge`
+- `EdgeCondition`
+- `Checkpoint`
+- `RunContext`
+
+### B. 既存 runtime として流用するもの
+
+- `tasks.yaml`
+- `resume-cheatsheet.md`
+- `reviews/Qn_*.md`
+- `ScheduleWakeup`
+- SessionStart / PostCompact / Stop hooks
+- `sub-pj-do`
 
-| 要素 | 採用 | 理由 |
-|---|---|---|
-| Trigger (inner) | **ScheduleWakeup dynamic** | cache window 内でループ、stop 時は次 /loop で続き |
-| Trigger (outer) | **CronCreate は deferred** | inner loop が止まらない限り不要。Phase 2 以降に必要性を再評価 |
-| State 正本 | **tasks.yaml + resume-cheatsheet.md** | 既存規約。新規 DB/json 不要 |
-| Ambiguity pool | **reviews/Qn_{slug}.md** | escalation.md §A の書式踏襲 |
-| Loop controller | **sub-pj-do skill の強化** | state machine は既にあるので不足部分を補筆 |
-| Stop guard | **Stop hook（scripts/hooks/stop-check.sh）** | E1/E2/E3 以外で止めたら block する形に |
-| Context recovery | **PostCompact hook** | resume-cheatsheet 再読込を強制注入 |
-| SessionStart | **既存 SessionStart hook** | prj/* 判定 + guard 注入（既に稼働中） |
-| Generator/Evaluator | **subagent 委任（Task tool）** | 既存 generator.md / evaluator.md に従う |
+これらは engine の代替ではなく、**最初の persistence / recovery / trigger 層**として使う。
 
-### 却下した技術選定
+### C. 今回使わないもの
 
-- **外部 orchestrator（Node script + Claude CLI headless）**: 投資量が Phase 0 前に見合わない。Phase 3 で A が drift した場合のみ再検討
-- **専用 DB / sqlite**: tasks.yaml で足りる。追加依存はノイズ
-- **独自 UI（可視化 board）**: Out of Scope（ユーザー指示）
+- 新規DB
+- 外部 orchestrator
+- LangGraph Studio のような本格可視化
+- M3E 全面改修
+- 汎用マルチPJ対応
+
+## データ構造の最小案
 
-### 未決（reviews/ に pool 予定）
+### WorkflowState
 
-- `Qn_initial`: inner/outer trigger 配分 → tentative: ScheduleWakeup のみで Phase 0-1、CronCreate は deferred
-- `Qn_dogfood_target`: Phase 1 MVP の dogfood 対象 → tentative: PJ03 自身の Phase 0 を回す（自己参照）
-- `Qn_stop_hook_strictness`: Stop hook は block するか warn のみか → tentative: Phase 1 までは warn、Phase 2 で block に昇格
+```ts
+interface WorkflowState {
+  id: string
+  kind: "pending" | "ready" | "in_progress" | "eval_pending" | "blocked" | "sleeping" | "escalated" | "done" | "failed"
+  reason?: string
+  updatedAt: string
+}
+```
+
+### WorkflowNode
+
+```ts
+interface WorkflowNode {
+  id: string
+  label: string
+  role: "generator" | "evaluator" | "router" | "human" | "system"
+  actionRef?: string
+}
+```
+
+### WorkflowEdge
 
-## 確定事項
+```ts
+interface WorkflowEdge {
+  id: string
+  sourceNodeId: string
+  targetNodeId: string
+  condition: string
+  onState: WorkflowState["kind"]
+}
+```
 
-- **PJ 名**: SelfDrive（ユーザー指示で確定、2026-04-20）
-- **可視化は後回し**: 現状 poor のままでよい（ユーザー指示で確定、2026-04-20）
-- **dogfood 前提**: この PJ 自体が harness の最初の実稼働対象になる
-- **戦略方針**: ルールベース harness（メインプラン A）を採用。既存 ScheduleWakeup + hooks + tasks.yaml + resume-cheatsheet + sub-pj-do skill を合成し、新 infra は作らない（2026-04-20 tentative、Gate 1 でユーザー最終承認予定）
-- **自走の 4 軸分解**: Trigger / State / Loop controller / Recovery（2026-04-20）
-- **dogfood 対象**: 自己参照。PJ03 の Phase 0 を harness で回す（2026-04-20 tentative）
-- **既存 hooks がベースライン**: `scripts/hooks/` の 4 hook は稼働済み。新設ではなく穴埋めが作業の中心（2026-04-20）
+### Checkpoint
 
-### 却下した代替案
+```ts
+interface Checkpoint {
+  workflowId: string
+  currentNodeId: string
+  currentState: WorkflowState["kind"]
+  resumeRef?: string
+  savedAt: string
+}
+```
 
-- 「可視化 UI から先に作る」— ユーザー指示で明示的に後回し。理由: 可視化は自走実現の必要条件ではない
-- 「並列マルチ PJ 実行を含める」— Out of Scope。理由: まず単一 PJ を自走させる
-- 「外部 orchestrator（Node script + Claude CLI headless）」— Phase 0 観察前の過剰投資。ルールベースで drift が出てから再検討（2026-04-20）
-- 「専用 DB / sqlite で状態管理」— tasks.yaml で足りる。追加依存はノイズ（2026-04-20）
-- 「CronCreate を最初から導入」— inner loop が止まらない限り不要。Phase 2 以降で必要性を再評価（2026-04-20）
+### RunContext
 
-## Phase 設計
+```ts
+interface RunContext {
+  taskId: string
+  scopeId: string
+  reviewRefs: string[]
+  wakeupAt?: string
+  evaluatorRequired?: boolean
+}
+```
 
-### Phase 0 — 摩擦インベントリと穴特定（〜1 週間）
+## 既存資産との写像
 
-目的: 既存 hook ベースラインの上で、実際に自走を阻む穴を特定する。
+### tasks.yaml
 
-- PJ01/PJ02 の進行履歴から人間介入点を抽出（T-0-1）
-- 摩擦の分類と hook カバー率の対応付け（T-0-2）
-- 既存 4 hook の挙動 vs 必要挙動の差分棚卸し（T-0-3 改訂）
-- エスカレーション境界候補の列挙（T-0-4）
-- Gate 1 readiness まとめ（T-0-5）
+- task 単位の現在 state を保持する暫定正本
+- `pending / in_progress / done / blocked` を workflow state に拡張する起点
 
-Gate 1 条件: 摩擦分類・hook ギャップ表・MVP 要件が 1 文書に整理され、akaghef が確認
+### resume-cheatsheet.md
 
-### Phase 1 — 穴埋め harness MVP（〜1 週間）
+- checkpoint 復元用の human-readable summary
+- Hermes 的な「次回高速化メモ」の役割を持たせる
 
-目的: Phase 0 で特定した穴を最小構成で埋め、1 PJ を半日以上無人進行させる。
+### reviews/Qn_*.md
 
-典型的に想定される実装（Phase 0 で確定する）:
-- `stop-check.sh` に停止理由タグ付け（E1/E2/E3/other の自己申告）を追加
-- `sub-pj-do` skill 本文に ScheduleWakeup 起動導線を明記（各 task 完了時に次 wake を schedule）
-- tasks.yaml の `eval_required: true` 自動検知の skill 側補強
+- unresolved issue
+- blocked / ambiguity / evaluator feedback の蓄積先
 
-Gate 2 条件: dogfood で無人 1 task 完走ログ、stop 理由が観察可能
+### ScheduleWakeup
 
-### Phase 2 — inner loop 自律化（〜1-2 週間）
+- sleeping -> ready 遷移の runtime
 
-目的: Generator / Evaluator の round loop を harness に組み込む。
+### hooks
 
-- Evaluator verdict に基づく round 遷移
-- `eval_required: true` task の自動 Evaluator 起動
-- round_max 到達時の blocked 遷移と reviews/ 起票
+- SessionStart: restore
+- PostCompact: checkpoint reload
+- Stop: invalid stop の検知
 
-### Phase 3 — エスカレーション境界の機械化（〜1 週間）
+## 最小 workflow モデル
 
-目的: 人間を呼ぶ条件を明文化し、機械判定可能にする。
+今回の最小状態集合は次とする。
 
-- Phase gate readiness の自動検知
-- env collapse の検知パターン（tool error / service down / build fail 連続）
-- scope 逸脱の検知（plan.md の Out of Scope への抵触）
+- pending
+- ready
+- in_progress
+- eval_pending
+- blocked
+- sleeping
+- escalated
+- done
+- failed
 
-## 実行計画
+### 基本遷移
 
-最初の具体 task は [tasks.yaml](tasks.yaml) を参照。
+- pending -> ready
+- ready -> in_progress
+- in_progress -> eval_pending
+- eval_pending -> done
+- eval_pending -> in_progress
+- in_progress -> blocked
+- blocked -> sleeping
+- blocked -> escalated
+- sleeping -> ready
+- 任意 -> failed
 
-## 進捗ログ
+### 解釈
 
-- 2026-04-20: kickoff。README / plan.md / tasks.yaml / runtime/README.md / resume-cheatsheet.md 生成
-- 2026-04-20: 戦略策定。4 軸分解（Trigger/State/Loop/Recovery）、メインプラン A（ルールベース harness）採用、サブプラン B (外部 orchestrator) 却下。技術選定: ScheduleWakeup + Stop hook + PostCompact hook + tasks.yaml + sub-pj-do skill。作業者向け必須情報セクション追加。Gate 1 readiness 到達
+- stop は中立概念ではなく、必ず blocked / sleeping / escalated / failed に落とす
+- evaluator は外部イベントではなく loop の一部
+- human approval は edge condition
+- wakeup は sleeping の回復 edge
+
+## 戦略
+
+### S1. 既存流用優先
+
+LangGraph や Hermes の考え方を採るが、まずは既存ファイル規約と hooks の上に載せる。
+
+### S2. workflow authoring 優先
+
+可視化より先に、workflow を定義・編集・実行できる最小表現を作る。
+
+### S3. stop reason の正規化
+
+E1/E2/E3 を含め、停止理由をすべて既知 state に写像する。
+
+### S4. checkpoint 先行
+
+自走より先に resume 可能性を担保する。中断後に続けられない workflow は不採用。
+
+### S5. evaluator の内在化
+
+Generator と Evaluator を同一 workflow 上に置き、state 遷移でつなぐ。
+
+### S6. reviews の Hermes 化
+
+review を単なる保留メモでなく、次回高速化の学習資産として扱う。
+
+### S7. tasks.yaml の state machine 化
+
+現行 state を workflow state にマッピングし、曖昧な運用を減らす。
+
+### S8. trigger の意味づけ固定
+
+ScheduleWakeup は timer ではなく transition runtime として扱う。
+
+### S9. hook の格下げ
+
+hook は正本ではなく runtime guard と位置づける。
+
+### S10. 1 task で試す
+
+最初は 1 workflow / 1 task のみ。複数 task 同時実行は後回し。
+
+### S11. 自己参照 dogfood
+
+PJ03 自身の進行をこの workflow engine で回す。
+
+### S12. Guardrails 的制約
+
+未知 state、無効 edge、scope 外参照、欠損 checkpoint は reject する。
+
+### S13. static / dynamic 分離
+
+tree を壊さず、workflow は overlay または別 view として持つ。
+
+### S14. 粒度横断検証
+
+task、sub-pj、PJ の 3 粒度で同型性が保てるかを検証する。
+
+### S15. 可視化は後置
+
+workflow 表示は engine が回った後に追加する。今は current state と next edge の表示で十分。
+
+## フェーズ
+
+### Phase 0 — 再設計
+
+目的:
+
+- grok 由来の考え方を採り込み、PJ を workflow engine 開発へ再定義する
+- 既存資産を state / edge / checkpoint / review に写像する
+
+成果物:
+
+- 最小 state set
+- edge 一覧
+- 現行資産との対応表
+- stop reason taxonomy
+
+### Phase 1 — 最小 workflow engine
+
+目的:
+
+- 1 task 分の workflow を定義し、実際に回す
+
+成果物:
+
+- state transitions
+- evaluator loop
+- checkpoint / resume
+- blocked / sleeping / escalated の区別
+
+### Phase 2 — Hermes 的改善ループ
+
+目的:
+
+- 実行結果を review / cheatsheet に落とし、次回高速化を起こす
+
+成果物:
+
+- review update rule
+- cheatsheet update rule
+- retry / reflection loop
+
+### Phase 3 — 最小表示
+
+目的:
+
+- current state と next edge を 1 scope 内で確認できるようにする
+
+成果物:
+
+- current workflow summary
+- blocked reason summary
+- wakeup / escalation visibility
+
+### Phase 4 — 粒度拡張
+
+目的:
+
+- 1 task で作った workflow モデルを sub-pj / PJ に広げる
+
+成果物:
+
+- 粒度横断例
+- 相似性の確認
+
+## 成功基準
+
+### 最小成功
+
+- 1 task が workflow として定義できる
+- state transition が回る
+- evaluator loop が回る
+- checkpoint / resume が成立する
+- stop reason が必ず既知 state に分類される
+
+### 中間成功
+
+- reviews と cheatsheet が次回高速化に効く
+- SelfDrive 自身を自己参照で回せる
+
+### 最終成功
+
+- task / sub-pj / PJ を同型 workflow として扱える
+- M3E が静的 tree 整理だけでなく、Agent workflow を扱える構造環境になる
+
+## 非目標
+
+- いきなり LangGraph 互換製品を作ること
+- まず可視化から入ること
+- 新 infra を大量導入すること
+- M3E 全体のデータ構造を今回で確定し切ること
+
+## 直近タスク
+
+1. 最小 state set を確定する
+2. tasks.yaml の現行 state を workflow state に写像する
+3. stop reason taxonomy を作る
+4. checkpoint 構造を決める
+5. evaluator loop を 1 task で試す
+6. review / cheatsheet 更新規律を決める
+7. その後に最小表示を足す
+
+## メモ
+
+LangGraph は構造の流用元であり、Hermes は自走様式の流用元である。
+今回の正解は、どちらか片方ではなく、**LangGraph 的 workflow 骨格 + Hermes 的自己改善ループ + 既存 runtime 流用** の組み合わせにある。
+

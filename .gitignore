@@ -40,9 +40,18 @@ tmp_*.json
 
 artifacts/
 
+# swingby team's internal repo
+docs/internal/*
+
 # Transient outputs from the m3e-map skill (run at repo root)
 /m3e-map.json
 /m3e-map-update.mjs
 
 # External repo clones referenced by sub-projects
 projects/PJ02_MathOntoBridge/pfr/
+
+# Local cloud sync launcher with Supabase creds (never commit)
+scripts/ops/launch-cloud-sync.local.bat
+
+# API performance logs (local only, may contain path/client metadata)
+/logs/
