@@ -42,17 +42,18 @@
 
 - id: T-0-3
   phase: 0
-  verb: design
-  target: "harness MVP requirements"
+  verb: gap-analyze
+  target: "existing hooks vs required behavior"
   done_when:
-    - "projects/PJ03_SelfDrive/docs/harness_mvp_spec.md exists"
-    - "each friction category has a proposed mechanism (tool / hook / skill / convention)"
-    - "non-functional requirements are listed (recovery, observability, idempotency)"
+    - "projects/PJ03_SelfDrive/docs/hook_gap_table.md exists"
+    - "each of the 4 hooks (session-start / prompt-prj-check / post-compact / stop-check) has current vs required behavior"
+    - "gap rows are mapped to friction categories from T-0-2"
+    - "harness MVP requirements section added: minimal fill-in proposals per gap"
   eval_required: true
   eval_criteria:
-    - "mechanism choices are justified against existing tools (ScheduleWakeup / /loop / hooks / resume-cheatsheet)"
-    - "no proposal requires features that do not exist in the harness runtime"
-    - "rejected alternatives are recorded with reason"
+    - "current behavior descriptions are grounded in actual hook source (cite line ranges)"
+    - "required behavior is justified by a friction entry, not invented"
+    - "rejected alternatives (e.g. external orchestrator) are recorded with reason"
   parallelizable: false
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
