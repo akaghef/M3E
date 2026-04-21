@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "task_id": "T-2-4",
-  "updated_at": "2026-04-21T03:06:40.884Z",
+  "updated_at": "2026-04-21T03:25:04.643Z",
   "state": {
-    "kind": "pending",
+    "kind": "done",
     "round": 0,
     "round_max": 3,
-    "last_feedback": null,
+    "last_feedback": "evaluator pass",
     "blocker": null,
     "escalation_kind": null,
     "wakeup_at": null,

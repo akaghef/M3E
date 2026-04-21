@@ -213,8 +213,12 @@ export function pickNextTask(
   depResolver?: DependencyResolver,
 ): TaskView | null {
   const views = loadAllTaskViews(tasksFile, runtimeDir);
+  // Priority: in_progress → eval_pending → ready → pending(deps done)
+  // sleeping / blocked / escalated は tick が担う（orchestrator-driven ではない）
   const inProgress = views.find((v) => v.state.kind === "in_progress");
   if (inProgress) return inProgress;
+  const evalPending = views.find((v) => v.state.kind === "eval_pending");
+  if (evalPending) return evalPending;
   const ready = views.find((v) => v.state.kind === "ready");
   if (ready) return ready;
   const pendings = views

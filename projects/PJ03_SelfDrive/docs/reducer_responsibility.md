@@ -49,16 +49,47 @@ T-1-9 で `workflow_cli.ts` を新設。reducer は副作用なし library、CLI
 - `workflow_cli.ts`: `parseArgs`, `buildSignal`, `main`, `process.exit` を持つ
 - 両者は 1:1 ではない。reducer の API を他の CLI や test から直接呼んでよい
 
-## Phase 2 での engine 化候補（非コミット）
+## Phase 2 orchestrator / clock daemon 責務境界（T-2-1 / T-2-2 確定）
 
-以下は **Phase 2 で akaghef が kickoff するなら** の候補。現状は未着手:
+T-2-1 で `clock_daemon.ts`、T-2-2 で `workflow_orchestrator.ts` を追加。
+reducer はそのまま不変で、両者は reducer の API を薄くラップする層。
 
-- `workflow_orchestrator.ts`: Generator / Evaluator の subagent dispatch
-- `clock_daemon.ts`: sleeping task の wakeup 発火 (ScheduleWakeup / CronCreate 連携)
-- `hook_bridge.ts`: SessionStart / PostCompact hook からの resume 呼び出し
+### clock_daemon.ts (T-2-1)
+
+- 責務: `runDaemonTick`（tickAutoTransitions 委譲）、`planWakeups`（sleeping task に対する ScheduleWakeup / CronCreate 指示生成）
+- 非責務: 実際の ScheduleWakeup / CronCreate API 呼び出し（harness / CLI 側）、state 遷移（reducer 側）
+
+### workflow_orchestrator.ts (T-2-2)
+
+- 責務: `orchestrateOnce` で pickNextTask → state に応じた Generator/Evaluator 起動 → verdict → `runOneStep` へ signal 注入
+- 責務: `SubagentAdapter` interface (test で mock 化)、`FeedbackHook`（Hermes 的 feedback 変換点、Phase 2 では interface のみ）
+- 責務: `initCheckpointFor`（Qn4 対応、新 task の checkpoint 生成）
+- 非責務: state 遷移そのもの（reducer 側）、checkpoint の直接書き換え（reducer 経由のみ。initCheckpointFor は bootstrap 専用で既存ファイル保護）
+- 非責務: 実際の Anthropic API 呼び出し（SubagentAdapter 実装側が担う、orchestrator 本体には出てこない）
+
+### 全体のレイヤ
+
+```
+┌─────────────────────────────────────────────────┐
+│ workflow_cli.ts  (argv + stdout + exit code)     │
+├─────────────────────────────────────────────────┤
+│ workflow_orchestrator.ts  (subagent dispatch)    │
+│ clock_daemon.ts           (tick + wakeup plan)   │
+├─────────────────────────────────────────────────┤
+│ workflow_reducer.ts  (state machine + checkpoint)│
+├─────────────────────────────────────────────────┤
+│ checkpoint_types.ts / clock.ts / resolvers.ts    │
+└─────────────────────────────────────────────────┘
+```
+
+上位レイヤは下位レイヤの API のみを呼ぶ。下位は上位を知らない（循環依存なし）。
+engine を名乗るのはこの 4 層がすべて揃い、かつ Generator / Evaluator の実 subagent adapter が配線された Phase 2 後半以降。
+
+## 将来 kickoff 候補（非コミット）
+
+- `hook_bridge.ts`: SessionStart / PostCompact hook からの resume 呼び出し (T-2-3 で着手)
 - `review_bridge.ts`: reviews/Qn の frontmatter を watch して `blocker_cleared` signal を発火
-
-いずれも「engine」を名乗る前に責務境界を明文化すること。
+- Anthropic API を実際に叩く SubagentAdapter 実装（PJ 外）
 
 ## Cross-reference
 

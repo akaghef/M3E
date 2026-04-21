@@ -358,6 +358,56 @@ sleeping / escalated の実稼働観察は Phase 2 の orchestrator 側で扱う
 - restore test 9/9 + clock/resolver test 19 assertions pass
 - akaghef Qn3 rework 完了条件 = resume 情報の round-trip 整合 を直接検査で通過
 
+## Phase 2 結論（2026-04-21 T-2-1..T-2-4 完了 / akaghef Gate 3 承認待ち）
+
+Phase 2 着手条件 4 項すべて達成。
+
+### 着手条件 達成根拠
+
+| akaghef 指示 | 達成 | 根拠 |
+|---|---|---|
+| reducer 外の Clock daemon / tick orchestration を設計 | ✓ | [clock_daemon.ts](../../beta/src/node/clock_daemon.ts) + [clock_daemon_test.ts](../../beta/src/node/clock_daemon_test.ts)（runDaemonTick / planWakeups / ScheduleWakeup + CronCreate 分岐） |
+| Generator / Evaluator subagent orchestration を reducer の外側で定義 | ✓ | [workflow_orchestrator.ts](../../beta/src/node/workflow_orchestrator.ts)（SubagentAdapter / FeedbackHook / orchestrateOnce / orchestrateLoop / initCheckpointFor） + mock adapter test 23 assertions pass |
+| SessionStart / PostCompact hook 配線を checkpoint JSON 前提で接続 | ✓ | [session-start.sh](../../scripts/hooks/session-start.sh) / [post-compact.sh](../../scripts/hooks/post-compact.sh) が `workflow_cli --resume` を invoke して additionalContext に 2 ブロック注入、silent fallback 禁止 |
+| sleeping / escalated の実稼働観察を orchestrator レイヤで回収 | ✓ | [artifacts/dogfood_run_02.md](artifacts/dogfood_run_02.md) で E08/E09/E10/E12/E17 を実 reducer + 実 fs-backed review resolver で観察 |
+
+### 責務境界（updated）
+
+```
+workflow_cli.ts              — argv / stdout / exit code
+workflow_orchestrator.ts     — subagent dispatch, FeedbackHook, initCheckpointFor
+clock_daemon.ts              — tick wrap, wakeup plan
+workflow_reducer.ts          — state machine + checkpoint adapter
+checkpoint_types / clock / resolvers — pure types
+```
+
+詳細: [docs/reducer_responsibility.md](docs/reducer_responsibility.md)
+
+### Phase 3 着手条件
+
+- Phase 2 の 4 レイヤが Phase 1.5 の reducer 責務を壊していないこと（restore test / clock_resolver_test 回帰なし）
+- 実稼働で 5 停止カテゴリ（done / blocked / sleeping / escalated / failed）すべて hit 済
+- hook 配線が silent fallback を禁止し、hook 失敗が context に可視化される
+- orchestrator の SubagentAdapter 実装（実 Anthropic API を叩く adapter）は **Phase 3 では扱わない** — Phase 3 は M3E 1 scope 統合に集中
+
+### Phase 3 成果物（概要、plan.md で既定）
+
+Phase 3 目的: workflow を M3E 1 scope の内部で扱う最小統合。
+成果物候補:
+
+- workflow summary view（checkpoint JSON を scope 内 node として可視化）
+- current state 表示
+- next transition 表示
+- blocked reason 表示
+
+詳細タスクは Gate 3 承認後に T-3-* として起票。
+
+### 却下した代替案
+
+- `clock_daemon.ts` に ScheduleWakeup / CronCreate の実 API 呼び出しを埋める → Claude Code runtime context が必要で、daemon 側は plan 返却に留め、実行は harness / CLI が担う設計を採用
+- orchestrator に Anthropic API 直接呼び出しを組み込む → SubagentAdapter interface を露出し、実装は PJ 外（または Phase 3 以降）に先送り
+- hook 内で reducer state を書き換える → hook は read-only、state 遷移は reducer 経由のみの原則を貫徹
+
 以下は撤回された旧結論記録（参照のみ、信頼しない）:
 
 ## Phase 1 結論（旧・撤回済）
