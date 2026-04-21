@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "task_id": "T-1-10",
+  "updated_at": "2026-04-21T00:21:29.078Z",
+  "state": {
+    "kind": "pending",
+    "round": 0,
+    "round_max": 3,
+    "last_feedback": null,
+    "blocker": "T-1-8, T-1-9 後",
+    "escalation_kind": null,
+    "wakeup_at": null,
+    "wakeup_mechanism": null,
+    "failure_reason": null
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "task_id": "T-1-7",
+  "updated_at": "2026-04-21T00:21:29.077Z",
+  "state": {
+    "kind": "blocked",
+    "round": 1,
+    "round_max": 1,
+    "last_feedback": "akaghef rejected Gate 2 (2026-04-21): persistence gap, runner-is-reducer, FIFO pickNextTask, sleeping/escalated runtime semantics missing, node graph unused, regex writeback fragile, round definition ambiguous, code-reachable claim too weak. See reviews/Qn3_gate2_rework.md",
+    "blocker": "Qn3_gate2_rework — P1..P4 方針確定 + T-1-8..T-1-11 完了まで",
+    "escalation_kind": null,
+    "wakeup_at": null,
+    "wakeup_mechanism": null,
+    "failure_reason": null
+  }
+}

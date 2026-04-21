@@ -23,11 +23,7 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: done
-  round: 1
   round_max: 3
-  last_feedback: "evaluator pass (2026-04-21)"
-  blocker: null
 
 - id: T-0-2
   phase: 0
@@ -46,11 +42,7 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: done
-  round: 1
   round_max: 3
-  last_feedback: "evaluator pass (2026-04-21)"
-  blocker: null
 
 - id: T-0-3
   phase: 0
@@ -69,11 +61,7 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: done
-  round: 1
   round_max: 3
-  last_feedback: "evaluator pass (2026-04-21)"
-  blocker: null
 
 - id: T-0-4
   phase: 0
@@ -92,11 +80,7 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
-  status: done
-  round: 1
   round_max: 3
-  last_feedback: "evaluator pass (2026-04-21)"
-  blocker: null
 
 - id: T-0-5
   phase: 0
@@ -114,11 +98,7 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: gate
-  status: done
-  round: 1
   round_max: 1
-  last_feedback: "akaghef approved at Gate 1 (2026-04-21). Qn_initial resolved."
-  blocker: null
 
 # =========================================================================
 # Phase 1: 最小 workflow engine
@@ -142,11 +122,7 @@
   parallelizable: false
   scope: "beta/src/shared"
   facet: implementation
-  status: done
-  round: 1
   round_max: 3
-  last_feedback: "evaluator pass (2026-04-21): 9-state union + 17 edges encoded, naming matches scope_types.ts convention, no runtime code"
-  blocker: null
 
 - id: T-1-2
   phase: 1
@@ -165,11 +141,7 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive/runtime"
   facet: design
-  status: done
-  round: 0
   round_max: 3
-  last_feedback: "evaluator pass"
-  blocker: null
 
 - id: T-1-3
   phase: 1
@@ -189,11 +161,7 @@
   parallelizable: false
   scope: "beta/src/node"
   facet: implementation
-  status: done
-  round: 0
   round_max: 3
-  last_feedback: "evaluator pass"
-  blocker: null
 
 - id: T-1-4
   phase: 1
@@ -212,11 +180,7 @@
   parallelizable: false
   scope: "beta/src/node"
   facet: implementation
-  status: done
-  round: 0
   round_max: 3
-  last_feedback: "evaluator pass"
-  blocker: null
 
 - id: T-1-5
   phase: 1
@@ -235,11 +199,7 @@
   parallelizable: false
   scope: "beta/src/node"
   facet: implementation
-  status: done
-  round: 0
   round_max: 3
-  last_feedback: "evaluator pass"
-  blocker: null
 
 - id: T-1-6
   phase: 1
@@ -258,11 +218,7 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: implementation
-  status: done
-  round: 0
   round_max: 3
-  last_feedback: "evaluator pass"
-  blocker: null
 
 - id: T-1-7
   phase: 1
@@ -281,11 +237,7 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: gate
-  status: blocked
-  round: 1
   round_max: 1
-  last_feedback: "akaghef rejected Gate 2 (2026-04-21): persistence gap, runner-is-reducer, FIFO pickNextTask, sleeping/escalated runtime semantics missing, node graph unused, regex writeback fragile, round definition ambiguous, code-reachable claim too weak. See reviews/Qn3_gate2_rework.md"
-  blocker: "Qn3_gate2_rework — P1..P4 方針確定 + T-1-8..T-1-11 完了まで"
 
 # =========================================================================
 # Phase 1.5: Gate 2 rework (Qn3 P1..P4) — 方針確定後に具体化
@@ -293,81 +245,85 @@
 
 - id: T-1-8
   phase: 1
-  verb: decide
-  target: "checkpoint persistence 正本の場所 (P1)"
+  verb: split
+  target: "tasks.yaml / checkpoint JSON への責務分離 (P1)"
   done_when:
-    - "tasks.yaml 拡張 / 別機械正本 / それ以外 の採否が plan.md 確定事項に記録"
-    - "採用案で escalationKind / wakeupAt / wakeupMechanism / failureReason / dependencies をどう永続化するか明記"
-  eval_required: false
+    - "projects/PJ03_SelfDrive/docs/checkpoint_schema.md が存在し、tasks.yaml vs checkpoint JSON のフィールド境界を表で明示"
+    - "beta/src/shared/checkpoint_types.ts が存在し、CheckpointFile 型 (state, round, last_feedback, blocker, escalation_kind, wakeup_at, wakeup_mechanism, failure_reason, updated_at) を export"
+    - "projects/PJ03_SelfDrive/runtime/checkpoints/{taskId}.json が全既存 task 分生成済み（T-0-1..T-1-7 + T-1-8..T-1-11）"
+    - "tasks.yaml から status / round / last_feedback / blocker フィールドを除去（contract 部分のみ残す）"
+    - "reducer が checkpoint JSON を read/write できる（旧 tasks.yaml writeback 経路は削除）"
+    - "npm run build passes"
+    - "restore test: 任意の WorkflowState kind について checkpoint JSON 書き込み → 読み戻しで invariant field が全て保存されることを 1 script で検証"
+  eval_required: true
   eval_criteria:
-    - "WorkflowState の全 invariant が resume 後も検査可能"
+    - "restore test が全 9 state について resume 情報の欠落なく round-trip（rework 完了条件の直接検査）"
+    - "tasks.yaml からマシン状態が物理的に消えている（grep で確認）"
+    - "checkpoint JSON は 1 task 1 ファイル、atomic write（tmp → rename）で永続化"
+    - "旧 applyWriteback の regex surgical-replace 経路は撤去されているか、tasks.yaml の contract 部分のみを対象に縮退している"
   parallelizable: false
-  scope: "projects/PJ03_SelfDrive"
-  facet: design
-  status: pending
-  round: 0
-  round_max: 1
-  last_feedback: null
-  blocker: "akaghef が P1 方針を指示するまで pending"
+  scope: "beta/src/shared + projects/PJ03_SelfDrive/runtime/checkpoints"
+  facet: implementation
+  round_max: 3
 
 - id: T-1-9
   phase: 1
-  verb: decide
-  target: "runner 責務境界 (P2)"
+  verb: rename
+  target: "workflow_runner → workflow_reducer + CLI 分離 (P2)"
   done_when:
-    - "reducer / orchestrator / engine のどれを目指すか plan.md 確定事項に記録"
-    - "採用した呼称で workflow_runner を rename、または責務を拡張"
-    - "呼称と dogfood 主張の整合を確認（過大評価が無い）"
-  eval_required: false
+    - "beta/src/node/workflow_reducer.ts が存在（旧 workflow_runner.ts をベースに責務縮退）"
+    - "reducer の公開 API は純粋関数 `reduce(state, signal, deps): {nextState, patch}` + persistence adapter `loadCheckpoint` / `saveCheckpoint`"
+    - "CLI は beta/src/node/workflow_cli.ts に分離、reducer を import する薄い wrapper"
+    - "旧 workflow_runner.ts は削除（履歴は git で参照）"
+    - "docs/resume_protocol.md / docs/legacy_asset_mapping.md の 'runner' 言及を 'reducer' に更新"
+    - "npm run build passes"
+  eval_required: true
   eval_criteria:
-    - "ドキュメントとコードの責務宣言が一致"
+    - "reducer の core 関数が Date / fs / subprocess を直接呼ばない（純粋性）"
+    - "Generator / Evaluator 起動コードが含まれていない（責務境界の明示）"
+    - "responsibility section を docs/reducer_responsibility.md に明記し、engine 化が Phase 2 の別 task である旨を記録"
   parallelizable: false
-  scope: "projects/PJ03_SelfDrive"
-  facet: design
-  status: pending
-  round: 0
-  round_max: 1
-  last_feedback: null
-  blocker: "akaghef が P2 方針を指示するまで pending"
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
 
 - id: T-1-10
   phase: 1
-  verb: implement
-  target: "edge 条件の runtime 観測化 (P3)"
+  verb: inject
+  target: "dependencies / linked_review / Clock による条件 observable 化 (P3)"
   done_when:
-    - "E01: dependencies field を tasks schema に追加、pickNextTask が観測"
-    - "E08/E09: clock 参照で wakeup_fired を自動検出"
-    - "E10/E11: escalation_detected を runner が条件から判定（E1 = 全 task done 等）"
-    - "E12-E16: reviews/Qn との紐付け field を checkpoint に追加、human signal が review 参照を要求"
-    - "Evaluator の re-run で 3 停止カテゴリが実稼働で観察可能"
+    - "tasks.yaml に dependencies (string[]) / linked_review (string | null) を追加、T-0-*/T-1-* 全 entry で実値を設定"
+    - "beta/src/shared/clock.ts に Clock interface 定義 + SystemClock 実装 + FixedClock (test helper)"
+    - "reducer が Clock / ReviewResolver / DependencyResolver を input として受ける（Date.now() 直参照禁止）"
+    - "pickNextTask が dependencies resolver を使い依存 done のみを ready に昇格"
+    - "E09 条件 (sleeping → ready) が clock.now() >= wakeup_at で自動判定"
+    - "E12 / E13 / E15 が linked_review の resolution 状態を ReviewResolver 経由で観測"
+    - "dependency 循環検出 (cycle detection) が実装され、循環検出時は明示 Error"
   eval_required: true
   eval_criteria:
-    - "各 edge の条件がコードから導出できる（signal 注入に依存しない）"
-    - "sleeping / escalated 各 1 回の実稼働観察を dogfood_run_02 に記録"
+    - "Clock の FixedClock を使った sleeping → ready の state transition が unit test で成立"
+    - "循環依存を含むタスクセットを投入したとき cycle Error が発生する"
+    - "linked_review が open のまま E12 を試みるとエラーまたは reject（review resolution が先行条件）"
+    - "rework 完了条件: restore test が全 9 state で invariant field を round-trip（T-1-8 eval を上書きしない）"
   parallelizable: false
   scope: "beta/src"
   facet: implementation
-  status: pending
-  round: 0
   round_max: 3
-  last_feedback: null
-  blocker: "T-1-8, T-1-9 後"
 
 - id: T-1-11
   phase: 1
-  verb: decide
-  target: "workflow_example.json の処遇 (P4)"
+  verb: demote
+  target: "workflow_example.json → docs/workflow_example.md 降格 (P4)"
   done_when:
-    - "実行入力に昇格 (runner が node graph を読む) / artifact 降格 (docs/ に移動 + description 化) の採否が plan.md に記録"
-    - "採用案に沿った file 配置と reducer/engine との binding が実装または明記"
+    - "projects/PJ03_SelfDrive/docs/workflow_example.md が存在（旧 .json の内容を description 化、runtime 参照がないことを明記）"
+    - "projects/PJ03_SelfDrive/runtime/workflow_example.json が削除されている（git mv or rm）"
+    - "reducer / CLI / checkpoint 生成コードから .json への参照が 0（grep で確認）"
+    - "docs/ 側に 将来 runtime fixture 必要時の復活方針を 1 段落記載"
   eval_required: false
   eval_criteria:
-    - "二重表現（仕様と実装の乖離）が解消"
+    - "二重表現（spec / 実装）が解消されている"
+    - "runtime/ 配下に動かない spec object が残っていない"
   parallelizable: false
   scope: "projects/PJ03_SelfDrive"
   facet: design
-  status: pending
-  round: 0
   round_max: 1
-  last_feedback: null
-  blocker: "akaghef が P4 方針を指示するまで pending"

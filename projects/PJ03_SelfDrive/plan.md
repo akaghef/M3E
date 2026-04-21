@@ -293,6 +293,23 @@ Phase 0 の設計分岐 4 本を確定。各成果物は `docs/` 配下の独立
 
 rework tasks: T-1-8 (P1 persistence)、T-1-9 (P2 runner 責務)、T-1-10 (P3 条件 observable)、T-1-11 (P4 example 処遇)。T-1-7 は status=blocked（blocker=Qn3）。
 
+## 確定事項（2026-04-21 akaghef rework 方針確定）
+
+| 論点 | 決定 | scope |
+|---|---|---|
+| **P1 checkpoint 永続化** | tasks.yaml は sprint contract 専用。machine SSOT = `runtime/checkpoints/{taskId}.json` | T-1-8 |
+| **P2 runner 責務** | `workflow_reducer.ts` に改名。責務は `(state, signal) → nextState + patch` の純粋関数 + persistence adapter に限定。CLI は薄い wrapper に分離 | T-1-9 |
+| **P3 observable 条件** | tasks.yaml に `dependencies`, `linked_review` 追加。Clock は注入可能 interface（`Date.now()` 直参照禁止）。reviewResolver / dependencyResolver も injectable | T-1-10 |
+| **P4 workflow_example** | `workflow_example.json` 削除、`docs/workflow_example.md` 降格。runtime fixture は必要になってから schema 付きで復活 | T-1-11 |
+| **rework 完了条件** | 「宣言した state の resume 情報が欠落しない」こと。未観察 edge を増やすことではない。restore test で sleeping/escalated/failed の invariant field が全て round-trip することを確認 | T-1-8 + T-1-10 |
+
+### 却下した代替案
+
+- tasks.yaml に state 関連フィールドを全部載せる → 人間契約 / 機械正本の責務混線が再発するため却下
+- Clock の Date.now() 直参照 → テスト不能・時間依存不能コードになるため却下
+- workflow_example.json を残す → 実行入力でない限り「動かない spec」ノイズになるため却下
+- sleeping / escalated / failed の実稼働観察を Gate 2 再提出条件に含める → akaghef 明示却下（runtime 観察 ≠ 永続化整合）
+
 以下は撤回された旧結論記録（参照のみ、信頼しない）:
 
 ## Phase 1 結論（旧・撤回済）

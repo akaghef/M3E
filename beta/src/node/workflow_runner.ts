@@ -1,26 +1,28 @@
 /**
- * PJ03 SelfDrive — minimal workflow engine runner
+ * PJ03 SelfDrive — workflow reducer (T-1-8 rework: checkpoint JSON への責務分離)
  *
- * 責務 (T-1-3 契約):
- *   - tasks.yaml を読み込み、各 task の current Checkpoint を返す
- *   - 1 step 進める: 現 state + 受領シグナル → ALLOWED_EDGES から 1 辺を選び next state
- *   - fail-closed: ALLOWED_EDGES にない (source, target) は reject
- *   - writeback: status / round / lastFeedback / blocker を tasks.yaml に surgical に書き戻す
- *     （行単位の targeted replace。コメント・順序・空行を保持）
- *   - dry-run mode: writeback を抑止して計画のみ返す
+ * 責務 (T-1-8 更新後):
+ *   - tasks.yaml は人間向け sprint contract。status / round / last_feedback / blocker は含まない
+ *   - projects/PJ{NN}_{Name}/runtime/checkpoints/{taskId}.json が machine state の SSOT
+ *   - 1 step: 現 state + signal → ALLOWED_EDGES から 1 辺を選び next state
+ *   - fail-closed: 表外遷移は reject
+ *   - writeback: checkpoint JSON に atomic write (tmp → rename)
+ *   - invariant 完全性: WorkflowState の全 field (escalationKind / wakeupAt / wakeupMechanism /
+ *     failureReason 含む) を round-trip で保存する
  *
- * 正本:
- *   - beta/src/shared/workflow_types.ts: 型と ALLOWED_EDGES
- *   - projects/PJ03_SelfDrive/docs/workflow_edges.md: 遷移の根拠
+ * 注意:
+ *   - ファイル名は後続 T-1-9 で workflow_reducer.ts に rename 予定
+ *   - Clock / dependency resolver / review resolver の injection は T-1-10 で追加
+ *   - 現状は Date / fs 直参照を一部含む（T-1-9 と T-1-10 で切り出し）
  */
 
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "js-yaml";
 
 import {
   ALLOWED_EDGES,
-  Checkpoint,
   EdgeId,
   RunContext,
   WorkflowEdge,
@@ -28,16 +30,21 @@ import {
   WorkflowStateKind,
 } from "../shared/workflow_types";
 
+import {
+  CHECKPOINT_SCHEMA_VERSION,
+  CheckpointFile,
+  PersistedState,
+  WorkflowStateCamel,
+  checkpointPath,
+  fromWorkflowState,
+  toWorkflowState,
+} from "../shared/checkpoint_types";
+
 // ---------------------------------------------------------------------------
-// tasks.yaml schema (parse-only view)
+// tasks.yaml schema (contract only; no machine state)
 // ---------------------------------------------------------------------------
 
-/**
- * TasksYamlEntry — tasks.yaml の 1 エントリの読み取り視点。
- *
- * 書き戻しは本 shape ではなく surgical replace で行うため、フィールド追加に寛容。
- */
-interface TasksYamlEntry {
+export interface TaskContract {
   id: string;
   phase: number;
   verb: string;
@@ -48,103 +55,151 @@ interface TasksYamlEntry {
   parallelizable?: boolean;
   scope?: string;
   facet?: string;
-  status: WorkflowStateKind;
-  round: number;
   round_max: number;
-  last_feedback: string | null;
-  blocker: string | null;
+  dependencies?: string[];      // T-1-10 で全 entry 設定
+  linked_review?: string | null; // T-1-10 で設定
 }
 
 // ---------------------------------------------------------------------------
-// Read
+// tasks.yaml read (contract)
 // ---------------------------------------------------------------------------
 
-export function readTasks(tasksFile: string): TasksYamlEntry[] {
+export function readContracts(tasksFile: string): TaskContract[] {
   let raw: string;
   try {
     raw = fs.readFileSync(tasksFile, "utf8");
   } catch (e) {
-    throw new Error(`checkpoint read failed: cannot open ${tasksFile}: ${(e as Error).message}`);
+    throw new Error(`contract read failed: cannot open ${tasksFile}: ${(e as Error).message}`);
   }
   let parsed: unknown;
   try {
     parsed = yaml.load(raw);
   } catch (e) {
-    throw new Error(`checkpoint corrupt: YAML parse error in ${tasksFile}: ${(e as Error).message}`);
+    throw new Error(`contract corrupt: YAML parse error in ${tasksFile}: ${(e as Error).message}`);
   }
   if (!Array.isArray(parsed)) {
-    throw new Error(`checkpoint corrupt: tasks.yaml must be a top-level list, got ${typeof parsed}`);
+    throw new Error(`contract corrupt: tasks.yaml must be a top-level list, got ${typeof parsed}`);
   }
-  for (const entry of parsed as TasksYamlEntry[]) {
+  for (const entry of parsed as TaskContract[]) {
     if (!entry || typeof entry.id !== "string") {
-      throw new Error(`checkpoint corrupt: entry missing 'id' field: ${JSON.stringify(entry)}`);
-    }
-    if (entry.status && !WORKFLOW_STATE_KINDS_SET.has(entry.status)) {
-      throw new Error(`checkpoint corrupt: ${entry.id} has unknown status '${entry.status}'`);
+      throw new Error(`contract corrupt: entry missing 'id': ${JSON.stringify(entry)}`);
     }
   }
-  return parsed as TasksYamlEntry[];
+  return parsed as TaskContract[];
 }
+
+export function loadContract(tasksFile: string, taskId: string): TaskContract {
+  const entries = readContracts(tasksFile);
+  const e = entries.find((x) => x.id === taskId);
+  if (!e) throw new Error(`contract not found: ${taskId} in ${tasksFile}`);
+  return e;
+}
+
+// ---------------------------------------------------------------------------
+// Checkpoint JSON (machine state SSOT)
+// ---------------------------------------------------------------------------
 
 const WORKFLOW_STATE_KINDS_SET: ReadonlySet<string> = new Set([
   "pending", "ready", "in_progress", "eval_pending",
   "blocked", "sleeping", "escalated", "done", "failed",
 ]);
 
-/**
- * loadCheckpoint — 単一 task の checkpoint を読む。
- * resume 時の主要 API。タスクが無ければ明示的エラー。
- */
-export function loadCheckpoint(tasksFile: string, taskId: string): Checkpoint {
-  const entries = readTasks(tasksFile);
-  const entry = entries.find((e) => e.id === taskId);
-  if (!entry) {
-    throw new Error(`checkpoint not found: task ${taskId} absent from ${tasksFile}`);
+export function loadCheckpointFile(runtimeDir: string, taskId: string): CheckpointFile {
+  const cpPath = checkpointPath(runtimeDir, taskId);
+  let raw: string;
+  try {
+    raw = fs.readFileSync(cpPath, "utf8");
+  } catch (e) {
+    throw new Error(`checkpoint read failed: cannot open ${cpPath}: ${(e as Error).message}`);
   }
-  return entryToCheckpoint(entry);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`checkpoint corrupt: JSON parse error in ${cpPath}: ${(e as Error).message}`);
+  }
+  const cp = parsed as CheckpointFile;
+  if (!cp || typeof cp !== "object") {
+    throw new Error(`checkpoint corrupt: ${cpPath} is not a JSON object`);
+  }
+  if (cp.schema_version !== CHECKPOINT_SCHEMA_VERSION) {
+    throw new Error(`checkpoint corrupt: schema_version mismatch in ${cpPath} (got ${cp.schema_version}, want ${CHECKPOINT_SCHEMA_VERSION})`);
+  }
+  if (cp.task_id !== taskId) {
+    throw new Error(`checkpoint corrupt: task_id mismatch in ${cpPath} (file says '${cp.task_id}', lookup was '${taskId}')`);
+  }
+  if (!cp.state || !WORKFLOW_STATE_KINDS_SET.has(cp.state.kind)) {
+    throw new Error(`checkpoint corrupt: unknown state.kind '${cp.state?.kind}' in ${cpPath}`);
+  }
+  return cp;
 }
 
 /**
- * pickNextTask — resume 時に処理すべき次 task を選ぶ。
- * 優先順 (2_session.md §task 選定):
- *   1. status: in_progress（前セッションで中断）
- *   2. status: pending（先頭から phase → id 昇順）
- *   3. すべて terminal/blocked → null (E1 / 完了)
+ * saveCheckpointFile — atomic write via tmp + rename。
+ * 部分書き込みで本体が壊れないことを保証する（POSIX atomic; Windows は最善努力）。
  */
-export function pickNextTask(tasksFile: string): TasksYamlEntry | null {
-  const entries = readTasks(tasksFile);
-  const inProgress = entries.find((e) => e.status === "in_progress");
+export function saveCheckpointFile(runtimeDir: string, file: CheckpointFile): void {
+  const cpPath = checkpointPath(runtimeDir, file.task_id);
+  fs.mkdirSync(path.dirname(cpPath), { recursive: true });
+  const tmpPath = `${cpPath}.tmp-${crypto.randomBytes(6).toString("hex")}`;
+  fs.writeFileSync(tmpPath, JSON.stringify(file, null, 2) + "\n", "utf8");
+  fs.renameSync(tmpPath, cpPath);
+}
+
+/**
+ * loadCheckpointState — checkpoint JSON を読み、runtime 型 WorkflowStateCamel を返す。
+ * invariant 完全性: 読み戻しで全 9 field が復元される。
+ */
+export function loadCheckpointState(runtimeDir: string, taskId: string): WorkflowStateCamel {
+  const cp = loadCheckpointFile(runtimeDir, taskId);
+  return toWorkflowState(cp.state);
+}
+
+export function saveCheckpointState(runtimeDir: string, taskId: string, state: WorkflowStateCamel): void {
+  const file: CheckpointFile = {
+    schema_version: CHECKPOINT_SCHEMA_VERSION,
+    task_id: taskId,
+    updated_at: new Date().toISOString(),
+    state: fromWorkflowState(state),
+  };
+  saveCheckpointFile(runtimeDir, file);
+}
+
+// ---------------------------------------------------------------------------
+// Task selection
+// ---------------------------------------------------------------------------
+
+export interface TaskView {
+  contract: TaskContract;
+  state: WorkflowStateCamel;
+}
+
+export function loadAllTaskViews(tasksFile: string, runtimeDir: string): TaskView[] {
+  const contracts = readContracts(tasksFile);
+  const views: TaskView[] = [];
+  for (const c of contracts) {
+    const state = loadCheckpointState(runtimeDir, c.id);
+    views.push({ contract: c, state });
+  }
+  return views;
+}
+
+/**
+ * pickNextTask — 次処理対象 task を選ぶ。
+ *
+ * 注意: 依存解決 / sleeping wakeup / escalated 再開判定は T-1-10 で追加。
+ * 現 T-1-8 時点では status kind ベースの FIFO。
+ */
+export function pickNextTask(tasksFile: string, runtimeDir: string): TaskView | null {
+  const views = loadAllTaskViews(tasksFile, runtimeDir);
+  const inProgress = views.find((v) => v.state.kind === "in_progress");
   if (inProgress) return inProgress;
-  const ready = entries.find((e) => e.status === "ready");
+  const ready = views.find((v) => v.state.kind === "ready");
   if (ready) return ready;
-  const pending = entries
-    .filter((e) => e.status === "pending")
-    .sort((a, b) => a.phase - b.phase || a.id.localeCompare(b.id));
+  const pending = views
+    .filter((v) => v.state.kind === "pending")
+    .sort((a, b) => a.contract.phase - b.contract.phase || a.contract.id.localeCompare(b.contract.id));
   return pending[0] ?? null;
-}
-
-export function entryToCheckpoint(entry: TasksYamlEntry, commitHash: string | null = null): Checkpoint {
-  const state: WorkflowState = {
-    kind: entry.status,
-    round: entry.round ?? 0,
-    roundMax: entry.round_max ?? 3,
-    lastFeedback: entry.last_feedback ?? null,
-    blocker: entry.blocker ?? null,
-    escalationKind: null,
-    wakeupAt: null,
-    wakeupMechanism: null,
-    failureReason: null,
-  };
-  return {
-    taskId: entry.id,
-    state,
-    savedAt: new Date().toISOString(),
-    commitHash,
-  };
-}
-
-export function readCheckpoints(tasksFile: string): Checkpoint[] {
-  return readTasks(tasksFile).map((e) => entryToCheckpoint(e));
 }
 
 // ---------------------------------------------------------------------------
@@ -165,68 +220,49 @@ export type StepSignal =
   | { kind: "blocker_cleared" }
   | { kind: "fatal_exception"; reason: string };
 
-/**
- * selectEdge — 現 state と受領シグナルに対して ALLOWED_EDGES から 1 辺を選ぶ。
- * 該当 edge が無ければ null を返す（= runner は fail-closed で拒否）。
- */
-export function selectEdge(current: WorkflowState, signal: StepSignal): WorkflowEdge | null {
+export function selectEdge(current: WorkflowStateCamel, signal: StepSignal): WorkflowEdge | null {
   const from = current.kind;
   const table = ALLOWED_EDGES.filter((e) => e.source === from);
-
   const byId = (id: EdgeId) => table.find((e) => e.id === id) ?? null;
 
   switch (signal.kind) {
-    case "dependencies_done":
-      return byId("E01"); // pending -> ready
-    case "dispatch_generator":
-      return byId("E02"); // ready -> in_progress
+    case "dependencies_done": return byId("E01");
+    case "dispatch_generator": return byId("E02");
     case "generator_done":
-      if (signal.evalRequired) return byId("E03"); // in_progress -> eval_pending
-      return signal.objectiveCheckPass ? byId("E04") : null; // in_progress -> done (only on pass)
+      if (signal.evalRequired) return byId("E03");
+      return signal.objectiveCheckPass ? byId("E04") : null;
     case "evaluator_verdict":
-      if (signal.pass) return byId("E05"); // eval_pending -> done
-      return current.round + 1 <= current.roundMax
-        ? byId("E06") // retry
-        : byId("E07"); // round_max breach -> blocked
-    case "schedule_wakeup":
-      return byId("E08"); // in_progress -> sleeping
-    case "wakeup_fired":
-      return byId("E09"); // sleeping -> ready
+      if (signal.pass) return byId("E05");
+      return current.round + 1 <= current.roundMax ? byId("E06") : byId("E07");
+    case "schedule_wakeup": return byId("E08");
+    case "wakeup_fired": return byId("E09");
     case "escalation_detected":
       if (from === "in_progress") return byId("E10");
       if (from === "eval_pending") return byId("E11");
       return null;
-    case "human_approve":
-      return byId("E12"); // escalated -> ready
-    case "human_reject":
-      return byId("E13"); // escalated -> blocked
+    case "human_approve": return byId("E12");
+    case "human_reject": return byId("E13");
     case "human_abort":
       if (from === "escalated") return byId("E14");
       if (from === "blocked") return byId("E16");
       return null;
-    case "blocker_cleared":
-      return byId("E15"); // blocked -> ready
-    case "fatal_exception":
-      return byId("E17"); // in_progress -> failed
+    case "blocker_cleared": return byId("E15");
+    case "fatal_exception": return byId("E17");
   }
 }
 
 // ---------------------------------------------------------------------------
-// Step (one transition)
+// stepOnce (pure transition)
 // ---------------------------------------------------------------------------
 
 export interface StepResult {
   edge: WorkflowEdge | null;
-  nextState: WorkflowState | null;
+  nextState: WorkflowStateCamel | null;
   rejected: boolean;
   rejectionReason: string | null;
 }
 
-/**
- * stepOnce — 1 遷移だけ計算する。副作用なし（writeback は別関数）。
- * null edge の場合は rejected: true を返す（fail-closed）。
- */
-export function stepOnce(current: WorkflowState, signal: StepSignal): StepResult {
+export function stepOnce(current: WorkflowStateCamel, signal: StepSignal): StepResult {
   const edge = selectEdge(current, signal);
   if (!edge) {
     return {
@@ -236,19 +272,12 @@ export function stepOnce(current: WorkflowState, signal: StepSignal): StepResult
       rejectionReason: `no allowed edge from '${current.kind}' for signal '${signal.kind}'`,
     };
   }
-  const next: WorkflowState = { ...current, kind: edge.target };
+  const next: WorkflowStateCamel = { ...current, kind: edge.target };
 
-  // round bookkeeping
   if (edge.id === "E06") next.round = current.round + 1;
-  if (edge.id === "E02" || edge.id === "E09" || edge.id === "E12" || edge.id === "E15") {
-    // reset on re-entry to ready / in_progress from non-retry paths is not desired;
-    // keep round as-is. E06 increments, E02 keeps (first dispatch).
-  }
 
-  // invariant fields
   if (signal.kind === "evaluator_verdict") {
-    next.lastFeedback =
-      signal.feedback ?? (signal.pass ? "evaluator pass" : "evaluator fail");
+    next.lastFeedback = signal.feedback ?? (signal.pass ? "evaluator pass" : "evaluator fail");
   }
   if (signal.kind === "escalation_detected") {
     next.escalationKind = signal.escalation;
@@ -264,6 +293,8 @@ export function stepOnce(current: WorkflowState, signal: StepSignal): StepResult
   }
   if (signal.kind === "fatal_exception") {
     next.failureReason = signal.reason;
+  } else if (edge.target !== "failed") {
+    next.failureReason = null;
   }
   if (edge.target === "blocked" && !next.blocker) {
     next.blocker =
@@ -281,123 +312,85 @@ export function stepOnce(current: WorkflowState, signal: StepSignal): StepResult
 }
 
 // ---------------------------------------------------------------------------
-// Writeback (surgical line-replace to preserve comments / order)
+// runOneStep — high-level (contract + checkpoint + write)
 // ---------------------------------------------------------------------------
 
-export interface WritebackPatch {
+export interface RunOneStepInput {
   taskId: string;
-  status: WorkflowStateKind;
-  round: number;
-  lastFeedback: string | null;
-  blocker: string | null;
+  signal: StepSignal;
 }
 
-/**
- * applyWriteback — tasks.yaml 内の指定 task のフィールドを surgical に書き戻す。
- *
- * 動作:
- *   1. ファイルを行配列で読む
- *   2. `- id: ${taskId}` で始まる行を探索
- *   3. 次の `- id:` 行（または EOF）までが対象 task 区画
- *   4. 区画内の `  status:` / `  round:` / `  last_feedback:` / `  blocker:` 行を
- *      値だけ置換（インデント・コメント付きコロン後末尾は保持）
- *   5. dryRun なら書き戻さずパッチ本文を返す
- *
- * 構造保持: 行挿入・削除・順序変更はしない。値トークンのみ置換。
- */
-export function applyWriteback(
-  tasksFile: string,
-  patch: WritebackPatch,
-  opts: { dryRun: boolean },
-): { updated: boolean; newContent: string; hits: string[] } {
-  const raw = fs.readFileSync(tasksFile, "utf8");
-  const lines = raw.split(/\r?\n/);
+export interface RunOneStepOutput {
+  taskId: string;
+  fromState: WorkflowStateCamel;
+  edge: WorkflowEdge | null;
+  nextState: WorkflowStateCamel | null;
+  rejected: boolean;
+  rejectionReason: string | null;
+  wrote: boolean;
+}
 
-  const startIdx = lines.findIndex((l) => /^- id:\s*/.test(l) && l.includes(patch.taskId));
-  if (startIdx === -1) {
-    throw new Error(`task not found in tasks.yaml: ${patch.taskId}`);
-  }
-  let endIdx = lines.length;
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    if (/^- id:\s*/.test(lines[i])) {
-      endIdx = i;
-      break;
+export interface RunnerContext {
+  tasksFile: string;
+  runtimeDir: string;  // checkpoints/ の親ディレクトリ
+  cheatsheetFile: string;
+  dryRun: boolean;
+}
+
+export function runOneStep(ctx: RunnerContext, input: RunOneStepInput): RunOneStepOutput {
+  const cur = loadCheckpointState(ctx.runtimeDir, input.taskId);
+  const { edge, nextState, rejected, rejectionReason } = stepOnce(cur, input.signal);
+
+  let wrote = false;
+  if (!rejected && nextState && !ctx.dryRun) {
+    saveCheckpointState(ctx.runtimeDir, input.taskId, nextState);
+    wrote = true;
+    if (ctx.cheatsheetFile) {
+      regenerateCheatsheet(ctx.tasksFile, ctx.runtimeDir, ctx.cheatsheetFile);
     }
   }
-
-  const hits: string[] = [];
-  const fieldReplacers: Array<{ field: string; value: string }> = [
-    { field: "status", value: patch.status },
-    { field: "round", value: String(patch.round) },
-    {
-      field: "last_feedback",
-      value: patch.lastFeedback === null ? "null" : JSON.stringify(patch.lastFeedback),
-    },
-    {
-      field: "blocker",
-      value: patch.blocker === null ? "null" : JSON.stringify(patch.blocker),
-    },
-  ];
-
-  for (let i = startIdx; i < endIdx; i++) {
-    for (const fr of fieldReplacers) {
-      const re = new RegExp(`^(\\s+${fr.field}:\\s*)(.*)$`);
-      const m = lines[i].match(re);
-      if (m) {
-        lines[i] = `${m[1]}${fr.value}`;
-        hits.push(fr.field);
-      }
-    }
-  }
-
-  const newContent = lines.join("\n");
-  const updated = newContent !== raw;
-
-  if (!opts.dryRun && updated) {
-    fs.writeFileSync(tasksFile, newContent, "utf8");
-  }
-  return { updated, newContent, hits };
+  return {
+    taskId: input.taskId,
+    fromState: cur,
+    edge,
+    nextState,
+    rejected,
+    rejectionReason,
+    wrote,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Resume cheatsheet regeneration (T-1-6)
+// Resume cheatsheet (runner-managed block regeneration)
 // ---------------------------------------------------------------------------
 
-/**
- * regenerateCheatsheet — tasks.yaml の現状から resume-cheatsheet.md の machine-derivable
- * セクションを書き換える。Manager が手書きで足したナラティブ節は保持するため、
- * `<!-- runner-managed:begin -->` 〜 `<!-- runner-managed:end -->` のマーカ内のみ差し替える。
- */
-export function regenerateCheatsheet(tasksFile: string, cheatsheetFile: string): { updated: boolean } {
-  const entries = readTasks(tasksFile);
-  const phase = entries.find((e) => e.status !== "done" && e.status !== "failed")?.phase ?? entries[entries.length - 1]?.phase ?? 0;
-  const next = pickNextTask(tasksFile);
-  const byStatus: Record<string, number> = {};
-  for (const e of entries) byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
+export function regenerateCheatsheet(tasksFile: string, runtimeDir: string, cheatsheetFile: string): { updated: boolean } {
+  const views = loadAllTaskViews(tasksFile, runtimeDir);
+  const next = pickNextTask(tasksFile, runtimeDir);
+  const nonTerminal = views.find((v) => v.state.kind !== "done" && v.state.kind !== "failed");
+  const phase = nonTerminal?.contract.phase ?? views[views.length - 1]?.contract.phase ?? 0;
+  const byKind: Record<string, number> = {};
+  for (const v of views) byKind[v.state.kind] = (byKind[v.state.kind] ?? 0) + 1;
 
   const block = [
     "<!-- runner-managed:begin -->",
-    `<!-- auto-generated by workflow_runner at ${new Date().toISOString()} -->`,
+    `<!-- auto-generated by workflow_reducer at ${new Date().toISOString()} -->`,
     "",
     `- Phase: ${phase}`,
-    `- Next task: ${next ? `\`${next.id}\` (${next.verb} ${next.target}) [status=${next.status}]` : "(none — E1 Phase gate candidate)"}`,
-    `- Task status breakdown: ${Object.entries(byStatus).map(([k, v]) => `${k}=${v}`).join(", ")}`,
-    `- Total tasks: ${entries.length}`,
+    `- Next task: ${next ? `\`${next.contract.id}\` (${next.contract.verb} ${next.contract.target}) [state=${next.state.kind}]` : "(none — E1 Phase gate candidate)"}`,
+    `- Task state breakdown: ${Object.entries(byKind).map(([k, v]) => `${k}=${v}`).join(", ")}`,
+    `- Total tasks: ${views.length}`,
     "",
     "<!-- runner-managed:end -->",
   ].join("\n");
 
   let existing = "";
-  try { existing = fs.readFileSync(cheatsheetFile, "utf8"); } catch { /* new file */ }
+  try { existing = fs.readFileSync(cheatsheetFile, "utf8"); } catch { /* new */ }
 
   let newContent: string;
   if (existing.includes("<!-- runner-managed:begin -->") && existing.includes("<!-- runner-managed:end -->")) {
-    newContent = existing.replace(
-      /<!-- runner-managed:begin -->[\s\S]*?<!-- runner-managed:end -->/,
-      block,
-    );
+    newContent = existing.replace(/<!-- runner-managed:begin -->[\s\S]*?<!-- runner-managed:end -->/, block);
   } else if (existing) {
-    // prepend if markers absent
     newContent = block + "\n\n" + existing;
   } else {
     newContent = `# Resume Cheatsheet (runner-managed)\n\n${block}\n`;
@@ -409,75 +402,9 @@ export function regenerateCheatsheet(tasksFile: string, cheatsheetFile: string):
 }
 
 // ---------------------------------------------------------------------------
-// High-level run
+// Helpers (resume / suggest)
 // ---------------------------------------------------------------------------
 
-export interface RunOneStepInput {
-  taskId: string;
-  signal: StepSignal;
-}
-
-export interface RunOneStepOutput {
-  taskId: string;
-  fromState: WorkflowState;
-  edge: WorkflowEdge | null;
-  nextState: WorkflowState | null;
-  rejected: boolean;
-  rejectionReason: string | null;
-  writeback: { updated: boolean; hits: string[] } | null;
-}
-
-/**
- * runOneStep — 指定 task に signal を 1 つ適用し、state を進めて tasks.yaml を更新する。
- *
- * idempotency: 同じ current state に同じ signal を与えても、writeback 後に
- * 再度呼ぶと fromState が更新されているため、edge が変わるか null を返す。
- * （checkpoint は tasks.yaml の status がそのまま正本）
- */
-export function runOneStep(ctx: RunContext, input: RunOneStepInput): RunOneStepOutput {
-  const entries = readTasks(ctx.tasksFile);
-  const entry = entries.find((e) => e.id === input.taskId);
-  if (!entry) {
-    throw new Error(`task not found: ${input.taskId}`);
-  }
-  const cp = entryToCheckpoint(entry);
-  const { edge, nextState, rejected, rejectionReason } = stepOnce(cp.state, input.signal);
-
-  let writeback: { updated: boolean; hits: string[] } | null = null;
-  if (!rejected && nextState) {
-    const patch: WritebackPatch = {
-      taskId: entry.id,
-      status: nextState.kind,
-      round: nextState.round,
-      lastFeedback: nextState.lastFeedback,
-      blocker: nextState.blocker,
-    };
-    const wb = applyWriteback(ctx.tasksFile, patch, { dryRun: ctx.dryRun });
-    writeback = { updated: wb.updated, hits: wb.hits };
-    if (!ctx.dryRun && wb.updated && ctx.cheatsheetFile) {
-      regenerateCheatsheet(ctx.tasksFile, ctx.cheatsheetFile);
-    }
-  }
-
-  return {
-    taskId: input.taskId,
-    fromState: cp.state,
-    edge,
-    nextState,
-    rejected,
-    rejectionReason,
-    writeback,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Resume helpers (T-1-5)
-// ---------------------------------------------------------------------------
-
-/**
- * suggestNextSignal — 現 state から次に受領すべき signal 種別を示唆する。
- * resume 時に Manager / operator が迷わないための hint。enforcement ではない。
- */
 export function suggestNextSignal(kind: WorkflowStateKind): string {
   switch (kind) {
     case "pending":      return "dependencies_done";
@@ -493,7 +420,7 @@ export function suggestNextSignal(kind: WorkflowStateKind): string {
 }
 
 // ---------------------------------------------------------------------------
-// Cycle driver (T-1-4): evaluator loop + round enforcement
+// Cycle driver (T-1-4 — preserved)
 // ---------------------------------------------------------------------------
 
 export interface CycleTraceStep {
@@ -506,19 +433,13 @@ export interface CycleTraceStep {
 }
 
 export interface CycleResult {
-  initial: WorkflowState;
-  final: WorkflowState;
+  initial: WorkflowStateCamel;
+  final: WorkflowStateCamel;
   trace: CycleTraceStep[];
   terminated: "done" | "failed" | "blocked" | "escalated" | "sleeping" | "rejected";
 }
 
-/**
- * driveCycle — 指定 signals を順に適用する in-memory シミュレータ。副作用なし。
- *
- * terminal / blocked / sleeping / escalated / reject のいずれかで停止。
- * Generator / Evaluator の role 区別はシグナル種 (generator_done / evaluator_verdict) で表現される。
- */
-export function driveCycle(initial: WorkflowState, signals: StepSignal[]): CycleResult {
+export function driveCycle(initial: WorkflowStateCamel, signals: StepSignal[]): CycleResult {
   const trace: CycleTraceStep[] = [];
   let cur = { ...initial };
   let terminated: CycleResult["terminated"] | null = null;
@@ -533,30 +454,19 @@ export function driveCycle(initial: WorkflowState, signals: StepSignal[]): Cycle
       round: cur.round,
       rejected: r.rejected,
     });
-    if (r.rejected || !r.nextState) {
-      terminated = "rejected";
-      break;
-    }
+    if (r.rejected || !r.nextState) { terminated = "rejected"; break; }
     cur = r.nextState;
-    if (cur.kind === "done") { terminated = "done"; break; }
-    if (cur.kind === "failed") { terminated = "failed"; break; }
-    if (cur.kind === "blocked") { terminated = "blocked"; break; }
-    if (cur.kind === "escalated") { terminated = "escalated"; break; }
+    if (cur.kind === "done")     { terminated = "done"; break; }
+    if (cur.kind === "failed")   { terminated = "failed"; break; }
+    if (cur.kind === "blocked")  { terminated = "blocked"; break; }
+    if (cur.kind === "escalated"){ terminated = "escalated"; break; }
     if (cur.kind === "sleeping") { terminated = "sleeping"; break; }
   }
 
-  return {
-    initial,
-    final: cur,
-    trace,
-    terminated: terminated ?? "rejected",
-  };
+  return { initial, final: cur, trace, terminated: terminated ?? "rejected" };
 }
 
-/**
- * freshState — synthetic task の初期 state（pending / round=0）。
- */
-export function freshState(roundMax: number): WorkflowState {
+export function freshState(roundMax: number): WorkflowStateCamel {
   return {
     kind: "pending",
     round: 0,
@@ -570,168 +480,109 @@ export function freshState(roundMax: number): WorkflowState {
   };
 }
 
-/**
- * runSyntheticDemo — T-1-4 契約のフルサイクル実演。
- *
- * シナリオ A (eval pass 成功系):
- *   pending -> ready -> in_progress -> eval_pending -> done
- *
- * シナリオ B (evaluator fail で round_max breach → blocked):
- *   pending -> ready -> in_progress -> eval_pending -> in_progress(round++) -> eval_pending -> blocked
- *   (roundMax=1 で 2 回目の fail が breach)
- */
-export function runSyntheticDemo(): { scenarioA: CycleResult; scenarioB: CycleResult } {
-  const sA = driveCycle(freshState(3), [
-    { kind: "dependencies_done" },
-    { kind: "dispatch_generator" },
-    { kind: "generator_done", evalRequired: true, objectiveCheckPass: true },
-    { kind: "evaluator_verdict", pass: true, feedback: "all criteria met" },
-  ]);
-
-  // E06 は in_progress に直接戻る（再 dispatch は不要。Generator が再起動した扱い）。
-  const sB = driveCycle(freshState(1), [
-    { kind: "dependencies_done" },
-    { kind: "dispatch_generator" },
-    { kind: "generator_done", evalRequired: true, objectiveCheckPass: true },
-    { kind: "evaluator_verdict", pass: false, feedback: "criterion X missing" },
-    { kind: "generator_done", evalRequired: true, objectiveCheckPass: true },
-    { kind: "evaluator_verdict", pass: false, feedback: "criterion X still missing" },
-  ]);
-
-  return { scenarioA: sA, scenarioB: sB };
-}
-
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv: string[]): {
   tasksFile: string;
+  runtimeDir: string;
   cheatsheetFile: string;
   taskId: string | null;
   signal: string | null;
   dryRun: boolean;
   resume: boolean;
   inspect: boolean;
-  demo: boolean;
 } {
   const out = {
     tasksFile: "",
+    runtimeDir: "",
     cheatsheetFile: "",
     taskId: null as string | null,
     signal: null as string | null,
     dryRun: false,
     resume: false,
     inspect: false,
-    demo: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--tasks") out.tasksFile = argv[++i];
+    else if (a === "--runtime") out.runtimeDir = argv[++i];
     else if (a === "--cheatsheet") out.cheatsheetFile = argv[++i];
     else if (a === "--task") out.taskId = argv[++i];
     else if (a === "--signal") out.signal = argv[++i];
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--resume") out.resume = true;
     else if (a === "--inspect") out.inspect = true;
-    else if (a === "--demo") out.demo = true;
   }
   return out;
 }
 
 function buildSignal(name: string): StepSignal {
   switch (name) {
-    case "dependencies_done":
-      return { kind: "dependencies_done" };
-    case "dispatch_generator":
-      return { kind: "dispatch_generator" };
-    case "generator_done_eval":
-      return { kind: "generator_done", evalRequired: true, objectiveCheckPass: true };
-    case "generator_done_noeval":
-      return { kind: "generator_done", evalRequired: false, objectiveCheckPass: true };
-    case "evaluator_pass":
-      return { kind: "evaluator_verdict", pass: true };
-    case "evaluator_fail":
-      return { kind: "evaluator_verdict", pass: false };
-    case "blocker_cleared":
-      return { kind: "blocker_cleared" };
-    default:
-      throw new Error(`unknown signal: ${name}`);
+    case "dependencies_done":     return { kind: "dependencies_done" };
+    case "dispatch_generator":    return { kind: "dispatch_generator" };
+    case "generator_done_eval":   return { kind: "generator_done", evalRequired: true, objectiveCheckPass: true };
+    case "generator_done_noeval": return { kind: "generator_done", evalRequired: false, objectiveCheckPass: true };
+    case "evaluator_pass":        return { kind: "evaluator_verdict", pass: true };
+    case "evaluator_fail":        return { kind: "evaluator_verdict", pass: false };
+    case "blocker_cleared":       return { kind: "blocker_cleared" };
+    default: throw new Error(`unknown signal: ${name}`);
   }
 }
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-
-  if (args.demo) {
-    const { scenarioA, scenarioB } = runSyntheticDemo();
-    console.log("=== scenario A (eval pass) ===");
-    for (const t of scenarioA.trace) {
-      console.log(`  ${t.signalKind.padEnd(20)} ${t.from.padEnd(14)} -${t.edge ?? "∅"}-> ${t.to ?? "∅"}  round=${t.round}${t.rejected ? "  REJECTED" : ""}`);
-    }
-    console.log(`  final=${scenarioA.final.kind} (terminated=${scenarioA.terminated}, round=${scenarioA.final.round}, feedback=${JSON.stringify(scenarioA.final.lastFeedback)})`);
-    console.log("");
-    console.log("=== scenario B (evaluator fail × round_max=1 → blocked) ===");
-    for (const t of scenarioB.trace) {
-      console.log(`  ${t.signalKind.padEnd(20)} ${t.from.padEnd(14)} -${t.edge ?? "∅"}-> ${t.to ?? "∅"}  round=${t.round}${t.rejected ? "  REJECTED" : ""}`);
-    }
-    console.log(`  final=${scenarioB.final.kind} (terminated=${scenarioB.terminated}, round=${scenarioB.final.round}, blocker=${JSON.stringify(scenarioB.final.blocker)})`);
-    return;
-  }
-
-  if (!args.tasksFile) {
-    console.error("usage: workflow_runner --tasks <path> [--cheatsheet <path>] [--task <id> --signal <name>] [--dry-run] [--inspect] [--demo]");
+  if (!args.tasksFile || !args.runtimeDir) {
+    console.error("usage: workflow_runner --tasks <tasks.yaml> --runtime <runtimeDir> [--cheatsheet <path>] [--task <id> --signal <name>] [--dry-run] [--inspect] [--resume]");
     process.exit(2);
   }
 
   if (args.inspect) {
-    const cps = readCheckpoints(args.tasksFile);
-    for (const cp of cps) {
-      console.log(`${cp.taskId.padEnd(8)} ${cp.state.kind.padEnd(14)} round=${cp.state.round}/${cp.state.roundMax}`);
+    const views = loadAllTaskViews(args.tasksFile, args.runtimeDir);
+    for (const v of views) {
+      console.log(`${v.contract.id.padEnd(8)} ${v.state.kind.padEnd(14)} round=${v.state.round}/${v.state.roundMax}${v.state.blocker ? `  blocker=${JSON.stringify(v.state.blocker)}` : ""}`);
     }
     return;
   }
 
   if (args.resume) {
-    const next = pickNextTask(args.tasksFile);
-    if (!next) {
-      console.log("RESUME: no next task (all terminal or blocked). E1 Phase gate candidate.");
-      return;
-    }
-    const cp = loadCheckpoint(args.tasksFile, next.id);
-    const expected = suggestNextSignal(cp.state.kind);
-    console.log(`RESUME: ${cp.taskId} status=${cp.state.kind} round=${cp.state.round}/${cp.state.roundMax}`);
-    console.log(`  last_feedback: ${cp.state.lastFeedback ?? "(none)"}`);
-    console.log(`  blocker: ${cp.state.blocker ?? "(none)"}`);
-    console.log(`  expected next signal class: ${expected}`);
+    const next = pickNextTask(args.tasksFile, args.runtimeDir);
+    if (!next) { console.log("RESUME: no next task (all terminal/blocked). E1 candidate."); return; }
+    console.log(`RESUME: ${next.contract.id} state=${next.state.kind} round=${next.state.round}/${next.state.roundMax}`);
+    console.log(`  last_feedback: ${next.state.lastFeedback ?? "(none)"}`);
+    console.log(`  blocker: ${next.state.blocker ?? "(none)"}`);
+    console.log(`  escalation_kind: ${next.state.escalationKind ?? "(none)"}`);
+    console.log(`  wakeup_at: ${next.state.wakeupAt ?? "(none)"}`);
+    console.log(`  expected next signal class: ${suggestNextSignal(next.state.kind)}`);
     return;
   }
 
   if (!args.taskId || !args.signal) {
-    console.error("require --task and --signal (or --inspect)");
+    console.error("require --task and --signal (or --inspect / --resume)");
     process.exit(2);
   }
-
-  const ctx: RunContext = {
+  const ctx: RunnerContext = {
     tasksFile: path.resolve(args.tasksFile),
+    runtimeDir: path.resolve(args.runtimeDir),
     cheatsheetFile: args.cheatsheetFile ? path.resolve(args.cheatsheetFile) : "",
     dryRun: args.dryRun,
-    resume: args.resume,
-    startedAt: new Date().toISOString(),
-    stopReason: null,
   };
   const out = runOneStep(ctx, { taskId: args.taskId, signal: buildSignal(args.signal) });
-
   if (out.rejected) {
     console.error(`REJECTED: ${out.rejectionReason}`);
     process.exit(1);
   }
-  console.log(`${out.taskId}: ${out.fromState.kind} -> ${out.nextState?.kind} (edge=${out.edge?.id}, dryRun=${ctx.dryRun})`);
-  if (out.writeback) {
-    console.log(`  writeback: updated=${out.writeback.updated}, fields=[${out.writeback.hits.join(",")}]`);
-  }
+  console.log(`${out.taskId}: ${out.fromState.kind} -> ${out.nextState?.kind} (edge=${out.edge?.id}, wrote=${out.wrote}, dryRun=${ctx.dryRun})`);
 }
 
+/**
+ * runOneStep や reducer API を import して使う側（T-1-9 以降の CLI wrapper 分離後 or test）
+ * が、本ファイルを直接実行した時だけ main() を呼ぶ。
+ */
 if (require.main === module) {
   main();
 }
+
+// Export for re-use by RunContext clients (legacy T-1-1 type)
+export type { RunContext };
