@@ -733,3 +733,91 @@
   round_max: 1
   dependencies: ["T-7-1"]
   linked_review: null
+
+# =========================================================================
+# Plan 3 (plan3.md): System Diagram concrete demonstration
+# PJ03 map の System Diagram subtree を timed command replay で段階的に編集
+# =========================================================================
+
+- id: T-8-1
+  phase: 8
+  verb: spec
+  target: "system_diagram command schema (PJ03 最小)"
+  done_when:
+    - "beta/src/shared/system_diagram_command_types.ts が存在、CommandEnvelope / SystemDiagramCommand union を export"
+    - "最小 command set: reset_subtree / create_node / update_node_text / set_attr / link_nodes / sleep"
+    - "各 command が id / type / args / optional delay_ms を持つ"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "汎用化しすぎず PJ03 System Diagram 再構成に必要な範囲"
+    - "既存 M3E map API の JSON 形式と整合 (TreeNode shape 準拠)"
+  parallelizable: false
+  scope: "beta/src/shared"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-7-2"]
+  linked_review: null
+
+- id: T-8-2
+  phase: 8
+  verb: implement
+  target: "system_diagram_runner (PJ03 map 専用)"
+  done_when:
+    - "beta/src/node/system_diagram_runner.ts が存在、CLI entry + step/auto mode"
+    - "script 読み込み / map 特定 / command 実行 / delay 制御 / ログ出力 / failure 停止"
+    - "--dry-run モードで HTTP を打たず実行計画を stdout 出力"
+    - "--live モードで map server (localhost:4173) に対して実行"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "runner は PJ03 map 外には影響しない (map ID が明示必須)"
+    - "failure 時 (HTTP 4xx/5xx) は停止し、以降 command を走らせない"
+    - "既存 workflow_reducer / orchestrator / projector に retrospective 変更なし"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-8-1"]
+  linked_review: null
+
+- id: T-8-3
+  phase: 8
+  verb: script
+  target: "PJ03 System Diagram concrete script"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/system_diagram_pj03.json が存在"
+    - "plan3.md §3 の 18 項目（System Diagram anchor → Inputs/Sources → Runtime Layers → Projection → Boundary Rules → link → attr/color）をカバー"
+    - "runner --dry-run で script が完走する (stdout で全 command が計画通り出る)"
+    - "runner --live で PJ03 map に反映される (reset_subtree で clean 実行可能)"
+  eval_required: true
+  eval_criteria:
+    - "script は deterministic (同 script 複数回実行で同構造)"
+    - "node id / parent id が plan3.md §3 に沿う"
+    - "link と attr/color step が含まれる"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-8-2"]
+  linked_review: null
+
+- id: T-8-4
+  phase: 8
+  verb: document
+  target: "demo runbook + Plan 3 gate"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/system_diagram_demo.md が存在 (runbook: 事前準備・replay 手順・観察ポイント)"
+    - "plan3.md §確定事項 (新設) に CD-1..CD-4 の結論"
+    - "Plan 3 readiness summary posted to chat"
+    - "pre-gate adversarial reviewer を 1 回通す (backlog/pj03-gate-integrity-lessons.md §1 に従う)"
+  eval_required: false
+  eval_criteria:
+    - "demo runbook で 3-minute replay が動作可能"
+    - "script + runner + runbook が docs のみで再現可能"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-8-3"]
+  linked_review: null

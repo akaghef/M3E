@@ -238,6 +238,38 @@ runner は少なくとも次のモードを持つ。
 
 を一般化すればよい。
 
+## 確定事項（Plan 3 CD-1〜CD-4 完了 2026-04-21）
+
+| CD Phase | 成果物 | 根拠 |
+|---|---|---|
+| CD-1 command schema 固定 | `beta/src/shared/system_diagram_command_types.ts` (6 command: reset_subtree / create_node / update_node_text / set_attr / link_nodes / sleep) | T-8-1 Evaluator pass |
+| CD-2 runner 実装 | `beta/src/node/system_diagram_runner.ts` (dry-run default / --live opt-in / --backup-dir 必須 for destructive / exact label match / step / auto mode、HTTP client、failure 停止) | T-8-2 Evaluator pass + live 実走行で PJ03 map 書込確認 |
+| CD-3 concrete script | `projects/PJ03_SelfDrive/artifacts/system_diagram_pj03.json` (31 command) | T-8-3 Evaluator pass + live run で 4 section / 5 link / 7 `set_attr` command 適用 |
+| CD-4 demo runbook | `projects/PJ03_SelfDrive/docs/system_diagram_demo.md` (3 mode + 安全ポリシー + 失敗対応) | T-8-4 本追記 |
+
+### live 実走行確認
+
+PJ03 map (map_1776759461174_2jkvil) に対し `--live --backup-dir .../backups --auto --interval 20` で 31 command 全適用。
+結果（curl 確認、**count check のみ**。parent/child 関係・link endpoints・attribute 値の完全な構造 assertion は実装していない）:
+
+- System Diagram children: 4 section (Inputs / Runtime Layers / Projection / Boundary Rules)
+- links: 5 本（l_sd_in_to_ly / l_sd_ly_to_pr / l_sd_rl_to_ly / l_sd_rule_ckpt / l_sd_rule_oneway）
+- `set_attr` commands executed: 7 回（4 section に fill、3 leaf に importance）。各 command は 1 node に 1 attribute 追加
+
+pre-run snapshot が `artifacts/backups/` に書かれる（destructive re-run からの復元用）。
+reset_subtree が先に走るので、**runner 実走直後の状態** においては同 script 再実行で同構造。
+viewer 手動で node を動かした後の「idempotent 再実行」は reset_subtree で subtree 全削除してから再構築されるので、実質 from-scratch。
+
+### 適用 pacing
+
+- demo runbook canonical: `--interval 500`（約 30〜40 秒完走、audience 向け）
+- 開発中の structural verification: `--interval 20`（約 3 秒完走、上記 live 確認で使用）
+
+### 既知の軽微 flag（Gate 5 adversarial reviewer 指摘、本 gate では説明扱い）
+
+- runner 自体は map-edit の汎用 command をサポートする。PJ03 System Diagram 専用性は「script 側の map_id + map_label_expected による」運用で担保（型レベルの制約ではない）
+- 構造 assertion は count のみ。parent/child 関係や link endpoints の完全一致は検証していない
+
 ## 一言でいうと
 
 Plan CD は、「PJ03 の system picture を viewer 上で段階的に育てる demonstration」を
