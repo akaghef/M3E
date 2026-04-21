@@ -1,19 +1,23 @@
 /**
- * PJ03 SelfDrive — workflow reducer (T-1-8 rework: checkpoint JSON への責務分離)
+ * PJ03 SelfDrive — workflow reducer (T-1-9: runner → reducer rename)
  *
- * 責務 (T-1-8 更新後):
- *   - tasks.yaml は人間向け sprint contract。status / round / last_feedback / blocker は含まない
- *   - projects/PJ{NN}_{Name}/runtime/checkpoints/{taskId}.json が machine state の SSOT
- *   - 1 step: 現 state + signal → ALLOWED_EDGES から 1 辺を選び next state
- *   - fail-closed: 表外遷移は reject
- *   - writeback: checkpoint JSON に atomic write (tmp → rename)
- *   - invariant 完全性: WorkflowState の全 field (escalationKind / wakeupAt / wakeupMechanism /
- *     failureReason 含む) を round-trip で保存する
+ * 責務 (akaghef Qn3 P2 確定):
+ *   - tasks.yaml = 人間向け sprint contract（status / round / last_feedback / blocker は含まない）
+ *   - projects/PJ{NN}_{Name}/runtime/checkpoints/{taskId}.json = machine state の SSOT
+ *   - reduce(state, signal) → nextState の純粋関数群
+ *   - fail-closed: ALLOWED_EDGES にない遷移は reject
+ *   - persistence adapter: checkpoint JSON の atomic read/write
  *
- * 注意:
- *   - ファイル名は後続 T-1-9 で workflow_reducer.ts に rename 予定
- *   - Clock / dependency resolver / review resolver の injection は T-1-10 で追加
- *   - 現状は Date / fs 直参照を一部含む（T-1-9 と T-1-10 で切り出し）
+ * 非責務 (engine 化は Phase 2 で別 task として切り出し):
+ *   - Generator / Evaluator 起動 (subagent spawn)
+ *   - 時刻ベース wakeup 発火 (Clock polling)
+ *   - 依存解決 (dependency resolution)
+ *   - review resolver との統合
+ *
+ * CLI は workflow_cli.ts に分離（本ファイルは副作用を持たない library モジュール）。
+ * Date / fs 直参照は T-1-10 で Clock interface と persistence adapter に切り出す予定。
+ *
+ * 詳細: projects/PJ03_SelfDrive/docs/reducer_responsibility.md
  */
 
 import * as crypto from "crypto";
@@ -330,14 +334,14 @@ export interface RunOneStepOutput {
   wrote: boolean;
 }
 
-export interface RunnerContext {
+export interface ReducerContext {
   tasksFile: string;
   runtimeDir: string;  // checkpoints/ の親ディレクトリ
   cheatsheetFile: string;
   dryRun: boolean;
 }
 
-export function runOneStep(ctx: RunnerContext, input: RunOneStepInput): RunOneStepOutput {
+export function runOneStep(ctx: ReducerContext, input: RunOneStepInput): RunOneStepOutput {
   const cur = loadCheckpointState(ctx.runtimeDir, input.taskId);
   const { edge, nextState, rejected, rejectionReason } = stepOnce(cur, input.signal);
 
@@ -481,108 +485,8 @@ export function freshState(roundMax: number): WorkflowStateCamel {
 }
 
 // ---------------------------------------------------------------------------
-// CLI
+// Re-exports
 // ---------------------------------------------------------------------------
 
-function parseArgs(argv: string[]): {
-  tasksFile: string;
-  runtimeDir: string;
-  cheatsheetFile: string;
-  taskId: string | null;
-  signal: string | null;
-  dryRun: boolean;
-  resume: boolean;
-  inspect: boolean;
-} {
-  const out = {
-    tasksFile: "",
-    runtimeDir: "",
-    cheatsheetFile: "",
-    taskId: null as string | null,
-    signal: null as string | null,
-    dryRun: false,
-    resume: false,
-    inspect: false,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--tasks") out.tasksFile = argv[++i];
-    else if (a === "--runtime") out.runtimeDir = argv[++i];
-    else if (a === "--cheatsheet") out.cheatsheetFile = argv[++i];
-    else if (a === "--task") out.taskId = argv[++i];
-    else if (a === "--signal") out.signal = argv[++i];
-    else if (a === "--dry-run") out.dryRun = true;
-    else if (a === "--resume") out.resume = true;
-    else if (a === "--inspect") out.inspect = true;
-  }
-  return out;
-}
-
-function buildSignal(name: string): StepSignal {
-  switch (name) {
-    case "dependencies_done":     return { kind: "dependencies_done" };
-    case "dispatch_generator":    return { kind: "dispatch_generator" };
-    case "generator_done_eval":   return { kind: "generator_done", evalRequired: true, objectiveCheckPass: true };
-    case "generator_done_noeval": return { kind: "generator_done", evalRequired: false, objectiveCheckPass: true };
-    case "evaluator_pass":        return { kind: "evaluator_verdict", pass: true };
-    case "evaluator_fail":        return { kind: "evaluator_verdict", pass: false };
-    case "blocker_cleared":       return { kind: "blocker_cleared" };
-    default: throw new Error(`unknown signal: ${name}`);
-  }
-}
-
-function main(): void {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.tasksFile || !args.runtimeDir) {
-    console.error("usage: workflow_runner --tasks <tasks.yaml> --runtime <runtimeDir> [--cheatsheet <path>] [--task <id> --signal <name>] [--dry-run] [--inspect] [--resume]");
-    process.exit(2);
-  }
-
-  if (args.inspect) {
-    const views = loadAllTaskViews(args.tasksFile, args.runtimeDir);
-    for (const v of views) {
-      console.log(`${v.contract.id.padEnd(8)} ${v.state.kind.padEnd(14)} round=${v.state.round}/${v.state.roundMax}${v.state.blocker ? `  blocker=${JSON.stringify(v.state.blocker)}` : ""}`);
-    }
-    return;
-  }
-
-  if (args.resume) {
-    const next = pickNextTask(args.tasksFile, args.runtimeDir);
-    if (!next) { console.log("RESUME: no next task (all terminal/blocked). E1 candidate."); return; }
-    console.log(`RESUME: ${next.contract.id} state=${next.state.kind} round=${next.state.round}/${next.state.roundMax}`);
-    console.log(`  last_feedback: ${next.state.lastFeedback ?? "(none)"}`);
-    console.log(`  blocker: ${next.state.blocker ?? "(none)"}`);
-    console.log(`  escalation_kind: ${next.state.escalationKind ?? "(none)"}`);
-    console.log(`  wakeup_at: ${next.state.wakeupAt ?? "(none)"}`);
-    console.log(`  expected next signal class: ${suggestNextSignal(next.state.kind)}`);
-    return;
-  }
-
-  if (!args.taskId || !args.signal) {
-    console.error("require --task and --signal (or --inspect / --resume)");
-    process.exit(2);
-  }
-  const ctx: RunnerContext = {
-    tasksFile: path.resolve(args.tasksFile),
-    runtimeDir: path.resolve(args.runtimeDir),
-    cheatsheetFile: args.cheatsheetFile ? path.resolve(args.cheatsheetFile) : "",
-    dryRun: args.dryRun,
-  };
-  const out = runOneStep(ctx, { taskId: args.taskId, signal: buildSignal(args.signal) });
-  if (out.rejected) {
-    console.error(`REJECTED: ${out.rejectionReason}`);
-    process.exit(1);
-  }
-  console.log(`${out.taskId}: ${out.fromState.kind} -> ${out.nextState?.kind} (edge=${out.edge?.id}, wrote=${out.wrote}, dryRun=${ctx.dryRun})`);
-}
-
-/**
- * runOneStep や reducer API を import して使う側（T-1-9 以降の CLI wrapper 分離後 or test）
- * が、本ファイルを直接実行した時だけ main() を呼ぶ。
- */
-if (require.main === module) {
-  main();
-}
-
-// Export for re-use by RunContext clients (legacy T-1-1 type)
+// Export for re-use by RunContext clients (legacy T-1-1 type, retained for API continuity)
 export type { RunContext };

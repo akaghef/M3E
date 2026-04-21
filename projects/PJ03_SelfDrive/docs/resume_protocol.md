@@ -1,22 +1,25 @@
 # Resume Protocol — checkpoint / reload path
 
-- **status**: authoritative (T-1-5)
-- **phase**: 1
-- **referenced by**: T-1-5 runner 実装、SessionStart / PostCompact hook の将来配線
+- **status**: authoritative (T-1-5, updated T-1-8 / T-1-9 for checkpoint JSON split and reducer rename)
+- **phase**: 1.5 rework
+- **referenced by**: SessionStart / PostCompact hook の将来配線（Phase 2）
 
 ## Checkpoint の正本
 
+T-1-8 以降は **checkpoint JSON が machine SSOT**。tasks.yaml は human contract に限定。
+
 | layer | 正本ファイル | 書く主体 | 読む主体 |
 |---|---|---|---|
-| machine (primary) | `projects/PJ{NN}_{Name}/tasks.yaml` の各 entry `status` / `round` / `last_feedback` / `blocker` | `workflow_runner.applyWriteback` | `workflow_runner.readTasks` / `loadCheckpoint` |
-| human summary | `projects/PJ{NN}_{Name}/resume-cheatsheet.md` | Manager（task 完了ごとに regenerate） | Manager / akaghef |
+| **machine (primary)** | `projects/PJ{NN}_{Name}/runtime/checkpoints/{taskId}.json` の `state` フィールド群（kind / round / last_feedback / blocker / escalation_kind / wakeup_at / wakeup_mechanism / failure_reason） | `workflow_reducer.saveCheckpointState`（atomic tmp+rename） | `workflow_reducer.loadCheckpointState` |
+| human contract | `projects/PJ{NN}_{Name}/tasks.yaml`（id / phase / verb / target / done_when / eval_required / eval_criteria / round_max / dependencies / linked_review） | 人間 / Generator | `workflow_reducer.readContracts` |
+| human summary | `projects/PJ{NN}_{Name}/resume-cheatsheet.md`（reducer-managed block） | `workflow_reducer.regenerateCheatsheet` | Manager / akaghef |
 
-tasks.yaml が SSOT。resume-cheatsheet.md は派生（冗長だが compact 耐性のため保持）。
+checkpoint JSON が machine SSOT。resume-cheatsheet.md と tasks.yaml はそれぞれ別軸の正本。
 
 ## Resume コマンド
 
 ```bash
-node dist/node/workflow_runner.js --tasks <tasks.yaml> --resume
+node dist/node/workflow_cli.js --tasks <tasks.yaml> --runtime <runtimeDir> --resume
 ```
 
 出力:
@@ -43,7 +46,7 @@ node dist/node/workflow_runner.js --tasks <tasks.yaml> --resume
 
 - `status: done` の task に対しては `selectEdge` が null を返す（terminal 不可逆）
 - 同じ `taskId` に対して `generator_done` を 2 回投げても、2 回目は `eval_pending` or `done` から発火不能で reject
-- runner は副作用（外部プロセス起動・ファイル生成）を直接は持たない。副作用は呼び出し側（sub-pj-do skill / hook）が state 遷移を見て判断する
+- reducer は副作用（外部プロセス起動・ファイル生成）を直接は持たない。副作用は呼び出し側（sub-pj-do skill / hook）が state 遷移を見て判断する
 
 ## Corrupt checkpoint 処理
 
@@ -59,11 +62,11 @@ silent reset は行わない。呼び出し側が catch して reviews/Qn に po
 現状: `.claude/skills/sub-pj/phase/resume.md` が SessionStart hook の additionalContext で注入される。人間 / Manager が読んで手順に従う。
 
 将来（Phase 2 以降）:
-- SessionStart hook が `workflow_runner --resume` を自動実行し、次 task の checkpoint 情報を chat に注入
+- SessionStart hook が `workflow_reducer --resume` を自動実行し、次 task の checkpoint 情報を chat に注入
 - PostCompact hook も同様、compact 直後に checkpoint を dump して context 欠落を補填
 - hook スクリプト配置: `.claude/scripts/hooks/session-start-workflow.sh`（未作成）
 
-現 Phase 1 では runner の CLI が動くことを確認するまで。hook 配線は backlog。
+現 Phase 1 では reducer の CLI が動くことを確認するまで。hook 配線は backlog。
 
 ## Test: kill-mid-transition resume
 
@@ -77,6 +80,6 @@ kill のタイミングが writeback 前なら state は前 state のまま、wr
 
 ## Cross-reference
 
-- beta/src/node/workflow_runner.ts: `readTasks` / `loadCheckpoint` / `pickNextTask` / `applyWriteback` / `suggestNextSignal`
+- beta/src/node/workflow_reducer.ts: `readTasks` / `loadCheckpoint` / `pickNextTask` / `applyWriteback` / `suggestNextSignal`
 - workflow_state_set.md: terminal 定義（double-fire 防止の根拠）
 - legacy_asset_mapping.md: PostCompact / SessionStart / Stop hook の checkpoint role

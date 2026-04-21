@@ -5,7 +5,7 @@
  *   - projects/PJ03_SelfDrive/docs/workflow_state_set.md (9 states)
  *   - projects/PJ03_SelfDrive/docs/workflow_edges.md (17 edges, fail-closed)
  *
- * 本ファイルは型と定数のみ。runtime ロジックは beta/src/node/workflow_runner.ts 側に置く。
+ * 本ファイルは型と定数のみ。runtime ロジックは beta/src/node/workflow_reducer.ts 側に置く。
  */
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ export type EdgeId =
 /**
  * WorkflowEdge — 許容される state 間遷移。
  *
- * 本表（ALLOWED_EDGES）にない (source, target) は runner が fail-closed で拒否する
+ * 本表（ALLOWED_EDGES）にない (source, target) は reducer が fail-closed で拒否する
  * (workflow_edges.md §設計原則)。
  */
 export interface WorkflowEdge {
@@ -158,7 +158,7 @@ export interface Checkpoint {
 export type StopReason = "gate" | "blocked" | "sleeping" | "escalated" | "failed";
 
 /**
- * RunContext — runner の 1 回の invocation 単位。
+ * RunContext — reducer の 1 回の invocation 単位。
  *
  * - tasksFile: tasks.yaml への絶対パス
  * - cheatsheetFile: resume-cheatsheet.md への絶対パス

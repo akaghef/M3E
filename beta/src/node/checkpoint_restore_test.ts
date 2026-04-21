@@ -16,7 +16,7 @@ import * as path from "path";
 
 import type { WorkflowStateCamel } from "../shared/checkpoint_types";
 import type { WorkflowStateKind } from "../shared/workflow_types";
-import { loadCheckpointState, saveCheckpointState } from "./workflow_runner";
+import { loadCheckpointState, saveCheckpointState } from "./workflow_reducer";
 
 const KINDS: WorkflowStateKind[] = [
   "pending", "ready", "in_progress", "eval_pending",
