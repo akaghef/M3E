@@ -1,0 +1,50 @@
+flowchart LR
+    I[Idea]
+    R[Research]
+    V[Vision]
+    S[Strategy]
+    T[Task Brainstorm]
+    G1{Gate 1\nStrategy fixed?}
+    D[Dependency Sort]
+    P[Phase Design]
+    G2{Gate 2\nExecution plan fixed?}
+    E[Execute]
+    Gen[Generator]
+    Ev[Evaluator]
+    TD[Task Done]
+    RP[Review Pool]
+    HG[Human Gate]
+    PG{Phase Gate}
+    C[Complete]
+
+    I --> R
+    R --> V
+    V --> S
+    S --> R
+    S --> T
+    T --> S
+
+    S --> G1
+    G1 -- reject --> R
+    G1 -- approve --> D
+
+    D --> P
+    P --> G2
+    G2 -- reject --> S
+    G2 -- approve --> E
+
+    E --> Gen
+    Gen --> Ev
+    Ev -- fail --> Gen
+    Ev -- pass --> TD
+    TD --> E
+
+    E -- blocked --> RP
+    RP -- resolved --> E
+    RP -- escalate --> HG
+    HG --> E
+
+    E -- phase complete --> PG
+    PG -- advance --> E
+    PG -- reopen --> R
+    PG -- done --> C

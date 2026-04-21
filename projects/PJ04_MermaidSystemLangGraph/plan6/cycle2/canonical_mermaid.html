@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Plan 6 — Cycle 2 / Canonical (Mermaid, authoritative)</title>
+<style>
+  body { margin: 0; background: #fbfaf7; color: #2c3036; font: 14px/1.6 "Noto Sans JP","Hiragino Sans",system-ui,sans-serif; }
+  header { padding: 22px 32px 12px; border-bottom: 1px solid #e5e2db; }
+  header h1 { margin: 0; font-size: 18px; font-weight: 700; }
+  header .sub { color: #6a7280; font-size: 13px; margin-top: 6px; }
+  header .warn { color: #9c2a2a; font-size: 12px; margin-top: 4px; font-weight: 600; }
+  .wrap { padding: 24px 32px; }
+  .mermaid { background: #ffffff; border: 1px solid #eee4d6; border-radius: 12px; padding: 24px; overflow: auto; }
+  pre.source { background: #f5f1e8; padding: 14px 18px; border-radius: 8px; font: 12px/1.5 "JetBrains Mono",Consolas,monospace; overflow: auto; color: #333; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  footer { padding: 14px 32px 24px; color: #6a7280; font-size: 12px; border-top: 1px solid #e5e2db; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+  // Run after DOM is parsed.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.mermaid) {
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'default',
+        flowchart: { curve: 'basis', padding: 16 },
+        fontFamily: '"Noto Sans JP","Hiragino Sans",system-ui,sans-serif',
+      });
+    }
+  });
+</script>
+</head>
+<body>
+<header>
+  <h1>Plan 6 — Cycle 2 / Canonical flow (Mermaid, authoritative)</h1>
+  <div class="sub">akaghef 2026-04-21 指定。この Mermaid source を authoritative spec とする。plan6 layout / plan7 schema / plan8 compile はこれを reference graph にする。</div>
+  <div class="warn">※ design illustration のみ。graph API / runtime / compiler はまだ未実装。</div>
+</header>
+<div class="wrap">
+  <div class="mermaid">
+flowchart LR
+    I[Idea]
+    R[Research]
+    V[Vision]
+    S[Strategy]
+    T[Task Brainstorm]
+    G1{"Gate 1<br/>Strategy fixed?"}
+    D[Dependency Sort]
+    P[Phase Design]
+    G2{"Gate 2<br/>Execution plan fixed?"}
+    E[Execute]
+    Gen[Generator]
+    Ev[Evaluator]
+    TD[Task Done]
+    RP[Review Pool]
+    HG[Human Gate]
+    PG{Phase Gate}
+    C[Complete]
+
+    I --> R
+    R --> V
+    V --> S
+    S --> R
+    S --> T
+    T --> S
+
+    S --> G1
+    G1 -- reject --> R
+    G1 -- approve --> D
+
+    D --> P
+    P --> G2
+    G2 -- reject --> S
+    G2 -- approve --> E
+
+    E --> Gen
+    Gen --> Ev
+    Ev -- fail --> Gen
+    Ev -- pass --> TD
+    TD --> E
+
+    E -- blocked --> RP
+    RP -- resolved --> E
+    RP -- escalate --> HG
+    HG --> E
+
+    E -- phase complete --> PG
+    PG -- advance --> E
+    PG -- reopen --> R
+    PG -- done --> C
+  </div>
+
+  <h2>Mermaid source (authoritative)</h2>
+  <pre class="source">flowchart LR
+    I[Idea]
+    R[Research]
+    V[Vision]
+    S[Strategy]
+    T[Task Brainstorm]
+    G1{Gate 1\nStrategy fixed?}
+    D[Dependency Sort]
+    P[Phase Design]
+    G2{Gate 2\nExecution plan fixed?}
+    E[Execute]
+    Gen[Generator]
+    Ev[Evaluator]
+    TD[Task Done]
+    RP[Review Pool]
+    HG[Human Gate]
+    PG{Phase Gate}
+    C[Complete]
+
+    I --&gt; R
+    R --&gt; V
+    V --&gt; S
+    S --&gt; R
+    S --&gt; T
+    T --&gt; S
+
+    S --&gt; G1
+    G1 -- reject --&gt; R
+    G1 -- approve --&gt; D
+
+    D --&gt; P
+    P --&gt; G2
+    G2 -- reject --&gt; S
+    G2 -- approve --&gt; E
+
+    E --&gt; Gen
+    Gen --&gt; Ev
+    Ev -- fail --&gt; Gen
+    Ev -- pass --&gt; TD
+    TD --&gt; E
+
+    E -- blocked --&gt; RP
+    RP -- resolved --&gt; E
+    RP -- escalate --&gt; HG
+    HG --&gt; E
+
+    E -- phase complete --&gt; PG
+    PG -- advance --&gt; E
+    PG -- reopen --&gt; R
+    PG -- done --&gt; C
+</pre>
+</div>
+<footer>
+  source: <code>projects/PJ03_SelfDrive/plan6/cycle2/canonical.mmd</code> · 2026-04-21
+</footer>
+</body>
+</html>

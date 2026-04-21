@@ -1,0 +1,98 @@
+- id: T-0-1
+  phase: 0
+  verb: bootstrap
+  target: "PJ04 sandbox skeleton and copied seed assets"
+  done_when:
+    - "PJ04 directory exists with README.md, plan.md, tasks.yaml"
+    - "Mermaid seed files are copied from PJ03"
+    - "LangGraph lab seed is copied from PJ03"
+    - "M3E current reference code is copied"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: false
+  scope: "projects/PJ04_MermaidSystemLangGraph"
+  facet: design
+  status: done
+  round: 0
+  round_max: 0
+  last_feedback: null
+  blocker: null
+
+- id: T-1-1
+  phase: 1
+  verb: draw
+  target: "canonical Mermaid system diagram onto a fixed map as graph-first scope structure"
+  done_when:
+    - "fixed target map is identified"
+    - "canonical Mermaid sample is represented as scope structure, not only notes"
+    - "viewer can be used to compare Mermaid sample and scope structure"
+  eval_required: true
+  eval_criteria:
+    - "notes rendering and scope drawing are explicitly separated"
+    - "layout does not collapse back into tree-first convenience"
+  parallelizable: false
+  scope: "fixed map / system diagram"
+  facet: layout
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-2-1
+  phase: 2
+  verb: add
+  target: "minimal graph editing operations for the fixed system diagram"
+  done_when:
+    - "at least node add and edge add/edit operation design is written"
+    - "operation target is consistent with fixed-map prototype"
+  eval_required: true
+  eval_criteria:
+    - "operations are graph-first, not tree-only shortcuts"
+  parallelizable: true
+  scope: "viewer / graph ops"
+  facet: interaction
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-3-1
+  phase: 3
+  verb: define
+  target: "graph-first data model and scope semantics for PJ04"
+  done_when:
+    - "node, edge, node-scope, edge-scope are defined"
+    - "Mermaid parity decision points are recorded"
+    - "fixed-map runtime feedback storage position is decided or narrowed"
+  eval_required: true
+  eval_criteria:
+    - "design is anchored to M3E current code references"
+  parallelizable: true
+  scope: "docs / references"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-4-1
+  phase: 4
+  verb: compile
+  target: "fixed-map graph to LangGraph seed runnable"
+  done_when:
+    - "one fixed-map graph can be translated into LangGraph seed code or state"
+    - "seed graph can be invoked"
+  eval_required: true
+  eval_criteria:
+    - "compile path does not depend on tree projection as runtime source of truth"
+  parallelizable: true
+  scope: "runtime/langgraph_lab"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
