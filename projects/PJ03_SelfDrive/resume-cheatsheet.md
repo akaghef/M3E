@@ -12,16 +12,13 @@
 
 ## Narrative (human-maintained)
 
-- Phase: 1 (Gate 2 REJECTED 2026-04-21) → 1.5 rework 中
-- Next task: `T-1-8` decide checkpoint persistence 正本 — akaghef P1 方針指示待ち
-- Gate 2: REJECTED — 8 指摘点を Qn3 に pool、T-1-8..T-1-11 (P1-P4) 起票
-- Open reviews: 1
-  - `Qn3_gate2_rework` — open (akaghef P1-P4 方針指示待ち)
-  - `Qn_initial` — resolved 2026-04-21 (Gate 1 で確定)
-  - `Qn2_stale_docs` — resolved 2026-04-21
-- Latest commit: `35e9633 feat(PJ03): Phase 1 complete — minimal workflow engine + dogfood run` (Gate 2 差戻で claim 撤回)
-- Agent Status: working → Gate 2 rework 準備中
-- Last session: 2026-04-21 T-1-1..T-1-6 runner + dogfood → Gate 2 emit → akaghef 差戻 (persistence gap / reducer-vs-engine / FIFO pickNextTask / sleeping clock 欠 / escalated flag 化 / node graph unused / regex writeback 脆 / round 曖昧)
+- Phase: 2 kickoff（Gate 2 v2 承認 2026-04-21、Phase 1.5 rework 完了）
+- Next task: `T-2-1` Clock daemon または `T-2-2` Orchestrator shell（deps=T-1-11 が done、parallelizable）
+- Gate 2 v2: 承認（restore test 9/9 + clock/resolver test 19 assertions pass、Qn3 P1-P4 すべて resolve）
+- Open reviews: 0（Qn_initial / Qn2 / Qn3 / Qn4 すべて resolved）
+- Latest commit: `8e222ae feat(PJ03): T-1-10 + T-1-11 rework — Clock/Resolver injection + workflow_example demote`
+- Agent Status: Phase 2 着手準備完了
+- Last session: Phase 1.5 rework 完了 (T-1-8..T-1-11 + T-1-7 re-gate) → Gate 2 v2 akaghef 承認 → Phase 2 kickoff (T-2-1..T-2-5 起票、checkpoint JSON 生成、Qn4 regression 対処)
 
 ## Phase 0 成果物 (authoritative)
 
@@ -38,8 +35,9 @@
 
 ## Inner loop expectation
 
-- Phase 1 (旧) は T-1-1..T-1-6 完了・T-1-7 blocked で停止
-- Phase 1.5 rework: akaghef が P1..P4 方針を指示 → T-1-8..T-1-11 起票 → T-1-10 で実装 → 再 gate
+- Phase 1 + 1.5 完了（16/16 done）。Gate 2 v2 承認済
+- Phase 2: T-2-1 / T-2-2 は parallelizable（deps=[T-1-11]）、T-2-3 は両方 done 後、T-2-4 は T-2-3 後、T-2-5 で Gate 3
+- tick で T-2-1 + T-2-2 を pending → ready に自動昇格可能（次セッション冒頭で実行）
 
 ## Stop conditions
 
@@ -57,3 +55,5 @@ Pool into `reviews/Qn{n}_{slug}.md` with tentative default and decision-owner. C
 - Qn_initial: option 3（ScheduleWakeup + CronCreate 併用）→ T-0-3 に反映済
 - Qn2_stale_docs: option 1（Claude 一括リライト）→ 適用済
 - plan.md 未存在セクション参照（§基本遷移・§S3 等）: T-0-5 で plan.md 確定事項から docs/ に逆参照を張る方式で解消（適用済）
+- Qn3_gate2_rework: akaghef P1-P4 確定（tasks.yaml vs checkpoint JSON 分離 / reducer rename / Clock interface / workflow_example 降格）→ 全適用済
+- Qn4_migrate_script_regression: legacy migration script（migrate_checkpoints / strip_tasks_state / add_task_fields）を削除 → 新 task の checkpoint は reducer.initCheckpoint で生成する運用（T-2-2 で実装候補）

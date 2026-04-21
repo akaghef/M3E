@@ -359,3 +359,113 @@
   round_max: 1
   dependencies: ["T-1-10"]
   linked_review: "Qn3_gate2_rework"
+
+# =========================================================================
+# Phase 2: 実行基盤の仮接続（2026-04-21 kickoff, akaghef approved Gate 2 v2）
+# reducer 外の orchestrator / Clock daemon / hook 配線。
+# Phase 1.5 rework で確立した契約・checkpoint 分離を前提にする。
+# =========================================================================
+
+- id: T-2-1
+  phase: 2
+  verb: implement
+  target: "Clock daemon（ScheduleWakeup + CronCreate 連携）"
+  done_when:
+    - "beta/src/node/clock_daemon.ts が存在し、reducer を import して tickAutoTransitions を呼ぶ"
+    - "ScheduleWakeup 経由の one-shot wakeup と CronCreate 経由の繰返し tick が配線されている"
+    - "sleeping state の task に対し、wakeup_at 到達時に E09 が実稼働で発火する（artifacts に 1 観察以上記録）"
+    - "daemon 内部で SystemClock を使用、tests では Clock injection で差し替え可能"
+  eval_required: true
+  eval_criteria:
+    - "Clock polling が reducer の責務境界を越えない（daemon は signal 発火、reducer は state 遷移）"
+    - "daemon crash 時に checkpoint 状態が壊れない（idempotent tick）"
+    - "ScheduleWakeup と Cron のどちらで起動しても同一 tick ロジックに合流"
+  parallelizable: true
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-11"]
+  linked_review: null
+
+- id: T-2-2
+  phase: 2
+  verb: implement
+  target: "Orchestrator shell（Generator / Evaluator subagent dispatcher）"
+  done_when:
+    - "beta/src/node/workflow_orchestrator.ts が存在"
+    - "pickNextTask の結果を受け、state に応じて Generator or Evaluator subagent を spawn する抽象インターフェース（実際の spawn は adapter 経由で差し替え可能）"
+    - "verdict 受領後に reducer.runOneStep へ signal を注入するループが成立"
+    - "orchestrator は checkpoint JSON / tasks.yaml を直接書かない（reducer 経由のみ）"
+  eval_required: true
+  eval_criteria:
+    - "orchestrator と reducer の責務境界が文書化されている（reducer_responsibility.md 更新 or 新規 orchestrator_responsibility.md）"
+    - "subagent adapter が mock できる（test で Generator/Evaluator を stub に差し替えて orchestrator loop を動かせる）"
+    - "Hermes 的な自己改善ループ（fail feedback を次 round generator prompt に反映）が差し込み可能な hook を露出している（実装は Phase 2 では不要、設計のみで OK）"
+  parallelizable: true
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-11"]
+  linked_review: null
+
+- id: T-2-3
+  phase: 2
+  verb: wire
+  target: "SessionStart / PostCompact hook 配線（checkpoint JSON 前提）"
+  done_when:
+    - ".claude/scripts/hooks/ 配下に session-start / post-compact 用スクリプトが存在"
+    - "hook から workflow_cli --resume を呼び、checkpoint JSON + resume-cheatsheet の runner-managed block を context 注入"
+    - "hook 配線が settings.json で有効化される（update-config skill で適用 or 手順 doc）"
+    - "compaction 後に reducer state が復元されることを 1 サイクル以上で確認"
+  eval_required: true
+  eval_criteria:
+    - "hook 失敗時に silent fallback せず明示 Error（sub-pj-guard §silent-failure 方針）"
+    - "resume-cheatsheet の narrative section は hook で破壊されない"
+    - "SessionStart / PostCompact 双方で同じ context injection が発生"
+  parallelizable: false
+  scope: ".claude/scripts/hooks + beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-2-1", "T-2-2"]
+  linked_review: null
+
+- id: T-2-4
+  phase: 2
+  verb: observe
+  target: "sleeping / escalated / failed の実稼働観察（dogfood_run_02）"
+  done_when:
+    - "artifacts/dogfood_run_02.md に sleeping / escalated / failed 各 1 回以上の実稼働観察が記録"
+    - "sleeping → ready が Clock daemon 経由で自動復帰する実例を含む"
+    - "escalated → ready or blocked が linked_review 解決で自動発火する実例を含む"
+    - "failed は意図的に fatal_exception を注入したテスト run で確認"
+  eval_required: true
+  eval_criteria:
+    - "未観察 3 停止カテゴリを Phase 2 実稼働で回収（Gate 2 の soft flag を閉じる）"
+    - "観察した遷移が workflow_edges.md の 17 edges に対応"
+    - "checkpoint JSON に全 invariant field が保存されたまま復元される（restore test の回帰なし）"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-2-1", "T-2-2", "T-2-3"]
+  linked_review: null
+
+- id: T-2-5
+  phase: 2
+  verb: gate-check
+  target: "Phase 2 readiness for Gate 3"
+  done_when:
+    - "T-2-1..T-2-4 all done"
+    - "plan.md 確定事項に Phase 2 結論を追記（orchestrator 責務・Clock daemon 配線・hook 動作・実観察エビデンス）"
+    - "Phase 3 (M3E 1 scope 統合) の着手条件が整理されている"
+    - "Gate 3 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "a reader can confirm Phase 2 成果物から plan.md + artifacts だけで判断できる"
+    - "reducer の責務境界が Phase 1.5 以降で動いていない（過大評価の再発なし）"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-2-4"]
+  linked_review: null
