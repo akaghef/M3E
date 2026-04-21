@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
     "build:node": "tsc -p tsconfig.node.json",
     "build:browser": "tsc -p tsconfig.browser.json",
+    "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",
     "test": "npm run test:unit",
     "test:unit": "npm run build:node && npx vitest run",

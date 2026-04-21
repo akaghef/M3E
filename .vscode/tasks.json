@@ -1,0 +1,94 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Beta: Build Node",
+      "type": "shell",
+      "command": "npm run build:node",
+      "options": {
+        "cwd": "${workspaceFolder}/beta"
+      },
+      "group": "build",
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "Beta: Launch",
+      "type": "shell",
+      "command": "${workspaceFolder}\\scripts\\beta\\launch.bat",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Beta: Update And Launch",
+      "type": "shell",
+      "command": "${workspaceFolder}\\scripts\\beta\\update-and-launch.bat",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PJ03: Demo Full",
+      "type": "shell",
+      "command": "npm run demo:pj03",
+      "options": {
+        "cwd": "${workspaceFolder}/beta"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PJ03: Demo Core",
+      "type": "shell",
+      "command": "node dist/node/pj03_demo.js --mode core",
+      "options": {
+        "cwd": "${workspaceFolder}/beta"
+      },
+      "dependsOn": "Beta: Build Node",
+      "problemMatcher": []
+    },
+    {
+      "label": "PJ03: Demo Scope",
+      "type": "shell",
+      "command": "node dist/node/pj03_demo.js --mode scope",
+      "options": {
+        "cwd": "${workspaceFolder}/beta"
+      },
+      "dependsOn": "Beta: Build Node",
+      "problemMatcher": []
+    },
+    {
+      "label": "PJ03: Demo Preflight",
+      "type": "shell",
+      "command": "node dist/node/pj03_demo.js --mode preflight",
+      "options": {
+        "cwd": "${workspaceFolder}/beta"
+      },
+      "dependsOn": "Beta: Build Node",
+      "problemMatcher": []
+    },
+    {
+      "label": "M3E Sidebar: Package VSIX",
+      "type": "shell",
+      "command": "npm run package",
+      "options": {
+        "cwd": "${workspaceFolder}/tools/vscode-m3e-sidebar"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "M3E Sidebar: Install VSIX",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File package-and-install.ps1",
+      "options": {
+        "cwd": "${workspaceFolder}/tools/vscode-m3e-sidebar"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

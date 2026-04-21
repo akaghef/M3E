@@ -559,3 +559,177 @@
   round_max: 1
   dependencies: ["T-3-3"]
   linked_review: null
+
+# =========================================================================
+# Plan 2: LangGraph 的 graph executor を既存成果の上に成立させる
+# (2026-04-21 reopen, akaghef plan2.md, Qn5_premature_done_declaration)
+# Phase 4 = plan2 Phase A (Gap 固定)
+# Phase 5 = plan2 Phase B (Graph Runtime 試作)
+# Phase 6 = plan2 Phase C (LangGraph 比較 or 採用確定)
+# Phase 7 = plan2 Phase D (Scope 内 graph 接続)
+# =========================================================================
+
+- id: T-4-1
+  phase: 4
+  verb: soften
+  target: "plan.md / README の完了表現を弱め、plan2.md を active plan として明示"
+  done_when:
+    - "plan.md §Phase 3 結論 / §最終成功 に「Plan 1 は graph runtime の基礎工事まで。実体は Plan 2 で成立」旨の注記が入る"
+    - "README.md の関連記述が Plan 2 前提に整合"
+    - "plan2.md に active status marker（例: status: active）が明示"
+    - "Plan 1 で主張した文言で今も正しいものと、Plan 2 で再定義するものを表で区別"
+  eval_required: true
+  eval_criteria:
+    - "Plan 1 文書が削除されず、参照として残っている"
+    - "Plan 2 が active plan であることが 3 文書（plan.md / README / plan2.md）で一致"
+    - "「完成」「成立」系表現が弱められ、「基礎工事」「未達」の明示がある"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: "Qn5_premature_done_declaration"
+
+- id: T-4-2
+  phase: 4
+  verb: document
+  target: "LangGraph 下位互換 gap 技術メモ"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_gap_memo.md が存在"
+    - "LangGraph が提供する graph executor 機能を列挙（node, edge, conditional edge, checkpoint, loop, interrupt/resume, multi-agent）"
+    - "PJ03 現状が各機能について「あり」「ない」「類似あり」を表で示す"
+    - "ギャップのうち Plan 2 で埋める範囲と先送りする範囲を区別"
+  eval_required: true
+  eval_criteria:
+    - "LangGraph の主要 API との対応が具体（公式 docs or sandbox 実走行で裏取り）"
+    - "既存 PJ03 artifact（checkpoint JSON / workflow_reducer / workflow_types）への写像が明記"
+    - "runtime/langgraph_sandbox/ の smoke test とリンク"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: "Qn5_premature_done_declaration"
+
+- id: T-5-1
+  phase: 5
+  verb: spec
+  target: "WorkflowNode / graph edge を実行入力に使う最小 spec"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/graph_runtime_spec.md が存在"
+    - "node graph の loading / validation / execution ループを 1 ページで記述"
+    - "node roles (generator / evaluator / router) と reducer state の写像が明記"
+    - "conditional edge の評価順（graph edge の条件 vs reducer allowed edge table）を明示"
+  eval_required: true
+  eval_criteria:
+    - "既存 workflow_types.ts の WorkflowNode / WorkflowEdge 型を拡張ではなく再利用"
+    - "reducer が graph runtime の内部部品として位置づくと明記"
+    - "1 task = 1 graph か、複数 task を束ねる graph か、粒度が決まっている"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-4-1", "T-4-2"]
+  linked_review: null
+
+- id: T-5-2
+  phase: 5
+  verb: implement
+  target: "最小 graph runtime (adapter) — 自前実装側"
+  done_when:
+    - "beta/src/node/graph_runtime.ts (仮) が存在し、node graph を受けて実行する minimal executor を提供"
+    - "reducer を内部部品として呼び、checkpoint JSON に state を永続化"
+    - "conditional edge 評価が graph edge 定義から決まる"
+    - "1 task の pending→ready→in_progress→eval_pending→done サイクルを graph 経由で通す"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "graph runtime が reducer の ALLOWED_EDGES を短絡しない（fail-closed 継承）"
+    - "runtime test で 1 graph 1 cycle が pass"
+    - "既存 reducer / orchestrator / scope projector に retrospective 的変更を加えない（adapter として追加のみ）"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-5-1"]
+  linked_review: null
+
+- id: T-5-3
+  phase: 5
+  verb: dogfood
+  target: "Generator → Evaluator → Router の 3 node graph 1 本 dogfood"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/dogfood_run_04.md に 3 node graph の実行観察を記録"
+    - "各 node で MockSubagentAdapter を使い、graph が routing 含めて 1 cycle 回る"
+    - "checkpoint JSON が graph 実行結果で更新される"
+    - "既存 tests (checkpoint_restore_test / clock_resolver_test / clock_daemon_test / orchestrator_test / projector_test) が regression なし"
+  eval_required: true
+  eval_criteria:
+    - "観察 stdout に graph edge の選択理由（conditional）が出力される"
+    - "graph loop（evaluator fail → re-gen）が成立"
+    - "checkpoint JSON の invariant round-trip を回帰テストで確認"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-5-2"]
+  linked_review: null
+
+- id: T-6-1
+  phase: 6
+  verb: decide
+  target: "LangGraph 採用 or 自前 runtime 継続の確定"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_vs_native_decision.md が存在"
+    - "T-4-2 gap memo + T-5-3 自前 runtime dogfood の両方を根拠に比較"
+    - "採用案と非採用案の理由を plan2.md §確定事項（新設）に記録"
+    - "採用案に沿った後続 task の整理"
+  eval_required: false
+  eval_criteria:
+    - "LangGraph 採用時は Python/TS 境界設計、非採用時は自前 runtime の上位互換性が明記"
+    - "Hermes 的自己改善ループの載せ方にも触れる"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 1
+  dependencies: ["T-5-3"]
+  linked_review: null
+
+- id: T-7-1
+  phase: 7
+  verb: extend
+  target: "scope projection を graph summary に拡張"
+  done_when:
+    - "beta/src/node/workflow_scope_projector.ts に graph view 投影関数 (projectGraph) が追加、または別 file で並立"
+    - "graph summary / current node / next edge / blocked reason の 4 表示が scope 内 attribute に展開"
+    - "既存 projectTasks は後方互換で残す"
+  eval_required: true
+  eval_criteria:
+    - "projection 方向が one-way を維持"
+    - "既存 workflow.* namespace と graph.* (or workflow.graph.*) namespace が衝突しない"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-6-1"]
+  linked_review: null
+
+- id: T-7-2
+  phase: 7
+  verb: gate-check
+  target: "Plan 2 readiness + PJ03 再 完了 readiness"
+  done_when:
+    - "T-4-1..T-7-1 all done"
+    - "plan2.md §確定事項 に Phase A–D 結論が揃う"
+    - "「Plan 1 基礎工事 + Plan 2 graph executor 実体」の成立が retrospective.md に追記"
+    - "Gate 4 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "基礎工事 vs 実体 の区別を再発しないよう readiness 文言が厳しめ"
+    - "pre-gate adversarial reviewer (backlog/pj03-gate-integrity-lessons.md §1) を 1 回通す"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-7-1"]
+  linked_review: null

@@ -1,7 +1,8 @@
 ---
 pj_id: PJ03
 project: SelfDrive
-status: reframing
+status: superseded-by-plan2 (2026-04-21 reopen; see plan2.md)
+plan_role: reference (Plan 1)
 date: 2026-04-20
 ---
 
@@ -407,6 +408,12 @@ Phase 3 目的: workflow を M3E 1 scope の内部で扱う最小統合。
 - `clock_daemon.ts` に ScheduleWakeup / CronCreate の実 API 呼び出しを埋める → Claude Code runtime context が必要で、daemon 側は plan 返却に留め、実行は harness / CLI が担う設計を採用
 - orchestrator に Anthropic API 直接呼び出しを組み込む → SubagentAdapter interface を露出し、実装は PJ 外（または Phase 3 以降）に先送り
 - hook 内で reducer state を書き換える → hook は read-only、state 遷移は reducer 経由のみの原則を貫徹
+
+> **[2026-04-21 追記 — Plan 2 reopen]** 以下の Phase 3 結論および「最終成功達成」判定は **Plan 2 の観点で弱められている**。
+> Plan 1 で実際に成立したのは「graph runtime の基礎工事 (state / edge / checkpoint / 責務分離 / 一方向 scope projection)」までであり、
+> node graph を実行入力として辿る runtime や LangGraph 的 graph executor 実体は Plan 2 で成立させる対象。
+> active plan は [plan2.md](plan2.md)。Plan 1 文言は参照として保持するが、現時点の「成立」「完了」と直接読まないこと。
+> 詳細: [reviews/Qn5_premature_done_declaration.md](reviews/Qn5_premature_done_declaration.md)
 
 ## Phase 3 結論（2026-04-21 T-3-1..T-3-3 完了 / PJ03 最終成功判定 / akaghef Gate 3 承認待ち）
 
