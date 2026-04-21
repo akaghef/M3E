@@ -58,6 +58,7 @@ function freshState(kind: WorkflowStateKind, overrides: Partial<WorkflowStateCam
     kind, round: 0, roundMax: 3,
     lastFeedback: null, blocker: null,
     escalationKind: null, wakeupAt: null, wakeupMechanism: null, failureReason: null,
+    graphPosition: null,
     ...overrides,
   };
 }

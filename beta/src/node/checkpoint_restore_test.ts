@@ -34,6 +34,7 @@ function synthState(kind: WorkflowStateKind): WorkflowStateCamel {
     wakeupAt: kind === "sleeping" ? "2026-05-01T00:00:00.000Z" : null,
     wakeupMechanism: kind === "sleeping" ? "one-shot" : null,
     failureReason: kind === "failed" ? `failure reason for ${kind}` : null,
+    graphPosition: `node-for-${kind}`,
   };
 }
 
@@ -66,6 +67,7 @@ function main(): void {
     const fields: Array<keyof WorkflowStateCamel> = [
       "kind", "round", "roundMax", "lastFeedback", "blocker",
       "escalationKind", "wakeupAt", "wakeupMechanism", "failureReason",
+      "graphPosition",
     ];
     for (const f of fields) {
       if (original[f] !== restored[f]) {
@@ -81,7 +83,7 @@ function main(): void {
     console.error(`\n[RESTORE TEST] FAIL (${failures} field mismatches across ${KINDS.length} states)`);
     process.exit(1);
   }
-  console.log(`\n[RESTORE TEST] PASS — all ${KINDS.length} states round-trip with full invariant preservation`);
+  console.log(`\n[RESTORE TEST] PASS — all ${KINDS.length} states round-trip with full invariant preservation (10 fields incl. graphPosition)`);
 }
 
 main();

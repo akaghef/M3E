@@ -69,6 +69,7 @@ function stateOf(kind: WorkflowStateKind, overrides: Partial<WorkflowStateCamel>
     kind, round: 0, roundMax: 3,
     lastFeedback: null, blocker: null,
     escalationKind: null, wakeupAt: null, wakeupMechanism: null, failureReason: null,
+    graphPosition: null,
     ...overrides,
   };
 }

@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "task_id": "T-6-1",
-  "updated_at": "2026-04-21T04:50:00.000Z",
+  "updated_at": "2026-04-21T08:47:10.906Z",
   "state": {
-    "kind": "pending",
+    "kind": "done",
     "round": 0,
     "round_max": 1,
     "last_feedback": null,

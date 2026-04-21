@@ -210,7 +210,21 @@ PJ03 で実際に成立したのは:
 
 ## 確定事項（Plan 2 進行に応じて追記される）
 
-T-4-2 LangGraph gap memo / T-5-3 graph runtime dogfood / T-6-1 採用確定 / T-7-1 scope 内 graph 接続の各 Phase で埋める。
+### Phase A (T-4-1, T-4-2) 確定 2026-04-21
+- Plan 1 は「graph runtime の基礎工事まで」と弱化、Plan 2 が active plan
+- LangGraph gap memo: G1-G3 を Plan 2 で埋める、subgraph / streaming / multi-agent は Plan 2 scope 外
+
+### Phase B (T-5-1, T-5-2, T-5-3) 確定 2026-04-21
+- graph runtime spec: 1 task = 1 graph、既存 WorkflowNode / WorkflowEdge 型は不変、fail-closed を reducer から継承、adapter として追加のみ
+- graph_runtime.ts 実装: G→E→R 3 node graph が 2 scenario (happy / fail retry) で **mock-adapter smoke run**。dogfood_run_04.md に trace 記録
+- G1 / G2 / G3 を **mock smoke run で閉じた**（実 adapter は Plan 2 非目標）
+- T-7-2 adversarial review (Finding 1/2/3) 対応: custom predicate に full WorkflowStateCamel を渡す、graph position を checkpoint に永続化（`graphPosition` 追加、schema 10 field）、rejection 時に trace を fake 進行させず即 break
+
+### Phase C (T-6-1) 確定 2026-04-21
+- **自前 graph runtime を継続採用**（LangGraph 不採用）
+- 理由: Python/TS 境界コスト / checkpoint schema 粒度不一致 / Plan 2 scope で LangGraph 優位機能が要らない
+- 再評価トリガ: node-level checkpoint / subgraph / streaming / multi-agent supervisor / 自前劣後 bug 再発見 のいずれか
+- 詳細: [docs/langgraph_vs_native_decision.md](docs/langgraph_vs_native_decision.md)
 
 ## 一言でいうと
 

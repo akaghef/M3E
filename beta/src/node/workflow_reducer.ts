@@ -709,6 +709,7 @@ export function freshState(roundMax: number): WorkflowStateCamel {
     wakeupAt: null,
     wakeupMechanism: null,
     failureReason: null,
+    graphPosition: null,
   };
 }
 

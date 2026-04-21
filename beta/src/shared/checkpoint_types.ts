@@ -39,6 +39,14 @@ export interface PersistedState {
   wakeup_at: string | null;
   wakeup_mechanism: WakeupMechanism | null;
   failure_reason: string | null;
+  /**
+   * graph runtime が管理する graph 内 current node id。
+   * T-7-2 Finding 2 fix: graph position を checkpoint に永続化する。
+   * - null: graph runtime 未使用 (reducer/orchestrator のみで駆動された task)
+   * - string: runGraph が最後に進めた node id (START or node id)
+   * 既存 v1 checkpoint との互換のため optional。読取時に欠落 → null。
+   */
+  graph_position?: string | null;
 }
 
 export interface CheckpointFile {
@@ -70,6 +78,7 @@ export interface WorkflowStateCamel {
   wakeupAt: string | null;
   wakeupMechanism: WakeupMechanism | null;
   failureReason: string | null;
+  graphPosition: string | null;
 }
 
 export function toWorkflowState(p: PersistedState): WorkflowStateCamel {
@@ -83,6 +92,7 @@ export function toWorkflowState(p: PersistedState): WorkflowStateCamel {
     wakeupAt: p.wakeup_at,
     wakeupMechanism: p.wakeup_mechanism,
     failureReason: p.failure_reason,
+    graphPosition: p.graph_position ?? null,
   };
 }
 
@@ -97,5 +107,6 @@ export function fromWorkflowState(s: WorkflowStateCamel): PersistedState {
     wakeup_at: s.wakeupAt,
     wakeup_mechanism: s.wakeupMechanism,
     failure_reason: s.failureReason,
+    graph_position: s.graphPosition,
   };
 }
