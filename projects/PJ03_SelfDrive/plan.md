@@ -408,6 +408,63 @@ Phase 3 目的: workflow を M3E 1 scope の内部で扱う最小統合。
 - orchestrator に Anthropic API 直接呼び出しを組み込む → SubagentAdapter interface を露出し、実装は PJ 外（または Phase 3 以降）に先送り
 - hook 内で reducer state を書き換える → hook は read-only、state 遷移は reducer 経由のみの原則を貫徹
 
+## Phase 3 結論（2026-04-21 T-3-1..T-3-3 完了 / PJ03 最終成功判定 / akaghef Gate 3 承認待ち）
+
+Phase 3 focus 4 項すべて達成。M3E 1 scope 内への最小統合が実データで成立。
+
+### akaghef Phase 3 focus 達成根拠
+
+| focus | 達成 | 根拠 |
+|---|---|---|
+| M3E 1 scope 内への最小統合に集中 | ✓ | [docs/m3e_scope_integration.md](docs/m3e_scope_integration.md) で 1 root + task-children の scope 構造を固定、[workflow_scope_projector.ts](../../beta/src/node/workflow_scope_projector.ts) で実装 |
+| workflow summary / current state / next transition / blocker reason を scope 表現に落とす | ✓ | 各 task node の `workflow.*` attributes + root の `workflow.count.*` で 4 表示すべて scope position を確定、dogfood_run_03 で実 PJ03 21+ task に適用 |
+| map 側の facet / SSOT / projection の責務を混線させない | ✓ | workflow.* namespace で attribute isolate、projection is one-way (read-only)、map → reducer 逆流禁止を設計で明文化 |
+| 実 Anthropic API adapter は引き続き対象外 | ✓ | SubagentAdapter interface だけ露出、実装は PJ 外（Phase 2 で既定、Phase 3 で同方針を維持） |
+
+### PJ03 最終成功判定（plan.md §成功基準 §最終成功）
+
+**「M3E が静的整理だけでなく、動的 workflow を scope 内で扱える方向へ進む」**
+
+判定: **達成**
+
+根拠:
+
+1. 動的 workflow を state machine として記述（9 state / 17 edge、Phase 0 確定）
+2. state + signal + checkpoint で永続化（Phase 1 + 1.5、restore test 9/9 で invariant round-trip 確認）
+3. Clock / Resolver injection で state machine を runtime 条件駆動化（Phase 1.5 / 2、実稼働 5 停止カテゴリ観察）
+4. 1 reducer を thin wrap した Clock daemon / orchestrator / hook 配線（Phase 2）
+5. 動的 workflow を M3E AppState（scope 構造）に投影する projector（Phase 3、PJ03 自身を実データで投影済）
+
+M3E 本体の viewer / facet と統合した実描画は Phase 3 scope 外（別 PJ で起票する候補）だが、
+「scope の中で扱える」最小統合＝データモデルとしての AppState 投影は成立した。
+
+### 最終成功基準 vs Phase 別成果物 総覧
+
+| 成功基準 | Phase | 成果物 |
+|---|---|---|
+| 設計分岐が確定する | 0 | docs/workflow_state_set.md / workflow_edges.md / legacy_asset_mapping.md / stop_reason_taxonomy.md |
+| 1 task 用 workflow spec が書ける | 1, 1.5 | workflow_types.ts / checkpoint_types.ts / docs/workflow_example.md |
+| stop/blocked/wakeup/eval が state machine 記述 | 0 | 17 edges 表 + 4 問 rubric |
+| 1 task workflow が実際に回る | 1, 2 | workflow_reducer / orchestrator / dogfood_run_01 & 02 |
+| checkpoint / resume が成立 | 1.5 | checkpoint JSON + restore test 9/9 + hook 配線 |
+| M3E が動的 workflow を scope 内で扱える方向 | 3 | workflow_scope_projector / dogfood_run_03 / workflow_scope_snapshot.json |
+
+### 残課題（PJ03 スコープ外、別 PJ 候補）
+
+以下は本 PJ の非目標（plan.md §非目標）として先送り。PJ03 完了後の後続 backlog とする。
+
+- 実 M3E viewer / facet 側で workflow scope を描画する UI 実装
+- 実 Anthropic API を叩く SubagentAdapter 実装
+- 複数 sub-PJ の並列実行
+- Hermes 的自己改善ループの実装（interface は露出済、実装 Phase 2+）
+- workflow instance の視覚化（Evaluation Board 拡張）
+
+### PJ 完了後のハンドオフ
+
+- [retrospective.md](retrospective.md): PJ 固有反省ログ（T-3-4 で作成）
+- Future Work は [README.md](README.md) §Future Work + 本セクション残課題に記録
+- PJ 間依存があれば新 PJ kickoff 時に plan.md から参照
+
 以下は撤回された旧結論記録（参照のみ、信頼しない）:
 
 ## Phase 1 結論（旧・撤回済）

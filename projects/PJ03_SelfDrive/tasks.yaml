@@ -469,3 +469,93 @@
   round_max: 1
   dependencies: ["T-2-4"]
   linked_review: null
+
+# =========================================================================
+# Phase 3: M3E 1 scope 統合（2026-04-21 kickoff, akaghef approved Gate 3）
+# workflow state を M3E scope 内で可視化する最小統合。実 map server 連携は
+# projection layer 止まり（scope 構造を AppState で生成、実際の POST は外側）。
+# =========================================================================
+
+- id: T-3-1
+  phase: 3
+  verb: design
+  target: "M3E scope 統合の責務と投影方向"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/m3e_scope_integration.md が存在"
+    - "scope 構造（root / child 階層、attribute 名、facet）が明記"
+    - "SSOT 方向: checkpoint JSON → scope (one-way projection) の宣言"
+    - "reducer / orchestrator / projector の責務混線防止ルールが記載"
+    - "workflow summary / current state / next transition / blocker reason の 4 表示の scope 位置が決まっている"
+  eval_required: true
+  eval_criteria:
+    - "projection が checkpoint の SSOT を侵さない（map → reducer の逆流なし）"
+    - "map 側の facet / attribute 規約が workflow 用 namespace で汚染されない"
+    - "既存の beta/src/shared/types.ts の AppState shape に準拠"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-2-5"]
+  linked_review: null
+
+- id: T-3-2
+  phase: 3
+  verb: implement
+  target: "workflow_scope_projector（checkpoint → AppState 投影）"
+  done_when:
+    - "beta/src/node/workflow_scope_projector.ts が存在"
+    - "projectTasks(tasksFile, runtimeDir): AppState が export"
+    - "生成 AppState は existing beta/src/shared/types.ts の型に適合"
+    - "unit test: 21 task を投影、1 root + N task-node + attribute 属性が正しい"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "projector は read-only (checkpoint JSON / tasks.yaml 書き込みなし)"
+    - "生成 AppState は決定論的（同じ入力は同じ出力）"
+    - "attribute namespace が衝突しない（workflow.* prefix か facet 指定）"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-3-1"]
+  linked_review: null
+
+- id: T-3-3
+  phase: 3
+  verb: dogfood
+  target: "PJ03 自身を projection で可視化 (dogfood_run_03)"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/dogfood_run_03.md に PJ03 の 21 task 投影結果のサマリを記録"
+    - "生成された AppState (または抜粋 JSON) を artifacts/workflow_scope_snapshot.json として保存"
+    - "snapshot が current state / next transition / blocked reason を含むことを確認"
+  eval_required: true
+  eval_criteria:
+    - "投影対象は実 PJ03 runtime (tmp 固定入力ではない)"
+    - "state breakdown (done/blocked/sleeping/... の count) が実 inspect 出力と一致"
+    - "blocker reason は reducer が保存したものと一致 (文字列同値)"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-3-2"]
+  linked_review: null
+
+- id: T-3-4
+  phase: 3
+  verb: gate-check
+  target: "Phase 3 readiness + PJ03 完了 readiness"
+  done_when:
+    - "T-3-1..T-3-3 all done"
+    - "plan.md 確定事項に Phase 3 結論 + PJ03 最終成功判定を追記"
+    - "projects/PJ03_SelfDrive/retrospective.md が存在 (PJ03 反省ログ)"
+    - "Gate 3 + PJ 完了 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "akaghef が plan.md + artifacts + retrospective だけで PJ03 完了を判断できる"
+    - "Phase 3 の responsibility 境界が設計上維持されている"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-3-3"]
+  linked_review: null
