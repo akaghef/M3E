@@ -24,6 +24,8 @@
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
   round_max: 3
+  dependencies: []
+  linked_review: null
 
 - id: T-0-2
   phase: 0
@@ -43,6 +45,8 @@
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
   round_max: 3
+  dependencies: []
+  linked_review: null
 
 - id: T-0-3
   phase: 0
@@ -62,6 +66,8 @@
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
   round_max: 3
+  dependencies: []
+  linked_review: null
 
 - id: T-0-4
   phase: 0
@@ -81,6 +87,8 @@
   scope: "projects/PJ03_SelfDrive/docs"
   facet: design
   round_max: 3
+  dependencies: []
+  linked_review: null
 
 - id: T-0-5
   phase: 0
@@ -99,6 +107,8 @@
   scope: "projects/PJ03_SelfDrive"
   facet: gate
   round_max: 1
+  dependencies: ["T-0-1", "T-0-2", "T-0-3", "T-0-4"]
+  linked_review: null
 
 # =========================================================================
 # Phase 1: 最小 workflow engine
@@ -123,6 +133,8 @@
   scope: "beta/src/shared"
   facet: implementation
   round_max: 3
+  dependencies: ["T-0-5"]
+  linked_review: null
 
 - id: T-1-2
   phase: 1
@@ -142,6 +154,8 @@
   scope: "projects/PJ03_SelfDrive/runtime"
   facet: design
   round_max: 3
+  dependencies: ["T-1-1"]
+  linked_review: null
 
 - id: T-1-3
   phase: 1
@@ -162,6 +176,8 @@
   scope: "beta/src/node"
   facet: implementation
   round_max: 3
+  dependencies: ["T-1-1", "T-1-2"]
+  linked_review: null
 
 - id: T-1-4
   phase: 1
@@ -181,6 +197,8 @@
   scope: "beta/src/node"
   facet: implementation
   round_max: 3
+  dependencies: ["T-1-3"]
+  linked_review: null
 
 - id: T-1-5
   phase: 1
@@ -200,6 +218,8 @@
   scope: "beta/src/node"
   facet: implementation
   round_max: 3
+  dependencies: ["T-1-4"]
+  linked_review: null
 
 - id: T-1-6
   phase: 1
@@ -219,6 +239,8 @@
   scope: "projects/PJ03_SelfDrive"
   facet: implementation
   round_max: 3
+  dependencies: ["T-1-5"]
+  linked_review: null
 
 - id: T-1-7
   phase: 1
@@ -238,6 +260,8 @@
   scope: "projects/PJ03_SelfDrive"
   facet: gate
   round_max: 1
+  dependencies: ["T-1-6"]
+  linked_review: "Qn3_gate2_rework"
 
 # =========================================================================
 # Phase 1.5: Gate 2 rework (Qn3 P1..P4) — 方針確定後に具体化
@@ -265,6 +289,8 @@
   scope: "beta/src/shared + projects/PJ03_SelfDrive/runtime/checkpoints"
   facet: implementation
   round_max: 3
+  dependencies: ["T-1-6"]
+  linked_review: "Qn3_gate2_rework"
 
 - id: T-1-9
   phase: 1
@@ -286,6 +312,8 @@
   scope: "beta/src/node"
   facet: implementation
   round_max: 3
+  dependencies: ["T-1-8"]
+  linked_review: "Qn3_gate2_rework"
 
 - id: T-1-10
   phase: 1
@@ -309,6 +337,8 @@
   scope: "beta/src"
   facet: implementation
   round_max: 3
+  dependencies: ["T-1-8", "T-1-9"]
+  linked_review: "Qn3_gate2_rework"
 
 - id: T-1-11
   phase: 1
@@ -327,3 +357,5 @@
   scope: "projects/PJ03_SelfDrive"
   facet: design
   round_max: 1
+  dependencies: ["T-1-10"]
+  linked_review: "Qn3_gate2_rework"

@@ -310,6 +310,44 @@ rework tasks: T-1-8 (P1 persistence)、T-1-9 (P2 runner 責務)、T-1-10 (P3 条
 - workflow_example.json を残す → 実行入力でない限り「動かない spec」ノイズになるため却下
 - sleeping / escalated / failed の実稼働観察を Gate 2 再提出条件に含める → akaghef 明示却下（runtime 観察 ≠ 永続化整合）
 
+## Phase 1.5 rework 結論（2026-04-21 T-1-8..T-1-11 完了 / akaghef Gate 2 v2 承認待ち）
+
+Qn3 P1-P4 すべて resolve。rework 完了条件（宣言 state の resume 情報欠落なし）を test で直接検査して通過。
+
+### rework 完了条件の直接検査
+
+| 検査 | 結果 | artifact |
+|---|---|---|
+| **9 state すべての invariant field 完全 round-trip** | PASS 9/9 | [checkpoint_restore_test.ts](../../beta/src/node/checkpoint_restore_test.ts) — kind / round / roundMax / lastFeedback / blocker / escalationKind / wakeupAt / wakeupMechanism / failureReason |
+| FixedClock で sleeping → ready (E09) | PASS | [clock_resolver_test.ts](../../beta/src/node/clock_resolver_test.ts) test 1 |
+| AdvanceableClock の時刻進行判定 | PASS | 同 test 2 |
+| Dependency cycle detection 明示 Error | PASS | 同 test 3 |
+| linked_review open で human_approve reject | PASS | 同 test 4 |
+| linked_review resolved で blocked → ready 自動 (E15) | PASS | 同 test 5 |
+
+### P1-P4 達成根拠
+
+| 論点 | 達成 | 根拠 |
+|---|---|---|
+| **P1 checkpoint 永続化** | ✓ | tasks.yaml から machine state 除去（grep=0）、runtime/checkpoints/*.json × 16 atomic write、schema 明文化 |
+| **P2 reducer 責務** | ✓ | workflow_runner → workflow_reducer rename、CLI を workflow_cli.ts に分離、reducer_responsibility.md で engine 化を Phase 2 に先送り明記 |
+| **P3 observable 条件** | ✓ | Clock interface (SystemClock / FixedClock / AdvanceableClock)、TasksFileDependencyResolver / ReviewsDirReviewResolver、tickAutoTransitions が E01/E09/E12/E13/E15 を条件駆動で発火、cycle detection 明示 Error |
+| **P4 workflow_example** | ✓ | runtime/workflow_example.json 削除、docs/workflow_example.md に description 化、beta/src からの json 参照 0 |
+
+### 実稼働観察（後続材料として記録、rework 完了条件ではない）
+
+- T-1-7 blocked → ready: Qn3 resolved を ReviewsDirReviewResolver が検出 → E15 auto-fire 実観察
+- T-1-10 / T-1-11 pending → ready: TasksFileDependencyResolver が deps done 検出 → E01 auto-fire 実観察
+
+sleeping / escalated の実稼働観察は Phase 2 の orchestrator 側で扱う（Clock polling daemon は reducer の外）。
+
+### Gate 2 v2 提出内容
+
+- Phase 1.5 rework 5 task（T-1-8..T-1-11 + 再 T-1-7）すべて done
+- Evaluator 3/3 (T-1-8, T-1-9, T-1-10, T-1-11) pass
+- restore test 9/9 + clock/resolver test 19 assertions pass
+- akaghef Qn3 rework 完了条件 = resume 情報の round-trip 整合 を直接検査で通過
+
 以下は撤回された旧結論記録（参照のみ、信頼しない）:
 
 ## Phase 1 結論（旧・撤回済）
@@ -321,7 +359,7 @@ Phase 1 の 最小 workflow engine が dogfood で成立。
 | 基準 | 根拠 artifact |
 |---|---|
 | 設計分岐が確定する | Phase 0 確定事項（state set / edges / legacy mapping / stop taxonomy） |
-| 1 task 用 workflow spec が書ける | [beta/src/shared/workflow_types.ts](../../beta/src/shared/workflow_types.ts) (T-1-1) + [runtime/workflow_example.json](runtime/workflow_example.json) (T-1-2) |
+| 1 task 用 workflow spec が書ける | [beta/src/shared/workflow_types.ts](../../beta/src/shared/workflow_types.ts) (T-1-1) + [docs/workflow_example.md](docs/workflow_example.md) (T-1-2 の json は T-1-11 で description 降格) |
 | stop / blocked / wakeup / eval が state machine として記述できる | [docs/workflow_edges.md](docs/workflow_edges.md) 17 edges + [docs/stop_reason_taxonomy.md](docs/stop_reason_taxonomy.md) 4 問 rubric |
 | 1 task workflow が実際に回る | T-1-6 dogfood: T-1-2/T-1-3/T-1-4/T-1-5 の 4 task を runner 経由で pending→done（[artifacts/dogfood_run_01.md](artifacts/dogfood_run_01.md)） |
 | checkpoint / resume が成立する | `loadCheckpoint` / `pickNextTask` / `--resume` CLI 動作、corrupt checkpoint は 3 段階の明示 Error（[docs/resume_protocol.md](docs/resume_protocol.md)） |

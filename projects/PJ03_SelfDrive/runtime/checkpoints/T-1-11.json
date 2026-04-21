@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "task_id": "T-1-11",
-  "updated_at": "2026-04-21T00:21:29.078Z",
+  "updated_at": "2026-04-21T03:03:08.925Z",
   "state": {
-    "kind": "pending",
+    "kind": "done",
     "round": 0,
     "round_max": 1,
     "last_feedback": null,
-    "blocker": "T-1-10 後（順序上、最後でよい）",
+    "blocker": null,
     "escalation_kind": null,
     "wakeup_at": null,
     "wakeup_mechanism": null,

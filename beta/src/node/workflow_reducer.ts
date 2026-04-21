@@ -44,6 +44,14 @@ import {
   toWorkflowState,
 } from "../shared/checkpoint_types";
 
+import { Clock, SystemClock } from "../shared/clock";
+import {
+  DependencyResolver,
+  ReviewResolver,
+  ReviewResolution,
+  detectDependencyCycles,
+} from "../shared/resolvers";
+
 // ---------------------------------------------------------------------------
 // tasks.yaml schema (contract only; no machine state)
 // ---------------------------------------------------------------------------
@@ -60,8 +68,8 @@ export interface TaskContract {
   scope?: string;
   facet?: string;
   round_max: number;
-  dependencies?: string[];      // T-1-10 で全 entry 設定
-  linked_review?: string | null; // T-1-10 で設定
+  dependencies: string[];        // T-1-10 で全 entry 設定
+  linked_review: string | null;  // T-1-10 で設定
 }
 
 // ---------------------------------------------------------------------------
@@ -159,11 +167,16 @@ export function loadCheckpointState(runtimeDir: string, taskId: string): Workflo
   return toWorkflowState(cp.state);
 }
 
-export function saveCheckpointState(runtimeDir: string, taskId: string, state: WorkflowStateCamel): void {
+export function saveCheckpointState(
+  runtimeDir: string,
+  taskId: string,
+  state: WorkflowStateCamel,
+  clock: Clock = new SystemClock(),
+): void {
   const file: CheckpointFile = {
     schema_version: CHECKPOINT_SCHEMA_VERSION,
     task_id: taskId,
-    updated_at: new Date().toISOString(),
+    updated_at: clock.now().toISOString(),
     state: fromWorkflowState(state),
   };
   saveCheckpointFile(runtimeDir, file);
@@ -191,19 +204,107 @@ export function loadAllTaskViews(tasksFile: string, runtimeDir: string): TaskVie
 /**
  * pickNextTask — 次処理対象 task を選ぶ。
  *
- * 注意: 依存解決 / sleeping wakeup / escalated 再開判定は T-1-10 で追加。
- * 現 T-1-8 時点では status kind ベースの FIFO。
+ * DependencyResolver を受ける場合、pending task は dependencies 全員 done でなければ ready 候補にしない。
+ * resolver なしの場合は T-1-8 の FIFO 挙動。
  */
-export function pickNextTask(tasksFile: string, runtimeDir: string): TaskView | null {
+export function pickNextTask(
+  tasksFile: string,
+  runtimeDir: string,
+  depResolver?: DependencyResolver,
+): TaskView | null {
   const views = loadAllTaskViews(tasksFile, runtimeDir);
   const inProgress = views.find((v) => v.state.kind === "in_progress");
   if (inProgress) return inProgress;
   const ready = views.find((v) => v.state.kind === "ready");
   if (ready) return ready;
-  const pending = views
+  const pendings = views
     .filter((v) => v.state.kind === "pending")
     .sort((a, b) => a.contract.phase - b.contract.phase || a.contract.id.localeCompare(b.contract.id));
-  return pending[0] ?? null;
+  if (!depResolver) return pendings[0] ?? null;
+  // dependencies 全員 done の pending のみを候補にする
+  for (const v of pendings) {
+    if (depResolver.allDone(v.contract.id)) return v;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// DependencyResolver / ReviewResolver 実装 (tasks.yaml + 実 fs)
+// ---------------------------------------------------------------------------
+
+/**
+ * TasksFileDependencyResolver — tasks.yaml の dependencies field + checkpoint JSON の state.kind
+ * を参照する resolver。test 用には別 stub を使う。
+ */
+export class TasksFileDependencyResolver implements DependencyResolver {
+  private readonly depsByTask: Map<string, string[]>;
+  private readonly stateByTask: Map<string, WorkflowStateKind>;
+
+  constructor(private readonly tasksFile: string, private readonly runtimeDir: string) {
+    const contracts = readContracts(tasksFile);
+    this.depsByTask = new Map();
+    this.stateByTask = new Map();
+    for (const c of contracts) {
+      this.depsByTask.set(c.id, c.dependencies ?? []);
+      const cp = loadCheckpointState(runtimeDir, c.id);
+      this.stateByTask.set(c.id, cp.kind);
+    }
+  }
+
+  allDone(taskId: string): boolean {
+    const deps = this.depsByTask.get(taskId) ?? [];
+    for (const d of deps) {
+      const k = this.stateByTask.get(d);
+      if (k !== "done") return false;
+    }
+    return true;
+  }
+
+  dependenciesOf(taskId: string): string[] {
+    return [...(this.depsByTask.get(taskId) ?? [])];
+  }
+
+  stateOf(taskId: string): WorkflowStateKind {
+    const k = this.stateByTask.get(taskId);
+    if (!k) throw new Error(`DependencyResolver: unknown task ${taskId}`);
+    return k;
+  }
+
+  allTaskIds(): string[] {
+    return Array.from(this.depsByTask.keys());
+  }
+}
+
+/**
+ * ReviewsDirReviewResolver — projects/PJ{NN}_{Name}/reviews/{reviewId}.md の
+ * frontmatter `status:` を読んで resolution を返す。
+ *
+ * 対応するマッピング:
+ *   status: resolved | resolved (...)  → "resolved"
+ *   status: rejected | rejected (...)  → "rejected"
+ *   status: open | pooled               → "open"
+ *   ファイル無し / frontmatter 無し     → "unknown"
+ */
+export class ReviewsDirReviewResolver implements ReviewResolver {
+  constructor(private readonly reviewsDir: string) {}
+
+  resolve(reviewId: string): ReviewResolution {
+    const p = `${this.reviewsDir}/${reviewId}.md`;
+    let text: string;
+    try {
+      text = fs.readFileSync(p, "utf8");
+    } catch {
+      return "unknown";
+    }
+    // 1 番目の `- **status**:` または `status:` 行を拾う
+    const m = text.match(/^(?:\s*[-*]\s*\**status\**:|\s*status:)\s*(\S+)/mi);
+    if (!m) return "unknown";
+    const raw = m[1].toLowerCase();
+    if (raw.startsWith("resolved")) return "resolved";
+    if (raw.startsWith("rejected")) return "rejected";
+    if (raw.startsWith("open") || raw.startsWith("pooled")) return "open";
+    return "unknown";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -341,16 +442,49 @@ export interface ReducerContext {
   dryRun: boolean;
 }
 
-export function runOneStep(ctx: ReducerContext, input: RunOneStepInput): RunOneStepOutput {
+export interface RunOneStepDeps {
+  clock?: Clock;
+  reviewResolver?: ReviewResolver;
+}
+
+export function runOneStep(
+  ctx: ReducerContext,
+  input: RunOneStepInput,
+  deps: RunOneStepDeps = {},
+): RunOneStepOutput {
+  const clock = deps.clock ?? new SystemClock();
   const cur = loadCheckpointState(ctx.runtimeDir, input.taskId);
+
+  // Guard: human signals require linked_review to be resolved/rejected if set
+  if (
+    deps.reviewResolver &&
+    (input.signal.kind === "human_approve" || input.signal.kind === "human_reject")
+  ) {
+    const contract = loadContract(ctx.tasksFile, input.taskId);
+    if (contract.linked_review) {
+      const res = deps.reviewResolver.resolve(contract.linked_review);
+      if (res === "open" || res === "unknown") {
+        return {
+          taskId: input.taskId,
+          fromState: cur,
+          edge: null,
+          nextState: null,
+          rejected: true,
+          rejectionReason: `linked_review '${contract.linked_review}' is ${res}; human signal requires resolved/rejected state first`,
+          wrote: false,
+        };
+      }
+    }
+  }
+
   const { edge, nextState, rejected, rejectionReason } = stepOnce(cur, input.signal);
 
   let wrote = false;
   if (!rejected && nextState && !ctx.dryRun) {
-    saveCheckpointState(ctx.runtimeDir, input.taskId, nextState);
+    saveCheckpointState(ctx.runtimeDir, input.taskId, nextState, clock);
     wrote = true;
     if (ctx.cheatsheetFile) {
-      regenerateCheatsheet(ctx.tasksFile, ctx.runtimeDir, ctx.cheatsheetFile);
+      regenerateCheatsheet(ctx.tasksFile, ctx.runtimeDir, ctx.cheatsheetFile, clock);
     }
   }
   return {
@@ -365,10 +499,100 @@ export function runOneStep(ctx: ReducerContext, input: RunOneStepInput): RunOneS
 }
 
 // ---------------------------------------------------------------------------
+// Tick: condition-observable auto transitions (T-1-10)
+// ---------------------------------------------------------------------------
+
+export interface TickDeps {
+  clock: Clock;
+  depResolver: TasksFileDependencyResolver;
+  reviewResolver: ReviewResolver;
+}
+
+export interface TickTransition {
+  taskId: string;
+  from: WorkflowStateKind;
+  to: WorkflowStateKind;
+  edge: EdgeId;
+  trigger: string;
+}
+
+export interface TickResult {
+  transitions: TickTransition[];
+}
+
+/**
+ * tickAutoTransitions — データ駆動で発火可能な遷移を 1 回適用する。
+ *
+ * 対象:
+ *  - pending: dependencies.allDone() true なら E01 (→ready) を発火
+ *  - sleeping: clock.now() >= wakeup_at なら E09 (→ready) を発火
+ *  - blocked + linked_review resolved → E15 (→ready)
+ *  - escalated + linked_review resolved → E12 (human_approve, →ready)
+ *  - escalated + linked_review rejected → E13 (human_reject, →blocked)
+ *
+ * 先頭で dependency cycle を detect し、検出時は明示 Error を throw する。
+ * dryRun=true では checkpoint を書き換えず transitions だけ返す。
+ */
+export function tickAutoTransitions(ctx: ReducerContext, deps: TickDeps): TickResult {
+  const allIds = deps.depResolver.allTaskIds();
+  const cycle = detectDependencyCycles(deps.depResolver, allIds);
+  if (cycle) {
+    throw new Error(`dependency cycle detected: ${cycle.join(" -> ")}`);
+  }
+
+  const views = loadAllTaskViews(ctx.tasksFile, ctx.runtimeDir);
+  const transitions: TickTransition[] = [];
+
+  for (const v of views) {
+    let signal: StepSignal | null = null;
+
+    if (v.state.kind === "pending" && deps.depResolver.allDone(v.contract.id)) {
+      signal = { kind: "dependencies_done" };
+    } else if (v.state.kind === "sleeping" && v.state.wakeupAt) {
+      const wakeupAt = new Date(v.state.wakeupAt);
+      if (deps.clock.now().getTime() >= wakeupAt.getTime()) {
+        signal = { kind: "wakeup_fired" };
+      }
+    } else if (v.state.kind === "blocked" && v.contract.linked_review) {
+      const res = deps.reviewResolver.resolve(v.contract.linked_review);
+      if (res === "resolved") signal = { kind: "blocker_cleared" };
+    } else if (v.state.kind === "escalated" && v.contract.linked_review) {
+      const res = deps.reviewResolver.resolve(v.contract.linked_review);
+      if (res === "resolved") signal = { kind: "human_approve" };
+      else if (res === "rejected") signal = { kind: "human_reject" };
+    }
+
+    if (!signal) continue;
+    const r = stepOnce(v.state, signal);
+    if (r.rejected || !r.nextState || !r.edge) continue;
+    if (!ctx.dryRun) {
+      saveCheckpointState(ctx.runtimeDir, v.contract.id, r.nextState, deps.clock);
+    }
+    transitions.push({
+      taskId: v.contract.id,
+      from: v.state.kind,
+      to: r.nextState.kind,
+      edge: r.edge.id,
+      trigger: signal.kind,
+    });
+  }
+
+  if (transitions.length > 0 && !ctx.dryRun && ctx.cheatsheetFile) {
+    regenerateCheatsheet(ctx.tasksFile, ctx.runtimeDir, ctx.cheatsheetFile, deps.clock);
+  }
+  return { transitions };
+}
+
+// ---------------------------------------------------------------------------
 // Resume cheatsheet (runner-managed block regeneration)
 // ---------------------------------------------------------------------------
 
-export function regenerateCheatsheet(tasksFile: string, runtimeDir: string, cheatsheetFile: string): { updated: boolean } {
+export function regenerateCheatsheet(
+  tasksFile: string,
+  runtimeDir: string,
+  cheatsheetFile: string,
+  clock: Clock = new SystemClock(),
+): { updated: boolean } {
   const views = loadAllTaskViews(tasksFile, runtimeDir);
   const next = pickNextTask(tasksFile, runtimeDir);
   const nonTerminal = views.find((v) => v.state.kind !== "done" && v.state.kind !== "failed");
@@ -378,7 +602,7 @@ export function regenerateCheatsheet(tasksFile: string, runtimeDir: string, chea
 
   const block = [
     "<!-- runner-managed:begin -->",
-    `<!-- auto-generated by workflow_reducer at ${new Date().toISOString()} -->`,
+    `<!-- auto-generated by workflow_reducer at ${clock.now().toISOString()} -->`,
     "",
     `- Phase: ${phase}`,
     `- Next task: ${next ? `\`${next.contract.id}\` (${next.contract.verb} ${next.contract.target}) [state=${next.state.kind}]` : "(none — E1 Phase gate candidate)"}`,
