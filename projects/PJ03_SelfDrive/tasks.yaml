@@ -821,3 +821,136 @@
   round_max: 1
   dependencies: ["T-8-3"]
   linked_review: null
+
+# =========================================================================
+# Plan 4 (plan4.md): LangGraph を第一正本として取り込む
+# Plan 4 は T-6-1 (自前 runtime 継続) を上書きする。LangGraph を runtime 正本、
+# 既存 reducer / checkpoint JSON / reviews / hooks は adapter に格下げ。
+# Phase 9 = Plan 4 Phase 4-0..4-3
+# =========================================================================
+
+- id: T-9-0
+  phase: 9
+  verb: reverse
+  target: "T-6-1 反転: LangGraph を正本、自前 runtime は adapter に格下げ"
+  done_when:
+    - "docs/langgraph_vs_native_decision.md に Plan 4 による反転注記が追記"
+    - "reviews/Qn6_plan4_langgraph_priority.md が pool されている (Plan 3 + T-6-1 の優先誤り記録)"
+    - "plan2.md / plan4.md 間の関係 (plan4 が priority を上書き) が明記"
+  eval_required: false
+  eval_criteria:
+    - "T-6-1 の決定が削除されず、『Plan 4 で反転』と注記として残る"
+    - "Plan 1/2/3 の groundwork は adapter 役に再配置される旨が記録"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  round_max: 1
+  dependencies: ["T-8-4"]
+  linked_review: null
+
+- id: T-9-1
+  phase: 9
+  verb: implement
+  target: "LangGraph 実導入 lab (Phase 4-0)"
+  done_when:
+    - "projects/PJ03_SelfDrive/runtime/langgraph_lab/pj03_lab.py が存在"
+    - "Generator → Evaluator → Router の 3 node StateGraph が LangGraph 1.1.8 で compile + invoke"
+    - "MemorySaver or SqliteSaver checkpointer を利用、thread_id 指定で resume できる"
+    - "conditional edge (eval pass → END、eval fail && round < max → re-gen、fail && round >= max → END with block flag) が graph-native に動く"
+    - "artifacts/langgraph_run_01.log に run 結果 trace が保存 (stdout dump)"
+  eval_required: true
+  eval_criteria:
+    - "mock ではなく LangGraph StateGraph が実行されること (import + compile + invoke が動く)"
+    - "graph state に round / verdict / blocked が表現され、conditional edge で route が決まる"
+    - "checkpointer 経由で thread 再開ができる (resume smoke)"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/runtime/langgraph_lab"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-9-0"]
+  linked_review: null
+
+- id: T-9-2
+  phase: 9
+  verb: design
+  target: "repo bridge 設計 (Phase 4-1)"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_bridge.md が存在"
+    - "checkpoint bridge (PJ03 checkpoint JSON ↔ LangGraph MemorySaver/Sqlite thread state) の mapping を明記"
+    - "reviews bridge (reviews/Qn_*.md resolution → LangGraph conditional edge condition) の接続点"
+    - "tasks contract bridge (tasks.yaml contract → LangGraph graph config) の変換方針"
+    - "hook bridge (SessionStart/PostCompact → LangGraph thread resume) の設計"
+  eval_required: true
+  eval_criteria:
+    - "既存 reducer / orchestrator / daemon / scope projector の役割が『adapter』として再配置されている"
+    - "graph position を含む resume が bridge 経由で成立する設計になっている"
+    - "Python (LangGraph) / TypeScript (repo adapter) の境界が明記"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-9-1"]
+  linked_review: null
+
+- id: T-9-3
+  phase: 9
+  verb: dogfood
+  target: "LangGraph runtime dogfood (Phase 4-2)"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/langgraph_dogfood_run_01.md が存在"
+    - "1 task の pending → ready → in_progress → eval_pending → done / blocked cycle を LangGraph runtime で実行"
+    - "graph position + round / verdict / blocker が LangGraph state で保持"
+    - "fail → retry → pass の loop を LangGraph conditional edge で実観察"
+    - "resume: thread_id で graph 中断 → 再開が成立"
+  eval_required: true
+  eval_criteria:
+    - "reducer 単体ではなく LangGraph runtime 全体として回る"
+    - "dogfood で graph position を含む resume を少なくとも 1 回実観察"
+    - "mock adapter に依拠せず、LangGraph 実行が本体"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-9-2"]
+  linked_review: null
+
+- id: T-9-4
+  phase: 9
+  verb: design
+  target: "M3E projection bridge 最小 (Phase 4-3)"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_m3e_projection.md が存在"
+    - "LangGraph thread state → M3E AppState projection の one-way 設計"
+    - "graph summary / current node / next edge / blocked reason 表示の scope 位置 (既存 projectGraph との整合 or 置換方針)"
+    - "tree に runtime が逆流しないことを明記"
+  eval_required: true
+  eval_criteria:
+    - "既存 workflow_scope_projector (projectGraph) との関係 (延長 / 置換 / 並立) が決まっている"
+    - "Python → TypeScript 境界での projection データ受渡方式 (JSON intermediate 等) が明記"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-9-3"]
+  linked_review: null
+
+- id: T-9-5
+  phase: 9
+  verb: gate-check
+  target: "Gate 6 readiness (Plan 4 LangGraph 導入)"
+  done_when:
+    - "T-9-0..T-9-4 all done"
+    - "plan4.md §確定事項 に Phase 4-0..4-3 結論"
+    - "plan4 §Gate ルールの 3 条件 (LangGraph 実動 / graph-first 成立 / tree 代替達成でない) を根拠付きで満たす"
+    - "pre-gate adversarial reviewer を 1 回通す"
+    - "Gate 6 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "tree に従属しない graph-first runtime と言えるか (命題に忠実か)"
+    - "Plan 1/2/3 成果が adapter / demo として位置づけ直されているか"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-9-4"]
+  linked_review: null

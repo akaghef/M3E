@@ -7,6 +7,24 @@ date: 2026-04-21
 
 # PJ03 SelfDrive — Plan CD
 
+## 強い注意書き
+
+この plan は **LangGraph 導入 plan ではない**。
+また、`tree-like M3E` に graph runtime を統合したことを意味しない。
+
+ここでやっているのは、
+**PJ03 map 上で System Diagram を timed replay で育てる demonstration**
+であって、non-tree runtime そのものの実装ではない。
+
+特に次の誤読を禁止する。
+
+- `System Diagram` を作れた → LangGraph 的 graph runtime を取り込めた
+- tree + link の図ができた → graph-first な system model ができた
+- viewer 上で育つ → tree と相補的な non-tree structure を統合できた
+
+system diagram は知識ベース tree と根本的に性質が違う。
+この plan の成果は demo / projection に限られ、graph runtime の代替ではない。
+
 ## TL;DR
 
 PJ03 の demonstration は、汎用 GUI test framework を先に完成させるのではなく、
@@ -274,3 +292,5 @@ viewer 手動で node を動かした後の「idempotent 再実行」は reset_s
 
 Plan CD は、「PJ03 の system picture を viewer 上で段階的に育てる demonstration」を
 先に成立させるための計画である。
+
+ただしこれは、LangGraph 的 non-tree runtime を取り込む本題とは別物である。

@@ -5,7 +5,16 @@
 - **source**: T-4-2 langgraph_gap_memo.md + T-5-3 dogfood_run_04.md の両方を根拠
 - **referenced by**: T-7-1 scope projection の graph 拡張、plan2.md §確定事項
 
-## 結論
+> **[2026-04-21 追記 — Plan 4 で反転]** 本決定 (T-6-1) は akaghef が [plan4.md](../plan4.md) で明示的に
+> 反転した。**Plan 4 では LangGraph を第一正本として採用**、自前 runtime は adapter に格下げ。
+>
+> 本決定の根拠 (Python/TS 境界コスト / checkpoint 粒度 / Plan 2 scope) は **Plan 2 scope 内の判断** としては
+> 有効だったが、PJ03 本題「tree と相補的な non-tree runtime を取り込む」に対しては scope 不足だった。
+> 詳細: [reviews/Qn6_plan4_langgraph_priority.md](../reviews/Qn6_plan4_langgraph_priority.md)
+>
+> 以下の本文は **Plan 2 時点の記録** として保持、現在の runtime 決定ではない。
+
+## 結論 (Plan 2 時点 — Plan 4 で反転済)
 
 **自前 graph runtime を継続採用する（暫定 1 年、次の見直し基準付き）。**
 

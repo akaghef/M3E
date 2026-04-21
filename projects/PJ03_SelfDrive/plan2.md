@@ -30,6 +30,14 @@ PJ03 で実際に成立したのは:
 **PJ03 の成果を捨てずに、LangGraph 的実体を取り込む／もしくは同等物を成立させること**
 に置く。
 
+ここでいう「LangGraph 的実体」は、
+**tree の内部に workflow を投影することではない**。
+本来目指しているのは、`tree-like M3E` と相補的に並ぶ
+**non-tree / graph-first runtime** である。
+
+system diagram や graph runtime を、知識ベース tree の延長として扱ってはいけない。
+tree は説明や projection には使えても、graph runtime の正本原理ではない。
+
 ## 現在地の再評価
 
 ### すでにできたもの
@@ -58,6 +66,9 @@ PJ03 で実際に成立したのは:
 ## Plan 2 の主題
 
 **LangGraph 的な graph executor を、PJ03 の既存成果の上に成立させる。**
+
+これは「tree に workflow 情報を足す」ことではない。
+むしろ逆で、**tree に従属しない graph executor を外部原理として持つ**ことが主題である。
 
 ここでいう graph executor は最低限次を満たす:
 
@@ -179,6 +190,12 @@ PJ03 で実際に成立したのは:
 
 - snapshot ではなく graph 実行単位を scope と接続する
 
+注意:
+
+- scope 接続は `tree に還元すること` を意味しない
+- graph 側が正本であり、scope は必要に応じた表示・参照・projection の面に留める
+- system diagram の見え方を knowledge tree の規則で拘束しない
+
 成果物:
 
 - graph summary projection
@@ -229,4 +246,4 @@ PJ03 で実際に成立したのは:
 ## 一言でいうと
 
 Plan 1 の PJ03 は「workflow runtime の基礎工事」だった。  
-Plan 2 の PJ03 は「LangGraph 的な実体を本当に成立させる」段階である。
+Plan 2 の PJ03 は「tree に従属しない LangGraph 的な non-tree runtime を本当に成立させる」段階である。
