@@ -1,3 +1,11 @@
+# =========================================================================
+# current_focus (updated 2026-04-22)
+#   next:      T-A-1  (GraphSpec v0.1 contract freeze + vitest)
+#   parallel:  T-CX-0 (L2 map-attr summary; bridge 不要なので先行可)
+#   review:    T-1-1, T-3-1 — canonical parity checklist 明示 sign-off 待ち
+#   done:      T-0-1, T-UI-1 (edge routing v3), T-UI-2 (snapshot tooling)
+# =========================================================================
+
 - id: T-0-1
   phase: 0
   verb: bootstrap
@@ -21,22 +29,24 @@
 - id: T-1-1
   phase: 1
   verb: draw
-  target: "canonical Mermaid system diagram onto a fixed map as graph-first scope structure"
+  target: "render a canonical Mermaid system diagram like plan6/cycle2/canonical_mermaid.html onto a fixed map as graph-first scope structure"
   done_when:
     - "fixed target map is identified"
     - "canonical Mermaid sample is represented as scope structure, not only notes"
     - "viewer can be used to compare Mermaid sample and scope structure"
+    - "major node, gate, and labeled-edge expressions from canonical_mermaid.html are preserved in the fixed-map rendering target"
   eval_required: true
   eval_criteria:
     - "notes rendering and scope drawing are explicitly separated"
     - "layout does not collapse back into tree-first convenience"
+    - "render target is concrete enough to compare against canonical_mermaid.html / canonical_rendered.svg"
   parallelizable: false
   scope: "fixed map / system diagram"
   facet: layout
-  status: pending
-  round: 0
+  status: review
+  round: 1
   round_max: 3
-  last_feedback: null
+  last_feedback: "map_1776786701079_pan0ih fixed; canonical flow scope (Explore/Plan/Execute/Terminal) represented via portal-bracket + diamond gates; surface toggle (tree/system) enables side-by-side comparison. Remaining: explicit mermaid_parity_checklist.md sign-off vs canonical_mermaid.html."
   blocker: null
 
 - id: T-2-1
@@ -49,6 +59,7 @@
   eval_required: true
   eval_criteria:
     - "operations are graph-first, not tree-only shortcuts"
+    - "operations can address the node and edge shapes required by canonical_mermaid.html"
   parallelizable: true
   scope: "viewer / graph ops"
   facet: interaction
@@ -72,10 +83,10 @@
   parallelizable: true
   scope: "docs / references"
   facet: design
-  status: pending
-  round: 0
+  status: review
+  round: 1
   round_max: 3
-  last_feedback: null
+  last_feedback: "Drafted: docs/system_diagram_map_model.md (map-model正本), docs/map_attribute_spec.md (m3e:kernel-* contract), docs/render_target_definition.md. Runtime feedback storage decided via langgraph_integration_plan.md (viewer-only volatile overlay, map not mutated — invariants I1-I7). Pending: mermaid_parity_checklist.md explicit decision points."
   blocker: null
 
 - id: T-4-1
@@ -91,6 +102,443 @@
   parallelizable: true
   scope: "runtime/langgraph_lab"
   facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-UI-1
+  phase: 1
+  verb: route
+  target: "replace Bezier edges with rounded orthogonal routing using 4-port box edge ends, tree/system differentiation, and node-avoidance for U-arch back-edges"
+  done_when:
+    - "tree edge (class=edge) renders as L/コ字 orthogonal with r=8"
+    - "system edge (class=graph-link) forward case uses natural 4-midpoint edge ends from edgeEndBetween (right→left face)"
+    - "system back-edge / reverse-flow renders U-arch orthogonal via box TOP or BOTTOM midpoint, side chosen heuristically (avoid node rows)"
+    - "edges emerge OUTSIDE portal brackets (PORTAL_BRACKET_ARM=14 padding)"
+    - "flow-preview-edge renders orthogonal"
+    - "multi back-edge pairs staggered via topArchCount/bottomArchCount (no horizontal overlap)"
+    - "anchor* identifiers renamed to edgeEnd* (disambiguate against scope / selection / zoom anchors)"
+    - "automated collision validator reports 0 path-through-box hits on PJ04 system surface"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: false
+  scope: "beta/src/browser/viewer.ts"
+  facet: layout
+  status: done
+  round: 3
+  round_max: 3
+  last_feedback: "v3 iter10 accepted — 4-port edge ends + TOP/BOTTOM U-arch + node-avoidance + bracket clearance, collisions=0"
+  blocker: null
+
+- id: T-UI-2
+  phase: 1
+  verb: loop
+  target: "establish visual-verify loop tooling with automated collision detection (Playwright headless snapshot of screenshot + SVG path JSON + box rects JSON + collision JSON + console log)"
+  done_when:
+    - "projects/PJ04_MermaidSystemLangGraph/tools/snapshot.mjs runs against viewer URL"
+    - "SNAP_VIEW=tree|system env switches surface mode before capture"
+    - "snapshot emits <label>_edges.json, _boxes.json, _collisions.json, _console.log, _screenshot.png"
+    - "collision detector uses getPointAtLength sampling + endpointPad to skip source/target endpoints"
+    - "artifacts land under projects/PJ04_MermaidSystemLangGraph/loops/<loop_name>/"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: false
+  scope: "projects/PJ04_MermaidSystemLangGraph/tools"
+  facet: tooling
+  status: done
+  round: 2
+  round_max: 2
+  last_feedback: "Extended with collision validator; drove v3 iteration loop to 0 collisions"
+  blocker: null
+
+# =========================================================================
+# LangGraph Integration (per docs/langgraph_integration_plan.md)
+# Decision: embed Python LangGraph via subprocess. TS reimplementation 保留.
+# =========================================================================
+
+- id: T-A-1
+  phase: 3
+  verb: freeze
+  target: "GraphSpec v0.1 contract freeze + compileFromMap vitest coverage"
+  done_when:
+    - "GRAPH_SPEC_VERSION pinned at 0.1 and documented as contract"
+    - "map_attribute_spec.md gaps closed: subgraph channel inheritance, conditional default branch, non-START entry semantics"
+    - "vitest cases for compileFromMap: linear / conditional / subgraph scope (minimum 3)"
+    - "validateGraphSpec invoked from compileFromMap and warnings surface via CompileResult"
+  eval_required: true
+  eval_criteria:
+    - "same input map snapshot always produces identical GraphSpec (determinism)"
+    - "attribute spec omissions no longer block PJ04 map compile"
+  parallelizable: false
+  scope: "beta/src/shared/graph_spec_types.ts, beta/src/node/graph_spec_compile.ts, projects/PJ04_MermaidSystemLangGraph/docs/map_attribute_spec.md"
+  facet: contract
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: null
+
+- id: T-B-1
+  phase: 4
+  verb: bridge
+  target: "Python LangGraph subprocess bridge MVP (spec JSON in → invoke out)"
+  done_when:
+    - "projects/PJ04_MermaidSystemLangGraph/runtime/bridge/{bridge.py,registry.py,schema.py,requirements.txt} exist"
+    - "beta/src/node/kernel_bridge/{spawn_bridge.ts,bridge_client.ts} exist"
+    - "bridge invoke with PJ04 small scope returns final state via NDJSON"
+    - "smoke test script exercises round-trip"
+  eval_required: true
+  eval_criteria:
+    - "map is not mutated by bridge (volatile only)"
+    - "registry refs resolved at Python side, never at map side"
+    - "no eval of map-provided code"
+  parallelizable: false
+  scope: "projects/PJ04_MermaidSystemLangGraph/runtime/bridge, beta/src/node/kernel_bridge"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "Q1 python venv placement + Q2 registry location should be confirmed before starting; default assumption per plan is PJ04-local venv + PJ04-local registry"
+
+- id: T-C-1
+  phase: 4
+  verb: stream
+  target: "Stream modes + thread resume + viewer inspection overlay (volatile)"
+  done_when:
+    - "bridge_client.stream(spec,input,opts) AsyncIterator yields values|updates|messages|debug"
+    - "thread_id managed on TS side, Python SqliteSaver at runtime/bridge/checkpoints.sqlite"
+    - "getState / getStateHistory IPC work"
+    - "viewer highlights current node during stream and shows collapsible state dump; does not write back to map"
+  eval_required: true
+  eval_criteria:
+    - "interrupt of viewer session does not corrupt thread"
+    - "restart of viewer can resume a live thread_id"
+    - "map attributes unchanged across full invoke"
+  parallelizable: false
+  scope: "beta/src/node/kernel_bridge, beta/src/browser/viewer.ts, projects/PJ04_MermaidSystemLangGraph/runtime/bridge"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-D-1
+  phase: 4
+  verb: interrupt
+  target: "Interrupt before/after + dynamic Interrupt + time travel via update_state"
+  done_when:
+    - "scope attribute m3e:kernel-interrupt-before (JSON array) respected by bridge"
+    - "bridge emits {kind:interrupted,threadId,pendingNode,state}"
+    - "viewer shows approve/reject/edit-then-resume UI"
+    - "update_state(threadId,values,asNode?) forks a checkpoint and resumes cleanly"
+  eval_required: true
+  eval_criteria:
+    - "resume after interrupt produces same downstream state as no-interrupt run (barring injected values)"
+    - "state history list traverses parent chain correctly"
+  parallelizable: false
+  scope: "beta/src/node/kernel_bridge, beta/src/browser/viewer.ts, projects/PJ04_MermaidSystemLangGraph/runtime/bridge"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-E-1
+  phase: 4
+  verb: bind
+  target: "Anthropic-only Tool / LLM binding + ReAct agent sample map"
+  done_when:
+    - "registry.py exposes Anthropic client and representative tools (search, calc, fs_read)"
+    - "map node with kind=tool + callable-ref=tool.<name> compiles to ToolNode"
+    - "ReAct agent sample map in PJ04 runs end-to-end via bridge"
+    - "tool_calls fan-out works via LangGraph Send"
+  eval_required: true
+  eval_criteria:
+    - "no OpenAI / Gemini code paths introduced (scope: Anthropic only)"
+    - "LLM call trace appears in NDJSON stream"
+  parallelizable: false
+  scope: "projects/PJ04_MermaidSystemLangGraph/runtime/bridge, PJ04 map (sample react agent scope)"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "requires ANTHROPIC_API_KEY in local env"
+
+# =========================================================================
+# Concreteness Axis (per docs/concreteness_axis.md)
+# Extend detail level L0-L5 so higher levels reveal Python code / runtime.
+# =========================================================================
+
+- id: T-CX-0
+  phase: 3
+  verb: extend
+  target: "Concreteness level L2 — kernel-attribute summary inside box (no bridge required)"
+  done_when:
+    - "FLOW_SURFACE_PREVIEW_MAX_DETAIL raised to support at least L2 (map-attr-only levels)"
+    - "L2 draws kind icon + channels badge inside node box using m3e:kernel-* attributes"
+    - "j/k keybinding wraps at new max with a status message"
+    - "L2 renders correctly when bridge is absent (pure map data)"
+  eval_required: true
+  eval_criteria:
+    - "no regression of L0 / L1 existing rendering"
+    - "map attributes never written by concreteness navigation (I6)"
+  parallelizable: false
+  scope: "beta/src/browser/viewer.ts, beta/viewer.css"
+  facet: layout
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: null
+
+- id: T-CX-1
+  phase: 4
+  verb: introspect
+  target: "L3 signature rendering — bridge introspect_callable IPC + viewer signature badge"
+  done_when:
+    - "bridge IPC introspect_callable returns {signature, paramTypes, returnType, docOneLine, modulePath}"
+    - "viewer L3 shows signature one-liner in box + resolved/unresolved ref badge"
+    - "unresolved refs show red badge with ref string"
+    - "bridge absent shows greyed badge with tooltip 'requires bridge'"
+  eval_required: true
+  eval_criteria:
+    - "introspect is read-only, never mutates Python state (I7)"
+    - "only registry-registered refs are resolvable; arbitrary paths rejected"
+  parallelizable: false
+  scope: "projects/PJ04_MermaidSystemLangGraph/runtime/bridge, beta/src/node/kernel_bridge, beta/src/browser/viewer.ts"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-B-1 (bridge MVP)"
+
+- id: T-CX-2
+  phase: 4
+  verb: source
+  target: "L4 Python source viewer — fetch_source IPC + side panel rendering"
+  done_when:
+    - "bridge IPC fetch_source returns source text for a registered symbol only (16KB cap)"
+    - "side panel shows function body with line numbers"
+    - "Open-in-editor link available (deep-link to file_path:line)"
+    - "source fetch failures surface as status messages, not silent failures"
+  eval_required: true
+  eval_criteria:
+    - "fetch_source rejects unregistered module paths"
+    - "source size cap enforced"
+    - "cache prevents redundant fetches within 5 min window"
+  parallelizable: false
+  scope: "projects/PJ04_MermaidSystemLangGraph/runtime/bridge, beta/src/browser/viewer.ts"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-CX-1"
+
+- id: T-CX-3
+  phase: 4
+  verb: overlay
+  target: "L5 live state — per-node stream buffer + value sparkline + active-node pulse"
+  done_when:
+    - "viewer maintains per-node buffer of latest channel value during active stream"
+    - "L5 renders truncated value (arr[:3], str[:80], obj keys only) inside box"
+    - "active node pulses during super-step; span color indicates success/error"
+    - "L5 hidden when no live thread"
+  eval_required: true
+  eval_criteria:
+    - "map attributes never written during streaming (I6)"
+    - "stream disconnect clears L5 overlay gracefully"
+  parallelizable: false
+  scope: "beta/src/browser/viewer.ts, beta/src/node/kernel_bridge"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-C-1 (streaming)"
+
+- id: T-CX-4
+  phase: 4
+  verb: override
+  target: "Per-node concreteness override + side panel pin"
+  done_when:
+    - "o / shift-o bump selected node level independent of global"
+    - "L pin keeps side panel on current selection across selection change"
+    - "overrides are volatile (not persisted)"
+  eval_required: true
+  eval_criteria:
+    - "keybindings do not conflict with existing bindings per Keybindings_Beta.md"
+    - "override is window state only (I6)"
+  parallelizable: true
+  scope: "beta/src/browser/viewer.ts, docs/06_Operations/Keybindings_Beta.md"
+  facet: interaction
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: "depends on T-CX-1"
+
+# =========================================================================
+# Layout + Multi-Root Strategy (per docs/layout_strategy.md)
+# 制約正本 (lane-role / anchor) を先に、engine (elkjs) は後から、fork はしない。
+# =========================================================================
+
+- id: T-LAY-1
+  phase: 2
+  verb: define
+  target: "lane-role / anchor / edge-kind 属性を map_attribute_spec.md に追加 (制約正本の骨格)"
+  done_when:
+    - "m3e:lane-role values (main / observer / review / escalation / reference / aux) が map_attribute_spec.md に記載"
+    - "m3e:anchor values (fixed / hint) が記載"
+    - "m3e:edge-kind values (forward / back / cross-lane / observe) が記載"
+    - "lane-role=main は surface 内 1 本のみ の制約が明記"
+    - "flowCol / flowRow が cache hint であることが明記 (正本ではない)"
+  eval_required: true
+  eval_criteria:
+    - "既存 m3e:kernel-* namespace と衝突しない"
+    - "座標正本 (x/y) と制約正本 (lane-role) の区別が読み取れる"
+  parallelizable: false
+  scope: "projects/PJ04_MermaidSystemLangGraph/docs/map_attribute_spec.md"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: null
+
+- id: T-LAY-2
+  phase: 2
+  verb: render
+  target: "flow-lr surface に breadth lane band 描画を追加 (lane-role で row 割当)"
+  done_when:
+    - "viewer が m3e:lane-role を読んで row band を計算する"
+    - "lane 並び (上→下): observer / aux / main / review / escalation / reference が default"
+    - "lane-role=main 複数検出時に compile warning"
+    - "PJ04 canonical map で Explore / Plan / Execute System / Terminal が main lane に、Source / Notes が reference lane に落ちる"
+  eval_required: true
+  eval_criteria:
+    - "既存 flowCol / flowRow を手で書いた map が退行しない"
+    - "lane 境界を auto が触らない (HR-4)"
+  parallelizable: false
+  scope: "beta/src/browser/viewer.ts, beta/viewer.css"
+  facet: layout
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-LAY-1"
+
+- id: T-LAY-3
+  phase: 2
+  verb: gate
+  target: "canonical SVG snapshot 回帰 gate (破綻検知 tool)"
+  done_when:
+    - "fixtures/canonical_layout.svg が凍結される"
+    - "tools/snapshot.mjs が _diff.json を吐く (bbox 中心ずれ / 交差数 / 座標外れ)"
+    - "閾値: bbox 20px 以上動く node が 3 個以上 → blocker、交差数 +30% 以上 → blocker"
+    - "snapshot gate が loop に組み込まれる"
+  eval_required: true
+  eval_criteria:
+    - "gate が誤検知しない (微小 CSS 変更で blocker にならない)"
+    - "gate が本当の回帰を捕まえる (手動で座標を壊したとき検出)"
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/fixtures, projects/PJ04_MermaidSystemLangGraph/tools"
+  facet: tooling
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: null
+
+- id: T-LAY-4
+  phase: 2
+  verb: open
+  target: "Case D (multi-lane surface) を正式開放 — layout_strategy.md の §2-5"
+  done_when:
+    - "1 surface に複数 lane を描ける (lane-role 駆動)"
+    - "observer lane を追加する実験 (神 = 案 B frame 肩書き / 案 A sky lane の両方試行)"
+    - "multi-lane 時の edge routing (forward / back / cross-lane) が読める"
+  eval_required: true
+  eval_criteria:
+    - "main lane の読みが崩れない (HR-1)"
+    - "snapshot gate が pass"
+  parallelizable: false
+  scope: "beta/src/browser/viewer.ts, PJ04 map (sample observer scope)"
+  facet: layout
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-LAY-2 and T-LAY-3"
+
+- id: T-LAY-5
+  phase: 3
+  verb: open
+  target: "Case C (multi-entry graph) 対応 — GraphSpec.entries[] + virtual START compile"
+  done_when:
+    - "GraphSpec に entries: string[] 追加 (entry は deprecated alias)"
+    - "validateGraphSpec が entries[] の reachability を検査"
+    - "compileFromMap が複数 m3e:kernel-node-kind=entry を検出して entries[] に集約"
+    - "LangGraph subprocess 送信時に virtual START を挿入して Send fan-out / conditional に分配"
+    - "viewer が各 entry box に ▶ marker を描く"
+  eval_required: true
+  eval_criteria:
+    - "既存 entry: string の map が退行しない"
+    - "LangGraph 互換性が保たれる (virtual START 挿入が subprocess 側から見えない)"
+    - "main lane の単一性は保持 (補助 entry は observer/aux lane に落ちる)"
+  parallelizable: false
+  scope: "beta/src/shared/graph_spec_types.ts, beta/src/node/graph_spec_compile.ts, beta/src/browser/viewer.ts"
+  facet: contract
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-A-1 (GraphSpec v0.1 contract freeze)"
+
+- id: T-LAY-6
+  phase: 3
+  verb: evaluate
+  target: "elkjs 導入 Go/No-Go 判定 — layout_strategy.md の §3-2"
+  done_when:
+    - "Go 条件 (node 30 超 / lane 4 段 / 手作業疲弊 3 回) を満たしたか記録"
+    - "満たすなら elkjs を npm dep に追加、layout adapter prototype を書く"
+    - "満たさないなら No-Go を記録して Phase 4 以降へ pool"
+  eval_required: true
+  eval_criteria:
+    - "判定は定量的 (感覚ではなく数字ベース)"
+    - "Go 時: bundle size impact が記載 (elkjs ~300KB)"
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/docs/layout_strategy.md, beta/package.json (if Go)"
+  facet: design
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: "triggered by T-LAY-2 実運用 or T-LAY-4 実運用"
+
+- id: T-F-1
+  phase: 5
+  verb: observe
+  target: "Trace persistence (NDJSON ring) + viewer timeline + crash recovery"
+  done_when:
+    - "bridge writes NDJSON to runtime/traces/<threadId>.ndjson with ring buffer cap"
+    - "viewer renders trace timeline under active scope (per-node spans)"
+    - "subprocess crash + parent restart resumes same thread_id with no loss"
+    - "OTel exporter enabled via env (optional), LangSmith gated behind opt-in"
+  eval_required: true
+  eval_criteria:
+    - "trace file never grows unbounded"
+    - "restart path covered by smoke test (kill subprocess mid-stream)"
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/runtime/bridge, beta/src/browser/viewer.ts"
+  facet: observability
   status: pending
   round: 0
   round_max: 3

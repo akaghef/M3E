@@ -35,8 +35,8 @@ PJ03 ではこの論点が
 
 ### 完了像
 
-固定 map 上で system diagram を graph-first に描画・編集できる。
-Mermaid canonical source と M3E graph structure が対応し、LangGraph に compile できる最小 graph authoring loop が成立する。
+固定 map 上で `plan6/cycle2/canonical_mermaid.html` のような system diagram を graph-first に描画・編集できる。
+Mermaid canonical source と M3E graph structure が対応し、HTML / SVG で比較可能な描画結果を持ち、LangGraph に compile できる最小 graph authoring loop が成立する。
 
 ### In Scope
 
@@ -57,8 +57,10 @@ Mermaid canonical source と M3E graph structure が対応し、LangGraph に co
 ## 主成果物
 
 1. **graph-first plan / spec** — Mermaid, system diagram, LangGraph を 1 本に束ねる設計文書
-2. **fixed-map prototype** — 固定 map に描画される canonical system diagram
-3. **LangGraph compile seed** — M3E graph から LangGraph に繋ぐ最小 runtime seed
+2. **render target definition** — `canonical_mermaid.html` / `canonical_rendered.svg` を基準にした描画要件
+3. **system diagram map model** — tree projection と system projection を支える map model 定義
+4. **fixed-map prototype** — 固定 map に描画される canonical system diagram
+5. **LangGraph compile seed** — M3E graph から LangGraph に繋ぐ最小 runtime seed
 
 ## メタ情報
 
@@ -76,6 +78,9 @@ Mermaid canonical source と M3E graph structure が対応し、LangGraph に co
 - [tasks.yaml](tasks.yaml) — sprint contract 正本
 - [docs/canonical_subpj_flow.md](docs/canonical_subpj_flow.md) — canonical flow seed
 - [docs/mermaid_parity_checklist.md](docs/mermaid_parity_checklist.md) — Mermaid parity seed
+- [docs/render_target_definition.md](docs/render_target_definition.md) — fixed-map 描画要件
+- [docs/system_diagram_map_model.md](docs/system_diagram_map_model.md) — system diagram での map model
+- [docs/merge_strategy.md](docs/merge_strategy.md) — PJ 終了後の merge 戦略
 - `plan6/cycle2/` — Mermaid canonical sample 一式
 - `runtime/langgraph_lab/` — LangGraph lab seed
 - `references/m3e_current/` — M3E 現行コード参照コピー
@@ -94,6 +99,8 @@ Mermaid canonical source と M3E graph structure が対応し、LangGraph に co
 
 - この PJ では **固定 map** を前提にする
 - canonical source は Mermaid を使ってよいが、最終正本は graph semantics で判断する
+- `map model` を正本とし、`tree` / `system` は projection として扱う
+- 描画ターゲットは `plan6/cycle2/canonical_mermaid.html` 相当の情報密度を下回らないこと
 - notes 描画と scope 構造は混同しない
 - tree-first な convenience に流れたら失敗扱い
 
