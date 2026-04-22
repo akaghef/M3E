@@ -1,9 +1,22 @@
 # =========================================================================
-# current_focus (updated 2026-04-22)
-#   next:      T-A-1  (GraphSpec v0.1 contract freeze + vitest)
+# current_focus (updated 2026-04-22, layout 戦略本に合わせて re-prioritize)
+#
+# Phase 2 — L-META 制約語彙 + breadth lane + snapshot gate (active)
+#   next (initial queue、1-2 並列可):
+#     1. T-LAY-1  map_attribute_spec に lane-role / anchor / edge-kind 追加  (docs)
+#     2. T-LAY-3  canonical_layout.svg 凍結 + snapshot diff gate             (tool)
+#     3. T-LAY-2  viewer に breadth lane band 描画                            (T-LAY-1 依存)
+#     4. T-LAY-4  canonical map に lane-role を当てて multi-lane 開放         (T-LAY-2/3 依存)
+#
+# Phase 3 — Contract freeze + multi-entry + engine Go/No-Go (pool、Phase 2 完了後)
+#   pool:      T-A-1, T-LAY-5, T-LAY-6
 #   parallel:  T-CX-0 (L2 map-attr summary; bridge 不要なので先行可)
-#   review:    T-1-1, T-3-1 — canonical parity checklist 明示 sign-off 待ち
-#   done:      T-0-1, T-UI-1 (edge routing v3), T-UI-2 (snapshot tooling)
+#
+# 戦略整合: docs/layout_strategy.md (HR-1〜HR-6 / X1〜X7 / OQ-L1〜L7)
+#   HR-1 main lane 1 本 / HR-5 座標正本を x/y に置かない / HR-4 auto は lane 内
+#
+# review:    T-1-1, T-3-1 — canonical parity checklist 明示 sign-off 待ち
+# done:      T-0-1, T-UI-1 (edge routing v3), T-UI-2 (snapshot tooling)
 # =========================================================================
 
 - id: T-0-1

@@ -1,6 +1,6 @@
 # PJ04 — Resume Cheatsheet (session handoff)
 
-**最終更新**: 2026-04-22 (LangGraph 内部取り込み計画確定 + URL scope / tree bezier 復旧)
+**最終更新**: 2026-04-22 (**[docs/system_design.md](docs/system_design.md) を canonical master として確定** — 他 doc は deep dive)
 **ブランチ**: `prj/04_MermaidSystemLangGraph`
 **前セッション**: Claude (edge routing v3 完了)
 **今セッション**: Claude (reload 時の system mode 復元 bug fix + tree edge を Bezier に戻す + LangGraph integration plan 確定)
@@ -257,7 +257,19 @@ http://localhost:4173/viewer.html?ws=ws_REMH1Z5TFA7S93R3HA0XK58JNR&map=map_17767
 
 ## TL;DR for 次セッション
 
-> **LangGraph 内部取り込みが本格フェーズに入る**。[docs/langgraph_integration_plan.md](docs/langgraph_integration_plan.md) で方針確定: Python subprocess embed (TS 再実装は保留)。Phase A (contract freeze + vitest) から着手。tasks.yaml に T-A-1 / T-B-1 / T-C-1 / T-D-1 / T-E-1 / T-F-1 を追加済。未決 Q1 (venv 場所) / Q2 (registry 場所) は plan 内で推奨あり、Phase A は判断保留のまま着手可。 `workflow_*` は触らない。コミット粒度は未決 (まだ一度もコミットしていない)。
+> **戦略 re-priority: Phase 2 (layout L-META 構築) が先、Phase 3 (LangGraph contract freeze) は後**。
+> 戦略本 [docs/layout_strategy.md](docs/layout_strategy.md) が親。意味 (制約) を正本・座標は cache。main lane は 1本、観察者は別 lane。Case D (multi-lane) は今すぐ開ける、Case C (multi-entry) は Phase 3、Case A (S-Root forest) は閉じたまま、Case B (Sc-Root multi) は保留。
+>
+> **次セッション initial queue**:
+> 1. **T-LAY-1** — `map_attribute_spec.md` に `lane-role` / `anchor` / `edge-kind` 追加 (docs、並列可)
+> 2. **T-LAY-3** — `fixtures/canonical_layout.svg` 凍結 + `tools/snapshot.mjs` _diff.json (tool、並列可)
+> 3. **T-LAY-2** — viewer に breadth lane band 描画 (T-LAY-1 依存)
+> 4. **T-LAY-4** — canonical map に lane-role を当てて multi-lane 正式開放 (T-LAY-2/3 依存)
+> (T-LAY-5 / T-LAY-6 は Phase 3 トリガ時に起動)
+>
+> Phase 3 に pool された項目: T-A-1 (GraphSpec contract freeze), T-LAY-5 (multi-entry), T-LAY-6 (elkjs Go/No-Go)。parallel 先行可: T-CX-0 (L2 map-attr summary、bridge 不要)。
+> 制約: `workflow_*` 不可侵、`AppState.rootId` 単数固定 (HR-6)、auto は lane 内に閉じる (HR-4)、座標正本を x/y に置かない (HR-5)。
+> Pool に残る OQ (L1〜L7) は [layout_strategy.md §4](docs/layout_strategy.md) を正本とする。
 
 ## 10. LangGraph Integration Plan (2026-04-22 追加)
 
@@ -336,10 +348,25 @@ http://localhost:4173/viewer.html?ws=ws_REMH1Z5TFA7S93R3HA0XK58JNR&map=map_17767
 - T-LAY-5: Case C (multi-entry) 対応 (Phase 3)
 - T-LAY-6: elkjs 導入 Go/No-Go 判定 (Phase 3)
 
+**次セッション initial queue** (Phase 2 実行順):
+1. T-LAY-1 (docs) と T-LAY-3 (tool) は **並列可** — 依存なし
+2. T-LAY-2 は T-LAY-1 依存 (attr が決まらないと lane band が書けない)
+3. T-LAY-4 は T-LAY-2 / T-LAY-3 依存 (lane 描画 + snapshot gate 両方揃ってから)
+4. T-LAY-5 / T-LAY-6 は Phase 3 トリガ時 (node 数 30 超 / lane 4 段 / 手作業疲弊 3 回)
+
+**OQ pool** (レビュー後に fix):
+- OQ-L1: `lane-role` values の最終固定 → Phase 2-1 で fix
+- OQ-L2: lane 並び規約 hard default vs soft → Phase 2-2 で fix
+- OQ-L3: elkjs vs dagre → Phase 3-2 で fix
+- OQ-L4: engine を browser / node どちらで動かすか → Phase 3-2 で fix
+- OQ-L5: multi-entry default invoke 挙動 → Phase 3-1 で fix
+- OQ-L6: snapshot gate 閾値 tuning → Phase 2-4 で fix
+- OQ-L7: S-Root 1 固定を docs 正式化 → beta merge 時
+
 **参照**:
 | ファイル | 役割 |
 |---|---|
-| [docs/layout_strategy.md](docs/layout_strategy.md) | 戦略本 (親文書) |
+| [docs/layout_strategy.md](docs/layout_strategy.md) | 戦略本 (親文書) — HR-1〜HR-6 / X1〜X7 / OQ-L1〜L7 の正本 |
 | [docs/multi_root_scope_investigation.md](docs/multi_root_scope_investigation.md) | 4 case 評価 (Root の 4 層分離 + data/layout 影響) |
 
 ## 13. State / Channel (data 側) 設計 (2026-04-22 追加)
