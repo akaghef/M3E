@@ -15,6 +15,7 @@ const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElem
 const scopeNavBtn = document.getElementById("scope-nav-btn") as HTMLButtonElement | null;
 const localFsToggleBtn = document.getElementById("local-fs-toggle") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
+const cameraFollowBtn = document.getElementById("camera-follow-btn") as HTMLButtonElement | null;
 const scatterToolbarEl = document.getElementById("scatter-toolbar") as HTMLElement | null;
 const scatterNormalBtn = document.getElementById("scatter-normal") as HTMLButtonElement | null;
 const scatterAddNodeBtn = document.getElementById("scatter-add-node") as HTMLButtonElement | null;
@@ -673,6 +674,12 @@ let viewState: ViewState = {
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
+  cameraMove: {
+    preset: "follow-selection",
+    toggle: true,
+    lockedNodeId: null,
+    userFitZoom: null,
+  },
   panState: null,
   pinchState: null,
   clipboardState: null,
@@ -3589,12 +3596,7 @@ function enterScope(scopeNodeId: string): boolean {
   viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(node.id, viewState.surfaceViewMode);
   setSingleSelection(preferredSelectionForScope(node.id), false);
   render();
-  fitDocument();
-  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
-  // and board dimensions shifted after the scope change.
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
+  triggerCameraMove("scope");
   setStatus(`Entered scope: ${uiLabel(node)}`);
   board.focus();
   return true;
@@ -3634,12 +3636,7 @@ function exitScope(): boolean {
       : preferredSelectionForScope(nextScopeId);
   setSingleSelection(selectionAfterExit, false);
   render();
-  fitDocument();
-  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
-  // and board dimensions shifted after the scope change.
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
+  triggerCameraMove("scope");
   setStatus("Returned to parent scope.");
   board.focus();
   return true;
@@ -3776,7 +3773,7 @@ function jumpToAliasTarget(): boolean {
   setSingleSelection(target.id, false);
   normalizeSelectionState();
   render();
-  fitDocument();
+  triggerCameraMove("scope");
   updateScopeInUrl(targetScopeId);
   setStatus(`Jumped to target: ${uiLabel(target)}`);
   board.focus();
@@ -8726,6 +8723,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
   render();
+  triggerCameraMove("scope");
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
   updateScopeInUrl(scopeId);
 }
@@ -8748,6 +8746,7 @@ function ExitScopeCommand(): void {
   setSingleSelection(selectionAfterExit, false);
   normalizeSelectionState();
   render();
+  triggerCameraMove("scope");
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
   updateScopeInUrl(viewState.currentScopeId);
 }
@@ -12604,6 +12603,40 @@ function fitDocument(options: CameraMoveOptions = {}): boolean {
   return true;
 }
 
+function syncCameraMoveUi(): void {
+  if (!cameraFollowBtn) {
+    return;
+  }
+  const active = viewState.cameraMove.toggle && viewState.cameraMove.preset !== "off";
+  cameraFollowBtn.classList.toggle("is-active", active);
+  cameraFollowBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  cameraFollowBtn.title = active
+    ? "Auto-fit on scope change"
+    : "Auto-fit disabled";
+}
+
+function toggleCameraMove(): void {
+  viewState.cameraMove.toggle = !viewState.cameraMove.toggle;
+  syncCameraMoveUi();
+  setStatus(`Camera follow: ${viewState.cameraMove.toggle ? "on" : "off"}`);
+}
+
+function triggerCameraMove(reason: CameraMoveTrigger): void {
+  if (!viewState.cameraMove.toggle || viewState.cameraMove.preset === "off") {
+    return;
+  }
+  if (reason === "scope" || reason === "layout" || reason === "command") {
+    fitDocument({ animate: reason !== "command" });
+    requestAnimationFrame(() => {
+      fitDocument({ animate: reason !== "command" });
+    });
+    return;
+  }
+  if (reason === "selection" && viewState.selectedNodeId) {
+    nudgeActiveNodeIntoView({ animate: true });
+  }
+}
+
 function findNodeIdByText(text: string): string {
   if (!map) {
     return "";
@@ -13844,6 +13877,11 @@ penWidthInput?.addEventListener("input", () => {
     activePenStrokeWidth = width;
   }
 });
+
+cameraFollowBtn?.addEventListener("click", () => {
+  toggleCameraMove();
+});
+syncCameraMoveUi();
 
 fileInput.addEventListener("change", (event: Event) => {
   const target = event.target as HTMLInputElement;
@@ -15090,10 +15128,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
-    fitDocument();
-    requestAnimationFrame(() => {
-      fitDocument();
-    });
     board.focus();
     return;
   }
@@ -15101,10 +15135,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
-    fitDocument();
-    requestAnimationFrame(() => {
-      fitDocument();
-    });
     board.focus();
     return;
   }
