@@ -7,6 +7,8 @@ date: 2026-04-22
 
 # PJ04 Mermaid + System Diagram + LangGraph — Plan
 
+> **注記 (2026-04-22)**: 戦略の最新正本は [docs/global_strategy.md](docs/global_strategy.md) (4 トラック × 2 ゲート × 週次ロードマップ)、アーキテクチャと用語の最新正本は [docs/system_design.md](docs/system_design.md) (5-layer stack / I1-I13 / Collaboration Stance)。本 plan.md は Phase 0-5 の waterfall 記述を残すが、実行計画の優先順位は global_strategy.md を優先する。
+
 ## TL;DR
 
 PJ04 は、PJ03 で混線した
@@ -21,6 +23,8 @@ PJ04 は、PJ03 で混線した
 この PJ の最小到達点は、
 **`plan6/cycle2/canonical_mermaid.html` のような canonical system diagram を固定 map 上で graph-first に描画し、その graph を LangGraph compile seed へ接続すること**
 に置く。
+
+**現実の到達点は伸びた** (2026-04-22 time): 「M3E を LangGraph 系システムの協働 authoring 環境にする」まで拡張され、人間の L1 Outer sketch + AI-fill L2 Inner + compile + run + live-view が map 内で完結する 6-step Collaboration Stance を閉じることが終了条件となった (詳細: [global_strategy.md §10](docs/global_strategy.md))。
 
 ## この PJ の位置づけ
 

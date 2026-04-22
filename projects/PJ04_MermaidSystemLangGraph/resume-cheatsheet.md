@@ -1,6 +1,6 @@
 # PJ04 — Resume Cheatsheet (session handoff)
 
-**最終更新**: 2026-04-22 (**[docs/system_design.md](docs/system_design.md) を canonical master として確定** — 他 doc は deep dive)
+**最終更新**: 2026-04-22 (system_design.md を L1 Outer / L2 Inner に再構成 + node=scope 統一 + Collaboration Stance 6-step)
 **ブランチ**: `prj/04_MermaidSystemLangGraph`
 **前セッション**: Claude (edge routing v3 完了)
 **今セッション**: Claude (reload 時の system mode 復元 bug fix + tree edge を Bezier に戻す + LangGraph integration plan 確定)
@@ -241,17 +241,39 @@ http://localhost:4173/viewer.html?ws=ws_REMH1Z5TFA7S93R3HA0XK58JNR&map=map_17767
 
 ## 9. 参照 docs (このセッション関連)
 
+**単一入口** (まずここから):
 | ファイル | 役割 |
 |---|---|
-| [plan.md](plan.md) | PJ04 最上位プラン (更新済、rootless / scope-portal 方針反映済) |
-| [README.md](README.md) | PJ04 入口 |
-| [tasks.yaml](tasks.yaml) | T-0〜T-4 定義 |
-| [docs/system_diagram_map_model.md](docs/system_diagram_map_model.md) | Map model 正本定義 |
-| [docs/merge_strategy.md](docs/merge_strategy.md) | PJ 終了後 merge 方針 |
+| [docs/system_design.md](docs/system_design.md) | **canonical master** (5-layer stack / I1-I13 / Collaboration Stance 6-step) |
+| [docs/global_strategy.md](docs/global_strategy.md) | **大域戦略** (4 トラック × 2 ゲート / 週次ロードマップ / 終了条件) |
+
+**planning / tracking**:
+| ファイル | 役割 |
+|---|---|
+| [plan.md](plan.md) | PJ04 最上位プラン (Phase 0-5 waterfall、上位は global_strategy) |
+| [README.md](README.md) | PJ04 入口 (doc 構成 index) |
+| [tasks.yaml](tasks.yaml) | T-0〜T-F 定義 + current_focus ヘッダ |
+
+**deep-dive 戦略** (トラック別):
+| ファイル | 役割 |
+|---|---|
+| [docs/langgraph_integration_plan.md](docs/langgraph_integration_plan.md) | EXEC: Phase A-F (subprocess embed) |
+| [docs/layout_strategy.md](docs/layout_strategy.md) | LAY: Phase 2 (lane-role / snapshot gate / elkjs Go/No-Go) |
+| [docs/state_and_channels.md](docs/state_and_channels.md) | DATA: S-0..S-5 (channel authoring) |
+| [docs/concreteness_axis.md](docs/concreteness_axis.md) | VIEW: L0-L5 (具象軸) |
+| [docs/multi_root_scope_investigation.md](docs/multi_root_scope_investigation.md) | Root 4 case 評価 (A-D) |
+
+**contracts / seeds**:
+| ファイル | 役割 |
+|---|---|
+| [docs/system_diagram_map_model.md](docs/system_diagram_map_model.md) | Map model 定義 |
 | [docs/render_target_definition.md](docs/render_target_definition.md) | 描画契約 (node.kind / render.shape) |
 | [docs/map_attribute_spec.md](docs/map_attribute_spec.md) | `m3e:kernel-*` 属性 contract |
-| [docs/langgraph_feasibility.md](docs/langgraph_feasibility.md) | 機能別 可能性評価表 (辛口改訂版結論: 再実装 🔴、embed 🟢) |
-| [idea/langgraph_full_feature_reproduction.md](idea/langgraph_full_feature_reproduction.md) | 再実装プラン (**採否未定の idea**) |
+| [docs/langgraph_feasibility.md](docs/langgraph_feasibility.md) | 機能別 可能性評価表 (再実装 🔴、embed 🟢) |
+| [docs/merge_strategy.md](docs/merge_strategy.md) | PJ 終了後 merge 方針 |
+| [docs/canonical_subpj_flow.md](docs/canonical_subpj_flow.md) | canonical flow (authoritative, seed) |
+| [docs/mermaid_parity_checklist.md](docs/mermaid_parity_checklist.md) | Mermaid parity requirement (seed) |
+| [idea/langgraph_full_feature_reproduction.md](idea/langgraph_full_feature_reproduction.md) | 再実装プラン (**採否未定 idea**) |
 
 ---
 

@@ -74,16 +74,36 @@ Mermaid canonical source と M3E graph structure が対応し、HTML / SVG で�
 
 ## ドキュメント構成
 
-- [plan.md](plan.md) — PJ04 の master plan
+**単一入口** (まずここから):
+- [docs/system_design.md](docs/system_design.md) — **canonical master** (用語 / 5-layer stack / I1-I13 / Collaboration Stance)
+- [docs/global_strategy.md](docs/global_strategy.md) — **大域戦略** (4 トラック × 2 ゲート / 週次ロードマップ / Gate 判定 / 終了条件)
+
+**planning / tracking**:
+- [plan.md](plan.md) — PJ04 の master plan (Phase 0-5)
 - [tasks.yaml](tasks.yaml) — sprint contract 正本
-- [docs/canonical_subpj_flow.md](docs/canonical_subpj_flow.md) — canonical flow seed
-- [docs/mermaid_parity_checklist.md](docs/mermaid_parity_checklist.md) — Mermaid parity seed
-- [docs/render_target_definition.md](docs/render_target_definition.md) — fixed-map 描画要件
-- [docs/system_diagram_map_model.md](docs/system_diagram_map_model.md) — system diagram での map model
+- [resume-cheatsheet.md](resume-cheatsheet.md) — session handoff
+
+**deep-dive 戦略**:
+- [docs/langgraph_integration_plan.md](docs/langgraph_integration_plan.md) — EXEC Phase A-F (subprocess embed)
+- [docs/layout_strategy.md](docs/layout_strategy.md) — LAY Phase 2 (lane-role / snapshot gate / elkjs Go/No-Go)
+- [docs/state_and_channels.md](docs/state_and_channels.md) — DATA S-0..S-5 (channel authoring)
+- [docs/concreteness_axis.md](docs/concreteness_axis.md) — VIEW L0-L5 (具象軸)
+- [docs/multi_root_scope_investigation.md](docs/multi_root_scope_investigation.md) — Root 4 case 評価
 - [docs/merge_strategy.md](docs/merge_strategy.md) — PJ 終了後の merge 戦略
+
+**seeds / contracts**:
+- [docs/canonical_subpj_flow.md](docs/canonical_subpj_flow.md) — canonical flow (authoritative)
+- [docs/mermaid_parity_checklist.md](docs/mermaid_parity_checklist.md) — Mermaid parity (requirement)
+- [docs/render_target_definition.md](docs/render_target_definition.md) — fixed-map 描画要件
+- [docs/system_diagram_map_model.md](docs/system_diagram_map_model.md) — map model 定義
+- [docs/map_attribute_spec.md](docs/map_attribute_spec.md) — `m3e:kernel-*` 契約
+- [docs/langgraph_feasibility.md](docs/langgraph_feasibility.md) — feasibility matrix (再実装 🔴 / embed 🟢)
+
+**assets**:
 - `plan6/cycle2/` — Mermaid canonical sample 一式
 - `runtime/langgraph_lab/` — LangGraph lab seed
 - `references/m3e_current/` — M3E 現行コード参照コピー
+- `idea/` — 採否未定プール
 
 ## 役割分担
 
