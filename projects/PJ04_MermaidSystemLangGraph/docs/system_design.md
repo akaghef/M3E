@@ -9,11 +9,56 @@ supersedes_nothing: 本書は上書きではなく **束ねるだけ**。各 dee
 
 # PJ04 System Design — Canonical Master
 
-> **TL;DR**: M3E map を **LangGraph 本家** (Python subprocess) で実行する **authoring + inspection layer**。
-> map (authoring の正本) → GraphSpec (derived JSON) → LangGraph (embed) の 3 段で、
-> **atom = agent (LLM 呼び出し + tools + sub-agents)**、**木で composition、edge で graph 配線**、
-> **4 本の軸** (構造 / 遷移 / 具象度 / 時間) で view を切り替える。
-> **authoring は骨格だけ、詳細は panel、surface にはエラーだけ**。
+## 0. Collaboration Stance (北極星)
+
+**M3E は「LangGraph 系システムの協働 authoring 環境」**。
+人間と AI が 1 つの map 上で concurrent に作業し、**全工程が M3E 内で完結する**ことが最上位目的。
+
+### 6-step Workflow
+
+```
+① Sketch (人間)      L1 Outer に概観を描く:
+                     agent 名 + 主要 edge (「Planner → Executor → Verifier、fail で retry」)
+
+② Fill (AI)          L2 Inner に詳細を生成:
+                     prompt-text / source-view / schema-json / channels-def / 子 tool
+
+③ Review (人間)      [ で scope に入って L2 を確認 (意図合致、tool 選択、channel 漏れ)
+
+④ Tune (人間)        L2 の inline data node を直接編集
+                     or 「この agent の prompt を厳密化」で AI に局所再生成
+
+⑤ Run (M3E)          compile → L4 Bridge → L5 Runtime、
+                     live-view が L2 にストリームされる
+
+⑥ Iterate            ④ に戻る (or ① に戻って骨格修正)
+```
+
+### この workflow が要求する設計
+
+| 要請 | どこで満たす |
+|---|---|
+| 概観 / 詳細の 2 段 | **L1 (Outer) / L2 (Inner) の分離** |
+| AI が詳細を書く | **AI-fill コマンド** + 書き込み先 = L2 inline data node |
+| 人間が確認する | `[` で scope に入り L2 を読む |
+| 人間が微修正する | L2 inline data node を直接編集可能 |
+| 実行結果の取り込み | L5 stream → L2 の `live-view` に反映 |
+| provenance | 属性 `m3e:provenance` で AI-generated / human-edited を区別 |
+
+### 帰結 (この stance が強制すること)
+
+- **L2 が正式レイヤー** (substrate ではない) — AI が書く場所として命名される必要がある
+- **node = scope 統一** (後述 §3) — AI の書き込み先を一律に "scope の中" に置くため
+- **I9 (schema も map)** を堅持 — 外部 file を正本にすると M3E 内で完結しない
+- **AI-fill は first-class operation** — 設計枠に入れる (実装は後で構わない)
+
+---
+
+> **TL;DR**: M3E は **LangGraph 系システムの協働 authoring 環境**。
+> 人間が **L1 Outer (骨格)** を描き、AI が **L2 Inner (詳細)** を埋め、人間が確認・微修正し、M3E 内で実行まで完結する。
+> L1+L2 → L3 Spec → L4 Bridge → L5 Runtime の 5 層で、**node = scope 統一**、
+> **atom は kind で識別される scope** (agent / tool / sub-agent / router / entry / terminal)。
+> **authoring は骨格だけ、詳細は L2 に格納、surface にはエラーだけ**。
 
 ---
 
@@ -34,19 +79,37 @@ supersedes_nothing: 本書は上書きではなく **束ねるだけ**。各 dee
 | **scope node** | 下位 scope を持つ node (旧 `portal`) | `[` / `]` で出入り |
 | **entity node** | 下位 scope を持たない通常 node | leaf |
 
-### 1.2 Atoms (minimum system units)
+### 1.2 Atoms — **node = scope 統一 (採用)**
 
-| atom | 役割 | LangGraph 対応 | 子を持てるか |
+**(c) 全 node = scope** を採用。leaf / container の違いだけで同種。
+
+#### L1 Outer に並ぶ scope の kind
+
+| kind | 役割 | LangGraph 対応 | 子に置けるもの |
 |---|---|---|---|
-| **agent** | prompt + LLM call + tools binding + sub-agents | `callable` (LLM 中心の node) | ✅ (tools / sub-agents) |
-| **tool** | 決定的 Python 関数 (search / calc / fs_read) | `ToolNode` 配下の関数 | ❌ (leaf) |
-| **sub-agent** | 別 scope の agent tree を埋め込む | `subgraph` | ✅ |
-| **router** | 条件分岐決定 (LLM or Python) | conditional edge の route fn | ❌ |
-| **reducer** | channel の merge 関数 | `Annotated[T, reducer]` | map 上に node として現れない (channel 属性) |
-| **entry** | `__start__` の可視化 alias | — | ❌ |
-| **terminal** | `__end__` の可視化 alias | — | ❌ |
+| **agent** | prompt + LLM call + tools binding | callable (LLM 中心) | tool / sub-agent / router + L2 inline data |
+| **tool** | 決定的 Python 関数 | ToolNode 配下 | L2 inline data のみ |
+| **sub-agent** | 別 agent tree を埋め込み | subgraph | agent と同じ (recursive) |
+| **router** | 条件分岐決定 | conditional route fn | L2 inline data のみ |
+| **entry** | `__start__` alias | — | L2 inline data のみ |
+| **terminal** | `__end__` alias | — | L2 inline data のみ |
 
-**核の判断**: atom = **agent** を first-class に置く。「意味ある 1 行」は `agent(prompt, tools)` と書ける粒度。
+#### L2 Inner に並ぶ inline data node の kind
+
+scope の中に置ける情報コンテナ。map に persist される (I9)。
+
+| kind | 内容 | 書き手 | authoring/derived |
+|---|---|---|---|
+| **prompt-text** | LLM prompt template | AI 初稿 → 人間微修正 | authoring |
+| **schema-json** | tool の input/output schema | AI → 人間 | authoring |
+| **channels-def** | scope 内で使う channel 宣言 | AI → 人間 | authoring |
+| **note** | 自由メモ | 人間 | authoring |
+| **source-view** | Python 関数本体 | Bridge 経由で fetch | derived |
+| **live-view** | 実行中の channel 値 (最新) | Bridge stream | derived |
+
+**reducer** は inline data には現れない — channels-def の中で ref string として参照されるのみ (実体は registry)。
+
+**核の判断**: atom = **agent scope** が first-class。「意味ある 1 行」は `agent(prompt, tools)` の粒度。L2 Inner に入ると prompt / source / live / 子 tool が見える。
 
 ### 1.3 Edges / Relations
 
@@ -89,72 +152,72 @@ supersedes_nothing: 本書は上書きではなく **束ねるだけ**。各 dee
 
 全体呼称: **M3E-LangGraph stack**。各層の呼称は固定 (他 doc / コメント / 会話全てで統一):
 
-| L | 名前 | 1 行説明 |
-|---|---|---|
-| L1 | **Surface** | viewer.ts が描く UI |
-| L2 | **Map** | sqlite 単一正本 |
-| L3 | **Spec** | derived JSON (GraphSpec v0.1) |
-| L4 | **Bridge** | Python subprocess / IPC |
-| L5 | **Runtime** | LangGraph 1.1.8 (embed) |
+| L | 名前 | 1 行説明 | 書き手 |
+|---|---|---|---|
+| L1 | **Outer** | scope box + edges (surface 外観) | **人間** (骨格) |
+| L2 | **Inner** | scope contents (prompt / source / schema / live / channels-def / 子 scope) | **AI** (詳細)、人間が微修正 |
+| L3 | **Spec** | derived JSON (GraphSpec v0.1) — L1+L2 から compile | — (derived) |
+| L4 | **Bridge** | Python subprocess / IPC | 開発者 |
+| L5 | **Runtime** | LangGraph 1.1.8 (embed) | 本家 |
+
+**sqlite Map** は L1/L2 の persistence substrate。設計会話では名指さない (必要時は "storage substrate" と呼ぶ)。
+
+**L1/L2 の境界 = 概観/詳細の境界 = 人間/AI の担当境界 = `[` / `]` 移動の境界**。全部が同じ線で揃う。
 
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  USER                                                             │
-│  authoring intent  ←→  inspection gaze                            │
+│  👤 USER (authoring intent)  +  🤖 AI (fill-in)                  │
 └──────────────────────────────────────────────────────────────────┘
               ▲   │
-      4 axes  │   │  2 stances
+      4 axes  │   │  stance: authoring / inspection
               │   ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  L1 — Surface (viewer.ts)                                         │
-│    draws atoms (agent/tool/sub-agent/router/entry/terminal)       │
-│    + relations (static / conditional edges)                       │
-│    4 axes: structure / transition / concreteness / time           │
-│    2 stances: authoring (L0-L1) / inspection (L2-L5)              │
+│  🖼️ L1 — Outer  (scope boxes + edges、surface 外観)                │
+│    人間が骨格を描く: agent 名 / kind / 配置 / routing 接続          │
 │    rule: box = 骨格 + 負の情報 (赤/黄バッジ) のみ                 │
-│          detail = 右 panel (structured editor + trace + source)   │
+│    atoms 配置: agent / tool / sub-agent / router / entry/terminal │
 └──────────────────────────────────────────────────────────────────┘
-              │ read / write
-              ▼
+              ↕  [ / ] で出入り
 ┌──────────────────────────────────────────────────────────────────┐
-│  L2 — Map Model (sqlite, 単一正本)                                 │
-│    nodes / links / scopes / surfaces                              │
-│    namespaces:                                                     │
-│      m3e:display-*  → 描画 (shape, role)                          │
-│      m3e:layout-*   → レイアウト engine (lane-role, anchor)       │
-│      m3e:kernel-*   → execution (本 PJ で導入)                    │
-│    契約: execution 状態・trace・checkpoint は持たない             │
+│  🧠 L2 — Inner  (scope contents、scope の中身)                     │
+│    AI が詳細を書き込む + 人間が確認・微修正                        │
+│    inline data kinds:                                             │
+│      prompt-text / schema-json / channels-def / note (authoring)  │
+│      source-view / live-view                     (derived)        │
+│    + 子 scope (tool / sub-agent / router)                         │
+│    右 panel は L2 の structured editor として機能                 │
 └──────────────────────────────────────────────────────────────────┘
+              │ persistence: sqlite Map (substrate、設計上は名指さない)
+              │
               │ compileFromMap(map, scopeId) — pure, deterministic
               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  L3 — GraphSpec v0.1 (neutral JSON, derived)                      │
+│  📜 L3 — Spec  (GraphSpec v0.1、neutral JSON、derived)             │
 │    { version, scopeId, entry, nodes[], edges[], channels[] }     │
-│    atoms: agent / tool / subgraph / router / entry / terminal    │
 │    永続化しない、毎回再生成                                       │
 └──────────────────────────────────────────────────────────────────┘
               │ stdin (JSON), stdout (NDJSON)
               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  L4 — Bridge (Python subprocess, PJ04-local venv)                 │
-│    bridge.py  : spec → StateGraph build → invoke / stream         │
-│    registry.py: ref → Python callable / tool / reducer            │
-│    schema.py  : stdin / stdout protocol                           │
-│    IPCs:                                                           │
-│      invoke / stream / update_state / get_state_history           │
-│      introspect_callable / fetch_source  ← 具象軸 L3/L4 用        │
+│  🐍 L4 — Bridge  (Python subprocess、PJ04-local venv)              │
+│    bridge.py / registry.py / schema.py                            │
+│    IPCs: invoke / stream / update_state / get_state_history /     │
+│          introspect_callable / fetch_source                       │
 └──────────────────────────────────────────────────────────────────┘
               │ Python API
               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  L5 — LangGraph Runtime (1.1.8, embed、自前実装しない)            │
+│  ⚙️ L5 — Runtime  (LangGraph 1.1.8、embed、自前実装しない)         │
 │    StateGraph / Pregel / SqliteSaver / ToolNode / Interrupt       │
 │    thread_id → checkpoint chain (別 sqlite、PJ03 と分離)          │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**最大の判断**: L5 は**本家に丸投げ**。自前で再実装しない。我々は L1-L4 だけ作る。
+**最大の判断**:
+- **L1/L2 は authoring 2 段** (人間 / AI の担当が分かれる)
+- **L5 は本家丸投げ** (自前再実装しない)
+- **我々が作るのは L1-L4**、特に L1/L2 の分離と L4 Bridge
 
 ---
 
@@ -209,6 +272,8 @@ Authoring (tree):                Execution (graph):
 | **I9** | schema も map | State Schema は map の一部 (外部 Python file 正本にしない) |
 | **I10** | 時間軸と具象軸の独立 | checkpoint timeline と L0-L5 は別コントロール |
 | **I11** | tree と edge の役割分離 | agent 内の木は binding、agent 間の線は routing。兼用禁止 |
+| **I12** | node = scope 統一 | 全 node は scope。leaf / container の違いだけで同種。詳細は L2 Inner に格納 |
+| **I13** | AI-fill は L2 のみ | AI が書き込むのは L2 inline data node と子 scope。L1 Outer の骨格は AI が勝手に動かさない (人間の担当) |
 
 ---
 
@@ -335,7 +400,7 @@ Authoring (tree):                Execution (graph):
 
 ## 11. 1 文要約
 
-> **M3E-LangGraph stack**: Surface → Map → Spec → Bridge → Runtime の 5 層。
-> map を agent tree として書き、Spec に compile して Bridge 経由で Runtime で動かす。
-> 書くときは骨格だけ、読むときは panel と concreteness 軸で深掘りする。
-> **5 layer + 4 axis + 11 不変式**が一貫性の骨格。
+> **M3E-LangGraph stack**: Outer → Inner → Spec → Bridge → Runtime の 5 層。
+> 人間が L1 Outer (骨格) を描き、AI が L2 Inner (詳細) を埋め、M3E 内で compile → run まで完結する。
+> **全 node = scope 統一** (I12)、atom は kind で識別される scope (agent / tool / sub-agent / router / entry / terminal)。
+> **5 layer + 4 axis + 13 不変式 + 6-step workflow** が一貫性の骨格。
