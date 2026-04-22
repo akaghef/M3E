@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-22T00:00:00.000Z",
+  "state": {
+    "rootId": "root",
+    "nodes": {
+      "root": {
+        "id": "root",
+        "parentId": null,
+        "children": ["folder-a", "leaf-b"],
+        "nodeType": "folder",
+        "text": "Test Root",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "folder-a": {
+        "id": "folder-a",
+        "parentId": "root",
+        "children": ["inside-a1", "inside-a2"],
+        "nodeType": "folder",
+        "text": "Folder A",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "leaf-b": {
+        "id": "leaf-b",
+        "parentId": "root",
+        "children": [],
+        "nodeType": "text",
+        "text": "Leaf B",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "inside-a1": {
+        "id": "inside-a1",
+        "parentId": "folder-a",
+        "children": [],
+        "nodeType": "text",
+        "text": "Inside A1",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "inside-a2": {
+        "id": "inside-a2",
+        "parentId": "folder-a",
+        "children": [],
+        "nodeType": "text",
+        "text": "Inside A2",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      }
+    }
+  }
+}

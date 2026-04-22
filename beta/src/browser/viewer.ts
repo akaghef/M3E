@@ -9,6 +9,7 @@ const importBtn = document.getElementById("import-btn");
 const importMenu = document.getElementById("import-menu");
 const importFileBtn = document.getElementById("import-file-btn") as HTMLButtonElement | null;
 const importVaultBtn = document.getElementById("import-vault-btn") as HTMLButtonElement | null;
+const cameraFollowBtn = document.getElementById("camera-follow-btn") as HTMLButtonElement | null;
 const downloadBtn = document.getElementById("download-btn");
 const downloadMmBtn = document.getElementById("download-mm-btn");
 const exportVaultBtn = document.getElementById("export-vault-btn") as HTMLButtonElement | null;
@@ -335,6 +336,13 @@ let viewState: ViewState = {
   dragState: null,
   collapsedIds: new Set<string>(),
   reviewMode: false,
+  cameraMove: {
+    preset: "minimal",
+    toggle: true,
+    lockedNodeId: null,
+    userFitZoom: null,
+    userInteractedAt: 0,
+  },
 };
 applyLinearTextFontScale(false);
 syncLinearAdjustMenuUi();
@@ -1434,65 +1442,6 @@ function updateScopeSummary(): void {
   scopeSummaryEl.textContent = `outside: parent ${parentLabel} | child scopes ${childSummary}`;
 }
 
-function enterScope(scopeNodeId: string): boolean {
-  if (!map) {
-    return false;
-  }
-  const node = getNode(scopeNodeId);
-  if (!isFolderNode(node)) {
-    setStatus("Only folder nodes can open a scope.", true);
-    return false;
-  }
-  viewState.currentScopeRootId = node.id;
-  setSingleSelection(node.id, false);
-  render();
-  fitDocument();
-  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
-  // and board dimensions shifted after the scope change.
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
-  setStatus(`Entered scope: ${uiLabel(node)}`);
-  board.focus();
-  return true;
-}
-
-function exitScope(): boolean {
-  if (!map) {
-    return false;
-  }
-  const scopeRoot = currentScopeRootNode();
-  if (!scopeRoot || scopeRoot.id === map.state.rootId) {
-    setStatus("Already at root scope.");
-    return false;
-  }
-  let nextScopeId = map.state.rootId;
-  let cursor = scopeRoot.parentId;
-  while (cursor) {
-    const parent = map.state.nodes[cursor];
-    if (!parent) {
-      break;
-    }
-    if (parent.id === map.state.rootId || isFolderNode(parent)) {
-      nextScopeId = parent.id;
-      break;
-    }
-    cursor = parent.parentId ?? null;
-  }
-  viewState.currentScopeRootId = nextScopeId;
-  setSingleSelection(scopeRoot.parentId && map.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
-  render();
-  fitDocument();
-  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
-  // and board dimensions shifted after the scope change.
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
-  setStatus("Returned to parent scope.");
-  board.focus();
-  return true;
-}
-
 function makeSelectedFolder(): boolean {
   if (!map) {
     return false;
@@ -1611,7 +1560,9 @@ function jumpToAliasTarget(): boolean {
     setStatus("Broken alias cannot jump to target.", true);
     return false;
   }
-  viewState.currentScopeRootId = scopeRootForNode(target.id);
+  const targetScopeId = scopeRootForNode(target.id);
+  viewState.currentScopeId = targetScopeId;
+  viewState.currentScopeRootId = targetScopeId;
   setSingleSelection(target.id, false);
   render();
   fitDocument();
@@ -3772,15 +3723,39 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   }
   normalizeSelectionState();
   render();
+  triggerCameraMove("scope");
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
   updateScopeInUrl(scopeId);
 }
 
 function ExitScopeCommand(): void {
-  if (!map || viewState.scopeHistory.length === 0) {
+  if (!map) {
     return;
   }
-  const previousScopeId = viewState.scopeHistory.pop()!;
+  let previousScopeId: string;
+  if (viewState.scopeHistory.length > 0) {
+    previousScopeId = viewState.scopeHistory.pop()!;
+  } else {
+    const currentScopeId = normalizedCurrentScopeId();
+    if (!currentScopeId || currentScopeId === map.state.rootId) {
+      return;
+    }
+    const currentScope = map.state.nodes[currentScopeId];
+    let fallback = map.state.rootId;
+    let cursor = currentScope?.parentId ?? null;
+    while (cursor) {
+      const parent = map.state.nodes[cursor];
+      if (!parent) {
+        break;
+      }
+      if (parent.id === map.state.rootId || isFolderNode(parent)) {
+        fallback = parent.id;
+        break;
+      }
+      cursor = parent.parentId ?? null;
+    }
+    previousScopeId = fallback;
+  }
   viewState.currentScopeId = map.state.nodes[previousScopeId] ? previousScopeId : map.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
   if (!isNodeInScope(viewState.selectedNodeId)) {
@@ -3788,6 +3763,7 @@ function ExitScopeCommand(): void {
   }
   normalizeSelectionState();
   render();
+  triggerCameraMove("scope");
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
   updateScopeInUrl(viewState.currentScopeId);
 }
@@ -6544,6 +6520,59 @@ function fitDocument(): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Camera move dispatcher (Phase 1)
+// ---------------------------------------------------------------------------
+
+function shouldFireCameraMove(reason: CameraMoveTrigger): boolean {
+  if (reason === "command") {
+    return true;
+  }
+  const cm = viewState.cameraMove;
+  if (!cm.toggle || cm.preset === "off") {
+    return false;
+  }
+  if (cm.preset === "minimal") {
+    return reason === "scope";
+  }
+  return false;
+}
+
+function triggerCameraMove(reason: CameraMoveTrigger): void {
+  if (!shouldFireCameraMove(reason)) {
+    return;
+  }
+  fitDocument();
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
+}
+
+function setCameraMovePreset(preset: CameraMovePreset): void {
+  viewState.cameraMove.preset = preset;
+  syncCameraMoveUi();
+  setStatus(`Camera follow: ${preset}`);
+}
+
+function toggleCameraMove(): void {
+  viewState.cameraMove.toggle = !viewState.cameraMove.toggle;
+  syncCameraMoveUi();
+  setStatus(`Camera follow: ${viewState.cameraMove.toggle ? "on" : "off"}`);
+}
+
+function syncCameraMoveUi(): void {
+  if (!cameraFollowBtn) {
+    return;
+  }
+  const cm = viewState.cameraMove;
+  const active = cm.toggle && cm.preset !== "off";
+  cameraFollowBtn.classList.toggle("is-active", active);
+  cameraFollowBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  cameraFollowBtn.title = active
+    ? `Auto-fit: ${cm.preset} (click to disable)`
+    : "Auto-fit: off (click to enable)";
+}
+
 function findNodeIdByText(text: string): string {
   if (!map) {
     return "";
@@ -7054,6 +7083,11 @@ modeRapidBtn?.addEventListener("click", () => {
 modeDeepBtn?.addEventListener("click", () => {
   setThinkingMode("deep");
 });
+
+cameraFollowBtn?.addEventListener("click", () => {
+  toggleCameraMove();
+});
+syncCameraMoveUi();
 
 fileInput.addEventListener("change", (event: Event) => {
   const target = event.target as HTMLInputElement;
@@ -7863,13 +7897,22 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && event.key === "]") {
     event.preventDefault();
-    enterScope(viewState.selectedNodeId);
+    const selected = getNode(viewState.selectedNodeId);
+    if (!isFolderNode(selected)) {
+      setStatus("Only folder nodes can open a scope.", true);
+      return;
+    }
+    if (selected.id !== normalizedCurrentScopeId()) {
+      EnterScopeCommand(selected.id);
+      board.focus();
+    }
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && event.key === "[") {
     event.preventDefault();
-    exitScope();
+    ExitScopeCommand();
+    board.focus();
     return;
   }
 

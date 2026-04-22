@@ -77,6 +77,18 @@
         font-weight: 700;
       }
 
+      .camera-follow-btn {
+        min-width: 58px;
+        opacity: 0.55;
+      }
+
+      .camera-follow-btn.is-active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: #5221b2;
+        opacity: 1;
+      }
+
       .toolbar-sep {
         color: #ccc;
         font-size: 18px;
