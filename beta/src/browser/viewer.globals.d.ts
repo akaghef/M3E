@@ -9,8 +9,12 @@ declare const katex: {
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
+type SurfaceViewMode = "tree" | "system";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
+type MapNodeClass = "entity" | "scope";
+type SurfaceKind = "tree" | "system";
+type SurfaceLayout = "tree" | "flow-lr";
 
 interface TreeNode {
   id: string;
@@ -41,10 +45,36 @@ interface GraphLink {
   style?: GraphLinkStyle;
 }
 
+interface SurfaceNodeView {
+  x?: number;
+  y?: number;
+  flowCol?: number;
+  flowRow?: number;
+  shape?: "rect" | "diamond" | "rounded";
+}
+
+interface MapSurface {
+  id: string;
+  scopeId: string;
+  kind: SurfaceKind;
+  layout: SurfaceLayout;
+  nodeViews?: Record<string, SurfaceNodeView>;
+}
+
+interface MapScope {
+  id: string;
+  label: string;
+  rootNodeIds: string[];
+  relationIds: string[];
+  primarySurfaceId?: string;
+}
+
 interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
+  scopes?: Record<string, MapScope>;
+  surfaces?: Record<string, MapSurface>;
   linearNotesByScope?: Record<string, string>;
   linearTextFontScale?: number;
   linearPanelWidth?: number;
@@ -239,6 +269,7 @@ interface ViewState {
   scopeHistory: string[];
   currentScopeRootId: string;
   thinkingMode: ThinkingMode;
+  surfaceViewMode: SurfaceViewMode;
   zoom: number;
   cameraX: number;
   cameraY: number;
