@@ -1,10 +1,27 @@
 # PJ04 — Resume Cheatsheet (session handoff)
 
-**最終更新**: 2026-04-22 (system_design.md を L1 Outer / L2 Inner に再構成 + node=scope 統一 + Collaboration Stance 6-step)
+**最終更新**: 2026-04-22 (vision 確認: abstract → concrete 軸で VSCode 拡張まで一本化)
 **ブランチ**: `prj/04_MermaidSystemLangGraph`
 **前セッション**: Claude (edge routing v3 完了)
-**今セッション**: Claude (reload 時の system mode 復元 bug fix + tree edge を Bezier に戻す + LangGraph integration plan 確定)
-**次の主目的**: **LangGraph 内部取り込み Phase A** (contract freeze + vitest) — 詳細は [docs/langgraph_integration_plan.md](docs/langgraph_integration_plan.md)
+**今セッション**: Claude (system_design L1/L2 + global_strategy 起票 + vision reaffirm)
+**次の主目的**: **Phase 2 LAY queue** (T-LAY-1 / T-LAY-3 並列) — 詳細は [docs/global_strategy.md §6](docs/global_strategy.md) / [docs/layout_strategy.md](docs/layout_strategy.md)
+
+---
+
+## Vision (akaghef、2026-04-22 確認)
+
+> **System の abbreviated design を描き → AI で detail 化 → data structure protocol を作り → LangGraph Python script を書いて実行 → VSCode 拡張 (M3E) として system 化する**。全体を貫くのは **abstract ↔ concrete 軸**。
+
+**3 行に圧縮**:
+1. **Flow**: Sketch (抽象) → Fill (詳細) → Protocol (data 構造) → Python (script) → Run → VSCode system 化
+2. **組織原理**: abstract ↔ concrete 軸が全工程を貫く (Collaboration Stance 6-step も、concreteness axis L0-L5 も、この軸の各局面)
+3. **Delivery**: M3E VSCode 拡張内で LangGraph system が authoring + run + inspect まで完結
+
+**既存 doc との対応**:
+- Sketch / Fill / Review / Tune / Run / Iterate = [system_design.md §0](docs/system_design.md) Collaboration Stance 6-step
+- data structure protocol = [state_and_channels.md](docs/state_and_channels.md) の channels-def / reducer protocol (L2 Inner に格納)
+- Python script 生成 = [langgraph_integration_plan.md](docs/langgraph_integration_plan.md) の compile L3 Spec → L4 Bridge
+- abstract ↔ concrete axis = [concreteness_axis.md](docs/concreteness_axis.md) L0-L5 (VIEW 限定と読んできたが、**workflow 全体の貫き軸として読み直す**)
 
 ---
 
