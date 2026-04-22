@@ -28,9 +28,7 @@ Agents should prioritize small validated changes over broad refactors.
    - `docs/00_Home/Home.md`
 2. Current priorities and progress:
    - `docs/00_Home/Current_Status.md`
-3. Daily execution log:
-   - `docs/daily/YYMMDD.md`
-4. Operations rules:
+3. Operations rules:
    - `docs/06_Operations/Documentation_Rules.md`
 
 ## Mandatory Session Context
@@ -54,10 +52,10 @@ If this context check is missing, the task is considered not started.
 
 ## Definition of Update-Complete
 
-A task is update-complete only when all three are done:
+A task is update-complete only when all required state sync is done:
 
 1. Changes are committed.
-2. Daily note is updated (`docs/daily/YYMMDD.md`).
+2. Shared map state / task state is updated when the task affects ongoing coordination.
 3. Current status is updated by manager (`docs/00_Home/Current_Status.md`) when status has changed.
 
 If any item is missing, task state is still in-progress.
@@ -174,10 +172,9 @@ If checks fail or rebase is not possible, stop and escalate to `akaghef`.
 3. Implement with minimal changes.
 4. Run a local verification step.
 5. Update docs using split ownership:
-   - UpdateLog goes to `docs/daily/YYMMDD.md`.
    - `Current_Status.md` keeps current snapshot only.
    - Subordinates treat `Current_Status.md` as read-only.
-   - Manager updates `Current_Status.md` by referencing subordinate daily logs.
+   - Manager updates `Current_Status.md` when active strategy status actually changes.
    - Rough TODOs go to `docs/06_Operations/Todo_Pool.md`.
 6. Commit with an imperative message.
 

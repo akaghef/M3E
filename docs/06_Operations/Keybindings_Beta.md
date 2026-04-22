@@ -19,8 +19,8 @@
 | `g` | — |
 | `h` | — |
 | `i` | `toggleMetaPanel` |
-| `j` | `navigateRight`（子方向 / deeper） |
-| `k` | `navigateLeft`（親方向 / shallower） |
+| `j` | tree: `navigateRight` / system: `increaseSystemDetail` |
+| `k` | tree: `navigateLeft` / system: `decreaseSystemDetail` |
 | `l` | `markLinkSource` |
 | `m` | `markReparent` |
 | `n` | — |
@@ -74,8 +74,6 @@
 | `Ctrl+Shift+z` | `redo` |
 | `Ctrl+Shift+t` | `generateRelatedTopics` |
 | `Ctrl+Shift+l` | `applyMarkedLink` |
-| `Ctrl+[` | `exitScope` |
-| `Ctrl+]` | `enterScope` |
 | `Ctrl+0` | `fitAll` |
 
 ---
@@ -91,6 +89,8 @@
 | `0` | `zoomReset` (100%) |
 | `-` | `zoomOut` |
 | `=` / `+` | `zoomIn` |
+| `[` | `exitScope` |
+| `]` | `enterScope` |
 
 ---
 
@@ -102,7 +102,6 @@
 | `Enter` | `startEditCursorEnd` |
 | `Shift+Enter` | `startEditSelectAll` |
 | `Ctrl+Enter` | `cancelAndEditNext`（`Esc` -> `Down` -> `Enter` と同等） |
-| `Alt+Enter` | `enterScope` |
 | `Alt+J` | `jumpToAliasTarget` |
 | `Alt+A` | `addAliasAsChild` |
 | `Alt+V` | `cycleView`（focus → fit all のトグル） |
@@ -123,6 +122,8 @@
 
 ## 矢印キー
 
+### tree surface
+
 | キー | アクション |
 |------|------------|
 | `↑` | `navigateUp` |
@@ -133,3 +134,28 @@
 | `Shift+↓` | `extendSelectionDown` |
 | `Shift+←` | — |
 | `Shift+→` | — |
+
+補足:
+
+- tree では `→` は通常どおり deeper 移動。folder を選択していて、かつそのノードに子が無い場合だけ `enterScope` として扱う。
+- tree では `[` / `]` でも scope を出入りできる。
+- tree では `J` / `K` は child / parent 方向の移動。
+
+### system surface（`m3e:layout=flow-lr`）
+
+| キー | アクション |
+|------|------------|
+| `←` | `navigateLeft`（左隣へ移動） |
+| `→` | `navigateRight`（右隣へ移動） |
+| `↑` | `navigateUp`（上段へ移動） |
+| `↓` | `navigateDown`（下段へ移動） |
+| `Shift+↑` | `extendSelectionUp` |
+| `Shift+↓` | `extendSelectionDown` |
+| `[` | `exitScope` |
+| `]` | `enterScope` |
+
+補足:
+
+- system surface では矢印キーは flow 配置上の移動に専用化される。
+- system surface では `→` による `enterScope` は行わず、subsystem の出入りは `[` / `]` に統一する。
+- system surface では `J` / `K` は詳細度の上げ下げ。`J` で subsystem box 内の 1 段下 preview を開き、`K` で閉じる。

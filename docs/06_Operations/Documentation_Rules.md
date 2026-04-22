@@ -11,14 +11,14 @@
 
 開発中の会話、試行、決定を散らさず保存し、あとで読んだときに「何が決まっていて、何がまだ決まっていないか」がすぐ分かる状態を保つ。
 
-## 現在の運用スコープ（2026-04-02 以降）
+## 現在の運用スコープ（2026-04-22 以降）
 
-1. `Update Log` は `docs/daily/YYMMDD.md` に追記する
-2. `Current_Status.md` は「今後数日の Strategy 断面」のみ保持する
-3. 粗い TODO は `docs/06_Operations/Todo_Pool.md` にプールする
+1. `Current_Status.md` は「今後数日の Strategy 断面」のみ保持する
+2. 粗い TODO は `docs/06_Operations/Todo_Pool.md` にプールする
+3. 日次ログ (`docs/daily/YYMMDD.md`) は必須更新対象から外す
 4. 役割分担:
-	- 部下: daily に完了実績を書き足す。`Current_Status.md` は read-only として扱う
-	- 上司: 部下の daily 記録を参照して `Current_Status.md` の status 項目を更新する
+	- 部下: 実装・検証・必要な map / task 状態更新を行う。`Current_Status.md` は read-only として扱う
+	- 上司: active strategy の status が変わったときに `Current_Status.md` を更新する
 5. 作業領域は worktree で分離し、同一ファイルの同時編集を避ける
 
 ## セッション開始ゲート（全エージェント共通）
@@ -105,14 +105,13 @@ bootstrap で次を必須確認する:
 
 ### 更新完了の定義
 
-M3E では、次の 4 条件を満たした時点を「更新完了」とする。
+M3E では、次の 3 条件を満たした時点を「更新完了」とする。
 
 1. コードまたは文書の変更がコミットされている
-2. `docs/daily/YYMMDD.md` に作業内容が追記されている
-3. マップ (`DEV/strategy/` のタスクノード、`DEV/Agent Status`) が現状を反映している
-4. manager は必要に応じて `00_Home/Current_Status.md` を更新する（manager 以外は対象外）
+2. マップ (`DEV/strategy/` のタスクノード、`DEV/Agent Status`) が現状を反映している
+3. manager は必要に応じて `00_Home/Current_Status.md` を更新する（manager 以外は対象外）
 
-この 4 条件のうち 1 つでも未実施なら、作業は「進行中」として扱う。
+この 3 条件のうち 1 つでも未実施なら、作業は「進行中」として扱う。
 
 ### 追加するタイミング
 
