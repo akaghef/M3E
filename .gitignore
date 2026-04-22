@@ -55,3 +55,8 @@ scripts/ops/launch-cloud-sync.local.bat
 
 # API performance logs (local only, may contain path/client metadata)
 /logs/
+
+# PJ04: iteration artifacts (png/json/log). Keep README.md summaries only.
+projects/PJ04_MermaidSystemLangGraph/loops/**/*.png
+projects/PJ04_MermaidSystemLangGraph/loops/**/*.json
+projects/PJ04_MermaidSystemLangGraph/loops/**/*.log
