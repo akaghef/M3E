@@ -39,6 +39,10 @@
             <button id="mode-rapid" class="mode-btn is-active" type="button">Rapid</button>
             <button id="mode-deep" class="mode-btn" type="button">Deep</button>
           </div>
+          <div class="mode-switch" aria-label="Surface view mode">
+            <button id="view-tree" class="mode-btn is-active" type="button">Tree</button>
+            <button id="view-system" class="mode-btn" type="button">System</button>
+          </div>
           <div class="import-wrap" data-edit-only>
             <button id="import-btn" type="button">Import ▾</button>
             <div id="import-menu" class="export-menu" hidden>
@@ -163,14 +167,16 @@
             <div class="cheatsheet-group">
               <div class="cheatsheet-group-title">Navigation</div>
               <div class="cheatsheet-row"><kbd>↑↓←→</kbd><span>Move selection</span></div>
+              <div class="cheatsheet-row"><kbd>[</kbd> / <kbd>]</kbd><span>Exit / enter scope</span></div>
               <div class="cheatsheet-row"><kbd>Shift+↑↓</kbd><span>Extend selection</span></div>
-              <div class="cheatsheet-row"><kbd>J</kbd><span>Deeper (child)</span></div>
-              <div class="cheatsheet-row"><kbd>K</kbd><span>Shallower (parent)</span></div>
+              <div class="cheatsheet-row"><kbd>J</kbd><span>Tree: deeper / Flow LR: more detail</span></div>
+              <div class="cheatsheet-row"><kbd>K</kbd><span>Tree: shallower / Flow LR: less detail</span></div>
               <div class="cheatsheet-row"><kbd>Alt+H</kbd><span>Open Home (map list)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+E</kbd><span>Entity list panel</span></div>
               <div class="cheatsheet-row"><kbd>Alt+D</kbd><span>Markdown preview (details/note)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+V</kbd><span>Toggle focus / fit</span></div>
               <div class="cheatsheet-row"><kbd>Alt+J</kbd><span>Jump to alias target</span></div>
+              <div class="cheatsheet-row"><kbd>Flow LR</kbd><span>Arrows follow left/right and up/down lanes</span></div>
             </div>
             <div class="cheatsheet-group">
               <div class="cheatsheet-group-title">Editing</div>
@@ -227,12 +233,12 @@
           <div class="automaton-node automaton-navigating">Navigating</div>
           <div class="automaton-arrows">
             <div class="automaton-arrow automaton-arrow-right">
-              <span class="automaton-label">Enter / F2 / Tab / DblClick</span>
+              <span class="automaton-label">] / Enter / F2 / Tab / DblClick</span>
               <svg viewBox="0 0 120 12" class="automaton-svg"><path d="M0 6 L110 6" /><polygon points="110,1 120,6 110,11" /></svg>
             </div>
             <div class="automaton-arrow automaton-arrow-left">
               <svg viewBox="0 0 120 12" class="automaton-svg"><path d="M10 6 L120 6" /><polygon points="10,1 0,6 10,11" /></svg>
-              <span class="automaton-label">Esc / Blur</span>
+              <span class="automaton-label">[ / Esc / Blur</span>
             </div>
           </div>
           <div class="automaton-node automaton-editing">Editing</div>

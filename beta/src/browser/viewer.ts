@@ -5,6 +5,8 @@ const stopVisualCheckBtn = document.getElementById("stop-visual-check");
 const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
+const viewTreeBtn = document.getElementById("view-tree");
+const viewSystemBtn = document.getElementById("view-system");
 const importBtn = document.getElementById("import-btn");
 const importMenu = document.getElementById("import-menu");
 const importFileBtn = document.getElementById("import-file-btn") as HTMLButtonElement | null;
@@ -169,6 +171,16 @@ const LINEAR_TEXT_FONT_SCALE_MAX = 1.4;
 const LINEAR_TEXT_FONT_SCALE_STEP = 0.1;
 const LINEAR_PANEL_WIDTH_MIN = 220;
 const LINEAR_PANEL_WIDTH_MAX = 10000;
+const FLOW_SURFACE_PREVIEW_MAX_DETAIL = 1;
+const FLOW_SURFACE_PREVIEW_FONT = 24;
+const FLOW_SURFACE_PREVIEW_TITLE_HEIGHT = 38;
+const FLOW_SURFACE_PREVIEW_COL_GAP = 28;
+const FLOW_SURFACE_PREVIEW_ROW_GAP = 30;
+const FLOW_SURFACE_PREVIEW_PAD_X = 26;
+const FLOW_SURFACE_PREVIEW_PAD_Y = 18;
+const FLOW_SURFACE_PREVIEW_NODE_PAD_X = 14;
+const FLOW_SURFACE_PREVIEW_NODE_HEIGHT = 34;
+const FLOW_SURFACE_ROW_GAP = 84;
 
 interface BcStateMessage {
   type: "STATE_UPDATE";
@@ -226,6 +238,7 @@ let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
 let suppressInlineBlurCommit = false;
+let flowSurfaceDetailLevel = 0;
 const linearNotesByScope: Record<string, string> = {};
 let linearPanelCanvasWidth = 340;
 let linearResizeState: { pointerId: number; startClientX: number; startCanvasWidth: number } | null = null;
@@ -332,6 +345,7 @@ let viewState: ViewState = {
   scopeHistory: [],
   currentScopeRootId: "",
   thinkingMode: "rapid",
+  surfaceViewMode: "tree",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -359,12 +373,30 @@ function thinkingModeLabel(mode: ThinkingMode): string {
   }
 }
 
+function surfaceViewModeLabel(mode: SurfaceViewMode): string {
+  return mode === "system" ? "System" : "Tree";
+}
+
+function inferSurfaceViewModeForScope(scopeId: string): SurfaceViewMode {
+  if (!map || !map.state.nodes[scopeId]) {
+    return "tree";
+  }
+  const scope = map.state.scopes?.[inferredScopeId(scopeId)];
+  const surface = scope?.primarySurfaceId ? map.state.surfaces?.[scope.primarySurfaceId] : null;
+  if (surface?.kind) {
+    return surface.kind;
+  }
+  return rawAttr(map.state.nodes[scopeId], "m3e:layout") === "flow-lr" ? "system" : "tree";
+}
+
 function syncThinkingModeUi(): void {
   const mode = viewState.thinkingMode;
-  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)}`;
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}`;
   modeFlashBtn?.classList.toggle("is-active", mode === "flash");
   modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
+  viewTreeBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "tree");
+  viewSystemBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "system");
 }
 
 function setThinkingMode(mode: ThinkingMode): void {
@@ -375,6 +407,20 @@ function setThinkingMode(mode: ThinkingMode): void {
   viewState.thinkingMode = mode;
   syncThinkingModeUi();
   setStatus(`Mode: ${thinkingModeLabel(mode)}`);
+}
+
+function setSurfaceViewMode(mode: SurfaceViewMode): void {
+  if (viewState.surfaceViewMode === mode) {
+    syncThinkingModeUi();
+    return;
+  }
+  viewState.surfaceViewMode = mode;
+  syncMapModelStateFromRuntime();
+  _linearPanelLayoutDirty = true;
+  syncThinkingModeUi();
+  render();
+  scheduleAutosave();
+  setStatus(`View: ${surfaceViewModeLabel(mode)}`);
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -699,6 +745,8 @@ function createNodeRecord(id: string, parentId: string | null, text = "New Node"
 
 function createEmptyDoc(): SavedMap {
   const rootId = newId();
+  const rootScopeId = `scope:${rootId}`;
+  const rootSurfaceId = `surface:${rootId}:tree`;
   return {
     version: 1,
     savedAt: nowIso(),
@@ -706,6 +754,24 @@ function createEmptyDoc(): SavedMap {
       rootId,
       nodes: {
         [rootId]: createNodeRecord(rootId, null, "Research Root"),
+      },
+      scopes: {
+        [rootScopeId]: {
+          id: rootScopeId,
+          label: "Root",
+          rootNodeIds: [rootId],
+          relationIds: [],
+          primarySurfaceId: rootSurfaceId,
+        },
+      },
+      surfaces: {
+        [rootSurfaceId]: {
+          id: rootSurfaceId,
+          scopeId: rootScopeId,
+          kind: "tree",
+          layout: "tree",
+          nodeViews: {},
+        },
       },
     },
   };
@@ -834,6 +900,108 @@ function setLinearTextFontScale(nextScale: number, showStatus = true): void {
   }
 }
 
+function inferredScopeId(nodeId: string): string {
+  return `scope:${nodeId}`;
+}
+
+function inferredSurfaceId(nodeId: string, kind: SurfaceKind): string {
+  return `surface:${nodeId}:${kind}`;
+}
+
+function sanitizeMapModelState(state: AppState): void {
+  const rawScopes = state.scopes && typeof state.scopes === "object" ? state.scopes : {};
+  const rawSurfaces = state.surfaces && typeof state.surfaces === "object" ? state.surfaces : {};
+  const scopes: Record<string, MapScope> = {};
+  const surfaces: Record<string, MapSurface> = {};
+  const folderScopeNodeIds = Object.values(state.nodes)
+    .filter((node) => node.id === state.rootId || isFolderNode(node))
+    .map((node) => node.id);
+  const localScopeRootForNode = (nodeId: string): string => {
+    let cursor: string | null = nodeId;
+    let nearestFolderId: string | null = null;
+    while (cursor) {
+      const current: TreeNode | undefined = state.nodes[cursor];
+      if (!current) break;
+      if (current.nodeType === "folder") {
+        nearestFolderId = current.id;
+      }
+      cursor = current.parentId ?? null;
+    }
+    return nearestFolderId || state.rootId;
+  };
+
+  folderScopeNodeIds.forEach((nodeId) => {
+    const node = state.nodes[nodeId];
+    if (!node) return;
+    const scopeId = inferredScopeId(nodeId);
+    const existingScope = rawScopes[scopeId];
+    const surfaceKind: SurfaceKind = rawAttr(node, "m3e:layout") === "flow-lr" ? "system" : "tree";
+    const surfaceId = existingScope?.primarySurfaceId || inferredSurfaceId(nodeId, surfaceKind);
+    const existingSurface = rawSurfaces[surfaceId];
+    const relationIds = Object.values(state.links || {})
+      .filter((link) => {
+        const source = state.nodes[link.sourceNodeId];
+        const target = state.nodes[link.targetNodeId];
+        if (!source || !target) return false;
+        return localScopeRootForNode(source.id) === nodeId || localScopeRootForNode(target.id) === nodeId;
+      })
+      .map((link) => link.id);
+
+    scopes[scopeId] = {
+      id: existingScope?.id || scopeId,
+      label: existingScope?.label || uiLabel(node) || (nodeId === state.rootId ? "Root" : nodeId),
+      rootNodeIds: Array.isArray(existingScope?.rootNodeIds) && existingScope!.rootNodeIds.length > 0
+        ? existingScope!.rootNodeIds.filter((id) => Boolean(state.nodes[id]))
+        : [nodeId],
+      relationIds,
+      primarySurfaceId: surfaceId,
+    };
+
+    surfaces[surfaceId] = {
+      id: existingSurface?.id || surfaceId,
+      scopeId,
+      kind: existingSurface?.kind || surfaceKind,
+      layout: existingSurface?.layout || (surfaceKind === "system" ? "flow-lr" : "tree"),
+      nodeViews: existingSurface?.nodeViews || {},
+    };
+  });
+
+  state.scopes = scopes;
+  state.surfaces = surfaces;
+}
+
+function syncMapModelStateFromRuntime(): void {
+  if (!map) {
+    return;
+  }
+  sanitizeMapModelState(map.state);
+  const scopeId = currentScopeRootId();
+  const modelScopeId = inferredScopeId(scopeId);
+  const scope = map.state.scopes?.[modelScopeId];
+  const surfaceId = scope?.primarySurfaceId;
+  if (!scope || !surfaceId || !map.state.surfaces?.[surfaceId]) {
+    return;
+  }
+  const surface = map.state.surfaces[surfaceId]!;
+  surface.kind = viewState.surfaceViewMode;
+  surface.layout = viewState.surfaceViewMode === "system" ? "flow-lr" : "tree";
+  if (!surface.nodeViews) {
+    surface.nodeViews = {};
+  }
+  Object.values(map.state.nodes).forEach((node) => {
+    const nodeView = surface.nodeViews![node.id] || {};
+    const flowCol = rawAttr(node, "m3e:flow-col");
+    const flowRow = rawAttr(node, "m3e:flow-row");
+    const shape = rawAttr(node, "m3e:shape") || rawAttr(node, "pj04:shape");
+    if (flowCol) nodeView.flowCol = Number(flowCol);
+    if (flowRow) nodeView.flowRow = Number(flowRow);
+    if (shape === "rect" || shape === "diamond" || shape === "rounded") {
+      nodeView.shape = shape;
+    }
+    surface.nodeViews![node.id] = nodeView;
+  });
+}
+
 function ensureDocShape(payload: unknown): SavedMap {
   const p = payload as Record<string, unknown>;
   const candidate = (p && p["state"])
@@ -882,6 +1050,7 @@ function ensureDocShape(payload: unknown): SavedMap {
   if (candidate.state.linearPanelWidth != null) {
     candidate.state.linearPanelWidth = Math.max(LINEAR_PANEL_WIDTH_MIN, Math.min(LINEAR_PANEL_WIDTH_MAX, Number(candidate.state.linearPanelWidth) || 340));
   }
+  sanitizeMapModelState(candidate.state);
   return candidate as SavedMap;
 }
 
@@ -936,7 +1105,7 @@ function sanitizeNumeric(raw: string | undefined, min: number, max: number): num
 function sanitizeShape(raw: string | undefined): string | null {
   if (!raw) return null;
   const v = raw.trim().toLowerCase();
-  if (v === "rect" || v === "rounded" || v === "pill") return v;
+  if (v === "rect" || v === "rounded" || v === "pill" || v === "diamond") return v;
   return null;
 }
 
@@ -1127,7 +1296,108 @@ function shapeRx(shape: string | null, isRoot: boolean): number {
   if (shape === "rect") return isRoot ? 8 : 2;
   if (shape === "rounded") return isRoot ? 24 : 12;
   if (shape === "pill") return 999;
+  if (shape === "diamond") return 0;
   return isRoot ? 60 : 12;
+}
+
+function effectiveNodeStyleAttrs(node: TreeNode): NodeStyleAttrs {
+  const base = readNodeStyleAttrs(node.attributes || {});
+  const view = surfaceNodeView(node.id);
+  if (view?.shape) {
+    base.shape = view.shape;
+  }
+  return base;
+}
+
+function rawAttr(node: TreeNode | null | undefined, key: string): string {
+  return (node?.attributes?.[key] || "").trim();
+}
+
+function isFlowSurfaceNode(node: TreeNode | null | undefined): boolean {
+  if (!node) return false;
+  return rawAttr(node, "m3e:layout") === "flow-lr";
+}
+
+function isScopePortalNode(node: TreeNode | null | undefined): boolean {
+  if (!isFolderNode(node)) return false;
+  return rawAttr(node, "m3e:display-role") === "subsystem"
+    || rawAttr(node, "pj04:scope-backed") === "true"
+    || rawAttr(node, "m3e:scope-portal") === "true";
+}
+
+function isReferenceNode(node: TreeNode | null | undefined): boolean {
+  if (!node) return false;
+  return rawAttr(node, "m3e:display-role") === "reference";
+}
+
+function currentMapSurface(): MapSurface | null {
+  if (!map) return null;
+  const scope = map.state.scopes?.[inferredScopeId(currentScopeRootId())];
+  if (!scope?.primarySurfaceId) return null;
+  return map.state.surfaces?.[scope.primarySurfaceId] || null;
+}
+
+function surfaceNodeView(nodeId: string): SurfaceNodeView | null {
+  const surface = currentMapSurface();
+  return surface?.nodeViews?.[nodeId] || null;
+}
+
+function flowColOf(node: TreeNode | null | undefined, fallback: number): number {
+  if (node) {
+    const surfaceValue = surfaceNodeView(node.id)?.flowCol;
+    if (Number.isFinite(surfaceValue)) {
+      return Number(surfaceValue);
+    }
+  }
+  const raw = rawAttr(node, "m3e:flow-col");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function flowRowOf(node: TreeNode | null | undefined, fallback = 0): number {
+  if (node) {
+    const surfaceValue = surfaceNodeView(node.id)?.flowRow;
+    if (Number.isFinite(surfaceValue)) {
+      return Number(surfaceValue);
+    }
+  }
+  const raw = rawAttr(node, "m3e:flow-row");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function diagramLabel(node: TreeNode, nodeStyles: NodeStyleAttrs): string {
+  const base = uiLabel(node) || "(empty)";
+  const withIcon = nodeStyles.icon ? `${nodeStyles.icon} ${base}` : base;
+  if (isScopePortalNode(node)) {
+    return `[${withIcon}]`;
+  }
+  return withIcon;
+}
+
+function rectPath(x: number, y: number, w: number, h: number, rx: number): string {
+  if (rx <= 0) {
+    return `M ${x} ${y} H ${x + w} V ${y + h} H ${x} Z`;
+  }
+  const r = Math.min(rx, w / 2, h / 2);
+  return [
+    `M ${x + r} ${y}`,
+    `H ${x + w - r}`,
+    `Q ${x + w} ${y} ${x + w} ${y + r}`,
+    `V ${y + h - r}`,
+    `Q ${x + w} ${y + h} ${x + w - r} ${y + h}`,
+    `H ${x + r}`,
+    `Q ${x} ${y + h} ${x} ${y + h - r}`,
+    `V ${y + r}`,
+    `Q ${x} ${y} ${x + r} ${y}`,
+    "Z",
+  ].join(" ");
+}
+
+function diamondPath(cx: number, cy: number, w: number, h: number): string {
+  const halfW = w / 2;
+  const halfH = h / 2;
+  return `M ${cx} ${cy - halfH} L ${cx + halfW} ${cy} L ${cx} ${cy + halfH} L ${cx - halfW} ${cy} Z`;
 }
 
 const TEXT_MEASURE_FONT_FAMILY = "\"Segoe UI\", \"Yu Gothic UI\", sans-serif";
@@ -1452,7 +1722,9 @@ function enterScope(scopeNodeId: string): boolean {
     return false;
   }
   viewState.currentScopeRootId = node.id;
-  setSingleSelection(node.id, false);
+  viewState.currentScopeId = node.id;
+  viewState.surfaceViewMode = inferSurfaceViewModeForScope(node.id);
+  setSingleSelection(preferredSelectionForScope(node.id), false);
   render();
   fitDocument();
   // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
@@ -1487,8 +1759,15 @@ function exitScope(): boolean {
     }
     cursor = parent.parentId ?? null;
   }
+  const exitedScopeId = scopeRoot.id;
   viewState.currentScopeRootId = nextScopeId;
-  setSingleSelection(scopeRoot.parentId && map.state.nodes[scopeRoot.parentId] ? scopeRoot.parentId : nextScopeId, false);
+  viewState.currentScopeId = nextScopeId;
+  viewState.surfaceViewMode = inferSurfaceViewModeForScope(nextScopeId);
+  const selectionAfterExit =
+    map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
+      ? exitedScopeId
+      : preferredSelectionForScope(nextScopeId);
+  setSingleSelection(selectionAfterExit, false);
   render();
   fitDocument();
   // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
@@ -1864,6 +2143,12 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
+  if (viewState.surfaceViewMode === "system") {
+    linearPanelEl.hidden = true;
+    return;
+  }
+  linearPanelEl.hidden = false;
+
   if (!map || !lastLayout || visibleOrder.length === 0) {
     linearPanelEl.style.removeProperty("left");
     linearPanelEl.style.removeProperty("top");
@@ -1987,6 +2272,282 @@ function visibleChildren(node: TreeNode): string[] {
     return [];
   }
   return (node.children || []).filter((childId) => isNodeInScope(childId));
+}
+
+function currentSurfaceNode(): TreeNode | null {
+  return currentScopeRootNode();
+}
+
+function currentSurfaceIsFlowMode(): boolean {
+  return viewState.surfaceViewMode === "system";
+}
+
+interface FlowPreviewLayout {
+  childIds: string[];
+  totalWidth: number;
+  totalHeight: number;
+  positions: Record<string, { x: number; y: number; w: number; h: number }>;
+}
+
+function currentFlowSurfaceDetailLevel(): number {
+  return currentSurfaceIsFlowMode() ? flowSurfaceDetailLevel : 0;
+}
+
+function buildFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewLayout | null {
+  if (!map || !node || !isFolderNode(node) || currentFlowSurfaceDetailLevel() <= 0) {
+    return null;
+  }
+  const childIds = (node.children || []).filter((childId) => Boolean(map!.state.nodes[childId]));
+  if (childIds.length === 0) {
+    return null;
+  }
+
+  const colMaxWidth: Record<number, number> = {};
+  const rowMaxHeight: Record<number, number> = {};
+  const childMetrics: Record<string, { w: number; h: number; col: number; row: number }> = {};
+  let maxCol = 0;
+  let maxRow = 0;
+
+  childIds.forEach((childId, index) => {
+    const child = map!.state.nodes[childId]!;
+    const childStyles = readNodeStyleAttrs(child.attributes || {});
+    const childLabel = diagramLabel(child, childStyles);
+    const measured = isLatexNode(child)
+      ? measureLatex(child.text)
+      : measureNodeLabel(childLabel, FLOW_SURFACE_PREVIEW_FONT);
+    const w = Math.max(110, measured.w + FLOW_SURFACE_PREVIEW_NODE_PAD_X * 2);
+    const h = Math.max(FLOW_SURFACE_PREVIEW_NODE_HEIGHT, measured.h + 10);
+    const col = flowColOf(child, index);
+    const row = flowRowOf(child, 0);
+    childMetrics[childId] = { w, h, col, row };
+    colMaxWidth[col] = Math.max(colMaxWidth[col] ?? 0, w);
+    rowMaxHeight[row] = Math.max(rowMaxHeight[row] ?? 0, h);
+    maxCol = Math.max(maxCol, col);
+    maxRow = Math.max(maxRow, row);
+  });
+
+  const xByCol: Record<number, number> = {};
+  let cursorX = FLOW_SURFACE_PREVIEW_PAD_X;
+  for (let col = 0; col <= maxCol; col += 1) {
+    xByCol[col] = cursorX;
+    cursorX += (colMaxWidth[col] ?? 120) + FLOW_SURFACE_PREVIEW_COL_GAP;
+  }
+
+  const yByRow: Record<number, number> = {};
+  let cursorY = FLOW_SURFACE_PREVIEW_PAD_Y + FLOW_SURFACE_PREVIEW_TITLE_HEIGHT;
+  for (let row = 0; row <= maxRow; row += 1) {
+    yByRow[row] = cursorY;
+    cursorY += (rowMaxHeight[row] ?? FLOW_SURFACE_PREVIEW_NODE_HEIGHT) + FLOW_SURFACE_PREVIEW_ROW_GAP;
+  }
+
+  const positions: Record<string, { x: number; y: number; w: number; h: number }> = {};
+  childIds.forEach((childId) => {
+    const metric = childMetrics[childId]!;
+    positions[childId] = {
+      x: xByCol[metric.col]!,
+      y: yByRow[metric.row]!,
+      w: metric.w,
+      h: metric.h,
+    };
+  });
+
+  return {
+    childIds,
+    positions,
+    totalWidth: Math.max(220, cursorX - FLOW_SURFACE_PREVIEW_COL_GAP + FLOW_SURFACE_PREVIEW_PAD_X),
+    totalHeight: Math.max(120, cursorY - FLOW_SURFACE_PREVIEW_ROW_GAP + FLOW_SURFACE_PREVIEW_PAD_Y),
+  };
+}
+
+function preferredSelectionForScope(scopeId: string): string {
+  if (!map || !map.state.nodes[scopeId]) {
+    return scopeId;
+  }
+  const scopeNode = map.state.nodes[scopeId]!;
+  if (isFlowSurfaceNode(scopeNode)) {
+    const firstVisibleChild = visibleChildren(scopeNode)[0];
+    if (firstVisibleChild && map.state.nodes[firstVisibleChild]) {
+      return firstVisibleChild;
+    }
+  }
+  return scopeId;
+}
+
+function representativeNodeIdInCurrentScope(nodeId: string): string | null {
+  if (!map) return null;
+  const scopeId = currentScopeRootId();
+  if (!scopeId || !map.state.nodes[nodeId]) return null;
+  if (nodeId === scopeId) return nodeId;
+  let cursor: string | null = nodeId;
+  let prev: string | null = null;
+  while (cursor) {
+    if (cursor === scopeId) {
+      return prev;
+    }
+    prev = cursor;
+    cursor = map.state.nodes[cursor]?.parentId ?? null;
+  }
+  return null;
+}
+
+function edgeEndBetween(fromPos: NodePosition, toPos: NodePosition): { x: number; y: number } {
+  const fromCx = fromPos.x + fromPos.w / 2;
+  const fromCy = fromPos.y;
+  const toCx = toPos.x + toPos.w / 2;
+  const toCy = toPos.y;
+  const dx = toCx - fromCx;
+  const dy = toCy - fromCy;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { x: fromPos.x + fromPos.w + VIEWER_TUNING.layout.edgeStartPad, y: fromCy }
+      : { x: fromPos.x - VIEWER_TUNING.layout.edgeEndPad, y: fromCy };
+  }
+  return dy >= 0
+    ? { x: fromCx, y: fromPos.y + fromPos.h / 2 + VIEWER_TUNING.layout.edgeStartPad }
+    : { x: fromCx, y: fromPos.y - fromPos.h / 2 - VIEWER_TUNING.layout.edgeEndPad };
+}
+
+function edgeEndBetweenRects(
+  fromRect: { x: number; y: number; w: number; h: number },
+  toRect: { x: number; y: number; w: number; h: number },
+): { x: number; y: number } {
+  const fromCx = fromRect.x + fromRect.w / 2;
+  const fromCy = fromRect.y + fromRect.h / 2;
+  const toCx = toRect.x + toRect.w / 2;
+  const toCy = toRect.y + toRect.h / 2;
+  const dx = toCx - fromCx;
+  const dy = toCy - fromCy;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { x: fromRect.x + fromRect.w + VIEWER_TUNING.layout.edgeStartPad, y: fromCy }
+      : { x: fromRect.x - VIEWER_TUNING.layout.edgeEndPad, y: fromCy };
+  }
+  return dy >= 0
+    ? { x: fromCx, y: fromRect.y + fromRect.h + VIEWER_TUNING.layout.edgeStartPad }
+    : { x: fromCx, y: fromRect.y - VIEWER_TUNING.layout.edgeEndPad };
+}
+
+function roundedOrthogonalPath(
+  sx: number,
+  sy: number,
+  tx: number,
+  ty: number,
+  opts: { radius?: number; midX?: number } = {},
+): string {
+  const absDx = Math.abs(tx - sx);
+  const absDy = Math.abs(ty - sy);
+  if (absDy < 0.5 || absDx < 0.5) {
+    return `M ${sx} ${sy} L ${tx} ${ty}`;
+  }
+  const dirX = tx >= sx ? 1 : -1;
+  const dirY = ty >= sy ? 1 : -1;
+  const midX = opts.midX ?? sx + (tx - sx) / 2;
+  const maxR = Math.min(
+    Math.abs(midX - sx) - 0.5,
+    Math.abs(tx - midX) - 0.5,
+    absDy / 2 - 0.5,
+  );
+  const r = Math.max(0, Math.min(opts.radius ?? 8, maxR));
+  if (r <= 0.5) {
+    return `M ${sx} ${sy} H ${midX} V ${ty} H ${tx}`;
+  }
+  const sweep1 = dirX * dirY > 0 ? 1 : 0;
+  const sweep2 = dirX * dirY > 0 ? 0 : 1;
+  return `M ${sx} ${sy} H ${midX - dirX * r} A ${r} ${r} 0 0 ${sweep1} ${midX} ${sy + dirY * r} V ${ty - dirY * r} A ${r} ${r} 0 0 ${sweep2} ${midX + dirX * r} ${ty} H ${tx}`;
+}
+
+type EdgeAvoidBox = { left: number; right: number; top: number; bottom: number };
+
+function collectEdgeAvoidBoxes(
+  positions: Record<string, NodePosition>,
+  predicate: (id: string) => boolean,
+  bracketExt: number = 0,
+): EdgeAvoidBox[] {
+  // Layout convention (NodePosition): x = LEFT edge, y = CENTER Y, w / h = full size.
+  // bracketExt adds horizontal margin on both sides to account for portal-bracket glyphs.
+  const rects: EdgeAvoidBox[] = [];
+  for (const id of Object.keys(positions)) {
+    if (!predicate(id)) continue;
+    const p = positions[id];
+    if (!p) continue;
+    rects.push({
+      left: p.x - bracketExt,
+      right: p.x + p.w + bracketExt,
+      top: p.y - p.h / 2,
+      bottom: p.y + p.h / 2,
+    });
+  }
+  return rects;
+}
+
+function midXHitsBox(boxes: EdgeAvoidBox[], x: number, pad: number = 8): EdgeAvoidBox | null {
+  for (const b of boxes) {
+    if (x >= b.left - pad && x <= b.right + pad) return b;
+  }
+  return null;
+}
+
+function chooseClearMidX(
+  sx: number,
+  tx: number,
+  boxes: EdgeAvoidBox[],
+  preferred: number,
+  pad: number = 10,
+): number {
+  if (!midXHitsBox(boxes, preferred, pad)) return preferred;
+  const sorted = [...boxes].sort((a, b) => a.left - b.left);
+  const candidates: number[] = [];
+  const lo = Math.min(sx, tx) - 20;
+  const hi = Math.max(sx, tx) + 20;
+  // Gaps between consecutive boxes
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gapL = sorted[i].right + pad;
+    const gapR = sorted[i + 1].left - pad;
+    if (gapR > gapL + 4) {
+      const mid = (gapL + gapR) / 2;
+      if (mid >= lo && mid <= hi) candidates.push(mid);
+    }
+  }
+  if (!candidates.length) return preferred;
+  candidates.sort((a, b) => Math.abs(a - preferred) - Math.abs(b - preferred));
+  return candidates[0];
+}
+
+function uArchTopApex(boxes: EdgeAvoidBox[], sourceTop: number, targetTop: number, lift: number): number {
+  let minTop = Math.min(sourceTop, targetTop);
+  for (const b of boxes) minTop = Math.min(minTop, b.top);
+  return minTop - lift;
+}
+
+function uArchBottomApex(boxes: EdgeAvoidBox[], sourceBottom: number, targetBottom: number, drop: number): number {
+  let maxBot = Math.max(sourceBottom, targetBottom);
+  for (const b of boxes) maxBot = Math.max(maxBot, b.bottom);
+  return maxBot + drop;
+}
+
+function uArchOrthogonalPath(
+  sx: number,
+  sy: number,
+  tx: number,
+  ty: number,
+  apexY: number,
+  r: number = 8,
+): string {
+  const dirX = tx >= sx ? 1 : -1;
+  const horizontalSpan = Math.abs(tx - sx);
+  const goUp = apexY < sy;
+  const verticalReach = goUp ? sy - apexY : apexY - sy;
+  const verticalReachT = goUp ? ty - apexY : apexY - ty;
+  if (horizontalSpan <= r * 2 + 1 || verticalReach <= r + 0.5 || verticalReachT <= r + 0.5) {
+    return `M ${sx} ${sy} V ${apexY} H ${tx} V ${ty}`;
+  }
+  if (goUp) {
+    const sweep = dirX > 0 ? 1 : 0;
+    return `M ${sx} ${sy} V ${apexY + r} A ${r} ${r} 0 0 ${sweep} ${sx + dirX * r} ${apexY} H ${tx - dirX * r} A ${r} ${r} 0 0 ${sweep} ${tx} ${apexY + r} V ${ty}`;
+  } else {
+    const sweep = dirX > 0 ? 0 : 1;
+    return `M ${sx} ${sy} V ${apexY - r} A ${r} ${r} 0 0 ${sweep} ${sx + dirX * r} ${apexY} H ${tx - dirX * r} A ${r} ${r} 0 0 ${sweep} ${tx} ${apexY - r} V ${ty}`;
+  }
 }
 
 function currentLinearMemoScopeId(): string {
@@ -2517,6 +3078,12 @@ function syncLinearCaretToSelectedNode(): void {
 }
 
 function renderLinearPanel(): void {
+  if (linearPanelEl) {
+    linearPanelEl.hidden = viewState.surfaceViewMode === "system";
+  }
+  if (viewState.surfaceViewMode === "system") {
+    return;
+  }
   if (!linearTextEl) {
     return;
   }
@@ -2710,10 +3277,109 @@ function countHiddenDescendants(nodeId: string): number {
 
 function buildLayout(state: AppState): LayoutResult {
   const displayRootId = currentScopeRootId();
+  const displayRootNode = state.nodes[displayRootId];
+  const flowSurface = currentSurfaceIsFlowMode();
   const metrics: Record<string, { w: number; h: number }> = {};
   const depthOf: Record<string, number> = {};
   const depthMaxWidth: Record<number, number> = {};
   let maxDepth = 0;
+
+  if (flowSurface && displayRootNode) {
+    const surfaceNodes = visibleChildren(displayRootNode);
+    const primarySurfaceNodes = surfaceNodes.filter((nodeId) => !isReferenceNode(state.nodes[nodeId]));
+    const referenceSurfaceNodes = surfaceNodes.filter((nodeId) => isReferenceNode(state.nodes[nodeId]));
+    const pos: Record<string, NodePosition> = {};
+    const order: string[] = [];
+    const colMaxWidth: Record<number, number> = {};
+    const rowMaxHeight: Record<number, number> = {};
+    let maxCol = 0;
+    let maxRow = 0;
+
+    surfaceNodes.forEach((nodeId, index) => {
+      const node = state.nodes[nodeId];
+      if (!node) return;
+      const nodeStyles = effectiveNodeStyleAttrs(node);
+      const label = diagramLabel(node, nodeStyles);
+      const baseMetric = isLatexNode(node)
+        ? measureLatex(node.text)
+        : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
+      const previewLayout = buildFlowPreviewLayout(node);
+      const metric = previewLayout
+        ? {
+            w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
+            h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
+          }
+        : baseMetric;
+      metrics[nodeId] = metric;
+      if (isReferenceNode(node)) {
+        return;
+      }
+      const col = flowColOf(node, index);
+      const row = flowRowOf(node, 0);
+      depthOf[nodeId] = col;
+      maxCol = Math.max(maxCol, col);
+      maxRow = Math.max(maxRow, row);
+      colMaxWidth[col] = Math.max(colMaxWidth[col] ?? 0, metric.w);
+      rowMaxHeight[row] = Math.max(rowMaxHeight[row] ?? 0, Math.max(VIEWER_TUNING.layout.leafHeight + 18, metric.h + 18));
+    });
+
+    const xByCol: Record<number, number> = {};
+    let cursorX = VIEWER_TUNING.layout.leftPad;
+    for (let col = 0; col <= maxCol; col += 1) {
+      xByCol[col] = cursorX;
+      cursorX += (colMaxWidth[col] ?? 180) + VIEWER_TUNING.layout.columnGap;
+    }
+
+    const yByRow: Record<number, number> = {};
+    let cursorY = VIEWER_TUNING.layout.topPad + 132;
+    for (let row = 0; row <= maxRow; row += 1) {
+      const rowHeight = rowMaxHeight[row] ?? (VIEWER_TUNING.layout.leafHeight + 18);
+      yByRow[row] = cursorY + rowHeight / 2;
+      cursorY += rowHeight + FLOW_SURFACE_ROW_GAP;
+    }
+
+    primarySurfaceNodes.forEach((nodeId, index) => {
+      const node = state.nodes[nodeId];
+      if (!node) return;
+      const col = flowColOf(node, index);
+      const row = flowRowOf(node, 0);
+      const metric = metrics[nodeId]!;
+      pos[nodeId] = {
+        x: xByCol[col]!,
+        y: yByRow[row]!,
+        depth: col,
+        w: metric.w,
+        h: metric.h,
+      };
+      order.push(nodeId);
+    });
+
+    if (referenceSurfaceNodes.length > 0) {
+      const referenceTop = cursorY + 26;
+      let referenceCursorX = VIEWER_TUNING.layout.leftPad;
+      referenceSurfaceNodes.forEach((nodeId) => {
+        const metric = metrics[nodeId]!;
+        pos[nodeId] = {
+          x: referenceCursorX,
+          y: referenceTop + metric.h / 2,
+          depth: maxCol + 1,
+          w: metric.w,
+          h: metric.h,
+        };
+        order.push(nodeId);
+        referenceCursorX += metric.w + VIEWER_TUNING.layout.columnGap;
+      });
+      cursorY = referenceTop + Math.max(...referenceSurfaceNodes.map((nodeId) => metrics[nodeId]!.h)) + FLOW_SURFACE_ROW_GAP;
+      cursorX = Math.max(cursorX, referenceCursorX);
+    }
+
+    return {
+      pos,
+      order,
+      totalHeight: Math.max(cursorY + VIEWER_TUNING.layout.canvasBottomPad, VIEWER_TUNING.layout.minCanvasHeight),
+      totalWidth: Math.max(cursorX + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
+    };
+  }
 
   function visit(nodeId: string, depth: number): void {
     const node = state.nodes[nodeId];
@@ -2912,6 +3578,9 @@ function render(): void {
   visibleOrder = layout.order;
   _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
+  const displayRootNode = state.nodes[displayRootId];
+  const flowSurface = currentSurfaceIsFlowMode();
+  const rootlessSurface = flowSurface;
 
   const pos = layout.pos;
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -2920,40 +3589,145 @@ function render(): void {
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let defs = "<defs>";
+  let surfaceFrames = "";
   let edges = "";
   let graphLinks = "";
   let overlays = "";
   let nodes = "";
 
+  const renderedSurfaceLinks = new Set<string>();
+  const renderedPairOffsets = new Map<string, number>();
+  // Running counters so multiple distinct back-edges routed on the same face stack at different heights.
+  let topArchCount = 0;
+  let bottomArchCount = 0;
+  // Portal brackets extend ~14px on each side; extend avoid rects so routing steers around them too.
+  const PORTAL_BRACKET_ARM = 14;
+  // Include every positioned node in avoid set so U-arches clear them even if the
+  // scope predicate is stricter than visibility (representatives, siblings etc).
+  const linkAvoidBoxes = collectEdgeAvoidBoxes(
+    pos,
+    () => true,
+    flowSurface ? PORTAL_BRACKET_ARM : 0,
+  );
   Object.values(state.links || {}).forEach((rawLink) => {
     const link = normalizeGraphLink(rawLink);
     const source = state.nodes[link.sourceNodeId];
     const target = state.nodes[link.targetNodeId];
-    const sourcePos = pos[link.sourceNodeId];
-    const targetPos = pos[link.targetNodeId];
+    let sourceRenderId = link.sourceNodeId;
+    let targetRenderId = link.targetNodeId;
+    let sourcePos = pos[sourceRenderId];
+    let targetPos = pos[targetRenderId];
+    if ((!sourcePos || !targetPos) && flowSurface) {
+      sourceRenderId = representativeNodeIdInCurrentScope(link.sourceNodeId) || sourceRenderId;
+      targetRenderId = representativeNodeIdInCurrentScope(link.targetNodeId) || targetRenderId;
+      sourcePos = pos[sourceRenderId];
+      targetPos = pos[targetRenderId];
+    }
     if (!source || !target || !sourcePos || !targetPos) {
       return;
     }
     if (!isNodeInScope(source.id) || !isNodeInScope(target.id) || !isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id)) {
       return;
     }
+    if (sourceRenderId === targetRenderId) {
+      return;
+    }
+    const surfaceKey = flowSurface
+      ? `${sourceRenderId}->${targetRenderId}:${link.label || link.relationType || ""}`
+      : link.id;
+    if (renderedSurfaceLinks.has(surfaceKey)) {
+      return;
+    }
+    renderedSurfaceLinks.add(surfaceKey);
+    const pairKey = [sourceRenderId, targetRenderId].sort().join("<->");
+    const pairOffsetIndex = renderedPairOffsets.get(pairKey) ?? 0;
+    renderedPairOffsets.set(pairKey, pairOffsetIndex + 1);
 
-    const forward = targetPos.x >= sourcePos.x;
-    const sourceX = forward
-      ? sourcePos.x + sourcePos.w + VIEWER_TUNING.layout.edgeStartPad
-      : sourcePos.x - VIEWER_TUNING.layout.edgeEndPad;
-    const sourceY = sourcePos.y;
-    const targetX = forward
-      ? targetPos.x - VIEWER_TUNING.layout.edgeEndPad
-      : targetPos.x + targetPos.w + VIEWER_TUNING.layout.edgeStartPad;
-    const targetY = targetPos.y;
-    const curve = Math.max(48, Math.abs(targetX - sourceX) * 0.45);
-    const c1x = forward ? sourceX + curve : sourceX - curve;
-    const c1y = sourceY;
-    const c2x = forward ? targetX - curve : targetX + curve;
-    const c2y = targetY;
-    const controlX = (c1x + c2x) / 2;
-    const controlY = (sourceY + targetY) / 2;
+    const sourceEnd = edgeEndBetween(sourcePos, targetPos);
+    const targetEnd = edgeEndBetween(targetPos, sourcePos);
+    // The node physically rendered in current scope may differ from link.source/target (representative).
+    const sourceRenderNode = state.nodes[sourceRenderId] || source;
+    const targetRenderNode = state.nodes[targetRenderId] || target;
+    // If the rendered node appears as a portal subsystem (`[[...]]`), push the edge end past the bracket glyph.
+    const sourceIsPortal = isScopePortalNode(sourceRenderNode);
+    const targetIsPortal = isScopePortalNode(targetRenderNode);
+    const srcCx = sourcePos.x + sourcePos.w / 2;
+    const tgtCx = targetPos.x + targetPos.w / 2;
+    const srcCy = sourcePos.y;
+    const tgtCy = targetPos.y;
+    const facingHorizontal = Math.abs(tgtCx - srcCx) >= Math.abs(tgtCy - srcCy);
+    if (facingHorizontal) {
+      const rightward = tgtCx >= srcCx;
+      if (sourceIsPortal) sourceEnd.x += (rightward ? 1 : -1) * PORTAL_BRACKET_ARM;
+      if (targetIsPortal) targetEnd.x += (rightward ? -1 : 1) * PORTAL_BRACKET_ARM;
+    }
+    const sourceX = sourceEnd.x;
+    const sourceY = sourceEnd.y;
+    const targetX = targetEnd.x;
+    const targetY = targetEnd.y;
+    const forward = targetX >= sourceX;
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const horizontalSpan = Math.abs(dx);
+    const depthBack = targetPos.depth < sourcePos.depth
+      || (targetPos.depth === sourcePos.depth && targetY < sourceY);
+    const isReverseFlow = flowSurface && !forward;
+    const needsUArch = flowSurface && (depthBack || isReverseFlow);
+    const pairWaveOffset = pairOffsetIndex === 0
+      ? 0
+      : Math.ceil(pairOffsetIndex / 2) * 26 * (pairOffsetIndex % 2 === 0 ? -1 : 1);
+
+    let controlX: number;
+    let controlY: number;
+    let graphLinkPathD: string;
+    if (needsUArch) {
+      // Decide side (TOP / BOTTOM) based on where OTHER boxes sit relative to the edge row.
+      // Placing verticals on the clearer side avoids passing through unrelated boxes.
+      const edgeMidY = (srcCy + tgtCy) / 2;
+      let boxesAbove = 0;
+      let boxesBelow = 0;
+      for (const b of linkAvoidBoxes) {
+        const bMid = (b.top + b.bottom) / 2;
+        if (Math.abs(bMid - edgeMidY) < 8) continue; // same row — source/target themselves
+        if (bMid < edgeMidY) boxesAbove += 1; else boxesBelow += 1;
+      }
+      // Prefer the side with fewer obstructions. Tie → TOP (visually cleaner for LR flow).
+      const useTop = boxesBelow >= boxesAbove;
+      const archIndex = useTop ? topArchCount++ : bottomArchCount++;
+      const srcPad = VIEWER_TUNING.layout.edgeStartPad;
+      const tgtPad = VIEWER_TUNING.layout.edgeEndPad;
+      const sxArch = srcCx;
+      const txArch = tgtCx;
+      // Extra lift reserved for scope-frame title band (top-side only).
+      const titleReserve = useTop ? 48 : 14;
+      // Stagger each back-edge on same side so horizontal segments don't overlap.
+      const lift = titleReserve + archIndex * 18;
+      let syArch: number;
+      let tyArch: number;
+      let apexY: number;
+      if (useTop) {
+        syArch = sourcePos.y - sourcePos.h / 2 - srcPad;
+        tyArch = targetPos.y - targetPos.h / 2 - tgtPad;
+        apexY = uArchTopApex(linkAvoidBoxes, syArch, tyArch, lift);
+      } else {
+        syArch = sourcePos.y + sourcePos.h / 2 + srcPad;
+        tyArch = targetPos.y + targetPos.h / 2 + tgtPad;
+        apexY = uArchBottomApex(linkAvoidBoxes, syArch, tyArch, lift);
+      }
+      graphLinkPathD = uArchOrthogonalPath(sxArch, syArch, txArch, tyArch, apexY);
+      controlX = (sxArch + txArch) / 2;
+      controlY = useTop ? apexY - 10 : apexY + 16;
+    } else {
+      const preferredMidX = sourceX + (targetX - sourceX) / 2 + pairWaveOffset;
+      const midX = chooseClearMidX(sourceX, targetX, linkAvoidBoxes, preferredMidX, 10);
+      graphLinkPathD = roundedOrthogonalPath(sourceX, sourceY, targetX, targetY, { midX });
+      controlX = midX;
+      // Lift label above the edge line so it doesn't collide with box content / pills.
+      const isStraightH = Math.abs(sourceY - targetY) < 4;
+      controlY = isStraightH
+        ? sourceY - 16 - Math.abs(pairWaveOffset)
+        : (sourceY + targetY) / 2 - 10 - pairWaveOffset;
+    }
     const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
     const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
     const stroke = VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
@@ -2975,9 +3749,9 @@ function render(): void {
         <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
       </marker>`;
 
-    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="M ${sourceX} ${sourceY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${targetX} ${targetY}"${markerStart}${markerEnd} />`;
+    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
     if (label) {
-      graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 8}" text-anchor="middle">${escapeXml(label)}</text>`;
+      graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 10}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
   });
   defs += "</defs>";
@@ -3049,7 +3823,8 @@ function render(): void {
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
     const children = visibleChildren(node);
-    const nodeStyles = readNodeStyleAttrs(node.attributes || {});
+    const nodeStyles = effectiveNodeStyleAttrs(node);
+    const previewLayout = buildFlowPreviewLayout(node);
     children.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) {
@@ -3059,23 +3834,29 @@ function render(): void {
       const defaultStroke =
         VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
       const stroke = nodeStyles.edgeColor || defaultStroke;
-      const startX = p.x + p.w + VIEWER_TUNING.layout.edgeStartPad;
-      const startY = p.y;
-      const endX = child.x - VIEWER_TUNING.layout.edgeEndPad;
-      const endY = child.y;
-      const curve = Math.max(48, (endX - startX) * 0.45);
-      const c1x = startX + curve;
-      const c1y = startY;
-      const c2x = endX - curve;
-      const c2y = endY;
+      const sourceEnd = edgeEndBetween(p, child);
+      const targetEnd = edgeEndBetween(child, p);
+      const startX = sourceEnd.x;
+      const startY = sourceEnd.y;
+      const endX = targetEnd.x;
+      const endY = targetEnd.y;
       const edgeInline = buildEdgeStyle(nodeStyles);
-      edges += `<path class="edge" stroke="${stroke}" d="M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
+      let edgePath: string;
+      if (flowSurface) {
+        edgePath = roundedOrthogonalPath(startX, startY, endX, endY);
+      } else {
+        const curve = Math.max(48, (endX - startX) * 0.45);
+        const c1x = startX + curve;
+        const c2x = endX - curve;
+        edgePath = `M ${startX} ${startY} C ${c1x} ${startY}, ${c2x} ${endY}, ${endX} ${endY}`;
+      }
+      edges += `<path class="edge" stroke="${stroke}" d="${edgePath}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
 
       // Edge label — stored on the child node (parent is unique per child)
       const childNode = state.nodes[childId];
       const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
       if (childStyles.edgeLabel) {
-        const labelX = (c1x + c2x) / 2;
+        const labelX = (startX + endX) / 2;
         const labelY = (startY + endY) / 2 - 8;
         edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
       }
@@ -3119,15 +3900,16 @@ function render(): void {
         classNames.push("scope-locked-by-other");
       }
     }
-    const hitX = nodeId === displayRootId ? p.x : p.x - 8;
+    const treatAsRoot = nodeId === displayRootId && !rootlessSurface;
+    const hitX = treatAsRoot ? p.x : p.x - 8;
     const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
     const hitY = p.y - hitH / 2;
-    const hitW = nodeId === displayRootId ? p.w : p.w + 36;
-    const hitRx = shapeRx(nodeStyles.shape, nodeId === displayRootId);
+    const hitW = treatAsRoot ? p.w : p.w + 36;
+    const hitRx = shapeRx(nodeStyles.shape, treatAsRoot);
     const hitInline = buildNodeHitStyle(nodeStyles);
     nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="${hitRx}"${hitInline ? ` style="${hitInline}"` : ""} />`;
 
-    if (nodeId === displayRootId) {
+    if (treatAsRoot) {
       const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
       const rootLineHeight = lineHeightForFont(VIEWER_TUNING.typography.rootFont);
       const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, VIEWER_TUNING.typography.rootFont, rootLineHeight);
@@ -3149,8 +3931,7 @@ function render(): void {
       const rootLabelInline = buildLabelStyle(nodeStyles);
       nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${VIEWER_TUNING.typography.rootFont}"${rootLabelInline ? ` style="${rootLabelInline}"` : ""}>${rootTspans}</text>`;
     } else {
-      const rawLabelBase = uiLabel(node) || "(empty)";
-      const rawLabel = nodeStyles.icon ? nodeStyles.icon + " " + rawLabelBase : rawLabelBase;
+      const rawLabel = diagramLabel(node, nodeStyles);
       const labelLines = splitLabelLines(rawLabel);
       const labelClasses = ["label-node"];
       if (viewState.selectedNodeIds.has(nodeId)) {
@@ -3166,6 +3947,25 @@ function render(): void {
       if (nodeStyles.status) {
         labelClasses.push(`status-${nodeStyles.status}`);
       }
+      if (!isFolderNode(node) && (nodeStyles.shape === "diamond" || nodeStyles.bg || nodeStyles.border || nodeStyles.borderWidth != null)) {
+        const shapeX = p.x - 14;
+        const shapeY = p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + 6;
+        const shapeW = p.w + 28;
+        const shapeH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
+        const shapeParts: string[] = [];
+        if (nodeStyles.bg) shapeParts.push(`fill:${nodeStyles.bg}`);
+        if (nodeStyles.border) shapeParts.push(`stroke:${nodeStyles.border}`);
+        if (nodeStyles.borderWidth != null) shapeParts.push(`stroke-width:${nodeStyles.borderWidth}px`);
+        if (nodeStyles.borderStyle === "dashed") shapeParts.push("stroke-dasharray:8 5");
+        if (nodeStyles.borderStyle === "dotted") shapeParts.push("stroke-dasharray:3 3");
+        if (nodeStyles.borderStyle === "none") shapeParts.push("stroke:none");
+        const shapeInline = shapeParts.length ? ` style="${shapeParts.join(";")}"` : "";
+        if (nodeStyles.shape === "diamond") {
+          nodes += `<path class="node-shape" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, shapeW, shapeH)}"${shapeInline} />`;
+        } else {
+          nodes += `<path class="node-shape" data-node-id="${nodeId}" d="${rectPath(shapeX, shapeY, shapeW, shapeH, shapeRx(nodeStyles.shape, false))}"${shapeInline} />`;
+        }
+      }
       if (isFolderNode(node)) {
         const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
         const folderFrameX = p.x - 14;
@@ -3177,7 +3977,72 @@ function render(): void {
         if (nodeStyles.border) folderBoxParts.push(`stroke:${nodeStyles.border}`);
         if (nodeStyles.borderWidth != null) folderBoxParts.push(`stroke-width:${nodeStyles.borderWidth}px`);
         const folderBoxInline = folderBoxParts.length ? ` style="${folderBoxParts.join(";")}"` : "";
-        nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8"${folderBoxInline} />`;
+        if (isScopePortalNode(node)) {
+          const leftX = folderFrameX + 2;
+          const rightX = folderFrameX + folderFrameW - 2;
+          const topY = folderFrameY;
+          const bottomY = folderFrameY + folderFrameH;
+          const arm = 12;
+          nodes += `<path class="portal-bracket" data-node-id="${nodeId}" d="M ${leftX + arm} ${topY} H ${leftX} V ${bottomY} H ${leftX + arm}"${folderBoxInline} />`;
+          nodes += `<path class="portal-bracket" data-node-id="${nodeId}" d="M ${rightX - arm} ${topY} H ${rightX} V ${bottomY} H ${rightX - arm}"${folderBoxInline} />`;
+        } else if (nodeStyles.shape === "diamond") {
+          nodes += `<path class="folder-box" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, folderFrameW, folderFrameH)}"${folderBoxInline} />`;
+        } else {
+          nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8"${folderBoxInline} />`;
+        }
+        if (previewLayout) {
+          const previewIds = new Set(previewLayout.childIds);
+          Object.values(state.links || {}).forEach((rawLink) => {
+            const link = normalizeGraphLink(rawLink);
+            if (!previewIds.has(link.sourceNodeId) || !previewIds.has(link.targetNodeId)) {
+              return;
+            }
+            const sourcePreview = previewLayout.positions[link.sourceNodeId];
+            const targetPreview = previewLayout.positions[link.targetNodeId];
+            if (!sourcePreview || !targetPreview) {
+              return;
+            }
+            const sourceRect = {
+              x: folderFrameX + sourcePreview.x,
+              y: folderFrameY + sourcePreview.y,
+              w: sourcePreview.w,
+              h: sourcePreview.h,
+            };
+            const targetRect = {
+              x: folderFrameX + targetPreview.x,
+              y: folderFrameY + targetPreview.y,
+              w: targetPreview.w,
+              h: targetPreview.h,
+            };
+            const sourceEnd = edgeEndBetweenRects(sourceRect, targetRect);
+            const targetEnd = edgeEndBetweenRects(targetRect, sourceRect);
+            const sx = sourceEnd.x;
+            const sy = sourceEnd.y;
+            const tx = targetEnd.x;
+            const ty = targetEnd.y;
+            const previewEdgePath = roundedOrthogonalPath(sx, sy, tx, ty, { radius: 6 });
+            nodes += `<path class="flow-preview-edge" d="${previewEdgePath}" />`;
+            const edgeLabel = (link.label || link.relationType || "").trim();
+            if (edgeLabel) {
+              nodes += `<text class="flow-preview-edge-label" x="${(sx + tx) / 2}" y="${(sy + ty) / 2 - 6}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
+            }
+          });
+
+          previewLayout.childIds.forEach((previewChildId) => {
+            const previewChild = state.nodes[previewChildId];
+            const previewPos = previewLayout.positions[previewChildId];
+            if (!previewChild || !previewPos) {
+              return;
+            }
+            const previewStyles = readNodeStyleAttrs(previewChild.attributes || {});
+            const previewLabel = escapeXml(diagramLabel(previewChild, previewStyles));
+            const previewX = folderFrameX + previewPos.x;
+            const previewY = folderFrameY + previewPos.y;
+            const previewClass = isFolderNode(previewChild) ? "flow-preview-node flow-preview-node-scope" : "flow-preview-node";
+            nodes += `<rect class="${previewClass}" x="${previewX}" y="${previewY}" width="${previewPos.w}" height="${previewPos.h}" rx="8" />`;
+            nodes += `<text class="flow-preview-node-label" x="${previewX + 10}" y="${previewY + previewPos.h / 2}" dominant-baseline="middle" text-anchor="start">${previewLabel}</text>`;
+          });
+        }
         // Lock icon on locked folder nodes
         if (nodeLock) {
           const lockIconX = folderFrameX + folderFrameW - 14;
@@ -3198,10 +4063,13 @@ function render(): void {
         nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
       } else {
         const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
-        const startY = multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
+        const startY = previewLayout
+          ? p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + 36
+          : multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
         const tspans = multilineTspans(labelLines, p.x, lineHeight);
         const labelInline = buildLabelStyle(nodeStyles);
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${p.x}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}"${labelInline ? ` style="${labelInline}"` : ""}>${tspans}</text>`;
+        const labelX = isScopePortalNode(node) ? p.x + 12 : p.x;
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${labelX}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}"${labelInline ? ` style="${labelInline}"` : ""}>${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
@@ -3230,7 +4098,7 @@ function render(): void {
 
     if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
       const indicatorX =
-        nodeId === displayRootId
+        treatAsRoot
           ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
           : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
       const hiddenCount = countHiddenDescendants(nodeId);
@@ -3254,7 +4122,35 @@ function render(): void {
     }
   }
 
-  drawNode(displayRootId);
+  if (rootlessSurface && displayRootNode) {
+    const surfaceNodeIds = visibleChildren(displayRootNode).filter((nodeId) => Boolean(pos[nodeId]));
+    if (surfaceNodeIds.length > 0) {
+      let left = Number.POSITIVE_INFINITY;
+      let right = Number.NEGATIVE_INFINITY;
+      let top = Number.POSITIVE_INFINITY;
+      let bottom = Number.NEGATIVE_INFINITY;
+      surfaceNodeIds.forEach((nodeId) => {
+        const p = pos[nodeId]!;
+        const boxHeight = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
+        left = Math.min(left, p.x - 42);
+        right = Math.max(right, p.x + p.w + 42);
+        top = Math.min(top, p.y - boxHeight / 2 - 46);
+        bottom = Math.max(bottom, p.y + boxHeight / 2 + 38);
+      });
+      const frameX = Math.max(24, left);
+      const frameY = Math.max(24, top);
+      const frameW = Math.max(320, right - frameX);
+      const frameH = Math.max(180, bottom - frameY);
+      const frameLabel = escapeXml(diagramLabel(displayRootNode, readNodeStyleAttrs(displayRootNode.attributes || {})));
+      surfaceFrames += `<rect class="surface-scope-box" x="${frameX}" y="${frameY}" width="${frameW}" height="${frameH}" rx="20" />`;
+      surfaceFrames += `<text class="surface-scope-title" x="${frameX + 22}" y="${frameY + 30}" text-anchor="start">${frameLabel}</text>`;
+      maxX = Math.max(maxX, frameX + frameW + 28);
+      maxY = Math.max(maxY, frameY + frameH + 28);
+    }
+    visibleChildren(displayRootNode).forEach((cid) => drawNode(cid));
+  } else {
+    drawNode(displayRootId);
+  }
 
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
@@ -3269,7 +4165,7 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${edges}${graphLinks}${overlays}${nodes}`;
+  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${nodes}${edges}${graphLinks}${overlays}`;
   applyZoom();
 
   const version = map.version ?? "n/a";
@@ -3628,7 +4524,7 @@ function normalizeSelectionState(): void {
   }
 
   if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
-    viewState.selectedNodeId = normalizedCurrentScopeId();
+    viewState.selectedNodeId = preferredSelectionForScope(normalizedCurrentScopeId());
   }
 
   const normalizedSelectedIds = new Set<string>();
@@ -3775,9 +4671,8 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
   viewState.currentScopeRootId = scopeId;
-  if (!isNodeInScope(viewState.selectedNodeId)) {
-    setSingleSelection(scopeId, false);
-  }
+  viewState.surfaceViewMode = inferSurfaceViewModeForScope(scopeId);
+  setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
   render();
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
@@ -3788,12 +4683,16 @@ function ExitScopeCommand(): void {
   if (!map || viewState.scopeHistory.length === 0) {
     return;
   }
+  const exitedScopeId = normalizedCurrentScopeId();
   const previousScopeId = viewState.scopeHistory.pop()!;
   viewState.currentScopeId = map.state.nodes[previousScopeId] ? previousScopeId : map.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
-  if (!isNodeInScope(viewState.selectedNodeId)) {
-    setSingleSelection(viewState.currentScopeId, false);
-  }
+  viewState.surfaceViewMode = inferSurfaceViewModeForScope(viewState.currentScopeId);
+  const selectionAfterExit =
+    map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
+      ? exitedScopeId
+      : preferredSelectionForScope(viewState.currentScopeId);
+  setSingleSelection(selectionAfterExit, false);
   normalizeSelectionState();
   render();
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
@@ -5951,6 +6850,7 @@ function downloadJson(): void {
 
 function currentDocSnapshot(): SavedMap {
   syncLinearNotesToDocState();
+  syncMapModelStateFromRuntime();
   return {
     version: 1,
     savedAt: nowIso(),
@@ -6494,6 +7394,7 @@ function touchDocument(): void {
   if (!map) {
     return;
   }
+  syncMapModelStateFromRuntime();
   map.savedAt = nowIso();
   render();
   scheduleAutosave();
@@ -6562,6 +7463,50 @@ function selectChild(): void {
     return;
   }
   selectNode(children[0]!);
+}
+
+function getFlowDirectionalTarget(axis: "horizontal" | "vertical", direction: -1 | 1): string | null {
+  if (!map || !lastLayout || !visibleOrder.length) {
+    return null;
+  }
+  const currentId = viewState.selectedNodeId;
+  const currentPos = lastLayout.pos[currentId];
+  if (!currentPos) {
+    return null;
+  }
+  const candidates = visibleOrder
+    .filter((id) => id !== currentId)
+    .map((id) => ({ id, pos: lastLayout!.pos[id]! }))
+    .filter((entry) => Boolean(entry.pos));
+
+  const filtered = candidates.filter((entry) => {
+    if (axis === "horizontal") {
+      return direction < 0 ? entry.pos.x < currentPos.x : entry.pos.x > currentPos.x;
+    }
+    return direction < 0 ? entry.pos.y < currentPos.y : entry.pos.y > currentPos.y;
+  });
+  if (filtered.length === 0) {
+    return null;
+  }
+  filtered.sort((a, b) => {
+    const primaryA = axis === "horizontal" ? Math.abs(a.pos.x - currentPos.x) : Math.abs(a.pos.y - currentPos.y);
+    const primaryB = axis === "horizontal" ? Math.abs(b.pos.x - currentPos.x) : Math.abs(b.pos.y - currentPos.y);
+    if (primaryA !== primaryB) return primaryA - primaryB;
+    const secondaryA = axis === "horizontal" ? Math.abs(a.pos.y - currentPos.y) : Math.abs(a.pos.x - currentPos.x);
+    const secondaryB = axis === "horizontal" ? Math.abs(b.pos.y - currentPos.y) : Math.abs(b.pos.x - currentPos.x);
+    return secondaryA - secondaryB;
+  });
+  return filtered[0]!.id;
+}
+
+function selectFlowHorizontal(direction: -1 | 1): void {
+  const target = getFlowDirectionalTarget("horizontal", direction);
+  if (target) selectNode(target);
+}
+
+function selectFlowVertical(direction: -1 | 1): void {
+  const target = getFlowDirectionalTarget("vertical", direction);
+  if (target) selectNode(target);
 }
 
 function getBreadthSelectionTarget(direction: -1 | 1): string | null {
@@ -6665,6 +7610,7 @@ function loadPayload(payload: unknown): void {
     viewState.selectionAnchorId = null;
     viewState.currentScopeRootId = map.state.rootId;
     viewState.thinkingMode = "rapid";
+    viewState.surfaceViewMode = inferSurfaceViewModeForScope(map.state.rootId);
     viewState.clipboardState = null;
     viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
@@ -7228,6 +8174,14 @@ modeRapidBtn?.addEventListener("click", () => {
 
 modeDeepBtn?.addEventListener("click", () => {
   setThinkingMode("deep");
+});
+
+viewTreeBtn?.addEventListener("click", () => {
+  setSurfaceViewMode("tree");
+});
+
+viewSystemBtn?.addEventListener("click", () => {
+  setSurfaceViewMode("system");
 });
 
 fileInput.addEventListener("change", (event: Event) => {
@@ -8036,15 +8990,25 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.key === "]") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "]") {
     event.preventDefault();
-    enterScope(viewState.selectedNodeId);
+    EnterScopeCommand(viewState.selectedNodeId);
+    fitDocument();
+    requestAnimationFrame(() => {
+      fitDocument();
+    });
+    board.focus();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.key === "[") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "[") {
     event.preventDefault();
-    exitScope();
+    ExitScopeCommand();
+    fitDocument();
+    requestAnimationFrame(() => {
+      fitDocument();
+    });
+    board.focus();
     return;
   }
 
@@ -8186,6 +9150,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
     event.preventDefault();
+    if (currentSurfaceIsFlowMode()) {
+      flowSurfaceDetailLevel = Math.min(FLOW_SURFACE_PREVIEW_MAX_DETAIL, flowSurfaceDetailLevel + 1);
+      render();
+      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
+      return;
+    }
     const selected = getNode(viewState.selectedNodeId);
     if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
       EnterScopeCommand(selected.id);
@@ -8197,6 +9167,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
     event.preventDefault();
+    if (currentSurfaceIsFlowMode()) {
+      flowSurfaceDetailLevel = Math.max(0, flowSurfaceDetailLevel - 1);
+      render();
+      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
+      return;
+    }
     if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
       ExitScopeCommand();
       return;
@@ -8241,6 +9217,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowUp") {
     event.preventDefault();
+    if (currentSurfaceIsFlowMode()) {
+      selectFlowVertical(-1);
+      return;
+    }
     if (event.shiftKey) {
       extendSelectionBreadth(-1);
       return;
@@ -8251,6 +9231,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
+    if (currentSurfaceIsFlowMode()) {
+      selectFlowVertical(1);
+      return;
+    }
     if (event.shiftKey) {
       extendSelectionBreadth(1);
       return;
@@ -8267,6 +9251,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowLeft") {
     event.preventDefault();
+    if (currentSurfaceIsFlowMode()) {
+      selectFlowHorizontal(-1);
+      return;
+    }
     if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
       ExitScopeCommand();
       return;
@@ -8278,6 +9266,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "ArrowRight") {
     event.preventDefault();
     const selected = getNode(viewState.selectedNodeId);
+    if (currentSurfaceIsFlowMode()) {
+      selectFlowHorizontal(1);
+      return;
+    }
     if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
       EnterScopeCommand(selected.id);
       return;
@@ -8373,6 +9365,8 @@ void initializeDocument().then(() => {
     viewState.scopeHistory = ancestors;
     viewState.currentScopeId = initialScopeId;
     viewState.currentScopeRootId = initialScopeId;
+    viewState.surfaceViewMode = inferSurfaceViewModeForScope(initialScopeId);
+    syncThinkingModeUi();
     setSingleSelection(initialScopeId, false);
     normalizeSelectionState();
     render();
