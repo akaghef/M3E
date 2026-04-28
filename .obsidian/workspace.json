@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/00_Home/Current_Status.md",
+                "file": "docs/01_Vision/Strategy.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Current_Status"
+              "title": "Strategy"
             }
           }
         ]
@@ -182,6 +182,11 @@
   },
   "active": "c06933e3ecb783aa",
   "lastOpenFiles": [
+    "docs/01_Vision/Weekly_Advance.md",
+    "docs/01_Vision/Vision.md",
+    "docs/01_Vision/Axes.md",
+    "docs/01_Vision/Core_Principles.md",
+    "docs/00_Home/Current_Status.md",
     "LICENSE",
     "docs/daily/sed7y2B2T",
     "docs/06_Operations/Command_Panel_Security_Test_Cases.md",
