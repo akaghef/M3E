@@ -35,6 +35,40 @@ interface WeeklyReviewOutput {
   };
 }
 
+interface DeepSeekReviewOutput {
+  ok: boolean;
+  generatedAt: string;
+  provider: "deepseek";
+  model: string;
+  latencyMs: number;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
+  markdown?: string;
+  error?: {
+    message: string;
+    status?: number;
+  };
+}
+
+interface ChatCompletionResponse {
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>;
+    };
+  }>;
+  error?: {
+    message?: string;
+  };
+}
+
 function repoRoot(): string {
   return path.resolve(__dirname, "..", "..", "..");
 }
@@ -272,7 +306,110 @@ function renderMarkdown(output: WeeklyReviewOutput): string {
   return lines.join("\n");
 }
 
-export function runWeeklyReviewLoop(): WeeklyReviewOutput {
+function extractTextContent(payload: ChatCompletionResponse): string {
+  const content = payload.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) {
+    return content.map((item) => item.text || "").join("").trim();
+  }
+  if (payload.error?.message) throw new Error(payload.error.message);
+  throw new Error("DeepSeek returned no text content.");
+}
+
+function buildDeepSeekPrompt(output: WeeklyReviewOutput): string {
+  return [
+    "以下はM3Eのローカル projects/ フォルダから抽出したsub-PJ週次レビュー用JSONです。",
+    "事実ベースで、誇張せず、次の形式で日本語Markdownを返してください。",
+    "",
+    "# Weekly Review",
+    "## 今週の要約",
+    "## PJ別状況",
+    "## リスク / Qn",
+    "## 次の一手",
+    "",
+    "入力JSON:",
+    JSON.stringify(output, null, 2),
+  ].join("\n");
+}
+
+async function runDeepSeekReview(output: WeeklyReviewOutput): Promise<DeepSeekReviewOutput> {
+  const apiKey = process.env.M3E_AI_API_KEY?.trim();
+  const baseUrl = (process.env.M3E_AI_BASE_URL?.trim() || "https://api.deepseek.com").replace(/\/+$/, "");
+  const model = process.env.M3E_AI_MODEL?.trim() || "deepseek-chat";
+  const startedAt = Date.now();
+
+  if (!apiKey) {
+    return {
+      ok: false,
+      generatedAt: new Date().toISOString(),
+      provider: "deepseek",
+      model,
+      latencyMs: Date.now() - startedAt,
+      error: { message: "M3E_AI_API_KEY is missing." },
+    };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content: "You produce concise factual weekly project review reports. Do not invent facts not present in the input JSON.",
+          },
+          { role: "user", content: buildDeepSeekPrompt(output) },
+        ],
+        temperature: 0.2,
+        max_tokens: 1600,
+      }),
+    });
+    const payload = await response.json() as ChatCompletionResponse;
+    if (!response.ok) {
+      return {
+        ok: false,
+        generatedAt: new Date().toISOString(),
+        provider: "deepseek",
+        model,
+        latencyMs: Date.now() - startedAt,
+        error: {
+          message: payload.error?.message || `DeepSeek request failed with status ${response.status}.`,
+          status: response.status,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      provider: "deepseek",
+      model,
+      latencyMs: Date.now() - startedAt,
+      markdown: extractTextContent(payload),
+      usage: payload.usage ? {
+        inputTokens: payload.usage.prompt_tokens,
+        outputTokens: payload.usage.completion_tokens,
+        totalTokens: payload.usage.total_tokens,
+      } : undefined,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      generatedAt: new Date().toISOString(),
+      provider: "deepseek",
+      model,
+      latencyMs: Date.now() - startedAt,
+      error: { message: (err as Error).message || "DeepSeek request failed." },
+    };
+  }
+}
+
+export async function runWeeklyReviewLoop(): Promise<WeeklyReviewOutput> {
   const root = repoRoot();
   const projectsRoot = path.join(root, "projects");
   const outputRoot = path.join(root, "tmp");
@@ -283,10 +420,32 @@ export function runWeeklyReviewLoop(): WeeklyReviewOutput {
   const output = buildOutput(projectsRoot, outputRoot);
   fs.writeFileSync(path.join(outputRoot, "weekly-review-latest.json"), `${JSON.stringify(output, null, 2)}\n`, "utf8");
   fs.writeFileSync(path.join(outputRoot, "weekly-review-latest.md"), renderMarkdown(output), "utf8");
+  if ((process.env.WEEKLY_REVIEW_PROVIDER || "").toLowerCase() === "deepseek") {
+    const deepSeekOutput = await runDeepSeekReview(output);
+    fs.writeFileSync(
+      path.join(outputRoot, "weekly-review-deepseek-latest.json"),
+      `${JSON.stringify(deepSeekOutput, null, 2)}\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(outputRoot, "weekly-review-deepseek-latest.md"),
+      `${deepSeekOutput.markdown || `# DeepSeek Weekly Review\n\nDeepSeek call failed: ${deepSeekOutput.error?.message || "unknown error"}\n`}\n`,
+      "utf8",
+    );
+  }
   return output;
 }
 
 if (require.main === module) {
-  const output = runWeeklyReviewLoop();
-  console.log(`Weekly review written to tmp/weekly-review-latest.md (${output.projects.length} projects).`);
+  runWeeklyReviewLoop()
+    .then((output) => {
+      const suffix = (process.env.WEEKLY_REVIEW_PROVIDER || "").toLowerCase() === "deepseek"
+        ? " and tmp/weekly-review-deepseek-latest.md"
+        : "";
+      console.log(`Weekly review written to tmp/weekly-review-latest.md${suffix} (${output.projects.length} projects).`);
+    })
+    .catch((err) => {
+      console.error((err as Error).message || "Weekly review loop failed.");
+      process.exitCode = 1;
+    });
 }

@@ -195,6 +195,12 @@ Node/TS 側にローカル `projects/` scanner、summary extractor、artifact wr
 - **判断**: PJv34 Phase 0 は `projects/` folder を入力、`tmp/` を出力にするローカル完結ループへ変更する。
 - **未決**: `@langchain/langgraph` をすぐ入れるか、自前のGraph-shaped runnerで形を固めてから導入するか。
 
+### 2026-04-29: DeepSeek smoke 試行
+
+- **調査結果**: `WEEKLY_REVIEW_PROVIDER=deepseek` mode は build / local artifact generation まで通ったが、外部API到達で `fetch failed` / `EACCES`。PowerShell の到達性確認でもソケット許可エラー。
+- **判断**: DeepSeek integration code path は残し、実API smoke はネットワーク許可のある環境で再実行する。
+- **未決**: Codex desktop sandbox から外部APIを叩く運用経路をどう確保するか。
+
 ## 実行計画
 
 Phase 0 ではコード実装へ入る前に、`projects/` 入力と `tmp/` 出力の契約を確定する。LLM/DeepSeek/Bitwarden は loop が通った後の差し込み対象として扱う。
