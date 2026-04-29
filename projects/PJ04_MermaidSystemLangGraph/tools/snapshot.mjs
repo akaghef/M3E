@@ -2,9 +2,20 @@
 // Captures screenshot.png, edges.json (all graph-link paths), console.log
 // from PJ04 viewer for visual verification loops.
 
-import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createRequire } from "node:module";
+
+async function loadPlaywright() {
+  try {
+    return await import("playwright");
+  } catch {
+    const require = createRequire(import.meta.url);
+    return require("../../../beta/node_modules/playwright");
+  }
+}
+
+const { chromium } = await loadPlaywright();
 
 const [, , url, outDirArg, labelArg] = process.argv;
 if (!url || !outDirArg) {
@@ -26,18 +37,21 @@ page.on("pageerror", (e) => consoleMsgs.push(`[pageerror] ${e.message}`));
 await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 // Wait for SVG to appear (viewer mounted)
 await page.waitForSelector("svg", { timeout: 15000 }).catch(() => {});
-await page.waitForTimeout(1500); // let layout settle
+// Wait for the map render, not just the static shell. Home pages may never have
+// node-hit elements, so keep this best-effort.
+await page.waitForSelector("rect.node-hit, g.node-hit", { timeout: 15000 }).catch(() => {});
+await page.waitForTimeout(800); // let layout settle
 
 // Switch view mode if requested via SNAP_VIEW env (tree|system). Default: don't switch.
 const desired = process.env.SNAP_VIEW;
 if (desired === "system" || desired === "tree") {
   const btnId = desired === "system" ? "view-system" : "view-tree";
-  await page
-    .evaluate((id) => {
-      const btn = document.getElementById(id);
-      if (btn && !btn.classList.contains("is-active")) btn.click();
-    }, btnId)
-    .catch(() => {});
+  await page.click(`#${btnId}`).catch(() => {});
+  await page.waitForFunction(
+    (id) => document.getElementById(id)?.classList.contains("is-active") === true,
+    btnId,
+    { timeout: 5000 },
+  ).catch(() => {});
   await page.waitForTimeout(600);
 }
 

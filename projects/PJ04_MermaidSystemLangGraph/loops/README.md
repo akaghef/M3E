@@ -45,12 +45,20 @@ The point of keeping this index under version control is to preserve the *narrat
 - preview (j/k detail level) での box 幅再計算
 - canonical_mermaid.html との parity 明示チェック (T-1-1 eval)
 
+### `codex_ui_self_improve/` — System view overlap fix
+- Re-ran the Claude-style snapshot loop from Codex against beta dev map: `viewer.html?map=map_BG9BZP6NRDTEH1JYNDFGS6S3T5`.
+- iter4: System view selected, but 8 direct child boxes resolved to the same `(x=72,y=151)` cell.
+- Fix: System layout and flow preview now stack duplicate `(flowCol, flowRow)` cells downward instead of drawing boxes on top of each other.
+- Fix: switching Tree/System refits the canvas immediately and on the next animation frame, so the view is inspectable after mode changes.
+- iter6_system: `collisions=0`, `boxes=8`, `edges=0`; screenshot confirmed direct children are readable and non-overlapping.
+- iter6_tree remains unchanged with `collisions=3`; this is outside the current System view overlap fix.
+
 ## Reproducing a loop locally
 ```bash
 cd projects/PJ04_MermaidSystemLangGraph/tools
 npm install  # if node_modules absent
-SNAP_LABEL=myrun_iter1 SNAP_VIEW=system node snapshot.mjs
-SNAP_LABEL=myrun_iter1 SNAP_VIEW=tree   node snapshot.mjs
+SNAP_VIEW=system node snapshot.mjs http://localhost:4173 ../loops/myrun myrun_iter1_system
+SNAP_VIEW=tree   node snapshot.mjs http://localhost:4173 ../loops/myrun myrun_iter1_tree
 # artifacts land under ../loops/myrun/
 ```
 

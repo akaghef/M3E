@@ -419,6 +419,10 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
+  fitDocument();
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
   scheduleAutosave();
   setStatus(`View: ${surfaceViewModeLabel(mode)}`);
 }
@@ -2305,6 +2309,7 @@ function buildFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewL
   const colMaxWidth: Record<number, number> = {};
   const rowMaxHeight: Record<number, number> = {};
   const childMetrics: Record<string, { w: number; h: number; col: number; row: number }> = {};
+  const occupiedRowsByCol: Record<number, Set<number>> = {};
   let maxCol = 0;
   let maxRow = 0;
 
@@ -2318,7 +2323,13 @@ function buildFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewL
     const w = Math.max(110, measured.w + FLOW_SURFACE_PREVIEW_NODE_PAD_X * 2);
     const h = Math.max(FLOW_SURFACE_PREVIEW_NODE_HEIGHT, measured.h + 10);
     const col = flowColOf(child, index);
-    const row = flowRowOf(child, 0);
+    const occupiedRows = occupiedRowsByCol[col] || new Set<number>();
+    let row = flowRowOf(child, 0);
+    while (occupiedRows.has(row)) {
+      row += 1;
+    }
+    occupiedRows.add(row);
+    occupiedRowsByCol[col] = occupiedRows;
     childMetrics[childId] = { w, h, col, row };
     colMaxWidth[col] = Math.max(colMaxWidth[col] ?? 0, w);
     rowMaxHeight[row] = Math.max(rowMaxHeight[row] ?? 0, h);
@@ -3292,6 +3303,8 @@ function buildLayout(state: AppState): LayoutResult {
     const order: string[] = [];
     const colMaxWidth: Record<number, number> = {};
     const rowMaxHeight: Record<number, number> = {};
+    const surfaceCells: Record<string, { col: number; row: number }> = {};
+    const occupiedRowsByCol: Record<number, Set<number>> = {};
     let maxCol = 0;
     let maxRow = 0;
 
@@ -3315,7 +3328,14 @@ function buildLayout(state: AppState): LayoutResult {
         return;
       }
       const col = flowColOf(node, index);
-      const row = flowRowOf(node, 0);
+      const occupiedRows = occupiedRowsByCol[col] || new Set<number>();
+      let row = flowRowOf(node, 0);
+      while (occupiedRows.has(row)) {
+        row += 1;
+      }
+      occupiedRows.add(row);
+      occupiedRowsByCol[col] = occupiedRows;
+      surfaceCells[nodeId] = { col, row };
       depthOf[nodeId] = col;
       maxCol = Math.max(maxCol, col);
       maxRow = Math.max(maxRow, row);
@@ -3341,8 +3361,8 @@ function buildLayout(state: AppState): LayoutResult {
     primarySurfaceNodes.forEach((nodeId, index) => {
       const node = state.nodes[nodeId];
       if (!node) return;
-      const col = flowColOf(node, index);
-      const row = flowRowOf(node, 0);
+      const resolvedCell = surfaceCells[nodeId] || { col: flowColOf(node, index), row: flowRowOf(node, 0) };
+      const { col, row } = resolvedCell;
       const metric = metrics[nodeId]!;
       pos[nodeId] = {
         x: xByCol[col]!,
