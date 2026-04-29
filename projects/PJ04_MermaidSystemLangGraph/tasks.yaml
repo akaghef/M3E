@@ -306,10 +306,10 @@
   parallelizable: true
   scope: "projects/PJ04_MermaidSystemLangGraph/docs/system_block_templates.md, docs/system_design.md"
   facet: contract
-  status: pending
-  round: 0
+  status: done
+  round: 1
   round_max: 2
-  last_feedback: null
+  last_feedback: "2026-04-30: docs/system_block_templates.md と beta/src/shared/system_block_templates.ts を追加。io.load_local_folder / llm.generate_doc.subsystem / io.write_artifact を初期 catalog として定義し、LangGraph pattern -> M3E block の項目/例/意味テーブルを作成。"
   blocker: null
 
 - id: T-TPL-1
@@ -329,11 +329,11 @@
   parallelizable: false
   scope: "beta/src/browser/viewer.ts, beta/src/shared/graph_spec_types.ts, beta/src/node/graph_spec_compile.ts"
   facet: contract
-  status: pending
-  round: 0
+  status: review
+  round: 1
   round_max: 3
-  last_feedback: null
-  blocker: "depends on T-TPL-0 and should align with T-A-1"
+  last_feedback: "2026-04-30: beta/src/node/system_block_instantiator.ts と pjv34_template_seed.ts を追加。template registry から PJv34 Authoring Map AppState を生成し、root と Generate Doc subsystem の GraphSpec compile / validate が warnings=0, issues=0。UI insert は未接続なので review 扱い。"
+  blocker: "viewer UI insert and L2 badges are still pending; should align with T-A-1"
 
 - id: T-TPL-2
   phase: 4

@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
     "build:node": "tsc -p tsconfig.node.json",
     "weekly:review": "npm run build:node && node dist/node/weekly_review_loop.js",
+    "pjv34:template": "npm run build:node && node dist/node/pjv34_template_seed.js",
     "build:browser": "tsc -p tsconfig.browser.json",
     "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",
