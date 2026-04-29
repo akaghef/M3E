@@ -1,0 +1,107 @@
+- id: T-0-1
+  phase: 0
+  verb: audit
+  target: "existing Node-side LLM infrastructure"
+  done_when:
+    - "beta/src/node/llm and related AI API files are listed"
+    - "existing abstractions are mapped to LLMClient / SecretProvider / TraceLogger"
+    - "missing pieces are recorded in plan.md"
+  eval_required: false
+  eval_criteria:
+    - "No secret values are printed or copied"
+    - "Browser-side direct provider calls are explicitly checked"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
+  facet: "Active Workspace"
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: null
+
+- id: T-0-2
+  phase: 0
+  verb: define
+  target: "weekly review input/output schema"
+  done_when:
+    - "Mock input schema covers active PJ, phase, done items, blockers, reviews, next actions"
+    - "Output schema separates summary, risks, questions, next tasks"
+    - "Schema avoids raw secret or sensitive telemetry fields"
+  eval_required: true
+  eval_criteria:
+    - "Schema is enough for mock provider E2E"
+    - "Schema can later map to M3E Review scope"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
+  facet: "Active Workspace"
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-0-3
+  phase: 0
+  verb: design
+  target: "LLMClient / SecretProvider / TraceLogger contract"
+  done_when:
+    - "chat request/response contract is written"
+    - "secret retrieval contract includes env and Bitwarden CLI paths"
+    - "trace record excludes prompt body by default and stores hash/metadata"
+  eval_required: true
+  eval_criteria:
+    - "Provider switch requires one config point"
+    - "Key cannot flow to browser or log by contract"
+    - "Failure returns Result instead of crashing graph"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
+  facet: "Active Workspace"
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-0-4
+  phase: 0
+  verb: implement
+  target: "mock provider weekly review loop"
+  done_when:
+    - "Mock provider returns deterministic weekly review proposal"
+    - "Orchestrator records trace metadata"
+    - "Failure path produces review/Qn-like Result"
+  eval_required: true
+  eval_criteria:
+    - "Runs without API key"
+    - "No network call is made"
+    - "Output is structured and reviewable"
+  parallelizable: false
+  scope: "beta/src/node/llm or equivalent"
+  facet: "Evaluation Board"
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: null
+
+- id: T-1-1
+  phase: 1
+  verb: smoke
+  target: "DeepSeek provider with secure secret path"
+  done_when:
+    - "DeepSeek is called once through Node-side boundary"
+    - "API key is not printed in logs or artifacts"
+    - "Trace includes req_id, provider, model, latency, usage or error"
+  eval_required: true
+  eval_criteria:
+    - "Secret source can be env or Bitwarden CLI"
+    - "Provider failure becomes Result"
+    - "Retry/backoff is bounded"
+  parallelizable: false
+  scope: "beta/src/node/llm or equivalent"
+  facet: "Evaluation Board"
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: "Wait for Phase 0 mock loop"
