@@ -13,7 +13,7 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
   facet: "Active Workspace"
-  status: pending
+  status: done
   round: 0
   round_max: 2
   last_feedback: null
@@ -34,7 +34,7 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
   facet: "Active Workspace"
-  status: pending
+  status: done
   round: 0
   round_max: 3
   last_feedback: null
@@ -56,7 +56,7 @@
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
   facet: "Active Workspace"
-  status: pending
+  status: done
   round: 0
   round_max: 3
   last_feedback: null
@@ -79,7 +79,7 @@
   parallelizable: false
   scope: "beta/src/node/orchestration or equivalent"
   facet: "Evaluation Board"
-  status: pending
+  status: done
   round: 0
   round_max: 3
   last_feedback: null
