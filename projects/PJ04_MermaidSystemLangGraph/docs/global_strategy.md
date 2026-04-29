@@ -17,7 +17,7 @@ references:
 
 # PJ04 大域戦略
 
-> **TL;DR**: M3E を **LangGraph 系システムの協働 authoring 環境** にする。**技術レイヤ** (L1 Surface / L2 Map / L3 GraphSpec / L4 Bridge / L5 LangGraph) × **authoring depth** (Outer = 骨格 / Inner = 詳細、どちらも L2 Map 内) を、**4 トラック並走 + 2 ゲート直列** で組み上げる。
+> **TL;DR**: M3E を **LangGraph 系システムの協働 authoring 環境** にする。**技術 stack = MLG stack** (T1 Surface / T2 Map / T3 Compile / T4 Emit / T5 Bridge / T6 LangGraph / T7 Checkpoint、[system_design.md §2](system_design.md) 正本) × **authoring depth** (Outer = 骨格 / Inner = 詳細、どちらも T2 Map 内) を、**4 トラック並走 + 2 ゲート直列** で組み上げる。
 > トラックは { Execution (A-F) / View (CX-0..4) / Layout (LAY-1..6) / Data (S-0..5) }。
 > 直列ゲートは { **G1: Contract Freeze** → 大多数のトラックを開く / **G2: Bridge MVP** → L3+ / L5 / trace を開く }。
 > 最終目的は **Collaboration Stance** (Sketch → Fill → Review → Tune → Run → Iterate) が map 内で完結する状態。

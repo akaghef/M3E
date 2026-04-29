@@ -1,10 +1,28 @@
 # PJ04 — Resume Cheatsheet (session handoff)
 
-**最終更新**: 2026-04-22 (vision 確認: abstract → concrete 軸で VSCode 拡張まで一本化)
+**最終更新**: 2026-04-29 (secrets management セットアップ + DeepSeek smoke seed)
 **ブランチ**: `prj/04_MermaidSystemLangGraph`
-**前セッション**: Claude (edge routing v3 完了)
-**今セッション**: Claude (system_design L1/L2 + global_strategy 起票 + vision reaffirm)
+**前セッション**: Claude (edge routing v3 完了 / vision reaffirm)
+**今セッション**: Claude (Bitwarden CLI 経由の secrets pipeline + DeepSeek API smoke seed)
 **次の主目的**: **Phase 2 LAY queue** (T-LAY-1 / T-LAY-3 並列) — 詳細は [docs/global_strategy.md §6](docs/global_strategy.md) / [docs/layout_strategy.md](docs/layout_strategy.md)
+
+## Recent additions (2026-04-29)
+- [docs/secrets_management.md](docs/secrets_management.md) — Bitwarden CLI 規約・解決順序・`.gitignore` ガード
+- [scripts/with-keys.sh](scripts/with-keys.sh) / [scripts/with-keys.cmd](scripts/with-keys.cmd) — `bw unlock` → API キー env 注入 → child exec
+- [runtime/bridge/secrets.py](runtime/bridge/secrets.py) — `get_secret(service)` (env → vault → raise)
+- [runtime/langgraph_sandbox/deepseek_smoke.py](runtime/langgraph_sandbox/deepseek_smoke.py) — DeepSeek 1 round-trip smoke (OpenAI 互換 SDK)
+- requirements.txt に `openai==1.57.4` / `langchain-openai==0.3.0` 追加
+- 走らせ方: `./projects/PJ04_MermaidSystemLangGraph/scripts/with-keys.sh python projects/PJ04_MermaidSystemLangGraph/runtime/langgraph_sandbox/deepseek_smoke.py`
+- 必要 vault item: `api/deepseek` (password = sk-...) — 未作成なら GUI で 1 件追加
+- **venv 作成済**: `projects/PJ04_MermaidSystemLangGraph/runtime/.venv/` (Python 3.14.4)
+- **dep install 済**: langgraph 1.1.8 / langchain-core 1.3.0 / langchain-anthropic 1.4.1 / langchain-openai 1.2.0 / openai 2.33.0 / anthropic 0.96.0
+- **langgraph smoke pass**: `smoke_test.py` → n=3, trace=[gen,eval]×3 OK
+- **secrets.py wired**: env-only path で SecretNotFoundError 正常発火
+- **with-keys.sh wired**: bw unlock prompt まで到達確認 (master password 待ちで止まる)
+- **bio wrapper 追加**: [scripts/with-keys-bio.ps1](scripts/with-keys-bio.ps1) — Windows Hello + DPAPI cache (BW_SESSION のみ保存、master password は保存しない)
+- **DeepSeek + LangGraph smoke 追加**: [runtime/langgraph_sandbox/deepseek_langgraph_smoke.py](runtime/langgraph_sandbox/deepseek_langgraph_smoke.py) — `build_graph()` で CompiledStateGraph 生成確認済、key 入れば即 pass
+- **引き継ぎ書発行**: [docs/handoff_desktop_claude.md](docs/handoff_desktop_claude.md) — Desktop Claude が引き取って T-SEC-1 を finalize する想定
+- 残 (Desktop Claude 担当): (a) Web Vault で `api/deepseek` 作成、(b) `bw unlock`、(c) 2 つの smoke を pass、(d) T-SEC-1 → done、(e) 任意で bio wrapper 検証
 
 ---
 

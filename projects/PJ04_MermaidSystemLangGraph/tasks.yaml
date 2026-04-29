@@ -536,6 +536,30 @@
   last_feedback: null
   blocker: "triggered by T-LAY-2 実運用 or T-LAY-4 実運用"
 
+- id: T-SEC-1
+  phase: 4
+  verb: integrate
+  target: "Bitwarden CLI 経由の API key pipeline (env → vault fallback)"
+  done_when:
+    - "scripts/with-keys.sh / with-keys.cmd が bw unlock + API key を child env に注入する"
+    - "runtime/bridge/secrets.py が get_secret(service) を提供 (env優先 / bw fallback / SecretNotFoundError)"
+    - "docs/secrets_management.md が canonical 規約として存在 (item命名 api/<service>, password field)"
+    - ".gitignore が bw export / venv / traces / checkpoints.sqlite を除外"
+    - "deepseek_smoke.py が secrets.get_secret('deepseek') 経由で 1 round-trip 通る"
+  eval_required: true
+  eval_criteria:
+    - "API key が disk に平文で残らない (.env 禁止)"
+    - "親 shell が key で汚染されない (子プロセス env のみ)"
+    - "新サービス追加はコード変更不要 (vault item 追加のみで足る)"
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/scripts, runtime/bridge, runtime/langgraph_sandbox, docs/secrets_management.md"
+  facet: tooling
+  status: handoff
+  round: 1
+  round_max: 2
+  last_feedback: "2026-04-29: 本セッションでは打ち止め (akaghef指示)。受け渡し先: 他人 (Desktop Claude or 別エージェント)。引き継ぎ書 docs/handoff_desktop_claude.md に手順全部。残作業3点: (1) `with-keys-bio.ps1 -Setup` 1回 (master pw最終)、(2) Bitwarden Web Vault で api/deepseek アイテム作成、(3) `with-keys-bio.ps1 -- python deepseek_smoke.py` と同 deepseek_langgraph_smoke.py が両方OK出力。完了したら status: done に。"
+  blocker: "akaghef指示で本Claude Code session からは外す (2026-04-29)"
+
 - id: T-F-1
   phase: 5
   verb: observe

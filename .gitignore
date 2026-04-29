@@ -60,3 +60,15 @@ scripts/ops/launch-cloud-sync.local.bat
 projects/PJ04_MermaidSystemLangGraph/loops/**/*.png
 projects/PJ04_MermaidSystemLangGraph/loops/**/*.json
 projects/PJ04_MermaidSystemLangGraph/loops/**/*.log
+
+# Bitwarden exports / sessions (NEVER commit)
+*.bwjson
+bw_export*.json
+.bw_session
+
+# PJ04: Python venv + caches
+projects/PJ04_MermaidSystemLangGraph/runtime/.venv/
+projects/PJ04_MermaidSystemLangGraph/runtime/**/__pycache__/
+projects/PJ04_MermaidSystemLangGraph/runtime/**/*.pyc
+projects/PJ04_MermaidSystemLangGraph/runtime/traces/
+projects/PJ04_MermaidSystemLangGraph/runtime/checkpoints.sqlite
