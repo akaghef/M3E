@@ -70,8 +70,8 @@ role: "LangGraph の主要機能を M3E で template / GraphSpec / run / test / 
 | 34 | Error handling | Result / failure route | PARTIAL | PARTIAL | PARTIAL | PENDING | PENDING | PJv34 runner は api_error/bad_output を分岐できる | failure route test |
 | 35 | Provider abstraction | LLMClient | PARTIAL | N/A | PARTIAL | PARTIAL | N/A | DeepSeek smoke は成功。generic interface は未完成 | OpenAI/Anthropic/DeepSeek切替の1箇所化 |
 | 36 | Secret handling | Secret provider | PARTIAL | N/A | PARTIAL | PARTIAL | N/A | env注入でDeepSeek実行済み。Bitwarden本線は handoff | with-keys / Bitwarden 経路を完了 |
-| 37 | Template System Spec | YAML/JSON authoring input | PENDING | PENDING | PENDING | PENDING | N/A | PJv34-specific seed はあるが generic spec reader は未実装 | T-TPL-1 |
-| 38 | Template build CLI | spec -> AppState / GraphSpec | PARTIAL | PARTIAL | PARTIAL | PARTIAL | N/A | `npm run pjv34:template` は成功。genericではない | `template:build` 実装 |
+| 37 | Template System Spec | YAML/JSON authoring input | DONE | DONE | PARTIAL | DONE | N/A | `templates/pjv34_weekly_review.yaml` を generic builder が読む。run側はまだPJv34固定 | generic runner へ接続 |
+| 38 | Template build CLI | spec -> AppState / GraphSpec | DONE | DONE | DONE | DONE | N/A | `npm run template:build -- --spec ... --out ...` が成功。root / Generate Doc validation 0 | unknown template / missing slot の negative test |
 | 39 | Template run CLI | GraphSpec -> artifact / trace | PARTIAL | PARTIAL | PARTIAL | PARTIAL | N/A | `npm run pjv34:template:run` はDeepSeek込みで成功。genericではない | `template:run` 実装 |
 | 40 | Template test CLI | catalog/spec/build/run tests | PENDING | PENDING | PENDING | PENDING | N/A | テスト要件は文書化済み | catalog/spec/no-secret/failure route tests |
 | 41 | System Diagram display | Outer graph display | PARTIAL | N/A | N/A | PARTIAL | PARTIAL | flow-lr / edge routing / subsystem表示は進んでいる | template-generated AppState の表示確認 |

@@ -330,11 +330,11 @@
   parallelizable: false
   scope: "projects/PJ04_MermaidSystemLangGraph/templates, beta/src/shared, beta/src/node"
   facet: contract
-  status: review
-  round: 1
+  status: done
+  round: 2
   round_max: 3
-  last_feedback: "2026-04-30: beta/src/node/system_block_instantiator.ts と pjv34_template_seed.ts を追加。template registry から PJv34 Authoring Map AppState を生成し、root と Generate Doc subsystem の GraphSpec compile / validate が warnings=0, issues=0。UI insert は未接続なので review 扱い。"
-  blocker: "current implementation is PJv34-specific; generic YAML/JSON spec builder is pending"
+  last_feedback: "2026-04-30: projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml を追加し、beta/src/node/template_system_builder.ts / template_build_cli.ts で generic YAML/JSON Template System Spec -> AppState / scope別 GraphSpec を生成可能にした。`npm run template:build -- --spec ... --out ...` は build issues 0, warnings 0, validation issues 0。template_system_builder.test.js でPJv34 specのroot/subsystem compileを自動確認。"
+  blocker: null
 
 - id: T-TPL-2
   phase: 4

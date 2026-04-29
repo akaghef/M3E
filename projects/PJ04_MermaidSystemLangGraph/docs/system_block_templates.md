@@ -248,7 +248,11 @@ npm run template:run -- --spec projects/PJ04_MermaidSystemLangGraph/templates/pj
 npm run template:test
 ```
 
-現在の `npm run pjv34:template` / `npm run pjv34:template:run` は、上記 generic CLI に置き換えるまでの compatibility command とする。
+現在:
+
+- `npm run template:build` は実装済み。YAML/JSON の Template System Spec から AppState / scope別 GraphSpec / validation 結果を出す。
+- `npm run pjv34:template` / `npm run pjv34:template:run` は、generic run / test に置き換えるまでの compatibility command とする。
+- `template:run` / `template:test` は未実装。
 
 ## Test Requirements
 
