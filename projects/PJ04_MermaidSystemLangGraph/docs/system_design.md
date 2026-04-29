@@ -238,7 +238,7 @@ Claude supervisor
 | **reducer** | channel の merge semantics (`replace` / `append` / `merge` / `messages` / `custom`) |
 | **Resource Binding** | State Channel と file / artifact / map node / API resource などの実体を結びつける薄い参照 |
 | **Resource Metadata** | Resource Binding が指す実体の `exists` / `freshness` / `valid` / `hash` / `updated_at` などの派生情報 |
-| **Resource View** | Resource Metadata を Runtime Board / panel に表示する view。独自の data state machine ではない |
+| **Data View** | Resource Metadata を Runtime Board / panel に表示する view。独自の data state machine ではない |
 | **checkpoint** | `{channel_values, channel_versions, parent, spec_identity}` の 1 snapshot。spec_identity = `{graph_spec_hash, map_snapshot_id, emitted_python_hash?}` |
 | **thread** | checkpoint chain、`thread_id` で管理 |
 | **resume** | checkpoint 時点の **old spec (freeze)** で続きを実行する (I2 と整合)。current spec で再実行したいときは **別操作 `replay-with-current`** を使う (I29) |
@@ -261,7 +261,7 @@ System Scope
 **State Contract** は LangGraph の State / Channel / Reducer に Resource Binding を足したもの。
 
 `Data Automaton` / `Data State Machine` という独自語は使わない。
-data 側の変化は LangGraph の State Channel update と checkpoint で扱い、M3E は必要に応じて Resource View を出すだけにする。
+data 側の変化は LangGraph の State Channel update と checkpoint で扱い、M3E は必要に応じて Data View を出すだけにする。
 
 | 避ける語 | 正規語 |
 |---|---|
@@ -269,7 +269,7 @@ data 側の変化は LangGraph の State Channel update と checkpoint で扱い
 | Data Automaton | **State Contract** |
 | Data State | **State Channel** |
 | File State | **Resource Metadata** |
-| Data UI | **Resource View** |
+| Data UI | **Data View** |
 
 例: PJv34 Weekly Review
 
