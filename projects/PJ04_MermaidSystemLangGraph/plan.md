@@ -272,6 +272,8 @@ PJ04 は **4 トラック並走 + 2 ゲート直列**で進める。
    lane-role, snapshot gate, multi-lane, engine 判定
 4. `DATA`
    channels, reducers, validation, timeline
+5. `TPL`
+   System Block Template, template insert, PJv34 rebuild acceptance
 
 ### 6.2 ゲート
 
@@ -285,6 +287,7 @@ PJ04 は **4 トラック並走 + 2 ゲート直列**で進める。
 - `LAY` は先行できる
 - `VIEW` の L2 は bridge なしで先行できる
 - `DATA` の panel / validation の一部は bridge なしで先行できる
+- `TPL` は G1 の前に catalog を作り、G1 で GraphSpec contract と接続し、G2 後に PJv34 rebuild Run の acceptance へ進む
 - `EXEC` の本格化は G1 通過後
 - `VIEW L3+` と `DATA` の runtime 側は G2 通過後
 
@@ -308,6 +311,9 @@ PJ04 は **4 トラック並走 + 2 ゲート直列**で進める。
    canonical map を multi-lane に開放する
 
 その後に G1 (`T-A-1`) へ進む。
+
+並行して `TPL-0` を開始する。
+PJ04 の実用検証は **Template-first PJv34 Rebuild** とし、System Block Template 実装後に AI が template から PJv34 Weekly Review system を再構築して Run することを acceptance とする。
 
 重要なのは、**layout が落ち着く前に execution 契約を凍結しすぎない**ことである。
 逆に、**G1 を通す段階になったら runtime 論点を持ち込まず contract に集中する**こと。

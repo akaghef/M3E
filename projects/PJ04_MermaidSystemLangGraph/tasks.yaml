@@ -284,6 +284,82 @@
   blocker: "requires ANTHROPIC_API_KEY in local env"
 
 # =========================================================================
+# Template-first PJv34 Rebuild
+# Strategy: implement System Block Templates, then ask AI to rebuild PJv34 from templates and Run.
+# =========================================================================
+
+- id: T-TPL-0
+  phase: 3
+  verb: define
+  target: "System Block Template catalog for LangGraph patterns"
+  done_when:
+    - "docs/system_block_templates.md exists"
+    - "catalog maps LangGraph patterns to M3E block templates: add_node, add_edge, add_conditional_edges, StateGraph, reducer/channel, Send, interrupt, Command, ToolNode, subgraph"
+    - "each template has 項目/例/意味 table and required contract fields"
+    - "`llm.generate_doc.subsystem` is defined as first standard subsystem template"
+    - "template terms align with Control Graph / State Contract / Data View glossary"
+  eval_required: true
+  eval_criteria:
+    - "templates initialize Contract Tree; they are not just visual stencils"
+    - "no independent Data Automaton terminology is introduced"
+    - "Generate Doc hides retry/fallback loop inside subsystem while upper diagram remains abstract"
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/docs/system_block_templates.md, docs/system_design.md"
+  facet: contract
+  status: pending
+  round: 0
+  round_max: 2
+  last_feedback: null
+  blocker: null
+
+- id: T-TPL-1
+  phase: 3
+  verb: implement
+  target: "template insert + Contract Tree initialization for first templates"
+  done_when:
+    - "M3E can instantiate at least `io.load_local_folder`, `llm.generate_doc.subsystem`, and `io.write_artifact` templates"
+    - "instantiated node/subsystem receives stable node ids, trace ids, reads/writes, ports, and default failure policy"
+    - "Generate Doc template creates an inner subsystem with build_prompt / call_provider / evaluate_response / retry_backoff / fallback_qn / return_draft"
+    - "template-derived nodes can compile to GraphSpec without manual attribute filling"
+  eval_required: true
+  eval_criteria:
+    - "AI can fill prompt/paths/schema slots without inventing new contract keys"
+    - "upper system diagram remains readable at L0/L1"
+    - "L2 shows template kind and State Channel badges"
+  parallelizable: false
+  scope: "beta/src/browser/viewer.ts, beta/src/shared/graph_spec_types.ts, beta/src/node/graph_spec_compile.ts"
+  facet: contract
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-TPL-0 and should align with T-A-1"
+
+- id: T-TPL-2
+  phase: 4
+  verb: rebuild
+  target: "AI rebuilds PJv34 Weekly Review system from templates and runs it"
+  done_when:
+    - "AI uses templates to create PJv34 Authoring Map: Load Context -> Generate Doc -> Write Output"
+    - "Generate Doc subsystem contains provider call / evaluate / retry / fallback loop"
+    - "compiled GraphSpec can Run through the PJ04 runtime path or a compatible local runner"
+    - "Run produces weekly review output equivalent to existing PJv34 loop"
+    - "trace node ids match Control Graph node ids"
+  eval_required: true
+  eval_criteria:
+    - "AI does not hand-build the full system from scratch; it instantiates templates and fills slots"
+    - "fallback loop is inside Generate Doc subsystem, not leaked into the upper diagram"
+    - "Authoring Map is not mutated by runtime trace except approved Qn / decision flow"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview, projects/PJ04_MermaidSystemLangGraph/runtime, beta/src/node"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-TPL-1 and G2/T-B-1 for full bridge Run; may use compatible local runner before G2"
+
+# =========================================================================
 # Concreteness Axis (per docs/concreteness_axis.md)
 # Extend detail level L0-L5 so higher levels reveal Python code / runtime.
 # =========================================================================
