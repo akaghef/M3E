@@ -73,7 +73,7 @@ role: "LangGraph の主要機能を M3E で template / GraphSpec / run / test / 
 | 37 | Template System Spec | YAML/JSON authoring input | DONE | DONE | PARTIAL | DONE | N/A | `templates/pjv34_weekly_review.yaml` を generic builder が読む。run側はまだPJv34固定 | generic runner へ接続 |
 | 38 | Template build CLI | spec -> AppState / GraphSpec | DONE | DONE | DONE | DONE | N/A | `npm run template:build -- --spec ... --out ...` が成功。root / Generate Doc validation 0 | unknown template / missing slot の negative test |
 | 39 | Template run CLI | GraphSpec -> artifact / trace | DONE | DONE | DONE | DONE | N/A | `npm run template:run -- --spec ... --out ...` がmock providerで成功。trace node id はControl Graphと一致 | bridge runner へ接続 |
-| 40 | Template test CLI | catalog/spec/build/run tests | PARTIAL | PARTIAL | DONE | DONE | N/A | `npm run template:test` で build/run/failure/no-secret を確認。catalog negative test は未追加 | catalog/spec negative tests |
+| 40 | Template test CLI | catalog/spec/build/run tests | DONE | DONE | DONE | DONE | N/A | `npm run template:test` で catalog/spec negative, build, run, failure route, no-secret を確認 | bridge runner tests |
 | 41 | System Diagram display | Outer graph display | PARTIAL | N/A | N/A | PARTIAL | PARTIAL | flow-lr / edge routing / subsystem表示は進んでいる | template-generated AppState の表示確認 |
 | 42 | Contract badges L2 | kind / channel / status badges | PENDING | N/A | N/A | PENDING | PENDING | UI handoff 済み | visual側 task |
 | 43 | Subsystem drill-down UI | scope 内部表示 | PARTIAL | N/A | N/A | PARTIAL | PARTIAL | scope移動は既存概念に乗る。template専用確認は未完 | Generate Doc subsystem preview |

@@ -102,4 +102,38 @@ describe("Template System builder", () => {
     ]);
     expect(trace.qn).toContain("Forced provider error");
   });
+
+  test("reports unknown templates and missing required slots", () => {
+    const unknownTemplate = buildTemplateSystemState({
+      id: "bad_system",
+      label: "Bad System",
+      nodes: [
+        { id: "bad_node", template: "missing.template" },
+      ],
+    });
+    expect(unknownTemplate.issues).toContainEqual({
+      kind: "unknown_template",
+      detail: "bad_node: missing.template",
+    });
+
+    const missingSlot = buildTemplateSystemState({
+      id: "missing_slot_system",
+      label: "Missing Slot System",
+      nodes: [
+        {
+          id: "process_without_callable",
+          template: "langgraph.node.process",
+          slots: {
+            reads: "state.input",
+            writes: "state.output",
+            trace_step_id: "process_without_callable",
+          },
+        },
+      ],
+    });
+    expect(missingSlot.issues).toContainEqual({
+      kind: "missing_required_slot",
+      detail: "process_without_callable.callable_ref",
+    });
+  });
 });
