@@ -355,10 +355,10 @@
   scope: "beta/src/node, beta/tests/unit, projects/PJ04_MermaidSystemLangGraph/templates"
   facet: runtime
   status: review
-  round: 1
+  round: 2
   round_max: 3
-  last_feedback: "2026-04-30: beta/src/node/pjv34_template_runner.ts を追加し、template-derived Control Graph を compatible local runner で実行。DeepSeek call_provider を通過し route=pass、tmp/pjv34-template-run-latest.md/json を生成。trace node ids: load_context -> build_prompt -> call_provider -> evaluate_response -> return_draft -> write_output。full bridge Run は G2/T-B-1 後に残る。"
-  blocker: "current runner is PJv34-specific; generic runner and tests are pending"
+  last_feedback: "2026-04-30: beta/src/node/template_run_cli.ts と `npm run template:run` を追加。Template System Spec -> AppState -> GraphSpec -> callable_ref registry dispatch で PJv34 を実行し、mock provider で tmp/pjv34-template-run-generic.md/json を生成。trace node ids: load_context -> build_prompt -> call_provider -> evaluate_response -> return_draft -> write_output。残りは failure route / no-secret の自動テストと bridge runner。"
+  blocker: "failure route and no-secret tests are pending; bridge runner depends on T-B-1/G2"
 
 - id: T-TPL-3
   phase: 4

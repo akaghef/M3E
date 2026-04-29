@@ -72,7 +72,7 @@ role: "LangGraph の主要機能を M3E で template / GraphSpec / run / test / 
 | 36 | Secret handling | Secret provider | PARTIAL | N/A | PARTIAL | PARTIAL | N/A | env注入でDeepSeek実行済み。Bitwarden本線は handoff | with-keys / Bitwarden 経路を完了 |
 | 37 | Template System Spec | YAML/JSON authoring input | DONE | DONE | PARTIAL | DONE | N/A | `templates/pjv34_weekly_review.yaml` を generic builder が読む。run側はまだPJv34固定 | generic runner へ接続 |
 | 38 | Template build CLI | spec -> AppState / GraphSpec | DONE | DONE | DONE | DONE | N/A | `npm run template:build -- --spec ... --out ...` が成功。root / Generate Doc validation 0 | unknown template / missing slot の negative test |
-| 39 | Template run CLI | GraphSpec -> artifact / trace | PARTIAL | PARTIAL | PARTIAL | PARTIAL | N/A | `npm run pjv34:template:run` はDeepSeek込みで成功。genericではない | `template:run` 実装 |
+| 39 | Template run CLI | GraphSpec -> artifact / trace | DONE | DONE | DONE | PARTIAL | N/A | `npm run template:run -- --spec ... --out ...` がmock providerで成功。trace node id はControl Graphと一致 | failure route / no-secret を自動テスト化 |
 | 40 | Template test CLI | catalog/spec/build/run tests | PENDING | PENDING | PENDING | PENDING | N/A | テスト要件は文書化済み | catalog/spec/no-secret/failure route tests |
 | 41 | System Diagram display | Outer graph display | PARTIAL | N/A | N/A | PARTIAL | PARTIAL | flow-lr / edge routing / subsystem表示は進んでいる | template-generated AppState の表示確認 |
 | 42 | Contract badges L2 | kind / channel / status badges | PENDING | N/A | N/A | PENDING | PENDING | UI handoff 済み | visual側 task |
