@@ -1,15 +1,15 @@
 - id: T-0-1
   phase: 0
   verb: audit
-  target: "existing Node-side LLM infrastructure"
+  target: "projects folder input structure"
   done_when:
-    - "beta/src/node/llm and related AI API files are listed"
-    - "existing abstractions are mapped to LLMClient / SecretProvider / TraceLogger"
-    - "missing pieces are recorded in plan.md"
+    - "projects/PJ* directories are listed"
+    - "README / plan / tasks.yaml / reviews availability is summarized"
+    - "input boundary is recorded in plan.md"
   eval_required: false
   eval_criteria:
-    - "No secret values are printed or copied"
-    - "Browser-side direct provider calls are explicitly checked"
+    - "Only projects/ is read"
+    - "No local telemetry or private history is read"
   parallelizable: false
   scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
   facet: "Active Workspace"
@@ -22,14 +22,14 @@
 - id: T-0-2
   phase: 0
   verb: define
-  target: "weekly review input/output schema"
+  target: "local weekly review input/output schema"
   done_when:
-    - "Mock input schema covers active PJ, phase, done items, blockers, reviews, next actions"
+    - "Input schema covers project id, status, phase, done items, blockers, reviews, next actions"
     - "Output schema separates summary, risks, questions, next tasks"
-    - "Schema avoids raw secret or sensitive telemetry fields"
+    - "Output paths under tmp/ are defined"
   eval_required: true
   eval_criteria:
-    - "Schema is enough for mock provider E2E"
+    - "Schema is enough for local E2E"
     - "Schema can later map to M3E Review scope"
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
@@ -43,16 +43,16 @@
 - id: T-0-3
   phase: 0
   verb: design
-  target: "LLMClient / SecretProvider / TraceLogger contract"
+  target: "graph-shaped local loop contract"
   done_when:
-    - "chat request/response contract is written"
-    - "secret retrieval contract includes env and Bitwarden CLI paths"
-    - "trace record excludes prompt body by default and stores hash/metadata"
+    - "State shape is written"
+    - "Nodes are load_projects / build_context / generate_report / evaluate / write_tmp"
+    - "Failure Result shape is written"
   eval_required: true
   eval_criteria:
-    - "Provider switch requires one config point"
-    - "Key cannot flow to browser or log by contract"
-    - "Failure returns Result instead of crashing graph"
+    - "No provider or secret is required in Phase 0"
+    - "Can later be moved to @langchain/langgraph"
+    - "Failure returns Result instead of crashing loop"
   parallelizable: true
   scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview"
   facet: "Active Workspace"
@@ -65,18 +65,19 @@
 - id: T-0-4
   phase: 0
   verb: implement
-  target: "mock provider weekly review loop"
+  target: "projects-to-tmp weekly review loop"
   done_when:
-    - "Mock provider returns deterministic weekly review proposal"
-    - "Orchestrator records trace metadata"
-    - "Failure path produces review/Qn-like Result"
+    - "projects/ is scanned"
+    - "tmp/weekly-review-latest.json is written"
+    - "tmp/weekly-review-latest.md is written"
+    - "Failure path produces Qn-like item in JSON"
   eval_required: true
   eval_criteria:
     - "Runs without API key"
     - "No network call is made"
     - "Output is structured and reviewable"
   parallelizable: false
-  scope: "beta/src/node/llm or equivalent"
+  scope: "beta/src/node/orchestration or equivalent"
   facet: "Evaluation Board"
   status: pending
   round: 0
@@ -86,22 +87,22 @@
 
 - id: T-1-1
   phase: 1
-  verb: smoke
-  target: "DeepSeek provider with secure secret path"
+  verb: shape
+  target: "LangGraph-compatible orchestration"
   done_when:
-    - "DeepSeek is called once through Node-side boundary"
-    - "API key is not printed in logs or artifacts"
-    - "Trace includes req_id, provider, model, latency, usage or error"
+    - "State schema is compatible with @langchain/langgraph StateGraph"
+    - "Node functions can be registered as graph nodes"
+    - "Conditional failure edge is represented"
   eval_required: true
   eval_criteria:
-    - "Secret source can be env or Bitwarden CLI"
-    - "Provider failure becomes Result"
-    - "Retry/backoff is bounded"
+    - "Pure TS graph execution remains possible"
+    - "No LangGraph-specific choice leaks into project scanner"
+    - "Can still run without provider"
   parallelizable: false
-  scope: "beta/src/node/llm or equivalent"
+  scope: "beta/src/node/orchestration or equivalent"
   facet: "Evaluation Board"
   status: pending
   round: 0
   round_max: 2
   last_feedback: null
-  blocker: "Wait for Phase 0 mock loop"
+  blocker: "Wait for Phase 0 local loop"

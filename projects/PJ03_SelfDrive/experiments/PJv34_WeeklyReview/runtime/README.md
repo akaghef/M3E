@@ -11,23 +11,25 @@ PJv34 は 4-view runtime を使う。
 ```text
 PJv34 WeeklyReview
 └── Progress Board
-    ├── Phase 0 Mock Loop
-    ├── Phase 1 DeepSeek Secure Smoke
-    └── Phase 2 M3E Runtime Integration
+    ├── Phase 0 Local Projects Loop
+    ├── Phase 1 LangGraph-shaped Orchestration
+    ├── Phase 2 DeepSeek Secure Smoke
+    └── Phase 3 M3E Runtime Integration
 ```
 
 ## Evaluation Board
 
-目的: mock E2E、secret leak check、DeepSeek smoke の検証結果を見る。
+目的: local loop E2E、broken file handling、tmp artifact output、後続のDeepSeek smoke の検証結果を見る。
 
 初期 scope:
 
 ```text
 Evaluation Board
-├── Check: mock provider no network
-├── Check: no key in logs
+├── Check: projects input only
+├── Check: tmp output generated
+├── Check: no network and no secret
 ├── Check: failure returns Result
-└── Check: trace metadata complete
+└── Check: report is reviewable
 ```
 
 ## Review
@@ -38,9 +40,10 @@ Evaluation Board
 
 ```text
 Review
-├── Qn1 Secret boundary
-├── Qn2 Weekly review input range
-└── Qn3 Proposal storage
+├── Qn1 Input boundary
+├── Qn2 Project status source
+├── Qn3 tmp output policy
+└── Qn4 LangGraph adoption timing
 ```
 
 ## Active Workspace
@@ -51,12 +54,13 @@ Review
 
 ```text
 Active Workspace
-├── Boundary: Node module first
-├── Interface: LLMClient
-├── Interface: SecretProvider
-├── Interface: TraceLogger
-├── Provider: Mock
-└── Provider: DeepSeek
+├── Boundary: projects/ input only
+├── Interface: ProjectsScanner
+├── Interface: ProjectSummaryExtractor
+├── Interface: WeeklyReportBuilder
+├── Interface: TmpArtifactWriter
+├── Future: LLMClient
+└── Future: DeepSeek
 ```
 
 ## Traceability

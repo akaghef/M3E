@@ -1,11 +1,11 @@
 # PJv34 Resume Cheatsheet
 
-- Current Phase: Phase 0 Mock Loop
-- Next task: T-0-1 audit existing Node-side LLM infrastructure
-- Open reviews: 3
-- Latest commit: not checked in this experiment
+- Current Phase: Phase 0 Local Projects Loop
+- Next task: T-0-1 audit projects folder input structure
+- Open reviews: 4
+- Latest commit: docs-only before goal revision
 - Agent Status: Manager planning, Generator not started, Evaluator not started
-- Last action: PJv34 skeleton detailed under PJ03_SelfDrive experiments
+- Last action: PJv34 goal revised to local projects input and tmp output
 - Runtime: 4-view, see `runtime/README.md`
-- Main decision: browser direct provider call is out; Node module first is default
-- Secret rule: no API key in repo, settings, logs, browser JS, or artifacts
+- Main decision: Phase 0 input is local `projects/` only; output is `tmp/` only
+- Secret rule: Phase 0 uses no secret and no network

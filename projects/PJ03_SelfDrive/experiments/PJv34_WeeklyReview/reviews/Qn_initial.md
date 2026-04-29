@@ -1,41 +1,51 @@
 # Qn Initial — PJv34 WeeklyReview
 
-## Qn1. Secret 解決の責務境界
+## Qn1. Phase 0 の入力境界
 
 ### 問い
 
-Bitwarden CLI から DeepSeek API key を取得する責務を、起動レイヤに置くか、orchestration layer の `SecretProvider` に置くか。
+Phase 0 で `projects/` 内のどのファイルを読むか。
 
-### Option A: 起動レイヤで env 注入
+### Option A: README / plan / tasks.yaml / reviews のみ
 
-- pros: アプリ本体が Bitwarden CLI に依存しない。既存 `AI_Infrastructure.md` の推奨と整合。
-- cons: orchestrator 単体テスト時に注入手順が別途必要。
+- pros: sub-PJ protocol と整合し、読み取り範囲が狭い。
+- cons: sessions / artifacts にある実績を拾えない。
 
-### Option B: SecretProvider が Bitwarden CLI を呼ぶ
+### Option B: projects/ 配下を広く読む
 
-- pros: self-driving loop 内で secret source を抽象化しやすい。
-- cons: CLI 呼び出し、unlock 状態、timeout、ログ漏れ対策をアプリ側で抱える。
+- pros: 情報量が多い。
+- cons: ノイズと機微情報混入リスクが増える。
 
 ### Tentative Default
 
-Option A を第一候補にする。ただし `SecretProvider` interface は残し、env provider と bitwarden-cli provider の両方を実装可能にする。
+Option A。Phase 0 は最小入力で loop を通す。
 
-## Qn2. 週次レビュー入力の範囲
+## Qn2. PJ status の判定源
 
 ### 問い
 
-Phase 0 の weekly review input に daily / git / map / task のどこまで含めるか。
+PJ の active / paused / done 判定を README frontmatter だけで行うか、plan.md も見るか。
 
 ### Tentative Default
 
-Phase 0 は模擬 JSON のみ。Phase 1 以降で daily と task、Phase 2 で map を接続する。
+Phase 0 は README frontmatter を第一候補にし、不足時だけ plan.md の `status` を見る。
 
 ## Qn3. proposal 保存先
 
 ### 問い
 
-生成した review proposal を最初から map reviews/Qn に書くか、artifacts JSON に置くか。
+生成した review proposal を `tmp/` にどう保存するか。
 
 ### Tentative Default
 
-Phase 0 は `artifacts/` に JSON。Phase 2 で map reviews/Qn へ接続する。
+Phase 0 は `tmp/weekly-review-latest.md` と `tmp/weekly-review-latest.json` を上書き保存する。必要なら timestamp 版を追加する。
+
+## Qn4. LangGraph 導入タイミング
+
+### 問い
+
+Phase 1 で `@langchain/langgraph` を直接導入するか、まずは自前のGraph-shaped runnerで形を固めるか。
+
+### Tentative Default
+
+まず自前のGraph-shaped runnerで `State -> Node -> Edge -> Result` の境界を固める。依存追加が問題なければ `@langchain/langgraph` へ移す。
