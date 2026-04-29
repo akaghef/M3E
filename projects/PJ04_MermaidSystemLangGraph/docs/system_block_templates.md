@@ -255,6 +255,16 @@ npm run template:test
 - `npm run template:test` は実装済み。PJv34 spec の build / mock run / forced provider failure -> fallback / no-secret-output を確認する。
 - `npm run pjv34:template` / `npm run pjv34:template:run` は compatibility command として残す。
 
+## Claude Skill
+
+Claude からこのループを扱う場合は、repo 内の skill を使う。
+
+```text
+.claude/skills/pj04-template-system/SKILL.md
+```
+
+この skill は `template:build` / `template:run` / `template:test` の操作手順、PJv34 のテンプレ化済み状態、触らない範囲 (bridge / checkpoint / UI 等) を固定している。
+
 ## Test Requirements
 
 CLI-first では test を先に揃える。
