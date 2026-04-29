@@ -91,7 +91,7 @@
   parallelizable: false
   scope: "idea/00_meta/display_contracts"
   facet: implementation
-  status: pending
+  status: done
   round: 0
   round_max: 3
   last_feedback: null
@@ -111,7 +111,7 @@
   parallelizable: false
   scope: "idea/00_meta/display_contracts"
   facet: flow
-  status: pending
+  status: done
   round: 0
   round_max: 3
   last_feedback: null
@@ -130,8 +130,8 @@
   parallelizable: false
   scope: "projects/PJ02_MathOntoBridge"
   facet: review
-  status: blocked
+  status: pending
   round: 0
   round_max: 2
   last_feedback: "Depends on T-1-1 and T-1-2 plus human review of the runtime board."
-  blocker: "Wait for both next contracts and the resulting evaluation board state."
+  blocker: null

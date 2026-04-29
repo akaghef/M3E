@@ -40,7 +40,7 @@ tmp_*.json
 
 artifacts/
 
-# swingby team's internal repo
+# internal document for my team
 docs/internal/*
 
 # Transient outputs from the m3e-map skill (run at repo root)
