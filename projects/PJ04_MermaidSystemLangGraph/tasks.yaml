@@ -353,11 +353,11 @@
   parallelizable: false
   scope: "projects/PJ03_SelfDrive/experiments/PJv34_WeeklyReview, projects/PJ04_MermaidSystemLangGraph/runtime, beta/src/node"
   facet: runtime
-  status: pending
-  round: 0
+  status: review
+  round: 1
   round_max: 3
-  last_feedback: null
-  blocker: "depends on T-TPL-1 and G2/T-B-1 for full bridge Run; may use compatible local runner before G2"
+  last_feedback: "2026-04-30: beta/src/node/pjv34_template_runner.ts を追加し、template-derived Control Graph を compatible local runner で実行。DeepSeek call_provider を通過し route=pass、tmp/pjv34-template-run-latest.md/json を生成。trace node ids: load_context -> build_prompt -> call_provider -> evaluate_response -> return_draft -> write_output。full bridge Run は G2/T-B-1 後に残る。"
+  blocker: "full bridge Run still depends on G2/T-B-1; compatible local runner path is working"
 
 # =========================================================================
 # Concreteness Axis (per docs/concreteness_axis.md)
