@@ -101,8 +101,8 @@
   parallelizable: false
   scope: "beta/src/node/orchestration or equivalent"
   facet: "Evaluation Board"
-  status: pending
+  status: done
   round: 0
   round_max: 2
   last_feedback: null
-  blocker: "Wait for Phase 0 local loop"
+  blocker: null

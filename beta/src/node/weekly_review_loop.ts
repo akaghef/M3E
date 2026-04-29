@@ -35,6 +35,28 @@ interface WeeklyReviewOutput {
   };
 }
 
+type WeeklyReviewStep =
+  | "init"
+  | "load_projects"
+  | "build_context"
+  | "generate_report"
+  | "write_artifacts"
+  | "done";
+
+interface WeeklyReviewState {
+  root: string;
+  projectsRoot: string;
+  outputRoot: string;
+  provider: "local" | "deepseek";
+  projectDirs: string[];
+  output: WeeklyReviewOutput | null;
+  localMarkdown: string | null;
+  deepSeekOutput: DeepSeekReviewOutput | null;
+  artifacts: string[];
+  errors: Array<{ step: WeeklyReviewStep; message: string }>;
+  trace: Array<{ step: WeeklyReviewStep; at: string; message: string }>;
+}
+
 interface DeepSeekReviewOutput {
   ok: boolean;
   generatedAt: string;
@@ -306,6 +328,125 @@ function renderMarkdown(output: WeeklyReviewOutput): string {
   return lines.join("\n");
 }
 
+function createInitialState(): WeeklyReviewState {
+  const root = repoRoot();
+  const projectsRoot = path.join(root, "projects");
+  const outputRoot = path.join(root, "tmp");
+  return {
+    root,
+    projectsRoot,
+    outputRoot,
+    provider: (process.env.WEEKLY_REVIEW_PROVIDER || "").toLowerCase() === "deepseek" ? "deepseek" : "local",
+    projectDirs: [],
+    output: null,
+    localMarkdown: null,
+    deepSeekOutput: null,
+    artifacts: [],
+    errors: [],
+    trace: [],
+  };
+}
+
+function trace(state: WeeklyReviewState, step: WeeklyReviewStep, message: string): WeeklyReviewState {
+  return {
+    ...state,
+    trace: [...state.trace, { step, at: new Date().toISOString(), message }],
+  };
+}
+
+async function loadProjectsNode(state: WeeklyReviewState): Promise<WeeklyReviewState> {
+  ensureInside(state.root, state.projectsRoot);
+  const projectDirs = discoverProjectDirs(state.projectsRoot);
+  return trace({ ...state, projectDirs }, "load_projects", `Loaded ${projectDirs.length} project directories.`);
+}
+
+async function buildContextNode(state: WeeklyReviewState): Promise<WeeklyReviewState> {
+  const projects = state.projectDirs.map((dir) => summarizeProject(dir, state.projectsRoot));
+  const questions = projects.flatMap((project) => project.warnings.map((warning) => ({
+    project: project.id,
+    title: "Project input incomplete",
+    reason: warning,
+  })));
+  const output: WeeklyReviewOutput = {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    inputRoot: path.relative(state.root, state.projectsRoot).replace(/\\/g, "/"),
+    outputRoot: path.relative(state.root, state.outputRoot).replace(/\\/g, "/"),
+    projects,
+    questions,
+    summary: {
+      projectCount: projects.length,
+      activeCount: projects.filter((project) => project.status === "active").length,
+      pausedCount: projects.filter((project) => project.status === "paused").length,
+      doneCount: projects.filter((project) => project.status === "done").length,
+      unknownCount: projects.filter((project) => project.status === "unknown").length,
+    },
+  };
+  return trace({ ...state, output }, "build_context", `Built context for ${projects.length} projects.`);
+}
+
+async function generateReportNode(state: WeeklyReviewState): Promise<WeeklyReviewState> {
+  if (!state.output) {
+    return {
+      ...state,
+      errors: [...state.errors, { step: "generate_report", message: "Missing weekly review output." }],
+    };
+  }
+  const localMarkdown = renderMarkdown(state.output);
+  if (state.provider !== "deepseek") {
+    return trace({ ...state, localMarkdown }, "generate_report", "Generated local deterministic report.");
+  }
+  const deepSeekOutput = await runDeepSeekReview(state.output);
+  return trace(
+    { ...state, localMarkdown, deepSeekOutput },
+    "generate_report",
+    deepSeekOutput.ok ? "Generated DeepSeek report." : `DeepSeek report failed: ${deepSeekOutput.error?.message || "unknown error"}`,
+  );
+}
+
+async function writeArtifactsNode(state: WeeklyReviewState): Promise<WeeklyReviewState> {
+  ensureInside(state.root, state.outputRoot);
+  fs.mkdirSync(state.outputRoot, { recursive: true });
+  if (!state.output || !state.localMarkdown) {
+    return {
+      ...state,
+      errors: [...state.errors, { step: "write_artifacts", message: "Missing output or markdown." }],
+    };
+  }
+
+  const artifacts: string[] = [];
+  const localJson = path.join(state.outputRoot, "weekly-review-latest.json");
+  const localMd = path.join(state.outputRoot, "weekly-review-latest.md");
+  fs.writeFileSync(localJson, `${JSON.stringify(state.output, null, 2)}\n`, "utf8");
+  fs.writeFileSync(localMd, state.localMarkdown, "utf8");
+  artifacts.push(path.relative(state.root, localJson).replace(/\\/g, "/"));
+  artifacts.push(path.relative(state.root, localMd).replace(/\\/g, "/"));
+
+  if (state.provider === "deepseek" && state.deepSeekOutput) {
+    const deepSeekJson = path.join(state.outputRoot, "weekly-review-deepseek-latest.json");
+    const deepSeekMd = path.join(state.outputRoot, "weekly-review-deepseek-latest.md");
+    fs.writeFileSync(deepSeekJson, `${JSON.stringify(state.deepSeekOutput, null, 2)}\n`, "utf8");
+    fs.writeFileSync(
+      deepSeekMd,
+      `${state.deepSeekOutput.markdown || `# DeepSeek Weekly Review\n\nDeepSeek call failed: ${state.deepSeekOutput.error?.message || "unknown error"}\n`}\n`,
+      "utf8",
+    );
+    artifacts.push(path.relative(state.root, deepSeekJson).replace(/\\/g, "/"));
+    artifacts.push(path.relative(state.root, deepSeekMd).replace(/\\/g, "/"));
+  }
+
+  return trace({ ...state, artifacts }, "write_artifacts", `Wrote ${artifacts.length} artifacts.`);
+}
+
+async function runWeeklyReviewGraph(): Promise<WeeklyReviewState> {
+  let state = trace(createInitialState(), "init", "Initialized weekly review state.");
+  state = await loadProjectsNode(state);
+  state = await buildContextNode(state);
+  state = await generateReportNode(state);
+  state = await writeArtifactsNode(state);
+  return trace(state, "done", "Weekly review graph completed.");
+}
+
 function extractTextContent(payload: ChatCompletionResponse): string {
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content === "string") return content.trim();
@@ -410,30 +551,17 @@ async function runDeepSeekReview(output: WeeklyReviewOutput): Promise<DeepSeekRe
 }
 
 export async function runWeeklyReviewLoop(): Promise<WeeklyReviewOutput> {
-  const root = repoRoot();
-  const projectsRoot = path.join(root, "projects");
-  const outputRoot = path.join(root, "tmp");
-  ensureInside(root, projectsRoot);
-  ensureInside(root, outputRoot);
-  fs.mkdirSync(outputRoot, { recursive: true });
-
-  const output = buildOutput(projectsRoot, outputRoot);
-  fs.writeFileSync(path.join(outputRoot, "weekly-review-latest.json"), `${JSON.stringify(output, null, 2)}\n`, "utf8");
-  fs.writeFileSync(path.join(outputRoot, "weekly-review-latest.md"), renderMarkdown(output), "utf8");
-  if ((process.env.WEEKLY_REVIEW_PROVIDER || "").toLowerCase() === "deepseek") {
-    const deepSeekOutput = await runDeepSeekReview(output);
-    fs.writeFileSync(
-      path.join(outputRoot, "weekly-review-deepseek-latest.json"),
-      `${JSON.stringify(deepSeekOutput, null, 2)}\n`,
-      "utf8",
-    );
-    fs.writeFileSync(
-      path.join(outputRoot, "weekly-review-deepseek-latest.md"),
-      `${deepSeekOutput.markdown || `# DeepSeek Weekly Review\n\nDeepSeek call failed: ${deepSeekOutput.error?.message || "unknown error"}\n`}\n`,
-      "utf8",
-    );
+  const state = await runWeeklyReviewGraph();
+  const tracePath = path.join(state.outputRoot, "weekly-review-trace-latest.json");
+  fs.writeFileSync(
+    tracePath,
+    `${JSON.stringify({ ok: state.errors.length === 0, trace: state.trace, errors: state.errors, artifacts: state.artifacts }, null, 2)}\n`,
+    "utf8",
+  );
+  if (!state.output) {
+    throw new Error("Weekly review graph completed without output.");
   }
-  return output;
+  return state.output;
 }
 
 if (require.main === module) {
