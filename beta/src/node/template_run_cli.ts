@@ -189,6 +189,11 @@ async function buildPrompt(state: TemplateRunState, _ctx: RunContext, node: Grap
 
 async function callProvider(state: TemplateRunState, _ctx: RunContext, node: GraphSpecNode): Promise<void> {
   if (!state.prompt) throw new Error("prompt missing");
+  if (process.env.M3E_TEMPLATE_FORCE_PROVIDER_ERROR === "1") {
+    state.error = "Forced provider error for template runner test.";
+    trace(state, { nodeId: node.id, at: new Date().toISOString(), status: "error", message: state.error });
+    return;
+  }
   const apiKey = process.env.M3E_AI_API_KEY?.trim() || process.env.DEEPSEEK_API_KEY?.trim();
   const providerMode = process.env.WEEKLY_REVIEW_PROVIDER?.trim() || (apiKey ? "deepseek" : "mock");
   if (providerMode === "mock") {

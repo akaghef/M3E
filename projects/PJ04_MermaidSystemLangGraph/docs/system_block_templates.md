@@ -252,8 +252,8 @@ npm run template:test
 
 - `npm run template:build` は実装済み。YAML/JSON の Template System Spec から AppState / scope別 GraphSpec / validation 結果を出す。
 - `npm run template:run` は実装済み。GraphSpec を callable_ref registry で実行し、artifact markdown / trace json を出す。API key が無い場合は mock provider で走る。
+- `npm run template:test` は実装済み。PJv34 spec の build / mock run / forced provider failure -> fallback / no-secret-output を確認する。
 - `npm run pjv34:template` / `npm run pjv34:template:run` は compatibility command として残す。
-- `template:test` は未実装。
 
 ## Test Requirements
 

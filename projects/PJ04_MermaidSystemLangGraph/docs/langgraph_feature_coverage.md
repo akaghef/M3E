@@ -45,8 +45,8 @@ role: "LangGraph の主要機能を M3E で template / GraphSpec / run / test / 
 | 9 | Subgraph as node | subsystem block / scope drill-down | DONE | PARTIAL | PARTIAL | PARTIAL | PARTIAL | Generate Doc subsystem を上位 1 node として扱える | generic nested subgraph compile と UI drill-down |
 | 10 | Shared state subgraph | parent-child shared State Contract | PENDING | PENDING | PENDING | PENDING | PENDING | 方針は system_design / state docs にあるが未実装 | subgraph channel inheritance rule |
 | 11 | Isolated state subgraph | input/output mapper | PENDING | PENDING | PENDING | PENDING | PENDING | mode 属性のみ先行予定 | mapper contract を Phase 4 で決める |
-| 12 | Retry / backoff | failure loop inside subsystem | DONE | PARTIAL | PARTIAL | PENDING | PENDING | `langgraph.flow.retry` 登録済み。PJv34 runner に retry node はある | provider failure smoke で retry -> fallback_qn を確認 |
-| 13 | Fallback / Qn | fallback_qn node / human review output | PARTIAL | PARTIAL | PARTIAL | PENDING | PENDING | PJv34 runner に fallback_qn はある。reviews/Qn 連携は未接続 | Qn output contract と map連携方針 |
+| 12 | Retry / backoff | failure loop inside subsystem | DONE | PARTIAL | DONE | DONE | PENDING | `template:test` で provider failure -> retry -> fallback_qn を確認 | bridge側 retry event とUI表示 |
+| 13 | Fallback / Qn | fallback_qn node / human review output | PARTIAL | PARTIAL | DONE | DONE | PENDING | `template:test` で fallback artifact / qn state を確認。reviews/Qn 連携は未接続 | Qn output contract と map連携方針 |
 | 14 | `interrupt` | Human Gate | DONE | PENDING | PENDING | PENDING | PENDING | `langgraph.flow.human_gate` 登録済み | Bridge Phase D と approval UI |
 | 15 | `Command` | update + goto block | DONE | PENDING | PENDING | PENDING | PENDING | `langgraph.flow.command` 登録済み | GraphSpec edge/node contract へ反映 |
 | 16 | `Send` fan-out | Parallel Send block | DONE | PENDING | PENDING | PENDING | PENDING | `langgraph.flow.parallel_send` 登録済み | super-step を自作せず bridge 側に渡す |
@@ -72,8 +72,8 @@ role: "LangGraph の主要機能を M3E で template / GraphSpec / run / test / 
 | 36 | Secret handling | Secret provider | PARTIAL | N/A | PARTIAL | PARTIAL | N/A | env注入でDeepSeek実行済み。Bitwarden本線は handoff | with-keys / Bitwarden 経路を完了 |
 | 37 | Template System Spec | YAML/JSON authoring input | DONE | DONE | PARTIAL | DONE | N/A | `templates/pjv34_weekly_review.yaml` を generic builder が読む。run側はまだPJv34固定 | generic runner へ接続 |
 | 38 | Template build CLI | spec -> AppState / GraphSpec | DONE | DONE | DONE | DONE | N/A | `npm run template:build -- --spec ... --out ...` が成功。root / Generate Doc validation 0 | unknown template / missing slot の negative test |
-| 39 | Template run CLI | GraphSpec -> artifact / trace | DONE | DONE | DONE | PARTIAL | N/A | `npm run template:run -- --spec ... --out ...` がmock providerで成功。trace node id はControl Graphと一致 | failure route / no-secret を自動テスト化 |
-| 40 | Template test CLI | catalog/spec/build/run tests | PENDING | PENDING | PENDING | PENDING | N/A | テスト要件は文書化済み | catalog/spec/no-secret/failure route tests |
+| 39 | Template run CLI | GraphSpec -> artifact / trace | DONE | DONE | DONE | DONE | N/A | `npm run template:run -- --spec ... --out ...` がmock providerで成功。trace node id はControl Graphと一致 | bridge runner へ接続 |
+| 40 | Template test CLI | catalog/spec/build/run tests | PARTIAL | PARTIAL | DONE | DONE | N/A | `npm run template:test` で build/run/failure/no-secret を確認。catalog negative test は未追加 | catalog/spec negative tests |
 | 41 | System Diagram display | Outer graph display | PARTIAL | N/A | N/A | PARTIAL | PARTIAL | flow-lr / edge routing / subsystem表示は進んでいる | template-generated AppState の表示確認 |
 | 42 | Contract badges L2 | kind / channel / status badges | PENDING | N/A | N/A | PENDING | PENDING | UI handoff 済み | visual側 task |
 | 43 | Subsystem drill-down UI | scope 内部表示 | PARTIAL | N/A | N/A | PARTIAL | PARTIAL | scope移動は既存概念に乗る。template専用確認は未完 | Generate Doc subsystem preview |
