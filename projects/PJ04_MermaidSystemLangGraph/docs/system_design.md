@@ -94,6 +94,7 @@ supersedes_nothing: 本書は上書きではなく **束ねるだけ**。各 dee
 | **tree surface** | 従来の mind map | authoring 補助 |
 | **window** | surface をどう見ているか | zoom / pan / selection / stance / 4 軸 |
 | **scope** | subsystem 境界。1 scope ≒ 1 node (I12) | node = scope 統一 |
+| **System Scope** | 1 つの実行可能 system / subsystem の境界 | 内部に Control Graph と State Contract を持つ |
 | **subsystem** | Python file の所有者となる scope | map root 直下 or `m3e:kernel-subsystem=true` |
 | **linear text** | scope 単位で 1 本、長文 payload | polymorphic: kind で意味が変わる (§1.7) |
 
@@ -216,6 +217,7 @@ Claude supervisor
 
 | 用語 | 意味 |
 |---|---|
+| **Control Graph** | System Scope 内の処理遷移。node / edge / router / fallback loop からなる LangGraph 側の graph 構造 |
 | **relation** | node 間の意味関係 (`approve` / `reject` / `next` / ...) |
 | **edge** | relation の描画表現 (線 + ラベル + 矢印) |
 | **forward edge** | 主進行方向 (左→右) |
@@ -229,9 +231,14 @@ Claude supervisor
 
 | 用語 | 意味 |
 |---|---|
+| **State Contract** | System Scope 内の data contract。State Schema / channel / reducer / Resource Binding を束ねる |
 | **State Schema** | graph 全体の型定義 (TypedDict 相当) |
-| **channel** | 名前付き data slot (`messages` / `plan` / ...) |
+| **State Channel** | 名前付き data slot (`messages` / `plan` / ...)。旧称 channel |
+| **channel** | State Channel の短縮表記 |
 | **reducer** | channel の merge semantics (`replace` / `append` / `merge` / `messages` / `custom`) |
+| **Resource Binding** | State Channel と file / artifact / map node / API resource などの実体を結びつける薄い参照 |
+| **Resource Metadata** | Resource Binding が指す実体の `exists` / `freshness` / `valid` / `hash` / `updated_at` などの派生情報 |
+| **Resource View** | Resource Metadata を Runtime Board / panel に表示する view。独自の data state machine ではない |
 | **checkpoint** | `{channel_values, channel_versions, parent, spec_identity}` の 1 snapshot。spec_identity = `{graph_spec_hash, map_snapshot_id, emitted_python_hash?}` |
 | **thread** | checkpoint chain、`thread_id` で管理 |
 | **resume** | checkpoint 時点の **old spec (freeze)** で続きを実行する (I2 と整合)。current spec で再実行したいときは **別操作 `replay-with-current`** を使う (I29) |
@@ -239,6 +246,50 @@ Claude supervisor
 | **escalation** | agent / sub-agent が human gate or 上位 supervisor に判断を戻す操作。payload は **summary + changed channels + optional full state** (I33) |
 
 `reducer = "messages"` は LangGraph の `add_messages` へ bind される (Bridge layer が import)。型は `list[BaseMessage]` 相当として扱う。
+
+#### Control Graph と State Contract の分離
+
+System Scope には最低限、次の 2 つを分けて置く。
+
+```text
+System Scope
+├─ Control Graph      # 何をどの順に実行するか
+└─ State Contract     # 何の State Channel を読み書きするか
+```
+
+**Control Graph** は LangGraph の graph 構造そのもの。
+**State Contract** は LangGraph の State / Channel / Reducer に Resource Binding を足したもの。
+
+`Data Automaton` / `Data State Machine` という独自語は使わない。
+data 側の変化は LangGraph の State Channel update と checkpoint で扱い、M3E は必要に応じて Resource View を出すだけにする。
+
+| 避ける語 | 正規語 |
+|---|---|
+| System Automaton | **Control Graph** |
+| Data Automaton | **State Contract** |
+| Data State | **State Channel** |
+| File State | **Resource Metadata** |
+| Data UI | **Resource View** |
+
+例: PJv34 Weekly Review
+
+```text
+Weekly Review System Scope
+├─ Control Graph
+│  ├─ Load Sources
+│  ├─ Build Context
+│  ├─ Generate Draft
+│  ├─ Evaluate Draft
+│  ├─ Fallback / Qn
+│  └─ Write Outputs
+│
+└─ State Contract
+   ├─ State Channel: sourceFolder
+   ├─ State Channel: contextPackage
+   ├─ State Channel: draftDocument
+   ├─ State Channel: finalReport
+   └─ State Channel: trace
+```
 
 ### 1.6 Authoring Layers vs Technical Stack
 
