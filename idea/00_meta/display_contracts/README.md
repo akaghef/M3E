@@ -19,6 +19,8 @@ M3E の map 書き込みで、AI が **人間にレビューしやすい表示**
 - [02_flow_contract.md](02_flow_contract.md) — 処理フロー / 時間軸 facet の具体契約
 - [03_reviews_contract.md](03_reviews_contract.md) — reviews facet の具体契約
 - [04_dependency_contract.md](04_dependency_contract.md) — dependency facet の具体契約
+- [05_implementation_contract.md](05_implementation_contract.md) — implementation facet の具体契約
+- [06_timeseries_contract.md](06_timeseries_contract.md) — timeseries facet の具体契約
 
 ## キーメッセージ
 

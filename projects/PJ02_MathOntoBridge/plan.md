@@ -218,3 +218,4 @@ related: README.md
 ### 進捗ログ
 
 - 2026-04-17: PJ02 正式登録、plan.md 初版（08_implementation_feasibility.md から整理）
+- 2026-04-29: T-1-1 / T-1-2 として implementation facet contract と timeseries facet contract を `idea/00_meta/display_contracts/` に追加。T-1-3 go-signal criteria を pending に戻した。
