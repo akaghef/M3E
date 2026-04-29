@@ -381,6 +381,25 @@
   last_feedback: null
   blocker: "depends on T-B-1/G2 and generic T-TPL-2 runner"
 
+- id: T-UI-TPL-1
+  phase: 3
+  verb: handoff
+  target: "UI support for template blocks and PJv34 subsystem preview"
+  done_when:
+    - "docs/handoff_ui_template_blocks.md exists and describes UI scope/non-goals"
+    - "UI tasks are split into AppState loading, L2 contract badges, subsystem drill-down, and trace overlay"
+    - "UI work is explicitly downstream of CLI-generated AppState/GraphSpec/trace"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/docs/handoff_ui_template_blocks.md"
+  facet: layout
+  status: handoff
+  round: 1
+  round_max: 1
+  last_feedback: "2026-04-30: UI handoff doc created. Visual/UI agent should implement display-only support for template-generated PJv34 system; CLI remains source of generated AppState/GraphSpec/trace."
+  blocker: null
+
 # =========================================================================
 # Concreteness Axis (per docs/concreteness_axis.md)
 # Extend detail level L0-L5 so higher levels reveal Python code / runtime.
