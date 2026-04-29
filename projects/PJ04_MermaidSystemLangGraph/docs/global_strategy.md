@@ -12,6 +12,7 @@ references:
   - state_and_channels.md (S-0..S-5)
   - concreteness_axis.md (L0-L5, T-CX-0..4)
   - multi_root_scope_investigation.md (Case A-D)
+  - langgraph_feature_coverage.md (feature coverage table)
   - merge_strategy.md (PJ 終了後 merge)
 ---
 
@@ -21,6 +22,7 @@ references:
 > トラックは { Execution (A-F) / View (CX-0..4) / Layout (LAY-1..6) / Data (S-0..5) / Template (TPL-0..2) }。
 > 直列ゲートは { **G1: Contract Freeze** → 大多数のトラックを開く / **G2: Bridge MVP** → L3+ / L5 / trace を開く }。
 > 実用検証の縦糸は **CLI-first Template PJv34 Rebuild**: System Block Template を CLI で完結させ、AI が Template System Spec から PJv34 Weekly Review system を再構築し、Run/test まで通す。
+> 到達度の正本は [langgraph_feature_coverage.md](langgraph_feature_coverage.md): LangGraph 機能ごとに Template / GraphSpec / CLI Run / Test / UI の状態を追跡する。
 > 最終目的は **Collaboration Stance** (Sketch → Fill → Review → Tune → Run → Iterate) が map 内で完結する状態。
 > **authoring は Outer 骨格のみ、詳細は Inner、surface にはエラーだけ**。この原則を破ったらトラックを止めて戻る。
 

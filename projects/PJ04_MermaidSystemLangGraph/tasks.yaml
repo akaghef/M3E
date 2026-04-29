@@ -381,6 +381,26 @@
   last_feedback: null
   blocker: "depends on T-B-1/G2 and generic T-TPL-2 runner"
 
+- id: T-COV-1
+  phase: 3
+  verb: track
+  target: "LangGraph feature coverage table"
+  done_when:
+    - "docs/langgraph_feature_coverage.md exists"
+    - "table covers Template / GraphSpec / CLI Run / Test / UI status for major LangGraph features"
+    - "each row has current status and next action"
+    - "global_strategy.md links to the coverage table as the progress tracking source"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/docs/langgraph_feature_coverage.md"
+  facet: contract
+  status: done
+  round: 1
+  round_max: 1
+  last_feedback: "2026-04-30: LangGraph主要機能45項目について Template / GraphSpec / CLI Run / Test / UI の到達度を一覧化。PJv34固定で通っている部分と generic化・bridge・UI が未完の部分を分離した。"
+  blocker: null
+
 - id: T-UI-TPL-1
   phase: 3
   verb: handoff
