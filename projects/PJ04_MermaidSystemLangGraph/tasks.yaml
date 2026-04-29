@@ -309,7 +309,7 @@
   status: done
   round: 1
   round_max: 2
-  last_feedback: "2026-04-30: docs/system_block_templates.md と beta/src/shared/system_block_templates.ts を追加。io.load_local_folder / llm.generate_doc.subsystem / io.write_artifact を初期 catalog として定義し、LangGraph pattern -> M3E block の項目/例/意味テーブルを作成。"
+  last_feedback: "2026-04-30: docs/system_block_templates.md と beta/src/shared/system_block_templates.ts を追加。authoring / contract layer の主要 LangGraph pattern (StateGraph, State Channel, add_node, add_edge, add_conditional_edges, ToolNode, retry, interrupt, Send, Command) を System Block Template registry に登録。io.load_local_folder / llm.generate_doc.subsystem / io.write_artifact も初期 catalog として定義した。"
   blocker: null
 
 - id: T-TPL-1
