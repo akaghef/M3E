@@ -11,13 +11,45 @@ role: "LangGraph pattern を M3E の量産可能な System Block Template へ翻
 System Block Template は、単なる図形 stencil ではない。
 M3E の System Diagram に node / subsystem を置くと同時に、Contract Tree の初期値を生成するための template である。
 
+当面の実装方針は **CLI-first**。
+viewer UI は後回しにし、CLI だけで template catalog / system spec / build / run / test が完結する状態を先に作る。
+
 ```text
 LangGraph pattern
   -> System Block Template
+  -> Template System Spec (YAML/JSON)
   -> Contract Tree
   -> GraphSpec
-  -> Runtime Board / Data View
+  -> CLI Run
+  -> Trace / Artifact
 ```
+
+## CLI-first Goal
+
+PJ04 の template 機能は、UI 実装前に CLI で閉じる。
+
+```mermaid
+flowchart LR
+  A["template catalog"] --> B["system spec yaml"]
+  B --> C["template build CLI"]
+  C --> D["AppState"]
+  C --> E["GraphSpec"]
+  E --> F["template run CLI"]
+  F --> G["trace json"]
+  F --> H["artifact md"]
+  C --> I["template test CLI"]
+```
+
+CLI-first の完了条件:
+
+- System Block Template catalog が全種類そろっている
+- YAML/JSON の Template System Spec から AppState / GraphSpec を生成できる
+- 生成された GraphSpec を local runner で実行できる
+- DeepSeek 等の LLM call を含む smoke test が通る
+- failure route / retry / fallback を test できる
+- 出力 artifact / trace に secret が混ざらない
+
+UI はこの CLI が安定してから、同じ template catalog / builder を呼ぶだけにする。
 
 ## Catalog Table Format
 
@@ -37,6 +69,8 @@ LangGraph pattern
 | `ui_l2` | `kind + State Channel badges` | 具象度 L2 で表示する要約 |
 
 ## Initial Templates
+
+初期実装済み:
 
 ### `io.load_local_folder`
 
@@ -119,3 +153,89 @@ flowchart LR
 - `Generate Doc` の fallback loop は subsystem 内に閉じる
 - root と `Generate Doc` subsystem の両方が GraphSpec へ compile できる
 - trace の node id が Control Graph の node id と一致する
+
+## Required Template Set
+
+CLI-first でそろえる標準 template は次。
+
+| Template | LangGraph pattern | 用途 |
+|---|---|---|
+| `langgraph.node.process` | `add_node` | 通常の決定的処理 |
+| `langgraph.node.llm` | `add_node` | LLM provider call |
+| `langgraph.node.router` | `add_conditional_edges` | 条件分岐 |
+| `langgraph.node.tool` | `ToolNode` | tool call 実行 |
+| `langgraph.flow.retry` | conditional edge + back edge | retry / backoff |
+| `langgraph.flow.human_gate` | interrupt | Qn / approval |
+| `langgraph.flow.parallel_send` | `Send` | fan-out / map |
+| `langgraph.flow.command` | `Command` | state update + goto |
+| `langgraph.subsystem.state_graph` | `StateGraph` | subsystem 全体 |
+| `io.load_local_folder` | `add_node` | local folder input |
+| `io.write_artifact` | `add_node` | artifact output |
+| `llm.generate_doc.subsystem` | subgraph | 文書生成 subsystem |
+
+## Template System Spec
+
+AI が直接 AppState を手書きするのではなく、Template System Spec を書く。
+
+```yaml
+id: pjv34_weekly_review
+label: PJv34 Weekly Review
+channels:
+  - name: contextPackage
+    reducer: replace
+    typeHint: json
+  - name: draftDocument
+    reducer: replace
+    typeHint: markdown
+nodes:
+  - id: load_context
+    template: io.load_local_folder
+    slots:
+      reads: resource.projectsFolder
+      writes: state.contextPackage
+      callable_ref: pjv34.load_context
+  - id: generate_doc
+    template: llm.generate_doc.subsystem
+    slots:
+      reads: [state.contextPackage, state.docGoal]
+      writes: state.draftDocument
+      provider: deepseek
+      model: deepseek-chat
+  - id: write_output
+    template: io.write_artifact
+    slots:
+      reads: state.draftDocument
+      writes: resource.tmpWeeklyReview
+      callable_ref: pjv34.write_output
+edges:
+  - from: load_context
+    to: generate_doc
+  - from: generate_doc
+    to: write_output
+```
+
+## CLI Surface
+
+最終的に必要な CLI:
+
+```powershell
+npm run template:build -- --spec projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml --out tmp/pjv34-template-system.json
+npm run template:run -- --spec projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml --out tmp/pjv34-template-run-latest.json
+npm run template:test
+```
+
+現在の `npm run pjv34:template` / `npm run pjv34:template:run` は、上記 generic CLI に置き換えるまでの compatibility command とする。
+
+## Test Requirements
+
+CLI-first では test を先に揃える。
+
+| Test | 目的 |
+|---|---|
+| catalog validation | 必須 field / duplicate block id / unsupported LangGraph pattern を検出 |
+| spec validation | unknown template / missing required slot / invalid edge を検出 |
+| build snapshot | spec から生成される AppState / GraphSpec の決定性を確認 |
+| compile validation | root / subsystem GraphSpec が warnings なしで compile できる |
+| run smoke | PJv34 spec が local runner で artifact / trace を出す |
+| failure route | provider failure 時に retry / fallback_qn へ行く |
+| no-secret-output | artifact / trace / generated system JSON に secret が出ない |
