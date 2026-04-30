@@ -2122,6 +2122,49 @@ let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
 let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
 let _linearPanelCanvasHeight = 380;
 
+function refreshLinearPanelCanvasLayout(): boolean {
+  if (!map || !lastLayout || visibleOrder.length === 0) {
+    _linearPanelLayoutDirty = true;
+    return false;
+  }
+
+  if (!_linearPanelLayoutDirty) {
+    return true;
+  }
+
+  const layout = lastLayout;
+  let deepestDepth = -1;
+  let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
+  let treeMinY = Number.POSITIVE_INFINITY;
+  let treeMaxY = Number.NEGATIVE_INFINITY;
+  visibleOrder.forEach((nodeId) => {
+    const p = layout.pos[nodeId];
+    if (!p) {
+      return;
+    }
+    treeMinY = Math.min(treeMinY, p.y - p.h / 2);
+    treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
+    if (p.depth > deepestDepth) {
+      deepestDepth = p.depth;
+      deepestRightEdge = p.x + p.w;
+      return;
+    }
+    if (p.depth === deepestDepth) {
+      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
+    }
+  });
+  if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
+    treeMinY = VIEWER_TUNING.layout.topPad;
+    treeMaxY = treeMinY + 380;
+  }
+  const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
+  _linearPanelAnchorCanvasX = deepestRightEdge + depthOffset;
+  _linearPanelAnchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
+  _linearPanelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
+  _linearPanelLayoutDirty = false;
+  return true;
+}
+
 function applyZoom(): void {
   const widthValue = `${contentWidth}px`;
   if (_appliedCanvasWidth !== widthValue) {
@@ -2163,37 +2206,8 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (_linearPanelLayoutDirty) {
-    const layout = lastLayout;
-    let deepestDepth = -1;
-    let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
-    let treeMinY = Number.POSITIVE_INFINITY;
-    let treeMaxY = Number.NEGATIVE_INFINITY;
-    visibleOrder.forEach((nodeId) => {
-      const p = layout.pos[nodeId];
-      if (!p) {
-        return;
-      }
-      treeMinY = Math.min(treeMinY, p.y - p.h / 2);
-      treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
-      if (p.depth > deepestDepth) {
-        deepestDepth = p.depth;
-        deepestRightEdge = p.x + p.w;
-        return;
-      }
-      if (p.depth === deepestDepth) {
-        deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
-      }
-    });
-    if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
-      treeMinY = VIEWER_TUNING.layout.topPad;
-      treeMaxY = treeMinY + 380;
-    }
-    const depthOffset = Math.max(56, VIEWER_TUNING.layout.columnGap * 0.45);
-    _linearPanelAnchorCanvasX = deepestRightEdge + depthOffset;
-    _linearPanelAnchorCanvasY = Math.max(VIEWER_TUNING.layout.topPad, treeMinY - 12);
-    _linearPanelCanvasHeight = Math.max(220, treeMaxY - treeMinY + 24);
-    _linearPanelLayoutDirty = false;
+  if (!refreshLinearPanelCanvasLayout()) {
+    return;
   }
 
   const panelCanvasWidth = linearPanelCanvasWidth;
@@ -3854,29 +3868,22 @@ function render(): void {
       const defaultStroke =
         VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
       const stroke = nodeStyles.edgeColor || defaultStroke;
-      const sourceEnd = edgeEndBetween(p, child);
-      const targetEnd = edgeEndBetween(child, p);
-      const startX = sourceEnd.x;
-      const startY = sourceEnd.y;
-      const endX = targetEnd.x;
-      const endY = targetEnd.y;
+      const startX = p.x + p.w + VIEWER_TUNING.layout.edgeStartPad;
+      const startY = p.y;
+      const endX = child.x - VIEWER_TUNING.layout.edgeEndPad;
+      const endY = child.y;
       const edgeInline = buildEdgeStyle(nodeStyles);
-      let edgePath: string;
-      if (flowSurface) {
-        edgePath = roundedOrthogonalPath(startX, startY, endX, endY);
-      } else {
-        const curve = Math.max(48, (endX - startX) * 0.45);
-        const c1x = startX + curve;
-        const c2x = endX - curve;
-        edgePath = `M ${startX} ${startY} C ${c1x} ${startY}, ${c2x} ${endY}, ${endX} ${endY}`;
-      }
+      const curve = Math.max(48, (endX - startX) * 0.45);
+      const c1x = startX + curve;
+      const c2x = endX - curve;
+      const edgePath = `M ${startX} ${startY} C ${c1x} ${startY}, ${c2x} ${endY}, ${endX} ${endY}`;
       edges += `<path class="edge" stroke="${stroke}" d="${edgePath}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
 
       // Edge label — stored on the child node (parent is unique per child)
       const childNode = state.nodes[childId];
       const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
       if (childStyles.edgeLabel) {
-        const labelX = (startX + endX) / 2;
+        const labelX = (c1x + c2x) / 2;
         const labelY = (startY + endY) / 2 - 8;
         edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
       }
@@ -4172,6 +4179,13 @@ function render(): void {
     drawNode(displayRootId);
   }
 
+  if (viewState.surfaceViewMode !== "system" && refreshLinearPanelCanvasLayout()) {
+    const panelRightPad = 640;
+    const panelBottomPad = 80;
+    maxX = Math.max(maxX, _linearPanelAnchorCanvasX + linearPanelCanvasWidth + panelRightPad);
+    maxY = Math.max(maxY, _linearPanelAnchorCanvasY + _linearPanelCanvasHeight + panelBottomPad);
+  }
+
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
     const bounds = getReorderLineBounds(proposal.parentId, proposal.index, viewState.dragState.sourceNodeId);
@@ -4185,7 +4199,7 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${nodes}${edges}${graphLinks}${overlays}`;
+  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${graphLinks}${overlays}${nodes}`;
   applyZoom();
 
   const version = map.version ?? "n/a";
