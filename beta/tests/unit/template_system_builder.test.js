@@ -67,6 +67,36 @@ describe("Template System builder", () => {
     expect(`${artifact}\n${JSON.stringify(trace)}`).not.toMatch(/sk-|M3E_AI_API_KEY|DEEPSEEK_API_KEY/);
   });
 
+  test("template run CLI resolves PJv35 callable refs without PJv34 aliases", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-template-run-pjv35-"));
+    const outPath = path.join(outDir, "pjv35.md");
+    execFileSync(process.execPath, [
+      path.join(repoRoot, "beta/dist/node/template_run_cli.js"),
+      "--spec",
+      "projects/PJ04_MermaidSystemLangGraph/templates/pjv35_local_project_design_report.yaml",
+      "--out",
+      outPath,
+    ], {
+      cwd: repoRoot,
+      env: { ...process.env, WEEKLY_REVIEW_PROVIDER: "mock" },
+      stdio: "pipe",
+    });
+
+    const artifact = fs.readFileSync(outPath, "utf8");
+    const trace = JSON.parse(fs.readFileSync(outPath.replace(/\.md$/i, ".json"), "utf8"));
+    expect(artifact).toContain("# Project Design Report");
+    expect(trace.trace.map((item) => item.nodeId)).toEqual([
+      "load_projects",
+      "build_prompt",
+      "call_provider",
+      "evaluate_response",
+      "return_draft",
+      "write_output",
+    ]);
+    expect(trace.prompt).toContain("Project Design Notes");
+  });
+
   test("template run CLI routes provider failure to fallback_qn", () => {
     const repoRoot = path.resolve(__dirname, "../../..");
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-template-run-failure-"));

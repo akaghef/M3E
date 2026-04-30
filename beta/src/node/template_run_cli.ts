@@ -163,7 +163,7 @@ async function loadContext(state: TemplateRunState, ctx: RunContext, node: Graph
     };
   });
   state.contextPackage = { generatedAt: new Date().toISOString(), projects };
-  state.docGoal = "ローカル projects/ を入力として、今週の作業状況と次アクションを日本語で簡潔にまとめる。";
+  state.docGoal = node.metadata?.doc_goal || "ローカル projects/ を入力として、今週の作業状況と次アクションを日本語で簡潔にまとめる。";
   trace(state, {
     nodeId: node.id,
     at: new Date().toISOString(),
@@ -174,10 +174,11 @@ async function loadContext(state: TemplateRunState, ctx: RunContext, node: Graph
 
 async function buildPrompt(state: TemplateRunState, _ctx: RunContext, node: GraphSpecNode): Promise<void> {
   if (!state.contextPackage) throw new Error("contextPackage missing");
+  const promptInstruction = node.metadata?.prompt_text || "出力はMarkdown。セクションは Summary / Project Notes / Next Actions。";
   state.prompt = [
-    "あなたはM3Eの週次レビュー作成エージェントです。",
-    "入力されたprojects/の要約から、今週のレポートを日本語で作成してください。",
-    "出力はMarkdown。セクションは Summary / Project Notes / Next Actions。",
+    "あなたはM3Eのプロジェクト設計レビューエージェントです。",
+    "入力されたprojects/の要約から、指定された目的に合う日本語Markdownを作成してください。",
+    promptInstruction,
     "",
     `Goal: ${state.docGoal}`,
     "",
@@ -314,6 +315,21 @@ const CALLABLES: Record<string, Callable> = {
   "pjv34.write_output": writeOutput,
 };
 
+function resolveCallable(ref: string | undefined): Callable | undefined {
+  if (!ref) return undefined;
+  const exact = CALLABLES[ref];
+  if (exact) return exact;
+  if (ref.endsWith(".load_context") || ref.endsWith(".load_sources")) return loadContext;
+  if (ref.endsWith(".build_prompt")) return buildPrompt;
+  if (ref.endsWith(".call_provider") || ref.endsWith(".call_deepseek")) return callProvider;
+  if (ref.endsWith(".evaluate_response") || ref.endsWith(".evaluate_artifact")) return evaluateResponse;
+  if (ref.endsWith(".retry_backoff")) return retryBackoff;
+  if (ref.endsWith(".fallback_qn")) return fallbackQn;
+  if (ref.endsWith(".return_draft") || ref.endsWith(".return_artifact")) return returnDraft;
+  if (ref.endsWith(".write_output")) return writeOutput;
+  return undefined;
+}
+
 async function executeGraph(spec: GraphSpec, state: TemplateRunState, ctx: RunContext): Promise<void> {
   let current = spec.entry;
   const nodeById = new Map(spec.nodes.map((node) => [node.id, node]));
@@ -326,7 +342,7 @@ async function executeGraph(spec: GraphSpec, state: TemplateRunState, ctx: RunCo
       if (!subgraphId || !ctx.graphSpecs[subgraphId]) throw new Error(`Subgraph not found: ${node.id}`);
       await executeGraph(ctx.graphSpecs[subgraphId], state, ctx);
     } else {
-      const callable = node.ref ? CALLABLES[node.ref] : undefined;
+      const callable = resolveCallable(node.ref);
       if (!callable) throw new Error(`Callable not registered: ${node.id}:${node.ref ?? ""}`);
       await callable(state, ctx, node);
     }
@@ -353,16 +369,21 @@ function mockWeeklyReview(state: TemplateRunState): string {
   const notes = projects.slice(0, 5).map((project) => (
     `- ${project.id}: ${project.title} (${project.pendingTasks.length} pending tasks)`
   ));
+  const designMode = /設計|design/i.test(state.docGoal || "");
+  const title = designMode ? "Project Design Report" : "Weekly Project Review";
+  const notesTitle = designMode ? "Project Design Notes" : "Project Notes";
   return [
-    "# Weekly Project Review",
+    `# ${title}`,
     "",
     "## Summary",
     "",
     `projects/ から ${projects.length} projects を読み込みました。`,
     "",
-    "## Project Notes",
+    `## ${notesTitle}`,
     "",
     ...notes,
+    "",
+    ...(designMode ? ["## Risk and Gaps", "", "- PJ04 以外の PJv* で template 汎用性を確認する必要があります。"] : []),
     "",
     "## Next Actions",
     "",

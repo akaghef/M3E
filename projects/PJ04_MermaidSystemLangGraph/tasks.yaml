@@ -463,8 +463,8 @@
   status: pending
   round: 0
   round_max: 3
-  last_feedback: null
-  blocker: "depends on T-PJV-2 map scope creation"
+  last_feedback: "2026-04-30: PJv35 local_project_design_report を部分実行。Assignment Spec / Template System Spec を追加し、template:build は issues/warnings/validation 0、template:run は mock provider で pass。出力: tmp/pjv35-local-project-design-report.md / .json。PJv36-PJv37 は未着手。"
+  blocker: null
 
 - id: T-PJV-4
   phase: 3

@@ -11,13 +11,15 @@ defaults:
 items:
   - pjv_id: PJv35
     slug: local_project_design_report
-    status: ready
-    owner: unassigned
+    status: run_done
+    owner: codex
     source_path: "projects/"
     goal: "ローカル projects/ から対象PJの設計状況を読み、設計レポートを tmp/ に出す"
     spec_path: "projects/PJ04_MermaidSystemLangGraph/specs/pjv35_local_project_design_report.md"
     template_path: "projects/PJ04_MermaidSystemLangGraph/templates/pjv35_local_project_design_report.yaml"
     map_scope: "開発/strategy/PJ04 PJv Factory/Work Scopes/PJv35"
+    run_output: "tmp/pjv35-local-project-design-report.md"
+    trace_output: "tmp/pjv35-local-project-design-report.json"
   - pjv_id: PJv36
     slug: task_backlog_triage
     status: ready
