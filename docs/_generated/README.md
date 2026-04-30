@@ -11,9 +11,12 @@
 
 | ファイル | 生成元 | 備考 |
 |---|---|---|
-| `TheDesign.md` | `scripts/concat-docs.sh` (現状不在、再作成要) | docs 全体の機械的集約 |
+| `TheDesign.md` | `scripts/concat-docs.mjs` / `scripts/concat-docs.ps1` / `scripts/concat-docs.sh` | docs 全体の機械的集約 |
 
 ## 再生成ルール
 
 - 出力先はこのディレクトリに固定
 - 手編集した内容は次回生成で消える前提
+- 再生成: `node scripts/concat-docs.mjs`
+- Windows wrapper: `pwsh -File scripts/concat-docs.ps1`
+- macOS / Linux wrapper: `sh scripts/concat-docs.sh`
