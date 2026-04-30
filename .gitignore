@@ -49,6 +49,7 @@ docs/internal/*
 
 # External repo clones referenced by sub-projects
 projects/PJ02_MathOntoBridge/pfr/
+tools/mermaid/
 
 # Local cloud sync launcher with Supabase creds (never commit)
 scripts/ops/launch-cloud-sync.local.bat
