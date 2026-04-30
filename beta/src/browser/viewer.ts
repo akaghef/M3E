@@ -2121,6 +2121,7 @@ let _linearPanelLayoutDirty = true;
 let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
 let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
 let _linearPanelCanvasHeight = 380;
+let _lastZoomStatusAt = 0;
 
 function refreshLinearPanelCanvasLayout(): boolean {
   if (!map || !lastLayout || visibleOrder.length === 0) {
@@ -2291,7 +2292,12 @@ function preserveNodeViewportCenter(nodeId: string, before: { x: number; y: numb
   applyZoom();
 }
 
-function setZoom(nextZoom: number, anchorClientX: number | null = null, anchorClientY: number | null = null): void {
+function setZoom(
+  nextZoom: number,
+  anchorClientX: number | null = null,
+  anchorClientY: number | null = null,
+  statusMode: "immediate" | "throttled" | "silent" = "immediate",
+): void {
   const previousZoom = viewState.zoom;
   viewState.zoom = clampZoom(nextZoom);
 
@@ -2306,7 +2312,45 @@ function setZoom(nextZoom: number, anchorClientX: number | null = null, anchorCl
   viewState.cameraX = localViewportX - contentX * viewState.zoom;
   viewState.cameraY = localViewportY - contentY * viewState.zoom;
   applyZoom();
+  if (statusMode === "silent") {
+    return;
+  }
+  if (statusMode === "throttled") {
+    const now = performance.now();
+    if (now - _lastZoomStatusAt < 120) {
+      return;
+    }
+    _lastZoomStatusAt = now;
+  }
   setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
+}
+
+let _zoomSetScheduled = false;
+let _pendingZoom: number | null = null;
+let _pendingZoomAnchorX: number | null = null;
+let _pendingZoomAnchorY: number | null = null;
+
+function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, anchorClientY: number | null = null): void {
+  _pendingZoom = clampZoom(nextZoom);
+  _pendingZoomAnchorX = anchorClientX;
+  _pendingZoomAnchorY = anchorClientY;
+  if (_zoomSetScheduled) {
+    return;
+  }
+  _zoomSetScheduled = true;
+  requestAnimationFrame(() => {
+    _zoomSetScheduled = false;
+    const zoom = _pendingZoom;
+    const anchorX = _pendingZoomAnchorX;
+    const anchorY = _pendingZoomAnchorY;
+    _pendingZoom = null;
+    _pendingZoomAnchorX = null;
+    _pendingZoomAnchorY = null;
+    if (zoom === null) {
+      return;
+    }
+    setZoom(zoom, anchorX, anchorY, "throttled");
+  });
 }
 
 function visibleChildren(node: TreeNode): string[] {
@@ -8694,7 +8738,7 @@ board.addEventListener("wheel", (event: WheelEvent) => {
     Math.abs(deltaY) / VIEWER_TUNING.zoom.wheelIntensityDivisor
   );
   const factor = Math.exp(-Math.sign(deltaY) * intensity);
-  setZoom(viewState.zoom * factor, event.clientX, event.clientY);
+  scheduleSetZoom((_pendingZoom ?? viewState.zoom) * factor, event.clientX, event.clientY);
 }, { passive: false });
 
 // --- Pointer-based pan & pinch-to-zoom ---
@@ -8786,7 +8830,7 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     // Zoom anchored to the current midpoint of the two fingers
     const anchorX = (a.x + b.x) / 2;
     const anchorY = (a.y + b.y) / 2;
-    setZoom(nextZoom, anchorX, anchorY);
+    scheduleSetZoom(nextZoom, anchorX, anchorY);
     return;
   }
 
@@ -9180,6 +9224,14 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
+    }
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    if (!event.repeat) {
+      addAliasAsChild();
     }
     return;
   }
