@@ -39,6 +39,13 @@ import {
   type CollabRole,
 } from "./collab";
 import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
+import {
+  appendPerfLog,
+  normalizeRoute,
+  extractMapId,
+  isSseRoute,
+  buildClientTag,
+} from "./perf_log";
 import { getPresenceList, touchPresence, removePresence } from "./presence";
 import {
   ingestSingle,
@@ -108,6 +115,7 @@ const WORKSPACE_LABEL = process.env.M3E_WORKSPACE_LABEL || DEFAULT_WORKSPACE_LAB
 const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || DEFAULT_MAP_ID;
 const ACTIVE_MAP_LABEL = process.env.M3E_MAP_LABEL || DEFAULT_MAP_LABEL;
 const ACTIVE_MAP_SLUG = process.env.M3E_MAP_SLUG || DEFAULT_MAP_SLUG;
+const COLLAB_JOIN_TOKEN = (process.env.M3E_COLLAB_JOIN_TOKEN || "").trim();
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
 console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
@@ -119,14 +127,6 @@ const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
-console.log(`[M3E] CLOUD_SYNC = ${CLOUD_SYNC_ENABLED ? "enabled" : "disabled"}`);
-console.log(`[M3E] CLOUD_TRANSPORT = ${process.env.M3E_CLOUD_TRANSPORT || "file"}`);
-console.log(`[M3E] AUTO_SYNC = ${process.env.M3E_AUTO_SYNC === "1" ? "enabled" : "disabled"} (${process.env.M3E_AUTO_SYNC_INTERVAL_MS || "30000"}ms)`);
-if ((process.env.M3E_CLOUD_TRANSPORT || "").toLowerCase() === "supabase") {
-  console.log(`[M3E] SUPABASE_URL = ${process.env.M3E_SUPABASE_URL || "(missing)"}`);
-  console.log(`[M3E] SUPABASE_KEY = ${process.env.M3E_SUPABASE_ANON_KEY ? "(set)" : "(missing)"}`);
-}
-console.log("[M3E] NOTE = Home map list is local SQLite; cloud sync is per-map via Pull/Push.");
 
 function renameMapId(dbPath: string, sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return false;
@@ -319,6 +319,87 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
+}
+
+function instrumentRequestForPerfLog(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const started = process.hrtime.bigint();
+  const startedWallMs = Date.now();
+  const urlRaw = req.url ?? "/";
+  const parsed = new URL(urlRaw, "http://localhost");
+  const pathname = parsed.pathname;
+  const method = req.method ?? "GET";
+  const route = normalizeRoute(method, pathname);
+  const sse = isSseRoute(route);
+
+  let ttfbMs: number | null = null;
+  let resBytes = 0;
+  let written = false;
+
+  const elapsedMs = (): number => {
+    const diffNs = Number(process.hrtime.bigint() - started);
+    return Math.round(diffNs / 1_000_000);
+  };
+
+  const origWrite = typeof res.write === "function"
+    ? res.write.bind(res) as typeof res.write
+    : (() => true) as typeof res.write;
+  const origEnd = typeof res.end === "function"
+    ? res.end.bind(res) as typeof res.end
+    : (() => res) as typeof res.end;
+
+  res.write = function patchedWrite(this: http.ServerResponse, chunk: unknown, ...rest: unknown[]): boolean {
+    if (ttfbMs === null) ttfbMs = elapsedMs();
+    if (chunk !== null && chunk !== undefined) {
+      try {
+        resBytes += Buffer.byteLength(chunk as Buffer | string);
+      } catch {
+        // ignore size accounting errors
+      }
+    }
+    return (origWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+  } as typeof res.write;
+
+  res.end = function patchedEnd(this: http.ServerResponse, chunk?: unknown, ...rest: unknown[]): http.ServerResponse {
+    if (ttfbMs === null) ttfbMs = elapsedMs();
+    if (chunk !== null && chunk !== undefined) {
+      try {
+        resBytes += Buffer.byteLength(chunk as Buffer | string);
+      } catch {
+        // ignore
+      }
+    }
+    return (origEnd as (...args: unknown[]) => http.ServerResponse)(chunk, ...rest);
+  } as typeof res.end;
+
+  const writeLog = (): void => {
+    if (written) return;
+    written = true;
+    try {
+      appendPerfLog({
+        ts: new Date(startedWallMs).toISOString(),
+        method,
+        path: pathname,
+        route,
+        status: res.statusCode || 0,
+        duration_ms: elapsedMs(),
+        ttfb_ms: ttfbMs,
+        req_bytes: req.headers["content-length"] ? Number(req.headers["content-length"]) || null : null,
+        res_bytes: resBytes,
+        map_id: extractMapId(pathname),
+        scope: parsed.searchParams.get("scope"),
+        client: buildClientTag(req.headers),
+        sse,
+        error_code: null,
+      });
+    } catch {
+      // never let perf logging break requests
+    }
+  };
+
+  if (typeof res.on === "function") {
+    res.on("finish", writeLog);
+    res.on("close", writeLog);
+  }
 }
 
 function beginSse(res: http.ServerResponse): void {
@@ -1797,7 +1878,6 @@ async function handleSyncApi(
         enabled: false,
         mode: "disabled",
         mapId: route.mapId,
-        autoSync: false,
       });
     } else {
       // Push/pull endpoints: return 503 so browser knows sync is unavailable
@@ -1812,7 +1892,7 @@ async function handleSyncApi(
   if (route.action === "status" && req.method === "GET") {
     try {
       const result = await transport.status(route.mapId);
-      sendJson(res, 200, { ...result, mode: modeLabel, autoSync: cloudSyncConfig.autoSync });
+      sendJson(res, 200, { ...result, mode: modeLabel });
     } catch (err) {
       sendSyncError(res, 500, "SYNC_STATUS_FAILED", (err as Error).message, route.mapId);
     }
@@ -2212,6 +2292,7 @@ function parseCollabRoute(
   const rest = pathname.slice("/api/collab/".length);
 
   if (rest === "register") return { action: "register" };
+  if (rest === "config") return { action: "config" };
   if (rest === "heartbeat") return { action: "heartbeat" };
   if (rest === "unregister") return { action: "unregister" };
 
@@ -2240,16 +2321,37 @@ async function handleCollabApi(
     return;
   }
 
+  if (route.action === "config" && req.method === "GET") {
+    sendJson(res, 200, {
+      ok: true,
+      enabled: true,
+      requiresJoinToken: Boolean(COLLAB_JOIN_TOKEN),
+      workspaceId: WORKSPACE_ID,
+      workspaceLabel: WORKSPACE_LABEL,
+      mapId: ACTIVE_MAP_ID,
+      mapLabel: ACTIVE_MAP_LABEL,
+    });
+    return;
+  }
+
   if (route.action === "register" && req.method === "POST") {
     const rawBody = await readRequestBody(req);
     const body = JSON.parse(rawBody) as {
       displayName?: string;
       role?: CollabRole;
       capabilities?: ("read" | "write")[];
+      joinToken?: string;
     };
     if (!body.displayName || !body.role) {
       sendJson(res, 400, { ok: false, error: "displayName and role are required." });
       return;
+    }
+    if (COLLAB_JOIN_TOKEN) {
+      const submitted = (body.joinToken || "").trim();
+      if (submitted !== COLLAB_JOIN_TOKEN) {
+        sendJson(res, 403, { ok: false, error: "Invalid join token." });
+        return;
+      }
     }
     const validRoles: CollabRole[] = ["owner", "human", "ai-supervised", "ai", "ai-readonly"];
     if (!validRoles.includes(body.role)) {
@@ -2338,6 +2440,11 @@ async function handleCollabApi(
         if (!result.ok && result.error === "Scope lock not held.") {
           sendJson(res, 403, result);
         } else {
+          if (result.ok) {
+            const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+            const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+            broadcastMapUpdate(mapId, savedAt, sourceTabId);
+          }
           sendJson(res, 200, result);
         }
       } catch (err) {
@@ -2352,6 +2459,7 @@ async function handleCollabApi(
 
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    instrumentRequestForPerfLog(req, res);
     const collabRoute = parseCollabRoute(req.url ?? "/");
     if (collabRoute) {
       await handleCollabApi(req, res, collabRoute);

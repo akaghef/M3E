@@ -2,6 +2,9 @@ export type NodeType = "text" | "image" | "folder" | "alias";
 export type AliasAccess = "read" | "write";
 export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
+export type MapNodeClass = "entity" | "scope";
+export type SurfaceKind = "tree" | "system";
+export type SurfaceLayout = "tree" | "flow-lr";
 
 export interface TreeNode {
   id: string;
@@ -32,10 +35,36 @@ export interface GraphLink {
   style?: LinkStyle;
 }
 
+export interface SurfaceNodeView {
+  x?: number;
+  y?: number;
+  flowCol?: number;
+  flowRow?: number;
+  shape?: "rect" | "diamond" | "rounded";
+}
+
+export interface MapSurface {
+  id: string;
+  scopeId: string;
+  kind: SurfaceKind;
+  layout: SurfaceLayout;
+  nodeViews?: Record<string, SurfaceNodeView>;
+}
+
+export interface MapScope {
+  id: string;
+  label: string;
+  rootNodeIds: string[];
+  relationIds: string[];
+  primarySurfaceId?: string;
+}
+
 export interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
+  scopes?: Record<string, MapScope>;
+  surfaces?: Record<string, MapSurface>;
   linearNotesByScope?: Record<string, string>;
   linearTextFontScale?: number;
   linearPanelWidth?: number;

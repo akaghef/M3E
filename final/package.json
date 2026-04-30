@@ -6,7 +6,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
     "build:node": "tsc -p tsconfig.node.json",
+    "weekly:review": "npm run build:node && node dist/node/weekly_review_loop.js",
+    "pjv34:template": "npm run build:node && node dist/node/pjv34_template_seed.js",
+    "pjv34:template:run": "npm run build:node && node dist/node/pjv34_template_runner.js",
+    "template:build": "npm run build:node && node dist/node/template_build_cli.js",
+    "template:run": "npm run build:node && node dist/node/template_run_cli.js",
+    "template:mermaid": "npm run build:node && node dist/node/template_mermaid_cli.js",
+    "template:mermaid:all": "npm run build:node && node dist/node/template_mermaid_cli.js --spec-dir projects/PJ04_MermaidSystemLangGraph/templates --out tmp/pj04-mermaid-index.html",
+    "template:test": "npm run build:node && npx vitest run tests/unit/template_system_builder.test.js",
     "build:browser": "tsc -p tsconfig.browser.json",
+    "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",
     "test": "npm run test:unit",
     "test:unit": "npm run build:node && npx vitest run",
@@ -30,8 +39,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
+    "@types/js-yaml": "^4.0.9",
     "better-sqlite3": "^12.8.0",
     "dotenv": "^17.4.1",
+    "js-yaml": "^4.1.1",
     "katex": "^0.16.45"
   }
 }

@@ -1,4 +1,4 @@
-# M3E Final
+# M3E Beta
 **This is a memorandum for user. NOT to write here.**
 
 ## Build
@@ -33,57 +33,28 @@ Stop with `Ctrl+C`.
 - `meta-panel` (class name): Official name is "メタパネル".
 - This panel shows mode/scope/status metadata and shortcut hints.
 
-### Optional cloud sync
+### Optional cloud sync (file-mirror mode)
 
-Cloud sync can be enabled as an opt-in layer on top of local SQLite persistence.
+Cloud sync can be enabled as an opt-in mirror layer on top of local SQLite persistence.
 
 Environment variables:
 
 ```bash
 M3E_CLOUD_SYNC=1
-M3E_CLOUD_TRANSPORT=file
 M3E_CLOUD_DIR=./data/cloud-sync
-```
-
-Supabase mode:
-
-```bash
-M3E_CLOUD_SYNC=1
-M3E_CLOUD_TRANSPORT=supabase
-M3E_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
-M3E_SUPABASE_ANON_KEY=YOUR_ANON_KEY
-M3E_AUTO_SYNC=0
-M3E_AUTO_SYNC_INTERVAL_MS=8000
 ```
 
 Behavior:
 
-- On startup: tries cloud pull first, then falls back to local SQLite/doc sample
+- On startup: tries cloud pull first, then falls back to local SQLite/map sample
 - On save/autosave: keeps local save and additionally pushes to cloud mirror
-- Supported transports:
-  - `file` via `M3E_CLOUD_DIR`
-  - `supabase` via `M3E_SUPABASE_URL` / `M3E_SUPABASE_ANON_KEY`
-
-Recommended team rollout:
-
-1. Use the same `final` product on every device.
-2. Configure all clients with the same `workspace id` and `map id`.
-3. Start with `M3E_AUTO_SYNC=0` and use explicit `Pull` / `Push`.
-4. Enable auto-sync only after conflict behavior is acceptable.
-
-Helper scripts:
-
-```bat
-scripts\final\configure-cloud-sync-mode.bat <supabase-url> <anon-key> [workspace-id] [workspace-label] [map-id] [map-label] [map-slug] [auto-sync]
-scripts\final\configure-personal-mode.bat
-scripts\final\launch.bat
-```
+- Cloud backend in Beta is file-based (`M3E_CLOUD_DIR`) for local-first validation
 
 Sync API endpoints:
 
-- `GET /api/sync/status/:docId`
-- `POST /api/sync/pull/:docId`
-- `POST /api/sync/push/:docId`
+- `GET /api/sync/status/:mapId`
+- `POST /api/sync/pull/:mapId`
+- `POST /api/sync/push/:mapId`
 
 ### Optional AI infrastructure and linear transform subagent
 
@@ -223,7 +194,7 @@ Minimal request example:
 
 ```json
 {
-  "documentId": "rapid-main",
+  "mapId": "rapid-main",
   "scopeId": "root",
   "mode": "direct-result",
   "input": {
@@ -261,9 +232,11 @@ Generates `data/rapid-sample.json` without starting the viewer.
 | `Esc` | Cancel text editing |
 | `Delete` / `Backspace` | Delete selected subtree (root protected). In nested scope, `Backspace` on scope root goes back scope |
 | `Space` | Collapse/expand selected node |
-| `↑` / `↓` | Navigate through visible nodes |
-| `→` | Go deeper: if folder is selected, enter scope; otherwise select first child |
-| `←` | Go shallower: if current scope root is selected, back scope; otherwise select parent |
+| `[` / `]` | Exit / enter scope |
+| `J` / `K` | Tree surface: deeper / shallower. `flow-lr` system surface: increase / decrease subsystem detail preview |
+| `↑` / `↓` | Tree surface: move through visible siblings. `flow-lr` system surface: move between upper/lower lanes |
+| `→` | Tree surface: go deeper. If a folder is selected and it has no visible child, enter scope. `flow-lr` system surface: move right |
+| `←` | Tree surface: go shallower. If current scope root is selected, back scope. `flow-lr` system surface: move left |
 | `M` | Mark selected node as move source |
 | `P` | Move marked node under currently selected node |
 | `Ctrl/Cmd + Wheel` | Zoom |

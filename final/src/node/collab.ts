@@ -121,8 +121,22 @@ export function unregisterEntity(entityId: string): boolean {
 
 export function authenticateRequest(req: http.IncomingMessage): CollabEntity | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-  const token = authHeader.slice(7);
+  let token: string | null = null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else {
+    const rawUrl = req.url ?? "/";
+    try {
+      const parsed = new URL(rawUrl, "http://localhost");
+      const queryToken = parsed.searchParams.get("token");
+      if (queryToken && queryToken.trim()) {
+        token = queryToken.trim();
+      }
+    } catch {
+      token = null;
+    }
+  }
+  if (!token) return null;
   const entityId = tokenIndex.get(token);
   if (!entityId) return null;
   const entity = entities.get(entityId);
@@ -352,6 +366,17 @@ export function mergeScopePush(
   const hasVersionConflict = baseVersion !== mapVersion;
   const originalNodeIds = new Set(Object.keys(nodes));
 
+  if (hasVersionConflict) {
+    return {
+      ok: false,
+      version: mapVersion,
+      applied: [],
+      rejected: Object.keys(changedNodes),
+      conflicts: [{ nodeId: scopeId, winner: "current", loser: entity.entityId }],
+      error: "Version conflict.",
+    };
+  }
+
   const applied: string[] = [];
   const rejected: string[] = [];
   const conflicts: Array<{ nodeId: string; winner: string; loser: string }> = [];
@@ -367,15 +392,6 @@ export function mergeScopePush(
       }
     } else {
       if (nodes[nodeId] && !isInScope(nodes, nodeId, scopeId, rootId)) {
-        rejected.push(nodeId);
-        continue;
-      }
-    }
-
-    // Version conflict → priority resolution
-    if (hasVersionConflict && nodes[nodeId]) {
-      if (entity.priority < lock.priority) {
-        conflicts.push({ nodeId, winner: "current", loser: entity.entityId });
         rejected.push(nodeId);
         continue;
       }
