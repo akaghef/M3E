@@ -109,6 +109,29 @@ describe("Template System builder", () => {
     expect(html).toContain("m3e_evaluate_response --&gt;|bad_output| m3e_fallback_qn");
   });
 
+  test("template mermaid CLI writes an index for all template specs", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-template-mermaid-index-"));
+    const outPath = path.join(outDir, "index.html");
+    execFileSync(process.execPath, [
+      path.join(repoRoot, "beta/dist/node/template_mermaid_cli.js"),
+      "--spec-dir",
+      "projects/PJ04_MermaidSystemLangGraph/templates",
+      "--out",
+      outPath,
+    ], {
+      cwd: repoRoot,
+      stdio: "pipe",
+    });
+
+    const html = fs.readFileSync(outPath, "utf8");
+    expect(html).toContain("M3E Mermaid Preview Index");
+    expect(html).toContain("pjv34_system");
+    expect(html).toContain("pjv35_local_project_design_report_system");
+    expect(html).toContain("PJv35 Local Project Design Report");
+    expect(html).toContain("generate_design_report");
+  });
+
   test("template run CLI resolves PJv35 callable refs without PJv34 aliases", () => {
     const repoRoot = path.resolve(__dirname, "../../..");
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-template-run-pjv35-"));

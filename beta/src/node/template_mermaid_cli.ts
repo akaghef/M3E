@@ -8,6 +8,14 @@ import { graphSpecToMermaid } from "../shared/graph_spec_mermaid";
 import { validateGraphSpec, type GraphSpec } from "../shared/graph_spec_types";
 import type { TemplateSystemSpec } from "../shared/template_system_spec";
 
+interface MermaidDiagram {
+  readonly specPath: string;
+  readonly specId: string;
+  readonly specLabel: string;
+  readonly scopeId: string;
+  readonly mermaid: string;
+}
+
 function repoRoot(): string {
   return path.resolve(__dirname, "..", "..", "..");
 }
@@ -20,6 +28,13 @@ function argValue(args: readonly string[], name: string): string | undefined {
 
 function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function listTemplateSpecs(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(ya?ml|json)$/i.test(entry.name))
+    .map((entry) => path.join(dir, entry.name))
+    .sort((a, b) => a.localeCompare(b));
 }
 
 function loadSpec(specPath: string): TemplateSystemSpec {
@@ -46,10 +61,14 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function htmlPage(specPath: string, diagrams: readonly { scopeId: string; mermaid: string }[]): string {
+function htmlPage(title: string, sourceLabel: string, diagrams: readonly MermaidDiagram[]): string {
+  const navItems = diagrams.map((diagram) => `
+      <li><a href="#${escapeHtml(sectionId(diagram))}">${escapeHtml(diagram.specId)} / ${escapeHtml(diagram.scopeId)}</a></li>
+  `).join("\n");
   const sections = diagrams.map((diagram) => `
     <section class="diagram-section">
-      <h2>${escapeHtml(diagram.scopeId)}</h2>
+      <h2 id="${escapeHtml(sectionId(diagram))}">${escapeHtml(diagram.specLabel)} <span>${escapeHtml(diagram.scopeId)}</span></h2>
+      <div class="source">${escapeHtml(diagram.specPath)}</div>
       <div class="mermaid">${escapeHtml(diagram.mermaid)}</div>
       <details>
         <summary>Mermaid source</summary>
@@ -62,15 +81,19 @@ function htmlPage(specPath: string, diagrams: readonly { scopeId: string; mermai
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>M3E Mermaid Preview</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     body { margin: 0; font-family: system-ui, sans-serif; color: #202124; background: #f6f7f8; }
     header { padding: 16px 24px; background: #ffffff; border-bottom: 1px solid #d8dde3; }
     h1 { margin: 0 0 4px; font-size: 20px; }
     .source { color: #57606a; font-size: 13px; }
     main { padding: 20px 24px 36px; display: grid; gap: 20px; }
+    nav { padding: 12px 24px; background: #ffffff; border-bottom: 1px solid #d8dde3; }
+    nav ul { margin: 0; padding-left: 20px; display: flex; flex-wrap: wrap; gap: 8px 24px; }
+    nav a { color: #245b91; text-decoration: none; }
     .diagram-section { background: #ffffff; border: 1px solid #d8dde3; border-radius: 8px; padding: 16px; overflow: auto; }
-    h2 { margin: 0 0 12px; font-size: 16px; }
+    h2 { margin: 0 0 4px; font-size: 16px; }
+    h2 span { color: #57606a; font-weight: 500; margin-left: 8px; }
     .mermaid { min-width: 680px; }
     details { margin-top: 12px; }
     pre { overflow: auto; padding: 12px; background: #f2f4f7; border: 1px solid #d8dde3; border-radius: 6px; }
@@ -78,9 +101,14 @@ function htmlPage(specPath: string, diagrams: readonly { scopeId: string; mermai
 </head>
 <body>
   <header>
-    <h1>M3E Mermaid Preview</h1>
-    <div class="source">${escapeHtml(specPath)}</div>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="source">${escapeHtml(sourceLabel)}</div>
   </header>
+  <nav>
+    <ul>
+${navItems}
+    </ul>
+  </nav>
   <main>
 ${sections}
   </main>
@@ -93,13 +121,11 @@ ${sections}
 `;
 }
 
-function main(): void {
-  const root = repoRoot();
-  const args = process.argv.slice(2);
-  const specPath = path.resolve(root, argValue(args, "--spec") ?? "projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml");
-  const outputPath = path.resolve(root, argValue(args, "--out") ?? "tmp/template-mermaid-latest.html");
-  const scopeArg = argValue(args, "--scope");
+function sectionId(diagram: MermaidDiagram): string {
+  return `${diagram.specId}-${diagram.scopeId}`.replace(/[^A-Za-z0-9_-]/g, "-");
+}
 
+function buildDiagrams(root: string, specPath: string, scopeArg: string | undefined): MermaidDiagram[] {
   const spec = loadSpec(specPath);
   const build = buildTemplateSystemState(spec);
   if (build.issues.length > 0) {
@@ -117,24 +143,49 @@ function main(): void {
   }
 
   const scopeIds = scopeArg ? [scopeArg] : Object.keys(graphSpecs).sort();
-  const diagrams = scopeIds.map((scopeId) => {
+  return scopeIds.map((scopeId) => {
     const graphSpec = graphSpecs[scopeId];
     if (!graphSpec) throw new Error(`Unknown scope: ${scopeId}`);
     return {
+      specPath: path.relative(root, specPath).replace(/\\/g, "/"),
+      specId: spec.id,
+      specLabel: spec.label,
       scopeId,
       mermaid: graphSpecToMermaid(graphSpec, { title: scopeId }),
     };
   });
+}
+
+function main(): void {
+  const root = repoRoot();
+  const args = process.argv.slice(2);
+  const specDirArg = argValue(args, "--spec-dir");
+  const specPathArg = argValue(args, "--spec");
+  const defaultSpecPath = "projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml";
+  const outputPath = path.resolve(root, argValue(args, "--out") ?? (specDirArg ? "tmp/template-mermaid-index.html" : "tmp/template-mermaid-latest.html"));
+  const scopeArg = argValue(args, "--scope");
+
+  const specPaths = specDirArg
+    ? listTemplateSpecs(path.resolve(root, specDirArg))
+    : [path.resolve(root, specPathArg ?? defaultSpecPath)];
+  if (specPaths.length === 0) {
+    throw new Error(`No Template System Spec files found: ${specDirArg}`);
+  }
+
+  const diagrams = specPaths.flatMap((specPath) => buildDiagrams(root, specPath, scopeArg));
+  const sourceLabel = specDirArg
+    ? `${specDirArg} (${specPaths.length} specs)`
+    : path.relative(root, specPaths[0]).replace(/\\/g, "/");
 
   ensureDir(path.dirname(outputPath));
   if (outputPath.toLowerCase().endsWith(".mmd")) {
     fs.writeFileSync(outputPath, diagrams.map((diagram) => diagram.mermaid).join("\n"), "utf8");
   } else {
-    fs.writeFileSync(outputPath, htmlPage(path.relative(root, specPath).replace(/\\/g, "/"), diagrams), "utf8");
+    fs.writeFileSync(outputPath, htmlPage(specDirArg ? "M3E Mermaid Preview Index" : "M3E Mermaid Preview", sourceLabel, diagrams), "utf8");
   }
   console.log(`Mermaid preview written to ${path.relative(root, outputPath).replace(/\\/g, "/")}`);
-  console.log(`Scopes: ${scopeIds.join(", ")}`);
+  console.log(`Specs: ${specPaths.map((specPath) => path.relative(root, specPath).replace(/\\/g, "/")).join(", ")}`);
+  console.log(`Diagrams: ${diagrams.map((diagram) => `${diagram.specId}/${diagram.scopeId}`).join(", ")}`);
 }
 
 main();
-
