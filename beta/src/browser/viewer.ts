@@ -2263,6 +2263,34 @@ function syncInlineEditorPosition(): void {
   inlineEditor.input.style.minWidth = `${Math.max(140, nodePos.w * viewState.zoom * 0.6)}px`;
 }
 
+function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
+  if (!map || !lastLayout) {
+    return null;
+  }
+  const nodePos = lastLayout.pos[nodeId];
+  if (!nodePos) {
+    return null;
+  }
+  const centerX = nodeId === map.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
+  return {
+    x: viewState.cameraX + centerX * viewState.zoom,
+    y: viewState.cameraY + nodePos.y * viewState.zoom,
+  };
+}
+
+function preserveNodeViewportCenter(nodeId: string, before: { x: number; y: number } | null): void {
+  if (!before) {
+    return;
+  }
+  const after = nodeViewportCenter(nodeId);
+  if (!after) {
+    return;
+  }
+  viewState.cameraX += before.x - after.x;
+  viewState.cameraY += before.y - after.y;
+  applyZoom();
+}
+
 function setZoom(nextZoom: number, anchorClientX: number | null = null, anchorClientY: number | null = null): void {
   const previousZoom = viewState.zoom;
   viewState.zoom = clampZoom(nextZoom);
@@ -6585,6 +6613,7 @@ function applyMarkedLink(): void {
 
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
+  const viewportCenterBefore = nodeViewportCenter(nodeId);
   const next = String(nextRaw || "").trim();
   if (next === "") {
     setStatus("Node text cannot be empty.", true);
@@ -6606,6 +6635,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       target.text = next;
       syncAliasDisplayForTarget(target.id);
       touchDocument();
+      preserveNodeViewportCenter(nodeId, viewportCenterBefore);
       return true;
     }
     if ((node.aliasLabel || node.text) === next) {
@@ -6615,6 +6645,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     node.aliasLabel = next;
     node.text = next;
     touchDocument();
+    preserveNodeViewportCenter(nodeId, viewportCenterBefore);
     return true;
   }
   if (node.text === next) {
@@ -6626,6 +6657,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   node.text = next;
   syncAliasDisplayForTarget(node.id);
   touchDocument();
+  preserveNodeViewportCenter(nodeId, viewportCenterBefore);
   return true;
 }
 
