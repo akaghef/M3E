@@ -36,3 +36,12 @@ items:
     spec_path: "projects/PJ04_MermaidSystemLangGraph/specs/pjv37_code_change_weekly_digest.md"
     template_path: "projects/PJ04_MermaidSystemLangGraph/templates/pjv37_code_change_weekly_digest.yaml"
     map_scope: "開発/strategy/PJ04 PJv Factory/Work Scopes/PJv37"
+  - pjv_id: PJv43
+    slug: slideshow_mode_map_review_tour
+    status: ready
+    owner: unassigned
+    source_path: "idea/30_ux/slideshow/"
+    goal: "akaghef が全 map / PJv work scope を順番に巡回確認できる Presentation Review 環境を作る"
+    spec_path: "projects/PJ04_MermaidSystemLangGraph/instructions/map_review_presentation/presentation_mode_pjv43.md"
+    template_path: null
+    map_scope: "開発/strategy/PJ04 Presentation Review"

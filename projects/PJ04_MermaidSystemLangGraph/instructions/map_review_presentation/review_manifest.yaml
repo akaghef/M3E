@@ -1,0 +1,58 @@
+package: map_review_presentation
+updated: "2026-04-30"
+base_url: "http://localhost:4173"
+review_board:
+  map_label: "開発"
+  path: "開発/strategy/PJ04 Presentation Review"
+items:
+  - id: map-dev
+    type: map
+    label: "開発"
+    map_id: "map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
+    url: "http://localhost:4173/viewer.html?map=map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
+    status: ready
+    review_focus: "PJ04 PJv Factory / strategy / tasks"
+  - id: map-research
+    type: map
+    label: "研究"
+    map_id: "map_10226A7F0MEKDVNMEXC7HH4GNV"
+    url: "http://localhost:4173/viewer.html?map=map_10226A7F0MEKDVNMEXC7HH4GNV"
+    status: ready
+    review_focus: "empty or seed state"
+  - id: map-pj02-runtime
+    type: map
+    label: "PJ02 Runtime"
+    map_id: "map_1776435903494_ccgan6"
+    url: "http://localhost:4173/viewer.html?map=map_1776435903494_ccgan6"
+    status: ready
+    review_focus: "runtime map precedent"
+  - id: map-pfr-blueprint-large
+    type: map
+    label: "PFR Blueprint"
+    map_id: "map_1776398058335_0vg5fs"
+    url: "http://localhost:4173/viewer.html?map=map_1776398058335_0vg5fs"
+    status: ready
+    review_focus: "large map navigation stress"
+  - id: map-mini-project-blueprint
+    type: map
+    label: "Mini Project Blueprint"
+    map_id: "blueprint-check-map"
+    url: "http://localhost:4173/viewer.html?map=blueprint-check-map"
+    status: ready
+    review_focus: "small blueprint sanity"
+  - id: pjv-factory-root
+    type: scope
+    label: "PJ04 PJv Factory"
+    map_id: "map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
+    path: "開発/strategy/PJ04 PJv Factory"
+    url: "http://localhost:4173/viewer.html?map=map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
+    status: ready
+    review_focus: "queue / work scopes / review lanes"
+  - id: pjv43-presentation-review
+    type: scope
+    label: "PJv43 Presentation Review"
+    map_id: "map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
+    path: "開発/strategy/PJ04 Presentation Review"
+    url: "http://localhost:4173/viewer.html?map=map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
+    status: ready
+    review_focus: "human review route itself"

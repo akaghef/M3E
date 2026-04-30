@@ -466,6 +466,27 @@
   last_feedback: null
   blocker: "depends on T-PJV-2 map scope creation"
 
+- id: T-PJV-4
+  phase: 3
+  verb: prepare
+  target: "Presentation Review environment for akaghef map巡回確認 (PJv43 Slideshow Mode seed)"
+  done_when:
+    - "instructions/map_review_presentation/README.md exists"
+    - "review_manifest.yaml lists major maps and PJ04 review scopes"
+    - "review_checklist.md defines verdict criteria"
+    - "presentation_mode_pjv43.md connects backlog PJv43 to PJ04 review workflow"
+    - "`開発/strategy/PJ04 Presentation Review` exists on the map"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/instructions/map_review_presentation, M3E map"
+  facet: coordination
+  status: done
+  round: 1
+  round_max: 1
+  last_feedback: "2026-04-30: instructions/map_review_presentation に review_manifest / checklist / PJv43 spec を追加。開発/strategy/PJ04 Presentation Review に Review Route / Verdicts / Blocked Qn / References を作成し、主要mapとPJv work scopeを巡回確認できる入口を整備。"
+  blocker: null
+
 - id: T-UI-TPL-1
   phase: 3
   verb: handoff
