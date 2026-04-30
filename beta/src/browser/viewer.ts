@@ -3545,7 +3545,7 @@ function buildLayout(state: AppState): LayoutResult {
     pos,
     order,
     totalHeight,
-    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, cursorX + VIEWER_TUNING.layout.canvasRightPad),
+    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
   };
 }
 
