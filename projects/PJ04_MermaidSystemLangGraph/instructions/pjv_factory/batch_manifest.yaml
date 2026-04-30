@@ -22,7 +22,7 @@ items:
     trace_output: "tmp/pjv35-local-project-design-report.json"
   - pjv_id: PJv36
     slug: task_backlog_triage
-    status: ready
+    status: template_built
     owner: unassigned
     source_path: "docs/06_Operations/Todo_Pool.md"
     goal: "Todo Pool と PJ04 tasks.yaml から、次に実装すべき確定タスク候補を分類して tmp/ に出す"
@@ -31,7 +31,7 @@ items:
     map_scope: "開発/strategy/PJ04 PJv Factory/Work Scopes/PJv36"
   - pjv_id: PJv37
     slug: code_change_weekly_digest
-    status: ready
+    status: template_built
     owner: unassigned
     source_path: "git log / docs/daily"
     goal: "直近の commit と daily から、週次開発ダイジェストを tmp/ に出す"
@@ -40,10 +40,10 @@ items:
     map_scope: "開発/strategy/PJ04 PJv Factory/Work Scopes/PJv37"
   - pjv_id: PJv43
     slug: slideshow_mode_map_review_tour
-    status: ready
+    status: template_built
     owner: unassigned
     source_path: "idea/30_ux/slideshow/"
     goal: "akaghef が全 map / PJv work scope を順番に巡回確認できる Presentation Review 環境を作る"
     spec_path: "projects/PJ04_MermaidSystemLangGraph/instructions/map_review_presentation/presentation_mode_pjv43.md"
-    template_path: null
+    template_path: "projects/PJ04_MermaidSystemLangGraph/templates/pjv43_slideshow_mode_map_review_tour.yaml"
     map_scope: "開発/strategy/PJ04 Presentation Review"

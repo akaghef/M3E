@@ -1,0 +1,222 @@
+id: pjv37_code_change_weekly_digest_system
+label: PJv37 Code Change Weekly Digest
+template: langgraph.subsystem.state_graph
+strategy: PJv Factory Code Change Weekly Digest
+entry: load_changes
+channels:
+  - name: sourceFolder
+    reducer: replace
+    typeHint: resource:folder
+  - name: contextPackage
+    reducer: replace
+    typeHint: json
+  - name: docGoal
+    reducer: replace
+    typeHint: markdown
+  - name: draftDocument
+    reducer: replace
+    typeHint: markdown
+  - name: finalReport
+    reducer: replace
+    typeHint: resource:file
+  - name: trace
+    reducer: append
+    typeHint: jsonl
+nodes:
+  - id: load_changes
+    label: Load Changes
+    template: io.load_local_folder
+    flowCol: 0
+    flowRow: 0
+    slots:
+      reads: resource.gitAndDaily
+      writes: state.contextPackage
+      callable_ref: pjv37.load_context
+      doc_goal: "直近の commit と daily から、週次開発ダイジェストを main changes / risks / next actions にまとめる。"
+      trace_step_id: load_changes
+  - id: generate_digest
+    label: Generate Digest
+    template: llm.generate_doc.subsystem
+    flowCol: 1
+    flowRow: 0
+    slots:
+      reads:
+        - state.contextPackage
+        - state.docGoal
+      writes: state.draftDocument
+      provider: mock
+      model: mock-digest-writer
+      prompt_text: "出力は日本語Markdown。セクションは Main Changes / Risks / Next Actions。"
+      failure_policy: "retry:1,on_error:fallback_qn"
+      trace_step_id: generate_digest
+    subsystem:
+      entry: build_prompt
+      channels:
+        - name: contextPackage
+          reducer: replace
+          typeHint: json
+        - name: docGoal
+          reducer: replace
+          typeHint: markdown
+        - name: prompt
+          reducer: replace
+          typeHint: markdown
+        - name: providerResponse
+          reducer: replace
+          typeHint: json
+        - name: draftDocument
+          reducer: replace
+          typeHint: markdown
+        - name: error
+          reducer: replace
+          typeHint: json
+        - name: retryCount
+          reducer: replace
+          typeHint: number
+      nodes:
+        - id: build_prompt
+          label: Build Prompt
+          template: langgraph.node.process
+          flowCol: 0
+          flowRow: 0
+          slots:
+            reads:
+              - state.contextPackage
+              - state.docGoal
+            writes: state.prompt
+            callable_ref: pjv37.generate_digest.build_prompt
+            prompt_text: "出力は日本語Markdown。セクションは Main Changes / Risks / Next Actions。"
+            trace_step_id: build_prompt
+        - id: call_provider
+          label: Call Provider
+          template: langgraph.node.llm
+          flowCol: 1
+          flowRow: 0
+          slots:
+            reads: state.prompt
+            writes:
+              - state.providerResponse
+              - state.error
+            callable_ref: pjv37.generate_digest.call_provider
+            provider: mock
+            model: mock-digest-writer
+            prompt_text: "{{state.prompt}}"
+            trace_step_id: call_provider
+        - id: evaluate_response
+          label: Evaluate Digest
+          template: langgraph.node.router
+          flowCol: 2
+          flowRow: 0
+          slots:
+            reads:
+              - state.providerResponse
+              - state.error
+            writes:
+              - state.draftDocument
+              - state.error
+            callable_ref: pjv37.generate_digest.evaluate_response
+            router_ref: pjv37.generate_digest.route_evaluation
+            route_keys:
+              - pass
+              - api_error
+              - bad_output
+            default_route: bad_output
+            trace_step_id: evaluate_response
+        - id: retry_backoff
+          label: Retry / Backoff
+          template: langgraph.flow.retry
+          flowCol: 2
+          flowRow: 1
+          slots:
+            reads:
+              - state.error
+              - state.retryCount
+            writes: state.retryCount
+            callable_ref: pjv37.generate_digest.retry_backoff
+            router_ref: pjv37.generate_digest.route_retry
+            max_attempts: 1
+            retry_target: call_provider
+            exhausted_target: fallback_qn
+            route_keys:
+              - retry
+              - exhausted
+            trace_step_id: retry_backoff
+        - id: fallback_qn
+          label: Fallback / Qn
+          template: langgraph.flow.human_gate
+          flowCol: 3
+          flowRow: 1
+          slots:
+            reads:
+              - state.error
+              - state.providerResponse
+            writes:
+              - state.draftDocument
+              - state.qn
+            callable_ref: pjv37.generate_digest.fallback_qn
+            interrupt: dynamic
+            decision_ports:
+              - approve
+              - reject
+              - edit
+            trace_step_id: fallback_qn
+        - id: return_draft
+          label: Return Draft
+          template: langgraph.node.process
+          flowCol: 4
+          flowRow: 0
+          slots:
+            reads: state.draftDocument
+            writes: state.draftDocument
+            callable_ref: pjv37.generate_digest.return_draft
+            trace_step_id: return_draft
+      edges:
+        - from: build_prompt
+          to: call_provider
+          label: default
+        - from: call_provider
+          to: evaluate_response
+          label: default
+        - from: evaluate_response
+          to: return_draft
+          branch: pass
+        - from: evaluate_response
+          to: retry_backoff
+          branch: api_error
+        - from: evaluate_response
+          to: fallback_qn
+          branch: bad_output
+        - from: retry_backoff
+          to: call_provider
+          branch: retry
+        - from: retry_backoff
+          to: fallback_qn
+          branch: exhausted
+        - from: fallback_qn
+          to: __end__
+          label: fallback
+        - from: return_draft
+          to: __end__
+          label: return
+  - id: write_output
+    label: Write Output
+    template: io.write_artifact
+    flowCol: 2
+    flowRow: 0
+    slots:
+      reads: state.draftDocument
+      writes: resource.tmpWeeklyDigest
+      callable_ref: pjv37.write_output
+      trace_step_id: write_output
+edges:
+  - from: load_changes
+    to: generate_digest
+    label: default
+  - from: generate_digest
+    to: write_output
+    label: default
+  - from: write_output
+    to: __end__
+    label: done
+note: PJv37 code change weekly digest generated from PJv Factory templates.
+

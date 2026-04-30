@@ -1,0 +1,222 @@
+id: pjv43_slideshow_mode_map_review_tour_system
+label: PJv43 Slideshow Mode Map Review Tour
+template: langgraph.subsystem.state_graph
+strategy: PJ04 Presentation Review
+entry: load_review_manifest
+channels:
+  - name: reviewManifest
+    reducer: replace
+    typeHint: json
+  - name: contextPackage
+    reducer: replace
+    typeHint: json
+  - name: docGoal
+    reducer: replace
+    typeHint: markdown
+  - name: draftDocument
+    reducer: replace
+    typeHint: markdown
+  - name: finalReport
+    reducer: replace
+    typeHint: resource:file
+  - name: trace
+    reducer: append
+    typeHint: jsonl
+nodes:
+  - id: load_review_manifest
+    label: Load Review Manifest
+    template: io.load_local_folder
+    flowCol: 0
+    flowRow: 0
+    slots:
+      reads: resource.reviewManifest
+      writes: state.contextPackage
+      callable_ref: pjv43.load_context
+      doc_goal: "review_manifest から map / scope review tour を作り、accept / revise / blocked / discard の確認経路を明示する。"
+      trace_step_id: load_review_manifest
+  - id: generate_review_tour
+    label: Generate Review Tour
+    template: llm.generate_doc.subsystem
+    flowCol: 1
+    flowRow: 0
+    slots:
+      reads:
+        - state.contextPackage
+        - state.docGoal
+      writes: state.draftDocument
+      provider: mock
+      model: mock-review-tour-planner
+      prompt_text: "出力は日本語Markdown。セクションは Tour Steps / Verdict Buttons / Blocked Questions / Next Review。"
+      failure_policy: "retry:1,on_error:fallback_qn"
+      trace_step_id: generate_review_tour
+    subsystem:
+      entry: build_prompt
+      channels:
+        - name: contextPackage
+          reducer: replace
+          typeHint: json
+        - name: docGoal
+          reducer: replace
+          typeHint: markdown
+        - name: prompt
+          reducer: replace
+          typeHint: markdown
+        - name: providerResponse
+          reducer: replace
+          typeHint: json
+        - name: draftDocument
+          reducer: replace
+          typeHint: markdown
+        - name: error
+          reducer: replace
+          typeHint: json
+        - name: retryCount
+          reducer: replace
+          typeHint: number
+      nodes:
+        - id: build_prompt
+          label: Build Prompt
+          template: langgraph.node.process
+          flowCol: 0
+          flowRow: 0
+          slots:
+            reads:
+              - state.contextPackage
+              - state.docGoal
+            writes: state.prompt
+            callable_ref: pjv43.generate_review_tour.build_prompt
+            prompt_text: "出力は日本語Markdown。セクションは Tour Steps / Verdict Buttons / Blocked Questions / Next Review。"
+            trace_step_id: build_prompt
+        - id: call_provider
+          label: Call Provider
+          template: langgraph.node.llm
+          flowCol: 1
+          flowRow: 0
+          slots:
+            reads: state.prompt
+            writes:
+              - state.providerResponse
+              - state.error
+            callable_ref: pjv43.generate_review_tour.call_provider
+            provider: mock
+            model: mock-review-tour-planner
+            prompt_text: "{{state.prompt}}"
+            trace_step_id: call_provider
+        - id: evaluate_response
+          label: Evaluate Review Tour
+          template: langgraph.node.router
+          flowCol: 2
+          flowRow: 0
+          slots:
+            reads:
+              - state.providerResponse
+              - state.error
+            writes:
+              - state.draftDocument
+              - state.error
+            callable_ref: pjv43.generate_review_tour.evaluate_response
+            router_ref: pjv43.generate_review_tour.route_evaluation
+            route_keys:
+              - pass
+              - api_error
+              - bad_output
+            default_route: bad_output
+            trace_step_id: evaluate_response
+        - id: retry_backoff
+          label: Retry / Backoff
+          template: langgraph.flow.retry
+          flowCol: 2
+          flowRow: 1
+          slots:
+            reads:
+              - state.error
+              - state.retryCount
+            writes: state.retryCount
+            callable_ref: pjv43.generate_review_tour.retry_backoff
+            router_ref: pjv43.generate_review_tour.route_retry
+            max_attempts: 1
+            retry_target: call_provider
+            exhausted_target: fallback_qn
+            route_keys:
+              - retry
+              - exhausted
+            trace_step_id: retry_backoff
+        - id: fallback_qn
+          label: Fallback / Qn
+          template: langgraph.flow.human_gate
+          flowCol: 3
+          flowRow: 1
+          slots:
+            reads:
+              - state.error
+              - state.providerResponse
+            writes:
+              - state.draftDocument
+              - state.qn
+            callable_ref: pjv43.generate_review_tour.fallback_qn
+            interrupt: dynamic
+            decision_ports:
+              - approve
+              - reject
+              - edit
+            trace_step_id: fallback_qn
+        - id: return_draft
+          label: Return Draft
+          template: langgraph.node.process
+          flowCol: 4
+          flowRow: 0
+          slots:
+            reads: state.draftDocument
+            writes: state.draftDocument
+            callable_ref: pjv43.generate_review_tour.return_draft
+            trace_step_id: return_draft
+      edges:
+        - from: build_prompt
+          to: call_provider
+          label: default
+        - from: call_provider
+          to: evaluate_response
+          label: default
+        - from: evaluate_response
+          to: return_draft
+          branch: pass
+        - from: evaluate_response
+          to: retry_backoff
+          branch: api_error
+        - from: evaluate_response
+          to: fallback_qn
+          branch: bad_output
+        - from: retry_backoff
+          to: call_provider
+          branch: retry
+        - from: retry_backoff
+          to: fallback_qn
+          branch: exhausted
+        - from: fallback_qn
+          to: __end__
+          label: fallback
+        - from: return_draft
+          to: __end__
+          label: return
+  - id: write_review_plan
+    label: Write Review Plan
+    template: io.write_artifact
+    flowCol: 2
+    flowRow: 0
+    slots:
+      reads: state.draftDocument
+      writes: resource.tmpReviewTour
+      callable_ref: pjv43.write_output
+      trace_step_id: write_review_plan
+edges:
+  - from: load_review_manifest
+    to: generate_review_tour
+    label: default
+  - from: generate_review_tour
+    to: write_review_plan
+    label: default
+  - from: write_review_plan
+    to: __end__
+    label: done
+note: PJv43 map review tour generated from PJ04 Presentation Review manifest.
+
