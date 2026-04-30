@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
+import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle, LinkPort } from "../shared/types";
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
@@ -97,12 +97,19 @@ class RapidMvpModel {
   }
 
   _normalizeLink(link: GraphLink): GraphLink {
+    const validPort = (port: unknown) => (
+      port === "left" || port === "right" || port === "top" || port === "bottom" || port === "auto"
+        ? port
+        : "auto"
+    );
     return {
       ...link,
       relationType: link.relationType ?? undefined,
       label: link.label ?? undefined,
       direction: link.direction ?? "none",
       style: link.style ?? "default",
+      sourcePort: validPort(link.sourcePort),
+      targetPort: validPort(link.targetPort),
     };
   }
 
@@ -328,6 +335,8 @@ class RapidMvpModel {
     label?: string;
     direction?: LinkDirection;
     style?: LinkStyle;
+    sourcePort?: LinkPort;
+    targetPort?: LinkPort;
   }): string {
     const source = this._requireNode(sourceNodeId);
     const target = this._requireNode(targetNodeId);
@@ -349,6 +358,8 @@ class RapidMvpModel {
       label: options?.label,
       direction: options?.direction,
       style: options?.style,
+      sourcePort: options?.sourcePort,
+      targetPort: options?.targetPort,
     });
     return id;
   }

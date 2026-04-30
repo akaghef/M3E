@@ -470,6 +470,35 @@
         pointer-events: none;
       }
 
+      .graph-link-hit {
+        fill: none;
+        stroke: transparent;
+        stroke-width: 18;
+        stroke-linecap: round;
+        pointer-events: stroke;
+        cursor: pointer;
+      }
+
+      .graph-link.selected {
+        stroke-width: 5;
+        filter: drop-shadow(0 0 5px rgba(111, 57, 255, 0.55));
+      }
+
+      .graph-link-port {
+        fill: #ffffff;
+        stroke: var(--accent);
+        stroke-width: 3;
+        pointer-events: none;
+      }
+
+      .graph-link-port-source {
+        fill: #efe8ff;
+      }
+
+      .graph-link-port-target {
+        fill: #ffffff;
+      }
+
       .graph-link.graph-link-soft {
         stroke-width: 2.5;
         opacity: 0.72;

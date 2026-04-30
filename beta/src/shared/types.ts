@@ -2,6 +2,7 @@ export type NodeType = "text" | "image" | "folder" | "alias";
 export type AliasAccess = "read" | "write";
 export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
+export type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 export type MapNodeClass = "entity" | "scope";
 export type SurfaceKind = "tree" | "system";
 export type SurfaceLayout = "tree" | "flow-lr";
@@ -33,6 +34,8 @@ export interface GraphLink {
   label?: string;
   direction?: LinkDirection;
   style?: LinkStyle;
+  sourcePort?: LinkPort;
+  targetPort?: LinkPort;
 }
 
 export interface SurfaceNodeView {

@@ -353,6 +353,7 @@ let viewState: ViewState = {
   pinchState: null,
   clipboardState: null,
   linkSourceNodeId: "",
+  selectedLinkId: "",
   reparentSourceIds: new Set<string>(),
   dragState: null,
   collapsedIds: new Set<string>(),
@@ -1047,6 +1048,8 @@ function ensureDocShape(payload: unknown): SavedMap {
       label: record.label || undefined,
       direction: record.direction || "none",
       style: record.style || "default",
+      sourcePort: record.sourcePort || "auto",
+      targetPort: record.targetPort || "auto",
     };
   });
   candidate.state.linearNotesByScope = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
@@ -1990,12 +1993,19 @@ function aliasBadge(node: TreeNode): string {
 }
 
 function normalizeGraphLink(link: GraphLink): GraphLink {
+  const validPort = (port: unknown): LinkPort => (
+    port === "left" || port === "right" || port === "top" || port === "bottom" || port === "auto"
+      ? port
+      : "auto"
+  );
   return {
     ...link,
     relationType: link.relationType ?? undefined,
     label: link.label ?? undefined,
     direction: link.direction ?? "none",
     style: link.style ?? "default",
+    sourcePort: validPort(link.sourcePort),
+    targetPort: validPort(link.targetPort),
   };
 }
 
@@ -2502,6 +2512,52 @@ function edgeEndBetween(fromPos: NodePosition, toPos: NodePosition): { x: number
   return dy >= 0
     ? { x: fromCx, y: fromPos.y + fromPos.h / 2 + VIEWER_TUNING.layout.edgeStartPad }
     : { x: fromCx, y: fromPos.y - fromPos.h / 2 - VIEWER_TUNING.layout.edgeEndPad };
+}
+
+const LINK_PORTS: LinkPort[] = ["auto", "right", "bottom", "left", "top"];
+
+function nodePortPoint(pos: NodePosition, port: LinkPort): { x: number; y: number } {
+  const cx = pos.x + pos.w / 2;
+  const cy = pos.y;
+  switch (port) {
+    case "left":
+      return { x: pos.x, y: cy };
+    case "right":
+      return { x: pos.x + pos.w, y: cy };
+    case "top":
+      return { x: cx, y: pos.y - pos.h / 2 };
+    case "bottom":
+      return { x: cx, y: pos.y + pos.h / 2 };
+    case "auto":
+    default:
+      return { x: cx, y: cy };
+  }
+}
+
+function graphLinkEndpoint(
+  fromPos: NodePosition,
+  toPos: NodePosition,
+  requestedPort: LinkPort | undefined,
+): { x: number; y: number; port: Exclude<LinkPort, "auto"> } {
+  const port = requestedPort || "auto";
+  const concretePorts: Array<Exclude<LinkPort, "auto">> = ["right", "bottom", "left", "top"];
+  if (port !== "auto") {
+    return { ...nodePortPoint(fromPos, port), port };
+  }
+  const targetCenter = nodePortPoint(toPos, "auto");
+  let bestPort = concretePorts[0]!;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of concretePorts) {
+    const point = nodePortPoint(fromPos, candidate);
+    const dx = point.x - targetCenter.x;
+    const dy = point.y - targetCenter.y;
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestPort = candidate;
+    }
+  }
+  return { ...nodePortPoint(fromPos, bestPort), port: bestPort };
 }
 
 function edgeEndBetweenRects(
@@ -3749,8 +3805,8 @@ function render(): void {
     const pairOffsetIndex = renderedPairOffsets.get(pairKey) ?? 0;
     renderedPairOffsets.set(pairKey, pairOffsetIndex + 1);
 
-    const sourceEnd = edgeEndBetween(sourcePos, targetPos);
-    const targetEnd = edgeEndBetween(targetPos, sourcePos);
+    const sourceEnd = graphLinkEndpoint(sourcePos, targetPos, link.sourcePort);
+    const targetEnd = graphLinkEndpoint(targetPos, sourcePos, link.targetPort);
     // The node physically rendered in current scope may differ from link.source/target (representative).
     const sourceRenderNode = state.nodes[sourceRenderId] || source;
     const targetRenderNode = state.nodes[targetRenderId] || target;
@@ -3762,7 +3818,7 @@ function render(): void {
     const srcCy = sourcePos.y;
     const tgtCy = targetPos.y;
     const facingHorizontal = Math.abs(tgtCx - srcCx) >= Math.abs(tgtCy - srcCy);
-    if (facingHorizontal) {
+    if (facingHorizontal && sourceEnd.port !== "top" && sourceEnd.port !== "bottom" && targetEnd.port !== "top" && targetEnd.port !== "bottom") {
       const rightward = tgtCx >= srcCx;
       if (sourceIsPortal) sourceEnd.x += (rightward ? 1 : -1) * PORTAL_BRACKET_ARM;
       if (targetIsPortal) targetEnd.x += (rightward ? -1 : 1) * PORTAL_BRACKET_ARM;
@@ -3800,28 +3856,18 @@ function render(): void {
       // Prefer the side with fewer obstructions. Tie → TOP (visually cleaner for LR flow).
       const useTop = boxesBelow >= boxesAbove;
       const archIndex = useTop ? topArchCount++ : bottomArchCount++;
-      const srcPad = VIEWER_TUNING.layout.edgeStartPad;
-      const tgtPad = VIEWER_TUNING.layout.edgeEndPad;
-      const sxArch = srcCx;
-      const txArch = tgtCx;
       // Extra lift reserved for scope-frame title band (top-side only).
       const titleReserve = useTop ? 48 : 14;
       // Stagger each back-edge on same side so horizontal segments don't overlap.
       const lift = titleReserve + archIndex * 18;
-      let syArch: number;
-      let tyArch: number;
       let apexY: number;
       if (useTop) {
-        syArch = sourcePos.y - sourcePos.h / 2 - srcPad;
-        tyArch = targetPos.y - targetPos.h / 2 - tgtPad;
-        apexY = uArchTopApex(linkAvoidBoxes, syArch, tyArch, lift);
+        apexY = uArchTopApex(linkAvoidBoxes, sourceY, targetY, lift);
       } else {
-        syArch = sourcePos.y + sourcePos.h / 2 + srcPad;
-        tyArch = targetPos.y + targetPos.h / 2 + tgtPad;
-        apexY = uArchBottomApex(linkAvoidBoxes, syArch, tyArch, lift);
+        apexY = uArchBottomApex(linkAvoidBoxes, sourceY, targetY, lift);
       }
-      graphLinkPathD = uArchOrthogonalPath(sxArch, syArch, txArch, tyArch, apexY);
-      controlX = (sxArch + txArch) / 2;
+      graphLinkPathD = uArchOrthogonalPath(sourceX, sourceY, targetX, targetY, apexY);
+      controlX = (sourceX + targetX) / 2;
       controlY = useTop ? apexY - 10 : apexY + 16;
     } else {
       const preferredMidX = sourceX + (targetX - sourceX) / 2 + pairWaveOffset;
@@ -3855,7 +3901,13 @@ function render(): void {
         <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
       </marker>`;
 
-    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
+    const selectedClass = viewState.selectedLinkId === link.id ? " selected" : "";
+    graphLinks += `<path class="graph-link-hit" data-link-id="${link.id}" d="${graphLinkPathD}" />`;
+    graphLinks += `<path class="graph-link${styleClass}${selectedClass}" data-link-id="${link.id}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
+    if (viewState.selectedLinkId === link.id) {
+      graphLinks += `<circle class="graph-link-port graph-link-port-source" data-link-id="${link.id}" cx="${sourceX}" cy="${sourceY}" r="7" />`;
+      graphLinks += `<circle class="graph-link-port graph-link-port-target" data-link-id="${link.id}" cx="${targetX}" cy="${targetY}" r="7" />`;
+    }
     if (label) {
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 10}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
@@ -4672,6 +4724,9 @@ function normalizeSelectionState(): void {
   if (viewState.linkSourceNodeId && !map.state.nodes[viewState.linkSourceNodeId]) {
     viewState.linkSourceNodeId = "";
   }
+  if (viewState.selectedLinkId && !map.state.links?.[viewState.selectedLinkId]) {
+    viewState.selectedLinkId = "";
+  }
 }
 
 function setSingleSelection(nodeId: string, renderNow = true): void {
@@ -4679,6 +4734,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
     return;
   }
+  viewState.selectedLinkId = "";
   viewState.selectedNodeId = nodeId;
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
@@ -4699,6 +4755,7 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 }
 
 function setRangeSelection(targetId: string): void {
+  viewState.selectedLinkId = "";
   const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
     ? viewState.selectionAnchorId
     : viewState.selectedNodeId;
@@ -4714,6 +4771,7 @@ function setRangeSelection(targetId: string): void {
 }
 
 function toggleNodeSelection(nodeId: string): void {
+  viewState.selectedLinkId = "";
   viewState.selectionAnchorId = nodeId;
   if (viewState.selectedNodeIds.has(nodeId)) {
     if (viewState.selectedNodeIds.size === 1) {
@@ -4736,6 +4794,24 @@ function toggleNodeSelection(nodeId: string): void {
 
 function selectNode(nodeId: string): void {
   setSingleSelection(nodeId);
+}
+
+function selectGraphLink(linkId: string, renderNow = true): void {
+  if (!map?.state.links?.[linkId]) {
+    return;
+  }
+  viewState.selectedLinkId = linkId;
+  viewState.selectedNodeIds = new Set();
+  viewState.selectionAnchorId = null;
+  viewState.reparentSourceIds.clear();
+  clearCutClipboard();
+  const link = map.state.links[linkId];
+  const source = map.state.nodes[link.sourceNodeId];
+  const target = map.state.nodes[link.targetNodeId];
+  setStatus(`Selected link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}. [ and ] adjust ports, Delete removes.`);
+  if (renderNow) {
+    scheduleRender();
+  }
 }
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
@@ -6655,6 +6731,45 @@ function applyMarkedLink(): void {
   board.focus();
 }
 
+function deleteSelectedGraphLink(): boolean {
+  if (!map || !viewState.selectedLinkId) {
+    return false;
+  }
+  const link = map.state.links?.[viewState.selectedLinkId];
+  if (!link) {
+    viewState.selectedLinkId = "";
+    return false;
+  }
+  const source = map.state.nodes[link.sourceNodeId];
+  const target = map.state.nodes[link.targetNodeId];
+  pushUndoSnapshot();
+  delete map.state.links![link.id];
+  viewState.selectedLinkId = "";
+  touchDocument();
+  setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
+  return true;
+}
+
+function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
+  if (!map || !viewState.selectedLinkId) {
+    return false;
+  }
+  const link = map.state.links?.[viewState.selectedLinkId];
+  if (!link) {
+    viewState.selectedLinkId = "";
+    return false;
+  }
+  const normalized = normalizeGraphLink(link);
+  const key = endpoint === "source" ? "sourcePort" : "targetPort";
+  const current = normalized[key] || "auto";
+  const next = LINK_PORTS[(LINK_PORTS.indexOf(current) + 1) % LINK_PORTS.length] || "auto";
+  pushUndoSnapshot();
+  link[key] = next;
+  touchDocument();
+  setStatus(`${endpoint === "source" ? "Source" : "Target"} port: ${next}`);
+  return true;
+}
+
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
   const viewportCenterBefore = nodeViewportCenter(nodeId);
@@ -6869,6 +6984,9 @@ function getMovableSelectionRoots(selectedIds = viewState.selectedNodeIds): stri
 }
 
 function deleteSelected(): void {
+  if (deleteSelectedGraphLink()) {
+    return;
+  }
   const roots = getSelectionRoots();
   if (roots.length === 0) {
     return;
@@ -8584,6 +8702,14 @@ document.addEventListener("click", () => {
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
+  const linkId = (event.target as Element | null)?.getAttribute("data-link-id");
+  if (linkId && event.button === 0) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectGraphLink(linkId);
+    board.focus();
+    return;
+  }
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
     event.preventDefault();
@@ -9098,6 +9224,19 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     event.preventDefault();
     fitDocument();
     return;
+  }
+
+  if (viewState.selectedLinkId && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (event.key === "[") {
+      event.preventDefault();
+      cycleSelectedGraphLinkPort("source");
+      return;
+    }
+    if (event.key === "]") {
+      event.preventDefault();
+      cycleSelectedGraphLinkPort("target");
+      return;
+    }
   }
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "]") {
