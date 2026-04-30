@@ -5,6 +5,7 @@ description: |
   以下の場面で使う:
   - PJ04 / MDD / Map Driven Development / LangGraph template / System Block Template に触るとき
   - PJv34 Weekly Review system を template から build / run / test するとき
+  - PJv34 以外の PJv* を batch で仕様化し、Template System Spec / map system diagram / CLI run へ変換するとき
   - `projects/PJ04_MermaidSystemLangGraph/templates/*.yaml` を作成・更新するとき
   - LangGraph 機能カバレッジ表を更新するとき
   - template-generated AppState / GraphSpec / trace を UI 担当に渡すとき
@@ -38,6 +39,9 @@ System Block Template catalog
 | Template仕様 | `projects/PJ04_MermaidSystemLangGraph/docs/system_block_templates.md` |
 | LangGraph到達度 | `projects/PJ04_MermaidSystemLangGraph/docs/langgraph_feature_coverage.md` |
 | PJv34 spec | `projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml` |
+| PJv* factory package | `projects/PJ04_MermaidSystemLangGraph/instructions/pjv_factory/README.md` |
+| PJv* Master指示 | `projects/PJ04_MermaidSystemLangGraph/instructions/pjv_factory/master_instruction.md` |
+| PJv* batch queue | `projects/PJ04_MermaidSystemLangGraph/instructions/pjv_factory/batch_manifest.yaml` |
 | Template型 | `beta/src/shared/template_system_spec.ts` |
 | Builder | `beta/src/node/template_system_builder.ts` |
 | Build CLI | `beta/src/node/template_build_cli.ts` |
@@ -149,6 +153,16 @@ projects/PJ04_MermaidSystemLangGraph/docs/secrets_management.md
 5. 必要なら `npm run template:test` に regression を追加する
 6. `langgraph_feature_coverage.md` と `tasks.yaml` を更新する
 7. `docs/daily/YYMMDD.md` に作業ログを追記する
+
+### PJv34 以外の PJv* を batch system 化する場合
+
+1. `instructions/pjv_factory/master_instruction.md` を読む
+2. `instructions/pjv_factory/batch_manifest.yaml` から `status: ready` の PJv* を選ぶ
+3. `instructions/pjv_factory/assignment_spec_template.md` を使って `specs/pjvXX_<slug>.md` を作る
+4. 仕様を freeze してから `templates/pjvXX_<slug>.yaml` を作る
+5. `npm run template:build -- --spec ...` と `npm run template:run -- --spec ...` を mock provider で通す
+6. `開発/strategy/PJ04 PJv Factory/Work Scopes/PJvXX` に system diagram scope を作る
+7. `batch_manifest.yaml` と daily に状態を反映する
 
 ### PJv34 を確認する場合
 

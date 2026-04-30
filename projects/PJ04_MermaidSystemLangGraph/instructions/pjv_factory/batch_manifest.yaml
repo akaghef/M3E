@@ -1,0 +1,38 @@
+package: pjv_factory
+updated: "2026-04-30"
+map:
+  label: "開発"
+  target_path: "開発/strategy/PJ04 PJv Factory"
+defaults:
+  output_dir: "tmp"
+  spec_dir: "projects/PJ04_MermaidSystemLangGraph/specs"
+  template_dir: "projects/PJ04_MermaidSystemLangGraph/templates"
+  provider: "mock"
+items:
+  - pjv_id: PJv35
+    slug: local_project_design_report
+    status: ready
+    owner: unassigned
+    source_path: "projects/"
+    goal: "ローカル projects/ から対象PJの設計状況を読み、設計レポートを tmp/ に出す"
+    spec_path: "projects/PJ04_MermaidSystemLangGraph/specs/pjv35_local_project_design_report.md"
+    template_path: "projects/PJ04_MermaidSystemLangGraph/templates/pjv35_local_project_design_report.yaml"
+    map_scope: "開発/strategy/PJ04 PJv Factory/Work Scopes/PJv35"
+  - pjv_id: PJv36
+    slug: task_backlog_triage
+    status: ready
+    owner: unassigned
+    source_path: "docs/06_Operations/Todo_Pool.md"
+    goal: "Todo Pool と PJ04 tasks.yaml から、次に実装すべき確定タスク候補を分類して tmp/ に出す"
+    spec_path: "projects/PJ04_MermaidSystemLangGraph/specs/pjv36_task_backlog_triage.md"
+    template_path: "projects/PJ04_MermaidSystemLangGraph/templates/pjv36_task_backlog_triage.yaml"
+    map_scope: "開発/strategy/PJ04 PJv Factory/Work Scopes/PJv36"
+  - pjv_id: PJv37
+    slug: code_change_weekly_digest
+    status: ready
+    owner: unassigned
+    source_path: "git log / docs/daily"
+    goal: "直近の commit と daily から、週次開発ダイジェストを tmp/ に出す"
+    spec_path: "projects/PJ04_MermaidSystemLangGraph/specs/pjv37_code_change_weekly_digest.md"
+    template_path: "projects/PJ04_MermaidSystemLangGraph/templates/pjv37_code_change_weekly_digest.yaml"
+    map_scope: "開発/strategy/PJ04 PJv Factory/Work Scopes/PJv37"

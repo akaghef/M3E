@@ -401,6 +401,71 @@
   last_feedback: "2026-04-30: LangGraph主要機能45項目について Template / GraphSpec / CLI Run / Test / UI の到達度を一覧化。PJv34固定で通っている部分と generic化・bridge・UI が未完の部分を分離した。"
   blocker: null
 
+- id: T-PJV-1
+  phase: 3
+  verb: package
+  target: "PJv Factory instruction package for PJv34以外のbatch system化"
+  done_when:
+    - "instructions/pjv_factory/README.md exists"
+    - "Master instruction exists for next-session batch execution"
+    - "worker prompt exists for one PJv* per worker"
+    - "assignment spec template exists"
+    - "batch manifest has at least 3 ready PJv* placeholders"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/instructions/pjv_factory"
+  facet: contract
+  status: done
+  round: 1
+  round_max: 1
+  last_feedback: "2026-04-30: PJv Factory package を追加。Master/worker/assignment spec/map contract/batch manifest を分割し、次セッションでPJv35-PJv37を並列投入できる状態にした。"
+  blocker: null
+
+- id: T-PJV-2
+  phase: 3
+  verb: map
+  target: "M3E map に PJ04 PJv Factory 作業スコープを作る"
+  done_when:
+    - "`開発/strategy/PJ04 PJv Factory` exists"
+    - "Master Queue / Work Scopes / Spec Review / System Diagram Review / Run Evidence / Done exist"
+    - "PJv35 / PJv36 / PJv37 placeholder scopes exist under Work Scopes"
+    - "parallel write rule is documented in map_scope_contract.md"
+  eval_required: false
+  eval_criteria: []
+  parallelizable: false
+  scope: "M3E map 開発/strategy/PJ04 PJv Factory"
+  facet: coordination
+  status: done
+  round: 1
+  round_max: 1
+  last_feedback: "2026-04-30: 開発/strategy/PJ04 PJv Factory を作成。Master Queue / Work Scopes / Spec Review / System Diagram Review / Run Evidence / Done を追加し、PJv35-PJv37 のplaceholder scopeを作成。構造変更後にdifficulty coloringを再適用した。"
+  blocker: null
+
+- id: T-PJV-3
+  phase: 4
+  verb: execute
+  target: "Run first PJv Factory batch for PJv35-PJv37"
+  done_when:
+    - "each PJv has specs/pjvXX_*.md"
+    - "each PJv has templates/pjvXX_*.yaml"
+    - "template:build passes for each PJv"
+    - "template:run passes with mock provider for each PJv"
+    - "map Work Scope contains system diagram / Data View / Run Evidence for each PJv"
+  eval_required: true
+  eval_criteria:
+    - "PJv34-specific callable_ref is not copied into new PJv* specs"
+    - "upper diagrams stay at 3-5 node overview level"
+    - "runtime trace is not written into Authoring Map"
+  parallelizable: true
+  scope: "projects/PJ04_MermaidSystemLangGraph/specs, templates, M3E map"
+  facet: runtime
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-PJV-2 map scope creation"
+
 - id: T-UI-TPL-1
   phase: 3
   verb: handoff
