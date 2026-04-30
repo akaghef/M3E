@@ -2560,6 +2560,36 @@ function graphLinkEndpoint(
   return { ...nodePortPoint(fromPos, bestPort), port: bestPort };
 }
 
+function linkPortVector(port: Exclude<LinkPort, "auto">): { x: number; y: number } {
+  switch (port) {
+    case "left":
+      return { x: -1, y: 0 };
+    case "right":
+      return { x: 1, y: 0 };
+    case "top":
+      return { x: 0, y: -1 };
+    case "bottom":
+      return { x: 0, y: 1 };
+  }
+}
+
+function graphBezierPath(
+  source: { x: number; y: number; port: Exclude<LinkPort, "auto"> },
+  target: { x: number; y: number; port: Exclude<LinkPort, "auto"> },
+): string {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const distance = Math.hypot(dx, dy);
+  const controlDistance = Math.max(48, Math.min(220, distance * 0.42));
+  const sourceVector = linkPortVector(source.port);
+  const targetVector = linkPortVector(target.port);
+  const c1x = source.x + sourceVector.x * controlDistance;
+  const c1y = source.y + sourceVector.y * controlDistance;
+  const c2x = target.x - targetVector.x * controlDistance;
+  const c2y = target.y - targetVector.y * controlDistance;
+  return `M ${source.x} ${source.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${target.x} ${target.y}`;
+}
+
 function edgeEndBetweenRects(
   fromRect: { x: number; y: number; w: number; h: number },
   toRect: { x: number; y: number; w: number; h: number },
@@ -2607,100 +2637,6 @@ function roundedOrthogonalPath(
   const sweep1 = dirX * dirY > 0 ? 1 : 0;
   const sweep2 = dirX * dirY > 0 ? 0 : 1;
   return `M ${sx} ${sy} H ${midX - dirX * r} A ${r} ${r} 0 0 ${sweep1} ${midX} ${sy + dirY * r} V ${ty - dirY * r} A ${r} ${r} 0 0 ${sweep2} ${midX + dirX * r} ${ty} H ${tx}`;
-}
-
-type EdgeAvoidBox = { left: number; right: number; top: number; bottom: number };
-
-function collectEdgeAvoidBoxes(
-  positions: Record<string, NodePosition>,
-  predicate: (id: string) => boolean,
-  bracketExt: number = 0,
-): EdgeAvoidBox[] {
-  // Layout convention (NodePosition): x = LEFT edge, y = CENTER Y, w / h = full size.
-  // bracketExt adds horizontal margin on both sides to account for portal-bracket glyphs.
-  const rects: EdgeAvoidBox[] = [];
-  for (const id of Object.keys(positions)) {
-    if (!predicate(id)) continue;
-    const p = positions[id];
-    if (!p) continue;
-    rects.push({
-      left: p.x - bracketExt,
-      right: p.x + p.w + bracketExt,
-      top: p.y - p.h / 2,
-      bottom: p.y + p.h / 2,
-    });
-  }
-  return rects;
-}
-
-function midXHitsBox(boxes: EdgeAvoidBox[], x: number, pad: number = 8): EdgeAvoidBox | null {
-  for (const b of boxes) {
-    if (x >= b.left - pad && x <= b.right + pad) return b;
-  }
-  return null;
-}
-
-function chooseClearMidX(
-  sx: number,
-  tx: number,
-  boxes: EdgeAvoidBox[],
-  preferred: number,
-  pad: number = 10,
-): number {
-  if (!midXHitsBox(boxes, preferred, pad)) return preferred;
-  const sorted = [...boxes].sort((a, b) => a.left - b.left);
-  const candidates: number[] = [];
-  const lo = Math.min(sx, tx) - 20;
-  const hi = Math.max(sx, tx) + 20;
-  // Gaps between consecutive boxes
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const gapL = sorted[i].right + pad;
-    const gapR = sorted[i + 1].left - pad;
-    if (gapR > gapL + 4) {
-      const mid = (gapL + gapR) / 2;
-      if (mid >= lo && mid <= hi) candidates.push(mid);
-    }
-  }
-  if (!candidates.length) return preferred;
-  candidates.sort((a, b) => Math.abs(a - preferred) - Math.abs(b - preferred));
-  return candidates[0];
-}
-
-function uArchTopApex(boxes: EdgeAvoidBox[], sourceTop: number, targetTop: number, lift: number): number {
-  let minTop = Math.min(sourceTop, targetTop);
-  for (const b of boxes) minTop = Math.min(minTop, b.top);
-  return minTop - lift;
-}
-
-function uArchBottomApex(boxes: EdgeAvoidBox[], sourceBottom: number, targetBottom: number, drop: number): number {
-  let maxBot = Math.max(sourceBottom, targetBottom);
-  for (const b of boxes) maxBot = Math.max(maxBot, b.bottom);
-  return maxBot + drop;
-}
-
-function uArchOrthogonalPath(
-  sx: number,
-  sy: number,
-  tx: number,
-  ty: number,
-  apexY: number,
-  r: number = 8,
-): string {
-  const dirX = tx >= sx ? 1 : -1;
-  const horizontalSpan = Math.abs(tx - sx);
-  const goUp = apexY < sy;
-  const verticalReach = goUp ? sy - apexY : apexY - sy;
-  const verticalReachT = goUp ? ty - apexY : apexY - ty;
-  if (horizontalSpan <= r * 2 + 1 || verticalReach <= r + 0.5 || verticalReachT <= r + 0.5) {
-    return `M ${sx} ${sy} V ${apexY} H ${tx} V ${ty}`;
-  }
-  if (goUp) {
-    const sweep = dirX > 0 ? 1 : 0;
-    return `M ${sx} ${sy} V ${apexY + r} A ${r} ${r} 0 0 ${sweep} ${sx + dirX * r} ${apexY} H ${tx - dirX * r} A ${r} ${r} 0 0 ${sweep} ${tx} ${apexY + r} V ${ty}`;
-  } else {
-    const sweep = dirX > 0 ? 0 : 1;
-    return `M ${sx} ${sy} V ${apexY - r} A ${r} ${r} 0 0 ${sweep} ${sx + dirX * r} ${apexY} H ${tx - dirX * r} A ${r} ${r} 0 0 ${sweep} ${tx} ${apexY - r} V ${ty}`;
-  }
 }
 
 function currentLinearMemoScopeId(): string {
@@ -3759,18 +3695,7 @@ function render(): void {
 
   const renderedSurfaceLinks = new Set<string>();
   const renderedPairOffsets = new Map<string, number>();
-  // Running counters so multiple distinct back-edges routed on the same face stack at different heights.
-  let topArchCount = 0;
-  let bottomArchCount = 0;
-  // Portal brackets extend ~14px on each side; extend avoid rects so routing steers around them too.
   const PORTAL_BRACKET_ARM = 14;
-  // Include every positioned node in avoid set so U-arches clear them even if the
-  // scope predicate is stricter than visibility (representatives, siblings etc).
-  const linkAvoidBoxes = collectEdgeAvoidBoxes(
-    pos,
-    () => true,
-    flowSurface ? PORTAL_BRACKET_ARM : 0,
-  );
   Object.values(state.links || {}).forEach((rawLink) => {
     const link = normalizeGraphLink(rawLink);
     const source = state.nodes[link.sourceNodeId];
@@ -3827,59 +3752,13 @@ function render(): void {
     const sourceY = sourceEnd.y;
     const targetX = targetEnd.x;
     const targetY = targetEnd.y;
-    const forward = targetX >= sourceX;
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
-    const horizontalSpan = Math.abs(dx);
-    const depthBack = targetPos.depth < sourcePos.depth
-      || (targetPos.depth === sourcePos.depth && targetY < sourceY);
-    const isReverseFlow = flowSurface && !forward;
-    const needsUArch = flowSurface && (depthBack || isReverseFlow);
     const pairWaveOffset = pairOffsetIndex === 0
       ? 0
       : Math.ceil(pairOffsetIndex / 2) * 26 * (pairOffsetIndex % 2 === 0 ? -1 : 1);
 
-    let controlX: number;
-    let controlY: number;
-    let graphLinkPathD: string;
-    if (needsUArch) {
-      // Decide side (TOP / BOTTOM) based on where OTHER boxes sit relative to the edge row.
-      // Placing verticals on the clearer side avoids passing through unrelated boxes.
-      const edgeMidY = (srcCy + tgtCy) / 2;
-      let boxesAbove = 0;
-      let boxesBelow = 0;
-      for (const b of linkAvoidBoxes) {
-        const bMid = (b.top + b.bottom) / 2;
-        if (Math.abs(bMid - edgeMidY) < 8) continue; // same row — source/target themselves
-        if (bMid < edgeMidY) boxesAbove += 1; else boxesBelow += 1;
-      }
-      // Prefer the side with fewer obstructions. Tie → TOP (visually cleaner for LR flow).
-      const useTop = boxesBelow >= boxesAbove;
-      const archIndex = useTop ? topArchCount++ : bottomArchCount++;
-      // Extra lift reserved for scope-frame title band (top-side only).
-      const titleReserve = useTop ? 48 : 14;
-      // Stagger each back-edge on same side so horizontal segments don't overlap.
-      const lift = titleReserve + archIndex * 18;
-      let apexY: number;
-      if (useTop) {
-        apexY = uArchTopApex(linkAvoidBoxes, sourceY, targetY, lift);
-      } else {
-        apexY = uArchBottomApex(linkAvoidBoxes, sourceY, targetY, lift);
-      }
-      graphLinkPathD = uArchOrthogonalPath(sourceX, sourceY, targetX, targetY, apexY);
-      controlX = (sourceX + targetX) / 2;
-      controlY = useTop ? apexY - 10 : apexY + 16;
-    } else {
-      const preferredMidX = sourceX + (targetX - sourceX) / 2 + pairWaveOffset;
-      const midX = chooseClearMidX(sourceX, targetX, linkAvoidBoxes, preferredMidX, 10);
-      graphLinkPathD = roundedOrthogonalPath(sourceX, sourceY, targetX, targetY, { midX });
-      controlX = midX;
-      // Lift label above the edge line so it doesn't collide with box content / pills.
-      const isStraightH = Math.abs(sourceY - targetY) < 4;
-      controlY = isStraightH
-        ? sourceY - 16 - Math.abs(pairWaveOffset)
-        : (sourceY + targetY) / 2 - 10 - pairWaveOffset;
-    }
+    const graphLinkPathD = graphBezierPath(sourceEnd, targetEnd);
+    const controlX = (sourceX + targetX) / 2 + pairWaveOffset;
+    const controlY = (sourceY + targetY) / 2 - 16 - Math.abs(pairWaveOffset);
     const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
     const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
     const stroke = VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
@@ -3909,7 +3788,10 @@ function render(): void {
       graphLinks += `<circle class="graph-link-port graph-link-port-target" data-link-id="${link.id}" cx="${targetX}" cy="${targetY}" r="7" />`;
     }
     if (label) {
-      graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 10}" text-anchor="middle">${escapeXml(label)}</text>`;
+      const labelWidth = Math.max(48, label.length * 7 + 18);
+      const labelY = controlY - 10;
+      graphLinks += `<rect class="graph-link-label-bg" data-link-id="${link.id}" x="${controlX - labelWidth / 2}" y="${labelY - 14}" width="${labelWidth}" height="19" rx="9.5" />`;
+      graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
   });
   defs += "</defs>";
@@ -4009,6 +3891,8 @@ function render(): void {
       if (childStyles.edgeLabel) {
         const labelX = (c1x + c2x) / 2;
         const labelY = (startY + endY) / 2 - 8;
+        const labelWidth = Math.max(42, childStyles.edgeLabel.length * 7 + 16);
+        edges += `<rect class="edge-label-bg" x="${labelX - labelWidth / 2}" y="${labelY - 15}" width="${labelWidth}" height="20" rx="10" />`;
         edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
       }
     });
