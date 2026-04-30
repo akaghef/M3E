@@ -340,8 +340,12 @@ function instrumentRequestForPerfLog(req: http.IncomingMessage, res: http.Server
     return Math.round(diffNs / 1_000_000);
   };
 
-  const origWrite = res.write.bind(res) as typeof res.write;
-  const origEnd = res.end.bind(res) as typeof res.end;
+  const origWrite = typeof res.write === "function"
+    ? res.write.bind(res) as typeof res.write
+    : (() => true) as typeof res.write;
+  const origEnd = typeof res.end === "function"
+    ? res.end.bind(res) as typeof res.end
+    : (() => res) as typeof res.end;
 
   res.write = function patchedWrite(this: http.ServerResponse, chunk: unknown, ...rest: unknown[]): boolean {
     if (ttfbMs === null) ttfbMs = elapsedMs();
@@ -392,8 +396,10 @@ function instrumentRequestForPerfLog(req: http.IncomingMessage, res: http.Server
     }
   };
 
-  res.on("finish", writeLog);
-  res.on("close", writeLog);
+  if (typeof res.on === "function") {
+    res.on("finish", writeLog);
+    res.on("close", writeLog);
+  }
 }
 
 function beginSse(res: http.ServerResponse): void {

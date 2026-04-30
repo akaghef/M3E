@@ -18,6 +18,7 @@ beta/data/conflict-backups/
 beta/data/.m3e-launched
 final/data/audit/
 final/data/backups/
+final/data/conflict-backups/
 beta/test-results/
 beta/tests/e2e/test-results/
 
