@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 
 const { compileFromMap } = require("../../dist/node/graph_spec_compile");
 const { buildTemplateSystemState } = require("../../dist/node/template_system_builder");
+const { graphSpecToMermaid } = require("../../dist/shared/graph_spec_mermaid");
 const { validateGraphSpec } = require("../../dist/shared/graph_spec_types");
 
 describe("Template System builder", () => {
@@ -65,6 +66,47 @@ describe("Template System builder", () => {
       "write_output",
     ]);
     expect(`${artifact}\n${JSON.stringify(trace)}`).not.toMatch(/sk-|M3E_AI_API_KEY|DEEPSEEK_API_KEY/);
+  });
+
+  test("renders PJv34 GraphSpec as read-only Mermaid source", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const specPath = path.join(repoRoot, "projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml");
+    const spec = YAML.load(fs.readFileSync(specPath, "utf8"));
+    const result = buildTemplateSystemState(spec);
+    const rootCompile = compileFromMap(result.state, "pjv34_system");
+    const generateDocCompile = compileFromMap(result.state, "generate_doc");
+
+    const rootMermaid = graphSpecToMermaid(rootCompile.spec);
+    const generateDocMermaid = graphSpecToMermaid(generateDocCompile.spec);
+
+    expect(rootMermaid).toContain('m3e_load_context["Load Context"]');
+    expect(rootMermaid).toContain('m3e_generate_doc["Generate Doc"]');
+    expect(rootMermaid).toContain("m3e_load_context -->|default| m3e_generate_doc");
+    expect(generateDocMermaid).toContain('m3e_evaluate_response{"Evaluate Response"}');
+    expect(generateDocMermaid).toContain("m3e_evaluate_response -->|bad_output| m3e_fallback_qn");
+    expect(generateDocMermaid).toContain("m3e_retry_backoff -->|retry| m3e_call_provider");
+  });
+
+  test("template mermaid CLI writes an HTML preview", () => {
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-template-mermaid-"));
+    const outPath = path.join(outDir, "preview.html");
+    execFileSync(process.execPath, [
+      path.join(repoRoot, "beta/dist/node/template_mermaid_cli.js"),
+      "--spec",
+      "projects/PJ04_MermaidSystemLangGraph/templates/pjv34_weekly_review.yaml",
+      "--out",
+      outPath,
+    ], {
+      cwd: repoRoot,
+      stdio: "pipe",
+    });
+
+    const html = fs.readFileSync(outPath, "utf8");
+    expect(html).toContain("M3E Mermaid Preview");
+    expect(html).toContain("pjv34_system");
+    expect(html).toContain("generate_doc");
+    expect(html).toContain("m3e_evaluate_response --&gt;|bad_output| m3e_fallback_qn");
   });
 
   test("template run CLI resolves PJv35 callable refs without PJv34 aliases", () => {

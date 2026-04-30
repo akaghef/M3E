@@ -11,6 +11,7 @@
     "pjv34:template:run": "npm run build:node && node dist/node/pjv34_template_runner.js",
     "template:build": "npm run build:node && node dist/node/template_build_cli.js",
     "template:run": "npm run build:node && node dist/node/template_run_cli.js",
+    "template:mermaid": "npm run build:node && node dist/node/template_mermaid_cli.js",
     "template:test": "npm run build:node && npx vitest run tests/unit/template_system_builder.test.js",
     "build:browser": "tsc -p tsconfig.browser.json",
     "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
