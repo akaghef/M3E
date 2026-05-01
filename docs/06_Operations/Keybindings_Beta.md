@@ -10,7 +10,7 @@
 
 | キー | アクション |
 |------|------------|
-| `a` | — |
+| `a` | `addAliasAsChild` |
 | `b` | — |
 | `c` | — |
 | `d` | — |
@@ -75,6 +75,24 @@
 | `Ctrl+Shift+t` | `generateRelatedTopics` |
 | `Ctrl+Shift+l` | `applyMarkedLink` |
 | `Ctrl+0` | `fitAll` |
+
+---
+
+## ブラウザ標準（Chrome / Edge へパススルー）
+
+M3E が `preventDefault()` していないため、通常のブラウザ操作として動作する。
+
+| キー | ブラウザ動作 |
+|------|--------------|
+| `Ctrl+f` | ページ内検索 |
+| `Ctrl+h` | 履歴を開く |
+| `Ctrl+l` | アドレスバーへフォーカス |
+| `Ctrl+r` | 再読み込み |
+| `F5` | 再読み込み |
+| `Ctrl+t` | 新しいタブ |
+| `Ctrl+w` | 現在のタブを閉じる |
+
+補足: `Ctrl+s` は M3E の `downloadJson`、`Ctrl+0` は `fitAll` として扱うためブラウザ標準動作ではない。
 
 ---
 
