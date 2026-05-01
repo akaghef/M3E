@@ -3900,8 +3900,6 @@ function render(): void {
       if (childStyles.edgeLabel) {
         const labelX = (c1x + c2x) / 2;
         const labelY = (startY + endY) / 2 - 8;
-        const labelWidth = Math.max(42, childStyles.edgeLabel.length * 7 + 16);
-        edges += `<rect class="edge-label-bg" x="${labelX - labelWidth / 2}" y="${labelY - 15}" width="${labelWidth}" height="20" rx="10" />`;
         edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
       }
     });

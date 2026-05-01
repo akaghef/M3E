@@ -519,13 +519,6 @@
         pointer-events: none;
       }
 
-      .edge-label-bg {
-        fill: rgba(255, 255, 255, 0.92);
-        stroke: rgba(122, 53, 255, 0.28);
-        stroke-width: 1.5;
-        pointer-events: none;
-      }
-
       .graph-link-label {
         fill: #555;
         font-size: 12px;
