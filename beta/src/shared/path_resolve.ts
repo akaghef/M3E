@@ -21,20 +21,35 @@ export type PathResolveResult =
 export interface ParsedMapPath {
   segments: string[];
   hadMapPrefix: boolean;
+  mapLabel?: string;
 }
 
-// Parse a user-supplied path string. Accepts optional "Map:" prefix
-// (case-insensitive). Segments are split on `sep` (default "/") and trimmed.
+// Parse a user-supplied path string. Accepts legacy "Map:" paths and the
+// current display form: `M:(map label)> A > B >> C`.
 // Returns null if nothing usable remained.
 export function parseMapPath(raw: string, sep: string = "/"): ParsedMapPath | null {
   if (typeof raw !== "string") return null;
   let s = raw.trim();
   if (!s) return null;
+
+  const displayPrefixMatch = /^M:\(([^)]*)\)\s*>?\s*/i.exec(s);
+  if (displayPrefixMatch) {
+    s = s.slice(displayPrefixMatch[0].length);
+    const segments = s
+      .split(/\s*>>?\s*/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    if (segments.length === 0) return null;
+    return { segments, hadMapPrefix: true, mapLabel: displayPrefixMatch[1].trim() };
+  }
+
   const prefixMatch = /^map:\s*/i.exec(s);
   const hadMapPrefix = prefixMatch !== null;
   if (hadMapPrefix) s = s.slice(prefixMatch![0].length);
-  const segments = s
-    .split(sep)
+  const segmentSeparator = s.includes(">") ? /\s*>>?\s*/ : sep;
+  const segments = typeof segmentSeparator === "string"
+    ? s.split(segmentSeparator)
+    : s.split(segmentSeparator)
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
   if (segments.length === 0) return null;

@@ -5362,16 +5362,31 @@ function appendScopeLockBadge(row: HTMLElement, scopeId: string): void {
 function buildMapPath(nodeId: string): string | null {
   if (!map) return null;
   const nodes = map.state.nodes;
-  const parts: string[] = [];
+  const pathNodes: TreeNode[] = [];
   let cur: TreeNode | undefined = nodes[nodeId];
   let guard = 0;
   while (cur && guard++ < 10000) {
-    parts.unshift(cur.text ?? "");
+    pathNodes.unshift(cur);
     if (cur.parentId === null || cur.parentId === undefined) break;
     cur = nodes[cur.parentId];
   }
-  if (parts.length === 0) return null;
-  return "Map:" + parts.join("/");
+  if (pathNodes.length === 0) return null;
+  return formatMapPath(pathNodes);
+}
+
+function formatMapPath(pathNodes: TreeNode[]): string {
+  const parts = pathNodes
+    .filter((node) => node.id !== map?.state.rootId)
+    .map((node) => ({ label: uiLabel(node), isScopeRoot: isFolderNode(node) }));
+  if (parts.length === 0) {
+    return `M:(${MAP_LABEL})> root`;
+  }
+  let path = `M:(${MAP_LABEL})> ${parts[0].label}`;
+  for (let i = 1; i < parts.length; i++) {
+    path += parts[i].isScopeRoot ? " >> " : " > ";
+    path += parts[i].label;
+  }
+  return path;
 }
 
 async function copyMapPathToClipboard(nodeId: string): Promise<void> {
@@ -5396,7 +5411,7 @@ function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
   const items: { label: string; danger?: boolean; action: () => void }[] = [];
 
   items.push({
-    label: "\uD83D\uDCCB Copy path (Map:Root/\u2026)",
+    label: "\uD83D\uDCCB Copy path (M:(map)> \u2026)",
     action: () => void copyMapPathToClipboard(scopeId),
   });
 
@@ -8124,15 +8139,15 @@ async function copyTextToSystemClipboard(text: string): Promise<void> {
 
 function buildNodePath(nodeId: string): string {
   if (!map) return "";
-  const parts: string[] = [];
+  const pathNodes: TreeNode[] = [];
   let cursor: string | null = nodeId;
   while (cursor) {
     const n: TreeNode | undefined = map.state.nodes[cursor];
     if (!n) break;
-    parts.unshift(uiLabel(n));
+    pathNodes.unshift(n);
     cursor = n.parentId ?? null;
   }
-  return parts.join(" / ");
+  return formatMapPath(pathNodes);
 }
 
 function copyNodePath(): void {
