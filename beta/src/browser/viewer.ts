@@ -2585,9 +2585,13 @@ function graphBezierPath(
   const targetVector = linkPortVector(target.port);
   const c1x = source.x + sourceVector.x * controlDistance;
   const c1y = source.y + sourceVector.y * controlDistance;
-  const c2x = target.x - targetVector.x * controlDistance;
-  const c2y = target.y - targetVector.y * controlDistance;
+  const c2x = target.x + targetVector.x * controlDistance;
+  const c2y = target.y + targetVector.y * controlDistance;
   return `M ${source.x} ${source.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${target.x} ${target.y}`;
+}
+
+function isParentChildPair(source: TreeNode, target: TreeNode): boolean {
+  return source.parentId === target.id || target.parentId === source.id;
 }
 
 function edgeEndBetweenRects(
@@ -3713,10 +3717,18 @@ function render(): void {
     if (!source || !target || !sourcePos || !targetPos) {
       return;
     }
+    if (isParentChildPair(source, target)) {
+      return;
+    }
     if (!isNodeInScope(source.id) || !isNodeInScope(target.id) || !isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id)) {
       return;
     }
     if (sourceRenderId === targetRenderId) {
+      return;
+    }
+    const sourceRenderNode = state.nodes[sourceRenderId] || source;
+    const targetRenderNode = state.nodes[targetRenderId] || target;
+    if (isParentChildPair(sourceRenderNode, targetRenderNode)) {
       return;
     }
     const surfaceKey = flowSurface
@@ -3732,9 +3744,6 @@ function render(): void {
 
     const sourceEnd = graphLinkEndpoint(sourcePos, targetPos, link.sourcePort);
     const targetEnd = graphLinkEndpoint(targetPos, sourcePos, link.targetPort);
-    // The node physically rendered in current scope may differ from link.source/target (representative).
-    const sourceRenderNode = state.nodes[sourceRenderId] || source;
-    const targetRenderNode = state.nodes[targetRenderId] || target;
     // If the rendered node appears as a portal subsystem (`[[...]]`), push the edge end past the bracket glyph.
     const sourceIsPortal = isScopePortalNode(sourceRenderNode);
     const targetIsPortal = isScopePortalNode(targetRenderNode);
@@ -4029,6 +4038,11 @@ function render(): void {
           const previewIds = new Set(previewLayout.childIds);
           Object.values(state.links || {}).forEach((rawLink) => {
             const link = normalizeGraphLink(rawLink);
+            const sourceNode = state.nodes[link.sourceNodeId];
+            const targetNode = state.nodes[link.targetNodeId];
+            if (!sourceNode || !targetNode || isParentChildPair(sourceNode, targetNode)) {
+              return;
+            }
             if (!previewIds.has(link.sourceNodeId) || !previewIds.has(link.targetNodeId)) {
               return;
             }
@@ -4213,7 +4227,12 @@ function render(): void {
   const version = map.version ?? "n/a";
   const savedAt = map.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
-  const linkCount = Object.values(state.links || {}).filter((link) => pos[link.sourceNodeId] && pos[link.targetNodeId]).length;
+  const linkCount = Object.values(state.links || {}).filter((rawLink) => {
+    const link = normalizeGraphLink(rawLink);
+    const source = state.nodes[link.sourceNodeId];
+    const target = state.nodes[link.targetNodeId];
+    return !!source && !!target && !isParentChildPair(source, target) && !!pos[link.sourceNodeId] && !!pos[link.targetNodeId];
+  }).length;
   const selected = state.nodes[viewState.selectedNodeId];
   const linkSourceLabel = viewState.linkSourceNodeId && state.nodes[viewState.linkSourceNodeId]
     ? uiLabel(state.nodes[viewState.linkSourceNodeId]!)
@@ -6222,6 +6241,36 @@ function clearDecorationOnSelection(): void {
     setStatus(`Cleared decoration on ${changed} node${changed === 1 ? "" : "s"}.`);
     touchDocument();
   }
+}
+
+function editEdgeLabelForSelectedNode(): void {
+  if (!map) return;
+  const node = getNode(viewState.selectedNodeId);
+  if (!node || !node.parentId) {
+    setStatus("Select a child node to label its parent edge.", true);
+    return;
+  }
+  const attrs = node.attributes || {};
+  const current = attrs["m3e:edge-label"] || "";
+  const next = window.prompt("Edge label", current);
+  if (next === null) {
+    return;
+  }
+  const trimmed = next.trim();
+  if (trimmed === current.trim()) {
+    return;
+  }
+  pushUndoSnapshot();
+  node.attributes = node.attributes || {};
+  if (trimmed) {
+    node.attributes["m3e:edge-label"] = trimmed;
+    setStatus(`Edge label: ${trimmed}`);
+  } else {
+    delete node.attributes["m3e:edge-label"];
+    setStatus("Edge label cleared.");
+  }
+  touchDocument();
+  board.focus();
 }
 
 function hideColorPalette(): void {
@@ -9222,6 +9271,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "j") {
     event.preventDefault();
     jumpToAliasTarget();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    editEdgeLabelForSelectedNode();
     return;
   }
 
