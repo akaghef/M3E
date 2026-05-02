@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M3E Progress Replay</title>
+  <style>
+    :root {
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --ink: #1b242c;
+      --muted: #60707d;
+      --line: #d7dee4;
+      --blue: #2563eb;
+      --green: #16824a;
+      --amber: #b77900;
+      --red: #c24135;
+      --violet: #6d42c7;
+      --cyan: #087990;
+      --shadow: 0 18px 44px rgba(20, 32, 43, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 247, 248, 0.96)),
+        repeating-linear-gradient(90deg, rgba(37, 99, 235, 0.05) 0, rgba(37, 99, 235, 0.05) 1px, transparent 1px, transparent 64px);
+    }
+
+    main {
+      min-height: 100vh;
+      padding: 22px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 14px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: end;
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status-strip {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: #2a3742;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .pill.running::before {
+      background: var(--blue);
+    }
+
+    .stage {
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr) 320px;
+      gap: 14px;
+      min-height: 620px;
+    }
+
+    .side,
+    .notes,
+    .screen {
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .side,
+    .notes {
+      padding: 14px;
+      overflow: hidden;
+    }
+
+    .side h2,
+    .notes h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+    }
+
+    .scene-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .scene-button {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+      color: #26313a;
+      border-radius: 7px;
+      padding: 9px 10px;
+      text-align: left;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+    }
+
+    .scene-button.active {
+      border-color: rgba(37, 99, 235, 0.7);
+      background: #eef5ff;
+    }
+
+    .scene-index {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #e8edf2;
+      color: #25313b;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .scene-button.active .scene-index {
+      background: var(--blue);
+      color: white;
+    }
+
+    .scene-title {
+      display: block;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .scene-sub {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .screen {
+      position: relative;
+      overflow: hidden;
+      min-width: 0;
+      background: #eef2f5;
+    }
+
+    .browser-frame {
+      position: absolute;
+      inset: 16px;
+      border: 1px solid #c8d2da;
+      border-radius: 8px;
+      background: white;
+      display: grid;
+      grid-template-rows: 38px 44px minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .chrome {
+      display: grid;
+      grid-template-columns: 70px minmax(0, 1fr) 90px;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      background: #edf1f4;
+      border-bottom: 1px solid #d7dee4;
+    }
+
+    .dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #b5c0c8;
+    }
+
+    .address {
+      height: 22px;
+      border-radius: 5px;
+      background: white;
+      border: 1px solid #d5dde3;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #475662;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .viewer-top {
+      display: grid;
+      grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e7eb;
+      background: #fbfcfd;
+    }
+
+    .brand {
+      font-weight: 900;
+      font-size: 14px;
+    }
+
+    .mode {
+      border-radius: 5px;
+      padding: 4px 7px;
+      font-size: 11px;
+      font-weight: 900;
+      background: #e7f5ee;
+      color: var(--green);
+      border: 1px solid #badfc9;
+    }
+
+    .mode.view {
+      background: #eef5ff;
+      color: var(--blue);
+      border-color: #bfd4ff;
+    }
+
+    .small-button {
+      border: 1px solid #d4dce3;
+      background: white;
+      border-radius: 5px;
+      min-width: 30px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      color: #41505d;
+      font-weight: 800;
+      font-size: 11px;
+    }
+
+    .map-area {
+      position: relative;
+      background:
+        linear-gradient(90deg, rgba(27, 36, 44, 0.04) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(27, 36, 44, 0.04) 1px, transparent 1px);
+      background-size: 28px 28px;
+      overflow: hidden;
+    }
+
+    .node {
+      position: absolute;
+      min-width: 118px;
+      max-width: 185px;
+      min-height: 42px;
+      border: 1px solid #96a4af;
+      border-radius: 7px;
+      background: white;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.25;
+      box-shadow: 0 8px 22px rgba(34, 47, 58, 0.13);
+      transition: transform 260ms ease, border-color 260ms ease, background 260ms ease;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+
+    .node.root {
+      left: 46%;
+      top: 62px;
+      transform: translateX(-50%);
+      border-color: #6d8191;
+      background: #f7fafc;
+    }
+
+    .node.left {
+      left: 110px;
+      top: 190px;
+    }
+
+    .node.right {
+      right: 105px;
+      top: 190px;
+    }
+
+    .node.bottom {
+      left: 44%;
+      top: 360px;
+      transform: translateX(-50%);
+    }
+
+    .node.host {
+      border-color: #81b99e;
+      background: #f0fbf5;
+    }
+
+    .node.vm {
+      border-color: #8db4f7;
+      background: #f2f7ff;
+    }
+
+    .node.conflict {
+      border-color: #df9b8f;
+      background: #fff1ef;
+    }
+
+    .connector {
+      position: absolute;
+      height: 2px;
+      background: #9caab5;
+      transform-origin: left center;
+      opacity: 0.75;
+    }
+
+    .c1 {
+      left: 325px;
+      top: 160px;
+      width: 195px;
+      transform: rotate(31deg);
+    }
+
+    .c2 {
+      right: 300px;
+      top: 160px;
+      width: 205px;
+      transform: rotate(149deg);
+    }
+
+    .c3 {
+      left: 360px;
+      top: 325px;
+      width: 185px;
+      transform: rotate(17deg);
+    }
+
+    .overlay {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      bottom: 22px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid #d9e0e6;
+      border-radius: 7px;
+      padding: 9px;
+      min-height: 58px;
+    }
+
+    .metric .k {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .metric .v {
+      margin-top: 4px;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .console {
+      position: absolute;
+      inset: auto 24px 112px 24px;
+      max-height: 160px;
+      border-radius: 7px;
+      border: 1px solid #202a33;
+      background: #141b22;
+      color: #d7f7e4;
+      padding: 10px;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 240ms ease, transform 240ms ease;
+    }
+
+    .console.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .badge.ok {
+      background: #e7f6ed;
+      color: var(--green);
+    }
+
+    .badge.warn {
+      background: #fff3cf;
+      color: var(--amber);
+    }
+
+    .badge.err {
+      background: #fff0ef;
+      color: var(--red);
+    }
+
+    .badge.info {
+      background: #eef5ff;
+      color: var(--blue);
+    }
+
+    .note-title {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .note-body {
+      margin-top: 12px;
+      color: #384752;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .checklist {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .check {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      font-size: 12px;
+      color: #33414c;
+    }
+
+    .check::before {
+      content: "✓";
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #e7f6ed;
+      color: var(--green);
+      font-weight: 900;
+      font-size: 12px;
+    }
+
+    .links {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .link-row {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px;
+      background: #fbfcfd;
+      font-size: 11px;
+      color: #475662;
+      word-break: break-all;
+    }
+
+    .controls {
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .control-button {
+      height: 34px;
+      min-width: 42px;
+      border: 1px solid #cbd5dd;
+      border-radius: 6px;
+      background: white;
+      color: #27333d;
+      font-size: 14px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .progress-wrap {
+      display: grid;
+      gap: 7px;
+    }
+
+    .bar {
+      position: relative;
+      height: 8px;
+      border-radius: 999px;
+      background: #e5ebf0;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      background: linear-gradient(90deg, var(--blue), var(--cyan), var(--green));
+      border-radius: inherit;
+      transition: width 180ms linear;
+    }
+
+    .ticks {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .tick {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .time {
+      font-variant-numeric: tabular-nums;
+      color: #394956;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    @media (max-width: 1050px) {
+      header,
+      .stage,
+      .controls {
+        max-width: 760px;
+      }
+
+      .stage {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+
+      .screen {
+        min-height: 560px;
+      }
+
+      .notes {
+        min-height: 260px;
+      }
+    }
+
+    @media (max-width: 680px) {
+      main {
+        padding: 12px;
+      }
+
+      header {
+        grid-template-columns: 1fr;
+      }
+
+      .status-strip {
+        justify-content: flex-start;
+      }
+
+      .screen {
+        min-height: 500px;
+      }
+
+      .browser-frame {
+        inset: 8px;
+      }
+
+      .overlay {
+        grid-template-columns: 1fr;
+        bottom: 12px;
+      }
+
+      .console {
+        bottom: 210px;
+      }
+
+      .controls {
+        grid-template-columns: auto auto 1fr;
+      }
+
+      .time {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>M3E Progress Replay</h1>
+        <p class="lead">2026-05-02 の進捗を、公開リンク・VM・同時編集・conflict 解決の順に再生する確認用 GUI。</p>
+      </div>
+      <div class="status-strip" aria-label="current readiness">
+        <span class="pill running">localhost:4173</span>
+        <span class="pill">ws_team_swingby</span>
+        <span class="pill">VM public link verified</span>
+      </div>
+    </header>
+
+    <section class="stage">
+      <aside class="side">
+        <h2>Scenes</h2>
+        <div class="scene-list" id="scene-list"></div>
+      </aside>
+
+      <section class="screen" aria-label="M3E GUI preview">
+        <div class="browser-frame">
+          <div class="chrome">
+            <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+            <div class="address" id="address"></div>
+            <span class="badge info" id="http-badge">HTTP 200</span>
+          </div>
+          <div class="viewer-top">
+            <div class="brand">M3E</div>
+            <span class="mode" id="mode-badge">EDIT</span>
+            <button class="small-button" aria-label="menu">☰</button>
+            <div id="scope-label">定例会</div>
+            <button class="small-button" aria-label="zoom out">A-</button>
+            <button class="small-button" aria-label="zoom in">A+</button>
+          </div>
+          <div class="map-area">
+            <div class="connector c1"></div>
+            <div class="connector c2"></div>
+            <div class="connector c3"></div>
+            <div class="node root" id="node-root"><strong>定例会</strong><span>4月 scope</span></div>
+            <div class="node left" id="node-left"><strong>host scope</strong><span>ready</span></div>
+            <div class="node right" id="node-right"><strong>VM scope</strong><span>ready</span></div>
+            <div class="node bottom" id="node-bottom"><strong>resolution log</strong><span>waiting</span></div>
+            <pre class="console" id="console"></pre>
+            <div class="overlay">
+              <div class="metric">
+                <div class="k">workspace</div>
+                <div class="v" id="metric-ws">ws_team_swingby</div>
+              </div>
+              <div class="metric">
+                <div class="k">map</div>
+                <div class="v" id="metric-map">monthly meeting</div>
+              </div>
+              <div class="metric">
+                <div class="k">safety</div>
+                <div class="v" id="metric-safety">read-only link</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="notes">
+        <span class="badge ok" id="scene-badge">VERIFIED</span>
+        <h2 class="note-title" id="note-title"></h2>
+        <div class="note-body" id="note-body"></div>
+        <div class="checklist" id="checklist"></div>
+        <div class="links" id="links"></div>
+      </aside>
+    </section>
+
+    <section class="controls" aria-label="playback controls">
+      <button class="control-button" id="prev" aria-label="previous scene">‹</button>
+      <button class="control-button" id="play" aria-label="play or pause">▶</button>
+      <div class="progress-wrap">
+        <div class="bar" aria-hidden="true"><div class="bar-fill" id="bar-fill"></div></div>
+        <div class="ticks" id="ticks"></div>
+      </div>
+      <div class="time" id="time">00:00 / 00:28</div>
+      <button class="control-button" id="next" aria-label="next scene">›</button>
+    </section>
+  </main>
+
+  <script>
+    const scenes = [
+      {
+        title: "公開入口",
+        sub: "akaghef PC -> Tailscale Funnel -> M3E beta",
+        address: "akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby",
+        mode: "VIEW",
+        modeClass: "view",
+        scope: "定例会",
+        root: ["定例会", "4月 scope"],
+        left: ["view link", "team can inspect"],
+        right: ["edit link", "editors only"],
+        bottom: ["Funnel", "localhost:4173"],
+        metricMap: "map_team_swingby_monthly_2604",
+        metricSafety: "VIEW/EDIT split",
+        badge: ["VERIFIED", "ok"],
+        body: "定例会 map は public link から開ける。基本配布は access=view、編集者だけ access=edit を渡す。",
+        checks: ["host public viewer HTTP 200", "API HTTP 200", "root 定例会 / 4月 scope を確認"],
+        links: [
+          "https://akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby&map=map_team_swingby_monthly_2604&access=view",
+          "https://akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby&map=map_team_swingby_monthly_2604&access=edit"
+        ],
+        console: ""
+      },
+      {
+        title: "VM参加",
+        sub: "M3E-Test から公開リンクへ到達",
+        address: "VM -> public viewer/API",
+        mode: "VIEW",
+        modeClass: "view",
+        scope: "VM public verification",
+        root: ["定例会", "node count: 84"],
+        left: ["viewer", "HTTP 200"],
+        right: ["API", "HTTP 200"],
+        bottom: ["VM check", "PASS"],
+        metricMap: "monthly meeting",
+        metricSafety: "external client OK",
+        badge: ["VERIFIED", "ok"],
+        body: "VM から同じ公開 URL を叩いて、ブラウザ HTML と map API の両方が見えることを確認した。",
+        checks: ["scripts/ops/vm_public_meeting_link_test.bat pass", "ROOT_CODES=23450,20363,20250", "APRIL_MATCH_COUNT=1"],
+        links: ["scripts\\ops\\vm_public_meeting_link_test.bat"],
+        console: "VIEWER_STATUS=200\nAPI_STATUS=200\nROOT_CODES=23450,20363,20250\nAPRIL_MATCH_COUNT=1\nNODE_COUNT=84\n[PASS] Public meeting link works from VM."
+      },
+      {
+        title: "別 map 実験",
+        sub: "同じ workspace / 違う map",
+        address: "viewer.html?ws=ws_team_swingby&map=map_team_swingby_conflict_lab_260502",
+        mode: "EDIT",
+        modeClass: "",
+        scope: "Swingby conflict lab",
+        root: ["Swingby conflict lab", "same workspace"],
+        left: ["host scope", "host seed"],
+        right: ["VM scope", "stale base"],
+        bottom: ["resolution log", "waiting"],
+        metricMap: "map_team_swingby_conflict_lab_260502",
+        metricSafety: "meeting map untouched",
+        badge: ["READY", "info"],
+        body: "定例会 map とは分けて、同じ ws_team_swingby 内に conflict lab map を用意。チーム運用を壊さず試せる。",
+        checks: ["meeting map は使わない", "同じ workspace なのでリンク/権限の前提は同じ", "実験 map は idempotent seed"],
+        links: [
+          "https://akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby&map=map_team_swingby_conflict_lab_260502&access=edit"
+        ],
+        console: "map=map_team_swingby_conflict_lab_260502\nworkspace=ws_team_swingby\nseed=force save"
+      },
+      {
+        title: "同時編集",
+        sub: "host newer edit と VM stale edit",
+        address: "api/maps/map_team_swingby_conflict_lab_260502",
+        mode: "EDIT",
+        modeClass: "",
+        scope: "Concurrent edit",
+        root: ["Swingby conflict lab", "baseSavedAt tracking"],
+        left: ["host scope", "newer edit saved"],
+        right: ["VM scope", "stale edit prepared"],
+        bottom: ["resolution log", "conflict expected"],
+        metricMap: "conflict lab",
+        metricSafety: "baseSavedAt guard",
+        badge: ["IN TEST", "warn"],
+        body: "VM は古い savedAt を持ったまま編集。host が先に新しい保存を入れることで、VM の stale save が衝突する。",
+        checks: ["host save returns 200", "VM stale save uses old baseSavedAt", "silent overwrite を許さない"],
+        links: ["scripts\\ops\\vm_swingby_conflict_lab.bat"],
+        console: "HOST seed -> 200\nVM stale read -> savedAt=A\nHOST newer edit base=A -> 200\nVM stale save base=A -> expected 409"
+      },
+      {
+        title: "409検出",
+        sub: "破壊的上書きを止める",
+        address: "POST /api/maps/:id",
+        mode: "EDIT",
+        modeClass: "",
+        scope: "Conflict detected",
+        root: ["Swingby conflict lab", "remote state protected"],
+        left: ["host scope", "kept"],
+        right: ["VM stale", "blocked"],
+        bottom: ["DOC_CONFLICT", "manual resolution"],
+        metricMap: "conflict lab",
+        metricSafety: "HTTP 409",
+        badge: ["SAFE", "ok"],
+        body: "stale な VM 保存は 409 で止まる。これにより host 側の新しい編集は無音で消されない。",
+        checks: ["expected HTTP 409", "remoteState を確認可能", "次に明示 resolution へ進む"],
+        links: ["docs/for-akaghef/260502_swingby_conflict_lab.md"],
+        console: "VM stale save -> 409\ncode=DOC_CONFLICT\nremoteState=present\nnext=merge/force resolution"
+      },
+      {
+        title: "解決保存",
+        sub: "remote + VM resolution を明示保存",
+        address: "force save merged state",
+        mode: "EDIT",
+        modeClass: "",
+        scope: "Resolution",
+        root: ["Swingby conflict lab", "merged final"],
+        left: ["host newer edit", "preserved"],
+        right: ["VM resolution edit", "added"],
+        bottom: ["resolution log", "PASS"],
+        metricMap: "conflict lab",
+        metricSafety: "explicit force",
+        badge: ["VERIFIED", "ok"],
+        body: "解決時は remote state を土台に VM の resolution edit を追加し、force save する。最終状態に host と VM の両方が残る。",
+        checks: ["host seed remains", "host newer edit remains", "vm resolution edit exists"],
+        links: ["scripts\\ops\\vm_swingby_conflict_lab.bat"],
+        console: "resolution force save -> 200\nfinal verify:\n  host seed: ok\n  host newer edit: ok\n  vm resolution edit: ok\n[PASS] Swingby conflict lab verified."
+      },
+      {
+        title: "今日の到達点",
+        sub: "公開・VM・conflict safety の最小成立",
+        address: "M3E beta operating state",
+        mode: "VIEW",
+        modeClass: "view",
+        scope: "Goal status",
+        root: ["M3E today", "team sharing demo"],
+        left: ["meeting link", "ready"],
+        right: ["conflict lab", "ready"],
+        bottom: ["next", "real team session"],
+        metricMap: "two maps in one ws",
+        metricSafety: "PC must stay on",
+        badge: ["CURRENT", "info"],
+        body: "今日の成功ラインは、共有リンクで見えること、VM からも入れること、同時編集で壊れない最低限の衝突処理を実演できること。",
+        checks: ["定例会 map は配布可能", "conflict lab は同じ workspace で別 map", "常設化は VPS/Supabase 等が次判断"],
+        links: [
+          "docs/for-akaghef/260502_swingby_monthly_meeting_public_link.md",
+          "docs/for-akaghef/260502_swingby_conflict_lab.md"
+        ],
+        console: ""
+      }
+    ];
+
+    const durationPerScene = 4000;
+    const totalDuration = scenes.length * durationPerScene;
+    let current = 0;
+    let playing = true;
+    let startedAt = performance.now();
+    let pausedAt = 0;
+
+    const sceneList = document.getElementById("scene-list");
+    const ticks = document.getElementById("ticks");
+    const play = document.getElementById("play");
+    const prev = document.getElementById("prev");
+    const next = document.getElementById("next");
+    const barFill = document.getElementById("bar-fill");
+    const time = document.getElementById("time");
+
+    function format(ms) {
+      const sec = Math.floor(ms / 1000);
+      return `00:${String(sec).padStart(2, "0")}`;
+    }
+
+    function setNode(id, parts, cls) {
+      const el = document.getElementById(id);
+      el.className = `node ${id === "node-root" ? "root" : id === "node-left" ? "left" : id === "node-right" ? "right" : "bottom"} ${cls || ""}`.trim();
+      el.innerHTML = `<strong>${parts[0]}</strong><span>${parts[1]}</span>`;
+    }
+
+    function renderScene(index) {
+      current = (index + scenes.length) % scenes.length;
+      const scene = scenes[current];
+      document.getElementById("address").textContent = scene.address;
+      const mode = document.getElementById("mode-badge");
+      mode.textContent = scene.mode;
+      mode.className = `mode ${scene.modeClass}`;
+      document.getElementById("scope-label").textContent = scene.scope;
+      document.getElementById("metric-map").textContent = scene.metricMap;
+      document.getElementById("metric-safety").textContent = scene.metricSafety;
+      document.getElementById("note-title").textContent = scene.title;
+      document.getElementById("note-body").textContent = scene.body;
+      const badge = document.getElementById("scene-badge");
+      badge.textContent = scene.badge[0];
+      badge.className = `badge ${scene.badge[1]}`;
+      document.getElementById("http-badge").textContent = scene.title === "409検出" ? "HTTP 409" : "HTTP 200";
+      document.getElementById("http-badge").className = `badge ${scene.title === "409検出" ? "err" : "info"}`;
+
+      setNode("node-root", scene.root, "");
+      setNode("node-left", scene.left, current >= 3 ? "host" : "");
+      setNode("node-right", scene.right, current >= 3 ? (current === 4 ? "conflict" : "vm") : "");
+      setNode("node-bottom", scene.bottom, current >= 4 ? (current === 4 ? "conflict" : "host") : "");
+
+      const consoleEl = document.getElementById("console");
+      consoleEl.textContent = scene.console;
+      consoleEl.classList.toggle("visible", Boolean(scene.console));
+
+      document.getElementById("checklist").innerHTML = scene.checks.map((check) => `<div class="check">${check}</div>`).join("");
+      document.getElementById("links").innerHTML = scene.links.map((link) => `<div class="link-row">${link}</div>`).join("");
+
+      [...document.querySelectorAll(".scene-button")].forEach((button, i) => {
+        button.classList.toggle("active", i === current);
+      });
+    }
+
+    function setProgress(ms) {
+      const clamped = Math.max(0, Math.min(totalDuration, ms));
+      barFill.style.width = `${(clamped / totalDuration) * 100}%`;
+      time.textContent = `${format(clamped)} / ${format(totalDuration)}`;
+      const index = Math.min(scenes.length - 1, Math.floor(clamped / durationPerScene));
+      if (index !== current) renderScene(index);
+    }
+
+    function jumpTo(index) {
+      renderScene(index);
+      const elapsed = current * durationPerScene;
+      startedAt = performance.now() - elapsed;
+      pausedAt = elapsed;
+      setProgress(elapsed);
+    }
+
+    function tick(now) {
+      if (playing) {
+        const elapsed = (now - startedAt) % totalDuration;
+        setProgress(elapsed);
+      }
+      requestAnimationFrame(tick);
+    }
+
+    scenes.forEach((scene, index) => {
+      const button = document.createElement("button");
+      button.className = "scene-button";
+      button.type = "button";
+      button.innerHTML = `<span class="scene-index">${index + 1}</span><span><span class="scene-title">${scene.title}</span><span class="scene-sub">${scene.sub}</span></span>`;
+      button.addEventListener("click", () => jumpTo(index));
+      sceneList.appendChild(button);
+
+      const tickEl = document.createElement("div");
+      tickEl.className = "tick";
+      tickEl.textContent = scene.title;
+      ticks.appendChild(tickEl);
+    });
+
+    play.addEventListener("click", () => {
+      playing = !playing;
+      play.textContent = playing ? "Ⅱ" : "▶";
+      if (playing) {
+        startedAt = performance.now() - pausedAt;
+      } else {
+        pausedAt = (performance.now() - startedAt) % totalDuration;
+      }
+    });
+
+    prev.addEventListener("click", () => jumpTo(current - 1));
+    next.addEventListener("click", () => jumpTo(current + 1));
+
+    renderScene(0);
+    play.textContent = "Ⅱ";
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
