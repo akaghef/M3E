@@ -436,6 +436,127 @@
       transform: translateY(0);
     }
 
+    .snapshot-board {
+      position: absolute;
+      left: 26px;
+      right: 26px;
+      top: 24px;
+      min-height: 300px;
+      border: 1px solid #cfd8df;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 18px 38px rgba(21, 32, 42, 0.16);
+      padding: 12px;
+      display: none;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10px;
+    }
+
+    .snapshot-board.visible {
+      display: grid;
+    }
+
+    .snapshot-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      border-bottom: 1px solid #e3e8ed;
+      padding-bottom: 8px;
+    }
+
+    .snapshot-title {
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .snapshot-subtitle {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .snapshot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .snapshot-card {
+      border: 1px solid #d8e0e6;
+      border-radius: 7px;
+      background: #fbfcfd;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .snapshot-card.host {
+      border-color: #9bd0b4;
+      background: #f2fbf6;
+    }
+
+    .snapshot-card.vm {
+      border-color: #a9c6fb;
+      background: #f3f7ff;
+    }
+
+    .snapshot-card.conflict {
+      border-color: #eeafa5;
+      background: #fff4f2;
+    }
+
+    .snapshot-card.resolved {
+      border-color: #95caa3;
+      background: #f2fbf2;
+    }
+
+    .snapshot-card h3 {
+      margin: 0;
+      padding: 8px 9px;
+      border-bottom: 1px solid rgba(120, 134, 145, 0.22);
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .snapshot-card ul {
+      margin: 0;
+      padding: 9px 9px 10px 24px;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #33414c;
+      overflow: hidden;
+    }
+
+    .snapshot-card li {
+      margin-bottom: 4px;
+    }
+
+    .status-code {
+      border-radius: 4px;
+      padding: 2px 5px;
+      background: white;
+      border: 1px solid rgba(120, 134, 145, 0.3);
+      color: #3c4a55;
+      font-size: 10px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .status-code.err {
+      color: var(--red);
+      border-color: #efb0a8;
+    }
+
+    .status-code.ok {
+      color: var(--green);
+      border-color: #a4d5b8;
+    }
+
     .badge {
       display: inline-flex;
       align-items: center;
@@ -644,6 +765,16 @@
         bottom: 210px;
       }
 
+      .snapshot-board {
+        left: 12px;
+        right: 12px;
+        top: 12px;
+      }
+
+      .snapshot-grid {
+        grid-template-columns: 1fr;
+      }
+
       .controls {
         grid-template-columns: auto auto 1fr;
       }
@@ -698,6 +829,16 @@
             <div class="node right" id="node-right"><strong>VM scope</strong><span>ready</span></div>
             <div class="node bottom" id="node-bottom"><strong>resolution log</strong><span>waiting</span></div>
             <pre class="console" id="console"></pre>
+            <div class="snapshot-board" id="snapshot-board" aria-label="M3E screen snapshot">
+              <div class="snapshot-head">
+                <div>
+                  <div class="snapshot-title" id="snapshot-title"></div>
+                  <div class="snapshot-subtitle" id="snapshot-subtitle"></div>
+                </div>
+                <span class="badge info" id="snapshot-badge">SNAPSHOT</span>
+              </div>
+              <div class="snapshot-grid" id="snapshot-grid"></div>
+            </div>
             <div class="overlay">
               <div class="metric">
                 <div class="k">workspace</div>
@@ -799,7 +940,17 @@
         links: [
           "https://akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby&map=map_team_swingby_conflict_lab_260502&access=edit"
         ],
-        console: "map=map_team_swingby_conflict_lab_260502\nworkspace=ws_team_swingby\nseed=force save"
+        console: "map=map_team_swingby_conflict_lab_260502\nworkspace=ws_team_swingby\nseed=force save",
+        snapshot: {
+          title: "M3E snapshot: conflict lab map",
+          subtitle: "定例会 map とは別の map を同じ workspace に作る",
+          badge: ["SEPARATE MAP", "info"],
+          cards: [
+            { title: "Workspace", code: "ws_team_swingby", tone: "host", items: ["定例会 map と conflict lab map が同居", "公開リンク/VM 経路は同じ", "会議 map は触らない"] },
+            { title: "Meeting map", code: "safe", tone: "", items: ["map_team_swingby_monthly_2604", "root: 定例会", "4月 scope"] },
+            { title: "Conflict lab", code: "edit", tone: "vm", items: ["map_team_swingby_conflict_lab_260502", "host scope", "VM scope", "resolution log"] }
+          ]
+        }
       },
       {
         title: "同時編集",
@@ -818,7 +969,17 @@
         body: "VM は古い savedAt を持ったまま編集。host が先に新しい保存を入れることで、VM の stale save が衝突する。",
         checks: ["host save returns 200", "VM stale save uses old baseSavedAt", "silent overwrite を許さない"],
         links: ["scripts\\ops\\vm_swingby_conflict_lab.bat"],
-        console: "HOST seed -> 200\nVM stale read -> savedAt=A\nHOST newer edit base=A -> 200\nVM stale save base=A -> expected 409"
+        console: "HOST seed -> 200\nVM stale read -> savedAt=A\nHOST newer edit base=A -> 200\nVM stale save base=A -> expected 409",
+        snapshot: {
+          title: "M3E snapshot: two clients now disagree",
+          subtitle: "VM は古い savedAt=A を見ている間に、host が savedAt=B を作る",
+          badge: ["DIVERGED", "warn"],
+          cards: [
+            { title: "Host current", code: "savedAt=B", tone: "host", items: ["host seed <runId>", "host newer edit <runId>", "server state is already newer"] },
+            { title: "VM local draft", code: "base=A", tone: "vm", items: ["VM read old state", "VM stale edit <runId>", "does not know host newer edit yet"] },
+            { title: "Risk", code: "overwrite?", tone: "conflict", items: ["If accepted blindly:", "host newer edit disappears", "This is the failure mode we test"] }
+          ]
+        }
       },
       {
         title: "409検出",
@@ -837,7 +998,17 @@
         body: "stale な VM 保存は 409 で止まる。これにより host 側の新しい編集は無音で消されない。",
         checks: ["expected HTTP 409", "remoteState を確認可能", "次に明示 resolution へ進む"],
         links: ["docs/for-akaghef/260502_swingby_conflict_lab.md"],
-        console: "VM stale save -> 409\ncode=DOC_CONFLICT\nremoteState=present\nnext=merge/force resolution"
+        console: "VM stale save -> 409\ncode=DOC_CONFLICT\nremoteState=present\nnext=merge/force resolution",
+        snapshot: {
+          title: "M3E snapshot: conflict response",
+          subtitle: "VM の保存要求 baseSavedAt=A と、server の savedAt=B が一致しない",
+          badge: ["HTTP 409", "err"],
+          cards: [
+            { title: "Remote / server", code: "kept", tone: "host", items: ["host seed <runId>", "host newer edit <runId>", "remoteState is returned"] },
+            { title: "VM stale save", code: "blocked", tone: "conflict", items: ["baseSavedAt=A", "server savedAt=B", "DOC_CONFLICT", "no silent overwrite"] },
+            { title: "Next action", code: "manual", tone: "vm", items: ["Inspect remote state", "Add VM resolution edit", "Save explicit merged result"] }
+          ]
+        }
       },
       {
         title: "解決保存",
@@ -856,7 +1027,17 @@
         body: "解決時は remote state を土台に VM の resolution edit を追加し、force save する。最終状態に host と VM の両方が残る。",
         checks: ["host seed remains", "host newer edit remains", "vm resolution edit exists"],
         links: ["scripts\\ops\\vm_swingby_conflict_lab.bat"],
-        console: "resolution force save -> 200\nfinal verify:\n  host seed: ok\n  host newer edit: ok\n  vm resolution edit: ok\n[PASS] Swingby conflict lab verified."
+        console: "resolution force save -> 200\nfinal verify:\n  host seed: ok\n  host newer edit: ok\n  vm resolution edit: ok\n[PASS] Swingby conflict lab verified.",
+        snapshot: {
+          title: "M3E snapshot: resolved final state",
+          subtitle: "remote state を土台に、VM 側の解決内容を足して明示保存する",
+          badge: ["RESOLVED", "ok"],
+          cards: [
+            { title: "Preserved", code: "host", tone: "host", items: ["host seed <runId>", "host newer edit <runId>", "server side changes remain"] },
+            { title: "Added", code: "VM", tone: "vm", items: ["vm resolution edit <runId>", "resolution log updated", "stale draft is not blindly applied"] },
+            { title: "Final verify", code: "PASS", tone: "resolved", items: ["host final read", "all expected labels exist", "conflict lab verified"] }
+          ]
+        }
       },
       {
         title: "今日の到達点",
@@ -908,6 +1089,28 @@
       el.innerHTML = `<strong>${parts[0]}</strong><span>${parts[1]}</span>`;
     }
 
+    function renderSnapshot(snapshot) {
+      const board = document.getElementById("snapshot-board");
+      if (!snapshot) {
+        board.classList.remove("visible");
+        return;
+      }
+      board.classList.add("visible");
+      document.getElementById("snapshot-title").textContent = snapshot.title;
+      document.getElementById("snapshot-subtitle").textContent = snapshot.subtitle;
+      const badge = document.getElementById("snapshot-badge");
+      badge.textContent = snapshot.badge[0];
+      badge.className = `badge ${snapshot.badge[1]}`;
+      document.getElementById("snapshot-grid").innerHTML = snapshot.cards.map((card) => {
+        const items = card.items.map((item) => `<li>${item}</li>`).join("");
+        const codeClass = card.tone === "conflict" ? "err" : card.tone === "resolved" || card.tone === "host" ? "ok" : "";
+        return `<section class="snapshot-card ${card.tone || ""}">
+          <h3><span>${card.title}</span><span class="status-code ${codeClass}">${card.code}</span></h3>
+          <ul>${items}</ul>
+        </section>`;
+      }).join("");
+    }
+
     function renderScene(index) {
       current = (index + scenes.length) % scenes.length;
       const scene = scenes[current];
@@ -934,6 +1137,7 @@
       const consoleEl = document.getElementById("console");
       consoleEl.textContent = scene.console;
       consoleEl.classList.toggle("visible", Boolean(scene.console));
+      renderSnapshot(scene.snapshot);
 
       document.getElementById("checklist").innerHTML = scene.checks.map((check) => `<div class="check">${check}</div>`).join("");
       document.getElementById("links").innerHTML = scene.links.map((link) => `<div class="link-row">${link}</div>`).join("");
