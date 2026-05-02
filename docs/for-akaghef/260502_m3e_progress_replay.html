@@ -441,14 +441,14 @@
       left: 26px;
       right: 26px;
       top: 24px;
-      min-height: 300px;
+      min-height: 420px;
       border: 1px solid #cfd8df;
       border-radius: 8px;
       background: rgba(255, 255, 255, 0.96);
       box-shadow: 0 18px 38px rgba(21, 32, 42, 0.16);
       padding: 12px;
       display: none;
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr);
       gap: 10px;
     }
 
@@ -481,6 +481,36 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
       min-height: 0;
+    }
+
+    .actual-snapshot {
+      display: none;
+      border: 1px solid #d8e0e6;
+      border-radius: 7px;
+      background: #eef2f5;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .actual-snapshot.visible {
+      display: block;
+    }
+
+    .actual-snapshot img {
+      display: block;
+      width: 100%;
+      max-height: 255px;
+      object-fit: cover;
+      object-position: center 35%;
+    }
+
+    .actual-snapshot figcaption {
+      margin: 0;
+      padding: 7px 9px;
+      border-top: 1px solid #d8e0e6;
+      color: var(--muted);
+      font-size: 11px;
+      background: white;
     }
 
     .snapshot-card {
@@ -837,6 +867,10 @@
                 </div>
                 <span class="badge info" id="snapshot-badge">SNAPSHOT</span>
               </div>
+              <figure class="actual-snapshot" id="actual-snapshot">
+                <img id="actual-snapshot-img" alt="M3E actual screen snapshot">
+                <figcaption id="actual-snapshot-caption"></figcaption>
+              </figure>
               <div class="snapshot-grid" id="snapshot-grid"></div>
             </div>
             <div class="overlay">
@@ -945,6 +979,8 @@
           title: "M3E snapshot: conflict lab map",
           subtitle: "定例会 map とは別の map を同じ workspace に作る",
           badge: ["SEPARATE MAP", "info"],
+          image: "assets/260502_m3e_conflict_lab_snapshot.png",
+          imageCaption: "Actual M3E viewer snapshot: conflict lab map inside ws_team_swingby.",
           cards: [
             { title: "Workspace", code: "ws_team_swingby", tone: "host", items: ["定例会 map と conflict lab map が同居", "公開リンク/VM 経路は同じ", "会議 map は触らない"] },
             { title: "Meeting map", code: "safe", tone: "", items: ["map_team_swingby_monthly_2604", "root: 定例会", "4月 scope"] },
@@ -974,6 +1010,8 @@
           title: "M3E snapshot: two clients now disagree",
           subtitle: "VM は古い savedAt=A を見ている間に、host が savedAt=B を作る",
           badge: ["DIVERGED", "warn"],
+          image: "assets/260502_m3e_conflict_lab_snapshot.png",
+          imageCaption: "Actual M3E map after conflict lab resolution; this is the state stale overwrite must not destroy.",
           cards: [
             { title: "Host current", code: "savedAt=B", tone: "host", items: ["host seed <runId>", "host newer edit <runId>", "server state is already newer"] },
             { title: "VM local draft", code: "base=A", tone: "vm", items: ["VM read old state", "VM stale edit <runId>", "does not know host newer edit yet"] },
@@ -1003,6 +1041,8 @@
           title: "M3E snapshot: conflict response",
           subtitle: "VM の保存要求 baseSavedAt=A と、server の savedAt=B が一致しない",
           badge: ["HTTP 409", "err"],
+          image: "assets/260502_m3e_conflict_lab_snapshot.png",
+          imageCaption: "Actual M3E viewer state protected by the 409 response.",
           cards: [
             { title: "Remote / server", code: "kept", tone: "host", items: ["host seed <runId>", "host newer edit <runId>", "remoteState is returned"] },
             { title: "VM stale save", code: "blocked", tone: "conflict", items: ["baseSavedAt=A", "server savedAt=B", "DOC_CONFLICT", "no silent overwrite"] },
@@ -1032,6 +1072,8 @@
           title: "M3E snapshot: resolved final state",
           subtitle: "remote state を土台に、VM 側の解決内容を足して明示保存する",
           badge: ["RESOLVED", "ok"],
+          image: "assets/260502_m3e_conflict_lab_snapshot.png",
+          imageCaption: "Actual final viewer: host seed, host newer edit, and VM resolution edit all remain.",
           cards: [
             { title: "Preserved", code: "host", tone: "host", items: ["host seed <runId>", "host newer edit <runId>", "server side changes remain"] },
             { title: "Added", code: "VM", tone: "vm", items: ["vm resolution edit <runId>", "resolution log updated", "stale draft is not blindly applied"] },
@@ -1101,6 +1143,18 @@
       const badge = document.getElementById("snapshot-badge");
       badge.textContent = snapshot.badge[0];
       badge.className = `badge ${snapshot.badge[1]}`;
+      const actual = document.getElementById("actual-snapshot");
+      const img = document.getElementById("actual-snapshot-img");
+      const caption = document.getElementById("actual-snapshot-caption");
+      if (snapshot.image) {
+        actual.classList.add("visible");
+        img.src = snapshot.image;
+        caption.textContent = snapshot.imageCaption || "Actual M3E viewer snapshot.";
+      } else {
+        actual.classList.remove("visible");
+        img.removeAttribute("src");
+        caption.textContent = "";
+      }
       document.getElementById("snapshot-grid").innerHTML = snapshot.cards.map((card) => {
         const items = card.items.map((item) => `<li>${item}</li>`).join("");
         const codeClass = card.tone === "conflict" ? "err" : card.tone === "resolved" || card.tone === "host" ? "ok" : "";
