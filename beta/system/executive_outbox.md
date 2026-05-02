@@ -99,3 +99,12 @@ summary: Executive adopted the canonical `ws_team_swingby` workspace and created
 public-link: `https://akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby&map=map_team_swingby_monthly_2604&access=view`
 verification: Host public URL returns HTTP 200 for viewer and map API. Headless Playwright confirmed title `M3E - 定例会`, `定例会`, `4月`, and `VIEW`. VM `M3E-Test` ran `scripts\ops\vm_public_meeting_link_test.bat` successfully: viewer/API HTTP 200, root codepoints `23450,20363,20250`, April scope match 1, node count 84.
 next: Distribute the view link by default; give `access=edit` only to editors. After the meeting, stop public access with `tailscale funnel --https=443 off`.
+
+## 2026-05-02 Secretary handoff: Swingby conflict lab
+
+status: prepared
+summary: Added a dedicated same-workspace/different-map conflict lab for `ws_team_swingby` using `map_team_swingby_conflict_lab_260502`, explicitly avoiding the live meeting map `map_team_swingby_monthly_2604`. The runner seeds from host, makes the VM read a stale base through the public URL, saves a newer host edit, verifies the VM stale save receives 409, then fetches latest remote state, force-saves an explicit merged resolution, and checks final host state contains both host and VM resolution content.
+artifacts: `scripts/ops/vm_swingby_conflict_lab.ps1`, `scripts/ops/vm_swingby_conflict_lab.bat`, `docs/for-akaghef/260502_swingby_conflict_lab.md`
+verification-needed: Run `scripts\ops\vm_swingby_conflict_lab.bat` while beta is serving `localhost:4173` through `https://akaghef-dell.tail6206ae.ts.net` and VirtualBox guestcontrol is available.
+
+verification: `scripts\ops\vm_swingby_conflict_lab.bat` passed from host. It seeded `map_team_swingby_conflict_lab_260502`, VM read stale base through the public URL, host saved a newer edit, VM stale save returned 409, VM force-saved explicit resolution, and host final verification found both host content and VM resolution content.
