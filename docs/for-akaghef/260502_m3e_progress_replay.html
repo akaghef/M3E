@@ -465,6 +465,40 @@
       padding-bottom: 8px;
     }
 
+    .snapshot-tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid #e3e8ed;
+      padding-bottom: 8px;
+    }
+
+    .tab-button {
+      height: 28px;
+      padding: 0 12px;
+      border: 1px solid #d1dbe3;
+      border-radius: 6px;
+      background: white;
+      color: #33414c;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .tab-button.active {
+      background: #eef5ff;
+      color: var(--blue);
+      border-color: #aac7ff;
+    }
+
+    .tab-panel {
+      display: none;
+      min-height: 0;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
     .snapshot-title {
       font-size: 13px;
       font-weight: 900;
@@ -484,16 +518,11 @@
     }
 
     .actual-snapshot {
-      display: none;
       border: 1px solid #d8e0e6;
       border-radius: 7px;
       background: #eef2f5;
       overflow: hidden;
       min-height: 0;
-    }
-
-    .actual-snapshot.visible {
-      display: block;
     }
 
     .actual-snapshot img {
@@ -511,6 +540,70 @@
       color: var(--muted);
       font-size: 11px;
       background: white;
+    }
+
+    .overview-board {
+      position: absolute;
+      left: 26px;
+      right: 26px;
+      top: 24px;
+      bottom: 24px;
+      border: 1px solid #cfd8df;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 18px 38px rgba(21, 32, 42, 0.16);
+      padding: 16px;
+      display: none;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .overview-board.visible {
+      display: grid;
+    }
+
+    .overview-title {
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .overview-subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      align-content: start;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .overview-card {
+      border: 1px solid #d8e0e6;
+      border-radius: 7px;
+      background: #fbfcfd;
+      padding: 11px;
+      min-height: 92px;
+      text-align: left;
+      color: #27333d;
+      cursor: pointer;
+    }
+
+    .overview-card strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .overview-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
     }
 
     .snapshot-card {
@@ -859,6 +952,13 @@
             <div class="node right" id="node-right"><strong>VM scope</strong><span>ready</span></div>
             <div class="node bottom" id="node-bottom"><strong>resolution log</strong><span>waiting</span></div>
             <pre class="console" id="console"></pre>
+            <div class="overview-board" id="overview-board" aria-label="Scene overview">
+              <div>
+                <div class="overview-title">Scene Overview</div>
+                <div class="overview-subtitle">今日の M3E 共有実験を、公開入口から conflict 解決まで順番に見る。</div>
+              </div>
+              <div class="overview-grid" id="overview-grid"></div>
+            </div>
             <div class="snapshot-board" id="snapshot-board" aria-label="M3E screen snapshot">
               <div class="snapshot-head">
                 <div>
@@ -867,11 +967,19 @@
                 </div>
                 <span class="badge info" id="snapshot-badge">SNAPSHOT</span>
               </div>
-              <figure class="actual-snapshot" id="actual-snapshot">
-                <img id="actual-snapshot-img" alt="M3E actual screen snapshot">
-                <figcaption id="actual-snapshot-caption"></figcaption>
-              </figure>
-              <div class="snapshot-grid" id="snapshot-grid"></div>
+              <div class="snapshot-tabs" id="snapshot-tabs">
+                <button class="tab-button active" type="button" data-tab="map">Map</button>
+                <button class="tab-button" type="button" data-tab="situation">Situation</button>
+              </div>
+              <div class="tab-panel active" id="tab-map">
+                <figure class="actual-snapshot" id="actual-snapshot">
+                  <img id="actual-snapshot-img" alt="M3E actual screen snapshot">
+                  <figcaption id="actual-snapshot-caption"></figcaption>
+                </figure>
+              </div>
+              <div class="tab-panel" id="tab-situation">
+                <div class="snapshot-grid" id="snapshot-grid"></div>
+              </div>
             </div>
             <div class="overlay">
               <div class="metric">
@@ -1119,6 +1227,7 @@
     const next = document.getElementById("next");
     const barFill = document.getElementById("bar-fill");
     const time = document.getElementById("time");
+    let activeSnapshotTab = "map";
 
     function format(ms) {
       const sec = Math.floor(ms / 1000);
@@ -1133,10 +1242,13 @@
 
     function renderSnapshot(snapshot) {
       const board = document.getElementById("snapshot-board");
+      const overview = document.getElementById("overview-board");
       if (!snapshot) {
         board.classList.remove("visible");
+        overview.classList.add("visible");
         return;
       }
+      overview.classList.remove("visible");
       board.classList.add("visible");
       document.getElementById("snapshot-title").textContent = snapshot.title;
       document.getElementById("snapshot-subtitle").textContent = snapshot.subtitle;
@@ -1147,13 +1259,13 @@
       const img = document.getElementById("actual-snapshot-img");
       const caption = document.getElementById("actual-snapshot-caption");
       if (snapshot.image) {
-        actual.classList.add("visible");
         img.src = snapshot.image;
         caption.textContent = snapshot.imageCaption || "Actual M3E viewer snapshot.";
+        if (!activeSnapshotTab) activeSnapshotTab = "map";
       } else {
-        actual.classList.remove("visible");
         img.removeAttribute("src");
         caption.textContent = "";
+        activeSnapshotTab = "situation";
       }
       document.getElementById("snapshot-grid").innerHTML = snapshot.cards.map((card) => {
         const items = card.items.map((item) => `<li>${item}</li>`).join("");
@@ -1163,6 +1275,16 @@
           <ul>${items}</ul>
         </section>`;
       }).join("");
+      renderSnapshotTab(activeSnapshotTab);
+    }
+
+    function renderSnapshotTab(tab) {
+      activeSnapshotTab = tab;
+      document.querySelectorAll(".tab-button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.tab === tab);
+      });
+      document.getElementById("tab-map").classList.toggle("active", tab === "map");
+      document.getElementById("tab-situation").classList.toggle("active", tab === "situation");
     }
 
     function renderScene(index) {
@@ -1237,6 +1359,21 @@
       tickEl.className = "tick";
       tickEl.textContent = scene.title;
       ticks.appendChild(tickEl);
+    });
+
+    document.getElementById("overview-grid").innerHTML = scenes.map((scene, index) => (
+      `<button class="overview-card" type="button" data-scene="${index}">
+        <strong>${index + 1}. ${scene.title}</strong>
+        <span>${scene.sub}</span>
+      </button>`
+    )).join("");
+
+    document.querySelectorAll(".overview-card").forEach((button) => {
+      button.addEventListener("click", () => jumpTo(Number(button.dataset.scene || "0")));
+    });
+
+    document.querySelectorAll(".tab-button").forEach((button) => {
+      button.addEventListener("click", () => renderSnapshotTab(button.dataset.tab || "map"));
     });
 
     play.addEventListener("click", () => {
