@@ -108,3 +108,12 @@ artifacts: `scripts/ops/vm_swingby_conflict_lab.ps1`, `scripts/ops/vm_swingby_co
 verification-needed: Run `scripts\ops\vm_swingby_conflict_lab.bat` while beta is serving `localhost:4173` through `https://akaghef-dell.tail6206ae.ts.net` and VirtualBox guestcontrol is available.
 
 verification: `scripts\ops\vm_swingby_conflict_lab.bat` passed from host. It seeded `map_team_swingby_conflict_lab_260502`, VM read stale base through the public URL, host saved a newer edit, VM stale save returned 409, VM force-saved explicit resolution, and host final verification found both host content and VM resolution content.
+
+## 2026-05-02 Secretary handoff: V4 service-equivalent slice
+
+status: verified
+summary: Executive fixed the V4 direction as service-equivalent incorporation, not persistent external-tool coupling. Mapify is implemented as a Flash ingest/approve path; Miro-like discussion is represented as map discussion/decision nodes; Obsidian is exercised through vault export/edit/import; GitHub is kept behind a careful safety boundary: no git add UX, always-staged M3E proposals, secret lock before remote publish, and Akaghef PC/local workspace as source of truth while hosted.
+artifacts: `docs/03_Spec/V4_Service_Equivalent_Design.md`, `scripts/ops/v4_service_slice_demo.mjs`, `scripts/ops/v4_service_slice_demo.bat`, `docs/for-akaghef/v4_demo/260502_v4_service_slice_report.html`
+verification: `scripts\ops\v4_service_slice_demo.bat --publicBase https://akaghef-dell.tail6206ae.ts.net` passed. It used PDF `tmp\AkaghefAlgebra\Execution\C2410\Calc240908.pdf`, committed Flash draft nodes to `map_team_swingby_v4_slice_260502`, exported/imported an Obsidian vault, produced an intentional stale save HTTP 409, force-saved explicit resolution, verified host decision and VM resolution both remain, captured a real M3E screenshot, and generated the two-pane report HTML. The runner normalizes the final map after Obsidian import so Flash / Miro / Obsidian / GitHub anchors remain visible. VirtualBox `M3E-Test` public-link smoke also passed: viewer/API 200, root `V4 service-equivalent demo`, node count 9, Flash anchor true, GitHub anchor true, VM resolution true.
+public-link: `https://akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby&map=map_team_swingby_v4_slice_260502&access=edit`
+next: Turn the V4 slice into normal UI affordances: source metadata/recovery for Flash, discussion/decision node creation in viewer, Obsidian conflict UI, and GitHub staged proposal / secret lock / publish plan.
