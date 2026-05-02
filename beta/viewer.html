@@ -71,6 +71,7 @@
               </div>
             </div>
           </div>
+          <button id="v4-panel-btn" class="mode-btn" type="button">V4</button>
         </div>
         <div id="readonly-banner" class="readonly-banner" hidden>Read-only view</div>
         <div id="mode-badge" class="mode-badge" aria-live="polite">EDIT</div>
@@ -159,6 +160,57 @@
           <button id="markdown-preview-close" class="markdown-preview-close" type="button" aria-label="Close markdown preview">&times;</button>
         </div>
         <div id="markdown-preview-body" class="markdown-preview-body"></div>
+      </div>
+      <div id="v4-panel" class="v4-panel" hidden>
+        <div class="v4-panel-header">
+          <span class="v4-panel-title">V4 Workbench</span>
+          <button id="v4-panel-close" class="v4-panel-close" type="button" aria-label="Close V4 workbench">&times;</button>
+        </div>
+        <div class="v4-panel-body">
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Flash / Mapify</span>
+              <button id="v4-refresh-btn" type="button">Refresh</button>
+            </div>
+            <textarea id="v4-source-text" class="v4-source-text" rows="5" spellcheck="false" placeholder="Paste PDF text, markdown, or meeting notes to create a Mapify draft."></textarea>
+            <div class="v4-action-row">
+              <button id="v4-create-draft-btn" type="button">Create Draft</button>
+              <button id="v4-apply-draft-btn" type="button">Apply Latest Pending</button>
+            </div>
+            <div id="v4-flash-status" class="v4-status-line">Drafts: unknown</div>
+            <div id="v4-draft-list" class="v4-list"></div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Discussion Surface</span>
+            </div>
+            <div class="v4-action-row">
+              <button id="v4-add-sticky-btn" type="button">Sticky</button>
+              <button id="v4-add-decision-btn" type="button">Decision</button>
+            </div>
+            <div class="v4-status-line">Selected node becomes the parent. These are M3E nodes with discussion attributes.</div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Obsidian</span>
+            </div>
+            <div id="v4-vault-status" class="v4-status-line">Vault: unknown</div>
+            <div id="v4-vault-path" class="v4-path"></div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Conflict</span>
+            </div>
+            <div id="v4-conflict-status" class="v4-status-line">No conflict panel open.</div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>GitHub Boundary</span>
+            </div>
+            <div id="v4-github-status" class="v4-status-line">Publish plan: design-only. Changes are treated as staged proposals; secret lock is required before remote publish.</div>
+            <div id="v4-selected-source" class="v4-path"></div>
+          </section>
+        </div>
       </div>
       <div id="shortcut-cheatsheet" class="shortcut-cheatsheet" hidden>
         <div class="cheatsheet-header">Keyboard Shortcuts</div>

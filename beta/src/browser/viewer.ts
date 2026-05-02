@@ -77,6 +77,22 @@ const conflictUseRemoteBtn = document.getElementById("conflict-use-remote") as H
 const markdownPreviewPanelEl = document.getElementById("markdown-preview-panel") as HTMLElement | null;
 const markdownPreviewBodyEl = document.getElementById("markdown-preview-body") as HTMLElement | null;
 const markdownPreviewCloseBtn = document.getElementById("markdown-preview-close") as HTMLButtonElement | null;
+const v4PanelBtn = document.getElementById("v4-panel-btn") as HTMLButtonElement | null;
+const v4PanelEl = document.getElementById("v4-panel") as HTMLElement | null;
+const v4PanelCloseBtn = document.getElementById("v4-panel-close") as HTMLButtonElement | null;
+const v4RefreshBtn = document.getElementById("v4-refresh-btn") as HTMLButtonElement | null;
+const v4FlashStatusEl = document.getElementById("v4-flash-status") as HTMLElement | null;
+const v4DraftListEl = document.getElementById("v4-draft-list") as HTMLElement | null;
+const v4VaultStatusEl = document.getElementById("v4-vault-status") as HTMLElement | null;
+const v4VaultPathEl = document.getElementById("v4-vault-path") as HTMLElement | null;
+const v4ConflictStatusEl = document.getElementById("v4-conflict-status") as HTMLElement | null;
+const v4GithubStatusEl = document.getElementById("v4-github-status") as HTMLElement | null;
+const v4SelectedSourceEl = document.getElementById("v4-selected-source") as HTMLElement | null;
+const v4AddStickyBtn = document.getElementById("v4-add-sticky-btn") as HTMLButtonElement | null;
+const v4AddDecisionBtn = document.getElementById("v4-add-decision-btn") as HTMLButtonElement | null;
+const v4SourceTextEl = document.getElementById("v4-source-text") as HTMLTextAreaElement | null;
+const v4CreateDraftBtn = document.getElementById("v4-create-draft-btn") as HTMLButtonElement | null;
+const v4ApplyDraftBtn = document.getElementById("v4-apply-draft-btn") as HTMLButtonElement | null;
 
 function hideMarkdownPreview(): void {
   if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
@@ -137,6 +153,8 @@ function firstQueryParam(params: URLSearchParams, keys: string[]): string | null
 }
 
 const queryParams = new URLSearchParams(window.location.search);
+const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
+const READ_ONLY_LINK = ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
 const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
 const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
@@ -181,6 +199,34 @@ const FLOW_SURFACE_PREVIEW_PAD_Y = 18;
 const FLOW_SURFACE_PREVIEW_NODE_PAD_X = 14;
 const FLOW_SURFACE_PREVIEW_NODE_HEIGHT = 34;
 const FLOW_SURFACE_ROW_GAP = 84;
+
+function isReadOnlyLink(): boolean {
+  return READ_ONLY_LINK;
+}
+
+function blockReadOnlyAction(label = "Read-only link. Use the editor link to change this map."): boolean {
+  if (!isReadOnlyLink()) {
+    return false;
+  }
+  setStatus(label, true);
+  return true;
+}
+
+function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
+  if (event.key === "Escape") return true;
+  if (event.key.startsWith("Arrow")) return true;
+  if (["[", "]", "-", "=", "+", "0", "?", " "].includes(event.key)) return true;
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    return ["i", "j", "k"].includes(event.key.toLowerCase());
+  }
+  if (event.altKey && !event.ctrlKey && !event.metaKey) {
+    return ["h", "v", "d"].includes(event.key.toLowerCase());
+  }
+  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+    return ["c", "s"].includes(event.key.toLowerCase());
+  }
+  return false;
+}
 
 interface BcStateMessage {
   type: "STATE_UPDATE";
@@ -296,6 +342,8 @@ let vaultWatchRunning = false;
 let vaultLastInboundAt: string | null = null;
 let vaultLastOutboundAt: string | null = null;
 let vaultLastError: string | null = null;
+let v4PanelVisible = false;
+let v4LatestDrafts: FlashDraftListItem[] = [];
 
 // ── Scope Lock State ──
 interface ClientScopeLock {
@@ -400,6 +448,23 @@ function syncThinkingModeUi(): void {
   viewSystemBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "system");
 }
 
+function syncAccessModeUi(): void {
+  document.body.classList.toggle("readonly-link", isReadOnlyLink());
+  const banner = document.getElementById("readonly-banner") as HTMLElement | null;
+  if (banner) {
+    banner.hidden = !isReadOnlyLink();
+  }
+  document.querySelectorAll<HTMLElement>("[data-edit-only]").forEach((el) => {
+    el.hidden = isReadOnlyLink();
+  });
+  if (linearTextEl) {
+    linearTextEl.readOnly = isReadOnlyLink();
+  }
+  if (cloudPushBtn) cloudPushBtn.disabled = isReadOnlyLink() || cloudPushBtn.disabled;
+  if (cloudUseLocalBtn) cloudUseLocalBtn.disabled = isReadOnlyLink() || cloudUseLocalBtn.disabled;
+  if (collabJoinBtn) collabJoinBtn.disabled = isReadOnlyLink() || collabJoinBtn.disabled;
+}
+
 function setThinkingMode(mode: ThinkingMode): void {
   if (viewState.thinkingMode === mode) {
     syncThinkingModeUi();
@@ -477,9 +542,10 @@ function updateCloudSyncUi(): void {
     : `Cloud: on (${savedAtLabel})`;
 
   if (cloudPullBtn) cloudPullBtn.disabled = false;
-  if (cloudPushBtn) cloudPushBtn.disabled = false;
+  if (cloudPushBtn) cloudPushBtn.disabled = isReadOnlyLink();
   if (cloudUseLocalBtn) cloudUseLocalBtn.hidden = !cloudConflictPending;
   if (cloudUseCloudBtn) cloudUseCloudBtn.hidden = !cloudConflictPending;
+  if (cloudUseLocalBtn) cloudUseLocalBtn.disabled = isReadOnlyLink();
 }
 
 function loadVaultUiPrefs(): void {
@@ -529,6 +595,225 @@ function syncVaultUi(): void {
   }
   integrateVaultLiveBtn?.classList.toggle("is-active", vaultUiPrefs.integrationMode === "obsidian-live");
   integrateStopBtn!.disabled = !vaultWatchRunning;
+  syncV4Panel(false);
+}
+
+interface FlashDraftListItem {
+  id: string;
+  mapId: string;
+  sourceType: string;
+  sourceRef: string;
+  title: string;
+  nodeCount: number;
+  status: string;
+  createdAt: string;
+}
+
+async function fetchV4FlashDrafts(): Promise<FlashDraftListItem[]> {
+  const response = await fetch(`/api/flash/drafts?mapId=${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const payload = await response.json() as { drafts?: FlashDraftListItem[] };
+  return Array.isArray(payload.drafts) ? payload.drafts : [];
+}
+
+async function createV4MapifyDraft(): Promise<void> {
+  if (blockReadOnlyAction("Read-only link. Mapify draft creation is disabled.")) {
+    return;
+  }
+  const content = v4SourceTextEl?.value.trim() || "";
+  if (!content) {
+    setStatus("Paste source text before creating a Mapify draft.", true);
+    return;
+  }
+  const targetNodeId = selectedNodeForV4()?.id || null;
+  const sourceType = /^#{1,6}\s+/m.test(content) || /^\s*[-*]\s+/m.test(content) ? "markdown" : "text";
+  const response = await fetch("/api/flash/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      mapId: LOCAL_MAP_ID,
+      sourceType,
+      content,
+      options: {
+        targetNodeId,
+        maxDepth: 4,
+      },
+    }),
+  });
+  if (!response.ok && response.status !== 202) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const payload = await response.json().catch(() => ({ nodeCount: "?" })) as { draftId?: string; nodeCount?: number };
+  setStatus(`Mapify draft created (${payload.nodeCount ?? "?"} nodes).`);
+  syncV4Panel(true);
+}
+
+async function applyLatestV4MapifyDraft(): Promise<void> {
+  if (blockReadOnlyAction("Read-only link. Mapify draft apply is disabled.")) {
+    return;
+  }
+  const draft = v4LatestDrafts.find((item) => item.status === "pending");
+  if (!draft) {
+    setStatus("No pending Mapify draft to apply.", true);
+    return;
+  }
+  const targetParentId = selectedNodeForV4()?.id || undefined;
+  const response = await fetch(`/api/flash/draft/${encodeURIComponent(draft.id)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      mode: "all",
+      targetParentId,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(String((payload as { error?: string }).error || `HTTP ${response.status}`));
+  }
+  const payload = await response.json().catch(() => ({ committedNodeIds: [] })) as { committedNodeIds?: string[] };
+  await loadDocFromLocalDb(false);
+  render();
+  setStatus(`Applied Mapify draft (${payload.committedNodeIds?.length ?? 0} nodes).`);
+  syncV4Panel(true);
+}
+
+function selectedNodeForV4(): TreeNode | null {
+  if (!map || !viewState.selectedNodeId) {
+    return null;
+  }
+  return map.state.nodes[viewState.selectedNodeId] || null;
+}
+
+function syncV4Panel(updateDrafts = false): void {
+  if (!v4PanelEl || !v4PanelVisible) {
+    return;
+  }
+
+  if (v4VaultStatusEl) {
+    if (vaultLastError) {
+      v4VaultStatusEl.textContent = `Vault: error (${vaultLastError})`;
+    } else if (vaultWatchRunning) {
+      v4VaultStatusEl.textContent = `Vault: live, source=${vaultUiPrefs.sourceOfTruth}, inbound=${vaultLastInboundAt || "none"}, outbound=${vaultLastOutboundAt || "none"}`;
+    } else if (vaultUiPrefs.vaultPath) {
+      v4VaultStatusEl.textContent = "Vault: path set, live off";
+    } else {
+      v4VaultStatusEl.textContent = "Vault: not bound";
+    }
+  }
+  if (v4VaultPathEl) {
+    v4VaultPathEl.textContent = vaultUiPrefs.vaultPath || "No vault path set.";
+  }
+  if (v4ConflictStatusEl) {
+    v4ConflictStatusEl.textContent = conflictPanelVisible
+      ? "Conflict workbench is open. Current UI is local/remote; V4 target is local/remote/resolution."
+      : "No conflict panel open.";
+  }
+  if (v4GithubStatusEl) {
+    const selected = selectedNodeForV4();
+    const lock = selected?.attributes?.["secret:lock"] || selected?.attributes?.["m3e:secretLock"] || "none";
+    v4GithubStatusEl.textContent = `Publish plan: design-only. Staged proposal model active. Selected secret lock: ${lock}.`;
+  }
+  if (v4SelectedSourceEl) {
+    const selected = selectedNodeForV4();
+    const sourceType = selected?.attributes?.["m3e:sourceType"] || selected?.attributes?.["vault:kind"] || selected?.attributes?.["v4:service"] || "none";
+    const sourceRef = selected?.attributes?.["m3e:sourceUrl"] || selected?.attributes?.["vault:path"] || "";
+    v4SelectedSourceEl.textContent = selected
+      ? `Selected: ${selected.text || selected.id} | source=${sourceType}${sourceRef ? ` | ${sourceRef}` : ""}`
+      : "No selected node.";
+  }
+
+  if (updateDrafts) {
+    if (v4FlashStatusEl) {
+      v4FlashStatusEl.textContent = "Drafts: loading...";
+    }
+    void fetchV4FlashDrafts()
+      .then((drafts) => {
+        v4LatestDrafts = drafts;
+        if (v4FlashStatusEl) {
+          const pending = drafts.filter((draft) => draft.status === "pending").length;
+          v4FlashStatusEl.textContent = `Drafts: ${drafts.length} total, ${pending} pending`;
+        }
+        if (v4DraftListEl) {
+          v4DraftListEl.innerHTML = "";
+          const visibleDrafts = drafts.slice(0, 6);
+          if (visibleDrafts.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "v4-status-line";
+            empty.textContent = "No Flash drafts in memory.";
+            v4DraftListEl.appendChild(empty);
+          }
+          visibleDrafts.forEach((draft) => {
+            const item = document.createElement("div");
+            item.className = "v4-list-item";
+            item.textContent = draft.title || draft.id;
+            const meta = document.createElement("small");
+            meta.textContent = `${draft.status} | ${draft.nodeCount} nodes | ${draft.sourceType}`;
+            item.appendChild(meta);
+            v4DraftListEl.appendChild(item);
+          });
+        }
+      })
+      .catch((err) => {
+        if (v4FlashStatusEl) {
+          v4FlashStatusEl.textContent = `Drafts: error (${(err as Error).message})`;
+        }
+      });
+  }
+}
+
+function showV4Panel(): void {
+  if (!v4PanelEl) {
+    return;
+  }
+  v4PanelVisible = true;
+  v4PanelEl.hidden = false;
+  syncV4Panel(true);
+}
+
+function hideV4Panel(): void {
+  if (!v4PanelEl) {
+    return;
+  }
+  v4PanelVisible = false;
+  v4PanelEl.hidden = true;
+  board.focus();
+}
+
+function addV4DiscussionNode(kind: "sticky" | "decision"): void {
+  if (blockReadOnlyAction("Read-only link. V4 discussion edits are disabled.")) {
+    return;
+  }
+  if (!map || !viewState.selectedNodeId) {
+    setStatus("Select a parent node for the V4 discussion item.", true);
+    return;
+  }
+  const parent = selectedNodeForV4();
+  if (!parent || isAliasNode(parent)) {
+    setStatus("Select a non-alias parent node for the V4 discussion item.", true);
+    return;
+  }
+  pushUndoSnapshot();
+  const id = newId();
+  const text = kind === "decision" ? "Decision: " : "Sticky: ";
+  map.state.nodes[id] = createNodeRecord(id, parent.id, `${text}${nowIso()}`);
+  map.state.nodes[id]!.attributes = {
+    ...map.state.nodes[id]!.attributes,
+    "m3e:surface": "discussion",
+    "discussion:kind": kind,
+    "discussion:status": kind === "decision" ? "decided" : "open",
+    "discussion:sourceNodeId": parent.id,
+  };
+  parent.children.push(id);
+  parent.collapsed = false;
+  viewState.collapsedIds.delete(parent.id);
+  setSingleSelection(id, false);
+  touchDocument();
+  syncV4Panel(false);
+  setStatus(`V4 ${kind} node added.`);
+  board.focus();
 }
 
 function parseSseFrames(text: string): Array<{ event: string; data: unknown }> {
@@ -3699,6 +3984,37 @@ function render(): void {
 
   const renderedSurfaceLinks = new Set<string>();
   const renderedPairOffsets = new Map<string, number>();
+  const parentChildLinkLabels = new Map<string, string>();
+  const parentChildEdgeKey = (parentId: string, childId: string): string => `${parentId}->${childId}`;
+  const recordParentChildLinkLabel = (parentId: string, childId: string, label: string): void => {
+    const key = parentChildEdgeKey(parentId, childId);
+    const existing = parentChildLinkLabels.get(key);
+    if (!existing) {
+      parentChildLinkLabels.set(key, label);
+      return;
+    }
+    const parts = existing.split(" / ");
+    if (!parts.includes(label)) {
+      parentChildLinkLabels.set(key, `${existing} / ${label}`);
+    }
+  };
+  Object.values(state.links || {}).forEach((rawLink) => {
+    const link = normalizeGraphLink(rawLink);
+    const label = (link.label || link.relationType || "").trim();
+    if (!label) {
+      return;
+    }
+    const source = state.nodes[link.sourceNodeId];
+    const target = state.nodes[link.targetNodeId];
+    if (!source || !target || !isParentChildPair(source, target)) {
+      return;
+    }
+    if (target.parentId === source.id) {
+      recordParentChildLinkLabel(source.id, target.id, label);
+    } else if (source.parentId === target.id) {
+      recordParentChildLinkLabel(target.id, source.id, label);
+    }
+  });
   const PORTAL_BRACKET_ARM = 14;
   Object.values(state.links || {}).forEach((rawLink) => {
     const link = normalizeGraphLink(rawLink);
@@ -3897,10 +4213,11 @@ function render(): void {
       // Edge label — stored on the child node (parent is unique per child)
       const childNode = state.nodes[childId];
       const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
-      if (childStyles.edgeLabel) {
+      const edgeLabel = childStyles.edgeLabel || parentChildLinkLabels.get(parentChildEdgeKey(nodeId, childId));
+      if (edgeLabel) {
         const labelX = (c1x + c2x) / 2;
         const labelY = (startY + endY) / 2 - 8;
-        edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
+        edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
       }
     });
 
@@ -4639,6 +4956,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   viewState.selectedNodeId = nodeId;
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
+  syncV4Panel(false);
   if (renderNow) {
     scheduleRender();
   }
@@ -4668,6 +4986,7 @@ function setRangeSelection(targetId: string): void {
   viewState.selectionAnchorId = anchorId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
   viewState.selectedNodeIds.add(targetId);
+  syncV4Panel(false);
   scheduleRender();
 }
 
@@ -4684,12 +5003,14 @@ function toggleNodeSelection(nodeId: string): void {
     if (viewState.selectedNodeId === nodeId) {
       viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
     }
+    syncV4Panel(false);
     scheduleRender();
     return;
   }
 
   viewState.selectedNodeIds.add(nodeId);
   viewState.selectedNodeId = nodeId;
+  syncV4Panel(false);
   scheduleRender();
 }
 
@@ -7036,6 +7357,12 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
   if (!map) {
     return false;
   }
+  if (isReadOnlyLink()) {
+    if (showStatus) {
+      setStatus("Read-only link. Local save is disabled.", true);
+    }
+    return false;
+  }
 
   if (collabEntityId && collabToken && !force) {
     return await pushCurrentScopeToCollab(showStatus);
@@ -7143,6 +7470,12 @@ async function fetchCloudSyncStatus(): Promise<void> {
 
 async function pushDocToCloud(showStatus = false, force = false): Promise<boolean> {
   if (!map || !cloudSyncEnabled) {
+    return false;
+  }
+  if (isReadOnlyLink()) {
+    if (showStatus) {
+      setStatus("Read-only link. Cloud push is disabled.", true);
+    }
     return false;
   }
   try {
@@ -7307,6 +7640,9 @@ async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
 
 function scheduleAutosave(): void {
   if (!map) {
+    return;
+  }
+  if (isReadOnlyLink()) {
     return;
   }
   if (autosaveTimer !== null) {
@@ -7545,6 +7881,13 @@ function reviewExplain(): void {
 
 function updateModeBadge(): void {
   if (!modeBadgeEl) return;
+  if (isReadOnlyLink()) {
+    modeBadgeEl.textContent = "VIEW";
+    modeBadgeEl.classList.remove("review");
+    modeBadgeEl.classList.add("readonly");
+    return;
+  }
+  modeBadgeEl.classList.remove("readonly");
   if (viewState.reviewMode) {
     modeBadgeEl.textContent = "REVIEW";
     modeBadgeEl.classList.add("review");
@@ -8511,6 +8854,9 @@ linearResizeHandleEl?.addEventListener("pointerup", endLinearResize);
 linearResizeHandleEl?.addEventListener("pointercancel", endLinearResize);
 
 linearApplyBtn?.addEventListener("click", () => {
+  if (blockReadOnlyAction("Read-only link. Linear edits are disabled.")) {
+    return;
+  }
   if (!map || !linearDirty) {
     return;
   }
@@ -8531,10 +8877,16 @@ cloudPullBtn?.addEventListener("click", async () => {
 });
 
 cloudPushBtn?.addEventListener("click", async () => {
+  if (blockReadOnlyAction("Read-only link. Cloud push is disabled.")) {
+    return;
+  }
   await pushDocToCloud(true);
 });
 
 cloudUseLocalBtn?.addEventListener("click", async () => {
+  if (blockReadOnlyAction("Read-only link. Force push is disabled.")) {
+    return;
+  }
   await pushDocToCloud(true, true);
 });
 
@@ -8546,10 +8898,16 @@ cloudUseCloudBtn?.addEventListener("click", async () => {
 });
 
 importFileBtn?.addEventListener("click", () => {
+  if (blockReadOnlyAction("Read-only link. Import is disabled.")) {
+    return;
+  }
   fileInput.click();
 });
 
 importVaultBtn?.addEventListener("click", () => {
+  if (blockReadOnlyAction("Read-only link. Import is disabled.")) {
+    return;
+  }
   void (async () => {
     try {
       const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
@@ -8624,6 +8982,9 @@ setVaultPathBtn?.addEventListener("click", () => {
 });
 
 integrateVaultLiveBtn?.addEventListener("click", () => {
+  if (blockReadOnlyAction("Read-only link. Live write is disabled.")) {
+    return;
+  }
   void (async () => {
     try {
       const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
@@ -8640,6 +9001,42 @@ integrateVaultLiveBtn?.addEventListener("click", () => {
 integrateStopBtn?.addEventListener("click", () => {
   void stopVaultLiveIntegration(true).catch((err) => {
     setStatus(`Failed to stop Obsidian Live Mode (${(err as Error).message}).`, true);
+  });
+});
+
+v4PanelBtn?.addEventListener("click", () => {
+  if (v4PanelVisible) {
+    hideV4Panel();
+    return;
+  }
+  showV4Panel();
+});
+
+v4PanelCloseBtn?.addEventListener("click", () => {
+  hideV4Panel();
+});
+
+v4RefreshBtn?.addEventListener("click", () => {
+  syncV4Panel(true);
+});
+
+v4AddStickyBtn?.addEventListener("click", () => {
+  addV4DiscussionNode("sticky");
+});
+
+v4AddDecisionBtn?.addEventListener("click", () => {
+  addV4DiscussionNode("decision");
+});
+
+v4CreateDraftBtn?.addEventListener("click", () => {
+  void createV4MapifyDraft().catch((err) => {
+    setStatus(`Mapify draft creation failed (${(err as Error).message}).`, true);
+  });
+});
+
+v4ApplyDraftBtn?.addEventListener("click", () => {
+  void applyLatestV4MapifyDraft().catch((err) => {
+    setStatus(`Mapify draft apply failed (${(err as Error).message}).`, true);
   });
 });
 
@@ -8671,6 +9068,13 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
   if (!map || !nodeId || event.button !== 0) {
+    return;
+  }
+  if (isReadOnlyLink()) {
+    event.preventDefault();
+    setSingleSelection(nodeId, event.shiftKey);
+    board.focus();
+    scheduleRender();
     return;
   }
   viewState.dragState = {
@@ -9004,6 +9408,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (document.activeElement === linearTextEl) {
+    return;
+  }
+
+  if (isReadOnlyLink() && !isReadOnlyAllowedKey(event)) {
+    event.preventDefault();
+    setStatus("Read-only link. Use the editor link to change this map.", true);
     return;
   }
 
@@ -9546,6 +9956,7 @@ setVisualCheckStatus("Visual check idle");
 syncMetaPanelToggleUi();
 loadVaultUiPrefs();
 syncVaultUi();
+syncAccessModeUi();
 updateCloudSyncUi();
 
 void initializeDocument().then(() => {
