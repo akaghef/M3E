@@ -88,6 +88,7 @@ PJ04 の System Scope は、処理遷移である **Control Graph** と、State 
 
 **deep-dive 戦略**:
 - [docs/langgraph_integration_plan.md](docs/langgraph_integration_plan.md) — EXEC Phase A-F (subprocess embed)
+- [docs/ai_quality_improvement_cycle_plan.md](docs/ai_quality_improvement_cycle_plan.md) — AI 品質改善サイクルの実装計画
 - [docs/layout_strategy.md](docs/layout_strategy.md) — LAY Phase 2 (lane-role / snapshot gate / elkjs Go/No-Go)
 - [docs/state_and_channels.md](docs/state_and_channels.md) — DATA S-0..S-5 (channel authoring)
 - [docs/concreteness_axis.md](docs/concreteness_axis.md) — VIEW L0-L5 (具象軸)
@@ -106,6 +107,7 @@ PJ04 の System Scope は、処理遷移である **Control Graph** と、State 
 - `plan6/cycle2/` — Mermaid canonical sample 一式
 - `runtime/langgraph_lab/` — LangGraph lab seed
 - `references/m3e_current/` — M3E 現行コード参照コピー
+- `references/chatgpt/260517_ai_quality_improvement_cycle.md` — AI 品質改善サイクル検討の raw source
 - `idea/` — 採否未定プール
 
 ## 役割分担
