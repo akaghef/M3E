@@ -9,11 +9,11 @@ references:
   - ../../../docs/00_Home/Current_Status.md
   - ../../../docs/00_Home/Glossary.md
   - ../plan.md
-  - global_strategy.md
-  - langgraph_integration_plan.md
-  - langgraph_feature_coverage.md
-  - map_attribute_spec.md
-  - system_block_templates.md
+  - ../../PJ04_MermaidSystemLangGraph/docs/global_strategy.md
+  - ../../PJ04_MermaidSystemLangGraph/docs/langgraph_integration_plan.md
+  - ../../PJ04_MermaidSystemLangGraph/docs/langgraph_feature_coverage.md
+  - ../../PJ04_MermaidSystemLangGraph/docs/map_attribute_spec.md
+  - ../../PJ04_MermaidSystemLangGraph/docs/system_block_templates.md
   - ../../../beta/src/node/graph_spec_compile.ts
   - ../../../beta/src/node/template_system_builder.ts
   - ../../../beta/src/node/template_run_cli.ts
@@ -24,9 +24,9 @@ references:
 
 ## 0. 位置づけ
 
-この文書は、ChatGPT で検討した「AI による品質改善サイクル」を、PJ04 の既存実装に接続するための実装計画である。
+この文書は、ChatGPT で検討した「AI による品質改善サイクル」を、PJ07 の実データ整理 PJ として実装するための計画である。
 
-本計画は `langgraph_integration_plan.md` を置き換えない。位置づけは、PJ04 の `Authoring Map -> GraphSpec -> Runtime -> Trace Store -> Runtime Board` に載せる **最初の実用ループ** である。
+本計画は PJ04 の `langgraph_integration_plan.md` を置き換えない。PJ04 は `Authoring Map -> GraphSpec -> Runtime -> Trace Store -> Runtime Board` の runtime / system diagram 側を担当し、PJ07 はその上で扱う **実データ整理・品質改善ループ** を担当する。
 
 既存方針との接続:
 

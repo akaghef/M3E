@@ -1,0 +1,34 @@
+version: 0.1
+updated: 2026-05-17
+policy:
+  raw_copy: false
+  source_reference: path
+  first_batch_size: "20-50"
+sources:
+  - id: chatgpt_m3e_vault
+    kind: chatgpt_export_vault
+    path: "C:\\Users\\Akaghef\\data\\作業\\chatGPTdata\\MarkdownFiles\\Projects\\Akaghef\\M3E"
+    status: indexed_root_only
+    notes: "Raw conversation vault. Do not copy wholesale into repo."
+  - id: m3e_distilled_conversations
+    kind: repo_corpus
+    path: "docs\\research\\m3e_data_structure_conversations"
+    status: indexed_root_only
+    notes: "Existing distilled package with raw copies and curated notes."
+  - id: m3e_idea_pool
+    kind: repo_idea_pool
+    path: "idea"
+    status: indexed_root_only
+    notes: "M3E idea/backlog pool; select product/system/AI workflow items."
+selection_keywords:
+  - GraphSpec
+  - LangGraph
+  - AI proposal
+  - proposal
+  - data structure
+  - JSON
+  - SQLite
+  - TOON
+  - Command Patch
+  - idea
+  - MDD
