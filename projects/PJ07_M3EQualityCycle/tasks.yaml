@@ -4,9 +4,9 @@ current_focus:
   date: 2026-05-17
   summary: "新PJとして器を作り、M3E関連 GPT 会話歴と idea/ を実データ workset に切る準備をする。"
   next:
-    - T-0-1
     - T-1-1
     - T-1-2
+    - T-2-1
 
 tasks:
   - id: T-0-1
@@ -50,6 +50,16 @@ tasks:
       - "each item has source path, reason, and expected extraction target"
     status: pending
 
+  - id: T-2-0
+    phase: 2
+    verb: sample
+    target: "batch_001_m3e_design 3-item processing sample"
+    done_when:
+      - "worksets/batch_001_m3e_design/README.md records 3 selected items"
+      - "runs/quality_reports/batch_001_sample.md exists"
+      - "review and distilled candidate notes exist"
+    status: done
+
   - id: T-3-1
     phase: 3
     verb: evaluate
@@ -58,4 +68,4 @@ tasks:
       - "runs/quality_reports/batch_001_sample.md exists"
       - "report separates quality vector, diagnosis, and patch proposal"
       - "no map/doc source is mutated"
-    status: pending
+    status: done

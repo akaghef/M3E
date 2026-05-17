@@ -32,3 +32,22 @@ selection_keywords:
   - Command Patch
   - idea
   - MDD
+processed_batches:
+  - id: batch_001_m3e_design
+    date: 2026-05-17
+    item_count: 3
+    workset: "projects\\PJ07_M3EQualityCycle\\worksets\\batch_001_m3e_design"
+    quality_report: "projects\\PJ07_M3EQualityCycle\\runs\\quality_reports\\batch_001_sample.md"
+    items:
+      - id: B001-I01
+        source_id: chatgpt_m3e_vault
+        path: "C:\\Users\\Akaghef\\data\\作業\\chatGPTdata\\MarkdownFiles\\Projects\\Akaghef\\M3E\\260311_Agent開発の基本.md"
+        reason: "Agent / LangGraph / structured output safety seed"
+      - id: B001-I02
+        source_id: chatgpt_m3e_vault
+        path: "C:\\Users\\Akaghef\\data\\作業\\chatGPTdata\\MarkdownFiles\\Projects\\Akaghef\\M3E\\260425_MIOSMindmap_IO_Stack.md"
+        reason: "proposal/result, TOON, JSON, Command, SQLite design source"
+      - id: B001-I03
+        source_id: m3e_idea_pool
+        path: "idea\\40_data\\maintenance_hygiene\\README.md"
+        reason: "detector/action/safety taxonomy for Quality Evaluator"
