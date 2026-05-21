@@ -88,12 +88,15 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await clickLegacy(page, "#view-scatter");
   await expect(page.locator("#mode-meta")).toContainText("/ Scatter");
   await expect(page.locator("#scatter-toolbar")).toBeVisible();
+  await expect(page.locator("#scatter-animate")).toBeVisible();
+  await expect(page.locator("#scatter-reflow")).toBeVisible();
 
-  await expect(page.locator("text.label-root", { hasText: "Scatter Root" })).toBeVisible();
+  await expect(page.locator(".scatter-node-circle[data-node-id='root']")).toBeVisible();
+  await expect(page.locator("text.label-root", { hasText: "Scatter" })).toBeVisible();
   await expect(page.locator('text.label-node[data-node-id="alpha"]')).toContainText("Alpha");
-  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alpha Child");
+  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alph");
   await expect(page.locator("path.edge")).toHaveCount(0);
-  await expect(page.locator("path.scatter-guide")).toHaveCount(3);
+  await expect(page.locator(".scatter-guide")).toHaveCount(3);
 
   const alphaBefore = await page.locator('[data-node-id="alpha"].node-hit').boundingBox();
   if (!alphaBefore) throw new Error("Alpha node was not rendered.");
@@ -117,7 +120,7 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await clickLegacy(page, "#scatter-add-node");
   await page.mouse.click(820, 600);
   await expect(page.locator("#meta")).toContainText("nodes: 5");
-  await expect(page.locator("text.label-node", { hasText: "New Node" })).toBeVisible();
+  await expect(page.locator("text.label-node", { hasText: "New" })).toBeVisible();
 
   await clickLegacy(page, "#scatter-add-edge");
   const alpha = await page.locator('[data-node-id="alpha"].node-hit').boundingBox();
@@ -125,7 +128,7 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   if (!alpha || !beta) throw new Error("Scatter edge endpoints were not rendered.");
   await page.mouse.click(alpha.x + alpha.width / 2, alpha.y + alpha.height / 2);
   await page.mouse.click(beta.x + beta.width / 2, beta.y + beta.height / 2);
-  await expect(page.locator("path.graph-link.scatter-edge")).toHaveCount(1);
+  await expect(page.locator(".graph-link.scatter-edge")).toHaveCount(1);
 
   await clickLegacy(page, "#view-tree");
   await expect(page.locator("#mode-meta")).toContainText("/ Tree");

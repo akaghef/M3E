@@ -82,6 +82,17 @@
           <button id="scatter-add-edge" class="scatter-tool-btn" type="button" title="Add edge">Add Edge</button>
           <button id="scatter-colorize" class="scatter-tool-btn" type="button" title="Colorize">Colorize</button>
           <button id="scatter-delete" class="scatter-tool-btn" type="button" title="Delete">Delete</button>
+          <span class="toolbar-sep" aria-hidden="true">|</span>
+          <button id="scatter-animate" class="scatter-tool-btn" type="button" aria-pressed="false" title="Animate force layout (A)">Animate</button>
+          <button id="scatter-reflow" class="scatter-tool-btn" type="button" title="Reflow with force layout">Reflow</button>
+          <label class="scatter-range-control" title="Repulsion coefficient">
+            <span>Repel</span>
+            <input id="scatter-repulsion" type="range" min="20000" max="600000" step="10000" value="200000" aria-label="Scatter repulsion" />
+          </label>
+          <label class="scatter-range-control" title="Edge spring length">
+            <span>Length</span>
+            <input id="scatter-edge-length" type="range" min="80" max="320" step="10" value="180" aria-label="Scatter edge length" />
+          </label>
         </div>
         <div id="draw-toolbar" class="draw-toolbar" role="toolbar" aria-label="Drawing tools" data-edit-only>
           <button id="draw-select" class="draw-tool-btn is-active" type="button" aria-label="Select tool" title="Select (Esc)">

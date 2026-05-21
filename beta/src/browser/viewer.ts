@@ -14,6 +14,10 @@ const scatterAddNodeBtn = document.getElementById("scatter-add-node") as HTMLBut
 const scatterAddEdgeBtn = document.getElementById("scatter-add-edge") as HTMLButtonElement | null;
 const scatterColorizeBtn = document.getElementById("scatter-colorize") as HTMLButtonElement | null;
 const scatterDeleteBtn = document.getElementById("scatter-delete") as HTMLButtonElement | null;
+const scatterAnimateBtn = document.getElementById("scatter-animate") as HTMLButtonElement | null;
+const scatterReflowBtn = document.getElementById("scatter-reflow") as HTMLButtonElement | null;
+const scatterRepulsionInput = document.getElementById("scatter-repulsion") as HTMLInputElement | null;
+const scatterEdgeLengthInput = document.getElementById("scatter-edge-length") as HTMLInputElement | null;
 const penToolBtn = document.getElementById("pen-tool") as HTMLButtonElement | null;
 const drawToolbarEl = document.getElementById("draw-toolbar") as HTMLElement | null;
 const drawSelectBtn = document.getElementById("draw-select") as HTMLButtonElement | null;
@@ -390,8 +394,24 @@ let activeContextMenu: HTMLElement | null = null;
 type ScatterToolMode = "normal" | "add-node" | "add-edge" | "colorize" | "delete";
 let scatterToolMode: ScatterToolMode = "normal";
 const SCATTER_DEFAULT_EDGE_COLOR = "#2f7d6d";
+const SCATTER_REPULSION_DEFAULT = 200000;
+const SCATTER_SPRING_K = 7;
+const SCATTER_GUIDE_SPRING_WEIGHT = 0.42;
+const SCATTER_DAMPING = 0.73;
+const SCATTER_MASS = 10;
+const SCATTER_DT = 0.2;
+const SCATTER_MAX_V = 100;
+const SCATTER_EDGE_LENGTH_DEFAULT = 180;
+const SCATTER_ROOT_RADIUS = 48;
+const SCATTER_NODE_RADIUS = 36;
+const SCATTER_MIN_RADIUS = 12;
 const SCATTER_DEPTH_SCALE = 2 / 3;
 const SCATTER_MIN_SCALE = 0.42;
+let scatterAnimationEnabled = false;
+let scatterAnimationFrame: number | null = null;
+let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
+let scatterEdgeLength = SCATTER_EDGE_LENGTH_DEFAULT;
+const scatterVelocities = new Map<string, { x: number; y: number }>();
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -487,8 +507,14 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
     syncThinkingModeUi();
     return;
   }
+  if (viewState.surfaceViewMode === "scatter" && mode !== "scatter") {
+    stopScatterAnimation(true);
+  }
   viewState.surfaceViewMode = mode;
   syncMapModelStateFromRuntime();
+  if (mode === "scatter") {
+    seedMissingScatterPositions();
+  }
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -496,6 +522,9 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   requestAnimationFrame(() => {
     fitDocument();
   });
+  if (mode === "scatter" && scatterAnimationEnabled) {
+    startScatterAnimation();
+  }
   scheduleAutosave();
   setStatus(`View: ${surfaceViewModeLabel(mode)}`);
 }
@@ -515,6 +544,14 @@ function syncScatterToolbarUi(): void {
     btn?.classList.toggle("is-active", scatterToolMode === mode);
     btn?.setAttribute("aria-pressed", scatterToolMode === mode ? "true" : "false");
   });
+  scatterAnimateBtn?.classList.toggle("is-active", scatterAnimationEnabled);
+  scatterAnimateBtn?.setAttribute("aria-pressed", scatterAnimationEnabled ? "true" : "false");
+  if (scatterRepulsionInput && document.activeElement !== scatterRepulsionInput) {
+    scatterRepulsionInput.value = String(Math.round(scatterRepulsion));
+  }
+  if (scatterEdgeLengthInput && document.activeElement !== scatterEdgeLengthInput) {
+    scatterEdgeLengthInput.value = String(Math.round(scatterEdgeLength));
+  }
 }
 
 function setScatterToolMode(mode: ScatterToolMode): void {
@@ -525,6 +562,27 @@ function setScatterToolMode(mode: ScatterToolMode): void {
   syncScatterToolbarUi();
   scheduleRender();
   setStatus(`Scatter: ${mode.replace("-", " ")}`);
+}
+
+function toggleScatterAnimation(): void {
+  setScatterAnimationEnabled(!scatterAnimationEnabled);
+}
+
+function setScatterAnimationEnabled(enabled: boolean): void {
+  scatterAnimationEnabled = enabled;
+  syncScatterToolbarUi();
+  if (!enabled) {
+    stopScatterAnimation(true);
+    setStatus("Scatter animation stopped.");
+    return;
+  }
+  if (!currentSurfaceIsScatterMode()) {
+    setStatus("Switch to Scatter to animate layout.", true);
+    return;
+  }
+  seedMissingScatterPositions();
+  startScatterAnimation();
+  setStatus("Scatter animation running.");
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -1220,6 +1278,7 @@ function ensureDocShape(payload: unknown): SavedMap {
       label: record.label || undefined,
       direction: record.direction || "none",
       style: record.style || "default",
+      color: sanitizeColor(record.color) || undefined,
     };
   });
   candidate.state.annotations = sanitizeAnnotations(candidate.state.annotations);
@@ -4265,6 +4324,367 @@ function countHiddenDescendants(nodeId: string): number {
   return count;
 }
 
+type ScatterNodeSet = {
+  ids: string[];
+  depthOf: Record<string, number>;
+};
+
+type ScatterSimEdge = {
+  sourceId: string;
+  targetId: string;
+  weight: number;
+};
+
+function collectScatterNodes(state: AppState, rootId: string): ScatterNodeSet {
+  const ids: string[] = [];
+  const depthOf: Record<string, number> = {};
+  const visit = (nodeId: string, depth: number): void => {
+    const node = state.nodes[nodeId];
+    if (!node || !isNodeVisibleByImportance(nodeId)) {
+      return;
+    }
+    ids.push(nodeId);
+    depthOf[nodeId] = depth;
+    (node.children || []).forEach((childId) => visit(childId, depth + 1));
+  };
+  visit(rootId, 0);
+  return { ids, depthOf };
+}
+
+function scatterCountScale(vertexCount: number): number {
+  if (vertexCount <= 16) {
+    return 1;
+  }
+  return Math.min(1, Math.max(0.2, Math.pow(16 / vertexCount, 0.6)));
+}
+
+function scatterDepthScale(depth: number): number {
+  return Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, Math.max(0, depth)));
+}
+
+function scatterRadiusFor(nodeId: string, rootId: string, depth: number, vertexCount: number): number {
+  const base = nodeId === rootId ? SCATTER_ROOT_RADIUS : SCATTER_NODE_RADIUS;
+  return Math.max(SCATTER_MIN_RADIUS, base * scatterCountScale(vertexCount) * scatterDepthScale(depth));
+}
+
+function scatterFontSizeFor(radius: number): number {
+  return Math.max(9, Math.min(18, radius * 0.44));
+}
+
+function scatterSeedCenter(): { x: number; y: number } {
+  return {
+    x: VIEWER_TUNING.layout.leftPad + 620,
+    y: VIEWER_TUNING.layout.topPad + 390,
+  };
+}
+
+function scatterSeedPositions(
+  state: AppState,
+  rootId: string,
+  ids: string[],
+  depthOf: Record<string, number>,
+): Record<string, { x: number; y: number }> {
+  const center = scatterSeedCenter();
+  const byDepth: Record<number, string[]> = {};
+  ids.forEach((nodeId) => {
+    const depth = depthOf[nodeId] ?? 0;
+    if (!byDepth[depth]) byDepth[depth] = [];
+    byDepth[depth]!.push(nodeId);
+  });
+
+  const childLeafCount = new Map<string, number>();
+  const visibleChildrenForSeed = (nodeId: string): string[] =>
+    (state.nodes[nodeId]?.children || []).filter((childId) => ids.includes(childId));
+  const leafCount = (nodeId: string): number => {
+    const cached = childLeafCount.get(nodeId);
+    if (cached != null) return cached;
+    const children = visibleChildrenForSeed(nodeId);
+    const count = children.length ? children.reduce((sum, childId) => sum + leafCount(childId), 0) : 1;
+    childLeafCount.set(nodeId, count);
+    return count;
+  };
+  const angles: Record<string, number> = {};
+  const assignAngles = (nodeId: string, start: number, end: number): void => {
+    angles[nodeId] = (start + end) / 2;
+    const children = visibleChildrenForSeed(nodeId);
+    if (!children.length) return;
+    const total = Math.max(1, children.reduce((sum, childId) => sum + leafCount(childId), 0));
+    let cursor = start;
+    children.forEach((childId) => {
+      const span = ((end - start) * leafCount(childId)) / total;
+      assignAngles(childId, cursor, cursor + span);
+      cursor += span;
+    });
+  };
+  assignAngles(rootId, -Math.PI * 0.96, Math.PI * 0.96);
+
+  const seeded: Record<string, { x: number; y: number }> = {
+    [rootId]: center,
+  };
+  ids.forEach((nodeId) => {
+    if (nodeId === rootId) return;
+    const depth = depthOf[nodeId] ?? 1;
+    const depthPeers = byDepth[depth] || [];
+    const peerIndex = Math.max(0, depthPeers.indexOf(nodeId));
+    const angle = angles[nodeId] ?? (peerIndex / Math.max(1, depthPeers.length)) * Math.PI * 2;
+    const ring = scatterEdgeLength * (1.08 + Math.max(0, depth - 1) * 0.82);
+    const stagger = ((peerIndex % 3) - 1) * 22;
+    seeded[nodeId] = {
+      x: center.x + Math.cos(angle) * ring,
+      y: center.y + Math.sin(angle) * ring * 0.74 + stagger,
+    };
+  });
+  return seeded;
+}
+
+function seedMissingScatterPositions(): void {
+  if (!map || !currentSurfaceIsScatterMode()) {
+    return;
+  }
+  syncMapModelStateFromRuntime();
+  const rootId = currentScopeRootId();
+  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
+  const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
+  ids.forEach((nodeId) => {
+    const depth = depthOf[nodeId] ?? 0;
+    const radius = scatterRadiusFor(nodeId, rootId, depth, ids.length);
+    const seed = seeds[nodeId];
+    const view = ensureSurfaceNodeView(nodeId);
+    if (!view || !seed) return;
+    if (!Number.isFinite(view.x)) view.x = Math.round(seed.x - radius);
+    if (!Number.isFinite(view.y)) view.y = Math.round(seed.y);
+  });
+}
+
+function scatterCircleGeometry(p: NodePosition): { cx: number; cy: number; r: number } {
+  const r = Math.max(SCATTER_MIN_RADIUS, p.w / 2);
+  return {
+    cx: p.x + r,
+    cy: p.y,
+    r,
+  };
+}
+
+function scatterLineEndpoints(
+  source: NodePosition,
+  target: NodePosition,
+): { x1: number; y1: number; x2: number; y2: number; mx: number; my: number } {
+  const s = scatterCircleGeometry(source);
+  const t = scatterCircleGeometry(target);
+  const dx = t.cx - s.cx;
+  const dy = t.cy - s.cy;
+  const len = Math.max(1, Math.hypot(dx, dy));
+  return {
+    x1: s.cx + (dx / len) * s.r,
+    y1: s.cy + (dy / len) * s.r,
+    x2: t.cx - (dx / len) * t.r,
+    y2: t.cy - (dy / len) * t.r,
+    mx: (s.cx + t.cx) / 2,
+    my: (s.cy + t.cy) / 2,
+  };
+}
+
+function scatterLabel(node: TreeNode, maxChars = 12): string {
+  const label = (uiLabel(node) || node.id || "").trim();
+  if (label.length <= maxChars) {
+    return label;
+  }
+  return `${label.slice(0, Math.max(1, maxChars - 1))}…`;
+}
+
+function collectScatterSimulationEdges(state: AppState, ids: string[]): ScatterSimEdge[] {
+  const idSet = new Set(ids);
+  const pairSeen = new Set<string>();
+  const edges: ScatterSimEdge[] = [];
+  const pushEdge = (sourceId: string, targetId: string, weight: number): void => {
+    if (!idSet.has(sourceId) || !idSet.has(targetId) || sourceId === targetId) return;
+    const key = `${sourceId}->${targetId}`;
+    if (pairSeen.has(key)) return;
+    pairSeen.add(key);
+    edges.push({ sourceId, targetId, weight });
+  };
+  ids.forEach((nodeId) => {
+    const parentId = state.nodes[nodeId]?.parentId;
+    if (parentId) {
+      pushEdge(parentId, nodeId, SCATTER_GUIDE_SPRING_WEIGHT);
+    }
+  });
+  Object.values(state.links || {}).forEach((rawLink) => {
+    const link = normalizeGraphLink(rawLink);
+    pushEdge(link.sourceNodeId, link.targetNodeId, 1);
+  });
+  return edges;
+}
+
+function runScatterSimulation(iterations: number): boolean {
+  if (!map || !currentSurfaceIsScatterMode()) {
+    return false;
+  }
+  syncMapModelStateFromRuntime();
+  seedMissingScatterPositions();
+  const rootId = currentScopeRootId();
+  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
+  if (ids.length === 0) {
+    return false;
+  }
+  const surface = currentMapSurface();
+  const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
+  const particles: Record<string, { cx: number; cy: number; r: number; vx: number; vy: number }> = {};
+  ids.forEach((nodeId) => {
+    const depth = depthOf[nodeId] ?? 0;
+    const r = scatterRadiusFor(nodeId, rootId, depth, ids.length);
+    const view = surface?.nodeViews?.[nodeId];
+    const seed = seeds[nodeId] || scatterSeedCenter();
+    const x = Number.isFinite(view?.x) ? Number(view!.x) : seed.x - r;
+    const y = Number.isFinite(view?.y) ? Number(view!.y) : seed.y;
+    const velocity = scatterVelocities.get(nodeId) || { x: 0, y: 0 };
+    particles[nodeId] = { cx: x + r, cy: y, r, vx: velocity.x, vy: velocity.y };
+  });
+  const simEdges = collectScatterSimulationEdges(map.state, ids);
+  const center = scatterSeedCenter();
+  let changed = false;
+  for (let step = 0; step < iterations; step += 1) {
+    const forces: Record<string, { x: number; y: number }> = {};
+    ids.forEach((nodeId) => {
+      forces[nodeId] = { x: 0, y: 0 };
+    });
+
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) {
+        const aId = ids[i]!;
+        const bId = ids[j]!;
+        const a = particles[aId]!;
+        const b = particles[bId]!;
+        let dx = a.cx - b.cx;
+        let dy = a.cy - b.cy;
+        let distSq = dx * dx + dy * dy;
+        if (distSq < 1) {
+          dx = seededJitter(aId, bId);
+          dy = seededJitter(bId, aId);
+          distSq = dx * dx + dy * dy;
+        }
+        const dist = Math.sqrt(Math.max(1, distSq));
+        const force = scatterRepulsion / Math.max(1600, distSq);
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        forces[aId]!.x += fx;
+        forces[aId]!.y += fy;
+        forces[bId]!.x -= fx;
+        forces[bId]!.y -= fy;
+      }
+    }
+
+    simEdges.forEach((edge) => {
+      const a = particles[edge.sourceId];
+      const b = particles[edge.targetId];
+      if (!a || !b) return;
+      const dx = b.cx - a.cx;
+      const dy = b.cy - a.cy;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      const force = (dist - scatterEdgeLength) * SCATTER_SPRING_K * edge.weight;
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+      forces[edge.sourceId]!.x += fx;
+      forces[edge.sourceId]!.y += fy;
+      forces[edge.targetId]!.x -= fx;
+      forces[edge.targetId]!.y -= fy;
+    });
+
+    ids.forEach((nodeId) => {
+      const p = particles[nodeId]!;
+      const depth = depthOf[nodeId] ?? 0;
+      const centeringStrength = nodeId === rootId ? 0.12 : Math.max(0.012, 0.04 / (depth + 1));
+      forces[nodeId]!.x += (center.x - p.cx) * centeringStrength;
+      forces[nodeId]!.y += (center.y - p.cy) * centeringStrength;
+    });
+
+    ids.forEach((nodeId) => {
+      const p = particles[nodeId]!;
+      const f = forces[nodeId]!;
+      p.vx = (p.vx + (f.x * SCATTER_DT) / SCATTER_MASS) * SCATTER_DAMPING;
+      p.vy = (p.vy + (f.y * SCATTER_DT) / SCATTER_MASS) * SCATTER_DAMPING;
+      const speed = Math.hypot(p.vx, p.vy);
+      if (speed > SCATTER_MAX_V) {
+        p.vx = (p.vx / speed) * SCATTER_MAX_V;
+        p.vy = (p.vy / speed) * SCATTER_MAX_V;
+      }
+      const prevCx = p.cx;
+      const prevCy = p.cy;
+      p.cx = Math.max(80, p.cx + p.vx * SCATTER_DT);
+      p.cy = Math.max(80, p.cy + p.vy * SCATTER_DT);
+      if (Math.hypot(p.cx - prevCx, p.cy - prevCy) > 0.1) {
+        changed = true;
+      }
+    });
+  }
+
+  ids.forEach((nodeId) => {
+    const particle = particles[nodeId]!;
+    const view = ensureSurfaceNodeView(nodeId);
+    if (!view) return;
+    view.x = Math.round(particle.cx - particle.r);
+    view.y = Math.round(particle.cy);
+    scatterVelocities.set(nodeId, { x: particle.vx, y: particle.vy });
+  });
+  return changed;
+}
+
+function seededJitter(a: string, b: string): number {
+  let hash = 0;
+  const input = `${a}:${b}`;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return ((hash % 200) - 100) / 10 || 1;
+}
+
+function runScatterReflow(iterations = 160, opts: { withUndo?: boolean; withTouch?: boolean } = {}): void {
+  if (!map || !currentSurfaceIsScatterMode()) {
+    return;
+  }
+  const withUndo = opts.withUndo ?? true;
+  const withTouch = opts.withTouch ?? true;
+  if (withUndo) {
+    pushUndoSnapshot();
+  }
+  runScatterSimulation(iterations);
+  if (withTouch) {
+    touchDocument();
+  } else {
+    render();
+  }
+  setStatus("Scatter reflow applied.");
+}
+
+function startScatterAnimation(): void {
+  if (scatterAnimationFrame !== null || !scatterAnimationEnabled || !currentSurfaceIsScatterMode()) {
+    return;
+  }
+  scatterAnimationFrame = requestAnimationFrame(tickScatterAnimation);
+}
+
+function tickScatterAnimation(): void {
+  scatterAnimationFrame = null;
+  if (!scatterAnimationEnabled || !currentSurfaceIsScatterMode() || !map) {
+    return;
+  }
+  runScatterSimulation(1);
+  scheduleRender();
+  scatterAnimationFrame = requestAnimationFrame(tickScatterAnimation);
+}
+
+function stopScatterAnimation(saveCurrentPositions: boolean): void {
+  if (scatterAnimationFrame !== null) {
+    cancelAnimationFrame(scatterAnimationFrame);
+    scatterAnimationFrame = null;
+  }
+  if (saveCurrentPositions && map && currentSurfaceIsScatterMode()) {
+    map.savedAt = nowIso();
+    scheduleAutosave();
+    broadcastState();
+  }
+}
+
 function buildLayout(state: AppState): LayoutResult {
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
@@ -4277,135 +4697,26 @@ function buildLayout(state: AppState): LayoutResult {
 
   if (scatterSurface && displayRootNode) {
     const surface = currentMapSurface();
-    const descendants: string[] = [];
-    const visitScatter = (nodeId: string, depth: number): void => {
-      const node = state.nodes[nodeId];
-      if (!node || !isNodeVisibleByImportance(nodeId)) {
-        return;
-      }
-      descendants.push(nodeId);
-      depthOf[nodeId] = depth;
-      maxDepth = Math.max(maxDepth, depth);
-      (node.children || []).forEach((childId) => visitScatter(childId, depth + 1));
-    };
-    visitScatter(displayRootId, 0);
-
-    const nodesByDepth: Record<number, string[]> = {};
-    descendants.forEach((nodeId) => {
-      const node = state.nodes[nodeId];
-      if (!node) return;
-      const depth = depthOf[nodeId] ?? 0;
-      const scale = Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, depth));
-      const fontBase = nodeId === displayRootId ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont;
-      const fontSize = Math.max(11, Math.round(fontBase * scale));
-      const nodeStyles = effectiveNodeStyleAttrs(node);
-      const label = nodeId === displayRootId ? uiLabel(node) : diagramLabel(node, nodeStyles);
-      const measured = isLatexNode(node)
-        ? measureLatex(node.text)
-        : measureNodeLabel(label, fontSize);
-      const baseMinW = nodeId === displayRootId ? 220 : 112;
-      const baseMinH = nodeId === displayRootId ? VIEWER_TUNING.layout.rootHeight : VIEWER_TUNING.layout.nodeHitHeight;
-      const metric = {
-        w: Math.max(96, Math.max(baseMinW * scale, measured.w + 56)),
-        h: Math.max(30, Math.max(baseMinH * scale, measured.h + 10)),
-      };
-      metrics[nodeId] = metric;
-      depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metric.w);
-      if (!nodesByDepth[depth]) {
-        nodesByDepth[depth] = [];
-      }
-      nodesByDepth[depth]!.push(nodeId);
-    });
-
-    const seededByNode: Record<string, { x: number; y: number }> = {};
-    const visibleScatterChildren = (nodeId: string): string[] => {
-      const node = state.nodes[nodeId];
-      return (node?.children || []).filter((childId) => Boolean(metrics[childId]));
-    };
-    const leafCountCache: Record<string, number> = {};
-    const countScatterLeaves = (nodeId: string): number => {
-      if (leafCountCache[nodeId] !== undefined) {
-        return leafCountCache[nodeId]!;
-      }
-      const children = visibleScatterChildren(nodeId);
-      if (children.length === 0) {
-        leafCountCache[nodeId] = 1;
-        return 1;
-      }
-      const count = children.reduce((sum, childId) => sum + countScatterLeaves(childId), 0);
-      leafCountCache[nodeId] = Math.max(1, count);
-      return leafCountCache[nodeId]!;
-    };
-    const angleByNode: Record<string, number> = {};
-    const assignScatterAngles = (nodeId: string, startAngle: number, endAngle: number): void => {
-      angleByNode[nodeId] = (startAngle + endAngle) / 2;
-      const children = visibleScatterChildren(nodeId);
-      if (children.length === 0) {
-        return;
-      }
-      const total = children.reduce((sum, childId) => sum + countScatterLeaves(childId), 0);
-      let cursor = startAngle;
-      children.forEach((childId) => {
-        const span = ((endAngle - startAngle) * countScatterLeaves(childId)) / Math.max(1, total);
-        assignScatterAngles(childId, cursor, cursor + span);
-        cursor += span;
-      });
-    };
-
-    assignScatterAngles(displayRootId, -Math.PI * 0.92, Math.PI * 0.92);
-    const centerX = VIEWER_TUNING.layout.leftPad + 560;
-    const centerY = VIEWER_TUNING.layout.topPad + 360;
-    seededByNode[displayRootId] = { x: centerX, y: centerY };
-    descendants.forEach((nodeId) => {
-      if (nodeId === displayRootId) {
-        return;
-      }
-      const depth = depthOf[nodeId] ?? 1;
-      const metric = metrics[nodeId]!;
-      const angle = angleByNode[nodeId] ?? 0;
-      const radius = 250 + Math.max(0, depth - 1) * 190;
-      const stagger = ((nodesByDepth[depth]?.indexOf(nodeId) ?? 0) % 2) * 24;
-      seededByNode[nodeId] = {
-        x: centerX + Math.cos(angle) * radius - metric.w / 2,
-        y: centerY + Math.sin(angle) * radius * 0.72 + stagger,
-      };
-    });
-
-    for (let depth = 1; depth <= maxDepth; depth += 1) {
-      const ids = nodesByDepth[depth] || [];
-      const sorted = [...ids].sort((a, b) => seededByNode[a]!.y - seededByNode[b]!.y);
-      let previousBottom = Number.NEGATIVE_INFINITY;
-      sorted.forEach((nodeId) => {
-        const metric = metrics[nodeId]!;
-        const seeded = seededByNode[nodeId]!;
-        const top = seeded.y - metric.h / 2;
-        if (top < previousBottom + 16) {
-          seeded.y += previousBottom + 16 - top;
-        }
-        previousBottom = seeded.y + metric.h / 2;
-      });
-    }
-
+    const { ids: descendants, depthOf: scatterDepthOf } = collectScatterNodes(state, displayRootId);
+    const seededByNode = scatterSeedPositions(state, displayRootId, descendants, scatterDepthOf);
     const pos: Record<string, NodePosition> = {};
     let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
     let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
     descendants.forEach((nodeId) => {
       const node = state.nodes[nodeId];
       if (!node) return;
-      const depth = depthOf[nodeId] ?? 0;
-      const scale = Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, depth));
-      const fontBase = nodeId === displayRootId ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont;
-      const fontSize = Math.max(11, Math.round(fontBase * scale));
-      const metric = metrics[nodeId]!;
+      const depth = scatterDepthOf[nodeId] ?? 0;
+      const radius = scatterRadiusFor(nodeId, displayRootId, depth, descendants.length);
+      const diameter = radius * 2;
       const saved = surface?.nodeViews?.[nodeId];
-      const seeded = seededByNode[nodeId] || { x: VIEWER_TUNING.layout.leftPad, y: VIEWER_TUNING.layout.topPad + 120 };
-      const seededX = seeded.x;
+      const seeded = seededByNode[nodeId] || scatterSeedCenter();
+      const seededX = seeded.x - radius;
       const seededY = seeded.y;
       const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
       const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
-      pos[nodeId] = { x, y, depth, w: metric.w, h: metric.h, fontSize };
-      maxRight = Math.max(maxRight, x + metric.w + VIEWER_TUNING.layout.canvasRightPad);
-      maxBottom = Math.max(maxBottom, y + metric.h + VIEWER_TUNING.layout.canvasBottomPad);
+      pos[nodeId] = { x, y, depth, w: diameter, h: diameter, fontSize: scatterFontSizeFor(radius) };
+      maxRight = Math.max(maxRight, x + diameter + VIEWER_TUNING.layout.canvasRightPad);
+      maxBottom = Math.max(maxBottom, y + radius + VIEWER_TUNING.layout.canvasBottomPad);
     });
 
     return {
@@ -4763,10 +5074,8 @@ function render(): void {
       if (!node || !childPos || !parentId || !parentPos || !isNodeVisibleByImportance(parentId)) {
         return;
       }
-      const start = edgeEndBetween(parentPos, childPos);
-      const end = edgeEndBetween(childPos, parentPos);
-      const guidePath = smoothGraphLinkPath(start.x, start.y, end.x, end.y);
-      scatterGuides += `<path class="scatter-guide" data-parent-node-id="${parentId}" data-child-node-id="${nodeId}" d="${guidePath}" />`;
+      const line = scatterLineEndpoints(parentPos, childPos);
+      scatterGuides += `<line class="scatter-guide" data-parent-node-id="${parentId}" data-child-node-id="${nodeId}" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}" />`;
     });
   }
 
@@ -4800,6 +5109,32 @@ function render(): void {
       return;
     }
     renderedSurfaceLinks.add(surfaceKey);
+    if (scatterSurface) {
+      const line = scatterLineEndpoints(sourcePos, targetPos);
+      const stroke = sanitizeColor(link.color) || "#555555";
+      const markerEndId = `graph-link-arrow-end-${link.id}`;
+      const markerStartId = `graph-link-arrow-start-${link.id}`;
+      const markerStart = link.direction === "backward" || link.direction === "both"
+        ? ` marker-start="url(#${markerStartId})"`
+        : "";
+      const markerEnd = link.direction === "forward" || link.direction === "both"
+        ? ` marker-end="url(#${markerEndId})"`
+        : "";
+      const styleClass = `${link.style === "default" ? "" : ` graph-link-${link.style}`}`;
+      const label = (link.label || link.relationType || "").trim();
+      defs += `
+      <marker id="${markerEndId}" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto">
+        <path d="M 0 1 L 10 6 L 0 11 z" fill="${stroke}" />
+      </marker>
+      <marker id="${markerStartId}" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
+      </marker>`;
+      graphLinks += `<line class="graph-link scatter-edge${styleClass}" data-link-id="${link.id}" data-edge-id="${link.id}" stroke="${stroke}" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}"${markerStart}${markerEnd} />`;
+      if (label) {
+        graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${line.mx}" y="${line.my - 10}" text-anchor="middle">${escapeXml(label)}</text>`;
+      }
+      return;
+    }
     const pairKey = [sourceRenderId, targetRenderId].sort().join("<->");
     const pairOffsetIndex = renderedPairOffsets.get(pairKey) ?? 0;
     renderedPairOffsets.set(pairKey, pairOffsetIndex + 1);
@@ -4978,6 +5313,45 @@ function render(): void {
     const children = scatterSurface ? [] : visibleChildren(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
     const previewLayout = buildFlowPreviewLayout(node);
+    if (scatterSurface) {
+      const { cx, cy, r } = scatterCircleGeometry(p);
+      const circleClasses = ["node-hit", "scatter-node-circle"];
+      if (nodeId === displayRootId) {
+        circleClasses.push("scatter-root");
+      }
+      if (viewState.selectedNodeIds.has(nodeId)) {
+        circleClasses.push("selected");
+        circleClasses.push("multi-selected");
+      }
+      if (nodeId === viewState.selectedNodeId) {
+        circleClasses.push("primary-selected");
+      }
+      if (isAliasNode(node)) {
+        circleClasses.push("alias");
+        circleClasses.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
+      }
+      if (viewState.linkSourceNodeId === nodeId) {
+        circleClasses.push("link-source");
+      }
+      if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
+        circleClasses.push("drag-source");
+      }
+      const circleStyle: string[] = [];
+      if (nodeStyles.bg) circleStyle.push(`fill:${nodeStyles.bg}`);
+      if (nodeStyles.border) circleStyle.push(`stroke:${nodeStyles.border}`);
+      if (nodeStyles.borderWidth != null) circleStyle.push(`stroke-width:${nodeStyles.borderWidth}px`);
+      if (nodeStyles.borderStyle === "dashed") circleStyle.push("stroke-dasharray:8 5");
+      if (nodeStyles.borderStyle === "dotted") circleStyle.push("stroke-dasharray:3 3");
+      if (nodeStyles.borderStyle === "none") circleStyle.push("stroke:none");
+      const inline = circleStyle.length ? ` style="${circleStyle.join(";")}"` : "";
+      nodes += `<circle class="${circleClasses.join(" ")}" data-node-id="${nodeId}" cx="${cx}" cy="${cy}" r="${r}"${inline} />`;
+      const labelClass = nodeId === displayRootId ? "label-root scatter-label" : "label-node scatter-label";
+      const labelStyles = [`font-size:${p.fontSize ?? scatterFontSizeFor(r)}px`];
+      const labelInline = buildLabelStyle(nodeStyles);
+      if (labelInline) labelStyles.push(labelInline);
+      nodes += `<text class="${labelClass}" data-node-id="${nodeId}" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" style="${labelStyles.join(";")}">${escapeXml(scatterLabel(node, nodeId === displayRootId ? 8 : 5))}</text>`;
+      return;
+    }
     children.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) {
@@ -9475,6 +9849,23 @@ scatterAddNodeBtn?.addEventListener("click", () => setScatterToolMode("add-node"
 scatterAddEdgeBtn?.addEventListener("click", () => setScatterToolMode("add-edge"));
 scatterColorizeBtn?.addEventListener("click", () => setScatterToolMode("colorize"));
 scatterDeleteBtn?.addEventListener("click", () => setScatterToolMode("delete"));
+scatterAnimateBtn?.addEventListener("click", () => toggleScatterAnimation());
+scatterReflowBtn?.addEventListener("click", () => {
+  runScatterReflow(180);
+  fitDocument();
+});
+scatterRepulsionInput?.addEventListener("input", () => {
+  scatterRepulsion = Number(scatterRepulsionInput.value) || SCATTER_REPULSION_DEFAULT;
+});
+scatterRepulsionInput?.addEventListener("change", () => {
+  runScatterReflow(60);
+});
+scatterEdgeLengthInput?.addEventListener("input", () => {
+  scatterEdgeLength = Number(scatterEdgeLengthInput.value) || SCATTER_EDGE_LENGTH_DEFAULT;
+});
+scatterEdgeLengthInput?.addEventListener("change", () => {
+  runScatterReflow(60);
+});
 
 penToolBtn?.addEventListener("click", () => {
   togglePenTool();
@@ -9928,6 +10319,11 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   if (!viewState.dragState.dragged && viewState.dragState.mode === "scatter") {
+    if (scatterAnimationEnabled) {
+      scatterAnimationEnabled = false;
+      stopScatterAnimation(true);
+      syncScatterToolbarUi();
+    }
     pushUndoSnapshot();
   }
   viewState.dragState.dragged = true;
@@ -10323,6 +10719,40 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
       setStatus("Drawing tool off.");
     }
     return;
+  }
+
+  if (currentSurfaceIsScatterMode() && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    const key = event.key.toLowerCase();
+    if (key === "escape") {
+      event.preventDefault();
+      setScatterToolMode("normal");
+      return;
+    }
+    if (key === "a") {
+      event.preventDefault();
+      toggleScatterAnimation();
+      return;
+    }
+    if (key === "v") {
+      event.preventDefault();
+      setScatterToolMode("add-node");
+      return;
+    }
+    if (key === "e") {
+      event.preventDefault();
+      setScatterToolMode("add-edge");
+      return;
+    }
+    if (key === "c") {
+      event.preventDefault();
+      setScatterToolMode("colorize");
+      return;
+    }
+    if (key === "d") {
+      event.preventDefault();
+      setScatterToolMode("delete");
+      return;
+    }
   }
 
   // ── Review Mode keybindings ──

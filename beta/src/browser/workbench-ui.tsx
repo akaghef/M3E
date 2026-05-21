@@ -380,6 +380,56 @@ function BottomControls({ snapshot, openModal }: { snapshot: UiSnapshot; openMod
   );
 }
 
+function setScatterRange(id: string, value: string): void {
+  setLegacyInput(id, value, "input");
+  setLegacyInput(id, value, "change");
+}
+
+function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement | null {
+  if (!visible) {
+    return null;
+  }
+  return (
+    <div className="wb-scatter-panel" data-testid="workbench-scatter-panel">
+      <div className="wb-scatter-modes">
+        <button type="button" onClick={() => clickLegacy("scatter-normal")}>Normal</button>
+        <button type="button" onClick={() => clickLegacy("scatter-add-node")}>Add Node</button>
+        <button type="button" onClick={() => clickLegacy("scatter-add-edge")}>Add Edge</button>
+        <button type="button" onClick={() => clickLegacy("scatter-colorize")}>Colorize</button>
+        <button type="button" onClick={() => clickLegacy("scatter-delete")}>Delete</button>
+      </div>
+      <div className="wb-scatter-sim">
+        <button type="button" onClick={() => clickLegacy("scatter-animate")}>Animate</button>
+        <button type="button" onClick={() => clickLegacy("scatter-reflow")}>
+          <RefreshCw size={15} /> Reflow
+        </button>
+        <label>
+          <span>Repel</span>
+          <input
+            type="range"
+            min="20000"
+            max="600000"
+            step="10000"
+            defaultValue={byId<HTMLInputElement>("scatter-repulsion")?.value || "200000"}
+            onChange={(event) => setScatterRange("scatter-repulsion", event.currentTarget.value)}
+          />
+        </label>
+        <label>
+          <span>Length</span>
+          <input
+            type="range"
+            min="80"
+            max="320"
+            step="10"
+            defaultValue={byId<HTMLInputElement>("scatter-edge-length")?.value || "180"}
+            onChange={(event) => setScatterRange("scatter-edge-length", event.currentTarget.value)}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function MainMenu({ close }: { close: () => void }): React.ReactElement {
   return (
     <div className="wb-popover wb-main-menu">
@@ -506,6 +556,7 @@ function WorkbenchApp(): React.ReactElement {
     <div className="wb-shell">
       <TopBar snapshot={snapshot} openModal={setModal} />
       <LeftRail tool={tool} setTool={setTool} openModal={setModal} />
+      <ScatterToolbar visible={snapshot.surface === "Scatter"} />
       <RightPanel
         snapshot={snapshot}
         tool={tool}

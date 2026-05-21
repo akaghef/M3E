@@ -8,6 +8,7 @@
 }
 
 .toolbar,
+.scatter-toolbar,
 .draw-toolbar,
 .mode-badge {
   opacity: 0;
@@ -30,6 +31,7 @@
 .wb-left-rail,
 .wb-right-panel,
 .wb-panel-tab,
+.wb-scatter-panel,
 .wb-bottom-controls,
 .wb-popover,
 .wb-modal,
@@ -52,6 +54,7 @@
 .wb-top-actions,
 .wb-bottom-controls,
 .wb-left-rail,
+.wb-scatter-panel,
 .wb-right-panel,
 .wb-panel-tab,
 .wb-popover,
@@ -389,6 +392,66 @@
   transform: translateX(-50%);
   padding: 6px;
   border-radius: 8px;
+}
+
+.wb-scatter-panel {
+  position: absolute;
+  top: 64px;
+  left: 76px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: min(760px, calc(100vw - 410px));
+  border-radius: 8px;
+  padding: 7px;
+}
+
+.wb-scatter-modes,
+.wb-scatter-sim {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.wb-scatter-panel button {
+  min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 7px;
+  background: #f4f5f8;
+  color: #24242a;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.wb-scatter-panel button:hover {
+  background: #e9edf4;
+}
+
+.wb-scatter-panel label {
+  height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e1e4ec;
+  border-radius: 7px;
+  background: #fafbfc;
+  padding: 0 8px;
+  color: #555864;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.wb-scatter-panel input[type="range"] {
+  width: 112px;
+  accent-color: #4262ff;
 }
 
 .wb-zoom {
