@@ -4290,10 +4290,7 @@ function buildLayout(state: AppState): LayoutResult {
     };
     visitScatter(displayRootId, 0);
 
-    const slotByDepth: Record<number, number> = {};
-    const pos: Record<string, NodePosition> = {};
-    let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
-    let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
+    const nodesByDepth: Record<number, string[]> = {};
     descendants.forEach((nodeId) => {
       const node = state.nodes[nodeId];
       if (!node) return;
@@ -4309,15 +4306,53 @@ function buildLayout(state: AppState): LayoutResult {
       const baseMinW = nodeId === displayRootId ? 220 : 112;
       const baseMinH = nodeId === displayRootId ? VIEWER_TUNING.layout.rootHeight : VIEWER_TUNING.layout.nodeHitHeight;
       const metric = {
-        w: Math.max(72, Math.max(baseMinW * scale, measured.w + 24)),
+        w: Math.max(96, Math.max(baseMinW * scale, measured.w + 56)),
         h: Math.max(30, Math.max(baseMinH * scale, measured.h + 10)),
       };
       metrics[nodeId] = metric;
+      depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metric.w);
+      if (!nodesByDepth[depth]) {
+        nodesByDepth[depth] = [];
+      }
+      nodesByDepth[depth]!.push(nodeId);
+    });
+
+    const xByDepth: Record<number, number> = {};
+    let cursorX = VIEWER_TUNING.layout.leftPad;
+    for (let depth = 0; depth <= maxDepth; depth += 1) {
+      xByDepth[depth] = cursorX;
+      cursorX += (depthMaxWidth[depth] ?? 140) + Math.max(96, VIEWER_TUNING.layout.columnGap * 0.65);
+    }
+
+    const seededByNode: Record<string, { x: number; y: number }> = {};
+    for (let depth = 0; depth <= maxDepth; depth += 1) {
+      const ids = nodesByDepth[depth] || [];
+      let cursorY = VIEWER_TUNING.layout.topPad + 120 + (depth % 2) * 34;
+      ids.forEach((nodeId) => {
+        const metric = metrics[nodeId]!;
+        seededByNode[nodeId] = {
+          x: xByDepth[depth]!,
+          y: cursorY + metric.h / 2,
+        };
+        cursorY += metric.h + 36;
+      });
+    }
+
+    const pos: Record<string, NodePosition> = {};
+    let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
+    let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
+    descendants.forEach((nodeId) => {
+      const node = state.nodes[nodeId];
+      if (!node) return;
+      const depth = depthOf[nodeId] ?? 0;
+      const scale = Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, depth));
+      const fontBase = nodeId === displayRootId ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont;
+      const fontSize = Math.max(11, Math.round(fontBase * scale));
+      const metric = metrics[nodeId]!;
       const saved = surface?.nodeViews?.[nodeId];
-      const slot = slotByDepth[depth] ?? 0;
-      slotByDepth[depth] = slot + 1;
-      const seededX = VIEWER_TUNING.layout.leftPad + depth * 230 + (slot % 2) * 34;
-      const seededY = VIEWER_TUNING.layout.topPad + 124 + slot * 96 + (depth % 2) * 38;
+      const seeded = seededByNode[nodeId] || { x: VIEWER_TUNING.layout.leftPad, y: VIEWER_TUNING.layout.topPad + 120 };
+      const seededX = seeded.x;
+      const seededY = seeded.y;
       const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
       const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
       pos[nodeId] = { x, y, depth, w: metric.w, h: metric.h, fontSize };
