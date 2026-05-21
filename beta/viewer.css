@@ -78,6 +78,38 @@
         font-weight: 700;
       }
 
+      .scatter-toolbar {
+        position: relative;
+        z-index: 5;
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-left: 76px;
+        padding: 7px;
+        border: 1px solid #d7d7d7;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 12px 24px rgba(24, 24, 24, 0.1);
+        pointer-events: auto;
+      }
+
+      .scatter-toolbar[hidden] {
+        display: none;
+      }
+
+      .scatter-tool-btn {
+        min-width: 78px;
+        min-height: 32px;
+        font-weight: 700;
+      }
+
+      .scatter-tool-btn.is-active {
+        border-color: #2f7d6d;
+        background: #e5f5f1;
+        color: #195c50;
+      }
+
       .toolbar-sep {
         color: #ccc;
         font-size: 18px;
@@ -656,6 +688,11 @@
         stroke-linejoin: round;
         opacity: 0.95;
         pointer-events: none;
+      }
+
+      .graph-link.scatter-edge {
+        pointer-events: stroke;
+        cursor: pointer;
       }
 
       .graph-link.graph-link-soft {

@@ -44,6 +44,7 @@
           <div class="mode-switch" aria-label="Surface view mode">
             <button id="view-tree" class="mode-btn is-active" type="button">Tree</button>
             <button id="view-system" class="mode-btn" type="button">System</button>
+            <button id="view-scatter" class="mode-btn" type="button">Scatter</button>
           </div>
           <button id="pen-tool" class="tool-btn" type="button" aria-label="Pen tool" aria-pressed="false" title="Pen tool (Shift+P)" data-edit-only>Pen</button>
           <div class="import-wrap" data-edit-only>
@@ -74,6 +75,13 @@
               </div>
             </div>
           </div>
+        </div>
+        <div id="scatter-toolbar" class="scatter-toolbar" role="toolbar" aria-label="Scatter tools" hidden data-edit-only>
+          <button id="scatter-normal" class="scatter-tool-btn is-active" type="button" title="Normal">Normal</button>
+          <button id="scatter-add-node" class="scatter-tool-btn" type="button" title="Add node">Add Node</button>
+          <button id="scatter-add-edge" class="scatter-tool-btn" type="button" title="Add edge">Add Edge</button>
+          <button id="scatter-colorize" class="scatter-tool-btn" type="button" title="Colorize">Colorize</button>
+          <button id="scatter-delete" class="scatter-tool-btn" type="button" title="Delete">Delete</button>
         </div>
         <div id="draw-toolbar" class="draw-toolbar" role="toolbar" aria-label="Drawing tools" data-edit-only>
           <button id="draw-select" class="draw-tool-btn is-active" type="button" aria-label="Select tool" title="Select (Esc)">

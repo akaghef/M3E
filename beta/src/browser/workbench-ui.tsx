@@ -391,6 +391,7 @@ function MainMenu({ close }: { close: () => void }): React.ReactElement {
       <div className="wb-popover-title">View</div>
       <button type="button" onClick={() => clickLegacy("view-tree")}><ListTree size={16} /> Tree surface</button>
       <button type="button" onClick={() => clickLegacy("view-system")}><Braces size={16} /> System surface</button>
+      <button type="button" onClick={() => clickLegacy("view-scatter")}><Waypoints size={16} /> Scatter surface</button>
       <button type="button" onClick={close}><Eye size={16} /> Close menu</button>
     </div>
   );

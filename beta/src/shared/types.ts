@@ -3,8 +3,8 @@ export type AliasAccess = "read" | "write";
 export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
 export type MapNodeClass = "entity" | "scope";
-export type SurfaceKind = "tree" | "system";
-export type SurfaceLayout = "tree" | "flow-lr";
+export type SurfaceKind = "tree" | "system" | "scatter";
+export type SurfaceLayout = "tree" | "flow-lr" | "scatter";
 
 export interface TreeNode {
   id: string;
@@ -33,6 +33,7 @@ export interface GraphLink {
   label?: string;
   direction?: LinkDirection;
   style?: LinkStyle;
+  color?: string;
 }
 
 export interface SurfaceNodeView {

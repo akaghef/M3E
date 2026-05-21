@@ -9,12 +9,12 @@ declare const katex: {
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
-type SurfaceViewMode = "tree" | "system";
+type SurfaceViewMode = "tree" | "system" | "scatter";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 type MapNodeClass = "entity" | "scope";
-type SurfaceKind = "tree" | "system";
-type SurfaceLayout = "tree" | "flow-lr";
+type SurfaceKind = "tree" | "system" | "scatter";
+type SurfaceLayout = "tree" | "flow-lr" | "scatter";
 
 interface TreeNode {
   id: string;
@@ -43,6 +43,7 @@ interface GraphLink {
   label?: string;
   direction?: GraphLinkDirection;
   style?: GraphLinkStyle;
+  color?: string;
 }
 
 interface SurfaceNodeView {
@@ -224,6 +225,7 @@ interface NodePosition {
   depth: number;
   w: number;
   h: number;
+  fontSize?: number;
 }
 
 interface LayoutResult {
@@ -234,6 +236,7 @@ interface LayoutResult {
 }
 
 interface DragState {
+  mode?: "structure" | "scatter";
   pointerId: number;
   sourceNodeId: string;
   sourceRootIds: string[];
@@ -243,6 +246,7 @@ interface DragState {
   dragged: boolean;
   toggleKey: boolean;
   shiftKey: boolean;
+  startViews?: Record<string, { x: number; y: number }>;
 }
 
 type DragDropProposal =

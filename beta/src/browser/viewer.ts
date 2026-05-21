@@ -7,6 +7,13 @@ const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const viewTreeBtn = document.getElementById("view-tree");
 const viewSystemBtn = document.getElementById("view-system");
+const viewScatterBtn = document.getElementById("view-scatter");
+const scatterToolbarEl = document.getElementById("scatter-toolbar") as HTMLElement | null;
+const scatterNormalBtn = document.getElementById("scatter-normal") as HTMLButtonElement | null;
+const scatterAddNodeBtn = document.getElementById("scatter-add-node") as HTMLButtonElement | null;
+const scatterAddEdgeBtn = document.getElementById("scatter-add-edge") as HTMLButtonElement | null;
+const scatterColorizeBtn = document.getElementById("scatter-colorize") as HTMLButtonElement | null;
+const scatterDeleteBtn = document.getElementById("scatter-delete") as HTMLButtonElement | null;
 const penToolBtn = document.getElementById("pen-tool") as HTMLButtonElement | null;
 const drawToolbarEl = document.getElementById("draw-toolbar") as HTMLElement | null;
 const drawSelectBtn = document.getElementById("draw-select") as HTMLButtonElement | null;
@@ -380,6 +387,11 @@ let collabEventSource: EventSource | null = null;
 let collabConfig: CollabConfigResponse | null = null;
 let collabHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let activeContextMenu: HTMLElement | null = null;
+type ScatterToolMode = "normal" | "add-node" | "add-edge" | "colorize" | "delete";
+let scatterToolMode: ScatterToolMode = "normal";
+const SCATTER_DEFAULT_EDGE_COLOR = "#2f7d6d";
+const SCATTER_DEPTH_SCALE = 2 / 3;
+const SCATTER_MIN_SCALE = 0.42;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -421,7 +433,19 @@ function thinkingModeLabel(mode: ThinkingMode): string {
 }
 
 function surfaceViewModeLabel(mode: SurfaceViewMode): string {
-  return mode === "system" ? "System" : "Tree";
+  if (mode === "system") return "System";
+  if (mode === "scatter") return "Scatter";
+  return "Tree";
+}
+
+function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
+  return mode;
+}
+
+function surfaceLayoutForKind(kind: SurfaceKind): SurfaceLayout {
+  if (kind === "system") return "flow-lr";
+  if (kind === "scatter") return "scatter";
+  return "tree";
 }
 
 function inferSurfaceViewModeForScope(scopeId: string): SurfaceViewMode {
@@ -444,6 +468,8 @@ function syncThinkingModeUi(): void {
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
   viewTreeBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "tree");
   viewSystemBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "system");
+  viewScatterBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "scatter");
+  syncScatterToolbarUi();
 }
 
 function setThinkingMode(mode: ThinkingMode): void {
@@ -472,6 +498,33 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   });
   scheduleAutosave();
   setStatus(`View: ${surfaceViewModeLabel(mode)}`);
+}
+
+function syncScatterToolbarUi(): void {
+  if (scatterToolbarEl) {
+    scatterToolbarEl.hidden = viewState.surfaceViewMode !== "scatter";
+  }
+  const entries: Array<[HTMLButtonElement | null, ScatterToolMode]> = [
+    [scatterNormalBtn, "normal"],
+    [scatterAddNodeBtn, "add-node"],
+    [scatterAddEdgeBtn, "add-edge"],
+    [scatterColorizeBtn, "colorize"],
+    [scatterDeleteBtn, "delete"],
+  ];
+  entries.forEach(([btn, mode]) => {
+    btn?.classList.toggle("is-active", scatterToolMode === mode);
+    btn?.setAttribute("aria-pressed", scatterToolMode === mode ? "true" : "false");
+  });
+}
+
+function setScatterToolMode(mode: ScatterToolMode): void {
+  scatterToolMode = mode;
+  if (mode !== "add-edge") {
+    viewState.linkSourceNodeId = "";
+  }
+  syncScatterToolbarUi();
+  scheduleRender();
+  setStatus(`Scatter: ${mode.replace("-", " ")}`);
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -960,6 +1013,42 @@ function inferredSurfaceId(nodeId: string, kind: SurfaceKind): string {
   return `surface:${nodeId}:${kind}`;
 }
 
+function sanitizeSurfaceKind(raw: unknown): SurfaceKind | null {
+  return raw === "tree" || raw === "system" || raw === "scatter" ? raw : null;
+}
+
+function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
+  return raw === "tree" || raw === "flow-lr" || raw === "scatter" ? raw : null;
+}
+
+function defaultSurfaceKindForScopeNode(node: TreeNode): SurfaceKind {
+  return rawAttr(node, "m3e:layout") === "flow-lr" ? "system" : "tree";
+}
+
+function sanitizeSurfaceNodeViews(raw: unknown, nodes: Record<string, TreeNode>): Record<string, SurfaceNodeView> {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+  const views: Record<string, SurfaceNodeView> = {};
+  Object.entries(raw as Record<string, SurfaceNodeView>).forEach(([nodeId, view]) => {
+    if (!nodes[nodeId] || !view || typeof view !== "object") {
+      return;
+    }
+    const next: SurfaceNodeView = {};
+    if (Number.isFinite(view.x)) next.x = Number(view.x);
+    if (Number.isFinite(view.y)) next.y = Number(view.y);
+    if (Number.isFinite(view.flowCol)) next.flowCol = Number(view.flowCol);
+    if (Number.isFinite(view.flowRow)) next.flowRow = Number(view.flowRow);
+    if (view.shape === "rect" || view.shape === "diamond" || view.shape === "rounded") {
+      next.shape = view.shape;
+    }
+    if (Object.keys(next).length > 0) {
+      views[nodeId] = next;
+    }
+  });
+  return views;
+}
+
 function sanitizeMapModelState(state: AppState): void {
   const rawScopes = state.scopes && typeof state.scopes === "object" ? state.scopes : {};
   const rawSurfaces = state.surfaces && typeof state.surfaces === "object" ? state.surfaces : {};
@@ -980,15 +1069,36 @@ function sanitizeMapModelState(state: AppState): void {
     }
     return state.rootId;
   };
+  const validScopeIds = new Set(folderScopeNodeIds.map((nodeId) => inferredScopeId(nodeId)));
+
+  Object.entries(rawSurfaces).forEach(([surfaceKey, rawSurface]) => {
+    if (!rawSurface || typeof rawSurface !== "object") {
+      return;
+    }
+    const surface = rawSurface as MapSurface;
+    const scopeId = typeof surface.scopeId === "string" ? surface.scopeId : "";
+    if (!validScopeIds.has(scopeId)) {
+      return;
+    }
+    const kind = sanitizeSurfaceKind(surface.kind) || "tree";
+    surfaces[surfaceKey] = {
+      id: typeof surface.id === "string" && surface.id ? surface.id : surfaceKey,
+      scopeId,
+      kind,
+      layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
+      nodeViews: sanitizeSurfaceNodeViews(surface.nodeViews, state.nodes),
+    };
+  });
 
   folderScopeNodeIds.forEach((nodeId) => {
     const node = state.nodes[nodeId];
     if (!node) return;
     const scopeId = inferredScopeId(nodeId);
     const existingScope = rawScopes[scopeId];
-    const surfaceKind: SurfaceKind = rawAttr(node, "m3e:layout") === "flow-lr" ? "system" : "tree";
-    const surfaceId = existingScope?.primarySurfaceId || inferredSurfaceId(nodeId, surfaceKind);
-    const existingSurface = rawSurfaces[surfaceId];
+    const surfaceKind = defaultSurfaceKindForScopeNode(node);
+    const preferredPrimarySurfaceId = typeof existingScope?.primarySurfaceId === "string" && surfaces[existingScope.primarySurfaceId]
+      ? existingScope.primarySurfaceId
+      : inferredSurfaceId(nodeId, surfaceKind);
     const relationIds = Object.values(state.links || {})
       .filter((link) => {
         const source = state.nodes[link.sourceNodeId];
@@ -1005,14 +1115,15 @@ function sanitizeMapModelState(state: AppState): void {
         ? existingScope!.rootNodeIds.filter((id) => Boolean(state.nodes[id]))
         : [nodeId],
       relationIds,
-      primarySurfaceId: surfaceId,
+      primarySurfaceId: preferredPrimarySurfaceId,
     };
 
-    surfaces[surfaceId] = {
-      id: existingSurface?.id || surfaceId,
+    const existingSurface = surfaces[preferredPrimarySurfaceId];
+    surfaces[preferredPrimarySurfaceId] = {
+      id: existingSurface?.id || preferredPrimarySurfaceId,
       scopeId,
       kind: existingSurface?.kind || surfaceKind,
-      layout: existingSurface?.layout || (surfaceKind === "system" ? "flow-lr" : "tree"),
+      layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
       nodeViews: existingSurface?.nodeViews || {},
     };
   });
@@ -1029,13 +1140,28 @@ function syncMapModelStateFromRuntime(): void {
   const scopeId = currentScopeRootId();
   const modelScopeId = inferredScopeId(scopeId);
   const scope = map.state.scopes?.[modelScopeId];
-  const surfaceId = scope?.primarySurfaceId;
-  if (!scope || !surfaceId || !map.state.surfaces?.[surfaceId]) {
+  if (!scope) {
     return;
   }
+  if (!map.state.surfaces) {
+    map.state.surfaces = {};
+  }
+  const surfaceKind = surfaceKindForViewMode(viewState.surfaceViewMode);
+  const surfaceId = inferredSurfaceId(scopeId, surfaceKind);
+  scope.primarySurfaceId = surfaceId;
+  if (!map.state.surfaces[surfaceId]) {
+    map.state.surfaces[surfaceId] = {
+      id: surfaceId,
+      scopeId: modelScopeId,
+      kind: surfaceKind,
+      layout: surfaceLayoutForKind(surfaceKind),
+      nodeViews: {},
+    };
+  }
   const surface = map.state.surfaces[surfaceId]!;
-  surface.kind = viewState.surfaceViewMode;
-  surface.layout = viewState.surfaceViewMode === "system" ? "flow-lr" : "tree";
+  surface.scopeId = modelScopeId;
+  surface.kind = surfaceKind;
+  surface.layout = surfaceLayoutForKind(surfaceKind);
   if (!surface.nodeViews) {
     surface.nodeViews = {};
   }
@@ -1874,6 +2000,18 @@ function surfaceNodeView(nodeId: string): SurfaceNodeView | null {
   return surface?.nodeViews?.[nodeId] || null;
 }
 
+function ensureSurfaceNodeView(nodeId: string): SurfaceNodeView | null {
+  const surface = currentMapSurface();
+  if (!surface) return null;
+  if (!surface.nodeViews) {
+    surface.nodeViews = {};
+  }
+  if (!surface.nodeViews[nodeId]) {
+    surface.nodeViews[nodeId] = {};
+  }
+  return surface.nodeViews[nodeId]!;
+}
+
 function flowColOf(node: TreeNode | null | undefined, fallback: number): number {
   if (node) {
     const surfaceValue = surfaceNodeView(node.id)?.flowCol;
@@ -2532,6 +2670,7 @@ function normalizeGraphLink(link: GraphLink): GraphLink {
     label: link.label ?? undefined,
     direction: link.direction ?? "none",
     style: link.style ?? "default",
+    color: sanitizeColor(link.color) ?? undefined,
   };
 }
 
@@ -3072,6 +3211,10 @@ function currentSurfaceNode(): TreeNode | null {
 
 function currentSurfaceIsFlowMode(): boolean {
   return viewState.surfaceViewMode === "system";
+}
+
+function currentSurfaceIsScatterMode(): boolean {
+  return viewState.surfaceViewMode === "scatter";
 }
 
 interface FlowPreviewLayout {
@@ -3926,9 +4069,9 @@ function syncLinearCaretToSelectedNode(): void {
 
 function renderLinearPanel(): void {
   if (linearPanelEl) {
-    linearPanelEl.hidden = viewState.surfaceViewMode === "system";
+    linearPanelEl.hidden = viewState.surfaceViewMode !== "tree";
   }
-  if (viewState.surfaceViewMode === "system") {
+  if (viewState.surfaceViewMode !== "tree") {
     return;
   }
   if (!linearTextEl) {
@@ -4126,10 +4269,69 @@ function buildLayout(state: AppState): LayoutResult {
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
   const flowSurface = currentSurfaceIsFlowMode();
+  const scatterSurface = currentSurfaceIsScatterMode();
   const metrics: Record<string, { w: number; h: number }> = {};
   const depthOf: Record<string, number> = {};
   const depthMaxWidth: Record<number, number> = {};
   let maxDepth = 0;
+
+  if (scatterSurface && displayRootNode) {
+    const surface = currentMapSurface();
+    const descendants: string[] = [];
+    const visitScatter = (nodeId: string, depth: number): void => {
+      const node = state.nodes[nodeId];
+      if (!node || !isNodeVisibleByImportance(nodeId)) {
+        return;
+      }
+      descendants.push(nodeId);
+      depthOf[nodeId] = depth;
+      maxDepth = Math.max(maxDepth, depth);
+      (node.children || []).forEach((childId) => visitScatter(childId, depth + 1));
+    };
+    visitScatter(displayRootId, 0);
+
+    const slotByDepth: Record<number, number> = {};
+    const pos: Record<string, NodePosition> = {};
+    let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
+    let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
+    descendants.forEach((nodeId) => {
+      const node = state.nodes[nodeId];
+      if (!node) return;
+      const depth = depthOf[nodeId] ?? 0;
+      const scale = Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, depth));
+      const fontBase = nodeId === displayRootId ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont;
+      const fontSize = Math.max(11, Math.round(fontBase * scale));
+      const nodeStyles = effectiveNodeStyleAttrs(node);
+      const label = nodeId === displayRootId ? uiLabel(node) : diagramLabel(node, nodeStyles);
+      const measured = isLatexNode(node)
+        ? measureLatex(node.text)
+        : measureNodeLabel(label, fontSize);
+      const baseMinW = nodeId === displayRootId ? 220 : 112;
+      const baseMinH = nodeId === displayRootId ? VIEWER_TUNING.layout.rootHeight : VIEWER_TUNING.layout.nodeHitHeight;
+      const metric = {
+        w: Math.max(72, Math.max(baseMinW * scale, measured.w + 24)),
+        h: Math.max(30, Math.max(baseMinH * scale, measured.h + 10)),
+      };
+      metrics[nodeId] = metric;
+      const saved = surface?.nodeViews?.[nodeId];
+      const slot = slotByDepth[depth] ?? 0;
+      slotByDepth[depth] = slot + 1;
+      const seededX = VIEWER_TUNING.layout.leftPad + depth * 230 + (slot % 2) * 34;
+      const seededY = VIEWER_TUNING.layout.topPad + 124 + slot * 96 + (depth % 2) * 38;
+      const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
+      const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
+      pos[nodeId] = { x, y, depth, w: metric.w, h: metric.h, fontSize };
+      maxRight = Math.max(maxRight, x + metric.w + VIEWER_TUNING.layout.canvasRightPad);
+      maxBottom = Math.max(maxBottom, y + metric.h + VIEWER_TUNING.layout.canvasBottomPad);
+    });
+
+    return {
+      pos,
+      order: descendants,
+      totalHeight: Math.max(maxBottom, VIEWER_TUNING.layout.minCanvasHeight),
+      totalWidth: Math.max(maxRight, VIEWER_TUNING.layout.minCanvasWidth),
+    };
+  }
 
   if (flowSurface && displayRootNode) {
     const surfaceNodes = visibleChildren(displayRootNode);
@@ -4436,6 +4638,7 @@ function render(): void {
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
   const flowSurface = currentSurfaceIsFlowMode();
+  const scatterSurface = currentSurfaceIsScatterMode();
   const rootlessSurface = flowSurface;
 
   const pos = layout.pos;
@@ -4577,9 +4780,9 @@ function render(): void {
       controlX = labelPoint.x;
       controlY = labelPoint.y - 12 - Math.abs(pairWaveOffset) * 0.35;
     }
-    const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
+    const styleClass = `${scatterSurface ? " scatter-edge" : ""}${link.style === "default" ? "" : ` graph-link-${link.style}`}`;
     const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
-    const stroke = VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
+    const stroke = sanitizeColor(link.color) || VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
     const markerEndId = `graph-link-arrow-end-${link.id}`;
     const markerStartId = `graph-link-arrow-start-${link.id}`;
     const markerStart = link.direction === "backward" || link.direction === "both"
@@ -4598,7 +4801,7 @@ function render(): void {
         <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
       </marker>`;
 
-    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
+    graphLinks += `<path class="graph-link${styleClass}" data-link-id="${link.id}" data-edge-id="${link.id}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
     if (label) {
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${controlY - 10}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
@@ -4671,7 +4874,7 @@ function render(): void {
     maxX = Math.max(maxX, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
-    const children = visibleChildren(node);
+    const children = scatterSurface ? [] : visibleChildren(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
     const previewLayout = buildFlowPreviewLayout(node);
     children.forEach((childId, i) => {
@@ -4753,8 +4956,9 @@ function render(): void {
 
     if (treatAsRoot) {
       const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
-      const rootLineHeight = lineHeightForFont(VIEWER_TUNING.typography.rootFont);
-      const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, VIEWER_TUNING.typography.rootFont, rootLineHeight);
+      const rootFont = p.fontSize ?? VIEWER_TUNING.typography.rootFont;
+      const rootLineHeight = lineHeightForFont(rootFont);
+      const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, rootFont, rootLineHeight);
       const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
       const w = p.w;
       const h = p.h;
@@ -4771,7 +4975,7 @@ function render(): void {
       const rootBoxInline = rootBoxStyle.length ? ` style="${rootBoxStyle.join(";")}"` : "";
       nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${rootBoxInline} />`;
       const rootLabelInline = buildLabelStyle(nodeStyles);
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${VIEWER_TUNING.typography.rootFont}"${rootLabelInline ? ` style="${rootLabelInline}"` : ""}>${rootTspans}</text>`;
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${rootFont}"${rootLabelInline ? ` style="${rootLabelInline}"` : ""}>${rootTspans}</text>`;
     } else {
       const rawLabel = diagramLabel(node, nodeStyles);
       const labelLines = splitLabelLines(rawLabel);
@@ -4904,14 +5108,15 @@ function render(): void {
         const foY = p.y - foH / 2;
         nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
       } else {
-        const lineHeight = lineHeightForFont(VIEWER_TUNING.typography.nodeFont);
+        const nodeFont = p.fontSize ?? VIEWER_TUNING.typography.nodeFont;
+        const lineHeight = lineHeightForFont(nodeFont);
         const startY = previewLayout
           ? p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + 36
-          : multilineTextStartY(p.y, labelLines.length, VIEWER_TUNING.typography.nodeFont, lineHeight);
+          : multilineTextStartY(p.y, labelLines.length, nodeFont, lineHeight);
         const tspans = multilineTspans(labelLines, p.x, lineHeight);
         const labelInline = buildLabelStyle(nodeStyles);
         const labelX = isScopePortalNode(node) ? p.x + 12 : p.x;
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${labelX}" y="${startY}" text-anchor="start" font-size="${VIEWER_TUNING.typography.nodeFont}"${labelInline ? ` style="${labelInline}"` : ""}>${tspans}</text>`;
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${labelX}" y="${startY}" text-anchor="start" font-size="${nodeFont}"${labelInline ? ` style="${labelInline}"` : ""}>${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
@@ -4964,7 +5169,9 @@ function render(): void {
     }
   }
 
-  if (rootlessSurface && displayRootNode) {
+  if (scatterSurface) {
+    visibleOrder.forEach((nodeId) => drawNode(nodeId));
+  } else if (rootlessSurface && displayRootNode) {
     const surfaceNodeIds = visibleChildren(displayRootNode).filter((nodeId) => Boolean(pos[nodeId]));
     if (surfaceNodeIds.length > 0) {
       let left = Number.POSITIVE_INFINITY;
@@ -4994,7 +5201,7 @@ function render(): void {
     drawNode(displayRootId);
   }
 
-  if (viewState.surfaceViewMode !== "system" && refreshLinearPanelCanvasLayout()) {
+  if (viewState.surfaceViewMode === "tree" && refreshLinearPanelCanvasLayout()) {
     const panelRightPad = 640;
     const panelBottomPad = 80;
     maxX = Math.max(maxX, _linearPanelAnchorCanvasX + linearPanelCanvasWidth + panelRightPad);
@@ -7406,6 +7613,102 @@ function applyMarkedLink(): void {
   board.focus();
 }
 
+function createGraphLinkBetween(sourceId: string, targetId: string): boolean {
+  if (!map) return false;
+  const source = map.state.nodes[sourceId];
+  const target = map.state.nodes[targetId];
+  if (!source || !target || isAliasNode(source) || isAliasNode(target)) {
+    setStatus("Edge endpoints must be non-alias nodes.", true);
+    return false;
+  }
+  if (sourceId === targetId) {
+    setStatus("Edges cannot connect a node to itself.", true);
+    return false;
+  }
+  if (findExistingGraphLink(sourceId, targetId)) {
+    setStatus("That edge already exists.");
+    return false;
+  }
+  pushUndoSnapshot();
+  const linkId = newId();
+  if (!map.state.links) {
+    map.state.links = {};
+  }
+  map.state.links[linkId] = normalizeGraphLink({
+    id: linkId,
+    sourceNodeId: sourceId,
+    targetNodeId: targetId,
+    direction: "forward",
+    style: "default",
+  });
+  touchDocument();
+  setStatus(`Edge added: ${uiLabel(source)} -> ${uiLabel(target)}.`);
+  return true;
+}
+
+function addScatterNodeAt(clientX: number, clientY: number): void {
+  if (!map || !currentSurfaceIsScatterMode()) {
+    return;
+  }
+  syncMapModelStateFromRuntime();
+  const parentId = currentScopeRootId();
+  const parent = map.state.nodes[parentId];
+  if (!parent || isAliasNode(parent)) {
+    setStatus("Current scope cannot own new nodes.", true);
+    return;
+  }
+  const point = clientToCanvasPoint(clientX, clientY);
+  pushUndoSnapshot();
+  const id = newId();
+  map.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
+  parent.children.push(id);
+  viewState.collapsedIds.delete(parentId);
+  parent.collapsed = false;
+  const view = ensureSurfaceNodeView(id);
+  if (view) {
+    view.x = Math.round(point.x);
+    view.y = Math.round(point.y);
+  }
+  setSingleSelection(id, false);
+  touchDocument();
+  setStatus("Scatter node added.");
+  board.focus();
+}
+
+function deleteScatterEdge(linkId: string): void {
+  if (!map?.state.links?.[linkId]) {
+    return;
+  }
+  pushUndoSnapshot();
+  delete map.state.links[linkId];
+  touchDocument();
+  setStatus("Edge deleted.");
+}
+
+function colorizeScatterEdge(linkId: string): void {
+  if (!map?.state.links?.[linkId]) {
+    return;
+  }
+  pushUndoSnapshot();
+  map.state.links[linkId] = normalizeGraphLink({
+    ...map.state.links[linkId]!,
+    color: SCATTER_DEFAULT_EDGE_COLOR,
+  });
+  touchDocument();
+  setStatus("Edge color updated.");
+}
+
+function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y: number }> {
+  const starts: Record<string, { x: number; y: number }> = {};
+  nodeIds.forEach((nodeId) => {
+    const p = lastLayout?.pos[nodeId];
+    if (p) {
+      starts[nodeId] = { x: p.x, y: p.y };
+    }
+  });
+  return starts;
+}
+
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
   const viewportCenterBefore = nodeViewportCenter(nodeId);
@@ -9059,6 +9362,16 @@ viewSystemBtn?.addEventListener("click", () => {
   setSurfaceViewMode("system");
 });
 
+viewScatterBtn?.addEventListener("click", () => {
+  setSurfaceViewMode("scatter");
+});
+
+scatterNormalBtn?.addEventListener("click", () => setScatterToolMode("normal"));
+scatterAddNodeBtn?.addEventListener("click", () => setScatterToolMode("add-node"));
+scatterAddEdgeBtn?.addEventListener("click", () => setScatterToolMode("add-edge"));
+scatterColorizeBtn?.addEventListener("click", () => setScatterToolMode("colorize"));
+scatterDeleteBtn?.addEventListener("click", () => setScatterToolMode("delete"));
+
 penToolBtn?.addEventListener("click", () => {
   togglePenTool();
 });
@@ -9398,6 +9711,17 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (annotationTool !== "select") {
     return;
   }
+  const linkId = (event.target as Element | null)?.getAttribute("data-link-id") ?? null;
+  if (map && currentSurfaceIsScatterMode() && linkId && event.button === 0) {
+    event.preventDefault();
+    if (scatterToolMode === "delete") {
+      deleteScatterEdge(linkId);
+    } else if (scatterToolMode === "colorize") {
+      colorizeScatterEdge(linkId);
+    }
+    board.focus();
+    return;
+  }
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
     event.preventDefault();
@@ -9412,10 +9736,68 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
+  if (map && currentSurfaceIsScatterMode() && !nodeId && event.button === 0) {
+    if (scatterToolMode === "add-node") {
+      event.preventDefault();
+      addScatterNodeAt(event.clientX, event.clientY);
+    }
+    return;
+  }
   if (!map || !nodeId || event.button !== 0) {
     return;
   }
+  if (currentSurfaceIsScatterMode()) {
+    if (scatterToolMode === "delete") {
+      event.preventDefault();
+      setSingleSelection(nodeId, false);
+      deleteSelected();
+      board.focus();
+      return;
+    }
+    if (scatterToolMode === "colorize") {
+      event.preventDefault();
+      setSingleSelection(nodeId, false);
+      showColorPalette();
+      board.focus();
+      return;
+    }
+    if (scatterToolMode === "add-edge") {
+      event.preventDefault();
+      if (!viewState.linkSourceNodeId) {
+        setSingleSelection(nodeId, false);
+        markLinkSource();
+      } else {
+        const sourceId = viewState.linkSourceNodeId;
+        setSingleSelection(nodeId, false);
+        if (createGraphLinkBetween(sourceId, nodeId)) {
+          viewState.linkSourceNodeId = "";
+          scheduleRender();
+        }
+      }
+      board.focus();
+      return;
+    }
+    const rootIds = viewState.selectedNodeIds.has(nodeId)
+      ? getMovableSelectionRoots(viewState.selectedNodeIds)
+      : getMovableSelectionRoots(new Set([nodeId]));
+    viewState.dragState = {
+      mode: "scatter",
+      pointerId: event.pointerId,
+      sourceNodeId: nodeId,
+      sourceRootIds: rootIds,
+      proposal: null,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragged: false,
+      toggleKey: event.ctrlKey || event.metaKey,
+      shiftKey: event.shiftKey,
+      startViews: scatterDragStartViews(rootIds),
+    };
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
   viewState.dragState = {
+    mode: "structure",
     pointerId: event.pointerId,
     sourceNodeId: nodeId,
     sourceRootIds: viewState.selectedNodeIds.has(nodeId)
@@ -9441,7 +9823,26 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
   if (!viewState.dragState.dragged && distance < VIEWER_TUNING.drag.reparentThreshold) {
     return;
   }
+  if (!viewState.dragState.dragged && viewState.dragState.mode === "scatter") {
+    pushUndoSnapshot();
+  }
   viewState.dragState.dragged = true;
+  if (viewState.dragState.mode === "scatter") {
+    syncMapModelStateFromRuntime();
+    const startViews = viewState.dragState.startViews || {};
+    const canvasDx = dx / viewState.zoom;
+    const canvasDy = dy / viewState.zoom;
+    viewState.dragState.sourceRootIds.forEach((nodeId) => {
+      const start = startViews[nodeId];
+      if (!start) return;
+      const view = ensureSurfaceNodeView(nodeId);
+      if (!view) return;
+      view.x = Math.round(start.x + canvasDx);
+      view.y = Math.round(start.y + canvasDy);
+    });
+    scheduleRender();
+    return;
+  }
   viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
   scheduleRender();
 });
@@ -9450,7 +9851,7 @@ function finishNodeDrag(event: PointerEvent): void {
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
-  const { sourceNodeId, sourceRootIds, proposal, dragged } = viewState.dragState;
+  const { sourceNodeId, sourceRootIds, proposal, dragged, mode } = viewState.dragState;
   const { toggleKey, shiftKey } = viewState.dragState;
   viewState.dragState = null;
   canvas.releasePointerCapture(event.pointerId);
@@ -9460,6 +9861,13 @@ function finishNodeDrag(event: PointerEvent): void {
       toggle: toggleKey,
       range: shiftKey,
     });
+    board.focus();
+    return;
+  }
+
+  if (mode === "scatter") {
+    touchDocument();
+    setStatus("Scatter position updated.");
     board.focus();
     return;
   }
