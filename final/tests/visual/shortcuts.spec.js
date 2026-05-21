@@ -105,6 +105,7 @@ test.describe("Shift+Arrow selection extension", () => {
     const before = await getSelectedCount(page);
 
     await pressKey(page, "Shift+ArrowDown");
+    await waitForRender(page);
     const after = await getSelectedCount(page);
     expect(after).toBeGreaterThan(before);
   });
@@ -114,10 +115,12 @@ test.describe("Shift+Arrow selection extension", () => {
     await focusBoard(page);
 
     await pressKey(page, "Shift+ArrowDown");
+    await waitForRender(page);
     const afterOne = await getSelectedCount(page);
     expect(afterOne).toBeGreaterThanOrEqual(2);
 
     await pressKey(page, "Shift+ArrowDown");
+    await waitForRender(page);
     const afterTwo = await getSelectedCount(page);
     // Second press should keep or extend selection (layout-dependent).
     expect(afterTwo).toBeGreaterThanOrEqual(afterOne);
@@ -523,11 +526,12 @@ test.describe("Ctrl+G: group selected", () => {
 
     const initialCount = await getNodeCount(page);
 
-    // Click Child A, then Ctrl+click Child B to multi-select.
-    const childA = page.locator("text.label-node", { hasText: "Child A" }).first();
-    const childB = page.locator("text.label-node", { hasText: "Child B" }).first();
-    await childA.click({ force: true });
-    await childB.click({ modifiers: ["Control"], force: true });
+    // Click Child A, then Ctrl+click Child B to multi-select siblings.
+    await page.locator('rect.node-hit[data-node-id="child-a"]').dispatchEvent("pointerdown", { pointerId: 1, button: 0, buttons: 1, clientX: 10, clientY: 10 });
+    await page.locator('rect.node-hit[data-node-id="child-a"]').dispatchEvent("pointerup", { pointerId: 1, button: 0, buttons: 0, clientX: 10, clientY: 10 });
+    await page.locator('rect.node-hit[data-node-id="child-b"]').dispatchEvent("pointerdown", { pointerId: 1, button: 0, buttons: 1, clientX: 10, clientY: 10, ctrlKey: true });
+    await page.locator('rect.node-hit[data-node-id="child-b"]').dispatchEvent("pointerup", { pointerId: 1, button: 0, buttons: 0, clientX: 10, clientY: 10, ctrlKey: true });
+    await waitForRender(page);
 
     const selectedCount = await getSelectedCount(page);
     expect(selectedCount).toBe(2);

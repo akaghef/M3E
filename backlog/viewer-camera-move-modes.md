@@ -6,6 +6,8 @@ viewer のカメラ/ビューポート自動追従機能の全体設計。キー
 
 - scope 切替・選択変更・ノード変動などに応じて、カメラを自動で動かせるようにする
 - ユーザの手動操作と衝突しない (操作中は止まる、意図を記憶する)
+- 編集中は active editing node を主役にし、ノード追加・テキスト編集の継続中に対象が viewport 外へ出たら smooth に追従する
+- map browsing / zoom / pan は通常の web page scroll と同程度に軽くする。位置再計算や DOM 内容更新を毎フレーム走らせず、基本は scale と translate だけで動かす
 - 機能は直交する4軸 (トリガ × ターゲット × モーション × 意図保全) の組み合わせで定義する
 - 最終的にユーザが使うのは「プリセット + 個別トグル」。内部は汎用の合成器
 
@@ -50,13 +52,14 @@ type CameraTarget = { cameraX: number; cameraY: number; zoom: number };
 |---|---|---|---|
 | a | scope | `EnterScopeCommand` / `ExitScopeCommand` | 現行最小挙動 |
 | b | selection | `setSingleSelection`, `setRangeSelection`, `toggleSelection` | 選択変更の最後で dispatch |
+| c | editing | edit start / text input resize / add child / add sibling / commit edit | active editing node が viewport 外へ出る前に smooth follow |
 | e | layout | ノード add / remove / reparent / collapse / expand / importance filter 変更 | `render()` に副作用で絡ませない、明示イベントにする |
 | f | continuous | requestAnimationFrame ループ | `lockedNode` 追従時のみ稼働 |
 | g | command | `CenterOnSelected` / `FitScope` などのコマンド | ユーザ明示の手動 fit。`intent.toggle` に関係なく常時動く |
 
 **発火口の実装:**
 ```ts
-function triggerCameraMove(reason: "scope"|"selection"|"layout"|"continuous"|"command") {
+function triggerCameraMove(reason: "scope"|"selection"|"editing"|"layout"|"continuous"|"command") {
   if (!shouldFire(reason)) return;         // intent チェック
   const target = computeCameraTarget();     // section 3
   scheduleCameraMotion(target);            // section 4
@@ -93,6 +96,13 @@ function triggerCameraMove(reason: "scope"|"selection"|"layout"|"continuous"|"co
 - 選択ノードが viewport 内にあれば何もしない (`null`)
 - 画面外なら最短距離で選択が枠内 (余白 pad px) に入るよう `cameraX/Y` だけ移動
 - ズーム維持
+
+### E2. editingFocusNudge
+- active editing node を viewport の focus area に保つ
+- ノード追加・入力欄の高さ変更・確定直後に、対象 rect が safe area から出た場合だけ `cameraX/Y` を smooth に移動
+- safe area は toolbar / inspector / linear panel を除いた作業領域からさらに余白を引いた矩形
+- ズーム維持。編集中に勝手に zoom しない
+- 連続入力中は target を差し替えるだけで、layout 全体の再計算や full render を毎フレーム行わない
 
 ### F. lockedNode
 - `lockedNodeId` を追従 (E と同じロジックを常時適用)
@@ -184,6 +194,7 @@ function scheduleCameraMotion(target: CameraTarget) {
 | **off** | (command only) | scopeFit | snap | α=off |
 | **minimal** | scope | scopeFit | snap | α=on, β=on, γ=null |
 | **follow-selection** | scope + selection | selectionNudge | tween | α=on, β=on, γ=2000ms |
+| **editing-follow** | scope + selection + editing | editingFocusNudge | tween | α=on, β=on, γ=2000ms |
 | **cinematic** | scope + selection | selectionAdaptive | spring | α=on, β=on, γ=null, δ=on |
 | **locked** | continuous | lockedNode | spring | α=on, β=on (自動再開不要) |
 
@@ -202,16 +213,36 @@ function scheduleCameraMotion(target: CameraTarget) {
 1. **Phase 0 (完了済み)**: scope 切替時 snap fit — 現行
 2. **Phase 1**: 状態モデル追加 + プリセット **minimal / off** のみ。UI トグル実装
 3. **Phase 2**: `selectionNudge` (E) と β 実装 → プリセット **follow-selection** 追加
-4. **Phase 3**: tween (ii) 実装。`panTweenZoomSnap` (iv) も同時
-5. **Phase 4**: `selectionAdaptive` (D) + `rememberZoomRatio` (δ) → **cinematic**
-6. **Phase 5**: `lockedNode` (F) + continuous trigger (f) + spring (iii) → **locked**
-7. **Phase 6**: `subtreeFit` (B), `scopeLandmark` (G), `layout trigger` (e) — 需要あれば追加
+4. **Phase 3**: `editingFocusNudge` (E2) と tween 実装 → active editing node が画面外へ出る前に smooth follow
+5. **Phase 4**: zoom / pan performance path を分離。ブラウズ中は scale + translate のみを更新し、node position 再計算と DOM 内容更新を避ける
+6. **Phase 5**: `selectionAdaptive` (D) + `rememberZoomRatio` (δ) → **cinematic**
+7. **Phase 6**: `lockedNode` (F) + continuous trigger (f) + spring (iii) → **locked**
+8. **Phase 7**: `subtreeFit` (B), `scopeLandmark` (G), `layout trigger` (e) — 需要あれば追加
 
 Phase 1-2 で止めても単体で使える。以降はニーズ次第。
 
 ---
 
-## 8. 既存コードの変更面
+## 8. レンダリング性能方針
+
+ユーザが map を browse しているだけの間は、通常の web page scroll に近い軽さを目標にする。
+
+- zoom / pan の通常フレームでは `transform: translate(...) scale(...)` の更新だけにする
+- node layout の再計算は、構造変更・テキストサイズ変更・layout mode 変更など、実際に geometry が変わるイベントに限定する
+- DOM text / node content の更新はデータ変更時だけに限定する
+- camera tween 中に full `render()` を毎フレーム呼ばない。必要なら `applyZoom()` 相当だけを呼ぶ
+- zoom レベルに応じた detail 表示切替は、連続 wheel 中では debounce / rAF batch し、閾値を跨いだ時だけ実行する
+- performance test は「100-1000 nodes で wheel zoom / trackpad pan が frame drop しない」を別途用意する
+
+疑い:
+
+- 現状の zoom path で layout 再計算または DOM 再構築が連続発生している可能性がある
+- `render()` と `applyZoom()` の責務が混ざっていると、scale/position だけで済む場面でも余計な work が走る
+- camera motion と render loop が相互に trigger し、再計算ループに見える挙動を作っている可能性がある
+
+---
+
+## 9. 既存コードの変更面
 
 - **追加**: `beta/src/browser/camera_move.ts` (新規) — ターゲット計算とモーション統括
 - **変更**:
@@ -223,7 +254,7 @@ Phase 1-2 で止めても単体で使える。以降はニーズ次第。
 
 ---
 
-## 9. キーマッピング (予約、後回し)
+## 10. キーマッピング (予約、後回し)
 
 現在未割当のキーに以下を割り当てる案。正式割当は別タスク。
 
@@ -238,7 +269,7 @@ Phase 1-2 で止めても単体で使える。以降はニーズ次第。
 
 ---
 
-## 10. エッジケース / 注意
+## 11. エッジケース / 注意
 
 - **連続 scope 切替**: tween 中に次の trigger が来る → `pending` にキュー、motion を target 差し替えで継続 (spring は自然、tween は `from` を現在位置に更新して再計算)
 - **選択が scope 外**: `selectionNudge` は scope サブツリー内の選択にのみ反応、scope 外選択は ignore
@@ -249,7 +280,7 @@ Phase 1-2 で止めても単体で使える。以降はニーズ次第。
 
 ---
 
-## 11. 未決事項 (review 必要)
+## 12. 未決事項 (review 必要)
 
 - プリセット名の日本語化の是非
 - `resumeAfterIdleMs` のデフォルト値 (2000ms? 5000ms?)

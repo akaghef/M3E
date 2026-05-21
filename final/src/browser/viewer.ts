@@ -7,6 +7,15 @@ const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const viewTreeBtn = document.getElementById("view-tree");
 const viewSystemBtn = document.getElementById("view-system");
+const penToolBtn = document.getElementById("pen-tool") as HTMLButtonElement | null;
+const drawToolbarEl = document.getElementById("draw-toolbar") as HTMLElement | null;
+const drawSelectBtn = document.getElementById("draw-select") as HTMLButtonElement | null;
+const drawPenBtn = document.getElementById("draw-pen") as HTMLButtonElement | null;
+const drawHighlighterBtn = document.getElementById("draw-highlighter") as HTMLButtonElement | null;
+const drawDateBtn = document.getElementById("draw-date") as HTMLButtonElement | null;
+const drawEraserBtn = document.getElementById("draw-eraser") as HTMLButtonElement | null;
+const penWidthInput = document.getElementById("pen-width") as HTMLInputElement | null;
+const penColorBtns = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-pen-color]"));
 const importBtn = document.getElementById("import-btn");
 const importMenu = document.getElementById("import-menu");
 const importFileBtn = document.getElementById("import-file-btn") as HTMLButtonElement | null;
@@ -26,6 +35,7 @@ const integrateStopBtn = document.getElementById("integrate-stop-btn") as HTMLBu
 const vaultSyncBadgeEl = document.getElementById("vault-sync-badge") as HTMLElement | null;
 const viewerHomeLinkEl = document.getElementById("viewer-home-link") as HTMLAnchorElement | null;
 const metaPanelEl = document.querySelector(".meta-panel") as HTMLElement | null;
+const toolbarEl = document.querySelector(".toolbar") as HTMLElement | null;
 const modeMetaEl = document.getElementById("mode-meta") as HTMLElement;
 const scopeMetaEl = document.getElementById("scope-meta") as HTMLElement;
 const scopeSummaryEl = document.getElementById("scope-summary") as HTMLElement;
@@ -221,6 +231,43 @@ let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
+
+type CameraTarget = { cameraX: number; cameraY: number; zoom: number };
+type CameraMoveOptions = { animate?: boolean; durationMs?: number };
+type AnnotationTool = "select" | "pen" | "highlighter" | "date" | "eraser";
+type PenStrokeDraft = {
+  pointerId: number;
+  scopeId: string;
+  points: PenPoint[];
+  d: string;
+  stroke: string;
+  strokeWidth: number;
+  opacity: number;
+};
+type AnnotationRenderResult = { svg: string; maxX: number; maxY: number };
+
+const CAMERA_MOTION_DURATION_MS = 300;
+const PEN_STROKE_COLOR = "#242424";
+const PEN_STROKE_WIDTH = 2;
+const HIGHLIGHTER_STROKE_COLOR = "#ffd43b";
+const HIGHLIGHTER_STROKE_WIDTH = 12;
+const HIGHLIGHTER_OPACITY = 0.36;
+const TEXT_ANNOTATION_COLOR = "#242424";
+const TEXT_ANNOTATION_FONT_SIZE = 34;
+const PEN_POINT_MIN_DISTANCE = 2;
+const ERASER_HIT_RADIUS = 26;
+let cameraMotion: {
+  raf: number | null;
+  from: CameraTarget;
+  to: CameraTarget;
+  startedAt: number;
+  durationMs: number;
+} | null = null;
+let annotationTool: AnnotationTool = "select";
+let penDraft: PenStrokeDraft | null = null;
+let eraserPointerId: number | null = null;
+let activePenStrokeColor = PEN_STROKE_COLOR;
+let activePenStrokeWidth = PEN_STROKE_WIDTH;
 
 function buildHomeHref(): string {
   const params = new URLSearchParams({ ws: WORKSPACE_ID });
@@ -759,6 +806,7 @@ function createEmptyDoc(): SavedMap {
       nodes: {
         [rootId]: createNodeRecord(rootId, null, "Research Root"),
       },
+      annotations: {},
       scopes: {
         [rootScopeId]: {
           id: rootScopeId,
@@ -922,16 +970,15 @@ function sanitizeMapModelState(state: AppState): void {
     .map((node) => node.id);
   const localScopeRootForNode = (nodeId: string): string => {
     let cursor: string | null = nodeId;
-    let nearestFolderId: string | null = null;
     while (cursor) {
       const current: TreeNode | undefined = state.nodes[cursor];
       if (!current) break;
       if (current.nodeType === "folder") {
-        nearestFolderId = current.id;
+        return current.id;
       }
       cursor = current.parentId ?? null;
     }
-    return nearestFolderId || state.rootId;
+    return state.rootId;
   };
 
   folderScopeNodeIds.forEach((nodeId) => {
@@ -1049,6 +1096,7 @@ function ensureDocShape(payload: unknown): SavedMap {
       style: record.style || "default",
     };
   });
+  candidate.state.annotations = sanitizeAnnotations(candidate.state.annotations);
   candidate.state.linearNotesByScope = sanitizeLinearNotesByScope(candidate.state.linearNotesByScope);
   candidate.state.linearTextFontScale = normalizeLinearTextFontScale(candidate.state.linearTextFontScale);
   if (candidate.state.linearPanelWidth != null) {
@@ -1069,6 +1117,486 @@ function escapeXml(text: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function ensureAnnotations(state: AppState): Record<string, MapAnnotation> {
+  if (!state.annotations || typeof state.annotations !== "object") {
+    state.annotations = {};
+  }
+  return state.annotations;
+}
+
+function safeAnnotationColor(raw: unknown, fallback: string): string {
+  const value = String(raw || "").trim();
+  return /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value)
+    ? value
+    : fallback;
+}
+
+function sanitizePenPoints(raw: unknown): PenPoint[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((point) => {
+      const candidate = point as Partial<PenPoint>;
+      const x = Number(candidate.x);
+      const y = Number(candidate.y);
+      return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    })
+    .filter((point): point is PenPoint => Boolean(point));
+}
+
+function pathDFromPoints(points: PenPoint[]): string {
+  if (points.length === 0) {
+    return "";
+  }
+  const fmt = (value: number) => Number(value.toFixed(1));
+  if (points.length === 1) {
+    const p = points[0]!;
+    return `M ${fmt(p.x)} ${fmt(p.y)}`;
+  }
+  if (points.length === 2) {
+    const first = points[0]!;
+    const last = points[1]!;
+    return `M ${fmt(first.x)} ${fmt(first.y)} L ${fmt(last.x)} ${fmt(last.y)}`;
+  }
+  const first = points[0]!;
+  let d = `M ${fmt(first.x)} ${fmt(first.y)}`;
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const current = points[i]!;
+    const next = points[i + 1]!;
+    const midX = (current.x + next.x) / 2;
+    const midY = (current.y + next.y) / 2;
+    d += ` Q ${fmt(current.x)} ${fmt(current.y)} ${fmt(midX)} ${fmt(midY)}`;
+  }
+  const last = points[points.length - 1]!;
+  d += ` L ${fmt(last.x)} ${fmt(last.y)}`;
+  return d;
+}
+
+function defaultDateAnnotationText(date = new Date()): string {
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function normalizePenAnnotation(id: string, raw: Partial<PenAnnotation>): PenAnnotation | null {
+  const points = sanitizePenPoints(raw.points);
+  const d = String(raw.d || pathDFromPoints(points)).trim();
+  if (!d || points.length < 2) {
+    return null;
+  }
+  const strokeWidth = Number(raw.strokeWidth);
+  const opacity = raw.opacity == null ? undefined : Math.max(0.05, Math.min(1, Number(raw.opacity) || 1));
+  return {
+    id: String(raw.id || id),
+    kind: "pen",
+    scopeId: raw.scopeId ? String(raw.scopeId) : undefined,
+    d,
+    points,
+    stroke: safeAnnotationColor(raw.stroke, PEN_STROKE_COLOR),
+    strokeWidth: Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth : PEN_STROKE_WIDTH,
+    opacity,
+    createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
+  };
+}
+
+function normalizeTextAnnotation(id: string, raw: Partial<TextAnnotation>): TextAnnotation | null {
+  const text = String(raw.text || "").trim();
+  const x = Number(raw.x);
+  const y = Number(raw.y);
+  if (!text || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  const fontSize = Number(raw.fontSize);
+  const fontWeight = Number(raw.fontWeight);
+  const variant = raw.variant === "date" ? "date" : "label";
+  return {
+    id: String(raw.id || id),
+    kind: "text",
+    scopeId: raw.scopeId ? String(raw.scopeId) : undefined,
+    x,
+    y,
+    text,
+    fill: safeAnnotationColor(raw.fill, TEXT_ANNOTATION_COLOR),
+    fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize : TEXT_ANNOTATION_FONT_SIZE,
+    fontWeight: Number.isFinite(fontWeight) && fontWeight > 0 ? fontWeight : undefined,
+    variant,
+    createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
+  };
+}
+
+function sanitizeAnnotations(raw: unknown): Record<string, MapAnnotation> {
+  const sanitized: Record<string, MapAnnotation> = {};
+  if (!raw || typeof raw !== "object") {
+    return sanitized;
+  }
+  Object.entries(raw as Record<string, unknown>).forEach(([id, annotation]) => {
+    if (!annotation || typeof annotation !== "object") {
+      return;
+    }
+    const candidate = annotation as Partial<MapAnnotation>;
+    const normalized = candidate.kind === "pen"
+      ? normalizePenAnnotation(id, candidate as Partial<PenAnnotation>)
+      : candidate.kind === "text"
+        ? normalizeTextAnnotation(id, candidate as Partial<TextAnnotation>)
+        : null;
+    if (normalized) {
+      sanitized[normalized.id] = normalized;
+    }
+  });
+  return sanitized;
+}
+
+function isStrokeAnnotationTool(tool: AnnotationTool): boolean {
+  return tool === "pen" || tool === "highlighter";
+}
+
+function activeStrokeColor(): string {
+  return annotationTool === "highlighter" ? HIGHLIGHTER_STROKE_COLOR : activePenStrokeColor;
+}
+
+function activeStrokeWidth(): number {
+  return annotationTool === "highlighter" ? HIGHLIGHTER_STROKE_WIDTH : activePenStrokeWidth;
+}
+
+function activeStrokeOpacity(): number {
+  return annotationTool === "highlighter" ? HIGHLIGHTER_OPACITY : 0.95;
+}
+
+function setAnnotationTool(tool: AnnotationTool): void {
+  annotationTool = tool;
+  if (!isStrokeAnnotationTool(tool)) {
+    penDraft = null;
+  }
+  if (tool !== "eraser") {
+    eraserPointerId = null;
+  }
+  board.classList.toggle("pen-mode", isStrokeAnnotationTool(annotationTool));
+  board.classList.toggle("text-mode", annotationTool === "date");
+  board.classList.toggle("eraser-mode", annotationTool === "eraser");
+  if (penToolBtn) {
+    penToolBtn.classList.toggle("is-active", annotationTool !== "select");
+    penToolBtn.setAttribute("aria-pressed", annotationTool !== "select" ? "true" : "false");
+  }
+  const toolButtons: Array<[HTMLButtonElement | null, AnnotationTool]> = [
+    [drawSelectBtn, "select"],
+    [drawPenBtn, "pen"],
+    [drawHighlighterBtn, "highlighter"],
+    [drawDateBtn, "date"],
+    [drawEraserBtn, "eraser"],
+  ];
+  toolButtons.forEach(([button, buttonTool]) => {
+    if (!button) return;
+    const active = annotationTool === buttonTool;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  drawToolbarEl?.classList.toggle("is-drawing", annotationTool !== "select");
+  scheduleRender();
+}
+
+function togglePenTool(): void {
+  setAnnotationTool(annotationTool === "pen" ? "select" : "pen");
+  setStatus(annotationTool === "pen" ? "Pen tool: draw on the map surface." : "Pen tool off.");
+}
+
+function cancelPenStroke(showStatus = false): void {
+  if (!penDraft) {
+    return;
+  }
+  penDraft = null;
+  scheduleRender();
+  if (showStatus) {
+    setStatus("Pen stroke cancelled.");
+  }
+}
+
+function appendPenPoint(draft: PenStrokeDraft, point: PenPoint): boolean {
+  const prev = draft.points[draft.points.length - 1];
+  if (prev) {
+    const minDistance = Math.max(PEN_POINT_MIN_DISTANCE, PEN_POINT_MIN_DISTANCE / Math.max(0.2, viewState.zoom));
+    if (Math.hypot(point.x - prev.x, point.y - prev.y) < minDistance) {
+      return false;
+    }
+  }
+  draft.points.push(point);
+  draft.d = pathDFromPoints(draft.points);
+  return true;
+}
+
+function startPenStroke(event: PointerEvent): void {
+  if (!map || event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  cancelCameraMotion();
+  const firstPoint = clientToCanvasPoint(event.clientX, event.clientY);
+  penDraft = {
+    pointerId: event.pointerId,
+    scopeId: normalizedCurrentScopeId(),
+    points: [firstPoint],
+    d: pathDFromPoints([firstPoint]),
+    stroke: activeStrokeColor(),
+    strokeWidth: activeStrokeWidth(),
+    opacity: activeStrokeOpacity(),
+  };
+  board.setPointerCapture(event.pointerId);
+  scheduleRender();
+}
+
+function updatePenDraftElement(): void {
+  if (!penDraft) {
+    return;
+  }
+  const draftPath = canvas.querySelector<SVGPathElement>(".annotation-pen-draft");
+  if (!draftPath) {
+    scheduleRender();
+    return;
+  }
+  draftPath.setAttribute("d", penDraft.d);
+  draftPath.setAttribute("stroke", penDraft.stroke);
+  draftPath.setAttribute("stroke-width", String(penDraft.strokeWidth));
+  draftPath.setAttribute("opacity", String(penDraft.opacity));
+}
+
+function updatePenStroke(event: PointerEvent): boolean {
+  if (!penDraft || event.pointerId !== penDraft.pointerId) {
+    return false;
+  }
+  event.preventDefault();
+  const changed = appendPenPoint(penDraft, clientToCanvasPoint(event.clientX, event.clientY));
+  if (changed) {
+    updatePenDraftElement();
+  }
+  return true;
+}
+
+function finishPenStroke(event: PointerEvent): boolean {
+  if (!penDraft || event.pointerId !== penDraft.pointerId) {
+    return false;
+  }
+  event.preventDefault();
+  const draft = penDraft;
+  appendPenPoint(draft, clientToCanvasPoint(event.clientX, event.clientY));
+  penDraft = null;
+  try {
+    board.releasePointerCapture(event.pointerId);
+  } catch {
+    // Pointer capture may already be gone after pointercancel.
+  }
+  if (!map || draft.points.length < 2 || !draft.d) {
+    scheduleRender();
+    return true;
+  }
+  pushUndoSnapshot();
+  const id = `anno_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  ensureAnnotations(map.state)[id] = {
+    id,
+    kind: "pen",
+    scopeId: draft.scopeId,
+    d: draft.d,
+    points: draft.points,
+    stroke: draft.stroke,
+    strokeWidth: draft.strokeWidth,
+    opacity: draft.opacity,
+    createdAt: nowIso(),
+  };
+  touchDocument();
+  setStatus("Pen stroke added.");
+  return true;
+}
+
+function distancePointToSegment(point: PenPoint, a: PenPoint, b: PenPoint): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= 0.0001) {
+    return Math.hypot(point.x - a.x, point.y - a.y);
+  }
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq));
+  const projectionX = a.x + t * dx;
+  const projectionY = a.y + t * dy;
+  return Math.hypot(point.x - projectionX, point.y - projectionY);
+}
+
+function textAnnotationBounds(annotation: TextAnnotation): { left: number; right: number; top: number; bottom: number } {
+  const width = Math.max(40, annotation.text.length * annotation.fontSize * 0.62);
+  const height = annotation.fontSize * 1.28;
+  return {
+    left: annotation.x - 9,
+    right: annotation.x + width + 9,
+    top: annotation.y - height + 4,
+    bottom: annotation.y + 10,
+  };
+}
+
+function annotationHitDistance(annotation: MapAnnotation, point: PenPoint): number {
+  if (annotation.kind === "text") {
+    const bounds = textAnnotationBounds(annotation);
+    if (point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom) {
+      return 0;
+    }
+    const dx = point.x < bounds.left ? bounds.left - point.x : point.x > bounds.right ? point.x - bounds.right : 0;
+    const dy = point.y < bounds.top ? bounds.top - point.y : point.y > bounds.bottom ? point.y - bounds.bottom : 0;
+    return Math.hypot(dx, dy);
+  }
+
+  if (annotation.points.length < 2) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < annotation.points.length; i += 1) {
+    minDistance = Math.min(minDistance, distancePointToSegment(point, annotation.points[i - 1]!, annotation.points[i]!));
+  }
+  return minDistance;
+}
+
+function eraseAnnotationAtPoint(point: PenPoint): boolean {
+  if (!map) {
+    return false;
+  }
+  const scopeId = normalizedCurrentScopeId();
+  const entries = Object.entries(ensureAnnotations(map.state)).reverse();
+  let bestId: string | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  entries.forEach(([id, annotation]) => {
+    if (annotation.scopeId && annotation.scopeId !== scopeId) {
+      return;
+    }
+    const distance = annotationHitDistance(annotation, point);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestId = id;
+    }
+  });
+  const threshold = ERASER_HIT_RADIUS / Math.max(0.35, viewState.zoom);
+  if (!bestId || bestDistance > threshold) {
+    return false;
+  }
+  pushUndoSnapshot();
+  delete map.state.annotations![bestId];
+  touchDocument();
+  setStatus("Annotation erased.");
+  return true;
+}
+
+function startEraserStroke(event: PointerEvent): void {
+  if (!map || event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  eraserPointerId = event.pointerId;
+  board.setPointerCapture(event.pointerId);
+  eraseAnnotationAtPoint(clientToCanvasPoint(event.clientX, event.clientY));
+}
+
+function updateEraserStroke(event: PointerEvent): boolean {
+  if (eraserPointerId !== event.pointerId) {
+    return false;
+  }
+  event.preventDefault();
+  eraseAnnotationAtPoint(clientToCanvasPoint(event.clientX, event.clientY));
+  return true;
+}
+
+function finishEraserStroke(event: PointerEvent): boolean {
+  if (eraserPointerId !== event.pointerId) {
+    return false;
+  }
+  event.preventDefault();
+  eraserPointerId = null;
+  try {
+    board.releasePointerCapture(event.pointerId);
+  } catch {
+    // Pointer capture may already be gone after pointercancel.
+  }
+  return true;
+}
+
+function addDateAnnotationAt(event: PointerEvent): void {
+  if (!map || event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const point = clientToCanvasPoint(event.clientX, event.clientY);
+  const initial = defaultDateAnnotationText();
+  const text = window.prompt("Date label", initial)?.trim();
+  if (!text) {
+    return;
+  }
+  pushUndoSnapshot();
+  const id = `anno_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  ensureAnnotations(map.state)[id] = {
+    id,
+    kind: "text",
+    scopeId: normalizedCurrentScopeId(),
+    x: point.x,
+    y: point.y,
+    text,
+    fill: TEXT_ANNOTATION_COLOR,
+    fontSize: TEXT_ANNOTATION_FONT_SIZE,
+    fontWeight: 720,
+    variant: "date",
+    createdAt: nowIso(),
+  };
+  touchDocument();
+  setStatus(`Date label added: ${text}`);
+}
+
+function renderAnnotationsForCurrentScope(state: AppState): AnnotationRenderResult {
+  const scopeId = normalizedCurrentScopeId();
+  let svg = "";
+  let maxX = 0;
+  let maxY = 0;
+  const renderPen = (annotation: PenAnnotation, className: string): void => {
+    const stroke = escapeXml(annotation.stroke || PEN_STROKE_COLOR);
+    const opacity = annotation.opacity == null ? "" : ` opacity="${Math.max(0.05, Math.min(1, annotation.opacity))}"`;
+    svg += `<path class="${className}" data-annotation-id="${escapeXml(annotation.id)}" d="${escapeXml(annotation.d)}" stroke="${stroke}" stroke-width="${annotation.strokeWidth || PEN_STROKE_WIDTH}"${opacity} />`;
+    annotation.points.forEach((point) => {
+      maxX = Math.max(maxX, point.x + 48);
+      maxY = Math.max(maxY, point.y + 48);
+    });
+  };
+  const renderText = (annotation: TextAnnotation): void => {
+    const fill = escapeXml(annotation.fill || TEXT_ANNOTATION_COLOR);
+    const fontSize = annotation.fontSize || TEXT_ANNOTATION_FONT_SIZE;
+    const fontWeight = annotation.fontWeight || 650;
+    const variantClass = annotation.variant === "date" ? " annotation-text-date" : "";
+    const bounds = textAnnotationBounds(annotation);
+    const bgWidth = bounds.right - bounds.left;
+    const bgHeight = bounds.bottom - bounds.top;
+    svg += `<rect class="annotation-text-bg${variantClass}" data-annotation-id="${escapeXml(annotation.id)}" x="${bounds.left}" y="${bounds.top}" width="${bgWidth}" height="${bgHeight}" rx="8" />`;
+    svg += `<text class="annotation-text${variantClass}" data-annotation-id="${escapeXml(annotation.id)}" x="${annotation.x}" y="${annotation.y}" fill="${fill}" font-size="${fontSize}" font-weight="${fontWeight}">${escapeXml(annotation.text)}</text>`;
+    maxX = Math.max(maxX, bounds.right + 48);
+    maxY = Math.max(maxY, bounds.bottom + 48);
+  };
+
+  Object.values(state.annotations || {}).forEach((annotation) => {
+    if (annotation.scopeId && annotation.scopeId !== scopeId) {
+      return;
+    }
+    if (annotation.kind === "pen") {
+      renderPen(annotation, "annotation-pen");
+    } else if (annotation.kind === "text") {
+      renderText(annotation);
+    }
+  });
+  if (penDraft && penDraft.scopeId === scopeId && penDraft.d) {
+    renderPen({
+      id: "draft",
+      kind: "pen",
+      scopeId,
+      d: penDraft.d,
+      points: penDraft.points,
+      stroke: penDraft.stroke,
+      strokeWidth: penDraft.strokeWidth,
+      opacity: penDraft.opacity,
+    }, "annotation-pen annotation-pen-draft");
+  }
+  return { svg, maxX, maxY };
 }
 
 // ── m3e: visual style attributes ──────────────────────────────────────
@@ -1626,18 +2154,17 @@ function scopeRootForNode(nodeId: string): string {
     return "";
   }
   let cursor: string | null = nodeId;
-  let nearestFolderId: string | null = null;
   while (cursor) {
     const node: TreeNode | undefined = map.state.nodes[cursor];
     if (!node) {
       break;
     }
     if (isFolderNode(node)) {
-      nearestFolderId = node.id;
+      return node.id;
     }
     cursor = node.parentId ?? null;
   }
-  return nearestFolderId || map.state.rootId;
+  return map.state.rootId;
 }
 
 function scopePathIds(scopeRootId: string): string[] {
@@ -1902,10 +2429,19 @@ function jumpToAliasTarget(): boolean {
     setStatus("Broken alias cannot jump to target.", true);
     return false;
   }
-  viewState.currentScopeRootId = scopeRootForNode(target.id);
+  const targetScopeId = scopeRootForNode(target.id);
+  const currentScopeId = normalizedCurrentScopeId();
+  if (targetScopeId !== currentScopeId) {
+    viewState.scopeHistory.push(currentScopeId);
+    viewState.currentScopeId = targetScopeId;
+    viewState.currentScopeRootId = targetScopeId;
+    viewState.surfaceViewMode = inferSurfaceViewModeForScope(targetScopeId);
+  }
   setSingleSelection(target.id, false);
+  normalizeSelectionState();
   render();
   fitDocument();
+  updateScopeInUrl(targetScopeId);
   setStatus(`Jumped to target: ${uiLabel(target)}`);
   board.focus();
   return true;
@@ -2186,6 +2722,93 @@ function applyZoom(): void {
   syncLinearPanelPosition();
 }
 
+function currentCameraTarget(): CameraTarget {
+  return {
+    cameraX: viewState.cameraX,
+    cameraY: viewState.cameraY,
+    zoom: viewState.zoom,
+  };
+}
+
+function cancelCameraMotion(): void {
+  if (!cameraMotion) {
+    return;
+  }
+  if (cameraMotion.raf !== null) {
+    cancelAnimationFrame(cameraMotion.raf);
+  }
+  cameraMotion = null;
+}
+
+function applyCameraTarget(target: CameraTarget): void {
+  viewState.cameraX = target.cameraX;
+  viewState.cameraY = target.cameraY;
+  viewState.zoom = clampZoom(target.zoom);
+  applyZoom();
+}
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function lerp(from: number, to: number, t: number): number {
+  return from + (to - from) * t;
+}
+
+function shouldSnapCamera(from: CameraTarget, to: CameraTarget, durationMs: number): boolean {
+  if (durationMs <= 0) {
+    return true;
+  }
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    return true;
+  }
+  return Math.abs(from.cameraX - to.cameraX) < 0.5 &&
+    Math.abs(from.cameraY - to.cameraY) < 0.5 &&
+    Math.abs(from.zoom - to.zoom) < 0.001;
+}
+
+function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): void {
+  const clampedTarget = { ...target, zoom: clampZoom(target.zoom) };
+  const durationMs = options.durationMs ?? CAMERA_MOTION_DURATION_MS;
+  const animate = options.animate !== false;
+  const from = currentCameraTarget();
+  cancelCameraMotion();
+
+  if (!animate || shouldSnapCamera(from, clampedTarget, durationMs)) {
+    applyCameraTarget(clampedTarget);
+    return;
+  }
+
+  cameraMotion = {
+    raf: null,
+    from,
+    to: clampedTarget,
+    startedAt: performance.now(),
+    durationMs,
+  };
+
+  const step = (now: number): void => {
+    if (!cameraMotion) {
+      return;
+    }
+    const motion = cameraMotion;
+    const rawT = Math.min(1, Math.max(0, (now - motion.startedAt) / motion.durationMs));
+    const t = easeInOutCubic(rawT);
+    viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
+    viewState.cameraY = lerp(motion.from.cameraY, motion.to.cameraY, t);
+    viewState.zoom = lerp(motion.from.zoom, motion.to.zoom, t);
+    applyZoom();
+    if (rawT >= 1) {
+      applyCameraTarget(motion.to);
+      cameraMotion = null;
+      return;
+    }
+    motion.raf = requestAnimationFrame(step);
+  };
+
+  cameraMotion.raf = requestAnimationFrame(step);
+}
+
 function syncLinearPanelPosition(): void {
   if (!linearPanelEl) {
     return;
@@ -2287,9 +2910,86 @@ function preserveNodeViewportCenter(nodeId: string, before: { x: number; y: numb
   if (!after) {
     return;
   }
-  viewState.cameraX += before.x - after.x;
-  viewState.cameraY += before.y - after.y;
-  applyZoom();
+  moveCameraTo({
+    cameraX: viewState.cameraX + before.x - after.x,
+    cameraY: viewState.cameraY + before.y - after.y,
+    zoom: viewState.zoom,
+  });
+}
+
+function nodeViewportRect(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
+  if (!map || !lastLayout) {
+    return null;
+  }
+  const nodePos = lastLayout.pos[nodeId];
+  if (!nodePos) {
+    return null;
+  }
+  const nodeHeight = Math.max(VIEWER_TUNING.layout.nodeHitHeight, nodePos.h);
+  const left = viewState.cameraX + nodePos.x * viewState.zoom;
+  const right = viewState.cameraX + (nodePos.x + nodePos.w) * viewState.zoom;
+  const top = viewState.cameraY + (nodePos.y - nodeHeight / 2) * viewState.zoom;
+  const bottom = viewState.cameraY + (nodePos.y + nodeHeight / 2) * viewState.zoom;
+  if (inlineEditor?.nodeId === nodeId) {
+    const boardRect = board.getBoundingClientRect();
+    const editorRect = inlineEditor.input.getBoundingClientRect();
+    return {
+      left: Math.min(left, editorRect.left - boardRect.left),
+      right: Math.max(right, editorRect.right - boardRect.left),
+      top: Math.min(top, editorRect.top - boardRect.top),
+      bottom: Math.max(bottom, editorRect.bottom - boardRect.top),
+    };
+  }
+  return { left, right, top, bottom };
+}
+
+function activeSafeViewport(): { left: number; right: number; top: number; bottom: number } {
+  const boardRect = board.getBoundingClientRect();
+  const toolbarRect = toolbarEl?.getBoundingClientRect();
+  const toolbarBottom = toolbarRect ? Math.max(0, toolbarRect.bottom - boardRect.top) : 0;
+  const pad = 52;
+  return {
+    left: pad,
+    right: Math.max(pad, boardRect.width - pad),
+    top: Math.max(pad, toolbarBottom + 28),
+    bottom: Math.max(pad, boardRect.height - pad),
+  };
+}
+
+function nudgeNodeIntoView(nodeId: string, options: CameraMoveOptions = {}): boolean {
+  const rect = nodeViewportRect(nodeId);
+  if (!rect) {
+    return false;
+  }
+  const safe = activeSafeViewport();
+  let dx = 0;
+  let dy = 0;
+  if (rect.left < safe.left) {
+    dx = safe.left - rect.left;
+  } else if (rect.right > safe.right) {
+    dx = safe.right - rect.right;
+  }
+  if (rect.top < safe.top) {
+    dy = safe.top - rect.top;
+  } else if (rect.bottom > safe.bottom) {
+    dy = safe.bottom - rect.bottom;
+  }
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+    return false;
+  }
+  moveCameraTo({
+    cameraX: viewState.cameraX + dx,
+    cameraY: viewState.cameraY + dy,
+    zoom: viewState.zoom,
+  }, options);
+  return true;
+}
+
+function nudgeActiveNodeIntoView(options: CameraMoveOptions = {}): boolean {
+  if (!viewState.selectedNodeId) {
+    return false;
+  }
+  return nudgeNodeIntoView(viewState.selectedNodeId, options);
 }
 
 function setZoom(
@@ -2298,6 +2998,7 @@ function setZoom(
   anchorClientY: number | null = null,
   statusMode: "immediate" | "throttled" | "silent" = "immediate",
 ): void {
+  cancelCameraMotion();
   const previousZoom = viewState.zoom;
   viewState.zoom = clampZoom(nextZoom);
 
@@ -2331,6 +3032,7 @@ let _pendingZoomAnchorX: number | null = null;
 let _pendingZoomAnchorY: number | null = null;
 
 function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, anchorClientY: number | null = null): void {
+  cancelCameraMotion();
   _pendingZoom = clampZoom(nextZoom);
   _pendingZoomAnchorX = anchorClientX;
   _pendingZoomAnchorY = anchorClientY;
@@ -2645,6 +3347,54 @@ function uArchOrthogonalPath(
     const sweep = dirX > 0 ? 0 : 1;
     return `M ${sx} ${sy} V ${apexY - r} A ${r} ${r} 0 0 ${sweep} ${sx + dirX * r} ${apexY} H ${tx - dirX * r} A ${r} ${r} 0 0 ${sweep} ${tx} ${apexY - r} V ${ty}`;
   }
+}
+
+function smoothGraphLinkPath(sx: number, sy: number, tx: number, ty: number, waveOffset = 0): string {
+  const dx = tx - sx;
+  const dy = ty - sy;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  if (absDx < 0.5 && absDy < 0.5) {
+    return `M ${sx} ${sy}`;
+  }
+  if (absDx >= absDy) {
+    const dirX = dx >= 0 ? 1 : -1;
+    const handle = Math.max(44, Math.min(260, absDx * 0.46 + absDy * 0.16));
+    return `M ${sx} ${sy} C ${sx + dirX * handle} ${sy + waveOffset}, ${tx - dirX * handle} ${ty - waveOffset}, ${tx} ${ty}`;
+  }
+  const dirY = dy >= 0 ? 1 : -1;
+  const handle = Math.max(44, Math.min(220, absDy * 0.46 + absDx * 0.16));
+  return `M ${sx} ${sy} C ${sx + waveOffset} ${sy + dirY * handle}, ${tx - waveOffset} ${ty - dirY * handle}, ${tx} ${ty}`;
+}
+
+function smoothArchLinkPath(sx: number, sy: number, tx: number, ty: number, apexY: number): string {
+  const handleY = apexY;
+  const dx = tx - sx;
+  const sideOffset = Math.max(24, Math.min(140, Math.abs(dx) * 0.18));
+  const dirX = dx >= 0 ? 1 : -1;
+  return `M ${sx} ${sy} C ${sx + dirX * sideOffset} ${handleY}, ${tx - dirX * sideOffset} ${handleY}, ${tx} ${ty}`;
+}
+
+function cubicPointAtHalf(sx: number, sy: number, c1x: number, c1y: number, c2x: number, c2y: number, tx: number, ty: number): { x: number; y: number } {
+  return {
+    x: (sx + 3 * c1x + 3 * c2x + tx) / 8,
+    y: (sy + 3 * c1y + 3 * c2y + ty) / 8,
+  };
+}
+
+function smoothGraphLinkLabelPoint(sx: number, sy: number, tx: number, ty: number, waveOffset = 0): { x: number; y: number } {
+  const dx = tx - sx;
+  const dy = ty - sy;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  if (absDx >= absDy) {
+    const dirX = dx >= 0 ? 1 : -1;
+    const handle = Math.max(44, Math.min(260, absDx * 0.46 + absDy * 0.16));
+    return cubicPointAtHalf(sx, sy, sx + dirX * handle, sy + waveOffset, tx - dirX * handle, ty - waveOffset, tx, ty);
+  }
+  const dirY = dy >= 0 ? 1 : -1;
+  const handle = Math.max(44, Math.min(220, absDy * 0.46 + absDx * 0.16));
+  return cubicPointAtHalf(sx, sy, sx + waveOffset, sy + dirY * handle, tx - waveOffset, ty - dirY * handle, tx, ty);
 }
 
 function currentLinearMemoScopeId(): string {
@@ -3699,6 +4449,7 @@ function render(): void {
   let edges = "";
   let graphLinks = "";
   let overlays = "";
+  let annotations = "";
   let nodes = "";
 
   const renderedSurfaceLinks = new Set<string>();
@@ -3772,9 +4523,6 @@ function render(): void {
     const targetX = targetEnd.x;
     const targetY = targetEnd.y;
     const forward = targetX >= sourceX;
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
-    const horizontalSpan = Math.abs(dx);
     const depthBack = targetPos.depth < sourcePos.depth
       || (targetPos.depth === sourcePos.depth && targetY < sourceY);
     const isReverseFlow = flowSurface && !forward;
@@ -3820,19 +4568,14 @@ function render(): void {
         tyArch = targetPos.y + targetPos.h / 2 + tgtPad;
         apexY = uArchBottomApex(linkAvoidBoxes, syArch, tyArch, lift);
       }
-      graphLinkPathD = uArchOrthogonalPath(sxArch, syArch, txArch, tyArch, apexY);
+      graphLinkPathD = smoothArchLinkPath(sxArch, syArch, txArch, tyArch, apexY);
       controlX = (sxArch + txArch) / 2;
       controlY = useTop ? apexY - 10 : apexY + 16;
     } else {
-      const preferredMidX = sourceX + (targetX - sourceX) / 2 + pairWaveOffset;
-      const midX = chooseClearMidX(sourceX, targetX, linkAvoidBoxes, preferredMidX, 10);
-      graphLinkPathD = roundedOrthogonalPath(sourceX, sourceY, targetX, targetY, { midX });
-      controlX = midX;
-      // Lift label above the edge line so it doesn't collide with box content / pills.
-      const isStraightH = Math.abs(sourceY - targetY) < 4;
-      controlY = isStraightH
-        ? sourceY - 16 - Math.abs(pairWaveOffset)
-        : (sourceY + targetY) / 2 - 10 - pairWaveOffset;
+      graphLinkPathD = smoothGraphLinkPath(sourceX, sourceY, targetX, targetY, pairWaveOffset);
+      const labelPoint = smoothGraphLinkLabelPoint(sourceX, sourceY, targetX, targetY, pairWaveOffset);
+      controlX = labelPoint.x;
+      controlY = labelPoint.y - 12 - Math.abs(pairWaveOffset) * 0.35;
     }
     const styleClass = link.style === "default" ? "" : ` graph-link-${link.style}`;
     const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
@@ -4119,7 +4862,7 @@ function render(): void {
             const sy = sourceEnd.y;
             const tx = targetEnd.x;
             const ty = targetEnd.y;
-            const previewEdgePath = roundedOrthogonalPath(sx, sy, tx, ty, { radius: 6 });
+            const previewEdgePath = smoothGraphLinkPath(sx, sy, tx, ty);
             nodes += `<path class="flow-preview-edge" d="${previewEdgePath}" />`;
             const edgeLabel = (link.label || link.relationType || "").trim();
             if (edgeLabel) {
@@ -4266,18 +5009,24 @@ function render(): void {
     }
   }
 
+  const annotationRender = renderAnnotationsForCurrentScope(state);
+  annotations = annotationRender.svg;
+  maxX = Math.max(maxX, annotationRender.maxX);
+  maxY = Math.max(maxY, annotationRender.maxY);
+
   contentWidth = maxX;
   contentHeight = maxY;
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${graphLinks}${overlays}${nodes}`;
+  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${graphLinks}${overlays}${nodes}${annotations}`;
   applyZoom();
 
   const version = map.version ?? "n/a";
   const savedAt = map.savedAt ?? "n/a";
   const nodeCount = Object.keys(state.nodes).length;
   const linkCount = Object.values(state.links || {}).filter((link) => pos[link.sourceNodeId] && pos[link.targetNodeId]).length;
+  const annotationCount = Object.keys(state.annotations || {}).length;
   const selected = state.nodes[viewState.selectedNodeId];
   const linkSourceLabel = viewState.linkSourceNodeId && state.nodes[viewState.linkSourceNodeId]
     ? uiLabel(state.nodes[viewState.linkSourceNodeId]!)
@@ -4294,7 +5043,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
-  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
   updateMapTitle();
@@ -6550,6 +7299,7 @@ function addChild(): void {
   parent.collapsed = false;
   setSingleSelection(id, false);
   touchDocument();
+  nudgeActiveNodeIntoView();
   board.focus();
 }
 
@@ -6567,6 +7317,7 @@ function addSibling(): void {
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
+  nudgeActiveNodeIntoView();
   board.focus();
 }
 
@@ -6764,6 +7515,7 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): voi
   inlineEditor = { nodeId, input, mode };
   syncInlineEditorPosition();
   autoSizeInlineEditor(input);
+  nudgeNodeIntoView(nodeId);
   input.focus();
   if (options?.selectAll ?? true) {
     input.select();
@@ -7521,20 +8273,28 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
-  await fetchLinearTransformStatus();
-  await fetchCloudSyncStatus();
+  const loadedFromDb = await loadDocFromLocalDb(false);
+  if (loadedFromDb) {
+    void fetchLinearTransformStatus();
+    void fetchCloudSyncStatus().then(async () => {
+      if (cloudSyncEnabled && cloudSyncExists) {
+        const loadedFromCloud = await pullDocFromCloud(false);
+        if (loadedFromCloud) {
+          await loadLinearNotesFromLocalDbFallback();
+        }
+      }
+    });
+    return;
+  }
 
+  void fetchLinearTransformStatus();
+  await fetchCloudSyncStatus();
   if (cloudSyncEnabled && cloudSyncExists) {
     const loadedFromCloud = await pullDocFromCloud(false);
     if (loadedFromCloud) {
       await loadLinearNotesFromLocalDbFallback();
       return;
     }
-  }
-
-  const loadedFromDb = await loadDocFromLocalDb(false);
-  if (loadedFromDb) {
-    return;
   }
 
   try {
@@ -7737,26 +8497,30 @@ function loadPayload(payload: unknown): void {
 }
 
 function resetCamera(): void {
-  viewState.zoom = 1;
-  viewState.cameraX = VIEWER_TUNING.pan.initialCameraX;
-  viewState.cameraY = VIEWER_TUNING.pan.initialCameraY;
-  applyZoom();
+  cancelCameraMotion();
+  applyCameraTarget({
+    zoom: 1,
+    cameraX: VIEWER_TUNING.pan.initialCameraX,
+    cameraY: VIEWER_TUNING.pan.initialCameraY,
+  });
 }
 
-function centerOnNode(nodeId: string, zoom = viewState.zoom): boolean {
+function centerOnNode(nodeId: string, zoom = viewState.zoom, options: CameraMoveOptions = {}): boolean {
   if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
     return false;
   }
   const nodePos = lastLayout.pos[nodeId]!;
   const boardRect = board.getBoundingClientRect();
-  viewState.zoom = clampZoom(zoom);
-  viewState.cameraX = boardRect.width / 2 - (nodePos.x + nodePos.w / 2) * viewState.zoom;
-  viewState.cameraY = boardRect.height / 2 - nodePos.y * viewState.zoom;
-  applyZoom();
+  const targetZoom = clampZoom(zoom);
+  moveCameraTo({
+    zoom: targetZoom,
+    cameraX: boardRect.width / 2 - (nodePos.x + nodePos.w / 2) * targetZoom,
+    cameraY: boardRect.height / 2 - nodePos.y * targetZoom,
+  }, options);
   return true;
 }
 
-function fitDocument(): boolean {
+function fitDocument(options: CameraMoveOptions = {}): boolean {
   if (!map) {
     return false;
   }
@@ -7768,10 +8532,11 @@ function fitDocument(): boolean {
   const fitX = boardRect.width / contentWidth;
   const fitY = boardRect.height / contentHeight;
   const zoom = clampZoom(Math.min(fitX, fitY) * 0.92);
-  viewState.zoom = zoom;
-  viewState.cameraX = (boardRect.width - contentWidth * zoom) / 2;
-  viewState.cameraY = (boardRect.height - contentHeight * zoom) / 2;
-  applyZoom();
+  moveCameraTo({
+    zoom,
+    cameraX: (boardRect.width - contentWidth * zoom) / 2,
+    cameraY: (boardRect.height - contentHeight * zoom) / 2,
+  }, options);
   return true;
 }
 
@@ -8294,6 +9059,52 @@ viewSystemBtn?.addEventListener("click", () => {
   setSurfaceViewMode("system");
 });
 
+penToolBtn?.addEventListener("click", () => {
+  togglePenTool();
+});
+
+drawSelectBtn?.addEventListener("click", () => {
+  setAnnotationTool("select");
+  setStatus("Select tool.");
+});
+
+drawPenBtn?.addEventListener("click", () => {
+  setAnnotationTool("pen");
+  setStatus("Pen tool: draw on the map surface.");
+});
+
+drawHighlighterBtn?.addEventListener("click", () => {
+  setAnnotationTool("highlighter");
+  setStatus("Highlighter tool: drag to highlight.");
+});
+
+drawDateBtn?.addEventListener("click", () => {
+  setAnnotationTool("date");
+  setStatus("Date tool: click the map to place a date label.");
+});
+
+drawEraserBtn?.addEventListener("click", () => {
+  setAnnotationTool("eraser");
+  setStatus("Eraser tool: drag over annotations.");
+});
+
+penColorBtns.forEach((button) => {
+  button.addEventListener("click", () => {
+    activePenStrokeColor = safeAnnotationColor(button.dataset["penColor"], PEN_STROKE_COLOR);
+    penColorBtns.forEach((candidate) => candidate.classList.toggle("is-active", candidate === button));
+    if (annotationTool === "select") {
+      setAnnotationTool("pen");
+    }
+  });
+});
+
+penWidthInput?.addEventListener("input", () => {
+  const width = Number(penWidthInput.value);
+  if (Number.isFinite(width) && width > 0) {
+    activePenStrokeWidth = width;
+  }
+});
+
 fileInput.addEventListener("change", (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files && target.files[0];
@@ -8584,6 +9395,9 @@ document.addEventListener("click", () => {
 });
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (annotationTool !== "select") {
+    return;
+  }
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
   if (collapseNodeId && event.button === 0) {
     event.preventDefault();
@@ -8721,6 +9535,7 @@ board.addEventListener("wheel", (event: WheelEvent) => {
     return;
   }
   event.preventDefault();
+  cancelCameraMotion();
   // Normalize deltas to pixels so zoom/pan feel identical across browsers and
   // operating systems. deltaMode=0 (pixel) is left as-is — that is the Mac
   // trackpad baseline everything else is scaled to match.
@@ -8774,22 +9589,32 @@ function startPinch(): void {
 }
 
 board.addEventListener("pointerdown", (event: PointerEvent) => {
-  console.log("[pinch-debug] pointerdown", { id: event.pointerId, type: event.pointerType, button: event.button, isPrimary: event.isPrimary, x: event.clientX, y: event.clientY, activeCount: activePointers.size });
   if (event.button !== 0) {
     return;
   }
   if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
   }
+  if (isStrokeAnnotationTool(annotationTool)) {
+    startPenStroke(event);
+    return;
+  }
+  if (annotationTool === "date") {
+    addDateAnnotationAt(event);
+    return;
+  }
+  if (annotationTool === "eraser") {
+    startEraserStroke(event);
+    return;
+  }
+  cancelCameraMotion();
 
   // Track touch pointers for pinch
   if (event.pointerType === "touch") {
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     board.setPointerCapture(event.pointerId);
-    console.log("[pinch-debug] touch pointer added, activePointers.size =", activePointers.size);
     if (activePointers.size === 2) {
       startPinch();
-      console.log("[pinch-debug] pinch started!", viewState.pinchState);
       return;
     }
   }
@@ -8810,6 +9635,13 @@ board.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 board.addEventListener("pointermove", (event: PointerEvent) => {
+  if (updatePenStroke(event)) {
+    return;
+  }
+  if (updateEraserStroke(event)) {
+    return;
+  }
+
   // Update tracked pointer position
   if (event.pointerType === "touch" && activePointers.has(event.pointerId)) {
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -8838,12 +9670,20 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
   if (!viewState.panState || event.pointerId !== viewState.panState.pointerId) {
     return;
   }
+  cancelCameraMotion();
   viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
   viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
   scheduleApplyZoom();
 });
 
 function endPointer(event: PointerEvent): void {
+  if (finishPenStroke(event)) {
+    return;
+  }
+  if (finishEraserStroke(event)) {
+    return;
+  }
+
   // Clean up pinch state
   if (event.pointerType === "touch") {
     activePointers.delete(event.pointerId);
@@ -8932,6 +9772,44 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (document.activeElement === linearTextEl) {
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "p") {
+    event.preventDefault();
+    togglePenTool();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "h") {
+    event.preventDefault();
+    setAnnotationTool(annotationTool === "highlighter" ? "select" : "highlighter");
+    setStatus(annotationTool === "highlighter" ? "Highlighter tool: drag to highlight." : "Drawing tool off.");
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    setAnnotationTool(annotationTool === "date" ? "select" : "date");
+    setStatus(annotationTool === "date" ? "Date tool: click the map to place a date label." : "Drawing tool off.");
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "e") {
+    event.preventDefault();
+    setAnnotationTool(annotationTool === "eraser" ? "select" : "eraser");
+    setStatus(annotationTool === "eraser" ? "Eraser tool: drag over annotations." : "Drawing tool off.");
+    return;
+  }
+
+  if (annotationTool !== "select" && event.key === "Escape") {
+    event.preventDefault();
+    if (penDraft) {
+      cancelPenStroke(true);
+    } else {
+      setAnnotationTool("select");
+      setStatus("Drawing tool off.");
+    }
     return;
   }
 
@@ -9335,12 +10213,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowUp") {
     event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      selectFlowVertical(-1);
-      return;
-    }
     if (event.shiftKey) {
       extendSelectionBreadth(-1);
+      return;
+    }
+    if (currentSurfaceIsFlowMode()) {
+      selectFlowVertical(-1);
       return;
     }
     selectBreadth(-1);
@@ -9349,12 +10227,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      selectFlowVertical(1);
-      return;
-    }
     if (event.shiftKey) {
       extendSelectionBreadth(1);
+      return;
+    }
+    if (currentSurfaceIsFlowMode()) {
+      selectFlowVertical(1);
       return;
     }
     selectBreadth(1);
@@ -9490,7 +10368,7 @@ void initializeDocument().then(() => {
     render();
     updateScopeInUrl(initialScopeId);
   }
-  fitDocument() || applyZoom();
+  fitDocument({ animate: false }) || applyZoom();
 
   // Skip home screen — go straight to map root
   // To open home screen, user can press the toggle shortcut

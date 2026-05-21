@@ -43,6 +43,7 @@
             <button id="view-tree" class="mode-btn is-active" type="button">Tree</button>
             <button id="view-system" class="mode-btn" type="button">System</button>
           </div>
+          <button id="pen-tool" class="tool-btn" type="button" aria-label="Pen tool" aria-pressed="false" title="Pen tool (Shift+P)" data-edit-only>Pen</button>
           <div class="import-wrap" data-edit-only>
             <button id="import-btn" type="button">Import ▾</button>
             <div id="import-menu" class="export-menu" hidden>
@@ -71,6 +72,39 @@
               </div>
             </div>
           </div>
+        </div>
+        <div id="draw-toolbar" class="draw-toolbar" role="toolbar" aria-label="Drawing tools" data-edit-only>
+          <button id="draw-select" class="draw-tool-btn is-active" type="button" aria-label="Select tool" title="Select (Esc)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4 L17 12 L12 14 L15 20 L12.5 21 L9.5 15 L6 18 Z" /></svg>
+            <span>Select</span>
+          </button>
+          <button id="draw-pen" class="draw-tool-btn" type="button" aria-label="Pen tool" title="Pen (Shift+P)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 L8 19 L19 8 L16 5 L5 16 Z" /><path d="M14 7 L17 10" /></svg>
+            <span>Pen</span>
+          </button>
+          <button id="draw-highlighter" class="draw-tool-btn" type="button" aria-label="Highlighter tool" title="Highlighter (Shift+H)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18 L9 20 L20 9 L16 5 Z" /><path d="M4 21 H13" /></svg>
+            <span>Highlighter</span>
+          </button>
+          <button id="draw-date" class="draw-tool-btn" type="button" aria-label="Date label tool" title="Date label (Shift+D)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3 V7 M16 3 V7 M4 10 H20" /><text x="12" y="17" text-anchor="middle">17</text></svg>
+            <span>Date</span>
+          </button>
+          <button id="draw-eraser" class="draw-tool-btn" type="button" aria-label="Eraser tool" title="Eraser (Shift+E)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17 L15 8 L19 12 L11 20 H7 Z" /><path d="M11 20 H20" /></svg>
+            <span>Eraser</span>
+          </button>
+          <div class="draw-tool-separator" aria-hidden="true"></div>
+          <div class="draw-color-group" aria-label="Stroke color">
+            <button class="draw-color-btn is-active" type="button" data-pen-color="#242424" aria-label="Black stroke" title="Black"></button>
+            <button class="draw-color-btn" type="button" data-pen-color="#7c3cff" aria-label="Purple stroke" title="Purple"></button>
+            <button class="draw-color-btn" type="button" data-pen-color="#e64980" aria-label="Pink stroke" title="Pink"></button>
+            <button class="draw-color-btn" type="button" data-pen-color="#2f9e44" aria-label="Green stroke" title="Green"></button>
+          </div>
+          <label class="draw-width-control" title="Stroke width">
+            <span>Width</span>
+            <input id="pen-width" type="range" min="1" max="8" step="0.5" value="2" aria-label="Stroke width" />
+          </label>
         </div>
         <div id="readonly-banner" class="readonly-banner" hidden>Read-only view</div>
         <div id="mode-badge" class="mode-badge" aria-live="polite">EDIT</div>

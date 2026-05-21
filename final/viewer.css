@@ -31,7 +31,7 @@
 
       .overlay-ui {
         position: absolute;
-        inset: 14px;
+        inset: 0;
         display: flex;
         flex-direction: column;
         align-items: flex-start;
@@ -51,6 +51,7 @@
         background: rgba(255, 255, 255, 0.9);
         backdrop-filter: blur(10px);
         box-shadow: 0 16px 34px rgba(24, 24, 24, 0.12);
+        margin: 14px;
         padding: 10px;
         max-width: min(1320px, calc(100vw - 28px));
         pointer-events: auto;
@@ -275,6 +276,7 @@
         background: rgba(255, 255, 255, 0.82);
         backdrop-filter: blur(10px);
         box-shadow: 0 12px 28px rgba(24, 24, 24, 0.1);
+        margin-left: 14px;
         pointer-events: auto;
       }
 
@@ -425,10 +427,184 @@
         cursor: grabbing;
       }
 
-      svg {
+      .board.pen-mode {
+        cursor: crosshair;
+      }
+
+      .board.text-mode {
+        cursor: text;
+      }
+
+      .board.eraser-mode {
+        cursor: cell;
+      }
+
+      .tool-btn {
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid #d8d8d8;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #2f2f2f;
+        font: inherit;
+        font-weight: 700;
+      }
+
+      .tool-btn.is-active {
+        border-color: #7c3cff;
+        background: #f0e9ff;
+        color: #5820d6;
+      }
+
+      .draw-toolbar {
+        position: absolute;
+        left: 16px;
+        top: 104px;
+        z-index: 40;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 136px;
+        padding: 8px;
+        border: 1px solid rgba(80, 80, 96, 0.14);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 14px 34px rgba(28, 24, 42, 0.14);
+        backdrop-filter: blur(12px);
+        pointer-events: auto;
+      }
+
+      .draw-tool-btn {
+        display: grid;
+        grid-template-columns: 24px 1fr;
+        align-items: center;
+        gap: 8px;
+        min-height: 36px;
+        padding: 6px 8px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: #2b2b32;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .draw-tool-btn svg {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .draw-tool-btn svg text {
+        fill: currentColor;
+        stroke: none;
+        font-size: 7px;
+        font-weight: 800;
+      }
+
+      .draw-tool-btn:hover,
+      .draw-tool-btn:focus-visible {
+        border-color: rgba(124, 60, 255, 0.24);
+        background: rgba(124, 60, 255, 0.08);
+        outline: none;
+      }
+
+      .draw-tool-btn.is-active {
+        border-color: rgba(124, 60, 255, 0.48);
+        background: #f0e9ff;
+        color: #5820d6;
+      }
+
+      .draw-tool-separator {
+        height: 1px;
+        margin: 2px 0;
+        background: rgba(80, 80, 96, 0.14);
+      }
+
+      .draw-color-group {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+      }
+
+      .draw-color-btn {
+        width: 100%;
+        aspect-ratio: 1;
+        min-height: 26px;
+        border: 2px solid rgba(42, 42, 48, 0.14);
+        border-radius: 999px;
+        background: var(--pen-color, #242424);
+        cursor: pointer;
+      }
+
+      .draw-color-btn[data-pen-color="#242424"] { --pen-color: #242424; }
+      .draw-color-btn[data-pen-color="#7c3cff"] { --pen-color: #7c3cff; }
+      .draw-color-btn[data-pen-color="#e64980"] { --pen-color: #e64980; }
+      .draw-color-btn[data-pen-color="#2f9e44"] { --pen-color: #2f9e44; }
+
+      .draw-color-btn.is-active {
+        border-color: #111;
+        box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(124, 60, 255, 0.42);
+      }
+
+      .draw-width-control {
+        display: grid;
+        gap: 4px;
+        color: #555;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .draw-width-control input {
+        width: 100%;
+        accent-color: #7c3cff;
+      }
+
+      .annotation-pen {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        pointer-events: none;
+      }
+
+      .annotation-pen-draft {
+        opacity: 0.72;
+      }
+
+      .annotation-text-bg {
+        fill: rgba(255, 255, 255, 0.84);
+        stroke: rgba(40, 40, 48, 0.13);
+        stroke-width: 1;
+        pointer-events: none;
+      }
+
+      .annotation-text {
+        fill: #242424;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-weight: 650;
+        paint-order: stroke;
+        stroke: rgba(255, 255, 255, 0.72);
+        stroke-width: 3px;
+        stroke-linejoin: round;
+        pointer-events: none;
+      }
+
+      .annotation-text-date {
+        font-variant-numeric: tabular-nums;
+      }
+
+      #canvas {
         display: block;
         width: 100%;
         height: 100%;
+        transform-box: border-box;
         transform-origin: 0 0;
         will-change: transform;
         pointer-events: auto;
@@ -436,7 +612,7 @@
 
       @media (max-width: 900px) {
         .overlay-ui {
-          inset: 10px;
+          inset: 0;
         }
 
         .toolbar,
@@ -444,8 +620,19 @@
           max-width: calc(100vw - 20px);
         }
 
+        .toolbar {
+          margin: 10px;
+        }
+
+        .draw-toolbar {
+          left: 10px;
+          top: 82px;
+          width: 124px;
+        }
+
         .meta-panel {
           gap: 4px;
+          margin-left: 10px;
           padding: 10px 12px;
         }
 
@@ -466,6 +653,7 @@
         fill: none;
         stroke-width: 3;
         stroke-linecap: round;
+        stroke-linejoin: round;
         opacity: 0.95;
         pointer-events: none;
       }
