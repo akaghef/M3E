@@ -874,6 +874,10 @@
       .scatter-label {
         fill: #111;
         font-weight: 700;
+        paint-order: stroke;
+        stroke: rgba(255, 255, 255, 0.92);
+        stroke-width: 4px;
+        stroke-linejoin: round;
         pointer-events: none;
       }
 

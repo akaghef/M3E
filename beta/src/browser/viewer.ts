@@ -404,9 +404,9 @@ const SCATTER_MAX_V = 100;
 const SCATTER_EDGE_LENGTH_DEFAULT = 180;
 const SCATTER_ROOT_RADIUS = 48;
 const SCATTER_NODE_RADIUS = 36;
-const SCATTER_MIN_RADIUS = 12;
+const SCATTER_MIN_RADIUS = 18;
 const SCATTER_DEPTH_SCALE = 2 / 3;
-const SCATTER_MIN_SCALE = 0.42;
+const SCATTER_MIN_SCALE = 0.52;
 let scatterAnimationEnabled = false;
 let scatterAnimationFrame: number | null = null;
 let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
@@ -4340,7 +4340,7 @@ function collectScatterNodes(state: AppState, rootId: string): ScatterNodeSet {
   const depthOf: Record<string, number> = {};
   const visit = (nodeId: string, depth: number): void => {
     const node = state.nodes[nodeId];
-    if (!node || !isNodeVisibleByImportance(nodeId)) {
+    if (!node) {
       return;
     }
     ids.push(nodeId);
@@ -4355,7 +4355,7 @@ function scatterCountScale(vertexCount: number): number {
   if (vertexCount <= 16) {
     return 1;
   }
-  return Math.min(1, Math.max(0.2, Math.pow(16 / vertexCount, 0.6)));
+  return Math.min(1, Math.max(0.65, Math.pow(16 / vertexCount, 0.6)));
 }
 
 function scatterDepthScale(depth: number): number {
@@ -4368,7 +4368,7 @@ function scatterRadiusFor(nodeId: string, rootId: string, depth: number, vertexC
 }
 
 function scatterFontSizeFor(radius: number): number {
-  return Math.max(9, Math.min(18, radius * 0.44));
+  return Math.max(13, Math.min(18, radius * 0.56));
 }
 
 function scatterSeedCenter(): { x: number; y: number } {
@@ -4484,12 +4484,8 @@ function scatterLineEndpoints(
   };
 }
 
-function scatterLabel(node: TreeNode, maxChars = 12): string {
-  const label = (uiLabel(node) || node.id || "").trim();
-  if (label.length <= maxChars) {
-    return label;
-  }
-  return `${label.slice(0, Math.max(1, maxChars - 1))}…`;
+function scatterLabel(node: TreeNode): string {
+  return (uiLabel(node) || node.id || "").trim();
 }
 
 function collectScatterSimulationEdges(state: AppState, ids: string[]): ScatterSimEdge[] {
@@ -5071,7 +5067,7 @@ function render(): void {
       const childPos = pos[nodeId];
       const parentId = node?.parentId ?? null;
       const parentPos = parentId ? pos[parentId] : null;
-      if (!node || !childPos || !parentId || !parentPos || !isNodeVisibleByImportance(parentId)) {
+      if (!node || !childPos || !parentId || !parentPos) {
         return;
       }
       const line = scatterLineEndpoints(parentPos, childPos);
@@ -5096,7 +5092,10 @@ function render(): void {
     if (!source || !target || !sourcePos || !targetPos) {
       return;
     }
-    if (!isNodeInScope(source.id) || !isNodeInScope(target.id) || !isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id)) {
+    if (!isNodeInScope(source.id) || !isNodeInScope(target.id)) {
+      return;
+    }
+    if (!scatterSurface && (!isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id))) {
       return;
     }
     if (sourceRenderId === targetRenderId) {
@@ -5349,7 +5348,14 @@ function render(): void {
       const labelStyles = [`font-size:${p.fontSize ?? scatterFontSizeFor(r)}px`];
       const labelInline = buildLabelStyle(nodeStyles);
       if (labelInline) labelStyles.push(labelInline);
-      nodes += `<text class="${labelClass}" data-node-id="${nodeId}" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" style="${labelStyles.join(";")}">${escapeXml(scatterLabel(node, nodeId === displayRootId ? 8 : 5))}</text>`;
+      const label = scatterLabel(node);
+      const fontSize = p.fontSize ?? scatterFontSizeFor(r);
+      const labelMeasure = measureNodeLabel(label || node.id, fontSize);
+      const labelX = cx + r + 7;
+      const labelY = cy;
+      maxX = Math.max(maxX, labelX + labelMeasure.w + VIEWER_TUNING.layout.nodeRightPad);
+      maxY = Math.max(maxY, labelY + Math.max(r, labelMeasure.h / 2) + VIEWER_TUNING.layout.nodeBottomPad);
+      nodes += `<text class="${labelClass}" data-node-id="${nodeId}" x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" style="${labelStyles.join(";")}">${escapeXml(label)}</text>`;
       return;
     }
     children.forEach((childId, i) => {

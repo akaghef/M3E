@@ -92,9 +92,9 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await expect(page.locator("#scatter-reflow")).toBeVisible();
 
   await expect(page.locator(".scatter-node-circle[data-node-id='root']")).toBeVisible();
-  await expect(page.locator("text.label-root", { hasText: "Scatter" })).toBeVisible();
+  await expect(page.locator("text.label-root", { hasText: "Scatter Root" })).toBeVisible();
   await expect(page.locator('text.label-node[data-node-id="alpha"]')).toContainText("Alpha");
-  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alph");
+  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alpha Child");
   await expect(page.locator("path.edge")).toHaveCount(0);
   await expect(page.locator(".scatter-guide")).toHaveCount(3);
 
@@ -120,7 +120,7 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await clickLegacy(page, "#scatter-add-node");
   await page.mouse.click(820, 600);
   await expect(page.locator("#meta")).toContainText("nodes: 5");
-  await expect(page.locator("text.label-node", { hasText: "New" })).toBeVisible();
+  await expect(page.locator("text.label-node", { hasText: "New Node" })).toBeVisible();
 
   await clickLegacy(page, "#scatter-add-edge");
   const alpha = await page.locator('[data-node-id="alpha"].node-hit').boundingBox();
