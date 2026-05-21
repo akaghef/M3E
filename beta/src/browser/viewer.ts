@@ -2953,7 +2953,7 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (viewState.surfaceViewMode === "system") {
+  if (viewState.surfaceViewMode !== "tree") {
     linearPanelEl.hidden = true;
     return;
   }
@@ -4317,24 +4317,72 @@ function buildLayout(state: AppState): LayoutResult {
       nodesByDepth[depth]!.push(nodeId);
     });
 
-    const xByDepth: Record<number, number> = {};
-    let cursorX = VIEWER_TUNING.layout.leftPad;
-    for (let depth = 0; depth <= maxDepth; depth += 1) {
-      xByDepth[depth] = cursorX;
-      cursorX += (depthMaxWidth[depth] ?? 140) + Math.max(96, VIEWER_TUNING.layout.columnGap * 0.65);
-    }
-
     const seededByNode: Record<string, { x: number; y: number }> = {};
-    for (let depth = 0; depth <= maxDepth; depth += 1) {
+    const visibleScatterChildren = (nodeId: string): string[] => {
+      const node = state.nodes[nodeId];
+      return (node?.children || []).filter((childId) => Boolean(metrics[childId]));
+    };
+    const leafCountCache: Record<string, number> = {};
+    const countScatterLeaves = (nodeId: string): number => {
+      if (leafCountCache[nodeId] !== undefined) {
+        return leafCountCache[nodeId]!;
+      }
+      const children = visibleScatterChildren(nodeId);
+      if (children.length === 0) {
+        leafCountCache[nodeId] = 1;
+        return 1;
+      }
+      const count = children.reduce((sum, childId) => sum + countScatterLeaves(childId), 0);
+      leafCountCache[nodeId] = Math.max(1, count);
+      return leafCountCache[nodeId]!;
+    };
+    const angleByNode: Record<string, number> = {};
+    const assignScatterAngles = (nodeId: string, startAngle: number, endAngle: number): void => {
+      angleByNode[nodeId] = (startAngle + endAngle) / 2;
+      const children = visibleScatterChildren(nodeId);
+      if (children.length === 0) {
+        return;
+      }
+      const total = children.reduce((sum, childId) => sum + countScatterLeaves(childId), 0);
+      let cursor = startAngle;
+      children.forEach((childId) => {
+        const span = ((endAngle - startAngle) * countScatterLeaves(childId)) / Math.max(1, total);
+        assignScatterAngles(childId, cursor, cursor + span);
+        cursor += span;
+      });
+    };
+
+    assignScatterAngles(displayRootId, -Math.PI * 0.92, Math.PI * 0.92);
+    const centerX = VIEWER_TUNING.layout.leftPad + 560;
+    const centerY = VIEWER_TUNING.layout.topPad + 360;
+    seededByNode[displayRootId] = { x: centerX, y: centerY };
+    descendants.forEach((nodeId) => {
+      if (nodeId === displayRootId) {
+        return;
+      }
+      const depth = depthOf[nodeId] ?? 1;
+      const metric = metrics[nodeId]!;
+      const angle = angleByNode[nodeId] ?? 0;
+      const radius = 250 + Math.max(0, depth - 1) * 190;
+      const stagger = ((nodesByDepth[depth]?.indexOf(nodeId) ?? 0) % 2) * 24;
+      seededByNode[nodeId] = {
+        x: centerX + Math.cos(angle) * radius - metric.w / 2,
+        y: centerY + Math.sin(angle) * radius * 0.72 + stagger,
+      };
+    });
+
+    for (let depth = 1; depth <= maxDepth; depth += 1) {
       const ids = nodesByDepth[depth] || [];
-      let cursorY = VIEWER_TUNING.layout.topPad + 120 + (depth % 2) * 34;
-      ids.forEach((nodeId) => {
+      const sorted = [...ids].sort((a, b) => seededByNode[a]!.y - seededByNode[b]!.y);
+      let previousBottom = Number.NEGATIVE_INFINITY;
+      sorted.forEach((nodeId) => {
         const metric = metrics[nodeId]!;
-        seededByNode[nodeId] = {
-          x: xByDepth[depth]!,
-          y: cursorY + metric.h / 2,
-        };
-        cursorY += metric.h + 36;
+        const seeded = seededByNode[nodeId]!;
+        const top = seeded.y - metric.h / 2;
+        if (top < previousBottom + 16) {
+          seeded.y += previousBottom + 16 - top;
+        }
+        previousBottom = seeded.y + metric.h / 2;
       });
     }
 
@@ -4685,6 +4733,7 @@ function render(): void {
   let defs = "<defs>";
   let surfaceFrames = "";
   let edges = "";
+  let scatterGuides = "";
   let graphLinks = "";
   let overlays = "";
   let annotations = "";
@@ -4704,6 +4753,23 @@ function render(): void {
     () => true,
     flowSurface ? PORTAL_BRACKET_ARM : 0,
   );
+
+  if (scatterSurface) {
+    visibleOrder.forEach((nodeId) => {
+      const node = state.nodes[nodeId];
+      const childPos = pos[nodeId];
+      const parentId = node?.parentId ?? null;
+      const parentPos = parentId ? pos[parentId] : null;
+      if (!node || !childPos || !parentId || !parentPos || !isNodeVisibleByImportance(parentId)) {
+        return;
+      }
+      const start = edgeEndBetween(parentPos, childPos);
+      const end = edgeEndBetween(childPos, parentPos);
+      const guidePath = smoothGraphLinkPath(start.x, start.y, end.x, end.y);
+      scatterGuides += `<path class="scatter-guide" data-parent-node-id="${parentId}" data-child-node-id="${nodeId}" d="${guidePath}" />`;
+    });
+  }
+
   Object.values(state.links || {}).forEach((rawLink) => {
     const link = normalizeGraphLink(rawLink);
     const source = state.nodes[link.sourceNodeId];
@@ -4817,7 +4883,7 @@ function render(): void {
     }
     const styleClass = `${scatterSurface ? " scatter-edge" : ""}${link.style === "default" ? "" : ` graph-link-${link.style}`}`;
     const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
-    const stroke = sanitizeColor(link.color) || VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!;
+    const stroke = sanitizeColor(link.color) || (scatterSurface ? "#6b8f2a" : VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!);
     const markerEndId = `graph-link-arrow-end-${link.id}`;
     const markerStartId = `graph-link-arrow-start-${link.id}`;
     const markerStart = link.direction === "backward" || link.direction === "both"
@@ -4943,6 +5009,9 @@ function render(): void {
     });
 
     const classNames = ["node-hit"];
+    if (scatterSurface) {
+      classNames.push("scatter-node");
+    }
     if (viewState.selectedNodeIds.has(nodeId)) {
       classNames.push("selected");
       classNames.push("multi-selected");
@@ -5261,7 +5330,7 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${graphLinks}${overlays}${nodes}${annotations}`;
+  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
   applyZoom();
 
   const version = map.version ?? "n/a";

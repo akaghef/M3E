@@ -691,8 +691,19 @@
       }
 
       .graph-link.scatter-edge {
+        stroke-dasharray: 8 6;
+        stroke-width: 3;
         pointer-events: stroke;
         cursor: pointer;
+      }
+
+      .scatter-guide {
+        fill: none;
+        stroke: rgba(47, 112, 255, 0.66);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        pointer-events: none;
       }
 
       .graph-link.graph-link-soft {
@@ -798,6 +809,18 @@
       .node-hit {
         fill: transparent;
         cursor: pointer;
+      }
+
+      .node-hit.scatter-node {
+        fill: rgba(231, 240, 252, 0.92);
+        stroke: #4f8bd8;
+        stroke-width: 2;
+      }
+
+      .node-hit.scatter-node.primary-selected,
+      .node-hit.scatter-node.selected {
+        fill: rgba(224, 239, 255, 0.96);
+        stroke: #2f70ff;
       }
 
 .node-hit.selected {
