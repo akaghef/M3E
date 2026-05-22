@@ -140,7 +140,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 230px;
+  min-width: 0;
   padding: 4px 8px;
   border-radius: 7px;
   font-weight: 700;

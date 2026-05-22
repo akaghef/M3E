@@ -169,7 +169,6 @@ function TopBar({ snapshot, openModal }: { snapshot: UiSnapshot; openModal: (id:
         </button>
         <div className="wb-logo">M3E</div>
         <button className="wb-board-title" type="button" onClick={() => openModal("menu")}>
-          <span>Mindmap Workbench</span>
           <small>{snapshot.surface}</small>
           <ChevronDown size={14} />
         </button>
