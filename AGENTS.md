@@ -31,6 +31,18 @@ Agents should prioritize small validated changes over broad refactors.
 3. Operations rules:
    - `docs/06_Operations/Documentation_Rules.md`
 
+## AI Instruction Routing
+
+For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
+
+- Product meaning of map / node / scope / edge / GraphLink / alias / path / layout lives under `docs/03_Spec/`.
+- Agent operating behavior lives under `protocols/`.
+- Map read/write execution uses the `m3e-map` skill.
+- Structural map decisions use `protocols/map-manager/` (with `protocols/map-manager.md` as a compatibility pointer) and the `map-manager` skill.
+- Worker agents must follow `protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
+
+When a map task involves scope, scopen / unscopen, layouting, path ambiguity, edge / GraphLink / alias choice, or worker handoff, route it through Map Manager before mutation.
+
 ## Mandatory Session Context
 
 Before any analysis, planning, or implementation, the agent must load the current project context from:
@@ -84,7 +96,7 @@ If any item is missing, task state is still in-progress.
 ```
 
 各エージェントは `isolation: worktree` で独立したコピーで作業する。
-タスクの正本は M3E マップ `ROOT/SYSTEM/DEV/strategy/` と `docs/06_Operations/Todo_Pool.md` の text pool。
+タスクの正本は M3E マップ `M:(開発)> SYSTEM > DEV >> strategy` と `docs/06_Operations/Todo_Pool.md` の text pool。
 メンバーは `SendMessage` で互いに通信可能。
 
 ### Team Communication
@@ -98,10 +110,10 @@ If any item is missing, task state is still in-progress.
 
 ### Shared State (Mindmap)
 
-揮発的な情報は M3E マップの `ROOT/SYSTEM/DEV/` 配下で共有する（canvas-protocol 準拠）:
+揮発的な情報は M3E マップの `M:(開発)> SYSTEM > DEV` 配下で共有する（canvas-protocol 準拠）:
 
 ```
-ROOT/SYSTEM/DEV/
+M:(開発)> SYSTEM > DEV
 ├── strategy/       ← タスクボード（判断はここ。goal/task を枝で詳細化）
 ├── reviews/        ← 判断待ちキュー Qn（akaghef が selected="yes" で確定）
 ├── decisions/      ← 確定済み判断（reviews から移送）
@@ -109,7 +121,7 @@ ROOT/SYSTEM/DEV/
 └── scratch/        ← 一時メモ・アイデア
 ```
 
-エージェントは REST API (`http://localhost:4173/api/docs/akaghef-beta`) 経由で読み書きする（beta=4173 が default、final=38482 は確認時のみ）。
+エージェントは REST API (`http://localhost:4173/api/maps`) 経由で map を discovery し、対象 `mapId` を確認して読み書きする（beta=4173 が default、final=38482 は確認時のみ）。
 設計判断が必要な場合:
 1. エージェントが `dev M3E/design/` に context + options を書く
 2. `SendMessage` で manager に通知

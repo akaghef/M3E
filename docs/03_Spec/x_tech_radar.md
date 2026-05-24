@@ -9,7 +9,7 @@ Turn akaghef's passive X (Twitter) reactions (likes, bookmarks) into a
 continuously-updated **Tech Radar** of tools/tech that might slot into M3E.
 Humans curate by reacting; pipeline does extraction, research, and fit
 evaluation; output lands as map nodes under
-`ROOT/SYSTEM/DEV/Tech Radar/<toolname>`.
+`M:(開発)> SYSTEM > DEV >> Tech Radar > <toolname>`.
 
 The pipeline is **read-only toward X** and **write-only toward the map**.
 No auto-posting to X, no auto-install of any tool.
@@ -34,7 +34,7 @@ No auto-posting to X, no auto-install of any tool.
 [rated candidates]    -- + {rating, rationale, overlap, effort}
    | (stage 5: write)
    v
-[map nodes under ROOT/SYSTEM/DEV/Tech Radar/<toolname>]
+[map nodes under M:(開発)> SYSTEM > DEV >> Tech Radar > <toolname>]
 ```
 
 Each stage is independently restartable; intermediate state persists in a
@@ -308,7 +308,7 @@ No browser UI changes in P1.
 
 ## 11. Open questions (pooled as Qn on map)
 
-See `ROOT/SYSTEM/DEV/reviews/X Tech Radar/` nodes. Tentatives repeated here
+See `M:(開発)> SYSTEM > DEV >> reviews > X Tech Radar` nodes. Tentatives repeated here
 for in-doc reference:
 
 - **Q1** MCP vs direct API for P1? — tentative: **bookmark-mcp sidecar**.

@@ -71,9 +71,10 @@ dev M3E
 `done-today` は翌日の初回 tick で空にする（日記ドキュメントに永続化済みのため）。
 
 更新方法:
-1. `GET /api/docs/rapid-main` で state 取得
-2. `dev M3E` 配下のノードを操作
-3. `POST /api/docs/rapid-main` で書き戻す
+1. `GET /api/maps` で `label="開発"` の mapId を discovery
+2. `GET /api/maps/{mapId}` で state 取得
+3. `M:(開発)> SYSTEM > DEV` 配下のノードを操作
+4. `POST /api/maps/{mapId}` で書き戻す
 
 サーバー未起動時は `docs/daily/{YYMMDD}.md` にのみ記録し、次回起動時にマップ反映する。
 
