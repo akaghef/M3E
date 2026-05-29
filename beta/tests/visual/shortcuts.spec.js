@@ -18,17 +18,28 @@
  * Total: 7 nodes
  */
 const { test, expect } = require("@playwright/test");
+const { spawnSync } = require("child_process");
 const {
   launchViewer,
   getNodeCount,
   getSelectedCount,
   getLinkCount,
+  getStatusText,
   pressKey,
   waitForRender,
   focusBoard,
   expectMetaContains,
   expectStatusContains,
 } = require("../helpers/viewer_test_utils");
+
+function readMacClipboard() {
+  if (process.platform !== "darwin") return null;
+  const result = spawnSync("pbpaste", [], { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || "pbpaste failed");
+  }
+  return result.stdout;
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Navigation: Arrow keys
@@ -303,6 +314,111 @@ test.describe("Copy and Paste", () => {
 
     const afterCount = await getNodeCount(page);
     expect(afterCount).toBeGreaterThan(initialCount);
+  });
+
+  test("Ctrl+C then Ctrl+V duplicates subtree-internal graph links", async ({ page }) => {
+    const mapWithLinks = JSON.parse(JSON.stringify(require("../fixtures/shortcut_test.json")));
+    mapWithLinks.state.links = {
+      "internal-link": {
+        id: "internal-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "grandchild-a2",
+        direction: "forward",
+        style: "default",
+      },
+      "external-link": {
+        id: "external-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "child-b",
+        direction: "forward",
+        style: "default",
+      },
+    };
+    await launchViewer(page, mapWithLinks);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: Child A");
+    expect(await getLinkCount(page)).toBe(2);
+
+    await pressKey(page, "Control+c");
+    await waitForRender(page);
+    await pressKey(page, "Control+v");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(10);
+    expect(await getLinkCount(page)).toBe(3);
+    expect(await getStatusText(page)).toContain("and 1 link(s)");
+  });
+
+  test("Ctrl+C in one map then Ctrl+V in another map pastes subtree and internal links", async ({ page, context }) => {
+    const sourceMap = JSON.parse(JSON.stringify(require("../fixtures/shortcut_test.json")));
+    sourceMap.state.links = {
+      "internal-link": {
+        id: "internal-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "grandchild-a2",
+        direction: "forward",
+        style: "default",
+      },
+      "external-link": {
+        id: "external-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "child-b",
+        direction: "forward",
+        style: "default",
+      },
+    };
+    const targetPage = await context.newPage();
+    try {
+      await launchViewer(page, sourceMap);
+      await focusBoard(page);
+      await pressKey(page, "ArrowRight");
+      await expectMetaContains(page, "selected: Child A");
+      await pressKey(page, "Control+c");
+      await waitForRender(page);
+      expect(await getStatusText(page)).toContain("and 1 link(s)");
+
+      await launchViewer(targetPage);
+      await focusBoard(targetPage);
+      expect(await getNodeCount(targetPage)).toBe(7);
+      expect(await getLinkCount(targetPage)).toBe(0);
+
+      await pressKey(targetPage, "Control+v");
+      await waitForRender(targetPage);
+
+      expect(await getNodeCount(targetPage)).toBe(10);
+      expect(await getLinkCount(targetPage)).toBe(1);
+      expect(await getStatusText(targetPage)).toContain("and 1 link(s)");
+    } finally {
+      await targetPage.close();
+    }
+  });
+
+  test("Ctrl+Alt+C copies selected node path", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: Grandchild A1");
+
+    await pressKey(page, "Control+Alt+c");
+    await waitForRender(page);
+
+    expect(await getStatusText(page)).toContain("Path copied: Test Root / Child A / Grandchild A1");
+    expect(readMacClipboard()).toBe("Test Root / Child A / Grandchild A1");
+  });
+
+  test("Ctrl+Alt+I copies current scope ID", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "Control+Alt+i");
+    await waitForRender(page);
+
+    expect(await getStatusText(page)).toContain("Scope ID copied: root");
+    expect(readMacClipboard()).toBe("root");
   });
 });
 

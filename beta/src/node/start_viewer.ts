@@ -321,6 +321,92 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.end(JSON.stringify(payload));
 }
 
+function writeSystemClipboard(text: string): { ok: true; method: string } | { ok: false; error: string } {
+  const input = Buffer.from(text, "utf8");
+  const run = (command: string, args: string[], method: string) => {
+    const result = spawnSync(command, args, { input, encoding: "utf8" });
+    if (result.status === 0) {
+      return { ok: true as const, method };
+    }
+    const detail = result.stderr || result.error?.message || `${command} exited with status ${result.status}`;
+    return { ok: false as const, error: detail };
+  };
+
+  if (process.platform === "darwin") {
+    return run("pbcopy", [], "pbcopy");
+  }
+  if (process.platform === "win32") {
+    return run("clip.exe", [], "clip.exe");
+  }
+
+  const wlCopy = run("wl-copy", [], "wl-copy");
+  if (wlCopy.ok) return wlCopy;
+  const xclip = run("xclip", ["-selection", "clipboard"], "xclip");
+  if (xclip.ok) return xclip;
+  const xsel = run("xsel", ["--clipboard", "--input"], "xsel");
+  if (xsel.ok) return xsel;
+  return { ok: false, error: xsel.error || xclip.error || wlCopy.error || "No clipboard command available." };
+}
+
+function readSystemClipboard(): { ok: true; method: string; text: string } | { ok: false; error: string } {
+  const run = (command: string, args: string[], method: string) => {
+    const result = spawnSync(command, args, { encoding: "utf8" });
+    if (result.status === 0) {
+      return { ok: true as const, method, text: result.stdout || "" };
+    }
+    const detail = result.stderr || result.error?.message || `${command} exited with status ${result.status}`;
+    return { ok: false as const, error: detail };
+  };
+
+  if (process.platform === "darwin") {
+    return run("pbpaste", [], "pbpaste");
+  }
+  if (process.platform === "win32") {
+    return run("powershell.exe", ["-NoProfile", "-Command", "Get-Clipboard -Raw"], "powershell.exe");
+  }
+
+  const wlPaste = run("wl-paste", [], "wl-paste");
+  if (wlPaste.ok) return wlPaste;
+  const xclip = run("xclip", ["-selection", "clipboard", "-out"], "xclip");
+  if (xclip.ok) return xclip;
+  const xsel = run("xsel", ["--clipboard", "--output"], "xsel");
+  if (xsel.ok) return xsel;
+  return { ok: false, error: xsel.error || xclip.error || wlPaste.error || "No clipboard command available." };
+}
+
+async function handleSystemClipboardApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (pathname !== "/api/system-clipboard/write" && pathname !== "/api/system-clipboard/read") {
+    return false;
+  }
+  if (pathname === "/api/system-clipboard/read") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    const result = readSystemClipboard();
+    sendJson(res, result.ok ? 200 : 500, result);
+    return true;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return true;
+  }
+  try {
+    const rawBody = await readRequestBody(req, 5_000_000);
+    const body = JSON.parse(rawBody) as { text?: unknown };
+    if (typeof body.text !== "string" || body.text.length === 0) {
+      sendJson(res, 400, { ok: false, error: "Field 'text' must be a non-empty string." });
+      return true;
+    }
+    const result = writeSystemClipboard(body.text);
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: (err as Error).message || "Invalid clipboard request." });
+  }
+  return true;
+}
+
 function instrumentRequestForPerfLog(req: http.IncomingMessage, res: http.ServerResponse): void {
   const started = process.hrtime.bigint();
   const startedWallMs = Date.now();
@@ -1563,10 +1649,17 @@ async function handleBlueprintApi(
 
 // Cloud sync helpers removed — now handled by CloudSyncTransport implementations
 
-function readRequestBody(req: http.IncomingMessage): Promise<string> {
+function readRequestBody(req: http.IncomingMessage, maxBytes = 10_000_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
+    let totalBytes = 0;
     req.on("data", (chunk: Buffer) => {
+      totalBytes += chunk.length;
+      if (totalBytes > maxBytes) {
+        reject(new Error("Request body too large."));
+        req.destroy();
+        return;
+      }
       chunks.push(chunk);
     });
     req.on("end", () => {
@@ -2460,6 +2553,10 @@ async function handleCollabApi(
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
     instrumentRequestForPerfLog(req, res);
+    if (await handleSystemClipboardApi(req, res)) {
+      return;
+    }
+
     const collabRoute = parseCollabRoute(req.url ?? "/");
     if (collabRoute) {
       await handleCollabApi(req, res, collabRoute);
@@ -2537,7 +2634,7 @@ export function createAppServer(): http.Server {
       return;
     }
 
-    // Path resolve endpoint: /api/maps/{mapId}/resolve?path=Map:Root/...
+    // Path resolve endpoint: /api/maps/{mapId}/resolve?path=Map:Root > ...
     const resolveDocId = parseMapResolveRoute(req.url ?? "/");
     if (resolveDocId !== null) {
       if (req.method !== "GET") {
@@ -2546,7 +2643,7 @@ export function createAppServer(): http.Server {
       }
       const url = new URL(req.url ?? "/", "http://localhost");
       const rawPath = url.searchParams.get("path");
-      const sep = url.searchParams.get("sep") || "/";
+      const sep = url.searchParams.get("sep") || ">";
       if (!rawPath) {
         sendJson(res, 400, { ok: false, error: { code: "PATH_INVALID", message: "Missing `path` query parameter." } });
         return;

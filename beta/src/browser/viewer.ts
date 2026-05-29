@@ -407,6 +407,7 @@ const SCATTER_NODE_RADIUS = 36;
 const SCATTER_MIN_RADIUS = 18;
 const SCATTER_DEPTH_SCALE = 2 / 3;
 const SCATTER_MIN_SCALE = 0.52;
+const STRUCTURED_CLIPBOARD_PREFIX = "M3E_CLIPBOARD_V1\n";
 let scatterAnimationEnabled = false;
 let scatterAnimationFrame: number | null = null;
 let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
@@ -610,6 +611,30 @@ function isImeComposingEvent(event: KeyboardEvent): boolean {
     return true;
   }
   return event.key === "Process";
+}
+
+function isShortcutLetter(event: KeyboardEvent, lowerKey: string, code: string): boolean {
+  return event.key.toLowerCase() === lowerKey || event.code === code;
+}
+
+function isCopyNodePathShortcut(event: KeyboardEvent): boolean {
+  if (!isShortcutLetter(event, "c", "KeyC")) {
+    return false;
+  }
+  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+    return true;
+  }
+  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+}
+
+function isCopyScopeIdShortcut(event: KeyboardEvent): boolean {
+  if (!isShortcutLetter(event, "i", "KeyI")) {
+    return false;
+  }
+  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+    return true;
+  }
+  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
 }
 
 function updateCloudSyncUi(): void {
@@ -3958,12 +3983,11 @@ async function copyNodeQueryToClipboard(): Promise<void> {
     setStatus("No node selected.", true);
     return;
   }
-  try {
-    await navigator.clipboard.writeText(prompt);
+  if (await copyTextToSystemClipboard(prompt)) {
     setStatus("Node query copied to clipboard \u2014 paste into Claude.");
-  } catch {
-    setStatus("Failed to copy to clipboard.", true);
+    return;
   }
+  setStatus("Failed to copy to system clipboard.", true);
 }
 
 /** Compute and display scope-level statistics as a dashboard overlay */
@@ -6834,7 +6858,7 @@ function buildMapPath(nodeId: string): string | null {
     cur = nodes[cur.parentId];
   }
   if (parts.length === 0) return null;
-  return "Map:" + parts.join("/");
+  return "Map:" + parts.join(" > ");
 }
 
 async function copyMapPathToClipboard(nodeId: string): Promise<void> {
@@ -6859,7 +6883,7 @@ function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
   const items: { label: string; danger?: boolean; action: () => void }[] = [];
 
   items.push({
-    label: "\uD83D\uDCCB Copy path (Map:Root/\u2026)",
+    label: "\uD83D\uDCCB Copy path (Map:Root > \u2026)",
     action: () => void copyMapPathToClipboard(scopeId),
   });
 
@@ -9591,38 +9615,279 @@ function selectAllVisibleInScope(): void {
 function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
   const node = getNode(nodeId);
   return {
+    id: node.id,
+    nodeType: node.nodeType || "text",
     text: node.text || "",
+    collapsed: node.collapsed === true,
     details: node.details || "",
     note: node.note || "",
     attributes: JSON.parse(JSON.stringify(node.attributes || {})) as Record<string, string>,
+    link: node.link || "",
+    targetNodeId: node.targetNodeId || undefined,
+    aliasLabel: node.aliasLabel || undefined,
+    access: node.nodeType === "alias" ? aliasAccess(node) : undefined,
+    targetSnapshotLabel: node.targetSnapshotLabel || undefined,
+    isBroken: node.nodeType === "alias" ? Boolean(node.isBroken) : undefined,
     children: (node.children || []).map((childId) => toSubtreeSnapshot(childId)),
   };
 }
 
-function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot): string {
+function collectSnapshotNodeIds(snapshot: SubtreeSnapshot, ids: Set<string>): void {
+  if (snapshot.id) {
+    ids.add(snapshot.id);
+  }
+  (snapshot.children || []).forEach((child) => collectSnapshotNodeIds(child, ids));
+}
+
+function collectSubtreeNodeIds(nodeId: string, ids: Set<string>): void {
+  if (ids.has(nodeId)) {
+    return;
+  }
+  ids.add(nodeId);
+  (getNode(nodeId).children || []).forEach((childId) => collectSubtreeNodeIds(childId, ids));
+}
+
+function collectInternalLinksForRoots(rootIds: string[]): GraphLink[] {
+  if (!map) {
+    return [];
+  }
+  const copiedNodeIds = new Set<string>();
+  rootIds.forEach((rootId) => collectSubtreeNodeIds(rootId, copiedNodeIds));
+  return Object.values(map.state.links || {})
+    .map((link) => normalizeGraphLink(link))
+    .filter((link) => copiedNodeIds.has(link.sourceNodeId) && copiedNodeIds.has(link.targetNodeId))
+    .map((link) => JSON.parse(JSON.stringify(link)) as GraphLink);
+}
+
+function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot, idMap?: Map<string, string>): string {
   const parent = getNode(parentId);
   const createdId = newId();
   map!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text || "New Node");
   const created = map!.state.nodes[createdId]!;
+  created.nodeType = snapshot.nodeType || "text";
+  created.collapsed = snapshot.collapsed === true;
   created.details = snapshot.details || "";
   created.note = snapshot.note || "";
   created.attributes = JSON.parse(JSON.stringify(snapshot.attributes || {})) as Record<string, string>;
+  created.link = snapshot.link || "";
+  created.targetNodeId = snapshot.targetNodeId || undefined;
+  created.aliasLabel = snapshot.aliasLabel || undefined;
+  created.access = created.nodeType === "alias" ? (snapshot.access || "read") : undefined;
+  created.targetSnapshotLabel = snapshot.targetSnapshotLabel || undefined;
+  created.isBroken = created.nodeType === "alias" ? Boolean(snapshot.isBroken) : undefined;
+  idMap?.set(snapshot.id, createdId);
   parent.children.push(createdId);
   (snapshot.children || []).forEach((childSnapshot) => {
-    cloneSnapshotUnderParent(createdId, childSnapshot);
+    cloneSnapshotUnderParent(createdId, childSnapshot, idMap);
   });
   return createdId;
 }
 
-async function copyTextToSystemClipboard(text: string): Promise<void> {
-  if (!text || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+function remapAliasTargetsInClonedSnapshots(idMap: Map<string, string>): void {
+  if (!map) {
     return;
+  }
+  idMap.forEach((newId) => {
+    const node = map!.state.nodes[newId];
+    if (!isAliasNode(node) || !node.targetNodeId) {
+      return;
+    }
+    const remappedTargetId = idMap.get(node.targetNodeId);
+    if (remappedTargetId) {
+      node.targetNodeId = remappedTargetId;
+      node.isBroken = false;
+      return;
+    }
+    if (!map!.state.nodes[node.targetNodeId]) {
+      node.isBroken = true;
+    }
+  });
+}
+
+function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[], links: GraphLink[]): void {
+  if (!map || snapshots.length === 0) {
+    setStatus("Clipboard is empty.", true);
+    return;
+  }
+  pushUndoSnapshot();
+  const idMap = new Map<string, string>();
+  let firstPastedId: string | null = null;
+  snapshots.forEach((snapshot) => {
+    const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot, idMap);
+    if (!firstPastedId) {
+      firstPastedId = pastedId;
+    }
+  });
+  remapAliasTargetsInClonedSnapshots(idMap);
+  let pastedLinks = 0;
+  (links || []).forEach((rawLink) => {
+    const link = normalizeGraphLink(rawLink);
+    const sourceNodeId = idMap.get(link.sourceNodeId);
+    const targetNodeId = idMap.get(link.targetNodeId);
+    if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
+      return;
+    }
+    if (findExistingGraphLink(sourceNodeId, targetNodeId)) {
+      return;
+    }
+    const linkId = newId();
+    if (!map!.state.links) {
+      map!.state.links = {};
+    }
+    map!.state.links[linkId] = normalizeGraphLink({
+      ...link,
+      id: linkId,
+      sourceNodeId,
+      targetNodeId,
+    });
+    pastedLinks += 1;
+  });
+  if (firstPastedId) {
+    setSingleSelection(firstPastedId, false);
+  }
+  touchDocument();
+  setStatus(`Pasted ${snapshots.length} copied node(s)${pastedLinks ? ` and ${pastedLinks} link(s)` : ""}.`);
+}
+
+function buildStructuredClipboardPayload(snapshots: SubtreeSnapshot[], links: GraphLink[]): SubtreeClipboardPayload {
+  const snapshotIds = new Set<string>();
+  snapshots.forEach((snapshot) => collectSnapshotNodeIds(snapshot, snapshotIds));
+  return {
+    kind: "m3e.subtree.clipboard",
+    version: 1,
+    roots: snapshots,
+    links: links.filter((link) => snapshotIds.has(link.sourceNodeId) && snapshotIds.has(link.targetNodeId)),
+  };
+}
+
+function encodeStructuredClipboardPayload(payload: SubtreeClipboardPayload): string {
+  return `${STRUCTURED_CLIPBOARD_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function sanitizeSubtreeSnapshot(raw: unknown): SubtreeSnapshot | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Partial<SubtreeSnapshot>;
+  const nodeType = record.nodeType === "image" || record.nodeType === "folder" || record.nodeType === "alias"
+    ? record.nodeType
+    : "text";
+  return {
+    id: String(record.id || newId()),
+    nodeType,
+    text: String(record.text || ""),
+    collapsed: record.collapsed === true,
+    details: String(record.details || ""),
+    note: String(record.note || ""),
+    attributes: record.attributes && typeof record.attributes === "object"
+      ? JSON.parse(JSON.stringify(record.attributes)) as Record<string, string>
+      : {},
+    link: String(record.link || ""),
+    targetNodeId: typeof record.targetNodeId === "string" && record.targetNodeId ? record.targetNodeId : undefined,
+    aliasLabel: typeof record.aliasLabel === "string" && record.aliasLabel ? record.aliasLabel : undefined,
+    access: nodeType === "alias" && record.access === "write" ? "write" : (nodeType === "alias" ? "read" : undefined),
+    targetSnapshotLabel: typeof record.targetSnapshotLabel === "string" && record.targetSnapshotLabel ? record.targetSnapshotLabel : undefined,
+    isBroken: nodeType === "alias" ? Boolean(record.isBroken) : undefined,
+    children: Array.isArray(record.children)
+      ? record.children.map((child) => sanitizeSubtreeSnapshot(child)).filter((child): child is SubtreeSnapshot => Boolean(child))
+      : [],
+  };
+}
+
+function parseStructuredClipboardPayload(text: string): SubtreeClipboardPayload | null {
+  if (!text.startsWith(STRUCTURED_CLIPBOARD_PREFIX)) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(text.slice(STRUCTURED_CLIPBOARD_PREFIX.length)) as Partial<SubtreeClipboardPayload>;
+    if (payload.kind !== "m3e.subtree.clipboard" || payload.version !== 1 || !Array.isArray(payload.roots)) {
+      return null;
+    }
+    const roots = payload.roots
+      .map((snapshot) => sanitizeSubtreeSnapshot(snapshot))
+      .filter((snapshot): snapshot is SubtreeSnapshot => Boolean(snapshot));
+    if (!roots.length) {
+      return null;
+    }
+    const snapshotIds = new Set<string>();
+    roots.forEach((snapshot) => collectSnapshotNodeIds(snapshot, snapshotIds));
+    const links = Array.isArray(payload.links)
+      ? payload.links
+        .filter((link): link is GraphLink => Boolean(link && typeof link === "object"))
+        .map((link) => normalizeGraphLink(link))
+        .filter((link) => snapshotIds.has(link.sourceNodeId) && snapshotIds.has(link.targetNodeId))
+      : [];
+    return { kind: "m3e.subtree.clipboard", version: 1, roots, links };
+  } catch {
+    return null;
+  }
+}
+
+async function copyTextViaLocalClipboardApi(text: string): Promise<boolean> {
+  if (!text || typeof fetch !== "function" || !/^https?:$/.test(window.location.protocol)) {
+    return false;
+  }
+  try {
+    const res = await fetch("/api/system-clipboard/write", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      return false;
+    }
+    const payload = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+    return payload?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+async function copyTextViaBrowserClipboard(text: string): Promise<boolean> {
+  if (!text || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+    return false;
   }
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch {
-    // Ignore clipboard permission failures and keep internal clipboard available.
+    return false;
   }
+}
+
+async function copyTextToSystemClipboard(text: string): Promise<boolean> {
+  return (await copyTextViaLocalClipboardApi(text)) || (await copyTextViaBrowserClipboard(text));
+}
+
+async function readTextViaLocalClipboardApi(): Promise<string | null> {
+  if (typeof fetch !== "function" || !/^https?:$/.test(window.location.protocol)) {
+    return null;
+  }
+  try {
+    const res = await fetch("/api/system-clipboard/read", { method: "GET" });
+    if (!res.ok) {
+      return null;
+    }
+    const payload = (await res.json().catch(() => null)) as { ok?: unknown; text?: unknown } | null;
+    return payload?.ok === true && typeof payload.text === "string" ? payload.text : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readTextViaBrowserClipboard(): Promise<string | null> {
+  if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
+    return null;
+  }
+  try {
+    return await navigator.clipboard.readText();
+  } catch {
+    return null;
+  }
+}
+
+async function readTextFromSystemClipboard(): Promise<string | null> {
+  return (await readTextViaLocalClipboardApi()) || (await readTextViaBrowserClipboard());
 }
 
 function buildNodePath(nodeId: string): string {
@@ -9638,18 +9903,24 @@ function buildNodePath(nodeId: string): string {
   return parts.join(" / ");
 }
 
-function copyNodePath(): void {
+async function copyNodePath(): Promise<void> {
   if (!map) return;
   const path = buildNodePath(viewState.selectedNodeId);
-  void copyTextToSystemClipboard(path);
-  setStatus(`Path copied: ${path}`);
+  if (await copyTextToSystemClipboard(path)) {
+    setStatus(`Path copied: ${path}`);
+    return;
+  }
+  setStatus("Failed to copy path to system clipboard.", true);
 }
 
-function copyScopeId(): void {
+async function copyScopeId(): Promise<void> {
   if (!map) return;
   const id = normalizedCurrentScopeId();
-  void copyTextToSystemClipboard(id);
-  setStatus(`Scope ID copied: ${id}`);
+  if (await copyTextToSystemClipboard(id)) {
+    setStatus(`Scope ID copied: ${id}`);
+    return;
+  }
+  setStatus("Failed to copy scope ID to system clipboard.", true);
 }
 
 function copySelected(): void {
@@ -9658,13 +9929,16 @@ function copySelected(): void {
     return;
   }
   const snapshots = roots.map((rootId) => toSubtreeSnapshot(rootId));
+  const links = collectInternalLinksForRoots(roots);
   viewState.clipboardState = {
     type: "copy",
     snapshots,
+    links,
   };
-  void copyTextToSystemClipboard(roots.map((rootId) => uiLabel(getNode(rootId))).join("\n"));
+  const payload = buildStructuredClipboardPayload(snapshots, links);
+  void copyTextToSystemClipboard(encodeStructuredClipboardPayload(payload));
   scheduleRender();
-  setStatus(`Copied ${roots.length} node(s).`);
+  setStatus(`Copied ${roots.length} node(s)${links.length ? ` and ${links.length} link(s)` : ""}.`);
 }
 
 function cutSelected(): void {
@@ -9681,9 +9955,24 @@ function cutSelected(): void {
   setStatus(`Cut pending: ${roots.length} node(s).`);
 }
 
-function pasteClipboard(): void {
-  if (!map || !viewState.clipboardState) {
-    setStatus("Clipboard is empty.", true);
+async function pasteClipboard(): Promise<void> {
+  if (!map) {
+    return;
+  }
+  if (!viewState.clipboardState) {
+    const clipboardText = await readTextFromSystemClipboard();
+    const payload = clipboardText ? parseStructuredClipboardPayload(clipboardText) : null;
+    if (!payload) {
+      setStatus("Clipboard is empty.", true);
+      return;
+    }
+    const targetParentId = viewState.selectedNodeId;
+    const targetParent = getNode(targetParentId);
+    if (isAliasNode(targetParent)) {
+      setStatus("Alias nodes cannot own children.", true);
+      return;
+    }
+    pasteCopiedPayload(targetParentId, payload.roots, payload.links);
     return;
   }
   const targetParentId = viewState.selectedNodeId;
@@ -9699,19 +9988,7 @@ function pasteClipboard(): void {
       setStatus("Clipboard is empty.", true);
       return;
     }
-    pushUndoSnapshot();
-    let firstPastedId: string | null = null;
-    snapshots.forEach((snapshot) => {
-      const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot);
-      if (!firstPastedId) {
-        firstPastedId = pastedId;
-      }
-    });
-    if (firstPastedId) {
-      setSingleSelection(firstPastedId, false);
-    }
-    touchDocument();
-    setStatus(`Pasted ${snapshots.length} copied node(s).`);
+    pasteCopiedPayload(targetParentId, snapshots, viewState.clipboardState.links || []);
     return;
   }
 
@@ -10834,7 +11111,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
-    pasteClipboard();
+    void pasteClipboard();
     return;
   }
 
@@ -10896,15 +11173,15 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
+  if (isCopyNodePathShortcut(event)) {
     event.preventDefault();
-    copyNodePath();
+    void copyNodePath();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "i") {
+  if (isCopyScopeIdShortcut(event)) {
     event.preventDefault();
-    copyScopeId();
+    void copyScopeId();
     return;
   }
 

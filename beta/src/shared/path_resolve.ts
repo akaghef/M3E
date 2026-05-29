@@ -23,20 +23,29 @@ export interface ParsedMapPath {
   hadMapPrefix: boolean;
 }
 
+export const MAP_PATH_SEPARATOR = ">";
+
 // Parse a user-supplied path string. Accepts optional "Map:" prefix
-// (case-insensitive). Segments are split on `sep` (default "/") and trimmed.
+// (case-insensitive). Segments are split on `sep` (default ">") and trimmed.
 // Returns null if nothing usable remained.
-export function parseMapPath(raw: string, sep: string = "/"): ParsedMapPath | null {
+export function parseMapPath(raw: string, sep: string = MAP_PATH_SEPARATOR): ParsedMapPath | null {
   if (typeof raw !== "string") return null;
   let s = raw.trim();
   if (!s) return null;
   const prefixMatch = /^map:\s*/i.exec(s);
   const hadMapPrefix = prefixMatch !== null;
   if (hadMapPrefix) s = s.slice(prefixMatch![0].length);
-  const segments = s
-    .split(sep)
+  const separator = sep || MAP_PATH_SEPARATOR;
+  let segments = s
+    .split(separator)
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
+  if (separator === MAP_PATH_SEPARATOR && segments.length === 1 && s.includes("/")) {
+    segments = s
+      .split("/")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+  }
   if (segments.length === 0) return null;
   return { segments, hadMapPrefix };
 }

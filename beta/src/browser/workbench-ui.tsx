@@ -1,32 +1,23 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  ArrowDownToLine,
   Bell,
-  BookOpen,
-  Braces,
   ChevronDown,
   CircleHelp,
   CircleUserRound,
   Cloud,
   Command,
   Eraser,
-  Eye,
-  FileDown,
-  FolderOpen,
   Frame,
-  Hand,
   Highlighter,
   Home,
   ListTree,
   Lock,
-  Maximize,
   MousePointer2,
   PanelRight,
   PenLine,
   Presentation,
   RefreshCw,
-  Search,
   Settings,
   Share2,
   Sparkles,
@@ -37,10 +28,57 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { edgePathBetweenRects, rectFromDomRect } from "./edge_geometry";
 import "./workbench-ui.css";
 
 type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" | "note";
 type ModalId = "menu" | "settings" | "share" | "help" | null;
+type ProgressiveNodeId =
+  | "gui"
+  | "board"
+  | "view"
+  | "scatter"
+  | "mindmap"
+  | "annotation"
+  | "panel"
+  | "import"
+  | "export-json"
+  | "export-mm"
+  | "export-vault"
+  | "tree"
+  | "system"
+  | "scatter-surface"
+  | "scatter-normal"
+  | "scatter-add-node"
+  | "scatter-add-edge"
+  | "scatter-colorize"
+  | "scatter-delete"
+  | "scatter-animate"
+  | "scatter-reflow"
+  | "add-child"
+  | "toggle-scope"
+  | "enter-scope"
+  | "exit-scope"
+  | "pen"
+  | "highlighter"
+  | "date"
+  | "eraser"
+  | "settings"
+  | "help";
+
+type ProgressiveNode = {
+  id: ProgressiveNodeId;
+  label: string;
+  hint: string;
+  parentId?: ProgressiveNodeId;
+  action?: () => void;
+};
+
+type ProgressiveEdge = {
+  id: string;
+  d: string;
+  active: boolean;
+};
 
 type UiSnapshot = {
   mode: string;
@@ -63,6 +101,10 @@ const byId = <T extends HTMLElement>(id: string): T | null => document.getElemen
 
 function clickLegacy(id: string): void {
   byId<HTMLButtonElement>(id)?.click();
+}
+
+function sendKey(key: string, options: KeyboardEventInit = {}): void {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...options }));
 }
 
 function setLegacyInput(id: string, value: string, eventName = "input"): void {
@@ -130,6 +172,9 @@ function IconButton(props: {
   active?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  onFocus?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
@@ -140,6 +185,9 @@ function IconButton(props: {
       title={props.label}
       disabled={props.disabled}
       onClick={props.onClick}
+      onFocus={props.onFocus}
+      onMouseEnter={props.onMouseEnter}
+      onMouseLeave={props.onMouseLeave}
     >
       {props.children}
     </button>
@@ -201,7 +249,15 @@ function TopBar({ snapshot, openModal }: { snapshot: UiSnapshot; openModal: (id:
   );
 }
 
-function LeftRail({ tool, setTool, openModal }: { tool: ToolId; setTool: (tool: ToolId) => void; openModal: (id: ModalId) => void }): React.ReactElement {
+function LeftRail({
+  tool,
+  setTool,
+  openModal,
+}: {
+  tool: ToolId;
+  setTool: (tool: ToolId) => void;
+  openModal: (id: ModalId) => void;
+}): React.ReactElement {
   const activate = (next: ToolId, legacyId?: string) => {
     setTool(next);
     if (legacyId) clickLegacy(legacyId);
@@ -244,7 +300,10 @@ function LeftRail({ tool, setTool, openModal }: { tool: ToolId; setTool: (tool: 
           <Eraser size={20} />
         </IconButton>
       </div>
-      <IconButton label="More mindmap tools" onClick={() => openModal("menu")}>
+      <IconButton
+        label="[GUI] navigation root"
+        onClick={() => undefined}
+      >
         <Command size={19} />
       </IconButton>
     </div>
@@ -429,19 +488,174 @@ function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement |
   );
 }
 
-function MainMenu({ close }: { close: () => void }): React.ReactElement {
+function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode[] {
+  return [
+    { id: "gui", label: "[GUI]", hint: "overlay root" },
+    { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
+    { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
+    { id: "scatter", label: "Scatter", hint: "scatter editing tools", parentId: "gui" },
+    { id: "mindmap", label: "Mindmap", hint: "node and scope actions", parentId: "gui" },
+    { id: "annotation", label: "Annotation", hint: "drawing tools", parentId: "gui" },
+    { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
+    { id: "import", label: "Import file", hint: "board input", parentId: "board", action: () => clickLegacy("import-file-btn") },
+    { id: "export-json", label: "Export JSON", hint: "download map JSON", parentId: "board", action: () => clickLegacy("download-btn") },
+    { id: "export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "board", action: () => clickLegacy("download-mm-btn") },
+    { id: "export-vault", label: "Export to Vault", hint: "write linear notes", parentId: "board", action: () => clickLegacy("export-vault-btn") },
+    { id: "tree", label: "Tree surface", hint: "structured canvas", parentId: "view", action: () => clickLegacy("view-tree") },
+    { id: "system", label: "System surface", hint: "diagram canvas", parentId: "view", action: () => clickLegacy("view-system") },
+    { id: "scatter-surface", label: "Scatter surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
+    { id: "scatter-normal", label: "Normal", hint: "select scatter objects", parentId: "scatter", action: () => clickLegacy("scatter-normal") },
+    { id: "scatter-add-node", label: "Add node", hint: "create scatter node", parentId: "scatter", action: () => clickLegacy("scatter-add-node") },
+    { id: "scatter-add-edge", label: "Add edge", hint: "connect scatter nodes", parentId: "scatter", action: () => clickLegacy("scatter-add-edge") },
+    { id: "scatter-colorize", label: "Colorize", hint: "apply scatter color", parentId: "scatter", action: () => clickLegacy("scatter-colorize") },
+    { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
+    { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
+    { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
+    { id: "add-child", label: "Add child", hint: "Tab", parentId: "mindmap", action: () => sendKey("Tab") },
+    { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "mindmap", action: () => sendKey("f") },
+    { id: "enter-scope", label: "Enter scope", hint: "]", parentId: "mindmap", action: () => sendKey("]") },
+    { id: "exit-scope", label: "Exit scope", hint: "[", parentId: "mindmap", action: () => sendKey("[") },
+    { id: "pen", label: "Pen", hint: "freehand draw", parentId: "annotation", action: () => clickLegacy("draw-pen") },
+    { id: "highlighter", label: "Highlighter", hint: "wide translucent stroke", parentId: "annotation", action: () => clickLegacy("draw-highlighter") },
+    { id: "date", label: "Date label", hint: "stamp date", parentId: "annotation", action: () => clickLegacy("draw-date") },
+    { id: "eraser", label: "Eraser", hint: "remove annotations", parentId: "annotation", action: () => clickLegacy("draw-eraser") },
+    { id: "settings", label: "Settings", hint: "open panel settings", parentId: "panel", action: () => openModal("settings") },
+    { id: "help", label: "Shortcuts", hint: "keyboard reference", parentId: "panel", action: () => openModal("help") },
+  ];
+}
+
+function ProgressiveNavigation({ close, openModal }: { close: () => void; openModal: (id: ModalId) => void }): React.ReactElement {
+  const nodes = useMemo(() => makeProgressiveNodes(openModal), [openModal]);
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const childrenByParent = useMemo(() => {
+    const grouped = new Map<ProgressiveNodeId, ProgressiveNode[]>();
+    nodes.forEach((node) => {
+      if (!node.parentId) return;
+      const siblings = grouped.get(node.parentId) || [];
+      siblings.push(node);
+      grouped.set(node.parentId, siblings);
+    });
+    return grouped;
+  }, [nodes]);
+  const [activeId, setActiveId] = useState<ProgressiveNodeId>("gui");
+  const path = useMemo(() => {
+    const ids: ProgressiveNodeId[] = [];
+    let cur = nodeById.get(activeId);
+    while (cur) {
+      ids.unshift(cur.id);
+      cur = cur.parentId ? nodeById.get(cur.parentId) : undefined;
+    }
+    return ids;
+  }, [activeId, nodeById]);
+  const columns = useMemo(() => path.map((id) => childrenByParent.get(id) || []), [childrenByParent, path]);
+  const rootChildren = columns[0] || [];
+  const activeRootIndex = Math.max(0, rootChildren.findIndex((node) => node.id === path[1]));
+  const activeChildren = columns[1] || [];
+  const [navRootCenterY, setNavRootCenterY] = useState(156);
+  const nodeCenterOffsetY = 23.5;
+  const nodeStepY = 53;
+  const columnStepX = 194;
+  const groupHeight = (count: number) => (count > 0 ? 47 + (count - 1) * nodeStepY : 0);
+  const groupTop = (count: number, parentCenterY: number) => parentCenterY - groupHeight(count) / 2;
+  const rootColumnTop = groupTop(rootChildren.length, navRootCenterY);
+  const nodeCenterY = (columnTop: number, index: number) => columnTop + nodeCenterOffsetY + index * nodeStepY;
+  const activeRootCenterY = nodeCenterY(rootColumnTop, activeRootIndex);
+  const childColumnTop = groupTop(activeChildren.length, activeRootCenterY);
+  const columnTop = (index: number, count: number) => {
+    if (index === 0) return rootColumnTop;
+    if (index === 1) return childColumnTop;
+    return groupTop(count, activeRootCenterY);
+  };
+  const navRef = useRef<HTMLDivElement | null>(null);
+  const [edges, setEdges] = useState<ProgressiveEdge[]>([]);
+  const [edgeSize, setEdgeSize] = useState({ width: 486, height: 420 });
+
+  const measureEdges = () => {
+    const nav = navRef.current;
+    const rootButton = document.querySelector('[aria-label="[GUI] navigation root"]');
+    if (!nav || !(rootButton instanceof HTMLElement)) return;
+    const navRect = nav.getBoundingClientRect();
+    const toRect = (el: Element) => rectFromDomRect(el.getBoundingClientRect(), navRect);
+    const rootRect = toRect(rootButton);
+    const measuredRootCenterY = rootRect.y + rootRect.h / 2;
+    setNavRootCenterY((current) => (Math.abs(current - measuredRootCenterY) > 0.5 ? measuredRootCenterY : current));
+    const nextEdges: ProgressiveEdge[] = [];
+    rootChildren.forEach((node) => {
+      const el = nav.querySelector(`[data-pn-node="${node.id}"]`);
+      if (!el) return;
+      nextEdges.push({ id: `gui-${node.id}`, d: edgePathBetweenRects(rootRect, toRect(el), 0), active: false });
+    });
+    const activeParentId = path[1];
+    const activeParentEl = activeParentId ? nav.querySelector(`[data-pn-node="${activeParentId}"]`) : null;
+    if (activeParentEl) {
+      const fromRect = toRect(activeParentEl);
+      activeChildren.forEach((node) => {
+        const el = nav.querySelector(`[data-pn-node="${node.id}"]`);
+        if (!el) return;
+        nextEdges.push({ id: `${activeParentId}-${node.id}`, d: edgePathBetweenRects(fromRect, toRect(el), 0), active: true });
+      });
+    }
+    setEdgeSize({ width: Math.ceil(navRect.width), height: Math.ceil(navRect.height) });
+    setEdges(nextEdges);
+  };
+
+  useLayoutEffect(() => {
+    measureEdges();
+    window.addEventListener("resize", measureEdges);
+    return () => window.removeEventListener("resize", measureEdges);
+  }, [activeId, rootChildren.length, activeChildren.length, navRootCenterY]);
+
+  const activate = (node: ProgressiveNode) => {
+    setActiveId(node.id);
+    if (node.action && !(childrenByParent.get(node.id)?.length)) {
+      node.action();
+      close();
+    }
+  };
+
   return (
-    <div className="wb-popover wb-main-menu">
-      <div className="wb-popover-title">Board</div>
-      <button type="button" onClick={() => clickLegacy("import-file-btn")}><FolderOpen size={16} /> Import file</button>
-      <button type="button" onClick={() => clickLegacy("download-btn")}><FileDown size={16} /> Export JSON</button>
-      <button type="button" onClick={() => clickLegacy("download-mm-btn")}><ArrowDownToLine size={16} /> Export .mm</button>
-      <button type="button" onClick={() => clickLegacy("export-vault-btn")}><BookOpen size={16} /> Export to Vault</button>
-      <div className="wb-popover-title">View</div>
-      <button type="button" onClick={() => clickLegacy("view-tree")}><ListTree size={16} /> Tree surface</button>
-      <button type="button" onClick={() => clickLegacy("view-system")}><Braces size={16} /> System surface</button>
-      <button type="button" onClick={() => clickLegacy("view-scatter")}><Waypoints size={16} /> Scatter surface</button>
-      <button type="button" onClick={close}><Eye size={16} /> Close menu</button>
+    <div
+      className="wb-progressive-nav"
+      data-testid="progressive-navigation"
+      ref={navRef}
+      onMouseLeave={() => setActiveId("gui")}
+    >
+      <svg className="wb-progressive-edges" viewBox={`0 0 ${edgeSize.width} ${edgeSize.height}`} aria-hidden="true">
+        {edges.map((edge) => (
+          <path className={edge.active ? "is-active-edge" : undefined} key={edge.id} d={edge.d} />
+        ))}
+      </svg>
+      <div className="wb-progressive-columns">
+        {columns.map((column, index) => (
+          <div
+            className="wb-progressive-column"
+            key={`${path[index]}-${index}`}
+            style={{ left: `${index * columnStepX}px`, top: `${columnTop(index, column.length)}px` }}
+          >
+            {column.map((node) => {
+              const selected = path.includes(node.id) || activeId === node.id;
+              const hasChildren = Boolean(childrenByParent.get(node.id)?.length);
+              return (
+                <button
+                  className={`wb-progressive-node${selected ? " is-selected" : ""}${node.action && !hasChildren ? " is-action" : ""}`}
+                  key={node.id}
+                  data-pn-node={node.id}
+                  type="button"
+                  onMouseEnter={() => setActiveId(node.id)}
+                  onFocus={() => setActiveId(node.id)}
+                  onClick={() => activate(node)}
+                >
+                  <span>
+                    <strong>{node.label}</strong>
+                    <small>{node.hint}</small>
+                  </span>
+                  {hasChildren ? <ChevronDown size={14} /> : <span className="wb-progressive-dot" />}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -531,6 +745,8 @@ function HelpModal({ close }: { close: () => void }): React.ReactElement {
           <span><kbd>[</kbd><kbd>]</kbd>Scope</span>
           <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>Mode</span>
           <span><kbd>-</kbd><kbd>=</kbd>Zoom</span>
+          <span><kbd>Ctrl+Alt+C</kbd>Copy node path</span>
+          <span><kbd>Ctrl+Alt+I</kbd>Copy scope ID</span>
           <span><kbd>Alt+E</kbd>Entity list</span>
           <span><kbd>Alt+D</kbd>Markdown preview</span>
         </div>
@@ -545,7 +761,6 @@ function WorkbenchApp(): React.ReactElement {
   const [modal, setModal] = useState<ModalId>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const modalContent = useMemo(() => {
-    if (modal === "menu") return <MainMenu close={() => setModal(null)} />;
     if (modal === "settings") return <SettingsModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "share") return <ShareModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "help") return <HelpModal close={() => setModal(null)} />;
@@ -554,7 +769,12 @@ function WorkbenchApp(): React.ReactElement {
   return (
     <div className="wb-shell">
       <TopBar snapshot={snapshot} openModal={setModal} />
-      <LeftRail tool={tool} setTool={setTool} openModal={setModal} />
+      <LeftRail
+        tool={tool}
+        setTool={setTool}
+        openModal={setModal}
+      />
+      <ProgressiveNavigation close={() => undefined} openModal={setModal} />
       <ScatterToolbar visible={snapshot.surface === "Scatter"} />
       <RightPanel
         snapshot={snapshot}

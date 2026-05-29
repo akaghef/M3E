@@ -281,17 +281,34 @@ interface PinchState {
 }
 
 interface SubtreeSnapshot {
+  id: string;
+  nodeType?: NodeType;
   text: string;
+  collapsed?: boolean;
   details: string;
   note: string;
   attributes: Record<string, string>;
+  link?: string;
+  targetNodeId?: string;
+  aliasLabel?: string;
+  access?: AliasAccess;
+  targetSnapshotLabel?: string;
+  isBroken?: boolean;
   children: SubtreeSnapshot[];
+}
+
+interface SubtreeClipboardPayload {
+  kind: "m3e.subtree.clipboard";
+  version: 1;
+  roots: SubtreeSnapshot[];
+  links: GraphLink[];
 }
 
 type ClipboardState =
   | {
     type: "copy";
     snapshots: SubtreeSnapshot[];
+    links: GraphLink[];
   }
   | {
     type: "cut";

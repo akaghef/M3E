@@ -14,9 +14,9 @@
 | `cancelCut` | カット状態（`cut` で予約した移動）をキャンセル | |
 | `cancelAndEditNext` | `Esc` -> `Down` -> `Enter` を連続実行したのと同等の動作 | 通常モードでは cut 解除 -> 次ノード選択 -> 編集開始（文末カーソル）。編集モードでは編集破棄 -> 次ノード選択 -> 編集開始（文末カーソル） |
 | `cycleView` | 1回目: 選択ノードを中央にフォーカス / 2回目: 全体フィット（交互にトグル） | `Alt+V` で連打 |
-| `copyNodePath` | 選択ノードのルートからのパス（`A / B / C` 形式）をクリップボードにコピー | `Ctrl+Shift+C` |
-| `copyScopeId` | 現在のスコープの ID をクリップボードにコピー | `Ctrl+Shift+I` |
-| `copy` | 選択ノードの部分木をクリップボードにコピー | システムクリップボードにはテキストラベルをコピー。alias/link メタデータは含まない |
+| `copyNodePath` | 選択ノードのルートからのパス（`A / B / C` 形式）をクリップボードにコピー | `Ctrl+Shift+C` / `Ctrl+Alt+C`（Mac-safe 代替） |
+| `copyScopeId` | 現在のスコープの ID をクリップボードにコピー | `Ctrl+Shift+I` / `Ctrl+Alt+I`（Mac-safe 代替） |
+| `copy` | 選択ノードの部分木をクリップボードにコピー | システムクリップボードには M3E structured clipboard をコピー。node 状態と subtree 内で完結する link を含む |
 | `cut` | 選択ノードを移動予約（カット）。`paste` で移動先に確定する | ノードはグレーアウト表示。`Esc` でキャンセル |
 | `delete` | 選択ノードの部分木を削除 | 複数選択中は selection root をすべて削除。root ノードは削除不可。`Backspace` で scope root を選択中かつ scope 履歴あり → scope を一段上に戻る |
 | `enterScope` | 選択ノードが持つ subsystem / folder scope に入る | 既定キーは `]`。tree surface では folder 選択時に `→` でも入れるが、子が無い場合に限る。system surface では `→` は移動専用 |
@@ -40,7 +40,7 @@
 | `navigateUp` | 選択を1ステップ上方向へ移動 | tree surface では breadth 方向（兄弟）の前ノード。system surface では上段候補へ移動。単一選択に戻す |
 | `increaseSystemDetail` | system surface の詳細度を1段上げる | `J`。`flow-lr` surface で subsystem box 内の immediate child preview を表示 |
 | `decreaseSystemDetail` | system surface の詳細度を1段下げる | `K`。`flow-lr` surface で subsystem preview を閉じる |
-| `paste` | クリップボードの内容を primary 選択ノードの子として挿入 | `copy` 後 → 部分木をクローン挿入（新 ID 発行）。`cut` 後 → reparent を実行して移動確定（一度きり） |
+| `paste` | クリップボードの内容を primary 選択ノードの子として挿入 | `copy` 後 → 部分木と内部 link をクローン挿入（新 ID 発行）。別タブの M3E structured clipboard も読める。`cut` 後 → reparent を実行して移動確定（一度きり） |
 | `redo` | 直前の Undo を取り消す（Redo） | |
 | `selectAll` | 現在の scope 内の全可視ノードを選択 | |
 | `startEditCursorEnd` | 選択ノードのテキスト編集を開始（カーソルを文末に配置） | `Enter` で起動。複数選択中は primary のみ対象 |

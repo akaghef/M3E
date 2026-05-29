@@ -83,7 +83,7 @@ Do not invert this order. In particular, do **not** decide anchoring or coloring
 | GET | `/api/maps/{mapId}` | Read entire map state (supports `?scope=<nodeId>&depth=N` for subtree read) |
 | POST | `/api/maps/{mapId}` | Save entire map state (supports `?scope=<nodeId>` for subtree write); PUT also accepted |
 | DELETE | `/api/maps/{mapId}` | Delete a map permanently |
-| GET | `/api/maps/{mapId}/resolve?path=Map:Root/...` | Resolve a path string to a `nodeId` |
+| GET | `/api/maps/{mapId}/resolve?path=Map:Root > ...` | Resolve a path string to a `nodeId` |
 | POST | `/api/maps/{mapId}/duplicate` | Duplicate map |
 | POST | `/api/maps/{mapId}/rename` | Rename (`{label}` body) |
 | POST | `/api/maps/{mapId}/archive` | Archive |
@@ -100,12 +100,12 @@ The save response is:
 
 ### Path format (`Map:` convention)
 
-User-copied paths from the viewer (right-click → "Copy path") use the form `Map:Root/Child/Grandchild`. The `Map:` prefix is optional on the API (accepted case-insensitively). A leading `Root` segment (or the root node's own text) resolves to the document root.
+User-copied paths from the viewer (right-click → "Copy path") use the form `Map:Root > Child > Grandchild`. The `Map:` prefix is optional on the API (accepted case-insensitively). A leading `Root` segment (or the root node's own text) resolves to the document root.
 
 - Success: `{ ok: true, mapId, nodeId, matched: ["Root", ...] }`
 - `PATH_NOT_FOUND` (404): no child with that text under the current parent
 - `PATH_AMBIGUOUS` (409): multiple children share the segment text; response includes `candidates: [nodeId, ...]`
-- Custom separator: pass `&sep=>` (or any single char) if a segment text contains `/`
+- Custom separator: pass `&sep=/` (or any single char) only for legacy or special cases. `>` is the default separator.
 
 Prefer `resolve` + `?scope=<nodeId>` over loading the full state when the user gave you a path.
 
