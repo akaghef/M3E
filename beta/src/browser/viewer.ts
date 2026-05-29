@@ -3183,16 +3183,6 @@ function nodeViewportRect(nodeId: string): { left: number; right: number; top: n
   const right = viewState.cameraX + (nodePos.x + nodePos.w) * viewState.zoom;
   const top = viewState.cameraY + (nodePos.y - nodeHeight / 2) * viewState.zoom;
   const bottom = viewState.cameraY + (nodePos.y + nodeHeight / 2) * viewState.zoom;
-  if (inlineEditor?.nodeId === nodeId) {
-    const boardRect = board.getBoundingClientRect();
-    const editorRect = inlineEditor.input.getBoundingClientRect();
-    return {
-      left: Math.min(left, editorRect.left - boardRect.left),
-      right: Math.max(right, editorRect.right - boardRect.left),
-      top: Math.min(top, editorRect.top - boardRect.top),
-      bottom: Math.max(bottom, editorRect.bottom - boardRect.top),
-    };
-  }
   return { left, right, top, bottom };
 }
 
@@ -8044,7 +8034,7 @@ function addChild(): void {
   parent.collapsed = false;
   setSingleSelection(id, false);
   touchDocument();
-  nudgeActiveNodeIntoView();
+  nudgeActiveNodeIntoView({ animate: false });
   board.focus();
 }
 
@@ -8062,7 +8052,7 @@ function addSibling(): void {
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
-  nudgeActiveNodeIntoView();
+  nudgeActiveNodeIntoView({ animate: false });
   board.focus();
 }
 
@@ -8326,7 +8316,7 @@ function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
   } else {
     addSibling();
   }
-  startInlineEdit(viewState.selectedNodeId);
+  startInlineEdit(viewState.selectedNodeId, { nudgeIntoView: false });
 }
 
 function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
@@ -8334,7 +8324,7 @@ function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
   input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
-function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): void {
+function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeIntoView?: boolean }): void {
   if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
     return;
   }
@@ -8357,7 +8347,9 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean }): voi
   inlineEditor = { nodeId, input, mode };
   syncInlineEditorPosition();
   autoSizeInlineEditor(input);
-  nudgeNodeIntoView(nodeId);
+  if (options?.nudgeIntoView !== false) {
+    nudgeNodeIntoView(nodeId);
+  }
   input.focus();
   if (options?.selectAll ?? true) {
     input.select();
