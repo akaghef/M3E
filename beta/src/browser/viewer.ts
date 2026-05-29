@@ -3099,15 +3099,45 @@ function syncInlineEditorPosition(): void {
     return;
   }
 
-  const centerX = nodeId === map.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
-  const centerY = nodePos.y;
-  const left = viewState.cameraX + centerX * viewState.zoom;
-  const top = viewState.cameraY + centerY * viewState.zoom;
+  const node = getNode(nodeId);
+  const isRootLabel = nodeId === map.state.rootId;
+  const nodeStyles = readNodeStyleAttrs(node.attributes || {});
+  const label = isRootLabel ? uiLabel(node) : diagramLabel(node, nodeStyles);
+  const labelLines = splitLabelLines(label || "(empty)");
+  const fontSize = nodePos.fontSize ?? (isRootLabel ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
+  const lineHeight = lineHeightForFont(fontSize);
+  const labelX = isRootLabel
+    ? nodePos.x + nodePos.w / 2
+    : (isScopePortalNode(node) ? nodePos.x + 12 : nodePos.x);
+  const textStartY = multilineTextStartY(nodePos.y, labelLines.length, fontSize, lineHeight);
+  const textHeight = Math.max(lineHeight, labelLines.length * lineHeight);
+  const left = viewState.cameraX + labelX * viewState.zoom;
+  const top = viewState.cameraY + (textStartY - fontSize * 0.82) * viewState.zoom;
+  const width = Math.max(28, nodePos.w + (isRootLabel ? 0 : 12));
+  const height = Math.max(lineHeight, textHeight);
 
   inlineEditor.input.style.left = `${left}px`;
   inlineEditor.input.style.top = `${top}px`;
-  inlineEditor.input.style.transform = "translate(-50%, -50%)";
-  inlineEditor.input.style.minWidth = `${Math.max(140, nodePos.w * viewState.zoom * 0.6)}px`;
+  inlineEditor.input.style.width = `${width}px`;
+  inlineEditor.input.style.minWidth = `${width}px`;
+  inlineEditor.input.style.minHeight = `${height}px`;
+  inlineEditor.input.style.fontSize = `${fontSize}px`;
+  inlineEditor.input.style.lineHeight = `${lineHeight}px`;
+  inlineEditor.input.style.fontWeight = isRootLabel ? "500" : "450";
+  inlineEditor.input.style.transform = isRootLabel
+    ? `translateX(-50%) scale(${viewState.zoom})`
+    : `scale(${viewState.zoom})`;
+  inlineEditor.input.style.transformOrigin = isRootLabel ? "top center" : "top left";
+  inlineEditor.input.style.textAlign = isRootLabel ? "center" : "left";
+  setEditedSvgLabelVisibility(nodeId, false);
+}
+
+function setEditedSvgLabelVisibility(nodeId: string, visible: boolean): void {
+  canvas
+    .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"]`)
+    .forEach((label) => {
+      label.style.visibility = visible ? "" : "hidden";
+    });
 }
 
 function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
@@ -8274,6 +8304,7 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
 
   const { nodeId, input, mode } = inlineEditor;
   const next = input.value;
+  setEditedSvgLabelVisibility(nodeId, true);
   input.remove();
   inlineEditor = null;
 
@@ -10703,7 +10734,7 @@ canvas.addEventListener("dblclick", (event: MouseEvent) => {
     return;
   }
   selectNode(nodeId);
-  startInlineEdit(nodeId);
+  startInlineEdit(nodeId, { selectAll: false });
 });
 
 // Right-click context menu for scope lock on folder nodes
