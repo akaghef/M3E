@@ -240,6 +240,7 @@ let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
+let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 
@@ -2942,6 +2943,7 @@ function applyZoom(): void {
     _appliedCanvasTransform = transformValue;
   }
   syncInlineEditorPosition();
+  syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
 }
 
@@ -3135,6 +3137,62 @@ function syncInlineEditorPosition(): void {
 function setEditedSvgLabelVisibility(nodeId: string, visible: boolean): void {
   canvas
     .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"]`)
+    .forEach((label) => {
+      label.style.visibility = visible ? "" : "hidden";
+    });
+}
+
+function incomingTreeEdgeLabelLayout(nodeId: string): { x: number; y: number; width: number } | null {
+  if (!map || !lastLayout) {
+    return null;
+  }
+  const node = map.state.nodes[nodeId];
+  if (!node?.parentId) {
+    return null;
+  }
+  const parentPos = lastLayout.pos[node.parentId];
+  const childPos = lastLayout.pos[nodeId];
+  if (!parentPos || !childPos) {
+    return null;
+  }
+  const startX = parentPos.x + parentPos.w + VIEWER_TUNING.layout.edgeStartPad;
+  const startY = parentPos.y;
+  const endX = childPos.x - VIEWER_TUNING.layout.edgeEndPad;
+  const endY = childPos.y;
+  const curve = Math.max(48, (endX - startX) * 0.45);
+  const c1x = startX + curve;
+  const c2x = endX - curve;
+  return {
+    x: (c1x + c2x) / 2,
+    y: (startY + endY) / 2 - 8,
+    width: Math.max(72, Math.abs(c2x - c1x) * 0.65),
+  };
+}
+
+function syncInlineEdgeLabelEditorPosition(): void {
+  if (!inlineEdgeLabelEditor) {
+    return;
+  }
+  const edgeLabel = incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
+  if (!edgeLabel) {
+    return;
+  }
+  const left = viewState.cameraX + edgeLabel.x * viewState.zoom;
+  const top = viewState.cameraY + (edgeLabel.y - 10) * viewState.zoom;
+  inlineEdgeLabelEditor.input.style.left = `${left}px`;
+  inlineEdgeLabelEditor.input.style.top = `${top}px`;
+  inlineEdgeLabelEditor.input.style.width = `${edgeLabel.width}px`;
+  inlineEdgeLabelEditor.input.style.minWidth = `${edgeLabel.width}px`;
+  inlineEdgeLabelEditor.input.style.fontSize = "11px";
+  inlineEdgeLabelEditor.input.style.lineHeight = "14px";
+  inlineEdgeLabelEditor.input.style.transform = `translateX(-50%) scale(${viewState.zoom})`;
+  inlineEdgeLabelEditor.input.style.transformOrigin = "top center";
+  setEditedEdgeLabelVisibility(inlineEdgeLabelEditor.nodeId, false);
+}
+
+function setEditedEdgeLabelVisibility(nodeId: string, visible: boolean): void {
+  canvas
+    .querySelectorAll<SVGTextElement>(`text.edge-label[data-node-id="${CSS.escape(nodeId)}"]`)
     .forEach((label) => {
       label.style.visibility = visible ? "" : "hidden";
     });
@@ -5428,7 +5486,7 @@ function render(): void {
       if (childStyles.edgeLabel) {
         const labelX = (c1x + c2x) / 2;
         const labelY = (startY + endY) / 2 - 8;
-        edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
+        edges += `<text class="edge-label" data-node-id="${childId}" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(childStyles.edgeLabel)}</text>`;
       }
     });
 
@@ -8307,6 +8365,102 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
   }
 }
 
+function applyIncomingEdgeLabelEdit(nodeId: string, nextRaw: string): boolean {
+  if (!map) {
+    return false;
+  }
+  const node = getNode(nodeId);
+  if (!node.parentId) {
+    setStatus("Root has no incoming edge label.", true);
+    return false;
+  }
+  const next = String(nextRaw || "").trim();
+  const current = (node.attributes?.["m3e:edge-label"] || "").trim();
+  if (current === next) {
+    return true;
+  }
+  pushUndoSnapshot();
+  node.attributes = node.attributes || {};
+  if (next) {
+    node.attributes["m3e:edge-label"] = next;
+  } else {
+    delete node.attributes["m3e:edge-label"];
+  }
+  touchDocument();
+  setStatus(next ? "Edge label updated." : "Edge label cleared.");
+  return true;
+}
+
+function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
+  if (!inlineEdgeLabelEditor) {
+    return;
+  }
+  const { nodeId, input } = inlineEdgeLabelEditor;
+  const next = input.value;
+  setEditedEdgeLabelVisibility(nodeId, true);
+  input.remove();
+  inlineEdgeLabelEditor = null;
+  if (commit) {
+    applyIncomingEdgeLabelEdit(nodeId, next);
+  }
+  if (options?.focusBoard !== false) {
+    board.focus();
+  }
+}
+
+function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
+  if (!map || !lastLayout) {
+    return;
+  }
+  const node = getNode(nodeId);
+  if (!node.parentId) {
+    setStatus("Root has no incoming edge label.", true);
+    return;
+  }
+  if (!incomingTreeEdgeLabelLayout(nodeId)) {
+    return;
+  }
+  if (inlineEditor) {
+    stopInlineEdit(true, { focusBoard: false });
+  }
+  if (inlineEdgeLabelEditor) {
+    stopInlineEdgeLabelEdit(true, { focusBoard: false });
+  }
+  const input = document.createElement("textarea");
+  input.rows = 1;
+  input.value = (node.attributes?.["m3e:edge-label"] || "").trim();
+  input.className = "inline-edge-label-editor";
+  input.setAttribute("aria-label", "Edit incoming edge label");
+  input.placeholder = "edge label";
+  board.appendChild(input);
+  inlineEdgeLabelEditor = { nodeId, input };
+  syncInlineEdgeLabelEditorPosition();
+  autoSizeInlineEdgeLabelEditor(input);
+  input.focus();
+  input.select();
+
+  input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (isImeComposingEvent(event)) {
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      stopInlineEdgeLabelEdit(true);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      stopInlineEdgeLabelEdit(false);
+    }
+  });
+  input.addEventListener("blur", () => {
+    stopInlineEdgeLabelEdit(true);
+  });
+  input.addEventListener("input", () => {
+    autoSizeInlineEdgeLabelEditor(input);
+  });
+}
+
 function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
   if (!map) {
     return;
@@ -8324,11 +8478,19 @@ function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
   input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
+function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
+  input.style.height = "auto";
+  input.style.height = `${Math.max(16, input.scrollHeight)}px`;
+}
+
 function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeIntoView?: boolean }): void {
   if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
     return;
   }
 
+  if (inlineEdgeLabelEditor) {
+    stopInlineEdgeLabelEdit(true, { focusBoard: false });
+  }
   if (inlineEditor) {
     stopInlineEdit(true);
   }
@@ -10984,6 +11146,9 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (inlineEditor && document.activeElement === inlineEditor.input) {
     return;
   }
+  if (inlineEdgeLabelEditor && document.activeElement === inlineEdgeLabelEditor.input) {
+    return;
+  }
 
   if (document.activeElement === linearTextEl) {
     return;
@@ -11436,6 +11601,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
     applyMarkedLink();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && event.altKey && !event.shiftKey && event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    startIncomingEdgeLabelEdit();
     return;
   }
 

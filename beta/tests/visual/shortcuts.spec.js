@@ -521,6 +521,32 @@ test.describe("GraphLink via L / Shift+L", () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Alt+L: Incoming edge label editing
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("Incoming edge label via Alt+L", () => {
+  test("Alt+L edits the selected node parent edge label", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Alt+l");
+    const editor = page.locator("textarea.inline-edge-label-editor");
+    await expect(editor).toBeVisible();
+
+    await editor.fill("blocks");
+    await editor.press("Enter");
+    await waitForRender(page);
+
+    await expect(page.locator("text.edge-label", { hasText: "blocks" })).toBeVisible();
+    await expectStatusContains(page, "Edge label updated.");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Ctrl+] / Ctrl+[: Scope navigation
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

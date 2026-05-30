@@ -1128,6 +1128,31 @@
         background: rgba(111, 57, 255, 0.2);
       }
 
+      .inline-edge-label-editor {
+        position: absolute;
+        z-index: 21;
+        box-sizing: border-box;
+        border: 0;
+        border-bottom: 1px solid rgba(111, 57, 255, 0.55);
+        border-radius: 0;
+        background: rgba(255, 255, 255, 0.72);
+        color: #555;
+        padding: 0 2px 1px;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-weight: 700;
+        text-align: center;
+        resize: none;
+        overflow: hidden;
+        white-space: pre-wrap;
+        outline: none;
+        box-shadow: none;
+        caret-color: #232323;
+      }
+
+      .inline-edge-label-editor::selection {
+        background: rgba(111, 57, 255, 0.2);
+      }
+
       .latex-node-content {
         display: flex;
         align-items: center;
