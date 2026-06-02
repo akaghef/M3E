@@ -6,7 +6,11 @@ const http = require("http");
 const { spawnSync } = require("child_process");
 
 const ROOT = __dirname;
-const PORT = Number(process.env.M3E_PORT || "4173");
+const PORT = Number(process.env.M3E_PORT || "14174");
+if (PORT === 4173 && process.env.M3E_ALLOW_VISUAL_TEST_ON_4173 !== "1") {
+  console.error("Refusing to run visual test server on beta port 4173. Use a dedicated test port.");
+  process.exit(1);
+}
 const DEFAULT_PAGE = "viewer.html";
 
 const MIME_BY_EXT = {
