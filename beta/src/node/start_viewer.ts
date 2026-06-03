@@ -312,6 +312,9 @@ function sendFile(res: http.ServerResponse, target: string): void {
 }
 
 function openBrowser(url: string): void {
+  if (process.env.M3E_OPEN_BROWSER === "0") {
+    return;
+  }
   // Open default browser on Windows.
   exec(`start "" "${url}"`);
 }

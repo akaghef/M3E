@@ -19,6 +19,7 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 |-----------|------|
 | `launch.bat` | Beta を起動（ビルド済み前提）**← 日常利用** |
 | `launch.sh` | Beta を Mac / Linux で起動（ビルド済み前提） |
+| `codex-app-server.sh` | Codex App server として Beta を起動（ブラウザ自動 open なし） |
 | `update-and-launch.bat` | git pull → install → build → 起動 |
 | `update-and-launch.sh` | git pull → install → build → 起動（Mac / Linux） |
 | `install-ollama-gemma3-4b.ps1` | Ollama 導入 + `gemma3:4b` 取得（ローカル AI 準備） |
@@ -78,6 +79,7 @@ Final を更新して起動する:
 macOS / Linux:
 ```bash
 ./scripts/beta/launch.sh
+./scripts/beta/codex-app-server.sh
 ./scripts/beta/update-and-launch.sh
 ./scripts/final/configure-personal-mode.sh
 ./scripts/final/launch.sh

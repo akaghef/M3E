@@ -17,6 +17,7 @@
     "build:browser": "tsc -p tsconfig.browser.json && tsc -p tsconfig.workbench.json && vite build --config vite.config.mjs",
     "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",
+    "start:codex-app": "../scripts/beta/codex-app-server.sh",
     "test": "npm run test:unit",
     "test:unit": "npm run build:node && npx vitest run",
     "test:unit:watch": "npm run build:node && npx vitest --watch",
