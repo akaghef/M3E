@@ -33,6 +33,8 @@ import "./workbench-ui.css";
 
 type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" | "note";
 type ModalId = "menu" | "settings" | "share" | "help" | null;
+type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type ProgressiveBranchDirection = "both" | "right" | "left";
 type ProgressiveNodeId =
   | "gui"
   | "board"
@@ -46,6 +48,24 @@ type ProgressiveNodeId =
   | "export-mm"
   | "export-vault"
   | "tree"
+  | "mindmap-surface"
+  | "mindmap-both"
+  | "mindmap-right"
+  | "mindmap-left"
+  | "mindmap-compact"
+  | "mindmap-spacious"
+  | "mindmap-orthogonal"
+  | "logic-chart-surface"
+  | "logic-chart-compact"
+  | "logic-chart-balanced"
+  | "logic-chart-spacious"
+  | "logic-chart-both"
+  | "logic-chart-right"
+  | "logic-chart-left"
+  | "timeline-surface"
+  | "timeline-compact"
+  | "timeline-balanced"
+  | "timeline-spacious"
   | "system"
   | "scatter-surface"
   | "scatter-normal"
@@ -101,6 +121,14 @@ const byId = <T extends HTMLElement>(id: string): T | null => document.getElemen
 
 function clickLegacy(id: string): void {
   byId<HTMLButtonElement>(id)?.click();
+}
+
+function setSurfaceLayout(
+  mode: ProgressiveSurfaceMode,
+  density: "compact" | "balanced" | "spacious",
+  direction?: ProgressiveBranchDirection,
+): void {
+  window.dispatchEvent(new CustomEvent("m3e:set-surface-layout", { detail: { mode, density, direction } }));
 }
 
 function sendKey(key: string, options: KeyboardEventInit = {}): void {
@@ -253,10 +281,12 @@ function LeftRail({
   tool,
   setTool,
   openModal,
+  setProgressiveOpen,
 }: {
   tool: ToolId;
   setTool: (tool: ToolId) => void;
   openModal: (id: ModalId) => void;
+  setProgressiveOpen: (open: boolean | ((current: boolean) => boolean)) => void;
 }): React.ReactElement {
   const activate = (next: ToolId, legacyId?: string) => {
     setTool(next);
@@ -302,7 +332,7 @@ function LeftRail({
       </div>
       <IconButton
         label="[GUI] navigation root"
-        onClick={() => undefined}
+        onClick={() => setProgressiveOpen((current) => !current)}
       >
         <Command size={19} />
       </IconButton>
@@ -501,7 +531,25 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "export-json", label: "Export JSON", hint: "download map JSON", parentId: "board", action: () => clickLegacy("download-btn") },
     { id: "export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "board", action: () => clickLegacy("download-mm-btn") },
     { id: "export-vault", label: "Export to Vault", hint: "write linear notes", parentId: "board", action: () => clickLegacy("export-vault-btn") },
-    { id: "tree", label: "Tree surface", hint: "structured canvas", parentId: "view", action: () => clickLegacy("view-tree") },
+    { id: "tree", label: "Tree surface", hint: "classic right tree", parentId: "view", action: () => clickLegacy("view-tree") },
+    { id: "mindmap-surface", label: "Mind Map", hint: "mapify-like map templates", parentId: "view", action: () => setSurfaceLayout("mindmap", "balanced", "both") },
+    { id: "mindmap-both", label: "Mind both", hint: "depth on both sides", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "both") },
+    { id: "mindmap-right", label: "Mind right", hint: "one-sided right depth", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "right") },
+    { id: "mindmap-left", label: "Mind left", hint: "one-sided left depth", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "left") },
+    { id: "mindmap-compact", label: "Mind compact", hint: "dense both-side map", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "compact", "both") },
+    { id: "mindmap-spacious", label: "Mind spacious", hint: "wide both-side map", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "spacious", "both") },
+    { id: "mindmap-orthogonal", label: "Mind orthogonal", hint: "both-side logic links", parentId: "mindmap-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "both") },
+    { id: "logic-chart-surface", label: "Logic Chart", hint: "logic templates", parentId: "view", action: () => setSurfaceLayout("logic-chart", "compact", "right") },
+    { id: "logic-chart-compact", label: "Logic compact", hint: "mapify-like dense ranks", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "compact", "right") },
+    { id: "logic-chart-balanced", label: "Logic balanced", hint: "readable mid-density ranks", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "right") },
+    { id: "logic-chart-spacious", label: "Logic spacious", hint: "wide review spacing", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "spacious", "right") },
+    { id: "logic-chart-both", label: "Logic both", hint: "depth on both sides", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "both") },
+    { id: "logic-chart-right", label: "Logic right", hint: "one-sided right depth", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "right") },
+    { id: "logic-chart-left", label: "Logic left", hint: "one-sided left depth", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "left") },
+    { id: "timeline-surface", label: "Timeline", hint: "axis-based layout", parentId: "view", action: () => clickLegacy("view-timeline") },
+    { id: "timeline-compact", label: "Timeline compact", hint: "short axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "compact") },
+    { id: "timeline-balanced", label: "Timeline balanced", hint: "standard axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "balanced") },
+    { id: "timeline-spacious", label: "Timeline spacious", hint: "wide axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "spacious") },
     { id: "system", label: "System surface", hint: "diagram canvas", parentId: "view", action: () => clickLegacy("view-system") },
     { id: "scatter-surface", label: "Scatter surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
     { id: "scatter-normal", label: "Normal", hint: "select scatter objects", parentId: "scatter", action: () => clickLegacy("scatter-normal") },
@@ -524,7 +572,7 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
   ];
 }
 
-function ProgressiveNavigation({ close, openModal }: { close: () => void; openModal: (id: ModalId) => void }): React.ReactElement {
+function ProgressiveNavigation({ close, openModal, open }: { close: () => void; openModal: (id: ModalId) => void; open: boolean }): React.ReactElement {
   const nodes = useMemo(() => makeProgressiveNodes(openModal), [openModal]);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const childrenByParent = useMemo(() => {
@@ -615,7 +663,7 @@ function ProgressiveNavigation({ close, openModal }: { close: () => void; openMo
 
   return (
     <div
-      className="wb-progressive-nav"
+      className={`wb-progressive-nav${open ? " is-open" : ""}`}
       data-testid="progressive-navigation"
       ref={navRef}
       onMouseLeave={() => setActiveId("gui")}
@@ -760,6 +808,7 @@ function WorkbenchApp(): React.ReactElement {
   const [tool, setTool] = useState<ToolId>("select");
   const [modal, setModal] = useState<ModalId>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [progressiveOpen, setProgressiveOpen] = useState(false);
   const modalContent = useMemo(() => {
     if (modal === "settings") return <SettingsModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "share") return <ShareModal snapshot={snapshot} close={() => setModal(null)} />;
@@ -773,8 +822,9 @@ function WorkbenchApp(): React.ReactElement {
         tool={tool}
         setTool={setTool}
         openModal={setModal}
+        setProgressiveOpen={setProgressiveOpen}
       />
-      <ProgressiveNavigation close={() => undefined} openModal={setModal} />
+      <ProgressiveNavigation close={() => setProgressiveOpen(false)} open={progressiveOpen} openModal={setModal} />
       <ScatterToolbar visible={snapshot.surface === "Scatter"} />
       <RightPanel
         snapshot={snapshot}

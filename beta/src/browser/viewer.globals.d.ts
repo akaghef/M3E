@@ -5,17 +5,20 @@ declare const katex: {
   render(latex: string, element: HTMLElement, options?: { displayMode?: boolean; throwOnError?: boolean }): void;
   renderToString(latex: string, options?: { displayMode?: boolean; throwOnError?: boolean }): string;
 };
+declare const joint: any;
 
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
-type SurfaceViewMode = "tree" | "system" | "scatter";
+type SurfaceViewMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 type MapNodeClass = "entity" | "scope";
-type SurfaceKind = "tree" | "system" | "scatter";
-type SurfaceLayout = "tree" | "flow-lr" | "scatter";
+type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceLayoutDensity = "compact" | "balanced" | "spacious";
+type SurfaceBranchDirection = "both" | "right" | "left";
 
 interface TreeNode {
   id: string;
@@ -229,6 +232,7 @@ interface NodePosition {
   w: number;
   h: number;
   fontSize?: number;
+  labelLines?: string[];
 }
 
 interface LayoutResult {
@@ -328,6 +332,8 @@ interface ViewState {
   currentScopeRootId: string;
   thinkingMode: ThinkingMode;
   surfaceViewMode: SurfaceViewMode;
+  surfaceLayoutDensity: SurfaceLayoutDensity;
+  surfaceBranchDirection: SurfaceBranchDirection;
   zoom: number;
   cameraX: number;
   cameraY: number;

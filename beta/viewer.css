@@ -60,6 +60,7 @@
       .mode-switch {
         display: inline-flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 4px;
         padding: 3px;
         border: 1px solid #d4d4d4;
@@ -724,6 +725,39 @@
         fill: none;
         stroke-width: 4;
         stroke-linecap: round;
+        stroke-linejoin: round;
+        pointer-events: none;
+      }
+
+      .edge-logic-chart {
+        stroke-width: 3.4;
+      }
+
+      .edge-timeline {
+        stroke-width: 2.6;
+        opacity: 0.72;
+      }
+
+      .timeline-axis {
+        stroke: rgba(82, 33, 178, 0.34);
+        stroke-width: 3;
+        stroke-linecap: round;
+        pointer-events: none;
+      }
+
+      .timeline-dot {
+        fill: #fff;
+        stroke: rgba(82, 33, 178, 0.8);
+        stroke-width: 2.5;
+        pointer-events: none;
+      }
+
+      .timeline-stem {
+        fill: none;
+        stroke: rgba(82, 33, 178, 0.24);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
         pointer-events: none;
       }
 
@@ -733,7 +767,18 @@
         stroke-linecap: round;
         stroke-linejoin: round;
         opacity: 0.95;
-        pointer-events: none;
+        pointer-events: stroke;
+        cursor: pointer;
+      }
+
+      .graph-link-hit {
+        fill: none;
+        stroke: rgba(0, 0, 0, 0);
+        stroke-width: 18;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        pointer-events: stroke;
+        cursor: pointer;
       }
 
       .graph-link.scatter-edge {
@@ -749,6 +794,66 @@
         stroke-linecap: round;
         pointer-events: stroke;
         cursor: pointer;
+      }
+
+      .graph-link.is-selected {
+        stroke-width: 4.5;
+        filter: drop-shadow(0 0 4px rgba(68, 99, 255, 0.42));
+      }
+
+      .link-port-controls {
+        pointer-events: auto;
+      }
+
+      .link-port-handle {
+        fill: #ffffff;
+        stroke: #4463ff;
+        stroke-width: 2.5;
+        cursor: grab;
+        filter: drop-shadow(0 2px 5px rgba(27, 37, 83, 0.22));
+      }
+
+      .link-port-handle:active {
+        cursor: grabbing;
+      }
+
+      .link-port-handle-source {
+        stroke: #7c3cff;
+      }
+
+      .link-port-handle-target {
+        stroke: #e64980;
+      }
+
+      .link-port-dot {
+        fill: #ffffff;
+        stroke: rgba(68, 99, 255, 0.48);
+        stroke-width: 1.7;
+        cursor: pointer;
+      }
+
+      .link-port-dot.is-active {
+        fill: #4463ff;
+        stroke: #ffffff;
+        stroke-width: 2;
+      }
+
+      .link-mini-toolbar {
+        fill: rgba(255, 255, 255, 0.96);
+        stroke: rgba(44, 52, 81, 0.16);
+        stroke-width: 1;
+        filter: drop-shadow(0 5px 14px rgba(27, 37, 83, 0.18));
+      }
+
+      .link-mini-toolbar-icon {
+        fill: #242424;
+      }
+
+      .link-mini-toolbar-icon-line {
+        fill: none;
+        stroke: #242424;
+        stroke-width: 2;
+        stroke-linecap: round;
       }
 
       .scatter-guide {
@@ -847,6 +952,25 @@
         stroke-width: 3;
       }
 
+      .mindmap-box {
+        fill: #ffffff;
+        stroke: #8b32ff;
+        stroke-width: 3;
+        vector-effect: non-scaling-stroke;
+      }
+
+      .root-box.mindmap-box {
+        fill: #f6edff;
+        stroke: #7a2cff;
+        stroke-width: 3.5;
+      }
+
+      .edge-mindmap {
+        stroke-width: 3.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
       .portal-bracket {
         fill: none;
         stroke: #9a6b1f;
@@ -889,6 +1013,9 @@
 
       .node-hit {
         fill: transparent;
+        stroke: transparent;
+        stroke-width: 0;
+        pointer-events: all;
         cursor: pointer;
       }
 
@@ -944,72 +1071,72 @@
         pointer-events: none;
       }
 
-.node-hit.selected {
+.node-visual-box.selected {
   fill: var(--accent-soft);
   stroke: var(--accent);
   stroke-width: 2;
 }
 
-.node-hit.multi-selected {
+.node-visual-box.multi-selected {
   fill: color-mix(in srgb, var(--accent-soft) 68%, #ffffff 32%);
   stroke: #9d75ff;
   stroke-width: 1.6;
 }
 
-.node-hit.primary-selected {
+.node-visual-box.primary-selected {
   stroke: var(--accent);
   stroke-width: 3;
 }
 
-.node-hit.reparent-source {
+.node-visual-box.reparent-source {
   stroke-dasharray: 8 5;
 }
 
-.node-hit.link-source {
+.node-visual-box.link-source {
   stroke: var(--accent);
   stroke-width: 3;
   stroke-dasharray: 5 4;
 }
 
-.node-hit.cut-pending {
+.node-visual-box.cut-pending {
   fill: rgba(160, 160, 160, 0.18);
   stroke: #8a8a8a;
   stroke-width: 2;
   stroke-dasharray: 6 4;
 }
 
-.node-hit.alias-read {
+.node-visual-box.alias-read {
   fill: rgba(56, 115, 255, 0.08);
   stroke: #3873ff;
   stroke-width: 1.5;
   stroke-dasharray: 6 4;
 }
 
-.node-hit.alias-write {
+.node-visual-box.alias-write {
   fill: rgba(17, 153, 92, 0.1);
   stroke: #11995c;
   stroke-width: 1.5;
 }
 
-.node-hit.alias-broken {
+.node-visual-box.alias-broken {
   fill: rgba(214, 75, 75, 0.1);
   stroke: var(--danger);
   stroke-width: 1.5;
   stroke-dasharray: 10 6;
 }
 
-.node-hit.drop-target {
+.node-visual-box.drop-target {
   fill: #d9f5e8;
   stroke: #1b9c64;
   stroke-width: 2;
   stroke-dasharray: 8 6;
 }
 
-.node-hit.drag-source {
+.node-visual-box.drag-source {
   fill: #fff1c9;
 }
 
-.node-hit.drag-invalid {
+.node-visual-box.drag-invalid {
   fill: #ffe4e4;
   stroke: var(--danger);
   stroke-width: 2;
@@ -1138,22 +1265,22 @@
       }
 
       /* Status-specific node styles */
-      .node-hit.status-placeholder {
+      .node-visual-box.status-placeholder {
         fill: rgba(153, 153, 153, 0.06);
       }
-      .node-hit.status-confirmed {
+      .node-visual-box.status-confirmed {
         fill: rgba(45, 140, 78, 0.06);
       }
-      .node-hit.status-contested {
+      .node-visual-box.status-contested {
         fill: rgba(217, 64, 64, 0.06);
       }
-      .node-hit.status-frozen {
+      .node-visual-box.status-frozen {
         fill: rgba(74, 127, 181, 0.06);
       }
-      .node-hit.status-active {
+      .node-visual-box.status-active {
         fill: rgba(232, 155, 26, 0.08);
       }
-      .node-hit.status-review {
+      .node-visual-box.status-review {
         fill: rgba(155, 89, 182, 0.06);
       }
 
@@ -2149,13 +2276,13 @@
       }
 
       /* ── Scope Lock Indicators ── */
-      .node-hit.scope-locked {
+      .node-visual-box.scope-locked {
         stroke: #c5890a;
         stroke-width: 2.5;
         stroke-dasharray: none;
       }
 
-      .node-hit.scope-locked-by-other {
+      .node-visual-box.scope-locked-by-other {
         stroke: #d64b4b;
         stroke-width: 2.5;
       }

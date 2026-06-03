@@ -6,6 +6,9 @@ const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const viewTreeBtn = document.getElementById("view-tree");
+const viewMindmapBtn = document.getElementById("view-mindmap");
+const viewLogicChartBtn = document.getElementById("view-logic-chart");
+const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
 const scatterToolbarEl = document.getElementById("scatter-toolbar") as HTMLElement | null;
@@ -462,6 +465,15 @@ let scatterAnimationFrame: number | null = null;
 let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
 let scatterEdgeLength = SCATTER_EDGE_LENGTH_DEFAULT;
 const scatterVelocities = new Map<string, { x: number; y: number }>();
+let selectedGraphLinkId: string | null = null;
+let linkPortDragState: {
+  pointerId: number;
+  linkId: string;
+  endpoint: LinkEndpointKind;
+  startX: number;
+  startY: number;
+  dragged: boolean;
+} | null = null;
 const DRAG_CENTER_BAND_HALF = 20;
 const DRAG_EDGE_BAND = 14;
 const DRAG_REORDER_TAIL = 28;
@@ -475,6 +487,8 @@ let viewState: ViewState = {
   currentScopeRootId: "",
   thinkingMode: "rapid",
   surfaceViewMode: "tree",
+  surfaceLayoutDensity: "balanced",
+  surfaceBranchDirection: "right",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -506,7 +520,22 @@ function thinkingModeLabel(mode: ThinkingMode): string {
 function surfaceViewModeLabel(mode: SurfaceViewMode): string {
   if (mode === "system") return "System";
   if (mode === "scatter") return "Scatter";
+  if (mode === "mindmap") return "Mind Map";
+  if (mode === "logic-chart") return "Logic Chart";
+  if (mode === "timeline") return "Timeline";
   return "Tree";
+}
+
+function surfaceLayoutDensityLabel(density: SurfaceLayoutDensity): string {
+  if (density === "compact") return "Compact";
+  if (density === "spacious") return "Spacious";
+  return "Balanced";
+}
+
+function surfaceBranchDirectionLabel(direction: SurfaceBranchDirection): string {
+  if (direction === "both") return "Both";
+  if (direction === "left") return "Left";
+  return "Right";
 }
 
 function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
@@ -516,6 +545,9 @@ function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
 function surfaceLayoutForKind(kind: SurfaceKind): SurfaceLayout {
   if (kind === "system") return "flow-lr";
   if (kind === "scatter") return "scatter";
+  if (kind === "mindmap") return "mindmap";
+  if (kind === "logic-chart") return "logic-chart";
+  if (kind === "timeline") return "timeline";
   return "tree";
 }
 
@@ -528,16 +560,65 @@ function inferSurfaceViewModeForScope(scopeId: string): SurfaceViewMode {
   if (surface?.kind) {
     return surface.kind;
   }
-  return rawAttr(map.state.nodes[scopeId], "m3e:layout") === "flow-lr" ? "system" : "tree";
+  const rawLayout = rawAttr(map.state.nodes[scopeId], "m3e:layout");
+  if (rawLayout === "flow-lr") return "system";
+  if (rawLayout === "mindmap") return "mindmap";
+  if (rawLayout === "logic-chart") return "logic-chart";
+  if (rawLayout === "timeline") return "timeline";
+  if (rawLayout === "scatter") return "scatter";
+  return "tree";
+}
+
+function sanitizeSurfaceLayoutDensity(value: unknown): SurfaceLayoutDensity {
+  if (value === "compact" || value === "balanced" || value === "spacious") {
+    return value;
+  }
+  return "balanced";
+}
+
+function sanitizeSurfaceBranchDirection(value: unknown): SurfaceBranchDirection {
+  if (value === "both" || value === "right" || value === "left") {
+    return value;
+  }
+  return "right";
+}
+
+function inferSurfaceLayoutDensityForScope(scopeId: string, mode: SurfaceViewMode): SurfaceLayoutDensity {
+  if (!map || !map.state.nodes[scopeId]) {
+    return "balanced";
+  }
+  const explicit = rawAttr(map.state.nodes[scopeId], "m3e:layout-density");
+  if (explicit) {
+    return sanitizeSurfaceLayoutDensity(explicit);
+  }
+  return mode === "logic-chart" ? "compact" : "balanced";
+}
+
+function inferSurfaceBranchDirectionForScope(scopeId: string, mode: SurfaceViewMode): SurfaceBranchDirection {
+  if (!map || !map.state.nodes[scopeId]) {
+    return "right";
+  }
+  const explicit = rawAttr(map.state.nodes[scopeId], "m3e:branch-direction");
+  if (explicit) {
+    return sanitizeSurfaceBranchDirection(explicit);
+  }
+  return "right";
 }
 
 function syncThinkingModeUi(): void {
   const mode = viewState.thinkingMode;
-  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}`;
+  const surfaceMode = structuredSurfaceMode();
+  const layoutSuffix = surfaceMode
+    ? ` / ${surfaceLayoutDensityLabel(viewState.surfaceLayoutDensity)} / ${surfaceBranchDirectionLabel(viewState.surfaceBranchDirection)}`
+    : "";
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix}`;
   modeFlashBtn?.classList.toggle("is-active", mode === "flash");
   modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
   viewTreeBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "tree");
+  viewMindmapBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "mindmap");
+  viewLogicChartBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "logic-chart");
+  viewTimelineBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "timeline");
   viewSystemBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "system");
   viewScatterBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "scatter");
   syncScatterToolbarUi();
@@ -579,6 +660,8 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
     stopScatterAnimation(true);
   }
   viewState.surfaceViewMode = mode;
+  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(currentScopeRootId(), mode);
+  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(currentScopeRootId(), mode);
   syncMapModelStateFromRuntime();
   if (mode === "scatter") {
     seedMissingScatterPositions();
@@ -595,6 +678,30 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   }
   scheduleAutosave();
   setStatus(`View: ${surfaceViewModeLabel(mode)}`);
+}
+
+function setSurfaceLayoutDensity(density: SurfaceLayoutDensity): void {
+  viewState.surfaceLayoutDensity = density;
+  _linearPanelLayoutDirty = true;
+  syncThinkingModeUi();
+  render();
+  fitDocument();
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
+  setStatus(`Layout: ${surfaceLayoutDensityLabel(density)}`);
+}
+
+function setSurfaceBranchDirection(direction: SurfaceBranchDirection): void {
+  viewState.surfaceBranchDirection = direction;
+  _linearPanelLayoutDirty = true;
+  syncThinkingModeUi();
+  render();
+  fitDocument();
+  requestAnimationFrame(() => {
+    fitDocument();
+  });
+  setStatus(`Depth: ${surfaceBranchDirectionLabel(direction)}`);
 }
 
 function syncScatterToolbarUi(): void {
@@ -1384,15 +1491,35 @@ function inferredSurfaceId(nodeId: string, kind: SurfaceKind): string {
 }
 
 function sanitizeSurfaceKind(raw: unknown): SurfaceKind | null {
-  return raw === "tree" || raw === "system" || raw === "scatter" ? raw : null;
+  return raw === "tree"
+    || raw === "system"
+    || raw === "scatter"
+    || raw === "mindmap"
+    || raw === "logic-chart"
+    || raw === "timeline"
+    ? raw
+    : null;
 }
 
 function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
-  return raw === "tree" || raw === "flow-lr" || raw === "scatter" ? raw : null;
+  return raw === "tree"
+    || raw === "flow-lr"
+    || raw === "scatter"
+    || raw === "mindmap"
+    || raw === "logic-chart"
+    || raw === "timeline"
+    ? raw
+    : null;
 }
 
 function defaultSurfaceKindForScopeNode(node: TreeNode): SurfaceKind {
-  return rawAttr(node, "m3e:layout") === "flow-lr" ? "system" : "tree";
+  const rawLayout = rawAttr(node, "m3e:layout");
+  if (rawLayout === "flow-lr") return "system";
+  if (rawLayout === "mindmap") return "mindmap";
+  if (rawLayout === "logic-chart") return "logic-chart";
+  if (rawLayout === "timeline") return "timeline";
+  if (rawLayout === "scatter") return "scatter";
+  return "tree";
 }
 
 function sanitizeSurfaceNodeViews(raw: unknown, nodes: Record<string, TreeNode>): Record<string, SurfaceNodeView> {
@@ -1591,8 +1718,8 @@ function ensureDocShape(payload: unknown): SavedMap {
       direction: record.direction || "none",
       style: record.style || "default",
       color: sanitizeColor(record.color) || undefined,
-      sourcePort: record.sourcePort || "auto",
-      targetPort: record.targetPort || "auto",
+      sourcePort: sanitizeLinkPort(record.sourcePort),
+      targetPort: sanitizeLinkPort(record.targetPort),
     };
   });
   candidate.state.annotations = sanitizeAnnotations(candidate.state.annotations);
@@ -2277,7 +2404,7 @@ function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
   };
 }
 
-function buildNodeHitStyle(s: NodeStyleAttrs): string {
+function buildNodeVisualStyle(s: NodeStyleAttrs): string {
   const parts: string[] = [];
   if (s.bg) parts.push(`fill:${s.bg}`);
   if (s.border) parts.push(`stroke:${s.border}`);
@@ -2495,6 +2622,51 @@ function measureNodeLabel(text: string, fontSize: number): { w: number; h: numbe
   return {
     w: maxLineWidth + 20,
     h: Math.max(VIEWER_TUNING.layout.leafHeight, lines.length * lineHeight + verticalPadding),
+  };
+}
+
+function wrapLineToWidth(line: string, fontSize: number, maxWidth: number): string[] {
+  if (!line) return [""];
+  if (textWidth(line, fontSize) <= maxWidth) return [line];
+  const parts: string[] = [];
+  let current = "";
+  for (const char of Array.from(line)) {
+    const next = current + char;
+    if (current && textWidth(next, fontSize) > maxWidth) {
+      parts.push(current);
+      current = char;
+    } else {
+      current = next;
+    }
+  }
+  if (current) parts.push(current);
+  return parts.length > 0 ? parts : [line];
+}
+
+function wrapLabelLines(text: string, fontSize: number, maxTextWidth: number): string[] {
+  return splitLabelLines(text)
+    .flatMap((line) => wrapLineToWidth(line, fontSize, maxTextWidth))
+    .filter((line, index, lines) => line.length > 0 || lines.length === 1 || index < lines.length);
+}
+
+function measureWrappedNodeLabel(
+  text: string,
+  fontSize: number,
+  maxBoxWidth: number,
+  options: { minWidth?: number; minHeight?: number; padX?: number; padY?: number } = {},
+): { w: number; h: number; labelLines: string[]; fontSize: number } {
+  const padX = options.padX ?? 20;
+  const padY = options.padY ?? 8;
+  const minWidth = options.minWidth ?? 80;
+  const minHeight = options.minHeight ?? VIEWER_TUNING.layout.leafHeight;
+  const labelLines = wrapLabelLines(text, fontSize, Math.max(40, maxBoxWidth - padX));
+  const maxLineWidth = labelLines.reduce((max, line) => Math.max(max, textWidth(line, fontSize)), 0);
+  const lineHeight = lineHeightForFont(fontSize);
+  return {
+    w: Math.max(minWidth, Math.min(maxBoxWidth, maxLineWidth + padX)),
+    h: Math.max(minHeight, labelLines.length * lineHeight + padY),
+    labelLines,
+    fontSize,
   };
 }
 
@@ -2766,6 +2938,8 @@ function enterScope(scopeNodeId: string): boolean {
   viewState.currentScopeRootId = node.id;
   viewState.currentScopeId = node.id;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(node.id);
+  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(node.id, viewState.surfaceViewMode);
+  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(node.id, viewState.surfaceViewMode);
   setSingleSelection(preferredSelectionForScope(node.id), false);
   render();
   fitDocument();
@@ -2805,6 +2979,8 @@ function exitScope(): boolean {
   viewState.currentScopeRootId = nextScopeId;
   viewState.currentScopeId = nextScopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(nextScopeId);
+  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(nextScopeId, viewState.surfaceViewMode);
+  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(nextScopeId, viewState.surfaceViewMode);
   const selectionAfterExit =
     map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
       ? exitedScopeId
@@ -2947,6 +3123,8 @@ function jumpToAliasTarget(): boolean {
     viewState.currentScopeId = targetScopeId;
     viewState.currentScopeRootId = targetScopeId;
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(targetScopeId);
+    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(targetScopeId, viewState.surfaceViewMode);
+    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(targetScopeId, viewState.surfaceViewMode);
   }
   setSingleSelection(target.id, false);
   normalizeSelectionState();
@@ -3049,9 +3227,15 @@ function normalizeGraphLink(link: GraphLink): GraphLink {
     direction: link.direction ?? "none",
     style: link.style ?? "default",
     color: sanitizeColor(link.color) ?? undefined,
-    sourcePort: validPort(link.sourcePort),
-    targetPort: validPort(link.targetPort),
+    sourcePort: sanitizeLinkPort(link.sourcePort),
+    targetPort: sanitizeLinkPort(link.targetPort),
   };
+}
+
+function sanitizeLinkPort(value: unknown): EdgeAnchorSide | undefined {
+  return value === "left" || value === "right" || value === "top" || value === "bottom"
+    ? value
+    : undefined;
 }
 
 function nodeBadge(node: TreeNode): string {
@@ -3789,107 +3973,86 @@ function representativeNodeIdInCurrentScope(nodeId: string): string | null {
   return null;
 }
 
-function edgeEndBetween(fromPos: NodePosition, toPos: NodePosition): { x: number; y: number } {
-  const fromCx = fromPos.x + fromPos.w / 2;
-  const fromCy = fromPos.y;
-  const toCx = toPos.x + toPos.w / 2;
-  const toCy = toPos.y;
-  const dx = toCx - fromCx;
-  const dy = toCy - fromCy;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0
-      ? { x: fromPos.x + fromPos.w + VIEWER_TUNING.layout.edgeStartPad, y: fromCy }
-      : { x: fromPos.x - VIEWER_TUNING.layout.edgeEndPad, y: fromCy };
-  }
-  return dy >= 0
-    ? { x: fromCx, y: fromPos.y + fromPos.h / 2 + VIEWER_TUNING.layout.edgeStartPad }
-    : { x: fromCx, y: fromPos.y - fromPos.h / 2 - VIEWER_TUNING.layout.edgeEndPad };
-}
+type EdgeAnchorSide = "left" | "right" | "top" | "bottom";
 
-const LINK_PORTS: LinkPort[] = ["auto", "right", "bottom", "left", "top"];
+type EdgeConnectionPoint = { x: number; y: number; side: EdgeAnchorSide };
 
-function nodePortPoint(pos: NodePosition, port: LinkPort): { x: number; y: number } {
-  const cx = pos.x + pos.w / 2;
-  const cy = pos.y;
-  switch (port) {
-    case "left":
-      return { x: pos.x, y: cy };
-    case "right":
-      return { x: pos.x + pos.w, y: cy };
-    case "top":
-      return { x: cx, y: pos.y - pos.h / 2 };
-    case "bottom":
-      return { x: cx, y: pos.y + pos.h / 2 };
-    case "auto":
-    default:
-      return { x: cx, y: cy };
-  }
-}
+type EdgeConnectionPair = { source: EdgeConnectionPoint; target: EdgeConnectionPoint };
 
-function graphLinkEndpoint(
-  fromPos: NodePosition,
-  toPos: NodePosition,
-  requestedPort: LinkPort | undefined,
-): { x: number; y: number; port: Exclude<LinkPort, "auto"> } {
-  const port = requestedPort || "auto";
-  const concretePorts: Array<Exclude<LinkPort, "auto">> = ["right", "bottom", "left", "top"];
-  if (port !== "auto") {
-    return { ...nodePortPoint(fromPos, port), port };
-  }
-  const targetCenter = nodePortPoint(toPos, "auto");
-  let bestPort = concretePorts[0]!;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const candidate of concretePorts) {
-    const point = nodePortPoint(fromPos, candidate);
-    const dx = point.x - targetCenter.x;
-    const dy = point.y - targetCenter.y;
-    const distance = dx * dx + dy * dy;
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestPort = candidate;
-    }
-  }
-  return { ...nodePortPoint(fromPos, bestPort), port: bestPort };
-}
+type LinkEndpointKind = "source" | "target";
 
-function linkPortVector(port: Exclude<LinkPort, "auto">): { x: number; y: number } {
-  switch (port) {
-    case "left":
-      return { x: -1, y: 0 };
-    case "right":
-      return { x: 1, y: 0 };
-    case "top":
-      return { x: 0, y: -1 };
-    case "bottom":
-      return { x: 0, y: 1 };
-  }
-}
-
-function graphBezierPath(
-  source: { x: number; y: number; port: Exclude<LinkPort, "auto"> },
-  target: { x: number; y: number; port: Exclude<LinkPort, "auto"> },
-): string {
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  const distance = Math.hypot(dx, dy);
-  const controlDistance = Math.max(48, Math.min(220, distance * 0.42));
-  const sourceVector = linkPortVector(source.port);
-  const targetVector = linkPortVector(target.port);
-  const c1x = source.x + sourceVector.x * controlDistance;
-  const c1y = source.y + sourceVector.y * controlDistance;
-  const c2x = target.x + targetVector.x * controlDistance;
-  const c2y = target.y + targetVector.y * controlDistance;
-  return `M ${source.x} ${source.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${target.x} ${target.y}`;
+function positionRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
+  const hitHeight = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
+  const treatAsRoot = pos.depth === 0;
+  return {
+    x: treatAsRoot ? pos.x : pos.x - 8,
+    y: pos.y - hitHeight / 2,
+    w: treatAsRoot ? pos.w : pos.w + 36,
+    h: hitHeight,
+  };
 }
 
 function isParentChildPair(source: TreeNode, target: TreeNode): boolean {
   return source.parentId === target.id || target.parentId === source.id;
 }
 
-function edgeEndBetweenRects(
-  fromRect: { x: number; y: number; w: number; h: number },
+type LinkConnectionBoundsMode = "hit" | "box" | "mindmap";
+
+function renderedBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
+  const h = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
+  if (pos.depth === 0) {
+    return {
+      x: pos.x,
+      y: pos.y - h / 2,
+      w: pos.w,
+      h,
+    };
+  }
+  return {
+    x: pos.x - 14,
+    y: pos.y - h / 2 + 6,
+    w: pos.w + 28,
+    h: Math.max(1, h - 12),
+  };
+}
+
+function mindmapBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
+  const h = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
+  return {
+    x: pos.x,
+    y: pos.y - h / 2,
+    w: pos.w,
+    h,
+  };
+}
+
+function linkConnectionRect(pos: NodePosition, boundsMode: LinkConnectionBoundsMode = "hit"): { x: number; y: number; w: number; h: number } {
+  if (boundsMode === "mindmap") return mindmapBoxRect(pos);
+  if (boundsMode === "box") return renderedBoxRect(pos);
+  return positionRect(pos);
+}
+
+function rectCenter(rect: { x: number; y: number; w: number; h: number }): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+function inferBoundarySide(
+  rect: { x: number; y: number; w: number; h: number },
+  point: { x: number; y: number },
+): EdgeAnchorSide {
+  const distances: Array<{ side: EdgeAnchorSide; d: number }> = [
+    { side: "left", d: Math.abs(point.x - rect.x) },
+    { side: "right", d: Math.abs(point.x - (rect.x + rect.w)) },
+    { side: "top", d: Math.abs(point.y - rect.y) },
+    { side: "bottom", d: Math.abs(point.y - (rect.y + rect.h)) },
+  ];
+  distances.sort((a, b) => a.d - b.d);
+  return distances[0]!.side;
+}
+
+function fallbackBoundaryPointBetweenRects(  fromRect: { x: number; y: number; w: number; h: number },
   toRect: { x: number; y: number; w: number; h: number },
-): { x: number; y: number } {
+): EdgeConnectionPoint {
   const fromCx = fromRect.x + fromRect.w / 2;
   const fromCy = fromRect.y + fromRect.h / 2;
   const toCx = toRect.x + toRect.w / 2;
@@ -3898,12 +4061,210 @@ function edgeEndBetweenRects(
   const dy = toCy - fromCy;
   if (Math.abs(dx) >= Math.abs(dy)) {
     return dx >= 0
-      ? { x: fromRect.x + fromRect.w + VIEWER_TUNING.layout.edgeStartPad, y: fromCy }
-      : { x: fromRect.x - VIEWER_TUNING.layout.edgeEndPad, y: fromCy };
+      ? { x: fromRect.x + fromRect.w, y: fromCy, side: "right" }
+      : { x: fromRect.x, y: fromCy, side: "left" };
   }
   return dy >= 0
-    ? { x: fromCx, y: fromRect.y + fromRect.h + VIEWER_TUNING.layout.edgeStartPad }
-    : { x: fromCx, y: fromRect.y - VIEWER_TUNING.layout.edgeEndPad };
+    ? { x: fromCx, y: fromRect.y + fromRect.h, side: "bottom" }
+    : { x: fromCx, y: fromRect.y, side: "top" };
+}
+
+function offsetConnectionPoint(point: EdgeConnectionPoint, pad: number): EdgeConnectionPoint {
+  if (!pad) return point;
+  if (point.side === "left") return { ...point, x: point.x - pad };
+  if (point.side === "right") return { ...point, x: point.x + pad };
+  if (point.side === "top") return { ...point, y: point.y - pad };
+  return { ...point, y: point.y + pad };
+}
+
+function legacyEdgeEndBetweenRects(
+  fromRect: { x: number; y: number; w: number; h: number },
+  toRect: { x: number; y: number; w: number; h: number },
+  pad = 0,
+): EdgeConnectionPoint {
+  try {
+    const g = joint?.g;
+    if (g?.Rect && g?.Point) {
+      const to = rectCenter(toRect);
+      const intersection = new g.Rect(fromRect.x, fromRect.y, fromRect.w, fromRect.h)
+        .intersectionWithLineFromCenterToPoint(new g.Point(to.x, to.y));
+      if (intersection && Number.isFinite(intersection.x) && Number.isFinite(intersection.y)) {
+        return offsetConnectionPoint({
+          x: intersection.x,
+          y: intersection.y,
+          side: inferBoundarySide(fromRect, intersection),
+        }, pad);
+      }
+    }
+  } catch {
+    // Fall back to deterministic side anchors if JointJS geometry is unavailable.
+  }
+  return offsetConnectionPoint(fallbackBoundaryPointBetweenRects(fromRect, toRect), pad);
+}
+
+function legacyEdgeEndsBetween(fromPos: NodePosition, toPos: NodePosition, pad = 0): EdgeConnectionPair {
+  const sourceRect = positionRect(fromPos);
+  const targetRect = positionRect(toPos);
+  return {
+    source: legacyEdgeEndBetweenRects(sourceRect, targetRect, pad),
+    target: legacyEdgeEndBetweenRects(targetRect, sourceRect, pad),
+  };
+}
+
+function edgePortForSide(
+  rect: { x: number; y: number; w: number; h: number },
+  side: EdgeAnchorSide,
+  pad = 0,
+): EdgeConnectionPoint {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  if (side === "left") return { x: rect.x - pad, y: cy, side };
+  if (side === "right") return { x: rect.x + rect.w + pad, y: cy, side };
+  if (side === "top") return { x: cx, y: rect.y - pad, side };
+  return { x: cx, y: rect.y + rect.h + pad, side };
+}
+
+function edgePortNormal(side: EdgeAnchorSide): { x: number; y: number } {
+  if (side === "left") return { x: -1, y: 0 };
+  if (side === "right") return { x: 1, y: 0 };
+  if (side === "top") return { x: 0, y: -1 };
+  return { x: 0, y: 1 };
+}
+
+function edgePorts(
+  rect: { x: number; y: number; w: number; h: number },
+  pad = 0,
+): EdgeConnectionPoint[] {
+  return [
+    edgePortForSide(rect, "left", pad),
+    edgePortForSide(rect, "right", pad),
+    edgePortForSide(rect, "top", pad),
+    edgePortForSide(rect, "bottom", pad),
+  ];
+}
+
+function outwardPortPenalty(port: EdgeConnectionPoint, vector: { x: number; y: number }): number {
+  const normal = edgePortNormal(port.side);
+  const dot = normal.x * vector.x + normal.y * vector.y;
+  if (dot >= 0) return 0;
+  return Math.min(2400, Math.abs(dot) * 8);
+}
+
+function edgeSideBiasPenalty(
+  source: EdgeConnectionPoint,
+  target: EdgeConnectionPoint,
+  dx: number,
+  dy: number,
+): number {
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  if (horizontal) {
+    let penalty = 0;
+    if (source.side === "top" || source.side === "bottom") penalty += 260;
+    if (target.side === "top" || target.side === "bottom") penalty += 260;
+    return penalty;
+  }
+  let penalty = 0;
+  if (source.side === "left" || source.side === "right") penalty += 260;
+  if (target.side === "left" || target.side === "right") penalty += 260;
+  return penalty;
+}
+
+function edgePortPairBetweenRects(
+  fromRect: { x: number; y: number; w: number; h: number },
+  toRect: { x: number; y: number; w: number; h: number },
+  pad = 0,
+  opts: { sourceSide?: EdgeAnchorSide; targetSide?: EdgeAnchorSide } = {},
+): EdgeConnectionPair {
+  const fromCenter = { x: fromRect.x + fromRect.w / 2, y: fromRect.y + fromRect.h / 2 };
+  const toCenter = { x: toRect.x + toRect.w / 2, y: toRect.y + toRect.h / 2 };
+  const centerDx = toCenter.x - fromCenter.x;
+  const centerDy = toCenter.y - fromCenter.y;
+  let best: (EdgeConnectionPair & { score: number }) | null = null;
+  const sourcePorts = opts.sourceSide ? [edgePortForSide(fromRect, opts.sourceSide, pad)] : edgePorts(fromRect, pad);
+  const targetPorts = opts.targetSide ? [edgePortForSide(toRect, opts.targetSide, pad)] : edgePorts(toRect, pad);
+  for (const source of sourcePorts) {
+    for (const target of targetPorts) {
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const score = dx * dx
+        + dy * dy
+        + outwardPortPenalty(source, { x: centerDx, y: centerDy })
+        + outwardPortPenalty(target, { x: -centerDx, y: -centerDy })
+        + edgeSideBiasPenalty(source, target, centerDx, centerDy);
+      if (!best || score < best.score) {
+        best = { source, target, score };
+      }
+    }
+  }
+  return best || {
+    source: edgePortForSide(fromRect, "right", pad),
+    target: edgePortForSide(toRect, "left", pad),
+  };
+}
+
+function edgeEndsBetween(fromPos: NodePosition, toPos: NodePosition, pad = 0): EdgeConnectionPair {
+  return edgePortPairBetweenRects(positionRect(fromPos), positionRect(toPos), pad);
+}
+
+function treeRightEdgeEndsBetween(parentPos: NodePosition, childPos: NodePosition): EdgeConnectionPair {
+  return edgePortPairBetweenRects(mindmapBoxRect(parentPos), mindmapBoxRect(childPos), 0, {
+    sourceSide: "right",
+    targetSide: "left",
+  });
+}
+
+function edgeEndsForGraphLink(sourcePos: NodePosition, targetPos: NodePosition, link: GraphLink, pad = 0, boundsMode: LinkConnectionBoundsMode = "hit"): EdgeConnectionPair {
+  return edgePortPairBetweenRects(linkConnectionRect(sourcePos, boundsMode), linkConnectionRect(targetPos, boundsMode), pad, {
+    sourceSide: sanitizeLinkPort(link.sourcePort),
+    targetSide: sanitizeLinkPort(link.targetPort),
+  });
+}
+
+function nearestEdgePortSide(
+  rect: { x: number; y: number; w: number; h: number },
+  point: { x: number; y: number },
+): EdgeAnchorSide {
+  const candidates = edgePorts(rect, 0).map((port) => ({
+    side: port.side,
+    distance: Math.hypot(point.x - port.x, point.y - port.y),
+  }));
+  candidates.sort((a, b) => a.distance - b.distance);
+  return candidates[0]?.side || "right";
+}
+
+function renderGraphLinkPortControls(
+  link: GraphLink,
+  sourcePos: NodePosition,
+  targetPos: NodePosition,
+  sourceEnd: EdgeConnectionPoint,
+  targetEnd: EdgeConnectionPoint,
+  boundsMode: LinkConnectionBoundsMode = "hit",
+): string {
+  const sourceRect = linkConnectionRect(sourcePos, boundsMode);
+  const targetRect = linkConnectionRect(targetPos, boundsMode);
+  const renderEndpoint = (endpoint: LinkEndpointKind, p: EdgeConnectionPoint): string => {
+    const activeClass = endpoint === "source" ? " link-port-handle-source" : " link-port-handle-target";
+    return `<circle class="link-port-handle${activeClass}" data-link-port-handle="${endpoint}" data-link-id="${escapeXml(link.id)}" cx="${p.x}" cy="${p.y}" r="7" />`;
+  };
+  const renderPortDots = (endpoint: LinkEndpointKind, rect: { x: number; y: number; w: number; h: number }, activeSide: EdgeAnchorSide): string =>
+    edgePorts(rect, 0)
+      .map((port) => {
+        const active = port.side === activeSide ? " is-active" : "";
+        return `<circle class="link-port-dot${active}" data-link-port-choice="${endpoint}" data-link-port-side="${port.side}" data-link-id="${escapeXml(link.id)}" cx="${port.x}" cy="${port.y}" r="4.5" />`;
+      })
+      .join("");
+  const toolbarX = (sourceEnd.x + targetEnd.x) / 2;
+  const toolbarY = (sourceEnd.y + targetEnd.y) / 2 - 30;
+  return `<g class="link-port-controls" data-link-id="${escapeXml(link.id)}">
+    <rect class="link-mini-toolbar" x="${toolbarX - 31}" y="${toolbarY - 12}" width="62" height="24" rx="6" />
+    <circle class="link-mini-toolbar-icon" cx="${toolbarX - 13}" cy="${toolbarY}" r="3" />
+    <path class="link-mini-toolbar-icon-line" d="M ${toolbarX - 10} ${toolbarY} C ${toolbarX - 3} ${toolbarY - 10}, ${toolbarX + 3} ${toolbarY + 10}, ${toolbarX + 10} ${toolbarY}" />
+    <circle class="link-mini-toolbar-icon" cx="${toolbarX + 13}" cy="${toolbarY}" r="3" />
+    ${renderPortDots("source", sourceRect, sourceEnd.side)}
+    ${renderPortDots("target", targetRect, targetEnd.side)}
+    ${renderEndpoint("source", sourceEnd)}
+    ${renderEndpoint("target", targetEnd)}
+  </g>`;
 }
 
 function roundedOrthogonalPath(
@@ -4045,6 +4406,38 @@ function smoothGraphLinkPath(sx: number, sy: number, tx: number, ty: number, wav
   const dirY = dy >= 0 ? 1 : -1;
   const handle = Math.max(44, Math.min(220, absDy * 0.46 + absDx * 0.16));
   return `M ${sx} ${sy} C ${sx + waveOffset} ${sy + dirY * handle}, ${tx - waveOffset} ${ty - dirY * handle}, ${tx} ${ty}`;
+}
+
+function graphLinkControlPoints(
+  source: EdgeConnectionPoint,
+  target: EdgeConnectionPoint,
+  waveOffset = 0,
+): { c1x: number; c1y: number; c2x: number; c2y: number } {
+  const normalSource = edgePortNormal(source.side);
+  const normalTarget = edgePortNormal(target.side);
+  const distance = Math.hypot(target.x - source.x, target.y - source.y);
+  const handle = Math.max(38, Math.min(180, distance * 0.42));
+  const waveX = waveOffset * 0.18;
+  const waveY = waveOffset * 0.18;
+  return {
+    c1x: source.x + normalSource.x * handle + (normalSource.y ? waveX : 0),
+    c1y: source.y + normalSource.y * handle + (normalSource.x ? waveY : 0),
+    c2x: target.x + normalTarget.x * handle - (normalTarget.y ? waveX : 0),
+    c2y: target.y + normalTarget.y * handle - (normalTarget.x ? waveY : 0),
+  };
+}
+
+function graphLinkPathWithPorts(source: EdgeConnectionPoint, target: EdgeConnectionPoint, waveOffset = 0): string {
+  if (Math.abs(target.x - source.x) < 0.5 && Math.abs(target.y - source.y) < 0.5) {
+    return `M ${source.x} ${source.y}`;
+  }
+  const c = graphLinkControlPoints(source, target, waveOffset);
+  return `M ${source.x} ${source.y} C ${c.c1x} ${c.c1y}, ${c.c2x} ${c.c2y}, ${target.x} ${target.y}`;
+}
+
+function graphLinkLabelPointWithPorts(source: EdgeConnectionPoint, target: EdgeConnectionPoint, waveOffset = 0): { x: number; y: number } {
+  const c = graphLinkControlPoints(source, target, waveOffset);
+  return cubicPointAtHalf(source.x, source.y, c.c1x, c.c1y, c.c2x, c.c2y, target.x, target.y);
 }
 
 function smoothArchLinkPath(sx: number, sy: number, tx: number, ty: number, apexY: number): string {
@@ -5158,6 +5551,374 @@ function stopScatterAnimation(saveCurrentPositions: boolean): void {
   }
 }
 
+type StructuredSurfaceMode = "tree" | "mindmap" | "logic-chart" | "timeline";
+
+interface StructuredLayoutConfig {
+  mode: StructuredSurfaceMode;
+  density: SurfaceLayoutDensity;
+  branchDirection: SurfaceBranchDirection;
+  columnGap: number;
+  siblingGap: number;
+  sideGap: number;
+  rootMaxWidth: number;
+  nodeMaxWidth: number;
+  leafMaxWidth: number;
+  rootMinWidth: number;
+  fontSize: number;
+  rootFontSize: number;
+}
+
+interface LayoutNodeMetric {
+  w: number;
+  h: number;
+  labelLines?: string[];
+  fontSize?: number;
+}
+
+interface MeasuredTreeContext {
+  displayRootId: string;
+  metrics: Record<string, LayoutNodeMetric>;
+  depthOf: Record<string, number>;
+  depthMaxWidth: Record<number, number>;
+  maxDepth: number;
+  config: StructuredLayoutConfig;
+}
+
+function structuredSurfaceMode(): StructuredSurfaceMode | null {
+  if (
+    viewState.surfaceViewMode === "tree"
+    || viewState.surfaceViewMode === "mindmap"
+    || viewState.surfaceViewMode === "logic-chart"
+    || viewState.surfaceViewMode === "timeline"
+  ) {
+    return viewState.surfaceViewMode;
+  }
+  return null;
+}
+
+function structuredLayoutConfig(mode: StructuredSurfaceMode): StructuredLayoutConfig {
+  const density = viewState.surfaceLayoutDensity;
+  const branchDirection = viewState.surfaceBranchDirection;
+  const compact = density === "compact";
+  const spacious = density === "spacious";
+  const mapLike = mode === "mindmap";
+  return {
+    mode,
+    density,
+    branchDirection,
+    columnGap: mapLike ? (compact ? 78 : spacious ? 148 : 112) : compact ? 48 : spacious ? 142 : 86,
+    siblingGap: mapLike ? (compact ? 18 : spacious ? 34 : 26) : compact ? 7 : spacious ? 24 : 14,
+    sideGap: mapLike ? (compact ? 64 : spacious ? 132 : 92) : compact ? 46 : spacious ? 110 : 72,
+    rootMaxWidth: mapLike ? (compact ? 220 : spacious ? 360 : 300) : compact ? 214 : spacious ? 320 : 260,
+    nodeMaxWidth: mapLike ? (compact ? 190 : spacious ? 300 : 240) : compact ? 156 : spacious ? 260 : 206,
+    leafMaxWidth: mapLike ? (compact ? 210 : spacious ? 320 : 260) : compact ? 194 : spacious ? 320 : 248,
+    rootMinWidth: mapLike ? (compact ? 112 : spacious ? 180 : 144) : compact ? 176 : spacious ? 280 : 220,
+    fontSize: mapLike ? (compact ? 16 : spacious ? 20 : 18) : compact ? 12 : spacious ? VIEWER_TUNING.typography.nodeFont : 13,
+    rootFontSize: mapLike ? (compact ? 18 : spacious ? 24 : 21) : compact ? 13 : spacious ? VIEWER_TUNING.typography.rootFont : 14,
+  };
+}
+
+function measureLayoutNode(state: AppState, nodeId: string, displayRootId: string, config: StructuredLayoutConfig): LayoutNodeMetric {
+  const node = state.nodes[nodeId];
+  if (!node) {
+    return { w: 120, h: VIEWER_TUNING.layout.leafHeight };
+  }
+  if (nodeId === displayRootId) {
+    if (config.mode === "tree") {
+      const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
+      return {
+        w: Math.max(280, rootLabelMeasure.w + 100),
+        h: Math.max(VIEWER_TUNING.layout.rootHeight, rootLabelMeasure.h + 8),
+      };
+    }
+    return measureWrappedNodeLabel(uiLabel(node), config.rootFontSize, config.rootMaxWidth, {
+      minWidth: config.rootMinWidth,
+      minHeight: config.mode === "mindmap" ? (config.density === "compact" ? 48 : config.density === "spacious" ? 66 : 56) : VIEWER_TUNING.layout.rootHeight,
+      padX: config.mode === "mindmap" ? (config.density === "compact" ? 34 : 44) : 34,
+      padY: config.mode === "mindmap" ? (config.density === "compact" ? 16 : 22) : 16,
+    });
+  }
+  if (isLatexNode(node)) {
+    const m = measureLatex(node.text);
+    return { w: m.w, h: m.h };
+  }
+  if (config.mode === "tree") {
+    return measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.nodeFont);
+  }
+  const children = visibleChildren(node);
+  const maxWidth = children.length === 0 ? config.leafMaxWidth : config.nodeMaxWidth;
+  return measureWrappedNodeLabel(uiLabel(node), config.fontSize, maxWidth, {
+    minWidth: config.mode === "mindmap" ? (config.density === "compact" ? 72 : 88) : 78,
+    minHeight: compactNodeMinHeight(config),
+    padX: config.mode === "mindmap" ? (config.density === "compact" ? 28 : 36) : 18,
+    padY: config.mode === "mindmap" ? (config.density === "compact" ? 14 : 18) : 7,
+  });
+}
+
+function compactNodeMinHeight(config: StructuredLayoutConfig): number {
+  if (config.mode === "mindmap") {
+    if (config.density === "compact") return 42;
+    if (config.density === "spacious") return 58;
+    return 50;
+  }
+  return config.density === "compact" ? 22 : VIEWER_TUNING.layout.leafHeight;
+}
+
+function buildMeasuredTreeContext(state: AppState, displayRootId: string, mode: StructuredSurfaceMode): MeasuredTreeContext {
+  const config = structuredLayoutConfig(mode);
+  const metrics: Record<string, LayoutNodeMetric> = {};
+  const depthOf: Record<string, number> = {};
+  const depthMaxWidth: Record<number, number> = {};
+  let maxDepth = 0;
+
+  function visit(nodeId: string, depth: number): void {
+    const node = state.nodes[nodeId];
+    if (!node) return;
+    maxDepth = Math.max(maxDepth, depth);
+    depthOf[nodeId] = depth;
+    metrics[nodeId] = measureLayoutNode(state, nodeId, displayRootId, config);
+    depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metrics[nodeId]!.w);
+    visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
+  }
+
+  visit(displayRootId, 0);
+  return { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config };
+}
+
+function subtreeSpanForLayout(
+  state: AppState,
+  nodeId: string,
+  metrics: Record<string, LayoutNodeMetric>,
+  cache: Record<string, number>,
+  siblingGap = VIEWER_TUNING.layout.siblingGap,
+): number {
+  if (cache[nodeId] !== undefined) {
+    return cache[nodeId]!;
+  }
+  const node = state.nodes[nodeId];
+  if (!node) {
+    return VIEWER_TUNING.layout.leafHeight;
+  }
+  const children = visibleChildren(node);
+  if (children.length === 0) {
+    const leafSpan = Math.max(VIEWER_TUNING.layout.leafHeight, metrics[nodeId]!.h + siblingGap);
+    cache[nodeId] = leafSpan;
+    return leafSpan;
+  }
+  let sum = 0;
+  children.forEach((childId, i) => {
+    sum += subtreeSpanForLayout(state, childId, metrics, cache, siblingGap);
+    if (i < children.length - 1) {
+      sum += siblingGap;
+    }
+  });
+  const result = Math.max(sum, metrics[nodeId]!.h + 24);
+  cache[nodeId] = result;
+  return result;
+}
+
+function finalizeLayoutBounds(pos: Record<string, NodePosition>, order: string[]): Pick<LayoutResult, "totalHeight" | "totalWidth"> {
+  let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
+  let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
+  order.forEach((nodeId) => {
+    const p = pos[nodeId];
+    if (!p) return;
+    const halfH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2;
+    maxRight = Math.max(maxRight, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
+    maxBottom = Math.max(maxBottom, p.y + halfH + VIEWER_TUNING.layout.canvasBottomPad);
+  });
+  return {
+    totalHeight: Math.max(maxBottom, VIEWER_TUNING.layout.minCanvasHeight),
+    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
+  };
+}
+
+function buildRightTreeLayout(state: AppState, ctx: MeasuredTreeContext): LayoutResult {
+  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config } = ctx;
+  const xByDepth: Record<number, number> = {};
+  let cursorX = VIEWER_TUNING.layout.leftPad;
+  for (let d = 0; d <= maxDepth; d += 1) {
+    xByDepth[d] = cursorX;
+    cursorX += (depthMaxWidth[d] ?? 120) + (config.mode === "tree" ? VIEWER_TUNING.layout.columnGap : config.columnGap);
+  }
+
+  const subtreeHeightCache: Record<string, number> = {};
+  const pos: Record<string, NodePosition> = {};
+  const order: string[] = [];
+  const depthOffsetFactor = VIEWER_TUNING.layout.depthOffsetFactor;
+
+  function place(nodeId: string, topY: number, parentX: number | null, parentW: number | null): number {
+    const node = state.nodes[nodeId];
+    if (!node) return VIEWER_TUNING.layout.leafHeight;
+    const depth = depthOf[nodeId] ?? 0;
+    const h = subtreeSpanForLayout(
+      state,
+      nodeId,
+      metrics,
+      subtreeHeightCache,
+      config.mode === "tree" ? VIEWER_TUNING.layout.siblingGap : config.siblingGap,
+    );
+    const centerY = topY + h / 2;
+    const baseX = xByDepth[depth]!;
+    const nodeX = config.mode === "logic-chart"
+      ? baseX
+      : parentX === null || parentW === null
+      ? baseX
+      : baseX + ((parentX + parentW + VIEWER_TUNING.layout.columnGap) - baseX) * depthOffsetFactor;
+    pos[nodeId] = { x: nodeX, y: centerY, depth, w: metrics[nodeId]!.w, h: metrics[nodeId]!.h, fontSize: metrics[nodeId]!.fontSize, labelLines: metrics[nodeId]!.labelLines };
+    order.push(nodeId);
+    let placeCursorY = topY;
+    visibleChildren(node).forEach((childId, i, arr) => {
+      const childH = place(childId, placeCursorY, nodeX, metrics[nodeId]!.w);
+      placeCursorY += childH;
+      if (i < arr.length - 1) placeCursorY += config.mode === "tree" ? VIEWER_TUNING.layout.siblingGap : config.siblingGap;
+    });
+    return h;
+  }
+
+  place(displayRootId, VIEWER_TUNING.layout.topPad, null, null);
+  if (config.mode === "logic-chart" && config.branchDirection === "left") {
+    const contentLeft = Math.min(...order.map((nodeId) => pos[nodeId]!.x));
+    const contentRight = Math.max(...order.map((nodeId) => pos[nodeId]!.x + pos[nodeId]!.w));
+    order.forEach((nodeId) => {
+      const p = pos[nodeId]!;
+      p.x = contentLeft + contentRight - (p.x + p.w);
+    });
+  }
+  const bounds = finalizeLayoutBounds(pos, order);
+  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
+}
+
+function splitMindmapBranches(state: AppState, rootId: string, direction: SurfaceBranchDirection): { left: string[]; right: string[] } {
+  const root = state.nodes[rootId];
+  const children = root ? visibleChildren(root) : [];
+  const left: string[] = [];
+  const right: string[] = [];
+  if (direction === "right") {
+    return { left, right: children };
+  }
+  if (direction === "left") {
+    return { left: children, right };
+  }
+  children.forEach((childId, index) => {
+    (index % 2 === 0 ? right : left).push(childId);
+  });
+  return { left, right };
+}
+
+function buildMindmapLayout(state: AppState, ctx: MeasuredTreeContext): LayoutResult {
+  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config } = ctx;
+  const rootMetric = metrics[displayRootId] || { w: 280, h: VIEWER_TUNING.layout.rootHeight };
+  const branchWidth = (fromDepth = 1): number => {
+    let width = 0;
+    for (let d = fromDepth; d <= maxDepth; d += 1) {
+      width += (depthMaxWidth[d] ?? 120) + config.columnGap;
+    }
+    return width;
+  };
+  const leftBranchWidth = branchWidth();
+  const rootX = config.branchDirection === "right"
+    ? VIEWER_TUNING.layout.leftPad
+    : config.branchDirection === "left"
+      ? VIEWER_TUNING.layout.leftPad + leftBranchWidth
+      : VIEWER_TUNING.layout.leftPad + leftBranchWidth + config.sideGap;
+  const rightXByDepth: Record<number, number> = {};
+  const leftXByDepth: Record<number, number> = {};
+  rightXByDepth[1] = rootX + rootMetric.w + config.columnGap;
+  leftXByDepth[1] = rootX - config.columnGap - (depthMaxWidth[1] ?? 120);
+  for (let d = 2; d <= maxDepth; d += 1) {
+    rightXByDepth[d] = rightXByDepth[d - 1]! + (depthMaxWidth[d - 1] ?? 120) + config.columnGap;
+    leftXByDepth[d] = leftXByDepth[d - 1]! - config.columnGap - (depthMaxWidth[d] ?? 120);
+  }
+  const spanCache: Record<string, number> = {};
+  const { left, right } = splitMindmapBranches(state, displayRootId, config.branchDirection);
+  const sideGap = config.sideGap;
+  const sideSpan = (ids: string[]) => ids.reduce((sum, id, index) => (
+    sum + subtreeSpanForLayout(state, id, metrics, spanCache, config.siblingGap) + (index > 0 ? sideGap : 0)
+  ), 0);
+  const totalSpan = Math.max(rootMetric.h + 60, sideSpan(left), sideSpan(right), VIEWER_TUNING.layout.rootHeight + 80);
+  const rootY = VIEWER_TUNING.layout.topPad + totalSpan / 2;
+  const pos: Record<string, NodePosition> = {
+    [displayRootId]: { x: rootX, y: rootY, depth: 0, w: rootMetric.w, h: rootMetric.h, fontSize: rootMetric.fontSize, labelLines: rootMetric.labelLines },
+  };
+  const order: string[] = [displayRootId];
+
+  function placeSide(nodeId: string, topY: number, direction: -1 | 1): number {
+    const node = state.nodes[nodeId];
+    if (!node) return VIEWER_TUNING.layout.leafHeight;
+    const depth = Math.max(1, depthOf[nodeId] ?? 1);
+    const span = subtreeSpanForLayout(state, nodeId, metrics, spanCache, config.siblingGap);
+    const metric = metrics[nodeId]!;
+    const centerY = topY + span / 2;
+    const depthWidth = depthMaxWidth[depth] ?? metric.w;
+    const x = direction > 0
+      ? rightXByDepth[depth] ?? (rootX + rootMetric.w + config.columnGap)
+      : (leftXByDepth[depth] ?? (rootX - config.columnGap - depthWidth)) + Math.max(0, depthWidth - metric.w);
+    pos[nodeId] = { x, y: centerY, depth, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
+    order.push(nodeId);
+    let cursorY = topY;
+    visibleChildren(node).forEach((childId, i, arr) => {
+      const childSpan = placeSide(childId, cursorY, direction);
+      cursorY += childSpan;
+      if (i < arr.length - 1) cursorY += config.siblingGap;
+    });
+    return span;
+  }
+
+  const placeGroup = (ids: string[], direction: -1 | 1): void => {
+    let cursorY = rootY - sideSpan(ids) / 2;
+    ids.forEach((childId, index) => {
+      const span = placeSide(childId, cursorY, direction);
+      cursorY += span + (index < ids.length - 1 ? sideGap : 0);
+    });
+  };
+  placeGroup(left, -1);
+  placeGroup(right, 1);
+
+  const bounds = finalizeLayoutBounds(pos, order);
+  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
+}
+
+function buildTimelineLayout(state: AppState, ctx: MeasuredTreeContext): LayoutResult {
+  const { displayRootId, metrics, depthOf, config } = ctx;
+  const rootMetric = metrics[displayRootId] || { w: 280, h: VIEWER_TUNING.layout.rootHeight };
+  const rootX = VIEWER_TUNING.layout.leftPad;
+  const axisY = VIEWER_TUNING.layout.topPad + 300;
+  const pos: Record<string, NodePosition> = {
+    [displayRootId]: { x: rootX, y: axisY, depth: 0, w: rootMetric.w, h: rootMetric.h, fontSize: rootMetric.fontSize, labelLines: rootMetric.labelLines },
+  };
+  const order: string[] = [displayRootId];
+  const root = state.nodes[displayRootId];
+  const rootChildren = root ? visibleChildren(root) : [];
+  const stepX = Math.max(config.density === "compact" ? 190 : 260, config.columnGap + 120);
+
+  function placeDescendants(nodeId: string, baseX: number, baseY: number, sign: -1 | 1): void {
+    const node = state.nodes[nodeId];
+    if (!node) return;
+    visibleChildren(node).forEach((childId, index) => {
+      const metric = metrics[childId]!;
+      const x = baseX + 54;
+      const y = baseY + sign * (92 + index * 72);
+      pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
+      order.push(childId);
+      placeDescendants(childId, x, y, sign);
+    });
+  }
+
+  rootChildren.forEach((childId, index) => {
+    const metric = metrics[childId]!;
+    const x = rootX + rootMetric.w + config.columnGap + index * stepX;
+    const sign: -1 | 1 = index % 2 === 0 ? -1 : 1;
+    const y = axisY + sign * 132;
+    pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
+    order.push(childId);
+    placeDescendants(childId, x, y, sign);
+  });
+
+  const bounds = finalizeLayoutBounds(pos, order);
+  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
+}
+
 function buildLayout(state: AppState): LayoutResult {
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
@@ -5165,8 +5926,6 @@ function buildLayout(state: AppState): LayoutResult {
   const scatterSurface = currentSurfaceIsScatterMode();
   const metrics: Record<string, { w: number; h: number }> = {};
   const depthOf: Record<string, number> = {};
-  const depthMaxWidth: Record<number, number> = {};
-  let maxDepth = 0;
 
   if (scatterSurface && displayRootNode) {
     const surface = currentMapSurface();
@@ -5306,138 +6065,18 @@ function buildLayout(state: AppState): LayoutResult {
     };
   }
 
-  function visit(nodeId: string, depth: number): void {
-    const node = state.nodes[nodeId];
-    if (!node) {
-      return;
-    }
-
-    maxDepth = Math.max(maxDepth, depth);
-    depthOf[nodeId] = depth;
-
-    if (nodeId === state.rootId) {
-      const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
-      metrics[nodeId] = {
-        w: Math.max(280, rootLabelMeasure.w + 100),
-        h: Math.max(VIEWER_TUNING.layout.rootHeight, rootLabelMeasure.h + 8),
-      };
-    } else if (isLatexNode(node)) {
-      const m = measureLatex(node.text);
-      metrics[nodeId] = { w: m.w, h: m.h };
-    } else {
-      metrics[nodeId] = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.nodeFont);
-    }
-
-    depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metrics[nodeId]!.w);
-    visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
+  const structuredMode = structuredSurfaceMode() || "tree";
+  const measuredContext = buildMeasuredTreeContext(state, displayRootId, structuredMode);
+  if (structuredMode === "mindmap") {
+    return buildMindmapLayout(state, measuredContext);
   }
-
-  visit(displayRootId, 0);
-
-  const xByDepth: Record<number, number> = {};
-  let cursorX = VIEWER_TUNING.layout.leftPad;
-  for (let d = 0; d <= maxDepth; d += 1) {
-    xByDepth[d] = cursorX;
-    cursorX += (depthMaxWidth[d] ?? 120) + VIEWER_TUNING.layout.columnGap;
+  if (structuredMode === "logic-chart" && measuredContext.config.branchDirection === "both") {
+    return buildMindmapLayout(state, measuredContext);
   }
-
-  const subtreeHeightCache: Record<string, number> = {};
-  function subtreeHeight(nodeId: string): number {
-    if (subtreeHeightCache[nodeId] !== undefined) {
-      return subtreeHeightCache[nodeId]!;
-    }
-
-    const node = state.nodes[nodeId];
-    if (!node) {
-      return VIEWER_TUNING.layout.leafHeight;
-    }
-
-    const children = visibleChildren(node);
-    if (children.length === 0) {
-      const leafSpan = Math.max(VIEWER_TUNING.layout.leafHeight, metrics[nodeId]!.h + 12);
-      subtreeHeightCache[nodeId] = leafSpan;
-      return leafSpan;
-    }
-
-    let sum = 0;
-    children.forEach((childId, i) => {
-      sum += subtreeHeight(childId);
-      if (i < children.length - 1) {
-        sum += VIEWER_TUNING.layout.siblingGap;
-      }
-    });
-
-    const result = Math.max(sum, metrics[nodeId]!.h + 24);
-    subtreeHeightCache[nodeId] = result;
-    return result;
+  if (structuredMode === "timeline") {
+    return buildTimelineLayout(state, measuredContext);
   }
-
-  const pos: Record<string, NodePosition> = {};
-  const order: string[] = [];
-
-  const depthOffsetFactor = VIEWER_TUNING.layout.depthOffsetFactor;
-
-  function place(
-    nodeId: string,
-    topY: number,
-    parentX: number | null,
-    parentW: number | null,
-  ): number {
-    const node = state.nodes[nodeId];
-    if (!node) {
-      return VIEWER_TUNING.layout.leafHeight;
-    }
-
-    const depth = depthOf[nodeId] ?? 0;
-    const h = subtreeHeight(nodeId);
-    const centerY = topY + h / 2;
-
-    // Blend between depth-aligned X (legacy) and parent-relative X
-    const baseX = xByDepth[depth]!;
-    let nodeX: number;
-    if (parentX === null || parentW === null) {
-      nodeX = baseX; // root node
-    } else {
-      const parentRelX = parentX + parentW + VIEWER_TUNING.layout.columnGap;
-      nodeX = baseX + (parentRelX - baseX) * depthOffsetFactor;
-    }
-
-    pos[nodeId] = {
-      x: nodeX,
-      y: centerY,
-      depth,
-      w: metrics[nodeId]!.w,
-      h: metrics[nodeId]!.h,
-    };
-    order.push(nodeId);
-
-    let placeCursorY = topY;
-    visibleChildren(node).forEach((childId, i, arr) => {
-      const childH = place(childId, placeCursorY, nodeX, metrics[nodeId]!.w);
-      placeCursorY += childH;
-      if (i < arr.length - 1) {
-        placeCursorY += VIEWER_TUNING.layout.siblingGap;
-      }
-    });
-
-    return h;
-  }
-
-  const totalHeight = place(displayRootId, VIEWER_TUNING.layout.topPad, null, null);
-
-  // Compute totalWidth from placed node positions (parent-relative X may exceed cursorX)
-  let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
-  for (const nodeId of order) {
-    const p = pos[nodeId]!;
-    maxRight = Math.max(maxRight, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
-  }
-
-  return {
-    pos,
-    order,
-    totalHeight,
-    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
-  };
+  return buildRightTreeLayout(state, measuredContext);
 }
 
 function updateMapTitle(): void {
@@ -5477,6 +6116,65 @@ function scheduleApplyZoom(): void {
   });
 }
 
+function layoutEdgePath(
+  mode: StructuredSurfaceMode,
+  parent: NodePosition,
+  child: NodePosition,
+): { d: string; labelX: number; labelY: number; sourceSide: EdgeAnchorSide; targetSide: EdgeAnchorSide } {
+  const { source, target } = mode === "tree"
+    ? treeRightEdgeEndsBetween(parent, child)
+    : legacyEdgeEndsBetween(parent, child);
+  if (mode === "mindmap") {
+    const rightward = target.x >= source.x;
+    const dir = rightward ? 1 : -1;
+    const curve = Math.max(44, Math.abs(target.x - source.x) * 0.45);
+    const c1x = source.x + dir * curve;
+    const c2x = target.x - dir * curve;
+    return {
+      d: `M ${source.x} ${source.y} C ${c1x} ${source.y}, ${c2x} ${target.y}, ${target.x} ${target.y}`,
+      labelX: (c1x + c2x) / 2,
+      labelY: (source.y + target.y) / 2 - 8,
+      sourceSide: source.side,
+      targetSide: target.side,
+    };
+  }
+
+  if (mode === "logic-chart") {
+    const midX = source.x + (target.x - source.x) * 0.5;
+    return {
+      d: roundedOrthogonalPath(source.x, source.y, target.x, target.y, { radius: 9, midX }),
+      labelX: midX,
+      labelY: (source.y + target.y) / 2 - 8,
+      sourceSide: source.side,
+      targetSide: target.side,
+    };
+  }
+
+  if (mode === "timeline") {
+    const midY = source.y + (target.y - source.y) * 0.52;
+    return {
+      d: `M ${source.x} ${source.y} V ${midY} H ${target.x} V ${target.y}`,
+      labelX: (source.x + target.x) / 2,
+      labelY: midY - 8,
+      sourceSide: source.side,
+      targetSide: target.side,
+    };
+  }
+
+  const rightward = target.x >= source.x;
+  const dir = rightward ? 1 : -1;
+  const curve = Math.max(44, Math.abs(target.x - source.x) * 0.45);
+  const c1x = source.x + dir * curve;
+  const c2x = target.x - dir * curve;
+  return {
+    d: `M ${source.x} ${source.y} C ${c1x} ${source.y}, ${c2x} ${target.y}, ${target.x} ${target.y}`,
+    labelX: (c1x + c2x) / 2,
+    labelY: (source.y + target.y) / 2 - 8,
+    sourceSide: source.side,
+    targetSide: target.side,
+  };
+}
+
 function render(): void {
   updateModeBadge();
   if (!map) {
@@ -5506,6 +6204,7 @@ function render(): void {
   const displayRootNode = state.nodes[displayRootId];
   const flowSurface = currentSurfaceIsFlowMode();
   const scatterSurface = currentSurfaceIsScatterMode();
+  const structuredMode = structuredSurfaceMode() || "tree";
   const rootlessSurface = flowSurface;
 
   const pos = layout.pos;
@@ -5581,6 +6280,25 @@ function render(): void {
     });
   }
 
+  if (structuredMode === "timeline" && displayRootNode) {
+    const rootPos = pos[displayRootId];
+    const timelineChildren = visibleChildren(displayRootNode).filter((nodeId) => Boolean(pos[nodeId]));
+    if (rootPos && timelineChildren.length > 0) {
+      const first = pos[timelineChildren[0]!]!;
+      const last = pos[timelineChildren[timelineChildren.length - 1]!]!;
+      const axisStart = rootPos.x + rootPos.w + 32;
+      const axisEnd = last.x + last.w / 2 + 44;
+      surfaceFrames += `<line class="timeline-axis" x1="${axisStart}" y1="${rootPos.y}" x2="${axisEnd}" y2="${rootPos.y}" />`;
+      timelineChildren.forEach((nodeId) => {
+        const child = pos[nodeId]!;
+        surfaceFrames += `<circle class="timeline-dot" data-node-id="${nodeId}" cx="${child.x + child.w / 2}" cy="${rootPos.y}" r="5" />`;
+        const connector = layoutEdgePath("timeline", { ...rootPos, x: child.x, w: child.w }, child);
+        surfaceFrames += `<path class="timeline-stem" data-node-id="${nodeId}" d="${connector.d}" />`;
+      });
+      maxX = Math.max(maxX, axisEnd + VIEWER_TUNING.layout.canvasRightPad);
+    }
+  }
+
   Object.values(state.links || {}).forEach((rawLink) => {
     const link = normalizeGraphLink(rawLink);
     const source = state.nodes[link.sourceNodeId];
@@ -5642,7 +6360,8 @@ function render(): void {
       <marker id="${markerStartId}" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
         <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
       </marker>`;
-      graphLinks += `<line class="graph-link scatter-edge${styleClass}" data-link-id="${link.id}" data-edge-id="${link.id}" stroke="${stroke}" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}"${markerStart}${markerEnd} />`;
+      graphLinks += `<line class="graph-link scatter-edge${styleClass}" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" stroke="${stroke}" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}"${markerStart}${markerEnd} />`;
+      graphLinks += `<line class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}" />`;
       if (label) {
         graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${line.mx}" y="${line.my - 10}" text-anchor="middle">${escapeXml(label)}</text>`;
       }
@@ -5652,8 +6371,8 @@ function render(): void {
     const pairOffsetIndex = renderedPairOffsets.get(pairKey) ?? 0;
     renderedPairOffsets.set(pairKey, pairOffsetIndex + 1);
 
-    const sourceEnd = graphLinkEndpoint(sourcePos, targetPos, link.sourcePort);
-    const targetEnd = graphLinkEndpoint(targetPos, sourcePos, link.targetPort);
+    const linkBoundsMode: LinkConnectionBoundsMode = structuredMode === "mindmap" ? "mindmap" : "box";
+    const { source: sourceEnd, target: targetEnd } = edgeEndsForGraphLink(sourcePos, targetPos, link, 0, linkBoundsMode);
     // If the rendered node appears as a portal subsystem (`[[...]]`), push the edge end past the bracket glyph.
     const sourceIsPortal = isScopePortalNode(sourceRenderNode);
     const targetIsPortal = isScopePortalNode(targetRenderNode);
@@ -5662,7 +6381,7 @@ function render(): void {
     const srcCy = sourcePos.y;
     const tgtCy = targetPos.y;
     const facingHorizontal = Math.abs(tgtCx - srcCx) >= Math.abs(tgtCy - srcCy);
-    if (facingHorizontal && sourceEnd.port !== "top" && sourceEnd.port !== "bottom" && targetEnd.port !== "top" && targetEnd.port !== "bottom") {
+    if (facingHorizontal && sourceEnd.side !== "top" && sourceEnd.side !== "bottom" && targetEnd.side !== "top" && targetEnd.side !== "bottom") {
       const rightward = tgtCx >= srcCx;
       if (sourceIsPortal) sourceEnd.x += (rightward ? 1 : -1) * PORTAL_BRACKET_ARM;
       if (targetIsPortal) targetEnd.x += (rightward ? -1 : 1) * PORTAL_BRACKET_ARM;
@@ -5699,34 +6418,33 @@ function render(): void {
       const archIndex = useTop ? topArchCount++ : bottomArchCount++;
       const srcPad = VIEWER_TUNING.layout.edgeStartPad;
       const tgtPad = VIEWER_TUNING.layout.edgeEndPad;
-      const sxArch = srcCx;
-      const txArch = tgtCx;
+      const archSourcePort = edgePortForSide(positionRect(sourcePos), useTop ? "top" : "bottom", srcPad);
+      const archTargetPort = edgePortForSide(positionRect(targetPos), useTop ? "top" : "bottom", tgtPad);
+      const sxArch = archSourcePort.x;
+      const txArch = archTargetPort.x;
       // Extra lift reserved for scope-frame title band (top-side only).
       const titleReserve = useTop ? 48 : 14;
       // Stagger each back-edge on same side so horizontal segments don't overlap.
       const lift = titleReserve + archIndex * 18;
-      let syArch: number;
-      let tyArch: number;
+      const syArch = archSourcePort.y;
+      const tyArch = archTargetPort.y;
       let apexY: number;
       if (useTop) {
-        syArch = sourcePos.y - sourcePos.h / 2 - srcPad;
-        tyArch = targetPos.y - targetPos.h / 2 - tgtPad;
         apexY = uArchTopApex(linkAvoidBoxes, syArch, tyArch, lift);
       } else {
-        syArch = sourcePos.y + sourcePos.h / 2 + srcPad;
-        tyArch = targetPos.y + targetPos.h / 2 + tgtPad;
         apexY = uArchBottomApex(linkAvoidBoxes, syArch, tyArch, lift);
       }
       graphLinkPathD = smoothArchLinkPath(sxArch, syArch, txArch, tyArch, apexY);
       controlX = (sxArch + txArch) / 2;
       controlY = useTop ? apexY - 10 : apexY + 16;
     } else {
-      graphLinkPathD = smoothGraphLinkPath(sourceX, sourceY, targetX, targetY, pairWaveOffset);
-      const labelPoint = smoothGraphLinkLabelPoint(sourceX, sourceY, targetX, targetY, pairWaveOffset);
+      graphLinkPathD = graphLinkPathWithPorts(sourceEnd, targetEnd, pairWaveOffset);
+      const labelPoint = graphLinkLabelPointWithPorts(sourceEnd, targetEnd, pairWaveOffset);
       controlX = labelPoint.x;
       controlY = labelPoint.y - 12 - Math.abs(pairWaveOffset) * 0.35;
     }
-    const styleClass = `${scatterSurface ? " scatter-edge" : ""}${link.style === "default" ? "" : ` graph-link-${link.style}`}`;
+    const selectedLinkClass = selectedGraphLinkId === link.id ? " is-selected" : "";
+    const styleClass = `${scatterSurface ? " scatter-edge" : ""}${selectedLinkClass}${link.style === "default" ? "" : ` graph-link-${link.style}`}`;
     const colorSeed = Math.round(Math.abs(sourcePos.depth * 31 + targetPos.depth * 17 + sourceY + targetY));
     const stroke = sanitizeColor(link.color) || (scatterSurface ? "#6b8f2a" : VIEWER_TUNING.palette.edgeColors[colorSeed % VIEWER_TUNING.palette.edgeColors.length]!);
     const markerEndId = `graph-link-arrow-end-${link.id}`;
@@ -5747,18 +6465,17 @@ function render(): void {
         <path d="M 10 1 L 0 6 L 10 11 z" fill="${stroke}" />
       </marker>`;
 
-    const selectedClass = viewState.selectedLinkId === link.id ? " selected" : "";
-    graphLinks += `<path class="graph-link-hit" data-link-id="${link.id}" d="${graphLinkPathD}" />`;
-    graphLinks += `<path class="graph-link${styleClass}${selectedClass}" data-link-id="${link.id}" data-edge-id="${link.id}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
-    if (viewState.selectedLinkId === link.id) {
-      graphLinks += `<circle class="graph-link-port graph-link-port-source" data-link-id="${link.id}" cx="${sourceX}" cy="${sourceY}" r="7" />`;
-      graphLinks += `<circle class="graph-link-port graph-link-port-target" data-link-id="${link.id}" cx="${targetX}" cy="${targetY}" r="7" />`;
-    }
+    const selectedClass = viewState.selectedLinkId === link.id || selectedGraphLinkId === link.id ? " selected" : "";
+    graphLinks += `<path class="graph-link${styleClass}${selectedClass}" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
+    graphLinks += `<path class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" d="${graphLinkPathD}" />`;
     if (label) {
       const labelWidth = Math.max(48, label.length * 7 + 18);
       const labelY = controlY - 10;
       graphLinks += `<rect class="graph-link-label-bg" data-link-id="${link.id}" x="${controlX - labelWidth / 2}" y="${labelY - 14}" width="${labelWidth}" height="19" rx="9.5" />`;
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>`;
+    }
+    if (selectedGraphLinkId === link.id) {
+      overlays += renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode);
     }
   });
   defs += "</defs>";
@@ -5887,25 +6604,16 @@ function render(): void {
       const defaultStroke =
         VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
       const stroke = nodeStyles.edgeColor || defaultStroke;
-      const startX = p.x + p.w + VIEWER_TUNING.layout.edgeStartPad;
-      const startY = p.y;
-      const endX = child.x - VIEWER_TUNING.layout.edgeEndPad;
-      const endY = child.y;
       const edgeInline = buildEdgeStyle(nodeStyles);
-      const curve = Math.max(48, (endX - startX) * 0.45);
-      const c1x = startX + curve;
-      const c2x = endX - curve;
-      const edgePath = `M ${startX} ${startY} C ${c1x} ${startY}, ${c2x} ${endY}, ${endX} ${endY}`;
-      edges += `<path class="edge" stroke="${stroke}" d="${edgePath}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
+      const edgePath = layoutEdgePath(structuredMode, p, child);
+      edges += `<path class="edge edge-${structuredMode}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
 
       // Edge label — stored on the child node (parent is unique per child)
       const childNode = state.nodes[childId];
       const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
       const edgeLabel = childStyles.edgeLabel || parentChildLinkLabels.get(parentChildEdgeKey(nodeId, childId));
       if (edgeLabel) {
-        const labelX = (c1x + c2x) / 2;
-        const labelY = (startY + endY) / 2 - 8;
-        edges += `<text class="edge-label" x="${labelX}" y="${labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
+        edges += `<text class="edge-label" data-node-id="${childId}" x="${edgePath.labelX}" y="${edgePath.labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
       }
     });
 
@@ -5956,34 +6664,68 @@ function render(): void {
     const hitY = p.y - hitH / 2;
     const hitW = treatAsRoot ? p.w : p.w + 36;
     const hitRx = shapeRx(nodeStyles.shape, treatAsRoot);
-    const hitInline = buildNodeHitStyle(nodeStyles);
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="${hitRx}"${hitInline ? ` style="${hitInline}"` : ""} />`;
+    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="${hitRx}" />`;
+    const visualClasses = ["node-visual-box"];
+    if (structuredMode === "mindmap") {
+      visualClasses.push("mindmap-box");
+    }
+    if (viewState.selectedNodeIds.has(nodeId)) {
+      visualClasses.push("selected");
+      visualClasses.push("multi-selected");
+    }
+    if (nodeId === viewState.selectedNodeId) {
+      visualClasses.push("primary-selected");
+    }
+    if (isAliasNode(node)) {
+      visualClasses.push("alias");
+      visualClasses.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
+    }
+    if (nodeStyles.status) {
+      visualClasses.push(`status-${nodeStyles.status}`);
+    }
+    if (viewState.reparentSourceIds.has(nodeId)) {
+      visualClasses.push("reparent-source");
+    }
+    if (viewState.linkSourceNodeId === nodeId) {
+      visualClasses.push("link-source");
+    }
+    if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
+      visualClasses.push("drop-target");
+    }
+    if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
+      visualClasses.push("drag-source");
+    }
+    if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
+      visualClasses.push("cut-pending");
+    }
+    if (nodeLock) {
+      visualClasses.push("scope-locked");
+      if (nodeLock.entityId !== collabEntityId) {
+        visualClasses.push("scope-locked-by-other");
+      }
+    }
 
     if (treatAsRoot) {
-      const rootLabelLines = splitLabelLines(uiLabel(node) || "(empty)");
+      const rootLabelLines = p.labelLines || splitLabelLines(uiLabel(node) || "(empty)");
       const rootFont = p.fontSize ?? VIEWER_TUNING.typography.rootFont;
       const rootLineHeight = lineHeightForFont(rootFont);
       const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, rootFont, rootLineHeight);
       const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
       const w = p.w;
       const h = p.h;
-      const rx = shapeRx(nodeStyles.shape, true);
+      const rx = structuredMode === "mindmap" ? Math.min(28, h / 2) : shapeRx(nodeStyles.shape, true);
       const x = p.x;
       const y = p.y - h / 2;
-      const rootBoxStyle: string[] = [];
-      if (nodeStyles.bg) rootBoxStyle.push(`fill:${nodeStyles.bg}`);
-      if (nodeStyles.border) rootBoxStyle.push(`stroke:${nodeStyles.border}`);
-      if (nodeStyles.borderWidth != null) rootBoxStyle.push(`stroke-width:${nodeStyles.borderWidth}px`);
-      if (nodeStyles.borderStyle === "dashed") rootBoxStyle.push("stroke-dasharray:8 5");
-      if (nodeStyles.borderStyle === "dotted") rootBoxStyle.push("stroke-dasharray:3 3");
-      if (nodeStyles.borderStyle === "none") rootBoxStyle.push("stroke:none");
-      const rootBoxInline = rootBoxStyle.length ? ` style="${rootBoxStyle.join(";")}"` : "";
-      nodes += `<rect class="root-box" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${rootBoxInline} />`;
+      const rootBoxStyle = buildNodeVisualStyle(nodeStyles);
+      const rootBoxInline = rootBoxStyle ? ` style="${rootBoxStyle}"` : "";
+      nodes += `<rect class="root-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${rootBoxInline} />`;
       const rootLabelInline = buildLabelStyle(nodeStyles);
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" font-size="${rootFont}"${rootLabelInline ? ` style="${rootLabelInline}"` : ""}>${rootTspans}</text>`;
+      const rootLabelStyle = [`font-size:${rootFont}px`];
+      if (rootLabelInline) rootLabelStyle.push(rootLabelInline);
+      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" style="${rootLabelStyle.join(";")}">${rootTspans}</text>`;
     } else {
       const rawLabel = diagramLabel(node, nodeStyles);
-      const labelLines = splitLabelLines(rawLabel);
+      const labelLines = p.labelLines || splitLabelLines(rawLabel);
       const labelClasses = ["label-node"];
       if (viewState.selectedNodeIds.has(nodeId)) {
         labelClasses.push("selected");
@@ -5998,48 +6740,48 @@ function render(): void {
       if (nodeStyles.status) {
         labelClasses.push(`status-${nodeStyles.status}`);
       }
-      if (!isFolderNode(node) && (nodeStyles.shape === "diamond" || nodeStyles.bg || nodeStyles.border || nodeStyles.borderWidth != null)) {
-        const shapeX = p.x - 14;
-        const shapeY = p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + 6;
-        const shapeW = p.w + 28;
-        const shapeH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
-        const shapeParts: string[] = [];
-        if (nodeStyles.bg) shapeParts.push(`fill:${nodeStyles.bg}`);
-        if (nodeStyles.border) shapeParts.push(`stroke:${nodeStyles.border}`);
-        if (nodeStyles.borderWidth != null) shapeParts.push(`stroke-width:${nodeStyles.borderWidth}px`);
-        if (nodeStyles.borderStyle === "dashed") shapeParts.push("stroke-dasharray:8 5");
-        if (nodeStyles.borderStyle === "dotted") shapeParts.push("stroke-dasharray:3 3");
-        if (nodeStyles.borderStyle === "none") shapeParts.push("stroke:none");
-        const shapeInline = shapeParts.length ? ` style="${shapeParts.join(";")}"` : "";
+      const hasExplicitNodeBox = nodeStyles.shape === "diamond"
+        || nodeStyles.bg
+        || nodeStyles.border
+        || nodeStyles.borderWidth != null;
+      const needsStateVisualBox = structuredMode === "mindmap" || visualClasses.length > 1;
+      if (!isFolderNode(node) && (hasExplicitNodeBox || needsStateVisualBox)) {
+        const shapePadX = structuredMode === "mindmap" ? 0 : 14;
+        const shapePadY = structuredMode === "mindmap" ? 0 : 6;
+        const shapeX = p.x - shapePadX;
+        const shapeY = p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + shapePadY;
+        const shapeW = p.w + shapePadX * 2;
+        const shapeH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - shapePadY * 2;
+        const shapeInline = buildNodeVisualStyle(nodeStyles);
         if (nodeStyles.shape === "diamond") {
-          nodes += `<path class="node-shape" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, shapeW, shapeH)}"${shapeInline} />`;
+          nodes += `<path class="node-shape ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, shapeW, shapeH)}"${shapeInline ? ` style="${shapeInline}"` : ""} />`;
         } else {
-          nodes += `<path class="node-shape" data-node-id="${nodeId}" d="${rectPath(shapeX, shapeY, shapeW, shapeH, shapeRx(nodeStyles.shape, false))}"${shapeInline} />`;
+          const rx = structuredMode === "mindmap" ? 4 : shapeRx(nodeStyles.shape, false);
+          nodes += `<path class="node-shape ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${rectPath(shapeX, shapeY, shapeW, shapeH, rx)}"${shapeInline ? ` style="${shapeInline}"` : ""} />`;
         }
       }
       if (isFolderNode(node)) {
-        const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - 12;
-        const folderFrameX = p.x - 14;
+        const frameInsetY = structuredMode === "mindmap" ? 0 : 12;
+        const framePadX = structuredMode === "mindmap" ? 0 : 14;
+        const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - frameInsetY;
+        const folderFrameX = p.x - framePadX;
         const folderFrameY = p.y - frameH / 2;
-        const folderFrameW = p.w + 28;
+        const folderFrameW = p.w + framePadX * 2;
         const folderFrameH = frameH;
-        const folderBoxParts: string[] = [];
-        if (nodeStyles.bg) folderBoxParts.push(`fill:${nodeStyles.bg}`);
-        if (nodeStyles.border) folderBoxParts.push(`stroke:${nodeStyles.border}`);
-        if (nodeStyles.borderWidth != null) folderBoxParts.push(`stroke-width:${nodeStyles.borderWidth}px`);
-        const folderBoxInline = folderBoxParts.length ? ` style="${folderBoxParts.join(";")}"` : "";
+        const folderBoxStyle = buildNodeVisualStyle(nodeStyles);
+        const folderBoxInline = folderBoxStyle ? ` style="${folderBoxStyle}"` : "";
         if (isScopePortalNode(node)) {
           const leftX = folderFrameX + 2;
           const rightX = folderFrameX + folderFrameW - 2;
           const topY = folderFrameY;
           const bottomY = folderFrameY + folderFrameH;
           const arm = 12;
-          nodes += `<path class="portal-bracket" data-node-id="${nodeId}" d="M ${leftX + arm} ${topY} H ${leftX} V ${bottomY} H ${leftX + arm}"${folderBoxInline} />`;
-          nodes += `<path class="portal-bracket" data-node-id="${nodeId}" d="M ${rightX - arm} ${topY} H ${rightX} V ${bottomY} H ${rightX - arm}"${folderBoxInline} />`;
+          nodes += `<path class="portal-bracket ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="M ${leftX + arm} ${topY} H ${leftX} V ${bottomY} H ${leftX + arm}"${folderBoxInline} />`;
+          nodes += `<path class="portal-bracket ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="M ${rightX - arm} ${topY} H ${rightX} V ${bottomY} H ${rightX - arm}"${folderBoxInline} />`;
         } else if (nodeStyles.shape === "diamond") {
-          nodes += `<path class="folder-box" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, folderFrameW, folderFrameH)}"${folderBoxInline} />`;
+          nodes += `<path class="folder-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, folderFrameW, folderFrameH)}"${folderBoxInline} />`;
         } else {
-          nodes += `<rect class="folder-box" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="8"${folderBoxInline} />`;
+          nodes += `<rect class="folder-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="${structuredMode === "mindmap" ? 4 : 8}"${folderBoxInline} />`;
         }
         if (previewLayout) {
           const previewIds = new Set(previewLayout.childIds);
@@ -6070,8 +6812,7 @@ function render(): void {
               w: targetPreview.w,
               h: targetPreview.h,
             };
-            const sourceEnd = edgeEndBetweenRects(sourceRect, targetRect);
-            const targetEnd = edgeEndBetweenRects(targetRect, sourceRect);
+            const { source: sourceEnd, target: targetEnd } = edgePortPairBetweenRects(sourceRect, targetRect);
             const sx = sourceEnd.x;
             const sy = sourceEnd.y;
             const tx = targetEnd.x;
@@ -6123,10 +6864,16 @@ function render(): void {
         const startY = previewLayout
           ? p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + 36
           : multilineTextStartY(p.y, labelLines.length, nodeFont, lineHeight);
-        const tspans = multilineTspans(labelLines, p.x, lineHeight);
+        const labelX = structuredMode === "mindmap"
+          ? p.x + p.w / 2
+          : isScopePortalNode(node)
+          ? p.x + 12
+          : p.x;
+        const tspans = multilineTspans(labelLines, labelX, lineHeight);
         const labelInline = buildLabelStyle(nodeStyles);
-        const labelX = isScopePortalNode(node) ? p.x + 12 : p.x;
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${labelX}" y="${startY}" text-anchor="start" font-size="${nodeFont}"${labelInline ? ` style="${labelInline}"` : ""}>${tspans}</text>`;
+        const labelStyle = [`font-size:${nodeFont}px`];
+        if (labelInline) labelStyle.push(labelInline);
+        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${labelX}" y="${startY}" text-anchor="${structuredMode === "mindmap" ? "middle" : "start"}" style="${labelStyle.join(";")}">${tspans}</text>`;
       }
       const badge = nodeBadge(node);
       if (badge) {
@@ -6272,6 +7019,284 @@ function render(): void {
   syncInlineEditorPosition();
   renderLinearPanel();
 }
+
+interface LayoutDiagnosticBox {
+  nodeId: string;
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface LayoutDiagnosticIssue {
+  kind:
+    | "label-overlap"
+    | "hit-overlap"
+    | "direction-violation"
+    | "edge-endpoint-inside"
+    | "edge-dangling-endpoint"
+    | "edge-continuity"
+    | "edge-node-penetration";
+  nodeId?: string;
+  otherNodeId?: string;
+  edgeId?: string;
+  area?: number;
+  message: string;
+}
+
+interface LayoutDiagnosticResult {
+  ok: boolean;
+  mode: SurfaceViewMode;
+  density: SurfaceLayoutDensity;
+  direction: SurfaceBranchDirection;
+  labelCount: number;
+  hitCount: number;
+  issues: LayoutDiagnosticIssue[];
+}
+
+function svgBoxFor(el: SVGGraphicsElement): LayoutDiagnosticBox | null {
+  const nodeId = el.getAttribute("data-node-id");
+  if (!nodeId) return null;
+  try {
+    const box = el.getBBox();
+    return {
+      nodeId,
+      text: (el.textContent || "").trim(),
+      x: box.x,
+      y: box.y,
+      w: box.width,
+      h: box.height,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function overlapArea(a: LayoutDiagnosticBox, b: LayoutDiagnosticBox, pad = 1): number {
+  const left = Math.max(a.x - pad, b.x - pad);
+  const right = Math.min(a.x + a.w + pad, b.x + b.w + pad);
+  const top = Math.max(a.y - pad, b.y - pad);
+  const bottom = Math.min(a.y + a.h + pad, b.y + b.h + pad);
+  return Math.max(0, right - left) * Math.max(0, bottom - top);
+}
+
+function pointInsideBox(point: { x: number; y: number }, box: LayoutDiagnosticBox, epsilon = 1.5): boolean {
+  return point.x > box.x + epsilon
+    && point.x < box.x + box.w - epsilon
+    && point.y > box.y + epsilon
+    && point.y < box.y + box.h - epsilon;
+}
+
+function endpointDistanceToBox(point: { x: number; y: number }, box: LayoutDiagnosticBox): number {
+  const dx = point.x < box.x ? box.x - point.x : point.x > box.x + box.w ? point.x - (box.x + box.w) : 0;
+  const dy = point.y < box.y ? box.y - point.y : point.y > box.y + box.h ? point.y - (box.y + box.h) : 0;
+  return Math.hypot(dx, dy);
+}
+
+function svgEdgeEndpoints(el: SVGGeometryElement): { start: DOMPoint; end: DOMPoint; length: number } | null {
+  try {
+    const length = el.getTotalLength();
+    if (!Number.isFinite(length) || length < 2) {
+      return null;
+    }
+    return {
+      start: el.getPointAtLength(0),
+      end: el.getPointAtLength(length),
+      length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function collectLayoutDiagnostics(): LayoutDiagnosticResult {
+  const issues: LayoutDiagnosticIssue[] = [];
+  const labels = Array.from(canvas.querySelectorAll<SVGGraphicsElement>("text.label-root[data-node-id], text.label-node[data-node-id]"))
+    .map(svgBoxFor)
+    .filter((box): box is LayoutDiagnosticBox => Boolean(box));
+  const hits = Array.from(canvas.querySelectorAll<SVGGraphicsElement>("rect.node-hit[data-node-id], circle.scatter-node-circle[data-node-id]"))
+    .map(svgBoxFor)
+    .filter((box): box is LayoutDiagnosticBox => Boolean(box));
+  const edgeAnchorBoxes = Array.from(canvas.querySelectorAll<SVGGraphicsElement>(
+    [
+      "rect.root-box[data-node-id]",
+      "rect.folder-box[data-node-id]",
+      "path.folder-box[data-node-id]",
+      "path.node-shape[data-node-id]",
+      "text.label-root[data-node-id]",
+      "text.label-node[data-node-id]",
+      "rect.node-hit[data-node-id]",
+      "circle.scatter-node-circle[data-node-id]",
+    ].join(", "),
+  ))
+    .map(svgBoxFor)
+    .filter((box): box is LayoutDiagnosticBox => Boolean(box));
+
+  function collectOverlapIssues(kind: "label-overlap" | "hit-overlap", boxes: LayoutDiagnosticBox[], threshold: number): void {
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const a = boxes[i]!;
+        const b = boxes[j]!;
+        if (a.nodeId === b.nodeId) continue;
+        const area = overlapArea(a, b);
+        if (area > threshold) {
+          issues.push({
+            kind,
+            nodeId: a.nodeId,
+            otherNodeId: b.nodeId,
+            area,
+            message: `${kind}: ${a.nodeId} intersects ${b.nodeId} (${area.toFixed(1)}px^2)`,
+          });
+        }
+      }
+    }
+  }
+
+  collectOverlapIssues("label-overlap", labels, 6);
+  collectOverlapIssues("hit-overlap", hits, 18);
+  const hitByNodeId = new Map(hits.map((box) => [box.nodeId, box]));
+  const edgeAnchorBoxByNodeId = new Map<string, LayoutDiagnosticBox>();
+  const layoutEdgeAnchorBoxByNodeId = new Map<string, LayoutDiagnosticBox>();
+  edgeAnchorBoxes.forEach((box) => {
+    if (!edgeAnchorBoxByNodeId.has(box.nodeId)) {
+      edgeAnchorBoxByNodeId.set(box.nodeId, box);
+    }
+  });
+  if (lastLayout && viewState.surfaceViewMode !== "scatter") {
+    const mode = structuredSurfaceMode() || "tree";
+    Object.entries(lastLayout.pos).forEach(([nodeId, p]) => {
+      const rect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(p) : renderedBoxRect(p);
+      layoutEdgeAnchorBoxByNodeId.set(nodeId, {
+        nodeId,
+        text: map?.state.nodes[nodeId]?.text || "",
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+      });
+    });
+  }
+  const edgeElements = Array.from(canvas.querySelectorAll<SVGGeometryElement>(
+    "path.edge[data-source-node-id][data-target-node-id], path.graph-link[data-source-node-id][data-target-node-id], line.graph-link[data-source-node-id][data-target-node-id]",
+  ));
+  edgeElements.forEach((edgeEl, index) => {
+    const sourceId = edgeEl.getAttribute("data-source-node-id") || "";
+    const targetId = edgeEl.getAttribute("data-target-node-id") || "";
+    const edgeId = edgeEl.getAttribute("data-edge-id") || edgeEl.getAttribute("data-link-id") || `edge-${index}`;
+    const isTreeEdge = edgeEl.classList.contains("edge-tree");
+    const sourceBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(sourceId) : null)
+      || edgeAnchorBoxByNodeId.get(sourceId)
+      || hitByNodeId.get(sourceId);
+    const targetBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(targetId) : null)
+      || edgeAnchorBoxByNodeId.get(targetId)
+      || hitByNodeId.get(targetId);
+    const endpoints = svgEdgeEndpoints(edgeEl);
+    if (!sourceBox || !targetBox || !endpoints) {
+      issues.push({
+        kind: "edge-dangling-endpoint",
+        edgeId,
+        nodeId: sourceId || targetId || undefined,
+        message: `edge-dangling-endpoint: ${edgeId} cannot resolve source/target geometry`,
+      });
+      return;
+    }
+    if (!Number.isFinite(endpoints.start.x + endpoints.start.y + endpoints.end.x + endpoints.end.y)) {
+      issues.push({
+        kind: "edge-continuity",
+        edgeId,
+        nodeId: sourceId,
+        otherNodeId: targetId,
+        message: `edge-continuity: ${edgeId} has a non-finite endpoint`,
+      });
+      return;
+    }
+    if (pointInsideBox(endpoints.start, sourceBox)) {
+      issues.push({
+        kind: "edge-endpoint-inside",
+        edgeId,
+        nodeId: sourceId,
+        message: `edge-endpoint-inside: ${edgeId} starts inside ${sourceId}`,
+      });
+    }
+    if (pointInsideBox(endpoints.end, targetBox)) {
+      issues.push({
+        kind: "edge-endpoint-inside",
+        edgeId,
+        nodeId: targetId,
+        message: `edge-endpoint-inside: ${edgeId} ends inside ${targetId}`,
+      });
+    }
+    if (endpointDistanceToBox(endpoints.start, sourceBox) > 5 || endpointDistanceToBox(endpoints.end, targetBox) > 5) {
+      issues.push({
+        kind: "edge-dangling-endpoint",
+        edgeId,
+        nodeId: sourceId,
+        otherNodeId: targetId,
+        message: `edge-dangling-endpoint: ${edgeId} is detached from source or target bbox`,
+      });
+    }
+    const sampleCount = Math.min(36, Math.max(10, Math.floor(endpoints.length / 42)));
+    for (let sample = 1; sample < sampleCount; sample += 1) {
+      const point = edgeEl.getPointAtLength((endpoints.length * sample) / sampleCount);
+      for (const box of hits) {
+        if (box.nodeId === sourceId || box.nodeId === targetId) continue;
+        if (pointInsideBox(point, box, 3)) {
+          issues.push({
+            kind: "edge-node-penetration",
+            edgeId,
+            nodeId: box.nodeId,
+            message: `edge-node-penetration: ${edgeId} crosses ${box.nodeId}`,
+          });
+          return;
+        }
+      }
+    }
+  });
+
+  if (map && lastLayout && viewState.surfaceViewMode !== "scatter") {
+    const pos = lastLayout.pos;
+    const direction = viewState.surfaceBranchDirection;
+    Object.values(map.state.nodes).forEach((node) => {
+      const parentId = node.parentId;
+      if (!parentId) return;
+      const parent = pos[parentId];
+      const child = pos[node.id];
+      if (!parent || !child) return;
+      const parentCenter = parent.x + parent.w / 2;
+      const childCenter = child.x + child.w / 2;
+      const minDelta = 8;
+      if (direction === "right" && childCenter < parentCenter + minDelta) {
+        issues.push({
+          kind: "direction-violation",
+          nodeId: node.id,
+          otherNodeId: parentId,
+          message: `right depth violation: ${node.id} is not right of ${parentId}`,
+        });
+      }
+      if (direction === "left" && childCenter > parentCenter - minDelta) {
+        issues.push({
+          kind: "direction-violation",
+          nodeId: node.id,
+          otherNodeId: parentId,
+          message: `left depth violation: ${node.id} is not left of ${parentId}`,
+        });
+      }
+    });
+  }
+
+  return {
+    ok: issues.length === 0,
+    mode: viewState.surfaceViewMode,
+    density: viewState.surfaceLayoutDensity,
+    direction: viewState.surfaceBranchDirection,
+    labelCount: labels.length,
+    hitCount: hits.length,
+    issues,
+  };
+}
+
+(globalThis as any).__m3eDiagnoseLayout = collectLayoutDiagnostics;
 
 function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: number } {
   const boardRect = board.getBoundingClientRect();
@@ -6646,6 +7671,9 @@ function normalizeSelectionState(): void {
   if (viewState.selectedLinkId && !map.state.links?.[viewState.selectedLinkId]) {
     viewState.selectedLinkId = "";
   }
+  if (selectedGraphLinkId && !map.state.links?.[selectedGraphLinkId]) {
+    selectedGraphLinkId = null;
+  }
 }
 
 function setSingleSelection(nodeId: string, renderNow = true): void {
@@ -6654,6 +7682,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
     return;
   }
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   viewState.selectedNodeId = nodeId;
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
@@ -6724,6 +7753,7 @@ function selectGraphLink(linkId: string, renderNow = true): void {
     return;
   }
   viewState.selectedLinkId = linkId;
+  selectedGraphLinkId = linkId;
   viewState.selectedNodeIds = new Set();
   viewState.selectionAnchorId = null;
   viewState.reparentSourceIds.clear();
@@ -6735,6 +7765,7 @@ function selectGraphLink(linkId: string, renderNow = true): void {
   if (renderNow) {
     scheduleRender();
   }
+  board.focus();
 }
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
@@ -6777,6 +7808,8 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   viewState.currentScopeId = scopeId;
   viewState.currentScopeRootId = scopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(scopeId);
+  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(scopeId, viewState.surfaceViewMode);
+  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(scopeId, viewState.surfaceViewMode);
   setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
   render();
@@ -6793,6 +7826,8 @@ function ExitScopeCommand(): void {
   viewState.currentScopeId = map.state.nodes[previousScopeId] ? previousScopeId : map.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(viewState.currentScopeId);
+  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(viewState.currentScopeId, viewState.surfaceViewMode);
+  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(viewState.currentScopeId, viewState.surfaceViewMode);
   const selectionAfterExit =
     map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
       ? exitedScopeId
@@ -8786,6 +9821,42 @@ function colorizeScatterEdge(linkId: string): void {
   setStatus("Edge color updated.");
 }
 
+function setGraphLinkEndpointPort(linkId: string, endpoint: LinkEndpointKind, side: EdgeAnchorSide, withUndo = true): boolean {
+  if (!map?.state.links?.[linkId]) {
+    return false;
+  }
+  if (withUndo) {
+    pushUndoSnapshot();
+  }
+  const current = normalizeGraphLink(map.state.links[linkId]!);
+  map.state.links[linkId] = normalizeGraphLink({
+    ...current,
+    sourcePort: endpoint === "source" ? side : current.sourcePort,
+    targetPort: endpoint === "target" ? side : current.targetPort,
+  });
+  viewState.selectedLinkId = linkId;
+  selectedGraphLinkId = linkId;
+  scheduleRender();
+  return true;
+}
+
+function setGraphLinkEndpointPortNearPointer(linkId: string, endpoint: LinkEndpointKind, clientX: number, clientY: number): boolean {
+  const link = map?.state.links?.[linkId];
+  if (!map || !link || !lastLayout) {
+    return false;
+  }
+  const nodeId = endpoint === "source" ? link.sourceNodeId : link.targetNodeId;
+  const renderNodeId = currentSurfaceIsFlowMode() ? (representativeNodeIdInCurrentScope(nodeId) || nodeId) : nodeId;
+  const pos = lastLayout.pos[renderNodeId];
+  if (!pos) {
+    return false;
+  }
+  const point = clientToCanvasPoint(clientX, clientY);
+  const linkBoundsMode: LinkConnectionBoundsMode = structuredSurfaceMode() === "mindmap" ? "mindmap" : "box";
+  const side = nearestEdgePortSide(linkConnectionRect(pos, linkBoundsMode), point);
+  return setGraphLinkEndpointPort(linkId, endpoint, side, false);
+}
+
 function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y: number }> {
   const starts: Record<string, { x: number; y: number }> = {};
   nodeIds.forEach((nodeId) => {
@@ -8811,6 +9882,7 @@ function deleteSelectedGraphLink(): boolean {
   pushUndoSnapshot();
   delete map.state.links![link.id];
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   touchDocument();
   setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
   return true;
@@ -8827,10 +9899,12 @@ function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
   }
   const normalized = normalizeGraphLink(link);
   const key = endpoint === "source" ? "sourcePort" : "targetPort";
-  const current = normalized[key] || "auto";
-  const next = LINK_PORTS[(LINK_PORTS.indexOf(current) + 1) % LINK_PORTS.length] || "auto";
+  const ports: EdgeAnchorSide[] = ["right", "bottom", "left", "top"];
+  const current = sanitizeLinkPort(normalized[key]);
+  const next = ports[((current ? ports.indexOf(current) : -1) + 1) % ports.length] || "right";
   pushUndoSnapshot();
   link[key] = next;
+  selectedGraphLinkId = link.id;
   touchDocument();
   setStatus(`${endpoint === "source" ? "Source" : "Target"} port: ${next}`);
   return true;
@@ -10043,6 +11117,8 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeRootId = map.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(map.state.rootId);
+    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(map.state.rootId, viewState.surfaceViewMode);
+    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(map.state.rootId, viewState.surfaceViewMode);
     viewState.clipboardState = null;
     viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
@@ -10870,12 +11946,41 @@ viewTreeBtn?.addEventListener("click", () => {
   setSurfaceViewMode("tree");
 });
 
+viewMindmapBtn?.addEventListener("click", () => {
+  setSurfaceViewMode("mindmap");
+});
+
+viewLogicChartBtn?.addEventListener("click", () => {
+  setSurfaceViewMode("logic-chart");
+});
+
+viewTimelineBtn?.addEventListener("click", () => {
+  setSurfaceViewMode("timeline");
+});
+
 viewSystemBtn?.addEventListener("click", () => {
   setSurfaceViewMode("system");
 });
 
 viewScatterBtn?.addEventListener("click", () => {
   setSurfaceViewMode("scatter");
+});
+
+window.addEventListener("m3e:set-surface-layout", (event: Event) => {
+  const detail = (event as CustomEvent<{
+    mode?: SurfaceViewMode;
+    density?: SurfaceLayoutDensity;
+    direction?: SurfaceBranchDirection;
+  }>).detail || {};
+  if (detail.mode) {
+    setSurfaceViewMode(detail.mode);
+  }
+  if (detail.density) {
+    setSurfaceLayoutDensity(sanitizeSurfaceLayoutDensity(detail.density));
+  }
+  if (detail.direction) {
+    setSurfaceBranchDirection(sanitizeSurfaceBranchDirection(detail.direction));
+  }
 });
 
 scatterNormalBtn?.addEventListener("click", () => setScatterToolMode("normal"));
@@ -11294,11 +12399,43 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (annotationTool !== "select") {
     return;
   }
-  const linkId = (event.target as Element | null)?.getAttribute("data-link-id") ?? null;
-  if (linkId && event.button === 0) {
+  const targetEl = event.target as Element | null;
+  const linkPortHandle = targetEl?.getAttribute("data-link-port-handle") as LinkEndpointKind | null;
+  const handleLinkId = targetEl?.getAttribute("data-link-id") ?? null;
+  if (map && handleLinkId && (linkPortHandle === "source" || linkPortHandle === "target") && event.button === 0) {
     event.preventDefault();
     event.stopPropagation();
-    if (map && currentSurfaceIsScatterMode() && scatterToolMode === "delete") {
+    pushUndoSnapshot();
+    selectedGraphLinkId = handleLinkId;
+    linkPortDragState = {
+      pointerId: event.pointerId,
+      linkId: handleLinkId,
+      endpoint: linkPortHandle,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragged: false,
+    };
+    canvas.setPointerCapture(event.pointerId);
+    board.focus();
+    return;
+  }
+  const linkPortChoice = targetEl?.getAttribute("data-link-port-choice") as LinkEndpointKind | null;
+  const linkPortSide = sanitizeLinkPort(targetEl?.getAttribute("data-link-port-side"));
+  const choiceLinkId = targetEl?.getAttribute("data-link-id") ?? null;
+  if (map && choiceLinkId && (linkPortChoice === "source" || linkPortChoice === "target") && linkPortSide && event.button === 0) {
+    event.preventDefault();
+    event.stopPropagation();
+    setGraphLinkEndpointPort(choiceLinkId, linkPortChoice, linkPortSide);
+    touchDocument();
+    setStatus(`Link ${linkPortChoice} port: ${linkPortSide}.`);
+    board.focus();
+    return;
+  }
+  const linkId = targetEl?.getAttribute("data-link-id") ?? null;
+  if (map && currentSurfaceIsScatterMode() && linkId && event.button === 0) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (scatterToolMode === "delete") {
       deleteScatterEdge(linkId);
     } else if (map && currentSurfaceIsScatterMode() && scatterToolMode === "colorize") {
       colorizeScatterEdge(linkId);
@@ -11306,6 +12443,12 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       selectGraphLink(linkId);
     }
     board.focus();
+    return;
+  }
+  if (map && linkId && event.button === 0) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectGraphLink(linkId);
     return;
   }
   const collapseNodeId = (event.target as Element | null)?.getAttribute("data-collapse-node-id");
@@ -11408,6 +12551,16 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 canvas.addEventListener("pointermove", (event: PointerEvent) => {
+  if (linkPortDragState && event.pointerId === linkPortDragState.pointerId) {
+    const dx = event.clientX - linkPortDragState.startX;
+    const dy = event.clientY - linkPortDragState.startY;
+    if (!linkPortDragState.dragged && Math.hypot(dx, dy) < VIEWER_TUNING.drag.reparentThreshold) {
+      return;
+    }
+    linkPortDragState.dragged = true;
+    setGraphLinkEndpointPortNearPointer(linkPortDragState.linkId, linkPortDragState.endpoint, event.clientX, event.clientY);
+    return;
+  }
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
@@ -11447,6 +12600,18 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
 });
 
 function finishNodeDrag(event: PointerEvent): void {
+  if (linkPortDragState && event.pointerId === linkPortDragState.pointerId) {
+    const { linkId, endpoint, dragged } = linkPortDragState;
+    if (!dragged) {
+      setGraphLinkEndpointPortNearPointer(linkId, endpoint, event.clientX, event.clientY);
+    }
+    linkPortDragState = null;
+    canvas.releasePointerCapture(event.pointerId);
+    touchDocument();
+    setStatus("Link port updated.");
+    board.focus();
+    return;
+  }
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
@@ -12438,6 +13603,8 @@ void initializeDocument().then(() => {
     viewState.currentScopeId = initialScopeId;
     viewState.currentScopeRootId = initialScopeId;
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(initialScopeId);
+    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(initialScopeId, viewState.surfaceViewMode);
+    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(initialScopeId, viewState.surfaceViewMode);
     syncThinkingModeUi();
     setSingleSelection(initialScopeId, false);
     normalizeSelectionState();

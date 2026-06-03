@@ -4,8 +4,8 @@ export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
 export type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 export type MapNodeClass = "entity" | "scope";
-export type SurfaceKind = "tree" | "system" | "scatter";
-export type SurfaceLayout = "tree" | "flow-lr" | "scatter";
+export type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 
 export interface TreeNode {
   id: string;

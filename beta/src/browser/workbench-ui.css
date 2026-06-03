@@ -539,7 +539,9 @@
 }
 
 #workbench-root:has(.wb-left-rail > .wb-icon-btn:last-child:hover) .wb-progressive-nav,
+#workbench-root:has(.wb-left-rail > .wb-icon-btn:last-child:focus) .wb-progressive-nav,
 #workbench-root:has(.wb-left-rail > .wb-icon-btn:last-child:focus-visible) .wb-progressive-nav,
+.wb-progressive-nav.is-open,
 .wb-progressive-nav:hover,
 .wb-progressive-nav:focus-within {
   opacity: 1;
