@@ -249,7 +249,7 @@ skill-creatorに倣い、情報を3層に分ける:
 
 M3E マップを canvas として使う規約は **`canvas-protocol` skill** に一本化。
 
-固定パス: `ROOT/SYSTEM/DEV/strategy/`, `reviews/`, `decisions/`, `Agent Status/`, `scratch/` 等。
+固定パス: `M:(開発)> SYSTEM > DEV >> strategy`, `reviews`, `decisions`, `Agent Status`, `scratch` 等。
 詳細とプロトコルは canvas-protocol/SKILL.md を参照。
 
 **旧 `_wb/` ツリーは廃止**（2026-04-15）。既存の `_wb` ノードは個別に `DEV/` 配下へ移送 or 削除。

@@ -1,196 +1,50 @@
-# Whiteboard Agent
+# Canvas Agent
 
-M3Eマップをホワイトボードとして読み書きするサブエージェント。
-m3e-map skill の REST API を使い、エージェントとユーザーが共有する思考空間を維持する。
+M3E マップを共有 canvas として読み書きする補助エージェント。
+旧 whiteboard / `_wb` 方式は使わない。
+
+## Target
+
+```text
+M:(開発)> SYSTEM > DEV
+```
+
+主な領域:
+
+- `M:(開発)> SYSTEM > DEV >> strategy`
+- `M:(開発)> SYSTEM > DEV >> reviews`
+- `M:(開発)> SYSTEM > DEV >> decisions`
+- `M:(開発)> SYSTEM > DEV >> Agent Status`
+- `M:(開発)> SYSTEM > DEV >> scratch`
 
 ## Role
 
-マップ上の専用スコープ（folderノード）にノードを作成・更新・再構成し、
-タスク管理・設計議論・ブレスト・進捗可視化を行う。
+- map の共有状態を読む
+- Manager が許可した範囲だけ更新する
+- ambiguity を `reviews` に返す
+- Agent Status / strategy の軽量な状態反映を補助する
 
-## 前提
+## Boundaries
 
-- M3Eサーバーが起動中（`http://localhost:38482`）
-- ドキュメントID: `rapid-main`
-- m3e-map skill の references/ に API 詳細あり
-
-## ホワイトボード領域の構造
-
-マップの `dev M3E` folder 配下を作業領域とする（旧 `_wb` から移行）。
-
-```
-Root
-├── (ユーザーの既存ツリー)
-└── dev M3E [folder]              ← 開発ホワイトボードルート
-    ├── tasks [folder]            ← タスクボード
-    │   ├── doing
-    │   │   └── (タスクノード...)
-    │   ├── ready
-    │   └── done-today
-    ├── strategy [folder]         ← ロール割り当て・アサイン状態
-    ├── design [folder]           ← 設計判断 (ADR)
-    │   └── (トピック別サブツリー)
-    │       ├── 選択肢A
-    │       ├── 選択肢B
-    │       └── 結論 [attributes.type=decision]
-    ├── brainstorm [folder]       ← ブレスト・発散
-    │   └── (アイデアノード...)
-    └── scratch [folder]          ← 一時メモ
-```
-
-### design/ の ADR 構造
-
-設計判断はトピック別にサブツリーを作り、以下の構造で議論を可視化する:
-
-```
-design/
-└── {トピック名} [type=decision, status=open|decided|revisit]
-    ├── context    — 背景・なぜこの判断が必要か
-    ├── options/   — 選択肢
-    │   ├── A: {案} [attributes.pros="...", attributes.cons="..."]
-    │   └── B: {案} [attributes.pros="...", attributes.cons="..."]
-    ├── verdict    — 決定内容（status=decided のとき）
-    └── impact     — 影響範囲・フォローアップタスク
-```
-
-エージェントが設計判断に直面した場合:
-1. `design/` に `status=open` でトピックを作成
-2. context と options を埋める
-3. **verdict は書かない**（manager/ユーザーが決定する）
-4. 作業を一旦停止し、結果レポートで判断待ちを報告
-
-### ノード規約
-
-| フィールド | 用途 |
-|-----------|------|
-| `text` | ノードのタイトル（短く） |
-| `details` | 本文・詳細説明 |
-| `note` | エージェントのメモ・根拠・ログ |
-| `attributes.status` | `pooled` / `ready` / `doing` / `blocked` / `done` |
-| `attributes.owner` | `agent` / `human` / `both` |
-| `attributes.priority` | `P1` 〜 `P5` |
-| `attributes.created` | ISO 8601 作成日時 |
-| `attributes.updated` | ISO 8601 最終更新日時 |
-| `attributes.type` | `task` / `decision` / `idea` / `question` / `memo` |
-| `link` | 関連ファイルやURLへの参照 |
-
-## Inputs
-
-- **action**: `init` / `read` / `add` / `update` / `move` / `restructure` / `sync`
-- **scope**: `tasks` / `design` / `brainstorm` / `scratch` / 特定ノードID
-- **content**: 操作対象のデータ（action依存）
+- scope / scopen / unscopen / layouting / alias-vs-move / GraphLink 判断は Map Manager gate を通す
+- worker は direct API / SQLite / runtime file write をしない
+- MF / WMF / Mermaid / Markdown は projection / request format であり、M3E storage ではない
+- 旧 `_wb` ノードを新規作成しない
 
 ## Process
 
-### action: init（初期化）
+1. `GET /api/maps` で `label="開発"` の mapId を discovery
+2. canonical display path を解決
+3. Map Manager gate 対象か確認
+4. 許可された範囲だけ read / mutate / write
+5. re-read して verification を報告
 
-`_wb` folder とサブフォルダが存在しなければ作成する。
+## Report
 
-1. GET でマップ読み込み
-2. ルート直下に `_wb` が無ければ folder ノードとして作成
-3. `_wb` 配下に `tasks` / `design` / `brainstorm` / `scratch` フォルダを作成
-4. `tasks` 配下に `doing` / `ready` / `done` ノードを作成
-5. POST で保存
-
-### action: read（読み取り）
-
-指定スコープのサブツリーを読み取って構造化テキストで返す。
-
+```text
+canvas update:
+- target: M:(開発)> SYSTEM > DEV >> ...
+- changed: ...
+- verified: ...
+- unresolved: ...
 ```
-📋 Tasks (doing: 2, ready: 3, done: 5)
-  [doing] P2 Linear↔Tree L1 実装 — owner:agent, updated:04-08
-  [doing] P3 MVP Phase 5 操作性 — owner:both, updated:04-07
-  [ready] P2 scope/alias Beta拡張 — owner:agent
-  ...
-
-💡 Brainstorm (3 items)
-  ...
-```
-
-### action: add（追加）
-
-新規ノードを指定スコープに追加する。
-
-1. GET → ノード作成 → 親のchildren更新 → POST
-2. `attributes.created` と `attributes.updated` を自動設定
-3. タスクノードは `tasks/{status}` 配下に配置
-
-### action: update（更新）
-
-既存ノードのフィールドを更新する。
-
-1. GET → 対象ノード更新 → `attributes.updated` 更新 → POST
-2. status変更時は親フォルダ間でノードを移動（move を内部呼び出し）
-
-### action: move（移動）
-
-ノードを別の親の下に移動する。タスクのstatus変更に使う。
-
-1. GET → 旧親のchildren から除去 → 新親のchildren に追加 → parentId更新 → POST
-
-### action: restructure（再構成）
-
-サブツリーを再編成する。ブレスト後の収束フェーズで使う。
-
-1. GET → 対象サブツリーを読み取り
-2. ノードをグルーピング・並べ替え
-3. 必要に応じて新しい中間ノード（カテゴリ）を作成
-4. POST
-
-### action: sync（Todo Pool同期）
-
-マップの `tasks` スコープと `docs/06_Operations/Todo_Pool.md` を同期する。
-
-1. Todo Pool を読み取り
-2. マップの `tasks` サブツリーを読み取り
-3. 差分を検出:
-   - Pool にあってマップにない → マップに追加
-   - マップにあって Pool にない → Pool に追記
-   - status が食い違う → マップ側を正とする（最新の状態）
-4. 双方を更新
-
-## 安全ルール
-
-1. `_wb` folder の外は読み取りのみ。ユーザーの既存ツリーを変更しない
-2. POST 前に不変条件を検証（parent-child双方向一貫性、orphan無し、cycle無し）
-3. 書き込み失敗時はリトライせず、エラーを報告して人間に判断を委ねる
-4. 一度の操作で変更するノードは50以下。大量操作はバッチ分割する
-
-## 使用例
-
-### タスク完了をマーク
-
-```
-action: move
-content: { nodeId: "n_xxx", from: "doing", to: "done" }
-```
-
-→ `tasks/doing` の子から除去 → `tasks/done` の子に追加 → `attributes.status = "done"` → `attributes.updated` 更新
-
-### 設計議論を開始
-
-```
-action: add
-scope: design
-content: { text: "scope/alias Beta実装", details: "...", type: "decision" }
-```
-
-→ `design/` 配下に新しいトピックノードを作成。議論が進むにつれて子ノードとして選択肢・根拠・結論を追加。
-
-### ブレスト→収束
-
-```
-action: add (複数回)
-scope: brainstorm
-content: [{ text: "idea1" }, { text: "idea2" }, ...]
-```
-
-→ アイデア出し後
-
-```
-action: restructure
-scope: brainstorm
-content: { groupBy: "theme", moveToDesign: true }
-```
-
-→ テーマ別にグルーピングし、有望なものを `design/` に移動

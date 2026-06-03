@@ -10,6 +10,9 @@ description: |
   (fill / urgency / importance / status).
 ---
 
+<!-- generated from agent_instructions/skills_canonical/m3e-map\SKILL.md; do not edit mirror directly -->
+
+
 # M3E Map API Skill
 
 Operate on the M3E mind-map through its local REST API.
@@ -31,6 +34,15 @@ For any map operation, follow this sequence:
 4. **Modify** in-memory while maintaining invariants and the chosen display contract (see `references/data-model.md`)
 5. **Write** the full state back via POST or PUT (see `references/write.md`)
 6. **Verify** the response — success returns `{ "ok": true, "savedAt": "...", "mapId": "..." }`
+
+## Route structural decisions to Map Manager
+
+This skill executes map reads and writes. It does not own scope granularity,
+scopen / unscopen policy, layouting / display intent, alias vs move vs GraphLink
+choices across facets, or worker handoff boundaries.
+
+For those decisions, consult `protocols/map-manager/README.md`,
+`protocols/map-manager/gates.md`, and the `map-manager` skill before mutation.
 
 For complex modifications (>3 nodes), write a one-shot Node.js script to `%TEMP%` (Windows) / `/tmp` and execute. **Bash `/tmp` ≠ Node.js `/tmp` on Windows** — use absolute Windows path like `c:/Users/Akaghef/AppData/Local/Temp/script.js` when invoking `node`. For 1-3 node changes, inline JSON with curl is fine.
 
@@ -98,16 +110,27 @@ The save response is:
 { "ok": true, "savedAt": "ISO-8601", "mapId": "...", "integrationMode": "off|on", "sourceOfTruth": "sqlite" }
 ```
 
-### Path format (`Map:` convention)
+### Path format
 
-User-copied paths from the viewer (right-click → "Copy path") use the form `Map:Root > Child > Grandchild`. The `Map:` prefix is optional on the API (accepted case-insensitively). A leading `Root` segment (or the root node's own text) resolves to the document root.
+Human-facing requests and AI handoffs should use the canonical display path:
+
+```text
+M:(<map label>)> A > B >> C
+```
+
+`>` separates path segments inside a scope. `>>` marks a scope boundary. `/` is
+legacy/API compatibility only; `\` is filesystem only.
+
+### Legacy API path format (`Map:` convention)
+
+User-copied paths from the viewer (right-click -> "Copy path") use the official display form `M:(<map label>)> A > B >> C`. The legacy `Map:Root/Child/Grandchild` form remains accepted by the API resolver for compatibility only.
 
 - Success: `{ ok: true, mapId, nodeId, matched: ["Root", ...] }`
 - `PATH_NOT_FOUND` (404): no child with that text under the current parent
 - `PATH_AMBIGUOUS` (409): multiple children share the segment text; response includes `candidates: [nodeId, ...]`
 - Custom separator: pass `&sep=/` (or any single char) only for legacy or special cases. `>` is the default separator.
 
-Prefer `resolve` + `?scope=<nodeId>` over loading the full state when the user gave you a path.
+Prefer canonical display paths in user-facing reports. Use `resolve` + `?scope=<nodeId>` over loading the full state when the user gave you a legacy/API path.
 
 ## Node Decoration: `m3e:style`
 

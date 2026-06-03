@@ -380,8 +380,24 @@ export function mergeScopePush(
   const applied: string[] = [];
   const rejected: string[] = [];
   const conflicts: Array<{ nodeId: string; winner: string; loser: string }> = [];
+  const effectiveChangedNodes: Record<string, TreeNode | null> = { ...changedNodes };
 
-  for (const [nodeId, change] of Object.entries(changedNodes)) {
+  // The viewer sends the locked scope root plus every currently visible
+  // descendant. In that full-snapshot mode, a stored descendant missing from
+  // the payload means it was deleted locally and must not be resurrected by
+  // preserving the old subtree on save. Partial API callers that do not include
+  // the scope root keep the legacy "only apply these nodes" behavior.
+  const scopePushesFullSnapshot = changedNodes[scopeId] !== undefined && changedNodes[scopeId] !== null;
+  if (scopePushesFullSnapshot) {
+    const oldScopeIds = model.queryNodeIds(scopeId);
+    for (const oldNodeId of oldScopeIds) {
+      if (oldNodeId !== scopeId && effectiveChangedNodes[oldNodeId] === undefined) {
+        effectiveChangedNodes[oldNodeId] = null;
+      }
+    }
+  }
+
+  for (const [nodeId, change] of Object.entries(effectiveChangedNodes)) {
     // Scope check
     if (change !== null) {
       const existingNode = nodes[nodeId];
@@ -417,7 +433,12 @@ export function mergeScopePush(
     } else {
       const existingNode = nodes[nodeId];
       if (existingNode) {
-        nodes[nodeId] = { ...change, id: nodeId, parentId: existingNode.parentId, children: existingNode.children };
+        nodes[nodeId] = {
+          ...change,
+          id: nodeId,
+          parentId: nodeId === scopeId ? existingNode.parentId : change.parentId,
+          children: [...(change.children || [])],
+        };
       } else {
         nodes[nodeId] = change;
         const parentId = change.parentId;
@@ -446,7 +467,7 @@ export function mergeScopePush(
 
   // Audit log for each applied change
   for (const nodeId of applied) {
-    const change = changedNodes[nodeId];
+    const change = effectiveChangedNodes[nodeId];
     let opType: OperationType;
     if (change === null) {
       opType = "delete";

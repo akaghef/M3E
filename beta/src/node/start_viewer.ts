@@ -80,6 +80,7 @@ import type {
   FlashApproveRequest,
   FlashDraftStatus,
   LinkDirection,
+  LinkPort,
   LinkStyle,
   VaultExportRequest,
   VaultImportRequest,
@@ -1724,6 +1725,8 @@ async function handleLinkApi(
         label?: unknown;
         direction?: unknown;
         style?: unknown;
+        sourcePort?: unknown;
+        targetPort?: unknown;
       };
       try {
         const raw = await readRequestBody(req);
@@ -1744,11 +1747,15 @@ async function handleLinkApi(
         label?: string;
         direction?: LinkDirection;
         style?: LinkStyle;
+        sourcePort?: LinkPort;
+        targetPort?: LinkPort;
       } = {};
       if (typeof body.relationType === "string") options.relationType = body.relationType;
       if (typeof body.label === "string") options.label = body.label;
       if (typeof body.direction === "string") options.direction = body.direction as LinkDirection;
       if (typeof body.style === "string") options.style = body.style as LinkStyle;
+      if (typeof body.sourcePort === "string") options.sourcePort = body.sourcePort as LinkPort;
+      if (typeof body.targetPort === "string") options.targetPort = body.targetPort as LinkPort;
 
       let linkId: string;
       try {

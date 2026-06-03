@@ -63,7 +63,7 @@ const VIEWER_TUNING: ViewerTuning = {
     // Baseline block height reserved for the root node.
     rootHeight: 104,
     // Depth-axis distance between parent and child columns.
-    columnGap: 170,
+    columnGap: 255,
     // Baseline block height for leaf and regular nodes.
     leafHeight: 38,
     // Breadth-axis spacing between sibling nodes.

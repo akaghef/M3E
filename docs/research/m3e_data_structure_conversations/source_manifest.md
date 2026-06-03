@@ -1,0 +1,111 @@
+# Source Manifest
+
+- generated: 2026-05-14 12:25:07
+- source_dir: `C:\Users\Akaghef\data\作業\chatGPTdata\MarkdownFiles\Projects\Akaghef\M3E`
+- copied_files: 102
+- high_confidence_files: 83
+
+| score | confidence | categories | file |
+|---:|---|---|---|
+| 8981 | yes | scope-alias|mutation|validation|ssot|llm-transport|attrs|schema|storage|ui-state | [260425_LLMマインドマップトポロジ.md](raw_conversations/260425_LLMマインドマップトポロジ.md) |
+| 7511 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|packed-core|llm-transport|attrs|storage | [260417_重要Resource管理のアプローチ.md](raw_conversations/260417_重要Resource管理のアプローチ.md) |
+| 7340 | yes | scope-alias|mutation|validation|ui-state|ssot|attrs|schema|llm-transport|storage | [260410_TCLの意味.md](raw_conversations/260410_TCLの意味.md) |
+| 6812 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|storage|attrs|llm-transport | [260420_戦略立案の改善.md](raw_conversations/260420_戦略立案の改善.md) |
+| 6792 | yes | scope-alias|mutation|validation|llm-transport|ssot|schema|ui-state|storage|attrs | [260425_MIOSMindmap_IO_Stack.md](raw_conversations/260425_MIOSMindmap_IO_Stack.md) |
+| 6718 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260419_Cloud_Code_Agent_SDK.md](raw_conversations/260419_Cloud_Code_Agent_SDK.md) |
+| 6709 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260410_Structural_Reasoning_Stack.md](raw_conversations/260410_Structural_Reasoning_Stack.md) |
+| 6698 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260420_ネットワーク同期とセキュリティ.md](raw_conversations/260420_ネットワーク同期とセキュリティ.md) |
+| 6682 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260406_AI_orchestration_in_M3E.md](raw_conversations/260406_AI_orchestration_in_M3E.md) |
+| 6679 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260417_LLMの抽象度評価.md](raw_conversations/260417_LLMの抽象度評価.md) |
+| 6670 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260406_AI_memory_reflection.md](raw_conversations/260406_AI_memory_reflection.md) |
+| 5506 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260404_M3EとAgent_Workflow.md](raw_conversations/260404_M3EとAgent_Workflow.md) |
+| 5438 | yes | scope-alias|storage|validation|mutation|ssot|schema|llm-transport|ui-state|attrs | [260409_ローンチ前の自動テスト.md](raw_conversations/260409_ローンチ前の自動テスト.md) |
+| 5360 | yes | scope-alias|mutation|validation|ssot|schema|llm-transport|ui-state|attrs|storage | [260404_ハイブリッド検索の重要性.md](raw_conversations/260404_ハイブリッド検索の重要性.md) |
+| 5238 | yes | scope-alias|mutation|validation|llm-transport|ssot|schema|ui-state|attrs|storage | [260420_位相と埋め込みアルゴリズム.md](raw_conversations/260420_位相と埋め込みアルゴリズム.md) |
+| 5226 | yes | scope-alias|mutation|validation|schema|ssot|ui-state|llm-transport|attrs|storage | [260402_UIマトリクス視覚化.md](raw_conversations/260402_UIマトリクス視覚化.md) |
+| 5206 | yes | scope-alias|mutation|validation|schema|ssot|ui-state|llm-transport|attrs|storage | [260404_Give_push_permission.md](raw_conversations/260404_Give_push_permission.md) |
+| 5151 | yes | scope-alias|mutation|validation|llm-transport|ssot|schema|ui-state|attrs|storage | [260423_M3Eによる数学書の読解.md](raw_conversations/260423_M3Eによる数学書の読解.md) |
+| 5113 | yes | scope-alias|mutation|validation|attrs|ssot|schema|ui-state|llm-transport|storage | [260421_PDFメタデータ分類法.md](raw_conversations/260421_PDFメタデータ分類法.md) |
+| 5060 | yes | scope-alias|validation|mutation|llm-transport|ssot|schema|ui-state|attrs|storage | [260422_研究計画とコスト分析.md](raw_conversations/260422_研究計画とコスト分析.md) |
+| 5051 | yes | scope-alias|validation|mutation|ssot|schema|llm-transport|ui-state|attrs|storage | [260423_ハードウェアデータ基盤設計.md](raw_conversations/260423_ハードウェアデータ基盤設計.md) |
+| 5037 | yes | scope-alias|mutation|validation|ssot|schema|attrs|ui-state|llm-transport|storage | [260419_数学書の解析と構造化.md](raw_conversations/260419_数学書の解析と構造化.md) |
+| 5001 | yes | scope-alias|mutation|validation|ssot|schema|llm-transport|ui-state|attrs|storage | [260411_Entity_Party_Org_関係.md](raw_conversations/260411_Entity_Party_Org_関係.md) |
+| 4998 | yes | scope-alias|mutation|validation|ssot|llm-transport|schema|ui-state|attrs|storage | [260422_M3Eと数学的発見.md](raw_conversations/260422_M3Eと数学的発見.md) |
+| 4989 | yes | scope-alias|mutation|validation|ssot|schema|llm-transport|ui-state|attrs|storage | [260411_セキュリティとスコープ設計.md](raw_conversations/260411_セキュリティとスコープ設計.md) |
+| 4981 | yes | scope-alias|mutation|validation|llm-transport|ssot|schema|ui-state|attrs|storage | [260424_認知資源の効率化と物理.md](raw_conversations/260424_認知資源の効率化と物理.md) |
+| 4978 | yes | scope-alias|mutation|validation|ssot|llm-transport|schema|ui-state|attrs|storage | [260410_重要LLMとM3E構造比較.md](raw_conversations/260410_重要LLMとM3E構造比較.md) |
+| 4957 | yes | scope-alias|mutation|validation|ssot|llm-transport|schema|ui-state|attrs|storage | [260421_情報欠落検出問題.md](raw_conversations/260421_情報欠落検出問題.md) |
+| 4954 | yes | scope-alias|mutation|validation|ssot|llm-transport|schema|ui-state|attrs|storage | [260408_数学書の構造化.md](raw_conversations/260408_数学書の構造化.md) |
+| 4929 | yes | scope-alias|mutation|validation|ssot|llm-transport|schema|ui-state|attrs|storage | [260413_M3_Server_Online_Access.md](raw_conversations/260413_M3_Server_Online_Access.md) |
+| 4854 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|attrs|llm-transport|storage | [260413_Offline_XMind_Integration.md](raw_conversations/260413_Offline_XMind_Integration.md) |
+| 4839 | yes | scope-alias|mutation|validation|ssot|schema|llm-transport|ui-state|attrs|storage | [260425_動的粒度制御能力.md](raw_conversations/260425_動的粒度制御能力.md) |
+| 4836 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260410_LLMの知識境界.md](raw_conversations/260410_LLMの知識境界.md) |
+| 4825 | yes | scope-alias|validation|mutation|ssot|schema|ui-state|llm-transport|attrs|storage | [260421_SPReADとARiSEの違い.md](raw_conversations/260421_SPReADとARiSEの違い.md) |
+| 4821 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260417_ハーネスエンジニアリングとは.md](raw_conversations/260417_ハーネスエンジニアリングとは.md) |
+| 4815 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260421_オンボーディングワークフロー.md](raw_conversations/260421_オンボーディングワークフロー.md) |
+| 4807 | yes | scope-alias|mutation|validation|ssot|schema|llm-transport|ui-state|attrs|storage | [260421_フラクタル性と物理現象.md](raw_conversations/260421_フラクタル性と物理現象.md) |
+| 4807 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260425_分類木自動生成手法.md](raw_conversations/260425_分類木自動生成手法.md) |
+| 4780 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|attrs|llm-transport|storage | [260413_Miro_API_Mind_Map_Editing.md](raw_conversations/260413_Miro_API_Mind_Map_Editing.md) |
+| 4776 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260422_GUI自動化_Playwright.md](raw_conversations/260422_GUI自動化_Playwright.md) |
+| 4773 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260407_Claude_Git自動承認設定.md](raw_conversations/260407_Claude_Git自動承認設定.md) |
+| 4771 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260415_CI通知と失敗対策.md](raw_conversations/260415_CI通知と失敗対策.md) |
+| 4769 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260405_Obsidianのビジネスモデル.md](raw_conversations/260405_Obsidianのビジネスモデル.md) |
+| 4769 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260421_M3E威力の伝え方.md](raw_conversations/260421_M3E威力の伝え方.md) |
+| 4765 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|attrs|llm-transport|storage | [260412_Party_experience_summary.md](raw_conversations/260412_Party_experience_summary.md) |
+| 4761 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260410_線形からグラフ構造.md](raw_conversations/260410_線形からグラフ構造.md) |
+| 4759 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260411_CodexとLLMの違い.md](raw_conversations/260411_CodexとLLMの違い.md) |
+| 4758 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260422_数学研究と著作権.md](raw_conversations/260422_数学研究と著作権.md) |
+| 4749 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260405_M3E_vs_M3E.md](raw_conversations/260405_M3E_vs_M3E.md) |
+| 4749 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260406_位相空間_定義.md](raw_conversations/260406_位相空間_定義.md) |
+| 4749 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260411_GitHubインストーラ警告対策.md](raw_conversations/260411_GitHubインストーラ警告対策.md) |
+| 4749 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260412_Codex_Git操作方法.md](raw_conversations/260412_Codex_Git操作方法.md) |
+| 4749 | yes | scope-alias|mutation|validation|ssot|schema|ui-state|llm-transport|attrs|storage | [260415_scopen_descopen改善提案.md](raw_conversations/260415_scopen_descopen改善提案.md) |
+| 4256 | yes | scope-alias|mutation|validation|ssot|schema|attrs|llm-transport|storage|ui-state | [260420_目標整理と最小化.md](raw_conversations/260420_目標整理と最小化.md) |
+| 3628 | yes | scope-alias|mutation|validation|ssot|llm-transport|attrs|schema|storage|ui-state | [260419_PJ遂行の仕組み.md](raw_conversations/260419_PJ遂行の仕組み.md) |
+| 3192 | yes | scope-alias|mutation|validation|schema|ui-state|llm-transport|storage|attrs | [260330_Industry_E4_clarification.md](raw_conversations/260330_Industry_E4_clarification.md) |
+| 2865 | yes | mutation|scope-alias|schema|ui-state|validation|storage|llm-transport|attrs | [260304_開発言語選定.md](raw_conversations/260304_開発言語選定.md) |
+| 2732 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260403_アイコン設計方針.md](raw_conversations/260403_アイコン設計方針.md) |
+| 2554 | yes | scope-alias|mutation|validation|attrs|llm-transport|ui-state|schema|ssot|storage | [260403_クラウド同期マージ問題.md](raw_conversations/260403_クラウド同期マージ問題.md) |
+| 2236 | yes | scope-alias|validation|mutation|llm-transport|ui-state|schema|attrs|storage | [260325_温度とグラフ構造.md](raw_conversations/260325_温度とグラフ構造.md) |
+| 2146 | yes | scope-alias|mutation|validation|schema|llm-transport|ui-state|attrs|storage | [260311_外部ツール利用可否.md](raw_conversations/260311_外部ツール利用可否.md) |
+| 2115 | yes | ui-state|mutation|scope-alias|llm-transport|validation|schema|storage|attrs | [260304_MVC通信形式_Rapid.md](raw_conversations/260304_MVC通信形式_Rapid.md) |
+| 2112 | yes | scope-alias|mutation|storage|schema|validation|ui-state|llm-transport|attrs | [260403_データマイグレーションの実際.md](raw_conversations/260403_データマイグレーションの実際.md) |
+| 2057 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|storage|attrs | [260330_GUI操作の自動化方法.md](raw_conversations/260330_GUI操作の自動化方法.md) |
+| 2002 | yes | scope-alias|mutation|schema|validation|attrs|ui-state|llm-transport|storage | [260330_Map_Logic_Limitations.md](raw_conversations/260330_Map_Logic_Limitations.md) |
+| 1899 | yes | scope-alias|mutation|validation|ui-state|llm-transport|schema|attrs|storage | [260403_Worktreeによるディレクトリ管理.md](raw_conversations/260403_Worktreeによるディレクトリ管理.md) |
+| 1878 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260404_ScopeとNodeの設定.md](raw_conversations/260404_ScopeとNodeの設定.md) |
+| 1847 | yes | scope-alias|mutation|validation|llm-transport|ui-state|schema|attrs|storage | [260330_LLMの不足判定設計.md](raw_conversations/260330_LLMの不足判定設計.md) |
+| 1821 | yes | scope-alias|mutation|attrs|validation|ui-state|schema|llm-transport|storage | [260402_ノードメタデータ設計.md](raw_conversations/260402_ノードメタデータ設計.md) |
+| 1801 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260330_役割分離の方法.md](raw_conversations/260330_役割分離の方法.md) |
+| 1763 | yes | scope-alias|mutation|validation|llm-transport|schema|attrs|ui-state|storage | [260311_アプリ名の略称提案.md](raw_conversations/260311_アプリ名の略称提案.md) |
+| 1729 | yes | scope-alias|schema|llm-transport|validation|mutation|attrs|ui-state|ssot|storage | [260312_Freeplane_実装とデータ構造.md](raw_conversations/260312_Freeplane_実装とデータ構造.md) |
+| 1716 | yes | scope-alias|mutation|validation|ui-state|llm-transport|schema|attrs|storage | [260404_M3Eのコンテンツ販売.md](raw_conversations/260404_M3Eのコンテンツ販売.md) |
+| 1679 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260403_固定費と戦略.md](raw_conversations/260403_固定費と戦略.md) |
+| 1675 | yes | scope-alias|mutation|validation|ui-state|llm-transport|schema|attrs|storage | [260403_キーコンフィグ相談.md](raw_conversations/260403_キーコンフィグ相談.md) |
+| 1674 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260404_HTML要素と設計.md](raw_conversations/260404_HTML要素と設計.md) |
+| 1657 | yes | scope-alias|mutation|validation|llm-transport|ui-state|schema|attrs|storage | [260331_CodexCLI使用方法.md](raw_conversations/260331_CodexCLI使用方法.md) |
+| 1645 | yes | scope-alias|mutation|validation|ui-state|llm-transport|schema|attrs|storage | [260331_BitwardenとPowerShell設定.md](raw_conversations/260331_BitwardenとPowerShell設定.md) |
+| 1642 | yes | scope-alias|mutation|validation|ui-state|llm-transport|schema|attrs|storage | [260330_メールボックス分類フロー.md](raw_conversations/260330_メールボックス分類フロー.md) |
+| 1640 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260330_ハードコピーとソフトコピー.md](raw_conversations/260330_ハードコピーとソフトコピー.md) |
+| 1632 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260402_軸の定義と整理.md](raw_conversations/260402_軸の定義と整理.md) |
+| 1629 | yes | scope-alias|mutation|validation|schema|ui-state|llm-transport|attrs|storage | [260403_AI_Infra_Design_for_M3E.md](raw_conversations/260403_AI_Infra_Design_for_M3E.md) |
+| 1624 | yes | scope-alias|mutation|validation|ui-state|schema|llm-transport|attrs|storage | [260404_評価と比較の分離.md](raw_conversations/260404_評価と比較の分離.md) |
+| 1438 | no | scope-alias|mutation|validation|schema|llm-transport|attrs|ui-state|storage | [260304_KGFのOS構造.md](raw_conversations/260304_KGFのOS構造.md) |
+| 1304 | no | scope-alias|mutation|schema|validation|llm-transport|ui-state|attrs|storage | [260304_KGFとフレームワーク.md](raw_conversations/260304_KGFとフレームワーク.md) |
+| 1073 | no | scope-alias|mutation|validation|llm-transport|schema|attrs|ui-state | [260304_Manusでプロトタイプ作成.md](raw_conversations/260304_Manusでプロトタイプ作成.md) |
+| 1011 | no | scope-alias|mutation|validation|llm-transport|schema|attrs|ui-state|storage | [260311_Agent開発の基本.md](raw_conversations/260311_Agent開発の基本.md) |
+| 823 | no | scope-alias|mutation|validation|ssot|attrs|llm-transport|schema|storage | [260312_Obsidian_Canvas_ラッピング.md](raw_conversations/260312_Obsidian_Canvas_ラッピング.md) |
+| 778 | no | scope-alias|validation|mutation|ssot|attrs|schema|storage|llm-transport|ui-state | [260312_EdrawMindラッピング検討.md](raw_conversations/260312_EdrawMindラッピング検討.md) |
+| 720 | no | validation|scope-alias|llm-transport|schema|attrs|mutation | [260304_構造と文章の相互変換.md](raw_conversations/260304_構造と文章の相互変換.md) |
+| 712 | no | scope-alias|validation|mutation|ssot|schema|ui-state|storage|attrs|llm-transport | [260312_Wisemapping_ラップ検証.md](raw_conversations/260312_Wisemapping_ラップ検証.md) |
+| 382 | no | scope-alias|mutation|ssot|ui-state|attrs|llm-transport|schema|storage | [260313_M3E_Obsidianファイル構造.md](raw_conversations/260313_M3E_Obsidianファイル構造.md) |
+| 324 | no | mutation|scope-alias|schema|ssot|ui-state|validation|attrs | [260313_雑多.md](raw_conversations/260313_雑多.md) |
+| 296 | no | mutation|scope-alias|ui-state|validation|llm-transport|schema | [260313_ReactとCanvasの実装方針.md](raw_conversations/260313_ReactとCanvasの実装方針.md) |
+| 147 | no | llm-transport|schema|ui-state|mutation|storage | [260313_Xiaomiセンサー表示機実装.md](raw_conversations/260313_Xiaomiセンサー表示機実装.md) |
+| 128 | no | scope-alias|validation|attrs|mutation|schema | [260304_タイムボクシング連携.md](raw_conversations/260304_タイムボクシング連携.md) |
+| 113 | no | scope-alias|validation|schema|attrs|llm-transport | [260308_AIと研究のギャップ.md](raw_conversations/260308_AIと研究のギャップ.md) |
+| 70 | no | llm-transport|mutation|schema|ui-state|validation | [260327_Freeplane_フォークの現実性.md](raw_conversations/260327_Freeplane_フォークの現実性.md) |
+| 52 | no | scope-alias|mutation|schema|validation | [260305_アプリ仕様とフレームワーク.md](raw_conversations/260305_アプリ仕様とフレームワーク.md) |
+| 9 | no | validation | [260310_意思決定の高速化.md](raw_conversations/260310_意思決定の高速化.md) |
+| 0 | no |  | [260304_Miro_Mind_Map_API.md](raw_conversations/260304_Miro_Mind_Map_API.md) |
+| 0 | no |  | [260312_ライセンスと公開障害.md](raw_conversations/260312_ライセンスと公開障害.md) |

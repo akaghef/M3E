@@ -12,6 +12,7 @@ type ThinkingMode = "flash" | "rapid" | "deep";
 type SurfaceViewMode = "tree" | "system" | "scatter";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
+type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 type MapNodeClass = "entity" | "scope";
 type SurfaceKind = "tree" | "system" | "scatter";
 type SurfaceLayout = "tree" | "flow-lr" | "scatter";
@@ -44,6 +45,8 @@ interface GraphLink {
   direction?: GraphLinkDirection;
   style?: GraphLinkStyle;
   color?: string;
+  sourcePort?: LinkPort;
+  targetPort?: LinkPort;
 }
 
 interface SurfaceNodeView {
@@ -332,6 +335,7 @@ interface ViewState {
   pinchState: PinchState | null;
   clipboardState: ClipboardState;
   linkSourceNodeId: string;
+  selectedLinkId: string;
   reparentSourceIds: Set<string>;
   dragState: DragState | null;
   collapsedIds: Set<string>;
