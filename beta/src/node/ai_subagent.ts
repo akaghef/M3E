@@ -85,7 +85,7 @@ export function getAiStatus(): AiStatusResponse {
         promptConfigured: linear.promptConfigured,
       },
       "topic-suggest": {
-        available: ai.enabled && configured,
+        available: true,
         promptConfigured: true,
       },
     },
@@ -192,26 +192,77 @@ function parseTopicsFromModelText(rawText: string): string[] {
     .slice(0, 8);
 }
 
+function maxTopicsFromInput(input: Record<string, unknown>): number {
+  const maxTopicsRaw = Number(input.maxTopics);
+  return Number.isFinite(maxTopicsRaw) && maxTopicsRaw > 0
+    ? Math.min(8, Math.max(1, Math.floor(maxTopicsRaw)))
+    : 5;
+}
+
+function dedupeTopics(items: string[], maxTopics: number): string[] {
+  const seen = new Set<string>();
+  const topics: string[] = [];
+  for (const item of items) {
+    const topic = item.trim();
+    const key = topic.toLowerCase();
+    if (!topic || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    topics.push(topic);
+    if (topics.length >= maxTopics) {
+      break;
+    }
+  }
+  return topics;
+}
+
+function localTopicSuggestions(nodeText: string, instruction: string, maxTopics: number): string[] {
+  const normalizedInstruction = instruction.trim().toLowerCase();
+  const base = nodeText.trim() || "Selected node";
+  if (normalizedInstruction.includes("簡潔") || normalizedInstruction.includes("concise")) {
+    return dedupeTopics(["要点", "結論", "削る要素", "一文要約", `${base} の核心`], maxTopics);
+  }
+  if (normalizedInstruction.includes("翻訳") || normalizedInstruction.includes("translate")) {
+    return dedupeTopics(["English label", "Japanese label", "Key terms", "Translation notes", "Glossary"], maxTopics);
+  }
+  if (normalizedInstruction.includes("再生成") || normalizedInstruction.includes("regenerate")) {
+    return dedupeTopics(["別案", "対案", "新しい切り口", "検証観点", "次の展開"], maxTopics);
+  }
+  if (normalizedInstruction.includes("詳細") || normalizedInstruction.includes("detail")) {
+    return dedupeTopics(["背景", "具体例", "根拠", "リスク", "次の作業"], maxTopics);
+  }
+  const words = instruction
+    .split(/[\s,、。;；:：/|]+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 2)
+    .slice(0, 3);
+  return dedupeTopics([...words, "背景", "論点", "具体例", "判断", "次の作業"], maxTopics);
+}
+
 async function runTopicSuggestSubagent(
   request: AiSubagentRequest,
 ): Promise<{ topics: string[]; rawText: string; model: string; provider: string; usage?: AiSubagentSuccessResponse["usage"] }> {
+  const nodeText = requireString(request.input.nodeText, "AI_INPUT_NODE_TEXT_REQUIRED");
+  const nodeDetails = typeof request.input.nodeDetails === "string" ? request.input.nodeDetails : "";
+  const maxTopics = maxTopicsFromInput(request.input);
   const ai = loadAiProviderConfigFromEnv();
-  if (!ai.enabled) {
-    throw new Error("AI infrastructure is disabled.");
+  const baseUrl = ai.baseUrl;
+  const apiKey = ai.apiKey;
+  const model = ai.model;
+  const configured = ai.transport === "openai-compatible" && Boolean(ai.enabled && baseUrl && apiKey && model);
+  if (!configured) {
+    const topics = localTopicSuggestions(nodeText, nodeDetails, maxTopics);
+    return {
+      topics,
+      rawText: JSON.stringify({ topics }),
+      model: "local-topic-draft-v1",
+      provider: "local",
+    };
   }
   if (ai.transport === "mcp") {
     throw new Error("MCP transport is not implemented yet.");
   }
-  if (!ai.baseUrl || !ai.apiKey || !ai.model) {
-    throw new Error("Topic suggestion subagent is not fully configured.");
-  }
-
-  const nodeText = requireString(request.input.nodeText, "AI_INPUT_NODE_TEXT_REQUIRED");
-  const nodeDetails = typeof request.input.nodeDetails === "string" ? request.input.nodeDetails : "";
-  const maxTopicsRaw = Number(request.input.maxTopics);
-  const maxTopics = Number.isFinite(maxTopicsRaw) && maxTopicsRaw > 0
-    ? Math.min(8, Math.max(1, Math.floor(maxTopicsRaw)))
-    : 5;
 
   const userPrompt = [
     "Topic generation request:",
@@ -223,14 +274,14 @@ async function runTopicSuggestSubagent(
     "Return JSON only.",
   ].join("\n");
 
-  const response = await fetch(`${ai.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+  const response = await fetch(`${baseUrl!.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      Authorization: `Bearer ${ai.apiKey}`,
+      Authorization: `Bearer ${apiKey!}`,
     },
     body: JSON.stringify({
-      model: ai.model,
+      model,
       messages: [
         { role: "system", content: topicSuggestPrompt() },
         { role: "user", content: userPrompt },
@@ -248,7 +299,7 @@ async function runTopicSuggestSubagent(
   return {
     topics: parseTopicsFromModelText(rawText).slice(0, maxTopics),
     rawText,
-    model: ai.model,
+    model: model!,
     provider: ai.provider || "deepseek",
     usage: payload.usage ? {
       inputTokens: payload.usage.prompt_tokens,
