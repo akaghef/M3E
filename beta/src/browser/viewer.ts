@@ -373,14 +373,14 @@ type VaultIntegrationMode = "off" | "obsidian-live";
 interface VaultUiPrefs {
   vaultPath: string;
   integrationMode: VaultIntegrationMode;
-  sourceOfTruth: "vault-md";
+  sourceOfTruth: "sqlite" | "vault-md";
 }
 interface VaultWatchStatusResponse {
   ok: true;
   mapId: string;
   vaultPath: string;
-  integrationMode: "obsidian-live";
-  sourceOfTruth: "vault-md";
+  integrationMode: VaultIntegrationMode;
+  sourceOfTruth: "sqlite" | "vault-md";
   running: boolean;
   lastInboundAt: string | null;
   lastOutboundAt: string | null;
@@ -404,6 +404,7 @@ let vaultWatchRunning = false;
 let vaultLastInboundAt: string | null = null;
 let vaultLastOutboundAt: string | null = null;
 let vaultLastError: string | null = null;
+let liveStreamVisibilityHandlerInstalled = false;
 let v4PanelVisible = false;
 let v4LatestDrafts: FlashDraftListItem[] = [];
 
@@ -785,6 +786,20 @@ function isImeComposingEvent(event: KeyboardEvent): boolean {
     return true;
   }
   return event.key === "Process";
+}
+
+function isTextEntryElement(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    target.isContentEditable ||
+    Boolean(target.closest("input, textarea, select, [contenteditable]"))
+  );
 }
 
 function isShortcutLetter(event: KeyboardEvent, lowerKey: string, code: string): boolean {
@@ -1182,6 +1197,9 @@ function initVaultWatchStream(): void {
   if (vaultWatchEs) {
     return;
   }
+  if (document.visibilityState === "hidden") {
+    return;
+  }
   vaultWatchEs = new EventSource(`/api/vault/watch?mapId=${encodeURIComponent(LOCAL_MAP_ID)}`);
   vaultWatchEs.addEventListener("vault-watch", (event: MessageEvent) => {
     try {
@@ -1209,7 +1227,14 @@ function initVaultWatchStream(): void {
       // ignore malformed event
     }
   });
-  window.addEventListener("beforeunload", () => vaultWatchEs?.close());
+}
+
+function stopVaultWatchStream(): void {
+  if (!vaultWatchEs) {
+    return;
+  }
+  vaultWatchEs.close();
+  vaultWatchEs = null;
 }
 
 async function runVaultImport(vaultPath: string): Promise<boolean> {
@@ -3424,6 +3449,8 @@ function applyZoom(): void {
   syncInlineEditorPosition();
   syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
+  syncTemplateCompletionPlacement();
+  window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
 }
 
 function currentCameraTarget(): CameraTarget {
@@ -4730,7 +4757,65 @@ async function requestLinearSubagentTransform(
   };
 }
 
-async function requestTopicSuggestionsForSelectedNode(maxTopics = 5): Promise<string[]> {
+type RapidGenerateAction = "detail" | "examples" | "classify" | "related";
+
+const RAPID_GENERATE_INSTRUCTIONS: Record<RapidGenerateAction, string> = {
+  detail: "詳細を追加。選択nodeを具体化する子topicを返す。",
+  examples: "例を追加。選択nodeの理解に役立つ具体例の子topicを返す。",
+  classify: "子分類を追加。選択nodeを分解する分類カテゴリの子topicを返す。",
+  related: "関連topicを追加。選択nodeと隣接する概念や次に調べるtopicを返す。",
+};
+
+const RAPID_MAPIFY_OP_BY_ACTION: Record<RapidGenerateAction, string> = {
+  detail: "RF1.expandSelectedNode",
+  examples: "RF2.addExamples",
+  classify: "RF3.addSubtypes",
+  related: "RF6.addRelatedTopics",
+};
+
+interface RapidMapifyOracleApplyResponse {
+  ok: true;
+  savedAt?: string;
+  opId: string;
+  action: RapidGenerateAction;
+  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
+  fragment: string;
+  added: Array<{ id: string; parentId: string; label: string }>;
+  merged: Array<{ id: string; parentId: string; label: string }>;
+  diagnostics?: string[];
+  oracle?: {
+    teacherLabels?: string[];
+    teacherProximity?: number | null;
+  };
+}
+
+async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateAction): Promise<RapidMapifyOracleApplyResponse> {
+  if (!map || !viewState.selectedNodeId) {
+    throw new Error("No node is selected.");
+  }
+  const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/rapid/mapify-oracle`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "X-M3E-Tab-Id": TAB_ID,
+    },
+    body: JSON.stringify({
+      workspaceId: WORKSPACE_ID,
+      agentId: "rapid-mapify-oracle",
+      selectedNodeId: viewState.selectedNodeId,
+      opId: RAPID_MAPIFY_OP_BY_ACTION[action],
+      action,
+      baseSavedAt: lastServerSavedAt,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String(result.error || "Rapid Mapify Oracle request failed."));
+  }
+  return result as RapidMapifyOracleApplyResponse;
+}
+
+async function requestTopicSuggestionsForSelectedNode(maxTopics = 5, instructionOverride = ""): Promise<string[]> {
   if (!map || !viewState.selectedNodeId) {
     throw new Error("No node is selected.");
   }
@@ -4741,7 +4826,7 @@ async function requestTopicSuggestionsForSelectedNode(maxTopics = 5): Promise<st
     mode: "proposal",
     input: {
       nodeText: selected.text,
-      nodeDetails: selected.details || "",
+      nodeDetails: instructionOverride || selected.details || "",
       maxTopics,
     },
   };
@@ -4967,6 +5052,37 @@ async function generateRelatedTopicsForSelectedNode(): Promise<void> {
   }
 }
 
+async function generateRapidActionForSelectedNode(
+  action: RapidGenerateAction,
+  label: string,
+  instruction: string,
+): Promise<void> {
+  if (!map || !viewState.selectedNodeId) {
+    setStatus("Select a node first.", true);
+    return;
+  }
+  void instruction;
+  try {
+    const result = await requestRapidMapifyOracleForSelectedNode(action);
+    if (result.savedAt) {
+      await applyExternalUpdate(result.savedAt);
+    }
+    const added = result.added.length;
+    const merged = result.merged.length;
+    const sourceLabel = result.source === "mapify_teacher_fixture" ? "Mapify Oracle" : "Rapid fallback";
+    if (added === 0 && merged === 0) {
+      setStatus(`${sourceLabel} generated no new nodes: ${label || action}`);
+      return;
+    }
+    const mergedSuffix = merged > 0 ? `, merged ${merged}` : "";
+    setStatus(`${sourceLabel} generated ${added} node(s)${mergedSuffix}: ${label || action}`);
+    render();
+    board.focus();
+  } catch (err) {
+    setStatus(`Rapid generation failed: ${(err as Error).message}`, true);
+  }
+}
+
 window.addEventListener("m3e:ai-append-topics", (event: Event) => {
   const detail = (event as CustomEvent<{ topics?: unknown[] }>).detail;
   const topics = Array.isArray(detail?.topics)
@@ -4984,6 +5100,32 @@ window.addEventListener("m3e:ai-append-topics", (event: Event) => {
   } catch (err) {
     setStatus(`AI apply failed: ${(err as Error).message}`, true);
   }
+});
+
+window.addEventListener("m3e:ai-detail-active-node", () => {
+  void generateRelatedTopicsForSelectedNode();
+});
+
+window.addEventListener("m3e:rapid-action-preview", (event: Event) => {
+  const label = String((event as CustomEvent<{ label?: unknown }>).detail?.label || "").trim();
+  setStatus(`Rapid: ${label || "action"}`);
+  board.focus();
+});
+
+window.addEventListener("m3e:rapid-action-generate", (event: Event) => {
+  const detail = (event as CustomEvent<{
+    action?: unknown;
+    label?: unknown;
+    instruction?: unknown;
+  }>).detail || {};
+  const action = String(detail.action || "detail").trim() as RapidGenerateAction;
+  const label = String(detail.label || action).trim();
+  const instruction = String(detail.instruction || "").trim();
+  if (!Object.prototype.hasOwnProperty.call(RAPID_GENERATE_INSTRUCTIONS, action)) {
+    setStatus(`Rapid generation failed: unknown action ${action}`, true);
+    return;
+  }
+  void generateRapidActionForSelectedNode(action, label, instruction);
 });
 
 function linearOffsetToLineIndex(text: string, offset: number): number {
@@ -9122,6 +9264,384 @@ if (collabLeaveBtn) {
   });
 }
 
+// ---- Template Completion (VS Code-style framework snippets) ----
+
+type TemplateCompletionCandidate = {
+  id: string;
+  label: string;
+  path: string;
+  childCount: number;
+  searchText: string;
+};
+
+type TemplateCompletionState = {
+  root: HTMLElement;
+  input: HTMLInputElement;
+  list: HTMLElement;
+  detail: HTMLElement;
+  anchorNodeId: string;
+  candidates: TemplateCompletionCandidate[];
+  filtered: TemplateCompletionCandidate[];
+  selectedIndex: number;
+  closeHandler: (event: MouseEvent) => void;
+};
+
+const TEMPLATE_CACHE_PATH = ["SYSTEM", "TEMPLATE", "cache"];
+let templateCompletionState: TemplateCompletionState | null = null;
+
+function normalizedTemplateToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠]/g, "");
+}
+
+function templateSearchText(node: TreeNode, path: string): string {
+  const attributes = node.attributes || {};
+  return [
+    node.text,
+    path,
+    attributes["m3e:aliases"],
+    attributes["m3e:keywords"],
+    attributes["template:aliases"],
+    attributes["template:keywords"],
+  ].filter(Boolean).join(" ");
+}
+
+function nodePathText(nodeId: string): string {
+  if (!map) return "";
+  const labels: string[] = [];
+  let current: TreeNode | undefined = map.state.nodes[nodeId];
+  while (current) {
+    labels.unshift(current.text || "(untitled)");
+    if (!current.parentId) break;
+    current = map.state.nodes[current.parentId];
+  }
+  return labels.join(" > ");
+}
+
+function findChildByLabel(parentId: string, label: string): TreeNode | null {
+  if (!map) return null;
+  const parent = map.state.nodes[parentId];
+  if (!parent) return null;
+  const normalizedLabel = label.trim().toLowerCase();
+  for (const childId of parent.children || []) {
+    const child = map.state.nodes[childId];
+    if (child && child.text.trim().toLowerCase() === normalizedLabel) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function resolveTemplateCacheNode(): TreeNode | null {
+  if (!map) return null;
+  let current = map.state.nodes[map.state.rootId];
+  if (!current) return null;
+  for (const segment of TEMPLATE_CACHE_PATH) {
+    const next = findChildByLabel(current.id, segment);
+    if (!next) return null;
+    current = next;
+  }
+  return current;
+}
+
+function collectTemplateCandidates(): TemplateCompletionCandidate[] {
+  if (!map) return [];
+  const cache = resolveTemplateCacheNode();
+  if (!cache) return [];
+  return (cache.children || [])
+    .map((nodeId) => map!.state.nodes[nodeId])
+    .filter((node): node is TreeNode => Boolean(node))
+    .map((node) => {
+      const path = nodePathText(node.id);
+      return {
+        id: node.id,
+        label: node.text || "(untitled)",
+        path,
+        childCount: (node.children || []).length,
+        searchText: templateSearchText(node, path),
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label, "ja"));
+}
+
+function filterTemplateCandidates(candidates: TemplateCompletionCandidate[], query: string): TemplateCompletionCandidate[] {
+  const normalizedQuery = normalizedTemplateToken(query);
+  if (!normalizedQuery) {
+    return candidates.slice(0, 12);
+  }
+  return candidates
+    .map((candidate) => {
+      const normalizedLabel = normalizedTemplateToken(candidate.label);
+      const normalizedSearch = normalizedTemplateToken(candidate.searchText);
+      const score = normalizedLabel.startsWith(normalizedQuery)
+        ? 0
+        : normalizedLabel.includes(normalizedQuery)
+          ? 1
+          : normalizedSearch.includes(normalizedQuery)
+            ? 2
+            : 99;
+      return { candidate, score };
+    })
+    .filter((entry) => entry.score < 99)
+    .sort((a, b) => a.score - b.score || a.candidate.label.localeCompare(b.candidate.label, "ja"))
+    .slice(0, 12)
+    .map((entry) => entry.candidate);
+}
+
+function templateCompletionPlacement(nodeId: string): { left: number; top: number } {
+  if (!lastLayout || !lastLayout.pos[nodeId]) {
+    return { left: Math.max(16, window.innerWidth / 2 - 170), top: Math.max(16, window.innerHeight / 2 - 90) };
+  }
+  const nodePos = lastLayout.pos[nodeId]!;
+  const boardRect = board.getBoundingClientRect();
+  const screenX = boardRect.left + viewState.cameraX + (nodePos.x + nodePos.w) * viewState.zoom + 10;
+  const screenY = boardRect.top + viewState.cameraY + (nodePos.y - nodePos.h / 2) * viewState.zoom;
+  return {
+    left: Math.max(8, Math.min(window.innerWidth - 380, screenX)),
+    top: Math.max(8, Math.min(window.innerHeight - 260, screenY)),
+  };
+}
+
+function syncTemplateCompletionPlacement(): void {
+  const state = templateCompletionState;
+  if (!state) return;
+  const placement = templateCompletionPlacement(state.anchorNodeId);
+  state.root.style.left = `${placement.left}px`;
+  state.root.style.top = `${placement.top}px`;
+}
+
+function renderTemplateCompletion(): void {
+  const state = templateCompletionState;
+  if (!state) return;
+  const query = state.input.value.trim();
+  state.filtered = filterTemplateCandidates(state.candidates, query);
+  if (state.selectedIndex >= state.filtered.length) {
+    state.selectedIndex = Math.max(0, state.filtered.length - 1);
+  }
+  if (state.selectedIndex < 0) {
+    state.selectedIndex = 0;
+  }
+  state.list.textContent = "";
+
+  if (state.filtered.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "template-completion-empty";
+    empty.textContent = query ? "No matching templates" : "No templates";
+    state.list.appendChild(empty);
+    state.detail.textContent = "SYSTEM > TEMPLATE > cache";
+    return;
+  }
+
+  state.filtered.forEach((candidate, index) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `template-completion-item${index === state.selectedIndex ? " is-selected" : ""}`;
+    item.dataset.templateId = candidate.id;
+    item.innerHTML = `<span>${escapeHtml(candidate.label)}</span><small>${candidate.childCount} child${candidate.childCount === 1 ? "" : "ren"}</small>`;
+    item.addEventListener("mouseenter", () => {
+      state.selectedIndex = index;
+      renderTemplateCompletion();
+    });
+    item.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.selectedIndex = index;
+      applySelectedTemplateCompletion();
+    });
+    state.list.appendChild(item);
+  });
+
+  const selected = state.filtered[state.selectedIndex];
+  state.detail.textContent = selected ? `${selected.path} · ${selected.childCount} child${selected.childCount === 1 ? "" : "ren"}` : "";
+}
+
+function hideTemplateCompletion(): void {
+  if (!templateCompletionState) return;
+  document.removeEventListener("mousedown", templateCompletionState.closeHandler, true);
+  templateCompletionState.root.remove();
+  templateCompletionState = null;
+  board.focus();
+}
+
+function cloneTemplateNodeSubtree(sourceId: string, parentId: string): number {
+  if (!map) return 0;
+  const source = map.state.nodes[sourceId];
+  if (!source) return 0;
+  const id = newId();
+  map.state.nodes[id] = {
+    ...source,
+    id,
+    parentId,
+    children: [],
+    scopeId: undefined,
+  };
+  const parent = map.state.nodes[parentId];
+  parent.children.push(id);
+  let added = 1;
+  for (const childId of source.children || []) {
+    added += cloneTemplateNodeSubtree(childId, id);
+  }
+  return added;
+}
+
+function applyTemplateToActiveNode(templateId: string): { added: number; skipped: number; label: string } {
+  if (!map || !viewState.selectedNodeId) {
+    throw new Error("Select a node first.");
+  }
+  const template = map.state.nodes[templateId];
+  if (!template) {
+    throw new Error("Template not found.");
+  }
+  if ((template.children || []).length === 0) {
+    return { added: 0, skipped: 0, label: template.text || "(untitled)" };
+  }
+
+  const target = getNode(viewState.selectedNodeId);
+  if (isAliasNode(target)) {
+    throw new Error("Alias nodes cannot own template children.");
+  }
+  const existingLabels = new Set(
+    (target.children || [])
+      .map((childId) => map!.state.nodes[childId]?.text?.trim().toLowerCase())
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  pushUndoSnapshot();
+  let added = 0;
+  let skipped = 0;
+  for (const childId of template.children || []) {
+    const child = map.state.nodes[childId];
+    const key = child?.text?.trim().toLowerCase();
+    if (!child || !key || existingLabels.has(key)) {
+      skipped += 1;
+      continue;
+    }
+    added += cloneTemplateNodeSubtree(childId, target.id);
+    existingLabels.add(key);
+  }
+
+  if (added > 0) {
+    viewState.collapsedIds.delete(target.id);
+    target.collapsed = false;
+    touchDocument();
+    render();
+  } else {
+    undoStack.pop();
+  }
+  return { added, skipped, label: template.text || "(untitled)" };
+}
+
+function applySelectedTemplateCompletion(): void {
+  const state = templateCompletionState;
+  if (!state) return;
+  const selected = state.filtered[state.selectedIndex];
+  if (!selected) {
+    setStatus("No template selected.", true);
+    return;
+  }
+  try {
+    const result = applyTemplateToActiveNode(selected.id);
+    hideTemplateCompletion();
+    if (result.added === 0) {
+      setStatus(`Template has no new children: ${result.label}`, true);
+      return;
+    }
+    setStatus(`Template applied: ${result.label} (${result.added} node(s), ${result.skipped} skipped)`);
+  } catch (err) {
+    hideTemplateCompletion();
+    setStatus(`Template apply failed: ${(err as Error).message}`, true);
+  }
+}
+
+function showTemplateCompletion(): void {
+  hideTemplateCompletion();
+  if (!map || !viewState.selectedNodeId) {
+    setStatus("Select a node first.", true);
+    return;
+  }
+  const candidates = collectTemplateCandidates();
+  if (candidates.length === 0) {
+    setStatus("No templates found at SYSTEM > TEMPLATE > cache.", true);
+    return;
+  }
+
+  const root = document.createElement("div");
+  root.className = "template-completion-popover";
+  const placement = templateCompletionPlacement(viewState.selectedNodeId);
+  root.style.left = `${placement.left}px`;
+  root.style.top = `${placement.top}px`;
+  root.innerHTML = `
+    <input class="template-completion-input" type="text" autocomplete="off" spellcheck="false" placeholder="Template..." />
+    <div class="template-completion-list" role="listbox"></div>
+    <div class="template-completion-detail"></div>
+  `;
+  const input = root.querySelector<HTMLInputElement>(".template-completion-input")!;
+  const list = root.querySelector<HTMLElement>(".template-completion-list")!;
+  const detail = root.querySelector<HTMLElement>(".template-completion-detail")!;
+  const closeHandler = (event: MouseEvent) => {
+    if (!root.contains(event.target as Node)) {
+      hideTemplateCompletion();
+    }
+  };
+
+  root.addEventListener("mousedown", (event) => event.stopPropagation());
+  root.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("input", () => {
+    const state = templateCompletionState;
+    if (!state) return;
+    state.selectedIndex = 0;
+    renderTemplateCompletion();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (isImeComposingEvent(event)) return;
+    const state = templateCompletionState;
+    if (!state) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      hideTemplateCompletion();
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      state.selectedIndex = Math.min(state.filtered.length - 1, state.selectedIndex + 1);
+      renderTemplateCompletion();
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      state.selectedIndex = Math.max(0, state.selectedIndex - 1);
+      renderTemplateCompletion();
+      return;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      event.stopPropagation();
+      applySelectedTemplateCompletion();
+      return;
+    }
+    event.stopPropagation();
+  });
+
+  document.body.appendChild(root);
+  templateCompletionState = {
+    root,
+    input,
+    list,
+    detail,
+    anchorNodeId: viewState.selectedNodeId,
+    candidates,
+    filtered: candidates,
+    selectedIndex: 0,
+    closeHandler,
+  };
+  renderTemplateCompletion();
+  setTimeout(() => document.addEventListener("mousedown", closeHandler, true), 0);
+  input.focus();
+  input.select();
+}
+
 // ---- Broken Alias Detection ----
 
 function findBrokenAliases(): { nodeId: string; label: string; targetNodeId: string }[] {
@@ -10705,6 +11225,7 @@ let lastAppliedSavedAt: string | null = null;
 
 function initDocWatch(): void {
   if (mapWatchEs) return;
+  if (document.visibilityState === "hidden") return;
   const url = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/watch`;
   mapWatchEs = new EventSource(url);
 
@@ -10730,8 +11251,40 @@ function initDocWatch(): void {
       // ignore malformed events
     }
   });
+}
 
-  window.addEventListener("beforeunload", () => mapWatchEs?.close());
+function stopDocWatch(): void {
+  if (!mapWatchEs) {
+    return;
+  }
+  mapWatchEs.close();
+  mapWatchEs = null;
+}
+
+function syncLiveStreamsForVisibility(): void {
+  if (document.visibilityState === "hidden") {
+    stopDocWatch();
+    stopVaultWatchStream();
+    return;
+  }
+  initDocWatch();
+  initVaultWatchStream();
+}
+
+function initVisibilityManagedLiveStreams(): void {
+  if (!liveStreamVisibilityHandlerInstalled) {
+    liveStreamVisibilityHandlerInstalled = true;
+    document.addEventListener("visibilitychange", syncLiveStreamsForVisibility);
+    window.addEventListener("pagehide", () => {
+      stopDocWatch();
+      stopVaultWatchStream();
+    });
+    window.addEventListener("beforeunload", () => {
+      stopDocWatch();
+      stopVaultWatchStream();
+    });
+  }
+  syncLiveStreamsForVisibility();
 }
 
 async function applyExternalUpdate(savedAt: string): Promise<void> {
@@ -12926,6 +13479,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (templateCompletionState && event.key === "Escape") {
+    event.preventDefault();
+    hideTemplateCompletion();
+    return;
+  }
+
   if (entityListVisible && event.key === "Escape") {
     event.preventDefault();
     hideEntityListPanel();
@@ -12972,6 +13531,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (isReadOnlyLink() && !isReadOnlyAllowedKey(event)) {
     event.preventDefault();
     setStatus("Read-only link. Use the editor link to change this map.", true);
+    return;
+  }
+
+  if (
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.shiftKey &&
+    !event.repeat &&
+    event.key.toLowerCase() === "t" &&
+    !isTextEntryElement(event.target)
+  ) {
+    event.preventDefault();
+    showTemplateCompletion();
     return;
   }
 
@@ -13464,7 +14037,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === " ") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleCollapse();
     return;
@@ -13597,8 +14170,7 @@ updateCloudSyncUi();
 
 void initializeDocument().then(() => {
   initBroadcastSync();
-  initDocWatch();
-  initVaultWatchStream();
+  initVisibilityManagedLiveStreams();
   void fetchVaultWatchStatus().then(() => {
     if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
       void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
@@ -13629,6 +14201,10 @@ void initializeDocument().then(() => {
     normalizeSelectionState();
     render();
     updateScopeInUrl(initialScopeId);
+    setStatus(`Loaded scope: ${uiLabel(map.state.nodes[initialScopeId])}. Use Exit scope to return to the map root.`);
+  } else if (initialScopeId && map) {
+    setStatus(`Scope not found: ${initialScopeId}. Loaded map root.`, true);
+    updateScopeInUrl(map.state.rootId);
   }
   fitDocument({ animate: false }) || applyZoom();
 

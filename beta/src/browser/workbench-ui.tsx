@@ -36,8 +36,36 @@ type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" |
 type ModalId = "menu" | "settings" | "share" | "help" | "ai" | null;
 type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type ProgressiveBranchDirection = "both" | "right" | "left";
+type ProgressiveMode = "gui" | "active-node";
+type RapidGenerateAction = "detail" | "examples" | "classify" | "related";
 type ProgressiveNodeId =
   | "gui"
+  | "active-root"
+  | "rapid-expand"
+  | "rapid-detail"
+  | "rapid-examples"
+  | "rapid-classify"
+  | "rapid-related"
+  | "rapid-summary"
+  | "rapid-summary-node"
+  | "rapid-summary-subtree"
+  | "rapid-keypoints"
+  | "rapid-action-items"
+  | "rapid-restructure"
+  | "rapid-reclassify"
+  | "rapid-reorder"
+  | "rapid-merge-duplicates"
+  | "rapid-split"
+  | "rapid-question"
+  | "rapid-question-node"
+  | "rapid-question-subtree"
+  | "rapid-unknowns"
+  | "rapid-evidence"
+  | "rapid-output"
+  | "rapid-markdown"
+  | "rapid-outline"
+  | "rapid-presentation"
+  | "rapid-export"
   | "board"
   | "view"
   | "scatter"
@@ -101,6 +129,11 @@ type ProgressiveEdge = {
   active: boolean;
 };
 
+type ProgressivePlacement = {
+  left: number;
+  top: number;
+};
+
 type UiSnapshot = {
   mode: string;
   surface: string;
@@ -135,6 +168,33 @@ function setSurfaceLayout(
 
 function sendKey(key: string, options: KeyboardEventInit = {}): void {
   document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...options }));
+}
+
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    target.isContentEditable ||
+    Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
+  );
+}
+
+function isActionKeyEvent(event: KeyboardEvent): boolean {
+  const isSpace = event.key === " " || event.key === "Spacebar" || event.code === "Space";
+  return isSpace && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.repeat;
+}
+
+function dispatchRapidPreviewAction(label: string): void {
+  window.dispatchEvent(new CustomEvent("m3e:rapid-action-preview", { detail: { label } }));
+}
+
+function dispatchRapidGenerateAction(action: RapidGenerateAction, label: string, instruction: string): void {
+  window.dispatchEvent(new CustomEvent("m3e:rapid-action-generate", { detail: { action, label, instruction } }));
 }
 
 function setLegacyInput(id: string, value: string, eventName = "input"): void {
@@ -285,11 +345,13 @@ function LeftRail({
   setTool,
   openModal,
   setProgressiveOpen,
+  setProgressiveMode,
 }: {
   tool: ToolId;
   setTool: (tool: ToolId) => void;
   openModal: (id: ModalId) => void;
   setProgressiveOpen: (open: boolean | ((current: boolean) => boolean)) => void;
+  setProgressiveMode: (mode: ProgressiveMode) => void;
 }): React.ReactElement {
   const activate = (next: ToolId, legacyId?: string) => {
     setTool(next);
@@ -335,7 +397,10 @@ function LeftRail({
       </div>
       <IconButton
         label="[GUI] navigation root"
-        onClick={() => setProgressiveOpen((current) => !current)}
+        onClick={() => {
+          setProgressiveMode("gui");
+          setProgressiveOpen((current) => !current);
+        }}
       >
         <Command size={19} />
       </IconButton>
@@ -697,8 +762,86 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
   ];
 }
 
-function ProgressiveNavigation({ close, openModal, open }: { close: () => void; openModal: (id: ModalId) => void; open: boolean }): React.ReactElement {
-  const nodes = useMemo(() => makeProgressiveNodes(openModal), [openModal]);
+function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
+  const rapidAction = (label: string) => () => dispatchRapidPreviewAction(label);
+  const rapidGenerate = (action: RapidGenerateAction, label: string, instruction: string) => (
+    () => dispatchRapidGenerateAction(action, label, instruction)
+  );
+  return [
+    { id: "active-root", label: rootLabel, hint: "active node" },
+    { id: "rapid-expand", label: "N2 展開", hint: "node/subtree を広げる", parentId: "active-root" },
+    { id: "rapid-detail", label: "N3 詳細化", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("detail", "N3 詳細化", "詳細を追加") },
+    { id: "rapid-examples", label: "N4 例を追加", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("examples", "N4 例を追加", "具体例を追加") },
+    { id: "rapid-classify", label: "N5 子分類を追加", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("classify", "N5 子分類を追加", "子分類を追加") },
+    { id: "rapid-related", label: "N6 関連topic追加", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("related", "N6 関連topic追加", "関連topicを追加") },
+    { id: "rapid-summary", label: "N7 要約", hint: "要点へ圧縮", parentId: "active-root" },
+    { id: "rapid-summary-node", label: "N8 このnodeを要約", hint: "GUI-only", parentId: "rapid-summary", action: rapidAction("N8 このnodeを要約") },
+    { id: "rapid-summary-subtree", label: "N9 subtreeを要約", hint: "GUI-only", parentId: "rapid-summary", action: rapidAction("N9 subtreeを要約") },
+    { id: "rapid-keypoints", label: "N10 重要点抽出", hint: "GUI-only", parentId: "rapid-summary", action: rapidAction("N10 重要点抽出") },
+    { id: "rapid-action-items", label: "N11 action item抽出", hint: "GUI-only", parentId: "rapid-summary", action: rapidAction("N11 action item抽出") },
+    { id: "rapid-restructure", label: "N12 再構成", hint: "構造を整える", parentId: "active-root" },
+    { id: "rapid-reclassify", label: "N13 分類し直す", hint: "GUI-only", parentId: "rapid-restructure", action: rapidAction("N13 分類し直す") },
+    { id: "rapid-reorder", label: "N14 順序を整える", hint: "GUI-only", parentId: "rapid-restructure", action: rapidAction("N14 順序を整える") },
+    { id: "rapid-merge-duplicates", label: "N15 重複を統合", hint: "GUI-only", parentId: "rapid-restructure", action: rapidAction("N15 重複を統合") },
+    { id: "rapid-split", label: "N16 分割する", hint: "GUI-only", parentId: "rapid-restructure", action: rapidAction("N16 分割する") },
+    { id: "rapid-question", label: "N17 問う", hint: "不足を問う", parentId: "active-root" },
+    { id: "rapid-question-node", label: "N18 このnodeに質問", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N18 このnodeに質問") },
+    { id: "rapid-question-subtree", label: "N19 subtreeに質問", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N19 subtreeに質問") },
+    { id: "rapid-unknowns", label: "N20 不明点を列挙", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N20 不明点を列挙") },
+    { id: "rapid-evidence", label: "N21 根拠を確認", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N21 根拠を確認") },
+    { id: "rapid-output", label: "N22 出力", hint: "形式へ変換", parentId: "active-root" },
+    { id: "rapid-markdown", label: "N23 Markdown化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N23 Markdown化") },
+    { id: "rapid-outline", label: "N24 outline化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N24 outline化") },
+    { id: "rapid-presentation", label: "N25 presentation化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N25 presentation化") },
+    { id: "rapid-export", label: "N26 export用に整形", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N26 export用に整形") },
+  ];
+}
+
+function activeNodeAnchorElement(): Element | null {
+  return (
+    document.querySelector(".label-node.primary-selected") ||
+    document.querySelector(".node-visual-box.primary-selected") ||
+    document.querySelector(".scatter-node-circle.primary-selected") ||
+    document.querySelector(".node-hit.primary-selected")
+  );
+}
+
+function fallbackProgressiveAnchorElement(): Element | null {
+  return document.querySelector('[aria-label="[GUI] navigation root"]');
+}
+
+function clampPlacement(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function placementForAnchor(anchor: Element | null): ProgressivePlacement {
+  if (!anchor) {
+    return { left: 72, top: 307 };
+  }
+  const rect = anchor.getBoundingClientRect();
+  const left = clampPlacement(rect.right + 18, 72, Math.max(72, window.innerWidth - 510));
+  const top = clampPlacement(rect.top + rect.height / 2 - 120, 72, Math.max(72, window.innerHeight - 430));
+  return { left, top };
+}
+
+function ProgressiveNavigation({
+  close,
+  openModal,
+  open,
+  mode,
+  activeRootLabel,
+}: {
+  close: () => void;
+  openModal: (id: ModalId) => void;
+  open: boolean;
+  mode: ProgressiveMode;
+  activeRootLabel: string;
+}): React.ReactElement {
+  const rootId: ProgressiveNodeId = mode === "active-node" ? "active-root" : "gui";
+  const nodes = useMemo(
+    () => (mode === "active-node" ? makeActiveNodeProgressiveNodes(activeRootLabel) : makeProgressiveNodes(openModal)),
+    [activeRootLabel, mode, openModal],
+  );
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const childrenByParent = useMemo(() => {
     const grouped = new Map<ProgressiveNodeId, ProgressiveNode[]>();
@@ -710,7 +853,7 @@ function ProgressiveNavigation({ close, openModal, open }: { close: () => void; 
     });
     return grouped;
   }, [nodes]);
-  const [activeId, setActiveId] = useState<ProgressiveNodeId>("gui");
+  const [activeId, setActiveId] = useState<ProgressiveNodeId>(rootId);
   const path = useMemo(() => {
     const ids: ProgressiveNodeId[] = [];
     let cur = nodeById.get(activeId);
@@ -742,21 +885,32 @@ function ProgressiveNavigation({ close, openModal, open }: { close: () => void; 
   const navRef = useRef<HTMLDivElement | null>(null);
   const [edges, setEdges] = useState<ProgressiveEdge[]>([]);
   const [edgeSize, setEdgeSize] = useState({ width: 486, height: 420 });
+  const [placement, setPlacement] = useState<ProgressivePlacement>({ left: 72, top: 307 });
 
   const measureEdges = () => {
     const nav = navRef.current;
-    const rootButton = document.querySelector('[aria-label="[GUI] navigation root"]');
-    if (!nav || !(rootButton instanceof HTMLElement)) return;
+    const rootAnchor = mode === "active-node"
+      ? activeNodeAnchorElement() || fallbackProgressiveAnchorElement()
+      : fallbackProgressiveAnchorElement();
+    if (!nav || !rootAnchor) return;
+    if (mode === "active-node") {
+      const nextPlacement = placementForAnchor(rootAnchor);
+      setPlacement((current) => (
+        Math.abs(current.left - nextPlacement.left) > 0.5 || Math.abs(current.top - nextPlacement.top) > 0.5
+          ? nextPlacement
+          : current
+      ));
+    }
     const navRect = nav.getBoundingClientRect();
     const toRect = (el: Element) => rectFromDomRect(el.getBoundingClientRect(), navRect);
-    const rootRect = toRect(rootButton);
+    const rootRect = toRect(rootAnchor);
     const measuredRootCenterY = rootRect.y + rootRect.h / 2;
     setNavRootCenterY((current) => (Math.abs(current - measuredRootCenterY) > 0.5 ? measuredRootCenterY : current));
     const nextEdges: ProgressiveEdge[] = [];
     rootChildren.forEach((node) => {
       const el = nav.querySelector(`[data-pn-node="${node.id}"]`);
       if (!el) return;
-      nextEdges.push({ id: `gui-${node.id}`, d: edgePathBetweenRects(rootRect, toRect(el), 0), active: false });
+      nextEdges.push({ id: `${rootId}-${node.id}`, d: edgePathBetweenRects(rootRect, toRect(el), 0), active: false });
     });
     const activeParentId = path[1];
     const activeParentEl = activeParentId ? nav.querySelector(`[data-pn-node="${activeParentId}"]`) : null;
@@ -775,8 +929,16 @@ function ProgressiveNavigation({ close, openModal, open }: { close: () => void; 
   useLayoutEffect(() => {
     measureEdges();
     window.addEventListener("resize", measureEdges);
-    return () => window.removeEventListener("resize", measureEdges);
-  }, [activeId, rootChildren.length, activeChildren.length, navRootCenterY]);
+    window.addEventListener("m3e:viewport-changed", measureEdges);
+    return () => {
+      window.removeEventListener("resize", measureEdges);
+      window.removeEventListener("m3e:viewport-changed", measureEdges);
+    };
+  }, [activeId, rootChildren.length, activeChildren.length, navRootCenterY, mode, placement.left, placement.top]);
+
+  useEffect(() => {
+    setActiveId(rootId);
+  }, [rootId, open]);
 
   const activate = (node: ProgressiveNode) => {
     setActiveId(node.id);
@@ -788,10 +950,12 @@ function ProgressiveNavigation({ close, openModal, open }: { close: () => void; 
 
   return (
     <div
-      className={`wb-progressive-nav${open ? " is-open" : ""}`}
+      className={`wb-progressive-nav${open ? " is-open" : ""}${mode === "active-node" ? " is-active-node" : ""}`}
       data-testid="progressive-navigation"
+      data-pn-mode={mode}
       ref={navRef}
-      onMouseLeave={() => setActiveId("gui")}
+      style={mode === "active-node" ? { left: `${placement.left}px`, top: `${placement.top}px` } : undefined}
+      onMouseLeave={() => setActiveId(rootId)}
     >
       <svg className="wb-progressive-edges" viewBox={`0 0 ${edgeSize.width} ${edgeSize.height}`} aria-hidden="true">
         {edges.map((edge) => (
@@ -934,6 +1098,20 @@ function WorkbenchApp(): React.ReactElement {
   const [modal, setModal] = useState<ModalId>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [progressiveOpen, setProgressiveOpen] = useState(false);
+  const [progressiveMode, setProgressiveMode] = useState<ProgressiveMode>("gui");
+  const activeRootLabel = cleanSelectedLabel(snapshot.selected);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isActionKeyEvent(event) || isTextEntryTarget(event.target) || event.isComposing) {
+        return;
+      }
+      event.preventDefault();
+      setProgressiveMode("active-node");
+      setProgressiveOpen((current) => progressiveMode === "active-node" ? !current : true);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [progressiveMode]);
   const modalContent = useMemo(() => {
     if (modal === "settings") return <SettingsModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "share") return <ShareModal snapshot={snapshot} close={() => setModal(null)} />;
@@ -949,8 +1127,15 @@ function WorkbenchApp(): React.ReactElement {
         setTool={setTool}
         openModal={setModal}
         setProgressiveOpen={setProgressiveOpen}
+        setProgressiveMode={setProgressiveMode}
       />
-      <ProgressiveNavigation close={() => setProgressiveOpen(false)} open={progressiveOpen} openModal={setModal} />
+      <ProgressiveNavigation
+        close={() => setProgressiveOpen(false)}
+        open={progressiveOpen}
+        openModal={setModal}
+        mode={progressiveMode}
+        activeRootLabel={activeRootLabel}
+      />
       <ScatterToolbar visible={snapshot.surface === "Scatter"} />
       <RightPanel
         snapshot={snapshot}

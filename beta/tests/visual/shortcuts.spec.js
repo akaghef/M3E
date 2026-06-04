@@ -167,11 +167,11 @@ test.describe("Tab: add child node", () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Space: Toggle collapse/expand
+// E: Toggle collapse/expand
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test.describe("Space: collapse/expand toggle", () => {
-  test("Space collapses a node with children, then expands it", async ({ page }) => {
+test.describe("E: collapse/expand toggle", () => {
+  test("E collapses a node with children, then expands it", async ({ page }) => {
     await launchViewer(page);
     await focusBoard(page);
 
@@ -182,7 +182,7 @@ test.describe("Space: collapse/expand toggle", () => {
     const beforeCollapse = await getNodeCount(page);
 
     // Collapse.
-    await pressKey(page, " ");
+    await pressKey(page, "E");
     await waitForRender(page);
 
     // After collapse the visible node count remains the same in #meta
@@ -192,12 +192,77 @@ test.describe("Space: collapse/expand toggle", () => {
     // re-expanding.
 
     // Expand again.
-    await pressKey(page, " ");
+    await pressKey(page, "E");
     await waitForRender(page);
 
     // Verify can navigate into children again.
     await pressKey(page, "ArrowRight");
     await expectMetaContains(page, "selected: Grandchild A1");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// T: Template completion
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function templateCompletionFixture() {
+  const node = (id, parentId, children, text, attributes = {}) => ({
+    id,
+    parentId,
+    children,
+    nodeType: "text",
+    text,
+    collapsed: false,
+    details: "",
+    note: "",
+    attributes,
+    link: "",
+  });
+  return {
+    version: 1,
+    savedAt: "2026-06-04T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: node("root", null, ["subject", "system"], "Template Test Root"),
+        subject: node("subject", "root", [], "魚類"),
+        system: node("system", "root", ["template"], "SYSTEM"),
+        template: node("template", "system", ["cache"], "TEMPLATE"),
+        cache: node("cache", "template", ["tpl-5w1h"], "cache"),
+        "tpl-5w1h": node("tpl-5w1h", "cache", ["tpl-what", "tpl-why", "tpl-who", "tpl-when", "tpl-where", "tpl-how"], "5W1H", {
+          "template:aliases": "5w framework",
+        }),
+        "tpl-what": node("tpl-what", "tpl-5w1h", [], "What"),
+        "tpl-why": node("tpl-why", "tpl-5w1h", [], "Why"),
+        "tpl-who": node("tpl-who", "tpl-5w1h", [], "Who"),
+        "tpl-when": node("tpl-when", "tpl-5w1h", [], "When"),
+        "tpl-where": node("tpl-where", "tpl-5w1h", [], "Where"),
+        "tpl-how": node("tpl-how", "tpl-5w1h", [], "How"),
+      },
+    },
+  };
+}
+
+test.describe("T: template completion", () => {
+  test("T opens template completion and applies only template children to active node", async ({ page }) => {
+    await launchViewer(page, templateCompletionFixture());
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: 魚類");
+    const before = await getNodeCount(page);
+
+    await pressKey(page, "T");
+    await expect(page.locator(".template-completion-popover")).toBeVisible();
+    await page.locator(".template-completion-input").fill("5w");
+    await expect(page.locator(".template-completion-item")).toContainText("5W1H");
+
+    await page.keyboard.press("Enter");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(before + 6);
+    await expectStatusContains(page, "Template applied: 5W1H (6 node(s), 0 skipped)");
+    await expect(page.locator("text").filter({ hasText: /^5W1H$/ })).toHaveCount(1);
   });
 });
 
