@@ -18,6 +18,7 @@ import {
   PenLine,
   Presentation,
   RefreshCw,
+  SendHorizontal,
   Settings,
   Share2,
   Sparkles,
@@ -32,7 +33,7 @@ import { edgePathBetweenRects, rectFromDomRect } from "./edge_geometry";
 import "./workbench-ui.css";
 
 type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" | "note";
-type ModalId = "menu" | "settings" | "share" | "help" | null;
+type ModalId = "menu" | "settings" | "share" | "help" | "ai" | null;
 type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type ProgressiveBranchDirection = "both" | "right" | "left";
 type ProgressiveNodeId =
@@ -104,6 +105,7 @@ type UiSnapshot = {
   mode: string;
   surface: string;
   scope: string;
+  mapId: string;
   selected: string;
   nodes: string;
   links: string;
@@ -156,6 +158,7 @@ function readSnapshot(): UiSnapshot {
     mode: modeMeta.match(/mode:\s*([^/]+)/)?.[1]?.trim() || "Rapid",
     surface: modeMeta.match(/\/\s*(.+)$/)?.[1]?.trim() || "Tree",
     scope: parseField(meta, "scope"),
+    mapId: meta.match(/map:\s*[^|]*\(([^)]+)\)/)?.[1]?.trim() || "local-map",
     selected: parseField(meta, "selected"),
     nodes: parseField(meta, "nodes"),
     links: parseField(meta, "links"),
@@ -294,7 +297,7 @@ function LeftRail({
   };
   return (
     <div className="wb-left-rail" data-testid="workbench-left-rail">
-      <IconButton label="AI sidekick" onClick={() => openModal("help")}>
+      <IconButton label="AI sidekick" onClick={() => openModal("ai")}>
         <Sparkles size={19} />
       </IconButton>
       <div className="wb-rail-group">
@@ -336,6 +339,128 @@ function LeftRail({
       >
         <Command size={19} />
       </IconButton>
+    </div>
+  );
+}
+
+type AiTopicResponse = {
+  ok?: boolean;
+  error?: string;
+  proposal?: {
+    result?: {
+      topics?: unknown[];
+      rawText?: unknown;
+    };
+  };
+};
+
+function cleanSelectedLabel(selected: string): string {
+  const cleaned = selected.replace(/\s*\(\d+\)$/, "").trim();
+  return cleaned && cleaned !== "n/a" ? cleaned : "Selected node";
+}
+
+function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () => void }): React.ReactElement {
+  const quickActions = ["より簡潔に", "詳細を追加", "翻訳先", "再生成"];
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("Ready");
+  const [topics, setTopics] = useState<string[]>([]);
+  const selectedLabel = cleanSelectedLabel(snapshot.selected);
+
+  const runPrompt = async (seed?: string) => {
+    const instruction = (seed || prompt).trim();
+    setBusy(true);
+    setMessage("Thinking...");
+    setTopics([]);
+    try {
+      const payload = {
+        mapId: snapshot.mapId,
+        scopeId: snapshot.scope,
+        mode: "proposal",
+        input: {
+          nodeText: selectedLabel,
+          nodeDetails: instruction,
+          maxTopics: 5,
+        },
+        clientContext: {
+          requestId: `wb-ai-${Date.now()}`,
+        },
+      };
+      const response = await fetch("/api/ai/subagent/topic-suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json().catch(() => ({})) as AiTopicResponse;
+      if (!response.ok) {
+        throw new Error(String(body.error || `HTTP ${response.status}`));
+      }
+      const nextTopics = Array.isArray(body.proposal?.result?.topics)
+        ? body.proposal.result.topics.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 5)
+        : [];
+      setTopics(nextTopics);
+      setMessage(nextTopics.length > 0 ? `${nextTopics.length} suggestions` : "No suggestions");
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyTopics = () => {
+    if (topics.length === 0) return;
+    window.dispatchEvent(new CustomEvent("m3e:ai-append-topics", { detail: { topics } }));
+    setMessage(`Applied ${topics.length}`);
+  };
+
+  return (
+    <div className="wb-ai-dock" data-testid="ai-sidekick-panel">
+      <div className="wb-ai-head">
+        <span><Sparkles size={15} /> AI</span>
+        <strong>{selectedLabel}</strong>
+        <button type="button" onClick={close} aria-label="Close AI sidekick">x</button>
+      </div>
+      <div className="wb-ai-actions">
+        {quickActions.map((label) => (
+          <button
+            key={label}
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setPrompt(label);
+              void runPrompt(label);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {topics.length > 0 && (
+        <div className="wb-ai-suggestions">
+          {topics.map((topic) => <span key={topic}>{topic}</span>)}
+        </div>
+      )}
+      <div className="wb-ai-composer">
+        <textarea
+          value={prompt}
+          onChange={(event) => setPrompt(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              void runPrompt();
+            }
+          }}
+          placeholder="Ask about this selected node..."
+          rows={2}
+        />
+        <button type="button" disabled={busy} onClick={() => void runPrompt()} aria-label="Send AI prompt">
+          <SendHorizontal size={18} />
+        </button>
+      </div>
+      <div className="wb-ai-foot">
+        <span>{message}</span>
+        <button type="button" disabled={topics.length === 0} onClick={applyTopics}>Apply</button>
+      </div>
     </div>
   );
 }
@@ -813,6 +938,7 @@ function WorkbenchApp(): React.ReactElement {
     if (modal === "settings") return <SettingsModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "share") return <ShareModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "help") return <HelpModal close={() => setModal(null)} />;
+    if (modal === "ai") return <AiSidekickPanel snapshot={snapshot} close={() => setModal(null)} />;
     return null;
   }, [modal, snapshot]);
   return (

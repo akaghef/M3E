@@ -33,6 +33,7 @@
 .wb-panel-tab,
 .wb-scatter-panel,
 .wb-bottom-controls,
+.wb-ai-dock,
 .wb-popover,
 .wb-modal,
 .wb-toast {
@@ -57,6 +58,7 @@
 .wb-scatter-panel,
 .wb-right-panel,
 .wb-panel-tab,
+.wb-ai-dock,
 .wb-popover,
 .wb-modal {
   background: rgba(255, 255, 255, 0.96);
@@ -647,6 +649,154 @@
   flex: 0 0 auto;
   border-radius: 50%;
   background: #4262ff;
+}
+
+.wb-ai-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.wb-ai-head,
+.wb-ai-actions,
+.wb-ai-composer,
+.wb-ai-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-ai-head {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.wb-ai-head span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #4262ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.wb-ai-head strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #30323a;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-head button,
+.wb-ai-actions button,
+.wb-ai-composer button,
+.wb-ai-foot button {
+  border: 0;
+  border-radius: 7px;
+  color: #24242a;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.wb-ai-head button {
+  width: 26px;
+  height: 26px;
+  background: #f2f3f6;
+}
+
+.wb-ai-actions {
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.wb-ai-actions button {
+  min-height: 30px;
+  padding: 0 12px;
+  background: #f3f0ff;
+  color: #5330b5;
+  font-size: 12px;
+}
+
+.wb-ai-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.wb-ai-suggestions span {
+  max-width: 190px;
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid #d9def0;
+  border-radius: 7px;
+  background: #fbfcff;
+  color: #3f4350;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-composer {
+  align-items: stretch;
+  padding: 8px;
+  border: 1px solid #dfe4f2;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.wb-ai-composer textarea {
+  min-height: 42px;
+  flex: 1;
+  resize: none;
+  border: 0;
+  outline: none;
+  color: #24242a;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.wb-ai-composer button {
+  width: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  align-self: flex-end;
+  background: #4262ff;
+  color: #fff;
+}
+
+.wb-ai-foot {
+  justify-content: space-between;
+  margin-top: 8px;
+  color: #6b707c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.wb-ai-foot button {
+  min-height: 28px;
+  padding: 0 12px;
+  background: #111827;
+  color: #fff;
+}
+
+.wb-ai-actions button:disabled,
+.wb-ai-composer button:disabled,
+.wb-ai-foot button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .wb-modal-backdrop {

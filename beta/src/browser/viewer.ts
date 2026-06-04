@@ -4967,6 +4967,25 @@ async function generateRelatedTopicsForSelectedNode(): Promise<void> {
   }
 }
 
+window.addEventListener("m3e:ai-append-topics", (event: Event) => {
+  const detail = (event as CustomEvent<{ topics?: unknown[] }>).detail;
+  const topics = Array.isArray(detail?.topics)
+    ? detail.topics.map((topic) => String(topic || "").trim()).filter(Boolean)
+    : [];
+  try {
+    const added = appendTopicSuggestionsToSelectedNode(topics);
+    if (added === 0) {
+      setStatus("No new AI topics to apply.");
+      return;
+    }
+    setStatus(`AI applied ${added} topic node(s).`);
+    render();
+    board.focus();
+  } catch (err) {
+    setStatus(`AI apply failed: ${(err as Error).message}`, true);
+  }
+});
+
 function linearOffsetToLineIndex(text: string, offset: number): number {
   const safeOffset = Math.max(0, Math.min(offset, text.length));
   if (safeOffset === 0) {
