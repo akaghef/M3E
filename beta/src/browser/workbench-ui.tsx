@@ -102,6 +102,7 @@ type ProgressiveNodeId =
   | "scatter-add-edge"
   | "scatter-colorize"
   | "scatter-delete"
+  | "scatter-display-root"
   | "scatter-animate"
   | "scatter-reflow"
   | "add-child"
@@ -695,6 +696,7 @@ function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement |
         <button type="button" onClick={() => clickLegacy("scatter-delete")}>Delete</button>
       </div>
       <div className="wb-scatter-sim">
+        <button type="button" onClick={() => clickLegacy("scatter-display-root")}>Toggle Display Root</button>
         <button type="button" onClick={() => clickLegacy("scatter-animate")}>Animate</button>
         <button type="button" onClick={() => clickLegacy("scatter-reflow")}>
           <RefreshCw size={15} /> Reflow
@@ -765,6 +767,7 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "scatter-add-edge", label: "Add edge", hint: "connect scatter nodes", parentId: "scatter", action: () => clickLegacy("scatter-add-edge") },
     { id: "scatter-colorize", label: "Colorize", hint: "apply scatter color", parentId: "scatter", action: () => clickLegacy("scatter-colorize") },
     { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
+    { id: "scatter-display-root", label: "Toggle display root", hint: "toggle root visibility", parentId: "scatter", action: () => clickLegacy("scatter-display-root") },
     { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
     { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
     { id: "add-child", label: "Add child", hint: "Tab", parentId: "mindmap", action: () => sendKey("Tab") },

@@ -17,6 +17,7 @@ const scatterAddNodeBtn = document.getElementById("scatter-add-node") as HTMLBut
 const scatterAddEdgeBtn = document.getElementById("scatter-add-edge") as HTMLButtonElement | null;
 const scatterColorizeBtn = document.getElementById("scatter-colorize") as HTMLButtonElement | null;
 const scatterDeleteBtn = document.getElementById("scatter-delete") as HTMLButtonElement | null;
+const scatterDisplayRootBtn = document.getElementById("scatter-display-root") as HTMLButtonElement | null;
 const scatterAnimateBtn = document.getElementById("scatter-animate") as HTMLButtonElement | null;
 const scatterReflowBtn = document.getElementById("scatter-reflow") as HTMLButtonElement | null;
 const scatterRepulsionInput = document.getElementById("scatter-repulsion") as HTMLInputElement | null;
@@ -513,6 +514,7 @@ let viewState: ViewState = {
   surfaceViewMode: "tree",
   surfaceLayoutDensity: "balanced",
   surfaceBranchDirection: "right",
+  scatterDisplayRoot: true,
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -745,6 +747,11 @@ function syncScatterToolbarUi(): void {
   });
   scatterAnimateBtn?.classList.toggle("is-active", scatterAnimationEnabled);
   scatterAnimateBtn?.setAttribute("aria-pressed", scatterAnimationEnabled ? "true" : "false");
+  scatterDisplayRootBtn?.classList.toggle("is-active", viewState.scatterDisplayRoot);
+  scatterDisplayRootBtn?.setAttribute("aria-pressed", viewState.scatterDisplayRoot ? "true" : "false");
+  scatterDisplayRootBtn?.setAttribute("title", viewState.scatterDisplayRoot
+    ? "PN > scatter > toggle display root: root is visible"
+    : "PN > scatter > toggle display root: root is hidden");
   if (scatterRepulsionInput && document.activeElement !== scatterRepulsionInput) {
     scatterRepulsionInput.value = String(Math.round(scatterRepulsion));
   }
@@ -782,6 +789,13 @@ function setScatterAnimationEnabled(enabled: boolean): void {
   seedMissingScatterPositions();
   startScatterAnimation();
   setStatus("Scatter animation running.");
+}
+
+function toggleScatterDisplayRoot(): void {
+  viewState.scatterDisplayRoot = !viewState.scatterDisplayRoot;
+  syncScatterToolbarUi();
+  render();
+  setStatus(`PN > scatter: display root ${viewState.scatterDisplayRoot ? "on" : "off"}.`);
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -6447,6 +6461,9 @@ function render(): void {
   const scatterSurface = currentSurfaceIsScatterMode();
   const structuredMode = structuredSurfaceMode() || "tree";
   const rootlessSurface = flowSurface;
+  const scatterDisplayRoot = !scatterSurface || viewState.scatterDisplayRoot;
+  const scatterNodeRenderable = (nodeId: string): boolean =>
+    !scatterSurface || scatterDisplayRoot || nodeId !== displayRootId;
 
   const pos = layout.pos;
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -6513,7 +6530,7 @@ function render(): void {
       const childPos = pos[nodeId];
       const parentId = node?.parentId ?? null;
       const parentPos = parentId ? pos[parentId] : null;
-      if (!node || !childPos || !parentId || !parentPos) {
+      if (!node || !childPos || !parentId || !parentPos || !scatterNodeRenderable(nodeId) || !scatterNodeRenderable(parentId)) {
         return;
       }
       const line = scatterLineEndpoints(parentPos, childPos);
@@ -6555,6 +6572,9 @@ function render(): void {
       targetPos = pos[targetRenderId];
     }
     if (!source || !target || !sourcePos || !targetPos) {
+      return;
+    }
+    if (!scatterNodeRenderable(sourceRenderId) || !scatterNodeRenderable(targetRenderId)) {
       return;
     }
     if (isParentChildPair(source, target)) {
@@ -6780,7 +6800,7 @@ function render(): void {
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
     const p = pos[nodeId];
-    if (!node || !p) {
+    if (!node || !p || !scatterNodeRenderable(nodeId)) {
       return;
     }
 
@@ -7168,7 +7188,7 @@ function render(): void {
   }
 
   if (scatterSurface) {
-    visibleOrder.forEach((nodeId) => drawNode(nodeId));
+    visibleOrder.filter(scatterNodeRenderable).forEach((nodeId) => drawNode(nodeId));
   } else if (rootlessSurface && displayRootNode) {
     const surfaceNodeIds = visibleChildren(displayRootNode).filter((nodeId) => Boolean(pos[nodeId]));
     if (surfaceNodeIds.length > 0) {
@@ -13021,6 +13041,7 @@ scatterAddNodeBtn?.addEventListener("click", () => setScatterToolMode("add-node"
 scatterAddEdgeBtn?.addEventListener("click", () => setScatterToolMode("add-edge"));
 scatterColorizeBtn?.addEventListener("click", () => setScatterToolMode("colorize"));
 scatterDeleteBtn?.addEventListener("click", () => setScatterToolMode("delete"));
+scatterDisplayRootBtn?.addEventListener("click", () => toggleScatterDisplayRoot());
 scatterAnimateBtn?.addEventListener("click", () => toggleScatterAnimation());
 scatterReflowBtn?.addEventListener("click", () => {
   runScatterReflow(180);
