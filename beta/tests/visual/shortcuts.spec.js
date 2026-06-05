@@ -657,7 +657,7 @@ test.describe("Scope navigation", () => {
     await expectMetaContains(page, "selected: Child A");
   });
 
-  test("Shift+R release routes active node to selected scope", async ({ page }) => {
+  test("Shift+R release enters selected scope without moving nodes", async ({ page }) => {
     await launchViewer(page);
     await focusBoard(page);
 
@@ -682,10 +682,15 @@ test.describe("Scope navigation", () => {
     await expect(page.locator("#routing-switcher")).toContainText("Child B -> Child A");
     await page.keyboard.up("r");
     await waitForRender(page);
-    await expectStatusContains(page, "Routed Child B -> Child A");
+    await expectStatusContains(page, "Entered scope: Child A");
     await page.keyboard.up("Shift");
     await expect(page.locator("#routing-switcher")).toBeHidden();
     await expectMetaContains(page, "scope: child-a");
+
+    await pressKey(page, "ArrowLeft");
+    await waitForRender(page);
+    await expectMetaContains(page, "scope: root");
+    await pressKey(page, "ArrowDown");
     await expectMetaContains(page, "selected: Child B");
   });
 });

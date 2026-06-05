@@ -12408,40 +12408,18 @@ function applyRoutingSwitcherRoute(): boolean {
   if (!map || !routingSwitcherOpen) {
     return false;
   }
-  const sourceId = viewState.selectedNodeId;
   const target = selectedRoutingScopeTarget();
   if (!target) {
     setStatus("No route target.", true);
     return false;
   }
-  if (!canDropUnderParent(sourceId, target.id)) {
-    setStatus("Invalid route target.", true);
-    syncRoutingSwitcher();
-    return false;
-  }
-  pushUndoSnapshot();
-  const moved = applyMoveByParentAndIndex(sourceId, target.id, getNode(target.id).children.length, true, {
-    withUndo: false,
-    withTouch: false,
-    withStatus: false,
-  });
-  if (!moved) {
-    setStatus("Route failed.", true);
-    syncRoutingSwitcher();
-    return false;
-  }
-  touchDocument();
   routingScopeTargets = collectRoutingScopeTargets();
   const nextIndex = routingScopeTargets.findIndex((scope) => scope.id === target.id);
   setRoutingScopeIndex(nextIndex >= 0 ? nextIndex : 0);
   routingScopeHoldDown = false;
   closeRoutingSwitcher();
   EnterScopeCommand(target.id);
-  if (map.state.nodes[sourceId]) {
-    setSingleSelection(sourceId, false);
-    render();
-  }
-  setStatus(`Routed ${uiLabel(getNode(sourceId))} -> ${target.label}.`);
+  setStatus(`Entered scope: ${target.label}.`);
   return true;
 }
 
