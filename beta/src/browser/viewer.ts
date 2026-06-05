@@ -3916,7 +3916,22 @@ function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, 
   });
 }
 
+let visibleChildrenOverride: ((node: TreeNode) => string[]) | null = null;
+
+function withVisibleChildrenOverride<T>(override: (node: TreeNode) => string[], fn: () => T): T {
+  const previous = visibleChildrenOverride;
+  visibleChildrenOverride = override;
+  try {
+    return fn();
+  } finally {
+    visibleChildrenOverride = previous;
+  }
+}
+
 function visibleChildren(node: TreeNode): string[] {
+  if (visibleChildrenOverride) {
+    return visibleChildrenOverride(node);
+  }
   if (!node || isAliasNode(node) || viewState.collapsedIds.has(node.id)) {
     return [];
   }
@@ -12110,34 +12125,6 @@ function ensureRoutingSwitcherEl(): HTMLElement {
   return el;
 }
 
-function visibleRoutingScopeTargets(): RoutingScopeTarget[] {
-  const windowSize = 5;
-  const selectedTarget = routingScopeTargets[routingScopeIndex] || routingScopeTargets[0];
-  if (!selectedTarget || routingScopeTargets.length <= windowSize) {
-    return routingScopeTargets.slice(0, windowSize);
-  }
-  const targetById = new Map(routingScopeTargets.map((target) => [target.id, target]));
-  const visibleIds = new Set<string>();
-  const ancestorIds: string[] = [];
-  let parentId = selectedTarget.parentId;
-  while (parentId) {
-    const parent = targetById.get(parentId);
-    if (!parent) break;
-    ancestorIds.unshift(parent.id);
-    parentId = parent.parentId;
-  }
-  ancestorIds.slice(-(windowSize - 1)).forEach((id) => visibleIds.add(id));
-  visibleIds.add(selectedTarget.id);
-  for (let offset = 1; visibleIds.size < windowSize && offset < routingScopeTargets.length; offset += 1) {
-    const before = routingScopeTargets[routingScopeIndex - offset];
-    const after = routingScopeTargets[routingScopeIndex + offset];
-    if (before) visibleIds.add(before.id);
-    if (visibleIds.size >= windowSize) break;
-    if (after) visibleIds.add(after.id);
-  }
-  return routingScopeTargets.filter((target) => visibleIds.has(target.id)).slice(0, windowSize);
-}
-
 function normalizedWheelDeltas(event: WheelEvent): { deltaX: number; deltaY: number } {
   const deltaScale = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
   return {
@@ -12146,134 +12133,104 @@ function normalizedWheelDeltas(event: WheelEvent): { deltaX: number; deltaY: num
   };
 }
 
-type MiniSurfaceNode = {
-  id: string;
-  label: string;
-  parentId?: string | null;
-  depth: number;
-  active?: boolean;
-  disabled?: boolean;
-};
-
-function visibleAncestorId(
-  node: MiniSurfaceNode,
-  visibleNodeIds: Set<string>,
-  allNodesById: Map<string, MiniSurfaceNode>,
-): string | null {
-  let parentId = node.parentId || null;
-  while (parentId) {
-    if (visibleNodeIds.has(parentId)) {
-      return parentId;
-    }
-    parentId = allNodesById.get(parentId)?.parentId || null;
-  }
-  return null;
-}
-
-function miniSurfacePositions(nodes: MiniSurfaceNode[]): Record<string, NodePosition> {
-  const minDepth = Math.min(...nodes.map((node) => node.depth), 0);
-  const positions: Record<string, NodePosition> = {};
-  nodes.forEach((node, index) => {
-    const fontSize = 13;
-    const labelLines = splitLabelLines(node.label);
-    const labelMeasure = measureNodeLabel(node.label, fontSize);
-    positions[node.id] = {
-      x: 58 + Math.max(0, node.depth - minDepth) * 220,
-      y: 58 + index * 78,
-      w: Math.max(168, Math.min(250, labelMeasure.w + 8)),
-      h: Math.max(52, labelMeasure.h + 12),
-      depth: node.depth,
-      labelLines,
-      fontSize,
+function routingScopeState(targets: RoutingScopeTarget[]): AppState {
+  const rootId = targets.find((target) => !target.parentId)?.id || targets[0]?.id || "routing-root";
+  const nodes: Record<string, TreeNode> = {};
+  targets.forEach((target) => {
+    nodes[target.id] = {
+      ...createNodeRecord(target.id, target.parentId, target.label),
+      nodeType: "folder",
+      attributes: { "m3e:class": "scope" },
     };
   });
-  return positions;
+  targets.forEach((target) => {
+    if (!target.parentId || !nodes[target.parentId]) {
+      return;
+    }
+    nodes[target.parentId]!.children.push(target.id);
+  });
+  return { rootId, nodes, links: {}, annotations: {}, scopes: {}, surfaces: {} };
 }
 
-function renderMiniSurfaceSvg(options: {
-  nodes: MiniSurfaceNode[];
-  allNodes?: MiniSurfaceNode[];
-  className: string;
-  ariaLabel: string;
-  groupClass: string;
-  nodeClass: string;
-  labelClass: string;
-  edgeClass: string;
-  dataAttr: string;
-}): string {
-  const positions = miniSurfacePositions(options.nodes);
-  const allNodesById = new Map((options.allNodes || options.nodes).map((node) => [node.id, node]));
-  const visibleNodeIds = new Set(options.nodes.map((node) => node.id));
-  let edges = "";
-  let nodeMarkup = "";
-  options.nodes.forEach((node) => {
-    const visibleParentId = visibleAncestorId(node, visibleNodeIds, allNodesById);
-    if (!visibleParentId) {
-      return;
-    }
-    const parentPos = positions[visibleParentId];
-    const childPos = positions[node.id];
-    if (!parentPos || !childPos) {
-      return;
-    }
-    const edgePath = layoutEdgePath("tree", parentPos, childPos);
-    edges += `<path class="edge edge-tree ${options.edgeClass}" data-source-node-id="${escapeXml(visibleParentId)}" data-target-node-id="${escapeXml(node.id)}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" d="${edgePath.d}" />`;
+function routingSurfaceViewBox(layout: LayoutResult): string {
+  const padding = 36;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  layout.order.forEach((nodeId) => {
+    const pos = layout.pos[nodeId];
+    if (!pos) return;
+    const h = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
+    minX = Math.min(minX, pos.x - 24);
+    minY = Math.min(minY, pos.y - h / 2 - 18);
+    maxX = Math.max(maxX, pos.x + pos.w + 42);
+    maxY = Math.max(maxY, pos.y + h / 2 + 18);
   });
-  options.nodes.forEach((node) => {
-    const pos = positions[node.id]!;
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return "0 0 720 430";
+  }
+  return `${minX - padding} ${minY - padding} ${Math.max(1, maxX - minX + padding * 2)} ${Math.max(1, maxY - minY + padding * 2)}`;
+}
+
+function renderRoutingScopeSurface(selectedNodeId: string | null): string {
+  const state = routingScopeState(routingScopeTargets);
+  const rootId = state.rootId;
+  const activeScopeId = routingScopeTargets[routingScopeIndex]?.id;
+  const layout = withVisibleChildrenOverride(
+    (node) => node.children || [],
+    () => buildRightTreeLayout(state, buildMeasuredTreeContext(state, rootId, "tree")),
+  );
+  let edges = "";
+  let nodes = "";
+  layout.order.forEach((nodeId) => {
+    const node = state.nodes[nodeId];
+    const parentPos = layout.pos[nodeId];
+    if (!node || !parentPos) return;
+    (node.children || []).forEach((childId, index) => {
+      const childPos = layout.pos[childId];
+      if (!childPos) return;
+      const edgePath = layoutEdgePath("tree", parentPos, childPos);
+      const stroke = VIEWER_TUNING.palette.edgeColors[(parentPos.depth + index) % VIEWER_TUNING.palette.edgeColors.length];
+      edges += `<path class="edge edge-tree routing-surface-edge" data-source-node-id="${escapeXml(nodeId)}" data-target-node-id="${escapeXml(childId)}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}" />`;
+    });
+  });
+  layout.order.forEach((nodeId) => {
+    const node = state.nodes[nodeId];
+    const pos = layout.pos[nodeId];
+    if (!node || !pos) return;
+    const active = nodeId === activeScopeId;
+    const disabled = selectedNodeId ? !canDropUnderParent(selectedNodeId, nodeId) : true;
+    const visualClasses = ["node-visual-box", nodeId === rootId ? "root-box" : "folder-box", "routing-surface-node"];
+    if (active) visualClasses.push("primary-selected", "selected");
+    if (disabled) visualClasses.push("routing-disabled");
+    const labelClasses = [nodeId === rootId ? "label-root" : "label-node", "routing-surface-label"];
+    if (active) labelClasses.push("primary-selected", "selected");
+    const labelLines = pos.labelLines || splitLabelLines(uiLabel(node) || "(empty)");
+    const fontSize = pos.fontSize ?? (nodeId === rootId ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
+    const lineHeight = lineHeightForFont(fontSize);
+    const textY = multilineTextStartY(pos.y, labelLines.length, fontSize, lineHeight);
+    const dataAttr = `data-routing-scope-id="${escapeXml(nodeId)}" data-node-id="${escapeXml(nodeId)}"`;
+    if (nodeId === rootId) {
+      const y = pos.y - pos.h / 2;
+      nodes += `<g class="routing-surface-scope" ${dataAttr}>`;
+      nodes += `<rect class="${visualClasses.join(" ")}" ${dataAttr} x="${pos.x}" y="${y}" width="${pos.w}" height="${pos.h}" rx="8" />`;
+      nodes += `<text class="${labelClasses.join(" ")}" ${dataAttr} x="${pos.x + pos.w / 2}" y="${textY}" text-anchor="middle" style="font-size:${fontSize}px">${multilineTspans(labelLines, pos.x + pos.w / 2, lineHeight)}</text>`;
+      nodes += `</g>`;
+      return;
+    }
     const frameInsetY = 12;
     const framePadX = 14;
     const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h) - frameInsetY;
     const frameX = pos.x - framePadX;
     const frameY = pos.y - frameH / 2;
     const frameW = pos.w + framePadX * 2;
-    const visualClasses = [
-      "folder-box",
-      "node-visual-box",
-      options.nodeClass,
-      node.active ? "primary-selected selected" : "",
-      node.disabled ? "routing-disabled" : "",
-    ].filter(Boolean).join(" ");
-    const labelClasses = [
-      "label-node",
-      options.labelClass,
-      node.active ? "primary-selected selected" : "",
-    ].filter(Boolean).join(" ");
-    const textY = multilineTextStartY(pos.y, pos.labelLines?.length || 1, pos.fontSize || 13, lineHeightForFont(pos.fontSize || 13));
-    const tspans = multilineTspans(pos.labelLines || [node.label], pos.x, lineHeightForFont(pos.fontSize || 13));
-    const dataAttr = `${options.dataAttr}="${escapeXml(node.id)}" data-node-id="${escapeXml(node.id)}"`;
-    nodeMarkup += `<g class="${options.groupClass}" ${dataAttr}>`;
-    nodeMarkup += `<rect class="${visualClasses}" ${dataAttr} x="${frameX}" y="${frameY}" width="${frameW}" height="${frameH}" rx="8" />`;
-    nodeMarkup += `<text class="${labelClasses}" ${dataAttr} x="${pos.x}" y="${textY}" text-anchor="start" style="font-size:${pos.fontSize}px">${tspans}</text>`;
-    nodeMarkup += `</g>`;
+    nodes += `<g class="routing-surface-scope" ${dataAttr}>`;
+    nodes += `<rect class="${visualClasses.join(" ")}" ${dataAttr} x="${frameX}" y="${frameY}" width="${frameW}" height="${frameH}" rx="8" />`;
+    nodes += `<text class="${labelClasses.join(" ")}" ${dataAttr} x="${pos.x}" y="${textY}" text-anchor="start" style="font-size:${fontSize}px">${multilineTspans(labelLines, pos.x, lineHeight)}</text>`;
+    nodes += `</g>`;
   });
-  return `<svg class="${options.className}" viewBox="0 0 720 430" role="img" aria-label="${escapeXml(options.ariaLabel)}">${edges}${nodeMarkup}</svg>`;
-}
-
-function renderRoutingScopeSurface(
-  targets: RoutingScopeTarget[],
-  selectedNodeId: string | null,
-): string {
-  const activeScopeId = routingScopeTargets[routingScopeIndex]?.id;
-  const toMiniSurfaceNode = (target: RoutingScopeTarget): MiniSurfaceNode => ({
-    id: target.id,
-    label: target.label,
-    parentId: target.parentId,
-    depth: target.depth,
-    active: activeScopeId === target.id,
-    disabled: selectedNodeId ? !canDropUnderParent(selectedNodeId, target.id) : true,
-  });
-  return renderMiniSurfaceSvg({
-    nodes: targets.map(toMiniSurfaceNode),
-    allNodes: routingScopeTargets.map(toMiniSurfaceNode),
-    className: "routing-scope-surface",
-    ariaLabel: "Scope routing surface",
-    groupClass: "routing-surface-scope",
-    nodeClass: "routing-surface-node",
-    labelClass: "routing-surface-label",
-    edgeClass: "routing-surface-edge",
-    dataAttr: "data-routing-scope-id",
-  });
+  return `<svg class="routing-scope-surface" viewBox="${routingSurfaceViewBox(layout)}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Scope routing surface">${edges}${nodes}</svg>`;
 }
 
 function syncRoutingSwitcher(): void {
@@ -12287,7 +12244,6 @@ function syncRoutingSwitcher(): void {
   const el = ensureRoutingSwitcherEl();
   const selectedNode = map.state.nodes[viewState.selectedNodeId];
   const selectedScope = routingScopeTargets[routingScopeIndex] || routingScopeTargets[0];
-  const visibleTargets = visibleRoutingScopeTargets();
   const nodeLabel = selectedNode ? uiLabel(selectedNode) : viewState.selectedNodeId;
   const scopeLabel = selectedScope ? selectedScope.label : "No scope";
   const routeEnabled = Boolean(selectedNode && selectedScope && canDropUnderParent(selectedNode.id, selectedScope.id));
@@ -12299,7 +12255,7 @@ function syncRoutingSwitcher(): void {
         <span>Scope route</span>
         <strong>${escapeHtml(nodeLabel)} -> ${escapeHtml(scopeLabel)}</strong>
       </div>
-      ${renderRoutingScopeSurface(visibleTargets, selectedNode?.id || null)}
+      ${renderRoutingScopeSurface(selectedNode?.id || null)}
       <div class="routing-switcher-foot">
         <span>${routeEnabled ? "Ready" : "Invalid target"}</span>
         <span>${routingScopeTargets.length} scopes</span>
@@ -12426,12 +12382,17 @@ function applyRoutingSwitcherRoute(): void {
     syncRoutingSwitcher();
     return;
   }
-  setSingleSelection(sourceId, false);
   touchDocument();
   routingScopeTargets = collectRoutingScopeTargets();
   const nextIndex = routingScopeTargets.findIndex((scope) => scope.id === target.id);
   routingScopeIndex = nextIndex >= 0 ? nextIndex : 0;
-  syncRoutingSwitcher();
+  routingScopeHoldDown = false;
+  closeRoutingSwitcher();
+  EnterScopeCommand(target.id);
+  if (map.state.nodes[sourceId]) {
+    setSingleSelection(sourceId, false);
+    render();
+  }
   setStatus(`Routed ${uiLabel(getNode(sourceId))} -> ${target.label}.`);
 }
 

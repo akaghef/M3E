@@ -686,9 +686,8 @@ test.describe("Scope navigation", () => {
     await page.keyboard.up("r");
     await page.keyboard.up("Shift");
     await expect(page.locator("#routing-switcher")).toBeHidden();
-
-    await pressKey(page, "ArrowLeft");
-    await expectMetaContains(page, "selected: Child A");
+    await expectMetaContains(page, "scope: child-a");
+    await expectMetaContains(page, "selected: Child B");
   });
 });
 
