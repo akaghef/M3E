@@ -132,6 +132,9 @@ let routingSwitcherOpen = false;
 let routingSwitcherLane: RoutingSwitcherLane = "scope";
 let routingScopeTargets: RoutingScopeTarget[] = [];
 let routingScopeIndex = 0;
+let routingPanKeyDown = false;
+let routingWheelCarryX = 0;
+let routingWheelCarryY = 0;
 
 function hideMarkdownPreview(): void {
   if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
@@ -12123,28 +12126,18 @@ function syncRoutingSwitcher(): void {
         <span>Scope route</span>
         <strong>${escapeHtml(nodeLabel)} -> ${escapeHtml(scopeLabel)}</strong>
       </div>
-      <div class="routing-switcher-grid">
-        <div class="routing-active-node ${routingSwitcherLane === "node" ? "is-active" : ""}">
-          <span>Active node</span>
-          <strong>${escapeHtml(nodeLabel)}</strong>
-        </div>
-        <div class="routing-scope-strip">
-          ${visibleRoutingScopeTargets().map((target) => {
-            const targetIndex = routingScopeTargets.findIndex((candidate) => candidate.id === target.id);
-            const isActive = targetIndex === routingScopeIndex;
-            const disabled = selectedNode ? !canDropUnderParent(selectedNode.id, target.id) : true;
-            return `
-              <button class="routing-scope-card ${isActive ? "is-active" : ""} ${disabled ? "is-disabled" : ""}" type="button" data-routing-scope-id="${escapeHtml(target.id)}" style="--scope-depth:${target.depth}">
-                <strong>${escapeHtml(target.label)}</strong>
-                <span>${escapeHtml(target.id)}</span>
-              </button>
-            `;
-          }).join("")}
-        </div>
-        <div class="routing-active-scope ${routingSwitcherLane === "scope" ? "is-active" : ""}">
-          <span>Active scope</span>
-          <strong>${escapeHtml(scopeLabel)}</strong>
-        </div>
+      <div class="routing-scope-strip">
+        ${visibleRoutingScopeTargets().map((target) => {
+          const targetIndex = routingScopeTargets.findIndex((candidate) => candidate.id === target.id);
+          const isActive = targetIndex === routingScopeIndex;
+          const disabled = selectedNode ? !canDropUnderParent(selectedNode.id, target.id) : true;
+          return `
+            <button class="routing-scope-card ${isActive ? "is-active" : ""} ${disabled ? "is-disabled" : ""}" type="button" data-routing-scope-id="${escapeHtml(target.id)}" style="--scope-depth:${target.depth}">
+              <strong>${escapeHtml(target.label)}</strong>
+              <span>${escapeHtml(target.id)}</span>
+            </button>
+          `;
+        }).join("")}
       </div>
       <div class="routing-switcher-foot">
         <span>${routeEnabled ? "Ready" : "Invalid target"}</span>
@@ -12198,9 +12191,34 @@ function moveRoutingNode(direction: -1 | 1): void {
   syncRoutingSwitcher();
 }
 
+function routePanMoveActiveNode(deltaX: number, deltaY: number): void {
+  const threshold = 48;
+  routingWheelCarryX += deltaX;
+  routingWheelCarryY += deltaY;
+
+  let moved = false;
+  while (Math.abs(routingWheelCarryY) >= threshold) {
+    selectBreadth(routingWheelCarryY > 0 ? 1 : -1);
+    routingWheelCarryY += routingWheelCarryY > 0 ? -threshold : threshold;
+    moved = true;
+  }
+  while (Math.abs(routingWheelCarryX) >= threshold) {
+    if (routingWheelCarryX > 0) {
+      selectChild();
+    } else {
+      selectParent();
+    }
+    routingWheelCarryX += routingWheelCarryX > 0 ? -threshold : threshold;
+    moved = true;
+  }
+
+  if (moved) {
+    setStatus("Routing pan: active node.");
+  }
+}
+
 function applyRoutingSwitcherRoute(): void {
   if (!map || !routingSwitcherOpen) {
-    openRoutingSwitcher("node");
     return;
   }
   const sourceId = viewState.selectedNodeId;
@@ -13556,6 +13574,10 @@ board.addEventListener("wheel", (event: WheelEvent) => {
   const deltaScale = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
   const deltaX = event.deltaX * deltaScale;
   const deltaY = event.deltaY * deltaScale;
+  if (routingPanKeyDown && !event.ctrlKey && !event.metaKey) {
+    routePanMoveActiveNode(deltaX, deltaY);
+    return;
+  }
   if (!event.ctrlKey && !event.metaKey) {
     viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
     viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
@@ -13813,12 +13835,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
     if (event.key === "Tab") {
       event.preventDefault();
-      routingSwitcherLane = routingSwitcherLane === "scope" ? "node" : "scope";
+      routingSwitcherLane = "scope";
       syncRoutingSwitcher();
-      setStatus(routingSwitcherLane === "scope" ? "Routing: active scope." : "Routing: active node.");
+      setStatus("Routing: active scope.");
       return;
     }
-    if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "r") {
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Enter") {
       event.preventDefault();
       applyRoutingSwitcherRoute();
       return;
@@ -13851,7 +13873,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "r" && !viewState.reviewMode) {
     event.preventDefault();
-    applyRoutingSwitcherRoute();
+    if (!event.repeat) {
+      routingPanKeyDown = true;
+      routingWheelCarryX = 0;
+      routingWheelCarryY = 0;
+      setStatus("Routing pan: active node.");
+    }
     return;
   }
 
@@ -14417,6 +14444,17 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
       return;
     }
     selectChild();
+  }
+});
+
+document.addEventListener("keyup", (event: KeyboardEvent) => {
+  if (event.key.toLowerCase() !== "r") {
+    return;
+  }
+  if (routingPanKeyDown) {
+    routingPanKeyDown = false;
+    routingWheelCarryX = 0;
+    routingWheelCarryY = 0;
   }
 });
 
