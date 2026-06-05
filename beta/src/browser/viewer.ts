@@ -12115,9 +12115,33 @@ function syncRoutingSwitcher(): void {
   const el = ensureRoutingSwitcherEl();
   const selectedNode = map.state.nodes[viewState.selectedNodeId];
   const selectedScope = routingScopeTargets[routingScopeIndex] || routingScopeTargets[0];
+  const visibleTargets = visibleRoutingScopeTargets();
   const nodeLabel = selectedNode ? uiLabel(selectedNode) : viewState.selectedNodeId;
   const scopeLabel = selectedScope ? selectedScope.label : "No scope";
   const routeEnabled = Boolean(selectedNode && selectedScope && canDropUnderParent(selectedNode.id, selectedScope.id));
+  const minDepth = Math.min(...visibleTargets.map((target) => target.depth), 0);
+  const targetPositions = new Map<string, { x: number; y: number }>();
+  visibleTargets.forEach((target, index) => {
+    targetPositions.set(target.id, {
+      x: 32 + Math.max(0, target.depth - minDepth) * 210,
+      y: 28 + index * 82,
+    });
+  });
+  const edgeMarkup = visibleTargets.map((target) => {
+    if (!target.parentId) {
+      return "";
+    }
+    const from = targetPositions.get(target.parentId);
+    const to = targetPositions.get(target.id);
+    if (!from || !to) {
+      return "";
+    }
+    const left = from.x + 168;
+    const top = from.y + 36;
+    const width = Math.max(24, to.x - left);
+    const height = to.y + 36 - top;
+    return `<div class="routing-scope-edge" style="left:${left}px;top:${top}px;width:${width}px;height:${height}px"></div>`;
+  }).join("");
 
   el.hidden = false;
   el.innerHTML = `
@@ -12126,13 +12150,15 @@ function syncRoutingSwitcher(): void {
         <span>Scope route</span>
         <strong>${escapeHtml(nodeLabel)} -> ${escapeHtml(scopeLabel)}</strong>
       </div>
-      <div class="routing-scope-strip">
-        ${visibleRoutingScopeTargets().map((target) => {
+      <div class="routing-scope-surface">
+        ${edgeMarkup}
+        ${visibleTargets.map((target) => {
           const targetIndex = routingScopeTargets.findIndex((candidate) => candidate.id === target.id);
           const isActive = targetIndex === routingScopeIndex;
           const disabled = selectedNode ? !canDropUnderParent(selectedNode.id, target.id) : true;
+          const pos = targetPositions.get(target.id)!;
           return `
-            <button class="routing-scope-card ${isActive ? "is-active" : ""} ${disabled ? "is-disabled" : ""}" type="button" data-routing-scope-id="${escapeHtml(target.id)}" style="--scope-depth:${target.depth}">
+            <button class="routing-scope-card ${isActive ? "is-active" : ""} ${disabled ? "is-disabled" : ""}" type="button" data-routing-scope-id="${escapeHtml(target.id)}" style="left:${pos.x}px;top:${pos.y}px">
               <strong>${escapeHtml(target.label)}</strong>
               <span>${escapeHtml(target.id)}</span>
             </button>
@@ -12198,15 +12224,15 @@ function routePanMoveActiveNode(deltaX: number, deltaY: number): void {
 
   let moved = false;
   while (Math.abs(routingWheelCarryY) >= threshold) {
-    selectBreadth(routingWheelCarryY > 0 ? 1 : -1);
+    selectBreadth(routingWheelCarryY > 0 ? -1 : 1);
     routingWheelCarryY += routingWheelCarryY > 0 ? -threshold : threshold;
     moved = true;
   }
   while (Math.abs(routingWheelCarryX) >= threshold) {
     if (routingWheelCarryX > 0) {
-      selectChild();
-    } else {
       selectParent();
+    } else {
+      selectChild();
     }
     routingWheelCarryX += routingWheelCarryX > 0 ? -threshold : threshold;
     moved = true;

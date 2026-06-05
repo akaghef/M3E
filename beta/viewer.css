@@ -2558,7 +2558,7 @@
       }
 
       .routing-switcher-panel {
-        width: min(680px, calc(100vw - 48px));
+        width: min(780px, calc(100vw - 48px));
         border: 1px solid rgba(31, 41, 55, 0.18);
         border-radius: 8px;
         background: rgba(255, 255, 255, 0.92);
@@ -2587,6 +2587,9 @@
       }
 
       .routing-scope-card {
+        position: absolute;
+        z-index: 2;
+        width: 176px;
         min-height: 72px;
         border: 1px solid #d8dde5;
         border-radius: 8px;
@@ -2594,6 +2597,7 @@
         box-shadow: 0 8px 18px rgba(31, 41, 55, 0.12);
         padding: 10px 12px;
         text-align: left;
+        transform: translate(0, 0);
       }
 
       .routing-scope-card.is-active {
@@ -2616,13 +2620,18 @@
         line-height: 1.2;
       }
 
-      .routing-scope-strip {
-        display: grid;
-        grid-auto-flow: column;
-        grid-auto-columns: minmax(112px, 1fr);
-        gap: 10px;
-        padding: 14px 0;
+      .routing-scope-surface {
+        position: relative;
+        height: 430px;
+        margin: 14px 0;
         overflow: hidden;
+        border: 1px solid rgba(216, 221, 229, 0.86);
+        border-radius: 8px;
+        background:
+          linear-gradient(#e6e9ef 1px, transparent 1px),
+          linear-gradient(90deg, #e6e9ef 1px, transparent 1px),
+          rgba(248, 250, 252, 0.92);
+        background-size: 36px 36px;
       }
 
       .routing-scope-card {
@@ -2632,6 +2641,15 @@
 
       .routing-scope-card.is-active {
         opacity: 1;
+      }
+
+      .routing-scope-edge {
+        position: absolute;
+        z-index: 1;
+        border-left: 2px solid #b9c1cd;
+        border-bottom: 2px solid #b9c1cd;
+        border-radius: 0 0 0 8px;
+        pointer-events: none;
       }
 
       .routing-scope-card.is-disabled {

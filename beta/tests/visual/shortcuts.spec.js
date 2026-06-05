@@ -644,6 +644,10 @@ test.describe("Scope navigation", () => {
     await launchViewer(page);
     await focusBoard(page);
 
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
     await page.keyboard.down("r");
     await page.mouse.wheel(0, 90);
     await page.keyboard.up("r");
