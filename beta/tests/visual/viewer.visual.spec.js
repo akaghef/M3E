@@ -1,12 +1,25 @@
 const { test, expect } = require("@playwright/test");
 
+async function fitViewer(page) {
+  const fitButton = page.locator("#fit-all");
+  if ((await fitButton.count()) > 0 && await fitButton.first().isVisible()) {
+    await fitButton.first().click();
+    return;
+  }
+  if (!(await page.locator("#board").isVisible())) {
+    return;
+  }
+  await page.click("#board");
+  await page.keyboard.press("Alt+v");
+}
+
 async function loadAndStabilize(page, buttonId) {
   const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `localMapId=${encodeURIComponent(isolatedDocId)}&cloudMapId=${encodeURIComponent(isolatedDocId)}`;
+  const qs = `testRun=${encodeURIComponent(isolatedDocId)}`;
   await page.goto(`/viewer.html?${qs}`);
   await page.click(buttonId);
   await expect(page.locator("#meta")).toContainText("nodes:");
-  await page.click("#fit-all");
+  await fitViewer(page);
   await page.waitForTimeout(300);
 }
 
@@ -39,7 +52,7 @@ async function getLinkCount(page) {
 
 async function loadJsonDoc(page, map) {
   const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `localMapId=${encodeURIComponent(isolatedDocId)}&cloudMapId=${encodeURIComponent(isolatedDocId)}`;
+  const qs = `testRun=${encodeURIComponent(isolatedDocId)}`;
   await page.goto(`/viewer.html?${qs}`);
   await page.setInputFiles("#file-input", {
     name: "reorder-regression.json",
@@ -47,7 +60,7 @@ async function loadJsonDoc(page, map) {
     buffer: Buffer.from(JSON.stringify(map), "utf8"),
   });
   await expect(page.locator("#meta")).toContainText("nodes:");
-  await page.click("#fit-all");
+  await fitViewer(page);
   await page.waitForTimeout(300);
 }
 
@@ -284,6 +297,101 @@ test("viewer renders persisted graph link", async ({ page }) => {
 
   expect(await getLinkCount(page)).toBe(1);
   await expect(page.locator("path.graph-link[data-link-id='link_1']")).toHaveCount(1);
+});
+
+test("viewer renders tabular registered component and selects backing row", async ({ page }) => {
+  const map = {
+    version: 1,
+    savedAt: "2026-06-05T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["table"], nodeType: "text", text: "Root", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        table: {
+          id: "table",
+          parentId: "root",
+          children: ["row1", "row2"],
+          nodeType: "text",
+          text: "Component table",
+          collapsed: false,
+          details: "",
+          note: "",
+          attributes: {
+            "m3e:component": JSON.stringify({
+              version: 1,
+              kind: "tabular",
+              props: { density: "regular", columns: "auto", maxHeight: "medium" },
+            }),
+          },
+          link: "",
+        },
+        row1: { id: "row1", parentId: "table", children: [], nodeType: "text", text: "Row Alpha", collapsed: false, details: "Alpha detail", note: "", attributes: { owner: "akaghef", priority: "P1" }, link: "" },
+        row2: { id: "row2", parentId: "table", children: [], nodeType: "text", text: "<script>bad()</script>", collapsed: false, details: "", note: "", attributes: { owner: "<script>bad()</script>" }, link: "" },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, map);
+
+  await expect(page.locator("foreignObject[data-component-kind='tabular']")).toHaveCount(1);
+  await expect(page.locator(".m3e-table-view")).toContainText("Row Alpha");
+  await expect(page.locator(".m3e-table-view")).toContainText("<script>bad()</script>");
+  await expect(page.locator(".m3e-table-view script")).toHaveCount(0);
+  await expect(page.locator("text.label-node", { hasText: "Row Alpha" })).toHaveCount(0);
+
+  await page.locator(".m3e-table-view td[data-node-id='row1']").first().click();
+  await expect(page.locator("#meta")).toContainText("selected: Row Alpha");
+});
+
+test("viewer renders tabular legacy view type and falls back on invalid component spec", async ({ page }) => {
+  const map = {
+    version: 1,
+    savedAt: "2026-06-05T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["legacy", "invalid"], nodeType: "text", text: "Root", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        legacy: { id: "legacy", parentId: "root", children: ["legacy_row"], nodeType: "text", text: "Legacy table", collapsed: false, details: "", note: "", attributes: { "m3e:view-type": "table" }, link: "" },
+        legacy_row: { id: "legacy_row", parentId: "legacy", children: [], nodeType: "text", text: "Legacy Row", collapsed: false, details: "", note: "", attributes: { status: "kept" }, link: "" },
+        invalid: { id: "invalid", parentId: "root", children: ["invalid_child"], nodeType: "text", text: "Invalid component", collapsed: false, details: "", note: "", attributes: { "m3e:component": "{bad json" }, link: "" },
+        invalid_child: { id: "invalid_child", parentId: "invalid", children: [], nodeType: "text", text: "Normal Child", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, map);
+
+  await expect(page.locator("foreignObject[data-component-kind='tabular']")).toHaveCount(1);
+  await expect(page.locator(".m3e-table-view")).toContainText("Legacy Row");
+  await expect(page.locator("text.label-node", { hasText: "Normal Child" })).toBeVisible();
+});
+
+test("viewer tabular toggle writes canonical component behavior", async ({ page }) => {
+  const map = {
+    version: 1,
+    savedAt: "2026-06-05T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: { id: "root", parentId: null, children: ["plain"], nodeType: "text", text: "Root", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        plain: { id: "plain", parentId: "root", children: ["plain_row"], nodeType: "text", text: "Plain parent", collapsed: false, details: "", note: "", attributes: {}, link: "" },
+        plain_row: { id: "plain_row", parentId: "plain", children: [], nodeType: "text", text: "Plain Row", collapsed: false, details: "", note: "", attributes: { owner: "visual" }, link: "" },
+      },
+    },
+  };
+
+  await loadJsonDoc(page, map);
+  await expect(page.locator(".m3e-table-view")).toHaveCount(0);
+
+  await page.locator("#board").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator("#meta")).toContainText("selected: Plain parent");
+  await page.dispatchEvent("#component-tabular-toggle", "click");
+
+  await expect(page.locator("foreignObject[data-component-kind='tabular']")).toHaveCount(1);
+  await expect(page.locator(".m3e-table-view")).toContainText("Plain Row");
+  await expect(page.locator("text.label-node", { hasText: "Plain Row" })).toHaveCount(0);
+  await expect(page.locator("#component-tabular-toggle")).toHaveAttribute("aria-pressed", "true");
 });
 
 // 目的: Shift+ArrowUp/Down で可視順に選択が拡張されることを確認する。
