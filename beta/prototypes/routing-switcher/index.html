@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>try-app Scope Routing Switcher</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="canvas" aria-label="M3E routing prototype canvas">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">try-app</p>
+            <h1>Scope Routing Switcher</h1>
+          </div>
+          <div class="key-strip" aria-label="Routing controls">
+            <button class="key-button" type="button" id="scopeModeButton" aria-label="Select scope routing">
+              <kbd>Shift</kbd><kbd>R</kbd>
+            </button>
+            <button class="key-button" type="button" id="routeButton" aria-label="Route active node">
+              <kbd>R</kbd>
+            </button>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <section class="node-board" aria-label="Active node lane">
+            <div class="lane-head">
+              <span>Active node</span>
+              <strong id="activeNodeLabel">N3</strong>
+            </div>
+            <div id="nodeList" class="node-list" role="listbox" aria-label="Node selector"></div>
+          </section>
+
+          <section class="route-stage" aria-label="Routing switcher stage">
+            <div id="switcher" class="switcher is-open" aria-live="polite">
+              <div class="switcher-shell">
+                <div class="switcher-head">
+                  <span id="modeLabel">Scope route</span>
+                  <strong id="routePreview">N3 -> S:Deep</strong>
+                </div>
+                <div id="scopeCarousel" class="scope-carousel" aria-label="Scope route targets"></div>
+                <div class="switcher-foot">
+                  <span id="statusLabel">Scope routing ready.</span>
+                  <span id="routeCount">0 routes</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="scope-panel" aria-label="Scope tree route targets">
+            <div class="lane-head">
+              <span>Scope tree</span>
+              <strong id="activeScopeLabel">S:Deep</strong>
+            </div>
+            <div id="scopeTree" class="scope-tree" role="tree" aria-label="Scope tree"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

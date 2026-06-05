@@ -1,0 +1,347 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --ink: #19202b;
+  --muted: #667084;
+  --line: #d7dde6;
+  --blue: #2357d6;
+  --green: #1f7a56;
+  --red: #c4313c;
+  --amber: #a66a00;
+  --shadow: 0 18px 42px rgba(23, 31, 46, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 1080px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.canvas {
+  min-height: calc(100vh - 32px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.key-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  min-height: 24px;
+  margin-right: 4px;
+  border: 1px solid #c7ced9;
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.key-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 280px minmax(420px, 1fr) 340px;
+  min-height: calc(100vh - 106px);
+}
+
+.node-board,
+.scope-panel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border-right: 1px solid var(--line);
+  background: #fbfcfd;
+}
+
+.scope-panel {
+  border-right: 0;
+  border-left: 1px solid var(--line);
+}
+
+.lane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 54px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.lane-head strong {
+  color: var(--ink);
+  font-size: 13px;
+  text-transform: none;
+}
+
+.node-list,
+.scope-tree {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+}
+
+.node-item,
+.scope-item {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.node-item strong,
+.scope-item strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.node-item span,
+.scope-item span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.node-item.is-active,
+.scope-item.is-active {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(196, 49, 60, 0.15);
+}
+
+.node-item.is-routed {
+  border-color: rgba(31, 122, 86, 0.45);
+  background: #f0fbf5;
+}
+
+.scope-item {
+  position: relative;
+}
+
+.scope-item[data-depth="1"] {
+  margin-left: 18px;
+  width: calc(100% - 18px);
+}
+
+.scope-item[data-depth="2"] {
+  margin-left: 36px;
+  width: calc(100% - 36px);
+}
+
+.scope-item[data-tone="blue"] {
+  background: #f1f6ff;
+}
+
+.scope-item[data-tone="green"] {
+  background: #f1fbf5;
+}
+
+.scope-item[data-tone="amber"] {
+  background: #fff8e8;
+}
+
+.route-stage {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(#e4e8ee 1px, transparent 1px),
+    linear-gradient(90deg, #e4e8ee 1px, transparent 1px),
+    #f8fafc;
+  background-size: 48px 48px;
+}
+
+.route-stage::before,
+.route-stage::after {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  width: 138px;
+  min-height: 50px;
+  border: 1px solid rgba(25, 32, 43, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  transform: translateY(-50%);
+  box-shadow: 0 10px 22px rgba(23, 31, 46, 0.12);
+}
+
+.route-stage::before {
+  content: "active node";
+  left: 28px;
+}
+
+.route-stage::after {
+  content: "active scope";
+  right: 28px;
+}
+
+.switcher {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+}
+
+.switcher-shell {
+  width: min(700px, calc(100% - 56px));
+  border: 1px solid rgba(25, 32, 43, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 60px rgba(23, 31, 46, 0.22);
+  padding: 14px;
+}
+
+.switcher-head,
+.switcher-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.switcher-head strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(112px, 1fr);
+  gap: 10px;
+  padding: 14px 0;
+  overflow: hidden;
+}
+
+.scope-card {
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+  color: var(--ink);
+  transform: scale(0.92);
+  opacity: 0.58;
+  transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.scope-card strong,
+.scope-card span {
+  display: block;
+}
+
+.scope-card strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.scope-card span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.scope-card.is-active {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(196, 49, 60, 0.15), 0 12px 28px rgba(23, 31, 46, 0.18);
+  transform: scale(1);
+  opacity: 1;
+}
+
+.scope-card.is-near {
+  opacity: 0.82;
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scope-card {
+    transition: none;
+  }
+}
