@@ -181,7 +181,67 @@ M:(開発)> DEV >> strategy > タスクA [status: doing, priority: high]
 
 ---
 
-## 7. 早見表
+## 7. WMF-L 予約語
+
+WMF-L は tree を線形に受け渡すための human-facing interchange notation であり、M3E storage ではない。
+WMF-L 内では、次の token を予約語として扱う。
+
+| token | 意味 | 備考 |
+|---|---|---|
+| `_` | default / fallback | option や variant の値が未指定の場合に、親または文脈の default resolver へ委譲する。literal node 名として `_` を使う場合は quote する |
+| `.` | parent の hidden children | 親に属するが通常表示から隠す children bucket。補助情報、resolver 用 metadata、折り畳み済み候補などを置く。literal node 名として `.` を使う場合は quote する |
+
+予約語判定は unquoted segment 全体が完全一致した場合だけ行う。`_default`、`animal._meta`、`...` はこの予約語ではない。
+
+`.` は WMF-L の hidden children bucket であり、公式 path の相対指定 `./子` とは別物として扱う。
+
+### 標準例
+
+WMF-L の説明では、原則として `生物の分類1` map を標準例として使う。
+
+```text
+- 生物の分類1
+  - 動物
+    - 哺乳類
+      - ヒト
+      - イヌ
+      - クジラ
+    - 鳥類
+      - スズメ
+      - ペンギン
+    - 魚類
+      - サケ
+      - マグロ
+    - 爬虫類
+    - 両生類
+    - 無脊椎動物
+  - 植物
+    - 被子植物
+      - サクラ
+      - イネ
+    - 裸子植物
+      - スギ
+    - シイタケ
+    - 酵母
+  - 菌類
+```
+
+予約語を含む例:
+
+```text
+- 生物の分類1
+  - 動物
+    - 哺乳類
+      - _
+      - .
+        - 表示しない補助情報
+```
+
+この例では、`_` は哺乳類配下の default / fallback、`.` 配下は哺乳類に属する hidden children として解釈する。
+
+---
+
+## 8. 早見表
 
 | やりたいこと | 書き方 |
 |---|---|
@@ -201,7 +261,7 @@ M:(開発)> DEV >> strategy > タスクA [status: doing, priority: high]
 
 ---
 
-## 8. 関連文書
+## 9. 関連文書
 
 - [Data_Model.md](Data_Model.md) -- ノード構造の定義
 - [Scope_and_Alias.md](Scope_and_Alias.md) -- スコープとエイリアス
