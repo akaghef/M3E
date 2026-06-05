@@ -12339,6 +12339,26 @@ function moveRoutingScope(direction: -1 | 1): void {
   syncRoutingSwitcher();
 }
 
+function moveRoutingScopeHorizontal(direction: "parent" | "child"): void {
+  const current = selectedRoutingScopeTarget();
+  if (!current) {
+    return;
+  }
+  const nextScopeId = direction === "parent"
+    ? current.parentId
+    : routingScopeTargets.find((target) => target.parentId === current.id)?.id || null;
+  if (!nextScopeId) {
+    return;
+  }
+  const nextIndex = routingScopeTargets.findIndex((target) => target.id === nextScopeId);
+  if (nextIndex < 0) {
+    return;
+  }
+  setRoutingScopeIndex(nextIndex);
+  routingSwitcherLane = "scope";
+  syncRoutingSwitcher();
+}
+
 function moveRoutingNode(direction: -1 | 1): void {
   selectBreadth(direction);
   routingSwitcherLane = "node";
@@ -12357,7 +12377,7 @@ function routePanMoveRoutingScope(deltaX: number, deltaY: number): void {
     moved = true;
   }
   while (Math.abs(routingWheelCarryX) >= threshold) {
-    moveRoutingScope(routingWheelCarryX > 0 ? -1 : 1);
+    moveRoutingScopeHorizontal(routingWheelCarryX > 0 ? "parent" : "child");
     routingWheelCarryX += routingWheelCarryX > 0 ? -threshold : threshold;
     moved = true;
   }
@@ -14022,7 +14042,11 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
       event.preventDefault();
       if (routingSwitcherLane === "scope") {
-        moveRoutingScope(event.key === "ArrowLeft" ? 1 : -1);
+        if (event.key === "ArrowLeft") {
+          moveRoutingScopeHorizontal("parent");
+        } else {
+          moveRoutingScope(-1);
+        }
       } else {
         moveRoutingNode(-1);
       }
@@ -14031,7 +14055,11 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
       if (routingSwitcherLane === "scope") {
-        moveRoutingScope(event.key === "ArrowRight" ? -1 : 1);
+        if (event.key === "ArrowRight") {
+          moveRoutingScopeHorizontal("child");
+        } else {
+          moveRoutingScope(1);
+        }
       } else {
         moveRoutingNode(1);
       }
