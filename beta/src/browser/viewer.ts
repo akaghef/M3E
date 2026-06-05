@@ -12104,6 +12104,108 @@ function visibleRoutingScopeTargets(): RoutingScopeTarget[] {
   return routingScopeTargets.slice(start, start + windowSize);
 }
 
+type MiniSurfaceNode = {
+  id: string;
+  label: string;
+  parentId?: string | null;
+  depth: number;
+  active?: boolean;
+  disabled?: boolean;
+};
+
+function miniSurfacePositions(nodes: MiniSurfaceNode[]): Record<string, NodePosition> {
+  const minDepth = Math.min(...nodes.map((node) => node.depth), 0);
+  const positions: Record<string, NodePosition> = {};
+  nodes.forEach((node, index) => {
+    const labelLines = splitLabelLines(node.label);
+    positions[node.id] = {
+      x: 58 + Math.max(0, node.depth - minDepth) * 230,
+      y: 72 + index * 92,
+      w: 178,
+      h: 58,
+      depth: node.depth,
+      labelLines,
+      fontSize: 13,
+    };
+  });
+  return positions;
+}
+
+function renderMiniSurfaceSvg(options: {
+  nodes: MiniSurfaceNode[];
+  className: string;
+  ariaLabel: string;
+  groupClass: string;
+  nodeClass: string;
+  labelClass: string;
+  edgeClass: string;
+  dataAttr: string;
+}): string {
+  const positions = miniSurfacePositions(options.nodes);
+  let edges = "";
+  let nodeMarkup = "";
+  options.nodes.forEach((node) => {
+    if (!node.parentId) {
+      return;
+    }
+    const parentPos = positions[node.parentId];
+    const childPos = positions[node.id];
+    if (!parentPos || !childPos) {
+      return;
+    }
+    const edgePath = layoutEdgePath("tree", parentPos, childPos);
+    edges += `<path class="edge edge-tree ${options.edgeClass}" data-source-node-id="${escapeXml(node.parentId)}" data-target-node-id="${escapeXml(node.id)}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" d="${edgePath.d}" />`;
+  });
+  options.nodes.forEach((node) => {
+    const pos = positions[node.id]!;
+    const visualClasses = [
+      "folder-box",
+      "node-visual-box",
+      options.nodeClass,
+      node.active ? "primary-selected selected" : "",
+      node.disabled ? "routing-disabled" : "",
+    ].filter(Boolean).join(" ");
+    const labelClasses = [
+      "label-node",
+      options.labelClass,
+      node.active ? "primary-selected selected" : "",
+    ].filter(Boolean).join(" ");
+    const y = pos.y - pos.h / 2;
+    const textY = multilineTextStartY(pos.y, pos.labelLines?.length || 1, pos.fontSize || 13, lineHeightForFont(pos.fontSize || 13));
+    const tspans = multilineTspans(pos.labelLines || [node.label], pos.x + 14, lineHeightForFont(pos.fontSize || 13));
+    const dataAttr = `${options.dataAttr}="${escapeXml(node.id)}" data-node-id="${escapeXml(node.id)}"`;
+    nodeMarkup += `<g class="${options.groupClass}" ${dataAttr}>`;
+    nodeMarkup += `<rect class="${visualClasses}" ${dataAttr} x="${pos.x}" y="${y}" width="${pos.w}" height="${pos.h}" rx="8" />`;
+    nodeMarkup += `<text class="${labelClasses}" ${dataAttr} x="${pos.x + 14}" y="${textY}" text-anchor="start" style="font-size:${pos.fontSize}px">${tspans}</text>`;
+    nodeMarkup += `</g>`;
+  });
+  return `<svg class="${options.className}" viewBox="0 0 720 430" role="img" aria-label="${escapeXml(options.ariaLabel)}">${edges}${nodeMarkup}</svg>`;
+}
+
+function renderRoutingScopeSurface(
+  targets: RoutingScopeTarget[],
+  selectedNodeId: string | null,
+): string {
+  const activeScopeId = routingScopeTargets[routingScopeIndex]?.id;
+  return renderMiniSurfaceSvg({
+    nodes: targets.map((target) => ({
+      id: target.id,
+      label: target.label,
+      parentId: target.parentId,
+      depth: target.depth,
+      active: activeScopeId === target.id,
+      disabled: selectedNodeId ? !canDropUnderParent(selectedNodeId, target.id) : true,
+    })),
+    className: "routing-scope-surface",
+    ariaLabel: "Scope routing surface",
+    groupClass: "routing-surface-scope",
+    nodeClass: "routing-surface-node",
+    labelClass: "routing-surface-label",
+    edgeClass: "routing-surface-edge",
+    dataAttr: "data-routing-scope-id",
+  });
+}
+
 function syncRoutingSwitcher(): void {
   if (!routingSwitcherOpen || !map) {
     if (routingSwitcherEl) {
@@ -12119,29 +12221,6 @@ function syncRoutingSwitcher(): void {
   const nodeLabel = selectedNode ? uiLabel(selectedNode) : viewState.selectedNodeId;
   const scopeLabel = selectedScope ? selectedScope.label : "No scope";
   const routeEnabled = Boolean(selectedNode && selectedScope && canDropUnderParent(selectedNode.id, selectedScope.id));
-  const minDepth = Math.min(...visibleTargets.map((target) => target.depth), 0);
-  const targetPositions = new Map<string, { x: number; y: number }>();
-  visibleTargets.forEach((target, index) => {
-    targetPositions.set(target.id, {
-      x: 32 + Math.max(0, target.depth - minDepth) * 210,
-      y: 28 + index * 82,
-    });
-  });
-  const edgeMarkup = visibleTargets.map((target) => {
-    if (!target.parentId) {
-      return "";
-    }
-    const from = targetPositions.get(target.parentId);
-    const to = targetPositions.get(target.id);
-    if (!from || !to) {
-      return "";
-    }
-    const left = from.x + 168;
-    const top = from.y + 36;
-    const width = Math.max(24, to.x - left);
-    const height = to.y + 36 - top;
-    return `<div class="routing-scope-edge" style="left:${left}px;top:${top}px;width:${width}px;height:${height}px"></div>`;
-  }).join("");
 
   el.hidden = false;
   el.innerHTML = `
@@ -12150,30 +12229,16 @@ function syncRoutingSwitcher(): void {
         <span>Scope route</span>
         <strong>${escapeHtml(nodeLabel)} -> ${escapeHtml(scopeLabel)}</strong>
       </div>
-      <div class="routing-scope-surface">
-        ${edgeMarkup}
-        ${visibleTargets.map((target) => {
-          const targetIndex = routingScopeTargets.findIndex((candidate) => candidate.id === target.id);
-          const isActive = targetIndex === routingScopeIndex;
-          const disabled = selectedNode ? !canDropUnderParent(selectedNode.id, target.id) : true;
-          const pos = targetPositions.get(target.id)!;
-          return `
-            <button class="routing-scope-card ${isActive ? "is-active" : ""} ${disabled ? "is-disabled" : ""}" type="button" data-routing-scope-id="${escapeHtml(target.id)}" style="left:${pos.x}px;top:${pos.y}px">
-              <strong>${escapeHtml(target.label)}</strong>
-              <span>${escapeHtml(target.id)}</span>
-            </button>
-          `;
-        }).join("")}
-      </div>
+      ${renderRoutingScopeSurface(visibleTargets, selectedNode?.id || null)}
       <div class="routing-switcher-foot">
         <span>${routeEnabled ? "Ready" : "Invalid target"}</span>
         <span>${routingScopeTargets.length} scopes</span>
       </div>
     </section>
   `;
-  el.querySelectorAll<HTMLButtonElement>("[data-routing-scope-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const scopeId = button.dataset.routingScopeId || "";
+  el.querySelectorAll<SVGGraphicsElement>(".routing-surface-scope[data-routing-scope-id]").forEach((scopeEl) => {
+    scopeEl.addEventListener("click", () => {
+      const scopeId = scopeEl.dataset.routingScopeId || "";
       const nextIndex = routingScopeTargets.findIndex((target) => target.id === scopeId);
       if (nextIndex >= 0) {
         routingScopeIndex = nextIndex;
