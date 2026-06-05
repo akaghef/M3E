@@ -2620,17 +2620,35 @@
         background: var(--accent-soft);
       }
 
-      /* ── m3e: table view ── */
-      .m3e-table-container {
+      /* -- m3e: registered HTML object components -- */
+      .m3e-component {
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #333;
+      }
+
+      .m3e-component--tabular {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 13px;
         overflow: auto;
-        max-height: 780px;
         background: #fff;
         border: 1px solid #e0e0e0;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       }
+
+      .m3e-component--max-small {
+        max-height: 360px;
+      }
+
+      .m3e-component--max-medium {
+        max-height: 720px;
+      }
+
+      .m3e-component--max-large {
+        max-height: 960px;
+      }
+
       .m3e-table-view {
         border-collapse: collapse;
         width: 100%;
@@ -2650,7 +2668,7 @@
         z-index: 1;
       }
       .m3e-table-view td {
-        padding: 5px 10px;
+        padding: 6px 10px;
         border-bottom: 1px solid #eee;
         color: #333;
         max-width: 300px;
@@ -2658,12 +2676,23 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+
+      .m3e-component--density-compact .m3e-table-view th,
+      .m3e-component--density-compact .m3e-table-view td {
+        padding: 4px 8px;
+      }
+
       .m3e-table-view tr:hover {
         background: rgba(106, 53, 255, 0.04);
       }
       .m3e-table-view .m3e-table-name {
         font-weight: 500;
         color: #232323;
+      }
+      .m3e-table-view .m3e-table-empty {
+        color: #777;
+        font-style: italic;
+        text-align: center;
       }
       .m3e-table-view tr.status-placeholder td { opacity: 0.5; }
       .m3e-table-view tr.status-confirmed td:first-child { border-left: 3px solid #2d8c4e; }

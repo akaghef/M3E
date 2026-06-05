@@ -7,6 +7,7 @@ const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const viewTreeBtn = document.getElementById("view-tree");
 const viewSystemBtn = document.getElementById("view-system");
+const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
 const importBtn = document.getElementById("import-btn");
 const importMenu = document.getElementById("import-menu");
 const importFileBtn = document.getElementById("import-file-btn") as HTMLButtonElement | null;
@@ -93,6 +94,91 @@ const v4AddDecisionBtn = document.getElementById("v4-add-decision-btn") as HTMLB
 const v4SourceTextEl = document.getElementById("v4-source-text") as HTMLTextAreaElement | null;
 const v4CreateDraftBtn = document.getElementById("v4-create-draft-btn") as HTMLButtonElement | null;
 const v4ApplyDraftBtn = document.getElementById("v4-apply-draft-btn") as HTMLButtonElement | null;
+
+const NODE_COMPONENT_ATTR = "m3e:component";
+const LEGACY_VIEW_TYPE_ATTR = "m3e:view-type";
+
+type RegisteredNodeComponentKind = "tabular";
+type TabularDensity = "compact" | "regular";
+type TabularMaxHeight = "small" | "medium" | "large";
+
+interface TabularComponentProps {
+  density: TabularDensity;
+  columns: "auto";
+  maxHeight: TabularMaxHeight;
+}
+
+interface TabularNodeComponent {
+  version: 1;
+  kind: "tabular";
+  props: TabularComponentProps;
+  source: "canonical" | "legacy";
+}
+
+type NodeComponent = TabularNodeComponent;
+
+const DEFAULT_TABULAR_PROPS: TabularComponentProps = {
+  density: "regular",
+  columns: "auto",
+  maxHeight: "medium",
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function sanitizeTabularProps(raw: unknown): TabularComponentProps {
+  const props = isRecord(raw) ? raw : {};
+  const density = props["density"] === "compact" ? "compact" : "regular";
+  const maxHeight = props["maxHeight"] === "small" || props["maxHeight"] === "large"
+    ? props["maxHeight"]
+    : "medium";
+  return {
+    density,
+    columns: "auto",
+    maxHeight,
+  };
+}
+
+function parseNodeComponent(node: TreeNode): NodeComponent | null {
+  const attrs = node.attributes || {};
+  const raw = attrs[NODE_COMPONENT_ATTR];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!isRecord(parsed) || parsed["version"] !== 1 || parsed["kind"] !== "tabular") {
+        return null;
+      }
+      return {
+        version: 1,
+        kind: "tabular",
+        props: sanitizeTabularProps(parsed["props"]),
+        source: "canonical",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  if ((attrs[LEGACY_VIEW_TYPE_ATTR] || "").trim() === "table") {
+    return {
+      version: 1,
+      kind: "tabular",
+      props: { ...DEFAULT_TABULAR_PROPS },
+      source: "legacy",
+    };
+  }
+
+  return null;
+}
+
+function serializedTabularComponentSpec(): string {
+  return JSON.stringify({
+    version: 1,
+    kind: "tabular" satisfies RegisteredNodeComponentKind,
+    props: DEFAULT_TABULAR_PROPS,
+  });
+}
 
 function hideMarkdownPreview(): void {
   if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
@@ -448,6 +534,17 @@ function syncThinkingModeUi(): void {
   viewSystemBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "system");
 }
 
+function syncNodeComponentUi(): void {
+  const selected = map && viewState.selectedNodeId ? map.state.nodes[viewState.selectedNodeId] : null;
+  const component = selected ? parseNodeComponent(selected) : null;
+  const isTabular = component?.kind === "tabular";
+  if (componentTabularToggleBtn) {
+    componentTabularToggleBtn.classList.toggle("is-active", isTabular);
+    componentTabularToggleBtn.setAttribute("aria-pressed", isTabular ? "true" : "false");
+    componentTabularToggleBtn.disabled = !selected || isAliasNode(selected);
+  }
+}
+
 function syncAccessModeUi(): void {
   document.body.classList.toggle("readonly-link", isReadOnlyLink());
   const banner = document.getElementById("readonly-banner") as HTMLElement | null;
@@ -463,6 +560,7 @@ function syncAccessModeUi(): void {
   if (cloudPushBtn) cloudPushBtn.disabled = isReadOnlyLink() || cloudPushBtn.disabled;
   if (cloudUseLocalBtn) cloudUseLocalBtn.disabled = isReadOnlyLink() || cloudUseLocalBtn.disabled;
   if (collabJoinBtn) collabJoinBtn.disabled = isReadOnlyLink() || collabJoinBtn.disabled;
+  syncNodeComponentUi();
 }
 
 function setThinkingMode(mode: ThinkingMode): void {
@@ -3943,6 +4041,7 @@ function render(): void {
   updateModeBadge();
   if (!map) {
     syncThinkingModeUi();
+    syncNodeComponentUi();
     updateScopeMeta();
     updateScopeSummary();
     metaEl.textContent = "No data loaded";
@@ -4121,20 +4220,29 @@ function render(): void {
   });
   defs += "</defs>";
 
-  /**
-   * Render children of a node as an HTML table via foreignObject.
-   * Columns are auto-derived from the union of all children's attribute keys
-   * (excluding m3e: internal attributes). First column is always the node text.
-   */
-  function renderTableView(parentId: string, parentPos: { x: number; y: number; w: number; h: number }): string {
+  function renderNodeComponent(
+    component: NodeComponent,
+    parentId: string,
+    parentPos: { x: number; y: number; w: number; h: number },
+  ): string {
+    if (component.kind === "tabular") {
+      return renderTabularComponent(component, parentId, parentPos);
+    }
+    return "";
+  }
+
+  function renderTabularComponent(
+    component: TabularNodeComponent,
+    parentId: string,
+    parentPos: { x: number; y: number; w: number; h: number },
+  ): string {
     const parent = state.nodes[parentId];
-    if (!parent || parent.children.length === 0) return "";
+    if (!parent) return "";
 
     const childNodes = parent.children
       .map((cid) => state.nodes[cid])
       .filter((n): n is TreeNode => !!n);
 
-    // Collect column keys from all children's attributes (exclude m3e: internals)
     const colSet = new Set<string>();
     for (const child of childNodes) {
       for (const key of Object.keys(child.attributes || {})) {
@@ -4144,37 +4252,50 @@ function render(): void {
     }
     const columns = Array.from(colSet).sort();
 
-    // Build HTML table
     const esc = (s: string) => escapeXml(s);
 
-    let html = `<table class="m3e-table-view"><thead><tr><th>Name</th>`;
+    const densityClass = component.props.density === "compact"
+      ? "m3e-component--density-compact"
+      : "m3e-component--density-regular";
+    const maxHeightClass = `m3e-component--max-${component.props.maxHeight}`;
+
+    let html = `<table class="m3e-table-view" data-component-kind="tabular"><thead><tr><th>Name</th>`;
     for (const col of columns) {
       html += `<th>${esc(col === "_details" ? "Details" : col)}</th>`;
     }
     html += `</tr></thead><tbody>`;
 
-    for (const child of childNodes) {
-      const statusClass = child.attributes?.["m3e:status"] ? ` class="status-${esc(child.attributes["m3e:status"])}"` : "";
-      html += `<tr data-node-id="${esc(child.id)}"${statusClass}>`;
-      html += `<td class="m3e-table-name">${esc(child.text || "(empty)")}</td>`;
-      for (const col of columns) {
-        if (col === "_details") {
-          html += `<td>${esc(child.details || "")}</td>`;
-        } else {
-          html += `<td>${esc(child.attributes?.[col] || "")}</td>`;
+    if (childNodes.length === 0) {
+      html += `<tr class="m3e-table-empty-row"><td class="m3e-table-empty" colspan="${Math.max(1, columns.length + 1)}">No rows</td></tr>`;
+    } else {
+      for (const child of childNodes) {
+        const status = sanitizeStatus(child.attributes?.["m3e:status"]);
+        const statusClass = status ? ` class="status-${status}"` : "";
+        const childIdAttr = escapeXmlAttr(child.id);
+        html += `<tr data-node-id="${childIdAttr}"${statusClass}>`;
+        html += `<td class="m3e-table-name" data-node-id="${childIdAttr}">${esc(child.text || "(empty)")}</td>`;
+        for (const col of columns) {
+          if (col === "_details") {
+            html += `<td data-node-id="${childIdAttr}">${esc(child.details || "")}</td>`;
+          } else {
+            html += `<td data-node-id="${childIdAttr}">${esc(child.attributes?.[col] || "")}</td>`;
+          }
         }
+        html += `</tr>`;
       }
-      html += `</tr>`;
     }
     html += `</tbody></table>`;
 
-    // Size: estimate based on columns and rows
     const tableW = Math.max(columns.length * 150 + 200, 600);
-    const tableH = Math.min((childNodes.length + 1) * 32 + 16, 800);
+    const maxHeightPx = component.props.maxHeight === "small" ? 360 : component.props.maxHeight === "large" ? 960 : 720;
+    const rowHeight = component.props.density === "compact" ? 28 : 32;
+    const tableH = Math.min((Math.max(1, childNodes.length) + 1) * rowHeight + 16, maxHeightPx);
     const foX = parentPos.x - 20;
     const foY = parentPos.y + parentPos.h / 2 + 20;
+    maxX = Math.max(maxX, foX + tableW + VIEWER_TUNING.layout.nodeRightPad);
+    maxY = Math.max(maxY, foY + tableH + VIEWER_TUNING.layout.nodeBottomPad);
 
-    return `<foreignObject x="${foX}" y="${foY}" width="${tableW}" height="${tableH}"><div xmlns="http://www.w3.org/1999/xhtml" class="m3e-table-container">${html}</div></foreignObject>`;
+    return `<foreignObject data-node-id="${escapeXmlAttr(parentId)}" data-component-kind="tabular" x="${foX}" y="${foY}" width="${tableW}" height="${tableH}"><div xmlns="http://www.w3.org/1999/xhtml" class="m3e-component m3e-component--tabular ${densityClass} ${maxHeightClass}">${html}</div></foreignObject>`;
   }
 
   function drawNode(nodeId: string): void {
@@ -4188,9 +4309,10 @@ function render(): void {
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
     const children = visibleChildren(node);
+    const nodeComponent = parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
     const previewLayout = buildFlowPreviewLayout(node);
-    children.forEach((childId, i) => {
+    if (!nodeComponent) children.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) {
         return;
@@ -4476,11 +4598,8 @@ function render(): void {
       nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
     }
 
-    // Table view mode: render children as table instead of tree
-    const viewType = node.attributes?.["m3e:view-type"];
-    if (viewType === "table" && children.length > 0 && nodeId !== displayRootId) {
-      // Skip recursive tree rendering for children — they'll be shown as table
-      nodes += renderTableView(nodeId, p);
+    if (nodeComponent) {
+      nodes += renderNodeComponent(nodeComponent, nodeId, p);
     } else {
       children.forEach((cid) => drawNode(cid));
     }
@@ -4564,6 +4683,7 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
+  syncNodeComponentUi();
   metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
@@ -6441,6 +6561,36 @@ function repairBrokenAlias(aliasNodeId: string): void {
   if (entityListVisible) {
     buildEntityList(entityListSearchEl?.value.trim() || "");
   }
+}
+
+function toggleSelectedTabularComponent(): void {
+  if (!map || isReadOnlyLink()) {
+    return;
+  }
+  const nodeId = viewState.selectedNodeId;
+  const node = nodeId ? map.state.nodes[nodeId] : null;
+  if (!node) {
+    setStatus("Select a node before toggling Tabular.", true);
+    return;
+  }
+  if (isAliasNode(node)) {
+    setStatus("Alias nodes cannot host registered components.", true);
+    return;
+  }
+
+  pushUndoSnapshot();
+  const attrs = ensureNodeAttributes(node);
+  const component = parseNodeComponent(node);
+  if (component?.kind === "tabular") {
+    delete attrs[NODE_COMPONENT_ATTR];
+    delete attrs[LEGACY_VIEW_TYPE_ATTR];
+    setStatus(`Removed Tabular component from "${uiLabel(node)}".`);
+  } else {
+    attrs[NODE_COMPONENT_ATTR] = serializedTabularComponentSpec();
+    delete attrs[LEGACY_VIEW_TYPE_ATTR];
+    setStatus(`Added Tabular component to "${uiLabel(node)}".`);
+  }
+  touchDocument();
 }
 
 // ---- Context Menu ----
@@ -8699,6 +8849,10 @@ viewTreeBtn?.addEventListener("click", () => {
 
 viewSystemBtn?.addEventListener("click", () => {
   setSurfaceViewMode("system");
+});
+
+componentTabularToggleBtn?.addEventListener("click", () => {
+  toggleSelectedTabularComponent();
 });
 
 fileInput.addEventListener("change", (event: Event) => {
