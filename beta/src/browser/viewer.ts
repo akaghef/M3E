@@ -12062,22 +12062,26 @@ function collectRoutingScopeTargets(): RoutingScopeTarget[] {
     return [];
   }
   const targets: RoutingScopeTarget[] = [];
-  const visit = (nodeId: string, depth: number): void => {
+  const visit = (nodeId: string, scopeDepth: number, parentScopeId: string | null): void => {
     const node = map!.state.nodes[nodeId];
     if (!node) {
       return;
     }
+    let nextScopeDepth = scopeDepth;
+    let nextParentScopeId = parentScopeId;
     if (nodeId === map!.state.rootId || isFolderNode(node)) {
       targets.push({
         id: nodeId,
         label: uiLabel(node) || nodeId,
-        parentId: node.parentId,
-        depth,
+        parentId: parentScopeId,
+        depth: scopeDepth,
       });
+      nextScopeDepth = scopeDepth + 1;
+      nextParentScopeId = nodeId;
     }
-    (node.children || []).forEach((childId) => visit(childId, depth + 1));
+    (node.children || []).forEach((childId) => visit(childId, nextScopeDepth, nextParentScopeId));
   };
-  visit(map.state.rootId, 0);
+  visit(map.state.rootId, 0, null);
   return targets;
 }
 
@@ -12098,10 +12102,30 @@ function ensureRoutingSwitcherEl(): HTMLElement {
 
 function visibleRoutingScopeTargets(): RoutingScopeTarget[] {
   const windowSize = 5;
-  const maxStart = Math.max(0, routingScopeTargets.length - windowSize);
-  let start = Math.max(0, routingScopeIndex - Math.floor(windowSize / 2));
-  start = Math.min(start, maxStart);
-  return routingScopeTargets.slice(start, start + windowSize);
+  const selectedTarget = routingScopeTargets[routingScopeIndex] || routingScopeTargets[0];
+  if (!selectedTarget || routingScopeTargets.length <= windowSize) {
+    return routingScopeTargets.slice(0, windowSize);
+  }
+  const targetById = new Map(routingScopeTargets.map((target) => [target.id, target]));
+  const visibleIds = new Set<string>();
+  const ancestorIds: string[] = [];
+  let parentId = selectedTarget.parentId;
+  while (parentId) {
+    const parent = targetById.get(parentId);
+    if (!parent) break;
+    ancestorIds.unshift(parent.id);
+    parentId = parent.parentId;
+  }
+  ancestorIds.slice(-(windowSize - 1)).forEach((id) => visibleIds.add(id));
+  visibleIds.add(selectedTarget.id);
+  for (let offset = 1; visibleIds.size < windowSize && offset < routingScopeTargets.length; offset += 1) {
+    const before = routingScopeTargets[routingScopeIndex - offset];
+    const after = routingScopeTargets[routingScopeIndex + offset];
+    if (before) visibleIds.add(before.id);
+    if (visibleIds.size >= windowSize) break;
+    if (after) visibleIds.add(after.id);
+  }
+  return routingScopeTargets.filter((target) => visibleIds.has(target.id)).slice(0, windowSize);
 }
 
 type MiniSurfaceNode = {
@@ -12113,19 +12137,36 @@ type MiniSurfaceNode = {
   disabled?: boolean;
 };
 
+function visibleAncestorId(
+  node: MiniSurfaceNode,
+  visibleNodeIds: Set<string>,
+  allNodesById: Map<string, MiniSurfaceNode>,
+): string | null {
+  let parentId = node.parentId || null;
+  while (parentId) {
+    if (visibleNodeIds.has(parentId)) {
+      return parentId;
+    }
+    parentId = allNodesById.get(parentId)?.parentId || null;
+  }
+  return null;
+}
+
 function miniSurfacePositions(nodes: MiniSurfaceNode[]): Record<string, NodePosition> {
   const minDepth = Math.min(...nodes.map((node) => node.depth), 0);
   const positions: Record<string, NodePosition> = {};
   nodes.forEach((node, index) => {
+    const fontSize = 13;
     const labelLines = splitLabelLines(node.label);
+    const labelMeasure = measureNodeLabel(node.label, fontSize);
     positions[node.id] = {
-      x: 58 + Math.max(0, node.depth - minDepth) * 230,
-      y: 72 + index * 92,
-      w: 178,
-      h: 58,
+      x: 58 + Math.max(0, node.depth - minDepth) * 220,
+      y: 58 + index * 78,
+      w: Math.max(168, Math.min(250, labelMeasure.w + 8)),
+      h: Math.max(52, labelMeasure.h + 12),
       depth: node.depth,
       labelLines,
-      fontSize: 13,
+      fontSize,
     };
   });
   return positions;
@@ -12133,6 +12174,7 @@ function miniSurfacePositions(nodes: MiniSurfaceNode[]): Record<string, NodePosi
 
 function renderMiniSurfaceSvg(options: {
   nodes: MiniSurfaceNode[];
+  allNodes?: MiniSurfaceNode[];
   className: string;
   ariaLabel: string;
   groupClass: string;
@@ -12142,22 +12184,31 @@ function renderMiniSurfaceSvg(options: {
   dataAttr: string;
 }): string {
   const positions = miniSurfacePositions(options.nodes);
+  const allNodesById = new Map((options.allNodes || options.nodes).map((node) => [node.id, node]));
+  const visibleNodeIds = new Set(options.nodes.map((node) => node.id));
   let edges = "";
   let nodeMarkup = "";
   options.nodes.forEach((node) => {
-    if (!node.parentId) {
+    const visibleParentId = visibleAncestorId(node, visibleNodeIds, allNodesById);
+    if (!visibleParentId) {
       return;
     }
-    const parentPos = positions[node.parentId];
+    const parentPos = positions[visibleParentId];
     const childPos = positions[node.id];
     if (!parentPos || !childPos) {
       return;
     }
     const edgePath = layoutEdgePath("tree", parentPos, childPos);
-    edges += `<path class="edge edge-tree ${options.edgeClass}" data-source-node-id="${escapeXml(node.parentId)}" data-target-node-id="${escapeXml(node.id)}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" d="${edgePath.d}" />`;
+    edges += `<path class="edge edge-tree ${options.edgeClass}" data-source-node-id="${escapeXml(visibleParentId)}" data-target-node-id="${escapeXml(node.id)}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" d="${edgePath.d}" />`;
   });
   options.nodes.forEach((node) => {
     const pos = positions[node.id]!;
+    const frameInsetY = 12;
+    const framePadX = 14;
+    const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h) - frameInsetY;
+    const frameX = pos.x - framePadX;
+    const frameY = pos.y - frameH / 2;
+    const frameW = pos.w + framePadX * 2;
     const visualClasses = [
       "folder-box",
       "node-visual-box",
@@ -12170,13 +12221,12 @@ function renderMiniSurfaceSvg(options: {
       options.labelClass,
       node.active ? "primary-selected selected" : "",
     ].filter(Boolean).join(" ");
-    const y = pos.y - pos.h / 2;
     const textY = multilineTextStartY(pos.y, pos.labelLines?.length || 1, pos.fontSize || 13, lineHeightForFont(pos.fontSize || 13));
-    const tspans = multilineTspans(pos.labelLines || [node.label], pos.x + 14, lineHeightForFont(pos.fontSize || 13));
+    const tspans = multilineTspans(pos.labelLines || [node.label], pos.x, lineHeightForFont(pos.fontSize || 13));
     const dataAttr = `${options.dataAttr}="${escapeXml(node.id)}" data-node-id="${escapeXml(node.id)}"`;
     nodeMarkup += `<g class="${options.groupClass}" ${dataAttr}>`;
-    nodeMarkup += `<rect class="${visualClasses}" ${dataAttr} x="${pos.x}" y="${y}" width="${pos.w}" height="${pos.h}" rx="8" />`;
-    nodeMarkup += `<text class="${labelClasses}" ${dataAttr} x="${pos.x + 14}" y="${textY}" text-anchor="start" style="font-size:${pos.fontSize}px">${tspans}</text>`;
+    nodeMarkup += `<rect class="${visualClasses}" ${dataAttr} x="${frameX}" y="${frameY}" width="${frameW}" height="${frameH}" rx="8" />`;
+    nodeMarkup += `<text class="${labelClasses}" ${dataAttr} x="${pos.x}" y="${textY}" text-anchor="start" style="font-size:${pos.fontSize}px">${tspans}</text>`;
     nodeMarkup += `</g>`;
   });
   return `<svg class="${options.className}" viewBox="0 0 720 430" role="img" aria-label="${escapeXml(options.ariaLabel)}">${edges}${nodeMarkup}</svg>`;
@@ -12187,15 +12237,17 @@ function renderRoutingScopeSurface(
   selectedNodeId: string | null,
 ): string {
   const activeScopeId = routingScopeTargets[routingScopeIndex]?.id;
+  const toMiniSurfaceNode = (target: RoutingScopeTarget): MiniSurfaceNode => ({
+    id: target.id,
+    label: target.label,
+    parentId: target.parentId,
+    depth: target.depth,
+    active: activeScopeId === target.id,
+    disabled: selectedNodeId ? !canDropUnderParent(selectedNodeId, target.id) : true,
+  });
   return renderMiniSurfaceSvg({
-    nodes: targets.map((target) => ({
-      id: target.id,
-      label: target.label,
-      parentId: target.parentId,
-      depth: target.depth,
-      active: activeScopeId === target.id,
-      disabled: selectedNodeId ? !canDropUnderParent(selectedNodeId, target.id) : true,
-    })),
+    nodes: targets.map(toMiniSurfaceNode),
+    allNodes: routingScopeTargets.map(toMiniSurfaceNode),
     className: "routing-scope-surface",
     ariaLabel: "Scope routing surface",
     groupClass: "routing-surface-scope",
