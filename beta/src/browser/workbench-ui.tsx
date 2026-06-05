@@ -140,6 +140,8 @@ type UiSnapshot = {
   scope: string;
   mapId: string;
   selected: string;
+  selectedNodeId: string;
+  selectedNodeLabel: string;
   nodes: string;
   links: string;
   annotations: string;
@@ -210,16 +212,21 @@ function parseField(text: string, label: string): string {
 }
 
 function readSnapshot(): UiSnapshot {
-  const meta = byId("meta")?.textContent || "";
+  const metaEl = byId("meta");
+  const meta = metaEl?.textContent || "";
   const modeMeta = byId("mode-meta")?.textContent || "";
   const zoom = q<SVGSVGElement>("#canvas")?.style.transform.match(/scale\(([^)]+)\)/)?.[1];
   const displayName = byId<HTMLInputElement>("collab-display-name")?.value.trim() || "Akaghef";
+  const selectedNodeId = metaEl?.dataset.selectedNodeId?.trim() || "";
+  const selectedNodeLabel = metaEl?.dataset.selectedNodeLabel?.trim() || "";
   return {
     mode: modeMeta.match(/mode:\s*([^/]+)/)?.[1]?.trim() || "Rapid",
     surface: modeMeta.match(/\/\s*(.+)$/)?.[1]?.trim() || "Tree",
-    scope: parseField(meta, "scope"),
-    mapId: meta.match(/map:\s*[^|]*\(([^)]+)\)/)?.[1]?.trim() || "local-map",
+    scope: metaEl?.dataset.scopeId?.trim() || parseField(meta, "scope"),
+    mapId: metaEl?.dataset.mapId?.trim() || meta.match(/map:\s*[^|]*\(([^)]+)\)/)?.[1]?.trim() || "local-map",
     selected: parseField(meta, "selected"),
+    selectedNodeId,
+    selectedNodeLabel,
     nodes: parseField(meta, "nodes"),
     links: parseField(meta, "links"),
     annotations: parseField(meta, "annotations"),
@@ -430,13 +437,22 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Ready");
   const [topics, setTopics] = useState<string[]>([]);
-  const selectedLabel = cleanSelectedLabel(snapshot.selected);
+  const [topicTargetNodeId, setTopicTargetNodeId] = useState("");
+  const selectedLabel = snapshot.selectedNodeLabel || cleanSelectedLabel(snapshot.selected);
+  const selectedNodeId = snapshot.selectedNodeId;
 
   const runPrompt = async (seed?: string) => {
     const instruction = (seed || prompt).trim();
+    if (!selectedNodeId) {
+      setMessage("Select a node first.");
+      setTopics([]);
+      setTopicTargetNodeId("");
+      return;
+    }
     setBusy(true);
     setMessage("Thinking...");
     setTopics([]);
+    setTopicTargetNodeId("");
     try {
       const payload = {
         mapId: snapshot.mapId,
@@ -448,6 +464,7 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
           maxTopics: 5,
         },
         clientContext: {
+          selectionNodeId: selectedNodeId,
           requestId: `wb-ai-${Date.now()}`,
         },
       };
@@ -464,6 +481,7 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
         ? body.proposal.result.topics.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 5)
         : [];
       setTopics(nextTopics);
+      setTopicTargetNodeId(selectedNodeId);
       setMessage(nextTopics.length > 0 ? `${nextTopics.length} suggestions` : "No suggestions");
     } catch (err) {
       setMessage((err as Error).message);
@@ -473,8 +491,8 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
   };
 
   const applyTopics = () => {
-    if (topics.length === 0) return;
-    window.dispatchEvent(new CustomEvent("m3e:ai-append-topics", { detail: { topics } }));
+    if (topics.length === 0 || !topicTargetNodeId) return;
+    window.dispatchEvent(new CustomEvent("m3e:ai-append-topics", { detail: { topics, targetNodeId: topicTargetNodeId } }));
     setMessage(`Applied ${topics.length}`);
   };
 
@@ -524,7 +542,7 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
       </div>
       <div className="wb-ai-foot">
         <span>{message}</span>
-        <button type="button" disabled={topics.length === 0} onClick={applyTopics}>Apply</button>
+        <button type="button" disabled={topics.length === 0 || !topicTargetNodeId} onClick={applyTopics}>Apply</button>
       </div>
     </div>
   );

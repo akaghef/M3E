@@ -1,0 +1,59 @@
+flowchart TB
+    H[Akaghef / Mission Owner] --> MB[Mission Board]
+    MB --> OPS[Rapid Operation Backlog]
+
+    subgraph AUTO[Autonomous AI Implementation Loop]
+        PL[Planner]
+        SP[Spec Writer]
+        IM[Codex Implementation Worker]
+        TV[Test and Verification Worker]
+        ER[Failure Classifier]
+        UPD[Policy / Prompt / Formatter Update]
+        PL --> SP --> IM --> TV
+        TV -->|pass| DONE[Promote Rapid Operation]
+        TV -->|fail| ER --> UPD --> PL
+    end
+
+    OPS --> PL
+
+    subgraph M3E[M3E Canonical System]
+        AS[AppState: workspace > map > scope > node]
+        REG[Rapid Operation Registry]
+        DELTA[Local Delta Engine]
+        UI[M3E UI / PN / Shortcuts]
+        REG --> DELTA --> AS
+        UI --> REG
+    end
+
+    SP --> REG
+    IM --> DELTA
+    IM --> UI
+    TV --> AS
+    TV --> UI
+
+    subgraph MAPIFY[Mapify Reference and I/O Layer]
+        MA[Mapify Rapid-equivalent action]
+        TR[Teacher Trace]
+        OUT[M3E subtree -> Markdown outline]
+        MCP[Mapify MCP: external material -> map]
+        XMI[XMind export: .xmind -> content.json]
+        IN[content.json -> candidate AppState]
+        MA --> TR
+        AS --> OUT
+        OUT --> MA
+        MCP --> MA
+        MA --> XMI --> IN
+    end
+
+    TR --> TV
+    IN --> TV
+
+    subgraph VERIFY[Verification Stack]
+        U[Unit: pure tree delta]
+        M[Model: AppState diff]
+        B[Browser: visible map delta]
+        Q[Quality: Mapify-like rubric]
+        U --> M --> B --> Q
+    end
+
+    TV --> VERIFY

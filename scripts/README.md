@@ -90,12 +90,14 @@ macOS / Linux:
 
 ## エージェント開始コマンド
 
-通常 codex（non-Copilot）で role/bootstrap を揃える場合は次を実行する。
+Windows / PowerShell 上の通常 codex（non-Copilot）で role/bootstrap を揃える場合は次を実行する。
 
 ```powershell
 pwsh -File scripts/ops/setrole.ps1 codex1
 # codex2 / claude も同様
 ```
+
+macOS / Linux 上の通常 Codex では PowerShell bootstrap を呼ばない。`pwd`、`git status --short --branch`、`git branch --show-current`、mandatory context 読み込みで session gate を通す。
 
 このコマンドは role -> worktree -> branch の整合を確認し、
 `codex1` / `codex2` の場合は `origin/dev-beta` への rebase チェックを実行する。

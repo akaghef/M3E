@@ -191,7 +191,9 @@ const MAP_META: Record<string, { label: string; slug: string }> = {
 };
 const WORKSPACE_ID = normalizeDocId(firstQueryParam(queryParams, ["ws", "workspaceId"]), DEFAULT_WORKSPACE_ID);
 const WORKSPACE_LABEL = DEFAULT_WORKSPACE_LABEL;
-const LOCAL_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["map", "localMapId"]), DEFAULT_MAP_ID);
+const REQUESTED_MAP_ID = firstQueryParam(queryParams, ["map", "localMapId"]);
+const HAS_EXPLICIT_MAP_ID = REQUESTED_MAP_ID !== null;
+const LOCAL_MAP_ID = normalizeDocId(REQUESTED_MAP_ID, DEFAULT_MAP_ID);
 const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
 const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
 const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
@@ -284,6 +286,7 @@ interface LinearNodeDraft {
 type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let map: SavedMap | null = null;
+let fatalLoadError = false;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3367,6 +3370,38 @@ function setStatus(message: string, isError = false): void {
   }
 }
 
+function showFatalLoadError(title: string, detail: string): void {
+  fatalLoadError = true;
+  document.body.classList.add("is-fatal-load-error");
+  document.title = "M3E - Error";
+  statusEl.textContent = title;
+  statusEl.style.color = "var(--danger)";
+  if (statusTimer !== null) {
+    clearTimeout(statusTimer);
+    statusTimer = null;
+  }
+  const existing = document.getElementById("fatal-load-error");
+  if (existing) existing.remove();
+  const panel = document.createElement("section");
+  panel.id = "fatal-load-error";
+  panel.className = "fatal-load-error";
+  panel.setAttribute("role", "alert");
+  const eyebrow = document.createElement("div");
+  eyebrow.className = "fatal-load-error__eyebrow";
+  eyebrow.textContent = "M3E load error";
+  const heading = document.createElement("h1");
+  heading.textContent = title;
+  const body = document.createElement("p");
+  body.textContent = detail;
+  const meta = document.createElement("code");
+  meta.textContent = `workspace=${WORKSPACE_ID} map=${LOCAL_MAP_ID}`;
+  const home = document.createElement("a");
+  home.href = `./home.html?ws=${encodeURIComponent(WORKSPACE_ID)}`;
+  home.textContent = "Open Home";
+  panel.append(eyebrow, heading, body, meta, home);
+  document.body.append(panel);
+}
+
 function clampZoom(nextZoom: number): number {
   return Math.min(VIEWER_TUNING.zoom.max, Math.max(VIEWER_TUNING.zoom.min, nextZoom));
 }
@@ -4778,7 +4813,7 @@ interface RapidMapifyOracleApplyResponse {
   savedAt?: string;
   opId: string;
   action: RapidGenerateAction;
-  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
+  source: "mapify_teacher_fixture";
   fragment: string;
   added: Array<{ id: string; parentId: string; label: string }>;
   merged: Array<{ id: string; parentId: string; label: string }>;
@@ -4997,11 +5032,14 @@ function showScopeDashboard(): void {
   setTimeout(() => setVisualCheckStatus(""), 8000);
 }
 
-function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
-  if (!map || !viewState.selectedNodeId || topics.length === 0) {
+function appendTopicSuggestionsToNode(topics: string[], targetNodeId = viewState.selectedNodeId): number {
+  if (!map || !targetNodeId || topics.length === 0) {
     return 0;
   }
-  const parent = getNode(viewState.selectedNodeId);
+  const parent = getNode(targetNodeId);
+  if (!parent) {
+    throw new Error(`Target node not found: ${targetNodeId}`);
+  }
   if (isAliasNode(parent)) {
     throw new Error("Alias nodes cannot own children.");
   }
@@ -5030,6 +5068,10 @@ function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
   parent.collapsed = false;
   touchDocument();
   return normalized.length;
+}
+
+function appendTopicSuggestionsToSelectedNode(topics: string[]): number {
+  return appendTopicSuggestionsToNode(topics, viewState.selectedNodeId);
 }
 
 async function generateRelatedTopicsForSelectedNode(): Promise<void> {
@@ -5069,7 +5111,7 @@ async function generateRapidActionForSelectedNode(
     }
     const added = result.added.length;
     const merged = result.merged.length;
-    const sourceLabel = result.source === "mapify_teacher_fixture" ? "Mapify Oracle" : "Rapid fallback";
+    const sourceLabel = "Mapify Oracle";
     if (added === 0 && merged === 0) {
       setStatus(`${sourceLabel} generated no new nodes: ${label || action}`);
       return;
@@ -5084,12 +5126,15 @@ async function generateRapidActionForSelectedNode(
 }
 
 window.addEventListener("m3e:ai-append-topics", (event: Event) => {
-  const detail = (event as CustomEvent<{ topics?: unknown[] }>).detail;
+  const detail = (event as CustomEvent<{ topics?: unknown[]; targetNodeId?: unknown }>).detail;
   const topics = Array.isArray(detail?.topics)
     ? detail.topics.map((topic) => String(topic || "").trim()).filter(Boolean)
     : [];
+  const targetNodeId = typeof detail?.targetNodeId === "string" && detail.targetNodeId.trim().length > 0
+    ? detail.targetNodeId.trim()
+    : viewState.selectedNodeId;
   try {
-    const added = appendTopicSuggestionsToSelectedNode(topics);
+    const added = appendTopicSuggestionsToNode(topics, targetNodeId);
     if (added === 0) {
       setStatus("No new AI topics to apply.");
       return;
@@ -7173,6 +7218,10 @@ function render(): void {
     dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
   }
   syncThinkingModeUi();
+  metaEl.dataset.selectedNodeId = selected?.id || "";
+  metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
+  metaEl.dataset.scopeId = normalizedCurrentScopeId();
+  metaEl.dataset.mapId = LOCAL_MAP_ID;
   metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
   updateScopeMeta();
   updateScopeSummary();
@@ -11107,19 +11156,36 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
   }
 }
 
-async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
+type LocalMapLoadResult =
+  | { ok: true; payload: unknown }
+  | { ok: false; reason: "not-found" | "failed"; message: string };
+
+async function fetchLocalMapPayload(): Promise<LocalMapLoadResult> {
   try {
     const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
     if (response.status === 404) {
-      return false;
+      return { ok: false, reason: "not-found", message: `Map not found: ${LOCAL_MAP_ID}` };
     }
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
+      return { ok: false, reason: "failed", message: String(errorPayload.error || `HTTP ${response.status}`) };
     }
+    return { ok: true, payload: await response.json() };
+  } catch (err) {
+    return { ok: false, reason: "failed", message: (err as Error).message };
+  }
+}
 
-    const payload = await response.json();
-    loadPayload(payload);
+async function loadDocFromLocalDb(showStatus = false): Promise<boolean> {
+  const result = await fetchLocalMapPayload();
+  if (!result.ok) {
+    if (showStatus) {
+      setStatus(`Local load failed (${result.message}).`, true);
+    }
+    return false;
+  }
+  try {
+    loadPayload(result.payload);
     if (showStatus) {
       setStatus("Loaded local map.");
     }
@@ -11481,8 +11547,9 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
-  const loadedFromDb = await loadDocFromLocalDb(false);
-  if (loadedFromDb) {
+  const localResult = await fetchLocalMapPayload();
+  if (localResult.ok) {
+    loadPayload(localResult.payload);
     void fetchLinearTransformStatus();
     void fetchCloudSyncStatus().then(async () => {
       if (cloudSyncEnabled && cloudSyncExists) {
@@ -11494,6 +11561,10 @@ async function initializeDocument(): Promise<void> {
     });
     return;
   }
+  if (HAS_EXPLICIT_MAP_ID && localResult.reason === "failed") {
+    showFatalLoadError("Map load failed", localResult.message);
+    return;
+  }
 
   void fetchLinearTransformStatus();
   await fetchCloudSyncStatus();
@@ -11503,6 +11574,10 @@ async function initializeDocument(): Promise<void> {
       await loadLinearNotesFromLocalDbFallback();
       return;
     }
+  }
+  if (HAS_EXPLICIT_MAP_ID) {
+    showFatalLoadError("Map not found", `The requested map could not be loaded. M3E will not show a sample map in place of an explicit map URL.`);
+    return;
   }
 
   try {
@@ -14169,6 +14244,9 @@ syncAccessModeUi();
 updateCloudSyncUi();
 
 void initializeDocument().then(() => {
+  if (fatalLoadError || !map) {
+    return;
+  }
   initBroadcastSync();
   initVisibilityManagedLiveStreams();
   void fetchVaultWatchStatus().then(() => {

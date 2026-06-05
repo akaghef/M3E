@@ -1,0 +1,50 @@
+{
+  "opId": "RF1.expandSelectedNode",
+  "selectedNodeId": "n_animals",
+  "source": "m3e_live_rapid_mapify_oracle",
+  "actions": [
+    {
+      "type": "appendChildren",
+      "parentId": "n_animals",
+      "nodes": [
+        {
+          "id": "n_1780587115694_z0vsp4",
+          "text": "爬虫類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "liveRank": 1
+          }
+        },
+        {
+          "id": "n_1780587115694_isqdpi",
+          "text": "両生類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "liveRank": 2
+          }
+        },
+        {
+          "id": "n_1780587115694_egipb1",
+          "text": "無脊椎動物",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "liveRank": 3
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "route": "/api/maps/BIO-RF1-ANIMALS-EXPAND-001-live/rapid/mapify-oracle",
+    "source": "mapify_teacher_fixture",
+    "teacherLabels": [
+      "爬虫類",
+      "両生類",
+      "無脊椎動物"
+    ],
+    "teacherProximity": 1
+  }
+}

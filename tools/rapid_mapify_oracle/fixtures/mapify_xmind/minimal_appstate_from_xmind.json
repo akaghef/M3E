@@ -1,0 +1,98 @@
+{
+  "rootId": "xmind_x_root",
+  "scopeId": "scope_from_xmind",
+  "nodes": {
+    "xmind_x_root": {
+      "id": "xmind_x_root",
+      "text": "生物の分類1",
+      "parentId": null,
+      "children": [
+        "xmind_x_animals",
+        "xmind_x_plants",
+        "xmind_x_fungi"
+      ],
+      "attributes": {
+        "xmind:id": "x_root",
+        "xmind:class": "topic",
+        "m3e:layout": null,
+        "collapsed": false
+      }
+    },
+    "xmind_x_animals": {
+      "id": "xmind_x_animals",
+      "text": "動物",
+      "parentId": "xmind_x_root",
+      "children": [
+        "xmind_x_mammals",
+        "xmind_x_birds",
+        "xmind_x_fish"
+      ],
+      "attributes": {
+        "xmind:id": "x_animals",
+        "xmind:class": "topic",
+        "m3e:layout": null,
+        "collapsed": false
+      }
+    },
+    "xmind_x_mammals": {
+      "id": "xmind_x_mammals",
+      "text": "哺乳類",
+      "parentId": "xmind_x_animals",
+      "children": [],
+      "attributes": {
+        "xmind:id": "x_mammals",
+        "xmind:class": "topic",
+        "m3e:layout": null,
+        "collapsed": false
+      }
+    },
+    "xmind_x_birds": {
+      "id": "xmind_x_birds",
+      "text": "鳥類",
+      "parentId": "xmind_x_animals",
+      "children": [],
+      "attributes": {
+        "xmind:id": "x_birds",
+        "xmind:class": "topic",
+        "m3e:layout": null,
+        "collapsed": false
+      }
+    },
+    "xmind_x_fish": {
+      "id": "xmind_x_fish",
+      "text": "魚類",
+      "parentId": "xmind_x_animals",
+      "children": [],
+      "attributes": {
+        "xmind:id": "x_fish",
+        "xmind:class": "topic",
+        "m3e:layout": null,
+        "collapsed": false
+      }
+    },
+    "xmind_x_plants": {
+      "id": "xmind_x_plants",
+      "text": "植物",
+      "parentId": "xmind_x_root",
+      "children": [],
+      "attributes": {
+        "xmind:id": "x_plants",
+        "xmind:class": "topic",
+        "m3e:layout": null,
+        "collapsed": false
+      }
+    },
+    "xmind_x_fungi": {
+      "id": "xmind_x_fungi",
+      "text": "菌類",
+      "parentId": "xmind_x_root",
+      "children": [],
+      "attributes": {
+        "xmind:id": "x_fungi",
+        "xmind:class": "topic",
+        "m3e:layout": null,
+        "collapsed": false
+      }
+    }
+  }
+}

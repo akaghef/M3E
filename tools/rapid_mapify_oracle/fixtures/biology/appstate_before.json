@@ -1,0 +1,225 @@
+{
+  "rootId": "n_root",
+  "scopeId": "scope_biology_classification",
+  "nodes": {
+    "n_root": {
+      "id": "n_root",
+      "text": "生物の分類1",
+      "parentId": null,
+      "children": [
+        "n_animals",
+        "n_plants",
+        "n_fungi"
+      ],
+      "attributes": {
+        "semanticRole": "root"
+      }
+    },
+    "n_animals": {
+      "id": "n_animals",
+      "text": "動物",
+      "parentId": "n_root",
+      "children": [
+        "n_mammals",
+        "n_birds",
+        "n_fish"
+      ],
+      "attributes": {
+        "semanticRole": "kingdom_like"
+      }
+    },
+    "n_mammals": {
+      "id": "n_mammals",
+      "text": "哺乳類",
+      "parentId": "n_animals",
+      "children": [
+        "n_human",
+        "n_dog",
+        "n_whale"
+      ],
+      "attributes": {
+        "semanticRole": "class"
+      }
+    },
+    "n_human": {
+      "id": "n_human",
+      "text": "ヒト",
+      "parentId": "n_mammals",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_dog": {
+      "id": "n_dog",
+      "text": "イヌ",
+      "parentId": "n_mammals",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_whale": {
+      "id": "n_whale",
+      "text": "クジラ",
+      "parentId": "n_mammals",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_birds": {
+      "id": "n_birds",
+      "text": "鳥類",
+      "parentId": "n_animals",
+      "children": [
+        "n_sparrow",
+        "n_penguin"
+      ],
+      "attributes": {
+        "semanticRole": "class"
+      }
+    },
+    "n_sparrow": {
+      "id": "n_sparrow",
+      "text": "スズメ",
+      "parentId": "n_birds",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_penguin": {
+      "id": "n_penguin",
+      "text": "ペンギン",
+      "parentId": "n_birds",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_fish": {
+      "id": "n_fish",
+      "text": "魚類",
+      "parentId": "n_animals",
+      "children": [
+        "n_salmon",
+        "n_tuna"
+      ],
+      "attributes": {
+        "semanticRole": "class"
+      }
+    },
+    "n_salmon": {
+      "id": "n_salmon",
+      "text": "サケ",
+      "parentId": "n_fish",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_tuna": {
+      "id": "n_tuna",
+      "text": "マグロ",
+      "parentId": "n_fish",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_plants": {
+      "id": "n_plants",
+      "text": "植物",
+      "parentId": "n_root",
+      "children": [
+        "n_angio",
+        "n_gymno",
+        "n_fern",
+        "n_yeast_bad"
+      ],
+      "attributes": {
+        "semanticRole": "kingdom_like"
+      }
+    },
+    "n_angio": {
+      "id": "n_angio",
+      "text": "被子植物",
+      "parentId": "n_plants",
+      "children": [
+        "n_cherry",
+        "n_rice"
+      ],
+      "attributes": {
+        "semanticRole": "class"
+      }
+    },
+    "n_cherry": {
+      "id": "n_cherry",
+      "text": "サクラ",
+      "parentId": "n_angio",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_rice": {
+      "id": "n_rice",
+      "text": "イネ",
+      "parentId": "n_angio",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_gymno": {
+      "id": "n_gymno",
+      "text": "裸子植物",
+      "parentId": "n_plants",
+      "children": [
+        "n_cedar"
+      ],
+      "attributes": {
+        "semanticRole": "class"
+      }
+    },
+    "n_cedar": {
+      "id": "n_cedar",
+      "text": "スギ",
+      "parentId": "n_gymno",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example"
+      }
+    },
+    "n_fern": {
+      "id": "n_fern",
+      "text": "シイタケ",
+      "parentId": "n_plants",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example",
+        "note": "intentionally messy source-map item"
+      }
+    },
+    "n_yeast_bad": {
+      "id": "n_yeast_bad",
+      "text": "酵母",
+      "parentId": "n_plants",
+      "children": [],
+      "attributes": {
+        "semanticRole": "example",
+        "note": "intentionally messy source-map item"
+      }
+    },
+    "n_fungi": {
+      "id": "n_fungi",
+      "text": "菌類",
+      "parentId": "n_root",
+      "children": [],
+      "attributes": {
+        "semanticRole": "kingdom_like"
+      }
+    }
+  }
+}

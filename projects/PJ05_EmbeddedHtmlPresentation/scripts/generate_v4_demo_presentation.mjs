@@ -14,7 +14,12 @@ const artifactPath = path.join(projectRoot, "artifacts", "260514_v4_embedded_pre
 const spec = JSON.parse(fs.readFileSync(specPath, "utf8"));
 const summary = fs.existsSync(summaryPath)
   ? JSON.parse(fs.readFileSync(summaryPath, "utf8"))
-  : { mapId: "map_team_swingby_v4_slice_260502", finalChecks: {}, links: {} };
+  : {
+      mapId: "map_team_swingby_v4_slice_260502",
+      finalChecks: { nodeCount: 9 },
+      conflict: { staleStatus: 409 },
+      links: {},
+    };
 const nodeWidth = 148;
 const nodeHalfWidth = nodeWidth / 2;
 
@@ -306,15 +311,20 @@ const html = `<!doctype html>
       gap: 8px;
     }
     .controls button {
-      height: 32px;
-      padding: 0 10px;
+      width: 36px;
+      height: 34px;
+      padding: 0;
       border: 1px solid rgba(146, 162, 183, .2);
       background: rgba(17, 22, 32, .9);
       color: var(--text);
       border-radius: 6px;
-      font-weight: 800;
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 1;
       cursor: pointer;
     }
+    .controls button:hover { border-color: rgba(245, 191, 34, .42); }
+    .controls button:active { background: rgba(245, 191, 34, .18); }
     .meta {
       color: var(--muted);
       font-size: 11px;
@@ -364,9 +374,11 @@ const html = `<!doctype html>
           <div class="progress-row"><span>Flow</span><div class="bar"><div class="fill" id="flow-fill"></div></div><span id="flow-count"></span></div>
           <div class="progress-row"><span>Step</span><div class="bar"><div class="fill" id="step-fill"></div></div><span id="step-count"></span></div>
           <div class="controls">
-            <button id="prev">Prev</button>
-            <button id="next">Next</button>
-            <button id="play">Play</button>
+            <button id="prev-flow" title="Previous flow" aria-label="Previous flow">&lt;&lt;</button>
+            <button id="prev-step" title="Previous step" aria-label="Previous step">&lt;</button>
+            <button id="play" title="Play" aria-label="Play">▶</button>
+            <button id="next-step" title="Next step" aria-label="Next step">&gt;</button>
+            <button id="next-flow" title="Next flow" aria-label="Next flow">&gt;&gt;</button>
           </div>
           <div class="meta">mapId: <code>${escapeHtml(summary.mapId ?? "")}</code><br>final checks: nodes=<code>${escapeHtml(summary.finalChecks?.nodeCount ?? "?")}</code>, conflict=<code>${escapeHtml(summary.conflict?.staleStatus ?? "409")}</code></div>
         </section>
@@ -535,7 +547,7 @@ const html = `<!doctype html>
       stepCount.textContent = \`\${stepIndex + 1}/\${flow.steps.length}\`;
     }
 
-    function next() {
+    function advanceTimeline() {
       const flow = spec.flows[flowIndex];
       if (stepIndex < flow.steps.length - 1) stepIndex += 1;
       else {
@@ -545,31 +557,57 @@ const html = `<!doctype html>
       render();
     }
 
-    function prev() {
-      if (stepIndex > 0) stepIndex -= 1;
+    function nextStep() {
+      const flow = spec.flows[flowIndex];
+      if (stepIndex < flow.steps.length - 1) stepIndex += 1;
       else {
-        flowIndex = (flowIndex + spec.flows.length - 1) % spec.flows.length;
-        stepIndex = spec.flows[flowIndex].steps.length - 1;
+        flowIndex = (flowIndex + 1) % spec.flows.length;
+        stepIndex = 0;
       }
+      render();
+    }
+
+    function prevStep() {
+      if (stepIndex > 0) stepIndex -= 1;
+      render();
+    }
+
+    function nextFlow() {
+      flowIndex = (flowIndex + 1) % spec.flows.length;
+      stepIndex = 0;
+      render();
+    }
+
+    function prevFlow() {
+      flowIndex = (flowIndex + spec.flows.length - 1) % spec.flows.length;
+      stepIndex = 0;
       render();
     }
 
     function stop() {
       if (timer) clearInterval(timer);
       timer = null;
-      document.getElementById("play").textContent = "Play";
+      document.getElementById("play").textContent = "▶";
+      document.getElementById("play").setAttribute("aria-label", "Play");
+      document.getElementById("play").setAttribute("title", "Play");
     }
 
-    document.getElementById("next").addEventListener("click", () => { stop(); next(); });
-    document.getElementById("prev").addEventListener("click", () => { stop(); prev(); });
+    document.getElementById("next-step").addEventListener("click", () => { stop(); nextStep(); });
+    document.getElementById("prev-step").addEventListener("click", () => { stop(); prevStep(); });
+    document.getElementById("next-flow").addEventListener("click", () => { stop(); nextFlow(); });
+    document.getElementById("prev-flow").addEventListener("click", () => { stop(); prevFlow(); });
     document.getElementById("play").addEventListener("click", () => {
       if (timer) return stop();
-      timer = setInterval(next, 2300);
-      document.getElementById("play").textContent = "Pause";
+      timer = setInterval(advanceTimeline, 2300);
+      document.getElementById("play").textContent = "Ⅱ";
+      document.getElementById("play").setAttribute("aria-label", "Pause");
+      document.getElementById("play").setAttribute("title", "Pause");
     });
     window.addEventListener("keydown", (event) => {
-      if (event.key === "ArrowRight") { stop(); next(); }
-      if (event.key === "ArrowLeft") { stop(); prev(); }
+      if (event.key === "ArrowRight") { stop(); nextStep(); }
+      if (event.key === "ArrowLeft") { stop(); prevStep(); }
+      if (event.key === "PageDown") { stop(); nextFlow(); }
+      if (event.key === "PageUp") { stop(); prevFlow(); }
       if (event.key === "Escape") stop();
     });
 

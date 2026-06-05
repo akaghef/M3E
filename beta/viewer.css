@@ -3356,6 +3356,77 @@
         white-space: nowrap;
       }
 
+      .fatal-load-error {
+        position: fixed;
+        top: 92px;
+        left: 50%;
+        z-index: 2000;
+        width: min(680px, calc(100vw - 40px));
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 22px;
+        border: 1px solid rgba(191, 47, 36, 0.34);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+      }
+
+      body.is-fatal-load-error #canvas > * {
+        display: none;
+      }
+
+      body.is-fatal-load-error .workspace,
+      body.is-fatal-load-error #workbench-root {
+        visibility: hidden;
+      }
+
+      .fatal-load-error__eyebrow {
+        color: var(--danger);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .fatal-load-error h1 {
+        margin: 0;
+        color: var(--ink);
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      .fatal-load-error p {
+        margin: 0;
+        color: #555;
+        line-height: 1.5;
+      }
+
+      .fatal-load-error code {
+        display: block;
+        padding: 10px;
+        border-radius: 6px;
+        background: #f7f8fa;
+        color: #444;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .fatal-load-error a {
+        align-self: flex-start;
+        padding: 7px 12px;
+        border: 1px solid var(--accent);
+        border-radius: 7px;
+        color: var(--accent);
+        background: #fff;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .fatal-load-error a:hover {
+        background: var(--accent-soft);
+      }
+
       @media (max-width: 700px) {
         .artifacts-header {
           align-items: flex-start;

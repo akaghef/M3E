@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "dryRun": true,
+  "mapId": "codex-pn-verify-5",
+  "parentNodeId": "n_1780583736973_psz3ep",
+  "added": [
+    {
+      "id": "n_1780586606060_9f01m9",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "体のつくり"
+    },
+    {
+      "id": "n_1780586606060_788bxo",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "生活史"
+    },
+    {
+      "id": "n_1780586606060_00bwlh",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "生息環境"
+    },
+    {
+      "id": "n_1780586606060_jdymhd",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "食性"
+    },
+    {
+      "id": "n_1780586606060_zl0r6s",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "天敵"
+    }
+  ],
+  "merged": []
+}

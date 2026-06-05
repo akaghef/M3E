@@ -1,0 +1,88 @@
+M3E
+Tree / Balanced / Right
+off
+AK
+Present
+Share
+Board
+file and board output
+View
+surface navigation
+Scatter
+scatter editing tools
+Mindmap
+node and scope actions
+Annotation
+drawing tools
+Panel
+settings and help
+Inspector
+Rapid / Tree / Balanced / Right
+SELECTED NODE
+動物
+scope n_root
+21 nodes
+0 links
+0 marks
+MINDMAP
+Add child
+Toggle scope
+Enter scope
+Exit scope
+ANNOTATION
+Select mode
+COLLABORATION
+AK
+AkaghefCollab: off
+46%
+Collaboration is not enabled on this server.
+M3E
+☰
+Flash
+Rapid
+Deep
+Tree
+Mind Map
+Logic
+Timeline
+System
+Scatter
+Pen
+Import ▾
+Share
+Export ▾
+Live ▾
+V4
+Select
+Pen
+Highlighter
+17
+Date
+Eraser
+Width
+EDIT
+生物の分類1
+動物
+哺乳類
+ヒト
+イヌ
+クジラ
+鳥類
+スズメ
+ペンギン
+魚類
+サケ
+マグロ
+植物
+被子植物
+サクラ
+イネ
+裸子植物
+スギ
+シイタケ
+酵母
+菌類
+☰
+A-
+A+
+Reset

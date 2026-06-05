@@ -3,7 +3,7 @@ name: mindmap-notation
 description: Normalize official M3E human-facing map notation, including > and >> paths, legacy Map:Root compatibility, MF-* and WMF-* style references, and node operation shorthand.
 ---
 
-<!-- generated from agent_instructions/skills_canonical/mindmap-notation\SKILL.md; do not edit mirror directly -->
+<!-- generated from agent_instructions/skills_canonical/mindmap-notation/SKILL.md; do not edit mirror directly -->
 
 # Mindmap Notation Skill
 
@@ -35,6 +35,23 @@ description: Normalize official M3E human-facing map notation, including > and >
 ## MF / WMF handling
 
 When MF-* / WMF-* labels are used, preserve them as stable human-facing identifiers unless the task explicitly asks to renumber or rename. Do not infer structural ownership from identifier prefixes alone; resolve actual map path/scope first.
+
+### MF-H
+
+`MF-H` is the M3E human-facing name for a Markdown heading tree fragment.
+Use it when `#` heading depth is intentionally used as tree depth.
+
+Relative MF-H fragment semantics:
+
+```md
+# Child
+## Grandchild
+```
+
+- `#` means direct child of the resolved active node or target parent.
+- `##` means child of the preceding `#` node.
+- Deeper headings continue the same relative tree rule.
+- The active node itself is not repeated unless the request explicitly asks for a full subtree.
 
 MF / WMF / Mermaid are interchange, render, or request formats. They are not
 M3E storage. Resolve the canonical M3E target before interpreting them as a

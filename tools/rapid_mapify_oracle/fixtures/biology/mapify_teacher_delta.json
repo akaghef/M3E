@@ -1,0 +1,53 @@
+{
+  "opId": "RF1.expandSelectedNode",
+  "selectedNodeId": "n_animals",
+  "source": "mapify_teacher_fixture",
+  "actions": [
+    {
+      "type": "appendChildren",
+      "parentId": "n_animals",
+      "nodes": [
+        {
+          "id": "t_reptiles",
+          "text": "爬虫類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "teacherRank": 1
+          }
+        },
+        {
+          "id": "t_amphibians",
+          "text": "両生類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "teacherRank": 2
+          }
+        },
+        {
+          "id": "t_invertebrates",
+          "text": "無脊椎動物",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "teacherRank": 3
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "teacherAssumption": "Mapify action is provisional correct teacher signal.",
+    "operationFlow": [
+      "select 動物",
+      "invoke Rapid expand",
+      "append missing animal classes under 動物"
+    ],
+    "formatTraits": [
+      "short noun labels",
+      "same-level classes",
+      "no examples mixed at class level"
+    ]
+  }
+}

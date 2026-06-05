@@ -1,4 +1,4 @@
-<!-- generated from agent_instructions/skills_canonical/m3e-map\references\read.md; do not edit mirror directly -->
+<!-- generated from agent_instructions/skills_canonical/m3e-map/references/read.md; do not edit mirror directly -->
 
 # Reading the M3E Map
 

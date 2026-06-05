@@ -1,0 +1,28 @@
+{
+  "traceId": "teacher_biology_animals_expand_v0",
+  "tool": "Mapify-like fixture",
+  "selectedNodeText": "動物",
+  "operation": "expand selected classification node",
+  "observedAction": {
+    "beforeSiblings": [
+      "哺乳類",
+      "鳥類",
+      "魚類"
+    ],
+    "afterSiblings": [
+      "哺乳類",
+      "鳥類",
+      "魚類",
+      "爬虫類",
+      "両生類",
+      "無脊椎動物"
+    ],
+    "deltaLabels": [
+      "爬虫類",
+      "両生類",
+      "無脊椎動物"
+    ],
+    "locality": "under selected node only",
+    "style": "short noun labels; taxonomic class level"
+  }
+}

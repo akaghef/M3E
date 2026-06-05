@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M3E - Artifacts</title>
+    <link rel="stylesheet" href="./viewer.css" />
+  </head>
+  <body class="artifacts-page">
+    <header class="home-top">
+      <div class="home-top-inner">
+        <a class="home-logo" aria-label="M3E home" href="./home.html">M3E</a>
+        <nav class="artifacts-nav" aria-label="Artifact navigation">
+          <a href="./home.html">Home</a>
+          <a href="./artifacts.html" aria-current="page">Artifacts</a>
+        </nav>
+        <div class="home-top-spacer"></div>
+      </div>
+    </header>
+
+    <main class="artifacts-main">
+      <section class="artifacts-header" aria-labelledby="artifacts-title">
+        <div>
+          <h1 id="artifacts-title">Artifacts</h1>
+          <p id="artifacts-summary">Loading artifacts...</p>
+        </div>
+        <a class="artifacts-primary-link" href="./home.html">Open maps</a>
+      </section>
+
+      <section class="artifacts-controls" aria-label="Artifact filters">
+        <input
+          id="artifacts-search"
+          class="artifacts-search"
+          type="search"
+          placeholder="Search artifacts, projects, paths..."
+          spellcheck="false"
+          aria-label="Search artifacts"
+        />
+        <select id="artifacts-kind" class="artifacts-kind" aria-label="Filter by file type">
+          <option value="">All types</option>
+        </select>
+      </section>
+
+      <section class="artifacts-list" id="artifacts-list" aria-label="Artifact list"></section>
+      <div class="home-empty" id="artifacts-empty" hidden>No artifacts found.</div>
+    </main>
+
+    <div class="home-status" id="artifacts-status" role="status" aria-live="polite"></div>
+
+    <script src="./dist/browser/artifacts.js"></script>
+  </body>
+</html>

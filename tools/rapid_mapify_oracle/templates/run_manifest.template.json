@@ -1,0 +1,19 @@
+{
+  "runId": "YYYYMMDD_HHMMSS_RF1_expandSelectedNode",
+  "opId": "RF1.expandSelectedNode",
+  "caseId": "BIO-RF1-ANIMALS-EXPAND-001",
+  "selectedNodeId": "n_animals",
+  "m3eRepo": "/Users/nisimoriyuuya/dev/M3E",
+  "branch": "dev-beta",
+  "allowedFiles": [],
+  "commandsRun": [],
+  "artifacts": {
+    "beforeAppState": "",
+    "afterAppState": "",
+    "delta": "",
+    "browserTrace": "",
+    "gradeReport": ""
+  },
+  "result": "pass|fail|blocked",
+  "failureIds": []
+}

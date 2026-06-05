@@ -8,6 +8,7 @@ import { spawnSync, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
+import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { parseMdContent } from "./md_reader";
 import type { CloudSyncTransport } from "../shared/types";
 import { parseMapPath, resolveNodePath } from "../shared/path_resolve";
@@ -97,6 +98,7 @@ import type {
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
+const REPO_ROOT = path.resolve(ROOT, "..");
 const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "home.html";
 const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
@@ -117,6 +119,23 @@ const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || DEFAULT_MAP_ID;
 const ACTIVE_MAP_LABEL = process.env.M3E_MAP_LABEL || DEFAULT_MAP_LABEL;
 const ACTIVE_MAP_SLUG = process.env.M3E_MAP_SLUG || DEFAULT_MAP_SLUG;
 const COLLAB_JOIN_TOKEN = (process.env.M3E_COLLAB_JOIN_TOKEN || "").trim();
+const ARTIFACT_SCAN_ROOTS = [
+  path.join(REPO_ROOT, "projects"),
+  path.join(REPO_ROOT, "docs", "for-akaghef"),
+];
+const ARTIFACT_EXTENSIONS = new Set([".html", ".htm", ".md", ".json", ".png", ".jpg", ".jpeg", ".svg", ".pdf", ".pptx"]);
+const ARTIFACT_IGNORE_DIRS = new Set([".git", ".cache", ".next", "node_modules", "dist", "data", "backups", "tmp"]);
+
+interface ArtifactItem {
+  id: string;
+  title: string;
+  project: string;
+  kind: string;
+  href: string;
+  path: string;
+  sizeBytes: number;
+  modifiedAt: string;
+}
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
 console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
@@ -126,6 +145,7 @@ console.log(`[M3E] MAP = ${ACTIVE_MAP_LABEL} (${ACTIVE_MAP_ID}, slug=${ACTIVE_MA
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 const cloudSyncConfig = loadCloudSyncConfig();
 const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
+const SYNC_STATUS_TIMEOUT_MS = Number(process.env.M3E_SYNC_STATUS_TIMEOUT_MS || "1500");
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
 
@@ -187,6 +207,7 @@ interface MapWatchClient {
 }
 
 const mapWatchClients: MapWatchClient[] = [];
+const MAX_MAP_WATCH_CLIENTS = Number(process.env.M3E_MAX_MAP_WATCH_CLIENTS || "4");
 
 interface VaultWatchClient {
   mapId: string | null;
@@ -194,6 +215,33 @@ interface VaultWatchClient {
 }
 
 const vaultWatchClients: VaultWatchClient[] = [];
+const MAX_VAULT_WATCH_CLIENTS = Number(process.env.M3E_MAX_VAULT_WATCH_CLIENTS || "2");
+const SSE_RETRY_MS = Number(process.env.M3E_SSE_RETRY_MS || "60000");
+
+interface AgentActiveNodeState {
+  workspaceId: string;
+  mapId: string;
+  agentId: string;
+  nodeId: string;
+  updatedAt: string;
+}
+
+const agentActiveNodes = new Map<string, AgentActiveNodeState>();
+
+function agentActiveNodeKey(workspaceId: string, mapId: string, agentId: string): string {
+  return `${workspaceId}:${mapId}:${agentId}`;
+}
+
+function pruneSseClients<T extends { res: http.ServerResponse }>(clients: T[], maxClients: number): void {
+  while (clients.length > maxClients) {
+    const client = clients.shift();
+    try {
+      client?.res.end();
+    } catch {
+      // ignore stale SSE close failures
+    }
+  }
+}
 
 function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
   res.writeHead(200, {
@@ -201,8 +249,9 @@ function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
-  res.write(": connected\n\n");
+  res.write(`retry: ${SSE_RETRY_MS}\n: connected\n\n`);
   mapWatchClients.push({ mapId, res });
+  pruneSseClients(mapWatchClients, MAX_MAP_WATCH_CLIENTS);
   res.on("close", () => {
     const idx = mapWatchClients.findIndex((c) => c.res === res);
     if (idx !== -1) mapWatchClients.splice(idx, 1);
@@ -323,6 +372,170 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
+}
+
+function isArtifactApiRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/artifacts";
+}
+
+function parseArtifactFileRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (!pathname.startsWith("/artifact-files/")) return null;
+  return decodeURIComponent(pathname.slice("/artifact-files/".length));
+}
+
+function firstReadableTitle(filePath: string, ext: string): string | null {
+  if (ext !== ".html" && ext !== ".htm" && ext !== ".md") {
+    return null;
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf8").slice(0, 12000);
+    if (ext === ".md") {
+      return raw.match(/^#\s+(.+)$/m)?.[1]?.trim() || null;
+    }
+    const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+    if (title) return title.replace(/\s+/g, " ");
+    const h1 = raw.match(/<h1[^>]*>(.*?)<\/h1>/is)?.[1]?.replace(/<[^>]+>/g, "").trim();
+    return h1 ? h1.replace(/\s+/g, " ") : null;
+  } catch {
+    return null;
+  }
+}
+
+function artifactProjectLabel(relPath: string): string {
+  const parts = relPath.split("/");
+  if (parts[0] === "projects" && parts[1]) return parts[1];
+  if (parts[0] === "docs" && parts[1]) return parts.slice(0, 2).join("/");
+  return parts[0] || "root";
+}
+
+function isArtifactCandidate(relPath: string, ext: string): boolean {
+  if (!ARTIFACT_EXTENSIONS.has(ext)) return false;
+  const normalized = relPath.replace(/\\/g, "/");
+  if (normalized.includes("/artifacts/")) return true;
+  if (normalized.includes("/mindmap_gallery/") && (ext === ".html" || ext === ".svg" || ext === ".png")) return true;
+  if (normalized.startsWith("docs/for-akaghef/")) return ext === ".html" || ext === ".pdf" || ext === ".pptx";
+  return ext === ".html" && normalized.startsWith("projects/");
+}
+
+function collectArtifactsFrom(root: string, out: ArtifactItem[]): void {
+  if (!fs.existsSync(root)) return;
+  const stack = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (!dir) continue;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!ARTIFACT_IGNORE_DIRS.has(entry.name)) stack.push(abs);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      const relPath = path.relative(REPO_ROOT, abs).replace(/\\/g, "/");
+      if (!isArtifactCandidate(relPath, ext)) continue;
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(abs);
+      } catch {
+        continue;
+      }
+      const title = firstReadableTitle(abs, ext) || path.basename(entry.name, ext).replace(/[_-]+/g, " ");
+      out.push({
+        id: relPath,
+        title,
+        project: artifactProjectLabel(relPath),
+        kind: ext.replace(/^\./, "") || "file",
+        href: `/artifact-files/${relPath.split("/").map(encodeURIComponent).join("/")}`,
+        path: relPath,
+        sizeBytes: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+      });
+    }
+  }
+}
+
+function collectArtifactIndex(): ArtifactItem[] {
+  const artifacts: ArtifactItem[] = [];
+  for (const root of ARTIFACT_SCAN_ROOTS) {
+    collectArtifactsFrom(root, artifacts);
+  }
+  artifacts.sort((a, b) => {
+    const tb = Date.parse(b.modifiedAt) || 0;
+    const ta = Date.parse(a.modifiedAt) || 0;
+    return tb - ta || a.path.localeCompare(b.path);
+  });
+  return artifacts;
+}
+
+function resolveArtifactFile(urlPath: string): string | null {
+  const rel = parseArtifactFileRoute(urlPath);
+  if (!rel) return null;
+  const normalized = rel.replace(/\\/g, "/").replace(/^\/+/, "");
+  const abs = path.resolve(REPO_ROOT, normalized);
+  const relative = path.relative(REPO_ROOT, abs);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  const ext = path.extname(abs).toLowerCase();
+  if (!isArtifactCandidate(relative.replace(/\\/g, "/"), ext)) return null;
+  return abs;
+}
+
+function handleArtifactsApi(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  if (!isArtifactApiRoute(req.url ?? "/")) return false;
+  if (req.method !== "GET") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return true;
+  }
+  sendJson(res, 200, {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    roots: ARTIFACT_SCAN_ROOTS.map((root) => path.relative(REPO_ROOT, root).replace(/\\/g, "/")),
+    artifacts: collectArtifactIndex(),
+  });
+  return true;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => T): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(onTimeout()), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+function redirectLoopbackHost(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD") {
+    return false;
+  }
+  const host = String(req.headers.host || "");
+  if (!host.startsWith("127.0.0.1:")) {
+    return false;
+  }
+  const url = new URL(req.url ?? "/", `http://${host}`);
+  if (url.pathname.startsWith("/api/")) {
+    return false;
+  }
+  url.hostname = "localhost";
+  res.statusCode = 302;
+  res.setHeader("Location", url.toString());
+  res.end();
+  return true;
 }
 
 function writeSystemClipboard(text: string): { ok: true; method: string } | { ok: false; error: string } {
@@ -548,6 +761,28 @@ type HomeRouteAction =
   | { kind: "bind-vault"; mapId: string }
   | { kind: "unbind-vault"; mapId: string }
   | { kind: "delete"; mapId: string };
+
+type AgentMapRoute =
+  | { kind: "agent-active-node"; mapId: string }
+  | { kind: "append-mf-h"; mapId: string }
+  | { kind: "rapid-mapify-oracle"; mapId: string };
+
+function parseAgentMapRoute(urlPath: string): AgentMapRoute | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const activeMatch = pathname.match(/^\/api\/maps\/([^/]+)\/agent\/active-node$/);
+  if (activeMatch) {
+    return { kind: "agent-active-node", mapId: decodeURIComponent(activeMatch[1]!) };
+  }
+  const appendMatch = pathname.match(/^\/api\/maps\/([^/]+)\/subtree\/append-mf-h$/);
+  if (appendMatch) {
+    return { kind: "append-mf-h", mapId: decodeURIComponent(appendMatch[1]!) };
+  }
+  const rapidMapifyMatch = pathname.match(/^\/api\/maps\/([^/]+)\/rapid\/mapify-oracle$/);
+  if (rapidMapifyMatch) {
+    return { kind: "rapid-mapify-oracle", mapId: decodeURIComponent(rapidMapifyMatch[1]!) };
+  }
+  return null;
+}
 
 function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
@@ -1468,8 +1703,14 @@ async function handleFlashApi(
 }
 
 function addVaultWatchClient(mapId: string | null, res: http.ServerResponse): void {
-  beginSse(res);
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(`retry: ${SSE_RETRY_MS}\n: connected\n\n`);
   vaultWatchClients.push({ mapId, res });
+  pruneSseClients(vaultWatchClients, MAX_VAULT_WATCH_CLIENTS);
   res.on("close", () => {
     const idx = vaultWatchClients.findIndex((client) => client.res === res);
     if (idx !== -1) {
@@ -1588,7 +1829,17 @@ async function handleVaultApi(
       if (mapId) {
         const status = getVaultWatchStatus(mapId);
         if (!status) {
-          sendJson(res, 404, { ok: false, error: "Watch session not found." });
+          sendJson(res, 200, {
+            ok: true,
+            running: false,
+            mapId,
+            vaultPath: "",
+            integrationMode: "off",
+            sourceOfTruth: "sqlite",
+            lastInboundAt: null,
+            lastOutboundAt: null,
+            lastError: null,
+          });
           return;
         }
         sendJson(res, 200, status);
@@ -1963,6 +2214,464 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
   return true;
 }
 
+function requestWorkspaceId(url: URL, body: Record<string, unknown>): string {
+  const fromBody = typeof body.workspaceId === "string" ? body.workspaceId.trim() : "";
+  const fromQuery = url.searchParams.get("ws")?.trim() || url.searchParams.get("workspaceId")?.trim() || "";
+  return fromBody || fromQuery || WORKSPACE_ID;
+}
+
+function requestAgentId(url: URL, body: Record<string, unknown>): string {
+  const fromBody = typeof body.agentId === "string" ? body.agentId.trim() : "";
+  const fromQuery = url.searchParams.get("agentId")?.trim() || "";
+  return fromBody || fromQuery || "default";
+}
+
+type RapidMapifyAction = "detail" | "examples" | "classify" | "related";
+
+interface RapidMapifyFragment {
+  opId: string;
+  action: RapidMapifyAction;
+  source: "mapify_teacher_fixture";
+  fragment: string;
+  diagnostics: string[];
+  teacherLabels: string[];
+}
+
+interface MapifyTeacherDeltaNode {
+  text?: unknown;
+  children?: MapifyTeacherDeltaNode[];
+}
+
+interface MapifyTeacherDeltaAction {
+  type?: unknown;
+  parentId?: unknown;
+  nodes?: MapifyTeacherDeltaNode[];
+}
+
+interface MapifyTeacherDelta {
+  opId?: unknown;
+  actions?: MapifyTeacherDeltaAction[];
+}
+
+const RAPID_MAPIFY_ORACLE_AGENT_ID = "rapid-mapify-oracle";
+const RAPID_MAPIFY_ORACLE_ROOT = path.join(REPO_ROOT, "tools", "rapid_mapify_oracle");
+const BIOLOGY_RF1_TEACHER_DELTA = path.join(
+  RAPID_MAPIFY_ORACLE_ROOT,
+  "fixtures",
+  "biology",
+  "mapify_teacher_delta.json",
+);
+
+function normalizeRapidMapifyAction(raw: unknown): RapidMapifyAction {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (value === "examples" || value === "classify" || value === "related" || value === "detail") {
+    return value;
+  }
+  return "detail";
+}
+
+function readJsonFile<T>(filePath: string): T {
+  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+}
+
+function teacherDeltaLabels(delta: MapifyTeacherDelta): string[] {
+  const labels: string[] = [];
+  for (const action of delta.actions || []) {
+    if (action.type !== "appendChildren" || !Array.isArray(action.nodes)) {
+      continue;
+    }
+    for (const node of action.nodes) {
+      const label = typeof node.text === "string" ? node.text.trim() : "";
+      if (label) labels.push(label);
+    }
+  }
+  return labels;
+}
+
+function labelsToMfH(labels: string[]): string {
+  return labels.map((label) => `# ${label}`).join("\n");
+}
+
+function hasChildLabels(state: AppState, nodeId: string, labels: string[]): boolean {
+  const node = state.nodes[nodeId];
+  if (!node) return false;
+  const childLabels = new Set(
+    (node.children || [])
+      .map((childId) => state.nodes[childId]?.text?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
+  return labels.every((label) => childLabels.has(label));
+}
+
+function resolveRapidMapifyFragment(
+  state: AppState,
+  selectedNodeId: string,
+  action: RapidMapifyAction,
+  requestedOpId: string,
+): RapidMapifyFragment {
+  const selected = state.nodes[selectedNodeId];
+  if (!selected) {
+    throw new Error(`Selected node not found: ${selectedNodeId}`);
+  }
+  const opId = requestedOpId.trim() || (
+    action === "examples" ? "RF2.addExamples"
+      : action === "classify" ? "RF3.addSubtypes"
+        : action === "related" ? "RF6.addRelatedTopics"
+          : "RF1.expandSelectedNode"
+  );
+  const diagnostics: string[] = [];
+
+  const shouldUseBiologyRf1 =
+    selected.text.trim() === "動物" &&
+    (action === "classify" || opId === "RF1.expandSelectedNode" || opId === "RF3.addSubtypes") &&
+    hasChildLabels(state, selectedNodeId, ["哺乳類", "鳥類", "魚類"]) &&
+    fs.existsSync(BIOLOGY_RF1_TEACHER_DELTA);
+
+  if (shouldUseBiologyRf1) {
+    const teacher = readJsonFile<MapifyTeacherDelta>(BIOLOGY_RF1_TEACHER_DELTA);
+    const labels = teacherDeltaLabels(teacher);
+    if (labels.length > 0) {
+      diagnostics.push("Mapify teacher fixture BIO-RF1-ANIMALS-EXPAND-001 matched selected node 動物.");
+      return {
+        opId: String(teacher.opId || "RF1.expandSelectedNode"),
+        action,
+        source: "mapify_teacher_fixture",
+        fragment: labelsToMfH(labels),
+        diagnostics,
+        teacherLabels: labels,
+      };
+    }
+    throw new Error("Mapify teacher fixture BIO-RF1-ANIMALS-EXPAND-001 produced no labels.");
+  }
+
+  diagnostics.push("No Mapify teacher fixture matched this Rapid context.");
+  throw new Error(
+    `Unsupported Rapid Mapify Oracle benchmark: selected="${selected.text.trim()}", opId="${opId}", action="${action}". `
+      + "No fallback generation is allowed for this experiment.",
+  );
+}
+
+function sameNodeLabel(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+}
+
+function isAliasNodeRecord(node: TreeNode): boolean {
+  return node.nodeType === "alias";
+}
+
+function findExistingChildByLabel(state: AppState, parentId: string, label: string): TreeNode | null {
+  const parent = state.nodes[parentId];
+  if (!parent) return null;
+  for (const childId of parent.children || []) {
+    const child = state.nodes[childId];
+    if (child && !isAliasNodeRecord(child) && sameNodeLabel(child.text, label)) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function appendMfHNodesToParent(
+  state: AppState,
+  parentNodeId: string,
+  fragment: string,
+): { added: Array<{ id: string; parentId: string; label: string }>; merged: Array<{ id: string; parentId: string; label: string }> } {
+  const parent = state.nodes[parentNodeId];
+  if (!parent) {
+    throw new Error(`Parent node not found: ${parentNodeId}`);
+  }
+  if (isAliasNodeRecord(parent)) {
+    throw new Error("Alias nodes cannot own appended subtrees.");
+  }
+
+  const parsed = parseIndentedTextToNodes(fragment, parentNodeId, newNodeId);
+  if (parsed.length === 0) {
+    throw new Error("MF-H fragment produced no nodes.");
+  }
+  const parsedById = new Map(parsed.map((node) => [node.id, node]));
+  const added: Array<{ id: string; parentId: string; label: string }> = [];
+  const merged: Array<{ id: string; parentId: string; label: string }> = [];
+
+  const applyNode = (fragmentNode: TreeNode, targetParentId: string): void => {
+    const existing = findExistingChildByLabel(state, targetParentId, fragmentNode.text);
+    let targetId: string;
+    if (existing) {
+      targetId = existing.id;
+      merged.push({ id: existing.id, parentId: targetParentId, label: existing.text });
+    } else {
+      targetId = fragmentNode.id;
+      state.nodes[targetId] = {
+        ...fragmentNode,
+        parentId: targetParentId,
+        children: [],
+      };
+      state.nodes[targetParentId]!.children.push(targetId);
+      added.push({ id: targetId, parentId: targetParentId, label: fragmentNode.text });
+    }
+
+    for (const childId of fragmentNode.children || []) {
+      const child = parsedById.get(childId);
+      if (child) applyNode(child, targetId);
+    }
+  };
+
+  for (const root of parsed.filter((node) => node.parentId === parentNodeId)) {
+    applyNode(root, parentNodeId);
+  }
+  return { added, merged };
+}
+
+async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResponse, route: AgentMapRoute): Promise<boolean> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+
+  if (route.kind === "agent-active-node") {
+    if (req.method === "GET") {
+      const workspaceId = requestWorkspaceId(url, {});
+      const agentId = requestAgentId(url, {});
+      const activeNode = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId)) || null;
+      sendJson(res, 200, { ok: true, activeNode });
+      return true;
+    }
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const nodeId = typeof body.nodeId === "string" ? body.nodeId.trim() : "";
+      if (!nodeId) {
+        sendJson(res, 400, { ok: false, error: "nodeId is required." });
+        return true;
+      }
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId);
+      if (!savedDoc.state.nodes[nodeId]) {
+        sendJson(res, 404, { ok: false, error: `Node not found: ${nodeId}` });
+        return true;
+      }
+      const workspaceId = requestWorkspaceId(url, body);
+      const agentId = requestAgentId(url, body);
+      const activeNode: AgentActiveNodeState = {
+        workspaceId,
+        mapId: route.mapId,
+        agentId,
+        nodeId,
+        updatedAt: new Date().toISOString(),
+      };
+      agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
+      sendJson(res, 200, { ok: true, activeNode });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 500, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "Active node update failed."),
+      });
+      return true;
+    }
+  }
+
+  if (route.kind === "append-mf-h") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const fragment = typeof body.fragment === "string" ? body.fragment.trim() : "";
+      if (!fragment) {
+        sendJson(res, 400, { ok: false, error: "fragment is required." });
+        return true;
+      }
+      if (fragment.length > 100_000) {
+        sendJson(res, 413, { ok: false, error: "MF-H fragment is too large." });
+        return true;
+      }
+
+      const workspaceId = requestWorkspaceId(url, body);
+      const agentId = requestAgentId(url, body);
+      const explicitParentNodeId = typeof body.parentNodeId === "string" ? body.parentNodeId.trim() : "";
+      const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
+      const parentNodeId = explicitParentNodeId || active?.nodeId || "";
+      if (!parentNodeId) {
+        sendJson(res, 400, { ok: false, error: "parentNodeId is required when no agent active node is set." });
+        return true;
+      }
+
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId);
+      const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
+      if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DOC_CONFLICT",
+          error: "Map changed externally. Refresh before applying MF-H fragment.",
+          mapId: route.mapId,
+          savedAt: savedDoc.savedAt,
+        });
+        return true;
+      }
+
+      const state = savedDoc.state;
+      if (!state.nodes[parentNodeId]) {
+        sendJson(res, 404, { ok: false, error: `Parent node not found: ${parentNodeId}` });
+        return true;
+      }
+      const result = appendMfHNodesToParent(state, parentNodeId, fragment);
+      if (Boolean(body.dryRun)) {
+        sendJson(res, 200, {
+          ok: true,
+          dryRun: true,
+          mapId: route.mapId,
+          parentNodeId,
+          added: result.added,
+          merged: result.merged,
+        });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+        return true;
+      }
+      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId).savedAt;
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
+      handleMapSavedForVaultWatch(SQLITE_DB_PATH, route.mapId);
+      sendJson(res, 200, {
+        ok: true,
+        mapId: route.mapId,
+        parentNodeId,
+        savedAt,
+        added: result.added,
+        merged: result.merged,
+      });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "MF-H append failed."),
+      });
+      return true;
+    }
+  }
+
+  if (route.kind === "rapid-mapify-oracle") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const workspaceId = requestWorkspaceId(url, body);
+      const agentId = requestAgentId(url, body) || RAPID_MAPIFY_ORACLE_AGENT_ID;
+      const requestedOpId = typeof body.opId === "string" ? body.opId.trim() : "";
+      const action = normalizeRapidMapifyAction(body.action);
+      const explicitSelectedNodeId = typeof body.selectedNodeId === "string" ? body.selectedNodeId.trim() : "";
+      const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
+      const selectedNodeId = explicitSelectedNodeId || active?.nodeId || "";
+      if (!selectedNodeId) {
+        sendJson(res, 400, { ok: false, error: "selectedNodeId is required when no agent active node is set." });
+        return true;
+      }
+
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId);
+      const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
+      if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DOC_CONFLICT",
+          error: "Map changed externally. Refresh before running Rapid Mapify Oracle.",
+          mapId: route.mapId,
+          savedAt: savedDoc.savedAt,
+        });
+        return true;
+      }
+      if (!savedDoc.state.nodes[selectedNodeId]) {
+        sendJson(res, 404, { ok: false, error: `Selected node not found: ${selectedNodeId}` });
+        return true;
+      }
+
+      const activeNode: AgentActiveNodeState = {
+        workspaceId,
+        mapId: route.mapId,
+        agentId,
+        nodeId: selectedNodeId,
+        updatedAt: new Date().toISOString(),
+      };
+      agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
+
+      const fragment = resolveRapidMapifyFragment(savedDoc.state, selectedNodeId, action, requestedOpId);
+      const result = appendMfHNodesToParent(savedDoc.state, selectedNodeId, fragment.fragment);
+      const allResultLabels = [...result.added, ...result.merged].map((node) => node.label);
+      const teacherLabelSet = new Set(fragment.teacherLabels);
+      const teacherProximity = fragment.teacherLabels.length === 0
+        ? null
+        : allResultLabels.filter((label) => teacherLabelSet.has(label)).length / fragment.teacherLabels.length;
+
+      if (Boolean(body.dryRun)) {
+        sendJson(res, 200, {
+          ok: true,
+          dryRun: true,
+          mapId: route.mapId,
+          workspaceId,
+          activeNode,
+          opId: fragment.opId,
+          action: fragment.action,
+          source: fragment.source,
+          fragment: fragment.fragment,
+          added: result.added,
+          merged: result.merged,
+          diagnostics: fragment.diagnostics,
+          oracle: {
+            teacherLabels: fragment.teacherLabels,
+            teacherProximity,
+          },
+        });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(savedDoc.state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+        return true;
+      }
+      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId).savedAt;
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
+      handleMapSavedForVaultWatch(SQLITE_DB_PATH, route.mapId);
+      sendJson(res, 200, {
+        ok: true,
+        mapId: route.mapId,
+        workspaceId,
+        activeNode,
+        savedAt,
+        opId: fragment.opId,
+        action: fragment.action,
+        source: fragment.source,
+        fragment: fragment.fragment,
+        added: result.added,
+        merged: result.merged,
+        diagnostics: fragment.diagnostics,
+        oracle: {
+          teacherLabels: fragment.teacherLabels,
+          teacherProximity,
+        },
+      });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "Rapid Mapify Oracle failed."),
+      });
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function handleSyncApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -1994,7 +2703,20 @@ async function handleSyncApi(
 
   if (route.action === "status" && req.method === "GET") {
     try {
-      const result = await transport.status(route.mapId);
+      const result = await withTimeout(
+        transport.status(route.mapId),
+        SYNC_STATUS_TIMEOUT_MS,
+        () => ({
+          ok: false,
+          enabled: true,
+          mode: modeLabel,
+          mapId: route.mapId,
+          exists: false,
+          cloudSavedAt: null,
+          lastSyncedAt: null,
+          error: `Sync status timed out after ${SYNC_STATUS_TIMEOUT_MS}ms.`,
+        }),
+      );
       sendJson(res, 200, { ...result, mode: modeLabel });
     } catch (err) {
       sendSyncError(res, 500, "SYNC_STATUS_FAILED", (err as Error).message, route.mapId);
@@ -2419,12 +3141,20 @@ async function handleCollabApi(
   res: http.ServerResponse,
   route: { action: string; param?: string },
 ): Promise<void> {
-  if (!COLLAB_ENABLED) {
-    sendJson(res, 404, { ok: false, error: "Collaboration not enabled. Set M3E_COLLAB=1." });
-    return;
-  }
-
   if (route.action === "config" && req.method === "GET") {
+    if (!COLLAB_ENABLED) {
+      sendJson(res, 200, {
+        ok: true,
+        enabled: false,
+        requiresJoinToken: false,
+        workspaceId: WORKSPACE_ID,
+        workspaceLabel: WORKSPACE_LABEL,
+        mapId: ACTIVE_MAP_ID,
+        mapLabel: ACTIVE_MAP_LABEL,
+      });
+      return;
+    }
+
     sendJson(res, 200, {
       ok: true,
       enabled: true,
@@ -2434,6 +3164,11 @@ async function handleCollabApi(
       mapId: ACTIVE_MAP_ID,
       mapLabel: ACTIVE_MAP_LABEL,
     });
+    return;
+  }
+
+  if (!COLLAB_ENABLED) {
+    sendJson(res, 404, { ok: false, error: "Collaboration not enabled. Set M3E_COLLAB=1." });
     return;
   }
 
@@ -2563,7 +3298,13 @@ async function handleCollabApi(
 export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
     instrumentRequestForPerfLog(req, res);
+    if (redirectLoopbackHost(req, res)) {
+      return;
+    }
     if (await handleSystemClipboardApi(req, res)) {
+      return;
+    }
+    if (handleArtifactsApi(req, res)) {
       return;
     }
 
@@ -2710,6 +3451,12 @@ export function createAppServer(): http.Server {
       return;
     }
 
+    const agentMapRoute = parseAgentMapRoute(req.url ?? "/");
+    if (agentMapRoute) {
+      await handleAgentMapApi(req, res, agentMapRoute);
+      return;
+    }
+
     const linkRoute = parseLinkRoute(req.url ?? "/", req.method ?? "GET");
     if (linkRoute) {
       await handleLinkApi(req, res, linkRoute);
@@ -2719,6 +3466,12 @@ export function createAppServer(): http.Server {
     const mapId = parseMapId(req.url ?? "/");
     if (mapId !== null) {
       await handleApi(req, res, mapId);
+      return;
+    }
+
+    const artifactFile = resolveArtifactFile(req.url ?? "/");
+    if (artifactFile) {
+      sendFile(res, artifactFile);
       return;
     }
 

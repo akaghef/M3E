@@ -1,0 +1,27 @@
+{
+  "caseId": "BIO-RF1-ANIMALS-EXPAND-001",
+  "score": 1.0,
+  "passed": true,
+  "dimensions": {
+    "locality": 1.0,
+    "label_quality": 1.0,
+    "sibling_consistency": 1.0,
+    "non_duplication": 1.0,
+    "teacher_proximity": 1.0,
+    "delta_discipline": 1.0
+  },
+  "failures": [],
+  "recommendations": [],
+  "candidateLabels": [
+    "両生類",
+    "無脊椎動物",
+    "爬虫類"
+  ],
+  "teacherLabels": [
+    "両生類",
+    "無脊椎動物",
+    "爬虫類"
+  ],
+  "candidatePath": "/mnt/data/m3e-rapid-mapify-oracle-system/fixtures/biology/m3e_good_delta.json",
+  "generatedAt": "2026-06-04T05:58:58"
+}

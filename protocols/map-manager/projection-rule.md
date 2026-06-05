@@ -11,7 +11,7 @@ alias, and node attributes. External formats are projections or requests.
 
 | Format family | Role |
 |---|---|
-| MF / WMF | compact human/request/interchange notation |
+| MF / WMF / MF-H | compact human/request/interchange notation; MF-H is Markdown heading tree fragment notation |
 | Mermaid | render or communication format |
 | Markdown / outline | linear projection or documentation surface |
 | JSON / YAML handoff | task contract or machine-readable request |

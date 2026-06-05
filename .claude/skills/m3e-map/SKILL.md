@@ -10,7 +10,7 @@ description: |
   (fill / urgency / importance / status).
 ---
 
-<!-- generated from agent_instructions/skills_canonical/m3e-map\SKILL.md; do not edit mirror directly -->
+<!-- generated from agent_instructions/skills_canonical/m3e-map/SKILL.md; do not edit mirror directly -->
 
 
 # M3E Map API Skill

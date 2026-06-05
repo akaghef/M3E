@@ -1,0 +1,92 @@
+{
+  "url": "http://127.0.0.1:4173/viewer.html?ws=ws_REMH1Z5TFA7S93R3HA0XK58JNR&map=BIO-RF1-ANIMALS-EXPAND-001-live&scope=n_root",
+  "resetSavedAt": "2026-06-04T15:36:02.520Z",
+  "pnButtons": [
+    {
+      "i": 17,
+      "text": "N2 展開node/subtree を広げる"
+    },
+    {
+      "i": 18,
+      "text": "N7 要約要点へ圧縮"
+    },
+    {
+      "i": 19,
+      "text": "N12 再構成構造を整える"
+    },
+    {
+      "i": 20,
+      "text": "N17 問う不足を問う"
+    },
+    {
+      "i": 21,
+      "text": "N22 出力形式へ変換"
+    },
+    {
+      "i": 22,
+      "text": "N3 詳細化生成"
+    },
+    {
+      "i": 23,
+      "text": "N4 例を追加生成"
+    },
+    {
+      "i": 24,
+      "text": "N5 子分類を追加生成"
+    },
+    {
+      "i": 25,
+      "text": "N6 関連topic追加生成"
+    },
+    {
+      "i": 63,
+      "text": "JSON"
+    },
+    {
+      "i": 71,
+      "text": "Normal"
+    },
+    {
+      "i": 72,
+      "text": "Add Node"
+    }
+  ],
+  "hits": {
+    "動物": 3,
+    "哺乳類": 1,
+    "鳥類": 1,
+    "魚類": 1,
+    "爬虫類": 1,
+    "両生類": 1,
+    "無脊椎動物": 1
+  },
+  "afterChildren": [
+    {
+      "id": "n_mammals",
+      "text": "哺乳類"
+    },
+    {
+      "id": "n_birds",
+      "text": "鳥類"
+    },
+    {
+      "id": "n_fish",
+      "text": "魚類"
+    },
+    {
+      "id": "n_1780587366493_1rdgjm",
+      "text": "爬虫類"
+    },
+    {
+      "id": "n_1780587366493_x1dnxq",
+      "text": "両生類"
+    },
+    {
+      "id": "n_1780587366493_0jlreb",
+      "text": "無脊椎動物"
+    }
+  ],
+  "ok": true,
+  "screenshot": "/Users/nisimoriyuuya/dev/M3E/tools/rapid_mapify_oracle/runs/20260604T153155Z_BIO_RF1_live_complete/browser_ui_pn_rf1.png",
+  "bodyTextSample": "M3E\nTree / Balanced / Right\non (none)\nAK\nPresent\nShare\nN2 展開\nnode/subtree を広げる\nN7 要約\n要点へ圧縮\nN12 再構成\n構造を整える\nN17 問う\n不足を問う\nN22 出力\n形式へ変換\nInspector\nRapid / Tree / Balanced / Right\nSELECTED NODE\n動物\nscope n_root\n24 nodes\n0 links\n0 marks\nMINDMAP\nAdd child\nToggle scope\nEnter scope\nExit scope\nANNOTATION\nSelect mode\nCOLLABORATION\nAK\nAkaghefCollab: off\n46%\nReady\nM3E\n☰\nFlash\nRapid\nDeep\nTree\nMind Map\nLogic\nTimeline\nSystem\nScatter\nPen\nImport ▾\nShare\nExport ▾\nLive ▾\nV4\nSelect\nPen\nHighlighter\n17\nDate\nEraser\nWidth\nEDIT\n生物の分類1\n動物\n哺乳類\nヒト\nイヌ\nクジラ\n鳥類\nスズメ\nペンギン\n魚類\nサケ\nマグロ\n爬虫類\n両生類\n無脊椎動物\n植物\n被子植物\nサクラ\nイネ\n裸子植物\nスギ\nシイタケ\n酵母\n菌類\n☰\nA-\nA+\nReset"
+}
