@@ -22,5 +22,6 @@
 
 ## 関連
 
+- Scope routing shortcuts: `Scope_Routing_Shortcuts.md`
 - 実装アーキテクチャ: `../04_Architecture/`
 - 判断記録: `../09_Decisions/`
