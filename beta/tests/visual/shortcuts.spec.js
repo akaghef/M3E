@@ -671,15 +671,22 @@ test.describe("Scope navigation", () => {
     await pressKey(page, "ArrowDown");
     await expectMetaContains(page, "selected: Child B");
 
-    await pressKey(page, "Shift+r");
+    await page.keyboard.down("Shift");
+    await page.keyboard.down("r");
     await expect(page.locator("#routing-switcher")).toBeVisible();
 
-    await pressKey(page, "ArrowDown");
+    const switcherBox = await page.locator("#routing-switcher").boundingBox();
+    expect(switcherBox).toBeTruthy();
+    await page.mouse.move(switcherBox.x + switcherBox.width / 2, switcherBox.y + switcherBox.height / 2);
+    await page.mouse.wheel(0, -90);
+    await expect(page.locator("#routing-switcher")).toContainText("Child B -> Child A");
     await pressKey(page, "Enter");
     await waitForRender(page);
     await expectStatusContains(page, "Routed Child B -> Child A");
+    await page.keyboard.up("r");
+    await page.keyboard.up("Shift");
+    await expect(page.locator("#routing-switcher")).toBeHidden();
 
-    await pressKey(page, "Escape");
     await pressKey(page, "ArrowLeft");
     await expectMetaContains(page, "selected: Child A");
   });

@@ -133,6 +133,7 @@ let routingSwitcherLane: RoutingSwitcherLane = "scope";
 let routingScopeTargets: RoutingScopeTarget[] = [];
 let routingScopeIndex = 0;
 let routingPanKeyDown = false;
+let routingScopeHoldDown = false;
 let routingWheelCarryX = 0;
 let routingWheelCarryY = 0;
 
@@ -12095,6 +12096,15 @@ function ensureRoutingSwitcherEl(): HTMLElement {
   el.hidden = true;
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", "Scope routing switcher");
+  el.addEventListener("wheel", (event: WheelEvent) => {
+    if (!routingScopeHoldDown || !routingSwitcherOpen || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    event.preventDefault();
+    cancelCameraMotion();
+    const { deltaX, deltaY } = normalizedWheelDeltas(event);
+    routePanMoveRoutingScope(deltaX, deltaY);
+  }, { passive: false });
   document.body.appendChild(el);
   routingSwitcherEl = el;
   return el;
@@ -12126,6 +12136,14 @@ function visibleRoutingScopeTargets(): RoutingScopeTarget[] {
     if (after) visibleIds.add(after.id);
   }
   return routingScopeTargets.filter((target) => visibleIds.has(target.id)).slice(0, windowSize);
+}
+
+function normalizedWheelDeltas(event: WheelEvent): { deltaX: number; deltaY: number } {
+  const deltaScale = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
+  return {
+    deltaX: event.deltaX * deltaScale,
+    deltaY: event.deltaY * deltaScale,
+  };
 }
 
 type MiniSurfaceNode = {
@@ -12332,6 +12350,28 @@ function moveRoutingNode(direction: -1 | 1): void {
   selectBreadth(direction);
   routingSwitcherLane = "node";
   syncRoutingSwitcher();
+}
+
+function routePanMoveRoutingScope(deltaX: number, deltaY: number): void {
+  const threshold = 48;
+  routingWheelCarryX += deltaX;
+  routingWheelCarryY += deltaY;
+
+  let moved = false;
+  while (Math.abs(routingWheelCarryY) >= threshold) {
+    moveRoutingScope(routingWheelCarryY > 0 ? -1 : 1);
+    routingWheelCarryY += routingWheelCarryY > 0 ? -threshold : threshold;
+    moved = true;
+  }
+  while (Math.abs(routingWheelCarryX) >= threshold) {
+    moveRoutingScope(routingWheelCarryX > 0 ? 1 : -1);
+    routingWheelCarryX += routingWheelCarryX > 0 ? -threshold : threshold;
+    moved = true;
+  }
+
+  if (moved) {
+    setStatus("Routing pan: active scope.");
+  }
 }
 
 function routePanMoveActiveNode(deltaX: number, deltaY: number): void {
@@ -13714,9 +13754,11 @@ board.addEventListener("wheel", (event: WheelEvent) => {
   // Normalize deltas to pixels so zoom/pan feel identical across browsers and
   // operating systems. deltaMode=0 (pixel) is left as-is — that is the Mac
   // trackpad baseline everything else is scaled to match.
-  const deltaScale = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 800 : 1;
-  const deltaX = event.deltaX * deltaScale;
-  const deltaY = event.deltaY * deltaScale;
+  const { deltaX, deltaY } = normalizedWheelDeltas(event);
+  if (routingSwitcherOpen && routingScopeHoldDown && !event.ctrlKey && !event.metaKey) {
+    routePanMoveRoutingScope(deltaX, deltaY);
+    return;
+  }
   if (routingPanKeyDown && !event.ctrlKey && !event.metaKey) {
     routePanMoveActiveNode(deltaX, deltaY);
     return;
@@ -14010,7 +14052,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "r") {
     event.preventDefault();
-    openRoutingSwitcher("scope");
+    if (!event.repeat) {
+      routingScopeHoldDown = true;
+      routingWheelCarryX = 0;
+      routingWheelCarryY = 0;
+      openRoutingSwitcher("scope");
+    }
     return;
   }
 
@@ -14591,13 +14638,30 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 });
 
 document.addEventListener("keyup", (event: KeyboardEvent) => {
-  if (event.key.toLowerCase() !== "r") {
-    return;
+  const key = event.key.toLowerCase();
+  if (routingScopeHoldDown && (key === "r" || event.key === "Shift")) {
+    routingScopeHoldDown = false;
+    routingWheelCarryX = 0;
+    routingWheelCarryY = 0;
+    if (routingSwitcherOpen) {
+      closeRoutingSwitcher();
+      setStatus("Routing closed.");
+    }
   }
-  if (routingPanKeyDown) {
+  if (key === "r" && routingPanKeyDown) {
     routingPanKeyDown = false;
     routingWheelCarryX = 0;
     routingWheelCarryY = 0;
+  }
+});
+
+window.addEventListener("blur", () => {
+  routingPanKeyDown = false;
+  routingScopeHoldDown = false;
+  routingWheelCarryX = 0;
+  routingWheelCarryY = 0;
+  if (routingSwitcherOpen) {
+    closeRoutingSwitcher();
   }
 });
 
