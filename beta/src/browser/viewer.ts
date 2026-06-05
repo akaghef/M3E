@@ -132,6 +132,7 @@ let routingSwitcherOpen = false;
 let routingSwitcherLane: RoutingSwitcherLane = "scope";
 let routingScopeTargets: RoutingScopeTarget[] = [];
 let routingScopeIndex = 0;
+let routingScopeTargetId: string | null = null;
 let routingPanKeyDown = false;
 let routingScopeHoldDown = false;
 let routingWheelCarryX = 0;
@@ -12176,7 +12177,7 @@ function routingSurfaceViewBox(layout: LayoutResult): string {
 function renderRoutingScopeSurface(selectedNodeId: string | null): string {
   const state = routingScopeState(routingScopeTargets);
   const rootId = state.rootId;
-  const activeScopeId = routingScopeTargets[routingScopeIndex]?.id;
+  const activeScopeId = selectedRoutingScopeTarget()?.id;
   const layout = withVisibleChildrenOverride(
     (node) => node.children || [],
     () => buildRightTreeLayout(state, buildMeasuredTreeContext(state, rootId, "tree")),
@@ -12243,7 +12244,7 @@ function syncRoutingSwitcher(): void {
   }
   const el = ensureRoutingSwitcherEl();
   const selectedNode = map.state.nodes[viewState.selectedNodeId];
-  const selectedScope = routingScopeTargets[routingScopeIndex] || routingScopeTargets[0];
+  const selectedScope = selectedRoutingScopeTarget();
   const nodeLabel = selectedNode ? uiLabel(selectedNode) : viewState.selectedNodeId;
   const scopeLabel = selectedScope ? selectedScope.label : "No scope";
   const routeEnabled = Boolean(selectedNode && selectedScope && canDropUnderParent(selectedNode.id, selectedScope.id));
@@ -12267,7 +12268,7 @@ function syncRoutingSwitcher(): void {
       const scopeId = scopeEl.dataset.routingScopeId || "";
       const nextIndex = routingScopeTargets.findIndex((target) => target.id === scopeId);
       if (nextIndex >= 0) {
-        routingScopeIndex = nextIndex;
+        setRoutingScopeIndex(nextIndex);
         routingSwitcherLane = "scope";
         syncRoutingSwitcher();
       }
@@ -12281,7 +12282,7 @@ function openRoutingSwitcher(lane: RoutingSwitcherLane): void {
   }
   routingScopeTargets = collectRoutingScopeTargets();
   const currentScopeIndex = routingScopeTargets.findIndex((target) => target.id === normalizedCurrentScopeId());
-  routingScopeIndex = currentScopeIndex >= 0 ? currentScopeIndex : 0;
+  setRoutingScopeIndex(currentScopeIndex >= 0 ? currentScopeIndex : 0);
   routingSwitcherLane = lane;
   routingSwitcherOpen = true;
   syncRoutingSwitcher();
@@ -12293,11 +12294,27 @@ function closeRoutingSwitcher(): void {
   syncRoutingSwitcher();
 }
 
+function setRoutingScopeIndex(index: number): void {
+  if (routingScopeTargets.length === 0) {
+    routingScopeIndex = 0;
+    routingScopeTargetId = null;
+    return;
+  }
+  routingScopeIndex = Math.min(routingScopeTargets.length - 1, Math.max(0, index));
+  routingScopeTargetId = routingScopeTargets[routingScopeIndex]?.id || null;
+}
+
+function selectedRoutingScopeTarget(): RoutingScopeTarget | undefined {
+  return routingScopeTargets.find((target) => target.id === routingScopeTargetId) || routingScopeTargets[routingScopeIndex] || routingScopeTargets[0];
+}
+
 function moveRoutingScope(direction: -1 | 1): void {
   if (routingScopeTargets.length === 0) {
     return;
   }
-  routingScopeIndex = Math.min(routingScopeTargets.length - 1, Math.max(0, routingScopeIndex + direction));
+  const currentIndex = routingScopeTargets.findIndex((target) => target.id === routingScopeTargetId);
+  const baseIndex = currentIndex >= 0 ? currentIndex : routingScopeIndex;
+  setRoutingScopeIndex(baseIndex + direction);
   routingSwitcherLane = "scope";
   syncRoutingSwitcher();
 }
@@ -12320,7 +12337,7 @@ function routePanMoveRoutingScope(deltaX: number, deltaY: number): void {
     moved = true;
   }
   while (Math.abs(routingWheelCarryX) >= threshold) {
-    moveRoutingScope(routingWheelCarryX > 0 ? 1 : -1);
+    moveRoutingScope(routingWheelCarryX > 0 ? -1 : 1);
     routingWheelCarryX += routingWheelCarryX > 0 ? -threshold : threshold;
     moved = true;
   }
@@ -12356,20 +12373,20 @@ function routePanMoveActiveNode(deltaX: number, deltaY: number): void {
   }
 }
 
-function applyRoutingSwitcherRoute(): void {
+function applyRoutingSwitcherRoute(): boolean {
   if (!map || !routingSwitcherOpen) {
-    return;
+    return false;
   }
   const sourceId = viewState.selectedNodeId;
-  const target = routingScopeTargets[routingScopeIndex];
+  const target = selectedRoutingScopeTarget();
   if (!target) {
     setStatus("No route target.", true);
-    return;
+    return false;
   }
   if (!canDropUnderParent(sourceId, target.id)) {
     setStatus("Invalid route target.", true);
     syncRoutingSwitcher();
-    return;
+    return false;
   }
   pushUndoSnapshot();
   const moved = applyMoveByParentAndIndex(sourceId, target.id, getNode(target.id).children.length, true, {
@@ -12380,12 +12397,12 @@ function applyRoutingSwitcherRoute(): void {
   if (!moved) {
     setStatus("Route failed.", true);
     syncRoutingSwitcher();
-    return;
+    return false;
   }
   touchDocument();
   routingScopeTargets = collectRoutingScopeTargets();
   const nextIndex = routingScopeTargets.findIndex((scope) => scope.id === target.id);
-  routingScopeIndex = nextIndex >= 0 ? nextIndex : 0;
+  setRoutingScopeIndex(nextIndex >= 0 ? nextIndex : 0);
   routingScopeHoldDown = false;
   closeRoutingSwitcher();
   EnterScopeCommand(target.id);
@@ -12394,6 +12411,7 @@ function applyRoutingSwitcherRoute(): void {
     render();
   }
   setStatus(`Routed ${uiLabel(getNode(sourceId))} -> ${target.label}.`);
+  return true;
 }
 
 function groupSelected(): void {
@@ -13994,7 +14012,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
       event.preventDefault();
       if (routingSwitcherLane === "scope") {
-        moveRoutingScope(-1);
+        moveRoutingScope(event.key === "ArrowLeft" ? 1 : -1);
       } else {
         moveRoutingNode(-1);
       }
@@ -14003,7 +14021,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
       if (routingSwitcherLane === "scope") {
-        moveRoutingScope(1);
+        moveRoutingScope(event.key === "ArrowRight" ? -1 : 1);
       } else {
         moveRoutingNode(1);
       }
@@ -14601,13 +14619,19 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 document.addEventListener("keyup", (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
   if (routingScopeHoldDown && (key === "r" || event.key === "Shift")) {
+    if (routingSwitcherOpen) {
+      const routed = applyRoutingSwitcherRoute();
+      if (routed) {
+        return;
+      }
+    }
     routingScopeHoldDown = false;
     routingWheelCarryX = 0;
     routingWheelCarryY = 0;
     if (routingSwitcherOpen) {
       closeRoutingSwitcher();
-      setStatus("Routing closed.");
     }
+    return;
   }
   if (key === "r" && routingPanKeyDown) {
     routingPanKeyDown = false;
