@@ -675,7 +675,10 @@ test.describe("Scope navigation", () => {
     await page.keyboard.down("r");
     await expect(page.locator("#routing-switcher")).toBeVisible();
 
-    await pressKey(page, "ArrowLeft");
+    const switcherBox = await page.locator("#routing-switcher").boundingBox();
+    expect(switcherBox).toBeTruthy();
+    await page.mouse.move(switcherBox.x + switcherBox.width / 2, switcherBox.y + switcherBox.height / 2);
+    await page.mouse.wheel(90, 0);
     await expect(page.locator("#routing-switcher")).toContainText("Child B -> Child A");
     await page.keyboard.up("r");
     await waitForRender(page);

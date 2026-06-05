@@ -12300,7 +12300,7 @@ function setRoutingScopeIndex(index: number): void {
     routingScopeTargetId = null;
     return;
   }
-  routingScopeIndex = Math.min(routingScopeTargets.length - 1, Math.max(0, index));
+  routingScopeIndex = ((index % routingScopeTargets.length) + routingScopeTargets.length) % routingScopeTargets.length;
   routingScopeTargetId = routingScopeTargets[routingScopeIndex]?.id || null;
 }
 
@@ -12372,6 +12372,17 @@ function routePanMoveActiveNode(deltaX: number, deltaY: number): void {
     setStatus("Routing pan: active node.");
   }
 }
+
+document.addEventListener("wheel", (event: WheelEvent) => {
+  if (!routingScopeHoldDown || !routingSwitcherOpen || event.ctrlKey || event.metaKey) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  cancelCameraMotion();
+  const { deltaX, deltaY } = normalizedWheelDeltas(event);
+  routePanMoveRoutingScope(deltaX, deltaY);
+}, { capture: true, passive: false });
 
 function applyRoutingSwitcherRoute(): boolean {
   if (!map || !routingSwitcherOpen) {
