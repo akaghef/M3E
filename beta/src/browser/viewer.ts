@@ -118,6 +118,21 @@ const v4SourceTextEl = document.getElementById("v4-source-text") as HTMLTextArea
 const v4CreateDraftBtn = document.getElementById("v4-create-draft-btn") as HTMLButtonElement | null;
 const v4ApplyDraftBtn = document.getElementById("v4-apply-draft-btn") as HTMLButtonElement | null;
 
+type RoutingSwitcherLane = "node" | "scope";
+
+interface RoutingScopeTarget {
+  id: string;
+  label: string;
+  parentId: string | null;
+  depth: number;
+}
+
+let routingSwitcherEl: HTMLElement | null = null;
+let routingSwitcherOpen = false;
+let routingSwitcherLane: RoutingSwitcherLane = "scope";
+let routingScopeTargets: RoutingScopeTarget[] = [];
+let routingScopeIndex = 0;
+
 function hideMarkdownPreview(): void {
   if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
 }
@@ -12039,6 +12054,186 @@ function applyReparent(): void {
   setStatus(`Moved ${movedCount} node(s).`);
 }
 
+function collectRoutingScopeTargets(): RoutingScopeTarget[] {
+  if (!map) {
+    return [];
+  }
+  const targets: RoutingScopeTarget[] = [];
+  const visit = (nodeId: string, depth: number): void => {
+    const node = map!.state.nodes[nodeId];
+    if (!node) {
+      return;
+    }
+    if (nodeId === map!.state.rootId || isFolderNode(node)) {
+      targets.push({
+        id: nodeId,
+        label: uiLabel(node) || nodeId,
+        parentId: node.parentId,
+        depth,
+      });
+    }
+    (node.children || []).forEach((childId) => visit(childId, depth + 1));
+  };
+  visit(map.state.rootId, 0);
+  return targets;
+}
+
+function ensureRoutingSwitcherEl(): HTMLElement {
+  if (routingSwitcherEl) {
+    return routingSwitcherEl;
+  }
+  const el = document.createElement("div");
+  el.id = "routing-switcher";
+  el.className = "routing-switcher";
+  el.hidden = true;
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", "Scope routing switcher");
+  document.body.appendChild(el);
+  routingSwitcherEl = el;
+  return el;
+}
+
+function visibleRoutingScopeTargets(): RoutingScopeTarget[] {
+  const windowSize = 5;
+  const maxStart = Math.max(0, routingScopeTargets.length - windowSize);
+  let start = Math.max(0, routingScopeIndex - Math.floor(windowSize / 2));
+  start = Math.min(start, maxStart);
+  return routingScopeTargets.slice(start, start + windowSize);
+}
+
+function syncRoutingSwitcher(): void {
+  if (!routingSwitcherOpen || !map) {
+    if (routingSwitcherEl) {
+      routingSwitcherEl.hidden = true;
+      routingSwitcherEl.innerHTML = "";
+    }
+    return;
+  }
+  const el = ensureRoutingSwitcherEl();
+  const selectedNode = map.state.nodes[viewState.selectedNodeId];
+  const selectedScope = routingScopeTargets[routingScopeIndex] || routingScopeTargets[0];
+  const nodeLabel = selectedNode ? uiLabel(selectedNode) : viewState.selectedNodeId;
+  const scopeLabel = selectedScope ? selectedScope.label : "No scope";
+  const routeEnabled = Boolean(selectedNode && selectedScope && canDropUnderParent(selectedNode.id, selectedScope.id));
+
+  el.hidden = false;
+  el.innerHTML = `
+    <section class="routing-switcher-panel">
+      <div class="routing-switcher-head">
+        <span>Scope route</span>
+        <strong>${escapeHtml(nodeLabel)} -> ${escapeHtml(scopeLabel)}</strong>
+      </div>
+      <div class="routing-switcher-grid">
+        <div class="routing-active-node ${routingSwitcherLane === "node" ? "is-active" : ""}">
+          <span>Active node</span>
+          <strong>${escapeHtml(nodeLabel)}</strong>
+        </div>
+        <div class="routing-scope-strip">
+          ${visibleRoutingScopeTargets().map((target) => {
+            const targetIndex = routingScopeTargets.findIndex((candidate) => candidate.id === target.id);
+            const isActive = targetIndex === routingScopeIndex;
+            const disabled = selectedNode ? !canDropUnderParent(selectedNode.id, target.id) : true;
+            return `
+              <button class="routing-scope-card ${isActive ? "is-active" : ""} ${disabled ? "is-disabled" : ""}" type="button" data-routing-scope-id="${escapeHtml(target.id)}" style="--scope-depth:${target.depth}">
+                <strong>${escapeHtml(target.label)}</strong>
+                <span>${escapeHtml(target.id)}</span>
+              </button>
+            `;
+          }).join("")}
+        </div>
+        <div class="routing-active-scope ${routingSwitcherLane === "scope" ? "is-active" : ""}">
+          <span>Active scope</span>
+          <strong>${escapeHtml(scopeLabel)}</strong>
+        </div>
+      </div>
+      <div class="routing-switcher-foot">
+        <span>${routeEnabled ? "Ready" : "Invalid target"}</span>
+        <span>${routingScopeTargets.length} scopes</span>
+      </div>
+    </section>
+  `;
+  el.querySelectorAll<HTMLButtonElement>("[data-routing-scope-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const scopeId = button.dataset.routingScopeId || "";
+      const nextIndex = routingScopeTargets.findIndex((target) => target.id === scopeId);
+      if (nextIndex >= 0) {
+        routingScopeIndex = nextIndex;
+        routingSwitcherLane = "scope";
+        syncRoutingSwitcher();
+      }
+    });
+  });
+}
+
+function openRoutingSwitcher(lane: RoutingSwitcherLane): void {
+  if (!map) {
+    return;
+  }
+  routingScopeTargets = collectRoutingScopeTargets();
+  const currentScopeIndex = routingScopeTargets.findIndex((target) => target.id === normalizedCurrentScopeId());
+  routingScopeIndex = currentScopeIndex >= 0 ? currentScopeIndex : 0;
+  routingSwitcherLane = lane;
+  routingSwitcherOpen = true;
+  syncRoutingSwitcher();
+  setStatus(lane === "scope" ? "Routing: active scope." : "Routing: active node.");
+}
+
+function closeRoutingSwitcher(): void {
+  routingSwitcherOpen = false;
+  syncRoutingSwitcher();
+}
+
+function moveRoutingScope(direction: -1 | 1): void {
+  if (routingScopeTargets.length === 0) {
+    return;
+  }
+  routingScopeIndex = Math.min(routingScopeTargets.length - 1, Math.max(0, routingScopeIndex + direction));
+  routingSwitcherLane = "scope";
+  syncRoutingSwitcher();
+}
+
+function moveRoutingNode(direction: -1 | 1): void {
+  selectBreadth(direction);
+  routingSwitcherLane = "node";
+  syncRoutingSwitcher();
+}
+
+function applyRoutingSwitcherRoute(): void {
+  if (!map || !routingSwitcherOpen) {
+    openRoutingSwitcher("node");
+    return;
+  }
+  const sourceId = viewState.selectedNodeId;
+  const target = routingScopeTargets[routingScopeIndex];
+  if (!target) {
+    setStatus("No route target.", true);
+    return;
+  }
+  if (!canDropUnderParent(sourceId, target.id)) {
+    setStatus("Invalid route target.", true);
+    syncRoutingSwitcher();
+    return;
+  }
+  pushUndoSnapshot();
+  const moved = applyMoveByParentAndIndex(sourceId, target.id, getNode(target.id).children.length, true, {
+    withUndo: false,
+    withTouch: false,
+    withStatus: false,
+  });
+  if (!moved) {
+    setStatus("Route failed.", true);
+    syncRoutingSwitcher();
+    return;
+  }
+  setSingleSelection(sourceId, false);
+  touchDocument();
+  routingScopeTargets = collectRoutingScopeTargets();
+  const nextIndex = routingScopeTargets.findIndex((scope) => scope.id === target.id);
+  routingScopeIndex = nextIndex >= 0 ? nextIndex : 0;
+  syncRoutingSwitcher();
+  setStatus(`Routed ${uiLabel(getNode(sourceId))} -> ${target.label}.`);
+}
+
 function groupSelected(): void {
   if (!map) {
     return;
@@ -13609,6 +13804,57 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (routingSwitcherOpen) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeRoutingSwitcher();
+      setStatus("Routing closed.");
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      routingSwitcherLane = routingSwitcherLane === "scope" ? "node" : "scope";
+      syncRoutingSwitcher();
+      setStatus(routingSwitcherLane === "scope" ? "Routing: active scope." : "Routing: active node.");
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      applyRoutingSwitcherRoute();
+      return;
+    }
+    if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (routingSwitcherLane === "scope") {
+        moveRoutingScope(-1);
+      } else {
+        moveRoutingNode(-1);
+      }
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      event.preventDefault();
+      if (routingSwitcherLane === "scope") {
+        moveRoutingScope(1);
+      } else {
+        moveRoutingNode(1);
+      }
+      return;
+    }
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "r") {
+    event.preventDefault();
+    openRoutingSwitcher("scope");
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "r" && !viewState.reviewMode) {
+    event.preventDefault();
+    applyRoutingSwitcherRoute();
+    return;
+  }
+
   if (
     !event.ctrlKey &&
     !event.metaKey &&
@@ -13723,13 +13969,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
     // Arrow keys fall through to normal navigation
   }
-  // Toggle review mode with bare R (when not already in review mode)
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "r" && !viewState.reviewMode) {
-    event.preventDefault();
-    toggleReviewMode();
-    return;
-  }
-
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
     undoLastChange();

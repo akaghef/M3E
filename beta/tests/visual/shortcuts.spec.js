@@ -639,6 +639,33 @@ test.describe("Scope navigation", () => {
     await waitForRender(page);
     await expectMetaContains(page, "scope: root");
   });
+
+  test("Shift+R opens scope routing and R routes active node to selected scope", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: Child A");
+
+    await pressKey(page, "f");
+    await waitForRender(page);
+    await expectStatusContains(page, "Marked as folder scope");
+
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Shift+r");
+    await expect(page.locator("#routing-switcher")).toBeVisible();
+
+    await pressKey(page, "ArrowDown");
+    await pressKey(page, "r");
+    await waitForRender(page);
+    await expectStatusContains(page, "Routed Child B -> Child A");
+
+    await pressKey(page, "Escape");
+    await pressKey(page, "ArrowLeft");
+    await expectMetaContains(page, "selected: Child A");
+  });
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

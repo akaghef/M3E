@@ -21,8 +21,8 @@ const FIXTURE_PATH = path.resolve(__dirname, "..", "fixtures", "shortcut_test.js
  * @returns {Promise<void>}
  */
 async function launchViewer(page, map) {
-  const isolatedDocId = `shortcut-test-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `localMapId=${encodeURIComponent(isolatedDocId)}&cloudMapId=${encodeURIComponent(isolatedDocId)}`;
+  const isolatedRunId = `shortcut-test-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const qs = `testRun=${encodeURIComponent(isolatedRunId)}`;
   await page.goto(`/viewer.html?${qs}`);
 
   const payload = map || JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));

@@ -2541,6 +2541,121 @@
         margin: 3px 8px;
       }
 
+      /* ── Trial: scope routing switcher ── */
+      .routing-switcher {
+        position: fixed;
+        inset: 0;
+        z-index: 96;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+      }
+
+      .routing-switcher[hidden] {
+        display: none;
+      }
+
+      .routing-switcher-panel {
+        width: min(720px, calc(100vw - 48px));
+        border: 1px solid rgba(31, 41, 55, 0.18);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 24px 60px rgba(31, 41, 55, 0.22);
+        padding: 14px;
+        pointer-events: auto;
+      }
+
+      .routing-switcher-head,
+      .routing-switcher-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: #6d7480;
+        font-size: 12px;
+      }
+
+      .routing-switcher-head strong {
+        min-width: 0;
+        overflow: hidden;
+        color: #1d2129;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .routing-switcher-grid {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr) 120px;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 0;
+      }
+
+      .routing-active-node,
+      .routing-active-scope,
+      .routing-scope-card {
+        min-height: 78px;
+        border: 1px solid #d8dde5;
+        border-radius: 8px;
+        background: #fff;
+        padding: 10px;
+        text-align: left;
+      }
+
+      .routing-active-node,
+      .routing-active-scope {
+        display: grid;
+        align-content: center;
+        gap: 6px;
+      }
+
+      .routing-active-node.is-active,
+      .routing-active-scope.is-active,
+      .routing-scope-card.is-active {
+        border-color: #c62030;
+        box-shadow: 0 0 0 3px rgba(198, 32, 48, 0.16);
+      }
+
+      .routing-active-node span,
+      .routing-active-scope span,
+      .routing-scope-card span {
+        color: #6d7480;
+        font-size: 11px;
+        line-height: 1.25;
+      }
+
+      .routing-active-node strong,
+      .routing-active-scope strong,
+      .routing-scope-card strong {
+        display: block;
+        color: #1d2129;
+        font-size: 13px;
+        line-height: 1.2;
+      }
+
+      .routing-scope-strip {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(96px, 1fr);
+        gap: 10px;
+        overflow: hidden;
+      }
+
+      .routing-scope-card {
+        cursor: pointer;
+        opacity: 0.76;
+      }
+
+      .routing-scope-card.is-active {
+        opacity: 1;
+      }
+
+      .routing-scope-card.is-disabled {
+        background: #f6f7f9;
+        color: #8c94a3;
+      }
+
       /* ── Color Palette Popover (Miro-style node decoration) ── */
       .color-palette-popover {
         position: fixed;
