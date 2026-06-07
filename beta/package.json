@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Rapid MVP viewer with TypeScript source",
   "scripts": {
-    "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
+    "build": "tsc -p tsconfig.node.json && npm run build:browser",
     "build:node": "tsc -p tsconfig.node.json",
     "weekly:review": "npm run build:node && node dist/node/weekly_review_loop.js",
     "pjv34:template": "npm run build:node && node dist/node/pjv34_template_seed.js",
@@ -14,9 +14,10 @@
     "template:mermaid": "npm run build:node && node dist/node/template_mermaid_cli.js",
     "template:mermaid:all": "npm run build:node && node dist/node/template_mermaid_cli.js --spec-dir projects/PJ04_MermaidSystemLangGraph/templates --out tmp/pj04-mermaid-index.html",
     "template:test": "npm run build:node && npx vitest run tests/unit/template_system_builder.test.js",
-    "build:browser": "tsc -p tsconfig.browser.json",
+    "build:browser": "tsc -p tsconfig.browser.json && tsc -p tsconfig.workbench.json && vite build --config vite.config.mjs",
     "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",
+    "start:codex-app": "../scripts/beta/codex-app-server.sh",
     "test": "npm run test:unit",
     "test:unit": "npm run build:node && npx vitest run",
     "test:unit:watch": "npm run build:node && npx vitest --watch",
@@ -33,16 +34,31 @@
     "@playwright/test": "^1.54.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
     "typescript": "^5.4.0",
     "undici-types": "^5.26.5",
+    "vite": "^8.0.13",
     "vitest": "^4.1.4"
   },
   "dependencies": {
+    "@antv/x6": "^3.1.7",
+    "@joint/core": "^4.2.4",
+    "@langchain/langgraph": "^1.3.6",
     "@supabase/supabase-js": "^2.103.0",
     "@types/js-yaml": "^4.0.9",
+    "@xyflow/react": "^12.10.2",
     "better-sqlite3": "^12.8.0",
+    "cytoscape": "^3.33.4",
     "dotenv": "^17.4.1",
+    "elkjs": "^0.11.1",
     "js-yaml": "^4.1.1",
-    "katex": "^0.16.45"
+    "katex": "^0.16.45",
+    "langchain": "^1.4.4",
+    "langfuse": "^3.38.20",
+    "lucide-react": "^1.16.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   }
 }

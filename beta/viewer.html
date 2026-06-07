@@ -4,11 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>M3E</title>
+        <script>
+          (() => {
+            try {
+              const theme = localStorage.getItem("m3e:viewer-theme") === "dark" ? "dark" : "light";
+              document.documentElement.dataset.theme = theme;
+              document.documentElement.style.colorScheme = theme;
+            } catch {
+              document.documentElement.dataset.theme = "light";
+              document.documentElement.style.colorScheme = "light";
+            }
+          })();
+        </script>
         <link rel="stylesheet" href="./viewer.css" />
         <link rel="stylesheet" href="./public/katex/katex.min.css" />
+        <link rel="stylesheet" href="./dist/browser/workbench-ui.css" />
   </head>
   <body>
     <div class="app">
+      <div id="workbench-root"></div>
       <div class="overlay-ui">
         <div class="toolbar">
           <a id="viewer-home-link" class="viewer-logo" href="./home.html" aria-label="Open home">M3E</a>
@@ -41,9 +55,15 @@
           </div>
           <div class="mode-switch" aria-label="Surface view mode">
             <button id="view-tree" class="mode-btn is-active" type="button">Tree</button>
+            <button id="view-mindmap" class="mode-btn" type="button">Mind Map</button>
+            <button id="view-logic-chart" class="mode-btn" type="button">Logic</button>
+            <button id="view-timeline" class="mode-btn" type="button">Timeline</button>
             <button id="view-system" class="mode-btn" type="button">System</button>
+            <button id="view-scatter" class="mode-btn" type="button">Scatter</button>
           </div>
+          <button id="theme-toggle" class="mode-btn theme-toggle-btn" type="button" aria-pressed="false" title="Toggle dark mode">Dark</button>
           <button id="component-tabular-toggle" class="mode-btn" type="button" aria-pressed="false" title="Toggle tabular component on selected node" data-edit-only>Tabular</button>
+          <button id="pen-tool" class="tool-btn" type="button" aria-label="Pen tool" aria-pressed="false" title="Pen tool (Shift+P)" data-edit-only>Pen</button>
           <div class="import-wrap" data-edit-only>
             <button id="import-btn" type="button">Import ▾</button>
             <div id="import-menu" class="export-menu" hidden>
@@ -73,6 +93,58 @@
             </div>
           </div>
           <button id="v4-panel-btn" class="mode-btn" type="button">V4</button>
+        </div>
+        <div id="scatter-toolbar" class="scatter-toolbar" role="toolbar" aria-label="Scatter tools" hidden data-edit-only>
+          <button id="scatter-normal" class="scatter-tool-btn is-active" type="button" title="Normal">Normal</button>
+          <button id="scatter-add-node" class="scatter-tool-btn" type="button" title="Add node">Add Node</button>
+          <button id="scatter-add-edge" class="scatter-tool-btn" type="button" title="Add edge">Add Edge</button>
+          <button id="scatter-colorize" class="scatter-tool-btn" type="button" title="Colorize">Colorize</button>
+          <button id="scatter-delete" class="scatter-tool-btn" type="button" title="Delete">Delete</button>
+          <span class="toolbar-sep" aria-hidden="true">|</span>
+          <button id="scatter-display-root" class="scatter-tool-btn is-active" type="button" aria-pressed="true" title="PN > scatter > toggle display root">Toggle Display Root</button>
+          <button id="scatter-animate" class="scatter-tool-btn" type="button" aria-pressed="false" title="Animate force layout (A)">Animate</button>
+          <button id="scatter-reflow" class="scatter-tool-btn" type="button" title="Reflow with force layout">Reflow</button>
+          <label class="scatter-range-control" title="Repulsion coefficient">
+            <span>Repel</span>
+            <input id="scatter-repulsion" type="range" min="20000" max="600000" step="10000" value="200000" aria-label="Scatter repulsion" />
+          </label>
+          <label class="scatter-range-control" title="Edge spring length">
+            <span>Length</span>
+            <input id="scatter-edge-length" type="range" min="80" max="320" step="10" value="180" aria-label="Scatter edge length" />
+          </label>
+        </div>
+        <div id="draw-toolbar" class="draw-toolbar" role="toolbar" aria-label="Drawing tools" data-edit-only>
+          <button id="draw-select" class="draw-tool-btn is-active" type="button" aria-label="Select tool" title="Select (Esc)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4 L17 12 L12 14 L15 20 L12.5 21 L9.5 15 L6 18 Z" /></svg>
+            <span>Select</span>
+          </button>
+          <button id="draw-pen" class="draw-tool-btn" type="button" aria-label="Pen tool" title="Pen (Shift+P)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 L8 19 L19 8 L16 5 L5 16 Z" /><path d="M14 7 L17 10" /></svg>
+            <span>Pen</span>
+          </button>
+          <button id="draw-highlighter" class="draw-tool-btn" type="button" aria-label="Highlighter tool" title="Highlighter (Shift+H)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18 L9 20 L20 9 L16 5 Z" /><path d="M4 21 H13" /></svg>
+            <span>Highlighter</span>
+          </button>
+          <button id="draw-date" class="draw-tool-btn" type="button" aria-label="Date label tool" title="Date label (Shift+D)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3 V7 M16 3 V7 M4 10 H20" /><text x="12" y="17" text-anchor="middle">17</text></svg>
+            <span>Date</span>
+          </button>
+          <button id="draw-eraser" class="draw-tool-btn" type="button" aria-label="Eraser tool" title="Eraser (Shift+E)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17 L15 8 L19 12 L11 20 H7 Z" /><path d="M11 20 H20" /></svg>
+            <span>Eraser</span>
+          </button>
+          <div class="draw-tool-separator" aria-hidden="true"></div>
+          <div class="draw-color-group" aria-label="Stroke color">
+            <button class="draw-color-btn is-active" type="button" data-pen-color="#242424" aria-label="Black stroke" title="Black"></button>
+            <button class="draw-color-btn" type="button" data-pen-color="#7c3cff" aria-label="Purple stroke" title="Purple"></button>
+            <button class="draw-color-btn" type="button" data-pen-color="#e64980" aria-label="Pink stroke" title="Pink"></button>
+            <button class="draw-color-btn" type="button" data-pen-color="#2f9e44" aria-label="Green stroke" title="Green"></button>
+          </div>
+          <label class="draw-width-control" title="Stroke width">
+            <span>Width</span>
+            <input id="pen-width" type="range" min="1" max="8" step="0.5" value="2" aria-label="Stroke width" />
+          </label>
         </div>
         <div id="readonly-banner" class="readonly-banner" hidden>Read-only view</div>
         <div id="mode-badge" class="mode-badge" aria-live="polite">EDIT</div>
@@ -268,8 +340,8 @@
               <div class="cheatsheet-row"><kbd>Ctrl+Z</kbd><span>Undo</span></div>
               <div class="cheatsheet-row"><kbd>Ctrl+Y</kbd><span>Redo</span></div>
               <div class="cheatsheet-row"><kbd>Ctrl+A</kbd><span>Select all</span></div>
-              <div class="cheatsheet-row"><kbd>Ctrl+Shift+C</kbd><span>Copy node path</span></div>
-              <div class="cheatsheet-row"><kbd>Ctrl+Shift+I</kbd><span>Copy scope ID</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Shift+C</kbd> / <kbd>Ctrl+Alt+C</kbd><span>Copy node path</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Shift+I</kbd> / <kbd>Ctrl+Alt+I</kbd><span>Copy scope ID</span></div>
               <div class="cheatsheet-row"><kbd>Escape</kbd><span>Cancel cut</span></div>
             </div>
             <div class="cheatsheet-group">
@@ -318,8 +390,10 @@
     </div>
 
         <script src="./public/katex/katex.min.js"></script>
+        <script src="./node_modules/@joint/core/dist/joint.min.js"></script>
         <script src="./dist/browser/viewer.tuning.js"></script>
         <script src="./dist/browser/markdown_renderer.js"></script>
         <script src="./dist/browser/viewer.js"></script>
+        <script type="module" src="./dist/browser/workbench-ui.js"></script>
   </body>
 </html>

@@ -5,17 +5,20 @@ declare const katex: {
   render(latex: string, element: HTMLElement, options?: { displayMode?: boolean; throwOnError?: boolean }): void;
   renderToString(latex: string, options?: { displayMode?: boolean; throwOnError?: boolean }): string;
 };
+declare const joint: any;
 
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
-type SurfaceViewMode = "tree" | "system";
+type SurfaceViewMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 type MapNodeClass = "entity" | "scope";
-type SurfaceKind = "tree" | "system";
-type SurfaceLayout = "tree" | "flow-lr";
+type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceLayoutDensity = "compact" | "balanced" | "spacious";
+type SurfaceBranchDirection = "both" | "right" | "left";
 
 interface TreeNode {
   id: string;
@@ -44,6 +47,7 @@ interface GraphLink {
   label?: string;
   direction?: GraphLinkDirection;
   style?: GraphLinkStyle;
+  color?: string;
   sourcePort?: LinkPort;
   targetPort?: LinkPort;
 }
@@ -72,10 +76,44 @@ interface MapScope {
   primarySurfaceId?: string;
 }
 
+interface PenPoint {
+  x: number;
+  y: number;
+}
+
+interface PenAnnotation {
+  id: string;
+  kind: "pen";
+  scopeId?: string;
+  d: string;
+  points: PenPoint[];
+  stroke: string;
+  strokeWidth: number;
+  opacity?: number;
+  createdAt?: string;
+}
+
+interface TextAnnotation {
+  id: string;
+  kind: "text";
+  scopeId?: string;
+  x: number;
+  y: number;
+  text: string;
+  fill: string;
+  fontSize: number;
+  fontWeight?: number;
+  variant?: "date" | "label";
+  createdAt?: string;
+}
+
+type MapAnnotation = PenAnnotation | TextAnnotation;
+
 interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
+  annotations?: Record<string, MapAnnotation>;
   scopes?: Record<string, MapScope>;
   surfaces?: Record<string, MapSurface>;
   linearNotesByScope?: Record<string, string>;
@@ -193,6 +231,8 @@ interface NodePosition {
   depth: number;
   w: number;
   h: number;
+  fontSize?: number;
+  labelLines?: string[];
 }
 
 interface LayoutResult {
@@ -203,6 +243,7 @@ interface LayoutResult {
 }
 
 interface DragState {
+  mode?: "structure" | "scatter";
   pointerId: number;
   sourceNodeId: string;
   sourceRootIds: string[];
@@ -212,6 +253,7 @@ interface DragState {
   dragged: boolean;
   toggleKey: boolean;
   shiftKey: boolean;
+  startViews?: Record<string, { x: number; y: number }>;
 }
 
 type DragDropProposal =
@@ -246,17 +288,34 @@ interface PinchState {
 }
 
 interface SubtreeSnapshot {
+  id: string;
+  nodeType?: NodeType;
   text: string;
+  collapsed?: boolean;
   details: string;
   note: string;
   attributes: Record<string, string>;
+  link?: string;
+  targetNodeId?: string;
+  aliasLabel?: string;
+  access?: AliasAccess;
+  targetSnapshotLabel?: string;
+  isBroken?: boolean;
   children: SubtreeSnapshot[];
+}
+
+interface SubtreeClipboardPayload {
+  kind: "m3e.subtree.clipboard";
+  version: 1;
+  roots: SubtreeSnapshot[];
+  links: GraphLink[];
 }
 
 type ClipboardState =
   | {
     type: "copy";
     snapshots: SubtreeSnapshot[];
+    links: GraphLink[];
   }
   | {
     type: "cut";
@@ -273,6 +332,9 @@ interface ViewState {
   currentScopeRootId: string;
   thinkingMode: ThinkingMode;
   surfaceViewMode: SurfaceViewMode;
+  surfaceLayoutDensity: SurfaceLayoutDensity;
+  surfaceBranchDirection: SurfaceBranchDirection;
+  scatterDisplayRoot: boolean;
   zoom: number;
   cameraX: number;
   cameraY: number;

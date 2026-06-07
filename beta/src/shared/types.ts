@@ -4,8 +4,8 @@ export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
 export type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 export type MapNodeClass = "entity" | "scope";
-export type SurfaceKind = "tree" | "system";
-export type SurfaceLayout = "tree" | "flow-lr";
+export type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 
 export interface TreeNode {
   id: string;
@@ -34,6 +34,7 @@ export interface GraphLink {
   label?: string;
   direction?: LinkDirection;
   style?: LinkStyle;
+  color?: string;
   sourcePort?: LinkPort;
   targetPort?: LinkPort;
 }
@@ -62,10 +63,44 @@ export interface MapScope {
   primarySurfaceId?: string;
 }
 
+export interface PenPoint {
+  x: number;
+  y: number;
+}
+
+export interface PenAnnotation {
+  id: string;
+  kind: "pen";
+  scopeId?: string;
+  d: string;
+  points: PenPoint[];
+  stroke: string;
+  strokeWidth: number;
+  opacity?: number;
+  createdAt?: string;
+}
+
+export interface TextAnnotation {
+  id: string;
+  kind: "text";
+  scopeId?: string;
+  x: number;
+  y: number;
+  text: string;
+  fill: string;
+  fontSize: number;
+  fontWeight?: number;
+  variant?: "date" | "label";
+  createdAt?: string;
+}
+
+export type MapAnnotation = PenAnnotation | TextAnnotation;
+
 export interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
+  annotations?: Record<string, MapAnnotation>;
   scopes?: Record<string, MapScope>;
   surfaces?: Record<string, MapSurface>;
   linearNotesByScope?: Record<string, string>;
