@@ -20,6 +20,7 @@ test.describe("M3E Mindmap Workbench UI", () => {
     await expect(rail.getByRole("button", { name: "Pen" })).toBeVisible();
     await expect(rail.getByRole("button", { name: "Highlighter" })).toBeVisible();
     await expect(rail.getByRole("button", { name: "Eraser" })).toBeVisible();
+    await expect(rail.getByRole("button", { name: "Scopes" })).toBeVisible();
     await expect(page.getByTestId("workbench-right-panel").getByText("Selected node")).toBeVisible();
 
     await expect(page.getByRole("button", { name: "AI sidekick" })).toBeVisible();
@@ -27,6 +28,10 @@ test.describe("M3E Mindmap Workbench UI", () => {
     const topbar = page.getByTestId("workbench-topbar");
     await expect(topbar.getByRole("button", { name: "Present" })).toBeVisible();
     await expect(topbar.getByRole("button", { name: "Share" })).toBeVisible();
+
+    await rail.getByRole("button", { name: "Scopes" }).click();
+    await expect(page.locator("#home-screen")).toBeVisible();
+    await expect(page.locator("#scope-nav-btn")).toHaveAttribute("aria-expanded", "true");
   });
 
   test("connects visible workbench controls to existing viewer functions", async ({ page }) => {

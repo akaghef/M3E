@@ -12,6 +12,7 @@ const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
 const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
+const scopeNavBtn = document.getElementById("scope-nav-btn") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
 const scatterToolbarEl = document.getElementById("scatter-toolbar") as HTMLElement | null;
 const scatterNormalBtn = document.getElementById("scatter-normal") as HTMLButtonElement | null;
@@ -77,6 +78,7 @@ const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElem
 const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLElement | null;
 const homeScreenEl = document.getElementById("home-screen") as HTMLElement | null;
 const homeScopeTreeEl = document.getElementById("home-scope-tree") as HTMLElement | null;
+const scopeNavCloseBtn = document.getElementById("scope-nav-close") as HTMLButtonElement | null;
 const appEl = document.querySelector(".app") as HTMLElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
@@ -8482,6 +8484,7 @@ function showHomeScreen(): void {
   }
   homeScreenVisible = true;
   homeScreenEl.hidden = false;
+  scopeNavBtn?.setAttribute("aria-expanded", "true");
   appEl?.classList.add("home-active");
 
   const rootId = map.state.rootId;
@@ -8496,9 +8499,26 @@ function hideHomeScreen(): void {
   }
   homeScreenVisible = false;
   homeScreenEl.hidden = true;
+  scopeNavBtn?.setAttribute("aria-expanded", "false");
   appEl?.classList.remove("home-active");
   board.focus();
 }
+
+function toggleHomeScreen(): void {
+  if (homeScreenVisible) {
+    hideHomeScreen();
+    return;
+  }
+  showHomeScreen();
+}
+
+scopeNavBtn?.addEventListener("click", () => {
+  toggleHomeScreen();
+});
+
+scopeNavCloseBtn?.addEventListener("click", () => {
+  hideHomeScreen();
+});
 
 // ---- Entity List Panel ----
 
@@ -14638,6 +14658,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
     window.location.href = buildHomeHref();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    toggleHomeScreen();
     return;
   }
 

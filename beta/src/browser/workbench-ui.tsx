@@ -428,9 +428,9 @@ function LeftRail({
           <Waypoints size={20} />
         </IconButton>
         <IconButton
-          label="Scope list"
+          label="Scopes"
           onClick={() => {
-            document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", altKey: true, bubbles: true }));
+            clickLegacy("scope-nav-btn");
           }}
         >
           <ListTree size={20} />
