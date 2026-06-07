@@ -3,7 +3,7 @@ name: map-manager
 description: Decide M3E map structure before writing or delegating. Use when a task involves scope, scopen/unscopen, layouting, display intent, facet choice, edge/link/alias choice, cross-facet relations, path ambiguity, or worker handoff.
 ---
 
-<!-- generated from agent_instructions/skills_canonical/map-manager\SKILL.md; do not edit mirror directly -->
+<!-- generated from agent_instructions/skills_canonical/map-manager/SKILL.md; do not edit mirror directly -->
 
 # Map Manager Skill
 

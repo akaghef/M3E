@@ -1,0 +1,48 @@
+{
+  "opId": "RF1.expandSelectedNode",
+  "selectedNodeId": "n_animals",
+  "source": "deliberately_bad_m3e_candidate",
+  "actions": [
+    {
+      "type": "appendChildren",
+      "parentId": "n_root",
+      "nodes": [
+        {
+          "id": "m_bad_1",
+          "text": "ヒトは哺乳類です",
+          "children": [],
+          "attributes": {
+            "semanticRole": "sentence"
+          }
+        },
+        {
+          "id": "m_bad_2",
+          "text": "生物とは生命を持つもの",
+          "children": [],
+          "attributes": {
+            "semanticRole": "definition"
+          }
+        },
+        {
+          "id": "m_bad_3",
+          "text": "植物",
+          "children": [],
+          "attributes": {
+            "semanticRole": "kingdom_like"
+          }
+        },
+        {
+          "id": "m_bad_4",
+          "text": "爬虫類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class"
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "note": "Represents current messy M3E behavior: wrong target, sentence labels, duplicated/cross-domain entries."
+  }
+}

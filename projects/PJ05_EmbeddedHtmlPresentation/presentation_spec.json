@@ -1,0 +1,110 @@
+{
+  "id": "pj05_v4_embedded_presentation_260514",
+  "title": "M3E V4 Service-Equivalent Presentation",
+  "source": {
+    "summary": "docs/for-akaghef/v4_demo/v4_service_slice_summary.json",
+    "screenshot": "docs/for-akaghef/v4_demo/assets/v4_service_slice_m3e.png",
+    "spec": "docs/03_Spec/V4_Service_Equivalent_Design.md"
+  },
+  "lanes": [
+    { "id": "actor", "label": "ACTOR", "x": 40 },
+    { "id": "surface", "label": "M3E SURFACES", "x": 205 },
+    { "id": "flash", "label": "FLASH / MAPIFY", "x": 375 },
+    { "id": "map", "label": "MAP STATE", "x": 545 },
+    { "id": "sync", "label": "SYNC / CONFLICT", "x": 715 },
+    { "id": "publish", "label": "PUBLISH BOUNDARY", "x": 875 }
+  ],
+  "nodes": [
+    { "id": "akaghef", "lane": "actor", "kind": "actor", "title": "Akaghef / Team", "subtitle": "reviewer + editor", "x": 54, "y": 92 },
+    { "id": "source_pdf", "lane": "surface", "kind": "surface", "title": "Source Tray", "subtitle": "PDF / text / markdown", "x": 232, "y": 76 },
+    { "id": "v4_panel", "lane": "surface", "kind": "surface", "title": "V4 Workbench", "subtitle": "status + controls", "x": 232, "y": 188 },
+    { "id": "flash_draft", "lane": "flash", "kind": "pipeline", "title": "Flash Draft", "subtitle": "ingest + structured draft", "x": 402, "y": 84 },
+    { "id": "mapify_review", "lane": "flash", "kind": "pipeline", "title": "Mapify Review", "subtitle": "accept / revise / reject", "x": 402, "y": 198 },
+    { "id": "map_state", "lane": "map", "kind": "data", "title": "M3E Map State", "subtitle": "workspace > map > scope > node", "x": 572, "y": 88 },
+    { "id": "discussion", "lane": "map", "kind": "surface", "title": "Discussion Surface", "subtitle": "sticky / question / decision", "x": 572, "y": 218 },
+    { "id": "vault", "lane": "sync", "kind": "external", "title": "Obsidian Vault", "subtitle": "export / edit / import", "x": 742, "y": 78 },
+    { "id": "conflict", "lane": "sync", "kind": "data", "title": "Conflict Workbench", "subtitle": "local / remote / resolution", "x": 742, "y": 208 },
+    { "id": "github_plan", "lane": "publish", "kind": "external", "title": "GitHub Publish Plan", "subtitle": "staged proposal + secret lock", "x": 888, "y": 84 },
+    { "id": "report_html", "lane": "publish", "kind": "surface", "title": "Report HTML", "subtitle": "derived presentation artifact", "x": 888, "y": 216 }
+  ],
+  "links": [
+    { "id": "l1", "from": "akaghef", "to": "source_pdf", "label": "drop / paste" },
+    { "id": "l2", "from": "source_pdf", "to": "flash_draft", "label": "ingest" },
+    { "id": "l3", "from": "flash_draft", "to": "mapify_review", "label": "draft" },
+    { "id": "l4", "from": "mapify_review", "to": "map_state", "label": "approve" },
+    { "id": "l5", "from": "map_state", "to": "discussion", "label": "discuss" },
+    { "id": "l6", "from": "discussion", "to": "map_state", "label": "decision" },
+    { "id": "l7", "from": "map_state", "to": "vault", "label": "export" },
+    { "id": "l8", "from": "vault", "to": "map_state", "label": "import" },
+    { "id": "l9", "from": "vault", "to": "conflict", "label": "stale write" },
+    { "id": "l10", "from": "conflict", "to": "map_state", "label": "resolution" },
+    { "id": "l11", "from": "map_state", "to": "github_plan", "label": "proposal" },
+    { "id": "l12", "from": "github_plan", "to": "report_html", "label": "safe report" },
+    { "id": "l13", "from": "map_state", "to": "report_html", "label": "snapshot" },
+    { "id": "l14", "from": "v4_panel", "to": "map_state", "label": "operate" },
+    { "id": "l15", "from": "akaghef", "to": "v4_panel", "label": "guide" }
+  ],
+  "flows": [
+    {
+      "id": "full",
+      "title": "Full V4 Slice",
+      "subtitle": "Mapify -> Discussion -> Vault -> Conflict -> Publish boundary",
+      "links": ["l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "l11", "l12", "l13", "l15"],
+      "steps": [
+        { "title": "Open V4 Workbench", "body": "同じ M3E map 上で source, draft, vault, conflict, publish boundary を見せる。", "links": ["l15", "l14"] },
+        { "title": "Run the vertical slice", "body": "PDF 取り込みから報告 HTML までを、map state を正本にして一続きで辿る。", "links": ["l1", "l2", "l3", "l4", "l5", "l7", "l9", "l10", "l11", "l12"] }
+      ]
+    },
+    {
+      "id": "mapify",
+      "title": "PDF -> Flash / Mapify",
+      "subtitle": "source material becomes approved map nodes",
+      "links": ["l1", "l2", "l3", "l4"],
+      "steps": [
+        { "title": "Capture source", "body": "PDF / text / markdown を Source Tray に置く。ここでは map に即時反映しない。", "links": ["l1"] },
+        { "title": "Create Flash draft", "body": "Flash draft として構造化候補を作る。V4 demo では /api/flash/ingest が通っている。", "links": ["l2", "l3"] },
+        { "title": "Approve to map", "body": "人間が採用した draft node だけを M3E map state に commit する。", "links": ["l4"] }
+      ]
+    },
+    {
+      "id": "discussion",
+      "title": "Discussion / Decision",
+      "subtitle": "Miro-like review is represented inside the same map",
+      "links": ["l5", "l6"],
+      "steps": [
+        { "title": "Place discussion nodes", "body": "sticky / question / decision を同じ map 上に置く。外部 Miro を正本にしない。", "links": ["l5"] },
+        { "title": "Commit decision", "body": "重要な議論結果は decision node として固定し、後続仕様や task に接続する。", "links": ["l6"] }
+      ]
+    },
+    {
+      "id": "vault",
+      "title": "Obsidian Vault Sync",
+      "subtitle": "Markdown workspace as a derived/editing surface",
+      "links": ["l7", "l8"],
+      "steps": [
+        { "title": "Export vault", "body": "M3E map を Markdown vault に export する。通常正本は SQLite workspace 側に残る。", "links": ["l7"] },
+        { "title": "Import edits", "body": "vault 側編集を import して M3E map に戻す。V4 demo では export / edit / import を確認済み。", "links": ["l8"] }
+      ]
+    },
+    {
+      "id": "conflict",
+      "title": "Conflict Resolution",
+      "subtitle": "stale write becomes explicit resolution work",
+      "links": ["l9", "l10"],
+      "steps": [
+        { "title": "Reject stale write", "body": "baseSavedAt により stale save は HTTP 409 で止める。silent overwrite しない。", "links": ["l9"] },
+        { "title": "Apply resolution", "body": "remote state を見た上で resolution を明示保存し、host edit と VM resolution を両方残す。", "links": ["l10"] }
+      ]
+    },
+    {
+      "id": "publish",
+      "title": "GitHub Safety Boundary",
+      "subtitle": "publish is proposal-first, secret-locked, and recoverable",
+      "links": ["l11", "l12", "l13"],
+      "steps": [
+        { "title": "Create staged proposal", "body": "M3E では git add UX を出さず、working change を staged proposal として扱う。", "links": ["l11"] },
+        { "title": "Export report artifact", "body": "remote push 前に secret lock / publish plan / report HTML を確認する。", "links": ["l12", "l13"] }
+      ]
+    }
+  ]
+}

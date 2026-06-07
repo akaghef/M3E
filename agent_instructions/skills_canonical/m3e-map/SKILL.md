@@ -120,7 +120,7 @@ legacy/API compatibility only; `\` is filesystem only.
 
 ### Legacy API path format (`Map:` convention)
 
-User-copied paths from the viewer (right-click → "Copy path") use the form `Map:Root/Child/Grandchild`. The `Map:` prefix is optional on the API (accepted case-insensitively). A leading `Root` segment (or the root node's own text) resolves to the document root.
+User-copied paths from the viewer (right-click -> "Copy path") use the official display form `M:(<map label>)> A > B >> C`. The legacy `Map:Root/Child/Grandchild` form remains accepted by the API resolver for compatibility only.
 
 - Success: `{ ok: true, mapId, nodeId, matched: ["Root", ...] }`
 - `PATH_NOT_FOUND` (404): no child with that text under the current parent

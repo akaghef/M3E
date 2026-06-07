@@ -1,0 +1,18 @@
+{
+  "caseId": "BIO-RF1-ANIMALS-EXPAND-001",
+  "title": "Expand 動物 in biological classification map",
+  "opId": "RF1.expandSelectedNode",
+  "before": "../biology/appstate_before.json",
+  "selectedNodeId": "n_animals",
+  "teacherTrace": "../biology/mapify_teacher_trace.json",
+  "teacherDelta": "../biology/mapify_teacher_delta.json",
+  "candidateDelta": "../biology/m3e_bad_delta.json",
+  "rubric": "../../config/rubric_mapify_rapid.json",
+  "acceptance": [
+    "children are appended under selected node only",
+    "labels are short noun phrases",
+    "siblings share class-level semantic role",
+    "existing labels are not duplicated",
+    "candidate resembles Mapify teacher delta enough to guide next patch"
+  ]
+}

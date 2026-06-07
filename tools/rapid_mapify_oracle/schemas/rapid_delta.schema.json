@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3e.rapid-delta.schema.json",
+  "type": "object",
+  "required": [
+    "opId",
+    "selectedNodeId",
+    "actions"
+  ],
+  "properties": {
+    "opId": {
+      "type": "string"
+    },
+    "selectedNodeId": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "appendChildren",
+              "replaceNodeText",
+              "moveNode",
+              "deleteNode"
+            ]
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "nodes": {
+            "type": "array"
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

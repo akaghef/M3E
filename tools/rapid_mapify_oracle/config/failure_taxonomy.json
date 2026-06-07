@@ -1,0 +1,65 @@
+{
+  "version": "0.1.0",
+  "failures": [
+    {
+      "id": "F1_NO_LOCAL_DELTA",
+      "meaning": "No AppState tree delta was produced.",
+      "nextAction": "Inspect command binding and delta engine."
+    },
+    {
+      "id": "F2_WRONG_TARGET",
+      "meaning": "Nodes were inserted under the wrong parent.",
+      "nextAction": "Fix selectedNodeId propagation and selection context."
+    },
+    {
+      "id": "F3_GLOBAL_CONTAMINATION",
+      "meaning": "New map/scope or unrelated subtree was created.",
+      "nextAction": "Enforce Rapid local-delta guard."
+    },
+    {
+      "id": "F4_UI_ONLY_SUCCESS",
+      "meaning": "UI opened or showed success but AppState did not change.",
+      "nextAction": "Add model assertion and state write."
+    },
+    {
+      "id": "F5_MODEL_ONLY_SUCCESS",
+      "meaning": "AppState changed but browser did not render the change.",
+      "nextAction": "Fix state propagation/rendering refresh."
+    },
+    {
+      "id": "F6_SEMANTIC_LOW_QUALITY",
+      "meaning": "Generated labels are map-shaped but semantically poor.",
+      "nextAction": "Refine operation prompt/rubric/context window."
+    },
+    {
+      "id": "F7_ADAPTER_LOSS",
+      "meaning": "Mapify I/O round-trip lost M3E-specific fields.",
+      "nextAction": "Quarantine unsupported fields in metadata."
+    },
+    {
+      "id": "F8_AUTH_OR_QUOTA_BLOCK",
+      "meaning": "Live Mapify call failed due to auth/quota/UI automation.",
+      "nextAction": "Fallback to fixture teacher trace."
+    },
+    {
+      "id": "F9_DIRTY_WORKTREE_COLLISION",
+      "meaning": "Codex modified unrelated dirty files.",
+      "nextAction": "Abort patch and narrow file scope."
+    },
+    {
+      "id": "F10_LABEL_SENTENCE_LIKE",
+      "meaning": "Node labels are long sentences or explanatory clauses.",
+      "nextAction": "Apply map label formatter."
+    },
+    {
+      "id": "F11_SIBLING_TYPE_MIX",
+      "meaning": "Siblings mix classes, examples, meta concepts, and unrelated terms.",
+      "nextAction": "Enforce sibling semanticRole consistency."
+    },
+    {
+      "id": "F12_DUPLICATE_EXISTING_NODE",
+      "meaning": "Generated child duplicates an existing sibling/subtree label.",
+      "nextAction": "Add sibling duplicate filter before applying delta."
+    }
+  ]
+}

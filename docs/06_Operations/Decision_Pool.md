@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-06-06-001
+
+- Date: 2026-06-06
+- Topic: pipeline / system graph UI reference asset の M3E 取り込み
+- Status: working-agreement
+- Decision:
+  - X post の可視化 UI は、Markdown renderer ではなく、M3E の pipeline / system graph surface 参考 asset として扱う。
+  - 適用先は `Axial.subtype=pipeline` と `System.subtype=architecture`。新しい Surface View 名は増やさない。
+  - M3E へ移植する要素は typed card、port、left-to-right flow、selected-path focus、right inspector、minimap、trace replay。
+  - 実装に進む場合は `@xyflow/react` + `elkjs` を優先し、新規の大規模 graph layout を自作しない。
+  - 既定の Rapid tree viewer は置換しない。dark palette / saturated node color は system / workflow surface 限定の候補とする。
+- Why: 大規模 AI system を文書だけで追うより、GraphSpec / Contract Tree / Run trace を可視化する surface として有用だが、既存の calm Rapid tree 方針と混ぜると表示意味が衝突するため。
+- Next: read-only preview route で AppState + GraphSpec から flow UI を表示する adapter を切り出す。実装時は selection inspector と label overlap の Playwright 検証を先に置く。
+- Source: https://x.com/GianMattya/status/2062294853464265004 とこのスレッドでの UI 取り込み指示
+- Promoted: [../04_Architecture/Pipeline_UI_Reference.md](../04_Architecture/Pipeline_UI_Reference.md), [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md)
+
 ## 2026-04-14-001
 
 - Date: 2026-04-14

@@ -1,0 +1,42 @@
+- id: T-PJ05-0
+  phase: 0
+  verb: bootstrap
+  target: "PJ05 embedded HTML presentation seed"
+  done_when:
+    - "PJ05 directory exists with README, initial contract, presentation spec, and generator"
+    - "V4 service-equivalent demo content is mapped into fixed-node presentation flow"
+    - "Generated HTML artifact exists under docs/for-akaghef"
+  eval_required: true
+  eval_criteria:
+    - "node positions are fixed"
+    - "flow / step changes highlight links without moving nodes"
+    - "progress is represented at flow and step levels"
+  parallelizable: false
+  scope: "projects/PJ05_EmbeddedHtmlPresentation, docs/for-akaghef/pj05_presentation"
+  facet: presentation
+  status: done
+  round: 1
+  round_max: 1
+  last_feedback: "2026-05-14: PJ05 seed created. Fixed-node DaveJ-style embedded HTML presentation generated from the V4 service-equivalent demo. Playwright verified 11 nodes, 6 flows, step switching, two-level progress, no clipped nodes, and no browser errors."
+  blocker: null
+
+- id: T-PJ05-1
+  phase: 1
+  verb: integrate
+  target: "viewer overlay / iframe integration path"
+  done_when:
+    - "presentation spec can be loaded by viewer-side code"
+    - "same spec can render as embedded HTML and viewer overlay"
+    - "normal edit mode can exit from presentation mode"
+  eval_required: true
+  eval_criteria:
+    - "presentation remains derived surface, not map source of truth"
+    - "node deletion or missing node creates degraded step, not crash"
+  parallelizable: true
+  scope: "beta/src/browser/viewer.ts, beta/viewer.css"
+  facet: viewer
+  status: pending
+  round: 0
+  round_max: 3
+  last_feedback: null
+  blocker: "depends on T-PJ05-0 review"

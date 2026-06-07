@@ -23,12 +23,13 @@
 
 ## セッション開始ゲート（全エージェント共通）
 
-セッション開始時に 1 回だけ role bootstrap を実行する。
+セッション開始時に 1 回だけ role/session gate を実行する。
 
 - slash prompt 対応エージェント: `/setrole visual|data|data2|team|manage`
-- 通常 codex（non-Copilot）: `pwsh -File scripts/ops/setrole.ps1 -Role visual|data|data2|team|manage`
+- Windows / PowerShell 上の通常 codex: `pwsh -File scripts/ops/setrole.ps1 -Role visual|data|data2|team|manage`
+- macOS / Linux 上の通常 Codex: PowerShell bootstrap は呼ばず、shell-native に `pwd` / `git status --short --branch` / `git branch --show-current` と mandatory context 読み込みを行う
 
-bootstrap で次を必須確認する:
+bootstrap または shell-native session gate で次を必須確認する:
 
 1. role と worktree の整合
 2. role と branch の整合

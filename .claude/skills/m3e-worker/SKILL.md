@@ -3,7 +3,7 @@ name: m3e-worker
 description: Minimal instruction for scoped worker agents. Use when receiving or preparing bounded worker tasks in M3E / Akaghef-System.
 ---
 
-<!-- generated from agent_instructions/skills_canonical/m3e-worker\SKILL.md; do not edit mirror directly -->
+<!-- generated from agent_instructions/skills_canonical/m3e-worker/SKILL.md; do not edit mirror directly -->
 
 # M3E Worker Skill
 

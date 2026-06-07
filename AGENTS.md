@@ -159,14 +159,35 @@ For agents that support slash prompts:
 - `/setrole team`
 - `/setrole manage`
 
-For normal Codex (non-Copilot):
+For Codex on macOS / Linux:
+
+Do **not** call the PowerShell bootstrap. Run shell-native checks and read the
+mandatory context files directly:
+
+```bash
+pwd
+git status --short --branch
+git branch --show-current
+sed -n '1,220p' docs/00_Home/Agent_Brief.md
+sed -n '1,220p' docs/00_Home/Current_Status.md
+sed -n '1,220p' docs/00_Home/Glossary.md
+```
+
+For subordinate roles only, sync with `origin/dev-beta` before implementation:
+
+```bash
+git fetch origin
+git rebase origin/dev-beta
+```
+
+For Codex on Windows / PowerShell:
 
 ```powershell
 pwsh -File scripts/ops/setrole.ps1 visual
 # or data / team / manage
 ```
 
-Required checks performed by bootstrap:
+Required checks performed by bootstrap or shell-native session gate:
 
 1. Role confirmation.
 2. Worktree/directory alignment.

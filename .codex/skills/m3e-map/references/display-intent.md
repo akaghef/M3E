@@ -1,4 +1,4 @@
-<!-- generated from agent_instructions/skills_canonical/m3e-map\references\display-intent.md; do not edit mirror directly -->
+<!-- generated from agent_instructions/skills_canonical/m3e-map/references/display-intent.md; do not edit mirror directly -->
 
 # Display Intent
 

@@ -45,7 +45,7 @@
 |------|------------|
 | `Ctrl+a` | `selectAll` |
 | `Ctrl+b` | — |
-| `Ctrl+c` | `copy` |
+| `Ctrl+c` | `copy`（部分木と subtree 内 link を structured clipboard にコピー） |
 | `Ctrl+d` | — |
 | `Ctrl+e` | — |
 | `Ctrl+f` | — |
@@ -64,7 +64,7 @@
 | `Ctrl+s` | `downloadJson` |
 | `Ctrl+t` | — |
 | `Ctrl+u` | — |
-| `Ctrl+v` | `paste` |
+| `Ctrl+v` | `paste`（同一タブまたは structured clipboard から貼り付け） |
 | `Ctrl+w` | — |
 | `Ctrl+x` | `cut` |
 | `Ctrl+y` | `redo` |
@@ -74,6 +74,8 @@
 | `Ctrl+Shift+z` | `redo` |
 | `Ctrl+Shift+t` | `generateRelatedTopics` |
 | `Ctrl+Shift+l` | `applyMarkedLink` |
+| `Ctrl+Alt+c` | `copyNodePath`（Mac-safe 代替。Option 入力は物理キーで判定） |
+| `Ctrl+Alt+i` | `copyScopeId`（Mac-safe 代替。Option 入力は物理キーで判定） |
 | `Ctrl+0` | `fitAll` |
 
 ---

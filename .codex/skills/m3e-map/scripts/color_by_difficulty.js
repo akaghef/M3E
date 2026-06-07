@@ -1,4 +1,4 @@
-// generated from agent_instructions/skills_canonical/m3e-map\scripts\color_by_difficulty.js; do not edit mirror directly
+// generated from agent_instructions/skills_canonical/m3e-map/scripts/color_by_difficulty.js; do not edit mirror directly
 
 // Default coloring pass: paint a map's nodes white→red by estimated execution difficulty.
 // Heuristic-only (no LLM call). Preserves existing m3e:style keys (border/text/...).

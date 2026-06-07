@@ -21,6 +21,7 @@ Eisenhower 緊急度×重要度マトリクスのような 2D 配置を皮切り
 - [04_process_lifecycle.md](04_process_lifecycle.md) — OODA/PDCA/Cynefin/ピラミッド等のプロセス・階層系
 - [05_research_knowledge.md](05_research_knowledge.md) — 研究固有・知識整理（Zettelkasten, PARA, ギャップ分析）
 - [06_implementation_thoughts.md](06_implementation_thoughts.md) — 横断: ビュー切替・ハイブリッド・実装方針
+- [07_business_folder_spine.md](07_business_folder_spine.md) — 業務フォルダを Scatter 作業面 + spine 正本として扱う案
 
 ## フレームワーク全体像
 

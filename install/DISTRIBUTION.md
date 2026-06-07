@@ -22,6 +22,8 @@ Node.js などの事前インストールは不要です。セットアップが
 | `install/windows/verify-distribution.ps1` | **ワンコマンド検証**（ビルド→テスト→レポート） |
 | `install/windows/run-local-test.ps1` | ローカル検証（全エディション対応） |
 | `install/windows/run-sandbox.ps1` | Sandbox 検証（Pro/Enterprise のみ、Home は自動フォールバック） |
+| `install/mac/setup.sh` | macOS セットアップ本体 |
+| `install/mac/scripts/build-package.sh` | macOS payload/runtime パッケージ作成 |
 | `install/assets/icons/` | アイコン資産 |
 | `install/artifacts/` | ビルド済みインストーラー `.exe` の出力先 |
 
@@ -36,6 +38,24 @@ Node.js などの事前インストールは不要です。セットアップが
 
 1. `install\setup.bat` を実行する
 2. セットアップ完了後、デスクトップの `M3E` から起動する
+
+### macOS
+
+```sh
+install/mac/scripts/build-package.sh
+install/mac/setup.sh
+"$HOME/Library/Application Support/M3E/launch.sh"
+```
+
+オプション:
+- `install/mac/setup.sh --desktop-link` — `~/Desktop/M3E.command` を作成
+- `install/mac/setup.sh --no-verify` — post-setup verify をスキップ
+
+macOS のインストール先:
+
+```text
+~/Library/Application Support/M3E
+```
 
 ## セットアップ（無人実行）
 

@@ -21,6 +21,7 @@ M3E の map 書き込みで、AI が **人間にレビューしやすい表示**
 - [04_dependency_contract.md](04_dependency_contract.md) — dependency facet の具体契約
 - [05_implementation_contract.md](05_implementation_contract.md) — implementation facet の具体契約
 - [06_timeseries_contract.md](06_timeseries_contract.md) — timeseries facet の具体契約
+- [07_map_write_layout_rules/](07_map_write_layout_rules/) — map 書き込み時の layout 指示・副作用禁止ルール
 
 ## キーメッセージ
 
