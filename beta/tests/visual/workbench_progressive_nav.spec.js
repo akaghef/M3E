@@ -110,9 +110,22 @@ function rapidFixture() {
   };
 }
 
+async function routeRapidFixture(page, mapId) {
+  const doc = rapidFixture();
+  await page.route(`**/api/maps/${mapId}`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Method not allowed." }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(doc) });
+  });
+}
+
 test.describe("Workbench progressive navigation", () => {
   test("root edges attach to DOM rect boundaries", async ({ page }) => {
-    await page.goto("/viewer.html?localMapId=pn-edge-root&cloudMapId=pn-edge-root");
+    const mapId = "pn-edge-root";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
     await page.locator('[aria-label="[GUI] navigation root"]').hover();
     await page.waitForTimeout(250);
@@ -132,7 +145,9 @@ test.describe("Workbench progressive navigation", () => {
   });
 
   test("child edges attach to DOM rect boundaries", async ({ page }) => {
-    await page.goto("/viewer.html?localMapId=pn-edge-child&cloudMapId=pn-edge-child");
+    const mapId = "pn-edge-child";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
     await page.locator('[aria-label="[GUI] navigation root"]').hover();
     await page.waitForTimeout(150);
@@ -247,7 +262,9 @@ test.describe("Workbench progressive navigation", () => {
   });
 
   test("E toggles selected node collapse and expand", async ({ page }) => {
-    await page.goto("/viewer.html?localMapId=pn-e-collapse&cloudMapId=pn-e-collapse");
+    const mapId = "pn-e-collapse";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
     await expect(page.locator("#meta")).toContainText("selected:");
 
     await page.keyboard.press("E");
@@ -258,7 +275,9 @@ test.describe("Workbench progressive navigation", () => {
   });
 
   test("Space does not open active-node PN while typing", async ({ page }) => {
-    await page.goto("/viewer.html?localMapId=pn-input-guard&cloudMapId=pn-input-guard");
+    const mapId = "pn-input-guard";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
     await page.locator('[aria-label="AI sidekick"]').click();
     await page.locator(".wb-ai-composer textarea").click();
