@@ -816,13 +816,15 @@ async function handleHomeApi(
       }
 
       try {
-        RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: vaultPath });
+        const resolvedVaultPath = validateVaultPath(vaultPath, { mustExist: true });
+        RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: resolvedVaultPath });
       } catch (err) {
         if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
-        throw err;
+        sendHomeError(res, 400, "INVALID_BODY", (err as Error).message || "Invalid vaultPath.");
+        return true;
       }
       sendJson(res, 200, { ok: true });
       return true;
