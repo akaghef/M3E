@@ -250,9 +250,17 @@ function firstQueryParam(params: URLSearchParams, keys: string[]): string | null
   return null;
 }
 
+function basenameFromPath(rawPath: string): string {
+  const trimmed = rawPath.replace(/[\\/]+$/g, "");
+  const parts = trimmed.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || trimmed || "root";
+}
+
 const queryParams = new URLSearchParams(window.location.search);
+const LOCAL_FS_VIEW_ROOT = firstQueryParam(queryParams, ["localFsRoot", "localFsPath"]) || "";
+const LOCAL_FS_VIEW_MODE = Boolean(LOCAL_FS_VIEW_ROOT.trim());
 const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
-const READ_ONLY_LINK = ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
+const READ_ONLY_LINK = LOCAL_FS_VIEW_MODE || ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
 const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
 const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
@@ -267,8 +275,8 @@ const WORKSPACE_ID = normalizeDocId(firstQueryParam(queryParams, ["ws", "workspa
 const WORKSPACE_LABEL = DEFAULT_WORKSPACE_LABEL;
 const LOCAL_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["map", "localMapId"]), DEFAULT_MAP_ID);
 const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
-const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
-const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
+const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
+const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
@@ -779,9 +787,7 @@ function setLocalFsStatus(message: string, isError = false): void {
 }
 
 function localFsRootLabel(rootPath: string): string {
-  const trimmed = rootPath.replace(/[\\/]+$/g, "");
-  const parts = trimmed.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || trimmed || "root";
+  return basenameFromPath(rootPath);
 }
 
 function setLocalFsPreview(title: string, content: string): void {
@@ -1046,6 +1052,128 @@ function toggleLocalFsPanel(): void {
     return;
   }
   showLocalFsPanel();
+}
+
+function localFsNodeId(relativePath: string): string {
+  const raw = relativePath || "__root__";
+  return `localfs:${encodeURIComponent(raw)}`;
+}
+
+function createLocalFsNode(entry: LocalFsEntry | null, parentId: string | null, rootPath: string): TreeNode {
+  const relativePath = entry?.relativePath ?? "";
+  const node = createNodeRecord(localFsNodeId(relativePath), parentId, entry?.name || localFsRootLabel(rootPath));
+  const kind = entry?.kind ?? "directory";
+  node.nodeType = kind === "directory" ? "folder" : "text";
+  node.collapsed = false;
+  node.details = kind === "directory"
+    ? `local-fs directory\nroot: ${rootPath}\nrelative: ${relativePath || "."}`
+    : `local-fs file\nroot: ${rootPath}\nrelative: ${relativePath}`;
+  node.attributes = {
+    ...node.attributes,
+    "m3e:source-kind": "local-fs",
+    "local-fs:root-path": rootPath,
+    "local-fs:relative-path": relativePath,
+    "local-fs:kind": kind,
+  };
+  return node;
+}
+
+async function createLocalFsMap(rootPath: string): Promise<SavedMap> {
+  const normalizedRoot = rootPath.trim();
+  const rootNode = createLocalFsNode(null, null, normalizedRoot);
+  const state: AppState = {
+    rootId: rootNode.id,
+    nodes: {
+      [rootNode.id]: rootNode,
+    },
+  };
+
+  const maxDepth = 4;
+  const maxNodes = 700;
+  let nodeCount = 1;
+  let truncated = false;
+
+  async function addChildren(parentNode: TreeNode, relativePath: string, depth: number): Promise<void> {
+    if (depth >= maxDepth || nodeCount >= maxNodes) {
+      if (depth >= maxDepth) parentNode.collapsed = true;
+      truncated = truncated || nodeCount >= maxNodes;
+      return;
+    }
+    const payload = await fetchLocalFsJson<LocalFsListResponse>("list", {
+      rootPath: normalizedRoot,
+      relativePath,
+      maxEntries: "200",
+    });
+    if (relativePath === "") {
+      localFsPrefs.rootPath = payload.rootPath;
+      if (localFsRootInputEl) localFsRootInputEl.value = payload.rootPath;
+      saveLocalFsPrefs();
+      localFsChildrenByPath.set("", payload.entries);
+      localFsExpandedPaths.add("");
+    }
+
+    for (const entry of payload.entries) {
+      if (nodeCount >= maxNodes) {
+        truncated = true;
+        break;
+      }
+      const childNode = createLocalFsNode(entry, parentNode.id, payload.rootPath);
+      state.nodes[childNode.id] = childNode;
+      parentNode.children.push(childNode.id);
+      nodeCount += 1;
+      if (entry.kind === "directory" && entry.hasChildren) {
+        await addChildren(childNode, entry.relativePath, depth + 1);
+      }
+    }
+    if (payload.truncated) {
+      truncated = true;
+    }
+  }
+
+  await addChildren(rootNode, "", 0);
+
+  const rootScopeId = `scope:${rootNode.id}`;
+  const rootSurfaceId = `surface:${rootNode.id}:tree`;
+  state.scopes = {
+    [rootScopeId]: {
+      id: rootScopeId,
+      label: localFsRootLabel(normalizedRoot),
+      rootNodeIds: [rootNode.id],
+      relationIds: [],
+      primarySurfaceId: rootSurfaceId,
+    },
+  };
+  state.surfaces = {
+    [rootSurfaceId]: {
+      id: rootSurfaceId,
+      scopeId: rootScopeId,
+      kind: "tree",
+      layout: "tree",
+      nodeViews: {},
+    },
+  };
+
+  if (truncated) {
+    rootNode.note = `Local filesystem view truncated at ${nodeCount} nodes.`;
+  }
+
+  return {
+    version: 1,
+    savedAt: nowIso(),
+    state,
+  };
+}
+
+async function loadLocalFsMap(rootPath: string): Promise<void> {
+  resetLocalFsTree();
+  localFsPrefs.rootPath = rootPath.trim();
+  saveLocalFsPrefs();
+  setStatus("Loading local filesystem tree...");
+  const payload = await createLocalFsMap(rootPath);
+  loadPayload(payload);
+  setLocalFsStatus(`${localFsPrefs.rootPath} (${Object.keys(payload.state.nodes).length} nodes)`);
+  setStatus(`Local filesystem tree loaded (${Object.keys(payload.state.nodes).length} nodes, read-only).`);
+  fitDocument();
 }
 
 interface FlashDraftListItem {
@@ -2936,7 +3064,7 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (viewState.surfaceViewMode === "system") {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode === "system") {
     linearPanelEl.hidden = true;
     return;
   }
@@ -3907,9 +4035,9 @@ function syncLinearCaretToSelectedNode(): void {
 
 function renderLinearPanel(): void {
   if (linearPanelEl) {
-    linearPanelEl.hidden = viewState.surfaceViewMode === "system";
+    linearPanelEl.hidden = LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode === "system";
   }
-  if (viewState.surfaceViewMode === "system") {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode === "system") {
     return;
   }
   if (!linearTextEl) {
@@ -8473,6 +8601,12 @@ async function loadDefaultSample(): Promise<void> {
 
 async function initializeDocument(): Promise<void> {
   await fetchLinearTransformStatus();
+
+  if (LOCAL_FS_VIEW_MODE) {
+    await loadLocalFsMap(LOCAL_FS_VIEW_ROOT);
+    return;
+  }
+
   await fetchCloudSyncStatus();
 
   if (cloudSyncEnabled && cloudSyncExists) {
@@ -10515,19 +10649,21 @@ syncAccessModeUi();
 updateCloudSyncUi();
 
 void initializeDocument().then(() => {
-  initBroadcastSync();
-  initDocWatch();
-  initVaultWatchStream();
-  void fetchVaultWatchStatus().then(() => {
-    if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
-      void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
-        setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
-      });
-    }
-  });
-  void fetchCollabConfig().then(() => {
-    tryCollabRegister();
-  });
+  if (!LOCAL_FS_VIEW_MODE) {
+    initBroadcastSync();
+    initDocWatch();
+    initVaultWatchStream();
+    void fetchVaultWatchStatus().then(() => {
+      if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
+        void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
+          setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
+        });
+      }
+    });
+    void fetchCollabConfig().then(() => {
+      tryCollabRegister();
+    });
+  }
   const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
   if (initialScopeId && map && map.state.nodes[initialScopeId] && initialScopeId !== map.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level
