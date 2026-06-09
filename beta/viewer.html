@@ -44,6 +44,7 @@
             <button id="view-system" class="mode-btn" type="button">System</button>
           </div>
           <button id="scope-nav-btn" class="mode-btn" type="button" aria-expanded="false" title="Open scope navigator">Scopes</button>
+          <button id="local-fs-toggle" class="mode-btn" type="button" aria-expanded="false" title="Open local files">Files</button>
           <button id="component-tabular-toggle" class="mode-btn" type="button" aria-pressed="false" title="Toggle tabular component on selected node" data-edit-only>Tabular</button>
           <div class="import-wrap" data-edit-only>
             <button id="import-btn" type="button">Import ▾</button>
@@ -110,6 +111,25 @@
             <div id="linear-resize-handle" class="linear-resize-handle" aria-hidden="true"></div>
           </aside>
         </div>
+        <aside id="local-fs-panel" class="local-fs-panel" hidden aria-label="Local files panel">
+          <div class="local-fs-header">
+            <span class="local-fs-title">Files</span>
+            <button id="local-fs-close" class="entity-list-close" type="button" aria-label="Close local files">&times;</button>
+          </div>
+          <div class="local-fs-controls">
+            <input id="local-fs-root-input" class="local-fs-root-input" type="text" placeholder="C:\path\to\folder" spellcheck="false" />
+            <button id="local-fs-connect" type="button">Connect</button>
+            <button id="local-fs-refresh" type="button">Refresh</button>
+          </div>
+          <div id="local-fs-status" class="local-fs-status"></div>
+          <div class="local-fs-body">
+            <div id="local-fs-tree" class="local-fs-tree"></div>
+            <div class="local-fs-preview-wrap">
+              <div id="local-fs-preview-title" class="local-fs-preview-title">Preview</div>
+              <pre id="local-fs-preview" class="local-fs-preview"></pre>
+            </div>
+          </div>
+        </aside>
       </div>
       <div id="home-screen" class="home-screen" hidden>
         <div class="home-header">
