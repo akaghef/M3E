@@ -41,9 +41,6 @@ tmp_*.json
 
 artifacts/
 
-# Generated macOS installer payload: copied app, dependencies, and runtime.
-/install/mac/payload/
-
 # internal document for my team
 docs/internal/*
 

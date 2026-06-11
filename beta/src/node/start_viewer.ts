@@ -2281,7 +2281,7 @@ type RapidMapifyAction = "detail" | "examples" | "classify" | "related";
 interface RapidMapifyFragment {
   opId: string;
   action: RapidMapifyAction;
-  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
+  source: "mapify_teacher_fixture";
   fragment: string;
   diagnostics: string[];
   teacherLabels: string[];
@@ -2342,42 +2342,6 @@ function labelsToMfH(labels: string[]): string {
   return labels.map((label) => `# ${label}`).join("\n");
 }
 
-function resolveLocalRapidMfHLabels(selectedLabel: string, action: RapidMapifyAction): string[] {
-  const biologyExamples: Record<string, string[]> = {
-    "動物": ["哺乳類", "鳥類", "魚類"],
-    "哺乳類": ["ヒト", "イヌ", "クジラ"],
-    "鳥類": ["スズメ", "ペンギン"],
-    "魚類": ["サケ", "マグロ", "タイ", "フグ"],
-    "植物": ["サクラ", "イネ", "スギ"],
-    "被子植物": ["サクラ", "イネ"],
-    "裸子植物": ["スギ"],
-    "菌類": ["シイタケ", "酵母", "カビ"],
-  };
-  const biologyClassifications: Record<string, string[]> = {
-    "動物": ["哺乳類", "鳥類", "魚類"],
-    "植物": ["被子植物", "裸子植物"],
-    "菌類": ["担子菌類", "子嚢菌類", "接合菌類"],
-    "魚類": ["硬骨魚類", "軟骨魚類"],
-  };
-  const biologyRelated: Record<string, string[]> = {
-    "菌類": ["胞子", "菌糸", "分解者"],
-    "魚類": ["水中生活", "鰓呼吸", "変温動物"],
-    "動物": ["脊椎動物", "無脊椎動物", "生態系"],
-  };
-  const biologyDetails: Record<string, string[]> = {
-    "菌類": ["光合成をしない", "胞子で増える", "菌糸を伸ばす"],
-    "魚類": ["水中で生活する", "鰓で呼吸する", "ひれで泳ぐ"],
-    "動物": ["自分で動ける", "他の生物を食べる", "感覚器官を持つ"],
-  };
-  const byAction: Record<RapidMapifyAction, Record<string, string[]>> = {
-    detail: biologyDetails,
-    examples: biologyExamples,
-    classify: biologyClassifications,
-    related: biologyRelated,
-  };
-  return byAction[action][selectedLabel] || [];
-}
-
 function hasChildLabels(state: AppState, nodeId: string, labels: string[]): boolean {
   const node = state.nodes[nodeId];
   if (!node) return false;
@@ -2431,18 +2395,6 @@ function resolveRapidMapifyFragment(
   }
 
   diagnostics.push("No Mapify teacher fixture matched this Rapid context.");
-  const localLabels = resolveLocalRapidMfHLabels(selected.text.trim(), action);
-  if (localLabels.length > 0) {
-    diagnostics.push(`Local MF-H fallback matched selected node ${selected.text.trim()} for ${opId}.`);
-    return {
-      opId,
-      action,
-      source: "m3e_local_mf_h_fallback",
-      fragment: labelsToMfH(localLabels),
-      diagnostics,
-      teacherLabels: localLabels,
-    };
-  }
   throw new Error(
     `Unsupported Rapid Mapify Oracle benchmark: selected="${selected.text.trim()}", opId="${opId}", action="${action}". `
       + "No fallback generation is allowed for this experiment.",

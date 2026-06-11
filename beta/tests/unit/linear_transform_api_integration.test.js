@@ -308,11 +308,7 @@ test("topic suggest subagent returns local draft when provider config is incompl
   expect(response.payload.ok).toBe(true);
   expect(response.payload.provider).toBe("local");
   expect(response.payload.model).toBe("local-topic-draft-v1");
-  expect(response.payload.proposal.result.topics).toEqual([
-    "Mapify AI の定義",
-    "Mapify AI の特徴",
-    "Mapify AI の具体例",
-  ]);
+  expect(response.payload.proposal.result.topics).toEqual(["背景", "具体例", "根拠"]);
 });
 
 test("topic suggest subagent parses fenced json response", async () => {

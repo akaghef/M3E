@@ -20,18 +20,12 @@ test.describe("M3E Mindmap Workbench UI", () => {
     await expect(rail.getByRole("button", { name: "Pen" })).toBeVisible();
     await expect(rail.getByRole("button", { name: "Highlighter" })).toBeVisible();
     await expect(rail.getByRole("button", { name: "Eraser" })).toBeVisible();
-    await expect(rail.getByRole("button", { name: "Scopes" })).toBeVisible();
     await expect(page.getByTestId("workbench-right-panel").getByText("Selected node")).toBeVisible();
 
-    await expect(page.getByRole("button", { name: "AI sidekick" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "[GUI] navigation root" })).toBeVisible();
-    const topbar = page.getByTestId("workbench-topbar");
-    await expect(topbar.getByRole("button", { name: "Present" })).toBeVisible();
-    await expect(topbar.getByRole("button", { name: "Share" })).toBeVisible();
-
-    await rail.getByRole("button", { name: "Scopes" }).click();
-    await expect(page.locator("#home-screen")).toBeVisible();
-    await expect(page.locator("#scope-nav-btn")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByText("Sticky", { exact: false })).toHaveCount(0);
+    await expect(page.getByText("Jira", { exact: false })).toHaveCount(0);
+    await expect(page.getByText("iFrame", { exact: false })).toHaveCount(0);
+    await expect(page.getByText("Prototype", { exact: false })).toHaveCount(0);
   });
 
   test("connects visible workbench controls to existing viewer functions", async ({ page }) => {

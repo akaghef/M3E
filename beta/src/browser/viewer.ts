@@ -3981,7 +3981,7 @@ function redoLastChange(): void {
 function setStatus(message: string, isError = false): void {
   if (statusTimer !== null) clearTimeout(statusTimer);
   statusEl.textContent = message;
-  statusEl.style.color = isError ? "var(--danger)" : "var(--status-ink)";
+  statusEl.style.color = isError ? "var(--danger)" : "#5d5d5d";
   if (message) {
     statusTimer = setTimeout(() => {
       statusEl.textContent = "";
@@ -5488,7 +5488,7 @@ interface RapidMapifyOracleApplyResponse {
   savedAt?: string;
   opId: string;
   action: RapidGenerateAction;
-  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
+  source: "mapify_teacher_fixture";
   fragment: string;
   added: Array<{ id: string; parentId: string; label: string }>;
   merged: Array<{ id: string; parentId: string; label: string }>;
@@ -8962,7 +8962,6 @@ function showHomeScreen(): void {
   }
   homeScreenVisible = true;
   homeScreenEl.hidden = false;
-  scopeNavBtn?.setAttribute("aria-expanded", "true");
   appEl?.classList.add("home-active");
 
   const rootId = map.state.rootId;
@@ -8977,7 +8976,6 @@ function hideHomeScreen(): void {
   }
   homeScreenVisible = false;
   homeScreenEl.hidden = true;
-  scopeNavBtn?.setAttribute("aria-expanded", "false");
   appEl?.classList.remove("home-active");
   board.focus();
 }
@@ -15164,12 +15162,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
     window.location.href = buildHomeHref();
-    return;
-  }
-
-  if (event.altKey && event.key.toLowerCase() === "s") {
-    event.preventDefault();
-    toggleHomeScreen();
     return;
   }
 

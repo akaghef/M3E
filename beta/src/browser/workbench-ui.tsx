@@ -14,7 +14,6 @@ import {
   ListTree,
   Lock,
   MousePointer2,
-  Moon,
   PanelRight,
   PenLine,
   Presentation,
@@ -23,7 +22,6 @@ import {
   Settings,
   Share2,
   Sparkles,
-  Sun,
   Tag,
   TextCursorInput,
   UsersRound,
@@ -40,7 +38,6 @@ type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic
 type ProgressiveBranchDirection = "both" | "right" | "left";
 type ProgressiveMode = "gui" | "active-node";
 type RapidGenerateAction = "detail" | "examples" | "classify" | "related";
-type ViewerTheme = "light" | "dark";
 type ProgressiveNodeId =
   | "gui"
   | "active-root"
@@ -203,18 +200,6 @@ function dispatchRapidGenerateAction(action: RapidGenerateAction, label: string,
   window.dispatchEvent(new CustomEvent("m3e:rapid-action-generate", { detail: { action, label, instruction } }));
 }
 
-function normalizeViewerTheme(value: unknown): ViewerTheme {
-  return value === "dark" ? "dark" : "light";
-}
-
-function readViewerTheme(): ViewerTheme {
-  return normalizeViewerTheme(document.documentElement.dataset.theme);
-}
-
-function requestViewerTheme(theme: ViewerTheme): void {
-  window.dispatchEvent(new CustomEvent("m3e:set-theme", { detail: { theme } }));
-}
-
 function setLegacyInput(id: string, value: string, eventName = "input"): void {
   const input = byId<HTMLInputElement>(id);
   if (!input) return;
@@ -274,24 +259,6 @@ function useViewerSnapshot(): UiSnapshot {
   return snapshot;
 }
 
-function useViewerTheme(): [ViewerTheme, (theme: ViewerTheme) => void] {
-  const [theme, setTheme] = useState<ViewerTheme>(() => readViewerTheme());
-  useEffect(() => {
-    const updateTheme = (event?: Event) => {
-      const detail = (event as CustomEvent<{ theme?: unknown }> | undefined)?.detail;
-      setTheme(normalizeViewerTheme(detail?.theme ?? readViewerTheme()));
-    };
-    window.addEventListener("m3e:theme-changed", updateTheme as EventListener);
-    updateTheme();
-    return () => window.removeEventListener("m3e:theme-changed", updateTheme as EventListener);
-  }, []);
-  const commitTheme = (nextTheme: ViewerTheme) => {
-    setTheme(nextTheme);
-    requestViewerTheme(nextTheme);
-  };
-  return [theme, commitTheme];
-}
-
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "A";
@@ -339,17 +306,7 @@ function PillButton(props: {
   );
 }
 
-function TopBar({
-  snapshot,
-  theme,
-  toggleTheme,
-  openModal,
-}: {
-  snapshot: UiSnapshot;
-  theme: ViewerTheme;
-  toggleTheme: () => void;
-  openModal: (id: ModalId) => void;
-}): React.ReactElement {
+function TopBar({ snapshot, openModal }: { snapshot: UiSnapshot; openModal: (id: ModalId) => void }): React.ReactElement {
   const joined = snapshot.collab.includes("joined");
   return (
     <div className="wb-topbar" data-testid="workbench-topbar">
@@ -368,13 +325,6 @@ function TopBar({
           <Cloud size={14} />
           <span>{snapshot.cloud.replace("Cloud: ", "")}</span>
         </div>
-        <IconButton
-          label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          active={theme === "dark"}
-          onClick={toggleTheme}
-        >
-          {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-        </IconButton>
         <IconButton label="Activity">
           <Bell size={18} />
         </IconButton>
@@ -428,9 +378,9 @@ function LeftRail({
           <Waypoints size={20} />
         </IconButton>
         <IconButton
-          label="Scopes"
+          label="Scope list"
           onClick={() => {
-            clickLegacy("scope-nav-btn");
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", altKey: true, bubbles: true }));
           }}
         >
           <ListTree size={20} />
@@ -1101,17 +1051,7 @@ function ShareModal({ snapshot, close }: { snapshot: UiSnapshot; close: () => vo
   );
 }
 
-function SettingsModal({
-  snapshot,
-  theme,
-  toggleTheme,
-  close,
-}: {
-  snapshot: UiSnapshot;
-  theme: ViewerTheme;
-  toggleTheme: () => void;
-  close: () => void;
-}): React.ReactElement {
+function SettingsModal({ snapshot, close }: { snapshot: UiSnapshot; close: () => void }): React.ReactElement {
   const [grid, setGrid] = useState(true);
   const [objectSize, setObjectSize] = useState(true);
   const [comments, setComments] = useState(true);
@@ -1136,7 +1076,6 @@ function SettingsModal({
             <button type="button">Shortcuts</button>
           </div>
           <div className="wb-settings-body">
-            <label className="wb-toggle"><span>Dark mode</span><input type="checkbox" checked={theme === "dark"} onChange={() => toggleTheme()} /></label>
             <label className="wb-toggle"><span>Grid</span><input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Board comments</span><input type="checkbox" checked={comments} onChange={(e) => setComments(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Object sizes</span><input type="checkbox" checked={objectSize} onChange={(e) => setObjectSize(e.target.checked)} /></label>
@@ -1176,14 +1115,12 @@ function HelpModal({ close }: { close: () => void }): React.ReactElement {
 
 function WorkbenchApp(): React.ReactElement {
   const snapshot = useViewerSnapshot();
-  const [theme, setViewerTheme] = useViewerTheme();
   const [tool, setTool] = useState<ToolId>("select");
   const [modal, setModal] = useState<ModalId>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [progressiveOpen, setProgressiveOpen] = useState(false);
   const [progressiveMode, setProgressiveMode] = useState<ProgressiveMode>("gui");
   const activeRootLabel = cleanSelectedLabel(snapshot.selected);
-  const toggleTheme = () => setViewerTheme(theme === "dark" ? "light" : "dark");
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isActionKeyEvent(event) || isTextEntryTarget(event.target) || event.isComposing) {
@@ -1197,15 +1134,15 @@ function WorkbenchApp(): React.ReactElement {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [progressiveMode]);
   const modalContent = useMemo(() => {
-    if (modal === "settings") return <SettingsModal snapshot={snapshot} theme={theme} toggleTheme={toggleTheme} close={() => setModal(null)} />;
+    if (modal === "settings") return <SettingsModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "share") return <ShareModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "help") return <HelpModal close={() => setModal(null)} />;
     if (modal === "ai") return <AiSidekickPanel snapshot={snapshot} close={() => setModal(null)} />;
     return null;
-  }, [modal, snapshot, theme, toggleTheme]);
+  }, [modal, snapshot]);
   return (
     <div className="wb-shell">
-      <TopBar snapshot={snapshot} theme={theme} toggleTheme={toggleTheme} openModal={setModal} />
+      <TopBar snapshot={snapshot} openModal={setModal} />
       <LeftRail
         tool={tool}
         setTool={setTool}
