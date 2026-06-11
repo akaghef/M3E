@@ -1062,6 +1062,26 @@
         pointer-events: none;
       }
 
+      body.scatter-surface-active .app {
+        background-color: #0a0a12;
+        background-image: none;
+      }
+
+      body.scatter-surface-active .board {
+        border-color: rgba(148, 163, 184, 0.18);
+        background: #0a0a12;
+      }
+
+      body.scatter-surface-active .scatter-guide {
+        stroke: rgba(56, 189, 248, 0.46);
+        stroke-width: 3;
+      }
+
+      body.scatter-surface-active .graph-link.scatter-edge {
+        stroke-width: 4;
+        opacity: 0.82;
+      }
+
       .graph-link.selected {
         stroke-width: 5;
         filter: drop-shadow(0 0 5px rgba(111, 57, 255, 0.55));
@@ -1236,16 +1256,50 @@
         filter: drop-shadow(0 1px 2px rgba(20, 20, 20, 0.12));
       }
 
+      body.scatter-surface-active .scatter-node-circle {
+        fill: #60a5fa;
+        stroke: #0a0a12;
+        stroke-width: 2;
+        filter: none;
+      }
+
       .scatter-node-circle.scatter-root {
         fill: #e8f1ff;
         stroke: #4f8bd8;
         stroke-width: 4;
       }
 
+      body.scatter-surface-active .scatter-node-circle.scatter-root,
+      body.scatter-surface-active .scatter-node-circle.scatter-branch,
+      body.scatter-surface-active .scatter-node-circle.scatter-role-upstream {
+        fill: #60a5fa;
+      }
+
+      body.scatter-surface-active .scatter-node-circle.scatter-group {
+        fill: #818cf8;
+        stroke: #a78bfa;
+        stroke-width: 2.5;
+        stroke-dasharray: 5 5;
+      }
+
+      body.scatter-surface-active .scatter-node-circle.scatter-role-sample {
+        fill: #818cf8;
+      }
+
+      body.scatter-surface-active .scatter-node-circle.scatter-role-downstream {
+        fill: #fbbf24;
+      }
+
       .scatter-node-circle.primary-selected,
       .scatter-node-circle.selected {
         fill: #dff3ea;
         stroke: #2d8c4e;
+      }
+
+      body.scatter-surface-active .scatter-node-circle.primary-selected,
+      body.scatter-surface-active .scatter-node-circle.selected {
+        stroke: #4ade80;
+        stroke-width: 3;
       }
 
       .scatter-node-circle.link-source {
@@ -1347,6 +1401,12 @@
   stroke-dasharray: 10 6;
   pointer-events: none;
 }
+
+      body.scatter-surface-active .scatter-label {
+        fill: #cbd5e1;
+        stroke: #0a0a12;
+        stroke-width: 4px;
+      }
 
       .label-root {
         font-size: 42px;

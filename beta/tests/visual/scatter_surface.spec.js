@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
-function scatterFixture() {
+function scatterFixture(options = {}) {
+  const collapsedAlpha = Boolean(options.collapsedAlpha);
   const rootId = "root";
   return {
     version: 1,
@@ -26,7 +27,7 @@ function scatterFixture() {
           children: ["alpha-child"],
           nodeType: "text",
           text: "Alpha",
-          collapsed: false,
+          collapsed: collapsedAlpha,
           details: "",
           note: "",
           attributes: {},
@@ -69,6 +70,16 @@ async function loadFixture(page) {
     name: "scatter-fixture.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(scatterFixture()), "utf8"),
+  });
+  await expect(page.locator("#meta")).toContainText("nodes: 4");
+}
+
+async function loadCollapsedAnchorFixture(page) {
+  await page.goto("/viewer.html");
+  await page.setInputFiles("#file-input", {
+    name: "scatter-collapsed-anchor-fixture.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(scatterFixture({ collapsedAlpha: true })), "utf8"),
   });
   await expect(page.locator("#meta")).toContainText("nodes: 4");
 }
@@ -138,4 +149,20 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
 
   await clickLegacy(page, "#view-tree");
   await expect(page.locator("#mode-meta")).toContainText("/ Tree");
+});
+
+test("scatter surface renders collapsed tree anchors as expandable graph groups", async ({ page }) => {
+  await loadCollapsedAnchorFixture(page);
+
+  await clickLegacy(page, "#view-scatter");
+  await expect(page.locator("#mode-meta")).toContainText("/ Scatter");
+  await expect(page.locator(".scatter-node-circle.scatter-group[data-node-id='alpha']")).toHaveCount(1);
+  await expect(page.locator('text.label-node[data-node-id="alpha"]')).toContainText("Alpha ×1");
+  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toHaveCount(0);
+
+  const alpha = await page.locator(".scatter-node-circle.scatter-group[data-node-id='alpha']").boundingBox();
+  if (!alpha) throw new Error("Collapsed alpha group was not rendered.");
+  await page.mouse.click(alpha.x + alpha.width / 2, alpha.y + alpha.height / 2);
+  await expect(page.locator(".scatter-node-circle.scatter-group[data-node-id='alpha']")).toHaveCount(0);
+  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alpha Child");
 });

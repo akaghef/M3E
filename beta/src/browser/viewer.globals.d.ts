@@ -233,6 +233,7 @@ interface NodePosition {
   h: number;
   fontSize?: number;
   labelLines?: string[];
+  scatterCollapsedGroup?: boolean;
 }
 
 interface LayoutResult {
