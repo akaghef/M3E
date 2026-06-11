@@ -514,6 +514,168 @@
         background: rgba(122, 53, 255, 0.55);
       }
 
+      .local-fs-panel {
+        position: absolute;
+        top: 76px;
+        left: 12px;
+        bottom: 12px;
+        z-index: 6;
+        width: min(520px, calc(100vw - 28px));
+        display: flex;
+        flex-direction: column;
+        pointer-events: auto;
+        border: 1px solid rgba(0, 0, 0, 0.16);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.97);
+        box-shadow: 0 18px 44px rgba(20, 20, 20, 0.18);
+        overflow: hidden;
+      }
+
+      .local-fs-panel[hidden] {
+        display: none;
+      }
+
+      .local-fs-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #e5e5e5;
+        background: #f7f7f7;
+      }
+
+      .local-fs-title {
+        font-weight: 700;
+        font-size: 14px;
+      }
+
+      .local-fs-controls {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #e8e8e8;
+      }
+
+      .local-fs-root-input {
+        min-width: 0;
+        border: 1px solid #d6d6d6;
+        border-radius: 6px;
+        padding: 7px 9px;
+        font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      .local-fs-status {
+        min-height: 28px;
+        padding: 6px 12px;
+        border-bottom: 1px solid #ededed;
+        color: #666;
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .local-fs-status.is-error {
+        color: var(--danger);
+      }
+
+      .local-fs-body {
+        display: grid;
+        grid-template-rows: minmax(180px, 42%) minmax(0, 1fr);
+        min-height: 0;
+        flex: 1;
+      }
+
+      .local-fs-tree {
+        min-height: 0;
+        overflow: auto;
+        padding: 6px 0;
+        border-bottom: 1px solid #e7e7e7;
+      }
+
+      .local-fs-row {
+        display: grid;
+        grid-template-columns: 22px 44px minmax(0, 1fr);
+        align-items: center;
+        min-height: 28px;
+        padding: 2px 10px 2px var(--local-fs-indent, 10px);
+        font-size: 13px;
+        line-height: 1.25;
+        cursor: default;
+        user-select: none;
+      }
+
+      .local-fs-row:hover {
+        background: #f4f6f8;
+      }
+
+      .local-fs-row.is-selected {
+        background: #dceeff;
+      }
+
+      .local-fs-toggle {
+        width: 20px;
+        height: 22px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #555;
+        font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      .local-fs-toggle.is-empty {
+        visibility: hidden;
+      }
+
+      .local-fs-kind {
+        color: #727272;
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      .local-fs-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .local-fs-children {
+        min-width: 0;
+      }
+
+      .local-fs-preview-wrap {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .local-fs-preview-title {
+        padding: 8px 12px;
+        border-bottom: 1px solid #ececec;
+        font-size: 12px;
+        font-weight: 700;
+        color: #4d4d4d;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .local-fs-preview {
+        min-height: 0;
+        flex: 1;
+        margin: 0;
+        padding: 12px;
+        overflow: auto;
+        background: #fbfbfb;
+        color: #222;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
       .board.panning {
         cursor: grabbing;
       }
@@ -730,6 +892,17 @@
         .linear-panel {
           width: 360px;
           max-width: none;
+        }
+
+        .local-fs-panel {
+          top: 118px;
+          right: 10px;
+          left: 10px;
+          width: auto;
+        }
+
+        .local-fs-controls {
+          grid-template-columns: 1fr;
         }
       }
 
