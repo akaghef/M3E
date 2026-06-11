@@ -272,7 +272,8 @@ exit /b 0
 
 :fail
 call :log "[ERROR] %~1"
-if "%SILENT%"=="1" exit /b 1
+set "FAIL_RC=1"
+if "%SILENT%"=="1" exit /b %FAIL_RC%
 echo.
 pause
 exit /b 1

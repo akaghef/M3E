@@ -13,6 +13,7 @@ const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
 const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
 const scopeNavBtn = document.getElementById("scope-nav-btn") as HTMLButtonElement | null;
+const localFsToggleBtn = document.getElementById("local-fs-toggle") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
 const scatterToolbarEl = document.getElementById("scatter-toolbar") as HTMLElement | null;
 const scatterNormalBtn = document.getElementById("scatter-normal") as HTMLButtonElement | null;
@@ -79,6 +80,15 @@ const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLEleme
 const homeScreenEl = document.getElementById("home-screen") as HTMLElement | null;
 const homeScopeTreeEl = document.getElementById("home-scope-tree") as HTMLElement | null;
 const scopeNavCloseBtn = document.getElementById("scope-nav-close") as HTMLButtonElement | null;
+const localFsPanelEl = document.getElementById("local-fs-panel") as HTMLElement | null;
+const localFsCloseBtn = document.getElementById("local-fs-close") as HTMLButtonElement | null;
+const localFsRootInputEl = document.getElementById("local-fs-root-input") as HTMLInputElement | null;
+const localFsConnectBtn = document.getElementById("local-fs-connect") as HTMLButtonElement | null;
+const localFsRefreshBtn = document.getElementById("local-fs-refresh") as HTMLButtonElement | null;
+const localFsStatusEl = document.getElementById("local-fs-status") as HTMLElement | null;
+const localFsTreeEl = document.getElementById("local-fs-tree") as HTMLElement | null;
+const localFsPreviewTitleEl = document.getElementById("local-fs-preview-title") as HTMLElement | null;
+const localFsPreviewEl = document.getElementById("local-fs-preview") as HTMLElement | null;
 const appEl = document.querySelector(".app") as HTMLElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
@@ -289,9 +299,17 @@ function firstQueryParam(params: URLSearchParams, keys: string[]): string | null
   return null;
 }
 
+function basenameFromPath(rawPath: string): string {
+  const trimmed = rawPath.replace(/[\\/]+$/g, "");
+  const parts = trimmed.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || trimmed || "root";
+}
+
 const queryParams = new URLSearchParams(window.location.search);
+const LOCAL_FS_VIEW_ROOT = firstQueryParam(queryParams, ["localFsRoot", "localFsPath"]) || "";
+const LOCAL_FS_VIEW_MODE = Boolean(LOCAL_FS_VIEW_ROOT.trim());
 const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
-const READ_ONLY_LINK = ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
+const READ_ONLY_LINK = LOCAL_FS_VIEW_MODE || ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
 const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
 const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
@@ -308,8 +326,8 @@ const REQUESTED_MAP_ID = firstQueryParam(queryParams, ["map", "localMapId"]);
 const HAS_EXPLICIT_MAP_ID = REQUESTED_MAP_ID !== null;
 const LOCAL_MAP_ID = normalizeDocId(REQUESTED_MAP_ID, DEFAULT_MAP_ID);
 const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
-const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
-const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
+const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
+const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
 const THEME_PREFS_KEY = "m3e:viewer-theme";
 const AUTOSAVE_DELAY_MS = 700;
@@ -510,11 +528,48 @@ interface VaultWatchSseEvent {
   timestamp: string;
   detail?: string;
 }
+interface LocalFsEntry {
+  name: string;
+  relativePath: string;
+  kind: "directory" | "file";
+  extension: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  hasChildren?: boolean;
+}
+interface LocalFsPrefs {
+  rootPath: string;
+}
+interface LocalFsListResponse {
+  ok: true;
+  rootPath: string;
+  relativePath: string;
+  absolutePath: string;
+  entries: LocalFsEntry[];
+  totalEntries: number;
+  truncated: boolean;
+}
+interface LocalFsReadResponse {
+  ok: true;
+  rootPath: string;
+  relativePath: string;
+  absolutePath: string;
+  name: string;
+  extension: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  truncated: boolean;
+  content: string;
+}
 const VAULT_UI_PREFS_KEY = `m3e:vault-ui:${LOCAL_MAP_ID}`;
+const LOCAL_FS_PREFS_KEY = `m3e:local-fs:${LOCAL_MAP_ID}`;
 let vaultUiPrefs: VaultUiPrefs = {
   vaultPath: "",
   integrationMode: "off",
   sourceOfTruth: "vault-md",
+};
+let localFsPrefs: LocalFsPrefs = {
+  rootPath: "",
 };
 let vaultWatchEs: EventSource | null = null;
 let vaultWatchRunning = false;
@@ -524,6 +579,11 @@ let vaultLastError: string | null = null;
 let liveStreamVisibilityHandlerInstalled = false;
 type ViewerTheme = "light" | "dark";
 let viewerTheme: ViewerTheme = readStoredViewerTheme();
+let localFsVisible = false;
+let localFsSelectedPath: string | null = null;
+let localFsLoadingPath: string | null = null;
+let localFsChildrenByPath: Map<string, LocalFsEntry[]> = new Map();
+let localFsExpandedPaths: Set<string> = new Set();
 let v4PanelVisible = false;
 let v4LatestDrafts: FlashDraftListItem[] = [];
 
@@ -1046,6 +1106,424 @@ function syncVaultUi(): void {
   integrateVaultLiveBtn?.classList.toggle("is-active", vaultUiPrefs.integrationMode === "obsidian-live");
   integrateStopBtn!.disabled = !vaultWatchRunning;
   syncV4Panel(false);
+}
+
+function loadLocalFsPrefs(): void {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_FS_PREFS_KEY);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw) as Partial<LocalFsPrefs>;
+    localFsPrefs = {
+      rootPath: String(parsed.rootPath || ""),
+    };
+  } catch {
+    localFsPrefs = { rootPath: "" };
+  }
+  if (localFsRootInputEl) {
+    localFsRootInputEl.value = localFsPrefs.rootPath;
+  }
+}
+
+function saveLocalFsPrefs(): void {
+  window.localStorage.setItem(LOCAL_FS_PREFS_KEY, JSON.stringify(localFsPrefs));
+}
+
+function setLocalFsStatus(message: string, isError = false): void {
+  if (!localFsStatusEl) return;
+  localFsStatusEl.textContent = message;
+  localFsStatusEl.classList.toggle("is-error", isError);
+}
+
+function localFsRootLabel(rootPath: string): string {
+  return basenameFromPath(rootPath);
+}
+
+function setLocalFsPreview(title: string, content: string): void {
+  if (localFsPreviewTitleEl) localFsPreviewTitleEl.textContent = title;
+  if (localFsPreviewEl) localFsPreviewEl.textContent = content;
+}
+
+function resetLocalFsTree(): void {
+  localFsChildrenByPath = new Map();
+  localFsExpandedPaths = new Set();
+  localFsSelectedPath = null;
+  localFsLoadingPath = null;
+  setLocalFsPreview("Preview", "");
+}
+
+async function fetchLocalFsJson<T>(action: "list" | "read", params: Record<string, string>): Promise<T> {
+  const url = new URL(`/api/local-fs/${action}`, window.location.origin);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  const response = await fetch(url.toString());
+  const payload = await response.json().catch(() => null) as T | { error?: { message?: string } } | null;
+  if (!response.ok) {
+    const errorPayload = payload && typeof payload === "object" && "error" in payload ? payload : null;
+    const message = errorPayload?.error?.message
+      ? errorPayload.error.message
+      : `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+async function loadLocalFsDirectory(relativePath = "", expand = true): Promise<void> {
+  const rootPath = localFsPrefs.rootPath.trim();
+  if (!rootPath) {
+    setLocalFsStatus("Root path is empty.", true);
+    return;
+  }
+  localFsLoadingPath = relativePath;
+  renderLocalFsTree();
+  try {
+    const payload = await fetchLocalFsJson<LocalFsListResponse>("list", {
+      rootPath,
+      relativePath,
+      maxEntries: "1000",
+    });
+    localFsPrefs.rootPath = payload.rootPath;
+    saveLocalFsPrefs();
+    if (localFsRootInputEl) localFsRootInputEl.value = payload.rootPath;
+    localFsChildrenByPath.set(payload.relativePath, payload.entries);
+    if (expand) {
+      localFsExpandedPaths.add(payload.relativePath);
+    }
+    setLocalFsStatus(`${payload.absolutePath} (${payload.entries.length}/${payload.totalEntries})`);
+  } catch (err) {
+    setLocalFsStatus((err as Error).message, true);
+  } finally {
+    localFsLoadingPath = null;
+    renderLocalFsTree();
+  }
+}
+
+async function readLocalFsFile(relativePath: string, title: string): Promise<void> {
+  const rootPath = localFsPrefs.rootPath.trim();
+  if (!rootPath) return;
+  localFsSelectedPath = relativePath;
+  renderLocalFsTree();
+  try {
+    const payload = await fetchLocalFsJson<LocalFsReadResponse>("read", {
+      rootPath,
+      relativePath,
+      maxBytes: String(256 * 1024),
+    });
+    setLocalFsPreview(
+      `${payload.relativePath}${payload.truncated ? " (truncated)" : ""}`,
+      payload.content,
+    );
+    setLocalFsStatus(`${payload.absolutePath} (${payload.sizeBytes} bytes)`);
+  } catch (err) {
+    setLocalFsPreview(title, "");
+    setLocalFsStatus((err as Error).message, true);
+  }
+}
+
+function renderLocalFsRow(entry: LocalFsEntry, depth: number, container: HTMLElement): void {
+  const isDirectory = entry.kind === "directory";
+  const isExpanded = localFsExpandedPaths.has(entry.relativePath);
+  const isSelected = localFsSelectedPath === entry.relativePath;
+
+  const row = document.createElement("div");
+  row.className = `local-fs-row${isSelected ? " is-selected" : ""}`;
+  row.style.setProperty("--local-fs-indent", `${10 + depth * 18}px`);
+  row.dataset.path = entry.relativePath;
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "local-fs-toggle" + (!isDirectory || !entry.hasChildren ? " is-empty" : "");
+  toggle.textContent = isExpanded ? "v" : ">";
+  toggle.disabled = !isDirectory || !entry.hasChildren;
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!isDirectory) return;
+    void toggleLocalFsDirectory(entry.relativePath);
+  });
+
+  const kind = document.createElement("span");
+  kind.className = "local-fs-kind";
+  kind.textContent = isDirectory ? "dir" : (entry.extension || "file").replace(/^\./, "");
+
+  const name = document.createElement("span");
+  name.className = "local-fs-name";
+  name.textContent = entry.name;
+  name.title = entry.relativePath;
+
+  row.appendChild(toggle);
+  row.appendChild(kind);
+  row.appendChild(name);
+  row.addEventListener("click", () => {
+    if (isDirectory) {
+      void toggleLocalFsDirectory(entry.relativePath);
+      return;
+    }
+    void readLocalFsFile(entry.relativePath, entry.name);
+  });
+  container.appendChild(row);
+
+  if (isDirectory && isExpanded) {
+    const childContainer = document.createElement("div");
+    childContainer.className = "local-fs-children";
+    container.appendChild(childContainer);
+    const children = localFsChildrenByPath.get(entry.relativePath);
+    if (children) {
+      renderLocalFsEntries(entry.relativePath, depth + 1, childContainer);
+    } else if (localFsLoadingPath === entry.relativePath) {
+      const loading = document.createElement("div");
+      loading.className = "local-fs-row";
+      loading.style.setProperty("--local-fs-indent", `${10 + (depth + 1) * 18}px`);
+      loading.textContent = "Loading...";
+      childContainer.appendChild(loading);
+    }
+  }
+}
+
+function renderLocalFsEntries(parentPath: string, depth: number, container: HTMLElement): void {
+  const entries = localFsChildrenByPath.get(parentPath) ?? [];
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "local-fs-row";
+    empty.style.setProperty("--local-fs-indent", `${10 + depth * 18}px`);
+    empty.textContent = "Empty";
+    container.appendChild(empty);
+    return;
+  }
+  for (const entry of entries) {
+    renderLocalFsRow(entry, depth, container);
+  }
+}
+
+function renderLocalFsTree(): void {
+  if (!localFsTreeEl) return;
+  localFsTreeEl.innerHTML = "";
+  const rootPath = localFsPrefs.rootPath.trim();
+  if (!rootPath) {
+    setLocalFsPreview("Preview", "");
+    return;
+  }
+
+  const rootRow = document.createElement("div");
+  rootRow.className = "local-fs-row" + (localFsSelectedPath === "" ? " is-selected" : "");
+  rootRow.style.setProperty("--local-fs-indent", "10px");
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "local-fs-toggle";
+  toggle.textContent = localFsExpandedPaths.has("") ? "v" : ">";
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void toggleLocalFsDirectory("");
+  });
+
+  const kind = document.createElement("span");
+  kind.className = "local-fs-kind";
+  kind.textContent = "root";
+
+  const name = document.createElement("span");
+  name.className = "local-fs-name";
+  name.textContent = localFsRootLabel(rootPath);
+  name.title = rootPath;
+
+  rootRow.appendChild(toggle);
+  rootRow.appendChild(kind);
+  rootRow.appendChild(name);
+  rootRow.addEventListener("click", () => {
+    void toggleLocalFsDirectory("");
+  });
+  localFsTreeEl.appendChild(rootRow);
+
+  if (localFsExpandedPaths.has("")) {
+    const children = document.createElement("div");
+    children.className = "local-fs-children";
+    localFsTreeEl.appendChild(children);
+    if (localFsChildrenByPath.has("")) {
+      renderLocalFsEntries("", 1, children);
+    } else if (localFsLoadingPath === "") {
+      const loading = document.createElement("div");
+      loading.className = "local-fs-row";
+      loading.style.setProperty("--local-fs-indent", "28px");
+      loading.textContent = "Loading...";
+      children.appendChild(loading);
+    }
+  }
+}
+
+async function toggleLocalFsDirectory(relativePath: string): Promise<void> {
+  if (localFsExpandedPaths.has(relativePath)) {
+    localFsExpandedPaths.delete(relativePath);
+    renderLocalFsTree();
+    return;
+  }
+  localFsExpandedPaths.add(relativePath);
+  if (!localFsChildrenByPath.has(relativePath)) {
+    await loadLocalFsDirectory(relativePath, true);
+    return;
+  }
+  renderLocalFsTree();
+}
+
+async function connectLocalFsRoot(): Promise<void> {
+  const rootPath = (localFsRootInputEl?.value || "").trim();
+  localFsPrefs.rootPath = rootPath;
+  saveLocalFsPrefs();
+  resetLocalFsTree();
+  await loadLocalFsDirectory("", true);
+}
+
+function showLocalFsPanel(): void {
+  if (!localFsPanelEl) return;
+  localFsVisible = true;
+  localFsPanelEl.hidden = false;
+  localFsToggleBtn?.setAttribute("aria-expanded", "true");
+  localFsToggleBtn?.classList.add("is-active");
+  if (localFsPrefs.rootPath && !localFsChildrenByPath.has("")) {
+    void loadLocalFsDirectory("", true);
+  } else {
+    renderLocalFsTree();
+  }
+  localFsRootInputEl?.focus();
+}
+
+function hideLocalFsPanel(): void {
+  if (!localFsPanelEl) return;
+  localFsVisible = false;
+  localFsPanelEl.hidden = true;
+  localFsToggleBtn?.setAttribute("aria-expanded", "false");
+  localFsToggleBtn?.classList.remove("is-active");
+  board.focus();
+}
+
+function toggleLocalFsPanel(): void {
+  if (localFsVisible) {
+    hideLocalFsPanel();
+    return;
+  }
+  showLocalFsPanel();
+}
+
+function localFsNodeId(relativePath: string): string {
+  const raw = relativePath || "__root__";
+  return `localfs:${encodeURIComponent(raw)}`;
+}
+
+function createLocalFsNode(entry: LocalFsEntry | null, parentId: string | null, rootPath: string): TreeNode {
+  const relativePath = entry?.relativePath ?? "";
+  const node = createNodeRecord(localFsNodeId(relativePath), parentId, entry?.name || localFsRootLabel(rootPath));
+  const kind = entry?.kind ?? "directory";
+  node.nodeType = kind === "directory" ? "folder" : "text";
+  node.collapsed = false;
+  node.details = kind === "directory"
+    ? `local-fs directory\nroot: ${rootPath}\nrelative: ${relativePath || "."}`
+    : `local-fs file\nroot: ${rootPath}\nrelative: ${relativePath}`;
+  node.attributes = {
+    ...node.attributes,
+    "m3e:source-kind": "local-fs",
+    "local-fs:root-path": rootPath,
+    "local-fs:relative-path": relativePath,
+    "local-fs:kind": kind,
+  };
+  return node;
+}
+
+async function createLocalFsMap(rootPath: string): Promise<SavedMap> {
+  const normalizedRoot = rootPath.trim();
+  const rootNode = createLocalFsNode(null, null, normalizedRoot);
+  const state: AppState = {
+    rootId: rootNode.id,
+    nodes: {
+      [rootNode.id]: rootNode,
+    },
+  };
+
+  const maxDepth = 4;
+  const maxNodes = 700;
+  let nodeCount = 1;
+  let truncated = false;
+
+  async function addChildren(parentNode: TreeNode, relativePath: string, depth: number): Promise<void> {
+    if (depth >= maxDepth || nodeCount >= maxNodes) {
+      if (depth >= maxDepth) parentNode.collapsed = true;
+      truncated = truncated || nodeCount >= maxNodes;
+      return;
+    }
+    const payload = await fetchLocalFsJson<LocalFsListResponse>("list", {
+      rootPath: normalizedRoot,
+      relativePath,
+      maxEntries: "200",
+    });
+    if (relativePath === "") {
+      localFsPrefs.rootPath = payload.rootPath;
+      if (localFsRootInputEl) localFsRootInputEl.value = payload.rootPath;
+      saveLocalFsPrefs();
+      localFsChildrenByPath.set("", payload.entries);
+      localFsExpandedPaths.add("");
+    }
+
+    for (const entry of payload.entries) {
+      if (nodeCount >= maxNodes) {
+        truncated = true;
+        break;
+      }
+      const childNode = createLocalFsNode(entry, parentNode.id, payload.rootPath);
+      state.nodes[childNode.id] = childNode;
+      parentNode.children.push(childNode.id);
+      nodeCount += 1;
+      if (entry.kind === "directory" && entry.hasChildren) {
+        await addChildren(childNode, entry.relativePath, depth + 1);
+      }
+    }
+    if (payload.truncated) {
+      truncated = true;
+    }
+  }
+
+  await addChildren(rootNode, "", 0);
+
+  const rootScopeId = `scope:${rootNode.id}`;
+  const rootSurfaceId = `surface:${rootNode.id}:tree`;
+  state.scopes = {
+    [rootScopeId]: {
+      id: rootScopeId,
+      label: localFsRootLabel(normalizedRoot),
+      rootNodeIds: [rootNode.id],
+      relationIds: [],
+      primarySurfaceId: rootSurfaceId,
+    },
+  };
+  state.surfaces = {
+    [rootSurfaceId]: {
+      id: rootSurfaceId,
+      scopeId: rootScopeId,
+      kind: "tree",
+      layout: "tree",
+      nodeViews: {},
+    },
+  };
+
+  if (truncated) {
+    rootNode.note = `Local filesystem view truncated at ${nodeCount} nodes.`;
+  }
+
+  return {
+    version: 1,
+    savedAt: nowIso(),
+    state,
+  };
+}
+
+async function loadLocalFsMap(rootPath: string): Promise<void> {
+  resetLocalFsTree();
+  localFsPrefs.rootPath = rootPath.trim();
+  saveLocalFsPrefs();
+  setStatus("Loading local filesystem tree...");
+  const payload = await createLocalFsMap(rootPath);
+  loadPayload(payload);
+  setLocalFsStatus(`${localFsPrefs.rootPath} (${Object.keys(payload.state.nodes).length} nodes)`);
+  setStatus(`Local filesystem tree loaded (${Object.keys(payload.state.nodes).length} nodes, read-only).`);
+  fitDocument();
 }
 
 interface FlashDraftListItem {
@@ -3762,7 +4240,7 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (viewState.surfaceViewMode !== "tree") {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     linearPanelEl.hidden = true;
     return;
   }
@@ -5401,9 +5879,9 @@ function syncLinearCaretToSelectedNode(): void {
 
 function renderLinearPanel(): void {
   if (linearPanelEl) {
-    linearPanelEl.hidden = viewState.surfaceViewMode !== "tree";
+    linearPanelEl.hidden = LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree";
   }
-  if (viewState.surfaceViewMode !== "tree") {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     return;
   }
   if (!linearTextEl) {
@@ -8518,6 +8996,30 @@ scopeNavBtn?.addEventListener("click", () => {
 
 scopeNavCloseBtn?.addEventListener("click", () => {
   hideHomeScreen();
+});
+
+localFsToggleBtn?.addEventListener("click", () => {
+  toggleLocalFsPanel();
+});
+
+localFsCloseBtn?.addEventListener("click", () => {
+  hideLocalFsPanel();
+});
+
+localFsConnectBtn?.addEventListener("click", () => {
+  void connectLocalFsRoot();
+});
+
+localFsRefreshBtn?.addEventListener("click", () => {
+  resetLocalFsTree();
+  void loadLocalFsDirectory("", true);
+});
+
+localFsRootInputEl?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void connectLocalFsRoot();
+  }
 });
 
 // ---- Entity List Panel ----
@@ -11820,18 +12322,23 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
+  await fetchLinearTransformStatus();
+
+  if (LOCAL_FS_VIEW_MODE) {
+    await loadLocalFsMap(LOCAL_FS_VIEW_ROOT);
+    return;
+  }
+
   const localResult = await fetchLocalMapPayload();
   if (localResult.ok) {
     loadPayload(localResult.payload);
-    void fetchLinearTransformStatus();
-    void fetchCloudSyncStatus().then(async () => {
-      if (cloudSyncEnabled && cloudSyncExists) {
-        const loadedFromCloud = await pullDocFromCloud(false);
-        if (loadedFromCloud) {
-          await loadLinearNotesFromLocalDbFallback();
-        }
+    await fetchCloudSyncStatus();
+    if (cloudSyncEnabled && cloudSyncExists) {
+      const loadedFromCloud = await pullDocFromCloud(false);
+      if (loadedFromCloud) {
+        await loadLinearNotesFromLocalDbFallback();
       }
-    });
+    }
     return;
   }
   if (HAS_EXPLICIT_MAP_ID && localResult.reason === "failed") {
@@ -11839,7 +12346,6 @@ async function initializeDocument(): Promise<void> {
     return;
   }
 
-  void fetchLinearTransformStatus();
   await fetchCloudSyncStatus();
   if (cloudSyncEnabled && cloudSyncExists) {
     const loadedFromCloud = await pullDocFromCloud(false);
@@ -14987,6 +15493,7 @@ window.addEventListener("blur", () => {
 setVisualCheckStatus("Visual check idle");
 syncMetaPanelToggleUi();
 loadVaultUiPrefs();
+loadLocalFsPrefs();
 syncVaultUi();
 syncAccessModeUi();
 updateCloudSyncUi();
@@ -14995,18 +15502,20 @@ void initializeDocument().then(() => {
   if (fatalLoadError || !map) {
     return;
   }
-  initBroadcastSync();
-  initVisibilityManagedLiveStreams();
-  void fetchVaultWatchStatus().then(() => {
-    if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
-      void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
-        setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
-      });
-    }
-  });
-  void fetchCollabConfig().then(() => {
-    tryCollabRegister();
-  });
+  if (!LOCAL_FS_VIEW_MODE) {
+    initBroadcastSync();
+    initVisibilityManagedLiveStreams();
+    void fetchVaultWatchStatus().then(() => {
+      if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
+        void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
+          setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
+        });
+      }
+    });
+    void fetchCollabConfig().then(() => {
+      tryCollabRegister();
+    });
+  }
   const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
   if (initialScopeId && map && map.state.nodes[initialScopeId] && initialScopeId !== map.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level

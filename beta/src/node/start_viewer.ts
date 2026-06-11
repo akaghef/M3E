@@ -59,6 +59,7 @@ import {
 import { importBlueprintToSqlite } from "./blueprint_importer";
 import { exportVaultFromSqlite } from "./vault_exporter";
 import { importVaultToSqlite } from "./vault_importer";
+import { listLocalFsDirectory, readLocalFsFile } from "./local_fs";
 import { validateVaultPath } from "./vault_path";
 import {
   configureVaultWatchEmitter,
@@ -1140,13 +1141,15 @@ async function handleHomeApi(
       }
 
       try {
-        RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: vaultPath });
+        const resolvedVaultPath = validateVaultPath(vaultPath, { mustExist: true });
+        RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: resolvedVaultPath });
       } catch (err) {
         if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
-        throw err;
+        sendHomeError(res, 400, "INVALID_BODY", (err as Error).message || "Invalid vaultPath.");
+        return true;
       }
       sendJson(res, 200, { ok: true });
       return true;
@@ -1553,6 +1556,11 @@ type VaultRoute =
   | { action: "status" }
   | null;
 
+type LocalFsRoute =
+  | { action: "list" }
+  | { action: "read" }
+  | null;
+
 type BlueprintRoute =
   | { action: "import" }
   | null;
@@ -1577,12 +1585,54 @@ function parseVaultRoute(urlPath: string, method: string): VaultRoute {
   return null;
 }
 
+function parseLocalFsRoute(urlPath: string, method: string): LocalFsRoute {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (pathname === "/api/local-fs/list" && method === "GET") {
+    return { action: "list" };
+  }
+  if (pathname === "/api/local-fs/read" && method === "GET") {
+    return { action: "read" };
+  }
+  return null;
+}
+
 function parseBlueprintRoute(urlPath: string, method: string): BlueprintRoute {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (pathname === "/api/blueprint/import" && method === "POST") {
     return { action: "import" };
   }
   return null;
+}
+
+async function handleLocalFsApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: Exclude<LocalFsRoute, null>,
+): Promise<void> {
+  try {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const rootPath = url.searchParams.get("rootPath") ?? "";
+    const relativePath = url.searchParams.get("relativePath") ?? "";
+    const maxEntries = Number(url.searchParams.get("maxEntries") ?? NaN);
+    const maxBytes = Number(url.searchParams.get("maxBytes") ?? NaN);
+
+    if (route.action === "list") {
+      const payload = listLocalFsDirectory({ rootPath, relativePath, maxEntries });
+      sendJson(res, 200, payload);
+      return;
+    }
+
+    const payload = readLocalFsFile({ rootPath, relativePath, maxBytes });
+    sendJson(res, 200, payload);
+  } catch (err) {
+    sendJson(res, 400, {
+      ok: false,
+      error: {
+        code: "LOCAL_FS_INVALID_REQUEST",
+        message: (err as Error).message || "Local filesystem request failed.",
+      },
+    });
+  }
 }
 
 async function handleFlashApi(
@@ -3375,6 +3425,12 @@ export function createAppServer(): http.Server {
     const flashRoute = parseFlashRoute(req.url ?? "/", req.method ?? "GET");
     if (flashRoute) {
       await handleFlashApi(req, res, flashRoute);
+      return;
+    }
+
+    const localFsRoute = parseLocalFsRoute(req.url ?? "/", req.method ?? "GET");
+    if (localFsRoute) {
+      await handleLocalFsApi(req, res, localFsRoute);
       return;
     }
 
