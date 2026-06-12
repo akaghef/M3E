@@ -2162,7 +2162,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
   if (req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown; baseSavedAt?: unknown; force?: unknown };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; baseSavedAt?: unknown; baseState?: unknown; force?: unknown };
       const candidate = parsed && parsed.state ? parsed : { state: parsed };
       if (!candidate.state || typeof candidate.state !== "object") {
         sendJson(res, 400, { error: "Invalid JSON format." });
@@ -2212,10 +2212,54 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
 
       const force = Boolean(parsed?.force);
       const baseSavedAt = typeof parsed?.baseSavedAt === "string" ? parsed.baseSavedAt : null;
+      const baseState = parsed?.baseState && typeof parsed.baseState === "object"
+        ? parsed.baseState as AppState
+        : null;
       if (!force) {
         try {
           const currentDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId);
           if (baseSavedAt && currentDoc.savedAt !== baseSavedAt) {
+            if (baseState) {
+              const merge = mergeLocalNodeChanges(baseState, currentDoc.state, model.toJSON());
+              if (!merge.ok) {
+                sendJson(res, 409, {
+                  ok: false,
+                  code: "DOC_NODE_CONFLICT_Q",
+                  conflictKind: "Q",
+                  error: "Concurrent edits changed the same node differently.",
+                  mapId: mapId,
+                  savedAt: currentDoc.savedAt,
+                  state: currentDoc.state,
+                  conflicts: merge.conflicts,
+                });
+                return true;
+              }
+              const mergedModel = RapidMvpModel.fromJSON(merge.state);
+              const mergeErrors = mergedModel.validate();
+              if (mergeErrors.length > 0) {
+                sendJson(res, 400, { error: `Invalid merged model before save: ${mergeErrors.join(" | ")}` });
+                return true;
+              }
+              const liveWrite = await writeMapToVaultNow(SQLITE_DB_PATH, mapId, mergedModel.toJSON());
+              mergedModel.saveToSqlite(SQLITE_DB_PATH, mapId);
+              const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+              const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+              broadcastMapUpdate(mapId, savedAt, sourceTabId);
+              if (!liveWrite) {
+                handleMapSavedForVaultWatch(SQLITE_DB_PATH, mapId);
+              }
+              sendJson(res, 200, {
+                ok: true,
+                savedAt,
+                mapId: mapId,
+                merged: true,
+                mergedNodeIds: merge.mergedNodeIds,
+                integrationMode: liveWrite?.integrationMode ?? "off",
+                sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+                ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
+              });
+              return true;
+            }
             sendJson(res, 409, {
               ok: false,
               code: "DOC_CONFLICT",
@@ -2274,6 +2318,90 @@ function requestAgentId(url: URL, body: Record<string, unknown>): string {
   const fromBody = typeof body.agentId === "string" ? body.agentId.trim() : "";
   const fromQuery = url.searchParams.get("agentId")?.trim() || "";
   return fromBody || fromQuery || "default";
+}
+
+interface LocalNodeConflict {
+  nodeId: string;
+  baseText: string | null;
+  localText: string | null;
+  currentText: string | null;
+}
+
+type LocalMergeResult =
+  | { ok: true; state: AppState; mergedNodeIds: string[] }
+  | { ok: false; conflicts: LocalNodeConflict[] };
+
+function cloneAppState(state: AppState): AppState {
+  return JSON.parse(JSON.stringify(state)) as AppState;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function nodeFingerprint(node: TreeNode | undefined): string {
+  return node ? stableJson(node) : "__missing__";
+}
+
+function nodeTextForConflict(node: TreeNode | undefined): string | null {
+  return node ? node.text : null;
+}
+
+function mergeLocalNodeChanges(baseState: AppState, currentState: AppState, localState: AppState): LocalMergeResult {
+  const merged = cloneAppState(currentState);
+  const nodeIds = new Set<string>([
+    ...Object.keys(baseState.nodes || {}),
+    ...Object.keys(currentState.nodes || {}),
+    ...Object.keys(localState.nodes || {}),
+  ]);
+  const conflicts: LocalNodeConflict[] = [];
+  const mergedNodeIds: string[] = [];
+
+  for (const nodeId of nodeIds) {
+    const baseNode = baseState.nodes?.[nodeId];
+    const currentNode = currentState.nodes?.[nodeId];
+    const localNode = localState.nodes?.[nodeId];
+    const baseFingerprint = nodeFingerprint(baseNode);
+    const currentFingerprint = nodeFingerprint(currentNode);
+    const localFingerprint = nodeFingerprint(localNode);
+    const currentChanged = currentFingerprint !== baseFingerprint;
+    const localChanged = localFingerprint !== baseFingerprint;
+
+    if (!localChanged) {
+      continue;
+    }
+    if (currentChanged && currentFingerprint !== localFingerprint) {
+      conflicts.push({
+        nodeId,
+        baseText: nodeTextForConflict(baseNode),
+        localText: nodeTextForConflict(localNode),
+        currentText: nodeTextForConflict(currentNode),
+      });
+      continue;
+    }
+
+    if (localNode) {
+      merged.nodes[nodeId] = JSON.parse(JSON.stringify(localNode)) as TreeNode;
+    } else {
+      delete merged.nodes[nodeId];
+      for (const node of Object.values(merged.nodes)) {
+        node.children = (node.children || []).filter((childId) => childId !== nodeId);
+      }
+    }
+    mergedNodeIds.push(nodeId);
+  }
+
+  if (conflicts.length > 0) {
+    return { ok: false, conflicts };
+  }
+  return { ok: true, state: merged, mergedNodeIds };
 }
 
 type RapidMapifyAction = "detail" | "examples" | "classify" | "related";

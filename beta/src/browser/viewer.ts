@@ -22,7 +22,6 @@ const scatterAddNodeBtn = document.getElementById("scatter-add-node") as HTMLBut
 const scatterAddEdgeBtn = document.getElementById("scatter-add-edge") as HTMLButtonElement | null;
 const scatterColorizeBtn = document.getElementById("scatter-colorize") as HTMLButtonElement | null;
 const scatterDeleteBtn = document.getElementById("scatter-delete") as HTMLButtonElement | null;
-const scatterDisplayRootBtn = document.getElementById("scatter-display-root") as HTMLButtonElement | null;
 const scatterAnimateBtn = document.getElementById("scatter-animate") as HTMLButtonElement | null;
 const scatterReflowBtn = document.getElementById("scatter-reflow") as HTMLButtonElement | null;
 const scatterRepulsionInput = document.getElementById("scatter-repulsion") as HTMLInputElement | null;
@@ -635,7 +634,6 @@ const SCATTER_MASS = 10;
 const SCATTER_DT = 0.2;
 const SCATTER_MAX_V = 100;
 const SCATTER_EDGE_LENGTH_DEFAULT = 180;
-const SCATTER_ROOT_RADIUS = 48;
 const SCATTER_NODE_RADIUS = 36;
 const SCATTER_MIN_RADIUS = 18;
 const SCATTER_DEPTH_SCALE = 2 / 3;
@@ -670,7 +668,6 @@ let viewState: ViewState = {
   surfaceViewMode: "tree",
   surfaceLayoutDensity: "balanced",
   surfaceBranchDirection: "right",
-  scatterDisplayRoot: true,
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -679,6 +676,7 @@ let viewState: ViewState = {
     toggle: true,
     lockedNodeId: null,
     userFitZoom: null,
+    userInteractedAt: 0,
   },
   panState: null,
   pinchState: null,
@@ -922,11 +920,6 @@ function syncScatterToolbarUi(): void {
   });
   scatterAnimateBtn?.classList.toggle("is-active", scatterAnimationEnabled);
   scatterAnimateBtn?.setAttribute("aria-pressed", scatterAnimationEnabled ? "true" : "false");
-  scatterDisplayRootBtn?.classList.toggle("is-active", viewState.scatterDisplayRoot);
-  scatterDisplayRootBtn?.setAttribute("aria-pressed", viewState.scatterDisplayRoot ? "true" : "false");
-  scatterDisplayRootBtn?.setAttribute("title", viewState.scatterDisplayRoot
-    ? "PN > scatter > toggle display root: root is visible"
-    : "PN > scatter > toggle display root: root is hidden");
   if (scatterRepulsionInput && document.activeElement !== scatterRepulsionInput) {
     scatterRepulsionInput.value = String(Math.round(scatterRepulsion));
   }
@@ -964,13 +957,6 @@ function setScatterAnimationEnabled(enabled: boolean): void {
   seedMissingScatterPositions();
   startScatterAnimation();
   setStatus("Scatter animation running.");
-}
-
-function toggleScatterDisplayRoot(): void {
-  viewState.scatterDisplayRoot = !viewState.scatterDisplayRoot;
-  syncScatterToolbarUi();
-  render();
-  setStatus(`PN > scatter: display root ${viewState.scatterDisplayRoot ? "on" : "off"}.`);
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -6099,7 +6085,7 @@ function collectScatterNodes(state: AppState, rootId: string): ScatterNodeSet {
     }
     (node.children || []).forEach((childId) => visit(childId, depth + 1));
   };
-  visit(rootId, 0);
+  (state.nodes[rootId]?.children || []).forEach((childId) => visit(childId, 0));
   return { ids, depthOf };
 }
 
@@ -6119,12 +6105,11 @@ function scatterDepthScale(depth: number): number {
   return Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, Math.max(0, depth)));
 }
 
-function scatterRadiusFor(nodeId: string, rootId: string, depth: number, vertexCount: number): number {
-  const base = nodeId === rootId ? SCATTER_ROOT_RADIUS : SCATTER_NODE_RADIUS;
+function scatterRadiusFor(nodeId: string, depth: number, vertexCount: number): number {
   const hiddenBoost = map && scatterNodeIsCollapsedGroup(map.state, nodeId)
     ? Math.min(18, Math.sqrt(countHiddenDescendants(nodeId)) * 5)
     : 0;
-  return Math.max(SCATTER_MIN_RADIUS, base * scatterCountScale(vertexCount) * scatterDepthScale(depth) + hiddenBoost);
+  return Math.max(SCATTER_MIN_RADIUS, SCATTER_NODE_RADIUS * scatterCountScale(vertexCount) * scatterDepthScale(depth) + hiddenBoost);
 }
 
 function scatterFontSizeFor(radius: number): number {
@@ -6206,7 +6191,7 @@ function scatterApplyRankFlowSeed(state: AppState, rootId: string, ids: string[]
   const seeds = scatterSeedPositions(state, rootId, ids, depthOf);
   ids.forEach((nodeId) => {
     const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(nodeId, rootId, depth, ids.length);
+    const radius = scatterRadiusFor(nodeId, depth, ids.length);
     const view = ensureSurfaceNodeView(nodeId);
     const seed = seeds[nodeId];
     if (!view || !seed) return;
@@ -6248,7 +6233,7 @@ function seedMissingScatterPositions(): void {
   const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
   ids.forEach((nodeId) => {
     const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(nodeId, rootId, depth, ids.length);
+    const radius = scatterRadiusFor(nodeId, depth, ids.length);
     const seed = seeds[nodeId];
     const view = ensureSurfaceNodeView(nodeId);
     if (!view || !seed) return;
@@ -6344,7 +6329,7 @@ function runScatterSimulation(iterations: number): boolean {
   const particles: Record<string, { cx: number; cy: number; r: number; vx: number; vy: number }> = {};
   ids.forEach((nodeId) => {
     const depth = depthOf[nodeId] ?? 0;
-    const r = scatterRadiusFor(nodeId, rootId, depth, ids.length);
+    const r = scatterRadiusFor(nodeId, depth, ids.length);
     const view = surface?.nodeViews?.[nodeId];
     const seed = seeds[nodeId] || scatterSeedCenter();
     const x = Number.isFinite(view?.x) ? Number(view!.x) : seed.x - r;
@@ -6888,7 +6873,7 @@ function buildLayout(state: AppState): LayoutResult {
       const node = state.nodes[nodeId];
       if (!node) return;
       const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = scatterRadiusFor(nodeId, displayRootId, depth, descendants.length);
+      const radius = scatterRadiusFor(nodeId, depth, descendants.length);
       const diameter = radius * 2;
       const saved = surface?.nodeViews?.[nodeId];
       const seeded = seededByNode[nodeId] || scatterSeedCenter();
@@ -7164,10 +7149,9 @@ function render(): void {
   const flowSurface = currentSurfaceIsFlowMode();
   const scatterSurface = currentSurfaceIsScatterMode();
   const structuredMode = structuredSurfaceMode() || "tree";
-  const rootlessSurface = flowSurface;
-  const scatterDisplayRoot = !scatterSurface || viewState.scatterDisplayRoot;
+  const rootlessSurface = flowSurface || scatterSurface;
   const scatterNodeRenderable = (nodeId: string): boolean =>
-    !scatterSurface || scatterDisplayRoot || nodeId !== displayRootId;
+    !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -13912,7 +13896,6 @@ scatterAddNodeBtn?.addEventListener("click", () => setScatterToolMode("add-node"
 scatterAddEdgeBtn?.addEventListener("click", () => setScatterToolMode("add-edge"));
 scatterColorizeBtn?.addEventListener("click", () => setScatterToolMode("colorize"));
 scatterDeleteBtn?.addEventListener("click", () => setScatterToolMode("delete"));
-scatterDisplayRootBtn?.addEventListener("click", () => toggleScatterDisplayRoot());
 scatterAnimateBtn?.addEventListener("click", () => toggleScatterAnimation());
 scatterReflowBtn?.addEventListener("click", () => {
   runScatterReflow(180);
@@ -15237,14 +15220,14 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "]") {
+  if (!event.shiftKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
     board.focus();
     return;
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "[") {
+  if (!event.shiftKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
     board.focus();

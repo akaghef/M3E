@@ -24,6 +24,8 @@ interface MapListResponse {
 
 const queryParams = new URLSearchParams(window.location.search);
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
+const DEFAULT_LOCAL_FS_ROOT = "C:\\Users\\Akaghef\\dev\\M3E\\docs";
+const LOCAL_FS_HOME_PREFS_KEY = "m3e:home:local-fs-root";
 const workspaceId = normalizeId(queryParams.get("ws"), DEFAULT_WORKSPACE_ID);
 
 let allMaps: MapSummary[] = [];
@@ -81,8 +83,22 @@ function viewerHref(mapId: string): string {
   return `./viewer.html?${params.toString()}`;
 }
 
+function localFsViewerHref(rootPath: string): string {
+  const params = new URLSearchParams({
+    ws: workspaceId,
+    map: "local-fs",
+    localFsRoot: rootPath,
+    mode: "view",
+  });
+  return `./viewer.html?${params.toString()}`;
+}
+
 function navigateToMap(mapId: string): void {
   window.location.href = viewerHref(mapId);
+}
+
+function navigateToLocalFs(rootPath: string): void {
+  window.location.href = localFsViewerHref(rootPath);
 }
 
 function escapeHtml(s: string): string {
@@ -553,6 +569,7 @@ function openMenu(map: MapSummary, anchor: HTMLElement): void {
 function wireCreateCards(): void {
   const blankBtn = document.querySelector('[data-create="blank"]') as HTMLButtonElement | null;
   const vaultBtn = document.querySelector('[data-create="vault"]') as HTMLButtonElement | null;
+  const localFsBtn = document.querySelector('[data-create="local-fs"]') as HTMLButtonElement | null;
   const importBtn = document.querySelector('[data-create="import"]') as HTMLButtonElement | null;
 
   blankBtn?.addEventListener("click", async () => {
@@ -574,6 +591,16 @@ function wireCreateCards(): void {
     } catch (err) {
       setStatus(`Vault import failed: ${(err as Error).message}`);
     }
+  });
+
+  localFsBtn?.addEventListener("click", () => {
+    const lastRoot = window.localStorage.getItem(LOCAL_FS_HOME_PREFS_KEY) || DEFAULT_LOCAL_FS_ROOT;
+    const p = window.prompt("Path to local folder:", lastRoot);
+    if (!p) return;
+    const rootPath = p.trim();
+    if (!rootPath) return;
+    window.localStorage.setItem(LOCAL_FS_HOME_PREFS_KEY, rootPath);
+    navigateToLocalFs(rootPath);
   });
 
   importBtn?.addEventListener("click", () => {

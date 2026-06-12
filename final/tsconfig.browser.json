@@ -9,5 +9,6 @@
     "declaration": false,
     "types": []
   },
-  "include": ["src/browser/**/*.ts"]
+  "include": ["src/browser/**/*.ts"],
+  "exclude": ["src/browser/edge_geometry.ts"]
 }
