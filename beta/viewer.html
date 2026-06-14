@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>M3E</title>
+        <script>
+          (() => {
+            try {
+              const theme = localStorage.getItem("m3e:viewer-theme") === "dark" ? "dark" : "light";
+              document.documentElement.dataset.theme = theme;
+              document.documentElement.style.colorScheme = theme;
+            } catch {
+              document.documentElement.dataset.theme = "light";
+              document.documentElement.style.colorScheme = "light";
+            }
+          })();
+        </script>
         <link rel="stylesheet" href="./viewer.css" />
         <link rel="stylesheet" href="./public/katex/katex.min.css" />
         <link rel="stylesheet" href="./dist/browser/workbench-ui.css" />
@@ -49,6 +61,7 @@
             <button id="view-system" class="mode-btn" type="button">System</button>
             <button id="view-scatter" class="mode-btn" type="button">Scatter</button>
           </div>
+          <button id="theme-toggle" class="mode-btn theme-toggle-btn" type="button" aria-pressed="false" title="Toggle dark mode">Dark</button>
           <button id="component-tabular-toggle" class="mode-btn" type="button" aria-pressed="false" title="Toggle tabular component on selected node" data-edit-only>Tabular</button>
           <button id="pen-tool" class="tool-btn" type="button" aria-label="Pen tool" aria-pressed="false" title="Pen tool (Shift+P)" data-edit-only>Pen</button>
           <div class="import-wrap" data-edit-only>
@@ -87,8 +100,6 @@
           <button id="scatter-add-edge" class="scatter-tool-btn" type="button" title="Add edge">Add Edge</button>
           <button id="scatter-colorize" class="scatter-tool-btn" type="button" title="Colorize">Colorize</button>
           <button id="scatter-delete" class="scatter-tool-btn" type="button" title="Delete">Delete</button>
-          <span class="toolbar-sep" aria-hidden="true">|</span>
-          <button id="scatter-display-root" class="scatter-tool-btn is-active" type="button" aria-pressed="true" title="PN > scatter > toggle display root">Toggle Display Root</button>
           <button id="scatter-animate" class="scatter-tool-btn" type="button" aria-pressed="false" title="Animate force layout (A)">Animate</button>
           <button id="scatter-reflow" class="scatter-tool-btn" type="button" title="Reflow with force layout">Reflow</button>
           <label class="scatter-range-control" title="Repulsion coefficient">

@@ -57,6 +57,31 @@ function scatterFixture() {
           link: "",
         },
       },
+      scopes: {
+        "scope:root": {
+          id: "scope:root",
+          label: "Scatter Root",
+          rootNodeIds: ["root"],
+          relationIds: [],
+          primarySurfaceId: "surface:root:tree",
+        },
+      },
+      surfaces: {
+        "surface:root:tree": {
+          id: "surface:root:tree",
+          scopeId: "scope:root",
+          kind: "tree",
+          layout: "tree",
+          nodeViews: {},
+        },
+        "surface:root:scatter": {
+          id: "surface:root:scatter",
+          scopeId: "scope:root",
+          kind: "scatter",
+          layout: "free",
+          nodeViews: {},
+        },
+      },
       links: {},
       annotations: {},
     },
@@ -87,31 +112,16 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await clickLegacy(page, "#view-scatter");
   await expect(page.locator("#mode-meta")).toContainText("/ Scatter");
   await expect(page.locator("#scatter-toolbar")).toBeVisible();
-  await expect(page.locator("#scatter-display-root")).toBeVisible();
-  await expect(page.locator("#scatter-display-root")).toContainText("Toggle Display Root");
+  await expect(page.locator("#scatter-display-root")).toHaveCount(0);
   await expect(page.locator("#scatter-animate")).toBeVisible();
   await expect(page.locator("#scatter-reflow")).toBeVisible();
 
-  await expect(page.locator(".scatter-node-circle[data-node-id='root']")).toHaveCount(1);
-  await expect(page.locator("text.label-root", { hasText: "Scatter Root" })).toHaveCount(1);
-  await expect(page.locator('text.label-node[data-node-id="alpha"]')).toContainText("Alpha");
-  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alpha Child");
-  await expect(page.locator("path.edge")).toHaveCount(0);
-  await expect(page.locator(".scatter-guide")).toHaveCount(3);
-
-  await clickLegacy(page, "#scatter-display-root");
-  await expect(page.locator("#scatter-display-root")).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".scatter-node-circle[data-node-id='root']")).toHaveCount(0);
   await expect(page.locator("text.label-root", { hasText: "Scatter Root" })).toHaveCount(0);
   await expect(page.locator('text.label-node[data-node-id="alpha"]')).toContainText("Alpha");
-  await expect(page.locator('text.label-node[data-node-id="beta"]')).toContainText("Beta");
+  await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alpha Child");
+  await expect(page.locator("path.edge")).toHaveCount(0);
   await expect(page.locator(".scatter-guide")).toHaveCount(1);
-
-  await clickLegacy(page, "#scatter-display-root");
-  await expect(page.locator("#scatter-display-root")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".scatter-node-circle[data-node-id='root']")).toHaveCount(1);
-  await expect(page.locator("text.label-root", { hasText: "Scatter Root" })).toHaveCount(1);
-  await expect(page.locator(".scatter-guide")).toHaveCount(3);
 
   const alphaBefore = await page.locator('[data-node-id="alpha"].node-hit').boundingBox();
   if (!alphaBefore) throw new Error("Alpha node was not rendered.");

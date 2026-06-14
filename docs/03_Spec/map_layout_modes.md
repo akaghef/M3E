@@ -76,6 +76,13 @@ Surface View
 - **Disperse**: 空間的な近さやクラスタで読む。主眼は関係密度・分布・近接。
 - **System**: 箱・境界・モジュール・リンクで読む。主眼は構造、責務、接続。
 
+#### pipeline / system graph の参照 UI
+
+2026-06-06 に取り込んだ [Pipeline UI Reference](../04_Architecture/Pipeline_UI_Reference.md)
+は、`Axial.subtype=pipeline` と `System.subtype=architecture` の視覚・操作参考として扱う。
+新しい Surface View 名は増やさない。M3E へ移植する対象は、左から右へ読む flow、typed card、port、selected-path focus、inspector、minimap、trace replay である。
+既定の Rapid tree view を置き換えるものではない。
+
 ---
 
 ## 2. 現在の実装分析

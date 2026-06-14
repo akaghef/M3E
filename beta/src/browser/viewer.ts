@@ -11,6 +11,7 @@ const viewLogicChartBtn = document.getElementById("view-logic-chart");
 const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
+const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
 const scatterToolbarEl = document.getElementById("scatter-toolbar") as HTMLElement | null;
 const scatterNormalBtn = document.getElementById("scatter-normal") as HTMLButtonElement | null;
@@ -18,7 +19,6 @@ const scatterAddNodeBtn = document.getElementById("scatter-add-node") as HTMLBut
 const scatterAddEdgeBtn = document.getElementById("scatter-add-edge") as HTMLButtonElement | null;
 const scatterColorizeBtn = document.getElementById("scatter-colorize") as HTMLButtonElement | null;
 const scatterDeleteBtn = document.getElementById("scatter-delete") as HTMLButtonElement | null;
-const scatterDisplayRootBtn = document.getElementById("scatter-display-root") as HTMLButtonElement | null;
 const scatterAnimateBtn = document.getElementById("scatter-animate") as HTMLButtonElement | null;
 const scatterReflowBtn = document.getElementById("scatter-reflow") as HTMLButtonElement | null;
 const scatterRepulsionInput = document.getElementById("scatter-repulsion") as HTMLInputElement | null;
@@ -308,6 +308,7 @@ const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "clou
 const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
 const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
+const THEME_PREFS_KEY = "m3e:viewer-theme";
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 function createTabId(): string {
@@ -373,6 +374,7 @@ interface BcStateMessage {
 
 let bc: BroadcastChannel | null = null;
 let lastServerSavedAt: string | null = null;
+let lastServerBaseState: AppState | null = null;
 
 interface UndoSnapshot {
   state: AppState;
@@ -518,6 +520,8 @@ let vaultLastInboundAt: string | null = null;
 let vaultLastOutboundAt: string | null = null;
 let vaultLastError: string | null = null;
 let liveStreamVisibilityHandlerInstalled = false;
+type ViewerTheme = "light" | "dark";
+let viewerTheme: ViewerTheme = readStoredViewerTheme();
 let v4PanelVisible = false;
 let v4LatestDrafts: FlashDraftListItem[] = [];
 
@@ -568,7 +572,6 @@ const SCATTER_MASS = 10;
 const SCATTER_DT = 0.2;
 const SCATTER_MAX_V = 100;
 const SCATTER_EDGE_LENGTH_DEFAULT = 180;
-const SCATTER_ROOT_RADIUS = 48;
 const SCATTER_NODE_RADIUS = 36;
 const SCATTER_MIN_RADIUS = 18;
 const SCATTER_DEPTH_SCALE = 2 / 3;
@@ -603,7 +606,6 @@ let viewState: ViewState = {
   surfaceViewMode: "tree",
   surfaceLayoutDensity: "balanced",
   surfaceBranchDirection: "right",
-  scatterDisplayRoot: true,
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -793,6 +795,8 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   if (mode === "scatter") {
     seedMissingScatterPositions();
   }
+  normalizeSelectionState();
+  cycleViewState = "focus";
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -848,11 +852,6 @@ function syncScatterToolbarUi(): void {
   });
   scatterAnimateBtn?.classList.toggle("is-active", scatterAnimationEnabled);
   scatterAnimateBtn?.setAttribute("aria-pressed", scatterAnimationEnabled ? "true" : "false");
-  scatterDisplayRootBtn?.classList.toggle("is-active", viewState.scatterDisplayRoot);
-  scatterDisplayRootBtn?.setAttribute("aria-pressed", viewState.scatterDisplayRoot ? "true" : "false");
-  scatterDisplayRootBtn?.setAttribute("title", viewState.scatterDisplayRoot
-    ? "PN > scatter > toggle display root: root is visible"
-    : "PN > scatter > toggle display root: root is hidden");
   if (scatterRepulsionInput && document.activeElement !== scatterRepulsionInput) {
     scatterRepulsionInput.value = String(Math.round(scatterRepulsion));
   }
@@ -890,13 +889,6 @@ function setScatterAnimationEnabled(enabled: boolean): void {
   seedMissingScatterPositions();
   startScatterAnimation();
   setStatus("Scatter animation running.");
-}
-
-function toggleScatterDisplayRoot(): void {
-  viewState.scatterDisplayRoot = !viewState.scatterDisplayRoot;
-  syncScatterToolbarUi();
-  render();
-  setStatus(`PN > scatter: display root ${viewState.scatterDisplayRoot ? "on" : "off"}.`);
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -2658,13 +2650,55 @@ function currentMapSurface(): MapSurface | null {
   return map.state.surfaces?.[scope.primarySurfaceId] || null;
 }
 
+function ensureCurrentMapSurface(): MapSurface | null {
+  if (!map) return null;
+  sanitizeMapModelState(map.state);
+  const scopeRootId = currentScopeRootId();
+  const scopeId = inferredScopeId(scopeRootId);
+  if (!map.state.scopes) {
+    map.state.scopes = {};
+  }
+  if (!map.state.surfaces) {
+    map.state.surfaces = {};
+  }
+  if (!map.state.scopes[scopeId]) {
+    const scopeRoot = map.state.nodes[scopeRootId];
+    map.state.scopes[scopeId] = {
+      id: scopeId,
+      label: uiLabel(scopeRoot) || (scopeRootId === map.state.rootId ? "Root" : scopeRootId),
+      rootNodeIds: [scopeRootId],
+      relationIds: [],
+    };
+  }
+  const kind = surfaceKindForViewMode(viewState.surfaceViewMode);
+  const surfaceId = inferredSurfaceId(scopeRootId, kind);
+  map.state.scopes[scopeId]!.primarySurfaceId = surfaceId;
+  if (!map.state.surfaces[surfaceId]) {
+    map.state.surfaces[surfaceId] = {
+      id: surfaceId,
+      scopeId,
+      kind,
+      layout: surfaceLayoutForKind(kind),
+      nodeViews: {},
+    };
+  }
+  const surface = map.state.surfaces[surfaceId]!;
+  surface.scopeId = scopeId;
+  surface.kind = kind;
+  surface.layout = surfaceLayoutForKind(kind);
+  if (!surface.nodeViews) {
+    surface.nodeViews = {};
+  }
+  return surface;
+}
+
 function surfaceNodeView(nodeId: string): SurfaceNodeView | null {
   const surface = currentMapSurface();
   return surface?.nodeViews?.[nodeId] || null;
 }
 
 function ensureSurfaceNodeView(nodeId: string): SurfaceNodeView | null {
-  const surface = currentMapSurface();
+  const surface = currentMapSurface() || ensureCurrentMapSurface();
   if (!surface) return null;
   if (!surface.nodeViews) {
     surface.nodeViews = {};
@@ -3497,13 +3531,54 @@ function redoLastChange(): void {
 function setStatus(message: string, isError = false): void {
   if (statusTimer !== null) clearTimeout(statusTimer);
   statusEl.textContent = message;
-  statusEl.style.color = isError ? "var(--danger)" : "#5d5d5d";
+  statusEl.style.color = isError ? "var(--danger)" : "var(--status-ink)";
   if (message) {
     statusTimer = setTimeout(() => {
       statusEl.textContent = "";
     }, 2500);
   }
 }
+
+function normalizeViewerTheme(value: unknown): ViewerTheme {
+  return value === "dark" ? "dark" : "light";
+}
+
+function readStoredViewerTheme(): ViewerTheme {
+  try {
+    return normalizeViewerTheme(window.localStorage.getItem(THEME_PREFS_KEY));
+  } catch {
+    return "light";
+  }
+}
+
+function applyViewerTheme(theme: ViewerTheme, options: { persist?: boolean; announce?: boolean } = {}): void {
+  viewerTheme = normalizeViewerTheme(theme);
+  document.documentElement.dataset.theme = viewerTheme;
+  document.documentElement.style.colorScheme = viewerTheme;
+  document.body.dataset.theme = viewerTheme;
+  if (themeToggleBtn) {
+    themeToggleBtn.textContent = viewerTheme === "dark" ? "Light" : "Dark";
+    themeToggleBtn.setAttribute("aria-pressed", viewerTheme === "dark" ? "true" : "false");
+    themeToggleBtn.title = viewerTheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+  }
+  if (options.persist) {
+    try {
+      window.localStorage.setItem(THEME_PREFS_KEY, viewerTheme);
+    } catch {
+      // Local storage may be unavailable in restricted browser contexts.
+    }
+  }
+  window.dispatchEvent(new CustomEvent("m3e:theme-changed", { detail: { theme: viewerTheme } }));
+  if (options.announce) {
+    setStatus(viewerTheme === "dark" ? "Dark mode enabled." : "Light mode enabled.");
+  }
+}
+
+function toggleViewerTheme(): void {
+  applyViewerTheme(viewerTheme === "dark" ? "light" : "dark", { persist: true, announce: true });
+}
+
+applyViewerTheme(viewerTheme);
 
 function showFatalLoadError(title: string, detail: string): void {
   fatalLoadError = true;
@@ -3555,6 +3630,12 @@ let _linearPanelLayoutDirty = true;
 let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
 let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
 let _linearPanelCanvasHeight = 380;
+let _appliedLinearPanelTransform = "";
+
+interface ViewportApplyOptions {
+  syncDependents?: boolean;
+  dispatchViewportChanged?: boolean;
+}
 let _lastZoomStatusAt = 0;
 
 function refreshLinearPanelCanvasLayout(): boolean {
@@ -3600,7 +3681,7 @@ function refreshLinearPanelCanvasLayout(): boolean {
   return true;
 }
 
-function applyZoom(): void {
+function applyCanvasViewportTransform(): void {
   const widthValue = `${contentWidth}px`;
   if (_appliedCanvasWidth !== widthValue) {
     canvas.style.width = widthValue;
@@ -3616,11 +3697,25 @@ function applyZoom(): void {
     canvas.style.transform = transformValue;
     _appliedCanvasTransform = transformValue;
   }
+  applyLinearPanelViewportTransform();
+}
+
+function syncViewportDependents(dispatchViewportChanged = true): void {
   syncInlineEditorPosition();
   syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
   syncTemplateCompletionPlacement();
-  window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+  if (dispatchViewportChanged) {
+    window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+  }
+}
+
+function applyZoom(options: ViewportApplyOptions = {}): void {
+  applyCanvasViewportTransform();
+  if (options.syncDependents === false) {
+    return;
+  }
+  syncViewportDependents(options.dispatchViewportChanged !== false);
 }
 
 function currentCameraTarget(): CameraTarget {
@@ -3698,7 +3793,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
     viewState.cameraY = lerp(motion.from.cameraY, motion.to.cameraY, t);
     viewState.zoom = lerp(motion.from.zoom, motion.to.zoom, t);
-    applyZoom();
+    applyZoom({ syncDependents: false });
     if (rawT >= 1) {
       applyCameraTarget(motion.to);
       cameraMotion = null;
@@ -3710,6 +3805,26 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
   cameraMotion.raf = requestAnimationFrame(step);
 }
 
+function applyLinearPanelViewportTransform(): void {
+  if (
+    !linearPanelEl
+    || viewState.surfaceViewMode !== "tree"
+    || !map
+    || !lastLayout
+    || visibleOrder.length === 0
+    || _linearPanelLayoutDirty
+  ) {
+    return;
+  }
+  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
+  const transformValue = `translate(${Math.round(panelLeft)}px, ${Math.round(panelTop)}px) scale(${viewState.zoom})`;
+  if (_appliedLinearPanelTransform !== transformValue) {
+    linearPanelEl.style.transform = transformValue;
+    _appliedLinearPanelTransform = transformValue;
+  }
+}
+
 function syncLinearPanelPosition(): void {
   if (!linearPanelEl) {
     return;
@@ -3717,6 +3832,7 @@ function syncLinearPanelPosition(): void {
 
   if (viewState.surfaceViewMode !== "tree") {
     linearPanelEl.hidden = true;
+    _appliedLinearPanelTransform = "";
     return;
   }
   linearPanelEl.hidden = false;
@@ -3727,6 +3843,7 @@ function syncLinearPanelPosition(): void {
     linearPanelEl.style.removeProperty("width");
     linearPanelEl.style.removeProperty("height");
     linearPanelEl.style.removeProperty("transform");
+    _appliedLinearPanelTransform = "";
     _linearPanelLayoutDirty = true;
     return;
   }
@@ -3737,18 +3854,11 @@ function syncLinearPanelPosition(): void {
 
   const panelCanvasWidth = linearPanelCanvasWidth;
   const panelCanvasHeight = _linearPanelCanvasHeight;
-  const zoomScale = viewState.zoom;
-  const panelWidth = panelCanvasWidth * zoomScale;
-  const panelHeight = panelCanvasHeight * zoomScale;
-
-  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
-  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
-
-  linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
-  linearPanelEl.style.top = `${Math.round(panelTop)}px`;
+  linearPanelEl.style.left = "0px";
+  linearPanelEl.style.top = "0px";
   linearPanelEl.style.width = `${panelCanvasWidth}px`;
   linearPanelEl.style.height = `${panelCanvasHeight}px`;
-  linearPanelEl.style.transform = `scale(${zoomScale})`;
+  applyLinearPanelViewportTransform();
 }
 
 function captureManualLinearPanelWidth(): void {
@@ -3874,7 +3984,7 @@ function setEditedEdgeLabelVisibility(nodeId: string, visible: boolean): void {
     });
 }
 
-function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
+function nodeCanvasCenter(nodeId: string): { x: number; y: number } | null {
   if (!map || !lastLayout) {
     return null;
   }
@@ -3882,10 +3992,24 @@ function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
   if (!nodePos) {
     return null;
   }
-  const centerX = nodeId === map.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
+  if (currentSurfaceIsScatterMode()) {
+    const circle = scatterCircleGeometry(nodePos);
+    return { x: circle.cx, y: circle.cy };
+  }
   return {
-    x: viewState.cameraX + centerX * viewState.zoom,
-    y: viewState.cameraY + nodePos.y * viewState.zoom,
+    x: nodePos.x + nodePos.w / 2,
+    y: nodePos.y,
+  };
+}
+
+function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
+  const center = nodeCanvasCenter(nodeId);
+  if (!center) {
+    return null;
+  }
+  return {
+    x: viewState.cameraX + center.x * viewState.zoom,
+    y: viewState.cameraY + center.y * viewState.zoom,
   };
 }
 
@@ -3911,6 +4035,15 @@ function nodeViewportRect(nodeId: string): { left: number; right: number; top: n
   const nodePos = lastLayout.pos[nodeId];
   if (!nodePos) {
     return null;
+  }
+  if (currentSurfaceIsScatterMode()) {
+    const { cx, cy, r } = scatterCircleGeometry(nodePos);
+    return {
+      left: viewState.cameraX + (cx - r) * viewState.zoom,
+      right: viewState.cameraX + (cx + r) * viewState.zoom,
+      top: viewState.cameraY + (cy - r) * viewState.zoom,
+      bottom: viewState.cameraY + (cy + r) * viewState.zoom,
+    };
   }
   const nodeHeight = Math.max(VIEWER_TUNING.layout.nodeHitHeight, nodePos.h);
   const left = viewState.cameraX + nodePos.x * viewState.zoom;
@@ -3974,6 +4107,7 @@ function setZoom(
   anchorClientX: number | null = null,
   anchorClientY: number | null = null,
   statusMode: "immediate" | "throttled" | "silent" = "immediate",
+  syncDependents = true,
 ): void {
   cancelCameraMotion();
   const previousZoom = viewState.zoom;
@@ -3989,7 +4123,10 @@ function setZoom(
 
   viewState.cameraX = localViewportX - contentX * viewState.zoom;
   viewState.cameraY = localViewportY - contentY * viewState.zoom;
-  applyZoom();
+  applyZoom({ syncDependents });
+  if (!syncDependents) {
+    scheduleViewportDependentSync();
+  }
   if (statusMode === "silent") {
     return;
   }
@@ -4028,7 +4165,7 @@ function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, 
     if (zoom === null) {
       return;
     }
-    setZoom(zoom, anchorX, anchorY, "throttled");
+    setZoom(zoom, anchorX, anchorY, "throttled", false);
   });
 }
 
@@ -4068,6 +4205,17 @@ function currentSurfaceIsFlowMode(): boolean {
 
 function currentSurfaceIsScatterMode(): boolean {
   return viewState.surfaceViewMode === "scatter";
+}
+
+function currentSurfaceHidesScopeRoot(): boolean {
+  return currentSurfaceIsFlowMode() || currentSurfaceIsScatterMode();
+}
+
+function isNodeRenderableInCurrentSurface(nodeId: string): boolean {
+  if (!map || !map.state.nodes[nodeId] || !isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+    return false;
+  }
+  return !(currentSurfaceHidesScopeRoot() && nodeId === currentScopeRootId());
 }
 
 interface FlowPreviewLayout {
@@ -4159,8 +4307,8 @@ function preferredSelectionForScope(scopeId: string): string {
     return scopeId;
   }
   const scopeNode = map.state.nodes[scopeId]!;
-  if (isFlowSurfaceNode(scopeNode)) {
-    const firstVisibleChild = visibleChildren(scopeNode)[0];
+  if (currentSurfaceHidesScopeRoot() || isFlowSurfaceNode(scopeNode)) {
+    const firstVisibleChild = visibleChildren(scopeNode).find((childId) => isNodeRenderableInCurrentSurface(childId));
     if (firstVisibleChild && map.state.nodes[firstVisibleChild]) {
       return firstVisibleChild;
     }
@@ -4963,7 +5111,7 @@ interface RapidMapifyOracleApplyResponse {
   savedAt?: string;
   opId: string;
   action: RapidGenerateAction;
-  source: "mapify_teacher_fixture";
+  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
   fragment: string;
   added: Array<{ id: string; parentId: string; label: string }>;
   merged: Array<{ id: string; parentId: string; label: string }>;
@@ -5573,7 +5721,7 @@ function collectScatterNodes(state: AppState, rootId: string): ScatterNodeSet {
     depthOf[nodeId] = depth;
     (node.children || []).forEach((childId) => visit(childId, depth + 1));
   };
-  visit(rootId, 0);
+  (state.nodes[rootId]?.children || []).forEach((childId) => visit(childId, 0));
   return { ids, depthOf };
 }
 
@@ -5588,9 +5736,8 @@ function scatterDepthScale(depth: number): number {
   return Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, Math.max(0, depth)));
 }
 
-function scatterRadiusFor(nodeId: string, rootId: string, depth: number, vertexCount: number): number {
-  const base = nodeId === rootId ? SCATTER_ROOT_RADIUS : SCATTER_NODE_RADIUS;
-  return Math.max(SCATTER_MIN_RADIUS, base * scatterCountScale(vertexCount) * scatterDepthScale(depth));
+function scatterRadiusFor(depth: number, vertexCount: number): number {
+  return Math.max(SCATTER_MIN_RADIUS, SCATTER_NODE_RADIUS * scatterCountScale(vertexCount) * scatterDepthScale(depth));
 }
 
 function scatterFontSizeFor(radius: number): number {
@@ -5653,7 +5800,7 @@ function scatterSeedPositions(
     const depthPeers = byDepth[depth] || [];
     const peerIndex = Math.max(0, depthPeers.indexOf(nodeId));
     const angle = angles[nodeId] ?? (peerIndex / Math.max(1, depthPeers.length)) * Math.PI * 2;
-    const ring = scatterEdgeLength * (1.08 + Math.max(0, depth - 1) * 0.82);
+    const ring = scatterEdgeLength * (1.08 + Math.max(0, depth) * 0.82);
     const stagger = ((peerIndex % 3) - 1) * 22;
     seeded[nodeId] = {
       x: center.x + Math.cos(angle) * ring,
@@ -5673,7 +5820,7 @@ function seedMissingScatterPositions(): void {
   const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
   ids.forEach((nodeId) => {
     const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(nodeId, rootId, depth, ids.length);
+    const radius = scatterRadiusFor(depth, ids.length);
     const seed = seeds[nodeId];
     const view = ensureSurfaceNodeView(nodeId);
     if (!view || !seed) return;
@@ -5754,7 +5901,7 @@ function runScatterSimulation(iterations: number): boolean {
   const particles: Record<string, { cx: number; cy: number; r: number; vx: number; vy: number }> = {};
   ids.forEach((nodeId) => {
     const depth = depthOf[nodeId] ?? 0;
-    const r = scatterRadiusFor(nodeId, rootId, depth, ids.length);
+    const r = scatterRadiusFor(depth, ids.length);
     const view = surface?.nodeViews?.[nodeId];
     const seed = seeds[nodeId] || scatterSeedCenter();
     const x = Number.isFinite(view?.x) ? Number(view!.x) : seed.x - r;
@@ -6294,7 +6441,7 @@ function buildLayout(state: AppState): LayoutResult {
       const node = state.nodes[nodeId];
       if (!node) return;
       const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = scatterRadiusFor(nodeId, displayRootId, depth, descendants.length);
+      const radius = scatterRadiusFor(depth, descendants.length);
       const diameter = radius * 2;
       const saved = surface?.nodeViews?.[nodeId];
       const seeded = seededByNode[nodeId] || scatterSeedCenter();
@@ -6461,14 +6608,36 @@ function scheduleRender(): void {
 }
 
 let _zoomApplyScheduled = false;
+let _viewportDependentSyncTimer: number | null = null;
+
+function scheduleViewportDependentSync(delayMs = 120): void {
+  if (_viewportDependentSyncTimer !== null) {
+    window.clearTimeout(_viewportDependentSyncTimer);
+  }
+  _viewportDependentSyncTimer = window.setTimeout(() => {
+    _viewportDependentSyncTimer = null;
+    syncViewportDependents();
+  }, delayMs);
+}
+
+function flushViewportDependentSync(): void {
+  if (_viewportDependentSyncTimer !== null) {
+    window.clearTimeout(_viewportDependentSyncTimer);
+    _viewportDependentSyncTimer = null;
+  }
+  syncViewportDependents();
+}
+
 function scheduleApplyZoom(): void {
   if (_zoomApplyScheduled) {
+    scheduleViewportDependentSync();
     return;
   }
   _zoomApplyScheduled = true;
   requestAnimationFrame(() => {
     _zoomApplyScheduled = false;
-    applyZoom();
+    applyZoom({ syncDependents: false });
+    scheduleViewportDependentSync();
   });
 }
 
@@ -6563,9 +6732,8 @@ function render(): void {
   const scatterSurface = currentSurfaceIsScatterMode();
   const structuredMode = structuredSurfaceMode() || "tree";
   const rootlessSurface = flowSurface;
-  const scatterDisplayRoot = !scatterSurface || viewState.scatterDisplayRoot;
   const scatterNodeRenderable = (nodeId: string): boolean =>
-    !scatterSurface || scatterDisplayRoot || nodeId !== displayRootId;
+    !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
@@ -8013,13 +8181,13 @@ function normalizeSelectionState(): void {
     return;
   }
 
-  if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+  if (!isNodeRenderableInCurrentSurface(viewState.selectedNodeId)) {
     viewState.selectedNodeId = preferredSelectionForScope(normalizedCurrentScopeId());
   }
 
   const normalizedSelectedIds = new Set<string>();
   viewState.selectedNodeIds.forEach((nodeId) => {
-    if (map!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
+    if (isNodeRenderableInCurrentSurface(nodeId)) {
       normalizedSelectedIds.add(nodeId);
     }
   });
@@ -10664,6 +10832,17 @@ function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y
   return starts;
 }
 
+function scatterMovableDragRootIds(nodeId: string): string[] {
+  const roots = viewState.selectedNodeIds.has(nodeId)
+    ? getMovableSelectionRoots(viewState.selectedNodeIds)
+    : getMovableSelectionRoots(new Set([nodeId]));
+  if (roots.length > 0) {
+    return roots;
+  }
+  const node = map?.state.nodes[nodeId];
+  return node && node.parentId !== null ? [nodeId] : [];
+}
+
 function deleteSelectedGraphLink(): boolean {
   if (!map || !viewState.selectedLinkId) {
     return false;
@@ -11130,6 +11309,10 @@ function currentDocSnapshot(): SavedMap {
   };
 }
 
+function cloneStateForSave(state: AppState | null): AppState | null {
+  return state ? JSON.parse(JSON.stringify(state)) as AppState : null;
+}
+
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
   if (!map) {
     return false;
@@ -11155,6 +11338,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
       body: JSON.stringify({
         ...currentDocSnapshot(),
         baseSavedAt: lastServerSavedAt,
+        baseState: cloneStateForSave(lastServerBaseState),
         force,
       }),
     });
@@ -11162,10 +11346,12 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     if (response.status === 409) {
       const conflict = await response.json().catch(() => ({ error: "Map conflict." }));
       const remoteState = (conflict as { state?: AppState }).state;
+      const conflictCode = String((conflict as { code?: unknown }).code || "");
+      const isQuestionConflict = conflictCode === "DOC_NODE_CONFLICT_Q";
       if (remoteState) {
         showConflictPanel(remoteState, {
           localLabel: "Use Local",
-          remoteLabel: "Use Vault",
+          remoteLabel: isQuestionConflict ? "Use Current" : "Use Vault",
           onUseLocal: () => {
             void saveDocToLocalDb(showStatus, true);
           },
@@ -11185,7 +11371,12 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
           },
         });
       }
-      setStatus("Vault conflict detected. Choose Use Local or Use Vault.", true);
+      setStatus(
+        isQuestionConflict
+          ? "Q conflict: same node changed differently. Choose a result."
+          : "Vault conflict detected. Choose Use Local or Use Vault.",
+        true,
+      );
       throw new Error(String((conflict as { error?: string }).error || "Map changed externally."));
     }
 
@@ -11200,6 +11391,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
       (map as SavedMap & { mapVersion?: number }).mapVersion = Number(payload.mapVersion);
     }
     lastServerSavedAt = map.savedAt;
+    lastServerBaseState = cloneStateForSave(map.state);
     broadcastState();
     if (collabEntityId && collabToken) {
       void pushCurrentScopeToCollab(false);
@@ -11471,6 +11663,7 @@ function initBroadcastSync(): void {
         // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
         lastServerSavedAt = ev.data.savedAt;
       }
+      lastServerBaseState = cloneStateForSave(map.state);
       scheduleRender();
     }
   };
@@ -11508,17 +11701,15 @@ function initDocWatch(): void {
       const data = JSON.parse(ev.data) as { mapId: string; savedAt: string; sourceTabId: string | null };
       // Ignore our own saves
       if (data.sourceTabId === TAB_ID) return;
-      // Advance the conflict-detection baseline even if we skip state overwrite,
-      // so a pending autosave doesn't 409 against the just-committed server savedAt.
-      if (typeof data.savedAt === "string" && data.savedAt) {
-        lastServerSavedAt = data.savedAt;
-      }
       // Ignore duplicate events
       if (data.savedAt === lastAppliedSavedAt) return;
       // If user has unsaved edits, notify instead of overwriting
       if (autosaveTimer !== null) {
         setStatus("External update available — save your edits first.", false);
         return;
+      }
+      if (typeof data.savedAt === "string" && data.savedAt) {
+        lastServerSavedAt = data.savedAt;
       }
       void applyExternalUpdate(data.savedAt);
     } catch {
@@ -11579,6 +11770,7 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
 
     map = newDoc;
     lastServerSavedAt = newDoc.savedAt || lastServerSavedAt;
+    lastServerBaseState = cloneStateForSave(newDoc.state);
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
     if (map.state.linearPanelWidth != null) {
@@ -11956,6 +12148,7 @@ function loadPayload(payload: unknown): void {
   try {
     map = ensureDocShape(payload);
     lastServerSavedAt = map.savedAt || null;
+    lastServerBaseState = cloneStateForSave(map.state);
     hydrateLinearNotesFromDocState();
     hydrateLinearTextFontScaleFromDocState();
     if (map.state.linearPanelWidth != null) {
@@ -12002,13 +12195,16 @@ function centerOnNode(nodeId: string, zoom = viewState.zoom, options: CameraMove
   if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
     return false;
   }
-  const nodePos = lastLayout.pos[nodeId]!;
+  const center = nodeCanvasCenter(nodeId);
+  if (!center) {
+    return false;
+  }
   const boardRect = board.getBoundingClientRect();
   const targetZoom = clampZoom(zoom);
   moveCameraTo({
     zoom: targetZoom,
-    cameraX: boardRect.width / 2 - (nodePos.x + nodePos.w / 2) * targetZoom,
-    cameraY: boardRect.height / 2 - nodePos.y * targetZoom,
+    cameraX: boardRect.width / 2 - center.x * targetZoom,
+    cameraY: boardRect.height / 2 - center.y * targetZoom,
   }, options);
   return true;
 }
@@ -13170,8 +13366,21 @@ viewScatterBtn?.addEventListener("click", () => {
   setSurfaceViewMode("scatter");
 });
 
+themeToggleBtn?.addEventListener("click", () => {
+  toggleViewerTheme();
+});
+
 componentTabularToggleBtn?.addEventListener("click", () => {
   toggleSelectedTabularComponent();
+});
+
+window.addEventListener("m3e:set-theme", (event: Event) => {
+  const theme = normalizeViewerTheme((event as CustomEvent<{ theme?: unknown }>).detail?.theme);
+  applyViewerTheme(theme, { persist: true, announce: Boolean((event as CustomEvent<{ announce?: unknown }>).detail?.announce) });
+});
+
+window.addEventListener("m3e:toggle-theme", () => {
+  toggleViewerTheme();
 });
 
 window.addEventListener("m3e:set-surface-layout", (event: Event) => {
@@ -13196,7 +13405,6 @@ scatterAddNodeBtn?.addEventListener("click", () => setScatterToolMode("add-node"
 scatterAddEdgeBtn?.addEventListener("click", () => setScatterToolMode("add-edge"));
 scatterColorizeBtn?.addEventListener("click", () => setScatterToolMode("colorize"));
 scatterDeleteBtn?.addEventListener("click", () => setScatterToolMode("delete"));
-scatterDisplayRootBtn?.addEventListener("click", () => toggleScatterDisplayRoot());
 scatterAnimateBtn?.addEventListener("click", () => toggleScatterAnimation());
 scatterReflowBtn?.addEventListener("click", () => {
   runScatterReflow(180);
@@ -13715,9 +13923,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       board.focus();
       return;
     }
-    const rootIds = viewState.selectedNodeIds.has(nodeId)
-      ? getMovableSelectionRoots(viewState.selectedNodeIds)
-      : getMovableSelectionRoots(new Set([nodeId]));
+    const rootIds = scatterMovableDragRootIds(nodeId);
     viewState.dragState = {
       mode: "scatter",
       pointerId: event.pointerId,
@@ -14088,6 +14294,7 @@ function endPointer(event: PointerEvent): void {
         };
         board.classList.add("panning");
       }
+      flushViewportDependentSync();
       return;
     }
   }
@@ -14096,6 +14303,7 @@ function endPointer(event: PointerEvent): void {
   if (viewState.panState && event.pointerId === viewState.panState.pointerId) {
     viewState.panState = null;
     board.classList.remove("panning");
+    flushViewportDependentSync();
   }
 
   try { board.releasePointerCapture(event.pointerId); } catch { /* already released */ }

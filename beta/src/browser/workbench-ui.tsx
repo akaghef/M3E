@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Bell,
@@ -14,6 +14,7 @@ import {
   ListTree,
   Lock,
   MousePointer2,
+  Moon,
   PanelRight,
   PenLine,
   Presentation,
@@ -22,6 +23,7 @@ import {
   Settings,
   Share2,
   Sparkles,
+  Sun,
   Tag,
   TextCursorInput,
   UsersRound,
@@ -38,6 +40,7 @@ type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic
 type ProgressiveBranchDirection = "both" | "right" | "left";
 type ProgressiveMode = "gui" | "active-node";
 type RapidGenerateAction = "detail" | "examples" | "classify" | "related";
+type ViewerTheme = "light" | "dark";
 type ProgressiveNodeId =
   | "gui"
   | "active-root"
@@ -102,7 +105,6 @@ type ProgressiveNodeId =
   | "scatter-add-edge"
   | "scatter-colorize"
   | "scatter-delete"
-  | "scatter-display-root"
   | "scatter-animate"
   | "scatter-reflow"
   | "add-child"
@@ -134,6 +136,11 @@ type ProgressivePlacement = {
   left: number;
   top: number;
 };
+
+function recordProgressiveMeasureEdges(): void {
+  const target = window as typeof window & { __m3eProgressiveMeasureEdgesCount?: number };
+  target.__m3eProgressiveMeasureEdgesCount = (target.__m3eProgressiveMeasureEdgesCount ?? 0) + 1;
+}
 
 type UiSnapshot = {
   mode: string;
@@ -200,6 +207,18 @@ function dispatchRapidGenerateAction(action: RapidGenerateAction, label: string,
   window.dispatchEvent(new CustomEvent("m3e:rapid-action-generate", { detail: { action, label, instruction } }));
 }
 
+function normalizeViewerTheme(value: unknown): ViewerTheme {
+  return value === "dark" ? "dark" : "light";
+}
+
+function readViewerTheme(): ViewerTheme {
+  return normalizeViewerTheme(document.documentElement.dataset.theme);
+}
+
+function requestViewerTheme(theme: ViewerTheme): void {
+  window.dispatchEvent(new CustomEvent("m3e:set-theme", { detail: { theme } }));
+}
+
 function setLegacyInput(id: string, value: string, eventName = "input"): void {
   const input = byId<HTMLInputElement>(id);
   if (!input) return;
@@ -259,6 +278,24 @@ function useViewerSnapshot(): UiSnapshot {
   return snapshot;
 }
 
+function useViewerTheme(): [ViewerTheme, (theme: ViewerTheme) => void] {
+  const [theme, setTheme] = useState<ViewerTheme>(() => readViewerTheme());
+  useEffect(() => {
+    const updateTheme = (event?: Event) => {
+      const detail = (event as CustomEvent<{ theme?: unknown }> | undefined)?.detail;
+      setTheme(normalizeViewerTheme(detail?.theme ?? readViewerTheme()));
+    };
+    window.addEventListener("m3e:theme-changed", updateTheme as EventListener);
+    updateTheme();
+    return () => window.removeEventListener("m3e:theme-changed", updateTheme as EventListener);
+  }, []);
+  const commitTheme = (nextTheme: ViewerTheme) => {
+    setTheme(nextTheme);
+    requestViewerTheme(nextTheme);
+  };
+  return [theme, commitTheme];
+}
+
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "A";
@@ -306,7 +343,17 @@ function PillButton(props: {
   );
 }
 
-function TopBar({ snapshot, openModal }: { snapshot: UiSnapshot; openModal: (id: ModalId) => void }): React.ReactElement {
+function TopBar({
+  snapshot,
+  theme,
+  toggleTheme,
+  openModal,
+}: {
+  snapshot: UiSnapshot;
+  theme: ViewerTheme;
+  toggleTheme: () => void;
+  openModal: (id: ModalId) => void;
+}): React.ReactElement {
   const joined = snapshot.collab.includes("joined");
   return (
     <div className="wb-topbar" data-testid="workbench-topbar">
@@ -325,6 +372,13 @@ function TopBar({ snapshot, openModal }: { snapshot: UiSnapshot; openModal: (id:
           <Cloud size={14} />
           <span>{snapshot.cloud.replace("Cloud: ", "")}</span>
         </div>
+        <IconButton
+          label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          active={theme === "dark"}
+          onClick={toggleTheme}
+        >
+          {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+        </IconButton>
         <IconButton label="Activity">
           <Bell size={18} />
         </IconButton>
@@ -696,7 +750,6 @@ function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement |
         <button type="button" onClick={() => clickLegacy("scatter-delete")}>Delete</button>
       </div>
       <div className="wb-scatter-sim">
-        <button type="button" onClick={() => clickLegacy("scatter-display-root")}>Toggle Display Root</button>
         <button type="button" onClick={() => clickLegacy("scatter-animate")}>Animate</button>
         <button type="button" onClick={() => clickLegacy("scatter-reflow")}>
           <RefreshCw size={15} /> Reflow
@@ -767,7 +820,6 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "scatter-add-edge", label: "Add edge", hint: "connect scatter nodes", parentId: "scatter", action: () => clickLegacy("scatter-add-edge") },
     { id: "scatter-colorize", label: "Colorize", hint: "apply scatter color", parentId: "scatter", action: () => clickLegacy("scatter-colorize") },
     { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
-    { id: "scatter-display-root", label: "Toggle display root", hint: "toggle root visibility", parentId: "scatter", action: () => clickLegacy("scatter-display-root") },
     { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
     { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
     { id: "add-child", label: "Add child", hint: "Tab", parentId: "mindmap", action: () => sendKey("Tab") },
@@ -904,11 +956,14 @@ function ProgressiveNavigation({
     return groupTop(count, activeRootCenterY);
   };
   const navRef = useRef<HTMLDivElement | null>(null);
+  const measureRafRef = useRef<number | null>(null);
+  const measureEdgesRef = useRef<() => void>(() => {});
   const [edges, setEdges] = useState<ProgressiveEdge[]>([]);
   const [edgeSize, setEdgeSize] = useState({ width: 486, height: 420 });
   const [placement, setPlacement] = useState<ProgressivePlacement>({ left: 72, top: 307 });
 
-  const measureEdges = () => {
+  const measureEdges = useCallback(() => {
+    recordProgressiveMeasureEdges();
     const nav = navRef.current;
     const rootAnchor = mode === "active-node"
       ? activeNodeAnchorElement() || fallbackProgressiveAnchorElement()
@@ -945,17 +1000,48 @@ function ProgressiveNavigation({
     }
     setEdgeSize({ width: Math.ceil(navRect.width), height: Math.ceil(navRect.height) });
     setEdges(nextEdges);
-  };
+  }, [activeChildren, mode, navRootCenterY, path, placement.left, placement.top, rootChildren, rootId]);
 
   useLayoutEffect(() => {
-    measureEdges();
-    window.addEventListener("resize", measureEdges);
-    window.addEventListener("m3e:viewport-changed", measureEdges);
+    measureEdgesRef.current = measureEdges;
+  }, [measureEdges]);
+
+  const scheduleMeasureEdges = useCallback(() => {
+    if (measureRafRef.current !== null) {
+      return;
+    }
+    measureRafRef.current = window.requestAnimationFrame(() => {
+      measureRafRef.current = null;
+      measureEdgesRef.current();
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      if (measureRafRef.current !== null) {
+        window.cancelAnimationFrame(measureRafRef.current);
+        measureRafRef.current = null;
+      }
+      return;
+    }
+    scheduleMeasureEdges();
+    window.addEventListener("resize", scheduleMeasureEdges);
+    window.addEventListener("m3e:viewport-changed", scheduleMeasureEdges);
     return () => {
-      window.removeEventListener("resize", measureEdges);
-      window.removeEventListener("m3e:viewport-changed", measureEdges);
+      window.removeEventListener("resize", scheduleMeasureEdges);
+      window.removeEventListener("m3e:viewport-changed", scheduleMeasureEdges);
+      if (measureRafRef.current !== null) {
+        window.cancelAnimationFrame(measureRafRef.current);
+        measureRafRef.current = null;
+      }
     };
-  }, [activeId, rootChildren.length, activeChildren.length, navRootCenterY, mode, placement.left, placement.top]);
+  }, [open, scheduleMeasureEdges]);
+
+  useLayoutEffect(() => {
+    if (open) {
+      scheduleMeasureEdges();
+    }
+  }, [activeId, activeChildren.length, mode, open, rootChildren.length, scheduleMeasureEdges]);
 
   useEffect(() => {
     setActiveId(rootId);
@@ -1051,7 +1137,17 @@ function ShareModal({ snapshot, close }: { snapshot: UiSnapshot; close: () => vo
   );
 }
 
-function SettingsModal({ snapshot, close }: { snapshot: UiSnapshot; close: () => void }): React.ReactElement {
+function SettingsModal({
+  snapshot,
+  theme,
+  toggleTheme,
+  close,
+}: {
+  snapshot: UiSnapshot;
+  theme: ViewerTheme;
+  toggleTheme: () => void;
+  close: () => void;
+}): React.ReactElement {
   const [grid, setGrid] = useState(true);
   const [objectSize, setObjectSize] = useState(true);
   const [comments, setComments] = useState(true);
@@ -1076,6 +1172,7 @@ function SettingsModal({ snapshot, close }: { snapshot: UiSnapshot; close: () =>
             <button type="button">Shortcuts</button>
           </div>
           <div className="wb-settings-body">
+            <label className="wb-toggle"><span>Dark mode</span><input type="checkbox" checked={theme === "dark"} onChange={() => toggleTheme()} /></label>
             <label className="wb-toggle"><span>Grid</span><input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Board comments</span><input type="checkbox" checked={comments} onChange={(e) => setComments(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Object sizes</span><input type="checkbox" checked={objectSize} onChange={(e) => setObjectSize(e.target.checked)} /></label>
@@ -1115,12 +1212,14 @@ function HelpModal({ close }: { close: () => void }): React.ReactElement {
 
 function WorkbenchApp(): React.ReactElement {
   const snapshot = useViewerSnapshot();
+  const [theme, setViewerTheme] = useViewerTheme();
   const [tool, setTool] = useState<ToolId>("select");
   const [modal, setModal] = useState<ModalId>(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [progressiveOpen, setProgressiveOpen] = useState(false);
   const [progressiveMode, setProgressiveMode] = useState<ProgressiveMode>("gui");
   const activeRootLabel = cleanSelectedLabel(snapshot.selected);
+  const toggleTheme = () => setViewerTheme(theme === "dark" ? "light" : "dark");
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isActionKeyEvent(event) || isTextEntryTarget(event.target) || event.isComposing) {
@@ -1134,15 +1233,15 @@ function WorkbenchApp(): React.ReactElement {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [progressiveMode]);
   const modalContent = useMemo(() => {
-    if (modal === "settings") return <SettingsModal snapshot={snapshot} close={() => setModal(null)} />;
+    if (modal === "settings") return <SettingsModal snapshot={snapshot} theme={theme} toggleTheme={toggleTheme} close={() => setModal(null)} />;
     if (modal === "share") return <ShareModal snapshot={snapshot} close={() => setModal(null)} />;
     if (modal === "help") return <HelpModal close={() => setModal(null)} />;
     if (modal === "ai") return <AiSidekickPanel snapshot={snapshot} close={() => setModal(null)} />;
     return null;
-  }, [modal, snapshot]);
+  }, [modal, snapshot, theme, toggleTheme]);
   return (
     <div className="wb-shell">
-      <TopBar snapshot={snapshot} openModal={setModal} />
+      <TopBar snapshot={snapshot} theme={theme} toggleTheme={toggleTheme} openModal={setModal} />
       <LeftRail
         tool={tool}
         setTool={setTool}

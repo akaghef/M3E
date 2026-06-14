@@ -78,3 +78,106 @@ test("POST /api/maps/:id returns 409 when baseSavedAt is stale", async () => {
   expect(stalePayload.savedAt).toBe(secondPayload.savedAt);
   expect(stalePayload.state).toBeTruthy();
 });
+
+test("POST /api/maps/:id merges stale non-overlapping node edits when baseState is provided", async () => {
+  const model = new RapidMvpModel("Root");
+  const alphaId = model.addNode(model.state.rootId, "Alpha");
+  const betaId = model.addNode(model.state.rootId, "Beta");
+
+  const initialSave = await fetch(`${baseUrl}/api/maps/non-overlap-merge-map`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ state: model.toJSON() }),
+  });
+  const initialPayload = await initialSave.json();
+  const baseState = JSON.parse(JSON.stringify(model.toJSON()));
+
+  const firstWriterState = JSON.parse(JSON.stringify(baseState));
+  firstWriterState.nodes[alphaId].text = "Alpha A";
+  const firstWriterSave = await fetch(`${baseUrl}/api/maps/non-overlap-merge-map`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      state: firstWriterState,
+      baseSavedAt: initialPayload.savedAt,
+      baseState,
+    }),
+  });
+  const firstWriterPayload = await firstWriterSave.json();
+  expect(firstWriterSave.status).toBe(200);
+
+  const secondWriterState = JSON.parse(JSON.stringify(baseState));
+  secondWriterState.nodes[betaId].text = "Beta B";
+  const secondWriterSave = await fetch(`${baseUrl}/api/maps/non-overlap-merge-map`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      state: secondWriterState,
+      baseSavedAt: initialPayload.savedAt,
+      baseState,
+    }),
+  });
+  const secondWriterPayload = await secondWriterSave.json();
+  expect(secondWriterSave.status).toBe(200);
+  expect(secondWriterPayload.merged).toBe(true);
+  expect(secondWriterPayload.savedAt).not.toBe(firstWriterPayload.savedAt);
+
+  const finalResponse = await fetch(`${baseUrl}/api/maps/non-overlap-merge-map`);
+  const finalPayload = await finalResponse.json();
+  expect(finalPayload.state.nodes[alphaId].text).toBe("Alpha A");
+  expect(finalPayload.state.nodes[betaId].text).toBe("Beta B");
+});
+
+test("POST /api/maps/:id returns Q conflict for stale same-node divergent edits", async () => {
+  const model = new RapidMvpModel("Root");
+  const alphaId = model.addNode(model.state.rootId, "Alpha");
+
+  const initialSave = await fetch(`${baseUrl}/api/maps/same-node-q-map`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ state: model.toJSON() }),
+  });
+  const initialPayload = await initialSave.json();
+  const baseState = JSON.parse(JSON.stringify(model.toJSON()));
+
+  const firstWriterState = JSON.parse(JSON.stringify(baseState));
+  firstWriterState.nodes[alphaId].text = "Alpha A";
+  const firstWriterSave = await fetch(`${baseUrl}/api/maps/same-node-q-map`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      state: firstWriterState,
+      baseSavedAt: initialPayload.savedAt,
+      baseState,
+    }),
+  });
+  expect(firstWriterSave.status).toBe(200);
+
+  const secondWriterState = JSON.parse(JSON.stringify(baseState));
+  secondWriterState.nodes[alphaId].text = "Alpha B";
+  const secondWriterSave = await fetch(`${baseUrl}/api/maps/same-node-q-map`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      state: secondWriterState,
+      baseSavedAt: initialPayload.savedAt,
+      baseState,
+    }),
+  });
+  const secondWriterPayload = await secondWriterSave.json();
+  expect(secondWriterSave.status).toBe(409);
+  expect(secondWriterPayload.code).toBe("DOC_NODE_CONFLICT_Q");
+  expect(secondWriterPayload.conflictKind).toBe("Q");
+  expect(secondWriterPayload.conflicts).toEqual([
+    {
+      nodeId: alphaId,
+      baseText: "Alpha",
+      localText: "Alpha B",
+      currentText: "Alpha A",
+    },
+  ]);
+
+  const finalResponse = await fetch(`${baseUrl}/api/maps/same-node-q-map`);
+  const finalPayload = await finalResponse.json();
+  expect(finalPayload.state.nodes[alphaId].text).toBe("Alpha A");
+});

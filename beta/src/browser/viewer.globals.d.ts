@@ -334,7 +334,6 @@ interface ViewState {
   surfaceViewMode: SurfaceViewMode;
   surfaceLayoutDensity: SurfaceLayoutDensity;
   surfaceBranchDirection: SurfaceBranchDirection;
-  scatterDisplayRoot: boolean;
   zoom: number;
   cameraX: number;
   cameraY: number;
