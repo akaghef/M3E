@@ -144,11 +144,26 @@ console.log(`[M3E] DB_FILE  = ${SQLITE_DB_PATH}`);
 console.log(`[M3E] WORKSPACE = ${WORKSPACE_LABEL} (${WORKSPACE_ID})`);
 console.log(`[M3E] MAP = ${ACTIVE_MAP_LABEL} (${ACTIVE_MAP_ID}, slug=${ACTIVE_MAP_SLUG})`);
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
-const cloudSyncConfig = loadCloudSyncConfig();
-const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
+let cloudSyncConfig = loadCloudSyncConfig();
+let CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 const SYNC_STATUS_TIMEOUT_MS = Number(process.env.M3E_SYNC_STATUS_TIMEOUT_MS || "1500");
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
+
+function currentDataDir(): string {
+  return process.env.M3E_DATA_DIR ?? DATA_DIR;
+}
+
+function currentSqliteDbPath(): string {
+  const dbFile = process.env.M3E_DB_FILE || DB_FILE;
+  return path.join(currentDataDir(), dbFile);
+}
+
+function refreshCloudSyncConfigFromEnv(): void {
+  cloudSyncConfig = loadCloudSyncConfig();
+  CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
+  cloudTransport = cloudSyncConfig.transport;
+}
 
 function renameMapId(dbPath: string, sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return false;
@@ -1319,7 +1334,7 @@ async function handleBackupApi(
       sendJson(res, 405, { ok: false, error: "Method not allowed." });
       return;
     }
-    const backup = getConflictBackup(DATA_DIR, route.mapId, route.backupId);
+    const backup = getConflictBackup(currentDataDir(), route.mapId, route.backupId);
     if (!backup) {
       sendJson(res, 404, { ok: false, error: "Backup not found." });
       return;
@@ -1331,7 +1346,7 @@ async function handleBackupApi(
       sendJson(res, 400, { ok: false, error: `Invalid backup state: ${errors.join(" | ")}` });
       return;
     }
-    model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+    model.saveToSqlite(currentSqliteDbPath(), route.mapId);
     const savedAt = new Date().toISOString();
     sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, mapId: route.mapId, savedAt });
     return;
@@ -1340,7 +1355,7 @@ async function handleBackupApi(
   // Single backup get/delete
   if (route.backupId) {
     if (req.method === "GET") {
-      const backup = getConflictBackup(DATA_DIR, route.mapId, route.backupId);
+      const backup = getConflictBackup(currentDataDir(), route.mapId, route.backupId);
       if (!backup) {
         sendJson(res, 404, { ok: false, error: "Backup not found." });
         return;
@@ -1349,7 +1364,7 @@ async function handleBackupApi(
       return;
     }
     if (req.method === "DELETE") {
-      const deleted = deleteConflictBackup(DATA_DIR, route.mapId, route.backupId);
+      const deleted = deleteConflictBackup(currentDataDir(), route.mapId, route.backupId);
       sendJson(res, deleted ? 200 : 404, { ok: deleted, deleted, ...(deleted ? {} : { error: "Backup not found." }) });
       return;
     }
@@ -1362,7 +1377,7 @@ async function handleBackupApi(
     sendJson(res, 405, { ok: false, error: "Method not allowed." });
     return;
   }
-  const backups = listConflictBackups(DATA_DIR, route.mapId);
+  const backups = listConflictBackups(currentDataDir(), route.mapId);
   sendJson(res, 200, { ok: true, mapId: route.mapId, backups });
 }
 
@@ -2982,7 +2997,7 @@ async function handleSyncApi(
       // Create conflict backup of local state if provided
       let backup: { backupId: string; reason: string; createdAt: string } | undefined;
       if (localState) {
-        const entry = createConflictBackup(DATA_DIR, route.mapId, localState, "cloud-sync-pull");
+        const entry = createConflictBackup(currentDataDir(), route.mapId, localState, "cloud-sync-pull");
         backup = { backupId: entry.backupId, reason: entry.reason, createdAt: entry.createdAt };
       }
 
@@ -3035,7 +3050,7 @@ async function handleSyncApi(
         payload,
         parsed.baseSavedAt ?? null,
         Boolean(parsed.force),
-        DATA_DIR,
+        currentDataDir(),
         parsed.baseMapVersion ?? null,
       );
       if (!result.ok) {
@@ -3049,7 +3064,7 @@ async function handleSyncApi(
             extra.remoteState = result.remoteState;
           }
           // pushWithConflictBackup already created a backup; list the latest one
-          const backups = listConflictBackups(DATA_DIR, route.mapId);
+          const backups = listConflictBackups(currentDataDir(), route.mapId);
           if (backups.length > 0) {
             extra.backup = {
               backupId: backups[0].backupId,
@@ -3522,6 +3537,8 @@ async function handleCollabApi(
 }
 
 export function createAppServer(): http.Server {
+  refreshCloudSyncConfigFromEnv();
+
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
     instrumentRequestForPerfLog(req, res);
     if (redirectLoopbackHost(req, res)) {
