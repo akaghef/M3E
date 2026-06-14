@@ -2,9 +2,10 @@ export type NodeType = "text" | "image" | "folder" | "alias";
 export type AliasAccess = "read" | "write";
 export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
+export type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 export type MapNodeClass = "entity" | "scope";
-export type SurfaceKind = "tree" | "system";
-export type SurfaceLayout = "tree" | "flow-lr";
+export type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 
 export interface TreeNode {
   id: string;
@@ -33,6 +34,9 @@ export interface GraphLink {
   label?: string;
   direction?: LinkDirection;
   style?: LinkStyle;
+  color?: string;
+  sourcePort?: LinkPort;
+  targetPort?: LinkPort;
 }
 
 export interface SurfaceNodeView {

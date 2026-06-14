@@ -43,17 +43,12 @@ call :copy_if_exists "%M3E_VERSION_JSON%" "%REPORT_DIR%\config\version.json"
 call :copy_if_exists "%M3E_LOCK_FILE%" "%REPORT_DIR%\config\app.lock"
 
 if exist "%M3E_CONF%" (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$in=Get-Content -Path '%M3E_CONF%' -ErrorAction Stop;" ^
-    "$out=$in -replace '^(?i)(.*(API_KEY|TOKEN|PASSWORD|SECRET).*=).*$','$1***MASKED***';" ^
-    "Set-Content -Path '%REPORT_DIR%\config\m3e.conf' -Value $out -Encoding UTF8"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$in=Get-Content -Path '%M3E_CONF%' -ErrorAction Stop; $out=$in -replace '^(?i)(.*(API_KEY|TOKEN|PASSWORD|SECRET).*=).*$','$1***MASKED***'; Set-Content -Path '%REPORT_DIR%\config\m3e.conf' -Value $out -Encoding UTF8"
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "if(Test-Path '%REPORT_ZIP%'){ Remove-Item -LiteralPath '%REPORT_ZIP%' -Force }" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "if(Test-Path '%REPORT_ZIP%'){ Remove-Item -LiteralPath '%REPORT_ZIP%' -Force }" >nul 2>&1
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "Compress-Archive -Path '%REPORT_DIR%\*' -DestinationPath '%REPORT_ZIP%' -Force" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '%REPORT_DIR%\*' -DestinationPath '%REPORT_ZIP%' -Force" >nul 2>&1
 
 if exist "%REPORT_ZIP%" (
   call :log_info "Report zip created: %REPORT_ZIP%"
@@ -95,12 +90,7 @@ exit /b 0
   echo ProcessorArch=%PROCESSOR_ARCHITECTURE%
   ver
 )
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$os=Get-CimInstance Win32_OperatingSystem;" ^
-  "'OSCaption='+$os.Caption | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8;" ^
-  "'OSVersion='+$os.Version | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8;" ^
-  "'OSBuild='+$os.BuildNumber | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8;" ^
-  "'MemoryMB='+[int]($os.TotalVisibleMemorySize/1024) | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$os=Get-CimInstance Win32_OperatingSystem; 'OSCaption='+$os.Caption | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8; 'OSVersion='+$os.Version | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8; 'OSBuild='+$os.BuildNumber | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8; 'MemoryMB='+[int]($os.TotalVisibleMemorySize/1024) | Out-File -FilePath '%REPORT_DIR%\env.txt' -Append -Encoding utf8" >nul 2>&1
 exit /b 0
 
 :write_paths

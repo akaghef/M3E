@@ -233,6 +233,7 @@ interface NodePosition {
   h: number;
   fontSize?: number;
   labelLines?: string[];
+  scatterCollapsedGroup?: boolean;
 }
 
 interface LayoutResult {
@@ -346,4 +347,16 @@ interface ViewState {
   dragState: DragState | null;
   collapsedIds: Set<string>;
   reviewMode: boolean;
+  cameraMove: CameraMoveState;
+}
+
+type CameraMovePreset = "off" | "minimal" | "follow-selection" | "cinematic" | "locked";
+type CameraMoveTrigger = "scope" | "selection" | "layout" | "continuous" | "command";
+
+interface CameraMoveState {
+  preset: CameraMovePreset;
+  toggle: boolean;
+  lockedNodeId: string | null;
+  userFitZoom: number | null;
+  userInteractedAt: number;
 }

@@ -12,7 +12,10 @@ const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
 const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
+const scopeNavBtn = document.getElementById("scope-nav-btn") as HTMLButtonElement | null;
+const localFsToggleBtn = document.getElementById("local-fs-toggle") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
+const cameraFollowBtn = document.getElementById("camera-follow-btn") as HTMLButtonElement | null;
 const scatterToolbarEl = document.getElementById("scatter-toolbar") as HTMLElement | null;
 const scatterNormalBtn = document.getElementById("scatter-normal") as HTMLButtonElement | null;
 const scatterAddNodeBtn = document.getElementById("scatter-add-node") as HTMLButtonElement | null;
@@ -76,6 +79,16 @@ const linearResetBtn = document.getElementById("linear-reset") as HTMLButtonElem
 const cheatsheetEl = document.getElementById("shortcut-cheatsheet") as HTMLElement | null;
 const homeScreenEl = document.getElementById("home-screen") as HTMLElement | null;
 const homeScopeTreeEl = document.getElementById("home-scope-tree") as HTMLElement | null;
+const scopeNavCloseBtn = document.getElementById("scope-nav-close") as HTMLButtonElement | null;
+const localFsPanelEl = document.getElementById("local-fs-panel") as HTMLElement | null;
+const localFsCloseBtn = document.getElementById("local-fs-close") as HTMLButtonElement | null;
+const localFsRootInputEl = document.getElementById("local-fs-root-input") as HTMLInputElement | null;
+const localFsConnectBtn = document.getElementById("local-fs-connect") as HTMLButtonElement | null;
+const localFsRefreshBtn = document.getElementById("local-fs-refresh") as HTMLButtonElement | null;
+const localFsStatusEl = document.getElementById("local-fs-status") as HTMLElement | null;
+const localFsTreeEl = document.getElementById("local-fs-tree") as HTMLElement | null;
+const localFsPreviewTitleEl = document.getElementById("local-fs-preview-title") as HTMLElement | null;
+const localFsPreviewEl = document.getElementById("local-fs-preview") as HTMLElement | null;
 const appEl = document.querySelector(".app") as HTMLElement | null;
 const cloudSyncBadgeEl = document.getElementById("cloud-sync-badge") as HTMLElement;
 const cloudPullBtn = document.getElementById("cloud-pull") as HTMLButtonElement;
@@ -286,9 +299,17 @@ function firstQueryParam(params: URLSearchParams, keys: string[]): string | null
   return null;
 }
 
+function basenameFromPath(rawPath: string): string {
+  const trimmed = rawPath.replace(/[\\/]+$/g, "");
+  const parts = trimmed.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || trimmed || "root";
+}
+
 const queryParams = new URLSearchParams(window.location.search);
+const LOCAL_FS_VIEW_ROOT = firstQueryParam(queryParams, ["localFsRoot", "localFsPath"]) || "";
+const LOCAL_FS_VIEW_MODE = Boolean(LOCAL_FS_VIEW_ROOT.trim());
 const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
-const READ_ONLY_LINK = ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
+const READ_ONLY_LINK = LOCAL_FS_VIEW_MODE || ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
 const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
 const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
@@ -305,8 +326,8 @@ const REQUESTED_MAP_ID = firstQueryParam(queryParams, ["map", "localMapId"]);
 const HAS_EXPLICIT_MAP_ID = REQUESTED_MAP_ID !== null;
 const LOCAL_MAP_ID = normalizeDocId(REQUESTED_MAP_ID, DEFAULT_MAP_ID);
 const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
-const MAP_LABEL = MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID;
-const MAP_SLUG = MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID;
+const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
+const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
 const THEME_PREFS_KEY = "m3e:viewer-theme";
 const AUTOSAVE_DELAY_MS = 700;
@@ -508,11 +529,48 @@ interface VaultWatchSseEvent {
   timestamp: string;
   detail?: string;
 }
+interface LocalFsEntry {
+  name: string;
+  relativePath: string;
+  kind: "directory" | "file";
+  extension: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  hasChildren?: boolean;
+}
+interface LocalFsPrefs {
+  rootPath: string;
+}
+interface LocalFsListResponse {
+  ok: true;
+  rootPath: string;
+  relativePath: string;
+  absolutePath: string;
+  entries: LocalFsEntry[];
+  totalEntries: number;
+  truncated: boolean;
+}
+interface LocalFsReadResponse {
+  ok: true;
+  rootPath: string;
+  relativePath: string;
+  absolutePath: string;
+  name: string;
+  extension: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  truncated: boolean;
+  content: string;
+}
 const VAULT_UI_PREFS_KEY = `m3e:vault-ui:${LOCAL_MAP_ID}`;
+const LOCAL_FS_PREFS_KEY = `m3e:local-fs:${LOCAL_MAP_ID}`;
 let vaultUiPrefs: VaultUiPrefs = {
   vaultPath: "",
   integrationMode: "off",
   sourceOfTruth: "vault-md",
+};
+let localFsPrefs: LocalFsPrefs = {
+  rootPath: "",
 };
 let vaultWatchEs: EventSource | null = null;
 let vaultWatchRunning = false;
@@ -522,6 +580,11 @@ let vaultLastError: string | null = null;
 let liveStreamVisibilityHandlerInstalled = false;
 type ViewerTheme = "light" | "dark";
 let viewerTheme: ViewerTheme = readStoredViewerTheme();
+let localFsVisible = false;
+let localFsSelectedPath: string | null = null;
+let localFsLoadingPath: string | null = null;
+let localFsChildrenByPath: Map<string, LocalFsEntry[]> = new Map();
+let localFsExpandedPaths: Set<string> = new Set();
 let v4PanelVisible = false;
 let v4LatestDrafts: FlashDraftListItem[] = [];
 
@@ -609,6 +672,13 @@ let viewState: ViewState = {
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
+  cameraMove: {
+    preset: "follow-selection",
+    toggle: true,
+    lockedNodeId: null,
+    userFitZoom: null,
+    userInteractedAt: 0,
+  },
   panState: null,
   pinchState: null,
   clipboardState: null,
@@ -725,6 +795,7 @@ function inferSurfaceBranchDirectionForScope(scopeId: string, mode: SurfaceViewM
 function syncThinkingModeUi(): void {
   const mode = viewState.thinkingMode;
   const surfaceMode = structuredSurfaceMode();
+  document.body.classList.toggle("scatter-surface-active", viewState.surfaceViewMode === "scatter");
   const layoutSuffix = surfaceMode
     ? ` / ${surfaceLayoutDensityLabel(viewState.surfaceLayoutDensity)} / ${surfaceBranchDirectionLabel(viewState.surfaceBranchDirection)}`
     : "";
@@ -795,8 +866,6 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   if (mode === "scatter") {
     seedMissingScatterPositions();
   }
-  normalizeSelectionState();
-  cycleViewState = "focus";
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -1032,6 +1101,424 @@ function syncVaultUi(): void {
   integrateVaultLiveBtn?.classList.toggle("is-active", vaultUiPrefs.integrationMode === "obsidian-live");
   integrateStopBtn!.disabled = !vaultWatchRunning;
   syncV4Panel(false);
+}
+
+function loadLocalFsPrefs(): void {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_FS_PREFS_KEY);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw) as Partial<LocalFsPrefs>;
+    localFsPrefs = {
+      rootPath: String(parsed.rootPath || ""),
+    };
+  } catch {
+    localFsPrefs = { rootPath: "" };
+  }
+  if (localFsRootInputEl) {
+    localFsRootInputEl.value = localFsPrefs.rootPath;
+  }
+}
+
+function saveLocalFsPrefs(): void {
+  window.localStorage.setItem(LOCAL_FS_PREFS_KEY, JSON.stringify(localFsPrefs));
+}
+
+function setLocalFsStatus(message: string, isError = false): void {
+  if (!localFsStatusEl) return;
+  localFsStatusEl.textContent = message;
+  localFsStatusEl.classList.toggle("is-error", isError);
+}
+
+function localFsRootLabel(rootPath: string): string {
+  return basenameFromPath(rootPath);
+}
+
+function setLocalFsPreview(title: string, content: string): void {
+  if (localFsPreviewTitleEl) localFsPreviewTitleEl.textContent = title;
+  if (localFsPreviewEl) localFsPreviewEl.textContent = content;
+}
+
+function resetLocalFsTree(): void {
+  localFsChildrenByPath = new Map();
+  localFsExpandedPaths = new Set();
+  localFsSelectedPath = null;
+  localFsLoadingPath = null;
+  setLocalFsPreview("Preview", "");
+}
+
+async function fetchLocalFsJson<T>(action: "list" | "read", params: Record<string, string>): Promise<T> {
+  const url = new URL(`/api/local-fs/${action}`, window.location.origin);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  const response = await fetch(url.toString());
+  const payload = await response.json().catch(() => null) as T | { error?: { message?: string } } | null;
+  if (!response.ok) {
+    const errorPayload = payload && typeof payload === "object" && "error" in payload ? payload : null;
+    const message = errorPayload?.error?.message
+      ? errorPayload.error.message
+      : `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+async function loadLocalFsDirectory(relativePath = "", expand = true): Promise<void> {
+  const rootPath = localFsPrefs.rootPath.trim();
+  if (!rootPath) {
+    setLocalFsStatus("Root path is empty.", true);
+    return;
+  }
+  localFsLoadingPath = relativePath;
+  renderLocalFsTree();
+  try {
+    const payload = await fetchLocalFsJson<LocalFsListResponse>("list", {
+      rootPath,
+      relativePath,
+      maxEntries: "1000",
+    });
+    localFsPrefs.rootPath = payload.rootPath;
+    saveLocalFsPrefs();
+    if (localFsRootInputEl) localFsRootInputEl.value = payload.rootPath;
+    localFsChildrenByPath.set(payload.relativePath, payload.entries);
+    if (expand) {
+      localFsExpandedPaths.add(payload.relativePath);
+    }
+    setLocalFsStatus(`${payload.absolutePath} (${payload.entries.length}/${payload.totalEntries})`);
+  } catch (err) {
+    setLocalFsStatus((err as Error).message, true);
+  } finally {
+    localFsLoadingPath = null;
+    renderLocalFsTree();
+  }
+}
+
+async function readLocalFsFile(relativePath: string, title: string): Promise<void> {
+  const rootPath = localFsPrefs.rootPath.trim();
+  if (!rootPath) return;
+  localFsSelectedPath = relativePath;
+  renderLocalFsTree();
+  try {
+    const payload = await fetchLocalFsJson<LocalFsReadResponse>("read", {
+      rootPath,
+      relativePath,
+      maxBytes: String(256 * 1024),
+    });
+    setLocalFsPreview(
+      `${payload.relativePath}${payload.truncated ? " (truncated)" : ""}`,
+      payload.content,
+    );
+    setLocalFsStatus(`${payload.absolutePath} (${payload.sizeBytes} bytes)`);
+  } catch (err) {
+    setLocalFsPreview(title, "");
+    setLocalFsStatus((err as Error).message, true);
+  }
+}
+
+function renderLocalFsRow(entry: LocalFsEntry, depth: number, container: HTMLElement): void {
+  const isDirectory = entry.kind === "directory";
+  const isExpanded = localFsExpandedPaths.has(entry.relativePath);
+  const isSelected = localFsSelectedPath === entry.relativePath;
+
+  const row = document.createElement("div");
+  row.className = `local-fs-row${isSelected ? " is-selected" : ""}`;
+  row.style.setProperty("--local-fs-indent", `${10 + depth * 18}px`);
+  row.dataset.path = entry.relativePath;
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "local-fs-toggle" + (!isDirectory || !entry.hasChildren ? " is-empty" : "");
+  toggle.textContent = isExpanded ? "v" : ">";
+  toggle.disabled = !isDirectory || !entry.hasChildren;
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!isDirectory) return;
+    void toggleLocalFsDirectory(entry.relativePath);
+  });
+
+  const kind = document.createElement("span");
+  kind.className = "local-fs-kind";
+  kind.textContent = isDirectory ? "dir" : (entry.extension || "file").replace(/^\./, "");
+
+  const name = document.createElement("span");
+  name.className = "local-fs-name";
+  name.textContent = entry.name;
+  name.title = entry.relativePath;
+
+  row.appendChild(toggle);
+  row.appendChild(kind);
+  row.appendChild(name);
+  row.addEventListener("click", () => {
+    if (isDirectory) {
+      void toggleLocalFsDirectory(entry.relativePath);
+      return;
+    }
+    void readLocalFsFile(entry.relativePath, entry.name);
+  });
+  container.appendChild(row);
+
+  if (isDirectory && isExpanded) {
+    const childContainer = document.createElement("div");
+    childContainer.className = "local-fs-children";
+    container.appendChild(childContainer);
+    const children = localFsChildrenByPath.get(entry.relativePath);
+    if (children) {
+      renderLocalFsEntries(entry.relativePath, depth + 1, childContainer);
+    } else if (localFsLoadingPath === entry.relativePath) {
+      const loading = document.createElement("div");
+      loading.className = "local-fs-row";
+      loading.style.setProperty("--local-fs-indent", `${10 + (depth + 1) * 18}px`);
+      loading.textContent = "Loading...";
+      childContainer.appendChild(loading);
+    }
+  }
+}
+
+function renderLocalFsEntries(parentPath: string, depth: number, container: HTMLElement): void {
+  const entries = localFsChildrenByPath.get(parentPath) ?? [];
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "local-fs-row";
+    empty.style.setProperty("--local-fs-indent", `${10 + depth * 18}px`);
+    empty.textContent = "Empty";
+    container.appendChild(empty);
+    return;
+  }
+  for (const entry of entries) {
+    renderLocalFsRow(entry, depth, container);
+  }
+}
+
+function renderLocalFsTree(): void {
+  if (!localFsTreeEl) return;
+  localFsTreeEl.innerHTML = "";
+  const rootPath = localFsPrefs.rootPath.trim();
+  if (!rootPath) {
+    setLocalFsPreview("Preview", "");
+    return;
+  }
+
+  const rootRow = document.createElement("div");
+  rootRow.className = "local-fs-row" + (localFsSelectedPath === "" ? " is-selected" : "");
+  rootRow.style.setProperty("--local-fs-indent", "10px");
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "local-fs-toggle";
+  toggle.textContent = localFsExpandedPaths.has("") ? "v" : ">";
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void toggleLocalFsDirectory("");
+  });
+
+  const kind = document.createElement("span");
+  kind.className = "local-fs-kind";
+  kind.textContent = "root";
+
+  const name = document.createElement("span");
+  name.className = "local-fs-name";
+  name.textContent = localFsRootLabel(rootPath);
+  name.title = rootPath;
+
+  rootRow.appendChild(toggle);
+  rootRow.appendChild(kind);
+  rootRow.appendChild(name);
+  rootRow.addEventListener("click", () => {
+    void toggleLocalFsDirectory("");
+  });
+  localFsTreeEl.appendChild(rootRow);
+
+  if (localFsExpandedPaths.has("")) {
+    const children = document.createElement("div");
+    children.className = "local-fs-children";
+    localFsTreeEl.appendChild(children);
+    if (localFsChildrenByPath.has("")) {
+      renderLocalFsEntries("", 1, children);
+    } else if (localFsLoadingPath === "") {
+      const loading = document.createElement("div");
+      loading.className = "local-fs-row";
+      loading.style.setProperty("--local-fs-indent", "28px");
+      loading.textContent = "Loading...";
+      children.appendChild(loading);
+    }
+  }
+}
+
+async function toggleLocalFsDirectory(relativePath: string): Promise<void> {
+  if (localFsExpandedPaths.has(relativePath)) {
+    localFsExpandedPaths.delete(relativePath);
+    renderLocalFsTree();
+    return;
+  }
+  localFsExpandedPaths.add(relativePath);
+  if (!localFsChildrenByPath.has(relativePath)) {
+    await loadLocalFsDirectory(relativePath, true);
+    return;
+  }
+  renderLocalFsTree();
+}
+
+async function connectLocalFsRoot(): Promise<void> {
+  const rootPath = (localFsRootInputEl?.value || "").trim();
+  localFsPrefs.rootPath = rootPath;
+  saveLocalFsPrefs();
+  resetLocalFsTree();
+  await loadLocalFsDirectory("", true);
+}
+
+function showLocalFsPanel(): void {
+  if (!localFsPanelEl) return;
+  localFsVisible = true;
+  localFsPanelEl.hidden = false;
+  localFsToggleBtn?.setAttribute("aria-expanded", "true");
+  localFsToggleBtn?.classList.add("is-active");
+  if (localFsPrefs.rootPath && !localFsChildrenByPath.has("")) {
+    void loadLocalFsDirectory("", true);
+  } else {
+    renderLocalFsTree();
+  }
+  localFsRootInputEl?.focus();
+}
+
+function hideLocalFsPanel(): void {
+  if (!localFsPanelEl) return;
+  localFsVisible = false;
+  localFsPanelEl.hidden = true;
+  localFsToggleBtn?.setAttribute("aria-expanded", "false");
+  localFsToggleBtn?.classList.remove("is-active");
+  board.focus();
+}
+
+function toggleLocalFsPanel(): void {
+  if (localFsVisible) {
+    hideLocalFsPanel();
+    return;
+  }
+  showLocalFsPanel();
+}
+
+function localFsNodeId(relativePath: string): string {
+  const raw = relativePath || "__root__";
+  return `localfs:${encodeURIComponent(raw)}`;
+}
+
+function createLocalFsNode(entry: LocalFsEntry | null, parentId: string | null, rootPath: string): TreeNode {
+  const relativePath = entry?.relativePath ?? "";
+  const node = createNodeRecord(localFsNodeId(relativePath), parentId, entry?.name || localFsRootLabel(rootPath));
+  const kind = entry?.kind ?? "directory";
+  node.nodeType = kind === "directory" ? "folder" : "text";
+  node.collapsed = false;
+  node.details = kind === "directory"
+    ? `local-fs directory\nroot: ${rootPath}\nrelative: ${relativePath || "."}`
+    : `local-fs file\nroot: ${rootPath}\nrelative: ${relativePath}`;
+  node.attributes = {
+    ...node.attributes,
+    "m3e:source-kind": "local-fs",
+    "local-fs:root-path": rootPath,
+    "local-fs:relative-path": relativePath,
+    "local-fs:kind": kind,
+  };
+  return node;
+}
+
+async function createLocalFsMap(rootPath: string): Promise<SavedMap> {
+  const normalizedRoot = rootPath.trim();
+  const rootNode = createLocalFsNode(null, null, normalizedRoot);
+  const state: AppState = {
+    rootId: rootNode.id,
+    nodes: {
+      [rootNode.id]: rootNode,
+    },
+  };
+
+  const maxDepth = 4;
+  const maxNodes = 700;
+  let nodeCount = 1;
+  let truncated = false;
+
+  async function addChildren(parentNode: TreeNode, relativePath: string, depth: number): Promise<void> {
+    if (depth >= maxDepth || nodeCount >= maxNodes) {
+      if (depth >= maxDepth) parentNode.collapsed = true;
+      truncated = truncated || nodeCount >= maxNodes;
+      return;
+    }
+    const payload = await fetchLocalFsJson<LocalFsListResponse>("list", {
+      rootPath: normalizedRoot,
+      relativePath,
+      maxEntries: "200",
+    });
+    if (relativePath === "") {
+      localFsPrefs.rootPath = payload.rootPath;
+      if (localFsRootInputEl) localFsRootInputEl.value = payload.rootPath;
+      saveLocalFsPrefs();
+      localFsChildrenByPath.set("", payload.entries);
+      localFsExpandedPaths.add("");
+    }
+
+    for (const entry of payload.entries) {
+      if (nodeCount >= maxNodes) {
+        truncated = true;
+        break;
+      }
+      const childNode = createLocalFsNode(entry, parentNode.id, payload.rootPath);
+      state.nodes[childNode.id] = childNode;
+      parentNode.children.push(childNode.id);
+      nodeCount += 1;
+      if (entry.kind === "directory" && entry.hasChildren) {
+        await addChildren(childNode, entry.relativePath, depth + 1);
+      }
+    }
+    if (payload.truncated) {
+      truncated = true;
+    }
+  }
+
+  await addChildren(rootNode, "", 0);
+
+  const rootScopeId = `scope:${rootNode.id}`;
+  const rootSurfaceId = `surface:${rootNode.id}:tree`;
+  state.scopes = {
+    [rootScopeId]: {
+      id: rootScopeId,
+      label: localFsRootLabel(normalizedRoot),
+      rootNodeIds: [rootNode.id],
+      relationIds: [],
+      primarySurfaceId: rootSurfaceId,
+    },
+  };
+  state.surfaces = {
+    [rootSurfaceId]: {
+      id: rootSurfaceId,
+      scopeId: rootScopeId,
+      kind: "tree",
+      layout: "tree",
+      nodeViews: {},
+    },
+  };
+
+  if (truncated) {
+    rootNode.note = `Local filesystem view truncated at ${nodeCount} nodes.`;
+  }
+
+  return {
+    version: 1,
+    savedAt: nowIso(),
+    state,
+  };
+}
+
+async function loadLocalFsMap(rootPath: string): Promise<void> {
+  resetLocalFsTree();
+  localFsPrefs.rootPath = rootPath.trim();
+  saveLocalFsPrefs();
+  setStatus("Loading local filesystem tree...");
+  const payload = await createLocalFsMap(rootPath);
+  loadPayload(payload);
+  setLocalFsStatus(`${localFsPrefs.rootPath} (${Object.keys(payload.state.nodes).length} nodes)`);
+  setStatus(`Local filesystem tree loaded (${Object.keys(payload.state.nodes).length} nodes, read-only).`);
+  fitDocument();
 }
 
 interface FlashDraftListItem {
@@ -2650,55 +3137,13 @@ function currentMapSurface(): MapSurface | null {
   return map.state.surfaces?.[scope.primarySurfaceId] || null;
 }
 
-function ensureCurrentMapSurface(): MapSurface | null {
-  if (!map) return null;
-  sanitizeMapModelState(map.state);
-  const scopeRootId = currentScopeRootId();
-  const scopeId = inferredScopeId(scopeRootId);
-  if (!map.state.scopes) {
-    map.state.scopes = {};
-  }
-  if (!map.state.surfaces) {
-    map.state.surfaces = {};
-  }
-  if (!map.state.scopes[scopeId]) {
-    const scopeRoot = map.state.nodes[scopeRootId];
-    map.state.scopes[scopeId] = {
-      id: scopeId,
-      label: uiLabel(scopeRoot) || (scopeRootId === map.state.rootId ? "Root" : scopeRootId),
-      rootNodeIds: [scopeRootId],
-      relationIds: [],
-    };
-  }
-  const kind = surfaceKindForViewMode(viewState.surfaceViewMode);
-  const surfaceId = inferredSurfaceId(scopeRootId, kind);
-  map.state.scopes[scopeId]!.primarySurfaceId = surfaceId;
-  if (!map.state.surfaces[surfaceId]) {
-    map.state.surfaces[surfaceId] = {
-      id: surfaceId,
-      scopeId,
-      kind,
-      layout: surfaceLayoutForKind(kind),
-      nodeViews: {},
-    };
-  }
-  const surface = map.state.surfaces[surfaceId]!;
-  surface.scopeId = scopeId;
-  surface.kind = kind;
-  surface.layout = surfaceLayoutForKind(kind);
-  if (!surface.nodeViews) {
-    surface.nodeViews = {};
-  }
-  return surface;
-}
-
 function surfaceNodeView(nodeId: string): SurfaceNodeView | null {
   const surface = currentMapSurface();
   return surface?.nodeViews?.[nodeId] || null;
 }
 
 function ensureSurfaceNodeView(nodeId: string): SurfaceNodeView | null {
-  const surface = currentMapSurface() || ensureCurrentMapSurface();
+  const surface = currentMapSurface();
   if (!surface) return null;
   if (!surface.nodeViews) {
     surface.nodeViews = {};
@@ -3139,12 +3584,7 @@ function enterScope(scopeNodeId: string): boolean {
   viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(node.id, viewState.surfaceViewMode);
   setSingleSelection(preferredSelectionForScope(node.id), false);
   render();
-  fitDocument();
-  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
-  // and board dimensions shifted after the scope change.
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
+  triggerCameraMove("scope");
   setStatus(`Entered scope: ${uiLabel(node)}`);
   board.focus();
   return true;
@@ -3184,12 +3624,7 @@ function exitScope(): boolean {
       : preferredSelectionForScope(nextScopeId);
   setSingleSelection(selectionAfterExit, false);
   render();
-  fitDocument();
-  // Re-fit on next frame in case surrounding UI (breadcrumb/scope bar) reflowed
-  // and board dimensions shifted after the scope change.
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
+  triggerCameraMove("scope");
   setStatus("Returned to parent scope.");
   board.focus();
   return true;
@@ -3326,7 +3761,7 @@ function jumpToAliasTarget(): boolean {
   setSingleSelection(target.id, false);
   normalizeSelectionState();
   render();
-  fitDocument();
+  triggerCameraMove("scope");
   updateScopeInUrl(targetScopeId);
   setStatus(`Jumped to target: ${uiLabel(target)}`);
   board.focus();
@@ -3630,12 +4065,6 @@ let _linearPanelLayoutDirty = true;
 let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
 let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
 let _linearPanelCanvasHeight = 380;
-let _appliedLinearPanelTransform = "";
-
-interface ViewportApplyOptions {
-  syncDependents?: boolean;
-  dispatchViewportChanged?: boolean;
-}
 let _lastZoomStatusAt = 0;
 
 function refreshLinearPanelCanvasLayout(): boolean {
@@ -3681,7 +4110,7 @@ function refreshLinearPanelCanvasLayout(): boolean {
   return true;
 }
 
-function applyCanvasViewportTransform(): void {
+function applyZoom(): void {
   const widthValue = `${contentWidth}px`;
   if (_appliedCanvasWidth !== widthValue) {
     canvas.style.width = widthValue;
@@ -3697,25 +4126,11 @@ function applyCanvasViewportTransform(): void {
     canvas.style.transform = transformValue;
     _appliedCanvasTransform = transformValue;
   }
-  applyLinearPanelViewportTransform();
-}
-
-function syncViewportDependents(dispatchViewportChanged = true): void {
   syncInlineEditorPosition();
   syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
   syncTemplateCompletionPlacement();
-  if (dispatchViewportChanged) {
-    window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
-  }
-}
-
-function applyZoom(options: ViewportApplyOptions = {}): void {
-  applyCanvasViewportTransform();
-  if (options.syncDependents === false) {
-    return;
-  }
-  syncViewportDependents(options.dispatchViewportChanged !== false);
+  window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
 }
 
 function currentCameraTarget(): CameraTarget {
@@ -3793,7 +4208,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
     viewState.cameraY = lerp(motion.from.cameraY, motion.to.cameraY, t);
     viewState.zoom = lerp(motion.from.zoom, motion.to.zoom, t);
-    applyZoom({ syncDependents: false });
+    applyZoom();
     if (rawT >= 1) {
       applyCameraTarget(motion.to);
       cameraMotion = null;
@@ -3805,34 +4220,13 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
   cameraMotion.raf = requestAnimationFrame(step);
 }
 
-function applyLinearPanelViewportTransform(): void {
-  if (
-    !linearPanelEl
-    || viewState.surfaceViewMode !== "tree"
-    || !map
-    || !lastLayout
-    || visibleOrder.length === 0
-    || _linearPanelLayoutDirty
-  ) {
-    return;
-  }
-  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
-  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
-  const transformValue = `translate(${Math.round(panelLeft)}px, ${Math.round(panelTop)}px) scale(${viewState.zoom})`;
-  if (_appliedLinearPanelTransform !== transformValue) {
-    linearPanelEl.style.transform = transformValue;
-    _appliedLinearPanelTransform = transformValue;
-  }
-}
-
 function syncLinearPanelPosition(): void {
   if (!linearPanelEl) {
     return;
   }
 
-  if (viewState.surfaceViewMode !== "tree") {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     linearPanelEl.hidden = true;
-    _appliedLinearPanelTransform = "";
     return;
   }
   linearPanelEl.hidden = false;
@@ -3843,7 +4237,6 @@ function syncLinearPanelPosition(): void {
     linearPanelEl.style.removeProperty("width");
     linearPanelEl.style.removeProperty("height");
     linearPanelEl.style.removeProperty("transform");
-    _appliedLinearPanelTransform = "";
     _linearPanelLayoutDirty = true;
     return;
   }
@@ -3854,11 +4247,18 @@ function syncLinearPanelPosition(): void {
 
   const panelCanvasWidth = linearPanelCanvasWidth;
   const panelCanvasHeight = _linearPanelCanvasHeight;
-  linearPanelEl.style.left = "0px";
-  linearPanelEl.style.top = "0px";
+  const zoomScale = viewState.zoom;
+  const panelWidth = panelCanvasWidth * zoomScale;
+  const panelHeight = panelCanvasHeight * zoomScale;
+
+  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
+
+  linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
+  linearPanelEl.style.top = `${Math.round(panelTop)}px`;
   linearPanelEl.style.width = `${panelCanvasWidth}px`;
   linearPanelEl.style.height = `${panelCanvasHeight}px`;
-  applyLinearPanelViewportTransform();
+  linearPanelEl.style.transform = `scale(${zoomScale})`;
 }
 
 function captureManualLinearPanelWidth(): void {
@@ -3984,7 +4384,7 @@ function setEditedEdgeLabelVisibility(nodeId: string, visible: boolean): void {
     });
 }
 
-function nodeCanvasCenter(nodeId: string): { x: number; y: number } | null {
+function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
   if (!map || !lastLayout) {
     return null;
   }
@@ -3992,24 +4392,10 @@ function nodeCanvasCenter(nodeId: string): { x: number; y: number } | null {
   if (!nodePos) {
     return null;
   }
-  if (currentSurfaceIsScatterMode()) {
-    const circle = scatterCircleGeometry(nodePos);
-    return { x: circle.cx, y: circle.cy };
-  }
+  const centerX = nodeId === map.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
   return {
-    x: nodePos.x + nodePos.w / 2,
-    y: nodePos.y,
-  };
-}
-
-function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
-  const center = nodeCanvasCenter(nodeId);
-  if (!center) {
-    return null;
-  }
-  return {
-    x: viewState.cameraX + center.x * viewState.zoom,
-    y: viewState.cameraY + center.y * viewState.zoom,
+    x: viewState.cameraX + centerX * viewState.zoom,
+    y: viewState.cameraY + nodePos.y * viewState.zoom,
   };
 }
 
@@ -4035,15 +4421,6 @@ function nodeViewportRect(nodeId: string): { left: number; right: number; top: n
   const nodePos = lastLayout.pos[nodeId];
   if (!nodePos) {
     return null;
-  }
-  if (currentSurfaceIsScatterMode()) {
-    const { cx, cy, r } = scatterCircleGeometry(nodePos);
-    return {
-      left: viewState.cameraX + (cx - r) * viewState.zoom,
-      right: viewState.cameraX + (cx + r) * viewState.zoom,
-      top: viewState.cameraY + (cy - r) * viewState.zoom,
-      bottom: viewState.cameraY + (cy + r) * viewState.zoom,
-    };
   }
   const nodeHeight = Math.max(VIEWER_TUNING.layout.nodeHitHeight, nodePos.h);
   const left = viewState.cameraX + nodePos.x * viewState.zoom;
@@ -4107,7 +4484,6 @@ function setZoom(
   anchorClientX: number | null = null,
   anchorClientY: number | null = null,
   statusMode: "immediate" | "throttled" | "silent" = "immediate",
-  syncDependents = true,
 ): void {
   cancelCameraMotion();
   const previousZoom = viewState.zoom;
@@ -4123,10 +4499,7 @@ function setZoom(
 
   viewState.cameraX = localViewportX - contentX * viewState.zoom;
   viewState.cameraY = localViewportY - contentY * viewState.zoom;
-  applyZoom({ syncDependents });
-  if (!syncDependents) {
-    scheduleViewportDependentSync();
-  }
+  applyZoom();
   if (statusMode === "silent") {
     return;
   }
@@ -4165,7 +4538,7 @@ function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, 
     if (zoom === null) {
       return;
     }
-    setZoom(zoom, anchorX, anchorY, "throttled", false);
+    setZoom(zoom, anchorX, anchorY, "throttled");
   });
 }
 
@@ -4205,17 +4578,6 @@ function currentSurfaceIsFlowMode(): boolean {
 
 function currentSurfaceIsScatterMode(): boolean {
   return viewState.surfaceViewMode === "scatter";
-}
-
-function currentSurfaceHidesScopeRoot(): boolean {
-  return currentSurfaceIsFlowMode() || currentSurfaceIsScatterMode();
-}
-
-function isNodeRenderableInCurrentSurface(nodeId: string): boolean {
-  if (!map || !map.state.nodes[nodeId] || !isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
-    return false;
-  }
-  return !(currentSurfaceHidesScopeRoot() && nodeId === currentScopeRootId());
 }
 
 interface FlowPreviewLayout {
@@ -4307,8 +4669,8 @@ function preferredSelectionForScope(scopeId: string): string {
     return scopeId;
   }
   const scopeNode = map.state.nodes[scopeId]!;
-  if (currentSurfaceHidesScopeRoot() || isFlowSurfaceNode(scopeNode)) {
-    const firstVisibleChild = visibleChildren(scopeNode).find((childId) => isNodeRenderableInCurrentSurface(childId));
+  if (isFlowSurfaceNode(scopeNode)) {
+    const firstVisibleChild = visibleChildren(scopeNode)[0];
     if (firstVisibleChild && map.state.nodes[firstVisibleChild]) {
       return firstVisibleChild;
     }
@@ -5502,9 +5864,9 @@ function syncLinearCaretToSelectedNode(): void {
 
 function renderLinearPanel(): void {
   if (linearPanelEl) {
-    linearPanelEl.hidden = viewState.surfaceViewMode !== "tree";
+    linearPanelEl.hidden = LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree";
   }
-  if (viewState.surfaceViewMode !== "tree") {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     return;
   }
   if (!linearTextEl) {
@@ -5719,10 +6081,18 @@ function collectScatterNodes(state: AppState, rootId: string): ScatterNodeSet {
     }
     ids.push(nodeId);
     depthOf[nodeId] = depth;
+    if (viewState.collapsedIds.has(nodeId)) {
+      return;
+    }
     (node.children || []).forEach((childId) => visit(childId, depth + 1));
   };
   (state.nodes[rootId]?.children || []).forEach((childId) => visit(childId, 0));
   return { ids, depthOf };
+}
+
+function scatterNodeIsCollapsedGroup(state: AppState, nodeId: string): boolean {
+  const node = state.nodes[nodeId];
+  return Boolean(node && viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0);
 }
 
 function scatterCountScale(vertexCount: number): number {
@@ -5736,8 +6106,11 @@ function scatterDepthScale(depth: number): number {
   return Math.max(SCATTER_MIN_SCALE, Math.pow(SCATTER_DEPTH_SCALE, Math.max(0, depth)));
 }
 
-function scatterRadiusFor(depth: number, vertexCount: number): number {
-  return Math.max(SCATTER_MIN_RADIUS, SCATTER_NODE_RADIUS * scatterCountScale(vertexCount) * scatterDepthScale(depth));
+function scatterRadiusFor(nodeId: string, depth: number, vertexCount: number): number {
+  const hiddenBoost = map && scatterNodeIsCollapsedGroup(map.state, nodeId)
+    ? Math.min(18, Math.sqrt(countHiddenDescendants(nodeId)) * 5)
+    : 0;
+  return Math.max(SCATTER_MIN_RADIUS, SCATTER_NODE_RADIUS * scatterCountScale(vertexCount) * scatterDepthScale(depth) + hiddenBoost);
 }
 
 function scatterFontSizeFor(radius: number): number {
@@ -5758,16 +6131,10 @@ function scatterSeedPositions(
   depthOf: Record<string, number>,
 ): Record<string, { x: number; y: number }> {
   const center = scatterSeedCenter();
-  const byDepth: Record<number, string[]> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    if (!byDepth[depth]) byDepth[depth] = [];
-    byDepth[depth]!.push(nodeId);
-  });
-
-  const childLeafCount = new Map<string, number>();
+  const idSet = new Set(ids);
   const visibleChildrenForSeed = (nodeId: string): string[] =>
-    (state.nodes[nodeId]?.children || []).filter((childId) => ids.includes(childId));
+    (state.nodes[nodeId]?.children || []).filter((childId) => idSet.has(childId));
+  const childLeafCount = new Map<string, number>();
   const leafCount = (nodeId: string): number => {
     const cached = childLeafCount.get(nodeId);
     if (cached != null) return cached;
@@ -5776,38 +6143,85 @@ function scatterSeedPositions(
     childLeafCount.set(nodeId, count);
     return count;
   };
-  const angles: Record<string, number> = {};
-  const assignAngles = (nodeId: string, start: number, end: number): void => {
-    angles[nodeId] = (start + end) / 2;
-    const children = visibleChildrenForSeed(nodeId);
-    if (!children.length) return;
-    const total = Math.max(1, children.reduce((sum, childId) => sum + leafCount(childId), 0));
-    let cursor = start;
-    children.forEach((childId) => {
-      const span = ((end - start) * leafCount(childId)) / total;
-      assignAngles(childId, cursor, cursor + span);
-      cursor += span;
-    });
-  };
-  assignAngles(rootId, -Math.PI * 0.96, Math.PI * 0.96);
 
-  const seeded: Record<string, { x: number; y: number }> = {
-    [rootId]: center,
+  const yByNode: Record<string, number> = {};
+  const assignBreadth = (nodeId: string, top: number): number => {
+    const children = visibleChildrenForSeed(nodeId);
+    if (!children.length) {
+      yByNode[nodeId] = top;
+      return top + scatterEdgeLength * 0.76;
+    }
+    let cursor = top;
+    children.forEach((childId) => {
+      cursor = assignBreadth(childId, cursor);
+    });
+    yByNode[nodeId] = (yByNode[children[0]!]! + yByNode[children[children.length - 1]!]!) / 2;
+    return cursor;
   };
+  const totalBreadth = leafCount(rootId) * scatterEdgeLength * 0.76;
+  assignBreadth(rootId, center.y - totalBreadth / 2);
+
+  const rankPeers: Record<number, string[]> = {};
   ids.forEach((nodeId) => {
-    if (nodeId === rootId) return;
-    const depth = depthOf[nodeId] ?? 1;
-    const depthPeers = byDepth[depth] || [];
-    const peerIndex = Math.max(0, depthPeers.indexOf(nodeId));
-    const angle = angles[nodeId] ?? (peerIndex / Math.max(1, depthPeers.length)) * Math.PI * 2;
-    const ring = scatterEdgeLength * (1.08 + Math.max(0, depth) * 0.82);
-    const stagger = ((peerIndex % 3) - 1) * 22;
+    const depth = depthOf[nodeId] ?? 0;
+    if (!rankPeers[depth]) rankPeers[depth] = [];
+    rankPeers[depth]!.push(nodeId);
+  });
+
+  const seeded: Record<string, { x: number; y: number }> = {};
+  ids.forEach((nodeId) => {
+    const depth = depthOf[nodeId] ?? 0;
+    const peers = rankPeers[depth] || [];
+    const peerIndex = Math.max(0, peers.indexOf(nodeId));
+    const siblingNudge = ((peerIndex % 3) - 1) * 12;
     seeded[nodeId] = {
-      x: center.x + Math.cos(angle) * ring,
-      y: center.y + Math.sin(angle) * ring * 0.74 + stagger,
+      x: center.x + (depth - 1) * scatterEdgeLength * 1.26,
+      y: (yByNode[nodeId] ?? center.y) + siblingNudge,
     };
   });
+  if (ids.includes(rootId)) {
+    seeded[rootId] = {
+      x: center.x - scatterEdgeLength * 1.18,
+      y: yByNode[rootId] ?? center.y,
+    };
+  }
   return seeded;
+}
+
+function scatterApplyRankFlowSeed(state: AppState, rootId: string, ids: string[], depthOf: Record<string, number>): void {
+  const seeds = scatterSeedPositions(state, rootId, ids, depthOf);
+  ids.forEach((nodeId) => {
+    const depth = depthOf[nodeId] ?? 0;
+    const radius = scatterRadiusFor(nodeId, depth, ids.length);
+    const view = ensureSurfaceNodeView(nodeId);
+    const seed = seeds[nodeId];
+    if (!view || !seed) return;
+    view.x = Math.round(seed.x - radius);
+    view.y = Math.round(seed.y);
+    scatterVelocities.set(nodeId, { x: 0, y: 0 });
+  });
+}
+
+function scatterRenderNodeIdFor(state: AppState, nodeId: string, pos: Record<string, NodePosition>): string | null {
+  if (pos[nodeId]) {
+    return nodeId;
+  }
+  let current = state.nodes[nodeId]?.parentId ?? null;
+  while (current) {
+    if (pos[current] && scatterNodeIsCollapsedGroup(state, current)) {
+      return current;
+    }
+    current = state.nodes[current]?.parentId ?? null;
+  }
+  return null;
+}
+
+function scatterDisplayLabel(node: TreeNode): string {
+  const label = scatterLabel(node);
+  if (scatterNodeIsCollapsedGroup(map!.state, node.id)) {
+    return `${label} ×${countHiddenDescendants(node.id)}`;
+  }
+  return label;
 }
 
 function seedMissingScatterPositions(): void {
@@ -5820,7 +6234,7 @@ function seedMissingScatterPositions(): void {
   const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
   ids.forEach((nodeId) => {
     const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(depth, ids.length);
+    const radius = scatterRadiusFor(nodeId, depth, ids.length);
     const seed = seeds[nodeId];
     const view = ensureSurfaceNodeView(nodeId);
     if (!view || !seed) return;
@@ -5865,6 +6279,17 @@ function collectScatterSimulationEdges(state: AppState, ids: string[]): ScatterS
   const idSet = new Set(ids);
   const pairSeen = new Set<string>();
   const edges: ScatterSimEdge[] = [];
+  const renderIdFor = (nodeId: string): string | null => {
+    if (idSet.has(nodeId)) return nodeId;
+    let current = state.nodes[nodeId]?.parentId ?? null;
+    while (current) {
+      if (idSet.has(current) && scatterNodeIsCollapsedGroup(state, current)) {
+        return current;
+      }
+      current = state.nodes[current]?.parentId ?? null;
+    }
+    return null;
+  };
   const pushEdge = (sourceId: string, targetId: string, weight: number): void => {
     if (!idSet.has(sourceId) || !idSet.has(targetId) || sourceId === targetId) return;
     const key = `${sourceId}->${targetId}`;
@@ -5880,7 +6305,11 @@ function collectScatterSimulationEdges(state: AppState, ids: string[]): ScatterS
   });
   Object.values(state.links || {}).forEach((rawLink) => {
     const link = normalizeGraphLink(rawLink);
-    pushEdge(link.sourceNodeId, link.targetNodeId, 1);
+    const sourceId = renderIdFor(link.sourceNodeId);
+    const targetId = renderIdFor(link.targetNodeId);
+    if (sourceId && targetId) {
+      pushEdge(sourceId, targetId, 1);
+    }
   });
   return edges;
 }
@@ -5901,7 +6330,7 @@ function runScatterSimulation(iterations: number): boolean {
   const particles: Record<string, { cx: number; cy: number; r: number; vx: number; vy: number }> = {};
   ids.forEach((nodeId) => {
     const depth = depthOf[nodeId] ?? 0;
-    const r = scatterRadiusFor(depth, ids.length);
+    const r = scatterRadiusFor(nodeId, depth, ids.length);
     const view = surface?.nodeViews?.[nodeId];
     const seed = seeds[nodeId] || scatterSeedCenter();
     const x = Number.isFinite(view?.x) ? Number(view!.x) : seed.x - r;
@@ -6016,13 +6445,17 @@ function runScatterReflow(iterations = 160, opts: { withUndo?: boolean; withTouc
   if (withUndo) {
     pushUndoSnapshot();
   }
-  runScatterSimulation(iterations);
+  syncMapModelStateFromRuntime();
+  const rootId = currentScopeRootId();
+  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
+  scatterApplyRankFlowSeed(map.state, rootId, ids, depthOf);
+  runScatterSimulation(Math.min(iterations, 44));
   if (withTouch) {
     touchDocument();
   } else {
     render();
   }
-  setStatus("Scatter reflow applied.");
+  setStatus("Scatter rank-flow reflow applied.");
 }
 
 function startScatterAnimation(): void {
@@ -6441,7 +6874,7 @@ function buildLayout(state: AppState): LayoutResult {
       const node = state.nodes[nodeId];
       if (!node) return;
       const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = scatterRadiusFor(depth, descendants.length);
+      const radius = scatterRadiusFor(nodeId, depth, descendants.length);
       const diameter = radius * 2;
       const saved = surface?.nodeViews?.[nodeId];
       const seeded = seededByNode[nodeId] || scatterSeedCenter();
@@ -6449,7 +6882,15 @@ function buildLayout(state: AppState): LayoutResult {
       const seededY = seeded.y;
       const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
       const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
-      pos[nodeId] = { x, y, depth, w: diameter, h: diameter, fontSize: scatterFontSizeFor(radius) };
+      pos[nodeId] = {
+        x,
+        y,
+        depth,
+        w: diameter,
+        h: diameter,
+        fontSize: scatterFontSizeFor(radius),
+        scatterCollapsedGroup: scatterNodeIsCollapsedGroup(state, nodeId),
+      };
       maxRight = Math.max(maxRight, x + diameter + VIEWER_TUNING.layout.canvasRightPad);
       maxBottom = Math.max(maxBottom, y + radius + VIEWER_TUNING.layout.canvasBottomPad);
     });
@@ -6608,36 +7049,14 @@ function scheduleRender(): void {
 }
 
 let _zoomApplyScheduled = false;
-let _viewportDependentSyncTimer: number | null = null;
-
-function scheduleViewportDependentSync(delayMs = 120): void {
-  if (_viewportDependentSyncTimer !== null) {
-    window.clearTimeout(_viewportDependentSyncTimer);
-  }
-  _viewportDependentSyncTimer = window.setTimeout(() => {
-    _viewportDependentSyncTimer = null;
-    syncViewportDependents();
-  }, delayMs);
-}
-
-function flushViewportDependentSync(): void {
-  if (_viewportDependentSyncTimer !== null) {
-    window.clearTimeout(_viewportDependentSyncTimer);
-    _viewportDependentSyncTimer = null;
-  }
-  syncViewportDependents();
-}
-
 function scheduleApplyZoom(): void {
   if (_zoomApplyScheduled) {
-    scheduleViewportDependentSync();
     return;
   }
   _zoomApplyScheduled = true;
   requestAnimationFrame(() => {
     _zoomApplyScheduled = false;
-    applyZoom({ syncDependents: false });
-    scheduleViewportDependentSync();
+    applyZoom();
   });
 }
 
@@ -6731,7 +7150,7 @@ function render(): void {
   const flowSurface = currentSurfaceIsFlowMode();
   const scatterSurface = currentSurfaceIsScatterMode();
   const structuredMode = structuredSurfaceMode() || "tree";
-  const rootlessSurface = flowSurface;
+  const rootlessSurface = flowSurface || scatterSurface;
   const scatterNodeRenderable = (nodeId: string): boolean =>
     !scatterSurface || nodeId !== displayRootId;
 
@@ -6835,6 +7254,12 @@ function render(): void {
     let targetRenderId = link.targetNodeId;
     let sourcePos = pos[sourceRenderId];
     let targetPos = pos[targetRenderId];
+    if ((!sourcePos || !targetPos) && scatterSurface) {
+      sourceRenderId = scatterRenderNodeIdFor(state, link.sourceNodeId, pos) || sourceRenderId;
+      targetRenderId = scatterRenderNodeIdFor(state, link.targetNodeId, pos) || targetRenderId;
+      sourcePos = pos[sourceRenderId];
+      targetPos = pos[targetRenderId];
+    }
     if ((!sourcePos || !targetPos) && flowSurface) {
       sourceRenderId = representativeNodeIdInCurrentScope(link.sourceNodeId) || sourceRenderId;
       targetRenderId = representativeNodeIdInCurrentScope(link.targetNodeId) || targetRenderId;
@@ -7109,6 +7534,19 @@ function render(): void {
       if (nodeId === displayRootId) {
         circleClasses.push("scatter-root");
       }
+      if (p.scatterCollapsedGroup) {
+        circleClasses.push("scatter-group");
+      } else {
+        circleClasses.push("scatter-branch");
+      }
+      const scatterRole = rawAttr(node, "m3e:scatter-role");
+      if (scatterRole === "downstream") {
+        circleClasses.push("scatter-role-downstream");
+      } else if (scatterRole === "sample") {
+        circleClasses.push("scatter-role-sample");
+      } else if (scatterRole === "upstream") {
+        circleClasses.push("scatter-role-upstream");
+      }
       if (viewState.selectedNodeIds.has(nodeId)) {
         circleClasses.push("selected");
         circleClasses.push("multi-selected");
@@ -7139,7 +7577,7 @@ function render(): void {
       const labelStyles = [`font-size:${p.fontSize ?? scatterFontSizeFor(r)}px`];
       const labelInline = buildLabelStyle(nodeStyles);
       if (labelInline) labelStyles.push(labelInline);
-      const label = scatterLabel(node);
+      const label = scatterDisplayLabel(node);
       const fontSize = p.fontSize ?? scatterFontSizeFor(r);
       const labelMeasure = measureNodeLabel(label || node.id, fontSize);
       const labelX = cx + r + 7;
@@ -8181,13 +8619,13 @@ function normalizeSelectionState(): void {
     return;
   }
 
-  if (!isNodeRenderableInCurrentSurface(viewState.selectedNodeId)) {
+  if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
     viewState.selectedNodeId = preferredSelectionForScope(normalizedCurrentScopeId());
   }
 
   const normalizedSelectedIds = new Set<string>();
   viewState.selectedNodeIds.forEach((nodeId) => {
-    if (isNodeRenderableInCurrentSurface(nodeId)) {
+    if (map!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
       normalizedSelectedIds.add(nodeId);
     }
   });
@@ -8369,6 +8807,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
   render();
+  triggerCameraMove("scope");
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
   updateScopeInUrl(scopeId);
 }
@@ -8391,6 +8830,7 @@ function ExitScopeCommand(): void {
   setSingleSelection(selectionAfterExit, false);
   normalizeSelectionState();
   render();
+  triggerCameraMove("scope");
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
   updateScopeInUrl(viewState.currentScopeId);
 }
@@ -8605,6 +9045,7 @@ function showHomeScreen(): void {
   }
   homeScreenVisible = true;
   homeScreenEl.hidden = false;
+  scopeNavBtn?.setAttribute("aria-expanded", "true");
   appEl?.classList.add("home-active");
 
   const rootId = map.state.rootId;
@@ -8619,9 +9060,50 @@ function hideHomeScreen(): void {
   }
   homeScreenVisible = false;
   homeScreenEl.hidden = true;
+  scopeNavBtn?.setAttribute("aria-expanded", "false");
   appEl?.classList.remove("home-active");
   board.focus();
 }
+
+function toggleHomeScreen(): void {
+  if (homeScreenVisible) {
+    hideHomeScreen();
+    return;
+  }
+  showHomeScreen();
+}
+
+scopeNavBtn?.addEventListener("click", () => {
+  toggleHomeScreen();
+});
+
+scopeNavCloseBtn?.addEventListener("click", () => {
+  hideHomeScreen();
+});
+
+localFsToggleBtn?.addEventListener("click", () => {
+  toggleLocalFsPanel();
+});
+
+localFsCloseBtn?.addEventListener("click", () => {
+  hideLocalFsPanel();
+});
+
+localFsConnectBtn?.addEventListener("click", () => {
+  void connectLocalFsRoot();
+});
+
+localFsRefreshBtn?.addEventListener("click", () => {
+  resetLocalFsTree();
+  void loadLocalFsDirectory("", true);
+});
+
+localFsRootInputEl?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void connectLocalFsRoot();
+  }
+});
 
 // ---- Entity List Panel ----
 
@@ -10832,17 +11314,6 @@ function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y
   return starts;
 }
 
-function scatterMovableDragRootIds(nodeId: string): string[] {
-  const roots = viewState.selectedNodeIds.has(nodeId)
-    ? getMovableSelectionRoots(viewState.selectedNodeIds)
-    : getMovableSelectionRoots(new Set([nodeId]));
-  if (roots.length > 0) {
-    return roots;
-  }
-  const node = map?.state.nodes[nodeId];
-  return node && node.parentId !== null ? [nodeId] : [];
-}
-
 function deleteSelectedGraphLink(): boolean {
   if (!map || !viewState.selectedLinkId) {
     return false;
@@ -11701,15 +12172,17 @@ function initDocWatch(): void {
       const data = JSON.parse(ev.data) as { mapId: string; savedAt: string; sourceTabId: string | null };
       // Ignore our own saves
       if (data.sourceTabId === TAB_ID) return;
+      // Advance the conflict-detection baseline even if we skip state overwrite,
+      // so a pending autosave doesn't 409 against the just-committed server savedAt.
+      if (typeof data.savedAt === "string" && data.savedAt) {
+        lastServerSavedAt = data.savedAt;
+      }
       // Ignore duplicate events
       if (data.savedAt === lastAppliedSavedAt) return;
       // If user has unsaved edits, notify instead of overwriting
       if (autosaveTimer !== null) {
         setStatus("External update available — save your edits first.", false);
         return;
-      }
-      if (typeof data.savedAt === "string" && data.savedAt) {
-        lastServerSavedAt = data.savedAt;
       }
       void applyExternalUpdate(data.savedAt);
     } catch {
@@ -11947,18 +12420,23 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
+  await fetchLinearTransformStatus();
+
+  if (LOCAL_FS_VIEW_MODE) {
+    await loadLocalFsMap(LOCAL_FS_VIEW_ROOT);
+    return;
+  }
+
   const localResult = await fetchLocalMapPayload();
   if (localResult.ok) {
     loadPayload(localResult.payload);
-    void fetchLinearTransformStatus();
-    void fetchCloudSyncStatus().then(async () => {
-      if (cloudSyncEnabled && cloudSyncExists) {
-        const loadedFromCloud = await pullDocFromCloud(false);
-        if (loadedFromCloud) {
-          await loadLinearNotesFromLocalDbFallback();
-        }
+    await fetchCloudSyncStatus();
+    if (cloudSyncEnabled && cloudSyncExists) {
+      const loadedFromCloud = await pullDocFromCloud(false);
+      if (loadedFromCloud) {
+        await loadLinearNotesFromLocalDbFallback();
       }
-    });
+    }
     return;
   }
   if (HAS_EXPLICIT_MAP_ID && localResult.reason === "failed") {
@@ -11966,7 +12444,6 @@ async function initializeDocument(): Promise<void> {
     return;
   }
 
-  void fetchLinearTransformStatus();
   await fetchCloudSyncStatus();
   if (cloudSyncEnabled && cloudSyncExists) {
     const loadedFromCloud = await pullDocFromCloud(false);
@@ -12195,16 +12672,13 @@ function centerOnNode(nodeId: string, zoom = viewState.zoom, options: CameraMove
   if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
     return false;
   }
-  const center = nodeCanvasCenter(nodeId);
-  if (!center) {
-    return false;
-  }
+  const nodePos = lastLayout.pos[nodeId]!;
   const boardRect = board.getBoundingClientRect();
   const targetZoom = clampZoom(zoom);
   moveCameraTo({
     zoom: targetZoom,
-    cameraX: boardRect.width / 2 - center.x * targetZoom,
-    cameraY: boardRect.height / 2 - center.y * targetZoom,
+    cameraX: boardRect.width / 2 - (nodePos.x + nodePos.w / 2) * targetZoom,
+    cameraY: boardRect.height / 2 - nodePos.y * targetZoom,
   }, options);
   return true;
 }
@@ -12227,6 +12701,40 @@ function fitDocument(options: CameraMoveOptions = {}): boolean {
     cameraY: (boardRect.height - contentHeight * zoom) / 2,
   }, options);
   return true;
+}
+
+function syncCameraMoveUi(): void {
+  if (!cameraFollowBtn) {
+    return;
+  }
+  const active = viewState.cameraMove.toggle && viewState.cameraMove.preset !== "off";
+  cameraFollowBtn.classList.toggle("is-active", active);
+  cameraFollowBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  cameraFollowBtn.title = active
+    ? "Auto-fit on scope change"
+    : "Auto-fit disabled";
+}
+
+function toggleCameraMove(): void {
+  viewState.cameraMove.toggle = !viewState.cameraMove.toggle;
+  syncCameraMoveUi();
+  setStatus(`Camera follow: ${viewState.cameraMove.toggle ? "on" : "off"}`);
+}
+
+function triggerCameraMove(reason: CameraMoveTrigger): void {
+  if (!viewState.cameraMove.toggle || viewState.cameraMove.preset === "off") {
+    return;
+  }
+  if (reason === "scope" || reason === "layout" || reason === "command") {
+    fitDocument({ animate: reason !== "command" });
+    requestAnimationFrame(() => {
+      fitDocument({ animate: reason !== "command" });
+    });
+    return;
+  }
+  if (reason === "selection" && viewState.selectedNodeId) {
+    nudgeActiveNodeIntoView({ animate: true });
+  }
 }
 
 function findNodeIdByText(text: string): string {
@@ -13469,6 +13977,11 @@ penWidthInput?.addEventListener("input", () => {
   }
 });
 
+cameraFollowBtn?.addEventListener("click", () => {
+  toggleCameraMove();
+});
+syncCameraMoveUi();
+
 fileInput.addEventListener("change", (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files && target.files[0];
@@ -13893,6 +14406,19 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     return;
   }
   if (currentSurfaceIsScatterMode()) {
+    if (scatterToolMode === "normal" && viewState.collapsedIds.has(nodeId)) {
+      const node = map.state.nodes[nodeId];
+      if (node && (node.children || []).length > 0) {
+        event.preventDefault();
+        viewState.collapsedIds.delete(nodeId);
+        node.collapsed = false;
+        setSingleSelection(nodeId, false);
+        runScatterReflow(60, { withUndo: false, withTouch: true });
+        setStatus("Expanded scatter group.");
+        board.focus();
+        return;
+      }
+    }
     if (scatterToolMode === "delete") {
       event.preventDefault();
       setSingleSelection(nodeId, false);
@@ -13923,7 +14449,9 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       board.focus();
       return;
     }
-    const rootIds = scatterMovableDragRootIds(nodeId);
+    const rootIds = viewState.selectedNodeIds.has(nodeId)
+      ? getMovableSelectionRoots(viewState.selectedNodeIds)
+      : getMovableSelectionRoots(new Set([nodeId]));
     viewState.dragState = {
       mode: "scatter",
       pointerId: event.pointerId,
@@ -14294,7 +14822,6 @@ function endPointer(event: PointerEvent): void {
         };
         board.classList.add("panning");
       }
-      flushViewportDependentSync();
       return;
     }
   }
@@ -14303,7 +14830,6 @@ function endPointer(event: PointerEvent): void {
   if (viewState.panState && event.pointerId === viewState.panState.pointerId) {
     viewState.panState = null;
     board.classList.remove("panning");
-    flushViewportDependentSync();
   }
 
   try { board.releasePointerCapture(event.pointerId); } catch { /* already released */ }
@@ -14711,24 +15237,16 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "]") {
+  if (!event.shiftKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
-    fitDocument();
-    requestAnimationFrame(() => {
-      fitDocument();
-    });
     board.focus();
     return;
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "[") {
+  if (!event.shiftKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
-    fitDocument();
-    requestAnimationFrame(() => {
-      fitDocument();
-    });
     board.focus();
     return;
   }
@@ -14788,6 +15306,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
     window.location.href = buildHomeHref();
+    return;
+  }
+
+  if (event.altKey && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    toggleHomeScreen();
     return;
   }
 
@@ -15111,6 +15635,7 @@ window.addEventListener("blur", () => {
 setVisualCheckStatus("Visual check idle");
 syncMetaPanelToggleUi();
 loadVaultUiPrefs();
+loadLocalFsPrefs();
 syncVaultUi();
 syncAccessModeUi();
 updateCloudSyncUi();
@@ -15119,18 +15644,20 @@ void initializeDocument().then(() => {
   if (fatalLoadError || !map) {
     return;
   }
-  initBroadcastSync();
-  initVisibilityManagedLiveStreams();
-  void fetchVaultWatchStatus().then(() => {
-    if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
-      void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
-        setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
-      });
-    }
-  });
-  void fetchCollabConfig().then(() => {
-    tryCollabRegister();
-  });
+  if (!LOCAL_FS_VIEW_MODE) {
+    initBroadcastSync();
+    initVisibilityManagedLiveStreams();
+    void fetchVaultWatchStatus().then(() => {
+      if (vaultUiPrefs.integrationMode === "obsidian-live" && vaultUiPrefs.vaultPath && !vaultWatchRunning) {
+        void startVaultLiveIntegration(vaultUiPrefs.vaultPath).catch((err) => {
+          setStatus(`Obsidian Live Mode resume failed (${(err as Error).message}).`, true);
+        });
+      }
+    });
+    void fetchCollabConfig().then(() => {
+      tryCollabRegister();
+    });
+  }
   const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
   if (initialScopeId && map && map.state.nodes[initialScopeId] && initialScopeId !== map.state.rootId) {
     // Build ancestor chain so ExitScopeCommand can step back through each level

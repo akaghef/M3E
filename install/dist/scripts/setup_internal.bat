@@ -163,13 +163,7 @@ exit /b 0
 :set_conf
 set "CONF_KEY=%~1"
 set "CONF_VAL=%~2"
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$path='%M3E_CONF%'; $k='%CONF_KEY%'; $v='%CONF_VAL%';" ^
-  "$lines=@(); if(Test-Path $path){$lines=Get-Content -Path $path -ErrorAction Stop};" ^
-  "$updated=$false; $out=@();" ^
-  "foreach($line in $lines){ if($line -match ('^'+[regex]::Escape($k)+'=')){ $out += ($k+'='+$v); $updated=$true } else { $out += $line }}" ^
-  "if(-not $updated){ $out += ($k+'='+$v) }" ^
-  "Set-Content -Path $path -Value $out -Encoding UTF8"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$path='%M3E_CONF%'; $k='%CONF_KEY%'; $v='%CONF_VAL%'; $lines=@(); if(Test-Path $path){$lines=Get-Content -Path $path -ErrorAction Stop}; $updated=$false; $out=@(); foreach($line in $lines){ if($line -match ('^'+[regex]::Escape($k)+'=')){ $out += ($k+'='+$v); $updated=$true } else { $out += $line }}; if(-not $updated){ $out += ($k+'='+$v) }; Set-Content -Path $path -Value $out -Encoding UTF8"
 if errorlevel 1 exit /b 1
 exit /b 0
 
@@ -177,13 +171,7 @@ exit /b 0
 set "START_MENU_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\M3E"
 if not exist "%START_MENU_DIR%" mkdir "%START_MENU_DIR%"
 set "SHORTCUT_PATH=%START_MENU_DIR%\M3E.lnk"
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ws=New-Object -ComObject WScript.Shell;" ^
-  "$sc=$ws.CreateShortcut('%SHORTCUT_PATH%');" ^
-  "$sc.TargetPath='%M3E_HOME%\launch.bat';" ^
-  "$sc.WorkingDirectory='%M3E_HOME%';" ^
-  "$sc.Description='M3E';" ^
-  "$sc.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell; $sc=$ws.CreateShortcut('%SHORTCUT_PATH%'); $sc.TargetPath='%M3E_HOME%\launch.bat'; $sc.WorkingDirectory='%M3E_HOME%'; $sc.Description='M3E'; $sc.Save()"
 if errorlevel 1 exit /b 1
 exit /b 0
 
@@ -191,13 +179,7 @@ exit /b 0
 for /f "usebackq tokens=*" %%D in (`powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"`) do set "DESKTOP_DIR=%%D"
 if "%DESKTOP_DIR%"=="" exit /b 1
 set "SHORTCUT_PATH=%DESKTOP_DIR%\M3E.lnk"
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ws=New-Object -ComObject WScript.Shell;" ^
-  "$sc=$ws.CreateShortcut('%SHORTCUT_PATH%');" ^
-  "$sc.TargetPath='%M3E_HOME%\launch.bat';" ^
-  "$sc.WorkingDirectory='%M3E_HOME%';" ^
-  "$sc.Description='M3E';" ^
-  "$sc.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell; $sc=$ws.CreateShortcut('%SHORTCUT_PATH%'); $sc.TargetPath='%M3E_HOME%\launch.bat'; $sc.WorkingDirectory='%M3E_HOME%'; $sc.Description='M3E'; $sc.Save()"
 if errorlevel 1 exit /b 1
 exit /b 0
 

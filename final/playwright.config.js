@@ -1,6 +1,10 @@
 // @ts-check
 const { defineConfig, devices } = require("@playwright/test");
-const PORT = process.env.M3E_PORT || "4173";
+const PORT = process.env.M3E_PORT || "14174";
+
+if (PORT === "4173" && process.env.M3E_ALLOW_VISUAL_TEST_ON_4173 !== "1") {
+  throw new Error("Refusing to run visual tests on beta port 4173. Use a dedicated test port.");
+}
 
 module.exports = defineConfig({
   testDir: "./tests/visual",
@@ -23,9 +27,12 @@ module.exports = defineConfig({
   webServer: {
     command: "node ./test_server.js",
     url: `http://127.0.0.1:${PORT}/viewer.html`,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     cwd: __dirname,
     timeout: 30_000,
+    env: {
+      M3E_PORT: PORT,
+    },
   },
   projects: [
     {

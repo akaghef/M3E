@@ -108,14 +108,16 @@ test("bind-vault on nonexistent map returns 404", async () => {
   expect(res.payload.error.code).toBe("MAP_NOT_FOUND");
 });
 
-test("bind-vault currently accepts a nonexistent path", async () => {
+test("bind-vault rejects a nonexistent path", async () => {
   const id = await createBlankDoc("bv-nopath");
+  const missingVaultPath = path.join(tempDataDir, "missing-vault");
   const res = await request(`${baseUrl}/api/maps/${id}/bind-vault`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vaultPath: "/definitely/not/there/xyz123" }),
+    body: JSON.stringify({ vaultPath: missingVaultPath }),
   });
-  expect(res.response.status).toBe(200);
+  expect(res.response.status).toBe(400);
+  expect(res.payload.error.code).toBe("INVALID_BODY");
 });
 
 test("unbind-vault clears source", async () => {

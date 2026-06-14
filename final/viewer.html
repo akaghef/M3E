@@ -4,11 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>M3E</title>
+        <script>
+          (() => {
+            try {
+              const theme = localStorage.getItem("m3e:viewer-theme") === "dark" ? "dark" : "light";
+              document.documentElement.dataset.theme = theme;
+              document.documentElement.style.colorScheme = theme;
+            } catch {
+              document.documentElement.dataset.theme = "light";
+              document.documentElement.style.colorScheme = "light";
+            }
+          })();
+        </script>
         <link rel="stylesheet" href="./viewer.css" />
         <link rel="stylesheet" href="./public/katex/katex.min.css" />
+        <link rel="stylesheet" href="./dist/browser/workbench-ui.css" />
   </head>
   <body>
     <div class="app">
+      <div id="workbench-root"></div>
       <div class="overlay-ui">
         <div class="toolbar">
           <a id="viewer-home-link" class="viewer-logo" href="./home.html" aria-label="Open home">M3E</a>
@@ -41,8 +55,16 @@
           </div>
           <div class="mode-switch" aria-label="Surface view mode">
             <button id="view-tree" class="mode-btn is-active" type="button">Tree</button>
+            <button id="view-mindmap" class="mode-btn" type="button">Mind Map</button>
+            <button id="view-logic-chart" class="mode-btn" type="button">Logic</button>
+            <button id="view-timeline" class="mode-btn" type="button">Timeline</button>
             <button id="view-system" class="mode-btn" type="button">System</button>
+            <button id="view-scatter" class="mode-btn" type="button">Scatter</button>
           </div>
+          <button id="theme-toggle" class="mode-btn theme-toggle-btn" type="button" aria-pressed="false" title="Toggle dark mode">Dark</button>
+          <button id="scope-nav-btn" class="mode-btn" type="button" aria-expanded="false" title="Open scope navigator">Scopes</button>
+          <button id="local-fs-toggle" class="mode-btn" type="button" aria-expanded="false" title="Open local files">Files</button>
+          <button id="component-tabular-toggle" class="mode-btn" type="button" aria-pressed="false" title="Toggle tabular component on selected node" data-edit-only>Tabular</button>
           <button id="pen-tool" class="tool-btn" type="button" aria-label="Pen tool" aria-pressed="false" title="Pen tool (Shift+P)" data-edit-only>Pen</button>
           <div class="import-wrap" data-edit-only>
             <button id="import-btn" type="button">Import ▾</button>
@@ -51,6 +73,7 @@
               <button id="import-vault-btn">From Vault (.md)...</button>
             </div>
           </div>
+          <button id="camera-follow-btn" class="camera-follow-btn is-active" type="button" aria-pressed="true" title="Auto-fit on scope change">⊕ Fit</button>
           <button id="share-btn" class="share-btn" type="button">Share</button>
           <div class="export-wrap" data-edit-only>
             <button id="export-btn" type="button">Export ▾</button>
@@ -72,6 +95,25 @@
               </div>
             </div>
           </div>
+          <button id="v4-panel-btn" class="mode-btn" type="button">V4</button>
+        </div>
+        <div id="scatter-toolbar" class="scatter-toolbar" role="toolbar" aria-label="Scatter tools" hidden data-edit-only>
+          <button id="scatter-normal" class="scatter-tool-btn is-active" type="button" title="Normal">Normal</button>
+          <button id="scatter-add-node" class="scatter-tool-btn" type="button" title="Add node">Add Node</button>
+          <button id="scatter-add-edge" class="scatter-tool-btn" type="button" title="Add edge">Add Edge</button>
+          <button id="scatter-colorize" class="scatter-tool-btn" type="button" title="Colorize">Colorize</button>
+          <button id="scatter-delete" class="scatter-tool-btn" type="button" title="Delete">Delete</button>
+          <span class="toolbar-sep" aria-hidden="true">|</span>
+          <button id="scatter-animate" class="scatter-tool-btn" type="button" aria-pressed="false" title="Animate force layout (A)">Animate</button>
+          <button id="scatter-reflow" class="scatter-tool-btn" type="button" title="Reflow with force layout">Reflow</button>
+          <label class="scatter-range-control" title="Repulsion coefficient">
+            <span>Repel</span>
+            <input id="scatter-repulsion" type="range" min="20000" max="600000" step="10000" value="200000" aria-label="Scatter repulsion" />
+          </label>
+          <label class="scatter-range-control" title="Edge spring length">
+            <span>Length</span>
+            <input id="scatter-edge-length" type="range" min="80" max="320" step="10" value="180" aria-label="Scatter edge length" />
+          </label>
         </div>
         <div id="draw-toolbar" class="draw-toolbar" role="toolbar" aria-label="Drawing tools" data-edit-only>
           <button id="draw-select" class="draw-tool-btn is-active" type="button" aria-label="Select tool" title="Select (Esc)">
@@ -141,10 +183,30 @@
             <div id="linear-resize-handle" class="linear-resize-handle" aria-hidden="true"></div>
           </aside>
         </div>
+        <aside id="local-fs-panel" class="local-fs-panel" hidden aria-label="Local files panel">
+          <div class="local-fs-header">
+            <span class="local-fs-title">Files</span>
+            <button id="local-fs-close" class="entity-list-close" type="button" aria-label="Close local files">&times;</button>
+          </div>
+          <div class="local-fs-controls">
+            <input id="local-fs-root-input" class="local-fs-root-input" type="text" placeholder="C:\path\to\folder" spellcheck="false" />
+            <button id="local-fs-connect" type="button">Connect</button>
+            <button id="local-fs-refresh" type="button">Refresh</button>
+          </div>
+          <div id="local-fs-status" class="local-fs-status"></div>
+          <div class="local-fs-body">
+            <div id="local-fs-tree" class="local-fs-tree"></div>
+            <div class="local-fs-preview-wrap">
+              <div id="local-fs-preview-title" class="local-fs-preview-title">Preview</div>
+              <pre id="local-fs-preview" class="local-fs-preview"></pre>
+            </div>
+          </div>
+        </aside>
       </div>
       <div id="home-screen" class="home-screen" hidden>
         <div class="home-header">
-          <h1 class="home-title">M3E</h1>
+          <h1 class="home-title">Scopes</h1>
+          <button id="scope-nav-close" class="entity-list-close" type="button" aria-label="Close scope navigator">&times;</button>
         </div>
         <div class="home-body">
           <div class="home-section-header">
@@ -194,6 +256,57 @@
         </div>
         <div id="markdown-preview-body" class="markdown-preview-body"></div>
       </div>
+      <div id="v4-panel" class="v4-panel" hidden>
+        <div class="v4-panel-header">
+          <span class="v4-panel-title">V4 Workbench</span>
+          <button id="v4-panel-close" class="v4-panel-close" type="button" aria-label="Close V4 workbench">&times;</button>
+        </div>
+        <div class="v4-panel-body">
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Flash / Mapify</span>
+              <button id="v4-refresh-btn" type="button">Refresh</button>
+            </div>
+            <textarea id="v4-source-text" class="v4-source-text" rows="5" spellcheck="false" placeholder="Paste PDF text, markdown, or meeting notes to create a Mapify draft."></textarea>
+            <div class="v4-action-row">
+              <button id="v4-create-draft-btn" type="button">Create Draft</button>
+              <button id="v4-apply-draft-btn" type="button">Apply Latest Pending</button>
+            </div>
+            <div id="v4-flash-status" class="v4-status-line">Drafts: unknown</div>
+            <div id="v4-draft-list" class="v4-list"></div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Discussion Surface</span>
+            </div>
+            <div class="v4-action-row">
+              <button id="v4-add-sticky-btn" type="button">Sticky</button>
+              <button id="v4-add-decision-btn" type="button">Decision</button>
+            </div>
+            <div class="v4-status-line">Selected node becomes the parent. These are M3E nodes with discussion attributes.</div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Obsidian</span>
+            </div>
+            <div id="v4-vault-status" class="v4-status-line">Vault: unknown</div>
+            <div id="v4-vault-path" class="v4-path"></div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>Conflict</span>
+            </div>
+            <div id="v4-conflict-status" class="v4-status-line">No conflict panel open.</div>
+          </section>
+          <section class="v4-card">
+            <div class="v4-card-head">
+              <span>GitHub Boundary</span>
+            </div>
+            <div id="v4-github-status" class="v4-status-line">Publish plan: design-only. Changes are treated as staged proposals; secret lock is required before remote publish.</div>
+            <div id="v4-selected-source" class="v4-path"></div>
+          </section>
+        </div>
+      </div>
       <div id="shortcut-cheatsheet" class="shortcut-cheatsheet" hidden>
         <div class="cheatsheet-header">Keyboard Shortcuts</div>
         <div class="cheatsheet-body">
@@ -206,6 +319,7 @@
               <div class="cheatsheet-row"><kbd>J</kbd><span>Tree: deeper / Flow LR: more detail</span></div>
               <div class="cheatsheet-row"><kbd>K</kbd><span>Tree: shallower / Flow LR: less detail</span></div>
               <div class="cheatsheet-row"><kbd>Alt+H</kbd><span>Open Home (map list)</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+S</kbd><span>Scope navigator</span></div>
               <div class="cheatsheet-row"><kbd>Alt+E</kbd><span>Entity list panel</span></div>
               <div class="cheatsheet-row"><kbd>Alt+D</kbd><span>Markdown preview (details/note)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+V</kbd><span>Toggle focus / fit</span></div>
@@ -230,6 +344,15 @@
               <div class="cheatsheet-row"><kbd>I</kbd><span>Toggle meta panel</span></div>
               <div class="cheatsheet-row"><kbd>Ctrl+S</kbd><span>Download JSON</span></div>
             </div>
+            <div class="cheatsheet-group">
+              <div class="cheatsheet-group-title">Browser (Chrome / Edge)</div>
+              <div class="cheatsheet-row"><kbd>Ctrl+L</kbd><span>Address bar</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+F</kbd><span>Find in page</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+H</kbd><span>History</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+R</kbd> / <kbd>F5</kbd><span>Reload</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+T</kbd><span>New tab</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+W</kbd><span>Close tab</span></div>
+            </div>
           </div>
           <div class="cheatsheet-col">
             <div class="cheatsheet-group">
@@ -240,8 +363,8 @@
               <div class="cheatsheet-row"><kbd>Ctrl+Z</kbd><span>Undo</span></div>
               <div class="cheatsheet-row"><kbd>Ctrl+Y</kbd><span>Redo</span></div>
               <div class="cheatsheet-row"><kbd>Ctrl+A</kbd><span>Select all</span></div>
-              <div class="cheatsheet-row"><kbd>Ctrl+Shift+C</kbd><span>Copy node path</span></div>
-              <div class="cheatsheet-row"><kbd>Ctrl+Shift+I</kbd><span>Copy scope ID</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Shift+C</kbd> / <kbd>Ctrl+Alt+C</kbd><span>Copy node path</span></div>
+              <div class="cheatsheet-row"><kbd>Ctrl+Shift+I</kbd> / <kbd>Ctrl+Alt+I</kbd><span>Copy scope ID</span></div>
               <div class="cheatsheet-row"><kbd>Escape</kbd><span>Cancel cut</span></div>
             </div>
             <div class="cheatsheet-group">
@@ -290,8 +413,10 @@
     </div>
 
         <script src="./public/katex/katex.min.js"></script>
+        <script src="./node_modules/@joint/core/dist/joint.min.js"></script>
         <script src="./dist/browser/viewer.tuning.js"></script>
         <script src="./dist/browser/markdown_renderer.js"></script>
         <script src="./dist/browser/viewer.js"></script>
+        <script type="module" src="./dist/browser/workbench-ui.js"></script>
   </body>
 </html>

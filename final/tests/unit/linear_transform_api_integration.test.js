@@ -276,6 +276,45 @@ test("topic suggest subagent returns related topics", async () => {
   ]);
 });
 
+test("topic suggest subagent returns local draft when provider config is incomplete", async () => {
+  process.env.M3E_AI_ENABLED = "1";
+  process.env.M3E_AI_PROVIDER = "deepseek";
+  process.env.M3E_AI_TRANSPORT = "openai-compatible";
+  delete process.env.M3E_AI_BASE_URL;
+  delete process.env.M3E_AI_API_KEY;
+  delete process.env.M3E_AI_MODEL;
+
+  const status = await requestJson(`${appBaseUrl}/api/ai/status`);
+  expect(status.response.status).toBe(200);
+  expect(status.payload.ok).toBe(true);
+  expect(status.payload.configured).toBe(false);
+  expect(status.payload.features["topic-suggest"].available).toBe(true);
+
+  const response = await requestJson(`${appBaseUrl}/api/ai/subagent/topic-suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      mapId: "rapid-main",
+      scopeId: "root",
+      input: {
+        nodeText: "Mapify AI",
+        nodeDetails: "詳細を追加",
+        maxTopics: 3,
+      },
+    }),
+  });
+
+  expect(response.response.status).toBe(200);
+  expect(response.payload.ok).toBe(true);
+  expect(response.payload.provider).toBe("local");
+  expect(response.payload.model).toBe("local-topic-draft-v1");
+  expect(response.payload.proposal.result.topics).toEqual([
+    "Mapify AI の定義",
+    "Mapify AI の特徴",
+    "Mapify AI の具体例",
+  ]);
+});
+
 test("topic suggest subagent parses fenced json response", async () => {
   process.env.M3E_AI_ENABLED = "1";
   process.env.M3E_AI_PROVIDER = "ollama";

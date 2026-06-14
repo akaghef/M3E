@@ -42,6 +42,8 @@ FILES=(
   package-lock.json
   tsconfig.browser.json
   tsconfig.node.json
+  tsconfig.workbench.json
+  vite.config.mjs
   playwright.config.js
   test_server.js
   vitest.config.js
