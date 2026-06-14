@@ -67,3 +67,18 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
 - 2026-06-14 — Mechanism created. Director→Codex model established; `CLAUDE.md` made the
   always-loaded contract. Worker switched from Claude-subagents (legacy) to Codex.
   Codex invocation requires `scripts/codex.sh` (arm64 node PATH fix) + `< /dev/null` (stdin).
+- 2026-06-15 — Integrated diverged origin/dev-beta and pushed (commit 314734f). Three lessons:
+  (1) **Phantom regression.** 10 beta API tests "failed" in the primary checkout but passed
+  16/16 in a fresh worktree of the *same* HEAD — the primary checkout's accumulated local
+  state (hung server holding the API port → multi-minute test timeouts) was the cause, not
+  the code. Rule: before concluding a test regression, reproduce in a clean worktree
+  (`git worktree add /tmp/check HEAD`, symlink node_modules, `npm run build:node`, run gate).
+  (2) **arm64 node applies to npx/vitest too**, not just codex — a bare `npx vitest` picks the
+  Rosetta x64 node v14 and dies on `??=` syntax. Prefix `export PATH="/opt/homebrew/bin:$PATH"`.
+  (3) **GitHub 100MB blob limit + gitignore.** `install/mac/payload/` (bundled 136MB node
+  binary) was committed before its ignore rule, so it stayed tracked and lived in history.
+  Untracking (`git rm --cached`) + .gitignore only stops *future* tracking; the blob still
+  blocks the push from history. Fix without disturbing the remote: rewrite ONLY the unpushed
+  range — `git filter-branch -f --index-filter 'git rm -r --cached --ignore-unmatch <paths>'
+  --prune-empty -- origin/dev-beta..HEAD`. Keeping origin/dev-beta as the base preserves the
+  fast-forward. Verify with `git merge-base --is-ancestor origin/dev-beta HEAD` before pushing.
