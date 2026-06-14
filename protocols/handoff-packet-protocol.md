@@ -2,34 +2,45 @@
 
 ## Purpose
 
-A handoff packet gives GPT Pro / Codex / Claude / worker agents enough context to execute without re-reading the entire history.
+A handoff packet gives Codex enough context to execute a scoped task without re-reading the entire history.
+Claude writes these packets as Director; Codex executes them as worker.
 
-## Required sections
+## Required Sections
 
-1. Task objective
-2. Target repo/branch/worktree
-3. Target map/path/scope
-4. Canonical docs to read
-5. Operating protocols to obey
-6. Allowed changes
-7. Forbidden changes
-8. Verification requirements
-9. Expected output format
-10. Open decisions for akaghef
+Use the Director Playbook template:
 
-## What to include for GPT Pro
+1. `OBJECTIVE`: one sentence describing done.
+2. `CONTEXT`: only what Codex needs; prefer file pointers over pasted history.
+3. `SCOPE`: files/dirs/maps Codex may touch.
+4. `CONSTRAINTS`: conventions and forbidden changes.
+5. `ACCEPTANCE`: checkable criteria.
+6. `OUTPUT`: required report shape.
+
+For code-writing tasks, also include:
+
+- target worktree: `$HOME/dev/M3E-<task>`
+- target branch: `codex/<task>`
+- PR base: `dev-beta`
+- whether `beta_update` is required
+
+## What to Include for Codex
 
 - `docs/00_Home/Agent_Brief.md`
 - `docs/00_Home/Current_Status.md`
 - `docs/00_Home/Glossary.md`
 - relevant `docs/03_Spec/*`
 - relevant `protocols/*`
-- contract YAMLs
+- relevant contract YAMLs
 - concise decision/correction summary
-- adherence patterns summary
+- required verification commands
 
-## What not to include by default
+## What to Include for GPT Pro
+
+GPT Pro receives the same product/protocol pointers when it is used for reasoning or review, but it is not the implementation worker unless explicitly directed by akaghef.
+
+## What Not to Include by Default
 
 - raw logs unless needed as evidence
 - stale drafts that have been superseded
 - duplicate copies of product specs
+- obsolete Claude sub-agent launch instructions

@@ -2,8 +2,21 @@
 
 ## Objective
 
-This repository is operated with agent-driven implementation cycles.
-Agents should prioritize small validated changes over broad refactors.
+This repository is operated with a Director to Codex model.
+Prefer small validated changes over broad refactors.
+
+## Operating Model
+
+Canonical Claude-facing sources:
+
+1. `CLAUDE.md`
+2. `docs/06_Operations/Director_Playbook.md`
+
+Current model:
+
+- Claude = Director only. Claude routes, decomposes intent, writes Codex handoffs, dispatches Codex, reviews results, and manages worktrees / PRs.
+- Codex (`codex exec`) = sole worker for implementation, spec writing, refactoring, investigation, tests, commits, and PR creation.
+- The old Claude sub-agent worker model (`manage` / `visual` / `data` / `team`) is superseded. Do not launch Claude Agent Teams for implementation.
 
 ## Environment Structure
 
@@ -28,8 +41,12 @@ Agents should prioritize small validated changes over broad refactors.
    - `docs/00_Home/Home.md`
 2. Current priorities and progress:
    - `docs/00_Home/Current_Status.md`
-3. Operations rules:
+3. Director procedure:
+   - `CLAUDE.md`
+   - `docs/06_Operations/Director_Playbook.md`
+4. Operations rules:
    - `docs/06_Operations/Documentation_Rules.md`
+   - `docs/06_Operations/Worktree_Separation_Rules.md`
 
 ## AI Instruction Routing
 
@@ -37,9 +54,10 @@ For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 
 - Product meaning of map / node / scope / edge / GraphLink / alias / path / layout lives under `docs/03_Spec/`.
 - Agent operating behavior lives under `protocols/`.
+- Claude Director behavior lives in `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md`.
 - Map read/write execution uses the `m3e-map` skill.
 - Structural map decisions use `protocols/map-manager/` (with `protocols/map-manager.md` as a compatibility pointer) and the `map-manager` skill.
-- Worker agents must follow `protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
+- Codex workers must follow `protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
 
 When a map task involves scope, scopen / unscopen, layouting, path ambiguity, edge / GraphLink / alias choice, or worker handoff, route it through Map Manager before mutation.
 
@@ -62,146 +80,38 @@ The agent must not begin work until it can state, in its own words:
 
 If this context check is missing, the task is considered not started.
 
-## Definition of Update-Complete
+## Director to Codex Workflow
 
-A task is update-complete only when all required state sync is done:
+1. Claude Director reads scope and current status.
+2. Claude Director defines one smallest deliverable task.
+3. Claude Director creates a task worktree when writes are needed:
+   ```bash
+   scripts/ops/worktree.sh new <task>
+   ```
+4. Claude Director dispatches Codex:
+   ```bash
+   # Investigation / search
+   scripts/codex.sh exec --sandbox read-only "<handoff>" < /dev/null
 
-1. Changes are committed.
-2. Shared map state / task state is updated when the task affects ongoing coordination.
-3. Current status is updated by manager (`docs/00_Home/Current_Status.md`) when status has changed.
+   # Implementation
+   ( cd "$HOME/dev/M3E-<task>" && scripts/codex.sh exec "<handoff>" < /dev/null )
+   ```
+5. Codex implements with minimal changes, verifies, commits, pushes `codex/<task>`, and opens a PR to `dev-beta`.
+6. Claude Director reviews and decides merge / iterate / escalate.
+7. Claude Director removes the task worktree after merge.
 
-If any item is missing, task state is still in-progress.
+Always invoke Codex via `scripts/codex.sh exec ... < /dev/null`.
 
-## Agent Team
+## Worktree Rules
 
-3体のエージェントを Agent Teams で並列実行する。
-各エージェントは `.claude/agents/` に定義。Manager (manage) がチームリーダー。
+- Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly here.
+- Each code-writing Codex task runs at `$HOME/dev/M3E-<task>`.
+- Each task branch is `codex/<task>`, branched from `dev-beta`.
+- PR target is `dev-beta`.
+- Use `scripts/ops/worktree.sh new/list/clean/rm`.
+- Do not use obsolete role branches (`dev-visual`, `dev-data`, `dev-team`) for new work.
 
-### Agent Definitions
-
-| Agent | File | Branch | Scope |
-|-------|------|--------|-------|
-| visual | `.claude/agents/visual.md` | dev-visual | UI, rendering, CSS, SVG |
-| data | `.claude/agents/data.md` | dev-data | model, controller, API |
-| team | `.claude/agents/team.md` | dev-team | collab, cloud sync |
-
-### How to Launch
-
-```
-1. TeamCreate(team_name: "m3e-dev", description: "M3E development team")
-2. TaskCreate で作業タスクを登録
-3. Agent(team_name: "m3e-dev", name: "visual", subagent_type: "visual")
-   Agent(team_name: "m3e-dev", name: "data",   subagent_type: "data")
-   Agent(team_name: "m3e-dev", name: "team",   subagent_type: "team")
-```
-
-各エージェントは `isolation: worktree` で独立したコピーで作業する。
-タスクの正本は M3E マップ `M:(開発)> SYSTEM > DEV >> strategy` と `docs/06_Operations/Todo_Pool.md` の text pool。
-メンバーは `SendMessage` で互いに通信可能。
-
-### Team Communication
-
-| 方法 | 用途 |
-|------|------|
-| `SendMessage(to: "visual")` | 特定メンバーへ指示・質問 |
-| `SendMessage(to: "*")` | 全員へブロードキャスト（コスト高、慎重に） |
-| `TaskCreate` / `TaskUpdate` | タスクの作成・状態更新・アサイン |
-| `TaskList` | 全タスクの状態確認 |
-
-### Shared State (Mindmap)
-
-揮発的な情報は M3E マップの `M:(開発)> SYSTEM > DEV` 配下で共有する（canvas-protocol 準拠）:
-
-```
-M:(開発)> SYSTEM > DEV
-├── strategy/       ← タスクボード（判断はここ。goal/task を枝で詳細化）
-├── reviews/        ← 判断待ちキュー Qn（akaghef が selected="yes" で確定）
-├── decisions/      ← 確定済み判断（reviews から移送）
-├── Agent Status/   ← 各 sub-agent の現在状態
-└── scratch/        ← 一時メモ・アイデア
-```
-
-エージェントは REST API (`http://localhost:4173/api/maps`) 経由で map を discovery し、対象 `mapId` を確認して読み書きする（beta=4173 が default、final=38482 は確認時のみ）。
-設計判断が必要な場合:
-1. エージェントが `dev M3E/design/` に context + options を書く
-2. `SendMessage` で manager に通知
-3. Manager がマインドマップ上で verdict を書く
-4. エージェントに続行を指示
-
-### Integration Flow
-
-```
-1. Manager が TeamCreate → TaskCreate でタスク登録
-2. Agent が共有タスクリストから claim → worktree で作業
-3. Agent が dev-{role} ブランチにコミット・プッシュ → PR 作成
-4. Agent が SendMessage で manager に完了通知
-5. Manager が PR レビュー・マージ
-6. Agent が次タスクを claim → rebase → 作業再開
-```
-
-### Shutdown
-
-作業完了時:
-```
-SendMessage(to: "*", message: { type: "shutdown_request" })
-TeamDelete()
-```
-
-## Session Start Gate (One-Time Enforcement)
-
-At session start, run one bootstrap command, then proceed with normal work.
-Do not repeatedly re-run full checks every step.
-
-For agents that support slash prompts:
-
-- `/setrole visual`
-- `/setrole data`
-- `/setrole team`
-- `/setrole manage`
-
-For Codex on macOS / Linux:
-
-Do **not** call the PowerShell bootstrap. Run shell-native checks and read the
-mandatory context files directly:
-
-```bash
-pwd
-git status --short --branch
-git branch --show-current
-sed -n '1,220p' docs/00_Home/Agent_Brief.md
-sed -n '1,220p' docs/00_Home/Current_Status.md
-sed -n '1,220p' docs/00_Home/Glossary.md
-```
-
-For subordinate roles only, sync with `origin/dev-beta` before implementation:
-
-```bash
-git fetch origin
-git rebase origin/dev-beta
-```
-
-For Codex on Windows / PowerShell:
-
-```powershell
-pwsh -File scripts/ops/setrole.ps1 visual
-# or data / team / manage
-```
-
-Required checks performed by bootstrap or shell-native session gate:
-
-1. Role confirmation.
-2. Worktree/directory alignment.
-3. Branch alignment.
-4. For subordinates: `fetch + rebase origin/dev-beta` before new implementation work.
-5. Mandatory session context paths are shown and must be read before implementation.
-6. Agent must emit a short context check before proceeding.
-
-### Development-Start Worktree Escalation Gate
-
-At the start of any development implementation cycle, the agent must verify that
-the current directory is the expected Git worktree for the active role.
-
-Required check:
+Required check before implementation dispatch:
 
 ```bash
 git worktree list --porcelain
@@ -209,80 +119,57 @@ git branch --show-current
 pwd
 ```
 
-Rules:
+## Definition of Update-Complete
 
-1. `manage` may work from the primary `M3E` worktree on `dev-beta`.
-2. `visual`, `data`, `data2`, and `team` must work from their role worktree
-   or an explicitly isolated agent worktree, never silently from the primary
-   `dev-beta` worktree.
-3. If the expected worktree is missing, stale, prunable, on the wrong branch, or
-   the current system cannot actually use the worktree, stop before
-   implementation and escalate to `akaghef`.
-4. Reading, diagnosis, and planning may continue while escalated; code or doc
-   mutation for the development task must wait for worktree alignment.
+A task is update-complete only when all required state sync is done:
 
-If checks fail or rebase is not possible, stop and escalate to `akaghef`.
+1. Changes are committed.
+2. PR to `dev-beta` is created for code-writing Codex tasks.
+3. Shared map state / task state is updated when the task affects ongoing coordination.
+4. `docs/00_Home/Current_Status.md` is updated by Director only when active strategy status has changed.
 
-## Agent Workflow
-
-1. Read scope and current status.
-2. Pick one smallest deliverable task.
-3. Implement with minimal changes.
-4. Run a local verification step.
-5. Update docs using split ownership:
-   - `Current_Status.md` keeps current snapshot only.
-   - Subordinates treat `Current_Status.md` as read-only.
-   - Manager updates `Current_Status.md` when active strategy status actually changes.
-   - Rough TODOs go to `docs/06_Operations/Todo_Pool.md`.
-6. Commit with an imperative message.
+If any item is missing, task state is still in-progress.
 
 ## Branch Operation Policy
 
-1. On branches starting with `dev-`, agents may perform branch operations autonomously.
-2. Allowed without per-step confirmation: create/switch `dev-*` branches, stage changes, commit, and push.
-3. Exceptions that still require explicit confirmation:
-   - destructive history rewrite (force-push, arbitrary history rewrite)
-   - `reset --hard` outside of the mandatory sync step (i.e. not `reset --hard origin/dev-beta` at session start)
-   - operations on `main` or release branches
-   - secret/credential related operations
+Codex task branches use `codex/<task>`.
+
+Allowed without per-step confirmation on `codex/*` branches:
+
+- create task branch/worktree via `scripts/ops/worktree.sh`
+- stage changes
+- commit
+- push
+- create PR to `dev-beta`
+
+Still require explicit confirmation:
+
+- destructive history rewrite or force-push
+- `reset --hard`
+- operations on `main` or release branches
+- secret/credential related operations
 
 ## beta_update
 
 A task is **beta_update-complete** when all three steps are done in order:
 
-1. `git commit` — changes committed on the current role branch.
-2. `git push origin <branch>` — branch pushed to remote.
-3. PR created with base `dev-beta` — opened and ready for manager review.
+1. `git commit` — changes committed on `codex/<task>`.
+2. `git push origin codex/<task>` — branch pushed to remote.
+3. PR created with base `dev-beta` — opened and ready for Director review.
 
-Use this term to refer to the full handoff sequence. Subordinates run `beta_update` at the end of each task cycle; manager (`claude`) does not run `beta_update` (managers merge, not PR).
-
-## Mandatory Integration Protocol (Subordinate -> PR -> Manager -> Resume)
-
-1. Subordinate agents (visual, data, team) implement and push only to assigned branches (`dev-visual`, `dev-data`, `dev-team`).
-2. Subordinates create a PR with base `dev-beta` from their assigned branch.
-3. Manager reviews and merges the PR into `dev-beta`.
-4. Before a subordinate starts the next task cycle, they MUST sync latest `dev-beta` by rebasing.
-5. Subordinates must not resume implementation on stale history.
-
-Recommended command sequence for subordinates:
-
-```bash
-git fetch origin
-git checkout dev-visual   # or dev-data / dev-team
-git rebase origin/dev-beta
-```
-
-If rebase fails or produces unexpected state, stop and escalate to `akaghef`.
+Claude Director reviews and merges; Codex does not merge its own PR.
 
 ## Development Phase Constraints
 
-### Beta (beta/) — Active
+### Beta (`beta/`) — Active
+
 1. Infrastructure and test environment are top priority.
 2. AI proposal features are deferred.
 3. Data-safe operations are top priority.
 4. Prefer stable, operable UI over architecture expansion.
 
-### Final (final/) — Stable
+### Final (`final/`) — Stable
+
 1. Only receives validated code from Beta via `migrate-from-beta.bat`.
 2. No direct development in `final/`.
 3. All data migrations must be scripted and reversible.

@@ -1,5 +1,7 @@
 # Documentation Rules
 
+最終更新: 2026-06-14
+
 ## Language Policy
 
 - 会話は英語を基本とする
@@ -11,31 +13,56 @@
 
 開発中の会話、試行、決定を散らさず保存し、あとで読んだときに「何が決まっていて、何がまだ決まっていないか」がすぐ分かる状態を保つ。
 
-## 現在の運用スコープ（2026-04-22 以降）
+## 現在の運用スコープ
 
 1. `Current_Status.md` は「今後数日の Strategy 断面」のみ保持する
 2. 粗い TODO は `docs/06_Operations/Todo_Pool.md` にプールする
 3. 日次ログ (`docs/daily/YYMMDD.md`) は必須更新対象から外す
 4. 役割分担:
-	- 部下: 実装・検証・必要な map / task 状態更新を行う。`Current_Status.md` は read-only として扱う
-	- 上司: active strategy の status が変わったときに `Current_Status.md` を更新する
-5. 作業領域は worktree で分離し、同一ファイルの同時編集を避ける
+   - Claude Director: intent 分解、Codex handoff、worktree / PR 管理、レビュー、必要時の `Current_Status.md` 更新
+   - Codex worker: 実装、仕様書き、調査、検証、必要な map / task 状態更新
+5. 作業領域は Codex task worktree で分離し、同一ファイルの同時編集を避ける
 
-## セッション開始ゲート（全エージェント共通）
+Claude sub-agent worker (`manage` / `visual` / `data` / `team`) は廃止済み。
 
-セッション開始時に 1 回だけ role/session gate を実行する。
+## セッション開始ゲート
 
-- slash prompt 対応エージェント: `/setrole visual|data|data2|team|manage`
-- Windows / PowerShell 上の通常 codex: `pwsh -File scripts/ops/setrole.ps1 -Role visual|data|data2|team|manage`
-- macOS / Linux 上の通常 Codex: PowerShell bootstrap は呼ばず、shell-native に `pwd` / `git status --short --branch` / `git branch --show-current` と mandatory context 読み込みを行う
+セッション開始時に 1 回だけ context gate を実行する。
 
-bootstrap または shell-native session gate で次を必須確認する:
+```bash
+pwd
+git status --short --branch
+git branch --show-current
+sed -n '1,220p' docs/00_Home/Agent_Brief.md
+sed -n '1,220p' docs/00_Home/Current_Status.md
+sed -n '1,220p' docs/00_Home/Glossary.md
+```
 
-1. role と worktree の整合
-2. role と branch の整合
-3. manage 以外は新規実装前に `fetch + rebase origin/dev-beta`（`reset --hard` は使わない）
+Claude Director は加えて次を読む:
+
+- `CLAUDE.md`
+- `docs/06_Operations/Director_Playbook.md`
 
 毎ステップで全ルールを再確認する運用はしない。開始時ゲート後は軽量チェックで継続する。
+
+## Worktree Gate
+
+Code-writing Codex tasks use:
+
+- path: `$HOME/dev/M3E-<task>`
+- branch: `codex/<task>`
+- base: `dev-beta`
+- helper: `scripts/ops/worktree.sh`
+
+Before implementation dispatch:
+
+```bash
+git worktree list --porcelain
+git branch --show-current
+pwd
+```
+
+Primary checkout `$HOME/dev/M3E` is for Director coordination and operating-document maintenance. Product implementation happens in task worktrees.
 
 ## 仕様・設計フェーズでのテスト計画（MUST）
 
@@ -45,8 +72,6 @@ bootstrap または shell-native session gate で次を必須確認する:
 - 最低限: 正常系 / 境界 / 失敗系 の 3 観点を明示
 - テストが不明瞭なまま実装タスクに分解しない。曖昧なら `reviews/Qn` 起票
 - 実装完了 = テスト pass を含む（単体テスト・必要なら E2E）
-
-**Why**: テスト不明瞭のまま着手すると「完了」判定がブレる。
 
 ## 基本原則
 
@@ -102,64 +127,33 @@ bootstrap または shell-native session gate で次を必須確認する:
 
 `Promoted` には、正式文書へ反映した先のパスを書く。未反映なら `-` にする。
 
-## 運用ルール
+## 更新完了の定義
 
-### 更新完了の定義
-
-M3E では、次の 3 条件を満たした時点を「更新完了」とする。
+M3E では、次を満たした時点を「更新完了」とする。
 
 1. コードまたは文書の変更がコミットされている
-2. マップ (`DEV/strategy/` のタスクノード、`DEV/Agent Status`) が現状を反映している
-3. manager は必要に応じて `00_Home/Current_Status.md` を更新する（manager 以外は対象外）
+2. code-writing Codex task では PR が `dev-beta` に作成されている
+3. マップ (`DEV/strategy/` など) が現状を反映している（task が coordination state に影響する場合）
+4. Claude Director は必要に応じて `00_Home/Current_Status.md` を更新する
 
-この 3 条件のうち 1 つでも未実施なら、作業は「進行中」として扱う。
+この条件のうち必要項目が未実施なら、作業は「進行中」として扱う。
 
-### 追加するタイミング
+## ブランチ運用
 
-- 会話の中で「これで進める」が出たとき
-- 実装前に前提を固定したとき
-- 曖昧さを発見して保留事項として残すとき
-
-### 昇格するタイミング
-
-- 実装がその前提に依存し始めたとき
-- 後から見返して理由が必要になると判断したとき
-- 同じ話題が複数回出てきたとき
-
-### 更新のしかた
-
-- 既存項目を上書きで消さず、状態更新で残す
-- 方針変更時は `superseded` を使い、後継項目を追加する
-- 長くなりすぎる議論は別文書に切り出し、プール側からリンクする
-
-### セッション開始ゲート（1回だけ強制）
-
-1. セッション開始時に次を 1 回だけ確認する
-	- 現在ブランチ
-	- worktree / 作業ディレクトリ
-	- 当サイクルで編集可能な文書責務
-2. その後は軽量チェックのみ継続する
-	- ブランチと編集対象の整合
-3. 毎ステップで全ルールを再確認する運用はしない
-
-### ブランチ運用 (dev 系)
-
-- `dev-` で始まるブランチでは、エージェントは確認待ちなしで次を実行してよい:
-	- ブランチ作成/切替
-	- `add` / `commit` / `push`
+- 新規作業ブランチは `codex/<task>` とする
+- `codex/*` では、Codex は handoff scope 内で `add` / `commit` / `push` / PR 作成を実行してよい
 - ただし次は明示確認が必要:
-	- 履歴破壊操作 (`reset --hard`, 強制 push, 履歴書き換え)
-	- `main` / release ブランチへの直接操作
-	- 機密情報に関わる操作
+  - 履歴破壊操作 (`reset --hard`, 強制 push, 履歴書き換え)
+  - `main` / release ブランチへの直接操作
+  - 機密情報に関わる操作
 
-### 統合フロー（部下 -> PR -> 上司 -> 再開）
+## 統合フロー
 
-1. sub-agent（`visual` / `data` / `data2` / `team`）は担当ブランチ (`dev-<role>`) に push する。
-2. sub-agent は base `dev-beta` への PR を作成する。
-3. manager が PR を確認して `dev-beta` に merge する。
-4. sub-agent は次の作業再開前に `origin/dev-beta` を基準として自分の担当ブランチを rebase する。
-5. stale なブランチで作業を再開しない。
-6. rebase で安全に解消できない競合が出た場合は停止してエスカレーションする。
+1. Claude Director が task worktree と `codex/<task>` branch を用意する
+2. Claude Director が Codex を dispatch する
+3. Codex が変更・検証・commit・push・PR 作成を行う
+4. Claude Director が PR を確認して `dev-beta` への merge / iterate / escalate を判断する
+5. merge 後、Claude Director が task worktree を削除する
 
 ## 軽い担当ルール
 

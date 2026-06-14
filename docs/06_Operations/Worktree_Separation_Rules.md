@@ -1,80 +1,54 @@
-# Worktree 分離運用ルール
+# Worktree Separation Rules
 
 最終更新: 2026-06-14
 
----
+## Purpose
 
-## 目的
+Codex implementation tasks must be isolated so `dev-beta` remains the integration branch and unrelated work does not mix.
+The old role worktree model (`dev-visual` / `dev-data` / `dev-team`) is superseded.
 
-AI エージェント並行開発時のブランチ混在を防ぐため、ロールごとに Git worktree を分離して運用する。
+## Canonical Model
 
----
+- Director: Claude.
+- Worker: Codex (`codex exec`).
+- Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly here.
+- Task worktree: `$HOME/dev/M3E-<task>`.
+- Task branch: `codex/<task>`.
+- PR base: `dev-beta`.
+- Helper: `scripts/ops/worktree.sh`.
 
-## 役割と担当ブランチ
+## Worktree Lifecycle
 
-正規ロール名は `visual / data / data2 / team / manage` （`00_Home/Glossary.md` 参照）。
+```bash
+scripts/ops/worktree.sh new <task>
+scripts/ops/worktree.sh list
+scripts/ops/worktree.sh clean
+scripts/ops/worktree.sh rm <task>
+```
 
-| ロール | ブランチ | 責務 |
-|---|---|---|
-| `manage` | `dev-beta` | マージ、仕様、タスク管理、final 反映 |
-| `visual` | `dev-visual` | UI・描画・CSS・SVG |
-| `data` | `dev-data` | model・controller・API・永続化 |
-| `data2` | `dev-data2` | data 領域の並列作業用 |
-| `team` | `dev-team` | 協働・Cloud Sync |
+Rules:
 
-`akaghef`（人間）は全体レビューと判断。
+1. Branch each task from current `dev-beta`.
+2. Run code-writing Codex tasks inside the task worktree only.
+3. Run investigation-only Codex tasks with read-only sandbox when no writes are needed.
+4. After PR merge, remove the task worktree with `scripts/ops/worktree.sh rm <task>`.
+5. Never force-remove a worktree with uncommitted work; escalate to akaghef.
 
----
+## Director Dispatch
 
-## ディレクトリ割り当て
+```bash
+# Investigation / search
+scripts/codex.sh exec --sandbox read-only "<handoff>" < /dev/null
 
-**2系統併用**:
+# Implementation
+( cd "$HOME/dev/M3E-<task>" && scripts/codex.sh exec "<handoff>" < /dev/null )
+```
 
-### 1. 持続 worktree（人間が VS Code で開く）
+Always include `< /dev/null`; otherwise Codex can block on stdin.
 
-| ロール | パス |
-|---|---|
-| manage | `C:/Users/Akaghef/dev/M3E` |
-| visual | `C:/Users/Akaghef/dev/M3E-dev-visual` |
-| data | `C:/Users/Akaghef/dev/M3E-dev-data` |
-| data2 | `C:/Users/Akaghef/dev/M3E-dev-data2` |
-| team | `C:/Users/Akaghef/dev/M3E-dev-team` |
+## Required Checks
 
-各担当は自分のディレクトリのみを VS Code で開く。
-
-### 2. Agent 一時 worktree（サブエージェント専用）
-
-`C:/Users/Akaghef/dev/M3E/.claude/worktrees/agent-<hash>`
-
-- サブエージェント起動時に自動生成される
-- 作業完了（merge / 破棄）後に掃除
-- 人間は通常開かない
-
----
-
-## セッション開始ゲート（setrole）
-
-Windows / PowerShell では `scripts/ops/setrole.ps1 -Role <role>` で以下を自動実行:
-
-1. 対象 worktree に `cd`
-2. ブランチ整合確認（`dev-<role>` になっているか）
-3. `git fetch origin`
-4. `git rebase origin/dev-beta`（未コミット変更があれば中断）
-
-macOS / Linux の通常 Codex では PowerShell bootstrap を呼ばない。代わりに shell-native に `pwd`、`git status --short --branch`、`git branch --show-current`、mandatory context 読み込みを行い、manage 以外の role だけ `git fetch origin` と `git rebase origin/dev-beta` を実行する。
-
-**重要**: `reset --hard` は使わない（作業消失防止）。rebase が競合した場合は手動解決。
-
-持続 worktree が未作成ならセットアップ手順（後述）で作る。
-
----
-
-## 開発開始時の worktree エスカレーションゲート
-
-開発実装を始めるたびに、role と Git worktree の対応を先に確認する。
-現在の実行環境が worktree を実際に使えていない場合は、実装へ進まず `akaghef` にエスカレーションする。
-
-開始時チェック:
+Before implementation dispatch:
 
 ```bash
 git worktree list --porcelain
@@ -82,60 +56,18 @@ git branch --show-current
 pwd
 ```
 
-判定ルール:
+Acceptable implementation state:
 
-1. `manage` は primary worktree `M3E` の `dev-beta` で作業してよい。
-2. `visual` / `data` / `data2` / `team` は、対応する持続 worktree または明示的に分離された agent worktree でのみ実装する。
-3. sub-agent が primary worktree `M3E` / `dev-beta` にいる、期待 worktree がない、branch が違う、`git worktree list` に `prunable` が出る、またはシステム都合で worktree を使えない場合は、実装前に停止して `akaghef` へエスカレーションする。
-4. エスカレーション中に許可されるのは読み取り・診断・計画まで。code / docs の変更は worktree 整合後に行う。
+- `pwd` is `$HOME/dev/M3E-<task>`.
+- branch is `codex/<task>`.
+- worktree was created from `dev-beta`.
 
----
+The primary checkout `$HOME/dev/M3E` is acceptable for Director coordination and operating-document maintenance only.
 
-## 日次運用ルール
+## Integration
 
-1. 作業開始時に現在ブランチを確認: `git branch --show-current`
-2. pull / test / commit / push は必ず担当 worktree 内で実行
-3. 役割外のブランチに切り替えない。必要時は akaghef にエスカレーション
-
----
-
-## 変更・マージ方針
-
-- `dev-<role>` の成果は `dev-beta` に PR 経由で統合（`pr-beta` skill）
-- `final/` への反映は `launch-final` skill 経由のみ
-- `main` / release 系ブランチでの破壊的操作（history rewrite、force-push）は禁止
-
-### 強制プロトコル（sub-agent → manager → 再開）
-
-1. sub-agent は担当ブランチへ push
-2. manager (`dev-beta`) が PR を merge
-3. sub-agent は次サイクル着手前に `origin/dev-beta` を担当ブランチへ rebase
-4. rebase 未実施の状態で実装を再開してはならない
-
-```bash
-git fetch origin
-git checkout dev-<role>
-git rebase origin/dev-beta
-```
-
----
-
-## 初期セットアップ（持続 worktree 未作成時）
-
-```bash
-git worktree add ../M3E-dev-visual dev-visual
-git worktree add ../M3E-dev-data dev-data
-git worktree add ../M3E-dev-data2 dev-data2
-git worktree add ../M3E-dev-team dev-team
-```
-
-状態確認: `git worktree list`
-
----
-
-## 運用チェックリスト（最小）
-
-- [ ] 正しいディレクトリを開いている
-- [ ] `git branch --show-current` が担当ブランチになっている
-- [ ] `git status` が想定どおりである
-- [ ] テスト実行後に commit / push している
+1. Codex commits in `codex/<task>`.
+2. Codex pushes `codex/<task>`.
+3. Codex opens a PR targeting `dev-beta`.
+4. Claude Director reviews and decides merge / iterate / escalate.
+5. After merge, Claude Director removes the task worktree.

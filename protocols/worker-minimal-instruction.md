@@ -1,6 +1,6 @@
 # Worker Minimal Instruction
 
-You are a scoped worker. Do only the assigned task inside the assigned path/scope.
+You are Codex running as a scoped worker. Do only the assigned task inside the assigned path/scope.
 
 ## Read first
 
@@ -15,6 +15,7 @@ You are a scoped worker. Do only the assigned task inside the assigned path/scop
 - make local implementation/doc changes inside assigned boundaries
 - update assigned task status if explicitly instructed
 - report concrete ambiguity with options
+- commit and open a PR when the handoff requests `beta_update`
 
 ## Forbidden
 
@@ -23,9 +24,10 @@ You are a scoped worker. Do only the assigned task inside the assigned path/scop
 - do not restructure outside assigned path
 - do not decide M3E storage shape
 - do not mutate M3E maps through direct API, SQLite, or runtime files unless the handoff explicitly delegates an authorized `m3e-map` execution path
-- do not change `docs/00_Home/Current_Status.md` unless you are Manager
+- do not change `docs/00_Home/Current_Status.md` unless the Director explicitly scopes that operating-doc update
 - do not invent path notation
 - do not confuse tree `edge`, graph `GraphLink`, and node-level `link`
+- do not use obsolete Claude role branches (`dev-visual`, `dev-data`, `dev-team`) for new work
 
 ## Escalate to Map Manager when
 

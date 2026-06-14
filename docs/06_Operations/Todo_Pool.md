@@ -70,10 +70,10 @@
 
 - Date: 2026-04-08
 - Topic: T4 — Cloud Sync conflict 時の diff 表示 + 確認ダイアログ
-- Owner: visual
+- Owner: Codex
 - State: ready
 - Link: `docs/tasks/handoff_cloud_sync_conflict_ui.md`
-- Note: visual にハンドオフ済み。ヒアリングセッションで詳細を詰めてから着手
+- Note: UI/rendering scope。ヒアリングセッションで詳細を詰めてから Codex に handoff
 
 ---
 
@@ -182,7 +182,7 @@
 
 - Date: 2026-04-15
 - Topic: スコープビュー実装
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: `docs/03_Spec/Scope_Transition.md`
 - Note: Rapid band 中核機能。AkaghefAlgebra 移植中の要件抽出後に着手
@@ -218,7 +218,7 @@
 
 - Date: 2026-04-13
 - Topic: ドキュメント名の明示表示
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: -
 - Note: UI 上で埋もれている。ヘッダー／タブ／ブレッドクラムのどれかは要検討
@@ -227,7 +227,7 @@
 
 - Date: 2026-04-07
 - Topic: Rapid 操作性調整（Band_Spec 連動）
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: `docs/03_Spec/Band_Spec.md`
 - Note: 旧 mvp は削除済み。beta 側で継続
@@ -236,7 +236,7 @@
 
 - Date: 2026-04-07
 - Topic: Visual polish（spacing, edge curvature, selected-state contrast, long text）
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: -
 - Note: todo_by_role.md から統合
@@ -245,7 +245,7 @@
 
 - Date: 2026-04-07
 - Topic: Fit-to-content / Focus-selected アクション実装
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: -
 - Note: P4
@@ -254,7 +254,7 @@
 
 - Date: 2026-04-07
 - Topic: 帯域切り替え UI（Flash/Rapid/Deep）
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: `docs/03_Spec/Band_Spec.md`
 
@@ -262,7 +262,7 @@
 
 - Date: 2026-04-07
 - Topic: 重要度ビュー実装
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: -
 
@@ -270,7 +270,7 @@
 
 - Date: 2026-04-07
 - Topic: reparent UI 改善（ドロップターゲットハイライト + 拒否メッセージ）
-- Owner: visual
+- Owner: Codex
 - State: pooled
 - Link: -
 
@@ -278,7 +278,7 @@
 
 - Date: 2026-04-07
 - Topic: ViewState と PersistedDocument の完全切り離し
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: -
 
@@ -286,7 +286,7 @@
 
 - Date: 2026-04-07
 - Topic: 具象軸（抽象ノード↔具象ノード）をモデルに組み込む
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: -
 
@@ -294,7 +294,7 @@
 
 - Date: 2026-04-07
 - Topic: Imported metadata レンダリング（メタ情報を UI へ）
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: -
 
@@ -302,7 +302,7 @@
 
 - Date: 2026-04-07
 - Topic: Flash 実装（data 層: データ構造・永続化 / visual 層: レンダリング・インタラクション）
-- Owner: data + visual
+- Owner: Codex
 - State: pooled
 - Link: `docs/03_Spec/Band_Spec.md`
 
@@ -310,7 +310,7 @@
 
 - Date: 2026-04-07
 - Topic: AI コマンド操作インターフェース設計
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: `docs/03_Spec/AI_Common_API.md`
 
@@ -318,7 +318,7 @@
 
 - Date: 2026-04-07
 - Topic: AI integration 基盤設計（オフライン優先）
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: `docs/04_Architecture/AI_Infrastructure.md`
 
@@ -326,7 +326,7 @@
 
 - Date: 2026-04-07
 - Topic: Local/Cloud データ同期（HTTPS+Bearer, E2E 暗号化）
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: `docs/03_Spec/Cloud_Sync.md`
 - Note: P1。送受信 E2E 暗号化
@@ -335,7 +335,7 @@
 
 - Date: 2026-04-07
 - Topic: 同期用 E2E 暗号化（AES-256-GCM、~/.m3e/sync.key）
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: -
 - Note: Node.js 組み込み crypto のみ。PUT 前に暗号化・GET 後に復号
@@ -344,7 +344,7 @@
 
 - Date: 2026-04-07
 - Topic: delete confirmation（非葉ノード削除時の確認 UI）
-- Owner: data
+- Owner: Codex
 - State: pooled
 - Link: -
 

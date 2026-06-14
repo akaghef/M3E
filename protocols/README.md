@@ -4,11 +4,18 @@ This directory is the canonical home for AI operating protocols in M3E / Akaghef
 
 ## What belongs here
 
-- How agents read/write maps
-- How Map Manager scopes, layouts, and delegates work
-- How worker agents receive minimal instructions
-- How Codex / Claude / GPT Pro handoffs stay consistent
-- Machine-checkable operating contracts under `contracts/`
+- How Codex reads/writes maps when delegated.
+- How Map Manager scopes, layouts, and gates map mutations.
+- How scoped Codex workers receive minimal instructions.
+- How handoff packets stay consistent across Claude Director, Codex, and GPT Pro.
+- Machine-checkable operating contracts under `contracts/`.
+
+## Current Operating Model
+
+- Claude is Director only.
+- Codex (`codex exec`) is the sole worker for implementation, spec writing, refactoring, and investigation.
+- Old Claude sub-agent workers (`manage` / `visual` / `data` / `team`) are superseded.
+- Claude-facing procedure lives in `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md`.
 
 ## What does not belong here
 

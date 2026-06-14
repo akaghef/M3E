@@ -1,69 +1,38 @@
-# Agent Roles Proposal
+# Agent Roles
 
-## Purpose
+最終更新: 2026-06-14
 
-Define a practical role split so agents can execute MVP work autonomously with minimal coordination overhead.
+## Operating Model
 
-## Roles
+M3E の AI 運用は Director to Codex model に統一する。
 
-### 1. Product Orchestrator
+| Role | Actor | Does | Must not do |
+|---|---|---|---|
+| Director | Claude | intent 分解、Codex handoff 作成、worktree / PR 管理、レビュー、反復指示 | product code / spec / investigation の hands-on 作業 |
+| Worker | Codex (`codex exec`) | 実装、仕様書き、調査、検索、リファクタ、テスト、コミット、PR 作成 | Director 判断の代行、scope 外変更、未承認の破壊的操作 |
+| Owner | akaghef | 判断、優先順位、受け入れ、例外承認 | なし |
 
-Scope:
-- Prioritize next smallest MVP task.
-- Keep `Current_Status.md` aligned with real progress.
-- Decide defer vs now for non-critical work.
+Canonical Claude-facing sources:
 
-Outputs:
-- Updated priority list.
-- Clear one-task sprint target.
+- `CLAUDE.md`
+- `docs/06_Operations/Director_Playbook.md`
 
-### 2. Rapid Implementer
+## Deprecated Model
 
-Scope:
-- Implement viewer/model features in smallest vertical slices.
-- Keep behavior simple and operable.
-- Avoid unrelated refactors.
+旧モデルの Claude sub-agent (`manage` / `visual` / `data` / `team`) は廃止済み。
+Claude は sub-agent worker を起動しない。
+`dev-visual` / `dev-data` / `dev-team` の role branch 運用も新規作業には使わない。
 
-Outputs:
-- Working code changes.
-- Basic smoke verification notes.
+## Execution Sequence
 
-### 3. Quality Gatekeeper
+1. Claude Director が intent を確認し、必要なら要求を分割する。
+2. Claude Director が `scripts/ops/worktree.sh new <task>` で task worktree を作る。
+3. Claude Director が worktree 内で `scripts/codex.sh exec ... < /dev/null` を実行する。
+4. Codex が調査・変更・検証・コミット・PR 作成を行う。
+5. Claude Director が PR / diff / 検証結果をレビューし、merge / iterate / escalate を判断する。
 
-Scope:
-- Check regressions in core operations (add/edit/delete/reparent/save/load).
-- Run repeatable quick checks.
-- Flag risky changes before merge.
+## Scope Reference
 
-Outputs:
-- Pass/fail checklist.
-- Short risk notes.
-
-### 4. Documentation Steward
-
-Scope:
-- Update daily logs and status docs.
-- Maintain operation rules and decision traceability.
-- Ensure update-complete criteria are met.
-
-Outputs:
-- Daily entry updates.
-- Status/ToDo synchronization.
-
-## Recommended Execution Sequence Per Task
-
-1. Product Orchestrator defines one concrete task.
-2. Rapid Implementer executes code changes.
-3. Quality Gatekeeper validates behavior.
-4. Documentation Steward updates docs and closes cycle.
-
-## Ready-to-Use Task Assignment (Current)
-
-1. Product Orchestrator:
-   - Define next task: viewer reparent interaction.
-2. Rapid Implementer:
-   - Implement drag/key-based reparent with cycle guard.
-3. Quality Gatekeeper:
-   - Verify add/edit/delete/reparent/save/load scenario.
-4. Documentation Steward:
-   - Update daily + current status + commit record.
+旧 `visual` / `data` / `team` 定義に含まれていた有用な担当領域は、
+実行ロールではなく handoff scope 設計用の参照として
+`docs/06_Operations/Codex_Task_Scope_Reference.md` に保存する。

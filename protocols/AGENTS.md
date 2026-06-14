@@ -5,15 +5,17 @@
 ## Precedence
 
 1. User instruction and safety constraints
-2. Repo root `AGENTS.md` and branch/worktree policy
-3. `protocols/*.md`, `protocols/map-manager/`, and `protocols/contracts/*.yaml`
-4. Tool skills under `.codex/skills/*` and `.claude/skills/*`
-5. Handoff packets
+2. `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md` for Claude Director behavior
+3. Repo root `AGENTS.md` and branch/worktree policy
+4. `protocols/*.md`, `protocols/map-manager/`, and `protocols/contracts/*.yaml`
+5. Tool skills under `.codex/skills/*` and `.claude/skills/*`
+6. Handoff packets
 
 ## Editing rules
 
 - Markdown protocols explain human-readable behavior.
 - YAML contracts encode checkable triggers, must/must-not rules, escalation, and verification.
 - Do not duplicate product spec details here. Link to `docs/03_Spec/` instead.
+- Do not reintroduce Claude sub-agent workers; Claude is Director and Codex is the worker.
 - If a protocol changes behavior, update canonical skill source and rerun skill sync.
 - For Map Manager, add new behavior under `protocols/map-manager/`; keep `protocols/map-manager.md` as a compatibility pointer.

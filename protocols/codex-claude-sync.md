@@ -1,35 +1,41 @@
-# Codex / Claude Skill Sync Protocol
+# Codex / Claude Instruction Sync Protocol
 
 ## Goal
 
-Codex and Claude should obey the same M3E rules without hand-maintaining two divergent skill trees.
+Codex and Claude must see compatible M3E rules while preserving their different roles:
 
-## Source and mirrors
+- Claude = Director.
+- Codex = worker.
 
-Canonical source:
+## Canonical Operating Sources
+
+Claude-facing Director contract:
 
 ```text
-agent_instructions/skills_canonical/
+CLAUDE.md
+docs/06_Operations/Director_Playbook.md
 ```
 
-Mirrors:
+Shared operating protocols:
+
+```text
+AGENTS.md
+protocols/
+docs/06_Operations/AI_Instruction_Routing.md
+docs/06_Operations/Worktree_Separation_Rules.md
+```
+
+Skill mirrors, when present, are compatibility surfaces:
 
 ```text
 .codex/skills/
 .claude/skills/
-.agents/skills/   # migration compatibility if still needed
-```
-
-## Required commands
-
-```bash
-node tools/sync_agent_instructions.mjs --write
-node tools/sync_agent_instructions.mjs --check
+.agents/skills/
 ```
 
 ## Rules
 
-- edit canonical source only
-- generated mirrors must contain a generated header
-- CI fails if mirrors differ from canonical output
-- protocol changes that alter behavior must update skills in the same PR
+- Do not reintroduce Claude implementation workers.
+- Protocol changes that alter Codex behavior must update any relevant skill source or mirror in the same PR.
+- Generated mirrors must contain a generated header when the sync tool manages them.
+- If a mirror conflicts with `CLAUDE.md` or `Director_Playbook.md`, the canonical Director sources win for Claude behavior.
