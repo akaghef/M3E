@@ -102,9 +102,9 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const REPO_ROOT = path.resolve(ROOT, "..");
 const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "home.html";
-const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
+const DATA_DIR = path.join(ROOT, "data");
 const DEFAULT_DB_FILE = "data.sqlite";
-const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
+const DB_FILE = DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
@@ -139,13 +139,12 @@ interface ArtifactItem {
 }
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
-console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
-console.log(`[M3E] DB_FILE  = ${SQLITE_DB_PATH}`);
+console.log(`[M3E] DATA_DIR = ${currentDataDir()}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
+console.log(`[M3E] DB_FILE  = ${currentSqliteDbPath()}`);
 console.log(`[M3E] WORKSPACE = ${WORKSPACE_LABEL} (${WORKSPACE_ID})`);
 console.log(`[M3E] MAP = ${ACTIVE_MAP_LABEL} (${ACTIVE_MAP_ID}, slug=${ACTIVE_MAP_SLUG})`);
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
 let cloudSyncConfig = loadCloudSyncConfig();
-let CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
 const SYNC_STATUS_TIMEOUT_MS = Number(process.env.M3E_SYNC_STATUS_TIMEOUT_MS || "1500");
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
@@ -155,13 +154,16 @@ function currentDataDir(): string {
 }
 
 function currentSqliteDbPath(): string {
-  const dbFile = process.env.M3E_DB_FILE || DB_FILE;
+  const dbFile = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
   return path.join(currentDataDir(), dbFile);
+}
+
+function currentFirstRunMarker(): string {
+  return path.join(currentDataDir(), ".m3e-launched");
 }
 
 function refreshCloudSyncConfigFromEnv(): void {
   cloudSyncConfig = loadCloudSyncConfig();
-  CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
   cloudTransport = cloudSyncConfig.transport;
 }
 
@@ -966,7 +968,7 @@ async function handleHomeApi(
     if (route.kind === "list") {
       const url = new URL(req.url ?? "/", "http://localhost");
       const includeArchived = url.searchParams.get("includeArchived") === "true";
-      const maps = RapidMvpModel.listMaps(SQLITE_DB_PATH, { includeArchived }) as MapSummary[];
+      const maps = RapidMvpModel.listMaps(currentSqliteDbPath(), { includeArchived }) as MapSummary[];
       sendJson(res, 200, { maps });
       return true;
     }
@@ -993,18 +995,18 @@ async function handleHomeApi(
         return true;
       }
       const id = newDocId();
-      RapidMvpModel.createMap(SQLITE_DB_PATH, id, label && label.length > 0 ? label : "Untitled");
+      RapidMvpModel.createMap(currentSqliteDbPath(), id, label && label.length > 0 ? label : "Untitled");
       sendJson(res, 200, { ok: true, id });
       return true;
     }
 
     if (route.kind === "duplicate") {
-      if (!RapidMvpModel.mapExists(SQLITE_DB_PATH, route.mapId)) {
+      if (!RapidMvpModel.mapExists(currentSqliteDbPath(), route.mapId)) {
         sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
         return true;
       }
       const newId = newDocId();
-      RapidMvpModel.duplicateMap(SQLITE_DB_PATH, route.mapId, newId);
+      RapidMvpModel.duplicateMap(currentSqliteDbPath(), route.mapId, newId);
       sendJson(res, 200, { ok: true, id: newId });
       return true;
     }
@@ -1031,7 +1033,7 @@ async function handleHomeApi(
         return true;
       }
       try {
-        RapidMvpModel.renameMap(SQLITE_DB_PATH, route.mapId, label);
+        RapidMvpModel.renameMap(currentSqliteDbPath(), route.mapId, label);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Map not found.") {
@@ -1046,7 +1048,7 @@ async function handleHomeApi(
 
     if (route.kind === "archive" || route.kind === "restore") {
       try {
-        RapidMvpModel.setArchived(SQLITE_DB_PATH, route.mapId, route.kind === "archive");
+        RapidMvpModel.setArchived(currentSqliteDbPath(), route.mapId, route.kind === "archive");
       } catch (err) {
         if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
@@ -1076,7 +1078,7 @@ async function handleHomeApi(
         throw err;
       }
       try {
-        RapidMvpModel.setMapTags(SQLITE_DB_PATH, route.mapId, tags);
+        RapidMvpModel.setMapTags(currentSqliteDbPath(), route.mapId, tags);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Map not found.") {
@@ -1111,7 +1113,7 @@ async function handleHomeApi(
         throw err;
       }
       try {
-        RapidMvpModel.setPinned(SQLITE_DB_PATH, route.mapId, pinned);
+        RapidMvpModel.setPinned(currentSqliteDbPath(), route.mapId, pinned);
       } catch (err) {
         if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
@@ -1126,7 +1128,7 @@ async function handleHomeApi(
     if (route.kind === "bind-vault" || route.kind === "unbind-vault") {
       if (route.kind === "unbind-vault") {
         try {
-          RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, null);
+          RapidMvpModel.setMapSource(currentSqliteDbPath(), route.mapId, null);
         } catch (err) {
           if ((err as Error).message === "Map not found.") {
             sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
@@ -1157,7 +1159,7 @@ async function handleHomeApi(
 
       try {
         const resolvedVaultPath = validateVaultPath(vaultPath, { mustExist: true });
-        RapidMvpModel.setMapSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: resolvedVaultPath });
+        RapidMvpModel.setMapSource(currentSqliteDbPath(), route.mapId, { kind: "obsidian", path: resolvedVaultPath });
       } catch (err) {
         if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
@@ -1213,7 +1215,7 @@ async function handleHomeApi(
 
       const id = newDocId();
       const model = RapidMvpModel.fromJSON(state);
-      model.saveToSqlite(SQLITE_DB_PATH, id);
+      model.saveToSqlite(currentSqliteDbPath(), id);
       sendJson(res, 200, { ok: true, id });
       return true;
     }
@@ -1258,15 +1260,15 @@ async function handleHomeApi(
       const state = buildAppStateFromVault(vaultPath, rootLabel);
       const id = newDocId();
       const model = RapidMvpModel.fromJSON(state);
-      model.saveToSqlite(SQLITE_DB_PATH, id);
-      RapidMvpModel.setMapSource(SQLITE_DB_PATH, id, { kind: "obsidian", path: vaultPath });
+      model.saveToSqlite(currentSqliteDbPath(), id);
+      RapidMvpModel.setMapSource(currentSqliteDbPath(), id, { kind: "obsidian", path: vaultPath });
       sendJson(res, 200, { ok: true, id });
       return true;
     }
 
     if (route.kind === "delete") {
       try {
-        RapidMvpModel.deleteMap(SQLITE_DB_PATH, route.mapId);
+        RapidMvpModel.deleteMap(currentSqliteDbPath(), route.mapId);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Map not found.") {
@@ -1408,7 +1410,7 @@ async function handleLinearNoteApi(
 
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, mapId);
+    model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
     if (message === "Map not found.") {
@@ -1464,7 +1466,7 @@ async function handleLinearNoteApi(
       sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
       return;
     }
-    nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
+    nextModel.saveToSqlite(currentSqliteDbPath(), mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
     incrementMapVersion();
@@ -1491,7 +1493,7 @@ async function handleLinearNoteApi(
       sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
       return;
     }
-    nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
+    nextModel.saveToSqlite(currentSqliteDbPath(), mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
     incrementMapVersion();
@@ -1732,11 +1734,11 @@ async function handleFlashApi(
         }
 
         // Load model to commit nodes
-        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, draft.mapId);
+        const model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), draft.mapId);
         const result = approveDraft(route.draftId, request, model);
 
         // Save updated model
-        model.saveToSqlite(SQLITE_DB_PATH, draft.mapId);
+        model.saveToSqlite(currentSqliteDbPath(), draft.mapId);
 
         sendJson(res, 200, {
           ok: true,
@@ -1820,7 +1822,7 @@ async function handleVaultApi(
       validateVaultPath(request.vaultPath, { mustExist: true });
 
       beginSse(res);
-      const result = await importVaultToSqlite(SQLITE_DB_PATH, request, {
+      const result = await importVaultToSqlite(currentSqliteDbPath(), request, {
         onProgress(progress) {
           sendSseEvent(res, "vault-import-progress", progress);
         },
@@ -1853,7 +1855,7 @@ async function handleVaultApi(
       validateVaultPath(request.vaultPath, { mustExist: false, allowCreate: true });
 
       beginSse(res);
-      const result = await exportVaultFromSqlite(SQLITE_DB_PATH, request, {
+      const result = await exportVaultFromSqlite(currentSqliteDbPath(), request, {
         onProgress(progress) {
           sendSseEvent(res, "vault-export-progress", progress);
         },
@@ -1867,7 +1869,7 @@ async function handleVaultApi(
       const rawBody = await readRequestBody(req);
       const request = JSON.parse(rawBody) as VaultWatchStartRequest;
       validateVaultPath(request.vaultPath, { mustExist: true });
-      const status = startVaultWatch(SQLITE_DB_PATH, request);
+      const status = startVaultWatch(currentSqliteDbPath(), request);
       sendJson(res, 200, status);
       return;
     }
@@ -1944,7 +1946,7 @@ async function handleBlueprintApi(
       }
 
       beginSse(res);
-      const result = await importBlueprintToSqlite(SQLITE_DB_PATH, request, {
+      const result = await importBlueprintToSqlite(currentSqliteDbPath(), request, {
         onProgress(progress) {
           sendSseEvent(res, "blueprint-import-progress", progress);
         },
@@ -2024,7 +2026,7 @@ async function handleLinkApi(
 
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, route.mapId);
+    model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), route.mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
     if (message === "Map not found.") {
@@ -2083,7 +2085,7 @@ async function handleLinkApi(
         sendJson(res, 400, { ok: false, error: (err as Error).message });
         return;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
@@ -2104,7 +2106,7 @@ async function handleLinkApi(
         sendJson(res, 400, { ok: false, error: message });
         return;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
@@ -2142,7 +2144,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
           }
           depth = Math.floor(n);
         }
-        const result = RapidMvpModel.readScopedState(SQLITE_DB_PATH, mapId, scopeId, depth);
+        const result = RapidMvpModel.readScopedState(currentSqliteDbPath(), mapId, scopeId, depth);
         if (!result.ok) {
           sendJson(res, 404, { ok: false, error: result.error });
           return true;
@@ -2159,7 +2161,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         });
         return true;
       }
-      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId);
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
       sendJson(res, 200, savedDoc);
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
@@ -2197,7 +2199,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       if (scopeParam && scopeParam.trim().length > 0) {
         const scopeId = scopeParam.trim();
         const result = RapidMvpModel.writeScopedState(
-          SQLITE_DB_PATH,
+          currentSqliteDbPath(),
           mapId,
           scopeId,
           candidate.state as never,
@@ -2232,7 +2234,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         : null;
       if (!force) {
         try {
-          const currentDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId);
+          const currentDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
           if (baseSavedAt && currentDoc.savedAt !== baseSavedAt) {
             if (baseState) {
               const merge = mergeLocalNodeChanges(baseState, currentDoc.state, model.toJSON());
@@ -2255,13 +2257,13 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
                 sendJson(res, 400, { error: `Invalid merged model before save: ${mergeErrors.join(" | ")}` });
                 return true;
               }
-              const liveWrite = await writeMapToVaultNow(SQLITE_DB_PATH, mapId, mergedModel.toJSON());
-              mergedModel.saveToSqlite(SQLITE_DB_PATH, mapId);
-              const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+              const liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, mergedModel.toJSON());
+              mergedModel.saveToSqlite(currentSqliteDbPath(), mapId);
+              const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
               const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
               broadcastMapUpdate(mapId, savedAt, sourceTabId);
               if (!liveWrite) {
-                handleMapSavedForVaultWatch(SQLITE_DB_PATH, mapId);
+                handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
               }
               sendJson(res, 200, {
                 ok: true,
@@ -2292,13 +2294,13 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         }
       }
 
-      const liveWrite = await writeMapToVaultNow(SQLITE_DB_PATH, mapId, model.toJSON());
-      model.saveToSqlite(SQLITE_DB_PATH, mapId);
-      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+      const liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, model.toJSON());
+      model.saveToSqlite(currentSqliteDbPath(), mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastMapUpdate(mapId, savedAt, sourceTabId);
       if (!liveWrite) {
-        handleMapSavedForVaultWatch(SQLITE_DB_PATH, mapId);
+        handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
       }
       sendJson(res, 200, {
         ok: true,
@@ -2685,7 +2687,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         sendJson(res, 400, { ok: false, error: "nodeId is required." });
         return true;
       }
-      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId);
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
       if (!savedDoc.state.nodes[nodeId]) {
         sendJson(res, 404, { ok: false, error: `Node not found: ${nodeId}` });
         return true;
@@ -2738,7 +2740,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         return true;
       }
 
-      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId);
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
       const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
       if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
         sendJson(res, 409, {
@@ -2775,10 +2777,10 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
         return true;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
-      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId).savedAt;
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
-      handleMapSavedForVaultWatch(SQLITE_DB_PATH, route.mapId);
+      handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
       sendJson(res, 200, {
         ok: true,
         mapId: route.mapId,
@@ -2816,7 +2818,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         return true;
       }
 
-      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId);
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
       const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
       if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
         sendJson(res, 409, {
@@ -2878,10 +2880,10 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
         return true;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
-      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, route.mapId).savedAt;
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
       broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
-      handleMapSavedForVaultWatch(SQLITE_DB_PATH, route.mapId);
+      handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
       sendJson(res, 200, {
         ok: true,
         mapId: route.mapId,
@@ -2923,7 +2925,10 @@ async function handleSyncApi(
     return true;
   }
 
-  if (!CLOUD_SYNC_ENABLED || !cloudTransport) {
+  const syncConfig = loadCloudSyncConfig();
+  const transport = syncConfig.transport;
+
+  if (!syncConfig.enabled || !transport) {
     if (route.action === "status") {
       // Status endpoint: return 200 with enabled:false so browser can update UI
       sendJson(res, 200, {
@@ -2939,7 +2944,6 @@ async function handleSyncApi(
     return true;
   }
 
-  const transport = cloudTransport;
   const modeLabel = transport.mode === "file" ? "file-mirror" : transport.mode;
 
   if (route.action === "status" && req.method === "GET") {
@@ -3263,15 +3267,15 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
 }
 
 function startServer(): void {
-  ensureMap(SQLITE_DB_PATH, ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
-  ensureMap(SQLITE_DB_PATH, SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
+  ensureMap(currentSqliteDbPath(), ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
+  ensureMap(currentSqliteDbPath(), SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
   // Initialize audit log file for the default map
-  initAuditFile(DATA_DIR, ACTIVE_MAP_ID);
+  initAuditFile(currentDataDir(), ACTIVE_MAP_ID);
 
   const server = createAppServer();
 
   server.listen(PORT, () => {
-    const isFirstRun = !fs.existsSync(FIRST_RUN_MARKER);
+    const isFirstRun = !fs.existsSync(currentFirstRunMarker());
     const params = new URLSearchParams({ ws: WORKSPACE_ID });
     if (DEFAULT_PAGE !== "home.html") {
       params.set("map", ACTIVE_MAP_ID);
@@ -3284,23 +3288,23 @@ function startServer(): void {
     console.log(`Viewer ready: ${url}`);
     openBrowser(url);
     if (isFirstRun) {
-      try { fs.writeFileSync(FIRST_RUN_MARKER, new Date().toISOString()); } catch { /* ignore */ }
+      try { fs.writeFileSync(currentFirstRunMarker(), new Date().toISOString()); } catch { /* ignore */ }
     }
     // Startup backup + periodic auto-backup
-    const BACKUP_DIR = path.join(DATA_DIR, "backups");
-    if (fs.existsSync(SQLITE_DB_PATH)) {
+    const BACKUP_DIR = path.join(currentDataDir(), "backups");
+    if (fs.existsSync(currentSqliteDbPath())) {
       const maxGen = Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || 10;
-      createBackup(SQLITE_DB_PATH, BACKUP_DIR)
+      createBackup(currentSqliteDbPath(), BACKUP_DIR)
         .then(() => { pruneOldBackups(BACKUP_DIR, maxGen); })
         .catch((err) => { console.error(`[backup] Startup backup failed: ${(err as Error).message}`); });
-      startAutoBackup(SQLITE_DB_PATH, BACKUP_DIR);
+      startAutoBackup(currentSqliteDbPath(), BACKUP_DIR);
     }
     // Auto sync setup
     if (cloudSyncConfig.autoSync && cloudTransport) {
       autoSyncHandle = startAutoSync(cloudTransport, cloudSyncConfig.autoSyncIntervalMs, {
         getLocalState: async () => {
           try {
-            const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, ACTIVE_MAP_ID);
+            const model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), ACTIVE_MAP_ID);
             return {
               version: 1,
               savedAt: new Date().toISOString(),
@@ -3325,7 +3329,7 @@ function startServer(): void {
         onPullSuccess: (result) => {
           console.log(`[auto-sync] Initial pull succeeded: mapVersion=${result.mapVersion ?? "?"}`);
         },
-        dataDir: DATA_DIR,
+        dataDir: currentDataDir(),
       });
       console.log(`[auto-sync] Started with interval ${cloudSyncConfig.autoSyncIntervalMs}ms`);
     }
@@ -3513,14 +3517,14 @@ async function handleCollabApi(
           sendJson(res, 400, { ok: false, error: "scopeId, lockId, baseVersion, and changes.nodes are required." });
           return;
         }
-        const result = mergeScopePush(mapId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, SQLITE_DB_PATH);
+        const result = mergeScopePush(mapId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, currentSqliteDbPath());
         // Update presence on push
         touchPresence(mapId, entity.entityId, entity.displayName, entity.role);
         if (!result.ok && result.error === "Scope lock not held.") {
           sendJson(res, 403, result);
         } else {
           if (result.ok) {
-            const savedAt = RapidMvpModel.loadSavedMapFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+            const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
             const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
             broadcastMapUpdate(mapId, savedAt, sourceTabId);
           }
@@ -3654,7 +3658,7 @@ export function createAppServer(): http.Server {
         return;
       }
       try {
-        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, resolveDocId);
+        const model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), resolveDocId);
         const state = model.toJSON();
         const result = resolveNodePath(state, parsed.segments);
         if (!result.ok) {
