@@ -66,6 +66,9 @@ projects/PJ04_MermaidSystemLangGraph/loops/**/*.png
 projects/PJ04_MermaidSystemLangGraph/loops/**/*.json
 projects/PJ04_MermaidSystemLangGraph/loops/**/*.log
 
+# VS Code "Code Runner" scratch files
+**/tempCodeRunnerFile.*
+
 # Bitwarden exports / sessions (NEVER commit)
 *.bwjson
 bw_export*.json
