@@ -196,6 +196,31 @@ Required checks performed by bootstrap or shell-native session gate:
 5. Mandatory session context paths are shown and must be read before implementation.
 6. Agent must emit a short context check before proceeding.
 
+### Development-Start Worktree Escalation Gate
+
+At the start of any development implementation cycle, the agent must verify that
+the current directory is the expected Git worktree for the active role.
+
+Required check:
+
+```bash
+git worktree list --porcelain
+git branch --show-current
+pwd
+```
+
+Rules:
+
+1. `manage` may work from the primary `M3E` worktree on `dev-beta`.
+2. `visual`, `data`, `data2`, and `team` must work from their role worktree
+   or an explicitly isolated agent worktree, never silently from the primary
+   `dev-beta` worktree.
+3. If the expected worktree is missing, stale, prunable, on the wrong branch, or
+   the current system cannot actually use the worktree, stop before
+   implementation and escalate to `akaghef`.
+4. Reading, diagnosis, and planning may continue while escalated; code or doc
+   mutation for the development task must wait for worktree alignment.
+
 If checks fail or rebase is not possible, stop and escalate to `akaghef`.
 
 ## Agent Workflow
