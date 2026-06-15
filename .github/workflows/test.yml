@@ -1,0 +1,78 @@
+name: Build & Test
+
+on:
+  push:
+    branches:
+      - dev-beta
+      - main
+    paths:
+      - beta/**
+      - final/**
+      - .github/workflows/test.yml
+  pull_request:
+    branches:
+      - dev-beta
+      - main
+    paths:
+      - beta/**
+      - final/**
+      - .github/workflows/test.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  beta:
+    name: Beta build and test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: beta
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            beta/package-lock.json
+            final/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  final:
+    name: Final build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: final
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            beta/package-lock.json
+            final/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
