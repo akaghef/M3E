@@ -6,4 +6,14 @@
 # installed codex-darwin-arm64 binary.
 set -euo pipefail
 export PATH="/opt/homebrew/bin:${PATH}"
+
+# For `exec` subcommands, grant write access to Akaghef-Bridge so that
+# a2a / inko skills can deliver packets without permission errors.
+if [[ "${1:-}" == "exec" ]]; then
+  shift
+  exec codex exec \
+    --add-dir "/Users/nisimoriyuuya/Akaghef-Bridge" \
+    "$@"
+fi
+
 exec codex "$@"
