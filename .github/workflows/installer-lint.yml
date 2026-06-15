@@ -25,11 +25,19 @@ jobs:
 
       - name: No ^ line continuations in .bat/.cmd
         run: |
-          echo "Checking for ^ line continuations (break with LF)..."
-          if grep -rEn '\^\s*$' --include='*.bat' --include='*.cmd' .; then
-            echo "::error::^ line continuations found. These break when downloaded as ZIP (LF). Inline to a single line."
-            exit 1
-          fi
+          echo "Checking for ^ line continuations without CRLF normalization..."
+          failed=0
+          while IFS=: read -r file line _; do
+            eol=$(git check-attr eol -- "$file" | awk -F': ' '{print $3}')
+            # ^ continuations are LF-fragile only when Git will not normalize the
+            # shipped file to CRLF. .gitattributes text+eol applies to checkouts
+            # and git archive / GitHub ZIP downloads.
+            if [ "$eol" != "crlf" ]; then
+              echo "::error file=$file,line=$line::^ line continuation found without eol=crlf protection."
+              failed=1
+            fi
+          done < <(grep -rEn '\^\s*$' --include='*.bat' --include='*.cmd' . || true)
+          [ "$failed" -eq 0 ] || exit 1
           echo "PASS"
 
       - name: .gitattributes enforces CRLF for Windows scripts
