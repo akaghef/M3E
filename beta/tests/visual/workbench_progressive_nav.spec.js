@@ -168,6 +168,43 @@ test.describe("Workbench progressive navigation", () => {
     expect(geometry.endpoints.ty).toBeCloseTo(geometry.toRect.cy, 1);
   });
 
+  test("View exposes Layout group with edge and GraphLink route options", async ({ page }) => {
+    const mapId = "pn-view-layout-options";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
+
+    await page.locator('[aria-label="[GUI] navigation root"]').evaluate((element) => {
+      const nav = document.querySelector('[data-testid="progressive-navigation"]');
+      if (!nav?.classList.contains("is-open")) {
+        element.click();
+      }
+    });
+    await page.locator('[data-pn-node="view"]').hover();
+    await expect(page.locator('[data-pn-node="layout"]')).toContainText("Layout");
+
+    await page.locator('[data-pn-node="layout"]').hover();
+    await page.locator('[data-pn-node="layout"]').evaluate((element) => element.click());
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-active-pn-node", "layout");
+    await expect(page.locator('[data-pn-node="layout-direction"]')).toContainText("Direction");
+    await expect(page.locator('[data-pn-node="layout-depth-align"]')).toContainText("Depth Align");
+    await expect(page.locator('[data-pn-node="layout-edge-route"]')).toContainText("Edge Route");
+    await expect(page.locator('[data-pn-node="layout-link-route"]')).toContainText("Link Route");
+
+    await page.locator('[data-pn-node="layout-edge-route"]').hover();
+    await page.locator('[data-pn-node="layout-edge-route"]').evaluate((element) => element.click());
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-active-pn-node", "layout-edge-route");
+    await expect(page.locator('[data-pn-node="layout-edge-elbow"]')).toContainText("Elbow");
+    await expect(page.locator('[data-pn-node="layout-edge-bezier"]')).toContainText("Bezier");
+    await expect(page.locator('[data-pn-node="layout-edge-straight"]')).toContainText("Straight");
+
+    await page.locator('[data-pn-node="layout-link-route"]').hover();
+    await page.locator('[data-pn-node="layout-link-route"]').evaluate((element) => element.click());
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-active-pn-node", "layout-link-route");
+    await expect(page.locator('[data-pn-node="layout-link-simple-bezier"]')).toContainText("Simple Bezier");
+    await expect(page.locator('[data-pn-node="layout-link-orthogonal"]')).toContainText("Orthogonal");
+    await expect(page.locator('[data-pn-node="layout-link-straight"]')).toContainText("Straight");
+  });
+
   test("Space opens active-node expand actions directly and N3-N6 generate", async ({ page }) => {
     const mapId = `pn-active-node-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
     const doc = rapidFixture();

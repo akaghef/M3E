@@ -526,7 +526,9 @@
   gap: 14px;
   width: 486px;
   height: 420px;
+  max-width: calc(100vw - 96px);
   opacity: 0;
+  overflow: visible;
   pointer-events: none;
   transition: opacity 90ms ease;
 }
@@ -567,6 +569,7 @@
   width: 486px;
   height: 420px;
   margin-left: 56px;
+  overflow: visible;
 }
 
 .wb-progressive-column {
@@ -574,7 +577,7 @@
   flex-direction: column;
   gap: 6px;
   position: absolute;
-  min-width: 172px;
+  width: 172px;
   z-index: 2;
 }
 
@@ -602,6 +605,8 @@
 }
 
 .wb-progressive-node {
+  box-sizing: border-box;
+  width: 172px;
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -613,6 +618,10 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.wb-progressive-node > svg {
+  flex: 0 0 auto;
 }
 
 .wb-progressive-node span:first-child {
