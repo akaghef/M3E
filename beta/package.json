@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.node.json && npm run build:browser",
     "build:node": "tsc -p tsconfig.node.json",
+    "build:test": "npm run build:node && npx tsc -p tsconfig.browser.json",
     "weekly:review": "npm run build:node && node dist/node/weekly_review_loop.js",
     "pjv34:template": "npm run build:node && node dist/node/pjv34_template_seed.js",
     "pjv34:template:run": "npm run build:node && node dist/node/pjv34_template_runner.js",
@@ -19,7 +20,7 @@
     "start": "node dist/node/start_viewer.js",
     "start:codex-app": "../scripts/beta/codex-app-server.sh",
     "test": "npm run test:unit",
-    "test:unit": "npm run build:node && npx vitest run",
+    "test:unit": "npm run build:test && npx vitest run",
     "test:unit:watch": "npm run build:node && npx vitest --watch",
     "test:ci": "npm run test:unit",
     "test:visual": "playwright test",
