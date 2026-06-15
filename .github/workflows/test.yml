@@ -47,6 +47,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Build node + browser artifacts first. Some unit tests load built browser
+      # bundles (dist/browser/*.js); `npm test` only runs build:node, so a clean
+      # checkout would be missing them. `npm run build` covers node + browser.
+      - name: Build
+        run: npm run build
+
       - name: Run tests
         run: npm test
 
