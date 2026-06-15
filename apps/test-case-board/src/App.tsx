@@ -440,7 +440,6 @@ function TestCaseCard({
           </span>
         ))}
         {testCase.attr ? <span className="attr-pill">{testCase.attr}</span> : null}
-        <span className="issue-pill">#{testCase.issue}</span>
         {testCase.runnable ? (
           <button
             className="run-button"
@@ -451,6 +450,7 @@ function TestCaseCard({
             ▶
           </button>
         ) : null}
+        <span className="issue-pill">#{testCase.issue}</span>
       </div>
     </article>
   );
