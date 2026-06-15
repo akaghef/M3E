@@ -172,7 +172,7 @@ if [[ "$NO_FINAL" -eq 1 ]]; then
 else
   header "4. Sync beta/ into final/"
   CURRENT_STEP="sync beta into final"
-  run scripts/final/sync-beta-to-final.sh
+  run bash scripts/final/sync-beta-to-final.sh
 
   if [[ -z "$(git status --porcelain -- final/)" ]]; then
     echo "final/ unchanged after sync; skipping build/test and final commit."
