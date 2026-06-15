@@ -82,3 +82,21 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   range — `git filter-branch -f --index-filter 'git rm -r --cached --ignore-unmatch <paths>'
   --prune-empty -- origin/dev-beta..HEAD`. Keeping origin/dev-beta as the base preserves the
   fast-forward. Verify with `git merge-base --is-ancestor origin/dev-beta HEAD` before pushing.
+- 2026-06-15 — Built the automation system: nightly auto-sync + real test CI. Lessons:
+  (1) **`daily-sync` skill + script** (`scripts/ops/daily-sync.sh`, `.claude/skills/daily-sync/`):
+  unattended commit→push dev-beta→sync beta/→final/→build/test gate→commit/push. Installed as a
+  macOS LaunchAgent `~/Library/LaunchAgents/com.m3e.daily-sync.plist` (runs 03:00 nightly). The
+  plist sets `PATH=/opt/homebrew/bin:...` so arm64 node is used; git push works unattended via the
+  `osxkeychain` credential helper. Manage: `launchctl bootstrap/bootout gui/$(id -u) <plist>`.
+  (2) **CI was red for months on `installer-lint.yml`** — the `^`-line-continuation check fired on
+  install .bat files even though `.gitattributes` already forces `eol=crlf` (which GitHub ZIP
+  honors), making the LF-breakage premise moot. Fix = make the lint CRLF-aware (only fail when
+  `git check-attr eol` ≠ crlf), not edit the installer. GH stops at the first failing step, so
+  always run ALL workflow steps locally to confirm the whole thing is green.
+  (3) **New test CI (`test.yml`) caught a latent bug a clean runner exposes:** `npm test`
+  (=`build:node && vitest`) does NOT build browser bundles, so `home_pure_fns`/`markdown_renderer`
+  tests fail on a clean checkout (locally masked by stale `dist/browser/`). CI fix = `npm run build`
+  (node+browser) before `npm test`. NOTE the latent issue: `npm test` is not self-sufficient on a
+  clean checkout — consider making beta's `test:unit` build browser artifacts too.
+  (4) **Codex `exec` stdout sometimes lands empty** in the captured file even when the commit/edit
+  succeeded — verify by inspecting the worktree (git log / file contents), don't rely on its report.
