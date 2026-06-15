@@ -100,3 +100,22 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   clean checkout — consider making beta's `test:unit` build browser artifacts too.
   (4) **Codex `exec` stdout sometimes lands empty** in the captured file even when the commit/edit
   succeeded — verify by inspecting the worktree (git log / file contents), don't rely on its report.
+- 2026-06-16 — Codified four recurring Director inefficiencies into helpers (built after a
+  layout-refactor session repeated the same manual steps 3+ times):
+  (1) **`scripts/beta/preview-worktree.sh <worktree>`** — a worktree has no `better-sqlite3`
+  native binding, so `npm start` can't run there. To *see* a worktree's UI change you must build
+  its browser bundle, copy dist into the main checkout, and serve from main. This script does all
+  three in one call; then just RELOAD http://localhost:4173 (server serves dist/browser statically).
+  (2) **`scripts/codex.sh exec --final "<handoff>"`** — plain `codex exec` dumps the whole run
+  (often >1MB) to stdout; `--final` runs `--json` and prints ONLY Codex's last message. The live
+  `--json` final event is `{"type":"item.completed","item":{"type":"agent_message","text":...}}`
+  (NOT the rollout-log `output_text` shape). Use for handoffs where you only want the conclusion.
+  (3) **`scripts/ops/codex-grep.sh <query> [context]`** — search past Codex session logs
+  (`~/.codex/sessions/**/*.jsonl`) for the user's own messages. Unescape via `json.loads('"'+body+'"')`,
+  not naive `.replace` (handles `\uXXXX` / Japanese correctly). Newest-first; optional 2nd keyword to narrow.
+  (4) **Visual verification is impossible in this sandbox — do NOT retry it.** Playwright Chromium
+  (SIGTRAP), system Chrome (Crashpad SIGABRT), the Chrome extension (disconnects), and computer-use
+  (access denied) all fail here. Build + `preview-worktree.sh`, then DELEGATE the eyeball check to
+  akaghef (or a Codex session that has working browser access). Don't burn turns on screenshots.
+  Aside: `codex-session` `start.sh` hardcoded `MODEL=gpt-5.2` (rejected by ChatGPT-account Codex);
+  patched to `${MODEL:-gpt-5.5}`, and its scripts needed `chmod +x`.
