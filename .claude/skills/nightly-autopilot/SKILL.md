@@ -1,84 +1,99 @@
 ---
 name: nightly-autopilot
 description: >
-  M3E の「夜間オートパイロット」。寝ている間に一発で回す無人ジョブで、(1) M3E
-  workspace データの SQL ダンプ版管理バックアップ、(2) dev-beta の pending を
-  commit/push、(3) green な Pull Request の自動マージ、(4) CI が赤なら Codex で
-  自動修正(最大3回)、(5) 朝の報告、までを Codex に行わせる。production(final/ や
-  main)には一切触れない。次のような時は必ずこのスキルを使うこと:「夜間自動」
-  「寝てる間に同期」「/nightly-autopilot」「overnight でデータ同期と CI と PR を
-  片付けたい」「夜のうちに dev-beta を最新かつ green にしておきたい」「daily-sync
-  の後継」。data sync・CI 通し・PR 解決を無人でまとめて回す話なら、明示的に
-  スキル名を言われなくてもトリガーする。
+  M3E の夜間オートパイロット（ハイブリッド）。エージェント(主に Codex)が一発で回す保守ジョブで、
+  (1) M3E workspace データの SQL ダンプ版管理バックアップ、(2) dev-beta の pending を commit/push、
+  (3) green な Pull Request の自動マージ、(4) CI が赤なら最小修正(最大3回)、(5) 報告、までを行う。
+  決定論パート(1)(2)は `scripts/ops/nightly-autopilot.sh` が担い、PR マージ判断と CI 修正は
+  エージェントが判断して実行する。production(final/ や main)・Syncthing には一切触れない。
+  2つのモードがある:「1-shot(朝・手動)」と「scheduled(夜・Codex automation)」。
+  次のような時は必ずこのスキルを使う:「夜間自動」「朝の1-shot」「/nightly-autopilot」
+  「overnight でデータ同期と CI と PR を片付けたい」「dev-beta を最新かつ green に」「daily-sync の後継」。
+  data sync・CI 通し・PR 解決を無人/半自動でまとめて回す話なら、スキル名を言われなくてもトリガーする。
 ---
 
 # nightly-autopilot
 
-`scripts/ops/nightly-autopilot.sh` を回す無人オーケストレータ。**Claude 不在(深夜)で
-自走する shell + `codex exec` + `gh`** 構成。`daily-sync` の後継として 03:00 の
-LaunchAgent が実行する。
+dev-beta を「最新かつ green」に保ち、M3E データを版管理バックアップする保守ジョブ。
+**ハイブリッド**構成：決定論パートは shell スクリプト、判断が要る PR/CI はエージェントが担う。
+**production(final/・main)と Syncthing には一切触れない。**
 
-## 何をするか（5 ステージ）
+## 2つのモード
 
-| Stage | 内容 |
-|---|---|
-| **A. data snapshot** | `scripts/ops/m3e-data-snapshot.sh` を呼ぶ。3つの M3E workspace（M3E / Akaghef System / Ops）の sqlite を **lock-safe にダンプ**（`.backup`→`.dump`）し、private repo `akaghef/m3e-data` の `snapshots` ブランチ（orphan / テキストのみ）に日付コミット/push。**Syncthing のライブ同期を補完する版管理バックアップ**（Syncthing 自体は触らない）。 |
-| **0. dev-beta latest** | dev-beta を確保し `pull --ff-only`（非 fast-forward なら abort）、`git add -u` で pending を `chore: nightly auto-commit (日付)` にして push。 |
-| **1. green PR 自動マージ** | dev-beta 宛の open PR のうち **mergeable かつ CI 全 success** のものだけ `gh pr merge --squash --delete-branch`。赤/競合/保留は触らず理由を記録。 |
-| **2. CI green 化** | dev-beta HEAD の CI を完了までポーリング。赤なら失敗ログを添えて `codex exec` で**最小修正**→push→再ポーリング（**最大 `MAX_CI_FIX`=3 回**）。それでも赤なら停止して報告。 |
-| **3. report** | `logs/nightly-autopilot-YYYY-MM-DD.md` に全結果（HEAD前後/snapshot/commit/マージ&skip PR/CI結末/中断理由/総合判定 PASS·PARTIAL·FAIL）を出力し、1 行サマリを stdout へ。 |
+| モード | 起動 | 用途 |
+|---|---|---|
+| **1-shot（朝・手動）** | エージェントにこのスキルを実行させる（`/nightly-autopilot` 等） | 夜間が失敗した時の取り戻し／日中の手動同期 |
+| **scheduled（夜・自動）** | **Codex automation**（`~/.codex/automations/.../automation.toml`、`rrule` 定期、prompt がこのスキルを起動） | 寝ている間の無人実行 |
+
+どちらも実行内容は同じ。launchd LaunchAgent は使わない（撤去済み）。
+
+## 実行手順（ハイブリッド）
+
+### Step 1 — 決定論パート（スクリプト）
+
+```bash
+scripts/ops/nightly-autopilot.sh --no-pr --no-ci-fix
+```
+
+これが **Stage A: データ SQL ダンプ・バックアップ**（3 ws を lock-safe に `.backup`→`.dump` →
+`akaghef/m3e-data` の `snapshots` ブランチへ日付 commit/push）と **Stage 0: dev-beta 最新化**
+（`pull --ff-only`→`git add -u`→`chore: nightly auto-commit (日付)`→push）を実行し、
+`logs/nightly-autopilot-YYYY-MM-DD.md` に途中経過を残す。ガードレール（単一ロック・90分予算・
+**force-push 禁止**・非ff abort）はスクリプト側で効く。**まず `--dry-run` を付けて副作用ゼロを確認**してから本番を。
+
+### Step 2 — green PR マージ（エージェント判断）
+
+```bash
+gh pr list --base dev-beta --state open --json number,title,mergeable,statusCheckRollup,headRefName
+```
+
+各 PR について：CI(`statusCheckRollup`)が全 success で、`mergeable == MERGEABLE` のものだけ
+`gh pr merge <n> --squash --delete-branch`。
+**重要**：GitHub は mergeability を非同期算出し初回は `UNKNOWN` を返す（既知の落とし穴）。
+`UNKNOWN` の時は数秒待って再照会し、`MERGEABLE`/`CONFLICTING` が確定してから判断する。
+赤・競合・保留は触らず理由を記録。マージ後は `git pull --ff-only origin dev-beta`。
+
+### Step 3 — CI green 化（エージェント判断・最小修正）
+
+push 後、`gh run list --branch dev-beta` で現 HEAD の run が登録されるのを少し待ってから完了までポーリング
+（直後は run 未登録のことがある／対象ワークフローが無いコミットは neutral 扱い）。
+赤い run があれば `gh run view <id> --log-failed` でログを取り、**最小修正**を dev-beta に commit→push→再確認。
+**最大3回**で打ち切り、それでも赤なら停止して報告。**final/・main は触らない／force-push しない。**
+
+### Step 4 — 報告
+
+実施内容（データ snapshot / auto-commit / マージ&skip した PR＋理由 / CI 結末 / 中断理由 / 総合判定）を簡潔に報告。
 
 ## 触らないもの（安全境界）
 
-- **final/ ディレクトリと main ブランチには一切触れない。** 本番昇格は別途 `majorupdate` で人間が行う。
-- **Syncthing 設定は変更しない。** データ同期の定常運用(DP2)は Syncthing が担う。
+- **final/ と main には一切触れない。** 本番昇格は別途 `majorupdate` で人間が行う。
+- **Syncthing 設定は変更しない。** データの定常同期(DP2)は Syncthing が担い、本ジョブは版管理バックアップ(Stage A)のみ。
 
-## ガードレール（完全自律＝無人だが暴走防止つき）
+## scheduled モード = Codex automation の作り方
 
-- 単一インスタンスロック（多重起動拒否）
-- ウォールクロック予算 `WALL_BUDGET`=5400s(90分) 超過で打ち切り→報告
-- CI 自動修正は `MAX_CI_FIX`=3 回で打ち切り（無限ループ/トークン暴走防止）
-- **force-push しない**／非 fast-forward は abort
-- ステージは best-effort 分離：1つ失敗しても独立ステージは続行し、報告に残す
+`~/.codex/automations/m3e-nightly-autopilot/automation.toml` を作る（Codex アプリ経由。`target_thread_id` はアプリが付与）：
 
-## 使い方（オンデマンド）
-
-```bash
-# 本番フル実行（破壊的：commit/push/PRマージ/codex起動/データpush が走る）
-scripts/ops/nightly-autopilot.sh
-
-# 何も書かずに意図だけ確認（commit/push/merge/codex 一切なし、レポートは temp）
-scripts/ops/nightly-autopilot.sh --dry-run
-
-# 部分実行
-scripts/ops/nightly-autopilot.sh --no-pr        # PR マージを飛ばす
-scripts/ops/nightly-autopilot.sh --no-ci-fix    # CI は見るだけ、Codex 修正なし
-scripts/ops/nightly-autopilot.sh --no-data      # データスナップショットを飛ばす
-
-# データバックアップ単体
-scripts/ops/m3e-data-snapshot.sh [--dry-run]
-```
-
-新しい挙動を入れたら**まず `--dry-run` で副作用ゼロを確認**してから本番を回すこと。
-
-## スケジューリング（daily-sync を置き換える）
-
-LaunchAgent `~/Library/LaunchAgents/com.m3e.daily-sync.plist` の `ProgramArguments`
-を `scripts/ops/nightly-autopilot.sh` に差し替える（PATH に `/opt/homebrew/bin` を
-含める＝arm64 node、push は osxkeychain/ssh で無人）。管理:
-`launchctl bootout/bootstrap gui/$(id -u) <plist>`。
-
-```xml
-<key>ProgramArguments</key>
-<array>
-  <string>/bin/bash</string>
-  <string>/Users/nisimoriyuuya/dev/M3E/scripts/ops/nightly-autopilot.sh</string>
-</array>
+```toml
+version = 1
+id = "m3e-nightly-autopilot"
+kind = "heartbeat"
+name = "M3E nightly autopilot"
+status = "ACTIVE"            # 準備中は "PAUSED"
+rrule = "FREQ=DAILY;BYHOUR=3;BYMINUTE=0"   # 毎晩 03:00（就寝時間に合わせて調整）
+prompt = """
+Run the M3E nightly-autopilot skill (.claude/skills/nightly-autopilot). Hybrid:
+1) Deterministic: run `scripts/ops/nightly-autopilot.sh --no-pr --no-ci-fix` from the
+   M3E repo root (data SQL-dump backup + dev-beta commit/push). Use arm64 bash.
+2) Merge green dev-beta PRs: only mergeable==MERGEABLE with all-success checks; if
+   mergeable is UNKNOWN, wait a few seconds and re-query before deciding. Squash + delete branch.
+3) CI green-up on dev-beta HEAD: wait for runs, fix any red with a minimal commit (max 3 attempts).
+Never touch final/ or main. Never force-push. Report what was done.
+"""
 ```
 
 ## 前提
 
-- `gh` が認証済（`gh auth status`）— Stage 1/2 に必須。
-- `codex` が起動可能（`scripts/codex.sh` 経由の arm64 node）— Stage 2 に必須。
-- `sqlite3` が利用可能 — Stage A に必須。
+- `gh` 認証済（`gh auth status`）— Step 2/3 に必須。
+- `sqlite3` 利用可 — Step 1 のデータダンプに必須。
 - `akaghef/m3e-data`（private）への push 権限。初回は自動 clone（`--filter=blob:none`）。
+- スクリプトは macOS `/bin/bash`(3.2) でも動く（bash 3.2 安全化済み）が、arm64 bash 推奨。
