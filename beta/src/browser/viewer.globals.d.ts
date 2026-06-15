@@ -19,6 +19,10 @@ type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "
 type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type SurfaceLayoutDensity = "compact" | "balanced" | "spacious";
 type SurfaceBranchDirection = "both" | "right" | "left";
+type SurfaceLayoutDirection = "right" | "left" | "down" | "up";
+type SurfaceDepthAlign = "aligned" | "packed";
+type SurfaceEdgeRoute = "elbow" | "bezier" | "straight";
+type SurfaceLinkRoute = "simple-bezier" | "orthogonal" | "straight";
 
 interface TreeNode {
   id: string;
@@ -335,6 +339,10 @@ interface ViewState {
   surfaceViewMode: SurfaceViewMode;
   surfaceLayoutDensity: SurfaceLayoutDensity;
   surfaceBranchDirection: SurfaceBranchDirection;
+  surfaceLayoutDirection: SurfaceLayoutDirection;
+  surfaceDepthAlign: SurfaceDepthAlign;
+  surfaceEdgeRoute: SurfaceEdgeRoute;
+  surfaceLinkRoute: SurfaceLinkRoute;
   zoom: number;
   cameraX: number;
   cameraY: number;
@@ -352,6 +360,34 @@ interface ViewState {
 
 type CameraMovePreset = "off" | "minimal" | "follow-selection" | "cinematic" | "locked";
 type CameraMoveTrigger = "scope" | "selection" | "layout" | "continuous" | "command";
+
+interface Window {
+  m3eLayout?: (
+    graph: {
+      nodeIds: string[];
+      childrenOf: (id: string) => string[];
+      graphLinks: GraphLink[];
+    },
+    boxSizes: Record<string, { w: number; h: number; labelLines?: string[]; fontSize?: number }>,
+    mode: SurfaceKind,
+    options?: {
+      spacing?: { nodeGap?: number; levelGap?: number; padding?: number };
+      direction?: SurfaceLayoutDirection;
+      depthAlign?: SurfaceDepthAlign;
+      edge?: { route?: SurfaceEdgeRoute };
+      link?: { route?: SurfaceLinkRoute };
+      displayRootId?: string;
+      structuredMode?: "tree" | "mindmap" | "logic-chart" | "timeline";
+      density?: SurfaceLayoutDensity;
+      branchDirection?: SurfaceBranchDirection;
+    },
+  ) => {
+    pos: Record<string, NodePosition>;
+    order: string[];
+    totalWidth: number;
+    totalHeight: number;
+  };
+}
 
 interface CameraMoveState {
   preset: CameraMovePreset;

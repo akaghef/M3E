@@ -38,6 +38,10 @@ type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" |
 type ModalId = "menu" | "settings" | "share" | "help" | "ai" | null;
 type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type ProgressiveBranchDirection = "both" | "right" | "left";
+type ProgressiveLayoutDirection = "right" | "left" | "down" | "up";
+type ProgressiveDepthAlign = "aligned" | "packed";
+type ProgressiveEdgeRoute = "elbow" | "bezier" | "straight";
+type ProgressiveLinkRoute = "simple-bezier" | "orthogonal" | "straight";
 type ProgressiveMode = "gui" | "active-node";
 type RapidGenerateAction = "detail" | "examples" | "classify" | "related";
 type ViewerTheme = "light" | "dark";
@@ -75,6 +79,23 @@ type ProgressiveNodeId =
   | "mindmap"
   | "annotation"
   | "panel"
+  | "layout"
+  | "layout-direction"
+  | "layout-direction-right"
+  | "layout-direction-left"
+  | "layout-direction-down"
+  | "layout-direction-up"
+  | "layout-depth-align"
+  | "layout-depth-aligned"
+  | "layout-depth-packed"
+  | "layout-edge-route"
+  | "layout-edge-elbow"
+  | "layout-edge-bezier"
+  | "layout-edge-straight"
+  | "layout-link-route"
+  | "layout-link-simple-bezier"
+  | "layout-link-orthogonal"
+  | "layout-link-straight"
   | "import"
   | "export-json"
   | "export-mm"
@@ -124,6 +145,7 @@ type ProgressiveNode = {
   hint: string;
   parentId?: ProgressiveNodeId;
   action?: () => void;
+  active?: () => boolean;
 };
 
 type ProgressiveEdge = {
@@ -170,6 +192,31 @@ function setSurfaceLayout(
   direction?: ProgressiveBranchDirection,
 ): void {
   window.dispatchEvent(new CustomEvent("m3e:set-surface-layout", { detail: { mode, density, direction } }));
+}
+
+function setLayoutOptions(detail: {
+  direction?: ProgressiveLayoutDirection;
+  depthAlign?: ProgressiveDepthAlign;
+  edgeRoute?: ProgressiveEdgeRoute;
+  linkRoute?: ProgressiveLinkRoute;
+}): void {
+  window.dispatchEvent(new CustomEvent("m3e:set-layout-options", { detail }));
+}
+
+function currentLayoutDirection(): ProgressiveLayoutDirection {
+  return document.documentElement.dataset.surfaceLayoutDirection as ProgressiveLayoutDirection || "right";
+}
+
+function currentDepthAlign(): ProgressiveDepthAlign {
+  return document.documentElement.dataset.surfaceDepthAlign as ProgressiveDepthAlign || "packed";
+}
+
+function currentEdgeRoute(): ProgressiveEdgeRoute {
+  return document.documentElement.dataset.surfaceEdgeRoute as ProgressiveEdgeRoute || "elbow";
+}
+
+function currentLinkRoute(): ProgressiveLinkRoute {
+  return document.documentElement.dataset.surfaceLinkRoute as ProgressiveLinkRoute || "simple-bezier";
 }
 
 function sendKey(key: string, options: KeyboardEventInit = {}): void {
@@ -819,6 +866,23 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "timeline-spacious", label: "Timeline spacious", hint: "wide axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "spacious") },
     { id: "system", label: "System surface", hint: "diagram canvas", parentId: "view", action: () => clickLegacy("view-system") },
     { id: "scatter-surface", label: "Scatter surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
+    { id: "layout", label: "Layout", hint: "surface layout options", parentId: "view" },
+    { id: "layout-direction", label: "Direction", hint: "layout growth axis", parentId: "layout" },
+    { id: "layout-direction-right", label: "Right", hint: "grow right", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "right" }), active: () => currentLayoutDirection() === "right" },
+    { id: "layout-direction-left", label: "Left", hint: "grow left", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "left" }), active: () => currentLayoutDirection() === "left" },
+    { id: "layout-direction-down", label: "Down", hint: "grow down", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "down" }), active: () => currentLayoutDirection() === "down" },
+    { id: "layout-direction-up", label: "Up", hint: "grow up", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "up" }), active: () => currentLayoutDirection() === "up" },
+    { id: "layout-depth-align", label: "Depth Align", hint: "rank alignment", parentId: "layout" },
+    { id: "layout-depth-aligned", label: "Aligned", hint: "align depth ranks", parentId: "layout-depth-align", action: () => setLayoutOptions({ depthAlign: "aligned" }), active: () => currentDepthAlign() === "aligned" },
+    { id: "layout-depth-packed", label: "Packed", hint: "pack subtrees", parentId: "layout-depth-align", action: () => setLayoutOptions({ depthAlign: "packed" }), active: () => currentDepthAlign() === "packed" },
+    { id: "layout-edge-route", label: "Edge Route", hint: "parent-child lines", parentId: "layout" },
+    { id: "layout-edge-elbow", label: "Elbow", hint: "orthogonal tree edge", parentId: "layout-edge-route", action: () => setLayoutOptions({ edgeRoute: "elbow" }), active: () => currentEdgeRoute() === "elbow" },
+    { id: "layout-edge-bezier", label: "Bezier", hint: "curved tree edge", parentId: "layout-edge-route", action: () => setLayoutOptions({ edgeRoute: "bezier" }), active: () => currentEdgeRoute() === "bezier" },
+    { id: "layout-edge-straight", label: "Straight", hint: "direct tree edge", parentId: "layout-edge-route", action: () => setLayoutOptions({ edgeRoute: "straight" }), active: () => currentEdgeRoute() === "straight" },
+    { id: "layout-link-route", label: "Link Route", hint: "GraphLink lines", parentId: "layout" },
+    { id: "layout-link-simple-bezier", label: "Simple Bezier", hint: "curved GraphLink", parentId: "layout-link-route", action: () => setLayoutOptions({ linkRoute: "simple-bezier" }), active: () => currentLinkRoute() === "simple-bezier" },
+    { id: "layout-link-orthogonal", label: "Orthogonal", hint: "right-angle GraphLink", parentId: "layout-link-route", action: () => setLayoutOptions({ linkRoute: "orthogonal" }), active: () => currentLinkRoute() === "orthogonal" },
+    { id: "layout-link-straight", label: "Straight", hint: "direct GraphLink", parentId: "layout-link-route", action: () => setLayoutOptions({ linkRoute: "straight" }), active: () => currentLinkRoute() === "straight" },
     { id: "scatter-normal", label: "Normal", hint: "select scatter objects", parentId: "scatter", action: () => clickLegacy("scatter-normal") },
     { id: "scatter-add-node", label: "Add node", hint: "create scatter node", parentId: "scatter", action: () => clickLegacy("scatter-add-node") },
     { id: "scatter-add-edge", label: "Add edge", hint: "connect scatter nodes", parentId: "scatter", action: () => clickLegacy("scatter-add-edge") },
@@ -941,24 +1005,37 @@ function ProgressiveNavigation({
     return ids;
   }, [activeId, nodeById]);
   const columns = useMemo(() => path.map((id) => childrenByParent.get(id) || []), [childrenByParent, path]);
-  const rootChildren = columns[0] || [];
-  const activeRootIndex = Math.max(0, rootChildren.findIndex((node) => node.id === path[1]));
-  const activeChildren = columns[1] || [];
+  const [, setLayoutRevision] = useState(0);
   const [navRootCenterY, setNavRootCenterY] = useState(156);
   const nodeCenterOffsetY = 23.5;
   const nodeStepY = 53;
   const columnStepX = 194;
+  const columnWidth = 172;
+  const navColumnOffsetX = 56;
+  const navPaddingRight = 28;
+  const navWidth = navColumnOffsetX + Math.max(1, columns.length - 1) * columnStepX + columnWidth + navPaddingRight;
+  const navHeight = 560;
   const groupHeight = (count: number) => (count > 0 ? 47 + (count - 1) * nodeStepY : 0);
-  const groupTop = (count: number, parentCenterY: number) => parentCenterY - groupHeight(count) / 2;
-  const rootColumnTop = groupTop(rootChildren.length, navRootCenterY);
-  const nodeCenterY = (columnTop: number, index: number) => columnTop + nodeCenterOffsetY + index * nodeStepY;
-  const activeRootCenterY = nodeCenterY(rootColumnTop, activeRootIndex);
-  const childColumnTop = groupTop(activeChildren.length, activeRootCenterY);
-  const columnTop = (index: number, count: number) => {
-    if (index === 0) return rootColumnTop;
-    if (index === 1) return childColumnTop;
-    return groupTop(count, activeRootCenterY);
+  const groupTop = (count: number, parentCenterY: number) => {
+    const height = groupHeight(count);
+    if (!height) return parentCenterY;
+    return clampPlacement(parentCenterY - height / 2, 0, Math.max(0, navHeight - height));
   };
+  const nodeCenterY = (top: number, index: number) => top + nodeCenterOffsetY + index * nodeStepY;
+  const columnTops = useMemo(() => {
+    const tops: number[] = [];
+    const parentCenters: number[] = [navRootCenterY];
+    columns.forEach((column, index) => {
+      const top = groupTop(column.length, parentCenters[index] ?? navRootCenterY);
+      tops[index] = top;
+      const selectedChildId = path[index + 1];
+      const selectedChildIndex = selectedChildId ? column.findIndex((node) => node.id === selectedChildId) : -1;
+      if (selectedChildIndex >= 0) {
+        parentCenters[index + 1] = nodeCenterY(top, selectedChildIndex);
+      }
+    });
+    return tops;
+  }, [columns, navRootCenterY, path]);
   const navRef = useRef<HTMLDivElement | null>(null);
   const [edges, setEdges] = useState<ProgressiveEdge[]>([]);
   const [edgeSize, setEdgeSize] = useState({ width: 486, height: 420 });
@@ -984,22 +1061,22 @@ function ProgressiveNavigation({
     const measuredRootCenterY = rootRect.y + rootRect.h / 2;
     setNavRootCenterY((current) => (Math.abs(current - measuredRootCenterY) > 0.5 ? measuredRootCenterY : current));
     const nextEdges: ProgressiveEdge[] = [];
-    rootChildren.forEach((node) => {
-      const el = nav.querySelector(`[data-pn-node="${node.id}"]`);
-      if (!el) return;
-      nextEdges.push({ id: `${rootId}-${node.id}`, d: edgePathBetweenRects(rootRect, toRect(el), 0), active: false });
-    });
-    const activeParentId = path[1];
-    const activeParentEl = activeParentId ? nav.querySelector(`[data-pn-node="${activeParentId}"]`) : null;
-    if (activeParentEl) {
-      const fromRect = toRect(activeParentEl);
-      activeChildren.forEach((node) => {
+    columns.forEach((column, index) => {
+      const parentId = path[index];
+      const parentRect = index === 0
+        ? rootRect
+        : (() => {
+          const parentEl = nav.querySelector(`[data-pn-node="${parentId}"]`);
+          return parentEl ? toRect(parentEl) : null;
+        })();
+      if (!parentRect) return;
+      column.forEach((node) => {
         const el = nav.querySelector(`[data-pn-node="${node.id}"]`);
         if (!el) return;
-        nextEdges.push({ id: `${activeParentId}-${node.id}`, d: edgePathBetweenRects(fromRect, toRect(el), 0), active: true });
+        nextEdges.push({ id: `${parentId}-${node.id}`, d: edgePathBetweenRects(parentRect, toRect(el), 0), active: index > 0 });
       });
-    }
-    setEdgeSize({ width: Math.ceil(navRect.width), height: Math.ceil(navRect.height) });
+    });
+    setEdgeSize({ width: Math.max(Math.ceil(navRect.width), navWidth), height: Math.max(Math.ceil(navRect.height), navHeight) });
     setEdges(nextEdges);
   };
 
@@ -1007,11 +1084,19 @@ function ProgressiveNavigation({
     measureEdges();
     window.addEventListener("resize", measureEdges);
     window.addEventListener("m3e:viewport-changed", measureEdges);
+    window.addEventListener("m3e:layout-options-changed", measureEdges);
     return () => {
       window.removeEventListener("resize", measureEdges);
       window.removeEventListener("m3e:viewport-changed", measureEdges);
+      window.removeEventListener("m3e:layout-options-changed", measureEdges);
     };
-  }, [activeId, rootChildren.length, activeChildren.length, navRootCenterY, mode, placement.left, placement.top]);
+  }, [activeId, columns, navRootCenterY, mode, navHeight, navWidth, path, placement.left, placement.top]);
+
+  useEffect(() => {
+    const refreshLayout = () => setLayoutRevision((value) => value + 1);
+    window.addEventListener("m3e:layout-options-changed", refreshLayout);
+    return () => window.removeEventListener("m3e:layout-options-changed", refreshLayout);
+  }, []);
 
   useEffect(() => {
     setActiveId(rootId);
@@ -1030,8 +1115,13 @@ function ProgressiveNavigation({
       className={`wb-progressive-nav${open ? " is-open" : ""}${mode === "active-node" ? " is-active-node" : ""}`}
       data-testid="progressive-navigation"
       data-pn-mode={mode}
+      data-active-pn-node={activeId}
       ref={navRef}
-      style={mode === "active-node" ? { left: `${placement.left}px`, top: `${placement.top}px` } : undefined}
+      style={{
+        width: `${navWidth}px`,
+        height: `${navHeight}px`,
+        ...(mode === "active-node" ? { left: `${placement.left}px`, top: `${placement.top}px` } : {}),
+      }}
       onMouseLeave={() => setActiveId(rootId)}
     >
       <svg className="wb-progressive-edges" viewBox={`0 0 ${edgeSize.width} ${edgeSize.height}`} aria-hidden="true">
@@ -1039,15 +1129,15 @@ function ProgressiveNavigation({
           <path className={edge.active ? "is-active-edge" : undefined} key={edge.id} d={edge.d} />
         ))}
       </svg>
-      <div className="wb-progressive-columns">
+      <div className="wb-progressive-columns" style={{ width: `${navWidth - navColumnOffsetX}px`, height: `${navHeight}px` }}>
         {columns.map((column, index) => (
           <div
             className="wb-progressive-column"
             key={`${path[index]}-${index}`}
-            style={{ left: `${index * columnStepX}px`, top: `${columnTop(index, column.length)}px` }}
+            style={{ left: `${index * columnStepX}px`, top: `${columnTops[index] ?? 0}px` }}
           >
             {column.map((node) => {
-              const selected = path.includes(node.id) || activeId === node.id;
+              const selected = path.includes(node.id) || activeId === node.id || Boolean(node.active?.());
               const hasChildren = Boolean(childrenByParent.get(node.id)?.length);
               return (
                 <button
