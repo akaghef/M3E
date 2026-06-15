@@ -145,7 +145,7 @@ stage_data_snapshot() {
   fi
 
   set +e
-  SNAPSHOT_OUTPUT="$(bash scripts/ops/m3e-data-snapshot.sh "${args[@]}" 2>&1)"
+  SNAPSHOT_OUTPUT="$(bash scripts/ops/m3e-data-snapshot.sh ${args[@]+"${args[@]}"} 2>&1)"
   local status=$?
   set -e
   printf '%s\n' "$SNAPSHOT_OUTPUT"

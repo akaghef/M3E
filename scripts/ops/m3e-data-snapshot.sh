@@ -223,7 +223,7 @@ commit_and_push() {
     return 0
   fi
 
-  run git add "${snapshot_files[@]}"
+  run git add ${snapshot_files[@]+"${snapshot_files[@]}"}
   if git diff --cached --quiet; then
     log "No snapshot changes; skipping commit and push."
     return 0
