@@ -79,6 +79,26 @@ scripts/codex.sh exec resume --last "<handoff>" < /dev/null
 - A non-fatal `rmcp ... Auth(AuthorizationRequired)` warning may print; ignore it.
 - Handoff format: see `docs/06_Operations/Director_Playbook.md`.
 
+## Bang scope and persistent rule gate
+
+Count the maximum trailing run of `!` or `！` in akaghef's latest instruction.
+
+- `0` or `1`: local task only.
+- `2` / `!!` / `！！`: target plus obvious adjacent effects in the same turn.
+- `3` / `!!!` / `！！！`: broad sync. Inspect directly related rules, protocols, docs, skills, hooks, and handoff consistency.
+
+For `!!` or `!!!`, first state:
+
+```text
+Scope: LV<n>. Target=<...>. Adjacent=<...>. Excluded=<...>.
+```
+
+When `!!!` is present, or when akaghef asks for recurrence prevention after an agent failure, do not accept a chat-only promise as complete. The cycle must create or dispatch a durable rule-system change, or report a concrete blocker.
+
+Durable targets include `AGENTS.md`, `CLAUDE.md`, `docs/06_Operations/Director_Playbook.md`, `protocols/`, `protocols/contracts/`, canonical skill sources under `agent_instructions/skills_canonical/`, checked-in hook or guard scripts, and CI workflows.
+
+If a skill or skill trigger changes, dispatch/use `skill-creator` and update the skill frontmatter `description`; body-only trigger text is insufficient.
+
 ## Worktree rules (GitHub structure)
 
 - Remote: `github.com/akaghef/M3E.git`. Integration branch: **`dev-beta`**.

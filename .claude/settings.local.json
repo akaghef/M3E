@@ -42,7 +42,7 @@
           {
             "type": "command",
             "command": "bash scripts/hooks/prompt-prj-check.sh",
-            "statusMessage": "Checking prj/* branch guardrails..."
+            "statusMessage": "Checking prj/* and bang guardrails..."
           }
         ]
       }
