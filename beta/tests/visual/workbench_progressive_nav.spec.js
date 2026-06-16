@@ -196,6 +196,16 @@ test.describe("Workbench progressive navigation", () => {
     await expect(page.locator('[data-pn-node="layout-edge-elbow"]')).toContainText("Elbow");
     await expect(page.locator('[data-pn-node="layout-edge-bezier"]')).toContainText("Bezier");
     await expect(page.locator('[data-pn-node="layout-edge-straight"]')).toContainText("Straight");
+    const layoutEdgeGeometry = await progressiveNavGeometry(
+      page,
+      '[data-pn-node="layout-edge-route"]',
+      '[data-pn-node="layout-edge-elbow"]',
+      '[data-pn-edge="layout-edge-route-layout-edge-elbow"]',
+    );
+    expect(layoutEdgeGeometry.endpoints.sx).toBeCloseTo(layoutEdgeGeometry.fromRect.right, 1);
+    expect(layoutEdgeGeometry.endpoints.sy).toBeCloseTo(layoutEdgeGeometry.fromRect.cy, 1);
+    expect(layoutEdgeGeometry.endpoints.tx).toBeCloseTo(layoutEdgeGeometry.toRect.left, 1);
+    expect(layoutEdgeGeometry.endpoints.ty).toBeCloseTo(layoutEdgeGeometry.toRect.cy, 1);
 
     await page.locator('[data-pn-node="layout-link-route"]').hover();
     await page.locator('[data-pn-node="layout-link-route"]').evaluate((element) => element.click());

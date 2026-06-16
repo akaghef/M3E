@@ -1,3 +1,4 @@
 {
-  "readableLineLength": false
+  "readableLineLength": false,
+  "showUnsupportedFiles": true
 }

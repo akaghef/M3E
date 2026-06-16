@@ -31,7 +31,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { edgePathBetweenRects, rectFromDomRect } from "./edge_geometry";
+import { edgePathBetweenRects } from "./edge_geometry";
 import "./workbench-ui.css";
 
 type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" | "note";
@@ -153,6 +153,42 @@ type ProgressiveEdge = {
   d: string;
   active: boolean;
 };
+
+type ProgressiveLayoutRect = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+type ProgressiveLayoutPosition = ProgressiveLayoutRect & {
+  depth: number;
+};
+
+type ProgressiveLayoutResult = {
+  pos: Record<string, ProgressiveLayoutPosition>;
+  order: string[];
+  totalWidth: number;
+  totalHeight: number;
+};
+
+type ProgressiveLayoutBridge = (
+  graph: {
+    nodeIds: string[];
+    childrenOf: (id: string) => string[];
+    graphLinks: unknown[];
+  },
+  boxSizes: Record<string, { w: number; h: number }>,
+  mode: ProgressiveSurfaceMode,
+  options?: {
+    displayRootId?: string;
+    structuredMode?: "tree" | "mindmap" | "logic-chart" | "timeline";
+    density?: "compact" | "balanced" | "spacious";
+    branchDirection?: ProgressiveBranchDirection;
+    depthAlign?: ProgressiveDepthAlign;
+    direction?: ProgressiveLayoutDirection;
+  },
+) => ProgressiveLayoutResult;
 
 type ProgressivePlacement = {
   left: number;
@@ -955,6 +991,13 @@ function clampPlacement(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+const PROGRESSIVE_NODE_WIDTH = 172;
+const PROGRESSIVE_NODE_HEIGHT = 47;
+const PROGRESSIVE_NAV_MIN_WIDTH = 486;
+const PROGRESSIVE_NAV_MIN_HEIGHT = 420;
+const PROGRESSIVE_NAV_PADDING_RIGHT = 28;
+const PROGRESSIVE_NAV_PADDING_BOTTOM = 18;
+
 function placementForAnchor(anchor: Element | null): ProgressivePlacement {
   if (!anchor) {
     return { left: 72, top: 307 };
@@ -1006,42 +1049,126 @@ function ProgressiveNavigation({
   }, [activeId, nodeById]);
   const columns = useMemo(() => path.map((id) => childrenByParent.get(id) || []), [childrenByParent, path]);
   const [, setLayoutRevision] = useState(0);
-  const [navRootCenterY, setNavRootCenterY] = useState(156);
-  const nodeCenterOffsetY = 23.5;
-  const nodeStepY = 53;
-  const columnStepX = 194;
-  const columnWidth = 172;
-  const navColumnOffsetX = 56;
-  const navPaddingRight = 28;
-  const navWidth = navColumnOffsetX + Math.max(1, columns.length - 1) * columnStepX + columnWidth + navPaddingRight;
-  const navHeight = 560;
-  const groupHeight = (count: number) => (count > 0 ? 47 + (count - 1) * nodeStepY : 0);
-  const groupTop = (count: number, parentCenterY: number) => {
-    const height = groupHeight(count);
-    if (!height) return parentCenterY;
-    return clampPlacement(parentCenterY - height / 2, 0, Math.max(0, navHeight - height));
-  };
-  const nodeCenterY = (top: number, index: number) => top + nodeCenterOffsetY + index * nodeStepY;
-  const columnTops = useMemo(() => {
-    const tops: number[] = [];
-    const parentCenters: number[] = [navRootCenterY];
-    columns.forEach((column, index) => {
-      const top = groupTop(column.length, parentCenters[index] ?? navRootCenterY);
-      tops[index] = top;
-      const selectedChildId = path[index + 1];
-      const selectedChildIndex = selectedChildId ? column.findIndex((node) => node.id === selectedChildId) : -1;
-      if (selectedChildIndex >= 0) {
-        parentCenters[index + 1] = nodeCenterY(top, selectedChildIndex);
-      }
-    });
-    return tops;
-  }, [columns, navRootCenterY, path]);
   const navRef = useRef<HTMLDivElement | null>(null);
-  const [edges, setEdges] = useState<ProgressiveEdge[]>([]);
-  const [edgeSize, setEdgeSize] = useState({ width: 486, height: 420 });
+  const [rootRect, setRootRect] = useState<ProgressiveLayoutRect>({ x: 0, y: 156, w: 44, h: 44 });
   const [placement, setPlacement] = useState<ProgressivePlacement>({ left: 72, top: 307 });
 
-  const measureEdges = () => {
+  const visibleProgressiveNodes = useMemo(() => columns.flat(), [columns]);
+  const progressiveLayout = useMemo(() => {
+    const layoutFn = (window as Window & { m3eLayout?: ProgressiveLayoutBridge }).m3eLayout;
+    const nodeIds = [rootId, ...visibleProgressiveNodes.map((node) => node.id)];
+    const visibleChildrenByParent = new Map<string, string[]>();
+    path.forEach((parentId, index) => {
+      visibleChildrenByParent.set(parentId, (columns[index] || []).map((node) => node.id));
+    });
+    const boxSizes: Record<string, { w: number; h: number }> = {
+      [rootId]: { w: rootRect.w, h: rootRect.h },
+    };
+    visibleProgressiveNodes.forEach((node) => {
+      boxSizes[node.id] = { w: PROGRESSIVE_NODE_WIDTH, h: PROGRESSIVE_NODE_HEIGHT };
+    });
+    const fallback = (): ProgressiveLayoutResult => {
+      const pos: Record<string, ProgressiveLayoutPosition> = {
+        [rootId]: { x: 0, y: rootRect.y + rootRect.h / 2, depth: 0, w: rootRect.w, h: rootRect.h },
+      };
+      const order: string[] = [rootId];
+      path.forEach((parentId, index) => {
+        const column = columns[index] || [];
+        const parentPos = pos[parentId] || pos[rootId]!;
+        const top = parentPos.y - ((column.length - 1) * (PROGRESSIVE_NODE_HEIGHT + 7)) / 2 - PROGRESSIVE_NODE_HEIGHT / 2;
+        column.forEach((node, nodeIndex) => {
+          pos[node.id] = {
+            x: parentPos.x + parentPos.w + 48,
+            y: top + PROGRESSIVE_NODE_HEIGHT / 2 + nodeIndex * (PROGRESSIVE_NODE_HEIGHT + 7),
+            depth: index + 1,
+            w: PROGRESSIVE_NODE_WIDTH,
+            h: PROGRESSIVE_NODE_HEIGHT,
+          };
+          order.push(node.id);
+        });
+      });
+      return { pos, order, totalWidth: PROGRESSIVE_NAV_MIN_WIDTH, totalHeight: PROGRESSIVE_NAV_MIN_HEIGHT };
+    };
+    const rawLayout = layoutFn
+      ? layoutFn(
+        {
+          nodeIds,
+          childrenOf: (nodeId: string) => visibleChildrenByParent.get(nodeId) || [],
+          graphLinks: [],
+        },
+        boxSizes,
+        "tree",
+        {
+          displayRootId: rootId,
+          structuredMode: "logic-chart",
+          density: "balanced",
+          branchDirection: "right",
+          depthAlign: "aligned",
+          direction: "right",
+        },
+      )
+      : fallback();
+    const rawRoot = rawLayout.pos[rootId];
+    if (!rawRoot) return fallback();
+    const layoutRootX = Math.min(rootRect.x, 0);
+    const offsetX = layoutRootX - rawRoot.x;
+    const offsetY = rootRect.y + rootRect.h / 2 - rawRoot.y;
+    const pos: Record<string, ProgressiveLayoutPosition> = {};
+    rawLayout.order.forEach((nodeId: string) => {
+      const raw = rawLayout.pos[nodeId];
+      if (!raw) return;
+      pos[nodeId] = { ...raw, x: raw.x + offsetX, y: raw.y + offsetY };
+    });
+    const minNodeTop = visibleProgressiveNodes.reduce((minTop, node) => {
+      const nodePos = pos[node.id];
+      return nodePos ? Math.min(minTop, nodePos.y - nodePos.h / 2) : minTop;
+    }, Number.POSITIVE_INFINITY);
+    const visibleShiftY = Number.isFinite(minNodeTop) ? Math.max(0, -minNodeTop) : 0;
+    if (visibleShiftY > 0) {
+      visibleProgressiveNodes.forEach((node) => {
+        const nodePos = pos[node.id];
+        if (nodePos) {
+          pos[node.id] = { ...nodePos, y: nodePos.y + visibleShiftY };
+        }
+      });
+    }
+    return { ...rawLayout, pos };
+  }, [columns, path, rootId, rootRect, visibleProgressiveNodes]);
+  const navWidth = useMemo(() => {
+    const rightEdge = visibleProgressiveNodes.reduce((maxRight, node) => {
+      const pos = progressiveLayout.pos[node.id];
+      return pos ? Math.max(maxRight, pos.x + pos.w) : maxRight;
+    }, PROGRESSIVE_NAV_MIN_WIDTH - PROGRESSIVE_NAV_PADDING_RIGHT);
+    return Math.max(PROGRESSIVE_NAV_MIN_WIDTH, Math.ceil(rightEdge + PROGRESSIVE_NAV_PADDING_RIGHT));
+  }, [progressiveLayout, visibleProgressiveNodes]);
+  const navHeight = useMemo(() => {
+    const bottomEdge = visibleProgressiveNodes.reduce((maxBottom, node) => {
+      const pos = progressiveLayout.pos[node.id];
+      return pos ? Math.max(maxBottom, pos.y + pos.h / 2) : maxBottom;
+    }, PROGRESSIVE_NAV_MIN_HEIGHT - PROGRESSIVE_NAV_PADDING_BOTTOM);
+    return Math.max(PROGRESSIVE_NAV_MIN_HEIGHT, Math.ceil(bottomEdge + PROGRESSIVE_NAV_PADDING_BOTTOM));
+  }, [progressiveLayout, visibleProgressiveNodes]);
+  const edges = useMemo<ProgressiveEdge[]>(() => {
+    const rectForNode = (nodeId: string): ProgressiveLayoutRect | null => {
+      const pos = progressiveLayout.pos[nodeId];
+      if (!pos) return null;
+      return { x: pos.x, y: pos.y - pos.h / 2, w: pos.w, h: pos.h };
+    };
+    const nextEdges: ProgressiveEdge[] = [];
+    columns.forEach((column, index) => {
+      const parentId = path[index];
+      const parentRect = index === 0 ? rootRect : rectForNode(parentId);
+      if (!parentRect) return;
+      column.forEach((node) => {
+        const childRect = rectForNode(node.id);
+        if (!childRect) return;
+        nextEdges.push({ id: `${parentId}-${node.id}`, d: edgePathBetweenRects(parentRect, childRect, 0), active: index > 0 });
+      });
+    });
+    return nextEdges;
+  }, [columns, path, progressiveLayout, rootRect]);
+
+  const measureRootAnchor = () => {
     const nav = navRef.current;
     const rootAnchor = mode === "active-node"
       ? activeNodeAnchorElement() || fallbackProgressiveAnchorElement()
@@ -1056,41 +1183,33 @@ function ProgressiveNavigation({
       ));
     }
     const navRect = nav.getBoundingClientRect();
-    const toRect = (el: Element) => rectFromDomRect(el.getBoundingClientRect(), navRect);
-    const rootRect = toRect(rootAnchor);
-    const measuredRootCenterY = rootRect.y + rootRect.h / 2;
-    setNavRootCenterY((current) => (Math.abs(current - measuredRootCenterY) > 0.5 ? measuredRootCenterY : current));
-    const nextEdges: ProgressiveEdge[] = [];
-    columns.forEach((column, index) => {
-      const parentId = path[index];
-      const parentRect = index === 0
-        ? rootRect
-        : (() => {
-          const parentEl = nav.querySelector(`[data-pn-node="${parentId}"]`);
-          return parentEl ? toRect(parentEl) : null;
-        })();
-      if (!parentRect) return;
-      column.forEach((node) => {
-        const el = nav.querySelector(`[data-pn-node="${node.id}"]`);
-        if (!el) return;
-        nextEdges.push({ id: `${parentId}-${node.id}`, d: edgePathBetweenRects(parentRect, toRect(el), 0), active: index > 0 });
-      });
+    const anchorRect = rootAnchor.getBoundingClientRect();
+    const nextRootRect = {
+      x: anchorRect.left - navRect.left,
+      y: anchorRect.top - navRect.top,
+      w: anchorRect.width,
+      h: anchorRect.height,
+    };
+    setRootRect((current) => {
+      const changed = Math.abs(current.x - nextRootRect.x) > 0.5
+        || Math.abs(current.y - nextRootRect.y) > 0.5
+        || Math.abs(current.w - nextRootRect.w) > 0.5
+        || Math.abs(current.h - nextRootRect.h) > 0.5;
+      return changed ? nextRootRect : current;
     });
-    setEdgeSize({ width: Math.max(Math.ceil(navRect.width), navWidth), height: Math.max(Math.ceil(navRect.height), navHeight) });
-    setEdges(nextEdges);
   };
 
   useLayoutEffect(() => {
-    measureEdges();
-    window.addEventListener("resize", measureEdges);
-    window.addEventListener("m3e:viewport-changed", measureEdges);
-    window.addEventListener("m3e:layout-options-changed", measureEdges);
+    measureRootAnchor();
+    window.addEventListener("resize", measureRootAnchor);
+    window.addEventListener("m3e:viewport-changed", measureRootAnchor);
+    window.addEventListener("m3e:layout-options-changed", measureRootAnchor);
     return () => {
-      window.removeEventListener("resize", measureEdges);
-      window.removeEventListener("m3e:viewport-changed", measureEdges);
-      window.removeEventListener("m3e:layout-options-changed", measureEdges);
+      window.removeEventListener("resize", measureRootAnchor);
+      window.removeEventListener("m3e:viewport-changed", measureRootAnchor);
+      window.removeEventListener("m3e:layout-options-changed", measureRootAnchor);
     };
-  }, [activeId, columns, navRootCenterY, mode, navHeight, navWidth, path, placement.left, placement.top]);
+  }, [activeId, mode, placement.left, placement.top, rootId]);
 
   useEffect(() => {
     const refreshLayout = () => setLayoutRevision((value) => value + 1);
@@ -1124,27 +1243,28 @@ function ProgressiveNavigation({
       }}
       onMouseLeave={() => setActiveId(rootId)}
     >
-      <svg className="wb-progressive-edges" viewBox={`0 0 ${edgeSize.width} ${edgeSize.height}`} aria-hidden="true">
+      <svg className="wb-progressive-edges" viewBox={`0 0 ${navWidth} ${navHeight}`} aria-hidden="true">
         {edges.map((edge) => (
-          <path className={edge.active ? "is-active-edge" : undefined} key={edge.id} d={edge.d} />
+          <path className={edge.active ? "is-active-edge" : undefined} data-pn-edge={edge.id} key={edge.id} d={edge.d} />
         ))}
       </svg>
-      <div className="wb-progressive-columns" style={{ width: `${navWidth - navColumnOffsetX}px`, height: `${navHeight}px` }}>
+      <div className="wb-progressive-columns" style={{ width: `${navWidth}px`, height: `${navHeight}px` }}>
         {columns.map((column, index) => (
           <div
             className="wb-progressive-column"
             key={`${path[index]}-${index}`}
-            style={{ left: `${index * columnStepX}px`, top: `${columnTops[index] ?? 0}px` }}
           >
             {column.map((node) => {
               const selected = path.includes(node.id) || activeId === node.id || Boolean(node.active?.());
               const hasChildren = Boolean(childrenByParent.get(node.id)?.length);
+              const nodePos = progressiveLayout.pos[node.id];
               return (
                 <button
                   className={`wb-progressive-node${selected ? " is-selected" : ""}${node.action && !hasChildren ? " is-action" : ""}`}
                   key={node.id}
                   data-pn-node={node.id}
                   type="button"
+                  style={nodePos ? { left: `${nodePos.x}px`, top: `${nodePos.y - nodePos.h / 2}px` } : undefined}
                   onMouseEnter={() => setActiveId(node.id)}
                   onFocus={() => setActiveId(node.id)}
                   onClick={() => activate(node)}

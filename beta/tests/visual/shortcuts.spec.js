@@ -18,6 +18,8 @@
  * Total: 7 nodes
  */
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
 const { spawnSync } = require("child_process");
 const {
   launchViewer,
@@ -31,6 +33,21 @@ const {
   expectMetaContains,
   expectStatusContains,
 } = require("../helpers/viewer_test_utils");
+
+const FIXTURE_PATH = path.resolve(__dirname, "..", "fixtures", "shortcut_test.json");
+
+function shortcutFixtureWithGraphLink() {
+  const payload = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
+  payload.state.links = {
+    "link-child-b": {
+      id: "link-child-b",
+      sourceNodeId: "child-b",
+      targetNodeId: "grandchild-a1",
+      relationType: "related",
+    },
+  };
+  return payload;
+}
 
 function readMacClipboard() {
   if (process.platform !== "darwin") return null;
@@ -306,6 +323,24 @@ test.describe("Delete and Backspace: remove node", () => {
     const afterCount = await getNodeCount(page);
     expect(afterCount).toBe(initialCount - 1);
   });
+
+  test("Delete removes graph links connected to the deleted node", async ({ page }) => {
+    await launchViewer(page, shortcutFixtureWithGraphLink());
+    await focusBoard(page);
+
+    const initialCount = await getNodeCount(page);
+    expect(await getLinkCount(page)).toBe(1);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Delete");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(initialCount - 1);
+    expect(await getLinkCount(page)).toBe(0);
+  });
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -460,6 +495,61 @@ test.describe("Copy and Paste", () => {
     }
   });
 
+  test("Ctrl+C in one tab then Ctrl+V in another tab works without system clipboard", async ({ page, context }) => {
+    const disableSystemClipboard = async (targetPage) => {
+      await targetPage.addInitScript(() => {
+        Object.defineProperty(navigator, "clipboard", {
+          value: undefined,
+          configurable: true,
+        });
+      });
+      await targetPage.route("**/api/system-clipboard/**", async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "clipboard disabled for test" }),
+        });
+      });
+    };
+    const sourceMap = JSON.parse(JSON.stringify(require("../fixtures/shortcut_test.json")));
+    sourceMap.state.links = {
+      "internal-link": {
+        id: "internal-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "grandchild-a2",
+        direction: "forward",
+        style: "default",
+      },
+    };
+    const targetPage = await context.newPage();
+    try {
+      await disableSystemClipboard(page);
+      await disableSystemClipboard(targetPage);
+
+      await launchViewer(page, sourceMap);
+      await focusBoard(page);
+      await pressKey(page, "ArrowRight");
+      await expectMetaContains(page, "selected: Child A");
+      await pressKey(page, "Control+c");
+      await waitForRender(page);
+      expect(await getStatusText(page)).toContain("for M3E tabs");
+
+      await launchViewer(targetPage);
+      await focusBoard(targetPage);
+      expect(await getNodeCount(targetPage)).toBe(7);
+      expect(await getLinkCount(targetPage)).toBe(0);
+
+      await pressKey(targetPage, "Control+v");
+      await waitForRender(targetPage);
+
+      expect(await getNodeCount(targetPage)).toBe(10);
+      expect(await getLinkCount(targetPage)).toBe(1);
+      expect(await getStatusText(targetPage)).toContain("and 1 link(s)");
+    } finally {
+      await targetPage.close();
+    }
+  });
+
   test("Ctrl+Alt+C copies selected node path", async ({ page }) => {
     await launchViewer(page);
     await focusBoard(page);
@@ -471,8 +561,8 @@ test.describe("Copy and Paste", () => {
     await pressKey(page, "Control+Alt+c");
     await waitForRender(page);
 
-    expect(await getStatusText(page)).toContain("Path copied: Test Root / Child A / Grandchild A1");
-    expect(readMacClipboard()).toBe("Test Root / Child A / Grandchild A1");
+    expect(await getStatusText(page)).toContain("Path copied: M:(開発)> Child A > Grandchild A1");
+    expect(readMacClipboard()).toBe("M:(開発)> Child A > Grandchild A1");
   });
 
   test("Ctrl+Alt+I copies current scope ID", async ({ page }) => {

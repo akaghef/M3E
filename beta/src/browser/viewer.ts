@@ -393,7 +393,15 @@ interface BcStateMessage {
   savedAt: string;
 }
 
+interface ClipboardSyncRecord {
+  type: "M3E_CLIPBOARD_UPDATE";
+  fromTabId: string;
+  encoded: string;
+  writtenAt: number;
+}
+
 let bc: BroadcastChannel | null = null;
+let clipboardBc: BroadcastChannel | null = null;
 let lastServerSavedAt: string | null = null;
 let lastServerBaseState: AppState | null = null;
 
@@ -640,6 +648,8 @@ const SCATTER_MIN_RADIUS = 18;
 const SCATTER_DEPTH_SCALE = 2 / 3;
 const SCATTER_MIN_SCALE = 0.52;
 const STRUCTURED_CLIPBOARD_PREFIX = "M3E_CLIPBOARD_V1\n";
+const STRUCTURED_CLIPBOARD_STORAGE_KEY = "m3e:subtree-clipboard:v1";
+const STRUCTURED_CLIPBOARD_MAX_AGE_MS = 10 * 60 * 1000;
 let scatterAnimationEnabled = false;
 let scatterAnimationFrame: number | null = null;
 let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
@@ -11674,8 +11684,20 @@ function deleteSelectedGraphLink(): boolean {
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   touchDocument();
+  flushAutosaveNow();
   setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
   return true;
+}
+
+function deleteGraphLinksForNode(nodeId: string): void {
+  if (!map?.state.links) {
+    return;
+  }
+  Object.entries(map.state.links).forEach(([linkId, link]) => {
+    if (link.sourceNodeId === nodeId || link.targetNodeId === nodeId) {
+      delete map!.state.links![linkId];
+    }
+  });
 }
 
 function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
@@ -12057,6 +12079,7 @@ function deleteSelected(): void {
       if (!isAliasNode(current)) {
         markAliasesBrokenInViewer(currentId, uiLabel(current));
       }
+      deleteGraphLinksForNode(currentId);
       stack.push(...(current.children || []));
       viewState.reparentSourceIds.delete(currentId);
       delete map!.state.nodes[currentId];
@@ -12076,6 +12099,7 @@ function deleteSelected(): void {
     viewState.currentScopeRootId = viewState.currentScopeId;
   }
   touchDocument();
+  flushAutosaveNow();
 }
 
 function toggleCollapse(): void {
@@ -12453,6 +12477,21 @@ function scheduleAutosave(): void {
     autosaveTimer = null;
     void saveDocToLocalDb(false);
   }, AUTOSAVE_DELAY_MS);
+}
+
+function flushAutosaveNow(): void {
+  if (!map || isReadOnlyLink()) {
+    return;
+  }
+  if (autosaveTimer !== null) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  void saveDocToLocalDb(false).then((ok) => {
+    if (!ok) {
+      setStatus("Local save failed after delete.", true);
+    }
+  });
 }
 
 function isValidAppState(s: unknown): s is AppState {
@@ -13909,6 +13948,114 @@ function parseStructuredClipboardPayload(text: string): SubtreeClipboardPayload 
   }
 }
 
+function normalizeClipboardSyncRecord(raw: unknown): ClipboardSyncRecord | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Partial<ClipboardSyncRecord>;
+  if (
+    record.type !== "M3E_CLIPBOARD_UPDATE" ||
+    typeof record.fromTabId !== "string" ||
+    typeof record.encoded !== "string" ||
+    typeof record.writtenAt !== "number"
+  ) {
+    return null;
+  }
+  if (!record.encoded.startsWith(STRUCTURED_CLIPBOARD_PREFIX)) {
+    return null;
+  }
+  if (Date.now() - record.writtenAt > STRUCTURED_CLIPBOARD_MAX_AGE_MS) {
+    return null;
+  }
+  return {
+    type: "M3E_CLIPBOARD_UPDATE",
+    fromTabId: record.fromTabId,
+    encoded: record.encoded,
+    writtenAt: record.writtenAt,
+  };
+}
+
+function applyStructuredClipboardPayload(payload: SubtreeClipboardPayload): void {
+  viewState.clipboardState = {
+    type: "copy",
+    snapshots: payload.roots,
+    links: payload.links,
+  };
+  scheduleRender();
+}
+
+function applyStructuredClipboardText(encoded: string): boolean {
+  const payload = parseStructuredClipboardPayload(encoded);
+  if (!payload) {
+    return false;
+  }
+  applyStructuredClipboardPayload(payload);
+  return true;
+}
+
+function writeStructuredClipboardFallback(encoded: string): boolean {
+  const record: ClipboardSyncRecord = {
+    type: "M3E_CLIPBOARD_UPDATE",
+    fromTabId: TAB_ID,
+    encoded,
+    writtenAt: Date.now(),
+  };
+  let stored = false;
+  try {
+    window.localStorage.setItem(STRUCTURED_CLIPBOARD_STORAGE_KEY, JSON.stringify(record));
+    stored = true;
+  } catch {
+    stored = false;
+  }
+  try {
+    clipboardBc?.postMessage(record);
+  } catch {
+    // localStorage is the durable same-origin fallback; BroadcastChannel is best-effort.
+  }
+  return stored || Boolean(clipboardBc);
+}
+
+function readStructuredClipboardFallback(): SubtreeClipboardPayload | null {
+  try {
+    const record = normalizeClipboardSyncRecord(JSON.parse(window.localStorage.getItem(STRUCTURED_CLIPBOARD_STORAGE_KEY) || "null"));
+    return record ? parseStructuredClipboardPayload(record.encoded) : null;
+  } catch {
+    return null;
+  }
+}
+
+function initClipboardSync(): void {
+  if (typeof BroadcastChannel !== "undefined") {
+    try {
+      clipboardBc = new BroadcastChannel("m3e-subtree-clipboard");
+      clipboardBc.onmessage = (ev: MessageEvent<ClipboardSyncRecord>) => {
+        const record = normalizeClipboardSyncRecord(ev.data);
+        if (!record || record.fromTabId === TAB_ID) {
+          return;
+        }
+        applyStructuredClipboardText(record.encoded);
+      };
+    } catch {
+      clipboardBc = null;
+    }
+  }
+  window.addEventListener("storage", (ev: StorageEvent) => {
+    if (ev.key !== STRUCTURED_CLIPBOARD_STORAGE_KEY || !ev.newValue) {
+      return;
+    }
+    try {
+      const record = normalizeClipboardSyncRecord(JSON.parse(ev.newValue));
+      if (!record || record.fromTabId === TAB_ID) {
+        return;
+      }
+      applyStructuredClipboardText(record.encoded);
+    } catch {
+      // Ignore malformed same-origin clipboard fallback records.
+    }
+  });
+  window.addEventListener("beforeunload", () => clipboardBc?.close());
+}
+
 async function copyTextViaLocalClipboardApi(text: string): Promise<boolean> {
   if (!text || typeof fetch !== "function" || !/^https?:$/.test(window.location.protocol)) {
     return false;
@@ -14009,22 +14156,32 @@ async function copyScopeId(): Promise<void> {
   setStatus("Failed to copy scope ID to system clipboard.", true);
 }
 
-function copySelected(): void {
+async function copySelected(): Promise<void> {
   const roots = getSelectionRoots();
   if (roots.length === 0) {
     return;
   }
   const snapshots = roots.map((rootId) => toSubtreeSnapshot(rootId));
   const links = collectInternalLinksForRoots(roots);
+  const payload = buildStructuredClipboardPayload(snapshots, links);
+  const encoded = encodeStructuredClipboardPayload(payload);
   viewState.clipboardState = {
     type: "copy",
     snapshots,
     links,
   };
-  const payload = buildStructuredClipboardPayload(snapshots, links);
-  void copyTextToSystemClipboard(encodeStructuredClipboardPayload(payload));
+  const copiedToM3eTabs = writeStructuredClipboardFallback(encoded);
   scheduleRender();
-  setStatus(`Copied ${roots.length} node(s)${links.length ? ` and ${links.length} link(s)` : ""}.`);
+  const message = `Copied ${roots.length} node(s)${links.length ? ` and ${links.length} link(s)` : ""}`;
+  if (await copyTextToSystemClipboard(encoded)) {
+    setStatus(`${message}.`);
+    return;
+  }
+  if (copiedToM3eTabs) {
+    setStatus(`${message} for M3E tabs. System clipboard unavailable.`);
+    return;
+  }
+  setStatus("Failed to copy nodes.", true);
 }
 
 function cutSelected(): void {
@@ -14047,7 +14204,7 @@ async function pasteClipboard(): Promise<void> {
   }
   if (!viewState.clipboardState) {
     const clipboardText = await readTextFromSystemClipboard();
-    const payload = clipboardText ? parseStructuredClipboardPayload(clipboardText) : null;
+    const payload = (clipboardText ? parseStructuredClipboardPayload(clipboardText) : null) || readStructuredClipboardFallback();
     if (!payload) {
       setStatus("Clipboard is empty.", true);
       return;
@@ -15486,7 +15643,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
     event.preventDefault();
-    copySelected();
+    void copySelected();
     return;
   }
 
@@ -16010,6 +16167,7 @@ void initializeDocument().then(() => {
   if (fatalLoadError || !map) {
     return;
   }
+  initClipboardSync();
   if (!LOCAL_FS_VIEW_MODE) {
     initBroadcastSync();
     initVisibilityManagedLiveStreams();

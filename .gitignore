@@ -32,7 +32,11 @@ final/test-results/
 .claude/*
 !.claude/skills/
 !.claude/agents/
-.agents/
+# Project-local skills are intentional; keep other agent-local state ignored.
+.agents/*
+!.agents/skills/
+!.agents/skills/**
+.agents/**/.DS_Store
 docs/ideas/user_memo.md
 memo.md
 beta/tests/visual/viewer.visual.spec.js-snapshots/
