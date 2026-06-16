@@ -9,16 +9,22 @@ The operating manual for Claude-as-Director driving Codex workers on M3E.
 ## 1. The loop
 
 ```
-intent → clarify → decompose → handoff → dispatch (codex) → review → integrate / iterate → record
+intent → discovery/steering (Claude) → spec/design/tasks (Codex draft → Claude review)
+       → impl handoff → dispatch (codex) → impl review + verify (Claude)
+       → integrate / iterate → record
 ```
 
 1. **Intent** — restate what akaghef wants in one sentence. If ambiguous, ask before dispatching.
-2. **Decompose** — split into bounded tasks. Each task = one Codex dispatch with a single objective.
-3. **Handoff** — write the packet (template below).
-4. **Dispatch** — `scripts/codex.sh exec` (read-only for investigation, write in a worktree for implementation).
-5. **Review** — judge Codex output against intent + acceptance criteria. Do not rubber-stamp; verify claims.
-6. **Integrate / iterate** — PR to `dev-beta`, or send Codex a follow-up (`resume --last`).
-7. **Record** — if you learned something reusable, append to the Improvement Log (§5).
+2. **Discovery / steering** (Claude) — for new or non-trivial work, run `kiro-discovery` to frame
+   scope; update `.kiro/steering/` (`kiro-steering`) if project knowledge changed. Skip for trivial fixes.
+3. **Spec / design / tasks** — dispatch drafts to Codex (`kiro-spec-*`), then review and approve
+   (`kiro-review`). Codex authors; you judge. Skip the spec phases for trivial / mechanical changes.
+4. **Decompose & handoff** — turn approved tasks into bounded Codex impl handoffs (template below).
+5. **Dispatch** — `scripts/codex.sh exec` (read-only for investigation, write in a worktree for implementation).
+6. **Review & verify** — judge Codex output against intent + acceptance criteria + the approved spec;
+   verify with fresh evidence (`kiro-verify-completion`). Do not rubber-stamp; verify claims.
+7. **Integrate / iterate** — PR to `dev-beta`, or send Codex a follow-up (`resume --last`).
+8. **Record** — if you learned something reusable, append to the Improvement Log (§5).
 
 ## 2. Codex handoff template
 
@@ -119,3 +125,24 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   akaghef (or a Codex session that has working browser access). Don't burn turns on screenshots.
   Aside: `codex-session` `start.sh` hardcoded `MODEL=gpt-5.2` (rejected by ChatGPT-account Codex);
   patched to `${MODEL:-gpt-5.5}`, and its scripts needed `chmod +x`.
+- 2026-06-16 — Built isolated app `apps/test-case-board/` (Vite + React + @dnd-kit kanban) from a
+  screenshot spec. Since Codex is blind to images, the Director's value-add was transcribing the
+  full visual + data spec into the handoff (source of truth). Three Codex/sandbox lessons:
+  (1) **Codex `exec` sandbox has no network** — `npm install` dies with ENOTFOUND registry.npmjs.org,
+  so build/typecheck/dev-run acceptance can't run inside Codex. The Director must run install+build
+  for verification (`export PATH="/opt/homebrew/bin:$PATH"` for arm64 node), then re-dispatch only the
+  no-network finishing work.
+  (2) **`--final` is an `exec`-only flag** in `codex.sh`; `codex exec resume --last --final …` errors
+  with `unexpected argument '--final'`. Drop `--final` on the resume path.
+  (3) **Codex `resume` sometimes can't write `.git/worktrees/<wt>/index.lock`** (`Operation not
+  permitted`) → its `git add`/commit fails even though the file edits land on disk. Don't retry inside
+  Codex; the Director commits from its own Bash (git/PR flow is the Director's domain anyway). Note the
+  error is "cannot *create*" the lock, i.e. no stale lock to clean up.
+- 2026-06-16 — **Adopted Kiro / cc-sdd as M3E's default execution harness** (akaghef decision,
+  relayed from a codex DACP-rollout notice). Phase ownership is **hybrid**: Claude owns
+  discovery / steering / impl-review / verify; Codex drafts spec/design/tasks and implements.
+  Updated `CLAUDE.md` (role intro, DO / DO-NOT, new "Spec-Driven harness" section, session-start)
+  and §1 loop above. Guardrails: A-sys upper boundaries (TOB / DP / credential / Map Manager /
+  Large IO / send gate) outrank cc-sdd; trivial changes skip the spec phases; Codex-owned phases
+  still use the dispatch + worktree mechanics. DACP's `dacp_*` MCP bridge lives in Akaghef-System
+  and is **not** wired into this M3E repo — continue driving Codex via `scripts/codex.sh exec` here.
