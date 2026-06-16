@@ -107,7 +107,7 @@ $env:M3E_MAP_SLUG = "beta-dev"
 $env:M3E_SEED_DB_PATH = Join-Path $env:M3E_HOME "seeds\core-seed.sqlite"
 $env:M3E_DATA_DIR = Join-Path $env:M3E_HOME ("workspaces\" + $env:M3E_WORKSPACE_ID)
 $env:M3E_DB_FILE = "data.sqlite"
-$env:M3E_DOC_ID = $env:M3E_MAP_ID
+$env:M3E_MAP_ID = $env:M3E_MAP_ID
 
 if (-not (Test-Path $env:M3E_DATA_DIR)) {
     New-Item -ItemType Directory -Path $env:M3E_DATA_DIR | Out-Null

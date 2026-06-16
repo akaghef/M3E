@@ -41,10 +41,7 @@ if !errorlevel! neq 0 goto :error
 REM --- Step 2: Sync beta/ -> final/ (exclude mode) ---
 echo [2/6] Syncing beta/ -^> final/ (exclude mode)...
 if not exist final mkdir final
-robocopy beta\ final\ /MIR /NFL /NDL /NJH /NJS ^
-  /XD node_modules dist prompts tmp public backups audit conflict-backups ^
-  /XF .env Beta_Policy.md e2e_test_server.js playwright.e2e.config.js ^
-     data.sqlite .m3e-launched
+robocopy beta\ final\ /MIR /NFL /NDL /NJH /NJS /XD node_modules dist prompts tmp public backups audit conflict-backups /XF .env Beta_Policy.md e2e_test_server.js playwright.e2e.config.js data.sqlite .m3e-launched
 REM robocopy returns 0-7 for success
 if !errorlevel! GTR 7 goto :error
 REM Restore final-only files

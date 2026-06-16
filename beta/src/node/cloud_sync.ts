@@ -5,7 +5,7 @@ import type {
   CloudSyncTransport,
   PullResult,
   PushResult,
-  SavedDoc,
+  SavedMap,
   SyncStatus,
 } from "../shared/types";
 import { createConflictBackup } from "./conflict_backup";
@@ -15,10 +15,10 @@ import { createConflictBackup } from "./conflict_backup";
 // ---------------------------------------------------------------------------
 
 /**
- * Detect cloud conflict using docVersion (monotonic integer) as primary,
+ * Detect cloud conflict using mapVersion (monotonic integer) as primary,
  * with savedAt timestamp as fallback for backward compatibility.
  *
- * Returns true when the cloud document has been modified since the client
+ * Returns true when the cloud map has been modified since the client
  * last pulled (i.e., the client's base version/timestamp does not match
  * the cloud's current version/timestamp).
  */
@@ -26,16 +26,16 @@ export function detectCloudConflict(
   existingCloudSavedAt: string | null,
   baseSavedAt: string | null,
   forcePush: boolean,
-  cloudDocVersion?: number | null,
-  baseDocVersion?: number | null,
+  cloudMapVersion?: number | null,
+  baseMapVersion?: number | null,
 ): boolean {
   if (forcePush) {
     return false;
   }
 
-  // Prefer docVersion-based comparison when both sides provide it
-  if (cloudDocVersion != null && baseDocVersion != null) {
-    return cloudDocVersion !== baseDocVersion;
+  // Prefer mapVersion-based comparison when both sides provide it
+  if (cloudMapVersion != null && baseMapVersion != null) {
+    return cloudMapVersion !== baseMapVersion;
   }
 
   // Fallback to savedAt timestamp comparison
@@ -97,8 +97,8 @@ export async function withRetry<T>(
 // FileTransport — file-based cloud sync (existing behaviour, now a class)
 // ---------------------------------------------------------------------------
 
-interface FileDoc extends SavedDoc {
-  docVersion?: number;
+interface FileMap extends SavedMap {
+  mapVersion?: number;
 }
 
 export class FileTransport implements CloudSyncTransport {
@@ -110,87 +110,87 @@ export class FileTransport implements CloudSyncTransport {
     }
   }
 
-  private docPath(mapId: string): string {
+  private mapPath(mapId: string): string {
     const safeId = mapId.replace(/[^a-zA-Z0-9._-]/g, "_");
     return path.join(this.dir, `${safeId}.json`);
   }
 
-  private readDoc(filePath: string): FileDoc | null {
+  private readDoc(filePath: string): FileMap | null {
     if (!fs.existsSync(filePath)) {
       return null;
     }
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as FileDoc;
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as FileMap;
     if (!parsed || parsed.version !== 1 || !parsed.state) {
       return null;
     }
     return parsed;
   }
 
-  async push(mapId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
-    const filePath = this.docPath(mapId);
+  async push(mapId: string, map: SavedMap, baseSavedAt: string | null, force: boolean, baseMapVersion?: number | null): Promise<PushResult> {
+    const filePath = this.mapPath(mapId);
     const existing = this.readDoc(filePath);
 
     if (detectCloudConflict(
       existing?.savedAt ?? null,
       baseSavedAt,
       force,
-      existing?.docVersion ?? null,
-      baseDocVersion ?? null,
+      existing?.mapVersion ?? null,
+      baseMapVersion ?? null,
     )) {
       return {
         ok: false,
         savedAt: existing?.savedAt ?? "",
-        documentId: mapId,
+        mapId: mapId,
         forced: false,
         conflict: true,
         cloudSavedAt: existing?.savedAt ?? null,
-        cloudDocVersion: existing?.docVersion ?? undefined,
+        cloudMapVersion: existing?.mapVersion ?? undefined,
         remoteState: existing?.state ?? undefined,
         error: "Cloud conflict detected.",
       };
     }
 
-    // Increment docVersion: if existing has one, increment it; otherwise start at 1
-    const nextDocVersion = (existing?.docVersion ?? 0) + 1;
+    // Increment mapVersion: if existing has one, increment it; otherwise start at 1
+    const nextMapVersion = (existing?.mapVersion ?? 0) + 1;
 
-    const payload: FileDoc = {
+    const payload: FileMap = {
       version: 1,
-      savedAt: doc.savedAt || new Date().toISOString(),
-      state: doc.state,
-      docVersion: nextDocVersion,
+      savedAt: map.savedAt || new Date().toISOString(),
+      state: map.state,
+      mapVersion: nextMapVersion,
     };
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
     return {
       ok: true,
       savedAt: payload.savedAt,
-      documentId: mapId,
+      mapId: mapId,
       forced: force,
-      cloudDocVersion: nextDocVersion,
+      cloudMapVersion: nextMapVersion,
     };
   }
 
   async pull(mapId: string): Promise<PullResult> {
-    const filePath = this.docPath(mapId);
+    const filePath = this.mapPath(mapId);
     if (!fs.existsSync(filePath)) {
       return {
         ok: false,
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: mapId,
-        error: "Cloud document not found.",
+        mapId: mapId,
+        error: "Cloud map not found.",
       };
     }
 
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as FileDoc;
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as FileMap;
     if (!parsed || parsed.version !== 1 || !parsed.state) {
       return {
         ok: false,
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: mapId,
-        error: "Cloud document has unsupported format.",
+        mapId: mapId,
+        error: "Cloud map has unsupported format.",
       };
     }
 
@@ -199,23 +199,23 @@ export class FileTransport implements CloudSyncTransport {
       version: parsed.version,
       savedAt: parsed.savedAt || fs.statSync(filePath).mtime.toISOString(),
       state: parsed.state,
-      documentId: mapId,
-      docVersion: parsed.docVersion ?? undefined,
+      mapId: mapId,
+      mapVersion: parsed.mapVersion ?? undefined,
     };
   }
 
   async status(mapId: string): Promise<SyncStatus> {
-    const filePath = this.docPath(mapId);
+    const filePath = this.mapPath(mapId);
     const exists = fs.existsSync(filePath);
     const cloudDoc = exists ? this.readDoc(filePath) : null;
     return {
       ok: true,
       enabled: true,
       mode: this.mode,
-      documentId: mapId,
+      mapId: mapId,
       exists,
       cloudSavedAt: cloudDoc?.savedAt ?? null,
-      cloudDocVersion: cloudDoc?.docVersion ?? null,
+      cloudMapVersion: cloudDoc?.mapVersion ?? null,
       lastSyncedAt: exists ? fs.statSync(filePath).mtime.toISOString() : null,
     };
   }
@@ -232,7 +232,7 @@ export class FileTransport implements CloudSyncTransport {
 interface SupabaseRow {
   id: string;
   version: number;
-  doc_version: number;
+  map_version: number;
   saved_at: string;
   state: Record<string, unknown>;
   created_at?: string;
@@ -267,7 +267,7 @@ export class SupabaseTransport implements CloudSyncTransport {
   private client: SupabaseClientLike | null = null;
   private readonly url: string;
   private readonly anonKey: string;
-  private readonly tableName = "documents";
+  private readonly tableName = "maps";
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -285,14 +285,14 @@ export class SupabaseTransport implements CloudSyncTransport {
     return this.client;
   }
 
-  async push(mapId: string, doc: SavedDoc, baseSavedAt: string | null, force: boolean, baseDocVersion?: number | null): Promise<PushResult> {
+  async push(mapId: string, map: SavedMap, baseSavedAt: string | null, force: boolean, baseMapVersion?: number | null): Promise<PushResult> {
     const client = await this.getClient();
-    const savedAt = doc.savedAt || new Date().toISOString();
+    const savedAt = map.savedAt || new Date().toISOString();
 
     // Fetch existing for conflict check and version increment
     const { data: existing, error: fetchErr } = await client
       .from(this.tableName)
-      .select("saved_at,doc_version,state")
+      .select("saved_at,map_version,state")
       .eq("id", mapId)
       .maybeSingle();
 
@@ -300,7 +300,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       return {
         ok: false,
         savedAt: "",
-        documentId: mapId,
+        mapId: mapId,
         forced: false,
         error: `Supabase fetch error: ${fetchErr.message}`,
       };
@@ -312,28 +312,28 @@ export class SupabaseTransport implements CloudSyncTransport {
         existing.saved_at,
         baseSavedAt,
         false,
-        existing.doc_version ?? null,
-        baseDocVersion ?? null,
+        existing.map_version ?? null,
+        baseMapVersion ?? null,
       );
       if (hasConflict) {
         return {
           ok: false,
           savedAt: existing.saved_at,
-          documentId: mapId,
+          mapId: mapId,
           forced: false,
           conflict: true,
           cloudSavedAt: existing.saved_at,
-          cloudDocVersion: existing.doc_version ?? undefined,
+          cloudMapVersion: existing.map_version ?? undefined,
           remoteState: existing.state as unknown as AppState,
           error: "Cloud conflict detected.",
         };
       }
     }
 
-    // Increment docVersion
-    const nextDocVersion = ((existing?.doc_version as number) ?? 0) + 1;
+    // Increment mapVersion
+    const nextMapVersion = ((existing?.map_version as number) ?? 0) + 1;
 
-    // Upsert the document
+    // Upsert the map
     // Note: Do not chain .eq().single() after upsert — Supabase v2 upsert
     // already identifies the row via onConflict, and .single() can error
     // if the response shape doesn't contain exactly one row.
@@ -342,10 +342,10 @@ export class SupabaseTransport implements CloudSyncTransport {
       .upsert(
         {
           id: mapId,
-          version: doc.version,
-          doc_version: nextDocVersion,
+          version: map.version,
+          map_version: nextMapVersion,
           saved_at: savedAt,
-          state: doc.state as unknown as Record<string, unknown>,
+          state: map.state as unknown as Record<string, unknown>,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" },
@@ -357,7 +357,7 @@ export class SupabaseTransport implements CloudSyncTransport {
       return {
         ok: false,
         savedAt: "",
-        documentId: mapId,
+        mapId: mapId,
         forced: force,
         error: `Supabase upsert error: ${upsertErr.message}`,
       };
@@ -366,9 +366,9 @@ export class SupabaseTransport implements CloudSyncTransport {
     return {
       ok: true,
       savedAt,
-      documentId: mapId,
+      mapId: mapId,
       forced: force,
-      cloudDocVersion: nextDocVersion,
+      cloudMapVersion: nextMapVersion,
     };
   }
 
@@ -387,7 +387,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: mapId,
+        mapId: mapId,
         error: `Supabase fetch error: ${error.message}`,
       };
     }
@@ -398,8 +398,8 @@ export class SupabaseTransport implements CloudSyncTransport {
         version: 0,
         savedAt: "",
         state: {} as AppState,
-        documentId: mapId,
-        error: "Cloud document not found.",
+        mapId: mapId,
+        error: "Cloud map not found.",
       };
     }
 
@@ -408,8 +408,8 @@ export class SupabaseTransport implements CloudSyncTransport {
       version: data.version,
       savedAt: data.saved_at,
       state: data.state as unknown as AppState,
-      documentId: mapId,
-      docVersion: data.doc_version ?? undefined,
+      mapId: mapId,
+      mapVersion: data.map_version ?? undefined,
     };
   }
 
@@ -418,7 +418,7 @@ export class SupabaseTransport implements CloudSyncTransport {
 
     const { data, error } = await client
       .from(this.tableName)
-      .select("saved_at,doc_version")
+      .select("saved_at,map_version")
       .eq("id", mapId)
       .maybeSingle();
 
@@ -427,7 +427,7 @@ export class SupabaseTransport implements CloudSyncTransport {
         ok: false,
         enabled: true,
         mode: this.mode,
-        documentId: mapId,
+        mapId: mapId,
         exists: false,
         cloudSavedAt: null,
         lastSyncedAt: null,
@@ -438,10 +438,10 @@ export class SupabaseTransport implements CloudSyncTransport {
       ok: true,
       enabled: true,
       mode: this.mode,
-      documentId: mapId,
+      mapId: mapId,
       exists: !!data,
       cloudSavedAt: data?.saved_at ?? null,
-      cloudDocVersion: data?.doc_version ?? null,
+      cloudMapVersion: data?.map_version ?? null,
       lastSyncedAt: data?.saved_at ?? null,
     };
   }
@@ -500,12 +500,12 @@ export interface AutoSyncHandle {
 
 export interface AutoSyncCallbacks {
   /** Return the current local state to be pushed. */
-  getLocalState: () => Promise<SavedDoc | null>;
-  /** Return the current document ID. */
+  getLocalState: () => Promise<SavedMap | null>;
+  /** Return the current map ID. */
   getDocId: () => string;
   /** Return the current baseSavedAt for conflict detection. */
   getBaseSavedAt: () => string | null;
-  /** Return the current baseDocVersion for conflict detection. */
+  /** Return the current baseMapVersion for conflict detection. */
   getBaseDocVersion: () => number | null;
   /** Called when a push succeeds. */
   onPushSuccess?: (result: PushResult) => void;
@@ -533,15 +533,15 @@ export function startAutoSync(
   const doPush = async (): Promise<void> => {
     if (stopped) return;
     try {
-      const doc = await callbacks.getLocalState();
-      if (!doc) return;
+      const map = await callbacks.getLocalState();
+      if (!map) return;
 
       const mapId = callbacks.getDocId();
       const baseSavedAt = callbacks.getBaseSavedAt();
-      const baseDocVersion = callbacks.getBaseDocVersion();
+      const baseMapVersion = callbacks.getBaseDocVersion();
 
       const result = await withRetry(
-        () => transport.push(mapId, doc, baseSavedAt, false, baseDocVersion),
+        () => transport.push(mapId, map, baseSavedAt, false, baseMapVersion),
         (err) => {
           const msg = (err as Error)?.message ?? "";
           // Do not retry conflicts
@@ -557,7 +557,7 @@ export function startAutoSync(
           createConflictBackup(
             callbacks.dataDir,
             callbacks.getDocId(),
-            doc.state,
+            map.state,
             "auto-sync conflict",
           );
         }
@@ -634,14 +634,14 @@ export function stopAutoSync(handle: AutoSyncHandle): void {
 export async function pushWithConflictBackup(
   transport: CloudSyncTransport,
   mapId: string,
-  doc: SavedDoc,
+  map: SavedMap,
   baseSavedAt: string | null,
   force: boolean,
   dataDir: string,
-  baseDocVersion?: number | null,
+  baseMapVersion?: number | null,
 ): Promise<PushResult> {
   const result = await withRetry(
-    () => transport.push(mapId, doc, baseSavedAt, force, baseDocVersion),
+    () => transport.push(mapId, map, baseSavedAt, force, baseMapVersion),
     (err) => {
       const msg = (err as Error)?.message ?? "";
       return !msg.includes("conflict") && !msg.includes("Conflict");
@@ -650,7 +650,7 @@ export async function pushWithConflictBackup(
 
   if (!result.ok && result.conflict) {
     // Save local state as conflict backup before caller pulls remote
-    createConflictBackup(dataDir, mapId, doc.state, "cloud-conflict-push");
+    createConflictBackup(dataDir, mapId, map.state, "cloud-conflict-push");
   }
 
   return result;

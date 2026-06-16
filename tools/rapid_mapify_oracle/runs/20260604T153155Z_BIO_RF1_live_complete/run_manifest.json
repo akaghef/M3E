@@ -1,0 +1,62 @@
+{
+  "runId": "20260604T153155Z_BIO_RF1_live_complete",
+  "createdAt": "2026-06-04T15:31:55.698Z",
+  "caseId": "BIO-RF1-ANIMALS-EXPAND-001",
+  "opId": "RF1.expandSelectedNode",
+  "target": {
+    "workspaceId": "ws_REMH1Z5TFA7S93R3HA0XK58JNR",
+    "mapId": "BIO-RF1-ANIMALS-EXPAND-001-live",
+    "selectedNodeId": "n_animals",
+    "selectedLabel": "動物"
+  },
+  "sourceBundle": "/Users/nisimoriyuuya/Downloads/m3e-rapid-mapify-oracle-system.zip",
+  "teacherDelta": "tools/rapid_mapify_oracle/fixtures/biology/mapify_teacher_delta.json",
+  "canonicalWrite": "M3E AppState via /rapid/mapify-oracle",
+  "noFallbackEvidence": "unsupported_no_fallback_response.json",
+  "beforeChildren": [
+    "哺乳類",
+    "鳥類",
+    "魚類"
+  ],
+  "added": [
+    {
+      "id": "n_1780587115694_z0vsp4",
+      "parentId": "n_animals",
+      "label": "爬虫類"
+    },
+    {
+      "id": "n_1780587115694_isqdpi",
+      "parentId": "n_animals",
+      "label": "両生類"
+    },
+    {
+      "id": "n_1780587115694_egipb1",
+      "parentId": "n_animals",
+      "label": "無脊椎動物"
+    }
+  ],
+  "merged": [],
+  "afterChildren": [
+    "哺乳類",
+    "鳥類",
+    "魚類",
+    "爬虫類",
+    "両生類",
+    "無脊椎動物"
+  ],
+  "browserUi": {
+    "path": "select 動物 -> Space -> N2 展開 -> N3 詳細化",
+    "verify": "browser_ui_verify.json",
+    "screenshot": "browser_ui_pn_rf1.png",
+    "candidate": "candidate_delta_browser_ui.json",
+    "grade": "grade_browser_ui/grade_report.md",
+    "score": 1,
+    "passed": true
+  },
+  "apiGrade": {
+    "candidate": "candidate_delta.json",
+    "grade": "grade_live/grade_report.md",
+    "score": 1,
+    "passed": true
+  }
+}

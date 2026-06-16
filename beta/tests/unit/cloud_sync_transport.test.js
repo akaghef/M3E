@@ -6,7 +6,7 @@ const path = require("node:path");
 const { FileTransport, SupabaseTransport, loadCloudSyncConfig, detectCloudConflict, withRetry } = require("../../dist/node/cloud_sync.js");
 const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
 
-function createSavedDoc(label, savedAt) {
+function createSavedMap(label, savedAt) {
   const model = new RapidMvpModel("Root");
   model.addNode(model.state.rootId, label || "child");
   return {
@@ -24,28 +24,28 @@ test("FileTransport: push and pull round-trip", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
-    const doc = createSavedDoc("A", "2026-04-09T00:00:00.000Z");
+    const map = createSavedMap("A", "2026-04-09T00:00:00.000Z");
 
-    const pushResult = await transport.push("doc1", doc, null, false);
+    const pushResult = await transport.push("map1", map, null, false);
     expect(pushResult.ok).toBe(true);
     expect(pushResult.savedAt).toBe("2026-04-09T00:00:00.000Z");
     expect(pushResult.forced).toBe(false);
-    expect(typeof pushResult.cloudDocVersion).toBe("number");
-    expect(pushResult.cloudDocVersion).toBe(1);
+    expect(typeof pushResult.cloudMapVersion).toBe("number");
+    expect(pushResult.cloudMapVersion).toBe(1);
 
-    const pullResult = await transport.pull("doc1");
+    const pullResult = await transport.pull("map1");
     expect(pullResult.ok).toBe(true);
     expect(pullResult.version).toBe(1);
     expect(pullResult.savedAt).toBe("2026-04-09T00:00:00.000Z");
     expect(pullResult.state.rootId).toBeTruthy();
     expect(Object.keys(pullResult.state.nodes).length > 0).toBe(true);
-    expect(pullResult.docVersion).toBe(1);
+    expect(pullResult.mapVersion).toBe(1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("FileTransport: status returns exists=false for missing doc", async () => {
+test("FileTransport: status returns exists=false for missing map", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
@@ -53,7 +53,7 @@ test("FileTransport: status returns exists=false for missing doc", async () => {
     expect(result.ok).toBe(true);
     expect(result.enabled).toBe(true);
     expect(result.mode).toBe("file-mirror");
-    expect(result.documentId).toBe("nonexistent");
+    expect(result.mapId).toBe("nonexistent");
     expect(result.exists).toBe(false);
     expect(result.cloudSavedAt).toBe(null);
     expect(result.lastSyncedAt).toBe(null);
@@ -66,40 +66,40 @@ test("FileTransport: status returns exists=true after push", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
-    const doc = createSavedDoc("B", "2026-04-09T01:00:00.000Z");
-    await transport.push("doc2", doc, null, false);
+    const map = createSavedMap("B", "2026-04-09T01:00:00.000Z");
+    await transport.push("map2", map, null, false);
 
-    const result = await transport.status("doc2");
+    const result = await transport.status("map2");
     expect(result.ok).toBe(true);
     expect(result.exists).toBe(true);
     expect(result.cloudSavedAt).toBe("2026-04-09T01:00:00.000Z");
     expect(result.lastSyncedAt).toBeTruthy();
-    expect(result.cloudDocVersion).toBe(1);
+    expect(result.cloudMapVersion).toBe(1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("FileTransport: push detects conflict via docVersion", async () => {
+test("FileTransport: push detects conflict via mapVersion", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
-    const doc1 = createSavedDoc("V1", "2026-04-09T00:00:00.000Z");
-    const push1 = await transport.push("doc3", doc1, null, false);
-    expect(push1.cloudDocVersion).toBe(1);
+    const map1 = createSavedMap("V1", "2026-04-09T00:00:00.000Z");
+    const push1 = await transport.push("map3", map1, null, false);
+    expect(push1.cloudMapVersion).toBe(1);
 
-    // Update the doc with correct base version
-    const doc2 = createSavedDoc("V2", "2026-04-09T00:00:10.000Z");
-    const push2 = await transport.push("doc3", doc2, push1.savedAt, false, push1.cloudDocVersion);
+    // Update the map with correct base version
+    const map2 = createSavedMap("V2", "2026-04-09T00:00:10.000Z");
+    const push2 = await transport.push("map3", map2, push1.savedAt, false, push1.cloudMapVersion);
     expect(push2.ok).toBe(true);
-    expect(push2.cloudDocVersion).toBe(2);
+    expect(push2.cloudMapVersion).toBe(2);
 
-    // Conflict: stale baseDocVersion
-    const doc3 = createSavedDoc("V3", "2026-04-09T00:00:20.000Z");
-    const result = await transport.push("doc3", doc3, push1.savedAt, false, push1.cloudDocVersion);
+    // Conflict: stale baseMapVersion
+    const map3 = createSavedMap("V3", "2026-04-09T00:00:20.000Z");
+    const result = await transport.push("map3", map3, push1.savedAt, false, push1.cloudMapVersion);
     expect(result.ok).toBe(false);
     expect(result.conflict).toBe(true);
-    expect(result.cloudDocVersion).toBe(2);
+    expect(result.cloudMapVersion).toBe(2);
     expect(result.remoteState).toBeTruthy();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -110,15 +110,15 @@ test("FileTransport: push detects conflict via savedAt fallback", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
-    const doc1 = createSavedDoc("V1", "2026-04-09T00:00:00.000Z");
-    await transport.push("doc3b", doc1, null, false);
+    const map1 = createSavedMap("V1", "2026-04-09T00:00:00.000Z");
+    await transport.push("map3b", map1, null, false);
 
-    const doc2 = createSavedDoc("V2", "2026-04-09T00:00:10.000Z");
-    await transport.push("doc3b", doc2, "2026-04-09T00:00:00.000Z", false);
+    const map2 = createSavedMap("V2", "2026-04-09T00:00:10.000Z");
+    await transport.push("map3b", map2, "2026-04-09T00:00:00.000Z", false);
 
-    // Conflict: stale baseSavedAt (no docVersion provided)
-    const doc3 = createSavedDoc("V3", "2026-04-09T00:00:20.000Z");
-    const result = await transport.push("doc3b", doc3, "2026-04-09T00:00:00.000Z", false);
+    // Conflict: stale baseSavedAt (no mapVersion provided)
+    const map3 = createSavedMap("V3", "2026-04-09T00:00:20.000Z");
+    const result = await transport.push("map3b", map3, "2026-04-09T00:00:00.000Z", false);
     expect(result.ok).toBe(false);
     expect(result.conflict).toBe(true);
     expect(result.cloudSavedAt).toBe("2026-04-09T00:00:10.000Z");
@@ -131,20 +131,20 @@ test("FileTransport: force push overrides conflict", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
-    const doc1 = createSavedDoc("V1", "2026-04-09T00:00:00.000Z");
-    await transport.push("doc4", doc1, null, false);
+    const map1 = createSavedMap("V1", "2026-04-09T00:00:00.000Z");
+    await transport.push("map4", map1, null, false);
 
-    const doc2 = createSavedDoc("V2", "2026-04-09T00:00:10.000Z");
-    await transport.push("doc4", doc2, "2026-04-09T00:00:00.000Z", false);
+    const map2 = createSavedMap("V2", "2026-04-09T00:00:10.000Z");
+    await transport.push("map4", map2, "2026-04-09T00:00:00.000Z", false);
 
     // Force push with stale baseSavedAt
-    const doc3 = createSavedDoc("Forced", "2026-04-09T00:00:30.000Z");
-    const result = await transport.push("doc4", doc3, "2026-04-09T00:00:00.000Z", true);
+    const map3 = createSavedMap("Forced", "2026-04-09T00:00:30.000Z");
+    const result = await transport.push("map4", map3, "2026-04-09T00:00:00.000Z", true);
     expect(result.ok).toBe(true);
     expect(result.forced).toBe(true);
 
-    // Verify forced doc is what we get back
-    const pulled = await transport.pull("doc4");
+    // Verify forced map is what we get back
+    const pulled = await transport.pull("map4");
     expect(pulled.ok).toBe(true);
     expect(pulled.savedAt).toBe("2026-04-09T00:00:30.000Z");
   } finally {
@@ -152,7 +152,7 @@ test("FileTransport: force push overrides conflict", async () => {
   }
 });
 
-test("FileTransport: pull returns error for missing doc", async () => {
+test("FileTransport: pull returns error for missing map", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
@@ -192,21 +192,21 @@ test("FileTransport: creates cloud dir if it does not exist", async () => {
   }
 });
 
-test("FileTransport: docVersion increments on each push", async () => {
+test("FileTransport: mapVersion increments on each push", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   try {
     const transport = new FileTransport(dir);
-    const doc1 = createSavedDoc("A", "2026-04-09T00:00:00.000Z");
-    const push1 = await transport.push("ver-test", doc1, null, false);
-    expect(push1.cloudDocVersion).toBe(1);
+    const map1 = createSavedMap("A", "2026-04-09T00:00:00.000Z");
+    const push1 = await transport.push("ver-test", map1, null, false);
+    expect(push1.cloudMapVersion).toBe(1);
 
-    const doc2 = createSavedDoc("B", "2026-04-09T00:00:10.000Z");
-    const push2 = await transport.push("ver-test", doc2, push1.savedAt, false, push1.cloudDocVersion);
-    expect(push2.cloudDocVersion).toBe(2);
+    const map2 = createSavedMap("B", "2026-04-09T00:00:10.000Z");
+    const push2 = await transport.push("ver-test", map2, push1.savedAt, false, push1.cloudMapVersion);
+    expect(push2.cloudMapVersion).toBe(2);
 
-    const doc3 = createSavedDoc("C", "2026-04-09T00:00:20.000Z");
-    const push3 = await transport.push("ver-test", doc3, push2.savedAt, false, push2.cloudDocVersion);
-    expect(push3.cloudDocVersion).toBe(3);
+    const map3 = createSavedMap("C", "2026-04-09T00:00:20.000Z");
+    const push3 = await transport.push("ver-test", map3, push2.savedAt, false, push2.cloudMapVersion);
+    expect(push3.cloudMapVersion).toBe(3);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -216,14 +216,14 @@ test("FileTransport: docVersion increments on each push", async () => {
 // detectCloudConflict tests
 // ---------------------------------------------------------------------------
 
-test("detectCloudConflict: docVersion takes priority over savedAt", () => {
-  // docVersions match even though savedAt differ => no conflict
+test("detectCloudConflict: mapVersion takes priority over savedAt", () => {
+  // mapVersions match even though savedAt differ => no conflict
   expect(detectCloudConflict("2026-04-01", "2026-04-02", false, 5, 5)).toBe(false);
-  // docVersions differ even though savedAt match => conflict
+  // mapVersions differ even though savedAt match => conflict
   expect(detectCloudConflict("2026-04-01", "2026-04-01", false, 6, 5)).toBe(true);
 });
 
-test("detectCloudConflict: falls back to savedAt when docVersion not provided", () => {
+test("detectCloudConflict: falls back to savedAt when mapVersion not provided", () => {
   expect(detectCloudConflict("a", "b", false)).toBe(true);
   expect(detectCloudConflict("a", "a", false)).toBe(false);
 });

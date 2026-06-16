@@ -259,11 +259,11 @@ test("SQLite save and load preserves full tree structure", () => {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-integrity-"));
   const sqlitePath = path.join(tmpDir, "test.sqlite");
-  const docId = "integrity-test";
+  const mapId = "integrity-test";
 
   try {
-    model.saveToSqlite(sqlitePath, docId);
-    const loaded = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
+    model.saveToSqlite(sqlitePath, mapId);
+    const loaded = RapidMvpModel.loadFromSqlite(sqlitePath, mapId);
 
     expect(loaded.state.rootId).toBe(rootId);
     expect(Object.keys(loaded.state.nodes).length).toBe(4);

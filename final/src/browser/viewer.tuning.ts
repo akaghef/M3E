@@ -74,9 +74,9 @@ const VIEWER_TUNING: ViewerTuning = {
     topPad: 10,
     // Minimum hit area height for node interaction.
     nodeHitHeight: 38,
-    // Smallest canvas width even for tiny documents.
+    // Smallest canvas width even for tiny maps.
     minCanvasWidth: 1400,
-    // Smallest canvas height even for tiny documents.
+    // Smallest canvas height even for tiny maps.
     minCanvasHeight: 760,
     // Extra canvas space on the right to avoid clipping during navigation.
     canvasRightPad: 220,
@@ -94,9 +94,9 @@ const VIEWER_TUNING: ViewerTuning = {
     rootIndicatorPad: 16,
     // Spacing for non-root expand/collapse or status indicators.
     nodeIndicatorPad: 10,
-    // Blend factor for depth offset: 0.0 = depth-aligned columns (legacy),
-    // 1.0 = fully parent-relative positioning. Intermediate values blend.
-    depthOffsetFactor: 0.5,
+    // Tree layout should keep each branch compact: wide nodes in one branch
+    // must not push descendants in sibling branches to the right.
+    depthOffsetFactor: 1.0,
   },
   zoom: {
     // Minimum zoom-out level allowed in the viewer.

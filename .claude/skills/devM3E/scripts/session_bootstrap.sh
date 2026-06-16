@@ -19,17 +19,17 @@ echo ""
 
 # 2. Current Status の要約（先頭30行）
 echo "--- Current Status (excerpt) ---"
-head -20 dev-docs/00_Home/Current_Status.md 2>/dev/null || echo "(not found)"
+head -20 docs/00_Home/Current_Status.md 2>/dev/null || echo "(not found)"
 echo ""
 
 # 3. Todo Pool の active items
 echo "--- Active Todo Pool Items ---"
-grep -A5 'State: \(ready\|doing\|blocked\)' dev-docs/06_Operations/Todo_Pool.md 2>/dev/null || echo "(none)"
+grep -A5 'State: \(ready\|doing\|blocked\)' docs/06_Operations/Todo_Pool.md 2>/dev/null || echo "(none)"
 echo ""
 
 # 4. 直近の daily note
 echo "--- Latest Daily Note ---"
-LATEST_DAILY=$(ls -t dev-docs/daily/*.md 2>/dev/null | head -1)
+LATEST_DAILY=$(ls -t docs/daily/*.md 2>/dev/null | head -1)
 if [ -n "$LATEST_DAILY" ]; then
     echo "File: $LATEST_DAILY"
     head -30 "$LATEST_DAILY"

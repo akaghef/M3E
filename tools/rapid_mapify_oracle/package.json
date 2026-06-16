@@ -1,0 +1,12 @@
+{
+  "name": "m3e-rapid-mapify-oracle-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codex-facing substrate for M3E Rapid self-improvement using Mapify action as teacher signal.",
+  "scripts": {
+    "eval:bad": "python3 scripts/evaluate_case.py fixtures/cases/biology_expand_animals.case.json",
+    "eval:good": "python3 scripts/evaluate_case.py fixtures/cases/biology_expand_animals.case.json --candidate fixtures/biology/m3e_good_delta.json",
+    "markdown:biology": "python3 scripts/appstate_to_markdown.py fixtures/biology/appstate_before.json",
+    "xmind:minimal": "python3 scripts/xmind_content_to_appstate.py fixtures/mapify_xmind/minimal_content.json"
+  }
+}

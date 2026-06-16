@@ -6,7 +6,7 @@ M3E is a local-first research thinking support tool built with React + TypeScrip
 Two environments exist: `beta/` (active development) and `final/` (stable release).
 Active development happens in `beta/`. Do not modify `final/` unless explicitly instructed.
 
-Full project specs are in `dev-docs/`. Read relevant specs before starting implementation.
+Full project specs are in `docs/`. Read relevant specs before starting implementation.
 
 ---
 
@@ -83,14 +83,14 @@ Before implementing, read the relevant spec:
 
 | Topic | Document |
 |-------|----------|
-| Data model, node types | `dev-docs/03_Spec/Data_Model.md` |
-| Scope and alias rules | `dev-docs/03_Spec/Scope_and_Alias.md` |
-| Scope transition UI | `dev-docs/03_Spec/Scope_Transition.md` |
-| ViewState / schema v2 | `dev-docs/03_Spec/Model_State_And_Schema_V2.md` |
-| MVC and Command pattern | `dev-docs/04_Architecture/MVC_and_Command.md` |
-| Editing operations | `dev-docs/04_Architecture/Editing_Design.md` |
-| AI integration | `dev-docs/03_Spec/AI_Integration.md` |
-| Current tasks | `dev-docs/00_Home/Current_Status.md` |
+| Data model, node types | `docs/03_Spec/Data_Model.md` |
+| Scope and alias rules | `docs/03_Spec/Scope_and_Alias.md` |
+| Scope transition UI | `docs/03_Spec/Scope_Transition.md` |
+| ViewState / schema v2 | `docs/03_Spec/Model_State_And_Schema_V2.md` |
+| MVC and Command pattern | `docs/04_Architecture/MVC_and_Command.md` |
+| Editing operations | `docs/04_Architecture/Editing_Design.md` |
+| AI integration | `docs/03_Spec/AI_Integration.md` |
+| Current tasks | `docs/00_Home/Current_Status.md` |
 
 ---
 
@@ -99,7 +99,7 @@ Before implementing, read the relevant spec:
 ### data (dev-data)
 
 1. Implement `currentScopeId` and `scopeHistory` in ViewState
-   - Spec: `dev-docs/03_Spec/Scope_Transition.md`
+   - Spec: `docs/03_Spec/Scope_Transition.md`
    - Do not persist in SQLite; session-save only
 2. Implement `EnterScopeCommand` and `ExitScopeCommand`
    - ViewState mutation only; not Undo/Redo targets
@@ -109,7 +109,7 @@ Before implementing, read the relevant spec:
 ### visual (dev-visual)
 
 1. Breadcrumb component (scope path display, clickable ancestors)
-   - Spec: `dev-docs/03_Spec/Scope_Transition.md` — Breadcrumb section
+   - Spec: `docs/03_Spec/Scope_Transition.md` — Breadcrumb section
 2. Differentiate folder node double-click (EnterScope) from text node double-click (EditText)
 3. "← Back" button in toolbar (calls ExitScope)
 4. Visual distinction for alias nodes (icon or style)
@@ -123,14 +123,14 @@ A task is complete only when ALL of the following are true:
 1. Code compiles without errors (`npm run build`)
 2. Unit tests pass (`npm run test:ci`)
 3. Committed and pushed to the assigned branch
-4. `dev-docs/daily/YYMMDD.md` updated with what was done
+4. `docs/daily/YYMMDD.md` updated with what was done
 
 ## Documentation Ownership Split
 
-- UpdateLog entries are appended to `dev-docs/daily/YYMMDD.md`.
-- `dev-docs/00_Home/Current_Status.md` keeps current state only (no long history accumulation).
+- UpdateLog entries are appended to `docs/daily/YYMMDD.md`.
+- `docs/00_Home/Current_Status.md` keeps current state only (no long history accumulation).
 - Subordinate roles (`visual` / `data` / `data2` / `team`) treat `Current_Status.md` as read-only.
 - Manager role (`manage`) updates `Current_Status.md` by referencing subordinate daily entries.
-- Rough, unrefined tasks are pooled in `dev-docs/06_Operations/Todo_Pool.md`.
+- Rough, unrefined tasks are pooled in `docs/06_Operations/Todo_Pool.md`.
 - Manager role updates `Current_Status.md` status items.
 - Subordinate role records completion details in daily notes.

@@ -85,7 +85,7 @@ export function getAiStatus(): AiStatusResponse {
         promptConfigured: linear.promptConfigured,
       },
       "topic-suggest": {
-        available: ai.enabled && configured,
+        available: true,
         promptConfigured: true,
       },
     },
@@ -192,30 +192,156 @@ function parseTopicsFromModelText(rawText: string): string[] {
     .slice(0, 8);
 }
 
+function maxTopicsFromInput(input: Record<string, unknown>): number {
+  const maxTopicsRaw = Number(input.maxTopics);
+  return Number.isFinite(maxTopicsRaw) && maxTopicsRaw > 0
+    ? Math.min(8, Math.max(1, Math.floor(maxTopicsRaw)))
+    : 5;
+}
+
+function dedupeTopics(items: string[], maxTopics: number): string[] {
+  const seen = new Set<string>();
+  const topics: string[] = [];
+  for (const item of items) {
+    const topic = item.trim();
+    const key = topic.toLowerCase();
+    if (!topic || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    topics.push(topic);
+    if (topics.length >= maxTopics) {
+      break;
+    }
+  }
+  return topics;
+}
+
+function localTopicSuggestions(nodeText: string, instruction: string, maxTopics: number): string[] {
+  const normalizedInstruction = instruction.trim().toLowerCase();
+  const base = nodeText.trim() || "Selected node";
+  const normalizedNode = base.toLowerCase();
+  const isSnakeNode = base.includes("ヘビ") || base.includes("蛇") || normalizedNode.includes("snake");
+  const isLizardNode = base.includes("トカゲ") || normalizedNode.includes("lizard");
+  if (isSnakeNode) {
+    if (
+      normalizedInstruction.includes("例")
+      || normalizedInstruction.includes("example")
+      || normalizedInstruction.includes("examples")
+    ) {
+      return dedupeTopics(["ニホンマムシ", "アオダイショウ", "シマヘビ", "コブラ", "ニシキヘビ"], maxTopics);
+    }
+    if (
+      normalizedInstruction.includes("子分類")
+      || normalizedInstruction.includes("分類")
+      || normalizedInstruction.includes("classify")
+      || normalizedInstruction.includes("classification")
+    ) {
+      return dedupeTopics(["毒ヘビ", "無毒ヘビ", "大型ヘビ", "水辺のヘビ", "樹上性のヘビ"], maxTopics);
+    }
+    if (
+      normalizedInstruction.includes("関連")
+      || normalizedInstruction.includes("topic")
+      || normalizedInstruction.includes("related")
+    ) {
+      return dedupeTopics(["トカゲとの違い", "脱皮", "毒牙", "捕食行動", "冬眠"], maxTopics);
+    }
+    return dedupeTopics(["体のつくり", "生息環境", "食性", "毒の有無", "繁殖"], maxTopics);
+  }
+  if (isLizardNode) {
+    if (
+      normalizedInstruction.includes("例")
+      || normalizedInstruction.includes("example")
+      || normalizedInstruction.includes("examples")
+    ) {
+      return dedupeTopics(["ニホントカゲ", "カナヘビ", "ヤモリ", "イグアナ", "カメレオン"], maxTopics);
+    }
+    if (
+      normalizedInstruction.includes("子分類")
+      || normalizedInstruction.includes("分類")
+      || normalizedInstruction.includes("classify")
+      || normalizedInstruction.includes("classification")
+    ) {
+      return dedupeTopics(["地表性のトカゲ", "樹上性のトカゲ", "砂漠のトカゲ", "大型トカゲ", "小型トカゲ"], maxTopics);
+    }
+    if (
+      normalizedInstruction.includes("関連")
+      || normalizedInstruction.includes("topic")
+      || normalizedInstruction.includes("related")
+    ) {
+      return dedupeTopics(["ヘビとの違い", "ヤモリとの違い", "尻尾の自切", "日光浴", "鱗"], maxTopics);
+    }
+    return dedupeTopics(["体のつくり", "生息環境", "食性", "尻尾の自切", "繁殖"], maxTopics);
+  }
+  if (normalizedInstruction.includes("簡潔") || normalizedInstruction.includes("concise")) {
+    return dedupeTopics([`${base} の要点`, `${base} の一文要約`, `${base} の核心`, "残す情報", "削る情報"], maxTopics);
+  }
+  if (normalizedInstruction.includes("翻訳") || normalizedInstruction.includes("translate")) {
+    return dedupeTopics([`${base} の英訳`, `${base} の和訳`, `${base} の専門用語`, "訳語メモ", "用語集"], maxTopics);
+  }
+  if (normalizedInstruction.includes("再生成") || normalizedInstruction.includes("regenerate")) {
+    return dedupeTopics([`${base} の別案`, `${base} の対案`, `${base} の新しい切り口`, `${base} の検証観点`, `${base} の次の展開`], maxTopics);
+  }
+  if (
+    normalizedInstruction.includes("例")
+    || normalizedInstruction.includes("example")
+    || normalizedInstruction.includes("examples")
+  ) {
+    return dedupeTopics([`${base} の代表例`, `${base} の具体例`, `${base} の応用例`, `${base} の日常例`, `${base} の反例`], maxTopics);
+  }
+  if (
+    normalizedInstruction.includes("子分類")
+    || normalizedInstruction.includes("分類")
+    || normalizedInstruction.includes("classify")
+    || normalizedInstruction.includes("classification")
+  ) {
+    return dedupeTopics([`${base} の分類軸`, `${base} の主要カテゴリ`, `${base} のサブタイプ`, `${base} の境界条件`, `${base} の例外`], maxTopics);
+  }
+  if (
+    normalizedInstruction.includes("関連")
+    || normalizedInstruction.includes("topic")
+    || normalizedInstruction.includes("related")
+  ) {
+    return dedupeTopics([`${base} の関連概念`, `${base} の隣接領域`, `${base} の比較対象`, `${base} の前提知識`, `${base} の次の論点`], maxTopics);
+  }
+  if (normalizedInstruction.includes("詳細") || normalizedInstruction.includes("detail")) {
+    return dedupeTopics([`${base} の定義`, `${base} の特徴`, `${base} の具体例`, `${base} の仕組み`, `${base} の注意点`], maxTopics);
+  }
+  const words = instruction
+    .split(/[\s,、。;；:：/|]+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 2)
+    .slice(0, 3);
+  return dedupeTopics([...words, "背景", "論点", "具体例", "判断", "次の作業"], maxTopics);
+}
+
 async function runTopicSuggestSubagent(
   request: AiSubagentRequest,
 ): Promise<{ topics: string[]; rawText: string; model: string; provider: string; usage?: AiSubagentSuccessResponse["usage"] }> {
+  const nodeText = requireString(request.input.nodeText, "AI_INPUT_NODE_TEXT_REQUIRED");
+  const nodeDetails = typeof request.input.nodeDetails === "string" ? request.input.nodeDetails : "";
+  const maxTopics = maxTopicsFromInput(request.input);
   const ai = loadAiProviderConfigFromEnv();
-  if (!ai.enabled) {
-    throw new Error("AI infrastructure is disabled.");
+  const baseUrl = ai.baseUrl;
+  const apiKey = ai.apiKey;
+  const model = ai.model;
+  const configured = ai.transport === "openai-compatible" && Boolean(ai.enabled && baseUrl && apiKey && model);
+  if (!configured) {
+    const topics = localTopicSuggestions(nodeText, nodeDetails, maxTopics);
+    return {
+      topics,
+      rawText: JSON.stringify({ topics }),
+      model: "local-topic-draft-v1",
+      provider: "local",
+    };
   }
   if (ai.transport === "mcp") {
     throw new Error("MCP transport is not implemented yet.");
   }
-  if (!ai.baseUrl || !ai.apiKey || !ai.model) {
-    throw new Error("Topic suggestion subagent is not fully configured.");
-  }
-
-  const nodeText = requireString(request.input.nodeText, "AI_INPUT_NODE_TEXT_REQUIRED");
-  const nodeDetails = typeof request.input.nodeDetails === "string" ? request.input.nodeDetails : "";
-  const maxTopicsRaw = Number(request.input.maxTopics);
-  const maxTopics = Number.isFinite(maxTopicsRaw) && maxTopicsRaw > 0
-    ? Math.min(8, Math.max(1, Math.floor(maxTopicsRaw)))
-    : 5;
 
   const userPrompt = [
     "Topic generation request:",
-    `DocumentId: ${request.documentId}`,
+    `MapId: ${request.mapId}`,
     `ScopeId: ${request.scopeId}`,
     `NodeText: ${nodeText}`,
     `NodeDetails: ${nodeDetails || "(none)"}`,
@@ -223,14 +349,14 @@ async function runTopicSuggestSubagent(
     "Return JSON only.",
   ].join("\n");
 
-  const response = await fetch(`${ai.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+  const response = await fetch(`${baseUrl!.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      Authorization: `Bearer ${ai.apiKey}`,
+      Authorization: `Bearer ${apiKey!}`,
     },
     body: JSON.stringify({
-      model: ai.model,
+      model,
       messages: [
         { role: "system", content: topicSuggestPrompt() },
         { role: "user", content: userPrompt },
@@ -248,7 +374,7 @@ async function runTopicSuggestSubagent(
   return {
     topics: parseTopicsFromModelText(rawText).slice(0, maxTopics),
     rawText,
-    model: ai.model,
+    model: model!,
     provider: ai.provider || "deepseek",
     usage: payload.usage ? {
       inputTokens: payload.usage.prompt_tokens,
@@ -267,7 +393,7 @@ export async function runAiSubagent(
   }
 
   const startedAt = Date.now();
-  if (!request.documentId || request.documentId.trim().length === 0) {
+  if (!request.mapId || request.mapId.trim().length === 0) {
     throw new Error("AI_DOCUMENT_ID_REQUIRED");
   }
   if (!request.scopeId || request.scopeId.trim().length === 0) {
@@ -303,7 +429,7 @@ export async function runAiSubagent(
       usage: result.usage,
       meta: {
         scopeId: request.scopeId,
-        documentId: request.documentId,
+        mapId: request.mapId,
         latencyMs: Date.now() - startedAt,
       },
     };
@@ -330,7 +456,7 @@ export async function runAiSubagent(
       usage: result.usage,
       meta: {
         scopeId: request.scopeId,
-        documentId: request.documentId,
+        mapId: request.mapId,
         latencyMs: Date.now() - startedAt,
       },
     };

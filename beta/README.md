@@ -46,7 +46,7 @@ M3E_CLOUD_DIR=./data/cloud-sync
 
 Behavior:
 
-- On startup: tries cloud pull first, then falls back to local SQLite/doc sample
+- On startup: tries cloud pull first, then falls back to local SQLite/map sample
 - On save/autosave: keeps local save and additionally pushes to cloud mirror
 - Cloud backend in Beta is file-based (`M3E_CLOUD_DIR`) for local-first validation
 
@@ -194,7 +194,7 @@ Minimal request example:
 
 ```json
 {
-  "documentId": "rapid-main",
+  "mapId": "rapid-main",
   "scopeId": "root",
   "mode": "direct-result",
   "input": {
@@ -232,9 +232,11 @@ Generates `data/rapid-sample.json` without starting the viewer.
 | `Esc` | Cancel text editing |
 | `Delete` / `Backspace` | Delete selected subtree (root protected). In nested scope, `Backspace` on scope root goes back scope |
 | `Space` | Collapse/expand selected node |
-| `↑` / `↓` | Navigate through visible nodes |
-| `→` | Go deeper: if folder is selected, enter scope; otherwise select first child |
-| `←` | Go shallower: if current scope root is selected, back scope; otherwise select parent |
+| `[` / `]` | Exit / enter scope |
+| `J` / `K` | Tree surface: deeper / shallower. `flow-lr` system surface: increase / decrease subsystem detail preview |
+| `↑` / `↓` | Tree surface: move through visible siblings. `flow-lr` system surface: move between upper/lower lanes |
+| `→` | Tree surface: go deeper. If a folder is selected and it has no visible child, enter scope. `flow-lr` system surface: move right |
+| `←` | Tree surface: go shallower. If current scope root is selected, back scope. `flow-lr` system surface: move left |
 | `M` | Mark selected node as move source |
 | `P` | Move marked node under currently selected node |
 | `Ctrl/Cmd + Wheel` | Zoom |

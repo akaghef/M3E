@@ -6,8 +6,8 @@ const { touchPresence, removePresence, getPresenceList, resetPresence } = requir
 
 test("touchPresence creates entry and getPresenceList returns it", () => {
   resetPresence();
-  touchPresence("doc1", "e_1", "Alice", "human");
-  const list = getPresenceList("doc1");
+  touchPresence("map1", "e_1", "Alice", "human");
+  const list = getPresenceList("map1");
   expect(list.length).toBe(1);
   expect(list[0].entityId).toBe("e_1");
   expect(list[0].displayName).toBe("Alice");
@@ -17,9 +17,9 @@ test("touchPresence creates entry and getPresenceList returns it", () => {
 
 test("touchPresence updates existing entry", () => {
   resetPresence();
-  touchPresence("doc1", "e_1", "Alice", "human");
-  touchPresence("doc1", "e_1", "Alice Updated", "owner");
-  const list = getPresenceList("doc1");
+  touchPresence("map1", "e_1", "Alice", "human");
+  touchPresence("map1", "e_1", "Alice Updated", "owner");
+  const list = getPresenceList("map1");
   expect(list.length).toBe(1);
   expect(list[0].displayName).toBe("Alice Updated");
   expect(list[0].role).toBe("owner");
@@ -27,32 +27,32 @@ test("touchPresence updates existing entry", () => {
 
 test("removePresence removes entry", () => {
   resetPresence();
-  touchPresence("doc1", "e_1", "Alice", "human");
-  touchPresence("doc1", "e_2", "Bob", "ai");
-  expect(removePresence("doc1", "e_1")).toBe(true);
-  const list = getPresenceList("doc1");
+  touchPresence("map1", "e_1", "Alice", "human");
+  touchPresence("map1", "e_2", "Bob", "ai");
+  expect(removePresence("map1", "e_1")).toBe(true);
+  const list = getPresenceList("map1");
   expect(list.length).toBe(1);
   expect(list[0].entityId).toBe("e_2");
 });
 
 test("removePresence returns false for unknown entity", () => {
   resetPresence();
-  expect(removePresence("doc1", "e_unknown")).toBe(false);
+  expect(removePresence("map1", "e_unknown")).toBe(false);
 });
 
-test("getPresenceList returns empty for unknown doc", () => {
+test("getPresenceList returns empty for unknown map", () => {
   resetPresence();
   const list = getPresenceList("nonexistent");
   expect(list.length).toBe(0);
 });
 
-test("multiple docs are tracked independently", () => {
+test("multiple maps are tracked independently", () => {
   resetPresence();
-  touchPresence("doc1", "e_1", "Alice", "human");
-  touchPresence("doc2", "e_2", "Bob", "ai");
+  touchPresence("map1", "e_1", "Alice", "human");
+  touchPresence("map2", "e_2", "Bob", "ai");
 
-  expect(getPresenceList("doc1").length).toBe(1);
-  expect(getPresenceList("doc2").length).toBe(1);
-  expect(getPresenceList("doc1")[0].entityId).toBe("e_1");
-  expect(getPresenceList("doc2")[0].entityId).toBe("e_2");
+  expect(getPresenceList("map1").length).toBe(1);
+  expect(getPresenceList("map2").length).toBe(1);
+  expect(getPresenceList("map1")[0].entityId).toBe("e_1");
+  expect(getPresenceList("map2")[0].entityId).toBe("e_2");
 });

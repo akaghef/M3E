@@ -1,0 +1,44 @@
+{
+  "opId": "RF1.expandSelectedNode",
+  "selectedNodeId": "n_animals",
+  "source": "m3e_browser_ui_pn",
+  "actions": [
+    {
+      "type": "appendChildren",
+      "parentId": "n_animals",
+      "nodes": [
+        {
+          "id": "n_1780587366493_1rdgjm",
+          "text": "爬虫類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "browserRank": 1
+          }
+        },
+        {
+          "id": "n_1780587366493_x1dnxq",
+          "text": "両生類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "browserRank": 2
+          }
+        },
+        {
+          "id": "n_1780587366493_0jlreb",
+          "text": "無脊椎動物",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class",
+            "browserRank": 3
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "uiPath": "select 動物 -> Space -> N2 展開 -> N3 詳細化",
+    "screenshot": "/Users/nisimoriyuuya/dev/M3E/tools/rapid_mapify_oracle/runs/20260604T153155Z_BIO_RF1_live_complete/browser_ui_pn_rf1.png"
+  }
+}

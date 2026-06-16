@@ -1,0 +1,221 @@
+id: pjv35_local_project_design_report_system
+label: PJv35 Local Project Design Report
+template: langgraph.subsystem.state_graph
+strategy: PJv Factory Local Project Design Report
+entry: load_projects
+channels:
+  - name: sourceFolder
+    reducer: replace
+    typeHint: resource:folder
+  - name: contextPackage
+    reducer: replace
+    typeHint: json
+  - name: docGoal
+    reducer: replace
+    typeHint: markdown
+  - name: draftDocument
+    reducer: replace
+    typeHint: markdown
+  - name: finalReport
+    reducer: replace
+    typeHint: resource:file
+  - name: trace
+    reducer: append
+    typeHint: jsonl
+nodes:
+  - id: load_projects
+    label: Load Projects
+    template: io.load_local_folder
+    flowCol: 0
+    flowRow: 0
+    slots:
+      reads: resource.projectsFolder
+      writes: state.contextPackage
+      callable_ref: pjv35.load_context
+      doc_goal: "ローカル projects/ を入力として、各PJの設計状態・未完タスク・次に見るべきPJを日本語Markdownでまとめる。"
+      trace_step_id: load_projects
+  - id: generate_design_report
+    label: Generate Design Report
+    template: llm.generate_doc.subsystem
+    flowCol: 1
+    flowRow: 0
+    slots:
+      reads:
+        - state.contextPackage
+        - state.docGoal
+      writes: state.draftDocument
+      provider: mock
+      model: mock-design-reviewer
+      prompt_text: "出力はMarkdown。セクションは Summary / Project Design Notes / Risk and Gaps / Next Actions。PJ04を優先して簡潔に書く。"
+      failure_policy: "retry:1,on_error:fallback_qn"
+      trace_step_id: generate_design_report
+    subsystem:
+      entry: build_prompt
+      channels:
+        - name: contextPackage
+          reducer: replace
+          typeHint: json
+        - name: docGoal
+          reducer: replace
+          typeHint: markdown
+        - name: prompt
+          reducer: replace
+          typeHint: markdown
+        - name: providerResponse
+          reducer: replace
+          typeHint: json
+        - name: draftDocument
+          reducer: replace
+          typeHint: markdown
+        - name: error
+          reducer: replace
+          typeHint: json
+        - name: retryCount
+          reducer: replace
+          typeHint: number
+      nodes:
+        - id: build_prompt
+          label: Build Prompt
+          template: langgraph.node.process
+          flowCol: 0
+          flowRow: 0
+          slots:
+            reads:
+              - state.contextPackage
+              - state.docGoal
+            writes: state.prompt
+            callable_ref: pjv35.generate_design_report.build_prompt
+            prompt_text: "出力はMarkdown。セクションは Summary / Project Design Notes / Risk and Gaps / Next Actions。PJ04を優先して簡潔に書く。"
+            trace_step_id: build_prompt
+        - id: call_provider
+          label: Call Provider
+          template: langgraph.node.llm
+          flowCol: 1
+          flowRow: 0
+          slots:
+            reads: state.prompt
+            writes:
+              - state.providerResponse
+              - state.error
+            callable_ref: pjv35.generate_design_report.call_provider
+            provider: mock
+            model: mock-design-reviewer
+            prompt_text: "{{state.prompt}}"
+            trace_step_id: call_provider
+        - id: evaluate_response
+          label: Evaluate Report
+          template: langgraph.node.router
+          flowCol: 2
+          flowRow: 0
+          slots:
+            reads:
+              - state.providerResponse
+              - state.error
+            writes:
+              - state.draftDocument
+              - state.error
+            callable_ref: pjv35.generate_design_report.evaluate_response
+            router_ref: pjv35.generate_design_report.route_evaluation
+            route_keys:
+              - pass
+              - api_error
+              - bad_output
+            default_route: bad_output
+            trace_step_id: evaluate_response
+        - id: retry_backoff
+          label: Retry / Backoff
+          template: langgraph.flow.retry
+          flowCol: 2
+          flowRow: 1
+          slots:
+            reads:
+              - state.error
+              - state.retryCount
+            writes: state.retryCount
+            callable_ref: pjv35.generate_design_report.retry_backoff
+            router_ref: pjv35.generate_design_report.route_retry
+            max_attempts: 1
+            retry_target: call_provider
+            exhausted_target: fallback_qn
+            route_keys:
+              - retry
+              - exhausted
+            trace_step_id: retry_backoff
+        - id: fallback_qn
+          label: Fallback / Qn
+          template: langgraph.flow.human_gate
+          flowCol: 3
+          flowRow: 1
+          slots:
+            reads:
+              - state.error
+              - state.providerResponse
+            writes:
+              - state.draftDocument
+              - state.qn
+            callable_ref: pjv35.generate_design_report.fallback_qn
+            interrupt: dynamic
+            decision_ports:
+              - approve
+              - reject
+              - edit
+            trace_step_id: fallback_qn
+        - id: return_draft
+          label: Return Draft
+          template: langgraph.node.process
+          flowCol: 4
+          flowRow: 0
+          slots:
+            reads: state.draftDocument
+            writes: state.draftDocument
+            callable_ref: pjv35.generate_design_report.return_draft
+            trace_step_id: return_draft
+      edges:
+        - from: build_prompt
+          to: call_provider
+          label: default
+        - from: call_provider
+          to: evaluate_response
+          label: default
+        - from: evaluate_response
+          to: return_draft
+          branch: pass
+        - from: evaluate_response
+          to: retry_backoff
+          branch: api_error
+        - from: evaluate_response
+          to: fallback_qn
+          branch: bad_output
+        - from: retry_backoff
+          to: call_provider
+          branch: retry
+        - from: retry_backoff
+          to: fallback_qn
+          branch: exhausted
+        - from: fallback_qn
+          to: __end__
+          label: fallback
+        - from: return_draft
+          to: __end__
+          label: return
+  - id: write_output
+    label: Write Output
+    template: io.write_artifact
+    flowCol: 2
+    flowRow: 0
+    slots:
+      reads: state.draftDocument
+      writes: resource.tmpDesignReport
+      callable_ref: pjv35.write_output
+      trace_step_id: write_output
+edges:
+  - from: load_projects
+    to: generate_design_report
+    label: default
+  - from: generate_design_report
+    to: write_output
+    label: default
+  - from: write_output
+    to: __end__
+    label: done
+note: PJv35 local project design report rebuilt from PJv Factory templates.

@@ -5,12 +5,24 @@ declare const katex: {
   render(latex: string, element: HTMLElement, options?: { displayMode?: boolean; throwOnError?: boolean }): void;
   renderToString(latex: string, options?: { displayMode?: boolean; throwOnError?: boolean }): string;
 };
+declare const joint: any;
 
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
+type SurfaceViewMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
+type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
+type MapNodeClass = "entity" | "scope";
+type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceLayoutDensity = "compact" | "balanced" | "spacious";
+type SurfaceBranchDirection = "both" | "right" | "left";
+type SurfaceLayoutDirection = "right" | "left" | "down" | "up";
+type SurfaceDepthAlign = "aligned" | "packed";
+type SurfaceEdgeRoute = "elbow" | "bezier" | "straight";
+type SurfaceLinkRoute = "simple-bezier" | "orthogonal" | "straight";
 
 interface TreeNode {
   id: string;
@@ -39,18 +51,81 @@ interface GraphLink {
   label?: string;
   direction?: GraphLinkDirection;
   style?: GraphLinkStyle;
+  color?: string;
+  sourcePort?: LinkPort;
+  targetPort?: LinkPort;
 }
+
+interface SurfaceNodeView {
+  x?: number;
+  y?: number;
+  flowCol?: number;
+  flowRow?: number;
+  shape?: "rect" | "diamond" | "rounded";
+}
+
+interface MapSurface {
+  id: string;
+  scopeId: string;
+  kind: SurfaceKind;
+  layout: SurfaceLayout;
+  nodeViews?: Record<string, SurfaceNodeView>;
+}
+
+interface MapScope {
+  id: string;
+  label: string;
+  rootNodeIds: string[];
+  relationIds: string[];
+  primarySurfaceId?: string;
+}
+
+interface PenPoint {
+  x: number;
+  y: number;
+}
+
+interface PenAnnotation {
+  id: string;
+  kind: "pen";
+  scopeId?: string;
+  d: string;
+  points: PenPoint[];
+  stroke: string;
+  strokeWidth: number;
+  opacity?: number;
+  createdAt?: string;
+}
+
+interface TextAnnotation {
+  id: string;
+  kind: "text";
+  scopeId?: string;
+  x: number;
+  y: number;
+  text: string;
+  fill: string;
+  fontSize: number;
+  fontWeight?: number;
+  variant?: "date" | "label";
+  createdAt?: string;
+}
+
+type MapAnnotation = PenAnnotation | TextAnnotation;
 
 interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
+  annotations?: Record<string, MapAnnotation>;
+  scopes?: Record<string, MapScope>;
+  surfaces?: Record<string, MapSurface>;
   linearNotesByScope?: Record<string, string>;
   linearTextFontScale?: number;
   linearPanelWidth?: number;
 }
 
-interface SavedDoc {
+interface SavedMap {
   version: 1;
   savedAt: string;
   state: AppState;
@@ -111,7 +186,7 @@ interface AiStatusResponse {
 }
 
 interface AiSubagentRequest {
-  documentId: string;
+  mapId: string;
   scopeId: string;
   provider?: string | null;
   mode?: "proposal" | "direct-result";
@@ -149,7 +224,7 @@ interface AiSubagentSuccessResponse {
   };
   meta: {
     scopeId: string;
-    documentId: string;
+    mapId: string;
     latencyMs: number;
   };
 }
@@ -160,6 +235,9 @@ interface NodePosition {
   depth: number;
   w: number;
   h: number;
+  fontSize?: number;
+  labelLines?: string[];
+  scatterCollapsedGroup?: boolean;
 }
 
 interface LayoutResult {
@@ -170,6 +248,7 @@ interface LayoutResult {
 }
 
 interface DragState {
+  mode?: "structure" | "scatter";
   pointerId: number;
   sourceNodeId: string;
   sourceRootIds: string[];
@@ -179,6 +258,7 @@ interface DragState {
   dragged: boolean;
   toggleKey: boolean;
   shiftKey: boolean;
+  startViews?: Record<string, { x: number; y: number }>;
 }
 
 type DragDropProposal =
@@ -213,17 +293,34 @@ interface PinchState {
 }
 
 interface SubtreeSnapshot {
+  id: string;
+  nodeType?: NodeType;
   text: string;
+  collapsed?: boolean;
   details: string;
   note: string;
   attributes: Record<string, string>;
+  link?: string;
+  targetNodeId?: string;
+  aliasLabel?: string;
+  access?: AliasAccess;
+  targetSnapshotLabel?: string;
+  isBroken?: boolean;
   children: SubtreeSnapshot[];
+}
+
+interface SubtreeClipboardPayload {
+  kind: "m3e.subtree.clipboard";
+  version: 1;
+  roots: SubtreeSnapshot[];
+  links: GraphLink[];
 }
 
 type ClipboardState =
   | {
     type: "copy";
     snapshots: SubtreeSnapshot[];
+    links: GraphLink[];
   }
   | {
     type: "cut";
@@ -239,6 +336,13 @@ interface ViewState {
   scopeHistory: string[];
   currentScopeRootId: string;
   thinkingMode: ThinkingMode;
+  surfaceViewMode: SurfaceViewMode;
+  surfaceLayoutDensity: SurfaceLayoutDensity;
+  surfaceBranchDirection: SurfaceBranchDirection;
+  surfaceLayoutDirection: SurfaceLayoutDirection;
+  surfaceDepthAlign: SurfaceDepthAlign;
+  surfaceEdgeRoute: SurfaceEdgeRoute;
+  surfaceLinkRoute: SurfaceLinkRoute;
   zoom: number;
   cameraX: number;
   cameraY: number;
@@ -246,7 +350,49 @@ interface ViewState {
   pinchState: PinchState | null;
   clipboardState: ClipboardState;
   linkSourceNodeId: string;
+  selectedLinkId: string;
   reparentSourceIds: Set<string>;
   dragState: DragState | null;
   collapsedIds: Set<string>;
+  reviewMode: boolean;
+  cameraMove: CameraMoveState;
+}
+
+type CameraMovePreset = "off" | "minimal" | "follow-selection" | "cinematic" | "locked";
+type CameraMoveTrigger = "scope" | "selection" | "layout" | "continuous" | "command";
+
+interface Window {
+  m3eLayout?: (
+    graph: {
+      nodeIds: string[];
+      childrenOf: (id: string) => string[];
+      graphLinks: GraphLink[];
+    },
+    boxSizes: Record<string, { w: number; h: number; labelLines?: string[]; fontSize?: number }>,
+    mode: SurfaceKind,
+    options?: {
+      spacing?: { nodeGap?: number; levelGap?: number; padding?: number };
+      direction?: SurfaceLayoutDirection;
+      depthAlign?: SurfaceDepthAlign;
+      edge?: { route?: SurfaceEdgeRoute };
+      link?: { route?: SurfaceLinkRoute };
+      displayRootId?: string;
+      structuredMode?: "tree" | "mindmap" | "logic-chart" | "timeline";
+      density?: SurfaceLayoutDensity;
+      branchDirection?: SurfaceBranchDirection;
+    },
+  ) => {
+    pos: Record<string, NodePosition>;
+    order: string[];
+    totalWidth: number;
+    totalHeight: number;
+  };
+}
+
+interface CameraMoveState {
+  preset: CameraMovePreset;
+  toggle: boolean;
+  lockedNodeId: string | null;
+  userFitZoom: number | null;
+  userInteractedAt: number;
 }

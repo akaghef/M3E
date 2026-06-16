@@ -47,7 +47,7 @@ function request(method, urlPath, body, headers = {}) {
   });
 }
 
-function seedDoc(docId) {
+function seedDoc(mapId) {
   const model = new RapidMvpModel("Root");
   const rootId = model.state.rootId;
 
@@ -74,8 +74,8 @@ function seedDoc(docId) {
   };
   model.state.nodes[rootId].children = [folderId, outsideId];
 
-  model.saveToSqlite(sqlitePath, docId);
-  collab.setDocVersion(1);
+  model.saveToSqlite(sqlitePath, mapId);
+  collab.setMapVersion(1);
   return { rootId, folderId, child1Id, child2Id, outsideId };
 }
 
@@ -102,8 +102,8 @@ afterAll(() => {
 
 test("push a new node into a scope succeeds and version increments", async () => {
   collab.resetCollab();
-  const docId = "push-test-1";
-  const ids = seedDoc(docId);
+  const mapId = "push-test-1";
+  const ids = seedDoc(mapId);
 
   // Register via API
   const reg = await request("POST", "/api/collab/register", { displayName: "human1", role: "human", capabilities: ["read", "write"] });
@@ -115,7 +115,7 @@ test("push a new node into a scope succeeds and version increments", async () =>
   expect(lockRes.json.ok).toBe(true);
 
   const newNodeId = "new_child_3";
-  const res = await request("POST", `/api/collab/push/${docId}`, {
+  const res = await request("POST", `/api/collab/push/${mapId}`, {
     scopeId: ids.folderId,
     lockId: lockRes.json.lockId,
     baseVersion: 1,
@@ -134,13 +134,13 @@ test("push a new node into a scope succeeds and version increments", async () =>
 
 test("push to a scope without lock is rejected (403)", async () => {
   collab.resetCollab();
-  const docId = "push-test-2";
-  seedDoc(docId);
+  const mapId = "push-test-2";
+  seedDoc(mapId);
 
   const reg = await request("POST", "/api/collab/register", { displayName: "human2", role: "human", capabilities: ["read", "write"] });
   const auth = { Authorization: `Bearer ${reg.json.token}` };
 
-  const res = await request("POST", `/api/collab/push/${docId}`, {
+  const res = await request("POST", `/api/collab/push/${mapId}`, {
     scopeId: "folder_a",
     lockId: "fake_lock_id",
     baseVersion: 1,
@@ -153,14 +153,14 @@ test("push to a scope without lock is rejected (403)", async () => {
 
 test("push node outside scope is rejected", async () => {
   collab.resetCollab();
-  const docId = "push-test-3";
-  const ids = seedDoc(docId);
+  const mapId = "push-test-3";
+  const ids = seedDoc(mapId);
 
   const reg = await request("POST", "/api/collab/register", { displayName: "human3", role: "human", capabilities: ["read", "write"] });
   const auth = { Authorization: `Bearer ${reg.json.token}` };
   const lockRes = await request("POST", `/api/collab/scope/${ids.folderId}/lock`, null, auth);
 
-  const res = await request("POST", `/api/collab/push/${docId}`, {
+  const res = await request("POST", `/api/collab/push/${mapId}`, {
     scopeId: ids.folderId,
     lockId: lockRes.json.lockId,
     baseVersion: 1,
@@ -174,14 +174,14 @@ test("push node outside scope is rejected", async () => {
 
 test("two entities push non-overlapping nodes - both succeed", async () => {
   collab.resetCollab();
-  const docId = "push-test-4";
-  const ids = seedDoc(docId);
+  const mapId = "push-test-4";
+  const ids = seedDoc(mapId);
 
   const reg1 = await request("POST", "/api/collab/register", { displayName: "human4", role: "human", capabilities: ["read", "write"] });
   const auth1 = { Authorization: `Bearer ${reg1.json.token}` };
   const lock1 = await request("POST", `/api/collab/scope/${ids.folderId}/lock`, null, auth1);
 
-  const res1 = await request("POST", `/api/collab/push/${docId}`, {
+  const res1 = await request("POST", `/api/collab/push/${mapId}`, {
     scopeId: ids.folderId, lockId: lock1.json.lockId, baseVersion: 1,
     changes: { nodes: { merge_a: { id: "merge_a", parentId: ids.folderId, children: [], nodeType: "text", text: "A", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth1);
@@ -196,7 +196,7 @@ test("two entities push non-overlapping nodes - both succeed", async () => {
   const auth2 = { Authorization: `Bearer ${reg2.json.token}` };
   const lock2 = await request("POST", `/api/collab/scope/${ids.rootId}/lock`, null, auth2);
 
-  const res2 = await request("POST", `/api/collab/push/${docId}`, {
+  const res2 = await request("POST", `/api/collab/push/${mapId}`, {
     scopeId: ids.rootId, lockId: lock2.json.lockId, baseVersion: 2,
     changes: { nodes: { merge_b: { id: "merge_b", parentId: ids.rootId, children: [], nodeType: "text", text: "B", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth2);
@@ -204,21 +204,21 @@ test("two entities push non-overlapping nodes - both succeed", async () => {
   expect(res2.json.version).toBe(3);
 
   // Verify both nodes exist
-  const model = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
+  const model = RapidMvpModel.loadFromSqlite(sqlitePath, mapId);
   expect(model.state.nodes["merge_a"]).toBeTruthy();
   expect(model.state.nodes["merge_b"]).toBeTruthy();
 });
 
 test("push with stale baseVersion still applies when priority allows", async () => {
   collab.resetCollab();
-  const docId = "push-test-5";
-  const ids = seedDoc(docId);
+  const mapId = "push-test-5";
+  const ids = seedDoc(mapId);
 
   // Human pushes to bump version
   const reg1 = await request("POST", "/api/collab/register", { displayName: "human5", role: "human", capabilities: ["read", "write"] });
   const auth1 = { Authorization: `Bearer ${reg1.json.token}` };
   const lock1 = await request("POST", `/api/collab/scope/${ids.folderId}/lock`, null, auth1);
-  await request("POST", `/api/collab/push/${docId}`, {
+  await request("POST", `/api/collab/push/${mapId}`, {
     scopeId: ids.folderId, lockId: lock1.json.lockId, baseVersion: 1,
     changes: { nodes: { [ids.child1Id]: { id: ids.child1Id, parentId: ids.folderId, children: [], nodeType: "text", text: "Human Edit", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth1);
@@ -229,7 +229,7 @@ test("push with stale baseVersion still applies when priority allows", async () 
   const auth2 = { Authorization: `Bearer ${reg2.json.token}` };
   const lock2 = await request("POST", `/api/collab/scope/${ids.folderId}/lock`, null, auth2);
 
-  const res2 = await request("POST", `/api/collab/push/${docId}`, {
+  const res2 = await request("POST", `/api/collab/push/${mapId}`, {
     scopeId: ids.folderId, lockId: lock2.json.lockId, baseVersion: 1,
     changes: { nodes: { [ids.child1Id]: { id: ids.child1Id, parentId: ids.folderId, children: [], nodeType: "text", text: "AI Edit", collapsed: false, details: "", note: "", attributes: {}, link: "" } } },
   }, auth2);

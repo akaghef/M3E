@@ -44,8 +44,8 @@ export function getBufferSize(): number {
 let logFilePath: string | null = null;
 let logStream: fs.WriteStream | null = null;
 
-export function initAuditFile(dataDir: string, docId: string): void {
-  const safeDocId = docId.replace(/[^a-zA-Z0-9._-]/g, "_");
+export function initAuditFile(dataDir: string, mapId: string): void {
+  const safeDocId = mapId.replace(/[^a-zA-Z0-9._-]/g, "_");
   const auditDir = path.join(dataDir, "audit");
   if (!fs.existsSync(auditDir)) {
     fs.mkdirSync(auditDir, { recursive: true });

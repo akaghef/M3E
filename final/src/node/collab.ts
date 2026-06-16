@@ -53,7 +53,7 @@ const entities = new Map<string, CollabEntity>(); // entityId -> entity
 const tokenIndex = new Map<string, string>(); // token -> entityId
 const scopeLocks = new Map<string, ScopeLock>(); // scopeId -> lock
 const sseClients: SseClient[] = [];
-let docVersion = 0;
+let mapVersion = 0;
 
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 const DEFAULT_LEASE_SEC = 30;
@@ -121,8 +121,22 @@ export function unregisterEntity(entityId: string): boolean {
 
 export function authenticateRequest(req: http.IncomingMessage): CollabEntity | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-  const token = authHeader.slice(7);
+  let token: string | null = null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else {
+    const rawUrl = req.url ?? "/";
+    try {
+      const parsed = new URL(rawUrl, "http://localhost");
+      const queryToken = parsed.searchParams.get("token");
+      if (queryToken && queryToken.trim()) {
+        token = queryToken.trim();
+      }
+    } catch {
+      token = null;
+    }
+  }
+  if (!token) return null;
   const entityId = tokenIndex.get(token);
   if (!entityId) return null;
   const entity = entities.get(entityId);
@@ -274,16 +288,16 @@ export function broadcastSseEvent(event: string, data: unknown): void {
 // Version
 // ---------------------------------------------------------------------------
 
-export function getDocVersion(): number {
-  return docVersion;
+export function getMapVersion(): number {
+  return mapVersion;
 }
 
-export function incrementDocVersion(): number {
-  return ++docVersion;
+export function incrementMapVersion(): number {
+  return ++mapVersion;
 }
 
-export function setDocVersion(v: number): void {
-  docVersion = v;
+export function setMapVersion(v: number): void {
+  mapVersion = v;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +339,7 @@ export interface MergePushResult {
 }
 
 export function mergeScopePush(
-  docId: string,
+  mapId: string,
   scopeId: string,
   entity: CollabEntity,
   lockId: string,
@@ -336,27 +350,54 @@ export function mergeScopePush(
   // Check scope lock
   const lock = scopeLocks.get(scopeId);
   if (!lock || lock.entityId !== entity.entityId || lock.lockId !== lockId) {
-    return { ok: false, version: docVersion, applied: [], rejected: [], conflicts: [], error: "Scope lock not held." };
+    return { ok: false, version: mapVersion, applied: [], rejected: [], conflicts: [], error: "Scope lock not held." };
   }
 
-  // Load current doc
+  // Load current map
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(sqlitePath, docId);
+    model = RapidMvpModel.loadFromSqlite(sqlitePath, mapId);
   } catch (err) {
-    return { ok: false, version: docVersion, applied: [], rejected: [], conflicts: [], error: (err as Error).message };
+    return { ok: false, version: mapVersion, applied: [], rejected: [], conflicts: [], error: (err as Error).message };
   }
 
   const nodes = model.state.nodes;
   const rootId = model.state.rootId;
-  const hasVersionConflict = baseVersion !== docVersion;
+  const hasVersionConflict = baseVersion !== mapVersion;
   const originalNodeIds = new Set(Object.keys(nodes));
+
+  if (hasVersionConflict) {
+    return {
+      ok: false,
+      version: mapVersion,
+      applied: [],
+      rejected: Object.keys(changedNodes),
+      conflicts: [{ nodeId: scopeId, winner: "current", loser: entity.entityId }],
+      error: "Version conflict.",
+    };
+  }
 
   const applied: string[] = [];
   const rejected: string[] = [];
   const conflicts: Array<{ nodeId: string; winner: string; loser: string }> = [];
+  const effectiveChangedNodes: Record<string, TreeNode | null> = { ...changedNodes };
 
-  for (const [nodeId, change] of Object.entries(changedNodes)) {
+  // The viewer sends the locked scope root plus every currently visible
+  // descendant. In that full-snapshot mode, a stored descendant missing from
+  // the payload means it was deleted locally and must not be resurrected by
+  // preserving the old subtree on save. Partial API callers that do not include
+  // the scope root keep the legacy "only apply these nodes" behavior.
+  const scopePushesFullSnapshot = changedNodes[scopeId] !== undefined && changedNodes[scopeId] !== null;
+  if (scopePushesFullSnapshot) {
+    const oldScopeIds = model.queryNodeIds(scopeId);
+    for (const oldNodeId of oldScopeIds) {
+      if (oldNodeId !== scopeId && effectiveChangedNodes[oldNodeId] === undefined) {
+        effectiveChangedNodes[oldNodeId] = null;
+      }
+    }
+  }
+
+  for (const [nodeId, change] of Object.entries(effectiveChangedNodes)) {
     // Scope check
     if (change !== null) {
       const existingNode = nodes[nodeId];
@@ -367,15 +408,6 @@ export function mergeScopePush(
       }
     } else {
       if (nodes[nodeId] && !isInScope(nodes, nodeId, scopeId, rootId)) {
-        rejected.push(nodeId);
-        continue;
-      }
-    }
-
-    // Version conflict → priority resolution
-    if (hasVersionConflict && nodes[nodeId]) {
-      if (entity.priority < lock.priority) {
-        conflicts.push({ nodeId, winner: "current", loser: entity.entityId });
         rejected.push(nodeId);
         continue;
       }
@@ -401,7 +433,12 @@ export function mergeScopePush(
     } else {
       const existingNode = nodes[nodeId];
       if (existingNode) {
-        nodes[nodeId] = { ...change, id: nodeId, parentId: existingNode.parentId, children: existingNode.children };
+        nodes[nodeId] = {
+          ...change,
+          id: nodeId,
+          parentId: nodeId === scopeId ? existingNode.parentId : change.parentId,
+          children: [...(change.children || [])],
+        };
       } else {
         nodes[nodeId] = change;
         const parentId = change.parentId;
@@ -414,23 +451,23 @@ export function mergeScopePush(
   }
 
   if (applied.length === 0) {
-    return { ok: true, version: docVersion, applied, rejected, conflicts };
+    return { ok: true, version: mapVersion, applied, rejected, conflicts };
   }
 
   // Validate full tree
   const validationModel = RapidMvpModel.fromJSON(model.state);
   const errors = validationModel.validate();
   if (errors.length > 0) {
-    return { ok: false, version: docVersion, applied: [], rejected: Object.keys(changedNodes), conflicts: [], error: `Validation failed: ${errors.join(" | ")}` };
+    return { ok: false, version: mapVersion, applied: [], rejected: Object.keys(changedNodes), conflicts: [], error: `Validation failed: ${errors.join(" | ")}` };
   }
 
   // Save + version bump
-  validationModel.saveToSqlite(sqlitePath, docId);
-  const newVersion = ++docVersion;
+  validationModel.saveToSqlite(sqlitePath, mapId);
+  const newVersion = ++mapVersion;
 
   // Audit log for each applied change
   for (const nodeId of applied) {
-    const change = changedNodes[nodeId];
+    const change = effectiveChangedNodes[nodeId];
     let opType: OperationType;
     if (change === null) {
       opType = "delete";
@@ -445,11 +482,11 @@ export function mergeScopePush(
       userId: entity.entityId,
       operationType: opType,
       targetNodeId: nodeId,
-      details: { docId, version: newVersion, scopeId },
+      details: { mapId, version: newVersion, scopeId },
     });
   }
 
-  broadcastSseEvent("state_update", { docId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
+  broadcastSseEvent("state_update", { mapId, version: newVersion, entityId: entity.entityId, applied, rejected, conflicts });
 
   return { ok: true, version: newVersion, applied, rejected, conflicts };
 }
@@ -463,7 +500,7 @@ export function resetCollab(): void {
   tokenIndex.clear();
   scopeLocks.clear();
   sseClients.length = 0;
-  docVersion = 0;
+  mapVersion = 0;
 }
 
 // ---------------------------------------------------------------------------

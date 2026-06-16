@@ -1,0 +1,956 @@
+# PJ03 SelfDrive — sprint contracts (reframed: workflow engine dogfood)
+# Old friction-observation tasks archived at tasks_v1_friction.yaml.bak
+
+# =========================================================================
+# Phase 0: 再設計成果物の確定
+# plan.md は reframed 済み。Phase 0 成果物 4 本を独立ドキュメントに固定する。
+# =========================================================================
+
+- id: T-0-1
+  phase: 0
+  verb: finalize
+  target: "最小 workflow state set"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/workflow_state_set.md exists"
+    - "9 states documented: pending, ready, in_progress, eval_pending, blocked, sleeping, escalated, done, failed"
+    - "each state has: meaning (1-2 lines), entry condition, exit condition, invariant"
+    - "table cross-references plan.md §データ構造の最小案 WorkflowState.kind"
+  eval_required: true
+  eval_criteria:
+    - "state coverage is exhaustive (no stop reason falls outside the 9 states)"
+    - "state boundaries are disjoint (no overlap in meaning)"
+    - "invariants are falsifiable (can be checked mechanically)"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: null
+
+- id: T-0-2
+  phase: 0
+  verb: enumerate
+  target: "allowed workflow edges"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/workflow_edges.md exists"
+    - "all 10 edges from plan.md §基本遷移 are tabulated"
+    - "each row has: edge_id, source_state, target_state, condition, trigger (machine/human/timer)"
+    - "unreachable state combinations are listed as explicit rejections"
+  eval_required: true
+  eval_criteria:
+    - "edges are consistent with T-0-1 state set"
+    - "every state (except failed) has at least one incoming and outgoing edge"
+    - "human approval edges are flagged distinctly from machine edges"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: null
+
+- id: T-0-3
+  phase: 0
+  verb: map
+  target: "現行資産 → workflow element"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/legacy_asset_mapping.md exists"
+    - "mapping table covers: tasks.yaml, resume-cheatsheet.md, reviews/Qn_*.md, ScheduleWakeup, SessionStart/PostCompact/Stop hooks, sub-pj-do"
+    - "each asset row maps to: state(s) it writes, edge(s) it triggers, checkpoint role"
+    - "gaps (assets not yet mapped) are explicitly listed"
+  eval_required: true
+  eval_criteria:
+    - "mapping is verifiable against actual file contents (cite paths)"
+    - "no invented assets"
+    - "coverage of tentative runtime hosts from Qn_initial (ScheduleWakeup + CronCreate) is explicit"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: null
+
+- id: T-0-4
+  phase: 0
+  verb: taxonomize
+  target: "stop reason"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/stop_reason_taxonomy.md exists"
+    - "covers sub-pj-guard E1/E2/E3 + plan.md §S3 stop reasons"
+    - "each stop reason maps to exactly one of: blocked, sleeping, escalated, failed"
+    - "decision rubric is included (how to classify a new stop reason)"
+  eval_required: true
+  eval_criteria:
+    - "mapping is mutually exclusive (one stop reason → one target state)"
+    - "recovery path is named for each non-failed category"
+    - "E1/E2/E3 are preserved as escalated (per sub-pj-guard contract)"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: null
+
+- id: T-0-5
+  phase: 0
+  verb: gate-check
+  target: "Phase 0 readiness for Gate 1"
+  done_when:
+    - "T-0-1..T-0-4 all done"
+    - "plan.md 確定事項 section appended with: state set, edge list ref, legacy mapping ref, stop taxonomy ref"
+    - "Qn_initial (runtime host choice) has a concrete resolution proposal for akaghef"
+    - "reviews/ open count + tentative defaults summarized in resume-cheatsheet.md"
+    - "Gate 1 readiness summary posted to chat (akaghef approves / rejects)"
+  eval_required: false
+  eval_criteria:
+    - "a reader with no context can judge Gate 1 from plan.md 確定事項 alone"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-0-1", "T-0-2", "T-0-3", "T-0-4"]
+  linked_review: null
+
+# =========================================================================
+# Phase 1: 最小 workflow engine
+# dogfood target: PJ03 自身の 1 task を engine で進める（plan.md §S11）
+# =========================================================================
+
+- id: T-1-1
+  phase: 1
+  verb: define-types
+  target: "TypeScript type skeletons for workflow engine"
+  done_when:
+    - "beta/src/shared/workflow_types.ts exists"
+    - "exports: WorkflowState, WorkflowNode, WorkflowEdge, Checkpoint, RunContext (per plan.md §データ構造の最小案)"
+    - "WorkflowState.kind uses the 9-state union from T-0-1"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "types are structurally identical to plan.md interfaces (no silent extensions)"
+    - "naming follows beta/src/shared convention (see types.ts / scope_types.ts)"
+    - "no runtime code added to workflow_types.ts (types + const only)"
+  parallelizable: false
+  scope: "beta/src/shared"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-0-5"]
+  linked_review: null
+
+- id: T-1-2
+  phase: 1
+  verb: encode
+  target: "1-task workflow as Node+Edge instance"
+  done_when:
+    - "projects/PJ03_SelfDrive/runtime/workflow_example.ts (or .json) exists"
+    - "encodes one PJ03 task (e.g. T-1-3) as: WorkflowNode set + WorkflowEdge set"
+    - "nodes cover generator, evaluator, router roles at minimum"
+    - "edges cover pending → ready → in_progress → eval_pending → done + blocked escape"
+  eval_required: true
+  eval_criteria:
+    - "encoded instance validates against types from T-1-1"
+    - "the task is actually one from tasks.yaml (not a toy example)"
+    - "graph has no orphan nodes or edges"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/runtime"
+  facet: design
+  round_max: 3
+  dependencies: ["T-1-1"]
+  linked_review: null
+
+- id: T-1-3
+  phase: 1
+  verb: implement
+  target: "state transition runner"
+  done_when:
+    - "beta/src/node/workflow_runner.ts exists"
+    - "reads tasks.yaml → returns current Checkpoint per task"
+    - "applies one step: given current state, select allowed edge, return next state"
+    - "writes back updated status/round/last_feedback to tasks.yaml"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "runner rejects invalid edges (fail-closed per plan.md §S12 Guardrails)"
+    - "writeback preserves YAML structure (no reordering, no field loss)"
+    - "dry-run mode exists for non-destructive inspection"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-1", "T-1-2"]
+  linked_review: null
+
+- id: T-1-4
+  phase: 1
+  verb: integrate
+  target: "evaluator loop in runner"
+  done_when:
+    - "runner distinguishes generator vs evaluator nodes"
+    - "pending → in_progress → eval_pending → done / back-to-in_progress cycle works"
+    - "round increments on evaluator fail; round > round_max transitions to blocked"
+    - "demo run on one synthetic task completes the full cycle"
+  eval_required: true
+  eval_criteria:
+    - "evaluator verdict persists in last_feedback"
+    - "round_max enforcement is exact (off-by-one checked)"
+    - "blocked transition does not lose state (checkpoint stays intact)"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-3"]
+  linked_review: null
+
+- id: T-1-5
+  phase: 1
+  verb: implement
+  target: "checkpoint / resume"
+  done_when:
+    - "Checkpoint is persisted to tasks.yaml (currentState, round) + resume-cheatsheet.md (human summary)"
+    - "runner can be invoked with --resume and continues from last checkpoint"
+    - "PostCompact / SessionStart reload path documented (even if hook wiring is later)"
+    - "resume test: kill runner mid-transition, relaunch, verify same node resumes"
+  eval_required: true
+  eval_criteria:
+    - "checkpoint is idempotent (re-saving the same state is a no-op)"
+    - "resume never double-fires a side effect (Generator is not re-run after success)"
+    - "corrupt checkpoint produces a clear error, not silent reset"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-4"]
+  linked_review: null
+
+- id: T-1-6
+  phase: 1
+  verb: dogfood
+  target: "self-apply runner to one PJ03 task"
+  done_when:
+    - "runner executes at least one real PJ03 task (proposed: T-1-1 or a later Phase 2 task) end-to-end"
+    - "tasks.yaml reflects actual state transitions written by runner, not manual edits"
+    - "resume-cheatsheet.md is updated by runner, not by hand"
+    - "dogfood log (projects/PJ03_SelfDrive/artifacts/dogfood_run_01.md) records observed transitions"
+  eval_required: true
+  eval_criteria:
+    - "no manual tasks.yaml edit during the dogfood run"
+    - "observed transitions match T-0-2 edge table"
+    - "all 4 stop categories (blocked/sleeping/escalated/failed) are reachable, even if only one is hit this run"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-5"]
+  linked_review: null
+
+- id: T-1-7
+  phase: 1
+  verb: gate-check
+  target: "Phase 1 readiness for Gate 2 (REJECTED 2026-04-21; re-gate after T-1-8..T-1-11)"
+  done_when:
+    - "plan.md §成功基準 最小成功 5 項目を T-1-1..T-1-6 の artifact から根拠づきで評価"
+    - "plan.md 確定事項 に Phase 1 結論を追記"
+    - "Phase 2 (Hermes 改善ループ) の着手条件が整理されている"
+    - "Gate 2 readiness summary posted to chat (akaghef approves / rejects)"
+    - "Qn3_gate2_rework の P1..P4 すべて resolve"
+  eval_required: false
+  eval_criteria:
+    - "a reader can confirm 最小成功 5 項目から plan.md + artifacts だけで判断できる"
+    - "persistence gap / reducer-vs-engine / 条件 observable / example 降格 の 4 論点に明示的回答がある"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-1-6"]
+  linked_review: "Qn3_gate2_rework"
+
+# =========================================================================
+# Phase 1.5: Gate 2 rework (Qn3 P1..P4) — 方針確定後に具体化
+# =========================================================================
+
+- id: T-1-8
+  phase: 1
+  verb: split
+  target: "tasks.yaml / checkpoint JSON への責務分離 (P1)"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/checkpoint_schema.md が存在し、tasks.yaml vs checkpoint JSON のフィールド境界を表で明示"
+    - "beta/src/shared/checkpoint_types.ts が存在し、CheckpointFile 型 (state, round, last_feedback, blocker, escalation_kind, wakeup_at, wakeup_mechanism, failure_reason, updated_at) を export"
+    - "projects/PJ03_SelfDrive/runtime/checkpoints/{taskId}.json が全既存 task 分生成済み（T-0-1..T-1-7 + T-1-8..T-1-11）"
+    - "tasks.yaml から status / round / last_feedback / blocker フィールドを除去（contract 部分のみ残す）"
+    - "reducer が checkpoint JSON を read/write できる（旧 tasks.yaml writeback 経路は削除）"
+    - "npm run build passes"
+    - "restore test: 任意の WorkflowState kind について checkpoint JSON 書き込み → 読み戻しで invariant field が全て保存されることを 1 script で検証"
+  eval_required: true
+  eval_criteria:
+    - "restore test が全 9 state について resume 情報の欠落なく round-trip（rework 完了条件の直接検査）"
+    - "tasks.yaml からマシン状態が物理的に消えている（grep で確認）"
+    - "checkpoint JSON は 1 task 1 ファイル、atomic write（tmp → rename）で永続化"
+    - "旧 applyWriteback の regex surgical-replace 経路は撤去されているか、tasks.yaml の contract 部分のみを対象に縮退している"
+  parallelizable: false
+  scope: "beta/src/shared + projects/PJ03_SelfDrive/runtime/checkpoints"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-6"]
+  linked_review: "Qn3_gate2_rework"
+
+- id: T-1-9
+  phase: 1
+  verb: rename
+  target: "workflow_runner → workflow_reducer + CLI 分離 (P2)"
+  done_when:
+    - "beta/src/node/workflow_reducer.ts が存在（旧 workflow_runner.ts をベースに責務縮退）"
+    - "reducer の公開 API は純粋関数 `reduce(state, signal, deps): {nextState, patch}` + persistence adapter `loadCheckpoint` / `saveCheckpoint`"
+    - "CLI は beta/src/node/workflow_cli.ts に分離、reducer を import する薄い wrapper"
+    - "旧 workflow_runner.ts は削除（履歴は git で参照）"
+    - "docs/resume_protocol.md / docs/legacy_asset_mapping.md の 'runner' 言及を 'reducer' に更新"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "reducer の core 関数が Date / fs / subprocess を直接呼ばない（純粋性）"
+    - "Generator / Evaluator 起動コードが含まれていない（責務境界の明示）"
+    - "responsibility section を docs/reducer_responsibility.md に明記し、engine 化が Phase 2 の別 task である旨を記録"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-8"]
+  linked_review: "Qn3_gate2_rework"
+
+- id: T-1-10
+  phase: 1
+  verb: inject
+  target: "dependencies / linked_review / Clock による条件 observable 化 (P3)"
+  done_when:
+    - "tasks.yaml に dependencies (string[]) / linked_review (string | null) を追加、T-0-*/T-1-* 全 entry で実値を設定"
+    - "beta/src/shared/clock.ts に Clock interface 定義 + SystemClock 実装 + FixedClock (test helper)"
+    - "reducer が Clock / ReviewResolver / DependencyResolver を input として受ける（Date.now() 直参照禁止）"
+    - "pickNextTask が dependencies resolver を使い依存 done のみを ready に昇格"
+    - "E09 条件 (sleeping → ready) が clock.now() >= wakeup_at で自動判定"
+    - "E12 / E13 / E15 が linked_review の resolution 状態を ReviewResolver 経由で観測"
+    - "dependency 循環検出 (cycle detection) が実装され、循環検出時は明示 Error"
+  eval_required: true
+  eval_criteria:
+    - "Clock の FixedClock を使った sleeping → ready の state transition が unit test で成立"
+    - "循環依存を含むタスクセットを投入したとき cycle Error が発生する"
+    - "linked_review が open のまま E12 を試みるとエラーまたは reject（review resolution が先行条件）"
+    - "rework 完了条件: restore test が全 9 state で invariant field を round-trip（T-1-8 eval を上書きしない）"
+  parallelizable: false
+  scope: "beta/src"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-8", "T-1-9"]
+  linked_review: "Qn3_gate2_rework"
+
+- id: T-1-11
+  phase: 1
+  verb: demote
+  target: "workflow_example.json → docs/workflow_example.md 降格 (P4)"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/workflow_example.md が存在（旧 .json の内容を description 化、runtime 参照がないことを明記）"
+    - "projects/PJ03_SelfDrive/runtime/workflow_example.json が削除されている（git mv or rm）"
+    - "reducer / CLI / checkpoint 生成コードから .json への参照が 0（grep で確認）"
+    - "docs/ 側に 将来 runtime fixture 必要時の復活方針を 1 段落記載"
+  eval_required: false
+  eval_criteria:
+    - "二重表現（spec / 実装）が解消されている"
+    - "runtime/ 配下に動かない spec object が残っていない"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  round_max: 1
+  dependencies: ["T-1-10"]
+  linked_review: "Qn3_gate2_rework"
+
+# =========================================================================
+# Phase 2: 実行基盤の仮接続（2026-04-21 kickoff, akaghef approved Gate 2 v2）
+# reducer 外の orchestrator / Clock daemon / hook 配線。
+# Phase 1.5 rework で確立した契約・checkpoint 分離を前提にする。
+# =========================================================================
+
+- id: T-2-1
+  phase: 2
+  verb: implement
+  target: "Clock daemon（ScheduleWakeup + CronCreate 連携）"
+  done_when:
+    - "beta/src/node/clock_daemon.ts が存在し、reducer を import して tickAutoTransitions を呼ぶ"
+    - "ScheduleWakeup 経由の one-shot wakeup と CronCreate 経由の繰返し tick が配線されている"
+    - "sleeping state の task に対し、wakeup_at 到達時に E09 が実稼働で発火する（artifacts に 1 観察以上記録）"
+    - "daemon 内部で SystemClock を使用、tests では Clock injection で差し替え可能"
+  eval_required: true
+  eval_criteria:
+    - "Clock polling が reducer の責務境界を越えない（daemon は signal 発火、reducer は state 遷移）"
+    - "daemon crash 時に checkpoint 状態が壊れない（idempotent tick）"
+    - "ScheduleWakeup と Cron のどちらで起動しても同一 tick ロジックに合流"
+  parallelizable: true
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-11"]
+  linked_review: null
+
+- id: T-2-2
+  phase: 2
+  verb: implement
+  target: "Orchestrator shell（Generator / Evaluator subagent dispatcher）"
+  done_when:
+    - "beta/src/node/workflow_orchestrator.ts が存在"
+    - "pickNextTask の結果を受け、state に応じて Generator or Evaluator subagent を spawn する抽象インターフェース（実際の spawn は adapter 経由で差し替え可能）"
+    - "verdict 受領後に reducer.runOneStep へ signal を注入するループが成立"
+    - "orchestrator は checkpoint JSON / tasks.yaml を直接書かない（reducer 経由のみ）"
+  eval_required: true
+  eval_criteria:
+    - "orchestrator と reducer の責務境界が文書化されている（reducer_responsibility.md 更新 or 新規 orchestrator_responsibility.md）"
+    - "subagent adapter が mock できる（test で Generator/Evaluator を stub に差し替えて orchestrator loop を動かせる）"
+    - "Hermes 的な自己改善ループ（fail feedback を次 round generator prompt に反映）が差し込み可能な hook を露出している（実装は Phase 2 では不要、設計のみで OK）"
+  parallelizable: true
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-1-11"]
+  linked_review: null
+
+- id: T-2-3
+  phase: 2
+  verb: wire
+  target: "SessionStart / PostCompact hook 配線（checkpoint JSON 前提）"
+  done_when:
+    - ".claude/scripts/hooks/ 配下に session-start / post-compact 用スクリプトが存在"
+    - "hook から workflow_cli --resume を呼び、checkpoint JSON + resume-cheatsheet の runner-managed block を context 注入"
+    - "hook 配線が settings.json で有効化される（update-config skill で適用 or 手順 doc）"
+    - "compaction 後に reducer state が復元されることを 1 サイクル以上で確認"
+  eval_required: true
+  eval_criteria:
+    - "hook 失敗時に silent fallback せず明示 Error（sub-pj-guard §silent-failure 方針）"
+    - "resume-cheatsheet の narrative section は hook で破壊されない"
+    - "SessionStart / PostCompact 双方で同じ context injection が発生"
+  parallelizable: false
+  scope: ".claude/scripts/hooks + beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-2-1", "T-2-2"]
+  linked_review: null
+
+- id: T-2-4
+  phase: 2
+  verb: observe
+  target: "sleeping / escalated / failed の実稼働観察（dogfood_run_02）"
+  done_when:
+    - "artifacts/dogfood_run_02.md に sleeping / escalated / failed 各 1 回以上の実稼働観察が記録"
+    - "sleeping → ready が Clock daemon 経由で自動復帰する実例を含む"
+    - "escalated → ready or blocked が linked_review 解決で自動発火する実例を含む"
+    - "failed は意図的に fatal_exception を注入したテスト run で確認"
+  eval_required: true
+  eval_criteria:
+    - "未観察 3 停止カテゴリを Phase 2 実稼働で回収（Gate 2 の soft flag を閉じる）"
+    - "観察した遷移が workflow_edges.md の 17 edges に対応"
+    - "checkpoint JSON に全 invariant field が保存されたまま復元される（restore test の回帰なし）"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-2-1", "T-2-2", "T-2-3"]
+  linked_review: null
+
+- id: T-2-5
+  phase: 2
+  verb: gate-check
+  target: "Phase 2 readiness for Gate 3"
+  done_when:
+    - "T-2-1..T-2-4 all done"
+    - "plan.md 確定事項に Phase 2 結論を追記（orchestrator 責務・Clock daemon 配線・hook 動作・実観察エビデンス）"
+    - "Phase 3 (M3E 1 scope 統合) の着手条件が整理されている"
+    - "Gate 3 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "a reader can confirm Phase 2 成果物から plan.md + artifacts だけで判断できる"
+    - "reducer の責務境界が Phase 1.5 以降で動いていない（過大評価の再発なし）"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-2-4"]
+  linked_review: null
+
+# =========================================================================
+# Phase 3: M3E 1 scope 統合（2026-04-21 kickoff, akaghef approved Gate 3）
+# workflow state を M3E scope 内で可視化する最小統合。実 map server 連携は
+# projection layer 止まり（scope 構造を AppState で生成、実際の POST は外側）。
+# =========================================================================
+
+- id: T-3-1
+  phase: 3
+  verb: design
+  target: "M3E scope 統合の責務と投影方向"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/m3e_scope_integration.md が存在"
+    - "scope 構造（root / child 階層、attribute 名、facet）が明記"
+    - "SSOT 方向: checkpoint JSON → scope (one-way projection) の宣言"
+    - "reducer / orchestrator / projector の責務混線防止ルールが記載"
+    - "workflow summary / current state / next transition / blocker reason の 4 表示の scope 位置が決まっている"
+  eval_required: true
+  eval_criteria:
+    - "projection が checkpoint の SSOT を侵さない（map → reducer の逆流なし）"
+    - "map 側の facet / attribute 規約が workflow 用 namespace で汚染されない"
+    - "既存の beta/src/shared/types.ts の AppState shape に準拠"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-2-5"]
+  linked_review: null
+
+- id: T-3-2
+  phase: 3
+  verb: implement
+  target: "workflow_scope_projector（checkpoint → AppState 投影）"
+  done_when:
+    - "beta/src/node/workflow_scope_projector.ts が存在"
+    - "projectTasks(tasksFile, runtimeDir): AppState が export"
+    - "生成 AppState は existing beta/src/shared/types.ts の型に適合"
+    - "unit test: 21 task を投影、1 root + N task-node + attribute 属性が正しい"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "projector は read-only (checkpoint JSON / tasks.yaml 書き込みなし)"
+    - "生成 AppState は決定論的（同じ入力は同じ出力）"
+    - "attribute namespace が衝突しない（workflow.* prefix か facet 指定）"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-3-1"]
+  linked_review: null
+
+- id: T-3-3
+  phase: 3
+  verb: dogfood
+  target: "PJ03 自身を projection で可視化 (dogfood_run_03)"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/dogfood_run_03.md に PJ03 の 21 task 投影結果のサマリを記録"
+    - "生成された AppState (または抜粋 JSON) を artifacts/workflow_scope_snapshot.json として保存"
+    - "snapshot が current state / next transition / blocked reason を含むことを確認"
+  eval_required: true
+  eval_criteria:
+    - "投影対象は実 PJ03 runtime (tmp 固定入力ではない)"
+    - "state breakdown (done/blocked/sleeping/... の count) が実 inspect 出力と一致"
+    - "blocker reason は reducer が保存したものと一致 (文字列同値)"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-3-2"]
+  linked_review: null
+
+- id: T-3-4
+  phase: 3
+  verb: gate-check
+  target: "Phase 3 readiness + PJ03 完了 readiness"
+  done_when:
+    - "T-3-1..T-3-3 all done"
+    - "plan.md 確定事項に Phase 3 結論 + PJ03 最終成功判定を追記"
+    - "projects/PJ03_SelfDrive/retrospective.md が存在 (PJ03 反省ログ)"
+    - "Gate 3 + PJ 完了 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "akaghef が plan.md + artifacts + retrospective だけで PJ03 完了を判断できる"
+    - "Phase 3 の responsibility 境界が設計上維持されている"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-3-3"]
+  linked_review: null
+
+# =========================================================================
+# Plan 2: LangGraph 的 graph executor を既存成果の上に成立させる
+# (2026-04-21 reopen, akaghef plan2.md, Qn5_premature_done_declaration)
+# Phase 4 = plan2 Phase A (Gap 固定)
+# Phase 5 = plan2 Phase B (Graph Runtime 試作)
+# Phase 6 = plan2 Phase C (LangGraph 比較 or 採用確定)
+# Phase 7 = plan2 Phase D (Scope 内 graph 接続)
+# =========================================================================
+
+- id: T-4-1
+  phase: 4
+  verb: soften
+  target: "plan.md / README の完了表現を弱め、plan2.md を active plan として明示"
+  done_when:
+    - "plan.md §Phase 3 結論 / §最終成功 に「Plan 1 は graph runtime の基礎工事まで。実体は Plan 2 で成立」旨の注記が入る"
+    - "README.md の関連記述が Plan 2 前提に整合"
+    - "plan2.md に active status marker（例: status: active）が明示"
+    - "Plan 1 で主張した文言で今も正しいものと、Plan 2 で再定義するものを表で区別"
+  eval_required: true
+  eval_criteria:
+    - "Plan 1 文書が削除されず、参照として残っている"
+    - "Plan 2 が active plan であることが 3 文書（plan.md / README / plan2.md）で一致"
+    - "「完成」「成立」系表現が弱められ、「基礎工事」「未達」の明示がある"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: "Qn5_premature_done_declaration"
+
+- id: T-4-2
+  phase: 4
+  verb: document
+  target: "LangGraph 下位互換 gap 技術メモ"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_gap_memo.md が存在"
+    - "LangGraph が提供する graph executor 機能を列挙（node, edge, conditional edge, checkpoint, loop, interrupt/resume, multi-agent）"
+    - "PJ03 現状が各機能について「あり」「ない」「類似あり」を表で示す"
+    - "ギャップのうち Plan 2 で埋める範囲と先送りする範囲を区別"
+  eval_required: true
+  eval_criteria:
+    - "LangGraph の主要 API との対応が具体（公式 docs or sandbox 実走行で裏取り）"
+    - "既存 PJ03 artifact（checkpoint JSON / workflow_reducer / workflow_types）への写像が明記"
+    - "runtime/langgraph_sandbox/ の smoke test とリンク"
+  parallelizable: true
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: []
+  linked_review: "Qn5_premature_done_declaration"
+
+- id: T-5-1
+  phase: 5
+  verb: spec
+  target: "WorkflowNode / graph edge を実行入力に使う最小 spec"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/graph_runtime_spec.md が存在"
+    - "node graph の loading / validation / execution ループを 1 ページで記述"
+    - "node roles (generator / evaluator / router) と reducer state の写像が明記"
+    - "conditional edge の評価順（graph edge の条件 vs reducer allowed edge table）を明示"
+  eval_required: true
+  eval_criteria:
+    - "既存 workflow_types.ts の WorkflowNode / WorkflowEdge 型を拡張ではなく再利用"
+    - "reducer が graph runtime の内部部品として位置づくと明記"
+    - "1 task = 1 graph か、複数 task を束ねる graph か、粒度が決まっている"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-4-1", "T-4-2"]
+  linked_review: null
+
+- id: T-5-2
+  phase: 5
+  verb: implement
+  target: "最小 graph runtime (adapter) — 自前実装側"
+  done_when:
+    - "beta/src/node/graph_runtime.ts (仮) が存在し、node graph を受けて実行する minimal executor を提供"
+    - "reducer を内部部品として呼び、checkpoint JSON に state を永続化"
+    - "conditional edge 評価が graph edge 定義から決まる"
+    - "1 task の pending→ready→in_progress→eval_pending→done サイクルを graph 経由で通す"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "graph runtime が reducer の ALLOWED_EDGES を短絡しない（fail-closed 継承）"
+    - "runtime test で 1 graph 1 cycle が pass"
+    - "既存 reducer / orchestrator / scope projector に retrospective 的変更を加えない（adapter として追加のみ）"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-5-1"]
+  linked_review: null
+
+- id: T-5-3
+  phase: 5
+  verb: dogfood
+  target: "Generator → Evaluator → Router の 3 node graph 1 本 dogfood"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/dogfood_run_04.md に 3 node graph の実行観察を記録"
+    - "各 node で MockSubagentAdapter を使い、graph が routing 含めて 1 cycle 回る"
+    - "checkpoint JSON が graph 実行結果で更新される"
+    - "既存 tests (checkpoint_restore_test / clock_resolver_test / clock_daemon_test / orchestrator_test / projector_test) が regression なし"
+  eval_required: true
+  eval_criteria:
+    - "観察 stdout に graph edge の選択理由（conditional）が出力される"
+    - "graph loop（evaluator fail → re-gen）が成立"
+    - "checkpoint JSON の invariant round-trip を回帰テストで確認"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-5-2"]
+  linked_review: null
+
+- id: T-6-1
+  phase: 6
+  verb: decide
+  target: "LangGraph 採用 or 自前 runtime 継続の確定"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_vs_native_decision.md が存在"
+    - "T-4-2 gap memo + T-5-3 自前 runtime dogfood の両方を根拠に比較"
+    - "採用案と非採用案の理由を plan2.md §確定事項（新設）に記録"
+    - "採用案に沿った後続 task の整理"
+  eval_required: false
+  eval_criteria:
+    - "LangGraph 採用時は Python/TS 境界設計、非採用時は自前 runtime の上位互換性が明記"
+    - "Hermes 的自己改善ループの載せ方にも触れる"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 1
+  dependencies: ["T-5-3"]
+  linked_review: null
+
+- id: T-7-1
+  phase: 7
+  verb: extend
+  target: "scope projection を graph summary に拡張"
+  done_when:
+    - "beta/src/node/workflow_scope_projector.ts に graph view 投影関数 (projectGraph) が追加、または別 file で並立"
+    - "graph summary / current node / next edge / blocked reason の 4 表示が scope 内 attribute に展開"
+    - "既存 projectTasks は後方互換で残す"
+  eval_required: true
+  eval_criteria:
+    - "projection 方向が one-way を維持"
+    - "既存 workflow.* namespace と graph.* (or workflow.graph.*) namespace が衝突しない"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-6-1"]
+  linked_review: null
+
+- id: T-7-2
+  phase: 7
+  verb: gate-check
+  target: "Plan 2 readiness + PJ03 再 完了 readiness"
+  done_when:
+    - "T-4-1..T-7-1 all done"
+    - "plan2.md §確定事項 に Phase A–D 結論が揃う"
+    - "「Plan 1 基礎工事 + Plan 2 graph executor 実体」の成立が retrospective.md に追記"
+    - "Gate 4 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "基礎工事 vs 実体 の区別を再発しないよう readiness 文言が厳しめ"
+    - "pre-gate adversarial reviewer (backlog/pj03-gate-integrity-lessons.md §1) を 1 回通す"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-7-1"]
+  linked_review: null
+
+# =========================================================================
+# Plan 3 (plan3.md): System Diagram concrete demonstration
+# PJ03 map の System Diagram subtree を timed command replay で段階的に編集
+# =========================================================================
+
+- id: T-8-1
+  phase: 8
+  verb: spec
+  target: "system_diagram command schema (PJ03 最小)"
+  done_when:
+    - "beta/src/shared/system_diagram_command_types.ts が存在、CommandEnvelope / SystemDiagramCommand union を export"
+    - "最小 command set: reset_subtree / create_node / update_node_text / set_attr / link_nodes / sleep"
+    - "各 command が id / type / args / optional delay_ms を持つ"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "汎用化しすぎず PJ03 System Diagram 再構成に必要な範囲"
+    - "既存 M3E map API の JSON 形式と整合 (TreeNode shape 準拠)"
+  parallelizable: false
+  scope: "beta/src/shared"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-7-2"]
+  linked_review: null
+
+- id: T-8-2
+  phase: 8
+  verb: implement
+  target: "system_diagram_runner (PJ03 map 専用)"
+  done_when:
+    - "beta/src/node/system_diagram_runner.ts が存在、CLI entry + step/auto mode"
+    - "script 読み込み / map 特定 / command 実行 / delay 制御 / ログ出力 / failure 停止"
+    - "--dry-run モードで HTTP を打たず実行計画を stdout 出力"
+    - "--live モードで map server (localhost:4173) に対して実行"
+    - "npm run build passes"
+  eval_required: true
+  eval_criteria:
+    - "runner は PJ03 map 外には影響しない (map ID が明示必須)"
+    - "failure 時 (HTTP 4xx/5xx) は停止し、以降 command を走らせない"
+    - "既存 workflow_reducer / orchestrator / projector に retrospective 変更なし"
+  parallelizable: false
+  scope: "beta/src/node"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-8-1"]
+  linked_review: null
+
+- id: T-8-3
+  phase: 8
+  verb: script
+  target: "PJ03 System Diagram concrete script"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/system_diagram_pj03.json が存在"
+    - "plan3.md §3 の 18 項目（System Diagram anchor → Inputs/Sources → Runtime Layers → Projection → Boundary Rules → link → attr/color）をカバー"
+    - "runner --dry-run で script が完走する (stdout で全 command が計画通り出る)"
+    - "runner --live で PJ03 map に反映される (reset_subtree で clean 実行可能)"
+  eval_required: true
+  eval_criteria:
+    - "script は deterministic (同 script 複数回実行で同構造)"
+    - "node id / parent id が plan3.md §3 に沿う"
+    - "link と attr/color step が含まれる"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-8-2"]
+  linked_review: null
+
+- id: T-8-4
+  phase: 8
+  verb: document
+  target: "demo runbook + Plan 3 gate"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/system_diagram_demo.md が存在 (runbook: 事前準備・replay 手順・観察ポイント)"
+    - "plan3.md §確定事項 (新設) に CD-1..CD-4 の結論"
+    - "Plan 3 readiness summary posted to chat"
+    - "pre-gate adversarial reviewer を 1 回通す (backlog/pj03-gate-integrity-lessons.md §1 に従う)"
+  eval_required: false
+  eval_criteria:
+    - "demo runbook で 3-minute replay が動作可能"
+    - "script + runner + runbook が docs のみで再現可能"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-8-3"]
+  linked_review: null
+
+# =========================================================================
+# Plan 4 (plan4.md): LangGraph を第一正本として取り込む
+# Plan 4 は T-6-1 (自前 runtime 継続) を上書きする。LangGraph を runtime 正本、
+# 既存 reducer / checkpoint JSON / reviews / hooks は adapter に格下げ。
+# Phase 9 = Plan 4 Phase 4-0..4-3
+# =========================================================================
+
+- id: T-9-0
+  phase: 9
+  verb: reverse
+  target: "T-6-1 反転: LangGraph を正本、自前 runtime は adapter に格下げ"
+  done_when:
+    - "docs/langgraph_vs_native_decision.md に Plan 4 による反転注記が追記"
+    - "reviews/Qn6_plan4_langgraph_priority.md が pool されている (Plan 3 + T-6-1 の優先誤り記録)"
+    - "plan2.md / plan4.md 間の関係 (plan4 が priority を上書き) が明記"
+  eval_required: false
+  eval_criteria:
+    - "T-6-1 の決定が削除されず、『Plan 4 で反転』と注記として残る"
+    - "Plan 1/2/3 の groundwork は adapter 役に再配置される旨が記録"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: design
+  round_max: 1
+  dependencies: ["T-8-4"]
+  linked_review: null
+
+- id: T-9-1
+  phase: 9
+  verb: implement
+  target: "LangGraph 実導入 lab (Phase 4-0)"
+  done_when:
+    - "projects/PJ03_SelfDrive/runtime/langgraph_lab/pj03_lab.py が存在"
+    - "Generator → Evaluator → Router の 3 node StateGraph が LangGraph 1.1.8 で compile + invoke"
+    - "MemorySaver or SqliteSaver checkpointer を利用、thread_id 指定で resume できる"
+    - "conditional edge (eval pass → END、eval fail && round < max → re-gen、fail && round >= max → END with block flag) が graph-native に動く"
+    - "artifacts/langgraph_run_01.log に run 結果 trace が保存 (stdout dump)"
+  eval_required: true
+  eval_criteria:
+    - "mock ではなく LangGraph StateGraph が実行されること (import + compile + invoke が動く)"
+    - "graph state に round / verdict / blocked が表現され、conditional edge で route が決まる"
+    - "checkpointer 経由で thread 再開ができる (resume smoke)"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/runtime/langgraph_lab"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-9-0"]
+  linked_review: null
+
+- id: T-9-2
+  phase: 9
+  verb: design
+  target: "repo bridge 設計 (Phase 4-1)"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_bridge.md が存在"
+    - "checkpoint bridge (PJ03 checkpoint JSON ↔ LangGraph MemorySaver/Sqlite thread state) の mapping を明記"
+    - "reviews bridge (reviews/Qn_*.md resolution → LangGraph conditional edge condition) の接続点"
+    - "tasks contract bridge (tasks.yaml contract → LangGraph graph config) の変換方針"
+    - "hook bridge (SessionStart/PostCompact → LangGraph thread resume) の設計"
+  eval_required: true
+  eval_criteria:
+    - "既存 reducer / orchestrator / daemon / scope projector の役割が『adapter』として再配置されている"
+    - "graph position を含む resume が bridge 経由で成立する設計になっている"
+    - "Python (LangGraph) / TypeScript (repo adapter) の境界が明記"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-9-1"]
+  linked_review: null
+
+- id: T-9-3
+  phase: 9
+  verb: dogfood
+  target: "LangGraph runtime dogfood (Phase 4-2)"
+  done_when:
+    - "projects/PJ03_SelfDrive/artifacts/langgraph_dogfood_run_01.md が存在"
+    - "1 task の pending → ready → in_progress → eval_pending → done / blocked cycle を LangGraph runtime で実行"
+    - "graph position + round / verdict / blocker が LangGraph state で保持"
+    - "fail → retry → pass の loop を LangGraph conditional edge で実観察"
+    - "resume: thread_id で graph 中断 → 再開が成立"
+  eval_required: true
+  eval_criteria:
+    - "reducer 単体ではなく LangGraph runtime 全体として回る"
+    - "dogfood で graph position を含む resume を少なくとも 1 回実観察"
+    - "mock adapter に依拠せず、LangGraph 実行が本体"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/artifacts"
+  facet: implementation
+  round_max: 3
+  dependencies: ["T-9-2"]
+  linked_review: null
+
+- id: T-9-4
+  phase: 9
+  verb: design
+  target: "M3E projection bridge 最小 (Phase 4-3)"
+  done_when:
+    - "projects/PJ03_SelfDrive/docs/langgraph_m3e_projection.md が存在"
+    - "LangGraph thread state → M3E AppState projection の one-way 設計"
+    - "graph summary / current node / next edge / blocked reason 表示の scope 位置 (既存 projectGraph との整合 or 置換方針)"
+    - "tree に runtime が逆流しないことを明記"
+  eval_required: true
+  eval_criteria:
+    - "既存 workflow_scope_projector (projectGraph) との関係 (延長 / 置換 / 並立) が決まっている"
+    - "Python → TypeScript 境界での projection データ受渡方式 (JSON intermediate 等) が明記"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive/docs"
+  facet: design
+  round_max: 3
+  dependencies: ["T-9-3"]
+  linked_review: null
+
+- id: T-9-5
+  phase: 9
+  verb: gate-check
+  target: "Gate 6 readiness (Plan 4 LangGraph 導入)"
+  done_when:
+    - "T-9-0..T-9-4 all done"
+    - "plan4.md §確定事項 に Phase 4-0..4-3 結論"
+    - "plan4 §Gate ルールの 3 条件 (LangGraph 実動 / graph-first 成立 / tree 代替達成でない) を根拠付きで満たす"
+    - "pre-gate adversarial reviewer を 1 回通す"
+    - "Gate 6 readiness summary posted to chat"
+  eval_required: false
+  eval_criteria:
+    - "tree に従属しない graph-first runtime と言えるか (命題に忠実か)"
+    - "Plan 1/2/3 成果が adapter / demo として位置づけ直されているか"
+  parallelizable: false
+  scope: "projects/PJ03_SelfDrive"
+  facet: gate
+  round_max: 1
+  dependencies: ["T-9-4"]
+  linked_review: null

@@ -1,0 +1,78 @@
+{
+  "name": "m3e-sidebar",
+  "displayName": "M3E Sidebar",
+  "description": "Workspace-local sidebar for common M3E operations.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "scripts": {
+    "package": "node -e \"require('fs').mkdirSync('../../artifacts',{recursive:true})\" && npx @vscode/vsce package --allow-missing-repository --out ../../artifacts/m3e-sidebar.vsix",
+    "install-local": "code.cmd --install-extension ../../artifacts/m3e-sidebar.vsix --force"
+  },
+  "activationEvents": [
+    "onView:m3eSidebar.actions",
+    "onCommand:m3eSidebar.betaLaunch",
+    "onCommand:m3eSidebar.betaUpdateAndLaunch",
+    "onCommand:m3eSidebar.pj03DemoFull",
+    "onCommand:m3eSidebar.pj03DemoCore",
+    "onCommand:m3eSidebar.pj03DemoScope",
+    "onCommand:m3eSidebar.pj03DemoPreflight",
+    "onCommand:m3eSidebar.refresh"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "m3eSidebar",
+          "title": "M3E",
+          "icon": "media/m3e.svg"
+        }
+      ]
+    },
+    "views": {
+      "m3eSidebar": [
+        {
+          "id": "m3eSidebar.actions",
+          "name": "Actions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "m3eSidebar.betaLaunch",
+        "title": "M3E: Beta Launch"
+      },
+      {
+        "command": "m3eSidebar.betaUpdateAndLaunch",
+        "title": "M3E: Beta Update And Launch"
+      },
+      {
+        "command": "m3eSidebar.pj03DemoFull",
+        "title": "M3E: PJ03 Demo Full"
+      },
+      {
+        "command": "m3eSidebar.pj03DemoCore",
+        "title": "M3E: PJ03 Demo Core"
+      },
+      {
+        "command": "m3eSidebar.pj03DemoScope",
+        "title": "M3E: PJ03 Demo Scope"
+      },
+      {
+        "command": "m3eSidebar.pj03DemoPreflight",
+        "title": "M3E: PJ03 Demo Preflight"
+      },
+      {
+        "command": "m3eSidebar.refresh",
+        "title": "M3E: Refresh Sidebar"
+      }
+    ]
+  }
+}

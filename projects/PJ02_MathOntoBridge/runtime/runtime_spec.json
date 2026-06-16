@@ -1,0 +1,268 @@
+{
+  "mapLabel": "PJ02 Runtime",
+  "rootLabel": "PJ02 Runtime",
+  "currentPhase": "Execution / Runtime spin-up",
+  "nextGate": "Human gate only. Say 「次フェーズへ」 when the runtime feels stable and the remaining contract review is acceptable.",
+  "manualHandshake": "Map cannot push to chat. Review work happens on-map; human sends chat only for major checkpoints and phase gates.",
+  "tasks": [
+    {
+      "id": "contracts_foundation",
+      "title": "Display contracts foundation",
+      "summary": "facet type table and core concrete contracts exist",
+      "baseState": "done",
+      "phase": "contracts",
+      "dependsOn": [],
+      "workspaceRefs": ["ws_display_contracts", "ws_readme_plan"],
+      "reviewRefs": []
+    },
+    {
+      "id": "syntax_import_foundation",
+      "title": "Blueprint syntax import foundation",
+      "summary": "Blueprint importer, scoped facets, and live PFR DAG are working",
+      "baseState": "done",
+      "phase": "syntax",
+      "dependsOn": ["contracts_foundation"],
+      "workspaceRefs": ["ws_blueprint_import", "ws_pfr_blueprint"],
+      "reviewRefs": []
+    },
+    {
+      "id": "implementation_facet_scope",
+      "title": "Implementation facet scope",
+      "summary": "Lean declaration references now materialize as an Implementation scope",
+      "baseState": "done",
+      "phase": "syntax",
+      "dependsOn": ["syntax_import_foundation"],
+      "workspaceRefs": ["ws_blueprint_import", "ws_pfr_blueprint"],
+      "reviewRefs": []
+    },
+    {
+      "id": "runtime_three_view_system",
+      "title": "Three-view runtime system",
+      "summary": "Master map with Progress / Review / Active Workspace is rendered and traceable",
+      "baseState": "done",
+      "phase": "runtime",
+      "dependsOn": ["contracts_foundation"],
+      "workspaceRefs": ["ws_runtime_system", "ws_readme_plan"],
+      "reviewRefs": ["rq_board_traceability", "rq_manual_handshake"]
+    },
+    {
+      "id": "next_contracts",
+      "title": "Implementation and timeseries contracts",
+      "summary": "The next facet contracts should be written after current review resolves ordering and scope",
+      "baseState": "ready",
+      "phase": "contracts",
+      "dependsOn": ["contracts_foundation", "implementation_facet_scope"],
+      "workspaceRefs": ["ws_display_contracts"],
+      "reviewRefs": ["rq_impl_vs_timeseries_order"]
+    },
+    {
+      "id": "human_phase_gate",
+      "title": "Human gate to next phase",
+      "summary": "After the runtime and contract loop feel stable, human issues the Go signal",
+      "baseState": "gate",
+      "phase": "gate",
+      "dependsOn": ["runtime_three_view_system", "next_contracts"],
+      "workspaceRefs": ["ws_readme_plan", "ws_runtime_system"],
+      "reviewRefs": ["rq_go_signal_criteria"]
+    }
+  ],
+  "reviews": [
+    {
+      "id": "rq_board_traceability",
+      "anchor": "Current blockers",
+      "question": "Should the progress board be required to trace to workspace and review nodes?",
+      "status": "decided",
+      "importance": "high",
+      "urgency": "high",
+      "options": [
+        {
+          "id": "opt_yes",
+          "text": "Yes, traceability is mandatory",
+          "confidence": "high",
+          "selected": true,
+          "pros": [
+            "Human can judge from the board without blind trust",
+            "Blocked or ready state can be justified by drill-down"
+          ],
+          "cons": [
+            "Board renderer must maintain alias references"
+          ]
+        },
+        {
+          "id": "opt_no",
+          "text": "No, board can stay as a pure summary",
+          "confidence": "low",
+          "selected": false,
+          "pros": [
+            "Simpler rendering"
+          ],
+          "cons": [
+            "Human judgement quality drops",
+            "Board loses authority as a progress view"
+          ]
+        }
+      ],
+      "workspaceRefs": ["ws_runtime_system"]
+    },
+    {
+      "id": "rq_manual_handshake",
+      "anchor": "Runtime / review",
+      "question": "Is manual chat notification acceptable while map-to-chat send does not exist?",
+      "status": "decided",
+      "importance": "medium",
+      "urgency": "medium",
+      "options": [
+        {
+          "id": "opt_manual_ok",
+          "text": "Yes, keep review in map and send only checkpoints by hand",
+          "confidence": "high",
+          "selected": true,
+          "pros": [
+            "Keeps runtime simple",
+            "Avoids waiting for missing chat API"
+          ],
+          "cons": [
+            "Human still performs milestone handoff manually"
+          ]
+        }
+      ],
+      "workspaceRefs": ["ws_review_mode_spec", "ws_runtime_system"]
+    },
+    {
+      "id": "rq_impl_vs_timeseries_order",
+      "anchor": "Contracts",
+      "question": "Which concrete contract should be written next: implementation or timeseries?",
+      "status": "open",
+      "importance": "medium",
+      "urgency": "medium",
+      "options": [
+        {
+          "id": "opt_implementation_first",
+          "text": "Implementation first",
+          "confidence": "medium",
+          "selected": false,
+          "pros": [
+            "Closer to current Blueprint work",
+            "Immediately useful for existing PJ02 assets"
+          ],
+          "cons": [
+            "Timeseries still stays underspecified"
+          ]
+        },
+        {
+          "id": "opt_timeseries_first",
+          "text": "Timeseries first",
+          "confidence": "low",
+          "selected": false,
+          "pros": [
+            "Clarifies a second major facet family early"
+          ],
+          "cons": [
+            "Less directly connected to current importer work"
+          ]
+        }
+      ],
+      "workspaceRefs": ["ws_display_contracts"]
+    },
+    {
+      "id": "rq_go_signal_criteria",
+      "anchor": "Phase gate",
+      "question": "What should count as enough to say 「次フェーズへ」 for PJ02?",
+      "status": "open",
+      "importance": "high",
+      "urgency": "medium",
+      "options": [
+        {
+          "id": "opt_runtime_and_contracts",
+          "text": "Three-view runtime works and the next contract choice is settled",
+          "confidence": "medium",
+          "selected": false,
+          "pros": [
+            "Matches the current bottleneck",
+            "Keeps the gate concrete"
+          ],
+          "cons": [
+            "Leaves Review Mode implementation to another track"
+          ]
+        },
+        {
+          "id": "opt_wait_for_review_mode",
+          "text": "Wait until Review Mode itself exists",
+          "confidence": "low",
+          "selected": false,
+          "pros": [
+            "Full review loop becomes visible"
+          ],
+          "cons": [
+            "Couples PJ02 progress to another team too early"
+          ]
+        }
+      ],
+      "workspaceRefs": ["ws_runtime_system", "ws_review_mode_spec"]
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "ws_readme_plan",
+      "title": "PJ02 sources",
+      "summary": "README and plan are still the human-readable source of scope, phase, and Go-signal context.",
+      "files": [
+        "projects/PJ02_MathOntoBridge/README.md",
+        "projects/PJ02_MathOntoBridge/plan.md"
+      ]
+    },
+    {
+      "id": "ws_display_contracts",
+      "title": "Display contracts workspace",
+      "summary": "Facet type defaults and concrete contracts are being written here.",
+      "files": [
+        "idea/00_meta/display_contracts/01_facet_type_contract_table.md",
+        "idea/00_meta/display_contracts/02_flow_contract.md",
+        "idea/00_meta/display_contracts/03_reviews_contract.md",
+        "idea/00_meta/display_contracts/04_dependency_contract.md"
+      ]
+    },
+    {
+      "id": "ws_blueprint_import",
+      "title": "Blueprint importer workspace",
+      "summary": "Importer, scoped facets, and Implementation scope live here.",
+      "files": [
+        "beta/src/node/blueprint_importer.ts",
+        "beta/src/shared/types.ts",
+        "beta/tests/unit/blueprint_importer.test.js",
+        "beta/tests/unit/blueprint_import_api_integration.test.js"
+      ]
+    },
+    {
+      "id": "ws_pfr_blueprint",
+      "title": "PFR Blueprint runtime map",
+      "summary": "Detailed syntax/implementation view for PFR. Use this when the board points you into actual imported math content.",
+      "files": [],
+      "externalMaps": [
+        {
+          "label": "PFR Blueprint",
+          "mapId": "map_1776398058335_0vg5fs"
+        }
+      ]
+    },
+    {
+      "id": "ws_review_mode_spec",
+      "title": "Review Mode spec",
+      "summary": "Review Mode is owned by another team, but this spec is the current handoff surface.",
+      "files": [
+        "backlog/review-mode-spec.md"
+      ]
+    },
+    {
+      "id": "ws_runtime_system",
+      "title": "Runtime system workspace",
+      "summary": "Renderer and watcher for the three-view runtime system.",
+      "files": [
+        "projects/PJ02_MathOntoBridge/runtime/README.md",
+        "projects/PJ02_MathOntoBridge/runtime/runtime_spec.json",
+        "projects/PJ02_MathOntoBridge/runtime/render_runtime_map.mjs",
+        "projects/PJ02_MathOntoBridge/runtime/sync_runtime_state.mjs"
+      ]
+    }
+  ]
+}

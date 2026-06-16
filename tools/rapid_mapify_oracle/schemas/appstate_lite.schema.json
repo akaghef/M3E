@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3e.appstate-lite.schema.json",
+  "type": "object",
+  "required": [
+    "rootId",
+    "nodes"
+  ],
+  "properties": {
+    "rootId": {
+      "type": "string"
+    },
+    "scopeId": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "children"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attributes": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

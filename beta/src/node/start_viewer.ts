@@ -8,6 +8,7 @@ import { spawnSync, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
+import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { parseMdContent } from "./md_reader";
 import type { CloudSyncTransport } from "../shared/types";
 import { parseMapPath, resolveNodePath } from "../shared/path_resolve";
@@ -31,14 +32,21 @@ import {
   releaseScopeLock,
   addSseClient,
   broadcastSseEvent,
-  incrementDocVersion,
-  getDocVersion,
+  incrementMapVersion,
+  getMapVersion,
   mergeScopePush,
   resetCollab,
-  setDocVersion,
+  setMapVersion,
   type CollabRole,
 } from "./collab";
 import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
+import {
+  appendPerfLog,
+  normalizeRoute,
+  extractMapId,
+  isSseRoute,
+  buildClientTag,
+} from "./perf_log";
 import { getPresenceList, touchPresence, removePresence } from "./presence";
 import {
   ingestSingle,
@@ -48,29 +56,33 @@ import {
   deleteDraft,
   approveDraft,
 } from "./flash_ingest";
+import { importBlueprintToSqlite } from "./blueprint_importer";
 import { exportVaultFromSqlite } from "./vault_exporter";
 import { importVaultToSqlite } from "./vault_importer";
+import { listLocalFsDirectory, readLocalFsFile } from "./local_fs";
 import { validateVaultPath } from "./vault_path";
 import {
   configureVaultWatchEmitter,
-  configureVaultWatchDocUpdateEmitter,
+  configureVaultWatchMapUpdateEmitter,
   getVaultWatchStatus,
-  handleDocumentSavedForVaultWatch,
+  handleMapSavedForVaultWatch,
   listVaultWatchStatuses,
   startVaultWatch,
   stopVaultWatch,
-  writeDocumentToVaultNow,
+  writeMapToVaultNow,
 } from "./vault_watch";
 import type {
   AiSubagentRequest,
   AppState,
+  BlueprintImportRequest,
   LinearTransformRequest,
-  SavedDoc,
+  SavedMap,
   FlashIngestRequest,
   FlashIngestBatchRequest,
   FlashApproveRequest,
   FlashDraftStatus,
   LinkDirection,
+  LinkPort,
   LinkStyle,
   VaultExportRequest,
   VaultImportRequest,
@@ -87,11 +99,12 @@ import type {
 // After compilation, this file lives at dist/node/start_viewer.js.
 // ROOT must point two levels up to the mvp/ directory.
 const ROOT = path.resolve(__dirname, "..", "..");
+const REPO_ROOT = path.resolve(ROOT, "..");
 const PORT = Number(process.env.M3E_PORT || "4173");
 const DEFAULT_PAGE = "home.html";
-const DATA_DIR = process.env.M3E_DATA_DIR ?? path.join(ROOT, "data");
+const DATA_DIR = path.join(ROOT, "data");
 const DEFAULT_DB_FILE = "data.sqlite";
-const DB_FILE = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
+const DB_FILE = DEFAULT_DB_FILE;
 const SQLITE_DB_PATH = path.join(DATA_DIR, DB_FILE);
 const FIRST_RUN_MARKER = path.join(DATA_DIR, ".m3e-launched");
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
@@ -103,133 +116,197 @@ const SECONDARY_MAP_ID = "map_10226A7F0MEKDVNMEXC7HH4GNV";
 const SECONDARY_MAP_LABEL = "研究";
 const WORKSPACE_ID = process.env.M3E_WORKSPACE_ID || DEFAULT_WORKSPACE_ID;
 const WORKSPACE_LABEL = process.env.M3E_WORKSPACE_LABEL || DEFAULT_WORKSPACE_LABEL;
-const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || process.env.M3E_DOC_ID || DEFAULT_MAP_ID;
+const ACTIVE_MAP_ID = process.env.M3E_MAP_ID || DEFAULT_MAP_ID;
 const ACTIVE_MAP_LABEL = process.env.M3E_MAP_LABEL || DEFAULT_MAP_LABEL;
 const ACTIVE_MAP_SLUG = process.env.M3E_MAP_SLUG || DEFAULT_MAP_SLUG;
-const DEFAULT_DOC_ID = ACTIVE_MAP_ID;
+const COLLAB_JOIN_TOKEN = (process.env.M3E_COLLAB_JOIN_TOKEN || "").trim();
+const ARTIFACT_SCAN_ROOTS = [
+  path.join(REPO_ROOT, "projects"),
+  path.join(REPO_ROOT, "docs", "for-akaghef"),
+];
+const ARTIFACT_EXTENSIONS = new Set([".html", ".htm", ".md", ".json", ".png", ".jpg", ".jpeg", ".svg", ".pdf", ".pptx"]);
+const ARTIFACT_IGNORE_DIRS = new Set([".git", ".cache", ".next", "node_modules", "dist", "data", "backups", "tmp"]);
+
+interface ArtifactItem {
+  id: string;
+  title: string;
+  project: string;
+  kind: string;
+  href: string;
+  path: string;
+  sizeBytes: number;
+  modifiedAt: string;
+}
 
 // Startup diagnostics — log resolved data paths so misconfigurations are visible
-console.log(`[M3E] DATA_DIR = ${DATA_DIR}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
-console.log(`[M3E] DB_FILE  = ${SQLITE_DB_PATH}`);
+console.log(`[M3E] DATA_DIR = ${currentDataDir()}${process.env.M3E_DATA_DIR ? " (from M3E_DATA_DIR env)" : " (default)"}`);
+console.log(`[M3E] DB_FILE  = ${currentSqliteDbPath()}`);
 console.log(`[M3E] WORKSPACE = ${WORKSPACE_LABEL} (${WORKSPACE_ID})`);
 console.log(`[M3E] MAP = ${ACTIVE_MAP_LABEL} (${ACTIVE_MAP_ID}, slug=${ACTIVE_MAP_SLUG})`);
 const TUTORIAL_SCOPE_ID = "n_1775650869381_rns0cp";
-const cloudSyncConfig = loadCloudSyncConfig();
-const CLOUD_SYNC_ENABLED = cloudSyncConfig.enabled;
+let cloudSyncConfig = loadCloudSyncConfig();
+const SYNC_STATUS_TIMEOUT_MS = Number(process.env.M3E_SYNC_STATUS_TIMEOUT_MS || "1500");
 let cloudTransport: CloudSyncTransport | null = cloudSyncConfig.transport;
 let autoSyncHandle: AutoSyncHandle | null = null;
 
-function renameDocumentId(dbPath: string, sourceId: string, targetId: string): boolean {
+function currentDataDir(): string {
+  return process.env.M3E_DATA_DIR ?? DATA_DIR;
+}
+
+function currentSqliteDbPath(): string {
+  const dbFile = process.env.M3E_DB_FILE || DEFAULT_DB_FILE;
+  return path.join(currentDataDir(), dbFile);
+}
+
+function currentFirstRunMarker(): string {
+  return path.join(currentDataDir(), ".m3e-launched");
+}
+
+function refreshCloudSyncConfigFromEnv(): void {
+  cloudSyncConfig = loadCloudSyncConfig();
+  cloudTransport = cloudSyncConfig.transport;
+}
+
+function renameMapId(dbPath: string, sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return false;
   const db = new Database(dbPath);
   try {
-    const source = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(sourceId) as { hit: number } | undefined;
+    const source = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(sourceId) as { hit: number } | undefined;
     if (!source) return false;
-    const target = db.prepare(`SELECT 1 AS hit FROM documents WHERE id = ?`).get(targetId) as { hit: number } | undefined;
+    const target = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(targetId) as { hit: number } | undefined;
     if (target) return false;
-    db.prepare(`UPDATE documents SET id = ?, saved_at = ? WHERE id = ?`).run(targetId, new Date().toISOString(), sourceId);
+    db.prepare(`UPDATE maps SET id = ?, saved_at = ? WHERE id = ?`).run(targetId, new Date().toISOString(), sourceId);
     return true;
   } finally {
     db.close();
   }
 }
 
-function deleteDocumentId(dbPath: string, mapId: string): void {
+function deleteMapId(dbPath: string, mapId: string): void {
   const db = new Database(dbPath);
   try {
-    db.prepare(`DELETE FROM documents WHERE id = ?`).run(mapId);
+    db.prepare(`DELETE FROM maps WHERE id = ?`).run(mapId);
   } finally {
     db.close();
   }
 }
 
-function ensureMapDocument(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
-  if (RapidMvpModel.documentExists(dbPath, mapId)) {
-    RapidMvpModel.renameDocument(dbPath, mapId, mapLabel);
+function ensureMap(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
+  if (RapidMvpModel.mapExists(dbPath, mapId)) {
+    RapidMvpModel.renameMap(dbPath, mapId, mapLabel);
     for (const legacyId of legacyIds) {
-      if (legacyId !== mapId && RapidMvpModel.documentExists(dbPath, legacyId)) {
-        deleteDocumentId(dbPath, legacyId);
+      if (legacyId !== mapId && RapidMvpModel.mapExists(dbPath, legacyId)) {
+        deleteMapId(dbPath, legacyId);
       }
     }
     return;
   }
   for (const legacyId of legacyIds) {
-    if (renameDocumentId(dbPath, legacyId, mapId)) {
-      RapidMvpModel.renameDocument(dbPath, mapId, mapLabel);
+    if (renameMapId(dbPath, legacyId, mapId)) {
+      RapidMvpModel.renameMap(dbPath, mapId, mapLabel);
       for (const staleLegacyId of legacyIds) {
-        if (staleLegacyId !== mapId && RapidMvpModel.documentExists(dbPath, staleLegacyId)) {
-          deleteDocumentId(dbPath, staleLegacyId);
+        if (staleLegacyId !== mapId && RapidMvpModel.mapExists(dbPath, staleLegacyId)) {
+          deleteMapId(dbPath, staleLegacyId);
         }
       }
       return;
     }
   }
-  RapidMvpModel.createDocument(dbPath, mapId, mapLabel);
+  RapidMvpModel.createMap(dbPath, mapId, mapLabel);
 }
 
 // ---------------------------------------------------------------------------
-// Doc-watch SSE (standalone, independent of collab SSE)
+// Map-watch SSE (standalone, independent of collab SSE)
 // ---------------------------------------------------------------------------
 
-interface DocWatchClient {
+interface MapWatchClient {
   mapId: string;
   res: http.ServerResponse;
 }
 
-const docWatchClients: DocWatchClient[] = [];
+const mapWatchClients: MapWatchClient[] = [];
+const MAX_MAP_WATCH_CLIENTS = Number(process.env.M3E_MAX_MAP_WATCH_CLIENTS || "4");
 
 interface VaultWatchClient {
-  documentId: string | null;
+  mapId: string | null;
   res: http.ServerResponse;
 }
 
 const vaultWatchClients: VaultWatchClient[] = [];
+const MAX_VAULT_WATCH_CLIENTS = Number(process.env.M3E_MAX_VAULT_WATCH_CLIENTS || "2");
+const SSE_RETRY_MS = Number(process.env.M3E_SSE_RETRY_MS || "60000");
 
-function addDocWatchClient(mapId: string, res: http.ServerResponse): void {
+interface AgentActiveNodeState {
+  workspaceId: string;
+  mapId: string;
+  agentId: string;
+  nodeId: string;
+  updatedAt: string;
+}
+
+const agentActiveNodes = new Map<string, AgentActiveNodeState>();
+
+function agentActiveNodeKey(workspaceId: string, mapId: string, agentId: string): string {
+  return `${workspaceId}:${mapId}:${agentId}`;
+}
+
+function pruneSseClients<T extends { res: http.ServerResponse }>(clients: T[], maxClients: number): void {
+  while (clients.length > maxClients) {
+    const client = clients.shift();
+    try {
+      client?.res.end();
+    } catch {
+      // ignore stale SSE close failures
+    }
+  }
+}
+
+function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
-  res.write(": connected\n\n");
-  docWatchClients.push({ mapId, res });
+  res.write(`retry: ${SSE_RETRY_MS}\n: connected\n\n`);
+  mapWatchClients.push({ mapId, res });
+  pruneSseClients(mapWatchClients, MAX_MAP_WATCH_CLIENTS);
   res.on("close", () => {
-    const idx = docWatchClients.findIndex((c) => c.res === res);
-    if (idx !== -1) docWatchClients.splice(idx, 1);
+    const idx = mapWatchClients.findIndex((c) => c.res === res);
+    if (idx !== -1) mapWatchClients.splice(idx, 1);
   });
 }
 
-function broadcastDocUpdate(mapId: string, savedAt: string, sourceTabId: string | null): void {
+function broadcastMapUpdate(mapId: string, savedAt: string, sourceTabId: string | null): void {
   const payload = JSON.stringify({ mapId, savedAt, sourceTabId });
-  const frame = `event: doc_updated\ndata: ${payload}\n\n`;
-  for (let i = docWatchClients.length - 1; i >= 0; i--) {
-    if (docWatchClients[i].mapId === mapId) {
+  const frame = `event: map_updated\ndata: ${payload}\n\n`;
+  for (let i = mapWatchClients.length - 1; i >= 0; i--) {
+    if (mapWatchClients[i].mapId === mapId) {
       try {
-        docWatchClients[i].res.write(frame);
+        mapWatchClients[i].res.write(frame);
       } catch {
-        docWatchClients.splice(i, 1);
+        mapWatchClients.splice(i, 1);
       }
     }
   }
 }
 
-function parseDocWatchRoute(urlPath: string): string | null {
+function parseMapWatchRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/watch$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/watch$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
 
 function parseDocAuditRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/audit$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/audit$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
 
 function parseDocPresenceRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/presence$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/presence$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
@@ -302,6 +379,9 @@ function sendFile(res: http.ServerResponse, target: string): void {
 }
 
 function openBrowser(url: string): void {
+  if (process.env.M3E_OPEN_BROWSER === "0") {
+    return;
+  }
   // Open default browser on Windows.
   exec(`start "" "${url}"`);
 }
@@ -310,6 +390,337 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
+}
+
+function isArtifactApiRoute(urlPath: string): boolean {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  return pathname === "/api/artifacts";
+}
+
+function parseArtifactFileRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (!pathname.startsWith("/artifact-files/")) return null;
+  return decodeURIComponent(pathname.slice("/artifact-files/".length));
+}
+
+function firstReadableTitle(filePath: string, ext: string): string | null {
+  if (ext !== ".html" && ext !== ".htm" && ext !== ".md") {
+    return null;
+  }
+  try {
+    const raw = fs.readFileSync(filePath, "utf8").slice(0, 12000);
+    if (ext === ".md") {
+      return raw.match(/^#\s+(.+)$/m)?.[1]?.trim() || null;
+    }
+    const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+    if (title) return title.replace(/\s+/g, " ");
+    const h1 = raw.match(/<h1[^>]*>(.*?)<\/h1>/is)?.[1]?.replace(/<[^>]+>/g, "").trim();
+    return h1 ? h1.replace(/\s+/g, " ") : null;
+  } catch {
+    return null;
+  }
+}
+
+function artifactProjectLabel(relPath: string): string {
+  const parts = relPath.split("/");
+  if (parts[0] === "projects" && parts[1]) return parts[1];
+  if (parts[0] === "docs" && parts[1]) return parts.slice(0, 2).join("/");
+  return parts[0] || "root";
+}
+
+function isArtifactCandidate(relPath: string, ext: string): boolean {
+  if (!ARTIFACT_EXTENSIONS.has(ext)) return false;
+  const normalized = relPath.replace(/\\/g, "/");
+  if (normalized.includes("/artifacts/")) return true;
+  if (normalized.includes("/mindmap_gallery/") && (ext === ".html" || ext === ".svg" || ext === ".png")) return true;
+  if (normalized.startsWith("docs/for-akaghef/")) return ext === ".html" || ext === ".pdf" || ext === ".pptx";
+  return ext === ".html" && normalized.startsWith("projects/");
+}
+
+function collectArtifactsFrom(root: string, out: ArtifactItem[]): void {
+  if (!fs.existsSync(root)) return;
+  const stack = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (!dir) continue;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!ARTIFACT_IGNORE_DIRS.has(entry.name)) stack.push(abs);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      const relPath = path.relative(REPO_ROOT, abs).replace(/\\/g, "/");
+      if (!isArtifactCandidate(relPath, ext)) continue;
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(abs);
+      } catch {
+        continue;
+      }
+      const title = firstReadableTitle(abs, ext) || path.basename(entry.name, ext).replace(/[_-]+/g, " ");
+      out.push({
+        id: relPath,
+        title,
+        project: artifactProjectLabel(relPath),
+        kind: ext.replace(/^\./, "") || "file",
+        href: `/artifact-files/${relPath.split("/").map(encodeURIComponent).join("/")}`,
+        path: relPath,
+        sizeBytes: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+      });
+    }
+  }
+}
+
+function collectArtifactIndex(): ArtifactItem[] {
+  const artifacts: ArtifactItem[] = [];
+  for (const root of ARTIFACT_SCAN_ROOTS) {
+    collectArtifactsFrom(root, artifacts);
+  }
+  artifacts.sort((a, b) => {
+    const tb = Date.parse(b.modifiedAt) || 0;
+    const ta = Date.parse(a.modifiedAt) || 0;
+    return tb - ta || a.path.localeCompare(b.path);
+  });
+  return artifacts;
+}
+
+function resolveArtifactFile(urlPath: string): string | null {
+  const rel = parseArtifactFileRoute(urlPath);
+  if (!rel) return null;
+  const normalized = rel.replace(/\\/g, "/").replace(/^\/+/, "");
+  const abs = path.resolve(REPO_ROOT, normalized);
+  const relative = path.relative(REPO_ROOT, abs);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  const ext = path.extname(abs).toLowerCase();
+  if (!isArtifactCandidate(relative.replace(/\\/g, "/"), ext)) return null;
+  return abs;
+}
+
+function handleArtifactsApi(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  if (!isArtifactApiRoute(req.url ?? "/")) return false;
+  if (req.method !== "GET") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return true;
+  }
+  sendJson(res, 200, {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    roots: ARTIFACT_SCAN_ROOTS.map((root) => path.relative(REPO_ROOT, root).replace(/\\/g, "/")),
+    artifacts: collectArtifactIndex(),
+  });
+  return true;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => T): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(onTimeout()), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+function redirectLoopbackHost(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD") {
+    return false;
+  }
+  const host = String(req.headers.host || "");
+  if (!host.startsWith("127.0.0.1:")) {
+    return false;
+  }
+  const url = new URL(req.url ?? "/", `http://${host}`);
+  if (url.pathname.startsWith("/api/")) {
+    return false;
+  }
+  url.hostname = "localhost";
+  res.statusCode = 302;
+  res.setHeader("Location", url.toString());
+  res.end();
+  return true;
+}
+
+function writeSystemClipboard(text: string): { ok: true; method: string } | { ok: false; error: string } {
+  const input = Buffer.from(text, "utf8");
+  const run = (command: string, args: string[], method: string) => {
+    const result = spawnSync(command, args, { input, encoding: "utf8" });
+    if (result.status === 0) {
+      return { ok: true as const, method };
+    }
+    const detail = result.stderr || result.error?.message || `${command} exited with status ${result.status}`;
+    return { ok: false as const, error: detail };
+  };
+
+  if (process.platform === "darwin") {
+    return run("pbcopy", [], "pbcopy");
+  }
+  if (process.platform === "win32") {
+    return run("clip.exe", [], "clip.exe");
+  }
+
+  const wlCopy = run("wl-copy", [], "wl-copy");
+  if (wlCopy.ok) return wlCopy;
+  const xclip = run("xclip", ["-selection", "clipboard"], "xclip");
+  if (xclip.ok) return xclip;
+  const xsel = run("xsel", ["--clipboard", "--input"], "xsel");
+  if (xsel.ok) return xsel;
+  return { ok: false, error: xsel.error || xclip.error || wlCopy.error || "No clipboard command available." };
+}
+
+function readSystemClipboard(): { ok: true; method: string; text: string } | { ok: false; error: string } {
+  const run = (command: string, args: string[], method: string) => {
+    const result = spawnSync(command, args, { encoding: "utf8" });
+    if (result.status === 0) {
+      return { ok: true as const, method, text: result.stdout || "" };
+    }
+    const detail = result.stderr || result.error?.message || `${command} exited with status ${result.status}`;
+    return { ok: false as const, error: detail };
+  };
+
+  if (process.platform === "darwin") {
+    return run("pbpaste", [], "pbpaste");
+  }
+  if (process.platform === "win32") {
+    return run("powershell.exe", ["-NoProfile", "-Command", "Get-Clipboard -Raw"], "powershell.exe");
+  }
+
+  const wlPaste = run("wl-paste", [], "wl-paste");
+  if (wlPaste.ok) return wlPaste;
+  const xclip = run("xclip", ["-selection", "clipboard", "-out"], "xclip");
+  if (xclip.ok) return xclip;
+  const xsel = run("xsel", ["--clipboard", "--output"], "xsel");
+  if (xsel.ok) return xsel;
+  return { ok: false, error: xsel.error || xclip.error || wlPaste.error || "No clipboard command available." };
+}
+
+async function handleSystemClipboardApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (pathname !== "/api/system-clipboard/write" && pathname !== "/api/system-clipboard/read") {
+    return false;
+  }
+  if (pathname === "/api/system-clipboard/read") {
+    if (req.method !== "GET") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    const result = readSystemClipboard();
+    sendJson(res, result.ok ? 200 : 500, result);
+    return true;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return true;
+  }
+  try {
+    const rawBody = await readRequestBody(req, 5_000_000);
+    const body = JSON.parse(rawBody) as { text?: unknown };
+    if (typeof body.text !== "string" || body.text.length === 0) {
+      sendJson(res, 400, { ok: false, error: "Field 'text' must be a non-empty string." });
+      return true;
+    }
+    const result = writeSystemClipboard(body.text);
+    sendJson(res, result.ok ? 200 : 500, result);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: (err as Error).message || "Invalid clipboard request." });
+  }
+  return true;
+}
+
+function instrumentRequestForPerfLog(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const started = process.hrtime.bigint();
+  const startedWallMs = Date.now();
+  const urlRaw = req.url ?? "/";
+  const parsed = new URL(urlRaw, "http://localhost");
+  const pathname = parsed.pathname;
+  const method = req.method ?? "GET";
+  const route = normalizeRoute(method, pathname);
+  const sse = isSseRoute(route);
+
+  let ttfbMs: number | null = null;
+  let resBytes = 0;
+  let written = false;
+
+  const elapsedMs = (): number => {
+    const diffNs = Number(process.hrtime.bigint() - started);
+    return Math.round(diffNs / 1_000_000);
+  };
+
+  const origWrite = typeof res.write === "function"
+    ? res.write.bind(res) as typeof res.write
+    : (() => true) as typeof res.write;
+  const origEnd = typeof res.end === "function"
+    ? res.end.bind(res) as typeof res.end
+    : (() => res) as typeof res.end;
+
+  res.write = function patchedWrite(this: http.ServerResponse, chunk: unknown, ...rest: unknown[]): boolean {
+    if (ttfbMs === null) ttfbMs = elapsedMs();
+    if (chunk !== null && chunk !== undefined) {
+      try {
+        resBytes += Buffer.byteLength(chunk as Buffer | string);
+      } catch {
+        // ignore size accounting errors
+      }
+    }
+    return (origWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+  } as typeof res.write;
+
+  res.end = function patchedEnd(this: http.ServerResponse, chunk?: unknown, ...rest: unknown[]): http.ServerResponse {
+    if (ttfbMs === null) ttfbMs = elapsedMs();
+    if (chunk !== null && chunk !== undefined) {
+      try {
+        resBytes += Buffer.byteLength(chunk as Buffer | string);
+      } catch {
+        // ignore
+      }
+    }
+    return (origEnd as (...args: unknown[]) => http.ServerResponse)(chunk, ...rest);
+  } as typeof res.end;
+
+  const writeLog = (): void => {
+    if (written) return;
+    written = true;
+    try {
+      appendPerfLog({
+        ts: new Date(startedWallMs).toISOString(),
+        method,
+        path: pathname,
+        route,
+        status: res.statusCode || 0,
+        duration_ms: elapsedMs(),
+        ttfb_ms: ttfbMs,
+        req_bytes: req.headers["content-length"] ? Number(req.headers["content-length"]) || null : null,
+        res_bytes: resBytes,
+        map_id: extractMapId(pathname),
+        scope: parsed.searchParams.get("scope"),
+        client: buildClientTag(req.headers),
+        sse,
+        error_code: null,
+      });
+    } catch {
+      // never let perf logging break requests
+    }
+  };
+
+  if (typeof res.on === "function") {
+    res.on("finish", writeLog);
+    res.on("close", writeLog);
+  }
 }
 
 function beginSse(res: http.ServerResponse): void {
@@ -330,19 +741,19 @@ function sendSyncError(
   statusCode: number,
   code: string,
   message: string,
-  documentId: string,
+  mapId: string,
   extra: Record<string, unknown> = {},
 ): void {
   sendJson(res, statusCode, {
     ok: false,
     code,
     error: message,
-    documentId,
+    mapId,
     ...extra,
   });
 }
 
-function parseDocId(urlPath: string): string | null {
+function parseMapId(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (!pathname.startsWith("/api/maps/")) {
     return null;
@@ -368,6 +779,28 @@ type HomeRouteAction =
   | { kind: "bind-vault"; mapId: string }
   | { kind: "unbind-vault"; mapId: string }
   | { kind: "delete"; mapId: string };
+
+type AgentMapRoute =
+  | { kind: "agent-active-node"; mapId: string }
+  | { kind: "append-mf-h"; mapId: string }
+  | { kind: "rapid-mapify-oracle"; mapId: string };
+
+function parseAgentMapRoute(urlPath: string): AgentMapRoute | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const activeMatch = pathname.match(/^\/api\/maps\/([^/]+)\/agent\/active-node$/);
+  if (activeMatch) {
+    return { kind: "agent-active-node", mapId: decodeURIComponent(activeMatch[1]!) };
+  }
+  const appendMatch = pathname.match(/^\/api\/maps\/([^/]+)\/subtree\/append-mf-h$/);
+  if (appendMatch) {
+    return { kind: "append-mf-h", mapId: decodeURIComponent(appendMatch[1]!) };
+  }
+  const rapidMapifyMatch = pathname.match(/^\/api\/maps\/([^/]+)\/rapid\/mapify-oracle$/);
+  if (rapidMapifyMatch) {
+    return { kind: "rapid-mapify-oracle", mapId: decodeURIComponent(rapidMapifyMatch[1]!) };
+  }
+  return null;
+}
 
 function parseHomeRoute(urlPath: string, method: string): HomeRouteAction | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
@@ -431,7 +864,7 @@ function sendHomeError(
 }
 
 function newDocId(): string {
-  return `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `map_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function newNodeId(): string {
@@ -535,8 +968,8 @@ async function handleHomeApi(
     if (route.kind === "list") {
       const url = new URL(req.url ?? "/", "http://localhost");
       const includeArchived = url.searchParams.get("includeArchived") === "true";
-      const docs = RapidMvpModel.listDocuments(SQLITE_DB_PATH, { includeArchived }) as MapSummary[];
-      sendJson(res, 200, { docs });
+      const maps = RapidMvpModel.listMaps(currentSqliteDbPath(), { includeArchived }) as MapSummary[];
+      sendJson(res, 200, { maps });
       return true;
     }
 
@@ -562,18 +995,18 @@ async function handleHomeApi(
         return true;
       }
       const id = newDocId();
-      RapidMvpModel.createDocument(SQLITE_DB_PATH, id, label && label.length > 0 ? label : "Untitled");
+      RapidMvpModel.createMap(currentSqliteDbPath(), id, label && label.length > 0 ? label : "Untitled");
       sendJson(res, 200, { ok: true, id });
       return true;
     }
 
     if (route.kind === "duplicate") {
-      if (!RapidMvpModel.documentExists(SQLITE_DB_PATH, route.mapId)) {
+      if (!RapidMvpModel.mapExists(currentSqliteDbPath(), route.mapId)) {
         sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
         return true;
       }
       const newId = newDocId();
-      RapidMvpModel.duplicateDocument(SQLITE_DB_PATH, route.mapId, newId);
+      RapidMvpModel.duplicateMap(currentSqliteDbPath(), route.mapId, newId);
       sendJson(res, 200, { ok: true, id: newId });
       return true;
     }
@@ -600,10 +1033,10 @@ async function handleHomeApi(
         return true;
       }
       try {
-        RapidMvpModel.renameDocument(SQLITE_DB_PATH, route.mapId, label);
+        RapidMvpModel.renameMap(currentSqliteDbPath(), route.mapId, label);
       } catch (err) {
         const msg = (err as Error).message;
-        if (msg === "Document not found.") {
+        if (msg === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -615,9 +1048,9 @@ async function handleHomeApi(
 
     if (route.kind === "archive" || route.kind === "restore") {
       try {
-        RapidMvpModel.setArchived(SQLITE_DB_PATH, route.mapId, route.kind === "archive");
+        RapidMvpModel.setArchived(currentSqliteDbPath(), route.mapId, route.kind === "archive");
       } catch (err) {
-        if ((err as Error).message === "Document not found.") {
+        if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -645,10 +1078,10 @@ async function handleHomeApi(
         throw err;
       }
       try {
-        RapidMvpModel.setDocumentTags(SQLITE_DB_PATH, route.mapId, tags);
+        RapidMvpModel.setMapTags(currentSqliteDbPath(), route.mapId, tags);
       } catch (err) {
         const msg = (err as Error).message;
-        if (msg === "Document not found.") {
+        if (msg === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -680,9 +1113,9 @@ async function handleHomeApi(
         throw err;
       }
       try {
-        RapidMvpModel.setPinned(SQLITE_DB_PATH, route.mapId, pinned);
+        RapidMvpModel.setPinned(currentSqliteDbPath(), route.mapId, pinned);
       } catch (err) {
-        if ((err as Error).message === "Document not found.") {
+        if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
@@ -695,9 +1128,9 @@ async function handleHomeApi(
     if (route.kind === "bind-vault" || route.kind === "unbind-vault") {
       if (route.kind === "unbind-vault") {
         try {
-          RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, route.mapId, null);
+          RapidMvpModel.setMapSource(currentSqliteDbPath(), route.mapId, null);
         } catch (err) {
-          if ((err as Error).message === "Document not found.") {
+          if ((err as Error).message === "Map not found.") {
             sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
             return true;
           }
@@ -725,13 +1158,15 @@ async function handleHomeApi(
       }
 
       try {
-        RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, route.mapId, { kind: "obsidian", path: vaultPath });
+        const resolvedVaultPath = validateVaultPath(vaultPath, { mustExist: true });
+        RapidMvpModel.setMapSource(currentSqliteDbPath(), route.mapId, { kind: "obsidian", path: resolvedVaultPath });
       } catch (err) {
-        if ((err as Error).message === "Document not found.") {
+        if ((err as Error).message === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
-        throw err;
+        sendHomeError(res, 400, "INVALID_BODY", (err as Error).message || "Invalid vaultPath.");
+        return true;
       }
       sendJson(res, 200, { ok: true });
       return true;
@@ -780,7 +1215,7 @@ async function handleHomeApi(
 
       const id = newDocId();
       const model = RapidMvpModel.fromJSON(state);
-      model.saveToSqlite(SQLITE_DB_PATH, id);
+      model.saveToSqlite(currentSqliteDbPath(), id);
       sendJson(res, 200, { ok: true, id });
       return true;
     }
@@ -825,23 +1260,23 @@ async function handleHomeApi(
       const state = buildAppStateFromVault(vaultPath, rootLabel);
       const id = newDocId();
       const model = RapidMvpModel.fromJSON(state);
-      model.saveToSqlite(SQLITE_DB_PATH, id);
-      RapidMvpModel.setDocumentSource(SQLITE_DB_PATH, id, { kind: "obsidian", path: vaultPath });
+      model.saveToSqlite(currentSqliteDbPath(), id);
+      RapidMvpModel.setMapSource(currentSqliteDbPath(), id, { kind: "obsidian", path: vaultPath });
       sendJson(res, 200, { ok: true, id });
       return true;
     }
 
     if (route.kind === "delete") {
       try {
-        RapidMvpModel.deleteDocument(SQLITE_DB_PATH, route.mapId);
+        RapidMvpModel.deleteMap(currentSqliteDbPath(), route.mapId);
       } catch (err) {
         const msg = (err as Error).message;
-        if (msg === "Document not found.") {
+        if (msg === "Map not found.") {
           sendHomeError(res, 404, "MAP_NOT_FOUND", `Map not found: ${route.mapId}`);
           return true;
         }
-        if (msg === "Document is not archived.") {
-          sendHomeError(res, 409, "NOT_ARCHIVED", "Document must be archived before delete. Call /archive first.");
+        if (msg === "Map is not archived.") {
+          sendHomeError(res, 409, "NOT_ARCHIVED", "Map must be archived before delete. Call /archive first.");
           return true;
         }
         throw err;
@@ -901,7 +1336,7 @@ async function handleBackupApi(
       sendJson(res, 405, { ok: false, error: "Method not allowed." });
       return;
     }
-    const backup = getConflictBackup(DATA_DIR, route.mapId, route.backupId);
+    const backup = getConflictBackup(currentDataDir(), route.mapId, route.backupId);
     if (!backup) {
       sendJson(res, 404, { ok: false, error: "Backup not found." });
       return;
@@ -913,16 +1348,16 @@ async function handleBackupApi(
       sendJson(res, 400, { ok: false, error: `Invalid backup state: ${errors.join(" | ")}` });
       return;
     }
-    model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+    model.saveToSqlite(currentSqliteDbPath(), route.mapId);
     const savedAt = new Date().toISOString();
-    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, documentId: route.mapId, savedAt });
+    sendJson(res, 200, { ok: true, restored: true, backupId: route.backupId, mapId: route.mapId, savedAt });
     return;
   }
 
   // Single backup get/delete
   if (route.backupId) {
     if (req.method === "GET") {
-      const backup = getConflictBackup(DATA_DIR, route.mapId, route.backupId);
+      const backup = getConflictBackup(currentDataDir(), route.mapId, route.backupId);
       if (!backup) {
         sendJson(res, 404, { ok: false, error: "Backup not found." });
         return;
@@ -931,7 +1366,7 @@ async function handleBackupApi(
       return;
     }
     if (req.method === "DELETE") {
-      const deleted = deleteConflictBackup(DATA_DIR, route.mapId, route.backupId);
+      const deleted = deleteConflictBackup(currentDataDir(), route.mapId, route.backupId);
       sendJson(res, deleted ? 200 : 404, { ok: deleted, deleted, ...(deleted ? {} : { error: "Backup not found." }) });
       return;
     }
@@ -944,8 +1379,8 @@ async function handleBackupApi(
     sendJson(res, 405, { ok: false, error: "Method not allowed." });
     return;
   }
-  const backups = listConflictBackups(DATA_DIR, route.mapId);
-  sendJson(res, 200, { ok: true, documentId: route.mapId, backups });
+  const backups = listConflictBackups(currentDataDir(), route.mapId);
+  sendJson(res, 200, { ok: true, mapId: route.mapId, backups });
 }
 
 // ---------------------------------------------------------------------------
@@ -954,7 +1389,7 @@ async function handleBackupApi(
 
 function parseLinearNoteRoute(urlPath: string): { mapId: string; scopeId: string } | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const match = pathname.match(/^\/api\/docs\/([^/]+)\/linear\/([^/]+)$/);
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/linear\/([^/]+)$/);
   if (!match) return null;
   return {
     mapId: decodeURIComponent(match[1]),
@@ -975,10 +1410,10 @@ async function handleLinearNoteApi(
 
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, mapId);
+    model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
-    if (message === "Document not found.") {
+    if (message === "Map not found.") {
       sendJson(res, 404, { ok: false, error: message });
     } else {
       sendJson(res, 500, { ok: false, error: message });
@@ -1031,11 +1466,11 @@ async function handleLinearNoteApi(
       sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
       return;
     }
-    nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
+    nextModel.saveToSqlite(currentSqliteDbPath(), mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-    incrementDocVersion();
-    broadcastDocUpdate(mapId, savedAt, sourceTabId);
+    incrementMapVersion();
+    broadcastMapUpdate(mapId, savedAt, sourceTabId);
     sendJson(res, 200, { ok: true, scopeId, savedAt });
     return;
   }
@@ -1058,11 +1493,11 @@ async function handleLinearNoteApi(
       sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
       return;
     }
-    nextModel.saveToSqlite(SQLITE_DB_PATH, mapId);
+    nextModel.saveToSqlite(currentSqliteDbPath(), mapId);
     const savedAt = new Date().toISOString();
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-    incrementDocVersion();
-    broadcastDocUpdate(mapId, savedAt, sourceTabId);
+    incrementMapVersion();
+    broadcastMapUpdate(mapId, savedAt, sourceTabId);
     sendJson(res, 200, { ok: true, scopeId, savedAt, removed: true });
     return;
   }
@@ -1138,6 +1573,15 @@ type VaultRoute =
   | { action: "status" }
   | null;
 
+type LocalFsRoute =
+  | { action: "list" }
+  | { action: "read" }
+  | null;
+
+type BlueprintRoute =
+  | { action: "import" }
+  | null;
+
 function parseVaultRoute(urlPath: string, method: string): VaultRoute {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   if (pathname === "/api/vault/import" && method === "POST") {
@@ -1156,6 +1600,56 @@ function parseVaultRoute(urlPath: string, method: string): VaultRoute {
     return { action: "status" };
   }
   return null;
+}
+
+function parseLocalFsRoute(urlPath: string, method: string): LocalFsRoute {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (pathname === "/api/local-fs/list" && method === "GET") {
+    return { action: "list" };
+  }
+  if (pathname === "/api/local-fs/read" && method === "GET") {
+    return { action: "read" };
+  }
+  return null;
+}
+
+function parseBlueprintRoute(urlPath: string, method: string): BlueprintRoute {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  if (pathname === "/api/blueprint/import" && method === "POST") {
+    return { action: "import" };
+  }
+  return null;
+}
+
+async function handleLocalFsApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: Exclude<LocalFsRoute, null>,
+): Promise<void> {
+  try {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const rootPath = url.searchParams.get("rootPath") ?? "";
+    const relativePath = url.searchParams.get("relativePath") ?? "";
+    const maxEntries = Number(url.searchParams.get("maxEntries") ?? NaN);
+    const maxBytes = Number(url.searchParams.get("maxBytes") ?? NaN);
+
+    if (route.action === "list") {
+      const payload = listLocalFsDirectory({ rootPath, relativePath, maxEntries });
+      sendJson(res, 200, payload);
+      return;
+    }
+
+    const payload = readLocalFsFile({ rootPath, relativePath, maxBytes });
+    sendJson(res, 200, payload);
+  } catch (err) {
+    sendJson(res, 400, {
+      ok: false,
+      error: {
+        code: "LOCAL_FS_INVALID_REQUEST",
+        message: (err as Error).message || "Local filesystem request failed.",
+      },
+    });
+  }
 }
 
 async function handleFlashApi(
@@ -1240,11 +1734,11 @@ async function handleFlashApi(
         }
 
         // Load model to commit nodes
-        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, draft.mapId);
+        const model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), draft.mapId);
         const result = approveDraft(route.draftId, request, model);
 
         // Save updated model
-        model.saveToSqlite(SQLITE_DB_PATH, draft.mapId);
+        model.saveToSqlite(currentSqliteDbPath(), draft.mapId);
 
         sendJson(res, 200, {
           ok: true,
@@ -1275,9 +1769,15 @@ async function handleFlashApi(
   }
 }
 
-function addVaultWatchClient(documentId: string | null, res: http.ServerResponse): void {
-  beginSse(res);
-  vaultWatchClients.push({ documentId, res });
+function addVaultWatchClient(mapId: string | null, res: http.ServerResponse): void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(`retry: ${SSE_RETRY_MS}\n: connected\n\n`);
+  vaultWatchClients.push({ mapId, res });
+  pruneSseClients(vaultWatchClients, MAX_VAULT_WATCH_CLIENTS);
   res.on("close", () => {
     const idx = vaultWatchClients.findIndex((client) => client.res === res);
     if (idx !== -1) {
@@ -1290,7 +1790,7 @@ function broadcastVaultWatchEvent(event: VaultWatchEvent): void {
   const frame = `event: vault-watch\ndata: ${JSON.stringify(event)}\n\n`;
   for (let i = vaultWatchClients.length - 1; i >= 0; i -= 1) {
     const client = vaultWatchClients[i]!;
-    if (client.documentId && client.documentId !== event.documentId) {
+    if (client.mapId && client.mapId !== event.mapId) {
       continue;
     }
     try {
@@ -1302,8 +1802,8 @@ function broadcastVaultWatchEvent(event: VaultWatchEvent): void {
 }
 
 configureVaultWatchEmitter(broadcastVaultWatchEvent);
-configureVaultWatchDocUpdateEmitter((documentId, savedAt) => {
-  broadcastDocUpdate(documentId, savedAt, null);
+configureVaultWatchMapUpdateEmitter((mapId, savedAt) => {
+  broadcastMapUpdate(mapId, savedAt, null);
 });
 
 async function handleVaultApi(
@@ -1322,14 +1822,14 @@ async function handleVaultApi(
       validateVaultPath(request.vaultPath, { mustExist: true });
 
       beginSse(res);
-      const result = await importVaultToSqlite(SQLITE_DB_PATH, request, {
+      const result = await importVaultToSqlite(currentSqliteDbPath(), request, {
         onProgress(progress) {
           sendSseEvent(res, "vault-import-progress", progress);
         },
       });
-      broadcastDocUpdate(result.documentId, result.savedAt, null);
+      broadcastMapUpdate(result.mapId, result.savedAt, null);
       sendSseEvent(res, "vault-import-complete", {
-        documentId: result.documentId,
+        mapId: result.mapId,
         savedAt: result.savedAt,
         fileCount: result.fileCount,
         folderCount: result.folderCount,
@@ -1344,8 +1844,8 @@ async function handleVaultApi(
     if (route.action === "export") {
       const rawBody = await readRequestBody(req);
       const request = JSON.parse(rawBody) as VaultExportRequest;
-      if (!request?.documentId?.trim()) {
-        sendJson(res, 400, { ok: false, error: "documentId is required." });
+      if (!request?.mapId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "mapId is required." });
         return;
       }
       if (!request.vaultPath?.trim()) {
@@ -1355,7 +1855,7 @@ async function handleVaultApi(
       validateVaultPath(request.vaultPath, { mustExist: false, allowCreate: true });
 
       beginSse(res);
-      const result = await exportVaultFromSqlite(SQLITE_DB_PATH, request, {
+      const result = await exportVaultFromSqlite(currentSqliteDbPath(), request, {
         onProgress(progress) {
           sendSseEvent(res, "vault-export-progress", progress);
         },
@@ -1369,7 +1869,7 @@ async function handleVaultApi(
       const rawBody = await readRequestBody(req);
       const request = JSON.parse(rawBody) as VaultWatchStartRequest;
       validateVaultPath(request.vaultPath, { mustExist: true });
-      const status = startVaultWatch(SQLITE_DB_PATH, request);
+      const status = startVaultWatch(currentSqliteDbPath(), request);
       sendJson(res, 200, status);
       return;
     }
@@ -1377,11 +1877,11 @@ async function handleVaultApi(
     if (route.action === "watch-stop") {
       const rawBody = await readRequestBody(req);
       const request = JSON.parse(rawBody) as VaultWatchStopRequest;
-      if (!request?.documentId?.trim()) {
-        sendJson(res, 400, { ok: false, error: "documentId is required." });
+      if (!request?.mapId?.trim()) {
+        sendJson(res, 400, { ok: false, error: "mapId is required." });
         return;
       }
-      const status = stopVaultWatch(request.documentId);
+      const status = stopVaultWatch(request.mapId);
       if (!status) {
         sendJson(res, 404, { ok: false, error: "Watch session not found." });
         return;
@@ -1392,11 +1892,21 @@ async function handleVaultApi(
 
     if (route.action === "status") {
       const url = new URL(req.url ?? "/", "http://localhost");
-      const documentId = url.searchParams.get("documentId");
-      if (documentId) {
-        const status = getVaultWatchStatus(documentId);
+      const mapId = url.searchParams.get("mapId");
+      if (mapId) {
+        const status = getVaultWatchStatus(mapId);
         if (!status) {
-          sendJson(res, 404, { ok: false, error: "Watch session not found." });
+          sendJson(res, 200, {
+            ok: true,
+            running: false,
+            mapId,
+            vaultPath: "",
+            integrationMode: "off",
+            sourceOfTruth: "sqlite",
+            lastInboundAt: null,
+            lastOutboundAt: null,
+            lastError: null,
+          });
           return;
         }
         sendJson(res, 200, status);
@@ -1421,12 +1931,57 @@ async function handleVaultApi(
   }
 }
 
+async function handleBlueprintApi(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  route: Exclude<BlueprintRoute, null>,
+): Promise<void> {
+  try {
+    if (route.action === "import") {
+      const rawBody = await readRequestBody(req);
+      const request = JSON.parse(rawBody) as BlueprintImportRequest;
+      if (!request || typeof request.blueprintPath !== "string" || request.blueprintPath.trim().length === 0) {
+        sendJson(res, 400, { ok: false, error: "blueprintPath is required." });
+        return;
+      }
+
+      beginSse(res);
+      const result = await importBlueprintToSqlite(currentSqliteDbPath(), request, {
+        onProgress(progress) {
+          sendSseEvent(res, "blueprint-import-progress", progress);
+        },
+      });
+      broadcastMapUpdate(result.mapId, result.savedAt, null);
+      sendSseEvent(res, "blueprint-import-complete", {
+        mapId: result.mapId,
+        savedAt: result.savedAt,
+        chapterCount: result.chapterCount,
+        statementCount: result.statementCount,
+        nodeCount: result.nodeCount,
+        linkCount: result.linkCount,
+        warnings: result.warnings,
+      });
+      res.end();
+      return;
+    }
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: (err as Error).message || "Blueprint import failed." });
+  }
+}
+
 // Cloud sync helpers removed — now handled by CloudSyncTransport implementations
 
-function readRequestBody(req: http.IncomingMessage): Promise<string> {
+function readRequestBody(req: http.IncomingMessage, maxBytes = 10_000_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
+    let totalBytes = 0;
     req.on("data", (chunk: Buffer) => {
+      totalBytes += chunk.length;
+      if (totalBytes > maxBytes) {
+        reject(new Error("Request body too large."));
+        req.destroy();
+        return;
+      }
       chunks.push(chunk);
     });
     req.on("end", () => {
@@ -1444,11 +1999,11 @@ type LinkRouteAction =
 
 function parseLinkRoute(urlPath: string, method: string): LinkRouteAction | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
-  const createMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/?$/);
+  const createMatch = pathname.match(/^\/api\/maps\/([^/]+)\/links\/?$/);
   if (createMatch && method === "POST") {
     return { kind: "create", mapId: decodeURIComponent(createMatch[1]) };
   }
-  const deleteMatch = pathname.match(/^\/api\/docs\/([^/]+)\/links\/([^/]+)\/?$/);
+  const deleteMatch = pathname.match(/^\/api\/maps\/([^/]+)\/links\/([^/]+)\/?$/);
   if (deleteMatch && method === "DELETE") {
     return {
       kind: "delete",
@@ -1465,16 +2020,16 @@ async function handleLinkApi(
   route: LinkRouteAction,
 ): Promise<void> {
   if (!route.mapId) {
-    sendJson(res, 400, { ok: false, error: "Document id is required." });
+    sendJson(res, 400, { ok: false, error: "Map id is required." });
     return;
   }
 
   let model: RapidMvpModel;
   try {
-    model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, route.mapId);
+    model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), route.mapId);
   } catch (err) {
     const message = (err as Error).message || "Unknown error";
-    if (message === "Document not found.") {
+    if (message === "Map not found.") {
       sendJson(res, 404, { ok: false, error: message });
     } else {
       sendJson(res, 500, { ok: false, error: message });
@@ -1491,6 +2046,8 @@ async function handleLinkApi(
         label?: unknown;
         direction?: unknown;
         style?: unknown;
+        sourcePort?: unknown;
+        targetPort?: unknown;
       };
       try {
         const raw = await readRequestBody(req);
@@ -1511,11 +2068,15 @@ async function handleLinkApi(
         label?: string;
         direction?: LinkDirection;
         style?: LinkStyle;
+        sourcePort?: LinkPort;
+        targetPort?: LinkPort;
       } = {};
       if (typeof body.relationType === "string") options.relationType = body.relationType;
       if (typeof body.label === "string") options.label = body.label;
       if (typeof body.direction === "string") options.direction = body.direction as LinkDirection;
       if (typeof body.style === "string") options.style = body.style as LinkStyle;
+      if (typeof body.sourcePort === "string") options.sourcePort = body.sourcePort as LinkPort;
+      if (typeof body.targetPort === "string") options.targetPort = body.targetPort as LinkPort;
 
       let linkId: string;
       try {
@@ -1524,10 +2085,10 @@ async function handleLinkApi(
         sendJson(res, 400, { ok: false, error: (err as Error).message });
         return;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(route.mapId, savedAt, sourceTabId);
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       const link = model.state.links?.[linkId];
       sendJson(res, 200, { ok: true, link });
       return;
@@ -1545,10 +2106,10 @@ async function handleLinkApi(
         sendJson(res, 400, { ok: false, error: message });
         return;
       }
-      model.saveToSqlite(SQLITE_DB_PATH, route.mapId);
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
       const savedAt = new Date().toISOString();
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(route.mapId, savedAt, sourceTabId);
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -1559,7 +2120,7 @@ async function handleLinkApi(
 
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
   if (!mapId) {
-    sendJson(res, 400, { error: "Document id is required." });
+    sendJson(res, 400, { error: "Map id is required." });
     return true;
   }
 
@@ -1583,15 +2144,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
           }
           depth = Math.floor(n);
         }
-        const result = RapidMvpModel.readScopedState(SQLITE_DB_PATH, mapId, scopeId, depth);
+        const result = RapidMvpModel.readScopedState(currentSqliteDbPath(), mapId, scopeId, depth);
         if (!result.ok) {
           sendJson(res, 404, { ok: false, error: result.error });
           return true;
         }
         sendJson(res, 200, {
-          version: result.doc.version,
-          savedAt: result.doc.savedAt,
-          state: result.doc.state,
+          version: result.map.version,
+          savedAt: result.map.savedAt,
+          state: result.map.state,
           scope: {
             rootId: scopeId,
             depth: depth === undefined ? null : depth,
@@ -1600,11 +2161,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         });
         return true;
       }
-      const savedDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId);
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
       sendJson(res, 200, savedDoc);
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
-      if (message === "Document not found.") {
+      if (message === "Map not found.") {
         sendJson(res, 404, { error: message });
       } else if (message === "Unsupported or invalid save format." || message.startsWith("Invalid model after load:")) {
         sendJson(res, 400, { error: message });
@@ -1618,7 +2179,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
   if (req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown; baseSavedAt?: unknown; force?: unknown };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; baseSavedAt?: unknown; baseState?: unknown; force?: unknown };
       const candidate = parsed && parsed.state ? parsed : { state: parsed };
       if (!candidate.state || typeof candidate.state !== "object") {
         sendJson(res, 400, { error: "Invalid JSON format." });
@@ -1630,7 +2191,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       }
       const nodesObj = (candidate.state as Record<string, unknown>).nodes;
       if (typeof nodesObj === "object" && nodesObj !== null && Object.keys(nodesObj).length === 0) {
-        sendJson(res, 400, { error: "State contains no nodes — refusing to save empty document." });
+        sendJson(res, 400, { error: "State contains no nodes — refusing to save empty map." });
         return true;
       }
 
@@ -1638,7 +2199,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       if (scopeParam && scopeParam.trim().length > 0) {
         const scopeId = scopeParam.trim();
         const result = RapidMvpModel.writeScopedState(
-          SQLITE_DB_PATH,
+          currentSqliteDbPath(),
           mapId,
           scopeId,
           candidate.state as never,
@@ -1649,11 +2210,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
           return true;
         }
         const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-        broadcastDocUpdate(mapId, result.savedAt, sourceTabId);
+        broadcastMapUpdate(mapId, result.savedAt, sourceTabId);
         sendJson(res, 200, {
           ok: true,
           savedAt: result.savedAt,
-          documentId: mapId,
+          mapId: mapId,
           scope: { rootId: scopeId, replacedNodeCount: result.replacedNodeCount },
         });
         return true;
@@ -1668,39 +2229,83 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
 
       const force = Boolean(parsed?.force);
       const baseSavedAt = typeof parsed?.baseSavedAt === "string" ? parsed.baseSavedAt : null;
+      const baseState = parsed?.baseState && typeof parsed.baseState === "object"
+        ? parsed.baseState as AppState
+        : null;
       if (!force) {
         try {
-          const currentDoc = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId);
+          const currentDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
           if (baseSavedAt && currentDoc.savedAt !== baseSavedAt) {
+            if (baseState) {
+              const merge = mergeLocalNodeChanges(baseState, currentDoc.state, model.toJSON());
+              if (!merge.ok) {
+                sendJson(res, 409, {
+                  ok: false,
+                  code: "DOC_NODE_CONFLICT_Q",
+                  conflictKind: "Q",
+                  error: "Concurrent edits changed the same node differently.",
+                  mapId: mapId,
+                  savedAt: currentDoc.savedAt,
+                  state: currentDoc.state,
+                  conflicts: merge.conflicts,
+                });
+                return true;
+              }
+              const mergedModel = RapidMvpModel.fromJSON(merge.state);
+              const mergeErrors = mergedModel.validate();
+              if (mergeErrors.length > 0) {
+                sendJson(res, 400, { error: `Invalid merged model before save: ${mergeErrors.join(" | ")}` });
+                return true;
+              }
+              const liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, mergedModel.toJSON());
+              mergedModel.saveToSqlite(currentSqliteDbPath(), mapId);
+              const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
+              const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+              broadcastMapUpdate(mapId, savedAt, sourceTabId);
+              if (!liveWrite) {
+                handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
+              }
+              sendJson(res, 200, {
+                ok: true,
+                savedAt,
+                mapId: mapId,
+                merged: true,
+                mergedNodeIds: merge.mergedNodeIds,
+                integrationMode: liveWrite?.integrationMode ?? "off",
+                sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+                ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
+              });
+              return true;
+            }
             sendJson(res, 409, {
               ok: false,
               code: "DOC_CONFLICT",
-              error: "Document changed externally. Choose which version to keep.",
-              documentId: mapId,
+              error: "Map changed externally. Choose which version to keep.",
+              mapId: mapId,
               savedAt: currentDoc.savedAt,
               state: currentDoc.state,
             });
             return true;
           }
         } catch (err) {
-          if ((err as Error).message !== "Document not found.") {
+          if ((err as Error).message !== "Map not found.") {
             throw err;
           }
         }
       }
 
-      const liveWrite = await writeDocumentToVaultNow(SQLITE_DB_PATH, mapId, model.toJSON());
-      model.saveToSqlite(SQLITE_DB_PATH, mapId);
-      const savedAt = RapidMvpModel.loadSavedDocFromSqlite(SQLITE_DB_PATH, mapId).savedAt;
+      const liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, model.toJSON());
+      model.saveToSqlite(currentSqliteDbPath(), mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-      broadcastDocUpdate(mapId, savedAt, sourceTabId);
+      broadcastMapUpdate(mapId, savedAt, sourceTabId);
       if (!liveWrite) {
-        handleDocumentSavedForVaultWatch(SQLITE_DB_PATH, mapId);
+        handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
       }
       sendJson(res, 200, {
         ok: true,
         savedAt,
-        documentId: mapId,
+        mapId: mapId,
         integrationMode: liveWrite?.integrationMode ?? "off",
         sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
         ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
@@ -1720,24 +2325,617 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
   return true;
 }
 
+function requestWorkspaceId(url: URL, body: Record<string, unknown>): string {
+  const fromBody = typeof body.workspaceId === "string" ? body.workspaceId.trim() : "";
+  const fromQuery = url.searchParams.get("ws")?.trim() || url.searchParams.get("workspaceId")?.trim() || "";
+  return fromBody || fromQuery || WORKSPACE_ID;
+}
+
+function requestAgentId(url: URL, body: Record<string, unknown>): string {
+  const fromBody = typeof body.agentId === "string" ? body.agentId.trim() : "";
+  const fromQuery = url.searchParams.get("agentId")?.trim() || "";
+  return fromBody || fromQuery || "default";
+}
+
+interface LocalNodeConflict {
+  nodeId: string;
+  baseText: string | null;
+  localText: string | null;
+  currentText: string | null;
+}
+
+type LocalMergeResult =
+  | { ok: true; state: AppState; mergedNodeIds: string[] }
+  | { ok: false; conflicts: LocalNodeConflict[] };
+
+function cloneAppState(state: AppState): AppState {
+  return JSON.parse(JSON.stringify(state)) as AppState;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function nodeFingerprint(node: TreeNode | undefined): string {
+  return node ? stableJson(node) : "__missing__";
+}
+
+function nodeTextForConflict(node: TreeNode | undefined): string | null {
+  return node ? node.text : null;
+}
+
+function mergeLocalNodeChanges(baseState: AppState, currentState: AppState, localState: AppState): LocalMergeResult {
+  const merged = cloneAppState(currentState);
+  const nodeIds = new Set<string>([
+    ...Object.keys(baseState.nodes || {}),
+    ...Object.keys(currentState.nodes || {}),
+    ...Object.keys(localState.nodes || {}),
+  ]);
+  const conflicts: LocalNodeConflict[] = [];
+  const mergedNodeIds: string[] = [];
+
+  for (const nodeId of nodeIds) {
+    const baseNode = baseState.nodes?.[nodeId];
+    const currentNode = currentState.nodes?.[nodeId];
+    const localNode = localState.nodes?.[nodeId];
+    const baseFingerprint = nodeFingerprint(baseNode);
+    const currentFingerprint = nodeFingerprint(currentNode);
+    const localFingerprint = nodeFingerprint(localNode);
+    const currentChanged = currentFingerprint !== baseFingerprint;
+    const localChanged = localFingerprint !== baseFingerprint;
+
+    if (!localChanged) {
+      continue;
+    }
+    if (currentChanged && currentFingerprint !== localFingerprint) {
+      conflicts.push({
+        nodeId,
+        baseText: nodeTextForConflict(baseNode),
+        localText: nodeTextForConflict(localNode),
+        currentText: nodeTextForConflict(currentNode),
+      });
+      continue;
+    }
+
+    if (localNode) {
+      merged.nodes[nodeId] = JSON.parse(JSON.stringify(localNode)) as TreeNode;
+    } else {
+      delete merged.nodes[nodeId];
+      for (const node of Object.values(merged.nodes)) {
+        node.children = (node.children || []).filter((childId) => childId !== nodeId);
+      }
+    }
+    mergedNodeIds.push(nodeId);
+  }
+
+  if (conflicts.length > 0) {
+    return { ok: false, conflicts };
+  }
+  return { ok: true, state: merged, mergedNodeIds };
+}
+
+type RapidMapifyAction = "detail" | "examples" | "classify" | "related";
+
+interface RapidMapifyFragment {
+  opId: string;
+  action: RapidMapifyAction;
+  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
+  fragment: string;
+  diagnostics: string[];
+  teacherLabels: string[];
+}
+
+interface MapifyTeacherDeltaNode {
+  text?: unknown;
+  children?: MapifyTeacherDeltaNode[];
+}
+
+interface MapifyTeacherDeltaAction {
+  type?: unknown;
+  parentId?: unknown;
+  nodes?: MapifyTeacherDeltaNode[];
+}
+
+interface MapifyTeacherDelta {
+  opId?: unknown;
+  actions?: MapifyTeacherDeltaAction[];
+}
+
+const RAPID_MAPIFY_ORACLE_AGENT_ID = "rapid-mapify-oracle";
+const RAPID_MAPIFY_ORACLE_ROOT = path.join(REPO_ROOT, "tools", "rapid_mapify_oracle");
+const BIOLOGY_RF1_TEACHER_DELTA = path.join(
+  RAPID_MAPIFY_ORACLE_ROOT,
+  "fixtures",
+  "biology",
+  "mapify_teacher_delta.json",
+);
+
+function normalizeRapidMapifyAction(raw: unknown): RapidMapifyAction {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (value === "examples" || value === "classify" || value === "related" || value === "detail") {
+    return value;
+  }
+  return "detail";
+}
+
+function readJsonFile<T>(filePath: string): T {
+  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+}
+
+function teacherDeltaLabels(delta: MapifyTeacherDelta): string[] {
+  const labels: string[] = [];
+  for (const action of delta.actions || []) {
+    if (action.type !== "appendChildren" || !Array.isArray(action.nodes)) {
+      continue;
+    }
+    for (const node of action.nodes) {
+      const label = typeof node.text === "string" ? node.text.trim() : "";
+      if (label) labels.push(label);
+    }
+  }
+  return labels;
+}
+
+function labelsToMfH(labels: string[]): string {
+  return labels.map((label) => `# ${label}`).join("\n");
+}
+
+function resolveLocalRapidMfHLabels(selectedLabel: string, action: RapidMapifyAction): string[] {
+  const biologyExamples: Record<string, string[]> = {
+    "動物": ["哺乳類", "鳥類", "魚類"],
+    "哺乳類": ["ヒト", "イヌ", "クジラ"],
+    "鳥類": ["スズメ", "ペンギン"],
+    "魚類": ["サケ", "マグロ", "タイ", "フグ"],
+    "植物": ["サクラ", "イネ", "スギ"],
+    "被子植物": ["サクラ", "イネ"],
+    "裸子植物": ["スギ"],
+    "菌類": ["シイタケ", "酵母", "カビ"],
+  };
+  const biologyClassifications: Record<string, string[]> = {
+    "動物": ["哺乳類", "鳥類", "魚類"],
+    "植物": ["被子植物", "裸子植物"],
+    "菌類": ["担子菌類", "子嚢菌類", "接合菌類"],
+    "魚類": ["硬骨魚類", "軟骨魚類"],
+  };
+  const biologyRelated: Record<string, string[]> = {
+    "菌類": ["胞子", "菌糸", "分解者"],
+    "魚類": ["水中生活", "鰓呼吸", "変温動物"],
+    "動物": ["脊椎動物", "無脊椎動物", "生態系"],
+  };
+  const biologyDetails: Record<string, string[]> = {
+    "菌類": ["光合成をしない", "胞子で増える", "菌糸を伸ばす"],
+    "魚類": ["水中で生活する", "鰓で呼吸する", "ひれで泳ぐ"],
+    "動物": ["自分で動ける", "他の生物を食べる", "感覚器官を持つ"],
+  };
+  const byAction: Record<RapidMapifyAction, Record<string, string[]>> = {
+    detail: biologyDetails,
+    examples: biologyExamples,
+    classify: biologyClassifications,
+    related: biologyRelated,
+  };
+  return byAction[action][selectedLabel] || [];
+}
+
+function hasChildLabels(state: AppState, nodeId: string, labels: string[]): boolean {
+  const node = state.nodes[nodeId];
+  if (!node) return false;
+  const childLabels = new Set(
+    (node.children || [])
+      .map((childId) => state.nodes[childId]?.text?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
+  return labels.every((label) => childLabels.has(label));
+}
+
+function resolveRapidMapifyFragment(
+  state: AppState,
+  selectedNodeId: string,
+  action: RapidMapifyAction,
+  requestedOpId: string,
+): RapidMapifyFragment {
+  const selected = state.nodes[selectedNodeId];
+  if (!selected) {
+    throw new Error(`Selected node not found: ${selectedNodeId}`);
+  }
+  const opId = requestedOpId.trim() || (
+    action === "examples" ? "RF2.addExamples"
+      : action === "classify" ? "RF3.addSubtypes"
+        : action === "related" ? "RF6.addRelatedTopics"
+          : "RF1.expandSelectedNode"
+  );
+  const diagnostics: string[] = [];
+
+  const shouldUseBiologyRf1 =
+    selected.text.trim() === "動物" &&
+    (action === "classify" || opId === "RF1.expandSelectedNode" || opId === "RF3.addSubtypes") &&
+    hasChildLabels(state, selectedNodeId, ["哺乳類", "鳥類", "魚類"]) &&
+    fs.existsSync(BIOLOGY_RF1_TEACHER_DELTA);
+
+  if (shouldUseBiologyRf1) {
+    const teacher = readJsonFile<MapifyTeacherDelta>(BIOLOGY_RF1_TEACHER_DELTA);
+    const labels = teacherDeltaLabels(teacher);
+    if (labels.length > 0) {
+      diagnostics.push("Mapify teacher fixture BIO-RF1-ANIMALS-EXPAND-001 matched selected node 動物.");
+      return {
+        opId: String(teacher.opId || "RF1.expandSelectedNode"),
+        action,
+        source: "mapify_teacher_fixture",
+        fragment: labelsToMfH(labels),
+        diagnostics,
+        teacherLabels: labels,
+      };
+    }
+    throw new Error("Mapify teacher fixture BIO-RF1-ANIMALS-EXPAND-001 produced no labels.");
+  }
+
+  diagnostics.push("No Mapify teacher fixture matched this Rapid context.");
+  const localLabels = resolveLocalRapidMfHLabels(selected.text.trim(), action);
+  if (localLabels.length > 0) {
+    diagnostics.push(`Local MF-H fallback matched selected node ${selected.text.trim()} for ${opId}.`);
+    return {
+      opId,
+      action,
+      source: "m3e_local_mf_h_fallback",
+      fragment: labelsToMfH(localLabels),
+      diagnostics,
+      teacherLabels: localLabels,
+    };
+  }
+  throw new Error(
+    `Unsupported Rapid Mapify Oracle benchmark: selected="${selected.text.trim()}", opId="${opId}", action="${action}". `
+      + "No fallback generation is allowed for this experiment.",
+  );
+}
+
+function sameNodeLabel(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+}
+
+function isAliasNodeRecord(node: TreeNode): boolean {
+  return node.nodeType === "alias";
+}
+
+function findExistingChildByLabel(state: AppState, parentId: string, label: string): TreeNode | null {
+  const parent = state.nodes[parentId];
+  if (!parent) return null;
+  for (const childId of parent.children || []) {
+    const child = state.nodes[childId];
+    if (child && !isAliasNodeRecord(child) && sameNodeLabel(child.text, label)) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function appendMfHNodesToParent(
+  state: AppState,
+  parentNodeId: string,
+  fragment: string,
+): { added: Array<{ id: string; parentId: string; label: string }>; merged: Array<{ id: string; parentId: string; label: string }> } {
+  const parent = state.nodes[parentNodeId];
+  if (!parent) {
+    throw new Error(`Parent node not found: ${parentNodeId}`);
+  }
+  if (isAliasNodeRecord(parent)) {
+    throw new Error("Alias nodes cannot own appended subtrees.");
+  }
+
+  const parsed = parseIndentedTextToNodes(fragment, parentNodeId, newNodeId);
+  if (parsed.length === 0) {
+    throw new Error("MF-H fragment produced no nodes.");
+  }
+  const parsedById = new Map(parsed.map((node) => [node.id, node]));
+  const added: Array<{ id: string; parentId: string; label: string }> = [];
+  const merged: Array<{ id: string; parentId: string; label: string }> = [];
+
+  const applyNode = (fragmentNode: TreeNode, targetParentId: string): void => {
+    const existing = findExistingChildByLabel(state, targetParentId, fragmentNode.text);
+    let targetId: string;
+    if (existing) {
+      targetId = existing.id;
+      merged.push({ id: existing.id, parentId: targetParentId, label: existing.text });
+    } else {
+      targetId = fragmentNode.id;
+      state.nodes[targetId] = {
+        ...fragmentNode,
+        parentId: targetParentId,
+        children: [],
+      };
+      state.nodes[targetParentId]!.children.push(targetId);
+      added.push({ id: targetId, parentId: targetParentId, label: fragmentNode.text });
+    }
+
+    for (const childId of fragmentNode.children || []) {
+      const child = parsedById.get(childId);
+      if (child) applyNode(child, targetId);
+    }
+  };
+
+  for (const root of parsed.filter((node) => node.parentId === parentNodeId)) {
+    applyNode(root, parentNodeId);
+  }
+  return { added, merged };
+}
+
+async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResponse, route: AgentMapRoute): Promise<boolean> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+
+  if (route.kind === "agent-active-node") {
+    if (req.method === "GET") {
+      const workspaceId = requestWorkspaceId(url, {});
+      const agentId = requestAgentId(url, {});
+      const activeNode = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId)) || null;
+      sendJson(res, 200, { ok: true, activeNode });
+      return true;
+    }
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const nodeId = typeof body.nodeId === "string" ? body.nodeId.trim() : "";
+      if (!nodeId) {
+        sendJson(res, 400, { ok: false, error: "nodeId is required." });
+        return true;
+      }
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
+      if (!savedDoc.state.nodes[nodeId]) {
+        sendJson(res, 404, { ok: false, error: `Node not found: ${nodeId}` });
+        return true;
+      }
+      const workspaceId = requestWorkspaceId(url, body);
+      const agentId = requestAgentId(url, body);
+      const activeNode: AgentActiveNodeState = {
+        workspaceId,
+        mapId: route.mapId,
+        agentId,
+        nodeId,
+        updatedAt: new Date().toISOString(),
+      };
+      agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
+      sendJson(res, 200, { ok: true, activeNode });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 500, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "Active node update failed."),
+      });
+      return true;
+    }
+  }
+
+  if (route.kind === "append-mf-h") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const fragment = typeof body.fragment === "string" ? body.fragment.trim() : "";
+      if (!fragment) {
+        sendJson(res, 400, { ok: false, error: "fragment is required." });
+        return true;
+      }
+      if (fragment.length > 100_000) {
+        sendJson(res, 413, { ok: false, error: "MF-H fragment is too large." });
+        return true;
+      }
+
+      const workspaceId = requestWorkspaceId(url, body);
+      const agentId = requestAgentId(url, body);
+      const explicitParentNodeId = typeof body.parentNodeId === "string" ? body.parentNodeId.trim() : "";
+      const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
+      const parentNodeId = explicitParentNodeId || active?.nodeId || "";
+      if (!parentNodeId) {
+        sendJson(res, 400, { ok: false, error: "parentNodeId is required when no agent active node is set." });
+        return true;
+      }
+
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
+      const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
+      if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DOC_CONFLICT",
+          error: "Map changed externally. Refresh before applying MF-H fragment.",
+          mapId: route.mapId,
+          savedAt: savedDoc.savedAt,
+        });
+        return true;
+      }
+
+      const state = savedDoc.state;
+      if (!state.nodes[parentNodeId]) {
+        sendJson(res, 404, { ok: false, error: `Parent node not found: ${parentNodeId}` });
+        return true;
+      }
+      const result = appendMfHNodesToParent(state, parentNodeId, fragment);
+      if (Boolean(body.dryRun)) {
+        sendJson(res, 200, {
+          ok: true,
+          dryRun: true,
+          mapId: route.mapId,
+          parentNodeId,
+          added: result.added,
+          merged: result.merged,
+        });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+        return true;
+      }
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
+      handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
+      sendJson(res, 200, {
+        ok: true,
+        mapId: route.mapId,
+        parentNodeId,
+        savedAt,
+        added: result.added,
+        merged: result.merged,
+      });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "MF-H append failed."),
+      });
+      return true;
+    }
+  }
+
+  if (route.kind === "rapid-mapify-oracle") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const workspaceId = requestWorkspaceId(url, body);
+      const agentId = requestAgentId(url, body) || RAPID_MAPIFY_ORACLE_AGENT_ID;
+      const requestedOpId = typeof body.opId === "string" ? body.opId.trim() : "";
+      const action = normalizeRapidMapifyAction(body.action);
+      const explicitSelectedNodeId = typeof body.selectedNodeId === "string" ? body.selectedNodeId.trim() : "";
+      const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
+      const selectedNodeId = explicitSelectedNodeId || active?.nodeId || "";
+      if (!selectedNodeId) {
+        sendJson(res, 400, { ok: false, error: "selectedNodeId is required when no agent active node is set." });
+        return true;
+      }
+
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
+      const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
+      if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DOC_CONFLICT",
+          error: "Map changed externally. Refresh before running Rapid Mapify Oracle.",
+          mapId: route.mapId,
+          savedAt: savedDoc.savedAt,
+        });
+        return true;
+      }
+      if (!savedDoc.state.nodes[selectedNodeId]) {
+        sendJson(res, 404, { ok: false, error: `Selected node not found: ${selectedNodeId}` });
+        return true;
+      }
+
+      const activeNode: AgentActiveNodeState = {
+        workspaceId,
+        mapId: route.mapId,
+        agentId,
+        nodeId: selectedNodeId,
+        updatedAt: new Date().toISOString(),
+      };
+      agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
+
+      const fragment = resolveRapidMapifyFragment(savedDoc.state, selectedNodeId, action, requestedOpId);
+      const result = appendMfHNodesToParent(savedDoc.state, selectedNodeId, fragment.fragment);
+      const allResultLabels = [...result.added, ...result.merged].map((node) => node.label);
+      const teacherLabelSet = new Set(fragment.teacherLabels);
+      const teacherProximity = fragment.teacherLabels.length === 0
+        ? null
+        : allResultLabels.filter((label) => teacherLabelSet.has(label)).length / fragment.teacherLabels.length;
+
+      if (Boolean(body.dryRun)) {
+        sendJson(res, 200, {
+          ok: true,
+          dryRun: true,
+          mapId: route.mapId,
+          workspaceId,
+          activeNode,
+          opId: fragment.opId,
+          action: fragment.action,
+          source: fragment.source,
+          fragment: fragment.fragment,
+          added: result.added,
+          merged: result.merged,
+          diagnostics: fragment.diagnostics,
+          oracle: {
+            teacherLabels: fragment.teacherLabels,
+            teacherProximity,
+          },
+        });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(savedDoc.state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+        return true;
+      }
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
+      handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
+      sendJson(res, 200, {
+        ok: true,
+        mapId: route.mapId,
+        workspaceId,
+        activeNode,
+        savedAt,
+        opId: fragment.opId,
+        action: fragment.action,
+        source: fragment.source,
+        fragment: fragment.fragment,
+        added: result.added,
+        merged: result.merged,
+        diagnostics: fragment.diagnostics,
+        oracle: {
+          teacherLabels: fragment.teacherLabels,
+          teacherProximity,
+        },
+      });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "Rapid Mapify Oracle failed."),
+      });
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function handleSyncApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   route: { action: "status" | "push" | "pull"; mapId: string },
 ): Promise<boolean> {
   if (!route.mapId) {
-    sendSyncError(res, 400, "SYNC_DOC_ID_REQUIRED", "Document id is required.", route.mapId);
+    sendSyncError(res, 400, "SYNC_MAP_ID_REQUIRED", "Map id is required.", route.mapId);
     return true;
   }
 
-  if (!CLOUD_SYNC_ENABLED || !cloudTransport) {
+  const syncConfig = loadCloudSyncConfig();
+  const transport = syncConfig.transport;
+
+  if (!syncConfig.enabled || !transport) {
     if (route.action === "status") {
       // Status endpoint: return 200 with enabled:false so browser can update UI
       sendJson(res, 200, {
         ok: true,
         enabled: false,
         mode: "disabled",
-        documentId: route.mapId,
+        mapId: route.mapId,
       });
     } else {
       // Push/pull endpoints: return 503 so browser knows sync is unavailable
@@ -1746,12 +2944,24 @@ async function handleSyncApi(
     return true;
   }
 
-  const transport = cloudTransport;
   const modeLabel = transport.mode === "file" ? "file-mirror" : transport.mode;
 
   if (route.action === "status" && req.method === "GET") {
     try {
-      const result = await transport.status(route.mapId);
+      const result = await withTimeout(
+        transport.status(route.mapId),
+        SYNC_STATUS_TIMEOUT_MS,
+        () => ({
+          ok: false,
+          enabled: true,
+          mode: modeLabel,
+          mapId: route.mapId,
+          exists: false,
+          cloudSavedAt: null,
+          lastSyncedAt: null,
+          error: `Sync status timed out after ${SYNC_STATUS_TIMEOUT_MS}ms.`,
+        }),
+      );
       sendJson(res, 200, { ...result, mode: modeLabel });
     } catch (err) {
       sendSyncError(res, 500, "SYNC_STATUS_FAILED", (err as Error).message, route.mapId);
@@ -1778,20 +2988,20 @@ async function handleSyncApi(
         const isUnsupported = result.error?.includes("unsupported");
         const statusCode = isUnsupported ? 400 : 404;
         const code = isUnsupported ? "SYNC_CLOUD_UNSUPPORTED_FORMAT" : "SYNC_CLOUD_NOT_FOUND";
-        sendSyncError(res, statusCode, code, result.error || "Cloud document not found.", route.mapId);
+        sendSyncError(res, statusCode, code, result.error || "Cloud map not found.", route.mapId);
         return true;
       }
       const model = RapidMvpModel.fromJSON(result.state);
       const errors = model.validate();
       if (errors.length > 0) {
-        sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud document is invalid: ${errors.join(" | ")}`, route.mapId);
+        sendSyncError(res, 400, "SYNC_CLOUD_INVALID_MODEL", `Cloud map is invalid: ${errors.join(" | ")}`, route.mapId);
         return true;
       }
 
       // Create conflict backup of local state if provided
       let backup: { backupId: string; reason: string; createdAt: string } | undefined;
       if (localState) {
-        const entry = createConflictBackup(DATA_DIR, route.mapId, localState, "cloud-sync-pull");
+        const entry = createConflictBackup(currentDataDir(), route.mapId, localState, "cloud-sync-pull");
         backup = { backupId: entry.backupId, reason: entry.reason, createdAt: entry.createdAt };
       }
 
@@ -1801,8 +3011,8 @@ async function handleSyncApi(
         version: 1,
         savedAt: result.savedAt,
         state: model.toJSON(),
-        documentId: route.mapId,
-        docVersion: result.docVersion ?? undefined,
+        mapId: route.mapId,
+        mapVersion: result.mapVersion ?? undefined,
         ...(backup ? { backup } : {}),
       });
     } catch (err) {
@@ -1814,7 +3024,7 @@ async function handleSyncApi(
   if (route.action === "push" && req.method === "POST") {
     try {
       const rawBody = await readRequestBody(req);
-      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; baseDocVersion?: number | null; force?: boolean };
+      const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; baseMapVersion?: number | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
       if (!candidate.state || typeof candidate.state !== "object") {
         sendSyncError(res, 400, "SYNC_INVALID_JSON_FORMAT", "Invalid JSON format.", route.mapId);
@@ -1832,7 +3042,7 @@ async function handleSyncApi(
         return true;
       }
 
-      const payload: SavedDoc = {
+      const payload: SavedMap = {
         version: 1,
         savedAt: String(candidate.savedAt || new Date().toISOString()),
         state: model.toJSON(),
@@ -1844,8 +3054,8 @@ async function handleSyncApi(
         payload,
         parsed.baseSavedAt ?? null,
         Boolean(parsed.force),
-        DATA_DIR,
-        parsed.baseDocVersion ?? null,
+        currentDataDir(),
+        parsed.baseMapVersion ?? null,
       );
       if (!result.ok) {
         const statusCode = result.conflict ? 409 : 500;
@@ -1853,12 +3063,12 @@ async function handleSyncApi(
         const extra: Record<string, unknown> = {};
         if (result.conflict) {
           extra.cloudSavedAt = result.cloudSavedAt ?? null;
-          extra.cloudDocVersion = result.cloudDocVersion ?? null;
+          extra.cloudMapVersion = result.cloudMapVersion ?? null;
           if (result.remoteState) {
             extra.remoteState = result.remoteState;
           }
           // pushWithConflictBackup already created a backup; list the latest one
-          const backups = listConflictBackups(DATA_DIR, route.mapId);
+          const backups = listConflictBackups(currentDataDir(), route.mapId);
           if (backups.length > 0) {
             extra.backup = {
               backupId: backups[0].backupId,
@@ -1874,9 +3084,9 @@ async function handleSyncApi(
         ok: true,
         mode: modeLabel,
         savedAt: result.savedAt,
-        documentId: route.mapId,
+        mapId: route.mapId,
         forced: result.forced,
-        docVersion: result.cloudDocVersion ?? undefined,
+        mapVersion: result.cloudMapVersion ?? undefined,
       });
     } catch (err) {
       if (err instanceof SyntaxError) {
@@ -1969,7 +3179,7 @@ function mapAiErrorToResponse(err: unknown): { status: number; code: string; mes
   const message = (err as Error)?.message || "AI request failed.";
   switch (message) {
     case "AI_DOCUMENT_ID_REQUIRED":
-      return { status: 400, code: message, message: "documentId is required." };
+      return { status: 400, code: message, message: "mapId is required." };
     case "AI_SCOPE_ID_REQUIRED":
       return { status: 400, code: message, message: "scopeId is required." };
     case "AI_INPUT_REQUIRED":
@@ -2057,15 +3267,15 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
 }
 
 function startServer(): void {
-  ensureMapDocument(SQLITE_DB_PATH, ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
-  ensureMapDocument(SQLITE_DB_PATH, SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
-  // Initialize audit log file for the default document
-  initAuditFile(DATA_DIR, ACTIVE_MAP_ID);
+  ensureMap(currentSqliteDbPath(), ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
+  ensureMap(currentSqliteDbPath(), SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
+  // Initialize audit log file for the default map
+  initAuditFile(currentDataDir(), ACTIVE_MAP_ID);
 
   const server = createAppServer();
 
   server.listen(PORT, () => {
-    const isFirstRun = !fs.existsSync(FIRST_RUN_MARKER);
+    const isFirstRun = !fs.existsSync(currentFirstRunMarker());
     const params = new URLSearchParams({ ws: WORKSPACE_ID });
     if (DEFAULT_PAGE !== "home.html") {
       params.set("map", ACTIVE_MAP_ID);
@@ -2078,23 +3288,23 @@ function startServer(): void {
     console.log(`Viewer ready: ${url}`);
     openBrowser(url);
     if (isFirstRun) {
-      try { fs.writeFileSync(FIRST_RUN_MARKER, new Date().toISOString()); } catch { /* ignore */ }
+      try { fs.writeFileSync(currentFirstRunMarker(), new Date().toISOString()); } catch { /* ignore */ }
     }
     // Startup backup + periodic auto-backup
-    const BACKUP_DIR = path.join(DATA_DIR, "backups");
-    if (fs.existsSync(SQLITE_DB_PATH)) {
+    const BACKUP_DIR = path.join(currentDataDir(), "backups");
+    if (fs.existsSync(currentSqliteDbPath())) {
       const maxGen = Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || 10;
-      createBackup(SQLITE_DB_PATH, BACKUP_DIR)
+      createBackup(currentSqliteDbPath(), BACKUP_DIR)
         .then(() => { pruneOldBackups(BACKUP_DIR, maxGen); })
         .catch((err) => { console.error(`[backup] Startup backup failed: ${(err as Error).message}`); });
-      startAutoBackup(SQLITE_DB_PATH, BACKUP_DIR);
+      startAutoBackup(currentSqliteDbPath(), BACKUP_DIR);
     }
     // Auto sync setup
     if (cloudSyncConfig.autoSync && cloudTransport) {
       autoSyncHandle = startAutoSync(cloudTransport, cloudSyncConfig.autoSyncIntervalMs, {
         getLocalState: async () => {
           try {
-            const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, ACTIVE_MAP_ID);
+            const model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), ACTIVE_MAP_ID);
             return {
               version: 1,
               savedAt: new Date().toISOString(),
@@ -2108,18 +3318,18 @@ function startServer(): void {
         getBaseSavedAt: () => null,
         getBaseDocVersion: () => null,
         onPushSuccess: (result) => {
-          console.log(`[auto-sync] Push succeeded: docVersion=${result.cloudDocVersion ?? "?"}`);
+          console.log(`[auto-sync] Push succeeded: mapVersion=${result.cloudMapVersion ?? "?"}`);
         },
         onConflict: (result) => {
-          console.warn(`[auto-sync] Conflict detected: cloudDocVersion=${result.cloudDocVersion ?? "?"}`);
+          console.warn(`[auto-sync] Conflict detected: cloudMapVersion=${result.cloudMapVersion ?? "?"}`);
         },
         onError: (error) => {
           console.error(`[auto-sync] Error: ${error}`);
         },
         onPullSuccess: (result) => {
-          console.log(`[auto-sync] Initial pull succeeded: docVersion=${result.docVersion ?? "?"}`);
+          console.log(`[auto-sync] Initial pull succeeded: mapVersion=${result.mapVersion ?? "?"}`);
         },
-        dataDir: DATA_DIR,
+        dataDir: currentDataDir(),
       });
       console.log(`[auto-sync] Started with interval ${cloudSyncConfig.autoSyncIntervalMs}ms`);
     }
@@ -2129,11 +3339,11 @@ function startServer(): void {
     // Keep SSE connections alive through proxies
     setInterval(() => {
       const ping = ": heartbeat\n\n";
-      for (let i = docWatchClients.length - 1; i >= 0; i--) {
+      for (let i = mapWatchClients.length - 1; i >= 0; i--) {
         try {
-          docWatchClients[i].res.write(ping);
+          mapWatchClients[i].res.write(ping);
         } catch {
-          docWatchClients.splice(i, 1);
+          mapWatchClients.splice(i, 1);
         }
       }
     }, 15_000);
@@ -2152,6 +3362,7 @@ function parseCollabRoute(
   const rest = pathname.slice("/api/collab/".length);
 
   if (rest === "register") return { action: "register" };
+  if (rest === "config") return { action: "config" };
   if (rest === "heartbeat") return { action: "heartbeat" };
   if (rest === "unregister") return { action: "unregister" };
 
@@ -2175,6 +3386,32 @@ async function handleCollabApi(
   res: http.ServerResponse,
   route: { action: string; param?: string },
 ): Promise<void> {
+  if (route.action === "config" && req.method === "GET") {
+    if (!COLLAB_ENABLED) {
+      sendJson(res, 200, {
+        ok: true,
+        enabled: false,
+        requiresJoinToken: false,
+        workspaceId: WORKSPACE_ID,
+        workspaceLabel: WORKSPACE_LABEL,
+        mapId: ACTIVE_MAP_ID,
+        mapLabel: ACTIVE_MAP_LABEL,
+      });
+      return;
+    }
+
+    sendJson(res, 200, {
+      ok: true,
+      enabled: true,
+      requiresJoinToken: Boolean(COLLAB_JOIN_TOKEN),
+      workspaceId: WORKSPACE_ID,
+      workspaceLabel: WORKSPACE_LABEL,
+      mapId: ACTIVE_MAP_ID,
+      mapLabel: ACTIVE_MAP_LABEL,
+    });
+    return;
+  }
+
   if (!COLLAB_ENABLED) {
     sendJson(res, 404, { ok: false, error: "Collaboration not enabled. Set M3E_COLLAB=1." });
     return;
@@ -2186,10 +3423,18 @@ async function handleCollabApi(
       displayName?: string;
       role?: CollabRole;
       capabilities?: ("read" | "write")[];
+      joinToken?: string;
     };
     if (!body.displayName || !body.role) {
       sendJson(res, 400, { ok: false, error: "displayName and role are required." });
       return;
+    }
+    if (COLLAB_JOIN_TOKEN) {
+      const submitted = (body.joinToken || "").trim();
+      if (submitted !== COLLAB_JOIN_TOKEN) {
+        sendJson(res, 403, { ok: false, error: "Invalid join token." });
+        return;
+      }
     }
     const validRoles: CollabRole[] = ["owner", "human", "ai-supervised", "ai", "ai-readonly"];
     if (!validRoles.includes(body.role)) {
@@ -2197,7 +3442,7 @@ async function handleCollabApi(
       return;
     }
     const entity = registerEntity(body.displayName, body.role, body.capabilities ?? ["read", "write"]);
-    // Track presence for default doc on register
+    // Track presence for default map on register
     touchPresence(ACTIVE_MAP_ID, entity.entityId, body.displayName, body.role);
     sendJson(res, 200, { ok: true, entityId: entity.entityId, token: entity.token, priority: entity.priority });
     return;
@@ -2222,7 +3467,7 @@ async function handleCollabApi(
     }
     case "unregister": {
       if (req.method !== "DELETE") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
-      // Remove from all doc presence (use default doc for now)
+      // Remove from all map presence (use default map for now)
       removePresence(ACTIVE_MAP_ID, entity.entityId);
       unregisterEntity(entity.entityId);
       sendJson(res, 200, { ok: true });
@@ -2234,7 +3479,7 @@ async function handleCollabApi(
       sendJson(res, 200, {
         ok: true,
         entities: active.map((e) => ({ entityId: e.entityId, displayName: e.displayName, role: e.role, priority: e.priority })),
-        docVersion: getDocVersion(),
+        mapVersion: getMapVersion(),
       });
       return;
     }
@@ -2264,7 +3509,7 @@ async function handleCollabApi(
       if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
       if (!entity.capabilities.includes("write")) { sendJson(res, 403, { ok: false, error: "Write capability required." }); return; }
       const mapId = route.param;
-      if (!mapId) { sendJson(res, 400, { ok: false, error: "Document ID required." }); return; }
+      if (!mapId) { sendJson(res, 400, { ok: false, error: "Map ID required." }); return; }
       try {
         const rawBody = await readRequestBody(req);
         const body = JSON.parse(rawBody) as { scopeId?: string; lockId?: string; baseVersion?: number; changes?: { nodes?: Record<string, unknown> } };
@@ -2272,12 +3517,17 @@ async function handleCollabApi(
           sendJson(res, 400, { ok: false, error: "scopeId, lockId, baseVersion, and changes.nodes are required." });
           return;
         }
-        const result = mergeScopePush(mapId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, SQLITE_DB_PATH);
+        const result = mergeScopePush(mapId, body.scopeId, entity, body.lockId, body.baseVersion, body.changes.nodes as never, currentSqliteDbPath());
         // Update presence on push
         touchPresence(mapId, entity.entityId, entity.displayName, entity.role);
         if (!result.ok && result.error === "Scope lock not held.") {
           sendJson(res, 403, result);
         } else {
+          if (result.ok) {
+            const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
+            const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+            broadcastMapUpdate(mapId, savedAt, sourceTabId);
+          }
           sendJson(res, 200, result);
         }
       } catch (err) {
@@ -2291,7 +3541,20 @@ async function handleCollabApi(
 }
 
 export function createAppServer(): http.Server {
+  refreshCloudSyncConfigFromEnv();
+
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    instrumentRequestForPerfLog(req, res);
+    if (redirectLoopbackHost(req, res)) {
+      return;
+    }
+    if (await handleSystemClipboardApi(req, res)) {
+      return;
+    }
+    if (handleArtifactsApi(req, res)) {
+      return;
+    }
+
     const collabRoute = parseCollabRoute(req.url ?? "/");
     if (collabRoute) {
       await handleCollabApi(req, res, collabRoute);
@@ -2314,15 +3577,27 @@ export function createAppServer(): http.Server {
       return;
     }
 
+    const localFsRoute = parseLocalFsRoute(req.url ?? "/", req.method ?? "GET");
+    if (localFsRoute) {
+      await handleLocalFsApi(req, res, localFsRoute);
+      return;
+    }
+
     const vaultRoute = parseVaultRoute(req.url ?? "/", req.method ?? "GET");
     if (vaultRoute) {
       await handleVaultApi(req, res, vaultRoute);
       return;
     }
 
+    const blueprintRoute = parseBlueprintRoute(req.url ?? "/", req.method ?? "GET");
+    if (blueprintRoute) {
+      await handleBlueprintApi(req, res, blueprintRoute);
+      return;
+    }
+
     if (isVaultWatchSseRoute(req.url ?? "/") && req.method === "GET") {
       const url = new URL(req.url ?? "/", "http://localhost");
-      addVaultWatchClient(url.searchParams.get("documentId"), res);
+      addVaultWatchClient(url.searchParams.get("mapId"), res);
       return;
     }
 
@@ -2338,13 +3613,13 @@ export function createAppServer(): http.Server {
       return;
     }
 
-    const watchDocId = parseDocWatchRoute(req.url ?? "/");
+    const watchDocId = parseMapWatchRoute(req.url ?? "/");
     if (watchDocId !== null) {
       if (req.method !== "GET") {
         sendJson(res, 405, { error: "Method not allowed." });
         return;
       }
-      addDocWatchClient(watchDocId, res);
+      addMapWatchClient(watchDocId, res);
       return;
     }
 
@@ -2359,11 +3634,11 @@ export function createAppServer(): http.Server {
       const limitParam = url.searchParams.get("limit");
       const limit = limitParam ? Math.max(1, Math.min(1000, Number(limitParam) || 100)) : 100;
       const entries = getRecentAuditEntries(limit);
-      sendJson(res, 200, { ok: true, documentId: auditDocId, count: entries.length, entries });
+      sendJson(res, 200, { ok: true, mapId: auditDocId, count: entries.length, entries });
       return;
     }
 
-    // Path resolve endpoint: /api/maps/{mapId}/resolve?path=Map:Root/...
+    // Path resolve endpoint: /api/maps/{mapId}/resolve?path=Map:Root > ...
     const resolveDocId = parseMapResolveRoute(req.url ?? "/");
     if (resolveDocId !== null) {
       if (req.method !== "GET") {
@@ -2372,7 +3647,7 @@ export function createAppServer(): http.Server {
       }
       const url = new URL(req.url ?? "/", "http://localhost");
       const rawPath = url.searchParams.get("path");
-      const sep = url.searchParams.get("sep") || "/";
+      const sep = url.searchParams.get("sep") || ">";
       if (!rawPath) {
         sendJson(res, 400, { ok: false, error: { code: "PATH_INVALID", message: "Missing `path` query parameter." } });
         return;
@@ -2383,7 +3658,7 @@ export function createAppServer(): http.Server {
         return;
       }
       try {
-        const model = RapidMvpModel.loadFromSqlite(SQLITE_DB_PATH, resolveDocId);
+        const model = RapidMvpModel.loadFromSqlite(currentSqliteDbPath(), resolveDocId);
         const state = model.toJSON();
         const result = resolveNodePath(state, parsed.segments);
         if (!result.ok) {
@@ -2393,13 +3668,13 @@ export function createAppServer(): http.Server {
         }
         sendJson(res, 200, {
           ok: true,
-          documentId: resolveDocId,
+          mapId: resolveDocId,
           nodeId: result.nodeId,
           matched: result.matched,
         });
       } catch (err) {
         const message = (err as Error).message || "Unknown error";
-        const status = message === "Document not found." ? 404 : 500;
+        const status = message === "Map not found." ? 404 : 500;
         sendJson(res, status, { ok: false, error: { code: "DOC_ERROR", message } });
       }
       return;
@@ -2413,7 +3688,7 @@ export function createAppServer(): http.Server {
         return;
       }
       const list = getPresenceList(presenceDocId);
-      sendJson(res, 200, { ok: true, documentId: presenceDocId, count: list.length, users: list });
+      sendJson(res, 200, { ok: true, mapId: presenceDocId, count: list.length, users: list });
       return;
     }
 
@@ -2429,15 +3704,27 @@ export function createAppServer(): http.Server {
       return;
     }
 
+    const agentMapRoute = parseAgentMapRoute(req.url ?? "/");
+    if (agentMapRoute) {
+      await handleAgentMapApi(req, res, agentMapRoute);
+      return;
+    }
+
     const linkRoute = parseLinkRoute(req.url ?? "/", req.method ?? "GET");
     if (linkRoute) {
       await handleLinkApi(req, res, linkRoute);
       return;
     }
 
-    const mapId = parseDocId(req.url ?? "/");
+    const mapId = parseMapId(req.url ?? "/");
     if (mapId !== null) {
       await handleApi(req, res, mapId);
+      return;
+    }
+
+    const artifactFile = resolveArtifactFile(req.url ?? "/");
+    if (artifactFile) {
+      sendFile(res, artifactFile);
       return;
     }
 

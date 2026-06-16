@@ -53,16 +53,16 @@ test("backup list returns empty array when no backups exist", async () => {
   const res = await requestJson(`${baseUrl}/api/sync/backups/no-backups`);
   expect(res.response.status).toBe(200);
   expect(res.payload.ok).toBe(true);
-  expect(res.payload.documentId).toBe("no-backups");
+  expect(res.payload.mapId).toBe("no-backups");
   expect(res.payload.backups).toEqual([]);
 });
 
 test("pull with localState creates a conflict backup", async () => {
-  const docId = "backup-pull-test";
+  const mapId = "backup-pull-test";
   const localState = createState("LocalVersion");
 
   // First push something to cloud
-  const push = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  const push = await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("CloudVersion"), savedAt: "2026-04-02T00:00:00.000Z" }),
@@ -70,7 +70,7 @@ test("pull with localState creates a conflict backup", async () => {
   expect(push.response.status).toBe(200);
 
   // Pull with localState to trigger backup
-  const pull = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
+  const pull = await requestJson(`${baseUrl}/api/sync/pull/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ localState }),
@@ -82,24 +82,24 @@ test("pull with localState creates a conflict backup", async () => {
   expect(pull.payload.backup.reason).toBe("cloud-sync-pull");
 
   // Verify backup appears in list
-  const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
+  const list = await requestJson(`${baseUrl}/api/sync/backups/${mapId}`);
   expect(list.response.status).toBe(200);
   expect(list.payload.backups.length).toBe(1);
   expect(list.payload.backups[0].backupId).toBe(pull.payload.backup.backupId);
 });
 
 test("pull without localState does not create a backup", async () => {
-  const docId = "backup-pull-no-local";
+  const mapId = "backup-pull-no-local";
 
   // Push to cloud
-  await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("Cloud"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
 
   // Pull without localState
-  const pull = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
+  const pull = await requestJson(`${baseUrl}/api/sync/pull/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({}),
@@ -108,22 +108,22 @@ test("pull without localState does not create a backup", async () => {
   expect(pull.payload.backup).toBeUndefined();
 
   // No backup in list
-  const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
+  const list = await requestJson(`${baseUrl}/api/sync/backups/${mapId}`);
   expect(list.payload.backups.length).toBe(0);
 });
 
 test("push conflict creates a backup of the pushed state", async () => {
-  const docId = "backup-conflict-push";
+  const mapId = "backup-conflict-push";
 
   // Initial push
-  await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("V1"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
 
   // Second push (advances cloud)
-  await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
@@ -134,7 +134,7 @@ test("push conflict creates a backup of the pushed state", async () => {
   });
 
   // Conflicting push with stale baseSavedAt
-  const conflict = await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  const conflict = await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
@@ -150,23 +150,23 @@ test("push conflict creates a backup of the pushed state", async () => {
   expect(conflict.payload.backup.reason).toBe("cloud-conflict-push");
 
   // Backup should be in list
-  const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
+  const list = await requestJson(`${baseUrl}/api/sync/backups/${mapId}`);
   expect(list.payload.backups.length).toBe(1);
 });
 
 test("get backup returns full state", async () => {
-  const docId = "backup-get-test";
+  const mapId = "backup-get-test";
   const localState = createState("LocalGet");
 
   // Push to cloud
-  await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("Cloud"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
 
   // Pull with localState
-  const pull = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
+  const pull = await requestJson(`${baseUrl}/api/sync/pull/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ localState }),
@@ -174,7 +174,7 @@ test("get backup returns full state", async () => {
   const backupId = pull.payload.backup.backupId;
 
   // Get the backup
-  const get = await requestJson(`${baseUrl}/api/sync/backups/${docId}/${backupId}`);
+  const get = await requestJson(`${baseUrl}/api/sync/backups/${mapId}/${backupId}`);
   expect(get.response.status).toBe(200);
   expect(get.payload.ok).toBe(true);
   expect(get.payload.backup).toBeTruthy();
@@ -184,24 +184,24 @@ test("get backup returns full state", async () => {
 });
 
 test("get nonexistent backup returns 404", async () => {
-  const get = await requestJson(`${baseUrl}/api/sync/backups/doc/nonexistent-id`);
+  const get = await requestJson(`${baseUrl}/api/sync/backups/map/nonexistent-id`);
   expect(get.response.status).toBe(404);
   expect(get.payload.ok).toBe(false);
 });
 
 test("restore backup saves state to SQLite", async () => {
-  const docId = "backup-restore-test";
+  const mapId = "backup-restore-test";
   const localState = createState("RestoreMe");
 
   // Push to cloud
-  await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("Cloud"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
 
   // Pull with localState to create backup
-  const pull = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
+  const pull = await requestJson(`${baseUrl}/api/sync/pull/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ localState }),
@@ -209,7 +209,7 @@ test("restore backup saves state to SQLite", async () => {
   const backupId = pull.payload.backup.backupId;
 
   // Restore the backup
-  const restore = await requestJson(`${baseUrl}/api/sync/backups/${docId}/restore/${backupId}`, {
+  const restore = await requestJson(`${baseUrl}/api/sync/backups/${mapId}/restore/${backupId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
@@ -217,21 +217,21 @@ test("restore backup saves state to SQLite", async () => {
   expect(restore.payload.ok).toBe(true);
   expect(restore.payload.restored).toBe(true);
   expect(restore.payload.backupId).toBe(backupId);
-  expect(restore.payload.documentId).toBe(docId);
+  expect(restore.payload.mapId).toBe(mapId);
   expect(restore.payload.savedAt).toBeTruthy();
 });
 
 test("delete backup via DELETE method on get endpoint", async () => {
-  const docId = "backup-delete-test";
+  const mapId = "backup-delete-test";
   const localState = createState("DeleteMe");
 
   // Push + pull to create backup
-  await requestJson(`${baseUrl}/api/sync/push/${docId}`, {
+  await requestJson(`${baseUrl}/api/sync/push/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ state: createState("Cloud"), savedAt: "2026-04-02T00:00:00.000Z" }),
   });
-  const pull = await requestJson(`${baseUrl}/api/sync/pull/${docId}`, {
+  const pull = await requestJson(`${baseUrl}/api/sync/pull/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ localState }),
@@ -239,7 +239,7 @@ test("delete backup via DELETE method on get endpoint", async () => {
   const backupId = pull.payload.backup.backupId;
 
   // Delete
-  const del = await requestJson(`${baseUrl}/api/sync/backups/${docId}/${backupId}`, {
+  const del = await requestJson(`${baseUrl}/api/sync/backups/${mapId}/${backupId}`, {
     method: "DELETE",
   });
   expect(del.response.status).toBe(200);
@@ -247,6 +247,6 @@ test("delete backup via DELETE method on get endpoint", async () => {
   expect(del.payload.deleted).toBe(true);
 
   // Verify gone
-  const list = await requestJson(`${baseUrl}/api/sync/backups/${docId}`);
+  const list = await requestJson(`${baseUrl}/api/sync/backups/${mapId}`);
   expect(list.payload.backups.length).toBe(0);
 });

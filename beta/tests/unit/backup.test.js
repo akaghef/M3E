@@ -13,8 +13,8 @@ function makeTmpDir() {
 function createTestDb(dir) {
   const dbPath = path.join(dir, "test.sqlite");
   const db = new Database(dbPath);
-  db.exec("CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, version INTEGER, saved_at TEXT, state_json TEXT)");
-  db.prepare("INSERT INTO documents (id, version, saved_at, state_json) VALUES (?, ?, ?, ?)").run(
+  db.exec("CREATE TABLE IF NOT EXISTS maps (id TEXT PRIMARY KEY, version INTEGER, saved_at TEXT, state_json TEXT)");
+  db.prepare("INSERT INTO maps (id, version, saved_at, state_json) VALUES (?, ?, ?, ?)").run(
     "default", 1, new Date().toISOString(), '{"rootId":"r1","nodes":{},"links":{}}'
   );
   db.close();
@@ -34,7 +34,7 @@ test("createBackup produces a file in backupDir", async () => {
 
   // Verify backup is a valid SQLite file
   const backupDb = new Database(result, { readonly: true });
-  const row = backupDb.prepare("SELECT id FROM documents WHERE id = ?").get("default");
+  const row = backupDb.prepare("SELECT id FROM maps WHERE id = ?").get("default");
   backupDb.close();
   expect(row).toBeTruthy();
 

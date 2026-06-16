@@ -12,14 +12,14 @@ Create the worktree + agent definition so `red` can be invoked like visual/data/
 
 **Steps**
 - [ ] `git worktree add ../M3E-dev-red-security -b dev-red` from main
-- [ ] Copy `.claude/agents/visual.md` → `.claude/agents/red.md`; rewrite scope to: security review, threat modeling, penetration test scripts. Working dirs: `beta/src/node/`, `scripts/ops/`, `dev-docs/03_Spec/`.
+- [ ] Copy `.claude/agents/visual.md` → `.claude/agents/red.md`; rewrite scope to: security review, threat modeling, penetration test scripts. Working dirs: `beta/src/node/`, `scripts/ops/`, `docs/03_Spec/`.
 - [ ] Add `red` to `.claude/settings.json` agents allowlist if present.
 - [ ] (Optional) Install OWASP ZAP on host or VM for DAST runs.
 
 **Framework references**
 - OWASP ASVS v4 checklist
 - Supabase RLS policies docs (https://supabase.com/docs/guides/auth/row-level-security)
-- Existing `dev-docs/03_Spec/Command_Panel_Security_Test_Cases.md`
+- Existing `docs/03_Spec/Command_Panel_Security_Test_Cases.md`
 - Blocked items already on board: CSRF / LAN exposure / spoofing / input validation
 
 ---
@@ -45,7 +45,7 @@ Tree-indexer for large doc corpora. Needed for `decisions/` scope search and Map
 
 **Steps**
 - [ ] `pip install pageindex` in a Python venv under `tools/pageindex/` (do NOT pollute global python)
-- [ ] Confirm it can process `dev-docs/` end-to-end: `pageindex build dev-docs/`
+- [ ] Confirm it can process `docs/` end-to-end: `pageindex build docs/`
 - [ ] Decide: Python sidecar (spawn from node) vs. port to TS. Recommend sidecar for P1.
 
 **Framework references**
@@ -80,11 +80,11 @@ These can start immediately once the above is NOT a blocker for them:
 
 | Agent | First design deliverable | Output target |
 |---|---|---|
-| **data** (codex, running) | Continue Obsidian Watch/Sync layer design | `dev-docs/03_Spec/Obsidian_Vault_Integration.md` §Watch |
-| **visual** | Presentation Mode design doc | `dev-docs/03_Spec/Presentation_Mode.md` (new) |
-| **team** | VM e2e Cloud-Sync test matrix + Miro-style realtime draft | `dev-docs/03_Spec/Cloud_Sync_E2E.md` (new) |
-| **manage** (self) | review-pool skill spec + Workflow Layer L1-L5 | `dev-docs/02_Strategy/Workflow_Layers.md` (new) |
-| **data2** | PageIndex integration spec (pending §3) | `dev-docs/03_Spec/PageIndex_Integration.md` (new) |
+| **data** (codex, running) | Continue Obsidian Watch/Sync layer design | `docs/03_Spec/Obsidian_Vault_Integration.md` §Watch |
+| **visual** | Presentation Mode design doc | `docs/03_Spec/Presentation_Mode.md` (new) |
+| **team** | VM e2e Cloud-Sync test matrix + Miro-style realtime draft | `docs/03_Spec/Cloud_Sync_E2E.md` (new) |
+| **manage** (self) | review-pool skill spec + Workflow Layer L1-L5 | `docs/02_Strategy/Workflow_Layers.md` (new) |
+| **data2** | PageIndex integration spec (pending §3) | `docs/03_Spec/PageIndex_Integration.md` (new) |
 
 ---
 

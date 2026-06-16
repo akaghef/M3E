@@ -12,12 +12,64 @@
       "Bash(rm -f /tmp/*)",
       "Bash(rm -rf node_modules/.cache/*)",
       "Bash(rm -rf */node_modules/.cache/*)",
-      "Bash(rm -rf /tmp/*)"
+      "Bash(rm -rf /tmp/*)",
+      "WebSearch",
+      "WebFetch"
     ],
     "deny": [
       "Bash(rm *)",
       "Bash(rm -r *)",
       "Bash(rm -rf *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/session-start.sh",
+            "statusMessage": "Injecting sub-pj resume context..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/prompt-prj-check.sh",
+            "statusMessage": "Checking prj/* branch guardrails..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/stop-check.sh",
+            "statusMessage": "Checking sub-pj writeback before stop..."
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/post-compact.sh",
+            "statusMessage": "Injecting compaction recovery reminder..."
+          }
+        ]
+      }
     ]
   }
 }

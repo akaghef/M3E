@@ -4,21 +4,24 @@
     "type": "split",
     "children": [
       {
-        "id": "21a4d1bda3d17fdd",
+        "id": "33025a27325a069b",
         "type": "tabs",
         "children": [
           {
-            "id": "c06933e3ecb783aa",
+            "id": "eb3d7b7a05716de0",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "canvas",
               "state": {
-                "file": "dev-docs/00_Home/Current_Status.md",
-                "mode": "source",
-                "source": false
+                "file": "docs/for-akaghef/m3e_design_philosophy.canvas",
+                "viewState": {
+                  "x": 547.882979848575,
+                  "y": 128.49919021349947,
+                  "zoom": -0.9820688063170836
+                }
               },
-              "icon": "lucide-file",
-              "title": "Current_Status"
+              "icon": "lucide-layout-dashboard",
+              "title": "m3e_design_philosophy"
             }
           }
         ]
@@ -94,6 +97,7 @@
             "state": {
               "type": "backlink",
               "state": {
+                "file": "docs/for-akaghef/m3e_design_philosophy.canvas",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -103,7 +107,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "バックリンク"
+              "title": "m3e_design_philosophyへのバックリンク"
             }
           },
           {
@@ -180,15 +184,27 @@
       "bases:新規ベースを作成": false
     }
   },
-  "active": "c06933e3ecb783aa",
+  "active": "eb3d7b7a05716de0",
   "lastOpenFiles": [
+    "for-akaghef/bitwarden_biometric_setup.md",
+    "無題のファイル.canvas",
+    "for-akaghef/pj04_weekly_review_tasks.md",
+    "for-akaghef/hermes_setup.md",
+    "docs/for-akaghef/m3e_design_philosophy.canvas",
+    "beta/node_modules/better-sqlite3/README.md",
+    "docs/01_Vision/Strategy.md",
+    "docs/01_Vision/Weekly_Advance.md",
+    "docs/01_Vision/Vision.md",
+    "docs/01_Vision/Axes.md",
+    "docs/01_Vision/Core_Principles.md",
+    "docs/00_Home/Current_Status.md",
     "LICENSE",
-    "dev-docs/daily/sed7y2B2T",
-    "dev-docs/06_Operations/Command_Panel_Security_Test_Cases.md",
-    "dev-docs/ideas/260401_memo.md",
-    "dev-docs/ideas/260401_important_goal.md",
-    "dev-docs/03_Spec/Scope_Transition.md",
-    "dev-docs/00_Home/Worktree_Separation_Rules.md",
-    "dev-docs/mindmapsoftwares.md"
+    "docs/daily/sed7y2B2T",
+    "docs/06_Operations/Command_Panel_Security_Test_Cases.md",
+    "docs/ideas/260401_memo.md",
+    "docs/ideas/260401_important_goal.md",
+    "docs/03_Spec/Scope_Transition.md",
+    "docs/00_Home/Worktree_Separation_Rules.md",
+    "docs/mindmapsoftwares.md"
   ]
 }

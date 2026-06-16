@@ -18,25 +18,25 @@ test("FileTransport push + pull round-trip", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   const transport = new FileTransport(tmpDir);
 
-  const doc = {
+  const map = {
     version: 1,
     savedAt: "2026-04-09T00:00:00.000Z",
     state: { rootId: "r1", nodes: {} },
   };
 
-  const pushResult = await transport.push("test-doc", doc, null, false);
+  const pushResult = await transport.push("test-map", map, null, false);
   expect(pushResult.ok).toBe(true);
-  expect(pushResult.documentId).toBe("test-doc");
+  expect(pushResult.mapId).toBe("test-map");
 
-  const pullResult = await transport.pull("test-doc");
+  const pullResult = await transport.pull("test-map");
   expect(pullResult.ok).toBe(true);
-  expect(pullResult.documentId).toBe("test-doc");
+  expect(pullResult.mapId).toBe("test-map");
   expect(pullResult.state.rootId).toBe("r1");
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-test("FileTransport status returns exists false for missing doc", async () => {
+test("FileTransport status returns exists false for missing map", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   const transport = new FileTransport(tmpDir);
 
@@ -52,20 +52,20 @@ test("FileTransport push detects conflict", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   const transport = new FileTransport(tmpDir);
 
-  const doc1 = {
+  const map1 = {
     version: 1,
     savedAt: "2026-04-09T00:00:00.000Z",
     state: { rootId: "r1", nodes: {} },
   };
-  await transport.push("test-doc", doc1, null, false);
+  await transport.push("test-map", map1, null, false);
 
-  const doc2 = {
+  const map2 = {
     version: 1,
     savedAt: "2026-04-09T01:00:00.000Z",
     state: { rootId: "r1", nodes: {} },
   };
   // baseSavedAt does not match cloud savedAt => conflict
-  const pushResult = await transport.push("test-doc", doc2, "2026-04-08T00:00:00.000Z", false);
+  const pushResult = await transport.push("test-map", map2, "2026-04-08T00:00:00.000Z", false);
   expect(pushResult.ok).toBe(false);
   expect(pushResult.conflict).toBe(true);
 
@@ -76,26 +76,26 @@ test("FileTransport push with force bypasses conflict", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   const transport = new FileTransport(tmpDir);
 
-  const doc1 = {
+  const map1 = {
     version: 1,
     savedAt: "2026-04-09T00:00:00.000Z",
     state: { rootId: "r1", nodes: {} },
   };
-  await transport.push("test-doc", doc1, null, false);
+  await transport.push("test-map", map1, null, false);
 
-  const doc2 = {
+  const map2 = {
     version: 1,
     savedAt: "2026-04-09T01:00:00.000Z",
     state: { rootId: "r2", nodes: {} },
   };
-  const pushResult = await transport.push("test-doc", doc2, "2026-04-08T00:00:00.000Z", true);
+  const pushResult = await transport.push("test-map", map2, "2026-04-08T00:00:00.000Z", true);
   expect(pushResult.ok).toBe(true);
   expect(pushResult.forced).toBe(true);
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-test("FileTransport pull returns error for nonexistent doc", async () => {
+test("FileTransport pull returns error for nonexistent map", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-ft-"));
   const transport = new FileTransport(tmpDir);
 
@@ -118,7 +118,7 @@ test("SupabaseTransport constructor stores url and anonKey", () => {
 test("SupabaseTransport methods fail gracefully when supabase-js is not resolvable", async () => {
   const t = new SupabaseTransport("https://fake.supabase.co", "fake-key");
   try {
-    await t.status("test-doc");
+    await t.status("test-map");
   } catch (err) {
     expect(
       err.message || err.code,

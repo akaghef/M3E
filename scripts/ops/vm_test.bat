@@ -83,12 +83,7 @@ echo       Guest OS is ready.
 
 REM --- Step 4: Run test inside VM ---
 echo [4/5] Running test inside VM (timeout %WAIT_TEST%s)...
-"%VBOX%" guestcontrol "%VM_NAME%" run ^
-    --username "%GUEST_USER%" ^
-    --password "%GUEST_PASS%" ^
-    --exe "Z:\run_test.bat" ^
-    --timeout %WAIT_TEST%000 ^
-    --wait-stdout
+"%VBOX%" guestcontrol "%VM_NAME%" run --username "%GUEST_USER%" --password "%GUEST_PASS%" --exe "Z:\run_test.bat" --timeout %WAIT_TEST%000 --wait-stdout
 
 set "TEST_RC=%errorlevel%"
 if "%TEST_RC%"=="0" (
@@ -120,12 +115,7 @@ echo  M3E VM Test (warm — VM already running)
 echo ============================================================
 echo.
 echo Running test inside VM...
-"%VBOX%" guestcontrol "%VM_NAME%" run ^
-    --username "%GUEST_USER%" ^
-    --password "%GUEST_PASS%" ^
-    --exe "Z:\run_test.bat" ^
-    --timeout %WAIT_TEST%000 ^
-    --wait-stdout
+"%VBOX%" guestcontrol "%VM_NAME%" run --username "%GUEST_USER%" --password "%GUEST_PASS%" --exe "Z:\run_test.bat" --timeout %WAIT_TEST%000 --wait-stdout
 set "TEST_RC=%errorlevel%"
 echo.
 echo ============================================================

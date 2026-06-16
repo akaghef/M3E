@@ -1,0 +1,31 @@
+{
+  "opId": "RF1.expandSelectedNode",
+  "selectedNodeId": "n_animals",
+  "source": "wmf_h_converter",
+  "actions": [
+    {
+      "type": "appendChildren",
+      "parentId": "n_animals",
+      "nodes": [
+        {
+          "id": "wmfh_animals_1",
+          "text": "爬虫類",
+          "children": [],
+          "attributes": {}
+        },
+        {
+          "id": "wmfh_animals_2",
+          "text": "両生類",
+          "children": [],
+          "attributes": {}
+        },
+        {
+          "id": "wmfh_animals_3",
+          "text": "無脊椎動物",
+          "children": [],
+          "attributes": {}
+        }
+      ]
+    }
+  ]
+}

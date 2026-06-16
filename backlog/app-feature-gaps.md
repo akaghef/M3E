@@ -33,6 +33,13 @@ Home 画面実装後の会話で出た「アプリとして普通あるべきで
 - 自動タグ / 自動要約
 - ショートカット・マクロ（一連の操作を記録・再生）
 
+## Workflow / Agent state (PJ03 抽出)
+- workflow.* namespace attribute を map viewer で可視化する facet（color / badge / status indicator）— 動的 workflow state を scope 内で描画
+- 複数 scope に跨る workflow summary の集約表示
+- checkpoint JSON の schema versioning を M3E Resource として統合（将来）
+- reviews/Qn frontmatter を watch して blocker_cleared / human_approve / human_reject を自動発火する review_bridge
+- Workflow Evaluation Board（Phase 2 orchestrator の verdict を human 可視化する view）
+
 ## 運用・信頼性
 - オフラインモード / 同期ステータス UI
 - エラーレポート / クラッシュリカバリ（起動時の「前回の状態を復元しますか？」）
@@ -58,7 +65,7 @@ Home 画面実装後の会話で出た「アプリとして普通あるべきで
 - alias 参照の一覧 / リンク切れ検出
 
 ## コンテキスト
-- Home 画面仕様書 [dev-docs/03_Spec/Home_Screen.md](dev-docs/03_Spec/Home_Screen.md) 実装完了後の会話で列挙した
+- Home 画面仕様書 [docs/03_Spec/Home_Screen.md](docs/03_Spec/Home_Screen.md) 実装完了後の会話で列挙した
 - ユーザーの指示は「一旦バックログに積む」— 優先度・タスク化は未定
 - scratch ノードではなくファイルにしたのは量が多く、カテゴリ分けして保持したかったため
 

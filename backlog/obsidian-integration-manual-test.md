@@ -108,6 +108,6 @@ Pool these as `ROOT/SYSTEM/DEV/reviews/Obsidian Integration/Qn` on the beta map 
 
 ## 5. Reference
 
-- Spec: [dev-docs/03_Spec/Obsidian_Vault_Integration.md](../dev-docs/03_Spec/Obsidian_Vault_Integration.md)
-- Design: [dev-docs/design/local_file_integration.md](../dev-docs/design/local_file_integration.md)
+- Spec: [docs/03_Spec/Obsidian_Vault_Integration.md](../docs/03_Spec/Obsidian_Vault_Integration.md)
+- Design: [docs/design/local_file_integration.md](../docs/design/local_file_integration.md)
 - Original task brief: [backlog/codex-obsidian-tight-coupling.md](codex-obsidian-tight-coupling.md)

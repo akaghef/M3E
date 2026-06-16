@@ -1,0 +1,40 @@
+{
+  "id": "n_1780583736973_psz3ep",
+  "parentId": "n_1780555736293_wx7lt2",
+  "children": [
+    "n_1780586606062_jesu86",
+    "n_1780586606062_jil1ds",
+    "n_1780586606062_5iom00",
+    "n_1780586606062_fzhnks",
+    "n_1780586606062_fcssmc"
+  ],
+  "nodeType": "text",
+  "text": "カエル",
+  "collapsed": false,
+  "details": "",
+  "note": "",
+  "attributes": {},
+  "link": "",
+  "childLabels": [
+    {
+      "id": "n_1780586606062_jesu86",
+      "text": "体のつくり"
+    },
+    {
+      "id": "n_1780586606062_jil1ds",
+      "text": "生活史"
+    },
+    {
+      "id": "n_1780586606062_5iom00",
+      "text": "生息環境"
+    },
+    {
+      "id": "n_1780586606062_fzhnks",
+      "text": "食性"
+    },
+    {
+      "id": "n_1780586606062_fcssmc",
+      "text": "天敵"
+    }
+  ]
+}

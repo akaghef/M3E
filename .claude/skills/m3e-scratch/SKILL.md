@@ -20,7 +20,7 @@ scratch はタスクの種（seed）置き場 — 後で整理・昇格・削除
 ## 場所
 
 ```
-ROOT / SYSTEM / DEV / scratch
+M:(開発)> SYSTEM > DEV >> scratch
 ```
 
 scratch ノードID: `n_new_scratch_1775637602039`
@@ -42,7 +42,7 @@ scratch ノードID: `n_new_scratch_1775637602039`
 
 マップAPIを使う:
 
-1. **GET** `http://localhost:38482/api/docs/rapid-main` で現在のマップ状態を取得
+1. **GET** `http://localhost:4173/api/maps` で `label="開発"` の mapId を discovery し、対象 map を取得
 2. 新しいノードを作成:
    ```json
    {
@@ -131,4 +131,5 @@ scratch 配下のノードが増えてきたら、カテゴリごとにグルー
 - 種別（kind）の判断に迷ったら `memo` にしておく
 - 同じ内容が既にあるか軽くチェックし、明らかな重複は避ける（ただし厳密な重複排除は不要）
 - マップAPIが応答しない場合はユーザーに「ビューワーが起動していないようです」と伝える
+- user-facing path では canonical display path `M:(map label)> A > B >> C` を使う。`/` は legacy/API compatibility only、`\` は filesystem only
 - **整理時に葉ノードを削除することは禁止** — フォルダの作成と移動のみ

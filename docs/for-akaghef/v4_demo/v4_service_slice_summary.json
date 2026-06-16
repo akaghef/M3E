@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "runId": "20260502065353",
+  "publicBase": "https://akaghef-dell.tail6206ae.ts.net",
+  "workspaceId": "ws_team_swingby",
+  "mapId": "map_team_swingby_v4_slice_260502",
+  "pdfPath": "C:\\Users\\Akaghef\\dev\\M3E\\tmp\\AkaghefAlgebra\\Execution\\C2410\\Calc240908.pdf",
+  "vaultPath": "C:\\Users\\Akaghef\\dev\\M3E\\docs\\for-akaghef\\v4_demo\\obsidian_vault",
+  "vaultEditedPath": "C:\\Users\\Akaghef\\dev\\M3E\\docs\\for-akaghef\\v4_demo\\obsidian_vault\\V4 service-equivalent demo.md",
+  "screenshotPath": "C:\\Users\\Akaghef\\dev\\M3E\\docs\\for-akaghef\\v4_demo\\assets\\v4_service_slice_m3e.png",
+  "reportPath": "C:\\Users\\Akaghef\\dev\\M3E\\docs\\for-akaghef\\v4_demo\\260502_v4_service_slice_report.html",
+  "seededAt": "2026-05-02T06:53:54.887Z",
+  "flash": {
+    "draftId": "d_1777704834913_2",
+    "committedNodeIds": [
+      "n_1777704834917_ui7lx1",
+      "n_1777704834917_t9qr3j",
+      "n_1777704834918_aef3jt",
+      "n_1777704834918_k2gs9m",
+      "n_1777704834918_g414l9",
+      "n_1777704834918_dqoelv",
+      "n_1777704834918_j7p7lk"
+    ]
+  },
+  "exportEventSeen": true,
+  "importEventSeen": true,
+  "conflict": {
+    "staleSavedAt": "2026-05-02T06:53:54.972Z",
+    "hostSavedAt": "2026-05-02T06:53:54.992Z",
+    "staleStatus": 409,
+    "resolvedSavedAt": "2026-05-02T06:53:55.021Z"
+  },
+  "finalChecks": {
+    "hasFlashAnchor": true,
+    "hasMiroAnchor": true,
+    "hasObsidianAnchor": true,
+    "hasGithubAnchor": true,
+    "hasVmResolution": true,
+    "nodeCount": 9
+  },
+  "links": {
+    "viewer": "https://akaghef-dell.tail6206ae.ts.net/viewer.html?ws=ws_team_swingby&map=map_team_swingby_v4_slice_260502&access=edit",
+    "api": "https://akaghef-dell.tail6206ae.ts.net/api/maps/map_team_swingby_v4_slice_260502"
+  }
+}

@@ -1,0 +1,3 @@
+UNLICENSED
+
+Local workspace-only helper extension for this repository.

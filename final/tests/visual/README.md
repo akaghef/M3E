@@ -2,12 +2,16 @@
 
 ## 概要
 
-このフォルダには、Final Viewer の見た目崩れを検知するための
-Playwright ベースのビジュアル回帰テストを配置しています。
+このフォルダには、M3E beta Viewer の見た目崩れと主要なブラウザ操作の
+Playwright 回帰テストを配置しています。
 
-- テスト本体: `viewer.visual.spec.js`
-- 比較対象: `#board` 領域のスクリーンショット
+- テスト本体: `*.spec.js`
+- 比較対象: `#board` 領域のスクリーンショット、およびDOM/操作結果
 - 設定: `../../playwright.config.js`
+- 既定ポート: `14174`
+
+`test:visual` は daily beta の `4173` を再利用しません。テスト用の静的サーバー
+`../../test_server.js` を専用ポートで起動します。
 
 ## テストケース
 
@@ -33,10 +37,10 @@ Playwright ベースのビジュアル回帰テストを配置しています。
 リポジトリルートから:
 
 ```bash
-npm --prefix final run test:visual
+npm --prefix beta run test:visual
 ```
 
-`final` フォルダ内から:
+`beta` フォルダ内から:
 
 ```bash
 npm run test:visual
@@ -47,11 +51,11 @@ npm run test:visual
 見た目の変更を意図的に反映する場合のみ実行します。
 
 ```bash
-npm --prefix final run test:visual:update
+npm --prefix beta run test:visual:update
 ```
 
 ## 関連ファイル
 
-- `final/tests/visual/viewer.visual.spec.js`
-- `final/playwright.config.js`
-- `final/test_server.js`
+- `beta/tests/visual/viewer.visual.spec.js`
+- `beta/playwright.config.js`
+- `beta/test_server.js`

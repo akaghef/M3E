@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Diagram Syntax Gallery</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #202124;
+        --muted: #667085;
+        --line: #d9dee7;
+        --paper: #f6f8fb;
+        --panel: #ffffff;
+        --accent: #0f766e;
+        --accent-2: #b42318;
+        --accent-3: #2563eb;
+        --soft: #e7f5f2;
+        --warn: #fff0d6;
+        --code: #172033;
+        --shadow: 0 10px 24px rgba(22, 34, 51, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--paper);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      button,
+      textarea {
+        font: inherit;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow: auto;
+        padding: 24px 18px;
+        background: #ffffff;
+        border-right: 1px solid var(--line);
+      }
+
+      .brand {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 22px;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1.08;
+      }
+
+      .summary {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .source-link,
+      .card-title a {
+        color: var(--accent-3);
+        text-decoration: none;
+      }
+
+      .source-link {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .source-link:hover,
+      .card-title a:hover {
+        text-decoration: underline;
+      }
+
+      .filters {
+        display: grid;
+        gap: 8px;
+        margin: 22px 0;
+      }
+
+      .filter-btn {
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #ffffff;
+        color: var(--ink);
+        cursor: pointer;
+        text-align: left;
+        padding: 8px 10px;
+        font-weight: 700;
+      }
+
+      .filter-btn[aria-pressed="true"] {
+        border-color: var(--accent);
+        background: var(--soft);
+        color: #075e56;
+      }
+
+      .doc-note {
+        padding: 12px;
+        border: 1px solid #f2cc7f;
+        border-radius: 8px;
+        background: var(--warn);
+        color: #624200;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      main {
+        min-width: 0;
+        padding: 28px;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .toolbar h2 {
+        margin: 0;
+        font-size: 19px;
+      }
+
+      .toolbar-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .action-btn {
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #ffffff;
+        color: var(--ink);
+        cursor: pointer;
+        padding: 8px 10px;
+        font-weight: 800;
+      }
+
+      .action-btn.primary {
+        border-color: #0b6b63;
+        background: var(--accent);
+        color: #ffffff;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 16px;
+        align-items: start;
+      }
+
+      .card {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .card[data-rendered="false"] {
+        border-color: #f2b8b5;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .card-title {
+        display: grid;
+        gap: 4px;
+      }
+
+      .card-title h3 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.25;
+      }
+
+      .card-title p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .tag {
+        flex: 0 0 auto;
+        border-radius: 999px;
+        background: #e8eef9;
+        color: #1f4b99;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .preview {
+        min-height: 260px;
+        overflow: auto;
+        padding: 12px;
+        background: #fbfcfe;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .preview svg {
+        display: block;
+        max-width: 100%;
+        height: auto;
+      }
+
+      .preview pre {
+        margin: 0;
+        white-space: pre-wrap;
+        color: var(--accent-2);
+        font-size: 12px;
+      }
+
+      .code {
+        width: 100%;
+        min-height: 136px;
+        display: block;
+        resize: vertical;
+        border: 0;
+        background: var(--code);
+        color: #f8fbff;
+        padding: 12px;
+        line-height: 1.45;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 12px;
+        white-space: pre;
+      }
+
+      .status {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      @media (max-width: 820px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: static;
+          height: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        main {
+          padding: 18px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="eyebrow">Mermaid syntax</div>
+          <h1>Diagram gallery</h1>
+          <p class="summary">
+            Mermaid公式Syntax sidebarの全diagram typeを、コードと描画結果で一枚に集約。
+          </p>
+          <a class="source-link" href="https://mermaid.js.org/intro/syntax-reference.html" target="_blank" rel="noreferrer">
+            Official syntax index
+          </a>
+        </div>
+        <nav class="filters" aria-label="Gallery filters">
+          <button class="filter-btn" type="button" data-filter="all" aria-pressed="true">All diagrams</button>
+          <button class="filter-btn" type="button" data-filter="flow" aria-pressed="false">Flow / behavior</button>
+          <button class="filter-btn" type="button" data-filter="model" aria-pressed="false">Model / system</button>
+          <button class="filter-btn" type="button" data-filter="planning" aria-pressed="false">Planning</button>
+          <button class="filter-btn" type="button" data-filter="chart" aria-pressed="false">Charts</button>
+          <button class="filter-btn" type="button" data-filter="map" aria-pressed="false">Maps / structure</button>
+        </nav>
+        <div class="doc-note">
+          Source list: Flowchart through TreeView from the official Mermaid Diagram Syntax sidebar.
+          ZenUML is loaded via the official external diagram package.
+        </div>
+      </aside>
+      <main>
+        <div class="toolbar">
+          <div>
+            <h2>Rendered gallery</h2>
+            <p id="render-status" class="status">Loading Mermaid...</p>
+          </div>
+          <div class="toolbar-actions">
+            <button id="expand-code" class="action-btn" type="button" aria-pressed="false">Code height</button>
+            <button id="render-all" class="action-btn primary" type="button">Render</button>
+          </div>
+        </div>
+        <section id="gallery" class="grid" aria-label="Mermaid diagram syntax gallery"></section>
+      </main>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+      import zenuml from "https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@0.2.2/dist/mermaid-zenuml.esm.min.mjs";
+
+      const samples = [
+        ["MD1", "flow", "Flowchart", "Official flowchart syntax for nodes, links, and branching.", "flow", "flowchart", `flowchart TD
+  A[Start] --> B{Decision}
+  B -->|Yes| C[Done]
+  B -->|No| D[Retry]`],
+        ["MD2", "flow", "Sequence Diagram", "Message exchange over ordered participants.", "flow", "sequenceDiagram", `sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  A->>B: Hello Bob
+  B-->>A: Hello Alice`],
+        ["MD3", "model", "Class Diagram", "Classes, members, and inheritance relations.", "model", "classDiagram", `classDiagram
+  class Animal {
+    +String name
+    +move()
+  }
+  class Dog
+  Animal <|-- Dog`],
+        ["MD4", "flow", "State Diagram", "State transitions and lifecycle paths.", "flow", "stateDiagram", `stateDiagram-v2
+  [*] --> Idle
+  Idle --> Running: start
+  Running --> [*]: stop`],
+        ["MD5", "model", "Entity Relationship Diagram", "Entities and cardinality relationships.", "model", "entityRelationshipDiagram", `erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE_ITEM : contains`],
+        ["MD6", "flow", "User Journey", "Journey steps grouped by sections with scores and actors.", "flow", "userJourney", `journey
+  title Shopping
+  section Browse
+    Open store: 5: Customer
+    Pick item: 4: Customer
+  section Checkout
+    Pay: 3: Customer, Clerk`],
+        ["MD7", "planning", "Gantt", "Schedule chart with sections, dates, and dependencies.", "plan", "gantt", `gantt
+  title Project schedule
+  dateFormat  YYYY-MM-DD
+  section Build
+  Design :a1, 2026-01-01, 3d
+  Test :after a1, 2d`],
+        ["MD8", "chart", "Pie Chart", "Simple named slices with numeric values.", "chart", "pie", `pie title Diagram share
+  "Flow" : 42
+  "Tree" : 28
+  "Other" : 30`],
+        ["MD9", "chart", "Quadrant Chart", "Two-axis priority or positioning matrix.", "chart", "quadrantChart", `quadrantChart
+  title Priority matrix
+  x-axis Low Effort --> High Effort
+  y-axis Low Impact --> High Impact
+  quadrant-1 Strategic
+  quadrant-2 Quick wins
+  quadrant-3 Ignore
+  quadrant-4 Major bets
+  A: [0.25, 0.75]
+  B: [0.70, 0.35]`],
+        ["MD10", "model", "Requirement Diagram", "Requirements with ids, risk, and verification methods.", "model", "requirementDiagram", `requirementDiagram
+  requirement req1 {
+    id: 1
+    text: System shall render diagrams
+    risk: low
+    verifymethod: test
+  }`],
+        ["MD11", "planning", "GitGraph Diagram", "Git commit, branch, checkout, and merge history.", "plan", "gitgraph", `gitGraph
+  commit id: "init"
+  branch feature
+  checkout feature
+  commit id: "work"
+  checkout main
+  merge feature`],
+        ["MD12", "model", "C4 Diagram", "C4 context-style system relationship diagram.", "model", "c4", `C4Context
+  title System Context diagram
+  Person(user, "User", "Uses the system")
+  System(app, "App", "Mermaid renderer")
+  Rel(user, app, "Uses")`],
+        ["MD13", "map", "Mindmaps", "Indented hierarchy with optional mindmap shapes and icons.", "map", "mindmap", `mindmap
+  root((Mermaid))
+    Syntax
+      Flowchart
+      Timeline
+    Output
+      SVG`],
+        ["MD14", "planning", "Timeline", "Chronological events and grouped periods.", "plan", "timeline", `timeline
+  title History of Social Media Platform
+  2002 : LinkedIn
+  2004 : Facebook
+       : Google
+  2005 : YouTube
+  2006 : Twitter`],
+        ["MD15", "flow", "ZenUML", "Alternative sequence syntax; requires official external package registration.", "flow", "zenuml", `zenuml
+  title Order Service
+  Alice->Bob: Sync message
+  Bob->Alice: Reply`],
+        ["MD16", "chart", "Sankey", "CSV-like source, target, value flow diagram.", "chart", "sankey", `sankey-beta
+  A,B,10
+  A,C,5
+  B,D,7`],
+        ["MD17", "chart", "XY Chart", "Bar and line charts over x/y axes.", "chart", "xyChart", `xychart-beta
+  title "Sales Revenue"
+  x-axis [jan, feb, mar]
+  y-axis "Revenue" 0 --> 100
+  bar [30, 60, 80]
+  line [20, 50, 90]`],
+        ["MD18", "model", "Block Diagram", "Blocks, columns, arrows, and grouped structure.", "model", "block", `block-beta
+  columns 3
+  Frontend blockArrowId6<[" "]>(right) Backend
+  space:2 down<[" "]>(down)
+  Disk left<[" "]>(left) Database[("Database")]`],
+        ["MD19", "model", "Packet", "Network packet fields by bit range.", "model", "packet", `packet-beta
+  0-15: "Source Port"
+  16-31: "Destination Port"
+  32-63: "Sequence Number"`],
+        ["MD20", "planning", "Kanban", "Columns and tasks with optional metadata.", "plan", "kanban", `kanban
+  todo[Todo]
+    docs[Create docs]
+  doing[Doing]
+    render[Render samples]
+  done[Done]
+    verify[Verify]`],
+        ["MD21", "model", "Architecture", "Groups, services, and directional service relations.", "model", "architecture", `architecture-beta
+  group api(cloud)[API]
+  service db(database)[Database] in api
+  service server(server)[Server] in api
+  db:L -- R:server`],
+        ["MD22", "chart", "Radar", "Multi-axis values across one or more curves.", "chart", "radar", `radar-beta
+  title Skills
+  axis Frontend, Backend, Ops
+  curve A{80, 70, 60}
+  curve B{65, 85, 55}`],
+        ["MD23", "flow", "Event Modeling", "Timeframe entities for UI, command, and event flows.", "flow", "eventmodeling", `eventmodeling
+  tf 01 ui CartUI
+  tf 02 cmd AddItem
+  tf 03 evt ItemAdded`],
+        ["MD24", "chart", "Treemap", "Indented hierarchical rectangles with numeric leaf values.", "chart", "treemap", `treemap-beta
+  "Category A"
+    "Item A1": 10
+    "Item A2": 20
+  "Category B"
+    "Item B1": 15`],
+        ["MD25", "chart", "Venn", "Sets and unions using the v11.12+ beta syntax.", "chart", "venn", `venn-beta
+  set A: 10
+  set B: 8
+  union A,B: 3`],
+        ["MD26", "model", "Ishikawa", "Cause-and-effect fishbone structure.", "model", "ishikawa", `ishikawa-beta
+  Blurry Photo
+    Process
+      Out of focus
+      Shutter speed too slow
+    User
+      Shaky hands`],
+        ["MD27", "map", "Wardley", "Wardley map components by visibility and evolution coordinates.", "map", "wardley", `wardley-beta
+  title Coordinate Example
+  component Infrastructure [0.30, 0.20]
+  component Product [0.70, 0.60]
+  component User Need [0.90, 0.95]`],
+        ["MD28", "map", "TreeView", "Directory-like hierarchy from indentation.", "map", "treeView", `treeView-beta
+  "Root"
+    "src"
+      "index.js"
+      "app.js"
+    "docs"
+      "guide.md"`],
+      ].map(([id, category, title, note, tag, slug, code]) => ({
+        id,
+        category,
+        title,
+        note,
+        tag,
+        href: `https://mermaid.js.org/syntax/${slug}.html`,
+        code,
+      }));
+
+      const gallery = document.querySelector("#gallery");
+      const renderStatus = document.querySelector("#render-status");
+      const filterButtons = Array.from(document.querySelectorAll(".filter-btn"));
+      const expandButton = document.querySelector("#expand-code");
+      const renderAllButton = document.querySelector("#render-all");
+
+      try {
+        await mermaid.registerExternalDiagrams([zenuml]);
+      } catch (error) {
+        console.warn("ZenUML external diagram registration failed", error);
+      }
+
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "loose",
+        theme: "base",
+        mindmap: {
+          padding: 18,
+        },
+        themeVariables: {
+          primaryColor: "#e7f5f2",
+          primaryTextColor: "#202124",
+          primaryBorderColor: "#0f766e",
+          lineColor: "#667085",
+          secondaryColor: "#e8eef9",
+          tertiaryColor: "#fff0d6",
+          fontFamily:
+            "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+        },
+      });
+
+      function createCard(sample) {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.dataset.category = sample.category;
+        card.innerHTML = `
+          <header class="card-head">
+            <div class="card-title">
+              <h3><a href="${sample.href}" target="_blank" rel="noreferrer">${sample.id} ${sample.title}</a></h3>
+              <p>${sample.note}</p>
+            </div>
+            <span class="tag">${sample.tag}</span>
+          </header>
+          <div class="preview" id="preview-${sample.id}" aria-label="${sample.title} preview"></div>
+          <textarea class="code" spellcheck="false" aria-label="${sample.title} Mermaid source">${sample.code}</textarea>
+        `;
+        return card;
+      }
+
+      function mountCards() {
+        gallery.innerHTML = "";
+        samples.map(createCard).forEach((card) => gallery.append(card));
+      }
+
+      async function renderCard(card, index) {
+        const source = card.querySelector(".code").value.trim();
+        const preview = card.querySelector(".preview");
+        preview.innerHTML = "";
+        try {
+          const { svg } = await mermaid.render(`diagram-gallery-${index}-${Date.now()}`, source);
+          preview.innerHTML = svg;
+          card.dataset.rendered = "true";
+        } catch (error) {
+          preview.innerHTML = `<pre>${String(error)}</pre>`;
+          card.dataset.rendered = "false";
+        }
+      }
+
+      async function renderAll() {
+        const cards = Array.from(document.querySelectorAll(".card"));
+        renderStatus.textContent = `Rendering ${cards.length} samples...`;
+        for (const [index, card] of cards.entries()) {
+          await renderCard(card, index);
+        }
+        const failed = cards.filter((card) => card.dataset.rendered === "false").length;
+        renderStatus.textContent = failed === 0 ? "All samples rendered." : `${failed} sample(s) failed.`;
+      }
+
+      function applyFilter(filter) {
+        filterButtons.forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.filter === filter));
+        });
+        for (const card of document.querySelectorAll(".card")) {
+          card.classList.toggle("hidden", filter !== "all" && card.dataset.category !== filter);
+        }
+      }
+
+      filterButtons.forEach((button) => {
+        button.addEventListener("click", () => applyFilter(button.dataset.filter));
+      });
+
+      expandButton.addEventListener("click", () => {
+        const expanded = expandButton.getAttribute("aria-pressed") !== "true";
+        expandButton.setAttribute("aria-pressed", String(expanded));
+        for (const code of document.querySelectorAll(".code")) {
+          code.style.minHeight = expanded ? "240px" : "";
+        }
+      });
+
+      renderAllButton.addEventListener("click", renderAll);
+
+      mountCards();
+      await renderAll();
+    </script>
+  </body>
+</html>

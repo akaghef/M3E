@@ -11,12 +11,12 @@ function makeTempPath(...segments) {
   return { base, filePath: path.join(base, ...segments) };
 }
 
-test("saveToFile creates missing directories and writes versioned document", () => {
+test("saveToFile creates missing directories and writes versioned map", () => {
   const model = new RapidMvpModel("Root");
   const rootId = model.state.rootId;
   model.addNode(rootId, "Child");
 
-  const { base, filePath } = makeTempPath("nested", "deep", "doc.json");
+  const { base, filePath } = makeTempPath("nested", "deep", "map.json");
 
   model.saveToFile(filePath);
 
@@ -111,9 +111,9 @@ test("saveToSqlite and loadFromSqlite round-trip", () => {
   };
 
   const { base, filePath } = makeTempPath("nested", "rapid.sqlite");
-  model.saveToSqlite(filePath, "doc-a");
+  model.saveToSqlite(filePath, "map-a");
 
-  const loaded = RapidMvpModel.loadFromSqlite(filePath, "doc-a");
+  const loaded = RapidMvpModel.loadFromSqlite(filePath, "map-a");
   expect(loaded.toJSON()).toEqual(model.toJSON());
 
   fs.rmSync(base, { recursive: true, force: true });
@@ -207,7 +207,7 @@ test("loadFromSqlite rejects unsupported version", () => {
   const { base, filePath } = makeTempPath("unsupported.sqlite");
   const db = new Database(filePath);
   db.exec(`
-    CREATE TABLE IF NOT EXISTS documents (
+    CREATE TABLE IF NOT EXISTS maps (
       id TEXT PRIMARY KEY,
       version INTEGER NOT NULL,
       saved_at TEXT NOT NULL,
@@ -215,11 +215,11 @@ test("loadFromSqlite rejects unsupported version", () => {
     )
   `);
   db.prepare(
-    "INSERT INTO documents (id, version, saved_at, state_json) VALUES (?, ?, ?, ?)",
-  ).run("doc-bad", 2, new Date().toISOString(), JSON.stringify({}));
+    "INSERT INTO maps (id, version, saved_at, state_json) VALUES (?, ?, ?, ?)",
+  ).run("map-bad", 2, new Date().toISOString(), JSON.stringify({}));
   db.close();
 
-  expect(() => RapidMvpModel.loadFromSqlite(filePath, "doc-bad")).toThrow(
+  expect(() => RapidMvpModel.loadFromSqlite(filePath, "map-bad")).toThrow(
     "Unsupported or invalid save format.",
   );
 
@@ -248,7 +248,7 @@ test("loadFromSqlite rejects invalid graph state", () => {
 
   const db = new Database(filePath);
   db.exec(`
-    CREATE TABLE IF NOT EXISTS documents (
+    CREATE TABLE IF NOT EXISTS maps (
       id TEXT PRIMARY KEY,
       version INTEGER NOT NULL,
       saved_at TEXT NOT NULL,
@@ -256,11 +256,11 @@ test("loadFromSqlite rejects invalid graph state", () => {
     )
   `);
   db.prepare(
-    "INSERT INTO documents (id, version, saved_at, state_json) VALUES (?, ?, ?, ?)",
-  ).run("doc-invalid", 1, new Date().toISOString(), JSON.stringify(invalidState));
+    "INSERT INTO maps (id, version, saved_at, state_json) VALUES (?, ?, ?, ?)",
+  ).run("map-invalid", 1, new Date().toISOString(), JSON.stringify(invalidState));
   db.close();
 
-  expect(() => RapidMvpModel.loadFromSqlite(filePath, "doc-invalid")).toThrow(/Invalid model after load:/);
+  expect(() => RapidMvpModel.loadFromSqlite(filePath, "map-invalid")).toThrow(/Invalid model after load:/);
 
   fs.rmSync(base, { recursive: true, force: true });
 });

@@ -1,0 +1,42 @@
+{
+  "opId": "RF1.expandSelectedNode",
+  "selectedNodeId": "n_animals",
+  "source": "m3e_live_append_mf_h_api",
+  "actions": [
+    {
+      "type": "appendChildren",
+      "parentId": "n_animals",
+      "nodes": [
+        {
+          "id": "live_rf1_1",
+          "text": "爬虫類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class"
+          }
+        },
+        {
+          "id": "live_rf1_2",
+          "text": "両生類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class"
+          }
+        },
+        {
+          "id": "live_rf1_3",
+          "text": "無脊椎動物",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class"
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "liveMapId": "codex-pn-verify-5",
+    "liveParentNodeId": "n_1780554236230_1_fgrqs5",
+    "savedAt": "2026-06-04T06:23:56.263Z"
+  }
+}
