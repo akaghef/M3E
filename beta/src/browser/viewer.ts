@@ -11674,6 +11674,7 @@ function deleteSelectedGraphLink(): boolean {
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   touchDocument();
+  flushAutosaveNow();
   setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
   return true;
 }
@@ -12076,6 +12077,7 @@ function deleteSelected(): void {
     viewState.currentScopeRootId = viewState.currentScopeId;
   }
   touchDocument();
+  flushAutosaveNow();
 }
 
 function toggleCollapse(): void {
@@ -12453,6 +12455,21 @@ function scheduleAutosave(): void {
     autosaveTimer = null;
     void saveDocToLocalDb(false);
   }, AUTOSAVE_DELAY_MS);
+}
+
+function flushAutosaveNow(): void {
+  if (!map || isReadOnlyLink()) {
+    return;
+  }
+  if (autosaveTimer !== null) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  void saveDocToLocalDb(false).then((ok) => {
+    if (!ok) {
+      setStatus("Local save failed after delete.", true);
+    }
+  });
 }
 
 function isValidAppState(s: unknown): s is AppState {
