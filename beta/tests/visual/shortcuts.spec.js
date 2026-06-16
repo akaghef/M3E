@@ -18,6 +18,8 @@
  * Total: 7 nodes
  */
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
 const { spawnSync } = require("child_process");
 const {
   launchViewer,
@@ -31,6 +33,21 @@ const {
   expectMetaContains,
   expectStatusContains,
 } = require("../helpers/viewer_test_utils");
+
+const FIXTURE_PATH = path.resolve(__dirname, "..", "fixtures", "shortcut_test.json");
+
+function shortcutFixtureWithGraphLink() {
+  const payload = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
+  payload.state.links = {
+    "link-child-b": {
+      id: "link-child-b",
+      sourceNodeId: "child-b",
+      targetNodeId: "grandchild-a1",
+      relationType: "related",
+    },
+  };
+  return payload;
+}
 
 function readMacClipboard() {
   if (process.platform !== "darwin") return null;
@@ -305,6 +322,24 @@ test.describe("Delete and Backspace: remove node", () => {
 
     const afterCount = await getNodeCount(page);
     expect(afterCount).toBe(initialCount - 1);
+  });
+
+  test("Delete removes graph links connected to the deleted node", async ({ page }) => {
+    await launchViewer(page, shortcutFixtureWithGraphLink());
+    await focusBoard(page);
+
+    const initialCount = await getNodeCount(page);
+    expect(await getLinkCount(page)).toBe(1);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Delete");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(initialCount - 1);
+    expect(await getLinkCount(page)).toBe(0);
   });
 });
 

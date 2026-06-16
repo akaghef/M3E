@@ -11679,6 +11679,17 @@ function deleteSelectedGraphLink(): boolean {
   return true;
 }
 
+function deleteGraphLinksForNode(nodeId: string): void {
+  if (!map?.state.links) {
+    return;
+  }
+  Object.entries(map.state.links).forEach(([linkId, link]) => {
+    if (link.sourceNodeId === nodeId || link.targetNodeId === nodeId) {
+      delete map!.state.links![linkId];
+    }
+  });
+}
+
 function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
   if (!map || !viewState.selectedLinkId) {
     return false;
@@ -12058,6 +12069,7 @@ function deleteSelected(): void {
       if (!isAliasNode(current)) {
         markAliasesBrokenInViewer(currentId, uiLabel(current));
       }
+      deleteGraphLinksForNode(currentId);
       stack.push(...(current.children || []));
       viewState.reparentSourceIds.delete(currentId);
       delete map!.state.nodes[currentId];
