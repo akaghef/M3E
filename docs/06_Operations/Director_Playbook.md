@@ -59,6 +59,21 @@ scripts/ops/worktree.sh rm <task>      # remove after PR merged (guards uncommit
 - Any scope creep, dead code, or broken conventions? Send back if so.
 - Is `dev-beta` still the integration target and the PR base correct?
 
+## 4.5 Bang / persistent-rule review gate
+
+When akaghef's latest instruction contains `!!!` / `！！！`, or asks for recurrence prevention after an agent failure, the Director must treat the cycle as an LV3 persistent-rule task.
+
+Director obligations:
+
+1. State `Scope: LV3. Target=<...>. Adjacent=<...>. Excluded=<...>.`
+2. Identify the failed instruction or missing rule path when correcting an agent failure.
+3. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `protocols/`, `protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
+4. If any skill or skill trigger changes, route through `skill-creator` and update the skill frontmatter `description`.
+5. Require Codex to run `scripts/ops/check-persistent-rule-gate.sh` when present.
+6. Do not mark recurrence prevention complete if the result is only a chat promise.
+
+Live beta data guard: do not allow Codex to create fixture, test, or temporary maps in the active beta personal workspace for verification. Use Playwright fixtures, isolated `testRun` state, a separate temporary workspace, or an explicit backup/restore cleanup flow.
+
 ## 5. Improvement Log (append-only — newest last)
 
 Each entry: `YYYY-MM-DD — what changed / what we learned / why`. This is how the
@@ -119,3 +134,8 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   akaghef (or a Codex session that has working browser access). Don't burn turns on screenshots.
   Aside: `codex-session` `start.sh` hardcoded `MODEL=gpt-5.2` (rejected by ChatGPT-account Codex);
   patched to `${MODEL:-gpt-5.5}`, and its scripts needed `chmod +x`.
+- 2026-06-16 — Added the LV3 persistent-rule gate for `!!!` / `！！！` and recurrence-prevention
+  requests. Director must require a durable rule-system change instead of accepting chat-only
+  promises. Skill trigger changes must go through `skill-creator` and update frontmatter
+  `description`. Also codified the live beta data guard: no fixture/test/temp maps in the active
+  beta personal workspace for verification.

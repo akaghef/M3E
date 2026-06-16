@@ -25,6 +25,10 @@ require_pattern() {
 require_pattern "AGENTS.md" "LV3 Persistent Rule Change Gate" "root LV3 gate"
 require_pattern "AGENTS.md" "skill-creator" "skill-creator routing"
 require_pattern "AGENTS.md" "chat promise" "chat-only promise prohibition"
+require_pattern "CLAUDE.md" "persistent rule gate" "Claude LV3 gate"
+require_pattern "CLAUDE.md" "skill-creator" "Claude skill-creator routing"
+require_pattern "docs/06_Operations/Director_Playbook.md" "persistent-rule review gate" "Director persistent-rule review gate"
+require_pattern "docs/06_Operations/Director_Playbook.md" "Live beta data guard" "Director live beta data guard"
 
 require_pattern "protocols/persistent-rule-change-protocol.md" "!!!|！！！" "triple-bang trigger"
 require_pattern "protocols/persistent-rule-change-protocol.md" "skill-creator" "skill trigger update routing"

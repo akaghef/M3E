@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - "AGENTS.md"
+      - "CLAUDE.md"
+      - "docs/06_Operations/Director_Playbook.md"
       - "protocols/**"
       - "agent_instructions/**"
       - ".codex/skills/**"
@@ -15,6 +17,8 @@ on:
   pull_request:
     paths:
       - "AGENTS.md"
+      - "CLAUDE.md"
+      - "docs/06_Operations/Director_Playbook.md"
       - "protocols/**"
       - "agent_instructions/**"
       - ".codex/skills/**"
