@@ -4,24 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "33025a27325a069b",
+        "id": "da14d0fc8f57404c",
         "type": "tabs",
         "children": [
           {
-            "id": "eb3d7b7a05716de0",
+            "id": "9510db22caadb6d3",
             "type": "leaf",
             "state": {
-              "type": "canvas",
-              "state": {
-                "file": "docs/for-akaghef/m3e_design_philosophy.canvas",
-                "viewState": {
-                  "x": 547.882979848575,
-                  "y": 128.49919021349947,
-                  "zoom": -0.9820688063170836
-                }
-              },
-              "icon": "lucide-layout-dashboard",
-              "title": "m3e_design_philosophy"
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "新規タブ"
             }
           }
         ]
@@ -97,7 +90,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "docs/for-akaghef/m3e_design_philosophy.canvas",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -107,7 +99,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "m3e_design_philosophyへのバックリンク"
+              "title": "バックリンク"
             }
           },
           {
@@ -184,13 +176,31 @@
       "bases:新規ベースを作成": false
     }
   },
-  "active": "eb3d7b7a05716de0",
+  "active": "9510db22caadb6d3",
   "lastOpenFiles": [
+    "docs/for-akaghef/m3e_design_philosophy_nested.canvas",
+    "docs/for-akaghef/m3e_design_philosophy.canvas",
+    "beta/data/backups/M3E_dataV1_20260617_090133.sqlite",
+    "artifacts/keyboard-shortcuts/kbd_map.py",
+    "artifacts/keyboard-shortcuts/kbd_detect.py",
+    "artifacts/keyboard-shortcuts/README.txt",
+    "docs/for-akaghef/handoff_data_issue.md",
+    "docs/tasks/handoff_260617_obsidian_mdd_library_context.md",
+    "scripts/ops/check-persistent-rule-gate.sh",
+    "protocols/persistent-rule-change-protocol.md",
+    "protocols/contracts/persistent_rule_change_contract.yaml",
+    "docs/legacy/M3E仕様設計書.md",
+    "docs/tasks/handoff_260617_obsidian_canvas_projection.md",
+    "beta/prototypes/langgraph-study/styles.css",
+    "beta/prototypes/langgraph-study/langgraph-implementation-examples.md",
+    "beta/prototypes/langgraph-study/index.html",
+    "beta/prototypes/langgraph-study/app.js",
+    "beta/prototypes/langgraph-study",
+    "logs/nightly-autopilot-2026-06-17.md",
     "for-akaghef/bitwarden_biometric_setup.md",
     "無題のファイル.canvas",
     "for-akaghef/pj04_weekly_review_tasks.md",
     "for-akaghef/hermes_setup.md",
-    "docs/for-akaghef/m3e_design_philosophy.canvas",
     "beta/node_modules/better-sqlite3/README.md",
     "docs/01_Vision/Strategy.md",
     "docs/01_Vision/Weekly_Advance.md",
@@ -198,8 +208,6 @@
     "docs/01_Vision/Axes.md",
     "docs/01_Vision/Core_Principles.md",
     "docs/00_Home/Current_Status.md",
-    "LICENSE",
-    "docs/daily/sed7y2B2T",
     "docs/06_Operations/Command_Panel_Security_Test_Cases.md",
     "docs/ideas/260401_memo.md",
     "docs/ideas/260401_important_goal.md",

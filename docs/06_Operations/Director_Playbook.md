@@ -153,6 +153,19 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   permitted`) → its `git add`/commit fails even though the file edits land on disk. Don't retry inside
   Codex; the Director commits from its own Bash (git/PR flow is the Director's domain anyway). Note the
   error is "cannot *create*" the lock, i.e. no stale lock to clean up.
+- 2026-06-16 — Built a second artifact (`artifacts/keyboard-shortcuts/`: interactive hover map of the
+  viewer hotkeys on a Magic Keyboard photo). The reusable breakthrough is a way to close the
+  visual-verification gap the playbook calls impossible (entry 2026-06-16 #4): **for image/geometry work,
+  the Director CAN verify by rendering an annotated image and Read-ing it back.** Concretely: pip-install
+  numpy+PIL into a throwaway venv (`python3 -m venv /tmp/v && /tmp/v/bin/pip install pillow numpy`), detect
+  the structure (here: key grid via row/column brightness-gap profiles on the JPEG), draw the result onto
+  the source image, save a PNG, and `Read` that PNG to confirm alignment — iterate until correct, THEN bake
+  the measured coordinates. This beat two rounds of blind parametric-model guessing + a user-driven
+  calibration UI: the model numbers were wrong and un-tunable blind; measured boxes (80 keys, % of image)
+  fixed it in one pass. Lesson: when output is visual but *deterministically measurable*, measure+render+Read
+  instead of guessing or offloading the eyeball to akaghef. (Also reconfirmed: background Bash starts at an
+  unspecified cwd — always `cd /Users/nisimoriyuuya/dev/M3E && scripts/codex.sh …` or it 127s on the
+  relative path; and `--final` is exec-only, not valid on `resume`.)
 - 2026-06-16 — **Adopted Kiro / cc-sdd as M3E's default execution harness** (akaghef decision,
   relayed from a codex DACP-rollout notice). Phase ownership is **hybrid**: Claude owns
   discovery / steering / impl-review / verify; Codex drafts spec/design/tasks and implements.
