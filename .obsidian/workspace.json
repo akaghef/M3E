@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "da14d0fc8f57404c",
+        "id": "abce8d8a5bdcdcef",
         "type": "tabs",
         "children": [
           {
-            "id": "9510db22caadb6d3",
+            "id": "54b4241a0def2c85",
             "type": "leaf",
             "state": {
               "type": "empty",
@@ -176,7 +176,7 @@
       "bases:新規ベースを作成": false
     }
   },
-  "active": "9510db22caadb6d3",
+  "active": "54b4241a0def2c85",
   "lastOpenFiles": [
     "docs/for-akaghef/m3e_design_philosophy_nested.canvas",
     "docs/for-akaghef/m3e_design_philosophy.canvas",
