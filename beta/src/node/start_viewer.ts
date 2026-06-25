@@ -39,6 +39,13 @@ import {
   setMapVersion,
   type CollabRole,
 } from "./collab";
+import {
+  layout as layoutPortLayout,
+  type LayoutNodeMetric,
+  type LayoutOptions,
+  type LayoutResult,
+  type VisibleLayoutGraph,
+} from "../shared/layout_port";
 import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
 import {
   appendPerfLog,
@@ -319,6 +326,13 @@ function isVaultWatchSseRoute(urlPath: string): boolean {
 function parseMapResolveRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   const match = pathname.match(/^\/api\/maps\/([^/]+)\/resolve$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
+}
+
+function parseLayoutSnapshotRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/layout-snapshot$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
@@ -2118,6 +2132,90 @@ async function handleLinkApi(
   }
 }
 
+function labelForLayoutSnapshot(node: TreeNode | undefined): string {
+  if (!node) return "Untitled";
+  return node.aliasLabel?.trim() || node.text?.trim() || "Untitled";
+}
+
+function measureLayoutSnapshotNode(node: TreeNode | undefined, nodeId: string, displayRootId: string): LayoutNodeMetric {
+  const label = labelForLayoutSnapshot(node);
+  const fontSize = nodeId === displayRootId ? 18 : 14;
+  const minWidth = nodeId === displayRootId ? 180 : 110;
+  const width = Math.max(minWidth, Math.min(280, label.length * fontSize * 0.62 + 36));
+  const height = nodeId === displayRootId ? 58 : 38;
+  return { w: Math.round(width), h: height, fontSize, labelLines: [label.slice(0, 48)] };
+}
+
+function buildLayoutSnapshot(state: AppState, scopeId: string | null): {
+  input: {
+    graph: { nodeIds: string[]; children: Record<string, string[]>; graphLinks: NonNullable<AppState["links"]>[string][] };
+    boxSizes: Record<string, LayoutNodeMetric>;
+    mode: "tree";
+    options: LayoutOptions;
+  };
+  result: LayoutResult;
+} {
+  const displayRootId = scopeId && state.nodes[scopeId] ? scopeId : state.rootId;
+  const nodeIds: string[] = [];
+  const children: Record<string, string[]> = {};
+  const collect = (nodeId: string): void => {
+    const node = state.nodes[nodeId];
+    if (!node || nodeIds.includes(nodeId)) return;
+    nodeIds.push(nodeId);
+    children[nodeId] = (node.children || []).filter((childId) => Boolean(state.nodes[childId]));
+    children[nodeId]!.forEach(collect);
+  };
+  collect(displayRootId);
+  const boxSizes: Record<string, LayoutNodeMetric> = {};
+  nodeIds.forEach((nodeId) => {
+    boxSizes[nodeId] = measureLayoutSnapshotNode(state.nodes[nodeId], nodeId, displayRootId);
+  });
+  const graphLinks = Object.values(state.links || {});
+  const graph: VisibleLayoutGraph = {
+    nodeIds,
+    childrenOf: (nodeId) => children[nodeId] || [],
+    graphLinks,
+  };
+  const options: LayoutOptions = {
+    displayRootId,
+    structuredMode: "tree",
+    density: "balanced",
+    branchDirection: "both",
+  };
+  return {
+    input: {
+      graph: { nodeIds, children, graphLinks },
+      boxSizes,
+      mode: "tree",
+      options,
+    },
+    result: layoutPortLayout(graph, boxSizes, "tree", options),
+  };
+}
+
+function handleLayoutSnapshotApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): boolean {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return true;
+  }
+  const url = new URL(req.url ?? "/", "http://localhost");
+  try {
+    const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+    const snapshot = buildLayoutSnapshot(savedDoc.state, url.searchParams.get("scope"));
+    sendJson(res, 200, {
+      ok: true,
+      mapId,
+      savedAt: savedDoc.savedAt,
+      source: "createAppServer",
+      ...snapshot,
+    });
+  } catch (err) {
+    const message = (err as Error).message || "Unknown error";
+    sendJson(res, message === "Map not found." ? 404 : 500, { ok: false, error: message });
+  }
+  return true;
+}
+
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
   if (!mapId) {
     sendJson(res, 400, { error: "Map id is required." });
@@ -3707,6 +3805,12 @@ export function createAppServer(): http.Server {
     const agentMapRoute = parseAgentMapRoute(req.url ?? "/");
     if (agentMapRoute) {
       await handleAgentMapApi(req, res, agentMapRoute);
+      return;
+    }
+
+    const layoutSnapshotMapId = parseLayoutSnapshotRoute(req.url ?? "/");
+    if (layoutSnapshotMapId !== null) {
+      handleLayoutSnapshotApi(req, res, layoutSnapshotMapId);
       return;
     }
 
