@@ -84,6 +84,29 @@ seam を彫る spec には必ず2点を入れる:
 
 §2.1 のプロセス木の各ノードが「1 agent ⇄ 1 seam ⇄ 1 contract ⇄ 1 test」の単位。タスクは「描画を直して」でなく **「`deriveRenderGraph` ノードを実装、契約 `LayoutResult → RenderGraph`、不変条件を test で固定」** と書く。これにより指示導線・仕様書の曖昧さ（IS3 の上流原因）が消える。プロセス木は `04_Architecture/` に Canvas projection として置き、生きた seam マップにする。
 
+### 3.3 承認ゲートの配置（人間律速 IS2 の圧縮）
+
+人間の動作感承認が要るのは **知覚が不可約な surface（pixels / feel）だけ**。data 変換（状態→状態、木→木）は人間が見ても判定できないので **機械ゲート（golden / 契約 / EN）に任せる**。
+
+- **人間ゲート（動作感）= 視覚 lab のみ**: layout-lab / node-lab / edge-lab / surface-lab。
+- **機械ゲート = data seam**: resolveVisible / deriveRenderGraph / command（契約は1度だけ人間レビュー）。
+- **統合**: composition で manifest 解決 ＋ EN5 機械テスト ＋ 動作感の最終1回。
+
+小アプリ / seam 一覧:
+
+| # | 小アプリ / seam | 種別 | 入力契約 → 出力 | 承認ゲート |
+|---|---|---|---|---|
+| 1 | layout-lab（最初） | 視覚 lab | `VisibleLayoutGraph + boxSizes → LayoutResult` | 人（配置・間隔・mode、ノード=矩形） |
+| 2 | node-lab | 視覚 lab | `positionedNodes → pixels` | 人（描画・md/katex・字組、配置固定） |
+| 3 | edge-lab | 視覚 lab | `edgeGeometry → pixels` | 人（線種・routing、端点固定） |
+| 4 | surface-lab | 視覚 lab | `substrate + overlays → pixels` | 人（scatter/PN/scope/pen） |
+| 5 | resolveVisible | data module | `AppState + scope/facet/alias → VisibleLayoutGraph` | 機械（golden、契約1度） |
+| 6 | deriveRenderGraph | data module | `LayoutResult → RenderGraph` | 機械（golden、契約1度） |
+| 7 | command | data module（薄い harness 可） | `AppState + 操作 → AppState′` | 機械（golden + 不変条件、契約1度） |
+| 8 | composition | 統合 | manifest 解決 | 機械 EN5 ＋ 人1回（創発的破綻の確認） |
+
+1–4 が真の「小アプリ（視覚 lab）」、5–7 は UI を持たない tested module。これにより人間の役割が「毎回全 UX を手で確認」から「視覚 lab 4つ + 統合1回の承認」に縮む。
+
 ## 4. 既存ハーネスとの接続
 
 本体制は Director→Codex × Kiro（`Director_Playbook.md`）の上に乗る。seam 化作業の標準フロー:
