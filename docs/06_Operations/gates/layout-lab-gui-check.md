@@ -9,16 +9,21 @@ Branch: `codex/layout-seam-lab`
 
 FAIL, classified as a setup blocker.
 
-The requested lab server could not be started, so the real GUI gate could not inspect layout samples, controls, status, golden diff, or browser console behavior. This is not a product behavior PASS.
+The lab server now binds successfully and the requested lab HTML returns HTTP 200. However, the required GUI validation could not be completed because both permitted GUI-driving paths failed before page interaction:
+
+- primary path: Computer Use plugin failed before app inspection,
+- fallback path: Chrome plugin / browser-control runtime failed before tab control.
+
+This is not a product behavior PASS or FAIL. It is a gate execution FAIL: no reviewer-visible browser session reached the lab, so sample rendering, controls, golden diff/status, screenshots, and console behavior were not validly observed.
 
 ## Environment
 
 - OS: macOS 14.8.1 (Build 23J30)
 - Node: v26.0.0
 - npm: 11.12.1
-- Vite: 8.0.13 (`darwin-arm64`, `node-v26.0.0`)
-- Browser: no usable browser session was established. `open -a "Google Chrome"` failed because Google Chrome was not installed, and Launch Services reported no URL handler for the target URL.
-- Computer-use: attempted. `computer-use/get_app_state` for Safari timed out after 120 seconds, so no computer-use screenshot could be captured.
+- Vite: 8.0.13
+- Browser driver used: none completed successfully
+- Requested URL: `http://127.0.0.1:4175/src/labs/layout/layout-lab.html`
 
 ## Startup Evidence
 
@@ -31,38 +36,69 @@ npx vite --config vite.config.mjs --host 127.0.0.1 --port 4175
 Result:
 
 ```text
-error when starting dev server:
-Error: listen EPERM: operation not permitted 127.0.0.1:4175
-  code: 'EPERM',
-  errno: -1,
-  syscall: 'listen',
-  address: '127.0.0.1',
-  port: 4175
+VITE v8.0.13  ready in 201 ms
+Local:   http://127.0.0.1:4175/
 ```
 
-Target URL:
+Requested bind/HTML check:
 
 ```text
-http://127.0.0.1:4175/src/labs/layout/layout-lab.html
+curl -I -sS http://127.0.0.1:4175/src/labs/layout/layout-lab.html
 ```
+
+Result:
+
+```text
+HTTP/1.1 200 OK
+Content-Type: text/html
+```
+
+## GUI Driver Evidence
+
+### Computer Use
+
+Attempted as the primary required driver.
+
+Results:
+
+```text
+mcp__computer_use.list_apps -> Computer Use server error -1743
+mcp__computer_use.get_app_state(app="Google Chrome") -> Computer Use server error -1743
+```
+
+No Computer Use screenshot or accessibility tree was obtained.
+
+### Chrome Plugin Fallback
+
+Attempted after Computer Use failed, per the allowed fallback path.
+
+Results:
+
+```text
+node_repl/js -> sandboxCwd must be an absolute file URI: relative URL without a base
+node_repl/js_reset -> js kernel reset
+node_repl/js probe -> sandboxCwd must be an absolute file URI: relative URL without a base
+```
+
+No Chrome-controlled tab, DOM snapshot, screenshot, or console log was obtained.
 
 ## Sample Observations
 
 ### tree
 
-Not executed. The lab did not start, so dummy rectangles, parent-child edges, golden diff, and status were not observable.
+Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent-child edges, golden diff, and status were not observable.
 
 ### mindmap
 
-Not executed. The lab did not start, so dummy rectangles, parent-child edges, golden diff, and status were not observable.
+Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent-child edges, golden diff, and status were not observable.
 
 ### scope-routing
 
-Not executed. The lab did not start, so dummy rectangles, parent-child edges, golden diff, and status were not observable.
+Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent-child edges, golden diff, and status were not observable.
 
 ## Controls Checked
 
-Controls were not operable because the GUI never loaded:
+Controls were not operable because GUI driving failed before a browser page could be inspected:
 
 - mode: not checked
 - direction: not checked
@@ -73,18 +109,18 @@ Controls were not operable because the GUI never loaded:
 
 ## Golden Diff / Status
 
-Not checked. No rendered lab state was available.
+Not checked. The endpoint was reachable, but no rendered browser state was available through the permitted tools.
 
 ## Browser Console
 
-Not checked. No browser session reached the lab URL.
+Not checked. No browser-controlled page session reached the lab URL.
 
 ## Screenshot Evidence
 
 Screenshots captured: 0.
 
-Reason: the requested local server failed to bind before GUI validation, browser launch failed, and computer-use timed out while attempting to inspect Safari.
+Reason: both allowed GUI-driving routes failed before page interaction. A PASS would require real screenshots showing the lab loaded, all three samples inspected, control response observed, golden diff/status checked, and console errors reviewed.
 
 ## Notes
 
-This artifact intentionally does not modify implementation code. The gate remains FAIL until a reviewer can start the lab, drive the real GUI, inspect all three samples, operate the layout controls, verify golden status/diff behavior, and confirm the browser console has no errors.
+This artifact intentionally changes only the gate report. No implementation code or lab source was modified.
