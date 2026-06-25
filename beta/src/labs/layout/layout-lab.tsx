@@ -37,7 +37,7 @@ function numberInput(value: number, setValue: (value: number) => void, min: numb
 }
 
 function App(): React.ReactElement {
-  const [sampleId, setSampleId] = useState<LayoutSampleId>("tree-basic");
+  const [sampleId, setSampleId] = useState<LayoutSampleId>("tree-stress-30");
   const sample = layoutSamples.find((item) => item.sample_id === sampleId) || layoutSamples[0]!;
   const [mode, setMode] = useState<LayoutMode>(sample.input.mode);
   const [direction, setDirection] = useState<LayoutDirection>("right");
@@ -47,6 +47,7 @@ function App(): React.ReactElement {
   const [nodeGap, setNodeGap] = useState(14);
   const [levelGap, setLevelGap] = useState(112);
   const [padding, setPadding] = useState(92);
+  const [zoom, setZoom] = useState(1);
 
   const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
   const options: LayoutOptions = {
@@ -130,9 +131,32 @@ function App(): React.ReactElement {
           <label>Side Padding</label>
           {numberInput(padding, setPadding, 20, 240)}
         </div>
+        <div className="control-group">
+          <div className="control-row">
+            <label htmlFor="zoom">Zoom</label>
+            <output htmlFor="zoom">{Math.round(zoom * 100)}%</output>
+          </div>
+          <input
+            id="zoom"
+            type="range"
+            min={0.25}
+            max={2}
+            step={0.05}
+            value={zoom}
+            onChange={(event) => setZoom(Number(event.currentTarget.value))}
+          />
+          <button className="fit-button" type="button" onClick={() => setZoom(1)}>Fit</button>
+        </div>
       </aside>
       <section className="stage">
-        <svg width={canvasWidth} height={canvasHeight} viewBox={`0 0 ${canvasWidth} ${canvasHeight}`} role="img" aria-label="Layout result">
+        <svg
+          width={`${zoom * 100}%`}
+          height={`${zoom * 100}%`}
+          viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label="Layout result"
+        >
           {edges.map(({ sourceId, targetId }) => {
             const source = result.pos[sourceId];
             const target = result.pos[targetId];
@@ -150,6 +174,7 @@ function App(): React.ReactElement {
             if (!pos) return null;
             return (
               <g key={nodeId}>
+                <title>{nodeId}</title>
                 <rect className={`lab-node ${nodeId === rootId ? "root" : ""}`} x={pos.x} y={pos.y - pos.h / 2} width={pos.w} height={pos.h} rx={6} />
                 <text className="lab-label" x={pos.x + 10} y={pos.y + 4}>{nodeId}</text>
               </g>

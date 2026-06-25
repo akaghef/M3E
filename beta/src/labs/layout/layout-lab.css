@@ -51,6 +51,19 @@ body {
   color: #565a61;
 }
 
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.control-row output {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #565a61;
+}
+
 select,
 input[type="number"],
 input[type="range"] {
@@ -67,8 +80,23 @@ input[type="number"] {
   color: #202124;
 }
 
+.fit-button {
+  min-height: 32px;
+  border: 1px solid #c9c5ba;
+  border-radius: 6px;
+  background: #f7f7f4;
+  color: #202124;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fit-button:hover {
+  background: #efede6;
+}
+
 .stage {
   min-width: 0;
+  min-height: 100vh;
   overflow: auto;
   background:
     linear-gradient(#ece9e1 1px, transparent 1px),
@@ -78,20 +106,22 @@ input[type="number"] {
 
 .stage svg {
   display: block;
-  min-width: 100%;
-  min-height: 100%;
+  min-width: 25%;
+  min-height: 25%;
 }
 
 .lab-edge {
   fill: none;
   stroke: #78838f;
   stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .lab-node {
   fill: #ffffff;
   stroke: #222831;
   stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
 }
 
 .lab-node.root {
@@ -100,8 +130,12 @@ input[type="number"] {
 }
 
 .lab-label {
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 700;
   fill: #202124;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 3;
   pointer-events: none;
 }
 
@@ -140,5 +174,9 @@ pre {
   .lab-panel.right {
     border: 0;
     border-bottom: 1px solid #dedbd2;
+  }
+
+  .stage {
+    min-height: 70vh;
   }
 }
