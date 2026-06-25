@@ -184,12 +184,14 @@ function App(): React.ReactElement {
       </section>
       <aside className="lab-panel right">
         <h2 className="lab-title">Snapshot</h2>
-        <div className="summary">{summarizeLayout(result)}</div>
-        <div className="json-block">
-          <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, options }, null, 2)}</pre>
-        </div>
-        <div className="json-block">
-          <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, pos: result.pos }, null, 2)}</pre>
+        <div className="snapshot-scroll">
+          <div className="summary">{summarizeLayout(result)}</div>
+          <div className="json-block">
+            <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, options }, null, 2)}</pre>
+          </div>
+          <div className="json-block">
+            <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, pos: result.pos }, null, 2)}</pre>
+          </div>
         </div>
       </aside>
     </main>
