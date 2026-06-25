@@ -129,6 +129,8 @@ Codex 実装
   → PR マージ
 ```
 
+**実装メモ（2026-06-25、layout-lab 初回）**: 背景 `codex exec` からの desktop GUI 駆動は不可と判明——computer-use は macOS 自動化権限の壁（`-1743` errAEEventNotPermitted、Apple Events 不許可）、Chrome plugin fallback は `sandboxCwd must be an absolute file URI` で失敗。lab サーバ(vite)自体は network 許可で bind でき curl 200。よって **G-GUI の自動駆動手段は当面未確立**。有力候補は Playwright 化（プロジェクト既存、決定論・CI 化可・スクショ証拠）。初回 layout-lab は akaghef が直接 lab を見て承認する暫定運用。`scripts/ops/gui-gate.sh` と自動 G-GUI は後続で確立する。
+
 ## 4. 既存ハーネスとの接続
 
 本体制は Director→Codex × Kiro（`Director_Playbook.md`）の上に乗る。seam 化作業の標準フロー:
