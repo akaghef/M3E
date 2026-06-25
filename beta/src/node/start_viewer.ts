@@ -2150,7 +2150,7 @@ function buildLayoutSnapshot(state: AppState, scopeId: string | null): {
   input: {
     graph: { nodeIds: string[]; children: Record<string, string[]>; graphLinks: NonNullable<AppState["links"]>[string][] };
     boxSizes: Record<string, LayoutNodeMetric>;
-    mode: "tree";
+    mode: "Tree";
     options: LayoutOptions;
   };
   result: LayoutResult;
@@ -2178,7 +2178,7 @@ function buildLayoutSnapshot(state: AppState, scopeId: string | null): {
   };
   const options: LayoutOptions = {
     displayRootId,
-    structuredMode: "tree",
+    structuredMode: "Tree",
     density: "balanced",
     branchDirection: "both",
   };
@@ -2186,10 +2186,10 @@ function buildLayoutSnapshot(state: AppState, scopeId: string | null): {
     input: {
       graph: { nodeIds, children, graphLinks },
       boxSizes,
-      mode: "tree",
+      mode: "Tree",
       options,
     },
-    result: layoutPortLayout(graph, boxSizes, "tree", options),
+    result: layoutPortLayout(graph, boxSizes, "Tree", options),
   };
 }
 

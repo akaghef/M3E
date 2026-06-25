@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { layout, type LayoutNodePosition, type LayoutResult } from "../../src/shared/layout_port";
 import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layout_samples";
 
-const STRESS_SAMPLE_IDS = ["tree-stress-30", "mindmap-stress-30", "scope-routing-stress-30"] as const;
+const STRESS_SAMPLE_IDS = ["tree-stress-30", "radial-stress-30", "scope-routing-stress-30"] as const;
 const stressSamples = layoutSamples.filter((sample) => STRESS_SAMPLE_IDS.includes(sample.sample_id as typeof STRESS_SAMPLE_IDS[number]));
 
 interface Rect {
@@ -89,10 +89,10 @@ describe("layout golden parity", () => {
   test("samples include first-unit basics and 30-node stress fixtures", () => {
     expect(layoutSamples.map((sample) => sample.sample_id)).toEqual([
       "tree-basic",
-      "mindmap-basic",
+      "radial-basic",
       "scope-routing-basic",
       "tree-stress-30",
-      "mindmap-stress-30",
+      "radial-stress-30",
       "scope-routing-stress-30",
     ]);
   });

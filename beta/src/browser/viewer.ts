@@ -12902,7 +12902,7 @@ function renderRoutingScopeSurface(selectedNodeId: string | null): string {
   Object.keys(state.nodes).forEach((nodeId) => {
     routingBoxSizes[nodeId] = measureLayoutNode(state, nodeId, rootId, routingConfig);
   });
-  const layout = layoutPortLayout(routingGraph, routingBoxSizes, "tree", {
+  const layout = layoutPortLayout(routingGraph, routingBoxSizes, "Tree", {
     displayRootId: rootId,
     structuredMode: "tree",
     density: viewState.surfaceLayoutDensity,

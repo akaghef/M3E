@@ -50,7 +50,7 @@ test("createAppServer exposes read-only layout snapshot through LayoutPort", asy
   expect(snapshot.response.status).toBe(200);
   expect(snapshot.payload.ok).toBe(true);
   expect(snapshot.payload.source).toBe("createAppServer");
-  expect(snapshot.payload.input.mode).toBe("tree");
+  expect(snapshot.payload.input.mode).toBe("Tree");
   expect(snapshot.payload.input.graph.nodeIds.length).toBeGreaterThan(0);
   expect(snapshot.payload.result.order).toEqual(snapshot.payload.input.graph.nodeIds);
   expect(snapshot.payload.result.pos[snapshot.payload.input.options.displayRootId]).toMatchObject({

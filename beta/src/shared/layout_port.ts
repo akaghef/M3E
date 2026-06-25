@@ -1,7 +1,20 @@
 import type { GraphLink, SurfaceNodeView } from "./types";
 
-export type LayoutMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-export type StructuredLayoutMode = "tree" | "mindmap" | "logic-chart" | "timeline";
+export type LayoutMode = "Tree" | "Axial" | "Radial" | "Disperse" | "System";
+export type LegacyLayoutMode =
+  | "tree"
+  | "right-tree"
+  | "down-tree"
+  | "system"
+  | "scatter"
+  | "force-directed"
+  | "mindmap"
+  | "balanced-tree"
+  | "logic-chart"
+  | "timeline";
+export type LayoutModeInput = LayoutMode | LegacyLayoutMode;
+export type StructuredLayoutMode = LayoutMode | "tree" | "mindmap" | "logic-chart" | "timeline" | "right-tree" | "down-tree" | "balanced-tree";
+type LayoutAlgorithmMode = "tree" | "mindmap" | "logic-chart" | "timeline";
 export type LayoutDirection = "right" | "left" | "down" | "up";
 export type LayoutDepthAlign = "aligned" | "packed";
 export type LayoutDensity = "compact" | "balanced" | "spacious";
@@ -58,7 +71,7 @@ export interface LayoutResult {
 }
 
 interface StructuredLayoutConfig {
-  mode: StructuredLayoutMode;
+  mode: LayoutAlgorithmMode;
   density: LayoutDensity;
   branchDirection: LayoutBranchDirection;
   columnGap: number;
@@ -96,7 +109,7 @@ const FLOW_SURFACE_ROW_GAP = 84;
 const DEFAULT_SCATTER_EDGE_LENGTH = 180;
 
 function structuredLayoutConfig(
-  mode: StructuredLayoutMode,
+  mode: LayoutAlgorithmMode,
   density: LayoutDensity = "balanced",
   branchDirection: LayoutBranchDirection = "both",
   options: LayoutOptions = {},
@@ -118,7 +131,7 @@ function structuredLayoutConfig(
 
 function buildMeasuredTreeContext(
   displayRootId: string,
-  mode: StructuredLayoutMode,
+  mode: LayoutAlgorithmMode,
   graph: VisibleLayoutGraph,
   boxSizes: Record<string, LayoutNodeMetric>,
   options: LayoutOptions = {},
@@ -141,6 +154,26 @@ function buildMeasuredTreeContext(
 
   visit(displayRootId, 0);
   return { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config, depthAlign: options.depthAlign || "packed" };
+}
+
+function normalizeLayoutMode(mode: LayoutModeInput): LayoutMode {
+  if (mode === "Tree" || mode === "Axial" || mode === "Radial" || mode === "Disperse" || mode === "System") return mode;
+  if (mode === "mindmap" || mode === "balanced-tree") return "Radial";
+  if (mode === "timeline") return "Axial";
+  if (mode === "scatter" || mode === "force-directed") return "Disperse";
+  if (mode === "system") return "System";
+  return "Tree";
+}
+
+function normalizeStructuredLayoutMode(
+  mode: LayoutModeInput,
+  structuredMode?: StructuredLayoutMode,
+): LayoutAlgorithmMode {
+  const source = structuredMode ?? mode;
+  if (source === "Radial" || source === "mindmap" || source === "balanced-tree") return "mindmap";
+  if (source === "Axial" || source === "timeline") return "timeline";
+  if (source === "logic-chart") return "logic-chart";
+  return "tree";
 }
 
 function subtreeSpanForLayout(
@@ -463,13 +496,14 @@ function scatterSeedPositionsFromGraph(
 export function layout(
   visibleGraph: VisibleLayoutGraph,
   boxSizes: Record<string, LayoutNodeMetric>,
-  mode: LayoutMode,
+  mode: LayoutModeInput,
   options: LayoutOptions = {},
 ): LayoutResult {
+  const canonicalMode = normalizeLayoutMode(mode);
   const displayRootId = options.displayRootId || visibleGraph.nodeIds[0] || "";
   const displayRootExists = Boolean(displayRootId && boxSizes[displayRootId]);
 
-  if (mode === "scatter" && visibleGraph.nodeIds.length > 0) {
+  if (canonicalMode === "Disperse" && visibleGraph.nodeIds.length > 0) {
     const descendants = visibleGraph.nodeIds;
     const scatterDepthOf: Record<string, number> = {};
     const visitDepth = (nodeId: string, depth: number): void => {
@@ -522,7 +556,7 @@ export function layout(
     };
   }
 
-  if (mode === "system" && displayRootExists) {
+  if (canonicalMode === "System" && displayRootExists) {
     const surfaceNodes = visibleGraph.childrenOf(displayRootId);
     const flowCells = options.flowCells || {};
     const primarySurfaceNodes = surfaceNodes.filter((nodeId) => !flowCells[nodeId]?.isReference);
@@ -596,7 +630,7 @@ export function layout(
     };
   }
 
-  const structuredMode = options.structuredMode || (mode === "mindmap" || mode === "logic-chart" || mode === "timeline" ? mode : "tree");
+  const structuredMode = normalizeStructuredLayoutMode(mode, options.structuredMode);
   const measuredContext = buildMeasuredTreeContext(displayRootId, structuredMode, visibleGraph, boxSizes, options);
   if (structuredMode === "mindmap") {
     return orientLayoutResult(buildMindmapLayout(visibleGraph, measuredContext), options.direction);

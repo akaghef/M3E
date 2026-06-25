@@ -34,7 +34,7 @@
         "conflict-backup",
         "audit-chain",
         "tree-mode",
-        "mindmap-mode",
+        "radial-mode",
         "routing-scope",
         "route-preview",
         "edge-sanity"
@@ -98,7 +98,7 @@
         "audit-chain": [],
         "layout": [
           "tree-mode",
-          "mindmap-mode",
+          "radial-mode",
           "routing-scope"
         ],
         "routing-scope": [
@@ -108,7 +108,7 @@
           "edge-sanity"
         ],
         "tree-mode": [],
-        "mindmap-mode": [],
+        "radial-mode": [],
         "edge-sanity": []
       },
       "graphLinks": [
@@ -363,11 +363,11 @@
         ],
         "fontSize": 13
       },
-      "mindmap-mode": {
+      "radial-mode": {
         "w": 236,
         "h": 42,
         "labelLines": [
-          "mindmap mode"
+          "radial mode"
         ],
         "fontSize": 13
       },
@@ -396,10 +396,10 @@
         "fontSize": 13
       }
     },
-    "mode": "tree",
+    "mode": "Tree",
     "options": {
       "displayRootId": "m3e-root",
-      "structuredMode": "tree",
+      "structuredMode": "Tree",
       "density": "balanced",
       "branchDirection": "both"
     }
@@ -692,7 +692,7 @@
           "tree mode"
         ]
       },
-      "mindmap-mode": {
+      "radial-mode": {
         "x": 881,
         "y": 749.5,
         "depth": 2,
@@ -700,7 +700,7 @@
         "h": 42,
         "fontSize": 13,
         "labelLines": [
-          "mindmap mode"
+          "radial mode"
         ]
       },
       "routing-scope": {
@@ -764,7 +764,7 @@
       "audit-chain",
       "layout",
       "tree-mode",
-      "mindmap-mode",
+      "radial-mode",
       "routing-scope",
       "route-preview",
       "edge-sanity"

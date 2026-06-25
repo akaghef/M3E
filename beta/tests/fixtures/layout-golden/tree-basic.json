@@ -44,10 +44,10 @@
         "h": 38
       }
     },
-    "mode": "tree",
+    "mode": "Tree",
     "options": {
       "displayRootId": "root",
-      "structuredMode": "tree",
+      "structuredMode": "Tree",
       "density": "balanced",
       "branchDirection": "both"
     }

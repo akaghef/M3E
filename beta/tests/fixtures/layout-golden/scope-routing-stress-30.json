@@ -394,10 +394,10 @@
         "fontSize": 13
       }
     },
-    "mode": "tree",
+    "mode": "Tree",
     "options": {
       "displayRootId": "route-root",
-      "structuredMode": "tree",
+      "structuredMode": "Tree",
       "density": "balanced",
       "branchDirection": "both"
     }

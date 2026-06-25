@@ -26,7 +26,7 @@
 - layout algorithm の全面再設計はしない。既存 behavior を contract 化して固定する。
 - fixture port `14174` visual server を昇格 gate にしない。
 - 第一ユニットでは `layout_bridge.ts` を作成しない。
-- scatter/system golden は後続 ratchet とし、第一ユニットの golden scope には含めない。
+- Disperse/System golden は後続 ratchet とし、第一ユニットの golden scope には含めない。
 
 ## Boundary Commitments
 
@@ -152,7 +152,18 @@ The exact filenames can change during implementation, but the ownership cannot: 
 The public contract should be narrow and product-independent:
 
 ```typescript
-export type LayoutMode = "tree" | "mindmap" | "logic-chart" | "timeline" | "scatter" | "system";
+export type LayoutMode = "Tree" | "Axial" | "Radial" | "Disperse" | "System";
+export type LegacyLayoutMode =
+  | "tree"
+  | "right-tree"
+  | "down-tree"
+  | "mindmap"
+  | "balanced-tree"
+  | "logic-chart"
+  | "timeline"
+  | "scatter"
+  | "force-directed"
+  | "system";
 export type LayoutDirection = "right" | "left" | "down" | "up";
 export type LayoutDepthAlign = "aligned" | "packed";
 export type LayoutDensity = "compact" | "balanced" | "spacious";
@@ -182,7 +193,7 @@ export interface LayoutNodePosition extends LayoutNodeMetric {
 
 export interface LayoutOptions {
   displayRootId?: string;
-  structuredMode?: Exclude<LayoutMode, "scatter" | "system">;
+  structuredMode?: LayoutMode | LegacyLayoutMode;
   density?: LayoutDensity;
   branchDirection?: LayoutBranchDirection;
   depthAlign?: LayoutDepthAlign;
@@ -253,7 +264,7 @@ routingScopeTargets
   -> routing AppState / simple node map
   -> VisibleLayoutGraph
   -> boxSizes
-  -> LayoutPort.layout(..., "tree", { displayRootId, structuredMode: "tree" })
+  -> LayoutPort.layout(..., "Tree", { displayRootId, structuredMode: "Tree" })
   -> existing SVG rendering
 ```
 
@@ -265,13 +276,13 @@ The lab app is a small inspection surface, not a product renderer.
 
 ### UI Capabilities
 
-- sample selector: tree / mindmap / routing-scope for the first unit,
+- sample selector: Tree / Radial / routing-scope for the first unit,
 - controls: mode, density, branchDirection, direction, depthAlign, spacing,
 - canvas: dummy rectangles at `LayoutResult.pos`, simple parent-child edge lines from the sample graph,
 - panels: input graph summary, boxSizes summary, output bounds/order, diff from golden output,
 - status: `green`, `changed`, `invalid sample`, `missing output`.
 
-Scatter/system samples are intentionally absent in the first unit. They are follow-up ratchets after the routing-scope regression surface is retired.
+Disperse/System samples are intentionally absent in the first unit. They are follow-up ratchets after the routing-scope regression surface is retired.
 
 ### Build Strategy
 
@@ -327,7 +338,7 @@ Add an explicit capture command in implementation phase, for example:
 
 ```text
 npm run layout:capture -- --map beta-dev --scope <scopeId> --sample tree-basic --out tests/fixtures/layout-golden/tree-basic.json
-npm run layout:capture -- --map beta-dev --scope <scopeId> --sample mindmap-basic --mode mindmap --out tests/fixtures/layout-golden/mindmap-basic.json
+npm run layout:capture -- --map beta-dev --scope <scopeId> --sample radial-basic --mode Radial --out tests/fixtures/layout-golden/radial-basic.json
 npm run layout:capture -- --routing-scope --sample scope-routing-basic --out tests/fixtures/layout-golden/scope-routing-basic.json
 ```
 
@@ -352,10 +363,10 @@ Normal CI runs must never update fixtures.
 Director decision DC-Q3 fixes the initial set:
 
 1. `tree-basic`
-2. `mindmap-basic`
+2. `radial-basic`
 3. `scope-routing-basic`
 
-`scope-routing-basic` is mandatory because routing scope was the 2026-06-16 breakage surface. Scatter/system are explicitly deferred to later ratchets and must not be added to the first unit acceptance scope.
+`scope-routing-basic` is mandatory because routing scope was the 2026-06-16 breakage surface. Disperse/System are explicitly deferred to later ratchets and must not be added to the first unit acceptance scope.
 
 ### Comparison Rules
 
@@ -513,7 +524,7 @@ lab green
 | R2 | `src/shared/layout_port.ts` public contract | TypeScript compile, import checks |
 | R3 | viewer/routing adapters use `LayoutPort.layout` | unit tests, dependency-cruiser, code review |
 | R4 | `src/labs/layout/` standalone app with dedicated tsconfig/Vite entry | lab build, manual visual approval, Playwright smoke if added |
-| R5 | tree/mindmap/routing-scope fixture schema and capture commands | golden tests, explicit update command |
+| R5 | Tree/Radial/routing-scope fixture schema and capture commands | golden tests, explicit update command |
 | R6 | existing diagnostic first, otherwise narrow read-only `createAppServer()` composition route | Vitest integration using `127.0.0.1:0` |
 | R7 | dependency-cruiser / jscpd ratchet | negative import/copy checks by config and CI |
 
@@ -533,5 +544,5 @@ lab green
 
 1. **DC-Q1 layout_bridge:** `layout_port.ts` is the only canonical contract. Do not create `layout_bridge.ts` in the first unit. `window.m3eLayout` is only a transitional alias to `LayoutPort.layout`. If Neo M3 / `M3E_LAYOUT_MODULE` later needs a file-level bridge, add a follow-up thin wrapper that re-exports `layout_port.ts`.
 2. **DC-Q2 lab placement:** layout-lab lives under `src/labs/layout/`, with dedicated `tsconfig.labs.json` and a Vite entry. This creates the common home for future node-lab / edge-lab and keeps labs separate from product browser code.
-3. **DC-Q3 initial golden:** initial golden set is exactly tree + mindmap + routing-scope. Scatter/system are later ratchets. Routing-scope is mandatory because it is the known 2026-06-16 regression surface.
+3. **DC-Q3 initial golden:** initial golden set is exactly Tree + Radial + routing-scope. Disperse/System are later ratchets. Routing-scope is mandatory because it is the known 2026-06-16 regression surface.
 4. **DC-Q4 EN5 snapshot:** reuse existing viewer diagnostic if it can return layout output. If not, add only a narrow read-only test/debug route through `createAppServer()`. Do not add mutation APIs.

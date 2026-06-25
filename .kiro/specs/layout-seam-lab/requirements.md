@@ -15,9 +15,9 @@ layout を `LayoutPort` として typed seam 化し、lab と product が同一 
 
 ## Boundary Context
 
-- **In scope**: `.kiro/specs/layout-seam-lab/` の spec 草案、first unit としての enforcement harness、LayoutPort、`src/labs/layout/` layout-lab、tree / mindmap / routing-scope golden sample 採取、`createAppServer()` composition test、layout 境界 ratchet 設計。
+- **In scope**: `.kiro/specs/layout-seam-lab/` の spec 草案、first unit としての enforcement harness、LayoutPort、`src/labs/layout/` layout-lab、Tree / Radial / routing-scope golden sample 採取、`createAppServer()` composition test、layout 境界 ratchet 設計。
 - **Out of scope**: この spec 作成時点での implementation code、`beta/` source 変更、package/workflow 変更、actual lab 実装、actual golden 採取、PR 作成。
-- **First-unit exclusions**: `layout_bridge.ts` の作成、scatter/system golden、node-lab / edge-lab 実装、mutation API 追加は第一ユニットの対象外。
+- **First-unit exclusions**: `layout_bridge.ts` の作成、Disperse/System golden、node-lab / edge-lab 実装、mutation API 追加は第一ユニットの対象外。
 - **Exclusive seam rule**: layout seam は唯一の経路でなければならない。`renderRoutingScopeSurface` のような helper 直叩き bypass を残した partial seam は completion と見なさない。
 - **Reference composition rule**: lab と product は同一 `LayoutPort` module を import する。copy / paste / lab-only fork は禁止する。
 
@@ -72,7 +72,7 @@ layout を `LayoutPort` として typed seam 化し、lab と product が同一 
 
 1. `buildLayout(state)` は AppState / viewState から `VisibleLayoutGraph` と `boxSizes` を作る adapter に縮小され、実配置は `LayoutPort.layout` を呼ばなければならない。
 2. `renderRoutingScopeSurface` は `buildRightTreeLayout` / `buildMeasuredTreeContext` を直叩きしてはならず、routing graph と dummy/app metric を `LayoutPort.layout` へ渡さなければならない。
-3. PN / scatter / system / tree / mindmap / logic-chart / timeline の既存 surface behavior は `LayoutPort` 上の mode/options で表現されなければならない。
+3. PN / Disperse / System / Tree / Radial / Axial の既存 surface behavior は `LayoutPort` 上の canonical mode/options で表現されなければならない。legacy 値は migration alias として `LayoutPort` 内の一箇所で canonical へ正規化されなければならない。
 4. layout 内部 helper を `viewer.ts` や workbench から import できる経路を残してはならない。
 5. product path と lab path が別実装を持つ場合、その state は requirement violation として扱わなければならない。
 
@@ -98,12 +98,12 @@ layout を `LayoutPort` として typed seam 化し、lab と product が同一 
 #### Acceptance Criteria
 
 1. golden sample は実 product state から `VisibleLayoutGraph`、`boxSizes`、`mode`、`options`、`LayoutResult` を採取する仕組みを持たなければならない。
-2. 第一ユニットの initial golden set は `tree`、`mindmap`、`routing-scope` の 3 つに限定しなければならない。
+2. 第一ユニットの initial golden set は `Tree`、`Radial`、`routing-scope` の 3 つに限定しなければならない。
 3. sample fixture は deterministic JSON とし、node order と numeric layout output を比較可能にしなければならない。
 4. numeric comparison は exact snapshot と tolerance comparison の使い分けを設計しなければならない。
 5. golden update は明示 command でのみ実行でき、通常 test run が fixture を暗黙更新してはならない。
 6. sample は product data の secret / personal payload を含めず、必要なら label を sanitize しなければならない。
-7. scatter/system golden は後続 ratchet とし、第一ユニットの completion 条件に含めてはならない。
+7. Disperse/System golden は後続 ratchet とし、第一ユニットの completion 条件に含めてはならない。
 
 ### Requirement 6: EN5 composition test on real app server
 
@@ -160,6 +160,6 @@ layout を `LayoutPort` として typed seam 化し、lab と product が同一 
 
 **DC-Q2:** layout-lab は `src/labs/layout/` に置く。専用 tsconfig と Vite entry を持たせ、labs を product browser から分離する。
 
-**DC-Q3:** initial golden set は `tree`、`mindmap`、`routing-scope` の 3 つに限定する。scatter/system は後続 ratchet。
+**DC-Q3:** initial golden set は `Tree`、`Radial`、`routing-scope` の 3 つに限定する。Disperse/System は後続 ratchet。
 
 **DC-Q4:** EN5 snapshot は既存 viewer diagnostic を優先し、無い場合のみ `createAppServer()` 経由の narrow read-only test/debug route を追加する。mutation API は開けない。

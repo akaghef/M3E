@@ -17,7 +17,7 @@ import {
 } from "./layout_samples";
 import "./layout-lab.css";
 
-const modes: LayoutMode[] = ["tree", "mindmap", "logic-chart", "timeline"];
+const modes: LayoutMode[] = ["Tree", "Radial", "Axial", "Disperse", "System"];
 const directions: LayoutDirection[] = ["right", "left", "down", "up"];
 const depthAligns: LayoutDepthAlign[] = ["packed", "aligned"];
 const densities: LayoutDensity[] = ["compact", "balanced", "spacious"];
@@ -52,7 +52,7 @@ function App(): React.ReactElement {
   const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
   const options: LayoutOptions = {
     ...sample.input.options,
-    structuredMode: mode === "tree" || mode === "mindmap" || mode === "logic-chart" || mode === "timeline" ? mode : "tree",
+    structuredMode: mode === "Tree" || mode === "Radial" || mode === "Axial" ? mode : undefined,
     direction,
     depthAlign,
     density,

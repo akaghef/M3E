@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "sample_id": "mindmap-basic",
+  "sample_id": "radial-basic",
   "source": {
     "product_path": "viewer.buildLayout",
     "captured_at": "1970-01-01T00:00:00.000Z"
@@ -43,10 +43,10 @@
         "h": 38
       }
     },
-    "mode": "mindmap",
+    "mode": "Radial",
     "options": {
       "displayRootId": "root",
-      "structuredMode": "mindmap",
+      "structuredMode": "Radial",
       "density": "balanced",
       "branchDirection": "both"
     }

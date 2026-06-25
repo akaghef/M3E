@@ -82,14 +82,14 @@ const treeStressNodeIds = [
   "conflict-backup",
   "audit-chain",
   "tree-mode",
-  "mindmap-mode",
+  "radial-mode",
   "routing-scope",
   "route-preview",
   "edge-sanity",
 ];
 
-const mindmapStressNodeIds = [
-  "mindmap-root",
+const radialStressNodeIds = [
+  "radial-root",
   "research",
   "product",
   "users",
@@ -170,12 +170,12 @@ const samples: Record<string, SeedSample> = {
         a1: { w: 120, h: 36 },
         b: { w: 130, h: 38 },
       },
-      mode: "tree",
-      options: { displayRootId: "root", structuredMode: "tree", density: "balanced", branchDirection: "both" },
+      mode: "Tree",
+      options: { displayRootId: "root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
     },
   },
-  "mindmap-basic": {
-    sample_id: "mindmap-basic",
+  "radial-basic": {
+    sample_id: "radial-basic",
     product_path: "viewer.buildLayout",
     input: {
       graph: {
@@ -189,8 +189,8 @@ const samples: Record<string, SeedSample> = {
         b: { w: 150, h: 44 },
         c: { w: 120, h: 38 },
       },
-      mode: "mindmap",
-      options: { displayRootId: "root", structuredMode: "mindmap", density: "balanced", branchDirection: "both" },
+      mode: "Radial",
+      options: { displayRootId: "root", structuredMode: "Radial", density: "balanced", branchDirection: "both" },
     },
   },
   "scope-routing-basic": {
@@ -208,8 +208,8 @@ const samples: Record<string, SeedSample> = {
         "scope-a1": { w: 118, h: 36 },
         "scope-b": { w: 126, h: 38 },
       },
-      mode: "tree",
-      options: { displayRootId: "scope-root", structuredMode: "tree", density: "balanced", branchDirection: "both" },
+      mode: "Tree",
+      options: { displayRootId: "scope-root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
     },
   },
   "tree-stress-30": {
@@ -243,11 +243,11 @@ const samples: Record<string, SeedSample> = {
           "push-queue": [],
           "conflict-backup": [],
           "audit-chain": [],
-          layout: ["tree-mode", "mindmap-mode", "routing-scope"],
+          layout: ["tree-mode", "radial-mode", "routing-scope"],
           "routing-scope": ["route-preview"],
           "route-preview": ["edge-sanity"],
           "tree-mode": [],
-          "mindmap-mode": [],
+          "radial-mode": [],
           "edge-sanity": [],
         },
         graphLinks: graphLinks(
@@ -258,18 +258,18 @@ const samples: Record<string, SeedSample> = {
         ),
       },
       boxSizes: metricsFor(treeStressNodeIds),
-      mode: "tree",
-      options: { displayRootId: "m3e-root", structuredMode: "tree", density: "balanced", branchDirection: "both" },
+      mode: "Tree",
+      options: { displayRootId: "m3e-root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
     },
   },
-  "mindmap-stress-30": {
-    sample_id: "mindmap-stress-30",
+  "radial-stress-30": {
+    sample_id: "radial-stress-30",
     product_path: "viewer.buildLayout",
     input: {
       graph: {
-        nodeIds: mindmapStressNodeIds,
+        nodeIds: radialStressNodeIds,
         children: {
-          "mindmap-root": ["research", "product", "users", "data", "collaboration", "quality", "release", "learning"],
+          "radial-root": ["research", "product", "users", "data", "collaboration", "quality", "release", "learning"],
           research: ["papers", "experiments", "synthesis"],
           experiments: ["benchmark-notes"],
           papers: [],
@@ -308,9 +308,9 @@ const samples: Record<string, SeedSample> = {
           ["akaghef", "beta-channel", "dogfoods"],
         ),
       },
-      boxSizes: metricsFor(mindmapStressNodeIds),
-      mode: "mindmap",
-      options: { displayRootId: "mindmap-root", structuredMode: "mindmap", density: "balanced", branchDirection: "both" },
+      boxSizes: metricsFor(radialStressNodeIds),
+      mode: "Radial",
+      options: { displayRootId: "radial-root", structuredMode: "Radial", density: "balanced", branchDirection: "both" },
     },
   },
   "scope-routing-stress-30": {
@@ -359,8 +359,8 @@ const samples: Record<string, SeedSample> = {
         ),
       },
       boxSizes: metricsFor(routingStressNodeIds),
-      mode: "tree",
-      options: { displayRootId: "route-root", structuredMode: "tree", density: "balanced", branchDirection: "both" },
+      mode: "Tree",
+      options: { displayRootId: "route-root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
     },
   },
 };

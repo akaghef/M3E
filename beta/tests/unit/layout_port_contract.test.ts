@@ -20,12 +20,12 @@ describe("LayoutPort contract", () => {
     };
     const options: LayoutOptions = {
       displayRootId: "root",
-      structuredMode: "tree",
+      structuredMode: "Tree",
       density: "balanced",
       branchDirection: "both",
     };
 
-    const result: LayoutResult = layout(graph, boxSizes, "tree", options);
+    const result: LayoutResult = layout(graph, boxSizes, "Tree", options);
 
     expect(result.order).toEqual(["root", "child"]);
     expect(result.pos.root).toMatchObject({ x: 80, y: 54, depth: 0, w: 200, h: 64 });

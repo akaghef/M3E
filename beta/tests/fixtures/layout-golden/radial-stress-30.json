@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "sample_id": "mindmap-stress-30",
+  "sample_id": "radial-stress-30",
   "source": {
     "product_path": "viewer.buildLayout",
     "captured_at": "1970-01-01T00:00:00.000Z"
@@ -8,7 +8,7 @@
   "input": {
     "graph": {
       "nodeIds": [
-        "mindmap-root",
+        "radial-root",
         "research",
         "product",
         "users",
@@ -40,7 +40,7 @@
         "beta-channel"
       ],
       "children": {
-        "mindmap-root": [
+        "radial-root": [
           "research",
           "product",
           "users",
@@ -164,11 +164,11 @@
       ]
     },
     "boxSizes": {
-      "mindmap-root": {
-        "w": 158,
+      "radial-root": {
+        "w": 151,
         "h": 34,
         "labelLines": [
-          "mindmap root"
+          "radial root"
         ],
         "fontSize": 13
       },
@@ -405,25 +405,25 @@
         "fontSize": 13
       }
     },
-    "mode": "mindmap",
+    "mode": "Radial",
     "options": {
-      "displayRootId": "mindmap-root",
-      "structuredMode": "mindmap",
+      "displayRootId": "radial-root",
+      "structuredMode": "Radial",
       "density": "balanced",
       "branchDirection": "both"
     }
   },
   "expected": {
     "pos": {
-      "mindmap-root": {
+      "radial-root": {
         "x": 1190,
         "y": 597,
         "depth": 0,
-        "w": 158,
+        "w": 151,
         "h": 34,
         "fontSize": 13,
         "labelLines": [
-          "mindmap root"
+          "radial root"
         ]
       },
       "product": {
@@ -592,7 +592,7 @@
         ]
       },
       "research": {
-        "x": 1460,
+        "x": 1453,
         "y": 228,
         "depth": 1,
         "w": 139,
@@ -603,7 +603,7 @@
         ]
       },
       "papers": {
-        "x": 1782,
+        "x": 1775,
         "y": 137,
         "depth": 2,
         "w": 197,
@@ -614,7 +614,7 @@
         ]
       },
       "experiments": {
-        "x": 1782,
+        "x": 1775,
         "y": 224,
         "depth": 2,
         "w": 236,
@@ -625,7 +625,7 @@
         ]
       },
       "benchmark-notes": {
-        "x": 2130,
+        "x": 2123,
         "y": 223,
         "depth": 3,
         "w": 236,
@@ -636,7 +636,7 @@
         ]
       },
       "synthesis": {
-        "x": 1782,
+        "x": 1775,
         "y": 315,
         "depth": 2,
         "w": 236,
@@ -647,7 +647,7 @@
         ]
       },
       "users": {
-        "x": 1460,
+        "x": 1453,
         "y": 516,
         "depth": 1,
         "w": 136,
@@ -658,7 +658,7 @@
         ]
       },
       "akaghef": {
-        "x": 1782,
+        "x": 1775,
         "y": 471,
         "depth": 2,
         "w": 236,
@@ -669,7 +669,7 @@
         ]
       },
       "future-collab": {
-        "x": 1782,
+        "x": 1775,
         "y": 559,
         "depth": 2,
         "w": 236,
@@ -680,7 +680,7 @@
         ]
       },
       "collaboration": {
-        "x": 1460,
+        "x": 1453,
         "y": 805,
         "depth": 1,
         "w": 210,
@@ -691,7 +691,7 @@
         ]
       },
       "scope-push": {
-        "x": 1782,
+        "x": 1775,
         "y": 717,
         "depth": 2,
         "w": 236,
@@ -702,7 +702,7 @@
         ]
       },
       "presence": {
-        "x": 1782,
+        "x": 1775,
         "y": 807,
         "depth": 2,
         "w": 236,
@@ -713,7 +713,7 @@
         ]
       },
       "audit": {
-        "x": 1782,
+        "x": 1775,
         "y": 895,
         "depth": 2,
         "w": 236,
@@ -724,7 +724,7 @@
         ]
       },
       "release": {
-        "x": 1460,
+        "x": 1453,
         "y": 1053,
         "depth": 1,
         "w": 186,
@@ -735,7 +735,7 @@
         ]
       },
       "beta-channel": {
-        "x": 1782,
+        "x": 1775,
         "y": 1053,
         "depth": 2,
         "w": 236,
@@ -747,7 +747,7 @@
       }
     },
     "order": [
-      "mindmap-root",
+      "radial-root",
       "product",
       "editor",
       "navigation",
@@ -779,6 +779,6 @@
       "beta-channel"
     ],
     "totalHeight": 1231,
-    "totalWidth": 2846
+    "totalWidth": 2839
   }
 }
