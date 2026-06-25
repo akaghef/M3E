@@ -13,7 +13,11 @@
     "src/browser/viewer.globals.d.ts",
     "src/browser/viewer.tuning.ts",
     "src/browser/viewer.ts",
+    "src/browser/edge_adapters/**/*.ts",
     "src/shared/layout_port.ts",
+    "src/shared/edge_port.ts",
+    "src/shared/edge_route.ts",
+    "src/shared/parent_child_edge_adapter.ts",
     "src/shared/types.ts"
   ]
 }

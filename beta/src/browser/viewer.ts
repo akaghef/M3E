@@ -9,6 +9,9 @@ import {
   type StructuredLayoutMode,
   type VisibleLayoutGraph,
 } from "../shared/layout_port";
+import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
+import type { EdgeRouteStyle } from "../shared/edge_route";
+import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
 
@@ -5009,34 +5012,11 @@ function edgePortPairBetweenRects(
   };
 }
 
-function edgeEndsBetween(fromPos: NodePosition, toPos: NodePosition, pad = 0): EdgeConnectionPair {
-  return edgePortPairBetweenRects(positionRect(fromPos), positionRect(toPos), pad);
-}
-
-function treeRightEdgeEndsBetween(parentPos: NodePosition, childPos: NodePosition): EdgeConnectionPair {
-  return edgePortPairBetweenRects(mindmapBoxRect(parentPos), mindmapBoxRect(childPos), 0, {
-    sourceSide: "right",
-    targetSide: "left",
-  });
-}
-
 function edgeEndsForGraphLink(sourcePos: NodePosition, targetPos: NodePosition, link: GraphLink, pad = 0, boundsMode: LinkConnectionBoundsMode = "hit"): EdgeConnectionPair {
   return edgePortPairBetweenRects(linkConnectionRect(sourcePos, boundsMode), linkConnectionRect(targetPos, boundsMode), pad, {
     sourceSide: sanitizeLinkPort(link.sourcePort),
     targetSide: sanitizeLinkPort(link.targetPort),
   });
-}
-
-function nearestEdgePortSide(
-  rect: { x: number; y: number; w: number; h: number },
-  point: { x: number; y: number },
-): EdgeAnchorSide {
-  const candidates = edgePorts(rect, 0).map((port) => ({
-    side: port.side,
-    distance: Math.hypot(point.x - port.x, point.y - port.y),
-  }));
-  candidates.sort((a, b) => a.distance - b.distance);
-  return candidates[0]?.side || "right";
 }
 
 function renderGraphLinkPortControls(
@@ -6826,73 +6806,22 @@ function layoutEdgePath(
   child: NodePosition,
   route: SurfaceEdgeRoute = viewState.surfaceEdgeRoute,
 ): { d: string; labelX: number; labelY: number; sourceSide: EdgeAnchorSide; targetSide: EdgeAnchorSide } {
-  const { source, target } = mode === "tree"
-    ? treeRightEdgeEndsBetween(parent, child)
-    : legacyEdgeEndsBetween(parent, child);
-  if (route === "straight") {
-    return {
-      d: `M ${source.x} ${source.y} L ${target.x} ${target.y}`,
-      labelX: (source.x + target.x) / 2,
-      labelY: (source.y + target.y) / 2 - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-  if (route === "elbow") {
-    const midX = source.x + (target.x - source.x) * 0.5;
-    return {
-      d: `M ${source.x} ${source.y} H ${midX} V ${target.y} H ${target.x}`,
-      labelX: midX,
-      labelY: (source.y + target.y) / 2 - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-  if (mode === "mindmap") {
-    const rightward = target.x >= source.x;
-    const dir = rightward ? 1 : -1;
-    const curve = Math.max(44, Math.abs(target.x - source.x) * 0.45);
-    const c1x = source.x + dir * curve;
-    const c2x = target.x - dir * curve;
-    return {
-      d: `M ${source.x} ${source.y} C ${c1x} ${source.y}, ${c2x} ${target.y}, ${target.x} ${target.y}`,
-      labelX: (c1x + c2x) / 2,
-      labelY: (source.y + target.y) / 2 - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-
-  if (mode === "logic-chart") {
-    const midX = source.x + (target.x - source.x) * 0.5;
-    return {
-      d: roundedOrthogonalPath(source.x, source.y, target.x, target.y, { radius: 9, midX }),
-      labelX: midX,
-      labelY: (source.y + target.y) / 2 - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-
-  if (mode === "timeline") {
-    const midY = source.y + (target.y - source.y) * 0.52;
-    return {
-      d: `M ${source.x} ${source.y} V ${midY} H ${target.x} V ${target.y}`,
-      labelX: (source.x + target.x) / 2,
-      labelY: midY - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-
-  const rightward = target.x >= source.x;
-  const dir = rightward ? 1 : -1;
-  const curve = Math.max(44, Math.abs(target.x - source.x) * 0.45);
-  const c1x = source.x + dir * curve;
-  const c2x = target.x - dir * curve;
+  const parentRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(parent) : positionRect(parent);
+  const childRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(child) : positionRect(child);
+  const routeStyle: EdgeRouteStyle = route === "straight" ? "line" : route === "elbow" ? "orthogonal" : "curve";
+  const routed = routeParentChildEdge({
+    relation: { kind: "parent-child", parentNodeId: "parent", childNodeId: "child" },
+    parentRect,
+    childRect,
+    childPosition: child,
+    surfaceMode: mode as ParentChildSurfaceMode,
+    direction: viewState.surfaceLayoutDirection,
+    routeStyle,
+  });
+  const { source, target } = routed.ports;
   return {
-    d: `M ${source.x} ${source.y} C ${c1x} ${source.y}, ${c2x} ${target.y}, ${target.x} ${target.y}`,
-    labelX: (c1x + c2x) / 2,
+    d: routed.path.d,
+    labelX: (source.x + target.x) / 2,
     labelY: (source.y + target.y) / 2 - 8,
     sourceSide: source.side,
     targetSide: target.side,
@@ -11107,7 +11036,7 @@ function setGraphLinkEndpointPortNearPointer(linkId: string, endpoint: LinkEndpo
   }
   const point = clientToCanvasPoint(clientX, clientY);
   const linkBoundsMode: LinkConnectionBoundsMode = structuredSurfaceMode() === "mindmap" ? "mindmap" : "box";
-  const side = nearestEdgePortSide(linkConnectionRect(pos, linkBoundsMode), point);
+  const side = nearestEdgePortSideForGraphLinkEdit(linkConnectionRect(pos, linkBoundsMode), point);
   return setGraphLinkEndpointPort(linkId, endpoint, side, false);
 }
 

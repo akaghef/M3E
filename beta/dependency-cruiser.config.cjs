@@ -23,6 +23,24 @@ module.exports = {
         path: "^src/shared/(?!layout_port\\.ts$)",
       },
     },
+    {
+      name: "edge-port-lab-must-not-import-browser-implementation",
+      severity: "error",
+      from: { path: "^src/labs/edge-port/" },
+      to: { path: "^src/browser/" },
+    },
+    {
+      name: "parent-child-edge-must-not-import-graphlink-endpoint-edit",
+      severity: "error",
+      from: { path: "^src/shared/parent_child_edge_adapter\\.ts$" },
+      to: { path: "src/browser/edge_adapters/graphlink_endpoint_edit\\.ts$" },
+    },
+    {
+      name: "shared-edge-port-must-not-import-browser",
+      severity: "error",
+      from: { path: "^src/shared/edge_(port|route)\\.ts$" },
+      to: { path: "^src/browser/" },
+    },
   ],
   options: {
     doNotFollow: { path: "node_modules" },

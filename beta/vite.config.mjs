@@ -11,11 +11,13 @@ export default defineConfig({
         viewer: "src/browser/viewer.ts",
         "workbench-ui": "src/browser/workbench-ui.tsx",
         "layout-lab": "src/labs/layout/layout-lab.html",
+        "edge-port-lab": "src/labs/edge-port/edge-port-lab.html",
       },
       output: {
         entryFileNames: "[name].js",
         assetFileNames: (assetInfo) => {
           const name = assetInfo.names?.[0] || assetInfo.name || "";
+          if (name.includes("edge-port-lab")) return "edge-port-lab.css";
           return name.includes("layout-lab") ? "layout-lab.css" : "workbench-ui.css";
         },
       },

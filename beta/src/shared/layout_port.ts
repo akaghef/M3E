@@ -19,6 +19,7 @@ export type LayoutDirection = "right" | "left" | "down" | "up";
 export type LayoutDepthAlign = "aligned" | "packed";
 export type LayoutDensity = "compact" | "balanced" | "spacious";
 export type LayoutBranchDirection = "both" | "right" | "left";
+export type LayoutBranchSide = "left" | "right";
 export type LayoutEdgeRoute = "elbow" | "bezier" | "straight";
 export type LayoutLinkRoute = "simple-bezier" | "orthogonal" | "straight";
 
@@ -44,6 +45,7 @@ export interface LayoutNodePosition extends LayoutNodeMetric {
   x: number;
   y: number;
   depth: number;
+  branchSide?: LayoutBranchSide;
   scatterCollapsedGroup?: boolean;
 }
 
@@ -275,7 +277,16 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
         ? baseX
         : baseX + ((parentX + parentW + LAYOUT.columnGap) - baseX) * depthOffsetFactor;
     const metric = metrics[nodeId]!;
-    pos[nodeId] = { x: nodeX, y: centerY, depth, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
+    pos[nodeId] = {
+      x: nodeX,
+      y: centerY,
+      depth,
+      w: metric.w,
+      h: metric.h,
+      fontSize: metric.fontSize,
+      labelLines: metric.labelLines,
+      branchSide: depth === 0 ? undefined : config.branchDirection === "left" ? "left" : "right",
+    };
     order.push(nodeId);
     let placeCursorY = topY;
     graph.childrenOf(nodeId).forEach((childId, i, arr) => {
@@ -356,7 +367,16 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
     const x = direction > 0
       ? rightXByDepth[depth] ?? (rootX + rootMetric.w + config.columnGap)
       : (leftXByDepth[depth] ?? (rootX - config.columnGap - depthWidth)) + Math.max(0, depthWidth - metric.w);
-    pos[nodeId] = { x, y: centerY, depth, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
+    pos[nodeId] = {
+      x,
+      y: centerY,
+      depth,
+      w: metric.w,
+      h: metric.h,
+      fontSize: metric.fontSize,
+      labelLines: metric.labelLines,
+      branchSide: direction > 0 ? "right" : "left",
+    };
     order.push(nodeId);
     let cursorY = topY;
     graph.childrenOf(nodeId).forEach((childId, i, arr) => {

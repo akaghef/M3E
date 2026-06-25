@@ -237,6 +237,7 @@ interface NodePosition {
   h: number;
   fontSize?: number;
   labelLines?: string[];
+  branchSide?: "left" | "right";
   scatterCollapsedGroup?: boolean;
 }
 

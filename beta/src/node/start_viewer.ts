@@ -46,6 +46,7 @@ import {
   type LayoutResult,
   type VisibleLayoutGraph,
 } from "../shared/layout_port";
+import { routeParentChildEdge } from "../shared/parent_child_edge_adapter";
 import { initAuditFile, recordAudit, getRecentAuditEntries } from "./audit_log";
 import {
   appendPerfLog,
@@ -333,6 +334,13 @@ function parseMapResolveRoute(urlPath: string): string | null {
 function parseLayoutSnapshotRoute(urlPath: string): string | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
   const match = pathname.match(/^\/api\/maps\/([^/]+)\/layout-snapshot$/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
+}
+
+function parseEdgePortSnapshotRoute(urlPath: string): string | null {
+  const pathname = new URL(urlPath, "http://localhost").pathname;
+  const match = pathname.match(/^\/api\/maps\/([^/]+)\/edge-port-snapshot$/);
   if (!match) return null;
   return decodeURIComponent(match[1]);
 }
@@ -2216,6 +2224,68 @@ function handleLayoutSnapshotApi(req: http.IncomingMessage, res: http.ServerResp
   return true;
 }
 
+function rectFromLayoutPosition(pos: { x: number; y: number; w: number; h: number }): { x: number; y: number; w: number; h: number } {
+  return { x: pos.x, y: pos.y - pos.h / 2, w: pos.w, h: pos.h };
+}
+
+function buildEdgePortSnapshot(state: AppState, scopeId: string | null): {
+  source: "createAppServer";
+  snapshots: Array<{
+    relation: { kind: "parent-child"; parentNodeId: string; childNodeId: string };
+    branchSide?: "left" | "right";
+    ports: unknown;
+    path: unknown;
+  }>;
+} {
+  const layoutSnapshot = buildLayoutSnapshot(state, scopeId);
+  const snapshots: Array<{
+    relation: { kind: "parent-child"; parentNodeId: string; childNodeId: string };
+    branchSide?: "left" | "right";
+    ports: unknown;
+    path: unknown;
+  }> = [];
+  layoutSnapshot.input.graph.nodeIds.forEach((parentNodeId) => {
+    const parentPos = layoutSnapshot.result.pos[parentNodeId];
+    if (!parentPos) return;
+    (layoutSnapshot.input.graph.children[parentNodeId] || []).forEach((childNodeId) => {
+      const childPos = layoutSnapshot.result.pos[childNodeId];
+      if (!childPos) return;
+      const relation = { kind: "parent-child" as const, parentNodeId, childNodeId };
+      const routed = routeParentChildEdge({
+        relation,
+        parentRect: rectFromLayoutPosition(parentPos),
+        childRect: rectFromLayoutPosition(childPos),
+        childPosition: childPos,
+        surfaceMode: "tree",
+        direction: "right",
+        routeStyle: "orthogonal",
+      });
+      snapshots.push({ relation, branchSide: childPos.branchSide, ports: routed.ports, path: routed.path });
+    });
+  });
+  return { source: "createAppServer", snapshots };
+}
+
+function handleEdgePortSnapshotApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): boolean {
+  if (req.method !== "GET") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return true;
+  }
+  const url = new URL(req.url ?? "/", "http://localhost");
+  try {
+    const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+    sendJson(res, 200, {
+      ok: true,
+      mapId,
+      ...buildEdgePortSnapshot(savedDoc.state, url.searchParams.get("scope")),
+    });
+  } catch (err) {
+    const message = (err as Error).message || "Unknown error";
+    sendJson(res, message === "Map not found." ? 404 : 500, { ok: false, error: message });
+  }
+  return true;
+}
+
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
   if (!mapId) {
     sendJson(res, 400, { error: "Map id is required." });
@@ -3811,6 +3881,12 @@ export function createAppServer(): http.Server {
     const layoutSnapshotMapId = parseLayoutSnapshotRoute(req.url ?? "/");
     if (layoutSnapshotMapId !== null) {
       handleLayoutSnapshotApi(req, res, layoutSnapshotMapId);
+      return;
+    }
+
+    const edgePortSnapshotMapId = parseEdgePortSnapshotRoute(req.url ?? "/");
+    if (edgePortSnapshotMapId !== null) {
+      handleEdgePortSnapshotApi(req, res, edgePortSnapshotMapId);
       return;
     }
 
