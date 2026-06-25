@@ -1,3 +1,17 @@
+import {
+  layout as layoutPortLayout,
+  type LayoutBranchDirection,
+  type LayoutDensity,
+  type LayoutMode,
+  type LayoutNodeMetric,
+  type LayoutOptions,
+  type LayoutResult,
+  type StructuredLayoutMode,
+  type VisibleLayoutGraph,
+} from "../shared/layout_port";
+
+type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
+
 const fileInput = document.getElementById("file-input") as HTMLInputElement;
 const loadDefaultBtn = document.getElementById("load-default");
 const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
@@ -6558,12 +6572,12 @@ function stopScatterAnimation(saveCurrentPositions: boolean): void {
   }
 }
 
-type StructuredSurfaceMode = "tree" | "mindmap" | "logic-chart" | "timeline";
+type StructuredSurfaceMode = StructuredLayoutMode;
 
 interface StructuredLayoutConfig {
   mode: StructuredSurfaceMode;
-  density: SurfaceLayoutDensity;
-  branchDirection: SurfaceBranchDirection;
+  density: LayoutDensity;
+  branchDirection: LayoutBranchDirection;
   columnGap: number;
   siblingGap: number;
   sideGap: number;
@@ -6573,50 +6587,6 @@ interface StructuredLayoutConfig {
   rootMinWidth: number;
   fontSize: number;
   rootFontSize: number;
-}
-
-interface LayoutNodeMetric {
-  w: number;
-  h: number;
-  labelLines?: string[];
-  fontSize?: number;
-}
-
-type PublicLayoutOptions = {
-  spacing?: { nodeGap?: number; levelGap?: number; padding?: number };
-  direction?: SurfaceLayoutDirection;
-  depthAlign?: SurfaceDepthAlign;
-  edge?: { route?: SurfaceEdgeRoute };
-  link?: { route?: SurfaceLinkRoute };
-  scatter?: { seed?: number; strength?: number; repulsion?: number };
-};
-
-type InternalLayoutOptions = {
-  displayRootId?: string;
-  structuredMode?: StructuredSurfaceMode;
-  density?: SurfaceLayoutDensity;
-  branchDirection?: SurfaceBranchDirection;
-  surfaceNodeViews?: Record<string, SurfaceNodeView>;
-  flowCells?: Record<string, { col: number; row: number; isReference: boolean }>;
-  scatterCollapsedGroups?: Record<string, boolean>;
-};
-
-type LayoutOptions = PublicLayoutOptions & InternalLayoutOptions;
-
-type VisibleLayoutGraph = {
-  nodeIds: string[];
-  childrenOf: (id: string) => string[];
-  graphLinks: GraphLink[];
-};
-
-interface MeasuredTreeContext {
-  displayRootId: string;
-  metrics: Record<string, LayoutNodeMetric>;
-  depthOf: Record<string, number>;
-  depthMaxWidth: Record<number, number>;
-  maxDepth: number;
-  config: StructuredLayoutConfig;
-  depthAlign: SurfaceDepthAlign;
 }
 
 function structuredSurfaceMode(): StructuredSurfaceMode | null {
@@ -6633,8 +6603,8 @@ function structuredSurfaceMode(): StructuredSurfaceMode | null {
 
 function structuredLayoutConfig(
   mode: StructuredSurfaceMode,
-  density = viewState.surfaceLayoutDensity,
-  branchDirection = viewState.surfaceBranchDirection,
+  density: LayoutDensity = viewState.surfaceLayoutDensity,
+  branchDirection: LayoutBranchDirection = viewState.surfaceBranchDirection,
 ): StructuredLayoutConfig {
   const compact = density === "compact";
   const spacious = density === "spacious";
@@ -6701,529 +6671,12 @@ function compactNodeMinHeight(config: StructuredLayoutConfig): number {
   return config.density === "compact" ? 22 : VIEWER_TUNING.layout.leafHeight;
 }
 
-function buildMeasuredTreeContext(
-  displayRootId: string,
-  mode: StructuredSurfaceMode,
-  graph: VisibleLayoutGraph,
-  boxSizes: Record<string, LayoutNodeMetric>,
-  options: LayoutOptions = {},
-): MeasuredTreeContext {
-  const config = structuredLayoutConfig(mode, options.density, options.branchDirection);
-  const metrics: Record<string, LayoutNodeMetric> = {};
-  const depthOf: Record<string, number> = {};
-  const depthMaxWidth: Record<number, number> = {};
-  let maxDepth = 0;
-
-  function visit(nodeId: string, depth: number): void {
-    const metric = boxSizes[nodeId];
-    if (!metric) return;
-    maxDepth = Math.max(maxDepth, depth);
-    depthOf[nodeId] = depth;
-    metrics[nodeId] = metric;
-    depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metrics[nodeId]!.w);
-    graph.childrenOf(nodeId).forEach((childId) => visit(childId, depth + 1));
-  }
-
-  visit(displayRootId, 0);
-  return { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config, depthAlign: options.depthAlign || "packed" };
-}
-
-function subtreeSpanForLayout(
-  nodeId: string,
-  childrenOf: (id: string) => string[],
-  metrics: Record<string, LayoutNodeMetric>,
-  cache: Record<string, number>,
-  siblingGap = VIEWER_TUNING.layout.siblingGap,
-): number {
-  if (cache[nodeId] !== undefined) {
-    return cache[nodeId]!;
-  }
-  if (!metrics[nodeId]) {
-    return VIEWER_TUNING.layout.leafHeight;
-  }
-  const children = childrenOf(nodeId);
-  if (children.length === 0) {
-    const leafSpan = Math.max(VIEWER_TUNING.layout.leafHeight, metrics[nodeId]!.h + siblingGap);
-    cache[nodeId] = leafSpan;
-    return leafSpan;
-  }
-  let sum = 0;
-  children.forEach((childId, i) => {
-    sum += subtreeSpanForLayout(childId, childrenOf, metrics, cache, siblingGap);
-    if (i < children.length - 1) {
-      sum += siblingGap;
-    }
-  });
-  const result = Math.max(sum, metrics[nodeId]!.h + 24);
-  cache[nodeId] = result;
-  return result;
-}
-
-function finalizeLayoutBounds(pos: Record<string, NodePosition>, order: string[]): Pick<LayoutResult, "totalHeight" | "totalWidth"> {
-  let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
-  let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
-  order.forEach((nodeId) => {
-    const p = pos[nodeId];
-    if (!p) return;
-    const halfH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2;
-    maxRight = Math.max(maxRight, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
-    maxBottom = Math.max(maxBottom, p.y + halfH + VIEWER_TUNING.layout.canvasBottomPad);
-  });
-  return {
-    totalHeight: Math.max(maxBottom, VIEWER_TUNING.layout.minCanvasHeight),
-    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
-  };
-}
-
-function orientLayoutResult(result: LayoutResult, direction: SurfaceLayoutDirection | undefined): LayoutResult {
-  if (!direction || direction === "right") {
-    return result;
-  }
-  const order = result.order.filter((nodeId) => result.pos[nodeId]);
-  if (order.length === 0) {
-    return result;
-  }
-  const positions = order.map((nodeId) => result.pos[nodeId]!);
-  const minX = Math.min(...positions.map((p) => p.x));
-  const maxX = Math.max(...positions.map((p) => p.x + p.w));
-  const minY = Math.min(...positions.map((p) => p.y - p.h / 2));
-  const maxY = Math.max(...positions.map((p) => p.y + p.h / 2));
-  const oriented: Record<string, NodePosition> = {};
-  order.forEach((nodeId) => {
-    const p = result.pos[nodeId]!;
-    if (direction === "left") {
-      oriented[nodeId] = { ...p, x: minX + maxX - (p.x + p.w) };
-      return;
-    }
-    if (direction === "down") {
-      oriented[nodeId] = { ...p, x: minY + (p.y - p.h / 2), y: minX + (p.x - minX) + p.w / 2 };
-      return;
-    }
-    oriented[nodeId] = { ...p, x: minY + (maxY - (p.y + p.h / 2)), y: minX + (p.x - minX) + p.w / 2 };
-  });
-  const bounds = finalizeLayoutBounds(oriented, order);
-  return { ...result, pos: oriented, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
-}
-
-function applyDepthAlignOptions(result: LayoutResult, options: LayoutOptions): LayoutResult {
-  return orientLayoutResult(result, options.direction);
-}
-
-function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config, depthAlign } = ctx;
-  const xByDepth: Record<number, number> = {};
-  let cursorX = VIEWER_TUNING.layout.leftPad;
-  for (let d = 0; d <= maxDepth; d += 1) {
-    xByDepth[d] = cursorX;
-    cursorX += (depthMaxWidth[d] ?? 120) + (config.mode === "tree" ? VIEWER_TUNING.layout.columnGap : config.columnGap);
-  }
-
-  const subtreeHeightCache: Record<string, number> = {};
-  const pos: Record<string, NodePosition> = {};
-  const order: string[] = [];
-  const depthOffsetFactor = depthAlign === "aligned" ? 0 : VIEWER_TUNING.layout.depthOffsetFactor;
-
-  function place(nodeId: string, topY: number, parentX: number | null, parentW: number | null): number {
-    if (!metrics[nodeId]) return VIEWER_TUNING.layout.leafHeight;
-    const depth = depthOf[nodeId] ?? 0;
-    const h = subtreeSpanForLayout(
-      nodeId,
-      graph.childrenOf,
-      metrics,
-      subtreeHeightCache,
-      config.mode === "tree" ? VIEWER_TUNING.layout.siblingGap : config.siblingGap,
-    );
-    const centerY = topY + h / 2;
-    const baseX = xByDepth[depth]!;
-    const nodeX = config.mode === "logic-chart"
-      ? baseX
-      : parentX === null || parentW === null
-      ? baseX
-      : baseX + ((parentX + parentW + VIEWER_TUNING.layout.columnGap) - baseX) * depthOffsetFactor;
-    pos[nodeId] = { x: nodeX, y: centerY, depth, w: metrics[nodeId]!.w, h: metrics[nodeId]!.h, fontSize: metrics[nodeId]!.fontSize, labelLines: metrics[nodeId]!.labelLines };
-    order.push(nodeId);
-    let placeCursorY = topY;
-    graph.childrenOf(nodeId).forEach((childId, i, arr) => {
-      const childH = place(childId, placeCursorY, nodeX, metrics[nodeId]!.w);
-      placeCursorY += childH;
-      if (i < arr.length - 1) placeCursorY += config.mode === "tree" ? VIEWER_TUNING.layout.siblingGap : config.siblingGap;
-    });
-    return h;
-  }
-
-  place(displayRootId, VIEWER_TUNING.layout.topPad, null, null);
-  if (config.mode === "logic-chart" && config.branchDirection === "left") {
-    const contentLeft = Math.min(...order.map((nodeId) => pos[nodeId]!.x));
-    const contentRight = Math.max(...order.map((nodeId) => pos[nodeId]!.x + pos[nodeId]!.w));
-    order.forEach((nodeId) => {
-      const p = pos[nodeId]!;
-      p.x = contentLeft + contentRight - (p.x + p.w);
-    });
-  }
-  const bounds = finalizeLayoutBounds(pos, order);
-  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
-}
-
-function splitMindmapBranches(graph: VisibleLayoutGraph, rootId: string, direction: SurfaceBranchDirection): { left: string[]; right: string[] } {
-  const children = graph.childrenOf(rootId);
-  const left: string[] = [];
-  const right: string[] = [];
-  if (direction === "right") {
-    return { left, right: children };
-  }
-  if (direction === "left") {
-    return { left: children, right };
-  }
-  children.forEach((childId, index) => {
-    (index % 2 === 0 ? right : left).push(childId);
-  });
-  return { left, right };
-}
-
-function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config } = ctx;
-  const rootMetric = metrics[displayRootId] || { w: 280, h: VIEWER_TUNING.layout.rootHeight };
-  const branchWidth = (fromDepth = 1): number => {
-    let width = 0;
-    for (let d = fromDepth; d <= maxDepth; d += 1) {
-      width += (depthMaxWidth[d] ?? 120) + config.columnGap;
-    }
-    return width;
-  };
-  const leftBranchWidth = branchWidth();
-  const rootX = config.branchDirection === "right"
-    ? VIEWER_TUNING.layout.leftPad
-    : config.branchDirection === "left"
-      ? VIEWER_TUNING.layout.leftPad + leftBranchWidth
-      : VIEWER_TUNING.layout.leftPad + leftBranchWidth + config.sideGap;
-  const rightXByDepth: Record<number, number> = {};
-  const leftXByDepth: Record<number, number> = {};
-  rightXByDepth[1] = rootX + rootMetric.w + config.columnGap;
-  leftXByDepth[1] = rootX - config.columnGap - (depthMaxWidth[1] ?? 120);
-  for (let d = 2; d <= maxDepth; d += 1) {
-    rightXByDepth[d] = rightXByDepth[d - 1]! + (depthMaxWidth[d - 1] ?? 120) + config.columnGap;
-    leftXByDepth[d] = leftXByDepth[d - 1]! - config.columnGap - (depthMaxWidth[d] ?? 120);
-  }
-  const spanCache: Record<string, number> = {};
-  const { left, right } = splitMindmapBranches(graph, displayRootId, config.branchDirection);
-  const sideGap = config.sideGap;
-  const sideSpan = (ids: string[]) => ids.reduce((sum, id, index) => (
-    sum + subtreeSpanForLayout(id, graph.childrenOf, metrics, spanCache, config.siblingGap) + (index > 0 ? sideGap : 0)
-  ), 0);
-  const totalSpan = Math.max(rootMetric.h + 60, sideSpan(left), sideSpan(right), VIEWER_TUNING.layout.rootHeight + 80);
-  const rootY = VIEWER_TUNING.layout.topPad + totalSpan / 2;
-  const pos: Record<string, NodePosition> = {
-    [displayRootId]: { x: rootX, y: rootY, depth: 0, w: rootMetric.w, h: rootMetric.h, fontSize: rootMetric.fontSize, labelLines: rootMetric.labelLines },
-  };
-  const order: string[] = [displayRootId];
-
-  function placeSide(nodeId: string, topY: number, direction: -1 | 1): number {
-    if (!metrics[nodeId]) return VIEWER_TUNING.layout.leafHeight;
-    const depth = Math.max(1, depthOf[nodeId] ?? 1);
-    const span = subtreeSpanForLayout(nodeId, graph.childrenOf, metrics, spanCache, config.siblingGap);
-    const metric = metrics[nodeId]!;
-    const centerY = topY + span / 2;
-    const depthWidth = depthMaxWidth[depth] ?? metric.w;
-    const x = direction > 0
-      ? rightXByDepth[depth] ?? (rootX + rootMetric.w + config.columnGap)
-      : (leftXByDepth[depth] ?? (rootX - config.columnGap - depthWidth)) + Math.max(0, depthWidth - metric.w);
-    pos[nodeId] = { x, y: centerY, depth, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
-    order.push(nodeId);
-    let cursorY = topY;
-    graph.childrenOf(nodeId).forEach((childId, i, arr) => {
-      const childSpan = placeSide(childId, cursorY, direction);
-      cursorY += childSpan;
-      if (i < arr.length - 1) cursorY += config.siblingGap;
-    });
-    return span;
-  }
-
-  const placeGroup = (ids: string[], direction: -1 | 1): void => {
-    let cursorY = rootY - sideSpan(ids) / 2;
-    ids.forEach((childId, index) => {
-      const span = placeSide(childId, cursorY, direction);
-      cursorY += span + (index < ids.length - 1 ? sideGap : 0);
-    });
-  };
-  placeGroup(left, -1);
-  placeGroup(right, 1);
-
-  const bounds = finalizeLayoutBounds(pos, order);
-  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
-}
-
-function buildTimelineLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, config } = ctx;
-  const rootMetric = metrics[displayRootId] || { w: 280, h: VIEWER_TUNING.layout.rootHeight };
-  const rootX = VIEWER_TUNING.layout.leftPad;
-  const axisY = VIEWER_TUNING.layout.topPad + 300;
-  const pos: Record<string, NodePosition> = {
-    [displayRootId]: { x: rootX, y: axisY, depth: 0, w: rootMetric.w, h: rootMetric.h, fontSize: rootMetric.fontSize, labelLines: rootMetric.labelLines },
-  };
-  const order: string[] = [displayRootId];
-  const rootChildren = graph.childrenOf(displayRootId);
-  const stepX = Math.max(config.density === "compact" ? 190 : 260, config.columnGap + 120);
-
-  function placeDescendants(nodeId: string, baseX: number, baseY: number, sign: -1 | 1): void {
-    graph.childrenOf(nodeId).forEach((childId, index) => {
-      const metric = metrics[childId]!;
-      const x = baseX + 54;
-      const y = baseY + sign * (92 + index * 72);
-      pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
-      order.push(childId);
-      placeDescendants(childId, x, y, sign);
-    });
-  }
-
-  rootChildren.forEach((childId, index) => {
-    const metric = metrics[childId]!;
-    const x = rootX + rootMetric.w + config.columnGap + index * stepX;
-    const sign: -1 | 1 = index % 2 === 0 ? -1 : 1;
-    const y = axisY + sign * 132;
-    pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
-    order.push(childId);
-    placeDescendants(childId, x, y, sign);
-  });
-
-  const bounds = finalizeLayoutBounds(pos, order);
-  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
-}
-
-function layout(
-  visibleGraph: VisibleLayoutGraph,
-  boxSizes: Record<string, LayoutNodeMetric>,
-  mode: SurfaceKind,
-  options: LayoutOptions,
-): LayoutResult {
-  const displayRootId = options.displayRootId || visibleGraph.nodeIds[0] || "";
-  const displayRootExists = Boolean(displayRootId && boxSizes[displayRootId]);
-
-  if (mode === "scatter" && visibleGraph.nodeIds.length > 0) {
-    const descendants = visibleGraph.nodeIds;
-    const scatterDepthOf: Record<string, number> = {};
-    const visitDepth = (nodeId: string, depth: number): void => {
-      scatterDepthOf[nodeId] = depth;
-      visibleGraph.childrenOf(nodeId).forEach((childId) => visitDepth(childId, depth + 1));
-    };
-    descendants.forEach((nodeId) => {
-      if (scatterDepthOf[nodeId] === undefined) {
-        visitDepth(nodeId, 0);
-      }
-    });
-    const seededByNode = scatterSeedPositionsFromGraph(displayRootId, descendants, scatterDepthOf, visibleGraph.childrenOf);
-    const pos: Record<string, NodePosition> = {};
-    let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
-    let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
-    descendants.forEach((nodeId) => {
-      const metric = boxSizes[nodeId];
-      if (!metric) return;
-      const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = metric.w / 2;
-      const diameter = radius * 2;
-      const saved = options.surfaceNodeViews?.[nodeId];
-      const seeded = seededByNode[nodeId] || scatterSeedCenter();
-      const seededX = seeded.x - radius;
-      const seededY = seeded.y;
-      const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
-      const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
-      pos[nodeId] = {
-        x,
-        y,
-        depth,
-        w: diameter,
-        h: diameter,
-        fontSize: scatterFontSizeFor(radius),
-        scatterCollapsedGroup: Boolean(options.scatterCollapsedGroups?.[nodeId]),
-      };
-      maxRight = Math.max(maxRight, x + diameter + VIEWER_TUNING.layout.canvasRightPad);
-      maxBottom = Math.max(maxBottom, y + radius + VIEWER_TUNING.layout.canvasBottomPad);
-    });
-
-    return {
-      pos,
-      order: descendants,
-      totalHeight: Math.max(maxBottom, VIEWER_TUNING.layout.minCanvasHeight),
-      totalWidth: Math.max(maxRight, VIEWER_TUNING.layout.minCanvasWidth),
-    };
-  }
-
-  if (mode === "system" && displayRootExists) {
-    const surfaceNodes = visibleGraph.childrenOf(displayRootId);
-    const flowCells = options.flowCells || {};
-    const primarySurfaceNodes = surfaceNodes.filter((nodeId) => !flowCells[nodeId]?.isReference);
-    const referenceSurfaceNodes = surfaceNodes.filter((nodeId) => flowCells[nodeId]?.isReference);
-    const pos: Record<string, NodePosition> = {};
-    const order: string[] = [];
-    const colMaxWidth: Record<number, number> = {};
-    const rowMaxHeight: Record<number, number> = {};
-    const depthOf: Record<string, number> = {};
-    const surfaceCells: Record<string, { col: number; row: number }> = {};
-    const occupiedRowsByCol: Record<number, Set<number>> = {};
-    let maxCol = 0;
-    let maxRow = 0;
-
-    surfaceNodes.forEach((nodeId, index) => {
-      const metric = boxSizes[nodeId];
-      if (!metric) return;
-      if (flowCells[nodeId]?.isReference) {
-        return;
-      }
-      const col = flowCells[nodeId]?.col ?? index;
-      const occupiedRows = occupiedRowsByCol[col] || new Set<number>();
-      let row = flowCells[nodeId]?.row ?? 0;
-      while (occupiedRows.has(row)) {
-        row += 1;
-      }
-      occupiedRows.add(row);
-      occupiedRowsByCol[col] = occupiedRows;
-      surfaceCells[nodeId] = { col, row };
-      depthOf[nodeId] = col;
-      maxCol = Math.max(maxCol, col);
-      maxRow = Math.max(maxRow, row);
-      colMaxWidth[col] = Math.max(colMaxWidth[col] ?? 0, metric.w);
-      rowMaxHeight[row] = Math.max(rowMaxHeight[row] ?? 0, Math.max(VIEWER_TUNING.layout.leafHeight + 18, metric.h + 18));
-    });
-
-    const xByCol: Record<number, number> = {};
-    let cursorX = VIEWER_TUNING.layout.leftPad;
-    for (let col = 0; col <= maxCol; col += 1) {
-      xByCol[col] = cursorX;
-      cursorX += (colMaxWidth[col] ?? 180) + VIEWER_TUNING.layout.columnGap;
-    }
-
-    const yByRow: Record<number, number> = {};
-    let cursorY = VIEWER_TUNING.layout.topPad + 132;
-    for (let row = 0; row <= maxRow; row += 1) {
-      const rowHeight = rowMaxHeight[row] ?? (VIEWER_TUNING.layout.leafHeight + 18);
-      yByRow[row] = cursorY + rowHeight / 2;
-      cursorY += rowHeight + FLOW_SURFACE_ROW_GAP;
-    }
-
-    primarySurfaceNodes.forEach((nodeId, index) => {
-      const resolvedCell = surfaceCells[nodeId] || { col: flowCells[nodeId]?.col ?? index, row: flowCells[nodeId]?.row ?? 0 };
-      const { col, row } = resolvedCell;
-      const metric = boxSizes[nodeId]!;
-      pos[nodeId] = {
-        x: xByCol[col]!,
-        y: yByRow[row]!,
-        depth: col,
-        w: metric.w,
-        h: metric.h,
-      };
-      order.push(nodeId);
-    });
-
-    if (referenceSurfaceNodes.length > 0) {
-      const referenceTop = cursorY + 26;
-      let referenceCursorX = VIEWER_TUNING.layout.leftPad;
-      referenceSurfaceNodes.forEach((nodeId) => {
-        const metric = boxSizes[nodeId]!;
-        pos[nodeId] = {
-          x: referenceCursorX,
-          y: referenceTop + metric.h / 2,
-          depth: maxCol + 1,
-          w: metric.w,
-          h: metric.h,
-        };
-        order.push(nodeId);
-        referenceCursorX += metric.w + VIEWER_TUNING.layout.columnGap;
-      });
-      cursorY = referenceTop + Math.max(...referenceSurfaceNodes.map((nodeId) => boxSizes[nodeId]!.h)) + FLOW_SURFACE_ROW_GAP;
-      cursorX = Math.max(cursorX, referenceCursorX);
-    }
-
-    return {
-      pos,
-      order,
-      totalHeight: Math.max(cursorY + VIEWER_TUNING.layout.canvasBottomPad, VIEWER_TUNING.layout.minCanvasHeight),
-      totalWidth: Math.max(cursorX + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
-    };
-  }
-
-  const structuredMode = options.structuredMode || (mode === "mindmap" || mode === "logic-chart" || mode === "timeline" ? mode : "tree");
-  const measuredContext = buildMeasuredTreeContext(displayRootId, structuredMode, visibleGraph, boxSizes, options);
-  if (structuredMode === "mindmap") {
-    return applyDepthAlignOptions(buildMindmapLayout(visibleGraph, measuredContext), options);
-  }
-  if (structuredMode === "logic-chart" && measuredContext.config.branchDirection === "both") {
-    return applyDepthAlignOptions(buildMindmapLayout(visibleGraph, measuredContext), options);
-  }
-  if (structuredMode === "timeline") {
-    return applyDepthAlignOptions(buildTimelineLayout(visibleGraph, measuredContext), options);
-  }
-  return applyDepthAlignOptions(buildRightTreeLayout(visibleGraph, measuredContext), options);
-}
-
-function scatterSeedPositionsFromGraph(
-  rootId: string,
-  ids: string[],
-  depthOf: Record<string, number>,
-  childrenOf: (id: string) => string[] = () => [],
-): Record<string, { x: number; y: number }> {
-  const center = scatterSeedCenter();
-  const idSet = new Set(ids);
-  const visibleChildrenForSeed = (nodeId: string): string[] =>
-    childrenOf(nodeId).filter((childId) => idSet.has(childId));
-  const childLeafCount = new Map<string, number>();
-  const leafCount = (nodeId: string): number => {
-    const cached = childLeafCount.get(nodeId);
-    if (cached != null) return cached;
-    const children = visibleChildrenForSeed(nodeId);
-    const count = children.length ? children.reduce((sum, childId) => sum + leafCount(childId), 0) : 1;
-    childLeafCount.set(nodeId, count);
-    return count;
-  };
-
-  const yByNode: Record<string, number> = {};
-  const assignBreadth = (nodeId: string, top: number): number => {
-    const children = visibleChildrenForSeed(nodeId);
-    if (!children.length) {
-      yByNode[nodeId] = top;
-      return top + scatterEdgeLength * 0.76;
-    }
-    let cursor = top;
-    children.forEach((childId) => {
-      cursor = assignBreadth(childId, cursor);
-    });
-    yByNode[nodeId] = (yByNode[children[0]!]! + yByNode[children[children.length - 1]!]!) / 2;
-    return cursor;
-  };
-  const totalBreadth = leafCount(rootId) * scatterEdgeLength * 0.76;
-  assignBreadth(rootId, center.y - totalBreadth / 2);
-
-  const rankPeers: Record<number, string[]> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    if (!rankPeers[depth]) rankPeers[depth] = [];
-    rankPeers[depth]!.push(nodeId);
-  });
-
-  const seeded: Record<string, { x: number; y: number }> = {};
-  ids.forEach((nodeId, index) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const peers = rankPeers[depth] || [];
-    const peerIndex = Math.max(0, peers.indexOf(nodeId));
-    const siblingNudge = ((peerIndex % 3) - 1) * 12;
-    seeded[nodeId] = {
-      x: center.x + (depth - 1) * scatterEdgeLength * 1.26,
-      y: (yByNode[nodeId] ?? center.y) + siblingNudge,
-    };
-  });
-  if (ids.includes(rootId)) {
-    seeded[rootId] = {
-      x: center.x - scatterEdgeLength * 1.18,
-      y: yByNode[rootId] ?? center.y,
-    };
-  }
-  return seeded;
-}
-
 window.m3eLayout = (
   graph: VisibleLayoutGraph,
   boxSizes: Record<string, LayoutNodeMetric>,
   mode: SurfaceKind,
   options: LayoutOptions = {},
-): LayoutResult => layout(graph, boxSizes, mode, options);
+): LayoutResult => layoutPortLayout(graph, boxSizes, mode, options);
 
 function buildLayout(state: AppState): LayoutResult {
   const displayRootId = currentScopeRootId();
@@ -7274,7 +6727,8 @@ function buildLayout(state: AppState): LayoutResult {
     options.surfaceNodeViews = surface?.nodeViews || {};
     options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
     // Scatter layout reads persisted per-node view coordinates; scatter simulation writes them elsewhere.
-    return layout(
+    options.scatter = { edgeLength: scatterEdgeLength };
+    return layoutPortLayout(
       {
         nodeIds: descendants,
         childrenOf: (nodeId) => {
@@ -7317,7 +6771,7 @@ function buildLayout(state: AppState): LayoutResult {
     options.flowCells = flowCells;
   }
 
-  return layout(
+  return layoutPortLayout(
     {
       nodeIds: Array.from(visibleNodeIds),
       childrenOf,
@@ -13448,7 +12902,12 @@ function renderRoutingScopeSurface(selectedNodeId: string | null): string {
   Object.keys(state.nodes).forEach((nodeId) => {
     routingBoxSizes[nodeId] = measureLayoutNode(state, nodeId, rootId, routingConfig);
   });
-  const layout = buildRightTreeLayout(routingGraph, buildMeasuredTreeContext(rootId, "tree", routingGraph, routingBoxSizes));
+  const layout = layoutPortLayout(routingGraph, routingBoxSizes, "tree", {
+    displayRootId: rootId,
+    structuredMode: "tree",
+    density: viewState.surfaceLayoutDensity,
+    branchDirection: viewState.surfaceBranchDirection,
+  });
   let edges = "";
   let nodes = "";
   layout.order.forEach((nodeId) => {

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "sample_id": "mindmap-basic",
+  "source": {
+    "product_path": "viewer.buildLayout",
+    "captured_at": "1970-01-01T00:00:00.000Z"
+  },
+  "input": {
+    "graph": {
+      "nodeIds": [
+        "root",
+        "a",
+        "b",
+        "c"
+      ],
+      "children": {
+        "root": [
+          "a",
+          "b",
+          "c"
+        ],
+        "a": [],
+        "b": [],
+        "c": []
+      },
+      "graphLinks": []
+    },
+    "boxSizes": {
+      "root": {
+        "w": 220,
+        "h": 70
+      },
+      "a": {
+        "w": 140,
+        "h": 40
+      },
+      "b": {
+        "w": 150,
+        "h": 44
+      },
+      "c": {
+        "w": 120,
+        "h": 38
+      }
+    },
+    "mode": "mindmap",
+    "options": {
+      "displayRootId": "root",
+      "structuredMode": "mindmap",
+      "density": "balanced",
+      "branchDirection": "both"
+    }
+  },
+  "expected": {
+    "pos": {
+      "root": {
+        "x": 434,
+        "y": 121,
+        "depth": 0,
+        "w": 220,
+        "h": 70
+      },
+      "b": {
+        "x": 172,
+        "y": 121,
+        "depth": 1,
+        "w": 150,
+        "h": 44
+      },
+      "a": {
+        "x": 766,
+        "y": 43,
+        "depth": 1,
+        "w": 140,
+        "h": 40
+      },
+      "c": {
+        "x": 766,
+        "y": 200,
+        "depth": 1,
+        "w": 120,
+        "h": 38
+      }
+    },
+    "order": [
+      "root",
+      "b",
+      "a",
+      "c"
+    ],
+    "totalHeight": 760,
+    "totalWidth": 1620
+  }
+}
