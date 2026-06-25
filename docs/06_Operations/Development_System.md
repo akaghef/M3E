@@ -107,6 +107,28 @@ seam を彫る spec には必ず2点を入れる:
 
 1–4 が真の「小アプリ（視覚 lab）」、5–7 は UI を持たない tested module。これにより人間の役割が「毎回全 UX を手で確認」から「視覚 lab 4つ + 統合1回の承認」に縮む。
 
+### 3.4 独立 GUI 検証ゲート（G-GUI、人間承認の前段）
+
+視覚 lab は、人間が見る前に **第三者 Codex が実際に GUI を駆動して通す** ゲートを必須とする（2026-06-25 akaghef 指示）。これで人間は「独立エージェント検証済みの lab」だけを承認すればよく、IS2 がさらに圧縮される。
+
+- **誰**: 実装した Codex とは別セッションの fresh Codex（self-certification を避け第三者性を担保）。Codex 側の computer-use skill で lab UI を実際に操作。
+- **何**: lab 起動 → controls 操作 → golden が想定通り描画されるか / console エラー無し / spec の lab acceptance との一致 を確認 → PASS/FAIL の check レポート（gate artifact）を生成。
+- **対象**: 視覚 lab（layout / node / edge / surface）＋ composition のみ。data seam は GUI が無いので対象外（機械 golden 継続）。一般に GUI を触る PR にも適用。
+- **強制方法（手続き＋必須 artifact）**: computer-use は表示を要し CI ハード gate にできない。よって:
+  - `scripts/ops/gui-gate.sh <lab>` が lab 起動＋独立 Codex 検証を回し、`docs/06_Operations/gates/<lab>-gui-check.md`（PASS/FAIL）を生成。
+  - **この artifact が PASS で存在しない限り、Director は人間承認に回さず、PR もマージしない。**
+  - checked-in script + 本ルールにより durable（chat 約束で済ませない、persistent-rule gate）。
+
+視覚 lab の確定フロー:
+
+```text
+Codex 実装
+  → Director が headless gate(EN1-5) を fresh 検証
+  → G-GUI ゲート（独立 Codex computer-use、PASS artifact 必須）
+  → akaghef 動作感承認
+  → PR マージ
+```
+
 ## 4. 既存ハーネスとの接続
 
 本体制は Director→Codex × Kiro（`Director_Playbook.md`）の上に乗る。seam 化作業の標準フロー:
@@ -133,6 +155,7 @@ seam を彫る spec には必ず2点を入れる:
 - **EN3 port = 型契約**。各 seam の port を `src/shared/<seam>_port.ts` に型定義。lab と製品が `tsc --noEmit` で同一契約に整合。golden sample が実 M3E 出力との一致を pin。
 - **EN4 exclusive-seam**。seam helper を非 export（module-private）、ESLint `no-restricted-imports` で port 迂回を禁止。
 - **EN5 composition test（実際に動くか）**。実データ → 全パイプライン → snapshot を fixture(14174) でなく実 `start_viewer.ts` で。Codex が起票・実行、昇格 gate。
+- **G-GUI 独立 GUI 検証ゲート**（§3.4）。EN1-5 は CI 決定論 gate だが、視覚 lab は computer-use を要するため CI 化できない。よって第三者 Codex が GUI を駆動する手続き＋必須 PASS artifact で強制（人間承認・PR マージの前段）。EN 系を補完する agent-procedural gate。
 
 これらは durable rule-system（checked-in guard / CI workflow）として着地させる。chat 約束で済ませない（root `CLAUDE.md` の persistent-rule gate）。
 
