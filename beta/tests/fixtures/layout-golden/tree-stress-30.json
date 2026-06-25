@@ -1,0 +1,775 @@
+{
+  "schema_version": 1,
+  "sample_id": "tree-stress-30",
+  "source": {
+    "product_path": "viewer.buildLayout",
+    "captured_at": "1970-01-01T00:00:00.000Z"
+  },
+  "input": {
+    "graph": {
+      "nodeIds": [
+        "m3e-root",
+        "strategy",
+        "capture",
+        "graph-model",
+        "scope-sync",
+        "layout",
+        "vision",
+        "priorities",
+        "beta-focus",
+        "final-guard",
+        "risks",
+        "flash-inbox",
+        "vault-import",
+        "frontmatter",
+        "media-assets",
+        "clipboard",
+        "node-schema",
+        "edge-schema",
+        "graphlinks",
+        "cross-scope-link",
+        "alias-policy",
+        "scope-lock",
+        "push-queue",
+        "conflict-backup",
+        "audit-chain",
+        "tree-mode",
+        "mindmap-mode",
+        "routing-scope",
+        "route-preview",
+        "edge-sanity"
+      ],
+      "children": {
+        "m3e-root": [
+          "strategy",
+          "capture",
+          "graph-model",
+          "scope-sync",
+          "layout"
+        ],
+        "strategy": [
+          "vision",
+          "priorities",
+          "risks"
+        ],
+        "priorities": [
+          "beta-focus",
+          "final-guard"
+        ],
+        "beta-focus": [],
+        "final-guard": [],
+        "vision": [],
+        "risks": [],
+        "capture": [
+          "flash-inbox",
+          "vault-import",
+          "clipboard"
+        ],
+        "vault-import": [
+          "frontmatter",
+          "media-assets"
+        ],
+        "flash-inbox": [],
+        "frontmatter": [],
+        "media-assets": [],
+        "clipboard": [],
+        "graph-model": [
+          "node-schema",
+          "edge-schema",
+          "graphlinks",
+          "alias-policy"
+        ],
+        "graphlinks": [
+          "cross-scope-link"
+        ],
+        "node-schema": [],
+        "edge-schema": [],
+        "cross-scope-link": [],
+        "alias-policy": [],
+        "scope-sync": [
+          "scope-lock",
+          "push-queue",
+          "conflict-backup",
+          "audit-chain"
+        ],
+        "scope-lock": [],
+        "push-queue": [],
+        "conflict-backup": [],
+        "audit-chain": [],
+        "layout": [
+          "tree-mode",
+          "mindmap-mode",
+          "routing-scope"
+        ],
+        "routing-scope": [
+          "route-preview"
+        ],
+        "route-preview": [
+          "edge-sanity"
+        ],
+        "tree-mode": [],
+        "mindmap-mode": [],
+        "edge-sanity": []
+      },
+      "graphLinks": [
+        {
+          "id": "stress-link-1",
+          "sourceNodeId": "graphlinks",
+          "targetNodeId": "routing-scope",
+          "relationType": "reference",
+          "label": "route surface",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-2",
+          "sourceNodeId": "conflict-backup",
+          "targetNodeId": "audit-chain",
+          "relationType": "reference",
+          "label": "audit trail",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-3",
+          "sourceNodeId": "vault-import",
+          "targetNodeId": "node-schema",
+          "relationType": "reference",
+          "label": "normalizes to",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-4",
+          "sourceNodeId": "alias-policy",
+          "targetNodeId": "cross-scope-link",
+          "relationType": "reference",
+          "label": "constrains",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        }
+      ]
+    },
+    "boxSizes": {
+      "m3e-root": {
+        "w": 130,
+        "h": 34,
+        "labelLines": [
+          "m3e root"
+        ],
+        "fontSize": 13
+      },
+      "strategy": {
+        "w": 139,
+        "h": 38,
+        "labelLines": [
+          "strategy"
+        ],
+        "fontSize": 13
+      },
+      "capture": {
+        "w": 141,
+        "h": 42,
+        "labelLines": [
+          "capture"
+        ],
+        "fontSize": 13
+      },
+      "graph-model": {
+        "w": 178,
+        "h": 34,
+        "labelLines": [
+          "graph model"
+        ],
+        "fontSize": 13
+      },
+      "scope-sync": {
+        "w": 180,
+        "h": 38,
+        "labelLines": [
+          "scope sync"
+        ],
+        "fontSize": 13
+      },
+      "layout": {
+        "w": 161,
+        "h": 42,
+        "labelLines": [
+          "layout"
+        ],
+        "fontSize": 13
+      },
+      "vision": {
+        "w": 170,
+        "h": 34,
+        "labelLines": [
+          "vision"
+        ],
+        "fontSize": 13
+      },
+      "priorities": {
+        "w": 207,
+        "h": 38,
+        "labelLines": [
+          "priorities"
+        ],
+        "fontSize": 13
+      },
+      "beta-focus": {
+        "w": 216,
+        "h": 42,
+        "labelLines": [
+          "beta focus"
+        ],
+        "fontSize": 13
+      },
+      "final-guard": {
+        "w": 232,
+        "h": 34,
+        "labelLines": [
+          "final guard"
+        ],
+        "fontSize": 13
+      },
+      "risks": {
+        "w": 199,
+        "h": 38,
+        "labelLines": [
+          "risks"
+        ],
+        "fontSize": 13
+      },
+      "flash-inbox": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "flash inbox"
+        ],
+        "fontSize": 13
+      },
+      "vault-import": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "vault import"
+        ],
+        "fontSize": 13
+      },
+      "frontmatter": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "frontmatter"
+        ],
+        "fontSize": 13
+      },
+      "media-assets": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "media assets"
+        ],
+        "fontSize": 13
+      },
+      "clipboard": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "clipboard"
+        ],
+        "fontSize": 13
+      },
+      "node-schema": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "node schema"
+        ],
+        "fontSize": 13
+      },
+      "edge-schema": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "edge schema"
+        ],
+        "fontSize": 13
+      },
+      "graphlinks": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "graphlinks"
+        ],
+        "fontSize": 13
+      },
+      "cross-scope-link": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "cross scope link"
+        ],
+        "fontSize": 13
+      },
+      "alias-policy": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "alias policy"
+        ],
+        "fontSize": 13
+      },
+      "scope-lock": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "scope lock"
+        ],
+        "fontSize": 13
+      },
+      "push-queue": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "push queue"
+        ],
+        "fontSize": 13
+      },
+      "conflict-backup": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "conflict backup"
+        ],
+        "fontSize": 13
+      },
+      "audit-chain": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "audit chain"
+        ],
+        "fontSize": 13
+      },
+      "tree-mode": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "tree mode"
+        ],
+        "fontSize": 13
+      },
+      "mindmap-mode": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "mindmap mode"
+        ],
+        "fontSize": 13
+      },
+      "routing-scope": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "routing scope"
+        ],
+        "fontSize": 13
+      },
+      "route-preview": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "route preview"
+        ],
+        "fontSize": 13
+      },
+      "edge-sanity": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "edge sanity"
+        ],
+        "fontSize": 13
+      }
+    },
+    "mode": "tree",
+    "options": {
+      "displayRootId": "m3e-root",
+      "structuredMode": "tree",
+      "density": "balanced",
+      "branchDirection": "both"
+    }
+  },
+  "expected": {
+    "pos": {
+      "m3e-root": {
+        "x": 80,
+        "y": 422,
+        "depth": 0,
+        "w": 130,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "m3e root"
+        ]
+      },
+      "strategy": {
+        "x": 465,
+        "y": 90.5,
+        "depth": 1,
+        "w": 139,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "strategy"
+        ]
+      },
+      "vision": {
+        "x": 859,
+        "y": 29,
+        "depth": 2,
+        "w": 170,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "vision"
+        ]
+      },
+      "priorities": {
+        "x": 859,
+        "y": 90,
+        "depth": 2,
+        "w": 207,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "priorities"
+        ]
+      },
+      "beta-focus": {
+        "x": 1321,
+        "y": 70.5,
+        "depth": 3,
+        "w": 216,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "beta focus"
+        ]
+      },
+      "final-guard": {
+        "x": 1321,
+        "y": 112,
+        "depth": 3,
+        "w": 232,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "final guard"
+        ]
+      },
+      "risks": {
+        "x": 859,
+        "y": 151.5,
+        "depth": 2,
+        "w": 199,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "risks"
+        ]
+      },
+      "capture": {
+        "x": 465,
+        "y": 255,
+        "depth": 1,
+        "w": 141,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "capture"
+        ]
+      },
+      "flash-inbox": {
+        "x": 861,
+        "y": 193.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "flash inbox"
+        ]
+      },
+      "vault-import": {
+        "x": 861,
+        "y": 257.5,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "vault import"
+        ]
+      },
+      "frontmatter": {
+        "x": 1352,
+        "y": 235.5,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "frontmatter"
+        ]
+      },
+      "media-assets": {
+        "x": 1352,
+        "y": 277.5,
+        "depth": 3,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "media assets"
+        ]
+      },
+      "clipboard": {
+        "x": 861,
+        "y": 319,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "clipboard"
+        ]
+      },
+      "graph-model": {
+        "x": 465,
+        "y": 432,
+        "depth": 1,
+        "w": 178,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "graph model"
+        ]
+      },
+      "node-schema": {
+        "x": 898,
+        "y": 358.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "node schema"
+        ]
+      },
+      "edge-schema": {
+        "x": 898,
+        "y": 400.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "edge schema"
+        ]
+      },
+      "graphlinks": {
+        "x": 898,
+        "y": 452,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "graphlinks"
+        ]
+      },
+      "cross-scope-link": {
+        "x": 1389,
+        "y": 442.5,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "cross scope link"
+        ]
+      },
+      "alias-policy": {
+        "x": 898,
+        "y": 503.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "alias policy"
+        ]
+      },
+      "scope-sync": {
+        "x": 465,
+        "y": 606.5,
+        "depth": 1,
+        "w": 180,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "scope sync"
+        ]
+      },
+      "scope-lock": {
+        "x": 900,
+        "y": 545,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "scope lock"
+        ]
+      },
+      "push-queue": {
+        "x": 900,
+        "y": 584.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "push queue"
+        ]
+      },
+      "conflict-backup": {
+        "x": 900,
+        "y": 626.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "conflict backup"
+        ]
+      },
+      "audit-chain": {
+        "x": 900,
+        "y": 668,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "audit chain"
+        ]
+      },
+      "layout": {
+        "x": 465,
+        "y": 761,
+        "depth": 1,
+        "w": 161,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "layout"
+        ]
+      },
+      "tree-mode": {
+        "x": 881,
+        "y": 707.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "tree mode"
+        ]
+      },
+      "mindmap-mode": {
+        "x": 881,
+        "y": 749.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "mindmap mode"
+        ]
+      },
+      "routing-scope": {
+        "x": 881,
+        "y": 803,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "routing scope"
+        ]
+      },
+      "route-preview": {
+        "x": 1372,
+        "y": 803,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "route preview"
+        ]
+      },
+      "edge-sanity": {
+        "x": 1863,
+        "y": 793.5,
+        "depth": 4,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "edge sanity"
+        ]
+      }
+    },
+    "order": [
+      "m3e-root",
+      "strategy",
+      "vision",
+      "priorities",
+      "beta-focus",
+      "final-guard",
+      "risks",
+      "capture",
+      "flash-inbox",
+      "vault-import",
+      "frontmatter",
+      "media-assets",
+      "clipboard",
+      "graph-model",
+      "node-schema",
+      "edge-schema",
+      "graphlinks",
+      "cross-scope-link",
+      "alias-policy",
+      "scope-sync",
+      "scope-lock",
+      "push-queue",
+      "conflict-backup",
+      "audit-chain",
+      "layout",
+      "tree-mode",
+      "mindmap-mode",
+      "routing-scope",
+      "route-preview",
+      "edge-sanity"
+    ],
+    "totalHeight": 882,
+    "totalWidth": 2579
+  }
+}

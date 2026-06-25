@@ -1,0 +1,773 @@
+{
+  "schema_version": 1,
+  "sample_id": "scope-routing-stress-30",
+  "source": {
+    "product_path": "routingScopeSurface",
+    "captured_at": "1970-01-01T00:00:00.000Z"
+  },
+  "input": {
+    "graph": {
+      "nodeIds": [
+        "route-root",
+        "source-scope",
+        "target-scope",
+        "aliases",
+        "guards",
+        "execution",
+        "telemetry",
+        "source-root",
+        "source-child-a",
+        "source-child-b",
+        "source-deep-a",
+        "source-deep-b",
+        "target-root",
+        "target-child-a",
+        "target-child-b",
+        "target-deep-a",
+        "target-deep-b",
+        "alias-entry",
+        "alias-target",
+        "alias-preview",
+        "alias-conflict",
+        "scope-lock",
+        "cycle-check",
+        "permission-check",
+        "conflict-backup",
+        "dispatch",
+        "layout-port",
+        "save-result",
+        "event-log",
+        "diagnostics"
+      ],
+      "children": {
+        "route-root": [
+          "source-scope",
+          "target-scope",
+          "aliases",
+          "guards",
+          "execution",
+          "telemetry"
+        ],
+        "source-scope": [
+          "source-root",
+          "source-child-a",
+          "source-child-b"
+        ],
+        "source-root": [
+          "source-deep-a",
+          "source-deep-b"
+        ],
+        "source-child-a": [],
+        "source-child-b": [],
+        "source-deep-a": [],
+        "source-deep-b": [],
+        "target-scope": [
+          "target-root",
+          "target-child-a",
+          "target-child-b"
+        ],
+        "target-root": [
+          "target-deep-a",
+          "target-deep-b"
+        ],
+        "target-child-a": [],
+        "target-child-b": [],
+        "target-deep-a": [],
+        "target-deep-b": [],
+        "aliases": [
+          "alias-entry",
+          "alias-target",
+          "alias-preview",
+          "alias-conflict"
+        ],
+        "alias-entry": [],
+        "alias-target": [],
+        "alias-preview": [],
+        "alias-conflict": [],
+        "guards": [
+          "scope-lock",
+          "cycle-check",
+          "permission-check",
+          "conflict-backup"
+        ],
+        "scope-lock": [],
+        "cycle-check": [],
+        "permission-check": [],
+        "conflict-backup": [],
+        "execution": [
+          "dispatch",
+          "layout-port",
+          "save-result"
+        ],
+        "dispatch": [],
+        "layout-port": [],
+        "save-result": [],
+        "telemetry": [
+          "event-log",
+          "diagnostics"
+        ],
+        "event-log": [],
+        "diagnostics": []
+      },
+      "graphLinks": [
+        {
+          "id": "stress-link-1",
+          "sourceNodeId": "alias-entry",
+          "targetNodeId": "target-root",
+          "relationType": "reference",
+          "label": "points to",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-2",
+          "sourceNodeId": "source-deep-b",
+          "targetNodeId": "alias-preview",
+          "relationType": "reference",
+          "label": "preview",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-3",
+          "sourceNodeId": "cycle-check",
+          "targetNodeId": "source-root",
+          "relationType": "reference",
+          "label": "checks",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-4",
+          "sourceNodeId": "layout-port",
+          "targetNodeId": "save-result",
+          "relationType": "reference",
+          "label": "returns",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        }
+      ]
+    },
+    "boxSizes": {
+      "route-root": {
+        "w": 144,
+        "h": 34,
+        "labelLines": [
+          "route root"
+        ],
+        "fontSize": 13
+      },
+      "source-scope": {
+        "w": 167,
+        "h": 38,
+        "labelLines": [
+          "source scope"
+        ],
+        "fontSize": 13
+      },
+      "target-scope": {
+        "w": 176,
+        "h": 42,
+        "labelLines": [
+          "target scope"
+        ],
+        "fontSize": 13
+      },
+      "aliases": {
+        "w": 150,
+        "h": 34,
+        "labelLines": [
+          "aliases"
+        ],
+        "fontSize": 13
+      },
+      "guards": {
+        "w": 152,
+        "h": 38,
+        "labelLines": [
+          "guards"
+        ],
+        "fontSize": 13
+      },
+      "execution": {
+        "w": 182,
+        "h": 42,
+        "labelLines": [
+          "execution"
+        ],
+        "fontSize": 13
+      },
+      "telemetry": {
+        "w": 191,
+        "h": 34,
+        "labelLines": [
+          "telemetry"
+        ],
+        "fontSize": 13
+      },
+      "source-root": {
+        "w": 214,
+        "h": 38,
+        "labelLines": [
+          "source root"
+        ],
+        "fontSize": 13
+      },
+      "source-child-a": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "source child a"
+        ],
+        "fontSize": 13
+      },
+      "source-child-b": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "source child b"
+        ],
+        "fontSize": 13
+      },
+      "source-deep-a": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "source deep a"
+        ],
+        "fontSize": 13
+      },
+      "source-deep-b": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "source deep b"
+        ],
+        "fontSize": 13
+      },
+      "target-root": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "target root"
+        ],
+        "fontSize": 13
+      },
+      "target-child-a": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "target child a"
+        ],
+        "fontSize": 13
+      },
+      "target-child-b": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "target child b"
+        ],
+        "fontSize": 13
+      },
+      "target-deep-a": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "target deep a"
+        ],
+        "fontSize": 13
+      },
+      "target-deep-b": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "target deep b"
+        ],
+        "fontSize": 13
+      },
+      "alias-entry": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "alias entry"
+        ],
+        "fontSize": 13
+      },
+      "alias-target": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "alias target"
+        ],
+        "fontSize": 13
+      },
+      "alias-preview": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "alias preview"
+        ],
+        "fontSize": 13
+      },
+      "alias-conflict": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "alias conflict"
+        ],
+        "fontSize": 13
+      },
+      "scope-lock": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "scope lock"
+        ],
+        "fontSize": 13
+      },
+      "cycle-check": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "cycle check"
+        ],
+        "fontSize": 13
+      },
+      "permission-check": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "permission check"
+        ],
+        "fontSize": 13
+      },
+      "conflict-backup": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "conflict backup"
+        ],
+        "fontSize": 13
+      },
+      "dispatch": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "dispatch"
+        ],
+        "fontSize": 13
+      },
+      "layout-port": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "layout port"
+        ],
+        "fontSize": 13
+      },
+      "save-result": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "save result"
+        ],
+        "fontSize": 13
+      },
+      "event-log": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "event log"
+        ],
+        "fontSize": 13
+      },
+      "diagnostics": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "diagnostics"
+        ],
+        "fontSize": 13
+      }
+    },
+    "mode": "tree",
+    "options": {
+      "displayRootId": "route-root",
+      "structuredMode": "tree",
+      "density": "balanced",
+      "branchDirection": "both"
+    }
+  },
+  "expected": {
+    "pos": {
+      "route-root": {
+        "x": 80,
+        "y": 442.5,
+        "depth": 0,
+        "w": 144,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "route root"
+        ]
+      },
+      "source-scope": {
+        "x": 479,
+        "y": 93,
+        "depth": 1,
+        "w": 167,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "source scope"
+        ]
+      },
+      "source-root": {
+        "x": 901,
+        "y": 51.5,
+        "depth": 2,
+        "w": 214,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "source root"
+        ]
+      },
+      "source-deep-a": {
+        "x": 1370,
+        "y": 29.5,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "source deep a"
+        ]
+      },
+      "source-deep-b": {
+        "x": 1370,
+        "y": 71.5,
+        "depth": 3,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "source deep b"
+        ]
+      },
+      "source-child-a": {
+        "x": 901,
+        "y": 115.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "source child a"
+        ]
+      },
+      "source-child-b": {
+        "x": 901,
+        "y": 157,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "source child b"
+        ]
+      },
+      "target-scope": {
+        "x": 479,
+        "y": 258,
+        "depth": 1,
+        "w": 176,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "target scope"
+        ]
+      },
+      "target-root": {
+        "x": 910,
+        "y": 216,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "target root"
+        ]
+      },
+      "target-deep-a": {
+        "x": 1401,
+        "y": 196,
+        "depth": 3,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "target deep a"
+        ]
+      },
+      "target-deep-b": {
+        "x": 1401,
+        "y": 235.5,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "target deep b"
+        ]
+      },
+      "target-child-a": {
+        "x": 910,
+        "y": 275.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "target child a"
+        ]
+      },
+      "target-child-b": {
+        "x": 910,
+        "y": 317.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "target child b"
+        ]
+      },
+      "aliases": {
+        "x": 479,
+        "y": 423,
+        "depth": 1,
+        "w": 150,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "aliases"
+        ]
+      },
+      "alias-entry": {
+        "x": 884,
+        "y": 361.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "alias entry"
+        ]
+      },
+      "alias-target": {
+        "x": 884,
+        "y": 403,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "alias target"
+        ]
+      },
+      "alias-preview": {
+        "x": 884,
+        "y": 442.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "alias preview"
+        ]
+      },
+      "alias-conflict": {
+        "x": 884,
+        "y": 484.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "alias conflict"
+        ]
+      },
+      "guards": {
+        "x": 479,
+        "y": 587.5,
+        "depth": 1,
+        "w": 152,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "guards"
+        ]
+      },
+      "scope-lock": {
+        "x": 886,
+        "y": 526,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "scope lock"
+        ]
+      },
+      "cycle-check": {
+        "x": 886,
+        "y": 565.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "cycle check"
+        ]
+      },
+      "permission-check": {
+        "x": 886,
+        "y": 607.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "permission check"
+        ]
+      },
+      "conflict-backup": {
+        "x": 886,
+        "y": 649,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "conflict backup"
+        ]
+      },
+      "execution": {
+        "x": 479,
+        "y": 730,
+        "depth": 1,
+        "w": 182,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "execution"
+        ]
+      },
+      "dispatch": {
+        "x": 916,
+        "y": 688.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "dispatch"
+        ]
+      },
+      "layout-port": {
+        "x": 916,
+        "y": 730.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "layout port"
+        ]
+      },
+      "save-result": {
+        "x": 916,
+        "y": 772,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "save result"
+        ]
+      },
+      "telemetry": {
+        "x": 479,
+        "y": 833.5,
+        "depth": 1,
+        "w": 191,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "telemetry"
+        ]
+      },
+      "event-log": {
+        "x": 925,
+        "y": 811.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "event log"
+        ]
+      },
+      "diagnostics": {
+        "x": 925,
+        "y": 853.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "diagnostics"
+        ]
+      }
+    },
+    "order": [
+      "route-root",
+      "source-scope",
+      "source-root",
+      "source-deep-a",
+      "source-deep-b",
+      "source-child-a",
+      "source-child-b",
+      "target-scope",
+      "target-root",
+      "target-deep-a",
+      "target-deep-b",
+      "target-child-a",
+      "target-child-b",
+      "aliases",
+      "alias-entry",
+      "alias-target",
+      "alias-preview",
+      "alias-conflict",
+      "guards",
+      "scope-lock",
+      "cycle-check",
+      "permission-check",
+      "conflict-backup",
+      "execution",
+      "dispatch",
+      "layout-port",
+      "save-result",
+      "telemetry",
+      "event-log",
+      "diagnostics"
+    ],
+    "totalHeight": 934.5,
+    "totalWidth": 2117
+  }
+}

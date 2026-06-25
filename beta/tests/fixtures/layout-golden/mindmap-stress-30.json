@@ -1,0 +1,784 @@
+{
+  "schema_version": 1,
+  "sample_id": "mindmap-stress-30",
+  "source": {
+    "product_path": "viewer.buildLayout",
+    "captured_at": "1970-01-01T00:00:00.000Z"
+  },
+  "input": {
+    "graph": {
+      "nodeIds": [
+        "mindmap-root",
+        "research",
+        "product",
+        "users",
+        "data",
+        "collaboration",
+        "quality",
+        "release",
+        "learning",
+        "papers",
+        "experiments",
+        "synthesis",
+        "benchmark-notes",
+        "editor",
+        "navigation",
+        "layout-lab",
+        "stress-fixtures",
+        "sanity-tests",
+        "akaghef",
+        "future-collab",
+        "sqlite",
+        "vault",
+        "cloud-sync",
+        "scope-push",
+        "presence",
+        "audit",
+        "typecheck",
+        "golden-parity",
+        "dependency-gate",
+        "beta-channel"
+      ],
+      "children": {
+        "mindmap-root": [
+          "research",
+          "product",
+          "users",
+          "data",
+          "collaboration",
+          "quality",
+          "release",
+          "learning"
+        ],
+        "research": [
+          "papers",
+          "experiments",
+          "synthesis"
+        ],
+        "experiments": [
+          "benchmark-notes"
+        ],
+        "papers": [],
+        "synthesis": [],
+        "benchmark-notes": [],
+        "product": [
+          "editor",
+          "navigation",
+          "layout-lab"
+        ],
+        "layout-lab": [
+          "stress-fixtures",
+          "sanity-tests"
+        ],
+        "editor": [],
+        "navigation": [],
+        "stress-fixtures": [],
+        "sanity-tests": [],
+        "users": [
+          "akaghef",
+          "future-collab"
+        ],
+        "akaghef": [],
+        "future-collab": [],
+        "data": [
+          "sqlite",
+          "vault",
+          "cloud-sync"
+        ],
+        "sqlite": [],
+        "vault": [],
+        "cloud-sync": [],
+        "collaboration": [
+          "scope-push",
+          "presence",
+          "audit"
+        ],
+        "scope-push": [],
+        "presence": [],
+        "audit": [],
+        "quality": [
+          "typecheck",
+          "golden-parity",
+          "dependency-gate"
+        ],
+        "typecheck": [],
+        "golden-parity": [],
+        "dependency-gate": [],
+        "release": [
+          "beta-channel"
+        ],
+        "beta-channel": [],
+        "learning": []
+      },
+      "graphLinks": [
+        {
+          "id": "stress-link-1",
+          "sourceNodeId": "experiments",
+          "targetNodeId": "stress-fixtures",
+          "relationType": "reference",
+          "label": "becomes",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-2",
+          "sourceNodeId": "sanity-tests",
+          "targetNodeId": "golden-parity",
+          "relationType": "reference",
+          "label": "guards",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-3",
+          "sourceNodeId": "scope-push",
+          "targetNodeId": "cloud-sync",
+          "relationType": "reference",
+          "label": "depends",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-4",
+          "sourceNodeId": "dependency-gate",
+          "targetNodeId": "layout-lab",
+          "relationType": "reference",
+          "label": "protects",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        },
+        {
+          "id": "stress-link-5",
+          "sourceNodeId": "akaghef",
+          "targetNodeId": "beta-channel",
+          "relationType": "reference",
+          "label": "dogfoods",
+          "direction": "forward",
+          "style": "dashed",
+          "color": "#5f6f89"
+        }
+      ]
+    },
+    "boxSizes": {
+      "mindmap-root": {
+        "w": 158,
+        "h": 34,
+        "labelLines": [
+          "mindmap root"
+        ],
+        "fontSize": 13
+      },
+      "research": {
+        "w": 139,
+        "h": 38,
+        "labelLines": [
+          "research"
+        ],
+        "fontSize": 13
+      },
+      "product": {
+        "w": 141,
+        "h": 42,
+        "labelLines": [
+          "product"
+        ],
+        "fontSize": 13
+      },
+      "users": {
+        "w": 136,
+        "h": 34,
+        "labelLines": [
+          "users"
+        ],
+        "fontSize": 13
+      },
+      "data": {
+        "w": 138,
+        "h": 38,
+        "labelLines": [
+          "data"
+        ],
+        "fontSize": 13
+      },
+      "collaboration": {
+        "w": 210,
+        "h": 42,
+        "labelLines": [
+          "collaboration"
+        ],
+        "fontSize": 13
+      },
+      "quality": {
+        "w": 177,
+        "h": 34,
+        "labelLines": [
+          "quality"
+        ],
+        "fontSize": 13
+      },
+      "release": {
+        "w": 186,
+        "h": 38,
+        "labelLines": [
+          "release"
+        ],
+        "fontSize": 13
+      },
+      "learning": {
+        "w": 202,
+        "h": 42,
+        "labelLines": [
+          "learning"
+        ],
+        "fontSize": 13
+      },
+      "papers": {
+        "w": 197,
+        "h": 34,
+        "labelLines": [
+          "papers"
+        ],
+        "fontSize": 13
+      },
+      "experiments": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "experiments"
+        ],
+        "fontSize": 13
+      },
+      "synthesis": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "synthesis"
+        ],
+        "fontSize": 13
+      },
+      "benchmark-notes": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "benchmark notes"
+        ],
+        "fontSize": 13
+      },
+      "editor": {
+        "w": 233,
+        "h": 38,
+        "labelLines": [
+          "editor"
+        ],
+        "fontSize": 13
+      },
+      "navigation": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "navigation"
+        ],
+        "fontSize": 13
+      },
+      "layout-lab": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "layout lab"
+        ],
+        "fontSize": 13
+      },
+      "stress-fixtures": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "stress fixtures"
+        ],
+        "fontSize": 13
+      },
+      "sanity-tests": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "sanity tests"
+        ],
+        "fontSize": 13
+      },
+      "akaghef": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "akaghef"
+        ],
+        "fontSize": 13
+      },
+      "future-collab": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "future collab"
+        ],
+        "fontSize": 13
+      },
+      "sqlite": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "sqlite"
+        ],
+        "fontSize": 13
+      },
+      "vault": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "vault"
+        ],
+        "fontSize": 13
+      },
+      "cloud-sync": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "cloud sync"
+        ],
+        "fontSize": 13
+      },
+      "scope-push": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "scope push"
+        ],
+        "fontSize": 13
+      },
+      "presence": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "presence"
+        ],
+        "fontSize": 13
+      },
+      "audit": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "audit"
+        ],
+        "fontSize": 13
+      },
+      "typecheck": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "typecheck"
+        ],
+        "fontSize": 13
+      },
+      "golden-parity": {
+        "w": 236,
+        "h": 34,
+        "labelLines": [
+          "golden parity"
+        ],
+        "fontSize": 13
+      },
+      "dependency-gate": {
+        "w": 236,
+        "h": 38,
+        "labelLines": [
+          "dependency gate"
+        ],
+        "fontSize": 13
+      },
+      "beta-channel": {
+        "w": 236,
+        "h": 42,
+        "labelLines": [
+          "beta channel"
+        ],
+        "fontSize": 13
+      }
+    },
+    "mode": "mindmap",
+    "options": {
+      "displayRootId": "mindmap-root",
+      "structuredMode": "mindmap",
+      "density": "balanced",
+      "branchDirection": "both"
+    }
+  },
+  "expected": {
+    "pos": {
+      "mindmap-root": {
+        "x": 1190,
+        "y": 597,
+        "depth": 0,
+        "w": 158,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "mindmap root"
+        ]
+      },
+      "product": {
+        "x": 937,
+        "y": 181,
+        "depth": 1,
+        "w": 141,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "product"
+        ]
+      },
+      "editor": {
+        "x": 523,
+        "y": 42,
+        "depth": 2,
+        "w": 233,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "editor"
+        ]
+      },
+      "navigation": {
+        "x": 520,
+        "y": 134,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "navigation"
+        ]
+      },
+      "layout-lab": {
+        "x": 520,
+        "y": 273,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "layout lab"
+        ]
+      },
+      "stress-fixtures": {
+        "x": 172,
+        "y": 226,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "stress fixtures"
+        ]
+      },
+      "sanity-tests": {
+        "x": 172,
+        "y": 318,
+        "depth": 3,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "sanity tests"
+        ]
+      },
+      "data": {
+        "x": 940,
+        "y": 566,
+        "depth": 1,
+        "w": 138,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "data"
+        ]
+      },
+      "sqlite": {
+        "x": 520,
+        "y": 478,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "sqlite"
+        ]
+      },
+      "vault": {
+        "x": 520,
+        "y": 568,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "vault"
+        ]
+      },
+      "cloud-sync": {
+        "x": 520,
+        "y": 656,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "cloud sync"
+        ]
+      },
+      "quality": {
+        "x": 901,
+        "y": 902,
+        "depth": 1,
+        "w": 177,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "quality"
+        ]
+      },
+      "typecheck": {
+        "x": 520,
+        "y": 814,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "typecheck"
+        ]
+      },
+      "golden-parity": {
+        "x": 520,
+        "y": 904,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "golden parity"
+        ]
+      },
+      "dependency-gate": {
+        "x": 520,
+        "y": 992,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "dependency gate"
+        ]
+      },
+      "learning": {
+        "x": 876,
+        "y": 1150,
+        "depth": 1,
+        "w": 202,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "learning"
+        ]
+      },
+      "research": {
+        "x": 1460,
+        "y": 228,
+        "depth": 1,
+        "w": 139,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "research"
+        ]
+      },
+      "papers": {
+        "x": 1782,
+        "y": 137,
+        "depth": 2,
+        "w": 197,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "papers"
+        ]
+      },
+      "experiments": {
+        "x": 1782,
+        "y": 224,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "experiments"
+        ]
+      },
+      "benchmark-notes": {
+        "x": 2130,
+        "y": 223,
+        "depth": 3,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "benchmark notes"
+        ]
+      },
+      "synthesis": {
+        "x": 1782,
+        "y": 315,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "synthesis"
+        ]
+      },
+      "users": {
+        "x": 1460,
+        "y": 516,
+        "depth": 1,
+        "w": 136,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "users"
+        ]
+      },
+      "akaghef": {
+        "x": 1782,
+        "y": 471,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "akaghef"
+        ]
+      },
+      "future-collab": {
+        "x": 1782,
+        "y": 559,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "future collab"
+        ]
+      },
+      "collaboration": {
+        "x": 1460,
+        "y": 805,
+        "depth": 1,
+        "w": 210,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "collaboration"
+        ]
+      },
+      "scope-push": {
+        "x": 1782,
+        "y": 717,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "scope push"
+        ]
+      },
+      "presence": {
+        "x": 1782,
+        "y": 807,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "presence"
+        ]
+      },
+      "audit": {
+        "x": 1782,
+        "y": 895,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "audit"
+        ]
+      },
+      "release": {
+        "x": 1460,
+        "y": 1053,
+        "depth": 1,
+        "w": 186,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "release"
+        ]
+      },
+      "beta-channel": {
+        "x": 1782,
+        "y": 1053,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "beta channel"
+        ]
+      }
+    },
+    "order": [
+      "mindmap-root",
+      "product",
+      "editor",
+      "navigation",
+      "layout-lab",
+      "stress-fixtures",
+      "sanity-tests",
+      "data",
+      "sqlite",
+      "vault",
+      "cloud-sync",
+      "quality",
+      "typecheck",
+      "golden-parity",
+      "dependency-gate",
+      "learning",
+      "research",
+      "papers",
+      "experiments",
+      "benchmark-notes",
+      "synthesis",
+      "users",
+      "akaghef",
+      "future-collab",
+      "collaboration",
+      "scope-push",
+      "presence",
+      "audit",
+      "release",
+      "beta-channel"
+    ],
+    "totalHeight": 1231,
+    "totalWidth": 2846
+  }
+}
