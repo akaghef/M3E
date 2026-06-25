@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "declaration": false,
+    "noEmit": true,
+    "types": []
+  },
+  "include": [
+    "src/browser/viewer.globals.d.ts",
+    "src/browser/viewer.tuning.ts",
+    "src/browser/viewer.ts",
+    "src/shared/layout_port.ts",
+    "src/shared/types.ts"
+  ]
+}

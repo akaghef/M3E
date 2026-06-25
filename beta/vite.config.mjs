@@ -7,10 +7,17 @@ export default defineConfig({
     emptyOutDir: false,
     outDir: "dist/browser",
     rollupOptions: {
-      input: "src/browser/workbench-ui.tsx",
+      input: {
+        viewer: "src/browser/viewer.ts",
+        "workbench-ui": "src/browser/workbench-ui.tsx",
+        "layout-lab": "src/labs/layout/layout-lab.html",
+      },
       output: {
-        entryFileNames: "workbench-ui.js",
-        assetFileNames: "workbench-ui.css",
+        entryFileNames: "[name].js",
+        assetFileNames: (assetInfo) => {
+          const name = assetInfo.names?.[0] || assetInfo.name || "";
+          return name.includes("layout-lab") ? "layout-lab.css" : "workbench-ui.css";
+        },
       },
     },
   },

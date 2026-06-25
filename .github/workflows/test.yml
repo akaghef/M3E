@@ -47,6 +47,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Check dependency boundaries
+        run: npm run lint:deps
+
+      - name: Check source copy drift
+        run: npm run lint:copy
+
       # Build node + browser artifacts first. Some unit tests load built browser
       # bundles (dist/browser/*.js); `npm test` only runs build:node, so a clean
       # checkout would be missing them. `npm run build` covers node + browser.

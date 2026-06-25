@@ -1,0 +1,9 @@
+{
+  "threshold": 0,
+  "minLines": 20,
+  "minTokens": 120,
+  "reporters": ["console"],
+  "path": ["src/shared/layout_port.ts", "src/labs/layout", "src/browser/viewer.ts"],
+  "pattern": "**/*.ts*",
+  "ignore": ["dist/**", "node_modules/**", "tests/fixtures/**"]
+}

@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "sample_id": "tree-basic",
+  "source": {
+    "product_path": "viewer.buildLayout",
+    "captured_at": "1970-01-01T00:00:00.000Z"
+  },
+  "input": {
+    "graph": {
+      "nodeIds": [
+        "root",
+        "a",
+        "a1",
+        "b"
+      ],
+      "children": {
+        "root": [
+          "a",
+          "b"
+        ],
+        "a": [
+          "a1"
+        ],
+        "a1": [],
+        "b": []
+      },
+      "graphLinks": []
+    },
+    "boxSizes": {
+      "root": {
+        "w": 220,
+        "h": 70
+      },
+      "a": {
+        "w": 150,
+        "h": 40
+      },
+      "a1": {
+        "w": 120,
+        "h": 36
+      },
+      "b": {
+        "w": 130,
+        "h": 38
+      }
+    },
+    "mode": "Tree",
+    "options": {
+      "displayRootId": "root",
+      "structuredMode": "Tree",
+      "density": "balanced",
+      "branchDirection": "both"
+    }
+  },
+  "expected": {
+    "pos": {
+      "root": {
+        "x": 80,
+        "y": 62,
+        "depth": 0,
+        "w": 220,
+        "h": 70
+      },
+      "a": {
+        "x": 555,
+        "y": 42,
+        "depth": 1,
+        "w": 150,
+        "h": 40
+      },
+      "a1": {
+        "x": 960,
+        "y": 29,
+        "depth": 2,
+        "w": 120,
+        "h": 36
+      },
+      "b": {
+        "x": 555,
+        "y": 94.5,
+        "depth": 1,
+        "w": 130,
+        "h": 38
+      }
+    },
+    "order": [
+      "root",
+      "a",
+      "a1",
+      "b"
+    ],
+    "totalHeight": 760,
+    "totalWidth": 1620
+  }
+}

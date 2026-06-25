@@ -37,7 +37,7 @@
   - Export only the public types and `layout()`.
   - Keep internal helpers non-exported.
   - Do not create `layout_bridge.ts` in this first unit.
-  - Include scatter/system options in the type even if first algorithm support is minimal; do not silently drop existing product modes.
+  - Include Disperse/System options in the type even if first algorithm support is minimal; do not silently drop existing product modes.
   - **Acceptance:** task 4 contract test passes; no caller has been migrated yet.
 
 - [ ] 6. Fix browser/workbench/labs TypeScript config for shared port imports
@@ -51,8 +51,8 @@
 
 - [ ] 7. Write product adapter parity tests before migrating callers
   - **Boundary:** layout unit tests only
-  - Add samples for tree, mindmap, and routing-scope where current behavior is deterministic.
-  - Do not include scatter/system in first-unit golden acceptance; record them as follow-up ratchets.
+  - Add samples for Tree, Radial, and routing-scope where current behavior is deterministic.
+  - Do not include Disperse/System in first-unit golden acceptance; record them as follow-up ratchets.
   - If direct current `viewer.ts` helper testing is infeasible, encode expected output from captured pre-migration current behavior.
   - **Acceptance:** tests describe current layout behavior and fail or are pending until adapter calls `LayoutPort`.
 
@@ -87,10 +87,10 @@
 
 - [ ] 12. Add explicit capture command for real product layout samples
   - **Boundary:** `beta/src/node/` or `beta/scripts/`, package script if needed
-  - Capture `VisibleLayoutGraph`, `boxSizes`, mode/options, and `LayoutResult` through product adapters for exactly `tree`, `mindmap`, and `routing-scope`.
+  - Capture `VisibleLayoutGraph`, `boxSizes`, mode/options, and `LayoutResult` through product adapters for exactly `Tree`, `Radial`, and `routing-scope`.
   - Require explicit output path and sample id.
   - Sanitize labels/personal content.
-  - **Acceptance:** command can generate deterministic `tree-basic`, `mindmap-basic`, and `scope-routing-basic` samples into `tests/fixtures/layout-golden/` only when explicitly invoked.
+  - **Acceptance:** command can generate deterministic `tree-basic`, `radial-basic`, and `scope-routing-basic` samples into `tests/fixtures/layout-golden/` only when explicitly invoked.
 
 - [ ] 13. Add golden parity tests
   - **Boundary:** `beta/tests/unit/layout_golden.test.*`
@@ -112,7 +112,7 @@
   - Render sample nodes as rectangles from `LayoutResult.pos`.
   - Render simple parent-child lines from sample graph.
   - Provide controls for sample, mode, density, branchDirection, direction, depthAlign, spacing.
-  - Provide exactly the first-unit samples: tree, mindmap, routing-scope. Scatter/system controls or samples are follow-up ratchets.
+  - Provide exactly the first-unit samples: Tree, Radial, routing-scope. Disperse/System controls or samples are follow-up ratchets.
   - **Acceptance:** lab can switch the three golden samples and recompute layout using the shared port.
 
 - [ ] 16. Add lab smoke test
