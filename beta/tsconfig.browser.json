@@ -10,5 +10,5 @@
     "types": []
   },
   "include": ["src/browser/**/*.ts"],
-  "exclude": ["src/browser/edge_geometry.ts", "src/browser/viewer.ts"]
+  "exclude": ["src/browser/edge_geometry.ts", "src/browser/viewer.ts", "src/browser/edge_adapters/**/*.ts"]
 }

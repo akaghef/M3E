@@ -29,7 +29,7 @@ describe("LayoutPort contract", () => {
 
     expect(result.order).toEqual(["root", "child"]);
     expect(result.pos.root).toMatchObject({ x: 80, y: 54, depth: 0, w: 200, h: 64 });
-    expect(result.pos.child).toMatchObject({ x: 535, y: 29.5, depth: 1, w: 120, h: 38 });
+    expect(result.pos.child).toMatchObject({ x: 535, y: 29.5, depth: 1, w: 120, h: 38, branchSide: "right" });
     expect(result.totalWidth).toBe(1620);
     expect(result.totalHeight).toBe(760);
   });
