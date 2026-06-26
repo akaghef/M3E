@@ -9,6 +9,16 @@ import {
   type StructuredLayoutMode,
   type VisibleLayoutGraph,
 } from "../shared/layout_port";
+import {
+  canonicalSurfaceViewName,
+  normalizeNodeDrawStyle,
+  type AliasDrawState,
+  type NodeDrawInput,
+  type NodeDrawStyle,
+  type NodeDrawSurface,
+  type ScopeLockDrawState,
+} from "../shared/node_draw_port";
+import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
@@ -3102,35 +3112,25 @@ function deriveFillFromUrgencyImportance(urgency: number, importance: number): s
 }
 
 function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
-  // V1-compatible JSON decoration layer (Miro-style). Takes priority over
-  // legacy m3e:bg/m3e:border/m3e:color if present.
-  const style = readNodeStyleJson(attrs);
-  const jsonFill = typeof style.fill === "string" ? sanitizeColor(style.fill) : null;
-  const jsonBorder = typeof style.border === "string" ? sanitizeColor(style.border) : null;
-  const jsonText = typeof style.text === "string" ? sanitizeColor(style.text) : null;
-  const urgency = typeof style.urgency === "number" ? style.urgency : NaN;
-  const importance = typeof style.importance === "number" ? style.importance : NaN;
-  // Derived fill only applies when explicit fill is absent (both legacy and JSON).
-  const legacyBg = sanitizeColor(attrs["m3e:bg"]);
-  let effectiveBg = jsonFill ?? legacyBg;
-  if (!effectiveBg && (Number.isFinite(urgency) || Number.isFinite(importance))) {
-    effectiveBg = deriveFillFromUrgencyImportance(urgency, importance);
-  }
+  const nodeDrawStyle = normalizeNodeDrawStyle({
+    styleJson: attrs["m3e:style"],
+    legacy: attrs,
+  });
   return {
-    bg: effectiveBg,
-    color: jsonText ?? sanitizeColor(attrs["m3e:color"]),
-    border: jsonBorder ?? sanitizeColor(attrs["m3e:border"]),
-    borderStyle: sanitizeBorderStyle(attrs["m3e:border-style"]),
-    borderWidth: sanitizeNumeric(attrs["m3e:border-width"], 0, 8),
-    shape: sanitizeShape(attrs["m3e:shape"]),
-    icon: sanitizeIcon(attrs["m3e:icon"]),
+    bg: nodeDrawStyle.fill ?? null,
+    color: nodeDrawStyle.text ?? null,
+    border: nodeDrawStyle.border ?? null,
+    borderStyle: nodeDrawStyle.borderStyle ?? null,
+    borderWidth: nodeDrawStyle.borderWidth ?? null,
+    shape: nodeDrawStyle.shape ?? null,
+    icon: nodeDrawStyle.icon ?? null,
     edgeColor: sanitizeColor(attrs["m3e:edge-color"]),
     edgeStyle: sanitizeBorderStyle(attrs["m3e:edge-style"]),
     edgeWidth: sanitizeNumeric(attrs["m3e:edge-width"], 1, 10),
     edgeLabel: (attrs["m3e:edge-label"] || "").trim() || null,
-    band: sanitizeBand(attrs["m3e:band"]),
-    confidence: sanitizeNumeric(attrs["m3e:confidence"], 0, 1),
-    status: sanitizeStatus(style.status) ?? sanitizeStatus(attrs["m3e:status"]),
+    band: nodeDrawStyle.band ?? null,
+    confidence: nodeDrawStyle.confidence ?? null,
+    status: nodeDrawStyle.status ?? null,
   };
 }
 
@@ -7251,6 +7251,185 @@ function render(): void {
     return `<foreignObject data-node-id="${escapeXmlAttr(parentId)}" data-component-kind="tabular" x="${foX}" y="${foY}" width="${tableW}" height="${tableH}"><div xmlns="http://www.w3.org/1999/xhtml" class="m3e-component m3e-component--tabular ${densityClass} ${maxHeightClass}">${html}</div></foreignObject>`;
   }
 
+  function nodeDrawStyleFromAttrs(attrs: NodeStyleAttrs): NodeDrawStyle {
+    return {
+      fill: attrs.bg ?? undefined,
+      text: attrs.color ?? undefined,
+      border: attrs.border ?? undefined,
+      borderStyle: attrs.borderStyle as NodeDrawStyle["borderStyle"] | undefined,
+      borderWidth: attrs.borderWidth ?? undefined,
+      shape: attrs.shape as NodeDrawStyle["shape"] | undefined,
+      icon: attrs.icon ?? undefined,
+      status: attrs.status as NodeDrawStyle["status"] | undefined,
+      confidence: attrs.confidence ?? undefined,
+      band: attrs.band as NodeDrawStyle["band"] | undefined,
+    };
+  }
+
+  function nodeDrawAliasState(node: TreeNode): AliasDrawState {
+    if (!isAliasNode(node)) return "none";
+    if (isBrokenAlias(node)) return "broken";
+    return aliasAccess(node) === "write" ? "write" : "read";
+  }
+
+  function nodeDrawLockState(nodeId: string): ScopeLockDrawState {
+    const nodeLock = scopeLockMap.get(nodeId);
+    if (!nodeLock) return "none";
+    return nodeLock.entityId === collabEntityId ? "self" : "other";
+  }
+
+  function nodeDrawSurface(): NodeDrawSurface {
+    return {
+      view: canonicalSurfaceViewName(scatterSurface ? "scatter" : structuredMode),
+      structuredMode: canonicalSurfaceViewName(structuredMode),
+      displayRootId,
+      rootless: rootlessSurface,
+    };
+  }
+
+  function renderLatexHtml(text: string): { html: string; displayMode: boolean } {
+    let htmlStr = latexHtmlCache.get(text);
+    const { latex, displayMode } = latexSource(text);
+    if (!htmlStr) {
+      try {
+        htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+      } catch {
+        htmlStr = escapeXml(text);
+      }
+      latexHtmlCache.set(text, htmlStr);
+    }
+    return { html: htmlStr, displayMode };
+  }
+
+  function toNodeDrawInput(node: TreeNode, p: NodePosition, nodeStyles: NodeStyleAttrs): NodeDrawInput {
+    const treatAsRoot = node.id === displayRootId && !rootlessSurface;
+    const label = diagramLabel(node, nodeStyles);
+    const aliasState = nodeDrawAliasState(node);
+    const fontSize = p.fontSize ?? (treatAsRoot ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
+    const content = isLatexNode(node)
+      ? { kind: "latexHtml" as const, ...renderLatexHtml(node.text) }
+      : {
+          kind: "plainLabel" as const,
+          labelLines: p.labelLines || splitLabelLines(treatAsRoot ? (uiLabel(node) || "(empty)") : label),
+          fontSize,
+          textAnchor: structuredMode === "mindmap" || treatAsRoot ? "middle" as const : "start" as const,
+        };
+    return {
+      node: {
+        id: node.id,
+        type: (isAliasNode(node) ? "alias" : isFolderNode(node) ? "folder" : node.nodeType || "text") as NodeDrawInput["node"]["type"],
+        kind: treatAsRoot ? "root" : isLatexNode(node) ? "latex" : nodeStyles.status ? "status" : isFolderNode(node) ? "folder" : "plain",
+        label: uiLabel(node),
+        text: node.text,
+        alias: aliasState,
+        aliasLabel: node.aliasLabel,
+        targetLabel: resolveAliasTarget(node)?.text,
+        snapshotLabel: node.targetSnapshotLabel,
+        isFolder: isFolderNode(node),
+        isScopePortal: isScopePortalNode(node),
+        isRoot: treatAsRoot,
+        isLatex: isLatexNode(node),
+        isScatterGroup: Boolean(p.scatterCollapsedGroup),
+        scatterRole: rawAttr(node, "m3e:scatter-role") as NodeDrawInput["node"]["scatterRole"],
+        badge: nodeBadge(node) || undefined,
+      },
+      position: p,
+      style: nodeDrawStyleFromAttrs(nodeStyles),
+      view: {
+        selected: viewState.selectedNodeIds.has(node.id),
+        primarySelected: node.id === viewState.selectedNodeId,
+        multiSelected: viewState.selectedNodeIds.has(node.id),
+        linkSource: viewState.linkSourceNodeId === node.id,
+        cutPending: viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(node.id),
+        reparentSource: viewState.reparentSourceIds.has(node.id),
+        dragSource: Boolean(viewState.dragState && node.id === viewState.dragState.sourceNodeId),
+        dropTarget: viewState.dragState?.proposal?.kind === "reparent" && node.id === viewState.dragState.proposal.parentId,
+        collapsedCount: viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
+          ? Math.max(1, countHiddenDescendants(node.id))
+          : undefined,
+        lockedBy: nodeDrawLockState(node.id),
+      },
+      surface: nodeDrawSurface(),
+      content,
+    };
+  }
+
+  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: NodePosition, childIds: string[]): string {
+    let result = "";
+    childIds.forEach((childId, i) => {
+      const child = pos[childId];
+      if (!child) return;
+      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+      const stroke = nodeStyles.edgeColor || defaultStroke;
+      const edgeInline = buildEdgeStyle(nodeStyles);
+      const edgePath = layoutEdgePath(structuredMode, p, child);
+      result += `<path class="edge edge-${structuredMode}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
+
+      const childNode = state.nodes[childId];
+      const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
+      const edgeLabel = childStyles.edgeLabel || parentChildLinkLabels.get(parentChildEdgeKey(nodeId, childId));
+      if (edgeLabel) {
+        result += `<text class="edge-label" data-node-id="${childId}" x="${edgePath.labelX}" y="${edgePath.labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
+      }
+    });
+    return result;
+  }
+
+  function renderFolderPreview(node: TreeNode, nodeStyles: NodeStyleAttrs, p: NodePosition): string {
+    const previewLayout = buildFlowPreviewLayout(node);
+    if (!previewLayout) return "";
+    const frameInsetY = structuredMode === "mindmap" ? 0 : 12;
+    const framePadX = structuredMode === "mindmap" ? 0 : 14;
+    const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - frameInsetY;
+    const folderFrameX = p.x - framePadX;
+    const folderFrameY = p.y - frameH / 2;
+    let result = "";
+    const previewIds = new Set(previewLayout.childIds);
+    Object.values(state.links || {}).forEach((rawLink) => {
+      const link = normalizeGraphLink(rawLink);
+      const sourceNode = state.nodes[link.sourceNodeId];
+      const targetNode = state.nodes[link.targetNodeId];
+      if (!sourceNode || !targetNode || isParentChildPair(sourceNode, targetNode)) return;
+      if (!previewIds.has(link.sourceNodeId) || !previewIds.has(link.targetNodeId)) return;
+      const sourcePreview = previewLayout.positions[link.sourceNodeId];
+      const targetPreview = previewLayout.positions[link.targetNodeId];
+      if (!sourcePreview || !targetPreview) return;
+      const sourceRect = {
+        x: folderFrameX + sourcePreview.x,
+        y: folderFrameY + sourcePreview.y,
+        w: sourcePreview.w,
+        h: sourcePreview.h,
+      };
+      const targetRect = {
+        x: folderFrameX + targetPreview.x,
+        y: folderFrameY + targetPreview.y,
+        w: targetPreview.w,
+        h: targetPreview.h,
+      };
+      const { source: sourceEnd, target: targetEnd } = edgePortPairBetweenRects(sourceRect, targetRect);
+      const previewEdgePath = smoothGraphLinkPath(sourceEnd.x, sourceEnd.y, targetEnd.x, targetEnd.y);
+      result += `<path class="flow-preview-edge" d="${previewEdgePath}" />`;
+      const edgeLabel = (link.label || link.relationType || "").trim();
+      if (edgeLabel) {
+        result += `<text class="flow-preview-edge-label" x="${(sourceEnd.x + targetEnd.x) / 2}" y="${(sourceEnd.y + targetEnd.y) / 2 - 6}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
+      }
+    });
+
+    previewLayout.childIds.forEach((previewChildId) => {
+      const previewChild = state.nodes[previewChildId];
+      const previewPos = previewLayout.positions[previewChildId];
+      if (!previewChild || !previewPos) return;
+      const previewStyles = readNodeStyleAttrs(previewChild.attributes || {});
+      const previewLabel = escapeXml(diagramLabel(previewChild, previewStyles));
+      const previewX = folderFrameX + previewPos.x;
+      const previewY = folderFrameY + previewPos.y;
+      const previewClass = isFolderNode(previewChild) ? "flow-preview-node flow-preview-node-scope" : "flow-preview-node";
+      result += `<rect class="${previewClass}" x="${previewX}" y="${previewY}" width="${previewPos.w}" height="${previewPos.h}" rx="8" />`;
+      result += `<text class="flow-preview-node-label" x="${previewX + 10}" y="${previewY + previewPos.h / 2}" dominant-baseline="middle" text-anchor="start">${previewLabel}</text>`;
+    });
+    return result;
+  }
+
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
     const p = pos[nodeId];
@@ -7264,385 +7443,17 @@ function render(): void {
     const children = scatterSurface ? [] : visibleChildren(node);
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
-    const previewLayout = buildFlowPreviewLayout(node);
-    if (scatterSurface) {
-      const { cx, cy, r } = scatterCircleGeometry(p);
-      const circleClasses = ["node-hit", "scatter-node-circle"];
-      if (nodeId === displayRootId) {
-        circleClasses.push("scatter-root");
-      }
-      if (p.scatterCollapsedGroup) {
-        circleClasses.push("scatter-group");
-      } else {
-        circleClasses.push("scatter-branch");
-      }
-      const scatterRole = rawAttr(node, "m3e:scatter-role");
-      if (scatterRole === "downstream") {
-        circleClasses.push("scatter-role-downstream");
-      } else if (scatterRole === "sample") {
-        circleClasses.push("scatter-role-sample");
-      } else if (scatterRole === "upstream") {
-        circleClasses.push("scatter-role-upstream");
-      }
-      if (viewState.selectedNodeIds.has(nodeId)) {
-        circleClasses.push("selected");
-        circleClasses.push("multi-selected");
-      }
-      if (nodeId === viewState.selectedNodeId) {
-        circleClasses.push("primary-selected");
-      }
-      if (isAliasNode(node)) {
-        circleClasses.push("alias");
-        circleClasses.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
-      }
-      if (viewState.linkSourceNodeId === nodeId) {
-        circleClasses.push("link-source");
-      }
-      if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
-        circleClasses.push("drag-source");
-      }
-      const circleStyle: string[] = [];
-      if (nodeStyles.bg) circleStyle.push(`fill:${nodeStyles.bg}`);
-      if (nodeStyles.border) circleStyle.push(`stroke:${nodeStyles.border}`);
-      if (nodeStyles.borderWidth != null) circleStyle.push(`stroke-width:${nodeStyles.borderWidth}px`);
-      if (nodeStyles.borderStyle === "dashed") circleStyle.push("stroke-dasharray:8 5");
-      if (nodeStyles.borderStyle === "dotted") circleStyle.push("stroke-dasharray:3 3");
-      if (nodeStyles.borderStyle === "none") circleStyle.push("stroke:none");
-      const inline = circleStyle.length ? ` style="${circleStyle.join(";")}"` : "";
-      nodes += `<circle class="${circleClasses.join(" ")}" data-node-id="${nodeId}" cx="${cx}" cy="${cy}" r="${r}"${inline} />`;
-      const labelClass = nodeId === displayRootId ? "label-root scatter-label" : "label-node scatter-label";
-      const labelStyles = [`font-size:${p.fontSize ?? scatterFontSizeFor(r)}px`];
-      const labelInline = buildLabelStyle(nodeStyles);
-      if (labelInline) labelStyles.push(labelInline);
-      const label = scatterDisplayLabel(node);
-      const fontSize = p.fontSize ?? scatterFontSizeFor(r);
-      const labelMeasure = measureNodeLabel(label || node.id, fontSize);
-      const labelX = cx + r + 7;
-      const labelY = cy;
-      maxX = Math.max(maxX, labelX + labelMeasure.w + VIEWER_TUNING.layout.nodeRightPad);
-      maxY = Math.max(maxY, labelY + Math.max(r, labelMeasure.h / 2) + VIEWER_TUNING.layout.nodeBottomPad);
-      nodes += `<text class="${labelClass}" data-node-id="${nodeId}" x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" style="${labelStyles.join(";")}">${escapeXml(label)}</text>`;
-      return;
-    }
-    if (!nodeComponent) children.forEach((childId, i) => {
-      const child = pos[childId];
-      if (!child) {
-        return;
-      }
-
-      const defaultStroke =
-        VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
-      const stroke = nodeStyles.edgeColor || defaultStroke;
-      const edgeInline = buildEdgeStyle(nodeStyles);
-      const edgePath = layoutEdgePath(structuredMode, p, child);
-      edges += `<path class="edge edge-${structuredMode}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
-
-      // Edge label — stored on the child node (parent is unique per child)
-      const childNode = state.nodes[childId];
-      const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
-      const edgeLabel = childStyles.edgeLabel || parentChildLinkLabels.get(parentChildEdgeKey(nodeId, childId));
-      if (edgeLabel) {
-        edges += `<text class="edge-label" data-node-id="${childId}" x="${edgePath.labelX}" y="${edgePath.labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
-      }
-    });
-
-    const classNames = ["node-hit"];
-    if (scatterSurface) {
-      classNames.push("scatter-node");
-    }
-    if (viewState.selectedNodeIds.has(nodeId)) {
-      classNames.push("selected");
-      classNames.push("multi-selected");
-    }
-    if (nodeId === viewState.selectedNodeId) {
-      classNames.push("primary-selected");
-    }
-    if (isAliasNode(node)) {
-      classNames.push("alias");
-      classNames.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
-    }
-    if (nodeStyles.status) {
-      classNames.push(`status-${nodeStyles.status}`);
-    }
-    if (viewState.reparentSourceIds.has(nodeId)) {
-      classNames.push("reparent-source");
-    }
-    if (viewState.linkSourceNodeId === nodeId) {
-      classNames.push("link-source");
-    }
-    if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
-      classNames.push("cut-pending");
-    }
-    if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
-      classNames.push("drop-target");
-    }
-    if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
-      classNames.push("drag-source");
-    }
-    // Scope lock visual indicator
-    const nodeLock = scopeLockMap.get(nodeId);
-    if (nodeLock) {
-      classNames.push("scope-locked");
-      if (nodeLock.entityId !== collabEntityId) {
-        classNames.push("scope-locked-by-other");
-      }
-    }
-    const treatAsRoot = nodeId === displayRootId && !rootlessSurface;
-    const hitX = treatAsRoot ? p.x : p.x - 8;
-    const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
-    const hitY = p.y - hitH / 2;
-    const hitW = treatAsRoot ? p.w : p.w + 36;
-    const hitRx = shapeRx(nodeStyles.shape, treatAsRoot);
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="${hitRx}" />`;
-    const visualClasses = ["node-visual-box"];
-    if (structuredMode === "mindmap") {
-      visualClasses.push("mindmap-box");
-    }
-    if (viewState.selectedNodeIds.has(nodeId)) {
-      visualClasses.push("selected");
-      visualClasses.push("multi-selected");
-    }
-    if (nodeId === viewState.selectedNodeId) {
-      visualClasses.push("primary-selected");
-    }
-    if (isAliasNode(node)) {
-      visualClasses.push("alias");
-      visualClasses.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
-    }
-    if (nodeStyles.status) {
-      visualClasses.push(`status-${nodeStyles.status}`);
-    }
-    if (viewState.reparentSourceIds.has(nodeId)) {
-      visualClasses.push("reparent-source");
-    }
-    if (viewState.linkSourceNodeId === nodeId) {
-      visualClasses.push("link-source");
-    }
-    if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
-      visualClasses.push("drop-target");
-    }
-    if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
-      visualClasses.push("drag-source");
-    }
-    if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
-      visualClasses.push("cut-pending");
-    }
-    if (nodeLock) {
-      visualClasses.push("scope-locked");
-      if (nodeLock.entityId !== collabEntityId) {
-        visualClasses.push("scope-locked-by-other");
-      }
+    if (!nodeComponent) {
+      edges += renderParentChildEdges(nodeId, nodeStyles, p, children);
     }
 
-    if (treatAsRoot) {
-      const rootLabelLines = p.labelLines || splitLabelLines(uiLabel(node) || "(empty)");
-      const rootFont = p.fontSize ?? VIEWER_TUNING.typography.rootFont;
-      const rootLineHeight = lineHeightForFont(rootFont);
-      const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, rootFont, rootLineHeight);
-      const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
-      const w = p.w;
-      const h = p.h;
-      const rx = structuredMode === "mindmap" ? Math.min(28, h / 2) : shapeRx(nodeStyles.shape, true);
-      const x = p.x;
-      const y = p.y - h / 2;
-      const rootBoxStyle = buildNodeVisualStyle(nodeStyles);
-      const rootBoxInline = rootBoxStyle ? ` style="${rootBoxStyle}"` : "";
-      nodes += `<rect class="root-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${rootBoxInline} />`;
-      const rootLabelInline = buildLabelStyle(nodeStyles);
-      const rootLabelStyle = [`font-size:${rootFont}px`];
-      if (rootLabelInline) rootLabelStyle.push(rootLabelInline);
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" style="${rootLabelStyle.join(";")}">${rootTspans}</text>`;
-    } else {
-      const rawLabel = diagramLabel(node, nodeStyles);
-      const labelLines = p.labelLines || splitLabelLines(rawLabel);
-      const labelClasses = ["label-node"];
-      if (viewState.selectedNodeIds.has(nodeId)) {
-        labelClasses.push("selected");
-      }
-      if (nodeId === viewState.selectedNodeId) {
-        labelClasses.push("primary-selected");
-      }
-      if (isAliasNode(node)) {
-        labelClasses.push("alias-label");
-        labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
-      }
-      if (nodeStyles.status) {
-        labelClasses.push(`status-${nodeStyles.status}`);
-      }
-      const hasExplicitNodeBox = nodeStyles.shape === "diamond"
-        || nodeStyles.bg
-        || nodeStyles.border
-        || nodeStyles.borderWidth != null;
-      const needsStateVisualBox = structuredMode === "mindmap" || visualClasses.length > 1;
-      if (!isFolderNode(node) && (hasExplicitNodeBox || needsStateVisualBox)) {
-        const shapePadX = structuredMode === "mindmap" ? 0 : 14;
-        const shapePadY = structuredMode === "mindmap" ? 0 : 6;
-        const shapeX = p.x - shapePadX;
-        const shapeY = p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + shapePadY;
-        const shapeW = p.w + shapePadX * 2;
-        const shapeH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - shapePadY * 2;
-        const shapeInline = buildNodeVisualStyle(nodeStyles);
-        if (nodeStyles.shape === "diamond") {
-          nodes += `<path class="node-shape ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, shapeW, shapeH)}"${shapeInline ? ` style="${shapeInline}"` : ""} />`;
-        } else {
-          const rx = structuredMode === "mindmap" ? 4 : shapeRx(nodeStyles.shape, false);
-          nodes += `<path class="node-shape ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${rectPath(shapeX, shapeY, shapeW, shapeH, rx)}"${shapeInline ? ` style="${shapeInline}"` : ""} />`;
-        }
-      }
-      if (isFolderNode(node)) {
-        const frameInsetY = structuredMode === "mindmap" ? 0 : 12;
-        const framePadX = structuredMode === "mindmap" ? 0 : 14;
-        const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - frameInsetY;
-        const folderFrameX = p.x - framePadX;
-        const folderFrameY = p.y - frameH / 2;
-        const folderFrameW = p.w + framePadX * 2;
-        const folderFrameH = frameH;
-        const folderBoxStyle = buildNodeVisualStyle(nodeStyles);
-        const folderBoxInline = folderBoxStyle ? ` style="${folderBoxStyle}"` : "";
-        if (isScopePortalNode(node)) {
-          const leftX = folderFrameX + 2;
-          const rightX = folderFrameX + folderFrameW - 2;
-          const topY = folderFrameY;
-          const bottomY = folderFrameY + folderFrameH;
-          const arm = 12;
-          nodes += `<path class="portal-bracket ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="M ${leftX + arm} ${topY} H ${leftX} V ${bottomY} H ${leftX + arm}"${folderBoxInline} />`;
-          nodes += `<path class="portal-bracket ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="M ${rightX - arm} ${topY} H ${rightX} V ${bottomY} H ${rightX - arm}"${folderBoxInline} />`;
-        } else if (nodeStyles.shape === "diamond") {
-          nodes += `<path class="folder-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, folderFrameW, folderFrameH)}"${folderBoxInline} />`;
-        } else {
-          nodes += `<rect class="folder-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="${structuredMode === "mindmap" ? 4 : 8}"${folderBoxInline} />`;
-        }
-        if (previewLayout) {
-          const previewIds = new Set(previewLayout.childIds);
-          Object.values(state.links || {}).forEach((rawLink) => {
-            const link = normalizeGraphLink(rawLink);
-            const sourceNode = state.nodes[link.sourceNodeId];
-            const targetNode = state.nodes[link.targetNodeId];
-            if (!sourceNode || !targetNode || isParentChildPair(sourceNode, targetNode)) {
-              return;
-            }
-            if (!previewIds.has(link.sourceNodeId) || !previewIds.has(link.targetNodeId)) {
-              return;
-            }
-            const sourcePreview = previewLayout.positions[link.sourceNodeId];
-            const targetPreview = previewLayout.positions[link.targetNodeId];
-            if (!sourcePreview || !targetPreview) {
-              return;
-            }
-            const sourceRect = {
-              x: folderFrameX + sourcePreview.x,
-              y: folderFrameY + sourcePreview.y,
-              w: sourcePreview.w,
-              h: sourcePreview.h,
-            };
-            const targetRect = {
-              x: folderFrameX + targetPreview.x,
-              y: folderFrameY + targetPreview.y,
-              w: targetPreview.w,
-              h: targetPreview.h,
-            };
-            const { source: sourceEnd, target: targetEnd } = edgePortPairBetweenRects(sourceRect, targetRect);
-            const sx = sourceEnd.x;
-            const sy = sourceEnd.y;
-            const tx = targetEnd.x;
-            const ty = targetEnd.y;
-            const previewEdgePath = smoothGraphLinkPath(sx, sy, tx, ty);
-            nodes += `<path class="flow-preview-edge" d="${previewEdgePath}" />`;
-            const edgeLabel = (link.label || link.relationType || "").trim();
-            if (edgeLabel) {
-              nodes += `<text class="flow-preview-edge-label" x="${(sx + tx) / 2}" y="${(sy + ty) / 2 - 6}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
-            }
-          });
+    const output = renderNodeSvg(toNodeDrawInput(node, p, nodeStyles));
+    nodes += output.svg;
+    maxX = Math.max(maxX, output.bounds.maxX);
+    maxY = Math.max(maxY, output.bounds.maxY);
 
-          previewLayout.childIds.forEach((previewChildId) => {
-            const previewChild = state.nodes[previewChildId];
-            const previewPos = previewLayout.positions[previewChildId];
-            if (!previewChild || !previewPos) {
-              return;
-            }
-            const previewStyles = readNodeStyleAttrs(previewChild.attributes || {});
-            const previewLabel = escapeXml(diagramLabel(previewChild, previewStyles));
-            const previewX = folderFrameX + previewPos.x;
-            const previewY = folderFrameY + previewPos.y;
-            const previewClass = isFolderNode(previewChild) ? "flow-preview-node flow-preview-node-scope" : "flow-preview-node";
-            nodes += `<rect class="${previewClass}" x="${previewX}" y="${previewY}" width="${previewPos.w}" height="${previewPos.h}" rx="8" />`;
-            nodes += `<text class="flow-preview-node-label" x="${previewX + 10}" y="${previewY + previewPos.h / 2}" dominant-baseline="middle" text-anchor="start">${previewLabel}</text>`;
-          });
-        }
-        // Lock icon on locked folder nodes
-        if (nodeLock) {
-          const lockIconX = folderFrameX + folderFrameW - 14;
-          const lockIconY = folderFrameY + 14;
-          const lockClass = nodeLock.entityId === collabEntityId ? "lock-icon" : "lock-icon lock-icon-other";
-          nodes += `<text class="${lockClass}" x="${lockIconX}" y="${lockIconY}" text-anchor="middle" dominant-baseline="middle">\uD83D\uDD12</text>`;
-        }
-      }
-      if (isLatexNode(node)) {
-        let htmlStr = latexHtmlCache.get(node.text);
-        if (!htmlStr) {
-          const { latex, displayMode } = latexSource(node.text);
-          htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
-          latexHtmlCache.set(node.text, htmlStr);
-        }
-        const foH = p.h;
-        const foY = p.y - foH / 2;
-        nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
-      } else {
-        const nodeFont = p.fontSize ?? VIEWER_TUNING.typography.nodeFont;
-        const lineHeight = lineHeightForFont(nodeFont);
-        const startY = previewLayout
-          ? p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + 36
-          : multilineTextStartY(p.y, labelLines.length, nodeFont, lineHeight);
-        const labelX = structuredMode === "mindmap"
-          ? p.x + p.w / 2
-          : isScopePortalNode(node)
-          ? p.x + 12
-          : p.x;
-        const tspans = multilineTspans(labelLines, labelX, lineHeight);
-        const labelInline = buildLabelStyle(nodeStyles);
-        const labelStyle = [`font-size:${nodeFont}px`];
-        if (labelInline) labelStyle.push(labelInline);
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${labelX}" y="${startY}" text-anchor="${structuredMode === "mindmap" ? "middle" : "start"}" style="${labelStyle.join(";")}">${tspans}</text>`;
-      }
-      const badge = nodeBadge(node);
-      if (badge) {
-        nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
-      }
-      // Band confidence badge (deep band or explicit confidence)
-      if (nodeStyles.confidence != null) {
-        const cColor = confidenceColor(nodeStyles.confidence);
-        const cLabel = (nodeStyles.confidence * 100).toFixed(0) + "%";
-        const cX = p.x + p.w + (badge ? 60 : 18);
-        nodes += `<rect class="confidence-badge" x="${cX}" y="${p.y - 12}" width="42" height="22" rx="11" style="fill:${cColor}" />`;
-        nodes += `<text class="confidence-badge-text" x="${cX + 21}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(cLabel)}</text>`;
-      }
-      // Status badge
-      if (nodeStyles.status) {
-        const statusColors: Record<string, string> = {
-          placeholder: "#999", confirmed: "#2d8c4e", contested: "#d94040",
-          frozen: "#4a7fb5", active: "#e89b1a", review: "#9b59b6",
-        };
-        const sColor = statusColors[nodeStyles.status] || "#666";
-        const sX = p.x + p.w + (badge ? 60 : 18) + (nodeStyles.confidence != null ? 56 : 0);
-        nodes += `<rect class="status-badge" x="${sX}" y="${p.y - 12}" width="${nodeStyles.status.length * 8 + 12}" height="22" rx="11" style="fill:${sColor}" />`;
-        nodes += `<text class="status-badge-text" x="${sX + nodeStyles.status.length * 4 + 6}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(nodeStyles.status)}</text>`;
-      }
-    }
-
-    if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
-      const indicatorX =
-        treatAsRoot
-          ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
-          : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
-      const hiddenCount = countHiddenDescendants(nodeId);
-      const badgeLabel = String(Math.max(1, hiddenCount));
-      const badgeWidth = Math.max(26, badgeLabel.length * 14 + 14);
-      const badgeHeight = 24;
-      const badgeX = indicatorX - badgeWidth / 2;
-      const badgeY = p.y - badgeHeight / 2;
-      nodes += `<rect class="collapsed-badge" data-collapse-node-id="${nodeId}" x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="${badgeHeight}" rx="12" />`;
-      nodes += `<circle class="collapsed-badge-node" data-collapse-node-id="${nodeId}" cx="${badgeX - 8}" cy="${p.y}" r="8" />`;
-      nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
+    if (!scatterSurface && isFolderNode(node)) {
+      nodes += renderFolderPreview(node, nodeStyles, p);
     }
 
     if (nodeComponent) {

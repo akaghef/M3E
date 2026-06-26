@@ -1,0 +1,37 @@
+[
+  {
+    "schema_version": 1,
+    "sample_id": "plain",
+    "selectors": [".node-hit", ".label-node"]
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "alias-read",
+    "selectors": [".alias-read", ".alias-badge-read"]
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "collapsed",
+    "selectors": [".collapsed-badge", ".collapsed-badge-count"]
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "scope-locked",
+    "selectors": [".scope-locked", ".lock-icon-other"]
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "status",
+    "selectors": [".status-review", ".status-badge"]
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "confidence",
+    "selectors": [".confidence-badge", ".confidence-badge-text"]
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "katex",
+    "selectors": ["foreignObject", ".latex-node-content"]
+  }
+]
