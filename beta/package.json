@@ -14,6 +14,7 @@
     "edge-port:capture": "npm run build:node && node dist/node/edge_port_capture.js",
     "lab:edge-port": "vite --host 127.0.0.1 --config vite.config.mjs",
     "lab:node": "vite --host 127.0.0.1 --port 14274 --config vite.config.mjs",
+    "lab:pn": "vite --host 127.0.0.1 --port 14275 --config vite.config.mjs",
     "test:node": "npm run build:test && npx vitest run tests/unit/node_draw_*.test.* && playwright test --config playwright.node-lab.config.js",
     "test:layout": "npm run build:test && npx vitest run tests/unit/layout_*.test.*",
     "layout:capture": "npm run build:node && node dist/node/layout_capture.js",

@@ -10,5 +10,11 @@
     "noEmit": true,
     "types": ["react", "react-dom"]
   },
-  "include": ["src/browser/workbench-ui.tsx", "src/browser/edge_geometry.ts"]
+  "include": [
+    "src/browser/workbench-ui.tsx",
+    "src/shared/pn_layout.ts",
+    "src/shared/edge_port.ts",
+    "src/shared/edge_route.ts",
+    "src/shared/parent_child_edge_adapter.ts"
+  ]
 }
