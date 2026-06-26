@@ -4,17 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "abce8d8a5bdcdcef",
+        "id": "01ee66ab1d65c98e",
         "type": "tabs",
         "children": [
           {
-            "id": "54b4241a0def2c85",
+            "id": "54e6c9e5e1b6f227",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "docs/00_Home/Agent_Brief.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "新規タブ"
+              "title": "Agent_Brief"
             }
           }
         ]
@@ -176,43 +180,46 @@
       "bases:新規ベースを作成": false
     }
   },
-  "active": "54b4241a0def2c85",
+  "active": "54e6c9e5e1b6f227",
   "lastOpenFiles": [
+    "docs/06_Operations/biz/相談会/2026-06-26_相談会_Gladia_ASR_話者ラベル.md",
+    "docs/06_Operations/biz/相談会/2026-06-26_相談会_Gladia_ASR.gladia.md",
+    "docs/06_Operations/biz/相談会/2026-06-26_相談会_Gladia_ASR.gladia.json",
+    "docs/06_Operations/biz/相談会/2026-06-26_相談会_反省メモ.md",
+    "docs/06_Operations/biz/相談会/260626起業相談.m4a",
+    "docs/260626起業相談.m4a",
+    "docs/06_Operations/biz/相談会/会議メモ.json",
+    "docs/06_Operations/biz/相談会/ChatGPT-競合企業リサーチ 2.md",
+    "docs/06_Operations/biz/相談会/ChatGPT-M3E ターゲット層分析.md",
+    "docs/06_Operations/biz/相談会/Claude-競合企業の概要とオーバーラップ分析.md",
+    "docs/06_Operations/biz/相談会/ChatGPT-機械的文法の提案.md",
+    "docs/06_Operations/biz/相談会/ChatGPT-スライド作成TODOリスト.md",
+    "docs/06_Operations/biz/相談会/ChatGPT-シードアイデア可視化フレームワーク.md",
+    "docs/06_Operations/biz/相談会/Claude-FDEへの道とM3Eのビジョン.md",
+    "docs/06_Operations/biz/相談会/Claude-起業と社会への理解不足.md",
+    "docs/06_Operations/biz/相談会/Claude-M3E事業化相談.md",
+    "docs/06_Operations/biz/相談会/ChatGPT-競合企業リサーチ.md",
+    "docs/06_Operations/biz/相談会/2026-06-26_相談会_文字起こし.md",
+    "docs/06_Operations/biz/相談会/2026-06-26_相談会_文字起こし.segments.json",
+    "docs/06_Operations/biz/相談会",
+    "無題のフォルダ",
+    "docs/06_Operations/biz",
     "docs/for-akaghef/m3e_design_philosophy_nested.canvas",
     "docs/for-akaghef/m3e_design_philosophy.canvas",
     "beta/data/backups/M3E_dataV1_20260617_090133.sqlite",
     "artifacts/keyboard-shortcuts/kbd_map.py",
-    "artifacts/keyboard-shortcuts/kbd_detect.py",
-    "artifacts/keyboard-shortcuts/README.txt",
     "docs/for-akaghef/handoff_data_issue.md",
     "docs/tasks/handoff_260617_obsidian_mdd_library_context.md",
-    "scripts/ops/check-persistent-rule-gate.sh",
     "protocols/persistent-rule-change-protocol.md",
-    "protocols/contracts/persistent_rule_change_contract.yaml",
     "docs/legacy/M3E仕様設計書.md",
     "docs/tasks/handoff_260617_obsidian_canvas_projection.md",
-    "beta/prototypes/langgraph-study/styles.css",
     "beta/prototypes/langgraph-study/langgraph-implementation-examples.md",
-    "beta/prototypes/langgraph-study/index.html",
-    "beta/prototypes/langgraph-study/app.js",
-    "beta/prototypes/langgraph-study",
     "logs/nightly-autopilot-2026-06-17.md",
     "for-akaghef/bitwarden_biometric_setup.md",
     "無題のファイル.canvas",
     "for-akaghef/pj04_weekly_review_tasks.md",
     "for-akaghef/hermes_setup.md",
     "beta/node_modules/better-sqlite3/README.md",
-    "docs/01_Vision/Strategy.md",
-    "docs/01_Vision/Weekly_Advance.md",
-    "docs/01_Vision/Vision.md",
-    "docs/01_Vision/Axes.md",
-    "docs/01_Vision/Core_Principles.md",
-    "docs/00_Home/Current_Status.md",
-    "docs/06_Operations/Command_Panel_Security_Test_Cases.md",
-    "docs/ideas/260401_memo.md",
-    "docs/ideas/260401_important_goal.md",
-    "docs/03_Spec/Scope_Transition.md",
-    "docs/00_Home/Worktree_Separation_Rules.md",
-    "docs/mindmapsoftwares.md"
+    "docs/01_Vision/Strategy.md"
   ]
 }
