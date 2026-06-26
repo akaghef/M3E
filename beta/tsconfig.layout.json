@@ -17,6 +17,8 @@
     "src/shared/layout_port.ts",
     "src/shared/edge_port.ts",
     "src/shared/edge_route.ts",
+    "src/shared/node_draw_port.ts",
+    "src/shared/node_draw_svg.ts",
     "src/shared/parent_child_edge_adapter.ts",
     "src/shared/types.ts"
   ]

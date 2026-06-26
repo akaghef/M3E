@@ -11,5 +11,13 @@
     "resolveJsonModule": true,
     "types": ["react", "react-dom"]
   },
-  "include": ["src/labs/**/*.ts", "src/labs/**/*.tsx", "src/shared/layout_port.ts", "src/shared/edge_port.ts", "src/shared/edge_route.ts"]
+  "include": [
+    "src/labs/**/*.ts",
+    "src/labs/**/*.tsx",
+    "src/shared/layout_port.ts",
+    "src/shared/edge_port.ts",
+    "src/shared/edge_route.ts",
+    "src/shared/node_draw_port.ts",
+    "src/shared/node_draw_svg.ts"
+  ]
 }

@@ -30,6 +30,28 @@ module.exports = {
       to: { path: "^src/browser/" },
     },
     {
+      name: "node-lab-must-not-import-browser-implementation",
+      severity: "error",
+      from: { path: "^src/labs/node/" },
+      to: { path: "^src/browser/" },
+    },
+    {
+      name: "node-lab-uses-node-draw-only",
+      severity: "error",
+      from: { path: "^src/labs/node/" },
+      to: {
+        path: "^src/shared/(?!node_draw_port\\.ts$|node_draw_svg\\.ts$|layout_port\\.ts$)",
+      },
+    },
+    {
+      name: "node-draw-svg-must-not-import-viewer-markdown-edge-or-labs",
+      severity: "error",
+      from: { path: "^src/shared/node_draw_svg\\.ts$" },
+      to: {
+        path: "^src/(browser|labs/)|^src/shared/(edge_|parent_child_edge|graph_)",
+      },
+    },
+    {
       name: "parent-child-edge-must-not-import-graphlink-endpoint-edit",
       severity: "error",
       from: { path: "^src/shared/parent_child_edge_adapter\\.ts$" },
