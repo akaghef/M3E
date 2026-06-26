@@ -44,6 +44,24 @@ module.exports = {
       },
     },
     {
+      name: "pn-edge-bypass-forbidden",
+      severity: "error",
+      from: { path: "^src/browser/workbench-ui\\.tsx$|^src/labs/pn/|^src/shared/pn_layout\\.ts$" },
+      to: { path: "^src/browser/edge_geometry\\.ts$" },
+    },
+    {
+      name: "pn-lab-must-not-import-browser-implementation",
+      severity: "error",
+      from: { path: "^src/labs/pn/" },
+      to: { path: "^src/browser/" },
+    },
+    {
+      name: "shared-pn-layout-must-not-import-browser-react-or-labs",
+      severity: "error",
+      from: { path: "^src/shared/pn_layout\\.ts$" },
+      to: { path: "^src/(browser|labs)/|node_modules/react" },
+    },
+    {
       name: "node-draw-svg-must-not-import-viewer-markdown-edge-or-labs",
       severity: "error",
       from: { path: "^src/shared/node_draw_svg\\.ts$" },

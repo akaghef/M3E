@@ -521,16 +521,23 @@
   position: absolute;
   left: 72px;
   top: 307px;
+  z-index: 30; /* screen-space PN layer: canvas < PN edges < PN cards < modal/popover */
   display: flex;
   align-items: flex-start;
   gap: 14px;
   width: 486px;
   height: 420px;
-  max-width: calc(100vw - 96px);
+  max-width: none;
   opacity: 0;
   overflow: visible;
   pointer-events: none;
   transition: opacity 90ms ease;
+}
+
+.wb-progressive-nav.is-overflow-scroll,
+.wb-progressive-nav.is-overflow-compact,
+.wb-progressive-nav.is-overflow-side-panel {
+  overflow: auto;
 }
 
 .wb-progressive-nav::before {
@@ -570,6 +577,7 @@
   height: 420px;
   margin-left: 0;
   overflow: visible;
+  z-index: 2;
 }
 
 .wb-progressive-column {
@@ -602,7 +610,7 @@
 .wb-progressive-node {
   box-sizing: border-box;
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   width: 172px;
   height: 47px;
   display: flex;
@@ -808,6 +816,7 @@
 .wb-modal-backdrop {
   position: absolute;
   inset: 0;
+  z-index: 80;
   display: grid;
   place-items: center;
   background: rgba(0, 0, 0, 0.22);
