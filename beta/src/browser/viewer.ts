@@ -21,7 +21,7 @@ import {
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
-import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode } from "../shared/markdown_link_node";
+import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, safeExternalLinkToOpen } from "../shared/markdown_link_node";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
@@ -406,7 +406,7 @@ function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
     return ["i", "j", "k"].includes(event.key.toLowerCase());
   }
   if (event.altKey && !event.ctrlKey && !event.metaKey) {
-    return ["h", "v", "d"].includes(event.key.toLowerCase());
+    return ["h", "v", "d", "o"].includes(event.key.toLowerCase());
   }
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
     return ["c", "s"].includes(event.key.toLowerCase());
@@ -10657,6 +10657,29 @@ function selectedLinkableNode(): TreeNode | null {
   return node;
 }
 
+function openSelectedHyperlinkNode(): boolean {
+  if (inlineEditor || inlineEdgeLabelEditor) {
+    return false;
+  }
+  if (!map || !viewState.selectedNodeId) {
+    setStatus("No hyperlink node selected.", true);
+    return false;
+  }
+  const node = map.state.nodes[viewState.selectedNodeId];
+  if (!node || isAliasNode(node)) {
+    setStatus("Select a non-alias hyperlink node.", true);
+    return false;
+  }
+  const url = safeExternalLinkToOpen(node.link || "");
+  if (!url) {
+    setStatus("Selected node has no safe hyperlink to open.", true);
+    return false;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+  setStatus(`Opened link: ${uiLabel(node)}`);
+  return true;
+}
+
 function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {
   if (!map) {
     return null;
@@ -15060,6 +15083,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     toggleMarkdownPreviewForSelectedNode();
+    return;
+  }
+
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+    event.preventDefault();
+    openSelectedHyperlinkNode();
     return;
   }
 

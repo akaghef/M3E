@@ -17,6 +17,8 @@ export interface AppliedMarkdownLinkNodeInput extends ParsedMarkdownLinkNodeInpu
   attributes: Record<string, string>;
 }
 
+const SAFE_EXTERNAL_LINK_PROTOCOLS = new Set(["http:", "https:", "obsidian:"]);
+
 export function parseMarkdownLinkNodeInput(raw: string): ParsedMarkdownLinkNodeInput {
   const input = String(raw || "").trim();
   const match = /^\[([^\]\n]+)\]\(([^()\s]+)\)$/.exec(input);
@@ -64,4 +66,17 @@ export function applyMarkdownLinkNodeInput(
   }
 
   return { ...parsed, link: String(current.link || ""), attributes };
+}
+
+export function safeExternalLinkToOpen(raw: string | null | undefined): string | null {
+  const input = String(raw || "").trim();
+  if (!input) {
+    return null;
+  }
+  try {
+    const url = new URL(input);
+    return SAFE_EXTERNAL_LINK_PROTOCOLS.has(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
 }

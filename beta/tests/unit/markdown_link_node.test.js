@@ -6,6 +6,7 @@ const {
   formatMarkdownLinkNodeInput,
   isMarkdownLinkSubtype,
   parseMarkdownLinkNodeInput,
+  safeExternalLinkToOpen,
 } = require("../../dist/shared/markdown_link_node.js");
 
 describe("Markdown hyperlink node helpers", () => {
@@ -71,5 +72,20 @@ describe("Markdown hyperlink node helpers", () => {
       attributes: { keep: "yes" },
       isMarkdownLink: false,
     });
+  });
+
+  test("allows http, https, and obsidian URLs for external opening", () => {
+    expect(safeExternalLinkToOpen("http://example.com")).toBe("http://example.com/");
+    expect(safeExternalLinkToOpen("https://example.com/path?q=1")).toBe("https://example.com/path?q=1");
+    expect(safeExternalLinkToOpen("obsidian://open?vault=X")).toBe("obsidian://open?vault=X");
+  });
+
+  test("rejects blank, malformed, file, javascript, data, and vbscript URLs", () => {
+    expect(safeExternalLinkToOpen("")).toBeNull();
+    expect(safeExternalLinkToOpen("not a url")).toBeNull();
+    expect(safeExternalLinkToOpen("file:///Users/example/note.md")).toBeNull();
+    expect(safeExternalLinkToOpen("javascript:alert(1)")).toBeNull();
+    expect(safeExternalLinkToOpen("data:text/html,<h1>x</h1>")).toBeNull();
+    expect(safeExternalLinkToOpen("vbscript:msgbox(1)")).toBeNull();
   });
 });
