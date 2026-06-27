@@ -8,6 +8,8 @@
   会話中に出た決定、仮決め、保留、確認待ちを時系列で蓄積する
 - `Documentation_Rules.md`
   どこに何を書くか、いつ正式文書へ移すかの運用ルールをまとめる
+- `LLM_Wiki_Schema.md`
+  `docs/` を raw source / canonical document / generated navigation に分けて整理する LLM Wiki 型の運用スキーマ
 - `Commit_Message_Rules.md`
   コミットメッセージの形式と `type` の使い分けを定義する
 - `Test_and_CICD_Guide.md`
