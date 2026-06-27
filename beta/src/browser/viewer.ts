@@ -406,10 +406,10 @@ function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
     return ["i", "j", "k"].includes(event.key.toLowerCase());
   }
   if (event.altKey && !event.ctrlKey && !event.metaKey) {
-    return ["h", "v", "d", "o"].includes(event.key.toLowerCase());
+    return ["h", "v", "d"].includes(event.key.toLowerCase());
   }
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-    return ["c", "s"].includes(event.key.toLowerCase());
+    return ["c", "s", "o"].includes(event.key.toLowerCase());
   }
   return false;
 }
@@ -15086,7 +15086,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
     event.preventDefault();
     openSelectedHyperlinkNode();
     return;
