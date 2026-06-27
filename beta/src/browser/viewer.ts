@@ -21,7 +21,7 @@ import {
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
-import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
+import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
@@ -3195,7 +3195,26 @@ function effectiveNodeStyleAttrs(node: TreeNode): NodeStyleAttrs {
   if (view?.shape) {
     base.shape = view.shape;
   }
+  // Hyperlink/link text nodes are visually distinguished in green (like scope nodes),
+  // unless the user has set explicit colors on the node.
+  if (isHyperlinkNode(node)) {
+    if (!base.bg) base.bg = HYPERLINK_NODE_GREEN.bg;
+    if (!base.border) base.border = HYPERLINK_NODE_GREEN.border;
+    if (!base.color) base.color = HYPERLINK_NODE_GREEN.text;
+  }
   return base;
+}
+
+const HYPERLINK_NODE_GREEN = {
+  bg: "#e6f4ea",
+  border: "#2d8c4e",
+  text: "#1b5e2a",
+} as const;
+
+function isHyperlinkNode(node: TreeNode | null | undefined): boolean {
+  if (!node || isAliasNode(node)) return false;
+  if (isMarkdownLinkSubtype(node.attributes || undefined)) return true;
+  return Boolean(String(node.link || "").trim());
 }
 
 function rawAttr(node: TreeNode | null | undefined, key: string): string {
