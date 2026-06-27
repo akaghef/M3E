@@ -1,6 +1,6 @@
 # Documentation Rules
 
-最終更新: 2026-06-14
+最終更新: 2026-06-27
 
 ## Language Policy
 
@@ -24,6 +24,20 @@
 5. 作業領域は Codex task worktree で分離し、同一ファイルの同時編集を避ける
 
 Claude sub-agent worker (`manage` / `visual` / `data` / `team`) は廃止済み。
+
+## LLM Wiki 型の文書整理
+
+`docs/` 全体は [LLM_Wiki_Schema.md](./LLM_Wiki_Schema.md) に従って、次の 3 layer として扱う。
+
+1. Source Layer: `ideas/`, `research/`, `daily/`, `for-akaghef/`, `legacy/`, `competitive_research/`
+2. Canonical Layer: `00_Home/`, `01_Vision/`, `03_Spec/`, `04_Architecture/`, `06_Operations/`, `09_Decisions/`
+3. Navigation Layer: `index.md`, `log.md`, `_generated/`
+
+整理は原則として非破壊に行う。既存文書を一括移動・削除・リネームせず、まず `docs/index.md` と `docs/log.md` で横断性を作る。索引 coverage は次で確認する。
+
+```bash
+node scripts/ops/check-docs-index.mjs --check
+```
 
 ## セッション開始ゲート
 
