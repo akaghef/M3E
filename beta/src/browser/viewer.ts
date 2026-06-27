@@ -21,6 +21,7 @@ import {
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
+import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, safeExternalLinkToOpen } from "../shared/markdown_link_node";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
@@ -408,7 +409,7 @@ function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
     return ["h", "v", "d"].includes(event.key.toLowerCase());
   }
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-    return ["c", "s"].includes(event.key.toLowerCase());
+    return ["c", "s", "o"].includes(event.key.toLowerCase());
   }
   return false;
 }
@@ -10656,6 +10657,29 @@ function selectedLinkableNode(): TreeNode | null {
   return node;
 }
 
+function openSelectedHyperlinkNode(): boolean {
+  if (inlineEditor || inlineEdgeLabelEditor) {
+    return false;
+  }
+  if (!map || !viewState.selectedNodeId) {
+    setStatus("No hyperlink node selected.", true);
+    return false;
+  }
+  const node = map.state.nodes[viewState.selectedNodeId];
+  if (!node || isAliasNode(node)) {
+    setStatus("Select a non-alias hyperlink node.", true);
+    return false;
+  }
+  const url = safeExternalLinkToOpen(node.link || "");
+  if (!url) {
+    setStatus("Selected node has no safe hyperlink to open.", true);
+    return false;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+  setStatus(`Opened link: ${uiLabel(node)}`);
+  return true;
+}
+
 function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {
   if (!map) {
     return null;
@@ -10953,6 +10977,30 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     preserveNodeViewportCenter(nodeId, viewportCenterBefore);
     return true;
   }
+  if (mode === "node-text") {
+    const applied = applyMarkdownLinkNodeInput({
+      text: node.text,
+      link: node.link || "",
+      attributes: node.attributes || {},
+    }, next);
+    if (
+      node.text === applied.text &&
+      (node.link || "") === applied.link &&
+      stringRecordEquals(node.attributes || {}, applied.attributes)
+    ) {
+      return true;
+    }
+    pushUndoSnapshot();
+    latexMetricsCache.delete(node.text);
+    latexHtmlCache.delete(node.text);
+    node.text = applied.text;
+    node.link = applied.link;
+    node.attributes = applied.attributes;
+    syncAliasDisplayForTarget(node.id);
+    touchDocument();
+    preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+    return true;
+  }
   if (node.text === next) {
     return true;
   }
@@ -10964,6 +11012,15 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   touchDocument();
   preserveNodeViewportCenter(nodeId, viewportCenterBefore);
   return true;
+}
+
+function stringRecordEquals(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key) => left[key] === right[key]);
 }
 
 function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
@@ -11122,7 +11179,11 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
     : "node-text";
   const input = document.createElement("textarea");
   input.rows = 1;
-  input.value = mode === "target-text" ? (resolveAliasTarget(node)?.text || node.text || "") : uiLabel(node);
+  input.value = mode === "target-text"
+    ? (resolveAliasTarget(node)?.text || node.text || "")
+    : mode === "node-text"
+      ? editInputForMarkdownLinkNode({ text: node.text || "", link: node.link || "", attributes: node.attributes || {} })
+      : uiLabel(node);
   input.className = "inline-node-editor";
   input.setAttribute("aria-label", mode === "target-text" ? "Edit target node text" : "Edit node label");
   board.appendChild(input);
@@ -15022,6 +15083,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     toggleMarkdownPreviewForSelectedNode();
+    return;
+  }
+
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+    event.preventDefault();
+    openSelectedHyperlinkNode();
     return;
   }
 
