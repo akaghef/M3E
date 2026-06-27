@@ -5,6 +5,7 @@ const {
   editInputForMarkdownLinkNode,
   formatMarkdownLinkNodeInput,
   isMarkdownLinkSubtype,
+  localPathLinkToOpen,
   parseMarkdownLinkNodeInput,
   safeExternalLinkToOpen,
 } = require("../../dist/shared/markdown_link_node.js");
@@ -87,5 +88,19 @@ describe("Markdown hyperlink node helpers", () => {
     expect(safeExternalLinkToOpen("javascript:alert(1)")).toBeNull();
     expect(safeExternalLinkToOpen("data:text/html,<h1>x</h1>")).toBeNull();
     expect(safeExternalLinkToOpen("vbscript:msgbox(1)")).toBeNull();
+  });
+
+  test("recognizes local filesystem paths separately from external URLs", () => {
+    expect(localPathLinkToOpen("/Users/example/note.md")).toBe("/Users/example/note.md");
+    expect(localPathLinkToOpen("~/vault/note.md")).toBe("~/vault/note.md");
+    expect(localPathLinkToOpen("C:\\Users\\example\\note.md")).toBe("C:\\Users\\example\\note.md");
+  });
+
+  test("rejects URL schemes and unsafe local path strings for local opening", () => {
+    expect(localPathLinkToOpen("obsidian://open?vault=X")).toBeNull();
+    expect(localPathLinkToOpen("https://example.com")).toBeNull();
+    expect(localPathLinkToOpen("javascript:alert(1)")).toBeNull();
+    expect(localPathLinkToOpen("relative/path.md")).toBeNull();
+    expect(localPathLinkToOpen("/tmp/a\u0000b")).toBeNull();
   });
 });

@@ -21,7 +21,7 @@ import {
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
-import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, safeExternalLinkToOpen } from "../shared/markdown_link_node";
+import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
@@ -10671,13 +10671,37 @@ function openSelectedHyperlinkNode(): boolean {
     return false;
   }
   const url = safeExternalLinkToOpen(node.link || "");
-  if (!url) {
-    setStatus("Selected node has no safe hyperlink to open.", true);
-    return false;
+  if (url) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    setStatus(`Opened link: ${uiLabel(node)}`);
+    return true;
   }
-  window.open(url, "_blank", "noopener,noreferrer");
-  setStatus(`Opened link: ${uiLabel(node)}`);
-  return true;
+  const localPath = localPathLinkToOpen(node.link || "");
+  if (localPath) {
+    void openLocalPathViaServer(localPath, uiLabel(node));
+    return true;
+  }
+  setStatus("Selected node has no safe hyperlink to open.", true);
+  return false;
+}
+
+async function openLocalPathViaServer(localPath: string, label: string): Promise<void> {
+  setStatus(`Opening: ${label}…`);
+  try {
+    const response = await fetch("/api/open-local-path", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ path: localPath }),
+    });
+    const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+    if (!response.ok || !payload?.ok) {
+      setStatus(`Could not open: ${payload?.error || `HTTP ${response.status}`}`, true);
+      return;
+    }
+    setStatus(`Opened link: ${label}`);
+  } catch (err) {
+    setStatus(`Could not open link: ${(err as Error).message || "request failed"}`, true);
+  }
 }
 
 function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {

@@ -2,9 +2,10 @@
 
 import "dotenv/config";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import http from "http";
-import { spawnSync, exec } from "child_process";
+import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
@@ -629,6 +630,56 @@ function readSystemClipboard(): { ok: true; method: string; text: string } | { o
   const xsel = run("xsel", ["--clipboard", "--output"], "xsel");
   if (xsel.ok) return xsel;
   return { ok: false, error: xsel.error || xclip.error || wlPaste.error || "No clipboard command available." };
+}
+
+async function handleOpenLocalPathApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (pathname !== "/api/open-local-path") {
+    return false;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { ok: false, error: "Method not allowed." });
+    return true;
+  }
+  try {
+    const rawBody = await readRequestBody(req, 1_000_000);
+    const body = JSON.parse(rawBody) as { path?: unknown };
+    const requested = typeof body.path === "string" ? body.path.trim() : "";
+    if (!requested) {
+      sendJson(res, 400, { ok: false, error: "Field 'path' must be a non-empty string." });
+      return true;
+    }
+    // Reject control chars and URL schemes. Windows drive-letter paths (C:\\...) are local paths.
+    const isWindowsDrivePath = /^[A-Za-z]:[\\/]/.test(requested);
+    if (/[\u0000-\u001f\u007f]/.test(requested) || (!isWindowsDrivePath && /^[A-Za-z][A-Za-z0-9+.-]*:/.test(requested))) {
+      sendJson(res, 400, { ok: false, error: "Path is not a safe local filesystem path." });
+      return true;
+    }
+    const expanded = requested.startsWith("~/")
+      ? path.join(os.homedir(), requested.slice(2))
+      : requested;
+    const isAbsolute = path.isAbsolute(expanded) || /^[A-Za-z]:[\\/]/.test(expanded);
+    if (!isAbsolute) {
+      sendJson(res, 400, { ok: false, error: "Path must be absolute." });
+      return true;
+    }
+    if (!fs.existsSync(expanded)) {
+      sendJson(res, 404, { ok: false, error: "Path does not exist." });
+      return true;
+    }
+    const platform = process.platform;
+    const command = platform === "darwin" ? "open" : platform === "win32" ? "cmd" : "xdg-open";
+    const args = platform === "win32" ? ["/c", "start", "", expanded] : [expanded];
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    child.on("error", () => {
+      /* swallow — response already sent */
+    });
+    child.unref();
+    sendJson(res, 200, { ok: true, path: expanded });
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: (err as Error).message || "Invalid open-local-path request." });
+  }
+  return true;
 }
 
 async function handleSystemClipboardApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -3714,6 +3765,9 @@ export function createAppServer(): http.Server {
   return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
     instrumentRequestForPerfLog(req, res);
     if (redirectLoopbackHost(req, res)) {
+      return;
+    }
+    if (await handleOpenLocalPathApi(req, res)) {
       return;
     }
     if (await handleSystemClipboardApi(req, res)) {

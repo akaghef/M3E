@@ -80,3 +80,17 @@ export function safeExternalLinkToOpen(raw: string | null | undefined): string |
     return null;
   }
 }
+
+export function localPathLinkToOpen(raw: string | null | undefined): string | null {
+  const input = String(raw || "").trim();
+  if (!input || /[\u0000-\u001f\u007f]/.test(input)) {
+    return null;
+  }
+  if (input.startsWith("/") || input.startsWith("~/") || /^[A-Za-z]:[\\/]/.test(input)) {
+    return input;
+  }
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(input)) {
+    return null;
+  }
+  return null;
+}

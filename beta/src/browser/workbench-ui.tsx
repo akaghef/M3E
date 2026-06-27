@@ -1292,7 +1292,7 @@ function HelpModal({ close }: { close: () => void }): React.ReactElement {
           <span><kbd>Ctrl+Alt+I</kbd>Copy scope ID</span>
           <span><kbd>Alt+E</kbd>Entity list</span>
           <span><kbd>Alt+D</kbd>Markdown preview</span>
-          <span><kbd>Alt+O</kbd>Open hyperlink node</span>
+          <span><kbd>Cmd/Ctrl+O</kbd>Open hyperlink node</span>
         </div>
       </section>
     </div>
