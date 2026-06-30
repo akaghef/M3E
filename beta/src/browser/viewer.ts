@@ -14984,6 +14984,27 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
+  if (event.altKey && event.key === "Enter") {
+    if (isTextEntryElement(event.target)) {
+      return;
+    }
+    const selected = getNode(viewState.selectedNodeId);
+    if (
+      !inlineEditor &&
+      !inlineEdgeLabelEditor &&
+      selected?.parentId &&
+      lastLayout &&
+      incomingTreeEdgeLabelLayout(selected.id)
+    ) {
+      event.preventDefault();
+      startIncomingEdgeLabelEdit(selected.id);
+      return;
+    }
+    event.preventDefault();
+    EnterScopeCommand();
+    return;
+  }
+
   if (event.key === "Enter") {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId, { selectAll: event.shiftKey });
@@ -15111,12 +15132,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-      if (event.altKey && event.key === "Enter") {
-        event.preventDefault();
-        EnterScopeCommand();
-        return;
-      }
-
   if (event.altKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleEntityListPanel();
@@ -15171,7 +15186,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.altKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
-    editEdgeLabelForSelectedNode();
+    startIncomingEdgeLabelEdit();
     return;
   }
 
@@ -15283,12 +15298,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
     applyMarkedLink();
-    return;
-  }
-
-  if (!event.ctrlKey && !event.metaKey && event.altKey && !event.shiftKey && event.key.toLowerCase() === "l") {
-    event.preventDefault();
-    startIncomingEdgeLabelEdit();
     return;
   }
 

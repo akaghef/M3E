@@ -676,10 +676,10 @@ test.describe("GraphLink via L / Shift+L", () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Alt+L: Incoming edge label editing
+// Alt+L / Alt+Enter: Incoming edge label editing
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test.describe("Incoming edge label via Alt+L", () => {
+test.describe("Incoming edge label shortcuts", () => {
   test("Alt+L edits the selected node parent edge label", async ({ page }) => {
     await launchViewer(page);
     await focusBoard(page);
@@ -697,6 +697,26 @@ test.describe("Incoming edge label via Alt+L", () => {
     await waitForRender(page);
 
     await expect(page.locator("text.edge-label", { hasText: "blocks" })).toBeVisible();
+    await expectStatusContains(page, "Edge label updated.");
+  });
+
+  test("Alt+Enter edits the selected node parent edge label", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Alt+Enter");
+    const editor = page.locator("textarea.inline-edge-label-editor");
+    await expect(editor).toBeVisible();
+
+    await editor.fill("depends on");
+    await editor.press("Enter");
+    await waitForRender(page);
+
+    await expect(page.locator("text.edge-label", { hasText: "depends on" })).toBeVisible();
     await expectStatusContains(page, "Edge label updated.");
   });
 });
