@@ -4110,3 +4110,356 @@
       :root[data-theme="dark"] .m3e-table-view tr:hover {
         background: rgba(167, 139, 250, 0.1);
       }
+
+      :root[data-theme="neon"] {
+        color-scheme: dark;
+        --grid-bg: #05070f;
+        --grid-line: rgba(46, 252, 255, 0.095);
+        --ink: #eef7ff;
+        --accent: #2efcff;
+        --accent-soft: rgba(46, 252, 255, 0.17);
+        --danger: #ff4f8d;
+        --status-ink: #a9c8d8;
+        --neon-panel: rgba(5, 10, 24, 0.72);
+        --neon-panel-strong: rgba(8, 16, 38, 0.9);
+        --neon-border: rgba(46, 252, 255, 0.28);
+        --neon-branch-glow: #2efcff;
+        --neon-branch-fill: rgba(46, 252, 255, 0.12);
+        --neon-branch-stroke: rgba(46, 252, 255, 0.86);
+      }
+
+      @keyframes neon-nebula-drift {
+        0% { transform: translate3d(-2%, -2%, 0) scale(1); opacity: 0.72; }
+        50% { transform: translate3d(2%, 1%, 0) scale(1.04); opacity: 0.95; }
+        100% { transform: translate3d(-2%, -2%, 0) scale(1); opacity: 0.72; }
+      }
+
+      @keyframes neon-grid-drift {
+        0% { background-position: 0 0, 0 0; }
+        100% { background-position: 72px 36px, 72px 36px; }
+      }
+
+      @keyframes neon-selected-breathe {
+        0%, 100% { opacity: 0.94; filter: url("#neon-node-glow") drop-shadow(0 0 8px var(--neon-branch-glow)); }
+        50% { opacity: 1; filter: url("#neon-node-glow") drop-shadow(0 0 20px var(--neon-branch-glow)); }
+      }
+
+      @keyframes neon-edge-shimmer {
+        0%, 100% { opacity: 0.7; filter: url("#neon-edge-glow") drop-shadow(0 0 4px var(--neon-branch-glow)); }
+        50% { opacity: 1; filter: url("#neon-edge-glow") drop-shadow(0 0 12px var(--neon-branch-glow)); }
+      }
+
+      :root[data-theme="neon"] body,
+      :root[data-theme="neon"] .app {
+        background-color: #05070f;
+        color: var(--ink);
+      }
+
+      :root[data-theme="neon"] body {
+        font-family: "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Meiryo", sans-serif;
+        letter-spacing: 0;
+      }
+
+      :root[data-theme="neon"] .app {
+        background-image:
+          linear-gradient(to right, rgba(46, 252, 255, 0.11) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 63, 221, 0.065) 1px, transparent 1px);
+        background-size: 72px 72px;
+        animation: neon-grid-drift 34s linear infinite;
+      }
+
+      :root[data-theme="neon"] .app::before {
+        content: "";
+        position: absolute;
+        inset: -14%;
+        z-index: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 18% 20%, rgba(46, 252, 255, 0.22), transparent 30%),
+          radial-gradient(circle at 78% 18%, rgba(255, 63, 221, 0.18), transparent 27%),
+          radial-gradient(circle at 58% 76%, rgba(255, 191, 71, 0.14), transparent 26%),
+          radial-gradient(circle at 26% 82%, rgba(74, 255, 128, 0.13), transparent 24%);
+        filter: blur(18px) saturate(1.25);
+        animation: neon-nebula-drift 18s ease-in-out infinite;
+      }
+
+      :root[data-theme="neon"] .workspace,
+      :root[data-theme="neon"] .overlay-ui {
+        position: absolute;
+      }
+
+      :root[data-theme="neon"] .board {
+        border-color: rgba(46, 252, 255, 0.18);
+        background:
+          radial-gradient(circle at 50% 42%, rgba(46, 252, 255, 0.05), transparent 45%),
+          rgba(2, 5, 14, 0.22);
+        box-shadow: inset 0 0 80px rgba(46, 252, 255, 0.055);
+      }
+
+      :root[data-theme="neon"] .toolbar,
+      :root[data-theme="neon"] .scatter-toolbar,
+      :root[data-theme="neon"] .draw-toolbar,
+      :root[data-theme="neon"] .meta-panel,
+      :root[data-theme="neon"] .hamburger-menu,
+      :root[data-theme="neon"] .export-menu,
+      :root[data-theme="neon"] .linear-adjust-controls,
+      :root[data-theme="neon"] .template-completion-popover,
+      :root[data-theme="neon"] .entity-list-panel,
+      :root[data-theme="neon"] .conflict-panel,
+      :root[data-theme="neon"] .v4-panel,
+      :root[data-theme="neon"] .routing-switcher-panel,
+      :root[data-theme="neon"] .color-palette-popover,
+      :root[data-theme="neon"] .markdown-preview-panel,
+      :root[data-theme="neon"] .home-screen,
+      :root[data-theme="neon"] .fatal-load-error {
+        border-color: var(--neon-border);
+        background: linear-gradient(135deg, rgba(7, 13, 31, 0.86), rgba(4, 8, 20, 0.68));
+        box-shadow: 0 0 0 1px rgba(46, 252, 255, 0.07), 0 18px 48px rgba(0, 0, 0, 0.62), 0 0 30px rgba(46, 252, 255, 0.08);
+        color: var(--ink);
+        backdrop-filter: blur(18px) saturate(1.35);
+      }
+
+      :root[data-theme="neon"] .mode-switch,
+      :root[data-theme="neon"] .scatter-range-control,
+      :root[data-theme="neon"] .visual-check,
+      :root[data-theme="neon"] .conflict-col,
+      :root[data-theme="neon"] .conflict-diff,
+      :root[data-theme="neon"] .v4-card,
+      :root[data-theme="neon"] .v4-panel-header,
+      :root[data-theme="neon"] .v4-list,
+      :root[data-theme="neon"] .routing-scope-surface,
+      :root[data-theme="neon"] .markdown-preview-body code,
+      :root[data-theme="neon"] .markdown-preview-body pre,
+      :root[data-theme="neon"] .markdown-preview-body blockquote,
+      :root[data-theme="neon"] .m3e-component--tabular {
+        border-color: rgba(46, 252, 255, 0.18);
+        background: rgba(7, 13, 31, 0.74);
+        color: var(--ink);
+      }
+
+      :root[data-theme="neon"] button,
+      :root[data-theme="neon"] select,
+      :root[data-theme="neon"] input[type="file"],
+      :root[data-theme="neon"] input[type="text"],
+      :root[data-theme="neon"] input[type="password"],
+      :root[data-theme="neon"] textarea,
+      :root[data-theme="neon"] .tool-btn,
+      :root[data-theme="neon"] .draw-tool-btn {
+        border-color: rgba(46, 252, 255, 0.22);
+        background: rgba(5, 12, 30, 0.78);
+        color: #eafcff;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025), 0 0 14px rgba(46, 252, 255, 0.055);
+      }
+
+      :root[data-theme="neon"] button:hover,
+      :root[data-theme="neon"] .entity-list-close:hover,
+      :root[data-theme="neon"] .conflict-close:hover,
+      :root[data-theme="neon"] .v4-panel-close:hover,
+      :root[data-theme="neon"] .markdown-preview-close:hover,
+      :root[data-theme="neon"] .home-scope-row:hover {
+        border-color: rgba(46, 252, 255, 0.58);
+        background: rgba(46, 252, 255, 0.12);
+        color: #ffffff;
+      }
+
+      :root[data-theme="neon"] button.primary,
+      :root[data-theme="neon"] .mode-btn.is-active,
+      :root[data-theme="neon"] .tool-btn.is-active,
+      :root[data-theme="neon"] .draw-tool-btn.is-active,
+      :root[data-theme="neon"] .scatter-tool-btn.is-active,
+      :root[data-theme="neon"] .entity-row.is-selected {
+        border-color: var(--accent);
+        background: linear-gradient(135deg, rgba(46, 252, 255, 0.22), rgba(255, 63, 221, 0.12));
+        color: #ffffff;
+        box-shadow: 0 0 20px rgba(46, 252, 255, 0.18);
+      }
+
+      :root[data-theme="neon"] .linear-menu-toggle,
+      :root[data-theme="neon"] .linear-text,
+      :root[data-theme="neon"] body.readonly-link .linear-text {
+        border-color: rgba(46, 252, 255, 0.42);
+        background: rgba(4, 9, 22, 0.92);
+        color: #eef7ff;
+        box-shadow: 0 0 28px rgba(46, 252, 255, 0.1), 0 18px 34px rgba(0, 0, 0, 0.56);
+        caret-color: #2efcff;
+      }
+
+      :root[data-theme="neon"] .meta,
+      :root[data-theme="neon"] .shortcuts,
+      :root[data-theme="neon"] .status,
+      :root[data-theme="neon"] .visual-check,
+      :root[data-theme="neon"] .menu-meta,
+      :root[data-theme="neon"] .conflict-col-header,
+      :root[data-theme="neon"] .v4-status-line,
+      :root[data-theme="neon"] .v4-path,
+      :root[data-theme="neon"] .home-section-title,
+      :root[data-theme="neon"] .home-scope-count,
+      :root[data-theme="neon"] .home-breadcrumb,
+      :root[data-theme="neon"] .markdown-preview-body,
+      :root[data-theme="neon"] .m3e-table-view td {
+        color: #aac7d7;
+      }
+
+      :root[data-theme="neon"] .neon-branch-root,
+      :root[data-theme="neon"] .neon-branch-0 { --neon-branch-glow: #2efcff; --neon-branch-fill: rgba(46, 252, 255, 0.13); --neon-branch-stroke: rgba(46, 252, 255, 0.94); }
+      :root[data-theme="neon"] .neon-branch-1 { --neon-branch-glow: #ff3fdd; --neon-branch-fill: rgba(255, 63, 221, 0.13); --neon-branch-stroke: rgba(255, 63, 221, 0.9); }
+      :root[data-theme="neon"] .neon-branch-2 { --neon-branch-glow: #ffbf47; --neon-branch-fill: rgba(255, 191, 71, 0.13); --neon-branch-stroke: rgba(255, 191, 71, 0.9); }
+      :root[data-theme="neon"] .neon-branch-3 { --neon-branch-glow: #4aff80; --neon-branch-fill: rgba(74, 255, 128, 0.12); --neon-branch-stroke: rgba(74, 255, 128, 0.88); }
+
+      :root[data-theme="neon"] .root-box,
+      :root[data-theme="neon"] .node-shape,
+      :root[data-theme="neon"] .folder-box,
+      :root[data-theme="neon"] .mindmap-box,
+      :root[data-theme="neon"] .flow-preview-node,
+      :root[data-theme="neon"] .node-visual-box,
+      :root[data-theme="neon"] .routing-surface-node,
+      :root[data-theme="neon"] .scatter-node-circle {
+        fill: rgba(6, 14, 34, 0.82);
+        stroke: var(--neon-branch-stroke);
+        stroke-width: 2.5;
+        filter: url("#neon-node-glow") drop-shadow(0 0 7px var(--neon-branch-glow));
+        transition: transform 180ms ease, filter 220ms ease, opacity 220ms ease;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+
+      :root[data-theme="neon"] .node-hit:hover + .node-visual-box,
+      :root[data-theme="neon"] .node-hit:hover + .root-box,
+      :root[data-theme="neon"] .node-hit:hover + .node-shape,
+      :root[data-theme="neon"] .node-hit:hover + .folder-box,
+      :root[data-theme="neon"] .node-hit:hover + .scatter-node-circle {
+        transform: scale(1.025);
+        filter: url("#neon-node-glow") drop-shadow(0 0 18px var(--neon-branch-glow));
+      }
+
+      :root[data-theme="neon"] .surface-scope-box {
+        fill: rgba(8, 15, 36, 0.38);
+        stroke: rgba(46, 252, 255, 0.36);
+        filter: drop-shadow(0 0 14px rgba(46, 252, 255, 0.12));
+      }
+
+      :root[data-theme="neon"] .node-visual-box.selected,
+      :root[data-theme="neon"] .node-visual-box.multi-selected,
+      :root[data-theme="neon"] .node-visual-box.primary-selected,
+      :root[data-theme="neon"] .routing-surface-node.primary-selected,
+      :root[data-theme="neon"] .scatter-node-circle.selected,
+      :root[data-theme="neon"] .scatter-node-circle.primary-selected {
+        fill: color-mix(in srgb, var(--neon-branch-fill) 78%, #ffffff 5%);
+        stroke: var(--neon-branch-glow);
+        animation: neon-selected-breathe 2.8s ease-in-out infinite;
+      }
+
+      :root[data-theme="neon"] .label-root,
+      :root[data-theme="neon"] .label-node,
+      :root[data-theme="neon"] .flow-preview-node-label,
+      :root[data-theme="neon"] .routing-surface-label,
+      :root[data-theme="neon"] .scatter-label,
+      :root[data-theme="neon"] .annotation-text,
+      :root[data-theme="neon"] .latex-node-content,
+      :root[data-theme="neon"] .m3e-table-view .m3e-table-name {
+        fill: #f4fbff;
+        color: #f4fbff;
+        stroke: rgba(2, 5, 14, 0.82);
+        stroke-width: 3.5px;
+        stroke-linejoin: round;
+        paint-order: stroke;
+        letter-spacing: 0;
+        filter: drop-shadow(0 0 4px rgba(46, 252, 255, 0.22));
+      }
+
+      :root[data-theme="neon"] .edge,
+      :root[data-theme="neon"] .graph-link,
+      :root[data-theme="neon"] .flow-preview-edge,
+      :root[data-theme="neon"] .routing-surface-edge {
+        stroke: var(--neon-branch-stroke);
+        stroke-width: 4;
+        opacity: 0.92;
+        filter: url("#neon-edge-glow") drop-shadow(0 0 7px var(--neon-branch-glow));
+        animation: neon-edge-shimmer 4.8s ease-in-out infinite;
+      }
+
+      :root[data-theme="neon"] .graph-link-hit {
+        stroke-width: 22;
+      }
+
+      :root[data-theme="neon"] .edge-label,
+      :root[data-theme="neon"] .graph-link-label,
+      :root[data-theme="neon"] .flow-preview-edge-label,
+      :root[data-theme="neon"] .surface-scope-title {
+        fill: #9ffcff;
+        filter: drop-shadow(0 0 6px rgba(46, 252, 255, 0.38));
+      }
+
+      :root[data-theme="neon"] .graph-link-label-bg,
+      :root[data-theme="neon"] .annotation-text-bg {
+        fill: rgba(4, 9, 22, 0.86);
+        stroke: rgba(46, 252, 255, 0.28);
+      }
+
+      :root[data-theme="neon"] .collapsed-badge,
+      :root[data-theme="neon"] .collapsed-badge-node,
+      :root[data-theme="neon"] .graph-link-port,
+      :root[data-theme="neon"] .link-port-handle,
+      :root[data-theme="neon"] .link-port-dot {
+        fill: rgba(5, 12, 30, 0.95);
+        stroke: var(--accent);
+        filter: drop-shadow(0 0 9px rgba(46, 252, 255, 0.36));
+      }
+
+      :root[data-theme="neon"] .collapsed-badge-count,
+      :root[data-theme="neon"] .mode-badge {
+        color: #dffcff;
+        fill: #dffcff;
+        letter-spacing: 0;
+      }
+
+      :root[data-theme="neon"] .mode-badge {
+        border-color: rgba(46, 252, 255, 0.48);
+        background: rgba(5, 12, 30, 0.76);
+        box-shadow: 0 0 22px rgba(46, 252, 255, 0.2);
+      }
+
+      :root[data-theme="neon"] .template-completion-input {
+        background: rgba(5, 12, 30, 0.96);
+        color: var(--ink);
+      }
+
+      :root[data-theme="neon"] .template-completion-item,
+      :root[data-theme="neon"] .template-completion-item small,
+      :root[data-theme="neon"] .m3e-table-view .m3e-table-empty {
+        color: #aac7d7;
+      }
+
+      :root[data-theme="neon"] .entity-list-header,
+      :root[data-theme="neon"] .conflict-header,
+      :root[data-theme="neon"] .markdown-preview-header,
+      :root[data-theme="neon"] .m3e-table-view th {
+        border-color: rgba(46, 252, 255, 0.18);
+        background: rgba(5, 12, 30, 0.78);
+        color: #e9fbff;
+      }
+
+      :root[data-theme="neon"] .m3e-table-view td {
+        border-color: rgba(46, 252, 255, 0.13);
+      }
+
+      :root[data-theme="neon"] .m3e-table-view tr:hover {
+        background: rgba(46, 252, 255, 0.08);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        :root[data-theme="neon"] .app,
+        :root[data-theme="neon"] .app::before,
+        :root[data-theme="neon"] .edge,
+        :root[data-theme="neon"] .graph-link,
+        :root[data-theme="neon"] .flow-preview-edge,
+        :root[data-theme="neon"] .routing-surface-edge,
+        :root[data-theme="neon"] .node-visual-box.selected,
+        :root[data-theme="neon"] .node-visual-box.multi-selected,
+        :root[data-theme="neon"] .node-visual-box.primary-selected,
+        :root[data-theme="neon"] .routing-surface-node.primary-selected,
+        :root[data-theme="neon"] .scatter-node-circle.selected,
+        :root[data-theme="neon"] .scatter-node-circle.primary-selected {
+          animation: none;
+        }
+      }

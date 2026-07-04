@@ -238,6 +238,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260420_math_transition_vision.md](<./ideas/260420_math_transition_vision.md>) | Markdown | 数学学習から数学研究へ移るための M3E 構想 | 作成日: 2026-04-20 |
 | [ideas/260420_math_transition_vision2.md](<./ideas/260420_math_transition_vision2.md>) | Markdown | 数学学習から数学研究へ移るための M3E 構想（拡張版） | 作成日: 2026-04-20 |
 | [ideas/260627_llm_wiki_pattern.md](<./ideas/260627_llm_wiki_pattern.md>) | Markdown | LLM Wiki | A pattern for building personal knowledge bases using LLMs. |
+| [ideas/260702_arbor_mdd_experimental_search_tree.md](<./ideas/260702_arbor_mdd_experimental_search_tree.md>) | Markdown | Arbor と MDD の接点: Experimental Search Tree | Arbor の Idea Tree を MDD runtime の実験探索専用 spine として扱うアイデア。 |
 | [ideas/ChatGPT-M3Eのコンテンツ販売.md](<./ideas/ChatGPT-M3Eのコンテンツ販売.md>) | Markdown | M3Eのコンテンツ販売 | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
 | [ideas/ChatGPT-Map Logic Limitations.md](<./ideas/ChatGPT-Map Logic Limitations.md>) | Markdown | Map Logic Limitations | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
 | [ideas/ChatGPT-ハードコピーとソフトコピー.md](<./ideas/ChatGPT-ハードコピーとソフトコピー.md>) | Markdown | ハードコピーとソフトコピー | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
