@@ -132,7 +132,7 @@ If this context check is missing, the task is considered not started.
    scripts/codex.sh exec --sandbox read-only "<handoff>" < /dev/null
 
    # Implementation
-   ( cd "$HOME/dev/M3E-<task>" && scripts/codex.sh exec "<handoff>" < /dev/null )
+   ( cd "$HOME/dev/M3E-worktrees/<task>" && scripts/codex.sh exec "<handoff>" < /dev/null )
    ```
 5. Codex implements with minimal changes, verifies, commits, pushes `codex/<task>`, and opens a PR to `dev-beta`.
 6. Claude Director reviews and decides merge / iterate / escalate.
@@ -143,7 +143,7 @@ Always invoke Codex via `scripts/codex.sh exec ... < /dev/null`.
 ## Worktree Rules
 
 - Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly here.
-- Each code-writing Codex task runs at `$HOME/dev/M3E-<task>`.
+- Each code-writing Codex task runs at `$HOME/dev/M3E-worktrees/<task>`.
 - Each task branch is `codex/<task>`, branched from `dev-beta`.
 - PR target is `dev-beta`.
 - Use `scripts/ops/worktree.sh new/list/clean/rm`.

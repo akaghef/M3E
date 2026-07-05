@@ -104,7 +104,7 @@ If a skill or skill trigger changes, dispatch/use `skill-creator` and update the
 - Remote: `github.com/akaghef/M3E.git`. Integration branch: **`dev-beta`**.
 - Primary checkout `/Users/nisimoriyuuya/dev/M3E` stays on `dev-beta`. **Do not implement directly here.**
 - Each code-writing Codex task runs in its own worktree:
-  - path: `/Users/nisimoriyuuya/dev/M3E-<task>`
+  - path: `/Users/nisimoriyuuya/dev/M3E-worktrees/<task>`
   - branch: `codex/<task>`
 - Codex pushes a PR → `dev-beta`. After merge, the Director removes the worktree.
 - Use `scripts/ops/worktree.sh` helpers (see playbook) for create/list/clean. Run `git worktree prune` to drop stale entries; never force-remove a worktree with uncommitted work — escalate to the user.

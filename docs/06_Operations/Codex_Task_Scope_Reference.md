@@ -17,5 +17,5 @@
 
 - This table is not a team roster and does not create Claude worker agents.
 - Split large requests into separate Codex tasks when file families would collide.
-- Each code-writing task gets its own `$HOME/dev/M3E-<task>` worktree and `codex/<task>` branch.
+- Each code-writing task gets its own `$HOME/dev/M3E-worktrees/<task>` worktree and `codex/<task>` branch.
 - Scope exceptions must be explicit in the Codex handoff.

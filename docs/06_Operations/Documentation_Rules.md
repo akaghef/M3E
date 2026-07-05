@@ -63,7 +63,7 @@ Claude Director は加えて次を読む:
 
 Code-writing Codex tasks use:
 
-- path: `$HOME/dev/M3E-<task>`
+- path: `$HOME/dev/M3E-worktrees/<task>`
 - branch: `codex/<task>`
 - base: `dev-beta`
 - helper: `scripts/ops/worktree.sh`

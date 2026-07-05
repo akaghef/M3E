@@ -11,7 +11,7 @@ Usage:
   scripts/ops/worktree.sh help
 
 Worktrees:
-  path:   $HOME/dev/M3E-<task>
+  path:   $HOME/dev/M3E-worktrees/<task>
   branch: codex/<task>
   base:   dev-beta
 USAGE
@@ -33,8 +33,12 @@ require_task() {
   fi
 }
 
+worktree_root() {
+  printf '%s/dev/M3E-worktrees\n' "$HOME"
+}
+
 worktree_path() {
-  printf '%s/dev/M3E-%s\n' "$HOME" "$1"
+  printf '%s/%s\n' "$(worktree_root)" "$1"
 }
 
 branch_name() {
@@ -53,6 +57,8 @@ cmd_new() {
     echo "error: worktree path already exists: $path" >&2
     exit 1
   fi
+
+  mkdir -p "$(worktree_root)"
 
   cd "$root"
   git check-ref-format --branch "$branch" >/dev/null

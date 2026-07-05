@@ -84,3 +84,22 @@ projects/PJ04_MermaidSystemLangGraph/runtime/**/__pycache__/
 projects/PJ04_MermaidSystemLangGraph/runtime/**/*.pyc
 projects/PJ04_MermaidSystemLangGraph/runtime/traces/
 projects/PJ04_MermaidSystemLangGraph/runtime/checkpoints.sqlite
+
+# Local agent / editor / runtime state (never commit)
+/.codex/
+/.hermes/
+/.kamui/
+/.obsidian/
+
+# In-repo worktree bundle. New worktrees live outside the repo at
+# $HOME/dev/M3E-worktrees/<task> ; ignore any stragglers created here.
+/worktrees/
+
+# Root-level scratch captures / canvases / bundles
+/AGENTS 2.md
+/*.canvas
+/*.base
+/backlog/keyboardimage.jpg
+/agent_instructions/skills_canonical.zip
+/operations/
+/*.png

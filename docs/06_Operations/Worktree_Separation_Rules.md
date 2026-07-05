@@ -12,7 +12,7 @@ The old role worktree model (`dev-visual` / `dev-data` / `dev-team`) is supersed
 - Director: Claude.
 - Worker: Codex (`codex exec`).
 - Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly here.
-- Task worktree: `$HOME/dev/M3E-<task>`.
+- Task worktree: `$HOME/dev/M3E-worktrees/<task>`.
 - Task branch: `codex/<task>`.
 - PR base: `dev-beta`.
 - Helper: `scripts/ops/worktree.sh`.
@@ -41,7 +41,7 @@ Rules:
 scripts/codex.sh exec --sandbox read-only "<handoff>" < /dev/null
 
 # Implementation
-( cd "$HOME/dev/M3E-<task>" && scripts/codex.sh exec "<handoff>" < /dev/null )
+( cd "$HOME/dev/M3E-worktrees/<task>" && scripts/codex.sh exec "<handoff>" < /dev/null )
 ```
 
 Always include `< /dev/null`; otherwise Codex can block on stdin.
@@ -58,7 +58,7 @@ pwd
 
 Acceptable implementation state:
 
-- `pwd` is `$HOME/dev/M3E-<task>`.
+- `pwd` is `$HOME/dev/M3E-worktrees/<task>`.
 - branch is `codex/<task>`.
 - worktree was created from `dev-beta`.
 

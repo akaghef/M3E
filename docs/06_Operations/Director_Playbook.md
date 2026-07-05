@@ -47,7 +47,7 @@ Rules:
 ## 3. Worktree lifecycle
 
 ```bash
-scripts/ops/worktree.sh new <task>     # create /…/M3E-<task> on branch codex/<task>
+scripts/ops/worktree.sh new <task>     # create /…/M3E-worktrees/<task> on branch codex/<task>
 scripts/ops/worktree.sh list           # show worktrees + status
 scripts/ops/worktree.sh clean          # prune stale/prunable entries
 scripts/ops/worktree.sh rm <task>      # remove after PR merged (guards uncommitted work)
