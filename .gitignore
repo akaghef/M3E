@@ -89,7 +89,7 @@ projects/PJ04_MermaidSystemLangGraph/runtime/checkpoints.sqlite
 /.codex/
 /.hermes/
 /.kamui/
-/.obsidian/
+.obsidian/
 
 # In-repo worktree bundle. New worktrees live outside the repo at
 # $HOME/dev/M3E-worktrees/<task> ; ignore any stragglers created here.
