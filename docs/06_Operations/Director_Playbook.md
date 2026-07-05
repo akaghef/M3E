@@ -43,6 +43,7 @@ Rules:
 - Investigation tasks → `--sandbox read-only`. Ask for a bounded report (line cap).
 - Implementation tasks → run inside the task worktree; tell Codex to commit on `codex/<task>`.
 - Keep CONTEXT tight; Codex can read the repo itself.
+- If the handoff affects repo hygiene, source/artifact boundaries, generated outputs, private/public-danger material, or worktree placement, include `protocols/repository-canon-values.md` in CONTEXT.
 
 ## 3. Worktree lifecycle
 
@@ -179,3 +180,10 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   promises. Skill trigger changes must go through `skill-creator` and update frontmatter
   `description`. Also codified the live beta data guard: no fixture/test/temp maps in the active
   beta personal workspace for verification.
+- 2026-07-05 — Added `protocols/repository-canon-values.md` as the canonical routing point for
+  Akaghef's repo-level values: 弱いから利用して強くなる, one canonical owner per concern,
+  source-only Git, generated outputs as projections/artifacts, worktrees outside the primary
+  checkout, and private/public-danger material outside the public repo. Rule: when a Codex handoff
+  touches repo hygiene, source/artifact boundaries, generated outputs, private/public-danger
+  material, or worktree placement, include that protocol in CONTEXT instead of restating the whole
+  doctrine in `AGENTS.md`.

@@ -8,6 +8,8 @@ This directory is the canonical home for AI operating protocols in M3E / Akaghef
 - How Map Manager scopes, layouts, and gates map mutations.
 - How scoped Codex workers receive minimal instructions.
 - How handoff packets stay consistent across Claude Director, Codex, and GPT Pro.
+- How repository-level canon, source/artifact allocation, generated outputs,
+  worktree placement, and private/public-danger material are classified.
 - Machine-checkable operating contracts under `contracts/`.
 
 ## Current Operating Model
@@ -25,6 +27,7 @@ This directory is the canonical home for AI operating protocols in M3E / Akaghef
 
 ## Canonical protocols
 
+- `repository-canon-values.md`
 - `map-manager/README.md` (Map Manager operational SSOT)
 - `map-manager/gates.md`
 - `map-manager/projection-rule.md`

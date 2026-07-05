@@ -15,6 +15,7 @@
 
 - Markdown protocols explain human-readable behavior.
 - YAML contracts encode checkable triggers, must/must-not rules, escalation, and verification.
+- Repository canon, source/artifact allocation, generated-output policy, worktree layout, and private/public-danger material routing must follow `protocols/repository-canon-values.md`.
 - Do not duplicate product spec details here. Link to `docs/03_Spec/` instead.
 - Do not reintroduce Claude sub-agent workers; Claude is Director and Codex is the worker.
 - If a protocol changes behavior, update canonical skill source and rerun skill sync.

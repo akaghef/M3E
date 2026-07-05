@@ -47,12 +47,15 @@ Current model:
 4. Operations rules:
    - `docs/06_Operations/Documentation_Rules.md`
    - `docs/06_Operations/Worktree_Separation_Rules.md`
+5. Repository canon values:
+   - `protocols/repository-canon-values.md`
 
 ## AI Instruction Routing
 
 For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 
 - Product meaning of map / node / scope / edge / GraphLink / alias / path / layout lives under `docs/03_Spec/`.
+- Repository-level canon, source/artifact allocation, generated-output policy, worktree placement, and private/public-danger material routing live in `protocols/repository-canon-values.md`.
 - Agent operating behavior lives under `protocols/`.
 - Claude Director behavior lives in `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md`.
 - Map read/write execution uses the `m3e-map` skill.
