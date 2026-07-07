@@ -112,6 +112,14 @@ async function dragNodeToNode(page, sourceText, targetText) {
   await page.mouse.up();
 }
 
+async function nameSelectedNode(page, text) {
+  const editor = page.locator("textarea.inline-node-editor");
+  await expect(editor).toBeVisible();
+  await editor.fill(text);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#meta")).toContainText(`selected: ${text}`);
+}
+
 // 目的: デフォルトサンプルを全体表示した状態で、描画の見た目が崩れていないかを比較する。
 test("default sample visual baseline", async ({ page }) => {
   await loadAndStabilize(page, "#load-default");
@@ -137,21 +145,18 @@ test("viewer keyboard undo redo", async ({ page }) => {
 
   await page.keyboard.press("Enter");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount + 1}`);
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
 
   await page.keyboard.press("Control+z");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount}`);
 
   await page.keyboard.press("Control+Shift+z");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount + 1}`);
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
 
   await page.keyboard.press("Control+z");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount}`);
 
   await page.keyboard.press("Control+y");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount + 1}`);
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
 });
 
 // 目的: drag reparent で root ノードをターゲットにできることを再現確認する。
@@ -174,8 +179,7 @@ test("viewer range select multi reparent", async ({ page }) => {
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#meta")).toContainText("selected: Research Root");
   await page.keyboard.press("Enter");
-  await page.keyboard.press("Escape");
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
+  await nameSelectedNode(page, "Target Node");
 
   // Range-select from Question to Hypothesis.
   const question = page.locator("text.label-node", { hasText: "Question" }).first();
@@ -186,14 +190,14 @@ test("viewer range select multi reparent", async ({ page }) => {
   // Mark selected roots.
   await page.keyboard.press("Control+m");
 
-  // Select target node New Node and apply multi reparent.
-  const target = page.locator("text.label-node", { hasText: "New Node" }).first();
+  // Select target node and apply multi reparent.
+  const target = page.locator("text.label-node", { hasText: "Target Node" }).first();
   await target.click({ force: true });
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
+  await expect(page.locator("#meta")).toContainText("selected: Target Node");
   await page.keyboard.press("p");
 
   await expect(page.locator("#status")).toContainText("Moved 2 node(s).");
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
+  await expect(page.locator("#meta")).toContainText("selected: Target Node");
 
   // Validate depth navigation into the newly moved subtree.
   await page.keyboard.press("ArrowRight");
@@ -208,18 +212,17 @@ test("viewer multi drag reparent", async ({ page }) => {
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#meta")).toContainText("selected: Research Root");
   await page.keyboard.press("Enter");
-  await page.keyboard.press("Escape");
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
+  await nameSelectedNode(page, "Target Node");
 
   const question = page.locator("text.label-node", { hasText: "Question" }).first();
   const hypothesis = page.locator("text.label-node", { hasText: "Hypothesis v2" }).first();
   await question.click({ force: true });
   await hypothesis.click({ modifiers: ["Control"], force: true });
 
-  await dragNodeToNode(page, "Question", "New Node");
+  await dragNodeToNode(page, "Question", "Target Node");
 
   await expect(page.locator("#status")).toContainText("Moved 2 node(s).");
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
+  await expect(page.locator("#meta")).toContainText("selected: Target Node");
 });
 
 // 目的: root を含む選択を reparent ソースにマークしても、非 root ノードは一括 reparent できることを確認する。
@@ -230,13 +233,12 @@ test("viewer multi reparent ignores root in marked sources", async ({ page }) =>
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#meta")).toContainText("selected: Research Root");
   await page.keyboard.press("Enter");
-  await page.keyboard.press("Escape");
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
+  await nameSelectedNode(page, "Target Node");
 
   const question = page.locator("text.label-node", { hasText: "Question" }).first();
   const hypothesis = page.locator("text.label-node", { hasText: "Hypothesis v2" }).first();
   const root = page.locator("text.label-root", { hasText: "Research Root" }).first();
-  const target = page.locator("text.label-node", { hasText: "New Node" }).first();
+  const target = page.locator("text.label-node", { hasText: "Target Node" }).first();
 
   await question.click({ force: true });
   await hypothesis.click({ modifiers: ["Control"], force: true });
@@ -247,7 +249,7 @@ test("viewer multi reparent ignores root in marked sources", async ({ page }) =>
   await page.keyboard.press("p");
 
   await expect(page.locator("#status")).toContainText("Moved 2 node(s).");
-  await expect(page.locator("#meta")).toContainText("selected: New Node");
+  await expect(page.locator("#meta")).toContainText("selected: Target Node");
 });
 
 // 目的: link source をマークして別ノードへ適用すると、graph link が作成され描画されることを確認する。

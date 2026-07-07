@@ -16,6 +16,17 @@ test("addNode updates parent children", () => {
   expect(model.state.nodes[childId].text).toBe("Child A");
 });
 
+test("addNode and addSibling default to empty text", () => {
+  const model = new RapidMvpModel("Root");
+  const rootId = model.state.rootId;
+
+  const childId = model.addNode(rootId);
+  const siblingId = model.addSibling(childId);
+
+  expect(model.state.nodes[childId].text).toBe("");
+  expect(model.state.nodes[siblingId].text).toBe("");
+});
+
 test("addSibling on root throws", () => {
   const model = new RapidMvpModel("Root");
 

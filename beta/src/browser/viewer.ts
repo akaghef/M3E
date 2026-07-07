@@ -2050,7 +2050,7 @@ async function stopVaultLiveIntegration(showStatus = true): Promise<void> {
   }
 }
 
-function createNodeRecord(id: string, parentId: string | null, text = "New Node"): TreeNode {
+function createNodeRecord(id: string, parentId: string | null, text = ""): TreeNode {
   return {
     id,
     parentId,
@@ -3287,7 +3287,7 @@ function flowRowOf(node: TreeNode | null | undefined, fallback = 0): number {
 }
 
 function diagramLabel(node: TreeNode, nodeStyles: NodeStyleAttrs): string {
-  const base = uiLabel(node) || "(empty)";
+  const base = uiLabel(node);
   const withIcon = nodeStyles.icon ? `${nodeStyles.icon} ${base}` : base;
   if (isScopePortalNode(node)) {
     return `[${withIcon}]`;
@@ -3909,10 +3909,10 @@ function uiLabel(node: TreeNode | null | undefined): string {
   if (isAliasNode(node)) {
     const target = resolveAliasTarget(node);
     if (target) {
-      return target.text || "Untitled";
+      return target.text ?? "Untitled";
     }
   }
-  return node.text || "Untitled";
+  return node.text ?? "Untitled";
 }
 
 function syncAliasDisplayForTarget(targetNodeId: string): void {
@@ -10637,7 +10637,7 @@ function addChild(): void {
   }
   pushUndoSnapshot();
   const id = newId();
-  map!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
+  map!.state.nodes[id] = createNodeRecord(id, parentId, "");
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
@@ -10657,7 +10657,7 @@ function addSibling(): void {
   pushUndoSnapshot();
   const currentIndex = parent.children.indexOf(node.id);
   const id = newId();
-  map!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
+  map!.state.nodes[id] = createNodeRecord(id, parent.id, "");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
@@ -10844,7 +10844,7 @@ function addScatterNodeAt(clientX: number, clientY: number): void {
   const point = clientToCanvasPoint(clientX, clientY);
   pushUndoSnapshot();
   const id = newId();
-  map.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
+  map.state.nodes[id] = createNodeRecord(id, parentId, "");
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
@@ -13090,7 +13090,7 @@ function collectInternalLinksForRoots(rootIds: string[]): GraphLink[] {
 function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot, idMap?: Map<string, string>): string {
   const parent = getNode(parentId);
   const createdId = newId();
-  map!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text || "New Node");
+  map!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text ?? "");
   const created = map!.state.nodes[createdId]!;
   created.nodeType = snapshot.nodeType || "text";
   created.collapsed = snapshot.collapsed === true;

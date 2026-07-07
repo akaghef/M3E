@@ -180,7 +180,7 @@ class RapidMvpModel {
     });
   }
 
-  addNode(parentId: string, text = "New Node", index: number | null = null): string {
+  addNode(parentId: string, text = "", index: number | null = null): string {
     const parent = this._requireNode(parentId);
     this._pushHistory();
 
@@ -373,7 +373,7 @@ class RapidMvpModel {
     delete links[linkId];
   }
 
-  addSibling(nodeId: string, text = "New Sibling", after = true): string {
+  addSibling(nodeId: string, text = "", after = true): string {
     const node = this._requireNode(nodeId);
     if (node.parentId === null) {
       throw new Error("Root node cannot have siblings.");
