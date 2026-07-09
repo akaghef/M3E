@@ -527,6 +527,7 @@ let importanceVisibleNodeIds: Set<string> | null = null;
 let cloudSyncEnabled = false;
 let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
+let cloudMapVersion: number | null = null;
 let cloudConflictPending = false;
 let linearTransformStatus: LinearTransformStatus | null = null;
 let linearTextFontScale = 1;
@@ -11450,6 +11451,11 @@ function cloneStateForSave(state: AppState | null): AppState | null {
   return state ? JSON.parse(JSON.stringify(state)) as AppState : null;
 }
 
+function parseCloudMapVersion(payload: { cloudMapVersion?: unknown; mapVersion?: unknown }): number | null {
+  const value = payload.cloudMapVersion ?? payload.mapVersion;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
   if (!map) {
     return false;
@@ -11556,6 +11562,7 @@ async function fetchCloudSyncStatus(): Promise<void> {
       cloudSyncEnabled = false;
       cloudSyncExists = false;
       cloudSavedAt = null;
+      cloudMapVersion = null;
       updateCloudSyncUi();
       return;
     }
@@ -11563,12 +11570,14 @@ async function fetchCloudSyncStatus(): Promise<void> {
     cloudSyncEnabled = Boolean(payload.enabled);
     cloudSyncExists = Boolean(payload.exists);
     cloudSavedAt = payload.cloudSavedAt ? String(payload.cloudSavedAt) : null;
+    cloudMapVersion = parseCloudMapVersion(payload);
     cloudConflictPending = false;
     updateCloudSyncUi();
   } catch {
     cloudSyncEnabled = false;
     cloudSyncExists = false;
     cloudSavedAt = null;
+    cloudMapVersion = null;
     cloudConflictPending = false;
     updateCloudSyncUi();
   }
@@ -11584,8 +11593,12 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     }
     return false;
   }
+  if (cloudConflictPending && !force) {
+    return false;
+  }
   try {
     const baseSavedAt = cloudSavedAt;
+    const baseMapVersion = cloudMapVersion;
     const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_MAP_ID)}`, {
       method: "POST",
       headers: {
@@ -11594,6 +11607,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
       body: JSON.stringify({
         ...currentDocSnapshot(),
         baseSavedAt,
+        baseMapVersion,
         force,
       }),
     });
@@ -11602,6 +11616,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
       const conflict = await response.json().catch(() => ({ cloudSavedAt: null }));
       cloudConflictPending = true;
       cloudSavedAt = conflict.cloudSavedAt ? String(conflict.cloudSavedAt) : cloudSavedAt;
+      cloudMapVersion = parseCloudMapVersion(conflict) ?? cloudMapVersion;
       updateCloudSyncUi();
       if (showStatus) {
         setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
@@ -11633,6 +11648,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     map.savedAt = String(payload.savedAt || nowIso());
     cloudSavedAt = String(payload.savedAt || nowIso());
+    cloudMapVersion = parseCloudMapVersion(payload) ?? cloudMapVersion;
     cloudSyncExists = true;
     cloudConflictPending = false;
     updateCloudSyncUi();
@@ -11665,6 +11681,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     if (response.status === 404) {
       cloudSyncExists = false;
       cloudSavedAt = null;
+      cloudMapVersion = null;
       updateCloudSyncUi();
       return false;
     }
@@ -11678,6 +11695,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     loadPayload(payload);
     cloudSyncExists = true;
     cloudSavedAt = payload.savedAt ? String(payload.savedAt) : null;
+    cloudMapVersion = parseCloudMapVersion(payload);
     cloudConflictPending = false;
     updateCloudSyncUi();
     broadcastState();
