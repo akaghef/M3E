@@ -856,7 +856,8 @@ type HomeRouteAction =
 type AgentMapRoute =
   | { kind: "agent-active-node"; mapId: string }
   | { kind: "append-mf-h"; mapId: string }
-  | { kind: "rapid-mapify-oracle"; mapId: string };
+  | { kind: "rapid-mapify-oracle"; mapId: string }
+  | { kind: "cas-pn-generate"; mapId: string };
 
 function parseAgentMapRoute(urlPath: string): AgentMapRoute | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
@@ -871,6 +872,10 @@ function parseAgentMapRoute(urlPath: string): AgentMapRoute | null {
   const rapidMapifyMatch = pathname.match(/^\/api\/maps\/([^/]+)\/rapid\/mapify-oracle$/);
   if (rapidMapifyMatch) {
     return { kind: "rapid-mapify-oracle", mapId: decodeURIComponent(rapidMapifyMatch[1]!) };
+  }
+  const casPnGenerateMatch = pathname.match(/^\/api\/maps\/([^/]+)\/cas\/pn-generate$/);
+  if (casPnGenerateMatch) {
+    return { kind: "cas-pn-generate", mapId: decodeURIComponent(casPnGenerateMatch[1]!) };
   }
   return null;
 }
@@ -2668,6 +2673,7 @@ interface MapifyTeacherDelta {
 }
 
 const RAPID_MAPIFY_ORACLE_AGENT_ID = "rapid-mapify-oracle";
+const CAS_PN_GENERATE_AGENT_ID = "cas-pn-generate";
 const RAPID_MAPIFY_ORACLE_ROOT = path.join(REPO_ROOT, "tools", "rapid_mapify_oracle");
 const BIOLOGY_RF1_TEACHER_DELTA = path.join(
   RAPID_MAPIFY_ORACLE_ROOT,
@@ -3126,6 +3132,153 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       sendJson(res, err instanceof SyntaxError ? 400 : 400, {
         ok: false,
         error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "Rapid Mapify Oracle failed."),
+      });
+      return true;
+    }
+  }
+
+  if (route.kind === "cas-pn-generate") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const workspaceId = requestWorkspaceId(url, body);
+      // Prefer explicit body/query agentId when provided; otherwise default to CAS PN agent.
+      const fromBodyAgentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
+      const fromQueryAgentId = url.searchParams.get("agentId")?.trim() || "";
+      const agentId = fromBodyAgentId || fromQueryAgentId || CAS_PN_GENERATE_AGENT_ID;
+      const requestedOpId = typeof body.opId === "string" ? body.opId.trim() : "";
+      const action = normalizeRapidMapifyAction(body.action);
+      const explicitSelectedNodeId = typeof body.selectedNodeId === "string" ? body.selectedNodeId.trim() : "";
+      const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
+      const selectedNodeId = explicitSelectedNodeId || active?.nodeId || "";
+      if (!selectedNodeId) {
+        sendJson(res, 400, { ok: false, error: "selectedNodeId is required when no agent active node is set." });
+        return true;
+      }
+
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
+      const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
+      if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DOC_CONFLICT",
+          error: "Map changed externally. Refresh before running CAS PN generation.",
+          mapId: route.mapId,
+          savedAt: savedDoc.savedAt,
+        });
+        return true;
+      }
+      if (!savedDoc.state.nodes[selectedNodeId]) {
+        sendJson(res, 404, { ok: false, error: `Selected node not found: ${selectedNodeId}` });
+        return true;
+      }
+
+      const activeNode: AgentActiveNodeState = {
+        workspaceId,
+        mapId: route.mapId,
+        agentId,
+        nodeId: selectedNodeId,
+        updatedAt: new Date().toISOString(),
+      };
+      agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
+
+      const fragment = resolveRapidMapifyFragment(savedDoc.state, selectedNodeId, action, requestedOpId);
+      const result = appendMfHNodesToParent(savedDoc.state, selectedNodeId, fragment.fragment);
+      const runId = `cas_pn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const generatedAt = new Date().toISOString();
+      for (const added of result.added) {
+        const node = savedDoc.state.nodes[added.id];
+        if (!node) continue;
+        node.attributes = {
+          ...(node.attributes ?? {}),
+          "m3e:generated_by": "cas",
+          "m3e:cas.operation": "pn-generate",
+          "m3e:cas.run_id": runId,
+          "m3e:pn.action": action,
+          "m3e:pn.op_id": fragment.opId,
+          "m3e:pn.source": fragment.source,
+          "m3e:generated_at": generatedAt,
+        };
+      }
+
+      const allResultLabels = [...result.added, ...result.merged].map((node) => node.label);
+      const teacherLabelSet = new Set(fragment.teacherLabels);
+      const teacherProximity = fragment.teacherLabels.length === 0
+        ? null
+        : allResultLabels.filter((label) => teacherLabelSet.has(label)).length / fragment.teacherLabels.length;
+
+      if (Boolean(body.dryRun)) {
+        sendJson(res, 200, {
+          ok: true,
+          dryRun: true,
+          kind: "cas-pn-generate",
+          mapId: route.mapId,
+          workspaceId,
+          activeNode,
+          opId: fragment.opId,
+          action: fragment.action,
+          source: fragment.source,
+          fragment: fragment.fragment,
+          added: result.added,
+          merged: result.merged,
+          diagnostics: fragment.diagnostics,
+          cas: {
+            service: "m3e-cas",
+            operation: "pn-generate",
+            runId,
+            committed: false,
+          },
+          oracle: {
+            teacherLabels: fragment.teacherLabels,
+            teacherProximity,
+          },
+        });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(savedDoc.state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+        return true;
+      }
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
+      handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
+      sendJson(res, 200, {
+        ok: true,
+        kind: "cas-pn-generate",
+        mapId: route.mapId,
+        workspaceId,
+        activeNode,
+        savedAt,
+        opId: fragment.opId,
+        action: fragment.action,
+        source: fragment.source,
+        fragment: fragment.fragment,
+        added: result.added,
+        merged: result.merged,
+        diagnostics: fragment.diagnostics,
+        cas: {
+          service: "m3e-cas",
+          operation: "pn-generate",
+          runId,
+          committed: true,
+        },
+        oracle: {
+          teacherLabels: fragment.teacherLabels,
+          teacherProximity,
+        },
+      });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "CAS PN generation failed."),
       });
       return true;
     }
