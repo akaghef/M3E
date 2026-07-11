@@ -27,6 +27,7 @@ export default defineConfig({
         "edge-port-lab": "src/labs/edge-port/edge-port-lab.html",
         "node-lab": "src/labs/node/node-lab.html",
         "pn-lab": "src/labs/pn/pn-lab.html",
+        "runtime-board": "src/labs/runtime-board/runtime-board.html",
       },
       output: {
         entryFileNames: "[name].js",
@@ -35,6 +36,7 @@ export default defineConfig({
           if (name.includes("edge-port-lab")) return "edge-port-lab.css";
           if (name.includes("node-lab")) return "node-lab.css";
           if (name.includes("pn-lab")) return "pn-lab.css";
+          if (name.includes("runtime-board")) return "runtime-board.css";
           return name.includes("layout-lab") ? "layout-lab.css" : "workbench-ui.css";
         },
       },
