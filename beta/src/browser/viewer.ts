@@ -5584,6 +5584,7 @@ async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateActi
       workspaceId: WORKSPACE_ID,
       agentId: "cas-pn-generate",
       selectedNodeId: viewState.selectedNodeId,
+      scopeId: normalizedCurrentScopeId(),
       opId: RAPID_MAPIFY_OP_BY_ACTION[action],
       action,
       baseSavedAt: lastServerSavedAt,

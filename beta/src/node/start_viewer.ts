@@ -21,7 +21,11 @@ import {
   deleteConflictBackup,
 } from "./conflict_backup";
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
-import { generateProgressiveChildrenWithCodex } from "./codex_app_server";
+import {
+  generateProgressiveChildrenWithCodex,
+  type ProgressiveMapContext,
+  type ProgressiveMapContextNode,
+} from "./codex_app_server";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
 import {
   COLLAB_ENABLED,
@@ -2773,12 +2777,94 @@ function ancestorLabels(state: AppState, nodeId: string): string[] {
   const labels: string[] = [];
   let currentId = state.nodes[nodeId]?.parentId ?? null;
   while (currentId) {
-    const current = state.nodes[currentId];
+    const current: TreeNode | undefined = state.nodes[currentId];
     if (!current) break;
     labels.unshift(current.text);
     currentId = current.parentId;
   }
   return labels;
+}
+
+function progressiveNodeAddress(state: AppState, mapId: string, nodeId: string): string {
+  const labels: string[] = [];
+  let currentId: string | null = nodeId;
+  while (currentId) {
+    const current: TreeNode | undefined = state.nodes[currentId];
+    if (!current) break;
+    labels.unshift(current.text);
+    currentId = current.parentId;
+  }
+  return `M:(${mapId})> ${labels.join(" > ")}`;
+}
+
+function progressiveContextNode(state: AppState, mapId: string, nodeId: string): ProgressiveMapContextNode {
+  const node = state.nodes[nodeId];
+  if (!node) throw new Error(`Selected node not found: ${nodeId}`);
+  return {
+    id: node.id,
+    text: node.text,
+    details: node.details || "",
+    note: node.note || "",
+    attributes: { ...(node.attributes || {}) },
+    address: progressiveNodeAddress(state, mapId, nodeId),
+  };
+}
+
+function isDescendantOf(state: AppState, nodeId: string, ancestorId: string): boolean {
+  let currentId: string | null = nodeId;
+  while (currentId) {
+    if (currentId === ancestorId) return true;
+    currentId = state.nodes[currentId]?.parentId ?? null;
+  }
+  return false;
+}
+
+function progressiveScopeOutline(state: AppState, scopeId: string, maxNodes = 120): string[] {
+  const lines: string[] = [];
+  const visit = (nodeId: string, depth: number): void => {
+    if (lines.length >= maxNodes) return;
+    const node = state.nodes[nodeId];
+    if (!node) return;
+    const detail = node.details?.trim() ? ` — ${node.details.trim().slice(0, 240)}` : "";
+    lines.push(`${"  ".repeat(depth)}- ${node.text}${detail}`);
+    for (const childId of node.children || []) visit(childId, depth + 1);
+  };
+  visit(scopeId, 0);
+  if (lines.length >= maxNodes) lines.push("… scope outline truncated at 120 nodes");
+  return lines;
+}
+
+function progressiveMapContext(
+  state: AppState,
+  mapId: string,
+  selectedNodeId: string,
+  requestedScopeId: string,
+): ProgressiveMapContext {
+  const selected = state.nodes[selectedNodeId];
+  if (!selected) throw new Error(`Selected node not found: ${selectedNodeId}`);
+  const scopeId = requestedScopeId && state.nodes[requestedScopeId] && isDescendantOf(state, selectedNodeId, requestedScopeId)
+    ? requestedScopeId
+    : state.rootId;
+  const ancestorIds: string[] = [];
+  let ancestorId = selected.parentId;
+  while (ancestorId) {
+    ancestorIds.unshift(ancestorId);
+    ancestorId = state.nodes[ancestorId]?.parentId ?? null;
+  }
+  const parent = selected.parentId ? state.nodes[selected.parentId] : undefined;
+  return {
+    map: {
+      id: mapId,
+      rootLabel: state.nodes[state.rootId]?.text || "",
+      address: `M:(${mapId})`,
+    },
+    scope: progressiveContextNode(state, mapId, scopeId),
+    selected: progressiveContextNode(state, mapId, selectedNodeId),
+    ancestors: ancestorIds.map((id) => progressiveContextNode(state, mapId, id)),
+    siblings: (parent?.children || []).filter((id) => id !== selectedNodeId).map((id) => progressiveContextNode(state, mapId, id)),
+    existingChildren: (selected.children || []).map((id) => progressiveContextNode(state, mapId, id)),
+    scopeOutline: progressiveScopeOutline(state, scopeId),
+  };
 }
 
 function resolveRapidMapifyFragment(
@@ -3174,6 +3260,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       const requestedOpId = typeof body.opId === "string" ? body.opId.trim() : "";
       const action = normalizeRapidMapifyAction(body.action);
       const opId = progressiveOperationId(action, requestedOpId);
+      const requestedScopeId = typeof body.scopeId === "string" ? body.scopeId.trim() : "";
       const explicitSelectedNodeId = typeof body.selectedNodeId === "string" ? body.selectedNodeId.trim() : "";
       const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
       const selectedNodeId = explicitSelectedNodeId || active?.nodeId || "";
@@ -3217,6 +3304,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         existingChildLabels: (selected.children || [])
           .map((childId) => savedDoc.state.nodes[childId]?.text)
           .filter((label): label is string => Boolean(label)),
+        context: progressiveMapContext(savedDoc.state, route.mapId, selectedNodeId, requestedScopeId),
         cwd: REPO_ROOT,
       });
       const fragment = labelsToMfH(generation.children);

@@ -8,6 +8,7 @@ let baseUrl;
 let dataDir;
 let RapidMvpModel;
 let fakeCodexPath;
+let capturePath;
 
 function writeFakeCodex() {
   fakeCodexPath = path.join(dataDir, "fake-codex.js");
@@ -25,6 +26,9 @@ process.stdin.on("data", (chunk) => {
       if (request.method === "initialize") process.stdout.write(JSON.stringify({ id: request.id, result: { ok: true } }) + "\\n");
       if (request.method === "thread/start") process.stdout.write(JSON.stringify({ id: request.id, result: { thread: { id: "thread-cas-test" } } }) + "\\n");
       if (request.method === "turn/start") {
+        if (process.env.M3E_CAS_CAPTURE_FILE) {
+          require("node:fs").writeFileSync(process.env.M3E_CAS_CAPTURE_FILE, JSON.stringify(request.params));
+        }
         process.stdout.write(JSON.stringify({ id: request.id, result: { turn: { id: "turn-cas-test" } } }) + "\\n");
         process.stdout.write(JSON.stringify({ method: "item/completed", params: { threadId: "thread-cas-test", turnId: "turn-cas-test", item: { type: "agentMessage", id: "item-cas-test", text: "{\\\"children\\\":[{\\\"text\\\":\\\"身体的特徴\\\"},{\\\"text\\\":\\\"知能と社会性\\\"},{\\\"text\\\":\\\"文化と技術\\\"}]}" } } }) + "\\n");
         process.stdout.write(JSON.stringify({ method: "turn/completed", params: { threadId: "thread-cas-test", turn: { id: "turn-cas-test", status: "completed", items: [{ type: "agentMessage", id: "item-cas-test", text: "{\\\"children\\\":[{\\\"text\\\":\\\"身体的特徴\\\"},{\\\"text\\\":\\\"知能と社会性\\\"},{\\\"text\\\":\\\"文化と技術\\\"}]}" }] } } }) + "\\n");
@@ -49,6 +53,8 @@ beforeAll(async () => {
   process.env.M3E_DATA_DIR = dataDir;
   process.env.M3E_DB_FILE = "cas-pn-generate.sqlite";
   process.env.M3E_CODEX_BIN = fakeCodexPath;
+  capturePath = path.join(dataDir, "codex-turn.json");
+  process.env.M3E_CAS_CAPTURE_FILE = capturePath;
 
   const startViewerPath = require.resolve("../../dist/node/start_viewer.js");
   delete require.cache[startViewerPath];
@@ -65,6 +71,7 @@ afterAll(async () => {
   delete process.env.M3E_DATA_DIR;
   delete process.env.M3E_DB_FILE;
   delete process.env.M3E_CODEX_BIN;
+  delete process.env.M3E_CAS_CAPTURE_FILE;
   if (server) {
     await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
   }
@@ -73,8 +80,11 @@ afterAll(async () => {
 
 async function seedBiologyMap(mapId) {
   const model = new RapidMvpModel("Root");
+  model.state.nodes[model.state.rootId].details = "生物分類の検証 scope。";
+  model.state.nodes[model.state.rootId].attributes = { "m3e:display-role": "experiment-scope" };
   const fungusId = model.addNode(model.state.rootId, "菌類");
   const animalId = model.addNode(model.state.rootId, "動物");
+  model.state.nodes[fungusId].details = "胞子で増える生物群。";
   const first = await requestJson(`${baseUrl}/api/maps/${mapId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -95,6 +105,7 @@ test("CAS PN generation calls Codex App Server and persists its returned proposa
     body: JSON.stringify({
       workspaceId: "ws-test",
       selectedNodeId: seeded.fungusId,
+      scopeId: seeded.rootId,
       action: "detail",
       baseSavedAt: seeded.savedAt,
     }),
@@ -116,6 +127,16 @@ test("CAS PN generation calls Codex App Server and persists its returned proposa
     "文化と技術",
   ]);
   expect(cas.payload.merged).toEqual([]);
+
+  const capturedTurn = JSON.parse(fs.readFileSync(capturePath, "utf8"));
+  const prompt = capturedTurn.input[0].text;
+  expect(prompt).toContain("Map context:");
+  expect(prompt).toContain('"scope"');
+  expect(prompt).toContain("M:(cas-pn-generate-detail)> Root");
+  expect(prompt).toContain("生物分類の検証 scope。");
+  expect(prompt).toContain("胞子で増える生物群。");
+  expect(prompt).toContain("動物");
+  expect(prompt).toContain("never substitute N5/classification");
 
   const after = await requestJson(`${baseUrl}/api/maps/${mapId}`);
   expect(after.response.status).toBe(200);

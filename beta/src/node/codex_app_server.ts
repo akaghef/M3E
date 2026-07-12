@@ -8,7 +8,27 @@ export interface CodexProgressiveGenerationRequest {
   nodeDetails: string;
   ancestorLabels: string[];
   existingChildLabels: string[];
+  context: ProgressiveMapContext;
   cwd: string;
+}
+
+export interface ProgressiveMapContextNode {
+  id: string;
+  text: string;
+  details: string;
+  note: string;
+  attributes: Record<string, string>;
+  address: string;
+}
+
+export interface ProgressiveMapContext {
+  map: { id: string; rootLabel: string; address: string };
+  scope: ProgressiveMapContextNode;
+  selected: ProgressiveMapContextNode;
+  ancestors: ProgressiveMapContextNode[];
+  siblings: ProgressiveMapContextNode[];
+  existingChildren: ProgressiveMapContextNode[];
+  scopeOutline: string[];
 }
 
 export interface CodexProgressiveGenerationResult {
@@ -177,7 +197,7 @@ export function parseCodexChildren(rawText: string): string[] {
 
 function promptFor(request: CodexProgressiveGenerationRequest): string {
   const actionInstruction: Record<CodexProgressiveAction, string> = {
-    detail: "選択 node を理解可能な構成要素へ詳細化する。",
+    detail: "選択 node を説明として詳細化する。分類・下位分類・構成要素の列挙にはしない。定義、識別できる特徴、理解の手掛かりのような説明 node を追加する。",
     examples: "選択 node を理解する具体例を追加する。",
     classify: "選択 node の互いに異なる子分類を追加する。",
     related: "選択 node と直接関連し、次に検討すべき topic を追加する。",
@@ -188,11 +208,14 @@ function promptFor(request: CodexProgressiveGenerationRequest): string {
     "Return exactly one JSON object and no markdown: {\"children\":[{\"text\":\"...\"}]}",
     "Use Japanese. Return 3 to 6 concise child labels, each at most 60 characters.",
     "Do not repeat existing children or ancestors. Do not include explanation.",
+    "Treat the following JSON as authoritative map context. Preserve the selected node's role, scope, and sibling granularity.",
+    "For N3/detail, never substitute N5/classification, N4/examples, or N6/related-topics output.",
     `Operation: ${actionInstruction[request.action]}`,
     `Selected node: ${request.nodeText}`,
     request.nodeDetails ? `Selected details: ${request.nodeDetails}` : "",
     request.ancestorLabels.length ? `Ancestors: ${request.ancestorLabels.join(" > ")}` : "",
     request.existingChildLabels.length ? `Existing children (do not repeat): ${request.existingChildLabels.join(", ")}` : "",
+    `Map context: ${JSON.stringify(request.context)}`,
   ].filter(Boolean).join("\n");
 }
 
