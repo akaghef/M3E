@@ -25,7 +25,7 @@ process.stdin.on("data", (chunk) => {
     if (line) {
       const request = JSON.parse(line);
       if (request.method === "initialize") process.stdout.write(JSON.stringify({ id: request.id, result: { ok: true } }) + "\\n");
-      if (request.method === "thread/start") process.stdout.write(JSON.stringify({ id: request.id, result: { thread: { id: "thread-cas-test" } } }) + "\\n");
+      if (request.method === "thread/start") process.stdout.write(JSON.stringify({ id: request.id, result: { thread: { id: "thread-cas-test" }, model: "gpt-5.3-codex-spark" } }) + "\\n");
       if (request.method === "turn/start") {
         if (process.env.M3E_CAS_CAPTURE_FILE) {
           require("node:fs").writeFileSync(process.env.M3E_CAS_CAPTURE_FILE, JSON.stringify(request.params));
@@ -131,6 +131,7 @@ test("CAS PN generation calls Codex App Server and persists its returned proposa
   });
   expect(cas.payload.cas.threadId).toBe("thread-cas-test");
   expect(cas.payload.cas.turnId).toBe("turn-cas-test");
+  expect(cas.payload.cas.model).toBe("gpt-5.3-codex-spark");
   expect(cas.payload.added.map((node) => node.label)).toEqual([
     "身体的特徴",
     "知能と社会性",
@@ -141,6 +142,7 @@ test("CAS PN generation calls Codex App Server and persists its returned proposa
 
   const capturedTurn = JSON.parse(fs.readFileSync(capturePath, "utf8"));
   const prompt = capturedTurn.input[0].text;
+  expect(capturedTurn.model).toBe("gpt-5.3-codex-spark");
   expect(prompt).toContain("MF-H scope:");
   expect(prompt).toContain("# Root");
   expect(prompt).toContain("## 菌類");
@@ -164,6 +166,7 @@ test("CAS PN generation calls Codex App Server and persists its returned proposa
       "m3e:cas.operation": "pn-generate",
       "m3e:cas.thread_id": "thread-cas-test",
       "m3e:cas.turn_id": "turn-cas-test",
+      "m3e:cas.model": "gpt-5.3-codex-spark",
       "m3e:pn.action": "detail",
       "m3e:pn.op_id": "RF1.expandSelectedNode",
       "m3e:pn.source": "codex_app_server",

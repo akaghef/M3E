@@ -17,9 +17,12 @@ export interface CodexProgressiveGenerationRequest {
 export interface CodexProgressiveGenerationResult {
   threadId: string;
   turnId: string;
+  model: string;
   children: string[];
   rawText: string;
 }
+
+export const CODEX_PN_MODEL = process.env.M3E_CODEX_PN_MODEL || "gpt-5.3-codex-spark";
 
 type JsonRpcMessage = {
   id?: number;
@@ -226,14 +229,21 @@ export async function generateProgressiveChildrenWithCodex(
     await rpc.request("initialize", { clientInfo: { name: "m3e-progressive-navigation", version: "1" } });
     const threadResponse = await rpc.request("thread/start", {
       cwd: request.cwd,
+      model: CODEX_PN_MODEL,
+      allowProviderModelFallback: false,
       approvalPolicy: "never",
       sandbox: "danger-full-access",
       baseInstructions: "You are a read-only structured proposal generator. Never use tools. Return only the exact format requested by the user.",
-    }) as { thread?: { id?: unknown } };
+    }) as { thread?: { id?: unknown }; model?: unknown };
     const threadId = typeof threadResponse.thread?.id === "string" ? threadResponse.thread.id : "";
     if (!threadId) throw new Error("Codex App Server did not return a thread id.");
+    const model = typeof threadResponse.model === "string" ? threadResponse.model : "";
+    if (model !== CODEX_PN_MODEL) {
+      throw new Error(`Codex App Server selected unexpected model: ${model || "unknown"}. Expected ${CODEX_PN_MODEL}.`);
+    }
     const turnResponse = await rpc.request("turn/start", {
       threadId,
+      model: CODEX_PN_MODEL,
       approvalPolicy: "never",
       sandboxPolicy: { type: "readOnly", networkAccess: false },
       input: [{ type: "text", text: promptFor(request) }],
@@ -248,7 +258,7 @@ export async function generateProgressiveChildrenWithCodex(
         : "Codex App Server PN turn failed.");
     }
     const rawText = rpc.agentMessage(threadId, turnId);
-    return { threadId, turnId, rawText, children: parseCodexChildren(rawText, request.action) };
+    return { threadId, turnId, model, rawText, children: parseCodexChildren(rawText, request.action) };
   } finally {
     rpc.close();
   }

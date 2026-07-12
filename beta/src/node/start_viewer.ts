@@ -3290,6 +3290,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
           "m3e:cas.operation": CAS_PN_OPERATION,
           "m3e:cas.thread_id": generation.threadId,
           "m3e:cas.turn_id": generation.turnId,
+          "m3e:cas.model": generation.model,
           "m3e:pn.action": action,
           "m3e:pn.op_id": opId,
           "m3e:pn.source": "codex_app_server",
@@ -3317,6 +3318,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
             operation: CAS_PN_OPERATION,
             threadId: generation.threadId,
             turnId: generation.turnId,
+            model: generation.model,
             committed: false,
           },
         });
@@ -3352,6 +3354,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
           operation: CAS_PN_OPERATION,
           threadId: generation.threadId,
           turnId: generation.turnId,
+          model: generation.model,
           committed: true,
         },
       });
