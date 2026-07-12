@@ -7,6 +7,7 @@ let server;
 let baseUrl;
 let dataDir;
 let RapidMvpModel;
+let parseCodexChildren;
 let fakeCodexPath;
 let capturePath;
 
@@ -30,8 +31,9 @@ process.stdin.on("data", (chunk) => {
           require("node:fs").writeFileSync(process.env.M3E_CAS_CAPTURE_FILE, JSON.stringify(request.params));
         }
         process.stdout.write(JSON.stringify({ id: request.id, result: { turn: { id: "turn-cas-test" } } }) + "\\n");
-        process.stdout.write(JSON.stringify({ method: "item/completed", params: { threadId: "thread-cas-test", turnId: "turn-cas-test", item: { type: "agentMessage", id: "item-cas-test", text: "{\\\"children\\\":[{\\\"text\\\":\\\"身体的特徴\\\"},{\\\"text\\\":\\\"知能と社会性\\\"},{\\\"text\\\":\\\"文化と技術\\\"}]}" } } }) + "\\n");
-        process.stdout.write(JSON.stringify({ method: "turn/completed", params: { threadId: "thread-cas-test", turn: { id: "turn-cas-test", status: "completed", items: [{ type: "agentMessage", id: "item-cas-test", text: "{\\\"children\\\":[{\\\"text\\\":\\\"身体的特徴\\\"},{\\\"text\\\":\\\"知能と社会性\\\"},{\\\"text\\\":\\\"文化と技術\\\"}]}" }] } } }) + "\\n");
+        const proposal = "{\\\"children\\\":[{\\\"text\\\":\\\"身体的特徴\\\",\\\"relation\\\":\\\"detail_of\\\"},{\\\"text\\\":\\\"知能と社会性\\\",\\\"relation\\\":\\\"detail_of\\\"},{\\\"text\\\":\\\"文化と技術\\\",\\\"relation\\\":\\\"detail_of\\\"},{\\\"text\\\":\\\"発達と生活\\\",\\\"relation\\\":\\\"detail_of\\\"}]}";
+        process.stdout.write(JSON.stringify({ method: "item/completed", params: { threadId: "thread-cas-test", turnId: "turn-cas-test", item: { type: "agentMessage", id: "item-cas-test", text: proposal } } }) + "\\n");
+        process.stdout.write(JSON.stringify({ method: "turn/completed", params: { threadId: "thread-cas-test", turn: { id: "turn-cas-test", status: "completed", items: [{ type: "agentMessage", id: "item-cas-test", text: proposal }] } } }) + "\\n");
       }
     }
     newline = buffer.indexOf("\\n");
@@ -60,11 +62,19 @@ beforeAll(async () => {
   delete require.cache[startViewerPath];
   const { createAppServer } = require(startViewerPath);
   ({ RapidMvpModel } = require("../../dist/node/rapid_mvp.js"));
+  ({ parseCodexChildren } = require("../../dist/node/codex_app_server.js"));
 
   server = createAppServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   baseUrl = `http://127.0.0.1:${address.port}`;
+});
+
+test("CAS PN rejects a proposal whose relation does not match the action", () => {
+  expect(() => parseCodexChildren(
+    JSON.stringify({ children: [{ text: "言語を使う動物", relation: "detail_of" }] }),
+    "examples",
+  )).toThrow(/no usable children/);
 });
 
 afterAll(async () => {
@@ -125,18 +135,21 @@ test("CAS PN generation calls Codex App Server and persists its returned proposa
     "身体的特徴",
     "知能と社会性",
     "文化と技術",
+    "発達と生活",
   ]);
   expect(cas.payload.merged).toEqual([]);
 
   const capturedTurn = JSON.parse(fs.readFileSync(capturePath, "utf8"));
   const prompt = capturedTurn.input[0].text;
-  expect(prompt).toContain("Map context:");
-  expect(prompt).toContain('"scope"');
+  expect(prompt).toContain("MF-H scope:");
+  expect(prompt).toContain("# Root");
+  expect(prompt).toContain("## 菌類");
+  expect(prompt).toContain("## 動物");
+  expect(prompt).not.toContain('"attributes"');
   expect(prompt).toContain("M:(cas-pn-generate-detail)> Root");
-  expect(prompt).toContain("生物分類の検証 scope。");
+  expect(prompt).toContain("MF-H completion template:\n# 菌類\n## ???");
   expect(prompt).toContain("胞子で増える生物群。");
-  expect(prompt).toContain("動物");
-  expect(prompt).toContain("never substitute N5/classification");
+  expect(prompt).toContain('"relation":"detail_of"');
 
   const after = await requestJson(`${baseUrl}/api/maps/${mapId}`);
   expect(after.response.status).toBe(200);

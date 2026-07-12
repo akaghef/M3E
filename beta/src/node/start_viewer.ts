@@ -23,8 +23,6 @@ import {
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
 import {
   generateProgressiveChildrenWithCodex,
-  type ProgressiveMapContext,
-  type ProgressiveMapContextNode,
 } from "./codex_app_server";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
 import {
@@ -881,10 +879,6 @@ function parseAgentMapRoute(urlPath: string): AgentMapRoute | null {
   const rapidMapifyMatch = pathname.match(/^\/api\/maps\/([^/]+)\/rapid\/mapify-oracle$/);
   if (rapidMapifyMatch) {
     return { kind: "rapid-mapify-oracle", mapId: decodeURIComponent(rapidMapifyMatch[1]!) };
-  }
-  const casPnGenerateMatch = pathname.match(/^\/api\/maps\/([^/]+)\/cas\/pn-generate$/);
-  if (casPnGenerateMatch) {
-    return { kind: "cas-pn-generate", mapId: decodeURIComponent(casPnGenerateMatch[1]!) };
   }
   return null;
 }
@@ -2801,19 +2795,6 @@ function progressiveNodeAddress(state: AppState, mapId: string, nodeId: string):
   return `M:(${mapId})> ${labels.join(" > ")}`;
 }
 
-function progressiveContextNode(state: AppState, mapId: string, nodeId: string): ProgressiveMapContextNode {
-  const node = state.nodes[nodeId];
-  if (!node) throw new Error(`Selected node not found: ${nodeId}`);
-  return {
-    id: node.id,
-    text: node.text,
-    details: node.details || "",
-    note: node.note || "",
-    attributes: { ...(node.attributes || {}) },
-    address: progressiveNodeAddress(state, mapId, nodeId),
-  };
-}
-
 function isDescendantOf(state: AppState, nodeId: string, ancestorId: string): boolean {
   let currentId: string | null = nodeId;
   while (currentId) {
@@ -2823,51 +2804,36 @@ function isDescendantOf(state: AppState, nodeId: string, ancestorId: string): bo
   return false;
 }
 
-function progressiveScopeOutline(state: AppState, scopeId: string, maxNodes = 120): string[] {
+function progressiveScopeMfH(state: AppState, scopeId: string, maxNodes = 120): string {
   const lines: string[] = [];
   const visit = (nodeId: string, depth: number): void => {
     if (lines.length >= maxNodes) return;
     const node = state.nodes[nodeId];
     if (!node) return;
-    const detail = node.details?.trim() ? ` — ${node.details.trim().slice(0, 240)}` : "";
-    lines.push(`${"  ".repeat(depth)}- ${node.text}${detail}`);
+    const label = node.text.replace(/[\r\n]+/g, " ").trim() || "(untitled)";
+    lines.push(`${"#".repeat(depth + 1)} ${label}`);
     for (const childId of node.children || []) visit(childId, depth + 1);
   };
   visit(scopeId, 0);
-  if (lines.length >= maxNodes) lines.push("… scope outline truncated at 120 nodes");
-  return lines;
+  if (lines.length >= maxNodes) lines.push("<!-- scope truncated at 120 nodes -->");
+  return lines.join("\n");
 }
 
-function progressiveMapContext(
+function progressiveScopeContext(
   state: AppState,
   mapId: string,
   selectedNodeId: string,
   requestedScopeId: string,
-): ProgressiveMapContext {
+): { scopeAddress: string; selectedAddress: string; scopeMfH: string } {
   const selected = state.nodes[selectedNodeId];
   if (!selected) throw new Error(`Selected node not found: ${selectedNodeId}`);
   const scopeId = requestedScopeId && state.nodes[requestedScopeId] && isDescendantOf(state, selectedNodeId, requestedScopeId)
     ? requestedScopeId
     : state.rootId;
-  const ancestorIds: string[] = [];
-  let ancestorId = selected.parentId;
-  while (ancestorId) {
-    ancestorIds.unshift(ancestorId);
-    ancestorId = state.nodes[ancestorId]?.parentId ?? null;
-  }
-  const parent = selected.parentId ? state.nodes[selected.parentId] : undefined;
   return {
-    map: {
-      id: mapId,
-      rootLabel: state.nodes[state.rootId]?.text || "",
-      address: `M:(${mapId})`,
-    },
-    scope: progressiveContextNode(state, mapId, scopeId),
-    selected: progressiveContextNode(state, mapId, selectedNodeId),
-    ancestors: ancestorIds.map((id) => progressiveContextNode(state, mapId, id)),
-    siblings: (parent?.children || []).filter((id) => id !== selectedNodeId).map((id) => progressiveContextNode(state, mapId, id)),
-    existingChildren: (selected.children || []).map((id) => progressiveContextNode(state, mapId, id)),
-    scopeOutline: progressiveScopeOutline(state, scopeId),
+    scopeAddress: progressiveNodeAddress(state, mapId, scopeId),
+    selectedAddress: progressiveNodeAddress(state, mapId, selectedNodeId),
+    scopeMfH: progressiveScopeMfH(state, scopeId),
   };
 }
 
@@ -3300,6 +3266,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
 
       const selected = savedDoc.state.nodes[selectedNodeId]!;
+      const scopeContext = progressiveScopeContext(savedDoc.state, route.mapId, selectedNodeId, requestedScopeId);
       const generation = await generateProgressiveChildrenWithCodex({
         action,
         nodeText: selected.text,
@@ -3308,7 +3275,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         existingChildLabels: (selected.children || [])
           .map((childId) => savedDoc.state.nodes[childId]?.text)
           .filter((label): label is string => Boolean(label)),
-        context: progressiveMapContext(savedDoc.state, route.mapId, selectedNodeId, requestedScopeId),
+        ...scopeContext,
         cwd: REPO_ROOT,
       });
       const fragment = labelsToMfH(generation.children);

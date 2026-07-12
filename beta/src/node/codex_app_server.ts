@@ -8,27 +8,10 @@ export interface CodexProgressiveGenerationRequest {
   nodeDetails: string;
   ancestorLabels: string[];
   existingChildLabels: string[];
-  context: ProgressiveMapContext;
+  scopeAddress: string;
+  selectedAddress: string;
+  scopeMfH: string;
   cwd: string;
-}
-
-export interface ProgressiveMapContextNode {
-  id: string;
-  text: string;
-  details: string;
-  note: string;
-  attributes: Record<string, string>;
-  address: string;
-}
-
-export interface ProgressiveMapContext {
-  map: { id: string; rootLabel: string; address: string };
-  scope: ProgressiveMapContextNode;
-  selected: ProgressiveMapContextNode;
-  ancestors: ProgressiveMapContextNode[];
-  siblings: ProgressiveMapContextNode[];
-  existingChildren: ProgressiveMapContextNode[];
-  scopeOutline: string[];
 }
 
 export interface CodexProgressiveGenerationResult {
@@ -165,7 +148,14 @@ class JsonRpcProcess {
   }
 }
 
-export function parseCodexChildren(rawText: string): string[] {
+function relationFor(action: CodexProgressiveAction): string {
+  if (action === "examples") return "example_of";
+  if (action === "classify") return "subtype_of";
+  if (action === "related") return "related_to";
+  return "detail_of";
+}
+
+export function parseCodexChildren(rawText: string, action: CodexProgressiveAction): string[] {
   const trimmed = rawText.trim();
   const jsonText = trimmed.replace(/^```json\s*/i, "").replace(/\s*```$/, "");
   let parsed: unknown;
@@ -180,12 +170,13 @@ export function parseCodexChildren(rawText: string): string[] {
   if (!Array.isArray(values)) throw new Error("Codex App Server PN proposal must contain a children array.");
   const seen = new Set<string>();
   const children: string[] = [];
+  const expectedRelation = relationFor(action);
   for (const value of values) {
-    const text = typeof value === "string"
-      ? value.trim()
-      : (typeof value === "object" && value !== null && typeof (value as { text?: unknown }).text === "string"
-        ? (value as { text: string }).text.trim()
-        : "");
+    const item = typeof value === "object" && value !== null
+      ? value as { text?: unknown; relation?: unknown }
+      : null;
+    if (!item || item.relation !== expectedRelation) continue;
+    const text = typeof item.text === "string" ? item.text.trim() : "";
     if (!text || text.length > 160 || seen.has(text.toLocaleLowerCase())) continue;
     seen.add(text.toLocaleLowerCase());
     children.push(text);
@@ -195,27 +186,35 @@ export function parseCodexChildren(rawText: string): string[] {
   return children;
 }
 
+function completionTemplate(nodeText: string): string {
+  return [`# ${nodeText}`, "## ???", "## ???", "## ???", "## ???"].join("\n");
+}
+
 function promptFor(request: CodexProgressiveGenerationRequest): string {
   const actionInstruction: Record<CodexProgressiveAction, string> = {
-    detail: "選択 node を説明として詳細化する。分類・下位分類・構成要素の列挙にはしない。定義、識別できる特徴、理解の手掛かりのような説明 node を追加する。",
-    examples: "選択 node を理解する具体例を追加する。",
-    classify: "選択 node の互いに異なる子分類を追加する。",
-    related: "選択 node と直接関連し、次に検討すべき topic を追加する。",
+    detail: "選択 node の説明的な詳細を追加する。分類、具体例、関連topicへ置き換えない。relation は detail_of。",
+    examples: "選択 node を実例として具体化する固有または具体的なinstance/caseを追加する。特徴、定義、分類、言い換えは禁止。relation は example_of。",
+    classify: "選択 node の互いに異なる子分類を追加する。具体例や特徴は追加しない。relation は subtype_of。",
+    related: "選択 node と直接関連し、次に検討すべきtopicを追加する。分類や具体例にはしない。relation は related_to。",
   };
+  const expectedRelation = relationFor(request.action);
   return [
     "You are the generation runtime behind M3E Progressive Navigation.",
     "Do not use tools, do not inspect files, and do not modify anything.",
-    "Return exactly one JSON object and no markdown: {\"children\":[{\"text\":\"...\"}]}",
-    "Use Japanese. Return 3 to 6 concise child labels, each at most 60 characters.",
+    `Return exactly one JSON object and no markdown: {\"children\":[{\"text\":\"...\",\"relation\":\"${expectedRelation}\"}]}`,
+    "Use Japanese. Fill all four ??? slots with concise noun-phrase node labels, each at most 60 characters.",
     "Do not repeat existing children or ancestors. Do not include explanation.",
-    "Treat the following JSON as authoritative map context. Preserve the selected node's role, scope, and sibling granularity.",
-    "For N3/detail, never substitute N5/classification, N4/examples, or N6/related-topics output.",
+    "The MF-H scope is the authoritative semantic context. Preserve its hierarchy and granularity.",
+    "Only fill the ??? slots in the completion template. Do not rewrite the existing scope.",
     `Operation: ${actionInstruction[request.action]}`,
     `Selected node: ${request.nodeText}`,
+    `Selected address: ${request.selectedAddress}`,
+    `Scope address: ${request.scopeAddress}`,
     request.nodeDetails ? `Selected details: ${request.nodeDetails}` : "",
     request.ancestorLabels.length ? `Ancestors: ${request.ancestorLabels.join(" > ")}` : "",
     request.existingChildLabels.length ? `Existing children (do not repeat): ${request.existingChildLabels.join(", ")}` : "",
-    `Map context: ${JSON.stringify(request.context)}`,
+    `MF-H scope:\n${request.scopeMfH}`,
+    `MF-H completion template:\n${completionTemplate(request.nodeText)}`,
   ].filter(Boolean).join("\n");
 }
 
@@ -249,7 +248,7 @@ export async function generateProgressiveChildrenWithCodex(
         : "Codex App Server PN turn failed.");
     }
     const rawText = rpc.agentMessage(threadId, turnId);
-    return { threadId, turnId, rawText, children: parseCodexChildren(rawText) };
+    return { threadId, turnId, rawText, children: parseCodexChildren(rawText, request.action) };
   } finally {
     rpc.close();
   }
