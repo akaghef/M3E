@@ -861,8 +861,8 @@ type HomeRouteAction =
 type AgentMapRoute =
   | { kind: "agent-active-node"; mapId: string }
   | { kind: "append-mf-h"; mapId: string }
-  | { kind: "rapid-mapify-oracle"; mapId: string }
-  | { kind: "cas-pn-generate"; mapId: string };
+  | { kind: "cas-pn-generate"; mapId: string }
+  | { kind: "rapid-mapify-oracle"; mapId: string };
 
 function parseAgentMapRoute(urlPath: string): AgentMapRoute | null {
   const pathname = new URL(urlPath, "http://localhost").pathname;
@@ -873,6 +873,10 @@ function parseAgentMapRoute(urlPath: string): AgentMapRoute | null {
   const appendMatch = pathname.match(/^\/api\/maps\/([^/]+)\/subtree\/append-mf-h$/);
   if (appendMatch) {
     return { kind: "append-mf-h", mapId: decodeURIComponent(appendMatch[1]!) };
+  }
+  const casPnGenerateMatch = pathname.match(/^\/api\/maps\/([^/]+)\/cas\/pn-generate$/);
+  if (casPnGenerateMatch) {
+    return { kind: "cas-pn-generate", mapId: decodeURIComponent(casPnGenerateMatch[1]!) };
   }
   const rapidMapifyMatch = pathname.match(/^\/api\/maps\/([^/]+)\/rapid\/mapify-oracle$/);
   if (rapidMapifyMatch) {
