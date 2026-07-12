@@ -7,6 +7,35 @@ let server;
 let baseUrl;
 let dataDir;
 let RapidMvpModel;
+let fakeCodexPath;
+
+function writeFakeCodex() {
+  fakeCodexPath = path.join(dataDir, "fake-codex.js");
+  fs.writeFileSync(fakeCodexPath, `#!${process.execPath}
+let buffer = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  let newline = buffer.indexOf("\\n");
+  while (newline >= 0) {
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
+    if (line) {
+      const request = JSON.parse(line);
+      if (request.method === "initialize") process.stdout.write(JSON.stringify({ id: request.id, result: { ok: true } }) + "\\n");
+      if (request.method === "thread/start") process.stdout.write(JSON.stringify({ id: request.id, result: { thread: { id: "thread-cas-test" } } }) + "\\n");
+      if (request.method === "turn/start") {
+        process.stdout.write(JSON.stringify({ id: request.id, result: { turn: { id: "turn-cas-test" } } }) + "\\n");
+        process.stdout.write(JSON.stringify({ method: "item/completed", params: { threadId: "thread-cas-test", turnId: "turn-cas-test", item: { type: "agentMessage", id: "item-cas-test", text: "{\\\"children\\\":[{\\\"text\\\":\\\"身体的特徴\\\"},{\\\"text\\\":\\\"知能と社会性\\\"},{\\\"text\\\":\\\"文化と技術\\\"}]}" } } }) + "\\n");
+        process.stdout.write(JSON.stringify({ method: "turn/completed", params: { threadId: "thread-cas-test", turn: { id: "turn-cas-test", status: "completed", items: [{ type: "agentMessage", id: "item-cas-test", text: "{\\\"children\\\":[{\\\"text\\\":\\\"身体的特徴\\\"},{\\\"text\\\":\\\"知能と社会性\\\"},{\\\"text\\\":\\\"文化と技術\\\"}]}" }] } } }) + "\\n");
+      }
+    }
+    newline = buffer.indexOf("\\n");
+  }
+});
+`);
+  fs.chmodSync(fakeCodexPath, 0o755);
+}
 
 async function requestJson(url, init) {
   const response = await fetch(url, init);
@@ -16,8 +45,10 @@ async function requestJson(url, init) {
 
 beforeAll(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-cas-pn-generate-"));
+  writeFakeCodex();
   process.env.M3E_DATA_DIR = dataDir;
   process.env.M3E_DB_FILE = "cas-pn-generate.sqlite";
+  process.env.M3E_CODEX_BIN = fakeCodexPath;
 
   const startViewerPath = require.resolve("../../dist/node/start_viewer.js");
   delete require.cache[startViewerPath];
@@ -33,6 +64,7 @@ beforeAll(async () => {
 afterAll(async () => {
   delete process.env.M3E_DATA_DIR;
   delete process.env.M3E_DB_FILE;
+  delete process.env.M3E_CODEX_BIN;
   if (server) {
     await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
   }
@@ -53,7 +85,7 @@ async function seedBiologyMap(mapId) {
   return { rootId: model.state.rootId, fungusId, animalId, savedAt: first.payload.savedAt };
 }
 
-test("CAS PN generation appends selected-node children through CAS and persists CAS metadata", async () => {
+test("CAS PN generation calls Codex App Server and persists its returned proposal", async () => {
   const mapId = "cas-pn-generate-detail";
   const seeded = await seedBiologyMap(mapId);
 
@@ -72,15 +104,16 @@ test("CAS PN generation appends selected-node children through CAS and persists 
   expect(cas.payload.ok).toBe(true);
   expect(cas.payload.kind).toBe("cas-pn-generate");
   expect(cas.payload.cas).toMatchObject({
-    service: "m3e-cas",
+    service: "codex-app-server",
     operation: "pn-generate",
     committed: true,
   });
-  expect(cas.payload.cas.runId).toEqual(expect.stringMatching(/^cas_pn_/));
+  expect(cas.payload.cas.threadId).toBe("thread-cas-test");
+  expect(cas.payload.cas.turnId).toBe("turn-cas-test");
   expect(cas.payload.added.map((node) => node.label)).toEqual([
-    "光合成をしない",
-    "胞子で増える",
-    "菌糸を伸ばす",
+    "身体的特徴",
+    "知能と社会性",
+    "文化と技術",
   ]);
   expect(cas.payload.merged).toEqual([]);
 
@@ -93,12 +126,13 @@ test("CAS PN generation appends selected-node children through CAS and persists 
   for (const added of cas.payload.added) {
     const node = after.payload.state.nodes[added.id];
     expect(node.attributes).toMatchObject({
-      "m3e:generated_by": "cas",
+      "m3e:generated_by": "codex-app-server",
       "m3e:cas.operation": "pn-generate",
-      "m3e:cas.run_id": cas.payload.cas.runId,
+      "m3e:cas.thread_id": "thread-cas-test",
+      "m3e:cas.turn_id": "turn-cas-test",
       "m3e:pn.action": "detail",
       "m3e:pn.op_id": "RF1.expandSelectedNode",
-      "m3e:pn.source": "m3e_local_mf_h_fallback",
+      "m3e:pn.source": "codex_app_server",
     });
     expect(node.attributes["m3e:generated_at"]).toEqual(expect.any(String));
   }

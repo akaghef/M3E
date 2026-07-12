@@ -21,6 +21,7 @@ import {
   deleteConflictBackup,
 } from "./conflict_backup";
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
+import { generateProgressiveChildrenWithCodex } from "./codex_app_server";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
 import {
   COLLAB_ENABLED,
@@ -2674,6 +2675,7 @@ interface MapifyTeacherDelta {
 
 const RAPID_MAPIFY_ORACLE_AGENT_ID = "rapid-mapify-oracle";
 const CAS_PN_GENERATE_AGENT_ID = "cas-pn-generate";
+const CAS_PN_OPERATION = "pn-generate";
 const RAPID_MAPIFY_ORACLE_ROOT = path.join(REPO_ROOT, "tools", "rapid_mapify_oracle");
 const BIOLOGY_RF1_TEACHER_DELTA = path.join(
   RAPID_MAPIFY_ORACLE_ROOT,
@@ -2688,6 +2690,14 @@ function normalizeRapidMapifyAction(raw: unknown): RapidMapifyAction {
     return value;
   }
   return "detail";
+}
+
+function progressiveOperationId(action: RapidMapifyAction, requested: unknown): string {
+  if (typeof requested === "string" && requested.trim()) return requested.trim();
+  if (action === "examples") return "RF2.addExamples";
+  if (action === "classify") return "RF3.addSubtypes";
+  if (action === "related") return "RF6.addRelatedTopics";
+  return "RF1.expandSelectedNode";
 }
 
 function readJsonFile<T>(filePath: string): T {
@@ -2757,6 +2767,18 @@ function hasChildLabels(state: AppState, nodeId: string, labels: string[]): bool
       .filter((value): value is string => Boolean(value)),
   );
   return labels.every((label) => childLabels.has(label));
+}
+
+function ancestorLabels(state: AppState, nodeId: string): string[] {
+  const labels: string[] = [];
+  let currentId = state.nodes[nodeId]?.parentId ?? null;
+  while (currentId) {
+    const current = state.nodes[currentId];
+    if (!current) break;
+    labels.unshift(current.text);
+    currentId = current.parentId;
+  }
+  return labels;
 }
 
 function resolveRapidMapifyFragment(
@@ -3151,6 +3173,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       const agentId = fromBodyAgentId || fromQueryAgentId || CAS_PN_GENERATE_AGENT_ID;
       const requestedOpId = typeof body.opId === "string" ? body.opId.trim() : "";
       const action = normalizeRapidMapifyAction(body.action);
+      const opId = progressiveOperationId(action, requestedOpId);
       const explicitSelectedNodeId = typeof body.selectedNodeId === "string" ? body.selectedNodeId.trim() : "";
       const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
       const selectedNodeId = explicitSelectedNodeId || active?.nodeId || "";
@@ -3185,30 +3208,35 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       };
       agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
 
-      const fragment = resolveRapidMapifyFragment(savedDoc.state, selectedNodeId, action, requestedOpId);
-      const result = appendMfHNodesToParent(savedDoc.state, selectedNodeId, fragment.fragment);
-      const runId = `cas_pn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const selected = savedDoc.state.nodes[selectedNodeId]!;
+      const generation = await generateProgressiveChildrenWithCodex({
+        action,
+        nodeText: selected.text,
+        nodeDetails: selected.details || "",
+        ancestorLabels: ancestorLabels(savedDoc.state, selectedNodeId),
+        existingChildLabels: (selected.children || [])
+          .map((childId) => savedDoc.state.nodes[childId]?.text)
+          .filter((label): label is string => Boolean(label)),
+        cwd: REPO_ROOT,
+      });
+      const fragment = labelsToMfH(generation.children);
+      const result = appendMfHNodesToParent(savedDoc.state, selectedNodeId, fragment);
       const generatedAt = new Date().toISOString();
       for (const added of result.added) {
         const node = savedDoc.state.nodes[added.id];
         if (!node) continue;
         node.attributes = {
           ...(node.attributes ?? {}),
-          "m3e:generated_by": "cas",
-          "m3e:cas.operation": "pn-generate",
-          "m3e:cas.run_id": runId,
+          "m3e:generated_by": "codex-app-server",
+          "m3e:cas.operation": CAS_PN_OPERATION,
+          "m3e:cas.thread_id": generation.threadId,
+          "m3e:cas.turn_id": generation.turnId,
           "m3e:pn.action": action,
-          "m3e:pn.op_id": fragment.opId,
-          "m3e:pn.source": fragment.source,
+          "m3e:pn.op_id": opId,
+          "m3e:pn.source": "codex_app_server",
           "m3e:generated_at": generatedAt,
         };
       }
-
-      const allResultLabels = [...result.added, ...result.merged].map((node) => node.label);
-      const teacherLabelSet = new Set(fragment.teacherLabels);
-      const teacherProximity = fragment.teacherLabels.length === 0
-        ? null
-        : allResultLabels.filter((label) => teacherLabelSet.has(label)).length / fragment.teacherLabels.length;
 
       if (Boolean(body.dryRun)) {
         sendJson(res, 200, {
@@ -3218,22 +3246,19 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
           mapId: route.mapId,
           workspaceId,
           activeNode,
-          opId: fragment.opId,
-          action: fragment.action,
-          source: fragment.source,
-          fragment: fragment.fragment,
+          opId,
+          action,
+          source: "codex_app_server",
+          fragment,
           added: result.added,
           merged: result.merged,
-          diagnostics: fragment.diagnostics,
+          diagnostics: ["Generated by Codex App Server in read-only proposal mode."],
           cas: {
-            service: "m3e-cas",
-            operation: "pn-generate",
-            runId,
+            service: "codex-app-server",
+            operation: CAS_PN_OPERATION,
+            threadId: generation.threadId,
+            turnId: generation.turnId,
             committed: false,
-          },
-          oracle: {
-            teacherLabels: fragment.teacherLabels,
-            teacherProximity,
           },
         });
         return true;
@@ -3256,22 +3281,19 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
         workspaceId,
         activeNode,
         savedAt,
-        opId: fragment.opId,
-        action: fragment.action,
-        source: fragment.source,
-        fragment: fragment.fragment,
+        opId,
+        action,
+        source: "codex_app_server",
+        fragment,
         added: result.added,
         merged: result.merged,
-        diagnostics: fragment.diagnostics,
+        diagnostics: ["Generated by Codex App Server in read-only proposal mode."],
         cas: {
-          service: "m3e-cas",
-          operation: "pn-generate",
-          runId,
+          service: "codex-app-server",
+          operation: CAS_PN_OPERATION,
+          threadId: generation.threadId,
+          turnId: generation.turnId,
           committed: true,
-        },
-        oracle: {
-          teacherLabels: fragment.teacherLabels,
-          teacherProximity,
         },
       });
       return true;
