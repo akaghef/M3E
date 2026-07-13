@@ -5559,7 +5559,7 @@ interface RapidMapifyOracleApplyResponse {
   savedAt?: string;
   opId: string;
   action: RapidGenerateAction;
-  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
+  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback" | "codex_app_server";
   fragment: string;
   added: Array<{ id: string; parentId: string; label: string }>;
   merged: Array<{ id: string; parentId: string; label: string }>;
@@ -5574,7 +5574,7 @@ async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateActi
   if (!map || !viewState.selectedNodeId) {
     throw new Error("No node is selected.");
   }
-  const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/rapid/mapify-oracle`, {
+  const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/cas/pn-generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -5582,8 +5582,9 @@ async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateActi
     },
     body: JSON.stringify({
       workspaceId: WORKSPACE_ID,
-      agentId: "rapid-mapify-oracle",
+      agentId: "cas-pn-generate",
       selectedNodeId: viewState.selectedNodeId,
+      scopeId: normalizedCurrentScopeId(),
       opId: RAPID_MAPIFY_OP_BY_ACTION[action],
       action,
       baseSavedAt: lastServerSavedAt,
@@ -5591,7 +5592,7 @@ async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateActi
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(String(result.error || "Rapid Mapify Oracle request failed."));
+    throw new Error(String(result.error || "CAS PN generation request failed."));
   }
   return result as RapidMapifyOracleApplyResponse;
 }
@@ -5857,7 +5858,7 @@ async function generateRapidActionForSelectedNode(
     }
     const added = result.added.length;
     const merged = result.merged.length;
-    const sourceLabel = "Mapify Oracle";
+    const sourceLabel = "CAS";
     if (added === 0 && merged === 0) {
       setStatus(`${sourceLabel} generated no new nodes: ${label || action}`);
       return;
@@ -5867,7 +5868,7 @@ async function generateRapidActionForSelectedNode(
     render();
     board.focus();
   } catch (err) {
-    setStatus(`Rapid generation failed: ${(err as Error).message}`, true);
+    setStatus(`CAS generation failed: ${(err as Error).message}`, true);
   }
 }
 

@@ -21,6 +21,9 @@ import {
   deleteConflictBackup,
 } from "./conflict_backup";
 import { getAiStatus, runAiSubagent } from "./ai_subagent";
+import {
+  generateProgressiveChildrenWithCodex,
+} from "./codex_app_server";
 import { getLinearTransformStatus, runLinearTransform } from "./linear_agent";
 import {
   COLLAB_ENABLED,
@@ -2672,9 +2675,9 @@ interface MapifyTeacherDelta {
   actions?: MapifyTeacherDeltaAction[];
 }
 
+const RAPID_MAPIFY_ORACLE_AGENT_ID = "rapid-mapify-oracle";
 const CAS_PN_GENERATE_AGENT_ID = "cas-pn-generate";
 const CAS_PN_OPERATION = "pn-generate";
-const RAPID_MAPIFY_ORACLE_AGENT_ID = "rapid-mapify-oracle";
 const RAPID_MAPIFY_ORACLE_ROOT = path.join(REPO_ROOT, "tools", "rapid_mapify_oracle");
 const BIOLOGY_RF1_TEACHER_DELTA = path.join(
   RAPID_MAPIFY_ORACLE_ROOT,
@@ -2689,6 +2692,14 @@ function normalizeRapidMapifyAction(raw: unknown): RapidMapifyAction {
     return value;
   }
   return "detail";
+}
+
+function progressiveOperationId(action: RapidMapifyAction, requested: unknown): string {
+  if (typeof requested === "string" && requested.trim()) return requested.trim();
+  if (action === "examples") return "RF2.addExamples";
+  if (action === "classify") return "RF3.addSubtypes";
+  if (action === "related") return "RF6.addRelatedTopics";
+  return "RF1.expandSelectedNode";
 }
 
 function readJsonFile<T>(filePath: string): T {
@@ -2758,6 +2769,72 @@ function hasChildLabels(state: AppState, nodeId: string, labels: string[]): bool
       .filter((value): value is string => Boolean(value)),
   );
   return labels.every((label) => childLabels.has(label));
+}
+
+function ancestorLabels(state: AppState, nodeId: string): string[] {
+  const labels: string[] = [];
+  let currentId = state.nodes[nodeId]?.parentId ?? null;
+  while (currentId) {
+    const current: TreeNode | undefined = state.nodes[currentId];
+    if (!current) break;
+    labels.unshift(current.text);
+    currentId = current.parentId;
+  }
+  return labels;
+}
+
+function progressiveNodeAddress(state: AppState, mapId: string, nodeId: string): string {
+  const labels: string[] = [];
+  let currentId: string | null = nodeId;
+  while (currentId) {
+    const current: TreeNode | undefined = state.nodes[currentId];
+    if (!current) break;
+    labels.unshift(current.text);
+    currentId = current.parentId;
+  }
+  return `M:(${mapId})> ${labels.join(" > ")}`;
+}
+
+function isDescendantOf(state: AppState, nodeId: string, ancestorId: string): boolean {
+  let currentId: string | null = nodeId;
+  while (currentId) {
+    if (currentId === ancestorId) return true;
+    currentId = state.nodes[currentId]?.parentId ?? null;
+  }
+  return false;
+}
+
+function progressiveScopeMfH(state: AppState, scopeId: string, maxNodes = 120): string {
+  const lines: string[] = [];
+  const visit = (nodeId: string, depth: number): void => {
+    if (lines.length >= maxNodes) return;
+    const node = state.nodes[nodeId];
+    if (!node) return;
+    const label = node.text.replace(/[\r\n]+/g, " ").trim() || "(untitled)";
+    lines.push(`${"#".repeat(depth + 1)} ${label}`);
+    for (const childId of node.children || []) visit(childId, depth + 1);
+  };
+  visit(scopeId, 0);
+  if (lines.length >= maxNodes) lines.push("<!-- scope truncated at 120 nodes -->");
+  return lines.join("\n");
+}
+
+function progressiveScopeContext(
+  state: AppState,
+  mapId: string,
+  selectedNodeId: string,
+  requestedScopeId: string,
+): { scopeAddress: string; selectedAddress: string; scopeMfH: string } {
+  const selected = state.nodes[selectedNodeId];
+  if (!selected) throw new Error(`Selected node not found: ${selectedNodeId}`);
+  const scopeId = requestedScopeId && state.nodes[requestedScopeId] && isDescendantOf(state, selectedNodeId, requestedScopeId)
+    ? requestedScopeId
+    : state.rootId;
+  return {
+    scopeAddress: progressiveNodeAddress(state, mapId, scopeId),
+    selectedAddress: progressiveNodeAddress(state, mapId, selectedNodeId),
+    scopeMfH: progressiveScopeMfH(state, scopeId),
+  };
 }
 
 function resolveRapidMapifyFragment(
@@ -3133,6 +3210,159 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       sendJson(res, err instanceof SyntaxError ? 400 : 400, {
         ok: false,
         error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "Rapid Mapify Oracle failed."),
+      });
+      return true;
+    }
+  }
+
+  if (route.kind === "cas-pn-generate") {
+    if (req.method !== "POST") {
+      sendJson(res, 405, { ok: false, error: "Method not allowed." });
+      return true;
+    }
+    try {
+      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const workspaceId = requestWorkspaceId(url, body);
+      // Prefer explicit body/query agentId when provided; otherwise default to CAS PN agent.
+      const fromBodyAgentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
+      const fromQueryAgentId = url.searchParams.get("agentId")?.trim() || "";
+      const agentId = fromBodyAgentId || fromQueryAgentId || CAS_PN_GENERATE_AGENT_ID;
+      const requestedOpId = typeof body.opId === "string" ? body.opId.trim() : "";
+      const action = normalizeRapidMapifyAction(body.action);
+      const opId = progressiveOperationId(action, requestedOpId);
+      const requestedScopeId = typeof body.scopeId === "string" ? body.scopeId.trim() : "";
+      const explicitSelectedNodeId = typeof body.selectedNodeId === "string" ? body.selectedNodeId.trim() : "";
+      const active = agentActiveNodes.get(agentActiveNodeKey(workspaceId, route.mapId, agentId));
+      const selectedNodeId = explicitSelectedNodeId || active?.nodeId || "";
+      if (!selectedNodeId) {
+        sendJson(res, 400, { ok: false, error: "selectedNodeId is required when no agent active node is set." });
+        return true;
+      }
+
+      const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId);
+      const baseSavedAt = typeof body.baseSavedAt === "string" ? body.baseSavedAt : null;
+      if (baseSavedAt && savedDoc.savedAt !== baseSavedAt) {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DOC_CONFLICT",
+          error: "Map changed externally. Refresh before running CAS PN generation.",
+          mapId: route.mapId,
+          savedAt: savedDoc.savedAt,
+        });
+        return true;
+      }
+      if (!savedDoc.state.nodes[selectedNodeId]) {
+        sendJson(res, 404, { ok: false, error: `Selected node not found: ${selectedNodeId}` });
+        return true;
+      }
+
+      const activeNode: AgentActiveNodeState = {
+        workspaceId,
+        mapId: route.mapId,
+        agentId,
+        nodeId: selectedNodeId,
+        updatedAt: new Date().toISOString(),
+      };
+      agentActiveNodes.set(agentActiveNodeKey(workspaceId, route.mapId, agentId), activeNode);
+
+      const selected = savedDoc.state.nodes[selectedNodeId]!;
+      const scopeContext = progressiveScopeContext(savedDoc.state, route.mapId, selectedNodeId, requestedScopeId);
+      const generation = await generateProgressiveChildrenWithCodex({
+        action,
+        nodeText: selected.text,
+        nodeDetails: selected.details || "",
+        ancestorLabels: ancestorLabels(savedDoc.state, selectedNodeId),
+        existingChildLabels: (selected.children || [])
+          .map((childId) => savedDoc.state.nodes[childId]?.text)
+          .filter((label): label is string => Boolean(label)),
+        ...scopeContext,
+        cwd: REPO_ROOT,
+      });
+      const fragment = labelsToMfH(generation.children);
+      const result = appendMfHNodesToParent(savedDoc.state, selectedNodeId, fragment);
+      const generatedAt = new Date().toISOString();
+      for (const added of result.added) {
+        const node = savedDoc.state.nodes[added.id];
+        if (!node) continue;
+        node.attributes = {
+          ...(node.attributes ?? {}),
+          "m3e:generated_by": "codex-app-server",
+          "m3e:cas.operation": CAS_PN_OPERATION,
+          "m3e:cas.thread_id": generation.threadId,
+          "m3e:cas.turn_id": generation.turnId,
+          "m3e:cas.model": generation.model,
+          "m3e:pn.action": action,
+          "m3e:pn.op_id": opId,
+          "m3e:pn.source": "codex_app_server",
+          "m3e:generated_at": generatedAt,
+        };
+      }
+
+      if (Boolean(body.dryRun)) {
+        sendJson(res, 200, {
+          ok: true,
+          dryRun: true,
+          kind: "cas-pn-generate",
+          mapId: route.mapId,
+          workspaceId,
+          activeNode,
+          opId,
+          action,
+          source: "codex_app_server",
+          fragment,
+          added: result.added,
+          merged: result.merged,
+          diagnostics: ["Generated by Codex App Server in read-only proposal mode."],
+          cas: {
+            service: "codex-app-server",
+            operation: CAS_PN_OPERATION,
+            threadId: generation.threadId,
+            turnId: generation.turnId,
+            model: generation.model,
+            committed: false,
+          },
+        });
+        return true;
+      }
+
+      const model = RapidMvpModel.fromJSON(savedDoc.state);
+      const errors = model.validate();
+      if (errors.length > 0) {
+        sendJson(res, 400, { ok: false, error: `Invalid model before save: ${errors.join(" | ")}` });
+        return true;
+      }
+      model.saveToSqlite(currentSqliteDbPath(), route.mapId);
+      const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), route.mapId).savedAt;
+      broadcastMapUpdate(route.mapId, savedAt, sourceTabId);
+      handleMapSavedForVaultWatch(currentSqliteDbPath(), route.mapId);
+      sendJson(res, 200, {
+        ok: true,
+        kind: "cas-pn-generate",
+        mapId: route.mapId,
+        workspaceId,
+        activeNode,
+        savedAt,
+        opId,
+        action,
+        source: "codex_app_server",
+        fragment,
+        added: result.added,
+        merged: result.merged,
+        diagnostics: ["Generated by Codex App Server in read-only proposal mode."],
+        cas: {
+          service: "codex-app-server",
+          operation: CAS_PN_OPERATION,
+          threadId: generation.threadId,
+          turnId: generation.turnId,
+          model: generation.model,
+          committed: true,
+        },
+      });
+      return true;
+    } catch (err) {
+      sendJson(res, err instanceof SyntaxError ? 400 : 400, {
+        ok: false,
+        error: err instanceof SyntaxError ? "Invalid JSON body." : ((err as Error).message || "CAS PN generation failed."),
       });
       return true;
     }
