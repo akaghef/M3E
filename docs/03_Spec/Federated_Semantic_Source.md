@@ -1,8 +1,8 @@
 # Federated Semantic Source
 
-最終更新: 2026-07-18
+最終更新: 2026-07-19
 
-Status: Phase 0 baseline（実装未着手）
+Status: Phase 1 portable specimen 実装済み（Neo4j 未着手）
 
 Strategy: `S16`
 
@@ -213,6 +213,12 @@ referential state:
 - `tombstoned`: owner が削除または redirect を確定している
 - `unresolved`: identity はあるが未解決
 
+### 11.1 read-only query surface
+
+大域 query surface は openCypher / ISO GQL 語彙の **read-only 部分集合**として定義し、M3E 独自 query 言語を作らない。少なくとも `CREATE`、`MERGE`、`SET`、`DELETE` を query surface で禁止する。変更要求は query text として実行せず、必ず graph operation から Semantic Command へ正規化し、owner routing を通す。
+
+Cypher の `RETURN` 句で列や式を選ぶ操作は query 文脈で projection と呼ばれるが、M3E の `射影（Deep → Rapid）` および `materialization（再生成可能な read model）` とは別概念である。文書では原則として `query projection` と修飾する。
+
 ## 12. Materialization exposure policy
 
 source adapter は record を Neo4j へ渡す前に classification policy を評価する。結果は `include`、`redact`、`exclude` のいずれかとする。
@@ -250,7 +256,7 @@ agent へ渡す graph context は透過的な永続 cache にしない。Directo
 ## 15. Requirements
 
 - RQ1: durable concern ごとに canonical owner が一意でなければならない。
-- RQ2: source-materialized record を削除しても canonical source から再構築でき、M3E-owned accepted record は独立 backup / journal / portable snapshot から復旧できなければならない。
+- RQ2: source-materialized record を削除しても canonical source から再構築でき、M3E-owned accepted record は **portable snapshot + journal replay のみ**で復旧できなければならない。backup / restore は補助経路として検証してよいが、Recovery Gate の通過根拠にしない。
 - RQ3: UI、human、AI、bot、CI は同じ authority resolution を利用しなければならない。
 - RQ4: Rapid occurrence と Deep entity は別 identity として表現でき、many-to-many entity binding を許さなければならない。
 - RQ5: cross-authority reparent は通常 move として確定してはならない。
@@ -259,6 +265,7 @@ agent へ渡す graph context は透過的な永続 cache にしない。Directo
 - RQ8: write-back は base revision を必要とし、stale write と echo を検出しなければならない。
 - RQ9: global query は参照した source revision または snapshot ID を説明できなければならない。
 - RQ10: Neo4j が不適合でも portable source と adapter contract を維持しなければならない。
+- RQ11: global query は openCypher / ISO GQL 語彙の read-only 部分集合を使い、独自 query 言語を定義してはならない。`CREATE`、`MERGE`、`SET`、`DELETE` は禁止し、変更は Semantic Command へ正規化しなければならない。
 
 ## 16. テスト観点
 
@@ -284,10 +291,11 @@ agent へ渡す graph context は透過的な永続 cache にしない。Directo
 - transfer中のdestination失敗からsource-pendingを再開または補償する。
 - classification不明recordをmaterializeしない。
 - bot echoを二重commitせずaudit上で同一因果として扱う。
+- query surface が `CREATE` / `MERGE` / `SET` / `DELETE` を拒否し、同じ変更意図を Semantic Command としてのみ受理する。
 
 ## 17. Phase 0 完了条件
 
-1. 本仕様の RQ1〜RQ10 が acceptance criteria として合意される。
+1. 本仕様の RQ1〜RQ11 が acceptance criteria として合意される。
 2. [../04_Architecture/Federated_Semantic_Graph.md](../04_Architecture/Federated_Semantic_Graph.md) のport境界とfailure handlingが矛盾しない。
 3. [../09_Decisions/ADR_008_Federated_Canonical_Sources.md](../09_Decisions/ADR_008_Federated_Canonical_Sources.md) がADR 004との関係を記録する。
 4. `Data_Model.md`、`Storage_And_Collab_Overview.md`、`Scope_and_Alias.md`、`Glossary.md` が本仕様を参照する。
@@ -315,4 +323,5 @@ agent へ渡す graph context は透過的な永続 cache にしない。Directo
 - [Obsidian_Vault_Integration.md](./Obsidian_Vault_Integration.md)
 - [../04_Architecture/Federated_Semantic_Graph.md](../04_Architecture/Federated_Semantic_Graph.md)
 - [../09_Decisions/ADR_008_Federated_Canonical_Sources.md](../09_Decisions/ADR_008_Federated_Canonical_Sources.md)
+- [../tasks/handoff_s16_neo4j_federation_define_260718.md](../tasks/handoff_s16_neo4j_federation_define_260718.md) — dogfooding scenario と 2026-07-19 承認追補の正本
 - [../../protocols/repository-canon-values.md](../../protocols/repository-canon-values.md)
