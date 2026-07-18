@@ -66,6 +66,22 @@ seam を彫る spec には必ず2点を入れる:
 1. **排他化** — 全 caller を seam 経由に強制し、helper 直叩きを禁止（private 化 / lint / module 境界で強制）。
 2. **巻き込まれる surface の不変条件を headless テストで固定**（layout なら PN / scatter / scope-routing / edge）。直したバグは seam 上の pure テストにして制度的記憶にする（`npm test` の better-sqlite3 / sandbox listen 制限は pure 関数テストなら回避できる）。
 
+### 2.4 検証直積の分解（乗算→加算）
+
+> **検証対象は components × logic の直積で増える。乗算は仕様レベルでは消せないが、コストレベルでは型付き port が加算に落とす。「検証がむずかしい」のは乗算自体の性質ではなく、seam 不在の症状である。**
+
+（2026-07-18、akaghef の UI 分解マップ: logic = {style, layout} × components = {surface, graph, edge, node, link} = 10 セル。akaghef 指摘「component ごとに logic の検証が必要。乗算。」より言語化）
+
+- **素朴な形**: 各セルが viewer.ts 内の統合テストとしてしか検証できない → 検証コスト = |components| × |logic| 本の手書き E2E。軸が増えるたび掛け算で爆発する。
+- **seam 化した形**: 検証コスト = |logic| 本の契約テスト + |components| 本の adapter 適合テスト + 直積セルの **table-driven golden 表**。
+  - logic（style / layout）は component 非依存の純関数として**一度だけ**契約テストする。
+  - 各 component は logic を型付き port 経由で消費し、検証は「port 入出力への適合」の薄いテストのみ。
+  - 直積セルは手書きテストでなく golden sample の**行**になる（例: `(node, style)` セル = NodeStyleAttrs 入力 → SVG fragment 出力の golden 一致）。機械的に列挙・実行できる。
+  - 目視は全セルではなく、リスクセルのサンプリングを lab で akaghef が承認する（§3.4 G-GUI と接続）。
+- **隠れた第3軸**: Surface View（Tree / Axial / Radial / Disperse / System）が layout 検証にさらに乗算される。過去の PN / scatter 破綻は `layout × surface` セルの未検証が原因（§2.3 の実例と同根）。純関数 + golden 表方式なら第3軸の追加は表の行が増えるだけで、手書きテスト数は増えない。
+- **第3軸の剪定（Decision_Pool 2026-07-18-002）**: 第3軸は優先度で剪定する — **Tree = 最優先（ほぼ完成、仕上げ）、Disperse = 次点（最大エフォート）、Axial / Radial / System = 凍結（non-regression のみ）**。golden 表・lab・目視ゲートの展開対象は Tree / Disperse 行のみ。凍結セルは台帳上 `frozen` と明示し、未着手の空欄と区別する。乗算→加算の分解は「軸を剪定してから加算に落とす」の二段で効かせる。
+- **soft-goal 化**: 「検証乗算を O(N+M) に潰す」は GOA ゴールツリーで seam 体制 soft-goal 直下の測定可能ゴールとして扱う。
+
 ## 3. 進め方の決定（当面）
 
 ### 3.1 Obsidian-first（dogfooding 先送り）

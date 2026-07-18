@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-07-18-002
+
+- Date: 2026-07-18
+- Topic: Surface View の投資優先度（Tree → Disperse、他は凍結）
+- Status: working-agreement
+- Decision:
+  - **Tree = 最優先**。ほぼ出来ているので、仕上げ（完成度・検証固定）に最初のリソースを充てる。
+  - **Disperse = 次点。最大のエフォートを割く**主戦場。
+  - **Axial / Radial / System = 放置（凍結）**。新規の実装・spec・検証投資をしない。non-regression（既存挙動を壊さない）だけ守る。
+  - 検証直積（Development_System.md §2.4）の第3軸はこの優先度で剪定する: golden 表・lab・目視ゲートの対象行は Tree / Disperse のみ。凍結 view のセルは台帳上 `frozen` として明示し、空欄と区別する。
+- Why: 5 view 全部に検証・実装投資すると直積が爆発する。価値が集中している Tree（主力・完成間近）と Disperse（次の主戦場）に絞ることで、乗算→加算の分解が実効化する。
+- Next: 検証マトリクス台帳・seam spec 起案時は Tree / Disperse 行のみ展開。凍結 view に触る変更が必要になったら Decision_Pool で解凍を判断。
+- Source: 2026-07-18 akaghef 指示「Treeを最優先(ほぼ出来てる)、Disperseを次(一番エフォート割く)。他は放置。という思想も刻んで」
+- Promoted: [../06_Operations/Development_System.md](Development_System.md) §2.4 / `.kiro/steering/ui_view_taxonomy_and_ports.md` 拘束規則4
+
+## 2026-07-18-001
+
+- Date: 2026-07-18
+- Topic: LLM ↔ property graph の会話プロトコル（Neo4j 正本 / Mermaid+TOON projection / graph ops 正規化）
+- Status: working-agreement
+- Decision:
+  - Neo4j を正本、Mermaid + TOON を会話用 projection とする（Neo4j → context projection → LLM edit → graph operations → Neo4j）。
+  - LLM の出力を Mermaid や TOON そのものとして保存せず、必ず graph operation（`ops{op,target,key,value}`）へ正規化してから DB に反映する。
+  - 役割: CR1 Mermaid=局所 topology（認知的構造把握）/ CR2 TOON=属性・provenance・state・schema / CR3 Neo4j=完全な property graph と query / CR4 graph ops=会話→DB の正規化境界。
+  - 会話 context は全グラフでなく `Expand(V_focus, k, relation filter)` の k-hop 部分グラフを射影する。
+  - Mermaid edge label を識別子として解析しない。edge ID はコメント（`%% edge:E41`）等で明示する。
+  - この構成では JSON を会話面から排除する合理性がある。
+- Why: これはファイルフォーマットでなく LLM と property graph の間の会話プロトコル。projection を正本化すると往復で drift するため、正規化境界（ops）を唯一の書き込み経路にする。
+- Next: M3E データ層 / agent graph 系の新規 spec はこのプロトコルを前提に設計する。
+- Source: 2026-07-18 akaghef 指針（stow 指示）
+- Promoted: [../04_Architecture/LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conversation_Protocol.md)
+
 ## 2026-06-06-001
 
 - Date: 2026-06-06

@@ -24,6 +24,8 @@
    - `nearestEdgePortSide(...)` は **GraphLink 端点編集専用**。**branch edge に流用するな**（流用すると「近い方の左右 port に繋がる」誤接続になる＝akaghef 指摘の不具合）。
    - `LinkPort` の `"auto"` は意味を一義化する（fixed side only の sanitize と齟齬あり、要整理）。
 
+4. **Surface View 投資優先度（Decision_Pool 2026-07-18-002）**: **Tree = 最優先（仕上げ）、Disperse = 次点（最大エフォート）、Axial / Radial / System = 凍結**。新規 spec / 実装 / 検証投資は Tree・Disperse のみ対象。凍結 view は non-regression のみ守り、golden 表・lab では `frozen` と明示する。凍結 view に触る必要が出たら Decision_Pool で解凍判断してから着手する。
+
 ## 既知ギャップ（reconcile 対象）
 
 - `.kiro/specs/layout-seam-lab` の `LayoutMode` は legacy 混在命名。canonical へ reconcile 要。
