@@ -28,6 +28,8 @@
     "template:mermaid": "npm run build:node && node dist/node/template_mermaid_cli.js",
     "template:mermaid:all": "npm run build:node && node dist/node/template_mermaid_cli.js --spec-dir projects/PJ04_MermaidSystemLangGraph/templates --out tmp/pj04-mermaid-index.html",
     "template:test": "npm run build:node && npx vitest run tests/unit/template_system_builder.test.js",
+    "semantic-source:validate": "node dist/node/semantic_source_validate_cli.js",
+    "semantic-source:check": "npm run build:node && npm run semantic-source:validate -- tests/fixtures/semantic-source/revision-001.json tests/fixtures/semantic-source/revision-002-renamed.json",
     "build:browser": "tsc -p tsconfig.browser.json && tsc -p tsconfig.workbench.json && vite build --config vite.config.mjs",
     "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",

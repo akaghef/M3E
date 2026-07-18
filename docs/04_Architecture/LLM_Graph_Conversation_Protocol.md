@@ -146,11 +146,11 @@ invalid operation は部分適用せず、operation 単位または batch 単位
 Neo4j が M3E-owned accepted graph の canonical runtime になった後も、単一 failure domain にしない。
 
 - source-materialized record: owner source revision から再構築
-- M3E-owned accepted record: Neo4j backup、Command audit、portable snapshot / journal から復旧
+- M3E-owned accepted record: portable snapshot + journal replayのみで意味的に復旧
 - proposal / pending state: proposal / transfer journal から復旧
 - Mermaid / TOON: canonical recovery source に使わず、必要時に再生成
 
-portable recovery evidence は常時 write authority を持つ第二正本ではない。restore test で semantic equivalence を確認するための backup / journal とする。
+portable snapshot と journal は常時 write authority を持つ第二正本ではない。Recovery Gate では、この2つだけからの semantic recovery を実証する。Neo4j backup / restore はengine依存の補助経路として別途検証してよいが、Gate通過根拠にしない。
 
 ## 9. Security
 

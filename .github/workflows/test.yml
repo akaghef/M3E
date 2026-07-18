@@ -62,6 +62,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Validate repository-local semantic source specimen
+        run: npm run semantic-source:validate -- tests/fixtures/semantic-source/revision-001.json tests/fixtures/semantic-source/revision-002-renamed.json
+
       - name: Run tests
         run: npm test
 
