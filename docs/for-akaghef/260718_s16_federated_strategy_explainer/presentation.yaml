@@ -1,0 +1,66 @@
+version: presentation/v1
+
+audience:
+  role: custom
+  familiarity: advanced
+  stated_preferences:
+    - decision_map
+    - sequence
+    - risk_map
+    - progressive_disclosure
+  dislikes:
+    - dense_table
+    - decorative_diagram
+
+intent:
+  primary_goal: "認知負荷を増やさず、Neo4j 化で何を決め、何をまだ実装しないのかを短時間で catch up する。"
+  secondary_goals:
+    - "旧 SQLite 方針との整合を確認する。"
+    - "次に本人が判断すべき事項だけを識別する。"
+    - "実装者が正典を読む順番を把握する。"
+
+presentation:
+  preferred_forms:
+    - decision_map
+    - sequence
+    - cards
+    - reading_path
+    - risk_map
+  avoid_forms:
+    - dense_table
+    - wall_of_text
+  density: low
+  tone: concise
+  visual_style: "calm、engineering-oriented、余白を広くし、最初に結論と現在地だけを見せる"
+  interaction_level: medium
+
+focus:
+  emphasize:
+    - purpose
+    - decisions
+    - ownership
+    - failure_modes
+    - current_phase
+    - reading_order
+  de_emphasize:
+    - product_specific_schema
+    - implementation_detail_before_gate
+    - historical_conversation_order
+
+html_generation_policy:
+  allow_creative_layout: true
+  must_include:
+    - overview
+    - current_phase
+    - decision_boundaries
+    - source_references
+    - prompt_templates
+  should_include:
+    - progressive_disclosure
+    - visual_grouping
+    - next_questions
+    - risk_signals
+  must_not_include:
+    - external_script
+    - remote_css
+    - network_request

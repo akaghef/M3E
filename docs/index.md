@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 317
+- Indexed files: 331
 
 ## Reading Routes
 
@@ -36,7 +36,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [01_Vision/Core_Principles.md](<./01_Vision/Core_Principles.md>) | Markdown | Core Principles | この文書の内容は [Principle.md](./Principle.md) に統合した。 |
 | [01_Vision/Principle.md](<./01_Vision/Principle.md>) | Markdown | Principle | 最終更新: 2026-04-20 |
 | [01_Vision/README.md](<./01_Vision/README.md>) | Markdown | 01_Vision/ | **役割**: M3E の `Planning Hierarchy` 上位層を置く場所。原則・未達ギャップ・攻略方針を階層ごとに分けて管理する。 |
-| [01_Vision/Strategy.md](<./01_Vision/Strategy.md>) | Markdown | Strategy | 最終更新: 2026-04-20 |
+| [01_Vision/Strategy.md](<./01_Vision/Strategy.md>) | Markdown | Strategy | 最終更新: 2026-07-18 |
 | [01_Vision/Vision.md](<./01_Vision/Vision.md>) | Markdown | Vision | 最終更新: 2026-04-20 |
 | [01_Vision/Weekly_Advance.md](<./01_Vision/Weekly_Advance.md>) | Markdown | Weekly Advance | 最終更新: 2026-04-20 |
 
@@ -54,6 +54,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/data_import_export.md](<./03_Spec/data_import_export.md>) | Markdown | Data & Import/Export 設計ドキュメント | 最終更新: 2026-04-09 |
 | [03_Spec/Data_Model.md](<./03_Spec/Data_Model.md>) | Markdown | Data Model | この文書は、M3E の実体モデルに関する不変条件を定義する。 |
 | [03_Spec/Data_Runtime_Layout.md](<./03_Spec/Data_Runtime_Layout.md>) | Markdown | Data Runtime Layout | 永続データ実体。`data.sqlite` だけでなく backup, audit, cloud-sync, conflict-backups を含むフォルダ単位 |
+| [03_Spec/Federated_Semantic_Source.md](<./03_Spec/Federated_Semantic_Source.md>) | Markdown | Federated Semantic Source | 最終更新: 2026-07-18 |
 | [03_Spec/home_scope_navigator.md](<./03_Spec/home_scope_navigator.md>) | Markdown | Home Screen / Scope Navigator -- Design Document | Date: 2025-04-09 |
 | [03_Spec/Home_Screen.md](<./03_Spec/Home_Screen.md>) | Markdown | Home Screen 仕様書 | 作成日: 2026-04-14 |
 | [03_Spec/Import_Export.md](<./03_Spec/Import_Export.md>) | Markdown | Import / Export 仕様 | > **MVP 対応状況を含む。** 未実装のものは「未実装」と明記する。 |
@@ -75,6 +76,8 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/supabase_migration_docs_to_maps.sql](<./03_Spec/supabase_migration_docs_to_maps.sql>) | SQL | supabase migration docs to maps | -- ========================================================================== |
 | [03_Spec/supabase_schema.sql](<./03_Spec/supabase_schema.sql>) | SQL | supabase schema | -- ========================================================================== |
 | [03_Spec/Team_Collaboration.md](<./03_Spec/Team_Collaboration.md>) | Markdown | Team Collaboration | 最終更新: 2026-04-08 |
+| [03_Spec/UI_Seam_Integration_Contract_Evidence.md](<./03_Spec/UI_Seam_Integration_Contract_Evidence.md>) | Markdown | UI Seam Integration Contract — Evidence Appendix (Codex read-only investigati... | Line numbers are approximate as of dev-beta 43e8571. This file is the evidence base for |
+| [03_Spec/UI_Seam_Integration_Contract.md](<./03_Spec/UI_Seam_Integration_Contract.md>) | Markdown | UI Seam Integration Contract | 最終更新: 2026-07-02 |
 | [03_Spec/V4_Product_Experience_Blueprint.md](<./03_Spec/V4_Product_Experience_Blueprint.md>) | Markdown | V4 Product Experience Blueprint | 更新日: 2026-05-02 |
 | [03_Spec/V4_Service_Equivalent_Design.md](<./03_Spec/V4_Service_Equivalent_Design.md>) | Markdown | V4 Service-Equivalent Design | 更新日: 2026-05-02 |
 | [03_Spec/x_tech_radar.md](<./03_Spec/x_tech_radar.md>) | Markdown | X Tech Radar — Design Doc | *2026-04-14 — design only, no implementation* |
@@ -87,12 +90,14 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [04_Architecture/Drag_and_Reparent.md](<./04_Architecture/Drag_and_Reparent.md>) | Markdown | Drag and Reparent | ノードのドラッグによる親付け替えを、Model を壊さずに扱うための操作設計を定義する。 |
 | [04_Architecture/DragOperate.md](<./04_Architecture/DragOperate.md>) | Markdown | DragOperate | 以下は「ノードAをドラッグして、別の親P’の子に付け替える」一連操作を、MVC（＋Command）で忠実に流した場合の連携です。Konva等の有無に依存しない抽象形で書きます。 |
 | [04_Architecture/Editing_Design.md](<./04_Architecture/Editing_Design.md>) | Markdown | Editing Design | この文書は、M3E の独自描画エンジン上で行う |
+| [04_Architecture/Federated_Semantic_Graph.md](<./04_Architecture/Federated_Semantic_Graph.md>) | Markdown | Federated Semantic Graph Architecture | 最終更新: 2026-07-18 |
 | [04_Architecture/Layout_Algorithm.md](<./04_Architecture/Layout_Algorithm.md>) | Markdown | Layout Algorithm | この文書は、M3E の独自描画エンジンにおける |
+| [04_Architecture/LLM_Graph_Conversation_Protocol.md](<./04_Architecture/LLM_Graph_Conversation_Protocol.md>) | Markdown | LLM Graph Conversation Protocol | 最終更新: 2026-07-18 |
 | [04_Architecture/Multi_Select.md](<./04_Architecture/Multi_Select.md>) | Markdown | Multi-Select（複数ノード選択） | 単一選択（`selectedNodeId: string`）だけでは実現できない以下の操作を可能にする： |
 | [04_Architecture/MVC_and_Command.md](<./04_Architecture/MVC_and_Command.md>) | Markdown | MVC and Command | この文書は、M3E を独自実装する場合の責務分離の基本線を定義する。 |
 | [04_Architecture/Pipeline_UI_Reference.md](<./04_Architecture/Pipeline_UI_Reference.md>) | Markdown | Pipeline UI Reference | この文書は、参照 UI を M3E にそのままコピーするための仕様ではない。 |
 | [04_Architecture/README.md](<./04_Architecture/README.md>) | Markdown | 04_Architecture/ | **役割**: 実装アーキテクチャ。**どう作るか**を記述する。 |
-| [04_Architecture/Storage_And_Collab_Overview.md](<./04_Architecture/Storage_And_Collab_Overview.md>) | Markdown | Storage & Collab — アーキテクチャ概観 | 最終更新: 2026-04-20 |
+| [04_Architecture/Storage_And_Collab_Overview.md](<./04_Architecture/Storage_And_Collab_Overview.md>) | Markdown | Storage & Collab — アーキテクチャ概観 | 最終更新: 2026-07-18 |
 | [04_Architecture/Visual_Design_Guidelines.md](<./04_Architecture/Visual_Design_Guidelines.md>) | Markdown | Visual Design Guidelines | This document defines the visual design policy for the M3E MVP viewer/editor. |
 
 ### 06_Operations - operation rules and handoff
@@ -137,6 +142,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_005_DataDir_Config.md](<./09_Decisions/ADR_005_DataDir_Config.md>) | Markdown | ADR 005: Data Directory Configuration per Environment | Accepted |
 | [09_Decisions/ADR_006_Resource_Schema_Version.md](<./09_Decisions/ADR_006_Resource_Schema_Version.md>) | Markdown | ADR 006: Resource 追加時の Schema Version 方針 | Open (議論中) |
 | [09_Decisions/ADR_007_Resource_Collab_Locking.md](<./09_Decisions/ADR_007_Resource_Collab_Locking.md>) | Markdown | ADR 007: Collab 環境での Resource 定義の排他制御 | Open (議論中) |
+| [09_Decisions/ADR_008_Federated_Canonical_Sources.md](<./09_Decisions/ADR_008_Federated_Canonical_Sources.md>) | Markdown | ADR 008: Federated Canonical Sources and Rebuildable Semantic Graph | Accepted for Phase 0. Neo4j activation remains gated. |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections
@@ -144,7 +150,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | File | Type | Title | Summary |
 |---|---:|---|---|
 | [_generated/README.md](<./_generated/README.md>) | Markdown | _generated/ | 機械生成ドキュメント置き場。**人間は読まない。手編集禁止。** |
-| [_generated/TheDesign.md](<./_generated/TheDesign.md>) | Markdown | TheDesign — docs 統合ドキュメント | > Auto-generated by `scripts/concat-docs.mjs` on 2026-04-30T11:45:57 UTC |
+| [_generated/TheDesign.md](<./_generated/TheDesign.md>) | Markdown | TheDesign — docs 統合ドキュメント | > Auto-generated by `scripts/concat-docs.mjs` on 2026-07-18T15:24:36 UTC |
 
 ### competitive_research - external tool research
 
@@ -200,6 +206,12 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [for-akaghef/260502_m3e_progress_replay.html](<./for-akaghef/260502_m3e_progress_replay.html>) | HTML | 260502 m3e progress replay | HTML |
 | [for-akaghef/260502_swingby_conflict_lab.md](<./for-akaghef/260502_swingby_conflict_lab.md>) | Markdown | Swingby conflict lab runbook | Date: 2026-05-02 |
 | [for-akaghef/260502_swingby_monthly_meeting_public_link.md](<./for-akaghef/260502_swingby_monthly_meeting_public_link.md>) | Markdown | Swingby 定例会 公開リンク運用メモ | 日付: 2026-05-02 |
+| [for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml](<./for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml>) | File | definition | File |
+| [for-akaghef/260718_s16_federated_strategy_explainer/index.html](<./for-akaghef/260718_s16_federated_strategy_explainer/index.html>) | HTML | index | HTML |
+| [for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml](<./for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml>) | File | presentation | File |
+| [for-akaghef/260718_s16_federated_strategy_explainer/prompts.json](<./for-akaghef/260718_s16_federated_strategy_explainer/prompts.json>) | JSON | prompts | JSON |
+| [for-akaghef/260718_s16_federated_strategy_explainer/views.json](<./for-akaghef/260718_s16_federated_strategy_explainer/views.json>) | JSON | views | JSON |
+| [for-akaghef/260718_s16_federated_strategy_explainer/views/01-まずこれだけ.html](<./for-akaghef/260718_s16_federated_strategy_explainer/views/01-まずこれだけ.html>) | HTML | 01 まずこれだけ | HTML |
 | [for-akaghef/assets/260502_m3e_conflict_lab_snapshot.png](<./for-akaghef/assets/260502_m3e_conflict_lab_snapshot.png>) | Image | 260502 m3e conflict lab snapshot | Image |
 | [for-akaghef/assets/260606_pipeline_flow_ui_reference.jpg](<./for-akaghef/assets/260606_pipeline_flow_ui_reference.jpg>) | Image | 260606 pipeline flow ui reference | Image |
 | [for-akaghef/db_tasks_checklist.md](<./for-akaghef/db_tasks_checklist.md>) | Markdown | Akaghef DB / Cloud Sync タスクチェックリスト | 最終更新: 2026-04-10 |
@@ -238,7 +250,8 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260420_math_transition_vision.md](<./ideas/260420_math_transition_vision.md>) | Markdown | 数学学習から数学研究へ移るための M3E 構想 | 作成日: 2026-04-20 |
 | [ideas/260420_math_transition_vision2.md](<./ideas/260420_math_transition_vision2.md>) | Markdown | 数学学習から数学研究へ移るための M3E 構想（拡張版） | 作成日: 2026-04-20 |
 | [ideas/260627_llm_wiki_pattern.md](<./ideas/260627_llm_wiki_pattern.md>) | Markdown | LLM Wiki | A pattern for building personal knowledge bases using LLMs. |
-| [ideas/260702_arbor_mdd_experimental_search_tree.md](<./ideas/260702_arbor_mdd_experimental_search_tree.md>) | Markdown | Arbor と MDD の接点: Experimental Search Tree | Arbor の Idea Tree を MDD runtime の実験探索専用 spine として扱うアイデア。 |
+| [ideas/260701_rapid_markdown_canon_mfh_and_obsidian_surface.md](<./ideas/260701_rapid_markdown_canon_mfh_and_obsidian_surface.md>) | Markdown | Rapid Markdown Canon / MF-H / Obsidian 内 M3E surface | 作成日: 2026-07-01 |
+| [ideas/260702_arbor_mdd_experimental_search_tree.md](<./ideas/260702_arbor_mdd_experimental_search_tree.md>) | Markdown | Arbor と MDD の接点: Experimental Search Tree | 作成日: 2026-07-02 |
 | [ideas/ChatGPT-M3Eのコンテンツ販売.md](<./ideas/ChatGPT-M3Eのコンテンツ販売.md>) | Markdown | M3Eのコンテンツ販売 | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
 | [ideas/ChatGPT-Map Logic Limitations.md](<./ideas/ChatGPT-Map Logic Limitations.md>) | Markdown | Map Logic Limitations | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
 | [ideas/ChatGPT-ハードコピーとソフトコピー.md](<./ideas/ChatGPT-ハードコピーとソフトコピー.md>) | Markdown | ハードコピーとソフトコピー | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |

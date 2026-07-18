@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-07-18-003
+
+- Date: 2026-07-18
+- Topic: S16 — federated canonical source と Neo4j role の concern 分離
+- Status: accepted-for-phase-0
+- Decision:
+  - repository、Obsidian、M3E-local、external provider は durable concern ごとに局所 canonical source を持ち、同じ concern の canonical owner は一つにする。
+  - 外部 source が所有する content / assertion を Neo4j に載せた record は materialization とする。
+  - M3E が所有する accepted Deep entity / assertion は、activation gate 通過後の Neo4j canonical runtime 対象とする。portable recovery evidence を別 failure domain に維持する。
+  - proposal、pending assertion、ownership transfer は journal を canonical source とし、Mermaid / TOON は会話用 projection とする。
+  - UI、human、AI、bot、CI の確定 write は共通 Command boundary で owner へ route する。M3E-owned accepted graph だけが Neo4j owner adapter に到達する。
+  - Rapid occurrence と Deep entity は別 identity とし、many-to-many entity binding で接続する。
+  - Neo4j shadow は、実運用由来の cross-source query 3 件を input、expected result、source revision 付きで固定するまで開始しない。
+  - SQLite は M3E-native Rapid local persistence として継続し、PostgreSQL / collaboration state / global graph を別 concern として選定する。
+- Why: 単一 SQLite へ repository 情報を複製すると Git / bot / CI から正本が見えず、双方 write で dual-canon になる。一方、Neo4j を全 source content の唯一の正本にすると局所 ownership、diff、offline recovery、provider responsibility を失う。既存の「Neo4j 正本」判断は M3E-owned accepted graph concern に限定すれば両立する。
+- Next: repository-local semantic source の file-read use case を先に実証し、3 件の query evidence が揃った時点で Neo4j deployment / edition / canonical-subgraph recovery ADR を起票する。Principle への昇格は現時点では行わない。
+- Source: 2026-07-18 の本スレッド、PR #74、Claude Fable review、同日 Decision `2026-07-18-001`
+- Promoted: [../01_Vision/Strategy.md](../01_Vision/Strategy.md), [../03_Spec/Federated_Semantic_Source.md](../03_Spec/Federated_Semantic_Source.md), [../04_Architecture/Federated_Semantic_Graph.md](../04_Architecture/Federated_Semantic_Graph.md), [../04_Architecture/LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conversation_Protocol.md), [../09_Decisions/ADR_008_Federated_Canonical_Sources.md](../09_Decisions/ADR_008_Federated_Canonical_Sources.md)
+
 ## 2026-07-18-002
 
 - Date: 2026-07-18
@@ -32,11 +51,11 @@
   - 会話 context は全グラフでなく `Expand(V_focus, k, relation filter)` の k-hop 部分グラフを射影する。
   - Mermaid edge label を識別子として解析しない。edge ID はコメント（`%% edge:E41`）等で明示する。
   - この構成では JSON を会話面から排除する合理性がある。
+  - Scope note (`2026-07-18-003`): `Neo4j 正本` は M3E-owned accepted Deep graph concern に限定する。Git / Obsidian / provider-owned record は materialization、proposal / pending transfer は journal、Mermaid + TOON は `context projection` とする。
 - Why: これはファイルフォーマットでなく LLM と property graph の間の会話プロトコル。projection を正本化すると往復で drift するため、正規化境界（ops）を唯一の書き込み経路にする。
 - Next: M3E データ層 / agent graph 系の新規 spec はこのプロトコルを前提に設計する。
 - Source: 2026-07-18 akaghef 指針（stow 指示）
 - Promoted: [../04_Architecture/LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conversation_Protocol.md)
-
 ## 2026-06-06-001
 
 - Date: 2026-06-06
@@ -87,7 +106,7 @@
 - Why: X が akaghef のツール発見チャネルであり、手動コピペを自動化する価値が高い
 - Next: Q1-Q7 を map `reviews/X Tech Radar/` に pool 済。codex brief [../../backlog/codex-x-tech-radar.md](../../backlog/codex-x-tech-radar.md) 作成済。P1 実装は Q レビュー後に codex dispatch
 - Source: 2026-04-14 PR #53 の team 設計作業
-- Promoted: [../design/x_tech_radar.md](../design/x_tech_radar.md)
+- Promoted: [../03_Spec/x_tech_radar.md](../03_Spec/x_tech_radar.md)
 
 ---
 
