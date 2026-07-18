@@ -1,0 +1,258 @@
+version: definition/v1
+
+target:
+  type: spec
+  title: "S16: federated canonical source と Neo4j strategy"
+  summary: "単一 SQLite へ全情報を集約せず、各 source の正本性を維持したまま大域 semantic graph を作る Phase 0 方針。Neo4j 内でも source-materialized record と M3E-owned accepted record を分け、owner、write、復元、安全境界を先に固定する。"
+  source_label: "M3E PR #74 Phase 0 specification set"
+
+concepts:
+  - id: c_problem
+    label: "単一 SQLite の限界"
+    kind: risk
+    summary: "repository 設計情報を一つの SQLite に置くと、Git、bot、CI が通常の file read で正本を扱えない。"
+    detail: "repository 側にも複製して双方を書けるようにすると dual-canon になり、backup と revision の failure domain も一致しない。"
+    importance: high
+    difficulty: low
+    confidence: 1.0
+    source_refs:
+      - id: r_problem
+        path: "docs/01_Vision/Strategy.md"
+        excerpt: "情報を所有者の近くに局所化し、その意味関係を大域 graph として統合する。"
+
+  - id: c_federation
+    label: "局所 canonical source の連邦"
+    kind: decision
+    summary: "Git、Obsidian、M3E-local、provider が durable concern ごとの正本を持つ。"
+    detail: "同じ entity または assertion の canonical owner は一つにする。物理 copy は materialization、cache、index、snapshot として扱う。"
+    importance: high
+    difficulty: medium
+    confidence: 1.0
+    source_refs:
+      - id: r_adr_owner
+        path: "docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md"
+        excerpt: "同じ entity または assertion について canonical owner は一つにする。"
+
+  - id: c_materialization
+    label: "Neo4j の二つの role"
+    kind: decision
+    summary: "外部 source-owned record は materialization、M3E-owned accepted Deep graph は Gate 後の canonical runtime record。"
+    detail: "database 単位で一律に正本性を決めず、owner source、record role、revision、provenance を区別する。proposal / pending transfer は journal、Mermaid / TOON は context projection。"
+    importance: high
+    difficulty: medium
+    confidence: 1.0
+    source_refs:
+      - id: r_materialization
+        path: "docs/03_Spec/Federated_Semantic_Source.md"
+        excerpt: "同じ database に両 role を置く場合も、ownerSourceId、role、owner revision、provenance を区別する。"
+
+  - id: c_command
+    label: "owner-routed Command"
+    kind: flow
+    summary: "UI、AI、bot、CI は同じ Command boundary から owner へ書き、record role 未解決の raw write をしない。"
+    detail: "baseRevision で stale write を止め、proposal、approval、provenance、echo suppression を共通化する。"
+    importance: high
+    difficulty: high
+    confidence: 0.95
+    source_refs:
+      - id: r_command
+        path: "docs/04_Architecture/Federated_Semantic_Graph.md"
+        excerpt: "write は materialized read model へ直接確定せず、owner adapter へ route する。"
+
+  - id: c_journal
+    label: "proposal journal"
+    kind: requirement
+    summary: "未承認 proposal、pending assertion、approval state を Neo4j 外に一つの論理 source として残す。"
+    detail: "Neo4j 全削除後にも判断待ち queue と provenance を復元する。"
+    importance: high
+    difficulty: medium
+    confidence: 0.95
+    source_refs:
+      - id: r_journal
+        path: "docs/03_Spec/Federated_Semantic_Source.md"
+        excerpt: "Neo4j 全削除後も判断待ち queue を復元できる。"
+
+  - id: c_authority
+    label: "Scope と authority の分離"
+    kind: requirement
+    summary: "Scope は認知・編集境界であり、canonical source や storage boundary ではない。"
+    detail: "authority root が owner と write route を継承する。authority を跨ぐ reparent は通常 move ではなく ownership transfer。"
+    importance: high
+    difficulty: high
+    confidence: 0.9
+    source_refs:
+      - id: r_authority
+        path: "docs/03_Spec/Scope_and_Alias.md"
+        excerpt: "authority を跨ぐ reparent は通常 move として確定せず、ownership transfer workflow を要求する。"
+
+  - id: c_entity
+    label: "Rapid occurrence / Deep entity"
+    kind: concept
+    summary: "文書内表現と文書横断 identity を別 object とし、entity binding で接続する。"
+    detail: "occurrence は wording、order、context、entity は stable identity と typed semantics を所有する。many-to-many を許す。"
+    importance: high
+    difficulty: high
+    confidence: 0.9
+    source_refs:
+      - id: r_entity
+        path: "docs/00_Home/Glossary.md"
+        excerpt: "本文を Rapid occurrence と二重所有しない。"
+
+  - id: c_security
+    label: "Exposure Gate"
+    kind: requirement
+    summary: "source classification を materialization 前に評価し、未判定は除外する。"
+    detail: "Neo4j role は二次防御。edition、deployment、database 分割を security test と別 ADR で検証する。"
+    importance: high
+    difficulty: high
+    confidence: 0.9
+    source_refs:
+      - id: r_security
+        path: "docs/04_Architecture/Federated_Semantic_Graph.md"
+        excerpt: "edition 機能を理由に fail-open へ変更しない。"
+
+  - id: c_gate
+    label: "Demand / Rebuild Gate"
+    kind: decision
+    summary: "実需 query 3 件と rebuild specimen が揃うまで Neo4j shadow を始めない。"
+    detail: "最初の use case は repository-local semantic source を agent と CI が file read できること。canonical graph activation は shadow と recovery test の後。"
+    importance: high
+    difficulty: low
+    confidence: 1.0
+    source_refs:
+      - id: r_gate
+        path: "docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md"
+        excerpt: "Neo4j shadow は、実需の cross-source query を 3 件以上具体化できた後に開始する。"
+
+  - id: c_now
+    label: "現在地: Phase 0"
+    kind: flow
+    summary: "今は仕様と adapter boundary を固定する段階で、Neo4j server や Cypher schema は未着手。"
+    detail: "S2 collaboration と S3 save/recovery を優先し、repository-local portable source の実証から進める。"
+    importance: high
+    difficulty: low
+    confidence: 1.0
+    source_refs:
+      - id: r_now
+        path: "docs/01_Vision/Strategy.md"
+        excerpt: "Neo4j 実装を先行させない。"
+
+relations:
+  - id: rel_problem_federation
+    from: c_problem
+    to: c_federation
+    type: explains
+    label: "単一 DB の破綻を owner 分離で解く"
+    reason: "repo revision と M3E workspace revision を一つへ押し込まないため。"
+    confidence: 1.0
+  - id: rel_federation_materialization
+    from: c_federation
+    to: c_materialization
+    type: supports
+    label: "source 群を大域 query へ統合"
+    reason: "局所正本を維持したまま network を復元するため。"
+    confidence: 1.0
+  - id: rel_command_federation
+    from: c_command
+    to: c_federation
+    type: supports
+    label: "single owner を維持"
+    reason: "consumer ごとの独自 write route を防ぐ。"
+    confidence: 0.95
+  - id: rel_journal_command
+    from: c_journal
+    to: c_command
+    type: supports
+    label: "未確定判断を保全"
+    reason: "owner apply 失敗や未承認時も proposal を失わない。"
+    confidence: 0.95
+  - id: rel_authority_command
+    from: c_authority
+    to: c_command
+    type: depends_on
+    label: "owner route を解決"
+    reason: "scope と storage を混同せず target owner を選ぶ。"
+    confidence: 0.9
+  - id: rel_entity_materialization
+    from: c_entity
+    to: c_materialization
+    type: affects
+    label: "文書と大域 identity を join"
+    reason: "同じ本文を二重正本化せず cross-document query を成立させる。"
+    confidence: 0.9
+  - id: rel_security_materialization
+    from: c_security
+    to: c_materialization
+    type: blocks
+    label: "非許可 record を遮断"
+    reason: "global graph 化による情報露出を防ぐ。"
+    confidence: 0.9
+  - id: rel_gate_now
+    from: c_gate
+    to: c_now
+    type: sequence_next
+    label: "evidence 後に Phase 2"
+    reason: "Neo4j 導入を目的化しない。"
+    confidence: 1.0
+
+questions:
+  - id: q_registry
+    question: "source registry 自体の canonical storage と discovery をどこに置くか。"
+    why_it_matters: "registry 停止時に write routing が止まり、別の単一障害点になりうる。"
+    related_concept_ids: [c_federation, c_command]
+  - id: q_identity
+    question: "stable identity の URI / key schema と rename 追跡をどう固定するか。"
+    why_it_matters: "materialization 再構築と cross-source relation の連続性を決める。"
+    related_concept_ids: [c_materialization, c_entity]
+  - id: q_deployment
+    question: "3 query が揃った時、Neo4j の edition、deployment、record role schema、backup、authentication をどう選ぶか。"
+    why_it_matters: "Exposure Gate と運用費を同時に満たす必要がある。"
+    related_concept_ids: [c_security, c_gate]
+
+risks:
+  - id: risk_dual_canon
+    label: "dual-canon 退行"
+    description: "owner-routed write の摩擦により、脇に私的 copy が作られる。"
+    severity: high
+    related_concept_ids: [c_federation, c_command, c_journal]
+  - id: risk_graph_leak
+    label: "graph-level information leak"
+    description: "複数 source の関係から、個別 source では見えない情報が推論・露出される。"
+    severity: high
+    related_concept_ids: [c_security, c_materialization]
+  - id: risk_transfer
+    label: "ownership transfer の途中失敗"
+    description: "source と destination の片側だけが確定する。"
+    severity: high
+    related_concept_ids: [c_authority, c_command]
+  - id: risk_product_first
+    label: "Neo4j 導入の目的化"
+    description: "実需 query より先に schema と運用負債を作る。"
+    severity: medium
+    related_concept_ids: [c_gate, c_now]
+
+source_refs:
+  - id: src_strategy
+    title: "S16 strategy"
+    type: document
+    path: "docs/01_Vision/Strategy.md"
+  - id: src_spec
+    title: "Federated Semantic Source"
+    type: document
+    path: "docs/03_Spec/Federated_Semantic_Source.md"
+  - id: src_arch
+    title: "Federated Semantic Graph Architecture"
+    type: document
+    path: "docs/04_Architecture/Federated_Semantic_Graph.md"
+  - id: src_protocol
+    title: "LLM Graph Conversation Protocol"
+    type: document
+    path: "docs/04_Architecture/LLM_Graph_Conversation_Protocol.md"
+  - id: src_adr
+    title: "ADR 008"
+    type: document
+    path: "docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md"
+  - id: src_glossary
+    title: "M3E Glossary"
+    type: document
+    path: "docs/00_Home/Glossary.md"

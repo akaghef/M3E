@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S16 Federated Semantic Strategy — adaptive understanding</title>
+<style>
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --panel-2:#f1f3f7; --border:#e3e6ec;
+  --text:#1d2330; --muted:#5b6577; --accent:#2b6cff; --accent-2:#1a9e6b;
+  --chip:#eef1f6; --code-bg:#f4f6fa; --danger:#d6453c; --radius:12px;
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --panel:#171a21; --panel-2:#1f232c; --border:#2c313c;
+  --text:#e6e9ef; --muted:#9aa3b2; --accent:#5aa9ff; --accent-2:#36c08f;
+  --chip:#262b36; --code-bg:#0c0e13; --danger:#ff6b6b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",
+    "Noto Sans JP",Meiryo,sans-serif;
+  line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+.app{display:flex;flex-direction:column;min-height:100vh}
+.app-header{
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,var(--panel),var(--panel-2));
+  position:sticky;top:0;z-index:5;
+}
+.header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.app-header h1{margin:0;font-size:18px;letter-spacing:.2px}
+.app-header .subtitle{margin:4px 0 0;color:var(--muted);font-size:13px}
+.app-header .source-label{color:var(--accent-2)}
+.theme-toggle{
+  flex:none;background:var(--chip);color:var(--text);border:1px solid var(--border);
+  border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;
+}
+.theme-toggle:hover{border-color:var(--accent)}
+.theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.layout{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:0;flex:1;min-height:0}
+.pane{min-width:0;min-height:0}
+.pane-left{
+  border-right:1px solid var(--border);background:var(--panel);
+  display:flex;flex-direction:column;max-height:calc(100vh - 60px);overflow:hidden;
+}
+.tabs{display:flex;gap:6px;padding:12px 12px 0;flex-wrap:wrap}
+.tab-btn{
+  background:var(--chip);color:var(--muted);border:1px solid var(--border);
+  border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;
+}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.tab-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.left-scroll{overflow-y:auto;padding:12px;flex:1}
+.panel.hidden{display:none}
+.panel-note{color:var(--muted);font-size:12px;margin:0 0 8px}
+.intro{font-size:13px;color:var(--muted);margin:0 0 12px}
+.card{
+  background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px;margin:0 0 12px;
+}
+.card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.card-title{margin:0;font-size:14px}
+.card-desc{margin:6px 0 10px;color:var(--muted);font-size:13px}
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{
+  background:var(--chip);color:var(--accent);border:1px solid var(--border);
+  border-radius:6px;padding:1px 7px;font-size:11px;white-space:nowrap;
+}
+.prompt-details{margin:0 0 10px}
+.prompt-details summary{cursor:pointer;color:var(--accent);font-size:12px;user-select:none}
+.prompt-details summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.prompt-body,.yaml-body{
+  background:var(--code-bg);border:1px solid var(--border);border-radius:8px;
+  padding:10px;margin:8px 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto;
+}
+.copy-btn{
+  background:var(--accent);color:#fff;border:0;border-radius:8px;
+  padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;
+}
+.copy-btn:hover{filter:brightness(1.06)}
+.copy-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.copy-btn.copied{background:var(--accent-2)}
+.help h2{font-size:14px;margin:14px 0 6px}
+.help ul{margin:0 0 10px;padding-left:20px}
+.help li{font-size:13px;color:var(--muted);margin:2px 0}
+.help code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:12px}
+.pane-right{display:flex;flex-direction:column;background:var(--bg);min-height:360px}
+.preview-bar{
+  padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted);font-size:12px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.preview-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--accent-2);flex:none}
+.view-switcher{display:flex;gap:6px;flex-wrap:wrap}
+.view-tab{
+  background:var(--chip);color:var(--muted);border:1px solid var(--border);
+  border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;
+}
+.view-tab:hover{color:var(--text)}
+.view-tab.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.view-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.preview-wrap{flex:1;min-height:0;padding:14px}
+.preview{
+  width:100%;height:100%;min-height:520px;border:1px solid var(--border);
+  border-radius:var(--radius);background:var(--panel);
+}
+.empty{color:var(--muted);font-size:13px}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr}
+  .pane-left{max-height:none;border-right:0;border-bottom:1px solid var(--border)}
+  .preview{min-height:480px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important;scroll-behavior:auto !important}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <div class="header-row">
+      <div>
+        <h1>S16 Federated Semantic Strategy</h1>
+        <p class="subtitle">正本・write・Neo4j の境界を短時間で catch up する</p>
+      </div>
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="テーマ切り替え">🌙 ダーク</button>
+    </div>
+  </header>
+  <main class="layout">
+    <section class="pane pane-left" aria-label="プロンプトテンプレートとメタデータ">
+      <div class="tabs" role="tablist">
+        <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-panel="panel-prompts">テンプレート</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-panel="panel-definition">definition.yaml</button>
+<button class="tab-btn" type="button" role="tab" aria-selected="false" data-panel="panel-presentation">presentation.yaml</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-panel="panel-help">使い方</button>
+      </div>
+      <div class="left-scroll">
+        <div class="panel" id="panel-prompts" role="tabpanel">
+          <p class="intro">新しい見せ方が欲しいときは、下のテンプレートをコピーして、ローカルのymlを読めるAI（Claude Code 等）に貼り付けてください。新しいiframeビューとして追加できます。</p>
+          <article class="card">
+  <header class="card-head">
+    <h3 class="card-title">比較テーブルを追加</h3>
+    <div class="tags"><span class="tag">view</span><span class="tag">table</span></div>
+  </header>
+  <p class="card-desc">owner、正本、派生物、write route を一覧比較する。</p>
+  <details class="prompt-details">
+    <summary>プロンプト本文を表示 / 折りたたみ</summary>
+    <pre class="prompt-body" id="prompt-view-table">次の YAML を読んで、概念・重要度・難易度・confidence・関係・根拠・読む順番を比較できるテーブル中心の iframe 用 HTML document を一つ作ってください。
+definition.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml
+presentation.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml
+出力は &lt;!DOCTYPE html&gt; から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。</pre>
+  </details>
+  <button class="copy-btn" type="button" data-target="prompt-view-table">プロンプトをコピー</button>
+</article>
+<article class="card">
+  <header class="card-head">
+    <h3 class="card-title">正典ワークツリーを追加</h3>
+    <div class="tags"><span class="tag">view</span><span class="tag">worktree</span></div>
+  </header>
+  <p class="card-desc">仕様ファイルの責任分担と読む順番を tree で見る。</p>
+  <details class="prompt-details">
+    <summary>プロンプト本文を表示 / 折りたたみ</summary>
+    <pre class="prompt-body" id="prompt-view-worktree">次の YAML を読んで、directory / file / concept の階層、変更影響、読む順番を展開可能な tree で示す iframe 用 HTML document を一つ作ってください。
+definition.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml
+presentation.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml
+出力は &lt;!DOCTYPE html&gt; から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。</pre>
+  </details>
+  <button class="copy-btn" type="button" data-target="prompt-view-worktree">プロンプトをコピー</button>
+</article>
+<article class="card">
+  <header class="card-head">
+    <h3 class="card-title">初見向けビューを追加</h3>
+    <div class="tags"><span class="tag">view</span><span class="tag">beginner</span></div>
+  </header>
+  <p class="card-desc">専門語を減らし、三段階で理解する。</p>
+  <details class="prompt-details">
+    <summary>プロンプト本文を表示 / 折りたたみ</summary>
+    <pre class="prompt-body" id="prompt-view-beginner">次の YAML を読んで、初見の読者向けに、用語、なぜ重要か、三段階の理解経路、短い例え、質問例を示す iframe 用 HTML document を一つ作ってください。
+definition.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml
+presentation.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml
+出力は &lt;!DOCTYPE html&gt; から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。</pre>
+  </details>
+  <button class="copy-btn" type="button" data-target="prompt-view-beginner">プロンプトをコピー</button>
+</article>
+<article class="card">
+  <header class="card-head">
+    <h3 class="card-title">実装レビューを追加</h3>
+    <div class="tags"><span class="tag">view</span><span class="tag">engineer</span></div>
+  </header>
+  <p class="card-desc">port、依存、failure mode、test gate を確認する。</p>
+  <details class="prompt-details">
+    <summary>プロンプト本文を表示 / 折りたたみ</summary>
+    <pre class="prompt-body" id="prompt-view-engineer">次の YAML を読んで、実装者向けに component dependency、Command flow、failure mode、review point、test gate、読む順番を示す iframe 用 HTML document を一つ作ってください。
+definition.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml
+presentation.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml
+出力は &lt;!DOCTYPE html&gt; から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。</pre>
+  </details>
+  <button class="copy-btn" type="button" data-target="prompt-view-engineer">プロンプトをコピー</button>
+</article>
+<article class="card">
+  <header class="card-head">
+    <h3 class="card-title">意思決定ビューを追加</h3>
+    <div class="tags"><span class="tag">view</span><span class="tag">decision</span></div>
+  </header>
+  <p class="card-desc">目的、影響、延期理由、判断 gate に絞る。</p>
+  <details class="prompt-details">
+    <summary>プロンプト本文を表示 / 折りたたみ</summary>
+    <pre class="prompt-body" id="prompt-view-pdm-biz">次の YAML を読んで、product decision 向けに、何が変わるか、なぜ重要か、今やること、延期すること、risk、decision gate を示す iframe 用 HTML document を一つ作ってください。
+definition.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml
+presentation.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml
+出力は &lt;!DOCTYPE html&gt; から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。</pre>
+  </details>
+  <button class="copy-btn" type="button" data-target="prompt-view-pdm-biz">プロンプトをコピー</button>
+</article>
+<article class="card">
+  <header class="card-head">
+    <h3 class="card-title">自由な表現を追加</h3>
+    <div class="tags"><span class="tag">view</span><span class="tag">custom</span></div>
+  </header>
+  <p class="card-desc">任意の見せ方を指定して新しい view を作る。</p>
+  <details class="prompt-details">
+    <summary>プロンプト本文を表示 / 折りたたみ</summary>
+    <pre class="prompt-body" id="prompt-view-free">次の YAML を読んで、{{希望する表現}} で説明する iframe 用 HTML document を一つ作ってください。
+definition.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/definition.yaml
+presentation.yaml: /Users/nisimoriyuuya/dev/M3E-worktrees/neo4j-federated-strategy/docs/for-akaghef/260718_s16_federated_strategy_explainer/presentation.yaml
+出力は &lt;!DOCTYPE html&gt; から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。</pre>
+  </details>
+  <button class="copy-btn" type="button" data-target="prompt-view-free">プロンプトをコピー</button>
+</article>
+        </div>
+        <div class="panel hidden" id="panel-definition" role="tabpanel"><p class="panel-note">理解対象の意味構造（UI ではなく意味）。表示専用です。</p><pre class="yaml-body">version: definition/v1
+
+target:
+  type: spec
+  title: &quot;S16: federated canonical source と Neo4j strategy&quot;
+  summary: &quot;単一 SQLite へ全情報を集約せず、各 source の正本性を維持したまま大域 semantic graph を作る Phase 0 方針。Neo4j 内でも source-materialized record と M3E-owned accepted record を分け、owner、write、復元、安全境界を先に固定する。&quot;
+  source_label: &quot;M3E PR #74 Phase 0 specification set&quot;
+
+concepts:
+  - id: c_problem
+    label: &quot;単一 SQLite の限界&quot;
+    kind: risk
+    summary: &quot;repository 設計情報を一つの SQLite に置くと、Git、bot、CI が通常の file read で正本を扱えない。&quot;
+    detail: &quot;repository 側にも複製して双方を書けるようにすると dual-canon になり、backup と revision の failure domain も一致しない。&quot;
+    importance: high
+    difficulty: low
+    confidence: 1.0
+    source_refs:
+      - id: r_problem
+        path: &quot;docs/01_Vision/Strategy.md&quot;
+        excerpt: &quot;情報を所有者の近くに局所化し、その意味関係を大域 graph として統合する。&quot;
+
+  - id: c_federation
+    label: &quot;局所 canonical source の連邦&quot;
+    kind: decision
+    summary: &quot;Git、Obsidian、M3E-local、provider が durable concern ごとの正本を持つ。&quot;
+    detail: &quot;同じ entity または assertion の canonical owner は一つにする。物理 copy は materialization、cache、index、snapshot として扱う。&quot;
+    importance: high
+    difficulty: medium
+    confidence: 1.0
+    source_refs:
+      - id: r_adr_owner
+        path: &quot;docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md&quot;
+        excerpt: &quot;同じ entity または assertion について canonical owner は一つにする。&quot;
+
+  - id: c_materialization
+    label: &quot;Neo4j の二つの role&quot;
+    kind: decision
+    summary: &quot;外部 source-owned record は materialization、M3E-owned accepted Deep graph は Gate 後の canonical runtime record。&quot;
+    detail: &quot;database 単位で一律に正本性を決めず、owner source、record role、revision、provenance を区別する。proposal / pending transfer は journal、Mermaid / TOON は context projection。&quot;
+    importance: high
+    difficulty: medium
+    confidence: 1.0
+    source_refs:
+      - id: r_materialization
+        path: &quot;docs/03_Spec/Federated_Semantic_Source.md&quot;
+        excerpt: &quot;同じ database に両 role を置く場合も、ownerSourceId、role、owner revision、provenance を区別する。&quot;
+
+  - id: c_command
+    label: &quot;owner-routed Command&quot;
+    kind: flow
+    summary: &quot;UI、AI、bot、CI は同じ Command boundary から owner へ書き、record role 未解決の raw write をしない。&quot;
+    detail: &quot;baseRevision で stale write を止め、proposal、approval、provenance、echo suppression を共通化する。&quot;
+    importance: high
+    difficulty: high
+    confidence: 0.95
+    source_refs:
+      - id: r_command
+        path: &quot;docs/04_Architecture/Federated_Semantic_Graph.md&quot;
+        excerpt: &quot;write は materialized read model へ直接確定せず、owner adapter へ route する。&quot;
+
+  - id: c_journal
+    label: &quot;proposal journal&quot;
+    kind: requirement
+    summary: &quot;未承認 proposal、pending assertion、approval state を Neo4j 外に一つの論理 source として残す。&quot;
+    detail: &quot;Neo4j 全削除後にも判断待ち queue と provenance を復元する。&quot;
+    importance: high
+    difficulty: medium
+    confidence: 0.95
+    source_refs:
+      - id: r_journal
+        path: &quot;docs/03_Spec/Federated_Semantic_Source.md&quot;
+        excerpt: &quot;Neo4j 全削除後も判断待ち queue を復元できる。&quot;
+
+  - id: c_authority
+    label: &quot;Scope と authority の分離&quot;
+    kind: requirement
+    summary: &quot;Scope は認知・編集境界であり、canonical source や storage boundary ではない。&quot;
+    detail: &quot;authority root が owner と write route を継承する。authority を跨ぐ reparent は通常 move ではなく ownership transfer。&quot;
+    importance: high
+    difficulty: high
+    confidence: 0.9
+    source_refs:
+      - id: r_authority
+        path: &quot;docs/03_Spec/Scope_and_Alias.md&quot;
+        excerpt: &quot;authority を跨ぐ reparent は通常 move として確定せず、ownership transfer workflow を要求する。&quot;
+
+  - id: c_entity
+    label: &quot;Rapid occurrence / Deep entity&quot;
+    kind: concept
+    summary: &quot;文書内表現と文書横断 identity を別 object とし、entity binding で接続する。&quot;
+    detail: &quot;occurrence は wording、order、context、entity は stable identity と typed semantics を所有する。many-to-many を許す。&quot;
+    importance: high
+    difficulty: high
+    confidence: 0.9
+    source_refs:
+      - id: r_entity
+        path: &quot;docs/00_Home/Glossary.md&quot;
+        excerpt: &quot;本文を Rapid occurrence と二重所有しない。&quot;
+
+  - id: c_security
+    label: &quot;Exposure Gate&quot;
+    kind: requirement
+    summary: &quot;source classification を materialization 前に評価し、未判定は除外する。&quot;
+    detail: &quot;Neo4j role は二次防御。edition、deployment、database 分割を security test と別 ADR で検証する。&quot;
+    importance: high
+    difficulty: high
+    confidence: 0.9
+    source_refs:
+      - id: r_security
+        path: &quot;docs/04_Architecture/Federated_Semantic_Graph.md&quot;
+        excerpt: &quot;edition 機能を理由に fail-open へ変更しない。&quot;
+
+  - id: c_gate
+    label: &quot;Demand / Rebuild Gate&quot;
+    kind: decision
+    summary: &quot;実需 query 3 件と rebuild specimen が揃うまで Neo4j shadow を始めない。&quot;
+    detail: &quot;最初の use case は repository-local semantic source を agent と CI が file read できること。canonical graph activation は shadow と recovery test の後。&quot;
+    importance: high
+    difficulty: low
+    confidence: 1.0
+    source_refs:
+      - id: r_gate
+        path: &quot;docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md&quot;
+        excerpt: &quot;Neo4j shadow は、実需の cross-source query を 3 件以上具体化できた後に開始する。&quot;
+
+  - id: c_now
+    label: &quot;現在地: Phase 0&quot;
+    kind: flow
+    summary: &quot;今は仕様と adapter boundary を固定する段階で、Neo4j server や Cypher schema は未着手。&quot;
+    detail: &quot;S2 collaboration と S3 save/recovery を優先し、repository-local portable source の実証から進める。&quot;
+    importance: high
+    difficulty: low
+    confidence: 1.0
+    source_refs:
+      - id: r_now
+        path: &quot;docs/01_Vision/Strategy.md&quot;
+        excerpt: &quot;Neo4j 実装を先行させない。&quot;
+
+relations:
+  - id: rel_problem_federation
+    from: c_problem
+    to: c_federation
+    type: explains
+    label: &quot;単一 DB の破綻を owner 分離で解く&quot;
+    reason: &quot;repo revision と M3E workspace revision を一つへ押し込まないため。&quot;
+    confidence: 1.0
+  - id: rel_federation_materialization
+    from: c_federation
+    to: c_materialization
+    type: supports
+    label: &quot;source 群を大域 query へ統合&quot;
+    reason: &quot;局所正本を維持したまま network を復元するため。&quot;
+    confidence: 1.0
+  - id: rel_command_federation
+    from: c_command
+    to: c_federation
+    type: supports
+    label: &quot;single owner を維持&quot;
+    reason: &quot;consumer ごとの独自 write route を防ぐ。&quot;
+    confidence: 0.95
+  - id: rel_journal_command
+    from: c_journal
+    to: c_command
+    type: supports
+    label: &quot;未確定判断を保全&quot;
+    reason: &quot;owner apply 失敗や未承認時も proposal を失わない。&quot;
+    confidence: 0.95
+  - id: rel_authority_command
+    from: c_authority
+    to: c_command
+    type: depends_on
+    label: &quot;owner route を解決&quot;
+    reason: &quot;scope と storage を混同せず target owner を選ぶ。&quot;
+    confidence: 0.9
+  - id: rel_entity_materialization
+    from: c_entity
+    to: c_materialization
+    type: affects
+    label: &quot;文書と大域 identity を join&quot;
+    reason: &quot;同じ本文を二重正本化せず cross-document query を成立させる。&quot;
+    confidence: 0.9
+  - id: rel_security_materialization
+    from: c_security
+    to: c_materialization
+    type: blocks
+    label: &quot;非許可 record を遮断&quot;
+    reason: &quot;global graph 化による情報露出を防ぐ。&quot;
+    confidence: 0.9
+  - id: rel_gate_now
+    from: c_gate
+    to: c_now
+    type: sequence_next
+    label: &quot;evidence 後に Phase 2&quot;
+    reason: &quot;Neo4j 導入を目的化しない。&quot;
+    confidence: 1.0
+
+questions:
+  - id: q_registry
+    question: &quot;source registry 自体の canonical storage と discovery をどこに置くか。&quot;
+    why_it_matters: &quot;registry 停止時に write routing が止まり、別の単一障害点になりうる。&quot;
+    related_concept_ids: [c_federation, c_command]
+  - id: q_identity
+    question: &quot;stable identity の URI / key schema と rename 追跡をどう固定するか。&quot;
+    why_it_matters: &quot;materialization 再構築と cross-source relation の連続性を決める。&quot;
+    related_concept_ids: [c_materialization, c_entity]
+  - id: q_deployment
+    question: &quot;3 query が揃った時、Neo4j の edition、deployment、record role schema、backup、authentication をどう選ぶか。&quot;
+    why_it_matters: &quot;Exposure Gate と運用費を同時に満たす必要がある。&quot;
+    related_concept_ids: [c_security, c_gate]
+
+risks:
+  - id: risk_dual_canon
+    label: &quot;dual-canon 退行&quot;
+    description: &quot;owner-routed write の摩擦により、脇に私的 copy が作られる。&quot;
+    severity: high
+    related_concept_ids: [c_federation, c_command, c_journal]
+  - id: risk_graph_leak
+    label: &quot;graph-level information leak&quot;
+    description: &quot;複数 source の関係から、個別 source では見えない情報が推論・露出される。&quot;
+    severity: high
+    related_concept_ids: [c_security, c_materialization]
+  - id: risk_transfer
+    label: &quot;ownership transfer の途中失敗&quot;
+    description: &quot;source と destination の片側だけが確定する。&quot;
+    severity: high
+    related_concept_ids: [c_authority, c_command]
+  - id: risk_product_first
+    label: &quot;Neo4j 導入の目的化&quot;
+    description: &quot;実需 query より先に schema と運用負債を作る。&quot;
+    severity: medium
+    related_concept_ids: [c_gate, c_now]
+
+source_refs:
+  - id: src_strategy
+    title: &quot;S16 strategy&quot;
+    type: document
+    path: &quot;docs/01_Vision/Strategy.md&quot;
+  - id: src_spec
+    title: &quot;Federated Semantic Source&quot;
+    type: document
+    path: &quot;docs/03_Spec/Federated_Semantic_Source.md&quot;
+  - id: src_arch
+    title: &quot;Federated Semantic Graph Architecture&quot;
+    type: document
+    path: &quot;docs/04_Architecture/Federated_Semantic_Graph.md&quot;
+  - id: src_protocol
+    title: &quot;LLM Graph Conversation Protocol&quot;
+    type: document
+    path: &quot;docs/04_Architecture/LLM_Graph_Conversation_Protocol.md&quot;
+  - id: src_adr
+    title: &quot;ADR 008&quot;
+    type: document
+    path: &quot;docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md&quot;
+  - id: src_glossary
+    title: &quot;M3E Glossary&quot;
+    type: document
+    path: &quot;docs/00_Home/Glossary.md&quot;
+</pre></div>
+<div class="panel hidden" id="panel-presentation" role="tabpanel"><p class="panel-note">この人にどう見せると分かりやすいかの方針。表示専用です。</p><pre class="yaml-body">version: presentation/v1
+
+audience:
+  role: custom
+  familiarity: advanced
+  stated_preferences:
+    - decision_map
+    - sequence
+    - risk_map
+    - progressive_disclosure
+  dislikes:
+    - dense_table
+    - decorative_diagram
+
+intent:
+  primary_goal: &quot;認知負荷を増やさず、Neo4j 化で何を決め、何をまだ実装しないのかを短時間で catch up する。&quot;
+  secondary_goals:
+    - &quot;旧 SQLite 方針との整合を確認する。&quot;
+    - &quot;次に本人が判断すべき事項だけを識別する。&quot;
+    - &quot;実装者が正典を読む順番を把握する。&quot;
+
+presentation:
+  preferred_forms:
+    - decision_map
+    - sequence
+    - cards
+    - reading_path
+    - risk_map
+  avoid_forms:
+    - dense_table
+    - wall_of_text
+  density: low
+  tone: concise
+  visual_style: &quot;calm、engineering-oriented、余白を広くし、最初に結論と現在地だけを見せる&quot;
+  interaction_level: medium
+
+focus:
+  emphasize:
+    - purpose
+    - decisions
+    - ownership
+    - failure_modes
+    - current_phase
+    - reading_order
+  de_emphasize:
+    - product_specific_schema
+    - implementation_detail_before_gate
+    - historical_conversation_order
+
+html_generation_policy:
+  allow_creative_layout: true
+  must_include:
+    - overview
+    - current_phase
+    - decision_boundaries
+    - source_references
+    - prompt_templates
+  should_include:
+    - progressive_disclosure
+    - visual_grouping
+    - next_questions
+    - risk_signals
+  must_not_include:
+    - external_script
+    - remote_css
+    - network_request
+</pre></div>
+        <div class="panel hidden" id="panel-help" role="tabpanel">
+          <div class="help">
+            <h2>このバンドルについて</h2>
+            <ul>
+              <li>これは単一ファイルではなく <code>index.html</code> + <code>views/</code> のフォルダ一式です。</li>
+              <li>右ペインの iframe は <code>views/</code> 内の個別 HTML を読み込みます。タブでビューを切り替えられます。</li>
+              <li>左ペイン = 別のビューを「追加」してもらうためのプロンプト集（チャットUIではありません）。</li>
+            </ul>
+            <h2>使い方</h2>
+            <ul>
+              <li>右上の <code>🌙 ダーク / ☀ ライト</code> でテーマを切り替え。</li>
+              <li>テンプレートの <code>プロンプトをコピー</code> を押し、ローカルファイルを読めるAIに貼り付ける。</li>
+              <li>返ってきた iframe HTML を <code>views/</code> に保存し、ビルドを再実行すると新しいタブとして増えます。</li>
+            </ul>
+            <h2>開き方の注意</h2>
+            <ul>
+              <li>Chrome/Edge は <code>file://</code> での iframe ローカル読み込みをブロックします。</li>
+              <li>Firefox で開くか、フォルダ内で簡易サーバを起動してください（内容は外部通信しません）。</li>
+            </ul>
+            <h2>安全性</h2>
+            <ul>
+              <li>iframe は <code>sandbox="allow-scripts"</code>。親 DOM へはアクセスしません。</li>
+              <li>ネットワーク通信・外部 CDN・ストレージ利用はありません。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="pane pane-right" aria-label="図解プレビュー">
+      <div class="preview-bar">
+        <span class="dot" aria-hidden="true"></span>
+        <div class="view-switcher" role="tablist" aria-label="ビュー切り替え">
+          <button class="view-tab active" type="button" role="tab" aria-selected="true" data-file="views/01-まずこれだけ.html">まずこれだけ</button>
+        </div>
+      </div>
+      <div class="preview-wrap">
+        <iframe class="preview" id="view-frame" title="理解対象の図解" sandbox="allow-scripts" src="views/01-まずこれだけ.html#theme=light"></iframe>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+(function(){
+  "use strict";
+  function flash(btn){
+    var original = btn.textContent;
+    btn.textContent = "コピーしました";
+    btn.classList.add("copied");
+    setTimeout(function(){ btn.textContent = original; btn.classList.remove("copied"); }, 1400);
+  }
+  function fallbackCopy(text, btn){
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "absolute";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    if (ok) { flash(btn); } else { btn.textContent = "コピーできませんでした"; }
+  }
+  function copyText(text, btn){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ flash(btn); },
+        function(){ fallbackCopy(text, btn); });
+    } else {
+      fallbackCopy(text, btn);
+    }
+  }
+  var buttons = document.querySelectorAll(".copy-btn");
+  for (var i = 0; i < buttons.length; i++){
+    buttons[i].addEventListener("click", function(){
+      var target = document.getElementById(this.getAttribute("data-target"));
+      if (!target) return;
+      copyText(target.textContent, this);
+    });
+  }
+  // left-pane tab switching (templates / yaml viewers / help)
+  var tabs = document.querySelectorAll(".tab-btn");
+  for (var j = 0; j < tabs.length; j++){
+    tabs[j].addEventListener("click", function(){
+      var panelId = this.getAttribute("data-panel");
+      for (var k = 0; k < tabs.length; k++){
+        tabs[k].classList.remove("active");
+        tabs[k].setAttribute("aria-selected", "false");
+      }
+      this.classList.add("active");
+      this.setAttribute("aria-selected", "true");
+      var panels = document.querySelectorAll(".panel");
+      for (var m = 0; m < panels.length; m++){ panels[m].classList.add("hidden"); }
+      var active = document.getElementById(panelId);
+      if (active) active.classList.remove("hidden");
+    });
+  }
+  // theme: light default; toggle flips data-theme and re-propagates into the iframe
+  function currentTheme(){
+    return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  }
+  // right-pane view switching + theme propagation via the iframe URL hash.
+  // We ALWAYS set the full src (file + "#theme=...") so the child re-reads the theme;
+  // do NOT "optimize" this to mutate only location.hash — that is unreliable for a
+  // cross-origin sandboxed child.
+  var frame = document.getElementById("view-frame");
+  var viewTabs = document.querySelectorAll(".view-tab");
+  var currentFile = null;
+  if (frame){
+    var initial = frame.getAttribute("src") || "";
+    currentFile = initial.split("#")[0];
+  }
+  function applyFrameSrc(){
+    if (!frame || !currentFile) return;
+    frame.setAttribute("src", currentFile + "#theme=" + currentTheme());
+  }
+  for (var v = 0; v < viewTabs.length; v++){
+    viewTabs[v].addEventListener("click", function(){
+      for (var w = 0; w < viewTabs.length; w++){
+        viewTabs[w].classList.remove("active");
+        viewTabs[w].setAttribute("aria-selected", "false");
+      }
+      this.classList.add("active");
+      this.setAttribute("aria-selected", "true");
+      currentFile = this.getAttribute("data-file");
+      applyFrameSrc();
+    });
+  }
+  var toggle = document.getElementById("theme-toggle");
+  if (toggle){
+    toggle.addEventListener("click", function(){
+      var dark = currentTheme() === "dark";
+      if (dark){ document.documentElement.removeAttribute("data-theme"); }
+      else { document.documentElement.setAttribute("data-theme", "dark"); }
+      toggle.textContent = dark ? "🌙 ダーク" : "☀ ライト";
+      applyFrameSrc();
+    });
+  }
+})();
+</script>
+</body>
+</html>

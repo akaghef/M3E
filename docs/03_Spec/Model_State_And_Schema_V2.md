@@ -22,7 +22,7 @@
 
 ### 1.2 PersistedDocument（保存対象）
 
-`PersistedDocument` はドメイン正本であり、次を含む。
+`PersistedDocument` は M3E-native Rapid document のドメイン正本であり、次を含む。外部 canonical source と federated semantic graph は [Federated_Semantic_Source.md](./Federated_Semantic_Source.md) の契約に従い、この object へ全内容を集約しない。
 
 - `version`
 - `rootId`
