@@ -140,6 +140,8 @@ interface GraphOperation {
 
 既存 API の主な分類:
 
+各 API のシグネチャ・引数・戻り値・暗黙ターゲット・エラー仕様・組み合わせ例は [Command_API_Reference.md](./Command_API_Reference.md) を参照する。
+
 | 分類 | API |
 |---|---|
 | node 参照 | `m3e.root`, `m3e.sel`, `m3e.parent`, `m3e.children`, `m3e.node` |
