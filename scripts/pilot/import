@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+const { DEFAULT_SOURCE, fail, importSource, jsonOut, parseArgs, validateSourcePackage, withSession } = require("./common.cjs");
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const sourcePath = args.source || DEFAULT_SOURCE;
+  const validation = validateSourcePackage(sourcePath);
+  if (args.check) {
+    jsonOut({ ok: validation.issues.length === 0, mode: "check", source: sourcePath, issues: validation.issues });
+    process.exitCode = validation.issues.length === 0 ? 0 : 1;
+    return;
+  }
+  if (validation.issues.length) {
+    fail("SOURCE_VALIDATION_FAILED", "Semantic source package is invalid.", { issues: validation.issues });
+    return;
+  }
+  const result = await withSession(args, (session) => importSource(session, sourcePath));
+  jsonOut({ ...result, mode: "live" });
+  process.exitCode = result.ok ? 0 : 1;
+}
+
+main().catch((error) => fail("IMPORT_FAILED", error.message));

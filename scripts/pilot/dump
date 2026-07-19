@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+const { exportSnapshot, fail, jsonOut, parseArgs, withSession, writeOutputMaybe } = require("./common.cjs");
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.check) {
+    jsonOut({ ok: true, mode: "check", output: args.out || "stdout", scope: "pilot SemanticRecord subgraph" });
+    return;
+  }
+  const snapshot = await withSession(args, (session) => exportSnapshot(session));
+  const dump = { ok: true, mode: "live", kind: "logical-pilot-dump", ...snapshot };
+  const persisted = writeOutputMaybe(args, dump);
+  const summary = {
+    ok: true,
+    mode: "live",
+    schema: snapshot.schema,
+    pilotKey: snapshot.pilotKey,
+    exportedAt: snapshot.exportedAt,
+    nodes: snapshot.nodes.length,
+    relationships: snapshot.relationships.length,
+    semanticContentHash: snapshot.semanticContentHash,
+    outputPath: persisted.outputPath,
+  };
+  jsonOut(summary);
+}
+
+main().catch((error) => fail("DUMP_FAILED", error.message));

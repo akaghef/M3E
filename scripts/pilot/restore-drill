@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const { exportSnapshot, fail, jsonOut, parseArgs, readJson, restoreSnapshot, runLint, withSession, writeOutputMaybe } = require("./common.cjs");
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.check) {
+    const snapshot = args.from ? readJson(path.resolve(String(args.from))) : null;
+    jsonOut({ ok: true, mode: "check", from: args.from || "live export", snapshotSchema: snapshot?.schema || "not-read" });
+    return;
+  }
+  const result = await withSession(args, async (session) => {
+    const snapshot = args.from ? readJson(path.resolve(String(args.from))) : await exportSnapshot(session);
+    const beforeHash = snapshot.semanticContentHash || "external";
+    const restored = await restoreSnapshot(session, snapshot);
+    const after = await exportSnapshot(session);
+    const lint = await runLint(session);
+    return {
+      ok: lint.ok && restored.ok,
+      mode: "live",
+      beforeHash,
+      afterHash: after.semanticContentHash,
+      restoredNodes: restored.restoredNodes,
+      restoredRelationships: restored.restoredRelationships,
+      lintOk: lint.ok,
+      violations: lint.violations,
+    };
+  });
+  const output = writeOutputMaybe(args, result);
+  if (args.out && !fs.existsSync(path.resolve(String(args.out)))) process.exitCode = 1;
+  jsonOut(output);
+  process.exitCode = result.ok ? 0 : 1;
+}
+
+main().catch((error) => fail("RESTORE_DRILL_FAILED", error.message));

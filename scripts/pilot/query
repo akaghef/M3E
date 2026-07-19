@@ -1,0 +1,25 @@
+#!/usr/bin/env node
+const { QUERY_DEFS, fail, jsonOut, parseArgs, runPilotQuery, withSession } = require("./common.cjs");
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const id = String(args._[0] || args.id || "all").toUpperCase();
+  if (args.check) {
+    const ids = id === "ALL" ? Object.keys(QUERY_DEFS) : [id];
+    const unknown = ids.filter((candidate) => !QUERY_DEFS[candidate]);
+    jsonOut({ ok: unknown.length === 0, mode: "check", queries: ids, unknown });
+    process.exitCode = unknown.length === 0 ? 0 : 1;
+    return;
+  }
+  const result = await withSession(args, async (session) => {
+    if (id === "ALL") {
+      const entries = {};
+      for (const queryId of Object.keys(QUERY_DEFS)) entries[queryId] = await runPilotQuery(session, queryId);
+      return { ok: true, mode: "live", queries: entries };
+    }
+    return { mode: "live", ...(await runPilotQuery(session, id)) };
+  });
+  jsonOut(result);
+}
+
+main().catch((error) => fail("QUERY_FAILED", error.message));
