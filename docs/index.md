@@ -50,7 +50,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/Band_Spec.md](<./03_Spec/Band_Spec.md>) | Markdown | Band Spec | M3E は同一の基礎構造を、思考密度の異なる 3 つの帯域で扱う。 |
 | [03_Spec/Cloud_Sync_Conflict_Resolution.md](<./03_Spec/Cloud_Sync_Conflict_Resolution.md>) | Markdown | Cloud Sync Conflict Resolution — 仕様書 | Cloud Sync で競合が発生した際に、GitHub の merge conflict resolution に相当する |
 | [03_Spec/Cloud_Sync.md](<./03_Spec/Cloud_Sync.md>) | Markdown | Cloud Sync | この文書は、Beta におけるクラウド同期の最小戦略を定義する。 |
-| [03_Spec/Command_Language.md](<./03_Spec/Command_Language.md>) | Markdown | M3E コマンド言語仕様 | > **設計フェーズ:** Beta 以降の実装対象。MVP には未実装。 |
+| [03_Spec/Command_Language.md](<./03_Spec/Command_Language.md>) | Markdown | M3E コマンド言語仕様 | 最終更新: 2026-07-19 |
 | [03_Spec/data_import_export.md](<./03_Spec/data_import_export.md>) | Markdown | Data & Import/Export 設計ドキュメント | 最終更新: 2026-04-09 |
 | [03_Spec/Data_Model.md](<./03_Spec/Data_Model.md>) | Markdown | Data Model | この文書は、M3E の実体モデルに関する不変条件を定義する。 |
 | [03_Spec/Data_Runtime_Layout.md](<./03_Spec/Data_Runtime_Layout.md>) | Markdown | Data Runtime Layout | 永続データ実体。`data.sqlite` だけでなく backup, audit, cloud-sync, conflict-backups を含むフォルダ単位 |
