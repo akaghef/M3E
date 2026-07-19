@@ -41,6 +41,207 @@
         background-size: 46px 46px;
       }
 
+      .board.orchestration-board-active > #canvas {
+        display: none;
+      }
+
+      .workspace:has(.board.orchestration-board-active) .linear-panel {
+        display: none;
+      }
+
+      .orchestration-board-root {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+        padding: 96px 24px 28px;
+        background:
+          linear-gradient(to right, rgba(255,255,255,0.84), rgba(255,255,255,0.7)),
+          radial-gradient(circle at 30% 20%, rgba(47,125,109,0.14), transparent 34%),
+          var(--grid-bg);
+        pointer-events: auto;
+      }
+
+      .orchestration-board-surface {
+        min-width: 1180px;
+        color: #1f2937;
+      }
+
+      .orchestration-board-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        max-width: 1160px;
+        margin: 0 auto 22px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid rgba(31,41,55,0.16);
+      }
+
+      .orchestration-board-header p {
+        margin: 0 0 4px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #2f7d6d;
+      }
+
+      .orchestration-board-header h1 {
+        margin: 0;
+        font-size: 32px;
+        line-height: 1.1;
+      }
+
+      .orchestration-board-header dl {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(120px, auto));
+        gap: 10px;
+        margin: 0;
+        font-size: 12px;
+      }
+
+      .orchestration-board-header dt {
+        color: #6b7280;
+        font-weight: 700;
+      }
+
+      .orchestration-board-header dd {
+        max-width: 190px;
+        margin: 2px 0 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      .orchestration-board-canvas {
+        position: relative;
+        width: 1160px;
+        margin: 0 auto;
+      }
+
+      .orchestration-board-links {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+      }
+
+      .orchestration-board-link {
+        fill: none;
+        stroke-width: 2.5;
+        opacity: 0.78;
+      }
+
+      .orchestration-board-link-DECOMPOSES { stroke: #2563eb; }
+      .orchestration-board-link-ASSIGNED_TO { stroke: #2f7d6d; stroke-dasharray: 8 5; }
+      .orchestration-board-link-BLOCKED_BY { stroke: #dc2626; stroke-dasharray: 5 5; }
+      .orchestration-board-link-REFS { stroke: #7c3aed; stroke-dasharray: 2 6; }
+
+      .orchestration-board-link-label {
+        fill: #4b5563;
+        font-size: 10px;
+        font-weight: 800;
+        paint-order: stroke;
+        stroke: rgba(255,255,255,0.9);
+        stroke-width: 5px;
+      }
+
+      .orchestration-board-lane {
+        position: absolute;
+        top: 0;
+        width: 220px;
+      }
+
+      .orchestration-board-lane h2 {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 900;
+        color: #374151;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .orchestration-board-node {
+        position: absolute;
+        width: 210px;
+        min-height: 76px;
+        padding: 10px 12px;
+        border: 2px solid #d1d5db;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.94);
+        box-shadow: 0 10px 22px rgba(31,41,55,0.11);
+      }
+
+      .orchestration-board-node-kind,
+      .orchestration-board-node-status {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .orchestration-board-node h3 {
+        margin: 5px 0 8px;
+        font-size: 14px;
+        line-height: 1.22;
+      }
+
+      .orchestration-board-node-refs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .orchestration-board-node-refs span {
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        border-radius: 4px;
+        background: #f3f4f6;
+        padding: 2px 5px;
+        font-size: 10px;
+        color: #4b5563;
+      }
+
+      .orchestration-board-kind-goal { border-color: #2563eb; }
+      .orchestration-board-kind-task { border-color: #0891b2; }
+      .orchestration-board-kind-gate { border-color: #dc2626; }
+      .orchestration-board-kind-agent { border-color: #2f7d6d; }
+
+      .orchestration-board-status-pending .orchestration-board-node-status { color: #6b7280; }
+      .orchestration-board-status-in_progress .orchestration-board-node-status { color: #2563eb; }
+      .orchestration-board-status-blocked .orchestration-board-node-status { color: #dc2626; }
+      .orchestration-board-status-done .orchestration-board-node-status { color: #2f7d6d; }
+
+      .orchestration-board-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 1160px;
+        margin: 16px auto 0;
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .orchestration-board-legend span {
+        border: 1px solid rgba(31,41,55,0.16);
+        border-radius: 4px;
+        background: rgba(255,255,255,0.8);
+        padding: 5px 8px;
+      }
+
+      .orchestration-board-diagnostic {
+        min-width: 0;
+        max-width: 720px;
+        margin: 0 auto;
+        border: 2px solid #dc2626;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.94);
+        padding: 20px;
+      }
+
       .overlay-ui {
         position: absolute;
         inset: 0;

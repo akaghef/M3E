@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-07-19-001
+
+- Date: 2026-07-19
+- Topic: general graph editor の Surface View 帰属（Disperse。System は別系譜のまま凍結）
+- Status: working-agreement
+- Decision:
+  - **general graph editor（一般 property graph の編集 UI）は Disperse に載せる**。新しい Surface View 名は増やさない（steering 拘束規則1）。
+  - **System view は LangGraph 的 system diagram の系譜**（PJ04 / MDD / Template System 線）であり、general graph editor とは全く別物。**凍結を維持**する。general graph 需要を理由に System を解凍しない。
+  - これは 2026-07-18-002（Tree 最優先 / Disperse 最大エフォート / 他凍結）と整合: general graph editor は Disperse 主戦場の中身になる。
+  - コンセプト正本 = playground 成果物群: LLM Graph Conversation Protocol（`04_Architecture/`、Phase 0 / federated 版）+ Agent Orrery（`docs/tasks/agent_network_dashboard_reference_260707/`）。
+- Why: System と general graph は「ノードとエッジがある」見た目が似るだけで、System = 実行系 diagram（LangGraph 的 flow）、general graph editor = 知識・関係の property graph 編集と意味論が異なる。混ぜると表示意味が衝突する（2026-06-06-001 の教訓と同型）。
+- Next: spec 設計は Federated_Semantic_Source + ADR_008 + LLM Graph Conversation Protocol（graph ops / owner routing）前提。表示・編集は Disperse(force-link) + `@xyflow/react` / `elkjs` 優先（2026-06-06-001 準拠）。kiro-discovery で枠切り後、Codex に spec ドラフト dispatch。
+- Source: 2026-07-19 akaghef 指示「system diagramはlanggraph的な方向性なので(ぜんぜん違う 凍結したままにする)、disperseが正しい」
+- Promoted: （未）
+
 ## 2026-07-18-003
 
 - Date: 2026-07-18
