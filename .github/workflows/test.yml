@@ -8,6 +8,7 @@ on:
     paths:
       - beta/**
       - final/**
+      - docs/semantic/**
       - .github/workflows/test.yml
   pull_request:
     branches:
@@ -16,6 +17,7 @@ on:
     paths:
       - beta/**
       - final/**
+      - docs/semantic/**
       - .github/workflows/test.yml
 
 concurrency:
@@ -63,7 +65,7 @@ jobs:
         run: npm run build
 
       - name: Validate repository-local semantic source specimen
-        run: npm run semantic-source:validate -- tests/fixtures/semantic-source/revision-001.json tests/fixtures/semantic-source/revision-002-renamed.json
+        run: npm run semantic-source:validate -- tests/fixtures/semantic-source/revision-001.json tests/fixtures/semantic-source/revision-002-renamed.json ../docs/semantic/m3e-design.source.json
 
       - name: Run tests
         run: npm test
