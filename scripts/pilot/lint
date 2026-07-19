@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+const { fail, jsonOut, parseArgs, runLint, withSession } = require("./common.cjs");
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.check) {
+    jsonOut({ ok: true, mode: "check", checks: ["unique id", "required properties", "record role boundaries", "isolated Proposal", "relationship properties"] });
+    return;
+  }
+  const result = await withSession(args, (session) => runLint(session));
+  jsonOut({ ...result, mode: "live" });
+  process.exitCode = result.ok ? 0 : 1;
+}
+
+main().catch((error) => fail("LINT_FAILED", error.message));

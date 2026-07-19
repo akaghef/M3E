@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+const { exportSnapshot, fail, jsonOut, parseArgs, withSession, writeOutputMaybe } = require("./common.cjs");
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.check) {
+    jsonOut({ ok: true, mode: "check", output: args.out || "stdout", schema: "m3e.orchestration-map-pilot.snapshot.v1" });
+    return;
+  }
+  const snapshot = await withSession(args, (session) => exportSnapshot(session));
+  jsonOut(writeOutputMaybe(args, { ok: true, mode: "live", ...snapshot }));
+}
+
+main().catch((error) => fail("LOGICAL_EXPORT_FAILED", error.message));
