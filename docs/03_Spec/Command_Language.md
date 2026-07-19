@@ -1,871 +1,244 @@
 # M3E コマンド言語仕様
 
-> **設計フェーズ:** Beta 以降の実装対象。MVP には未実装。
+最終更新: 2026-07-19
+
+Status: Definition only（実装コード変更なし）
+
+Related:
+- [Federated_Semantic_Source.md](./Federated_Semantic_Source.md)
+- [../04_Architecture/LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conversation_Protocol.md)
+- [../00_Home/Glossary.md](../00_Home/Glossary.md)
 
 ---
 
-## 方針
+## 1. 目的
 
-**コマンド言語として JavaScript を採用する。**
+この仕様は、M3E の操作語彙を次の 3 平面に分けて定義する。
 
-M3E はブラウザ上の JS/TS で動作しており、モデルオブジェクトをグローバルに露出するだけで
-パーサー実装ゼロのコマンドインターフェースが実現できる。
+| 平面 | 役割 | 正規語彙 | 禁止事項 |
+|---|---|---|---|
+| 読み平面 | graph / node / edge / GraphLink / attributes を読む | openCypher / ISO GQL の read-only 語彙 | M3E 独自 query 言語、`CREATE` / `MERGE` / `SET` / `DELETE` |
+| 書き平面 | M3E の state を変更する | M3E Command intent | 生 Cypher write、database raw write、owner routing 迂回 |
+| 精錬平面 | source から derived read model / assertion を作る | `materialize` / `aggregate` / `derive` | transform / inputs / provenance なしの生成 |
 
-```javascript
-// ブラウザのコンソールから実行できる
-// 将来のコマンドパネルでは後述の Security Model に従って実行する
-const hypo = m3e.add(m3e.root, "仮説")
-m3e.attr(hypo, "status", "検証中")
-m3e.focus(hypo)
+M3E の既存正規語 `node` / `edge` / `GraphLink` / `scope` / `alias` / `attributes` / `nodeType` / `relationType` は維持する。property graph 語彙との対応は [Glossary](../00_Home/Glossary.md) の「M3E ⇄ property graph 対応表」に従う。
+
+---
+
+## 2. 原則
+
+### 2.1 読みは openCypher / ISO GQL 語彙に寄せる
+
+大域 query surface は [Federated_Semantic_Source.md](./Federated_Semantic_Source.md) RQ11 に従い、openCypher / ISO GQL の read-only 部分集合として定義する。M3E 独自 query 言語は作らない。
+
+許可する語彙の例:
+
+```cypher
+MATCH (n)
+WHERE n.nodeType = "text"
+RETURN n.id, n.text
 ```
 
-変数・ループ・条件分岐・エラーハンドリングはすべて JS のセマンティクスに委ねる。
-カスタム DSL は導入しない。
+禁止する語彙:
 
----
+```cypher
+CREATE (n)
+MERGE (n {id: "n1"})
+SET n.text = "new"
+DELETE n
+DETACH DELETE n
+```
 
-## 露出するグローバルオブジェクト
+Cypher の `RETURN` 句で列や式を選ぶ操作は `query projection` と呼び、M3E の `射影（Deep → Rapid）` や `materialization` と混同しない。
+
+### 2.2 書きは Command intent に閉じる
+
+変更要求は query text として実行しない。LLM / UI / human / bot / CI の変更要求は、[LLM Graph Conversation Protocol](../04_Architecture/LLM_Graph_Conversation_Protocol.md) の `graph operation` から Semantic Command へ正規化し、owner routing と `baseRevision` 検証を通す。
+
+`graph operation` の説明用 envelope:
 
 ```typescript
-window.m3e  // M3E コマンド API
+interface GraphOperation {
+  operationId: string
+  operation: "create" | "set" | "remove" | "connect" | "disconnect" | "merge" | "reparent"
+  targetRef: string
+  key?: string
+  value?: unknown
+  baseRevision: string
+  provenance: string
+  reason?: string
+}
 ```
 
-`m3e` はブラウザコンソールおよび将来のコマンドパネルから参照できる。
+この `operation` は確定 write ではない。M3E Command intent へ対応付け、allowed operation、owner、record role、classification、`baseRevision` を検証した後だけ owner adapter へ渡す。
+
+### 2.3 精錬は transform + inputs + provenance を必須にする
+
+`materialize` / `aggregate` / `derive` は source の正本を直接置き換えない。各操作は少なくとも次を保持する。
+
+| 必須項目 | 意味 |
+|---|---|
+| `transform` | どの変換規則を適用したか |
+| `inputs` | どの source / revision / record を入力にしたか |
+| `provenance` | proposal、source event、upstream Command、human approval との因果 |
 
 ---
 
-## Security Model（将来のコマンドパネル実装要件）
+## 3. 読み平面
 
-本節は「コマンドパネル実装前に満たす必須条件」を定義する。
+読み平面は read-only query surface である。目的は探索、確認、context projection、Demand Gate query であり、確定変更ではない。
+
+### 3.1 対象
+
+| M3E 正規語 | 読み取り対象 |
+|---|---|
+| `node` | `id`、`text`、`nodeType`、`attributes`、`link`、owner / revision metadata |
+| `edge` | 親子関係。tree invariant を満たす Relationship の制約付き部分集合 |
+| `GraphLink` | 非木構造の typed relation |
+| `scope` | 認知・表示・編集境界としての node / subtree |
+| `alias` | target node / entity への参照窓 |
+| `attributes` | node / relation の key-value property |
+| `relationType` | GraphLink / Deep relation の型 |
+
+### 3.2 不変条件
+
+1. `MATCH` / `WHERE` / `RETURN` 相当の read-only 語彙だけを query surface とする。
+2. `CREATE` / `MERGE` / `SET` / `DELETE` / `DETACH DELETE` 相当の変更語彙は query surface で拒否する。
+3. query result は source revision または snapshot ID を説明できなければならない。
+4. source classification を越えて private record を露出しない。
+5. 読み平面の結果は Command の `baseRevision` 根拠になりうるが、write そのものではない。
+
+---
+
+## 4. 書き平面
+
+書き平面は M3E Command intent の集合である。ここに既存コマンド一覧を位置づける。
+
+| Command intent | 既存 API / graph operation 対応 | 意味 | Cypher 類比 | 制約 |
+|---|---|---|---|---|
+| `assert` | `m3e.add`, `m3e.sibling`, `operation: "create"` / `"connect"` | node、edge、GraphLink、attribute assertion を追加する | `CREATE` / `MERGE` | 生 Cypher は実行しない。owner と `baseRevision` を検証する |
+| `rename` | `m3e.edit`, `operation: "set"` with `key: "text"` | node の表示 text を変更する | `SET n.text = ...` | identity を text に依存させない |
+| `reparent` | `m3e.move`, `m3e.promote`, `m3e.demote`, `operation: "reparent"` | edge を差し替え、親子構造を変更する | Relationship delete + create | tree invariant を保持する。authority を跨ぐ場合は `transfer` を要求する |
+| `bind` | entity binding / scope bind / alias 作成 | occurrence、entity、scope / facet 表示を対応付ける | `MERGE` relationship | `edge`、`alias`、`GraphLink`、`scope bind` を混同しない |
+| `transfer` | ownership transfer workflow | canonical owner を跨ぐ移動を二相以上で処理する | 複数 transaction + tombstone / redirect | 通常 `reparent` として確定しない |
+| `delete` | `m3e.del`, `operation: "remove"` / `"disconnect"` | node subtree、edge、GraphLink、attribute を削除する | `DELETE` / `DETACH DELETE` | root 削除不可。source-owned target は owner adapter へ route する |
+| `set-attribute` | `m3e.attr`, `m3e.set`, `operation: "set"` | `attributes` または許可 field を設定する | `SET n.key = ...` | field allowlist と classification を検証する |
+| `unset-attribute` | `m3e.attrDel`, `m3e.unset`, `operation: "remove"` with `key` | `attributes` または許可 field を削除する | `REMOVE n.key` | 削除対象 field を明示する |
+| `set-type` | `m3e.setType`, `m3e.active_node.setType` | `nodeType` を変更する | Label 変更 / `SET n.nodeType = ...` | `text` / `image` / `folder` / `alias` の意味は Data Model と Scope / Alias に従う |
+| `mark` | `m3e.mark`, `m3e.unmark`, `m3e.clearMarks` | 複数 node の UI 操作対象集合を変更する | なし | canonical graph write ではない |
+| `clone` | `m3e.clone` | node / subtree を別 identity として複製する | `CREATE` subgraph | `id` と `parentId` は新規。alias 解決は別 Command |
+| `replace` | `m3e.replaceAll` | text が一致する node 群へ `rename` を一括適用する | `MATCH` + `SET` | dry-run preview と対象件数確認を要求する |
+| `select` | `m3e.select`, `m3e.nav` | UI 選択 state を変更する | なし | canonical graph write ではない |
+| `view` | `m3e.focus`, `m3e.fit`, `m3e.zoom`, `m3e.pan`, collapse / expand | 表示 state を変更する | なし | semantic write と混同しない |
+| `load` | `m3e.load`, `m3e.new` | map / source を開く、または初期化する | なし | 未保存 state と owner boundary を確認する |
+| `export` | `m3e.save`, `m3e.export` | portable artifact を出力する | なし | export artifact は自動的に canonical owner にならない |
+| `history` | `m3e.undo`, `m3e.redo` | local history を戻す / 進める | transaction rollback 類比 | owner routing 下の remote revision とは同一視しない |
+
+### 4.1 既存 browser API の位置づけ
+
+`window.m3e` は既存 beta UI / browser console の互換 API であり、書き平面の実装候補である。将来のコマンドパネルで JS 入力をそのまま実行してはならない。
+
+既存 API の主な分類:
+
+各 API のシグネチャ・引数・戻り値・暗黙ターゲット・エラー仕様・組み合わせ例は [Command_API_Reference.md](./Command_API_Reference.md) を参照する。
+
+| 分類 | API |
+|---|---|
+| node 参照 | `m3e.root`, `m3e.sel`, `m3e.parent`, `m3e.children`, `m3e.node` |
+| 暗黙 target | `m3e.active_node`, `m3e.active_branch`, `m3e.active_scope` |
+| 作成 | `m3e.add`, `m3e.sibling` |
+| 編集 | `m3e.edit`, `m3e.del`, `m3e.move`, `m3e.promote`, `m3e.demote`, `m3e.clone`, `m3e.replaceAll` |
+| attribute / field | `m3e.set`, `m3e.unset`, `m3e.attr`, `m3e.attrDel`, `m3e.setType` |
+| 読み取り | `m3e.info`, `m3e.tree`, `m3e.find`, `m3e.findAll`, `m3e.depth`, `m3e.count`, `m3e.leaves`, `m3e.ancestors`, `m3e.path` |
+| 選択 / view | `m3e.select`, `m3e.nav`, `m3e.collapse`, `m3e.expand`, `m3e.toggle`, `m3e.collapseAll`, `m3e.expandAll`, `m3e.fit`, `m3e.focus`, `m3e.zoom`, `m3e.zoomReset`, `m3e.pan` |
+| mark | `m3e.mark`, `m3e.unmark`, `m3e.clearMarks`, `m3e.marked` |
+| document | `m3e.new`, `m3e.save`, `m3e.load`, `m3e.export` |
+| history | `m3e.undo`, `m3e.redo` |
+
+### 4.2 Command envelope
+
+Federated source へ確定変更を要求する Command は、最低限次を持つ。
+
+| 項目 | 意味 |
+|---|---|
+| `commandId` | retry と audit を一意に識別する ID |
+| `actor` | human、agent、bot、system とその識別情報 |
+| `targetRef` | source と local entity / assertion を解決できる参照 |
+| `intent` | `assert`、`rename`、`reparent`、`bind`、`transfer`、`delete` 等 |
+| `baseRevision` | caller が読んだ owner revision |
+| `provenance` | proposal、source event、upstream Command との因果参照 |
+| `approvalState` | proposal / approved / rejected |
+
+---
+
+## 5. 精錬平面
+
+精錬平面は source から再生成可能な read model、集計、派生 assertion を作る。確定 write ではなく、transform と provenance 付きの生成である。
+
+| 操作 | 入力 | 出力 | 必須条件 | Cypher 類比 |
+|---|---|---|---|---|
+| `materialize` | canonical source revision、accepted graph、source event | Neo4j record、index、cache、context bundle | source / revision / schema / indexed time / provenance | read model 生成。`CREATE` 類比はあるが owner write ではない |
+| `aggregate` | D0 / D1 record 群、query result | count、分類、正規化、summary | aggregation rule、input revision set、provenance | `MATCH ... RETURN count(...)` |
+| `derive` | D1 / D2 / D3、typed relation、human approval | pattern、trend、claim、Deep assertion | transform、inputs、provenance、approval state | derived relationship creation 類比 |
+
+精錬平面の出力は、owner concern により `source-materialized record` または proposal / accepted assertion へ分かれる。承認済みで M3E が所有する Deep assertion だけが、Recovery Gate 通過後に M3E-owned accepted graph の canonical runtime へ入れる。
+
+---
+
+## 6. Security Model（将来のコマンドパネル実装要件）
+
+本節は「コマンドパネル実装前に満たす必須条件」を定義する。既存の browser console API は beta 互換面であり、将来の command panel の安全性を保証しない。
 
 ### 脅威
 
 - ユーザー入力をそのまま `eval` / `Function` / `new Function` で実行することによるコードインジェクション
 - DOM / `window` / `document` へのアクセスを経由した XSS
 - `fetch` など外部通信 API の悪用によるデータ流出
+- read-only query surface を write surface と誤認させる prompt / UI
+- LLM output を database raw write として適用する経路
 
 ### 必須要件（MUST）
 
 1. コマンドパネル実行系で `eval` / `Function` / `new Function` を使用しない。
-2. 実行可能な文法は「M3E Command Script サブセット」に限定し、AST 検証で許可ノードのみ通す。
-3. 実行コンテキストは `m3e` API と最小限ユーティリティのみを注入し、`window` / `document` / `globalThis` / `Function` / `XMLHttpRequest` / `fetch` にアクセス不可とする。
+2. 実行可能な文法は allowlist された Command intent に限定し、AST または構造化 input 検証で許可 node だけ通す。
+3. 実行コンテキストは M3E Command API と最小限 utility のみを注入し、`window` / `document` / `globalThis` / `Function` / `XMLHttpRequest` / `fetch` にアクセス不可とする。
 4. コマンドパネルからの外部ネットワークアクセスを禁止する。
-5. コマンド実行前に「実行予定 API 一覧」と対象ノード数を表示し、明示承認後に実行する。
-6. 実行ログは「時刻・呼び出し API・対象件数・成功/失敗」のみを保存し、入力全文の平文保存は既定で行わない。
+5. コマンド実行前に intent、target、対象件数、Cypher 類比、owner route、危険度を表示し、明示承認後に実行する。
+6. 実行ログは時刻、Command intent、target、対象件数、成功 / 失敗、provenance を保存し、入力全文の平文保存は既定で行わない。
 7. 失敗時は fail-closed（実行中断）にする。
+8. read-only query surface で `CREATE` / `MERGE` / `SET` / `DELETE` / `DETACH DELETE` を拒否する。
+9. graph operation は Semantic Command へ正規化し、owner routing と `baseRevision` 検証を通す。
 
 ### 推奨要件（SHOULD）
 
 - 実行環境は Web Worker など分離コンテキストを使う。
-- 1 実行あたりの命令数・時間・変更件数に上限を設ける。
-- 危険操作（`del`, `move`, `replaceAll`）は dry-run プレビューを提供する。
-
-### 実装ガイド（段階導入）
-
-- Phase A: ブラウザコンソールのみ（現状）。
-- Phase B: 読み取り専用コマンドパネル（`info`, `tree`, `find`, `findAll` 等）。
-- Phase C: 書き込み操作を許可（AST 検証 + 明示承認 + 監査ログが揃ってから）。
+- 1 実行あたりの命令数、時間、変更件数に上限を設ける。
+- 危険操作（`delete`, `reparent`, `transfer`, bulk `set-attribute`）は dry-run preview を提供する。
 
 ### 禁止事項
 
-- 「ユーザー入力を JS としてそのまま評価する」方式でのコマンドパネル実装。
+- ユーザー入力を JS としてそのまま評価する方式でのコマンドパネル実装。
 - CSP 緩和での暫定回避（`unsafe-eval` の追加など）。
+- Cypher write 文を貼り付けて M3E state を直接変更する方式。
+- Mermaid / TOON / LLM natural language output の全置換を canonical graph write として扱う方式。
 
 ### 受け入れ条件
 
 - セキュリティテストで、`window`, `document`, `fetch`, `Function` を参照する入力が拒否される。
-- コマンドパネル経由で許可 API 以外が呼べない。
+- query surface で `CREATE` / `MERGE` / `SET` / `DELETE` / `DETACH DELETE` が拒否される。
+- graph operation が Command intent、owner route、`baseRevision`、provenance を持つ Semantic Command に正規化される。
+- source-owned target の変更が Neo4j raw write にならない。
 - 監査ログに操作概要が残り、入力全文が既定で保存されない。
 
-詳細テストケースは `../06_Operations/Command_Panel_Security_Test_Cases.md` を参照。
+詳細テストケースは [../06_Operations/Command_Panel_Security_Test_Cases.md](../06_Operations/Command_Panel_Security_Test_Cases.md) を参照。
 
 ---
 
-## ノード参照
-
-| 表記 | 型 | 意味 |
-|------|----|------|
-| `m3e.root` | `string` | ルートノードの ID（プロパティ） |
-| `m3e.sel` | `string \| null` | 現在選択中のノード ID（読み取り専用プロパティ） |
-| `m3e.parent(id?)` | `string \| null` | 指定ノードの親 ID。省略すると選択中ノードの親 |
-| `m3e.children(id?)` | `string[]` | 指定ノードの子 ID 配列。省略すると選択中ノードの子 |
-| `m3e.node(id)` | `TreeNode` | ノードオブジェクトの深いコピーを返す（変更しても反映されない） |
-| `const id = ...` | `string` | JS 変数に束縛して後続で再利用 |
-
-```javascript
-const root     = m3e.root
-const selected = m3e.sel              // プロパティとして参照
-const parent   = m3e.parent()         // 選択中ノードの親
-const children = m3e.children(root)   // ルートの子 ID 配列
-const node     = m3e.node(selected)   // { id, text, note, ... } の深いコピー
-```
-
----
-
-## 暗黙ターゲット（Implicit Targets）
-
-Excel のアクティブセルのように、**UI で選択中のノードを基準に操作できる**オブジェクト。
-ID を変数に束縛せずに操作したいときに使う。
-
-| オブジェクト | 対象範囲 |
-|-------------|---------|
-| `m3e.active_node` | 選択中の単一ノード |
-| `m3e.active_branch` | 選択中ノードを根とする部分木（ノード＋全子孫） |
-| `m3e.active_scope` | 選択中ノードが属する最寄りの scope（`folder` 型の祖先ノード、なければルート） |
-
-各オブジェクトはメソッドを持つ。また `.id` プロパティで生の ID を取り出せる。
-
-```javascript
-// ID を使う従来の書き方
-const id = m3e.sel
-m3e.edit(id, "新ラベル")
-m3e.collapse(id)
-
-// 暗黙ターゲットを使う書き方（同じ操作）
-m3e.active_node.edit("新ラベル")
-m3e.active_branch.collapse()
-```
-
-### `m3e.active_node` のメソッド
-
-選択中の単一ノードに対して操作する。子孫には影響しない。
-
-| メソッド | 動作 |
-|---------|------|
-| `m3e.active_node.edit(label)` | テキストを変更 |
-| `m3e.active_node.del()` | ノードと部分木を削除 |
-| `m3e.active_node.set(field, value)` | 拡張フィールドを設定 |
-| `m3e.active_node.unset(field)` | 拡張フィールドをクリア |
-| `m3e.active_node.attr(key, value)` | 属性を設定 |
-| `m3e.active_node.attrDel(key)` | 属性を削除 |
-| `m3e.active_node.setType(type)` | ノードタイプを変更 |
-| `m3e.active_node.info()` | ノード情報を返す |
-| `m3e.active_node.id` | ノード ID を返す（プロパティ） |
-
-```javascript
-m3e.active_node.edit("修正済み仮説")
-m3e.active_node.attr("status", "検証中")
-m3e.active_node.set("note", "先行研究 A と整合")
-m3e.active_node.info()
-
-// ID が必要なときは .id で取り出す
-const id = m3e.active_node.id
-m3e.add(id, "子ノード")
-```
-
-### `m3e.active_branch` のメソッド
-
-選択中ノードを根とする部分木全体に対して操作する。
-
-| メソッド | 動作 |
-|---------|------|
-| `m3e.active_branch.collapse()` | 部分木を折り畳む |
-| `m3e.active_branch.expand()` | 部分木をすべて展開 |
-| `m3e.active_branch.move(newParentId)` | 部分木ごと別の親へ移動 |
-| `m3e.active_branch.clone(newParentId?)` | 部分木ごと複製 |
-| `m3e.active_branch.del()` | 部分木ごと削除 |
-| `m3e.active_branch.tree()` | 部分木の構造を文字列で返す |
-| `m3e.active_branch.findAll(text)` | 部分木内を検索 |
-| `m3e.active_branch.id` | 根ノードの ID（プロパティ） |
-
-```javascript
-m3e.active_branch.collapse()
-m3e.active_branch.expand()
-console.log(m3e.active_branch.tree())
-
-// 選択ブランチを別の親に移動
-m3e.active_branch.move(m3e.find("実験計画"))
-
-// ブランチを複製して派生案を作る
-const copy = m3e.active_branch.clone()
-m3e.select(copy)
-m3e.active_node.edit("派生案 B")
-```
-
-### `m3e.active_scope` のメソッド
-
-選択中ノードが属する最寄りの scope（`folder` 型の祖先ノード）に対して操作する。
-scope が存在しない場合はルートが対象になる。
-
-| メソッド | 動作 |
-|---------|------|
-| `m3e.active_scope.info()` | scope のノード情報を返す |
-| `m3e.active_scope.collapse()` | scope 以下を折り畳む |
-| `m3e.active_scope.expand()` | scope 以下をすべて展開 |
-| `m3e.active_scope.tree()` | scope の構造を文字列で返す |
-| `m3e.active_scope.findAll(text)` | scope 内を検索 |
-| `m3e.active_scope.id` | scope の根ノード ID（プロパティ） |
-
-```javascript
-// 今いる scope の構造を確認
-console.log(m3e.active_scope.tree())
-
-// scope 内で検索
-m3e.active_scope.findAll("仮説").forEach(id => m3e.attr(id, "reviewed", "true"))
-
-// scope を折り畳んで俯瞰する
-m3e.active_scope.collapse()
-m3e.focus(m3e.active_scope.id)
-```
-
-### 暗黙ターゲットを引数として渡す
-
-`.id` プロパティで ID が必要な既存メソッドと組み合わせられる。
-
-```javascript
-// 選択ブランチの根に子を追加
-m3e.add(m3e.active_branch.id, "新しい観点")
-
-// 選択ノードの兄弟を追加
-m3e.sibling(m3e.active_node.id, "比較案")
-
-// 選択 scope を基準にビューを合わせる
-m3e.focus(m3e.active_scope.id)
-m3e.select(m3e.active_scope.id)
-```
-
----
-
-## API リファレンス
-
-### ノード作成
-
-#### `m3e.add(parentId, label, index?)`
-
-`parentId` の子ノードを追加し、新しいノード ID を返す。
-`index` を省略すると末尾に追加。
-
-```javascript
-const obs  = m3e.add(m3e.root, "観察事実")
-const hypo = m3e.add(m3e.root, "仮説")
-const h1   = m3e.add(hypo, "温度上昇が主因")
-const top  = m3e.add(m3e.root, "最優先", 0)   // 先頭に挿入
-```
-
-#### `m3e.sibling(nodeId, label, after?)`
-
-`nodeId` の兄弟ノードを追加し、新しいノード ID を返す。
-`after` を省略または `true` にすると直後、`false` にすると直前。
-
-```javascript
-const h2 = m3e.sibling(h1, "土壌劣化が主因")
-const h0 = m3e.sibling(h1, "前置き仮説", false)  // h1 の直前
-```
-
----
-
-### ノード編集
-
-#### `m3e.edit(nodeId, newLabel)`
-
-ノードのテキストを変更する。
-
-```javascript
-m3e.edit(m3e.sel, "修正済みラベル")
-m3e.edit(h1, "仮説 A（検証済み）")
-```
-
-#### `m3e.del(nodeId)`
-
-ノードとその部分木を削除する。ルートノードは削除不可（例外をスロー）。
-
-```javascript
-m3e.del(h2)
-```
-
-#### `m3e.move(nodeId, newParentId, index?)`
-
-ノードを別の親の子として再配置する。
-`index` を省略すると末尾に追加。循環する移動は例外をスロー。
-
-```javascript
-m3e.move(h1, obs)       // obs の末尾へ
-m3e.move(h1, obs, 0)    // obs の先頭へ
-```
-
-#### `m3e.promote(nodeId)` / `m3e.demote(nodeId)`
-
-兄弟リスト内で1つ上／下に移動する。
-すでに先頭または末尾の場合は何もしない。
-
-```javascript
-m3e.promote(m3e.sel)
-m3e.demote(h1)
-```
-
-#### `m3e.clone(nodeId, newParentId?)`
-
-ノードとその部分木を再帰的に複製し、新しいノード ID を返す。
-`newParentId` を省略すると元のノードと同じ親に追加される。
-
-複製時の各フィールドの扱い：
-- `text`, `details`, `note`, `attributes`, `link` はすべて値としてコピーする
-- `id` と `parentId` は新しい値が付与される（元 ID は引き継がない）
-- `link` フィールドに別ノードの ID が含まれていてもそのまま値コピーする（alias 解決は行わない）
-
-```javascript
-const copy  = m3e.clone(h1)          // h1 の兄弟として複製
-const copy2 = m3e.clone(h1, obs)     // obs の子として複製
-```
-
----
-
-### 選択・ナビゲーション
-
-#### `m3e.sel`（プロパティ）
-
-現在選択中のノード ID を返す読み取り専用プロパティ。
-選択を変更するには `m3e.select(id)` を使う。
-
-```javascript
-const current = m3e.sel             // 取得（プロパティ）
-```
-
-#### `m3e.select(nodeId)`
-
-指定したノードを選択する。
-
-```javascript
-m3e.select(hypo)
-m3e.select(m3e.root)
-```
-
-#### `m3e.nav(direction)`
-
-ツリー構造上の相対位置へ選択を移動する。
-
-| direction | 移動先 |
-|-----------|--------|
-| `"parent"` | 親ノード |
-| `"first"` | 最初の子ノード |
-| `"last"` | 最後の子ノード |
-| `"next"` | 次の兄弟ノード |
-| `"prev"` | 前の兄弟ノード |
-
-```javascript
-m3e.nav("parent")
-m3e.nav("first")
-m3e.nav("next")
-```
-
----
-
-### 折り畳み
-
-#### `m3e.collapse(nodeId)` / `m3e.expand(nodeId)` / `m3e.toggle(nodeId)`
-
-```javascript
-m3e.collapse(m3e.root)
-m3e.expand(hypo)
-m3e.toggle(m3e.sel)
-```
-
-#### `m3e.collapseAll(nodeId?)` / `m3e.expandAll(nodeId?)`
-
-指定ノード以下の部分木を一括折り畳み／展開する。
-`nodeId` を省略するとルートから全体が対象。
-
-```javascript
-m3e.collapseAll()           // ツリー全体を折り畳む
-m3e.expandAll(hypo)         // hypo 以下をすべて展開
-```
-
----
-
-### 属性・メタデータ
-
-#### `m3e.set(nodeId, field, value)`
-
-拡張フィールドを設定する。
-
-| field | TreeNode フィールド |
-|-------|-------------------|
-| `"details"` | `details` |
-| `"note"` | `note` |
-| `"link"` | `link` |
-
-```javascript
-m3e.set(h1, "note", "先行研究 A, B と整合")
-m3e.set(h1, "link", "https://example.com/paper")
-```
-
-#### `m3e.unset(nodeId, field)`
-
-拡張フィールドを空文字にクリアする。
-
-```javascript
-m3e.unset(h1, "note")
-```
-
-#### `m3e.attr(nodeId, key, value)`
-
-`attributes` マップにキーと値を設定する。
-
-```javascript
-m3e.attr(m3e.sel, "status", "検証中")
-m3e.attr(m3e.sel, "priority", "高")
-```
-
-#### `m3e.attrDel(nodeId, key)`
-
-`attributes` マップから指定キーを削除する。
-
-```javascript
-m3e.attrDel(m3e.sel, "status")
-```
-
----
-
-### 履歴
-
-#### `m3e.undo()` / `m3e.redo()`
-
-操作を1ステップ巻き戻し／やり直す。
-スタックが空の場合は `false` を返す（例外はスローしない）。モデルは最大 200 件の履歴を保持する。
-
-```javascript
-m3e.undo()
-m3e.undo()
-m3e.redo()
-
-// スタックが空かどうかの確認
-if (!m3e.undo()) console.log("これ以上戻れません")
-```
-
----
-
-### 読み取り・検索
-
-#### `m3e.info(nodeId?)`
-
-ノードオブジェクトの深いコピーを返す。
-`nodeId` を省略すると選択中ノードが対象。
-ブラウザコンソールで呼んだ場合は DevTools がオブジェクトを展開表示するため、別途 `console.log` は不要。
-
-```javascript
-m3e.info()
-// → { id: "n_1234_abc", text: "仮説 A", note: "...", attributes: { status: "検証中" }, ... }
-
-const data = m3e.info(h1)
-console.log(data.text)
-```
-
-#### `m3e.tree(nodeId?)`
-
-指定ノード以下のツリー構造を文字列で返す。
-`nodeId` を省略するとルートから全体。折り畳まれたノードは `[+]` で表示。
-コンソールで確認する場合は `console.log(m3e.tree())` を使う。
-
-```javascript
-console.log(m3e.tree())
-// 気候変動と農業生産性
-//   ├─ 観察事実
-//   │   ├─ 収穫量が過去10年で15%減少
-//   │   └─ 降水パターンの変化
-//   └─ 仮説 [+]   ← 折り畳み中
-
-console.log(m3e.tree(hypo))    // hypo 以下のみ
-const s = m3e.tree()           // 文字列として変数に取ることも可能
-```
-
-#### `m3e.find(text)`
-
-テキストが部分一致する最初のノードの ID を返す。
-一致なしの場合は `null` を返す（例外をスローしない）。
-
-```javascript
-const target = m3e.find("仮説 A")
-if (target) {
-  m3e.select(target)
-  m3e.focus(target)
-}
-```
-
-#### `m3e.findAll(text)`
-
-テキストが部分一致するすべてのノードの ID 配列を返す。
-一致なしの場合は空配列 `[]` を返す。
-
-```javascript
-const results = m3e.findAll("仮説")
-results.forEach(id => m3e.attr(id, "reviewed", "true"))
-```
-
----
-
-### ビュー操作
-
-#### `m3e.fit()`
-
-ツリー全体が画面に収まるようにズーム・パンを調整する。
-
-#### `m3e.focus(nodeId?)`
-
-指定ノードを画面中央に表示する。`nodeId` を省略すると選択中ノードが対象。
-
-```javascript
-m3e.focus(hypo)
-m3e.focus()       // 選択中ノードにフォーカス
-```
-
-#### `m3e.zoom(factor)`
-
-ズーム倍率を数値で設定する（例: `0.5`, `1.5`）。
-
-```javascript
-m3e.zoom(0.5)
-m3e.zoom(1.5)
-```
-
-#### `m3e.zoomReset()`
-
-ズームを等倍（1.0）に戻す。
-
-```javascript
-m3e.zoomReset()
-```
-
-#### `m3e.pan(dx, dy)`
-
-キャンバスを指定ピクセル分パンする。
-
-```javascript
-m3e.pan(200, 0)    // 右に 200px
-m3e.pan(0, -100)   // 上に 100px
-```
-
----
-
-### ドキュメント管理
-
-#### `m3e.new(rootLabel?)`
-
-ツリーを初期化し新しいドキュメントを開始する。
-未保存の変更がある場合は `confirm()` で確認する（ユーザーがキャンセルすれば何もしない）。
-
-```javascript
-m3e.new()
-m3e.new("新しい研究テーマ")
-```
-
-#### `m3e.save(filename?)`
-
-現在のツリーを `SavedDoc`（`version: 1`）形式でブラウザダウンロードとして保存する。
-ブラウザ環境のため任意のパスへの書き込みは行わない。`filename` を省略するとデフォルト名（`m3e-export.json`）を使用する。戻り値なし。
-
-```javascript
-m3e.save()
-m3e.save("research-2026.json")
-```
-
-#### `m3e.load(source)`
-
-JSON または Freeplane `.mm` を読み込む。
-`source` には以下のいずれかを渡す：
-
-| 型 | 動作 |
-|----|------|
-| `string`（URL またはサーバー相対パス） | `fetch()` で取得して読み込む |
-| `File` オブジェクト | File API で読み込む（`<input type="file">` からの参照） |
-
-パスはサーバー起動時のルート（`http://localhost:38482/`）からの相対パス。
-**読み込み後、以前のセッションで使用していた JS 変数（ノード ID）は無効になる。**
-ファイルが見つからない、またはパースに失敗した場合は例外をスロー。
-
-```javascript
-m3e.load("data/rapid-sample.json")   // サーバー相対パス
-m3e.load("data/aircraft.mm")
-
-// File ピッカーから取得した場合
-const [file] = document.querySelector("input").files
-m3e.load(file)
-```
-
-#### `m3e.export(format)`
-
-現在のツリーを指定フォーマットでブラウザダウンロードとして保存する。
-
-| format | 出力 | 状態 |
-|--------|------|------|
-| `"json"` | M3E SavedDoc 形式（`save` と同等） | 実装済み相当 |
-| `"mm"` | Freeplane `.mm` 形式 | **未実装（Beta 以降）** |
-
-```javascript
-m3e.export("json")
-m3e.export("mm")   // 未実装時は例外をスロー: "mm export is not yet implemented"
-```
-
----
-
-## JS を使うことで解決される点
-
-カスタム DSL では別途定義が必要だった以下の問題が JS のセマンティクスで自動的に解決される。
-
-| 問題 | JS での解決 |
-|------|------------|
-| クォート・エスケープ | JS 文字列リテラルのルールをそのまま使う |
-| 空文字列 | `m3e.edit(id, "")` — JS の空文字列として有効 |
-| `find` が null の場合 | `if (target) { ... }` で標準的に対処 |
-| ループ・繰り返し処理 | `for`, `forEach`, `map` など JS ネイティブ |
-| 条件分岐 | `if`, `switch` など JS ネイティブ |
-| `undo` スタック空 | `false` を返す。`if (!m3e.undo())` で確認可能 |
-| 変数一覧 | ブラウザの DevTools で確認 |
-| スクリプトファイルの実行 | JS ファイルをコンソールに貼り付けまたは `<script>` タグで読み込み |
-| 複雑なエラー処理 | `try { ... } catch (e) { ... }` |
-| `sel` getter/setter 兼用の曖昧さ | `m3e.sel`（プロパティ）と `m3e.select(id)`（メソッド）に分離 |
-| `zoom` の型混在 | `m3e.zoom(factor)` は数値のみ、リセットは `m3e.zoomReset()` に分離 |
-| `node()` の書き換え防止 | `structuredClone()` で深いコピーを返す |
-| `info()`/`tree()` の二重出力 | `info()` は戻り値のみ（DevTools が表示）、`tree()` は文字列を返すのみ |
-
----
-
-## 追加コマンド
-
-### マーク選択（複数ノードへの一括操作）
-
-単一選択に加えて、複数ノードをマークし一括操作できる。
-
-#### `m3e.mark(nodeId)` / `m3e.unmark(nodeId)` / `m3e.clearMarks()`
-
-```javascript
-m3e.mark(h1)
-m3e.mark(h2)
-m3e.mark(h3)
-m3e.unmark(h2)         // 解除
-m3e.clearMarks()       // 全解除
-```
-
-#### `m3e.marked`（プロパティ）
-
-マーク済みノード ID の配列を返す（読み取り専用）。
-
-```javascript
-// マーク済み全ノードに属性を一括設定
-m3e.marked.forEach(id => m3e.attr(id, "status", "レビュー済み"))
-
-// マーク済みを全て折り畳む
-m3e.marked.forEach(id => m3e.collapse(id))
-```
-
----
-
-### 構造クエリ
-
-ツリーの形を数値・配列で問い合わせる。
-
-#### `m3e.depth(nodeId?)`
-
-ルートからの深さを返す。省略すると選択中ノードが対象。
-
-```javascript
-m3e.depth()            // → 3
-m3e.depth(m3e.root)    // → 0
-```
-
-#### `m3e.count(nodeId?)`
-
-部分木のノード総数を返す（自身を含む）。省略すると選択中ノードが対象。
-
-```javascript
-m3e.count(hypo)        // → 12
-m3e.count(m3e.root)    // → ツリー全体のノード数
-```
-
-#### `m3e.leaves(nodeId?)`
-
-部分木内の葉ノード（子を持たないノード）の ID 配列を返す。
-
-```javascript
-m3e.leaves(hypo).forEach(id => m3e.attr(id, "leaf", "true"))
-```
-
-#### `m3e.ancestors(nodeId?)`
-
-対象ノードからルートまでの祖先 ID 配列を返す（近い順）。
-
-```javascript
-m3e.ancestors()        // → ["parent_id", "grandparent_id", ..., "root_id"]
-```
-
-#### `m3e.path(nodeId?)`
-
-ルートから対象ノードまでの ID パスを返す（遠い順）。
-
-```javascript
-m3e.path(m3e.sel)      // → ["root_id", ..., "parent_id", "sel_id"]
-```
-
----
-
-### 検索・置換
-
-#### `m3e.replaceAll(search, replacement, scopeRootId?)`
-
-テキストが部分一致するすべてのノードのラベルを置換する。
-`scopeRootId` を省略するとツリー全体が対象。
-
-```javascript
-m3e.replaceAll("仮説", "Hypothesis")
-m3e.replaceAll("要検証", "要確認", m3e.active_scope.id)
-
-// 件数を確認してから実行
-const targets = m3e.findAll("旧用語")
-console.log(`${targets.length} 件置換します`)
-targets.forEach(id => m3e.edit(id, m3e.node(id).text.replace("旧用語", "新用語")))
-```
-
----
-
-### ノードタイプの変更
-
-#### `m3e.setType(nodeId, type)`
-
-ノードの type を変更する。
-ノードは実体（entity）と参照（reference）に大別される（詳細は Data_Model.md 参照）。
-
-| type | 分類 | 意味 |
-|------|------|------|
-| `"text"` | 実体 | 通常のテキストノード（デフォルト） |
-| `"image"` | 実体 | 画像参照を持つノード |
-| `"folder"` | 実体 | scope の根になるノード |
-| `"alias"` | 参照 | 実体ノードへの参照窓（leaf 強制） |
-
-```javascript
-m3e.setType(m3e.sel, "folder")     // 現在のノードを scope の根にする
-m3e.active_node.setType("folder")  // 暗黙ターゲット版
-```
-
-`"alias"` に変更する場合は参照先 ID も必要（詳細は Scope_and_Alias.md 参照）。
-
----
-
-## 組み合わせ例
-
-### 研究ツリーの構築
-
-```javascript
-m3e.edit(m3e.root, "気候変動と農業生産性")
-
-const obs  = m3e.add(m3e.root, "観察事実")
-const hypo = m3e.add(m3e.root, "仮説")
-const exp  = m3e.add(m3e.root, "実験計画")
-
-const o1 = m3e.add(obs, "収穫量が過去10年で15%減少")
-const o2 = m3e.add(obs, "降水パターンの変化")
-m3e.attr(o1, "status", "確認済み")
-m3e.attr(o2, "status", "要検証")
-
-const h1 = m3e.add(hypo, "温度上昇が主因")
-m3e.set(h1, "note", "先行研究 A, B と整合")
-const h2 = m3e.sibling(h1, "土壌劣化が主因")
-
-const e1 = m3e.add(exp, "温度と収穫量の相関分析")
-m3e.move(e1, exp, 0)
-
-m3e.fit()
-m3e.focus(hypo)
-m3e.select(hypo)   // sel はプロパティなので変更は select() を使う
-```
-
-### 検索・一括更新
-
-```javascript
-// "仮説" を含む全ノードに reviewed フラグを立てる
-m3e.findAll("仮説").forEach(id => {
-  m3e.attr(id, "reviewed", "true")
-  console.log(m3e.node(id).text, "→ reviewed")
-})
-```
-
-### ツリーの整理
-
-```javascript
-m3e.collapseAll()
-m3e.expandAll(hypo)
-
-m3e.promote(h2)   // 「土壌劣化が主因」を上へ
-
-const h3 = m3e.clone(h1, hypo)
-m3e.edit(h3, "温度と土壌の複合要因")
-
-console.log(m3e.tree(hypo))
-```
-
-### 暗黙ターゲットを使った対話的操作
-
-```javascript
-// UIで「仮説」ノードを選択した状態でコンソールを開き、そのまま操作する
-
-// 今選んでいるノードを確認
-m3e.active_node.info()
-
-// ラベルを直すだけ
-m3e.active_node.edit("仮説（改訂版）")
-
-// 下の枝を全部展開して構造確認
-m3e.active_branch.expand()
-console.log(m3e.active_branch.tree())
-
-// この scope にある "要検証" を全部探して属性更新
-m3e.active_scope.findAll("要検証").forEach(id => {
-  m3e.attr(id, "status", "着手待ち")
-})
-
-// 別の scope に枝ごと移動
-const dest = m3e.find("実験計画")
-m3e.active_branch.move(dest)
-```
-
----
-
-### エラー処理
-
-```javascript
-// ノードが見つからない場合の安全な処理
-const target = m3e.find("存在しないノード")
-if (!target) {
-  console.warn("ノードが見つかりませんでした")
-} else {
-  m3e.select(target)
-}
-
-// 例外をキャッチして継続
-try {
-  m3e.del(m3e.root)   // ルート削除は例外をスロー
-} catch (e) {
-  console.error(e.message)  // "Root node cannot be deleted."
-}
-```
-
----
-
-## エラー仕様
-
-| 状況 | 動作 |
-|------|------|
-| 存在しないノード ID を渡す | 例外をスロー: `"Node not found: <id>"` |
-| ルートの削除・再配置 | 例外をスロー |
-| 循環する `move` | 例外をスロー: `"Cycle detected"` |
-| `find` / `findAll` で一致なし | `null` / `[]` を返す（例外なし） |
-| `undo` / `redo` でスタック空 | `false` を返す（例外なし） |
-| `load` でファイルが見つからない | 例外をスロー |
-| `new` で未保存変更あり | `confirm()` でユーザー確認。キャンセルで中断 |
-| `load` 後に古い ID を使用 | 次の操作で `"Node not found"` 例外をスロー |
-| 不正な `index` | 末尾挿入にフォールバック（例外なし） |
-
----
-
-## 実装メモ
-
-- `window.m3e` は `viewer.ts` の初期化完了後に代入する
-- 各メソッドは既存の `RapidMvpModel` のメソッドを薄くラップする
-- ビュー操作（`fit`, `focus`, `zoom`, `pan`）は `viewer.ts` の既存関数を呼び出す
-- `m3e.node(id)` の戻り値は読み取り専用コピー（直接変更しても反映されない）
-
----
-
-## 関連文書
-
-- モデルの操作 API: [../../beta/src/node/rapid_mvp.ts](../../beta/src/node/rapid_mvp.ts)
-- 編集設計: [../04_Architecture/Editing_Design.md](../04_Architecture/Editing_Design.md)
-- コマンド操作リファレンス（現 MVP のキー操作）: [../06_Operations/Command_Reference.md](../06_Operations/Command_Reference.md)
+## 7. テスト観点
+
+- `Command intent` 表が既存 `m3e.*` API を書き平面に位置づけている。
+- 各 write intent が Cypher 類比を持つが、生 Cypher write を許可していない。
+- `graph operation` から Semantic Command への整合が [LLM Graph Conversation Protocol](../04_Architecture/LLM_Graph_Conversation_Protocol.md) と一致している。
+- read-only query surface が [Federated_Semantic_Source.md](./Federated_Semantic_Source.md) RQ11 と一致している。
+- `materialize` / `aggregate` / `derive` が transform、inputs、provenance を必須としている。
+- Glossary の M3E ⇄ property graph 対応表と矛盾しない。
