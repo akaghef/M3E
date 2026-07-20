@@ -14,6 +14,7 @@
 ## 試作成果物
 
 - [M3E Ultimate Graphics](./260704_graphics_showcase.html) — 4種類のアニメーションテーマを比較する自己完結型HTML。
+- [MemForest typed graph](./260719_memforest_conversation_to_typed_graph.md) — 会話履歴を型付きグラフとして保持・再利用する構想。
 
 ## Deferred Strategy へ持ち上げる目安
 

@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 574
+- Indexed files: 580
 
 ## Reading Routes
 
@@ -327,8 +327,14 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260627_llm_wiki_pattern.md](<./ideas/260627_llm_wiki_pattern.md>) | Markdown | LLM Wiki | A pattern for building personal knowledge bases using LLMs. |
 | [ideas/260701_rapid_markdown_canon_mfh_and_obsidian_surface.md](<./ideas/260701_rapid_markdown_canon_mfh_and_obsidian_surface.md>) | Markdown | Rapid Markdown Canon / MF-H / Obsidian 内 M3E surface | 作成日: 2026-07-01 |
 | [ideas/260702_arbor_mdd_experimental_search_tree.md](<./ideas/260702_arbor_mdd_experimental_search_tree.md>) | Markdown | Arbor と MDD の接点: Experimental Search Tree | 作成日: 2026-07-02 |
+| [ideas/260704_graphics_showcase.html](<./ideas/260704_graphics_showcase.html>) | HTML | 260704 graphics showcase | HTML |
 | [ideas/260718_llm_graph_protocol_directive_original.md](<./ideas/260718_llm_graph_protocol_directive_original.md>) | Markdown | LLM ↔ Property Graph Conversation Protocol | > **原文stow（2026-07-18、akaghef指針）。** PR #75 の [LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conver... |
 | [ideas/260719_math_ontology_graphdb_thesis.md](<./ideas/260719_math_ontology_graphdb_thesis.md>) | Markdown | 数学オントロジーが Neo4j 採用の真の駆動因である | 日付: 2026-07-19 |
+| [ideas/260719_memforest_conversation_to_typed_graph.md](<./ideas/260719_memforest_conversation_to_typed_graph.md>) | Markdown | MemForest を接点に、AI対話を typed knowledge graph へ育てる | 作成日: 2026-07-19 |
+| [ideas/260720_runtime_board_video_repro/README.md](<./ideas/260720_runtime_board_video_repro/README.md>) | Markdown | Runtime Board 動画再現 — 検証資料 | 参照動画から再現した Runtime Board の表示・操作要件を、実装用 worktree を削除した後も比較可能な形で残す。これは製品仕様ではなく、将来の viewer / Agent Status 表示を検討するための ide... |
+| [ideas/260720_runtime_board_video_repro/runtime-board-implementation.patch](<./ideas/260720_runtime_board_video_repro/runtime-board-implementation.patch>) | File | runtime board implementation | File |
+| [ideas/260720_runtime_board_video_repro/runtime-board.png](<./ideas/260720_runtime_board_video_repro/runtime-board.png>) | Image | runtime board | Image |
+| [ideas/260720_runtime_board_video_repro/verification.md](<./ideas/260720_runtime_board_video_repro/verification.md>) | Markdown | 検証記録 | 実行日: 2026-07-20 |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
 | [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |

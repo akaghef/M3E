@@ -1,5 +1,6 @@
 tmp/
 node_modules/
+/node_modules
 
 mvp/node_modules/
 mvp/dist/
@@ -8,8 +9,10 @@ mvp/data/rapid-sample.json
 mvp/data/*.sqlite
 
 beta/node_modules/
+/beta/node_modules
 beta/dist/
 beta/.env
+beta/generated/
 beta/data/rapid-sample.json
 beta/data/*.sqlite
 beta/data/audit/
@@ -23,6 +26,7 @@ beta/test-results/
 beta/tests/e2e/test-results/
 
 final/node_modules/
+/final/node_modules
 final/dist/
 final/.env
 final/data/*.sqlite
@@ -102,3 +106,7 @@ projects/PJ04_MermaidSystemLangGraph/runtime/checkpoints.sqlite
 /backlog/keyboardimage.jpg
 /agent_instructions/skills_canonical.zip
 /*.png
+
+# Root-local TLS material (for example Tailscale certificates).
+/*.key
+/*.crt
