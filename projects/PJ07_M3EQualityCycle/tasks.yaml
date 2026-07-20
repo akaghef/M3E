@@ -1,0 +1,71 @@
+# PJ07 — M3E Quality Cycle tasks
+
+current_focus:
+  date: 2026-05-17
+  summary: "新PJとして器を作り、M3E関連 GPT 会話歴と docs/ideas/ を実データ workset に切る準備をする。"
+  next:
+    - T-1-1
+    - T-1-2
+    - T-2-1
+
+tasks:
+  - id: T-0-1
+    phase: 0
+    verb: bootstrap
+    target: "PJ07 folder skeleton and entry docs"
+    done_when:
+      - "README.md exists"
+      - "plan.md exists"
+      - "tasks.yaml exists"
+      - "quality improvement source doc is under references/chatgpt"
+    status: done
+
+  - id: T-1-1
+    phase: 1
+    verb: index
+    target: "M3E GPT conversation vault source index"
+    done_when:
+      - "manifests/source_index.yaml lists raw vault root"
+      - "candidate files matching GraphSpec / LangGraph / AI proposal / data structure / idea are indexed"
+      - "raw files are referenced by path, not copied wholesale"
+    status: pending
+
+  - id: T-1-2
+    phase: 1
+    verb: index
+    target: "M3E repo docs/ideas/ source index"
+    done_when:
+      - "manifests/source_index.yaml includes docs/ideas/ source roots"
+      - "M3E product / system / AI workflow idea files are listed"
+      - "selection criteria are written"
+    status: pending
+
+  - id: T-2-1
+    phase: 2
+    verb: create
+    target: "batch_001_m3e_design workset"
+    done_when:
+      - "worksets/batch_001_m3e_design/README.md exists"
+      - "20-50 source items are selected"
+      - "each item has source path, reason, and expected extraction target"
+    status: pending
+
+  - id: T-2-0
+    phase: 2
+    verb: sample
+    target: "batch_001_m3e_design 3-item processing sample"
+    done_when:
+      - "worksets/batch_001_m3e_design/README.md records 3 selected items"
+      - "runs/quality_reports/batch_001_sample.md exists"
+      - "review and distilled candidate notes exist"
+    status: done
+
+  - id: T-3-1
+    phase: 3
+    verb: evaluate
+    target: "first manual quality report format"
+    done_when:
+      - "runs/quality_reports/batch_001_sample.md exists"
+      - "report separates quality vector, diagnosis, and patch proposal"
+      - "no map/doc source is mutated"
+    status: done

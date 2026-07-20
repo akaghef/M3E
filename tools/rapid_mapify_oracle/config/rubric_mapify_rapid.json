@@ -1,0 +1,47 @@
+{
+  "version": "0.1.0",
+  "teacher": "Mapify action is provisional correct teacher signal.",
+  "dimensions": {
+    "locality": {
+      "weight": 0.2,
+      "pass": 0.95
+    },
+    "label_quality": {
+      "weight": 0.15,
+      "pass": 0.8
+    },
+    "sibling_consistency": {
+      "weight": 0.15,
+      "pass": 0.75
+    },
+    "non_duplication": {
+      "weight": 0.15,
+      "pass": 0.9
+    },
+    "teacher_proximity": {
+      "weight": 0.2,
+      "pass": 0.5
+    },
+    "delta_discipline": {
+      "weight": 0.15,
+      "pass": 0.9
+    }
+  },
+  "critical_failures": [
+    "F1_NO_LOCAL_DELTA",
+    "F2_WRONG_TARGET",
+    "F3_GLOBAL_CONTAMINATION",
+    "F4_UI_ONLY_SUCCESS",
+    "F9_DIRTY_WORKTREE_COLLISION"
+  ],
+  "label_policy": {
+    "max_chars_soft": 12,
+    "prefer": "short Japanese noun phrases",
+    "avoid": [
+      "full sentences",
+      "explanatory clauses",
+      "random related words",
+      "duplicated existing labels"
+    ]
+  }
+}

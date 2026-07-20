@@ -40,9 +40,17 @@ FILES=(
   viewer.css
   package.json
   package-lock.json
+  dependency-cruiser.config.cjs
+  jscpd.config.json
   tsconfig.browser.json
+  tsconfig.labs.json
+  tsconfig.layout.json
   tsconfig.node.json
+  tsconfig.workbench.json
+  vite.config.mjs
   playwright.config.js
+  playwright.node-lab.config.js
+  playwright.runtime-board.config.js
   test_server.js
   vitest.config.js
 )

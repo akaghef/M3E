@@ -1,0 +1,9 @@
+{
+  "threshold": 0,
+  "minLines": 20,
+  "minTokens": 120,
+  "reporters": ["console"],
+  "path": ["src/shared/layout_port.ts", "src/shared/pn_layout.ts", "src/shared/edge_port.ts", "src/shared/edge_route.ts", "src/shared/parent_child_edge_adapter.ts", "src/shared/node_draw_port.ts", "src/shared/node_draw_svg.ts", "src/labs/layout", "src/labs/edge-port", "src/labs/node", "src/labs/pn", "src/browser/viewer.ts", "src/browser/workbench-ui.tsx", "src/browser/edge_adapters"],
+  "pattern": "**/*.ts*",
+  "ignore": ["dist/**", "node_modules/**", "tests/fixtures/**"]
+}

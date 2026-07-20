@@ -1,0 +1,193 @@
+{
+  "createdAt": "2026-06-04T05:59:00",
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 318
+    },
+    {
+      "path": "README.md",
+      "bytes": 4076
+    },
+    {
+      "path": "config/failure_taxonomy.json",
+      "bytes": 2261
+    },
+    {
+      "path": "config/loop_policy.json",
+      "bytes": 739
+    },
+    {
+      "path": "config/rapid_ops.json",
+      "bytes": 1509
+    },
+    {
+      "path": "config/rubric_mapify_rapid.json",
+      "bytes": 950
+    },
+    {
+      "path": "docs/architecture.md",
+      "bytes": 1766
+    },
+    {
+      "path": "docs/biology_scenarios.md",
+      "bytes": 856
+    },
+    {
+      "path": "docs/browser_use_contract.md",
+      "bytes": 855
+    },
+    {
+      "path": "docs/codex_worker_protocol.md",
+      "bytes": 1443
+    },
+    {
+      "path": "docs/decision_log.md",
+      "bytes": 1079
+    },
+    {
+      "path": "docs/mapify_io_policy.md",
+      "bytes": 1619
+    },
+    {
+      "path": "docs/rapid_quality_rubric.md",
+      "bytes": 1254
+    },
+    {
+      "path": "docs/system_overview.mmd",
+      "bytes": 1532
+    },
+    {
+      "path": "docs/task_slices.md",
+      "bytes": 854
+    },
+    {
+      "path": "docs/unresolved_policy_table.md",
+      "bytes": 1868
+    },
+    {
+      "path": "fixtures/biology/appstate_before.json",
+      "bytes": 4613
+    },
+    {
+      "path": "fixtures/biology/appstate_before.md",
+      "bytes": 285
+    },
+    {
+      "path": "fixtures/biology/m3e_bad_delta.json",
+      "bytes": 1139
+    },
+    {
+      "path": "fixtures/biology/m3e_good_delta.json",
+      "bytes": 792
+    },
+    {
+      "path": "fixtures/biology/mapify_teacher_delta.json",
+      "bytes": 1237
+    },
+    {
+      "path": "fixtures/biology/mapify_teacher_trace.json",
+      "bytes": 613
+    },
+    {
+      "path": "fixtures/cases/biology_expand_animals.case.json",
+      "bytes": 722
+    },
+    {
+      "path": "fixtures/mapify_xmind/minimal_appstate_from_xmind.json",
+      "bytes": 2277
+    },
+    {
+      "path": "fixtures/mapify_xmind/minimal_content.json",
+      "bytes": 1102
+    },
+    {
+      "path": "integrations/m3e/patch_targets.md",
+      "bytes": 1402
+    },
+    {
+      "path": "integrations/mapify/README.md",
+      "bytes": 529
+    },
+    {
+      "path": "integrations/mapify/browser_context_fetch_stub.js",
+      "bytes": 894
+    },
+    {
+      "path": "matlab/demo_biology_case.m",
+      "bytes": 427
+    },
+    {
+      "path": "matlab/evaluateRapidCase.m",
+      "bytes": 6548
+    },
+    {
+      "path": "package.json",
+      "bytes": 687
+    },
+    {
+      "path": "runs/example_bad/grade_report.json",
+      "bytes": 1154
+    },
+    {
+      "path": "runs/example_bad/grade_report.md",
+      "bytes": 951
+    },
+    {
+      "path": "runs/example_good/grade_report.json",
+      "bytes": 616
+    },
+    {
+      "path": "runs/example_good/grade_report.md",
+      "bytes": 472
+    },
+    {
+      "path": "schemas/appstate_lite.schema.json",
+      "bytes": 963
+    },
+    {
+      "path": "schemas/grade_report.schema.json",
+      "bytes": 633
+    },
+    {
+      "path": "schemas/rapid_case.schema.json",
+      "bytes": 611
+    },
+    {
+      "path": "schemas/rapid_delta.schema.json",
+      "bytes": 857
+    },
+    {
+      "path": "scripts/apply_delta_lite.py",
+      "bytes": 1660
+    },
+    {
+      "path": "scripts/appstate_to_markdown.py",
+      "bytes": 1211
+    },
+    {
+      "path": "scripts/evaluate_case.py",
+      "bytes": 9259
+    },
+    {
+      "path": "scripts/run_loop_once.py",
+      "bytes": 2436
+    },
+    {
+      "path": "scripts/xmind_content_to_appstate.py",
+      "bytes": 1917
+    },
+    {
+      "path": "templates/codex_task_prompt.md",
+      "bytes": 1707
+    },
+    {
+      "path": "templates/grade_report.template.md",
+      "bytes": 422
+    },
+    {
+      "path": "templates/run_manifest.template.json",
+      "bytes": 468
+    }
+  ]
+}

@@ -1,59 +1,56 @@
 # M3E Software Docs
-## Added Operations Area (2026-03-30)
 
-- `06_Operations/README.md`
-- `06_Operations/Decision_Pool.md`
-- `06_Operations/Documentation_Rules.md`
-- `06_Operations/Commit_Message_Rules.md`
+このディレクトリは、M3E の思想・戦略・仕様・アーキテクチャ・運用・判断記録を置く場所である。
 
-会話で決まったことは、まず `06_Operations/Decision_Pool.md` に記録する。
-仕様として固まったら `03_Spec` `04_Architecture` `09_Decisions` に昇格する。
+LLM / 人間が横断検索する入口として、まず [index.md](./index.md) を読む。運用ログは [log.md](./log.md)、LLM Wiki 型の整理スキーマは [06_Operations/LLM_Wiki_Schema.md](./06_Operations/LLM_Wiki_Schema.md) に置く。
 
-このディレクトリは、科学研究を中心とした思考ツールとしての M3E のソフトウェア設計を、「入口」「思想」「戦略」「仕様」「アーキテクチャ」「外部連携」「意思決定」に分けて整理したものです。  
-現行方針と旧方針を混在させないため、廃止済み前提は `legacy/` に分離しています。
+## Reading Order
 
-## 読み順
-
-1. [00_Home/Home.md](./00_Home/Home.md)
+1. [00_Home/Agent_Brief.md](./00_Home/Agent_Brief.md)
 2. [00_Home/Current_Status.md](./00_Home/Current_Status.md)
-3. [01_Vision/Core_Principles.md](./01_Vision/Core_Principles.md)
-4. [02_Strategy/Current_Pivot_Freeplane_First.md](./02_Strategy/Current_Pivot_Freeplane_First.md)
-5. [03_Spec/Data_Model.md](./03_Spec/Data_Model.md)
-6. [03_Spec/Scope_and_Alias.md](./03_Spec/Scope_and_Alias.md)
-7. [03_Spec/Cloud_Sync.md](./03_Spec/Cloud_Sync.md)
-8. [03_Spec/Band_Spec.md](./03_Spec/Band_Spec.md)
-9. [04_Architecture/MVC_and_Command.md](./04_Architecture/MVC_and_Command.md)
-10. [04_Architecture/Drag_and_Reparent.md](./04_Architecture/Drag_and_Reparent.md)
-11. [05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](./05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
-12. [06_Operations/Test_and_CICD_Guide.md](./06_Operations/Test_and_CICD_Guide.md)
-13. [09_Decisions/ADR_001_Freeplane_First.md](./09_Decisions/ADR_001_Freeplane_First.md)
-14. [09_Decisions/ADR_002_React_UI_Basis.md](./09_Decisions/ADR_002_React_UI_Basis.md)
+3. [00_Home/Glossary.md](./00_Home/Glossary.md)
+4. [00_Home/Home.md](./00_Home/Home.md)
+5. [00_Home/Objective.md](./00_Home/Objective.md)
+6. [01_Vision/Principle.md](./01_Vision/Principle.md)
+7. [01_Vision/Vision.md](./01_Vision/Vision.md)
+8. [01_Vision/Strategy.md](./01_Vision/Strategy.md)
+9. [03_Spec/README.md](./03_Spec/README.md)
+10. [04_Architecture/README.md](./04_Architecture/README.md)
+11. [06_Operations/README.md](./06_Operations/README.md)
+12. [09_Decisions/README.md](./09_Decisions/README.md)
 
-## ディレクトリ構成
+## Directory Roles
 
-- `00_Home`: 全体像と現在地
-- `01_Vision`: プロダクトの原則
-- `02_Strategy`: 現在の進め方
-- `03_Spec`: ドメイン仕様
-- `04_Architecture`: 実装構造と操作設計
-- `05_Freeplane_Integration`: Freeplane を土台にする際の写像
-- `09_Decisions`: ADR
-- `legacy`: 現行では採用しない旧設計要件
+- `00_Home/`: セッション入口、現在地、用語辞書、Planning Hierarchy 入口
+- `01_Vision/`: Principle / Vision / Strategy
+- `03_Spec/`: 機能仕様。何を作るか
+- `04_Architecture/`: 実装構造。どう作るか
+- `06_Operations/`: 運用ルール、判断プール、手順、handoff
+- `09_Decisions/`: ADR
+- `competitive_research/`: 競合・周辺ツール調査
+- `daily/`: 日次ログ。追記中心
+- `for-akaghef/`: Akaghef 向け共有物、demo、説明資料
+- `ideas/`: 未確定の発想、stow された外部メモ
+- `legacy/`: 現行方針ではない旧設計
+- `research/`: 調査資料、会話抽出、根拠資料
+- `tasks/`: Codex worker / Director handoff と task notes
+- `_generated/`: 生成物。正本として直接編集しない
 
-## 文書設計の方針
+## Document Flow
 
-- `Vision` は変わりにくい原則を書く
-- `Strategy` は現時点の方針と優先順位を書く
-- `Spec` は実装に依存しないドメイン制約を書く
-- `Architecture` は UI/状態管理/コマンドの責務分離を書く
-- `Decisions` は採用済み判断の理由と影響を書く
-- `legacy` は歴史的経緯の保管場所であり、現行実装方針ではない
+1. 外部メモや未確定の発想は `ideas/` または `research/` に stow する。
+2. 会話で決まったことは、まず `06_Operations/Decision_Pool.md` に記録する。
+3. 仕様として固まったら `03_Spec/`、実装構造なら `04_Architecture/`、継続判断なら `09_Decisions/` へ昇格する。
+4. 横断索引は `index.md`、時系列運用ログは `log.md` で維持する。
 
-## 元メモ
+## Checks
 
-この構成は以下の既存メモを再編成したものです。
+```bash
+node scripts/ops/check-docs-index.mjs --check
+```
 
-- `docs/M3E仕様設計書.md`
-- `docs/M3E仕様2.md`
-- `docs/DragOperate.md`
-- `docs/freeplane利用について.txt`
+`docs/index.md` が stale の場合は次で再生成する。
+
+```bash
+node scripts/ops/check-docs-index.mjs --write
+```

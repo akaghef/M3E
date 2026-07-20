@@ -1,0 +1,52 @@
+version: 0.1
+id: m3e.map_manager_contract
+owner: Map Manager
+status: proposed
+source_docs:
+  product:
+    - docs/03_Spec/Data_Model.md
+    - docs/03_Spec/Scope_and_Alias.md
+    - docs/03_Spec/Node_Path_Notation.md
+    - docs/03_Spec/map_layout_modes.md
+  protocols:
+    - docs/protocols/map-manager/README.md
+    - docs/protocols/map-manager/gates.md
+    - docs/protocols/map-manager/projection-rule.md
+    - docs/protocols/map-write-protocol.md
+    - docs/protocols/scope-operation-protocol.md
+triggers:
+  - map restructuring
+  - scope or scopen or unscopen
+  - layouting or display intent
+  - cross-facet alias or GraphLink
+  - worker handoff
+  - ambiguous path or target node
+  - projection or interchange writeback
+must:
+  - resolve target map and path before write
+  - use canonical display path for human-facing targets
+  - decide projection purpose before deriving storage changes
+  - decide scope purpose before scope mutation
+  - decide facet before non-trivial structural write
+  - distinguish edge, GraphLink, and node-level link
+  - keep worker responsibility bounded
+  - verify structure after write
+must_not:
+  - delegate scope boundary decisions to worker without explicit handoff
+  - treat GraphLink as parent-child edge
+  - treat MF or Mermaid as native M3E storage
+  - create aliases or links across facets silently
+  - insert synthetic anchors without display intent
+  - let workers write M3E storage through direct API or SQLite without explicit authorized handoff
+escalate_when:
+  - path is ambiguous
+  - scope granularity is unclear
+  - alias vs move vs GraphLink is undecided
+  - layout mode is requested but unsupported
+  - worker needs to touch outside assigned scope
+verification:
+  - target path resolved
+  - tree invariants preserved
+  - link endpoints valid
+  - scope/display intent preserved
+  - worker handoff contains allowed and forbidden changes

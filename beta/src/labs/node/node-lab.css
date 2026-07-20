@@ -1,0 +1,84 @@
+body {
+  margin: 0;
+  background: #f5f7fb;
+  color: #1f2937;
+  font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+}
+
+.node-lab {
+  display: grid;
+  grid-template-columns: 280px minmax(560px, 1fr) 360px;
+  min-height: 100vh;
+}
+
+.lab-panel {
+  border-right: 1px solid #d8dee9;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.lab-panel.right {
+  border-right: 0;
+  border-left: 1px solid #d8dee9;
+}
+
+.lab-title {
+  margin: 0 0 18px;
+  font-size: 18px;
+}
+
+.control-group {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.control-group select {
+  min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: white;
+}
+
+.stage {
+  overflow: auto;
+  padding: 24px;
+}
+
+.node-lab-canvas {
+  width: 860px;
+  height: 520px;
+  background: white;
+  border: 1px solid #d8dee9;
+}
+
+.json-block,
+.fragment-block {
+  max-height: 42vh;
+  overflow: auto;
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.json-block pre,
+.fragment-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.lab-status {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.lab-status-pass {
+  color: #1f7a43;
+}

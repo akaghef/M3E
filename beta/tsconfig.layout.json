@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "declaration": false,
+    "noEmit": true,
+    "types": []
+  },
+  "include": [
+    "src/browser/viewer.globals.d.ts",
+    "src/browser/viewer.tuning.ts",
+    "src/browser/viewer.ts",
+    "src/browser/edge_adapters/**/*.ts",
+    "src/shared/layout_port.ts",
+    "src/shared/edge_port.ts",
+    "src/shared/edge_route.ts",
+    "src/shared/node_draw_port.ts",
+    "src/shared/node_draw_svg.ts",
+    "src/shared/parent_child_edge_adapter.ts",
+    "src/shared/types.ts"
+  ]
+}

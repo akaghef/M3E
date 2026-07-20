@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M3E V4 Service Slice Report</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", sans-serif; color: #1d252c; background: #f4f6f8; }
+    main { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.55fr); gap: 14px; padding: 18px; }
+    .pane { background: white; border: 1px solid #d8e0e6; border-radius: 8px; overflow: hidden; box-shadow: 0 18px 38px rgba(20,32,43,.12); }
+    .map img { width: 100%; height: 100%; object-fit: cover; object-position: center 38%; display: block; }
+    .situation { padding: 18px; display: grid; grid-template-rows: auto 1fr auto; gap: 14px; }
+    h1 { margin: 0; font-size: 23px; letter-spacing: 0; }
+    .sub { color: #60707d; font-size: 13px; margin-top: 5px; }
+    .step { display: none; border: 1px solid #dce3e9; border-radius: 8px; padding: 12px; background: #fbfcfd; }
+    .step.active { display: block; }
+    .step h2 { margin: 0 0 8px; font-size: 16px; }
+    .step p, .step li { font-size: 13px; line-height: 1.55; }
+    .badge { display:inline-block; border-radius: 5px; padding: 3px 7px; font-size: 11px; font-weight: 800; background:#eef5ff; color:#2563eb; }
+    .ok { background:#e7f6ed; color:#16824a; }
+    .warn { background:#fff3cf; color:#a66700; }
+    .err { background:#fff0ef; color:#c24135; }
+    .bar { height: 8px; background:#e5ebf0; border-radius: 99px; overflow: hidden; }
+    .fill { height:100%; width:0; background:linear-gradient(90deg,#2563eb,#087990,#16824a); transition: width .2s linear; }
+    code { background:#edf2f6; padding:2px 4px; border-radius:4px; }
+    @media (max-width: 980px) { main { grid-template-columns: 1fr; } .map { min-height: 420px; } }
+  </style>
+</head>
+<body>
+<main>
+  <section class="pane map"><img src="assets/v4_service_slice_m3e.png" alt="Actual M3E V4 demo map"></section>
+  <section class="pane situation">
+    <div>
+      <h1>V4 Service Slice</h1>
+      <div class="sub">実画面 + 状況だけを表示する報告動画 HTML。mapId: <code>map_team_swingby_v4_slice_260502</code></div>
+    </div>
+    <div id="steps">
+      <article class="step active"><span class="badge ok">PDF -> Flash</span><h2>Mapify 相当</h2><p>PDF から抽出したテキストを Flash draft として ingest し、承認して map に取り込んだ。</p></article>
+      <article class="step"><span class="badge ok">Miro</span><h2>議論の場</h2><p>host 側の visual discussion outcome を map node として追加。Miro 的な付箋・決定・議論 cluster を M3E 上で扱う。</p></article>
+      <article class="step"><span class="badge ok">Obsidian</span><h2>Vault 同期</h2><p>map を Markdown vault に export し、vault 側編集を import して戻した。vault: <code>C:\Users\Akaghef\dev\M3E\docs\for-akaghef\v4_demo\obsidian_vault</code></p></article>
+      <article class="step"><span class="badge err">409</span><h2>Conflict</h2><p>stale な VM/Obsidian 編集は <code>HTTP 409</code> で止め、remote を見た上で resolution を明示保存した。</p></article>
+      <article class="step"><span class="badge warn">GitHub design</span><h2>慎重設計</h2><p>GitHub は git add なし、常時 staged proposal、M3E secret lock、akaghef PC 正本同期を設計境界に固定。実 remote push はこの slice では実行しない。</p></article>
+    </div>
+    <div>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+    </div>
+  </section>
+</main>
+<script>
+  const steps=[...document.querySelectorAll('.step')];
+  const fill=document.getElementById('fill');
+  let i=0;
+  setInterval(()=>{ i=(i+1)%steps.length; steps.forEach((s,j)=>s.classList.toggle('active',j===i)); fill.style.width=((i+1)/steps.length*100)+'%'; }, 2600);
+</script>
+</body>
+</html>

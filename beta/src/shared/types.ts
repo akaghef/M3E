@@ -2,6 +2,10 @@ export type NodeType = "text" | "image" | "folder" | "alias";
 export type AliasAccess = "read" | "write";
 export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
+export type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
+export type MapNodeClass = "entity" | "scope";
+export type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 
 export interface TreeNode {
   id: string;
@@ -30,12 +34,75 @@ export interface GraphLink {
   label?: string;
   direction?: LinkDirection;
   style?: LinkStyle;
+  color?: string;
+  sourcePort?: LinkPort;
+  targetPort?: LinkPort;
 }
+
+export interface SurfaceNodeView {
+  x?: number;
+  y?: number;
+  flowCol?: number;
+  flowRow?: number;
+  shape?: "rect" | "diamond" | "rounded";
+}
+
+export interface MapSurface {
+  id: string;
+  scopeId: string;
+  kind: SurfaceKind;
+  layout: SurfaceLayout;
+  nodeViews?: Record<string, SurfaceNodeView>;
+}
+
+export interface MapScope {
+  id: string;
+  label: string;
+  rootNodeIds: string[];
+  relationIds: string[];
+  primarySurfaceId?: string;
+}
+
+export interface PenPoint {
+  x: number;
+  y: number;
+}
+
+export interface PenAnnotation {
+  id: string;
+  kind: "pen";
+  scopeId?: string;
+  d: string;
+  points: PenPoint[];
+  stroke: string;
+  strokeWidth: number;
+  opacity?: number;
+  createdAt?: string;
+}
+
+export interface TextAnnotation {
+  id: string;
+  kind: "text";
+  scopeId?: string;
+  x: number;
+  y: number;
+  text: string;
+  fill: string;
+  fontSize: number;
+  fontWeight?: number;
+  variant?: "date" | "label";
+  createdAt?: string;
+}
+
+export type MapAnnotation = PenAnnotation | TextAnnotation;
 
 export interface AppState {
   rootId: string;
   nodes: Record<string, TreeNode>;
   links?: Record<string, GraphLink>;
+  annotations?: Record<string, MapAnnotation>;
+  scopes?: Record<string, MapScope>;
+  surfaces?: Record<string, MapSurface>;
   linearNotesByScope?: Record<string, string>;
   linearTextFontScale?: number;
   linearPanelWidth?: number;

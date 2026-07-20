@@ -12,7 +12,7 @@
 | 4 | 探索ログ | plan.md | 情報収集・戦略立案の都度 |
 | 5 | 判断負債 | マップ reviews/Qn | 判断に迷った時 |
 | 6 | 技術負債 | plan.md debt / debt_register | 作業中に発見 |
-| 7 | アイデア・発見 | PJ内 idea/ / backlog(tomd) | 思いついた時 |
+| 7 | アイデア・発見 | PJ内 docs/ideas/ / backlog(tomd) | 思いついた時 |
 | 8 | 情報源 | plan.md / PJ内 docs/ | 参考にした文献・URL |
 | 9 | PJ間依存 | plan.md 依存関係 | 依存を発見した時 |
 | 10 | 時間実績 | plan.md 進捗ログ | task/Phase完了時 |

@@ -3,13 +3,13 @@
   verb: stabilize
   target: "display contracts foundation"
   done_when:
-    - "idea/00_meta/display_contracts/01_facet_type_contract_table.md exists"
+    - "docs/ideas/00_meta/display_contracts/01_facet_type_contract_table.md exists"
     - "flow / reviews / dependency contracts are written"
   eval_required: false
   eval_criteria:
     - "facet type defaults are concrete enough to drive map writing"
   parallelizable: false
-  scope: "idea/00_meta/display_contracts"
+  scope: "docs/ideas/00_meta/display_contracts"
   facet: design
   status: done
   round: 0
@@ -82,16 +82,16 @@
   verb: write
   target: "implementation facet contract"
   done_when:
-    - "implementation facet contract exists under idea/00_meta/display_contracts/"
+    - "implementation facet contract exists under docs/ideas/00_meta/display_contracts/"
     - "contract explains depth / breadth / link / anchor defaults"
   eval_required: true
   eval_criteria:
     - "contract is concrete enough to drive map writing"
     - "contract stays distinct from dependency and review facets"
   parallelizable: false
-  scope: "idea/00_meta/display_contracts"
+  scope: "docs/ideas/00_meta/display_contracts"
   facet: implementation
-  status: pending
+  status: done
   round: 0
   round_max: 3
   last_feedback: null
@@ -102,16 +102,16 @@
   verb: write
   target: "timeseries facet contract"
   done_when:
-    - "timeseries facet contract exists under idea/00_meta/display_contracts/"
+    - "timeseries facet contract exists under docs/ideas/00_meta/display_contracts/"
     - "contract standardizes depth=time and breadth=co-temporal events"
   eval_required: true
   eval_criteria:
     - "timeseries contract distinguishes sequencing from anchoring"
     - "contract is reusable beyond PJ02"
   parallelizable: false
-  scope: "idea/00_meta/display_contracts"
+  scope: "docs/ideas/00_meta/display_contracts"
   facet: flow
-  status: pending
+  status: done
   round: 0
   round_max: 3
   last_feedback: null
@@ -130,8 +130,8 @@
   parallelizable: false
   scope: "projects/PJ02_MathOntoBridge"
   facet: review
-  status: blocked
+  status: pending
   round: 0
   round_max: 2
   last_feedback: "Depends on T-1-1 and T-1-2 plus human review of the runtime board."
-  blocker: "Wait for both next contracts and the resulting evaluation board state."
+  blocker: null

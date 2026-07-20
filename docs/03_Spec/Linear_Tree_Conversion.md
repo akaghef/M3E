@@ -5,7 +5,7 @@
 M3E の主構造（Tree）と線形表現（Linear）を相互に変換し、
 思考入力の速度と構造整合性を両立する。
 
-本仕様は、`Core_Principles.md` の以下と整合する。
+本仕様は、`Principle.md` の以下と整合する。
 
 - 主構造は親子（Tree）を維持する
 - scope は認知境界として扱う
@@ -135,4 +135,4 @@ M3E の主構造（Tree）と線形表現（Linear）を相互に変換し、
 - `./Data_Model.md`
 - `./Import_Export.md`
 - `./Scope_and_Alias.md`
-- `../01_Vision/Core_Principles.md`
+- `../01_Vision/Principle.md`

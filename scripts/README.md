@@ -19,6 +19,7 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 |-----------|------|
 | `launch.bat` | Beta を起動（ビルド済み前提）**← 日常利用** |
 | `launch.sh` | Beta を Mac / Linux で起動（ビルド済み前提） |
+| `codex-app-server.sh` | Codex App server として Beta を起動（ブラウザ自動 open なし） |
 | `update-and-launch.bat` | git pull → install → build → 起動 |
 | `update-and-launch.sh` | git pull → install → build → 起動（Mac / Linux） |
 | `install-ollama-gemma3-4b.ps1` | Ollama 導入 + `gemma3:4b` 取得（ローカル AI 準備） |
@@ -33,9 +34,11 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 | スクリプト | 用途 |
 |-----------|------|
 | `launch.bat` | Final を起動（ビルド済み前提）**← 本番利用** |
-| `launch.sh` | Final を Mac / Linux で起動（ビルド済み前提） |
+| `launch.sh` | Final を Mac / Linux で起動（設定ファイル対応・依存/ビルドの軽修復あり） |
 | `configure-cloud-sync-mode.bat` | 同じ Final 製品を team cloud / Supabase sync 用に設定 |
+| `configure-cloud-sync-mode.sh` | Mac / Linux で team cloud / Supabase sync 用に設定 |
 | `configure-personal-mode.bat` | Final を personal/local 用設定に戻す |
+| `configure-personal-mode.sh` | Mac / Linux で Final を personal/local 用設定に戻す |
 | `update-and-launch.bat` | Final を更新して起動（migration 実行） |
 | `update-and-launch.sh` | Final を更新して起動（migration 実行、Mac / Linux） |
 | `migrate-from-beta.bat` | Beta → Final の sync・build・data migration・起動 |
@@ -43,10 +46,11 @@ M3E の各環境を日常利用するための起動・更新・migration スク
 
 補足:
 
-- `scripts/final/launch.bat` は mode-aware。
+- `scripts/final/launch.bat` と `scripts/final/launch.sh` は mode-aware。
 - `M3E_LAUNCH_MODE=personal` なら通常の local Final を起動する。
 - `M3E_LAUNCH_MODE=remote` なら設定済みの remote workspace を browser で開く。
-- `configure-cloud-sync-mode.bat` は `%LOCALAPPDATA%\M3E\m3e.conf` に
+- `configure-cloud-sync-mode.bat` / `.sh` は `%LOCALAPPDATA%\M3E\m3e.conf`
+  または `~/Library/Application Support/M3E/m3e.conf` に
   `M3E_CLOUD_*` / `M3E_SUPABASE_*` を書き込み、同じ Final 製品を
   team cloud client として使えるようにする。
 
@@ -75,20 +79,25 @@ Final を更新して起動する:
 macOS / Linux:
 ```bash
 ./scripts/beta/launch.sh
+./scripts/beta/codex-app-server.sh
 ./scripts/beta/update-and-launch.sh
+./scripts/final/configure-personal-mode.sh
 ./scripts/final/launch.sh
+./scripts/final/configure-cloud-sync-mode.sh <supabase-url> <anon-key>
 ./scripts/final/migrate-from-beta.sh
 ./scripts/final/update-and-launch.sh
 ```
 
 ## エージェント開始コマンド
 
-通常 codex（non-Copilot）で role/bootstrap を揃える場合は次を実行する。
+Windows / PowerShell 上の通常 codex（non-Copilot）で role/bootstrap を揃える場合は次を実行する。
 
 ```powershell
 pwsh -File scripts/ops/setrole.ps1 codex1
 # codex2 / claude も同様
 ```
+
+macOS / Linux 上の通常 Codex では PowerShell bootstrap を呼ばない。`pwd`、`git status --short --branch`、`git branch --show-current`、mandatory context 読み込みで session gate を通す。
 
 このコマンドは role -> worktree -> branch の整合を確認し、
 `codex1` / `codex2` の場合は `origin/dev-beta` への rebase チェックを実行する。

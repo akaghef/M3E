@@ -1,8 +1,8 @@
 # Map Layout Modes 設計ドキュメント
 
-> **Status**: Draft (設計のみ、コード変更なし)
-> **Author**: visual agent
-> **Date**: 2026-04-09
+> **Status**: Draft (Surface View 正本更新済み、コード移行は別タスク)
+> **Author**: visual agent / Codex
+> **Date**: 2026-06-03
 
 ---
 
@@ -13,7 +13,7 @@
 兄弟ノードを縦に並べるクラシックなマインドマップ配置を行う。
 
 Rapid モードでは「多様なグラフ構造」が目標であり、
-ユーザーがレイアウトモードを切り替えられるようにする必要がある。
+ユーザーが Surface View を切り替えられるようにする必要がある。
 
 ### 参考ツールの調査結果
 
@@ -24,6 +24,64 @@ Rapid モードでは「多様なグラフ構造」が目標であり、
 | MindNode | Horizontal, Vertical, Compact (org chart 風) |
 | draw.io | Horizontal tree, Vertical tree, Radial tree, Org chart (linear/hanger/fishbone) |
 | yEd | Hierarchical, Organic (force-directed), Tree, Radial, Circular, Balloon |
+
+### 1.1 Surface View 正本 (2026-06-03)
+
+M3E の見た目分類は、外部ツール名や旧実装名をそのまま Surface View にしない。
+正本は次の 5 種とし、細かい違いは option / subtype として扱う。
+
+```text
+Surface View
+├─ Tree
+│  ├─ direction: right / left / both / up / down
+│  ├─ space: tight / normal / loose
+│  └─ edge: orthogonal / line / curve
+├─ Axial
+│  ├─ subtype: timeline / roadmap / pipeline / sequence
+│  ├─ direction: right / left / up / down
+│  ├─ space: tight / normal / loose
+│  └─ edge: orthogonal / line / curve
+├─ Radial
+│  ├─ direction: clockwise / counterclockwise / balanced
+│  ├─ space: tight / normal / loose
+│  └─ edge: line / curve
+├─ Disperse
+│  ├─ subtype: scatter / cluster / force
+│  ├─ space: tight / normal / loose
+│  └─ edge: line / curve / force-link
+└─ System
+   ├─ subtype: containment / module / architecture
+   ├─ direction: right / down / free
+   ├─ space: tight / normal / loose
+   └─ edge: orthogonal / line / curve
+```
+
+#### 旧ラベルとの対応
+
+| 旧ラベル / 候補 | Surface View 正本 | 扱い |
+|---|---|---|
+| Mind Map / `balanced-tree` | Radial | 中心から放射する見た目。左右 balanced は Radial の direction option |
+| Tree Chart / Logic Chart / `right-tree` / `down-tree` | Tree | 階層を一方向または両方向に展開する見た目。Logic Chart は Tree の preset |
+| Timeline | Axial | timeline は Surface View ではなく Axial の subtype |
+| Roadmap / Pipeline / Sequence | Axial | 軸に沿って進行・順序・段階を読む見た目 |
+| Scatter / Force-directed | Disperse | 自由配置・クラスタ・力学配置の見た目 |
+| System surface | System | containment / module / architecture を扱う見た目 |
+| Matrix / Table | node object | Surface View ではなく、表・行列を表すノードオブジェクトとして実装する |
+
+#### 意味上の分離
+
+- **Tree**: 親子階層を読む。主眼は分解・包含・分類。
+- **Axial**: 1本の軸に沿って読む。主眼は時間・順序・進行・段階。
+- **Radial**: 中心から発散して読む。主眼は中心概念からの展開。
+- **Disperse**: 空間的な近さやクラスタで読む。主眼は関係密度・分布・近接。
+- **System**: 箱・境界・モジュール・リンクで読む。主眼は構造、責務、接続。
+
+#### pipeline / system graph の参照 UI
+
+2026-06-06 に取り込んだ [Pipeline UI Reference](../04_Architecture/Pipeline_UI_Reference.md)
+は、`Axial.subtype=pipeline` と `System.subtype=architecture` の視覚・操作参考として扱う。
+新しい Surface View 名は増やさない。M3E へ移植する対象は、左から右へ読む flow、typed card、port、selected-path focus、inspector、minimap、trace replay である。
+既定の Rapid tree view を置き換えるものではない。
 
 ---
 
@@ -71,7 +129,10 @@ layout: {
 
 ---
 
-## 3. レイアウトモード一覧
+## 3. 旧 LayoutMode 候補一覧
+
+この章は実装アルゴリズム候補のカタログであり、Surface View の正本ではない。
+ユーザー向け表示名と保存スキーマは 1.1 の `Tree / Axial / Radial / Disperse / System` を優先する。
 
 ### 3.1 Right Tree (現行) -- "Classic"
 
@@ -244,7 +305,7 @@ layout: {
 
 ---
 
-### 3.7 Matrix / Table -- "Grid View"
+### 3.7 Matrix / Table -- "Grid View" (node object)
 
 ```
   +----------+----------+----------+
@@ -264,7 +325,7 @@ layout: {
 | M3E モード | Rapid (構造化比較) |
 | エッジ | グリッド線のみ |
 | 実装難易度 | **高** |
-| 技術的影響 | 2次元配置はツリー構造と根本的に異なる。depth=1 を行ヘッダ、depth=2 をセルとして解釈する規約が必要。 |
+| 技術的影響 | 2次元配置は Surface View ではなく node object として扱う。表ノード内部で行・列・セルを管理し、外側の Surface View からは 1 ノードとして配置する。 |
 
 ---
 
@@ -329,11 +390,24 @@ layout: {
 ### 8.1 buildLayout のストラテジーパターン化
 
 ```typescript
-type LayoutMode = "right-tree" | "down-tree" | "balanced-tree" | "outline"
-                | "fishbone" | "timeline" | "matrix";
+type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system";
+
+type SurfaceViewEdge = "orthogonal" | "line" | "curve" | "force-link";
+type SurfaceViewSpace = "tight" | "normal" | "loose";
+type SurfaceViewDirection =
+  | "right" | "left" | "both" | "up" | "down" | "free"
+  | "clockwise" | "counterclockwise" | "balanced";
+
+interface SurfaceViewConfig {
+  kind: SurfaceViewKind;
+  subtype?: string;
+  direction?: SurfaceViewDirection;
+  space?: SurfaceViewSpace;
+  edge?: SurfaceViewEdge;
+}
 
 interface LayoutStrategy {
-  buildLayout(state: AppState, tuning: ViewerTuning): LayoutResult;
+  buildLayout(state: AppState, tuning: ViewerTuning, view: SurfaceViewConfig): LayoutResult;
 }
 
 // 現在の buildLayout() を RightTreeLayout クラスに抽出
@@ -366,9 +440,9 @@ interface EdgeRenderer {
 }
 ```
 
-### 8.4 レイアウトモード切替 UI
+### 8.4 Surface View 切替 UI
 
-- ツールバーにレイアウト切替ドロップダウンを追加
+- ツールバーに Surface View 切替ドロップダウンを追加
 - ドキュメント単位で保存 (doc メタデータ)
 - scope (部分ツリー) 単位での切替は将来検討
 
@@ -420,27 +494,41 @@ layout: {
 3. ノードスタイルの切替 (bubble -> text-only)
 
 ### Phase 5+: Fishbone, Timeline, Matrix
-- 要件が具体化してから詳細設計
+- Fishbone は Tree または Axial の特殊 preset として再評価する
+- Timeline は Axial subtype として具体化する
+- Matrix は Surface View ではなく node object として具体化する
 
 ---
 
-## 11. ドキュメント/スコープへのレイアウトモード保存設計
+## 11. ドキュメント/スコープへの Surface View 保存設計
 
-### 11.1 LayoutMode 型定義
+### 11.1 SurfaceView 型定義
 
 `beta/src/shared/types.ts` に追加:
 
 ```typescript
-export type LayoutMode =
-  | "right-tree"
-  | "down-tree"
-  | "balanced-tree"
-  | "outline"
-  | "fishbone"
-  | "timeline"
-  | "force-directed"
-  | "matrix";
+export type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system";
+
+export interface SurfaceViewConfig {
+  kind: SurfaceViewKind;
+  subtype?: string;
+  direction?: string;
+  space?: "tight" | "normal" | "loose";
+  edge?: "orthogonal" | "line" | "curve" | "force-link";
+}
 ```
+
+移行期間中、既存実装の `mindmap` / `logic-chart` / `timeline` / `scatter` などの値は
+UI・保存時に `SurfaceViewConfig` へ正規化する。
+
+| legacy value | normalized SurfaceViewConfig |
+|---|---|
+| `tree`, `right-tree`, `down-tree`, `logic-chart` | `{ kind: "tree" }` |
+| `mindmap`, `balanced-tree` | `{ kind: "radial" }` |
+| `timeline` | `{ kind: "axial", subtype: "timeline" }` |
+| `scatter`, `force-directed` | `{ kind: "disperse" }` |
+| `system` | `{ kind: "system" }` |
+| `matrix` | 非 Surface View。node object へ移行 |
 
 ### 11.2 ドキュメント単位の保存: AppState への追加
 
@@ -469,28 +557,29 @@ export interface AppState {
   linearPanelWidth?: number;
 
   // --- 新規追加 ---
-  /** ドキュメント全体のデフォルトレイアウトモード。省略時は "right-tree" */
-  layoutMode?: LayoutMode;
-  /** スコープ (folder) 単位のレイアウトモード上書き。キーは scopeRootId */
-  layoutModeByScope?: Record<string, LayoutMode>;
+  /** ドキュメント全体のデフォルト Surface View。省略時は { kind: "tree", direction: "right" } */
+  surfaceView?: SurfaceViewConfig;
+  /** スコープ (folder) 単位の Surface View 上書き。キーは scopeRootId */
+  surfaceViewByScope?: Record<string, SurfaceViewConfig>;
 }
 ```
 
 **設計判断**:
-- `layoutMode` は optional。省略 (undefined) 時は `"right-tree"` にフォールバック。これにより既存ドキュメントとの後方互換性を保つ
+- `surfaceView` は optional。省略 (undefined) 時は `{ kind: "tree", direction: "right" }` にフォールバック。これにより既存ドキュメントとの後方互換性を保つ
 - `linearNotesByScope` と同じパターン (`Record<string, T>` keyed by scopeRootId) を採用してスコープ単位の上書きを実現
+- legacy `layoutMode` / `layoutModeByScope` は読み取り互換として残し、保存時には `surfaceView` / `surfaceViewByScope` へ寄せる
 
-### 11.3 スコープ単位の保存: layoutModeByScope
+### 11.3 スコープ単位の保存: surfaceViewByScope
 
 #### 解決方式の比較
 
 | 方式 | 説明 | 利点 | 欠点 |
 |------|------|------|------|
-| **A. AppState.layoutModeByScope** | `Record<string, LayoutMode>` を AppState に追加 | linearNotesByScope と同一パターン。シリアライズが自然。node の型を汚さない | スコープ ID が変わるとゴミエントリが残る |
-| B. TreeNode.layoutMode | folder ノードの属性に layoutMode を追加 | ノードと1:1対応で分かりやすい | TreeNode の型が太る。非 folder ノードに設定された場合の扱い |
-| C. TreeNode.attributes | 既存の `attributes: Record<string, string>` に `"layoutMode"` キーで保存 | 型変更不要 | 文字列なのでバリデーション必要。属性の名前空間衝突リスク |
+| **A. AppState.surfaceViewByScope** | `Record<string, SurfaceViewConfig>` を AppState に追加 | linearNotesByScope と同一パターン。シリアライズが自然。node の型を汚さない | スコープ ID が変わるとゴミエントリが残る |
+| B. TreeNode.surfaceView | folder ノードの属性に surfaceView を追加 | ノードと1:1対応で分かりやすい | TreeNode の型が太る。非 folder ノードに設定された場合の扱い |
+| C. TreeNode.attributes | 既存の `attributes: Record<string, string>` に `"surfaceView"` キーで保存 | 型変更不要 | 文字列なのでバリデーション必要。属性の名前空間衝突リスク |
 
-**推奨: 方式 A (AppState.layoutModeByScope)**
+**推奨: 方式 A (AppState.surfaceViewByScope)**
 
 理由:
 1. `linearNotesByScope` という先行実装パターンがあり、viewer.ts 内のスコープ関連ロジックと整合する
@@ -498,22 +587,24 @@ export interface AppState {
 3. スコープ外のノードにレイアウト設定が誤適用されるリスクがない
 4. ゴミエントリの問題は、スコープ削除時にクリーンアップするユーティリティで対応可能 (linearNotesByScope も同じ問題を持つが、実用上問題になっていない)
 
-#### レイアウトモード解決の優先順序
+#### Surface View 解決の優先順序
 
 ```
-resolveLayoutMode(scopeRootId):
-  1. layoutModeByScope[scopeRootId]  -- スコープ固有の設定
-  2. AppState.layoutMode              -- ドキュメントデフォルト
-  3. "right-tree"                     -- ハードコードフォールバック
+resolveSurfaceView(scopeRootId):
+  1. surfaceViewByScope[scopeRootId]  -- スコープ固有の設定
+  2. AppState.surfaceView             -- ドキュメントデフォルト
+  3. legacy layoutModeByScope/layoutMode を正規化
+  4. { kind: "tree", direction: "right" } -- ハードコードフォールバック
 ```
 
 ```typescript
 // viewer.ts に追加するヘルパー
-function resolveLayoutMode(scopeRootId: string): LayoutMode {
+function resolveSurfaceView(scopeRootId: string): SurfaceViewConfig {
   const state = doc!.state;
-  return state.layoutModeByScope?.[scopeRootId]
-      ?? state.layoutMode
-      ?? "right-tree";
+  return state.surfaceViewByScope?.[scopeRootId]
+      ?? state.surfaceView
+      ?? normalizeLegacyLayoutMode(state.layoutModeByScope?.[scopeRootId] ?? state.layoutMode)
+      ?? { kind: "tree", direction: "right" };
 }
 ```
 
@@ -522,27 +613,27 @@ function resolveLayoutMode(scopeRootId: string): LayoutMode {
 ```typescript
 function buildLayout(state: AppState): LayoutResult {
   const scopeRootId = currentScopeRootId();
-  const mode = resolveLayoutMode(scopeRootId);
-  const strategy = layoutStrategies[mode]; // Record<LayoutMode, LayoutStrategy>
-  return strategy.buildLayout(state, VIEWER_TUNING);
+  const view = resolveSurfaceView(scopeRootId);
+  const strategy = layoutStrategies[view.kind]; // Record<SurfaceViewKind, LayoutStrategy>
+  return strategy.buildLayout(state, VIEWER_TUNING, view);
 }
 ```
 
 ### 11.5 ViewState への影響
 
-ViewState はメモリ上のトランジェントな状態であり、layoutMode は保持しない。
-レイアウトモードは常に `doc.state` から解決する。
+ViewState はメモリ上のトランジェントな状態であり、Surface View は保持しない。
+Surface View は常に `doc.state` から解決する。
 
 ただし、スコープ切替時のカメラ位置リセットについて:
-- レイアウトモードが変わる遷移 (例: balanced-tree スコープ -> outline スコープ) ではカメラを初期位置にリセットするのが望ましい
+- Surface View kind が変わる遷移 (例: Tree スコープ -> Radial スコープ) ではカメラを初期位置にリセットするのが望ましい
 - `viewState.zoom`, `viewState.cameraX`, `viewState.cameraY` を初期値に戻す
 
 ```typescript
 // スコープ遷移時に呼ぶ
 function onScopeChange(prevScopeId: string, nextScopeId: string): void {
-  const prevMode = resolveLayoutMode(prevScopeId);
-  const nextMode = resolveLayoutMode(nextScopeId);
-  if (prevMode !== nextMode) {
+  const prevView = resolveSurfaceView(prevScopeId);
+  const nextView = resolveSurfaceView(nextScopeId);
+  if (prevView.kind !== nextView.kind) {
     viewState.zoom = 1;
     viewState.cameraX = VIEWER_TUNING.pan.initialCameraX;
     viewState.cameraY = VIEWER_TUNING.pan.initialCameraY;
@@ -554,22 +645,24 @@ function onScopeChange(prevScopeId: string, nextScopeId: string): void {
 
 `SavedDoc` は `{ version: 1, savedAt: string, state: AppState }` であり、AppState の変更がそのままシリアライズに反映される。追加フィールドはすべて optional なので、version は 1 のまま据え置きできる。
 
-古い viewer で新しい JSON を読み込んだ場合: `layoutMode` / `layoutModeByScope` は無視されるだけで、right-tree で表示される。完全な後方互換。
+古い viewer で新しい JSON を読み込んだ場合: `surfaceView` / `surfaceViewByScope` は無視されるだけで、right-tree で表示される。完全な後方互換。
+新しい viewer は legacy `layoutMode` / `layoutModeByScope` も読み取り、正規化して表示できる必要がある。
 
-### 11.7 UI: レイアウト切替ドロップダウン
+### 11.7 UI: Surface View 切替
 
 ツールバーに追加するコントロール:
 
 ```
-[Flash | Rapid | Deep]  [Layout: ▼ Classic ]  [+] [-] [Fit] ...
-                            ├ Classic (right-tree)
-                            ├ Org Chart (down-tree)
-                            ├ Radial (balanced-tree)
-                            ├ Outline
-                            ├ Fishbone
-                            ├ Timeline
-                            ├ Force-directed
-                            └ Matrix
+[Flash | Rapid | Deep]  [View: ▼ Tree / Right ]  [+] [-] [Fit] ...
+                            ├ Tree
+                            │   ├ direction: right / left / both / up / down
+                            │   ├ space: tight / normal / loose
+                            │   └ edge: orthogonal / line / curve
+                            ├ Axial
+                            │   └ subtype: timeline / roadmap / pipeline / sequence
+                            ├ Radial
+                            ├ Disperse
+                            └ System
 ```
 
 - ドキュメント全体のデフォルト変更: Ctrl+Shift+L (仮)
@@ -579,6 +672,10 @@ function onScopeChange(prevScopeId: string, nextScopeId: string): void {
 ---
 
 ## 12. テスト方針
+
+この章の `right-tree` / `balanced-tree` / `timeline` / `matrix` などの値は、
+旧 LayoutMode 設計時点のテスト名である。
+Surface View 移行後は `SurfaceViewConfig` ベースのテスト名へ置換する。
 
 ### 12.1 テスト対象の全体像
 

@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "mapId": "BIO-RF1-ANIMALS-EXPAND-001-live",
+  "workspaceId": "ws_REMH1Z5TFA7S93R3HA0XK58JNR",
+  "activeNode": {
+    "workspaceId": "ws_REMH1Z5TFA7S93R3HA0XK58JNR",
+    "mapId": "BIO-RF1-ANIMALS-EXPAND-001-live",
+    "agentId": "rapid-mapify-oracle",
+    "nodeId": "n_animals",
+    "updatedAt": "2026-06-04T15:31:55.694Z"
+  },
+  "savedAt": "2026-06-04T15:31:55.695Z",
+  "opId": "RF1.expandSelectedNode",
+  "action": "detail",
+  "source": "mapify_teacher_fixture",
+  "fragment": "# 爬虫類\n# 両生類\n# 無脊椎動物",
+  "added": [
+    {
+      "id": "n_1780587115694_z0vsp4",
+      "parentId": "n_animals",
+      "label": "爬虫類"
+    },
+    {
+      "id": "n_1780587115694_isqdpi",
+      "parentId": "n_animals",
+      "label": "両生類"
+    },
+    {
+      "id": "n_1780587115694_egipb1",
+      "parentId": "n_animals",
+      "label": "無脊椎動物"
+    }
+  ],
+  "merged": [],
+  "diagnostics": [
+    "Mapify teacher fixture BIO-RF1-ANIMALS-EXPAND-001 matched selected node 動物."
+  ],
+  "oracle": {
+    "teacherLabels": [
+      "爬虫類",
+      "両生類",
+      "無脊椎動物"
+    ],
+    "teacherProximity": 1
+  }
+}

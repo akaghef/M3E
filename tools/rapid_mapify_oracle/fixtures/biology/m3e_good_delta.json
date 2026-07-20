@@ -1,0 +1,37 @@
+{
+  "opId": "RF1.expandSelectedNode",
+  "selectedNodeId": "n_animals",
+  "source": "example_good_m3e_candidate",
+  "actions": [
+    {
+      "type": "appendChildren",
+      "parentId": "n_animals",
+      "nodes": [
+        {
+          "id": "m_reptiles",
+          "text": "爬虫類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class"
+          }
+        },
+        {
+          "id": "m_amphibians",
+          "text": "両生類",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class"
+          }
+        },
+        {
+          "id": "m_invertebrates",
+          "text": "無脊椎動物",
+          "children": [],
+          "attributes": {
+            "semanticRole": "class"
+          }
+        }
+      ]
+    }
+  ]
+}

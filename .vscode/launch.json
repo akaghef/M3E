@@ -1,0 +1,60 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "M3E: Sidebar Extension Host",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/tools/vscode-m3e-sidebar",
+        "${workspaceFolder}"
+      ]
+    },
+    {
+      "name": "M3E: Beta Launch",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}\\scripts\\beta\\launch.bat",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "M3E: Beta Update And Launch",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "${workspaceFolder}\\scripts\\beta\\update-and-launch.bat",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "M3E: PJ03 Demo Full",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run demo:pj03",
+      "cwd": "${workspaceFolder}\\beta"
+    },
+    {
+      "name": "M3E: PJ03 Demo Core",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "node dist/node/pj03_demo.js --mode core",
+      "cwd": "${workspaceFolder}\\beta",
+      "preLaunchTask": "Beta: Build Node"
+    },
+    {
+      "name": "M3E: PJ03 Demo Scope",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "node dist/node/pj03_demo.js --mode scope",
+      "cwd": "${workspaceFolder}\\beta",
+      "preLaunchTask": "Beta: Build Node"
+    },
+    {
+      "name": "M3E: PJ03 Demo Preflight",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "node dist/node/pj03_demo.js --mode preflight",
+      "cwd": "${workspaceFolder}\\beta",
+      "preLaunchTask": "Beta: Build Node"
+    }
+  ]
+}

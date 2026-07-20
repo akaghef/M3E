@@ -11,7 +11,15 @@
 // ---------------------------------------------------------------------------
 
 import { test, expect, beforeAll, afterAll } from "vitest";
-const http = require("node:http");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const previousDataDir = process.env.M3E_DATA_DIR;
+const previousDbFile = process.env.M3E_DB_FILE;
+const tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-cloud-ops-safety-"));
+process.env.M3E_DATA_DIR = tempDataDir;
+process.env.M3E_DB_FILE = "cloud_ops_safety.sqlite";
 
 const { createAppServer } = require("../../dist/node/start_viewer.js");
 const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
@@ -66,6 +74,17 @@ afterAll(async () => {
     await new Promise((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
+  }
+  fs.rmSync(tempDataDir, { recursive: true, force: true });
+  if (previousDataDir === undefined) {
+    delete process.env.M3E_DATA_DIR;
+  } else {
+    process.env.M3E_DATA_DIR = previousDataDir;
+  }
+  if (previousDbFile === undefined) {
+    delete process.env.M3E_DB_FILE;
+  } else {
+    process.env.M3E_DB_FILE = previousDbFile;
   }
 });
 

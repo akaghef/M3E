@@ -1,0 +1,54 @@
+{
+  "version": "0.1.0",
+  "ops": [
+    {
+      "id": "RF1.expandSelectedNode",
+      "layer": "Rapid",
+      "intent": "Add missing local sub-branches to the selected node.",
+      "input": [
+        "AppState tree",
+        "selectedNodeId",
+        "local context"
+      ],
+      "output": "appendChildren delta under selectedNodeId",
+      "guards": [
+        "no new map",
+        "no new scope",
+        "no mutation outside selected subtree",
+        "no duplicate sibling labels"
+      ],
+      "firstBenchmark": "fixtures/cases/biology_expand_animals.case.json"
+    },
+    {
+      "id": "RF2.addExamples",
+      "layer": "Rapid",
+      "intent": "Add concrete examples under selected concept node.",
+      "output": "appendChildren delta with semanticRole=example",
+      "guards": [
+        "examples only",
+        "short labels",
+        "no class/example mixing"
+      ]
+    },
+    {
+      "id": "RF3.addSubtypes",
+      "layer": "Rapid",
+      "intent": "Add subtype/classification children under selected class node.",
+      "output": "appendChildren delta with semanticRole=class",
+      "guards": [
+        "classes only",
+        "same granularity among siblings"
+      ]
+    },
+    {
+      "id": "RF4.splitOverloadedNode",
+      "layer": "Rapid",
+      "intent": "Split a long/compound node into map-native atomic labels.",
+      "output": "replace or decompose node into children",
+      "guards": [
+        "semantic preservation",
+        "traceable old->new mapping"
+      ]
+    }
+  ]
+}

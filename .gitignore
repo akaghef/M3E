@@ -1,5 +1,6 @@
 tmp/
 node_modules/
+/node_modules
 
 mvp/node_modules/
 mvp/dist/
@@ -8,8 +9,10 @@ mvp/data/rapid-sample.json
 mvp/data/*.sqlite
 
 beta/node_modules/
+/beta/node_modules
 beta/dist/
 beta/.env
+beta/generated/
 beta/data/rapid-sample.json
 beta/data/*.sqlite
 beta/data/audit/
@@ -18,10 +21,12 @@ beta/data/conflict-backups/
 beta/data/.m3e-launched
 final/data/audit/
 final/data/backups/
+final/data/conflict-backups/
 beta/test-results/
 beta/tests/e2e/test-results/
 
 final/node_modules/
+/final/node_modules
 final/dist/
 final/.env
 final/data/*.sqlite
@@ -31,7 +36,11 @@ final/test-results/
 .claude/*
 !.claude/skills/
 !.claude/agents/
-.agents/
+# Project-local skills are intentional; keep other agent-local state ignored.
+.agents/*
+!.agents/skills/
+!.agents/skills/**
+.agents/**/.DS_Store
 docs/ideas/user_memo.md
 memo.md
 beta/tests/visual/viewer.visual.spec.js-snapshots/
@@ -40,9 +49,65 @@ tmp_*.json
 
 artifacts/
 
+# Generated macOS installer payload: copied app, dependencies, and runtime.
+/install/mac/payload/
+
+# internal document for my team
+docs/internal/*
+
 # Transient outputs from the m3e-map skill (run at repo root)
 /m3e-map.json
 /m3e-map-update.mjs
+/.skillportrc
 
 # External repo clones referenced by sub-projects
 projects/PJ02_MathOntoBridge/pfr/
+tools/mermaid/
+
+# Local cloud sync launcher with Supabase creds (never commit)
+scripts/ops/launch-cloud-sync.local.bat
+
+# API performance logs (local only, may contain path/client metadata)
+/logs/
+
+# PJ04: iteration artifacts (png/json/log). Keep README.md summaries only.
+projects/PJ04_MermaidSystemLangGraph/loops/**/*.png
+projects/PJ04_MermaidSystemLangGraph/loops/**/*.json
+projects/PJ04_MermaidSystemLangGraph/loops/**/*.log
+
+# VS Code "Code Runner" scratch files
+**/tempCodeRunnerFile.*
+
+# Bitwarden exports / sessions (NEVER commit)
+*.bwjson
+bw_export*.json
+.bw_session
+
+# PJ04: Python venv + caches
+projects/PJ04_MermaidSystemLangGraph/runtime/.venv/
+projects/PJ04_MermaidSystemLangGraph/runtime/**/__pycache__/
+projects/PJ04_MermaidSystemLangGraph/runtime/**/*.pyc
+projects/PJ04_MermaidSystemLangGraph/runtime/traces/
+projects/PJ04_MermaidSystemLangGraph/runtime/checkpoints.sqlite
+
+# Local agent / editor / runtime state (never commit)
+/.codex/
+/.hermes/
+/.kamui/
+.obsidian/
+
+# In-repo worktree bundle. New worktrees live outside the repo at
+# $HOME/dev/M3E-worktrees/<task> ; ignore any stragglers created here.
+/worktrees/
+
+# Root-level scratch captures / canvases / bundles
+/AGENTS 2.md
+/*.canvas
+/*.base
+/backlog/keyboardimage.jpg
+/agent_instructions/skills_canonical.zip
+/*.png
+
+# Root-local TLS material (for example Tailscale certificates).
+/*.key
+/*.crt

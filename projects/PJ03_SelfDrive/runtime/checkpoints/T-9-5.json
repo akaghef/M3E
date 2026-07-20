@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "task_id": "T-9-5",
+  "updated_at": "2026-04-21T12:18:29.455Z",
+  "state": {
+    "kind": "done",
+    "round": 0,
+    "round_max": 1,
+    "last_feedback": null,
+    "blocker": null,
+    "escalation_kind": null,
+    "wakeup_at": null,
+    "wakeup_mechanism": null,
+    "failure_reason": null,
+    "graph_position": null
+  }
+}

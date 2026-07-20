@@ -216,10 +216,10 @@
       "title": "Display contracts workspace",
       "summary": "Facet type defaults and concrete contracts are being written here.",
       "files": [
-        "idea/00_meta/display_contracts/01_facet_type_contract_table.md",
-        "idea/00_meta/display_contracts/02_flow_contract.md",
-        "idea/00_meta/display_contracts/03_reviews_contract.md",
-        "idea/00_meta/display_contracts/04_dependency_contract.md"
+        "docs/ideas/00_meta/display_contracts/01_facet_type_contract_table.md",
+        "docs/ideas/00_meta/display_contracts/02_flow_contract.md",
+        "docs/ideas/00_meta/display_contracts/03_reviews_contract.md",
+        "docs/ideas/00_meta/display_contracts/04_dependency_contract.md"
       ]
     },
     {

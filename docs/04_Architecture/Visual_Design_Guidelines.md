@@ -407,6 +407,26 @@ For now:
 
 This is the default rule unless a later ADR or spec explicitly changes it.
 
+## Pipeline / System Graph Reference
+
+[Pipeline UI Reference](./Pipeline_UI_Reference.md) is a working visual asset for
+system / workflow graph surfaces. It is not a replacement for the default Rapid
+tree visual policy.
+
+Use this reference when the surface is explicitly about reading execution
+structure, dependency flow, GraphSpec nodes, or runtime trace:
+
+- left-to-right flow is useful for `Axial` pipeline and `System` architecture views
+- node type may use stronger card treatments than the default Rapid tree
+- color must be paired with badge or shape, not used alone
+- selected path emphasis should override permanent semantic color
+- GraphLink labels should be revealed on hover, selection, or replay step rather than always expanded
+- inspector / detail panel should show contract fields without mutating map state
+
+Do not import the reference wholesale into normal mind-map rendering. The
+portable part is the interaction grammar: typed cards, ports, selected-path
+focus, right-side contract inspector, minimap, and trace replay controls.
+
 ## MVP Decisions Summary
 
 - Root is visually boxed and distinct

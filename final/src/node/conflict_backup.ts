@@ -18,6 +18,7 @@ export interface ConflictBackupFull extends ConflictBackupEntry {
 }
 
 const MAX_BACKUPS_PER_DOC = 10;
+let backupSequence = 0;
 
 function backupDir(dataDir: string): string {
   return path.join(dataDir, "conflict-backups");
@@ -50,8 +51,9 @@ function parseBackupFileName(
 function generateBackupId(): string {
   const now = new Date();
   const ts = now.toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, -1);
+  const seq = String(backupSequence++).padStart(6, "0");
   const rand = Math.random().toString(36).slice(2, 8);
-  return `${ts}_${rand}`;
+  return `${ts}_${seq}_${rand}`;
 }
 
 /**
@@ -130,7 +132,7 @@ export function listConflictBackups(
   }
 
   // Sort newest first
-  entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.backupId.localeCompare(a.backupId));
   return entries;
 }
 

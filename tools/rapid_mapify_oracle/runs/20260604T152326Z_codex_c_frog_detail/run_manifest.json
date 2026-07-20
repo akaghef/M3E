@@ -1,0 +1,55 @@
+{
+  "runId": "20260604T152326Z_codex_c_frog_detail",
+  "createdAt": "2026-06-04T15:23:26.066Z",
+  "skill": "m3e-mapify-bridge",
+  "mode": "codex_operator_generated_mfh_to_m3e_append",
+  "target": {
+    "workspaceId": "ws_REMH1Z5TFA7S93R3HA0XK58JNR",
+    "mapId": "codex-pn-verify-5",
+    "scopeId": "n_1780555544823_0_738kjz",
+    "selectedNodeId": "n_1780583736973_psz3ep",
+    "selectedLabel": "カエル"
+  },
+  "opId": "RF1.expandSelectedNode",
+  "action": "detail",
+  "mapifyProbe": {
+    "previewUrl": "https://assets.chatmind.tech/maps/previews/e442c3be-7334-4861-a146-6dfdfd5a446f/ac1985fac5ca44a4a0ffe2043c3ad7e7",
+    "editUrl": "https://mapify.so/third-party/editor?data=68d34b7abb4ee85edc793a32172c5983b540f603dfdda0031f10654a7ec8824dc5b712224e4232ffb8421d4e069bc843e13ce8a5b84588c07791099476c2e027&utm_source=mcp&utm_campaign=mcp&utm_medium=mcp_action&channel=mcp"
+  },
+  "canonicalWrite": "M3E AppState via /subtree/append-mf-h",
+  "fragment": "# 体のつくり\n# 生活史\n# 生息環境\n# 食性\n# 天敵",
+  "added": [
+    {
+      "id": "n_1780586606062_jesu86",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "体のつくり"
+    },
+    {
+      "id": "n_1780586606062_jil1ds",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "生活史"
+    },
+    {
+      "id": "n_1780586606062_5iom00",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "生息環境"
+    },
+    {
+      "id": "n_1780586606062_fzhnks",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "食性"
+    },
+    {
+      "id": "n_1780586606062_fcssmc",
+      "parentId": "n_1780583736973_psz3ep",
+      "label": "天敵"
+    }
+  ],
+  "merged": [],
+  "guards": [
+    "no Mapify cookies",
+    "selected node only",
+    "dryRun before apply",
+    "readback after apply"
+  ]
+}

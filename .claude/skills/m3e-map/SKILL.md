@@ -10,6 +10,9 @@ description: |
   (fill / urgency / importance / status).
 ---
 
+<!-- generated from agent_instructions/skills_canonical/m3e-map/SKILL.md; do not edit mirror directly -->
+
+
 # M3E Map API Skill
 
 Operate on the M3E mind-map through its local REST API.
@@ -26,12 +29,53 @@ Operate on the M3E mind-map through its local REST API.
 For any map operation, follow this sequence:
 
 1. **Identify the map** — if not given, list `GET /api/maps` and pick by `label` (e.g. "開発" = DEV, "研究" = RESEARCH)
-2. **Read** the current state (see `references/read.md`)
-3. **Modify** in-memory while maintaining invariants (see `references/data-model.md`)
-4. **Write** the full state back via POST or PUT (see `references/write.md`)
-5. **Verify** the response — success returns `{ "ok": true, "savedAt": "...", "mapId": "..." }`
+2. **Read the display contract first** — for writes, determine the target facet and display goals before touching structure (see `references/facet-contracts.md` and `references/display-intent.md`)
+3. **Read** the current state (see `references/read.md`)
+4. **Modify** in-memory while maintaining invariants and the chosen display contract (see `references/data-model.md`)
+5. **Write** the full state back via POST or PUT (see `references/write.md`)
+6. **Verify** the response — success returns `{ "ok": true, "savedAt": "...", "mapId": "..." }`
+
+## Route structural decisions to Map Manager
+
+This skill executes map reads and writes. It does not own scope granularity,
+scopen / unscopen policy, layouting / display intent, alias vs move vs GraphLink
+choices across facets, or worker handoff boundaries.
+
+For those decisions, consult `docs/protocols/map-manager/README.md`,
+`docs/protocols/map-manager/gates.md`, and the `map-manager` skill before mutation.
 
 For complex modifications (>3 nodes), write a one-shot Node.js script to `%TEMP%` (Windows) / `/tmp` and execute. **Bash `/tmp` ≠ Node.js `/tmp` on Windows** — use absolute Windows path like `c:/Users/Akaghef/AppData/Local/Temp/script.js` when invoking `node`. For 1-3 node changes, inline JSON with curl is fine.
+
+## Human-First Principle
+
+M3E is for **structural dialogue between humans and AI**. When writing a map, optimize first for:
+
+1. human review speed
+2. human visual parsing
+3. preserving semantic structure
+
+This means:
+
+- do not jump straight from raw user text to node placement
+- determine the relevant **facet contract**
+- determine the **display intent** for this write
+- only then choose anchoring, ordering, links, colors, and collapse state
+
+When the user gives a writing request that implies structure and visual policy, treat it as a **display-governed write**, not a plain CRUD operation.
+
+## Write-Time Decision Order
+
+For any non-trivial write, follow this exact order:
+
+1. **Facet detection** — what kind of structure is this? (`flow`, `dependency`, `reviews`, `timeseries`, `document`, etc.)
+2. **Facet contract lookup** — what does tree/link/alias mean in this facet?
+3. **Display intent extraction** — what should be visually optimized for this specific write?
+4. **Anchoring decision** — should synthetic grouping nodes be inserted for readability?
+5. **Color/style decision** — what visual channels should encode importance, urgency, confidence, status, etc.?
+6. **Concrete write** — create/move/update nodes and links
+7. **Post-write verification** — reread and confirm the resulting view matches the display intent
+
+Do not invert this order. In particular, do **not** decide anchoring or coloring before the facet and display intent are clear.
 
 ## Quick Endpoint Reference
 
@@ -66,16 +110,27 @@ The save response is:
 { "ok": true, "savedAt": "ISO-8601", "mapId": "...", "integrationMode": "off|on", "sourceOfTruth": "sqlite" }
 ```
 
-### Path format (`Map:` convention)
+### Path format
 
-User-copied paths from the viewer (right-click → "Copy path") use the form `Map:Root/Child/Grandchild`. The `Map:` prefix is optional on the API (accepted case-insensitively). A leading `Root` segment (or the root node's own text) resolves to the document root.
+Human-facing requests and AI handoffs should use the canonical display path:
+
+```text
+M:(<map label>)> A > B >> C
+```
+
+`>` separates path segments inside a scope. `>>` marks a scope boundary. `/` is
+legacy/API compatibility only; `\` is filesystem only.
+
+### Legacy API path format (`Map:` convention)
+
+User-copied paths from the viewer (right-click -> "Copy path") use the official display form `M:(<map label>)> A > B >> C`. The legacy `Map:Root/Child/Grandchild` form remains accepted by the API resolver for compatibility only.
 
 - Success: `{ ok: true, mapId, nodeId, matched: ["Root", ...] }`
 - `PATH_NOT_FOUND` (404): no child with that text under the current parent
 - `PATH_AMBIGUOUS` (409): multiple children share the segment text; response includes `candidates: [nodeId, ...]`
 - Custom separator: pass `&sep=>` (or any single char) if a segment text contains `/`
 
-Prefer `resolve` + `?scope=<nodeId>` over loading the full state when the user gave you a path.
+Prefer canonical display paths in user-facing reports. Use `resolve` + `?scope=<nodeId>` over loading the full state when the user gave you a legacy/API path.
 
 ## Node Decoration: `m3e:style`
 
@@ -143,6 +198,8 @@ When unsure whether a change warrants a refresh, run it — the cost is one HTTP
 | File | When to read |
 |------|-------------|
 | `references/data-model.md` | Node structure, ID format, invariants, alias/link rules, `m3e:style` schema |
+| `references/facet-contracts.md` | Determine what tree / link / alias mean in each facet before writing |
+| `references/display-intent.md` | Determine anchoring, ordering, color, and visibility from the human-facing display goal |
 | `references/read.md` | Reading or querying maps; tree display; node search |
 | `references/write.md` | Adding, updating, moving, deleting nodes; bulk script template; coloring template |
 | `scripts/color_by_difficulty.js` | Default white→red difficulty coloring pass (run after structural writes) |

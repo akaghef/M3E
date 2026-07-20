@@ -1,0 +1,1178 @@
+#workbench-root {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  font-family: Inter, "Segoe UI", "Yu Gothic UI", sans-serif;
+  color: #1f1f24;
+}
+
+.toolbar,
+.scatter-toolbar,
+.draw-toolbar,
+.mode-badge {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none !important;
+}
+
+.meta-panel {
+  left: -10000px !important;
+  top: -10000px !important;
+}
+
+.wb-shell {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.wb-topbar,
+.wb-left-rail,
+.wb-right-panel,
+.wb-panel-tab,
+.wb-scatter-panel,
+.wb-bottom-controls,
+.wb-ai-dock,
+.wb-popover,
+.wb-modal,
+.wb-toast {
+  pointer-events: auto;
+}
+
+.wb-topbar {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wb-brand,
+.wb-top-actions,
+.wb-bottom-controls,
+.wb-left-rail,
+.wb-scatter-panel,
+.wb-right-panel,
+.wb-panel-tab,
+.wb-ai-dock,
+.wb-popover,
+.wb-modal {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(20, 20, 30, 0.11);
+  box-shadow: 0 10px 28px rgba(20, 20, 30, 0.16);
+}
+
+.wb-brand,
+.wb-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 5px;
+}
+
+.wb-logo {
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: #111;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.wb-home,
+.wb-icon-btn,
+.wb-user,
+.wb-present,
+.wb-share,
+.wb-board-title,
+.wb-pill,
+.wb-zoom,
+.wb-popover button,
+.wb-action-grid button,
+.wb-settings-nav button,
+.wb-disabled-list button,
+.wb-modal-actions button {
+  border: 0;
+  background: transparent;
+  color: #24242a;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wb-home,
+.wb-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+}
+
+.wb-icon-btn:hover,
+.wb-home:hover,
+.wb-board-title:hover,
+.wb-user:hover,
+.wb-popover button:hover,
+.wb-action-grid button:hover {
+  background: #f1f3f7;
+}
+
+.wb-icon-btn.is-active {
+  background: #e9ddff;
+  color: #6d31f5;
+}
+
+.wb-left-rail > .wb-icon-btn:last-child:hover,
+.wb-left-rail > .wb-icon-btn:last-child:focus-visible,
+#workbench-root:has(.wb-progressive-nav:hover) .wb-left-rail > .wb-icon-btn:last-child,
+.wb-left-rail > .wb-icon-btn.is-active:last-child {
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 0 0 2px #4262ff, 0 10px 22px rgba(20, 20, 30, 0.22);
+}
+
+.wb-icon-btn:disabled,
+.wb-pill:disabled,
+.wb-disabled-list button:disabled {
+  color: #9a9aa3;
+  cursor: default;
+}
+
+.wb-board-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-weight: 700;
+}
+
+.wb-board-title small {
+  color: #7b7d87;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wb-status-chip {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: #f5f6f8;
+  font-size: 12px;
+  color: #555864;
+}
+
+.wb-user,
+.wb-present,
+.wb-share {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 7px;
+  padding: 0 9px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wb-present {
+  background: #f4f5f7;
+}
+
+.wb-share {
+  background: #4262ff;
+  color: #fff;
+}
+
+.wb-avatar {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2d2d35, #7755ff);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  position: relative;
+}
+
+.wb-avatar.is-online::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #20c997;
+}
+
+.wb-avatar.sm {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+}
+
+.wb-left-rail {
+  position: absolute;
+  left: 16px;
+  top: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 46px;
+  padding: 7px;
+  border-radius: 9px;
+}
+
+.wb-rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0;
+  border-top: 1px solid #edf0f4;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.wb-right-panel {
+  position: absolute;
+  top: 68px;
+  right: 14px;
+  width: 284px;
+  max-height: calc(100vh - 126px);
+  overflow: auto;
+  border-radius: 9px;
+  padding: 14px;
+}
+
+.wb-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.wb-panel-head-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.wb-panel-head strong {
+  display: block;
+  font-size: 16px;
+}
+
+.wb-panel-tab {
+  position: absolute;
+  top: 78px;
+  right: 14px;
+  min-width: 42px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #24242a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.wb-panel-tab:hover {
+  background: #f1f3f7;
+}
+
+.wb-panel-head span,
+.wb-section-title,
+.wb-selected-card span,
+.wb-user-row span,
+.wb-status-line {
+  color: #71737d;
+  font-size: 12px;
+}
+
+.wb-panel-section {
+  padding: 12px 0;
+  border-top: 1px solid #edf0f4;
+}
+
+.wb-section-title {
+  margin-bottom: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.wb-selected-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #e4e7ee;
+  border-radius: 8px;
+  background: #fbfbfc;
+}
+
+.wb-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wb-stats span {
+  padding: 7px 5px;
+  border-radius: 7px;
+  background: #f4f5f7;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.wb-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.wb-action-grid button,
+.wb-modal-actions button {
+  min-height: 32px;
+  border-radius: 7px;
+  background: #f4f5f8;
+  font-weight: 700;
+}
+
+.wb-tool-summary,
+.wb-user-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #7c3cff;
+}
+
+.wb-colors {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.wb-colors button {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #d6d9e0;
+}
+
+.wb-range {
+  width: 100%;
+}
+
+.wb-bottom-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transform: translateX(-50%);
+  padding: 6px;
+  border-radius: 8px;
+}
+
+.wb-scatter-panel {
+  position: absolute;
+  top: 64px;
+  left: 76px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: min(760px, calc(100vw - 410px));
+  border-radius: 8px;
+  padding: 7px;
+}
+
+.wb-scatter-modes,
+.wb-scatter-sim {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.wb-scatter-panel button {
+  min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 7px;
+  background: #f4f5f8;
+  color: #24242a;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.wb-scatter-panel button:hover {
+  background: #e9edf4;
+}
+
+.wb-scatter-panel label {
+  height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e1e4ec;
+  border-radius: 7px;
+  background: #fafbfc;
+  padding: 0 8px;
+  color: #555864;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.wb-scatter-panel input[type="range"] {
+  width: 112px;
+  accent-color: #4262ff;
+}
+
+.wb-zoom {
+  height: 32px;
+  min-width: 58px;
+  border-radius: 7px;
+  font-weight: 800;
+}
+
+.wb-toast {
+  position: absolute;
+  left: 76px;
+  bottom: 22px;
+  max-width: 440px;
+  overflow: hidden;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(20, 20, 28, 0.84);
+  color: #fff;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-popover {
+  position: absolute;
+  top: 64px;
+  left: 330px;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px;
+  border-radius: 9px;
+}
+
+.wb-popover-title {
+  padding: 8px 9px 4px;
+  color: #777a84;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.wb-popover button {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 7px;
+  padding: 0 9px;
+  text-align: left;
+}
+
+.wb-progressive-nav {
+  position: absolute;
+  left: 72px;
+  top: 307px;
+  z-index: 30; /* screen-space PN layer: canvas < PN edges < PN cards < modal/popover */
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 486px;
+  height: 420px;
+  max-width: none;
+  opacity: 0;
+  overflow: visible;
+  pointer-events: none;
+  transition: opacity 90ms ease;
+}
+
+.wb-progressive-nav.is-overflow-scroll,
+.wb-progressive-nav.is-overflow-compact,
+.wb-progressive-nav.is-overflow-side-panel {
+  overflow: auto;
+}
+
+.wb-progressive-nav::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: 0;
+  width: 18px;
+  height: 100%;
+}
+
+#workbench-root:has(.wb-left-rail > .wb-icon-btn:last-child:hover) .wb-progressive-nav:not(.is-active-node),
+#workbench-root:has(.wb-left-rail > .wb-icon-btn:last-child:focus) .wb-progressive-nav:not(.is-active-node),
+#workbench-root:has(.wb-left-rail > .wb-icon-btn:last-child:focus-visible) .wb-progressive-nav:not(.is-active-node),
+.wb-progressive-nav.is-open,
+.wb-progressive-nav:hover,
+.wb-progressive-nav:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.wb-progressive-node {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(20, 20, 30, 0.12);
+  box-shadow: 0 10px 28px rgba(20, 20, 30, 0.14);
+}
+
+.wb-progressive-node small {
+  color: #737887;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.wb-progressive-columns {
+  position: relative;
+  width: 486px;
+  height: 420px;
+  margin-left: 0;
+  overflow: visible;
+  z-index: 2;
+}
+
+.wb-progressive-column {
+  display: contents;
+}
+
+.wb-progressive-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.wb-progressive-edges path {
+  fill: none;
+  stroke: rgba(38, 72, 190, 0.72);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.wb-progressive-edges path.is-active-edge {
+  stroke: rgba(17, 24, 39, 0.74);
+  stroke-dasharray: 5 5;
+}
+
+.wb-progressive-node {
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 3;
+  width: 172px;
+  height: 47px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #20242d;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-progressive-node > svg {
+  flex: 0 0 auto;
+}
+
+.wb-progressive-node span:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wb-progressive-node strong {
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-progressive-node.is-selected {
+  border-color: #4262ff;
+  background: #eef3ff;
+}
+
+.wb-progressive-node.is-action {
+  background: #fbfcff;
+}
+
+.wb-progressive-node:hover {
+  border-color: #4262ff;
+}
+
+.wb-progressive-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #4262ff;
+}
+
+.wb-ai-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.wb-ai-head,
+.wb-ai-actions,
+.wb-ai-composer,
+.wb-ai-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-ai-head {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.wb-ai-head span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #4262ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.wb-ai-head strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #30323a;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-head button,
+.wb-ai-actions button,
+.wb-ai-composer button,
+.wb-ai-foot button {
+  border: 0;
+  border-radius: 7px;
+  color: #24242a;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.wb-ai-head button {
+  width: 26px;
+  height: 26px;
+  background: #f2f3f6;
+}
+
+.wb-ai-actions {
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.wb-ai-actions button {
+  min-height: 30px;
+  padding: 0 12px;
+  background: #f3f0ff;
+  color: #5330b5;
+  font-size: 12px;
+}
+
+.wb-ai-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.wb-ai-suggestions span {
+  max-width: 190px;
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid #d9def0;
+  border-radius: 7px;
+  background: #fbfcff;
+  color: #3f4350;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-composer {
+  align-items: stretch;
+  padding: 8px;
+  border: 1px solid #dfe4f2;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.wb-ai-composer textarea {
+  min-height: 42px;
+  flex: 1;
+  resize: none;
+  border: 0;
+  outline: none;
+  color: #24242a;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.wb-ai-composer button {
+  width: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  align-self: flex-end;
+  background: #4262ff;
+  color: #fff;
+}
+
+.wb-ai-foot {
+  justify-content: space-between;
+  margin-top: 8px;
+  color: #6b707c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.wb-ai-foot button {
+  min-height: 28px;
+  padding: 0 12px;
+  background: #111827;
+  color: #fff;
+}
+
+.wb-ai-actions button:disabled,
+.wb-ai-composer button:disabled,
+.wb-ai-foot button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.wb-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.22);
+  pointer-events: auto;
+}
+
+.wb-modal {
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 40px));
+  overflow: auto;
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.wb-modal header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.wb-modal h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.wb-modal header button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: #f2f3f6;
+}
+
+.wb-tabs {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid #e4e7ee;
+  margin-bottom: 16px;
+}
+
+.wb-tabs span {
+  padding: 8px 0;
+  color: #777a84;
+  font-weight: 800;
+}
+
+.wb-tabs .is-active {
+  color: #4262ff;
+  box-shadow: inset 0 -2px #4262ff;
+}
+
+.wb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: #666a75;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.wb-field input {
+  min-height: 38px;
+  border: 1px solid #d8dce5;
+  border-radius: 8px;
+  padding: 0 10px;
+  font: inherit;
+}
+
+.wb-share-link {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f5f6f8;
+  color: #555864;
+}
+
+.wb-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.wb-modal-actions button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: #4262ff;
+  color: #fff;
+  padding: 0 14px;
+}
+
+.wb-settings-modal {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.wb-settings-grid {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 18px;
+}
+
+.wb-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.wb-settings-nav button {
+  height: 34px;
+  border-radius: 7px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.wb-settings-nav .is-active {
+  background: #edf1ff;
+  color: #3152e8;
+  font-weight: 800;
+}
+
+.wb-toggle {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.wb-disabled-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.wb-disabled-list button {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  background: #f5f6f8;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.wb-status-line {
+  margin-top: 14px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f8f9fb;
+}
+
+.wb-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 9px;
+}
+
+.wb-shortcuts span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f5f6f8;
+}
+
+.wb-shortcuts kbd {
+  padding: 2px 5px;
+  border: 1px solid #d8dce5;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+body.wb-grid-off .app {
+  background-image: none;
+}
+
+body.wb-comments-off .wb-toast {
+  display: none;
+}
+
+body.wb-object-size-off .node-size-label,
+body.wb-object-size-off .object-size-label {
+  display: none;
+}
+
+:root[data-theme="dark"] #workbench-root {
+  color: #e5e7eb;
+}
+
+:root[data-theme="dark"] .wb-brand,
+:root[data-theme="dark"] .wb-top-actions,
+:root[data-theme="dark"] .wb-bottom-controls,
+:root[data-theme="dark"] .wb-left-rail,
+:root[data-theme="dark"] .wb-scatter-panel,
+:root[data-theme="dark"] .wb-right-panel,
+:root[data-theme="dark"] .wb-panel-tab,
+:root[data-theme="dark"] .wb-ai-dock,
+:root[data-theme="dark"] .wb-popover,
+:root[data-theme="dark"] .wb-modal {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .wb-home,
+:root[data-theme="dark"] .wb-icon-btn,
+:root[data-theme="dark"] .wb-user,
+:root[data-theme="dark"] .wb-present,
+:root[data-theme="dark"] .wb-board-title,
+:root[data-theme="dark"] .wb-pill,
+:root[data-theme="dark"] .wb-zoom,
+:root[data-theme="dark"] .wb-popover button,
+:root[data-theme="dark"] .wb-action-grid button,
+:root[data-theme="dark"] .wb-settings-nav button,
+:root[data-theme="dark"] .wb-disabled-list button,
+:root[data-theme="dark"] .wb-modal-actions button,
+:root[data-theme="dark"] .wb-panel-tab,
+:root[data-theme="dark"] .wb-scatter-panel button,
+:root[data-theme="dark"] .wb-ai-head button,
+:root[data-theme="dark"] .wb-ai-actions button,
+:root[data-theme="dark"] .wb-ai-composer button,
+:root[data-theme="dark"] .wb-ai-foot button {
+  color: #e5e7eb;
+}
+
+:root[data-theme="dark"] .wb-logo,
+:root[data-theme="dark"] .wb-left-rail > .wb-icon-btn:last-child:hover,
+:root[data-theme="dark"] .wb-left-rail > .wb-icon-btn:last-child:focus-visible,
+:root[data-theme="dark"] #workbench-root:has(.wb-progressive-nav:hover) .wb-left-rail > .wb-icon-btn:last-child,
+:root[data-theme="dark"] .wb-left-rail > .wb-icon-btn.is-active:last-child {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+:root[data-theme="dark"] .wb-share,
+:root[data-theme="dark"] .wb-modal-actions button:first-child,
+:root[data-theme="dark"] .wb-ai-composer button {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .wb-icon-btn:hover,
+:root[data-theme="dark"] .wb-home:hover,
+:root[data-theme="dark"] .wb-board-title:hover,
+:root[data-theme="dark"] .wb-user:hover,
+:root[data-theme="dark"] .wb-panel-tab:hover,
+:root[data-theme="dark"] .wb-popover button:hover,
+:root[data-theme="dark"] .wb-action-grid button:hover,
+:root[data-theme="dark"] .wb-scatter-panel button:hover {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+:root[data-theme="dark"] .wb-icon-btn.is-active,
+:root[data-theme="dark"] .wb-pill.is-active,
+:root[data-theme="dark"] .wb-settings-nav .is-active,
+:root[data-theme="dark"] .wb-progressive-node.is-selected {
+  background: rgba(124, 58, 237, 0.28);
+  color: #ddd6fe;
+}
+
+:root[data-theme="dark"] .wb-status-chip,
+:root[data-theme="dark"] .wb-present,
+:root[data-theme="dark"] .wb-stats span,
+:root[data-theme="dark"] .wb-action-grid button,
+:root[data-theme="dark"] .wb-scatter-panel button,
+:root[data-theme="dark"] .wb-scatter-panel label,
+:root[data-theme="dark"] .wb-ai-head button,
+:root[data-theme="dark"] .wb-ai-actions button,
+:root[data-theme="dark"] .wb-ai-suggestions span,
+:root[data-theme="dark"] .wb-ai-composer,
+:root[data-theme="dark"] .wb-ai-foot button,
+:root[data-theme="dark"] .wb-modal header button,
+:root[data-theme="dark"] .wb-field input,
+:root[data-theme="dark"] .wb-share-link,
+:root[data-theme="dark"] .wb-disabled-list button,
+:root[data-theme="dark"] .wb-status-line,
+:root[data-theme="dark"] .wb-shortcuts span,
+:root[data-theme="dark"] .wb-shortcuts kbd,
+:root[data-theme="dark"] .wb-selected-card {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(30, 41, 59, 0.78);
+  color: #e5e7eb;
+}
+
+:root[data-theme="dark"] .wb-rail-group,
+:root[data-theme="dark"] .wb-panel-section,
+:root[data-theme="dark"] .wb-tabs,
+:root[data-theme="dark"] .wb-toggle {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+:root[data-theme="dark"] .wb-board-title small,
+:root[data-theme="dark"] .wb-panel-head span,
+:root[data-theme="dark"] .wb-section-title,
+:root[data-theme="dark"] .wb-selected-card span,
+:root[data-theme="dark"] .wb-user-row span,
+:root[data-theme="dark"] .wb-status-line,
+:root[data-theme="dark"] .wb-popover-title,
+:root[data-theme="dark"] .wb-progressive-node small,
+:root[data-theme="dark"] .wb-ai-foot,
+:root[data-theme="dark"] .wb-field,
+:root[data-theme="dark"] .wb-tabs span,
+:root[data-theme="dark"] .wb-share-link {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .wb-selected-card,
+:root[data-theme="dark"] .wb-progressive-node,
+:root[data-theme="dark"] .wb-progressive-node.is-action {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #e5e7eb;
+}
+
+:root[data-theme="dark"] .wb-progressive-node:hover,
+:root[data-theme="dark"] .wb-progressive-node.is-selected {
+  border-color: #818cf8;
+}
+
+:root[data-theme="dark"] .wb-progressive-edges path {
+  stroke: rgba(129, 140, 248, 0.74);
+}
+
+:root[data-theme="dark"] .wb-progressive-edges path.is-active-edge {
+  stroke: rgba(226, 232, 240, 0.76);
+}
+
+:root[data-theme="dark"] .wb-ai-head strong,
+:root[data-theme="dark"] .wb-ai-composer textarea {
+  background: transparent;
+  color: #e5e7eb;
+}
+
+:root[data-theme="dark"] .wb-ai-head span,
+:root[data-theme="dark"] .wb-tabs .is-active {
+  color: #a78bfa;
+}
+
+:root[data-theme="dark"] .wb-modal-backdrop {
+  background: rgba(2, 6, 23, 0.58);
+}
+
+@media (max-width: 980px) {
+  .wb-right-panel {
+    display: none;
+  }
+  .wb-board-title {
+    min-width: 120px;
+  }
+  .wb-present {
+    display: none;
+  }
+}

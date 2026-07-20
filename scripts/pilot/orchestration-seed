@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+const { fail, jsonOut, parseArgs, seedOwned, withSession } = require("./common.cjs");
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.check) {
+    jsonOut({ ok: true, mode: "check", seed: "S16 Goal/Task/Agent/Gate/status/Proposal records" });
+    return;
+  }
+  const result = await withSession(args, (session) => seedOwned(session));
+  jsonOut({ ...result, mode: "live" });
+}
+
+main().catch((error) => fail("SEED_FAILED", error.message));

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3e.grade-report.schema.json",
+  "type": "object",
+  "required": [
+    "caseId",
+    "score",
+    "passed",
+    "dimensions",
+    "failures"
+  ],
+  "properties": {
+    "caseId": {
+      "type": "string"
+    },
+    "score": {
+      "type": "number"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "dimensions": {
+      "type": "object"
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

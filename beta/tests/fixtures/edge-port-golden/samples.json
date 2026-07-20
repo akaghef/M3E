@@ -1,0 +1,159 @@
+[
+  {
+    "schema_version": 1,
+    "sample_id": "tree-right-basic",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Tree" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Tree", "direction": "right" },
+      "routeStyle": "orthogonal"
+    },
+    "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "tree-left-basic",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Tree" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
+      "srcRect": { "x": 300, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 100, "y": 105, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Tree", "direction": "left" },
+      "routeStyle": "orthogonal"
+    },
+    "expected": { "ports": { "sourceSide": "left", "targetSide": "right" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "tree-both-left-branch",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Tree" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "leftChild" },
+      "srcRect": { "x": 300, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 80, "y": 105, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Tree", "direction": "both", "branchSide": "left" },
+      "routeStyle": "curve"
+    },
+    "expected": { "ports": { "sourceSide": "left", "targetSide": "right" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "tree-both-right-branch",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Tree" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "rightChild" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Tree", "direction": "both", "branchSide": "right" },
+      "routeStyle": "curve"
+    },
+    "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "tree-up-basic",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Tree" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 105, "y": -60, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Tree", "direction": "up" },
+      "routeStyle": "orthogonal"
+    },
+    "expected": { "ports": { "sourceSide": "top", "targetSide": "bottom" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "tree-down-basic",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Tree" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 105, "y": 260, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Tree", "direction": "down" },
+      "routeStyle": "orthogonal"
+    },
+    "expected": { "ports": { "sourceSide": "bottom", "targetSide": "top" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "axial-right-sequence",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Axial" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "stepA", "childNodeId": "stepB" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Axial", "direction": "right" },
+      "routeStyle": "line"
+    },
+    "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "axial-up-sequence",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Axial" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "stepA", "childNodeId": "stepB" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 105, "y": -60, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Axial", "direction": "up" },
+      "routeStyle": "line"
+    },
+    "expected": { "ports": { "sourceSide": "top", "targetSide": "bottom" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "radial-balanced-quadrants",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Radial" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "center", "childNodeId": "outer" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": -80, "y": -60, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Radial", "direction": "balanced" },
+      "routeStyle": "curve"
+    },
+    "expected": { "ports": { "sourceSide": "left", "targetSide": "right" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "disperse-force-vector",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Disperse" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "cluster", "childNodeId": "free" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 105, "y": 260, "w": 90, "h": 50 },
+      "branchDirection": { "view": "Disperse", "direction": "free" },
+      "routeStyle": "force-link"
+    },
+    "expected": { "ports": { "sourceSide": "bottom", "targetSide": "top" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "system-right-module",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "System" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "moduleA", "childNodeId": "moduleB" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
+      "branchDirection": { "view": "System", "direction": "right" },
+      "routeStyle": "orthogonal"
+    },
+    "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  },
+  {
+    "schema_version": 1,
+    "sample_id": "system-down-containment",
+    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "System" },
+    "input": {
+      "relation": { "kind": "parent-child", "parentNodeId": "container", "childNodeId": "module" },
+      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
+      "dstRect": { "x": 105, "y": 260, "w": 90, "h": 50 },
+      "branchDirection": { "view": "System", "direction": "down" },
+      "routeStyle": "orthogonal"
+    },
+    "expected": { "ports": { "sourceSide": "bottom", "targetSide": "top" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
+  }
+]
+

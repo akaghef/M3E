@@ -1,0 +1,21 @@
+{
+  "url": "http://127.0.0.1:4173/viewer.html?ws=ws_REMH1Z5TFA7S93R3HA0XK58JNR&map=codex-pn-verify-5&scope=n_1780555544823_0_738kjz",
+  "labels": [
+    "カエル",
+    "体のつくり",
+    "生活史",
+    "生息環境",
+    "食性",
+    "天敵"
+  ],
+  "hits": {
+    "カエル": 1,
+    "体のつくり": 3,
+    "生活史": 1,
+    "生息環境": 3,
+    "食性": 3,
+    "天敵": 1
+  },
+  "screenshot": "/Users/nisimoriyuuya/dev/M3E/tools/rapid_mapify_oracle/runs/20260604T152326Z_codex_c_frog_detail/browser_visible.png",
+  "bodyTextSample": "M3E\nTree / Balanced / Right\non (none)\nAK\nPresent\nShare\nBoard\nfile and board output\nView\nsurface navigation\nScatter\nscatter editing tools\nMindmap\nnode and scope actions\nAnnotation\ndrawing tools\nPanel\nsettings and help\nInspector\nRapid / Tree / Balanced / Right\nSELECTED NODE\n生物の分類\nscope n_1780555544823_0_738kjz\n50 nodes\n0 links\n0 marks\nMINDMAP\nAdd child\nToggle scope\nEnter scope\nExit scope\nANNOTATION\nSelect mode\nCOLLABORATION\nAK\nAkaghefCollab: off\n36%\nCollaboration is not enabled on this server.\nM3E\n☰\nFlash\nRapid\nDeep\nTree\nMind Map\nLogic\nTimeline\nSystem\nScatter\nPen\nImport ▾\nShare\nExport ▾\nLive ▾\nV4\nSelect\nPen\nHighlighter\n17\nDate\nEraser\nWidth\nEDIT\n生物の分類\n動物\nACTIVE\n哺乳類\nACTIVE\nヒト\nACTIVE\nイヌ\nACTIVE\nクジラ\nACTIVE\n鳥類\nACTIVE\nスズメ\nACTIVE\nペンギン\nACTIVE\n魚類\nACTIVE\nサケ\nACTIVE\nマグロ\nACTIVE\n爬虫類\nヘビ\n体のつくり\n生息環境\n食性\n毒の有無\n繁殖\nトカゲ\n体のつくり\n生息環境\n食性\n尻尾の自切\n繁殖\nカメ\n両生類\nカエル\n体のつくり\n生活史\n生息環境\n食性\n天敵\nイモリ\nサンショウウオ\n無脊椎動物\nミミズ\nクラゲ\nカニ\n植物\nACTIVE\n被子植物\nACTIVE\nサクラ\nACTIVE\nイネ\nACTIVE\n裸子植物\nACTIVE\nスギ\nACTIVE\n菌類\nACTIVE\nシイタケ\nACTIVE\n酵母\nACTIVE\n☰\nA-\nA+\nReset"
+}

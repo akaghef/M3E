@@ -275,7 +275,7 @@ DeepSeek はその 1 provider として実装し、map 内補助は subagent 呼
 
 ## 関連文書
 
-- Core Principles: [../01_Vision/Core_Principles.md](../01_Vision/Core_Principles.md)
+- Principles: [../01_Vision/Principle.md](../01_Vision/Principle.md)
 - Band Spec: [Band_Spec.md](Band_Spec.md)
 - Data Model: [Data_Model.md](Data_Model.md)
 - M3E 仕様設計書 §9: [../M3E仕様設計書.md](../M3E仕様設計書.md)

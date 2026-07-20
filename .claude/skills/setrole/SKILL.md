@@ -88,10 +88,12 @@ git rebase origin/dev-beta
 M3E サーバーが起動中なら:
 
 ```bash
-curl -sf http://localhost:38482/api/docs/rapid-main
+curl -sf http://localhost:4173/api/maps
 ```
 
-`dev M3E/strategy` 配下のノードを走査し、`attributes.agent` が自分のロール名を含むノードを抽出する。
+Final 確認時だけポートを `38482` に切り替える。
+
+`M:(開発)> SYSTEM > DEV >> strategy` 配下のノードを走査し、`attributes.agent` が自分のロール名を含むノードを抽出する。
 `attributes.status` が `ready` または `doing` のものを優先表示。
 
 サーバー未起動なら: スキップして Step 3b のみ。

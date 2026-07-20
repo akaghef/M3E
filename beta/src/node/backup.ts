@@ -45,8 +45,7 @@ export async function createBackup(dbPath: string, backupDir: string): Promise<s
   ensureDir(backupDir);
 
   const timestamp = formatTimestamp(new Date());
-  const backupBase = path.basename(dbPath, path.extname(dbPath));
-  const backupName = `${backupBase}_${timestamp}${BACKUP_SUFFIX}`;
+  const backupName = `M3E_dataV1_${timestamp}${BACKUP_SUFFIX}`;
   const backupPath = path.join(backupDir, backupName);
 
   // Strategy A: better-sqlite3 .backup() — online-safe, no WAL issues

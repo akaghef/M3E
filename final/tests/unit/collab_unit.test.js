@@ -1,6 +1,9 @@
 "use strict";
 
 import { test, expect, beforeEach } from "vitest";
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
   registerEntity,
@@ -15,9 +18,11 @@ const {
   isInScope,
   getMapVersion,
   incrementMapVersion,
+  mergeScopePush,
   setMapVersion,
   resetCollab,
 } = require("../../dist/node/collab.js");
+const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -310,4 +315,57 @@ test("incrementMapVersion increments and returns new value", () => {
 test("setMapVersion sets arbitrary value", () => {
   setMapVersion(42);
   expect(getMapVersion()).toBe(42);
+});
+
+test("mergeScopePush full snapshot deletes missing descendants", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "m3e-collab-unit-"));
+  const sqlitePath = path.join(tmpDir, "data.sqlite");
+  const mapId = "collab-delete-regression";
+
+  try {
+    const model = new RapidMvpModel("Root");
+    const rootId = model.state.rootId;
+    const folderId = "folder_a";
+    const child1Id = "child_1";
+    const child2Id = "child_2";
+
+    model.state.nodes[folderId] = {
+      id: folderId, parentId: rootId, children: [child1Id, child2Id], nodeType: "folder",
+      text: "Folder A", collapsed: false, details: "", note: "", attributes: {}, link: "",
+    };
+    model.state.nodes[child1Id] = {
+      id: child1Id, parentId: folderId, children: [], nodeType: "text",
+      text: "Child 1", collapsed: false, details: "", note: "", attributes: {}, link: "",
+    };
+    model.state.nodes[child2Id] = {
+      id: child2Id, parentId: folderId, children: [], nodeType: "text",
+      text: "Child 2", collapsed: false, details: "", note: "", attributes: {}, link: "",
+    };
+    model.state.nodes[rootId].children = [folderId];
+    model.saveToSqlite(sqlitePath, mapId);
+
+    const entity = registerEntity("Human", "human", ["read", "write"]);
+    const lock = acquireScopeLock(folderId, entity);
+    setMapVersion(1);
+
+    const result = mergeScopePush(mapId, folderId, entity, lock.lock.lockId, 1, {
+      [folderId]: {
+        id: folderId, parentId: rootId, children: [child1Id], nodeType: "folder",
+        text: "Folder A", collapsed: false, details: "", note: "", attributes: {}, link: "",
+      },
+      [child1Id]: {
+        id: child1Id, parentId: folderId, children: [], nodeType: "text",
+        text: "Child 1", collapsed: false, details: "", note: "", attributes: {}, link: "",
+      },
+    }, sqlitePath);
+
+    expect(result.ok).toBe(true);
+    expect(result.applied).toContain(child2Id);
+
+    const saved = RapidMvpModel.loadFromSqlite(sqlitePath, mapId);
+    expect(saved.state.nodes[child2Id]).toBeUndefined();
+    expect(saved.state.nodes[folderId].children).toEqual([child1Id]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

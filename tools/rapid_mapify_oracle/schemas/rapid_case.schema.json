@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m3e.rapid-case.schema.json",
+  "type": "object",
+  "required": [
+    "caseId",
+    "opId",
+    "before",
+    "selectedNodeId",
+    "teacherDelta",
+    "candidateDelta"
+  ],
+  "properties": {
+    "caseId": {
+      "type": "string"
+    },
+    "opId": {
+      "type": "string"
+    },
+    "before": {
+      "type": "string"
+    },
+    "selectedNodeId": {
+      "type": "string"
+    },
+    "teacherDelta": {
+      "type": "string"
+    },
+    "candidateDelta": {
+      "type": "string"
+    },
+    "rubric": {
+      "type": "string"
+    }
+  }
+}

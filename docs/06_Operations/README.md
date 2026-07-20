@@ -8,6 +8,8 @@
   会話中に出た決定、仮決め、保留、確認待ちを時系列で蓄積する
 - `Documentation_Rules.md`
   どこに何を書くか、いつ正式文書へ移すかの運用ルールをまとめる
+- `LLM_Wiki_Schema.md`
+  `docs/` を raw source / canonical document / generated navigation に分けて整理する LLM Wiki 型の運用スキーマ
 - `Commit_Message_Rules.md`
   コミットメッセージの形式と `type` の使い分けを定義する
 - `Test_and_CICD_Guide.md`
@@ -20,13 +22,17 @@
   コマンドパネル実装前に満たすべきセキュリティ受け入れテストを定義する
 - `Agent_Roles.md`
   エージェント遂行の役割分担と実行順序を定義する
+- `Version_Registry.md`
+  リリースタグと data schema バージョンの対応表。launch-final 実行時に更新する
+- `Release_Notes_v*.md`
+  個別リリースノート。launch-final が main 反映時に追加する
 
 ## この場所の役割
 
 - 会話で決まったことを先に失わず残す
 - ADR や Spec に書く前の素材を集める
 - 「もう決まったこと」と「まだ仮のこと」を混ぜない
-- 更新完了条件 (コミット + daily 追記 + Current_Status 更新) を運用ルールとして維持する
+- 更新完了条件 (コミット + 共有状態更新 + Current_Status 更新) を運用ルールとして維持する
 
 ## 正式文書との関係
 

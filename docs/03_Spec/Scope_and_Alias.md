@@ -155,6 +155,16 @@ alias は参照ノード（reference）である（分類の定義は Data_Model
 
 ## 整合性ルール
 
+### federation 境界
+
+- scope は引き続き cognition / edit boundary であり、canonical source または storage boundary ではない
+- 同一 authority 内の scope move は通常の reparent として扱える
+- authority を跨ぐ reparent は通常 move として確定せず、ownership transfer workflow を要求する
+- `access: "write"` の alias は target owner へ Command を route する権限であり、`baseRevision`、approval、classification を迂回しない
+- alias 自身の配置 authority と target の write authority を混同しない
+
+詳細な owner resolution と transfer state は [Federated_Semantic_Source.md](./Federated_Semantic_Source.md) に従う。
+
 ### 1. delete
 
 - target 実体を delete しても alias は残してよい
@@ -221,6 +231,6 @@ alias は参照ノード（reference）である（分類の定義は Data_Model
 
 ## 関連文書
 
-- 原則: [../01_Vision/Core_Principles.md](../01_Vision/Core_Principles.md)
+- 原則: [../01_Vision/Principle.md](../01_Vision/Principle.md)
 - 実体モデル: [./Data_Model.md](./Data_Model.md)
-- Freeplane 境界: [../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md](../05_Freeplane_Integration/Freeplane_Data_Model_Mapping.md)
+- Freeplane 境界: [../competitive_research/freeplane/Freeplane_Data_Model_Mapping.md](../competitive_research/freeplane/Freeplane_Data_Model_Mapping.md)

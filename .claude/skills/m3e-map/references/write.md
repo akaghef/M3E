@@ -1,6 +1,27 @@
+<!-- generated from agent_instructions/skills_canonical/m3e-map/references/write.md; do not edit mirror directly -->
+
 # Writing the M3E Map
 
 POST or PUT replaces the entire document state (or the subtree if `?scope=<nodeId>` is set). **Always read first**, modify, then write back.
+
+## Pre-Write Sequence For Structured Writes
+
+Before mutating a map for anything more complex than trivial CRUD, follow this order:
+
+1. identify the target facet (`flow`, `dependency`, `reviews`, `timeseries`, `document`, ...)
+2. read the facet contract (`facet-contracts.md`)
+3. extract the display intent (`display-intent.md`)
+4. decide whether anchoring is active
+5. decide what color encodes
+6. only then create/move/reorder nodes and links
+
+This sequence is mandatory for writes where presentation matters.
+
+Reason:
+
+- M3E is for human structural review
+- the same tree operation means different things in different facets
+- anchoring and coloring are not generic post-processes; they are often part of the write's core display contract
 
 ## Save endpoint
 
@@ -52,6 +73,41 @@ state.nodes[newId] = {
 state.nodes[parentId].children.push(newId);
 ```
 
+### Add a synthetic anchor
+
+Use an anchor only when the display intent calls for grouping that improves reviewability without inventing false semantics.
+
+```javascript
+const anchorId = `n_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+state.nodes[anchorId] = {
+  id: anchorId,
+  parentId,
+  children: [],
+  nodeType: "text",
+  text: "API設計",
+  collapsed: false,
+  details: "",
+  note: "Display anchor for review grouping.",
+  attributes: {
+    "m3e:facet": "reviews",
+    "m3e:display-role": "anchor",
+    "m3e:synthetic": "anchor"
+  },
+  link: ""
+};
+state.nodes[parentId].children.push(anchorId);
+```
+
+Prefer anchor insertion when:
+
+- many low-cohesion siblings would be visually noisy
+- the anchor creates a useful review batch
+
+Avoid anchor insertion when:
+
+- siblings form a meaningful serial progression
+- the anchor would look like a new semantic stage
+
 ### Update node content
 
 Modify fields in place — `text`, `details`, `note`, `attributes`, etc.
@@ -85,6 +141,27 @@ setFill(state.nodes[nodeId], null);       // clear fill
 ```
 
 See SKILL.md for the full 10-color palette and the urgency/importance/status keys.
+
+### Apply display-intent color semantics
+
+If the user specified visual meaning, apply it intentionally instead of relying only on the default difficulty coloring pass.
+
+Examples:
+
+- review question node
+  - fill = importance
+  - border = urgency
+- option node
+  - fill = confidence
+- synthetic anchor
+  - usually neutral / low-emphasis unless the user asked otherwise
+
+In those cases:
+
+1. set the semantic display colors while writing
+2. skip the default difficulty coloring if it would overwrite the intended review semantics
+
+The default color pass is only for cases where no stronger display contract is present.
 
 ### Move a node (reparent)
 
@@ -129,42 +206,6 @@ const parent = state.nodes[parentId];
 parent.children = parent.children.filter(c => c !== childId);
 parent.children.unshift(childId); // move to front
 ```
-
-## Write a DAG
-
-M3E does not store a free-form DAG directly in `children`. The reliable pattern is:
-
-1. Build a **spanning tree** of the DAG in `parentId` / `children`
-2. Store every non-tree edge in `state.links`
-3. Keep grouping metadata (`chapter`, `topic`, `phase`, etc.) in `attributes` or
-   style, not in the structural parent chain, when you want depth to follow the DAG
-
-Minimal recipe:
-
-```javascript
-function addDagLink(state, sourceNodeId, targetNodeId, relationType = "depends_on") {
-  state.links ||= {};
-  const linkId = `l_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  state.links[linkId] = {
-    id: linkId,
-    sourceNodeId,   // prerequisite
-    targetNodeId,   // dependent
-    relationType,
-    direction: "forward",
-    style: "default",
-  };
-}
-```
-
-Recommended conversion policy:
-
-- Choose one prerequisite per node as the structural parent so vertical depth tracks
-  the main dependency chain.
-- Prefer the deepest available prerequisite as that parent.
-- Attach source/root nodes with no prerequisite directly under one shared DAG root.
-- Put all other prerequisites into `state.links`.
-- Keep the whole DAG under one scope if you need scoped reads/writes to preserve the
-  overlay links.
 
 ## Bulk script template
 
@@ -214,6 +255,28 @@ function request(method, path, body) {
 
 Keep one-shot scripts in `%TEMP%`, not the repo's `scripts/` folder (project memory `feedback_oneshot_scripts_tmp`). Delete after use, or let the OS clean it up.
 
+## Example Reasoning Pattern: Reviews Map
+
+If the request is:
+
+- many questions
+- review is tangled
+- cluster by context
+- color questions by importance/urgency
+- color options by confidence
+- keep it unscoped
+
+then the write pattern should be:
+
+1. facet = `reviews`
+2. display intent = `unscoped`, `anchored by context`, `question triage colors`, `option confidence colors`
+3. create synthetic anchors for context clusters
+4. place Q nodes under anchors
+5. place options under Q nodes
+6. place rationale/downside under options
+7. apply review colors intentionally
+8. skip generic difficulty recoloring if it would destroy the review semantics
+
 ## Map-level operations
 
 ### Create a new map
@@ -257,8 +320,5 @@ Before POSTing, verify:
 - [ ] Every node's `parentId` points to a node that lists it in `children`
 - [ ] Root node has `parentId: null`
 - [ ] No node references a deleted node
-- [ ] Structural `parentId` / `children` still form a tree even if the conceptual model is a DAG
 - [ ] `links` endpoints reference existing non-alias nodes
-- [ ] DAG-style links use a consistent direction (`source = prerequisite`, `target = dependent`, `direction = "forward"`)
-- [ ] Nodes that must keep their overlay links after scoped reads/writes live inside the same scope
 - [ ] `m3e:style` JSON keys preserved on partial updates (don't overwrite `border` when changing `fill`)

@@ -5,6 +5,88 @@
 
 ---
 
+## 2026-07-19-001
+
+- Date: 2026-07-19
+- Topic: general graph editor の Surface View 帰属（Disperse。System は別系譜のまま凍結）
+- Status: working-agreement
+- Decision:
+  - **general graph editor（一般 property graph の編集 UI）は Disperse に載せる**。新しい Surface View 名は増やさない（steering 拘束規則1）。
+  - **System view は LangGraph 的 system diagram の系譜**（PJ04 / MDD / Template System 線）であり、general graph editor とは全く別物。**凍結を維持**する。general graph 需要を理由に System を解凍しない。
+  - これは 2026-07-18-002（Tree 最優先 / Disperse 最大エフォート / 他凍結）と整合: general graph editor は Disperse 主戦場の中身になる。
+  - コンセプト正本 = playground 成果物群: LLM Graph Conversation Protocol（`04_Architecture/`、Phase 0 / federated 版）+ Agent Orrery（`docs/tasks/agent_network_dashboard_reference_260707/`）。
+- Why: System と general graph は「ノードとエッジがある」見た目が似るだけで、System = 実行系 diagram（LangGraph 的 flow）、general graph editor = 知識・関係の property graph 編集と意味論が異なる。混ぜると表示意味が衝突する（2026-06-06-001 の教訓と同型）。
+- Next: spec 設計は Federated_Semantic_Source + ADR_008 + LLM Graph Conversation Protocol（graph ops / owner routing）前提。表示・編集は Disperse(force-link) + `@xyflow/react` / `elkjs` 優先（2026-06-06-001 準拠）。kiro-discovery で枠切り後、Codex に spec ドラフト dispatch。
+- Source: 2026-07-19 akaghef 指示「system diagramはlanggraph的な方向性なので(ぜんぜん違う 凍結したままにする)、disperseが正しい」
+- Promoted: （未）
+
+## 2026-07-18-003
+
+- Date: 2026-07-18
+- Topic: S16 — federated canonical source と Neo4j role の concern 分離
+- Status: accepted-for-phase-0
+- Decision:
+  - repository、Obsidian、M3E-local、external provider は durable concern ごとに局所 canonical source を持ち、同じ concern の canonical owner は一つにする。
+  - 外部 source が所有する content / assertion を Neo4j に載せた record は materialization とする。
+  - M3E が所有する accepted Deep entity / assertion は、activation gate 通過後の Neo4j canonical runtime 対象とする。portable recovery evidence を別 failure domain に維持する。
+  - proposal、pending assertion、ownership transfer は journal を canonical source とし、Mermaid / TOON は会話用 projection とする。
+  - UI、human、AI、bot、CI の確定 write は共通 Command boundary で owner へ route する。M3E-owned accepted graph だけが Neo4j owner adapter に到達する。
+  - Rapid occurrence と Deep entity は別 identity とし、many-to-many entity binding で接続する。
+  - Neo4j shadow は、実運用由来の cross-source query 3 件を input、expected result、source revision 付きで固定するまで開始しない。
+  - SQLite は M3E-native Rapid local persistence として継続し、PostgreSQL / collaboration state / global graph を別 concern として選定する。
+- Why: 単一 SQLite へ repository 情報を複製すると Git / bot / CI から正本が見えず、双方 write で dual-canon になる。一方、Neo4j を全 source content の唯一の正本にすると局所 ownership、diff、offline recovery、provider responsibility を失う。既存の「Neo4j 正本」判断は M3E-owned accepted graph concern に限定すれば両立する。
+- Next: repository-local semantic source の file-read use case を先に実証し、3 件の query evidence が揃った時点で Neo4j deployment / edition / canonical-subgraph recovery ADR を起票する。Principle への昇格は現時点では行わない。
+- Source: 2026-07-18 の本スレッド、PR #74、Claude Fable review、同日 Decision `2026-07-18-001`
+- Promoted: [../01_Vision/Strategy.md](../01_Vision/Strategy.md), [../03_Spec/Federated_Semantic_Source.md](../03_Spec/Federated_Semantic_Source.md), [../04_Architecture/Federated_Semantic_Graph.md](../04_Architecture/Federated_Semantic_Graph.md), [../04_Architecture/LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conversation_Protocol.md), [../09_Decisions/ADR_008_Federated_Canonical_Sources.md](../09_Decisions/ADR_008_Federated_Canonical_Sources.md)
+
+## 2026-07-18-002
+
+- Date: 2026-07-18
+- Topic: Surface View の投資優先度（Tree → Disperse、他は凍結）
+- Status: working-agreement
+- Decision:
+  - **Tree = 最優先**。ほぼ出来ているので、仕上げ（完成度・検証固定）に最初のリソースを充てる。
+  - **Disperse = 次点。最大のエフォートを割く**主戦場。
+  - **Axial / Radial / System = 放置（凍結）**。新規の実装・spec・検証投資をしない。non-regression（既存挙動を壊さない）だけ守る。
+  - 検証直積（Development_System.md §2.4）の第3軸はこの優先度で剪定する: golden 表・lab・目視ゲートの対象行は Tree / Disperse のみ。凍結 view のセルは台帳上 `frozen` として明示し、空欄と区別する。
+- Why: 5 view 全部に検証・実装投資すると直積が爆発する。価値が集中している Tree（主力・完成間近）と Disperse（次の主戦場）に絞ることで、乗算→加算の分解が実効化する。
+- Next: 検証マトリクス台帳・seam spec 起案時は Tree / Disperse 行のみ展開。凍結 view に触る変更が必要になったら Decision_Pool で解凍を判断。
+- Source: 2026-07-18 akaghef 指示「Treeを最優先(ほぼ出来てる)、Disperseを次(一番エフォート割く)。他は放置。という思想も刻んで」
+- Promoted: [../06_Operations/Development_System.md](Development_System.md) §2.4 / `.kiro/steering/ui_view_taxonomy_and_ports.md` 拘束規則4
+
+## 2026-07-18-001
+
+- Date: 2026-07-18
+- Topic: LLM ↔ property graph の会話プロトコル（Neo4j 正本 / Mermaid+TOON projection / graph ops 正規化）
+- Status: working-agreement
+- Decision:
+  - Neo4j を正本、Mermaid + TOON を会話用 projection とする（Neo4j → context projection → LLM edit → graph operations → Neo4j）。
+  - LLM の出力を Mermaid や TOON そのものとして保存せず、必ず graph operation（`ops{op,target,key,value}`）へ正規化してから DB に反映する。
+  - 役割: CR1 Mermaid=局所 topology（認知的構造把握）/ CR2 TOON=属性・provenance・state・schema / CR3 Neo4j=完全な property graph と query / CR4 graph ops=会話→DB の正規化境界。
+  - 会話 context は全グラフでなく `Expand(V_focus, k, relation filter)` の k-hop 部分グラフを射影する。
+  - Mermaid edge label を識別子として解析しない。edge ID はコメント（`%% edge:E41`）等で明示する。
+  - この構成では JSON を会話面から排除する合理性がある。
+  - Scope note (`2026-07-18-003`): `Neo4j 正本` は M3E-owned accepted Deep graph concern に限定する。Git / Obsidian / provider-owned record は materialization、proposal / pending transfer は journal、Mermaid + TOON は `context projection` とする。
+- Why: これはファイルフォーマットでなく LLM と property graph の間の会話プロトコル。projection を正本化すると往復で drift するため、正規化境界（ops）を唯一の書き込み経路にする。
+- Next: M3E データ層 / agent graph 系の新規 spec はこのプロトコルを前提に設計する。
+- Source: 2026-07-18 akaghef 指針（stow 指示）
+- Promoted: [../04_Architecture/LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conversation_Protocol.md)
+## 2026-06-06-001
+
+- Date: 2026-06-06
+- Topic: pipeline / system graph UI reference asset の M3E 取り込み
+- Status: working-agreement
+- Decision:
+  - X post の可視化 UI は、Markdown renderer ではなく、M3E の pipeline / system graph surface 参考 asset として扱う。
+  - 適用先は `Axial.subtype=pipeline` と `System.subtype=architecture`。新しい Surface View 名は増やさない。
+  - M3E へ移植する要素は typed card、port、left-to-right flow、selected-path focus、right inspector、minimap、trace replay。
+  - 実装に進む場合は `@xyflow/react` + `elkjs` を優先し、新規の大規模 graph layout を自作しない。
+  - 既定の Rapid tree viewer は置換しない。dark palette / saturated node color は system / workflow surface 限定の候補とする。
+- Why: 大規模 AI system を文書だけで追うより、GraphSpec / Contract Tree / Run trace を可視化する surface として有用だが、既存の calm Rapid tree 方針と混ぜると表示意味が衝突するため。
+- Next: read-only preview route で AppState + GraphSpec から flow UI を表示する adapter を切り出す。実装時は selection inspector と label overlap の Playwright 検証を先に置く。
+- Source: https://x.com/GianMattya/status/2062294853464265004 とこのスレッドでの UI 取り込み指示
+- Promoted: [../04_Architecture/Pipeline_UI_Reference.md](../04_Architecture/Pipeline_UI_Reference.md), [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md)
+
 ## 2026-04-14-001
 
 - Date: 2026-04-14
@@ -39,7 +121,7 @@
 - Why: X が akaghef のツール発見チャネルであり、手動コピペを自動化する価値が高い
 - Next: Q1-Q7 を map `reviews/X Tech Radar/` に pool 済。codex brief [../../backlog/codex-x-tech-radar.md](../../backlog/codex-x-tech-radar.md) 作成済。P1 実装は Q レビュー後に codex dispatch
 - Source: 2026-04-14 PR #53 の team 設計作業
-- Promoted: [../design/x_tech_radar.md](../design/x_tech_radar.md)
+- Promoted: [../03_Spec/x_tech_radar.md](../03_Spec/x_tech_radar.md)
 
 ---
 

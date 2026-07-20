@@ -1,0 +1,15 @@
+{
+  "app": {
+    "name": "M3E",
+    "version": "0.1.0"
+  },
+  "node": {
+    "version": "26.0.0",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "build": {
+    "timestamp": "2026-05-19T13:41:06Z",
+    "channel": "mac"
+  }
+}

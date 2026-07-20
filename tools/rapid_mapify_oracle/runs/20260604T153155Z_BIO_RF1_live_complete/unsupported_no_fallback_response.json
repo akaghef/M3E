@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "Unsupported Rapid Mapify Oracle benchmark: selected=\"魚類\", opId=\"RF1.expandSelectedNode\", action=\"detail\". No fallback generation is allowed for this experiment."
+}

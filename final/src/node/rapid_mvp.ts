@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle } from "../shared/types";
+import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle, LinkPort } from "../shared/types";
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
 
 type SqliteDatabase = InstanceType<typeof Database>;
@@ -97,12 +97,19 @@ class RapidMvpModel {
   }
 
   _normalizeLink(link: GraphLink): GraphLink {
+    const validPort = (port: unknown) => (
+      port === "left" || port === "right" || port === "top" || port === "bottom" || port === "auto"
+        ? port
+        : "auto"
+    );
     return {
       ...link,
       relationType: link.relationType ?? undefined,
       label: link.label ?? undefined,
       direction: link.direction ?? "none",
       style: link.style ?? "default",
+      sourcePort: validPort(link.sourcePort),
+      targetPort: validPort(link.targetPort),
     };
   }
 
@@ -173,7 +180,7 @@ class RapidMvpModel {
     });
   }
 
-  addNode(parentId: string, text = "New Node", index: number | null = null): string {
+  addNode(parentId: string, text = "", index: number | null = null): string {
     const parent = this._requireNode(parentId);
     this._pushHistory();
 
@@ -328,6 +335,8 @@ class RapidMvpModel {
     label?: string;
     direction?: LinkDirection;
     style?: LinkStyle;
+    sourcePort?: LinkPort;
+    targetPort?: LinkPort;
   }): string {
     const source = this._requireNode(sourceNodeId);
     const target = this._requireNode(targetNodeId);
@@ -349,6 +358,8 @@ class RapidMvpModel {
       label: options?.label,
       direction: options?.direction,
       style: options?.style,
+      sourcePort: options?.sourcePort,
+      targetPort: options?.targetPort,
     });
     return id;
   }
@@ -362,7 +373,7 @@ class RapidMvpModel {
     delete links[linkId];
   }
 
-  addSibling(nodeId: string, text = "New Sibling", after = true): string {
+  addSibling(nodeId: string, text = "", after = true): string {
     const node = this._requireNode(nodeId);
     if (node.parentId === null) {
       throw new Error("Root node cannot have siblings.");
@@ -1315,7 +1326,7 @@ class RapidMvpModel {
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw) as { version?: number; state?: AppState };
 
-    if (!parsed || !parsed.version || parsed.version < 1 || !parsed.state) {
+    if (!parsed || parsed.version !== 1 || !parsed.state) {
       throw new Error("Unsupported or invalid save format.");
     }
 
@@ -1356,7 +1367,7 @@ class RapidMvpModel {
         throw new Error("Map not found.");
       }
 
-      if (!row.version || row.version < 1 || !row.stateJson || !row.savedAt) {
+      if (row.version !== 1 || !row.stateJson || !row.savedAt) {
         throw new Error("Unsupported or invalid save format.");
       }
 

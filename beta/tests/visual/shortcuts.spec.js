@@ -18,17 +18,69 @@
  * Total: 7 nodes
  */
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
 const {
   launchViewer,
   getNodeCount,
   getSelectedCount,
   getLinkCount,
+  getStatusText,
   pressKey,
   waitForRender,
   focusBoard,
   expectMetaContains,
   expectStatusContains,
 } = require("../helpers/viewer_test_utils");
+
+const FIXTURE_PATH = path.resolve(__dirname, "..", "fixtures", "shortcut_test.json");
+
+function shortcutFixtureWithGraphLink() {
+  const payload = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
+  payload.state.links = {
+    "link-child-b": {
+      id: "link-child-b",
+      sourceNodeId: "child-b",
+      targetNodeId: "grandchild-a1",
+      relationType: "related",
+    },
+  };
+  return payload;
+}
+
+function readMacClipboard() {
+  if (process.platform !== "darwin") return null;
+  const result = spawnSync("pbpaste", [], { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || "pbpaste failed");
+  }
+  return result.stdout;
+}
+
+async function selectedVisualCenter(page) {
+  return page.evaluate(() => {
+    const selected = document.querySelector(
+      "circle.scatter-node-circle.primary-selected, path.node-shape.primary-selected, rect.root-box.primary-selected, g.node-group.selected"
+    );
+    if (!selected) {
+      throw new Error("Selected visual node is not rendered.");
+    }
+    const rect = selected.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+}
+
+async function linearPanelCenter(page) {
+  return page.evaluate(() => {
+    const panel = document.querySelector(".linear-panel");
+    if (!panel || panel.hidden) {
+      throw new Error("Linear panel is not rendered.");
+    }
+    const rect = panel.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Navigation: Arrow keys
@@ -156,11 +208,11 @@ test.describe("Tab: add child node", () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Space: Toggle collapse/expand
+// E: Toggle collapse/expand
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test.describe("Space: collapse/expand toggle", () => {
-  test("Space collapses a node with children, then expands it", async ({ page }) => {
+test.describe("E: collapse/expand toggle", () => {
+  test("E collapses a node with children, then expands it", async ({ page }) => {
     await launchViewer(page);
     await focusBoard(page);
 
@@ -171,7 +223,7 @@ test.describe("Space: collapse/expand toggle", () => {
     const beforeCollapse = await getNodeCount(page);
 
     // Collapse.
-    await pressKey(page, " ");
+    await pressKey(page, "E");
     await waitForRender(page);
 
     // After collapse the visible node count remains the same in #meta
@@ -181,12 +233,77 @@ test.describe("Space: collapse/expand toggle", () => {
     // re-expanding.
 
     // Expand again.
-    await pressKey(page, " ");
+    await pressKey(page, "E");
     await waitForRender(page);
 
     // Verify can navigate into children again.
     await pressKey(page, "ArrowRight");
     await expectMetaContains(page, "selected: Grandchild A1");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// T: Template completion
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function templateCompletionFixture() {
+  const node = (id, parentId, children, text, attributes = {}) => ({
+    id,
+    parentId,
+    children,
+    nodeType: "text",
+    text,
+    collapsed: false,
+    details: "",
+    note: "",
+    attributes,
+    link: "",
+  });
+  return {
+    version: 1,
+    savedAt: "2026-06-04T00:00:00.000Z",
+    state: {
+      rootId: "root",
+      nodes: {
+        root: node("root", null, ["subject", "system"], "Template Test Root"),
+        subject: node("subject", "root", [], "魚類"),
+        system: node("system", "root", ["template"], "SYSTEM"),
+        template: node("template", "system", ["cache"], "TEMPLATE"),
+        cache: node("cache", "template", ["tpl-5w1h"], "cache"),
+        "tpl-5w1h": node("tpl-5w1h", "cache", ["tpl-what", "tpl-why", "tpl-who", "tpl-when", "tpl-where", "tpl-how"], "5W1H", {
+          "template:aliases": "5w framework",
+        }),
+        "tpl-what": node("tpl-what", "tpl-5w1h", [], "What"),
+        "tpl-why": node("tpl-why", "tpl-5w1h", [], "Why"),
+        "tpl-who": node("tpl-who", "tpl-5w1h", [], "Who"),
+        "tpl-when": node("tpl-when", "tpl-5w1h", [], "When"),
+        "tpl-where": node("tpl-where", "tpl-5w1h", [], "Where"),
+        "tpl-how": node("tpl-how", "tpl-5w1h", [], "How"),
+      },
+    },
+  };
+}
+
+test.describe("T: template completion", () => {
+  test("T opens template completion and applies only template children to active node", async ({ page }) => {
+    await launchViewer(page, templateCompletionFixture());
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: 魚類");
+    const before = await getNodeCount(page);
+
+    await pressKey(page, "T");
+    await expect(page.locator(".template-completion-popover")).toBeVisible();
+    await page.locator(".template-completion-input").fill("5w");
+    await expect(page.locator(".template-completion-item")).toContainText("5W1H");
+
+    await page.keyboard.press("Enter");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(before + 6);
+    await expectStatusContains(page, "Template applied: 5W1H (6 node(s), 0 skipped)");
+    await expect(page.locator("text").filter({ hasText: /^5W1H$/ })).toHaveCount(1);
   });
 });
 
@@ -229,6 +346,24 @@ test.describe("Delete and Backspace: remove node", () => {
 
     const afterCount = await getNodeCount(page);
     expect(afterCount).toBe(initialCount - 1);
+  });
+
+  test("Delete removes graph links connected to the deleted node", async ({ page }) => {
+    await launchViewer(page, shortcutFixtureWithGraphLink());
+    await focusBoard(page);
+
+    const initialCount = await getNodeCount(page);
+    expect(await getLinkCount(page)).toBe(1);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Delete");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(initialCount - 1);
+    expect(await getLinkCount(page)).toBe(0);
   });
 });
 
@@ -303,6 +438,166 @@ test.describe("Copy and Paste", () => {
 
     const afterCount = await getNodeCount(page);
     expect(afterCount).toBeGreaterThan(initialCount);
+  });
+
+  test("Ctrl+C then Ctrl+V duplicates subtree-internal graph links", async ({ page }) => {
+    const mapWithLinks = JSON.parse(JSON.stringify(require("../fixtures/shortcut_test.json")));
+    mapWithLinks.state.links = {
+      "internal-link": {
+        id: "internal-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "grandchild-a2",
+        direction: "forward",
+        style: "default",
+      },
+      "external-link": {
+        id: "external-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "child-b",
+        direction: "forward",
+        style: "default",
+      },
+    };
+    await launchViewer(page, mapWithLinks);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: Child A");
+    expect(await getLinkCount(page)).toBe(2);
+
+    await pressKey(page, "Control+c");
+    await waitForRender(page);
+    await pressKey(page, "Control+v");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(10);
+    expect(await getLinkCount(page)).toBe(3);
+    expect(await getStatusText(page)).toContain("and 1 link(s)");
+  });
+
+  test("Ctrl+C in one map then Ctrl+V in another map pastes subtree and internal links", async ({ page, context }) => {
+    const sourceMap = JSON.parse(JSON.stringify(require("../fixtures/shortcut_test.json")));
+    sourceMap.state.links = {
+      "internal-link": {
+        id: "internal-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "grandchild-a2",
+        direction: "forward",
+        style: "default",
+      },
+      "external-link": {
+        id: "external-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "child-b",
+        direction: "forward",
+        style: "default",
+      },
+    };
+    const targetPage = await context.newPage();
+    try {
+      await launchViewer(page, sourceMap);
+      await focusBoard(page);
+      await pressKey(page, "ArrowRight");
+      await expectMetaContains(page, "selected: Child A");
+      await pressKey(page, "Control+c");
+      await waitForRender(page);
+      expect(await getStatusText(page)).toContain("and 1 link(s)");
+
+      await launchViewer(targetPage);
+      await focusBoard(targetPage);
+      expect(await getNodeCount(targetPage)).toBe(7);
+      expect(await getLinkCount(targetPage)).toBe(0);
+
+      await pressKey(targetPage, "Control+v");
+      await waitForRender(targetPage);
+
+      expect(await getNodeCount(targetPage)).toBe(10);
+      expect(await getLinkCount(targetPage)).toBe(1);
+      expect(await getStatusText(targetPage)).toContain("and 1 link(s)");
+    } finally {
+      await targetPage.close();
+    }
+  });
+
+  test("Ctrl+C in one tab then Ctrl+V in another tab works without system clipboard", async ({ page, context }) => {
+    const disableSystemClipboard = async (targetPage) => {
+      await targetPage.addInitScript(() => {
+        Object.defineProperty(navigator, "clipboard", {
+          value: undefined,
+          configurable: true,
+        });
+      });
+      await targetPage.route("**/api/system-clipboard/**", async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "clipboard disabled for test" }),
+        });
+      });
+    };
+    const sourceMap = JSON.parse(JSON.stringify(require("../fixtures/shortcut_test.json")));
+    sourceMap.state.links = {
+      "internal-link": {
+        id: "internal-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "grandchild-a2",
+        direction: "forward",
+        style: "default",
+      },
+    };
+    const targetPage = await context.newPage();
+    try {
+      await disableSystemClipboard(page);
+      await disableSystemClipboard(targetPage);
+
+      await launchViewer(page, sourceMap);
+      await focusBoard(page);
+      await pressKey(page, "ArrowRight");
+      await expectMetaContains(page, "selected: Child A");
+      await pressKey(page, "Control+c");
+      await waitForRender(page);
+      expect(await getStatusText(page)).toContain("for M3E tabs");
+
+      await launchViewer(targetPage);
+      await focusBoard(targetPage);
+      expect(await getNodeCount(targetPage)).toBe(7);
+      expect(await getLinkCount(targetPage)).toBe(0);
+
+      await pressKey(targetPage, "Control+v");
+      await waitForRender(targetPage);
+
+      expect(await getNodeCount(targetPage)).toBe(10);
+      expect(await getLinkCount(targetPage)).toBe(1);
+      expect(await getStatusText(targetPage)).toContain("and 1 link(s)");
+    } finally {
+      await targetPage.close();
+    }
+  });
+
+  test("Ctrl+Alt+C copies selected node path", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: Grandchild A1");
+
+    await pressKey(page, "Control+Alt+c");
+    await waitForRender(page);
+
+    expect(await getStatusText(page)).toContain("Path copied: M:(開発)> Child A > Grandchild A1");
+    expect(readMacClipboard()).toBe("M:(開発)> Child A > Grandchild A1");
+  });
+
+  test("Ctrl+Alt+I copies current scope ID", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "Control+Alt+i");
+    await waitForRender(page);
+
+    expect(await getStatusText(page)).toContain("Scope ID copied: root");
+    expect(readMacClipboard()).toBe("root");
   });
 });
 
@@ -405,6 +700,52 @@ test.describe("GraphLink via L / Shift+L", () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Alt+L / Alt+Enter: Incoming edge label editing
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("Incoming edge label shortcuts", () => {
+  test("Alt+L edits the selected node parent edge label", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Alt+l");
+    const editor = page.locator("textarea.inline-edge-label-editor");
+    await expect(editor).toBeVisible();
+
+    await editor.fill("blocks");
+    await editor.press("Enter");
+    await waitForRender(page);
+
+    await expect(page.locator("text.edge-label", { hasText: "blocks" })).toBeVisible();
+    await expectStatusContains(page, "Edge label updated.");
+  });
+
+  test("Alt+Enter edits the selected node parent edge label", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Alt+Enter");
+    const editor = page.locator("textarea.inline-edge-label-editor");
+    await expect(editor).toBeVisible();
+
+    await editor.fill("depends on");
+    await editor.press("Enter");
+    await waitForRender(page);
+
+    await expect(page.locator("text.edge-label", { hasText: "depends on" })).toBeVisible();
+    await expectStatusContains(page, "Edge label updated.");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Ctrl+] / Ctrl+[: Scope navigation
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -431,6 +772,60 @@ test.describe("Scope navigation", () => {
     await pressKey(page, "ArrowLeft");
     await waitForRender(page);
     await expectMetaContains(page, "scope: root");
+  });
+
+  test("R held routes trackpad movement into active-node movement without popup", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await page.keyboard.down("r");
+    await page.mouse.wheel(0, 90);
+    await page.keyboard.up("r");
+    await waitForRender(page);
+
+    await expect(page.locator("#routing-switcher")).toBeHidden();
+    await expectMetaContains(page, "selected: Child A");
+  });
+
+  test("Shift+R release enters selected scope without moving nodes", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await expectMetaContains(page, "selected: Child A");
+
+    await pressKey(page, "f");
+    await waitForRender(page);
+    await expectStatusContains(page, "Marked as folder scope");
+
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await page.keyboard.down("Shift");
+    await page.keyboard.down("r");
+    await expect(page.locator("#routing-switcher")).toBeVisible();
+
+    const switcherBox = await page.locator("#routing-switcher").boundingBox();
+    expect(switcherBox).toBeTruthy();
+    await page.mouse.move(switcherBox.x + switcherBox.width / 2, switcherBox.y + switcherBox.height / 2);
+    await page.mouse.wheel(-90, 0);
+    await expect(page.locator("#routing-switcher")).toContainText("Child B -> Child A");
+    await page.keyboard.up("r");
+    await waitForRender(page);
+    await expectStatusContains(page, "Entered scope: Child A");
+    await page.keyboard.up("Shift");
+    await expect(page.locator("#routing-switcher")).toBeHidden();
+    await expectMetaContains(page, "scope: child-a");
+
+    await pressKey(page, "ArrowLeft");
+    await waitForRender(page);
+    await expectMetaContains(page, "scope: root");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
   });
 });
 
@@ -592,6 +987,48 @@ test.describe("I: toggle meta panel", () => {
 
     // Viewer should still be functional.
     await expectMetaContains(page, "nodes: 7");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Viewport pan
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("Viewport pan", () => {
+  test("drag pan moves the linear panel with tree content during motion", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+    await waitForRender(page, 100);
+
+    const beforeNode = await selectedVisualCenter(page);
+    const beforePanel = await linearPanelCenter(page);
+    const board = await page.locator("#board").boundingBox();
+    expect(board).toBeTruthy();
+
+    const start = {
+      x: board.x + board.width * 0.22,
+      y: board.y + board.height * 0.78,
+    };
+    const delta = { x: 84, y: -36 };
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 8 });
+    await waitForRender(page, 40);
+
+    const duringNode = await selectedVisualCenter(page);
+    const duringPanel = await linearPanelCenter(page);
+    await page.mouse.up();
+
+    const nodeDx = duringNode.x - beforeNode.x;
+    const nodeDy = duringNode.y - beforeNode.y;
+    const panelDx = duringPanel.x - beforePanel.x;
+    const panelDy = duringPanel.y - beforePanel.y;
+
+    expect(Math.abs(nodeDx - delta.x)).toBeLessThan(2);
+    expect(Math.abs(nodeDy - delta.y)).toBeLessThan(2);
+    expect(Math.abs(panelDx - nodeDx)).toBeLessThan(2);
+    expect(Math.abs(panelDy - nodeDy)).toBeLessThan(2);
   });
 });
 

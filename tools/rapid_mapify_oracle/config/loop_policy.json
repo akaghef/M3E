@@ -1,0 +1,24 @@
+{
+  "version": "0.1.0",
+  "maxIterationsPerSlice": 5,
+  "teacherPolicy": "Mapify action is provisional truth for Rapid action formatting.",
+  "canonicalState": "M3E AppState",
+  "firstSlice": "RF1.expandSelectedNode",
+  "verificationOrder": [
+    "unit_delta",
+    "model_diff",
+    "browser_visible_delta",
+    "quality_rubric"
+  ],
+  "fallbacks": {
+    "mapifyLiveUnavailable": "use_fixture_teacher_trace",
+    "browserUnavailable": "do_not_promote; keep model-only grade",
+    "m3eSchemaUnknown": "use AppState-lite adapter and ask Codex to bind actual schema"
+  },
+  "hardGuards": [
+    "no_cookie_extraction",
+    "no_unrelated_worktree_revert",
+    "no_whole_map_regeneration_for_rapid",
+    "no_success_without_AppState_diff"
+  ]
+}

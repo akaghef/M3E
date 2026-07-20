@@ -4,6 +4,8 @@
 
 Accepted
 
+> **Superseded in part (2026-07-18):** SQLite を Rapid local persistence に使う判断は継続する。将来 server 導入時の storage を一律 PostgreSQL とする含意だけを [ADR 008](./ADR_008_Federated_Canonical_Sources.md) が supersede する。
+
 ## Date
 
 2026-03-31

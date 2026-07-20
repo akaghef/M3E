@@ -1,0 +1,85 @@
+@echo off
+setlocal EnableExtensions
+
+if "%LOCALAPPDATA%"=="" (
+  echo [ERROR] LOCALAPPDATA is not defined.
+  exit /b 10
+)
+
+set "M3E_APP_NAME=M3E"
+set "M3E_HOME=%LOCALAPPDATA%\M3E"
+set "M3E_RUNTIME=%M3E_HOME%\runtime"
+set "M3E_APP=%M3E_HOME%\app"
+set "M3E_DATA=%M3E_HOME%\data"
+set "M3E_LOGS=%M3E_HOME%\logs"
+set "M3E_BACKUP=%M3E_HOME%\backup"
+set "M3E_TMP=%M3E_HOME%\tmp"
+set "M3E_REPORTS=%M3E_HOME%\reports"
+set "M3E_LOCK_FILE=%M3E_TMP%\app.lock"
+set "M3E_CONF=%M3E_HOME%\m3e.conf"
+set "M3E_VERSION_JSON=%M3E_HOME%\version.json"
+set "M3E_DB=%M3E_DATA%\M3E_dataV1.sqlite"
+set "M3E_FIRST_RUN_MARKER=%M3E_DATA%\first_run.marker"
+set "M3E_NODE_EXE=%M3E_RUNTIME%\node.exe"
+set "M3E_START_JS=%M3E_APP%\dist\node\start_viewer.js"
+set "M3E_SETUP_LOG=%M3E_LOGS%\setup.log"
+set "M3E_STARTUP_LOG=%M3E_LOGS%\startup.log"
+set "M3E_VERIFY_LOG=%M3E_LOGS%\verify.log"
+set "M3E_REPORT_LOG=%M3E_LOGS%\report.log"
+set "M3E_MIGRATION_LOG=%M3E_LOGS%\migration.log"
+set "M3E_CRASH_LOG=%M3E_LOGS%\crash.log"
+set "M3E_DEFAULT_PORT=38482"
+set "M3E_HOST=127.0.0.1"
+
+set "M3E_SCRIPT_ROOT=%~dp0"
+if "%M3E_SCRIPT_ROOT:~-1%"=="\" set "M3E_SCRIPT_ROOT=%M3E_SCRIPT_ROOT:~0,-1%"
+
+set "M3E_PACKAGE_ROOT="
+if exist "%M3E_SCRIPT_ROOT%\payload\" set "M3E_PACKAGE_ROOT=%M3E_SCRIPT_ROOT%"
+
+if not defined M3E_PACKAGE_ROOT if exist "%M3E_SCRIPT_ROOT%\..\payload\" (
+  for %%I in ("%M3E_SCRIPT_ROOT%\..") do set "M3E_PACKAGE_ROOT=%%~fI"
+)
+
+if defined M3E_PACKAGE_ROOT (
+  set "M3E_PAYLOAD=%M3E_PACKAGE_ROOT%\payload"
+  set "M3E_PAYLOAD_RUNTIME=%M3E_PAYLOAD%\runtime"
+  set "M3E_PAYLOAD_APP=%M3E_PAYLOAD%\app"
+  set "M3E_PAYLOAD_SCRIPTS=%M3E_PAYLOAD%\scripts"
+  set "M3E_MANIFEST=%M3E_PACKAGE_ROOT%\manifest.json"
+)
+
+endlocal & (
+  set "M3E_APP_NAME=%M3E_APP_NAME%"
+  set "M3E_HOME=%M3E_HOME%"
+  set "M3E_RUNTIME=%M3E_RUNTIME%"
+  set "M3E_APP=%M3E_APP%"
+  set "M3E_DATA=%M3E_DATA%"
+  set "M3E_LOGS=%M3E_LOGS%"
+  set "M3E_BACKUP=%M3E_BACKUP%"
+  set "M3E_TMP=%M3E_TMP%"
+  set "M3E_REPORTS=%M3E_REPORTS%"
+  set "M3E_LOCK_FILE=%M3E_LOCK_FILE%"
+  set "M3E_CONF=%M3E_CONF%"
+  set "M3E_VERSION_JSON=%M3E_VERSION_JSON%"
+  set "M3E_DB=%M3E_DB%"
+  set "M3E_FIRST_RUN_MARKER=%M3E_FIRST_RUN_MARKER%"
+  set "M3E_NODE_EXE=%M3E_NODE_EXE%"
+  set "M3E_START_JS=%M3E_START_JS%"
+  set "M3E_SETUP_LOG=%M3E_SETUP_LOG%"
+  set "M3E_STARTUP_LOG=%M3E_STARTUP_LOG%"
+  set "M3E_VERIFY_LOG=%M3E_VERIFY_LOG%"
+  set "M3E_REPORT_LOG=%M3E_REPORT_LOG%"
+  set "M3E_MIGRATION_LOG=%M3E_MIGRATION_LOG%"
+  set "M3E_CRASH_LOG=%M3E_CRASH_LOG%"
+  set "M3E_DEFAULT_PORT=%M3E_DEFAULT_PORT%"
+  set "M3E_HOST=%M3E_HOST%"
+  set "M3E_SCRIPT_ROOT=%M3E_SCRIPT_ROOT%"
+  set "M3E_PACKAGE_ROOT=%M3E_PACKAGE_ROOT%"
+  set "M3E_PAYLOAD=%M3E_PAYLOAD%"
+  set "M3E_PAYLOAD_RUNTIME=%M3E_PAYLOAD_RUNTIME%"
+  set "M3E_PAYLOAD_APP=%M3E_PAYLOAD_APP%"
+  set "M3E_PAYLOAD_SCRIPTS=%M3E_PAYLOAD_SCRIPTS%"
+  set "M3E_MANIFEST=%M3E_MANIFEST%"
+)
+exit /b 0

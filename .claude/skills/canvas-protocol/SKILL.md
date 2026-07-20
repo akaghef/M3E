@@ -23,13 +23,14 @@ agent の主作業 (実装・テスト・PR) は canvas 不在でも完結でき
 
 ## 1. Target server
 
-- **default**: beta (port 4173, docId `akaghef-beta`)
-- final (38482) は本番マップ。曖昧な時のみ確認 (m3e-map skill 参照)
+- **default**: beta (port 4173)
+- map discovery: `GET /api/maps` で `label="開発"` の `mapId` を取得
+- final (38482) は本番確認時のみ使う (m3e-map skill 参照)
 
 ## 2. Canvas Layout (固定パス)
 
 ```
-ROOT/SYSTEM/DEV/
+M:(開発)> SYSTEM > DEV
 ├── strategy/                       # 開発戦略・タスクボード
 │   └── HOME Re-implementation/     # プロジェクト単位のサブツリー
 │       ├── Visual tasks/           # ロール別タスク
@@ -50,7 +51,7 @@ ROOT/SYSTEM/DEV/
 
 ```bash
 # reviews/{Project} を読み、status="open" の Q に未回答が無いか確認
-curl -s http://localhost:4173/api/docs/akaghef-beta | node -e "..."
+curl -s http://localhost:4173/api/maps | node -e "..."
 ```
 
 判断:
@@ -105,7 +106,7 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 - PR merged → 該当ロールを `idle` または次タスクへ
 - blocked → `<role>: blocked — <reason> [HH:MM]`
 
-**固定パス**: `ROOT > SYSTEM > DEV > Agent Status`。
+**固定パス**: `M:(開発)> SYSTEM > DEV >> Agent Status`。
 
 **効率化は API 側の責務 (重要)**: 「他 subtree を読まない」というルールは GET が全文書を返す限り無効 — 全ノードが context に入る。本当の効率化は Q11 scoped API (`?scope=<nodeId>&depth=N`) merge 後に達成される。
 - 現状 (Q11 未 merge): full GET → path 走査して該当 subtree のみ抽出 (provisional)
@@ -120,7 +121,7 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 
 既存ロールノード (visual, data, data2, team, manage) を **書き換える**。重複ノードを足さない。
 
-実装: inline `node -e "..."` で beta (4173, akaghef-beta) に POST。固定 path を `ROOT.children → SYSTEM → DEV → Agent Status` で辿り、subtree 外は触らない。tmp script はリポジトリ root に書かない。
+実装: beta (4173) の `/api/maps` で `開発` map を discovery し、固定 path `M:(開発)> SYSTEM > DEV >> Agent Status` を解決して更新する。subtree 外は触らない。tmp script はリポジトリ root に書かない。
 
 ## 5. Independence (canvas 障害時の挙動)
 
@@ -148,8 +149,8 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 
 ## 8. Link / Alias ルール
 
-- **scope をまたぐ link は張るな。** 異なる scope 間の関係は alias（`nodeType: "alias"`）で示せ
-- link（GraphLink）は同一 scope 内でのみ使え
+- **scope をまたぐ relation は Map Manager gate を通す。** 異なる scope 間の可視性は alias、非木関係は GraphLink として区別する
+- GraphLink は tree ownership や layouting に参加しない
 - alias は参照先ノードの「別の場所での出現」を表す。alias 経由で関係を可視化する
 - 詳細は `m3e-map` skill の `references/data-model.md` Critical Invariants §7 を参照
 

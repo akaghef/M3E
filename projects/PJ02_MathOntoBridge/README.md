@@ -65,8 +65,8 @@ M3E 上で **semantic tree**（意味の木）と **syntax tree**（構文の木
 | worktree | なし（PJ01 並列回避。段階進行） |
 | M3E マップ | `PJ02 Runtime` を正本とする 3-view runtime（Progress Board / Review / Active Workspace） |
 | Kickoff | 2026-04-17 |
-| ブレスト原典 | [idea/10_io/math_ontology_services/](../../idea/10_io/math_ontology_services/) |
-| 実装見積り原典 | [idea/10_io/math_ontology_services/08_implementation_feasibility.md](../../idea/10_io/math_ontology_services/08_implementation_feasibility.md) |
+| ブレスト原典 | [docs/ideas/10_io/math_ontology_services/](../../docs/ideas/10_io/math_ontology_services/) |
+| 実装見積り原典 | [docs/ideas/10_io/math_ontology_services/08_implementation_feasibility.md](../../docs/ideas/10_io/math_ontology_services/08_implementation_feasibility.md) |
 
 ## ドキュメント構成
 
@@ -74,7 +74,7 @@ M3E 上で **semantic tree**（意味の木）と **syntax tree**（構文の木
 - [prior_art.md](prior_art.md) — 既存考察の全文集約（typed_edges / ontology_data_structure / 競合調査 / scalable KB vision）
 - [blueprint_facets.md](blueprint_facets.md) — Blueprint の色分け、design/implementation facet、scope+alias による相互参照
 - [runtime/README.md](runtime/README.md) — 3-view runtime の運用、renderer、state sync
-- [../../idea/10_io/math_ontology_services/](../../idea/10_io/math_ontology_services/) — 事前ブレスト 8 ファイル（01 landscape 〜 08 feasibility）
+- [../../docs/ideas/10_io/math_ontology_services/](../../docs/ideas/10_io/math_ontology_services/) — 事前ブレスト 8 ファイル（01 landscape 〜 08 feasibility）
 - [../../backlog/mathlib4-blueprint-overview.md](../../backlog/mathlib4-blueprint-overview.md) — Blueprint 構造と M3E 対応表
 
 ## 位置づけ

@@ -86,9 +86,9 @@ Blueprint を Deep に取込む場合、uses エッジのみの「やせた Deep
 
 ## 関連文書
 
-- [Core_Principles.md](Core_Principles.md) — 中核原則（原則 7 に帯域進化を記載）
+- [Principle.md](Principle.md) — 中核原則（原則 7 に帯域進化を記載）
 - [Band_Spec.md](../03_Spec/Band_Spec.md) — 帯域の実装仕様
 - [Glossary.md](../00_Home/Glossary.md) — 射影 / 体系化 / syntax tree / semantic graph の用語登録
 - `memory/project_projection_vision.md` — 射影法の半年実用化目標
 - `memory/project_axes.md` — 帯域軸の恒久メモリ
-- [idea/10_io/math_ontology_services/](../../idea/10_io/math_ontology_services/) — 外部 Deep 源の分析
+- [docs/ideas/10_io/math_ontology_services/](../../docs/ideas/10_io/math_ontology_services/) — 外部 Deep 源の分析

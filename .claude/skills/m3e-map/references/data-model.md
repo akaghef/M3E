@@ -1,3 +1,5 @@
+<!-- generated from agent_instructions/skills_canonical/m3e-map/references/data-model.md; do not edit mirror directly -->
+
 # M3E Data Model
 
 ## Node Structure (TreeNode)
@@ -42,39 +44,6 @@ Stored in `state.links` as `Record<string, GraphLink>`:
 }
 ```
 
-## DAG Representation (tree + link overlay)
-
-M3E persists exactly one structural tree plus optional graph links. If you want to
-display or preserve a DAG, write it in this form:
-
-1. Use `parentId` / `children` for a **spanning tree** (more precisely, an
-   arborescence) of the DAG. This structural edge is what drives depth and layout.
-2. Put every remaining dependency edge in `state.links`.
-3. For dependency flow, use `sourceNodeId = prerequisite`,
-   `targetNodeId = dependent`, and `direction = "forward"` consistently.
-4. Keep chapter / category / group information in `attributes`, `note`, or color
-   when the goal is dependency-aligned depth. Do not force those groupings into the
-   structural parent chain if they would distort the DAG layout.
-5. Keep one DAG inside one scope/root whenever possible. Scoped reads/writes clip
-   links whose endpoints fall outside the requested subtree.
-
-Recommended parent-selection rule when converting a DAG into a structural tree:
-
-- Prefer the deepest already-placed prerequisite as the structural parent.
-- Break ties by preferring a prerequisite from the same local group/chapter/topic.
-- If a node has no prerequisite, attach it directly under the DAG root.
-
-Optional metadata keys are domain-owned, but these are reasonable examples:
-
-```typescript
-attributes: {
-  "dag:group": "entropy",
-  "dag:kind": "theorem",
-  "dag:layer": "4",
-  "dag:role": "spanning" // or "root", "derived"
-}
-```
-
 ## Document Envelope (SavedDoc)
 
 ```typescript
@@ -113,19 +82,7 @@ The server validates these on every save. Violations cause a rejected POST:
 3. **No orphans** — every non-root node must be reachable from the root
 4. **No cycles** — the tree must be acyclic
 5. **Alias constraints** — alias nodes cannot have children, cannot chain to other aliases
-6. **Link endpoints** — GraphLink source/target must reference existing non-alias nodes
-
-## Scoped link convention
-
-This is an operational rule, not a full-map validation invariant:
-
-- Keep `GraphLink` source/target inside the same scope when you expect scoped reads
-  and scoped writes (`?scope=<nodeId>`) to preserve those links.
-- If you split a conceptual DAG across scopes, subtree reads will omit links that
-  point outside the loaded subtree, and subtree writes can only recreate links whose
-  endpoints are included in the incoming scope payload.
-- If cross-scope navigation matters more than preserving graph edges, use aliases or
-  duplicate entry nodes at the scope boundary instead of relying on cross-scope links.
+6. **GraphLink endpoints** — GraphLink source/target must reference existing non-alias nodes
 
 ## Helper: Build a new node
 
@@ -145,3 +102,25 @@ function makeNode(id, parentId, text, opts = {}) {
   };
 }
 ```
+
+## Display-Oriented Metadata Conventions
+
+When synthetic display structures are introduced, make them explicit in `attributes`.
+
+Recommended keys:
+
+```typescript
+{
+  "m3e:facet"?: string,         // e.g. flow, dependency, reviews, timeseries, document
+  "m3e:display-role"?: string,  // e.g. anchor, question, option, rationale, downside, stage
+  "m3e:synthetic"?: "anchor"    // mark display-synthetic nodes that are not semantic source nodes
+}
+```
+
+Use these when:
+
+- an anchor is inserted only for readability
+- a node exists mainly to satisfy display intent
+- later re-anchoring should be possible without confusing the semantic leaf nodes
+
+Do not mark genuine source hierarchy nodes as synthetic just because they help the display.

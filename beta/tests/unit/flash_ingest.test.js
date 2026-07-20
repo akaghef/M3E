@@ -1,5 +1,8 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+import { test, beforeEach } from "vitest";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 const {
   parseMarkdownToNodes,
@@ -17,7 +20,7 @@ const {
 
 const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
 
-test.beforeEach(() => {
+beforeEach(() => {
   clearDrafts();
   _resetIdCounter();
 });

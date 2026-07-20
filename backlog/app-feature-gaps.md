@@ -33,6 +33,13 @@ Home 画面実装後の会話で出た「アプリとして普通あるべきで
 - 自動タグ / 自動要約
 - ショートカット・マクロ（一連の操作を記録・再生）
 
+## Workflow / Agent state (PJ03 抽出)
+- workflow.* namespace attribute を map viewer で可視化する facet（color / badge / status indicator）— 動的 workflow state を scope 内で描画
+- 複数 scope に跨る workflow summary の集約表示
+- checkpoint JSON の schema versioning を M3E Resource として統合（将来）
+- reviews/Qn frontmatter を watch して blocker_cleared / human_approve / human_reject を自動発火する review_bridge
+- Workflow Evaluation Board（Phase 2 orchestrator の verdict を human 可視化する view）
+
 ## 運用・信頼性
 - オフラインモード / 同期ステータス UI
 - エラーレポート / クラッシュリカバリ（起動時の「前回の状態を復元しますか？」）

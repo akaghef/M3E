@@ -1,0 +1,14 @@
+.git/**
+node_modules/**
+artifacts/**
+projects/**
+beta/**
+final/**
+docs/**
+backlog/**
+install/**
+others/**
+.claude/**
+.agents/**
+.vscode/**
+*.log

@@ -12,6 +12,7 @@
 - `ontology_data_structure.md` — オントロジー観点のデータ構造
 - `ontology_scientific_research.md` — 科学研究とオントロジー
 - `Claude_Code_Skills_Research.md` — skill 設計の調査
+- `m3e_data_structure_conversations/` — ChatGPT export 由来の M3E データ構造・通信形式ブレストの raw 証跡と蒸留ノート
 
 ## 置かないもの
 

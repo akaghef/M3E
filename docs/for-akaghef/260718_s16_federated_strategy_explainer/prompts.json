@@ -1,0 +1,44 @@
+[
+  {
+    "id": "view-table",
+    "title": "比較テーブルを追加",
+    "description": "owner、正本、派生物、write route を一覧比較する。",
+    "tags": ["view", "table"],
+    "prompt": "次の YAML を読んで、概念・重要度・難易度・confidence・関係・根拠・読む順番を比較できるテーブル中心の iframe 用 HTML document を一つ作ってください。\ndefinition.yaml: {{definition_yaml_path}}\npresentation.yaml: {{presentation_yaml_path}}\n出力は <!DOCTYPE html> から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。"
+  },
+  {
+    "id": "view-worktree",
+    "title": "正典ワークツリーを追加",
+    "description": "仕様ファイルの責任分担と読む順番を tree で見る。",
+    "tags": ["view", "worktree"],
+    "prompt": "次の YAML を読んで、directory / file / concept の階層、変更影響、読む順番を展開可能な tree で示す iframe 用 HTML document を一つ作ってください。\ndefinition.yaml: {{definition_yaml_path}}\npresentation.yaml: {{presentation_yaml_path}}\n出力は <!DOCTYPE html> から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。"
+  },
+  {
+    "id": "view-beginner",
+    "title": "初見向けビューを追加",
+    "description": "専門語を減らし、三段階で理解する。",
+    "tags": ["view", "beginner"],
+    "prompt": "次の YAML を読んで、初見の読者向けに、用語、なぜ重要か、三段階の理解経路、短い例え、質問例を示す iframe 用 HTML document を一つ作ってください。\ndefinition.yaml: {{definition_yaml_path}}\npresentation.yaml: {{presentation_yaml_path}}\n出力は <!DOCTYPE html> から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。"
+  },
+  {
+    "id": "view-engineer",
+    "title": "実装レビューを追加",
+    "description": "port、依存、failure mode、test gate を確認する。",
+    "tags": ["view", "engineer"],
+    "prompt": "次の YAML を読んで、実装者向けに component dependency、Command flow、failure mode、review point、test gate、読む順番を示す iframe 用 HTML document を一つ作ってください。\ndefinition.yaml: {{definition_yaml_path}}\npresentation.yaml: {{presentation_yaml_path}}\n出力は <!DOCTYPE html> から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。"
+  },
+  {
+    "id": "view-pdm-biz",
+    "title": "意思決定ビューを追加",
+    "description": "目的、影響、延期理由、判断 gate に絞る。",
+    "tags": ["view", "decision"],
+    "prompt": "次の YAML を読んで、product decision 向けに、何が変わるか、なぜ重要か、今やること、延期すること、risk、decision gate を示す iframe 用 HTML document を一つ作ってください。\ndefinition.yaml: {{definition_yaml_path}}\npresentation.yaml: {{presentation_yaml_path}}\n出力は <!DOCTYPE html> から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。"
+  },
+  {
+    "id": "view-free",
+    "title": "自由な表現を追加",
+    "description": "任意の見せ方を指定して新しい view を作る。",
+    "tags": ["view", "custom"],
+    "prompt": "次の YAML を読んで、{{希望する表現}} で説明する iframe 用 HTML document を一つ作ってください。\ndefinition.yaml: {{definition_yaml_path}}\npresentation.yaml: {{presentation_yaml_path}}\n出力は <!DOCTYPE html> から始まる自己完結 HTML。inline CSS / inline JavaScript のみ。外部 CDN、外部読み込み、通信、ブラウザ保存、cookie、親 frame へのアクセスを使わない。既定は light。自分の location.hash の #theme=dark と hashchange を読み、data-theme を切り替える。重要概念、関係、source references、次に読む箇所、次に AI へ聞く質問を含める。index.html と既存 view は変更せず、新しい switchable view として追加する HTML だけを返す。"
+  }
+]
