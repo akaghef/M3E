@@ -54,12 +54,12 @@ test.describe("pn-lab", () => {
     await expect(page.locator('[data-pn-edge="layout-layout-direction"]')).toHaveAttribute("data-target-side", "left");
   });
 
-  test("safe-zone collision falls back without canvas overlap", async ({ page }) => {
+  test("safe-zone collision preserves rightward placement", async ({ page }) => {
     await openLab(page);
     await page.locator("#sample").selectOption("safe-zone-collision");
     const nav = page.locator('[data-testid="progressive-navigation"]');
-    await expect(nav).toHaveAttribute("data-pn-placement", "dock-left-of-anchor");
-    await expect(nav).toHaveAttribute("data-pn-canvas-overlap", "0");
+    await expect(nav).toHaveAttribute("data-pn-placement", "right-of-anchor");
+    await expect(nav).toHaveAttribute("data-pn-canvas-overlap", /[1-9]/);
   });
 
   test("keyboard/search keeps active path visible and overflow is explicit", async ({ page }) => {

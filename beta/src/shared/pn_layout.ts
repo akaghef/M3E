@@ -39,7 +39,7 @@ export interface PnNodeMetrics {
   h: number;
 }
 
-export type PnPlacementMode = "right-of-anchor" | "dock-left-of-anchor" | "compact" | "fixed-side-panel" | "scroll";
+export type PnPlacementMode = "right-of-anchor" | "compact" | "fixed-side-panel" | "scroll";
 export type PnOverflowMode = "none" | "scroll" | "compact" | "side-panel";
 export type PnRouteStyle = "orthogonal" | "line" | "curve";
 
@@ -106,14 +106,10 @@ export interface PnLayoutOutput {
 }
 
 type InternalMode = PnPlacementMode;
-type Direction = "right" | "left";
+type Direction = "right";
 
 const DEFAULT_TRIAL_ORDER: PnPlacementMode[] = [
   "right-of-anchor",
-  "dock-left-of-anchor",
-  "compact",
-  "fixed-side-panel",
-  "scroll",
 ];
 const DEFAULT_NODE: PnNodeMetrics = { w: 172, h: 47 };
 const ROOT_METRIC: PnNodeMetrics = { w: 44, h: 44 };
@@ -279,7 +275,6 @@ function candidateRect(input: PnLayoutInput, mode: PnPlacementMode, size: { w: n
   const viewport = input.viewport;
   const top = clamp(anchor.y + anchor.h / 2 - size.h / 2, VIEWPORT_MARGIN, Math.max(VIEWPORT_MARGIN, viewport.height - size.h - VIEWPORT_MARGIN));
   if (mode === "right-of-anchor") return rect(anchor.x + anchor.w + 18, top, size.w, size.h);
-  if (mode === "dock-left-of-anchor") return rect(anchor.x - size.w - 18, top, size.w, size.h);
   if (mode === "compact") {
     const compactWidth = Math.min(size.w, Math.max(360, viewport.width - 112));
     const left = anchor.x + anchor.w + 12;
@@ -302,7 +297,7 @@ function placeNodes(
 ): { nodes: PnPlacedNode[]; nodeRectsById: Record<PnId, PnRect>; overflow: PnLayoutOutput["overflow"] } {
   const { nodeById, childrenByParent } = buildIndexes(input.nodes);
   const size = estimateSize(input, visibleNodeIds, mode);
-  const direction: Direction = mode === "dock-left-of-anchor" ? "left" : "right";
+  const direction: Direction = "right";
   const rootMetric = metricFor(input.rootId, input);
   const root = rect(input.anchorRect.x - overlayRect.x, input.anchorRect.y - overlayRect.y, rootMetric.w, rootMetric.h);
   const byId: Record<PnId, PnRect> = { [input.rootId]: root };
@@ -408,7 +403,7 @@ function routeEdges(
   const { childrenByParent } = buildIndexes(input.nodes);
   const visible = new Set(visibleNodeIds);
   const routeStyle = input.options?.routeStyle || "orthogonal";
-  const direction = mode === "dock-left-of-anchor" ? "left" : "right";
+  const direction: Direction = "right";
   const edges: PnRoutedEdge[] = [];
   visibleNodeIds.forEach((parentId) => {
     const parentRect = rects[parentId];
@@ -495,7 +490,7 @@ export function layoutProgressiveNav(input: PnLayoutInput): PnLayoutOutput {
     if (!best || candidateCanvasScore < best.placement.canvasNodeOverlapScore) {
       best = output;
     }
-    if (candidateCanvasScore === 0) return output;
+    if (candidateCanvasScore === 0 || trialOrder.length === 1) return output;
     rejected.push({ mode, rect: overlayRect, overlapScore: candidateOverlapScore, canvasNodeOverlapScore: candidateCanvasScore });
   }
 

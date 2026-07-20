@@ -58,6 +58,30 @@ function readMacClipboard() {
   return result.stdout;
 }
 
+async function selectedVisualCenter(page) {
+  return page.evaluate(() => {
+    const selected = document.querySelector(
+      "circle.scatter-node-circle.primary-selected, path.node-shape.primary-selected, rect.root-box.primary-selected, g.node-group.selected"
+    );
+    if (!selected) {
+      throw new Error("Selected visual node is not rendered.");
+    }
+    const rect = selected.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+}
+
+async function linearPanelCenter(page) {
+  return page.evaluate(() => {
+    const panel = document.querySelector(".linear-panel");
+    if (!panel || panel.hidden) {
+      throw new Error("Linear panel is not rendered.");
+    }
+    const rect = panel.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Navigation: Arrow keys
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -963,6 +987,48 @@ test.describe("I: toggle meta panel", () => {
 
     // Viewer should still be functional.
     await expectMetaContains(page, "nodes: 7");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Viewport pan
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("Viewport pan", () => {
+  test("drag pan moves the linear panel with tree content during motion", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+    await waitForRender(page, 100);
+
+    const beforeNode = await selectedVisualCenter(page);
+    const beforePanel = await linearPanelCenter(page);
+    const board = await page.locator("#board").boundingBox();
+    expect(board).toBeTruthy();
+
+    const start = {
+      x: board.x + board.width * 0.22,
+      y: board.y + board.height * 0.78,
+    };
+    const delta = { x: 84, y: -36 };
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 8 });
+    await waitForRender(page, 40);
+
+    const duringNode = await selectedVisualCenter(page);
+    const duringPanel = await linearPanelCenter(page);
+    await page.mouse.up();
+
+    const nodeDx = duringNode.x - beforeNode.x;
+    const nodeDy = duringNode.y - beforeNode.y;
+    const panelDx = duringPanel.x - beforePanel.x;
+    const panelDy = duringPanel.y - beforePanel.y;
+
+    expect(Math.abs(nodeDx - delta.x)).toBeLessThan(2);
+    expect(Math.abs(nodeDy - delta.y)).toBeLessThan(2);
+    expect(Math.abs(panelDx - nodeDx)).toBeLessThan(2);
+    expect(Math.abs(panelDy - nodeDy)).toBeLessThan(2);
   });
 });
 

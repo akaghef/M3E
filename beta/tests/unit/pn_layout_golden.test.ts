@@ -7,7 +7,7 @@ function metrics(): PnLayoutInput["nodeMetrics"] {
 }
 
 describe("pn_layout placement ratchet", () => {
-  test("tries right then dock-left and adopts first canvas overlapScore zero placement", () => {
+  test("keeps the action tree to the right even when the canvas safe zone overlaps", () => {
     const result = layoutProgressiveNav({
       nodes: pnNodes,
       rootId: "gui",
@@ -26,16 +26,14 @@ describe("pn_layout placement ratchet", () => {
       options: { routeStyle: "orthogonal" },
     });
 
-    expect(result.placement.trialOrder).toEqual(["right-of-anchor", "dock-left-of-anchor", "compact", "fixed-side-panel", "scroll"]);
-    expect(result.placement.mode).toBe("dock-left-of-anchor");
-    expect(result.placement.canvasNodeOverlapScore).toBe(0);
-    expect(result.placement.rejected).toEqual([
-      expect.objectContaining({ mode: "right-of-anchor", canvasNodeOverlapScore: expect.any(Number) }),
-    ]);
-    expect(result.placement.rejected[0]!.canvasNodeOverlapScore).toBeGreaterThan(0);
+    expect(result.placement.trialOrder).toEqual(["right-of-anchor"]);
+    expect(result.placement.mode).toBe("right-of-anchor");
+    expect(result.placement.rect.x).toBeGreaterThan(344);
+    expect(result.placement.canvasNodeOverlapScore).toBeGreaterThan(0);
+    expect(result.placement.rejected).toEqual([]);
     expect(result.edges.find((edge) => edge.id === "layout-layout-direction")).toMatchObject({
-      sourceSide: "left",
-      targetSide: "right",
+      sourceSide: "right",
+      targetSide: "left",
     });
   });
 
@@ -51,7 +49,7 @@ describe("pn_layout placement ratchet", () => {
       options: { routeStyle: "line" },
     });
 
-    expect(["scroll", "compact", "side-panel"]).toContain(result.overflow.mode);
+    expect(result.overflow.mode).toBe("scroll");
     expect(result.overflow.scrollRect).toBeDefined();
   });
 });
