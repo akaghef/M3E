@@ -1315,12 +1315,16 @@ function WorkbenchApp(): React.ReactElement {
         return;
       }
       event.preventDefault();
+      const opening = progressiveMode !== "active-node" || !progressiveOpen;
+      if (opening) {
+        window.dispatchEvent(new CustomEvent("m3e:prepare-progressive-navigation"));
+      }
       setProgressiveMode("active-node");
       setProgressiveOpen((current) => progressiveMode === "active-node" ? !current : true);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [progressiveMode]);
+  }, [progressiveMode, progressiveOpen]);
   const modalContent = useMemo(() => {
     if (modal === "settings") return <SettingsModal snapshot={snapshot} theme={theme} toggleTheme={toggleTheme} close={() => setModal(null)} />;
     if (modal === "share") return <ShareModal snapshot={snapshot} close={() => setModal(null)} />;

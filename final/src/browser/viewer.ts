@@ -1101,6 +1101,10 @@ function isTextEntryElement(target: EventTarget | null): boolean {
   );
 }
 
+function isNodePointerTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("[data-node-id]"));
+}
+
 function isShortcutLetter(event: KeyboardEvent, lowerKey: string, code: string): boolean {
   return event.key.toLowerCase() === lowerKey || event.code === code;
 }
@@ -4175,6 +4179,26 @@ let _linearPanelAnchorCanvasX = VIEWER_TUNING.layout.leftPad;
 let _linearPanelAnchorCanvasY = VIEWER_TUNING.layout.topPad;
 let _linearPanelCanvasHeight = 380;
 let _lastZoomStatusAt = 0;
+let _viewportDependentSyncTimer: number | null = null;
+let _viewportDependentSyncPending = false;
+let _boardViewportRect = { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+
+interface ViewportApplyOptions {
+  syncDependents?: boolean;
+}
+
+function refreshBoardViewportRect(): void {
+  const rect = board.getBoundingClientRect();
+  _boardViewportRect = {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+refreshBoardViewportRect();
+window.addEventListener("resize", refreshBoardViewportRect);
 
 function refreshLinearPanelCanvasLayout(): boolean {
   if (!map || !lastLayout || visibleOrder.length === 0) {
@@ -4219,7 +4243,7 @@ function refreshLinearPanelCanvasLayout(): boolean {
   return true;
 }
 
-function applyZoom(): void {
+function applyCanvasViewportTransform(): void {
   const widthValue = `${contentWidth}px`;
   if (_appliedCanvasWidth !== widthValue) {
     canvas.style.width = widthValue;
@@ -4235,11 +4259,68 @@ function applyZoom(): void {
     canvas.style.transform = transformValue;
     _appliedCanvasTransform = transformValue;
   }
+}
+
+function syncViewportDependents(): void {
+  refreshBoardViewportRect();
   syncInlineEditorPosition();
   syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
   syncTemplateCompletionPlacement();
   window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+}
+
+function applyLinearPanelViewportTransform(): void {
+  if (!linearPanelEl || linearPanelEl.hidden || _linearPanelLayoutDirty) {
+    return;
+  }
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree" || !map || !lastLayout || visibleOrder.length === 0) {
+    return;
+  }
+
+  const panelLeft = viewState.cameraX + _linearPanelAnchorCanvasX * viewState.zoom;
+  const panelTop = viewState.cameraY + _linearPanelAnchorCanvasY * viewState.zoom;
+  linearPanelEl.style.left = `${Math.round(panelLeft)}px`;
+  linearPanelEl.style.top = `${Math.round(panelTop)}px`;
+  linearPanelEl.style.transform = `scale(${viewState.zoom})`;
+}
+
+function applyZoom(options: ViewportApplyOptions = {}): void {
+  // Continuous pan/zoom only writes affine transforms; layout-dependent sync trails the gesture.
+  applyCanvasViewportTransform();
+  if (options.syncDependents === false) {
+    applyLinearPanelViewportTransform();
+    return;
+  }
+  syncViewportDependents();
+}
+
+function markViewportDependentSyncPending(): void {
+  _viewportDependentSyncPending = true;
+}
+
+function scheduleViewportDependentSync(): void {
+  markViewportDependentSyncPending();
+  if (_viewportDependentSyncTimer !== null) {
+    window.clearTimeout(_viewportDependentSyncTimer);
+  }
+  _viewportDependentSyncTimer = window.setTimeout(() => {
+    _viewportDependentSyncTimer = null;
+    flushViewportDependentSync();
+  }, 120);
+}
+
+function flushViewportDependentSync(): void {
+  if (_viewportDependentSyncTimer !== null) {
+    window.clearTimeout(_viewportDependentSyncTimer);
+    _viewportDependentSyncTimer = null;
+  }
+  if (!_viewportDependentSyncPending) {
+    return;
+  }
+  _viewportDependentSyncPending = false;
+  applyCanvasViewportTransform();
+  syncViewportDependents();
 }
 
 function currentCameraTarget(): CameraTarget {
@@ -4317,7 +4398,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
     viewState.cameraY = lerp(motion.from.cameraY, motion.to.cameraY, t);
     viewState.zoom = lerp(motion.from.zoom, motion.to.zoom, t);
-    applyZoom();
+    applyZoom({ syncDependents: false });
     if (rawT >= 1) {
       applyCameraTarget(motion.to);
       cameraMotion = null;
@@ -4588,17 +4669,40 @@ function nudgeActiveNodeIntoView(options: CameraMoveOptions = {}): boolean {
   return nudgeNodeIntoView(viewState.selectedNodeId, options);
 }
 
+function reserveActiveNodeRightSpace(requiredWidth = 520): boolean {
+  const rect = nodeViewportRect(viewState.selectedNodeId);
+  if (!rect) {
+    return false;
+  }
+  const safe = activeSafeViewport();
+  const desiredRight = Math.max(safe.left + 120, safe.right - requiredWidth);
+  if (rect.right <= desiredRight) {
+    return false;
+  }
+  moveCameraTo({
+    cameraX: viewState.cameraX + desiredRight - rect.right,
+    cameraY: viewState.cameraY,
+    zoom: viewState.zoom,
+  }, { animate: false });
+  return true;
+}
+
+window.addEventListener("m3e:prepare-progressive-navigation", () => {
+  reserveActiveNodeRightSpace();
+});
+
 function setZoom(
   nextZoom: number,
   anchorClientX: number | null = null,
   anchorClientY: number | null = null,
   statusMode: "immediate" | "throttled" | "silent" = "immediate",
+  options: ViewportApplyOptions = {},
 ): void {
   cancelCameraMotion();
   const previousZoom = viewState.zoom;
   viewState.zoom = clampZoom(nextZoom);
 
-  const boardRect = board.getBoundingClientRect();
+  const boardRect = _boardViewportRect;
   const pointerX = anchorClientX ?? boardRect.left + boardRect.width / 2;
   const pointerY = anchorClientY ?? boardRect.top + boardRect.height / 2;
   const localViewportX = pointerX - boardRect.left;
@@ -4608,7 +4712,7 @@ function setZoom(
 
   viewState.cameraX = localViewportX - contentX * viewState.zoom;
   viewState.cameraY = localViewportY - contentY * viewState.zoom;
-  applyZoom();
+  applyZoom(options);
   if (statusMode === "silent") {
     return;
   }
@@ -4623,15 +4727,17 @@ function setZoom(
 }
 
 let _zoomSetScheduled = false;
+let _zoomSetShouldSyncDependents = false;
 let _pendingZoom: number | null = null;
 let _pendingZoomAnchorX: number | null = null;
 let _pendingZoomAnchorY: number | null = null;
 
-function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, anchorClientY: number | null = null): void {
+function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, anchorClientY: number | null = null, options: ViewportApplyOptions = {}): void {
   cancelCameraMotion();
   _pendingZoom = clampZoom(nextZoom);
   _pendingZoomAnchorX = anchorClientX;
   _pendingZoomAnchorY = anchorClientY;
+  _zoomSetShouldSyncDependents = _zoomSetShouldSyncDependents || options.syncDependents !== false;
   if (_zoomSetScheduled) {
     return;
   }
@@ -4644,10 +4750,12 @@ function scheduleSetZoom(nextZoom: number, anchorClientX: number | null = null, 
     _pendingZoom = null;
     _pendingZoomAnchorX = null;
     _pendingZoomAnchorY = null;
+    const syncDependents = _zoomSetShouldSyncDependents;
+    _zoomSetShouldSyncDependents = false;
     if (zoom === null) {
       return;
     }
-    setZoom(zoom, anchorX, anchorY, "throttled");
+    setZoom(zoom, anchorX, anchorY, "throttled", { syncDependents });
   });
 }
 
@@ -6811,14 +6919,18 @@ function scheduleRender(): void {
 }
 
 let _zoomApplyScheduled = false;
-function scheduleApplyZoom(): void {
+let _zoomApplyShouldSyncDependents = false;
+function scheduleApplyZoom(options: ViewportApplyOptions = {}): void {
+  _zoomApplyShouldSyncDependents = _zoomApplyShouldSyncDependents || options.syncDependents !== false;
   if (_zoomApplyScheduled) {
     return;
   }
   _zoomApplyScheduled = true;
   requestAnimationFrame(() => {
     _zoomApplyScheduled = false;
-    applyZoom();
+    const syncDependents = _zoomApplyShouldSyncDependents;
+    _zoomApplyShouldSyncDependents = false;
+    applyZoom({ syncDependents });
   });
 }
 
@@ -11131,6 +11243,19 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   }
 }
 
+function prepareViewportGesture(target: EventTarget | null): boolean {
+  if (isTextEntryElement(target)) {
+    return false;
+  }
+  if (inlineEditor) {
+    stopInlineEdit(true, { focusBoard: false });
+  }
+  if (inlineEdgeLabelEditor) {
+    stopInlineEdgeLabelEdit(true, { focusBoard: false });
+  }
+  return true;
+}
+
 function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   if (!map || !lastLayout) {
     return;
@@ -14494,6 +14619,9 @@ board.addEventListener("wheel", (event: WheelEvent) => {
   if ((event.target as HTMLElement | null)?.closest(".linear-panel")) {
     return;
   }
+  if (!prepareViewportGesture(event.target)) {
+    return;
+  }
   event.preventDefault();
   cancelCameraMotion();
   // Normalize deltas to pixels so zoom/pan feel identical across browsers and
@@ -14511,7 +14639,8 @@ board.addEventListener("wheel", (event: WheelEvent) => {
   if (!event.ctrlKey && !event.metaKey) {
     viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
     viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
-    scheduleApplyZoom();
+    scheduleApplyZoom({ syncDependents: false });
+    scheduleViewportDependentSync();
     return;
   }
   const intensity = Math.min(
@@ -14519,7 +14648,8 @@ board.addEventListener("wheel", (event: WheelEvent) => {
     Math.abs(deltaY) / VIEWER_TUNING.zoom.wheelIntensityDivisor
   );
   const factor = Math.exp(-Math.sign(deltaY) * intensity);
-  scheduleSetZoom((_pendingZoom ?? viewState.zoom) * factor, event.clientX, event.clientY);
+  scheduleSetZoom((_pendingZoom ?? viewState.zoom) * factor, event.clientX, event.clientY, { syncDependents: false });
+  scheduleViewportDependentSync();
 }, { passive: false });
 
 // --- Pointer-based pan & pinch-to-zoom ---
@@ -14575,6 +14705,13 @@ board.addEventListener("pointerdown", (event: PointerEvent) => {
   }
   cancelCameraMotion();
 
+  if (isNodePointerTarget(event.target)) {
+    return;
+  }
+  if (!prepareViewportGesture(event.target)) {
+    return;
+  }
+
   // Track touch pointers for pinch
   if (event.pointerType === "touch") {
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -14585,10 +14722,6 @@ board.addEventListener("pointerdown", (event: PointerEvent) => {
     }
   }
 
-  const onNode = (event.target as HTMLElement | null)?.dataset?.["nodeId"];
-  if (onNode) {
-    return;
-  }
   viewState.panState = {
     pointerId: event.pointerId,
     startX: event.clientX,
@@ -14628,7 +14761,8 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     // Zoom anchored to the current midpoint of the two fingers
     const anchorX = (a.x + b.x) / 2;
     const anchorY = (a.y + b.y) / 2;
-    scheduleSetZoom(nextZoom, anchorX, anchorY);
+    scheduleSetZoom(nextZoom, anchorX, anchorY, { syncDependents: false });
+    markViewportDependentSyncPending();
     return;
   }
 
@@ -14639,7 +14773,8 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
   cancelCameraMotion();
   viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
   viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
-  scheduleApplyZoom();
+  scheduleApplyZoom({ syncDependents: false });
+  markViewportDependentSyncPending();
 });
 
 function endPointer(event: PointerEvent): void {
@@ -14666,6 +14801,8 @@ function endPointer(event: PointerEvent): void {
           cameraY: viewState.cameraY,
         };
         board.classList.add("panning");
+      } else {
+        flushViewportDependentSync();
       }
       return;
     }
@@ -14675,6 +14812,7 @@ function endPointer(event: PointerEvent): void {
   if (viewState.panState && event.pointerId === viewState.panState.pointerId) {
     viewState.panState = null;
     board.classList.remove("panning");
+    flushViewportDependentSync();
   }
 
   try { board.releasePointerCapture(event.pointerId); } catch { /* already released */ }
