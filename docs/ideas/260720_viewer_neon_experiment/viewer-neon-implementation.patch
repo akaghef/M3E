@@ -21,12 +21,12 @@ index 1cb5ade..b1cd92c 100644
  let localFsSelectedPath: string | null = null;
 @@ -4083,26 +4083,26 @@ function setStatus(message: string, isError = false): void {
  }
- 
+
  function normalizeViewerTheme(value: unknown): ViewerTheme {
 -  return value === "dark" ? "dark" : "light";
 +  return value === "light" || value === "dark" || value === "neon" ? value : "neon";
  }
- 
+
  function readStoredViewerTheme(): ViewerTheme {
    try {
      return normalizeViewerTheme(window.localStorage.getItem(THEME_PREFS_KEY));
@@ -35,7 +35,7 @@ index 1cb5ade..b1cd92c 100644
 +    return "neon";
    }
  }
- 
+
  function applyViewerTheme(theme: ViewerTheme, options: { persist?: boolean; announce?: boolean } = {}): void {
    viewerTheme = normalizeViewerTheme(theme);
    document.documentElement.dataset.theme = viewerTheme;
@@ -60,12 +60,12 @@ index 1cb5ade..b1cd92c 100644
 +    setStatus(viewerTheme === "neon" ? "Neon mode enabled." : viewerTheme === "dark" ? "Dark mode enabled." : "Light mode enabled.");
    }
  }
- 
+
  function toggleViewerTheme(): void {
 -  applyViewerTheme(viewerTheme === "dark" ? "light" : "dark", { persist: true, announce: true });
 +  applyViewerTheme(viewerTheme === "neon" ? "light" : viewerTheme === "light" ? "dark" : "neon", { persist: true, announce: true });
  }
- 
+
  applyViewerTheme(viewerTheme);
 @@ -6917,7 +6917,15 @@ function render(): void {
      VIEWER_TUNING.layout.minCanvasHeight,
@@ -118,7 +118,7 @@ index 1cb5ade..b1cd92c 100644
          graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${line.mx}" y="${line.my - 10}" text-anchor="middle">${escapeXml(label)}</text>`;
 @@ -7179,7 +7203,8 @@ function render(): void {
        </marker>`;
- 
+
      const selectedClass = viewState.selectedLinkId === link.id || selectedGraphLinkId === link.id ? " selected" : "";
 -    graphLinks += `<path class="graph-link${styleClass}${selectedClass}" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
 +    const branchClass = neonBranchClassForNode(sourceRenderId);
@@ -133,18 +133,18 @@ index 1cb5ade..b1cd92c 100644
 -      result += `<path class="edge edge-${structuredMode}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
 +      const branchClass = neonBranchClassForNode(childId);
 +      result += `<path class="edge edge-${structuredMode} ${branchClass}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
- 
+
        const childNode = state.nodes[childId];
        const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
 @@ -7468,7 +7494,7 @@ function render(): void {
      }
- 
+
      const output = renderNodeSvg(toNodeDrawInput(node, p, nodeStyles));
 -    nodes += output.svg;
 +    nodes += withNeonBranchClass(output.svg, node.id);
      maxX = Math.max(maxX, output.bounds.maxX);
      maxY = Math.max(maxY, output.bounds.maxY);
- 
+
 diff --git a/beta/src/browser/workbench-ui.tsx b/beta/src/browser/workbench-ui.tsx
 index 54681e6..600174b 100644
 --- a/beta/src/browser/workbench-ui.tsx
@@ -160,12 +160,12 @@ index 54681e6..600174b 100644
    | "active-root"
 @@ -246,7 +246,7 @@ function dispatchRapidGenerateAction(action: RapidGenerateAction, label: string,
  }
- 
+
  function normalizeViewerTheme(value: unknown): ViewerTheme {
 -  return value === "dark" ? "dark" : "light";
 +  return value === "light" || value === "dark" || value === "neon" ? value : "neon";
  }
- 
+
  function readViewerTheme(): ViewerTheme {
 diff --git a/beta/src/shared/node_draw_svg.ts b/beta/src/shared/node_draw_svg.ts
 index fd7c640..91ebad6 100644
