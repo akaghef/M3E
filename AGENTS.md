@@ -160,6 +160,12 @@ git branch --show-current
 pwd
 ```
 
+After creating or selecting a worktree, every subsequent write command must
+either run with that worktree as its explicit working directory or use
+`git -C <worktree-path>`. Do not assume that `git worktree add` changes the
+current shell directory. Before the first write, verify both `pwd` and
+`git branch --show-current` from the target worktree.
+
 ## Definition of Update-Complete
 
 A task is update-complete only when all required state sync is done:
