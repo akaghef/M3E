@@ -1,20 +1,20 @@
 ---
 name: brainstorm
 description: >
-  ユーザーから投げられたアイデア・テーマを idea/<group>/<topic>/ フォルダに
+  ユーザーから投げられたアイデア・テーマを docs/ideas/<group>/<topic>/ フォルダに
   「複数選択肢を並べる・採否を決めない・実装は考えない」方式で
   ブレインストーミング展開するスキル。レビュー前のアイデア整理用。
   以下の場面でトリガーする:
   - 「ブレスト」「ブレインストーミング」「アイデアを整理」「アイデア化」と言われたとき
   - 「色々な選択肢を考えて」「網羅的に並べて」「いっぱい案を出して」と言われたとき
-  - 「idea/に入れて」「idea化」「実行に移せる程度に詳細化された設計を作って」と言われたとき
+  - 「docs/ideas/に入れて」「idea化」「実行に移せる程度に詳細化された設計を作って」と言われたとき
   - ユーザーが新しいテーマや機能アイデアを投げてきて「フォルダ作って」「整理して」と言うとき
   - 「採用するかは決めない」「実装は考えない」前提で考えてほしいと言われたとき
 ---
 
-# brainstorm — idea/ ブレスト展開スキル
+# brainstorm — docs/ideas/ ブレスト展開スキル
 
-ユーザーの思いつきを `idea/<group>/<topic>/` フォルダに展開する。
+ユーザーの思いつきを `docs/ideas/<group>/<topic>/` フォルダに展開する。
 **採否は決めない・実装詳細は決めない・複数案を並べる** が大原則。
 
 レビュー前のアイデアプール段階。後でユーザーが選択肢から選んで実装方針を確定する。
@@ -34,7 +34,7 @@ description: >
 ## 出力構造
 
 ```
-idea/<group>/<topic>/
+docs/ideas/<group>/<topic>/
 ├── README.md          # 索引 + 全体俯瞰 + 論点一覧
 ├── 01_<theme>.md      # 第一の切り口（コンセプト/ユースケース等）
 ├── 02_<theme>.md      # 第二の切り口（実装方式の選択肢）
@@ -133,7 +133,7 @@ N_implementation.md    — 横断: 共通基盤・優先順・実装方針
 - `m3e-map.json` の既存ノード構造
 - `docs/` `backlog/` の既存ドキュメント
 - `MEMORY.md` の既存メモリ（project_*, feedback_*）
-- 既存のフォルダ（idea/<group>/ 内の他ブレスト、特に同じメタフォルダ内）
+- 既存のフォルダ（docs/ideas/<group>/ 内の他ブレスト、特に同じメタフォルダ内）
 これらと矛盾しない、または接続できる形で書く。
 
 ### 鉄則8. README に論点一覧
@@ -154,7 +154,7 @@ README 末尾に「論点 A〜K」のような一覧を置き、
 
 <1〜2文の概要>
 
-> メタフォルダ: `idea/<group>/` （配置理由を 1 行）
+> メタフォルダ: `docs/ideas/<group>/` （配置理由を 1 行）
 
 ## 方針
 
@@ -175,7 +175,7 @@ README 末尾に「論点 A〜K」のような一覧を置き、
 
 ## 関連ブレスト（任意）
 
-- `idea/<group>/<other_topic>/` — 一行関係性
+- `docs/ideas/<group>/<other_topic>/` — 一行関係性
 
 ## キーメッセージ（任意）
 
@@ -185,7 +185,7 @@ README 末尾に「論点 A〜K」のような一覧を置き、
 ## 動作手順
 
 1. **ユーザー入力を解析** — テーマ・スコープ・制約を抽出
-2. **既存 idea/ を確認** — 同じメタフォルダ内に近いテーマがないか軽くチェック
+2. **既存 docs/ideas/ を確認** — 同じメタフォルダ内に近いテーマがないか軽くチェック
 3. **メタフォルダ判定**（鉄則 0） — 上表から 1 つ選ぶ
 4. **パターン選択** — A/B/C どれが合うか判断
 5. **トピック名決定** — snake_case でフォルダ名を決める
@@ -200,12 +200,12 @@ README 末尾に「論点 A〜K」のような一覧を置き、
 ブレスト完了時の応答は、長すぎず短すぎず:
 
 ```
-`idea/<group>/<topic>/` に N ファイル構成でまとめました。
+`docs/ideas/<group>/<topic>/` に N ファイル構成でまとめました。
 
-- [README.md](idea/<group>/<topic>/README.md) — 索引と論点一覧
-- [01_xxx.md](idea/<group>/<topic>/01_xxx.md) — <1行説明>
+- [README.md](docs/ideas/<group>/<topic>/README.md) — 索引と論点一覧
+- [01_xxx.md](docs/ideas/<group>/<topic>/01_xxx.md) — <1行説明>
 - ...
-- [0N_xxx.md](idea/<group>/<topic>/0N_xxx.md) — <1行説明>
+- [0N_xxx.md](docs/ideas/<group>/<topic>/0N_xxx.md) — <1行説明>
 
 **主要な気づき**:
 - <観察1>
@@ -221,18 +221,18 @@ README 末尾に「論点 A〜K」のような一覧を置き、
 
 実例として既に存在するブレスト（メタフォルダ込みパス）:
 
-- `idea/30_ux/slideshow/` — 機能アイデア展開（Pattern A）の典型例
-- `idea/30_ux/keyboard_modes/` — 候補列挙＋共通基盤（Pattern B）の典型例
-- `idea/30_ux/map_views/` — 100候補列挙の大規模 Pattern B
-- `idea/00_meta/automation_obstacles/` — 障害分析（Pattern C）の典型例
-- `idea/00_meta/meta_m3e/` — メタ機能（Pattern A）
-- `idea/10_io/capture_ingest/` `export_publish/` `tool_integration/` — 入出力系
-- `idea/20_ai/ai_agent_deep/` — AI 深化
-- `idea/40_data/maintenance_hygiene/` `time_history/` `performance_scale/` — データ系
-- `idea/50_collab/collaboration/` `cross_device/` `privacy_security/` — 協調系
-- `idea/60_workflow/personal_productivity/` `cognitive_science/` `education/` — 研究プロセス系
-- `idea/70_concept/thought_physics/` `philosophical/` — 概念系
-- `idea/00_topic_pool.md` — メタ「アイデアのアイデア」プール（単一ファイル例外、idea/ 直下）
+- `docs/ideas/30_ux/slideshow/` — 機能アイデア展開（Pattern A）の典型例
+- `docs/ideas/30_ux/keyboard_modes/` — 候補列挙＋共通基盤（Pattern B）の典型例
+- `docs/ideas/30_ux/map_views/` — 100候補列挙の大規模 Pattern B
+- `docs/ideas/00_meta/automation_obstacles/` — 障害分析（Pattern C）の典型例
+- `docs/ideas/00_meta/meta_m3e/` — メタ機能（Pattern A）
+- `docs/ideas/10_io/capture_ingest/` `export_publish/` `tool_integration/` — 入出力系
+- `docs/ideas/20_ai/ai_agent_deep/` — AI 深化
+- `docs/ideas/40_data/maintenance_hygiene/` `time_history/` `performance_scale/` — データ系
+- `docs/ideas/50_collab/collaboration/` `cross_device/` `privacy_security/` — 協調系
+- `docs/ideas/60_workflow/personal_productivity/` `cognitive_science/` `education/` — 研究プロセス系
+- `docs/ideas/70_concept/thought_physics/` `philosophical/` — 概念系
+- `docs/ideas/00_topic_pool.md` — メタ「アイデアのアイデア」プール（単一ファイル例外、docs/ideas/ 直下）
 
 新ブレスト時はこれらを参考にしてよい。
 ただし機械的にコピーせず、テーマに応じて構造を調整する。
@@ -243,21 +243,21 @@ README 末尾に「論点 A〜K」のような一覧を置き、
 - ❌ 実装計画書を書く（タスク分解・スケジュール）
 - ❌ コードを大量に書く（コード片は MVP ファイルで参考程度のみ）
 - ❌ ユーザーに承認を求める質問を多発する（一気にブレスト完了させる）
-- ❌ ファイルを書かずチャット内だけで答える（idea/ に必ず物として残す）
-- ❌ 既存 idea/<group>/<topic>/ を上書きする（新トピックは新フォルダ）
+- ❌ ファイルを書かずチャット内だけで答える（docs/ideas/ に必ず物として残す）
+- ❌ 既存 docs/ideas/<group>/<topic>/ を上書きする（新トピックは新フォルダ）
 - ❌ 1ファイルで全部書く（5ファイル前後に分割）
 - ❌ 英語で書く（日本語で揃える、既存事例に合わせる）
-- ❌ メタフォルダを跨いで `idea/` 直下にトピックを置く（必ず `<group>/` 配下）
+- ❌ メタフォルダを跨いで `docs/ideas/` 直下にトピックを置く（必ず `<group>/` 配下）
 - ❌ 勝手に新メタフォルダを作る（既存 8 個で収まらない時はユーザー確認）
 
 ## 拡張: 既存ブレストへの追記
 
-既存 `idea/<group>/<topic>/` に新しい角度を追加する場合:
+既存 `docs/ideas/<group>/<topic>/` に新しい角度を追加する場合:
 - 新しい番号のファイルを追加（既存 README を更新）
 - 既存ファイルは大きく書き換えない（追記のみ）
 - 末尾の「論点ID」連番は既存と被らせない
 
-例: `idea/30_ux/keyboard_modes/` に追加した
+例: `docs/ideas/30_ux/keyboard_modes/` に追加した
 - `08_queue_mode_pattern.md` （横断パターン分析）
 - `09_numpad_quick_input.md` （特定ユースケース深掘り）
 

@@ -19,7 +19,7 @@ M3E の既存資産を、AI による自動整理ではなく、**品質観測 -
 ## 2. In Scope
 
 - M3E 関連 GPT 会話歴の source index 化
-- `idea/` / backlog / docs からの workset 作成
+- `docs/ideas/` / backlog / docs からの workset 作成
 - ScopeQualityReport / PatchProposal の実データ検証
 - accepted / rejected の採否ログ化
 - distilled knowledge の M3E map / docs への export 設計
@@ -61,5 +61,5 @@ source_index.yaml
 | ID | 対象 | 推奨 |
 |---|---|---|
 | DS1 | GPT 会話歴から GraphSpec / LangGraph 系だけ | 最初にやる |
-| DS2 | `idea/` から M3E product / system 系だけ | DS1 と並行可 |
+| DS2 | `docs/ideas/` から M3E product / system 系だけ | DS1 と並行可 |
 | DS3 | 数学・仕様文書 calibration | evaluator 実装時に追加 |

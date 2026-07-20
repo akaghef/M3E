@@ -33,7 +33,7 @@ final は `38482`。通常の開発 state 更新には使わない。
 
 ## Map Manager gates
 
-次を含む場合は、更新前に `protocols/map-manager/` を確認する。
+次を含む場合は、更新前に `docs/protocols/map-manager/` を確認する。
 
 - scope / scopen / unscopen
 - alias vs move vs GraphLink

@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 335
+- Indexed files: 574
 
 ## Reading Routes
 
@@ -22,7 +22,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | File | Type | Title | Summary |
 |---|---:|---|---|
 | [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-04-20 |
-| [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-06-12 |
+| [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-07-19 |
 | [00_Home/Glossary.md](<./00_Home/Glossary.md>) | Markdown | Glossary — M3E 用語辞書 | M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。 |
 | [00_Home/Home.md](<./00_Home/Home.md>) | Markdown | M3E — Home | 最終更新: 2026-04-20 |
 | [00_Home/Objective.md](<./00_Home/Objective.md>) | Markdown | Objective — Planning Hierarchy | 最終更新: 2026-04-20 |
@@ -144,6 +144,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_006_Resource_Schema_Version.md](<./09_Decisions/ADR_006_Resource_Schema_Version.md>) | Markdown | ADR 006: Resource 追加時の Schema Version 方針 | Open (議論中) |
 | [09_Decisions/ADR_007_Resource_Collab_Locking.md](<./09_Decisions/ADR_007_Resource_Collab_Locking.md>) | Markdown | ADR 007: Collab 環境での Resource 定義の排他制御 | Open (議論中) |
 | [09_Decisions/ADR_008_Federated_Canonical_Sources.md](<./09_Decisions/ADR_008_Federated_Canonical_Sources.md>) | Markdown | ADR 008: Federated Canonical Sources and Rebuildable Semantic Graph | Accepted for Phase 0. Neo4j activation remains gated. |
+| [09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md](<./09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md>) | Markdown | ADR 009: Agent Orchestration の M3E 融合と実行境界 | Accepted. |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections
@@ -231,6 +232,79 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
+| [ideas/00_meta/automation_obstacles/01_obstacles.md](<./ideas/00_meta/automation_obstacles/01_obstacles.md>) | Markdown | 01. 障害の網羅的分類 | 研究／業務自動化を阻む要因を10カテゴリ・約40項目に展開する。 |
+| [ideas/00_meta/automation_obstacles/02_solution_patterns.md](<./ideas/00_meta/automation_obstacles/02_solution_patterns.md>) | Markdown | 02. 解決パターン | 個別障害ではなく、**繰り返し現れる解決アプローチ** を抽象化して並べる。 |
+| [ideas/00_meta/automation_obstacles/03_obstacle_solution_pairs.md](<./ideas/00_meta/automation_obstacles/03_obstacle_solution_pairs.md>) | Markdown | 03. 障害 × 解決策のペアリング | 各障害に対して **複数の解法** を当てる。決めずに並べる。 |
+| [ideas/00_meta/automation_obstacles/04_what_not_to_automate.md](<./ideas/00_meta/automation_obstacles/04_what_not_to_automate.md>) | Markdown | 04. 自動化してはいけない領域 | 「全部自動化すべき」という前提を疑う。 |
+| [ideas/00_meta/automation_obstacles/05_m3e_strategy.md](<./ideas/00_meta/automation_obstacles/05_m3e_strategy.md>) | Markdown | 05. M3E の介入戦略 | 40+の障害と20の解決パターンの中で、**M3E が直接的に効ける領域** はどこか。 |
+| [ideas/00_meta/automation_obstacles/README.md](<./ideas/00_meta/automation_obstacles/README.md>) | Markdown | 研究・ビジネス活動の自動化: 障害と解決のブレスト | 研究活動（広義のビジネス活動）を **自動化／半自動化** する上で立ちはだかる障害と、 |
+| [ideas/00_meta/display_contracts/01_facet_type_contract_table.md](<./ideas/00_meta/display_contracts/01_facet_type_contract_table.md>) | Markdown | Facet Type 契約表 | `facet` は PJ ごとに設計するが、毎回ゼロから書く必要はない。 |
+| [ideas/00_meta/display_contracts/02_flow_contract.md](<./ideas/00_meta/display_contracts/02_flow_contract.md>) | Markdown | 処理フロー facet の具体契約 | ここでは `facet type = 処理フロー` を最初の具体契約として固定する。 |
+| [ideas/00_meta/display_contracts/03_reviews_contract.md](<./ideas/00_meta/display_contracts/03_reviews_contract.md>) | Markdown | reviews facet の具体契約 | ここでは `facet type = reviews` を具体契約として固定する。 |
+| [ideas/00_meta/display_contracts/04_dependency_contract.md](<./ideas/00_meta/display_contracts/04_dependency_contract.md>) | Markdown | dependency facet の具体契約 | ここでは `facet type = dependency` を具体契約として固定する。 |
+| [ideas/00_meta/display_contracts/05_implementation_contract.md](<./ideas/00_meta/display_contracts/05_implementation_contract.md>) | Markdown | implementation facet の具体契約 | ここでは `facet type = 実装構造` を、PJ02 の Lean declaration / Blueprint 連携にも使える具体契約として固定する。 |
+| [ideas/00_meta/display_contracts/06_timeseries_contract.md](<./ideas/00_meta/display_contracts/06_timeseries_contract.md>) | Markdown | timeseries facet の具体契約 | ここでは `facet type = timeseries` を、処理フローとは分けて固定する。 |
+| [ideas/00_meta/display_contracts/07_map_write_layout_rules/01_progressive_navigation.md](<./ideas/00_meta/display_contracts/07_map_write_layout_rules/01_progressive_navigation.md>) | Markdown | Progressive Navigation Layout | UI蒸留・UI再現 map のための layout rule。 |
+| [ideas/00_meta/display_contracts/07_map_write_layout_rules/02_write_safety.md](<./ideas/00_meta/display_contracts/07_map_write_layout_rules/02_write_safety.md>) | Markdown | Write Safety | map 書き込みで最優先するのは、指示された操作以外への副作用を作らないこと。 |
+| [ideas/00_meta/display_contracts/07_map_write_layout_rules/99_inbox.md](<./ideas/00_meta/display_contracts/07_map_write_layout_rules/99_inbox.md>) | Markdown | Inbox | 未整理の layout 指示を書き溜める場所。 |
+| [ideas/00_meta/display_contracts/07_map_write_layout_rules/README.md](<./ideas/00_meta/display_contracts/07_map_write_layout_rules/README.md>) | Markdown | Map Write Layout Rules | このフォルダは、map 書き込み時の layout / display contract / 副作用禁止ルールを書き溜める場所。 |
+| [ideas/00_meta/display_contracts/README.md](<./ideas/00_meta/display_contracts/README.md>) | Markdown | Display Contracts | M3E の map 書き込みで、AI が **人間にレビューしやすい表示** を作るための |
+| [ideas/00_meta/meta_m3e/01_concept.md](<./ideas/00_meta/meta_m3e/01_concept.md>) | Markdown | 01. メタ機能とは何か — コンセプトとユースケース | M3E の **メタ機能** = 「M3E が M3E 自身を扱うための機能」。 |
+| [ideas/00_meta/meta_m3e/02_dogfood_options.md](<./ideas/00_meta/meta_m3e/02_dogfood_options.md>) | Markdown | 02. ドッグフード深化と自己改善ループ | サブトピック O1 / O2 を担当。 |
+| [ideas/00_meta/meta_m3e/03_feedback_telemetry.md](<./ideas/00_meta/meta_m3e/03_feedback_telemetry.md>) | Markdown | 03. ユーザフィードバック UI とテレメトリ | サブトピック O3 / O4 を担当。 |
+| [ideas/00_meta/meta_m3e/04_plugin_fork.md](<./ideas/00_meta/meta_m3e/04_plugin_fork.md>) | Markdown | 04. プラグイン拡張と fork 容易化 | サブトピック O5 / O6 を担当。 |
+| [ideas/00_meta/meta_m3e/05_meta_traps_and_strategy.md](<./ideas/00_meta/meta_m3e/05_meta_traps_and_strategy.md>) | Markdown | 05. メタ機能特有の罠 / MVP 道筋 / 未決質問 | 横断的観察と、akaghef フェーズで実際に動かすときの優先順を扱う。 |
+| [ideas/00_meta/meta_m3e/README.md](<./ideas/00_meta/meta_m3e/README.md>) | Markdown | メタ機能 — M3E 自身のための M3E | M3E が **自分自身** を題材に扱うための機能群。 |
+| [ideas/00_topic_pool.md](<./ideas/00_topic_pool.md>) | Markdown | 次にブレインストーミングすべきテーマ・プール | 「アイデアのアイデア」。 |
+| [ideas/10_io/capture_ingest/01_concept.md](<./ideas/10_io/capture_ingest/01_concept.md>) | Markdown | 01. Concept — Capture / Ingest とは何か | ノードを M3E マップに「入れる」までの体験全体を設計対象とする。 |
+| [ideas/10_io/capture_ingest/02_channels.md](<./ideas/10_io/capture_ingest/02_channels.md>) | Markdown | 02. Channels — 入力チャネル候補列挙 | 00_topic_pool の A1-A10 を起点に、A11-A20 を拡張して並べる。 |
+| [ideas/10_io/capture_ingest/03_processing_pipeline.md](<./ideas/10_io/capture_ingest/03_processing_pipeline.md>) | Markdown | 03. Processing Pipeline — 取り込み後の処理 | チャネルを通って入ってきた raw データを、どう scratch ノードまで加工するか。 |
+| [ideas/10_io/capture_ingest/04_runtime_ux.md](<./ideas/10_io/capture_ingest/04_runtime_ux.md>) | Markdown | 04. Runtime UX — 取り込み体験の UI / 操作系 | 「入れる瞬間」のユーザー体験。視覚・聴覚・触覚フィードバック、入力 UI のバリエーション。 |
+| [ideas/10_io/capture_ingest/05_data_privacy.md](<./ideas/10_io/capture_ingest/05_data_privacy.md>) | Markdown | 05. Data & Privacy — データモデル・暗号化・互換性 | 取り込んだものをどこに、どんな形で、誰が読める形で残すか。 |
+| [ideas/10_io/capture_ingest/06_mvp_path.md](<./ideas/10_io/capture_ingest/06_mvp_path.md>) | Markdown | 06. MVP Path — 最小実装案・横断観察・未決質問 | 5ファイルの選択肢を踏まえて、**どこから始めるのが筋がよいか** の最小経路。 |
+| [ideas/10_io/capture_ingest/README.md](<./ideas/10_io/capture_ingest/README.md>) | Markdown | Capture / Ingest — 入力・取り込み体験設計 | ノードを M3E マップに「入れる」までの体験設計に関するブレインストーミング。 |
+| [ideas/10_io/export_publish/01_concept.md](<./ideas/10_io/export_publish/01_concept.md>) | Markdown | 01. コンセプト — マップを「外に出す」とは何か | M3E マップに溜め込んだノード群（思考・知識・引用・意思決定ログ・図）を、 |
+| [ideas/10_io/export_publish/02_output_targets.md](<./ideas/10_io/export_publish/02_output_targets.md>) | Markdown | 02. 出力先カタログ — B1〜B8 の比較 | 各出力先について、**何が出るか／読者は誰か／業界慣習／LLM 介入度／実装難度** を並べる。 |
+| [ideas/10_io/export_publish/03_authoring_pipeline.md](<./ideas/10_io/export_publish/03_authoring_pipeline.md>) | Markdown | 03. 著作パイプライン — マップ → 中間ビュー → 出力物 | 「マップから直接出力」ではなく、**中間ビュー**を挟む二段階変換が現実的。 |
+| [ideas/10_io/export_publish/04_publishing_workflow.md](<./ideas/10_io/export_publish/04_publishing_workflow.md>) | Markdown | 04. 出版ワークフロー — 草稿から DOI まで | 「書き出した後」の世界。学術出版業界の慣習（査読・引用・DOI・OA）を踏まえ、 |
+| [ideas/10_io/export_publish/05_data_privacy.md](<./ideas/10_io/export_publish/05_data_privacy.md>) | Markdown | 05. データモデル・プライバシー・互換性 | 出力物の **永続化・バージョン管理・プライバシー境界・他形式互換** をブレストする。 |
+| [ideas/10_io/export_publish/06_mvp_path.md](<./ideas/10_io/export_publish/06_mvp_path.md>) | Markdown | 06. MVP / 段階導入 / 未決質問 | 「採否は決めない」前提で、**仮に最小実装するならどう始めるか** の見取り図。 |
+| [ideas/10_io/export_publish/README.md](<./ideas/10_io/export_publish/README.md>) | Markdown | 出力・公開（Export / Publish）— ブレインストーミング | M3E マップを「外に出す」体験設計のブレスト。 |
+| [ideas/10_io/math_ontology_services/01_landscape.md](<./ideas/10_io/math_ontology_services/01_landscape.md>) | Markdown | 01. 領域全体の地図と分類軸 | 「数学 × オントロジー」が何を指すか、まず定義的に押さえる。 |
+| [ideas/10_io/math_ontology_services/02_proof_libraries.md](<./ideas/10_io/math_ontology_services/02_proof_libraries.md>) | Markdown | 02. 形式証明ライブラリ（L1） | 定理と証明そのものを形式化し、証明検証機でコンパイルできる形で保持するサービス・ライブラリ群。 |
+| [ideas/10_io/math_ontology_services/03_knowledge_bases.md](<./ideas/10_io/math_ontology_services/03_knowledge_bases.md>) | Markdown | 03. 数学知識ベース・百科事典（L2） | 形式度は低いが、**ID 付き・構造化・相互リンク** がある程度整備された数学知識リポジトリ。 |
+| [ideas/10_io/math_ontology_services/04_ontology_formats.md](<./ideas/10_io/math_ontology_services/04_ontology_formats.md>) | Markdown | 04. 記述語彙・オントロジー標準（L3） | 数学表現（式・構造・概念）を **機械可読な共通フォーマット** として交換するための語彙・標準・ツール群。 |
+| [ideas/10_io/math_ontology_services/05_semantic_scholarship.md](<./ideas/10_io/math_ontology_services/05_semantic_scholarship.md>) | Markdown | 05. 書誌・分類・論文意味付け（L4） | 論文・著者・分野コードを **構造化データ** として扱う層。 |
+| [ideas/10_io/math_ontology_services/06_ai_math_bridges.md](<./ideas/10_io/math_ontology_services/06_ai_math_bridges.md>) | Markdown | 06. AI × 数学 × オントロジー橋渡し（L5） | LLM / 機械学習と形式数学・数学知識を繋ぐデータセット・モデル・プロトコル群。 |
+| [ideas/10_io/math_ontology_services/07_m3e_connection.md](<./ideas/10_io/math_ontology_services/07_m3e_connection.md>) | Markdown | 07. M3E との接続候補と未決質問 | 02〜06 で並べたサービス群を、M3E 側からどう使うか / どう繋ぐか を俯瞰する。 |
+| [ideas/10_io/math_ontology_services/08_implementation_feasibility.md](<./ideas/10_io/math_ontology_services/08_implementation_feasibility.md>) | Markdown | 08. 実装レベルでの取込可能性検討 | ブレスト全般は「採否を決めない」前提だが、**P8（Deep 帯域の GraphLink を多種エッジ化して育てる）** だけ |
+| [ideas/10_io/math_ontology_services/09_blueprint_facets.md](<./ideas/10_io/math_ontology_services/09_blueprint_facets.md>) | Markdown | 09. Blueprint の facet 分離と相互参照 | Blueprint を M3E に取り込むとき、単なる dependency DAG として扱うだけでは情報を落とす。 |
+| [ideas/10_io/math_ontology_services/10_anchoring.md](<./ideas/10_io/math_ontology_services/10_anchoring.md>) | Markdown | Anchoring という用語の整理 | `anchoring` を、知識グラフや facet 表示において **leaf を見やすくするために synthetic node を挿入して束ねる操作** として使う案を整理する。 |
+| [ideas/10_io/math_ontology_services/README.md](<./ideas/10_io/math_ontology_services/README.md>) | Markdown | 数学 × オントロジー サービス大量収集ブレスト | 「数学的知識を **機械可読 / 意味付き / 構造化** された形で扱うサービス・プロジェクト・標準」を |
+| [ideas/10_io/math_pdf_ocr.zip](<./ideas/10_io/math_pdf_ocr.zip>) | File | math pdf ocr | File |
+| [ideas/10_io/math_pdf_ocr/01_axes.md](<./ideas/10_io/math_pdf_ocr/01_axes.md>) | Markdown | 01. 評価軸 | 数学 PDF OCR ツールを比較するための **軸** を並べる。個別ツールはこの軸で評価する（02〜04 で参照）。 |
+| [ideas/10_io/math_pdf_ocr/02_oss_tools.md](<./ideas/10_io/math_pdf_ocr/02_oss_tools.md>) | Markdown | 02. OSS / ローカル実行系 OCR ツール候補 | 無料で自分のマシンで動かせる選択肢。数式・構造・図版の 3 軸で評価する。 |
+| [ideas/10_io/math_pdf_ocr/03_commercial_tools.md](<./ideas/10_io/math_pdf_ocr/03_commercial_tools.md>) | Markdown | 03. 商用 / クラウド API 系 OCR ツール候補 | 従量課金・SaaS として提供されるもの。OSS より精度・運用面で勝ることが多いが、ランニングコストとデータ秘匿性が課題。 |
+| [ideas/10_io/math_pdf_ocr/04_specialized_and_helpers.md](<./ideas/10_io/math_pdf_ocr/04_specialized_and_helpers.md>) | Markdown | 04. 数式特化 OCR と補助ツール | 本体パイプラインの脇で使う「数式だけ」「図抽出だけ」「PDF 低レベル処理だけ」のツール群。単体では完結しないが、組み合わせると総合精度が上がる。 |
+| [ideas/10_io/math_pdf_ocr/05_strategy.md](<./ideas/10_io/math_pdf_ocr/05_strategy.md>) | Markdown | 05. M3E 取り込みパイプライン戦略 + MVP + 未決 | 02〜04 の候補を踏まえて、**M3E で数学書をオントロジー化するための** 取り込みパイプライン戦略を整理する。採用確定ではなく「こう組むと筋が良い」案を並べる。 |
+| [ideas/10_io/math_pdf_ocr/06_layer_toolmap.md](<./ideas/10_io/math_pdf_ocr/06_layer_toolmap.md>) | Markdown | 06. 5 層パイプライン設計 × ツールマップ (2026-04 実調査) | `pdf→ontology_pipeline_design.md` で定義された L0〜L4 の 5 層設計に対して、**各層で使える library / software / app / repo** を 2026-04 時点の W... |
+| [ideas/10_io/math_pdf_ocr/README.md](<./ideas/10_io/math_pdf_ocr/README.md>) | Markdown | 数学 PDF OCR ツール — 候補列挙と評価 | 数学書・論文 PDF を M3E のオントロジーノードに流し込むための **OCR / 構造化ツール候補** を網羅的に並べる。数式 (LaTeX) 保持・図版抽出・構造 (Definition/Theorem) 抽出の 3 軸で使え... |
+| [ideas/10_io/tool_integration/01_concept.md](<./ideas/10_io/tool_integration/01_concept.md>) | Markdown | 01. コンセプト — なぜ既存ツール統合か | M3E が孤立した「もう一つの島」になる最大のリスクを **統合** で回避する。 |
+| [ideas/10_io/tool_integration/02_dev_tools.md](<./ideas/10_io/tool_integration/02_dev_tools.md>) | Markdown | 02. 開発ツール統合 — Git/GitHub・VSCode（H1, H6） | 開発系ツール（コード履歴・エディタ・Issue）と M3E の接続選択肢を列挙。 |
+| [ideas/10_io/tool_integration/03_knowledge_tools.md](<./ideas/10_io/tool_integration/03_knowledge_tools.md>) | Markdown | 03. 知識管理ツール統合 — Obsidian/Roam/Logseq・Zotero（H3, H4） | 研究者の **既存知識資産** を M3E に流し込む選択肢を列挙。 |
+| [ideas/10_io/tool_integration/04_workflow_tools.md](<./ideas/10_io/tool_integration/04_workflow_tools.md>) | Markdown | 04. ワークフローツール統合 — Calendar・Notion/Linear/Jira（H2, H7） | 時間管理（Calendar）とタスク管理（Notion/Linear/Jira）の統合選択肢を列挙。 |
+| [ideas/10_io/tool_integration/05_publishing_tools.md](<./ideas/10_io/tool_integration/05_publishing_tools.md>) | Markdown | 05. 出版ツール統合 — LaTeX / Overleaf / Markdown 出版（H5） | 論文・申請書執筆ツールへの export 統合。 |
+| [ideas/10_io/tool_integration/06_integration_patterns.md](<./ideas/10_io/tool_integration/06_integration_patterns.md>) | Markdown | 06. 統合方式の共通パターン — 横断インフラ・プライバシー・コスト | H1〜H7 を個別に積むのではなく、**統合インフラとして共通化** できる部分を抽出。 |
+| [ideas/10_io/tool_integration/07_mvp_path.md](<./ideas/10_io/tool_integration/07_mvp_path.md>) | Markdown | 07. MVP 路線・段階導入ロードマップ・未決質問 | ブレストの締め。ここで初めて「ボリューム感」と「順序」を語るが、**採否は決めない**。 |
+| [ideas/10_io/tool_integration/260615_vision_v014_stack.md](<./ideas/10_io/tool_integration/260615_vision_v014_stack.md>) | Markdown | Vision v0.1.4 技術スタック分析と M3E 応用候補 | 作成日: 2026-06-15 |
+| [ideas/10_io/tool_integration/README.md](<./ideas/10_io/tool_integration/README.md>) | Markdown | 既存ツール統合（Tool Integration）— ブレインストーミング | M3E を Git/Calendar/Obsidian/Zotero/LaTeX/VSCode/Notion/Linear/Jira などの |
+| [ideas/20_ai/ai_agent_deep/01_global_design.md](<./ideas/20_ai/ai_agent_deep/01_global_design.md>) | Markdown | 01. 共通基盤 — 人格・自動化レベル・検閲・ベンダ切替 | 10 個のサブトピック（C1〜C10）すべてに横断する設計論点をまとめる。 |
+| [ideas/20_ai/ai_agent_deep/02_sparring_agents.md](<./ideas/20_ai/ai_agent_deep/02_sparring_agents.md>) | Markdown | 02. 壁打ち系エージェント — C1 / C2 / C3 / C9 | 研究の質を上げる「対話型 AI」候補。 |
+| [ideas/20_ai/ai_agent_deep/03_map_hygiene_insight.md](<./ideas/20_ai/ai_agent_deep/03_map_hygiene_insight.md>) | Markdown | 03. マップ衛生・気づき系 — C4 / C5 / C7 / C10 | マップが大きくなった時に AI に「整理」「気づき」「自走」を任せる候補。 |
+| [ideas/20_ai/ai_agent_deep/04_research_query.md](<./ideas/20_ai/ai_agent_deep/04_research_query.md>) | Markdown | 04. 検索・取り込み系 — C6 / C8 | 「研究秘書」として AI が文献を取り込み、過去ノードを横断検索する候補。 |
+| [ideas/20_ai/ai_agent_deep/05_mvp_and_open_questions.md](<./ideas/20_ai/ai_agent_deep/05_mvp_and_open_questions.md>) | Markdown | 05. MVP 候補・横断観察・未決質問 | 01〜04 を踏まえた **横断観察 / 最小実装案 / 未決質問**。 |
+| [ideas/20_ai/ai_agent_deep/README.md](<./ideas/20_ai/ai_agent_deep/README.md>) | Markdown | AI / エージェント深化 — 思考パートナーとしての AI | 既存 `ai_subagent.ts` / `ai_infra.ts` は「topic 提案」「linear-transform」レベルに留まっている。 |
+| [ideas/20_ai/cas_m3e_copilot/README.md](<./ideas/20_ai/cas_m3e_copilot/README.md>) | Markdown | M3E × Codex App Server — Scope-aware Copilot | 更新: 2026-07-12 |
 | [ideas/20260330_dual_root_design_graph.md](<./ideas/20260330_dual_root_design_graph.md>) | Markdown | Dual Root Design Graph Idea (2026-03-30) | この二つのルートを持つ木がつながる過程は生物的だ なぜこういう構造なのか？自然か？すでに導入されているか？ |
 | [ideas/260401_important_goal.md](<./ideas/260401_important_goal.md>) | Markdown | 260401 important goal | Linear<->Tree相互変換機能 |
 | [ideas/260401_memo.md](<./ideas/260401_memo.md>) | Markdown | 260401 memo | 設計が不十分な箇所 |
@@ -255,6 +329,137 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260702_arbor_mdd_experimental_search_tree.md](<./ideas/260702_arbor_mdd_experimental_search_tree.md>) | Markdown | Arbor と MDD の接点: Experimental Search Tree | 作成日: 2026-07-02 |
 | [ideas/260718_llm_graph_protocol_directive_original.md](<./ideas/260718_llm_graph_protocol_directive_original.md>) | Markdown | LLM ↔ Property Graph Conversation Protocol | > **原文stow（2026-07-18、akaghef指針）。** PR #75 の [LLM_Graph_Conversation_Protocol.md](../04_Architecture/LLM_Graph_Conver... |
 | [ideas/260719_math_ontology_graphdb_thesis.md](<./ideas/260719_math_ontology_graphdb_thesis.md>) | Markdown | 数学オントロジーが Neo4j 採用の真の駆動因である | 日付: 2026-07-19 |
+| [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
+| [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
+| [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |
+| [ideas/30_ux/gamification/04_node_evolution.md](<./ideas/30_ux/gamification/04_node_evolution.md>) | Markdown | 04. K4 ノード進化（育てるとビジュアル変化） | K 系の中で最も「研究行為そのもの」と親和性が高い候補。 |
+| [ideas/30_ux/gamification/05_balance_and_antipattern.md](<./ideas/30_ux/gamification/05_balance_and_antipattern.md>) | Markdown | 05. K6 メタ視点 と K7 アンチパターン | K1〜K5 の個別案を超えて、ゲーム化の **方針論** と **やってはいけない設計** を整理する。 |
+| [ideas/30_ux/gamification/06_mvp_and_open_questions.md](<./ideas/30_ux/gamification/06_mvp_and_open_questions.md>) | Markdown | 06. MVP 候補 / 組み合わせ評価 / 未決質問 / 横断観察 | 各論点（K1〜K7）を組み合わせ、最小実装の候補・未決事項・横断的気づきをまとめる。 |
+| [ideas/30_ux/gamification/README.md](<./ideas/30_ux/gamification/README.md>) | Markdown | ゲーミフィケーション（K）ブレスト | M3E に「楽しさ・継続性・遊びごころ」を持ち込む際の論点プール。 |
+| [ideas/30_ux/keyboard_modes/01_modes_global_design.md](<./ideas/30_ux/keyboard_modes/01_modes_global_design.md>) | Markdown | 01. モード共通設計の論点 | 各モード固有の操作とは別に、「モードという仕組み」自体に検討すべき共通論点がある。 |
+| [ideas/30_ux/keyboard_modes/02_inbox_modes.md](<./ideas/30_ux/keyboard_modes/02_inbox_modes.md>) | Markdown | 02. Inbox 系モード | 「外から入ってきたもの」を1つずつ捌くモード群。 |
+| [ideas/30_ux/keyboard_modes/03_attribute_modes.md](<./ideas/30_ux/keyboard_modes/03_attribute_modes.md>) | Markdown | 03. 属性更新系モード | ノードを動かさず、属性だけを高速に書き換えるモード群。 |
+| [ideas/30_ux/keyboard_modes/04_structure_modes.md](<./ideas/30_ux/keyboard_modes/04_structure_modes.md>) | Markdown | 04. 構造変更系モード | ツリー構造そのものを変えるモード群。 |
+| [ideas/30_ux/keyboard_modes/05_capture_navigation.md](<./ideas/30_ux/keyboard_modes/05_capture_navigation.md>) | Markdown | 05. 入力・移動系モード | 「打ち込む」「探して飛ぶ」のスループットを上げるモード群。 |
+| [ideas/30_ux/keyboard_modes/06_view_present_compare.md](<./ideas/30_ux/keyboard_modes/06_view_present_compare.md>) | Markdown | 06. 閲覧・プレゼン・比較系モード | 書き換えではなく「見る」ことに最適化したモード群。 |
+| [ideas/30_ux/keyboard_modes/07_experimental_modes.md](<./ideas/30_ux/keyboard_modes/07_experimental_modes.md>) | Markdown | 07. 実験的・小規模モード | ニッチだが特定状況で爆発的に効くモード群。 |
+| [ideas/30_ux/keyboard_modes/08_queue_mode_pattern.md](<./ideas/30_ux/keyboard_modes/08_queue_mode_pattern.md>) | Markdown | 08. 共通パターン: 「キュー → 1件処理 → 次」 | 複数モードを横断して観察すると、過半が同じ骨格をしている。 |
+| [ideas/30_ux/keyboard_modes/09_numpad_quick_input.md](<./ideas/30_ux/keyboard_modes/09_numpad_quick_input.md>) | Markdown | 09. テンキー（Numpad）による属性高速入力 | 「カラーリング・緊急度・ステータスを一括でテンキーから入れたい」を起点に、 |
+| [ideas/30_ux/keyboard_modes/README.md](<./ideas/30_ux/keyboard_modes/README.md>) | Markdown | Keyboard Modes for M3E | 「特定モードに入ると、そのモード専用の単一キー操作が大量に効く」設計の |
+| [ideas/30_ux/map_views/01_2d_matrices.md](<./ideas/30_ux/map_views/01_2d_matrices.md>) | Markdown | 01. 2D マトリクス系ビュー | ノードを2軸平面に配置するビュー。Eisenhower が代表だが、軸の組み合わせは膨大。 |
+| [ideas/30_ux/map_views/02_linear_temporal.md](<./ideas/30_ux/map_views/02_linear_temporal.md>) | Markdown | 02. 線形・時系列ビュー | ノードを1次元に並べるビュー。時間軸 or 段階軸が代表。 |
+| [ideas/30_ux/map_views/03_radial_network.md](<./ideas/30_ux/map_views/03_radial_network.md>) | Markdown | 03. 放射・同心円・ネットワーク系ビュー | 中心や関係性を主軸にする配置。M3E の素のビュー（mind map）はここに近い。 |
+| [ideas/30_ux/map_views/04_process_lifecycle.md](<./ideas/30_ux/map_views/04_process_lifecycle.md>) | Markdown | 04. プロセス・ライフサイクル系ビュー | 「ノードがどういう流れの中にいるか」を構造そのものに埋め込むビュー。 |
+| [ideas/30_ux/map_views/05_research_knowledge.md](<./ideas/30_ux/map_views/05_research_knowledge.md>) | Markdown | 05. 研究・知識整理に特化したビュー | M3E が研究思考支援ツールであることを踏まえ、研究固有のフレームワークと |
+| [ideas/30_ux/map_views/06_implementation_thoughts.md](<./ideas/30_ux/map_views/06_implementation_thoughts.md>) | Markdown | 06. ビュー実装・横断設計の論点 | 100以上のビュー候補を「実際にどう M3E に組み込むか」の横断的考察。 |
+| [ideas/30_ux/map_views/07_business_folder_spine.md](<./ideas/30_ux/map_views/07_business_folder_spine.md>) | Markdown | 07. 業務フォルダを Scatter 作業面 + spine 正本として扱う | 業務フォルダの中身は、実際にはきれいな単一ツリーではない。 |
+| [ideas/30_ux/map_views/README.md](<./ideas/30_ux/map_views/README.md>) | Markdown | Map View Frameworks for M3E | M3E マップを **そのままのツリー/グラフ表示ではなく、特定のフレームワークの軸に |
+| [ideas/30_ux/slideshow/01_concept.md](<./ideas/30_ux/slideshow/01_concept.md>) | Markdown | 01. コンセプト | M3E マップ上のノードを **作者が指定した順序で1つずつフォーカス** し、 |
+| [ideas/30_ux/slideshow/02_authoring.md](<./ideas/30_ux/slideshow/02_authoring.md>) | Markdown | 02. オーサリング（ツアーの定義方法） | 「どのノードを、どの順番で見せるか」をどこに、どう書くか。 |
+| [ideas/30_ux/slideshow/03_runtime_ui.md](<./ideas/30_ux/slideshow/03_runtime_ui.md>) | Markdown | 03. 再生時の UI とカメラ挙動 | ツアー再生中の見た目・操作・演出。 |
+| [ideas/30_ux/slideshow/04_data_model.md](<./ideas/30_ux/slideshow/04_data_model.md>) | Markdown | 04. データモデルと永続化・エクスポート | 最小モデル: |
+| [ideas/30_ux/slideshow/05_mvp_path.md](<./ideas/30_ux/slideshow/05_mvp_path.md>) | Markdown | 05. MVP 設計案と未決の質問 | レビューが入る前の **デフォルト案**（暫定）。 |
+| [ideas/30_ux/slideshow/06_viewer_presentation_html_export.md](<./ideas/30_ux/slideshow/06_viewer_presentation_html_export.md>) | Markdown | Viewer Presentation View と HTML Export | DaveJ 型の architecture-flow UI を参考に、M3E の通常ビューを壊さず「presentation view」と「standalone HTML export」を増やす案。 |
+| [ideas/30_ux/slideshow/README.md](<./ideas/30_ux/slideshow/README.md>) | Markdown | Slideshow / Guided Tour for M3E | M3E マップ内で「順番に決定事項やノードをガイドツアー」する機能の設計ブレインストーミング。 |
+| [ideas/40_data/maintenance_hygiene/01_global_design.md](<./ideas/40_data/maintenance_hygiene/01_global_design.md>) | Markdown | 01. 共通設計（Global Design） | 検出系・アクション系を扱う前に、**両者を貫く共通論点** をまとめる。 |
+| [ideas/40_data/maintenance_hygiene/02_detectors.md](<./ideas/40_data/maintenance_hygiene/02_detectors.md>) | Markdown | 02. 検出系（Detectors） | 「**汚れているノード**」を見つける検出器の候補列挙。 |
+| [ideas/40_data/maintenance_hygiene/03_actions.md](<./ideas/40_data/maintenance_hygiene/03_actions.md>) | Markdown | 03. アクション系（Actions） | 検出器（02）が見つけた「汚れ候補」に対して **何をするか** の選択肢列挙。 |
+| [ideas/40_data/maintenance_hygiene/04_safety_irreversibility.md](<./ideas/40_data/maintenance_hygiene/04_safety_irreversibility.md>) | Markdown | 04. 安全装置・不可逆性（Safety / Irreversibility） | メンテナンス・衛生は **削除・統合・移動** など破壊的操作を含む。 |
+| [ideas/40_data/maintenance_hygiene/05_mvp_and_open_questions.md](<./ideas/40_data/maintenance_hygiene/05_mvp_and_open_questions.md>) | Markdown | 05. MVP / 横断観察 / 未決質問 | 検出器（02）× アクション（03）× 安全装置（04）を踏まえ、 |
+| [ideas/40_data/maintenance_hygiene/README.md](<./ideas/40_data/maintenance_hygiene/README.md>) | Markdown | メンテナンス・衛生（Hygiene） | マップが大きくなった時の **腐敗防止** を扱うブレスト。 |
+| [ideas/40_data/memory_architecture/01_three_tier_model.md](<./ideas/40_data/memory_architecture/01_three_tier_model.md>) | Markdown | 01. 三層モデル — Hermes 比較から M3E memory を再構成 | Hermes Agent (Nous Research) の memory 仕組みを読み解くと、要点は 4 つ： |
+| [ideas/40_data/memory_architecture/02_hermes_integration_options.md](<./ideas/40_data/memory_architecture/02_hermes_integration_options.md>) | Markdown | 02. Hermes 統合オプション — 揮発の外部委譲 | M3E が Deep 正本に専念するため、Flash/Rapid 揮発レイヤを Hermes に委譲する 3 パターン。 |
+| [ideas/40_data/memory_architecture/03_deep_canonicality_rules.md](<./ideas/40_data/memory_architecture/03_deep_canonicality_rules.md>) | Markdown | 03. Deep Canonicality — Deep を M3E 正本に固定する 7 ルール | 帯域軸 Deep × {Syntax, Semantic} を M3E 側に置き続けるための運用ルール。 |
+| [ideas/40_data/memory_architecture/04_sticky_notes_layer.md](<./ideas/40_data/memory_architecture/04_sticky_notes_layer.md>) | Markdown | 04. 付箋層 — 本/付箋メタファ、コンテンツとコメントの物理分離 | 「本に付箋を貼るように、本のコンテンツと区別可能でなければならない」が出発点。 |
+| [ideas/40_data/memory_architecture/05_mvp_and_open_questions.md](<./ideas/40_data/memory_architecture/05_mvp_and_open_questions.md>) | Markdown | 05. MVP と未決質問 | ROI 順で 4 段： |
+| [ideas/40_data/memory_architecture/README.md](<./ideas/40_data/memory_architecture/README.md>) | Markdown | Memory Architecture — Deep canonicality と揮発の外部化 | Hermes Agent (Nous Research) のインストールを契機に、M3E の "memory" 層を |
+| [ideas/40_data/performance_scale/01_concept.md](<./ideas/40_data/performance_scale/01_concept.md>) | Markdown | 01. Concept — なぜ「性能/スケール」を今ブレストするか | M3E は「個人の研究思考世界モデル」を目指す。 |
+| [ideas/40_data/performance_scale/02_rendering_strategies.md](<./ideas/40_data/performance_scale/02_rendering_strategies.md>) | Markdown | 02. Rendering Strategies — 10k+ ノード描画の選択肢 | M1「巨大マップ対応」の **描画方式** を網羅的に並べる。 |
+| [ideas/40_data/performance_scale/03_cross_map_search.md](<./ideas/40_data/performance_scale/03_cross_map_search.md>) | Markdown | 03. Cross-Map Search & History Index — 横断検索と履歴インデックス | M2「複数マップ間リンク・統合検索」と M4「検索インデックス」を統合してブレスト。 |
+| [ideas/40_data/performance_scale/04_workspace_navigation.md](<./ideas/40_data/performance_scale/04_workspace_navigation.md>) | Markdown | 04. Workspace Navigation — 横断ナビゲーション UX | M3「workspace 切替 UX」の選択肢を網羅。 |
+| [ideas/40_data/performance_scale/05_cache_offline.md](<./ideas/40_data/performance_scale/05_cache_offline.md>) | Markdown | 05. Cache / Offline — キャッシュ・オフライン優先・IndexedDB 戦略 | M5「キャッシュ／オフライン優先」を網羅。 |
+| [ideas/40_data/performance_scale/06_mvp_path.md](<./ideas/40_data/performance_scale/06_mvp_path.md>) | Markdown | 06. MVP Path — 最小実装案・段階導入・横断観察・未決質問 | 01-05 の論点を踏まえて **どこから始めるか** の候補と、 |
+| [ideas/40_data/performance_scale/README.md](<./ideas/40_data/performance_scale/README.md>) | Markdown | Performance / Scale — 巨大マップ・横断検索・オフライン優先 | M3E が「個人の長期世界モデル」になっていく過程で避けられない |
+| [ideas/40_data/time_history/01_concept.md](<./ideas/40_data/time_history/01_concept.md>) | Markdown | 01 — コンセプト：時間軸／履歴とは何を指すか | 5 つのサブトピック（I1〜I5）の **共通の問い** と **それぞれの違い** を整理。 |
+| [ideas/40_data/time_history/02_timetravel_whatif.md](<./ideas/40_data/time_history/02_timetravel_whatif.md>) | Markdown | 02 — I1 タイムトラベル と I2 What-if 分岐 | 「過去に戻る」と「もしも別の選択をしていたら」。 |
+| [ideas/40_data/time_history/03_diff_animation.md](<./ideas/40_data/time_history/03_diff_animation.md>) | Markdown | 03 — I3 Diff アニメーション（マップの変化を可視化） | 「先月から今月でマップがどう動いたか」を **再生** する機能。 |
+| [ideas/40_data/time_history/04_forget_summary.md](<./ideas/40_data/time_history/04_forget_summary.md>) | Markdown | 04 — I4 忘却機能 と I5 履歴 AI 要約 | 時間軸を **「操作する側」** の機能。 |
+| [ideas/40_data/time_history/05_data_model.md](<./ideas/40_data/time_history/05_data_model.md>) | Markdown | 05 — データモデル / 履歴ストア / 既存資産接続 | I1〜I5 を支える **履歴ストア** の設計論点。 |
+| [ideas/40_data/time_history/06_mvp_and_open_questions.md](<./ideas/40_data/time_history/06_mvp_and_open_questions.md>) | Markdown | 06 — MVP / 横断観察 / 組み合わせ / 未決質問 | 5 機能（I1〜I5）を **どこから掘ると効くか**、**何が組み合わせで強いか**、 |
+| [ideas/40_data/time_history/README.md](<./ideas/40_data/time_history/README.md>) | Markdown | 時間軸／履歴（Time & History） | M3E マップを「時間方向にも探索可能」にするためのブレスト。 |
+| [ideas/40_data/view_state_api/01_problem.md](<./ideas/40_data/view_state_api/01_problem.md>) | Markdown | 問題: 表現状態が map state に混ざっている | 現在の M3E API は、node の本文・親子構造・リンクなどの semantic state と、viewer 上の見え方に近い状態が同じ保存単位に混ざっている。 |
+| [ideas/40_data/view_state_api/02_api_design.md](<./ideas/40_data/view_state_api/02_api_design.md>) | Markdown | View State API 案 | API を semantic state と view state に分ける。 |
+| [ideas/40_data/view_state_api/README.md](<./ideas/40_data/view_state_api/README.md>) | Markdown | View State API | M3E の map 本体と viewer の表現状態を分離するための設計メモ。 |
+| [ideas/50_collab/collaboration/01_concept.md](<./ideas/50_collab/collaboration/01_concept.md>) | Markdown | 01. Concept — なぜ協調機能が必要か、何を作るか | M3E に「協調・コラボレーション」を入れる意義と、入れる範囲・入れない範囲を |
+| [ideas/50_collab/collaboration/02_axes_and_modes.md](<./ideas/50_collab/collaboration/02_axes_and_modes.md>) | Markdown | 02. 3軸 × 同期/非同期 のモード列挙 | 協調を「人 ↔ 人」「人 ↔ AI」「AI ↔ AI」の **3軸** で整理し、 |
+| [ideas/50_collab/collaboration/03_runtime_ux.md](<./ideas/50_collab/collaboration/03_runtime_ux.md>) | Markdown | 03. Runtime UX — UI / 操作系のバリエーション | 協調の各モードを具体的にどう **見せる・触らせる** かを並べる。 |
+| [ideas/50_collab/collaboration/04_data_permission.md](<./ideas/50_collab/collaboration/04_data_permission.md>) | Markdown | 04. データモデル / 権限モデル / ACL / プロビナンス | 協調を支えるデータと権限の設計選択肢。 |
+| [ideas/50_collab/collaboration/05_mvp_and_strategy.md](<./ideas/50_collab/collaboration/05_mvp_and_strategy.md>) | Markdown | 05. MVP・戦略・横断観察・未決質問 | 協調機能の **戦略選択肢**、**MVP 候補**、**横断観察**、**未決質問** を集約する。 |
+| [ideas/50_collab/collaboration/README.md](<./ideas/50_collab/collaboration/README.md>) | Markdown | Collaboration — 協調・コラボレーション体験設計 | 複数人 / 複数エージェントで M3E マップを使う体験のブレインストーミング。 |
+| [ideas/50_collab/cross_device/01_concept.md](<./ideas/50_collab/cross_device/01_concept.md>) | Markdown | 01 Concept — なぜクロスデバイス・モバイルか | M3E を **PC 以外でも触る** ことの意味と前提を整理する。 |
+| [ideas/50_collab/cross_device/02_platform_options.md](<./ideas/50_collab/cross_device/02_platform_options.md>) | Markdown | 02 Platform Options — 配布形態の選択肢 | 「どの技術スタックで、どう配るか」を決めずに並べる。 |
+| [ideas/50_collab/cross_device/03_runtime_modes.md](<./ideas/50_collab/cross_device/03_runtime_modes.md>) | Markdown | 03 Runtime Modes — モバイル体験モードの列挙 | 「モバイルで何をするか」のモード（体験パターン）を網羅。 |
+| [ideas/50_collab/cross_device/04_sync_offline.md](<./ideas/50_collab/cross_device/04_sync_offline.md>) | Markdown | 04 Sync / Offline — オフライン同期と競合解決 | クロスデバイスの本丸。 |
+| [ideas/50_collab/cross_device/05_mvp_path.md](<./ideas/50_collab/cross_device/05_mvp_path.md>) | Markdown | 05 MVP Path — 最小実装案・横断観察・未決質問 | これまでの 4 ファイルを横断し、「最小投資で最大価値」の MVP 候補を絞る。 |
+| [ideas/50_collab/cross_device/README.md](<./ideas/50_collab/cross_device/README.md>) | Markdown | Cross Device / Mobile — PC 以外での M3E 体験 | スマホ・タブレット・スマートウォッチなど PC 以外のデバイスで |
+| [ideas/50_collab/privacy_security/01_concept.md](<./ideas/50_collab/privacy_security/01_concept.md>) | Markdown | 01. コンセプト — 何を守り、誰のために、どう違うか | M3E のプライバシー / セキュリティ機能は **「研究者の思考母艦に機微情報を同居させる」** ための設計。 |
+| [ideas/50_collab/privacy_security/02_threat_model.md](<./ideas/50_collab/privacy_security/02_threat_model.md>) | Markdown | 02. 脅威モデル — 何から守るか、どこまで諦めるか | 防御は脅威モデルなしには設計できない。 |
+| [ideas/50_collab/privacy_security/03_encryption_options.md](<./ideas/50_collab/privacy_security/03_encryption_options.md>) | Markdown | 03. 暗号化オプション — 何を、どの粒度で、どう暗号化するか | policy_privacy は **同期データの E2E 暗号化**（AES-256-GCM、`~/.m3e/sync.key` 1本）を既決。 |
+| [ideas/50_collab/privacy_security/04_masking_detection.md](<./ideas/50_collab/privacy_security/04_masking_detection.md>) | Markdown | 04. マスキング・検出 — AI 送信前の機微情報フィルタ | policy_privacy が扱っていない **Layer 3（AI Pipeline）** の防御を扱う。 |
+| [ideas/50_collab/privacy_security/05_vault_separation.md](<./ideas/50_collab/privacy_security/05_vault_separation.md>) | Markdown | 05. Vault 分離 — 公開 / 私用 / 機密のレーンをどう作るか | 00_topic_pool L4「マルチ Vault 切替」を深掘り。 |
+| [ideas/50_collab/privacy_security/06_ux_data.md](<./ideas/50_collab/privacy_security/06_ux_data.md>) | Markdown | 06. UX・データモデル — 体験設計と永続化の選択肢 | 技術的に暗号化されていても、UI で見えなければ研究者は確信を持てない。 |
+| [ideas/50_collab/privacy_security/07_mvp_path.md](<./ideas/50_collab/privacy_security/07_mvp_path.md>) | Markdown | 07. MVP パス・横断観察・未決質問 | 01-06 で並べた選択肢から「最小限どこから始めるか」「横断的気づき」「未決の重要質問」を整理。 |
+| [ideas/50_collab/privacy_security/README.md](<./ideas/50_collab/privacy_security/README.md>) | Markdown | Privacy / Security — プライバシー・セキュリティ体験設計 | 研究者 akaghef が **科研費・実験データ・人物情報・パスワード・未公開仮説** を |
+| [ideas/60_workflow/cognitive_science/01_srs_integration.md](<./ideas/60_workflow/cognitive_science/01_srs_integration.md>) | Markdown | J1. SRS（間隔反復）統合 | 「重要だが触らないと忘れるノード」を **間隔反復** スケジュールで再露出させる。 |
+| [ideas/60_workflow/cognitive_science/02_forgetting_curve.md](<./ideas/60_workflow/cognitive_science/02_forgetting_curve.md>) | Markdown | J2. 忘却曲線可視化（このノード忘れそう警告） | ノードを **触っていない時間 × 重要度** から「鮮度」を算出し、視覚的に提示する。 |
+| [ideas/60_workflow/cognitive_science/03_compounding_knowledge.md](<./ideas/60_workflow/cognitive_science/03_compounding_knowledge.md>) | Markdown | J3. 複利的知識構築（前提→応用の自動推薦） | ノードを **「前提（prerequisite）→ 応用（application）」** の DAG として扱い、 |
+| [ideas/60_workflow/cognitive_science/04_question_driven.md](<./ideas/60_workflow/cognitive_science/04_question_driven.md>) | Markdown | J4. 質問駆動学習（マップ全体を「答えるべき問い」で再構成） | ノードを **「答え」ではなく「問い」** として記述するモードを設計する。 |
+| [ideas/60_workflow/cognitive_science/05_metacognition.md](<./ideas/60_workflow/cognitive_science/05_metacognition.md>) | Markdown | J5. メタ認知支援（自分の思考パターンを可視化） | J1〜J4 が **学習行動を変える** のに対し、J5 は **学習している自分自身を観察する** レイヤー。 |
+| [ideas/60_workflow/cognitive_science/06_cross_cutting_mvp.md](<./ideas/60_workflow/cognitive_science/06_cross_cutting_mvp.md>) | Markdown | 横断観察・組み合わせ・MVP・未決質問 | J1〜J5 を **個別機能** ではなく **認知サポート層** として一体運用したときに見えてくる |
+| [ideas/60_workflow/cognitive_science/README.md](<./ideas/60_workflow/cognitive_science/README.md>) | Markdown | 認知科学・学習科学応用（Category J） | M3E の「ノード = 知識単位」を **覚え続ける／忘れる／問い直す／メタ認知する** 学習科学的視点で展開するブレインストーミング。 |
+| [ideas/60_workflow/dev_evolution/01_weekly_paradigm_shift.md](<./ideas/60_workflow/dev_evolution/01_weekly_paradigm_shift.md>) | Markdown | 開発スタイルの週次脱皮と、残る希少スキル | 2026-04-17 の対話ダンプ。 |
+| [ideas/60_workflow/dev_evolution/02_agent_m3e_latency.md](<./ideas/60_workflow/dev_evolution/02_agent_m3e_latency.md>) | Markdown | Agent × M3E 操作レイテンシの実測と下限 | 2026-04-19 の対話ダンプ。 |
+| [ideas/60_workflow/education/01_concept.md](<./ideas/60_workflow/education/01_concept.md>) | Markdown | 01. 教育用途のコンセプト全体像 | M3E を教育コンテキストに転用したとき、何が嬉しく、何が既存と違うのか。 |
+| [ideas/60_workflow/education/02_textbook_mapping.md](<./ideas/60_workflow/education/02_textbook_mapping.md>) | Markdown | 02. N1: 教科書のマップ化 | 教科書（PDF / EPUB / 紙→OCR / Web 教科書）を M3E のマップに変換する。 |
+| [ideas/60_workflow/education/03_quiz_generation.md](<./ideas/60_workflow/education/03_quiz_generation.md>) | Markdown | 03. N2: 学生用クイズ生成 | マップ上のノード内容から自動的にクイズを生成する。 |
+| [ideas/60_workflow/education/04_teacher_dashboard.md](<./ideas/60_workflow/education/04_teacher_dashboard.md>) | Markdown | 04. N3: 教師向け「学生のマップ」一覧 | 複数の学習者マップを教員が横断俯瞰する。 |
+| [ideas/60_workflow/education/05_slide_to_map.md](<./ideas/60_workflow/education/05_slide_to_map.md>) | Markdown | 05. N4: 講義スライド→マップ自動変換 | PowerPoint / Keynote / PDF / Reveal.js 等の講義スライドを M3E マップに自動変換。 |
+| [ideas/60_workflow/education/06_progress_tracking.md](<./ideas/60_workflow/education/06_progress_tracking.md>) | Markdown | 06. N5: 学習進度トラッキング | 学習者の進度を可視化し、適切な介入タイミングを見つける。 |
+| [ideas/60_workflow/education/07_mvp_and_strategy.md](<./ideas/60_workflow/education/07_mvp_and_strategy.md>) | Markdown | 07. MVP 案・横断観察・戦略・未決質問 | ここまで N1〜N5 を個別に並べた。最後に **横断的気づき** と **MVP 案**、 |
+| [ideas/60_workflow/education/README.md](<./ideas/60_workflow/education/README.md>) | Markdown | Education / 教育用途 ブレスト | M3E を **教育コンテキスト**（教科書・講義・学生指導・自習）に転用する切り口の網羅。 |
+| [ideas/60_workflow/personal_productivity/01_concept.md](<./ideas/60_workflow/personal_productivity/01_concept.md>) | Markdown | 01. コンセプト: なぜ M3E を生活の中心にするのか | 「研究思考支援ツール」を週1回の道具で終わらせるか、毎日の足場にするか。 |
+| [ideas/60_workflow/personal_productivity/02_ritual_options.md](<./ideas/60_workflow/personal_productivity/02_ritual_options.md>) | Markdown | 02. 儀式テンプレ群: デイリー & 週次の選択肢 | G1 デイリー儀式 / G2 週次レビューの **複数案** を採否決めずに並べる。 |
+| [ideas/60_workflow/personal_productivity/03_tracking_options.md](<./ideas/60_workflow/personal_productivity/03_tracking_options.md>) | Markdown | 03. トラッキング系: 目標・習慣・時間・エネルギー | G3 OKR/KPI / G4 習慣 / G5 時間記録 / G8 エネルギーログ の選択肢。 |
+| [ideas/60_workflow/personal_productivity/04_focus_modes.md](<./ideas/60_workflow/personal_productivity/04_focus_modes.md>) | Markdown | 04. 集中モード: Pomodoro / Focus / 通知制御 | G6 Pomodoro / G7 集中モード の UX バリエーション。 |
+| [ideas/60_workflow/personal_productivity/05_mvp_path.md](<./ideas/60_workflow/personal_productivity/05_mvp_path.md>) | Markdown | 05. 横断観察 / MVP / 未決質問 | 01〜04 を横断する観察と、最小実装の素描、未決の質問を集める。 |
+| [ideas/60_workflow/personal_productivity/README.md](<./ideas/60_workflow/personal_productivity/README.md>) | Markdown | 個人生産性ワークフロー: M3E を生活の中心に据える体験設計 | 研究者 akaghef が **毎日 M3E を開く理由** を作るための体験パターンを並べる。 |
+| [ideas/60_workflow/structure_snippets/01_concept.md](<./ideas/60_workflow/structure_snippets/01_concept.md>) | Markdown | 01. コンセプト — 構造スニペットとは何か | **構造スニペット** = M3E のノードに対して、**子ノード構造を一発展開する小さなテンプレート**。 |
+| [ideas/60_workflow/structure_snippets/02_catalog_classic.md](<./ideas/60_workflow/structure_snippets/02_catalog_classic.md>) | Markdown | 02. カタログ — ビジネス・分析系の定番 | 「調べ物・分析」で使う古典的フレームワークを網羅。 |
+| [ideas/60_workflow/structure_snippets/03_catalog_thinking.md](<./ideas/60_workflow/structure_snippets/03_catalog_thinking.md>) | Markdown | 03. カタログ — 思考・論理系 | 「考えを整理する・深掘りする」系のフレームワーク群。 |
+| [ideas/60_workflow/structure_snippets/04_catalog_research.md](<./ideas/60_workflow/structure_snippets/04_catalog_research.md>) | Markdown | 04. カタログ — 研究・学術系 | 研究者向け。akaghef の project_projection_vision（世界モデル→射影）との直接接続点。 |
+| [ideas/60_workflow/structure_snippets/05_catalog_creative_decision.md](<./ideas/60_workflow/structure_snippets/05_catalog_creative_decision.md>) | Markdown | 05. カタログ — 創造・意思決定系 | 発散（アイデア出し）と収束（選択・意思決定）の両側。 |
+| [ideas/60_workflow/structure_snippets/06_invocation_ui.md](<./ideas/60_workflow/structure_snippets/06_invocation_ui.md>) | Markdown | 06. 呼び出し UI — パッと出す方法のバリエーション | 「種類をとにかくたくさん用意したい」と「パッと出したい」は両立が難しい。 |
+| [ideas/60_workflow/structure_snippets/07_data_mvp.md](<./ideas/60_workflow/structure_snippets/07_data_mvp.md>) | Markdown | 07. データモデル・MVP・戦略 | スニペットをデータとして表現し、最初に何を作るかを整理。 |
+| [ideas/60_workflow/structure_snippets/README.md](<./ideas/60_workflow/structure_snippets/README.md>) | Markdown | 構造スニペット — 思考フレームワークをパッと呼び出す | 研究・思考・分析で使う構造化フレームワーク（5W1H、SWOT、MECE、PICO ...）を |
+| [ideas/70_concept/agent_society/01_layer_stack.md](<./ideas/70_concept/agent_society/01_layer_stack.md>) | Markdown | As1: 3 層プロトコルスタックの一般化（inko / agmsg / sync） | > 通信・状態複製・意味伝達を 1 枚のチャットに潰すのが今の組織の標準形であり、 |
+| [ideas/70_concept/agent_society/02_person_as_interface.md](<./ideas/70_concept/agent_society/02_person_as_interface.md>) | Markdown | As2: 人 = クラスターのインターフェース、agent 組織 = カプセル化された private 実装 | > 「人間が上流化する」とは、人間が偉くなることではなく、 |
+| [ideas/70_concept/agent_society/03_company_as_map.md](<./ideas/70_concept/agent_society/03_company_as_map.md>) | Markdown | As3: 会社 = クラスター群のマップ、edge = 約束（commitment） | > 会社の正本は組織図(誰が誰の下にいるか)ではなく、 |
+| [ideas/70_concept/agent_society/04_boundary_and_scoped_channel.md](<./ideas/70_concept/agent_society/04_boundary_and_scoped_channel.md>) | Markdown | As4: projection を「境界壁」として一般化、クラスター横断直結という未決問題 | > projection 契約は単なる技術的なデータ形式ではなく、 |
+| [ideas/70_concept/agent_society/05_cross_cutting_and_roadmap.md](<./ideas/70_concept/agent_society/05_cross_cutting_and_roadmap.md>) | Markdown | 横断観察・接続表・ロードマップ・未決質問 | **1. この思想は「予言」ではなく「今日すでに部分実装されている」。** 他の |
+| [ideas/70_concept/agent_society/README.md](<./ideas/70_concept/agent_society/README.md>) | Markdown | エージェント社会論（Agent Society） — 「会社」が群個体のマップになる | 2026-07-19〜20、Track U orchestration board の設計・実装・akaghef レビューを通じて |
+| [ideas/70_concept/philosophical/01_unfinished_principle.md](<./ideas/70_concept/philosophical/01_unfinished_principle.md>) | Markdown | Q1. 「マップは未完成であるべき」原則のシステム化 | 「完成したマップは死んだマップ」という命題を、UX・データ・運用の各層で |
+| [ideas/70_concept/philosophical/02_intentional_forgetting.md](<./ideas/70_concept/philosophical/02_intentional_forgetting.md>) | Markdown | Q2. 「忘れる」ことの設計（古い情報の意図的減衰） | 「アーカイブ＝完全保存」「削除＝完全消去」の二択に縛られず、 |
+| [ideas/70_concept/philosophical/03_time_axes.md](<./ideas/70_concept/philosophical/03_time_axes.md>) | Markdown | Q3. 複数の時間軸（線形 vs 円環 vs 結晶） | 研究者の体感時間は単一の線形タイムラインで表現できない。 |
+| [ideas/70_concept/philosophical/04_self_discovery.md](<./ideas/70_concept/philosophical/04_self_discovery.md>) | Markdown | Q4. 「マップで自分を発見する」体験設計 | マップを **作業台** ではなく **鏡** として使う体験を設計する。 |
+| [ideas/70_concept/philosophical/05_node_death_rebirth.md](<./ideas/70_concept/philosophical/05_node_death_rebirth.md>) | Markdown | Q5. ノードの「死」と「再生」 | ノードを **永遠に保存する vs 削除する** の二択ではなく、 |
+| [ideas/70_concept/philosophical/06_cross_cutting.md](<./ideas/70_concept/philosophical/06_cross_cutting.md>) | Markdown | 06. 横断観察・組み合わせ・実装可能性ロードマップ・未決質問 | Q1〜Q5 を横断して見えてきた **共通パターン**・**組み合わせ効果**・ |
+| [ideas/70_concept/philosophical/README.md](<./ideas/70_concept/philosophical/README.md>) | Markdown | 哲学的・実験的テーマ（Philosophical / Experimental） | 00_topic_pool.md カテゴリ Q（横断的・哲学的テーマ）を素材に、 |
+| [ideas/70_concept/thought_physics/01_concept.md](<./ideas/70_concept/thought_physics/01_concept.md>) | Markdown | 01. 概念 — なぜ思考に物理を与えるのか | ノードは "テキストの塊" である以上に、**生き物・物体としての性質** を持ち得る。 |
+| [ideas/70_concept/thought_physics/02_node_physics.md](<./ideas/70_concept/thought_physics/02_node_physics.md>) | Markdown | 02. ノード物性の選択肢 | ノードに持たせる **物理量** の候補を網羅的に並べる。 |
+| [ideas/70_concept/thought_physics/03_dynamics.md](<./ideas/70_concept/thought_physics/03_dynamics.md>) | Markdown | 03. 動的挙動 — 引力・反発・冷却・流体 | 物性（02）を持ったノードが **時間とともにどう動くか**。 |
+| [ideas/70_concept/thought_physics/04_phenomena.md](<./ideas/70_concept/thought_physics/04_phenomena.md>) | Markdown | 04. 創発現象 — 気象予報・地震・季節・生態系 | 物性（02）と挙動（03）の上に立ち上がる **集団的・時間的現象**。 |
+| [ideas/70_concept/thought_physics/05_mvp_path.md](<./ideas/70_concept/thought_physics/05_mvp_path.md>) | Markdown | 05. MVP・横断観察・未決質問 | 物理隠喩は **広大** だが、最小実装で価値検証できる切り口を絞る。 |
+| [ideas/70_concept/thought_physics/README.md](<./ideas/70_concept/thought_physics/README.md>) | Markdown | 思考の物理学メタファー（Thought Physics） | ノードに「重力」「磁力」「温度」「鮮度」などの **物性** を持たせ、 |
 | [ideas/ChatGPT-M3Eのコンテンツ販売.md](<./ideas/ChatGPT-M3Eのコンテンツ販売.md>) | Markdown | M3Eのコンテンツ販売 | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
 | [ideas/ChatGPT-Map Logic Limitations.md](<./ideas/ChatGPT-Map Logic Limitations.md>) | Markdown | Map Logic Limitations | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
 | [ideas/ChatGPT-ハードコピーとソフトコピー.md](<./ideas/ChatGPT-ハードコピーとソフトコピー.md>) | Markdown | ハードコピーとソフトコピー | **User:** Anonymous (kawami.s.aa@m.titech.ac.jp) |
@@ -263,7 +468,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/description_example.md](<./ideas/description_example.md>) | Markdown | M3E 機能紹介 — 開発プロジェクト活用ガイド | M3E（Model, Map, Meaning Engine）は、科学研究者の構造的思考を支援するツールです。ツリー構造のデータモデルを中核に、論文分解・仮説比較・前提整理・設計判断といった知的作業を扱います。本ドキュメントでは、開発... |
 | [ideas/Home_page.md](<./ideas/Home_page.md>) | Markdown | Home page | 回のセッションで実装した差分を自然言語でまとめます。 |
 | [ideas/memo_ideas.md](<./ideas/memo_ideas.md>) | Markdown | M3EのAI協働に関する知見整理 | 会話の中で得られた知見を整理すると、M3Eは単なるマインドマップではなく、人間と複数のAIが同じ構造を共有しながら仕事を進めるための共同作業基盤として捉えるのが適切である。ユーザーは技術スタックそのものを把握する必要はなく、可視化され... |
-| [ideas/README.md](<./ideas/README.md>) | Markdown | Ideas Folder | このフォルダは、実装前のアイデアを自由に追記するための場所です。 |
+| [ideas/README.md](<./ideas/README.md>) | Markdown | Ideas | このフォルダは M3E repo 内の idea の唯一の正規配置。旧 root `idea/` は使用しない。 |
 | [ideas/security.md](<./ideas/security.md>) | Markdown | security | https://x.com/nobel_824/status/2038416059167121507 |
 | [ideas/tree_compatible_language.md](<./ideas/tree_compatible_language.md>) | Markdown | Tree-Compatible Language (TCL) 仕様 | Tree-Compatible Language（TCL）は、マインドマップ（木構造）と自然言語文章の間の**準同型変換**を実現するための制約付き記述言語である。自由な自然言語ではなく、可逆性を持たせたシリアライズ形式として機能する。 |
 | [ideas/tree_structure_rapid_deep.md](<./ideas/tree_structure_rapid_deep.md>) | Markdown | tree structure rapid deep | we consider about pdf->mind map. |
@@ -410,10 +615,15 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [tasks/handoff_cloud_sync_conflict_resolution.md](<./tasks/handoff_cloud_sync_conflict_resolution.md>) | Markdown | Handoff: Cloud Sync 競合解決 — Merge Mode 実装 | Cloud Sync 競合時に GitHub-like な diff 表示 + node 単位マージ選択を実装する。 |
 | [tasks/handoff_cloud_sync_conflict_ui.md](<./tasks/handoff_cloud_sync_conflict_ui.md>) | Markdown | Handoff: Cloud Sync 競合UI改善 | Cloud Sync で競合 (conflict) が発生した際の UI を改善する。 |
 | [tasks/handoff_layout_refactor_pn_integration.md](<./tasks/handoff_layout_refactor_pn_integration.md>) | Markdown | Handoff: layout() 純関数化 + PN layout設定統合 | **日付**: 2026-06-16 |
+| [tasks/handoff_orchestration_map_pilot_260719.md](<./tasks/handoff_orchestration_map_pilot_260719.md>) | Markdown | Handoff: Orchestration Map Pilot — Neo4j + policy 上乗せ | > **Plan Hierarchy（Principle / Vision / Strategy / Goal / Task）の DAG と、各案件に対応する agent・gate・status を単一の信頼できる model に載せ... |
 | [tasks/handoff_resource_design.md](<./tasks/handoff_resource_design.md>) | Markdown | Handoff: Resource 概念の設計 | M3E に「Resource」概念を導入する。 |
 | [tasks/handoff_s16_neo4j_federation_define_260718.md](<./tasks/handoff_s16_neo4j_federation_define_260718.md>) | Markdown | Handoff: S16 連邦化 Strategy レビュー結論と Phase 0 define 指示 | Handoff: S16 連邦化 Strategy レビュー結論と Phase 0 define 指示 |
 | [tasks/handoff_template.md](<./tasks/handoff_template.md>) | Markdown | Handoff: {TOPIC} | {タスクの説明。何を実装/修正/調査するか。} |
+| [tasks/handoff_track_u_orchestration_seam_260719.md](<./tasks/handoff_track_u_orchestration_seam_260719.md>) | Markdown | Handoff: Track U — Orchestration Board Seam（別スレ実行用） | Handoff: Track U — Orchestration Board Seam（別スレ実行用） |
+| [tasks/handoff_u1_5_board_renderer_svg_260720.md](<./tasks/handoff_u1_5_board_renderer_svg_260720.md>) | Markdown | Handoff: U1.5 — Board Renderer SVG 化（OP2 移行） | akaghef の指摘により停止。renderer 技術方針（OP2=SVG）自体は有効だが、board の製品要件を |
+| [tasks/orchestration_map_pilot_result_260719.md](<./tasks/orchestration_map_pilot_result_260719.md>) | Markdown | Orchestration Map Pilot Result 260719 | All scripts are under `scripts/pilot/` and emit one JSON object per run. |
 | [tasks/README.md](<./tasks/README.md>) | Markdown | tasks/ | **役割**: 具体 task と handoff の置き場。ロール間・セッション間の引き継ぎ場所。 |
+| [tasks/requirements_agent_dialogue_monitor_260720.md](<./tasks/requirements_agent_dialogue_monitor_260720.md>) | Markdown | 要求定義: Agent 対話監視面（Akaghef-System 帰属 backend + M3E 表示面） | [agent_network_dashboard_reference_260707/](agent_network_dashboard_reference_260707/) / |
 | [tasks/todo_by_role.md](<./tasks/todo_by_role.md>) | Markdown | MOVED | ロール別タスクは [../06_Operations/Todo_Pool.md](../06_Operations/Todo_Pool.md) の Owner フィールドに統合済み（2026-04-15）。 |
 
 ### root - top-level docs files
@@ -426,3 +636,52 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [README.md](<./README.md>) | Markdown | M3E Software Docs | このディレクトリは、M3E の思想・戦略・仕様・アーキテクチャ・運用・判断記録を置く場所である。 |
 | [無題のファイル.base](<./無題のファイル.base>) | Obsidian Bases | 無題のファイル | Obsidian Bases |
 | [無題のファイル.canvas](<./無題のファイル.canvas>) | Obsidian Canvas | 無題のファイル | Obsidian Canvas |
+
+### dev-docs
+
+| File | Type | Title | Summary |
+|---|---:|---|---|
+| [dev-docs/README.md](<./dev-docs/README.md>) | Markdown | Development Notes | 開発中の横断的な技術メモを置く。製品仕様は `docs/03_Spec/`、運用規則は `docs/06_Operations/`、agent protocol は `docs/protocols/` を正本とする。 |
+
+### operations
+
+| File | Type | Title | Summary |
+|---|---:|---|---|
+| [operations/README.md](<./operations/README.md>) | Markdown | Operations Workspace | Obsidian TaskNotes など、docs vault 上で使う操作面の設定を置く。 |
+| [operations/TaskNotes/Views/agenda-default.base](<./operations/TaskNotes/Views/agenda-default.base>) | Obsidian Bases | agenda default | Obsidian Bases |
+| [operations/TaskNotes/Views/calendar-default.base](<./operations/TaskNotes/Views/calendar-default.base>) | Obsidian Bases | calendar default | Obsidian Bases |
+| [operations/TaskNotes/Views/kanban-default.base](<./operations/TaskNotes/Views/kanban-default.base>) | Obsidian Bases | kanban default | Obsidian Bases |
+| [operations/TaskNotes/Views/mini-calendar-default.base](<./operations/TaskNotes/Views/mini-calendar-default.base>) | Obsidian Bases | mini calendar default | Obsidian Bases |
+| [operations/TaskNotes/Views/pomodoro-stats.base](<./operations/TaskNotes/Views/pomodoro-stats.base>) | Obsidian Bases | pomodoro stats | Obsidian Bases |
+| [operations/TaskNotes/Views/relationships.base](<./operations/TaskNotes/Views/relationships.base>) | Obsidian Bases | relationships | Obsidian Bases |
+| [operations/TaskNotes/Views/tasks-default.base](<./operations/TaskNotes/Views/tasks-default.base>) | Obsidian Bases | tasks default | Obsidian Bases |
+
+### protocols
+
+| File | Type | Title | Summary |
+|---|---:|---|---|
+| [protocols/AGENTS.md](<./protocols/AGENTS.md>) | Markdown | Protocols Agent Guide | `docs/protocols/` contains AI operating contracts. Treat these files as canonical for agent behavior. |
+| [protocols/codex-claude-sync.md](<./protocols/codex-claude-sync.md>) | Markdown | Codex / Claude Instruction Sync Protocol | Codex and Claude must see compatible M3E rules while preserving their different roles: |
+| [protocols/contracts/map_manager_contract.yaml](<./protocols/contracts/map_manager_contract.yaml>) | File | map manager contract | File |
+| [protocols/contracts/persistent_rule_change_contract.yaml](<./protocols/contracts/persistent_rule_change_contract.yaml>) | File | persistent rule change contract | File |
+| [protocols/contracts/scope_contract.yaml](<./protocols/contracts/scope_contract.yaml>) | File | scope contract | File |
+| [protocols/contracts/write_contract.yaml](<./protocols/contracts/write_contract.yaml>) | File | write contract | File |
+| [protocols/handoff-packet-protocol.md](<./protocols/handoff-packet-protocol.md>) | Markdown | Handoff Packet Protocol | A handoff packet gives Codex enough context to execute a scoped task without re-reading the entire history. |
+| [protocols/layouting-protocol.md](<./protocols/layouting-protocol.md>) | Markdown | Layouting Protocol | See `docs/03_Spec/map_layout_modes.md` for layout modes. |
+| [protocols/map-manager.md](<./protocols/map-manager.md>) | Markdown | Map Manager Protocol | This file is a compatibility entry point. |
+| [protocols/map-manager/gates.md](<./protocols/map-manager/gates.md>) | Markdown | Map Manager Gates | These gates apply before mutation, projection, or worker delegation. |
+| [protocols/map-manager/projection-rule.md](<./protocols/map-manager/projection-rule.md>) | Markdown | Projection Rule | M3E storage is not MF, WMF, Mermaid, Markdown, or any other exchange syntax. |
+| [protocols/map-manager/README.md](<./protocols/map-manager/README.md>) | Markdown | Map Manager Protocol Package | Map Manager prevents repeated AI confusion when reading, writing, laying out, |
+| [protocols/map-write-protocol.md](<./protocols/map-write-protocol.md>) | Markdown | Map Write Protocol | Define how AI writes M3E maps without corrupting structure or confusing semantic structure with display decisions. |
+| [protocols/persistent-rule-change-protocol.md](<./protocols/persistent-rule-change-protocol.md>) | Markdown | Persistent Rule Change Protocol | This protocol governs agent behavior when a user asks for broad recurrence prevention or uses `!!!` / `！！！`. |
+| [protocols/README.md](<./protocols/README.md>) | Markdown | Protocols | This directory is the canonical home for AI operating protocols in M3E / Akaghef-System. |
+| [protocols/repository-canon-values.md](<./protocols/repository-canon-values.md>) | Markdown | Repository Canon Values | This protocol is the canonical statement of repository-level values for M3E agents. |
+| [protocols/scope-operation-protocol.md](<./protocols/scope-operation-protocol.md>) | Markdown | Scope Operation Protocol | See `docs/03_Spec/Scope_and_Alias.md` for product meaning. |
+| [protocols/worker-minimal-instruction.md](<./protocols/worker-minimal-instruction.md>) | Markdown | Worker Minimal Instruction | You are Codex running as a scoped worker. Do only the assigned task inside the assigned path/scope. |
+
+### semantic
+
+| File | Type | Title | Summary |
+|---|---:|---|---|
+| [semantic/m3e-design.source.json](<./semantic/m3e-design.source.json>) | JSON | m3e design.source | JSON |
+| [semantic/README.md](<./semantic/README.md>) | Markdown | M3E Design Semantic Source | この directory は、M3E repository の設計 corpus を Phase 1 の `specimen-v1` |

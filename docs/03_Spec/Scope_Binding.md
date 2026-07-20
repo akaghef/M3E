@@ -513,4 +513,4 @@ A -[LINE]-> E in 関係図:
 - 実体モデル: [./Data_Model.md](./Data_Model.md)
 - scope / alias: [./Scope_and_Alias.md](./Scope_and_Alias.md)
 - path / reserved node: [./Node_Path_Notation.md](./Node_Path_Notation.md)
-- map write protocol: [../../protocols/map-write-protocol.md](../../protocols/map-write-protocol.md)
+- map write protocol: [../../docs/protocols/map-write-protocol.md](../../docs/protocols/map-write-protocol.md)

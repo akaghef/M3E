@@ -34,8 +34,8 @@ For `!!!` / `！！！` or recurrence-prevention requests, treat the task as a d
 
 When the user uses `!!!` / `！！！`, or asks to prevent recurrence after an agent failure:
 
-1. Read `protocols/persistent-rule-change-protocol.md` when available.
-2. Update a durable target such as `AGENTS.md`, `protocols/`, `protocols/contracts/`, `agent_instructions/skills_canonical/`, checked-in hooks, or guard scripts.
+1. Read `docs/protocols/persistent-rule-change-protocol.md` when available.
+2. Update a durable target such as `AGENTS.md`, `docs/protocols/`, `docs/protocols/contracts/`, `agent_instructions/skills_canonical/`, checked-in hooks, or guard scripts.
 3. Use `skill-creator` if any skill or skill trigger is created or updated.
 4. Update skill frontmatter `description` for trigger changes.
 5. Run `scripts/ops/check-persistent-rule-gate.sh` when available.

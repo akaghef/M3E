@@ -71,7 +71,7 @@ Source: `C:\Users\Akaghef\data\作業\chatGPTdata\MarkdownFiles\Projects\Akaghef
 
 ## B001-I03 — maintenance_hygiene
 
-Source: `idea/40_data/maintenance_hygiene/README.md`
+Source: `docs/ideas/40_data/maintenance_hygiene/README.md`
 
 ### Extracted Signal
 

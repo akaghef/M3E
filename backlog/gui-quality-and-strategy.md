@@ -136,7 +136,7 @@ docs, tests, user-facing explanation, implementation を一致させる。
 - camera pan, spotlight, progress bar を組み合わせる。
 - `details` or tour-specific note をナレーション欄に出す。
 
-参照: `idea/30_ux/slideshow/03_runtime_ui.md`
+参照: `docs/ideas/30_ux/slideshow/03_runtime_ui.md`
 
 ### 5.4 numpad quick input
 
@@ -144,7 +144,7 @@ docs, tests, user-facing explanation, implementation を一致させる。
 - 複数選択に対して一括適用する。
 - ノートPC向け fallback も用意する。
 
-参照: `idea/30_ux/keyboard_modes/09_numpad_quick_input.md`
+参照: `docs/ideas/30_ux/keyboard_modes/09_numpad_quick_input.md`
 
 ## 6. Testing backlog
 

@@ -5,7 +5,7 @@
 
 ## 問題設定
 
-- `idea/` 配下に 17 カテゴリ × 約 116 ファイル × 数百論点が積まれた
+- `docs/ideas/` 配下に 17 カテゴリ × 約 116 ファイル × 数百論点が積まれた
 - このままでは **読みきれない／採否できない／実装に降りない**
 - AI を前提に、論点プールから「akaghef の満足」までを繋ぐ導線が要る
 - 「満足」の最終定義は project_projection_vision（2026-10 に科研費等を出力できる実用化）
@@ -28,10 +28,10 @@
 
 ## Layer 1: Index（機械可読化）
 
-**やること**: `idea/` 配下の論点を 1 つの機械可読な索引にする。
+**やること**: `docs/ideas/` 配下の論点を 1 つの機械可読な索引にする。
 
 - 単位: 論点 ID（A1.1 / B2 / J3.A 等、各ブレストで既に振った）
-- 形式: `idea/_index.json`（または .jsonl）
+- 形式: `docs/ideas/_index.json`（または .jsonl）
 - フィールド:
   - `id`, `category`, `title`, `file`, `summary`（AI 生成、1〜2 行）
   - `cost_estimate`（行数・日数のオーダー）
@@ -241,7 +241,7 @@
 - N2. 116 論点を試しに 1 カテゴリだけ Index 化してみる（パイロット）
 - N3. Score 基準の合意（特に Impact の重み付け）
 - N4. Triage UI を keyboard_modes M02 で試作するか専用画面を作るか
-- N5. このパイプライン自体を idea/_pipeline/ にブレスト化し直すか（メタ過剰の罠注意）
+- N5. このパイプライン自体を docs/ideas/_pipeline/ にブレスト化し直すか（メタ過剰の罠注意）
 - N6. パイプラインを使わずに「とりあえず B2 + J3 + H4 + H5 束」だけ手で着手するか（パイプライン無しの bypass）
 
 **個人的見立て**: N6（手作業 bypass で 1 束着手）と N2（パイロット Index 化）を並行するのが現実的。
@@ -252,7 +252,7 @@
 
 ## 未決（後で考える）
 
-- Q1. Index の物理的な置き場所（idea/_index.json か別リポか）
+- Q1. Index の物理的な置き場所（docs/ideas/_index.json か別リポか）
 - Q2. Score の Impact 重み（projection_vision 偏重 vs バランス）
 - Q3. Triage の頻度（月次か週次か）
 - Q4. Compile を AI が完全にやるか、人間が骨子を書いて AI が肉付けするか

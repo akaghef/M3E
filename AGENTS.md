@@ -48,19 +48,19 @@ Current model:
    - `docs/06_Operations/Documentation_Rules.md`
    - `docs/06_Operations/Worktree_Separation_Rules.md`
 5. Repository canon values:
-   - `protocols/repository-canon-values.md`
+   - `docs/protocols/repository-canon-values.md`
 
 ## AI Instruction Routing
 
 For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 
 - Product meaning of map / node / scope / edge / GraphLink / alias / path / layout lives under `docs/03_Spec/`.
-- Repository-level canon, source/artifact allocation, generated-output policy, worktree placement, and private/public-danger material routing live in `protocols/repository-canon-values.md`.
-- Agent operating behavior lives under `protocols/`.
+- Repository-level canon, source/artifact allocation, generated-output policy, worktree placement, and private/public-danger material routing live in `docs/protocols/repository-canon-values.md`.
+- Agent operating behavior lives under `docs/protocols/`.
 - Claude Director behavior lives in `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md`.
 - Map read/write execution uses the `m3e-map` skill.
-- Structural map decisions use `protocols/map-manager/` (with `protocols/map-manager.md` as a compatibility pointer) and the `map-manager` skill.
-- Codex workers must follow `protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
+- Structural map decisions use `docs/protocols/map-manager/` (with `docs/protocols/map-manager.md` as a compatibility pointer) and the `map-manager` skill.
+- Codex workers must follow `docs/protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
 
 When a map task involves scope, scopen / unscopen, layouting, path ambiguity, edge / GraphLink / alias choice, or worker handoff, route it through Map Manager before mutation.
 
@@ -85,7 +85,7 @@ When `!!!` is present, or when the user asks for recurrence prevention after an 
 Durable rule-system changes include one or more of:
 
 - root `AGENTS.md`
-- `protocols/` or `protocols/contracts/`
+- `docs/protocols/` or `docs/protocols/contracts/`
 - canonical skill sources under `agent_instructions/skills_canonical/`
 - checked-in hook or guard scripts under `scripts/hooks/` or `scripts/ops/`
 - CI workflows that verify agent instruction consistency

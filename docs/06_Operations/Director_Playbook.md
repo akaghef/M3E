@@ -43,7 +43,7 @@ Rules:
 - Investigation tasks → `--sandbox read-only`. Ask for a bounded report (line cap).
 - Implementation tasks → run inside the task worktree; tell Codex to commit on `codex/<task>`.
 - Keep CONTEXT tight; Codex can read the repo itself.
-- If the handoff affects repo hygiene, source/artifact boundaries, generated outputs, private/public-danger material, or worktree placement, include `protocols/repository-canon-values.md` in CONTEXT.
+- If the handoff affects repo hygiene, source/artifact boundaries, generated outputs, private/public-danger material, or worktree placement, include `docs/protocols/repository-canon-values.md` in CONTEXT.
 
 ## 3. Worktree lifecycle
 
@@ -74,7 +74,7 @@ Director obligations:
 
 1. State `Scope: LV3. Target=<...>. Adjacent=<...>. Excluded=<...>.`
 2. Identify the failed instruction or missing rule path when correcting an agent failure.
-3. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `protocols/`, `protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
+3. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `docs/protocols/`, `docs/protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
 4. If any skill or skill trigger changes, route through `skill-creator` and update the skill frontmatter `description`.
 5. Require Codex to run `scripts/ops/check-persistent-rule-gate.sh` when present.
 6. Do not mark recurrence prevention complete if the result is only a chat promise.
@@ -180,7 +180,7 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   promises. Skill trigger changes must go through `skill-creator` and update frontmatter
   `description`. Also codified the live beta data guard: no fixture/test/temp maps in the active
   beta personal workspace for verification.
-- 2026-07-05 — Added `protocols/repository-canon-values.md` as the canonical routing point for
+- 2026-07-05 — Added `docs/protocols/repository-canon-values.md` as the canonical routing point for
   Akaghef's repo-level values: 弱いから利用して強くなる, one canonical owner per concern,
   source-only Git, generated outputs as projections/artifacts, worktrees outside the primary
   checkout, and private/public-danger material outside the public repo. Rule: when a Codex handoff

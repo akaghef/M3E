@@ -17,7 +17,7 @@ PJ07 の最初の実データ処理サンプル。
 |---|---|---|
 | B001-I01 | `C:\Users\Akaghef\data\作業\chatGPTdata\MarkdownFiles\Projects\Akaghef\M3E\260311_Agent開発の基本.md` | LangGraph / structured output / memory など agent 実装基礎がまとまっている |
 | B001-I02 | `C:\Users\Akaghef\data\作業\chatGPTdata\MarkdownFiles\Projects\Akaghef\M3E\260425_MIOSMindmap_IO_Stack.md` | proposal/result 契約、TOON / JSON / Command / SQLite の核心がある |
-| B001-I03 | `idea/40_data/maintenance_hygiene/README.md` | map hygiene の detector / action / safety 分離が PJ07 の品質改善サイクルに直結する |
+| B001-I03 | `docs/ideas/40_data/maintenance_hygiene/README.md` | map hygiene の detector / action / safety 分離が PJ07 の品質改善サイクルに直結する |
 
 ## Processed Output
 

@@ -42,8 +42,8 @@
 - ガードレール設計が粒度高ければ autonomous に任せられ効率↑
 
 関連アイデア（既コミット）:
-- `idea/00_meta/automation_obstacles/` — 障害40+、解決パターン20（P2段階自動化/P5検証/P10レイヤ分離/P15アンドゥ/P16人間最終判断）
-- `idea/00_meta/meta_m3e/` — dogfood, 自己改善ループ, feedback/telemetry, plugin/fork
+- `docs/ideas/00_meta/automation_obstacles/` — 障害40+、解決パターン20（P2段階自動化/P5検証/P10レイヤ分離/P15アンドゥ/P16人間最終判断）
+- `docs/ideas/00_meta/meta_m3e/` — dogfood, 自己改善ループ, feedback/telemetry, plugin/fork
 
 ## Meta sub-PJ 候補 7本
 

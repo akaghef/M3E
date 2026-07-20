@@ -23,7 +23,7 @@ related: README.md
 
 ## Phase 構成
 
-原典: [idea/10_io/math_ontology_services/08_implementation_feasibility.md](../../idea/10_io/math_ontology_services/08_implementation_feasibility.md)
+原典: [docs/ideas/10_io/math_ontology_services/08_implementation_feasibility.md](../../docs/ideas/10_io/math_ontology_services/08_implementation_feasibility.md)
 
 | Phase | 行数 | 期間 | 帯域的役割 | 推し度 |
 |---|---|---|---|---|
@@ -204,7 +204,7 @@ related: README.md
 - **Q14.** syntax と semantic の同時表示 / 切替
 - **Q15.** 既存エッジの二層化マイグレーション戦略
 
-全 Q 一覧は [idea/10_io/math_ontology_services/07_m3e_connection.md](../../idea/10_io/math_ontology_services/07_m3e_connection.md) 参照。
+全 Q 一覧は [docs/ideas/10_io/math_ontology_services/07_m3e_connection.md](../../docs/ideas/10_io/math_ontology_services/07_m3e_connection.md) 参照。
 
 ### Phase 遷移判定
 
@@ -218,4 +218,4 @@ related: README.md
 ### 進捗ログ
 
 - 2026-04-17: PJ02 正式登録、plan.md 初版（08_implementation_feasibility.md から整理）
-- 2026-04-29: T-1-1 / T-1-2 として implementation facet contract と timeseries facet contract を `idea/00_meta/display_contracts/` に追加。T-1-3 go-signal criteria を pending に戻した。
+- 2026-04-29: T-1-1 / T-1-2 として implementation facet contract と timeseries facet contract を `docs/ideas/00_meta/display_contracts/` に追加。T-1-3 go-signal criteria を pending に戻した。

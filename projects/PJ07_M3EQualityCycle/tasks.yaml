@@ -2,7 +2,7 @@
 
 current_focus:
   date: 2026-05-17
-  summary: "新PJとして器を作り、M3E関連 GPT 会話歴と idea/ を実データ workset に切る準備をする。"
+  summary: "新PJとして器を作り、M3E関連 GPT 会話歴と docs/ideas/ を実データ workset に切る準備をする。"
   next:
     - T-1-1
     - T-1-2
@@ -33,9 +33,9 @@ tasks:
   - id: T-1-2
     phase: 1
     verb: index
-    target: "M3E repo idea/ source index"
+    target: "M3E repo docs/ideas/ source index"
     done_when:
-      - "manifests/source_index.yaml includes idea/ source roots"
+      - "manifests/source_index.yaml includes docs/ideas/ source roots"
       - "M3E product / system / AI workflow idea files are listed"
       - "selection criteria are written"
     status: pending

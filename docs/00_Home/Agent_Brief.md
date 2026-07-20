@@ -23,6 +23,7 @@
 - 具体 task / handoff を確認したい: [../tasks/](../tasks/)
 - 最近の実績を確認したい: [../daily/](../daily/)
 - 粗い TODO を確認したい: [../06_Operations/Todo_Pool.md](../06_Operations/Todo_Pool.md)
+- 行き先未確定の入力を置きたい: [../../backlog/README.md](../../backlog/README.md)
 - 文書運用ルールを確認したい: [../06_Operations/Documentation_Rules.md](../06_Operations/Documentation_Rules.md)
 
 ## Session Check

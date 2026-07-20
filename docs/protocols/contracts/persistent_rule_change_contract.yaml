@@ -1,0 +1,37 @@
+version: 0.1
+id: m3e.persistent_rule_change_contract
+owner: Codex worker
+status: proposed
+source_docs:
+  protocols:
+    - AGENTS.md
+    - docs/protocols/worker-minimal-instruction.md
+    - docs/protocols/persistent-rule-change-protocol.md
+triggers:
+  - latest_user_instruction_contains_triple_bang
+  - latest_user_instruction_contains_triple_fullwidth_bang
+  - user_requests_recurrence_prevention_after_agent_failure
+  - user_requests_permanent_rule_or_guard_mechanism
+must:
+  - state_lv3_scope_line
+  - identify_failed_instruction_when_fixing_agent_failure
+  - edit_at_least_one_durable_rule_target
+  - use_skill_creator_when_skill_or_trigger_changes
+  - update_skill_frontmatter_description_when_trigger_changes
+  - sync_generated_skill_mirrors_after_canonical_skill_changes
+  - run_persistent_rule_gate_check_when_present
+must_not:
+  - claim_recurrence_prevention_is_done_with_only_chat_promise
+  - create_test_or_temporary_maps_in_active_beta_personal_workspace
+  - mutate_live_workspace_for_verification_without_cleanup_plan
+durable_targets:
+  - AGENTS.md
+  - docs/protocols/
+  - docs/protocols/contracts/
+  - agent_instructions/skills_canonical/
+  - scripts/hooks/
+  - scripts/ops/
+  - .github/workflows/
+verification:
+  - scripts/ops/check-persistent-rule-gate.sh
+  - node tools/sync_agent_instructions.mjs --check

@@ -19,7 +19,7 @@ sources:
     kind: repo_idea_pool
     path: "idea"
     status: indexed_root_only
-    notes: "M3E idea/backlog pool; select product/system/AI workflow items."
+    notes: "M3E docs/ideas/backlog pool; select product/system/AI workflow items."
 selection_keywords:
   - GraphSpec
   - LangGraph

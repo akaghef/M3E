@@ -25,9 +25,9 @@ description: Decide M3E map structure before writing or delegating. Use when a t
 
 ## Canonical references
 
-- `protocols/map-manager/README.md`
-- `protocols/map-manager/gates.md`
-- `protocols/map-manager/projection-rule.md`
-- `protocols/contracts/map_manager_contract.yaml`
-- `protocols/contracts/scope_contract.yaml`
-- `protocols/contracts/write_contract.yaml`
+- `docs/protocols/map-manager/README.md`
+- `docs/protocols/map-manager/gates.md`
+- `docs/protocols/map-manager/projection-rule.md`
+- `docs/protocols/contracts/map_manager_contract.yaml`
+- `docs/protocols/contracts/scope_contract.yaml`
+- `docs/protocols/contracts/write_contract.yaml`

@@ -5,8 +5,8 @@
 
 関連:
 - `bitwarden_biometric_setup.md` — Windows Hello 経由の bw 解錠（PowerShell ルート）
-- `idea/40_data/memory_architecture/02_hermes_integration_options.md` — I1/I2/I3 設計の正本
-- `idea/40_data/memory_architecture/05_mvp_and_open_questions.md` — Wave 1〜4 ロードマップ
+- `docs/ideas/40_data/memory_architecture/02_hermes_integration_options.md` — I1/I2/I3 設計の正本
+- `docs/ideas/40_data/memory_architecture/05_mvp_and_open_questions.md` — Wave 1〜4 ロードマップ
 
 ---
 

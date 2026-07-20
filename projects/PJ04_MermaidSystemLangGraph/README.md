@@ -106,7 +106,7 @@ PJ04 の System Scope は、処理遷移である **Control Graph** と、State 
 - `plan6/cycle2/` — Mermaid canonical sample 一式
 - `runtime/langgraph_lab/` — LangGraph lab seed
 - `references/m3e_current/` — M3E 現行コード参照コピー
-- `idea/` — 採否未定プール
+- `docs/ideas/` — 採否未定プール
 
 ## 役割分担
 

@@ -366,4 +366,4 @@ Phase 4で M3E-owned accepted graph の Neo4j canonical runtime をactivateす�
 - [MVC_and_Command.md](./MVC_and_Command.md)
 - [../09_Decisions/ADR_008_Federated_Canonical_Sources.md](../09_Decisions/ADR_008_Federated_Canonical_Sources.md)
 - [../tasks/handoff_s16_neo4j_federation_define_260718.md](../tasks/handoff_s16_neo4j_federation_define_260718.md) — Phase 1 dogfooding scenario / approval record
-- [../../protocols/repository-canon-values.md](../../protocols/repository-canon-values.md)
+- [../../docs/protocols/repository-canon-values.md](../../docs/protocols/repository-canon-values.md)

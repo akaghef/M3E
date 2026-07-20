@@ -1,13 +1,15 @@
-# Ideas Folder
+# Ideas
 
-このフォルダは、実装前のアイデアを自由に追記するための場所です。
+このフォルダは M3E repo 内の idea の唯一の正規配置。旧 root `idea/` は使用しない。
 
 ## 使い方
 
-- 新しいアイデアごとに1ファイル作る
-- ファイル名は `YYMMDD_topic.md` 形式（日付プレフィックス必須）
+- 短い単発メモは、直下へ `YYMMDD_topic.md` 形式で1ファイル作る
+- 継続的に展開するテーマは `<group>/<topic>/` にまとめ、`README.md` を入口にする
+- 未分類の入力はまず root `backlog/` へ置いてよい。idea と判断した時点でここへ移す
 - まずは短くメモし、必要になったら仕様文書 (`03_Spec/`) や ADR (`09_Decisions/`) へ昇格する
 - 同方向の idea が溜まって Strategy 粒度になったら、`../01_Vision/Strategy.md` の `Deferred Strategy` へ持ち上げる準備をする
+- 同じ内容を root `idea/` や `backlog/` に複製せず、正本を一つにする
 
 ## Deferred Strategy へ持ち上げる目安
 

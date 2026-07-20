@@ -22,17 +22,17 @@ Current execution model:
 ## Instruction Layers
 
 1. `docs/03_Spec/`: product meaning.
-2. `protocols/`: operating protocols shared by handoffs and tools.
+2. `docs/protocols/`: operating protocols shared by handoffs and tools.
 3. `CLAUDE.md` + `Director_Playbook.md`: Director procedure.
 4. `.codex/skills/` `.claude/skills/` `.agents/skills/`: generated or compatibility skill mirrors when present.
 
 ## Rule of Thumb
 
 - M3E の概念が何を意味するかを書く文は `docs/03_Spec/` に置く。
-- AI がどう動くべきかを書く文は `protocols/` に置く。
+- AI がどう動くべきかを書く文は `docs/protocols/` に置く。
 - Claude の Director 手順は `CLAUDE.md` と `Director_Playbook.md` に置く。
 - Codex task の scope family は `docs/06_Operations/Codex_Task_Scope_Reference.md` を参照する。
-- Map Manager の operational SSOT は `protocols/map-manager/` package に置く。
+- Map Manager の operational SSOT は `docs/protocols/map-manager/` package に置く。
 - directory entry pointer だけなら `AGENTS.md` に置く。
 - raw logs / old draft contracts / wrapper docs は active instruction surface に置かない。必要なら archive / evidence として参照する。
 

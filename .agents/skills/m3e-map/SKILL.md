@@ -41,8 +41,8 @@ This skill executes map reads and writes. It does not own scope granularity,
 scopen / unscopen policy, layouting / display intent, alias vs move vs GraphLink
 choices across facets, or worker handoff boundaries.
 
-For those decisions, consult `protocols/map-manager/README.md`,
-`protocols/map-manager/gates.md`, and the `map-manager` skill before mutation.
+For those decisions, consult `docs/protocols/map-manager/README.md`,
+`docs/protocols/map-manager/gates.md`, and the `map-manager` skill before mutation.
 
 For complex modifications (>3 nodes), write a one-shot Node.js script to `%TEMP%` (Windows) / `/tmp` and execute. **Bash `/tmp` ≠ Node.js `/tmp` on Windows** — use absolute Windows path like `c:/Users/Akaghef/AppData/Local/Temp/script.js` when invoking `node`. For 1-3 node changes, inline JSON with curl is fine.
 

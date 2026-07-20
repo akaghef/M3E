@@ -30,15 +30,15 @@ require_pattern "CLAUDE.md" "skill-creator" "Claude skill-creator routing"
 require_pattern "docs/06_Operations/Director_Playbook.md" "persistent-rule review gate" "Director persistent-rule review gate"
 require_pattern "docs/06_Operations/Director_Playbook.md" "Live beta data guard" "Director live beta data guard"
 
-require_pattern "protocols/persistent-rule-change-protocol.md" "!!!|！！！" "triple-bang trigger"
-require_pattern "protocols/persistent-rule-change-protocol.md" "skill-creator" "skill trigger update routing"
-require_pattern "protocols/persistent-rule-change-protocol.md" "Do not create fixture, test, or temporary maps" "live beta workspace data guard"
+require_pattern "docs/protocols/persistent-rule-change-protocol.md" "!!!|！！！" "triple-bang trigger"
+require_pattern "docs/protocols/persistent-rule-change-protocol.md" "skill-creator" "skill trigger update routing"
+require_pattern "docs/protocols/persistent-rule-change-protocol.md" "Do not create fixture, test, or temporary maps" "live beta workspace data guard"
 
-require_pattern "protocols/contracts/persistent_rule_change_contract.yaml" "m3e\\.persistent_rule_change_contract" "persistent rule contract id"
-require_pattern "protocols/contracts/persistent_rule_change_contract.yaml" "use_skill_creator_when_skill_or_trigger_changes" "skill-creator contract requirement"
+require_pattern "docs/protocols/contracts/persistent_rule_change_contract.yaml" "m3e\\.persistent_rule_change_contract" "persistent rule contract id"
+require_pattern "docs/protocols/contracts/persistent_rule_change_contract.yaml" "use_skill_creator_when_skill_or_trigger_changes" "skill-creator contract requirement"
 
-require_pattern "protocols/worker-minimal-instruction.md" "LV3 persistent rule gate" "worker LV3 gate"
-require_pattern "protocols/worker-minimal-instruction.md" "do not create test maps" "worker live-data guard"
+require_pattern "docs/protocols/worker-minimal-instruction.md" "LV3 persistent rule gate" "worker LV3 gate"
+require_pattern "docs/protocols/worker-minimal-instruction.md" "do not create test maps" "worker live-data guard"
 
 require_pattern "agent_instructions/skills_canonical/m3e-worker/SKILL.md" "!!!|！！！" "canonical worker skill trigger"
 require_pattern "agent_instructions/skills_canonical/m3e-worker/SKILL.md" "skill-creator" "canonical worker skill creator routing"

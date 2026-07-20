@@ -26,7 +26,7 @@ Long-lived planning, specification, architecture, operations, ADR, task, and dai
 
 ### Runtime Protocols
 
-**Location**: `protocols/`
+**Location**: `docs/protocols/`
 
 Operational protocols for worker behavior, map writes, scope operations, handoff packets, and map-manager routing.
 
@@ -44,9 +44,9 @@ Operational helpers, launch scripts, worktree lifecycle helpers, and platform-sp
 
 ### Backlog and Ideas
 
-**Location**: `backlog/`, `idea/`
+**Location**: `backlog/`, `docs/ideas/`
 
-Working notes and early ideas. Promote stable decisions into `docs/06_Operations/Decision_Pool.md`, `docs/03_Spec/`, `docs/04_Architecture/`, or ADRs as appropriate.
+`backlog/` is the inbox for unclassified captures and pending material; `docs/ideas/` is the canonical home for classified ideas. Promote stable decisions into `docs/06_Operations/Decision_Pool.md`, `docs/03_Spec/`, `docs/04_Architecture/`, or ADRs as appropriate.
 
 ## Beta Source Patterns
 

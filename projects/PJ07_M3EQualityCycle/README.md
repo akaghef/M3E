@@ -12,7 +12,7 @@ related:
 
 # PJ07 — M3E Quality Cycle
 
-M3E 関連の GPT 会話歴、`idea/`、設計メモ、数学・仕様文書を実データとして使い、AI による品質観測・整理・差分提案・レビュー・昇格のサイクルを作る PJ。
+M3E 関連の GPT 会話歴、`docs/ideas/`、設計メモ、数学・仕様文書を実データとして使い、AI による品質観測・整理・差分提案・レビュー・昇格のサイクルを作る PJ。
 
 ## 目的
 
@@ -50,7 +50,7 @@ PJ07 は、その上で動かす実データ整理・品質改善ループの PJ
 
 - GPT 会話歴 raw vault: `C:\Users\Akaghef\data\作業\chatGPTdata\MarkdownFiles\Projects\Akaghef\M3E`
 - 既存抽出済み corpus: `docs/research/m3e_data_structure_conversations/`
-- M3E repo idea pool: `idea/`
+- M3E repo idea pool: `docs/ideas/`
 - 品質改善サイクル検討 raw: `references/chatgpt/260517_ai_quality_improvement_cycle.md`
 
 ## 最初の実データ方針

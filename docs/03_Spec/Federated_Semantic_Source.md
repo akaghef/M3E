@@ -324,4 +324,4 @@ agent へ渡す graph context は透過的な永続 cache にしない。Directo
 - [../04_Architecture/Federated_Semantic_Graph.md](../04_Architecture/Federated_Semantic_Graph.md)
 - [../09_Decisions/ADR_008_Federated_Canonical_Sources.md](../09_Decisions/ADR_008_Federated_Canonical_Sources.md)
 - [../tasks/handoff_s16_neo4j_federation_define_260718.md](../tasks/handoff_s16_neo4j_federation_define_260718.md) — dogfooding scenario と 2026-07-19 承認追補の正本
-- [../../protocols/repository-canon-values.md](../../protocols/repository-canon-values.md)
+- [../../docs/protocols/repository-canon-values.md](../../docs/protocols/repository-canon-values.md)

@@ -23,7 +23,7 @@ code or author the initial spec drafts yourself.
 - Decompose intent into clear, bounded tasks Codex can execute.
 - Write precise Codex handoffs (objective, scope, constraints, acceptance criteria).
 - Choose or create the right git worktree for each task.
-- For handoffs affecting repo structure, source/artifact boundaries, generated outputs, private/public-danger material, or worktree placement, point Codex to `protocols/repository-canon-values.md`.
+- For handoffs affecting repo structure, source/artifact boundaries, generated outputs, private/public-danger material, or worktree placement, point Codex to `docs/protocols/repository-canon-values.md`.
 - Dispatch spec/design/tasks **drafts** and implementation to Codex via `scripts/codex.sh exec`.
 - **Review** Codex's spec/design/tasks drafts and its implementation against intent +
   acceptance criteria (`kiro-review`); approve, or send back with specific corrections.
@@ -96,14 +96,14 @@ Scope: LV<n>. Target=<...>. Adjacent=<...>. Excluded=<...>.
 
 When `!!!` is present, or when akaghef asks for recurrence prevention after an agent failure, do not accept a chat-only promise as complete. The cycle must create or dispatch a durable rule-system change, or report a concrete blocker.
 
-Durable targets include `AGENTS.md`, `CLAUDE.md`, `docs/06_Operations/Director_Playbook.md`, `protocols/`, `protocols/contracts/`, canonical skill sources under `agent_instructions/skills_canonical/`, checked-in hook or guard scripts, and CI workflows.
+Durable targets include `AGENTS.md`, `CLAUDE.md`, `docs/06_Operations/Director_Playbook.md`, `docs/protocols/`, `docs/protocols/contracts/`, canonical skill sources under `agent_instructions/skills_canonical/`, checked-in hook or guard scripts, and CI workflows.
 
 If a skill or skill trigger changes, dispatch/use `skill-creator` and update the skill frontmatter `description`; body-only trigger text is insufficient.
 
 ## Worktree rules (GitHub structure)
 
 - Remote: `github.com/akaghef/M3E.git`. Integration branch: **`dev-beta`**.
-- Repository canon/source/artifact/worktree allocation policy lives in `protocols/repository-canon-values.md`; link it in Codex handoffs when those boundaries are in scope.
+- Repository canon/source/artifact/worktree allocation policy lives in `docs/protocols/repository-canon-values.md`; link it in Codex handoffs when those boundaries are in scope.
 - Primary checkout `/Users/nisimoriyuuya/dev/M3E` stays on `dev-beta`. **Do not implement directly here.**
 - Each code-writing Codex task runs in its own worktree:
   - path: `/Users/nisimoriyuuya/dev/M3E-worktrees/<task>`
@@ -119,4 +119,4 @@ to frame scope before decomposing into Codex handoffs (see "Spec-Driven harness"
 
 Legacy note: older docs (`AGENTS.md`, `.claude/agents/*`, `docs/06_Operations/Agent_Roles.md`)
 describe a *Claude-subagent* worker model. That is **superseded**: the worker is now **Codex**.
-Reuse the existing protocols/specs as reference, but the operating model is Director→Codex.
+Reuse the existing protocols and specs as reference, but the operating model is Director→Codex.

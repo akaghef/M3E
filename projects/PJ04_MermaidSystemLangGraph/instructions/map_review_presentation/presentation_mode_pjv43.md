@@ -38,7 +38,7 @@ Open Review Manifest
 
 ## Later UI MVP
 
-`idea/30_ux/slideshow/05_mvp_path.md` の Phase 1 を採用する。
+`docs/ideas/30_ux/slideshow/05_mvp_path.md` の Phase 1 を採用する。
 
 | item | decision |
 |---|---|

@@ -32,7 +32,7 @@
 
 ## Related operating protocols
 
-- Map Manager: `../../protocols/map-manager/README.md`
-- Map write: `../../protocols/map-write-protocol.md`
-- Scope operation: `../../protocols/scope-operation-protocol.md`
-- Layouting: `../../protocols/layouting-protocol.md`
+- Map Manager: `../../docs/protocols/map-manager/README.md`
+- Map write: `../../docs/protocols/map-write-protocol.md`
+- Scope operation: `../../docs/protocols/scope-operation-protocol.md`
+- Layouting: `../../docs/protocols/layouting-protocol.md`

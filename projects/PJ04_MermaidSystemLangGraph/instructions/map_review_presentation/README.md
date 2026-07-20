@@ -19,7 +19,7 @@ purpose: akaghef が全 map / PJv work scope を巡回確認するための Pres
 |---|---|
 | `backlog/pj-vision-100.md` #43 | Slideshow Mode — マップ通しで読む |
 | `backlog/pj-vision-100.md` #31 | スライド生成 — マップからプレゼン展開 |
-| `idea/30_ux/slideshow/` | Guided Tour / Presentation Mode の既存ブレスト |
+| `docs/ideas/30_ux/slideshow/` | Guided Tour / Presentation Mode の既存ブレスト |
 
 ## Review Target
 
@@ -61,7 +61,7 @@ PJ04 PJv Factory scopes
 
 本 package は将来の viewer Presentation Mode の seed として使う。
 
-MVP 実装に進む時は、`idea/30_ux/slideshow/05_mvp_path.md` の暫定案を採用する。
+MVP 実装に進む時は、`docs/ideas/30_ux/slideshow/05_mvp_path.md` の暫定案を採用する。
 
 - 1 step = 1 node
 - 下部 overlay bar

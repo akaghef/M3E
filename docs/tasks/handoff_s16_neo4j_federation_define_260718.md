@@ -4,7 +4,7 @@
 - 起草: Claude Director（akaghef との define 対話の収束成果物）
 - 対象: PR #74（`codex/neo4j-federated-strategy`、Strategy.md S16）および Phase 0 spec-init
 - 宛先: Codex worker
-- 関連: [../01_Vision/Strategy.md](../01_Vision/Strategy.md) S16 / [../../protocols/repository-canon-values.md](../../protocols/repository-canon-values.md) / [../03_Spec/Scope_and_Alias.md](../03_Spec/Scope_and_Alias.md) / [../03_Spec/Data_Model.md](../03_Spec/Data_Model.md)
+- 関連: [../01_Vision/Strategy.md](../01_Vision/Strategy.md) S16 / [../../docs/protocols/repository-canon-values.md](../../docs/protocols/repository-canon-values.md) / [../03_Spec/Scope_and_Alias.md](../03_Spec/Scope_and_Alias.md) / [../03_Spec/Data_Model.md](../03_Spec/Data_Model.md)
 
 ---
 

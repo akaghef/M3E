@@ -71,20 +71,20 @@ joint を独立に設計することで Calendar / Todo / 通知チャネル / I
 
 本文書は以下を集約する:
 
-1. リマインダーに関する idea/ の散在アイデアの集約
+1. リマインダーに関する docs/ideas/ の散在アイデアの集約
 2. Map ↔ 外部サービスの**共通アダプタ規約**（joint）
 3. 連携先サービスの**列挙**（カテゴリ別）
 4. Phase 別実装計画（MVP → 段階拡張）
 5. Glossary 追加候補・Open Questions
 
 集約元（重複は省略）:
-- [idea/10_io/tool_integration/01_concept.md](../../idea/10_io/tool_integration/01_concept.md) — 統合の三類型 / UC1〜UC7
-- [idea/10_io/tool_integration/04_workflow_tools.md](../../idea/10_io/tool_integration/04_workflow_tools.md) — H2 Calendar / H7 Notion・Linear・Jira
-- [idea/10_io/tool_integration/06_integration_patterns.md](../../idea/10_io/tool_integration/06_integration_patterns.md) — P1〜P4 統合4パターン / 共通インフラ案
-- [idea/10_io/capture_ingest/02_channels.md](../../idea/10_io/capture_ingest/02_channels.md) — A12 Calendar / A15 webhook / A19 リマインダー Todo 統合
-- [idea/60_workflow/personal_productivity/02_ritual_options.md](../../idea/60_workflow/personal_productivity/02_ritual_options.md) — 朝/昼/夜 ritual の発動方法
-- [idea/30_ux/gamification/02_streak_and_badge.md](../../idea/30_ux/gamification/02_streak_and_badge.md) — K1.4 通知強度 / K1.6 健全な逸脱
-- [idea/70_concept/philosophical/01_unfinished_principle.md](../../idea/70_concept/philosophical/01_unfinished_principle.md) — Uf4.b 30 日 nudge / Uf4.d 起動時提案
+- [docs/ideas/10_io/tool_integration/01_concept.md](../../docs/ideas/10_io/tool_integration/01_concept.md) — 統合の三類型 / UC1〜UC7
+- [docs/ideas/10_io/tool_integration/04_workflow_tools.md](../../docs/ideas/10_io/tool_integration/04_workflow_tools.md) — H2 Calendar / H7 Notion・Linear・Jira
+- [docs/ideas/10_io/tool_integration/06_integration_patterns.md](../../docs/ideas/10_io/tool_integration/06_integration_patterns.md) — P1〜P4 統合4パターン / 共通インフラ案
+- [docs/ideas/10_io/capture_ingest/02_channels.md](../../docs/ideas/10_io/capture_ingest/02_channels.md) — A12 Calendar / A15 webhook / A19 リマインダー Todo 統合
+- [docs/ideas/60_workflow/personal_productivity/02_ritual_options.md](../../docs/ideas/60_workflow/personal_productivity/02_ritual_options.md) — 朝/昼/夜 ritual の発動方法
+- [docs/ideas/30_ux/gamification/02_streak_and_badge.md](../../docs/ideas/30_ux/gamification/02_streak_and_badge.md) — K1.4 通知強度 / K1.6 健全な逸脱
+- [docs/ideas/70_concept/philosophical/01_unfinished_principle.md](../../docs/ideas/70_concept/philosophical/01_unfinished_principle.md) — Uf4.b 30 日 nudge / Uf4.d 起動時提案
 
 参照する既存 spec:
 - [docs/01_Vision/Axes.md](../01_Vision/Axes.md) — 帯域別の外部接続（Flash/Rapid/Deep）
@@ -229,7 +229,7 @@ POST /api/joint/test/:adapter                # dry-run
 
 すべての adapter は fetch 結果をこの形に**正規化してから**返す。
 
-### 2.4 ID 戦略 — `external.<service>.<id>`（idea/10_io/06 §6.2.1 採用）
+### 2.4 ID 戦略 — `external.<service>.<id>`（docs/ideas/10_io/06 §6.2.1 採用）
 
 ノード attribute で外部 ID を保持する：
 
@@ -646,7 +646,7 @@ UC-R5 の需要が顕在化した時点で実施。
 
 - **Q4.** プラグイン化の閾値
   - 案: adapter 数 N 以上で抽出 / 永遠に内蔵 / 最初から plugin
-  - 暫定: **3〜4 adapter 実装後に再評価**（idea/10_io/06 §6.8）
+  - 暫定: **3〜4 adapter 実装後に再評価**（docs/ideas/10_io/06 §6.8）
 
 - **Q5.** 通知の rate limit / dedup（Wf5）
   - 全外部イベントを通知化すると爆発する
