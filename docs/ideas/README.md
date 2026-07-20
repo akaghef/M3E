@@ -40,3 +40,7 @@
 - Open Questions
 - Next Action
 - Related `V*` / `S*` / `DS*`（分かる範囲で）
+
+## Evidence bundles
+
+- [260720 Runtime Board 動画再現](./260720_runtime_board_video_repro/README.md) — 動画から再現した実行監視UIの画面、検証、実装差分
