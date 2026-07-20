@@ -187,3 +187,12 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   touches repo hygiene, source/artifact boundaries, generated outputs, private/public-danger
   material, or worktree placement, include that protocol in CONTEXT instead of restating the whole
   doctrine in `AGENTS.md`.
+- 2026-07-20 — **Policy confirmation is NOT implementation approval.** Failure case: akaghef
+  confirmed a rendering-tier *policy* (demo=DOM / standard=SVG) and the Director immediately
+  dispatched the implementation slice — but the product requirements were still open (the
+  existing board had just been judged a degraded version of a reference; *what* the standard
+  board must do was never fixed). Rule: after a GUI/product judgment reveals a requirement gap,
+  re-enter the requirements phase (kiro-discovery / kiro-spec-requirements) before any impl
+  dispatch. Dispatch needs an explicit go on the *slice*, not agreement on an adjacent policy
+  axis. A tech-axis decision (how to render) never substitutes for product requirements
+  (what to render and why).
