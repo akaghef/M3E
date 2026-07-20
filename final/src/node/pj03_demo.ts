@@ -2,7 +2,7 @@
  * PJ03 demo runner
  *
  * 目的:
- *   - idea/demo_skeleton.md の live demo 導線を 1 本の CLI に束ねる
+ *   - projects/PJ03_SelfDrive/idea/demo_skeleton.md の live demo 導線を 1 本の CLI に束ねる
  *   - 既存の test / dogfood / projection 実装を再利用し、デモ時の手打ちを減らす
  *
  * 非責務:
