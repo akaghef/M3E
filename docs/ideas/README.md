@@ -45,3 +45,4 @@
 ## Evidence bundles
 
 - [260720 Runtime Board 動画再現](./260720_runtime_board_video_repro/README.md) — 動画から再現した実行監視UIの画面、検証、実装差分
+- [260720 Viewer Neon 表現実験](./260720_viewer_neon_experiment/README.md) — 実装差分、画面証拠、再利用時の制約
