@@ -11,6 +11,10 @@
 - 同方向の idea が溜まって Strategy 粒度になったら、`../01_Vision/Strategy.md` の `Deferred Strategy` へ持ち上げる準備をする
 - 同じ内容を root `idea/` や `backlog/` に複製せず、正本を一つにする
 
+## 試作成果物
+
+- [M3E Ultimate Graphics](./260704_graphics_showcase.html) — 4種類のアニメーションテーマを比較する自己完結型HTML。
+
 ## Deferred Strategy へ持ち上げる目安
 
 - 同じ方向の idea / memo が複数ある

@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M3E Ultimate Graphics</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(8, 12, 18, .66);
+      --line: rgba(255, 255, 255, .18);
+      --text: rgba(247, 250, 255, .94);
+      --muted: rgba(232, 239, 255, .68);
+      --accent: #55e8ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #030507;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: grab;
+    }
+
+    canvas.dragging { cursor: grabbing; }
+
+    .hud {
+      position: fixed;
+      z-index: 10;
+      top: 18px;
+      left: 18px;
+      min-width: 260px;
+      max-width: 390px;
+      padding: 14px 16px 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .35);
+      backdrop-filter: blur(16px);
+      pointer-events: none;
+    }
+
+    .hud-title {
+      margin: 0 0 4px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 70%, transparent);
+    }
+
+    .hud-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .switcher {
+      position: fixed;
+      z-index: 11;
+      right: 18px;
+      top: 18px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(86px, 1fr));
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(4, 7, 11, .62);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .34);
+      backdrop-filter: blur(18px);
+    }
+
+    .switcher button {
+      height: 36px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, .07);
+      color: rgba(246, 250, 255, .84);
+      font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background .22s ease, border-color .22s ease, color .22s ease, transform .22s ease;
+    }
+
+    .switcher button:hover,
+    .switcher button.active {
+      color: #fff;
+      border-color: color-mix(in srgb, var(--accent) 72%, white 12%);
+      background: color-mix(in srgb, var(--accent) 20%, rgba(255, 255, 255, .08));
+      transform: translateY(-1px);
+    }
+
+    .intro-skip {
+      position: fixed;
+      z-index: 12;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      padding: 9px 13px;
+      border: 1px solid rgba(255, 255, 255, .2);
+      border-radius: 999px;
+      background: rgba(3, 6, 10, .58);
+      color: rgba(255, 255, 255, .74);
+      font-size: 12px;
+      backdrop-filter: blur(14px);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s ease;
+    }
+
+    .intro-skip.visible { opacity: 1; }
+
+    @media (max-width: 980px) {
+      .switcher {
+        top: auto;
+        right: 12px;
+        left: 12px;
+        bottom: 12px;
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .switcher button {
+        height: 34px;
+        font-size: 10px;
+      }
+
+      .hud {
+        top: 12px;
+        left: 12px;
+        max-width: calc(100vw - 24px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stage" aria-label="M3E Ultimate Graphics animated mind-map"></canvas>
+  <section class="hud" aria-live="polite">
+    <h1 class="hud-title" id="themeName">NEON CYBERPUNK</h1>
+    <p class="hud-copy" id="themeHint">Keys 1-4 switch themes. Click during intro to skip. Drag nodes in Living Organism.</p>
+  </section>
+  <nav class="switcher" aria-label="Theme switcher">
+    <button type="button" class="active" data-theme="0">1 Neon</button>
+    <button type="button" data-theme="1">2 Living</button>
+    <button type="button" data-theme="2">3 Aurora</button>
+    <button type="button" data-theme="3">4 Stars</button>
+  </nav>
+  <div class="intro-skip" id="skipHint">click anywhere to skip intro</div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("stage");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const themeName = document.getElementById("themeName");
+      const themeHint = document.getElementById("themeHint");
+      const skipHint = document.getElementById("skipHint");
+      const buttons = [...document.querySelectorAll(".switcher button")];
+      const DPR_CAP = 2;
+      const TAU = Math.PI * 2;
+      const introDuration = 4200;
+
+      const themes = [
+        { name: "NEON CYBERPUNK", hint: "Light pulses travel root to leaf. Keys 1-4 switch themes.", accent: "#55e8ff" },
+        { name: "LIVING ORGANISM", hint: "Drag a node to perturb the spring field.", accent: "#69f5b4" },
+        { name: "AURORA GLASS", hint: "Move the mouse for slow parallax through frosted cards.", accent: "#b9f2ff" },
+        { name: "CONSTELLATION", hint: "Twinkling stars, dotted links, and occasional shooting stars.", accent: "#fff3bd" }
+      ];
+
+      const branchColors = {
+        viewer: "#34e7ff",
+        layout: "#ff4fd8",
+        data: "#ffe14d",
+        agents: "#8dff72",
+        ideas: "#b68cff"
+      };
+
+      const tree = {
+        id: "root", label: "M3E", branch: "root", children: [
+          { id: "viewer", label: "Viewer / 表示", branch: "viewer", children: [
+            { id: "viewport", label: "Viewport Fit", children: [{ id: "focus", label: "Focus Selected" }, { id: "pan", label: "Pan Fastpath" }] },
+            { id: "metapanel", label: "Meta Panel" },
+            { id: "hit", label: "Hit Test" },
+            { id: "render", label: "Canvas Render" },
+            { id: "scopeview", label: "Scope View / 範囲" }
+          ]},
+          { id: "layout", label: "Layout / 配置", branch: "layout", children: [
+            { id: "radial", label: "Radial Tree" },
+            { id: "force", label: "Force Relax" },
+            { id: "edgepath", label: "Bezier Edges" },
+            { id: "labels", label: "Label Packing", children: [{ id: "avoid", label: "Overlap Guard" }, { id: "density", label: "Density Map" }] },
+            { id: "import", label: "Freeplane Import" }
+          ]},
+          { id: "data", label: "Data / 永続化", branch: "data", children: [
+            { id: "workspace", label: "Workspace" },
+            { id: "mapid", label: "map_<ULID>" },
+            { id: "backup", label: "Conflict Backup" },
+            { id: "audit", label: "Audit Log" },
+            { id: "sync", label: "Cloud Sync", children: [{ id: "schema", label: "Schema v1" }, { id: "sqlite", label: "SQLite" }] }
+          ]},
+          { id: "agents", label: "Agents / 協働", branch: "agents", children: [
+            { id: "director", label: "Director" },
+            { id: "codex", label: "Codex Worker" },
+            { id: "handoff", label: "Handoff" },
+            { id: "scopepush", label: "Scope Push" },
+            { id: "reviewq", label: "reviews/Qn", children: [{ id: "decision", label: "Decision Pool" }, { id: "status", label: "Agent Status" }] }
+          ]},
+          { id: "ideas", label: "Ideas / 思考", branch: "ideas", children: [
+            { id: "flash", label: "Flash" },
+            { id: "rapid", label: "Rapid" },
+            { id: "deep", label: "Deep" },
+            { id: "projection", label: "Projection / 射影" },
+            { id: "facet", label: "Facet", children: [{ id: "alias", label: "Alias" }, { id: "graphlink", label: "GraphLink" }] }
+          ]}
+        ]
+      };
+
+      const crossLinks = [
+        ["scopeview", "facet"],
+        ["sync", "scopepush"],
+        ["codex", "audit"],
+        ["projection", "labels"]
+      ];
+
+      const nodes = [];
+      const edges = [];
+      const byId = new Map();
+      let seed = 7;
+      const rnd = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+
+      function flatten(node, depth = 0, parent = null, branch = node.branch || "root") {
+        const b = node.branch || branch;
+        const n = {
+          id: node.id,
+          label: node.label,
+          branch: b,
+          depth,
+          parent,
+          children: [],
+          angle: 0,
+          radius: 0,
+          x: 0,
+          y: 0,
+          sx: (rnd() - .5) * 2600,
+          sy: (rnd() - .5) * 1700,
+          vx: 0,
+          vy: 0,
+          phase: rnd() * TAU,
+          mass: depth === 0 ? 3 : 1 + depth * .25
+        };
+        nodes.push(n);
+        byId.set(n.id, n);
+        if (parent) {
+          parent.children.push(n);
+          edges.push({ a: parent, b: n, type: "tree" });
+        }
+        (node.children || []).forEach(child => flatten(child, depth + 1, n, b));
+      }
+      flatten(tree);
+
+      const links = crossLinks.map(([a, b]) => ({ a: byId.get(a), b: byId.get(b), type: "cross" }));
+      const treeEdges = edges.slice();
+      const allEdges = treeEdges.concat(links);
+
+      let width = 0;
+      let height = 0;
+      let cx = 0;
+      let cy = 0;
+      let currentTheme = 0;
+      let previousTheme = 0;
+      let transitionStart = -9999;
+      let mouse = { x: 0, y: 0, nx: 0, ny: 0, active: false };
+      let dragging = null;
+      let dragOffset = { x: 0, y: 0 };
+      let introStart = performance.now();
+      let introSkipped = false;
+      let stars = [];
+      let shootingStars = [];
+
+      function easeOutCubic(t) { return 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3); }
+      function easeInOut(t) { return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+      function lerp(a, b, t) { return a + (b - a) * t; }
+      function colorFor(n) { return n.depth === 0 ? "#ffffff" : (branchColors[n.branch] || "#ffffff"); }
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+        width = window.innerWidth;
+        height = window.innerHeight;
+        cx = width * .5;
+        cy = height * .52;
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        layoutRadial();
+        makeStars();
+      }
+
+      function layoutRadial() {
+        const root = byId.get("root");
+        root.x = cx;
+        root.y = cy;
+        root.radius = 0;
+        const base = Math.min(width / 2.35, height / 2.28);
+        const branches = tree.children;
+        branches.forEach((b, bi) => {
+          const branchNode = byId.get(b.id);
+          const start = -Math.PI * .82 + bi * TAU / branches.length;
+          const span = TAU / branches.length * .72;
+          placeSubtree(branchNode, start, span, 1, base);
+        });
+        nodes.forEach(n => {
+          if (n.depth === 0) return;
+          n.x = cx + Math.cos(n.angle) * n.radius;
+          n.y = cy + Math.sin(n.angle) * n.radius;
+          if (!n.px) {
+            n.px = n.x + (rnd() - .5) * 80;
+            n.py = n.y + (rnd() - .5) * 80;
+          }
+        });
+        nudgeStaticLabelCollisions();
+      }
+
+      function placeSubtree(node, angle, span, depth, base) {
+        node.angle = angle;
+        node.radius = depth === 1 ? base * .34 : depth === 2 ? base * .62 : base * .86;
+        const kids = node.children;
+        kids.forEach((child, i) => {
+          const t = kids.length === 1 ? .5 : i / (kids.length - 1);
+          placeSubtree(child, angle - span / 2 + span * t, span / Math.max(2.2, kids.length), depth + 1, base);
+        });
+      }
+
+      function estimateStaticLabelBox(n) {
+        const w = n.depth === 1 ? 132 : n.depth === 2 ? 116 : 108;
+        const h = n.depth === 1 ? 38 : 31;
+        return { x1: n.x - w / 2, x2: n.x + w / 2, y1: n.y - h / 2, y2: n.y + h / 2 };
+      }
+
+      function boxesOverlap(a, b) {
+        return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1;
+      }
+
+      function nudgeStaticLabelCollisions() {
+        const candidates = nodes.filter(n => n.depth > 1);
+        for (let pass = 0; pass < 7; pass++) {
+          let changed = false;
+          for (let i = 0; i < candidates.length; i++) {
+            for (let j = i + 1; j < candidates.length; j++) {
+              const a = candidates[i], b = candidates[j];
+              if (a.parent !== b.parent && a.branch !== b.branch) continue;
+              if (!boxesOverlap(estimateStaticLabelBox(a), estimateStaticLabelBox(b))) continue;
+              const dir = Math.sign(Math.sin((a.angle + b.angle) * 7.3)) || 1;
+              const da = dir * .012 * (1 + pass * .18);
+              a.angle -= da;
+              b.angle += da;
+              a.x = cx + Math.cos(a.angle) * a.radius;
+              a.y = cy + Math.sin(a.angle) * a.radius;
+              b.x = cx + Math.cos(b.angle) * b.radius;
+              b.y = cy + Math.sin(b.angle) * b.radius;
+              changed = true;
+            }
+          }
+          if (!changed) break;
+        }
+      }
+
+      function makeStars() {
+        stars = Array.from({ length: Math.round((width * height) / 8000) }, () => ({
+          x: rnd() * width,
+          y: rnd() * height,
+          z: .25 + rnd() * .85,
+          r: .45 + rnd() * 1.65,
+          p: rnd() * TAU
+        }));
+      }
+
+      function getIntroProgress(now) {
+        if (introSkipped) return 1;
+        return Math.min(1, (now - introStart) / introDuration);
+      }
+
+      function currentNodePosition(n, now, themeIndex = currentTheme) {
+        const p = easeOutCubic(getIntroProgress(now));
+        let tx = n.x;
+        let ty = n.y;
+        if (themeIndex === 1) {
+          tx = n.px || n.x;
+          ty = n.py || n.y;
+        }
+        if (themeIndex === 2) {
+          tx += mouse.nx * 22 * (1 + n.depth * .12);
+          ty += mouse.ny * 16 * (1 + n.depth * .12);
+        }
+        return {
+          x: lerp(cx + n.sx, tx, p),
+          y: lerp(cy + n.sy, ty, p),
+          visible: p
+        };
+      }
+
+      function updatePhysics(dt, now) {
+        if (currentTheme !== 1 && previousTheme !== 1) return;
+        const root = byId.get("root");
+        root.px = cx;
+        root.py = cy;
+        const dtScale = Math.min(1.4, dt / 16.67);
+
+        nodes.forEach(n => {
+          if (n === root || n === dragging) return;
+          const ax = (n.x - n.px) * .004;
+          const ay = (n.y - n.py) * .004;
+          n.vx += ax * dtScale;
+          n.vy += ay * dtScale;
+        });
+
+        allEdges.forEach(e => {
+          const a = e.a, b = e.b;
+          const dx = b.px - a.px;
+          const dy = b.py - a.py;
+          const dist = Math.hypot(dx, dy) || 1;
+          const target = e.type === "cross" ? 220 : 118 + b.depth * 38;
+          const force = (dist - target) * (e.type === "cross" ? .0008 : .0028);
+          const fx = dx / dist * force;
+          const fy = dy / dist * force;
+          if (a !== root && a !== dragging) { a.vx += fx * dtScale; a.vy += fy * dtScale; }
+          if (b !== dragging) { b.vx -= fx * dtScale; b.vy -= fy * dtScale; }
+        });
+
+        for (let i = 0; i < nodes.length; i++) {
+          const a = nodes[i];
+          for (let j = i + 1; j < nodes.length; j++) {
+            const b = nodes[j];
+            const dx = b.px - a.px;
+            const dy = b.py - a.py;
+            const d2 = dx * dx + dy * dy + 40;
+            if (d2 > 42000) continue;
+            const d = Math.sqrt(d2);
+            const f = 36 / d2;
+            const fx = dx / d * f;
+            const fy = dy / d * f;
+            if (a !== root && a !== dragging) { a.vx -= fx; a.vy -= fy; }
+            if (b !== dragging) { b.vx += fx; b.vy += fy; }
+          }
+        }
+
+        nodes.forEach(n => {
+          if (n === root || n === dragging) return;
+          n.vx *= .91;
+          n.vy *= .91;
+          n.px += n.vx * dtScale * 18;
+          n.py += n.vy * dtScale * 18;
+          const margin = 70;
+          n.px = Math.max(margin, Math.min(width - margin, n.px));
+          n.py = Math.max(margin, Math.min(height - margin, n.py));
+        });
+      }
+
+      function roundedRect(c, x, y, w, h, r) {
+        const rr = Math.min(r, w / 2, h / 2);
+        c.beginPath();
+        c.moveTo(x + rr, y);
+        c.arcTo(x + w, y, x + w, y + h, rr);
+        c.arcTo(x + w, y + h, x, y + h, rr);
+        c.arcTo(x, y + h, x, y, rr);
+        c.arcTo(x, y, x + w, y, rr);
+        c.closePath();
+      }
+
+      function drawCurve(c, a, b, bend = .24) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const norm = Math.hypot(dx, dy) || 1;
+        const k = Math.min(90, norm * bend);
+        const cx1 = lerp(a.x, mx, .58) - dy / norm * k;
+        const cy1 = lerp(a.y, my, .58) + dx / norm * k;
+        const cx2 = lerp(b.x, mx, .58) - dy / norm * k;
+        const cy2 = lerp(b.y, my, .58) + dx / norm * k;
+        c.bezierCurveTo(cx1, cy1, cx2, cy2, b.x, b.y);
+      }
+
+      function drawBackgroundNeon(c, now) {
+        c.fillStyle = "#030408";
+        c.fillRect(0, 0, width, height);
+        const grid = 42;
+        c.save();
+        c.globalAlpha = .24;
+        c.strokeStyle = "#12354d";
+        c.lineWidth = 1;
+        const off = (now * .018) % grid;
+        for (let x = -grid + off; x < width + grid; x += grid) {
+          c.beginPath(); c.moveTo(x, 0); c.lineTo(x + width * .08, height); c.stroke();
+        }
+        for (let y = -grid + off; y < height + grid; y += grid) {
+          c.beginPath(); c.moveTo(0, y); c.lineTo(width, y + height * .04); c.stroke();
+        }
+        c.globalAlpha = .08 + Math.sin(now * .006) * .03;
+        c.fillStyle = "#ff4fd8";
+        for (let y = 0; y < height; y += 7) c.fillRect(0, y, width, 1);
+        c.restore();
+      }
+
+      function drawBackgroundOrganism(c, now) {
+        const g = c.createRadialGradient(cx, cy, 40, cx, cy, Math.max(width, height) * .7);
+        g.addColorStop(0, "#0b342f");
+        g.addColorStop(.55, "#031b18");
+        g.addColorStop(1, "#010807");
+        c.fillStyle = g;
+        c.fillRect(0, 0, width, height);
+        c.save();
+        c.globalAlpha = .12;
+        c.strokeStyle = "#66ffd0";
+        for (let i = 0; i < 16; i++) {
+          c.beginPath();
+          const y = height * (i / 15);
+          for (let x = 0; x <= width; x += 28) {
+            const yy = y + Math.sin(x * .01 + now * .0014 + i) * 16;
+            if (x === 0) c.moveTo(x, yy); else c.lineTo(x, yy);
+          }
+          c.stroke();
+        }
+        c.restore();
+      }
+
+      function drawBackgroundAurora(c, now) {
+        const base = c.createLinearGradient(0, 0, width, height);
+        base.addColorStop(0, "#07111e");
+        base.addColorStop(.45, "#122736");
+        base.addColorStop(1, "#080713");
+        c.fillStyle = base;
+        c.fillRect(0, 0, width, height);
+        c.save();
+        c.globalCompositeOperation = "lighter";
+        const blobs = [
+          ["#3af6ff", .26, .00022, .35],
+          ["#c777ff", .22, .00017, .62],
+          ["#7cffb1", .18, .00013, .48],
+          ["#fff1a8", .12, .00019, .74]
+        ];
+        blobs.forEach(([color, alpha, speed, phase], i) => {
+          const x = width * (.5 + Math.sin(now * speed + phase * TAU) * .34);
+          const y = height * (.46 + Math.cos(now * speed * 1.4 + i) * .24);
+          const r = Math.max(width, height) * (.36 + i * .06);
+          const g = c.createRadialGradient(x, y, 0, x, y, r);
+          g.addColorStop(0, color);
+          g.addColorStop(1, "rgba(0,0,0,0)");
+          c.globalAlpha = alpha;
+          c.fillStyle = g;
+          c.fillRect(0, 0, width, height);
+        });
+        c.restore();
+      }
+
+      function drawBackgroundStars(c, now, alpha = 1) {
+        if (stars.length < 20) makeStars();
+        c.globalCompositeOperation = "source-over";
+        c.globalAlpha = alpha;
+        c.fillStyle = "#01030a";
+        c.fillRect(0, 0, width, height);
+        c.save();
+        stars.forEach(s => {
+          const x = s.x + mouse.nx * s.z * -22;
+          const y = s.y + mouse.ny * s.z * -14;
+          const tw = .12 + .88 * (.5 + .5 * Math.sin(now * .0025 + s.p));
+          c.globalAlpha = alpha * (.25 + tw * .75) * s.z;
+          c.fillStyle = "#fffdf2";
+          c.beginPath();
+          c.arc(x, y, s.r * tw, 0, TAU);
+          c.fill();
+        });
+        if (shootingStars.length < 2 && rnd() < .012) {
+          shootingStars.push({ x: rnd() * width * .8, y: rnd() * height * .35, life: 0, speed: 8 + rnd() * 5 });
+        }
+        shootingStars = shootingStars.filter(st => st.life < 1);
+        shootingStars.forEach(st => {
+          st.life += .012;
+          const x = st.x + st.life * width * .42;
+          const y = st.y + st.life * height * .25;
+          const tail = 130 * (1 - st.life);
+          c.globalAlpha = alpha * Math.sin(st.life * Math.PI);
+          c.strokeStyle = "#ffffff";
+          c.lineWidth = 2;
+          c.beginPath();
+          c.moveTo(x, y);
+          c.lineTo(x - tail, y - tail * .45);
+          c.stroke();
+        });
+        c.restore();
+      }
+
+      function drawEdges(c, now, themeIndex, alpha) {
+        const intro = getIntroProgress(now);
+        const drawT = Math.max(0, Math.min(1, (intro - .18) / .56));
+        c.save();
+        c.globalAlpha *= alpha;
+        allEdges.forEach((e, idx) => {
+          const a = currentNodePosition(e.a, now, themeIndex);
+          const b = currentNodePosition(e.b, now, themeIndex);
+          if (a.visible <= .02 || b.visible <= .02) return;
+          const pct = e.type === "cross" ? 1 : Math.min(1, drawT * 1.25 - idx * .006);
+          if (pct <= 0) return;
+          const end = { x: lerp(a.x, b.x, pct), y: lerp(a.y, b.y, pct) };
+          c.beginPath();
+          c.moveTo(a.x, a.y);
+          drawCurve(c, a, end, themeIndex === 1 ? .16 + Math.sin(now * .002 + idx) * .08 : .24);
+
+          if (themeIndex === 0) {
+            c.shadowColor = colorFor(e.b);
+            c.shadowBlur = e.type === "cross" ? 9 : 15;
+            c.strokeStyle = e.type === "cross" ? "rgba(255,255,255,.30)" : colorFor(e.b);
+            c.lineWidth = e.type === "cross" ? 1 : 1.9;
+            c.setLineDash(e.type === "cross" ? [8, 10] : []);
+            c.stroke();
+            if (e.type === "tree") {
+              const pulse = (now * .00055 + idx * .063) % 1;
+              const px = lerp(a.x, b.x, pulse);
+              const py = lerp(a.y, b.y, pulse);
+              c.shadowBlur = 22;
+              c.fillStyle = colorFor(e.b);
+              c.beginPath(); c.arc(px, py, 3.2, 0, TAU); c.fill();
+            }
+          } else if (themeIndex === 1) {
+            c.shadowColor = "#63f7b8";
+            c.shadowBlur = 10;
+            c.strokeStyle = e.type === "cross" ? "rgba(174,255,211,.20)" : "rgba(116,255,190,.40)";
+            c.lineWidth = e.type === "cross" ? 1.2 : 2.3;
+            c.setLineDash([]);
+            c.stroke();
+          } else if (themeIndex === 2) {
+            c.shadowColor = "#e9fdff";
+            c.shadowBlur = 12;
+            c.strokeStyle = e.type === "cross" ? "rgba(255,255,255,.24)" : "rgba(255,255,255,.52)";
+            c.lineWidth = e.type === "cross" ? 1 : 1.35;
+            c.setLineDash(e.type === "cross" ? [5, 12] : []);
+            c.stroke();
+          } else {
+            c.shadowColor = "#ffffff";
+            c.shadowBlur = 7;
+            c.strokeStyle = e.type === "cross" ? "rgba(255,244,190,.28)" : "rgba(232,237,255,.54)";
+            c.lineWidth = e.type === "cross" ? 1 : 1.25;
+            c.setLineDash([2, 9 + Math.sin(now * .003 + idx) * 2]);
+            c.stroke();
+          }
+        });
+        c.setLineDash([]);
+        c.restore();
+      }
+
+      function textWidthFor(c, n) {
+        c.font = `${n.depth === 0 ? 900 : 760} ${n.depth === 0 ? 32 : n.depth === 1 ? 15 : 12}px Inter, ui-sans-serif, system-ui, sans-serif`;
+        return Math.max(n.depth === 0 ? 78 : 74, c.measureText(n.label).width + (n.depth === 0 ? 42 : 26));
+      }
+
+      function drawNodes(c, now, themeIndex, alpha) {
+        const intro = easeOutCubic(getIntroProgress(now));
+        const ordered = nodes.slice().sort((a, b) => a.depth - b.depth);
+        c.save();
+        c.globalAlpha *= alpha;
+        ordered.forEach(n => {
+          const p = currentNodePosition(n, now, themeIndex);
+          const pop = Math.max(0, Math.min(1, intro * 1.28 - n.depth * .08));
+          if (pop <= 0) return;
+          const col = colorFor(n);
+          const root = n.depth === 0;
+          const w = textWidthFor(c, n);
+          const h = root ? 56 : n.depth === 1 ? 34 : 27;
+          const breathe = 1 + Math.sin(now * .003 + n.phase) * (themeIndex === 1 ? .08 : .018);
+          const scale = (.72 + .28 * easeOutCubic(pop)) * breathe;
+
+          c.save();
+          c.translate(p.x, p.y);
+          c.scale(scale, scale);
+          if (themeIndex === 0) {
+            c.shadowColor = col;
+            c.shadowBlur = root ? 34 : 20;
+            roundedRect(c, -w / 2, -h / 2, w, h, root ? 15 : 8);
+            c.fillStyle = root ? "rgba(255,255,255,.08)" : "rgba(5,8,15,.78)";
+            c.strokeStyle = col;
+            c.lineWidth = root ? 2.3 : 1.4;
+            c.fill();
+            c.stroke();
+            c.shadowBlur = 0;
+            c.fillStyle = root ? "#ffffff" : "rgba(248,252,255,.95)";
+            c.font = `${root ? 900 : 800} ${root ? 32 : n.depth === 1 ? 14 : 11}px Inter, ui-sans-serif, system-ui, sans-serif`;
+          } else if (themeIndex === 1) {
+            const r = root ? 35 : n.depth === 1 ? 22 : 14;
+            const g = c.createRadialGradient(-r * .25, -r * .35, 1, 0, 0, r * 1.5);
+            g.addColorStop(0, "#dcfff0");
+            g.addColorStop(.25, col);
+            g.addColorStop(1, "rgba(6,42,31,.82)");
+            c.shadowColor = "#77ffc5";
+            c.shadowBlur = root ? 28 : 16;
+            c.fillStyle = g;
+            c.beginPath();
+            for (let i = 0; i < 14; i++) {
+              const a = i / 14 * TAU;
+              const rr = r * (1 + Math.sin(now * .0025 + n.phase + i) * .08);
+              const x = Math.cos(a) * rr;
+              const y = Math.sin(a) * rr;
+              if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            c.closePath();
+            c.fill();
+            c.fillStyle = "#ecfff7";
+            c.font = `${root ? 900 : 800} ${root ? 26 : n.depth === 1 ? 13 : 11}px Inter, ui-sans-serif, system-ui, sans-serif`;
+          } else if (themeIndex === 2) {
+            c.shadowColor = "rgba(255,255,255,.84)";
+            c.shadowBlur = root ? 25 : 14;
+            roundedRect(c, -w / 2, -h / 2, w, h, 8);
+            c.fillStyle = root ? "rgba(255,255,255,.22)" : "rgba(255,255,255,.13)";
+            c.strokeStyle = root ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.34)";
+            c.lineWidth = root ? 1.8 : 1.1;
+            c.fill();
+            c.stroke();
+            c.fillStyle = "#ffffff";
+            c.font = `${root ? 900 : 760} ${root ? 31 : n.depth === 1 ? 14 : 11}px Inter, ui-sans-serif, system-ui, sans-serif`;
+          } else {
+            const r = root ? 8 : n.depth === 1 ? 5.6 : 3.8;
+            c.shadowColor = "#ffffff";
+            c.shadowBlur = root ? 28 : 17;
+            c.strokeStyle = "rgba(255,248,210,.85)";
+            c.lineWidth = root ? 1.8 : 1.2;
+            c.beginPath(); c.moveTo(-r * 3.2, 0); c.lineTo(r * 3.2, 0); c.stroke();
+            c.beginPath(); c.moveTo(0, -r * 3.2); c.lineTo(0, r * 3.2); c.stroke();
+            c.fillStyle = root ? "#fff9c8" : "#ffffff";
+            c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill();
+            c.shadowBlur = 10;
+            c.fillStyle = root ? "#fff7bf" : "rgba(255,255,255,.94)";
+            c.font = `${root ? 900 : 600} ${root ? 34 : n.depth === 1 ? 15 : 12}px Georgia, 'Times New Roman', serif`;
+          }
+          c.textAlign = "center";
+          c.textBaseline = "middle";
+          c.shadowBlur = themeIndex === 3 ? 12 : root ? 18 : 4;
+          c.shadowColor = themeIndex === 3 ? "#000" : col;
+          const labelY = themeIndex === 3 && !root ? (n.depth === 1 ? 21 : 17) : 0;
+          c.fillText(n.label, 0, labelY);
+          c.restore();
+        });
+
+        if (getIntroProgress(now) < 1) {
+          c.save();
+          c.globalAlpha = Math.sin(Math.min(1, getIntroProgress(now) * 1.35) * Math.PI) * .55;
+          c.textAlign = "center";
+          c.textBaseline = "middle";
+          c.font = "900 72px Inter, ui-sans-serif, system-ui, sans-serif";
+          c.shadowColor = themes[currentTheme].accent;
+          c.shadowBlur = 48;
+          c.fillStyle = "#ffffff";
+          c.fillText("M3E", cx, cy - Math.min(height, width) * .28);
+          c.font = "700 15px Inter, ui-sans-serif, system-ui, sans-serif";
+          c.fillStyle = "rgba(255,255,255,.72)";
+          c.fillText("ULTIMATE GRAPHICS", cx, cy - Math.min(height, width) * .28 + 46);
+          c.restore();
+        }
+        c.restore();
+      }
+
+      function drawTheme(c, now, themeIndex, alpha) {
+        c.save();
+        c.globalAlpha = alpha;
+        if (themeIndex === 0) drawBackgroundNeon(c, now);
+        else if (themeIndex === 1) drawBackgroundOrganism(c, now);
+        else if (themeIndex === 2) drawBackgroundAurora(c, now);
+        else drawBackgroundStars(c, now, alpha);
+        drawEdges(c, now, themeIndex, 1);
+        drawNodes(c, now, themeIndex, 1);
+        c.restore();
+      }
+
+      function draw(now) {
+        const transition = Math.min(1, (now - transitionStart) / 650);
+        if (transition < 1 && previousTheme !== currentTheme) {
+          drawTheme(ctx, now, previousTheme, 1 - easeInOut(transition));
+          ctx.save();
+          ctx.globalCompositeOperation = "source-over";
+          drawTheme(ctx, now, currentTheme, easeInOut(transition));
+          ctx.restore();
+        } else {
+          drawTheme(ctx, now, currentTheme, 1);
+        }
+      }
+
+      let last = performance.now();
+      function frame(now) {
+        const dt = now - last;
+        last = now;
+        updatePhysics(dt, now);
+        skipHint.classList.toggle("visible", getIntroProgress(now) < .98);
+        try {
+          draw(now);
+        } catch (error) {
+          console.error("M3E graphics frame failed", error);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      function switchTheme(i) {
+        if (i === currentTheme) return;
+        previousTheme = currentTheme;
+        currentTheme = i;
+        transitionStart = performance.now();
+        themeName.textContent = themes[i].name;
+        themeHint.textContent = themes[i].hint;
+        document.documentElement.style.setProperty("--accent", themes[i].accent);
+        buttons.forEach((b, bi) => b.classList.toggle("active", bi === i));
+      }
+
+      function pickNode(x, y, now) {
+        let best = null;
+        let bestDist = Infinity;
+        nodes.forEach(n => {
+          const p = currentNodePosition(n, now, currentTheme);
+          const d = Math.hypot(p.x - x, p.y - y);
+          const r = n.depth === 0 ? 44 : n.depth === 1 ? 30 : 22;
+          if (d < r && d < bestDist) { best = n; bestDist = d; }
+        });
+        return best;
+      }
+
+      buttons.forEach((button, i) => button.addEventListener("click", () => switchTheme(i)));
+      window.addEventListener("keydown", event => {
+        if (/^[1-4]$/.test(event.key)) switchTheme(Number(event.key) - 1);
+      });
+      window.addEventListener("resize", resize);
+      canvas.addEventListener("pointermove", event => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = event.clientX - rect.left;
+        mouse.y = event.clientY - rect.top;
+        mouse.nx = (mouse.x / width - .5) * 2;
+        mouse.ny = (mouse.y / height - .5) * 2;
+        mouse.active = true;
+        if (dragging) {
+          dragging.px = mouse.x + dragOffset.x;
+          dragging.py = mouse.y + dragOffset.y;
+          dragging.vx = 0;
+          dragging.vy = 0;
+        }
+      });
+      canvas.addEventListener("pointerdown", event => {
+        if (getIntroProgress(performance.now()) < 1) {
+          introSkipped = true;
+          return;
+        }
+        if (currentTheme !== 1) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const n = pickNode(x, y, performance.now());
+        if (!n) return;
+        dragging = n;
+        dragOffset.x = n.px - x;
+        dragOffset.y = n.py - y;
+        canvas.classList.add("dragging");
+        canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener("pointerup", event => {
+        if (dragging) {
+          dragging.vx += mouse.nx * 2.2;
+          dragging.vy += mouse.ny * 2.2;
+        }
+        dragging = null;
+        canvas.classList.remove("dragging");
+        try { canvas.releasePointerCapture(event.pointerId); } catch (_) {}
+      });
+      canvas.addEventListener("pointercancel", () => {
+        dragging = null;
+        canvas.classList.remove("dragging");
+      });
+      document.addEventListener("click", () => {
+        if (getIntroProgress(performance.now()) < 1) introSkipped = true;
+      });
+
+      resize();
+      themeName.textContent = themes[0].name;
+      themeHint.textContent = themes[0].hint;
+      document.documentElement.style.setProperty("--accent", themes[0].accent);
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
