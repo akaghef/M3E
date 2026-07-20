@@ -237,3 +237,5 @@ When an agent finishes a cycle, report:
 1. What changed (files and behavior).
 2. What was verified.
 3. What remains next (one concrete task).
+
+When mentioning a commit ID, branch, or PR, state its change intent in one plain-language line immediately beside it. Never present an identifier alone or require Akaghef to inspect Git history to understand why it matters.
