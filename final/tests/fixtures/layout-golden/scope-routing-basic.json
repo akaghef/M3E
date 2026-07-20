@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "sample_id": "scope-routing-basic",
+  "source": {
+    "product_path": "routingScopeSurface",
+    "captured_at": "1970-01-01T00:00:00.000Z"
+  },
+  "input": {
+    "graph": {
+      "nodeIds": [
+        "scope-root",
+        "scope-a",
+        "scope-a1",
+        "scope-b"
+      ],
+      "children": {
+        "scope-root": [
+          "scope-a",
+          "scope-b"
+        ],
+        "scope-a": [
+          "scope-a1"
+        ],
+        "scope-a1": [],
+        "scope-b": []
+      },
+      "graphLinks": []
+    },
+    "boxSizes": {
+      "scope-root": {
+        "w": 190,
+        "h": 58
+      },
+      "scope-a": {
+        "w": 138,
+        "h": 38
+      },
+      "scope-a1": {
+        "w": 118,
+        "h": 36
+      },
+      "scope-b": {
+        "w": 126,
+        "h": 38
+      }
+    },
+    "mode": "Tree",
+    "options": {
+      "displayRootId": "scope-root",
+      "structuredMode": "Tree",
+      "density": "balanced",
+      "branchDirection": "both"
+    }
+  },
+  "expected": {
+    "pos": {
+      "scope-root": {
+        "x": 80,
+        "y": 61,
+        "depth": 0,
+        "w": 190,
+        "h": 58
+      },
+      "scope-a": {
+        "x": 525,
+        "y": 41,
+        "depth": 1,
+        "w": 138,
+        "h": 38
+      },
+      "scope-a1": {
+        "x": 918,
+        "y": 29,
+        "depth": 2,
+        "w": 118,
+        "h": 36
+      },
+      "scope-b": {
+        "x": 525,
+        "y": 92.5,
+        "depth": 1,
+        "w": 126,
+        "h": 38
+      }
+    },
+    "order": [
+      "scope-root",
+      "scope-a",
+      "scope-a1",
+      "scope-b"
+    ],
+    "totalHeight": 760,
+    "totalWidth": 1620
+  }
+}

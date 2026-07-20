@@ -521,14 +521,23 @@
   position: absolute;
   left: 72px;
   top: 307px;
+  z-index: 30; /* screen-space PN layer: canvas < PN edges < PN cards < modal/popover */
   display: flex;
   align-items: flex-start;
   gap: 14px;
   width: 486px;
   height: 420px;
+  max-width: none;
   opacity: 0;
+  overflow: visible;
   pointer-events: none;
   transition: opacity 90ms ease;
+}
+
+.wb-progressive-nav.is-overflow-scroll,
+.wb-progressive-nav.is-overflow-compact,
+.wb-progressive-nav.is-overflow-side-panel {
+  overflow: auto;
 }
 
 .wb-progressive-nav::before {
@@ -566,24 +575,21 @@
   position: relative;
   width: 486px;
   height: 420px;
-  margin-left: 56px;
+  margin-left: 0;
+  overflow: visible;
+  z-index: 2;
 }
 
 .wb-progressive-column {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  position: absolute;
-  min-width: 172px;
-  z-index: 2;
+  display: contents;
 }
 
 .wb-progressive-edges {
   position: absolute;
   left: 0;
   top: 0;
-  width: 486px;
-  height: 420px;
+  width: 100%;
+  height: 100%;
   overflow: visible;
   pointer-events: none;
   z-index: 1;
@@ -602,7 +608,11 @@
 }
 
 .wb-progressive-node {
-  min-height: 44px;
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 3;
+  width: 172px;
+  height: 47px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -613,6 +623,10 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.wb-progressive-node > svg {
+  flex: 0 0 auto;
 }
 
 .wb-progressive-node span:first-child {
@@ -802,6 +816,7 @@
 .wb-modal-backdrop {
   position: absolute;
   inset: 0;
+  z-index: 80;
   display: grid;
   place-items: center;
   background: rgba(0, 0, 0, 0.22);

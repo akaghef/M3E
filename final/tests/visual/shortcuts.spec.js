@@ -18,6 +18,8 @@
  * Total: 7 nodes
  */
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
 const { spawnSync } = require("child_process");
 const {
   launchViewer,
@@ -31,6 +33,21 @@ const {
   expectMetaContains,
   expectStatusContains,
 } = require("../helpers/viewer_test_utils");
+
+const FIXTURE_PATH = path.resolve(__dirname, "..", "fixtures", "shortcut_test.json");
+
+function shortcutFixtureWithGraphLink() {
+  const payload = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
+  payload.state.links = {
+    "link-child-b": {
+      id: "link-child-b",
+      sourceNodeId: "child-b",
+      targetNodeId: "grandchild-a1",
+      relationType: "related",
+    },
+  };
+  return payload;
+}
 
 function readMacClipboard() {
   if (process.platform !== "darwin") return null;
@@ -116,7 +133,6 @@ test.describe("Shift+Arrow selection extension", () => {
     const before = await getSelectedCount(page);
 
     await pressKey(page, "Shift+ArrowDown");
-    await waitForRender(page);
     const after = await getSelectedCount(page);
     expect(after).toBeGreaterThan(before);
   });
@@ -126,12 +142,10 @@ test.describe("Shift+Arrow selection extension", () => {
     await focusBoard(page);
 
     await pressKey(page, "Shift+ArrowDown");
-    await waitForRender(page);
     const afterOne = await getSelectedCount(page);
     expect(afterOne).toBeGreaterThanOrEqual(2);
 
     await pressKey(page, "Shift+ArrowDown");
-    await waitForRender(page);
     const afterTwo = await getSelectedCount(page);
     // Second press should keep or extend selection (layout-dependent).
     expect(afterTwo).toBeGreaterThanOrEqual(afterOne);
@@ -309,6 +323,24 @@ test.describe("Delete and Backspace: remove node", () => {
     const afterCount = await getNodeCount(page);
     expect(afterCount).toBe(initialCount - 1);
   });
+
+  test("Delete removes graph links connected to the deleted node", async ({ page }) => {
+    await launchViewer(page, shortcutFixtureWithGraphLink());
+    await focusBoard(page);
+
+    const initialCount = await getNodeCount(page);
+    expect(await getLinkCount(page)).toBe(1);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Delete");
+    await waitForRender(page);
+
+    expect(await getNodeCount(page)).toBe(initialCount - 1);
+    expect(await getLinkCount(page)).toBe(0);
+  });
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -463,6 +495,61 @@ test.describe("Copy and Paste", () => {
     }
   });
 
+  test("Ctrl+C in one tab then Ctrl+V in another tab works without system clipboard", async ({ page, context }) => {
+    const disableSystemClipboard = async (targetPage) => {
+      await targetPage.addInitScript(() => {
+        Object.defineProperty(navigator, "clipboard", {
+          value: undefined,
+          configurable: true,
+        });
+      });
+      await targetPage.route("**/api/system-clipboard/**", async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "clipboard disabled for test" }),
+        });
+      });
+    };
+    const sourceMap = JSON.parse(JSON.stringify(require("../fixtures/shortcut_test.json")));
+    sourceMap.state.links = {
+      "internal-link": {
+        id: "internal-link",
+        sourceNodeId: "grandchild-a1",
+        targetNodeId: "grandchild-a2",
+        direction: "forward",
+        style: "default",
+      },
+    };
+    const targetPage = await context.newPage();
+    try {
+      await disableSystemClipboard(page);
+      await disableSystemClipboard(targetPage);
+
+      await launchViewer(page, sourceMap);
+      await focusBoard(page);
+      await pressKey(page, "ArrowRight");
+      await expectMetaContains(page, "selected: Child A");
+      await pressKey(page, "Control+c");
+      await waitForRender(page);
+      expect(await getStatusText(page)).toContain("for M3E tabs");
+
+      await launchViewer(targetPage);
+      await focusBoard(targetPage);
+      expect(await getNodeCount(targetPage)).toBe(7);
+      expect(await getLinkCount(targetPage)).toBe(0);
+
+      await pressKey(targetPage, "Control+v");
+      await waitForRender(targetPage);
+
+      expect(await getNodeCount(targetPage)).toBe(10);
+      expect(await getLinkCount(targetPage)).toBe(1);
+      expect(await getStatusText(targetPage)).toContain("and 1 link(s)");
+    } finally {
+      await targetPage.close();
+    }
+  });
+
   test("Ctrl+Alt+C copies selected node path", async ({ page }) => {
     await launchViewer(page);
     await focusBoard(page);
@@ -474,8 +561,8 @@ test.describe("Copy and Paste", () => {
     await pressKey(page, "Control+Alt+c");
     await waitForRender(page);
 
-    expect(await getStatusText(page)).toContain("Path copied: Test Root / Child A / Grandchild A1");
-    expect(readMacClipboard()).toBe("Test Root / Child A / Grandchild A1");
+    expect(await getStatusText(page)).toContain("Path copied: M:(開発)> Child A > Grandchild A1");
+    expect(readMacClipboard()).toBe("M:(開発)> Child A > Grandchild A1");
   });
 
   test("Ctrl+Alt+I copies current scope ID", async ({ page }) => {
@@ -589,10 +676,10 @@ test.describe("GraphLink via L / Shift+L", () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Alt+L: Incoming edge label editing
+// Alt+L / Alt+Enter: Incoming edge label editing
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test.describe("Incoming edge label via Alt+L", () => {
+test.describe("Incoming edge label shortcuts", () => {
   test("Alt+L edits the selected node parent edge label", async ({ page }) => {
     await launchViewer(page);
     await focusBoard(page);
@@ -610,6 +697,26 @@ test.describe("Incoming edge label via Alt+L", () => {
     await waitForRender(page);
 
     await expect(page.locator("text.edge-label", { hasText: "blocks" })).toBeVisible();
+    await expectStatusContains(page, "Edge label updated.");
+  });
+
+  test("Alt+Enter edits the selected node parent edge label", async ({ page }) => {
+    await launchViewer(page);
+    await focusBoard(page);
+
+    await pressKey(page, "ArrowRight");
+    await pressKey(page, "ArrowDown");
+    await expectMetaContains(page, "selected: Child B");
+
+    await pressKey(page, "Alt+Enter");
+    const editor = page.locator("textarea.inline-edge-label-editor");
+    await expect(editor).toBeVisible();
+
+    await editor.fill("depends on");
+    await editor.press("Enter");
+    await waitForRender(page);
+
+    await expect(page.locator("text.edge-label", { hasText: "depends on" })).toBeVisible();
     await expectStatusContains(page, "Edge label updated.");
   });
 });
@@ -787,12 +894,11 @@ test.describe("Ctrl+G: group selected", () => {
 
     const initialCount = await getNodeCount(page);
 
-    // Click Child A, then Ctrl+click Child B to multi-select siblings.
-    await page.locator('rect.node-hit[data-node-id="child-a"]').dispatchEvent("pointerdown", { pointerId: 1, button: 0, buttons: 1, clientX: 10, clientY: 10 });
-    await page.locator('rect.node-hit[data-node-id="child-a"]').dispatchEvent("pointerup", { pointerId: 1, button: 0, buttons: 0, clientX: 10, clientY: 10 });
-    await page.locator('rect.node-hit[data-node-id="child-b"]').dispatchEvent("pointerdown", { pointerId: 1, button: 0, buttons: 1, clientX: 10, clientY: 10, ctrlKey: true });
-    await page.locator('rect.node-hit[data-node-id="child-b"]').dispatchEvent("pointerup", { pointerId: 1, button: 0, buttons: 0, clientX: 10, clientY: 10, ctrlKey: true });
-    await waitForRender(page);
+    // Click Child A, then Ctrl+click Child B to multi-select.
+    const childA = page.locator("text.label-node", { hasText: "Child A" }).first();
+    const childB = page.locator("text.label-node", { hasText: "Child B" }).first();
+    await childA.click({ force: true });
+    await childB.click({ modifiers: ["Control"], force: true });
 
     const selectedCount = await getSelectedCount(page);
     expect(selectedCount).toBe(2);

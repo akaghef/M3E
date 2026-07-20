@@ -147,7 +147,7 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await clickLegacy(page, "#scatter-add-node");
   await page.mouse.click(820, 600);
   await expect(page.locator("#meta")).toContainText("nodes: 5");
-  await expect(page.locator("text.label-node", { hasText: "New Node" })).toBeVisible();
+  await expect(page.locator(".node-hit[data-node-id]")).toHaveCount(5);
 
   await clickLegacy(page, "#scatter-add-edge");
   const alpha = await page.locator('[data-node-id="alpha"].node-hit').boundingBox();

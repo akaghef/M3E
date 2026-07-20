@@ -7,12 +7,13 @@
         <script>
           (() => {
             try {
-              const theme = localStorage.getItem("m3e:viewer-theme") === "dark" ? "dark" : "light";
+              const storedTheme = localStorage.getItem("m3e:viewer-theme");
+              const theme = storedTheme === "light" || storedTheme === "dark" || storedTheme === "neon" ? storedTheme : "neon";
               document.documentElement.dataset.theme = theme;
               document.documentElement.style.colorScheme = theme;
             } catch {
-              document.documentElement.dataset.theme = "light";
-              document.documentElement.style.colorScheme = "light";
+              document.documentElement.dataset.theme = "neon";
+              document.documentElement.style.colorScheme = "dark";
             }
           })();
         </script>
@@ -322,6 +323,7 @@
               <div class="cheatsheet-row"><kbd>Alt+S</kbd><span>Scope navigator</span></div>
               <div class="cheatsheet-row"><kbd>Alt+E</kbd><span>Entity list panel</span></div>
               <div class="cheatsheet-row"><kbd>Alt+D</kbd><span>Markdown preview (details/note)</span></div>
+              <div class="cheatsheet-row"><kbd>Cmd/Ctrl+O</kbd><span>Open hyperlink node</span></div>
               <div class="cheatsheet-row"><kbd>Alt+V</kbd><span>Toggle focus / fit</span></div>
               <div class="cheatsheet-row"><kbd>Alt+J</kbd><span>Jump to alias target</span></div>
               <div class="cheatsheet-row"><kbd>Flow LR</kbd><span>Arrows follow left/right and up/down lanes</span></div>
@@ -334,6 +336,7 @@
               <div class="cheatsheet-row"><kbd>Tab</kbd><span>Add child</span></div>
               <div class="cheatsheet-row"><kbd>Delete</kbd><span>Delete node</span></div>
               <div class="cheatsheet-row"><kbd>Ctrl+Enter</kbd><span>Next &amp; edit</span></div>
+              <div class="cheatsheet-row"><kbd>Alt+Enter</kbd> / <kbd>Alt+L</kbd><span>Edit edge label</span></div>
             </div>
             <div class="cheatsheet-group">
               <div class="cheatsheet-group-title">View</div>
@@ -416,7 +419,7 @@
         <script src="./node_modules/@joint/core/dist/joint.min.js"></script>
         <script src="./dist/browser/viewer.tuning.js"></script>
         <script src="./dist/browser/markdown_renderer.js"></script>
-        <script src="./dist/browser/viewer.js"></script>
+        <script type="module" src="./dist/browser/viewer.js"></script>
         <script type="module" src="./dist/browser/workbench-ui.js"></script>
   </body>
 </html>

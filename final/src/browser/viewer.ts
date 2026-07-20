@@ -1,3 +1,31 @@
+import {
+  layout as layoutPortLayout,
+  type LayoutBranchDirection,
+  type LayoutDensity,
+  type LayoutMode,
+  type LayoutNodeMetric,
+  type LayoutOptions,
+  type LayoutResult,
+  type StructuredLayoutMode,
+  type VisibleLayoutGraph,
+} from "../shared/layout_port";
+import {
+  canonicalSurfaceViewName,
+  normalizeNodeDrawStyle,
+  type AliasDrawState,
+  type NodeDrawInput,
+  type NodeDrawStyle,
+  type NodeDrawSurface,
+  type ScopeLockDrawState,
+} from "../shared/node_draw_port";
+import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
+import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
+import type { EdgeRouteStyle } from "../shared/edge_route";
+import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
+import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
+
+type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
+
 const fileInput = document.getElementById("file-input") as HTMLInputElement;
 const loadDefaultBtn = document.getElementById("load-default");
 const runAircraftVisualCheckBtn = document.getElementById("run-aircraft-visual-check");
@@ -381,7 +409,7 @@ function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
     return ["h", "v", "d"].includes(event.key.toLowerCase());
   }
   if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-    return ["c", "s"].includes(event.key.toLowerCase());
+    return ["c", "s", "o"].includes(event.key.toLowerCase());
   }
   return false;
 }
@@ -393,7 +421,15 @@ interface BcStateMessage {
   savedAt: string;
 }
 
+interface ClipboardSyncRecord {
+  type: "M3E_CLIPBOARD_UPDATE";
+  fromTabId: string;
+  encoded: string;
+  writtenAt: number;
+}
+
 let bc: BroadcastChannel | null = null;
+let clipboardBc: BroadcastChannel | null = null;
 let lastServerSavedAt: string | null = null;
 let lastServerBaseState: AppState | null = null;
 
@@ -491,6 +527,7 @@ let importanceVisibleNodeIds: Set<string> | null = null;
 let cloudSyncEnabled = false;
 let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
+let cloudMapVersion: number | null = null;
 let cloudConflictPending = false;
 let linearTransformStatus: LinearTransformStatus | null = null;
 let linearTextFontScale = 1;
@@ -640,6 +677,8 @@ const SCATTER_MIN_RADIUS = 18;
 const SCATTER_DEPTH_SCALE = 2 / 3;
 const SCATTER_MIN_SCALE = 0.52;
 const STRUCTURED_CLIPBOARD_PREFIX = "M3E_CLIPBOARD_V1\n";
+const STRUCTURED_CLIPBOARD_STORAGE_KEY = "m3e:subtree-clipboard:v1";
+const STRUCTURED_CLIPBOARD_MAX_AGE_MS = 10 * 60 * 1000;
 let scatterAnimationEnabled = false;
 let scatterAnimationFrame: number | null = null;
 let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
@@ -669,6 +708,10 @@ let viewState: ViewState = {
   surfaceViewMode: "tree",
   surfaceLayoutDensity: "balanced",
   surfaceBranchDirection: "right",
+  surfaceLayoutDirection: "right",
+  surfaceDepthAlign: "packed",
+  surfaceEdgeRoute: "elbow",
+  surfaceLinkRoute: "simple-bezier",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
   cameraY: VIEWER_TUNING.pan.initialCameraY,
@@ -770,6 +813,31 @@ function sanitizeSurfaceBranchDirection(value: unknown): SurfaceBranchDirection 
   return "right";
 }
 
+function sanitizeSurfaceLayoutDirection(value: unknown): SurfaceLayoutDirection {
+  if (value === "right" || value === "left" || value === "down" || value === "up") {
+    return value;
+  }
+  return "right";
+}
+
+function sanitizeSurfaceDepthAlign(value: unknown): SurfaceDepthAlign {
+  return value === "aligned" ? "aligned" : "packed";
+}
+
+function sanitizeSurfaceEdgeRoute(value: unknown): SurfaceEdgeRoute {
+  if (value === "elbow" || value === "bezier" || value === "straight") {
+    return value;
+  }
+  return "elbow";
+}
+
+function sanitizeSurfaceLinkRoute(value: unknown): SurfaceLinkRoute {
+  if (value === "simple-bezier" || value === "orthogonal" || value === "straight") {
+    return value;
+  }
+  return "simple-bezier";
+}
+
 function inferSurfaceLayoutDensityForScope(scopeId: string, mode: SurfaceViewMode): SurfaceLayoutDensity {
   if (!map || !map.state.nodes[scopeId]) {
     return "balanced";
@@ -796,6 +864,10 @@ function syncThinkingModeUi(): void {
   const mode = viewState.thinkingMode;
   const surfaceMode = structuredSurfaceMode();
   document.body.classList.toggle("scatter-surface-active", viewState.surfaceViewMode === "scatter");
+  document.documentElement.dataset.surfaceLayoutDirection = viewState.surfaceLayoutDirection;
+  document.documentElement.dataset.surfaceDepthAlign = viewState.surfaceDepthAlign;
+  document.documentElement.dataset.surfaceEdgeRoute = viewState.surfaceEdgeRoute;
+  document.documentElement.dataset.surfaceLinkRoute = viewState.surfaceLinkRoute;
   const layoutSuffix = surfaceMode
     ? ` / ${surfaceLayoutDensityLabel(viewState.surfaceLayoutDensity)} / ${surfaceBranchDirectionLabel(viewState.surfaceBranchDirection)}`
     : "";
@@ -902,6 +974,34 @@ function setSurfaceBranchDirection(direction: SurfaceBranchDirection): void {
     fitDocument();
   });
   setStatus(`Depth: ${surfaceBranchDirectionLabel(direction)}`);
+}
+
+function setPublicLayoutOptions(options: Partial<PublicLayoutOptions>): void {
+  if (options.direction) {
+    viewState.surfaceLayoutDirection = sanitizeSurfaceLayoutDirection(options.direction);
+  }
+  if (options.depthAlign) {
+    viewState.surfaceDepthAlign = sanitizeSurfaceDepthAlign(options.depthAlign);
+  }
+  if (options.edge?.route) {
+    viewState.surfaceEdgeRoute = sanitizeSurfaceEdgeRoute(options.edge.route);
+  }
+  if (options.link?.route) {
+    viewState.surfaceLinkRoute = sanitizeSurfaceLinkRoute(options.link.route);
+  }
+  _linearPanelLayoutDirty = true;
+  syncThinkingModeUi();
+  render();
+  fitDocument();
+  window.dispatchEvent(new CustomEvent("m3e:layout-options-changed", {
+    detail: {
+      direction: viewState.surfaceLayoutDirection,
+      depthAlign: viewState.surfaceDepthAlign,
+      edgeRoute: viewState.surfaceEdgeRoute,
+      linkRoute: viewState.surfaceLinkRoute,
+    },
+  }));
+  setStatus("Layout options updated.");
 }
 
 function syncScatterToolbarUi(): void {
@@ -1951,7 +2051,7 @@ async function stopVaultLiveIntegration(showStatus = true): Promise<void> {
   }
 }
 
-function createNodeRecord(id: string, parentId: string | null, text = "New Node"): TreeNode {
+function createNodeRecord(id: string, parentId: string | null, text = ""): TreeNode {
   return {
     id,
     parentId,
@@ -3014,35 +3114,25 @@ function deriveFillFromUrgencyImportance(urgency: number, importance: number): s
 }
 
 function readNodeStyleAttrs(attrs: Record<string, string>): NodeStyleAttrs {
-  // V1-compatible JSON decoration layer (Miro-style). Takes priority over
-  // legacy m3e:bg/m3e:border/m3e:color if present.
-  const style = readNodeStyleJson(attrs);
-  const jsonFill = typeof style.fill === "string" ? sanitizeColor(style.fill) : null;
-  const jsonBorder = typeof style.border === "string" ? sanitizeColor(style.border) : null;
-  const jsonText = typeof style.text === "string" ? sanitizeColor(style.text) : null;
-  const urgency = typeof style.urgency === "number" ? style.urgency : NaN;
-  const importance = typeof style.importance === "number" ? style.importance : NaN;
-  // Derived fill only applies when explicit fill is absent (both legacy and JSON).
-  const legacyBg = sanitizeColor(attrs["m3e:bg"]);
-  let effectiveBg = jsonFill ?? legacyBg;
-  if (!effectiveBg && (Number.isFinite(urgency) || Number.isFinite(importance))) {
-    effectiveBg = deriveFillFromUrgencyImportance(urgency, importance);
-  }
+  const nodeDrawStyle = normalizeNodeDrawStyle({
+    styleJson: attrs["m3e:style"],
+    legacy: attrs,
+  });
   return {
-    bg: effectiveBg,
-    color: jsonText ?? sanitizeColor(attrs["m3e:color"]),
-    border: jsonBorder ?? sanitizeColor(attrs["m3e:border"]),
-    borderStyle: sanitizeBorderStyle(attrs["m3e:border-style"]),
-    borderWidth: sanitizeNumeric(attrs["m3e:border-width"], 0, 8),
-    shape: sanitizeShape(attrs["m3e:shape"]),
-    icon: sanitizeIcon(attrs["m3e:icon"]),
+    bg: nodeDrawStyle.fill ?? null,
+    color: nodeDrawStyle.text ?? null,
+    border: nodeDrawStyle.border ?? null,
+    borderStyle: nodeDrawStyle.borderStyle ?? null,
+    borderWidth: nodeDrawStyle.borderWidth ?? null,
+    shape: nodeDrawStyle.shape ?? null,
+    icon: nodeDrawStyle.icon ?? null,
     edgeColor: sanitizeColor(attrs["m3e:edge-color"]),
     edgeStyle: sanitizeBorderStyle(attrs["m3e:edge-style"]),
     edgeWidth: sanitizeNumeric(attrs["m3e:edge-width"], 1, 10),
     edgeLabel: (attrs["m3e:edge-label"] || "").trim() || null,
-    band: sanitizeBand(attrs["m3e:band"]),
-    confidence: sanitizeNumeric(attrs["m3e:confidence"], 0, 1),
-    status: sanitizeStatus(style.status) ?? sanitizeStatus(attrs["m3e:status"]),
+    band: nodeDrawStyle.band ?? null,
+    confidence: nodeDrawStyle.confidence ?? null,
+    status: nodeDrawStyle.status ?? null,
   };
 }
 
@@ -3106,7 +3196,26 @@ function effectiveNodeStyleAttrs(node: TreeNode): NodeStyleAttrs {
   if (view?.shape) {
     base.shape = view.shape;
   }
+  // Hyperlink/link text nodes are visually distinguished in green (like scope nodes),
+  // unless the user has set explicit colors on the node.
+  if (isHyperlinkNode(node)) {
+    if (!base.bg) base.bg = HYPERLINK_NODE_GREEN.bg;
+    if (!base.border) base.border = HYPERLINK_NODE_GREEN.border;
+    if (!base.color) base.color = HYPERLINK_NODE_GREEN.text;
+  }
   return base;
+}
+
+const HYPERLINK_NODE_GREEN = {
+  bg: "#e6f4ea",
+  border: "#2d8c4e",
+  text: "#1b5e2a",
+} as const;
+
+function isHyperlinkNode(node: TreeNode | null | undefined): boolean {
+  if (!node || isAliasNode(node)) return false;
+  if (isMarkdownLinkSubtype(node.attributes || undefined)) return true;
+  return Boolean(String(node.link || "").trim());
 }
 
 function rawAttr(node: TreeNode | null | undefined, key: string): string {
@@ -3179,7 +3288,7 @@ function flowRowOf(node: TreeNode | null | undefined, fallback = 0): number {
 }
 
 function diagramLabel(node: TreeNode, nodeStyles: NodeStyleAttrs): string {
-  const base = uiLabel(node) || "(empty)";
+  const base = uiLabel(node);
   const withIcon = nodeStyles.icon ? `${nodeStyles.icon} ${base}` : base;
   if (isScopePortalNode(node)) {
     return `[${withIcon}]`;
@@ -3801,10 +3910,10 @@ function uiLabel(node: TreeNode | null | undefined): string {
   if (isAliasNode(node)) {
     const target = resolveAliasTarget(node);
     if (target) {
-      return target.text || "Untitled";
+      return target.text ?? "Untitled";
     }
   }
-  return node.text || "Untitled";
+  return node.text ?? "Untitled";
 }
 
 function syncAliasDisplayForTarget(targetNodeId: string): void {
@@ -4924,34 +5033,11 @@ function edgePortPairBetweenRects(
   };
 }
 
-function edgeEndsBetween(fromPos: NodePosition, toPos: NodePosition, pad = 0): EdgeConnectionPair {
-  return edgePortPairBetweenRects(positionRect(fromPos), positionRect(toPos), pad);
-}
-
-function treeRightEdgeEndsBetween(parentPos: NodePosition, childPos: NodePosition): EdgeConnectionPair {
-  return edgePortPairBetweenRects(mindmapBoxRect(parentPos), mindmapBoxRect(childPos), 0, {
-    sourceSide: "right",
-    targetSide: "left",
-  });
-}
-
 function edgeEndsForGraphLink(sourcePos: NodePosition, targetPos: NodePosition, link: GraphLink, pad = 0, boundsMode: LinkConnectionBoundsMode = "hit"): EdgeConnectionPair {
   return edgePortPairBetweenRects(linkConnectionRect(sourcePos, boundsMode), linkConnectionRect(targetPos, boundsMode), pad, {
     sourceSide: sanitizeLinkPort(link.sourcePort),
     targetSide: sanitizeLinkPort(link.targetPort),
   });
-}
-
-function nearestEdgePortSide(
-  rect: { x: number; y: number; w: number; h: number },
-  point: { x: number; y: number },
-): EdgeAnchorSide {
-  const candidates = edgePorts(rect, 0).map((port) => ({
-    side: port.side,
-    distance: Math.hypot(point.x - port.x, point.y - port.y),
-  }));
-  candidates.sort((a, b) => a.distance - b.distance);
-  return candidates[0]?.side || "right";
 }
 
 function renderGraphLinkPortControls(
@@ -5473,7 +5559,7 @@ interface RapidMapifyOracleApplyResponse {
   savedAt?: string;
   opId: string;
   action: RapidGenerateAction;
-  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback";
+  source: "mapify_teacher_fixture" | "m3e_local_mf_h_fallback" | "codex_app_server";
   fragment: string;
   added: Array<{ id: string; parentId: string; label: string }>;
   merged: Array<{ id: string; parentId: string; label: string }>;
@@ -5488,7 +5574,7 @@ async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateActi
   if (!map || !viewState.selectedNodeId) {
     throw new Error("No node is selected.");
   }
-  const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/rapid/mapify-oracle`, {
+  const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}/cas/pn-generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -5496,8 +5582,9 @@ async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateActi
     },
     body: JSON.stringify({
       workspaceId: WORKSPACE_ID,
-      agentId: "rapid-mapify-oracle",
+      agentId: "cas-pn-generate",
       selectedNodeId: viewState.selectedNodeId,
+      scopeId: normalizedCurrentScopeId(),
       opId: RAPID_MAPIFY_OP_BY_ACTION[action],
       action,
       baseSavedAt: lastServerSavedAt,
@@ -5505,7 +5592,7 @@ async function requestRapidMapifyOracleForSelectedNode(action: RapidGenerateActi
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(String(result.error || "Rapid Mapify Oracle request failed."));
+    throw new Error(String(result.error || "CAS PN generation request failed."));
   }
   return result as RapidMapifyOracleApplyResponse;
 }
@@ -5771,7 +5858,7 @@ async function generateRapidActionForSelectedNode(
     }
     const added = result.added.length;
     const merged = result.merged.length;
-    const sourceLabel = "Mapify Oracle";
+    const sourceLabel = "CAS";
     if (added === 0 && merged === 0) {
       setStatus(`${sourceLabel} generated no new nodes: ${label || action}`);
       return;
@@ -5781,7 +5868,7 @@ async function generateRapidActionForSelectedNode(
     render();
     board.focus();
   } catch (err) {
-    setStatus(`Rapid generation failed: ${(err as Error).message}`, true);
+    setStatus(`CAS generation failed: ${(err as Error).message}`, true);
   }
 }
 
@@ -6487,12 +6574,12 @@ function stopScatterAnimation(saveCurrentPositions: boolean): void {
   }
 }
 
-type StructuredSurfaceMode = "tree" | "mindmap" | "logic-chart" | "timeline";
+type StructuredSurfaceMode = StructuredLayoutMode;
 
 interface StructuredLayoutConfig {
   mode: StructuredSurfaceMode;
-  density: SurfaceLayoutDensity;
-  branchDirection: SurfaceBranchDirection;
+  density: LayoutDensity;
+  branchDirection: LayoutBranchDirection;
   columnGap: number;
   siblingGap: number;
   sideGap: number;
@@ -6502,22 +6589,6 @@ interface StructuredLayoutConfig {
   rootMinWidth: number;
   fontSize: number;
   rootFontSize: number;
-}
-
-interface LayoutNodeMetric {
-  w: number;
-  h: number;
-  labelLines?: string[];
-  fontSize?: number;
-}
-
-interface MeasuredTreeContext {
-  displayRootId: string;
-  metrics: Record<string, LayoutNodeMetric>;
-  depthOf: Record<string, number>;
-  depthMaxWidth: Record<number, number>;
-  maxDepth: number;
-  config: StructuredLayoutConfig;
 }
 
 function structuredSurfaceMode(): StructuredSurfaceMode | null {
@@ -6532,9 +6603,11 @@ function structuredSurfaceMode(): StructuredSurfaceMode | null {
   return null;
 }
 
-function structuredLayoutConfig(mode: StructuredSurfaceMode): StructuredLayoutConfig {
-  const density = viewState.surfaceLayoutDensity;
-  const branchDirection = viewState.surfaceBranchDirection;
+function structuredLayoutConfig(
+  mode: StructuredSurfaceMode,
+  density: LayoutDensity = viewState.surfaceLayoutDensity,
+  branchDirection: LayoutBranchDirection = viewState.surfaceBranchDirection,
+): StructuredLayoutConfig {
   const compact = density === "compact";
   const spacious = density === "spacious";
   const mapLike = mode === "mindmap";
@@ -6600,427 +6673,116 @@ function compactNodeMinHeight(config: StructuredLayoutConfig): number {
   return config.density === "compact" ? 22 : VIEWER_TUNING.layout.leafHeight;
 }
 
-function buildMeasuredTreeContext(state: AppState, displayRootId: string, mode: StructuredSurfaceMode): MeasuredTreeContext {
-  const config = structuredLayoutConfig(mode);
-  const metrics: Record<string, LayoutNodeMetric> = {};
-  const depthOf: Record<string, number> = {};
-  const depthMaxWidth: Record<number, number> = {};
-  let maxDepth = 0;
-
-  function visit(nodeId: string, depth: number): void {
-    const node = state.nodes[nodeId];
-    if (!node) return;
-    maxDepth = Math.max(maxDepth, depth);
-    depthOf[nodeId] = depth;
-    metrics[nodeId] = measureLayoutNode(state, nodeId, displayRootId, config);
-    depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metrics[nodeId]!.w);
-    visibleChildren(node).forEach((childId) => visit(childId, depth + 1));
-  }
-
-  visit(displayRootId, 0);
-  return { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config };
-}
-
-function subtreeSpanForLayout(
-  state: AppState,
-  nodeId: string,
-  metrics: Record<string, LayoutNodeMetric>,
-  cache: Record<string, number>,
-  siblingGap = VIEWER_TUNING.layout.siblingGap,
-): number {
-  if (cache[nodeId] !== undefined) {
-    return cache[nodeId]!;
-  }
-  const node = state.nodes[nodeId];
-  if (!node) {
-    return VIEWER_TUNING.layout.leafHeight;
-  }
-  const children = visibleChildren(node);
-  if (children.length === 0) {
-    const leafSpan = Math.max(VIEWER_TUNING.layout.leafHeight, metrics[nodeId]!.h + siblingGap);
-    cache[nodeId] = leafSpan;
-    return leafSpan;
-  }
-  let sum = 0;
-  children.forEach((childId, i) => {
-    sum += subtreeSpanForLayout(state, childId, metrics, cache, siblingGap);
-    if (i < children.length - 1) {
-      sum += siblingGap;
-    }
-  });
-  const result = Math.max(sum, metrics[nodeId]!.h + 24);
-  cache[nodeId] = result;
-  return result;
-}
-
-function finalizeLayoutBounds(pos: Record<string, NodePosition>, order: string[]): Pick<LayoutResult, "totalHeight" | "totalWidth"> {
-  let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
-  let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
-  order.forEach((nodeId) => {
-    const p = pos[nodeId];
-    if (!p) return;
-    const halfH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2;
-    maxRight = Math.max(maxRight, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
-    maxBottom = Math.max(maxBottom, p.y + halfH + VIEWER_TUNING.layout.canvasBottomPad);
-  });
-  return {
-    totalHeight: Math.max(maxBottom, VIEWER_TUNING.layout.minCanvasHeight),
-    totalWidth: Math.max(maxRight + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
-  };
-}
-
-function buildRightTreeLayout(state: AppState, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config } = ctx;
-  const xByDepth: Record<number, number> = {};
-  let cursorX = VIEWER_TUNING.layout.leftPad;
-  for (let d = 0; d <= maxDepth; d += 1) {
-    xByDepth[d] = cursorX;
-    cursorX += (depthMaxWidth[d] ?? 120) + (config.mode === "tree" ? VIEWER_TUNING.layout.columnGap : config.columnGap);
-  }
-
-  const subtreeHeightCache: Record<string, number> = {};
-  const pos: Record<string, NodePosition> = {};
-  const order: string[] = [];
-  const depthOffsetFactor = VIEWER_TUNING.layout.depthOffsetFactor;
-
-  function place(nodeId: string, topY: number, parentX: number | null, parentW: number | null): number {
-    const node = state.nodes[nodeId];
-    if (!node) return VIEWER_TUNING.layout.leafHeight;
-    const depth = depthOf[nodeId] ?? 0;
-    const h = subtreeSpanForLayout(
-      state,
-      nodeId,
-      metrics,
-      subtreeHeightCache,
-      config.mode === "tree" ? VIEWER_TUNING.layout.siblingGap : config.siblingGap,
-    );
-    const centerY = topY + h / 2;
-    const baseX = xByDepth[depth]!;
-    const nodeX = config.mode === "logic-chart"
-      ? baseX
-      : parentX === null || parentW === null
-      ? baseX
-      : baseX + ((parentX + parentW + VIEWER_TUNING.layout.columnGap) - baseX) * depthOffsetFactor;
-    pos[nodeId] = { x: nodeX, y: centerY, depth, w: metrics[nodeId]!.w, h: metrics[nodeId]!.h, fontSize: metrics[nodeId]!.fontSize, labelLines: metrics[nodeId]!.labelLines };
-    order.push(nodeId);
-    let placeCursorY = topY;
-    visibleChildren(node).forEach((childId, i, arr) => {
-      const childH = place(childId, placeCursorY, nodeX, metrics[nodeId]!.w);
-      placeCursorY += childH;
-      if (i < arr.length - 1) placeCursorY += config.mode === "tree" ? VIEWER_TUNING.layout.siblingGap : config.siblingGap;
-    });
-    return h;
-  }
-
-  place(displayRootId, VIEWER_TUNING.layout.topPad, null, null);
-  if (config.mode === "logic-chart" && config.branchDirection === "left") {
-    const contentLeft = Math.min(...order.map((nodeId) => pos[nodeId]!.x));
-    const contentRight = Math.max(...order.map((nodeId) => pos[nodeId]!.x + pos[nodeId]!.w));
-    order.forEach((nodeId) => {
-      const p = pos[nodeId]!;
-      p.x = contentLeft + contentRight - (p.x + p.w);
-    });
-  }
-  const bounds = finalizeLayoutBounds(pos, order);
-  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
-}
-
-function splitMindmapBranches(state: AppState, rootId: string, direction: SurfaceBranchDirection): { left: string[]; right: string[] } {
-  const root = state.nodes[rootId];
-  const children = root ? visibleChildren(root) : [];
-  const left: string[] = [];
-  const right: string[] = [];
-  if (direction === "right") {
-    return { left, right: children };
-  }
-  if (direction === "left") {
-    return { left: children, right };
-  }
-  children.forEach((childId, index) => {
-    (index % 2 === 0 ? right : left).push(childId);
-  });
-  return { left, right };
-}
-
-function buildMindmapLayout(state: AppState, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config } = ctx;
-  const rootMetric = metrics[displayRootId] || { w: 280, h: VIEWER_TUNING.layout.rootHeight };
-  const branchWidth = (fromDepth = 1): number => {
-    let width = 0;
-    for (let d = fromDepth; d <= maxDepth; d += 1) {
-      width += (depthMaxWidth[d] ?? 120) + config.columnGap;
-    }
-    return width;
-  };
-  const leftBranchWidth = branchWidth();
-  const rootX = config.branchDirection === "right"
-    ? VIEWER_TUNING.layout.leftPad
-    : config.branchDirection === "left"
-      ? VIEWER_TUNING.layout.leftPad + leftBranchWidth
-      : VIEWER_TUNING.layout.leftPad + leftBranchWidth + config.sideGap;
-  const rightXByDepth: Record<number, number> = {};
-  const leftXByDepth: Record<number, number> = {};
-  rightXByDepth[1] = rootX + rootMetric.w + config.columnGap;
-  leftXByDepth[1] = rootX - config.columnGap - (depthMaxWidth[1] ?? 120);
-  for (let d = 2; d <= maxDepth; d += 1) {
-    rightXByDepth[d] = rightXByDepth[d - 1]! + (depthMaxWidth[d - 1] ?? 120) + config.columnGap;
-    leftXByDepth[d] = leftXByDepth[d - 1]! - config.columnGap - (depthMaxWidth[d] ?? 120);
-  }
-  const spanCache: Record<string, number> = {};
-  const { left, right } = splitMindmapBranches(state, displayRootId, config.branchDirection);
-  const sideGap = config.sideGap;
-  const sideSpan = (ids: string[]) => ids.reduce((sum, id, index) => (
-    sum + subtreeSpanForLayout(state, id, metrics, spanCache, config.siblingGap) + (index > 0 ? sideGap : 0)
-  ), 0);
-  const totalSpan = Math.max(rootMetric.h + 60, sideSpan(left), sideSpan(right), VIEWER_TUNING.layout.rootHeight + 80);
-  const rootY = VIEWER_TUNING.layout.topPad + totalSpan / 2;
-  const pos: Record<string, NodePosition> = {
-    [displayRootId]: { x: rootX, y: rootY, depth: 0, w: rootMetric.w, h: rootMetric.h, fontSize: rootMetric.fontSize, labelLines: rootMetric.labelLines },
-  };
-  const order: string[] = [displayRootId];
-
-  function placeSide(nodeId: string, topY: number, direction: -1 | 1): number {
-    const node = state.nodes[nodeId];
-    if (!node) return VIEWER_TUNING.layout.leafHeight;
-    const depth = Math.max(1, depthOf[nodeId] ?? 1);
-    const span = subtreeSpanForLayout(state, nodeId, metrics, spanCache, config.siblingGap);
-    const metric = metrics[nodeId]!;
-    const centerY = topY + span / 2;
-    const depthWidth = depthMaxWidth[depth] ?? metric.w;
-    const x = direction > 0
-      ? rightXByDepth[depth] ?? (rootX + rootMetric.w + config.columnGap)
-      : (leftXByDepth[depth] ?? (rootX - config.columnGap - depthWidth)) + Math.max(0, depthWidth - metric.w);
-    pos[nodeId] = { x, y: centerY, depth, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
-    order.push(nodeId);
-    let cursorY = topY;
-    visibleChildren(node).forEach((childId, i, arr) => {
-      const childSpan = placeSide(childId, cursorY, direction);
-      cursorY += childSpan;
-      if (i < arr.length - 1) cursorY += config.siblingGap;
-    });
-    return span;
-  }
-
-  const placeGroup = (ids: string[], direction: -1 | 1): void => {
-    let cursorY = rootY - sideSpan(ids) / 2;
-    ids.forEach((childId, index) => {
-      const span = placeSide(childId, cursorY, direction);
-      cursorY += span + (index < ids.length - 1 ? sideGap : 0);
-    });
-  };
-  placeGroup(left, -1);
-  placeGroup(right, 1);
-
-  const bounds = finalizeLayoutBounds(pos, order);
-  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
-}
-
-function buildTimelineLayout(state: AppState, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, config } = ctx;
-  const rootMetric = metrics[displayRootId] || { w: 280, h: VIEWER_TUNING.layout.rootHeight };
-  const rootX = VIEWER_TUNING.layout.leftPad;
-  const axisY = VIEWER_TUNING.layout.topPad + 300;
-  const pos: Record<string, NodePosition> = {
-    [displayRootId]: { x: rootX, y: axisY, depth: 0, w: rootMetric.w, h: rootMetric.h, fontSize: rootMetric.fontSize, labelLines: rootMetric.labelLines },
-  };
-  const order: string[] = [displayRootId];
-  const root = state.nodes[displayRootId];
-  const rootChildren = root ? visibleChildren(root) : [];
-  const stepX = Math.max(config.density === "compact" ? 190 : 260, config.columnGap + 120);
-
-  function placeDescendants(nodeId: string, baseX: number, baseY: number, sign: -1 | 1): void {
-    const node = state.nodes[nodeId];
-    if (!node) return;
-    visibleChildren(node).forEach((childId, index) => {
-      const metric = metrics[childId]!;
-      const x = baseX + 54;
-      const y = baseY + sign * (92 + index * 72);
-      pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
-      order.push(childId);
-      placeDescendants(childId, x, y, sign);
-    });
-  }
-
-  rootChildren.forEach((childId, index) => {
-    const metric = metrics[childId]!;
-    const x = rootX + rootMetric.w + config.columnGap + index * stepX;
-    const sign: -1 | 1 = index % 2 === 0 ? -1 : 1;
-    const y = axisY + sign * 132;
-    pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
-    order.push(childId);
-    placeDescendants(childId, x, y, sign);
-  });
-
-  const bounds = finalizeLayoutBounds(pos, order);
-  return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
-}
+window.m3eLayout = (
+  graph: VisibleLayoutGraph,
+  boxSizes: Record<string, LayoutNodeMetric>,
+  mode: SurfaceKind,
+  options: LayoutOptions = {},
+): LayoutResult => layoutPortLayout(graph, boxSizes, mode, options);
 
 function buildLayout(state: AppState): LayoutResult {
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
-  const flowSurface = currentSurfaceIsFlowMode();
-  const scatterSurface = currentSurfaceIsScatterMode();
-  const metrics: Record<string, { w: number; h: number }> = {};
-  const depthOf: Record<string, number> = {};
+  const mode = surfaceKindForViewMode(viewState.surfaceViewMode);
+  const structuredMode = structuredSurfaceMode() || "tree";
+  const graphLinks = Object.values(state.links || {}).map((rawLink) => normalizeGraphLink(rawLink));
+  const childrenOf = (nodeId: string): string[] => {
+    const node = state.nodes[nodeId];
+    return node ? visibleChildren(node) : [];
+  };
+  const visibleNodeIds = new Set<string>();
+  const collectVisible = (nodeId: string): void => {
+    if (visibleNodeIds.has(nodeId) || !state.nodes[nodeId]) return;
+    visibleNodeIds.add(nodeId);
+    childrenOf(nodeId).forEach(collectVisible);
+  };
+  collectVisible(displayRootId);
+  const boxSizes: Record<string, LayoutNodeMetric> = {};
+  Array.from(visibleNodeIds).forEach((nodeId) => {
+    boxSizes[nodeId] = measureLayoutNode(state, nodeId, displayRootId, structuredLayoutConfig(structuredMode));
+  });
 
-  if (scatterSurface && displayRootNode) {
+  const publicOptions: PublicLayoutOptions = {
+    direction: viewState.surfaceLayoutDirection,
+    depthAlign: viewState.surfaceDepthAlign,
+    edge: { route: viewState.surfaceEdgeRoute },
+    link: { route: viewState.surfaceLinkRoute },
+  };
+  const options: LayoutOptions = {
+    ...publicOptions,
+    displayRootId,
+    structuredMode,
+    density: viewState.surfaceLayoutDensity,
+    branchDirection: viewState.surfaceBranchDirection,
+  };
+
+  if (mode === "scatter" && displayRootNode) {
     const surface = currentMapSurface();
     const { ids: descendants, depthOf: scatterDepthOf } = collectScatterNodes(state, displayRootId);
-    const seededByNode = scatterSeedPositions(state, displayRootId, descendants, scatterDepthOf);
-    const pos: Record<string, NodePosition> = {};
-    let maxRight = VIEWER_TUNING.layout.minCanvasWidth;
-    let maxBottom = VIEWER_TUNING.layout.minCanvasHeight;
+    visibleNodeIds.clear();
+    descendants.forEach((nodeId) => visibleNodeIds.add(nodeId));
     descendants.forEach((nodeId) => {
-      const node = state.nodes[nodeId];
-      if (!node) return;
       const depth = scatterDepthOf[nodeId] ?? 0;
       const radius = scatterRadiusFor(nodeId, depth, descendants.length);
-      const diameter = radius * 2;
-      const saved = surface?.nodeViews?.[nodeId];
-      const seeded = seededByNode[nodeId] || scatterSeedCenter();
-      const seededX = seeded.x - radius;
-      const seededY = seeded.y;
-      const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
-      const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
-      pos[nodeId] = {
-        x,
-        y,
-        depth,
-        w: diameter,
-        h: diameter,
-        fontSize: scatterFontSizeFor(radius),
-        scatterCollapsedGroup: scatterNodeIsCollapsedGroup(state, nodeId),
-      };
-      maxRight = Math.max(maxRight, x + diameter + VIEWER_TUNING.layout.canvasRightPad);
-      maxBottom = Math.max(maxBottom, y + radius + VIEWER_TUNING.layout.canvasBottomPad);
+      boxSizes[nodeId] = { w: radius * 2, h: radius * 2 };
     });
-
-    return {
-      pos,
-      order: descendants,
-      totalHeight: Math.max(maxBottom, VIEWER_TUNING.layout.minCanvasHeight),
-      totalWidth: Math.max(maxRight, VIEWER_TUNING.layout.minCanvasWidth),
-    };
+    options.surfaceNodeViews = surface?.nodeViews || {};
+    options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
+    // Scatter layout reads persisted per-node view coordinates; scatter simulation writes them elsewhere.
+    options.scatter = { edgeLength: scatterEdgeLength };
+    return layoutPortLayout(
+      {
+        nodeIds: descendants,
+        childrenOf: (nodeId) => {
+          const node = state.nodes[nodeId];
+          return node && (nodeId === displayRootId || !viewState.collapsedIds.has(nodeId))
+            ? (node.children || []).filter((childId) => descendants.includes(childId))
+            : [];
+        },
+        graphLinks,
+      },
+      boxSizes,
+      mode,
+      options,
+    );
   }
 
-  if (flowSurface && displayRootNode) {
+  if (mode === "system" && displayRootNode) {
     const surfaceNodes = visibleChildren(displayRootNode);
-    const primarySurfaceNodes = surfaceNodes.filter((nodeId) => !isReferenceNode(state.nodes[nodeId]));
-    const referenceSurfaceNodes = surfaceNodes.filter((nodeId) => isReferenceNode(state.nodes[nodeId]));
-    const pos: Record<string, NodePosition> = {};
-    const order: string[] = [];
-    const colMaxWidth: Record<number, number> = {};
-    const rowMaxHeight: Record<number, number> = {};
-    const surfaceCells: Record<string, { col: number; row: number }> = {};
-    const occupiedRowsByCol: Record<number, Set<number>> = {};
-    let maxCol = 0;
-    let maxRow = 0;
-
-    surfaceNodes.forEach((nodeId, index) => {
+    const flowCells: Record<string, { col: number; row: number; isReference: boolean }> = {};
+    visibleNodeIds.clear();
+    visibleNodeIds.add(displayRootId);
+    surfaceNodes.forEach((nodeId) => {
       const node = state.nodes[nodeId];
       if (!node) return;
+      visibleNodeIds.add(nodeId);
       const nodeStyles = effectiveNodeStyleAttrs(node);
       const label = diagramLabel(node, nodeStyles);
       const baseMetric = isLatexNode(node)
         ? measureLatex(node.text)
         : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
       const previewLayout = buildFlowPreviewLayout(node);
-      const metric = previewLayout
+      boxSizes[nodeId] = previewLayout
         ? {
             w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
             h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
           }
         : baseMetric;
-      metrics[nodeId] = metric;
-      if (isReferenceNode(node)) {
-        return;
-      }
-      const col = flowColOf(node, index);
-      const occupiedRows = occupiedRowsByCol[col] || new Set<number>();
-      let row = flowRowOf(node, 0);
-      while (occupiedRows.has(row)) {
-        row += 1;
-      }
-      occupiedRows.add(row);
-      occupiedRowsByCol[col] = occupiedRows;
-      surfaceCells[nodeId] = { col, row };
-      depthOf[nodeId] = col;
-      maxCol = Math.max(maxCol, col);
-      maxRow = Math.max(maxRow, row);
-      colMaxWidth[col] = Math.max(colMaxWidth[col] ?? 0, metric.w);
-      rowMaxHeight[row] = Math.max(rowMaxHeight[row] ?? 0, Math.max(VIEWER_TUNING.layout.leafHeight + 18, metric.h + 18));
+      flowCells[nodeId] = { col: flowColOf(node, surfaceNodes.indexOf(nodeId)), row: flowRowOf(node, 0), isReference: isReferenceNode(node) };
     });
-
-    const xByCol: Record<number, number> = {};
-    let cursorX = VIEWER_TUNING.layout.leftPad;
-    for (let col = 0; col <= maxCol; col += 1) {
-      xByCol[col] = cursorX;
-      cursorX += (colMaxWidth[col] ?? 180) + VIEWER_TUNING.layout.columnGap;
-    }
-
-    const yByRow: Record<number, number> = {};
-    let cursorY = VIEWER_TUNING.layout.topPad + 132;
-    for (let row = 0; row <= maxRow; row += 1) {
-      const rowHeight = rowMaxHeight[row] ?? (VIEWER_TUNING.layout.leafHeight + 18);
-      yByRow[row] = cursorY + rowHeight / 2;
-      cursorY += rowHeight + FLOW_SURFACE_ROW_GAP;
-    }
-
-    primarySurfaceNodes.forEach((nodeId, index) => {
-      const node = state.nodes[nodeId];
-      if (!node) return;
-      const resolvedCell = surfaceCells[nodeId] || { col: flowColOf(node, index), row: flowRowOf(node, 0) };
-      const { col, row } = resolvedCell;
-      const metric = metrics[nodeId]!;
-      pos[nodeId] = {
-        x: xByCol[col]!,
-        y: yByRow[row]!,
-        depth: col,
-        w: metric.w,
-        h: metric.h,
-      };
-      order.push(nodeId);
-    });
-
-    if (referenceSurfaceNodes.length > 0) {
-      const referenceTop = cursorY + 26;
-      let referenceCursorX = VIEWER_TUNING.layout.leftPad;
-      referenceSurfaceNodes.forEach((nodeId) => {
-        const metric = metrics[nodeId]!;
-        pos[nodeId] = {
-          x: referenceCursorX,
-          y: referenceTop + metric.h / 2,
-          depth: maxCol + 1,
-          w: metric.w,
-          h: metric.h,
-        };
-        order.push(nodeId);
-        referenceCursorX += metric.w + VIEWER_TUNING.layout.columnGap;
-      });
-      cursorY = referenceTop + Math.max(...referenceSurfaceNodes.map((nodeId) => metrics[nodeId]!.h)) + FLOW_SURFACE_ROW_GAP;
-      cursorX = Math.max(cursorX, referenceCursorX);
-    }
-
-    return {
-      pos,
-      order,
-      totalHeight: Math.max(cursorY + VIEWER_TUNING.layout.canvasBottomPad, VIEWER_TUNING.layout.minCanvasHeight),
-      totalWidth: Math.max(cursorX + VIEWER_TUNING.layout.canvasRightPad, VIEWER_TUNING.layout.minCanvasWidth),
-    };
+    options.flowCells = flowCells;
   }
 
-  const structuredMode = structuredSurfaceMode() || "tree";
-  const measuredContext = buildMeasuredTreeContext(state, displayRootId, structuredMode);
-  if (structuredMode === "mindmap") {
-    return buildMindmapLayout(state, measuredContext);
-  }
-  if (structuredMode === "logic-chart" && measuredContext.config.branchDirection === "both") {
-    return buildMindmapLayout(state, measuredContext);
-  }
-  if (structuredMode === "timeline") {
-    return buildTimelineLayout(state, measuredContext);
-  }
-  return buildRightTreeLayout(state, measuredContext);
+  return layoutPortLayout(
+    {
+      nodeIds: Array.from(visibleNodeIds),
+      childrenOf,
+      graphLinks,
+    },
+    boxSizes,
+    mode,
+    options,
+  );
 }
 
 function updateMapTitle(): void {
@@ -7064,59 +6826,56 @@ function layoutEdgePath(
   mode: StructuredSurfaceMode,
   parent: NodePosition,
   child: NodePosition,
+  route: SurfaceEdgeRoute = viewState.surfaceEdgeRoute,
 ): { d: string; labelX: number; labelY: number; sourceSide: EdgeAnchorSide; targetSide: EdgeAnchorSide } {
-  const { source, target } = mode === "tree"
-    ? treeRightEdgeEndsBetween(parent, child)
-    : legacyEdgeEndsBetween(parent, child);
-  if (mode === "mindmap") {
-    const rightward = target.x >= source.x;
-    const dir = rightward ? 1 : -1;
-    const curve = Math.max(44, Math.abs(target.x - source.x) * 0.45);
-    const c1x = source.x + dir * curve;
-    const c2x = target.x - dir * curve;
-    return {
-      d: `M ${source.x} ${source.y} C ${c1x} ${source.y}, ${c2x} ${target.y}, ${target.x} ${target.y}`,
-      labelX: (c1x + c2x) / 2,
-      labelY: (source.y + target.y) / 2 - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-
-  if (mode === "logic-chart") {
-    const midX = source.x + (target.x - source.x) * 0.5;
-    return {
-      d: roundedOrthogonalPath(source.x, source.y, target.x, target.y, { radius: 9, midX }),
-      labelX: midX,
-      labelY: (source.y + target.y) / 2 - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-
-  if (mode === "timeline") {
-    const midY = source.y + (target.y - source.y) * 0.52;
-    return {
-      d: `M ${source.x} ${source.y} V ${midY} H ${target.x} V ${target.y}`,
-      labelX: (source.x + target.x) / 2,
-      labelY: midY - 8,
-      sourceSide: source.side,
-      targetSide: target.side,
-    };
-  }
-
-  const rightward = target.x >= source.x;
-  const dir = rightward ? 1 : -1;
-  const curve = Math.max(44, Math.abs(target.x - source.x) * 0.45);
-  const c1x = source.x + dir * curve;
-  const c2x = target.x - dir * curve;
+  const parentRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(parent) : positionRect(parent);
+  const childRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(child) : positionRect(child);
+  const routeStyle: EdgeRouteStyle = route === "straight" ? "line" : route === "elbow" ? "orthogonal" : "curve";
+  const routed = routeParentChildEdge({
+    relation: { kind: "parent-child", parentNodeId: "parent", childNodeId: "child" },
+    parentRect,
+    childRect,
+    childPosition: child,
+    surfaceMode: mode as ParentChildSurfaceMode,
+    direction: viewState.surfaceLayoutDirection,
+    routeStyle,
+  });
+  const { source, target } = routed.ports;
   return {
-    d: `M ${source.x} ${source.y} C ${c1x} ${source.y}, ${c2x} ${target.y}, ${target.x} ${target.y}`,
-    labelX: (c1x + c2x) / 2,
+    d: routed.path.d,
+    labelX: (source.x + target.x) / 2,
     labelY: (source.y + target.y) / 2 - 8,
     sourceSide: source.side,
     targetSide: target.side,
   };
+}
+
+function graphLinkPathForRoute(
+  source: EdgeConnectionPoint,
+  target: EdgeConnectionPoint,
+  route: SurfaceLinkRoute,
+  waveOffset = 0,
+): string {
+  if (route === "straight") {
+    return `M ${source.x} ${source.y} L ${target.x} ${target.y}`;
+  }
+  if (route === "orthogonal") {
+    const midX = source.x + (target.x - source.x) * 0.5;
+    return roundedOrthogonalPath(source.x, source.y, target.x, target.y, { radius: 9, midX });
+  }
+  return graphLinkPathWithPorts(source, target, waveOffset);
+}
+
+function graphLinkLabelPointForRoute(
+  source: EdgeConnectionPoint,
+  target: EdgeConnectionPoint,
+  route: SurfaceLinkRoute,
+  waveOffset = 0,
+): { x: number; y: number } {
+  if (route === "straight" || route === "orthogonal") {
+    return { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 };
+  }
+  return graphLinkLabelPointWithPorts(source, target, waveOffset);
 }
 
 function render(): void {
@@ -7394,8 +7153,8 @@ function render(): void {
       controlX = (sxArch + txArch) / 2;
       controlY = useTop ? apexY - 10 : apexY + 16;
     } else {
-      graphLinkPathD = graphLinkPathWithPorts(sourceEnd, targetEnd, pairWaveOffset);
-      const labelPoint = graphLinkLabelPointWithPorts(sourceEnd, targetEnd, pairWaveOffset);
+      graphLinkPathD = graphLinkPathForRoute(sourceEnd, targetEnd, viewState.surfaceLinkRoute, pairWaveOffset);
+      const labelPoint = graphLinkLabelPointForRoute(sourceEnd, targetEnd, viewState.surfaceLinkRoute, pairWaveOffset);
       controlX = labelPoint.x;
       controlY = labelPoint.y - 12 - Math.abs(pairWaveOffset) * 0.35;
     }
@@ -7514,6 +7273,185 @@ function render(): void {
     return `<foreignObject data-node-id="${escapeXmlAttr(parentId)}" data-component-kind="tabular" x="${foX}" y="${foY}" width="${tableW}" height="${tableH}"><div xmlns="http://www.w3.org/1999/xhtml" class="m3e-component m3e-component--tabular ${densityClass} ${maxHeightClass}">${html}</div></foreignObject>`;
   }
 
+  function nodeDrawStyleFromAttrs(attrs: NodeStyleAttrs): NodeDrawStyle {
+    return {
+      fill: attrs.bg ?? undefined,
+      text: attrs.color ?? undefined,
+      border: attrs.border ?? undefined,
+      borderStyle: attrs.borderStyle as NodeDrawStyle["borderStyle"] | undefined,
+      borderWidth: attrs.borderWidth ?? undefined,
+      shape: attrs.shape as NodeDrawStyle["shape"] | undefined,
+      icon: attrs.icon ?? undefined,
+      status: attrs.status as NodeDrawStyle["status"] | undefined,
+      confidence: attrs.confidence ?? undefined,
+      band: attrs.band as NodeDrawStyle["band"] | undefined,
+    };
+  }
+
+  function nodeDrawAliasState(node: TreeNode): AliasDrawState {
+    if (!isAliasNode(node)) return "none";
+    if (isBrokenAlias(node)) return "broken";
+    return aliasAccess(node) === "write" ? "write" : "read";
+  }
+
+  function nodeDrawLockState(nodeId: string): ScopeLockDrawState {
+    const nodeLock = scopeLockMap.get(nodeId);
+    if (!nodeLock) return "none";
+    return nodeLock.entityId === collabEntityId ? "self" : "other";
+  }
+
+  function nodeDrawSurface(): NodeDrawSurface {
+    return {
+      view: canonicalSurfaceViewName(scatterSurface ? "scatter" : structuredMode),
+      structuredMode: canonicalSurfaceViewName(structuredMode),
+      displayRootId,
+      rootless: rootlessSurface,
+    };
+  }
+
+  function renderLatexHtml(text: string): { html: string; displayMode: boolean } {
+    let htmlStr = latexHtmlCache.get(text);
+    const { latex, displayMode } = latexSource(text);
+    if (!htmlStr) {
+      try {
+        htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
+      } catch {
+        htmlStr = escapeXml(text);
+      }
+      latexHtmlCache.set(text, htmlStr);
+    }
+    return { html: htmlStr, displayMode };
+  }
+
+  function toNodeDrawInput(node: TreeNode, p: NodePosition, nodeStyles: NodeStyleAttrs): NodeDrawInput {
+    const treatAsRoot = node.id === displayRootId && !rootlessSurface;
+    const label = diagramLabel(node, nodeStyles);
+    const aliasState = nodeDrawAliasState(node);
+    const fontSize = p.fontSize ?? (treatAsRoot ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
+    const content = isLatexNode(node)
+      ? { kind: "latexHtml" as const, ...renderLatexHtml(node.text) }
+      : {
+          kind: "plainLabel" as const,
+          labelLines: p.labelLines || splitLabelLines(treatAsRoot ? (uiLabel(node) || "(empty)") : label),
+          fontSize,
+          textAnchor: structuredMode === "mindmap" || treatAsRoot ? "middle" as const : "start" as const,
+        };
+    return {
+      node: {
+        id: node.id,
+        type: (isAliasNode(node) ? "alias" : isFolderNode(node) ? "folder" : node.nodeType || "text") as NodeDrawInput["node"]["type"],
+        kind: treatAsRoot ? "root" : isLatexNode(node) ? "latex" : nodeStyles.status ? "status" : isFolderNode(node) ? "folder" : "plain",
+        label: uiLabel(node),
+        text: node.text,
+        alias: aliasState,
+        aliasLabel: node.aliasLabel,
+        targetLabel: resolveAliasTarget(node)?.text,
+        snapshotLabel: node.targetSnapshotLabel,
+        isFolder: isFolderNode(node),
+        isScopePortal: isScopePortalNode(node),
+        isRoot: treatAsRoot,
+        isLatex: isLatexNode(node),
+        isScatterGroup: Boolean(p.scatterCollapsedGroup),
+        scatterRole: rawAttr(node, "m3e:scatter-role") as NodeDrawInput["node"]["scatterRole"],
+        badge: nodeBadge(node) || undefined,
+      },
+      position: p,
+      style: nodeDrawStyleFromAttrs(nodeStyles),
+      view: {
+        selected: viewState.selectedNodeIds.has(node.id),
+        primarySelected: node.id === viewState.selectedNodeId,
+        multiSelected: viewState.selectedNodeIds.has(node.id),
+        linkSource: viewState.linkSourceNodeId === node.id,
+        cutPending: viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(node.id),
+        reparentSource: viewState.reparentSourceIds.has(node.id),
+        dragSource: Boolean(viewState.dragState && node.id === viewState.dragState.sourceNodeId),
+        dropTarget: viewState.dragState?.proposal?.kind === "reparent" && node.id === viewState.dragState.proposal.parentId,
+        collapsedCount: viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
+          ? Math.max(1, countHiddenDescendants(node.id))
+          : undefined,
+        lockedBy: nodeDrawLockState(node.id),
+      },
+      surface: nodeDrawSurface(),
+      content,
+    };
+  }
+
+  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: NodePosition, childIds: string[]): string {
+    let result = "";
+    childIds.forEach((childId, i) => {
+      const child = pos[childId];
+      if (!child) return;
+      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+      const stroke = nodeStyles.edgeColor || defaultStroke;
+      const edgeInline = buildEdgeStyle(nodeStyles);
+      const edgePath = layoutEdgePath(structuredMode, p, child);
+      result += `<path class="edge edge-${structuredMode}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
+
+      const childNode = state.nodes[childId];
+      const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
+      const edgeLabel = childStyles.edgeLabel || parentChildLinkLabels.get(parentChildEdgeKey(nodeId, childId));
+      if (edgeLabel) {
+        result += `<text class="edge-label" data-node-id="${childId}" x="${edgePath.labelX}" y="${edgePath.labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
+      }
+    });
+    return result;
+  }
+
+  function renderFolderPreview(node: TreeNode, nodeStyles: NodeStyleAttrs, p: NodePosition): string {
+    const previewLayout = buildFlowPreviewLayout(node);
+    if (!previewLayout) return "";
+    const frameInsetY = structuredMode === "mindmap" ? 0 : 12;
+    const framePadX = structuredMode === "mindmap" ? 0 : 14;
+    const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - frameInsetY;
+    const folderFrameX = p.x - framePadX;
+    const folderFrameY = p.y - frameH / 2;
+    let result = "";
+    const previewIds = new Set(previewLayout.childIds);
+    Object.values(state.links || {}).forEach((rawLink) => {
+      const link = normalizeGraphLink(rawLink);
+      const sourceNode = state.nodes[link.sourceNodeId];
+      const targetNode = state.nodes[link.targetNodeId];
+      if (!sourceNode || !targetNode || isParentChildPair(sourceNode, targetNode)) return;
+      if (!previewIds.has(link.sourceNodeId) || !previewIds.has(link.targetNodeId)) return;
+      const sourcePreview = previewLayout.positions[link.sourceNodeId];
+      const targetPreview = previewLayout.positions[link.targetNodeId];
+      if (!sourcePreview || !targetPreview) return;
+      const sourceRect = {
+        x: folderFrameX + sourcePreview.x,
+        y: folderFrameY + sourcePreview.y,
+        w: sourcePreview.w,
+        h: sourcePreview.h,
+      };
+      const targetRect = {
+        x: folderFrameX + targetPreview.x,
+        y: folderFrameY + targetPreview.y,
+        w: targetPreview.w,
+        h: targetPreview.h,
+      };
+      const { source: sourceEnd, target: targetEnd } = edgePortPairBetweenRects(sourceRect, targetRect);
+      const previewEdgePath = smoothGraphLinkPath(sourceEnd.x, sourceEnd.y, targetEnd.x, targetEnd.y);
+      result += `<path class="flow-preview-edge" d="${previewEdgePath}" />`;
+      const edgeLabel = (link.label || link.relationType || "").trim();
+      if (edgeLabel) {
+        result += `<text class="flow-preview-edge-label" x="${(sourceEnd.x + targetEnd.x) / 2}" y="${(sourceEnd.y + targetEnd.y) / 2 - 6}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
+      }
+    });
+
+    previewLayout.childIds.forEach((previewChildId) => {
+      const previewChild = state.nodes[previewChildId];
+      const previewPos = previewLayout.positions[previewChildId];
+      if (!previewChild || !previewPos) return;
+      const previewStyles = readNodeStyleAttrs(previewChild.attributes || {});
+      const previewLabel = escapeXml(diagramLabel(previewChild, previewStyles));
+      const previewX = folderFrameX + previewPos.x;
+      const previewY = folderFrameY + previewPos.y;
+      const previewClass = isFolderNode(previewChild) ? "flow-preview-node flow-preview-node-scope" : "flow-preview-node";
+      result += `<rect class="${previewClass}" x="${previewX}" y="${previewY}" width="${previewPos.w}" height="${previewPos.h}" rx="8" />`;
+      result += `<text class="flow-preview-node-label" x="${previewX + 10}" y="${previewY + previewPos.h / 2}" dominant-baseline="middle" text-anchor="start">${previewLabel}</text>`;
+    });
+    return result;
+  }
+
   function drawNode(nodeId: string): void {
     const node = state.nodes[nodeId];
     const p = pos[nodeId];
@@ -7527,385 +7465,17 @@ function render(): void {
     const children = scatterSurface ? [] : visibleChildren(node);
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
-    const previewLayout = buildFlowPreviewLayout(node);
-    if (scatterSurface) {
-      const { cx, cy, r } = scatterCircleGeometry(p);
-      const circleClasses = ["node-hit", "scatter-node-circle"];
-      if (nodeId === displayRootId) {
-        circleClasses.push("scatter-root");
-      }
-      if (p.scatterCollapsedGroup) {
-        circleClasses.push("scatter-group");
-      } else {
-        circleClasses.push("scatter-branch");
-      }
-      const scatterRole = rawAttr(node, "m3e:scatter-role");
-      if (scatterRole === "downstream") {
-        circleClasses.push("scatter-role-downstream");
-      } else if (scatterRole === "sample") {
-        circleClasses.push("scatter-role-sample");
-      } else if (scatterRole === "upstream") {
-        circleClasses.push("scatter-role-upstream");
-      }
-      if (viewState.selectedNodeIds.has(nodeId)) {
-        circleClasses.push("selected");
-        circleClasses.push("multi-selected");
-      }
-      if (nodeId === viewState.selectedNodeId) {
-        circleClasses.push("primary-selected");
-      }
-      if (isAliasNode(node)) {
-        circleClasses.push("alias");
-        circleClasses.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
-      }
-      if (viewState.linkSourceNodeId === nodeId) {
-        circleClasses.push("link-source");
-      }
-      if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
-        circleClasses.push("drag-source");
-      }
-      const circleStyle: string[] = [];
-      if (nodeStyles.bg) circleStyle.push(`fill:${nodeStyles.bg}`);
-      if (nodeStyles.border) circleStyle.push(`stroke:${nodeStyles.border}`);
-      if (nodeStyles.borderWidth != null) circleStyle.push(`stroke-width:${nodeStyles.borderWidth}px`);
-      if (nodeStyles.borderStyle === "dashed") circleStyle.push("stroke-dasharray:8 5");
-      if (nodeStyles.borderStyle === "dotted") circleStyle.push("stroke-dasharray:3 3");
-      if (nodeStyles.borderStyle === "none") circleStyle.push("stroke:none");
-      const inline = circleStyle.length ? ` style="${circleStyle.join(";")}"` : "";
-      nodes += `<circle class="${circleClasses.join(" ")}" data-node-id="${nodeId}" cx="${cx}" cy="${cy}" r="${r}"${inline} />`;
-      const labelClass = nodeId === displayRootId ? "label-root scatter-label" : "label-node scatter-label";
-      const labelStyles = [`font-size:${p.fontSize ?? scatterFontSizeFor(r)}px`];
-      const labelInline = buildLabelStyle(nodeStyles);
-      if (labelInline) labelStyles.push(labelInline);
-      const label = scatterDisplayLabel(node);
-      const fontSize = p.fontSize ?? scatterFontSizeFor(r);
-      const labelMeasure = measureNodeLabel(label || node.id, fontSize);
-      const labelX = cx + r + 7;
-      const labelY = cy;
-      maxX = Math.max(maxX, labelX + labelMeasure.w + VIEWER_TUNING.layout.nodeRightPad);
-      maxY = Math.max(maxY, labelY + Math.max(r, labelMeasure.h / 2) + VIEWER_TUNING.layout.nodeBottomPad);
-      nodes += `<text class="${labelClass}" data-node-id="${nodeId}" x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" style="${labelStyles.join(";")}">${escapeXml(label)}</text>`;
-      return;
-    }
-    if (!nodeComponent) children.forEach((childId, i) => {
-      const child = pos[childId];
-      if (!child) {
-        return;
-      }
-
-      const defaultStroke =
-        VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
-      const stroke = nodeStyles.edgeColor || defaultStroke;
-      const edgeInline = buildEdgeStyle(nodeStyles);
-      const edgePath = layoutEdgePath(structuredMode, p, child);
-      edges += `<path class="edge edge-${structuredMode}" data-source-node-id="${nodeId}" data-target-node-id="${childId}" data-source-port-side="${edgePath.sourceSide}" data-target-port-side="${edgePath.targetSide}" stroke="${stroke}" d="${edgePath.d}"${edgeInline ? ` style="${edgeInline}"` : ""} />`;
-
-      // Edge label — stored on the child node (parent is unique per child)
-      const childNode = state.nodes[childId];
-      const childStyles = readNodeStyleAttrs(childNode?.attributes || {});
-      const edgeLabel = childStyles.edgeLabel || parentChildLinkLabels.get(parentChildEdgeKey(nodeId, childId));
-      if (edgeLabel) {
-        edges += `<text class="edge-label" data-node-id="${childId}" x="${edgePath.labelX}" y="${edgePath.labelY}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
-      }
-    });
-
-    const classNames = ["node-hit"];
-    if (scatterSurface) {
-      classNames.push("scatter-node");
-    }
-    if (viewState.selectedNodeIds.has(nodeId)) {
-      classNames.push("selected");
-      classNames.push("multi-selected");
-    }
-    if (nodeId === viewState.selectedNodeId) {
-      classNames.push("primary-selected");
-    }
-    if (isAliasNode(node)) {
-      classNames.push("alias");
-      classNames.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
-    }
-    if (nodeStyles.status) {
-      classNames.push(`status-${nodeStyles.status}`);
-    }
-    if (viewState.reparentSourceIds.has(nodeId)) {
-      classNames.push("reparent-source");
-    }
-    if (viewState.linkSourceNodeId === nodeId) {
-      classNames.push("link-source");
-    }
-    if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
-      classNames.push("cut-pending");
-    }
-    if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
-      classNames.push("drop-target");
-    }
-    if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
-      classNames.push("drag-source");
-    }
-    // Scope lock visual indicator
-    const nodeLock = scopeLockMap.get(nodeId);
-    if (nodeLock) {
-      classNames.push("scope-locked");
-      if (nodeLock.entityId !== collabEntityId) {
-        classNames.push("scope-locked-by-other");
-      }
-    }
-    const treatAsRoot = nodeId === displayRootId && !rootlessSurface;
-    const hitX = treatAsRoot ? p.x : p.x - 8;
-    const hitH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h);
-    const hitY = p.y - hitH / 2;
-    const hitW = treatAsRoot ? p.w : p.w + 36;
-    const hitRx = shapeRx(nodeStyles.shape, treatAsRoot);
-    nodes += `<rect class="${classNames.join(" ")}" data-node-id="${nodeId}" x="${hitX}" y="${hitY}" width="${hitW}" height="${hitH}" rx="${hitRx}" />`;
-    const visualClasses = ["node-visual-box"];
-    if (structuredMode === "mindmap") {
-      visualClasses.push("mindmap-box");
-    }
-    if (viewState.selectedNodeIds.has(nodeId)) {
-      visualClasses.push("selected");
-      visualClasses.push("multi-selected");
-    }
-    if (nodeId === viewState.selectedNodeId) {
-      visualClasses.push("primary-selected");
-    }
-    if (isAliasNode(node)) {
-      visualClasses.push("alias");
-      visualClasses.push(isBrokenAlias(node) ? "alias-broken" : (aliasAccess(node) === "write" ? "alias-write" : "alias-read"));
-    }
-    if (nodeStyles.status) {
-      visualClasses.push(`status-${nodeStyles.status}`);
-    }
-    if (viewState.reparentSourceIds.has(nodeId)) {
-      visualClasses.push("reparent-source");
-    }
-    if (viewState.linkSourceNodeId === nodeId) {
-      visualClasses.push("link-source");
-    }
-    if (viewState.dragState?.proposal?.kind === "reparent" && nodeId === viewState.dragState.proposal.parentId) {
-      visualClasses.push("drop-target");
-    }
-    if (viewState.dragState && nodeId === viewState.dragState.sourceNodeId) {
-      visualClasses.push("drag-source");
-    }
-    if (viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(nodeId)) {
-      visualClasses.push("cut-pending");
-    }
-    if (nodeLock) {
-      visualClasses.push("scope-locked");
-      if (nodeLock.entityId !== collabEntityId) {
-        visualClasses.push("scope-locked-by-other");
-      }
+    if (!nodeComponent) {
+      edges += renderParentChildEdges(nodeId, nodeStyles, p, children);
     }
 
-    if (treatAsRoot) {
-      const rootLabelLines = p.labelLines || splitLabelLines(uiLabel(node) || "(empty)");
-      const rootFont = p.fontSize ?? VIEWER_TUNING.typography.rootFont;
-      const rootLineHeight = lineHeightForFont(rootFont);
-      const rootStartY = multilineTextStartY(p.y, rootLabelLines.length, rootFont, rootLineHeight);
-      const rootTspans = multilineTspans(rootLabelLines, p.x + p.w / 2, rootLineHeight);
-      const w = p.w;
-      const h = p.h;
-      const rx = structuredMode === "mindmap" ? Math.min(28, h / 2) : shapeRx(nodeStyles.shape, true);
-      const x = p.x;
-      const y = p.y - h / 2;
-      const rootBoxStyle = buildNodeVisualStyle(nodeStyles);
-      const rootBoxInline = rootBoxStyle ? ` style="${rootBoxStyle}"` : "";
-      nodes += `<rect class="root-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"${rootBoxInline} />`;
-      const rootLabelInline = buildLabelStyle(nodeStyles);
-      const rootLabelStyle = [`font-size:${rootFont}px`];
-      if (rootLabelInline) rootLabelStyle.push(rootLabelInline);
-      nodes += `<text class="label-root" data-node-id="${nodeId}" x="${x + w / 2}" y="${rootStartY}" text-anchor="middle" style="${rootLabelStyle.join(";")}">${rootTspans}</text>`;
-    } else {
-      const rawLabel = diagramLabel(node, nodeStyles);
-      const labelLines = p.labelLines || splitLabelLines(rawLabel);
-      const labelClasses = ["label-node"];
-      if (viewState.selectedNodeIds.has(nodeId)) {
-        labelClasses.push("selected");
-      }
-      if (nodeId === viewState.selectedNodeId) {
-        labelClasses.push("primary-selected");
-      }
-      if (isAliasNode(node)) {
-        labelClasses.push("alias-label");
-        labelClasses.push(isBrokenAlias(node) ? "alias-broken-label" : (aliasAccess(node) === "write" ? "alias-write-label" : "alias-read-label"));
-      }
-      if (nodeStyles.status) {
-        labelClasses.push(`status-${nodeStyles.status}`);
-      }
-      const hasExplicitNodeBox = nodeStyles.shape === "diamond"
-        || nodeStyles.bg
-        || nodeStyles.border
-        || nodeStyles.borderWidth != null;
-      const needsStateVisualBox = structuredMode === "mindmap" || visualClasses.length > 1;
-      if (!isFolderNode(node) && (hasExplicitNodeBox || needsStateVisualBox)) {
-        const shapePadX = structuredMode === "mindmap" ? 0 : 14;
-        const shapePadY = structuredMode === "mindmap" ? 0 : 6;
-        const shapeX = p.x - shapePadX;
-        const shapeY = p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + shapePadY;
-        const shapeW = p.w + shapePadX * 2;
-        const shapeH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - shapePadY * 2;
-        const shapeInline = buildNodeVisualStyle(nodeStyles);
-        if (nodeStyles.shape === "diamond") {
-          nodes += `<path class="node-shape ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, shapeW, shapeH)}"${shapeInline ? ` style="${shapeInline}"` : ""} />`;
-        } else {
-          const rx = structuredMode === "mindmap" ? 4 : shapeRx(nodeStyles.shape, false);
-          nodes += `<path class="node-shape ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${rectPath(shapeX, shapeY, shapeW, shapeH, rx)}"${shapeInline ? ` style="${shapeInline}"` : ""} />`;
-        }
-      }
-      if (isFolderNode(node)) {
-        const frameInsetY = structuredMode === "mindmap" ? 0 : 12;
-        const framePadX = structuredMode === "mindmap" ? 0 : 14;
-        const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - frameInsetY;
-        const folderFrameX = p.x - framePadX;
-        const folderFrameY = p.y - frameH / 2;
-        const folderFrameW = p.w + framePadX * 2;
-        const folderFrameH = frameH;
-        const folderBoxStyle = buildNodeVisualStyle(nodeStyles);
-        const folderBoxInline = folderBoxStyle ? ` style="${folderBoxStyle}"` : "";
-        if (isScopePortalNode(node)) {
-          const leftX = folderFrameX + 2;
-          const rightX = folderFrameX + folderFrameW - 2;
-          const topY = folderFrameY;
-          const bottomY = folderFrameY + folderFrameH;
-          const arm = 12;
-          nodes += `<path class="portal-bracket ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="M ${leftX + arm} ${topY} H ${leftX} V ${bottomY} H ${leftX + arm}"${folderBoxInline} />`;
-          nodes += `<path class="portal-bracket ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="M ${rightX - arm} ${topY} H ${rightX} V ${bottomY} H ${rightX - arm}"${folderBoxInline} />`;
-        } else if (nodeStyles.shape === "diamond") {
-          nodes += `<path class="folder-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" d="${diamondPath(p.x + p.w / 2, p.y, folderFrameW, folderFrameH)}"${folderBoxInline} />`;
-        } else {
-          nodes += `<rect class="folder-box ${visualClasses.join(" ")}" data-node-id="${nodeId}" x="${folderFrameX}" y="${folderFrameY}" width="${folderFrameW}" height="${folderFrameH}" rx="${structuredMode === "mindmap" ? 4 : 8}"${folderBoxInline} />`;
-        }
-        if (previewLayout) {
-          const previewIds = new Set(previewLayout.childIds);
-          Object.values(state.links || {}).forEach((rawLink) => {
-            const link = normalizeGraphLink(rawLink);
-            const sourceNode = state.nodes[link.sourceNodeId];
-            const targetNode = state.nodes[link.targetNodeId];
-            if (!sourceNode || !targetNode || isParentChildPair(sourceNode, targetNode)) {
-              return;
-            }
-            if (!previewIds.has(link.sourceNodeId) || !previewIds.has(link.targetNodeId)) {
-              return;
-            }
-            const sourcePreview = previewLayout.positions[link.sourceNodeId];
-            const targetPreview = previewLayout.positions[link.targetNodeId];
-            if (!sourcePreview || !targetPreview) {
-              return;
-            }
-            const sourceRect = {
-              x: folderFrameX + sourcePreview.x,
-              y: folderFrameY + sourcePreview.y,
-              w: sourcePreview.w,
-              h: sourcePreview.h,
-            };
-            const targetRect = {
-              x: folderFrameX + targetPreview.x,
-              y: folderFrameY + targetPreview.y,
-              w: targetPreview.w,
-              h: targetPreview.h,
-            };
-            const { source: sourceEnd, target: targetEnd } = edgePortPairBetweenRects(sourceRect, targetRect);
-            const sx = sourceEnd.x;
-            const sy = sourceEnd.y;
-            const tx = targetEnd.x;
-            const ty = targetEnd.y;
-            const previewEdgePath = smoothGraphLinkPath(sx, sy, tx, ty);
-            nodes += `<path class="flow-preview-edge" d="${previewEdgePath}" />`;
-            const edgeLabel = (link.label || link.relationType || "").trim();
-            if (edgeLabel) {
-              nodes += `<text class="flow-preview-edge-label" x="${(sx + tx) / 2}" y="${(sy + ty) / 2 - 6}" text-anchor="middle">${escapeXml(edgeLabel)}</text>`;
-            }
-          });
+    const output = renderNodeSvg(toNodeDrawInput(node, p, nodeStyles));
+    nodes += output.svg;
+    maxX = Math.max(maxX, output.bounds.maxX);
+    maxY = Math.max(maxY, output.bounds.maxY);
 
-          previewLayout.childIds.forEach((previewChildId) => {
-            const previewChild = state.nodes[previewChildId];
-            const previewPos = previewLayout.positions[previewChildId];
-            if (!previewChild || !previewPos) {
-              return;
-            }
-            const previewStyles = readNodeStyleAttrs(previewChild.attributes || {});
-            const previewLabel = escapeXml(diagramLabel(previewChild, previewStyles));
-            const previewX = folderFrameX + previewPos.x;
-            const previewY = folderFrameY + previewPos.y;
-            const previewClass = isFolderNode(previewChild) ? "flow-preview-node flow-preview-node-scope" : "flow-preview-node";
-            nodes += `<rect class="${previewClass}" x="${previewX}" y="${previewY}" width="${previewPos.w}" height="${previewPos.h}" rx="8" />`;
-            nodes += `<text class="flow-preview-node-label" x="${previewX + 10}" y="${previewY + previewPos.h / 2}" dominant-baseline="middle" text-anchor="start">${previewLabel}</text>`;
-          });
-        }
-        // Lock icon on locked folder nodes
-        if (nodeLock) {
-          const lockIconX = folderFrameX + folderFrameW - 14;
-          const lockIconY = folderFrameY + 14;
-          const lockClass = nodeLock.entityId === collabEntityId ? "lock-icon" : "lock-icon lock-icon-other";
-          nodes += `<text class="${lockClass}" x="${lockIconX}" y="${lockIconY}" text-anchor="middle" dominant-baseline="middle">\uD83D\uDD12</text>`;
-        }
-      }
-      if (isLatexNode(node)) {
-        let htmlStr = latexHtmlCache.get(node.text);
-        if (!htmlStr) {
-          const { latex, displayMode } = latexSource(node.text);
-          htmlStr = katex.renderToString(latex, { displayMode, throwOnError: false });
-          latexHtmlCache.set(node.text, htmlStr);
-        }
-        const foH = p.h;
-        const foY = p.y - foH / 2;
-        nodes += `<foreignObject data-node-id="${nodeId}" x="${p.x}" y="${foY}" width="${p.w}" height="${foH}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${htmlStr}</div></foreignObject>`;
-      } else {
-        const nodeFont = p.fontSize ?? VIEWER_TUNING.typography.nodeFont;
-        const lineHeight = lineHeightForFont(nodeFont);
-        const startY = previewLayout
-          ? p.y - Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) / 2 + 36
-          : multilineTextStartY(p.y, labelLines.length, nodeFont, lineHeight);
-        const labelX = structuredMode === "mindmap"
-          ? p.x + p.w / 2
-          : isScopePortalNode(node)
-          ? p.x + 12
-          : p.x;
-        const tspans = multilineTspans(labelLines, labelX, lineHeight);
-        const labelInline = buildLabelStyle(nodeStyles);
-        const labelStyle = [`font-size:${nodeFont}px`];
-        if (labelInline) labelStyle.push(labelInline);
-        nodes += `<text class="${labelClasses.join(" ")}" data-node-id="${nodeId}" x="${labelX}" y="${startY}" text-anchor="${structuredMode === "mindmap" ? "middle" : "start"}" style="${labelStyle.join(";")}">${tspans}</text>`;
-      }
-      const badge = nodeBadge(node);
-      if (badge) {
-        nodes += `<text class="alias-badge alias-badge-${badge}" x="${p.x + p.w + 18}" y="${p.y}" dominant-baseline="middle">${escapeXml(badge)}</text>`;
-      }
-      // Band confidence badge (deep band or explicit confidence)
-      if (nodeStyles.confidence != null) {
-        const cColor = confidenceColor(nodeStyles.confidence);
-        const cLabel = (nodeStyles.confidence * 100).toFixed(0) + "%";
-        const cX = p.x + p.w + (badge ? 60 : 18);
-        nodes += `<rect class="confidence-badge" x="${cX}" y="${p.y - 12}" width="42" height="22" rx="11" style="fill:${cColor}" />`;
-        nodes += `<text class="confidence-badge-text" x="${cX + 21}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(cLabel)}</text>`;
-      }
-      // Status badge
-      if (nodeStyles.status) {
-        const statusColors: Record<string, string> = {
-          placeholder: "#999", confirmed: "#2d8c4e", contested: "#d94040",
-          frozen: "#4a7fb5", active: "#e89b1a", review: "#9b59b6",
-        };
-        const sColor = statusColors[nodeStyles.status] || "#666";
-        const sX = p.x + p.w + (badge ? 60 : 18) + (nodeStyles.confidence != null ? 56 : 0);
-        nodes += `<rect class="status-badge" x="${sX}" y="${p.y - 12}" width="${nodeStyles.status.length * 8 + 12}" height="22" rx="11" style="fill:${sColor}" />`;
-        nodes += `<text class="status-badge-text" x="${sX + nodeStyles.status.length * 4 + 6}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle">${escapeXml(nodeStyles.status)}</text>`;
-      }
-    }
-
-    if (viewState.collapsedIds.has(nodeId) && (node.children || []).length > 0) {
-      const indicatorX =
-        treatAsRoot
-          ? p.x + p.w + VIEWER_TUNING.layout.rootIndicatorPad
-          : p.x + p.w + VIEWER_TUNING.layout.nodeIndicatorPad;
-      const hiddenCount = countHiddenDescendants(nodeId);
-      const badgeLabel = String(Math.max(1, hiddenCount));
-      const badgeWidth = Math.max(26, badgeLabel.length * 14 + 14);
-      const badgeHeight = 24;
-      const badgeX = indicatorX - badgeWidth / 2;
-      const badgeY = p.y - badgeHeight / 2;
-      nodes += `<rect class="collapsed-badge" data-collapse-node-id="${nodeId}" x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="${badgeHeight}" rx="12" />`;
-      nodes += `<circle class="collapsed-badge-node" data-collapse-node-id="${nodeId}" cx="${badgeX - 8}" cy="${p.y}" r="8" />`;
-      nodes += `<text class="collapsed-badge-count" data-collapse-node-id="${nodeId}" x="${indicatorX}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${escapeXml(badgeLabel)}</text>`;
+    if (!scatterSurface && isFolderNode(node)) {
+      nodes += renderFolderPreview(node, nodeStyles, p);
     }
 
     if (nodeComponent) {
@@ -11069,7 +10639,7 @@ function addChild(): void {
   }
   pushUndoSnapshot();
   const id = newId();
-  map!.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
+  map!.state.nodes[id] = createNodeRecord(id, parentId, "");
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
@@ -11089,7 +10659,7 @@ function addSibling(): void {
   pushUndoSnapshot();
   const currentIndex = parent.children.indexOf(node.id);
   const id = newId();
-  map!.state.nodes[id] = createNodeRecord(id, parent.id, "New Sibling");
+  map!.state.nodes[id] = createNodeRecord(id, parent.id, "");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
@@ -11106,6 +10676,53 @@ function selectedLinkableNode(): TreeNode | null {
     return null;
   }
   return node;
+}
+
+function openSelectedHyperlinkNode(): boolean {
+  if (inlineEditor || inlineEdgeLabelEditor) {
+    return false;
+  }
+  if (!map || !viewState.selectedNodeId) {
+    setStatus("No hyperlink node selected.", true);
+    return false;
+  }
+  const node = map.state.nodes[viewState.selectedNodeId];
+  if (!node || isAliasNode(node)) {
+    setStatus("Select a non-alias hyperlink node.", true);
+    return false;
+  }
+  const url = safeExternalLinkToOpen(node.link || "");
+  if (url) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    setStatus(`Opened link: ${uiLabel(node)}`);
+    return true;
+  }
+  const localPath = localPathLinkToOpen(node.link || "");
+  if (localPath) {
+    void openLocalPathViaServer(localPath, uiLabel(node));
+    return true;
+  }
+  setStatus("Selected node has no safe hyperlink to open.", true);
+  return false;
+}
+
+async function openLocalPathViaServer(localPath: string, label: string): Promise<void> {
+  setStatus(`Opening: ${label}…`);
+  try {
+    const response = await fetch("/api/open-local-path", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ path: localPath }),
+    });
+    const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+    if (!response.ok || !payload?.ok) {
+      setStatus(`Could not open: ${payload?.error || `HTTP ${response.status}`}`, true);
+      return;
+    }
+    setStatus(`Opened link: ${label}`);
+  } catch (err) {
+    setStatus(`Could not open link: ${(err as Error).message || "request failed"}`, true);
+  }
 }
 
 function findExistingGraphLink(sourceNodeId: string, targetNodeId: string): GraphLink | null {
@@ -11229,7 +10846,7 @@ function addScatterNodeAt(clientX: number, clientY: number): void {
   const point = clientToCanvasPoint(clientX, clientY);
   pushUndoSnapshot();
   const id = newId();
-  map.state.nodes[id] = createNodeRecord(id, parentId, "New Node");
+  map.state.nodes[id] = createNodeRecord(id, parentId, "");
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
@@ -11299,7 +10916,7 @@ function setGraphLinkEndpointPortNearPointer(linkId: string, endpoint: LinkEndpo
   }
   const point = clientToCanvasPoint(clientX, clientY);
   const linkBoundsMode: LinkConnectionBoundsMode = structuredSurfaceMode() === "mindmap" ? "mindmap" : "box";
-  const side = nearestEdgePortSide(linkConnectionRect(pos, linkBoundsMode), point);
+  const side = nearestEdgePortSideForGraphLinkEdit(linkConnectionRect(pos, linkBoundsMode), point);
   return setGraphLinkEndpointPort(linkId, endpoint, side, false);
 }
 
@@ -11330,8 +10947,20 @@ function deleteSelectedGraphLink(): boolean {
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   touchDocument();
+  flushAutosaveNow();
   setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
   return true;
+}
+
+function deleteGraphLinksForNode(nodeId: string): void {
+  if (!map?.state.links) {
+    return;
+  }
+  Object.entries(map.state.links).forEach(([linkId, link]) => {
+    if (link.sourceNodeId === nodeId || link.targetNodeId === nodeId) {
+      delete map!.state.links![linkId];
+    }
+  });
 }
 
 function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
@@ -11393,6 +11022,30 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     preserveNodeViewportCenter(nodeId, viewportCenterBefore);
     return true;
   }
+  if (mode === "node-text") {
+    const applied = applyMarkdownLinkNodeInput({
+      text: node.text,
+      link: node.link || "",
+      attributes: node.attributes || {},
+    }, next);
+    if (
+      node.text === applied.text &&
+      (node.link || "") === applied.link &&
+      stringRecordEquals(node.attributes || {}, applied.attributes)
+    ) {
+      return true;
+    }
+    pushUndoSnapshot();
+    latexMetricsCache.delete(node.text);
+    latexHtmlCache.delete(node.text);
+    node.text = applied.text;
+    node.link = applied.link;
+    node.attributes = applied.attributes;
+    syncAliasDisplayForTarget(node.id);
+    touchDocument();
+    preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+    return true;
+  }
   if (node.text === next) {
     return true;
   }
@@ -11404,6 +11057,15 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   touchDocument();
   preserveNodeViewportCenter(nodeId, viewportCenterBefore);
   return true;
+}
+
+function stringRecordEquals(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key) => left[key] === right[key]);
 }
 
 function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
@@ -11562,7 +11224,11 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
     : "node-text";
   const input = document.createElement("textarea");
   input.rows = 1;
-  input.value = mode === "target-text" ? (resolveAliasTarget(node)?.text || node.text || "") : uiLabel(node);
+  input.value = mode === "target-text"
+    ? (resolveAliasTarget(node)?.text || node.text || "")
+    : mode === "node-text"
+      ? editInputForMarkdownLinkNode({ text: node.text || "", link: node.link || "", attributes: node.attributes || {} })
+      : uiLabel(node);
   input.className = "inline-node-editor";
   input.setAttribute("aria-label", mode === "target-text" ? "Edit target node text" : "Edit node label");
   board.appendChild(input);
@@ -11713,6 +11379,7 @@ function deleteSelected(): void {
       if (!isAliasNode(current)) {
         markAliasesBrokenInViewer(currentId, uiLabel(current));
       }
+      deleteGraphLinksForNode(currentId);
       stack.push(...(current.children || []));
       viewState.reparentSourceIds.delete(currentId);
       delete map!.state.nodes[currentId];
@@ -11732,6 +11399,7 @@ function deleteSelected(): void {
     viewState.currentScopeRootId = viewState.currentScopeId;
   }
   touchDocument();
+  flushAutosaveNow();
 }
 
 function toggleCollapse(): void {
@@ -11782,6 +11450,11 @@ function currentDocSnapshot(): SavedMap {
 
 function cloneStateForSave(state: AppState | null): AppState | null {
   return state ? JSON.parse(JSON.stringify(state)) as AppState : null;
+}
+
+function parseCloudMapVersion(payload: { cloudMapVersion?: unknown; mapVersion?: unknown }): number | null {
+  const value = payload.cloudMapVersion ?? payload.mapVersion;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
@@ -11890,6 +11563,7 @@ async function fetchCloudSyncStatus(): Promise<void> {
       cloudSyncEnabled = false;
       cloudSyncExists = false;
       cloudSavedAt = null;
+      cloudMapVersion = null;
       updateCloudSyncUi();
       return;
     }
@@ -11897,12 +11571,14 @@ async function fetchCloudSyncStatus(): Promise<void> {
     cloudSyncEnabled = Boolean(payload.enabled);
     cloudSyncExists = Boolean(payload.exists);
     cloudSavedAt = payload.cloudSavedAt ? String(payload.cloudSavedAt) : null;
+    cloudMapVersion = parseCloudMapVersion(payload);
     cloudConflictPending = false;
     updateCloudSyncUi();
   } catch {
     cloudSyncEnabled = false;
     cloudSyncExists = false;
     cloudSavedAt = null;
+    cloudMapVersion = null;
     cloudConflictPending = false;
     updateCloudSyncUi();
   }
@@ -11918,8 +11594,12 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     }
     return false;
   }
+  if (cloudConflictPending && !force) {
+    return false;
+  }
   try {
     const baseSavedAt = cloudSavedAt;
+    const baseMapVersion = cloudMapVersion;
     const response = await fetch(`/api/sync/push/${encodeURIComponent(CLOUD_MAP_ID)}`, {
       method: "POST",
       headers: {
@@ -11928,6 +11608,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
       body: JSON.stringify({
         ...currentDocSnapshot(),
         baseSavedAt,
+        baseMapVersion,
         force,
       }),
     });
@@ -11936,6 +11617,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
       const conflict = await response.json().catch(() => ({ cloudSavedAt: null }));
       cloudConflictPending = true;
       cloudSavedAt = conflict.cloudSavedAt ? String(conflict.cloudSavedAt) : cloudSavedAt;
+      cloudMapVersion = parseCloudMapVersion(conflict) ?? cloudMapVersion;
       updateCloudSyncUi();
       if (showStatus) {
         setStatus("Cloud conflict detected. Choose Use Local or Use Cloud.", true);
@@ -11967,6 +11649,7 @@ async function pushDocToCloud(showStatus = false, force = false): Promise<boolea
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     map.savedAt = String(payload.savedAt || nowIso());
     cloudSavedAt = String(payload.savedAt || nowIso());
+    cloudMapVersion = parseCloudMapVersion(payload) ?? cloudMapVersion;
     cloudSyncExists = true;
     cloudConflictPending = false;
     updateCloudSyncUi();
@@ -11999,6 +11682,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     if (response.status === 404) {
       cloudSyncExists = false;
       cloudSavedAt = null;
+      cloudMapVersion = null;
       updateCloudSyncUi();
       return false;
     }
@@ -12012,6 +11696,7 @@ async function pullDocFromCloud(showStatus = false): Promise<boolean> {
     loadPayload(payload);
     cloudSyncExists = true;
     cloudSavedAt = payload.savedAt ? String(payload.savedAt) : null;
+    cloudMapVersion = parseCloudMapVersion(payload);
     cloudConflictPending = false;
     updateCloudSyncUi();
     broadcastState();
@@ -12109,6 +11794,21 @@ function scheduleAutosave(): void {
     autosaveTimer = null;
     void saveDocToLocalDb(false);
   }, AUTOSAVE_DELAY_MS);
+}
+
+function flushAutosaveNow(): void {
+  if (!map || isReadOnlyLink()) {
+    return;
+  }
+  if (autosaveTimer !== null) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  void saveDocToLocalDb(false).then((ok) => {
+    if (!ok) {
+      setStatus("Local save failed after delete.", true);
+    }
+  });
 }
 
 function isValidAppState(s: unknown): s is AppState {
@@ -13055,10 +12755,22 @@ function renderRoutingScopeSurface(selectedNodeId: string | null): string {
   const state = routingScopeState(routingScopeTargets);
   const rootId = state.rootId;
   const activeScopeId = selectedRoutingScopeTarget()?.id;
-  const layout = withVisibleChildrenOverride(
-    (node) => node.children || [],
-    () => buildRightTreeLayout(state, buildMeasuredTreeContext(state, rootId, "tree")),
-  );
+  const routingGraph: VisibleLayoutGraph = {
+    nodeIds: Object.keys(state.nodes),
+    childrenOf: (nodeId) => state.nodes[nodeId]?.children || [],
+    graphLinks: [],
+  };
+  const routingConfig = structuredLayoutConfig("tree");
+  const routingBoxSizes: Record<string, LayoutNodeMetric> = {};
+  Object.keys(state.nodes).forEach((nodeId) => {
+    routingBoxSizes[nodeId] = measureLayoutNode(state, nodeId, rootId, routingConfig);
+  });
+  const layout = layoutPortLayout(routingGraph, routingBoxSizes, "Tree", {
+    displayRootId: rootId,
+    structuredMode: "tree",
+    density: viewState.surfaceLayoutDensity,
+    branchDirection: viewState.surfaceBranchDirection,
+  });
   let edges = "";
   let nodes = "";
   layout.order.forEach((nodeId) => {
@@ -13397,7 +13109,7 @@ function collectInternalLinksForRoots(rootIds: string[]): GraphLink[] {
 function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot, idMap?: Map<string, string>): string {
   const parent = getNode(parentId);
   const createdId = newId();
-  map!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text || "New Node");
+  map!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text ?? "");
   const created = map!.state.nodes[createdId]!;
   created.nodeType = snapshot.nodeType || "text";
   created.collapsed = snapshot.collapsed === true;
@@ -13558,6 +13270,114 @@ function parseStructuredClipboardPayload(text: string): SubtreeClipboardPayload 
   }
 }
 
+function normalizeClipboardSyncRecord(raw: unknown): ClipboardSyncRecord | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Partial<ClipboardSyncRecord>;
+  if (
+    record.type !== "M3E_CLIPBOARD_UPDATE" ||
+    typeof record.fromTabId !== "string" ||
+    typeof record.encoded !== "string" ||
+    typeof record.writtenAt !== "number"
+  ) {
+    return null;
+  }
+  if (!record.encoded.startsWith(STRUCTURED_CLIPBOARD_PREFIX)) {
+    return null;
+  }
+  if (Date.now() - record.writtenAt > STRUCTURED_CLIPBOARD_MAX_AGE_MS) {
+    return null;
+  }
+  return {
+    type: "M3E_CLIPBOARD_UPDATE",
+    fromTabId: record.fromTabId,
+    encoded: record.encoded,
+    writtenAt: record.writtenAt,
+  };
+}
+
+function applyStructuredClipboardPayload(payload: SubtreeClipboardPayload): void {
+  viewState.clipboardState = {
+    type: "copy",
+    snapshots: payload.roots,
+    links: payload.links,
+  };
+  scheduleRender();
+}
+
+function applyStructuredClipboardText(encoded: string): boolean {
+  const payload = parseStructuredClipboardPayload(encoded);
+  if (!payload) {
+    return false;
+  }
+  applyStructuredClipboardPayload(payload);
+  return true;
+}
+
+function writeStructuredClipboardFallback(encoded: string): boolean {
+  const record: ClipboardSyncRecord = {
+    type: "M3E_CLIPBOARD_UPDATE",
+    fromTabId: TAB_ID,
+    encoded,
+    writtenAt: Date.now(),
+  };
+  let stored = false;
+  try {
+    window.localStorage.setItem(STRUCTURED_CLIPBOARD_STORAGE_KEY, JSON.stringify(record));
+    stored = true;
+  } catch {
+    stored = false;
+  }
+  try {
+    clipboardBc?.postMessage(record);
+  } catch {
+    // localStorage is the durable same-origin fallback; BroadcastChannel is best-effort.
+  }
+  return stored || Boolean(clipboardBc);
+}
+
+function readStructuredClipboardFallback(): SubtreeClipboardPayload | null {
+  try {
+    const record = normalizeClipboardSyncRecord(JSON.parse(window.localStorage.getItem(STRUCTURED_CLIPBOARD_STORAGE_KEY) || "null"));
+    return record ? parseStructuredClipboardPayload(record.encoded) : null;
+  } catch {
+    return null;
+  }
+}
+
+function initClipboardSync(): void {
+  if (typeof BroadcastChannel !== "undefined") {
+    try {
+      clipboardBc = new BroadcastChannel("m3e-subtree-clipboard");
+      clipboardBc.onmessage = (ev: MessageEvent<ClipboardSyncRecord>) => {
+        const record = normalizeClipboardSyncRecord(ev.data);
+        if (!record || record.fromTabId === TAB_ID) {
+          return;
+        }
+        applyStructuredClipboardText(record.encoded);
+      };
+    } catch {
+      clipboardBc = null;
+    }
+  }
+  window.addEventListener("storage", (ev: StorageEvent) => {
+    if (ev.key !== STRUCTURED_CLIPBOARD_STORAGE_KEY || !ev.newValue) {
+      return;
+    }
+    try {
+      const record = normalizeClipboardSyncRecord(JSON.parse(ev.newValue));
+      if (!record || record.fromTabId === TAB_ID) {
+        return;
+      }
+      applyStructuredClipboardText(record.encoded);
+    } catch {
+      // Ignore malformed same-origin clipboard fallback records.
+    }
+  });
+  window.addEventListener("beforeunload", () => clipboardBc?.close());
+}
+
 async function copyTextViaLocalClipboardApi(text: string): Promise<boolean> {
   if (!text || typeof fetch !== "function" || !/^https?:$/.test(window.location.protocol)) {
     return false;
@@ -13658,22 +13478,32 @@ async function copyScopeId(): Promise<void> {
   setStatus("Failed to copy scope ID to system clipboard.", true);
 }
 
-function copySelected(): void {
+async function copySelected(): Promise<void> {
   const roots = getSelectionRoots();
   if (roots.length === 0) {
     return;
   }
   const snapshots = roots.map((rootId) => toSubtreeSnapshot(rootId));
   const links = collectInternalLinksForRoots(roots);
+  const payload = buildStructuredClipboardPayload(snapshots, links);
+  const encoded = encodeStructuredClipboardPayload(payload);
   viewState.clipboardState = {
     type: "copy",
     snapshots,
     links,
   };
-  const payload = buildStructuredClipboardPayload(snapshots, links);
-  void copyTextToSystemClipboard(encodeStructuredClipboardPayload(payload));
+  const copiedToM3eTabs = writeStructuredClipboardFallback(encoded);
   scheduleRender();
-  setStatus(`Copied ${roots.length} node(s)${links.length ? ` and ${links.length} link(s)` : ""}.`);
+  const message = `Copied ${roots.length} node(s)${links.length ? ` and ${links.length} link(s)` : ""}`;
+  if (await copyTextToSystemClipboard(encoded)) {
+    setStatus(`${message}.`);
+    return;
+  }
+  if (copiedToM3eTabs) {
+    setStatus(`${message} for M3E tabs. System clipboard unavailable.`);
+    return;
+  }
+  setStatus("Failed to copy nodes.", true);
 }
 
 function cutSelected(): void {
@@ -13696,7 +13526,7 @@ async function pasteClipboard(): Promise<void> {
   }
   if (!viewState.clipboardState) {
     const clipboardText = await readTextFromSystemClipboard();
-    const payload = clipboardText ? parseStructuredClipboardPayload(clipboardText) : null;
+    const payload = (clipboardText ? parseStructuredClipboardPayload(clipboardText) : null) || readStructuredClipboardFallback();
     if (!payload) {
       setStatus("Clipboard is empty.", true);
       return;
@@ -13906,6 +13736,21 @@ window.addEventListener("m3e:set-surface-layout", (event: Event) => {
   if (detail.direction) {
     setSurfaceBranchDirection(sanitizeSurfaceBranchDirection(detail.direction));
   }
+});
+
+window.addEventListener("m3e:set-layout-options", (event: Event) => {
+  const detail = (event as CustomEvent<{
+    direction?: SurfaceLayoutDirection;
+    depthAlign?: SurfaceDepthAlign;
+    edgeRoute?: SurfaceEdgeRoute;
+    linkRoute?: SurfaceLinkRoute;
+  }>).detail || {};
+  setPublicLayoutOptions({
+    direction: detail.direction,
+    depthAlign: detail.depthAlign,
+    edge: detail.edgeRoute ? { route: detail.edgeRoute } : undefined,
+    link: detail.linkRoute ? { route: detail.linkRoute } : undefined,
+  });
 });
 
 scatterNormalBtn?.addEventListener("click", () => setScatterToolMode("normal"));
@@ -15120,7 +14965,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
     event.preventDefault();
-    copySelected();
+    void copySelected();
     return;
   }
 
@@ -15155,6 +15000,27 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "Tab") {
     event.preventDefault();
     createNodeByDirectionAndEdit("depth");
+    return;
+  }
+
+  if (event.altKey && event.key === "Enter") {
+    if (isTextEntryElement(event.target)) {
+      return;
+    }
+    const selected = getNode(viewState.selectedNodeId);
+    if (
+      !inlineEditor &&
+      !inlineEdgeLabelEditor &&
+      selected?.parentId &&
+      lastLayout &&
+      incomingTreeEdgeLabelLayout(selected.id)
+    ) {
+      event.preventDefault();
+      startIncomingEdgeLabelEdit(selected.id);
+      return;
+    }
+    event.preventDefault();
+    EnterScopeCommand();
     return;
   }
 
@@ -15285,12 +15151,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-      if (event.altKey && event.key === "Enter") {
-        event.preventDefault();
-        EnterScopeCommand();
-        return;
-      }
-
   if (event.altKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleEntityListPanel();
@@ -15300,6 +15160,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.altKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     toggleMarkdownPreviewForSelectedNode();
+    return;
+  }
+
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+    event.preventDefault();
+    openSelectedHyperlinkNode();
     return;
   }
 
@@ -15339,7 +15205,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
   if (event.altKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
-    editEdgeLabelForSelectedNode();
+    startIncomingEdgeLabelEdit();
     return;
   }
 
@@ -15451,12 +15317,6 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
     applyMarkedLink();
-    return;
-  }
-
-  if (!event.ctrlKey && !event.metaKey && event.altKey && !event.shiftKey && event.key.toLowerCase() === "l") {
-    event.preventDefault();
-    startIncomingEdgeLabelEdit();
     return;
   }
 
@@ -15644,6 +15504,7 @@ void initializeDocument().then(() => {
   if (fatalLoadError || !map) {
     return;
   }
+  initClipboardSync();
   if (!LOCAL_FS_VIEW_MODE) {
     initBroadcastSync();
     initVisibilityManagedLiveStreams();

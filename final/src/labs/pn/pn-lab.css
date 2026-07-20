@@ -1,0 +1,111 @@
+body {
+  margin: 0;
+  background: #f6f7fb;
+  color: #1f2430;
+  font-family: Inter, "Segoe UI", sans-serif;
+}
+
+.pn-lab {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: 100vh;
+}
+
+.pn-lab-panel {
+  border-right: 1px solid #d8dce8;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.pn-lab-panel h1 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.pn-lab-control {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pn-lab-control select,
+.pn-lab-control input {
+  height: 34px;
+  border: 1px solid #c9cedb;
+  border-radius: 6px;
+  padding: 0 8px;
+  font: inherit;
+  font-weight: 500;
+}
+
+.pn-lab-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.pn-lab-actions button {
+  height: 32px;
+  border: 1px solid #c4cad8;
+  border-radius: 6px;
+  background: #f9fafc;
+  cursor: pointer;
+}
+
+.pn-lab-summary {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  color: #4b5565;
+  font-size: 12px;
+}
+
+.pn-lab-stage-wrap {
+  overflow: auto;
+  padding: 24px;
+}
+
+.pn-lab-stage {
+  position: relative;
+  min-width: 1200px;
+  min-height: 760px;
+  border: 1px solid #d9deea;
+  background:
+    linear-gradient(#eef1f7 1px, transparent 1px),
+    linear-gradient(90deg, #eef1f7 1px, transparent 1px),
+    #ffffff;
+  background-size: 40px 40px;
+}
+
+.pn-lab-anchor,
+.pn-lab-safe-zone {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 8px;
+}
+
+.pn-lab-anchor {
+  border: 2px solid #334155;
+  background: rgba(51, 65, 85, 0.08);
+}
+
+.pn-lab-safe-zone {
+  border: 2px dashed #d33f49;
+  background: rgba(211, 63, 73, 0.08);
+}
+
+.pn-lab-safe-zone span {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  color: #9f1d29;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pn-lab .wb-progressive-nav {
+  opacity: 1;
+  pointer-events: auto;
+}

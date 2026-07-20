@@ -1,0 +1,108 @@
+{
+  "schema": "m3e.semantic-source.specimen.v1",
+  "descriptor": {
+    "sourceId": "src:m3e-repository-math-specimen",
+    "sourceKind": "git-backed",
+    "schemaVersion": "1",
+    "currentRevision": "2222222222222222222222222222222222222222",
+    "readRoute": "file:tests/fixtures/semantic-source/revision-002-renamed.json",
+    "writeRoute": "reject:read-only-phase1",
+    "classificationPolicy": "public-safe-specimen-v1",
+    "capabilities": {
+      "read": true,
+      "proposal": false,
+      "directWrite": false,
+      "history": true,
+      "transaction": false
+    },
+    "lastIndexedRevision": "1111111111111111111111111111111111111111"
+  },
+  "entities": [
+    {
+      "localEntityId": "math:semigroup",
+      "entityType": "mathematical-structure",
+      "label": "Semigroup",
+      "documentRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md",
+      "refinementLevel": "D3",
+      "classification": "include",
+      "provenance": {
+        "sourceRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md"
+      }
+    },
+    {
+      "localEntityId": "math:monoid",
+      "entityType": "mathematical-structure",
+      "label": "Monoid",
+      "documentRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md",
+      "refinementLevel": "D3",
+      "classification": "include",
+      "provenance": {
+        "sourceRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md"
+      }
+    },
+    {
+      "localEntityId": "strategy:neo4j-delayed-adoption",
+      "entityType": "strategy-claim",
+      "label": "Neo4j delayed adoption",
+      "documentRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md",
+      "refinementLevel": "D3",
+      "classification": "include",
+      "provenance": {
+        "sourceRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md"
+      }
+    },
+    {
+      "localEntityId": "trend:math-ontology-demand",
+      "entityType": "demand-trend",
+      "label": "Math ontology creates graph traversal demand",
+      "documentRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md",
+      "refinementLevel": "D2",
+      "selectedForGraph": true,
+      "classification": "include",
+      "provenance": {
+        "sourceRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md",
+        "transformation": "Aggregate observed ontology queries into an adoption-demand trend."
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "localAssertionId": "assertion:monoid-specializes-semigroup",
+      "relationType": "SPECIALIZES",
+      "from": {
+        "sourceId": "src:m3e-repository-math-specimen",
+        "localEntityId": "math:monoid"
+      },
+      "to": {
+        "sourceId": "src:m3e-repository-math-specimen",
+        "localEntityId": "math:semigroup"
+      },
+      "ownerSourceId": "src:m3e-repository-math-specimen",
+      "refinementLevel": "D3",
+      "classification": "include",
+      "provenance": {
+        "sourceRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md"
+      }
+    },
+    {
+      "localAssertionId": "assertion:math-demand-motivates-neo4j",
+      "relationType": "MOTIVATES",
+      "from": {
+        "sourceId": "src:m3e-repository-math-specimen",
+        "localEntityId": "trend:math-ontology-demand"
+      },
+      "to": {
+        "sourceId": "src:m3e-repository-math-specimen",
+        "localEntityId": "strategy:neo4j-delayed-adoption"
+      },
+      "ownerSourceId": "src:m3e-repository-math-specimen",
+      "refinementLevel": "D2",
+      "selectedForGraph": true,
+      "classification": "include",
+      "provenance": {
+        "sourceRef": "docs/ideas/260719_math_ontology_graphdb_thesis.md",
+        "transformation": "Connect the selected demand trend to the delayed-adoption strategy."
+      }
+    }
+  ]
+}

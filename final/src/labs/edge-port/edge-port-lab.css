@@ -1,0 +1,113 @@
+.edge-port-lab {
+  display: grid;
+  grid-template-columns: 280px minmax(520px, 1fr) 340px;
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #17202a;
+  background: #f5f7f9;
+}
+
+.lab-panel {
+  padding: 18px;
+  background: #ffffff;
+  border-right: 1px solid #d8dee6;
+}
+
+.lab-panel.right {
+  border-right: 0;
+  border-left: 1px solid #d8dee6;
+}
+
+.lab-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.control-group {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.control-group label {
+  font-size: 12px;
+  font-weight: 650;
+  color: #425466;
+}
+
+.control-group select {
+  min-width: 0;
+  border: 1px solid #b8c2cc;
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: #fff;
+}
+
+.stage {
+  overflow: auto;
+  padding: 28px;
+}
+
+.stage svg {
+  display: block;
+  min-width: 720px;
+  min-height: 520px;
+  background: #ffffff;
+  border: 1px solid #d8dee6;
+}
+
+.node-rect {
+  fill: #f7fbff;
+  stroke: #4a6fa5;
+  stroke-width: 2;
+}
+
+.expected-marker {
+  fill: none;
+  stroke: #9aa7b3;
+  stroke-dasharray: 4 3;
+}
+
+.route-path {
+  fill: none;
+  stroke: #2d7d6f;
+  stroke-width: 3;
+}
+
+.route-path.mismatch {
+  stroke: #b42318;
+}
+
+.port-dot {
+  fill: #f59f00;
+  stroke: #1f2933;
+  stroke-width: 1.5;
+}
+
+.json-block {
+  overflow: auto;
+  max-height: 42vh;
+  padding: 10px;
+  border: 1px solid #d8dee6;
+  border-radius: 6px;
+  background: #f9fafb;
+  font-size: 12px;
+}
+
+.check-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.check-pass {
+  color: #176b4d;
+}
+
+.check-fail {
+  color: #b42318;
+  font-weight: 650;
+}
+

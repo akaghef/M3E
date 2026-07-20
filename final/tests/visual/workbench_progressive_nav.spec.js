@@ -138,6 +138,8 @@ test.describe("Workbench progressive navigation", () => {
     );
 
     expect(geometry.pathCount).toBeGreaterThanOrEqual(6);
+    await expect(page.locator('.wb-progressive-edges path').first()).toHaveAttribute("data-source-side", "right");
+    await expect(page.locator('.wb-progressive-edges path').first()).toHaveAttribute("data-target-side", "left");
     expect(geometry.endpoints.sx).toBeCloseTo(geometry.fromRect.right, 1);
     expect(geometry.endpoints.sy).toBeCloseTo(geometry.fromRect.cy, 1);
     expect(geometry.endpoints.tx).toBeCloseTo(geometry.toRect.left, 1);
@@ -166,6 +168,72 @@ test.describe("Workbench progressive navigation", () => {
     expect(geometry.endpoints.sy).toBeCloseTo(geometry.fromRect.cy, 1);
     expect(geometry.endpoints.tx).toBeCloseTo(geometry.toRect.left, 1);
     expect(geometry.endpoints.ty).toBeCloseTo(geometry.toRect.cy, 1);
+  });
+
+  test("View exposes Layout group with edge and GraphLink route options", async ({ page }) => {
+    const mapId = "pn-view-layout-options";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
+
+    await page.locator('[aria-label="[GUI] navigation root"]').evaluate((element) => {
+      const nav = document.querySelector('[data-testid="progressive-navigation"]');
+      if (!nav?.classList.contains("is-open")) {
+        element.click();
+      }
+    });
+    await page.locator('[data-pn-node="view"]').hover();
+    await expect(page.locator('[data-pn-node="layout"]')).toContainText("Layout");
+
+    await page.locator('[data-pn-node="layout"]').hover();
+    await page.locator('[data-pn-node="layout"]').evaluate((element) => element.click());
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-active-pn-node", "layout");
+    await expect(page.locator('[data-pn-node="layout-direction"]')).toContainText("Direction");
+    await expect(page.locator('[data-pn-node="layout-depth-align"]')).toContainText("Depth Align");
+    await expect(page.locator('[data-pn-node="layout-edge-route"]')).toContainText("Edge Route");
+    await expect(page.locator('[data-pn-node="layout-link-route"]')).toContainText("Link Route");
+
+    await page.locator('[data-pn-node="layout-edge-route"]').hover();
+    await page.locator('[data-pn-node="layout-edge-route"]').evaluate((element) => element.click());
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-active-pn-node", "layout-edge-route");
+    await expect(page.locator('[data-pn-node="layout-edge-elbow"]')).toContainText("Elbow");
+    await expect(page.locator('[data-pn-node="layout-edge-bezier"]')).toContainText("Bezier");
+    await expect(page.locator('[data-pn-node="layout-edge-straight"]')).toContainText("Straight");
+    const layoutEdgeGeometry = await progressiveNavGeometry(
+      page,
+      '[data-pn-node="layout-edge-route"]',
+      '[data-pn-node="layout-edge-elbow"]',
+      '[data-pn-edge="layout-edge-route-layout-edge-elbow"]',
+    );
+    expect(layoutEdgeGeometry.endpoints.sx).toBeCloseTo(layoutEdgeGeometry.fromRect.right, 1);
+    expect(layoutEdgeGeometry.endpoints.sy).toBeCloseTo(layoutEdgeGeometry.fromRect.cy, 1);
+    expect(layoutEdgeGeometry.endpoints.tx).toBeCloseTo(layoutEdgeGeometry.toRect.left, 1);
+    expect(layoutEdgeGeometry.endpoints.ty).toBeCloseTo(layoutEdgeGeometry.toRect.cy, 1);
+
+    await page.locator('[data-pn-node="layout-link-route"]').hover();
+    await page.locator('[data-pn-node="layout-link-route"]').evaluate((element) => element.click());
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-active-pn-node", "layout-link-route");
+    await expect(page.locator('[data-pn-node="layout-link-simple-bezier"]')).toContainText("Simple Bezier");
+    await expect(page.locator('[data-pn-node="layout-link-orthogonal"]')).toContainText("Orthogonal");
+    await expect(page.locator('[data-pn-node="layout-link-straight"]')).toContainText("Straight");
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-pn-canvas-overlap", "0");
+  });
+
+  test("viewport fast-path events do not force PN layout recompute", async ({ page }) => {
+    const mapId = "pn-viewport-fast-path";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
+
+    await page.locator('[aria-label="[GUI] navigation root"]').click();
+    await expect(page.locator('[data-testid="progressive-navigation"]')).toBeVisible();
+    await page.evaluate(() => {
+      window.__m3ePnLayoutCount = 0;
+      for (let index = 0; index < 30; index += 1) {
+        window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+      }
+    });
+    await page.waitForTimeout(120);
+    const count = await page.evaluate(() => window.__m3ePnLayoutCount || 0);
+    expect(count).toBe(0);
   });
 
   test("Space opens active-node expand actions directly and N3-N6 generate", async ({ page }) => {
@@ -235,6 +303,7 @@ test.describe("Workbench progressive navigation", () => {
 
     await page.keyboard.press("Space");
     await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toBeVisible();
+    await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toHaveAttribute("data-pn-canvas-overlap", "0");
     await expect(page.locator('[data-pn-node="rapid"]')).toHaveCount(0);
     await expect(page.locator('[data-pn-node="rapid-expand"]')).toContainText("N2 展開");
 
