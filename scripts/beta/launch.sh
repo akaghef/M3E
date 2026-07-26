@@ -1,9 +1,10 @@
 #!/bin/bash
 
 set -euo pipefail
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-PORT=4173
+PORT="${M3E_PORT:-4173}"
 if [[ -z "${M3E_HOME:-}" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then
     export M3E_HOME="$HOME/Library/Application Support/M3E"
@@ -20,6 +21,8 @@ export M3E_MAP_LABEL="${M3E_MAP_LABEL:-開発}"
 export M3E_MAP_SLUG="${M3E_MAP_SLUG:-beta-dev}"
 export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/$M3E_WORKSPACE_ID}"
 export M3E_DB_FILE="${M3E_DB_FILE:-data.sqlite}"
+export M3E_PORT="$PORT"
+LOG_FILE="$M3E_HOME/beta-launch.log"
 mkdir -p "$M3E_DATA_DIR" "$(dirname "$M3E_SEED_DB_PATH")"
 if [[ ! -f "$M3E_SEED_DB_PATH" && -f "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" ]]; then
   cp "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" "$M3E_SEED_DB_PATH"
@@ -29,7 +32,34 @@ if [[ ! -f "$M3E_DATA_DIR/$M3E_DB_FILE" && -f "$M3E_SEED_DB_PATH" ]]; then
 fi
 URL="http://localhost:${PORT}/viewer.html?ws=${M3E_WORKSPACE_ID}&map=${M3E_MAP_ID}"
 
+find_runtime() {
+  NODE_CMD="$(command -v node || true)"
+  NPM_CMD="$(command -v npm || true)"
+  if [[ -z "$NODE_CMD" ]]; then
+    echo "[ERROR] Node.js not found. Install Node.js with Homebrew or run setup first." >&2
+    exit 1
+  fi
+  if [[ -z "$NPM_CMD" ]]; then
+    echo "[ERROR] npm not found. Install Node.js with Homebrew or run setup first." >&2
+    exit 1
+  fi
+}
+
+repair_dependencies() {
+  echo "[launch] Beta dependencies missing. Repairing..."
+  if ! "$NPM_CMD" --prefix "$ROOT_DIR/beta" ci --legacy-peer-deps; then
+    echo "[launch] npm ci failed. Falling back to npm install..."
+    "$NPM_CMD" --prefix "$ROOT_DIR/beta" install --legacy-peer-deps
+  fi
+}
+
+rebuild_beta() {
+  echo "[launch] Beta build output missing. Rebuilding..."
+  "$NPM_CMD" --prefix "$ROOT_DIR/beta" run build
+}
+
 kill_port() {
+  command -v lsof >/dev/null 2>&1 || return 0
   local pids
   pids="$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
   if [[ -n "$pids" ]]; then
@@ -48,27 +78,54 @@ cleanup() {
 
 wait_for_server() {
   local attempt
-  for attempt in {1..50}; do
-    if curl -fsS "http://localhost:${PORT}/" >/dev/null 2>&1; then
+  for attempt in {1..80}; do
+    if curl -fsS --max-time 2 "http://localhost:${PORT}/api/maps/${M3E_MAP_ID}" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.2
+    if ! kill -0 "$APP_PID" 2>/dev/null; then
+      return 1
+    fi
+    sleep 0.25
   done
   return 1
 }
+
+find_runtime
+
+BETA_DIR="$ROOT_DIR/beta"
+ENTRY_JS="$BETA_DIR/dist/node/start_viewer.js"
+DOTENV_JS="$BETA_DIR/node_modules/dotenv/config.js"
+
+[[ -f "$DOTENV_JS" ]] || repair_dependencies
+[[ -f "$ENTRY_JS" ]] || rebuild_beta
+
+if [[ ! -f "$DOTENV_JS" ]]; then
+  echo "[ERROR] Missing runtime dependency after repair: $DOTENV_JS" >&2
+  exit 1
+fi
+if [[ ! -f "$ENTRY_JS" ]]; then
+  echo "[ERROR] Missing build output after rebuild: $ENTRY_JS" >&2
+  exit 1
+fi
 
 kill_port
 
 trap cleanup INT TERM EXIT
 
 cd "$ROOT_DIR"
-npm --prefix beta start &
+"$NODE_CMD" "$ENTRY_JS" >> "$LOG_FILE" 2>&1 &
 APP_PID=$!
 
 if wait_for_server; then
-  open "$URL"
+  if command -v open >/dev/null 2>&1; then
+    open "$URL"
+  else
+    echo "Open $URL in your browser."
+  fi
 else
-  echo "[WARN] Server did not become ready in time. Open ${URL} manually."
+  echo "[ERROR] Server did not become ready for map ${M3E_MAP_ID}." >&2
+  echo "[ERROR] See ${LOG_FILE}" >&2
+  exit 1
 fi
 
 wait "$APP_PID"
