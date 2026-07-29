@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 586
+- Indexed files: 587
 
 ## Reading Routes
 
@@ -341,6 +341,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260720_viewer_neon_experiment/README.md](<./ideas/260720_viewer_neon_experiment/README.md>) | Markdown | Viewer Neon 表現実験 | viewerのNeon調表現を製品コードから切り離し、将来のデザイン比較に使える自己完結したidea bundleとして保存する。現在のUI方針への採用を意味しない。 |
 | [ideas/260720_viewer_neon_experiment/viewer-neon-implementation.patch](<./ideas/260720_viewer_neon_experiment/viewer-neon-implementation.patch>) | File | viewer neon implementation | File |
 | [ideas/260720_viewer_neon_experiment/viewer-neon.png](<./ideas/260720_viewer_neon_experiment/viewer-neon.png>) | Image | viewer neon | Image |
+| [ideas/260730_p2p_cloudflare_snapshot_sync.md](<./ideas/260730_p2p_cloudflare_snapshot_sync.md>) | Markdown | P2P 優先同期と Cloudflare Snapshot 配布 | 作成日: 2026-07-30 |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
 | [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |
