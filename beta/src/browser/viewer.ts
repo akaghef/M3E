@@ -22,6 +22,7 @@ import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
+import { resolveMarkdownFilePreviewTarget, type MarkdownFilePreviewTarget } from "../shared/markdown_file_preview";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
@@ -269,12 +270,55 @@ let routingScopeHoldDown = false;
 let routingWheelCarryX = 0;
 let routingWheelCarryY = 0;
 
+type MarkdownPreviewMode = "manual" | "hover" | "pinned";
+const MARKDOWN_HOVER_OPEN_DELAY_MS = 400;
+const MARKDOWN_HOVER_CLOSE_DELAY_MS = 300;
+const MARKDOWN_PREVIEW_CACHE_TTL_MS = 10_000;
+let markdownPreviewMode: MarkdownPreviewMode | null = null;
+let markdownPreviewNodeId: string | null = null;
+let markdownHoverOpenTimer: ReturnType<typeof setTimeout> | null = null;
+let markdownHoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let markdownPreviewRequestId = 0;
+let markdownPreviewAbortController: AbortController | null = null;
+const markdownPreviewCache = new Map<string, { cachedAt: number; payload: LocalFsReadResponse }>();
+
+function cancelMarkdownHoverOpen(): void {
+  if (markdownHoverOpenTimer !== null) {
+    clearTimeout(markdownHoverOpenTimer);
+    markdownHoverOpenTimer = null;
+  }
+}
+
+function cancelMarkdownHoverClose(): void {
+  if (markdownHoverCloseTimer !== null) {
+    clearTimeout(markdownHoverCloseTimer);
+    markdownHoverCloseTimer = null;
+  }
+}
+
+function syncMarkdownPreviewMode(mode: MarkdownPreviewMode | null, nodeId: string | null): void {
+  markdownPreviewMode = mode;
+  markdownPreviewNodeId = nodeId;
+  if (!markdownPreviewPanelEl) return;
+  if (mode) markdownPreviewPanelEl.dataset["previewMode"] = mode;
+  else delete markdownPreviewPanelEl.dataset["previewMode"];
+  if (nodeId) markdownPreviewPanelEl.dataset["previewNodeId"] = nodeId;
+  else delete markdownPreviewPanelEl.dataset["previewNodeId"];
+}
+
 function hideMarkdownPreview(): void {
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  markdownPreviewRequestId += 1;
+  markdownPreviewAbortController?.abort();
+  markdownPreviewAbortController = null;
+  syncMarkdownPreviewMode(null, null);
   if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
 }
 
-function showMarkdownPreview(src: string, title: string): void {
+function showMarkdownPreview(src: string, title: string, mode: MarkdownPreviewMode, nodeId: string): void {
   if (!markdownPreviewPanelEl || !markdownPreviewBodyEl) return;
+  syncMarkdownPreviewMode(mode, nodeId);
   markdownPreviewPanelEl.hidden = false;
   const titleEl = markdownPreviewPanelEl.querySelector(".markdown-preview-title") as HTMLElement | null;
   if (titleEl) titleEl.textContent = title;
@@ -304,12 +348,22 @@ function toggleMarkdownPreviewForSelectedNode(): void {
     setStatus("Selected node has no details or note.");
     return;
   }
-  showMarkdownPreview(body, `Markdown: ${node.text || "(untitled)"}`);
+  showMarkdownPreview(body, `Markdown: ${node.text || "(untitled)"}`, "manual", node.id);
 }
 
 if (markdownPreviewCloseBtn) {
   markdownPreviewCloseBtn.addEventListener("click", () => hideMarkdownPreview());
 }
+
+markdownPreviewPanelEl?.addEventListener("pointerenter", () => {
+  cancelMarkdownHoverClose();
+});
+
+markdownPreviewPanelEl?.addEventListener("pointerleave", () => {
+  if (markdownPreviewMode === "hover") {
+    scheduleMarkdownHoverClose();
+  }
+});
 
 function normalizeDocId(raw: string | null, fallback: string): string {
   const trimmed = (raw || "").trim();
@@ -1252,12 +1306,12 @@ function resetLocalFsTree(): void {
   setLocalFsPreview("Preview", "");
 }
 
-async function fetchLocalFsJson<T>(action: "list" | "read", params: Record<string, string>): Promise<T> {
+async function fetchLocalFsJson<T>(action: "list" | "read", params: Record<string, string>, init?: RequestInit): Promise<T> {
   const url = new URL(`/api/local-fs/${action}`, window.location.origin);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), init);
   const payload = await response.json().catch(() => null) as T | { error?: { message?: string } } | null;
   if (!response.ok) {
     const errorPayload = payload && typeof payload === "object" && "error" in payload ? payload : null;
@@ -1319,6 +1373,105 @@ async function readLocalFsFile(relativePath: string, title: string): Promise<voi
     setLocalFsPreview(title, "");
     setLocalFsStatus((err as Error).message, true);
   }
+}
+
+function markdownPreviewAllowedRoots(): string[] {
+  if (LOCAL_FS_VIEW_MODE) {
+    return [LOCAL_FS_VIEW_ROOT, vaultUiPrefs.vaultPath, localFsPrefs.rootPath];
+  }
+  return [vaultUiPrefs.vaultPath, localFsPrefs.rootPath];
+}
+
+function markdownPreviewTargetForNode(nodeId: string): MarkdownFilePreviewTarget | null {
+  const node = map?.state.nodes[nodeId];
+  if (!node || isAliasNode(node)) return null;
+  return resolveMarkdownFilePreviewTarget(node, {
+    allowedRootPaths: markdownPreviewAllowedRoots(),
+  });
+}
+
+function markdownPreviewCacheKey(target: MarkdownFilePreviewTarget): string {
+  return `${target.rootPath}\u0000${target.relativePath}`;
+}
+
+async function showMarkdownFilePreviewForNode(nodeId: string, mode: "hover" | "pinned"): Promise<void> {
+  const target = markdownPreviewTargetForNode(nodeId);
+  if (!target) return;
+
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  markdownPreviewRequestId += 1;
+  const requestId = markdownPreviewRequestId;
+  markdownPreviewAbortController?.abort();
+  markdownPreviewAbortController = null;
+
+  const title = `Markdown: ${target.relativePath}`;
+  const key = markdownPreviewCacheKey(target);
+  const cached = markdownPreviewCache.get(key);
+  if (cached && Date.now() - cached.cachedAt <= MARKDOWN_PREVIEW_CACHE_TTL_MS) {
+    showMarkdownPreview(cached.payload.content, title, mode, nodeId);
+    return;
+  }
+
+  showMarkdownPreview("Loading…", title, mode, nodeId);
+  const controller = new AbortController();
+  markdownPreviewAbortController = controller;
+  try {
+    const payload = await fetchLocalFsJson<LocalFsReadResponse>("read", {
+      rootPath: target.rootPath,
+      relativePath: target.relativePath,
+      maxBytes: String(256 * 1024),
+    }, { signal: controller.signal });
+    if (requestId !== markdownPreviewRequestId || markdownPreviewNodeId !== nodeId) return;
+    markdownPreviewCache.set(key, { cachedAt: Date.now(), payload });
+    const renderedTitle = `${title}${payload.truncated ? " (truncated)" : ""}`;
+    showMarkdownPreview(payload.content, renderedTitle, mode, nodeId);
+  } catch (err) {
+    if (controller.signal.aborted || requestId !== markdownPreviewRequestId) return;
+    showMarkdownPreview(`Preview unavailable.\n\n${(err as Error).message}`, title, mode, nodeId);
+  } finally {
+    if (markdownPreviewAbortController === controller) {
+      markdownPreviewAbortController = null;
+    }
+  }
+}
+
+function scheduleMarkdownHoverOpen(nodeId: string): void {
+  if (markdownPreviewMode === "manual" || markdownPreviewMode === "pinned") return;
+  const target = markdownPreviewTargetForNode(nodeId);
+  if (!target) {
+    if (markdownPreviewMode === "hover") scheduleMarkdownHoverClose();
+    return;
+  }
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  if (markdownPreviewMode === "hover" && markdownPreviewNodeId === nodeId) return;
+  markdownHoverOpenTimer = setTimeout(() => {
+    markdownHoverOpenTimer = null;
+    void showMarkdownFilePreviewForNode(nodeId, "hover");
+  }, MARKDOWN_HOVER_OPEN_DELAY_MS);
+}
+
+function scheduleMarkdownHoverClose(): void {
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  if (markdownPreviewMode !== "hover") return;
+  markdownHoverCloseTimer = setTimeout(() => {
+    markdownHoverCloseTimer = null;
+    if (markdownPreviewMode === "hover") hideMarkdownPreview();
+  }, MARKDOWN_HOVER_CLOSE_DELAY_MS);
+}
+
+function pinMarkdownHoverPreviewForNode(nodeId: string): void {
+  if (markdownPreviewMode !== "hover" || markdownPreviewNodeId !== nodeId) return;
+  cancelMarkdownHoverClose();
+  syncMarkdownPreviewMode("pinned", nodeId);
+}
+
+function eventNodeId(target: EventTarget | null): string | null {
+  return target instanceof Element
+    ? target.closest("[data-node-id]")?.getAttribute("data-node-id") || null
+    : null;
 }
 
 function renderLocalFsRow(entry: LocalFsEntry, depth: number, container: HTMLElement): void {
@@ -14295,6 +14448,24 @@ document.addEventListener("click", () => {
   closeToolbarMenus();
 });
 
+canvas.addEventListener("pointerover", (event: PointerEvent) => {
+  if (event.pointerType && event.pointerType !== "mouse") return;
+  const nodeId = eventNodeId(event.target);
+  if (!nodeId) return;
+  if (eventNodeId(event.relatedTarget) === nodeId) return;
+  scheduleMarkdownHoverOpen(nodeId);
+});
+
+canvas.addEventListener("pointerout", (event: PointerEvent) => {
+  if (event.pointerType && event.pointerType !== "mouse") return;
+  const nodeId = eventNodeId(event.target);
+  if (!nodeId || eventNodeId(event.relatedTarget) === nodeId) return;
+  cancelMarkdownHoverOpen();
+  if (markdownPreviewMode === "hover" && markdownPreviewNodeId === nodeId) {
+    scheduleMarkdownHoverClose();
+  }
+});
+
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (annotationTool !== "select") {
     return;
@@ -14442,6 +14613,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (isReadOnlyLink()) {
     event.preventDefault();
     setSingleSelection(nodeId, event.shiftKey);
+    pinMarkdownHoverPreviewForNode(nodeId);
     board.focus();
     scheduleRender();
     return;
@@ -14538,6 +14710,7 @@ function finishNodeDrag(event: PointerEvent): void {
       toggle: toggleKey,
       range: shiftKey,
     });
+    pinMarkdownHoverPreviewForNode(sourceNodeId);
     board.focus();
     return;
   }
@@ -14885,6 +15058,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
 
   if (document.activeElement === linearTextEl) {
+    return;
+  }
+
+  if (markdownPreviewMode && event.key === "Escape") {
+    event.preventDefault();
+    hideMarkdownPreview();
+    board.focus();
     return;
   }
 
