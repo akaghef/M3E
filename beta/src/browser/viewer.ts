@@ -9152,13 +9152,16 @@ function buildMapPath(nodeId: string): string | null {
 }
 
 function formatMapPath(pathNodes: TreeNode[]): string {
+  const configuredLabel = MAP_META[LOCAL_MAP_ID]?.label;
+  const rootLabel = map?.state.nodes[map.state.rootId]?.text?.trim();
+  const mapLabel = configuredLabel || rootLabel || MAP_LABEL;
   const parts = pathNodes
     .filter((node) => node.id !== map?.state.rootId)
     .map((node) => ({ label: uiLabel(node), isScopeRoot: isFolderNode(node) }));
   if (parts.length === 0) {
-    return `M:(${MAP_LABEL})> root`;
+    return `M:(${mapLabel})> root`;
   }
-  let path = `M:(${MAP_LABEL})> ${parts[0].label}`;
+  let path = `M:(${mapLabel})> ${parts[0].label}`;
   for (let i = 1; i < parts.length; i++) {
     path += parts[i].isScopeRoot ? " >> " : " > ";
     path += parts[i].label;
@@ -9168,19 +9171,15 @@ function formatMapPath(pathNodes: TreeNode[]): string {
 
 async function copyMapPathToClipboard(nodeId: string): Promise<void> {
   const path = buildMapPath(nodeId);
-  if (!path) return;
-  try {
-    await navigator.clipboard.writeText(path);
-  } catch {
-    // Fallback: textarea + execCommand for older contexts
-    const ta = document.createElement("textarea");
-    ta.value = path;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand("copy"); } finally { ta.remove(); }
+  if (!path) {
+    setStatus("Failed to copy node path: node not found.", true);
+    return;
   }
+  if (await copyTextToSystemClipboard(path)) {
+    setStatus(`Path copied: ${path}`);
+    return;
+  }
+  setStatus("Failed to copy node path to system clipboard.", true);
 }
 
 function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
@@ -13570,27 +13569,9 @@ async function readTextFromSystemClipboard(): Promise<string | null> {
   return (await readTextViaLocalClipboardApi()) || (await readTextViaBrowserClipboard());
 }
 
-function buildNodePath(nodeId: string): string {
-  if (!map) return "";
-  const pathNodes: TreeNode[] = [];
-  let cursor: string | null = nodeId;
-  while (cursor) {
-    const n: TreeNode | undefined = map.state.nodes[cursor];
-    if (!n) break;
-    pathNodes.unshift(n);
-    cursor = n.parentId ?? null;
-  }
-  return formatMapPath(pathNodes);
-}
-
 async function copyNodePath(): Promise<void> {
   if (!map) return;
-  const path = buildNodePath(viewState.selectedNodeId);
-  if (await copyTextToSystemClipboard(path)) {
-    setStatus(`Path copied: ${path}`);
-    return;
-  }
-  setStatus("Failed to copy path to system clipboard.", true);
+  await copyMapPathToClipboard(viewState.selectedNodeId);
 }
 
 async function copyScopeId(): Promise<void> {

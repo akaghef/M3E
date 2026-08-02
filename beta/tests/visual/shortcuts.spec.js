@@ -51,7 +51,8 @@ function shortcutFixtureWithGraphLink() {
 
 function readMacClipboard() {
   if (process.platform !== "darwin") return null;
-  const result = spawnSync("pbpaste", [], { encoding: "utf8" });
+  const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" };
+  const result = spawnSync("pbpaste", [], { encoding: "utf8", env });
   if (result.status !== 0) {
     throw new Error(result.stderr || "pbpaste failed");
   }
