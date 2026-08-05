@@ -210,6 +210,13 @@ test.describe("Tab: add child node", () => {
     expect(editorMetrics.configuredMinWidth).toBe("40ch");
     expect(editorMetrics.unscaledEditorWidth).toBeGreaterThanOrEqual(editorMetrics.computedMinWidth - 1);
 
+    await editor.fill("あ".repeat(80));
+    const wrappedLineCount = await editor.evaluate((element) => {
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      return Math.round(element.scrollHeight / lineHeight);
+    });
+    expect(wrappedLineCount).toBeLessThanOrEqual(4);
+
     // Escape to finish editing.
     await pressKey(page, "Escape");
     await waitForRender(page);
