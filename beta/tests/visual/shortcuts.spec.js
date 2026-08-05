@@ -195,8 +195,20 @@ test.describe("Tab: add child node", () => {
     await pressKey(page, "Tab");
     await waitForRender(page);
 
-    // An inline editor should appear (input element).
-    await expect(page.locator("textarea.inline-node-editor")).toBeVisible();
+    // An inline editor should appear and keep enough width for sentence entry.
+    const editor = page.locator("textarea.inline-node-editor");
+    await expect(editor).toBeVisible();
+    const editorMetrics = await editor.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const transform = new DOMMatrixReadOnly(style.transform);
+      return {
+        configuredMinWidth: element.style.minWidth,
+        computedMinWidth: Number.parseFloat(style.minWidth),
+        unscaledEditorWidth: element.getBoundingClientRect().width / transform.a,
+      };
+    });
+    expect(editorMetrics.configuredMinWidth).toBe("40ch");
+    expect(editorMetrics.unscaledEditorWidth).toBeGreaterThanOrEqual(editorMetrics.computedMinWidth - 1);
 
     // Escape to finish editing.
     await pressKey(page, "Escape");

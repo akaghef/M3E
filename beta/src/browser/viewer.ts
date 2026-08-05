@@ -4497,7 +4497,7 @@ function syncInlineEditorPosition(): void {
   inlineEditor.input.style.left = `${left}px`;
   inlineEditor.input.style.top = `${top}px`;
   inlineEditor.input.style.width = `${width}px`;
-  inlineEditor.input.style.minWidth = `${width}px`;
+  inlineEditor.input.style.minWidth = "40ch";
   inlineEditor.input.style.minHeight = `${height}px`;
   inlineEditor.input.style.fontSize = `${fontSize}px`;
   inlineEditor.input.style.lineHeight = `${lineHeight}px`;
