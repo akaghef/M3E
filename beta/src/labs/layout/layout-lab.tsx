@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   layout,
   type LayoutDepthAlign,
+  type LayoutDirection,
   type LayoutMode,
   type LayoutOptions,
 } from "../../shared/layout_port";
@@ -20,29 +21,13 @@ const depthAligns: LayoutDepthAlign[] = ["packed", "aligned"];
 
 type CanonicalDirection = (typeof directions)[number];
 type LayoutSpacing = LayoutOptions["spacing"] & { nodeGap: number; levelGap: number; padding: number };
-
-interface DirectionAdapterResult {
-  portOptions: Pick<LayoutOptions, "branchDirection" | "direction">;
-  unavailable?: string;
-}
-
-function adaptDirection(direction: CanonicalDirection): DirectionAdapterResult {
-  switch (direction) {
-    case "left/right":
-      return { portOptions: { branchDirection: "both" } };
-    case "left":
-    case "right":
-      return { portOptions: { branchDirection: direction } };
-    case "up":
-    case "down":
-      return { portOptions: { direction } };
-    case "up/down":
-      return {
-        portOptions: {},
-        unavailable: "up/down is not implemented by the current layout port.",
-      };
-  }
-}
+const spacePresets = {
+  tight: { nodeGap: 7, levelGap: 64, padding: 48 },
+  normal: { nodeGap: 14, levelGap: 112, padding: 92 },
+  loose: { nodeGap: 28, levelGap: 196, padding: 144 },
+} as const;
+type SpacePreset = keyof typeof spacePresets;
+type SpaceSelection = SpacePreset | "custom";
 
 function numberInput(value: number, setValue: (value: number) => void, min: number, max: number, step = 1): React.ReactNode {
   return (
@@ -66,13 +51,12 @@ function App(): React.ReactElement {
   const [nodeGap, setNodeGap] = useState(14);
   const [levelGap, setLevelGap] = useState(112);
   const [padding, setPadding] = useState(92);
+  const [space, setSpace] = useState<SpaceSelection>("normal");
   const [zoom, setZoom] = useState(1);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
 
   const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
-  const directionAdapter = adaptDirection(direction);
   const spacing: LayoutSpacing = { nodeGap, levelGap, padding };
-  const treeSpacingUnavailable = mode === "Tree";
   const {
     branchDirection: _sampleBranchDirection,
     density: _sampleDensity,
@@ -83,17 +67,30 @@ function App(): React.ReactElement {
     ...sampleOptions,
     structuredMode: mode === "Tree" || mode === "Radial" || mode === "Axial" ? mode : undefined,
     depthAlign,
-    ...directionAdapter.portOptions,
+    direction: direction as LayoutDirection,
     spacing,
   };
-  const result = directionAdapter.unavailable ? null : layout(graph, sample.input.boxSizes, mode, options);
-  const canvasWidth = Math.max(900, Math.ceil((result?.totalWidth || 0) + 80));
-  const canvasHeight = Math.max(640, Math.ceil((result?.totalHeight || 0) + 80));
+  const result = layout(graph, sample.input.boxSizes, mode, options);
+  const canvasWidth = Math.max(900, Math.ceil(result.totalWidth + 80));
+  const canvasHeight = Math.max(640, Math.ceil(result.totalHeight + 80));
   const rootId = options.displayRootId || sample.input.graph.nodeIds[0];
 
   const edges = sample.input.graph.nodeIds.flatMap((sourceId) =>
     (sample.input.graph.children[sourceId] || []).map((targetId) => ({ sourceId, targetId })),
   );
+
+  const selectSpace = (next: SpaceSelection): void => {
+    setSpace(next);
+    if (next === "custom") return;
+    const preset = spacePresets[next];
+    setNodeGap(preset.nodeGap);
+    setLevelGap(preset.levelGap);
+    setPadding(preset.padding);
+  };
+
+  const setCustomNodeGap = (value: number): void => { setSpace("custom"); setNodeGap(value); };
+  const setCustomLevelGap = (value: number): void => { setSpace("custom"); setLevelGap(value); };
+  const setCustomPadding = (value: number): void => { setSpace("custom"); setPadding(value); };
 
   return (
     <main className={`layout-lab${snapshotOpen ? " snapshot-open" : ""}`}>
@@ -136,28 +133,30 @@ function App(): React.ReactElement {
             {directions.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
-        <p className="adapter-note">
-          Temporary lab adapter: canonical direction maps to layout_port&apos;s split branchDirection/LayoutDirection.<br />
-          Their reconciliation is a separate PR.
-        </p>
         <div className="control-group">
           <label htmlFor="depth-align">Depth Align</label>
           <select id="depth-align" value={depthAlign} onChange={(event) => setDepthAlign(event.currentTarget.value as LayoutDepthAlign)}>
             {depthAligns.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
-        {treeSpacingUnavailable && <p className="unavailable-status">Tree ignores gap and padding values in the current port.</p>}
+        <div className="control-group">
+          <label htmlFor="space">Space</label>
+          <select id="space" value={space} onChange={(event) => selectSpace(event.currentTarget.value as SpaceSelection)}>
+            {(Object.keys(spacePresets) as SpacePreset[]).map((item) => <option key={item} value={item}>{item}</option>)}
+            <option value="custom">custom</option>
+          </select>
+        </div>
         <div className="control-group">
           <label>Node Gap</label>
-          {numberInput(nodeGap, setNodeGap, 0, 120)}
+          {numberInput(nodeGap, setCustomNodeGap, 0, 120)}
         </div>
         <div className="control-group">
           <label>Level Gap</label>
-          {numberInput(levelGap, setLevelGap, 40, 360)}
+          {numberInput(levelGap, setCustomLevelGap, 40, 360)}
         </div>
         <div className="control-group">
           <label>Side Padding</label>
-          {numberInput(padding, setPadding, 20, 240)}
+          {numberInput(padding, setCustomPadding, 20, 240)}
         </div>
         <div className="control-group">
           <div className="control-row">
@@ -185,7 +184,7 @@ function App(): React.ReactElement {
           role="img"
           aria-label="Layout result"
         >
-          {result && edges.map(({ sourceId, targetId }) => {
+          {edges.map(({ sourceId, targetId }) => {
             const source = result.pos[sourceId];
             const target = result.pos[targetId];
             if (!source || !target) return null;
@@ -197,7 +196,7 @@ function App(): React.ReactElement {
               />
             );
           })}
-          {result && result.order.map((nodeId) => {
+          {result.order.map((nodeId) => {
             const pos = result.pos[nodeId];
             if (!pos) return null;
             return (
@@ -208,26 +207,19 @@ function App(): React.ReactElement {
               </g>
             );
           })}
-          {directionAdapter.unavailable && (
-            <text className="unavailable-label" x={canvasWidth / 2} y={canvasHeight / 2} textAnchor="middle">
-              {directionAdapter.unavailable}
-            </text>
-          )}
         </svg>
       </section>
       {snapshotOpen && (
         <aside className="lab-panel right">
           <h2 className="lab-title">Snapshot</h2>
           <div className="snapshot-scroll">
-            {directionAdapter.unavailable ? (
-              <div className="unavailable-status" role="status">Unimplemented: {directionAdapter.unavailable}</div>
-            ) : result && <div className="summary">{summarizeLayout(result)}</div>}
+            <div className="summary">{summarizeLayout(result)}</div>
             <div className="json-block">
               <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, direction, portOptions: options }, null, 2)}</pre>
             </div>
-            {result && <div className="json-block">
+            <div className="json-block">
               <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, pos: result.pos }, null, 2)}</pre>
-            </div>}
+            </div>
           </div>
         </aside>
       )}

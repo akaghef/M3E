@@ -71,13 +71,6 @@ body {
   color: #565a61;
 }
 
-.adapter-note {
-  margin: -4px 0 14px;
-  color: #565a61;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
 .control-row {
   display: flex;
   align-items: center;
@@ -191,23 +184,6 @@ input[type="number"] {
   border-radius: 6px;
   background: #fbfaf7;
   margin-bottom: 14px;
-}
-
-.unavailable-status {
-  margin-bottom: 14px;
-  padding: 10px;
-  border: 1px solid #c98d32;
-  border-radius: 6px;
-  background: #fff7e8;
-  color: #6a4200;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.unavailable-label {
-  fill: #6a4200;
-  font-size: 18px;
-  font-weight: 700;
 }
 
 .snapshot-scroll {
