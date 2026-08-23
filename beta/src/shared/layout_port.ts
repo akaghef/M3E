@@ -90,10 +90,16 @@ interface MeasuredTreeContext {
   displayRootId: string;
   metrics: Record<string, LayoutNodeMetric>;
   depthOf: Record<string, number>;
-  depthMaxWidth: Record<number, number>;
+  depthMaxExtent: Record<number, number>;
   maxDepth: number;
   config: StructuredLayoutConfig;
   depthAlign: LayoutDepthAlign;
+  axis: LayoutAxis;
+}
+
+interface LayoutAxis {
+  depthExtent: (metric: LayoutNodeMetric) => number;
+  breadthExtent: (metric: LayoutNodeMetric) => number;
 }
 
 const LAYOUT = {
@@ -148,9 +154,13 @@ function buildMeasuredTreeContext(
   options: LayoutOptions = {},
 ): MeasuredTreeContext {
   const config = structuredLayoutConfig(mode, options.density, options.branchDirection, options);
+  const vertical = options.direction === "up" || options.direction === "down" || options.direction === "up/down";
+  const axis: LayoutAxis = vertical
+    ? { depthExtent: (metric) => metric.h, breadthExtent: (metric) => metric.w }
+    : { depthExtent: (metric) => metric.w, breadthExtent: (metric) => metric.h };
   const metrics: Record<string, LayoutNodeMetric> = {};
   const depthOf: Record<string, number> = {};
-  const depthMaxWidth: Record<number, number> = {};
+  const depthMaxExtent: Record<number, number> = {};
   let maxDepth = 0;
 
   function visit(nodeId: string, depth: number): void {
@@ -159,12 +169,12 @@ function buildMeasuredTreeContext(
     maxDepth = Math.max(maxDepth, depth);
     depthOf[nodeId] = depth;
     metrics[nodeId] = metric;
-    depthMaxWidth[depth] = Math.max(depthMaxWidth[depth] ?? 0, metric.w);
+    depthMaxExtent[depth] = Math.max(depthMaxExtent[depth] ?? 0, axis.depthExtent(metric));
     graph.childrenOf(nodeId).forEach((childId) => visit(childId, depth + 1));
   }
 
   visit(displayRootId, 0);
-  return { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config, depthAlign: options.depthAlign || "packed" };
+  return { displayRootId, metrics, depthOf, depthMaxExtent, maxDepth, config, depthAlign: options.depthAlign || "packed", axis };
 }
 
 function normalizeLayoutMode(mode: LayoutModeInput): LayoutMode {
@@ -192,22 +202,23 @@ function subtreeSpanForLayout(
   childrenOf: (id: string) => string[],
   metrics: Record<string, LayoutNodeMetric>,
   cache: Record<string, number>,
+  breadthExtent: (metric: LayoutNodeMetric) => number,
   siblingGap = LAYOUT.siblingGap,
 ): number {
   if (cache[nodeId] !== undefined) return cache[nodeId]!;
   if (!metrics[nodeId]) return LAYOUT.leafHeight;
   const children = childrenOf(nodeId);
   if (children.length === 0) {
-    const leafSpan = Math.max(LAYOUT.leafHeight, metrics[nodeId]!.h + siblingGap);
+    const leafSpan = Math.max(LAYOUT.leafHeight, breadthExtent(metrics[nodeId]!) + siblingGap);
     cache[nodeId] = leafSpan;
     return leafSpan;
   }
   let sum = 0;
   children.forEach((childId, i) => {
-    sum += subtreeSpanForLayout(childId, childrenOf, metrics, cache, siblingGap);
+    sum += subtreeSpanForLayout(childId, childrenOf, metrics, cache, breadthExtent, siblingGap);
     if (i < children.length - 1) sum += siblingGap;
   });
-  const result = Math.max(sum, metrics[nodeId]!.h + 24);
+  const result = Math.max(sum, breadthExtent(metrics[nodeId]!) + 24);
   cache[nodeId] = result;
   return result;
 }
@@ -235,8 +246,12 @@ function orientLayoutResult(result: LayoutResult, direction: CardinalLayoutDirec
   const positions = order.map((nodeId) => result.pos[nodeId]!);
   const minX = Math.min(...positions.map((p) => p.x));
   const maxX = Math.max(...positions.map((p) => p.x + p.w));
-  const minY = Math.min(...positions.map((p) => p.y - p.h / 2));
-  const maxY = Math.max(...positions.map((p) => p.y + p.h / 2));
+  // Vertical results originate in logical depth/breadth coordinates.  In that
+  // coordinate system depth uses h and breadth uses w, so conversion must use
+  // those extents rather than merely rotate the old horizontal rectangle.
+  const minBreadth = Math.min(...positions.map((p) => p.y - p.w / 2));
+  const maxBreadth = Math.max(...positions.map((p) => p.y + p.w / 2));
+  const maxDepth = Math.max(...positions.map((p) => p.x + p.h));
   const oriented: Record<string, LayoutNodePosition> = {};
   order.forEach((nodeId) => {
     const p = result.pos[nodeId]!;
@@ -252,16 +267,16 @@ function orientLayoutResult(result: LayoutResult, direction: CardinalLayoutDirec
     if (direction === "down") {
       oriented[nodeId] = {
         ...p,
-        x: minY + (p.y - p.h / 2),
-        y: minX + (p.x - minX) + p.w / 2,
+        x: p.y - p.w / 2,
+        y: p.x + p.h / 2,
         branchPortSide: p.branchPortSide === "left" ? "up" : p.branchPortSide === "right" ? "down" : p.branchPortSide,
       };
       return;
     }
     oriented[nodeId] = {
       ...p,
-      x: minY + (maxY - (p.y + p.h / 2)),
-      y: minX + (p.x - minX) + p.w / 2,
+      x: minBreadth + (maxBreadth - (p.y + p.w / 2)),
+      y: maxDepth - p.x - p.h / 2,
       branchPortSide: p.branchPortSide === "left" ? "up" : p.branchPortSide === "right" ? "down" : p.branchPortSide,
     };
   });
@@ -274,12 +289,12 @@ function cardinalDirection(direction: LayoutDirection | undefined): CardinalLayo
 }
 
 function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config, depthAlign } = ctx;
+  const { displayRootId, metrics, depthOf, depthMaxExtent, maxDepth, config, depthAlign, axis } = ctx;
   const xByDepth: Record<number, number> = {};
   let cursorX = LAYOUT.leftPad + (config.sideGap - DEFAULT_TREE_SPACING.sidePadding);
   for (let d = 0; d <= maxDepth; d += 1) {
     xByDepth[d] = cursorX;
-    cursorX += (depthMaxWidth[d] ?? 120) + config.columnGap;
+    cursorX += (depthMaxExtent[d] ?? 120) + config.columnGap;
   }
 
   const subtreeHeightCache: Record<string, number> = {};
@@ -287,7 +302,7 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
   const order: string[] = [];
   const depthOffsetFactor = depthAlign === "aligned" ? 0 : LAYOUT.depthOffsetFactor;
 
-  function place(nodeId: string, topY: number, parentX: number | null, parentW: number | null): number {
+  function place(nodeId: string, topY: number, parentX: number | null, parentDepthExtent: number | null): number {
     if (!metrics[nodeId]) return LAYOUT.leafHeight;
     const depth = depthOf[nodeId] ?? 0;
     const h = subtreeSpanForLayout(
@@ -295,15 +310,16 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
       graph.childrenOf,
       metrics,
       subtreeHeightCache,
+      axis.breadthExtent,
       config.siblingGap,
     );
     const centerY = topY + h / 2;
     const baseX = xByDepth[depth]!;
     const nodeX = config.mode === "logic-chart"
       ? baseX
-      : parentX === null || parentW === null
+      : parentX === null || parentDepthExtent === null
         ? baseX
-        : baseX + ((parentX + parentW + config.columnGap) - baseX) * depthOffsetFactor;
+        : baseX + ((parentX + parentDepthExtent + config.columnGap) - baseX) * depthOffsetFactor;
     const metric = metrics[nodeId]!;
     pos[nodeId] = {
       x: nodeX,
@@ -319,7 +335,7 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
     order.push(nodeId);
     let placeCursorY = topY;
     graph.childrenOf(nodeId).forEach((childId, i, arr) => {
-      const childH = place(childId, placeCursorY, nodeX, metric.w);
+      const childH = place(childId, placeCursorY, nodeX, axis.depthExtent(metric));
       placeCursorY += childH;
       if (i < arr.length - 1) placeCursorY += config.siblingGap;
     });
@@ -350,12 +366,12 @@ function splitMindmapBranches(graph: VisibleLayoutGraph, rootId: string, directi
 }
 
 function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext): LayoutResult {
-  const { displayRootId, metrics, depthOf, depthMaxWidth, maxDepth, config, depthAlign } = ctx;
+  const { displayRootId, metrics, depthOf, depthMaxExtent, maxDepth, config, depthAlign, axis } = ctx;
   const rootMetric = metrics[displayRootId] || { w: 280, h: LAYOUT.rootHeight };
   const branchWidth = (fromDepth = 1): number => {
     let width = 0;
     for (let d = fromDepth; d <= maxDepth; d += 1) {
-      width += (depthMaxWidth[d] ?? 120) + config.columnGap;
+      width += (depthMaxExtent[d] ?? 120) + config.columnGap;
     }
     return width;
   };
@@ -367,39 +383,39 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
       : LAYOUT.leftPad + leftBranchWidth + config.sideGap;
   const rightXByDepth: Record<number, number> = {};
   const leftXByDepth: Record<number, number> = {};
-  rightXByDepth[1] = rootX + rootMetric.w + config.columnGap;
-  leftXByDepth[1] = rootX - config.columnGap - (depthMaxWidth[1] ?? 120);
+  rightXByDepth[1] = rootX + axis.depthExtent(rootMetric) + config.columnGap;
+  leftXByDepth[1] = rootX - config.columnGap - (depthMaxExtent[1] ?? 120);
   for (let d = 2; d <= maxDepth; d += 1) {
-    rightXByDepth[d] = rightXByDepth[d - 1]! + (depthMaxWidth[d - 1] ?? 120) + config.columnGap;
-    leftXByDepth[d] = leftXByDepth[d - 1]! - config.columnGap - (depthMaxWidth[d] ?? 120);
+    rightXByDepth[d] = rightXByDepth[d - 1]! + (depthMaxExtent[d - 1] ?? 120) + config.columnGap;
+    leftXByDepth[d] = leftXByDepth[d - 1]! - config.columnGap - (depthMaxExtent[d] ?? 120);
   }
   const spanCache: Record<string, number> = {};
   const { left, right } = splitMindmapBranches(graph, displayRootId, config.branchDirection);
   const sideGap = config.sideGap;
   const sideSpan = (ids: string[]) => ids.reduce((sum, id, index) => (
-    sum + subtreeSpanForLayout(id, graph.childrenOf, metrics, spanCache, config.siblingGap) + (index > 0 ? sideGap : 0)
+    sum + subtreeSpanForLayout(id, graph.childrenOf, metrics, spanCache, axis.breadthExtent, config.siblingGap) + (index > 0 ? sideGap : 0)
   ), 0);
-  const totalSpan = Math.max(rootMetric.h + 60, sideSpan(left), sideSpan(right), LAYOUT.rootHeight + 80);
+  const totalSpan = Math.max(axis.breadthExtent(rootMetric) + 60, sideSpan(left), sideSpan(right), LAYOUT.rootHeight + 80);
   const rootY = LAYOUT.topPad + totalSpan / 2;
   const pos: Record<string, LayoutNodePosition> = {
     [displayRootId]: { x: rootX, y: rootY, depth: 0, w: rootMetric.w, h: rootMetric.h, fontSize: rootMetric.fontSize, labelLines: rootMetric.labelLines },
   };
   const order: string[] = [displayRootId];
 
-  function placeSide(nodeId: string, topY: number, direction: -1 | 1, parentX?: number, parentW?: number): number {
+  function placeSide(nodeId: string, topY: number, direction: -1 | 1, parentX?: number, parentDepthExtent?: number): number {
     if (!metrics[nodeId]) return LAYOUT.leafHeight;
     const depth = Math.max(1, depthOf[nodeId] ?? 1);
-    const span = subtreeSpanForLayout(nodeId, graph.childrenOf, metrics, spanCache, config.siblingGap);
+    const span = subtreeSpanForLayout(nodeId, graph.childrenOf, metrics, spanCache, axis.breadthExtent, config.siblingGap);
     const metric = metrics[nodeId]!;
     const centerY = topY + span / 2;
-    const depthWidth = depthMaxWidth[depth] ?? metric.w;
+    const depthWidth = depthMaxExtent[depth] ?? axis.depthExtent(metric);
     const alignedX = direction > 0
-      ? rightXByDepth[depth] ?? (rootX + rootMetric.w + config.columnGap)
-      : (leftXByDepth[depth] ?? (rootX - config.columnGap - depthWidth)) + Math.max(0, depthWidth - metric.w);
-    const x = config.mode === "tree" && depthAlign === "packed" && parentX !== undefined && parentW !== undefined
+      ? rightXByDepth[depth] ?? (rootX + axis.depthExtent(rootMetric) + config.columnGap)
+      : (leftXByDepth[depth] ?? (rootX - config.columnGap - depthWidth)) + Math.max(0, depthWidth - axis.depthExtent(metric));
+    const x = config.mode === "tree" && depthAlign === "packed" && parentX !== undefined && parentDepthExtent !== undefined
       ? direction > 0
-        ? parentX + parentW + config.columnGap
-        : parentX - config.columnGap - metric.w
+        ? parentX + parentDepthExtent + config.columnGap
+        : parentX - config.columnGap - axis.depthExtent(metric)
       : alignedX;
     pos[nodeId] = {
       x,
@@ -415,7 +431,7 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
     order.push(nodeId);
     let cursorY = topY;
     graph.childrenOf(nodeId).forEach((childId, i, arr) => {
-      const childSpan = placeSide(childId, cursorY, direction, x, metric.w);
+      const childSpan = placeSide(childId, cursorY, direction, x, axis.depthExtent(metric));
       cursorY += childSpan;
       if (i < arr.length - 1) cursorY += config.siblingGap;
     });
@@ -425,7 +441,7 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
   const placeGroup = (ids: string[], direction: -1 | 1): void => {
     let cursorY = rootY - sideSpan(ids) / 2;
     ids.forEach((childId, index) => {
-      const span = placeSide(childId, cursorY, direction, rootX, rootMetric.w);
+      const span = placeSide(childId, cursorY, direction, rootX, axis.depthExtent(rootMetric));
       cursorY += span + (index < ids.length - 1 ? sideGap : 0);
     });
   };
