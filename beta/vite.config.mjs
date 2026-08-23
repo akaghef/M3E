@@ -10,6 +10,13 @@ export default defineConfig({
     {
       name: "m3e-static-viewer-css",
       configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url === "/") {
+            req.url = "/src/labs/index.html";
+          }
+          next();
+        });
+
         server.middlewares.use("/viewer.css", (_req, res) => {
           res.setHeader("Content-Type", "text/css; charset=utf-8");
           fs.createReadStream(path.resolve(process.cwd(), "viewer.css")).pipe(res);
