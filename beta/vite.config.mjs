@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export default defineConfig({
+  cacheDir: "../tmp/vite-cache",
   plugins: [
     react(),
     {
@@ -23,6 +24,7 @@ export default defineConfig({
       input: {
         viewer: "src/browser/viewer.ts",
         "workbench-ui": "src/browser/workbench-ui.tsx",
+        "seam-lab-index": "src/labs/index.html",
         "layout-lab": "src/labs/layout/layout-lab.html",
         "edge-port-lab": "src/labs/edge-port/edge-port-lab.html",
         "node-lab": "src/labs/node/node-lab.html",

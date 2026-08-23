@@ -13,6 +13,7 @@
     "test:edge-port": "npm run build:test && npx vitest run tests/unit/edge_port_*.test.*",
     "edge-port:capture": "npm run build:node && node dist/node/edge_port_capture.js",
     "lab:edge-port": "vite --host 127.0.0.1 --config vite.config.mjs",
+    "lab:index": "vite --host 127.0.0.1 --port 14272 --config vite.config.mjs --configLoader runner",
     "lab:layout": "vite --host 127.0.0.1 --port 14273 --config vite.config.mjs",
     "lab:node": "vite --host 127.0.0.1 --port 14274 --config vite.config.mjs",
     "lab:pn": "vite --host 127.0.0.1 --port 14275 --config vite.config.mjs",
