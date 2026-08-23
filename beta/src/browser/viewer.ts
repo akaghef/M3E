@@ -6931,25 +6931,20 @@ function scheduleApplyZoom(options: ViewportApplyOptions = {}): void {
 
 function layoutEdgePath(
   mode: StructuredSurfaceMode,
-  parent: NodePosition,
-  child: NodePosition,
+  parent: LayoutResult["pos"][string],
+  child: LayoutResult["pos"][string],
   route: SurfaceEdgeRoute = viewState.surfaceEdgeRoute,
 ): { d: string; labelX: number; labelY: number; sourceSide: EdgeAnchorSide; targetSide: EdgeAnchorSide } {
   const parentRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(parent) : positionRect(parent);
   const childRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(child) : positionRect(child);
   const routeStyle: EdgeRouteStyle = route === "straight" ? "line" : route === "elbow" ? "orthogonal" : "curve";
-  const deltaX = childRect.x + childRect.w / 2 - (parentRect.x + parentRect.w / 2);
-  const deltaY = childRect.y + childRect.h / 2 - (parentRect.y + parentRect.h / 2);
-  const direction = Math.abs(deltaX) >= Math.abs(deltaY)
-    ? (deltaX >= 0 ? "right" : "left")
-    : (deltaY >= 0 ? "down" : "up");
   const routed = routeParentChildEdge({
     relation: { kind: "parent-child", parentNodeId: "parent", childNodeId: "child" },
     parentRect,
     childRect,
     childPosition: child,
     surfaceMode: mode as ParentChildSurfaceMode,
-    direction,
+    direction: viewState.surfaceLayoutDirection,
     routeStyle,
   });
   const { source, target } = routed.ports;
@@ -7488,7 +7483,7 @@ function render(): void {
     };
   }
 
-  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: NodePosition, childIds: string[]): string {
+  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: LayoutResult["pos"][string], childIds: string[]): string {
     let result = "";
     childIds.forEach((childId, i) => {
       const child = pos[childId];

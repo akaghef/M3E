@@ -1,4 +1,4 @@
-import type { EdgeDirection, EdgeRect, EdgePorts, PrimaryDirection, TreeBranchSide } from "./edge_port";
+import type { EdgeDirection, EdgeRect, EdgePorts, PrimaryDirection, TreeBranchSide, TreeDirection } from "./edge_port";
 import { selectPorts } from "./edge_port";
 import type { EdgePath, EdgeRouteStyle } from "./edge_route";
 import { route } from "./edge_route";
@@ -13,16 +13,16 @@ export type ParentChildSurfaceMode = "tree" | "mindmap" | "logic-chart" | "timel
 
 export interface ParentChildNodePosition extends EdgeRect {
   depth: number;
-  branchSide?: TreeBranchSide;
+  branchPortSide?: TreeBranchSide;
 }
 
 export interface ParentChildEdgeRouteInput {
   relation: ParentChildEdgeRef;
   parentRect: EdgeRect;
   childRect: EdgeRect;
-  childPosition?: Pick<ParentChildNodePosition, "branchSide">;
+  childPosition?: Pick<ParentChildNodePosition, "branchPortSide">;
   surfaceMode: ParentChildSurfaceMode;
-  direction: PrimaryDirection;
+  direction: TreeDirection;
   routeStyle: EdgeRouteStyle;
 }
 
@@ -31,6 +31,24 @@ export interface ParentChildEdgeRoute {
   edgeDirection: EdgeDirection;
   ports: EdgePorts;
   path: EdgePath;
+}
+
+function primaryDirection(direction: TreeDirection, branchPortSide?: TreeBranchSide): PrimaryDirection {
+  if (direction !== "left/right" && direction !== "up/down") return direction;
+  if (!branchPortSide) {
+    throw new Error(`LayoutResult.branchPortSide is required for Tree ${direction}.`);
+  }
+  return branchPortSide;
+}
+
+function treeDirection(direction: TreeDirection, branchPortSide?: TreeBranchSide): EdgeDirection {
+  if (direction === "left/right" || direction === "up/down") {
+    if (!branchPortSide) {
+      throw new Error(`LayoutResult.branchPortSide is required for Tree ${direction}.`);
+    }
+    return { view: "Tree", direction, branchSide: branchPortSide };
+  }
+  return { view: "Tree", direction };
 }
 
 function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDirection): EdgeDirection {
@@ -43,16 +61,12 @@ function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDi
 }
 
 export function parentChildEdgeDirection(input: ParentChildEdgeRouteInput): EdgeDirection {
-  if (input.surfaceMode === "timeline") return { view: "Axial", direction: input.direction };
-  if (input.surfaceMode === "mindmap") {
-    const branchSide = input.childPosition?.branchSide;
-    if (!branchSide) {
-      throw new Error(`LayoutResult.branchSide is required for Tree both edge ${input.relation.parentNodeId}->${input.relation.childNodeId}.`);
-    }
-    return { view: "Tree", direction: "both", branchSide };
+  const branchPortSide = input.childPosition?.branchPortSide;
+  if (input.surfaceMode === "timeline") return { view: "Axial", direction: primaryDirection(input.direction, branchPortSide) };
+  if (input.surfaceMode === "mindmap" || input.surfaceMode === "logic-chart" || input.surfaceMode === "tree") {
+    return treeDirection(input.direction, branchPortSide);
   }
-  if (input.surfaceMode === "logic-chart" || input.surfaceMode === "tree") return { view: "Tree", direction: input.direction };
-  return vectorDirection(input.surfaceMode, input.direction);
+  return vectorDirection(input.surfaceMode, primaryDirection(input.direction, branchPortSide));
 }
 
 export function routeParentChildEdge(input: ParentChildEdgeRouteInput): ParentChildEdgeRoute {
@@ -65,4 +79,3 @@ export function routeParentChildEdge(input: ParentChildEdgeRouteInput): ParentCh
     path: route(ports, input.routeStyle),
   };
 }
-
