@@ -13,6 +13,7 @@ import {
   toVisibleLayoutGraph,
   type LayoutLabSampleId,
 } from "./layout_samples";
+import { layoutLabEdgePath } from "./layout_edge_paths";
 import "./layout-lab.css";
 
 const modes: LayoutMode[] = ["Tree", "Radial", "Axial", "Disperse", "System"];
@@ -188,11 +189,12 @@ function App(): React.ReactElement {
             const source = result.pos[sourceId];
             const target = result.pos[targetId];
             if (!source || !target) return null;
+            const path = layoutLabEdgePath(source, target, direction);
             return (
               <path
                 key={`${sourceId}-${targetId}`}
                 className="lab-edge"
-                d={`M ${source.x + source.w} ${source.y} C ${source.x + source.w + 70} ${source.y}, ${target.x - 70} ${target.y}, ${target.x} ${target.y}`}
+                d={path.d}
               />
             );
           })}

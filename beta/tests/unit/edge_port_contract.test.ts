@@ -18,8 +18,10 @@ describe("EdgePort selectPorts contract", () => {
     expectSides({ view: "Tree", direction: "left" }, ["left", "right"]);
     expectSides({ view: "Tree", direction: "up" }, ["top", "bottom"]);
     expectSides({ view: "Tree", direction: "down" }, ["bottom", "top"]);
-    expectSides({ view: "Tree", direction: "both", branchSide: "left" }, ["left", "right"]);
-    expectSides({ view: "Tree", direction: "both", branchSide: "right" }, ["right", "left"]);
+    expectSides({ view: "Tree", direction: "left/right", branchSide: "left" }, ["left", "right"]);
+    expectSides({ view: "Tree", direction: "left/right", branchSide: "right" }, ["right", "left"]);
+    expectSides({ view: "Tree", direction: "up/down", branchSide: "up" }, ["top", "bottom"]);
+    expectSides({ view: "Tree", direction: "up/down", branchSide: "down" }, ["bottom", "top"]);
   });
 
   test("Axial uses the primary axis rules", () => {
@@ -42,4 +44,3 @@ describe("EdgePort selectPorts contract", () => {
     expectSides({ view: "System", direction: "down" }, ["bottom", "top"], dstRight);
   });
 });
-

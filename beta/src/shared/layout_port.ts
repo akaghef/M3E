@@ -20,7 +20,10 @@ type CardinalLayoutDirection = Exclude<LayoutDirection, "left/right" | "up/down"
 export type LayoutDepthAlign = "aligned" | "packed";
 export type LayoutDensity = "compact" | "balanced" | "spacious";
 export type LayoutBranchDirection = "both" | "right" | "left";
+/** Legacy horizontal branch label retained for existing viewer snapshots. */
 export type LayoutBranchSide = "left" | "right";
+/** Outbound cardinal side used as the authoritative Tree port input. */
+export type LayoutBranchPortSide = "left" | "right" | "up" | "down";
 export type LayoutEdgeRoute = "elbow" | "bezier" | "straight";
 export type LayoutLinkRoute = "simple-bezier" | "orthogonal" | "straight";
 
@@ -47,6 +50,7 @@ export interface LayoutNodePosition extends LayoutNodeMetric {
   y: number;
   depth: number;
   branchSide?: LayoutBranchSide;
+  branchPortSide?: LayoutBranchPortSide;
   scatterCollapsedGroup?: boolean;
 }
 
@@ -241,14 +245,25 @@ function orientLayoutResult(result: LayoutResult, direction: CardinalLayoutDirec
         ...p,
         x: minX + maxX - (p.x + p.w),
         branchSide: p.branchSide === "right" ? "left" : p.branchSide === "left" ? "right" : undefined,
+        branchPortSide: p.branchPortSide === "right" ? "left" : p.branchPortSide === "left" ? "right" : p.branchPortSide,
       };
       return;
     }
     if (direction === "down") {
-      oriented[nodeId] = { ...p, x: minY + (p.y - p.h / 2), y: minX + (p.x - minX) + p.w / 2 };
+      oriented[nodeId] = {
+        ...p,
+        x: minY + (p.y - p.h / 2),
+        y: minX + (p.x - minX) + p.w / 2,
+        branchPortSide: p.branchPortSide === "left" ? "up" : p.branchPortSide === "right" ? "down" : p.branchPortSide,
+      };
       return;
     }
-    oriented[nodeId] = { ...p, x: minY + (maxY - (p.y + p.h / 2)), y: minX + (p.x - minX) + p.w / 2 };
+    oriented[nodeId] = {
+      ...p,
+      x: minY + (maxY - (p.y + p.h / 2)),
+      y: minX + (p.x - minX) + p.w / 2,
+      branchPortSide: p.branchPortSide === "left" ? "up" : p.branchPortSide === "right" ? "down" : p.branchPortSide,
+    };
   });
   const bounds = finalizeLayoutBounds(oriented, order);
   return { ...result, pos: oriented, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
@@ -299,6 +314,7 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
       fontSize: metric.fontSize,
       labelLines: metric.labelLines,
       branchSide: depth === 0 ? undefined : config.branchDirection === "left" ? "left" : "right",
+      branchPortSide: depth === 0 ? undefined : config.branchDirection === "left" ? "left" : "right",
     };
     order.push(nodeId);
     let placeCursorY = topY;
@@ -394,6 +410,7 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
       fontSize: metric.fontSize,
       labelLines: metric.labelLines,
       branchSide: direction > 0 ? "right" : "left",
+      branchPortSide: direction > 0 ? "right" : "left",
     };
     order.push(nodeId);
     let cursorY = topY;
