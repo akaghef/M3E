@@ -80,6 +80,8 @@ export interface WebGLProjectionDebugState {
 
 type ProjectionOptions = {
   onUnavailable: (reason: string) => void;
+  /** Context resources were rebuilt; the owner must make the projection visible again. */
+  onRestored: () => void;
 };
 
 type PackedLabel = {
@@ -727,6 +729,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
         this.uploadInteractionGeometry();
       }
       this.draw();
+      this.options.onRestored();
     } catch (error) {
       this.active = false;
       this.options.onUnavailable(error instanceof Error ? error.message : String(error));

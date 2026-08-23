@@ -74,6 +74,33 @@ test("WebGL Tree projection preserves map geometry, selection, camera and SVG fa
   expect(after.nodes).toEqual(before.nodes);
   expect(after.graphLinks).toEqual(before.graphLinks);
 
+  const beforeContextLoss = await page.evaluate(() => ({
+    snapshot: window.__m3eWebGLProjection.getSnapshot(),
+    debug: window.__m3eWebGLProjection.getDebugState(),
+  }));
+  const contextLossAvailable = await page.evaluate(() => {
+    const context = document.querySelector("#webgl-canvas")?.getContext("webgl2");
+    const extension = context?.getExtension("WEBGL_lose_context");
+    if (!extension) return false;
+    window.__m3eWebGLContextLossExtension = extension;
+    extension.loseContext();
+    return true;
+  });
+  test.skip(!contextLossAvailable, "WEBGL_lose_context is unavailable in this WebGL runtime.");
+  await expect(page.locator("#canvas")).toBeVisible();
+  await expect(page.locator("#webgl-canvas")).toBeHidden();
+  await page.evaluate(() => window.__m3eWebGLContextLossExtension.restoreContext());
+  await expect.poll(() => page.evaluate(() => Boolean(window.__m3eWebGLProjection?.getDebugState()?.active)), { timeout: 2_000 }).toBe(true);
+  await expect(page.locator("#webgl-canvas")).toBeVisible();
+  await expect(page.locator("#canvas")).toBeHidden();
+  const afterRestore = await page.evaluate(() => ({
+    snapshot: window.__m3eWebGLProjection.getSnapshot(),
+    debug: window.__m3eWebGLProjection.getDebugState(),
+  }));
+  expect(afterRestore.snapshot).toEqual(beforeContextLoss.snapshot);
+  expect(afterRestore.debug.camera).toEqual(beforeContextLoss.debug.camera);
+  expect(afterRestore.debug.selectedNodeIds).toEqual(["inside"]);
+
   await page.evaluate(() => window.__m3eWebGLProjection.forceFallback());
   await expect(page.locator("#canvas")).toBeVisible();
   await expect(page.locator("#webgl-canvas")).toBeHidden();

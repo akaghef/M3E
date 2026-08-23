@@ -4417,6 +4417,22 @@ function activateWebGLProjection(): void {
         canvas.style.transform = "";
         setStatus(`WebGL unavailable: ${reason} SVG fallback is active.`, true);
       },
+      onRestored: () => {
+        // Context loss temporarily displays the canonical SVG. The projection
+        // retains its derived snapshot/camera/interaction state, so resume it
+        // without rebuilding the map or changing canonical UI selection.
+        webglFallbackReason = null;
+        const renderableSurface = viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode();
+        if (!WEBGL_RENDERER_REQUESTED || !renderableSurface) return;
+        webglRendererActive = true;
+        webglCanvas.hidden = false;
+        canvas.setAttribute("hidden", "");
+        if (linearPanelEl) linearPanelEl.hidden = true;
+        webglProjection?.resize();
+        webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+        syncWebGLInteraction();
+        setStatus("WebGL context restored.");
+      },
     });
     if (!webglProjection.mount()) return;
   }
