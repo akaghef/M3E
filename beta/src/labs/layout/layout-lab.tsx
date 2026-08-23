@@ -10,10 +10,10 @@ import {
   type LayoutOptions,
 } from "../../shared/layout_port";
 import {
-  layoutSamples,
+  layoutLabSamples,
   summarizeLayout,
   toVisibleLayoutGraph,
-  type LayoutSampleId,
+  type LayoutLabSampleId,
 } from "./layout_samples";
 import "./layout-lab.css";
 
@@ -37,8 +37,8 @@ function numberInput(value: number, setValue: (value: number) => void, min: numb
 }
 
 function App(): React.ReactElement {
-  const [sampleId, setSampleId] = useState<LayoutSampleId>("tree-stress-30");
-  const sample = layoutSamples.find((item) => item.sample_id === sampleId) || layoutSamples[0]!;
+  const [sampleId, setSampleId] = useState<LayoutLabSampleId>("tree-stress-30");
+  const sample = layoutLabSamples.find((item) => item.sample_id === sampleId) || layoutLabSamples[0]!;
   const [mode, setMode] = useState<LayoutMode>(sample.input.mode);
   const [direction, setDirection] = useState<LayoutDirection>("right");
   const [depthAlign, setDepthAlign] = useState<LayoutDepthAlign>("packed");
@@ -78,13 +78,13 @@ function App(): React.ReactElement {
             id="sample"
             value={sampleId}
             onChange={(event) => {
-              const next = event.currentTarget.value as LayoutSampleId;
-              const nextSample = layoutSamples.find((item) => item.sample_id === next);
+              const next = event.currentTarget.value as LayoutLabSampleId;
+              const nextSample = layoutLabSamples.find((item) => item.sample_id === next);
               setSampleId(next);
               if (nextSample) setMode(nextSample.input.mode);
             }}
           >
-            {layoutSamples.map((item) => (
+            {layoutLabSamples.map((item) => (
               <option key={item.sample_id} value={item.sample_id}>{item.sample_id}</option>
             ))}
           </select>
@@ -176,7 +176,7 @@ function App(): React.ReactElement {
               <g key={nodeId}>
                 <title>{nodeId}</title>
                 <rect className={`lab-node ${nodeId === rootId ? "root" : ""}`} x={pos.x} y={pos.y - pos.h / 2} width={pos.w} height={pos.h} rx={6} />
-                <text className="lab-label" x={pos.x + 10} y={pos.y + 4}>{nodeId}</text>
+                <text className="lab-label" x={pos.x + 10} y={pos.y + 4}>{pos.labelLines?.[0] || nodeId}</text>
               </g>
             );
           })}

@@ -12,6 +12,7 @@ import type {
   LayoutResult,
   VisibleLayoutGraph,
 } from "../../shared/layout_port";
+import { syntheticLayoutSamples, type LayoutSyntheticSample } from "./synthetic_layout_samples";
 
 export interface LayoutGoldenSample {
   schema_version: 1;
@@ -42,6 +43,8 @@ export interface LayoutGoldenSample {
 }
 
 export type LayoutSampleId = LayoutGoldenSample["sample_id"];
+export type LayoutLabSample = LayoutGoldenSample | LayoutSyntheticSample;
+export type LayoutLabSampleId = LayoutLabSample["sample_id"];
 
 export const layoutSamples = [
   treeBasic,
@@ -52,6 +55,11 @@ export const layoutSamples = [
   scopeRoutingStress30,
 ] as LayoutGoldenSample[];
 
+export const layoutLabSamples = [
+  ...layoutSamples,
+  ...syntheticLayoutSamples,
+] as LayoutLabSample[];
+
 export function findLayoutSample(sampleId: string): LayoutGoldenSample {
   const sample = layoutSamples.find((item) => item.sample_id === sampleId);
   if (!sample) {
@@ -60,7 +68,7 @@ export function findLayoutSample(sampleId: string): LayoutGoldenSample {
   return sample;
 }
 
-export function toVisibleLayoutGraph(sample: LayoutGoldenSample): VisibleLayoutGraph {
+export function toVisibleLayoutGraph(sample: LayoutLabSample): VisibleLayoutGraph {
   return {
     nodeIds: sample.input.graph.nodeIds,
     childrenOf: (nodeId: string) => sample.input.graph.children[nodeId] || [],
