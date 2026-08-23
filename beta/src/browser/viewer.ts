@@ -13862,10 +13862,14 @@ window.addEventListener("m3e:set-surface-layout", (event: Event) => {
 window.addEventListener("m3e:set-layout-options", (event: Event) => {
   const detail = (event as CustomEvent<{
     direction?: SurfaceLayoutDirection;
+    space?: SurfaceSpace;
     depthAlign?: SurfaceDepthAlign;
     edgeRoute?: SurfaceEdgeRoute;
     linkRoute?: SurfaceLinkRoute;
   }>).detail || {};
+  if (detail.space) {
+    setSurfaceSpace(sanitizeSurfaceSpace(detail.space));
+  }
   setPublicLayoutOptions({
     direction: detail.direction,
     depthAlign: detail.depthAlign,
