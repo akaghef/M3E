@@ -74,7 +74,11 @@ function App(): React.ReactElement {
   const result = layout(graph, sample.input.boxSizes, mode, options);
   const canvasWidth = Math.max(900, Math.ceil(result.totalWidth + 80));
   const canvasHeight = Math.max(640, Math.ceil(result.totalHeight + 80));
-  const rootId = options.displayRootId || sample.input.graph.nodeIds[0];
+  const rootId = result.order[0];
+  const rootPos = rootId ? result.pos[rootId] : undefined;
+  const zoomTransform = rootPos
+    ? `translate(${rootPos.x} ${rootPos.y}) scale(${zoom}) translate(${-rootPos.x} ${-rootPos.y})`
+    : undefined;
 
   const edges = sample.input.graph.nodeIds.flatMap((sourceId) =>
     (sample.input.graph.children[sourceId] || []).map((targetId) => ({ sourceId, targetId })),
@@ -178,37 +182,39 @@ function App(): React.ReactElement {
       </aside>
       <section className="stage">
         <svg
-          width={`${zoom * 100}%`}
-          height={`${zoom * 100}%`}
+          width="100%"
+          height="100%"
           viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label="Layout result"
         >
-          {edges.map(({ sourceId, targetId }) => {
-            const source = result.pos[sourceId];
-            const target = result.pos[targetId];
-            if (!source || !target) return null;
-            const path = layoutLabEdgePath(source, target, direction);
-            return (
-              <path
-                key={`${sourceId}-${targetId}`}
-                className="lab-edge"
-                d={path.d}
-              />
-            );
-          })}
-          {result.order.map((nodeId) => {
-            const pos = result.pos[nodeId];
-            if (!pos) return null;
-            return (
-              <g key={nodeId}>
-                <title>{nodeId}</title>
-                <rect className={`lab-node ${nodeId === rootId ? "root" : ""}`} x={pos.x} y={pos.y - pos.h / 2} width={pos.w} height={pos.h} rx={6} />
-                <text className="lab-label" x={pos.x + 10} y={pos.y + 4}>{pos.labelLines?.[0] || nodeId}</text>
-              </g>
-            );
-          })}
+          <g transform={zoomTransform}>
+            {edges.map(({ sourceId, targetId }) => {
+              const source = result.pos[sourceId];
+              const target = result.pos[targetId];
+              if (!source || !target) return null;
+              const path = layoutLabEdgePath(source, target, direction);
+              return (
+                <path
+                  key={`${sourceId}-${targetId}`}
+                  className="lab-edge"
+                  d={path.d}
+                />
+              );
+            })}
+            {result.order.map((nodeId) => {
+              const pos = result.pos[nodeId];
+              if (!pos) return null;
+              return (
+                <g key={nodeId}>
+                  <title>{nodeId}</title>
+                  <rect className={`lab-node ${nodeId === rootId ? "root" : ""}`} x={pos.x} y={pos.y - pos.h / 2} width={pos.w} height={pos.h} rx={6} />
+                  <text className="lab-label" x={pos.x + 10} y={pos.y + 4}>{pos.labelLines?.[0] || nodeId}</text>
+                </g>
+              );
+            })}
+          </g>
         </svg>
       </section>
       {snapshotOpen && (
