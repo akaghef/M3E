@@ -18,9 +18,16 @@ import "./layout-lab.css";
 const modes: LayoutMode[] = ["Tree", "Radial", "Axial", "Disperse", "System"];
 const directions = ["left/right", "left", "right", "up/down", "up", "down"] as const;
 const depthAligns: LayoutDepthAlign[] = ["packed", "aligned"];
-const densities: LayoutDensity[] = ["compact", "balanced", "spacious"];
+const spaces = ["tight", "normal", "loose"] as const;
+const spacePresets = {
+  tight: { density: "compact", spacing: { nodeGap: 7, levelGap: 48, padding: 46 } },
+  normal: { density: "balanced", spacing: { nodeGap: 14, levelGap: 112, padding: 92 } },
+  loose: { density: "spacious", spacing: { nodeGap: 24, levelGap: 142, padding: 110 } },
+} as const satisfies Record<(typeof spaces)[number], { density: LayoutDensity; spacing: { nodeGap: number; levelGap: number; padding: number } }>;
 
 type CanonicalDirection = (typeof directions)[number];
+type CanonicalSpace = (typeof spaces)[number];
+type LayoutSpacing = LayoutOptions["spacing"] & { nodeGap: number; levelGap: number; padding: number };
 
 interface DirectionAdapterResult {
   portOptions: Pick<LayoutOptions, "branchDirection" | "direction">;
@@ -45,7 +52,19 @@ function adaptDirection(direction: CanonicalDirection): DirectionAdapterResult {
   }
 }
 
-function numberInput(value: number, setValue: (value: number) => void, min: number, max: number, step = 1): React.ReactNode {
+function selectedSpace(spacing: LayoutSpacing): CanonicalSpace | "custom" {
+  return spaces.find((space) => {
+    const preset = spacePresets[space].spacing;
+    return preset.nodeGap === spacing.nodeGap && preset.levelGap === spacing.levelGap && preset.padding === spacing.padding;
+  }) || "custom";
+}
+
+function adaptSpace(space: CanonicalSpace): Pick<LayoutOptions, "density"> {
+  // Temporary lab adapter: canonical space maps to layout_port density.
+  return { density: spacePresets[space].density };
+}
+
+function numberInput(value: number, setValue: (value: number) => void, min: number, max: number, step = 1, disabled = false): React.ReactNode {
   return (
     <input
       type="number"
@@ -53,6 +72,7 @@ function numberInput(value: number, setValue: (value: number) => void, min: numb
       max={max}
       step={step}
       value={value}
+      disabled={disabled}
       onChange={(event) => setValue(Number(event.currentTarget.value))}
     />
   );
@@ -64,7 +84,6 @@ function App(): React.ReactElement {
   const [mode, setMode] = useState<LayoutMode>(sample.input.mode);
   const [direction, setDirection] = useState<CanonicalDirection>("left/right");
   const [depthAlign, setDepthAlign] = useState<LayoutDepthAlign>("packed");
-  const [density, setDensity] = useState<LayoutDensity>("balanced");
   const [nodeGap, setNodeGap] = useState(14);
   const [levelGap, setLevelGap] = useState(112);
   const [padding, setPadding] = useState(92);
@@ -72,14 +91,17 @@ function App(): React.ReactElement {
 
   const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
   const directionAdapter = adaptDirection(direction);
+  const spacing: LayoutSpacing = { nodeGap, levelGap, padding };
+  const space = selectedSpace(spacing);
+  const treeSpacingUnavailable = mode === "Tree";
   const { branchDirection: _sampleBranchDirection, direction: _sampleDirection, ...sampleOptions } = sample.input.options;
   const options: LayoutOptions = {
     ...sampleOptions,
     structuredMode: mode === "Tree" || mode === "Radial" || mode === "Axial" ? mode : undefined,
     depthAlign,
-    density,
+    ...adaptSpace(space === "custom" ? "normal" : space),
     ...directionAdapter.portOptions,
-    spacing: { nodeGap, levelGap, padding },
+    spacing,
   };
   const result = directionAdapter.unavailable ? null : layout(graph, sample.input.boxSizes, mode, options);
   const canvasWidth = Math.max(900, Math.ceil((result?.totalWidth || 0) + 80));
@@ -134,22 +156,35 @@ function App(): React.ReactElement {
           </select>
         </div>
         <div className="control-group">
-          <label htmlFor="density">Density</label>
-          <select id="density" value={density} onChange={(event) => setDensity(event.currentTarget.value as LayoutDensity)}>
-            {densities.map((item) => <option key={item} value={item}>{item}</option>)}
+          <label htmlFor="space">Space</label>
+          <select
+            id="space"
+            value={space}
+            disabled={treeSpacingUnavailable}
+            onChange={(event) => {
+              const preset = spacePresets[event.currentTarget.value as CanonicalSpace].spacing;
+              setNodeGap(preset.nodeGap);
+              setLevelGap(preset.levelGap);
+              setPadding(preset.padding);
+            }}
+          >
+            {spaces.map((item) => <option key={item} value={item}>{item}</option>)}
+            {space === "custom" && <option value="custom" disabled>custom</option>}
           </select>
         </div>
+        <p className="adapter-note">Temporary lab adapter: Space maps to layout_port density.</p>
+        {treeSpacingUnavailable && <p className="unavailable-status">Tree ignores Space and gap values in the current port.</p>}
         <div className="control-group">
           <label>Node Gap</label>
-          {numberInput(nodeGap, setNodeGap, 0, 120)}
+          {numberInput(nodeGap, setNodeGap, 0, 120, 1, treeSpacingUnavailable)}
         </div>
         <div className="control-group">
           <label>Level Gap</label>
-          {numberInput(levelGap, setLevelGap, 40, 360)}
+          {numberInput(levelGap, setLevelGap, 40, 360, 1, treeSpacingUnavailable)}
         </div>
         <div className="control-group">
           <label>Side Padding</label>
-          {numberInput(padding, setPadding, 20, 240)}
+          {numberInput(padding, setPadding, 20, 240, 1, treeSpacingUnavailable)}
         </div>
         <div className="control-group">
           <div className="control-row">
