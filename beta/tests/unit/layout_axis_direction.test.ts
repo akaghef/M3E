@@ -52,6 +52,12 @@ function report(result: LayoutResult, sampleId: string, direction: LayoutDirecti
   return overlaps;
 }
 
+function breadthCenter(position: LayoutNodePosition, direction: LayoutDirection): number {
+  return direction === "up" || direction === "down" || direction === "up/down"
+    ? position.x + position.w / 2
+    : position.y;
+}
+
 function expectNoOverlapsForEveryDirection(sample: LayoutLabSample): void {
   directions.forEach((direction) => {
     const result = layout(toVisibleLayoutGraph(sample), sample.input.boxSizes, sample.input.mode, {
@@ -71,5 +77,46 @@ describe("Tree layout direction-aware extents", () => {
 
   test("tree-stress-30 has no strict rectangle intersections in six directions", () => {
     expectNoOverlapsForEveryDirection(treeStress30);
+  });
+
+  test("centers the synthetic depth 4 through 21 single-child chain in all six directions", () => {
+    const sample = syntheticLayoutSamples[0];
+    directions.forEach((direction) => {
+      const result = layout(toVisibleLayoutGraph(sample), sample.input.boxSizes, sample.input.mode, {
+        ...sample.input.options,
+        direction,
+      });
+      const chain = result.order
+        .filter((nodeId) => {
+          const depth = result.pos[nodeId]?.depth;
+          return depth !== undefined && depth >= 4 && depth <= 21;
+        })
+        .map((nodeId) => ({ nodeId, breadth: breadthCenter(result.pos[nodeId]!, direction) }));
+
+      expect(chain).toHaveLength(18);
+      expect(new Set(chain.map(({ breadth }) => breadth))).toEqual(new Set([chain[0]!.breadth]));
+      console.info(JSON.stringify({ sampleId: sample.sample_id, direction, singleChildChainBreadth: chain }));
+    });
+  });
+
+  test("centers tree-stress-30 graphlinks to cross-scope-link in all six directions", () => {
+    directions.forEach((direction) => {
+      const result = layout(toVisibleLayoutGraph(treeStress30), treeStress30.input.boxSizes, treeStress30.input.mode, {
+        ...treeStress30.input.options,
+        direction,
+      });
+      const parent = result.pos.graphlinks!;
+      const child = result.pos["cross-scope-link"]!;
+      const parentBreadth = breadthCenter(parent, direction);
+      const childBreadth = breadthCenter(child, direction);
+
+      expect(childBreadth).toBe(parentBreadth);
+      console.info(JSON.stringify({
+        sampleId: treeStress30.sample_id,
+        direction,
+        parent: { nodeId: "graphlinks", breadth: parentBreadth },
+        child: { nodeId: "cross-scope-link", breadth: childBreadth },
+      }));
+    });
   });
 });

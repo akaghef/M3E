@@ -426,7 +426,9 @@
         "fontSize": 13,
         "labelLines": [
           "strategy"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "vision": {
         "x": 859,
@@ -437,7 +439,9 @@
         "fontSize": 13,
         "labelLines": [
           "vision"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "priorities": {
         "x": 859,
@@ -448,7 +452,9 @@
         "fontSize": 13,
         "labelLines": [
           "priorities"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "beta-focus": {
         "x": 1321,
@@ -459,7 +465,9 @@
         "fontSize": 13,
         "labelLines": [
           "beta focus"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "final-guard": {
         "x": 1321,
@@ -470,7 +478,9 @@
         "fontSize": 13,
         "labelLines": [
           "final guard"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "risks": {
         "x": 859,
@@ -481,7 +491,9 @@
         "fontSize": 13,
         "labelLines": [
           "risks"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "capture": {
         "x": 465,
@@ -492,7 +504,9 @@
         "fontSize": 13,
         "labelLines": [
           "capture"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "flash-inbox": {
         "x": 861,
@@ -503,7 +517,9 @@
         "fontSize": 13,
         "labelLines": [
           "flash inbox"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "vault-import": {
         "x": 861,
@@ -514,7 +530,9 @@
         "fontSize": 13,
         "labelLines": [
           "vault import"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "frontmatter": {
         "x": 1352,
@@ -525,7 +543,9 @@
         "fontSize": 13,
         "labelLines": [
           "frontmatter"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "media-assets": {
         "x": 1352,
@@ -536,7 +556,9 @@
         "fontSize": 13,
         "labelLines": [
           "media assets"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "clipboard": {
         "x": 861,
@@ -547,7 +569,9 @@
         "fontSize": 13,
         "labelLines": [
           "clipboard"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "graph-model": {
         "x": 465,
@@ -558,7 +582,9 @@
         "fontSize": 13,
         "labelLines": [
           "graph model"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "node-schema": {
         "x": 898,
@@ -569,7 +595,9 @@
         "fontSize": 13,
         "labelLines": [
           "node schema"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "edge-schema": {
         "x": 898,
@@ -580,7 +608,9 @@
         "fontSize": 13,
         "labelLines": [
           "edge schema"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "graphlinks": {
         "x": 898,
@@ -591,18 +621,22 @@
         "fontSize": 13,
         "labelLines": [
           "graphlinks"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "cross-scope-link": {
         "x": 1389,
-        "y": 442.5,
+        "y": 452,
         "depth": 3,
         "w": 236,
         "h": 38,
         "fontSize": 13,
         "labelLines": [
           "cross scope link"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "alias-policy": {
         "x": 898,
@@ -613,7 +647,9 @@
         "fontSize": 13,
         "labelLines": [
           "alias policy"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "scope-sync": {
         "x": 465,
@@ -624,7 +660,9 @@
         "fontSize": 13,
         "labelLines": [
           "scope sync"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "scope-lock": {
         "x": 900,
@@ -635,7 +673,9 @@
         "fontSize": 13,
         "labelLines": [
           "scope lock"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "push-queue": {
         "x": 900,
@@ -646,7 +686,9 @@
         "fontSize": 13,
         "labelLines": [
           "push queue"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "conflict-backup": {
         "x": 900,
@@ -657,7 +699,9 @@
         "fontSize": 13,
         "labelLines": [
           "conflict backup"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "audit-chain": {
         "x": 900,
@@ -668,7 +712,9 @@
         "fontSize": 13,
         "labelLines": [
           "audit chain"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "layout": {
         "x": 465,
@@ -679,7 +725,9 @@
         "fontSize": 13,
         "labelLines": [
           "layout"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "tree-mode": {
         "x": 881,
@@ -690,7 +738,9 @@
         "fontSize": 13,
         "labelLines": [
           "tree mode"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "radial-mode": {
         "x": 881,
@@ -701,7 +751,9 @@
         "fontSize": 13,
         "labelLines": [
           "radial mode"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "routing-scope": {
         "x": 881,
@@ -712,7 +764,9 @@
         "fontSize": 13,
         "labelLines": [
           "routing scope"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "route-preview": {
         "x": 1372,
@@ -723,18 +777,22 @@
         "fontSize": 13,
         "labelLines": [
           "route preview"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "edge-sanity": {
         "x": 1863,
-        "y": 793.5,
+        "y": 803,
         "depth": 4,
         "w": 236,
         "h": 42,
         "fontSize": 13,
         "labelLines": [
           "edge sanity"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       }
     },
     "order": [
@@ -769,7 +827,7 @@
       "route-preview",
       "edge-sanity"
     ],
-    "totalHeight": 882,
+    "totalHeight": 884,
     "totalWidth": 2579
   }
 }

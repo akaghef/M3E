@@ -435,7 +435,9 @@
         "fontSize": 13,
         "labelLines": [
           "product"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "editor": {
         "x": 523,
@@ -446,7 +448,9 @@
         "fontSize": 13,
         "labelLines": [
           "editor"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "navigation": {
         "x": 520,
@@ -457,7 +461,9 @@
         "fontSize": 13,
         "labelLines": [
           "navigation"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "layout-lab": {
         "x": 520,
@@ -468,7 +474,9 @@
         "fontSize": 13,
         "labelLines": [
           "layout lab"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "stress-fixtures": {
         "x": 172,
@@ -479,7 +487,9 @@
         "fontSize": 13,
         "labelLines": [
           "stress fixtures"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "sanity-tests": {
         "x": 172,
@@ -490,7 +500,9 @@
         "fontSize": 13,
         "labelLines": [
           "sanity tests"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "data": {
         "x": 940,
@@ -501,7 +513,9 @@
         "fontSize": 13,
         "labelLines": [
           "data"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "sqlite": {
         "x": 520,
@@ -512,7 +526,9 @@
         "fontSize": 13,
         "labelLines": [
           "sqlite"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "vault": {
         "x": 520,
@@ -523,7 +539,9 @@
         "fontSize": 13,
         "labelLines": [
           "vault"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "cloud-sync": {
         "x": 520,
@@ -534,7 +552,9 @@
         "fontSize": 13,
         "labelLines": [
           "cloud sync"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "quality": {
         "x": 901,
@@ -545,7 +565,9 @@
         "fontSize": 13,
         "labelLines": [
           "quality"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "typecheck": {
         "x": 520,
@@ -556,7 +578,9 @@
         "fontSize": 13,
         "labelLines": [
           "typecheck"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "golden-parity": {
         "x": 520,
@@ -567,7 +591,9 @@
         "fontSize": 13,
         "labelLines": [
           "golden parity"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "dependency-gate": {
         "x": 520,
@@ -578,7 +604,9 @@
         "fontSize": 13,
         "labelLines": [
           "dependency gate"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "learning": {
         "x": 876,
@@ -589,7 +617,9 @@
         "fontSize": 13,
         "labelLines": [
           "learning"
-        ]
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "research": {
         "x": 1453,
@@ -600,7 +630,9 @@
         "fontSize": 13,
         "labelLines": [
           "research"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "papers": {
         "x": 1775,
@@ -611,7 +643,9 @@
         "fontSize": 13,
         "labelLines": [
           "papers"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "experiments": {
         "x": 1775,
@@ -622,18 +656,22 @@
         "fontSize": 13,
         "labelLines": [
           "experiments"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "benchmark-notes": {
         "x": 2123,
-        "y": 223,
+        "y": 224,
         "depth": 3,
         "w": 236,
         "h": 34,
         "fontSize": 13,
         "labelLines": [
           "benchmark notes"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "synthesis": {
         "x": 1775,
@@ -644,7 +682,9 @@
         "fontSize": 13,
         "labelLines": [
           "synthesis"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "users": {
         "x": 1453,
@@ -655,7 +695,9 @@
         "fontSize": 13,
         "labelLines": [
           "users"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "akaghef": {
         "x": 1775,
@@ -666,7 +708,9 @@
         "fontSize": 13,
         "labelLines": [
           "akaghef"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "future-collab": {
         "x": 1775,
@@ -677,7 +721,9 @@
         "fontSize": 13,
         "labelLines": [
           "future collab"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "collaboration": {
         "x": 1453,
@@ -688,7 +734,9 @@
         "fontSize": 13,
         "labelLines": [
           "collaboration"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "scope-push": {
         "x": 1775,
@@ -699,7 +747,9 @@
         "fontSize": 13,
         "labelLines": [
           "scope push"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "presence": {
         "x": 1775,
@@ -710,7 +760,9 @@
         "fontSize": 13,
         "labelLines": [
           "presence"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "audit": {
         "x": 1775,
@@ -721,7 +773,9 @@
         "fontSize": 13,
         "labelLines": [
           "audit"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "release": {
         "x": 1453,
@@ -732,7 +786,9 @@
         "fontSize": 13,
         "labelLines": [
           "release"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "beta-channel": {
         "x": 1775,
@@ -743,7 +799,9 @@
         "fontSize": 13,
         "labelLines": [
           "beta channel"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       }
     },
     "order": [

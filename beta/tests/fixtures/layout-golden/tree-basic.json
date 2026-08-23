@@ -66,21 +66,27 @@
         "y": 42,
         "depth": 1,
         "w": 150,
-        "h": 40
+        "h": 40,
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "a1": {
         "x": 960,
-        "y": 29,
+        "y": 42,
         "depth": 2,
         "w": 120,
-        "h": 36
+        "h": 36,
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "b": {
         "x": 555,
         "y": 94.5,
         "depth": 1,
         "w": 130,
-        "h": 38
+        "h": 38,
+        "branchSide": "right",
+        "branchPortSide": "right"
       }
     },
     "order": [

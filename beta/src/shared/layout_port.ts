@@ -333,8 +333,14 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
       branchPortSide: depth === 0 ? undefined : config.branchDirection === "left" ? "left" : "right",
     };
     order.push(nodeId);
-    let placeCursorY = topY;
-    graph.childrenOf(nodeId).forEach((childId, i, arr) => {
+    const children = graph.childrenOf(nodeId);
+    const childrenSpan = children.reduce((sum, childId, index) => (
+      sum
+      + subtreeSpanForLayout(childId, graph.childrenOf, metrics, subtreeHeightCache, axis.breadthExtent, config.siblingGap)
+      + (index > 0 ? config.siblingGap : 0)
+    ), 0);
+    let placeCursorY = topY + (h - childrenSpan) / 2;
+    children.forEach((childId, i, arr) => {
       const childH = place(childId, placeCursorY, nodeX, axis.depthExtent(metric));
       placeCursorY += childH;
       if (i < arr.length - 1) placeCursorY += config.siblingGap;
@@ -429,8 +435,14 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
       branchPortSide: direction > 0 ? "right" : "left",
     };
     order.push(nodeId);
-    let cursorY = topY;
-    graph.childrenOf(nodeId).forEach((childId, i, arr) => {
+    const children = graph.childrenOf(nodeId);
+    const childrenSpan = children.reduce((sum, childId, index) => (
+      sum
+      + subtreeSpanForLayout(childId, graph.childrenOf, metrics, spanCache, axis.breadthExtent, config.siblingGap)
+      + (index > 0 ? config.siblingGap : 0)
+    ), 0);
+    let cursorY = topY + (span - childrenSpan) / 2;
+    children.forEach((childId, i, arr) => {
       const childSpan = placeSide(childId, cursorY, direction, x, axis.depthExtent(metric));
       cursorY += childSpan;
       if (i < arr.length - 1) cursorY += config.siblingGap;

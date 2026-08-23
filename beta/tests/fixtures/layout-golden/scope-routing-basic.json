@@ -66,21 +66,27 @@
         "y": 41,
         "depth": 1,
         "w": 138,
-        "h": 38
+        "h": 38,
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "scope-a1": {
         "x": 918,
-        "y": 29,
+        "y": 41,
         "depth": 2,
         "w": 118,
-        "h": 36
+        "h": 36,
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "scope-b": {
         "x": 525,
         "y": 92.5,
         "depth": 1,
         "w": 126,
-        "h": 38
+        "h": 38,
+        "branchSide": "right",
+        "branchPortSide": "right"
       }
     },
     "order": [
