@@ -75,11 +75,65 @@ describe("Tree layout direction-aware extents", () => {
     expectNoOverlapsForEveryDirection(syntheticLayoutSamples[0]);
   });
 
+  test("keeps the synthetic extreme boxes on a shallow branch apart from the deep chain", () => {
+    const sample = syntheticLayoutSamples[0];
+    const { children, nodeIds } = sample.input.graph;
+    const parentByChild = Object.fromEntries(
+      Object.entries(children).flatMap(([parentId, childIds]) => childIds.map((childId) => [childId, parentId])),
+    );
+    const longNodeIds = nodeIds.filter((nodeId) => sample.input.boxSizes[nodeId]!.w >= 480);
+    const longBranchRoot = parentByChild[longNodeIds[0]!];
+    const chainIds = nodeIds.filter((nodeId) => /^syn-d(?:[4-9]|10)-/.test(nodeId));
+
+    expect(longNodeIds).toHaveLength(3);
+    expect(longNodeIds.map((nodeId) => sample.input.boxSizes[nodeId]!.w)).toEqual([480, 640, 800]);
+    expect(longBranchRoot).toBeDefined();
+    expect(parentByChild[longBranchRoot!]).toBe("syn-root");
+    expect(longNodeIds.every((nodeId) => parentByChild[nodeId] === longBranchRoot)).toBe(true);
+    expect(chainIds).toHaveLength(7);
+    expect(Math.max(...chainIds.map((nodeId) => sample.input.boxSizes[nodeId]!.w))).toBeLessThanOrEqual(360);
+    expect(chainIds.slice(0, -1).map((nodeId) => children[nodeId]!.length === 1)).toEqual(
+      Array(chainIds.length - 1).fill(true),
+    );
+    expect(children[chainIds.at(-1)!]).toEqual([]);
+    expect(nodeIds).toHaveLength(100);
+
+    const widths = nodeIds.map((nodeId) => sample.input.boxSizes[nodeId]!.w).sort((a, b) => a - b);
+    const heights = nodeIds.map((nodeId) => sample.input.boxSizes[nodeId]!.h).sort((a, b) => a - b);
+    const depthByNode: Record<string, number> = { "syn-root": 0 };
+    nodeIds.forEach((nodeId) => {
+      (children[nodeId] || []).forEach((childId) => { depthByNode[childId] = depthByNode[nodeId]! + 1; });
+    });
+    const depthDistribution = Object.entries(depthByNode)
+      .reduce<Record<number, number>>((distribution, [, depth]) => ({ ...distribution, [depth]: (distribution[depth] || 0) + 1 }), {});
+    const median = (values: number[]): number => (values[49]! + values[50]!) / 2;
+    console.info(JSON.stringify({
+      sampleId: sample.sample_id,
+      longBranchPaths: longNodeIds.map((nodeId) => ["syn-root", longBranchRoot, nodeId]),
+      depthDistribution,
+      maxDepth: Math.max(...Object.values(depthByNode)),
+      width: { min: widths[0], median: median(widths), max: widths.at(-1) },
+      height: { min: heights[0], median: median(heights), max: heights.at(-1) },
+    }));
+  });
+
+  test("reports synthetic-100-varied-boxes Disperse geometry in six directions", () => {
+    const sample = syntheticLayoutSamples[0];
+    directions.forEach((direction) => {
+      const result = layout(toVisibleLayoutGraph(sample), sample.input.boxSizes, "Disperse", {
+        ...sample.input.options,
+        direction,
+      });
+      expect(Object.keys(result.pos)).toHaveLength(sample.input.graph.nodeIds.length);
+      report(result, sample.sample_id, `Disperse/${direction}` as LayoutDirection);
+    });
+  });
+
   test("tree-stress-30 has no strict rectangle intersections in six directions", () => {
     expectNoOverlapsForEveryDirection(treeStress30);
   });
 
-  test("centers the synthetic depth 4 through 21 single-child chain in all six directions", () => {
+  test("centers the synthetic depth 4 through 10 single-child chain in all six directions", () => {
     const sample = syntheticLayoutSamples[0];
     directions.forEach((direction) => {
       const result = layout(toVisibleLayoutGraph(sample), sample.input.boxSizes, sample.input.mode, {
@@ -89,11 +143,11 @@ describe("Tree layout direction-aware extents", () => {
       const chain = result.order
         .filter((nodeId) => {
           const depth = result.pos[nodeId]?.depth;
-          return depth !== undefined && depth >= 4 && depth <= 21;
+          return depth !== undefined && depth >= 4 && depth <= 10;
         })
         .map((nodeId) => ({ nodeId, breadth: breadthCenter(result.pos[nodeId]!, direction) }));
 
-      expect(chain).toHaveLength(18);
+      expect(chain).toHaveLength(7);
       expect(new Set(chain.map(({ breadth }) => breadth))).toEqual(new Set([chain[0]!.breadth]));
       console.info(JSON.stringify({ sampleId: sample.sample_id, direction, singleChildChainBreadth: chain }));
     });

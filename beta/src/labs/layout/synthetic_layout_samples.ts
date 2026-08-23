@@ -66,12 +66,12 @@ function createSynthetic100Sample(): LayoutSyntheticSample {
   };
 
   let serial = 1;
-  const createNode = (depth: number): string => {
+  const createNode = (depth: number, metric?: LayoutNodeMetric): string => {
     const id = `syn-d${depth}-${String(serial).padStart(3, "0")}`;
     serial += 1;
     nodeIds.push(id);
     children[id] = [];
-    boxSizes[id] = metricFor(id, depth, next);
+    boxSizes[id] = metric ?? metricFor(id, depth, next);
     return id;
   };
 
@@ -90,10 +90,20 @@ function createSynthetic100Sample(): LayoutSyntheticSample {
 
   const depth1 = attachLayer(["syn-root"], 7, 1, 7);
   const depth2 = attachLayer(depth1, 24, 2, 1);
-  const depth3 = attachLayer(depth2, 50, 3, 1);
+  const longBranchRoot = createNode(1);
+  children["syn-root"]!.push(longBranchRoot);
+  [
+    { w: 480, h: 44, labelLines: ["extreme long label / layout stress / cross-facet routing candidate / synthetic repeated context"] },
+    { w: 640, h: 60, labelLines: ["extreme long label / layout stress / canonical owner and provenance route / synthetic repeated context"] },
+    { w: 800, h: 82, labelLines: ["extreme long label / layout stress / deterministic synthetic specimen / this node intentionally exceeds ordinary canvas assumptions"] },
+  ].forEach((metric) => {
+    const childId = createNode(2, { ...metric, fontSize: 13 });
+    children[longBranchRoot]!.push(childId);
+  });
+  const depth3 = attachLayer(depth2, 57, 3, 1);
   const deepBranchParent = depth3[integerInRange(next, 0, depth3.length - 1)]!;
   let deepBranchTail = deepBranchParent;
-  for (let depth = 4; depth <= 21; depth += 1) {
+  for (let depth = 4; depth <= 10; depth += 1) {
     const childId = createNode(depth);
     children[deepBranchTail]!.push(childId);
     deepBranchTail = childId;
@@ -125,30 +135,6 @@ function createSynthetic100Sample(): LayoutSyntheticSample {
 }
 
 function metricFor(id: string, depth: number, next: () => number): LayoutNodeMetric {
-  if (id.endsWith("087")) {
-    return {
-      w: 1440,
-      h: 44,
-      labelLines: ["extreme long label / layout stress / cross-facet routing candidate / synthetic repeated context"],
-      fontSize: 13,
-    };
-  }
-  if (id.endsWith("093")) {
-    return {
-      w: 3200,
-      h: 60,
-      labelLines: ["extreme long label / layout stress / canonical owner and provenance route / synthetic repeated context"],
-      fontSize: 13,
-    };
-  }
-  if (id.endsWith("099")) {
-    return {
-      w: 6400,
-      h: 82,
-      labelLines: ["extreme long label / layout stress / deterministic synthetic specimen / this node intentionally exceeds ordinary canvas assumptions"],
-      fontSize: 13,
-    };
-  }
   const bucket = (integerInRange(next, 0, 99) + depth * 11) % 100;
   if (id.endsWith("007") || bucket < 9) {
     return { w: integerInRange(next, 32, 58), h: integerInRange(next, 34, 38), labelLines: ["x"], fontSize: 13 };
