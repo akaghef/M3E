@@ -7,7 +7,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Tree", "direction": "right" },
+      "edgeDirection": { "view": "Tree", "direction": "right" },
       "routeStyle": "orthogonal"
     },
     "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -20,7 +20,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
       "srcRect": { "x": 300, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 100, "y": 105, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Tree", "direction": "left" },
+      "edgeDirection": { "view": "Tree", "direction": "left" },
       "routeStyle": "orthogonal"
     },
     "expected": { "ports": { "sourceSide": "left", "targetSide": "right" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -33,7 +33,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "leftChild" },
       "srcRect": { "x": 300, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 80, "y": 105, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Tree", "direction": "both", "branchSide": "left" },
+      "edgeDirection": { "view": "Tree", "direction": "left/right", "branchSide": "left" },
       "routeStyle": "curve"
     },
     "expected": { "ports": { "sourceSide": "left", "targetSide": "right" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -46,7 +46,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "rightChild" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Tree", "direction": "both", "branchSide": "right" },
+      "edgeDirection": { "view": "Tree", "direction": "left/right", "branchSide": "right" },
       "routeStyle": "curve"
     },
     "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -59,7 +59,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 105, "y": -60, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Tree", "direction": "up" },
+      "edgeDirection": { "view": "Tree", "direction": "up" },
       "routeStyle": "orthogonal"
     },
     "expected": { "ports": { "sourceSide": "top", "targetSide": "bottom" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -72,7 +72,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "root", "childNodeId": "child" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 105, "y": 260, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Tree", "direction": "down" },
+      "edgeDirection": { "view": "Tree", "direction": "down" },
       "routeStyle": "orthogonal"
     },
     "expected": { "ports": { "sourceSide": "bottom", "targetSide": "top" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -85,7 +85,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "stepA", "childNodeId": "stepB" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Axial", "direction": "right" },
+      "edgeDirection": { "view": "Axial", "direction": "right" },
       "routeStyle": "line"
     },
     "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -98,7 +98,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "stepA", "childNodeId": "stepB" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 105, "y": -60, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Axial", "direction": "up" },
+      "edgeDirection": { "view": "Axial", "direction": "up" },
       "routeStyle": "line"
     },
     "expected": { "ports": { "sourceSide": "top", "targetSide": "bottom" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -111,7 +111,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "center", "childNodeId": "outer" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": -80, "y": -60, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Radial", "direction": "balanced" },
+      "edgeDirection": { "view": "Radial", "direction": "balanced" },
       "routeStyle": "curve"
     },
     "expected": { "ports": { "sourceSide": "left", "targetSide": "right" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -124,7 +124,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "cluster", "childNodeId": "free" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 105, "y": 260, "w": 90, "h": 50 },
-      "branchDirection": { "view": "Disperse", "direction": "free" },
+      "edgeDirection": { "view": "Disperse", "direction": "free" },
       "routeStyle": "force-link"
     },
     "expected": { "ports": { "sourceSide": "bottom", "targetSide": "top" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -137,7 +137,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "moduleA", "childNodeId": "moduleB" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 300, "y": 105, "w": 90, "h": 50 },
-      "branchDirection": { "view": "System", "direction": "right" },
+      "edgeDirection": { "view": "System", "direction": "right" },
       "routeStyle": "orthogonal"
     },
     "expected": { "ports": { "sourceSide": "right", "targetSide": "left" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
@@ -150,7 +150,7 @@
       "relation": { "kind": "parent-child", "parentNodeId": "container", "childNodeId": "module" },
       "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
       "dstRect": { "x": 105, "y": 260, "w": 90, "h": 50 },
-      "branchDirection": { "view": "System", "direction": "down" },
+      "edgeDirection": { "view": "System", "direction": "down" },
       "routeStyle": "orthogonal"
     },
     "expected": { "ports": { "sourceSide": "bottom", "targetSide": "top" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }

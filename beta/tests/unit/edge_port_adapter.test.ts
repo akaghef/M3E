@@ -26,7 +26,7 @@ describe("parent-child edge adapter", () => {
       direction: "right",
       routeStyle: "curve",
     });
-    expect(routed.branchDirection).toEqual({ view: "Tree", direction: "both", branchSide: "left" });
+    expect(routed.edgeDirection).toEqual({ view: "Tree", direction: "both", branchSide: "left" });
     expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["left", "right"]);
   });
 

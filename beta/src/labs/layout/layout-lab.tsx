@@ -58,12 +58,7 @@ function App(): React.ReactElement {
 
   const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
   const spacing: LayoutSpacing = { nodeGap, levelGap, padding };
-  const {
-    branchDirection: _sampleBranchDirection,
-    density: _sampleDensity,
-    direction: _sampleDirection,
-    ...sampleOptions
-  } = sample.input.options;
+  const { direction: _sampleDirection, ...sampleOptions } = sample.input.options;
   const options: LayoutOptions = {
     ...sampleOptions,
     structuredMode: mode === "Tree" || mode === "Radial" || mode === "Axial" ? mode : undefined,

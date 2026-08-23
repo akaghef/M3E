@@ -47,8 +47,8 @@
     "options": {
       "displayRootId": "root",
       "structuredMode": "Radial",
-      "density": "balanced",
-      "branchDirection": "both"
+      "space": "normal",
+      "direction": "left/right"
     }
   },
   "expected": {
@@ -65,21 +65,27 @@
         "y": 121,
         "depth": 1,
         "w": 150,
-        "h": 44
+        "h": 44,
+        "branchSide": "left",
+        "branchPortSide": "left"
       },
       "a": {
         "x": 766,
         "y": 43,
         "depth": 1,
         "w": 140,
-        "h": 40
+        "h": 40,
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "c": {
         "x": 766,
         "y": 200,
         "depth": 1,
         "w": 120,
-        "h": 38
+        "h": 38,
+        "branchSide": "right",
+        "branchPortSide": "right"
       }
     },
     "order": [

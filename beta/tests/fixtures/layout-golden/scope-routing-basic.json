@@ -48,22 +48,31 @@
     "options": {
       "displayRootId": "scope-root",
       "structuredMode": "Tree",
-      "density": "balanced",
-      "branchDirection": "both"
+      "space": "normal",
+      "direction": "left/right"
     }
   },
   "expected": {
     "pos": {
       "scope-root": {
-        "x": 80,
-        "y": 61,
+        "x": 918,
+        "y": 102,
         "depth": 0,
         "w": 190,
         "h": 58
       },
+      "scope-b": {
+        "x": 537,
+        "y": 102,
+        "depth": 1,
+        "w": 126,
+        "h": 38,
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
       "scope-a": {
-        "x": 525,
-        "y": 41,
+        "x": 1363,
+        "y": 102,
         "depth": 1,
         "w": 138,
         "h": 38,
@@ -71,31 +80,22 @@
         "branchPortSide": "right"
       },
       "scope-a1": {
-        "x": 918,
-        "y": 41,
+        "x": 1756,
+        "y": 102,
         "depth": 2,
         "w": 118,
         "h": 36,
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "scope-b": {
-        "x": 525,
-        "y": 92.5,
-        "depth": 1,
-        "w": 126,
-        "h": 38,
         "branchSide": "right",
         "branchPortSide": "right"
       }
     },
     "order": [
       "scope-root",
+      "scope-b",
       "scope-a",
-      "scope-a1",
-      "scope-b"
+      "scope-a1"
     ],
     "totalHeight": 760,
-    "totalWidth": 1620
+    "totalWidth": 2354
   }
 }

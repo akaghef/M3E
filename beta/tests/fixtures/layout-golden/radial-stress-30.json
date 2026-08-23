@@ -409,8 +409,8 @@
     "options": {
       "displayRootId": "radial-root",
       "structuredMode": "Radial",
-      "density": "balanced",
-      "branchDirection": "both"
+      "space": "normal",
+      "direction": "left/right"
     }
   },
   "expected": {

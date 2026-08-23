@@ -21,7 +21,7 @@ export type RadialDirection = "clockwise" | "counterclockwise" | "balanced";
 export type DisperseDirection = "free";
 export type SystemDirection = "right" | "down" | "free";
 
-export type EdgeBranchDirection =
+export type EdgeDirection =
   | { view: "Tree"; direction: TreeDirection; branchSide?: TreeBranchSide }
   // Compatibility for existing persisted/golden inputs. New callers must use
   // the canonical `left/right` direction instead.
@@ -34,7 +34,7 @@ export type EdgeBranchDirection =
 export interface EdgePorts {
   source: EdgePortPoint;
   target: EdgePortPoint;
-  branchDirection: EdgeBranchDirection;
+  edgeDirection: EdgeDirection;
 }
 
 function center(rect: EdgeRect): { x: number; y: number } {
@@ -72,36 +72,36 @@ function sideForVector(srcRect: EdgeRect, dstRect: EdgeRect, explicitVector?: { 
   return dy >= 0 ? "bottom" : "top";
 }
 
-function sourceSideForDirection(srcRect: EdgeRect, dstRect: EdgeRect, branchDirection: EdgeBranchDirection): EdgePortSide {
-  if (branchDirection.view === "Tree") {
-    if (branchDirection.direction === "left/right") {
-      if (branchDirection.branchSide !== "left" && branchDirection.branchSide !== "right") {
+function sourceSideForDirection(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirection: EdgeDirection): EdgePortSide {
+  if (edgeDirection.view === "Tree") {
+    if (edgeDirection.direction === "left/right") {
+      if (edgeDirection.branchSide !== "left" && edgeDirection.branchSide !== "right") {
         throw new Error("Tree left/right requires LayoutResult.branchSide left or right.");
       }
-      return branchDirection.branchSide;
+      return edgeDirection.branchSide;
     }
-    if (branchDirection.direction === "up/down") {
-      if (branchDirection.branchSide !== "up" && branchDirection.branchSide !== "down") {
+    if (edgeDirection.direction === "up/down") {
+      if (edgeDirection.branchSide !== "up" && edgeDirection.branchSide !== "down") {
         throw new Error("Tree up/down requires LayoutResult.branchSide up or down.");
       }
-      return sideForPrimaryDirection(branchDirection.branchSide);
+      return sideForPrimaryDirection(edgeDirection.branchSide);
     }
-    if (branchDirection.direction === "both") return sideForPrimaryDirection(branchDirection.branchSide);
-    return sideForPrimaryDirection(branchDirection.direction);
+    if (edgeDirection.direction === "both") return sideForPrimaryDirection(edgeDirection.branchSide);
+    return sideForPrimaryDirection(edgeDirection.direction);
   }
-  if (branchDirection.view === "Axial") return sideForPrimaryDirection(branchDirection.direction);
-  if (branchDirection.view === "Radial") return sideForVector(srcRect, dstRect, branchDirection.radialVector);
-  if (branchDirection.view === "Disperse") return sideForVector(srcRect, dstRect, branchDirection.vector);
-  if (branchDirection.direction === "free") return sideForVector(srcRect, dstRect, branchDirection.vector);
-  return sideForPrimaryDirection(branchDirection.direction);
+  if (edgeDirection.view === "Axial") return sideForPrimaryDirection(edgeDirection.direction);
+  if (edgeDirection.view === "Radial") return sideForVector(srcRect, dstRect, edgeDirection.radialVector);
+  if (edgeDirection.view === "Disperse") return sideForVector(srcRect, dstRect, edgeDirection.vector);
+  if (edgeDirection.direction === "free") return sideForVector(srcRect, dstRect, edgeDirection.vector);
+  return sideForPrimaryDirection(edgeDirection.direction);
 }
 
-export function selectPorts(srcRect: EdgeRect, dstRect: EdgeRect, branchDirection: EdgeBranchDirection): EdgePorts {
-  const sourceSide = sourceSideForDirection(srcRect, dstRect, branchDirection);
+export function selectPorts(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirection: EdgeDirection): EdgePorts {
+  const sourceSide = sourceSideForDirection(srcRect, dstRect, edgeDirection);
   const targetSide = opposite(sourceSide);
   return {
     source: portForSide(srcRect, sourceSide),
     target: portForSide(dstRect, targetSide),
-    branchDirection,
+    edgeDirection,
   };
 }

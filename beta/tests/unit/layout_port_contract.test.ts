@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   layout,
+  normalizeLayoutVocabulary,
   type LayoutOptions,
 } from "../../src/shared/layout_port";
 import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layout_samples";
@@ -16,6 +17,13 @@ function treeLayout(options: Partial<LayoutOptions> = {}) {
 }
 
 describe("LayoutPort contract", () => {
+  test("migrates persisted legacy layout vocabulary to direction and space", () => {
+    expect(normalizeLayoutVocabulary({ branchDirection: "both", density: "compact" })).toEqual({ direction: "left/right", space: "tight" });
+    expect(normalizeLayoutVocabulary({ branchDirection: "left", density: "balanced" })).toEqual({ direction: "left", space: "normal" });
+    expect(normalizeLayoutVocabulary({ branchDirection: "right", density: "spacious" })).toEqual({ direction: "right", space: "loose" });
+    expect(normalizeLayoutVocabulary({ direction: "up/down", space: "loose" })).toEqual({ direction: "up/down", space: "loose" });
+  });
+
   test("applies all Tree spacing controls", () => {
     const base = { direction: "left/right" as const };
     const compactSiblings = treeLayout({ ...base, spacing: { nodeGap: 1, levelGap: 112, padding: 92 } });
@@ -45,11 +53,11 @@ describe("LayoutPort contract", () => {
     expect(`${packed.totalWidth}x${packed.totalHeight}`).not.toBe(`${aligned.totalWidth}x${aligned.totalHeight}`);
   });
 
-  test("uses density defaults in Tree when spacing is omitted", () => {
-    const compact = treeLayout({ direction: "right", density: "compact" });
-    const spacious = treeLayout({ direction: "right", density: "spacious" });
+  test("uses space defaults in Tree when spacing is omitted", () => {
+    const tight = treeLayout({ direction: "right", space: "tight" });
+    const loose = treeLayout({ direction: "right", space: "loose" });
 
-    expect(spacious.totalWidth).toBeGreaterThan(compact.totalWidth);
-    expect(spacious.totalHeight).toBeGreaterThan(compact.totalHeight);
+    expect(loose.totalWidth).toBeGreaterThan(tight.totalWidth);
+    expect(loose.totalHeight).toBeGreaterThan(tight.totalHeight);
   });
 });

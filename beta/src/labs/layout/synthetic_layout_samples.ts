@@ -124,7 +124,7 @@ function createSynthetic100Sample(): LayoutSyntheticSample {
       options: {
         displayRootId: "syn-root",
         structuredMode: "Tree",
-        density: "balanced",
+        space: "normal",
         depthAlign: "packed",
         direction: "right",
         spacing: { nodeGap: 14, levelGap: 112, padding: 92 },

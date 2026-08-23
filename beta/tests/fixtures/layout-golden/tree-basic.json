@@ -48,22 +48,31 @@
     "options": {
       "displayRootId": "root",
       "structuredMode": "Tree",
-      "density": "balanced",
-      "branchDirection": "both"
+      "space": "normal",
+      "direction": "left/right"
     }
   },
   "expected": {
     "pos": {
       "root": {
-        "x": 80,
-        "y": 62,
+        "x": 932,
+        "y": 102,
         "depth": 0,
         "w": 220,
         "h": 70
       },
+      "b": {
+        "x": 547,
+        "y": 102,
+        "depth": 1,
+        "w": 130,
+        "h": 38,
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
       "a": {
-        "x": 555,
-        "y": 42,
+        "x": 1407,
+        "y": 102,
         "depth": 1,
         "w": 150,
         "h": 40,
@@ -71,31 +80,22 @@
         "branchPortSide": "right"
       },
       "a1": {
-        "x": 960,
-        "y": 42,
+        "x": 1812,
+        "y": 102,
         "depth": 2,
         "w": 120,
         "h": 36,
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "b": {
-        "x": 555,
-        "y": 94.5,
-        "depth": 1,
-        "w": 130,
-        "h": 38,
         "branchSide": "right",
         "branchPortSide": "right"
       }
     },
     "order": [
       "root",
+      "b",
       "a",
-      "a1",
-      "b"
+      "a1"
     ],
     "totalHeight": 760,
-    "totalWidth": 1620
+    "totalWidth": 2412
   }
 }

@@ -2246,8 +2246,8 @@ function buildLayoutSnapshot(state: AppState, scopeId: string | null): {
   const options: LayoutOptions = {
     displayRootId,
     structuredMode: "Tree",
-    density: "balanced",
-    branchDirection: "both",
+    space: "normal",
+    direction: "left/right",
   };
   return {
     input: {

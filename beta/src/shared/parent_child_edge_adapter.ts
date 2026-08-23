@@ -1,4 +1,4 @@
-import type { EdgeBranchDirection, EdgeRect, EdgePorts, PrimaryDirection, TreeBranchSide } from "./edge_port";
+import type { EdgeDirection, EdgeRect, EdgePorts, PrimaryDirection, TreeBranchSide } from "./edge_port";
 import { selectPorts } from "./edge_port";
 import type { EdgePath, EdgeRouteStyle } from "./edge_route";
 import { route } from "./edge_route";
@@ -28,12 +28,12 @@ export interface ParentChildEdgeRouteInput {
 
 export interface ParentChildEdgeRoute {
   relation: ParentChildEdgeRef;
-  branchDirection: EdgeBranchDirection;
+  edgeDirection: EdgeDirection;
   ports: EdgePorts;
   path: EdgePath;
 }
 
-function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDirection): EdgeBranchDirection {
+function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDirection): EdgeDirection {
   if (surfaceMode === "scatter") return { view: "Disperse", direction: "free" };
   return direction === "down"
     ? { view: "System", direction: "down" }
@@ -42,7 +42,7 @@ function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDi
       : { view: "System", direction: "free" };
 }
 
-export function parentChildBranchDirection(input: ParentChildEdgeRouteInput): EdgeBranchDirection {
+export function parentChildEdgeDirection(input: ParentChildEdgeRouteInput): EdgeDirection {
   if (input.surfaceMode === "timeline") return { view: "Axial", direction: input.direction };
   if (input.surfaceMode === "mindmap") {
     const branchSide = input.childPosition?.branchSide;
@@ -56,11 +56,11 @@ export function parentChildBranchDirection(input: ParentChildEdgeRouteInput): Ed
 }
 
 export function routeParentChildEdge(input: ParentChildEdgeRouteInput): ParentChildEdgeRoute {
-  const branchDirection = parentChildBranchDirection(input);
-  const ports = selectPorts(input.parentRect, input.childRect, branchDirection);
+  const edgeDirection = parentChildEdgeDirection(input);
+  const ports = selectPorts(input.parentRect, input.childRect, edgeDirection);
   return {
     relation: input.relation,
-    branchDirection,
+    edgeDirection,
     ports,
     path: route(ports, input.routeStyle),
   };

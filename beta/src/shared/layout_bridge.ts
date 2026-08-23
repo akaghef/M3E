@@ -15,8 +15,7 @@ export interface LayoutGraph {
 }
 
 export type {
-  LayoutBranchDirection,
-  LayoutDensity,
+  LayoutSpace,
   LayoutDepthAlign,
   LayoutDirection,
   LayoutNodeMetric,

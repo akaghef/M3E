@@ -17,9 +17,8 @@ type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 type MapNodeClass = "entity" | "scope";
 type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
 type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-type SurfaceLayoutDensity = "compact" | "balanced" | "spacious";
-type SurfaceBranchDirection = "both" | "right" | "left";
-type SurfaceLayoutDirection = "right" | "left" | "down" | "up";
+type SurfaceSpace = "tight" | "normal" | "loose";
+type SurfaceLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type SurfaceDepthAlign = "aligned" | "packed";
 type SurfaceEdgeRoute = "elbow" | "bezier" | "straight";
 type SurfaceLinkRoute = "simple-bezier" | "orthogonal" | "straight";
@@ -69,7 +68,13 @@ interface MapSurface {
   scopeId: string;
   kind: SurfaceKind;
   layout: SurfaceLayout;
+  surfaceView?: SurfaceView;
   nodeViews?: Record<string, SurfaceNodeView>;
+}
+
+interface SurfaceView {
+  direction: SurfaceLayoutDirection;
+  space: SurfaceSpace;
 }
 
 interface MapScope {
@@ -338,8 +343,7 @@ interface ViewState {
   currentScopeRootId: string;
   thinkingMode: ThinkingMode;
   surfaceViewMode: SurfaceViewMode;
-  surfaceLayoutDensity: SurfaceLayoutDensity;
-  surfaceBranchDirection: SurfaceBranchDirection;
+  surfaceSpace: SurfaceSpace;
   surfaceLayoutDirection: SurfaceLayoutDirection;
   surfaceDepthAlign: SurfaceDepthAlign;
   surfaceEdgeRoute: SurfaceEdgeRoute;
@@ -379,8 +383,7 @@ interface Window {
       link?: { route?: SurfaceLinkRoute };
       displayRootId?: string;
       structuredMode?: "tree" | "mindmap" | "logic-chart" | "timeline";
-      density?: SurfaceLayoutDensity;
-      branchDirection?: SurfaceBranchDirection;
+      space?: SurfaceSpace;
     },
   ) => {
     pos: Record<string, NodePosition>;

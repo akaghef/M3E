@@ -1,4 +1,4 @@
-import { selectPorts, type EdgeBranchDirection, type EdgeRect } from "../../shared/edge_port";
+import { selectPorts, type EdgeDirection, type EdgeRect } from "../../shared/edge_port";
 import { route, type EdgePath, type EdgeRouteStyle } from "../../shared/edge_route";
 import type { LayoutBranchPortSide, LayoutDirection, LayoutNodePosition } from "../../shared/layout_port";
 
@@ -9,7 +9,7 @@ function rect(position: LayoutNodePosition): EdgeRect {
   return { x: position.x, y: position.y - position.h / 2, w: position.w, h: position.h };
 }
 
-function treeBranchDirection(direction: LayoutDirection, branchPortSide: LayoutBranchPortSide | undefined): EdgeBranchDirection {
+function treeBranchDirection(direction: LayoutDirection, branchPortSide: LayoutBranchPortSide | undefined): EdgeDirection {
   if (direction === "left/right" || direction === "up/down") {
     if (!branchPortSide) throw new Error(`LayoutResult.branchPortSide is required for Tree ${direction}.`);
     return { view: "Tree", direction, branchSide: branchPortSide };

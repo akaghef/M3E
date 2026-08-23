@@ -171,7 +171,7 @@ const samples: Record<string, SeedSample> = {
         b: { w: 130, h: 38 },
       },
       mode: "Tree",
-      options: { displayRootId: "root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
+      options: { displayRootId: "root", structuredMode: "Tree", space: "normal", direction: "left/right" },
     },
   },
   "radial-basic": {
@@ -190,7 +190,7 @@ const samples: Record<string, SeedSample> = {
         c: { w: 120, h: 38 },
       },
       mode: "Radial",
-      options: { displayRootId: "root", structuredMode: "Radial", density: "balanced", branchDirection: "both" },
+      options: { displayRootId: "root", structuredMode: "Radial", space: "normal", direction: "left/right" },
     },
   },
   "scope-routing-basic": {
@@ -209,7 +209,7 @@ const samples: Record<string, SeedSample> = {
         "scope-b": { w: 126, h: 38 },
       },
       mode: "Tree",
-      options: { displayRootId: "scope-root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
+      options: { displayRootId: "scope-root", structuredMode: "Tree", space: "normal", direction: "left/right" },
     },
   },
   "tree-stress-30": {
@@ -259,7 +259,7 @@ const samples: Record<string, SeedSample> = {
       },
       boxSizes: metricsFor(treeStressNodeIds),
       mode: "Tree",
-      options: { displayRootId: "m3e-root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
+      options: { displayRootId: "m3e-root", structuredMode: "Tree", space: "normal", direction: "left/right" },
     },
   },
   "radial-stress-30": {
@@ -310,7 +310,7 @@ const samples: Record<string, SeedSample> = {
       },
       boxSizes: metricsFor(radialStressNodeIds),
       mode: "Radial",
-      options: { displayRootId: "radial-root", structuredMode: "Radial", density: "balanced", branchDirection: "both" },
+      options: { displayRootId: "radial-root", structuredMode: "Radial", space: "normal", direction: "left/right" },
     },
   },
   "scope-routing-stress-30": {
@@ -360,7 +360,7 @@ const samples: Record<string, SeedSample> = {
       },
       boxSizes: metricsFor(routingStressNodeIds),
       mode: "Tree",
-      options: { displayRootId: "route-root", structuredMode: "Tree", density: "balanced", branchDirection: "both" },
+      options: { displayRootId: "route-root", structuredMode: "Tree", space: "normal", direction: "left/right" },
     },
   },
 };

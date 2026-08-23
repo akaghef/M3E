@@ -400,15 +400,15 @@
     "options": {
       "displayRootId": "m3e-root",
       "structuredMode": "Tree",
-      "density": "balanced",
-      "branchDirection": "both"
+      "space": "normal",
+      "direction": "left/right"
     }
   },
   "expected": {
     "pos": {
       "m3e-root": {
-        "x": 80,
-        "y": 422,
+        "x": 2060,
+        "y": 328.5,
         "depth": 0,
         "w": 130,
         "h": 34,
@@ -417,8 +417,151 @@
           "m3e root"
         ]
       },
+      "capture": {
+        "x": 1664,
+        "y": 212,
+        "depth": 1,
+        "w": 141,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "capture"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "flash-inbox": {
+        "x": 1173,
+        "y": 150.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "flash inbox"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "vault-import": {
+        "x": 1173,
+        "y": 214.5,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "vault import"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "frontmatter": {
+        "x": 682,
+        "y": 192.5,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "frontmatter"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "media-assets": {
+        "x": 682,
+        "y": 234.5,
+        "depth": 3,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "media assets"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "clipboard": {
+        "x": 1173,
+        "y": 276,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "clipboard"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "scope-sync": {
+        "x": 1625,
+        "y": 447.5,
+        "depth": 1,
+        "w": 180,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "scope sync"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "scope-lock": {
+        "x": 1134,
+        "y": 386,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "scope lock"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "push-queue": {
+        "x": 1134,
+        "y": 425.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "push queue"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "conflict-backup": {
+        "x": 1134,
+        "y": 467.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "conflict backup"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "audit-chain": {
+        "x": 1134,
+        "y": 509,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "audit chain"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
       "strategy": {
-        "x": 465,
+        "x": 2445,
         "y": 90.5,
         "depth": 1,
         "w": 139,
@@ -431,7 +574,7 @@
         "branchPortSide": "right"
       },
       "vision": {
-        "x": 859,
+        "x": 2839,
         "y": 29,
         "depth": 2,
         "w": 170,
@@ -444,7 +587,7 @@
         "branchPortSide": "right"
       },
       "priorities": {
-        "x": 859,
+        "x": 2839,
         "y": 90,
         "depth": 2,
         "w": 207,
@@ -457,7 +600,7 @@
         "branchPortSide": "right"
       },
       "beta-focus": {
-        "x": 1321,
+        "x": 3301,
         "y": 70.5,
         "depth": 3,
         "w": 216,
@@ -470,7 +613,7 @@
         "branchPortSide": "right"
       },
       "final-guard": {
-        "x": 1321,
+        "x": 3301,
         "y": 112,
         "depth": 3,
         "w": 232,
@@ -483,7 +626,7 @@
         "branchPortSide": "right"
       },
       "risks": {
-        "x": 859,
+        "x": 2839,
         "y": 151.5,
         "depth": 2,
         "w": 199,
@@ -495,87 +638,9 @@
         "branchSide": "right",
         "branchPortSide": "right"
       },
-      "capture": {
-        "x": 465,
-        "y": 255,
-        "depth": 1,
-        "w": 141,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "capture"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "flash-inbox": {
-        "x": 861,
-        "y": 193.5,
-        "depth": 2,
-        "w": 236,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "flash inbox"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "vault-import": {
-        "x": 861,
-        "y": 257.5,
-        "depth": 2,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "vault import"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "frontmatter": {
-        "x": 1352,
-        "y": 235.5,
-        "depth": 3,
-        "w": 236,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "frontmatter"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "media-assets": {
-        "x": 1352,
-        "y": 277.5,
-        "depth": 3,
-        "w": 236,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "media assets"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "clipboard": {
-        "x": 861,
-        "y": 319,
-        "depth": 2,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "clipboard"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
       "graph-model": {
-        "x": 465,
-        "y": 432,
+        "x": 2445,
+        "y": 336,
         "depth": 1,
         "w": 178,
         "h": 34,
@@ -587,8 +652,8 @@
         "branchPortSide": "right"
       },
       "node-schema": {
-        "x": 898,
-        "y": 358.5,
+        "x": 2878,
+        "y": 262.5,
         "depth": 2,
         "w": 236,
         "h": 38,
@@ -600,8 +665,8 @@
         "branchPortSide": "right"
       },
       "edge-schema": {
-        "x": 898,
-        "y": 400.5,
+        "x": 2878,
+        "y": 304.5,
         "depth": 2,
         "w": 236,
         "h": 42,
@@ -613,8 +678,8 @@
         "branchPortSide": "right"
       },
       "graphlinks": {
-        "x": 898,
-        "y": 452,
+        "x": 2878,
+        "y": 356,
         "depth": 2,
         "w": 236,
         "h": 34,
@@ -626,8 +691,8 @@
         "branchPortSide": "right"
       },
       "cross-scope-link": {
-        "x": 1389,
-        "y": 452,
+        "x": 3369,
+        "y": 356,
         "depth": 3,
         "w": 236,
         "h": 38,
@@ -639,8 +704,8 @@
         "branchPortSide": "right"
       },
       "alias-policy": {
-        "x": 898,
-        "y": 503.5,
+        "x": 2878,
+        "y": 407.5,
         "depth": 2,
         "w": 236,
         "h": 42,
@@ -651,74 +716,9 @@
         "branchSide": "right",
         "branchPortSide": "right"
       },
-      "scope-sync": {
-        "x": 465,
-        "y": 606.5,
-        "depth": 1,
-        "w": 180,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "scope sync"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "scope-lock": {
-        "x": 900,
-        "y": 545,
-        "depth": 2,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "scope lock"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "push-queue": {
-        "x": 900,
-        "y": 584.5,
-        "depth": 2,
-        "w": 236,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "push queue"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "conflict-backup": {
-        "x": 900,
-        "y": 626.5,
-        "depth": 2,
-        "w": 236,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "conflict backup"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
-      "audit-chain": {
-        "x": 900,
-        "y": 668,
-        "depth": 2,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "audit chain"
-        ],
-        "branchSide": "right",
-        "branchPortSide": "right"
-      },
       "layout": {
-        "x": 465,
-        "y": 761,
+        "x": 2445,
+        "y": 574,
         "depth": 1,
         "w": 161,
         "h": 42,
@@ -730,8 +730,8 @@
         "branchPortSide": "right"
       },
       "tree-mode": {
-        "x": 881,
-        "y": 707.5,
+        "x": 2861,
+        "y": 520.5,
         "depth": 2,
         "w": 236,
         "h": 38,
@@ -743,8 +743,8 @@
         "branchPortSide": "right"
       },
       "radial-mode": {
-        "x": 881,
-        "y": 749.5,
+        "x": 2861,
+        "y": 562.5,
         "depth": 2,
         "w": 236,
         "h": 42,
@@ -756,8 +756,8 @@
         "branchPortSide": "right"
       },
       "routing-scope": {
-        "x": 881,
-        "y": 803,
+        "x": 2861,
+        "y": 616,
         "depth": 2,
         "w": 236,
         "h": 34,
@@ -769,8 +769,8 @@
         "branchPortSide": "right"
       },
       "route-preview": {
-        "x": 1372,
-        "y": 803,
+        "x": 3352,
+        "y": 616,
         "depth": 3,
         "w": 236,
         "h": 38,
@@ -782,8 +782,8 @@
         "branchPortSide": "right"
       },
       "edge-sanity": {
-        "x": 1863,
-        "y": 803,
+        "x": 3843,
+        "y": 616,
         "depth": 4,
         "w": 236,
         "h": 42,
@@ -797,29 +797,29 @@
     },
     "order": [
       "m3e-root",
-      "strategy",
-      "vision",
-      "priorities",
-      "beta-focus",
-      "final-guard",
-      "risks",
       "capture",
       "flash-inbox",
       "vault-import",
       "frontmatter",
       "media-assets",
       "clipboard",
+      "scope-sync",
+      "scope-lock",
+      "push-queue",
+      "conflict-backup",
+      "audit-chain",
+      "strategy",
+      "vision",
+      "priorities",
+      "beta-focus",
+      "final-guard",
+      "risks",
       "graph-model",
       "node-schema",
       "edge-schema",
       "graphlinks",
       "cross-scope-link",
       "alias-policy",
-      "scope-sync",
-      "scope-lock",
-      "push-queue",
-      "conflict-backup",
-      "audit-chain",
       "layout",
       "tree-mode",
       "radial-mode",
@@ -827,7 +827,7 @@
       "route-preview",
       "edge-sanity"
     ],
-    "totalHeight": 884,
-    "totalWidth": 2579
+    "totalHeight": 760,
+    "totalWidth": 4559
   }
 }

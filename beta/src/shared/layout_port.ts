@@ -18,8 +18,25 @@ type LayoutAlgorithmMode = "tree" | "mindmap" | "logic-chart" | "timeline";
 export type LayoutDirection = "right" | "left" | "down" | "up" | "left/right" | "up/down";
 type CardinalLayoutDirection = Exclude<LayoutDirection, "left/right" | "up/down">;
 export type LayoutDepthAlign = "aligned" | "packed";
-export type LayoutDensity = "compact" | "balanced" | "spacious";
-export type LayoutBranchDirection = "both" | "right" | "left";
+export type LayoutSpace = "tight" | "normal" | "loose";
+
+/** Normalizes persisted pre-2026-08-23 layout vocabulary at a read boundary. */
+export function normalizeLayoutVocabulary(raw: unknown): { direction: LayoutDirection; space: LayoutSpace } {
+  const legacy = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const rawDirection = legacy["direction"] ?? legacy["branchDirection"];
+  const rawSpace = legacy["space"] ?? legacy["density"];
+  const direction: LayoutDirection = rawDirection === "both"
+    ? "left/right"
+    : rawDirection === "left/right" || rawDirection === "left" || rawDirection === "right" || rawDirection === "up/down" || rawDirection === "up" || rawDirection === "down"
+      ? rawDirection
+      : "right";
+  const space: LayoutSpace = rawSpace === "tight" || rawSpace === "compact"
+    ? "tight"
+    : rawSpace === "loose" || rawSpace === "spacious"
+      ? "loose"
+      : "normal";
+  return { direction, space };
+}
 /** Legacy horizontal branch label retained for existing viewer snapshots. */
 export type LayoutBranchSide = "left" | "right";
 /** Outbound cardinal side used as the authoritative Tree port input. */
@@ -57,8 +74,7 @@ export interface LayoutNodePosition extends LayoutNodeMetric {
 export interface LayoutOptions {
   displayRootId?: string;
   structuredMode?: StructuredLayoutMode;
-  density?: LayoutDensity;
-  branchDirection?: LayoutBranchDirection;
+  space?: LayoutSpace;
   depthAlign?: LayoutDepthAlign;
   direction?: LayoutDirection;
   spacing?: { nodeGap?: number; levelGap?: number; padding?: number };
@@ -79,8 +95,8 @@ export interface LayoutResult {
 
 interface StructuredLayoutConfig {
   mode: LayoutAlgorithmMode;
-  density: LayoutDensity;
-  branchDirection: LayoutBranchDirection;
+  space: LayoutSpace;
+  spread: "both" | "right" | "left";
   columnGap: number;
   siblingGap: number;
   sideGap: number;
@@ -119,7 +135,7 @@ const LAYOUT = {
 };
 
 // Preserve the pre-configurable Tree appearance when callers omit spacing.
-// Explicit spacing and density must still pass through to the Tree algorithm.
+// Explicit spacing and space must still pass through to the Tree algorithm.
 const DEFAULT_TREE_SPACING = { nodeGap: 1, levelGap: 255, sidePadding: 72 };
 
 const FLOW_SURFACE_ROW_GAP = 84;
@@ -127,22 +143,22 @@ const DEFAULT_SCATTER_EDGE_LENGTH = 180;
 
 function structuredLayoutConfig(
   mode: LayoutAlgorithmMode,
-  density: LayoutDensity = "balanced",
-  branchDirection: LayoutBranchDirection = "both",
+  space: LayoutSpace = "normal",
+  direction: LayoutDirection = "right",
   options: LayoutOptions = {},
 ): StructuredLayoutConfig {
-  const compact = density === "compact";
-  const spacious = density === "spacious";
+  const tight = space === "tight";
+  const loose = space === "loose";
   const mapLike = mode === "mindmap";
   const levelGap = options.spacing?.levelGap;
   const nodeGap = options.spacing?.nodeGap;
   return {
     mode,
-    density,
-    branchDirection,
-    columnGap: levelGap ?? (mapLike ? (compact ? 78 : spacious ? 148 : 112) : compact ? 180 : spacious ? 330 : DEFAULT_TREE_SPACING.levelGap),
-    siblingGap: nodeGap ?? (mapLike ? (compact ? 18 : spacious ? 34 : 26) : compact ? 7 : spacious ? 24 : DEFAULT_TREE_SPACING.nodeGap),
-    sideGap: options.spacing?.padding ?? (mapLike ? (compact ? 64 : spacious ? 132 : 92) : compact ? 46 : spacious ? 110 : DEFAULT_TREE_SPACING.sidePadding),
+    space,
+    spread: direction === "left/right" || direction === "up/down" ? "both" : direction === "left" ? "left" : "right",
+    columnGap: levelGap ?? (mapLike ? (tight ? 78 : loose ? 148 : 112) : tight ? 180 : loose ? 330 : DEFAULT_TREE_SPACING.levelGap),
+    siblingGap: nodeGap ?? (mapLike ? (tight ? 18 : loose ? 34 : 26) : tight ? 7 : loose ? 24 : DEFAULT_TREE_SPACING.nodeGap),
+    sideGap: options.spacing?.padding ?? (mapLike ? (tight ? 64 : loose ? 132 : 92) : tight ? 46 : loose ? 110 : DEFAULT_TREE_SPACING.sidePadding),
   };
 }
 
@@ -153,7 +169,7 @@ function buildMeasuredTreeContext(
   boxSizes: Record<string, LayoutNodeMetric>,
   options: LayoutOptions = {},
 ): MeasuredTreeContext {
-  const config = structuredLayoutConfig(mode, options.density, options.branchDirection, options);
+  const config = structuredLayoutConfig(mode, options.space, options.direction, options);
   const vertical = options.direction === "up" || options.direction === "down" || options.direction === "up/down";
   const axis: LayoutAxis = vertical
     ? { depthExtent: (metric) => metric.h, breadthExtent: (metric) => metric.w }
@@ -329,8 +345,8 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
       h: metric.h,
       fontSize: metric.fontSize,
       labelLines: metric.labelLines,
-      branchSide: depth === 0 ? undefined : config.branchDirection === "left" ? "left" : "right",
-      branchPortSide: depth === 0 ? undefined : config.branchDirection === "left" ? "left" : "right",
+      branchSide: depth === 0 ? undefined : config.spread === "left" ? "left" : "right",
+      branchPortSide: depth === 0 ? undefined : config.spread === "left" ? "left" : "right",
     };
     order.push(nodeId);
     const children = graph.childrenOf(nodeId);
@@ -349,7 +365,7 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
   }
 
   place(displayRootId, LAYOUT.topPad, null, null);
-  if (config.mode === "logic-chart" && config.branchDirection === "left" && order.length > 0) {
+  if (config.mode === "logic-chart" && config.spread === "left" && order.length > 0) {
     const contentLeft = Math.min(...order.map((nodeId) => pos[nodeId]!.x));
     const contentRight = Math.max(...order.map((nodeId) => pos[nodeId]!.x + pos[nodeId]!.w));
     order.forEach((nodeId) => {
@@ -361,12 +377,12 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
   return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
 }
 
-function splitMindmapBranches(graph: VisibleLayoutGraph, rootId: string, direction: LayoutBranchDirection): { left: string[]; right: string[] } {
+function splitMindmapSides(graph: VisibleLayoutGraph, rootId: string, spread: StructuredLayoutConfig["spread"]): { left: string[]; right: string[] } {
   const children = graph.childrenOf(rootId);
   const left: string[] = [];
   const right: string[] = [];
-  if (direction === "right") return { left, right: children };
-  if (direction === "left") return { left: children, right };
+  if (spread === "right") return { left, right: children };
+  if (spread === "left") return { left: children, right };
   children.forEach((childId, index) => (index % 2 === 0 ? right : left).push(childId));
   return { left, right };
 }
@@ -382,9 +398,9 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
     return width;
   };
   const leftBranchWidth = branchWidth();
-  const rootX = config.branchDirection === "right"
+  const rootX = config.spread === "right"
     ? LAYOUT.leftPad
-    : config.branchDirection === "left"
+    : config.spread === "left"
       ? LAYOUT.leftPad + leftBranchWidth
       : LAYOUT.leftPad + leftBranchWidth + config.sideGap;
   const rightXByDepth: Record<number, number> = {};
@@ -396,7 +412,7 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
     leftXByDepth[d] = leftXByDepth[d - 1]! - config.columnGap - (depthMaxExtent[d] ?? 120);
   }
   const spanCache: Record<string, number> = {};
-  const { left, right } = splitMindmapBranches(graph, displayRootId, config.branchDirection);
+  const { left, right } = splitMindmapSides(graph, displayRootId, config.spread);
   const sideGap = config.sideGap;
   const sideSpan = (ids: string[]) => ids.reduce((sum, id, index) => (
     sum + subtreeSpanForLayout(id, graph.childrenOf, metrics, spanCache, axis.breadthExtent, config.siblingGap) + (index > 0 ? sideGap : 0)
@@ -474,7 +490,7 @@ function buildTimelineLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext
   };
   const order: string[] = [displayRootId];
   const rootChildren = graph.childrenOf(displayRootId);
-  const stepX = Math.max(config.density === "compact" ? 190 : 260, config.columnGap + 120);
+  const stepX = Math.max(config.space === "tight" ? 190 : 260, config.columnGap + 120);
 
   function placeDescendants(nodeId: string, baseX: number, baseY: number, sign: -1 | 1): void {
     graph.childrenOf(nodeId).forEach((childId, index) => {
@@ -503,19 +519,18 @@ function buildTimelineLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext
   return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
 }
 
-function treeDirectionConfig(options: LayoutOptions, configuredBranchDirection: LayoutBranchDirection): {
-  branchDirection: LayoutBranchDirection;
+function treeDirectionConfig(direction: LayoutDirection = "right"): {
+  spread: StructuredLayoutConfig["spread"];
   bifurcated: boolean;
   orientation?: CardinalLayoutDirection;
 } {
-  switch (options.direction) {
-    case "left/right": return { branchDirection: "both", bifurcated: true };
-    case "left": return { branchDirection: "right", bifurcated: false, orientation: "left" };
-    case "right": return { branchDirection: "right", bifurcated: false };
-    case "up/down": return { branchDirection: "both", bifurcated: true, orientation: "down" };
-    case "up": return { branchDirection: "right", bifurcated: false, orientation: "up" };
-    case "down": return { branchDirection: "right", bifurcated: false, orientation: "down" };
-    default: return { branchDirection: configuredBranchDirection, bifurcated: false };
+  switch (direction) {
+    case "left/right": return { spread: "both", bifurcated: true };
+    case "left": return { spread: "right", bifurcated: false, orientation: "left" };
+    case "right": return { spread: "right", bifurcated: false };
+    case "up/down": return { spread: "both", bifurcated: true, orientation: "down" };
+    case "up": return { spread: "right", bifurcated: false, orientation: "up" };
+    case "down": return { spread: "right", bifurcated: false, orientation: "down" };
   }
 }
 
@@ -734,16 +749,16 @@ export function layout(
   if (structuredMode === "mindmap") {
     return orientLayoutResult(buildMindmapLayout(visibleGraph, measuredContext), cardinalDirection(options.direction));
   }
-  if (structuredMode === "logic-chart" && measuredContext.config.branchDirection === "both") {
+  if (structuredMode === "logic-chart" && measuredContext.config.spread === "both") {
     return orientLayoutResult(buildMindmapLayout(visibleGraph, measuredContext), cardinalDirection(options.direction));
   }
   if (structuredMode === "timeline") {
     return orientLayoutResult(buildTimelineLayout(visibleGraph, measuredContext), cardinalDirection(options.direction));
   }
-  const treeDirection = treeDirectionConfig(options, measuredContext.config.branchDirection);
+  const treeDirection = treeDirectionConfig(options.direction);
   const treeContext: MeasuredTreeContext = {
     ...measuredContext,
-    config: { ...measuredContext.config, branchDirection: treeDirection.branchDirection },
+    config: { ...measuredContext.config, spread: treeDirection.spread },
   };
   const treeResult = treeDirection.bifurcated
     ? buildMindmapLayout(visibleGraph, treeContext)
