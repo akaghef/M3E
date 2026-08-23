@@ -2,10 +2,8 @@ import React, { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   layout,
-  type LayoutBranchDirection,
   type LayoutDensity,
   type LayoutDepthAlign,
-  type LayoutDirection,
   type LayoutMode,
   type LayoutOptions,
 } from "../../shared/layout_port";
@@ -18,10 +16,34 @@ import {
 import "./layout-lab.css";
 
 const modes: LayoutMode[] = ["Tree", "Radial", "Axial", "Disperse", "System"];
-const directions: LayoutDirection[] = ["right", "left", "down", "up"];
+const directions = ["left/right", "left", "right", "up/down", "up", "down"] as const;
 const depthAligns: LayoutDepthAlign[] = ["packed", "aligned"];
 const densities: LayoutDensity[] = ["compact", "balanced", "spacious"];
-const branches: LayoutBranchDirection[] = ["both", "right", "left"];
+
+type CanonicalDirection = (typeof directions)[number];
+
+interface DirectionAdapterResult {
+  portOptions: Pick<LayoutOptions, "branchDirection" | "direction">;
+  unavailable?: string;
+}
+
+function adaptDirection(direction: CanonicalDirection): DirectionAdapterResult {
+  switch (direction) {
+    case "left/right":
+      return { portOptions: { branchDirection: "both" } };
+    case "left":
+    case "right":
+      return { portOptions: { branchDirection: direction } };
+    case "up":
+    case "down":
+      return { portOptions: { direction } };
+    case "up/down":
+      return {
+        portOptions: {},
+        unavailable: "up/down is not implemented by the current layout port.",
+      };
+  }
+}
 
 function numberInput(value: number, setValue: (value: number) => void, min: number, max: number, step = 1): React.ReactNode {
   return (
@@ -40,28 +62,28 @@ function App(): React.ReactElement {
   const [sampleId, setSampleId] = useState<LayoutLabSampleId>("tree-stress-30");
   const sample = layoutLabSamples.find((item) => item.sample_id === sampleId) || layoutLabSamples[0]!;
   const [mode, setMode] = useState<LayoutMode>(sample.input.mode);
-  const [direction, setDirection] = useState<LayoutDirection>("right");
+  const [direction, setDirection] = useState<CanonicalDirection>("left/right");
   const [depthAlign, setDepthAlign] = useState<LayoutDepthAlign>("packed");
   const [density, setDensity] = useState<LayoutDensity>("balanced");
-  const [branchDirection, setBranchDirection] = useState<LayoutBranchDirection>("both");
   const [nodeGap, setNodeGap] = useState(14);
   const [levelGap, setLevelGap] = useState(112);
   const [padding, setPadding] = useState(92);
   const [zoom, setZoom] = useState(1);
 
   const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
+  const directionAdapter = adaptDirection(direction);
+  const { branchDirection: _sampleBranchDirection, direction: _sampleDirection, ...sampleOptions } = sample.input.options;
   const options: LayoutOptions = {
-    ...sample.input.options,
+    ...sampleOptions,
     structuredMode: mode === "Tree" || mode === "Radial" || mode === "Axial" ? mode : undefined,
-    direction,
     depthAlign,
     density,
-    branchDirection,
+    ...directionAdapter.portOptions,
     spacing: { nodeGap, levelGap, padding },
   };
-  const result = layout(graph, sample.input.boxSizes, mode, options);
-  const canvasWidth = Math.max(900, Math.ceil(result.totalWidth + 80));
-  const canvasHeight = Math.max(640, Math.ceil(result.totalHeight + 80));
+  const result = directionAdapter.unavailable ? null : layout(graph, sample.input.boxSizes, mode, options);
+  const canvasWidth = Math.max(900, Math.ceil((result?.totalWidth || 0) + 80));
+  const canvasHeight = Math.max(640, Math.ceil((result?.totalHeight || 0) + 80));
   const rootId = options.displayRootId || sample.input.graph.nodeIds[0];
 
   const edges = sample.input.graph.nodeIds.flatMap((sourceId) =>
@@ -97,10 +119,14 @@ function App(): React.ReactElement {
         </div>
         <div className="control-group">
           <label htmlFor="direction">Direction</label>
-          <select id="direction" value={direction} onChange={(event) => setDirection(event.currentTarget.value as LayoutDirection)}>
+          <select id="direction" value={direction} onChange={(event) => setDirection(event.currentTarget.value as CanonicalDirection)}>
             {directions.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
+        <p className="adapter-note">
+          Temporary lab adapter: canonical direction maps to layout_port&apos;s split branchDirection/LayoutDirection.<br />
+          Their reconciliation is a separate PR.
+        </p>
         <div className="control-group">
           <label htmlFor="depth-align">Depth Align</label>
           <select id="depth-align" value={depthAlign} onChange={(event) => setDepthAlign(event.currentTarget.value as LayoutDepthAlign)}>
@@ -111,12 +137,6 @@ function App(): React.ReactElement {
           <label htmlFor="density">Density</label>
           <select id="density" value={density} onChange={(event) => setDensity(event.currentTarget.value as LayoutDensity)}>
             {densities.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </div>
-        <div className="control-group">
-          <label htmlFor="branch">Branch Direction</label>
-          <select id="branch" value={branchDirection} onChange={(event) => setBranchDirection(event.currentTarget.value as LayoutBranchDirection)}>
-            {branches.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
         <div className="control-group">
@@ -157,7 +177,7 @@ function App(): React.ReactElement {
           role="img"
           aria-label="Layout result"
         >
-          {edges.map(({ sourceId, targetId }) => {
+          {result && edges.map(({ sourceId, targetId }) => {
             const source = result.pos[sourceId];
             const target = result.pos[targetId];
             if (!source || !target) return null;
@@ -169,7 +189,7 @@ function App(): React.ReactElement {
               />
             );
           })}
-          {result.order.map((nodeId) => {
+          {result && result.order.map((nodeId) => {
             const pos = result.pos[nodeId];
             if (!pos) return null;
             return (
@@ -180,18 +200,25 @@ function App(): React.ReactElement {
               </g>
             );
           })}
+          {directionAdapter.unavailable && (
+            <text className="unavailable-label" x={canvasWidth / 2} y={canvasHeight / 2} textAnchor="middle">
+              {directionAdapter.unavailable}
+            </text>
+          )}
         </svg>
       </section>
       <aside className="lab-panel right">
         <h2 className="lab-title">Snapshot</h2>
         <div className="snapshot-scroll">
-          <div className="summary">{summarizeLayout(result)}</div>
+          {directionAdapter.unavailable ? (
+            <div className="unavailable-status" role="status">Unimplemented: {directionAdapter.unavailable}</div>
+          ) : result && <div className="summary">{summarizeLayout(result)}</div>}
           <div className="json-block">
-            <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, options }, null, 2)}</pre>
+            <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, direction, portOptions: options }, null, 2)}</pre>
           </div>
-          <div className="json-block">
+          {result && <div className="json-block">
             <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, pos: result.pos }, null, 2)}</pre>
-          </div>
+          </div>}
         </div>
       </aside>
     </main>
