@@ -2,6 +2,8 @@ import { selectPorts, type EdgeDirection, type EdgeRect } from "../../shared/edg
 import { route, type EdgePath, type EdgeRouteStyle } from "../../shared/edge_route";
 import type { LayoutBranchPortSide, LayoutDirection, LayoutNodePosition } from "../../shared/layout_port";
 
+export { disperseEdgePath, type DisperseEdgeStyle } from "../../shared/layout_edge_paths";
+
 /** The lab deliberately uses the canonical curved EdgeStyle unless a control is added. */
 export const DEFAULT_LAYOUT_LAB_EDGE_STYLE: EdgeRouteStyle = "curve";
 

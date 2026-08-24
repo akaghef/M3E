@@ -23,6 +23,25 @@ function separatedByGap(a: { x: number; y: number; w: number; h: number }, b: { 
   return horizontalGap >= gap - epsilon || verticalGap >= gap - epsilon;
 }
 
+function measuredLayout(result: ReturnType<typeof layoutDisperse>): Record<string, number> {
+  const nodes = Object.values(result.pos);
+  const left = Math.min(...nodes.map((node) => node.x));
+  const top = Math.min(...nodes.map((node) => node.y - node.h / 2));
+  const right = Math.max(...nodes.map((node) => node.x + node.w));
+  const bottom = Math.max(...nodes.map((node) => node.y + node.h / 2));
+  const width = right - left;
+  const height = bottom - top;
+  const overlapPairs = nodes.reduce((count, node, index) => count + nodes.slice(index + 1).filter((other) => overlap(node, other)).length, 0);
+  return {
+    nodes: nodes.length,
+    overlapPairs,
+    bboxWidth: Number(width.toFixed(3)),
+    bboxHeight: Number(height.toFixed(3)),
+    aspectRatio: Number((width / height).toFixed(6)),
+    fillRatio: Number((nodes.reduce((area, node) => area + node.w * node.h, 0) / (width * height)).toFixed(6)),
+  };
+}
+
 describe("Disperse WebCola seam", () => {
   test("is deterministic and preserves rectangular dimensions", () => {
     const options = { displayRootId: "root", subtype: "force" as const, space: "normal" as const };
@@ -72,5 +91,19 @@ describe("Disperse WebCola seam", () => {
     }, sample.input.boxSizes, { displayRootId: "syn-root", subtype: "cluster", space });
     const nodes = Object.values(result.pos);
     expect(nodes.every((node, index) => nodes.slice(index + 1).every((other) => separatedByGap(node, other, minimumGap)))).toBe(true);
+  });
+
+  test.each(["scatter", "cluster", "force"] as const)("reports deterministic measurable %s output", (subtype) => {
+    const sample = syntheticLayoutSamples[0]!;
+    const input = {
+      nodeIds: sample.input.graph.nodeIds,
+      childrenOf: (id: string) => sample.input.graph.children[id] || [],
+      graphLinks: [],
+    };
+    const options = { displayRootId: "syn-root", subtype, space: "normal" as const };
+    const first = layoutDisperse(input, sample.input.boxSizes, options);
+    const second = layoutDisperse(input, sample.input.boxSizes, options);
+    expect(second.pos).toEqual(first.pos);
+    console.info(`DISPERSE_METRICS ${subtype} ${JSON.stringify(measuredLayout(first))}`);
   });
 });
