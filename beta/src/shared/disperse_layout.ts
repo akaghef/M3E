@@ -163,6 +163,15 @@ export function layoutDisperse(graph: DisperseGraph, metrics: Record<string, Dis
   }
   const pos: Record<string, DispersePosition> = {};
   nodes.forEach((node) => { pos[node.id] = { x: Math.round((node.x! - node.w / 2) * 1000) / 1000, y: Math.round(node.y! * 1000) / 1000, w: node.w, h: node.h, depth: node.depth, sourceNodeId: node.sourceNodeId }; });
+  // WebCola is free to settle around a negative origin. Normalize calculated
+  // layouts for a bounded canvas; scatter retains its exact saved coordinates.
+  if (options.subtype !== "scatter") {
+    const rawBox = boundingBox(pos);
+    Object.values(pos).forEach((node) => {
+      node.x = Math.round((node.x - rawBox.x + space.groupPadding) * 1000) / 1000;
+      node.y = Math.round((node.y - rawBox.y + space.groupPadding) * 1000) / 1000;
+    });
+  }
   const groups = [...reduced.groupMembers.entries()].flatMap(([id, memberIds]) => {
     const members = memberIds.filter((memberId) => pos[memberId]);
     if (members.length < 2) return [];
@@ -170,7 +179,7 @@ export function layoutDisperse(graph: DisperseGraph, metrics: Record<string, Dis
     return [{ id, memberIds: members, x: box.x - space.groupPadding, y: box.y - space.groupPadding, w: box.w + space.groupPadding * 2, h: box.h + space.groupPadding * 2 }];
   });
   const box = boundingBox(pos);
-  return { pos, order: nodes.map((node) => node.id), edges: reduced.edges, groups, totalWidth: Math.ceil(box.x + box.w + space.groupPadding), totalHeight: Math.ceil(box.y + box.h / 2 + space.groupPadding) };
+  return { pos, order: nodes.map((node) => node.id), edges: reduced.edges, groups, totalWidth: Math.ceil(box.x + box.w + space.groupPadding), totalHeight: Math.ceil(box.y + box.h + space.groupPadding) };
 }
 
 export const disperseLayoutIterationPolicy = { ...ITERATIONS, convergence: "fixed iteration budget; no unbounded running pass" } as const;

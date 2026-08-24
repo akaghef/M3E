@@ -45,5 +45,7 @@ describe("Disperse WebCola seam", () => {
     }, sample.input.boxSizes, { displayRootId: "syn-root", subtype, space: "normal" });
     const nodes = Object.values(result.pos);
     expect(nodes.some((node, index) => nodes.slice(index + 1).some((other) => overlap(node, other)))).toBe(false);
+    expect(Math.min(...nodes.map((node) => node.x))).toBeGreaterThanOrEqual(0);
+    expect(Math.min(...nodes.map((node) => node.y - node.h / 2))).toBeGreaterThanOrEqual(0);
   });
 });
