@@ -47,5 +47,12 @@ describe("Disperse WebCola seam", () => {
     expect(nodes.some((node, index) => nodes.slice(index + 1).some((other) => overlap(node, other)))).toBe(false);
     expect(Math.min(...nodes.map((node) => node.x))).toBeGreaterThanOrEqual(0);
     expect(Math.min(...nodes.map((node) => node.y - node.h / 2))).toBeGreaterThanOrEqual(0);
+    if (subtype === "cluster") {
+      const left = Math.min(...nodes.map((node) => node.x));
+      const top = Math.min(...nodes.map((node) => node.y - node.h / 2));
+      const right = Math.max(...nodes.map((node) => node.x + node.w));
+      const bottom = Math.max(...nodes.map((node) => node.y + node.h / 2));
+      expect((right - left) / (bottom - top)).toBeGreaterThan(0.5);
+    }
   });
 });

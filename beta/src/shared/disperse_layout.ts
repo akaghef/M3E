@@ -57,6 +57,44 @@ function deterministicInitialPosition(id: string, index: number): { x: number; y
   return { x: 300 + (hash % 1300) + (index % 5) * 37, y: 240 + (Math.floor(hash / 2048) % 1100) + (index % 7) * 29 };
 }
 
+/**
+ * WebCola preserves enough of its starting geometry that a hash-scattered
+ * hierarchy can settle into a long strip once nested group constraints apply.
+ * Seed cluster members by their tree groups: root children occupy a ring and
+ * each descendant stays inside its parent's angular sector.
+ */
+function clusterInitialPositions(nodes: ReducedNode[], edges: DisperseEdge[], canvas: number, edgeLength: number): Map<string, { x: number; y: number }> {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const children = new Map<string, string[]>();
+  edges.filter((edge) => edge.id.startsWith("tree:") && !edge.internal).forEach((edge) => {
+    const list = children.get(edge.sourceId) || [];
+    if (!list.includes(edge.targetId)) list.push(edge.targetId);
+    children.set(edge.sourceId, list);
+  });
+  const positions = new Map<string, { x: number; y: number }>();
+  const visited = new Set<string>();
+  const place = (id: string, x: number, y: number, angle: number, sector: number): void => {
+    if (visited.has(id) || !nodeById.has(id)) return;
+    visited.add(id);
+    positions.set(id, { x, y });
+    const childIds = children.get(id) || [];
+    childIds.forEach((childId, index) => {
+      const child = nodeById.get(childId);
+      const parent = nodeById.get(id);
+      if (!child || !parent) return;
+      const childAngle = angle - sector / 2 + sector * (index + 0.5) / childIds.length;
+      const radius = edgeLength + Math.max(parent.w, child.w) / 2 + Math.max(parent.h, child.h) / 4;
+      place(childId, x + Math.cos(childAngle) * radius, y + Math.sin(childAngle) * radius, childAngle, sector / childIds.length * 0.82);
+    });
+  };
+  const root = nodes.find((node) => node.depth === 0);
+  if (root) place(root.id, canvas / 2, canvas / 2, -Math.PI / 2, Math.PI * 2);
+  nodes.forEach((node, index) => {
+    if (!positions.has(node.id)) positions.set(node.id, deterministicInitialPosition(node.id, index));
+  });
+  return positions;
+}
+
 function footprint(memberIds: string[], metrics: Record<string, DisperseNodeMetric>, mode: SuperNodeFootprint): DisperseNodeMetric {
   if (mode === "fixed") return { w: 220, h: 64 };
   const area = memberIds.reduce((sum, id) => sum + (metrics[id]?.w ?? 0) * (metrics[id]?.h ?? 0), 0);
@@ -142,7 +180,15 @@ export function layoutDisperse(graph: DisperseGraph, metrics: Record<string, Dis
   const reduced = reduceGraph(graph, metrics, options);
   const space = SPACE[options.space || "normal"];
   // WebCola consumes width/height; retain w/h for the M3E layout seam result.
-  const nodes = reduced.nodes.map((node, index) => ({ ...node, width: node.w, height: node.h, ...deterministicInitialPosition(node.id, index) }));
+  const clusterPositions = options.subtype === "cluster"
+    ? clusterInitialPositions(reduced.nodes, reduced.edges, space.canvas, space.edgeLength)
+    : undefined;
+  const nodes = reduced.nodes.map((node, index) => ({
+    ...node,
+    width: node.w,
+    height: node.h,
+    ...(clusterPositions?.get(node.id) || deterministicInitialPosition(node.id, index)),
+  }));
   if (options.subtype === "scatter") {
     nodes.forEach((node) => {
       const saved = options.savedPositions?.[node.sourceNodeId || node.id];
@@ -159,7 +205,9 @@ export function layoutDisperse(graph: DisperseGraph, metrics: Record<string, Dis
       .avoidOverlaps(true)
       .handleDisconnected(false);
     if (options.subtype === "cluster") layout.groups(reduced.groups);
-    layout.start(ITERATIONS.unconstrained, ITERATIONS.userConstraints, ITERATIONS.allConstraints, ITERATIONS.gridSnap, false);
+    // Cluster must retain its group-aware seed. Running an unconstrained phase
+    // first discards it, then lets nested bounds settle into a long strip.
+    layout.start(options.subtype === "cluster" ? 0 : ITERATIONS.unconstrained, ITERATIONS.userConstraints, ITERATIONS.allConstraints, ITERATIONS.gridSnap, false);
   }
   const pos: Record<string, DispersePosition> = {};
   nodes.forEach((node) => { pos[node.id] = { x: Math.round((node.x! - node.w / 2) * 1000) / 1000, y: Math.round(node.y! * 1000) / 1000, w: node.w, h: node.h, depth: node.depth, sourceNodeId: node.sourceNodeId }; });
