@@ -97,7 +97,7 @@ function App(): React.ReactElement {
           </select>
         </div>
         <div className="control-group">
-          <label htmlFor="space">Group separation</label>
+          <label htmlFor="space">Node / group separation</label>
           <select id="space" value={space} onChange={(event) => setSpace(event.currentTarget.value as DisperseSpace)}>
             {spaces.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>

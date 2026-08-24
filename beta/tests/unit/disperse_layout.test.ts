@@ -17,6 +17,12 @@ function overlap(a: { x: number; y: number; w: number; h: number }, b: { x: numb
   return overlapWidth > epsilon && overlapHeight > epsilon;
 }
 
+function separatedByGap(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }, gap: number, epsilon = 1e-6): boolean {
+  const horizontalGap = Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w);
+  const verticalGap = Math.max(a.y - a.h / 2, b.y - b.h / 2) - Math.min(a.y + a.h / 2, b.y + b.h / 2);
+  return horizontalGap >= gap - epsilon || verticalGap >= gap - epsilon;
+}
+
 describe("Disperse WebCola seam", () => {
   test("is deterministic and preserves rectangular dimensions", () => {
     const options = { displayRootId: "root", subtype: "force" as const, space: "normal" as const };
@@ -54,5 +60,17 @@ describe("Disperse WebCola seam", () => {
       const bottom = Math.max(...nodes.map((node) => node.y + node.h / 2));
       expect((right - left) / (bottom - top)).toBeGreaterThan(0.5);
     }
+  });
+
+  test.each(["normal", "loose"] as const)("keeps the cluster corpus separated in %s space", (space) => {
+    const sample = syntheticLayoutSamples[0]!;
+    const minimumGap = space === "normal" ? 16 : 40;
+    const result = layoutDisperse({
+      nodeIds: sample.input.graph.nodeIds,
+      childrenOf: (id) => sample.input.graph.children[id] || [],
+      graphLinks: [],
+    }, sample.input.boxSizes, { displayRootId: "syn-root", subtype: "cluster", space });
+    const nodes = Object.values(result.pos);
+    expect(nodes.every((node, index) => nodes.slice(index + 1).every((other) => separatedByGap(node, other, minimumGap)))).toBe(true);
   });
 });

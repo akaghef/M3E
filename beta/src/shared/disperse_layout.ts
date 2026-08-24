@@ -41,9 +41,9 @@ interface ReducedGraph { nodes: ReducedNode[]; edges: DisperseEdge[]; groups: co
 // collision projection on the 100-node lab corpus without a live simulation loop.
 const ITERATIONS = { unconstrained: 80, userConstraints: 0, allConstraints: 240, gridSnap: 0 } as const;
 const SPACE = {
-  tight: { edgeLength: 110, groupPadding: 20, canvas: 1800 },
-  normal: { edgeLength: 180, groupPadding: 52, canvas: 2400 },
-  loose: { edgeLength: 280, groupPadding: 108, canvas: 3400 },
+  tight: { edgeLength: 110, groupPadding: 20, nodeGap: 0, canvas: 1800 },
+  normal: { edgeLength: 180, groupPadding: 52, nodeGap: 16, canvas: 2400 },
+  loose: { edgeLength: 280, groupPadding: 108, nodeGap: 40, canvas: 3400 },
 } as const;
 
 function stableSeed(id: string): number {
@@ -183,10 +183,13 @@ export function layoutDisperse(graph: DisperseGraph, metrics: Record<string, Dis
   const clusterPositions = options.subtype === "cluster"
     ? clusterInitialPositions(reduced.nodes, reduced.edges, space.canvas, space.edgeLength)
     : undefined;
+  const collisionGap = options.subtype === "cluster" ? space.nodeGap : 0;
   const nodes = reduced.nodes.map((node, index) => ({
     ...node,
-    width: node.w,
-    height: node.h,
+    // WebCola avoids overlaps of these collision rectangles. Enlarging each
+    // dimension by one gap yields exactly that minimum box-to-box distance.
+    width: node.w + collisionGap,
+    height: node.h + collisionGap,
     ...(clusterPositions?.get(node.id) || deterministicInitialPosition(node.id, index)),
   }));
   if (options.subtype === "scatter") {
