@@ -44,7 +44,9 @@
     "test:visual:selection": "playwright test -g \"viewer shift arrow expands selection\"",
     "test:visual:update": "playwright test --update-snapshots",
     "test:e2e": "playwright test --config playwright.e2e.config.js",
-    "test:e2e:headed": "playwright test --config playwright.e2e.config.js --headed"
+    "test:e2e:headed": "playwright test --config playwright.e2e.config.js --headed",
+    "perf:webgl:fixture": "node perf/run_webgl_pan_zoom.mjs --verify-only",
+    "perf:webgl:pan-zoom": "node perf/run_webgl_pan_zoom.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",
