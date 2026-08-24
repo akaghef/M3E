@@ -1,4 +1,5 @@
 import type { GraphLink, SurfaceNodeView } from "./types";
+import { layoutDisperse, type DisperseSubtype, type EdgeAggregation, type SuperNodeFootprint } from "./disperse_layout";
 
 export type LayoutMode = "Tree" | "Axial" | "Radial" | "Disperse" | "System";
 export type LegacyLayoutMode =
@@ -81,6 +82,12 @@ export interface LayoutOptions {
   edge?: { route?: LayoutEdgeRoute };
   link?: { route?: LayoutLinkRoute };
   scatter?: { seed?: number; strength?: number; repulsion?: number; edgeLength?: number };
+  disperse?: {
+    subtype?: DisperseSubtype;
+    collapsedNodeIds?: string[];
+    superNodeFootprint?: SuperNodeFootprint;
+    edgeAggregation?: EdgeAggregation;
+  };
   surfaceNodeViews?: Record<string, SurfaceNodeView>;
   flowCells?: Record<string, { col: number; row: number; isReference: boolean }>;
   scatterCollapsedGroups?: Record<string, boolean>;
@@ -139,7 +146,6 @@ const LAYOUT = {
 const DEFAULT_TREE_SPACING = { nodeGap: 1, levelGap: 255, sidePadding: 72 };
 
 const FLOW_SURFACE_ROW_GAP = 84;
-const DEFAULT_SCATTER_EDGE_LENGTH = 180;
 
 function structuredLayoutConfig(
   mode: LayoutAlgorithmMode,
@@ -534,79 +540,6 @@ function treeDirectionConfig(direction: LayoutDirection = "right"): {
   }
 }
 
-function scatterSeedCenter(): { x: number; y: number } {
-  return { x: LAYOUT.leftPad + 620, y: LAYOUT.topPad + 390 };
-}
-
-function scatterFontSizeFor(radius: number): number {
-  return Math.max(12, Math.min(36, Math.round(radius * 0.42)));
-}
-
-function scatterSeedPositionsFromGraph(
-  rootId: string,
-  ids: string[],
-  depthOf: Record<string, number>,
-  childrenOf: (id: string) => string[] = () => [],
-  edgeLength = DEFAULT_SCATTER_EDGE_LENGTH,
-): Record<string, { x: number; y: number }> {
-  const center = scatterSeedCenter();
-  const idSet = new Set(ids);
-  const visibleChildrenForSeed = (nodeId: string): string[] =>
-    childrenOf(nodeId).filter((childId) => idSet.has(childId));
-  const childLeafCount = new Map<string, number>();
-  const leafCount = (nodeId: string): number => {
-    const cached = childLeafCount.get(nodeId);
-    if (cached != null) return cached;
-    const children = visibleChildrenForSeed(nodeId);
-    const count = children.length ? children.reduce((sum, childId) => sum + leafCount(childId), 0) : 1;
-    childLeafCount.set(nodeId, count);
-    return count;
-  };
-
-  const yByNode: Record<string, number> = {};
-  const assignBreadth = (nodeId: string, top: number): number => {
-    const children = visibleChildrenForSeed(nodeId);
-    if (!children.length) {
-      yByNode[nodeId] = top;
-      return top + edgeLength * 0.76;
-    }
-    let cursor = top;
-    children.forEach((childId) => {
-      cursor = assignBreadth(childId, cursor);
-    });
-    yByNode[nodeId] = (yByNode[children[0]!]! + yByNode[children[children.length - 1]!]!) / 2;
-    return cursor;
-  };
-  const totalBreadth = leafCount(rootId) * edgeLength * 0.76;
-  assignBreadth(rootId, center.y - totalBreadth / 2);
-
-  const rankPeers: Record<number, string[]> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    if (!rankPeers[depth]) rankPeers[depth] = [];
-    rankPeers[depth]!.push(nodeId);
-  });
-
-  const seeded: Record<string, { x: number; y: number }> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const peers = rankPeers[depth] || [];
-    const peerIndex = Math.max(0, peers.indexOf(nodeId));
-    const siblingNudge = ((peerIndex % 3) - 1) * 12;
-    seeded[nodeId] = {
-      x: center.x + (depth - 1) * edgeLength * 1.26,
-      y: (yByNode[nodeId] ?? center.y) + siblingNudge,
-    };
-  });
-  if (ids.includes(rootId)) {
-    seeded[rootId] = {
-      x: center.x - edgeLength * 1.18,
-      y: yByNode[rootId] ?? center.y,
-    };
-  }
-  return seeded;
-}
-
 export function layout(
   visibleGraph: VisibleLayoutGraph,
   boxSizes: Record<string, LayoutNodeMetric>,
@@ -618,56 +551,22 @@ export function layout(
   const displayRootExists = Boolean(displayRootId && boxSizes[displayRootId]);
 
   if (canonicalMode === "Disperse" && visibleGraph.nodeIds.length > 0) {
-    const descendants = visibleGraph.nodeIds;
-    const scatterDepthOf: Record<string, number> = {};
-    const visitDepth = (nodeId: string, depth: number): void => {
-      scatterDepthOf[nodeId] = depth;
-      visibleGraph.childrenOf(nodeId).forEach((childId) => visitDepth(childId, depth + 1));
-    };
-    descendants.forEach((nodeId) => {
-      if (scatterDepthOf[nodeId] === undefined) visitDepth(nodeId, 0);
-    });
-    const seededByNode = scatterSeedPositionsFromGraph(
+    const result = layoutDisperse({
+      nodeIds: visibleGraph.nodeIds,
+      childrenOf: visibleGraph.childrenOf,
+      graphLinks: visibleGraph.graphLinks,
+    }, boxSizes, {
       displayRootId,
-      descendants,
-      scatterDepthOf,
-      visibleGraph.childrenOf,
-      options.scatter?.edgeLength,
-    );
-    const pos: Record<string, LayoutNodePosition> = {};
-    let maxRight = LAYOUT.minCanvasWidth;
-    let maxBottom = LAYOUT.minCanvasHeight;
-    descendants.forEach((nodeId) => {
-      const metric = boxSizes[nodeId];
-      if (!metric) return;
-      const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = metric.w / 2;
-      const diameter = radius * 2;
-      const saved = options.surfaceNodeViews?.[nodeId];
-      const seeded = seededByNode[nodeId] || scatterSeedCenter();
-      const seededX = seeded.x - radius;
-      const seededY = seeded.y;
-      const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
-      const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
-      pos[nodeId] = {
-        x,
-        y,
-        depth,
-        w: diameter,
-        h: diameter,
-        fontSize: scatterFontSizeFor(radius),
-        scatterCollapsedGroup: Boolean(options.scatterCollapsedGroups?.[nodeId]),
-      };
-      maxRight = Math.max(maxRight, x + diameter + LAYOUT.canvasRightPad);
-      maxBottom = Math.max(maxBottom, y + radius + LAYOUT.canvasBottomPad);
+      subtype: options.disperse?.subtype || "force",
+      space: options.space,
+      collapsedNodeIds: options.disperse?.collapsedNodeIds,
+      superNodeFootprint: options.disperse?.superNodeFootprint,
+      edgeAggregation: options.disperse?.edgeAggregation,
+      savedPositions: Object.fromEntries(Object.entries(options.surfaceNodeViews || {}).flatMap(([id, node]) =>
+        Number.isFinite(node.x) && Number.isFinite(node.y) ? [[id, { x: Number(node.x), y: Number(node.y) }]] : [],
+      )),
     });
-
-    return {
-      pos,
-      order: descendants,
-      totalHeight: Math.max(maxBottom, LAYOUT.minCanvasHeight),
-      totalWidth: Math.max(maxRight, LAYOUT.minCanvasWidth),
-    };
+    return { pos: result.pos, order: result.order, totalHeight: result.totalHeight, totalWidth: result.totalWidth };
   }
 
   if (canonicalMode === "System" && displayRootExists) {

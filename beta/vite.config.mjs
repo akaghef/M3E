@@ -33,6 +33,7 @@ export default defineConfig({
         "workbench-ui": "src/browser/workbench-ui.tsx",
         "seam-lab-index": "src/labs/index.html",
         "layout-lab": "src/labs/layout/layout-lab.html",
+        "disperse-lab": "src/labs/disperse/disperse-lab.html",
         "edge-port-lab": "src/labs/edge-port/edge-port-lab.html",
         "node-lab": "src/labs/node/node-lab.html",
         "pn-lab": "src/labs/pn/pn-lab.html",
@@ -46,6 +47,7 @@ export default defineConfig({
           if (name.includes("node-lab")) return "node-lab.css";
           if (name.includes("pn-lab")) return "pn-lab.css";
           if (name.includes("runtime-board")) return "runtime-board.css";
+          if (name.includes("disperse-lab")) return "disperse-lab.css";
           return name.includes("layout-lab") ? "layout-lab.css" : "workbench-ui.css";
         },
       },
