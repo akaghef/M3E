@@ -177,7 +177,8 @@ async function startProbe(page) {
       observer.observe({ type: "longtask" });
       longTaskSupported = true;
     } catch { /* Long Task API is optional. */ }
-    window.__m3ePanZoomProbe = { startedAt: performance.now(), frames, longTasks, longTaskSupported, stop: () => { stopped = true; observer?.disconnect(); return { endedAt: performance.now(), frames, longTasks, longTaskSupported }; } };
+    const startedAt = performance.now();
+    window.__m3ePanZoomProbe = { startedAt, frames, longTasks, longTaskSupported, stop: () => { stopped = true; observer?.disconnect(); return { startedAt, endedAt: performance.now(), frames, longTasks, longTaskSupported }; } };
   });
 }
 
@@ -185,7 +186,7 @@ async function stopProbe(page) {
   return page.evaluate(() => window.__m3ePanZoomProbe?.stop());
 }
 
-function summarizeProbe(probe) {
+export function summarizeProbe(probe) {
   const intervals = probe?.frames || [];
   const longTasks = probe?.longTasks || [];
   return {

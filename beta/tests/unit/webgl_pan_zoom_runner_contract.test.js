@@ -48,4 +48,16 @@ describe("WebGL pan/zoom performance runner", () => {
     expect(liveSourceAfter).not.toEqual(liveSourceBefore);
     expect(() => verifyFixtureState(manifest, renamedFixture, scoped, { tags: ["frozen"] })).not.toThrow();
   });
+
+  test("reports duration only from the probe window", async () => {
+    const { summarizeProbe } = await import("../../perf/run_webgl_pan_zoom.mjs");
+    const summary = summarizeProbe({
+      startedAt: 10_000,
+      endedAt: 10_042.5,
+      frames: [16.6, 17.1],
+      longTasks: [],
+      longTaskSupported: true,
+    });
+    expect(summary.durationMs).toBe(42.5);
+  });
 });
