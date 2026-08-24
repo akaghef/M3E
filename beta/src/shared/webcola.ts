@@ -7,9 +7,10 @@ declare module "webcola" {
     size(size: [number, number]): this;
     nodes(nodes: Node[]): this;
     links(links: Link[]): this;
-    groups(groups: Group[]): this;
-    avoidOverlaps(avoid: boolean): this;
-    handleDisconnected(handle: boolean): this;
-    start(unconstrained: number, userConstraints: number, allConstraints: number, gridSnap: number, keepRunning: boolean): this;
-  }
+  groups(groups: Group[]): this;
+  avoidOverlaps(avoid: boolean): this;
+  handleDisconnected(handle: boolean): this;
+  linkDistance(distance: number): this;
+  start(unconstrained: number, userConstraints: number, allConstraints: number, gridSnap: number, keepRunning: boolean): this;
+}
 }

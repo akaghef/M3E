@@ -14,10 +14,15 @@ const savedPositions = Object.fromEntries(sample.input.graph.nodeIds.map((id, in
 
 function metrics(result: ReturnType<typeof layoutDisperse>): string {
   const nodes = Object.values(result.pos);
+  // WebCola may leave rectangles touching by an IEEE-754 epsilon. Touching is
+  // permitted; only a material-area intersection is an overlap.
+  const epsilon = 1e-6;
   let overlaps = 0;
   for (let i = 0; i < nodes.length; i += 1) for (let j = i + 1; j < nodes.length; j += 1) {
     const a = nodes[i]!, b = nodes[j]!;
-    if (a.x < b.x + b.w && a.x + a.w > b.x && a.y - a.h / 2 < b.y + b.h / 2 && a.y + a.h / 2 > b.y - b.h / 2) overlaps += 1;
+    const overlapWidth = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const overlapHeight = Math.min(a.y + a.h / 2, b.y + b.h / 2) - Math.max(a.y - a.h / 2, b.y - b.h / 2);
+    if (overlapWidth > epsilon && overlapHeight > epsilon) overlaps += 1;
   }
   const left = Math.min(...nodes.map((node) => node.x)); const top = Math.min(...nodes.map((node) => node.y - node.h / 2));
   const right = Math.max(...nodes.map((node) => node.x + node.w)); const bottom = Math.max(...nodes.map((node) => node.y + node.h / 2));

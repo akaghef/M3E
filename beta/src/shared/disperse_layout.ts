@@ -37,7 +37,9 @@ export interface DisperseLayoutResult {
 interface ReducedNode extends DisperseNodeMetric { id: string; depth: number; sourceNodeId?: string; }
 interface ReducedGraph { nodes: ReducedNode[]; edges: DisperseEdge[]; groups: cola.Group[]; groupMembers: Map<string, string[]>; }
 
-const ITERATIONS = { unconstrained: 80, userConstraints: 0, allConstraints: 40, gridSnap: 0 } as const;
+// Fixed rather than time-bound: enough constraint passes to finish the rectangular
+// collision projection on the 100-node lab corpus without a live simulation loop.
+const ITERATIONS = { unconstrained: 80, userConstraints: 0, allConstraints: 240, gridSnap: 0 } as const;
 const SPACE = {
   tight: { edgeLength: 110, groupPadding: 20, canvas: 1800 },
   normal: { edgeLength: 180, groupPadding: 52, canvas: 2400 },
@@ -149,7 +151,13 @@ export function layoutDisperse(graph: DisperseGraph, metrics: Record<string, Dis
   } else {
     const indexById = new Map(nodes.map((node, index) => [node.id, index]));
     const links: cola.Link[] = reduced.edges.filter((edge) => !edge.internal).map((edge) => ({ source: indexById.get(edge.sourceId)!, target: indexById.get(edge.targetId)!, length: space.edgeLength }));
-    const layout = new cola.Layout().size([space.canvas, space.canvas]).nodes(nodes).links(links).avoidOverlaps(true).handleDisconnected(false);
+    const layout = new cola.Layout()
+      .size([space.canvas, space.canvas])
+      .nodes(nodes)
+      .links(links)
+      .linkDistance(space.edgeLength)
+      .avoidOverlaps(true)
+      .handleDisconnected(false);
     if (options.subtype === "cluster") layout.groups(reduced.groups);
     layout.start(ITERATIONS.unconstrained, ITERATIONS.userConstraints, ITERATIONS.allConstraints, ITERATIONS.gridSnap, false);
   }

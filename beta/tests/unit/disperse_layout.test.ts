@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { layoutDisperse } from "../../src/shared/disperse_layout";
+import { syntheticLayoutSamples } from "../../src/labs/layout/synthetic_layout_samples";
 
 const metrics = {
   root: { w: 180, h: 72 }, left: { w: 320, h: 48 }, right: { w: 96, h: 126 }, leaf: { w: 240, h: 60 },
@@ -10,8 +11,10 @@ const graph = {
   graphLinks: [{ id: "cross", sourceNodeId: "right", targetNodeId: "leaf" }],
 };
 
-function overlap(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y - a.h / 2 < b.y + b.h / 2 && a.y + a.h / 2 > b.y - b.h / 2;
+function overlap(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }, epsilon = 1e-6): boolean {
+  const overlapWidth = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const overlapHeight = Math.min(a.y + a.h / 2, b.y + b.h / 2) - Math.max(a.y - a.h / 2, b.y - b.h / 2);
+  return overlapWidth > epsilon && overlapHeight > epsilon;
 }
 
 describe("Disperse WebCola seam", () => {
@@ -31,5 +34,16 @@ describe("Disperse WebCola seam", () => {
     expect(result.pos.left).toBeUndefined();
     expect(result.pos.leaf).toBeUndefined();
     expect(result.edges.some((edge) => edge.weight > 1 || edge.sourceId === "collapse:left" || edge.targetId === "collapse:left")).toBe(true);
+  });
+
+  test.each(["force", "cluster"] as const)("keeps the 100-node rectangular corpus non-overlapping in %s mode", (subtype) => {
+    const sample = syntheticLayoutSamples[0]!;
+    const result = layoutDisperse({
+      nodeIds: sample.input.graph.nodeIds,
+      childrenOf: (id) => sample.input.graph.children[id] || [],
+      graphLinks: [],
+    }, sample.input.boxSizes, { displayRootId: "syn-root", subtype, space: "normal" });
+    const nodes = Object.values(result.pos);
+    expect(nodes.some((node, index) => nodes.slice(index + 1).some((other) => overlap(node, other)))).toBe(false);
   });
 });
