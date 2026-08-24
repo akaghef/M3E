@@ -18,7 +18,7 @@ function representativePath(direction: "left/right" | "left" | "right" | "up/dow
   )) ?? graph.childrenOf(rootId)[0]!;
   const source = result.pos[rootId]!;
   const target = result.pos[childId]!;
-  return { source, target, path: layoutLabEdgePath(source, target, direction) };
+  return { source, target, path: layoutLabEdgePath(source, target, "Tree", direction) };
 }
 
 describe("Layout Lab edge exclusive seam", () => {
@@ -36,5 +36,26 @@ describe("Layout Lab edge exclusive seam", () => {
       expect(path.target.y).toBe(direction === "up/down" || direction === "up" ? target.y + target.h / 2 : direction === "down" ? target.y - target.h / 2 : target.y);
       console.info(JSON.stringify({ direction, sourcePort: path.source, targetPort: path.target }));
     });
+  });
+
+  test("uses the Disperse center-to-center vector without Tree branch metadata", () => {
+    const result = layout(graph, sample.input.boxSizes, "Disperse", {
+      ...sample.input.options,
+      scatter: { edgeLength: 500 },
+    });
+    const source = result.pos[rootId]!;
+    const targetId = graph.childrenOf(rootId)[0]!;
+    const target = result.pos[targetId]!;
+
+    expect(target.branchPortSide).toBeUndefined();
+    const path = layoutLabEdgePath(source, target, "Disperse", undefined);
+    const sourceCenter = { x: source.x + source.w / 2, y: source.y };
+    const targetCenter = { x: target.x + target.w / 2, y: target.y };
+    expect([path.source.side, path.target.side]).toEqual(
+      Math.abs(targetCenter.x - sourceCenter.x) >= Math.abs(targetCenter.y - sourceCenter.y)
+        ? (targetCenter.x >= sourceCenter.x ? ["right", "left"] : ["left", "right"])
+        : (targetCenter.y >= sourceCenter.y ? ["bottom", "top"] : ["top", "bottom"]),
+    );
+    console.info(JSON.stringify({ sourceCenter, targetCenter, sourcePort: path.source, targetPort: path.target }));
   });
 });

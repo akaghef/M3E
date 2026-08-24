@@ -1,6 +1,6 @@
 import { selectPorts, type EdgeDirection, type EdgeRect } from "../../shared/edge_port";
 import { route, type EdgePath, type EdgeRouteStyle } from "../../shared/edge_route";
-import type { LayoutBranchPortSide, LayoutDirection, LayoutNodePosition } from "../../shared/layout_port";
+import type { LayoutBranchPortSide, LayoutDirection, LayoutMode, LayoutNodePosition } from "../../shared/layout_port";
 
 /** The lab deliberately uses the canonical curved EdgeStyle unless a control is added. */
 export const DEFAULT_LAYOUT_LAB_EDGE_STYLE: EdgeRouteStyle = "curve";
@@ -17,13 +17,24 @@ function treeBranchDirection(direction: LayoutDirection, branchPortSide: LayoutB
   return { view: "Tree", direction };
 }
 
+/** Disperse has no branch direction: select ports from the center-to-center vector. */
+function edgeDirectionForLayout(
+  mode: LayoutMode,
+  direction: LayoutDirection | undefined,
+  branchPortSide: LayoutBranchPortSide | undefined,
+): EdgeDirection {
+  if (mode === "Disperse") return { view: "Disperse", direction: "free" };
+  return treeBranchDirection(direction || "right", branchPortSide);
+}
+
 /** Exclusive seam: all Layout Lab edge geometry is selected then routed here. */
 export function layoutLabEdgePath(
   source: LayoutNodePosition,
   target: LayoutNodePosition,
-  direction: LayoutDirection,
+  mode: LayoutMode,
+  direction: LayoutDirection | undefined,
   style: EdgeRouteStyle = DEFAULT_LAYOUT_LAB_EDGE_STYLE,
 ): EdgePath {
-  const ports = selectPorts(rect(source), rect(target), treeBranchDirection(direction, target.branchPortSide));
+  const ports = selectPorts(rect(source), rect(target), edgeDirectionForLayout(mode, direction, target.branchPortSide));
   return route(ports, style);
 }
