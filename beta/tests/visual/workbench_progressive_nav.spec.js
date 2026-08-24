@@ -127,12 +127,12 @@ test.describe("Workbench progressive navigation", () => {
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').hover();
+    await page.locator('[aria-label="Surface PN root"]').hover();
     await page.waitForTimeout(250);
 
     const geometry = await progressiveNavGeometry(
       page,
-      '[aria-label="[GUI] navigation root"]',
+      '[aria-label="Surface PN root"]',
       '[data-pn-node="board"]',
       '.wb-progressive-edges path',
     );
@@ -151,7 +151,7 @@ test.describe("Workbench progressive navigation", () => {
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').hover();
+    await page.locator('[aria-label="Surface PN root"]').hover();
     await page.waitForTimeout(150);
     await page.locator('[data-pn-node="board"]').evaluate((element) => element.click());
     await page.locator('[data-pn-node="import"]').evaluate((element) => element.click());
@@ -176,7 +176,7 @@ test.describe("Workbench progressive navigation", () => {
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').evaluate((element) => {
+    await page.locator('[aria-label="Surface PN root"]').evaluate((element) => {
       const nav = document.querySelector('[data-testid="progressive-navigation"]');
       if (!nav?.classList.contains("is-open")) {
         element.click();
@@ -221,7 +221,7 @@ test.describe("Workbench progressive navigation", () => {
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').click();
+    await page.locator('[aria-label="Surface PN root"]').click();
     await expect(page.locator('[data-testid="progressive-navigation"]')).toBeVisible();
     await page.evaluate(() => {
       window.__m3ePnLayoutCount = 0;
@@ -341,7 +341,7 @@ test.describe("Workbench progressive navigation", () => {
     await expect.poll(() => page.locator(".collapsed-badge").count()).toBe(0);
   });
 
-  test("Space does not open active-node PN while typing", async ({ page }) => {
+  test("Space does not open Node PN while typing", async ({ page }) => {
     const mapId = "pn-input-guard";
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);

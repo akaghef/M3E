@@ -504,7 +504,7 @@ function LeftRail({
         </IconButton>
       </div>
       <IconButton
-        label="[GUI] navigation root"
+        label="Surface PN root"
         onClick={() => {
           setProgressiveMode("gui");
           setProgressiveOpen((current) => !current);
@@ -943,7 +943,7 @@ function activeNodeAnchorElement(): Element | null {
 }
 
 function fallbackProgressiveAnchorElement(): Element | null {
-  return document.querySelector('[aria-label="[GUI] navigation root"]');
+  return document.querySelector('[aria-label="Surface PN root"]');
 }
 
 const PROGRESSIVE_NODE_WIDTH = 172;

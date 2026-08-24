@@ -45,7 +45,7 @@ function node(id, parentId, children, text) {
 }
 
 async function chooseProgressiveLayout(page, parentId, leafId) {
-  await page.locator('[aria-label="[GUI] navigation root"]').evaluate((element) => {
+  await page.locator('[aria-label="Surface PN root"]').evaluate((element) => {
     const nav = document.querySelector('[data-testid="progressive-navigation"]');
     if (!nav?.classList.contains("is-open")) {
       element.click();
