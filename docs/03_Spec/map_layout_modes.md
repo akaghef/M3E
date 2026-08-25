@@ -202,7 +202,7 @@ layout: {
 
 ---
 
-### 3.3 Balanced Tree -- "Radial Mind Map"
+### 3.3 Balanced Tree -- "両側 Mind Map"
 
 ```
           Child A1
@@ -223,7 +223,7 @@ layout: {
 
 | 項目 | 値 |
 |------|-----|
-| 名前 | `balanced-tree` (Radial Mind Map) |
+| 名前 | `balanced-tree` (Tree 両側 preset) |
 | 方向 | 左右両方向 (Freeplane のデフォルトに近い) |
 | 適用場面 | ブレインストーミング、中心テーマからの発散 |
 | M3E モード | Flash (キャプチャ)、Rapid |
