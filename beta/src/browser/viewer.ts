@@ -1,6 +1,5 @@
 import {
   layout as layoutPortLayout,
-  normalizeLayoutVocabulary,
   type LayoutSpace,
   type LayoutMode,
   type LayoutNodeMetric,
@@ -9,6 +8,11 @@ import {
   type StructuredLayoutMode,
   type VisibleLayoutGraph,
 } from "../shared/layout_port";
+import {
+  migrateSurfaceViewFromMapRead,
+  sanitizeSurfaceLayoutDirection,
+  sanitizeSurfaceSpace,
+} from "../shared/surface_view_migration";
 import {
   canonicalSurfaceViewName,
   normalizeNodeDrawStyle,
@@ -794,14 +798,6 @@ function inferSurfaceViewModeForScope(scopeId: string): SurfaceViewMode {
   if (rawLayout === "timeline") return "timeline";
   if (rawLayout === "scatter") return "scatter";
   return "tree";
-}
-
-function sanitizeSurfaceSpace(value: unknown): SurfaceSpace {
-  return normalizeLayoutVocabulary({ space: value }).space;
-}
-
-function sanitizeSurfaceLayoutDirection(value: unknown): SurfaceLayoutDirection {
-  return normalizeLayoutVocabulary({ direction: value }).direction;
 }
 
 function sanitizeSurfaceDepthAlign(value: unknown): SurfaceDepthAlign {
@@ -2248,11 +2244,6 @@ function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
     : null;
 }
 
-/** Converts persisted pre-2026-08-23 layout vocabulary at the map-read boundary. */
-function sanitizeSurfaceView(raw: unknown): SurfaceView {
-  return normalizeLayoutVocabulary(raw);
-}
-
 function defaultSurfaceKindForScopeNode(node: TreeNode): SurfaceKind {
   const rawLayout = rawAttr(node, "m3e:layout");
   if (rawLayout === "flow-lr") return "system";
@@ -2324,7 +2315,7 @@ function sanitizeMapModelState(state: AppState): void {
       scopeId,
       kind,
       layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
-      surfaceView: sanitizeSurfaceView((surface as MapSurface & { surfaceView?: unknown }).surfaceView),
+      surfaceView: migrateSurfaceViewFromMapRead(state, scopeId, (surface as MapSurface & { surfaceView?: unknown }).surfaceView),
       nodeViews: sanitizeSurfaceNodeViews(surface.nodeViews, state.nodes),
     };
   });
@@ -2363,7 +2354,7 @@ function sanitizeMapModelState(state: AppState): void {
       scopeId,
       kind: existingSurface?.kind || surfaceKind,
       layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
-      surfaceView: existingSurface?.surfaceView || sanitizeSurfaceView(undefined),
+      surfaceView: existingSurface?.surfaceView || migrateSurfaceViewFromMapRead(state, scopeId, undefined),
       nodeViews: existingSurface?.nodeViews || {},
     };
   });

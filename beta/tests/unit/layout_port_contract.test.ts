@@ -4,6 +4,7 @@ import {
   normalizeLayoutVocabulary,
   type LayoutOptions,
 } from "../../src/shared/layout_port";
+import { selectPorts } from "../../src/shared/edge_port";
 import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layout_samples";
 
 const treeStress = layoutSamples.find((sample) => sample.sample_id === "tree-stress-30")!;
@@ -51,6 +52,32 @@ describe("LayoutPort contract", () => {
 
     expect(new Set(signatures).size).toBe(6);
     expect(`${packed.totalWidth}x${packed.totalHeight}`).not.toBe(`${aligned.totalWidth}x${aligned.totalHeight}`);
+  });
+
+  test.each(["mindmap", "logic-chart"] as const)("%s preserves six directions and valid vertical branch ports", (structuredMode) => {
+    const directions: NonNullable<LayoutOptions["direction"]>[] = ["left/right", "left", "right", "up/down", "up", "down"];
+    directions.forEach((direction) => {
+      const result = layout(treeGraph, treeStress.input.boxSizes, structuredMode, {
+        ...treeStress.input.options,
+        structuredMode,
+        direction,
+      });
+      const root = result.pos[treeStress.input.options.displayRootId!]!;
+      const child = result.pos[treeGraph.childrenOf(treeStress.input.options.displayRootId!)[0]!]!;
+      const ports = selectPorts(
+        { x: root.x, y: root.y - root.h / 2, w: root.w, h: root.h },
+        { x: child.x, y: child.y - child.h / 2, w: child.w, h: child.h },
+        direction === "left/right" || direction === "up/down"
+          ? { view: "Tree", direction, branchSide: child.branchPortSide! }
+          : { view: "Tree", direction },
+      );
+      if (direction === "up/down") {
+        expect(child.branchPortSide === "up" || child.branchPortSide === "down").toBe(true);
+        expect(["top", "bottom"]).toContain(ports.source.side);
+        expect(["top", "bottom"]).toContain(ports.target.side);
+      }
+      console.info(JSON.stringify({ structuredMode, direction, branchPortSide: child.branchPortSide, ports: [ports.source.side, ports.target.side] }));
+    });
   });
 
   test("uses space defaults in Tree when spacing is omitted", () => {

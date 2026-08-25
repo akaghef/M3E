@@ -58,4 +58,23 @@ describe("Layout Lab edge exclusive seam", () => {
     );
     console.info(JSON.stringify({ sourceCenter, targetCenter, sourcePort: path.source, targetPort: path.target }));
   });
+
+  test("selects canonical ports without exceptions for every mode and direction", () => {
+    const directions = ["left/right", "left", "right", "up/down", "up", "down"] as const;
+    (["Tree", "Axial", "Radial", "Disperse", "System"] as const).forEach((mode) => {
+      directions.forEach((direction) => {
+        const result = layout(graph, sample.input.boxSizes, mode, {
+          ...sample.input.options,
+          structuredMode: mode === "Tree" || mode === "Axial" || mode === "Radial" ? mode : undefined,
+          direction,
+        });
+        // System surfaces deliberately omit the tree root, so use two actual
+        // rendered nodes for the adapter's mode-wide drawability contract.
+        const source = result.pos[result.order[0]!]!;
+        const target = result.pos[result.order[1]!]!;
+        expect(() => layoutLabEdgePath(source, target, mode, direction)).not.toThrow();
+        console.info(JSON.stringify({ mode, direction, source: source.branchPortSide, target: target.branchPortSide }));
+      });
+    });
+  });
 });

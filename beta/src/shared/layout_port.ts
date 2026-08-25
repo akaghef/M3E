@@ -746,22 +746,22 @@ export function layout(
 
   const structuredMode = normalizeStructuredLayoutMode(mode, options.structuredMode);
   const measuredContext = buildMeasuredTreeContext(displayRootId, structuredMode, visibleGraph, boxSizes, options);
+  const treeDirection = treeDirectionConfig(options.direction);
+  const directionalContext: MeasuredTreeContext = {
+    ...measuredContext,
+    config: { ...measuredContext.config, spread: treeDirection.spread },
+  };
   if (structuredMode === "mindmap") {
-    return orientLayoutResult(buildMindmapLayout(visibleGraph, measuredContext), cardinalDirection(options.direction));
+    return orientLayoutResult(buildMindmapLayout(visibleGraph, directionalContext), treeDirection.orientation);
   }
-  if (structuredMode === "logic-chart" && measuredContext.config.spread === "both") {
-    return orientLayoutResult(buildMindmapLayout(visibleGraph, measuredContext), cardinalDirection(options.direction));
+  if (structuredMode === "logic-chart" && treeDirection.bifurcated) {
+    return orientLayoutResult(buildMindmapLayout(visibleGraph, directionalContext), treeDirection.orientation);
   }
   if (structuredMode === "timeline") {
     return orientLayoutResult(buildTimelineLayout(visibleGraph, measuredContext), cardinalDirection(options.direction));
   }
-  const treeDirection = treeDirectionConfig(options.direction);
-  const treeContext: MeasuredTreeContext = {
-    ...measuredContext,
-    config: { ...measuredContext.config, spread: treeDirection.spread },
-  };
   const treeResult = treeDirection.bifurcated
-    ? buildMindmapLayout(visibleGraph, treeContext)
-    : buildRightTreeLayout(visibleGraph, treeContext);
+    ? buildMindmapLayout(visibleGraph, directionalContext)
+    : buildRightTreeLayout(visibleGraph, directionalContext);
   return orientLayoutResult(treeResult, treeDirection.orientation);
 }

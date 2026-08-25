@@ -18,13 +18,19 @@ function treeBranchDirection(direction: LayoutDirection, branchPortSide: LayoutB
 }
 
 /** Disperse has no branch direction: select ports from the center-to-center vector. */
-function edgeDirectionForLayout(
+export function edgeDirectionForLayout(
   mode: LayoutMode,
   direction: LayoutDirection | undefined,
   branchPortSide: LayoutBranchPortSide | undefined,
 ): EdgeDirection {
+  const canonicalDirection = direction || "right";
+  if (mode === "Tree") return treeBranchDirection(canonicalDirection, branchPortSide);
+  if (mode === "Axial") {
+    return { view: "Axial", direction: canonicalDirection === "left" ? "left" : canonicalDirection === "up" ? "up" : canonicalDirection === "down" || canonicalDirection === "up/down" ? "down" : "right" };
+  }
+  if (mode === "Radial") return { view: "Radial", direction: "balanced" };
   if (mode === "Disperse") return { view: "Disperse", direction: "free" };
-  return treeBranchDirection(direction || "right", branchPortSide);
+  return { view: "System", direction: "free" };
 }
 
 /** Exclusive seam: all Layout Lab edge geometry is selected then routed here. */

@@ -53,3 +53,20 @@ test("layout snapshot preserves centered-root layout for explicit left/right dir
     depth: 0,
   });
 });
+
+test("layout snapshot defaults to right direction with the established root position", async () => {
+  const created = await requestJson(`${baseUrl}/api/maps/new`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label: "layout-snapshot-default-direction" }),
+  });
+  expect(created.response.status).toBe(200);
+
+  const snapshot = await requestJson(`${baseUrl}/api/maps/${created.payload.id}/layout-snapshot`);
+  expect(snapshot.response.status).toBe(200);
+  expect(snapshot.payload.input.options.direction).toBe("right");
+  expect(snapshot.payload.result.pos[snapshot.payload.input.options.displayRootId]).toMatchObject({
+    x: 80,
+    depth: 0,
+  });
+});
