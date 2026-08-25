@@ -294,7 +294,7 @@ function placeNodes(
   visibleReason: Map<PnId, PnPlacedNode["visibleReason"]>,
   overlayRect: PnRect,
   mode: InternalMode,
-): { nodes: PnPlacedNode[]; nodeRectsById: Record<PnId, PnRect>; overflow: PnLayoutOutput["overflow"] } {
+): { overlayRect: PnRect; nodes: PnPlacedNode[]; nodeRectsById: Record<PnId, PnRect>; overflow: PnLayoutOutput["overflow"] } {
   const { nodeById, childrenByParent } = buildIndexes(input.nodes);
   const size = estimateSize(input, visibleNodeIds, mode);
   const direction: Direction = "right";
@@ -331,12 +331,25 @@ function placeNodes(
   }
 
   const renderedIds = visibleNodeIds.filter((id) => id !== input.rootId && byId[id]);
-  const maxBottom = Math.max(overlayRect.h, ...renderedIds.map((id) => rectBottom(byId[id]!)));
+  const minTop = Math.min(0, ...renderedIds.map((id) => byId[id]!.y));
+  let effectiveOverlayRect = overlayRect;
+  if (minTop < 0) {
+    // Rebase the overlay, rather than moving the rendered cards. A newly
+    // visible descendant can extend above the candidate rect; shifting only
+    // cards down makes the already-selected ancestor chain jump on screen.
+    const rebaseY = minTop - 12;
+    Object.keys(byId).forEach((id) => {
+      const current = byId[id]!;
+      byId[id] = rect(current.x, current.y - rebaseY, current.w, current.h);
+    });
+    effectiveOverlayRect = rect(overlayRect.x, overlayRect.y + rebaseY, overlayRect.w, overlayRect.h - rebaseY);
+  }
+  const maxBottom = Math.max(effectiveOverlayRect.h, ...renderedIds.map((id) => rectBottom(byId[id]!)));
   const clippedIds = renderedIds.filter((id) => {
     const item = byId[id]!;
-    return item.x < 0 || item.y < 0 || rectRight(item) > overlayRect.w || rectBottom(item) > overlayRect.h;
+    return item.x < 0 || item.y < 0 || rectRight(item) > effectiveOverlayRect.w || rectBottom(item) > effectiveOverlayRect.h;
   });
-  const overflowMode: PnOverflowMode = clippedIds.length > 0 || maxBottom > overlayRect.h
+  const overflowMode: PnOverflowMode = clippedIds.length > 0 || maxBottom > effectiveOverlayRect.h
     ? mode === "fixed-side-panel" ? "side-panel" : mode === "compact" ? "compact" : "scroll"
     : "none";
 
@@ -355,12 +368,13 @@ function placeNodes(
   });
 
   return {
+    overlayRect: effectiveOverlayRect,
     nodes: placed,
     nodeRectsById: byId,
     overflow: {
       mode: overflowMode,
       clippedIds,
-      ...(overflowMode === "none" ? {} : { scrollRect: rect(0, 0, overlayRect.w, overlayRect.h) }),
+      ...(overflowMode === "none" ? {} : { scrollRect: rect(0, 0, effectiveOverlayRect.w, effectiveOverlayRect.h) }),
     },
   };
 }
@@ -462,18 +476,18 @@ export function layoutProgressiveNav(input: PnLayoutInput): PnLayoutOutput {
     const size = estimateSize(input, visibility.visibleNodeIds, mode);
     const overlayRect = candidateRect(input, mode, size);
     const placed = placeNodes(input, visibility.visibleNodeIds, visibility.pathIds, visibility.visibleReason, overlayRect, mode);
-    const candidateCanvasScore = canvasScore(overlayRect, placed.nodes, input.safeZones);
-    const candidateOverlapScore = weightedScore(overlayRect, placed.nodes, input.safeZones, input.viewport);
+    const candidateCanvasScore = canvasScore(placed.overlayRect, placed.nodes, input.safeZones);
+    const candidateOverlapScore = weightedScore(placed.overlayRect, placed.nodes, input.safeZones, input.viewport);
     const decision: PnPlacementDecision = {
       mode,
-      rect: overlayRect,
+      rect: placed.overlayRect,
       overlapScore: candidateOverlapScore,
       canvasNodeOverlapScore: candidateCanvasScore,
       trialOrder,
       rejected: [...rejected],
     };
     const output: PnLayoutOutput = {
-      overlayRect,
+      overlayRect: placed.overlayRect,
       placement: decision,
       visibleNodeIds: visibility.visibleNodeIds,
       pathIds: visibility.pathIds,
@@ -481,13 +495,13 @@ export function layoutProgressiveNav(input: PnLayoutInput): PnLayoutOutput {
       nodeRectsById: placed.nodeRectsById,
       edges: routeEdges(input, visibility.visibleNodeIds, visibility.pathIds, placed.nodeRectsById, mode),
       focusOrder: visibility.visibleNodeIds.filter((id) => id !== input.rootId),
-      overflow: explicitOverflow(placed.overflow, overlayRect, input.viewport, mode),
+      overflow: explicitOverflow(placed.overflow, placed.overlayRect, input.viewport, mode),
     };
     if (!best || candidateCanvasScore < best.placement.canvasNodeOverlapScore) {
       best = output;
     }
     if (candidateCanvasScore === 0 || trialOrder.length === 1) return output;
-    rejected.push({ mode, rect: overlayRect, overlapScore: candidateOverlapScore, canvasNodeOverlapScore: candidateCanvasScore });
+    rejected.push({ mode, rect: placed.overlayRect, overlapScore: candidateOverlapScore, canvasNodeOverlapScore: candidateCanvasScore });
   }
 
   if (!best) {

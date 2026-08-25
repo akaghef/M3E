@@ -12,6 +12,40 @@ export const pnNodes: PnNode[] = [
   { id: "board", label: "Board", hint: "file", parentId: "gui" },
 ];
 
+const stabilityNodes: PnNode[] = [
+  { id: "root", label: "Root", hint: "root" },
+  { id: "a", label: "A", hint: "level 1", parentId: "root" },
+  { id: "b", label: "B", hint: "level 2", parentId: "a" },
+  { id: "s", label: "Sibling", hint: "level 2", parentId: "a" },
+  { id: "c1", label: "C1", hint: "level 3", parentId: "b" },
+  { id: "c2", label: "C2", hint: "level 3", parentId: "b" },
+  { id: "c3", label: "C3", hint: "level 3", parentId: "b" },
+  { id: "c4", label: "C4", hint: "level 3", parentId: "b" },
+  { id: "c5", label: "C5", hint: "level 3", parentId: "b" },
+  { id: "c6", label: "C6", hint: "level 3", parentId: "b" },
+  { id: "c7", label: "C7", hint: "level 3", parentId: "b" },
+  { id: "c8", label: "C8", hint: "level 3", parentId: "b" },
+  { id: "d1", label: "D1", hint: "level 4", parentId: "c1", action: "command" },
+  { id: "d2", label: "D2", hint: "level 4", parentId: "c1", action: "command" },
+  { id: "d3", label: "D3", hint: "level 4", parentId: "c1", action: "command" },
+  { id: "d4", label: "D4", hint: "level 4", parentId: "c1", action: "command" },
+  { id: "d5", label: "D5", hint: "level 4", parentId: "c1", action: "command" },
+  { id: "d6", label: "D6", hint: "level 4", parentId: "c1", action: "command" },
+  { id: "d7", label: "D7", hint: "level 4", parentId: "c1", action: "command" },
+  { id: "d8", label: "D8", hint: "level 4", parentId: "c1", action: "command" },
+];
+
+function screenRect(result: ReturnType<typeof layoutProgressiveNav>, nodeId: string) {
+  const node = result.nodes.find((entry) => entry.id === nodeId);
+  if (!node) throw new Error(`missing node ${nodeId}`);
+  return {
+    x: result.overlayRect.x + node.rect.x,
+    y: result.overlayRect.y + node.rect.y,
+    w: node.rect.w,
+    h: node.rect.h,
+  };
+}
+
 function input(overrides: Partial<PnLayoutInput> = {}): PnLayoutInput {
   const metrics = Object.fromEntries(pnNodes.map((node) => [node.id, { w: node.id === "gui" ? 44 : 172, h: node.id === "gui" ? 44 : 47 }]));
   return {
@@ -28,6 +62,25 @@ function input(overrides: Partial<PnLayoutInput> = {}): PnLayoutInput {
 }
 
 describe("layoutProgressiveNav contract", () => {
+  test("keeps existing ancestor cards stationary when a selected child reveals descendants", () => {
+    const metrics = Object.fromEntries(stabilityNodes.map((node) => [node.id, { w: node.id === "root" ? 44 : 172, h: node.id === "root" ? 44 : 47 }]));
+    const common = {
+      nodes: stabilityNodes,
+      rootId: "root",
+      anchorRect: { x: 48, y: 340, w: 44, h: 44 },
+      viewport: { width: 1200, height: 720, zoom: 1 },
+      safeZones: [],
+      nodeMetrics: metrics,
+      options: { routeStyle: "orthogonal" as const },
+    };
+    const base = layoutProgressiveNav({ ...common, activeId: "b" });
+    const deeper = layoutProgressiveNav({ ...common, activeId: "c1" });
+
+    for (const id of ["a", "b", "c1"]) {
+      expect(screenRect(deeper, id)).toEqual(screenRect(base, id));
+    }
+  });
+
   test("returns visible path, focus order, placed rects, overflow state, and EdgePort route metadata", () => {
     const result = layoutProgressiveNav(input());
 
