@@ -61,4 +61,31 @@ describe("viewer surface edge path", () => {
     expect(result.pos.a!.branchPortSide).toBeUndefined();
     expect(routed.edgeDirection).toEqual({ view: "Disperse", direction: "free" });
   });
+
+  test("Radial parent-child paths terminate on every child rectangle boundary", () => {
+    directions.forEach((direction) => {
+      const result = layout(graph, metrics, "Radial", {
+        displayRootId: "root",
+        structuredMode: "Radial",
+        direction,
+      });
+      ([
+        ["root", "a"],
+        ["root", "b"],
+        ["a", "a1"],
+      ] as const).forEach(([parentId, childId]) => {
+        const parent = result.pos[parentId]!;
+        const child = result.pos[childId]!;
+        const routed = viewerPath("mindmap", direction, parent, child);
+        const childRect = positionRect(child);
+        const target = routed.ports.target;
+        const onChildBoundary = target.x === childRect.x
+          || target.x === childRect.x + childRect.w
+          || target.y === childRect.y
+          || target.y === childRect.y + childRect.h;
+        expect(routed.edgeDirection).toEqual({ view: "Radial", direction: "balanced" });
+        expect(onChildBoundary, `${direction} ${parentId}->${childId}`).toBe(true);
+      });
+    });
+  });
 });

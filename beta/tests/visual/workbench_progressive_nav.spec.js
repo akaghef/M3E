@@ -247,8 +247,12 @@ test.describe("Workbench progressive navigation", () => {
         route.from.y + (route.to.y - route.from.y) * ratio,
       );
       await expect(radial).toBeAttached();
-      await expect(navigation).toHaveAttribute("data-active-pn-node", step === 6 ? "mindmap-surface" : "view");
+      // The cursor may reach the child before the final sampled point. During
+      // the transition it must stay on this hover path, never an unrelated PN
+      // node that could replace and detach the Radial child.
+      await expect(navigation).toHaveAttribute("data-active-pn-node", /^(view|mindmap-surface)$/);
     }
+    await expect(navigation).toHaveAttribute("data-active-pn-node", "mindmap-surface");
   });
 
   test("viewport fast-path events do not force PN layout recompute", async ({ page }) => {
