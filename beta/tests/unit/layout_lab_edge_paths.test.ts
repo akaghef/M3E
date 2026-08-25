@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { layout } from "../../src/shared/layout_port";
+import { layout, routeLayoutEdge } from "../../src/shared/layout_port";
 import { layoutLabEdgePath } from "../../src/labs/layout/layout_edge_paths";
-import { routeDisperseEdge } from "../../src/shared/layout_port";
 import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layout_samples";
 
 const sample = layoutSamples.find((item) => item.sample_id === "tree-stress-30")!;
@@ -41,11 +40,12 @@ describe("Layout Lab edge exclusive seam", () => {
 
   test.each(["line", "curve", "force-link"] as const)("uses node centres for Disperse %s paths", (style) => {
     const { source, target } = representativePath("right");
-    const path = routeDisperseEdge(source, target, style);
+    const path = layoutLabEdgePath(source, target, "Disperse", undefined, style);
     expect(path.source).toMatchObject({ x: source.x + source.w / 2, y: source.y });
     expect(path.target).toMatchObject({ x: target.x + target.w / 2, y: target.y });
     expect(path.style).toBe(style);
     expect(path.style).not.toBe("orthogonal");
+    expect(routeLayoutEdge(source, target, "Disperse", undefined, style)).toEqual(path);
     console.info(JSON.stringify({ style, sourceCenter: path.source, targetCenter: path.target, commands: path.commands }));
   });
 });
