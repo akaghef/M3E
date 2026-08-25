@@ -1,4 +1,12 @@
 import type { GraphLink, SurfaceNodeView } from "./types";
+import {
+  layoutDisperse,
+  type DisperseEdge,
+  type DisperseGroupBoundary,
+  type DisperseSubtype,
+  type EdgeAggregation,
+  type SuperNodeFootprint,
+} from "./disperse_layout";
 
 export type LayoutMode = "Tree" | "Axial" | "Radial" | "Disperse" | "System";
 export type LegacyLayoutMode =
@@ -81,6 +89,12 @@ export interface LayoutOptions {
   edge?: { route?: LayoutEdgeRoute };
   link?: { route?: LayoutLinkRoute };
   scatter?: { seed?: number; strength?: number; repulsion?: number; edgeLength?: number };
+  disperse?: {
+    subtype?: DisperseSubtype;
+    collapsedNodeIds?: string[];
+    superNodeFootprint?: SuperNodeFootprint;
+    edgeAggregation?: EdgeAggregation;
+  };
   surfaceNodeViews?: Record<string, SurfaceNodeView>;
   flowCells?: Record<string, { col: number; row: number; isReference: boolean }>;
   scatterCollapsedGroups?: Record<string, boolean>;
@@ -91,6 +105,10 @@ export interface LayoutResult {
   order: string[];
   totalHeight: number;
   totalWidth: number;
+  /** Disperse group boundaries; omitted by layouts without group geometry. */
+  groups?: DisperseGroupBoundary[];
+  /** Disperse-reduced edges; omitted by layouts that retain source graph edges. */
+  edges?: DisperseEdge[];
 }
 
 interface StructuredLayoutConfig {
@@ -618,56 +636,32 @@ export function layout(
   const displayRootExists = Boolean(displayRootId && boxSizes[displayRootId]);
 
   if (canonicalMode === "Disperse" && visibleGraph.nodeIds.length > 0) {
-    const descendants = visibleGraph.nodeIds;
-    const scatterDepthOf: Record<string, number> = {};
-    const visitDepth = (nodeId: string, depth: number): void => {
-      scatterDepthOf[nodeId] = depth;
-      visibleGraph.childrenOf(nodeId).forEach((childId) => visitDepth(childId, depth + 1));
-    };
-    descendants.forEach((nodeId) => {
-      if (scatterDepthOf[nodeId] === undefined) visitDepth(nodeId, 0);
-    });
-    const seededByNode = scatterSeedPositionsFromGraph(
+    const result = layoutDisperse({
+      nodeIds: visibleGraph.nodeIds,
+      childrenOf: visibleGraph.childrenOf,
+      graphLinks: visibleGraph.graphLinks,
+    }, boxSizes, {
       displayRootId,
-      descendants,
-      scatterDepthOf,
-      visibleGraph.childrenOf,
-      options.scatter?.edgeLength,
-    );
-    const pos: Record<string, LayoutNodePosition> = {};
-    let maxRight = LAYOUT.minCanvasWidth;
-    let maxBottom = LAYOUT.minCanvasHeight;
-    descendants.forEach((nodeId) => {
-      const metric = boxSizes[nodeId];
-      if (!metric) return;
-      const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = metric.w / 2;
-      const diameter = radius * 2;
-      const saved = options.surfaceNodeViews?.[nodeId];
-      const seeded = seededByNode[nodeId] || scatterSeedCenter();
-      const seededX = seeded.x - radius;
-      const seededY = seeded.y;
-      const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seededX;
-      const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seededY;
-      pos[nodeId] = {
-        x,
-        y,
-        depth,
-        w: diameter,
-        h: diameter,
-        fontSize: scatterFontSizeFor(radius),
-        scatterCollapsedGroup: Boolean(options.scatterCollapsedGroups?.[nodeId]),
-      };
-      maxRight = Math.max(maxRight, x + diameter + LAYOUT.canvasRightPad);
-      maxBottom = Math.max(maxBottom, y + radius + LAYOUT.canvasBottomPad);
+      subtype: options.disperse?.subtype || "force",
+      space: options.space,
+      collapsedNodeIds: options.disperse?.collapsedNodeIds,
+      superNodeFootprint: options.disperse?.superNodeFootprint,
+      edgeAggregation: options.disperse?.edgeAggregation,
+      savedPositions: Object.fromEntries(Object.entries(options.surfaceNodeViews || {}).flatMap(([id, node]) =>
+        Number.isFinite(node.x) && Number.isFinite(node.y) ? [[id, { x: Number(node.x), y: Number(node.y) }]] : [],
+      )),
     });
-
-    return {
-      pos,
-      order: descendants,
-      totalHeight: Math.max(maxBottom, LAYOUT.minCanvasHeight),
-      totalWidth: Math.max(maxRight, LAYOUT.minCanvasWidth),
-    };
+    const pos = Object.fromEntries(Object.entries(result.pos).map(([id, position]) => {
+      const sourceNodeId = position.sourceNodeId || id;
+      const metric = boxSizes[sourceNodeId];
+      return [id, {
+        ...position,
+        labelLines: metric?.labelLines,
+        fontSize: metric?.fontSize,
+        scatterCollapsedGroup: Boolean(options.scatterCollapsedGroups?.[sourceNodeId]),
+      }];
+    }));
+    return { ...result, pos };
   }
 
   if (canonicalMode === "System" && displayRootExists) {

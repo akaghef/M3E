@@ -6822,6 +6822,7 @@ function buildLayout(state: AppState): LayoutResult {
     });
     options.surfaceNodeViews = surface?.nodeViews || {};
     options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
+    options.disperse = { subtype: "scatter" };
     // Scatter layout reads persisted per-node view coordinates; scatter simulation writes them elsewhere.
     options.scatter = { edgeLength: scatterEdgeLength };
     return layoutPortLayout(

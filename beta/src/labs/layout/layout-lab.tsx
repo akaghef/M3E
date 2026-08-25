@@ -70,6 +70,7 @@ function App(): React.ReactElement {
     depthAlign,
     ...(supportsDirection ? { direction: direction as LayoutDirection } : {}),
     spacing,
+    disperse: { subtype: "cluster" },
   };
   let result: ReturnType<typeof layout> | undefined;
   let layoutError: string | undefined;
@@ -86,9 +87,10 @@ function App(): React.ReactElement {
     ? `translate(${rootPos.x} ${rootPos.y}) scale(${zoom}) translate(${-rootPos.x} ${-rootPos.y})`
     : undefined;
 
-  const edges = sample.input.graph.nodeIds.flatMap((sourceId) =>
+  const sourceEdges = sample.input.graph.nodeIds.flatMap((sourceId) =>
     (sample.input.graph.children[sourceId] || []).map((targetId) => ({ sourceId, targetId })),
   );
+  const edges = result?.edges?.filter((edge) => !edge.internal) || sourceEdges;
   const edgePaths: LayoutLabEdgeOutcome[] = [];
   if (result) {
     edges.forEach(({ sourceId, targetId }) => {
@@ -216,6 +218,9 @@ function App(): React.ReactElement {
               aria-label="Layout result"
             >
               <g transform={zoomTransform}>
+                {result.groups?.map((group) => (
+                  <rect key={group.id} className="disperse-group" x={group.x} y={group.y} width={group.w} height={group.h} rx={12} />
+                ))}
                 {edgePaths.map((item) => "path" in item ? (
                   <path key={`${item.sourceId}-${item.targetId}`} className="lab-edge" d={item.path.d} />
                 ) : null)}
@@ -244,7 +249,7 @@ function App(): React.ReactElement {
               <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, mode, direction: supportsDirection ? direction : undefined, portOptions: options, layoutError }, null, 2)}</pre>
             </div>
             {result && <div className="json-block">
-              <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, pos: result.pos }, null, 2)}</pre>
+              <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, groups: result.groups, edges: result.edges, pos: result.pos }, null, 2)}</pre>
             </div>}
           </div>
         </aside>

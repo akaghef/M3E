@@ -181,6 +181,14 @@ select:disabled {
   vector-effect: non-scaling-stroke;
 }
 
+.disperse-group {
+  fill: rgba(108, 59, 210, 0.06);
+  stroke: #8d70d5;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+
 .lab-node {
   fill: #ffffff;
   stroke: #222831;

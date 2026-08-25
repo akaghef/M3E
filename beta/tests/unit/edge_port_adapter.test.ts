@@ -50,14 +50,16 @@ describe("parent-child edge adapter", () => {
     });
   });
 
-  test("viewer Tree wiring fails when composite direction lacks LayoutResult branchPortSide", () => {
-    expect(() => routeParentChildEdge({
+  test("falls back to the center-to-center vector when composite direction lacks branchPortSide", () => {
+    const routed = routeParentChildEdge({
       relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
       parentRect: { x: 100, y: 100, w: 80, h: 40 },
       childRect: { x: 300, y: 105, w: 90, h: 50 },
       surfaceMode: "mindmap",
       direction: "left/right",
       routeStyle: "curve",
-    })).toThrow(/LayoutResult\.branchPortSide/);
+    });
+    expect(routed.edgeDirection).toEqual({ view: "Disperse", direction: "free" });
+    expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["right", "left"]);
   });
 });
