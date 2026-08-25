@@ -1,4 +1,6 @@
 import type { GraphLink, SurfaceNodeView } from "./types";
+import { selectPorts, type EdgeDirection, type EdgeRect } from "./edge_port";
+import { route, type EdgePath, type EdgeRouteStyle } from "./edge_route";
 import {
   layoutDisperse,
   type DisperseEdge,
@@ -77,6 +79,48 @@ export interface LayoutNodePosition extends LayoutNodeMetric {
   branchSide?: LayoutBranchSide;
   branchPortSide?: LayoutBranchPortSide;
   scatterCollapsedGroup?: boolean;
+}
+
+/**
+ * Canonical layout seam for edge rendering: consumers provide layout positions,
+ * while this port selects endpoints and builds the route.
+ */
+export function routeLayoutEdge(
+  source: LayoutNodePosition,
+  target: LayoutNodePosition,
+  mode: LayoutMode,
+  direction: LayoutDirection | undefined,
+  style: EdgeRouteStyle,
+): EdgePath {
+  const edgeDirection = edgeDirectionForLayout(mode, direction, target.branchPortSide);
+  return route(selectPorts(rectForLayoutPosition(source), rectForLayoutPosition(target), edgeDirection), style);
+}
+
+export type { EdgePath, EdgeRouteStyle };
+
+function rectForLayoutPosition(position: LayoutNodePosition): EdgeRect {
+  return { x: position.x, y: position.y - position.h / 2, w: position.w, h: position.h };
+}
+
+function edgeDirectionForLayout(
+  mode: LayoutMode,
+  direction: LayoutDirection | undefined,
+  branchPortSide: LayoutBranchPortSide | undefined,
+): EdgeDirection {
+  const canonicalDirection = direction || "right";
+  if (mode === "Tree") {
+    if (canonicalDirection === "left/right" || canonicalDirection === "up/down") {
+      if (!branchPortSide) throw new Error(`LayoutResult.branchPortSide is required for Tree ${canonicalDirection}.`);
+      return { view: "Tree", direction: canonicalDirection, branchSide: branchPortSide };
+    }
+    return { view: "Tree", direction: canonicalDirection };
+  }
+  if (mode === "Axial") {
+    return { view: "Axial", direction: canonicalDirection === "left" ? "left" : canonicalDirection === "up" ? "up" : canonicalDirection === "down" || canonicalDirection === "up/down" ? "down" : "right" };
+  }
+  if (mode === "Radial") return { view: "Radial", direction: "balanced" };
+  if (mode === "Disperse") return { view: "Disperse", direction: "free" };
+  return { view: "System", direction: "free" };
 }
 
 export interface LayoutOptions {

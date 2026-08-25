@@ -6,6 +6,7 @@ import {
   type LayoutDirection,
   type LayoutMode,
   type LayoutOptions,
+  type EdgePath,
 } from "../../shared/layout_port";
 import {
   layoutLabSamples,
@@ -14,7 +15,6 @@ import {
   type LayoutLabSampleId,
 } from "./layout_samples";
 import { layoutLabEdgePath } from "./layout_edge_paths";
-import type { EdgePath } from "../../shared/edge_route";
 import "./layout-lab.css";
 
 const modes: LayoutMode[] = ["Tree", "Radial", "Axial", "Disperse", "System"];
