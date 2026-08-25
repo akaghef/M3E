@@ -9,7 +9,7 @@ export interface ParentChildEdgeRef {
   childNodeId: string;
 }
 
-export type ParentChildSurfaceMode = "tree" | "mindmap" | "logic-chart" | "timeline" | "scatter" | "system";
+export type ParentChildSurfaceMode = "tree" | "logic-chart" | "timeline" | "scatter" | "system";
 
 export interface ParentChildNodePosition extends EdgeRect {
   depth: number;
@@ -63,11 +63,6 @@ export function parentChildEdgeDirection(input: ParentChildEdgeRouteInput): Edge
   const branchPortSide = input.childPosition?.branchPortSide;
   const primary = primaryDirection(input.direction, branchPortSide);
   if (input.surfaceMode === "timeline") return primary ? { view: "Axial", direction: primary } : vectorFallback();
-  // `mindmap` is the product adapter for the canonical Radial surface. Its
-  // endpoints must follow each parent-child vector: a global depth direction
-  // and branchPortSide describe layout, but do not determine a Radial edge's
-  // local boundary intersection.
-  if (input.surfaceMode === "mindmap") return { view: "Radial", direction: "balanced" };
   if (input.surfaceMode === "logic-chart" || input.surfaceMode === "tree") {
     return treeDirection(input.direction, branchPortSide);
   }

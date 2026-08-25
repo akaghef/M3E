@@ -61,11 +61,11 @@ describe("Layout Lab edge exclusive seam", () => {
 
   test("selects canonical ports without exceptions for every mode and direction", () => {
     const directions = ["left/right", "left", "right", "up/down", "up", "down"] as const;
-    (["Tree", "Axial", "Radial", "Disperse", "System"] as const).forEach((mode) => {
+    (["Tree", "Axial", "Disperse", "System"] as const).forEach((mode) => {
       directions.forEach((direction) => {
         const result = layout(graph, sample.input.boxSizes, mode, {
           ...sample.input.options,
-          structuredMode: mode === "Tree" || mode === "Axial" || mode === "Radial" ? mode : undefined,
+          structuredMode: mode === "Tree" || mode === "Axial" ? mode : undefined,
           direction,
         });
         // System surfaces deliberately omit the tree root, so use two actual

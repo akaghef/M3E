@@ -54,7 +54,7 @@ describe("LayoutPort contract", () => {
     expect(`${packed.totalWidth}x${packed.totalHeight}`).not.toBe(`${aligned.totalWidth}x${aligned.totalHeight}`);
   });
 
-  test.each(["mindmap", "logic-chart"] as const)("%s preserves six directions and valid vertical branch ports", (structuredMode) => {
+  test.each(["logic-chart"] as const)("%s preserves six directions and valid vertical branch ports", (structuredMode) => {
     const directions: NonNullable<LayoutOptions["direction"]>[] = ["left/right", "left", "right", "up/down", "up", "down"];
     directions.forEach((direction) => {
       const result = layout(treeGraph, treeStress.input.boxSizes, structuredMode, {
@@ -72,6 +72,17 @@ describe("LayoutPort contract", () => {
       }
       console.info(JSON.stringify({ structuredMode, direction, branchPortSide: child.branchPortSide, ports: [path.source.side, path.target.side] }));
     });
+  });
+
+  test("reads legacy mindmap layout as a Tree two-sided preset", () => {
+    const result = layout(treeGraph, treeStress.input.boxSizes, "mindmap", {
+      ...treeStress.input.options,
+      structuredMode: "balanced-tree",
+    });
+    const root = result.pos[treeStress.input.options.displayRootId!]!;
+    const rootChildren = treeGraph.childrenOf(treeStress.input.options.displayRootId!);
+    expect(rootChildren.some((id) => result.pos[id]!.x < root.x)).toBe(true);
+    expect(rootChildren.some((id) => result.pos[id]!.x > root.x)).toBe(true);
   });
 
   test("Axial preserves the two-sided direction axis", () => {

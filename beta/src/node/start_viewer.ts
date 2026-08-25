@@ -459,7 +459,6 @@ function isArtifactCandidate(relPath: string, ext: string): boolean {
   if (!ARTIFACT_EXTENSIONS.has(ext)) return false;
   const normalized = relPath.replace(/\\/g, "/");
   if (normalized.includes("/artifacts/")) return true;
-  if (normalized.includes("/mindmap_gallery/") && (ext === ".html" || ext === ".svg" || ext === ".png")) return true;
   if (normalized.startsWith("docs/for-akaghef/")) return ext === ".html" || ext === ".pdf" || ext === ".pptx";
   return ext === ".html" && normalized.startsWith("projects/");
 }

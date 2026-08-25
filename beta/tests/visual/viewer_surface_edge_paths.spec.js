@@ -5,7 +5,6 @@ const directions = ["left/right", "left", "right", "up/down", "up", "down"];
 const modes = [
   ["Tree", "tree", true],
   ["Axial", "timeline", true],
-  ["Radial", "mindmap", true],
   ["Disperse", "scatter", false],
   ["System", "system"],
 ];

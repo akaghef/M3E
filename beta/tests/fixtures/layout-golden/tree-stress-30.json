@@ -34,7 +34,7 @@
         "conflict-backup",
         "audit-chain",
         "tree-mode",
-        "radial-mode",
+        "tree-preset",
         "routing-scope",
         "route-preview",
         "edge-sanity"
@@ -98,7 +98,7 @@
         "audit-chain": [],
         "layout": [
           "tree-mode",
-          "radial-mode",
+          "tree-preset",
           "routing-scope"
         ],
         "routing-scope": [
@@ -108,7 +108,7 @@
           "edge-sanity"
         ],
         "tree-mode": [],
-        "radial-mode": [],
+        "tree-preset": [],
         "edge-sanity": []
       },
       "graphLinks": [
@@ -363,11 +363,11 @@
         ],
         "fontSize": 13
       },
-      "radial-mode": {
+      "tree-preset": {
         "w": 236,
         "h": 42,
         "labelLines": [
-          "radial mode"
+          "tree preset"
         ],
         "fontSize": 13
       },
@@ -742,7 +742,7 @@
         "branchSide": "right",
         "branchPortSide": "right"
       },
-      "radial-mode": {
+      "tree-preset": {
         "x": 2861,
         "y": 562.5,
         "depth": 2,
@@ -750,7 +750,7 @@
         "h": 42,
         "fontSize": 13,
         "labelLines": [
-          "radial mode"
+          "tree preset"
         ],
         "branchSide": "right",
         "branchPortSide": "right"
@@ -822,7 +822,7 @@
       "alias-policy",
       "layout",
       "tree-mode",
-      "radial-mode",
+      "tree-preset",
       "routing-scope",
       "route-preview",
       "edge-sanity"

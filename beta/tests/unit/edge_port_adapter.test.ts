@@ -16,20 +16,6 @@ describe("parent-child edge adapter", () => {
     expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["right", "left"]);
   });
 
-  test("Radial wiring selects ports from the parent-child vector", () => {
-    const routed = routeParentChildEdge({
-      relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
-      parentRect: { x: 100, y: 100, w: 80, h: 40 },
-      childRect: { x: 300, y: 105, w: 90, h: 50 },
-      childPosition: { branchPortSide: "left" },
-      surfaceMode: "mindmap",
-      direction: "left/right",
-      routeStyle: "curve",
-    });
-    expect(routed.edgeDirection).toEqual({ view: "Radial", direction: "balanced" });
-    expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["right", "left"]);
-  });
-
   test("Tree wiring selects canonical ports for every direction", () => {
     const expected = {
       "left/right": ["left", "right"], left: ["left", "right"], right: ["right", "left"],
@@ -50,16 +36,4 @@ describe("parent-child edge adapter", () => {
     });
   });
 
-  test("Radial wiring remains vector-based when composite direction lacks branchPortSide", () => {
-    const routed = routeParentChildEdge({
-      relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
-      parentRect: { x: 100, y: 100, w: 80, h: 40 },
-      childRect: { x: 300, y: 105, w: 90, h: 50 },
-      surfaceMode: "mindmap",
-      direction: "left/right",
-      routeStyle: "curve",
-    });
-    expect(routed.edgeDirection).toEqual({ view: "Radial", direction: "balanced" });
-    expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["right", "left"]);
-  });
 });

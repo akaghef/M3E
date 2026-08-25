@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import legacyMap from "../fixtures/layout/legacy-surface-view-map.json";
-import { migrateSurfaceViewFromMapRead, type SurfaceViewMapReadState } from "../../src/shared/surface_view_migration";
+import { isLegacyBalancedTreeSurface, migrateSurfaceViewFromMapRead, type SurfaceViewMapReadState } from "../../src/shared/surface_view_migration";
 
 describe("surface-view map read migration", () => {
   test("restores legacy root attributes while reading persisted map surfaces", () => {
@@ -20,5 +20,12 @@ describe("surface-view map read migration", () => {
     const state = legacyMap as SurfaceViewMapReadState;
     expect(migrateSurfaceViewFromMapRead(state, "scope:root", { direction: "down", space: "normal" }))
       .toEqual({ direction: "down", space: "normal" });
+  });
+
+  test("reads legacy mindmap storage as the Tree two-sided preset", () => {
+    const state = legacyMap as SurfaceViewMapReadState;
+    expect(isLegacyBalancedTreeSurface("mindmap")).toBe(true);
+    expect(migrateSurfaceViewFromMapRead(state, "scope:root", { direction: "right", space: "normal" }, true))
+      .toEqual({ direction: "left/right", space: "normal" });
   });
 });

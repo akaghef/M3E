@@ -5,6 +5,11 @@ export interface SurfaceViewVocabulary {
   space: LayoutSpace;
 }
 
+/** Legacy Radial storage values are read as the Tree two-sided preset. */
+export function isLegacyBalancedTreeSurface(raw: unknown): boolean {
+  return raw === "mindmap" || raw === "balanced-tree";
+}
+
 interface MapReadNode { attributes?: unknown; }
 interface MapReadScope { rootNodeIds?: unknown; }
 
@@ -43,13 +48,15 @@ export function migrateSurfaceViewFromMapRead(
   state: SurfaceViewMapReadState,
   scopeId: string,
   rawSurfaceView: unknown,
+  legacyBalancedTree = false,
 ): SurfaceViewVocabulary {
   const surfaceView = asRecord(rawSurfaceView);
   const attributes = legacyAttributesForScope(state, scopeId);
-  return normalizeLayoutVocabulary({
+  const vocabulary = normalizeLayoutVocabulary({
     direction: surfaceView.direction,
     branchDirection: surfaceView.branchDirection ?? attributes["m3e:branch-direction"],
     space: surfaceView.space,
     density: surfaceView.density ?? attributes["m3e:layout-density"],
   });
+  return legacyBalancedTree ? { ...vocabulary, direction: "left/right" } : vocabulary;
 }

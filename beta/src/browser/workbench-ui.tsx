@@ -40,9 +40,9 @@ import {
 } from "../shared/pn_layout";
 import "./workbench-ui.css";
 
-type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" | "note";
+type ToolId = "select" | "nodes" | "pen" | "highlighter" | "date" | "eraser" | "note";
 type ModalId = "menu" | "settings" | "share" | "help" | "ai" | null;
-type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
 type ProgressiveLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type ProgressiveDepthAlign = "aligned" | "packed";
 type ProgressiveEdgeRoute = "elbow" | "bezier" | "straight";
@@ -81,7 +81,6 @@ type ProgressiveNodeId =
   | "board"
   | "view"
   | "scatter"
-  | "mindmap"
   | "annotation"
   | "panel"
   | "layout"
@@ -112,19 +111,6 @@ type ProgressiveNodeId =
   | "export-mm"
   | "export-vault"
   | "tree"
-  | "mindmap-surface"
-  | "mindmap-direction"
-  | "mindmap-direction-left-right"
-  | "mindmap-direction-left"
-  | "mindmap-direction-right"
-  | "mindmap-direction-up-down"
-  | "mindmap-direction-up"
-  | "mindmap-direction-down"
-  | "mindmap-space"
-  | "mindmap-space-tight"
-  | "mindmap-space-normal"
-  | "mindmap-space-loose"
-  | "mindmap-orthogonal"
   | "logic-chart-surface"
   | "logic-chart-direction"
   | "logic-chart-direction-left-right"
@@ -492,7 +478,7 @@ function LeftRail({
         <IconButton label="Select" active={tool === "select"} onClick={() => activate("select", "draw-select")}>
           <MousePointer2 size={20} />
         </IconButton>
-        <IconButton label="Mindmap" active={tool === "mindmap"} onClick={() => activate("mindmap", "view-tree")}>
+        <IconButton label="Nodes" active={tool === "nodes"} onClick={() => activate("nodes", "view-tree")}>
           <Waypoints size={20} />
         </IconButton>
         <IconButton
@@ -724,7 +710,7 @@ function RightPanel({
         </div>
       </section>
       <section className="wb-panel-section">
-        <div className="wb-section-title">Mindmap</div>
+        <div className="wb-section-title">Node actions</div>
         <div className="wb-action-grid">
           <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }))}>Add child</button>
           <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }))}>Toggle scope</button>
@@ -851,7 +837,6 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
     { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
     { id: "scatter", label: "Disperse", hint: "Disperse editing tools", parentId: "gui" },
-    { id: "mindmap", label: "Radial", hint: "node and scope actions", parentId: "gui" },
     { id: "annotation", label: "Annotation", hint: "drawing tools", parentId: "gui" },
     { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
     { id: "import", label: "Import file", hint: "board input", parentId: "board", action: () => clickLegacy("import-file-btn") },
@@ -859,19 +844,6 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "board", action: () => clickLegacy("download-mm-btn") },
     { id: "export-vault", label: "Export to Vault", hint: "write linear notes", parentId: "board", action: () => clickLegacy("export-vault-btn") },
     { id: "tree", label: "Tree surface", hint: "classic right tree", parentId: "view", action: () => clickLegacy("view-tree") },
-    { id: "mindmap-surface", label: "Radial", hint: "radial map templates", parentId: "view", action: () => setSurfaceLayout("mindmap", "normal", "left/right") },
-    { id: "mindmap-direction", label: "Direction", hint: "layout growth axis", parentId: "mindmap-surface" },
-    { id: "mindmap-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "left/right") },
-    { id: "mindmap-direction-left", label: "Left", hint: "grow left", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "left") },
-    { id: "mindmap-direction-right", label: "Right", hint: "grow right", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "right") },
-    { id: "mindmap-direction-up-down", label: "Up / Down", hint: "grow on two vertical sides", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "up/down") },
-    { id: "mindmap-direction-up", label: "Up", hint: "grow up", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "up") },
-    { id: "mindmap-direction-down", label: "Down", hint: "grow down", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "down") },
-    { id: "mindmap-space", label: "Space", hint: "layout spacing", parentId: "mindmap-surface" },
-    { id: "mindmap-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "mindmap-space", action: () => setSurfaceLayout("mindmap", "tight", "left/right") },
-    { id: "mindmap-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "mindmap-space", action: () => setSurfaceLayout("mindmap", "normal", "left/right") },
-    { id: "mindmap-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "mindmap-space", action: () => setSurfaceLayout("mindmap", "loose", "left/right") },
-    { id: "mindmap-orthogonal", label: "Logic Chart", hint: "switch to logic chart", parentId: "mindmap-surface", action: () => setSurfaceLayout("logic-chart", "normal", "left/right") },
     { id: "logic-chart-surface", label: "Logic Chart", hint: "logic templates", parentId: "view", action: () => setSurfaceLayout("logic-chart", "tight", "right") },
     { id: "logic-chart-direction", label: "Direction", hint: "layout growth axis", parentId: "logic-chart-surface" },
     { id: "logic-chart-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "left/right") },
@@ -921,10 +893,10 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
     { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
     { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
-    { id: "add-child", label: "Add child", hint: "Tab", parentId: "mindmap", action: () => sendKey("Tab") },
-    { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "mindmap", action: () => sendKey("f") },
-    { id: "enter-scope", label: "Enter scope", hint: "]", parentId: "mindmap", action: () => sendKey("]") },
-    { id: "exit-scope", label: "Exit scope", hint: "[", parentId: "mindmap", action: () => sendKey("[") },
+    { id: "add-child", label: "Add child", hint: "Tab", parentId: "gui", action: () => sendKey("Tab") },
+    { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "gui", action: () => sendKey("f") },
+    { id: "enter-scope", label: "Enter scope", hint: "]", parentId: "gui", action: () => sendKey("]") },
+    { id: "exit-scope", label: "Exit scope", hint: "[", parentId: "gui", action: () => sendKey("[") },
     { id: "pen", label: "Pen", hint: "freehand draw", parentId: "annotation", action: () => clickLegacy("draw-pen") },
     { id: "highlighter", label: "Highlighter", hint: "wide translucent stroke", parentId: "annotation", action: () => clickLegacy("draw-highlighter") },
     { id: "date", label: "Date label", hint: "stamp date", parentId: "annotation", action: () => clickLegacy("draw-date") },

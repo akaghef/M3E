@@ -17,7 +17,7 @@ import {
 import { layoutLabEdgePath } from "./layout_edge_paths";
 import "./layout-lab.css";
 
-const modes: LayoutMode[] = ["Tree", "Radial", "Axial", "Disperse", "System"];
+const modes: LayoutMode[] = ["Tree", "Axial", "Disperse", "System"];
 const directions = ["left/right", "left", "right", "up/down", "up", "down"] as const;
 const depthAligns: LayoutDepthAlign[] = ["packed", "aligned"];
 
@@ -66,7 +66,7 @@ function App(): React.ReactElement {
   const { direction: _sampleDirection, ...sampleOptions } = sample.input.options;
   const options: LayoutOptions = {
     ...sampleOptions,
-    structuredMode: mode === "Tree" || mode === "Radial" || mode === "Axial" ? mode : undefined,
+    structuredMode: mode === "Tree" || mode === "Axial" ? mode : undefined,
     depthAlign,
     ...(supportsDirection ? { direction: direction as LayoutDirection } : {}),
     spacing,

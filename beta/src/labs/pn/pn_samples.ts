@@ -24,7 +24,7 @@ export const guiNodes: PnNode[] = [
   { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
   { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
   { id: "scatter", label: "Scatter", hint: "scatter tools", parentId: "gui" },
-  { id: "mindmap", label: "Mindmap", hint: "node and scope actions", parentId: "gui" },
+  { id: "nodes", label: "Nodes", hint: "node and scope actions", parentId: "gui" },
   { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
   { id: "layout", label: "Layout", hint: "surface layout options", parentId: "view" },
   { id: "layout-direction", label: "Direction", hint: "layout growth axis", parentId: "layout" },
