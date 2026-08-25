@@ -74,11 +74,12 @@ function App(): React.ReactElement {
   const [zoom, setZoom] = useState(1);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
 
-  const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
   const isDisperse = mode === "Disperse";
   const rootId = sample.input.options.displayRootId || sample.input.graph.nodeIds[0] || "";
   const collapseTargets = useMemo(() => sample.input.graph.nodeIds.filter((id) => id !== rootId && (sample.input.graph.children[id] || []).length > 0), [sample, rootId]);
   const effectiveCollapseTarget = collapseTargets.includes(collapseTarget) ? collapseTarget : collapseTargets[0];
+  const collapsedNodeIds = collapseEnabled && effectiveCollapseTarget ? [effectiveCollapseTarget] : [];
+  const graph = useMemo(() => toVisibleLayoutGraph(sample, isDisperse ? [] : collapsedNodeIds), [sample, isDisperse, collapsedNodeIds]);
   const graphLinks = useMemo(() => labGraphLinks(sample.sample_id, sample.input.graph.nodeIds), [sample]);
   const spacing: LayoutSpacing = { nodeGap, levelGap, padding };
   const { direction: _sampleDirection, ...sampleOptions } = sample.input.options;
@@ -91,7 +92,7 @@ function App(): React.ReactElement {
     spacing,
     disperse: {
       subtype: disperseSubtype,
-      collapsedNodeIds: collapseEnabled && effectiveCollapseTarget ? [effectiveCollapseTarget] : [],
+      collapsedNodeIds,
       superNodeFootprint,
       edgeAggregation,
     },
@@ -105,10 +106,10 @@ function App(): React.ReactElement {
     displayRootId: rootId,
     subtype: disperseSubtype,
     space: space === "custom" ? "normal" : space,
-    collapsedNodeIds: collapseEnabled && effectiveCollapseTarget ? [effectiveCollapseTarget] : [],
+    collapsedNodeIds,
     superNodeFootprint,
     edgeAggregation,
-  }), [sample, graphLinks, rootId, disperseSubtype, space, collapseEnabled, effectiveCollapseTarget, superNodeFootprint, edgeAggregation]);
+  }), [sample, graphLinks, rootId, disperseSubtype, space, collapsedNodeIds, superNodeFootprint, edgeAggregation]);
   const result = isDisperse ? disperseResult : structuredResult!;
   const canvasWidth = Math.max(900, Math.ceil(result.totalWidth + 80));
   const canvasHeight = Math.max(640, Math.ceil(result.totalHeight + 80));
@@ -118,8 +119,8 @@ function App(): React.ReactElement {
     ? `translate(${rootPos.x} ${rootPos.y}) scale(${zoom}) translate(${-rootPos.x} ${-rootPos.y})`
     : undefined;
 
-  const treeEdges = sample.input.graph.nodeIds.flatMap((sourceId) =>
-    (sample.input.graph.children[sourceId] || []).map((targetId) => ({ sourceId, targetId })),
+  const treeEdges = graph.nodeIds.flatMap((sourceId) =>
+    graph.childrenOf(sourceId).map((targetId) => ({ sourceId, targetId })),
   );
   const renderEdges: Array<{ sourceId: string; targetId: string; weight?: number }> = isDisperse
     ? disperseResult.edges.filter((edge) => !edge.internal)
@@ -206,12 +207,6 @@ function App(): React.ReactElement {
             </select>
           </div>
           <div className="control-group">
-            <div className="control-row"><label htmlFor="collapse-enabled">Collapse subtree</label><input id="collapse-enabled" type="checkbox" checked={collapseEnabled} onChange={(event) => setCollapseEnabled(event.currentTarget.checked)} /></div>
-            <select aria-label="Collapse target" value={effectiveCollapseTarget || ""} disabled={!collapseEnabled || collapseTargets.length === 0} onChange={(event) => setCollapseTarget(event.currentTarget.value)}>
-              {collapseTargets.map((id) => <option key={id} value={id}>{id}</option>)}
-            </select>
-          </div>
-          <div className="control-group">
             <label htmlFor="super-node-footprint">Super-node footprint</label>
             <select id="super-node-footprint" value={superNodeFootprint} onChange={(event) => setSuperNodeFootprint(event.currentTarget.value as "descendant-area" | "fixed")}>
               <option value="descendant-area">reflect descendant area</option><option value="fixed">fixed size</option>
@@ -231,6 +226,12 @@ function App(): React.ReactElement {
           </div>
           <div className="control-group"><div className="control-row"><label htmlFor="boundaries">Draw group boundaries</label><input id="boundaries" type="checkbox" checked={boundaries} onChange={(event) => setBoundaries(event.currentTarget.checked)} /></div></div>
         </>}
+        <div className="control-group">
+          <div className="control-row"><label htmlFor="collapse-enabled">Collapse subtree</label><input id="collapse-enabled" type="checkbox" checked={collapseEnabled} onChange={(event) => setCollapseEnabled(event.currentTarget.checked)} /></div>
+          <select aria-label="Collapse target" value={effectiveCollapseTarget || ""} disabled={!collapseEnabled || collapseTargets.length === 0} onChange={(event) => setCollapseTarget(event.currentTarget.value)}>
+            {collapseTargets.map((id) => <option key={id} value={id}>{id}</option>)}
+          </select>
+        </div>
         {!isDisperse && <div className="control-group">
           <label>Level Gap</label>
           {numberInput(levelGap, setCustomLevelGap, 40, 360)}

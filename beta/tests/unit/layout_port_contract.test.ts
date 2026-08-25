@@ -9,6 +9,19 @@ import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layou
 const treeStress = layoutSamples.find((sample) => sample.sample_id === "tree-stress-30")!;
 const treeGraph = toVisibleLayoutGraph(treeStress);
 
+function measured(result: ReturnType<typeof layout>) {
+  const nodes = Object.values(result.pos);
+  const left = Math.min(...nodes.map((node) => node.x));
+  const top = Math.min(...nodes.map((node) => node.y - node.h / 2));
+  const right = Math.max(...nodes.map((node) => node.x + node.w));
+  const bottom = Math.max(...nodes.map((node) => node.y + node.h / 2));
+  const overlapPairs = nodes.reduce((total, node, index) => total + nodes.slice(index + 1).filter((other) =>
+    Math.min(node.x + node.w, other.x + other.w) > Math.max(node.x, other.x)
+      && Math.min(node.y + node.h / 2, other.y + other.h / 2) > Math.max(node.y - node.h / 2, other.y - other.h / 2),
+  ).length, 0);
+  return { nodes: nodes.length, overlapPairs, bbox: `${Number((right - left).toFixed(3))}x${Number((bottom - top).toFixed(3))}` };
+}
+
 function treeLayout(options: Partial<LayoutOptions> = {}) {
   return layout(treeGraph, treeStress.input.boxSizes, "Tree", {
     ...treeStress.input.options,
@@ -59,5 +72,43 @@ describe("LayoutPort contract", () => {
 
     expect(loose.totalWidth).toBeGreaterThan(tight.totalWidth);
     expect(loose.totalHeight).toBeGreaterThan(tight.totalHeight);
+  });
+
+  test("omits descendants of a collapsed node from structured layout while retaining that node", () => {
+    const target = treeStress.input.graph.nodeIds.find((nodeId) => {
+      const children = treeStress.input.graph.children[nodeId] || [];
+      return nodeId !== treeStress.input.options.displayRootId && children.length > 0;
+    })!;
+    const child = treeStress.input.graph.children[target]![0]!;
+    const collapsedGraph = toVisibleLayoutGraph(treeStress, [target]);
+    const result = layout(collapsedGraph, treeStress.input.boxSizes, "Tree", treeStress.input.options);
+
+    expect(collapsedGraph.childrenOf(target)).toEqual([]);
+    expect(result.pos[target]).toBeDefined();
+    expect(result.pos[child]).toBeUndefined();
+    expect(result.order.length).toBeLessThan(treeStress.input.graph.nodeIds.length);
+  });
+
+  test("reports the lab's Tree and Disperse collapse measurements", () => {
+    const target = treeStress.input.graph.nodeIds.find((nodeId) => {
+      const children = treeStress.input.graph.children[nodeId] || [];
+      return nodeId !== treeStress.input.options.displayRootId && children.length > 0;
+    })!;
+    const treeOff = treeLayout();
+    const treeOn = layout(toVisibleLayoutGraph(treeStress, [target]), treeStress.input.boxSizes, "Tree", treeStress.input.options);
+    const disperseOptions: LayoutOptions = {
+      ...treeStress.input.options,
+      disperse: { subtype: "cluster", superNodeFootprint: "descendant-area", edgeAggregation: "bundle" },
+    };
+    const disperseOff = layout(treeGraph, treeStress.input.boxSizes, "Disperse", disperseOptions);
+    const disperseOn = layout(treeGraph, treeStress.input.boxSizes, "Disperse", {
+      ...disperseOptions,
+      disperse: { ...disperseOptions.disperse, collapsedNodeIds: [target] },
+    });
+
+    console.info(`LAYOUT_LAB_COLLAPSE ${JSON.stringify({ target, tree: { off: measured(treeOff), on: measured(treeOn) }, disperse: { off: measured(disperseOff), on: measured(disperseOn) } })}`);
+    expect(treeOn.order.length).toBeLessThan(treeOff.order.length);
+    expect(disperseOn.order).toContain(`collapse:${target}`);
+    expect(disperseOn.order.length).toBeLessThan(disperseOff.order.length);
   });
 });
