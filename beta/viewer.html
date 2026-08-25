@@ -56,11 +56,10 @@
           </div>
           <div class="mode-switch" aria-label="Surface view mode">
             <button id="view-tree" class="mode-btn is-active" type="button">Tree</button>
-            <button id="view-mindmap" class="mode-btn" type="button">Mind Map</button>
             <button id="view-logic-chart" class="mode-btn" type="button">Logic</button>
-            <button id="view-timeline" class="mode-btn" type="button">Timeline</button>
+            <button id="view-timeline" class="mode-btn" type="button">Axial</button>
             <button id="view-system" class="mode-btn" type="button">System</button>
-            <button id="view-scatter" class="mode-btn" type="button">Scatter</button>
+            <button id="view-scatter" class="mode-btn" type="button">Disperse</button>
           </div>
           <button id="theme-toggle" class="mode-btn theme-toggle-btn" type="button" aria-pressed="false" title="Toggle dark mode">Dark</button>
           <button id="scope-nav-btn" class="mode-btn" type="button" aria-expanded="false" title="Open scope navigator">Scopes</button>
@@ -98,7 +97,7 @@
           </div>
           <button id="v4-panel-btn" class="mode-btn" type="button">V4</button>
         </div>
-        <div id="scatter-toolbar" class="scatter-toolbar" role="toolbar" aria-label="Scatter tools" hidden data-edit-only>
+        <div id="scatter-toolbar" class="scatter-toolbar" role="toolbar" aria-label="Disperse tools" hidden data-edit-only>
           <button id="scatter-normal" class="scatter-tool-btn is-active" type="button" title="Normal">Normal</button>
           <button id="scatter-add-node" class="scatter-tool-btn" type="button" title="Add node">Add Node</button>
           <button id="scatter-add-edge" class="scatter-tool-btn" type="button" title="Add edge">Add Edge</button>
@@ -109,11 +108,11 @@
           <button id="scatter-reflow" class="scatter-tool-btn" type="button" title="Reflow with force layout">Reflow</button>
           <label class="scatter-range-control" title="Repulsion coefficient">
             <span>Repel</span>
-            <input id="scatter-repulsion" type="range" min="20000" max="600000" step="10000" value="200000" aria-label="Scatter repulsion" />
+            <input id="scatter-repulsion" type="range" min="20000" max="600000" step="10000" value="200000" aria-label="Disperse repulsion" />
           </label>
           <label class="scatter-range-control" title="Edge spring length">
             <span>Length</span>
-            <input id="scatter-edge-length" type="range" min="80" max="320" step="10" value="180" aria-label="Scatter edge length" />
+            <input id="scatter-edge-length" type="range" min="80" max="320" step="10" value="180" aria-label="Disperse edge length" />
           </label>
         </div>
         <div id="draw-toolbar" class="draw-toolbar" role="toolbar" aria-label="Drawing tools" data-edit-only>

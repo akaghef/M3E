@@ -27,9 +27,13 @@ body {
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: 320px minmax(0, 1fr) 360px;
+  grid-template-columns: 320px minmax(0, 1fr);
   background: #f7f7f4;
   overflow: hidden;
+}
+
+.layout-lab.snapshot-open {
+  grid-template-columns: 320px minmax(0, 1fr) 360px;
 }
 
 .lab-panel {
@@ -96,6 +100,18 @@ input[type="number"] {
   color: #202124;
 }
 
+select:disabled {
+  cursor: not-allowed;
+  color: #767b84;
+  background: #f1f0eb;
+}
+
+.control-note {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #565a61;
+}
+
 .fit-button {
   min-height: 32px;
   border: 1px solid #c9c5ba;
@@ -106,11 +122,28 @@ input[type="number"] {
   cursor: pointer;
 }
 
+.snapshot-toggle {
+  width: 100%;
+  min-height: 34px;
+  margin: -4px 0 14px;
+  border: 1px solid #c9c5ba;
+  border-radius: 6px;
+  background: #f7f7f4;
+  color: #202124;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.snapshot-toggle:hover {
+  background: #efede6;
+}
+
 .fit-button:hover {
   background: #efede6;
 }
 
 .stage {
+  position: relative;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -127,10 +160,32 @@ input[type="number"] {
   min-height: 0;
 }
 
+.lab-error {
+  position: absolute;
+  z-index: 2;
+  max-width: min(680px, calc(100% - 32px));
+  margin: 16px;
+  padding: 10px 12px;
+  border: 1px solid #a62a1d;
+  border-radius: 6px;
+  background: #fff2f0;
+  color: #742017;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .lab-edge {
   fill: none;
   stroke: #78838f;
   stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.disperse-group {
+  fill: rgba(108, 59, 210, 0.06);
+  stroke: #8d70d5;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
   vector-effect: non-scaling-stroke;
 }
 
@@ -192,6 +247,10 @@ pre {
 @media (max-width: 980px) {
   .layout-lab {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(180px, 32vh) minmax(0, 1fr);
+  }
+
+  .layout-lab.snapshot-open {
     grid-template-rows: minmax(180px, 32vh) minmax(0, 1fr) minmax(180px, 35vh);
   }
 

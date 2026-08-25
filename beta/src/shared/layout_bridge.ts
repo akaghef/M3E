@@ -6,7 +6,7 @@ import {
   type VisibleLayoutGraph,
 } from "./layout_port";
 
-export type LayoutMode = "tree" | "mindmap" | "logic-chart" | "timeline";
+export type LayoutMode = "tree" | "logic-chart" | "timeline";
 
 export interface LayoutGraph {
   nodeIds: string[];
@@ -15,8 +15,7 @@ export interface LayoutGraph {
 }
 
 export type {
-  LayoutBranchDirection,
-  LayoutDensity,
+  LayoutSpace,
   LayoutDepthAlign,
   LayoutDirection,
   LayoutNodeMetric,

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { selectPorts, type EdgeBranchDirection, type EdgeRect } from "../shared/edge_port";
+import { selectPorts, type EdgeDirection, type EdgeRect } from "../shared/edge_port";
 import { route, type EdgeRouteStyle } from "../shared/edge_route";
 
 interface CaptureSample {
@@ -10,7 +10,7 @@ interface CaptureSample {
   input: {
     srcRect: EdgeRect;
     dstRect: EdgeRect;
-    branchDirection: EdgeBranchDirection;
+    edgeDirection: EdgeDirection;
     routeStyle: EdgeRouteStyle;
   };
   expected: {
@@ -35,10 +35,10 @@ function main(): void {
   const samples = JSON.parse(fs.readFileSync(fixturePath, "utf8")) as CaptureSample[];
   const sample = samples.find((item) => item.sample_id === sampleId);
   if (!sample) throw new Error(`Unknown edge-port sample: ${sampleId}`);
-  if (sample.input.branchDirection.view === "Tree" && sample.input.branchDirection.direction === "both" && !sample.input.branchDirection.branchSide) {
+  if (sample.input.edgeDirection.view === "Tree" && sample.input.edgeDirection.direction === "both" && !sample.input.edgeDirection.branchSide) {
     throw new Error("Tree both capture requires LayoutResult.branchSide.");
   }
-  const ports = selectPorts(sample.input.srcRect, sample.input.dstRect, sample.input.branchDirection);
+  const ports = selectPorts(sample.input.srcRect, sample.input.dstRect, sample.input.edgeDirection);
   const pathResult = route(ports, sample.input.routeStyle);
   const captured = {
     ...sample,

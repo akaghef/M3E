@@ -315,7 +315,10 @@ function placeNodes(
     const children = (childrenByParent.get(parentId) || []).filter((child) => visibleSet.has(child.id));
     if (children.length === 0) continue;
     const totalHeight = children.reduce((sum, child, index) => sum + metricFor(child.id, input).h + (index > 0 ? size.rowGap : 0), 0);
-    let childTop = parentRect.y + parentRect.h / 2 - totalHeight / 2;
+    // A deep child column must not move its already-hovered ancestors under
+    // the pointer. Keep each established column fixed; tall child columns
+    // grow downward and use the existing explicit overflow state.
+    let childTop = Math.max(parentRect.y + parentRect.h / 2 - totalHeight / 2, parentRect.y);
     children.forEach((child) => {
       const metric = metricFor(child.id, input);
       const x = direction === "right"
