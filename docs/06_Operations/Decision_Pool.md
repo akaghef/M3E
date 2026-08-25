@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-08-25-001
+
+- Date: 2026-08-25
+- Topic: Radial Surface View を廃止し Tree へ畳む
+- Status: accepted
+- Decision:
+  - **Surface View 正本は `Tree / Axial / Disperse / System` の4種**とする。Radial を廃止する。
+  - 旧「Mind Map」「`balanced-tree`」は **Tree の両側 preset**（`direction: left/right`）として扱う。
+  - 現況のコード・UI・seam lab から Radial / 内部 mode key `mindmap` の実体を削除する。**残す痕跡は git 履歴と ADR_010 のみ。**
+  - 保存スキーマ上の legacy 値としての読み取り互換は維持し、Tree の両側 preset へ移行する。移行実装は D2 に合わせる。
+- Why: canon の Radial は `clockwise / counterclockwise / balanced` という角度系を規定していたが、**実装は一度も角度配置を持たず**、direction は Tree と同じ `left/right` / `left` / `right` だった。実ブラウザで描画すると両側 Tree そのものであり、port 選択の経路も Tree と共有されていた。固有の幾何を持たないまま実体を共有し、同じものに名前が2つある状態だった。`03d1fc3` で Tree の direction 規則が Radial へ流入し接続線がノード矩形を貫通した不具合は、この重複の症状（Logic Chart = Tree preset では同条件で発生しない）。
+- Next: viewer / PN / adapter / edge port / seam lab / テストから Radial を削除。`map_layout_modes.md` の正本規定を4種へ改訂。非正本のアルゴリズムカタログと legacy スキーマ節の `balanced-tree` は履歴として残す。
+- Source: 2026-08-25 akaghef「OP2に決断。残骸は履歴とADRだけでいいので、現況からはRadialは消し去って。seam labも含め」
+- Promoted: [../09_Decisions/ADR_010_Radial_Surface_View_Removal.md](../09_Decisions/ADR_010_Radial_Surface_View_Removal.md)
+
 ## 2026-08-23-003
 
 - Date: 2026-08-23

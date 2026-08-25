@@ -41,10 +41,6 @@ Surface View
 │  ├─ direction: right / left / up / down
 │  ├─ space: tight / normal / loose
 │  └─ edge: orthogonal / line / curve
-├─ Radial
-│  ├─ direction: clockwise / counterclockwise / balanced
-│  ├─ space: tight / normal / loose
-│  └─ edge: line / curve
 ├─ Disperse
 │  ├─ subtype: scatter / cluster / force
 │  ├─ space: tight / normal / loose
@@ -60,7 +56,7 @@ Surface View
 
 | 旧ラベル / 候補 | Surface View 正本 | 扱い |
 |---|---|---|
-| Mind Map / `balanced-tree` | Radial | 中心から放射する見た目。左右 balanced は Radial の direction option |
+| Mind Map / `balanced-tree` | Tree | 階層を左右両側へ開く見た目。`Tree direction: left/right` の preset。旧 Radial は [ADR_010](../09_Decisions/ADR_010_Radial_Surface_View_Removal.md) で廃止 |
 | Tree Chart / Logic Chart / `right-tree` / `down-tree` | Tree | 階層を一方向または両方向に展開する見た目。Logic Chart は Tree の preset |
 | Timeline | Axial | timeline は Surface View ではなく Axial の subtype |
 | Roadmap / Pipeline / Sequence | Axial | 軸に沿って進行・順序・段階を読む見た目 |
@@ -72,7 +68,6 @@ Surface View
 
 - **Tree**: 親子階層を読む。主眼は分解・包含・分類。
 - **Axial**: 1本の軸に沿って読む。主眼は時間・順序・進行・段階。
-- **Radial**: 中心から発散して読む。主眼は中心概念からの展開。
 - **Disperse**: 空間的な近さやクラスタで読む。主眼は関係密度・分布・近接。
 - **System**: 箱・境界・モジュール・リンクで読む。主眼は構造、責務、接続。
 
@@ -153,7 +148,8 @@ layout: {
 ## 3. 旧 LayoutMode 候補一覧
 
 この章は実装アルゴリズム候補のカタログであり、Surface View の正本ではない。
-ユーザー向け表示名と保存スキーマは 1.1 の `Tree / Axial / Radial / Disperse / System` を優先する。
+ユーザー向け表示名と保存スキーマは 1.1 の `Tree / Axial / Disperse / System` を優先する。
+この章に残る `balanced-tree` は Tree の両側 preset を指す旧アルゴリズム名であり、履歴として残している。
 
 ### 3.1 Right Tree (現行) -- "Classic"
 
@@ -381,7 +377,7 @@ layout: {
 | レイアウト | Flash | Rapid | Deep |
 |-----------|-------|-------|------|
 | `right-tree` (Classic) | **Primary** | OK | OK |
-| `balanced-tree` (Radial) | Good | OK | -- |
+| `balanced-tree` (Tree 両側 preset) | Good | OK | -- |
 | `down-tree` (Org Chart) | -- | Good | **Primary** |
 | `outline` (Linear) | -- | Good | **Primary** |
 | `fishbone` (Cause & Effect) | -- | Good | -- |
@@ -545,7 +541,7 @@ UI・保存時に `SurfaceViewConfig` へ正規化する。
 | legacy value | normalized SurfaceViewConfig |
 |---|---|
 | `tree`, `right-tree`, `down-tree`, `logic-chart` | `{ kind: "tree" }` |
-| `mindmap`, `balanced-tree` | `{ kind: "radial" }` |
+| `mindmap`, `balanced-tree` | `{ kind: "tree", direction: "left/right" }` |
 | `timeline` | `{ kind: "axial", subtype: "timeline" }` |
 | `scatter`, `force-directed` | `{ kind: "disperse" }` |
 | `system` | `{ kind: "system" }` |
@@ -646,7 +642,7 @@ ViewState はメモリ上のトランジェントな状態であり、Surface Vi
 Surface View は常に `doc.state` から解決する。
 
 ただし、スコープ切替時のカメラ位置リセットについて:
-- Surface View kind が変わる遷移 (例: Tree スコープ -> Radial スコープ) ではカメラを初期位置にリセットするのが望ましい
+- Surface View kind が変わる遷移 (例: Tree スコープ -> Disperse スコープ) ではカメラを初期位置にリセットするのが望ましい
 - `viewState.zoom`, `viewState.cameraX`, `viewState.cameraY` を初期値に戻す
 
 ```typescript
@@ -681,7 +677,6 @@ function onScopeChange(prevScopeId: string, nextScopeId: string): void {
                             │   └ edge: orthogonal / line / curve
                             ├ Axial
                             │   └ subtype: timeline / roadmap / pipeline / sequence
-                            ├ Radial
                             ├ Disperse
                             └ System
 ```
