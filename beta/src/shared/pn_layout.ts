@@ -315,7 +315,10 @@ function placeNodes(
     const children = (childrenByParent.get(parentId) || []).filter((child) => visibleSet.has(child.id));
     if (children.length === 0) continue;
     const totalHeight = children.reduce((sum, child, index) => sum + metricFor(child.id, input).h + (index > 0 ? size.rowGap : 0), 0);
-    let childTop = parentRect.y + parentRect.h / 2 - totalHeight / 2;
+    // A deep child column must not move its already-hovered ancestors under
+    // the pointer. Keep each established column fixed; tall child columns
+    // grow downward and use the existing explicit overflow state.
+    let childTop = Math.max(parentRect.y + parentRect.h / 2 - totalHeight / 2, parentRect.y);
     children.forEach((child) => {
       const metric = metricFor(child.id, input);
       const x = direction === "right"
@@ -328,14 +331,7 @@ function placeNodes(
   }
 
   const renderedIds = visibleNodeIds.filter((id) => id !== input.rootId && byId[id]);
-  const minTop = Math.min(0, ...renderedIds.map((id) => byId[id]!.y));
   const maxBottom = Math.max(overlayRect.h, ...renderedIds.map((id) => rectBottom(byId[id]!)));
-  if (minTop < 0) {
-    renderedIds.forEach((id) => {
-      const current = byId[id]!;
-      byId[id] = rect(current.x, current.y - minTop + 12, current.w, current.h);
-    });
-  }
   const clippedIds = renderedIds.filter((id) => {
     const item = byId[id]!;
     return item.x < 0 || item.y < 0 || rectRight(item) > overlayRect.w || rectBottom(item) > overlayRect.h;

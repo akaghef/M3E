@@ -216,6 +216,41 @@ test.describe("Workbench progressive navigation", () => {
     await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-pn-placement", "right-of-anchor");
   });
 
+  test("hovered View remains stable until its Radial child is reached", async ({ page }) => {
+    const mapId = "pn-hover-intent";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
+
+    const navigation = page.locator('[data-testid="progressive-navigation"]');
+    const view = page.locator('[data-pn-node="view"]');
+    const radial = page.locator('[data-pn-node="mindmap-surface"]');
+    await page.locator('[aria-label="[GUI] navigation root"]').click();
+    await expect(navigation).toHaveClass(/is-open/);
+    await view.hover();
+    await expect(navigation).toHaveAttribute("data-active-pn-node", "view");
+    await expect(radial).toBeAttached();
+
+    const route = await page.evaluate(() => {
+      const from = document.querySelector('[data-pn-node="view"]')?.getBoundingClientRect();
+      const to = document.querySelector('[data-pn-node="mindmap-surface"]')?.getBoundingClientRect();
+      if (!from || !to) throw new Error("PN hover-intent route is missing.");
+      return {
+        from: { x: from.left + from.width / 2, y: from.top + from.height / 2 },
+        to: { x: to.left + to.width / 2, y: to.top + to.height / 2 },
+      };
+    });
+
+    for (let step = 1; step <= 6; step += 1) {
+      const ratio = step / 6;
+      await page.mouse.move(
+        route.from.x + (route.to.x - route.from.x) * ratio,
+        route.from.y + (route.to.y - route.from.y) * ratio,
+      );
+      await expect(radial).toBeAttached();
+      await expect(navigation).toHaveAttribute("data-active-pn-node", step === 6 ? "mindmap-surface" : "view");
+    }
+  });
+
   test("viewport fast-path events do not force PN layout recompute", async ({ page }) => {
     const mapId = "pn-viewport-fast-path";
     await routeRapidFixture(page, mapId);
