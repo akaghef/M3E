@@ -44,19 +44,18 @@ function node(id, parentId, children, text) {
   };
 }
 
-async function chooseProgressiveLayout(page, parentId, leafId) {
-  await page.locator('[aria-label="[GUI] navigation root"]').evaluate((element) => {
+async function chooseProgressiveLayout(page, ...nodeIds) {
+  await page.locator('[aria-label="Surface PN root"]').evaluate((element) => {
     const nav = document.querySelector('[data-testid="progressive-navigation"]');
     if (!nav?.classList.contains("is-open")) {
       element.click();
     }
   });
-  await page.locator('[data-pn-node="view"]').hover();
-  await page.locator('[data-pn-node="view"]').evaluate((element) => element.click());
-  await page.locator(`[data-pn-node="${parentId}"]`).hover();
-  await page.locator(`[data-pn-node="${parentId}"]`).evaluate((element) => element.click());
-  await page.locator(`[data-pn-node="${leafId}"]`).evaluate((element) => element.click());
-  await page.waitForTimeout(650);
+  for (const nodeId of ["view", ...nodeIds]) {
+    const node = page.locator(`[data-pn-node="${nodeId}"]`);
+    await node.hover();
+    await node.evaluate((element) => element.click());
+  }
 }
 
 async function diagnose(page) {
@@ -119,18 +118,18 @@ test.describe("structured layout integrity", () => {
     await launchViewer(page, xmindLikeFixture());
 
     const cases = [
-      { parent: "mindmap-surface", leaf: "mindmap-both", meta: "/ Mind Map / Normal / left/right" },
-      { parent: "mindmap-surface", leaf: "mindmap-right", meta: "/ Mind Map / Normal / right" },
-      { parent: "mindmap-surface", leaf: "mindmap-left", meta: "/ Mind Map / Normal / left" },
-      { parent: "mindmap-surface", leaf: "mindmap-compact", meta: "/ Mind Map / Tight / left/right" },
-      { parent: "mindmap-surface", leaf: "mindmap-spacious", meta: "/ Mind Map / Loose / left/right" },
-      { parent: "logic-chart-surface", leaf: "logic-chart-both", meta: "/ Logic Chart / Normal / left/right" },
-      { parent: "logic-chart-surface", leaf: "logic-chart-right", meta: "/ Logic Chart / Normal / right" },
-      { parent: "logic-chart-surface", leaf: "logic-chart-left", meta: "/ Logic Chart / Normal / left" },
+      { path: ["mindmap-surface", "mindmap-direction", "mindmap-direction-left-right"], meta: "/ Radial / Normal / left/right" },
+      { path: ["mindmap-surface", "mindmap-direction", "mindmap-direction-right"], meta: "/ Radial / Normal / right" },
+      { path: ["mindmap-surface", "mindmap-direction", "mindmap-direction-left"], meta: "/ Radial / Normal / left" },
+      { path: ["mindmap-surface", "mindmap-space", "mindmap-space-tight"], meta: "/ Radial / Tight / left/right" },
+      { path: ["mindmap-surface", "mindmap-space", "mindmap-space-loose"], meta: "/ Radial / Loose / left/right" },
+      { path: ["logic-chart-surface", "logic-chart-direction", "logic-chart-direction-left-right"], meta: "/ Logic Chart / Normal / left/right" },
+      { path: ["logic-chart-surface", "logic-chart-direction", "logic-chart-direction-right"], meta: "/ Logic Chart / Normal / right" },
+      { path: ["logic-chart-surface", "logic-chart-direction", "logic-chart-direction-left"], meta: "/ Logic Chart / Normal / left" },
     ];
 
     for (const item of cases) {
-      await chooseProgressiveLayout(page, item.parent, item.leaf);
+      await chooseProgressiveLayout(page, ...item.path);
       await expect(page.locator("#mode-meta")).toContainText(item.meta);
       await expectLayoutClean(page);
     }
@@ -139,20 +138,20 @@ test.describe("structured layout integrity", () => {
   test("both-side and one-side depth directions are geometrically distinct", async ({ page }) => {
     await launchViewer(page, xmindLikeFixture());
 
-    await chooseProgressiveLayout(page, "mindmap-surface", "mindmap-both");
+    await chooseProgressiveLayout(page, "mindmap-surface", "mindmap-direction", "mindmap-direction-left-right");
     const bothRootX = await centerX(page, "root");
     expect(await centerX(page, "singularity")).toBeGreaterThan(bothRootX);
     expect(await centerX(page, "bigtech")).toBeLessThan(bothRootX);
     await expectLayoutClean(page);
 
-    await chooseProgressiveLayout(page, "mindmap-surface", "mindmap-right");
+    await chooseProgressiveLayout(page, "mindmap-surface", "mindmap-direction", "mindmap-direction-right");
     const rightRootX = await centerX(page, "root");
     for (const id of ["singularity", "bigtech", "abstraction", "markets", "education", "methods"]) {
       expect(await centerX(page, id)).toBeGreaterThan(rightRootX);
     }
     await expectLayoutClean(page);
 
-    await chooseProgressiveLayout(page, "mindmap-surface", "mindmap-left");
+    await chooseProgressiveLayout(page, "mindmap-surface", "mindmap-direction", "mindmap-direction-left");
     const leftRootX = await centerX(page, "root");
     for (const id of ["singularity", "bigtech", "abstraction", "markets", "education", "methods"]) {
       expect(await centerX(page, id)).toBeLessThan(leftRootX);

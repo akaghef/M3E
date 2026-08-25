@@ -850,8 +850,8 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "gui", label: "[GUI]", hint: "overlay root" },
     { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
     { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
-    { id: "scatter", label: "Scatter", hint: "scatter editing tools", parentId: "gui" },
-    { id: "mindmap", label: "Mindmap", hint: "node and scope actions", parentId: "gui" },
+    { id: "scatter", label: "Disperse", hint: "Disperse editing tools", parentId: "gui" },
+    { id: "mindmap", label: "Radial", hint: "node and scope actions", parentId: "gui" },
     { id: "annotation", label: "Annotation", hint: "drawing tools", parentId: "gui" },
     { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
     { id: "import", label: "Import file", hint: "board input", parentId: "board", action: () => clickLegacy("import-file-btn") },
@@ -859,7 +859,7 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "board", action: () => clickLegacy("download-mm-btn") },
     { id: "export-vault", label: "Export to Vault", hint: "write linear notes", parentId: "board", action: () => clickLegacy("export-vault-btn") },
     { id: "tree", label: "Tree surface", hint: "classic right tree", parentId: "view", action: () => clickLegacy("view-tree") },
-    { id: "mindmap-surface", label: "Mind Map", hint: "mapify-like map templates", parentId: "view", action: () => setSurfaceLayout("mindmap", "normal", "left/right") },
+    { id: "mindmap-surface", label: "Radial", hint: "radial map templates", parentId: "view", action: () => setSurfaceLayout("mindmap", "normal", "left/right") },
     { id: "mindmap-direction", label: "Direction", hint: "layout growth axis", parentId: "mindmap-surface" },
     { id: "mindmap-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "left/right") },
     { id: "mindmap-direction-left", label: "Left", hint: "grow left", parentId: "mindmap-direction", action: () => setSurfaceLayout("mindmap", "normal", "left") },
@@ -884,13 +884,13 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "logic-chart-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "tight", "right") },
     { id: "logic-chart-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "normal", "right") },
     { id: "logic-chart-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "loose", "right") },
-    { id: "timeline-surface", label: "Timeline", hint: "axis-based layout", parentId: "view", action: () => clickLegacy("view-timeline") },
+    { id: "timeline-surface", label: "Axial", hint: "axis-based layout", parentId: "view", action: () => clickLegacy("view-timeline") },
     { id: "timeline-space", label: "Space", hint: "layout spacing", parentId: "timeline-surface" },
     { id: "timeline-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "tight") },
     { id: "timeline-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "normal") },
     { id: "timeline-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "loose") },
     { id: "system", label: "System surface", hint: "diagram canvas", parentId: "view", action: () => clickLegacy("view-system") },
-    { id: "scatter-surface", label: "Scatter surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
+    { id: "scatter-surface", label: "Disperse surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
     { id: "layout", label: "Layout", hint: "surface layout options", parentId: "view" },
     { id: "layout-direction", label: "Direction", hint: "layout growth axis", parentId: "layout" },
     { id: "layout-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "left/right" }), active: () => currentLayoutDirection() === "left/right" },
@@ -1178,7 +1178,6 @@ function ProgressiveNavigation({
         left: `${progressiveLayout.overlayRect.x}px`,
         top: `${progressiveLayout.overlayRect.y}px`,
       }}
-      onMouseLeave={() => setActiveId(rootId)}
     >
       <svg className="wb-progressive-edges" viewBox={`0 0 ${navWidth} ${navHeight}`} aria-hidden="true">
         {edges.map((edge) => (

@@ -51,6 +51,8 @@
   "devDependencies": {
     "@playwright/test": "^1.54.1",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/d3-dispatch": "^3.0.7",
+    "@types/d3-timer": "^3.0.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
@@ -80,6 +82,7 @@
     "langfuse": "^3.38.20",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "webcola": "^3.4.0"
   }
 }

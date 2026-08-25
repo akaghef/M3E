@@ -752,10 +752,10 @@ function thinkingModeLabel(mode: ThinkingMode): string {
 
 function surfaceViewModeLabel(mode: SurfaceViewMode): string {
   if (mode === "system") return "System";
-  if (mode === "scatter") return "Scatter";
-  if (mode === "mindmap") return "Mind Map";
+  if (mode === "scatter") return "Disperse";
+  if (mode === "mindmap") return "Radial";
   if (mode === "logic-chart") return "Logic Chart";
-  if (mode === "timeline") return "Timeline";
+  if (mode === "timeline") return "Axial";
   return "Tree";
 }
 
@@ -1022,7 +1022,7 @@ function setScatterToolMode(mode: ScatterToolMode): void {
   }
   syncScatterToolbarUi();
   scheduleRender();
-  setStatus(`Scatter: ${mode.replace("-", " ")}`);
+  setStatus(`Disperse: ${mode.replace("-", " ")}`);
 }
 
 function toggleScatterAnimation(): void {
@@ -1034,16 +1034,16 @@ function setScatterAnimationEnabled(enabled: boolean): void {
   syncScatterToolbarUi();
   if (!enabled) {
     stopScatterAnimation(true);
-    setStatus("Scatter animation stopped.");
+    setStatus("Disperse animation stopped.");
     return;
   }
   if (!currentSurfaceIsScatterMode()) {
-    setStatus("Switch to Scatter to animate layout.", true);
+    setStatus("Switch to Disperse to animate layout.", true);
     return;
   }
   seedMissingScatterPositions();
   startScatterAnimation();
-  setStatus("Scatter animation running.");
+  setStatus("Disperse animation running.");
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -6640,7 +6640,7 @@ function runScatterReflow(iterations = 160, opts: { withUndo?: boolean; withTouc
   } else {
     render();
   }
-  setStatus("Scatter rank-flow reflow applied.");
+  setStatus("Disperse rank-flow reflow applied.");
 }
 
 function startScatterAnimation(): void {
@@ -10956,7 +10956,7 @@ function addScatterNodeAt(clientX: number, clientY: number): void {
   }
   setSingleSelection(id, false);
   touchDocument();
-  setStatus("Scatter node added.");
+  setStatus("Disperse node added.");
   board.focus();
 }
 
@@ -14536,7 +14536,7 @@ function finishNodeDrag(event: PointerEvent): void {
 
   if (mode === "scatter") {
     touchDocument();
-    setStatus("Scatter position updated.");
+    setStatus("Disperse position updated.");
     board.focus();
     return;
   }
