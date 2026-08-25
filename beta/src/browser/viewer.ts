@@ -6930,13 +6930,20 @@ function layoutEdgePath(
   const parentRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(parent) : positionRect(parent);
   const childRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(child) : positionRect(child);
   const routeStyle: EdgeRouteStyle = route === "straight" ? "line" : route === "elbow" ? "orthogonal" : "curve";
+  // A Radial edge is a local parent-to-child relation.  In particular, it
+  // must not inherit the Tree surface's global depth direction.
+  const deltaX = childRect.x + childRect.w / 2 - (parentRect.x + parentRect.w / 2);
+  const deltaY = childRect.y + childRect.h / 2 - (parentRect.y + parentRect.h / 2);
+  const radialDirection = Math.abs(deltaX) >= Math.abs(deltaY)
+    ? (deltaX >= 0 ? "right" : "left")
+    : (deltaY >= 0 ? "down" : "up");
   const routed = routeParentChildEdge({
     relation: { kind: "parent-child", parentNodeId: "parent", childNodeId: "child" },
     parentRect,
     childRect,
     childPosition: child,
     surfaceMode: mode as ParentChildSurfaceMode,
-    direction: viewState.surfaceLayoutDirection,
+    direction: mode === "mindmap" ? radialDirection : viewState.surfaceLayoutDirection,
     routeStyle,
   });
   const { source, target } = routed.ports;
@@ -7847,11 +7854,11 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
     const sourceId = edgeEl.getAttribute("data-source-node-id") || "";
     const targetId = edgeEl.getAttribute("data-target-node-id") || "";
     const edgeId = edgeEl.getAttribute("data-edge-id") || edgeEl.getAttribute("data-link-id") || `edge-${index}`;
-    const isTreeEdge = edgeEl.classList.contains("edge-tree");
-    const sourceBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(sourceId) : null)
+    const isStructuredParentChildEdge = edgeEl.classList.contains("edge-tree") || edgeEl.classList.contains("edge-mindmap");
+    const sourceBox = (isStructuredParentChildEdge ? layoutEdgeAnchorBoxByNodeId.get(sourceId) : null)
       || edgeAnchorBoxByNodeId.get(sourceId)
       || hitByNodeId.get(sourceId);
-    const targetBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(targetId) : null)
+    const targetBox = (isStructuredParentChildEdge ? layoutEdgeAnchorBoxByNodeId.get(targetId) : null)
       || edgeAnchorBoxByNodeId.get(targetId)
       || hitByNodeId.get(targetId);
     const endpoints = svgEdgeEndpoints(edgeEl);

@@ -1137,7 +1137,10 @@ function ProgressiveNavigation({
   const edges = progressiveLayout.edges;
 
   useLayoutEffect(() => {
-    scheduleMeasure();
+    // This establishes the opening geometry before the overlay becomes
+    // observable.  Viewport fast-path events must not inherit a pending
+    // measurement frame and trigger a layout recompute after they fire.
+    measureRootAnchor();
     window.addEventListener("resize", scheduleMeasure);
     window.addEventListener("m3e:layout-options-changed", scheduleMeasure);
     return () => {
@@ -1148,7 +1151,7 @@ function ProgressiveNavigation({
       window.removeEventListener("resize", scheduleMeasure);
       window.removeEventListener("m3e:layout-options-changed", scheduleMeasure);
     };
-  }, [activeId, mode, open, rootId, scheduleMeasure]);
+  }, [activeId, measureRootAnchor, mode, open, rootId, scheduleMeasure]);
 
   useEffect(() => {
     setActiveId(rootId);
