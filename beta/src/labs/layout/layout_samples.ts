@@ -1,8 +1,6 @@
 import treeBasic from "../../../tests/fixtures/layout-golden/tree-basic.json";
-import radialBasic from "../../../tests/fixtures/layout-golden/radial-basic.json";
 import scopeRoutingBasic from "../../../tests/fixtures/layout-golden/scope-routing-basic.json";
 import treeStress30 from "../../../tests/fixtures/layout-golden/tree-stress-30.json";
-import radialStress30 from "../../../tests/fixtures/layout-golden/radial-stress-30.json";
 import scopeRoutingStress30 from "../../../tests/fixtures/layout-golden/scope-routing-stress-30.json";
 import type {
   GraphLinkLike,
@@ -18,10 +16,8 @@ export interface LayoutGoldenSample {
   schema_version: 1;
   sample_id:
     | "tree-basic"
-    | "radial-basic"
     | "scope-routing-basic"
     | "tree-stress-30"
-    | "radial-stress-30"
     | "scope-routing-stress-30";
   source: {
     map_id?: string;
@@ -48,10 +44,8 @@ export type LayoutLabSampleId = LayoutLabSample["sample_id"];
 
 export const layoutSamples = [
   treeBasic,
-  radialBasic,
   scopeRoutingBasic,
   treeStress30,
-  radialStress30,
   scopeRoutingStress30,
 ] as LayoutGoldenSample[];
 

@@ -69,6 +69,5 @@ describe("NodeDrawPort contract", () => {
     });
     expect(canonicalSurfaceViewName("scatter")).toBe("Disperse");
     expect(canonicalSurfaceViewName("timeline")).toBe("Axial");
-    expect(canonicalSurfaceViewName("mindmap")).toBe("Tree");
   });
 });

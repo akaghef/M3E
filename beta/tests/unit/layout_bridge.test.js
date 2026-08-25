@@ -23,9 +23,9 @@ test("m3eLayout exposes the canonical layout port through the compatibility brid
     b: { w: 300, h: 112 },
   };
 
-  const result = m3eLayout(graph, boxSizes, "mindmap", {
+  const result = m3eLayout(graph, boxSizes, "tree", {
     displayRootId: "root",
-    structuredMode: "mindmap",
+    structuredMode: "tree",
     depthAlign: "aligned",
     direction: "right",
   });

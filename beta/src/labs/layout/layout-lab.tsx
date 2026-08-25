@@ -6,18 +6,18 @@ import {
   type LayoutDirection,
   type LayoutMode,
   type LayoutOptions,
+  type DisperseEdgeStyle,
 } from "../../shared/layout_port";
-import { layoutDisperse } from "../../shared/disperse_layout";
 import {
   layoutLabSamples,
   summarizeLayout,
   toVisibleLayoutGraph,
   type LayoutLabSampleId,
 } from "./layout_samples";
-import { disperseEdgePath, layoutLabEdgePath, type DisperseEdgeStyle } from "./layout_edge_paths";
+import { layoutLabEdgePath } from "./layout_edge_paths";
 import "./layout-lab.css";
 
-const modes: LayoutMode[] = ["Tree", "Radial", "Axial", "Disperse", "System"];
+const modes: LayoutMode[] = ["Tree", "Axial", "Disperse", "System"];
 const directions = ["left/right", "left", "right", "up/down", "up", "down"] as const;
 const depthAligns: LayoutDepthAlign[] = ["packed", "aligned"];
 const disperseSubtypes = ["scatter", "cluster", "force"] as const;
@@ -46,14 +46,6 @@ function numberInput(value: number, setValue: (value: number) => void, min: numb
   );
 }
 
-function labGraphLinks(sampleId: string, nodeIds: string[]): { id: string; sourceNodeId: string; targetNodeId: string }[] {
-  if (sampleId !== "synthetic-100-varied-boxes") return [];
-  return [
-    ["syn-d1-001", "syn-d3-055"], ["syn-d1-002", "syn-d3-067"], ["syn-d2-015", "syn-d3-080"], ["syn-d2-020", "syn-d3-093"],
-  ].filter(([sourceNodeId, targetNodeId]) => nodeIds.includes(sourceNodeId) && nodeIds.includes(targetNodeId))
-    .map(([sourceNodeId, targetNodeId], index) => ({ id: `lab-link-${index}`, sourceNodeId, targetNodeId }));
-}
-
 function App(): React.ReactElement {
   const [sampleId, setSampleId] = useState<LayoutLabSampleId>("tree-stress-30");
   const sample = layoutLabSamples.find((item) => item.sample_id === sampleId) || layoutLabSamples[0]!;
@@ -80,12 +72,11 @@ function App(): React.ReactElement {
   const effectiveCollapseTarget = collapseTargets.includes(collapseTarget) ? collapseTarget : collapseTargets[0];
   const collapsedNodeIds = collapseEnabled && effectiveCollapseTarget ? [effectiveCollapseTarget] : [];
   const graph = useMemo(() => toVisibleLayoutGraph(sample, isDisperse ? [] : collapsedNodeIds), [sample, isDisperse, collapsedNodeIds]);
-  const graphLinks = useMemo(() => labGraphLinks(sample.sample_id, sample.input.graph.nodeIds), [sample]);
   const spacing: LayoutSpacing = { nodeGap, levelGap, padding };
   const { direction: _sampleDirection, ...sampleOptions } = sample.input.options;
   const options: LayoutOptions = {
     ...sampleOptions,
-    structuredMode: mode === "Tree" || mode === "Radial" || mode === "Axial" ? mode : undefined,
+    structuredMode: mode === "Tree" || mode === "Axial" ? mode : undefined,
     depthAlign,
     direction: direction as LayoutDirection,
     space: space === "custom" ? "normal" : space,
@@ -97,20 +88,7 @@ function App(): React.ReactElement {
       edgeAggregation,
     },
   };
-  const structuredResult = isDisperse ? undefined : layout(graph, sample.input.boxSizes, mode, options);
-  const disperseResult = useMemo(() => layoutDisperse({
-    nodeIds: sample.input.graph.nodeIds,
-    childrenOf: (id) => sample.input.graph.children[id] || [],
-    graphLinks,
-  }, sample.input.boxSizes, {
-    displayRootId: rootId,
-    subtype: disperseSubtype,
-    space: space === "custom" ? "normal" : space,
-    collapsedNodeIds,
-    superNodeFootprint,
-    edgeAggregation,
-  }), [sample, graphLinks, rootId, disperseSubtype, space, collapsedNodeIds, superNodeFootprint, edgeAggregation]);
-  const result = isDisperse ? disperseResult : structuredResult!;
+  const result = layout(graph, sample.input.boxSizes, mode, options);
   const canvasWidth = Math.max(900, Math.ceil(result.totalWidth + 80));
   const canvasHeight = Math.max(640, Math.ceil(result.totalHeight + 80));
   const resultRootId = result.order[0];
@@ -123,7 +101,7 @@ function App(): React.ReactElement {
     graph.childrenOf(sourceId).map((targetId) => ({ sourceId, targetId })),
   );
   const renderEdges: Array<{ sourceId: string; targetId: string; weight?: number }> = isDisperse
-    ? disperseResult.edges.filter((edge) => !edge.internal)
+    ? (result.edges || []).filter((edge) => !edge.internal)
     : treeEdges;
 
   const selectSpace = (next: SpaceSelection): void => {
@@ -267,13 +245,15 @@ function App(): React.ReactElement {
           aria-label="Layout result"
         >
           <g transform={zoomTransform}>
-            {isDisperse && boundaries && disperseResult.groups.map((group) => <rect key={group.id} className="disperse-group" x={group.x} y={group.y} width={group.w} height={group.h} rx="12" />)}
+            {isDisperse && boundaries && result.groups?.map((group) => <rect key={group.id} className="disperse-group" x={group.x} y={group.y} width={group.w} height={group.h} rx="12" />)}
             {renderEdges.map((edge) => {
               const { sourceId, targetId } = edge;
               const source = result.pos[sourceId];
               const target = result.pos[targetId];
               if (!source || !target) return null;
-              const path = isDisperse ? disperseEdgePath(source, target, disperseEdgeStyle) : layoutLabEdgePath(source, target, direction);
+              const path = isDisperse
+                ? layoutLabEdgePath(source, target, mode, undefined, disperseEdgeStyle)
+                : layoutLabEdgePath(source, target, mode, direction);
               return (
                 <path
                   key={`${sourceId}-${targetId}`}

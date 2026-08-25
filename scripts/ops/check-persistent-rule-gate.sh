@@ -25,6 +25,7 @@ require_pattern() {
 require_pattern "AGENTS.md" "LV3 Persistent Rule Change Gate" "root LV3 gate"
 require_pattern "AGENTS.md" "skill-creator" "skill-creator routing"
 require_pattern "AGENTS.md" "chat promise" "chat-only promise prohibition"
+require_pattern "AGENTS.md" "C8: Browser Verification Evidence" "C8 browser evidence rule"
 require_pattern "CLAUDE.md" "persistent rule gate" "Claude LV3 gate"
 require_pattern "CLAUDE.md" "skill-creator" "Claude skill-creator routing"
 require_pattern "docs/06_Operations/Director_Playbook.md" "persistent-rule review gate" "Director persistent-rule review gate"
@@ -39,6 +40,7 @@ require_pattern "docs/protocols/contracts/persistent_rule_change_contract.yaml" 
 
 require_pattern "docs/protocols/worker-minimal-instruction.md" "LV3 persistent rule gate" "worker LV3 gate"
 require_pattern "docs/protocols/worker-minimal-instruction.md" "do not create test maps" "worker live-data guard"
+require_pattern "docs/protocols/worker-minimal-instruction.md" "未実行（Director 依頼）" "worker browser evidence rule"
 
 require_pattern "agent_instructions/skills_canonical/m3e-worker/SKILL.md" "!!!|！！！" "canonical worker skill trigger"
 require_pattern "agent_instructions/skills_canonical/m3e-worker/SKILL.md" "skill-creator" "canonical worker skill creator routing"

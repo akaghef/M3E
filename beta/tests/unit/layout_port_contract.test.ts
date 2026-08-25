@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   layout,
   normalizeLayoutVocabulary,
+  routeLayoutEdge,
   type LayoutOptions,
 } from "../../src/shared/layout_port";
 import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layout_samples";
@@ -64,6 +65,59 @@ describe("LayoutPort contract", () => {
 
     expect(new Set(signatures).size).toBe(6);
     expect(`${packed.totalWidth}x${packed.totalHeight}`).not.toBe(`${aligned.totalWidth}x${aligned.totalHeight}`);
+  });
+
+  test.each(["logic-chart"] as const)("%s preserves six directions and valid vertical branch ports", (structuredMode) => {
+    const directions: NonNullable<LayoutOptions["direction"]>[] = ["left/right", "left", "right", "up/down", "up", "down"];
+    directions.forEach((direction) => {
+      const result = layout(treeGraph, treeStress.input.boxSizes, structuredMode, {
+        ...treeStress.input.options,
+        structuredMode,
+        direction,
+      });
+      const root = result.pos[treeStress.input.options.displayRootId!]!;
+      const child = result.pos[treeGraph.childrenOf(treeStress.input.options.displayRootId!)[0]!]!;
+      const path = routeLayoutEdge(root, child, "Tree", direction, "curve");
+      if (direction === "up/down") {
+        expect(child.branchPortSide === "up" || child.branchPortSide === "down").toBe(true);
+        expect(["top", "bottom"]).toContain(path.source.side);
+        expect(["top", "bottom"]).toContain(path.target.side);
+      }
+      console.info(JSON.stringify({ structuredMode, direction, branchPortSide: child.branchPortSide, ports: [path.source.side, path.target.side] }));
+    });
+  });
+
+  test("reads legacy mindmap layout as a Tree two-sided preset", () => {
+    const result = layout(treeGraph, treeStress.input.boxSizes, "mindmap", {
+      ...treeStress.input.options,
+      structuredMode: "balanced-tree",
+    });
+    const root = result.pos[treeStress.input.options.displayRootId!]!;
+    const rootChildren = treeGraph.childrenOf(treeStress.input.options.displayRootId!);
+    expect(rootChildren.some((id) => result.pos[id]!.x < root.x)).toBe(true);
+    expect(rootChildren.some((id) => result.pos[id]!.x > root.x)).toBe(true);
+  });
+
+  test("Axial preserves the two-sided direction axis", () => {
+    const rootId = treeStress.input.options.displayRootId!;
+    const rootChildren = treeGraph.childrenOf(rootId);
+    const horizontal = layout(treeGraph, treeStress.input.boxSizes, "Axial", {
+      ...treeStress.input.options,
+      structuredMode: "timeline",
+      direction: "left/right",
+    });
+    const vertical = layout(treeGraph, treeStress.input.boxSizes, "Axial", {
+      ...treeStress.input.options,
+      structuredMode: "timeline",
+      direction: "up/down",
+    });
+    const horizontalRoot = horizontal.pos[rootId]!;
+    const verticalRoot = vertical.pos[rootId]!;
+
+    expect(rootChildren.some((id) => horizontal.pos[id]!.x < horizontalRoot.x)).toBe(true);
+    expect(rootChildren.some((id) => horizontal.pos[id]!.x > horizontalRoot.x)).toBe(true);
+    expect(rootChildren.some((id) => vertical.pos[id]!.y < verticalRoot.y)).toBe(true);
+    expect(rootChildren.some((id) => vertical.pos[id]!.y > verticalRoot.y)).toBe(true);
   });
 
   test("uses space defaults in Tree when spacing is omitted", () => {

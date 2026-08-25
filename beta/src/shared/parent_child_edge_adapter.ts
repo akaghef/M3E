@@ -9,7 +9,7 @@ export interface ParentChildEdgeRef {
   childNodeId: string;
 }
 
-export type ParentChildSurfaceMode = "tree" | "mindmap" | "logic-chart" | "timeline" | "scatter" | "system";
+export type ParentChildSurfaceMode = "tree" | "logic-chart" | "timeline" | "scatter" | "system";
 
 export interface ParentChildNodePosition extends EdgeRect {
   depth: number;
@@ -33,25 +33,24 @@ export interface ParentChildEdgeRoute {
   path: EdgePath;
 }
 
-function primaryDirection(direction: TreeDirection, branchPortSide?: TreeBranchSide): PrimaryDirection {
+function primaryDirection(direction: TreeDirection, branchPortSide?: TreeBranchSide): PrimaryDirection | undefined {
   if (direction !== "left/right" && direction !== "up/down") return direction;
-  if (!branchPortSide) {
-    throw new Error(`LayoutResult.branchPortSide is required for Tree ${direction}.`);
-  }
   return branchPortSide;
+}
+
+function vectorFallback(): EdgeDirection {
+  return { view: "Disperse", direction: "free" };
 }
 
 function treeDirection(direction: TreeDirection, branchPortSide?: TreeBranchSide): EdgeDirection {
   if (direction === "left/right" || direction === "up/down") {
-    if (!branchPortSide) {
-      throw new Error(`LayoutResult.branchPortSide is required for Tree ${direction}.`);
-    }
-    return { view: "Tree", direction, branchSide: branchPortSide };
+    return branchPortSide ? { view: "Tree", direction, branchSide: branchPortSide } : vectorFallback();
   }
   return { view: "Tree", direction };
 }
 
-function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDirection): EdgeDirection {
+function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDirection | undefined): EdgeDirection {
+  if (!direction) return vectorFallback();
   if (surfaceMode === "scatter") return { view: "Disperse", direction: "free" };
   return direction === "down"
     ? { view: "System", direction: "down" }
@@ -62,11 +61,12 @@ function vectorDirection(surfaceMode: "scatter" | "system", direction: PrimaryDi
 
 export function parentChildEdgeDirection(input: ParentChildEdgeRouteInput): EdgeDirection {
   const branchPortSide = input.childPosition?.branchPortSide;
-  if (input.surfaceMode === "timeline") return { view: "Axial", direction: primaryDirection(input.direction, branchPortSide) };
-  if (input.surfaceMode === "mindmap" || input.surfaceMode === "logic-chart" || input.surfaceMode === "tree") {
+  const primary = primaryDirection(input.direction, branchPortSide);
+  if (input.surfaceMode === "timeline") return primary ? { view: "Axial", direction: primary } : vectorFallback();
+  if (input.surfaceMode === "logic-chart" || input.surfaceMode === "tree") {
     return treeDirection(input.direction, branchPortSide);
   }
-  return vectorDirection(input.surfaceMode, primaryDirection(input.direction, branchPortSide));
+  return vectorDirection(input.surfaceMode, primary);
 }
 
 export function routeParentChildEdge(input: ParentChildEdgeRouteInput): ParentChildEdgeRoute {

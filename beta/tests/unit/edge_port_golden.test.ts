@@ -40,7 +40,6 @@ describe("edge-port golden parity", () => {
       "tree-down-basic",
       "axial-right-sequence",
       "axial-up-sequence",
-      "radial-balanced-quadrants",
       "disperse-force-vector",
       "system-right-module",
       "system-down-containment",
@@ -58,4 +57,3 @@ describe("edge-port golden parity", () => {
     expect(pathResult.commands[pathResult.commands.length - 1]).toMatchObject({ x: ports.target.x, y: ports.target.y });
   });
 });
-

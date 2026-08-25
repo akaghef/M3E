@@ -3,8 +3,6 @@ import { selectPorts, type EdgeBranchDirection, type EdgeRect, type EdgePortSide
 
 const srcRect: EdgeRect = { x: 100, y: 100, w: 80, h: 40 };
 const dstRight: EdgeRect = { x: 300, y: 105, w: 90, h: 50 };
-const dstLeft: EdgeRect = { x: -80, y: 105, w: 90, h: 50 };
-const dstUp: EdgeRect = { x: 105, y: -100, w: 90, h: 50 };
 const dstDown: EdgeRect = { x: 105, y: 260, w: 90, h: 50 };
 
 function expectSides(direction: EdgeBranchDirection, expected: [EdgePortSide, EdgePortSide], dstRect = dstRight): void {
@@ -31,10 +29,7 @@ describe("EdgePort selectPorts contract", () => {
     expectSides({ view: "Axial", direction: "down" }, ["bottom", "top"]);
   });
 
-  test("Radial, Disperse, and System free use deterministic vectors", () => {
-    expectSides({ view: "Radial", direction: "balanced" }, ["right", "left"], dstRight);
-    expectSides({ view: "Radial", direction: "clockwise" }, ["left", "right"], dstLeft);
-    expectSides({ view: "Radial", direction: "counterclockwise" }, ["top", "bottom"], dstUp);
+  test("Disperse and System free use deterministic vectors", () => {
     expectSides({ view: "Disperse", direction: "free" }, ["bottom", "top"], dstDown);
     expectSides({ view: "System", direction: "free" }, ["right", "left"], { x: 205, y: 135, w: 90, h: 50 });
   });

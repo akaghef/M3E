@@ -33,7 +33,7 @@ M3E の見た目分類は、外部ツール名や旧実装名をそのまま Sur
 ```text
 Surface View
 ├─ Tree
-│  ├─ direction: right / left / both / up / down
+│  ├─ direction: left/right / left / right / up/down / up / down
 │  ├─ space: tight / normal / loose
 │  └─ edge: orthogonal / line / curve
 ├─ Axial
@@ -41,10 +41,6 @@ Surface View
 │  ├─ direction: right / left / up / down
 │  ├─ space: tight / normal / loose
 │  └─ edge: orthogonal / line / curve
-├─ Radial
-│  ├─ direction: clockwise / counterclockwise / balanced
-│  ├─ space: tight / normal / loose
-│  └─ edge: line / curve
 ├─ Disperse
 │  ├─ subtype: scatter / cluster / force
 │  ├─ space: tight / normal / loose
@@ -60,7 +56,7 @@ Surface View
 
 | 旧ラベル / 候補 | Surface View 正本 | 扱い |
 |---|---|---|
-| Mind Map / `balanced-tree` | Radial | 中心から放射する見た目。左右 balanced は Radial の direction option |
+| Mind Map / `balanced-tree` | Tree | 階層を左右両側へ開く見た目。`Tree direction: left/right` の preset。旧 Radial は [ADR_010](../09_Decisions/ADR_010_Radial_Surface_View_Removal.md) で廃止 |
 | Tree Chart / Logic Chart / `right-tree` / `down-tree` | Tree | 階層を一方向または両方向に展開する見た目。Logic Chart は Tree の preset |
 | Timeline | Axial | timeline は Surface View ではなく Axial の subtype |
 | Roadmap / Pipeline / Sequence | Axial | 軸に沿って進行・順序・段階を読む見た目 |
@@ -72,9 +68,29 @@ Surface View
 
 - **Tree**: 親子階層を読む。主眼は分解・包含・分類。
 - **Axial**: 1本の軸に沿って読む。主眼は時間・順序・進行・段階。
-- **Radial**: 中心から発散して読む。主眼は中心概念からの展開。
 - **Disperse**: 空間的な近さやクラスタで読む。主眼は関係密度・分布・近接。
 - **System**: 箱・境界・モジュール・リンクで読む。主眼は構造、責務、接続。
+
+#### Disperse と tree の関係（粗視化）
+
+> **tree は Disperse の「配置」ではなく「group の階層」を担う。collapse がそのまま graph の縮約になり、粗視化のレベルを人間が選べる。**
+
+- Disperse が力学配置する対象は、**現在の collapse 状態で縮約された可視グラフ**であり、全ノードではない。
+- 部分木を collapse すると、その部分木は 1 つの super-node へ **縮約（contraction）** される。メンバーに接続していた edge は super-node への edge へ **集約** される。
+- tree の深さが繰り込みの梯子になり、同じ graph を粗い解像度と細かい解像度で読み替えられる。
+- subtype `cluster` は tree の group に対応する。tree を layout そのものに使うのは誤り（それは Tree の役目）。
+
+実装上の含意: Disperse の layout は group / 縮約を扱える必要があり、単純な平坦 force では足りない。edge の集約規則（多重 edge の束ね方・重み）を contract 時に定義すること。
+
+#### Disperse subtype の定義
+
+| subtype | 定義 | 座標の出どころ |
+|---|---|---|
+| **scatter** | **自由配置**。人が置いた位置そのものが意味を持つ（近くに置いた＝関係がある、という人間の判断を保存する）。layout は座標を計算せず、保存座標をそのまま使う。 | 人 |
+| **cluster** | **クラスタ**。tree の group を空間的なまとまりとして見せる。同一 group の member は寄せ、別 group は離す。group の境界を可視化してよい。粗視化（collapse）と直結する subtype。 | 計算（group 構造から） |
+| **force** | **力学配置**。edge の張力と斥力の釣り合いで座標を決める。関係構造・密度・近接を読む。 | 計算（edge 構造から） |
+
+3つは排他ではなく、`cluster` は group 拘束を加えた `force` として実装しうる。`scatter` だけは計算せず人の配置を正本とする点で性質が異なる。
 
 #### pipeline / system graph の参照 UI
 
@@ -132,7 +148,8 @@ layout: {
 ## 3. 旧 LayoutMode 候補一覧
 
 この章は実装アルゴリズム候補のカタログであり、Surface View の正本ではない。
-ユーザー向け表示名と保存スキーマは 1.1 の `Tree / Axial / Radial / Disperse / System` を優先する。
+ユーザー向け表示名と保存スキーマは 1.1 の `Tree / Axial / Disperse / System` を優先する。
+この章に残る `balanced-tree` は Tree の両側 preset を指す旧アルゴリズム名であり、履歴として残している。
 
 ### 3.1 Right Tree (現行) -- "Classic"
 
@@ -185,7 +202,7 @@ layout: {
 
 ---
 
-### 3.3 Balanced Tree -- "Radial Mind Map"
+### 3.3 Balanced Tree -- "両側 Mind Map"
 
 ```
           Child A1
@@ -206,7 +223,7 @@ layout: {
 
 | 項目 | 値 |
 |------|-----|
-| 名前 | `balanced-tree` (Radial Mind Map) |
+| 名前 | `balanced-tree` (Tree 両側 preset) |
 | 方向 | 左右両方向 (Freeplane のデフォルトに近い) |
 | 適用場面 | ブレインストーミング、中心テーマからの発散 |
 | M3E モード | Flash (キャプチャ)、Rapid |
@@ -360,7 +377,7 @@ layout: {
 | レイアウト | Flash | Rapid | Deep |
 |-----------|-------|-------|------|
 | `right-tree` (Classic) | **Primary** | OK | OK |
-| `balanced-tree` (Radial) | Good | OK | -- |
+| `balanced-tree` (Tree 両側 preset) | Good | OK | -- |
 | `down-tree` (Org Chart) | -- | Good | **Primary** |
 | `outline` (Linear) | -- | Good | **Primary** |
 | `fishbone` (Cause & Effect) | -- | Good | -- |
@@ -395,7 +412,7 @@ type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system";
 type SurfaceViewEdge = "orthogonal" | "line" | "curve" | "force-link";
 type SurfaceViewSpace = "tight" | "normal" | "loose";
 type SurfaceViewDirection =
-  | "right" | "left" | "both" | "up" | "down" | "free"
+  | "left/right" | "left" | "right" | "up/down" | "up" | "down" | "free"
   | "clockwise" | "counterclockwise" | "balanced";
 
 interface SurfaceViewConfig {
@@ -524,7 +541,7 @@ UI・保存時に `SurfaceViewConfig` へ正規化する。
 | legacy value | normalized SurfaceViewConfig |
 |---|---|
 | `tree`, `right-tree`, `down-tree`, `logic-chart` | `{ kind: "tree" }` |
-| `mindmap`, `balanced-tree` | `{ kind: "radial" }` |
+| `mindmap`, `balanced-tree` | `{ kind: "tree", direction: "left/right" }` |
 | `timeline` | `{ kind: "axial", subtype: "timeline" }` |
 | `scatter`, `force-directed` | `{ kind: "disperse" }` |
 | `system` | `{ kind: "system" }` |
@@ -625,7 +642,7 @@ ViewState はメモリ上のトランジェントな状態であり、Surface Vi
 Surface View は常に `doc.state` から解決する。
 
 ただし、スコープ切替時のカメラ位置リセットについて:
-- Surface View kind が変わる遷移 (例: Tree スコープ -> Radial スコープ) ではカメラを初期位置にリセットするのが望ましい
+- Surface View kind が変わる遷移 (例: Tree スコープ -> Disperse スコープ) ではカメラを初期位置にリセットするのが望ましい
 - `viewState.zoom`, `viewState.cameraX`, `viewState.cameraY` を初期値に戻す
 
 ```typescript
@@ -655,12 +672,11 @@ function onScopeChange(prevScopeId: string, nextScopeId: string): void {
 ```
 [Flash | Rapid | Deep]  [View: ▼ Tree / Right ]  [+] [-] [Fit] ...
                             ├ Tree
-                            │   ├ direction: right / left / both / up / down
+                            │   ├ direction: left/right / left / right / up/down / up / down
                             │   ├ space: tight / normal / loose
                             │   └ edge: orthogonal / line / curve
                             ├ Axial
                             │   └ subtype: timeline / roadmap / pipeline / sequence
-                            ├ Radial
                             ├ Disperse
                             └ System
 ```

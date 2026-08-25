@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { layout } from "../../src/shared/layout_port";
-import { disperseEdgePath, layoutLabEdgePath } from "../../src/labs/layout/layout_edge_paths";
+import { layoutLabEdgePath } from "../../src/labs/layout/layout_edge_paths";
+import { routeDisperseEdge } from "../../src/shared/layout_port";
 import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layout_samples";
 
 const sample = layoutSamples.find((item) => item.sample_id === "tree-stress-30")!;
@@ -18,7 +19,7 @@ function representativePath(direction: "left/right" | "left" | "right" | "up/dow
   )) ?? graph.childrenOf(rootId)[0]!;
   const source = result.pos[rootId]!;
   const target = result.pos[childId]!;
-  return { source, target, path: layoutLabEdgePath(source, target, direction) };
+  return { source, target, path: layoutLabEdgePath(source, target, "Tree", direction) };
 }
 
 describe("Layout Lab edge exclusive seam", () => {
@@ -40,7 +41,7 @@ describe("Layout Lab edge exclusive seam", () => {
 
   test.each(["line", "curve", "force-link"] as const)("uses node centres for Disperse %s paths", (style) => {
     const { source, target } = representativePath("right");
-    const path = disperseEdgePath(source, target, style);
+    const path = routeDisperseEdge(source, target, style);
     expect(path.source).toMatchObject({ x: source.x + source.w / 2, y: source.y });
     expect(path.target).toMatchObject({ x: target.x + target.w / 2, y: target.y });
     expect(path.style).toBe(style);

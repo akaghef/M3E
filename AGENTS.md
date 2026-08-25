@@ -245,3 +245,7 @@ When an agent finishes a cycle, report:
 3. What remains next (one concrete task).
 
 When mentioning a commit ID, branch, or PR, state its change intent in one plain-language line immediately beside it. Never present an identifier alone or require Akaghef to inspect Git history to understand why it matters.
+
+## C8: Browser Verification Evidence
+
+Do not report Playwright, browser, screenshot, or GUI results as measurements unless this worker executed and observed them in the current turn. When the sandbox cannot run Playwright, write exactly `未実行（Director 依頼）` in the Playwright result field and list the specific spec(s) for the Director. Existing logs, source inspection, and another operator's report may explain a diagnosis, but are not this worker's measurement.

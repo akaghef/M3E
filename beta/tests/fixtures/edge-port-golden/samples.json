@@ -105,19 +105,6 @@
   },
   {
     "schema_version": 1,
-    "sample_id": "radial-balanced-quadrants",
-    "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Radial" },
-    "input": {
-      "relation": { "kind": "parent-child", "parentNodeId": "center", "childNodeId": "outer" },
-      "srcRect": { "x": 100, "y": 100, "w": 80, "h": 40 },
-      "dstRect": { "x": -80, "y": -60, "w": 90, "h": 50 },
-      "edgeDirection": { "view": "Radial", "direction": "balanced" },
-      "routeStyle": "curve"
-    },
-    "expected": { "ports": { "sourceSide": "left", "targetSide": "right" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
-  },
-  {
-    "schema_version": 1,
     "sample_id": "disperse-force-vector",
     "source": { "product_path": "parentChildEdgeAdapter", "surface_view": "Disperse" },
     "input": {
@@ -156,4 +143,3 @@
     "expected": { "ports": { "sourceSide": "bottom", "targetSide": "top" }, "checks": { "noWrongSide": true, "noThroughNode": true, "noWrongTarget": true } }
   }
 ]
-

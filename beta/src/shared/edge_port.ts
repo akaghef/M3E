@@ -13,11 +13,10 @@ export interface EdgePortPoint {
   side: EdgePortSide;
 }
 
-export type SurfaceViewName = "Tree" | "Axial" | "Radial" | "Disperse" | "System";
+export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System";
 export type PrimaryDirection = "right" | "left" | "up" | "down";
 export type TreeDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 export type TreeBranchSide = "left" | "right" | "up" | "down";
-export type RadialDirection = "clockwise" | "counterclockwise" | "balanced";
 export type DisperseDirection = "free";
 export type SystemDirection = "right" | "down" | "free";
 
@@ -27,7 +26,6 @@ export type EdgeDirection =
   // the canonical `left/right` direction instead.
   | { view: "Tree"; direction: "both"; branchSide: TreeBranchSide }
   | { view: "Axial"; direction: PrimaryDirection }
-  | { view: "Radial"; direction: RadialDirection; radialVector?: { x: number; y: number } }
   | { view: "Disperse"; direction: DisperseDirection; vector?: { x: number; y: number } }
   | { view: "System"; direction: SystemDirection; vector?: { x: number; y: number } };
 
@@ -90,7 +88,6 @@ function sourceSideForDirection(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirect
     return sideForPrimaryDirection(edgeDirection.direction);
   }
   if (edgeDirection.view === "Axial") return sideForPrimaryDirection(edgeDirection.direction);
-  if (edgeDirection.view === "Radial") return sideForVector(srcRect, dstRect, edgeDirection.radialVector);
   if (edgeDirection.view === "Disperse") return sideForVector(srcRect, dstRect, edgeDirection.vector);
   if (edgeDirection.direction === "free") return sideForVector(srcRect, dstRect, edgeDirection.vector);
   return sideForPrimaryDirection(edgeDirection.direction);

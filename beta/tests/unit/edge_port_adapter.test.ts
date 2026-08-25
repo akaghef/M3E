@@ -16,21 +16,7 @@ describe("parent-child edge adapter", () => {
     expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["right", "left"]);
   });
 
-  test("viewer Tree wiring consumes direction and LayoutResult branchPortSide without geometry inference", () => {
-    const routed = routeParentChildEdge({
-      relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
-      parentRect: { x: 100, y: 100, w: 80, h: 40 },
-      childRect: { x: 300, y: 105, w: 90, h: 50 },
-      childPosition: { branchPortSide: "left" },
-      surfaceMode: "mindmap",
-      direction: "left/right",
-      routeStyle: "curve",
-    });
-    expect(routed.edgeDirection).toEqual({ view: "Tree", direction: "left/right", branchSide: "left" });
-    expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["left", "right"]);
-  });
-
-  test("viewer Tree wiring selects canonical ports for every direction", () => {
+  test("Tree wiring selects canonical ports for every direction", () => {
     const expected = {
       "left/right": ["left", "right"], left: ["left", "right"], right: ["right", "left"],
       "up/down": ["top", "bottom"], up: ["top", "bottom"], down: ["bottom", "top"],
@@ -41,7 +27,7 @@ describe("parent-child edge adapter", () => {
         parentRect: { x: 100, y: 100, w: 80, h: 40 },
         childRect: { x: 300, y: 105, w: 90, h: 50 },
         childPosition: { branchPortSide: direction === "left/right" ? "left" : direction === "up/down" ? "up" : undefined },
-        surfaceMode: "mindmap",
+        surfaceMode: "tree",
         direction,
         routeStyle: "orthogonal",
       });
@@ -50,14 +36,4 @@ describe("parent-child edge adapter", () => {
     });
   });
 
-  test("viewer Tree wiring fails when composite direction lacks LayoutResult branchPortSide", () => {
-    expect(() => routeParentChildEdge({
-      relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
-      parentRect: { x: 100, y: 100, w: 80, h: 40 },
-      childRect: { x: 300, y: 105, w: 90, h: 50 },
-      surfaceMode: "mindmap",
-      direction: "left/right",
-      routeStyle: "curve",
-    })).toThrow(/LayoutResult\.branchPortSide/);
-  });
 });

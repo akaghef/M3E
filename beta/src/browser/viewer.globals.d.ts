@@ -10,13 +10,13 @@ declare const joint: any;
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
-type SurfaceViewMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceViewMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 type MapNodeClass = "entity" | "scope";
-type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceKind = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
+type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "logic-chart" | "timeline";
 type SurfaceSpace = "tight" | "normal" | "loose";
 type SurfaceLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type SurfaceDepthAlign = "aligned" | "packed";
@@ -382,7 +382,7 @@ interface Window {
       edge?: { route?: SurfaceEdgeRoute };
       link?: { route?: SurfaceLinkRoute };
       displayRootId?: string;
-      structuredMode?: "tree" | "mindmap" | "logic-chart" | "timeline";
+      structuredMode?: "tree" | "logic-chart" | "timeline";
       space?: SurfaceSpace;
     },
   ) => {
