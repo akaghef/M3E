@@ -104,7 +104,7 @@ async function treeEdgePorts(page) {
 test.describe("structured layout integrity", () => {
   test("Tree right edges attach to source and target side ports", async ({ page }) => {
     await launchViewer(page, xmindLikeFixture());
-    await expect(page.locator("#mode-meta")).toContainText("/ Tree / Balanced / Right");
+    await expect(page.locator("#mode-meta")).toContainText("/ Tree / Normal / right");
     await expectLayoutClean(page);
 
     const ports = await treeEdgePorts(page);
@@ -119,14 +119,14 @@ test.describe("structured layout integrity", () => {
     await launchViewer(page, xmindLikeFixture());
 
     const cases = [
-      { parent: "mindmap-surface", leaf: "mindmap-both", meta: "/ Mind Map / Balanced / Both" },
-      { parent: "mindmap-surface", leaf: "mindmap-right", meta: "/ Mind Map / Balanced / Right" },
-      { parent: "mindmap-surface", leaf: "mindmap-left", meta: "/ Mind Map / Balanced / Left" },
-      { parent: "mindmap-surface", leaf: "mindmap-compact", meta: "/ Mind Map / Compact / Both" },
-      { parent: "mindmap-surface", leaf: "mindmap-spacious", meta: "/ Mind Map / Spacious / Both" },
-      { parent: "logic-chart-surface", leaf: "logic-chart-both", meta: "/ Logic Chart / Balanced / Both" },
-      { parent: "logic-chart-surface", leaf: "logic-chart-right", meta: "/ Logic Chart / Balanced / Right" },
-      { parent: "logic-chart-surface", leaf: "logic-chart-left", meta: "/ Logic Chart / Balanced / Left" },
+      { parent: "mindmap-surface", leaf: "mindmap-both", meta: "/ Mind Map / Normal / left/right" },
+      { parent: "mindmap-surface", leaf: "mindmap-right", meta: "/ Mind Map / Normal / right" },
+      { parent: "mindmap-surface", leaf: "mindmap-left", meta: "/ Mind Map / Normal / left" },
+      { parent: "mindmap-surface", leaf: "mindmap-compact", meta: "/ Mind Map / Tight / left/right" },
+      { parent: "mindmap-surface", leaf: "mindmap-spacious", meta: "/ Mind Map / Loose / left/right" },
+      { parent: "logic-chart-surface", leaf: "logic-chart-both", meta: "/ Logic Chart / Normal / left/right" },
+      { parent: "logic-chart-surface", leaf: "logic-chart-right", meta: "/ Logic Chart / Normal / right" },
+      { parent: "logic-chart-surface", leaf: "logic-chart-left", meta: "/ Logic Chart / Normal / left" },
     ];
 
     for (const item of cases) {
