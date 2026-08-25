@@ -33,7 +33,7 @@ M3E の見た目分類は、外部ツール名や旧実装名をそのまま Sur
 ```text
 Surface View
 ├─ Tree
-│  ├─ direction: right / left / both / up / down
+│  ├─ direction: left/right / left / right / up/down / up / down
 │  ├─ space: tight / normal / loose
 │  └─ edge: orthogonal / line / curve
 ├─ Axial
@@ -75,6 +75,27 @@ Surface View
 - **Radial**: 中心から発散して読む。主眼は中心概念からの展開。
 - **Disperse**: 空間的な近さやクラスタで読む。主眼は関係密度・分布・近接。
 - **System**: 箱・境界・モジュール・リンクで読む。主眼は構造、責務、接続。
+
+#### Disperse と tree の関係（粗視化）
+
+> **tree は Disperse の「配置」ではなく「group の階層」を担う。collapse がそのまま graph の縮約になり、粗視化のレベルを人間が選べる。**
+
+- Disperse が力学配置する対象は、**現在の collapse 状態で縮約された可視グラフ**であり、全ノードではない。
+- 部分木を collapse すると、その部分木は 1 つの super-node へ **縮約（contraction）** される。メンバーに接続していた edge は super-node への edge へ **集約** される。
+- tree の深さが繰り込みの梯子になり、同じ graph を粗い解像度と細かい解像度で読み替えられる。
+- subtype `cluster` は tree の group に対応する。tree を layout そのものに使うのは誤り（それは Tree の役目）。
+
+実装上の含意: Disperse の layout は group / 縮約を扱える必要があり、単純な平坦 force では足りない。edge の集約規則（多重 edge の束ね方・重み）を contract 時に定義すること。
+
+#### Disperse subtype の定義
+
+| subtype | 定義 | 座標の出どころ |
+|---|---|---|
+| **scatter** | **自由配置**。人が置いた位置そのものが意味を持つ（近くに置いた＝関係がある、という人間の判断を保存する）。layout は座標を計算せず、保存座標をそのまま使う。 | 人 |
+| **cluster** | **クラスタ**。tree の group を空間的なまとまりとして見せる。同一 group の member は寄せ、別 group は離す。group の境界を可視化してよい。粗視化（collapse）と直結する subtype。 | 計算（group 構造から） |
+| **force** | **力学配置**。edge の張力と斥力の釣り合いで座標を決める。関係構造・密度・近接を読む。 | 計算（edge 構造から） |
+
+3つは排他ではなく、`cluster` は group 拘束を加えた `force` として実装しうる。`scatter` だけは計算せず人の配置を正本とする点で性質が異なる。
 
 #### pipeline / system graph の参照 UI
 
@@ -395,7 +416,7 @@ type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system";
 type SurfaceViewEdge = "orthogonal" | "line" | "curve" | "force-link";
 type SurfaceViewSpace = "tight" | "normal" | "loose";
 type SurfaceViewDirection =
-  | "right" | "left" | "both" | "up" | "down" | "free"
+  | "left/right" | "left" | "right" | "up/down" | "up" | "down" | "free"
   | "clockwise" | "counterclockwise" | "balanced";
 
 interface SurfaceViewConfig {
@@ -655,7 +676,7 @@ function onScopeChange(prevScopeId: string, nextScopeId: string): void {
 ```
 [Flash | Rapid | Deep]  [View: ▼ Tree / Right ]  [+] [-] [Fit] ...
                             ├ Tree
-                            │   ├ direction: right / left / both / up / down
+                            │   ├ direction: left/right / left / right / up/down / up / down
                             │   ├ space: tight / normal / loose
                             │   └ edge: orthogonal / line / curve
                             ├ Axial
