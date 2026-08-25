@@ -74,6 +74,28 @@ describe("LayoutPort contract", () => {
     });
   });
 
+  test("Axial preserves the two-sided direction axis", () => {
+    const rootId = treeStress.input.options.displayRootId!;
+    const rootChildren = treeGraph.childrenOf(rootId);
+    const horizontal = layout(treeGraph, treeStress.input.boxSizes, "Axial", {
+      ...treeStress.input.options,
+      structuredMode: "timeline",
+      direction: "left/right",
+    });
+    const vertical = layout(treeGraph, treeStress.input.boxSizes, "Axial", {
+      ...treeStress.input.options,
+      structuredMode: "timeline",
+      direction: "up/down",
+    });
+    const horizontalRoot = horizontal.pos[rootId]!;
+    const verticalRoot = vertical.pos[rootId]!;
+
+    expect(rootChildren.some((id) => horizontal.pos[id]!.x < horizontalRoot.x)).toBe(true);
+    expect(rootChildren.some((id) => horizontal.pos[id]!.x > horizontalRoot.x)).toBe(true);
+    expect(rootChildren.some((id) => vertical.pos[id]!.y < verticalRoot.y)).toBe(true);
+    expect(rootChildren.some((id) => vertical.pos[id]!.y > verticalRoot.y)).toBe(true);
+  });
+
   test("uses space defaults in Tree when spacing is omitted", () => {
     const tight = treeLayout({ direction: "right", space: "tight" });
     const loose = treeLayout({ direction: "right", space: "loose" });

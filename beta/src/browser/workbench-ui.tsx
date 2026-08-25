@@ -1178,6 +1178,7 @@ function ProgressiveNavigation({
         left: `${progressiveLayout.overlayRect.x}px`,
         top: `${progressiveLayout.overlayRect.y}px`,
       }}
+      onMouseLeave={() => setActiveId(rootId)}
     >
       <svg className="wb-progressive-edges" viewBox={`0 0 ${navWidth} ${navHeight}`} aria-hidden="true">
         {edges.map((edge) => (

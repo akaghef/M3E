@@ -362,8 +362,23 @@ function orientLayoutResult(result: LayoutResult, direction: CardinalLayoutDirec
   return { ...result, pos: oriented, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
 }
 
-function cardinalDirection(direction: LayoutDirection | undefined): CardinalLayoutDirection | undefined {
-  return direction === "left/right" || direction === "up/down" ? undefined : direction;
+function timelineDirectionConfig(direction: LayoutDirection | undefined): {
+  bifurcated: boolean;
+  orientation: CardinalLayoutDirection;
+} {
+  switch (direction) {
+    case "left/right":
+      return { bifurcated: true, orientation: "right" };
+    case "up/down":
+      return { bifurcated: true, orientation: "down" };
+    case "left":
+    case "up":
+    case "down":
+      return { bifurcated: false, orientation: direction };
+    case "right":
+    default:
+      return { bifurcated: false, orientation: "right" };
+  }
 }
 
 function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext): LayoutResult {
@@ -542,7 +557,11 @@ function buildMindmapLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext)
   return { pos, order, totalHeight: bounds.totalHeight, totalWidth: bounds.totalWidth };
 }
 
-function buildTimelineLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext): LayoutResult {
+function buildTimelineLayout(
+  graph: VisibleLayoutGraph,
+  ctx: MeasuredTreeContext,
+  bifurcated: boolean,
+): LayoutResult {
   const { displayRootId, metrics, depthOf, config } = ctx;
   const rootMetric = metrics[displayRootId] || { w: 280, h: LAYOUT.rootHeight };
   const rootX = LAYOUT.leftPad;
@@ -554,27 +573,36 @@ function buildTimelineLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContext
   const rootChildren = graph.childrenOf(displayRootId);
   const stepX = Math.max(config.space === "tight" ? 190 : 260, config.columnGap + 120);
 
-  function placeDescendants(nodeId: string, baseX: number, baseY: number, sign: -1 | 1): void {
+  function placeDescendants(
+    nodeId: string,
+    baseX: number,
+    baseY: number,
+    sign: -1 | 1,
+    depthDirection: -1 | 1,
+  ): void {
     graph.childrenOf(nodeId).forEach((childId, index) => {
       const metric = metrics[childId];
       if (!metric) return;
-      const x = baseX + 54;
+      const x = depthDirection > 0 ? baseX + 54 : baseX - 54 - metric.w;
       const y = baseY + sign * (92 + index * 72);
       pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
       order.push(childId);
-      placeDescendants(childId, x, y, sign);
+      placeDescendants(childId, x, y, sign, depthDirection);
     });
   }
 
   rootChildren.forEach((childId, index) => {
     const metric = metrics[childId];
     if (!metric) return;
-    const x = rootX + rootMetric.w + config.columnGap + index * stepX;
+    const depthDirection: -1 | 1 = bifurcated && index % 2 === 1 ? -1 : 1;
+    const x = depthDirection > 0
+      ? rootX + rootMetric.w + config.columnGap + Math.floor(index / 2) * stepX
+      : rootX - config.columnGap - metric.w - Math.floor(index / 2) * stepX;
     const sign: -1 | 1 = index % 2 === 0 ? -1 : 1;
     const y = axisY + sign * 132;
     pos[childId] = { x, y, depth: depthOf[childId] ?? 1, w: metric.w, h: metric.h, fontSize: metric.fontSize, labelLines: metric.labelLines };
     order.push(childId);
-    placeDescendants(childId, x, y, sign);
+    placeDescendants(childId, x, y, sign, depthDirection);
   });
 
   const bounds = finalizeLayoutBounds(pos, order);
@@ -796,7 +824,11 @@ export function layout(
     return orientLayoutResult(buildMindmapLayout(visibleGraph, directionalContext), treeDirection.orientation);
   }
   if (structuredMode === "timeline") {
-    return orientLayoutResult(buildTimelineLayout(visibleGraph, measuredContext), cardinalDirection(options.direction));
+    const timelineDirection = timelineDirectionConfig(options.direction);
+    return orientLayoutResult(
+      buildTimelineLayout(visibleGraph, measuredContext, timelineDirection.bifurcated),
+      timelineDirection.orientation,
+    );
   }
   const treeResult = treeDirection.bifurcated
     ? buildMindmapLayout(visibleGraph, directionalContext)

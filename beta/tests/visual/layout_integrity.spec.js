@@ -45,14 +45,16 @@ function node(id, parentId, children, text) {
 }
 
 async function chooseProgressiveLayout(page, ...nodeIds) {
-  await page.locator('[aria-label="Surface PN root"]').evaluate((element) => {
+  const navigation = page.locator('[data-testid="progressive-navigation"]');
+  await page.locator('[aria-label="[GUI] navigation root"]').evaluate((element) => {
     const nav = document.querySelector('[data-testid="progressive-navigation"]');
     if (!nav?.classList.contains("is-open")) {
       element.click();
     }
   });
+  await expect(navigation).toHaveClass(/is-open/);
   for (const nodeId of ["view", ...nodeIds]) {
-    const node = page.locator(`[data-pn-node="${nodeId}"]`);
+    const node = navigation.locator(`[data-pn-node="${nodeId}"]`);
     await node.hover();
     await node.evaluate((element) => element.click());
   }
