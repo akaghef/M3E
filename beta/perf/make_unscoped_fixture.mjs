@@ -77,6 +77,11 @@ function jsonPointer(key) {
   return key.replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
+// The save API currently materializes omitted GraphLink endpoint fields as the
+// canonical LinkPort default. No other server-side state normalization is
+// allowed by the generated-fixture verification below.
+const ALLOWED_LINK_PORT_DEFAULTS = Object.freeze(["sourcePort", "targetPort"]);
+
 async function apiJson(baseUrl, pathname, init = {}) {
   const headers = {
     Accept: "application/json",
@@ -128,6 +133,56 @@ function assertSameState(actual, expected, label) {
   }
 }
 
+function stateWithAllowedServerNormalizations(state) {
+  const comparableState = structuredClone(state);
+  for (const link of Object.values(comparableState.links || {})) {
+    if (!link || typeof link !== "object") continue;
+    for (const portField of ALLOWED_LINK_PORT_DEFAULTS) {
+      if (link[portField] === undefined) link[portField] = "auto";
+    }
+  }
+  return comparableState;
+}
+
+function assertGeneratedFixtureState(actual, source, transformed, label) {
+  if (countCollection(actual.nodes) !== countCollection(source.nodes)) {
+    throw new Error(`${label} changed the node count`);
+  }
+  if (actual.rootId !== source.rootId) {
+    throw new Error(`${label} changed rootId`);
+  }
+  if (countCollection(actual.links) !== countCollection(source.links)) {
+    throw new Error(`${label} changed the link count`);
+  }
+
+  const actualNodes = actual.nodes;
+  const sourceNodes = source.nodes;
+  const folderNodes = Object.values(actualNodes).filter((node) => node?.nodeType === "folder");
+  if (folderNodes.length !== 0) {
+    throw new Error(`${label} still contains ${folderNodes.length} folder node(s)`);
+  }
+
+  for (const [nodeId, sourceNode] of Object.entries(sourceNodes)) {
+    const actualNode = actualNodes[nodeId];
+    if (!actualNode) throw new Error(`${label} removed source node ${nodeId}`);
+    if (actualNode.parentId !== sourceNode.parentId) {
+      throw new Error(`${label} changed parentId for node ${nodeId}`);
+    }
+    if (stableSerialize(actualNode.children) !== stableSerialize(sourceNode.children)) {
+      throw new Error(`${label} changed children for node ${nodeId}`);
+    }
+
+    const expectedNodeType = sourceNode.nodeType === "folder" ? "text" : sourceNode.nodeType;
+    if (actualNode.nodeType !== expectedNodeType) {
+      throw new Error(`${label} changed nodeType for node ${nodeId} beyond folder -> text`);
+    }
+  }
+
+  // All state remains byte-equivalent to the requested transformation after
+  // applying only the explicitly listed GraphLink port default normalization.
+  assertSameState(actual, stateWithAllowedServerNormalizations(transformed), label);
+}
+
 function assertGeneratedMapResponse(response, label) {
   if (!response || response.ok !== true || typeof response.id !== "string" || response.id.length === 0) {
     throw new Error(`${label} did not return a new map ID`);
@@ -173,7 +228,7 @@ async function main() {
     apiJson(options.baseUrl, "/api/maps?includeArchived=true"),
   ]);
   const finalState = savedState(savedDocument, "Generated fixture");
-  assertSameState(finalState, transformedState, "Generated fixture");
+  assertGeneratedFixtureState(finalState, sourceState, transformedState, "Generated fixture");
   const scopedState = savedState(scopedDocument, "Generated fixture root scope");
   const metadata = (listDocument?.maps || []).find((entry) => entry.id === generatedMapId);
   if (!metadata) throw new Error(`Generated map ${generatedMapId} was not returned by GET /api/maps`);
@@ -216,6 +271,7 @@ async function main() {
     notes: [
       "Created by POST /api/maps/{sourceMapId}/duplicate, then saved only to the returned new map ID.",
       "Every source node with nodeType=folder was changed to nodeType=text; node identity, children, text, attributes, links, and all other state fields were preserved.",
+      "The save API normalization allowlist accepts only missing GraphLink sourcePort/targetPort becoming LinkPort=auto; every other state difference fails closed.",
       "scopeId is the generated map rootId so the runner reads the complete map subtree after all folder boundaries are removed.",
       "The output path is created with exclusive write semantics; an existing manifest is never overwritten.",
     ],
