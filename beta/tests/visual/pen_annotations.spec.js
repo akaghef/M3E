@@ -60,7 +60,8 @@ test("pen tool draws an SVG stroke and supports undo", async ({ page }) => {
   await launchViewer(page, map);
   await focusBoard(page);
 
-  await page.click("#pen-tool");
+  const penTool = page.getByTestId("workbench-left-rail").getByRole("button", { name: "Pen" });
+  await penTool.click();
   await expect(page.locator("#pen-tool")).toHaveAttribute("aria-pressed", "true");
 
   const boardBox = await page.locator("#board").boundingBox();
@@ -86,11 +87,13 @@ test("drawing toolbar controls pen style and date labels", async ({ page }) => {
   await launchViewer(page, map);
   await focusBoard(page);
 
-  await expect(page.locator("#draw-toolbar")).toBeVisible();
-  await page.click("#draw-pen");
+  const workbenchPanel = page.getByTestId("workbench-right-panel");
+  await expect(workbenchPanel.getByText("Annotation")).toBeVisible();
+  const workbenchPenTool = page.getByTestId("workbench-left-rail").getByRole("button", { name: "Pen" });
+  await workbenchPenTool.click();
   await expect(page.locator("#draw-pen")).toHaveClass(/is-active/);
-  await page.click('[data-pen-color="#e64980"]');
-  await page.locator("#pen-width").evaluate((el) => {
+  await workbenchPanel.getByRole("button", { name: "Stroke #e64980" }).click();
+  await workbenchPanel.getByRole("slider").evaluate((el) => {
     const input = /** @type {HTMLInputElement} */ (el);
     input.value = "4";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -110,7 +113,7 @@ test("drawing toolbar controls pen style and date labels", async ({ page }) => {
   page.once("dialog", async (dialog) => {
     await dialog.accept("4/26");
   });
-  await page.click("#draw-date");
+  await page.getByTestId("workbench-left-rail").getByRole("button", { name: "Date label" }).click();
   await page.mouse.click(boardBox.x + 360, boardBox.y + 310);
   await waitForRender(page);
   await expect(page.locator("text.annotation-text-date")).toHaveText("4/26");
