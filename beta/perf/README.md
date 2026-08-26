@@ -22,9 +22,25 @@ npm run perf:webgl:pan-zoom -- --base-url http://localhost:4173 --renderer both 
 
 For a task-worktree server, run the same command against that server only after its database contains this fixture ID, or pass the matching map/scope/hash options. The runner does not silently substitute another map.
 
-Useful options are `--renderer webgl|svg|both`, `--runs N`, `--warmup N`, `--browser-channel chrome`, `--base-url URL`, `--map-id ID`, `--scope-id ID`, and `--output FILE`. The baseline is headless Chromium/Chrome with the explicit viewport in the result. `--headed` is intentionally rejected so this command never attaches or detaches visible Chrome tabs. `--verify-only` performs only the API integrity pass.
+Useful options are `--renderer webgl|svg|both`, `--runs N`, `--warmup N`, `--browser-channel chrome`, `--base-url URL`, `--manifest PATH`, `--map-id ID`, `--scope-id ID`, and `--output FILE`. The baseline is headless Chromium/Chrome with the explicit viewport in the result. `--headed` is intentionally rejected so this command never attaches or detaches visible Chrome tabs. `--verify-only` performs only the API integrity pass.
 
 Results are written to `beta/perf-results/` (ignored by Git). Each JSON result records timestamp, Git revision/dirty state, Node/OS, browser/version, viewport/DPR, target/hash, run config, gesture timings, Long Task observations, and per-run WebGL debug invariants.
+
+## Create a whole-map unscoped fixture
+
+When a scoped fixture is too light to compare WebGL with SVG, create a separate manifest and map with:
+
+```bash
+cd beta
+node perf/make_unscoped_fixture.mjs \
+  --base-url http://localhost:4173 \
+  --source-map-id <source-map-id> \
+  --workspace-id <workspace-id>
+```
+
+The script reads `GET /api/maps/{sourceMapId}`, converts every `nodeType: "folder"` to `nodeType: "text"`, and keeps the node tree and all other state fields. It creates the destination with `POST /api/maps/{sourceMapId}/duplicate`, verifies the raw duplicate, and writes the transformed state only to that newly returned map ID with `POST /api/maps/{generatedMapId}`. The manifest uses the generated map root as `scopeId`, so the runner reads the complete subtree. The default output is `fixtures/pfr-blueprint.unscoped-full.performance-fixture.manifest.json`; existing output files are refused rather than overwritten. `--output` may select another path under `beta/perf/fixtures/`.
+
+`--workspace-id` is explicit because workspace context is a viewer URL/API context and is not part of the saved map state returned by `GET /api/maps/{mapId}`. The API calls create a new map and never write to the supplied source map.
 
 ## Measurement semantics
 

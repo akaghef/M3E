@@ -26,9 +26,10 @@ function usage() {
   return `Usage: node perf/run_webgl_pan_zoom.mjs [options]
 
   --base-url URL          Viewer/API origin (default: http://localhost:4173)
+  --manifest PATH         Fixture manifest path (default: pfr-blueprint.performance-fixture.manifest.json)
   --renderer MODE         webgl, svg, or both (default: both)
-  --map-id ID             Must match the frozen fixture manifest
-  --scope-id ID           Must match the frozen fixture manifest
+  --map-id ID             Must match the selected fixture manifest
+  --scope-id ID           Must match the selected fixture manifest
   --runs N                Measured runs per renderer (default: 5)
   --warmup N              Warmup gestures per renderer (default: 2)
   --browser-channel NAME  Playwright browser channel, e.g. chrome
@@ -45,6 +46,7 @@ function parseArgs(argv) {
     warmup: 2,
     browserChannel: undefined,
     output: undefined,
+    manifestPath: undefined,
     verifyOnly: false,
     mapId: undefined,
     scopeId: undefined,
@@ -63,6 +65,7 @@ function parseArgs(argv) {
     else if (arg === "--warmup") options.warmup = Number(value);
     else if (arg === "--browser-channel") options.browserChannel = value;
     else if (arg === "--output") options.output = path.resolve(value);
+    else if (arg === "--manifest") options.manifestPath = path.resolve(value);
     else if (arg === "--map-id") options.mapId = value;
     else if (arg === "--scope-id") options.scopeId = value;
     else throw new Error(`Unknown option: ${arg}`);
