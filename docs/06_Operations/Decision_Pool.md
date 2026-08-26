@@ -5,6 +5,78 @@
 
 ---
 
+## 2026-08-25-001
+
+- Date: 2026-08-25
+- Topic: Radial Surface View を廃止し Tree へ畳む
+- Status: accepted
+- Decision:
+  - **Surface View 正本は `Tree / Axial / Disperse / System` の4種**とする。Radial を廃止する。
+  - 旧「Mind Map」「`balanced-tree`」は **Tree の両側 preset**（`direction: left/right`）として扱う。
+  - 現況のコード・UI・seam lab から Radial / 内部 mode key `mindmap` の実体を削除する。**残す痕跡は git 履歴と ADR_010 のみ。**
+  - 保存スキーマ上の legacy 値としての読み取り互換は維持し、Tree の両側 preset へ移行する。移行実装は D2 に合わせる。
+- Why: canon の Radial は `clockwise / counterclockwise / balanced` という角度系を規定していたが、**実装は一度も角度配置を持たず**、direction は Tree と同じ `left/right` / `left` / `right` だった。実ブラウザで描画すると両側 Tree そのものであり、port 選択の経路も Tree と共有されていた。固有の幾何を持たないまま実体を共有し、同じものに名前が2つある状態だった。`03d1fc3` で Tree の direction 規則が Radial へ流入し接続線がノード矩形を貫通した不具合は、この重複の症状（Logic Chart = Tree preset では同条件で発生しない）。
+- Next: viewer / PN / adapter / edge port / seam lab / テストから Radial を削除。`map_layout_modes.md` の正本規定を4種へ改訂。非正本のアルゴリズムカタログと legacy スキーマ節の `balanced-tree` は履歴として残す。
+- Source: 2026-08-25 akaghef「OP2に決断。残骸は履歴とADRだけでいいので、現況からはRadialは消し去って。seam labも含め」
+- Promoted: [../09_Decisions/ADR_010_Radial_Surface_View_Removal.md](../09_Decisions/ADR_010_Radial_Surface_View_Removal.md)
+
+## 2026-08-23-003
+
+- Date: 2026-08-23
+- Topic: Disperse の layout engine に WebCola を採用
+- Status: working-agreement
+- Decision:
+  - **Disperse の layout engine は WebCola**（cola.js）。理由は思想の適合であり、ベンチマークによる選定ではない（akaghef 指示「実測はしない。思想で決める」）。
+  - 要件3つ（**矩形の非重複** / **group が第一級** / **collapse で縮約**）に対し、WebCola は制約ベースで「傾向でなく保証」を与え、矩形非重複と group を第一級に持つ。ほぼ一対一で対応する。
+  - **d3-force は不採用**: 衝突が円で矩形の非重複を保証できず、group を自作することになる。
+  - **elkjs は不採用**: compound は native だが思想の重心が層化（Sugiyama）された図であり、「近接と密度で読む」Disperse の主眼と向きが違う。既存決定 2026-06-06-001 の elkjs 優先は `Axial.subtype=pipeline` / `System.subtype=architecture` の文脈で、Disperse には射程が及ばない。
+  - **renderer 一体型ライブラリ（sigma.js / cosmograph 等）は採らない**。描画は既存の自前 WebGL projection を使い、layout は headless で座標のみ返す。
+  - 既知リスク: WebCola は開発が停滞気味。思想の適合と保守性は別問題として認識する。
+  - **実装より先に layout を決める**（akaghef 指示「レイアウトを決めるのが seam lab の優先だ」）。group 境界の描画有無 / group 間分離量 / collapse 時の super-node footprint / 縮約時の edge 集約規則の4点は、seam lab のコントロールとして出し目視で決定する。
+- Why: 自作は既に劣化コピー（viewer の `runScatterSimulation`）として存在しており、規律（焼きなまし・衝突・決定論）を欠いている。ライブラリ選定を実測で行うと、決めたい対象（どう見えるべきか）ではなく数値に引きずられる。
+- Next: `disperse-lab` を seam lab として立て、上記4問をコントロールとして出す。受け入れ条件は `synthetic-100-varied-boxes` で 重なり0 / アスペクト比上限 / 充填率下限。
+- Source: 2026-08-23 akaghef「web colaに決定して、まとめて、seam labとして実装を作り上げてください」
+- Promoted: [../04_Architecture/Disperse_Layout_Design.md](../04_Architecture/Disperse_Layout_Design.md)
+
+## 2026-08-23-002
+
+- Date: 2026-08-23
+- Topic: Disperse の目的と、tree を group 階層として使う粗視化設計
+- Status: working-agreement
+- Decision:
+  - Disperse の主眼は正本どおり **空間的近接・クラスタ・関係密度**（[map_layout_modes.md](../03_Spec/map_layout_modes.md) 意味上の分離）。
+  - **tree は Disperse の配置ではなく group の階層を担う。** collapse が graph の縮約になり、粗視化レベルを人間が選べる。tree の深さ = 繰り込みの梯子。
+  - 力学配置の対象は **collapse 状態で縮約された可視グラフ**。collapse した部分木は 1 super-node へ縮約し、edge は super-node へ集約する。
+  - subtype `cluster` は tree の group に対応づける。
+  - **現行実装は Disperse ではない**: `layout_port.ts` の Disperse 分岐は leaf を Y に等間隔で並べ depth を X に送る rank-flow tree seed（横倒しの Tree）。近接・密度を一切表現していない。「直す」ではなく「未実装なので実装する」が正しい認識。
+  - **rank-flow seed を残して衝突緩和だけ足す案は目的違反として却下**（整った Tree が増えるだけ）。
+  - **自作しない**。力学配置・group 対応 layout は既製ライブラリに寄せる（全体規則 + Decision 2026-06-06-001「新規の大規模 graph layout を自作しない」）。group / compound 対応が選定基準に入る。
+  - Disperse は `layout_port.ts` の seed と viewer の `runScatterSimulation()`（収束条件なし）に **二重実装**されている。Tree と同様に単一 seam へ寄せる。
+- Why: 目的（近接・密度）を定義しないままパラメータ調整すると、Tree の別表現を作り込むだけになる。tree を group 階層に使う設計は M3E の spine をそのまま多重解像度の梯子に転用でき、collapse という既存操作が粗視化の操作子になる。
+  - **粗視化の操作子は既存の collapse をそのまま使う**（Disperse 専用のレベル概念を別に持たない）。
+  - **subtype の対応**（正本 line 67 の「自由配置・クラスタ・力学配置」に対応）: `scatter`=自由配置（座標は人が置く。計算しない）/ `cluster`=tree group を空間的まとまりとして見せる / `force`=edge の張力と斥力で座標を決める。**各 subtype の定義文は正本に未記載**（列挙のみ）。
+  - **renderer と layout を分離する**: 描画は既存の自前 WebGL projection（`beta/src/browser/webgl_projection.ts`、branch `codex/webgl-rendering-projection-phase1`、735行、外部ライブラリなし）をそのまま使う。layout は **headless で座標だけ返すライブラリ**に限る。sigma.js / cosmograph のような renderer 一体型は自前 WebGL と二重になるため採らない。
+  - ライブラリ候補は group 対応を基準に: `webcola`（group が第一級）/ `elkjs`（compound、既存決定 2026-06-06-001 で優先指定）。`d3-force` は平坦なので今回は不利。
+- Next: subtype は `force` 1本から着手する案を検討。`space` を Disperse に通す（密度が主眼である以上、本質パラメータ）。`MapSurface` に `subtype` / `space` が無く kind が legacy `scatter` のため migration が要る。受け入れ条件は `synthetic-100-varied-boxes` で 重なり0 / アスペクト比上限 / 充填率下限。WebGL なら大 N を描けるので、force を worker で回し座標を stream する構成を検討できる。
+- Source: 2026-08-23 akaghef「そもそもDisperseはどういう目的か？」「groupの階層をtreeで記述しておくと、collapseで粗視化が自然にできる。graphの縮約がよくわかる」+ Codex read-only 診断
+- Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md)（意味上の分離に「Disperse と tree の関係（粗視化）」を追加）
+
+## 2026-08-23-001
+
+- Date: 2026-08-23
+- Topic: layout 用語の統合（direction 一語化、`both` 廃止、space と数値の一本化）
+- Status: working-agreement
+- Decision:
+  - **`direction` は1語**。値は `left/right` / `left` / `right` / `up/down` / `up` / `down`（+ view 固有: Radial の clockwise / counterclockwise / balanced、System の free）。
+  - **`both` は廃止**。分かりにくいため、水平両側 = `left/right`、垂直両側 = `up/down` と明示する。
+  - `branchDirection` は廃語。`direction` へ統合する（コードが正本を2語に割った drift）。
+  - **`space` は1語**（tight / normal / loose）。`density` は廃語。`spacing{nodeGap,levelGap,padding}` は `space` の展開値であり、独立入力チャネルにしない。
+- Why: 正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md) に元から1語で定義されていたが、実装が `LayoutDirection`/`LayoutBranchDirection`、`LayoutDensity`/`spacing` に分割し drift した。`density` の `balanced` は Radial の `direction=balanced` と衝突していた。
+- 実測（layout-lab, 2026-08-23）: Tree では nodeGap 14→200 も density balanced→spacious も `2579 x 882` で不変。同設定で Radial は `3454 x 4384`。原因は [layout_port.ts:254](../../beta/src/shared/layout_port.ts) 等の `config.mode === "tree" ? LAYOUT.columnGap : config.columnGap` ハードコード分岐。**最優先 view の Tree で間隔設定が無効**。
+- Next: 用語確認フェーズ完了後にコード reconcile（`branchDirection`/`density` 廃止、Tree ハードコード撤去、`space`→数値の一本化）。`direction` 変更後に `branchSide` が再計算されない件も同時に扱う。
+- Source: 2026-08-23 akaghef 指示「bothは分かりにくい。bothをleft/right, up/downとせよ」「gapとdensityがダブってそう。数値と連動するようにすべき」
+- Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md), `.kiro/steering/ui_view_taxonomy_and_ports.md`
+
 ## 2026-07-19-001
 
 - Date: 2026-07-19

@@ -40,11 +40,10 @@ import {
 } from "../shared/pn_layout";
 import "./workbench-ui.css";
 
-type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" | "note";
+type ToolId = "select" | "nodes" | "pen" | "highlighter" | "date" | "eraser" | "note";
 type ModalId = "menu" | "settings" | "share" | "help" | "ai" | null;
-type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-type ProgressiveBranchDirection = "both" | "right" | "left";
-type ProgressiveLayoutDirection = "right" | "left" | "down" | "up";
+type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
+type ProgressiveLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type ProgressiveDepthAlign = "aligned" | "packed";
 type ProgressiveEdgeRoute = "elbow" | "bezier" | "straight";
 type ProgressiveLinkRoute = "simple-bezier" | "orthogonal" | "straight";
@@ -82,15 +81,20 @@ type ProgressiveNodeId =
   | "board"
   | "view"
   | "scatter"
-  | "mindmap"
   | "annotation"
   | "panel"
   | "layout"
   | "layout-direction"
+  | "layout-direction-left-right"
   | "layout-direction-right"
   | "layout-direction-left"
+  | "layout-direction-up-down"
   | "layout-direction-down"
   | "layout-direction-up"
+  | "layout-space"
+  | "layout-space-tight"
+  | "layout-space-normal"
+  | "layout-space-loose"
   | "layout-depth-align"
   | "layout-depth-aligned"
   | "layout-depth-packed"
@@ -107,24 +111,23 @@ type ProgressiveNodeId =
   | "export-mm"
   | "export-vault"
   | "tree"
-  | "mindmap-surface"
-  | "mindmap-both"
-  | "mindmap-right"
-  | "mindmap-left"
-  | "mindmap-compact"
-  | "mindmap-spacious"
-  | "mindmap-orthogonal"
   | "logic-chart-surface"
-  | "logic-chart-compact"
-  | "logic-chart-balanced"
-  | "logic-chart-spacious"
-  | "logic-chart-both"
-  | "logic-chart-right"
-  | "logic-chart-left"
+  | "logic-chart-direction"
+  | "logic-chart-direction-left-right"
+  | "logic-chart-direction-left"
+  | "logic-chart-direction-right"
+  | "logic-chart-direction-up-down"
+  | "logic-chart-direction-up"
+  | "logic-chart-direction-down"
+  | "logic-chart-space"
+  | "logic-chart-space-tight"
+  | "logic-chart-space-normal"
+  | "logic-chart-space-loose"
   | "timeline-surface"
-  | "timeline-compact"
-  | "timeline-balanced"
-  | "timeline-spacious"
+  | "timeline-space"
+  | "timeline-space-tight"
+  | "timeline-space-normal"
+  | "timeline-space-loose"
   | "system"
   | "scatter-surface"
   | "scatter-normal"
@@ -183,14 +186,15 @@ function clickLegacy(id: string): void {
 
 function setSurfaceLayout(
   mode: ProgressiveSurfaceMode,
-  density: "compact" | "balanced" | "spacious",
-  direction?: ProgressiveBranchDirection,
+  space: "tight" | "normal" | "loose",
+  direction?: ProgressiveLayoutDirection,
 ): void {
-  window.dispatchEvent(new CustomEvent("m3e:set-surface-layout", { detail: { mode, density, direction } }));
+  window.dispatchEvent(new CustomEvent("m3e:set-surface-layout", { detail: { mode, space, direction } }));
 }
 
 function setLayoutOptions(detail: {
   direction?: ProgressiveLayoutDirection;
+  space?: "tight" | "normal" | "loose";
   depthAlign?: ProgressiveDepthAlign;
   edgeRoute?: ProgressiveEdgeRoute;
   linkRoute?: ProgressiveLinkRoute;
@@ -474,7 +478,7 @@ function LeftRail({
         <IconButton label="Select" active={tool === "select"} onClick={() => activate("select", "draw-select")}>
           <MousePointer2 size={20} />
         </IconButton>
-        <IconButton label="Mindmap" active={tool === "mindmap"} onClick={() => activate("mindmap", "view-tree")}>
+        <IconButton label="Nodes" active={tool === "nodes"} onClick={() => activate("nodes", "view-tree")}>
           <Waypoints size={20} />
         </IconButton>
         <IconButton
@@ -706,7 +710,7 @@ function RightPanel({
         </div>
       </section>
       <section className="wb-panel-section">
-        <div className="wb-section-title">Mindmap</div>
+        <div className="wb-section-title">Node actions</div>
         <div className="wb-action-grid">
           <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }))}>Add child</button>
           <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }))}>Toggle scope</button>
@@ -832,8 +836,7 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "gui", label: "[GUI]", hint: "overlay root" },
     { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
     { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
-    { id: "scatter", label: "Scatter", hint: "scatter editing tools", parentId: "gui" },
-    { id: "mindmap", label: "Mindmap", hint: "node and scope actions", parentId: "gui" },
+    { id: "scatter", label: "Disperse", hint: "Disperse editing tools", parentId: "gui" },
     { id: "annotation", label: "Annotation", hint: "drawing tools", parentId: "gui" },
     { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
     { id: "import", label: "Import file", hint: "board input", parentId: "board", action: () => clickLegacy("import-file-btn") },
@@ -841,32 +844,37 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "board", action: () => clickLegacy("download-mm-btn") },
     { id: "export-vault", label: "Export to Vault", hint: "write linear notes", parentId: "board", action: () => clickLegacy("export-vault-btn") },
     { id: "tree", label: "Tree surface", hint: "classic right tree", parentId: "view", action: () => clickLegacy("view-tree") },
-    { id: "mindmap-surface", label: "Mind Map", hint: "mapify-like map templates", parentId: "view", action: () => setSurfaceLayout("mindmap", "balanced", "both") },
-    { id: "mindmap-both", label: "Mind both", hint: "depth on both sides", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "both") },
-    { id: "mindmap-right", label: "Mind right", hint: "one-sided right depth", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "right") },
-    { id: "mindmap-left", label: "Mind left", hint: "one-sided left depth", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "left") },
-    { id: "mindmap-compact", label: "Mind compact", hint: "dense both-side map", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "compact", "both") },
-    { id: "mindmap-spacious", label: "Mind spacious", hint: "wide both-side map", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "spacious", "both") },
-    { id: "mindmap-orthogonal", label: "Mind orthogonal", hint: "both-side logic links", parentId: "mindmap-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "both") },
-    { id: "logic-chart-surface", label: "Logic Chart", hint: "logic templates", parentId: "view", action: () => setSurfaceLayout("logic-chart", "compact", "right") },
-    { id: "logic-chart-compact", label: "Logic compact", hint: "mapify-like dense ranks", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "compact", "right") },
-    { id: "logic-chart-balanced", label: "Logic balanced", hint: "readable mid-density ranks", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "right") },
-    { id: "logic-chart-spacious", label: "Logic spacious", hint: "wide review spacing", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "spacious", "right") },
-    { id: "logic-chart-both", label: "Logic both", hint: "depth on both sides", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "both") },
-    { id: "logic-chart-right", label: "Logic right", hint: "one-sided right depth", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "right") },
-    { id: "logic-chart-left", label: "Logic left", hint: "one-sided left depth", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "left") },
-    { id: "timeline-surface", label: "Timeline", hint: "axis-based layout", parentId: "view", action: () => clickLegacy("view-timeline") },
-    { id: "timeline-compact", label: "Timeline compact", hint: "short axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "compact") },
-    { id: "timeline-balanced", label: "Timeline balanced", hint: "standard axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "balanced") },
-    { id: "timeline-spacious", label: "Timeline spacious", hint: "wide axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "spacious") },
+    { id: "logic-chart-surface", label: "Logic Chart", hint: "logic templates", parentId: "view", action: () => setSurfaceLayout("logic-chart", "tight", "right") },
+    { id: "logic-chart-direction", label: "Direction", hint: "layout growth axis", parentId: "logic-chart-surface" },
+    { id: "logic-chart-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "left/right") },
+    { id: "logic-chart-direction-left", label: "Left", hint: "grow left", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "left") },
+    { id: "logic-chart-direction-right", label: "Right", hint: "grow right", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "right") },
+    { id: "logic-chart-direction-up-down", label: "Up / Down", hint: "grow on two vertical sides", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "up/down") },
+    { id: "logic-chart-direction-up", label: "Up", hint: "grow up", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "up") },
+    { id: "logic-chart-direction-down", label: "Down", hint: "grow down", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "down") },
+    { id: "logic-chart-space", label: "Space", hint: "layout spacing", parentId: "logic-chart-surface" },
+    { id: "logic-chart-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "tight", "right") },
+    { id: "logic-chart-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "normal", "right") },
+    { id: "logic-chart-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "loose", "right") },
+    { id: "timeline-surface", label: "Axial", hint: "axis-based layout", parentId: "view", action: () => clickLegacy("view-timeline") },
+    { id: "timeline-space", label: "Space", hint: "layout spacing", parentId: "timeline-surface" },
+    { id: "timeline-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "tight") },
+    { id: "timeline-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "normal") },
+    { id: "timeline-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "loose") },
     { id: "system", label: "System surface", hint: "diagram canvas", parentId: "view", action: () => clickLegacy("view-system") },
-    { id: "scatter-surface", label: "Scatter surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
+    { id: "scatter-surface", label: "Disperse surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
     { id: "layout", label: "Layout", hint: "surface layout options", parentId: "view" },
     { id: "layout-direction", label: "Direction", hint: "layout growth axis", parentId: "layout" },
+    { id: "layout-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "left/right" }), active: () => currentLayoutDirection() === "left/right" },
     { id: "layout-direction-right", label: "Right", hint: "grow right", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "right" }), active: () => currentLayoutDirection() === "right" },
     { id: "layout-direction-left", label: "Left", hint: "grow left", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "left" }), active: () => currentLayoutDirection() === "left" },
+    { id: "layout-direction-up-down", label: "Up / Down", hint: "grow on two vertical sides", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "up/down" }), active: () => currentLayoutDirection() === "up/down" },
     { id: "layout-direction-down", label: "Down", hint: "grow down", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "down" }), active: () => currentLayoutDirection() === "down" },
     { id: "layout-direction-up", label: "Up", hint: "grow up", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "up" }), active: () => currentLayoutDirection() === "up" },
+    { id: "layout-space", label: "Space", hint: "layout spacing", parentId: "layout" },
+    { id: "layout-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "layout-space", action: () => setLayoutOptions({ space: "tight" }) },
+    { id: "layout-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "layout-space", action: () => setLayoutOptions({ space: "normal" }) },
+    { id: "layout-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "layout-space", action: () => setLayoutOptions({ space: "loose" }) },
     { id: "layout-depth-align", label: "Depth Align", hint: "rank alignment", parentId: "layout" },
     { id: "layout-depth-aligned", label: "Aligned", hint: "align depth ranks", parentId: "layout-depth-align", action: () => setLayoutOptions({ depthAlign: "aligned" }), active: () => currentDepthAlign() === "aligned" },
     { id: "layout-depth-packed", label: "Packed", hint: "pack subtrees", parentId: "layout-depth-align", action: () => setLayoutOptions({ depthAlign: "packed" }), active: () => currentDepthAlign() === "packed" },
@@ -885,10 +893,10 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
     { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
     { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
-    { id: "add-child", label: "Add child", hint: "Tab", parentId: "mindmap", action: () => sendKey("Tab") },
-    { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "mindmap", action: () => sendKey("f") },
-    { id: "enter-scope", label: "Enter scope", hint: "]", parentId: "mindmap", action: () => sendKey("]") },
-    { id: "exit-scope", label: "Exit scope", hint: "[", parentId: "mindmap", action: () => sendKey("[") },
+    { id: "add-child", label: "Add child", hint: "Tab", parentId: "gui", action: () => sendKey("Tab") },
+    { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "gui", action: () => sendKey("f") },
+    { id: "enter-scope", label: "Enter scope", hint: "]", parentId: "gui", action: () => sendKey("]") },
+    { id: "exit-scope", label: "Exit scope", hint: "[", parentId: "gui", action: () => sendKey("[") },
     { id: "pen", label: "Pen", hint: "freehand draw", parentId: "annotation", action: () => clickLegacy("draw-pen") },
     { id: "highlighter", label: "Highlighter", hint: "wide translucent stroke", parentId: "annotation", action: () => clickLegacy("draw-highlighter") },
     { id: "date", label: "Date label", hint: "stamp date", parentId: "annotation", action: () => clickLegacy("draw-date") },
@@ -1101,7 +1109,10 @@ function ProgressiveNavigation({
   const edges = progressiveLayout.edges;
 
   useLayoutEffect(() => {
-    scheduleMeasure();
+    // This establishes the opening geometry before the overlay becomes
+    // observable.  Viewport fast-path events must not inherit a pending
+    // measurement frame and trigger a layout recompute after they fire.
+    measureRootAnchor();
     window.addEventListener("resize", scheduleMeasure);
     window.addEventListener("m3e:layout-options-changed", scheduleMeasure);
     return () => {
@@ -1112,7 +1123,7 @@ function ProgressiveNavigation({
       window.removeEventListener("resize", scheduleMeasure);
       window.removeEventListener("m3e:layout-options-changed", scheduleMeasure);
     };
-  }, [activeId, mode, open, rootId, scheduleMeasure]);
+  }, [activeId, measureRootAnchor, mode, open, rootId, scheduleMeasure]);
 
   useEffect(() => {
     setActiveId(rootId);

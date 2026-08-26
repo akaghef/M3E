@@ -157,8 +157,7 @@ test.describe("Shift+Arrow selection extension", () => {
     const before = await getSelectedCount(page);
 
     await pressKey(page, "Shift+ArrowDown");
-    const after = await getSelectedCount(page);
-    expect(after).toBeGreaterThan(before);
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThan(before);
   });
 
   test("Shift+ArrowDown extends further on consecutive presses from root", async ({ page }) => {
@@ -166,13 +165,12 @@ test.describe("Shift+Arrow selection extension", () => {
     await focusBoard(page);
 
     await pressKey(page, "Shift+ArrowDown");
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThanOrEqual(2);
     const afterOne = await getSelectedCount(page);
-    expect(afterOne).toBeGreaterThanOrEqual(2);
 
     await pressKey(page, "Shift+ArrowDown");
-    const afterTwo = await getSelectedCount(page);
     // Second press should keep or extend selection (layout-dependent).
-    expect(afterTwo).toBeGreaterThanOrEqual(afterOne);
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThanOrEqual(afterOne);
   });
 });
 

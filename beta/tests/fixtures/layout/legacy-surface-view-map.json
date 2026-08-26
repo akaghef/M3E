@@ -1,0 +1,25 @@
+{
+  "rootId": "root",
+  "nodes": {
+    "root": {
+      "attributes": {
+        "m3e:branch-direction": "both",
+        "m3e:layout-density": "spacious"
+      }
+    },
+    "compact-scope": {
+      "attributes": {
+        "m3e:branch-direction": "left",
+        "m3e:layout-density": "compact"
+      }
+    }
+  },
+  "scopes": {
+    "scope:root": { "rootNodeIds": ["root"] },
+    "scope:compact-scope": { "rootNodeIds": ["compact-scope"] }
+  },
+  "surfaces": {
+    "surface:root:tree": { "scopeId": "scope:root" },
+    "surface:compact-scope:tree": { "scopeId": "scope:compact-scope" }
+  }
+}

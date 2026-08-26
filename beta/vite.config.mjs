@@ -4,11 +4,19 @@ import fs from "node:fs";
 import path from "node:path";
 
 export default defineConfig({
+  cacheDir: "../tmp/vite-cache",
   plugins: [
     react(),
     {
       name: "m3e-static-viewer-css",
       configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url === "/") {
+            req.url = "/src/labs/index.html";
+          }
+          next();
+        });
+
         server.middlewares.use("/viewer.css", (_req, res) => {
           res.setHeader("Content-Type", "text/css; charset=utf-8");
           fs.createReadStream(path.resolve(process.cwd(), "viewer.css")).pipe(res);
@@ -23,6 +31,7 @@ export default defineConfig({
       input: {
         viewer: "src/browser/viewer.ts",
         "workbench-ui": "src/browser/workbench-ui.tsx",
+        "seam-lab-index": "src/labs/index.html",
         "layout-lab": "src/labs/layout/layout-lab.html",
         "edge-port-lab": "src/labs/edge-port/edge-port-lab.html",
         "node-lab": "src/labs/node/node-lab.html",

@@ -1,7 +1,6 @@
 import {
   layout as layoutPortLayout,
-  type LayoutBranchDirection,
-  type LayoutDensity,
+  type LayoutSpace,
   type LayoutMode,
   type LayoutNodeMetric,
   type LayoutOptions,
@@ -9,6 +8,12 @@ import {
   type StructuredLayoutMode,
   type VisibleLayoutGraph,
 } from "../shared/layout_port";
+import {
+  migrateSurfaceViewFromMapRead,
+  isLegacyBalancedTreeSurface,
+  sanitizeSurfaceLayoutDirection,
+  sanitizeSurfaceSpace,
+} from "../shared/surface_view_migration";
 import {
   canonicalSurfaceViewName,
   normalizeNodeDrawStyle,
@@ -40,7 +45,6 @@ const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const viewTreeBtn = document.getElementById("view-tree");
-const viewMindmapBtn = document.getElementById("view-mindmap");
 const viewLogicChartBtn = document.getElementById("view-logic-chart");
 const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
@@ -724,8 +728,7 @@ let viewState: ViewState = {
   currentScopeRootId: "",
   thinkingMode: "rapid",
   surfaceViewMode: "tree",
-  surfaceLayoutDensity: "balanced",
-  surfaceBranchDirection: "right",
+  surfaceSpace: "normal",
   surfaceLayoutDirection: "right",
   surfaceDepthAlign: "packed",
   surfaceEdgeRoute: "elbow",
@@ -767,10 +770,9 @@ function thinkingModeLabel(mode: ThinkingMode): string {
 
 function surfaceViewModeLabel(mode: SurfaceViewMode): string {
   if (mode === "system") return "System";
-  if (mode === "scatter") return "Scatter";
-  if (mode === "mindmap") return "Mind Map";
+  if (mode === "scatter") return "Disperse";
   if (mode === "logic-chart") return "Logic Chart";
-  if (mode === "timeline") return "Timeline";
+  if (mode === "timeline") return "Axial";
   return "Tree";
 }
 
@@ -781,16 +783,14 @@ function requestedSurfaceViewMode(): SurfaceViewMode | null {
   return null;
 }
 
-function surfaceLayoutDensityLabel(density: SurfaceLayoutDensity): string {
-  if (density === "compact") return "Compact";
-  if (density === "spacious") return "Spacious";
-  return "Balanced";
+function surfaceSpaceLabel(space: SurfaceSpace): string {
+  if (space === "tight") return "Tight";
+  if (space === "loose") return "Loose";
+  return "Normal";
 }
 
-function surfaceBranchDirectionLabel(direction: SurfaceBranchDirection): string {
-  if (direction === "both") return "Both";
-  if (direction === "left") return "Left";
-  return "Right";
+function surfaceLayoutDirectionLabel(direction: SurfaceLayoutDirection): string {
+  return direction;
 }
 
 function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
@@ -800,7 +800,6 @@ function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
 function surfaceLayoutForKind(kind: SurfaceKind): SurfaceLayout {
   if (kind === "system") return "flow-lr";
   if (kind === "scatter") return "scatter";
-  if (kind === "mindmap") return "mindmap";
   if (kind === "logic-chart") return "logic-chart";
   if (kind === "timeline") return "timeline";
   return "tree";
@@ -817,32 +816,12 @@ function inferSurfaceViewModeForScope(scopeId: string): SurfaceViewMode {
   }
   const rawLayout = rawAttr(map.state.nodes[scopeId], "m3e:layout");
   if (rawLayout === "flow-lr") return "system";
-  if (rawLayout === "mindmap") return "mindmap";
+  // Legacy persisted mode: migrate on read to the Tree two-sided preset.
+  if (rawLayout === "mindmap" || rawLayout === "balanced-tree") return "tree";
   if (rawLayout === "logic-chart") return "logic-chart";
   if (rawLayout === "timeline") return "timeline";
   if (rawLayout === "scatter") return "scatter";
   return "tree";
-}
-
-function sanitizeSurfaceLayoutDensity(value: unknown): SurfaceLayoutDensity {
-  if (value === "compact" || value === "balanced" || value === "spacious") {
-    return value;
-  }
-  return "balanced";
-}
-
-function sanitizeSurfaceBranchDirection(value: unknown): SurfaceBranchDirection {
-  if (value === "both" || value === "right" || value === "left") {
-    return value;
-  }
-  return "right";
-}
-
-function sanitizeSurfaceLayoutDirection(value: unknown): SurfaceLayoutDirection {
-  if (value === "right" || value === "left" || value === "down" || value === "up") {
-    return value;
-  }
-  return "right";
 }
 
 function sanitizeSurfaceDepthAlign(value: unknown): SurfaceDepthAlign {
@@ -863,25 +842,29 @@ function sanitizeSurfaceLinkRoute(value: unknown): SurfaceLinkRoute {
   return "simple-bezier";
 }
 
-function inferSurfaceLayoutDensityForScope(scopeId: string, mode: SurfaceViewMode): SurfaceLayoutDensity {
+function inferSurfaceSpaceForScope(scopeId: string, mode: SurfaceViewMode): SurfaceSpace {
   if (!map || !map.state.nodes[scopeId]) {
-    return "balanced";
+    return "normal";
   }
-  const explicit = rawAttr(map.state.nodes[scopeId], "m3e:layout-density");
+  const scope = map.state.scopes?.[inferredScopeId(scopeId)];
+  const explicit = scope?.primarySurfaceId ? map.state.surfaces?.[scope.primarySurfaceId]?.surfaceView?.space : undefined;
   if (explicit) {
-    return sanitizeSurfaceLayoutDensity(explicit);
+    return sanitizeSurfaceSpace(explicit);
   }
-  return mode === "logic-chart" ? "compact" : "balanced";
+  return mode === "logic-chart" ? "tight" : "normal";
 }
 
-function inferSurfaceBranchDirectionForScope(scopeId: string, mode: SurfaceViewMode): SurfaceBranchDirection {
+function inferSurfaceLayoutDirectionForScope(scopeId: string): SurfaceLayoutDirection {
   if (!map || !map.state.nodes[scopeId]) {
     return "right";
   }
-  const explicit = rawAttr(map.state.nodes[scopeId], "m3e:branch-direction");
+  const scope = map.state.scopes?.[inferredScopeId(scopeId)];
+  const explicit = scope?.primarySurfaceId ? map.state.surfaces?.[scope.primarySurfaceId]?.surfaceView?.direction : undefined;
   if (explicit) {
-    return sanitizeSurfaceBranchDirection(explicit);
+    return sanitizeSurfaceLayoutDirection(explicit);
   }
+  const rawLayout = rawAttr(map.state.nodes[scopeId], "m3e:layout");
+  if (isLegacyBalancedTreeSurface(rawLayout)) return "left/right";
   return "right";
 }
 
@@ -894,14 +877,13 @@ function syncThinkingModeUi(): void {
   document.documentElement.dataset.surfaceEdgeRoute = viewState.surfaceEdgeRoute;
   document.documentElement.dataset.surfaceLinkRoute = viewState.surfaceLinkRoute;
   const layoutSuffix = surfaceMode
-    ? ` / ${surfaceLayoutDensityLabel(viewState.surfaceLayoutDensity)} / ${surfaceBranchDirectionLabel(viewState.surfaceBranchDirection)}`
+    ? ` / ${surfaceSpaceLabel(viewState.surfaceSpace)} / ${surfaceLayoutDirectionLabel(viewState.surfaceLayoutDirection)}`
     : "";
   modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix}`;
   modeFlashBtn?.classList.toggle("is-active", mode === "flash");
   modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
   viewTreeBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "tree");
-  viewMindmapBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "mindmap");
   viewLogicChartBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "logic-chart");
   viewTimelineBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "timeline");
   viewSystemBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "system");
@@ -957,8 +939,8 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
     stopScatterAnimation(true);
   }
   viewState.surfaceViewMode = mode;
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(currentScopeRootId(), mode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(currentScopeRootId(), mode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(currentScopeRootId(), mode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
   syncMapModelStateFromRuntime();
   if (mode === "scatter") {
     seedMissingScatterPositions();
@@ -977,8 +959,9 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   setStatus(`View: ${surfaceViewModeLabel(mode)}`);
 }
 
-function setSurfaceLayoutDensity(density: SurfaceLayoutDensity): void {
-  viewState.surfaceLayoutDensity = density;
+function setSurfaceSpace(space: SurfaceSpace): void {
+  viewState.surfaceSpace = space;
+  syncMapModelStateFromRuntime();
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -986,11 +969,13 @@ function setSurfaceLayoutDensity(density: SurfaceLayoutDensity): void {
   requestAnimationFrame(() => {
     fitDocument();
   });
-  setStatus(`Layout: ${surfaceLayoutDensityLabel(density)}`);
+  scheduleAutosave();
+  setStatus(`Space: ${surfaceSpaceLabel(space)}`);
 }
 
-function setSurfaceBranchDirection(direction: SurfaceBranchDirection): void {
-  viewState.surfaceBranchDirection = direction;
+function setSurfaceLayoutDirection(direction: SurfaceLayoutDirection): void {
+  viewState.surfaceLayoutDirection = direction;
+  syncMapModelStateFromRuntime();
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -998,7 +983,8 @@ function setSurfaceBranchDirection(direction: SurfaceBranchDirection): void {
   requestAnimationFrame(() => {
     fitDocument();
   });
-  setStatus(`Depth: ${surfaceBranchDirectionLabel(direction)}`);
+  scheduleAutosave();
+  setStatus(`Direction: ${surfaceLayoutDirectionLabel(direction)}`);
 }
 
 function setPublicLayoutOptions(options: Partial<PublicLayoutOptions>): void {
@@ -1061,7 +1047,7 @@ function setScatterToolMode(mode: ScatterToolMode): void {
   }
   syncScatterToolbarUi();
   scheduleRender();
-  setStatus(`Scatter: ${mode.replace("-", " ")}`);
+  setStatus(`Disperse: ${mode.replace("-", " ")}`);
 }
 
 function toggleScatterAnimation(): void {
@@ -1073,16 +1059,16 @@ function setScatterAnimationEnabled(enabled: boolean): void {
   syncScatterToolbarUi();
   if (!enabled) {
     stopScatterAnimation(true);
-    setStatus("Scatter animation stopped.");
+    setStatus("Disperse animation stopped.");
     return;
   }
   if (!currentSurfaceIsScatterMode()) {
-    setStatus("Switch to Scatter to animate layout.", true);
+    setStatus("Switch to Disperse to animate layout.", true);
     return;
   }
   seedMissingScatterPositions();
   startScatterAnimation();
-  setStatus("Scatter animation running.");
+  setStatus("Disperse animation running.");
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -2266,7 +2252,6 @@ function sanitizeSurfaceKind(raw: unknown): SurfaceKind | null {
   return raw === "tree"
     || raw === "system"
     || raw === "scatter"
-    || raw === "mindmap"
     || raw === "logic-chart"
     || raw === "timeline"
     ? raw
@@ -2277,7 +2262,6 @@ function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
   return raw === "tree"
     || raw === "flow-lr"
     || raw === "scatter"
-    || raw === "mindmap"
     || raw === "logic-chart"
     || raw === "timeline"
     ? raw
@@ -2287,7 +2271,8 @@ function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
 function defaultSurfaceKindForScopeNode(node: TreeNode): SurfaceKind {
   const rawLayout = rawAttr(node, "m3e:layout");
   if (rawLayout === "flow-lr") return "system";
-  if (rawLayout === "mindmap") return "mindmap";
+  // Legacy persisted layout: migrate on read to the Tree two-sided preset.
+  if (rawLayout === "mindmap" || rawLayout === "balanced-tree") return "tree";
   if (rawLayout === "logic-chart") return "logic-chart";
   if (rawLayout === "timeline") return "timeline";
   if (rawLayout === "scatter") return "scatter";
@@ -2355,6 +2340,12 @@ function sanitizeMapModelState(state: AppState): void {
       scopeId,
       kind,
       layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
+      surfaceView: migrateSurfaceViewFromMapRead(
+        state,
+        scopeId,
+        (surface as MapSurface & { surfaceView?: unknown }).surfaceView,
+        isLegacyBalancedTreeSurface(surface.kind) || isLegacyBalancedTreeSurface(surface.layout),
+      ),
       nodeViews: sanitizeSurfaceNodeViews(surface.nodeViews, state.nodes),
     };
   });
@@ -2393,6 +2384,7 @@ function sanitizeMapModelState(state: AppState): void {
       scopeId,
       kind: existingSurface?.kind || surfaceKind,
       layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
+      surfaceView: existingSurface?.surfaceView || migrateSurfaceViewFromMapRead(state, scopeId, undefined),
       nodeViews: existingSurface?.nodeViews || {},
     };
   });
@@ -2424,6 +2416,7 @@ function syncMapModelStateFromRuntime(): void {
       scopeId: modelScopeId,
       kind: surfaceKind,
       layout: surfaceLayoutForKind(surfaceKind),
+      surfaceView: { direction: viewState.surfaceLayoutDirection, space: viewState.surfaceSpace },
       nodeViews: {},
     };
   }
@@ -2431,6 +2424,7 @@ function syncMapModelStateFromRuntime(): void {
   surface.scopeId = modelScopeId;
   surface.kind = surfaceKind;
   surface.layout = surfaceLayoutForKind(surfaceKind);
+  surface.surfaceView = { direction: viewState.surfaceLayoutDirection, space: viewState.surfaceSpace };
   if (!surface.nodeViews) {
     surface.nodeViews = {};
   }
@@ -3719,8 +3713,8 @@ function enterScope(scopeNodeId: string): boolean {
   viewState.currentScopeRootId = node.id;
   viewState.currentScopeId = node.id;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(node.id);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(node.id, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(node.id, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(node.id, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(node.id);
   setSingleSelection(preferredSelectionForScope(node.id), false);
   render();
   triggerCameraMove("scope");
@@ -3755,8 +3749,8 @@ function exitScope(): boolean {
   viewState.currentScopeRootId = nextScopeId;
   viewState.currentScopeId = nextScopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(nextScopeId);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(nextScopeId, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(nextScopeId, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(nextScopeId, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(nextScopeId);
   const selectionAfterExit =
     map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
       ? exitedScopeId
@@ -3894,8 +3888,8 @@ function jumpToAliasTarget(): boolean {
     viewState.currentScopeId = targetScopeId;
     viewState.currentScopeRootId = targetScopeId;
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(targetScopeId);
-    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(targetScopeId, viewState.surfaceViewMode);
-    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(targetScopeId, viewState.surfaceViewMode);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(targetScopeId, viewState.surfaceViewMode);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(targetScopeId);
   }
   setSingleSelection(target.id, false);
   normalizeSelectionState();
@@ -5188,7 +5182,7 @@ function isParentChildPair(source: TreeNode, target: TreeNode): boolean {
   return source.parentId === target.id || target.parentId === source.id;
 }
 
-type LinkConnectionBoundsMode = "hit" | "box" | "mindmap";
+type LinkConnectionBoundsMode = "hit" | "box" | "tree";
 
 function renderedBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
   const h = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
@@ -5208,7 +5202,7 @@ function renderedBoxRect(pos: NodePosition): { x: number; y: number; w: number; 
   };
 }
 
-function mindmapBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
+function treeBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
   const h = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
   return {
     x: pos.x,
@@ -5219,7 +5213,7 @@ function mindmapBoxRect(pos: NodePosition): { x: number; y: number; w: number; h
 }
 
 function linkConnectionRect(pos: NodePosition, boundsMode: LinkConnectionBoundsMode = "hit"): { x: number; y: number; w: number; h: number } {
-  if (boundsMode === "mindmap") return mindmapBoxRect(pos);
+  if (boundsMode === "tree") return treeBoxRect(pos);
   if (boundsMode === "box") return renderedBoxRect(pos);
   return positionRect(pos);
 }
@@ -6903,7 +6897,7 @@ function runScatterReflow(iterations = 160, opts: { withUndo?: boolean; withTouc
   } else {
     render();
   }
-  setStatus("Scatter rank-flow reflow applied.");
+  setStatus("Disperse rank-flow reflow applied.");
 }
 
 function startScatterAnimation(): void {
@@ -6939,8 +6933,7 @@ type StructuredSurfaceMode = StructuredLayoutMode;
 
 interface StructuredLayoutConfig {
   mode: StructuredSurfaceMode;
-  density: LayoutDensity;
-  branchDirection: LayoutBranchDirection;
+  space: LayoutSpace;
   columnGap: number;
   siblingGap: number;
   sideGap: number;
@@ -6955,7 +6948,6 @@ interface StructuredLayoutConfig {
 function structuredSurfaceMode(): StructuredSurfaceMode | null {
   if (
     viewState.surfaceViewMode === "tree"
-    || viewState.surfaceViewMode === "mindmap"
     || viewState.surfaceViewMode === "logic-chart"
     || viewState.surfaceViewMode === "timeline"
   ) {
@@ -6966,25 +6958,22 @@ function structuredSurfaceMode(): StructuredSurfaceMode | null {
 
 function structuredLayoutConfig(
   mode: StructuredSurfaceMode,
-  density: LayoutDensity = viewState.surfaceLayoutDensity,
-  branchDirection: LayoutBranchDirection = viewState.surfaceBranchDirection,
+  space: LayoutSpace = viewState.surfaceSpace,
 ): StructuredLayoutConfig {
-  const compact = density === "compact";
-  const spacious = density === "spacious";
-  const mapLike = mode === "mindmap";
+  const tight = space === "tight";
+  const loose = space === "loose";
   return {
     mode,
-    density,
-    branchDirection,
-    columnGap: mapLike ? (compact ? 78 : spacious ? 148 : 112) : compact ? 48 : spacious ? 142 : 86,
-    siblingGap: mapLike ? (compact ? 18 : spacious ? 34 : 26) : compact ? 7 : spacious ? 24 : 14,
-    sideGap: mapLike ? (compact ? 64 : spacious ? 132 : 92) : compact ? 46 : spacious ? 110 : 72,
-    rootMaxWidth: mapLike ? (compact ? 220 : spacious ? 360 : 300) : compact ? 214 : spacious ? 320 : 260,
-    nodeMaxWidth: mapLike ? (compact ? 190 : spacious ? 300 : 240) : compact ? 156 : spacious ? 260 : 206,
-    leafMaxWidth: mapLike ? (compact ? 210 : spacious ? 320 : 260) : compact ? 194 : spacious ? 320 : 248,
-    rootMinWidth: mapLike ? (compact ? 112 : spacious ? 180 : 144) : compact ? 176 : spacious ? 280 : 220,
-    fontSize: mapLike ? (compact ? 16 : spacious ? 20 : 18) : compact ? 12 : spacious ? VIEWER_TUNING.typography.nodeFont : 13,
-    rootFontSize: mapLike ? (compact ? 18 : spacious ? 24 : 21) : compact ? 13 : spacious ? VIEWER_TUNING.typography.rootFont : 14,
+    space,
+    columnGap: tight ? 48 : loose ? 142 : 86,
+    siblingGap: tight ? 7 : loose ? 24 : 14,
+    sideGap: tight ? 46 : loose ? 110 : 72,
+    rootMaxWidth: tight ? 214 : loose ? 320 : 260,
+    nodeMaxWidth: tight ? 156 : loose ? 260 : 206,
+    leafMaxWidth: tight ? 194 : loose ? 320 : 248,
+    rootMinWidth: tight ? 176 : loose ? 280 : 220,
+    fontSize: tight ? 12 : loose ? VIEWER_TUNING.typography.nodeFont : 13,
+    rootFontSize: tight ? 13 : loose ? VIEWER_TUNING.typography.rootFont : 14,
   };
 }
 
@@ -7003,9 +6992,9 @@ function measureLayoutNode(state: AppState, nodeId: string, displayRootId: strin
     }
     return measureWrappedNodeLabel(uiLabel(node), config.rootFontSize, config.rootMaxWidth, {
       minWidth: config.rootMinWidth,
-      minHeight: config.mode === "mindmap" ? (config.density === "compact" ? 48 : config.density === "spacious" ? 66 : 56) : VIEWER_TUNING.layout.rootHeight,
-      padX: config.mode === "mindmap" ? (config.density === "compact" ? 34 : 44) : 34,
-      padY: config.mode === "mindmap" ? (config.density === "compact" ? 16 : 22) : 16,
+      minHeight: VIEWER_TUNING.layout.rootHeight,
+      padX: 34,
+      padY: 16,
     });
   }
   if (isLatexNode(node)) {
@@ -7018,20 +7007,15 @@ function measureLayoutNode(state: AppState, nodeId: string, displayRootId: strin
   const children = visibleChildren(node);
   const maxWidth = children.length === 0 ? config.leafMaxWidth : config.nodeMaxWidth;
   return measureWrappedNodeLabel(uiLabel(node), config.fontSize, maxWidth, {
-    minWidth: config.mode === "mindmap" ? (config.density === "compact" ? 72 : 88) : 78,
+    minWidth: 78,
     minHeight: compactNodeMinHeight(config),
-    padX: config.mode === "mindmap" ? (config.density === "compact" ? 28 : 36) : 18,
-    padY: config.mode === "mindmap" ? (config.density === "compact" ? 14 : 18) : 7,
+    padX: 18,
+    padY: 7,
   });
 }
 
 function compactNodeMinHeight(config: StructuredLayoutConfig): number {
-  if (config.mode === "mindmap") {
-    if (config.density === "compact") return 42;
-    if (config.density === "spacious") return 58;
-    return 50;
-  }
-  return config.density === "compact" ? 22 : VIEWER_TUNING.layout.leafHeight;
+  return config.space === "tight" ? 22 : VIEWER_TUNING.layout.leafHeight;
 }
 
 window.m3eLayout = (
@@ -7073,8 +7057,7 @@ function buildLayout(state: AppState): LayoutResult {
     ...publicOptions,
     displayRootId,
     structuredMode,
-    density: viewState.surfaceLayoutDensity,
-    branchDirection: viewState.surfaceBranchDirection,
+    space: viewState.surfaceSpace,
   };
 
   if (mode === "scatter" && displayRootNode) {
@@ -7089,6 +7072,7 @@ function buildLayout(state: AppState): LayoutResult {
     });
     options.surfaceNodeViews = surface?.nodeViews || {};
     options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
+    options.disperse = { subtype: "scatter" };
     // Scatter layout reads persisted per-node view coordinates; scatter simulation writes them elsewhere.
     options.scatter = { edgeLength: scatterEdgeLength };
     return layoutPortLayout(
@@ -7189,12 +7173,12 @@ function scheduleApplyZoom(options: ViewportApplyOptions = {}): void {
 
 function layoutEdgePath(
   mode: StructuredSurfaceMode,
-  parent: NodePosition,
-  child: NodePosition,
+  parent: LayoutResult["pos"][string],
+  child: LayoutResult["pos"][string],
   route: SurfaceEdgeRoute = viewState.surfaceEdgeRoute,
 ): { d: string; labelX: number; labelY: number; sourceSide: EdgeAnchorSide; targetSide: EdgeAnchorSide } {
-  const parentRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(parent) : positionRect(parent);
-  const childRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(child) : positionRect(child);
+  const parentRect = mode === "tree" ? treeBoxRect(parent) : positionRect(parent);
+  const childRect = mode === "tree" ? treeBoxRect(child) : positionRect(child);
   const routeStyle: EdgeRouteStyle = route === "straight" ? "line" : route === "elbow" ? "orthogonal" : "curve";
   const routed = routeParentChildEdge({
     relation: { kind: "parent-child", parentNodeId: "parent", childNodeId: "child" },
@@ -7451,7 +7435,7 @@ function render(): void {
     const pairOffsetIndex = renderedPairOffsets.get(pairKey) ?? 0;
     renderedPairOffsets.set(pairKey, pairOffsetIndex + 1);
 
-    const linkBoundsMode: LinkConnectionBoundsMode = structuredMode === "mindmap" ? "mindmap" : "box";
+    const linkBoundsMode: LinkConnectionBoundsMode = structuredMode === "tree" ? "tree" : "box";
     const { source: sourceEnd, target: targetEnd } = edgeEndsForGraphLink(sourcePos, targetPos, link, 0, linkBoundsMode);
     // If the rendered node appears as a portal subsystem (`[[...]]`), push the edge end past the bracket glyph.
     const sourceIsPortal = isScopePortalNode(sourceRenderNode);
@@ -7699,7 +7683,7 @@ function render(): void {
           kind: "plainLabel" as const,
           labelLines: p.labelLines || splitLabelLines(treatAsRoot ? (uiLabel(node) || "(empty)") : label),
           fontSize,
-          textAnchor: structuredMode === "mindmap" || treatAsRoot ? "middle" as const : "start" as const,
+          textAnchor: treatAsRoot ? "middle" as const : "start" as const,
         };
     return {
       node: {
@@ -7741,7 +7725,7 @@ function render(): void {
     };
   }
 
-  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: NodePosition, childIds: string[]): string {
+  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: LayoutResult["pos"][string], childIds: string[]): string {
     let result = "";
     childIds.forEach((childId, i) => {
       const child = pos[childId];
@@ -7765,8 +7749,8 @@ function render(): void {
   function renderFolderPreview(node: TreeNode, nodeStyles: NodeStyleAttrs, p: NodePosition): string {
     const previewLayout = buildFlowPreviewLayout(node);
     if (!previewLayout) return "";
-    const frameInsetY = structuredMode === "mindmap" ? 0 : 12;
-    const framePadX = structuredMode === "mindmap" ? 0 : 14;
+    const frameInsetY = 12;
+    const framePadX = 14;
     const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - frameInsetY;
     const folderFrameX = p.x - framePadX;
     const folderFrameY = p.y - frameH / 2;
@@ -7982,8 +7966,8 @@ interface LayoutDiagnosticIssue {
 interface LayoutDiagnosticResult {
   ok: boolean;
   mode: SurfaceViewMode;
-  density: SurfaceLayoutDensity;
-  direction: SurfaceBranchDirection;
+  space: SurfaceSpace;
+  direction: SurfaceLayoutDirection;
   labelCount: number;
   hitCount: number;
   issues: LayoutDiagnosticIssue[];
@@ -8100,7 +8084,7 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
   if (lastLayout && viewState.surfaceViewMode !== "scatter") {
     const mode = structuredSurfaceMode() || "tree";
     Object.entries(lastLayout.pos).forEach(([nodeId, p]) => {
-      const rect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(p) : renderedBoxRect(p);
+      const rect = mode === "tree" ? treeBoxRect(p) : renderedBoxRect(p);
       layoutEdgeAnchorBoxByNodeId.set(nodeId, {
         nodeId,
         text: map?.state.nodes[nodeId]?.text || "",
@@ -8118,11 +8102,11 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
     const sourceId = edgeEl.getAttribute("data-source-node-id") || "";
     const targetId = edgeEl.getAttribute("data-target-node-id") || "";
     const edgeId = edgeEl.getAttribute("data-edge-id") || edgeEl.getAttribute("data-link-id") || `edge-${index}`;
-    const isTreeEdge = edgeEl.classList.contains("edge-tree");
-    const sourceBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(sourceId) : null)
+    const isStructuredParentChildEdge = edgeEl.classList.contains("edge-tree");
+    const sourceBox = (isStructuredParentChildEdge ? layoutEdgeAnchorBoxByNodeId.get(sourceId) : null)
       || edgeAnchorBoxByNodeId.get(sourceId)
       || hitByNodeId.get(sourceId);
-    const targetBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(targetId) : null)
+    const targetBox = (isStructuredParentChildEdge ? layoutEdgeAnchorBoxByNodeId.get(targetId) : null)
       || edgeAnchorBoxByNodeId.get(targetId)
       || hitByNodeId.get(targetId);
     const endpoints = svgEdgeEndpoints(edgeEl);
@@ -8190,7 +8174,7 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
 
   if (map && lastLayout && viewState.surfaceViewMode !== "scatter") {
     const pos = lastLayout.pos;
-    const direction = viewState.surfaceBranchDirection;
+    const direction = viewState.surfaceLayoutDirection;
     Object.values(map.state.nodes).forEach((node) => {
       const parentId = node.parentId;
       if (!parentId) return;
@@ -8222,8 +8206,8 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
   return {
     ok: issues.length === 0,
     mode: viewState.surfaceViewMode,
-    density: viewState.surfaceLayoutDensity,
-    direction: viewState.surfaceBranchDirection,
+    space: viewState.surfaceSpace,
+    direction: viewState.surfaceLayoutDirection,
     labelCount: labels.length,
     hitCount: hits.length,
     issues,
@@ -8742,8 +8726,8 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   viewState.currentScopeId = scopeId;
   viewState.currentScopeRootId = scopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(scopeId);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(scopeId, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(scopeId, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(scopeId, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(scopeId);
   setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
   render();
@@ -8761,8 +8745,8 @@ function ExitScopeCommand(): void {
   viewState.currentScopeId = map.state.nodes[previousScopeId] ? previousScopeId : map.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(viewState.currentScopeId);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(viewState.currentScopeId, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(viewState.currentScopeId, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(viewState.currentScopeId, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(viewState.currentScopeId);
   const selectionAfterExit =
     map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
       ? exitedScopeId
@@ -11227,7 +11211,7 @@ function addScatterNodeAt(clientX: number, clientY: number): void {
   }
   setSingleSelection(id, false);
   touchDocument();
-  setStatus("Scatter node added.");
+  setStatus("Disperse node added.");
   board.focus();
 }
 
@@ -11285,7 +11269,7 @@ function setGraphLinkEndpointPortNearPointer(linkId: string, endpoint: LinkEndpo
     return false;
   }
   const point = clientToCanvasPoint(clientX, clientY);
-  const linkBoundsMode: LinkConnectionBoundsMode = structuredSurfaceMode() === "mindmap" ? "mindmap" : "box";
+  const linkBoundsMode: LinkConnectionBoundsMode = structuredSurfaceMode() === "tree" ? "tree" : "box";
   const side = nearestEdgePortSideForGraphLinkEdit(linkConnectionRect(pos, linkBoundsMode), point);
   return setGraphLinkEndpointPort(linkId, endpoint, side, false);
 }
@@ -12725,8 +12709,8 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeRootId = map.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(map.state.rootId);
-    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(map.state.rootId, viewState.surfaceViewMode);
-    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(map.state.rootId, viewState.surfaceViewMode);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(map.state.rootId, viewState.surfaceViewMode);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(map.state.rootId);
     viewState.clipboardState = null;
     viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
@@ -13151,8 +13135,8 @@ function renderRoutingScopeSurface(selectedNodeId: string | null): string {
   const layout = layoutPortLayout(routingGraph, routingBoxSizes, "Tree", {
     displayRootId: rootId,
     structuredMode: "tree",
-    density: viewState.surfaceLayoutDensity,
-    branchDirection: viewState.surfaceBranchDirection,
+    space: viewState.surfaceSpace,
+    direction: viewState.surfaceLayoutDirection,
   });
   let edges = "";
   let nodes = "";
@@ -14067,10 +14051,6 @@ viewTreeBtn?.addEventListener("click", () => {
   setSurfaceViewMode("tree");
 });
 
-viewMindmapBtn?.addEventListener("click", () => {
-  setSurfaceViewMode("mindmap");
-});
-
 viewLogicChartBtn?.addEventListener("click", () => {
   setSurfaceViewMode("logic-chart");
 });
@@ -14107,27 +14087,32 @@ window.addEventListener("m3e:toggle-theme", () => {
 window.addEventListener("m3e:set-surface-layout", (event: Event) => {
   const detail = (event as CustomEvent<{
     mode?: SurfaceViewMode;
-    density?: SurfaceLayoutDensity;
-    direction?: SurfaceBranchDirection;
+    space?: SurfaceSpace;
+    direction?: SurfaceLayoutDirection;
+    density?: unknown;
   }>).detail || {};
   if (detail.mode) {
     setSurfaceViewMode(detail.mode);
   }
-  if (detail.density) {
-    setSurfaceLayoutDensity(sanitizeSurfaceLayoutDensity(detail.density));
+  if (detail.space || detail.density) {
+    setSurfaceSpace(sanitizeSurfaceSpace(detail.space ?? detail.density));
   }
   if (detail.direction) {
-    setSurfaceBranchDirection(sanitizeSurfaceBranchDirection(detail.direction));
+    setSurfaceLayoutDirection(sanitizeSurfaceLayoutDirection(detail.direction));
   }
 });
 
 window.addEventListener("m3e:set-layout-options", (event: Event) => {
   const detail = (event as CustomEvent<{
     direction?: SurfaceLayoutDirection;
+    space?: SurfaceSpace;
     depthAlign?: SurfaceDepthAlign;
     edgeRoute?: SurfaceEdgeRoute;
     linkRoute?: SurfaceLinkRoute;
   }>).detail || {};
+  if (detail.space) {
+    setSurfaceSpace(sanitizeSurfaceSpace(detail.space));
+  }
   setPublicLayoutOptions({
     direction: detail.direction,
     depthAlign: detail.depthAlign,
@@ -14846,7 +14831,7 @@ function finishNodeDrag(event: PointerEvent): void {
 
   if (mode === "scatter") {
     touchDocument();
-    setStatus("Scatter position updated.");
+    setStatus("Disperse position updated.");
     board.focus();
     return;
   }
@@ -15972,8 +15957,8 @@ void initializeDocument().then(() => {
     viewState.currentScopeId = initialScopeId;
     viewState.currentScopeRootId = initialScopeId;
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(initialScopeId);
-    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(initialScopeId, viewState.surfaceViewMode);
-    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(initialScopeId, viewState.surfaceViewMode);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(initialScopeId, viewState.surfaceViewMode);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(initialScopeId);
     syncThinkingModeUi();
     setSingleSelection(initialScopeId, false);
     normalizeSelectionState();
@@ -15987,8 +15972,8 @@ void initializeDocument().then(() => {
   const requestedSurface = requestedSurfaceViewMode();
   if (requestedSurface) {
     viewState.surfaceViewMode = requestedSurface;
-    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(currentScopeRootId(), requestedSurface);
-    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(currentScopeRootId(), requestedSurface);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(currentScopeRootId(), requestedSurface);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
     syncThinkingModeUi();
     render();
   }

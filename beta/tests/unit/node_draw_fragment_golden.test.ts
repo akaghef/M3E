@@ -69,4 +69,15 @@ describe("nodeDraw fragment golden parity", () => {
     expect(output.svg).toContain("scatter-node-circle");
     expect(output.svg).not.toContain("<path class=\"edge");
   });
+
+  test("Disperse collapsed group labels include the hidden descendant count", () => {
+    const sample = nodeLabSamples.find((item) => item.sample_id === "folder")!;
+    const input = withSurface(sample.input, "Disperse");
+    const output = renderNode({
+      ...input,
+      node: { ...input.node, isScatterGroup: true },
+      view: { ...input.view, collapsedCount: 1 },
+    });
+    expect(output.svg).toContain(">Folder Scope ×1</text>");
+  });
 });

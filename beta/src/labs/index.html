@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M3E Seam Labs</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --text: #172033;
+        --muted: #5d687c;
+        --line: #d9dee8;
+        --accent: #1662c4;
+        --accent-soft: #e8f1ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1080px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 40px 0 56px;
+      }
+
+      header {
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .launch {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 24px;
+        padding: 14px 16px;
+        border: 1px solid #9bbce8;
+        border-radius: 8px;
+        background: var(--accent-soft);
+      }
+
+      .launch-title {
+        font-weight: 720;
+      }
+
+      .launch code {
+        font-size: 14px;
+      }
+
+      .labs {
+        display: grid;
+        gap: 12px;
+      }
+
+      .lab {
+        display: grid;
+        grid-template-columns: minmax(160px, 0.75fr) minmax(280px, 1.5fr) minmax(220px, 1fr) auto;
+        gap: 18px;
+        align-items: center;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .name {
+        font-weight: 720;
+      }
+
+      .summary,
+      .spec {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+        color: #2a3854;
+        overflow-wrap: anywhere;
+      }
+
+      a.open {
+        display: inline-flex;
+        align-items: center;
+        min-height: 36px;
+        padding: 0 13px;
+        border: 1px solid #9bbce8;
+        border-radius: 6px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 14px;
+        font-weight: 680;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      a.open:focus-visible {
+        outline: 3px solid #94c5ff;
+        outline-offset: 2px;
+      }
+
+      @media (max-width: 820px) {
+        main {
+          width: min(100% - 28px, 720px);
+          padding-top: 28px;
+        }
+
+        .lab {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        a.open {
+          justify-content: center;
+          width: 100%;
+          margin-top: 4px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="launch" aria-label="Launch instructions">
+        <div class="launch-title">Launch this seam lab index</div>
+        <div>Run <code>npm run lab:index</code> (port 14272).</div>
+        <div>Then open <code>http://localhost:14272/</code>.</div>
+      </section>
+
+      <header>
+        <h1>M3E Seam Labs</h1>
+        <p class="lead">
+          Dev-only index for opening each seam lab from one Vite server. These links target Vite's
+          source HTML entries directly.
+        </p>
+      </header>
+
+      <section class="labs" aria-label="Seam lab links">
+        <article class="lab">
+          <div class="name">layout - LayoutPort</div>
+          <div class="summary">
+            Renders LayoutPort geometry for product-path golden samples plus the seeded, lab-only synthetic-100-varied-boxes sample.
+          </div>
+          <div class="spec">Spec: <code>.kiro/specs/layout-seam-lab/</code></div>
+          <a class="open" href="/src/labs/layout/layout-lab.html">Open lab</a>
+        </article>
+
+        <article class="lab">
+          <div class="name">node - nodeDraw</div>
+          <div class="summary">Renders shared node_draw_svg SVG fragments from positioned NodeDraw input across node and Surface View samples.</div>
+          <div class="spec">Spec: <code>.kiro/specs/node-draw-seam/</code></div>
+          <a class="open" href="/src/labs/node/node-lab.html">Open lab</a>
+        </article>
+
+        <article class="lab">
+          <div class="name">edge-port - EdgePort</div>
+          <div class="summary">Exercises shared EdgePort selectPorts and EdgeRoute route against branch-direction samples, displaying ports, paths, and matches.</div>
+          <div class="spec">Spec: <code>.kiro/specs/edge-port-seam/</code></div>
+          <a class="open" href="/src/labs/edge-port/edge-port-lab.html">Open lab</a>
+        </article>
+
+        <article class="lab">
+          <div class="name">pn - pn_layout</div>
+          <div class="summary">Exercises shared pn_layout with staged-navigation samples for safe-zone placement, third-level/overflow, search, reset, focus, and routed edges.</div>
+          <div class="spec">Spec: <code>.kiro/specs/progressive-nav-seam/</code></div>
+          <a class="open" href="/src/labs/pn/pn-lab.html">Open lab</a>
+        </article>
+
+        <article class="lab">
+          <div class="name">runtime-board - conditional-probability pipeline board</div>
+          <div class="summary">Video-reproduction demo and board-renderer reference for a conditional-probability pipeline, driven by static hard-coded data; not an orchestration-board seam lab.</div>
+          <div class="spec">
+            Orchestration board seam (U1) is absent from this branch. It is implemented in the viewer on <code>codex/orchestration-board-seam</code> (open with <code>board=1</code>); seam contract: <code>docs/03_Spec/UI_Seams/orchestration-board.yaml</code>. No <code>.kiro/specs/</code> entry exists here.
+          </div>
+          <a class="open" href="/src/labs/runtime-board/runtime-board.html">Open lab</a>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
