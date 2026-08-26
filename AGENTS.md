@@ -104,6 +104,18 @@ Do not describe LV3 recurrence prevention as done if it exists only as a chat pr
 
 ## Mandatory Session Context
 
+This gate applies only to **M3E internal work**: product code, product/spec/
+operations documentation, roadmap or priority assessment, architecture, or
+unbounded structural design.
+
+It does **not** apply to an explicitly-targeted, direct M3E runtime operation
+(for example, a supplied map/scope URL with an unambiguous copy, read, rename,
+or attribute update). Those operators follow the direct-operator route in the
+`m3e-map` skill: resolve the target, read the relevant state, perform only the
+requested operation, and verify it. Do not load internal goals or route through
+Map Manager unless the requested operation requires a structural decision not
+already specified by the user.
+
 Before any analysis, planning, or implementation, the agent must load the current project context from:
 
 1. `docs/00_Home/Agent_Brief.md`
@@ -125,7 +137,7 @@ If this context check is missing, the task is considered not started.
 
 1. Claude Director reads scope and current status.
 2. Claude Director defines one smallest deliverable task.
-3. Claude Director creates a task worktree when writes are needed:
+3. Claude Director creates a task worktree when writes can conflict with implementation, shared canonical documents, or existing files:
    ```bash
    scripts/ops/worktree.sh new <task>
    ```
@@ -147,6 +159,8 @@ Always invoke Codex via `scripts/codex.sh exec ... < /dev/null`.
 
 - Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly here.
 - Each code-writing Codex task runs at `$HOME/dev/M3E-worktrees/<task>`.
+- A new, public-safe, append-only idea bundle may be written directly in the primary checkout when it creates a unique subtree under `docs/ideas/`, does not overwrite or reorganize existing content, and only updates its parent idea index plus generated `docs/index.md`.
+- Use a task worktree for idea work if it edits an existing idea body, overlaps another active task, changes specs/architecture/operations/current status, introduces implementation, or has unresolved placement/overwrite risk.
 - Each task branch is `codex/<task>`, branched from `dev-beta`.
 - PR target is `dev-beta`.
 - Use `scripts/ops/worktree.sh new/list/clean/rm`.
