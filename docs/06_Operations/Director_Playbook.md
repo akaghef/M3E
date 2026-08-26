@@ -81,6 +81,47 @@ Director obligations:
 
 Live beta data guard: do not allow Codex to create fixture, test, or temporary maps in the active beta personal workspace for verification. Use Playwright fixtures, isolated `testRun` state, a separate temporary workspace, or an explicit backup/restore cleanup flow.
 
+## 4.6 GUI / browser verification split
+
+Codex's sandbox refuses `listen 127.0.0.1` with `EPERM`, so **Codex can never run Playwright**.
+Anything that depends on runtime DOM is outside its reach. Enforce this split:
+
+- **Runtime facts are the Director's job.** Write a throwaway probe spec, run it, and hand Codex the
+  measured table. Keep probes out of the branch (scratchpad, or move them out before commit).
+- **Codex must not invent selectors.** Constrain: any selector written into a test must exist as a
+  literal in source, verifiable by grep. If runtime-only information is needed, Codex reports
+  "Director に probe を依頼" instead of guessing.
+- **Codex must not report Playwright results it cannot obtain.** The Playwright field is
+  `未実行（Director 依頼）` plus the list of specs to run. (Mirrored as C8 in `AGENTS.md`.)
+- **Codex must confirm its fix reduces the symptom** before reporting "fixed"; otherwise "未確認".
+  A fix that leaves the defect count unchanged is not a fix.
+
+Director-side traps, all hit in the 2026-08-25 layout merge:
+
+| Trap | Rule |
+|---|---|
+| `playwright.config.js` starts `test_server.js` but **never builds**; `viewer.html` loads `dist/browser/*.js` | Run `npm run build:browser` before every Playwright run, or you are testing a stale bundle |
+| `runtime_board` / `node_lab` have their own configs (`playwright.*.config.js`) | Running them under the default config always fails — use `--config` |
+| Snapshots are platform-suffixed (`-win32.png` / `-darwin.png`) and some platforms have no baseline | Missing-baseline failures are environmental, not regressions |
+| Choosing specs "related to the failing test" | Choose specs that **assert anything the change touches**. A display-label rename touches every spec asserting labels |
+| One bug masking another | After fixing a blocker, re-run: the test now proceeds further and may expose a second, real defect |
+
+Before claiming a spec failure is a regression, get a **baseline on `dev-beta`** with the same
+command on the same machine, and diff the failing-spec sets.
+
+## 4.7 Merge readiness
+
+`gh pr checks` and `mergeable` are **independent gates** — check both.
+
+- `mergeable=MERGEABLE` only means no textual conflict; it says nothing about CI.
+- All checks green says nothing about conflicts. A `CONFLICTING` PR cannot produce a merge ref, so
+  `pull_request`-triggered workflows silently **do not run** — few checks listed is a symptom, not health.
+- Never trust an inherited "ready to merge" claim. Re-measure: `gh pr checks <n>`,
+  `gh pr view <n> --json mergeable,mergeStateStatus`, and `git merge-base --is-ancestor` when a
+  handoff claims one branch is stacked on another.
+- Run the full unit suite yourself. Codex's "green" always excludes the ~17 API/integration suites
+  it cannot start; those have hidden real regressions before.
+
 ## 5. Improvement Log (append-only — newest last)
 
 Each entry: `YYYY-MM-DD — what changed / what we learned / why`. This is how the
@@ -196,3 +237,16 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   dispatch. Dispatch needs an explicit go on the *slice*, not agreement on an adjacent policy
   axis. A tech-axis decision (how to render) never substitutes for product requirements
   (what to render and why).
+- 2026-08-25 — Layout vocabulary merge (#89, #90). A handoff claimed both PRs were "mergeable,
+  586 unit tests green, blockers cleared". Re-measured: both CI-red, one could not `npm ci` at all,
+  and five user-facing defects surfaced — undeclared `webcola` (clean build impossible), `left/right`
+  silently becoming `up/down`, Progressive Navigation unreachable by mouse (hover collapsed the child
+  column before the cursor arrived), 56 Radial edge endpoints inside node rects, and a false
+  "exclusive-seam achieved" claim that dependency-cruiser caught. Root cause of the illusion: every
+  verification layer had a hole — CI never runs Playwright, Playwright never builds, Codex can run
+  neither Playwright nor `npm`, the layout diagnostic measured against the wrong rectangle, and the
+  cited canon documents were uncommitted in the primary checkout, invisible to every branch and worker.
+  See sections 4.6 and 4.7 for the rules extracted. Also: Radial was retired (ADR_010) after the bug
+  hunt revealed it had no geometry of its own — canon specified an angular axis, the implementation
+  shipped Tree's linear directions, so one entity carried two names and the port rules leaked between
+  them.
