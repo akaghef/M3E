@@ -6,7 +6,7 @@ import {
   type LayoutDirection,
   type LayoutMode,
   type LayoutOptions,
-  type EdgePath,
+  type DisperseEdgeStyle,
 } from "../../shared/layout_port";
 import {
   layoutLabSamples,
@@ -20,6 +20,8 @@ import "./layout-lab.css";
 const modes: LayoutMode[] = ["Tree", "Axial", "Disperse", "System"];
 const directions = ["left/right", "left", "right", "up/down", "up", "down"] as const;
 const depthAligns: LayoutDepthAlign[] = ["packed", "aligned"];
+const disperseSubtypes = ["scatter", "cluster", "force"] as const;
+const disperseEdgeStyles: DisperseEdgeStyle[] = ["line", "curve", "force-link"];
 
 type CanonicalDirection = (typeof directions)[number];
 type LayoutSpacing = LayoutOptions["spacing"] & { nodeGap: number; levelGap: number; padding: number };
@@ -30,9 +32,6 @@ const spacePresets = {
 } as const;
 type SpacePreset = keyof typeof spacePresets;
 type SpaceSelection = SpacePreset | "custom";
-type LayoutLabEdgeOutcome =
-  | { sourceId: string; targetId: string; path: EdgePath }
-  | { sourceId: string; targetId: string; error: string };
 
 function numberInput(value: number, setValue: (value: number) => void, min: number, max: number, step = 1): React.ReactNode {
   return (
@@ -57,54 +56,53 @@ function App(): React.ReactElement {
   const [levelGap, setLevelGap] = useState(112);
   const [padding, setPadding] = useState(92);
   const [space, setSpace] = useState<SpaceSelection>("normal");
+  const [disperseSubtype, setDisperseSubtype] = useState<(typeof disperseSubtypes)[number]>("cluster");
+  const [collapseEnabled, setCollapseEnabled] = useState(false);
+  const [collapseTarget, setCollapseTarget] = useState("");
+  const [superNodeFootprint, setSuperNodeFootprint] = useState<"descendant-area" | "fixed">("descendant-area");
+  const [edgeAggregation, setEdgeAggregation] = useState<"bundle" | "weighted" | "hide-internal">("bundle");
+  const [disperseEdgeStyle, setDisperseEdgeStyle] = useState<DisperseEdgeStyle>("force-link");
+  const [boundaries, setBoundaries] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
 
-  const graph = useMemo(() => toVisibleLayoutGraph(sample), [sample]);
-  const supportsDirection = mode !== "Disperse";
+  const isDisperse = mode === "Disperse";
+  const rootId = sample.input.options.displayRootId || sample.input.graph.nodeIds[0] || "";
+  const collapseTargets = useMemo(() => sample.input.graph.nodeIds.filter((id) => id !== rootId && (sample.input.graph.children[id] || []).length > 0), [sample, rootId]);
+  const effectiveCollapseTarget = collapseTargets.includes(collapseTarget) ? collapseTarget : collapseTargets[0];
+  const collapsedNodeIds = collapseEnabled && effectiveCollapseTarget ? [effectiveCollapseTarget] : [];
+  const graph = useMemo(() => toVisibleLayoutGraph(sample, isDisperse ? [] : collapsedNodeIds), [sample, isDisperse, collapsedNodeIds]);
   const spacing: LayoutSpacing = { nodeGap, levelGap, padding };
   const { direction: _sampleDirection, ...sampleOptions } = sample.input.options;
   const options: LayoutOptions = {
     ...sampleOptions,
     structuredMode: mode === "Tree" || mode === "Axial" ? mode : undefined,
     depthAlign,
-    ...(supportsDirection ? { direction: direction as LayoutDirection } : {}),
+    direction: direction as LayoutDirection,
+    space: space === "custom" ? "normal" : space,
     spacing,
-    disperse: { subtype: "cluster" },
+    disperse: {
+      subtype: disperseSubtype,
+      collapsedNodeIds,
+      superNodeFootprint,
+      edgeAggregation,
+    },
   };
-  let result: ReturnType<typeof layout> | undefined;
-  let layoutError: string | undefined;
-  try {
-    result = layout(graph, sample.input.boxSizes, mode, options);
-  } catch (error) {
-    layoutError = error instanceof Error ? error.message : String(error);
-  }
-  const canvasWidth = Math.max(900, Math.ceil((result?.totalWidth || 0) + 80));
-  const canvasHeight = Math.max(640, Math.ceil((result?.totalHeight || 0) + 80));
-  const rootId = result?.order[0];
-  const rootPos = rootId ? result?.pos[rootId] : undefined;
+  const result = layout(graph, sample.input.boxSizes, mode, options);
+  const canvasWidth = Math.max(900, Math.ceil(result.totalWidth + 80));
+  const canvasHeight = Math.max(640, Math.ceil(result.totalHeight + 80));
+  const resultRootId = result.order[0];
+  const rootPos = resultRootId ? result.pos[resultRootId] : undefined;
   const zoomTransform = rootPos
     ? `translate(${rootPos.x} ${rootPos.y}) scale(${zoom}) translate(${-rootPos.x} ${-rootPos.y})`
     : undefined;
 
-  const sourceEdges = sample.input.graph.nodeIds.flatMap((sourceId) =>
-    (sample.input.graph.children[sourceId] || []).map((targetId) => ({ sourceId, targetId })),
+  const treeEdges = graph.nodeIds.flatMap((sourceId) =>
+    graph.childrenOf(sourceId).map((targetId) => ({ sourceId, targetId })),
   );
-  const edges = result?.edges?.filter((edge) => !edge.internal) || sourceEdges;
-  const edgePaths: LayoutLabEdgeOutcome[] = [];
-  if (result) {
-    edges.forEach(({ sourceId, targetId }) => {
-      const source = result.pos[sourceId];
-      const target = result.pos[targetId];
-      if (!source || !target) return;
-      try {
-        edgePaths.push({ sourceId, targetId, path: layoutLabEdgePath(source, target, mode, supportsDirection ? direction : undefined) });
-      } catch (error) {
-        edgePaths.push({ sourceId, targetId, error: error instanceof Error ? error.message : String(error) });
-      }
-    });
-  }
-  const edgeErrors = edgePaths.filter((item): item is Extract<LayoutLabEdgeOutcome, { error: string }> => "error" in item);
+  const renderEdges: Array<{ sourceId: string; targetId: string; weight?: number }> = isDisperse
+    ? (result.edges || []).filter((edge) => !edge.internal)
+    : treeEdges;
 
   const selectSpace = (next: SpaceSelection): void => {
     setSpace(next);
@@ -141,6 +139,8 @@ function App(): React.ReactElement {
               const nextSample = layoutLabSamples.find((item) => item.sample_id === next);
               setSampleId(next);
               if (nextSample) setMode(nextSample.input.mode);
+              setCollapseEnabled(false);
+              setCollapseTarget("");
             }}
           >
             {layoutLabSamples.map((item) => (
@@ -154,19 +154,18 @@ function App(): React.ReactElement {
             {modes.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
-        <div className="control-group">
+        {!isDisperse && <div className="control-group">
           <label htmlFor="direction">Direction</label>
-          <select id="direction" value={direction} disabled={!supportsDirection} onChange={(event) => setDirection(event.currentTarget.value as CanonicalDirection)}>
+          <select id="direction" value={direction} onChange={(event) => setDirection(event.currentTarget.value as CanonicalDirection)}>
             {directions.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
-          {!supportsDirection && <span className="control-note">Disperse selects edge ports from node-center vectors.</span>}
-        </div>
-        <div className="control-group">
+        </div>}
+        {!isDisperse && <div className="control-group">
           <label htmlFor="depth-align">Depth Align</label>
           <select id="depth-align" value={depthAlign} onChange={(event) => setDepthAlign(event.currentTarget.value as LayoutDepthAlign)}>
             {depthAligns.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
-        </div>
+        </div>}
         <div className="control-group">
           <label htmlFor="space">Space</label>
           <select id="space" value={space} onChange={(event) => selectSpace(event.currentTarget.value as SpaceSelection)}>
@@ -174,18 +173,51 @@ function App(): React.ReactElement {
             <option value="custom">custom</option>
           </select>
         </div>
-        <div className="control-group">
+        {!isDisperse && <div className="control-group">
           <label>Node Gap</label>
           {numberInput(nodeGap, setCustomNodeGap, 0, 120)}
-        </div>
+        </div>}
+        {isDisperse && <>
+          <div className="control-group">
+            <label htmlFor="disperse-subtype">Subtype</label>
+            <select id="disperse-subtype" value={disperseSubtype} onChange={(event) => setDisperseSubtype(event.currentTarget.value as (typeof disperseSubtypes)[number])}>
+              {disperseSubtypes.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+          <div className="control-group">
+            <label htmlFor="super-node-footprint">Super-node footprint</label>
+            <select id="super-node-footprint" value={superNodeFootprint} onChange={(event) => setSuperNodeFootprint(event.currentTarget.value as "descendant-area" | "fixed")}>
+              <option value="descendant-area">reflect descendant area</option><option value="fixed">fixed size</option>
+            </select>
+          </div>
+          <div className="control-group">
+            <label htmlFor="edge-aggregation">Edge aggregation</label>
+            <select id="edge-aggregation" value={edgeAggregation} onChange={(event) => setEdgeAggregation(event.currentTarget.value as "bundle" | "weighted" | "hide-internal")}>
+              <option value="bundle">bundle</option><option value="weighted">weight</option><option value="hide-internal">drop-internal</option>
+            </select>
+          </div>
+          <div className="control-group">
+            <label htmlFor="disperse-edge-style">Edge Style</label>
+            <select id="disperse-edge-style" value={disperseEdgeStyle} onChange={(event) => setDisperseEdgeStyle(event.currentTarget.value as DisperseEdgeStyle)}>
+              {disperseEdgeStyles.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+          <div className="control-group"><div className="control-row"><label htmlFor="boundaries">Draw group boundaries</label><input id="boundaries" type="checkbox" checked={boundaries} onChange={(event) => setBoundaries(event.currentTarget.checked)} /></div></div>
+        </>}
         <div className="control-group">
+          <div className="control-row"><label htmlFor="collapse-enabled">Collapse subtree</label><input id="collapse-enabled" type="checkbox" checked={collapseEnabled} onChange={(event) => setCollapseEnabled(event.currentTarget.checked)} /></div>
+          <select aria-label="Collapse target" value={effectiveCollapseTarget || ""} disabled={!collapseEnabled || collapseTargets.length === 0} onChange={(event) => setCollapseTarget(event.currentTarget.value)}>
+            {collapseTargets.map((id) => <option key={id} value={id}>{id}</option>)}
+          </select>
+        </div>
+        {!isDisperse && <div className="control-group">
           <label>Level Gap</label>
           {numberInput(levelGap, setCustomLevelGap, 40, 360)}
-        </div>
-        <div className="control-group">
+        </div>}
+        {!isDisperse && <div className="control-group">
           <label>Side Padding</label>
           {numberInput(padding, setCustomPadding, 20, 240)}
-        </div>
+        </div>}
         <div className="control-group">
           <div className="control-row">
             <label htmlFor="zoom">Zoom</label>
@@ -204,53 +236,58 @@ function App(): React.ReactElement {
         </div>
       </aside>
       <section className="stage">
-        {layoutError ? (
-          <div className="lab-error" role="alert">Layout failed: {layoutError}</div>
-        ) : result && (
-          <>
-            {edgeErrors.map((item) => <div className="lab-error" role="alert" key={`${item.sourceId}-${item.targetId}`}>Edge {item.sourceId} → {item.targetId} failed: {item.error}</div>)}
-            <svg
-              width="100%"
-              height="100%"
-              viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
-              preserveAspectRatio="xMidYMid meet"
-              role="img"
-              aria-label="Layout result"
-            >
-              <g transform={zoomTransform}>
-                {result.groups?.map((group) => (
-                  <rect key={group.id} className="disperse-group" x={group.x} y={group.y} width={group.w} height={group.h} rx={12} />
-                ))}
-                {edgePaths.map((item) => "path" in item ? (
-                  <path key={`${item.sourceId}-${item.targetId}`} className="lab-edge" d={item.path.d} />
-                ) : null)}
-                {result.order.map((nodeId) => {
-                  const pos = result.pos[nodeId];
-                  if (!pos) return null;
-                  return (
-                    <g key={nodeId}>
-                      <title>{nodeId}</title>
-                      <rect className={`lab-node ${nodeId === rootId ? "root" : ""}`} x={pos.x} y={pos.y - pos.h / 2} width={pos.w} height={pos.h} rx={6} />
-                      <text className="lab-label" x={pos.x + 10} y={pos.y + 4}>{pos.labelLines?.[0] || nodeId}</text>
-                    </g>
-                  );
-                })}
-              </g>
-            </svg>
-          </>
-        )}
+        <svg
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label="Layout result"
+        >
+          <g transform={zoomTransform}>
+            {isDisperse && boundaries && result.groups?.map((group) => <rect key={group.id} className="disperse-group" x={group.x} y={group.y} width={group.w} height={group.h} rx="12" />)}
+            {renderEdges.map((edge) => {
+              const { sourceId, targetId } = edge;
+              const source = result.pos[sourceId];
+              const target = result.pos[targetId];
+              if (!source || !target) return null;
+              const path = isDisperse
+                ? layoutLabEdgePath(source, target, mode, undefined, disperseEdgeStyle)
+                : layoutLabEdgePath(source, target, mode, direction);
+              return (
+                <path
+                  key={`${sourceId}-${targetId}`}
+                  className="lab-edge"
+                  d={path.d}
+                  strokeWidth={isDisperse && edgeAggregation === "weighted" ? 1 + (edge.weight ?? 1) * 1.5 : undefined}
+                />
+              );
+            })}
+            {result.order.map((nodeId) => {
+              const pos = result.pos[nodeId];
+              if (!pos) return null;
+              return (
+                <g key={nodeId}>
+                  <title>{nodeId}</title>
+                  <rect className={`lab-node ${nodeId === resultRootId ? "root" : ""} ${"sourceNodeId" in pos && pos.sourceNodeId ? "super" : ""}`} x={pos.x} y={pos.y - pos.h / 2} width={pos.w} height={pos.h} rx={6} />
+                  <text className="lab-label" x={pos.x + 10} y={pos.y + 4}>{"sourceNodeId" in pos && pos.sourceNodeId ? `collapsed: ${pos.sourceNodeId}` : sample.input.boxSizes[nodeId]?.labelLines?.[0] || nodeId}</text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
       </section>
       {snapshotOpen && (
         <aside className="lab-panel right">
           <h2 className="lab-title">Snapshot</h2>
           <div className="snapshot-scroll">
-            {result && <div className="summary">{summarizeLayout(result)}</div>}
+            <div className="summary">{summarizeLayout(result)}</div>
             <div className="json-block">
-              <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, mode, direction: supportsDirection ? direction : undefined, portOptions: options, layoutError }, null, 2)}</pre>
+              <pre>{JSON.stringify({ input: sample.input.graph, boxSizes: sample.input.boxSizes, direction, options }, null, 2)}</pre>
             </div>
-            {result && <div className="json-block">
-              <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, groups: result.groups, edges: result.edges, pos: result.pos }, null, 2)}</pre>
-            </div>}
+            <div className="json-block">
+              <pre>{JSON.stringify({ order: result.order, totalWidth: result.totalWidth, totalHeight: result.totalHeight, pos: result.pos }, null, 2)}</pre>
+            </div>
           </div>
         </aside>
       )}

@@ -234,4 +234,3 @@ export function layoutDisperse(graph: DisperseGraph, metrics: Record<string, Dis
 }
 
 export const disperseLayoutIterationPolicy = { ...ITERATIONS, convergence: "fixed iteration budget; no unbounded running pass" } as const;
-

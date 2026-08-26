@@ -14,4 +14,3 @@ declare module "webcola" {
   start(unconstrained: number, userConstraints: number, allConstraints: number, gridSnap: number, keepRunning: boolean): this;
 }
 }
-

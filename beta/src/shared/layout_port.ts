@@ -1,5 +1,5 @@
 import type { GraphLink, SurfaceNodeView } from "./types";
-import { selectPorts, type EdgeDirection, type EdgeRect } from "./edge_port";
+import { selectPorts, type EdgeDirection, type EdgePortPoint, type EdgePorts, type EdgeRect } from "./edge_port";
 import { route, type EdgePath, type EdgeRouteStyle } from "./edge_route";
 import {
   layoutDisperse,
@@ -81,6 +81,29 @@ export interface LayoutNodePosition extends LayoutNodeMetric {
   scatterCollapsedGroup?: boolean;
 }
 
+export type DisperseEdgeStyle = Exclude<EdgeRouteStyle, "orthogonal">;
+
+function centerOfLayoutPosition(position: LayoutNodePosition): EdgePortPoint {
+  return { x: position.x + position.w / 2, y: position.y, side: "right" };
+}
+
+/**
+ * Public Disperse edge seam. A directionless layout has no edge-port
+ * semantics, so every route joins node centres and rejects orthogonal paths.
+ */
+export function routeDisperseEdge(
+  source: LayoutNodePosition,
+  target: LayoutNodePosition,
+  style: DisperseEdgeStyle,
+): EdgePath {
+  const ports: EdgePorts = {
+    source: centerOfLayoutPosition(source),
+    target: centerOfLayoutPosition(target),
+    edgeDirection: { view: "Disperse", direction: "free" },
+  };
+  return route(ports, style);
+}
+
 /**
  * Canonical layout seam for edge rendering: consumers provide layout positions,
  * while this port selects endpoints and builds the route.
@@ -92,6 +115,10 @@ export function routeLayoutEdge(
   direction: LayoutDirection | undefined,
   style: EdgeRouteStyle,
 ): EdgePath {
+  if (mode === "Disperse") {
+    if (style === "orthogonal") throw new Error("Disperse edges cannot use orthogonal routing.");
+    return routeDisperseEdge(source, target, style);
+  }
   const edgeDirection = edgeDirectionForLayout(mode, direction, target.branchPortSide);
   return route(selectPorts(rectForLayoutPosition(source), rectForLayoutPosition(target), edgeDirection), style);
 }
@@ -118,7 +145,6 @@ function edgeDirectionForLayout(
   if (mode === "Axial") {
     return { view: "Axial", direction: canonicalDirection === "left" ? "left" : canonicalDirection === "up" ? "up" : canonicalDirection === "down" || canonicalDirection === "up/down" ? "down" : "right" };
   }
-  if (mode === "Disperse") return { view: "Disperse", direction: "free" };
   return { view: "System", direction: "free" };
 }
 

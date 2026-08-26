@@ -62,10 +62,17 @@ export function findLayoutSample(sampleId: string): LayoutGoldenSample {
   return sample;
 }
 
-export function toVisibleLayoutGraph(sample: LayoutLabSample): VisibleLayoutGraph {
+/**
+ * Produces the graph visible to structured layouts. A collapsed node remains
+ * visible, while its descendants are unreachable because it exposes no
+ * children. Disperse receives the unmodified graph and performs its distinct
+ * super-node contraction itself.
+ */
+export function toVisibleLayoutGraph(sample: LayoutLabSample, collapsedNodeIds: readonly string[] = []): VisibleLayoutGraph {
+  const collapsed = new Set(collapsedNodeIds);
   return {
     nodeIds: sample.input.graph.nodeIds,
-    childrenOf: (nodeId: string) => sample.input.graph.children[nodeId] || [],
+    childrenOf: (nodeId: string) => collapsed.has(nodeId) ? [] : sample.input.graph.children[nodeId] || [],
     graphLinks: sample.input.graph.graphLinks,
   };
 }
