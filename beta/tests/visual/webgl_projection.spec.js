@@ -129,6 +129,72 @@ test("WebGL Tree projection preserves map geometry, selection, camera and SVG fa
   await expect(page.locator("#meta")).toContainText("selected: 日本語ラベルと長い表示テキスト");
 });
 
+test("WebGL node editing uses one HTML overlay and the existing commit/cancel path", async ({ page }) => {
+  const active = await loadWebGLFixture(page);
+  if (!active) {
+    await expect(page.locator("#canvas")).toBeVisible();
+    return test.skip(true, "This Chromium runtime does not expose WebGL2; SVG fallback is the expected result.");
+  }
+
+  await waitForWebGLActivation(page);
+  const savedAtBeforeEdit = (await page.locator("#meta").textContent()).match(/savedAt: ([^|]+)/)?.[1];
+  const targetPoint = await webglClientPointForNode(page, "inside");
+  await page.mouse.dblclick(targetPoint.x, targetPoint.y);
+
+  const editor = page.locator("textarea.inline-node-editor");
+  await expect(editor).toBeVisible({ timeout: 1_000 });
+  const overlayGeometry = await page.evaluate(() => {
+    const projection = window.__m3eWebGLProjection;
+    const snapshot = projection.getSnapshot();
+    const debug = projection.getDebugState();
+    const node = snapshot.nodes.find((entry) => entry.id === "inside");
+    const input = document.querySelector("textarea.inline-node-editor");
+    if (!node || !input) throw new Error("WebGL inline editor is unavailable.");
+    return {
+      svgHidden: document.querySelector("#canvas")?.hasAttribute("hidden"),
+      webglVisible: !document.querySelector("#webgl-canvas")?.hasAttribute("hidden"),
+      editorCount: document.querySelectorAll("textarea.inline-node-editor").length,
+      left: Number.parseFloat(input.style.left),
+      top: Number.parseFloat(input.style.top),
+      width: Number.parseFloat(input.style.width),
+      height: Number.parseFloat(input.style.height),
+      expectedLeft: debug.camera.x + node.x * debug.camera.zoom,
+      expectedTop: debug.camera.y + node.y * debug.camera.zoom,
+      expectedWidth: node.width,
+      expectedHeight: node.height,
+    };
+  });
+  expect(overlayGeometry.svgHidden).toBe(true);
+  expect(overlayGeometry.webglVisible).toBe(true);
+  expect(overlayGeometry.editorCount).toBe(1);
+  expect(overlayGeometry.left).toBeCloseTo(overlayGeometry.expectedLeft, 5);
+  expect(overlayGeometry.top).toBeCloseTo(overlayGeometry.expectedTop, 5);
+  expect(overlayGeometry.width).toBe(overlayGeometry.expectedWidth);
+  expect(overlayGeometry.height).toBe(overlayGeometry.expectedHeight);
+
+  await editor.fill("WebGL committed text");
+  await editor.evaluate((input) => input.blur());
+  await expect(page.locator("#meta")).toContainText("selected: WebGL committed text");
+  const savedAtAfterCommit = (await page.locator("#meta").textContent()).match(/savedAt: ([^|]+)/)?.[1];
+  expect(savedAtAfterCommit).toBeTruthy();
+  expect(savedAtAfterCommit).not.toBe(savedAtBeforeEdit);
+  await expect(editor).toBeHidden();
+  await waitForWebGLActivation(page);
+  await expect.poll(() => page.evaluate(() => window.__m3eWebGLProjection.getSnapshot().nodes.find((node) => node.id === "inside")?.label), { timeout: 1_000 })
+    .toContain("WebGL committed text");
+
+  const savedAtBeforeCancel = savedAtAfterCommit;
+  await page.keyboard.press("F2");
+  await expect(editor).toBeVisible({ timeout: 1_000 });
+  await editor.fill("must be cancelled");
+  await page.keyboard.press("Escape");
+  await expect(editor).toBeHidden();
+  await expect(page.locator("#meta")).toContainText("selected: WebGL committed text");
+  const savedAtAfterCancel = (await page.locator("#meta").textContent()).match(/savedAt: ([^|]+)/)?.[1];
+  expect(savedAtAfterCancel).toBe(savedAtBeforeCancel);
+  expect(await page.locator("textarea.inline-node-editor").count()).toBe(0);
+});
+
 test("WebGL Disperse projection carries group boundaries from LayoutResult", async ({ page }) => {
   const active = await loadWebGLFixture(page);
   if (!active) {

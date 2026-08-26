@@ -55,6 +55,7 @@ export interface RenderInteractionState {
   selectedNodeIds: string[];
   primarySelectedNodeId: string | null;
   hoveredNodeId: string | null;
+  editingNodeId?: string | null;
   gestureActive: boolean;
 }
 
@@ -401,6 +402,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     selectedNodeIds: [],
     primarySelectedNodeId: null,
     hoveredNodeId: null,
+    editingNodeId: null,
     gestureActive: false,
   };
   private colorVertexCount = 0;
@@ -475,11 +477,14 @@ export class WebGLRenderingProjection implements RenderingProjection {
   }
 
   setInteractionState(interaction: RenderInteractionState): void {
+    const editingNodeChanged = (interaction.editingNodeId ?? null) !== (this.interaction.editingNodeId ?? null);
     this.interaction = {
       ...interaction,
+      editingNodeId: interaction.editingNodeId ?? null,
       selectedNodeIds: [...interaction.selectedNodeIds],
     };
     if (!this.active || !this.gl) return;
+    if (editingNodeChanged) this.uploadTextGeometry();
     this.uploadInteractionGeometry();
     this.draw();
   }
@@ -651,6 +656,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     const vertices: number[] = [];
     const vertex = (x: number, y: number, u: number, v: number): void => { vertices.push(x, y, u, v); };
     labels.forEach((label) => {
+      if (label.nodeId === this.interaction.editingNodeId) return;
       const node = byId.get(label.nodeId);
       if (!node) return;
       const x = node.x + Math.max(6, (node.width - label.width) / 2);

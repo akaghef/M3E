@@ -35,6 +35,7 @@ import {
   type RenderSnapshot,
   WebGLRenderingProjection,
   screenToWorld,
+  worldToScreen,
 } from "./webgl_projection";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
@@ -4408,6 +4409,7 @@ function syncWebGLInteraction(): void {
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     primarySelectedNodeId: viewState.selectedNodeId || null,
     hoveredNodeId: webglHoveredNodeId,
+    editingNodeId: inlineEditor?.nodeId || null,
     gestureActive: Boolean(viewState.panState || viewState.pinchState || viewState.dragState),
   });
 }
@@ -4513,6 +4515,7 @@ function activateWebGLProjection(): void {
         webglCanvas.hidden = true;
         canvas.removeAttribute("hidden");
         canvas.style.transform = "";
+        syncInlineEditorPosition();
         setStatus(`WebGL unavailable: ${reason} SVG fallback is active.`, true);
       },
       onRestored: () => {
@@ -4529,6 +4532,7 @@ function activateWebGLProjection(): void {
         webglProjection?.resize();
         webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
         syncWebGLInteraction();
+        syncInlineEditorPosition();
         setStatus("WebGL context restored.");
       },
     });
@@ -4547,6 +4551,7 @@ function activateWebGLProjection(): void {
   canvas.setAttribute("hidden", "");
   if (linearPanelEl) linearPanelEl.hidden = true;
   syncWebGLInteraction();
+  syncInlineEditorPosition();
   (globalThis as any).__m3eWebGLProjection = {
     getDebugState: () => webglProjection?.getDebugState(),
     getSnapshot: () => webglLastSnapshot,
@@ -4578,6 +4583,7 @@ function deactivateWebGLProjection(): void {
   webglRendererActive = false;
   if (webglCanvas) webglCanvas.hidden = true;
   canvas.removeAttribute("hidden");
+  syncInlineEditorPosition();
 }
 
 function applyCanvasViewportTransform(): void {
@@ -4629,6 +4635,7 @@ function applyLinearPanelViewportTransform(): void {
 function applyZoom(options: ViewportApplyOptions = {}): void {
   if (isWebGLRendererActive()) {
     webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    syncInlineEditorPosition();
     if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
       webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
     }
@@ -4819,11 +4826,40 @@ function captureManualLinearPanelWidth(): void {
 }
 
 function syncInlineEditorPosition(): void {
-  if (!inlineEditor || !map || !lastLayout) {
+  if (!inlineEditor || !map) {
     return;
   }
 
   const nodeId = inlineEditor.nodeId;
+  const webglNode = isWebGLRendererActive()
+    ? webglLastSnapshot?.nodes.find((node) => node.id === nodeId) || null
+    : null;
+  if (isWebGLRendererActive()) {
+    if (!webglNode) {
+      return;
+    }
+    const camera = { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom };
+    const topLeft = worldToScreen({ x: webglNode.x, y: webglNode.y }, camera);
+    inlineEditor.input.style.left = `${topLeft.x}px`;
+    inlineEditor.input.style.top = `${topLeft.y}px`;
+    inlineEditor.input.style.width = `${webglNode.width}px`;
+    inlineEditor.input.style.height = `${webglNode.height}px`;
+    inlineEditor.input.style.minWidth = `${webglNode.width}px`;
+    inlineEditor.input.style.minHeight = `${webglNode.height}px`;
+    inlineEditor.input.style.fontSize = `${webglNode.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
+    inlineEditor.input.style.lineHeight = `${lineHeightForFont(webglNode.fontSize || VIEWER_TUNING.typography.nodeFont)}px`;
+    inlineEditor.input.style.fontWeight = nodeId === map.state.rootId ? "500" : "450";
+    inlineEditor.input.style.color = webglNode.textColor || "#232323";
+    inlineEditor.input.style.padding = "0 6px";
+    inlineEditor.input.style.transform = `scale(${viewState.zoom})`;
+    inlineEditor.input.style.transformOrigin = "top left";
+    inlineEditor.input.style.textAlign = "center";
+    return;
+  }
+
+  if (!lastLayout) {
+    return;
+  }
   const nodePos = lastLayout.pos[nodeId];
   if (!nodePos) {
     return;
@@ -11565,12 +11601,18 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
 
   const { nodeId, input, mode } = inlineEditor;
   const next = input.value;
-  setEditedSvgLabelVisibility(nodeId, true);
+  const wasWebGL = isWebGLRendererActive();
+  if (!wasWebGL) {
+    setEditedSvgLabelVisibility(nodeId, true);
+  }
   input.remove();
   inlineEditor = null;
 
   if (commit) {
     applyNodeTextEdit(nodeId, next, mode);
+  }
+  if (wasWebGL) {
+    syncWebGLInteraction();
   }
 
   if (options?.focusBoard !== false) {
@@ -11710,7 +11752,14 @@ function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
 }
 
 function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeIntoView?: boolean }): void {
-  if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
+  if (!map) {
+    return;
+  }
+  if (isWebGLRendererActive()) {
+    if (!webglLastSnapshot?.nodes.some((node) => node.id === nodeId)) {
+      return;
+    }
+  } else if (!lastLayout?.pos[nodeId]) {
     return;
   }
 
@@ -11738,7 +11787,9 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
 
   inlineEditor = { nodeId, input, mode };
   syncInlineEditorPosition();
-  autoSizeInlineEditor(input);
+  if (!isWebGLRendererActive()) {
+    autoSizeInlineEditor(input);
+  }
   if (options?.nudgeIntoView !== false) {
     nudgeNodeIntoView(nodeId);
   }
@@ -11797,8 +11848,11 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   });
 
   input.addEventListener("input", () => {
-    autoSizeInlineEditor(input);
+    if (!isWebGLRendererActive()) {
+      autoSizeInlineEditor(input);
+    }
   });
+  syncWebGLInteraction();
 }
 
 function nodeDepth(nodeId: string): number {
@@ -14807,6 +14861,20 @@ function finishWebGLNodeDrag(event: PointerEvent): void {
 
 webglCanvas?.addEventListener("pointerup", finishWebGLNodeDrag);
 webglCanvas?.addEventListener("pointercancel", finishWebGLNodeDrag);
+
+webglCanvas?.addEventListener("dblclick", (event: MouseEvent) => {
+  if (!isWebGLRendererActive() || !webglProjection) {
+    return;
+  }
+  const hit = webglProjection.hitTest(event.clientX, event.clientY);
+  if (hit?.kind !== "node") {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  selectNode(hit.nodeId);
+  startInlineEdit(hit.nodeId, { selectAll: false });
+});
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (annotationTool !== "select") {
