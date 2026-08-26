@@ -48,6 +48,7 @@ test("WebGL Tree projection preserves map geometry, selection, camera and SVG fa
   expect(before.nodes.map((node) => node.id).sort()).toEqual(["collapsed", "inside", "long", "root", "scope"]);
   expect(before.nodes.some((node) => node.id === "hidden")).toBe(false);
   expect(before.graphLinks).toHaveLength(1);
+  expect(before.groups).toHaveLength(0);
   expect(before.graphLinks[0]).toMatchObject({ id: "related", sourceNodeId: "inside", targetNodeId: "long" });
   expect(before.nodes.find((node) => node.id === "inside").label).toContain("日本語");
 
@@ -105,4 +106,17 @@ test("WebGL Tree projection preserves map geometry, selection, camera and SVG fa
   await expect(page.locator("#canvas")).toBeVisible();
   await expect(page.locator("#webgl-canvas")).toBeHidden();
   await expect(page.locator("#meta")).toContainText("selected: 日本語ラベルと長い表示テキスト");
+});
+
+test("WebGL Disperse projection carries group boundaries from LayoutResult", async ({ page }) => {
+  const active = await loadWebGLFixture(page);
+  if (!active) {
+    await expect(page.locator("#canvas")).toBeVisible();
+    return test.skip(true, "This Chromium runtime does not expose WebGL2; SVG fallback is the expected result.");
+  }
+
+  await page.locator("#view-scatter").click();
+  await expect(page.locator("#mode-meta")).toContainText("/ Disperse");
+  await expect.poll(() => page.evaluate(() => window.__m3eWebGLProjection.getSnapshot().groups.length), { timeout: 1_000 })
+    .toBeGreaterThan(0);
 });

@@ -16,6 +16,7 @@ const snapshot: RenderSnapshot = {
     { id: "root", x: 20, y: 30, width: 160, height: 48, label: "ルート", labelLines: ["ルート"], shape: "rect", fill: "#ffffff", stroke: "#334155" },
     { id: "circle", x: 280, y: 100, width: 64, height: 64, label: "Alias", labelLines: ["Alias"], shape: "circle", fill: "#e0f2fe", stroke: "#0369a1" },
   ],
+  groups: [{ id: "root-group", memberIds: ["root", "circle"], x: 0, y: 0, width: 400, height: 300 }],
   edges: [{ id: "root-circle", sourceNodeId: "root", targetNodeId: "circle", points: [{ x: 180, y: 54 }, { x: 280, y: 132 }], color: "#94a3b8", width: 4, kind: "edge" }],
   graphLinks: [{ id: "related", sourceNodeId: "circle", targetNodeId: "root", points: [{ x: 312, y: 100 }, { x: 180, y: 54 }], color: "#7c3aed", width: 3, kind: "graph-link" }],
 };
@@ -48,5 +49,15 @@ describe("WebGL rendering projection geometry", () => {
   it("hit-tests GraphLink and tree edge geometry when no node owns the point", () => {
     expect(hitTestSnapshot(snapshot, { x: 240, y: 75 }, 6)).toEqual({ kind: "graph-link", edgeId: "related" });
     expect(hitTestSnapshot(snapshot, { x: 228, y: 92 }, 6)).toEqual({ kind: "edge", edgeId: "root-circle" });
+  });
+
+  it("keeps Disperse group boundaries out of hit testing", () => {
+    expect(snapshot.groups).toHaveLength(1);
+    expect(hitTestSnapshot(snapshot, { x: 220, y: 260 })).toBeNull();
+  });
+
+  it("represents non-Disperse scenes with an empty group collection", () => {
+    const treeSnapshot: RenderSnapshot = { ...snapshot, groups: [] };
+    expect(treeSnapshot.groups).toEqual([]);
   });
 });

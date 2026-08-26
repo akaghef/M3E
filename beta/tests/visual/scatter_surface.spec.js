@@ -133,6 +133,7 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toContainText("Alpha Child");
   await expect(page.locator("path.edge")).toHaveCount(0);
   await expect(page.locator(".scatter-guide")).toHaveCount(1);
+  await expect(page.locator("rect.disperse-group")).not.toHaveCount(0);
 
   const alphaBefore = await page.locator('[data-node-id="alpha"].node-hit').boundingBox();
   if (!alphaBefore) throw new Error("Alpha node was not rendered.");

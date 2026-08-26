@@ -30,6 +30,7 @@ import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLin
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 import {
   type RenderEdge,
+  type RenderGroupBoundary,
   type RenderNode,
   type RenderSnapshot,
   WebGLRenderingProjection,
@@ -4316,7 +4317,7 @@ function svgShapeBox(shape: SVGGraphicsElement): { x: number; y: number; width: 
 }
 
 /** Converts the existing canonical SVG scene into a read-only GPU projection. */
-function buildWebGLRenderSnapshot(): RenderSnapshot {
+function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
   const labelsById = new Map<string, string[]>();
   const labelElementsById = new Map<string, SVGTextElement>();
   canvas.querySelectorAll<SVGTextElement>("text.label-root[data-node-id], text.label-node[data-node-id]").forEach((label) => {
@@ -4377,11 +4378,24 @@ function buildWebGLRenderSnapshot(): RenderSnapshot {
       };
     })
     .filter((edge) => edge.points.length >= 2);
+  const groups: RenderGroupBoundary[] = currentSurfaceIsScatterMode()
+    ? (layout.groups || [])
+      .filter((group) => Number.isFinite(group.x + group.y + group.w + group.h) && group.w > 0 && group.h > 0)
+      .map((group) => ({
+        id: group.id,
+        memberIds: [...group.memberIds],
+        x: group.x,
+        y: group.y,
+        width: group.w,
+        height: group.h,
+      }))
+    : [];
   return {
     revision: `${map?.savedAt || "unsaved"}:${viewState.surfaceViewMode}:${currentScopeRootId()}`,
     nodes,
     edges: parseEdges("path.edge[data-source-node-id][data-target-node-id], line.scatter-guide[data-parent-node-id][data-child-node-id]", "edge"),
     graphLinks: parseEdges("path.graph-link[data-source-node-id][data-target-node-id], line.graph-link[data-source-node-id][data-target-node-id]", "graph-link"),
+    groups,
     bounds: { minX: 0, minY: 0, maxX: contentWidth, maxY: contentHeight },
   };
 }
@@ -4431,12 +4445,13 @@ function activateWebGLProjection(): void {
     if (!webglProjection.mount()) return;
   }
   webglProjection.resize();
-  webglLastSnapshot = buildWebGLRenderSnapshot();
+  if (!lastLayout) return;
+  webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
   webglProjection.setSnapshot(webglLastSnapshot);
   webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
   if (WEBGL_DEBUG_REQUESTED) {
     webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
-    webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length });
+    webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length, groups: webglLastSnapshot.groups.length });
   }
   webglRendererActive = true;
   canvas.setAttribute("hidden", "");
@@ -7270,12 +7285,24 @@ function render(): void {
   );
   let defs = "<defs>";
   let surfaceFrames = "";
+  let disperseGroups = "";
   let edges = "";
   let scatterGuides = "";
   let graphLinks = "";
   let overlays = "";
   let annotations = "";
   let nodes = "";
+
+  if (scatterSurface) {
+    layout.groups?.forEach((group) => {
+      if (!Number.isFinite(group.x + group.y + group.w + group.h) || group.w <= 0 || group.h <= 0) {
+        return;
+      }
+      disperseGroups += `<rect class="disperse-group" data-group-id="${escapeXmlAttr(group.id)}" x="${group.x}" y="${group.y}" width="${group.w}" height="${group.h}" rx="12" pointer-events="none" aria-hidden="true" />`;
+      maxX = Math.max(maxX, group.x + group.w + VIEWER_TUNING.layout.canvasRightPad);
+      maxY = Math.max(maxY, group.y + group.h + VIEWER_TUNING.layout.canvasBottomPad);
+    });
+  }
 
   let topArchCount = 0;
   let bottomArchCount = 0;
@@ -7891,7 +7918,7 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
+  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${disperseGroups}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
   if (webglSurfaceSupported()) {
     scheduleWebGLProjectionActivation();
   } else {

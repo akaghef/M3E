@@ -26,11 +26,22 @@ export interface RenderEdge {
   direction?: "none" | "forward" | "backward" | "both";
 }
 
+/** A drawable Disperse boundary; groups are not nodes and never participate in hit testing. */
+export interface RenderGroupBoundary {
+  id: string;
+  memberIds: string[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface RenderSnapshot {
   revision: string;
   nodes: RenderNode[];
   edges: RenderEdge[];
   graphLinks: RenderEdge[];
+  groups: RenderGroupBoundary[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
@@ -278,6 +289,21 @@ function pushOutline(target: number[], node: RenderNode, color: [number, number,
   pushRect(target, x, y + h - width, w, width, color);
   pushRect(target, x, y, width, h, color);
   pushRect(target, x + w - width, y, width, h, color);
+}
+
+function pushGroupBoundary(target: number[], group: RenderGroupBoundary): void {
+  const borderWidth = 2;
+  const fill = rgba("#5f7fad", 0.06);
+  const stroke = rgba("#5f7fad", 0.9);
+  pushRect(target, group.x, group.y, group.width, group.height, fill);
+  const x = group.x - borderWidth / 2;
+  const y = group.y - borderWidth / 2;
+  const width = group.width + borderWidth;
+  const height = group.height + borderWidth;
+  pushRect(target, x, y, width, borderWidth, stroke);
+  pushRect(target, x, y + height - borderWidth, width, borderWidth, stroke);
+  pushRect(target, x, y, borderWidth, height, stroke);
+  pushRect(target, x + width - borderWidth, y, borderWidth, height, stroke);
 }
 
 export function screenToWorld(point: { x: number; y: number }, camera: CameraState): { x: number; y: number } {
@@ -538,6 +564,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
         if (edge.direction === "backward" || edge.direction === "both") pushArrow(vertices, second, first, color);
       }
     };
+    snapshot.groups.forEach((group) => pushGroupBoundary(vertices, group));
     snapshot.edges.forEach(renderLine);
     snapshot.graphLinks.forEach(renderLine);
     snapshot.nodes.forEach((node) => {

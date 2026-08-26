@@ -1282,6 +1282,15 @@
         pointer-events: none;
       }
 
+      .disperse-group {
+        fill: rgba(95, 127, 173, 0.06);
+        stroke: #5f7fad;
+        stroke-width: 1.5;
+        stroke-dasharray: 6 4;
+        vector-effect: non-scaling-stroke;
+        pointer-events: none;
+      }
+
       body.scatter-surface-active .app {
         background-color: #0a0a12;
         background-image: none;
@@ -4246,6 +4255,11 @@
       :root[data-theme="dark"] .surface-scope-box {
         fill: rgba(15, 23, 42, 0.42);
         stroke: rgba(167, 139, 250, 0.46);
+      }
+
+      :root[data-theme="dark"] .disperse-group {
+        fill: rgba(95, 127, 173, 0.1);
+        stroke: rgba(147, 197, 253, 0.72);
       }
 
       :root[data-theme="dark"] .node-visual-box.selected,
