@@ -34,6 +34,7 @@ import {
   type RenderNode,
   type RenderSnapshot,
   WebGLRenderingProjection,
+  screenToWorld,
 } from "./webgl_projection";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
@@ -487,6 +488,7 @@ let webglHoveredNodeId: string | null = null;
 let webglHoverFrame: number | null = null;
 let webglLastSnapshot: RenderSnapshot | null = null;
 let webglActivationFrame: number | null = null;
+let webglDragBaseSnapshot: RenderSnapshot | null = null;
 
 type CameraTarget = { cameraX: number; cameraY: number; zoom: number };
 type CameraMoveOptions = { animate?: boolean; durationMs?: number };
@@ -4406,8 +4408,96 @@ function syncWebGLInteraction(): void {
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     primarySelectedNodeId: viewState.selectedNodeId || null,
     hoveredNodeId: webglHoveredNodeId,
-    gestureActive: Boolean(viewState.panState || viewState.pinchState),
+    gestureActive: Boolean(viewState.panState || viewState.pinchState || viewState.dragState),
   });
+}
+
+function webglClientToWorld(clientX: number, clientY: number): { x: number; y: number } | null {
+  if (!webglCanvas) {
+    return null;
+  }
+  const rect = webglCanvas.getBoundingClientRect();
+  return screenToWorld(
+    { x: clientX - rect.left, y: clientY - rect.top },
+    { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom },
+  );
+}
+
+function cloneWebGLRenderSnapshot(snapshot: RenderSnapshot): RenderSnapshot {
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.map((node) => ({ ...node })),
+    edges: snapshot.edges.map((edge) => ({ ...edge, points: edge.points.map((point) => ({ ...point })) })),
+    graphLinks: snapshot.graphLinks.map((edge) => ({ ...edge, points: edge.points.map((point) => ({ ...point })) })),
+    groups: snapshot.groups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
+    bounds: { ...snapshot.bounds },
+  };
+}
+
+function translateWebGLDragSnapshot(
+  snapshot: RenderSnapshot,
+  movedNodeIds: string[],
+  delta: { x: number; y: number },
+): RenderSnapshot {
+  const moved = new Set(movedNodeIds);
+  const edgeWithMovedEndpoints = (edge: RenderEdge): RenderEdge => {
+    const sourceMoved = moved.has(edge.sourceNodeId);
+    const targetMoved = moved.has(edge.targetNodeId);
+    if (!sourceMoved && !targetMoved) {
+      return { ...edge, points: edge.points.map((point) => ({ ...point })) };
+    }
+    const points = edge.points.map((point, index) => {
+      const t = edge.points.length <= 1 ? 0 : index / (edge.points.length - 1);
+      const factor = sourceMoved && targetMoved ? 1 : sourceMoved ? 1 - t : t;
+      return {
+        x: point.x + delta.x * factor,
+        y: point.y + delta.y * factor,
+      };
+    });
+    return { ...edge, points };
+  };
+  return {
+    ...snapshot,
+    revision: `${snapshot.revision}:drag`,
+    nodes: snapshot.nodes.map((node) => moved.has(node.id)
+      ? { ...node, x: node.x + delta.x, y: node.y + delta.y }
+      : { ...node }),
+    edges: snapshot.edges.map(edgeWithMovedEndpoints),
+    graphLinks: snapshot.graphLinks.map(edgeWithMovedEndpoints),
+    groups: snapshot.groups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
+    bounds: { ...snapshot.bounds },
+  };
+}
+
+function updateWebGLNodeDragPreview(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!webglProjection || !webglDragBaseSnapshot || !drag || drag.pointerId !== event.pointerId || drag.mode !== "scatter") {
+    return;
+  }
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.dragged && distance < VIEWER_TUNING.drag.reparentThreshold) {
+    return;
+  }
+  if (!drag.dragged) {
+    if (scatterAnimationEnabled) {
+      scatterAnimationEnabled = false;
+      stopScatterAnimation(true);
+      syncScatterToolbarUi();
+    }
+    pushUndoSnapshot();
+  }
+  drag.dragged = true;
+  const startWorld = drag.startWorld;
+  const currentWorld = webglClientToWorld(event.clientX, event.clientY);
+  if (!startWorld || !currentWorld) {
+    return;
+  }
+  webglLastSnapshot = translateWebGLDragSnapshot(
+    webglDragBaseSnapshot,
+    drag.sourceRootIds,
+    { x: currentWorld.x - startWorld.x, y: currentWorld.y - startWorld.y },
+  );
+  webglProjection.setSnapshot(webglLastSnapshot);
 }
 
 function activateWebGLProjection(): void {
@@ -11312,6 +11402,25 @@ function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y
   return starts;
 }
 
+function applyScatterDragDelta(
+  sourceRootIds: string[],
+  startViews: Record<string, { x: number; y: number }>,
+  delta: { x: number; y: number },
+): void {
+  if (!map) {
+    return;
+  }
+  syncMapModelStateFromRuntime();
+  sourceRootIds.forEach((nodeId) => {
+    const start = startViews[nodeId];
+    if (!start) return;
+    const view = ensureSurfaceNodeView(nodeId);
+    if (!view) return;
+    view.x = Math.round(start.x + delta.x);
+    view.y = Math.round(start.y + delta.y);
+  });
+}
+
 function deleteSelectedGraphLink(): boolean {
   if (!map || !viewState.selectedLinkId) {
     return false;
@@ -14565,7 +14674,7 @@ document.addEventListener("click", () => {
   closeToolbarMenus();
 });
 
-/** Phase 1 WebGL input: read/select only. Mutating gestures remain on SVG. */
+/** Phase 1 WebGL input: selection and Disperse node drag. Other mutating gestures remain on SVG. */
 webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
   if (!isWebGLRendererActive() || event.button !== 0 || !webglProjection) return;
   const hit = webglProjection.hitTest(event.clientX, event.clientY);
@@ -14573,6 +14682,41 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
   event.preventDefault();
   event.stopPropagation();
   if (hit.kind === "node") {
+    const canStartScatterDrag = currentSurfaceIsScatterMode() && scatterToolMode === "normal" && !isReadOnlyLink();
+    if (canStartScatterDrag && webglLastSnapshot) {
+      const wasSelected = viewState.selectedNodeIds.has(hit.nodeId);
+      const sourceRootIds = wasSelected
+        ? getMovableSelectionRoots(viewState.selectedNodeIds)
+        : getMovableSelectionRoots(new Set([hit.nodeId]));
+      const startWorld = webglClientToWorld(event.clientX, event.clientY);
+      if (sourceRootIds.length > 0 && startWorld) {
+        if (!wasSelected && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+          // Keep the current WebGL click-selection behavior without redrawing
+          // SVG before we know whether this becomes a drag. Modifier
+          // selection remains pending until pointerup, like the SVG path.
+          setSingleSelection(hit.nodeId, false);
+        }
+        viewState.dragState = {
+          mode: "scatter",
+          pointerId: event.pointerId,
+          sourceNodeId: hit.nodeId,
+          sourceRootIds,
+          proposal: null,
+          startX: event.clientX,
+          startY: event.clientY,
+          startWorld,
+          dragged: false,
+          toggleKey: event.ctrlKey || event.metaKey,
+          shiftKey: event.shiftKey,
+          startViews: scatterDragStartViews(sourceRootIds),
+        };
+        webglDragBaseSnapshot = cloneWebGLRenderSnapshot(webglLastSnapshot);
+        webglCanvas.setPointerCapture(event.pointerId);
+        syncWebGLInteraction();
+        board.focus();
+        return;
+      }
+    }
     setSingleSelection(hit.nodeId, false);
     syncWebGLInteraction();
     // Keep HTML inspector/metadata in the canonical UI state in sync. This is
@@ -14590,6 +14734,10 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
 
 webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
   if (!isWebGLRendererActive() || !webglProjection || viewState.panState || viewState.pinchState) return;
+  if (viewState.dragState?.mode === "scatter" && viewState.dragState.pointerId === event.pointerId) {
+    updateWebGLNodeDragPreview(event);
+    return;
+  }
   if (webglHoverFrame !== null) cancelAnimationFrame(webglHoverFrame);
   webglHoverFrame = requestAnimationFrame(() => {
     webglHoverFrame = null;
@@ -14603,11 +14751,62 @@ webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
 });
 
 webglCanvas?.addEventListener("pointerleave", () => {
+  if (viewState.dragState) {
+    return;
+  }
   if (webglHoveredNodeId !== null) {
     webglHoveredNodeId = null;
     syncWebGLInteraction();
   }
 });
+
+function finishWebGLNodeDrag(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!drag || drag.mode !== "scatter" || event.pointerId !== drag.pointerId) {
+    return;
+  }
+  updateWebGLNodeDragPreview(event);
+  const dragged = drag.dragged;
+  const sourceRootIds = [...drag.sourceRootIds];
+  const startViews = { ...(drag.startViews || {}) };
+  const startWorld = drag.startWorld;
+  const endWorld = webglClientToWorld(event.clientX, event.clientY);
+  viewState.dragState = null;
+  webglDragBaseSnapshot = null;
+  try {
+    webglCanvas?.releasePointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been released by the browser.
+  }
+
+  if (!dragged) {
+    selectByPointerModifiers(drag.sourceNodeId, {
+      toggle: drag.toggleKey,
+      range: drag.shiftKey,
+    });
+    syncWebGLInteraction();
+    board.focus();
+    return;
+  }
+
+  if (!startWorld || !endWorld) {
+    syncWebGLInteraction();
+    board.focus();
+    return;
+  }
+  applyScatterDragDelta(sourceRootIds, startViews, {
+    x: endWorld.x - startWorld.x,
+    y: endWorld.y - startWorld.y,
+  });
+  // Reuse the existing SVG drag commit path: one canonical render, autosave,
+  // and broadcast after the WebGL-only preview has ended.
+  touchDocument();
+  setStatus("Disperse position updated.");
+  board.focus();
+}
+
+webglCanvas?.addEventListener("pointerup", finishWebGLNodeDrag);
+webglCanvas?.addEventListener("pointercancel", finishWebGLNodeDrag);
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (annotationTool !== "select") {
@@ -14807,18 +15006,10 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.dragState.dragged = true;
   if (viewState.dragState.mode === "scatter") {
-    syncMapModelStateFromRuntime();
     const startViews = viewState.dragState.startViews || {};
     const canvasDx = dx / viewState.zoom;
     const canvasDy = dy / viewState.zoom;
-    viewState.dragState.sourceRootIds.forEach((nodeId) => {
-      const start = startViews[nodeId];
-      if (!start) return;
-      const view = ensureSurfaceNodeView(nodeId);
-      if (!view) return;
-      view.x = Math.round(start.x + canvasDx);
-      view.y = Math.round(start.y + canvasDy);
-    });
+    applyScatterDragDelta(viewState.dragState.sourceRootIds, startViews, { x: canvasDx, y: canvasDy });
     scheduleRender();
     return;
   }
