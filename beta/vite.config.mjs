@@ -59,6 +59,7 @@ export default defineConfig({
         "pn-lab": "src/labs/pn/pn-lab.html",
         "force-lab": "src/labs/force/force-lab.html",
         "runtime-board": "src/labs/runtime-board/runtime-board.html",
+        "viewer-panel-lab": "src/labs/viewer/viewer-panel-seam-lab.html",
       },
       output: {
         entryFileNames: "[name].js",
