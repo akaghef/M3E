@@ -36,6 +36,7 @@ import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/par
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
 import { resolveMarkdownFilePreviewTarget, type MarkdownFilePreviewTarget } from "../shared/markdown_file_preview";
+import { parseMmText, treeToMm } from "../shared/mm_exporter";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 import { buildTableViewModel, directTableViewChildren, renderTableViewHtml } from "./table_view";
 import {
@@ -3696,83 +3697,6 @@ function measureLatex(text: string): { w: number; h: number } {
   } finally {
     probe.remove();
   }
-}
-
-function richContentText(element: Element, type: string): string {
-  const richNodes = Array.from(element.children).filter((child) => {
-    return child.tagName === "richcontent" && (child.getAttribute("TYPE") || "").toUpperCase() === type;
-  });
-  return richNodes
-    .map((node) => (node.textContent || "").replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-function parseMmText(xmlText: string): SavedMap {
-  const parser = new DOMParser();
-  const xml = parser.parseFromString(xmlText, "application/xml");
-  const parserError = xml.querySelector("parsererror");
-  if (parserError) {
-    throw new Error("Invalid .mm XML");
-  }
-
-  const mapNode = xml.querySelector("map > node");
-  if (!mapNode) {
-    throw new Error("No root node found in .mm file");
-  }
-
-  const state: AppState = {
-    rootId: "",
-    nodes: {},
-  };
-
-  function convertNode(mmNode: Element, parentId: string | null = null): string {
-    const id = newId();
-    const text =
-      mmNode.getAttribute("TEXT") ||
-      richContentText(mmNode, "NODE") ||
-      "(empty)";
-    const record = createNodeRecord(id, parentId, text);
-    record.collapsed = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
-    record.link = mmNode.getAttribute("LINK") || "";
-    record.details = richContentText(mmNode, "DETAILS");
-    record.note = richContentText(mmNode, "NOTE");
-
-    const attributesEl = Array.from(mmNode.children).find((child) => child.tagName === "attributes");
-    if (attributesEl) {
-      Array.from(attributesEl.children)
-        .filter((child) => child.tagName === "attribute")
-        .forEach((attribute) => {
-          const key = attribute.getAttribute("NAME");
-          if (!key) {
-            return;
-          }
-          record.attributes[key] = attribute.getAttribute("VALUE") || "";
-        });
-    }
-
-    state.nodes[id] = record;
-    if (!state.rootId) {
-      state.rootId = id;
-    }
-
-    Array.from(mmNode.children)
-      .filter((child) => child.tagName === "node")
-      .forEach((childNode) => {
-        const childId = convertNode(childNode, id);
-        record.children.push(childId);
-      });
-
-    return id;
-  }
-
-  convertNode(mapNode, null);
-
-  return {
-    version: 1,
-    savedAt: nowIso(),
-    state,
-  };
 }
 
 function getNode(nodeId: string): TreeNode {
@@ -9399,46 +9323,6 @@ function escapeXmlAttr(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function mmRichContent(type: string, text: string): string {
-  return `<richcontent TYPE="${type}"><html><body>${escapeXmlAttr(text)}</body></html></richcontent>`;
-}
-
-function mmNodeToXml(node: TreeNode, state: AppState, indent: string): string {
-  if (node.nodeType === "alias") return "";
-
-  const attrs: string[] = [];
-  attrs.push(`TEXT="${escapeXmlAttr(node.text)}"`);
-  if (node.collapsed) attrs.push(`FOLDED="true"`);
-  if (node.link) attrs.push(`LINK="${escapeXmlAttr(node.link)}"`);
-
-  const parts: string[] = [];
-  if (node.details) parts.push(`${indent}  ${mmRichContent("DETAILS", node.details)}`);
-  if (node.note) parts.push(`${indent}  ${mmRichContent("NOTE", node.note)}`);
-
-  const attrEntries = Object.entries(node.attributes || {});
-  for (const [name, value] of attrEntries) {
-    parts.push(`${indent}  <attribute NAME="${escapeXmlAttr(name)}" VALUE="${escapeXmlAttr(value)}"/>`);
-  }
-
-  for (const childId of node.children) {
-    const child = state.nodes[childId];
-    if (child) {
-      const xml = mmNodeToXml(child, state, indent + "  ");
-      if (xml) parts.push(xml);
-    }
-  }
-
-  if (parts.length === 0) return `${indent}<node ${attrs.join(" ")}/>`;
-  return `${indent}<node ${attrs.join(" ")}>\n${parts.join("\n")}\n${indent}</node>`;
-}
-
-function treeToMm(state: AppState): string {
-  const root = state.nodes[state.rootId];
-  if (!root) throw new Error("Root node not found");
-  const body = mmNodeToXml(root, state, "  ");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<map version="freeplane 1.7.0">\n${body}\n</map>\n`;
 }
 
 function downloadMm(): void {

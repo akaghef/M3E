@@ -143,7 +143,7 @@ Freeplane の XML ベースのマインドマップ形式。
 | `richcontent TYPE="NODE"` | `text` | TEXT 属性がない場合のフォールバック |
 | `richcontent TYPE="DETAILS"` | `details` | 詳細テキスト |
 | `richcontent TYPE="NOTE"` | `note` | ノートテキスト |
-| `attribute NAME VALUE` | `attributes[NAME]` | 任意キーバリュー |
+| `node` 直下の `attribute NAME VALUE` | `attributes[NAME]` | 任意キーバリュー（旧 `attributes` wrapper も許容） |
 | 子 `node` 要素 | `children`（再帰） | 順序を維持 |
 
 **取り込まれないフィールド:**
@@ -174,7 +174,7 @@ M3E → `.mm` のエクスポートは未実装。以下は将来の設計方針
 | `link` | `node LINK` 属性 | |
 | `details` | `richcontent TYPE="DETAILS"` | |
 | `note` | `richcontent TYPE="NOTE"` | |
-| `attributes` | `attribute` 要素群 | |
+| `attributes` | `node` 直下の `attribute` 要素群 | 旧 `attributes` wrapper も読み込み可能 |
 | `children` 順序 | 子 `node` 要素の順序 | |
 
 **M3E 固有概念の退避:**

@@ -265,7 +265,7 @@ M3E ツリーを Freeplane/FreeMind 互換の `.mm` XML として書き出す。
 | `RICHCONTENT TYPE="NOTE"` | `note` | あり |
 | `FOLDED` | `collapsed` | あり |
 | `LINK` | `link` | あり |
-| `attributes > attribute` | `attributes[NAME] = VALUE` | あり |
+| `node` 直下の `attribute`（旧 `attributes` wrapper も許容） | `attributes[NAME] = VALUE` | あり |
 
 #### export 変換ルール
 
@@ -274,9 +274,8 @@ M3E ツリーを Freeplane/FreeMind 互換の `.mm` XML として書き出す。
   <node TEXT="Root Text" FOLDED="false">
     <richcontent TYPE="DETAILS"><html><body>details text</body></html></richcontent>
     <richcontent TYPE="NOTE"><html><body>note text</body></html></richcontent>
-    <attribute_layout>
-      <attribute NAME="key" VALUE="value"/>
-    </attribute_layout>
+    <attribute_layout NAME_WIDTH="34" VALUE_WIDTH="92"/>
+    <attribute NAME="key" VALUE="value"/>
     <node TEXT="Child 1" LINK="https://...">
       ...
     </node>
