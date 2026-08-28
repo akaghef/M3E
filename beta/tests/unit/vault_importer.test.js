@@ -34,6 +34,11 @@ tags:
 aliases:
   - Start
 status: draft
+m3e:provenance: human-authored
+m3e:role.icon: orbit
+m3e:actor.state: active
+m3e:component: filtered
+vault:kind: attacker-controlled
 ---
 
 # Welcome
@@ -79,6 +84,11 @@ Line 2
     expect(indexNode.attributes.tags).toBe("home");
     expect(indexNode.attributes.aliases).toBe("Start");
     expect(indexNode.attributes.status).toBe("draft");
+    expect(indexNode.attributes["m3e:provenance"]).toBe("human-authored");
+    expect(indexNode.attributes["m3e:role.icon"]).toBe("orbit");
+    expect(indexNode.attributes["m3e:actor.state"]).toBe("active");
+    expect(indexNode.attributes["m3e:component"]).toBeUndefined();
+    expect(indexNode.attributes["vault:kind"]).toBe("file");
     expect(indexNode.details).toContain("# Welcome");
     expect(Object.values(result.state.nodes).some((node) => node.nodeType === "alias")).toBe(true);
 
@@ -230,4 +240,21 @@ test("importVaultToAppState rejects protected system directories", async () => {
     ? path.join(process.env.SystemRoot || "C:\\Windows", "System32")
     : "/etc";
   await expect(importVaultToAppState({ vaultPath: protectedPath })).rejects.toThrow(/protected system directory/);
+});
+
+test("id-less markdown remains a valid human-authored new node", async () => {
+  const vaultDir = tmpDir();
+  try {
+    writeFile(vaultDir, "human-note.md", "A human-authored note without M3E frontmatter.");
+    const result = await importVaultToAppState({
+      vaultPath: vaultDir,
+      options: { skipAiTransform: true },
+    });
+    const node = Object.values(result.state.nodes).find((candidate) => candidate.attributes["vault:path"] === "human-note.md");
+    expect(node).toBeTruthy();
+    expect(node.id).toMatch(/^n_/);
+    expect(node.details).toBe("A human-authored note without M3E frontmatter.");
+  } finally {
+    cleanup(vaultDir);
+  }
 });

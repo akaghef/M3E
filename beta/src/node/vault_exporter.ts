@@ -48,6 +48,10 @@ function isVaultFile(node: TreeNode | undefined): boolean {
   return Boolean(node && node.nodeType === "folder" && node.attributes["vault:kind"] === "file");
 }
 
+function isPortableM3eAttribute(key: string): boolean {
+  return key === "m3e:provenance" || key.startsWith("m3e:role.") || key.startsWith("m3e:actor.");
+}
+
 function buildExportPlan(
   state: AppState,
   rootNodeId: string,
@@ -83,11 +87,11 @@ function buildExportPlan(
 }
 
 function attributeFrontmatter(node: TreeNode): string {
-  const lines: string[] = [];
+  const lines: string[] = ["m3e:", `  nodeId: ${JSON.stringify(node.id)}`];
   const attrs = node.attributes || {};
   const keys = Object.keys(attrs).sort();
   for (const key of keys) {
-    if (key.startsWith("vault:") || key.startsWith("m3e:")) {
+    if (key.startsWith("vault:") || (key.startsWith("m3e:") && !isPortableM3eAttribute(key))) {
       continue;
     }
     const value = attrs[key];
@@ -102,11 +106,8 @@ function attributeFrontmatter(node: TreeNode): string {
       }
       continue;
     }
-    lines.push(`${key}: ${JSON.stringify(value)}`);
-  }
-
-  if (lines.length === 0) {
-    return "";
+    const yamlKey = key.includes(":") ? JSON.stringify(key) : key;
+    lines.push(`${yamlKey}: ${JSON.stringify(value)}`);
   }
   return ["---", ...lines, "---", ""].join("\n");
 }
@@ -163,8 +164,8 @@ async function renderFileBody(
   if (hasContentChildren && outline.trim()) {
     return outline;
   }
-  if (node.details.trim()) {
-    return node.details.trim();
+  if (node.details) {
+    return node.details;
   }
   return `# ${node.text}`;
 }
@@ -215,7 +216,7 @@ export async function exportVaultFromAppState(
       parts.push(frontmatter.trimEnd());
       parts.push("");
     }
-    parts.push(body.trim());
+    parts.push(body);
     if (wikilinks.length > 0) {
       parts.push("");
       parts.push("---");
@@ -230,7 +231,7 @@ export async function exportVaultFromAppState(
       warnings.push(`Skipped existing file: ${file.relativePath}`);
       continue;
     }
-    await fs.promises.writeFile(targetPath, `${parts.join("\n").trim()}\n`, "utf8");
+    await fs.promises.writeFile(targetPath, parts.join("\n"), "utf8");
     hooks?.onProgress?.({
       phase: "write",
       current: index + 1,

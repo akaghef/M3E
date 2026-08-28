@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const { importVaultToSqlite } = require("../../dist/node/vault_importer.js");
 const { exportVaultFromSqlite } = require("../../dist/node/vault_exporter.js");
+const { RapidMvpModel } = require("../../dist/node/rapid_mvp.js");
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "m3e-vault-export-"));
@@ -99,5 +100,132 @@ Missing [[ghost]].
     fs.rmSync(sourceVault, { recursive: true, force: true });
     fs.rmSync(dataDir, { recursive: true, force: true });
     fs.rmSync(outVault, { recursive: true, force: true });
+  }
+});
+
+test("vault export/import round-trip preserves node identities, body, text, and portable attributes", async () => {
+  const sourceVault = tmpDir();
+  const dataDir = tmpDir();
+  const outVault = tmpDir();
+  try {
+    writeFile(sourceVault, "notes/alpha.md", "# Alpha\n\nOriginal body.\n");
+    const dbPath = path.join(dataDir, "identity-roundtrip.sqlite");
+    const mapId = "vault-identity-roundtrip";
+    await importVaultToSqlite(dbPath, {
+      vaultPath: sourceVault,
+      mapId,
+      options: { skipAiTransform: true },
+    });
+
+    const beforeModel = RapidMvpModel.loadFromSqlite(dbPath, mapId);
+    const beforeNode = Object.values(beforeModel.state.nodes).find((node) => node.attributes["vault:path"] === "notes/alpha.md");
+    expect(beforeNode).toBeTruthy();
+    beforeNode.attributes.tags = "roundtrip,identity";
+    beforeNode.attributes["m3e:provenance"] = "human-authored";
+    beforeNode.attributes["m3e:role.icon"] = "orbit";
+    beforeNode.attributes["m3e:actor.state"] = "active";
+    beforeNode.attributes["m3e:component"] = "private-runtime";
+    beforeModel.saveToSqlite(dbPath, mapId);
+    const beforeState = beforeModel.toJSON();
+
+    await exportVaultFromSqlite(dbPath, {
+      mapId,
+      vaultPath: outVault,
+      options: { skipAiTransform: true },
+    });
+    const exportedPath = path.join(outVault, "notes", "alpha.md");
+    const exported = fs.readFileSync(exportedPath, "utf8");
+    expect(exported).toContain(`m3e:\n  nodeId: "${beforeNode.id}"`);
+    expect(exported).toContain('"m3e:provenance": "human-authored"');
+    expect(exported).toContain('"m3e:role.icon": "orbit"');
+    expect(exported).toContain('"m3e:actor.state": "active"');
+    expect(exported).not.toContain("m3e:component");
+    expect(exported).not.toContain("vault:kind");
+
+    const firstImport = await importVaultToSqlite(dbPath, {
+      vaultPath: outVault,
+      mapId,
+      options: { skipAiTransform: true },
+    });
+    const secondImport = await importVaultToSqlite(dbPath, {
+      vaultPath: outVault,
+      mapId,
+      options: { skipAiTransform: true },
+    });
+
+    expect(Object.keys(firstImport.state.nodes).sort()).toEqual(Object.keys(beforeState.nodes).sort());
+    expect(Object.keys(secondImport.state.nodes).sort()).toEqual(Object.keys(beforeState.nodes).sort());
+    expect(secondImport.nodeCount).toBe(firstImport.nodeCount);
+    const roundTripped = secondImport.state.nodes[beforeNode.id];
+    expect(roundTripped.text).toBe(beforeNode.text);
+    expect(roundTripped.details).toBe(beforeNode.details);
+    expect(roundTripped.attributes.tags).toBe("roundtrip,identity");
+    expect(roundTripped.attributes["m3e:provenance"]).toBe("human-authored");
+    expect(roundTripped.attributes["m3e:role.icon"]).toBe("orbit");
+    expect(roundTripped.attributes["m3e:actor.state"]).toBe("active");
+    expect(roundTripped.attributes["m3e:component"]).toBeUndefined();
+  } finally {
+    fs.rmSync(sourceVault, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(outVault, { recursive: true, force: true });
+  }
+});
+
+test("editing an exported body updates only that node while preserving its identity and attributes", async () => {
+  const sourceVault = tmpDir();
+  const dataDir = tmpDir();
+  const outVault = tmpDir();
+  try {
+    writeFile(sourceVault, "alpha.md", "Alpha original body.");
+    writeFile(sourceVault, "beta.md", "Beta original body.");
+    const dbPath = path.join(dataDir, "body-edit.sqlite");
+    const mapId = "vault-body-edit";
+    await importVaultToSqlite(dbPath, { vaultPath: sourceVault, mapId, options: { skipAiTransform: true } });
+    const before = RapidMvpModel.loadFromSqlite(dbPath, mapId).toJSON();
+    const alpha = Object.values(before.nodes).find((node) => node.attributes["vault:path"] === "alpha.md");
+    const beta = Object.values(before.nodes).find((node) => node.attributes["vault:path"] === "beta.md");
+    alpha.attributes.tags = "keep-me";
+    RapidMvpModel.fromJSON(before).saveToSqlite(dbPath, mapId);
+
+    await exportVaultFromSqlite(dbPath, { mapId, vaultPath: outVault, options: { skipAiTransform: true } });
+    const alphaPath = path.join(outVault, "alpha.md");
+    const exported = fs.readFileSync(alphaPath, "utf8");
+    const closingFrontmatter = exported.indexOf("\n---\n\n");
+    expect(closingFrontmatter).toBeGreaterThan(0);
+    const editedBody = "Human-edited body.\n\nSecond paragraph.";
+    fs.writeFileSync(alphaPath, `${exported.slice(0, closingFrontmatter + 6)}${editedBody}`, "utf8");
+
+    const result = await importVaultToSqlite(dbPath, { vaultPath: outVault, mapId, options: { skipAiTransform: true } });
+    expect(result.state.nodes[alpha.id].details).toBe(editedBody);
+    expect(result.state.nodes[alpha.id].text).toBe(alpha.text);
+    expect(result.state.nodes[alpha.id].attributes.tags).toBe("keep-me");
+    expect(result.state.nodes[beta.id].details).toBe(beta.details);
+  } finally {
+    fs.rmSync(sourceVault, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(outVault, { recursive: true, force: true });
+  }
+});
+
+test("an unknown frontmatter nodeId fails closed without overwriting the target map", async () => {
+  const vaultDir = tmpDir();
+  const dataDir = tmpDir();
+  try {
+    writeFile(vaultDir, "alpha.md", "Alpha body.");
+    const dbPath = path.join(dataDir, "unknown-id.sqlite");
+    const mapId = "vault-unknown-id";
+    await importVaultToSqlite(dbPath, { vaultPath: vaultDir, mapId, options: { skipAiTransform: true } });
+    const before = RapidMvpModel.loadFromSqlite(dbPath, mapId).toJSON();
+    writeFile(vaultDir, "alpha.md", "---\nm3e:\n  nodeId: foreign-map-node\n---\n\nForeign body.");
+
+    await expect(importVaultToSqlite(dbPath, {
+      vaultPath: vaultDir,
+      mapId,
+      options: { skipAiTransform: true },
+    })).rejects.toThrow(/does not exist in target map/);
+    expect(RapidMvpModel.loadFromSqlite(dbPath, mapId).toJSON()).toEqual(before);
+  } finally {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });

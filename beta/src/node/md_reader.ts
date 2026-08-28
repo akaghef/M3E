@@ -86,14 +86,14 @@ export function parseSimpleYaml(yaml: string): Record<string, unknown> {
 
   while (i < lines.length) {
     const line = lines[i];
-    const topMatch = line.match(/^(\w[\w-]*):\s*(.*)/);
+    const topMatch = line.match(/^(?:"([^"]+)"|'([^']+)'|(\w[\w.-]*(?::[\w.-]+)*)):\s*(.*)/);
     if (!topMatch) {
       i++;
       continue;
     }
 
-    const key = topMatch[1];
-    const inlineValue = topMatch[2].trim();
+    const key = topMatch[1] || topMatch[2] || topMatch[3];
+    const inlineValue = topMatch[4].trim();
 
     if (inlineValue) {
       // Inline scalar: key: value
