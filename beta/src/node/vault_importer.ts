@@ -398,9 +398,10 @@ export async function importVaultToAppState(
     const fileEntry = ctx.pendingFiles[index]!;
     const raw = await fs.promises.readFile(fileEntry.absolutePath, "utf8");
     const { frontmatter, body: parsedBody } = parseFrontmatter(raw);
-    const body = Object.keys(frontmatter).length > 0
+    const bodyWithFileTerminator = Object.keys(frontmatter).length > 0
       ? parsedBody.replace(/^\r?\n/, "")
       : parsedBody;
+    const body = bodyWithFileTerminator.replace(/\r?\n$/, "");
     const parsed = parseMdContent(raw, { id: fileEntry.nodeId, text: fileEntry.baseName });
     const frontmatterNodeId = typeof frontmatter.m3e?.nodeId === "string"
       ? frontmatter.m3e.nodeId.trim()

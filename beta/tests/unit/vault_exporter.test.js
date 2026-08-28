@@ -171,6 +171,67 @@ test("vault export/import round-trip preserves node identities, body, text, and 
   }
 });
 
+test("vault export/import normalizes one file terminator and stays byte-stable across two round-trips", async () => {
+  const sourceVault = tmpDir();
+  const dataDir = tmpDir();
+  const outVault = tmpDir();
+  try {
+    writeFile(sourceVault, "without-newline.md", "Body without newline.");
+    writeFile(sourceVault, "with-newline.md", "Body with newline.\n");
+    const dbPath = path.join(dataDir, "newline-roundtrip.sqlite");
+    const mapId = "vault-newline-roundtrip";
+    await importVaultToSqlite(dbPath, {
+      vaultPath: sourceVault,
+      mapId,
+      options: { skipAiTransform: true },
+    });
+
+    const before = RapidMvpModel.loadFromSqlite(dbPath, mapId).toJSON();
+    const beforeNodes = Object.values(before.nodes).filter((node) => node.attributes["vault:kind"] === "file");
+    expect(beforeNodes.map((node) => node.details).sort()).toEqual([
+      "Body with newline.",
+      "Body without newline.",
+    ]);
+
+    await exportVaultFromSqlite(dbPath, {
+      mapId,
+      vaultPath: outVault,
+      options: { skipAiTransform: true },
+    });
+    const firstExport = new Map(
+      beforeNodes.map((node) => {
+        const content = fs.readFileSync(path.join(outVault, node.attributes["vault:path"]), "utf8");
+        expect(content.endsWith("\n")).toBe(true);
+        expect(content.endsWith("\n\n")).toBe(false);
+        return [node.attributes["vault:path"], content];
+      }),
+    );
+
+    const imported = await importVaultToSqlite(dbPath, {
+      vaultPath: outVault,
+      mapId,
+      options: { skipAiTransform: true },
+    });
+    expect(Object.keys(imported.state.nodes).sort()).toEqual(Object.keys(before.nodes).sort());
+    for (const beforeNode of beforeNodes) {
+      expect(imported.state.nodes[beforeNode.id].details).toBe(beforeNode.details);
+    }
+
+    await exportVaultFromSqlite(dbPath, {
+      mapId,
+      vaultPath: outVault,
+      options: { skipAiTransform: true },
+    });
+    for (const [relativePath, firstContent] of firstExport) {
+      expect(fs.readFileSync(path.join(outVault, relativePath), "utf8")).toBe(firstContent);
+    }
+  } finally {
+    fs.rmSync(sourceVault, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(outVault, { recursive: true, force: true });
+  }
+});
+
 test("editing an exported body updates only that node while preserving its identity and attributes", async () => {
   const sourceVault = tmpDir();
   const dataDir = tmpDir();

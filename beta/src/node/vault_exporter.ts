@@ -231,7 +231,8 @@ export async function exportVaultFromAppState(
       warnings.push(`Skipped existing file: ${file.relativePath}`);
       continue;
     }
-    await fs.promises.writeFile(targetPath, parts.join("\n"), "utf8");
+    const content = `${parts.join("\n").replace(/[\r\n]+$/, "")}\n`;
+    await fs.promises.writeFile(targetPath, content, "utf8");
     hooks?.onProgress?.({
       phase: "write",
       current: index + 1,
