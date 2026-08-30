@@ -8,7 +8,7 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 2. nearest subdir `AGENTS.md`
 3. this file
 4. the handoff packet
-5. `docs/protocols/persistent-rule-change-protocol.md` when the user instruction contains `!!!` / `！！！` or asks for recurrence prevention after an agent failure
+5. `docs/protocols/persistent-rule-change-protocol.md` when the user asks for recurrence prevention after an agent failure
 
 ## Allowed
 
@@ -42,9 +42,9 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 - requested output is MF, WMF, Mermaid, or Markdown and writeback semantics are unclear
 - more than 3 nodes outside assigned scope would change
 
-## LV3 persistent rule gate
+## Persistent rule gate
 
-If the latest user instruction contains `!!!` / `！！！`, or the user asks for recurrence prevention after a worker failure:
+If the user asks for recurrence prevention after a worker failure:
 
 1. Treat the request as a durable rule-system change, not a chat-only promise.
 2. Update at least one canonical rule source such as root `AGENTS.md`, `docs/protocols/`, `docs/protocols/contracts/`, `agent_instructions/skills_canonical/`, or checked-in hook/guard scripts.

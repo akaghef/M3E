@@ -21,7 +21,7 @@
 4. 役割分担:
    - Claude Director: intent 分解、Codex handoff、worktree / PR 管理、レビュー、必要時の `Current_Status.md` 更新
    - Codex worker: 実装、仕様書き、調査、検証、必要な map / task 状態更新
-5. 作業領域は Codex task worktree で分離し、同一ファイルの同時編集を避ける
+5. 実装・既存文書・共有正典への競合可能な書き込みはCodex task worktreeで分離する。`docs/ideas/`への一意な新規append-only bundleは、既存本文を変更せず親READMEと生成indexだけを更新する場合、primary checkoutへ直接stowしてよい
 
 Claude sub-agent worker (`manage` / `visual` / `data` / `team`) は廃止済み。
 
@@ -77,6 +77,19 @@ pwd
 ```
 
 Primary checkout `$HOME/dev/M3E` is for Director coordination and operating-document maintenance. Product implementation happens in task worktrees.
+
+### Append-only idea stow
+
+新しい外部サービス調査、比較、未採用idea、evidence bundleは、配置先が明確で既存ファイルを競合編集しない場合、`docs/ideas/`配下へ直接追加できる。worktreeを必須にするのは書き込み一般ではなく、実装、既存内容の上書き・再編、共有正典への昇格、または同時編集競合の可能性である。
+
+直接stow時も以下は必須:
+
+- primary checkoutのbranch / dirty state確認
+- unique targetとoverwrite不在の確認
+- public-safe確認
+- 親READMEの最小リンク追加
+- `node scripts/ops/check-docs-index.mjs --write` と `--check`
+- `git diff --check`
 
 ## 仕様・設計フェーズでのテスト計画（MUST）
 
