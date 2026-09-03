@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 586
+- Indexed files: 608
 
 ## Reading Routes
 
@@ -88,6 +88,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | File | Type | Title | Summary |
 |---|---:|---|---|
 | [04_Architecture/AI_Infrastructure.md](<./04_Architecture/AI_Infrastructure.md>) | Markdown | AI インフラ設計 | 最終更新: 2026-04-02 |
+| [04_Architecture/Disperse_Layout_Design.md](<./04_Architecture/Disperse_Layout_Design.md>) | Markdown | Disperse Layout Design | 最終更新: 2026-08-23 |
 | [04_Architecture/Drag_and_Reparent.md](<./04_Architecture/Drag_and_Reparent.md>) | Markdown | Drag and Reparent | ノードのドラッグによる親付け替えを、Model を壊さずに扱うための操作設計を定義する。 |
 | [04_Architecture/DragOperate.md](<./04_Architecture/DragOperate.md>) | Markdown | DragOperate | 以下は「ノードAをドラッグして、別の親P’の子に付け替える」一連操作を、MVC（＋Command）で忠実に流した場合の連携です。Konva等の有無に依存しない抽象形で書きます。 |
 | [04_Architecture/Editing_Design.md](<./04_Architecture/Editing_Design.md>) | Markdown | Editing Design | この文書は、M3E の独自描画エンジン上で行う |
@@ -130,7 +131,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [06_Operations/Todo_Pool.md](<./06_Operations/Todo_Pool.md>) | Markdown | Todo Pool | 確定前の粗い TODO を一時プールし、正式タスク化前の取りこぼしを防ぐ。 |
 | [06_Operations/TODO_today.md](<./06_Operations/TODO_today.md>) | Markdown | TODO_today — 2026-04-15 | > 今日処理する課題。正本は [Todo_Pool.md](Todo_Pool.md)。 |
 | [06_Operations/Version_Registry.md](<./06_Operations/Version_Registry.md>) | Markdown | Version Registry | リリースタグとデータスキーマバージョンの対応表。 |
-| [06_Operations/Worktree_Separation_Rules.md](<./06_Operations/Worktree_Separation_Rules.md>) | Markdown | Worktree Separation Rules | 最終更新: 2026-06-14 |
+| [06_Operations/Worktree_Separation_Rules.md](<./06_Operations/Worktree_Separation_Rules.md>) | Markdown | Worktree Separation Rules | 最終更新: 2026-08-06 |
 
 ### 09_Decisions - ADR
 
@@ -144,7 +145,9 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_006_Resource_Schema_Version.md](<./09_Decisions/ADR_006_Resource_Schema_Version.md>) | Markdown | ADR 006: Resource 追加時の Schema Version 方針 | Open (議論中) |
 | [09_Decisions/ADR_007_Resource_Collab_Locking.md](<./09_Decisions/ADR_007_Resource_Collab_Locking.md>) | Markdown | ADR 007: Collab 環境での Resource 定義の排他制御 | Open (議論中) |
 | [09_Decisions/ADR_008_Federated_Canonical_Sources.md](<./09_Decisions/ADR_008_Federated_Canonical_Sources.md>) | Markdown | ADR 008: Federated Canonical Sources and Rebuildable Semantic Graph | Accepted for Phase 0. Neo4j activation remains gated. |
-| [09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md](<./09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md>) | Markdown | ADR 009: Agent Orchestration の M3E 融合と実行境界 | Accepted. |
+| [09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md](<./09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md>) | Markdown | ADR 009: Agent Orchestration の M3E 融合と実行境界 | Accepted. 一部を [ADR_011](./ADR_011_Agent_Orrery_As_M3E_Map.md) が更新（2026-08-26）: |
+| [09_Decisions/ADR_010_Radial_Surface_View_Removal.md](<./09_Decisions/ADR_010_Radial_Surface_View_Removal.md>) | Markdown | ADR_010: Radial Surface View を廃止し Tree へ畳む | Surface View 正本は `Tree / Axial / Radial / Disperse / System` の5種としていた。 |
+| [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections
@@ -299,6 +302,17 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/10_io/tool_integration/06_integration_patterns.md](<./ideas/10_io/tool_integration/06_integration_patterns.md>) | Markdown | 06. 統合方式の共通パターン — 横断インフラ・プライバシー・コスト | H1〜H7 を個別に積むのではなく、**統合インフラとして共通化** できる部分を抽出。 |
 | [ideas/10_io/tool_integration/07_mvp_path.md](<./ideas/10_io/tool_integration/07_mvp_path.md>) | Markdown | 07. MVP 路線・段階導入ロードマップ・未決質問 | ブレストの締め。ここで初めて「ボリューム感」と「順序」を語るが、**採否は決めない**。 |
 | [ideas/10_io/tool_integration/260615_vision_v014_stack.md](<./ideas/10_io/tool_integration/260615_vision_v014_stack.md>) | Markdown | Vision v0.1.4 技術スタック分析と M3E 応用候補 | 作成日: 2026-06-15 |
+| [ideas/10_io/tool_integration/memoforest/01_public_software_structure.md](<./ideas/10_io/tool_integration/memoforest/01_public_software_structure.md>) | Markdown | 公開版ソフトウェア構造 | 端末内保護はクラウドE2EEではない。JSON exportも可搬な平文artifactとして扱う。 |
+| [ideas/10_io/tool_integration/memoforest/02_m3e_fit_assessment.md](<./ideas/10_io/tool_integration/memoforest/02_m3e_fit_assessment.md>) | Markdown | M3E適合評価 | 置換ではなく相補関係として扱う。 |
+| [ideas/10_io/tool_integration/memoforest/03_canonical_ownership.md](<./ideas/10_io/tool_integration/memoforest/03_canonical_ownership.md>) | Markdown | Canonical ownership境界 | 外部node identityは`sourceId + localEntityId`を基本とする。Memoforest内部node IDをrepo-wide identityへ単独昇格させない。 |
+| [ideas/10_io/tool_integration/memoforest/04_data_mapping.md](<./ideas/10_io/tool_integration/memoforest/04_data_mapping.md>) | Markdown | データ対応と変換損失 | v3本体を独自拡張せず、sidecar manifestへ次を置く。 |
+| [ideas/10_io/tool_integration/memoforest/05_integration_options.md](<./ideas/10_io/tool_integration/memoforest/05_integration_options.md>) | Markdown | 連携方式 | 最初の推奨。export、manifest付与、検証、proposal importを人間が明示実行する。境界と損失が見え、誤同期のblast radiusが小さい。 |
+| [ideas/10_io/tool_integration/memoforest/06_security_privacy.md](<./ideas/10_io/tool_integration/memoforest/06_security_privacy.md>) | Markdown | セキュリティ・プライバシー | 1. ブラウザlocal storage |
+| [ideas/10_io/tool_integration/memoforest/07_operations_recovery.md](<./ideas/10_io/tool_integration/memoforest/07_operations_recovery.md>) | Markdown | 運用・競合・復旧 | 同期UIの成功表示だけでは完了にしない。 |
+| [ideas/10_io/tool_integration/memoforest/08_roadmap.md](<./ideas/10_io/tool_integration/memoforest/08_roadmap.md>) | Markdown | 導入ロードマップ | 代表1文書を往復し、以下を測る。 |
+| [ideas/10_io/tool_integration/memoforest/memoforest-export-v3.json](<./ideas/10_io/tool_integration/memoforest/memoforest-export-v3.json>) | JSON | memoforest export v3 | JSON |
+| [ideas/10_io/tool_integration/memoforest/README.md](<./ideas/10_io/tool_integration/memoforest/README.md>) | Markdown | Memoforest 関連サービス考察 | Memoforestを、M3Eの代替保存基盤ではなく、Rapidを人間が階層化・注釈・数式編集する外部ワークベンチ候補として評価する。二重正本を避け、JSON交換、source adapter、proposal writeのどこまでを... |
+| [ideas/10_io/tool_integration/memoforest/validation.json](<./ideas/10_io/tool_integration/memoforest/validation.json>) | JSON | validation | JSON |
 | [ideas/10_io/tool_integration/README.md](<./ideas/10_io/tool_integration/README.md>) | Markdown | 既存ツール統合（Tool Integration）— ブレインストーミング | M3E を Git/Calendar/Obsidian/Zotero/LaTeX/VSCode/Notion/Linear/Jira などの |
 | [ideas/20_ai/ai_agent_deep/01_global_design.md](<./ideas/20_ai/ai_agent_deep/01_global_design.md>) | Markdown | 01. 共通基盤 — 人格・自動化レベル・検閲・ベンダ切替 | 10 個のサブトピック（C1〜C10）すべてに横断する設計論点をまとめる。 |
 | [ideas/20_ai/ai_agent_deep/02_sparring_agents.md](<./ideas/20_ai/ai_agent_deep/02_sparring_agents.md>) | Markdown | 02. 壁打ち系エージェント — C1 / C2 / C3 / C9 | 研究の質を上げる「対話型 AI」候補。 |
@@ -341,6 +355,12 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260720_viewer_neon_experiment/README.md](<./ideas/260720_viewer_neon_experiment/README.md>) | Markdown | Viewer Neon 表現実験 | viewerのNeon調表現を製品コードから切り離し、将来のデザイン比較に使える自己完結したidea bundleとして保存する。現在のUI方針への採用を意味しない。 |
 | [ideas/260720_viewer_neon_experiment/viewer-neon-implementation.patch](<./ideas/260720_viewer_neon_experiment/viewer-neon-implementation.patch>) | File | viewer neon implementation | File |
 | [ideas/260720_viewer_neon_experiment/viewer-neon.png](<./ideas/260720_viewer_neon_experiment/viewer-neon.png>) | Image | viewer neon | Image |
+| [ideas/260730_p2p_cloudflare_snapshot_sync.md](<./ideas/260730_p2p_cloudflare_snapshot_sync.md>) | Markdown | P2P 優先同期と Cloudflare Snapshot 配布 | 作成日: 2026-07-30 |
+| [ideas/260808_agent_mapping_plugin_boundary.md](<./ideas/260808_agent_mapping_plugin_boundary.md>) | Markdown | Agent Mapping Plugin の境界 — 設計会話ログ (2026-08-08) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 決定は ADR_011 と [Decision_Pool... |
+| [ideas/260809_knowledge_workbench_slice.md](<./ideas/260809_knowledge_workbench_slice.md>) | Markdown | Knowledge Workbench Slice — 不可視多次元グラフと人間作業台 | 最終更新: 2026-08-09 |
+| [ideas/260809_s16_neo4j_differentiation.md](<./ideas/260809_s16_neo4j_differentiation.md>) | Markdown | S16 — Neo4jとの差別化からM3Eの存在理由を再定義する | 最終更新: 2026-08-09 |
+| [ideas/260824_neo4j_team_collaboration_graphlink.md](<./ideas/260824_neo4j_team_collaboration_graphlink.md>) | Markdown | Neo4j-backed Team Collaboration と GraphLink 参照 | 最終更新: 2026-08-24 |
+| [ideas/260824_node_plugin_and_layout_contract.md](<./ideas/260824_node_plugin_and_layout_contract.md>) | Markdown | Node plugin と layout 契約 — 設計会話ログ (2026-08-24) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 要点は node core を最小に保つ、layout ... |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
 | [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |
@@ -366,6 +386,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/30_ux/map_views/06_implementation_thoughts.md](<./ideas/30_ux/map_views/06_implementation_thoughts.md>) | Markdown | 06. ビュー実装・横断設計の論点 | 100以上のビュー候補を「実際にどう M3E に組み込むか」の横断的考察。 |
 | [ideas/30_ux/map_views/07_business_folder_spine.md](<./ideas/30_ux/map_views/07_business_folder_spine.md>) | Markdown | 07. 業務フォルダを Scatter 作業面 + spine 正本として扱う | 業務フォルダの中身は、実際にはきれいな単一ツリーではない。 |
 | [ideas/30_ux/map_views/README.md](<./ideas/30_ux/map_views/README.md>) | Markdown | Map View Frameworks for M3E | M3E マップを **そのままのツリー/グラフ表示ではなく、特定のフレームワークの軸に |
+| [ideas/30_ux/map_views/visualsitemaps/README.md](<./ideas/30_ux/map_views/visualsitemaps/README.md>) | Markdown | VisualSitemaps 参考idea | VisualSitemapsは、URLを起点にWebサイトをクロールし、各ページのスクリーンショットを階層的なvisual sitemapとして表示するサービス。 |
 | [ideas/30_ux/slideshow/01_concept.md](<./ideas/30_ux/slideshow/01_concept.md>) | Markdown | 01. コンセプト | M3E マップ上のノードを **作者が指定した順序で1つずつフォーカス** し、 |
 | [ideas/30_ux/slideshow/02_authoring.md](<./ideas/30_ux/slideshow/02_authoring.md>) | Markdown | 02. オーサリング（ツアーの定義方法） | 「どのノードを、どの順番で見せるか」をどこに、どう書くか。 |
 | [ideas/30_ux/slideshow/03_runtime_ui.md](<./ideas/30_ux/slideshow/03_runtime_ui.md>) | Markdown | 03. 再生時の UI とカメラ挙動 | ツアー再生中の見た目・操作・演出。 |
@@ -626,6 +647,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [tasks/handoff_20260604_1411_mapify-io-possibilities.md](<./tasks/handoff_20260604_1411_mapify-io-possibilities.md>) | Markdown | Handoff: Mapify I/O 機能の可能性 | 作成日時: 2026-06-04 14:11 JST |
 | [tasks/handoff_cloud_sync_conflict_resolution.md](<./tasks/handoff_cloud_sync_conflict_resolution.md>) | Markdown | Handoff: Cloud Sync 競合解決 — Merge Mode 実装 | Cloud Sync 競合時に GitHub-like な diff 表示 + node 単位マージ選択を実装する。 |
 | [tasks/handoff_cloud_sync_conflict_ui.md](<./tasks/handoff_cloud_sync_conflict_ui.md>) | Markdown | Handoff: Cloud Sync 競合UI改善 | Cloud Sync で競合 (conflict) が発生した際の UI を改善する。 |
+| [tasks/handoff_layout_disperse_merge_260825.md](<./tasks/handoff_layout_disperse_merge_260825.md>) | Markdown | Handoff: layout 語彙統合 / Disperse / WebGL のマージ作業 | 作成: 2026-08-25 |
 | [tasks/handoff_layout_refactor_pn_integration.md](<./tasks/handoff_layout_refactor_pn_integration.md>) | Markdown | Handoff: layout() 純関数化 + PN layout設定統合 | **日付**: 2026-06-16 |
 | [tasks/handoff_orchestration_map_pilot_260719.md](<./tasks/handoff_orchestration_map_pilot_260719.md>) | Markdown | Handoff: Orchestration Map Pilot — Neo4j + policy 上乗せ | > **Plan Hierarchy（Principle / Vision / Strategy / Goal / Task）の DAG と、各案件に対応する agent・gate・status を単一の信頼できる model に載せ... |
 | [tasks/handoff_resource_design.md](<./tasks/handoff_resource_design.md>) | Markdown | Handoff: Resource 概念の設計 | M3E に「Resource」概念を導入する。 |
@@ -685,7 +707,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [protocols/map-manager/projection-rule.md](<./protocols/map-manager/projection-rule.md>) | Markdown | Projection Rule | M3E storage is not MF, WMF, Mermaid, Markdown, or any other exchange syntax. |
 | [protocols/map-manager/README.md](<./protocols/map-manager/README.md>) | Markdown | Map Manager Protocol Package | Map Manager prevents repeated AI confusion when reading, writing, laying out, |
 | [protocols/map-write-protocol.md](<./protocols/map-write-protocol.md>) | Markdown | Map Write Protocol | Define how AI writes M3E maps without corrupting structure or confusing semantic structure with display decisions. |
-| [protocols/persistent-rule-change-protocol.md](<./protocols/persistent-rule-change-protocol.md>) | Markdown | Persistent Rule Change Protocol | This protocol governs agent behavior when a user asks for broad recurrence prevention or uses `!!!` / `！！！`. |
+| [protocols/persistent-rule-change-protocol.md](<./protocols/persistent-rule-change-protocol.md>) | Markdown | Persistent Rule Change Protocol | This protocol governs agent behavior when a user asks for recurrence prevention or a durable rule-system change. |
 | [protocols/README.md](<./protocols/README.md>) | Markdown | Protocols | This directory is the canonical home for AI operating protocols in M3E / Akaghef-System. |
 | [protocols/repository-canon-values.md](<./protocols/repository-canon-values.md>) | Markdown | Repository Canon Values | This protocol is the canonical statement of repository-level values for M3E agents. |
 | [protocols/scope-operation-protocol.md](<./protocols/scope-operation-protocol.md>) | Markdown | Scope Operation Protocol | See `docs/03_Spec/Scope_and_Alias.md` for product meaning. |

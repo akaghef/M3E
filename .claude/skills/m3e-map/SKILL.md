@@ -7,7 +7,9 @@ description: |
   "tree", "色付け", "ノード", or refer to the M3E viewer.
   Also trigger on bulk edits, structural reorganization, listing/creating/renaming
   maps, resolving paths copied from the viewer, or operating on style attributes
-  (fill / urgency / importance / status).
+  (fill / urgency / importance / status). For a fully specified runtime target,
+  use the direct-operator route; use the internal design route only when a
+  structural choice remains open.
 ---
 
 <!-- generated from agent_instructions/skills_canonical/m3e-map/SKILL.md; do not edit mirror directly -->
@@ -16,6 +18,29 @@ description: |
 # M3E Map API Skill
 
 Operate on the M3E mind-map through its local REST API.
+
+## Choose the reader route first
+
+### Direct operator route
+
+Use this route when the user has supplied the target map/scope (or an
+unambiguous path) and the requested operation requires no product, scope,
+facet, layout, relation, or display-policy decision. Typical examples are
+read, exact subtree copy, rename, or a specified attribute update.
+
+- Read only [references/direct-operator.md](references/direct-operator.md) and
+  the operation-specific API/data-model references it names.
+- Do **not** read M3E internal goals, Current Status, Glossary, Map Manager, or
+  display/facet contracts.
+- Do **not** expand the requested change, introduce anchors, aliases,
+  GraphLinks, layouting, or default recoloring.
+
+### Internal design route
+
+Use this route only when a structural choice is open: scope granularity,
+scopen/unscopen, layouting/display intent, facet meaning, aliases versus moves
+or GraphLinks, cross-facet relations, or worker handoff. Follow the Map Manager
+and display-contract material below before mutation.
 
 ## API Basics
 
@@ -26,7 +51,7 @@ Operate on the M3E mind-map through its local REST API.
 
 ## Workflow
 
-For any map operation, follow this sequence:
+For an **internal design-route** map operation, follow this sequence:
 
 1. **Identify the map** — if not given, list `GET /api/maps` and pick by `label` (e.g. "開発" = DEV, "研究" = RESEARCH)
 2. **Read the display contract first** — for writes, determine the target facet and display goals before touching structure (see `references/facet-contracts.md` and `references/display-intent.md`)

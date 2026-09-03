@@ -29,6 +29,7 @@ M3E を「もう一つの島」にせず、既存ツール群と **双方向の�
 - [05_publishing_tools.md](05_publishing_tools.md) — LaTeX/Overleaf・Markdown 出版（H5）
 - [06_integration_patterns.md](06_integration_patterns.md) — 統合方式の共通パターン（pull/push/双方向/イベント駆動）とプライバシー
 - [07_mvp_path.md](07_mvp_path.md) — 最小実装案・段階導入ロードマップ・未決質問
+- [memoforest/](memoforest/) — Memoforest公開版の構造JSON、M3E適合評価、所有権・連携・復旧の考察bundle
 
 ## 全体俯瞰 / 統合先カテゴリ
 

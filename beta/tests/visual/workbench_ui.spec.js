@@ -24,7 +24,7 @@ test.describe("M3E Workbench UI", () => {
     await expect(page.getByTestId("workbench-right-panel").getByText("Selected node")).toBeVisible();
 
     await expect(page.getByRole("button", { name: "AI sidekick" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "[GUI] navigation root" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Surface PN root" })).toBeVisible();
     const topbar = page.getByTestId("workbench-topbar");
     await expect(topbar.getByRole("button", { name: "Present" })).toBeVisible();
     await expect(topbar.getByRole("button", { name: "Share" })).toBeVisible();

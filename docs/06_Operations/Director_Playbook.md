@@ -66,18 +66,17 @@ scripts/ops/worktree.sh rm <task>      # remove after PR merged (guards uncommit
 - Any scope creep, dead code, or broken conventions? Send back if so.
 - Is `dev-beta` still the integration target and the PR base correct?
 
-## 4.5 Bang / persistent-rule review gate
+## 4.5 Persistent-rule review gate
 
-When akaghef's latest instruction contains `!!!` / `！！！`, or asks for recurrence prevention after an agent failure, the Director must treat the cycle as an LV3 persistent-rule task.
+When akaghef asks for recurrence prevention after an agent failure, the Director must treat the cycle as a persistent-rule task.
 
 Director obligations:
 
-1. State `Scope: LV3. Target=<...>. Adjacent=<...>. Excluded=<...>.`
-2. Identify the failed instruction or missing rule path when correcting an agent failure.
-3. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `docs/protocols/`, `docs/protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
-4. If any skill or skill trigger changes, route through `skill-creator` and update the skill frontmatter `description`.
-5. Require Codex to run `scripts/ops/check-persistent-rule-gate.sh` when present.
-6. Do not mark recurrence prevention complete if the result is only a chat promise.
+1. Identify the failed instruction or missing rule path when correcting an agent failure.
+2. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `docs/protocols/`, `docs/protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
+3. If any skill or skill trigger changes, route through `skill-creator` and update the skill frontmatter `description`.
+4. Require Codex to run `scripts/ops/check-persistent-rule-gate.sh` when present.
+5. Do not mark recurrence prevention complete if the result is only a chat promise.
 
 Live beta data guard: do not allow Codex to create fixture, test, or temporary maps in the active beta personal workspace for verification. Use Playwright fixtures, isolated `testRun` state, a separate temporary workspace, or an explicit backup/restore cleanup flow.
 
@@ -216,8 +215,8 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   Large IO / send gate) outrank cc-sdd; trivial changes skip the spec phases; Codex-owned phases
   still use the dispatch + worktree mechanics. DACP's `dacp_*` MCP bridge lives in Akaghef-System
   and is **not** wired into this M3E repo — continue driving Codex via `scripts/codex.sh exec` here.
-- 2026-06-16 — Added the LV3 persistent-rule gate for `!!!` / `！！！` and recurrence-prevention
-  requests. Director must require a durable rule-system change instead of accepting chat-only
+- 2026-06-16 — Added the persistent-rule gate for recurrence-prevention requests. Director must
+  require a durable rule-system change instead of accepting chat-only
   promises. Skill trigger changes must go through `skill-creator` and update frontmatter
   `description`. Also codified the live beta data guard: no fixture/test/temp maps in the active
   beta personal workspace for verification.
@@ -250,3 +249,32 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   hunt revealed it had no geometry of its own — canon specified an angular axis, the implementation
   shipped Tree's linear directions, so one entity carried two names and the port rules leaked between
   them.
+- 2026-08-27 — **Canon age check before deciding.** While framing ADR_011 (Agent Orrery), the Director
+  resolved a terminology conflict (`plugin` = out-of-process vs in-viewer capability) by citing ADR_009
+  — the *oldest* artifact on the question. Two later design conversations (2026-08-08, 2026-08-24)
+  both pointed the other way, and the decision had to be reopened and rewritten. Two rules extracted:
+  (1) **An accepted ADR records what was decided then, not what akaghef currently believes.** Before
+  settling a conflict from canon, date every source on the question and say the dates out loud. If the
+  governing ADR predates the thinking that prompted the current request, ask akaghef instead of ruling.
+  (2) **Silence is not consent.** The Director wrote "暫定決着とみなす … 違ったら止めて" and treated the
+  absence of an objection as agreement. Decisions that shape a feature's architecture need an explicit
+  answer — use AskUserQuestion, don't ship a default and invite a veto.
+  Corollary that paid off: when a new design source arrives mid-flight, stop the running Codex dispatch
+  before it writes (`TaskStop`) rather than reviewing a draft built on a stale premise. Also, stow the
+  source conversations into `docs/ideas/` (dated `YYMMDD_*.md`) so the ADR's citations resolve — files
+  in `~/Downloads` are invisible to every worker and disappear. Adding files under `docs/` makes
+  `docs/index.md` stale; regenerate with `node scripts/ops/check-docs-index.mjs --write`.
+- 2026-08-29 — **Codex's tests cover the requirements you wrote, not the invariants you forgot.** The
+  vault-identity task shipped with 12 green tests that all passed, and the diff still carried a real
+  regression: to preserve body text byte-for-byte, Codex dropped a `.trim()` and with it the guarantee
+  that exported files end in exactly one newline. Nothing in the handoff mentioned trailing newlines,
+  so nothing tested them — yet Obsidian re-adds a trailing newline on save, which would have made every
+  no-op round-trip produce a diff forever. Rule: **read the diff for behavior changes outside the stated
+  scope**, especially where a constraint was *removed* to satisfy a new requirement. Ask "what did this
+  line guarantee before?" Green tests are evidence about the stated scope only.
+  Two supporting habits that paid off the same night: (1) re-run the suite yourself — Codex reported
+  46/46 from three files; the honest full-suite number was 603 passed with 2 files failing only because
+  `npm test` does not build browser bundles (§5, 2026-06-15), which `npm run build:browser` clears.
+  (2) When Codex reports `index.lock: Operation not permitted`, commit from the Director's own shell
+  rather than asking it to retry — but re-check, because the same task committed successfully on its
+  next dispatch, so the failure is intermittent, not structural.

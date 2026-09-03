@@ -8,12 +8,9 @@ source_docs:
     - docs/protocols/worker-minimal-instruction.md
     - docs/protocols/persistent-rule-change-protocol.md
 triggers:
-  - latest_user_instruction_contains_triple_bang
-  - latest_user_instruction_contains_triple_fullwidth_bang
   - user_requests_recurrence_prevention_after_agent_failure
   - user_requests_permanent_rule_or_guard_mechanism
 must:
-  - state_lv3_scope_line
   - identify_failed_instruction_when_fixing_agent_failure
   - edit_at_least_one_durable_rule_target
   - use_skill_creator_when_skill_or_trigger_changes

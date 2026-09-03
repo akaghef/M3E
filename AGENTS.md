@@ -64,23 +64,17 @@ For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 
 When a map task involves scope, scopen / unscopen, layouting, path ambiguity, edge / GraphLink / alias choice, or worker handoff, route it through Map Manager before mutation.
 
-## Bang Scope and Persistent Rule Gate
+## Scope and Persistent Rule Gate
 
-Count the maximum trailing run of `!` or `！` in the user's latest instruction.
+Default to the local task. Widen only when the request itself implies it, and say so before acting.
+A wider scope is not permission for unrelated work.
 
-- `0` or `1`: local task only.
-- `2` / `!!` / `！！`: target plus obvious adjacent effects in the same turn.
-- `3` / `!!!` / `！！！`: broad sync. Inspect directly related rules, protocols, docs, skills, hooks, and handoff consistency.
+> The `!` / `！` bang-scope notation is **abolished** (2026-08-27). Do not read trailing
+> exclamation marks as a scope level, and do not emit `Scope: LV<n>` preambles.
 
-For `!!` or `!!!`, first state:
+### Persistent Rule Change Gate
 
-```text
-Scope: LV<n>. Target=<...>. Adjacent=<...>. Excluded=<...>.
-```
-
-### LV3 Persistent Rule Change Gate
-
-When `!!!` is present, or when the user asks for recurrence prevention after an agent failure, the task is not complete until the agent has either made a durable rule-system change or explicitly reported why that is blocked.
+When the user asks for recurrence prevention after an agent failure, the task is not complete until the agent has either made a durable rule-system change or explicitly reported why that is blocked.
 
 Durable rule-system changes include one or more of:
 
@@ -93,14 +87,14 @@ Durable rule-system changes include one or more of:
 
 If creating or updating a skill, a skill trigger, or skill routing behavior, use the `skill-creator` skill in the same turn. Skill trigger changes must update the skill frontmatter `description`, because that is the trigger surface.
 
-The final report for an LV3 persistent-rule task must list:
+The final report for an persistent-rule task must list:
 
 1. durable files changed,
 2. checks run,
 3. whether skill mirrors were synced,
 4. any remaining non-durable or uncommitted state.
 
-Do not describe LV3 recurrence prevention as done if it exists only as a chat promise.
+Do not describe recurrence prevention as done if it exists only as a chat promise.
 
 ## Mandatory Session Context
 

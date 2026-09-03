@@ -7,6 +7,15 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:${PATH}"
 
+# The PATH line above exists only to select the arm64 node runtime. It must not
+# shadow a newer codex binary installed elsewhere: Homebrew's codex lags behind
+# the user-installed one in ~/.local/bin, and an outdated CLI rejects newer
+# models ("requires a newer version of Codex"). Prefer ~/.local/bin when present.
+CODEX_BIN="codex"
+if [[ -x "${HOME}/.local/bin/codex" ]]; then
+  CODEX_BIN="${HOME}/.local/bin/codex"
+fi
+
 # For `exec` subcommands, grant write access to Akaghef-Bridge so that
 # a2a / inko skills can deliver packets without permission errors.
 #
@@ -19,7 +28,7 @@ if [[ "${1:-}" == "exec" ]]; then
   shift
   if [[ "${1:-}" == "--final" ]]; then
     shift
-    codex exec --json --add-dir "/Users/nisimoriyuuya/Akaghef-Bridge" "$@" \
+    "$CODEX_BIN" exec --json --add-dir "/Users/nisimoriyuuya/Akaghef-Bridge" "$@" \
       | python3 -c '
 import sys, json
 # codex exec --json streams events; the final answer arrives as
@@ -43,9 +52,9 @@ print(final)
 '
     exit "${PIPESTATUS[0]}"
   fi
-  exec codex exec \
+  exec "$CODEX_BIN" exec \
     --add-dir "/Users/nisimoriyuuya/Akaghef-Bridge" \
     "$@"
 fi
 
-exec codex "$@"
+exec "$CODEX_BIN" "$@"

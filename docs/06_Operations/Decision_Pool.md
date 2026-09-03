@@ -5,6 +5,65 @@
 
 ---
 
+## 2026-08-29-001
+
+- Date: 2026-08-29
+- Topic: Agent Orrery — 公開範囲の緩和 / 色規約 / vault 往復 A / field 単位所有権 / Agent Card / connector
+- Status: accepted
+- Decision:
+  - **session 本文の公開制限を緩和する（DC18）。** これは akaghef の目が行き届いている PC 全体の情報を集約するツールであり、`Title` / `msg` の生テキストを M3E map に出してよい。A-sys `data-classes.md` の fail-closed 分類は、A-sys が個人のメール・ノートを抱える文脈のものであって、自分の agent の session を自分で観測する文脈には適用しない。残す境界は「map を M3E の外へ配布・公開・共有する経路を作るときに改めて判断する」の1点のみ。
+  - **色は7色の統一規約に従う（DC19）。** 正本 `.kiro/steering/color_semantics.md`。**map 全体の規約であり agent 固有ではない。** 青=正常稼働 / 黄=判断待ち / オレンジ=停滞・要注意 / 緑=完了 / 赤=異常 / 灰=アーカイブ / 白=未配色。色数を増やさず、表せない区別は文字・形・線種で表す。lifecycle state 10種はこの7色へ写像する（`unobservable`=白、`disconnected`=赤、`completed`=緑）。
+  - **vault 往復は「同じ map を保つ」（DC20、A 案）。** export → 編集 → import は同じ node を更新する。`md_writer` / `md_reader` が既に持つ `m3e.nodeId` 方式を vault 経路へ適用する。現行実装は毎回新規採番であり、**Orrery に限らず vault 往復するすべての map で node 同一性が失われている**。Agent Orrery とは独立のデータ整合性の欠陥として本 ADR のスコープ内で直す。
+  - **所有権は node 単位ではなく field 単位（DC21）。** body=人 / `m3e:actor.*`=connector（毎観測で上書き）/ `m3e:role.*`=人（connector は初回のみ提案）/ Realm・Name=connector / prefix なし attribute=人。node 全体に持ち主を1つ割り当てる設計では「connector が生やした node に人が書き足す」が解けない。**Agent Card に出るものは全部 connector のもの、カードに出ない本文が人のもの。**
+  - **Agent Card の表示要素（DC22）。** icon / Realm, Role, Name / Title / msg / model, time, state。icon は Role 層に付ける。`Realm` を出し `team` は出さない。`time` は表示時に計算し保存しない。外枠は attention（色・太さ）+ Actor 多重度（重なり）を提案、最終決定は seam lab で目視。
+  - **用語: `connector`。** backend で session データと M3E データをつなぐスクリプトをこう呼ぶ（akaghef 命名）。旧称「観測スクリプト」「observer」は使わない。
+- Why: Codex draft と Director が A-sys の fail-closed 分類を過剰適用し、`msg` が読めないカードを要求していた。attention routing の判断に使えないため可読性を優先する。色は規約が存在せず spec ごとに決まる恐れがあったため map 全体の規約として先に固定した。vault 往復 A は akaghef 決定（「A 側に決定する。ある程度大胆な変更を加えて良い」）。field 単位所有権は、node 単位 provenance では「connector が生やした node に人が書き足す」が上書きか放置の二択にしかならないため。
+- Next: Codex 2本を dispatch 済み — (1) `codex/vault-node-identity` で vault 往復の identity 保存を実装、(2) `codex/agent-orrery-map` で requirements を DC1〜DC22 へ改訂。`model` 名が実データから取得可能かは (2) で調査させる。残る未解決は IS5（agmsg endpoint の session 解決）、IS8（replay の扱い）、IS9（未配置の受け皿の表現）、IS13（edge type 語彙）、IS14（attention の観測条件）、IS15（human agent への lifecycle 適用）。
+- Source: 2026-08-29 akaghef「なぜ session 情報の漏洩を懸念するのかがよくわからない…漏洩の懸念は完全に過剰」「色に関しては規約を統一したいため、規約に追加してほしい」「A 側に決定する。ある程度大胆な変更を加えて良い」「バックエンドでセッションデータと M3E データをつなぐ役割のスクリプトをコネクタと呼ぶことにする」、および Agent Card の手描き設計
+- Promoted: [../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) / [../../.kiro/steering/color_semantics.md](../../.kiro/steering/color_semantics.md)
+
+## 2026-08-27-001
+
+- Date: 2026-08-27
+- Topic: Agent Orrery 設計の改訂（2026-08-26-001 を更新）
+- Status: accepted
+- Decision:
+  - **plugin kernel は今回作らない。ただし後から抽出できる形にする。** `260808_agent_mapping_plugin_boundary.md` の AC1〜AC5（Surface / Schema / Command / Event / Adapter registration）を後から抽出できるよう、agent 固有の語彙・状態・描画規則を viewer 本体に直接埋め込まない。ADR_009 §3 の凍結の解除条件を「実需 query 3件」から「抽出可能性の確保」へ置き換える。
+  - **粒度は2層ではなく3層。** Role / Contract（永続・Authoring Map）+ Actor Instance（runtime）+ Telemetry（ephemeral・正本に混ぜない）。`Role CRUD` と `Actor CRUD` を別操作として扱う（Delete Role = 組織再編、Delete Actor = プロセス終了）。
+  - **scope owns binding, plugin owns realization.** Role は実行体ではなく `callable-ref`（`hermes://` / `codex://` / `exec://`）への binding を持つ。Role の記述に runtime 実装の知識を入れない。Role を node と scope のどちらで持つかは IS11 で決める。
+  - **UX の中心は agent 一覧ではなく Attention Routing。** 目的は監視 dashboard ではなく externalized executive function。自走 agent は薄く、人間への attention が立ったものだけ前景化する。人間と全 agent を常時 edge で結ばない。「人間の判断待ち」は state の一つではなく最上位の軸として扱う。
+  - **edge に type を持たせ、edge-type 射影を初回から入れる。** 全 edge を常時表示しない。prototype が既に 89 nodes / 163 links であり、Goal Graph 同居で確実にスパゲッティ化するため後回しにできない。「同じ map に置く ≠ 同じ hierarchy に押し込む」。
+  - **agmsg との境界を6条で規定（DC16）。** agmsg の agent は destination であって Role ではない。team は transport 境界であって project ではない。delivery state（`queued/delivered/read/handled/failed`）と agent lifecycle state を別体系にする。unread は attention ではない。read-only 観測は agmsg の SQLite を直接読み、`inbox` / `watch` / `check-inbox`（read cursor と `read_at` を変更する）を使わない。agmsg が既に持つもの（destination identity、roster、inbox/history、read cursor、delivery state、watcher/actas lock、spawn/despawn）を Orrery 側で作り直さない。また agmsg message には provenance が無い（35件中 `session_id` column なし、`thread` 0/35、`message_id` 0/35）ことを前提にする。DC7 の「polling しない」は M3E 自身の session 観測に対する規定であり、agmsg 内部の5秒 polling は対象外。
+  - **Role は node / scope の二択ではない（DC17）。** Role の定義域は **role 定義 scope**（role 一覧がそこにある）、Role の実体はその scope 内の **node**（`callable-ref` binding を持つ）、agent からの参照は agent node の**属性**であり構造上は agent node 配下の **alias node** が Role 実体を指す。その alias は通常 agent node に **collapse** されて見える。Role ごとに個別のネットワークが集計・射影される。既存の scope / alias 仕様（実体ノードは単一 scope 所属、他 scope からの再利用は alias 経由のみ、alias は read-only 参照ノード）の素直な適用。
+  - **今回の主語は Agent、完成形の主語は PJ。** 最終形は Why(GOA) → What(Work) → Who(Org) → Now(Runtime) → With what(Resource) を typed edge で接続し、任意の稼働 agent から Actor → Role → Task → Objective → Goal を逆に辿れる状態。GOA 側の語彙定義は今回行わない。
+- Why: 2026-08-26-001 は ADR_009（2026-07-19）を根拠に plugin を out-of-process と確定したが、その後に akaghef から提示された設計会話2本（2026-08-08 / 2026-08-24）はいずれも「M3E 側に受け口を作る」方向を向いていた。**最も古い ADR を最新の意思として扱っていた**ため改訂する。3層分割・Role/Actor CRUD 分離・attention routing・typed edge 射影は 08-08 の会話に含まれていたが、26-001 の時点では入力に無く欠落していた。
+- Next: agmsg の思想と実データ構造を調査中（IS12）。agent が個体か宛先か役割か、team が何かが DC3 の3層と衝突しないかを確認してから requirements draft を再発注する。worktree `agent-orrery-map` は作成済み、初回 draft は前提不足のため発注を取り消した。
+- Source: 2026-08-27 akaghef「設計会話を話し忘れてたので追加」（`docs/ideas/260808_agent_mapping_plugin_boundary.md`）、および「agmsg の思想はチェックすべき」
+- Promoted: [../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md)
+
+## 2026-08-26-001
+
+- Date: 2026-08-26
+- Topic: Agent Orrery を M3E の map として実装する
+- Status: accepted
+- Decision:
+  - **`plugin` は out-of-process に確定。** viewer 内 plugin API（`renderNode` 等）は作らない。agent node の管理は out-of-process スクリプトが行い、`CodexAppServer` による M3E 駆動（実装済み）を使う。M3E の背後にエージェント1体が総合判断を持つ。
+  - **Orrery は map のデータであり Surface View ではない。** Surface View は ADR_010 の4種のまま。Tree でも Disperse でもいずれの view mode でも見られる。既定は Disperse の force。
+  - **node 粒度は「役割」。** project node 配下に agent（役割）node を置いて担当を可視化し、session は子 node または属性として束ねる。ADR_009 §2 の `Agent = Session 1:1` は**観測層の粒度としてのみ**維持し、map の node 粒度には適用しない。map には agent 機能を持つ node と普通の node が混在する。
+  - **初期は read-only。** 既存の会話セッションを観測して node を生やす。node は固定であり mutation の対象ではない。操作は役割配置 / メッセージ送信 / 確認 / セッションを開く。
+  - **「終了」と「観測不能」を別ステータスにし、どちらも node を残す。**
+  - **Goal Graph を同スコープに含む。** agent に対応しない node を inner node として同じ map に置く。
+  - **polling せず、agent セッションのファイル変更検知で観測する。** ただし現行 prototype の Claude セッション過剰カウントを M3E へ移す前に精査する。
+  - **provenance（誰がこの node を生やしたか）は day-1 で入れる。** データ置き場自体は後決めでよい。
+  - **project 配下への配置は規則ではなくエージェントが判断する。** 観測スクリプトは未配置の受け皿に node を生やすだけ。cwd / gitBranch はヒントとして渡す。（使える手がかりが `cwd` のみで粒度が混在しており、repo と project も 1:1 ではないため。DC10 の「役割配置」がここで実体を持つ）
+  - **state 語彙は M3E 側で一本化して切り直す。** backend 9種 / UI 10種の二重体系は引き継がない。「正常終了」「観測不能」「切断」を分離し、live projection が生成しない `speaking` / `listening` / `negotiating` は採用しない。
+  - **コードの canonical owner は M3E repo。** prototype は参照実装として引き継ぎ、dedup / state 判定 / projection 生成は M3E 側で書き直す。プロセスとしては out-of-process のまま。
+  - スコープ外: port / anchor、trace 保存、L1〜L4 介入操作、WebGL 前提の LOD 設計。
+- Why: ADR_009 は凝集先・Disperse 解釈・out-of-process plugin を決めたが、plugin 契約 / runtime 観測契約 / map 登録手続きが未確定だった。そこへ引き継いだ設計会話（viewer 内 capability plugin 前提）が入り、`plugin` が二義になっていた。node 粒度を役割にするのは、session 単位だと resume / fork / subagent による JSONL 分裂がそのまま node 増殖になるため（prototype の Claude 過剰カウントがその症状）。provenance だけ後決めにできないのは、script が生やす node と人が書く node が混在する map で、所有者の区別が事後に復元できないため。
+- Next: IS1 / IS2 / IS3 / IS7 は解決済み（Claude 過剰カウントの原因は fork / clone lineage を session ID 単位で別登録していたこと。7 family / 22 files が registry 上 19 ID、logical family 換算で12件の余剰）。残る IS4（描画要素語彙）、IS5（agmsg endpoint 解決）、IS6（公開範囲）、IS8（replay の扱い）、IS9（未配置の受け皿の表現）、IS10（provenance の具体形）は spec 段階で決める。次は Codex に requirements draft を発注する。
+- Source: 2026-08-26 akaghef「agent mapping の M3E plugin 化を施行する。map のひとつを agent orrery として稼働する」および UD1〜UD15 への回答、稼働中 prototype の画面（AGENTS 88 / 89 nodes / 163 links / 72.0h window）
+- Promoted: [../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md)
+
 ## 2026-08-25-001
 
 - Date: 2026-08-25
