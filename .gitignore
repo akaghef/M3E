@@ -24,6 +24,7 @@ final/data/backups/
 final/data/conflict-backups/
 beta/test-results/
 beta/tests/e2e/test-results/
+beta/perf-results/
 
 final/node_modules/
 /final/node_modules

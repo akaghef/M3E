@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.node.json && npm run build:browser",
     "build:node": "tsc -p tsconfig.node.json",
     "build:test": "npm run build:node && npm run typecheck",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.browser.json && tsc --noEmit -p tsconfig.workbench.json && tsc --noEmit -p tsconfig.layout.json && tsc --noEmit -p tsconfig.labs.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.browser.json && tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.workbench.json && tsc --noEmit -p tsconfig.layout.json && tsc --noEmit -p tsconfig.labs.json",
     "lint:deps": "depcruise --config dependency-cruiser.config.cjs src",
     "lint:copy": "jscpd --config jscpd.config.json",
     "test:edge-port": "npm run build:test && npx vitest run tests/unit/edge_port_*.test.*",
@@ -32,7 +32,7 @@
     "template:test": "npm run build:node && npx vitest run tests/unit/template_system_builder.test.js",
     "semantic-source:validate": "node dist/node/semantic_source_validate_cli.js",
     "semantic-source:check": "npm run build:node && npm run semantic-source:validate -- tests/fixtures/semantic-source/revision-001.json tests/fixtures/semantic-source/revision-002-renamed.json",
-    "build:browser": "tsc -p tsconfig.browser.json && tsc -p tsconfig.workbench.json && vite build --config vite.config.mjs",
+    "build:browser": "tsc -p tsconfig.browser.json && tsc --noEmit -p tsconfig.renderer.json && tsc -p tsconfig.workbench.json && vite build --config vite.config.mjs",
     "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",
     "start:codex-app": "../scripts/beta/codex-app-server.sh",
@@ -46,7 +46,9 @@
     "test:visual:selection": "playwright test -g \"viewer shift arrow expands selection\"",
     "test:visual:update": "playwright test --update-snapshots",
     "test:e2e": "playwright test --config playwright.e2e.config.js",
-    "test:e2e:headed": "playwright test --config playwright.e2e.config.js --headed"
+    "test:e2e:headed": "playwright test --config playwright.e2e.config.js --headed",
+    "perf:webgl:fixture": "node perf/run_webgl_pan_zoom.mjs --verify-only",
+    "perf:webgl:pan-zoom": "node perf/run_webgl_pan_zoom.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",

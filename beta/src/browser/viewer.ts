@@ -29,6 +29,15 @@ import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
 import { resolveMarkdownFilePreviewTarget, type MarkdownFilePreviewTarget } from "../shared/markdown_file_preview";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
+import {
+  type RenderEdge,
+  type RenderGroupBoundary,
+  type RenderNode,
+  type RenderSnapshot,
+  WebGLRenderingProjection,
+  screenToWorld,
+  worldToScreen,
+} from "./webgl_projection";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
 
@@ -97,6 +106,7 @@ const modeBadgeEl = document.getElementById("mode-badge") as HTMLElement | null;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
+const webglCanvas = document.getElementById("webgl-canvas") as HTMLCanvasElement | null;
 const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
 const linearMenuEl = document.getElementById("linear-menu") as HTMLElement | null;
 const linearMenuToggleBtn = document.getElementById("linear-menu-toggle") as HTMLButtonElement | null;
@@ -392,6 +402,10 @@ function basenameFromPath(rawPath: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
+const REQUESTED_RENDERER = (queryParams.get("renderer") || "svg").trim().toLowerCase();
+const WEBGL_RENDERER_REQUESTED = REQUESTED_RENDERER === "webgl";
+const WEBGL_DEBUG_REQUESTED = queryParams.get("webglDebug") === "1";
+const REQUESTED_SURFACE = (queryParams.get("surface") || "").trim().toLowerCase();
 const LOCAL_FS_VIEW_ROOT = firstQueryParam(queryParams, ["localFsRoot", "localFsPath"]) || "";
 const LOCAL_FS_VIEW_MODE = Boolean(LOCAL_FS_VIEW_ROOT.trim());
 const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
@@ -522,6 +536,24 @@ let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text
 let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
+let webglProjection: WebGLRenderingProjection | null = null;
+let webglRendererActive = false;
+let webglFallbackReason: string | null = null;
+let webglHoveredNodeId: string | null = null;
+let webglHoverFrame: number | null = null;
+let webglLastSnapshot: RenderSnapshot | null = null;
+let webglActivationFrame: number | null = null;
+let webglDragBaseSnapshot: RenderSnapshot | null = null;
+let webglGraphLinkControls: HTMLElement | null = null;
+let webglGraphLinkDragState: {
+  pointerId: number;
+  linkId: string;
+  endpoint: LinkEndpointKind;
+  handle: HTMLButtonElement;
+  startX: number;
+  startY: number;
+  dragged: boolean;
+} | null = null;
 
 type CameraTarget = { cameraX: number; cameraY: number; zoom: number };
 type CameraMoveOptions = { animate?: boolean; durationMs?: number };
@@ -810,6 +842,13 @@ function surfaceViewModeLabel(mode: SurfaceViewMode): string {
   if (mode === "logic-chart") return "Logic Chart";
   if (mode === "timeline") return "Axial";
   return "Tree";
+}
+
+/** URL view selection is ephemeral: it never writes the map's primary surface. */
+function requestedSurfaceViewMode(): SurfaceViewMode | null {
+  if (REQUESTED_SURFACE === "scatter") return "scatter";
+  if (REQUESTED_SURFACE === "tree") return "tree";
+  return null;
 }
 
 function surfaceSpaceLabel(space: SurfaceSpace): string {
@@ -2263,6 +2302,7 @@ function hydrateLinearNotesFromDocState(): void {
     delete linearNotesByScope[scopeId];
   });
   if (!map) {
+    deactivateWebGLProjection();
     return;
   }
   Object.assign(linearNotesByScope, sanitizeLinearNotesByScope(map.state.linearNotesByScope));
@@ -4119,8 +4159,11 @@ function normalizeGraphLink(link: GraphLink): GraphLink {
     direction: link.direction ?? "none",
     style: link.style ?? "default",
     color: sanitizeColor(link.color) ?? undefined,
-    sourcePort: sanitizeLinkPort(link.sourcePort),
-    targetPort: sanitizeLinkPort(link.targetPort),
+    // Keep the canonical `auto` value in the model. Rendering converts it to
+    // an inferred edge port, but WebGL and SVG must observe the same saved
+    // LinkPort value.
+    sourcePort: validPort(link.sourcePort),
+    targetPort: validPort(link.targetPort),
   };
 }
 
@@ -4346,6 +4389,7 @@ function refreshBoardViewportRect(): void {
 
 refreshBoardViewportRect();
 window.addEventListener("resize", refreshBoardViewportRect);
+window.addEventListener("resize", () => webglProjection?.resize());
 
 function refreshLinearPanelCanvasLayout(): boolean {
   if (!map || !lastLayout || visibleOrder.length === 0) {
@@ -4390,6 +4434,526 @@ function refreshLinearPanelCanvasLayout(): boolean {
   return true;
 }
 
+function webglSurfaceSupported(): boolean {
+  return WEBGL_RENDERER_REQUESTED && !webglFallbackReason && (viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode());
+}
+
+function isWebGLRendererActive(): boolean {
+  return webglRendererActive && webglSurfaceSupported();
+}
+
+function cssColorOf(element: Element, property: "fill" | "stroke", fallback: string): string {
+  const value = getComputedStyle(element).getPropertyValue(property).trim();
+  return value && value !== "none" && value !== "transparent" ? value : fallback;
+}
+
+function sampledSvgPoints(element: SVGGeometryElement): Array<{ x: number; y: number }> {
+  if (element instanceof SVGLineElement) {
+    return [
+      { x: element.x1.baseVal.value, y: element.y1.baseVal.value },
+      { x: element.x2.baseVal.value, y: element.y2.baseVal.value },
+    ];
+  }
+  try {
+    const length = element.getTotalLength();
+    if (!Number.isFinite(length) || length <= 0) return [];
+    const count = Math.max(2, Math.min(32, Math.ceil(length / 24)));
+    return Array.from({ length: count }, (_unused, index) => {
+      const point = element.getPointAtLength((length * index) / (count - 1));
+      return { x: point.x, y: point.y };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function svgShapeBox(shape: SVGGraphicsElement): { x: number; y: number; width: number; height: number } | null {
+  const numberAttr = (name: string): number => Number.parseFloat(shape.getAttribute(name) || "NaN");
+  if (shape instanceof SVGRectElement) {
+    const x = numberAttr("x"); const y = numberAttr("y"); const width = numberAttr("width"); const height = numberAttr("height");
+    return Number.isFinite(x + y + width + height) ? { x, y, width, height } : null;
+  }
+  if (shape instanceof SVGCircleElement) {
+    const cx = numberAttr("cx"); const cy = numberAttr("cy"); const r = numberAttr("r");
+    return Number.isFinite(cx + cy + r) ? { x: cx - r, y: cy - r, width: r * 2, height: r * 2 } : null;
+  }
+  try {
+    const box = shape.getBBox();
+    return Number.isFinite(box.x + box.y + box.width + box.height) ? box : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Converts the existing canonical SVG scene into a read-only GPU projection. */
+function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
+  const labelsById = new Map<string, string[]>();
+  const labelElementsById = new Map<string, SVGTextElement>();
+  canvas.querySelectorAll<SVGTextElement>("text.label-root[data-node-id], text.label-node[data-node-id]").forEach((label) => {
+    const id = label.getAttribute("data-node-id");
+    if (!id) return;
+    const lines = Array.from(label.querySelectorAll("tspan")).map((line) => line.textContent || "").filter(Boolean);
+    labelsById.set(id, lines.length > 0 ? lines : [(label.textContent || "").trim()]);
+    labelElementsById.set(id, label);
+  });
+  const nodes: RenderNode[] = [];
+  const shapeById = new Map<string, SVGGraphicsElement>();
+  canvas.querySelectorAll<SVGGraphicsElement>("[data-node-id].node-hit, circle.scatter-node-circle[data-node-id]").forEach((element) => {
+    const id = element.getAttribute("data-node-id");
+    if (!id || shapeById.has(id)) return;
+    shapeById.set(id, element);
+  });
+  shapeById.forEach((shape, id) => {
+    const box = svgShapeBox(shape);
+    if (!box) return;
+    const visibleNode = map?.state.nodes[id];
+    if (!visibleNode || !Number.isFinite(box.x + box.y + box.width + box.height)) return;
+    const visual = canvas.querySelector<SVGGraphicsElement>(`[data-node-id="${CSS.escape(id)}"].node-shape, [data-node-id="${CSS.escape(id)}"].folder-box, [data-node-id="${CSS.escape(id)}"].root-box`) || shape;
+    const lines = labelsById.get(id) || [uiLabel(visibleNode) || "(empty)"];
+    const labelElement = labelElementsById.get(id);
+    const labelFontSize = labelElement ? Number.parseFloat(getComputedStyle(labelElement).fontSize) : Number.NaN;
+    const style = readNodeStyleAttrs(visibleNode.attributes || {});
+    nodes.push({
+      id,
+      x: box.x,
+      y: box.y,
+      width: Math.max(1, box.width),
+      height: Math.max(1, box.height),
+      label: lines.join(" "),
+      labelLines: lines,
+      fontSize: Number.isFinite(labelFontSize) ? labelFontSize : (id === map?.state.rootId ? 30 : 18),
+      textColor: style.color || (labelElement ? cssColorOf(labelElement, "fill", "#202124") : "#202124"),
+      shape: shape instanceof SVGCircleElement ? "circle" : "rect",
+      // The existing SVG shape is a rendering detail (and can inherit CSS
+      // effects). Prefer its canonical node style, then its resolved color.
+      fill: style.bg || cssColorOf(visual, "fill", "#ffffff"),
+      stroke: style.border || cssColorOf(visual, "stroke", "#475569"),
+    });
+  });
+  const parseEdges = (selector: string, kind: "edge" | "graph-link"): RenderEdge[] => Array.from(canvas.querySelectorAll<SVGGeometryElement>(selector))
+    .map((element, index) => {
+      const sourceNodeId = element.getAttribute("data-source-node-id") || element.getAttribute("data-parent-node-id") || "";
+      const targetNodeId = element.getAttribute("data-target-node-id") || element.getAttribute("data-child-node-id") || "";
+      const id = element.getAttribute("data-edge-id") || element.getAttribute("data-link-id") || `${kind}-${index}`;
+      return {
+        id,
+        sourceNodeId,
+        targetNodeId,
+        points: sampledSvgPoints(element),
+        color: cssColorOf(element, "stroke", kind === "graph-link" ? "#6b7280" : "#94a3b8"),
+        width: Math.max(1, Number.parseFloat(getComputedStyle(element).strokeWidth) || 2),
+        kind,
+        direction: element.getAttribute("marker-end") ? "forward" as const : "none" as const,
+      };
+    })
+    .filter((edge) => edge.points.length >= 2);
+  const groups: RenderGroupBoundary[] = currentSurfaceIsScatterMode()
+    ? (layout.groups || [])
+      .filter((group) => Number.isFinite(group.x + group.y + group.w + group.h) && group.w > 0 && group.h > 0)
+      .map((group) => ({
+        id: group.id,
+        memberIds: [...group.memberIds],
+        x: group.x,
+        y: group.y,
+        width: group.w,
+        height: group.h,
+      }))
+    : [];
+  return {
+    revision: `${map?.savedAt || "unsaved"}:${viewState.surfaceViewMode}:${currentScopeRootId()}`,
+    nodes,
+    edges: parseEdges("path.edge[data-source-node-id][data-target-node-id], line.scatter-guide[data-parent-node-id][data-child-node-id]", "edge"),
+    graphLinks: parseEdges("path.graph-link[data-source-node-id][data-target-node-id], line.graph-link[data-source-node-id][data-target-node-id]", "graph-link"),
+    groups,
+    bounds: { minX: 0, minY: 0, maxX: contentWidth, maxY: contentHeight },
+  };
+}
+
+function syncWebGLInteraction(): void {
+  if (!webglProjection || !isWebGLRendererActive()) return;
+  webglProjection.setInteractionState({
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    primarySelectedNodeId: viewState.selectedNodeId || null,
+    selectedGraphLinkId,
+    hoveredNodeId: webglHoveredNodeId,
+    editingNodeId: inlineEditor?.nodeId || null,
+    gestureActive: Boolean(viewState.panState || viewState.pinchState || viewState.dragState),
+  });
+  syncWebGLGraphLinkControls();
+}
+
+function webglClientToWorld(clientX: number, clientY: number): { x: number; y: number } | null {
+  if (!webglCanvas) {
+    return null;
+  }
+  const rect = webglCanvas.getBoundingClientRect();
+  return screenToWorld(
+    { x: clientX - rect.left, y: clientY - rect.top },
+    { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom },
+  );
+}
+
+function removeWebGLGraphLinkControls(): void {
+  webglGraphLinkControls?.remove();
+  webglGraphLinkControls = null;
+}
+
+function positionWebGLGraphLinkControl(element: HTMLElement, point: { x: number; y: number }): void {
+  const screen = worldToScreen(point, {
+    x: viewState.cameraX,
+    y: viewState.cameraY,
+    zoom: viewState.zoom,
+  });
+  element.style.left = `${screen.x}px`;
+  element.style.top = `${screen.y}px`;
+}
+
+function createWebGLGraphLinkEndpointControls(
+  controls: HTMLElement,
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  node: RenderNode,
+  endpointPoint: { x: number; y: number },
+): void {
+  const rect = { x: node.x, y: node.y, w: node.width, h: node.height };
+  const portPoints: Record<EdgeAnchorSide, { x: number; y: number }> = {
+    left: { x: rect.x, y: rect.y + rect.h / 2 },
+    right: { x: rect.x + rect.w, y: rect.y + rect.h / 2 },
+    top: { x: rect.x + rect.w / 2, y: rect.y },
+    bottom: { x: rect.x + rect.w / 2, y: rect.y + rect.h },
+  };
+  const activeSide = inferBoundarySide(rect, endpointPoint);
+  (Object.keys(portPoints) as EdgeAnchorSide[]).forEach((side) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = `link-port-dot webgl-link-port-dot${side === activeSide ? " is-active" : ""}`;
+    dot.dataset.linkId = linkId;
+    dot.dataset.linkPortChoice = endpoint;
+    dot.dataset.linkPortSide = side;
+    dot.setAttribute("aria-label", `${endpoint} port ${side}`);
+    positionWebGLGraphLinkControl(dot, portPoints[side]);
+    dot.addEventListener("pointerdown", (event: PointerEvent) => {
+      if (event.button !== 0 || !map) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (setGraphLinkEndpointPort(linkId, endpoint, side)) {
+        touchDocument();
+        setStatus(`Link ${endpoint} port: ${side}.`);
+      }
+      board.focus();
+    });
+    controls.appendChild(dot);
+  });
+
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = `link-port-handle webgl-link-port-handle link-port-handle-${endpoint}`;
+  handle.dataset.linkId = linkId;
+  handle.dataset.linkPortHandle = endpoint;
+  handle.setAttribute("aria-label", `Move GraphLink ${endpoint} endpoint`);
+  positionWebGLGraphLinkControl(handle, endpointPoint);
+  handle.addEventListener("pointerdown", (event: PointerEvent) => {
+    startWebGLGraphLinkDrag(event, linkId, endpoint, handle);
+  });
+  handle.addEventListener("pointermove", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    updateWebGLGraphLinkDragPreview(event);
+  });
+  handle.addEventListener("pointerup", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    finishWebGLGraphLinkDrag(event);
+  });
+  handle.addEventListener("pointercancel", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    finishWebGLGraphLinkDrag(event);
+  });
+  controls.appendChild(handle);
+}
+
+function syncWebGLGraphLinkControls(): void {
+  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId) {
+    removeWebGLGraphLinkControls();
+    return;
+  }
+  const link = webglLastSnapshot.graphLinks.find((edge) => edge.id === selectedGraphLinkId);
+  const sourceNode = link ? webglLastSnapshot.nodes.find((node) => node.id === link.sourceNodeId) : null;
+  const targetNode = link ? webglLastSnapshot.nodes.find((node) => node.id === link.targetNodeId) : null;
+  if (!link || link.points.length < 2 || !sourceNode || !targetNode) {
+    removeWebGLGraphLinkControls();
+    return;
+  }
+
+  removeWebGLGraphLinkControls();
+  const controls = document.createElement("div");
+  controls.className = "link-port-controls webgl-link-port-controls";
+  controls.dataset.linkId = link.id;
+  createWebGLGraphLinkEndpointControls(controls, link.id, "source", sourceNode, link.points[0]!);
+  createWebGLGraphLinkEndpointControls(controls, link.id, "target", targetNode, link.points[link.points.length - 1]!);
+  board.appendChild(controls);
+  webglGraphLinkControls = controls;
+}
+
+function startWebGLGraphLinkDrag(
+  event: PointerEvent,
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  handle: HTMLButtonElement,
+): void {
+  if (!isWebGLRendererActive() || event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  selectedGraphLinkId = linkId;
+  viewState.selectedLinkId = linkId;
+  webglGraphLinkDragState = {
+    pointerId: event.pointerId,
+    linkId,
+    endpoint,
+    handle,
+    startX: event.clientX,
+    startY: event.clientY,
+    dragged: false,
+  };
+  try {
+    handle.setPointerCapture(event.pointerId);
+  } catch {
+    // The browser may reject capture for a synthetic or already-ended pointer.
+  }
+  board.focus();
+}
+
+function updateWebGLGraphLinkDragPreview(event: PointerEvent): void {
+  const drag = webglGraphLinkDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.dragged && distance < VIEWER_TUNING.drag.reparentThreshold) return;
+  drag.dragged = true;
+  const point = webglClientToWorld(event.clientX, event.clientY);
+  if (point) {
+    positionWebGLGraphLinkControl(drag.handle, point);
+  }
+}
+
+function finishWebGLGraphLinkDrag(event: PointerEvent): void {
+  const drag = webglGraphLinkDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  updateWebGLGraphLinkDragPreview(event);
+  webglGraphLinkDragState = null;
+  try {
+    drag.handle.releasePointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been released by the browser.
+  }
+
+  const shouldCommit = event.type !== "pointercancel" && drag.dragged;
+  if (!shouldCommit) {
+    syncWebGLGraphLinkControls();
+    board.focus();
+    return;
+  }
+
+  const point = webglClientToWorld(event.clientX, event.clientY);
+  const hit = point ? webglProjection?.hitTest(event.clientX, event.clientY) : null;
+  const targetNode = hit?.kind === "node"
+    ? webglLastSnapshot?.nodes.find((node) => node.id === hit.nodeId)
+    : null;
+  if (!point || !targetNode) {
+    setStatus("No valid GraphLink endpoint.", true);
+    syncWebGLGraphLinkControls();
+    board.focus();
+    return;
+  }
+
+  const side = nearestEdgePortSideForGraphLinkEdit(
+    { x: targetNode.x, y: targetNode.y, w: targetNode.width, h: targetNode.height },
+    point,
+  );
+  if (!setGraphLinkEndpointPort(drag.linkId, drag.endpoint, side, true, targetNode.id)) {
+    syncWebGLGraphLinkControls();
+    board.focus();
+    return;
+  }
+  // The command has now been accepted. Re-render only after the WebGL-only
+  // drag preview has ended, matching the existing SVG commit boundary.
+  touchDocument();
+  setStatus(`Link ${drag.endpoint} endpoint updated.`);
+  board.focus();
+}
+
+function cloneWebGLRenderSnapshot(snapshot: RenderSnapshot): RenderSnapshot {
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.map((node) => ({ ...node })),
+    edges: snapshot.edges.map((edge) => ({ ...edge, points: edge.points.map((point) => ({ ...point })) })),
+    graphLinks: snapshot.graphLinks.map((edge) => ({ ...edge, points: edge.points.map((point) => ({ ...point })) })),
+    groups: snapshot.groups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
+    bounds: { ...snapshot.bounds },
+  };
+}
+
+function translateWebGLDragSnapshot(
+  snapshot: RenderSnapshot,
+  movedNodeIds: string[],
+  delta: { x: number; y: number },
+): RenderSnapshot {
+  const moved = new Set(movedNodeIds);
+  const edgeWithMovedEndpoints = (edge: RenderEdge): RenderEdge => {
+    const sourceMoved = moved.has(edge.sourceNodeId);
+    const targetMoved = moved.has(edge.targetNodeId);
+    if (!sourceMoved && !targetMoved) {
+      return { ...edge, points: edge.points.map((point) => ({ ...point })) };
+    }
+    const points = edge.points.map((point, index) => {
+      const t = edge.points.length <= 1 ? 0 : index / (edge.points.length - 1);
+      const factor = sourceMoved && targetMoved ? 1 : sourceMoved ? 1 - t : t;
+      return {
+        x: point.x + delta.x * factor,
+        y: point.y + delta.y * factor,
+      };
+    });
+    return { ...edge, points };
+  };
+  return {
+    ...snapshot,
+    revision: `${snapshot.revision}:drag`,
+    nodes: snapshot.nodes.map((node) => moved.has(node.id)
+      ? { ...node, x: node.x + delta.x, y: node.y + delta.y }
+      : { ...node }),
+    edges: snapshot.edges.map(edgeWithMovedEndpoints),
+    graphLinks: snapshot.graphLinks.map(edgeWithMovedEndpoints),
+    groups: snapshot.groups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
+    bounds: { ...snapshot.bounds },
+  };
+}
+
+function updateWebGLNodeDragPreview(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!webglProjection || !webglDragBaseSnapshot || !drag || drag.pointerId !== event.pointerId || drag.mode !== "scatter") {
+    return;
+  }
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.dragged && distance < VIEWER_TUNING.drag.reparentThreshold) {
+    return;
+  }
+  if (!drag.dragged) {
+    if (scatterAnimationEnabled) {
+      scatterAnimationEnabled = false;
+      stopScatterAnimation(true);
+      syncScatterToolbarUi();
+    }
+    pushUndoSnapshot();
+  }
+  drag.dragged = true;
+  const startWorld = drag.startWorld;
+  const currentWorld = webglClientToWorld(event.clientX, event.clientY);
+  if (!startWorld || !currentWorld) {
+    return;
+  }
+  webglLastSnapshot = translateWebGLDragSnapshot(
+    webglDragBaseSnapshot,
+    drag.sourceRootIds,
+    { x: currentWorld.x - startWorld.x, y: currentWorld.y - startWorld.y },
+  );
+  webglProjection.setSnapshot(webglLastSnapshot);
+}
+
+function activateWebGLProjection(): void {
+  if (!webglCanvas || !webglSurfaceSupported()) return;
+  // A hidden canvas reports a 0×0 box; expose it before allocating the
+  // drawing buffer so DPR sizing is based on the real viewport.
+  webglCanvas.hidden = false;
+  if (!webglProjection) {
+    webglProjection = new WebGLRenderingProjection(webglCanvas, {
+      onUnavailable: (reason) => {
+        webglFallbackReason = reason;
+        webglRendererActive = false;
+        webglCanvas.hidden = true;
+        canvas.removeAttribute("hidden");
+        canvas.style.transform = "";
+        syncInlineEditorPosition();
+        setStatus(`WebGL unavailable: ${reason} SVG fallback is active.`, true);
+      },
+      onRestored: () => {
+        // Context loss temporarily displays the canonical SVG. The projection
+        // retains its derived snapshot/camera/interaction state, so resume it
+        // without rebuilding the map or changing canonical UI selection.
+        webglFallbackReason = null;
+        const renderableSurface = viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode();
+        if (!WEBGL_RENDERER_REQUESTED || !renderableSurface) return;
+        webglRendererActive = true;
+        webglCanvas.hidden = false;
+        canvas.setAttribute("hidden", "");
+        if (linearPanelEl) linearPanelEl.hidden = true;
+        webglProjection?.resize();
+        webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+        syncWebGLInteraction();
+        syncInlineEditorPosition();
+        setStatus("WebGL context restored.");
+      },
+    });
+    if (!webglProjection.mount()) return;
+  }
+  webglProjection.resize();
+  if (!lastLayout) return;
+  webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
+  webglProjection.setSnapshot(webglLastSnapshot);
+  webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+  if (WEBGL_DEBUG_REQUESTED) {
+    webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length, groups: webglLastSnapshot.groups.length });
+  }
+  webglRendererActive = true;
+  canvas.setAttribute("hidden", "");
+  if (linearPanelEl) linearPanelEl.hidden = true;
+  syncWebGLInteraction();
+  syncInlineEditorPosition();
+  (globalThis as any).__m3eWebGLProjection = {
+    getDebugState: () => webglProjection?.getDebugState(),
+    getSnapshot: () => webglLastSnapshot,
+    forceFallback: () => {
+      webglProjection?.destroy();
+      webglProjection = null;
+      webglFallbackReason = "Forced fallback";
+      render();
+    },
+  };
+}
+
+function scheduleWebGLProjectionActivation(): void {
+  if (webglActivationFrame !== null) cancelAnimationFrame(webglActivationFrame);
+  // Keep SVG visible until same-turn camera fitting has settled. This prevents
+  // the first WebGL frame from locking in the pre-fit 100% camera.
+  deactivateWebGLProjection();
+  webglActivationFrame = requestAnimationFrame(() => {
+    webglActivationFrame = null;
+    if (webglSurfaceSupported()) activateWebGLProjection();
+  });
+}
+
+function deactivateWebGLProjection(): void {
+  if (webglActivationFrame !== null) {
+    cancelAnimationFrame(webglActivationFrame);
+    webglActivationFrame = null;
+  }
+  webglRendererActive = false;
+  webglGraphLinkDragState = null;
+  removeWebGLGraphLinkControls();
+  if (webglCanvas) webglCanvas.hidden = true;
+  canvas.removeAttribute("hidden");
+  syncInlineEditorPosition();
+}
+
 function applyCanvasViewportTransform(): void {
   const widthValue = `${contentWidth}px`;
   if (_appliedCanvasWidth !== widthValue) {
@@ -4421,6 +4985,10 @@ function applyLinearPanelViewportTransform(): void {
   if (!linearPanelEl || linearPanelEl.hidden || _linearPanelLayoutDirty) {
     return;
   }
+  if (isWebGLRendererActive()) {
+    linearPanelEl.hidden = true;
+    return;
+  }
   if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree" || !map || !lastLayout || visibleOrder.length === 0) {
     return;
   }
@@ -4433,6 +5001,19 @@ function applyLinearPanelViewportTransform(): void {
 }
 
 function applyZoom(options: ViewportApplyOptions = {}): void {
+  if (isWebGLRendererActive()) {
+    webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    syncInlineEditorPosition();
+    syncWebGLGraphLinkControls();
+    if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
+      webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    }
+    if (options.syncDependents !== false) {
+      refreshBoardViewportRect();
+      window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+    }
+    return;
+  }
   // Continuous pan/zoom only writes affine transforms; layout-dependent sync trails the gesture.
   applyCanvasViewportTransform();
   if (options.syncDependents === false) {
@@ -4562,7 +5143,7 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree" || isWebGLRendererActive()) {
     linearPanelEl.hidden = true;
     return;
   }
@@ -4614,11 +5195,40 @@ function captureManualLinearPanelWidth(): void {
 }
 
 function syncInlineEditorPosition(): void {
-  if (!inlineEditor || !map || !lastLayout) {
+  if (!inlineEditor || !map) {
     return;
   }
 
   const nodeId = inlineEditor.nodeId;
+  const webglNode = isWebGLRendererActive()
+    ? webglLastSnapshot?.nodes.find((node) => node.id === nodeId) || null
+    : null;
+  if (isWebGLRendererActive()) {
+    if (!webglNode) {
+      return;
+    }
+    const camera = { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom };
+    const topLeft = worldToScreen({ x: webglNode.x, y: webglNode.y }, camera);
+    inlineEditor.input.style.left = `${topLeft.x}px`;
+    inlineEditor.input.style.top = `${topLeft.y}px`;
+    inlineEditor.input.style.width = `${webglNode.width}px`;
+    inlineEditor.input.style.height = `${webglNode.height}px`;
+    inlineEditor.input.style.minWidth = `${webglNode.width}px`;
+    inlineEditor.input.style.minHeight = `${webglNode.height}px`;
+    inlineEditor.input.style.fontSize = `${webglNode.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
+    inlineEditor.input.style.lineHeight = `${lineHeightForFont(webglNode.fontSize || VIEWER_TUNING.typography.nodeFont)}px`;
+    inlineEditor.input.style.fontWeight = nodeId === map.state.rootId ? "500" : "450";
+    inlineEditor.input.style.color = webglNode.textColor || "#232323";
+    inlineEditor.input.style.padding = "0 6px";
+    inlineEditor.input.style.transform = `scale(${viewState.zoom})`;
+    inlineEditor.input.style.transformOrigin = "top left";
+    inlineEditor.input.style.textAlign = "center";
+    return;
+  }
+
+  if (!lastLayout) {
+    return;
+  }
   const nodePos = lastLayout.pos[nodeId];
   if (!nodePos) {
     return;
@@ -7170,12 +7780,24 @@ function render(): void {
   );
   let defs = "<defs>";
   let surfaceFrames = "";
+  let disperseGroups = "";
   let edges = "";
   let scatterGuides = "";
   let graphLinks = "";
   let overlays = "";
   let annotations = "";
   let nodes = "";
+
+  if (scatterSurface) {
+    layout.groups?.forEach((group) => {
+      if (!Number.isFinite(group.x + group.y + group.w + group.h) || group.w <= 0 || group.h <= 0) {
+        return;
+      }
+      disperseGroups += `<rect class="disperse-group" data-group-id="${escapeXmlAttr(group.id)}" x="${group.x}" y="${group.y}" width="${group.w}" height="${group.h}" rx="12" pointer-events="none" aria-hidden="true" />`;
+      maxX = Math.max(maxX, group.x + group.w + VIEWER_TUNING.layout.canvasRightPad);
+      maxY = Math.max(maxY, group.y + group.h + VIEWER_TUNING.layout.canvasBottomPad);
+    });
+  }
 
   let topArchCount = 0;
   let bottomArchCount = 0;
@@ -7791,8 +8413,13 @@ function render(): void {
   canvas.setAttribute("width", String(maxX));
   canvas.setAttribute("height", String(maxY));
   canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
-  applyZoom();
+  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${disperseGroups}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
+  if (webglSurfaceSupported()) {
+    scheduleWebGLProjectionActivation();
+  } else {
+    deactivateWebGLProjection();
+    applyZoom();
+  }
 
   const version = map.version ?? "n/a";
   const savedAt = map.savedAt ?? "n/a";
@@ -11132,16 +11759,46 @@ function colorizeScatterEdge(linkId: string): void {
   setStatus("Edge color updated.");
 }
 
-function setGraphLinkEndpointPort(linkId: string, endpoint: LinkEndpointKind, side: EdgeAnchorSide, withUndo = true): boolean {
+function setGraphLinkEndpointPort(
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  side: EdgeAnchorSide,
+  withUndo = true,
+  replacementNodeId?: string,
+): boolean {
   if (!map?.state.links?.[linkId]) {
     return false;
+  }
+  const current = normalizeGraphLink(map.state.links[linkId]!);
+  const nextSourceNodeId = endpoint === "source" ? (replacementNodeId || current.sourceNodeId) : current.sourceNodeId;
+  const nextTargetNodeId = endpoint === "target" ? (replacementNodeId || current.targetNodeId) : current.targetNodeId;
+  if (replacementNodeId) {
+    const replacementNode = map.state.nodes[replacementNodeId];
+    if (!replacementNode || isAliasNode(replacementNode)) {
+      setStatus("GraphLink endpoints must be existing non-alias nodes.", true);
+      return false;
+    }
+    if (nextSourceNodeId === nextTargetNodeId) {
+      setStatus("Graph links cannot connect a node to itself.", true);
+      return false;
+    }
+    const duplicate = Object.values(map.state.links || {}).find((candidate) =>
+      candidate.id !== linkId &&
+      candidate.sourceNodeId === nextSourceNodeId &&
+      candidate.targetNodeId === nextTargetNodeId,
+    );
+    if (duplicate) {
+      setStatus("That GraphLink already exists.", true);
+      return false;
+    }
   }
   if (withUndo) {
     pushUndoSnapshot();
   }
-  const current = normalizeGraphLink(map.state.links[linkId]!);
   map.state.links[linkId] = normalizeGraphLink({
     ...current,
+    sourceNodeId: nextSourceNodeId,
+    targetNodeId: nextTargetNodeId,
     sourcePort: endpoint === "source" ? side : current.sourcePort,
     targetPort: endpoint === "target" ? side : current.targetPort,
   });
@@ -11177,6 +11834,25 @@ function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y
     }
   });
   return starts;
+}
+
+function applyScatterDragDelta(
+  sourceRootIds: string[],
+  startViews: Record<string, { x: number; y: number }>,
+  delta: { x: number; y: number },
+): void {
+  if (!map) {
+    return;
+  }
+  syncMapModelStateFromRuntime();
+  sourceRootIds.forEach((nodeId) => {
+    const start = startViews[nodeId];
+    if (!start) return;
+    const view = ensureSurfaceNodeView(nodeId);
+    if (!view) return;
+    view.x = Math.round(start.x + delta.x);
+    view.y = Math.round(start.y + delta.y);
+  });
 }
 
 function deleteSelectedGraphLink(): boolean {
@@ -11323,12 +11999,18 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
 
   const { nodeId, input, mode } = inlineEditor;
   const next = input.value;
-  setEditedSvgLabelVisibility(nodeId, true);
+  const wasWebGL = isWebGLRendererActive();
+  if (!wasWebGL) {
+    setEditedSvgLabelVisibility(nodeId, true);
+  }
   input.remove();
   inlineEditor = null;
 
   if (commit) {
     applyNodeTextEdit(nodeId, next, mode);
+  }
+  if (wasWebGL) {
+    syncWebGLInteraction();
   }
 
   if (options?.focusBoard !== false) {
@@ -11468,7 +12150,14 @@ function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
 }
 
 function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeIntoView?: boolean }): void {
-  if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
+  if (!map) {
+    return;
+  }
+  if (isWebGLRendererActive()) {
+    if (!webglLastSnapshot?.nodes.some((node) => node.id === nodeId)) {
+      return;
+    }
+  } else if (!lastLayout?.pos[nodeId]) {
     return;
   }
 
@@ -11496,7 +12185,9 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
 
   inlineEditor = { nodeId, input, mode };
   syncInlineEditorPosition();
-  autoSizeInlineEditor(input);
+  if (!isWebGLRendererActive()) {
+    autoSizeInlineEditor(input);
+  }
   if (options?.nudgeIntoView !== false) {
     nudgeNodeIntoView(nodeId);
   }
@@ -11555,8 +12246,11 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   });
 
   input.addEventListener("input", () => {
-    autoSizeInlineEditor(input);
+    if (!isWebGLRendererActive()) {
+      autoSizeInlineEditor(input);
+    }
   });
+  syncWebGLInteraction();
 }
 
 function nodeDepth(nodeId: string): number {
@@ -14414,6 +15108,154 @@ document.addEventListener("click", () => {
   closeToolbarMenus();
 });
 
+/** Phase 1 WebGL input: selection and Disperse node drag. Other mutating gestures remain on SVG. */
+webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (!isWebGLRendererActive() || event.button !== 0 || !webglProjection) return;
+  const hit = webglProjection.hitTest(event.clientX, event.clientY);
+  if (!hit) return; // Allow the board's canonical camera controller to start a pan.
+  event.preventDefault();
+  event.stopPropagation();
+  if (hit.kind === "node") {
+    const canStartScatterDrag = currentSurfaceIsScatterMode() && scatterToolMode === "normal" && !isReadOnlyLink();
+    if (canStartScatterDrag && webglLastSnapshot) {
+      const wasSelected = viewState.selectedNodeIds.has(hit.nodeId);
+      const sourceRootIds = wasSelected
+        ? getMovableSelectionRoots(viewState.selectedNodeIds)
+        : getMovableSelectionRoots(new Set([hit.nodeId]));
+      const startWorld = webglClientToWorld(event.clientX, event.clientY);
+      if (sourceRootIds.length > 0 && startWorld) {
+        if (!wasSelected && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+          // Keep the current WebGL click-selection behavior without redrawing
+          // SVG before we know whether this becomes a drag. Modifier
+          // selection remains pending until pointerup, like the SVG path.
+          setSingleSelection(hit.nodeId, false);
+        }
+        viewState.dragState = {
+          mode: "scatter",
+          pointerId: event.pointerId,
+          sourceNodeId: hit.nodeId,
+          sourceRootIds,
+          proposal: null,
+          startX: event.clientX,
+          startY: event.clientY,
+          startWorld,
+          dragged: false,
+          toggleKey: event.ctrlKey || event.metaKey,
+          shiftKey: event.shiftKey,
+          startViews: scatterDragStartViews(sourceRootIds),
+        };
+        webglDragBaseSnapshot = cloneWebGLRenderSnapshot(webglLastSnapshot);
+        webglCanvas.setPointerCapture(event.pointerId);
+        syncWebGLInteraction();
+        board.focus();
+        return;
+      }
+    }
+    setSingleSelection(hit.nodeId, false);
+    syncWebGLInteraction();
+    // Keep HTML inspector/metadata in the canonical UI state in sync. This is
+    // a discrete selection update, never part of the pan/zoom gesture path.
+    scheduleRender();
+    board.focus();
+    return;
+  }
+  // Link selection is read-only in Phase 1; it only mirrors existing UI state.
+  selectGraphLink(hit.edgeId, false);
+  syncWebGLInteraction();
+  scheduleRender();
+  board.focus();
+});
+
+webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
+  if (!isWebGLRendererActive() || !webglProjection || viewState.panState || viewState.pinchState) return;
+  if (viewState.dragState?.mode === "scatter" && viewState.dragState.pointerId === event.pointerId) {
+    updateWebGLNodeDragPreview(event);
+    return;
+  }
+  if (webglHoverFrame !== null) cancelAnimationFrame(webglHoverFrame);
+  webglHoverFrame = requestAnimationFrame(() => {
+    webglHoverFrame = null;
+    const hit = webglProjection?.hitTest(event.clientX, event.clientY);
+    const next = hit?.kind === "node" ? hit.nodeId : null;
+    if (next !== webglHoveredNodeId) {
+      webglHoveredNodeId = next;
+      syncWebGLInteraction();
+    }
+  });
+});
+
+webglCanvas?.addEventListener("pointerleave", () => {
+  if (viewState.dragState) {
+    return;
+  }
+  if (webglHoveredNodeId !== null) {
+    webglHoveredNodeId = null;
+    syncWebGLInteraction();
+  }
+});
+
+function finishWebGLNodeDrag(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!drag || drag.mode !== "scatter" || event.pointerId !== drag.pointerId) {
+    return;
+  }
+  updateWebGLNodeDragPreview(event);
+  const dragged = drag.dragged;
+  const sourceRootIds = [...drag.sourceRootIds];
+  const startViews = { ...(drag.startViews || {}) };
+  const startWorld = drag.startWorld;
+  const endWorld = webglClientToWorld(event.clientX, event.clientY);
+  viewState.dragState = null;
+  webglDragBaseSnapshot = null;
+  try {
+    webglCanvas?.releasePointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been released by the browser.
+  }
+
+  if (!dragged) {
+    selectByPointerModifiers(drag.sourceNodeId, {
+      toggle: drag.toggleKey,
+      range: drag.shiftKey,
+    });
+    syncWebGLInteraction();
+    board.focus();
+    return;
+  }
+
+  if (!startWorld || !endWorld) {
+    syncWebGLInteraction();
+    board.focus();
+    return;
+  }
+  applyScatterDragDelta(sourceRootIds, startViews, {
+    x: endWorld.x - startWorld.x,
+    y: endWorld.y - startWorld.y,
+  });
+  // Reuse the existing SVG drag commit path: one canonical render, autosave,
+  // and broadcast after the WebGL-only preview has ended.
+  touchDocument();
+  setStatus("Disperse position updated.");
+  board.focus();
+}
+
+webglCanvas?.addEventListener("pointerup", finishWebGLNodeDrag);
+webglCanvas?.addEventListener("pointercancel", finishWebGLNodeDrag);
+
+webglCanvas?.addEventListener("dblclick", (event: MouseEvent) => {
+  if (!isWebGLRendererActive() || !webglProjection) {
+    return;
+  }
+  const hit = webglProjection.hitTest(event.clientX, event.clientY);
+  if (hit?.kind !== "node") {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  selectNode(hit.nodeId);
+  startInlineEdit(hit.nodeId, { selectAll: false });
+});
+
 canvas.addEventListener("pointerover", (event: PointerEvent) => {
   if (event.pointerType && event.pointerType !== "mouse") return;
   const nodeId = eventNodeId(event.target);
@@ -14631,18 +15473,10 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
   }
   viewState.dragState.dragged = true;
   if (viewState.dragState.mode === "scatter") {
-    syncMapModelStateFromRuntime();
     const startViews = viewState.dragState.startViews || {};
     const canvasDx = dx / viewState.zoom;
     const canvasDy = dy / viewState.zoom;
-    viewState.dragState.sourceRootIds.forEach((nodeId) => {
-      const start = startViews[nodeId];
-      if (!start) return;
-      const view = ensureSurfaceNodeView(nodeId);
-      if (!view) return;
-      view.x = Math.round(start.x + canvasDx);
-      view.y = Math.round(start.y + canvasDy);
-    });
+    applyScatterDragDelta(viewState.dragState.sourceRootIds, startViews, { x: canvasDx, y: canvasDy });
     scheduleRender();
     return;
   }
@@ -15827,6 +16661,14 @@ void initializeDocument().then(() => {
   } else if (initialScopeId && map) {
     setStatus(`Scope not found: ${initialScopeId}. Loaded map root.`, true);
     updateScopeInUrl(map.state.rootId);
+  }
+  const requestedSurface = requestedSurfaceViewMode();
+  if (requestedSurface) {
+    viewState.surfaceViewMode = requestedSurface;
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(currentScopeRootId(), requestedSurface);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
+    syncThinkingModeUi();
+    render();
   }
   fitDocument({ animate: false }) || applyZoom();
 

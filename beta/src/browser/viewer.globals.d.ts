@@ -265,6 +265,7 @@ interface DragState {
   toggleKey: boolean;
   shiftKey: boolean;
   startViews?: Record<string, { x: number; y: number }>;
+  startWorld?: { x: number; y: number };
 }
 
 type DragDropProposal =
