@@ -2,7 +2,7 @@
 const { test, expect } = require("@playwright/test");
 const { launchViewer, waitForRender } = require("../helpers/viewer_test_utils");
 
-test.describe("M3E Mindmap Workbench UI", () => {
+test.describe("M3E Workbench UI", () => {
   test("renders Miro-style workbench chrome without changing the canvas surface", async ({ page }) => {
     await launchViewer(page);
     await waitForRender(page, 300);

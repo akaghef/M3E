@@ -1,3 +1,5 @@
+<!-- generated from agent_instructions/skills_canonical/m3e-mapify-bridge/references/roundtrip.md; do not edit mirror directly -->
+
 # Mapify Roundtrip Reference
 
 ## Outbound Format

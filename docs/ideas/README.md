@@ -15,6 +15,9 @@
 
 - [M3E Ultimate Graphics](./260704_graphics_showcase.html) — 4種類のアニメーションテーマを比較する自己完結型HTML。
 - [MemForest typed graph](./260719_memforest_conversation_to_typed_graph.md) — 会話履歴を型付きグラフとして保持・再利用する構想。
+- [Knowledge Workbench Slice](./260809_knowledge_workbench_slice.md) — 不可視多次元グラフと人間有限スライス作業台の Vision 再定式化。
+- [S16 Neo4j差別化](./260809_s16_neo4j_differentiation.md) — Neo4j Browser / Bloomとの境界から、M3E固有の意味仕事の閉ループと撤退条件を定義する。
+- [Neo4j-backed Team Collaboration と GraphLink 参照](./260824_neo4j_team_collaboration_graphlink.md) — 多数PCが中央Neo4j runtimeを共有するときのGraphLink identity、競合、権限、event、復旧要件を収穫する。
 
 ## Deferred Strategy へ持ち上げる目安
 

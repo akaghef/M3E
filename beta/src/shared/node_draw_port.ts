@@ -1,6 +1,6 @@
 import type { LayoutNodePosition } from "./layout_port";
 
-export type SurfaceViewName = "Tree" | "Axial" | "Radial" | "Disperse" | "System";
+export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System";
 export type NodeDrawKind = "root" | "plain" | "folder" | "latex" | "status";
 export type NodeDrawType = "text" | "image" | "folder" | "alias";
 export type AliasDrawState = "none" | "read" | "write" | "broken";
@@ -160,8 +160,6 @@ export function canonicalSurfaceViewName(raw: string | undefined | null): Surfac
       return "Disperse";
     case "system":
       return "System";
-    case "radial":
-      return "Radial";
     case "tree":
     case "mindmap":
     case "logic-chart":

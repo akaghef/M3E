@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Accepted. 一部を [ADR_011](./ADR_011_Agent_Orrery_As_M3E_Map.md) が更新（2026-08-26）:
+§2 の `Agent = Session 1:1` は **観測層の粒度**に限定され、map の node 粒度は「役割」となった。
+§4 の「live 観測 runtime は別 lane」は解消され、観測が本線スコープに入った。
 
 ## Date
 

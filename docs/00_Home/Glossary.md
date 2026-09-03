@@ -24,7 +24,11 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **workspace (ws)** | 永続データ実体の単位。SQLite 本体・backup・audit・cloud-sync などをまとめて保持する入れ物 | map, data profile, owner | 概念階層の最上位。`ws > map > scope > node`。workspaceId を単なる表示ラベルとして使う運用は避ける |
 | **map** | workspace 内で扱う 1 つの知識マップ | workspace, node, scope | （別表記）doc / document は非推奨。仕様語は `map`。実装の `docId` は互換名として残る |
 | **node** | 思考要素の最小単位。型: text / image / folder / alias | edge, scope, alias | |
-| **edge** | 親子関係のみを表す有向関係（親→子） | node | 関係線（補助線）は別概念 |
+| **edge** | 親子関係のみを表す有向関係（親→子） | node, GraphLink, EdgeStyle | **3義を混同しない**: 関係線（補助線）は `GraphLink`、描画の経路スタイルは `EdgeStyle`。無修飾の `edge` は常に親子関係を指す |
+| **seam interface** | seam の**型付き契約境界**（ports and adapters の port に相当）。ファイル命名は `*_seam_interface.ts` | seam, seam contract, edge port | **`port` をこの意味で使うな**（幾何の接続点と衝突するため廃語）。`seam contract`（reads/writes/claims を宣言する yaml）とは別artifact — こちらは TypeScript の型面。spec が言う `LayoutPort` は module の通称で、その名の型は実在しない（export は `layout()` 関数）|
+| **edge port** | ノード矩形上の**接続点**。`side = left / right / top / bottom` と座標を持つ幾何要素 | edge, EdgeStyle, LinkPort | 実装 `beta/src/shared/edge_port.ts` の `EdgePortSide` / `EdgePortPoint` / `EdgePorts`。`selectPorts(srcRect, dstRect, branchDirection)` が選ぶ対象。**seam port とは無関係の別概念** |
+| **LinkPort** | GraphLink に保存される端点指定。`auto / left / right / top / bottom` | edge port, GraphLink | `edge port` をデータとして持つもの。`auto` の意味が fixed-side sanitize と齟齬あり（reconcile 対象）|
+| **EdgeStyle** | 親子 edge の**描画スタイル**。`orthogonal / line / curve / force-link`。関係ではなく描画指定 | edge, LinkStyle, Surface View | `LinkStyle`（GraphLink の描画スタイル: default/dashed/soft/emphasis）と対をなす。正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md) では Surface View の `edge` option（型名 `SurfaceViewEdge`）。実装正本は `beta/src/shared/edge_route.ts`（現行型名 `EdgeRouteStyle`、canon 値と一致）。`layout_port.ts` の `LayoutEdgeRoute`(elbow/bezier/straight) と `LayoutLinkRoute`(simple-bezier/orthogonal/straight) は drift で reconcile 対象 |
 | **先祖 (ancestor)** | ある node から親子 edge を親方向へ辿って到達する node。親、祖父母、root を含むが、起点 node 自身は含まない | node, edge, 子孫, パンくず | パンくず表示は、現在位置の node に至る**先祖 chain**を root から順に表示する |
 | **子孫 (descendant)** | ある node から親子 edge を子方向へ1段以上辿って到達する node。起点 node 自身は含まない | node, edge, 先祖, 部分木 | node copy は、選択 node を根とする部分木、すなわち選択 node とその**全子孫**を複製する仕様 |
 | **spine** | 分散した node / alias / link 群を、人間が木または DAG として読めるようにする主骨格 | node, edge, scope, syntax tree, semantic graph | Rapid では主に親子 edge の列として保存される。個々の node が参照関係や GraphLink を持っていても、説明順序・階層・責任分解の本質を捕まえる背骨を spine と呼ぶ。Scatter などの自由配置でも、spine が決まれば木/DAG へ戻せる。表示上の線や補助関係とは混同しない |
@@ -102,6 +106,29 @@ M3E の正規語を維持し、property graph 語彙は対応先として扱う�
 | **reproducibility（再現性）** | 同じsource revision集合とqueryから同じ判断contextを再生成・監査できる性質 | context lockfile, journal | deterministic serializationを要求する |
 | **対話モード** | 人間との対話loop内でcontextを消費するmode | latency, specificity, fan-out | 優先順は概ね latency > specificity > fan-out制御 > hop depth。materialized viewを優先する |
 | **自律モード** | agentが人間の即時応答を待たず探索・実行するmode | reachability, specificity, hop depth | 優先順は概ね reachability > specificity > hop depth > latency。必要に応じlive traversalを許す |
+
+## 1.7 layout の軸（depth / breadth）
+
+> [!IMPORTANT]
+> **layout の軸は「X / Y」ではなく「depth / breadth」で考えること。この2軸は `direction` によって X/Y のどちらに乗るかが入れ替わる。**
+> ここを取り違えると、**兄弟の間隔を誤った寸法で計算して box が重なる**（2026-08-23 に up/down で実際に発生。`tree-stress-30` の目視で確認できる）。
+> 座標を後から回転して辻褄を合わせてはならない。**計算時に軸を選ぶ。**
+
+| 正規語 | 意味 | 関連語 | 備考 |
+|---|---|---|---|
+| **depth 軸** | 親から子へ**降りる**方向の軸。深さが進む向き | direction, Level Gap | 間隔は `Level Gap`。水平 direction では X、垂直 direction では Y に乗る |
+| **breadth 軸** | **兄弟が並ぶ**方向の軸。depth 軸と直交する | direction, Node Gap, branchPortSide | 間隔は `Node Gap`。水平 direction では Y、垂直 direction では X に乗る |
+| **depthExtent** | depth 軸方向の node の寸法 | depth 軸 | 水平 direction では `w`、垂直 direction では `h` |
+| **breadthExtent** | breadth 軸方向の node の寸法 | breadth 軸 | 水平 direction では `h`、垂直 direction では `w`。**兄弟の詰めはこれで計算する** |
+| **direction** | **depth 軸の向き**。`left/right` / `left` / `right` / `up/down` / `up` / `down` | depth 軸, breadth 軸, branchPortSide | 正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md)。`left/right` と `up/down` は**両側指定**で、breadth 軸上で root の両側へ分岐する。`both` は廃語（Decision_Pool 2026-08-23-001）|
+| **branchPortSide** | 各 node が breadth 軸の**どちら側**に置かれたかの結果。`left / right / up / down` | direction, edge port | layout の**出力**。edge port 選択はこれを使う。旧 `branchSide`（left/right のみ）は上下を表現できず互換目的でのみ残置 |
+
+軸の対応:
+
+| direction | depth 軸 | breadth 軸 | depthExtent | breadthExtent |
+|---|---|---|---|---|
+| `left/right` / `left` / `right` | X | Y | `w` | `h` |
+| `up/down` / `up` / `down` | Y | X | `h` | `w` |
 
 ## 2. 帯域（Band）
 

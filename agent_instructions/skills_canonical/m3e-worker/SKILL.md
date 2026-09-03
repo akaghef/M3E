@@ -1,6 +1,6 @@
 ---
 name: m3e-worker
-description: Minimal instruction for scoped worker agents. Use when receiving or preparing bounded worker tasks in M3E / Akaghef-System, and when an M3E request contains !!! / ！！！ or asks for recurrence prevention, durable rule changes, worker guardrails, or agent instruction updates.
+description: Minimal instruction for scoped worker agents. Use when receiving or preparing bounded worker tasks in M3E / Akaghef-System, and when an M3E request asks for recurrence prevention, durable rule changes, worker guardrails, or agent instruction updates.
 ---
 # M3E Worker Skill
 
@@ -8,7 +8,7 @@ description: Minimal instruction for scoped worker agents. Use when receiving or
 
 Do only the assigned task inside the assigned path/scope.
 
-For `!!!` / `！！！` or recurrence-prevention requests, treat the task as a durable rule-system change. Do not satisfy it with a chat-only promise.
+For recurrence-prevention requests, treat the task as a durable rule-system change. Do not satisfy it with a chat-only promise.
 
 ## Forbidden without explicit handoff
 
@@ -32,7 +32,7 @@ For `!!!` / `！！！` or recurrence-prevention requests, treat the task as a d
 
 ## Persistent rule changes
 
-When the user uses `!!!` / `！！！`, or asks to prevent recurrence after an agent failure:
+When the user asks to prevent recurrence after an agent failure:
 
 1. Read `docs/protocols/persistent-rule-change-protocol.md` when available.
 2. Update a durable target such as `AGENTS.md`, `docs/protocols/`, `docs/protocols/contracts/`, `agent_instructions/skills_canonical/`, checked-in hooks, or guard scripts.
