@@ -31,6 +31,15 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **EdgeStyle** | 親子 edge の**描画スタイル**。`orthogonal / line / curve / force-link`。関係ではなく描画指定 | edge, LinkStyle, Surface View | `LinkStyle`（GraphLink の描画スタイル: default/dashed/soft/emphasis）と対をなす。正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md) では Surface View の `edge` option（型名 `SurfaceViewEdge`）。実装正本は `beta/src/shared/edge_route.ts`（現行型名 `EdgeRouteStyle`、canon 値と一致）。`layout_port.ts` の `LayoutEdgeRoute`(elbow/bezier/straight) と `LayoutLinkRoute`(simple-bezier/orthogonal/straight) は drift で reconcile 対象 |
 | **先祖 (ancestor)** | ある node から親子 edge を親方向へ辿って到達する node。親、祖父母、root を含むが、起点 node 自身は含まない | node, edge, 子孫, パンくず | パンくず表示は、現在位置の node に至る**先祖 chain**を root から順に表示する |
 | **子孫 (descendant)** | ある node から親子 edge を子方向へ1段以上辿って到達する node。起点 node 自身は含まない | node, edge, 先祖, 部分木 | node copy は、選択 node を根とする部分木、すなわち選択 node とその**全子孫**を複製する仕様 |
+
+### 1.0.1 Progressive Navigation（PN）
+
+| 正規語 | 意味 | 関連語 | 備考 |
+|---|---|---|---|
+| **Progressive Navigation (PN)** | 段階的に操作項目を辿るナビゲーションUIの総称 | Surface PN, Node PN | 無修飾の `PN` はこの総称を指す |
+| **Surface Progressive Navigation (Surface PN)** | Surface・表示・ツール群を辿る PN | Progressive Navigation, Node PN | 旧 `[GUI] navigation root`。実装識別子 `gui` は互換名として残す |
+| **Node Context Progressive Navigation (Node PN)** | 選択中 node を文脈として、その node と子孫に対する操作を辿る PN | Progressive Navigation, Surface PN, node, 子孫 | node 自体の階層表示ではなく、選択 node を文脈にした操作UI。旧 `active-node PN`。実装識別子 `active-node` は互換名として残す |
+
 | **spine** | 分散した node / alias / link 群を、人間が木または DAG として読めるようにする主骨格 | node, edge, scope, syntax tree, semantic graph | Rapid では主に親子 edge の列として保存される。個々の node が参照関係や GraphLink を持っていても、説明順序・階層・責任分解の本質を捕まえる背骨を spine と呼ぶ。Scatter などの自由配置でも、spine が決まれば木/DAG へ戻せる。表示上の線や補助関係とは混同しない |
 | **folder** | 一般向け説明で scope を直感的に伝えるために使う語。実装上は nodeType の一種でもある | scope | UI/導入説明で使ってよいが、**仕様・実装の正規語は `scope`** |
 | **scope** | map 内の階層的に管理される構造境界。見える範囲・編集範囲を制御する基本単位 | folder, scopen, root scope, facet | M3E 固有の中核概念。（別表記・併用可）folder world |
