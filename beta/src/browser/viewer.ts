@@ -29,6 +29,7 @@ import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
 import { resolveMarkdownFilePreviewTarget, type MarkdownFilePreviewTarget } from "../shared/markdown_file_preview";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
+import { buildTableViewModel, directTableViewChildren, renderTableViewHtml } from "./table_view";
 import {
   type RenderEdge,
   type RenderGroupBoundary,
@@ -3243,13 +3244,6 @@ interface NodeStyleAttrs {
   band: string | null;
   confidence: number | null;
   status: string | null;
-}
-
-const VALID_STATUSES = new Set(["placeholder", "confirmed", "contested", "frozen", "active", "review"]);
-function sanitizeStatus(raw: string | undefined): string | null {
-  if (!raw || typeof raw !== "string") return null;
-  const s = raw.trim().toLowerCase();
-  return VALID_STATUSES.has(s) ? s : null;
 }
 
 /**
@@ -8084,55 +8078,17 @@ function render(): void {
   ): string {
     const parent = state.nodes[parentId];
     if (!parent) return "";
-
-    const childNodes = parent.children
-      .map((cid) => state.nodes[cid])
-      .filter((n): n is TreeNode => !!n);
-
-    const colSet = new Set<string>();
-    for (const child of childNodes) {
-      for (const key of Object.keys(child.attributes || {})) {
-        if (!key.startsWith("m3e:")) colSet.add(key);
-      }
-      if (child.details) colSet.add("_details");
-    }
-    const columns = Array.from(colSet).sort();
-
-    const esc = (s: string) => escapeXml(s);
+    const childNodes = directTableViewChildren(parent, state.nodes);
+    const tableModel = buildTableViewModel(childNodes);
 
     const densityClass = component.props.density === "compact"
       ? "m3e-component--density-compact"
       : "m3e-component--density-regular";
     const maxHeightClass = `m3e-component--max-${component.props.maxHeight}`;
 
-    let html = `<table class="m3e-table-view" data-component-kind="tabular"><thead><tr><th>Name</th>`;
-    for (const col of columns) {
-      html += `<th>${esc(col === "_details" ? "Details" : col)}</th>`;
-    }
-    html += `</tr></thead><tbody>`;
+    const html = renderTableViewHtml(tableModel);
 
-    if (childNodes.length === 0) {
-      html += `<tr class="m3e-table-empty-row"><td class="m3e-table-empty" colspan="${Math.max(1, columns.length + 1)}">No rows</td></tr>`;
-    } else {
-      for (const child of childNodes) {
-        const status = sanitizeStatus(child.attributes?.["m3e:status"]);
-        const statusClass = status ? ` class="status-${status}"` : "";
-        const childIdAttr = escapeXmlAttr(child.id);
-        html += `<tr data-node-id="${childIdAttr}"${statusClass}>`;
-        html += `<td class="m3e-table-name" data-node-id="${childIdAttr}">${esc(child.text || "(empty)")}</td>`;
-        for (const col of columns) {
-          if (col === "_details") {
-            html += `<td data-node-id="${childIdAttr}">${esc(child.details || "")}</td>`;
-          } else {
-            html += `<td data-node-id="${childIdAttr}">${esc(child.attributes?.[col] || "")}</td>`;
-          }
-        }
-        html += `</tr>`;
-      }
-    }
-    html += `</tbody></table>`;
-
-    const tableW = Math.max(columns.length * 150 + 200, 600);
+    const tableW = Math.max(tableModel.attributeColumns.length * 150 + (tableModel.includeDetails ? 150 : 0) + 200, 600);
     const maxHeightPx = component.props.maxHeight === "small" ? 360 : component.props.maxHeight === "large" ? 960 : 720;
     const rowHeight = component.props.density === "compact" ? 28 : 32;
     const tableH = Math.min((Math.max(1, childNodes.length) + 1) * rowHeight + 16, maxHeightPx);
@@ -8345,10 +8301,13 @@ function render(): void {
     maxX = Math.max(maxX, output.bounds.maxX);
     maxY = Math.max(maxY, output.bounds.maxY);
 
-    if (!scatterSurface && isFolderNode(node)) {
+    if (!scatterSurface && !nodeComponent && isFolderNode(node)) {
       nodes += renderFolderPreview(node, nodeStyles, p);
     }
 
+    // In tree surfaces the display root comes through this same path, so a
+    // root-owned table is valid. Rootless surfaces intentionally omit their
+    // hidden display root and therefore cannot anchor a projection there.
     if (nodeComponent) {
       nodes += renderNodeComponent(nodeComponent, nodeId, p);
     } else {
