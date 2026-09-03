@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 607
+- Indexed files: 608
 
 ## Reading Routes
 
@@ -355,6 +355,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260720_viewer_neon_experiment/README.md](<./ideas/260720_viewer_neon_experiment/README.md>) | Markdown | Viewer Neon 表現実験 | viewerのNeon調表現を製品コードから切り離し、将来のデザイン比較に使える自己完結したidea bundleとして保存する。現在のUI方針への採用を意味しない。 |
 | [ideas/260720_viewer_neon_experiment/viewer-neon-implementation.patch](<./ideas/260720_viewer_neon_experiment/viewer-neon-implementation.patch>) | File | viewer neon implementation | File |
 | [ideas/260720_viewer_neon_experiment/viewer-neon.png](<./ideas/260720_viewer_neon_experiment/viewer-neon.png>) | Image | viewer neon | Image |
+| [ideas/260730_p2p_cloudflare_snapshot_sync.md](<./ideas/260730_p2p_cloudflare_snapshot_sync.md>) | Markdown | P2P 優先同期と Cloudflare Snapshot 配布 | 作成日: 2026-07-30 |
 | [ideas/260808_agent_mapping_plugin_boundary.md](<./ideas/260808_agent_mapping_plugin_boundary.md>) | Markdown | Agent Mapping Plugin の境界 — 設計会話ログ (2026-08-08) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 決定は ADR_011 と [Decision_Pool... |
 | [ideas/260809_knowledge_workbench_slice.md](<./ideas/260809_knowledge_workbench_slice.md>) | Markdown | Knowledge Workbench Slice — 不可視多次元グラフと人間作業台 | 最終更新: 2026-08-09 |
 | [ideas/260809_s16_neo4j_differentiation.md](<./ideas/260809_s16_neo4j_differentiation.md>) | Markdown | S16 — Neo4jとの差別化からM3Eの存在理由を再定義する | 最終更新: 2026-08-09 |
