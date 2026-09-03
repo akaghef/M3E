@@ -10,6 +10,7 @@ description: |
 
 <!-- generated from agent_instructions/skills_canonical/m3e-mapify-bridge/SKILL.md; do not edit mirror directly -->
 
+
 # M3E Mapify Bridge
 
 Use Mapify as a teacher/probe layer, not as canonical M3E storage.

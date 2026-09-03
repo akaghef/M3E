@@ -15,6 +15,8 @@
     "src/labs/**/*.ts",
     "src/labs/**/*.tsx",
     "src/shared/layout_port.ts",
+    "src/shared/disperse_layout.ts",
+    "src/shared/webcola.ts",
     "src/shared/pn_layout.ts",
     "src/shared/edge_port.ts",
     "src/shared/edge_route.ts",

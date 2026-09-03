@@ -43,12 +43,12 @@ else:
 PY
 )"
 
-if [[ "$prompt_text" == *"!!!"* || "$prompt_text" == *"！！！"* ]]; then
-  bang_context="[bang-persistent-rule] Latest prompt contains !!! / ！！！. Treat this as LV3: durable rule-system change required when the request is about recurrence prevention, mechanisms, guardrails, skills, hooks, protocols, or agent instructions. Use skill-creator when creating/updating a skill or trigger. Do not report completion with only a chat promise."
+if printf '%s\n' "$prompt_text" | grep -Eiq 'recurrence[[:space:]-]+prevention|prevent[[:space:]-]+recurrence|再発防止'; then
+  persistent_rule_context="[persistent-rule] Recurrence prevention requested. Treat this as a durable rule-system change. Use skill-creator when creating/updating a skill or trigger. Do not report completion with only a chat promise."
   if [[ -n "$context" ]]; then
-    context+=$'\n'"$bang_context"
+    context+=$'\n'"$persistent_rule_context"
   else
-    context="$bang_context"
+    context="$persistent_rule_context"
   fi
 fi
 

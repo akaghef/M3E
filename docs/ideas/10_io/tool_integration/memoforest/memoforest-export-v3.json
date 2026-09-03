@@ -1,0 +1,1947 @@
+{
+  "type": "annotator-qa-export",
+  "version": 3,
+  "projects": [
+    {
+      "title": "00 Memoforest構造JSONスナップショット",
+      "nodes": [
+        {
+          "id": "scope",
+          "topic": "調査前提",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "scope-s1",
+              "title": "読み方",
+              "content": "- **確認済み（UI・文書）**: Memoforestの画面、使い方ガイド、応用ガイド、TOOL_MANUAL、法務・セキュリティ文書で確認。\n- **確認済み（配信コード）**: 公開配信中の `app.js?v=b64610f086ca` と `app.css?v=2e60dd6e3aa8` で確認。\n- **推定**: 公開情報から合理的に導けるが、非公開ソースやインフラ設定までは確認できない事項。\n- 対象は2026-08-06時点の公開版。内部の命名や境界は将来変更されうる。"
+            }
+          ]
+        },
+        {
+          "id": "runtime",
+          "topic": "実行基盤・技術スタック",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "runtime-s1",
+              "title": "概要",
+              "content": "ブラウザで動くReact SPAを中心に、静的配信、クラウド同期、決済を外部サービスへ分離した構成。以下はHOWを実装単位まで分解する。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-frontend",
+          "topic": "フロントエンド",
+          "parentId": "runtime",
+          "sections": [
+            {
+              "id": "runtime-frontend-s1",
+              "title": "確認済み（配信コード）",
+              "content": "単一ページアプリケーションとして `#root` にマウントされる。主要機能は公開配信された単一のJavaScriptバンドルに含まれる。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-react",
+          "topic": "React 19.2.4",
+          "parentId": "runtime-frontend",
+          "sections": [
+            {
+              "id": "runtime-react-s1",
+              "title": "HOW",
+              "content": "`react-dom` のrenderer/reconciler versionが19.2.4。`createRoot`でクライアントレンダリングする構成。SSRやハイドレーションを主要経路として使う証拠は確認できない。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-state",
+          "topic": "状態管理",
+          "parentId": "runtime-react",
+          "sections": [
+            {
+              "id": "runtime-state-s1",
+              "title": "HOW・推定",
+              "content": "React Hooks、Context、カスタム永続化サービスが中心。Redux、Zustand、Jotai、MobXは公開バンドルから検出されず、画面状態とドメイン操作をアプリ固有コードで管理している可能性が高い。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-routing",
+          "topic": "画面遷移",
+          "parentId": "runtime-react",
+          "sections": [
+            {
+              "id": "runtime-routing-s1",
+              "title": "HOW・確認済み",
+              "content": "React Routerは検出されない。History API、URL検索パラメータ、通常の静的HTMLページを組み合わせ、ホーム・ワークスペース・文書ページを遷移する。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-style",
+          "topic": "スタイル・アイコン",
+          "parentId": "runtime-frontend",
+          "sections": [
+            {
+              "id": "runtime-style-s1",
+              "title": "確認済み（配信コード）",
+              "content": "CSSユーティリティとアイコンフォントをバンドルしている。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-tailwind",
+          "topic": "Tailwind CSS 4.2.2",
+          "parentId": "runtime-style",
+          "sections": [
+            {
+              "id": "runtime-tailwind-s1",
+              "title": "HOW",
+              "content": "`app.css`末尾のライセンス表記でv4.2.2を確認。レスポンシブ、色、余白、レイアウト、状態表現をユーティリティクラスで構築。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-icons",
+          "topic": "Phosphor Icons",
+          "parentId": "runtime-style",
+          "sections": [
+            {
+              "id": "runtime-icons-s1",
+              "title": "HOW",
+              "content": "Phosphor Bold / Fillのフォントを同一オリジンから配信。ボタンの視覚記号と操作ラベルに使用。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-bundle",
+          "topic": "ビルド成果物",
+          "parentId": "runtime-frontend",
+          "sections": [
+            {
+              "id": "runtime-bundle-s1",
+              "title": "確認済み・推定",
+              "content": "HTMLは `app.js` と `app.css` をクエリハッシュ付きで参照。JavaScriptは約1.58MB、CSSは約252KBの縮小済み成果物。正確なバンドラ名は公開情報だけでは断定しない。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-delivery",
+          "topic": "配信基盤",
+          "parentId": "runtime",
+          "sections": [
+            {
+              "id": "runtime-delivery-s1",
+              "title": "確認済み（文書・HTTP）",
+              "content": "Cloudflareをフロントドアにし、外部認証・同期・決済へ接続する。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-cloudflare",
+          "topic": "Cloudflare Workers / Assets",
+          "parentId": "runtime-delivery",
+          "sections": [
+            {
+              "id": "runtime-cloudflare-s1",
+              "title": "HOW",
+              "content": "`memoforest.com` と `www.memoforest.com` のフロントエンド配信、HTTPS化、セキュリティヘッダー付与を担当。HTTP応答の `server: cloudflare` とセキュリティ文書で確認。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-headers",
+          "topic": "HTTP境界",
+          "parentId": "runtime-cloudflare",
+          "sections": [
+            {
+              "id": "runtime-headers-s1",
+              "title": "HOW",
+              "content": "HSTS、CSP、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`frame-ancestors 'none'`、厳格なPermissions-Policyを配信時に付与する。"
+            }
+          ]
+        },
+        {
+          "id": "runtime-docs",
+          "topic": "静的ドキュメント",
+          "parentId": "runtime-delivery",
+          "sections": [
+            {
+              "id": "runtime-docs-s1",
+              "title": "HOW",
+              "content": "使い方、応用ガイド、JSON仕様、利用規約、プライバシー、セキュリティ、サポートを独立HTML/Markdownとして同一オリジン配信する。"
+            }
+          ]
+        },
+        {
+          "id": "ui",
+          "topic": "UI・編集パイプライン",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "ui-s1",
+              "title": "概要",
+              "content": "ホームでプロジェクトを選び、ワークスペースでツリーと複数ペインを横断し、Markdown本文と注釈を編集する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-home",
+          "topic": "ホーム",
+          "parentId": "ui",
+          "sections": [
+            {
+              "id": "ui-home-s1",
+              "title": "責務",
+              "content": "プロジェクト、フォルダ、保存先、並び順、インポート・エクスポートの入口を提供する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-folders",
+          "topic": "フォルダ表示",
+          "parentId": "ui-home",
+          "sections": [
+            {
+              "id": "ui-folders-s1",
+              "title": "HOW",
+              "content": "フォルダ階層、全ファイル表示、自由順・作成日・更新日・名前順を切り替える。フォルダごとに同期、JSON貼り付け、ファイルインポート、エクスポート、新規ページを提供。"
+            }
+          ]
+        },
+        {
+          "id": "ui-json-paste",
+          "topic": "JSON貼り付け",
+          "parentId": "ui-home",
+          "sections": [
+            {
+              "id": "ui-json-paste-s1",
+              "title": "正規ルート",
+              "content": "外部AIが返したJSONコードブロックまたは生JSONをテキストエリアへ貼り、タイトルとフォルダを確認してインポートする。AI生成骨格の公式推奨ルート。"
+            }
+          ]
+        },
+        {
+          "id": "ui-workspace",
+          "topic": "ワークスペース",
+          "parentId": "ui",
+          "sections": [
+            {
+              "id": "ui-workspace-s1",
+              "title": "責務",
+              "content": "左の項目一覧と、中央・右へ増えるノード/注釈ペインで階層を横断表示する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-tree",
+          "topic": "ツリー・ナビゲーション",
+          "parentId": "ui-workspace",
+          "sections": [
+            {
+              "id": "ui-tree-s1",
+              "title": "HOW",
+              "content": "親子関係を目次として表示し、ドラッグ並べ替え、展開/折りたたみ、ルート表示、パンくず、キーボード移動を提供する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-panes",
+          "topic": "複数ペイン",
+          "parentId": "ui-workspace",
+          "sections": [
+            {
+              "id": "ui-panes-s1",
+              "title": "HOW",
+              "content": "親ノード、子ノード、注釈を横方向の列として同時表示。ドラッグで列幅を調整し、読解コンテキストを維持する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-editor",
+          "topic": "本文エディタ",
+          "parentId": "ui-workspace",
+          "sections": [
+            {
+              "id": "ui-editor-s1",
+              "title": "責務",
+              "content": "ノードまたは注釈に複数セクションを持たせ、タイトルとMarkdown本文を編集する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-markdown",
+          "topic": "Markdownレンダリング",
+          "parentId": "ui-editor",
+          "sections": [
+            {
+              "id": "ui-markdown-s1",
+              "title": "確認済み（配信コード）",
+              "content": "GFM対応のMarked系パーサ、HTMLサニタイズ、数式レンダリングを段階的に適用する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-marked",
+          "topic": "Marked",
+          "parentId": "ui-markdown",
+          "sections": [
+            {
+              "id": "ui-marked-s1",
+              "title": "HOW",
+              "content": "GFM、表、リスト、コードブロック等をHTMLへ変換。公開バンドルにMarkedのlexer/parser実装を確認。"
+            }
+          ]
+        },
+        {
+          "id": "ui-sanitize",
+          "topic": "DOMPurify 3.4.13",
+          "parentId": "ui-markdown",
+          "sections": [
+            {
+              "id": "ui-sanitize-s1",
+              "title": "HOW",
+              "content": "生成HTMLをDOMPurifyでサニタイズ。script、iframe、object、form、input、style等を禁止し、危険な属性を除去する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-katex",
+          "topic": "KaTeX",
+          "parentId": "ui-markdown",
+          "sections": [
+            {
+              "id": "ui-katex-s1",
+              "title": "HOW",
+              "content": "`$...$`、`\\(...\\)`、`\\[...\\]`等の数式をレンダリング。カスタムLaTeXコマンドをプロジェクト単位で解釈する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-annotation",
+          "topic": "テキスト注釈",
+          "parentId": "ui-workspace",
+          "sections": [
+            {
+              "id": "ui-annotation-s1",
+              "title": "責務",
+              "content": "本文の選択範囲に補足を付け、注釈自体にもセクションや派生ノードを持たせる。"
+            }
+          ]
+        },
+        {
+          "id": "ui-quote-anchor",
+          "topic": "引用アンカー",
+          "parentId": "ui-annotation",
+          "sections": [
+            {
+              "id": "ui-quote-anchor-s1",
+              "title": "HOW",
+              "content": "`sectionId`、quote文字列、開始/終了位置、出現番号、前後コンテキストを保持し、本文変更後も対象箇所を再同定する。"
+            }
+          ]
+        },
+        {
+          "id": "ui-search",
+          "topic": "全文検索",
+          "parentId": "ui-workspace",
+          "sections": [
+            {
+              "id": "ui-search-s1",
+              "title": "HOW",
+              "content": "タイトル、本文、注釈を横断検索。`Ctrl/Cmd+K`から起動し、該当ノード/注釈へ移動する。"
+            }
+          ]
+        },
+        {
+          "id": "domain",
+          "topic": "ドメインモデル",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "domain-s1",
+              "title": "概要",
+              "content": "プロジェクト、ノード、セクション、注釈、フォルダをID参照で結び、表示順と派生関係を保持する。"
+            }
+          ]
+        },
+        {
+          "id": "domain-project",
+          "topic": "Project",
+          "parentId": "domain",
+          "sections": [
+            {
+              "id": "domain-project-s1",
+              "title": "責務",
+              "content": "1つのまとめ全体。タイトル、ノード集合、注釈集合、LaTeXコマンド、作成・更新情報、同期メタデータを持つ。"
+            }
+          ]
+        },
+        {
+          "id": "domain-root",
+          "topic": "内部root",
+          "parentId": "domain-project",
+          "sections": [
+            {
+              "id": "domain-root-s1",
+              "title": "HOW",
+              "content": "内部状態ではID `root` の合成ノードを持つ。v3エクスポートではrootを除き、プロジェクトtitleと `parentId: null` の最上位ノードへ正規化する。"
+            }
+          ]
+        },
+        {
+          "id": "domain-node",
+          "topic": "Node",
+          "parentId": "domain-project",
+          "sections": [
+            {
+              "id": "domain-node-s1",
+              "title": "責務",
+              "content": "ツリー上の項目。`id`、`topic`、`parentId`、`parentAnnotationId`、`children`、`sections`、表示種別を持つ。"
+            }
+          ]
+        },
+        {
+          "id": "domain-hierarchy",
+          "topic": "親子グラフ",
+          "parentId": "domain-node",
+          "sections": [
+            {
+              "id": "domain-hierarchy-s1",
+              "title": "HOW",
+              "content": "`parentId`を正としてchildrenを再構成。自己参照、存在しない親、循環をインポート時に拒否する。同じ親の並びは配列順で決まる。"
+            }
+          ]
+        },
+        {
+          "id": "domain-section",
+          "topic": "Section",
+          "parentId": "domain-node",
+          "sections": [
+            {
+              "id": "domain-section-s1",
+              "title": "責務",
+              "content": "ノード内の本文ブロック。`id`、`title`、`content`を持ち、contentはMarkdown文字列。"
+            }
+          ]
+        },
+        {
+          "id": "domain-annotation",
+          "topic": "Annotation",
+          "parentId": "domain-project",
+          "sections": [
+            {
+              "id": "domain-annotation-s1",
+              "title": "責務",
+              "content": "本文中の引用範囲へ結び付く補足。ノードまたは親注釈へ所属し、独自セクションと子ノードを持てる。"
+            }
+          ]
+        },
+        {
+          "id": "domain-annotation-graph",
+          "topic": "注釈派生グラフ",
+          "parentId": "domain-annotation",
+          "sections": [
+            {
+              "id": "domain-annotation-graph-s1",
+              "title": "HOW",
+              "content": "`nodeId`、`parentAnnotationId`、`childNodeIds`で派生を表現。引用先のsectionと実際のquote存在を検証する。"
+            }
+          ]
+        },
+        {
+          "id": "domain-folder",
+          "topic": "Folder",
+          "parentId": "domain",
+          "sections": [
+            {
+              "id": "domain-folder-s1",
+              "title": "責務",
+              "content": "ホーム上で複数プロジェクトを整理する階層コンテナ。プロジェクトのfolderId/categoryとフォルダレコードを対応させる。"
+            }
+          ]
+        },
+        {
+          "id": "domain-folder-order",
+          "topic": "順序・移動",
+          "parentId": "domain-folder",
+          "sections": [
+            {
+              "id": "domain-folder-order-s1",
+              "title": "HOW",
+              "content": "フォルダ/プロジェクトにmanualOrderを持ち、兄弟順、フォルダ移動、サブツリー移動を整合させる。"
+            }
+          ]
+        },
+        {
+          "id": "local",
+          "topic": "ローカル保存・復旧",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "local-s1",
+              "title": "概要",
+              "content": "ログイン不要のローカルファーストを成立させる永続化、圧縮、履歴、端末内暗号化。"
+            }
+          ]
+        },
+        {
+          "id": "local-storage",
+          "topic": "Scoped Storage Service",
+          "parentId": "local",
+          "sections": [
+            {
+              "id": "local-storage-s1",
+              "title": "確認済み（配信コード）",
+              "content": "主データをブラウザ保存領域へスコープ付きキーで保存するカスタムサービス。"
+            }
+          ]
+        },
+        {
+          "id": "local-keys",
+          "topic": "保存キー",
+          "parentId": "local-storage",
+          "sections": [
+            {
+              "id": "local-keys-s1",
+              "title": "HOW",
+              "content": "`project-list`、`custom-folders`、`folder-records`、`project-{id}`、`cloud-sync-meta`等を `annotator-qa-scope-{scope}-...` の名前空間で分離する。"
+            }
+          ]
+        },
+        {
+          "id": "local-compress",
+          "topic": "LZ UTF-16圧縮",
+          "parentId": "local-storage",
+          "sections": [
+            {
+              "id": "local-compress-s1",
+              "title": "HOW",
+              "content": "1KB以上の対象値はLZ系 `compressToUTF16` で圧縮し、`__memoforestLzUtf16:`プレフィックス付きで保存。読み込み時に透過展開する。"
+            }
+          ]
+        },
+        {
+          "id": "local-idb",
+          "topic": "Time Machine",
+          "parentId": "local",
+          "sections": [
+            {
+              "id": "local-idb-s1",
+              "title": "責務",
+              "content": "過去状態を端末内だけに保存し、元データを上書きせず復元コピーを作る。"
+            }
+          ]
+        },
+        {
+          "id": "local-snapshots",
+          "topic": "IndexedDB snapshots",
+          "parentId": "local-idb",
+          "sections": [
+            {
+              "id": "local-snapshots-s1",
+              "title": "HOW",
+              "content": "IndexedDB `memoforest-time-machine`、object store `snapshots`、scope indexを使用。配信コードには14日、30分、10件、5MBに相当する制御定数があり、履歴の間引き・上限制御に使われると推定。"
+            }
+          ]
+        },
+        {
+          "id": "local-protection",
+          "topic": "ローカル保護",
+          "parentId": "local",
+          "sections": [
+            {
+              "id": "local-protection-s1",
+              "title": "責務",
+              "content": "クラウドやJSON形式を変えず、この端末のブラウザ保存だけをパスフレーズで保護する。"
+            }
+          ]
+        },
+        {
+          "id": "local-kdf",
+          "topic": "鍵導出",
+          "parentId": "local-protection",
+          "sections": [
+            {
+              "id": "local-kdf-s1",
+              "title": "HOW",
+              "content": "Web Crypto APIでPBKDF2、SHA-256、250,000反復を使用し、256bit AES鍵を導出する。"
+            }
+          ]
+        },
+        {
+          "id": "local-encryption",
+          "topic": "暗号化",
+          "parentId": "local-protection",
+          "sections": [
+            {
+              "id": "local-encryption-s1",
+              "title": "HOW",
+              "content": "AES-GCM 256bit、ランダム12byte IVで保存値を暗号化。暗号文はversion、IV、ciphertextをJSONラッパーへ格納する。"
+            }
+          ]
+        },
+        {
+          "id": "local-unlock",
+          "topic": "解除セッション",
+          "parentId": "local-protection",
+          "sections": [
+            {
+              "id": "local-unlock-s1",
+              "title": "HOW",
+              "content": "解除鍵を端末セッション側で管理し、自動ロックは約10分。これは端末内保護でありクラウドE2EEではない。"
+            }
+          ]
+        },
+        {
+          "id": "cloud",
+          "topic": "認証・クラウド同期・課金",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "cloud-s1",
+              "title": "概要",
+              "content": "Supabaseで認証・同期、Stripeで課金、Cloudflare配下のフロントエンドから認証付きAPIを呼ぶ。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-supabase",
+          "topic": "Supabase JS 2.101.1",
+          "parentId": "cloud",
+          "sections": [
+            {
+              "id": "cloud-supabase-s1",
+              "title": "確認済み（配信コード）",
+              "content": "Auth、REST/Functions、Realtime関連クライアントを同梱。接続先は専用Supabaseプロジェクト。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-auth",
+          "topic": "Google認証",
+          "parentId": "cloud-supabase",
+          "sections": [
+            {
+              "id": "cloud-auth-s1",
+              "title": "HOW",
+              "content": "Supabase Auth経由でGoogleログイン。未ログイン時はローカル専用、ログイン後は同じアカウントの端末間同期を選択できる。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-session",
+          "topic": "セッション伝播",
+          "parentId": "cloud-auth",
+          "sections": [
+            {
+              "id": "cloud-session-s1",
+              "title": "HOW",
+              "content": "Supabase AuthのpersistSessionとBroadcastChannelを利用し、同一ブラウザ内のタブ間で認証状態変更を通知する。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-sync",
+          "topic": "プロジェクト同期",
+          "parentId": "cloud-supabase",
+          "sections": [
+            {
+              "id": "cloud-sync-s1",
+              "title": "責務",
+              "content": "push、pullAll、pullProject、remove、removeMany、profile取得を認証付きで実行する。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-transport",
+          "topic": "通信経路",
+          "parentId": "cloud-sync",
+          "sections": [
+            {
+              "id": "cloud-transport-s1",
+              "title": "HOW",
+              "content": "Bearer access token付きでSupabase Edge FunctionsまたはデータAPIへ送信。401時はセッションを再確認し、必要に応じてトークン更新後に再試行する。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-conflict",
+          "topic": "競合制御",
+          "parentId": "cloud-sync",
+          "sections": [
+            {
+              "id": "cloud-conflict-s1",
+              "title": "責務",
+              "content": "ローカル更新時刻、クラウド更新時刻、revision、base hash、削除状態を比較し、上書き事故を避ける。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-revision",
+          "topic": "Revision",
+          "parentId": "cloud-conflict",
+          "sections": [
+            {
+              "id": "cloud-revision-s1",
+              "title": "HOW",
+              "content": "`cloudRevision`、`expectedRevision`、`baseRevision`で同期世代を追跡し、古い基準からの書き込みを検出する。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-entity-version",
+          "topic": "Entity Versions",
+          "parentId": "cloud-conflict",
+          "sections": [
+            {
+              "id": "cloud-entity-version-s1",
+              "title": "HOW",
+              "content": "`node:{id}`単位のentityVersionsとlastEditorsを保持し、ノード単位の未読・変更・共同編集情報を表現する。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-operation",
+          "topic": "Operation ID",
+          "parentId": "cloud-conflict",
+          "sections": [
+            {
+              "id": "cloud-operation-s1",
+              "title": "HOW",
+              "content": "各変更へoperationIdを付与し、再送・重複適用・応答対応を識別する。外部ワークスペース更新でも同様の概念を使用。"
+            }
+          ]
+        },
+        {
+          "id": "cloud-rls",
+          "topic": "Row Level Security",
+          "parentId": "cloud-supabase",
+          "sections": [
+            {
+              "id": "cloud-rls-s1",
+              "title": "確認済み（セキュリティ文書）",
+              "content": "通常クライアント操作ではログインユーザー自身の同期データだけを読み書きできるよう、Supabase RLSでユーザー分離する。"
+            }
+          ]
+        },
+        {
+          "id": "billing",
+          "topic": "Stripe課金",
+          "parentId": "cloud",
+          "sections": [
+            {
+              "id": "billing-s1",
+              "title": "責務",
+              "content": "Proプランのチェックアウト、購読状態同期、請求管理ポータルを外部決済へ委譲する。"
+            }
+          ]
+        },
+        {
+          "id": "billing-functions",
+          "topic": "Edge Functions",
+          "parentId": "billing",
+          "sections": [
+            {
+              "id": "billing-functions-s1",
+              "title": "HOW",
+              "content": "`create-checkout-session`、`create-billing-portal-session`、`sync-billing-status`を認証付きで呼ぶ。課金状態はブラウザだけで決定しない。"
+            }
+          ]
+        },
+        {
+          "id": "billing-stripe",
+          "topic": "Stripe境界",
+          "parentId": "billing",
+          "sections": [
+            {
+              "id": "billing-stripe-s1",
+              "title": "HOW",
+              "content": "カード情報はStripe側で処理し、アプリはcustomer/subscription ID、購読状態、終了日等を扱う。Webhook/サーバー処理が状態更新の権威を持つ。"
+            }
+          ]
+        },
+        {
+          "id": "ai",
+          "topic": "AI連携・手動往復",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "ai-s1",
+              "title": "概要",
+              "content": "Memoforest自身がLLMへ直接問い合わせるのではなく、構造化リクエストと差分パッチを介して外部AIと往復する。"
+            }
+          ]
+        },
+        {
+          "id": "ai-boundary",
+          "topic": "直接AI APIなし",
+          "parentId": "ai",
+          "sections": [
+            {
+              "id": "ai-boundary-s1",
+              "title": "重要な境界",
+              "content": "確認できる公式フローは、依頼をクリップボードへコピーし、ユーザーが外部AIへ送信し、返答を貼り付ける方式。モデル鍵やAIバックエンドをMemoforestへ預けない。"
+            }
+          ]
+        },
+        {
+          "id": "ai-request",
+          "topic": "AI依頼生成",
+          "parentId": "ai",
+          "sections": [
+            {
+              "id": "ai-request-s1",
+              "title": "責務",
+              "content": "入力待ちのsection、対象ノード/注釈、元本文、編集可能範囲をJSONと説明文へまとめる。"
+            }
+          ]
+        },
+        {
+          "id": "ai-request-schema",
+          "topic": "Batch Request",
+          "parentId": "ai-request",
+          "sections": [
+            {
+              "id": "ai-request-schema-s1",
+              "title": "HOW",
+              "content": "`memoforest-ai-batch-request`としてprojectTitle、targets、pending placeholder、allowedEdits、answerPatch雛形を生成する。"
+            }
+          ]
+        },
+        {
+          "id": "ai-context",
+          "topic": "コンテキスト範囲",
+          "parentId": "ai-request-schema",
+          "sections": [
+            {
+              "id": "ai-context-s1",
+              "title": "HOW",
+              "content": "通常はfocused-targetsのみ。必要時はfull-documentを選び、対象外の文書全体も外部AIへ渡せる。"
+            }
+          ]
+        },
+        {
+          "id": "ai-roundtrip",
+          "topic": "外部AI往復",
+          "parentId": "ai",
+          "sections": [
+            {
+              "id": "ai-roundtrip-s1",
+              "title": "HOW",
+              "content": "依頼コピー → ChatGPT/Claude等へ貼り付け → JSON返答をコピー → Memoforestの回答パッチ取込へ貼り付け、という人間管理の経路。"
+            }
+          ]
+        },
+        {
+          "id": "ai-patch",
+          "topic": "AI回答パッチ",
+          "parentId": "ai",
+          "sections": [
+            {
+              "id": "ai-patch-s1",
+              "title": "責務",
+              "content": "外部AIの返答から `memoforest-ai-batch-patch` を抽出し、指定sectionだけを更新する。"
+            }
+          ]
+        },
+        {
+          "id": "ai-optimistic",
+          "topic": "楽観的競合回避",
+          "parentId": "ai-patch",
+          "sections": [
+            {
+              "id": "ai-optimistic-s1",
+              "title": "HOW",
+              "content": "依頼時のbaseContentやannotationBaseTimestampと現在値を比較。AI処理中にユーザーが編集した箇所はスキップし、無関係な変更を上書きしない。"
+            }
+          ]
+        },
+        {
+          "id": "ai-plain",
+          "topic": "プレーン回答対応",
+          "parentId": "ai-patch",
+          "sections": [
+            {
+              "id": "ai-plain-s1",
+              "title": "HOW",
+              "content": "JSONコードブロック、ラップされたpatch、プレーン回答コンテキストを解釈し、answerKeyから対象sectionへ対応付ける。"
+            }
+          ]
+        },
+        {
+          "id": "io",
+          "topic": "JSON入出力・検証",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "io-s1",
+              "title": "概要",
+              "content": "v3保存形式、フォルダ/プロジェクト/サブツリーの経路、厳格なインポート検証を持つ。"
+            }
+          ]
+        },
+        {
+          "id": "io-v3",
+          "topic": "annotator-qa-export v3",
+          "parentId": "io",
+          "sections": [
+            {
+              "id": "io-v3-s1",
+              "title": "公式形式",
+              "content": "トップレベルは `type`、`version: 3`、`projects`。各projectはtitleとnodesを持つ。"
+            }
+          ]
+        },
+        {
+          "id": "io-node",
+          "topic": "Node JSON",
+          "parentId": "io-v3",
+          "sections": [
+            {
+              "id": "io-node-s1",
+              "title": "HOW",
+              "content": "各nodeはid、topic、parentId、sections。最上位はparentId:null、子は親id。同じ親の表示順はnodes配列順。"
+            }
+          ]
+        },
+        {
+          "id": "io-section",
+          "topic": "Section JSON",
+          "parentId": "io-node",
+          "sections": [
+            {
+              "id": "io-section-s1",
+              "title": "HOW",
+              "content": "各sectionはid、title、content。contentはMarkdown文字列で、LaTeXのバックスラッシュはJSON上で二重化する。"
+            }
+          ]
+        },
+        {
+          "id": "io-routes",
+          "topic": "入出力ルート",
+          "parentId": "io",
+          "sections": [
+            {
+              "id": "io-routes-s1",
+              "title": "責務",
+              "content": "ホームのJSON貼り付け、JSONファイル取込、フォルダ取込、単体プロジェクト、サブツリー置換、全体/項目エクスポートを分ける。"
+            }
+          ]
+        },
+        {
+          "id": "io-canonical",
+          "topic": "AI生成骨格の正規ルート",
+          "parentId": "io-routes",
+          "sections": [
+            {
+              "id": "io-canonical-s1",
+              "title": "HOW",
+              "content": "ホーム → 対象フォルダ → このフォルダにJSON貼り付け → タイトル/フォルダ確認 → インポート。コードフェンス込みでも受理する。"
+            }
+          ]
+        },
+        {
+          "id": "io-validation",
+          "topic": "インポート検証",
+          "parentId": "io",
+          "sections": [
+            {
+              "id": "io-validation-s1",
+              "title": "責務",
+              "content": "受理前に形式、ID、参照、本文、注釈、画像URL、LaTeXコマンドを検証し、破損グラフを拒否する。"
+            }
+          ]
+        },
+        {
+          "id": "io-graph-check",
+          "topic": "グラフ整合性",
+          "parentId": "io-validation",
+          "sections": [
+            {
+              "id": "io-graph-check-s1",
+              "title": "HOW",
+              "content": "重複ID、root混入、親欠落、自己参照、循環、childrenとparentIdの矛盾を検出。children矛盾時はparentIdを正として警告付きで補正する場合がある。"
+            }
+          ]
+        },
+        {
+          "id": "io-content-check",
+          "topic": "本文検証",
+          "parentId": "io-validation",
+          "sections": [
+            {
+              "id": "io-content-check-s1",
+              "title": "HOW",
+              "content": "sectionはid/title/contentの型を必須化。data:/blob:画像URLを拒否し、通常URLのみ許可。LaTeXカスタムコマンドも解析する。"
+            }
+          ]
+        },
+        {
+          "id": "io-annotation-check",
+          "topic": "注釈検証",
+          "parentId": "io-validation",
+          "sections": [
+            {
+              "id": "io-annotation-check-s1",
+              "title": "HOW",
+              "content": "所属node/親注釈、sectionId、quote実在、範囲情報、派生childNodeIdsを検証し、孤立注釈や存在しない引用を拒否する。"
+            }
+          ]
+        },
+        {
+          "id": "security",
+          "topic": "セキュリティ・プライバシー境界",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "security-s1",
+              "title": "概要",
+              "content": "ブラウザ防御、HTML無害化、権限分離、保存先選択を重ねるが、クラウドE2EEではない。"
+            }
+          ]
+        },
+        {
+          "id": "security-browser",
+          "topic": "ブラウザ防御",
+          "parentId": "security",
+          "sections": [
+            {
+              "id": "security-browser-s1",
+              "title": "HOW",
+              "content": "CSPでscriptをselfに限定し、インラインscript属性を禁止。object/base/frameを制限し、カメラ・マイク・位置情報・USB等をPermissions-Policyで無効化。"
+            }
+          ]
+        },
+        {
+          "id": "security-render",
+          "topic": "レンダリング防御",
+          "parentId": "security-browser",
+          "sections": [
+            {
+              "id": "security-render-s1",
+              "title": "HOW",
+              "content": "Markdown由来HTMLをDOMPurifyでサニタイズし、KaTeXはtrust:false、throwOnError:false、展開上限付きで実行する。"
+            }
+          ]
+        },
+        {
+          "id": "security-data",
+          "topic": "データ境界",
+          "parentId": "security",
+          "sections": [
+            {
+              "id": "security-data-s1",
+              "title": "方針",
+              "content": "未ログインは主に端末内。ログイン・同期有効時はメモ、注釈、フォルダ、同期状態がSupabaseへ送られる。クラウドへ送りたくない内容はローカル専用で扱う。"
+            }
+          ]
+        },
+        {
+          "id": "security-e2ee",
+          "topic": "E2EEではない",
+          "parentId": "security-data",
+          "sections": [
+            {
+              "id": "security-e2ee-s1",
+              "title": "重要",
+              "content": "ローカル保護は端末保存だけを暗号化する。クラウド同期データとJSONエクスポートは運営者にも読めない方式のend-to-end encryptionを前提としない。"
+            }
+          ]
+        },
+        {
+          "id": "security-admin",
+          "topic": "管理者権限",
+          "parentId": "security-data",
+          "sections": [
+            {
+              "id": "security-admin-s1",
+              "title": "確認済み（文書）",
+              "content": "Cloudflare、Supabase、Stripe、GitHub/GitHub Actionsの管理権限は現時点で運営者本人のアカウントに限定。保守上必要な場合はクラウドデータを確認できる可能性がある。"
+            }
+          ]
+        },
+        {
+          "id": "external",
+          "topic": "外部ワークスペース連携",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "external-s1",
+              "title": "確認済み（配信コード）",
+              "content": "公開UIの主要導線とは別に、外部ホストとプロジェクト変更を同期するAPI・能力交渉コードがバンドルされている。実運用範囲は公開情報だけでは不明。"
+            }
+          ]
+        },
+        {
+          "id": "external-activation",
+          "topic": "起動コンテキスト",
+          "parentId": "external",
+          "sections": [
+            {
+              "id": "external-activation-s1",
+              "title": "HOW",
+              "content": "URLの `mf_workspace` / `mf_target`、metaタグのstorage scope、capabilitiesから外部ワークスペース文脈を構成する。"
+            }
+          ]
+        },
+        {
+          "id": "external-capabilities",
+          "topic": "Capabilities",
+          "parentId": "external",
+          "sections": [
+            {
+              "id": "external-capabilities-s1",
+              "title": "HOW",
+              "content": "change-publications-v1/v2、entity-patches-v1、collaboration-v1、revision-signals-v1を能力フラグとして交渉する。"
+            }
+          ]
+        },
+        {
+          "id": "external-api",
+          "topic": "REST API",
+          "parentId": "external",
+          "sections": [
+            {
+              "id": "external-api-s1",
+              "title": "HOW",
+              "content": "`/api/external-workspaces/v1/projects/{id}` とv2プロジェクト/updates経路を使用。revision、operationId、entityVersionsを扱う。"
+            }
+          ]
+        },
+        {
+          "id": "external-ws",
+          "topic": "WebSocket通知",
+          "parentId": "external-api",
+          "sections": [
+            {
+              "id": "external-ws-s1",
+              "title": "HOW",
+              "content": "HTTP(S) URLをWS(S)へ変換し、v2 updates経路でrevision signalを購読するコードを持つ。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "01 Memoforest×M3E 総合評価",
+      "nodes": [
+        {
+          "id": "p01-summary",
+          "topic": "結論",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p01-summary-s1",
+              "title": "考察",
+              "content": "Memoforestは**人間が文章を読みながら階層化・注釈する編集面**として強く、M3Eは**複数ソースの意味構造・権威・由来・表示を統合する基盤**として位置付けるのが自然。置換関係ではなく、境界を明示した相補関係として評価する。"
+            }
+          ]
+        },
+        {
+          "id": "p01-fit",
+          "topic": "適合する用途",
+          "parentId": "p01-summary",
+          "sections": [
+            {
+              "id": "p01-fit-s1",
+              "title": "候補",
+              "content": "調査メモ、論点分解、長文読解、AIとの手動往復、ローカルファーストの一人用ワークベンチ。"
+            }
+          ]
+        },
+        {
+          "id": "p01-notfit",
+          "topic": "適合しにくい用途",
+          "parentId": "p01-summary",
+          "sections": [
+            {
+              "id": "p01-notfit-s1",
+              "title": "候補",
+              "content": "多ソースの正規ID管理、権威解決、機械的な双方向同期、監査可能な自動書き戻し、巨大グラフの横断投影。"
+            }
+          ]
+        },
+        {
+          "id": "p01-role",
+          "topic": "推奨ポジション",
+          "parentId": "p01-summary",
+          "sections": [
+            {
+              "id": "p01-role-s1",
+              "title": "判断",
+              "content": "M3Eの外部編集・考察ポータル候補。Memoforestを新しいcanonical storeにはせず、交換可能なsource/consumer adapterとして扱う。"
+            }
+          ]
+        },
+        {
+          "id": "p01-strength",
+          "topic": "強み",
+          "parentId": "p01-fit",
+          "sections": [
+            {
+              "id": "p01-strength-s1",
+              "title": "観察",
+              "content": "階層＋複数セクション＋注釈＋Markdown/KaTeXが一画面で連続し、JSON入出力も明示的。人間の意味付け速度を上げやすい。"
+            }
+          ]
+        },
+        {
+          "id": "p01-weakness",
+          "topic": "弱み",
+          "parentId": "p01-notfit",
+          "sections": [
+            {
+              "id": "p01-weakness-s1",
+              "title": "観察",
+              "content": "公開仕様で確認できる交換形式はツリー中心。M3E側のprovenance、authority、cross-source identity、command journalをそのまま保持できない。"
+            }
+          ]
+        },
+        {
+          "id": "p01-decision",
+          "topic": "現時点の判断",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p01-decision-s1",
+              "title": "提案",
+              "content": "まずread-onlyまたは手動export/importで小さく接続し、需要と往復損失を測定する。直接同期は契約とRecovery Gateが成立してから。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "02 責務・Canonical Ownership境界",
+      "nodes": [
+        {
+          "id": "p02-root",
+          "topic": "所有権の原則",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p02-root-s1",
+              "title": "原則",
+              "content": "Gitや各ソースはbytes/content/historyを所有し、M3E Semantic Coreはidentity、authority、invariant、command validation、approval/conflict policy、write routingを所有する。"
+            }
+          ]
+        },
+        {
+          "id": "p02-mf",
+          "topic": "Memoforestの責務",
+          "parentId": "p02-root",
+          "sections": [
+            {
+              "id": "p02-mf-s1",
+              "title": "提案",
+              "content": "人間向けの編集状態、読解順序、注釈、作業中の局所構造を保持する。"
+            }
+          ]
+        },
+        {
+          "id": "p02-m3e",
+          "topic": "M3Eの責務",
+          "parentId": "p02-root",
+          "sections": [
+            {
+              "id": "p02-m3e-s1",
+              "title": "提案",
+              "content": "source横断の安定ID、由来、権威、投影、承認済み変更、書き込み経路を管理する。"
+            }
+          ]
+        },
+        {
+          "id": "p02-source",
+          "topic": "元ソースの責務",
+          "parentId": "p02-root",
+          "sections": [
+            {
+              "id": "p02-source-s1",
+              "title": "原則",
+              "content": "Git、Obsidian、外部SaaS等は自身がcanonicalな内容と履歴を保持する。"
+            }
+          ]
+        },
+        {
+          "id": "p02-identity",
+          "topic": "安定ID",
+          "parentId": "p02-m3e",
+          "sections": [
+            {
+              "id": "p02-identity-s1",
+              "title": "契約",
+              "content": "`sourceId + localEntityId`を基本とし、Memoforest内部node idだけを全体IDへ昇格させない。"
+            }
+          ]
+        },
+        {
+          "id": "p02-artifact",
+          "topic": "Artifact Portal",
+          "parentId": "p02-m3e",
+          "sections": [
+            {
+              "id": "p02-artifact-s1",
+              "title": "契約",
+              "content": "本文コピーではなくsourceId、artifactId、locator、revision、media type、classificationを参照として持つ。"
+            }
+          ]
+        },
+        {
+          "id": "p02-write",
+          "topic": "書き戻し",
+          "parentId": "p02-m3e",
+          "sections": [
+            {
+              "id": "p02-write-s1",
+              "title": "制約",
+              "content": "Memoforestからの変更は提案としてSemantic Commandへ渡し、canonical owner adapterが検証・承認・実行する。"
+            }
+          ]
+        },
+        {
+          "id": "p02-reject",
+          "topic": "避ける設計",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p02-reject-s1",
+              "title": "却下",
+              "content": "Memoforest JSON、M3E SQLite、Neo4jのいずれか一つを全情報の唯一の真実として扱うこと。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "03 データモデル対応表と変換",
+      "nodes": [
+        {
+          "id": "p03-root",
+          "topic": "変換の基本",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p03-root-s1",
+              "title": "方針",
+              "content": "Memoforest v3 treeをM3Eの意味グラフへlosslessに見せかけず、保持できる情報・失われる情報を明示する。"
+            }
+          ]
+        },
+        {
+          "id": "p03-project",
+          "topic": "Project",
+          "parentId": "p03-root",
+          "sections": [
+            {
+              "id": "p03-project-s1",
+              "title": "対応",
+              "content": "Memoforest project → M3E map/document scope候補。変換時にsource descriptorとexport revisionを付与する。"
+            }
+          ]
+        },
+        {
+          "id": "p03-node",
+          "topic": "Node",
+          "parentId": "p03-root",
+          "sections": [
+            {
+              "id": "p03-node-s1",
+              "title": "対応",
+              "content": "topicを表示名、parentIdをtree edgeとして取り込む。M3E entity idは別途名前空間化する。"
+            }
+          ]
+        },
+        {
+          "id": "p03-section",
+          "topic": "Section",
+          "parentId": "p03-node",
+          "sections": [
+            {
+              "id": "p03-section-s1",
+              "title": "対応",
+              "content": "title/contentをMarkdown body facetへ。section idを局所安定IDとして保持する。"
+            }
+          ]
+        },
+        {
+          "id": "p03-annotation",
+          "topic": "Annotation",
+          "parentId": "p03-node",
+          "sections": [
+            {
+              "id": "p03-annotation-s1",
+              "title": "対応",
+              "content": "引用anchor、quote、context、派生nodeをprovenance付きannotation facetへ変換する。"
+            }
+          ]
+        },
+        {
+          "id": "p03-latex",
+          "topic": "LaTeX macros",
+          "parentId": "p03-project",
+          "sections": [
+            {
+              "id": "p03-latex-s1",
+              "title": "対応",
+              "content": "project-level rendering metadataとして保存。意味データではなく表示契約として分離する。"
+            }
+          ]
+        },
+        {
+          "id": "p03-missing",
+          "topic": "M3E固有で欠ける情報",
+          "parentId": "p03-root",
+          "sections": [
+            {
+              "id": "p03-missing-s1",
+              "title": "損失",
+              "content": "authority、source revision、classification、approval state、journal、cross-source identityはMemoforest v3標準だけでは表現不足。"
+            }
+          ]
+        },
+        {
+          "id": "p03-envelope",
+          "topic": "交換Envelope",
+          "parentId": "p03-root",
+          "sections": [
+            {
+              "id": "p03-envelope-s1",
+              "title": "提案",
+              "content": "v3本体を変更せず、外側manifestにsourceId、artifactId、revision、hash、exportedAt、classificationを追加する。"
+            }
+          ]
+        },
+        {
+          "id": "p03-validate",
+          "topic": "変換時検証",
+          "parentId": "p03-envelope",
+          "sections": [
+            {
+              "id": "p03-validate-s1",
+              "title": "必須",
+              "content": "重複ID、孤立parent、cycle、section型、annotation quote、macro解析、node count、digestを検査する。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "04 連携方式の選択肢",
+      "nodes": [
+        {
+          "id": "p04-root",
+          "topic": "段階的連携",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p04-root-s1",
+              "title": "判断軸",
+              "content": "自動化の便利さより、canonical ownership、競合回避、復旧可能性を先に満たす。"
+            }
+          ]
+        },
+        {
+          "id": "p04-a",
+          "topic": "A 手動JSON交換",
+          "parentId": "p04-root",
+          "sections": [
+            {
+              "id": "p04-a-s1",
+              "title": "推奨・初期",
+              "content": "Memoforest export → manifest付与 → M3E import proposal。逆方向も明示的export/import。低コストで境界が見える。"
+            }
+          ]
+        },
+        {
+          "id": "p04-b",
+          "topic": "B Read-only Source Adapter",
+          "parentId": "p04-root",
+          "sections": [
+            {
+              "id": "p04-b-s1",
+              "title": "次段階",
+              "content": "M3EがMemoforest exportをSourceReadPort経由で読み、表示用projectionを再構築する。"
+            }
+          ]
+        },
+        {
+          "id": "p04-c",
+          "topic": "C 提案型Write Adapter",
+          "parentId": "p04-root",
+          "sections": [
+            {
+              "id": "p04-c-s1",
+              "title": "中期",
+              "content": "Memoforest編集差分をSemantic Commandへ送り、owner側で承認後に反映する。"
+            }
+          ]
+        },
+        {
+          "id": "p04-d",
+          "topic": "D 双方向リアルタイム同期",
+          "parentId": "p04-root",
+          "sections": [
+            {
+              "id": "p04-d-s1",
+              "title": "保留",
+              "content": "revision、operationId、entityVersions、three-way merge、offline recoveryが必要。最初から採用しない。"
+            }
+          ]
+        },
+        {
+          "id": "p04-ws",
+          "topic": "WebSocket通知",
+          "parentId": "p04-d",
+          "sections": [
+            {
+              "id": "p04-ws-s1",
+              "title": "役割",
+              "content": "更新の存在だけを通知し、通知自体をデータの真実にしない。受信後はrevision付きGETで再読する。"
+            }
+          ]
+        },
+        {
+          "id": "p04-idempotency",
+          "topic": "冪等性",
+          "parentId": "p04-c",
+          "sections": [
+            {
+              "id": "p04-idempotency-s1",
+              "title": "必須",
+              "content": "operationIdとexpectedRevisionを要求し、再送を重複適用しない。"
+            }
+          ]
+        },
+        {
+          "id": "p04-recommend",
+          "topic": "推奨順序",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p04-recommend-s1",
+              "title": "結論",
+              "content": "A → B → C。Dは共同編集需要が実測され、Recovery Gateを通過した場合のみ評価する。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "05 セキュリティ・プライバシー考察",
+      "nodes": [
+        {
+          "id": "p05-root",
+          "topic": "境界",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p05-root-s1",
+              "title": "前提",
+              "content": "Memoforestの端末内保護、クラウド同期、JSON出力、M3E取り込みは別々の露出面として扱う。"
+            }
+          ]
+        },
+        {
+          "id": "p05-local",
+          "topic": "ローカル保存",
+          "parentId": "p05-root",
+          "sections": [
+            {
+              "id": "p05-local-s1",
+              "title": "観察",
+              "content": "未ログイン利用と端末内暗号化は便利だが、ブラウザプロファイル・端末バックアップ・解除中セッションの脅威は残る。"
+            }
+          ]
+        },
+        {
+          "id": "p05-cloud",
+          "topic": "クラウド同期",
+          "parentId": "p05-root",
+          "sections": [
+            {
+              "id": "p05-cloud-s1",
+              "title": "観察",
+              "content": "クラウドE2EEではない前提。秘密・個人観測・資格情報をpublic-safe M3Eへ運ばない。"
+            }
+          ]
+        },
+        {
+          "id": "p05-json",
+          "topic": "JSONエクスポート",
+          "parentId": "p05-root",
+          "sections": [
+            {
+              "id": "p05-json-s1",
+              "title": "注意",
+              "content": "平文の可搬データとして扱い、チャット・ログ・公開repoへ無造作に置かない。classificationとhashをmanifestへ付ける。"
+            }
+          ]
+        },
+        {
+          "id": "p05-ai",
+          "topic": "外部AI往復",
+          "parentId": "p05-root",
+          "sections": [
+            {
+              "id": "p05-ai-s1",
+              "title": "注意",
+              "content": "依頼コピー時に対象範囲を最小化する。full-documentはデータ分類を確認してから使う。"
+            }
+          ]
+        },
+        {
+          "id": "p05-sanitize",
+          "topic": "レンダリング",
+          "parentId": "p05-root",
+          "sections": [
+            {
+              "id": "p05-sanitize-s1",
+              "title": "確認",
+              "content": "Markdown→HTML→DOMPurify、KaTeX trust:falseは表示防御。データ権限や機密区分の代替ではない。"
+            }
+          ]
+        },
+        {
+          "id": "p05-private",
+          "topic": "A-sys境界",
+          "parentId": "p05-cloud",
+          "sections": [
+            {
+              "id": "p05-private-s1",
+              "title": "原則",
+              "content": "個人観測、資格情報、私的自動化はA-sys側。M3Eにはgeneric/public-safe contractと表示情報だけを渡す。"
+            }
+          ]
+        },
+        {
+          "id": "p05-gate",
+          "topic": "投入前Gate",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p05-gate-s1",
+              "title": "必須",
+              "content": "classification、owner、送信先、保持期間、削除方法、復元方法を確認する。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "06 運用・競合・復旧設計",
+      "nodes": [
+        {
+          "id": "p06-root",
+          "topic": "運用原則",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p06-root-s1",
+              "title": "原則",
+              "content": "同期成功表示だけで完了とせず、write後のread-back、件数、revision、digestで確認する。"
+            }
+          ]
+        },
+        {
+          "id": "p06-revision",
+          "topic": "Revision",
+          "parentId": "p06-root",
+          "sections": [
+            {
+              "id": "p06-revision-s1",
+              "title": "契約",
+              "content": "export元revisionとimport先base revisionを記録し、stale writeを拒否する。"
+            }
+          ]
+        },
+        {
+          "id": "p06-journal",
+          "topic": "Journal",
+          "parentId": "p06-root",
+          "sections": [
+            {
+              "id": "p06-journal-s1",
+              "title": "契約",
+              "content": "誰が、何を、どのsourceへ、どのoperationIdで提案・承認・適用したかを追跡する。"
+            }
+          ]
+        },
+        {
+          "id": "p06-conflict",
+          "topic": "競合",
+          "parentId": "p06-root",
+          "sections": [
+            {
+              "id": "p06-conflict-s1",
+              "title": "方針",
+              "content": "last-write-winsを既定にしない。base/current/proposedのthree-way比較と人間承認を提供する。"
+            }
+          ]
+        },
+        {
+          "id": "p06-backup",
+          "topic": "バックアップ",
+          "parentId": "p06-root",
+          "sections": [
+            {
+              "id": "p06-backup-s1",
+              "title": "方針",
+              "content": "Memoforest Time Machine、M3E portable snapshot、owner側履歴を独立に保持する。"
+            }
+          ]
+        },
+        {
+          "id": "p06-rebuild",
+          "topic": "Rebuild Gate",
+          "parentId": "p06-backup",
+          "sections": [
+            {
+              "id": "p06-rebuild-s1",
+              "title": "合格条件",
+              "content": "source exportとjournalからprojectionを空状態へ再構築し、件数・edge・digestが一致する。"
+            }
+          ]
+        },
+        {
+          "id": "p06-failure",
+          "topic": "失敗分類",
+          "parentId": "p06-root",
+          "sections": [
+            {
+              "id": "p06-failure-s1",
+              "title": "運用",
+              "content": "auth、schema、reference、conflict、transport、quota、render、partial-writeを分けて記録する。"
+            }
+          ]
+        },
+        {
+          "id": "p06-delete",
+          "topic": "削除",
+          "parentId": "p06-root",
+          "sections": [
+            {
+              "id": "p06-delete-s1",
+              "title": "方針",
+              "content": "物理削除を即時伝播させず、tombstoneと保留期間を介して誤削除から復旧可能にする。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "07 UX・プロダクト統合案",
+      "nodes": [
+        {
+          "id": "p07-root",
+          "topic": "体験の分担",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p07-root-s1",
+              "title": "仮説",
+              "content": "Memoforestは深く読む編集面、M3Eは広く俯瞰する意味グラフ面として往復導線を設計する。"
+            }
+          ]
+        },
+        {
+          "id": "p07-deep",
+          "topic": "Deep Reading",
+          "parentId": "p07-root",
+          "sections": [
+            {
+              "id": "p07-deep-s1",
+              "title": "Memoforest",
+              "content": "文章、数式、注釈、節、子項目を複数ペインで深掘りする。"
+            }
+          ]
+        },
+        {
+          "id": "p07-wide",
+          "topic": "Wide Navigation",
+          "parentId": "p07-root",
+          "sections": [
+            {
+              "id": "p07-wide-s1",
+              "title": "M3E",
+              "content": "複数artifact/sourceを横断し、関係・由来・権威・状態を俯瞰する。"
+            }
+          ]
+        },
+        {
+          "id": "p07-portal",
+          "topic": "Open in Memoforest",
+          "parentId": "p07-wide",
+          "sections": [
+            {
+              "id": "p07-portal-s1",
+              "title": "提案",
+              "content": "M3E nodeからartifact portalを開き、対象scopeをMemoforestで読解する。"
+            }
+          ]
+        },
+        {
+          "id": "p07-publish",
+          "topic": "Publish to M3E",
+          "parentId": "p07-deep",
+          "sections": [
+            {
+              "id": "p07-publish-s1",
+              "title": "提案",
+              "content": "完成ノードを直接上書きせず、差分・出典・対象ownerを確認するproposal画面へ送る。"
+            }
+          ]
+        },
+        {
+          "id": "p07-status",
+          "topic": "状態表示",
+          "parentId": "p07-root",
+          "sections": [
+            {
+              "id": "p07-status-s1",
+              "title": "提案",
+              "content": "local-only、exported、proposal、accepted、conflict、staleを視覚的に区別する。"
+            }
+          ]
+        },
+        {
+          "id": "p07-search",
+          "topic": "検索",
+          "parentId": "p07-root",
+          "sections": [
+            {
+              "id": "p07-search-s1",
+              "title": "提案",
+              "content": "Memoforest内全文検索とM3E横断検索を混同せず、検索範囲とcanonical sourceを表示する。"
+            }
+          ]
+        },
+        {
+          "id": "p07-math",
+          "topic": "数式",
+          "parentId": "p07-deep",
+          "sections": [
+            {
+              "id": "p07-math-s1",
+              "title": "提案",
+              "content": "project-level macroをartifact metadataとして持ち、別rendererでも同じ意味・表示を再現できるか検証する。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "08 導入ロードマップと検証計画",
+      "nodes": [
+        {
+          "id": "p08-root",
+          "topic": "目的",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p08-root-s1",
+              "title": "目的",
+              "content": "統合の可否を印象ではなく、往復損失・作業時間・競合・復旧で測定する。"
+            }
+          ]
+        },
+        {
+          "id": "p08-p0",
+          "topic": "Phase 0 Inventory",
+          "parentId": "p08-root",
+          "sections": [
+            {
+              "id": "p08-p0-s1",
+              "title": "作業",
+              "content": "両者のschema、ID、権威、export/import、分類、サイズ上限を一覧化する。"
+            }
+          ]
+        },
+        {
+          "id": "p08-p1",
+          "topic": "Phase 1 Manual Round-trip",
+          "parentId": "p08-root",
+          "sections": [
+            {
+              "id": "p08-p1-s1",
+              "title": "作業",
+              "content": "代表文書1件をJSONで往復し、node/section/order/Markdown/KaTeX/macroの保持率を測る。"
+            }
+          ]
+        },
+        {
+          "id": "p08-p2",
+          "topic": "Phase 2 Read Adapter",
+          "parentId": "p08-root",
+          "sections": [
+            {
+              "id": "p08-p2-s1",
+              "title": "作業",
+              "content": "SourceDescriptorとSourceReadPortでread-only投影し、再構築試験を行う。"
+            }
+          ]
+        },
+        {
+          "id": "p08-p3",
+          "topic": "Phase 3 Proposal Write",
+          "parentId": "p08-root",
+          "sections": [
+            {
+              "id": "p08-p3-s1",
+              "title": "作業",
+              "content": "operationId、expectedRevision、diff、approval、read-after-writeを実装する。"
+            }
+          ]
+        },
+        {
+          "id": "p08-metrics",
+          "topic": "評価指標",
+          "parentId": "p08-root",
+          "sections": [
+            {
+              "id": "p08-metrics-s1",
+              "title": "指標",
+              "content": "変換保持率、手動修正数、往復時間、競合検出率、復旧時間、孤立node数、digest一致率。"
+            }
+          ]
+        },
+        {
+          "id": "p08-tests",
+          "topic": "必須テスト",
+          "parentId": "p08-root",
+          "sections": [
+            {
+              "id": "p08-tests-s1",
+              "title": "試験",
+              "content": "重複ID、cycle、欠落parent、stale revision、再送、部分失敗、offline復帰、削除復元、macro未定義。"
+            }
+          ]
+        },
+        {
+          "id": "p08-gate",
+          "topic": "採用Gate",
+          "parentId": "p08-root",
+          "sections": [
+            {
+              "id": "p08-gate-s1",
+              "title": "判断",
+              "content": "需要が継続し、手動交換より改善し、authority・classification・Recovery Gateを満たした場合のみ自動writeへ進む。"
+            }
+          ]
+        },
+        {
+          "id": "p08-open",
+          "topic": "未解決事項",
+          "parentId": null,
+          "sections": [
+            {
+              "id": "p08-open-s1",
+              "title": "確認待ち",
+              "content": "M3E側の正式なMemoforest source種別、annotation対応、macro保存先、同期単位、UI上のproposal承認者。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

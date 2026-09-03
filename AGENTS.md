@@ -64,23 +64,17 @@ For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 
 When a map task involves scope, scopen / unscopen, layouting, path ambiguity, edge / GraphLink / alias choice, or worker handoff, route it through Map Manager before mutation.
 
-## Bang Scope and Persistent Rule Gate
+## Scope and Persistent Rule Gate
 
-Count the maximum trailing run of `!` or `！` in the user's latest instruction.
+Default to the local task. Widen only when the request itself implies it, and say so before acting.
+A wider scope is not permission for unrelated work.
 
-- `0` or `1`: local task only.
-- `2` / `!!` / `！！`: target plus obvious adjacent effects in the same turn.
-- `3` / `!!!` / `！！！`: broad sync. Inspect directly related rules, protocols, docs, skills, hooks, and handoff consistency.
+> The `!` / `！` bang-scope notation is **abolished** (2026-08-27). Do not read trailing
+> exclamation marks as a scope level, and do not emit `Scope: LV<n>` preambles.
 
-For `!!` or `!!!`, first state:
+### Persistent Rule Change Gate
 
-```text
-Scope: LV<n>. Target=<...>. Adjacent=<...>. Excluded=<...>.
-```
-
-### LV3 Persistent Rule Change Gate
-
-When `!!!` is present, or when the user asks for recurrence prevention after an agent failure, the task is not complete until the agent has either made a durable rule-system change or explicitly reported why that is blocked.
+When the user asks for recurrence prevention after an agent failure, the task is not complete until the agent has either made a durable rule-system change or explicitly reported why that is blocked.
 
 Durable rule-system changes include one or more of:
 
@@ -93,16 +87,28 @@ Durable rule-system changes include one or more of:
 
 If creating or updating a skill, a skill trigger, or skill routing behavior, use the `skill-creator` skill in the same turn. Skill trigger changes must update the skill frontmatter `description`, because that is the trigger surface.
 
-The final report for an LV3 persistent-rule task must list:
+The final report for an persistent-rule task must list:
 
 1. durable files changed,
 2. checks run,
 3. whether skill mirrors were synced,
 4. any remaining non-durable or uncommitted state.
 
-Do not describe LV3 recurrence prevention as done if it exists only as a chat promise.
+Do not describe recurrence prevention as done if it exists only as a chat promise.
 
 ## Mandatory Session Context
+
+This gate applies only to **M3E internal work**: product code, product/spec/
+operations documentation, roadmap or priority assessment, architecture, or
+unbounded structural design.
+
+It does **not** apply to an explicitly-targeted, direct M3E runtime operation
+(for example, a supplied map/scope URL with an unambiguous copy, read, rename,
+or attribute update). Those operators follow the direct-operator route in the
+`m3e-map` skill: resolve the target, read the relevant state, perform only the
+requested operation, and verify it. Do not load internal goals or route through
+Map Manager unless the requested operation requires a structural decision not
+already specified by the user.
 
 Before any analysis, planning, or implementation, the agent must load the current project context from:
 
@@ -125,7 +131,7 @@ If this context check is missing, the task is considered not started.
 
 1. Claude Director reads scope and current status.
 2. Claude Director defines one smallest deliverable task.
-3. Claude Director creates a task worktree when writes are needed:
+3. Claude Director creates a task worktree when writes can conflict with implementation, shared canonical documents, or existing files:
    ```bash
    scripts/ops/worktree.sh new <task>
    ```
@@ -147,6 +153,8 @@ Always invoke Codex via `scripts/codex.sh exec ... < /dev/null`.
 
 - Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly here.
 - Each code-writing Codex task runs at `$HOME/dev/M3E-worktrees/<task>`.
+- A new, public-safe, append-only idea bundle may be written directly in the primary checkout when it creates a unique subtree under `docs/ideas/`, does not overwrite or reorganize existing content, and only updates its parent idea index plus generated `docs/index.md`.
+- Use a task worktree for idea work if it edits an existing idea body, overlaps another active task, changes specs/architecture/operations/current status, introduces implementation, or has unresolved placement/overwrite risk.
 - Each task branch is `codex/<task>`, branched from `dev-beta`.
 - PR target is `dev-beta`.
 - Use `scripts/ops/worktree.sh new/list/clean/rm`.
@@ -245,3 +253,7 @@ When an agent finishes a cycle, report:
 3. What remains next (one concrete task).
 
 When mentioning a commit ID, branch, or PR, state its change intent in one plain-language line immediately beside it. Never present an identifier alone or require Akaghef to inspect Git history to understand why it matters.
+
+## C8: Browser Verification Evidence
+
+Do not report Playwright, browser, screenshot, or GUI results as measurements unless this worker executed and observed them in the current turn. When the sandbox cannot run Playwright, write exactly `未実行（Director 依頼）` in the Playwright result field and list the specific spec(s) for the Director. Existing logs, source inspection, and another operator's report may explain a diagnosis, but are not this worker's measurement.

@@ -66,20 +66,60 @@ scripts/ops/worktree.sh rm <task>      # remove after PR merged (guards uncommit
 - Any scope creep, dead code, or broken conventions? Send back if so.
 - Is `dev-beta` still the integration target and the PR base correct?
 
-## 4.5 Bang / persistent-rule review gate
+## 4.5 Persistent-rule review gate
 
-When akaghef's latest instruction contains `!!!` / `！！！`, or asks for recurrence prevention after an agent failure, the Director must treat the cycle as an LV3 persistent-rule task.
+When akaghef asks for recurrence prevention after an agent failure, the Director must treat the cycle as a persistent-rule task.
 
 Director obligations:
 
-1. State `Scope: LV3. Target=<...>. Adjacent=<...>. Excluded=<...>.`
-2. Identify the failed instruction or missing rule path when correcting an agent failure.
-3. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `docs/protocols/`, `docs/protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
-4. If any skill or skill trigger changes, route through `skill-creator` and update the skill frontmatter `description`.
-5. Require Codex to run `scripts/ops/check-persistent-rule-gate.sh` when present.
-6. Do not mark recurrence prevention complete if the result is only a chat promise.
+1. Identify the failed instruction or missing rule path when correcting an agent failure.
+2. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `docs/protocols/`, `docs/protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
+3. If any skill or skill trigger changes, route through `skill-creator` and update the skill frontmatter `description`.
+4. Require Codex to run `scripts/ops/check-persistent-rule-gate.sh` when present.
+5. Do not mark recurrence prevention complete if the result is only a chat promise.
 
 Live beta data guard: do not allow Codex to create fixture, test, or temporary maps in the active beta personal workspace for verification. Use Playwright fixtures, isolated `testRun` state, a separate temporary workspace, or an explicit backup/restore cleanup flow.
+
+## 4.6 GUI / browser verification split
+
+Codex's sandbox refuses `listen 127.0.0.1` with `EPERM`, so **Codex can never run Playwright**.
+Anything that depends on runtime DOM is outside its reach. Enforce this split:
+
+- **Runtime facts are the Director's job.** Write a throwaway probe spec, run it, and hand Codex the
+  measured table. Keep probes out of the branch (scratchpad, or move them out before commit).
+- **Codex must not invent selectors.** Constrain: any selector written into a test must exist as a
+  literal in source, verifiable by grep. If runtime-only information is needed, Codex reports
+  "Director に probe を依頼" instead of guessing.
+- **Codex must not report Playwright results it cannot obtain.** The Playwright field is
+  `未実行（Director 依頼）` plus the list of specs to run. (Mirrored as C8 in `AGENTS.md`.)
+- **Codex must confirm its fix reduces the symptom** before reporting "fixed"; otherwise "未確認".
+  A fix that leaves the defect count unchanged is not a fix.
+
+Director-side traps, all hit in the 2026-08-25 layout merge:
+
+| Trap | Rule |
+|---|---|
+| `playwright.config.js` starts `test_server.js` but **never builds**; `viewer.html` loads `dist/browser/*.js` | Run `npm run build:browser` before every Playwright run, or you are testing a stale bundle |
+| `runtime_board` / `node_lab` have their own configs (`playwright.*.config.js`) | Running them under the default config always fails — use `--config` |
+| Snapshots are platform-suffixed (`-win32.png` / `-darwin.png`) and some platforms have no baseline | Missing-baseline failures are environmental, not regressions |
+| Choosing specs "related to the failing test" | Choose specs that **assert anything the change touches**. A display-label rename touches every spec asserting labels |
+| One bug masking another | After fixing a blocker, re-run: the test now proceeds further and may expose a second, real defect |
+
+Before claiming a spec failure is a regression, get a **baseline on `dev-beta`** with the same
+command on the same machine, and diff the failing-spec sets.
+
+## 4.7 Merge readiness
+
+`gh pr checks` and `mergeable` are **independent gates** — check both.
+
+- `mergeable=MERGEABLE` only means no textual conflict; it says nothing about CI.
+- All checks green says nothing about conflicts. A `CONFLICTING` PR cannot produce a merge ref, so
+  `pull_request`-triggered workflows silently **do not run** — few checks listed is a symptom, not health.
+- Never trust an inherited "ready to merge" claim. Re-measure: `gh pr checks <n>`,
+  `gh pr view <n> --json mergeable,mergeStateStatus`, and `git merge-base --is-ancestor` when a
+  handoff claims one branch is stacked on another.
+- Run the full unit suite yourself. Codex's "green" always excludes the ~17 API/integration suites
+  it cannot start; those have hidden real regressions before.
 
 ## 5. Improvement Log (append-only — newest last)
 
@@ -175,8 +215,8 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   Large IO / send gate) outrank cc-sdd; trivial changes skip the spec phases; Codex-owned phases
   still use the dispatch + worktree mechanics. DACP's `dacp_*` MCP bridge lives in Akaghef-System
   and is **not** wired into this M3E repo — continue driving Codex via `scripts/codex.sh exec` here.
-- 2026-06-16 — Added the LV3 persistent-rule gate for `!!!` / `！！！` and recurrence-prevention
-  requests. Director must require a durable rule-system change instead of accepting chat-only
+- 2026-06-16 — Added the persistent-rule gate for recurrence-prevention requests. Director must
+  require a durable rule-system change instead of accepting chat-only
   promises. Skill trigger changes must go through `skill-creator` and update frontmatter
   `description`. Also codified the live beta data guard: no fixture/test/temp maps in the active
   beta personal workspace for verification.
@@ -196,3 +236,45 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   dispatch. Dispatch needs an explicit go on the *slice*, not agreement on an adjacent policy
   axis. A tech-axis decision (how to render) never substitutes for product requirements
   (what to render and why).
+- 2026-08-25 — Layout vocabulary merge (#89, #90). A handoff claimed both PRs were "mergeable,
+  586 unit tests green, blockers cleared". Re-measured: both CI-red, one could not `npm ci` at all,
+  and five user-facing defects surfaced — undeclared `webcola` (clean build impossible), `left/right`
+  silently becoming `up/down`, Progressive Navigation unreachable by mouse (hover collapsed the child
+  column before the cursor arrived), 56 Radial edge endpoints inside node rects, and a false
+  "exclusive-seam achieved" claim that dependency-cruiser caught. Root cause of the illusion: every
+  verification layer had a hole — CI never runs Playwright, Playwright never builds, Codex can run
+  neither Playwright nor `npm`, the layout diagnostic measured against the wrong rectangle, and the
+  cited canon documents were uncommitted in the primary checkout, invisible to every branch and worker.
+  See sections 4.6 and 4.7 for the rules extracted. Also: Radial was retired (ADR_010) after the bug
+  hunt revealed it had no geometry of its own — canon specified an angular axis, the implementation
+  shipped Tree's linear directions, so one entity carried two names and the port rules leaked between
+  them.
+- 2026-08-27 — **Canon age check before deciding.** While framing ADR_011 (Agent Orrery), the Director
+  resolved a terminology conflict (`plugin` = out-of-process vs in-viewer capability) by citing ADR_009
+  — the *oldest* artifact on the question. Two later design conversations (2026-08-08, 2026-08-24)
+  both pointed the other way, and the decision had to be reopened and rewritten. Two rules extracted:
+  (1) **An accepted ADR records what was decided then, not what akaghef currently believes.** Before
+  settling a conflict from canon, date every source on the question and say the dates out loud. If the
+  governing ADR predates the thinking that prompted the current request, ask akaghef instead of ruling.
+  (2) **Silence is not consent.** The Director wrote "暫定決着とみなす … 違ったら止めて" and treated the
+  absence of an objection as agreement. Decisions that shape a feature's architecture need an explicit
+  answer — use AskUserQuestion, don't ship a default and invite a veto.
+  Corollary that paid off: when a new design source arrives mid-flight, stop the running Codex dispatch
+  before it writes (`TaskStop`) rather than reviewing a draft built on a stale premise. Also, stow the
+  source conversations into `docs/ideas/` (dated `YYMMDD_*.md`) so the ADR's citations resolve — files
+  in `~/Downloads` are invisible to every worker and disappear. Adding files under `docs/` makes
+  `docs/index.md` stale; regenerate with `node scripts/ops/check-docs-index.mjs --write`.
+- 2026-08-29 — **Codex's tests cover the requirements you wrote, not the invariants you forgot.** The
+  vault-identity task shipped with 12 green tests that all passed, and the diff still carried a real
+  regression: to preserve body text byte-for-byte, Codex dropped a `.trim()` and with it the guarantee
+  that exported files end in exactly one newline. Nothing in the handoff mentioned trailing newlines,
+  so nothing tested them — yet Obsidian re-adds a trailing newline on save, which would have made every
+  no-op round-trip produce a diff forever. Rule: **read the diff for behavior changes outside the stated
+  scope**, especially where a constraint was *removed* to satisfy a new requirement. Ask "what did this
+  line guarantee before?" Green tests are evidence about the stated scope only.
+  Two supporting habits that paid off the same night: (1) re-run the suite yourself — Codex reported
+  46/46 from three files; the honest full-suite number was 603 passed with 2 files failing only because
+  `npm test` does not build browser bundles (§5, 2026-06-15), which `npm run build:browser` clears.
+  (2) When Codex reports `index.lock: Operation not permitted`, commit from the Director's own shell
+  rather than asking it to retry — but re-check, because the same task committed successfully on its
+  next dispatch, so the failure is intermittent, not structural.

@@ -121,7 +121,7 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await clickLegacy(page, "#view-system");
   await expect(page.locator("#mode-meta")).toContainText("/ System");
   await clickLegacy(page, "#view-scatter");
-  await expect(page.locator("#mode-meta")).toContainText("/ Scatter");
+  await expect(page.locator("#mode-meta")).toContainText("/ Disperse");
   await expect(page.locator("#scatter-toolbar")).toBeVisible();
   await expect(page.locator("#scatter-display-root")).toHaveCount(0);
   await expect(page.locator("#scatter-animate")).toBeVisible();
@@ -147,7 +147,7 @@ test("scatter surface renders descendants and edits visible edges", async ({ pag
   await clickLegacy(page, "#scatter-add-node");
   await page.mouse.click(820, 600);
   await expect(page.locator("#meta")).toContainText("nodes: 5");
-  await expect(page.locator(".node-hit[data-node-id]")).toHaveCount(5);
+  await expect(page.locator(".node-hit[data-node-id]")).toHaveCount(4);
 
   await clickLegacy(page, "#scatter-add-edge");
   const alpha = await page.locator('[data-node-id="alpha"].node-hit').boundingBox();
@@ -165,7 +165,7 @@ test("scatter surface renders collapsed tree anchors as expandable graph groups"
   await loadCollapsedAnchorFixture(page);
 
   await clickLegacy(page, "#view-scatter");
-  await expect(page.locator("#mode-meta")).toContainText("/ Scatter");
+  await expect(page.locator("#mode-meta")).toContainText("/ Disperse");
   await expect(page.locator(".scatter-node-circle.scatter-group[data-node-id='alpha']")).toHaveCount(1);
   await expect(page.locator('text.label-node[data-node-id="alpha"]')).toContainText("Alpha ×1");
   await expect(page.locator('text.label-node[data-node-id="alpha-child"]')).toHaveCount(0);

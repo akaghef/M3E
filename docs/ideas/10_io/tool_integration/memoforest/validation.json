@@ -1,0 +1,32 @@
+{
+  "schema": "m3e-idea-evidence-validation-v1",
+  "generatedAt": "2026-08-06T00:00:00+09:00",
+  "artifact": "memoforest-export-v3.json",
+  "format": {
+    "type": "annotator-qa-export",
+    "version": 3
+  },
+  "counts": {
+    "projects": 9,
+    "dataNodes": 158
+  },
+  "checks": {
+    "duplicateNodeIdsWithinProject": 0,
+    "missingParentReferences": 0,
+    "reservedInternalRootIds": 0
+  },
+  "browserEvidence": {
+    "importedProjects": 2,
+    "importedTitles": [
+      "00 Memoforest構造JSONスナップショット",
+      "01 Memoforest×M3E 総合評価"
+    ],
+    "remainingImportStatus": "blocked-by-free-plan-total-project-limit",
+    "note": "The block is a plan/quota boundary, not a JSON schema validation result."
+  },
+  "limitations": [
+    "The public delivery bundle was inspected, not private source code or infrastructure configuration.",
+    "The JSON snapshot predates the later interactive KaTeX sample and project macro edits.",
+    "External workspace APIs were observed in the public bundle but were not exercised as a stable public integration contract."
+  ]
+}

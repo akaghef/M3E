@@ -80,21 +80,15 @@ scripts/codex.sh exec resume --last "<handoff>" < /dev/null
 - A non-fatal `rmcp ... Auth(AuthorizationRequired)` warning may print; ignore it.
 - Handoff format: see `docs/06_Operations/Director_Playbook.md`.
 
-## Bang scope and persistent rule gate
+## Scope and persistent rule gate
 
-Count the maximum trailing run of `!` or `！` in akaghef's latest instruction.
+Default to the local task. Widen only when the request itself implies it, and say so before acting.
+A wider scope is not permission for unrelated work.
 
-- `0` or `1`: local task only.
-- `2` / `!!` / `！！`: target plus obvious adjacent effects in the same turn.
-- `3` / `!!!` / `！！！`: broad sync. Inspect directly related rules, protocols, docs, skills, hooks, and handoff consistency.
+> The `!` / `！` bang-scope notation is **abolished** (2026-08-27). Do not read trailing
+> exclamation marks as a scope level, and do not emit `Scope: LV<n>` preambles.
 
-For `!!` or `!!!`, first state:
-
-```text
-Scope: LV<n>. Target=<...>. Adjacent=<...>. Excluded=<...>.
-```
-
-When `!!!` is present, or when akaghef asks for recurrence prevention after an agent failure, do not accept a chat-only promise as complete. The cycle must create or dispatch a durable rule-system change, or report a concrete blocker.
+When akaghef asks for recurrence prevention after an agent failure, do not accept a chat-only promise as complete. The cycle must create or dispatch a durable rule-system change, or report a concrete blocker.
 
 Durable targets include `AGENTS.md`, `CLAUDE.md`, `docs/06_Operations/Director_Playbook.md`, `docs/protocols/`, `docs/protocols/contracts/`, canonical skill sources under `agent_instructions/skills_canonical/`, checked-in hook or guard scripts, and CI workflows.
 
