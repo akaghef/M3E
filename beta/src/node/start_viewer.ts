@@ -585,7 +585,10 @@ function redirectLoopbackHost(req: http.IncomingMessage, res: http.ServerRespons
 function writeSystemClipboard(text: string): { ok: true; method: string } | { ok: false; error: string } {
   const input = Buffer.from(text, "utf8");
   const run = (command: string, args: string[], method: string) => {
-    const result = spawnSync(command, args, { input, encoding: "utf8" });
+    const env = process.platform === "darwin"
+      ? { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" }
+      : process.env;
+    const result = spawnSync(command, args, { input, encoding: "utf8", env });
     if (result.status === 0) {
       return { ok: true as const, method };
     }
@@ -611,7 +614,10 @@ function writeSystemClipboard(text: string): { ok: true; method: string } | { ok
 
 function readSystemClipboard(): { ok: true; method: string; text: string } | { ok: false; error: string } {
   const run = (command: string, args: string[], method: string) => {
-    const result = spawnSync(command, args, { encoding: "utf8" });
+    const env = process.platform === "darwin"
+      ? { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" }
+      : process.env;
+    const result = spawnSync(command, args, { encoding: "utf8", env });
     if (result.status === 0) {
       return { ok: true as const, method, text: result.stdout || "" };
     }
