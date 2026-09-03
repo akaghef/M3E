@@ -490,6 +490,16 @@ let webglHoverFrame: number | null = null;
 let webglLastSnapshot: RenderSnapshot | null = null;
 let webglActivationFrame: number | null = null;
 let webglDragBaseSnapshot: RenderSnapshot | null = null;
+let webglGraphLinkControls: HTMLElement | null = null;
+let webglGraphLinkDragState: {
+  pointerId: number;
+  linkId: string;
+  endpoint: LinkEndpointKind;
+  handle: HTMLButtonElement;
+  startX: number;
+  startY: number;
+  dragged: boolean;
+} | null = null;
 
 type CameraTarget = { cameraX: number; cameraY: number; zoom: number };
 type CameraMoveOptions = { animate?: boolean; durationMs?: number };
@@ -3996,8 +4006,11 @@ function normalizeGraphLink(link: GraphLink): GraphLink {
     direction: link.direction ?? "none",
     style: link.style ?? "default",
     color: sanitizeColor(link.color) ?? undefined,
-    sourcePort: sanitizeLinkPort(link.sourcePort),
-    targetPort: sanitizeLinkPort(link.targetPort),
+    // Keep the canonical `auto` value in the model. Rendering converts it to
+    // an inferred edge port, but WebGL and SVG must observe the same saved
+    // LinkPort value.
+    sourcePort: validPort(link.sourcePort),
+    targetPort: validPort(link.targetPort),
   };
 }
 
@@ -4408,10 +4421,12 @@ function syncWebGLInteraction(): void {
   webglProjection.setInteractionState({
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     primarySelectedNodeId: viewState.selectedNodeId || null,
+    selectedGraphLinkId,
     hoveredNodeId: webglHoveredNodeId,
     editingNodeId: inlineEditor?.nodeId || null,
     gestureActive: Boolean(viewState.panState || viewState.pinchState || viewState.dragState),
   });
+  syncWebGLGraphLinkControls();
 }
 
 function webglClientToWorld(clientX: number, clientY: number): { x: number; y: number } | null {
@@ -4423,6 +4438,204 @@ function webglClientToWorld(clientX: number, clientY: number): { x: number; y: n
     { x: clientX - rect.left, y: clientY - rect.top },
     { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom },
   );
+}
+
+function removeWebGLGraphLinkControls(): void {
+  webglGraphLinkControls?.remove();
+  webglGraphLinkControls = null;
+}
+
+function positionWebGLGraphLinkControl(element: HTMLElement, point: { x: number; y: number }): void {
+  const screen = worldToScreen(point, {
+    x: viewState.cameraX,
+    y: viewState.cameraY,
+    zoom: viewState.zoom,
+  });
+  element.style.left = `${screen.x}px`;
+  element.style.top = `${screen.y}px`;
+}
+
+function createWebGLGraphLinkEndpointControls(
+  controls: HTMLElement,
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  node: RenderNode,
+  endpointPoint: { x: number; y: number },
+): void {
+  const rect = { x: node.x, y: node.y, w: node.width, h: node.height };
+  const portPoints: Record<EdgeAnchorSide, { x: number; y: number }> = {
+    left: { x: rect.x, y: rect.y + rect.h / 2 },
+    right: { x: rect.x + rect.w, y: rect.y + rect.h / 2 },
+    top: { x: rect.x + rect.w / 2, y: rect.y },
+    bottom: { x: rect.x + rect.w / 2, y: rect.y + rect.h },
+  };
+  const activeSide = inferBoundarySide(rect, endpointPoint);
+  (Object.keys(portPoints) as EdgeAnchorSide[]).forEach((side) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = `link-port-dot webgl-link-port-dot${side === activeSide ? " is-active" : ""}`;
+    dot.dataset.linkId = linkId;
+    dot.dataset.linkPortChoice = endpoint;
+    dot.dataset.linkPortSide = side;
+    dot.setAttribute("aria-label", `${endpoint} port ${side}`);
+    positionWebGLGraphLinkControl(dot, portPoints[side]);
+    dot.addEventListener("pointerdown", (event: PointerEvent) => {
+      if (event.button !== 0 || !map) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (setGraphLinkEndpointPort(linkId, endpoint, side)) {
+        touchDocument();
+        setStatus(`Link ${endpoint} port: ${side}.`);
+      }
+      board.focus();
+    });
+    controls.appendChild(dot);
+  });
+
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = `link-port-handle webgl-link-port-handle link-port-handle-${endpoint}`;
+  handle.dataset.linkId = linkId;
+  handle.dataset.linkPortHandle = endpoint;
+  handle.setAttribute("aria-label", `Move GraphLink ${endpoint} endpoint`);
+  positionWebGLGraphLinkControl(handle, endpointPoint);
+  handle.addEventListener("pointerdown", (event: PointerEvent) => {
+    startWebGLGraphLinkDrag(event, linkId, endpoint, handle);
+  });
+  handle.addEventListener("pointermove", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    updateWebGLGraphLinkDragPreview(event);
+  });
+  handle.addEventListener("pointerup", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    finishWebGLGraphLinkDrag(event);
+  });
+  handle.addEventListener("pointercancel", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    finishWebGLGraphLinkDrag(event);
+  });
+  controls.appendChild(handle);
+}
+
+function syncWebGLGraphLinkControls(): void {
+  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId) {
+    removeWebGLGraphLinkControls();
+    return;
+  }
+  const link = webglLastSnapshot.graphLinks.find((edge) => edge.id === selectedGraphLinkId);
+  const sourceNode = link ? webglLastSnapshot.nodes.find((node) => node.id === link.sourceNodeId) : null;
+  const targetNode = link ? webglLastSnapshot.nodes.find((node) => node.id === link.targetNodeId) : null;
+  if (!link || link.points.length < 2 || !sourceNode || !targetNode) {
+    removeWebGLGraphLinkControls();
+    return;
+  }
+
+  removeWebGLGraphLinkControls();
+  const controls = document.createElement("div");
+  controls.className = "link-port-controls webgl-link-port-controls";
+  controls.dataset.linkId = link.id;
+  createWebGLGraphLinkEndpointControls(controls, link.id, "source", sourceNode, link.points[0]!);
+  createWebGLGraphLinkEndpointControls(controls, link.id, "target", targetNode, link.points[link.points.length - 1]!);
+  board.appendChild(controls);
+  webglGraphLinkControls = controls;
+}
+
+function startWebGLGraphLinkDrag(
+  event: PointerEvent,
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  handle: HTMLButtonElement,
+): void {
+  if (!isWebGLRendererActive() || event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  selectedGraphLinkId = linkId;
+  viewState.selectedLinkId = linkId;
+  webglGraphLinkDragState = {
+    pointerId: event.pointerId,
+    linkId,
+    endpoint,
+    handle,
+    startX: event.clientX,
+    startY: event.clientY,
+    dragged: false,
+  };
+  try {
+    handle.setPointerCapture(event.pointerId);
+  } catch {
+    // The browser may reject capture for a synthetic or already-ended pointer.
+  }
+  board.focus();
+}
+
+function updateWebGLGraphLinkDragPreview(event: PointerEvent): void {
+  const drag = webglGraphLinkDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.dragged && distance < VIEWER_TUNING.drag.reparentThreshold) return;
+  drag.dragged = true;
+  const point = webglClientToWorld(event.clientX, event.clientY);
+  if (point) {
+    positionWebGLGraphLinkControl(drag.handle, point);
+  }
+}
+
+function finishWebGLGraphLinkDrag(event: PointerEvent): void {
+  const drag = webglGraphLinkDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  updateWebGLGraphLinkDragPreview(event);
+  webglGraphLinkDragState = null;
+  try {
+    drag.handle.releasePointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been released by the browser.
+  }
+
+  const shouldCommit = event.type !== "pointercancel" && drag.dragged;
+  if (!shouldCommit) {
+    syncWebGLGraphLinkControls();
+    board.focus();
+    return;
+  }
+
+  const point = webglClientToWorld(event.clientX, event.clientY);
+  const hit = point ? webglProjection?.hitTest(event.clientX, event.clientY) : null;
+  const targetNode = hit?.kind === "node"
+    ? webglLastSnapshot?.nodes.find((node) => node.id === hit.nodeId)
+    : null;
+  if (!point || !targetNode) {
+    setStatus("No valid GraphLink endpoint.", true);
+    syncWebGLGraphLinkControls();
+    board.focus();
+    return;
+  }
+
+  const side = nearestEdgePortSideForGraphLinkEdit(
+    { x: targetNode.x, y: targetNode.y, w: targetNode.width, h: targetNode.height },
+    point,
+  );
+  if (!setGraphLinkEndpointPort(drag.linkId, drag.endpoint, side, true, targetNode.id)) {
+    syncWebGLGraphLinkControls();
+    board.focus();
+    return;
+  }
+  // The command has now been accepted. Re-render only after the WebGL-only
+  // drag preview has ended, matching the existing SVG commit boundary.
+  touchDocument();
+  setStatus(`Link ${drag.endpoint} endpoint updated.`);
+  board.focus();
 }
 
 function cloneWebGLRenderSnapshot(snapshot: RenderSnapshot): RenderSnapshot {
@@ -4581,6 +4794,8 @@ function deactivateWebGLProjection(): void {
     webglActivationFrame = null;
   }
   webglRendererActive = false;
+  webglGraphLinkDragState = null;
+  removeWebGLGraphLinkControls();
   if (webglCanvas) webglCanvas.hidden = true;
   canvas.removeAttribute("hidden");
   syncInlineEditorPosition();
@@ -4636,6 +4851,7 @@ function applyZoom(options: ViewportApplyOptions = {}): void {
   if (isWebGLRendererActive()) {
     webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
     syncInlineEditorPosition();
+    syncWebGLGraphLinkControls();
     if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
       webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
     }
@@ -11391,16 +11607,46 @@ function colorizeScatterEdge(linkId: string): void {
   setStatus("Edge color updated.");
 }
 
-function setGraphLinkEndpointPort(linkId: string, endpoint: LinkEndpointKind, side: EdgeAnchorSide, withUndo = true): boolean {
+function setGraphLinkEndpointPort(
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  side: EdgeAnchorSide,
+  withUndo = true,
+  replacementNodeId?: string,
+): boolean {
   if (!map?.state.links?.[linkId]) {
     return false;
+  }
+  const current = normalizeGraphLink(map.state.links[linkId]!);
+  const nextSourceNodeId = endpoint === "source" ? (replacementNodeId || current.sourceNodeId) : current.sourceNodeId;
+  const nextTargetNodeId = endpoint === "target" ? (replacementNodeId || current.targetNodeId) : current.targetNodeId;
+  if (replacementNodeId) {
+    const replacementNode = map.state.nodes[replacementNodeId];
+    if (!replacementNode || isAliasNode(replacementNode)) {
+      setStatus("GraphLink endpoints must be existing non-alias nodes.", true);
+      return false;
+    }
+    if (nextSourceNodeId === nextTargetNodeId) {
+      setStatus("Graph links cannot connect a node to itself.", true);
+      return false;
+    }
+    const duplicate = Object.values(map.state.links || {}).find((candidate) =>
+      candidate.id !== linkId &&
+      candidate.sourceNodeId === nextSourceNodeId &&
+      candidate.targetNodeId === nextTargetNodeId,
+    );
+    if (duplicate) {
+      setStatus("That GraphLink already exists.", true);
+      return false;
+    }
   }
   if (withUndo) {
     pushUndoSnapshot();
   }
-  const current = normalizeGraphLink(map.state.links[linkId]!);
   map.state.links[linkId] = normalizeGraphLink({
     ...current,
+    sourceNodeId: nextSourceNodeId,
+    targetNodeId: nextTargetNodeId,
     sourcePort: endpoint === "source" ? side : current.sourcePort,
     targetPort: endpoint === "target" ? side : current.targetPort,
   });

@@ -54,6 +54,7 @@ export interface CameraState {
 export interface RenderInteractionState {
   selectedNodeIds: string[];
   primarySelectedNodeId: string | null;
+  selectedGraphLinkId: string | null;
   hoveredNodeId: string | null;
   editingNodeId?: string | null;
   gestureActive: boolean;
@@ -85,6 +86,7 @@ export interface WebGLProjectionDebugState {
   graphLinkCount: number;
   camera: CameraState;
   selectedNodeIds: string[];
+  selectedGraphLinkId: string | null;
   drawCalls: number;
   geometryUploads: number;
   cameraUpdates: number;
@@ -401,6 +403,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
   private interaction: RenderInteractionState = {
     selectedNodeIds: [],
     primarySelectedNodeId: null,
+    selectedGraphLinkId: null,
     hoveredNodeId: null,
     editingNodeId: null,
     gestureActive: false,
@@ -481,6 +484,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     this.interaction = {
       ...interaction,
       editingNodeId: interaction.editingNodeId ?? null,
+      selectedGraphLinkId: interaction.selectedGraphLinkId ?? null,
       selectedNodeIds: [...interaction.selectedNodeIds],
     };
     if (!this.active || !this.gl) return;
@@ -528,6 +532,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
       graphLinkCount: this.snapshot?.graphLinks.length || 0,
       camera: { ...this.camera },
       selectedNodeIds: [...this.interaction.selectedNodeIds],
+      selectedGraphLinkId: this.interaction.selectedGraphLinkId,
       drawCalls: this.drawCalls,
       geometryUploads: this.geometryUploads,
       cameraUpdates: this.cameraUpdates,
