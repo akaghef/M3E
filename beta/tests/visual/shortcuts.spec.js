@@ -51,7 +51,8 @@ function shortcutFixtureWithGraphLink() {
 
 function readMacClipboard() {
   if (process.platform !== "darwin") return null;
-  const result = spawnSync("pbpaste", [], { encoding: "utf8" });
+  const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" };
+  const result = spawnSync("pbpaste", [], { encoding: "utf8", env });
   if (result.status !== 0) {
     throw new Error(result.stderr || "pbpaste failed");
   }
@@ -157,8 +158,7 @@ test.describe("Shift+Arrow selection extension", () => {
     const before = await getSelectedCount(page);
 
     await pressKey(page, "Shift+ArrowDown");
-    const after = await getSelectedCount(page);
-    expect(after).toBeGreaterThan(before);
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThan(before);
   });
 
   test("Shift+ArrowDown extends further on consecutive presses from root", async ({ page }) => {
@@ -166,13 +166,12 @@ test.describe("Shift+Arrow selection extension", () => {
     await focusBoard(page);
 
     await pressKey(page, "Shift+ArrowDown");
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThanOrEqual(2);
     const afterOne = await getSelectedCount(page);
-    expect(afterOne).toBeGreaterThanOrEqual(2);
 
     await pressKey(page, "Shift+ArrowDown");
-    const afterTwo = await getSelectedCount(page);
     // Second press should keep or extend selection (layout-dependent).
-    expect(afterTwo).toBeGreaterThanOrEqual(afterOne);
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThanOrEqual(afterOne);
   });
 });
 
@@ -195,8 +194,27 @@ test.describe("Tab: add child node", () => {
     await pressKey(page, "Tab");
     await waitForRender(page);
 
-    // An inline editor should appear (input element).
-    await expect(page.locator("textarea.inline-node-editor")).toBeVisible();
+    // An inline editor should appear and keep enough width for sentence entry.
+    const editor = page.locator("textarea.inline-node-editor");
+    await expect(editor).toBeVisible();
+    const editorMetrics = await editor.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const transform = new DOMMatrixReadOnly(style.transform);
+      return {
+        configuredMinWidth: element.style.minWidth,
+        computedMinWidth: Number.parseFloat(style.minWidth),
+        unscaledEditorWidth: element.getBoundingClientRect().width / transform.a,
+      };
+    });
+    expect(editorMetrics.configuredMinWidth).toBe("40ch");
+    expect(editorMetrics.unscaledEditorWidth).toBeGreaterThanOrEqual(editorMetrics.computedMinWidth - 1);
+
+    await editor.fill("あ".repeat(80));
+    const wrappedLineCount = await editor.evaluate((element) => {
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      return Math.round(element.scrollHeight / lineHeight);
+    });
+    expect(wrappedLineCount).toBeLessThanOrEqual(4);
 
     // Escape to finish editing.
     await pressKey(page, "Escape");

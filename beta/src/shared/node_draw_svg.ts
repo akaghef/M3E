@@ -116,7 +116,13 @@ function renderScatterNode(input: NodeDrawInput): string {
   if (input.node.scatterRole) circleClasses.push(`scatter-role-${input.node.scatterRole}`);
   const inline = circleStyle(input.style);
   const label = plainLabel(input);
-  const labelText = label.labelLines.join(" ");
+  const baseLabelText = label.labelLines.join(" ");
+  const collapsedCount = input.node.isScatterGroup && input.view.collapsedCount !== undefined
+    ? Math.max(1, input.view.collapsedCount)
+    : undefined;
+  const labelText = collapsedCount === undefined
+    ? baseLabelText
+    : `${baseLabelText} ×${collapsedCount}`;
   const font = label.fontSize ?? p.fontSize ?? scatterFontSizeFor(r);
   return [
     `<circle class="${circleClasses.join(" ")}" data-node-id="${escapeAttr(input.node.id)}" cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(r)}"${inline} />`,

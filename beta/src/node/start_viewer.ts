@@ -45,6 +45,7 @@ import {
 } from "./collab";
 import {
   layout as layoutPortLayout,
+  type LayoutDirection,
   type LayoutNodeMetric,
   type LayoutOptions,
   type LayoutResult,
@@ -458,7 +459,6 @@ function isArtifactCandidate(relPath: string, ext: string): boolean {
   if (!ARTIFACT_EXTENSIONS.has(ext)) return false;
   const normalized = relPath.replace(/\\/g, "/");
   if (normalized.includes("/artifacts/")) return true;
-  if (normalized.includes("/mindmap_gallery/") && (ext === ".html" || ext === ".svg" || ext === ".png")) return true;
   if (normalized.startsWith("docs/for-akaghef/")) return ext === ".html" || ext === ".pdf" || ext === ".pptx";
   return ext === ".html" && normalized.startsWith("projects/");
 }
@@ -585,7 +585,10 @@ function redirectLoopbackHost(req: http.IncomingMessage, res: http.ServerRespons
 function writeSystemClipboard(text: string): { ok: true; method: string } | { ok: false; error: string } {
   const input = Buffer.from(text, "utf8");
   const run = (command: string, args: string[], method: string) => {
-    const result = spawnSync(command, args, { input, encoding: "utf8" });
+    const env = process.platform === "darwin"
+      ? { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" }
+      : process.env;
+    const result = spawnSync(command, args, { input, encoding: "utf8", env });
     if (result.status === 0) {
       return { ok: true as const, method };
     }
@@ -611,7 +614,10 @@ function writeSystemClipboard(text: string): { ok: true; method: string } | { ok
 
 function readSystemClipboard(): { ok: true; method: string; text: string } | { ok: false; error: string } {
   const run = (command: string, args: string[], method: string) => {
-    const result = spawnSync(command, args, { encoding: "utf8" });
+    const env = process.platform === "darwin"
+      ? { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" }
+      : process.env;
+    const result = spawnSync(command, args, { encoding: "utf8", env });
     if (result.status === 0) {
       return { ok: true as const, method, text: result.stdout || "" };
     }
@@ -2213,7 +2219,21 @@ function measureLayoutSnapshotNode(node: TreeNode | undefined, nodeId: string, d
   return { w: Math.round(width), h: height, fontSize, labelLines: [label.slice(0, 48)] };
 }
 
-function buildLayoutSnapshot(state: AppState, scopeId: string | null): {
+function parseLayoutSnapshotDirection(rawDirection: string | null): LayoutDirection | null {
+  switch (rawDirection) {
+    case "right":
+    case "left":
+    case "down":
+    case "up":
+    case "left/right":
+    case "up/down":
+      return rawDirection;
+    default:
+      return null;
+  }
+}
+
+function buildLayoutSnapshot(state: AppState, scopeId: string | null, direction: LayoutDirection = "right"): {
   input: {
     graph: { nodeIds: string[]; children: Record<string, string[]>; graphLinks: NonNullable<AppState["links"]>[string][] };
     boxSizes: Record<string, LayoutNodeMetric>;
@@ -2246,8 +2266,8 @@ function buildLayoutSnapshot(state: AppState, scopeId: string | null): {
   const options: LayoutOptions = {
     displayRootId,
     structuredMode: "Tree",
-    density: "balanced",
-    branchDirection: "both",
+    space: "normal",
+    direction,
   };
   return {
     input: {
@@ -2266,9 +2286,15 @@ function handleLayoutSnapshotApi(req: http.IncomingMessage, res: http.ServerResp
     return true;
   }
   const url = new URL(req.url ?? "/", "http://localhost");
+  const rawDirection = url.searchParams.get("direction");
+  const direction = rawDirection === null ? "right" : parseLayoutSnapshotDirection(rawDirection);
+  if (!direction) {
+    sendJson(res, 400, { ok: false, error: "Invalid layout direction." });
+    return true;
+  }
   try {
     const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
-    const snapshot = buildLayoutSnapshot(savedDoc.state, url.searchParams.get("scope"));
+    const snapshot = buildLayoutSnapshot(savedDoc.state, url.searchParams.get("scope"), direction);
     sendJson(res, 200, {
       ok: true,
       mapId,

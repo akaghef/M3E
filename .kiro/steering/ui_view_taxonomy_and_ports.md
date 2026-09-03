@@ -14,7 +14,7 @@
 
 ## 拘束規則
 
-1. **Surface View 名は canonical を使う**: `Tree / Axial / Radial / Disperse / System`。legacy 名（`tree / mindmap / logic-chart / timeline / scatter / system`）は migration 専用で、canonical へ map する。確定 map: `tree→Tree` / `timeline→Axial(timeline)` / `scatter→Disperse(scatter)` / `system→System`。**要確認**（`map_layout_modes.md` を正とする）: `mindmap→Tree(direction=both)?` / `logic-chart→Tree(down) か Axial?`。新規実装で legacy 名を増やさない。
+1. **Surface View 名は canonical を使う**: `Tree / Axial / Radial / Disperse / System`。legacy 名（`tree / mindmap / logic-chart / timeline / scatter / system`）は migration 専用で、canonical へ map する。確定 map: `tree→Tree` / `timeline→Axial(timeline)` / `scatter→Disperse(scatter)` / `system→System`。**要確認**（`map_layout_modes.md` を正とする）: `mindmap→Tree(direction=left/right)?` / `logic-chart→Tree(down) か Axial?`。新規実装で legacy 名を増やさない。
 
 2. **`edge` の両義を分離する**: parent-child relation（tree edge）と route style（option: `orthogonal / line / curve / force-link`）と `GraphLink`（cross relation）は別物。spec/コードで混同禁止。
 
@@ -29,7 +29,7 @@
 ## 既知ギャップ（reconcile 対象）
 
 - `.kiro/specs/layout-seam-lab` の `LayoutMode` は legacy 混在命名。canonical へ reconcile 要。
-- branch-aware `selectPorts` 未実装（`Tree right` のみ）。left/both/up/down 欠如。
+- branch-aware `selectPorts` 未実装（`Tree right` のみ）。left / left/right / up / down / up/down 欠如。
 - layout-lab の edge 描画は暫定 bezier で、port 契約を反映していない（本来 edge seam の領域）。
 - `LinkPort "auto"` の不整合。
 

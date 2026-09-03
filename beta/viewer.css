@@ -3154,7 +3154,7 @@
       .markdown-preview-panel {
         position: absolute;
         top: 60px;
-        right: 14px;
+        right: 326px;
         z-index: 13;
         width: 420px;
         max-width: calc(100vw - 40px);
@@ -3192,6 +3192,19 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      .markdown-preview-panel[data-preview-mode="pinned"] .markdown-preview-title::after {
+        content: "PINNED";
+        display: inline-block;
+        margin-left: 8px;
+        padding: 2px 5px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        font-size: 9px;
+        line-height: 1;
+        letter-spacing: 0.08em;
+        vertical-align: 1px;
       }
 
       .markdown-preview-close {
@@ -3293,6 +3306,12 @@
       .markdown-mermaid svg {
         max-width: 100%;
         height: auto;
+      }
+
+      @media (max-width: 980px) {
+        .markdown-preview-panel {
+          right: 14px;
+        }
       }
 
       .markdown-mermaid-fallback,
