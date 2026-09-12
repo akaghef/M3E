@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-09-03-001
+
+- Date: 2026-09-03
+- Topic: Radial Surface View の復活（ADR_010 を supersede）と Disperse との関係確定
+- Status: accepted
+- Decision:
+  - **Surface View 正本を5種に戻す: `Tree / Axial / Radial / Disperse / System`。**
+  - **Radial と Disperse は同一の力学配置エンジン（WebCola）を共有し、親子関係の投影方式だけが異なる**: Radial は親子を **edge** で描画（GraphLink も表示）。Disperse は親子を **入れ子（group/包含）** で描画（画面の線は GraphLink のみ）。
+  - ADR_010 が指摘した「角度系（clockwise/counterclockwise/balanced）の実装実体が無かった」という事実認定は維持し、**角度系 option は正本から削除したまま**にする。Radial 概念自体を無効とした結論のみを撤回する。
+  - Radial / Disperse の subtype は `scatter`（人が置いた座標をそのまま使う）/ `force`（力学配置）の2つに統一。**`cluster` subtype は廃止** — tree の group 投影は Disperse の切替可能な subtype ではなく、Disperse の既定の親子表現そのものであるため。
+  - **全 Surface View は同じ tree（+ GraphLink）構造の上に立つ**、という前提を正本の「意味上の分離」に明記した。View 間の違いは構造の有無ではなく投影方式の違い。「自由配置」はレイアウトアルゴリズムの性質であり、データ構造が自由という意味ではない。
+  - Radial に group 投影は無いため、collapse した部分木は縮約されて単なる1ノードになる（Disperse と同じ「縮約」操作だが footprint を持たない）。
+- Why: ADR_010 は「Radial は Tree と実体を共有していた」という正しい観察から、「Radial 概念自体が無効」という誤った結論に踏み込んだ。akaghef が Radial(edge)/Disperse(group) という固有の意味を与えたことで、角度系に依らない正当な区別が成立する。また「木だから自由配置という説明はおかしい」という指摘により、Surface View 全体の構造記述を「構造の有無」から「同一構造の投影方式」へ訂正した。
+- Next: seam lab（layout-lab）に Radial の scatter/force コントロールを追加。Disperse の実装（`disperse_layout.ts` 等）と配置エンジンを共有させる形で Radial を再導入する。角度系コードは復元しない。
+- Source: 2026-08-27 akaghef「radial, disperseの違いがわからないという話だったが、両者を復活させたい。ラディアルは親子のエッジを表示する。グラフリンクも表示する。一方でディスパースは、親子同士はエッジではなく、入れ子のカテゴリとして表す」+「構造としては木だから[Radial/Disperseが自由配置で構造を持たないかのような]説明は変だ」
+- Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md), [../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md)
+
 ## 2026-08-29-001
 
 - Date: 2026-08-29

@@ -41,8 +41,12 @@ Surface View
 │  ├─ direction: right / left / up / down
 │  ├─ space: tight / normal / loose
 │  └─ edge: orthogonal / line / curve
+├─ Radial
+│  ├─ subtype: scatter / force
+│  ├─ space: tight / normal / loose
+│  └─ edge: line / curve / force-link
 ├─ Disperse
-│  ├─ subtype: scatter / cluster / force
+│  ├─ subtype: scatter / force
 │  ├─ space: tight / normal / loose
 │  └─ edge: line / curve / force-link
 └─ System
@@ -52,45 +56,54 @@ Surface View
    └─ edge: orthogonal / line / curve
 ```
 
+Radial と Disperse は同一の力学配置エンジン（WebCola）を共有し、**親子関係の描画方式だけが異なる**（§ 意味上の分離）。
+
 #### 旧ラベルとの対応
 
 | 旧ラベル / 候補 | Surface View 正本 | 扱い |
 |---|---|---|
-| Mind Map / `balanced-tree` | Tree | 階層を左右両側へ開く見た目。`Tree direction: left/right` の preset。旧 Radial は [ADR_010](../09_Decisions/ADR_010_Radial_Surface_View_Removal.md) で廃止 |
+| Mind Map / `balanced-tree` | Tree | 階層を左右両側へ開く見た目。`Tree direction: left/right` の preset |
+| Radial（放射配置） | Radial | 力学配置 + 親子を edge で描く見た目。[ADR_012](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md) で復活（角度系 option は実装実体なしのため削除） |
 | Tree Chart / Logic Chart / `right-tree` / `down-tree` | Tree | 階層を一方向または両方向に展開する見た目。Logic Chart は Tree の preset |
 | Timeline | Axial | timeline は Surface View ではなく Axial の subtype |
 | Roadmap / Pipeline / Sequence | Axial | 軸に沿って進行・順序・段階を読む見た目 |
-| Scatter / Force-directed | Disperse | 自由配置・クラスタ・力学配置の見た目 |
+| Scatter / Force-directed | Disperse | 力学配置 + 親子を入れ子（包含）で描く見た目 |
 | System surface | System | containment / module / architecture を扱う見た目 |
 | Matrix / Table | node object | Surface View ではなく、表・行列を表すノードオブジェクトとして実装する |
 
 #### 意味上の分離
 
-- **Tree**: 親子階層を読む。主眼は分解・包含・分類。
-- **Axial**: 1本の軸に沿って読む。主眼は時間・順序・進行・段階。
-- **Disperse**: 空間的な近さやクラスタで読む。主眼は関係密度・分布・近接。
-- **System**: 箱・境界・モジュール・リンクで読む。主眼は構造、責務、接続。
+> **全 Surface View は同じ tree（+ GraphLink）構造の上に立つ。View が違っても構造は増減しない。差は「同じ構造をどう投影するか」だけである。** 「自由配置」はレイアウトアルゴリズムの性質であって、データ構造が自由という意味ではない（2026-08-27 akaghef 指摘: 木という構造自体は全 View 共通であり、View ごとに構造が変わるかのような説明は誤り）。
 
-#### Disperse と tree の関係（粗視化）
+各 View は、tree 構造をどう **投影** するかで区別される:
 
-> **tree は Disperse の「配置」ではなく「group の階層」を担う。collapse がそのまま graph の縮約になり、粗視化のレベルを人間が選べる。**
+- **Tree**: 親子階層を **depth 軸上の位置** として投影する。主眼は分解・包含・分類。
+- **Axial**: 親子階層を **1本の軸に沿った進行** として投影する。主眼は時間・順序・進行・段階。
+- **Radial**: 親子階層を **力学配置 + edge** として投影する。関係を線で読む。
+- **Disperse**: 親子階層を **力学配置 + 入れ子（包含）** として投影する。関係は GraphLink の線のみで読み、親子は tree の group（枠）として現れる。
+- **System**: 箱・境界・モジュール・リンクとして投影する。主眼は構造、責務、接続。
+
+Radial と Disperse は同一の力学配置エンジンを共有し、**親子関係を edge にするか group にするかだけが異なる**。座標計算のアルゴリズムに違いはない。
+
+#### 親子の投影方式（edge / group）と粗視化
+
+> **tree 構造は Disperse の「配置」ではなく「group の階層」として投影される。collapse がそのまま graph の縮約になり、粗視化のレベルを人間が選べる。**
 
 - Disperse が力学配置する対象は、**現在の collapse 状態で縮約された可視グラフ**であり、全ノードではない。
 - 部分木を collapse すると、その部分木は 1 つの super-node へ **縮約（contraction）** される。メンバーに接続していた edge は super-node への edge へ **集約** される。
 - tree の深さが繰り込みの梯子になり、同じ graph を粗い解像度と細かい解像度で読み替えられる。
-- subtype `cluster` は tree の group に対応する。tree を layout そのものに使うのは誤り（それは Tree の役目）。
+- Radial には group 投影がないため、collapse した部分木は単なる 1 ノードになる（縮約という操作自体は Disperse と同じ）。
 
 実装上の含意: Disperse の layout は group / 縮約を扱える必要があり、単純な平坦 force では足りない。edge の集約規則（多重 edge の束ね方・重み）を contract 時に定義すること。
 
-#### Disperse subtype の定義
+#### Radial / Disperse subtype の定義
 
 | subtype | 定義 | 座標の出どころ |
 |---|---|---|
 | **scatter** | **自由配置**。人が置いた位置そのものが意味を持つ（近くに置いた＝関係がある、という人間の判断を保存する）。layout は座標を計算せず、保存座標をそのまま使う。 | 人 |
-| **cluster** | **クラスタ**。tree の group を空間的なまとまりとして見せる。同一 group の member は寄せ、別 group は離す。group の境界を可視化してよい。粗視化（collapse）と直結する subtype。 | 計算（group 構造から） |
-| **force** | **力学配置**。edge の張力と斥力の釣り合いで座標を決める。関係構造・密度・近接を読む。 | 計算（edge 構造から） |
+| **force** | **力学配置**。edge（Radial は親子 edge + GraphLink、Disperse は GraphLink のみ + group 拘束）の張力と斥力の釣り合いで座標を決める。 | 計算 |
 
-3つは排他ではなく、`cluster` は group 拘束を加えた `force` として実装しうる。`scatter` だけは計算せず人の配置を正本とする点で性質が異なる。
+`cluster` という subtype は無い。tree の group（親子の入れ子投影）は Disperse の **既定の親子表現**であり、切替可能な subtype ではない。
 
 #### pipeline / system graph の参照 UI
 

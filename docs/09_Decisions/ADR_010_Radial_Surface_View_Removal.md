@@ -1,6 +1,7 @@
 # ADR_010: Radial Surface View を廃止し Tree へ畳む
 
 - Status: accepted
+- Superseded by: [ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する](ADR_012_Radial_Surface_View_Restoration.md)（2026-09-03, 角度系の実装実体なしという判断は維持しつつ、Radial 概念自体は edge/group 投影の軸で復活）
 - Date: 2026-08-25
 - Deciders: akaghef
 - Related: [map_layout_modes.md](../03_Spec/map_layout_modes.md) / [Decision_Pool 2026-08-25-001](../06_Operations/Decision_Pool.md) / [Decision_Pool 2026-08-23-001](../06_Operations/Decision_Pool.md)

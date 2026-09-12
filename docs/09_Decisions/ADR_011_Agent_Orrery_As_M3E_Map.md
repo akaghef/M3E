@@ -89,7 +89,7 @@ DC4 の read-only を解いて node 内に UI を持たせる段階では、view
 
 ### DC2. Agent Orrery は map のデータであり、Surface View ではない
 
-ADR_010 が確定した Surface View 4種（`Tree / Axial / Disperse / System`）は変えない。
+ADR_012（ADR_010 を supersede）が確定した Surface View 5種（`Tree / Axial / Radial / Disperse / System`）は変えない。
 **Orrery は map に載るデータ**であり、Tree でも Disperse でもいずれの view mode でも見られる。
 既定の見え方は Disperse の force を使う。
 
