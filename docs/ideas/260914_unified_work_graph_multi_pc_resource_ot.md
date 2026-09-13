@@ -2,7 +2,11 @@
 
 > Status: idea / vision memo。決定・仕様ではない。
 > Date: 2026-09-14
-> Source: Akaghefとの2026-09-14の対話、および [最遠の目標](../../.kiro/steering/farthest_goal.md)、[ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md)。
+> Source: Akaghefとの2026-09-14の対話、および外部OT [`gyroid-eth/orrery-telemetry`](https://github.com/gyroid-eth/orrery-telemetry)。[最遠の目標](../../.kiro/steering/farthest_goal.md)と[ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md)はM3E側の受入境界として参照する。
+
+## Target identity
+
+本memoで `OT` と呼ぶ対象は、**gyroidが配布する外部repository [`gyroid-eth/orrery-telemetry`](https://github.com/gyroid-eth/orrery-telemetry)** に限る。Akaghef自作の `playground/agent-orrery` prototypeは別物であり、吸収対象でも実装品質の基準でもない。両者のsource、schema、runtime、UIを混同しない。
 
 ## Why
 
@@ -59,7 +63,7 @@ OTが強く扱うのは主に `Who / Now`、すなわちagent、lineage、commun
 
 ### VA4. OTは「Agent管理面として切り出されたA-sysの一部」である
 
-ORRERY Telemetryが優れているのは、OSSとしてbackendまで動く仕組みを持ち、agent lifecycle、spawn lineage、communication、history、replay、操作を実運転で成立させていることである。単なるUI参考ではなく、稼働中の観測・管理systemとして教師にできる。
+外部OTが優れているのは、配布可能なsourceとbackendを持ち、ORRERY Mail、launcher、hooks、provider integration、dashboard APIを一つの運用系として実装していることである。単なるUI参考ではなく、観測・通信・実行管理systemとして教師にできる。
 
 同時に、開発者自身が「タスク管理ツールの一部を切り出した」と説明しているなら、OTが公開しているのは全体systemではなく、**A-sys相当のうちAgent管理面を切り出したslice**だと理解できる。
 
@@ -82,7 +86,7 @@ OT統合の目的は、OTの画面をM3E内に再現することでも、OT back
 
 取り込む対象を分解する。
 
-1. **稼働済みbackend / observation contract** — session、lineage、state、mail、history、replay等の実データ経路。
+1. **外部OTのbackend / observation contract** — ORRERY Mail、runtime event、session、lineage、state、history、replay等の実データ経路。外部repositoryのversioned schemaとAPIから抽出し、自作prototypeから推測しない。
 2. **interaction grammar** — node hover、edgeからmail履歴を開く、Deck / Network、time replay、detail card等。
 3. **node typeごとの解釈** — Agent Card、Task、Role、Resource等が、それぞれschema、見た目、色、操作を所有する。
 4. **M3E semantic graphへのbinding** — OT由来のAgent / Runtimeを、Goal、Task、Knowledge、Resource、human attentionへtyped edgeで接続する。
@@ -160,7 +164,8 @@ Goal / Task ── assignment ── Agent
 ## Related
 
 - [最遠の目標](../../.kiro/steering/farthest_goal.md) — RQ1 / RQ3 / RQ4 / RQ5 / RQ6
-- [ADR_011: Agent OrreryをM3Eのmapとして実装する](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) — DC2 / DC3 / DC13 / DC15 / DC21
+- [gyroid-eth/orrery-telemetry](https://github.com/gyroid-eth/orrery-telemetry) — 合併吸収対象となる外部OTの正本
+- [ADR_011: Agent OrreryをM3Eのmapとして実装する](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) — 外部OTの説明ではなく、M3E側の受入境界
 - [Agent Mapping Pluginの境界](./260808_agent_mapping_plugin_boundary.md)
 - [Neo4j-backed Team CollaborationとGraphLink](./260824_neo4j_team_collaboration_graphlink.md)
 - [P2P Cloudflare snapshot sync](./260730_p2p_cloudflare_snapshot_sync.md)
