@@ -1,6 +1,6 @@
 # Strategy
 
-最終更新: 2026-07-18
+最終更新: 2026-09-14
 
 この文書は M3E の `Planning Hierarchy` における Strategy 層の入口。
 Strategy は「いま何を攻め、何を後回しにするか」を置く。判断と優先度はここで扱う。
@@ -37,11 +37,13 @@ Discord / Email / Calendar などの複数チャネルを joint で fetch / noti
 M3E の知識ネットワークを参照して文脈理解・返信 draft・通知整理を行うことで、
 **思考と判断の中枢を M3E に寄せる**ことを S1 の具体像とする。
 
-### S2. Team Collaboration を最優先の突破口にする
+### S2. Team Collaboration の一般解を保留する
 
 Refs: `V1`, `V2`, `V4`
 
-複数主体が同じ構造を共有しながら安全に収束できることを、今の最重要ギャップとして扱う。scope lock、push/pull、競合処理、状態共有を優先的に詰める。
+複数主体が同じ構造を共有しながら安全に収束することは、引き続き重要な長期課題である。ただし、複数人 Team Collaboration の一般解は現在の主戦場から外す。
+
+先に `S17` で、Akaghef 個人の複数 PC・常駐 mac mini・human / AI agent 群を一つの内部協働圏として成立させる。そこで identity、authority、同期、conflict、observability、recovery を実証した後、複数人利用へ一般化する。
 
 ### S3. 便利機能より保存・同期・復元の信頼性を先に固める
 
@@ -684,6 +686,114 @@ S16 は新しい Current Strategy だが、直ちに `Current_Status.md` の数�
 - Neo4j store formats: <https://neo4j.com/docs/operations-manual/current/database-internals/store-formats/>
 - Neo4j Change Data Capture: <https://neo4j.com/docs/cdc/current/>
 - Neo4j fine-grained access control: <https://neo4j.com/docs/operations-manual/current/tutorial/access-control/>
+
+### S17. OT を合併吸収し、個人ツールとしての一枚絵運用を主戦場にする
+
+Refs: `V2`, `V3`, `V5`, `V1`
+
+**現在の主戦場を Team Collaboration（`S2`）から、OT（ORRERY Telemetry / Agent 管理 slice）の合併吸収へ切り替える。** 複数人 Team Collaboration の一般解を先に解かない。まず **Akaghef 個人にとって最良のツール**を作り切ることを最上位に置く。
+
+#### S17.1 なぜ今これを主戦場にするか
+
+`S2` は複数主体の収束を最重要ギャップとして立てたが、現実には Akaghef 自身の複数 PC 間ですら満足な共有が成立していない。一般的な team 収束問題を先に解くのは、検証できない要件を先に設計することになる。
+
+一方で 2 つの前提が揃った。
+
+1. **mac mini server の追加**により、常駐する active host を仮定できるようになった（このセッションの PC ではないが、通常運転では常駐machineが存在する）。
+2. **OT が OSS として backend まで動く**Agent 管理 slice を提供しており、observation / lineage / communication / history / replay が実運転で成立している。
+
+したがって、抽象的な team 問題ではなく、**稼働中の OT を M3E の一枚絵へ合併吸収する**という、上流に正解がある具体的な統合を主戦場にする。
+
+#### S17.2 OT の位置づけ — 完成度の高い部分系
+
+OT の開発者は「タスク管理ツールの一部を切り出した」と説明している。つまり OT が公開しているのは全体 system ではなく、**A-sys 相当のうち Agent 管理面を切り出した slice** である。範囲は強いが狭い。
+
+```text
+OT = Agent 管理 slice
+  ├─ runtime observation
+  ├─ spawn lineage
+  ├─ communication
+  ├─ history / replay
+  └─ agent operations
+
+M3E が一枚絵で管理したい全体
+  ├─ Why:       intent / Goal
+  ├─ What:      Task / artifact / knowledge
+  ├─ Who:       human / AI agent / Role
+  ├─ Now:       runtime / Telemetry / attention
+  └─ With-what: money / machine / time / authority / Resource
+```
+
+OT を別 dashboard として併用するだけでは、指示・観測・知識・Resource・判断が別の面に残り、最遠目標 RQ5（指示と観測が同じ面で起きる）に届かない。Akaghef の目標は全体を一枚絵で管理することであり、OT はその中の完成度の高い部分系として吸収対象になる。
+
+#### S17.3 「合併吸収」の定義 — 複製ではない
+
+合併吸収は、OT の画面を M3E 内に再現することでも、OT backend を無条件に M3E の正本にすることでもない。取り込む対象を 4 層に分解する。
+
+1. **稼働済み backend / observation contract** — session / lineage / state / mail / history / replay の実データ経路。`snapshot.json` schema_version 1 のような、片側が動かせない契約を seam の利点として使う。
+2. **interaction grammar** — node hover、edge から mail 履歴を開く、Deck / Network、time replay、detail card。
+3. **node type ごとの解釈** — Agent Card / Task / Role / Resource が、それぞれ schema・見た目・色・操作を所有する（node type が解釈権限を持つ）。
+4. **M3E semantic graph への binding** — OT 由来の Agent / Runtime を、Goal・Task・Knowledge・Resource・human attention へ typed edge で接続する。
+
+OT の完成部分は再発明せず利用・抽出する一方、M3E の canon・scope・Role / Actor Instance / Telemetry 分離（ADR_011 DC3）・field ownership（DC21）・attention routing（DC13）を OT 側の都合へ縮退させない。
+
+#### S17.4 個人ツールとしての最良形を基準にする
+
+成功条件は「複数人が使えること」ではなく、**Akaghef の注意 1 単位あたりに成立する仕事量**（最遠目標の価値関数）である。
+
+- 最初の team は複数人ではなく、**Akaghef 所有の複数 PC + 常駐 mac mini + そこで動く human / AI agent 群**。
+- Resource も一枚絵に載せる。最初の実証は `お金` node を置き、agent / Task / Goal と typed edge で結ぶこと。会計等が数値の canonical owner なら明細を複製せず、owner / 参照 / 配分 / 制約 / provenance を分離する（`S16` に従う）。
+- 常駐 host は運転の中心を与えるが、復旧不能な単一障害点を正当化しない（`S3` / `S13` に従う）。
+
+#### S17.5 最初の thin slice
+
+```text
+Goal / Task ── assignment ── Agent
+     │                         │
+     └──── resource-use ── お金 / machine
+```
+
+Agent 管理 slice だけを先に閉じず、Goal / Task / Agent / Resource を同一 PJ graph で結ぶ最小 slice を最初の成果とする。実装前に authority・Command・event catch-up・Resource canonical owner の 4 契約を確定する。
+
+#### S17.6 保留するもの
+
+- 複数人の Team Collaboration の一般解（`S2` の当初範囲）。個人 multi-PC が成立してから再評価する。
+- OT にない全自動化。RQ6 は注意をゼロするのではなく、向けるべき場所を正確にすること。
+- OT 画面の忠実な移植。interaction grammar は抽出するが、dashboard 化（最遠目標 RK4）へ縮退させない。
+
+#### S17.7 既存 Strategy との関係
+
+S17 は既存 Strategy を廃止せず、主戦場を張り替える。
+
+| Strategy | S17 における役割 |
+|---|---|
+| `S2` Team Collaboration | 主戦場から外す。個人 multi-PC を最初の実証段階として吸収し、複数人一般解は保留 |
+| `S3` 保存・同期・復元 | 常駐 host 導入時の安全条件。省略して central server 依存へ進まない |
+| `S13` 外部依存の回避 | OT / 常駐 host / provider へ lock-in しない portable 経路を維持 |
+| `S1` M3E を中枢に | agent 通信・task 通知・判断要求を OT 別画面でなく M3E へ集約 |
+| `S11` / `S12` agent 運用 | OT が実行観測面、M3E attention routing が人間の判断面を担う |
+| `S14` ツール統合 | OT を外部連携でなく一つの運用系へ吸収 |
+| `S16` federated semantic graph | Agent slice を Goal / Knowledge / Resource へ typed relation で接続する architecture 基盤 |
+
+攻略上の主語は S17、全体 architecture は `S16`、価値実現は `S1` / `S11`、信頼性条件は `S3` / `S13`。
+
+#### S17.8 完了の定義
+
+S17 は OT を起動して眺められた時点では完了しない。次を満たした時に成果が出たと判断する。
+
+1. OT の observation contract が M3E connector seam を通り、実データで運転される。
+2. OT 由来の Agent / Runtime が、M3E map 上の Goal / Task / Role へ typed edge で接続される。
+3. `お金` を最初の Resource node として置き、canonical owner と semantic relation を混同せずに俯瞰できる。
+4. 複数 PC + 常駐 mac mini が同一 PJ / Task / agent state を矛盾なく共有する。
+5. 指示と観測が同じ map 面で起きる（別 dashboard を併用しない）。
+6. OT / 常駐 host が不適合でも portable source と adapter が残り、撤退できる。
+
+#### S17.9 参照
+
+- [一枚絵としての M3E](../ideas/260914_unified_work_graph_multi_pc_resource_ot.md)
+- [最遠の目標](../../.kiro/steering/farthest_goal.md) — RQ1 / RQ3 / RQ4 / RQ5 / RQ6
+- [ADR_011: Agent Orrery を M3E の map として実装する](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) — DC2 / DC3 / DC13 / DC15 / DC21
+- [S16 局所正本の連邦化と Neo4j 大域 graph](#s16-局所正本を連邦化しneo4j-で大域-semantic-graph-を再構築する)
 
 ---
 
