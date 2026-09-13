@@ -1,6 +1,6 @@
 # Current Status
 
-最終更新: 2026-07-19
+最終更新: 2026-09-14
 
 この文書は、**今後数日でどの `S*` を主戦場にしているか**を示す短期の戦略スナップショット。
 履歴・運用ルール・詳細ロードマップ・具体 task は別ドキュメントへ分離する。
@@ -26,17 +26,23 @@
 
 - 開発対象: `beta/`
 - MVP Phase 1〜4: 完了（読み取り・編集・描画・保存が動作中）
-- 主戦場: `S2` Team Collaboration を最優先の突破口にする
+- 主戦場: `S17` OT を合併吸収し、個人ツールとしての一枚絵運用を成立させる
 - 最新リリース: `main` / tag `v260419-2`
 - データバージョン: v1（schema version 1）
 
 ## Active Strategy (Next Few Days)
 
-### S2. Team Collaboration を最優先の突破口にする
+### S17. OT を合併吸収し、個人ツールとしての一枚絵運用を主戦場にする
 
-- 状態: 実装中（主戦場に復帰）
-- 現在地: エンティティ登録・scope lock・SSE は完了。scope push を詰めている
-- 数日内の焦点: Command Language の 3 平面整列（語彙先行）を前置きし、Phase 2（conflict backup, エンティティ UI, 監査ログ）へ進む。S2 はチーム並列のデータ蓄積装置であり、S16 の authority / Command 境界の実証場を兼ねる。**最初の実チーム = Swingby（人力飛行機）の知識マップ作成**
+- 状態: **主戦場へ昇格。Strategy 化済み、統合境界の確定前**
+- 現在地: 合併吸収対象は外部repository `gyroid-eth/orrery-telemetry`。ORRERY Mail / launcher / hooks / provider integration / dashboard API が実装されている。Akaghef自作の `playground/agent-orrery` は対象外。M3E 側では ADR_011 に意味境界があり、外部OT→M3E connector と Goal / Task / Resource への binding は未実装
+- 数日内の焦点: OT の observation contract と M3E map data seam を確定し、`Goal / Task — Agent — お金 / machine` を同一 PJ graph で結ぶ最初の thin slice を設計する。成功基準は複数人対応ではなく、Akaghef 個人の注意 1 単位あたりに成立する仕事量
+
+### S2. Team Collaboration の一般解を保留する
+
+- 状態: **主戦場から保留へ移行**
+- 現在地: エンティティ登録・scope lock・SSE までの成果は保持する
+- 再開条件: Akaghef 個人の複数 PC + 常駐 mac mini + agent 群で identity / authority / sync / conflict / recovery が実運転でき、複数人へ一般化する具体的需要が生じること
 
 ### S3. 保存・同期・復元の信頼性を先に固める
 
@@ -48,7 +54,7 @@
 
 - 状態: **実装凍結・収穫モード**。Phase 0 正典化（ADR 008 / PR #75）と Phase 1 specimen（PR #77、検証合格・merge 済み）まで完了
 - 現在地: UC-A（agent/CI が repo-local semantic source を file read で消費）は製品レベルで実証済み
-- 数日内の焦点: Phase 2（indexer / policy gate / proposal journal）は Demand Gate（実需 cross-source query 3 件）が開くまで着手しない。数学オントロジーは長期線とし、近期の query 採取は Swingby チーム運用（下記 S2）から行う
+- 数日内の焦点: Phase 2（indexer / policy gate / proposal journal）は Demand Gate（実需 cross-source query 3 件）が開くまで着手しない。S17 の Agent / Goal / Task / Resource 横断 query を実需候補として採取する
 
 ### S13. 外部インフラやプロバイダに依存しすぎない経路を維持する
 
@@ -60,16 +66,18 @@
 
 - `S3`: role 違反を機械的に止める CI チェック未導入
 - `S3`: セキュリティ検討 4 件（CSRF, LAN 露出, エージェント偽装, 入力バリデーション）は Todo Pool で blocked 管理
-- `S2` / `S3`: Team Collaboration まわりは push / conflict / UI / audit が相互依存しやすい
+- `S17`: OT upstream contract と M3E の Role / Actor Instance / Telemetry 語彙を直接同一視すると semantic dual-canon になる
+- `S17`: 常駐 mac mini を active host として使えても、単一障害点化せず portable recovery を維持する必要がある
+- `S17`: Agent dashboard の移植に縮退すると、Goal / Knowledge / Resource / attention を同じ面で扱う最遠目標から外れる
 - 解消済みメモ: SQLite ロック問題は API 経由で回避済み
 
 ## Next Strategy Focus
 
-1. Command Language 3 平面整列（Glossary 対応表含む）を確定する — S2/S3 仕様の語彙前提
-2. `S2` Team Collaboration Phase 2（conflict backup, 監査ログ）へ進む
-3. `S3` branch-role ゲートと Stage A テストを導入する
-4. `S16` 数学オントロジー specimen へのコンテンツ投入と Demand Gate query 採取
-5. `S4` Linear↔Tree L1 最小実装と round-trip テストへ接続する
+1. `S17` OT の backend / observation contract と M3E connector seam の責任境界を確定する
+2. `S17` 最初の thin slice（Goal / Task — Agent — Resource）の node / typed edge / authority contract を確定する
+3. `S17` 個人 multi-PC + 常駐 mac mini の active-host / event catch-up / recovery 境界を確定する
+4. `S3` 保存・同期・復元を S17 の安全条件として並走させる
+5. `S16` S17 から実需 cross-source query を採取し、Demand Gate を判定する
 
 ---
 
