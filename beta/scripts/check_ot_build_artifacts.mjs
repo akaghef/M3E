@@ -4,13 +4,8 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const buildRoot = resolve(root, "dist/browser");
 const expected = {
-  deck: ['id="wrap"', "function render(){"],
-  network: ['id="gsvg"', "function buildEls(){"],
-  detail: ['id="term"', "const TM=id=>document.getElementById(id);"],
-  edge: ['id="edrawer"', "function edgeClick(ev){"],
-  mail: ['id="wrap"', "function mailPulseStart(){"],
-  replay: ["DIGEST REPLAY", "function startReplay(names){"],
-  runtime: ['id="spawnmd"', "function openSpawnModal(){"],
+  'surface-overview': ['id="wrap"', 'id="gsvg"', 'id="nc-reset"', "function render(){", "function buildEls(){"],
+  'agent-detail': ['id="term"', 'id="ot-open-detail"', "function openPanel(name){", "function renderPanelSummary(name, a, g){"],
 };
 
 function files(dir) {
@@ -26,7 +21,7 @@ if (!statSync(buildRoot, { throwIfNoEntry: false })) {
 }
 const content = files(buildRoot).map((path) => readFileSync(path, "utf8")).join("\n");
 const missing = Object.entries(expected).flatMap(([component, needles]) => needles
-  .filter((needle) => !content.includes(needle))
+  .filter((needle) => !content.includes(needle) && !content.includes(JSON.stringify(needle).slice(1, -1)))
   .map((needle) => `${component}: ${JSON.stringify(needle)}`));
 if (missing.length) {
   console.error(`OT cut build reachability failed:\n${missing.join("\n")}`);

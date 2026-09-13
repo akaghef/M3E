@@ -1,3 +1,97 @@
+// OT lab: single-agent fixture context; no surface globals or hidden dashboard.
+const EMBED_MODE=false;
+let lastData=[window.OT_NATIVE_FIXTURES.agents[0]];
+function reportJsError(where,err,extra){
+  try{
+    const b=Object.assign({where,ua:navigator.userAgent,
+      msg:(err&&err.message)||String(err),
+      stack:(err&&err.stack)||''},extra||{});
+    fetch('/api/jserr',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(b),
+      keepalive:true}).catch(()=>{});
+  }catch(_){/* reporting must never be the thing that throws */}
+}
+window.addEventListener('error',e=>reportJsError('window.onerror',e.error||e,
+  {src:e.filename,line:e.lineno,col:e.colno,msg:e.message}));
+window.addEventListener('unhandledrejection',e=>
+  reportJsError('unhandledrejection',e.reason));
+
+const esc=s=>(s??"").replace(/[&<>"]/g,c=>(
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// agent 名の scientist 部分 → 肖像。長い順で末尾一致(誤マッチ防止)
+const SCIENTISTS=["Leeuwenhoek","Boltzmann","Arrhenius","Ramanujan",
+  "Langmuir","Guericke","Vesalius","Faraday","Feynman","Einstein","Pasteur",
+  "Linnaeus","Ostwald","Maxwell","Pascal","Newton","Planck","Kepler",
+  "Mendel","Turing","Hubble","Darwin","Tesla","Curie","Euler","Gauss",
+  "Hooke","Bohr","Fabre",
+  // Added 2026-06-26 (round 2) — keep in sync with SCIENTIST_NOUNS in utils.py
+  "Copernicus","Archimedes","Mendeleev","Franklin","Galileo","Edison",
+  "Dirac","Fermi","Koch","Bell",
+  // Added 2026-06-26 (round 3)
+  "Somerville","Lavoisier","Lovelace","Goodall","Pauling","Noether",
+  "Yukawa","Hopper","Lamarr","Bose","Watt"].sort((a,b)=>b.length-a.length);
+function scientistOf(name){
+  for(const s of SCIENTISTS)
+    if(name.toLowerCase().endsWith(s.toLowerCase()))return s;
+  return null;
+}
+// Custom portraits for non-scientist persistent agents.
+// Loaded from /api/custom-portraits, backed by AGENTSTACK_CUSTOM_PORTRAITS.
+let CUSTOM_PORT={};
+
+// avatar key for portraits: prefer a custom bot mapping, else fall back to scientistOf.
+function avatarKeyOf(name){
+  return CUSTOM_PORT[(name||'').toLowerCase()]||scientistOf(name);
+}
+
+function portURL(sci,hi){
+  /* Portraits come from the server, which resolves a name to a file. A
+     static build has no server, and <img src> never reaches the demo's
+     fetch shim, so without this hook every face falls back to initials —
+     the page still works and quietly looks like a different product. */
+  if(window.AGENTSTACK_DEMO&&window.AGENTSTACK_DEMO.portraitURL)
+    return window.AGENTSTACK_DEMO.portraitURL(sci,hi);
+  return `/portrait?name=${encodeURIComponent(sci)}${hi?'&hi=1':''}`;
+}
+function portraitFallback(el){
+  if(!el||el.dataset.portraitFallback==='1'){
+    if(el){el.hidden=true;el.style.display='none';}
+    return;
+  }
+  el.dataset.portraitFallback='1';
+  const u=new URL(el.getAttribute('src')||el.getAttribute('href')||'',location.href);
+  u.searchParams.delete('hi');
+  if(el.tagName&&el.tagName.toLowerCase()==='image')el.setAttribute('href',u.pathname+u.search);
+  else el.src=u.pathname+u.search;
+}
+
+function toast(prefix,msg,err){
+  const t=document.getElementById('toast');
+  t.innerHTML=`<span class="p">${esc(prefix)}</span> ${esc(msg)}`;
+  t.className='on'+(err?' err':'');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.className='',3400);
+}
+
+async function jump(name,ev){
+  ev.stopPropagation();
+  // Embedded in the ORRERY cockpit, the terminal lives in the host: hand the
+  // session over instead of asking this server to open a separate terminal.
+  if(EMBED_MODE){
+    window.parent.postMessage({type:'orrery-jump',name:name},location.origin);
+    return;
+  }
+  toast('▸ LINK','> '+name+' …');
+  try{
+    const r=await fetch('/api/jump',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session:name})});
+    const j=await r.json();
+    if(j.ok) toast('▸ LINK','> '+name+'  ::  '+(j.detail||j.action).toUpperCase());
+    else toast('✕ FAIL','> '+(j.error||'unknown'),true);
+  }catch(e){ toast('✕ FAIL','> uplink lost: '+e,true); }
+}
+
 /* ═══════════════════════ AGENT DETAIL PANEL ═══════════════════════ */
 let panelName=null,panelTab='hist';
 const TM=id=>document.getElementById(id);
@@ -366,3 +460,128 @@ function closeTerm(){
   const T=TM('term');T.classList.remove('on');
   T.setAttribute('aria-hidden','true');
 }
+function setTab(tab){
+  panelTab=tab;
+  TM('term').dataset.tab=tab;
+  [...TM('tm-tabs').children].forEach(b=>
+    b.classList.toggle('on',b.dataset.tab===tab));
+  if(tab==='hist') loadHistory();
+  else if(tab==='deliv') loadDeliverables();
+}
+// 成果物: LOG_*.md の frontmatter agent: が一致するノートを表示する。
+// vault 内の結果だけ obsidian:// link にし、通常の project logs も読める形を保つ。
+async function loadDeliverables(){
+  if(!panelName)return;
+  const box=TM('tm-deliv');
+  box.innerHTML='<div class="hempty">LOADING…</div>';
+  let items=[];
+  let vault='';
+  try{
+    const r=await fetch('/api/deliverables?agent='+
+      encodeURIComponent(panelName));
+    const j=await r.json();
+    items=j.items||[];
+    vault=j.vault||'';
+  }catch(e){
+    box.innerHTML='<div class="hempty">fetch failed</div>';return;}
+  if(panelTab!=='deliv')return;            // 切替済みなら破棄
+  if(!items.length){
+    box.innerHTML='<div class="hempty">no output logs</div>';return;}
+  box.innerHTML=items.map(it=>{
+    const itemVault=Object.prototype.hasOwnProperty.call(it,'vault')?
+      it.vault:vault;
+    const d=it.mtime?new Date(it.mtime*1000)
+      .toLocaleDateString('en-US',{month:'2-digit',day:'2-digit'}):'';
+    const body=`<span class="dv-t">${esc(it.title)}</span>`+
+      `<span class="dv-d">${d}</span>`;
+    if(!itemVault)
+      return `<div class="dv-item" title="${esc(it.rel||'')}">${body}</div>`;
+    const file=(it.rel||'').replace(/\.md$/,'');
+    const url='obsidian://open?vault='+encodeURIComponent(itemVault)+
+      '&file='+encodeURIComponent(file);
+    return `<a href="${url}" title="${esc(it.rel||'')}">${body}</a>`;
+  }).join('');
+}
+async function loadHistory(){
+  if(!panelName)return;
+  const box=TM('tm-hist');
+  box.innerHTML='<div class="hempty">LOADING…</div>';
+  try{
+    const r=await fetch(
+      `/api/history?session=${encodeURIComponent(panelName)}`);
+    const j=await r.json();
+    if(!j.ok){
+      box.innerHTML=`<div class="hempty">${esc(j.error||'no history')}</div>`;
+      TM('tm-stat').textContent='— no transcript';return;
+    }
+    const P=[];
+    if(j.total>j.shown)
+      P.push(`<div class="hnote">${j.total-j.shown} older hidden · `+
+        `last ${j.shown} · ${esc(j.file)}</div>`);
+    for(const e of j.events){
+      const t=e.ts?new Date(e.ts).toLocaleTimeString('en-US'):'';
+      if(e.kind==='tool_use'){
+        const sp=e.text.indexOf('  ');
+        const nm=sp>0?e.text.slice(0,sp):e.text;
+        const arg=sp>0?e.text.slice(sp+2):'';
+        P.push(`<div class="msg assistant"><div class="who">TOOL`+
+          ` <time>${t}</time></div><div class="bub tool">`+
+          `<span class="tk">${esc(nm)}</span>${esc(arg)}</div></div>`);
+      }else if(e.kind==='tool_result'){
+        P.push(`<div class="msg user"><div class="who">RESULT`+
+          ` <time>${t}</time></div>`+
+          `<div class="bub tool res">${esc(e.text)}</div></div>`);
+      }else if(e.kind==='thinking'){
+        P.push(`<div class="msg assistant"><div class="who">THINKING`+
+          ` <time>${t}</time></div>`+
+          `<div class="bub think">${esc(e.text)}</div></div>`);
+      }else{
+        const u=e.role==='user';
+        P.push(`<div class="msg ${u?'user':'assistant'}">`+
+          `<div class="who">${u?'USER':'ASSISTANT'}`+
+          ` <time>${t}</time></div>`+
+          `<div class="bub">${esc(e.text)}</div></div>`);
+      }
+    }
+    box.innerHTML=P.join('')||'<div class="hempty">(history empty)</div>';
+    box.scrollTop=box.scrollHeight;
+    TM('tm-stat').textContent=
+      `transcript ${j.shown}/${j.total} · ${esc(j.file)}`;
+  }catch(e){ box.innerHTML='<div class="hempty">comm failed</div>'; }
+}
+
+TM('tm-x').addEventListener('click',closeTerm);
+TM('term').addEventListener('click',e=>{if(e.target.id==='term')closeTerm();});
+TM('tm-exit-btn').addEventListener('click',async()=>{
+  if(!panelName)return;
+  const btn=TM('tm-exit-btn');
+  btn.textContent='…';btn.disabled=true;
+  try{
+    const r=await fetch('/api/exit',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session:panelName})});
+    const j=await r.json();
+    btn.disabled=false;
+    if(j.ok){
+      const warn=(j.actions||[]).includes('warn-attached')?' (attached)':'';
+      toast('▸ EXIT','> '+panelName+'  ::  /exit sent'+warn);
+      btn.textContent='↩ Exit';}
+    else{toast('✕ FAIL','> '+(j.error||'unknown'),true);
+      btn.textContent='↩ Exit';}
+  }catch(e){
+    btn.disabled=false;
+    btn.textContent='↩ Exit';
+    toast('✕ FAIL','> exit err: '+e,true);
+  }
+});
+addEventListener('keydown',e=>{if(e.key==='Escape'&&panelName)closeTerm();});
+TM('tm-tabs').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-tab]');if(b)setTab(b.dataset.tab);
+});
+TM('tm-open').addEventListener('click',()=>{
+  if(panelName)jump(panelName,{stopPropagation(){}});
+});
+
+// OT lab entry: use upstream panel behavior, including reopening after Close.
+document.getElementById('ot-open-detail').addEventListener('click',()=>openPanel(lastData[0].name));
+openPanel(lastData[0].name);

@@ -14,7 +14,7 @@ module.exports = defineConfig({
   },
   webServer: {
     command: "npx vite preview --host 127.0.0.1 --port 14278 --config vite.config.mjs",
-    url: "http://127.0.0.1:14278/src/labs/ot/routes/deck.html",
+    url: "http://127.0.0.1:14278/src/labs/ot/routes/surface-overview.html",
     reuseExistingServer: false,
     cwd: __dirname,
     timeout: 30_000,
