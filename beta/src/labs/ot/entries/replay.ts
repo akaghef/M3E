@@ -1,5 +1,7 @@
+import markup from "../cut/replay/markup.html?raw";
+import logic from "../cut/replay/logic.js?raw";
 import { installOtSafeFetch } from "../shared/safe_fetch";
-import { loadVerbatimCut, mountHarness } from "../shared/render";
+import { executeVerbatimCut, mountHarness } from "../shared/render";
 installOtSafeFetch();
-mountHarness("OT REPLAY", ["replayBar", "gsvg"]);
-void loadVerbatimCut(new URL("../cut/replay/logic.js", import.meta.url));
+mountHarness("OT REPLAY", markup, "replay");
+executeVerbatimCut(logic, "replay", "startReplay");

@@ -1,25 +1,13 @@
-        <span class="sp-ttl" id="sp-ttl">HISTORY</span>
-        <span class="sp-tot" id="sp-tot"></span>
-        <span class="sp-grow"></span>
-        <span class="sp-leg">
-          <span class="sp-chip mail">MAIL</span>
-          <span class="sp-chip spawn">SPAWN</span>
-          <span class="sp-chip exit">EXIT</span>
-        </span>
-      </header>
-      <div class="sp-frame">
-        <svg class="sp-svg" id="sp-svg" viewBox="0 0 720 64"
-             preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"
-             aria-label="agent activity history"></svg>
-        <div class="sp-tip" id="sp-tip" aria-hidden="true"></div>
-      </div>
-      <div class="sp-axis" id="sp-axis"></div>
-    </section>
-    <div class="tm-annot" id="tm-annot" aria-hidden="true"></div>
-    <div class="tm-hist" id="tm-hist"></div>
-    <div class="tm-deliv" id="tm-deliv"></div>
-    <div class="tm-foot">
-      <span id="tm-stat">…</span>
+<!-- edge thread drawer: network view で edge クリック時に右からスライドイン -->
+<aside id="edrawer" aria-hidden="true">
+  <div class="ed-bar">
+    <div class="ed-pair">
+      <span class="ed-a">—</span>
+      <span class="ed-arr">⇄</span>
+      <span class="ed-b">—</span>
+      <span class="ed-cnt">0</span>
     </div>
+    <button class="ed-close" onclick="closeDrawer()" title="close (esc)">✕</button>
   </div>
-</div>
+  <div class="ed-list" id="ed-list"></div>
+</aside>

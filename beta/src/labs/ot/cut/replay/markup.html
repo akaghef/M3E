@@ -1,3 +1,43 @@
+<section id="net">
+  <div class="nettool">
+    <div class="win" id="winsel">
+      <span class="win-label" id="winlabel">~ 1d</span>
+      <input type="range" id="winrange" min="0" max="1" step="0.01" value="0.48" aria-label="Time window">
+      <button id="winall" class="win-all">ALL</button>
+    </div>
+    <button id="selToggle" class="sel-toggle" title="rectangle multi-select (drag to select / Esc to clear)"><span class="gl">◫</span>Select</button>
+    <span class="netinfo" id="netinfo">…</span>
+    <button class="legend-toggle" type="button" popovertarget="net-legend"
+            aria-label="show graph legend" title="graph legend">?</button>
+    <div class="legend-pop" id="net-legend" popover>
+      <div class="lp-title">Reading the graph</div>
+      <div class="lp-row">
+        <span class="lp-key">Lineage</span>
+        <span><i class="lp-dot parent"></i>parent</span>
+        <span><i class="lp-dot child"></i>child</span>
+        <span><i class="lp-dot both"></i>both</span>
+      </div>
+      <div class="lp-row">
+        <span class="lp-key">Context</span>
+        <span class="lp-arc"></span>
+        <span>context remaining</span>
+      </div>
+      <div class="lp-row">
+        <span class="lp-key">Motion</span>
+        <svg class="lp-motion waiting" width="16" height="16" viewBox="0 0 16 16"
+             aria-hidden="true">
+          <circle cx="8" cy="8" r="6" pathLength="100"></circle>
+        </svg>
+        <span>waiting</span>
+        <svg class="lp-motion working" width="16" height="16" viewBox="0 0 16 16"
+             aria-hidden="true">
+          <circle cx="8" cy="8" r="6" pathLength="100"></circle>
+        </svg>
+        <span>working</span>
+      </div>
+    </div>
+  </div>
+  <!-- Task G: DIGEST REPLAY controller (slide-in above SVG, below .nettool) -->
   <div id="replayBar" role="region" aria-label="digest replay controller" aria-hidden="true">
     <div class="rb-rail">
       <span class="rb-rec"></span>
@@ -105,8 +145,3 @@ OFF = legacy snapshot+comet mode">
     </div>
   </div>
 </section>
-
-<div id="toast"></div>
-<div id="gtip"></div>
-
-<!-- + NEW AGENT spawn modal (cockpit launch manifest) -->

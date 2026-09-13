@@ -192,6 +192,3 @@ async function submitSpawn(){
     updateSpawnButton();
   }
 }
-
-// Task H: replay 中は netTick で buildEls が走ると tt-hidden が消えるので停止。
-//   replay 終了で次の周期から自動再開（stopReplay は state を残さない）。

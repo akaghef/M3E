@@ -1,5 +1,7 @@
+import markup from "../cut/network/markup.html?raw";
+import logic from "../cut/network/logic.js?raw";
 import { installOtSafeFetch } from "../shared/safe_fetch";
-import { loadVerbatimCut, mountHarness } from "../shared/render";
+import { executeVerbatimCut, mountHarness } from "../shared/render";
 installOtSafeFetch();
-mountHarness("OT NETWORK", ["net", "gsvg", "wrap"]);
-void loadVerbatimCut(new URL("../cut/network/logic.js", import.meta.url));
+mountHarness("OT NETWORK", markup, "network");
+executeVerbatimCut(logic, "network", "buildEls");

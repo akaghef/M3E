@@ -118,3 +118,48 @@ function _rbSyncTimeTravelBtn(){
   btn.setAttribute('aria-checked', RP.timeTravel?'true':'false');
 }
 function stopReplay(){
+  if(!RP.active)return;
+  RP.active=false;
+  RP.paused=true;
+  if(RP.rafId){ cancelAnimationFrame(RP.rafId); RP.rafId=0; }
+  const bar=_rb('replayBar');
+  if(bar) bar.setAttribute('aria-hidden','true');
+  document.body.classList.remove('replay-on','tt-on');
+  _rbUnmarkEdges();
+  // Task H v2: gmap / gedges / gspawn を snapshot から完全復元
+  if(RP.savedGmap.size){
+    gmap.clear();
+    for(const [k,v] of RP.savedGmap) gmap.set(k, {...v});
+    gedges.length=0;
+    for(const e of RP.savedGedges) gedges.push({...e});
+    gspawn.length=0;
+    for(const e of RP.savedGspawn) gspawn.push({...e});
+    buildEls();
+    simHot=Math.max(simHot, 80);
+    runSim();
+  }
+  RP.savedGmap=new Map();
+  RP.savedGedges=[];
+  RP.savedGspawn=[];
+  RP.initialAlive=new Set();
+  RP.askActive=new Set();
+  RP.pendingFadeIn=new Set();
+  RP.pendingEdgeFadeIn=new Set();
+  RP.dirty=false;
+  RP.edgeCountChanged=false;
+  document.querySelectorAll('.ask-replay-glyph').forEach(el=>el.remove());
+  if(gEls.node){
+    for(const [, o] of gEls.node){
+      if(!o.grp) continue;
+      o.grp.classList.remove('replay-ask','replay-alert','replay-retired',
+                              'node-spawn-fadein','tt-spawning');
+    }
+  }
+  const mw=_rb('rbMarkers'); if(mw) mw.innerHTML='';
+  RP.markerEls.length=0;
+  _rbHideMarkerTip();
+  window._replayMode=false;
+  mailQueue.length=0;
+  if(view==='net') mailPulseStart();
+  updateSelBar();
+}

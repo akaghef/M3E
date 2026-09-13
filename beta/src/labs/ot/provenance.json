@@ -18,7 +18,7 @@
         "cut/deck/logic.js",
         "cut/deck/markup.html"
       ],
-      "dependency_closure": "dashboard/index.html:30700-30835 plus markup 2438-2474"
+      "dependency_closure": "dashboard/index.html:30787-30838 plus markup 2435-2474"
     },
     "network": {
       "route": "/src/labs/ot/routes/network.html",
@@ -33,7 +33,7 @@
         "cut/network/logic.js",
         "cut/network/markup.html"
       ],
-      "dependency_closure": "dashboard/index.html:31142-31905 plus markup 2475-2627"
+      "dependency_closure": "dashboard/index.html:31142-31918 plus markup 2476-2622"
     },
     "detail": {
       "route": "/src/labs/ot/routes/detail.html",
@@ -46,7 +46,7 @@
         "cut/detail/logic.js",
         "cut/detail/markup.html"
       ],
-      "dependency_closure": "dashboard/index.html:33420-33877 plus markup 2777-2825"
+      "dependency_closure": "dashboard/index.html:33418-33785 plus markup 2777-2824"
     },
     "edge": {
       "route": "/src/labs/ot/routes/edge.html",
@@ -58,7 +58,7 @@
         "cut/edge/logic.js",
         "cut/edge/markup.html"
       ],
-      "dependency_closure": "dashboard/index.html:31372-31432 plus markup 2800-2825"
+      "dependency_closure": "dashboard/index.html:31362-31434 plus markup 2763-2775"
     },
     "mail": {
       "route": "/src/labs/ot/routes/mail.html",
@@ -71,7 +71,7 @@
         "cut/mail/logic.js",
         "cut/mail/markup.html"
       ],
-      "dependency_closure": "dashboard/index.html:32042-32402 plus markup 2450-2474"
+      "dependency_closure": "dashboard/index.html:32042-32380 plus markup 2476-2622"
     },
     "replay": {
       "route": "/src/labs/ot/routes/replay.html",
@@ -84,7 +84,7 @@
         "cut/replay/logic.js",
         "cut/replay/markup.html"
       ],
-      "dependency_closure": "dashboard/index.html:33081-33200 plus markup 2516-2627"
+      "dependency_closure": "dashboard/index.html:33081-33245 plus markup 2476-2622"
     },
     "runtime": {
       "route": "/src/labs/ot/routes/runtime.html",
@@ -97,7 +97,7 @@
         "cut/runtime/logic.js",
         "cut/runtime/markup.html"
       ],
-      "dependency_closure": "dashboard/index.html:34660-34856 plus markup 2628-2776"
+      "dependency_closure": "dashboard/index.html:34660-34853 plus markup 2628-2753"
     }
   },
   "fragments": [
@@ -105,72 +105,68 @@
       "component": "deck",
       "path": "cut/deck/logic.js",
       "source_range": [
-        30700,
-        30835
+        30787,
+        30838
       ],
       "kind": "javascript",
       "source_symbols": [
-        "buildEls",
-        "paint"
+        "render"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "7838d54d385e21fee6e8714cd37f3dec3d5cbdf7b28293c9427d822c10bf8735"
+      "sha256": "8c346a76cd276a117ac5060726357a639c430324ea0a89498e8abd704071be93"
     },
     {
       "component": "deck",
       "path": "cut/deck/markup.html",
       "source_range": [
-        2438,
+        2435,
         2474
       ],
       "kind": "markup",
       "source_symbols": [
-        "buildEls",
-        "paint"
+        "render"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "8efb812811419cea8404f02058ebf8bcf4e7ad7f37730e17c38c4d2e474cf9eb"
+      "sha256": "6c408bb3c9c156276a9299b2843fba3833f51017a216639d60bdc62ea2a8bcb3"
     },
     {
       "component": "network",
       "path": "cut/network/logic.js",
       "source_range": [
         31142,
-        31905
+        31918
       ],
       "kind": "javascript",
       "source_symbols": [
         "buildEls",
-        "step",
         "paint",
         "runSim"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "db447836ab514db02356496173ec78783609e60cbd50877ca999f9b77964e524"
+      "sha256": "18a917b5c618b527dbb271122c8f2fb2f0bd829fc37495fe48c31050a14fb74a"
     },
     {
       "component": "network",
       "path": "cut/network/markup.html",
       "source_range": [
-        2475,
-        2627
+        2476,
+        2622
       ],
       "kind": "markup",
       "source_symbols": [
         "buildEls",
-        "step",
         "paint",
         "runSim"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "0b62b96cc31f85d3f959c04e6ddc35f1d25397dfa9a78d9e4678fd750c1b8657"
+      "sha256": "40a57d10e4552ff5716314866b1a337d171e7bd8b713232e9f5e41332d49190a"
     },
     {
       "component": "detail",
       "path": "cut/detail/logic.js",
       "source_range": [
-        33420,
-        33877
+        33418,
+        33785
       ],
       "kind": "javascript",
       "source_symbols": [
@@ -178,14 +174,14 @@
         "closeTerm"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "34013437120775e4505eb0d4634589f31df4fc901fc62bd0a6c79e3ea7f69466"
+      "sha256": "600731e503f4042c4a40718d35f2639e4ed38ab3b1ec5d4b986db5ad83b7ea39"
     },
     {
       "component": "detail",
       "path": "cut/detail/markup.html",
       "source_range": [
         2777,
-        2825
+        2824
       ],
       "kind": "markup",
       "source_symbols": [
@@ -193,42 +189,42 @@
         "closeTerm"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "82491d071e039e6395a939134cfd19e65e4e5d070190b9b214589a7ea9b1a4f7"
+      "sha256": "5b8dae56a6da5edc447fca9aec40316bcca078249f2fb8e3ee6cb24c86eb91d3"
     },
     {
       "component": "edge",
       "path": "cut/edge/logic.js",
       "source_range": [
-        31372,
-        31432
+        31362,
+        31434
       ],
       "kind": "javascript",
       "source_symbols": [
         "openDrawer"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "12adb01a4c7fe851fc4fdf66f707a1d7b6d99a1cca32fd64020bb1eff1b9bb3c"
+      "sha256": "c3eb9662ca17342aa39d1e99f9107f2495c1bae6c90039256757babeafd42dfa"
     },
     {
       "component": "edge",
       "path": "cut/edge/markup.html",
       "source_range": [
-        2800,
-        2825
+        2763,
+        2775
       ],
       "kind": "markup",
       "source_symbols": [
         "openDrawer"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "7d498bc1d33034c97ce3f15a828d7ad316167758ef7cd4265c0ac3a46a40f03b"
+      "sha256": "70b719d55fdb0586ca86ac39ec27715009d998d42cf7d790b377623d86ad2bcc"
     },
     {
       "component": "mail",
       "path": "cut/mail/logic.js",
       "source_range": [
         32042,
-        32402
+        32380
       ],
       "kind": "javascript",
       "source_symbols": [
@@ -236,14 +232,14 @@
         "makeMailCard"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "4c91a1af4f33fbeedb4e3531c72a301d6a2094fdbcdb5a2f9787aebab1e93eba"
+      "sha256": "f96db366fd833a4e5f523e77e08516ef5bcedbb9f4118a72d3018b662a390c44"
     },
     {
       "component": "mail",
       "path": "cut/mail/markup.html",
       "source_range": [
-        2450,
-        2474
+        2476,
+        2622
       ],
       "kind": "markup",
       "source_symbols": [
@@ -251,44 +247,44 @@
         "makeMailCard"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "07d005261f79102a3889d98f925cd370eeae96e2dea4b522d466e68337d67c5f"
+      "sha256": "40a57d10e4552ff5716314866b1a337d171e7bd8b713232e9f5e41332d49190a"
     },
     {
       "component": "replay",
       "path": "cut/replay/logic.js",
       "source_range": [
         33081,
-        33200
+        33245
       ],
       "kind": "javascript",
       "source_symbols": [
         "startReplay",
-        "_rbApplyStateOnly"
+        "stopReplay"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "2439fbd1f06a882d0a40d87bcda4f4e69ad02eea1251ed3f5233d27f844973eb"
+      "sha256": "7be816fa644546f9d70e3be90cd4db2ece4edcf11c9c2d40038dc6e7f0dbe6e6"
     },
     {
       "component": "replay",
       "path": "cut/replay/markup.html",
       "source_range": [
-        2516,
-        2627
+        2476,
+        2622
       ],
       "kind": "markup",
       "source_symbols": [
         "startReplay",
-        "_rbApplyStateOnly"
+        "stopReplay"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "7592ee5a44dbd7e02d943d642267a82dddc9dca933ef219b05681154edb3b1f8"
+      "sha256": "40a57d10e4552ff5716314866b1a337d171e7bd8b713232e9f5e41332d49190a"
     },
     {
       "component": "runtime",
       "path": "cut/runtime/logic.js",
       "source_range": [
         34660,
-        34856
+        34853
       ],
       "kind": "javascript",
       "source_symbols": [
@@ -296,14 +292,14 @@
         "submitSpawn"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "0cbad2118d96733942f92a4ec0e86bbcd35b04f9980ed81bdf0c5e59f7e4c56a"
+      "sha256": "8cbc4d734305306b37b50534518786607467d6011fc7d6939d7a1669c269263b"
     },
     {
       "component": "runtime",
       "path": "cut/runtime/markup.html",
       "source_range": [
         2628,
-        2776
+        2753
       ],
       "kind": "markup",
       "source_symbols": [
@@ -311,7 +307,7 @@
         "submitSpawn"
       ],
       "source_path": "dashboard/index.html",
-      "sha256": "092295e755617488e17c6748e0c4810f34902900b134a27f84aea9ee2a8812cc"
+      "sha256": "e83fa9f498badd10eb706df7f1f4fd3b5fda53c55df7132ad0263652cae87d78"
     }
   ],
   "styles": [

@@ -1,5 +1,7 @@
+import markup from "../cut/edge/markup.html?raw";
+import logic from "../cut/edge/logic.js?raw";
 import { installOtSafeFetch } from "../shared/safe_fetch";
-import { loadVerbatimCut, mountHarness } from "../shared/render";
+import { executeVerbatimCut, mountHarness } from "../shared/render";
 installOtSafeFetch();
-mountHarness("OT EDGE THREAD", ["edrawer", "ed-list"]);
-void loadVerbatimCut(new URL("../cut/edge/logic.js", import.meta.url));
+mountHarness("OT EDGE THREAD", markup, "edge");
+executeVerbatimCut(logic, "edge", "openDrawer");

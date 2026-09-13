@@ -123,26 +123,3 @@
     </div>
   </div>
 </div>
-
-<!-- network view 矩形多選択: 1個以上選択時に slide-in -->
-<div id="selbar" role="toolbar" aria-label="bulk node actions">
-  <div class="sb-cnt"><span class="sb-num" id="selbarNum">0</span><span class="sb-lab">Selected</span></div>
-  <button id="selbarExit" class="sb-btn" title="graceful exit (2-step confirm)"><span class="sb-i">↩</span><span class="sb-tx">Exit</span></button>
-  <button id="selbarResume" class="sb-btn sb-resume" title="resume in tmux (2-step confirm)"><span class="sb-i">↺</span><span class="sb-tx">Resume</span></button>
-  <button id="selbarReplay" class="sb-btn sb-replay" title="digest replay over network view"><span class="sb-i">▸</span><span class="sb-tx">Replay</span></button>
-  <button id="selbarClear" class="sb-x" title="clear selection (Esc)">× CLR</button>
-</div>
-
-<!-- edge thread drawer: network view で edge クリック時に右からスライドイン -->
-<aside id="edrawer" aria-hidden="true">
-  <div class="ed-bar">
-    <div class="ed-pair">
-      <span class="ed-a">—</span>
-      <span class="ed-arr">⇄</span>
-      <span class="ed-b">—</span>
-      <span class="ed-cnt">0</span>
-    </div>
-    <button class="ed-close" onclick="closeDrawer()" title="close (esc)">✕</button>
-  </div>
-  <div class="ed-list" id="ed-list"></div>
-</aside>

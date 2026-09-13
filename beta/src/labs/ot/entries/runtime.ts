@@ -1,5 +1,7 @@
+import markup from "../cut/runtime/markup.html?raw";
+import logic from "../cut/runtime/logic.js?raw";
 import { installOtSafeFetch } from "../shared/safe_fetch";
-import { loadVerbatimCut, mountHarness } from "../shared/render";
+import { executeVerbatimCut, mountHarness } from "../shared/render";
 installOtSafeFetch();
-mountHarness("OT RUNTIME CONTROL", ["spawnmd", "spm-stat"]);
-void loadVerbatimCut(new URL("../cut/runtime/logic.js", import.meta.url));
+mountHarness("OT RUNTIME CONTROL", markup, "runtime");
+executeVerbatimCut(logic, "runtime", "openSpawnModal");

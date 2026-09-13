@@ -1,4 +1,5 @@
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -42,13 +43,46 @@ describe("OT Component Seam Labs", () => {
     expect(existsSync(resolve(otRoot, "upstream/index.html"))).toBe(false);
   });
 
+  test("every JavaScript cut is independently parseable and every markup cut has its representative root", () => {
+    const roots: Record<string, string[]> = {
+      deck: ["wrap"], network: ["gsvg", "net"], detail: ["term"], edge: ["edrawer"],
+      mail: ["gsvg"], replay: ["replayBar", "gsvg"], runtime: ["spawnmd"],
+    };
+    for (const name of components) {
+      const logicPath = resolve(otRoot, "cut", name, "logic.js");
+      expect(() => execFileSync(process.execPath, ["--check", logicPath], { stdio: "pipe" })).not.toThrow();
+      const markup = readFileSync(resolve(otRoot, "cut", name, "markup.html"), "utf8");
+      for (const id of roots[name]) expect(markup).toMatch(new RegExp(`id=["']${id}["']`));
+      // The route performs the actual browser mount; this deterministic parser guard rejects
+      // truncated opening/closing tags before Playwright is involved.
+      const stack: string[] = [];
+      for (const token of markup.matchAll(/<\/?([a-z][\w-]*)(?:\s[^>]*)?>/gi)) {
+        const [, tag] = token;
+        const raw = token[0];
+        if (/^<\//.test(raw)) expect(stack.pop()).toBe(tag.toLowerCase());
+        else if (!/\/>$/.test(raw) && !["meta", "input", "img", "br", "hr", "link"].includes(tag.toLowerCase())) stack.push(tag.toLowerCase());
+      }
+      expect(stack).toEqual([]);
+    }
+  });
+
   test("harnesses only mount and load cuts; OT algorithms remain in fragments", () => {
     for (const name of components) {
       const harness = readFileSync(resolve(otRoot, "entries", `${name}.ts`), "utf8");
-      expect(harness).toContain(`cut/${name}/logic.js`);
-      expect(harness).not.toMatch(/force\s*[+=]|setInterval|simulation|mailDrain|_rbApplyStateOnly|openSpawnModal|submitSpawn/);
+      expect(harness).toMatch(new RegExp(`cut/${name}/markup\\.html\\?raw`));
+      expect(harness).toMatch(new RegExp(`cut/${name}/logic\\.js\\?raw`));
+      expect(harness).not.toMatch(/new URL|loadVerbatimCut/);
+      expect(harness).toContain("mountHarness");
+      expect(harness).not.toMatch(/force\s*[+=]|setInterval|simulation/);
     }
     expect(readFileSync(resolve(otRoot, "shared/render.ts"), "utf8")).not.toMatch(/force\s*[+=]|setInterval|simulation/);
+  });
+
+  test("harness exposes caught upstream exceptions instead of swallowing them", () => {
+    const render = readFileSync(resolve(otRoot, "shared/render.ts"), "utf8");
+    expect(render).toContain("data-ot-error");
+    expect(render).toMatch(/catch/);
+    expect(render).toContain("Missing upstream global");
   });
 
   test("hub keeps seven direct route links and no hiddenByLab", () => {
@@ -100,4 +134,3 @@ describe("OT Component Seam Labs", () => {
     ]);
   });
 });
-

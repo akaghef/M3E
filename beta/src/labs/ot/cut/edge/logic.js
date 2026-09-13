@@ -1,3 +1,13 @@
+/* ── edge thread drawer ── */
+const edrawer=document.getElementById('edrawer');
+let _edCur=null, _edSeq=0;
+function edgeClick(ev){
+  ev.stopPropagation();
+  const hit=ev.currentTarget;
+  const a=hit.dataset.s, b=hit.dataset.t;
+  if(!a||!b) return;
+  openDrawer(a,b);
+}
 async function openDrawer(a,b){
   _edCur={a,b};
   const seq=++_edSeq;
@@ -59,3 +69,5 @@ function renderDrawerError(msg){
   document.getElementById('ed-list').innerHTML=notConfigured
     ? `<div class="ed-config"><b>NOT CONFIGURED</b>`+
       `<span>Set AGENTSTACK_PROJECT_KEY to enable ORRERY Mail thread history.</span></div>`
+    : `<div class="ed-empty">✕ ${esc(msg)}</div>`;
+}

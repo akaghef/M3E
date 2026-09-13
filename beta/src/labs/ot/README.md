@@ -10,15 +10,15 @@ License: PolyForm Perimeter 1.0.1, <https://polyformproject.org/licenses/perimet
 
 The recorded line ranges and hashes in `provenance.json` are the machine-readable closure record.
 
-- DECK: upstream lines 30700-30835 plus markup 2438-2474. It depends on the dashboard globals, telemetry data, and the full deck DOM; the isolated route is a source-cut load and may remain acquisition-only.
-- NETWORK: upstream lines 31142-31905 plus markup 2475-2627. This includes the force/layout closure and network SVG controls. It depends on upstream globals and data state; no standalone simulation is supplied by the harness.
-- DETAIL: upstream lines 33420-33877 plus markup 2777-2825. It depends on the terminal/detail DOM and dashboard globals; only the cut is loaded in isolation.
-- EDGE: upstream lines 31372-31432 plus markup 2800-2825. It depends on the network edge state and drawer DOM; the route may show only the host when those globals are absent.
-- MAIL: upstream lines 32042-32402 plus markup 2450-2474. It depends on upstream mail state and card DOM; no fixture-to-upstream translation is added.
-- REPLAY: upstream lines 33081-33200 plus markup 2516-2627. It depends on the replay controller, graph state, and upstream event globals; partial rendering is expected.
-- RUNTIME: upstream lines 34660-34856 plus markup 2628-2776. It depends on the spawn modal DOM and upstream catalog state. The harness keeps the existing POST-blocking adapter; it does not fake a launch.
+- DECK: logic `30787-30838`, markup `2435-2474`; action `render`, representative root `#wrap`.
+- NETWORK: logic `31142-31918`, markup `2476-2622`; action `buildEls`, representative roots `#gsvg` and `#net`.
+- DETAIL: logic `33418-33785`, markup `2777-2824`; action `openPanel`, representative root `#term`.
+- EDGE: logic `31362-31434`, markup `2763-2775`; action `openDrawer`, representative root `#edrawer`.
+- MAIL: logic `32042-32380`, markup `2476-2622`; action `mailDrain`, representative root `#gsvg`.
+- REPLAY: logic `33081-33245`, markup `2476-2622`; action `startReplay`, representative roots `#replayBar` and `#gsvg`.
+- RUNTIME: logic `34660-34853`, markup `2628-2753`; action `openSpawnModal`, representative root `#spawnmd`.
 
-This partial-render limitation is intentional: a coupled verbatim cut is evidence of identity, not a rewritten standalone product.
+This partial-render limitation is intentional: a coupled verbatim cut is evidence of identity, not a rewritten standalone product. The harness invokes the named upstream action and persists `data-ot-action-invoked`, `data-ot-action-effect`, `data-ot-action-result`, and `data-ot-classification` in the DOM. Dependency errors are visible in `[data-ot-error]`; syntax errors and uncaught page errors are test failures. The current-turn browser run was not completed because the sandbox denied the preview server bind (`listen EPERM 127.0.0.1:14278`), so no per-route classification is claimed here; the Director must rerun the focused Playwright command.
 
 ## Verification
 
@@ -26,3 +26,4 @@ Run from `beta/`:
 
 `npm run check:ot-provenance` validates each fragment's SHA-256, exact recorded line range, and exact substring membership in `/tmp/orrery-telemetry-inspect/dashboard/index.html`. The unit test mutates a copied fragment and asserts validation fails.
 
+`npm run build:browser && npm run check:ot-build-artifacts` verifies representative exact markup and logic strings are reachable in emitted artifacts. The focused production-preview smoke is `./node_modules/.bin/playwright test --config playwright.ot-seam.config.js tests/visual/ot_component_seam_labs.spec.js`; it checks all seven routes, representative upstream IDs, CSS/JS request status, page errors, console errors, and the visible partial-render exception.

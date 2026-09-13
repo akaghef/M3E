@@ -49,6 +49,9 @@ export default defineConfig({
         entryFileNames: "[name].js",
         assetFileNames: (assetInfo) => {
           const name = assetInfo.names?.[0] || assetInfo.name || "";
+          const source = typeof assetInfo.source === "string" ? assetInfo.source : "";
+          if (source.includes("--void:#080a0c") || source.includes(".nettool")) return "ot-dashboard.css";
+          if (name.includes("dashboard")) return "ot-dashboard.css";
           if (name.includes("edge-port-lab")) return "edge-port-lab.css";
           if (name.includes("node-lab")) return "node-lab.css";
           if (name.includes("pn-lab")) return "pn-lab.css";

@@ -20,6 +20,7 @@
     "lab:runtime-board": "vite --host 127.0.0.1 --port 14276 --config vite.config.mjs",
     "lab:ot": "vite --host 127.0.0.1 --port 14277 --config vite.config.mjs",
     "check:ot-provenance": "node scripts/check_ot_provenance.mjs",
+    "check:ot-build-artifacts": "node scripts/check_ot_build_artifacts.mjs",
     "test:runtime-board": "playwright test --config playwright.runtime-board.config.js",
     "test:node": "npm run build:test && npx vitest run tests/unit/node_draw_*.test.* && playwright test --config playwright.node-lab.config.js",
     "test:layout": "npm run build:test && npx vitest run tests/unit/layout_*.test.*",

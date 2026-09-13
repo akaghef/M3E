@@ -337,25 +337,3 @@ function mailPulseStart(){
 function mailPulseStop(){
   if(mailPollTm){ clearInterval(mailPollTm); mailPollTm=0; }
 }
-
-/* ════════════════ DIGEST REPLAY (Task G) ════════════════════════════════════
-   選択した複数 agent の 24h 履歴を mail-comet engine に流し直す。
-   - replayMode フラグで live polling を停止
-   - 仮想時計が events[i].ts に到達したら mailQueue / 各種演出に dispatch
-   - speed = 1/60/2880 (×2880 = 24h → 30s)
-   - scrub: 仮想時計を移動。前進ならイベント pointer をその時刻まで skip
-   - mail comet の MAIL_TRAVEL_MS は per-event scale (×2880 で 200ms 程度) */
-const RP={
-  active:false, paused:false, speed:2880, holdMs:6000, names:[],
-  events:[], nextIdx:0, sinceTs:0, nowTs:0,   // 仮想時計の窓
-  virtTs:0,                                   // 現在の仮想時刻 (秒)
-  rafId:0, lastFrameMs:0,
-  scrubDragging:false,
-  outEdges:new Set(),
-  filterGroupOnly:false,    // Task G++ (1624): 選択集合内のみ
-  selSet:new Set(),         // names を Set 化 (filter 判定で hot path)
-  markerEls:[],             // Task G+++ (1625): event marker DOM 参照
-  // Task H v2 (msg 1632): time-travel — graph をゼロから build
-  timeTravel:true,           // default ON: 物理シミュレーションで graph を成長させる
-  initialAlive:new Set(),    // range.start_ts 時点で alive だった agent 名
-  savedGmap:new Map(),       // replay 開始前の gmap snapshot (stopReplay で restore)

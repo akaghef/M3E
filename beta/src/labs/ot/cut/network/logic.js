@@ -762,3 +762,16 @@ function runSim(){
     if(!drag&&maxMove<SIM_SETTLE_MOVE)settledFrames++;
     else settledFrames=0;
     simHot--;
+    if(!drag&&settledFrames>=SIM_SETTLE_FRAMES){
+      // 収束したフレームで一度だけ fit（ユーザー操作後は抑制）
+      if(fitPending&&!viewUserAdjusted&&gmap.size){
+        fitView();fitPending=false;
+        if(fitTimer){clearTimeout(fitTimer);fitTimer=0;}
+      }
+      simHot=0;simRAF=0;return;
+    }
+    if(simHot>0||drag){simRAF=requestAnimationFrame(loop);}
+    else{simRAF=0;}
+  };
+  simRAF=requestAnimationFrame(loop);
+}
