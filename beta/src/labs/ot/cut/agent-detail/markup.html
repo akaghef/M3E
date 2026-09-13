@@ -1,0 +1,50 @@
+<button id="ot-open-detail" type="button">Open agent detail</button>
+<div id="toast"></div>
+<div id="term" aria-hidden="true" data-tab="hist">
+  <div class="tm-box">
+    <div class="tm-bar">
+      <span class="tm-led" id="tm-led"></span>
+      <img class="tm-portrait" id="tm-portrait" alt="" hidden
+           onerror="portraitFallback(this)">
+      <div class="tm-ident">
+        <span class="tm-nm" id="tm-nm">—</span>
+        <span class="tm-meta" id="tm-meta"></span>
+      </div>
+      <span class="tm-tabs" id="tm-tabs">
+        <button class="on" data-tab="hist">History</button>
+        <button data-tab="deliv">Output</button>
+      </span>
+      <span class="tm-grow"></span>
+      <button class="tm-exit-btn" id="tm-exit-btn" style="display:none">Exit</button>
+      <button class="tm-open" id="tm-open">OPEN TMUX</button>
+      <button class="tm-x" id="tm-x" title="Close (Esc)">Close</button>
+    </div>
+    <div class="tm-summary" id="tm-summary" aria-hidden="true"></div>
+    <section class="tm-spark" id="tm-spark" aria-hidden="true">
+      <header class="sp-bar">
+        <span class="sp-led"></span>
+        <span class="sp-ttl" id="sp-ttl">HISTORY</span>
+        <span class="sp-tot" id="sp-tot"></span>
+        <span class="sp-grow"></span>
+        <span class="sp-leg">
+          <span class="sp-chip mail">MAIL</span>
+          <span class="sp-chip spawn">SPAWN</span>
+          <span class="sp-chip exit">EXIT</span>
+        </span>
+      </header>
+      <div class="sp-frame">
+        <svg class="sp-svg" id="sp-svg" viewBox="0 0 720 64"
+             preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"
+             aria-label="agent activity history"></svg>
+        <div class="sp-tip" id="sp-tip" aria-hidden="true"></div>
+      </div>
+      <div class="sp-axis" id="sp-axis"></div>
+    </section>
+    <div class="tm-annot" id="tm-annot" aria-hidden="true"></div>
+    <div class="tm-hist" id="tm-hist"></div>
+    <div class="tm-deliv" id="tm-deliv"></div>
+    <div class="tm-foot">
+      <span id="tm-stat">…</span>
+    </div>
+  </div>
+</div>
