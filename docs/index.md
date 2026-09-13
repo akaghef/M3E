@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 608
+- Indexed files: 610
 
 ## Reading Routes
 
@@ -22,7 +22,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | File | Type | Title | Summary |
 |---|---:|---|---|
 | [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-04-20 |
-| [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-07-19 |
+| [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-09-14 |
 | [00_Home/Glossary.md](<./00_Home/Glossary.md>) | Markdown | Glossary — M3E 用語辞書 | M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。 |
 | [00_Home/Home.md](<./00_Home/Home.md>) | Markdown | M3E — Home | 最終更新: 2026-04-20 |
 | [00_Home/Objective.md](<./00_Home/Objective.md>) | Markdown | Objective — Planning Hierarchy | 最終更新: 2026-04-20 |
@@ -36,7 +36,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [01_Vision/Core_Principles.md](<./01_Vision/Core_Principles.md>) | Markdown | Core Principles | この文書の内容は [Principle.md](./Principle.md) に統合した。 |
 | [01_Vision/Principle.md](<./01_Vision/Principle.md>) | Markdown | Principle | 最終更新: 2026-04-20 |
 | [01_Vision/README.md](<./01_Vision/README.md>) | Markdown | 01_Vision/ | **役割**: M3E の `Planning Hierarchy` 上位層を置く場所。原則・未達ギャップ・攻略方針を階層ごとに分けて管理する。 |
-| [01_Vision/Strategy.md](<./01_Vision/Strategy.md>) | Markdown | Strategy | 最終更新: 2026-07-18 |
+| [01_Vision/Strategy.md](<./01_Vision/Strategy.md>) | Markdown | Strategy | 最終更新: 2026-09-14 |
 | [01_Vision/Vision.md](<./01_Vision/Vision.md>) | Markdown | Vision | 最終更新: 2026-04-20 |
 | [01_Vision/Weekly_Advance.md](<./01_Vision/Weekly_Advance.md>) | Markdown | Weekly Advance | 最終更新: 2026-04-20 |
 
@@ -148,6 +148,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md](<./09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md>) | Markdown | ADR 009: Agent Orchestration の M3E 融合と実行境界 | Accepted. 一部を [ADR_011](./ADR_011_Agent_Orrery_As_M3E_Map.md) が更新（2026-08-26）: |
 | [09_Decisions/ADR_010_Radial_Surface_View_Removal.md](<./09_Decisions/ADR_010_Radial_Surface_View_Removal.md>) | Markdown | ADR_010: Radial Surface View を廃止し Tree へ畳む | Surface View 正本は `Tree / Axial / Radial / Disperse / System` の5種としていた。 |
 | [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
+| [09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](<./09_Decisions/ADR_012_Radial_Surface_View_Restoration.md>) | Markdown | ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する | ADR_010 は、当時の実装が canon の角度系（`clockwise / counterclockwise / balanced`）を |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections
@@ -361,6 +362,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260809_s16_neo4j_differentiation.md](<./ideas/260809_s16_neo4j_differentiation.md>) | Markdown | S16 — Neo4jとの差別化からM3Eの存在理由を再定義する | 最終更新: 2026-08-09 |
 | [ideas/260824_neo4j_team_collaboration_graphlink.md](<./ideas/260824_neo4j_team_collaboration_graphlink.md>) | Markdown | Neo4j-backed Team Collaboration と GraphLink 参照 | 最終更新: 2026-08-24 |
 | [ideas/260824_node_plugin_and_layout_contract.md](<./ideas/260824_node_plugin_and_layout_contract.md>) | Markdown | Node plugin と layout 契約 — 設計会話ログ (2026-08-24) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 要点は node core を最小に保つ、layout ... |
+| [ideas/260914_unified_work_graph_multi_pc_resource_ot.md](<./ideas/260914_unified_work_graph_multi_pc_resource_ot.md>) | Markdown | 一枚絵としてのM3E — 個人multi-PC、常駐host、Resource、OT統合 | > Status: idea / vision memo。決定・仕様ではない。 |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
 | [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |
