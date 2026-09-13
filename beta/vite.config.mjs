@@ -37,6 +37,13 @@ export default defineConfig({
         "node-lab": "src/labs/node/node-lab.html",
         "pn-lab": "src/labs/pn/pn-lab.html",
         "runtime-board": "src/labs/runtime-board/runtime-board.html",
+        "ot-deck-lab": "src/labs/ot/routes/deck.html",
+        "ot-network-lab": "src/labs/ot/routes/network.html",
+        "ot-detail-lab": "src/labs/ot/routes/detail.html",
+        "ot-edge-lab": "src/labs/ot/routes/edge.html",
+        "ot-mail-lab": "src/labs/ot/routes/mail.html",
+        "ot-replay-lab": "src/labs/ot/routes/replay.html",
+        "ot-runtime-lab": "src/labs/ot/routes/runtime.html",
       },
       output: {
         entryFileNames: "[name].js",

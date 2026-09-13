@@ -1,0 +1,37 @@
+    <span>tmux × ORRERY Mail</span>
+  </div>
+  <div class="viewtog">
+    <button id="v-deck" class="on" onclick="setView('deck')">▤ Deck</button>
+    <button id="v-net" onclick="setView('net')">⊹ Network</button>
+  </div>
+  <div class="gauges">
+    <div class="gauge run"><div class="v" id="g-run">0</div>
+      <div class="k">running</div><div class="bar"><i id="b-run"></i></div></div>
+    <div class="gauge idle"><div class="v" id="g-idle">0</div>
+      <div class="k">standby</div><div class="bar"><i id="b-idle"></i></div></div>
+    <div class="gauge tot"><div class="v" id="g-tot">0</div>
+      <div class="k">agents</div><div class="bar"><i></i></div></div>
+  </div>
+  <div id="mail-health" class="mail-health" title="mail health: checking...">
+    <span class="mh-dot"></span><span class="mh-label">mail</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="controls">
+    <div class="field">
+      <input type="search" id="q" placeholder="FILTER · name / task" autocomplete="off">
+    </div>
+    <div class="seg" id="history" role="radiogroup" aria-label="history range">
+      <button type="button" data-history="live" title="running and finished sessions only">live</button>
+      <button type="button" data-history="7d" title="also gone / retired agents from the last 7 days">7d</button>
+      <button type="button" data-history="30d" title="also gone / retired agents from the last 30 days">30d</button>
+      <button type="button" data-history="all" title="every agent ever registered">all</button>
+    </div>
+    <button class="newbtn" id="newbtn" onclick="openSpawnModal()"
+            title="spawn a new child agent (open form)"
+            aria-label="spawn new agent">
+      <span class="nb-plus">＋</span><span>NEW AGENT</span>
+    </button>
+  </div>
+</header>
+
+<main id="wrap"><div class="state">ACQUIRING TELEMETRY<span class="caret"></span></div></main>

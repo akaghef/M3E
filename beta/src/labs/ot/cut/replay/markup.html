@@ -1,0 +1,112 @@
+  <div id="replayBar" role="region" aria-label="digest replay controller" aria-hidden="true">
+    <div class="rb-rail">
+      <span class="rb-rec"></span>
+      <span class="rb-label">DIGEST REPLAY</span>
+      <span class="rb-sep">·</span>
+      <span class="rb-agents" id="rbAgents">0 agents</span>
+      <button class="rb-filter" id="rbFilter" type="button"
+              role="switch" aria-checked="false"
+              title="only events between selected agents (toggle)">
+        <span class="rb-flt-glyph">◰</span>
+        <span class="rb-flt-lab">GROUP-ONLY</span>
+      </button>
+      <button class="rb-filter rb-tt" id="rbTimeTravel" type="button"
+              role="switch" aria-checked="true"
+              title="rebuild graph state from events (time-travel)
+OFF = legacy snapshot+comet mode">
+        <span class="rb-flt-glyph">◷</span>
+        <span class="rb-flt-lab">TIME-TRAVEL</span>
+      </button>
+      <span class="rb-grow"></span>
+      <span class="rb-flicker" aria-hidden="true"></span>
+      <button class="rb-x" id="rbClose" title="exit replay (Esc)">✕ CLOSE</button>
+    </div>
+    <div class="rb-row">
+      <button class="rb-play" id="rbPlay" type="button"
+              title="play / pause (space)" aria-pressed="false">
+        <span class="rb-glyph">▶</span><span class="rb-plab">PLAY</span>
+      </button>
+      <div class="rb-speed" role="group" aria-label="playback speed">
+        <div class="rb-spd-track" id="rbSpdTrack">
+          <div class="rb-spd-ticks" id="rbSpdTicks"></div>
+          <div class="rb-spd-fill" id="rbSpdFill"></div>
+          <div class="rb-spd-thumb" id="rbSpdThumb"
+               role="slider" tabindex="0"
+               aria-valuemin="1" aria-valuemax="10000" aria-valuenow="1"
+               title="drag to scrub speed (×1 .. ×10000, log)"></div>
+        </div>
+        <output class="rb-spd-val" id="rbSpdVal" for="rbSpdThumb">×1</output>
+      </div>
+      <div class="rb-hold" role="group" aria-label="message display time">
+        <div class="rb-spd-track" id="rbHoldTrack">
+          <div class="rb-spd-ticks" id="rbHoldTicks"></div>
+          <div class="rb-spd-fill" id="rbHoldFill"></div>
+          <div class="rb-spd-thumb" id="rbHoldThumb"
+               role="slider" tabindex="0"
+               aria-valuemin="100" aria-valuemax="15000" aria-valuenow="6000"
+               title="drag to set how long message cards stay (0.1s .. 15s)"></div>
+        </div>
+        <output class="rb-spd-val" id="rbHoldVal" for="rbHoldThumb">6s</output>
+      </div>
+      <div class="rb-scrub" id="rbScrub" aria-label="seek bar">
+        <div class="rb-track">
+          <div class="rb-ticks" id="rbTicks"></div>
+          <div class="rb-fill" id="rbFill"></div>
+          <!-- Task G+++ (1625): event density markers — filmstrip 風 -->
+          <div class="rb-markers" id="rbMarkers" aria-hidden="true"></div>
+          <div class="rb-mk-tip" id="rbMkTip" aria-hidden="true"></div>
+          <div class="rb-thumb" id="rbThumb"
+               role="slider" tabindex="0"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+          <div class="rb-axis" id="rbAxis">
+            <span>-24h</span><span>-18h</span><span>-12h</span>
+            <span>-6h</span><span>now</span>
+          </div>
+        </div>
+      </div>
+      <div class="rb-clock" id="rbClock">
+        <span class="rb-abs" id="rbAbs">--:--</span>
+        <span class="rb-rel" id="rbRel">--</span>
+      </div>
+    </div>
+  </div>
+  <svg id="gsvg" xmlns="http://www.w3.org/2000/svg"></svg>
+  <!-- F1 net-controls: 力学/表示パラメータの即時チューニング（localStorage 永続化） -->
+  <div class="nctl" id="nctl">
+    <div class="nctl-hd" id="nctl-hd" title="クリックで開閉">
+      <span class="ic">▾</span><b>Tune</b><span class="sub">physics · view</span>
+    </div>
+    <div class="nctl-body">
+      <div class="nc-row" data-p="NSIZE">
+        <span class="lab">Node size</span><span class="val"></span>
+        <input type="range" min="6" max="28" step="1" aria-label="Node size">
+      </div>
+      <div class="nc-row" data-p="L">
+        <span class="lab">Link dist</span><span class="val"></span>
+        <input type="range" min="40" max="400" step="5" aria-label="Link distance">
+      </div>
+      <div class="nc-row" data-p="LWMUL">
+        <span class="lab">Link width</span><span class="val"></span>
+        <input type="range" min="0.5" max="3" step="0.1" aria-label="Link width">
+      </div>
+      <div class="nc-row" data-p="KR">
+        <span class="lab">Repel</span><span class="val"></span>
+        <input type="range" min="500" max="10000" step="100" aria-label="Repel force">
+      </div>
+      <div class="nc-row" data-p="GR">
+        <span class="lab">Center</span><span class="val"></span>
+        <input type="range" min="0" max="0.05" step="0.001" aria-label="Center gravity">
+      </div>
+      <div class="nc-row" data-p="KS">
+        <span class="lab">Link force</span><span class="val"></span>
+        <input type="range" min="0" max="0.15" step="0.005" aria-label="Link spring">
+      </div>
+      <div class="nc-foot"><button class="nc-reset" id="nc-reset">Reset</button></div>
+    </div>
+  </div>
+</section>
+
+<div id="toast"></div>
+<div id="gtip"></div>
+
+<!-- + NEW AGENT spawn modal (cockpit launch manifest) -->

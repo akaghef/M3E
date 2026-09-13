@@ -1,0 +1,345 @@
+{
+  "source_repository": "gyroid-eth/orrery-telemetry",
+  "source_commit": "22ffe6483530e643c8fc1af486319990e0181de4",
+  "source_root": "dashboard/index.html",
+  "license": {
+    "required_notice": "Copyright (c) 2026 gyroid",
+    "file": "upstream/LICENSE"
+  },
+  "labs": {
+    "deck": {
+      "route": "/src/labs/ot/routes/deck.html",
+      "entry": "entries/deck.ts",
+      "source_symbols": [
+        "buildEls",
+        "paint"
+      ],
+      "cut": [
+        "cut/deck/logic.js",
+        "cut/deck/markup.html"
+      ],
+      "dependency_closure": "dashboard/index.html:30700-30835 plus markup 2438-2474"
+    },
+    "network": {
+      "route": "/src/labs/ot/routes/network.html",
+      "entry": "entries/network.ts",
+      "source_symbols": [
+        "buildEls",
+        "step",
+        "paint",
+        "runSim"
+      ],
+      "cut": [
+        "cut/network/logic.js",
+        "cut/network/markup.html"
+      ],
+      "dependency_closure": "dashboard/index.html:31142-31905 plus markup 2475-2627"
+    },
+    "detail": {
+      "route": "/src/labs/ot/routes/detail.html",
+      "entry": "entries/detail.ts",
+      "source_symbols": [
+        "openPanel",
+        "closeTerm"
+      ],
+      "cut": [
+        "cut/detail/logic.js",
+        "cut/detail/markup.html"
+      ],
+      "dependency_closure": "dashboard/index.html:33420-33877 plus markup 2777-2825"
+    },
+    "edge": {
+      "route": "/src/labs/ot/routes/edge.html",
+      "entry": "entries/edge.ts",
+      "source_symbols": [
+        "openDrawer"
+      ],
+      "cut": [
+        "cut/edge/logic.js",
+        "cut/edge/markup.html"
+      ],
+      "dependency_closure": "dashboard/index.html:31372-31432 plus markup 2800-2825"
+    },
+    "mail": {
+      "route": "/src/labs/ot/routes/mail.html",
+      "entry": "entries/mail.ts",
+      "source_symbols": [
+        "mailDrain",
+        "makeMailCard"
+      ],
+      "cut": [
+        "cut/mail/logic.js",
+        "cut/mail/markup.html"
+      ],
+      "dependency_closure": "dashboard/index.html:32042-32402 plus markup 2450-2474"
+    },
+    "replay": {
+      "route": "/src/labs/ot/routes/replay.html",
+      "entry": "entries/replay.ts",
+      "source_symbols": [
+        "startReplay",
+        "_rbApplyStateOnly"
+      ],
+      "cut": [
+        "cut/replay/logic.js",
+        "cut/replay/markup.html"
+      ],
+      "dependency_closure": "dashboard/index.html:33081-33200 plus markup 2516-2627"
+    },
+    "runtime": {
+      "route": "/src/labs/ot/routes/runtime.html",
+      "entry": "entries/runtime.ts",
+      "source_symbols": [
+        "openSpawnModal",
+        "submitSpawn"
+      ],
+      "cut": [
+        "cut/runtime/logic.js",
+        "cut/runtime/markup.html"
+      ],
+      "dependency_closure": "dashboard/index.html:34660-34856 plus markup 2628-2776"
+    }
+  },
+  "fragments": [
+    {
+      "component": "deck",
+      "path": "cut/deck/logic.js",
+      "source_range": [
+        30700,
+        30835
+      ],
+      "kind": "javascript",
+      "source_symbols": [
+        "buildEls",
+        "paint"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "7838d54d385e21fee6e8714cd37f3dec3d5cbdf7b28293c9427d822c10bf8735"
+    },
+    {
+      "component": "deck",
+      "path": "cut/deck/markup.html",
+      "source_range": [
+        2438,
+        2474
+      ],
+      "kind": "markup",
+      "source_symbols": [
+        "buildEls",
+        "paint"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "8efb812811419cea8404f02058ebf8bcf4e7ad7f37730e17c38c4d2e474cf9eb"
+    },
+    {
+      "component": "network",
+      "path": "cut/network/logic.js",
+      "source_range": [
+        31142,
+        31905
+      ],
+      "kind": "javascript",
+      "source_symbols": [
+        "buildEls",
+        "step",
+        "paint",
+        "runSim"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "db447836ab514db02356496173ec78783609e60cbd50877ca999f9b77964e524"
+    },
+    {
+      "component": "network",
+      "path": "cut/network/markup.html",
+      "source_range": [
+        2475,
+        2627
+      ],
+      "kind": "markup",
+      "source_symbols": [
+        "buildEls",
+        "step",
+        "paint",
+        "runSim"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "0b62b96cc31f85d3f959c04e6ddc35f1d25397dfa9a78d9e4678fd750c1b8657"
+    },
+    {
+      "component": "detail",
+      "path": "cut/detail/logic.js",
+      "source_range": [
+        33420,
+        33877
+      ],
+      "kind": "javascript",
+      "source_symbols": [
+        "openPanel",
+        "closeTerm"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "34013437120775e4505eb0d4634589f31df4fc901fc62bd0a6c79e3ea7f69466"
+    },
+    {
+      "component": "detail",
+      "path": "cut/detail/markup.html",
+      "source_range": [
+        2777,
+        2825
+      ],
+      "kind": "markup",
+      "source_symbols": [
+        "openPanel",
+        "closeTerm"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "82491d071e039e6395a939134cfd19e65e4e5d070190b9b214589a7ea9b1a4f7"
+    },
+    {
+      "component": "edge",
+      "path": "cut/edge/logic.js",
+      "source_range": [
+        31372,
+        31432
+      ],
+      "kind": "javascript",
+      "source_symbols": [
+        "openDrawer"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "12adb01a4c7fe851fc4fdf66f707a1d7b6d99a1cca32fd64020bb1eff1b9bb3c"
+    },
+    {
+      "component": "edge",
+      "path": "cut/edge/markup.html",
+      "source_range": [
+        2800,
+        2825
+      ],
+      "kind": "markup",
+      "source_symbols": [
+        "openDrawer"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "7d498bc1d33034c97ce3f15a828d7ad316167758ef7cd4265c0ac3a46a40f03b"
+    },
+    {
+      "component": "mail",
+      "path": "cut/mail/logic.js",
+      "source_range": [
+        32042,
+        32402
+      ],
+      "kind": "javascript",
+      "source_symbols": [
+        "mailDrain",
+        "makeMailCard"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "4c91a1af4f33fbeedb4e3531c72a301d6a2094fdbcdb5a2f9787aebab1e93eba"
+    },
+    {
+      "component": "mail",
+      "path": "cut/mail/markup.html",
+      "source_range": [
+        2450,
+        2474
+      ],
+      "kind": "markup",
+      "source_symbols": [
+        "mailDrain",
+        "makeMailCard"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "07d005261f79102a3889d98f925cd370eeae96e2dea4b522d466e68337d67c5f"
+    },
+    {
+      "component": "replay",
+      "path": "cut/replay/logic.js",
+      "source_range": [
+        33081,
+        33200
+      ],
+      "kind": "javascript",
+      "source_symbols": [
+        "startReplay",
+        "_rbApplyStateOnly"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "2439fbd1f06a882d0a40d87bcda4f4e69ad02eea1251ed3f5233d27f844973eb"
+    },
+    {
+      "component": "replay",
+      "path": "cut/replay/markup.html",
+      "source_range": [
+        2516,
+        2627
+      ],
+      "kind": "markup",
+      "source_symbols": [
+        "startReplay",
+        "_rbApplyStateOnly"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "7592ee5a44dbd7e02d943d642267a82dddc9dca933ef219b05681154edb3b1f8"
+    },
+    {
+      "component": "runtime",
+      "path": "cut/runtime/logic.js",
+      "source_range": [
+        34660,
+        34856
+      ],
+      "kind": "javascript",
+      "source_symbols": [
+        "openSpawnModal",
+        "submitSpawn"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "0cbad2118d96733942f92a4ec0e86bbcd35b04f9980ed81bdf0c5e59f7e4c56a"
+    },
+    {
+      "component": "runtime",
+      "path": "cut/runtime/markup.html",
+      "source_range": [
+        2628,
+        2776
+      ],
+      "kind": "markup",
+      "source_symbols": [
+        "openSpawnModal",
+        "submitSpawn"
+      ],
+      "source_path": "dashboard/index.html",
+      "sha256": "092295e755617488e17c6748e0c4810f34902900b134a27f84aea9ee2a8812cc"
+    }
+  ],
+  "styles": [
+    {
+      "path": "cut/shared/dashboard.css",
+      "source_path": "dashboard/index.html",
+      "source_range": [
+        11,
+        2417
+      ],
+      "sha256": "741e1af857b967779a2bd166865827e0b22623e61cf6582918c9feecc2b09fcd"
+    }
+  ],
+  "assets": [
+    {
+      "path": "upstream/portraits_64/Lovelace.png",
+      "source_path": "dashboard/portraits_64/Lovelace.png",
+      "sha256": "95db46b70e22c04c81ae96478c9d6913c1d28a0230017bdc26729e1bd1e308df"
+    },
+    {
+      "path": "upstream/portraits_64/Turing.png",
+      "source_path": "dashboard/portraits_64/Turing.png",
+      "sha256": "5b5e3829565180576e5069be7a5efe507155d26fec3cd902cc0896eeeb721ae6"
+    },
+    {
+      "path": "upstream/portraits_64/Curie.png",
+      "source_path": "dashboard/portraits_64/Curie.png",
+      "sha256": "b94f3fbedb489ef94374a9be0ce98d0ec5d91516efdd3b7164a46d83ee53d8f2"
+    }
+  ]
+}
