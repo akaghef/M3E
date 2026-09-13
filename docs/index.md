@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 610
+- Indexed files: 611
 
 ## Reading Routes
 
@@ -362,6 +362,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260809_s16_neo4j_differentiation.md](<./ideas/260809_s16_neo4j_differentiation.md>) | Markdown | S16 — Neo4jとの差別化からM3Eの存在理由を再定義する | 最終更新: 2026-08-09 |
 | [ideas/260824_neo4j_team_collaboration_graphlink.md](<./ideas/260824_neo4j_team_collaboration_graphlink.md>) | Markdown | Neo4j-backed Team Collaboration と GraphLink 参照 | 最終更新: 2026-08-24 |
 | [ideas/260824_node_plugin_and_layout_contract.md](<./ideas/260824_node_plugin_and_layout_contract.md>) | Markdown | Node plugin と layout 契約 — 設計会話ログ (2026-08-24) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 要点は node core を最小に保つ、layout ... |
+| [ideas/260914_ot_prompt_role_agent_node_orrery_force.md](<./ideas/260914_ot_prompt_role_agent_node_orrery_force.md>) | Markdown | OT prompt-roleとAgent nodeを先行吸収する実行設計 | > Status: idea / implementation-direction memo。Role canonの完成仕様ではない。 |
 | [ideas/260914_unified_work_graph_multi_pc_resource_ot.md](<./ideas/260914_unified_work_graph_multi_pc_resource_ot.md>) | Markdown | 一枚絵としてのM3E — 個人multi-PC、常駐host、Resource、OT統合 | > Status: idea / vision memo。決定・仕様ではない。 |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
