@@ -693,6 +693,8 @@ Refs: `V2`, `V3`, `V5`, `V1`
 
 **現在の主戦場を Team Collaboration（`S2`）から、OT（ORRERY Telemetry / Agent 管理 slice）の合併吸収へ切り替える。** 複数人 Team Collaboration の一般解を先に解かない。まず **Akaghef 個人にとって最良のツール**を作り切ることを最上位に置く。
 
+本 Strategy で `OT` と呼ぶ対象は、gyroid が配布する外部 repository **[`gyroid-eth/orrery-telemetry`](https://github.com/gyroid-eth/orrery-telemetry)** に限る。Akaghef が過去に自作した `playground/agent-orrery` prototype は別物であり、合併吸収の実装根拠・品質基準・upstream contract として扱わない。ADR_011 は外部 OT の仕様書ではなく、OT を受け入れる **M3E 側の意味境界**としてのみ参照する。
+
 #### S17.1 なぜ今これを主戦場にするか
 
 `S2` は複数主体の収束を最重要ギャップとして立てたが、現実には Akaghef 自身の複数 PC 間ですら満足な共有が成立していない。一般的な team 収束問題を先に解くのは、検証できない要件を先に設計することになる。
@@ -700,7 +702,7 @@ Refs: `V2`, `V3`, `V5`, `V1`
 一方で 2 つの前提が揃った。
 
 1. **mac mini server の追加**により、常駐する active host を仮定できるようになった（このセッションの PC ではないが、通常運転では常駐machineが存在する）。
-2. **OT が OSS として backend まで動く**Agent 管理 slice を提供しており、observation / lineage / communication / history / replay が実運転で成立している。
+2. **外部 OT repository が配布可能な source と backend を持つ**Agent 管理 slice を提供しており、ORRERY Mail、launcher、hooks、provider integration、dashboard API を一つの運用系として実装している。
 
 したがって、抽象的な team 問題ではなく、**稼働中の OT を M3E の一枚絵へ合併吸収する**という、上流に正解がある具体的な統合を主戦場にする。
 
@@ -730,7 +732,7 @@ OT を別 dashboard として併用するだけでは、指示・観測・知識
 
 合併吸収は、OT の画面を M3E 内に再現することでも、OT backend を無条件に M3E の正本にすることでもない。取り込む対象を 4 層に分解する。
 
-1. **稼働済み backend / observation contract** — session / lineage / state / mail / history / replay の実データ経路。`snapshot.json` schema_version 1 のような、片側が動かせない契約を seam の利点として使う。
+1. **外部 OT の backend / observation contract** — ORRERY Mail、runtime event、session / lineage / state / history / replay の実データ経路。契約は `gyroid-eth/orrery-telemetry` の versioned schema と API から抽出し、自作 prototype の payload や推測から定義しない。
 2. **interaction grammar** — node hover、edge から mail 履歴を開く、Deck / Network、time replay、detail card。
 3. **node type ごとの解釈** — Agent Card / Task / Role / Resource が、それぞれ schema・見た目・色・操作を所有する（node type が解釈権限を持つ）。
 4. **M3E semantic graph への binding** — OT 由来の Agent / Runtime を、Goal・Task・Knowledge・Resource・human attention へ typed edge で接続する。
@@ -791,8 +793,9 @@ S17 は OT を起動して眺められた時点では完了しない。次を満
 #### S17.9 参照
 
 - [一枚絵としての M3E](../ideas/260914_unified_work_graph_multi_pc_resource_ot.md)
+- [gyroid-eth/orrery-telemetry](https://github.com/gyroid-eth/orrery-telemetry) — 合併吸収対象となる外部 OT の正本
 - [最遠の目標](../../.kiro/steering/farthest_goal.md) — RQ1 / RQ3 / RQ4 / RQ5 / RQ6
-- [ADR_011: Agent Orrery を M3E の map として実装する](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) — DC2 / DC3 / DC13 / DC15 / DC21
+- [ADR_011: Agent Orrery を M3E の map として実装する](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) — 外部 OT の説明ではなく、M3E 側の DC2 / DC3 / DC13 / DC15 / DC21 を参照
 - [S16 局所正本の連邦化と Neo4j 大域 graph](#s16-局所正本を連邦化しneo4j-で大域-semantic-graph-を再構築する)
 
 ---
