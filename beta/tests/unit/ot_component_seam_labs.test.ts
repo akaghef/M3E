@@ -85,6 +85,15 @@ describe("OT Component Seam Labs", () => {
     expect(render).toContain("Missing upstream global");
   });
 
+  test("invoked action dependency rejection records its partial result", () => {
+    const render = readFileSync(resolve(otRoot, "shared/render.ts"), "utf8");
+    expect(render).toMatch(/phase === "invoked action"[\s\S]*?root\.dataset\.otActionEffect = "not-observed"/);
+    expect(render).toMatch(/phase === "invoked action"[\s\S]*?root\.dataset\.otActionResult = "dependency-boundary"/);
+    expect(render).toMatch(/phase === "invoked action"[\s\S]*?root\.dataset\.otClassification = "rendered-partial"/);
+    expect(render).toContain("Missing upstream global or initialization dependency: ${detail}");
+    expect(render).toContain("caught instanceof SyntaxError ? \"failed\" : \"rendered-partial\"");
+  });
+
   test("hub keeps seven direct route links and no hiddenByLab", () => {
     const hub = readFileSync(resolve(root, "src/labs/index.html"), "utf8");
     expect((hub.match(/src\/labs\/ot\/routes\//g) || []).length).toBe(7);

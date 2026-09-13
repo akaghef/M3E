@@ -47,6 +47,11 @@ export function executeVerbatimCut(logic: string, component: OtComponent, action
       root.dataset.otErrorPhase = phase;
       if (caught instanceof SyntaxError) root.dataset.otSyntaxError = "true";
       root.dataset.otClassification = caught instanceof SyntaxError ? "failed" : "rendered-partial";
+      if (phase === "invoked action" && !(caught instanceof SyntaxError)) {
+        root.dataset.otActionEffect = "not-observed";
+        root.dataset.otActionResult = "dependency-boundary";
+        root.dataset.otClassification = "rendered-partial";
+      }
     }
     if (status) status.textContent = `Verbatim upstream cut stopped during ${phase}.`;
     if (error) {
