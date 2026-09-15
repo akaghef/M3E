@@ -520,6 +520,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     const vertices: number[] = [];
     const selected = new Set(this.interaction.selectedNodeIds);
     snapshot.nodes.forEach((node) => {
+      if (node.id === this.interaction.editingNodeId) return;
       if (selected.has(node.id)) pushOutline(vertices, node, rgba("#6f39ff"), node.id === this.interaction.primarySelectedNodeId ? 4 : 2);
       if (node.id === this.interaction.hoveredNodeId && !selected.has(node.id)) pushOutline(vertices, node, rgba("#2f70ff", 0.82), 2);
     });

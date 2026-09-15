@@ -25,6 +25,7 @@ import {
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { captureSvgPaintScene, sceneWorldBounds, translatePaintScene } from "./webgl_scene_tiles";
+import { autoSizeInlineEditor, InlineNodeEditorPreview, nodeLabelEditAction } from "./inline_node_editor";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
@@ -537,7 +538,8 @@ let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let cycleViewState: "focus" | "fit" = "focus";
-let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
+let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
+const nodeDrawInputs = new Map<string, NodeDrawInput>();
 let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
@@ -619,7 +621,6 @@ let redoStack: UndoSnapshot[] = [];
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
-let suppressInlineBlurCommit = false;
 let flowSurfaceDetailLevel = 0;
 const linearNotesByScope: Record<string, string> = {};
 let linearPanelCanvasWidth = 340;
@@ -5224,32 +5225,13 @@ function syncInlineEditorPosition(): void {
   }
 
   const nodeId = inlineEditor.nodeId;
-  const webglNode = isWebGLRendererActive()
-    ? webglLastSnapshot?.nodes.find((node) => node.id === nodeId) || null
-    : null;
-  if (isWebGLRendererActive()) {
-    if (!webglNode) {
-      return;
-    }
-    const camera = { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom };
-    const topLeft = worldToScreen({ x: webglNode.x, y: webglNode.y }, camera);
-    inlineEditor.input.style.left = `${topLeft.x}px`;
-    inlineEditor.input.style.top = `${topLeft.y}px`;
-    inlineEditor.input.style.width = `${webglNode.width}px`;
-    inlineEditor.input.style.height = `${webglNode.height}px`;
-    inlineEditor.input.style.minWidth = `${webglNode.width}px`;
-    inlineEditor.input.style.minHeight = `${webglNode.height}px`;
-    inlineEditor.input.style.fontSize = `${webglNode.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
-    inlineEditor.input.style.lineHeight = `${lineHeightForFont(webglNode.fontSize || VIEWER_TUNING.typography.nodeFont)}px`;
-    inlineEditor.input.style.fontWeight = nodeId === map.state.rootId ? "500" : "450";
-    inlineEditor.input.style.color = webglNode.textColor || "#232323";
-    inlineEditor.input.style.padding = "0 6px";
-    inlineEditor.input.style.transform = `scale(${viewState.zoom})`;
-    inlineEditor.input.style.transformOrigin = "top left";
-    inlineEditor.input.style.textAlign = "center";
+  if (inlineEditor.preview) {
+    inlineEditor.preview.setCamera({ x:viewState.cameraX,y:viewState.cameraY,zoom:viewState.zoom });
+    if (!isWebGLRendererActive()) setEditedSvgNodeVisibility(nodeId,false);
     return;
   }
-
+  // Placement belongs to the canonical label layout, not WebGL's hit box.
+  // Both renderers use this same HTML editor and the same world camera.
   if (!lastLayout) {
     return;
   }
@@ -5288,7 +5270,13 @@ function syncInlineEditorPosition(): void {
     : `scale(${viewState.zoom})`;
   inlineEditor.input.style.transformOrigin = isRootLabel ? "top center" : "top left";
   inlineEditor.input.style.textAlign = isRootLabel ? "center" : "left";
-  setEditedSvgLabelVisibility(nodeId, false);
+  if (!isWebGLRendererActive()) setEditedSvgLabelVisibility(nodeId, false);
+}
+
+function setEditedSvgNodeVisibility(nodeId: string, visible: boolean): void {
+  canvas.querySelectorAll<SVGGraphicsElement>(`[data-node-id="${CSS.escape(nodeId)}"]`).forEach((element) => {
+    if (element.matches(".node-hit,.node-visual-box,.label-root,.label-node,foreignObject")) element.style.visibility = visible ? "" : "hidden";
+  });
 }
 
 function setEditedSvgLabelVisibility(nodeId: string, visible: boolean): void {
@@ -7785,6 +7773,7 @@ function render(): void {
   }
   const layout = buildLayout(state);
   lastLayout = layout;
+  nodeDrawInputs.clear();
   visibleOrder = layout.order;
   _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
@@ -8326,7 +8315,9 @@ function render(): void {
       edges += renderParentChildEdges(nodeId, nodeStyles, p, children);
     }
 
-    const output = renderNodeSvg(toNodeDrawInput(node, p, nodeStyles));
+    const drawInput = toNodeDrawInput(node, p, nodeStyles);
+    nodeDrawInputs.set(node.id, drawInput);
+    const output = renderNodeSvg(drawInput);
     nodes += output.svg;
     maxX = Math.max(maxX, output.bounds.maxX);
     maxY = Math.max(maxY, output.bounds.maxY);
@@ -12052,14 +12043,18 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
     return;
   }
 
-  const { nodeId, input, mode } = inlineEditor;
+  const { nodeId, input, mode, preview } = inlineEditor;
   const next = input.value;
   const wasWebGL = isWebGLRendererActive();
   if (!wasWebGL) {
-    setEditedSvgLabelVisibility(nodeId, true);
+    if (preview) setEditedSvgNodeVisibility(nodeId,true);
+    else setEditedSvgLabelVisibility(nodeId, true);
   }
   inlineEditor = null;
+  // Removing a focused input can synchronously dispatch blur. Clear ownership
+  // first, but never rely on that reentrant blur to decide whether to commit.
   input.remove();
+  preview?.destroy();
 
   if (commit) {
     applyNodeTextEdit(nodeId, next, mode);
@@ -12194,11 +12189,6 @@ function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
   startInlineEdit(viewState.selectedNodeId, { nudgeIntoView: false });
 }
 
-function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
-  input.style.height = "auto";
-  input.style.height = `${Math.max(44, input.scrollHeight)}px`;
-}
-
 function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
   input.style.height = "auto";
   input.style.height = `${Math.max(16, input.scrollHeight)}px`;
@@ -12239,10 +12229,29 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   board.appendChild(input);
 
   inlineEditor = { nodeId, input, mode };
-  syncInlineEditorPosition();
-  if (!isWebGLRendererActive()) {
-    autoSizeInlineEditor(input);
+  const source = nodeDrawInputs.get(nodeId);
+  if (source) {
+    let label = canvas.querySelector<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"],text.label-node[data-node-id="${CSS.escape(nodeId)}"]`);
+    let probe: SVGTextElement | undefined;
+    if (!label) {
+      probe = document.createElementNS("http://www.w3.org/2000/svg","text");
+      probe.setAttribute("class","label-node selected");
+      probe.style.fontSize = `${source.position.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
+      canvas.appendChild(probe); label = probe;
+    }
+    const labelClasses = label.getAttribute("class");
+    if (label.classList.contains("label-node")) label.classList.add("selected","primary-selected");
+    const preview = new InlineNodeEditorPreview(input, {
+      ...source, view:{...source.view, selected:true,multiSelected:true,primarySelected:true},
+    }, getComputedStyle(label));
+    if (labelClasses !== null) label.setAttribute("class",labelClasses);
+    probe?.remove();
+    inlineEditor.preview = preview;
+    board.appendChild(preview.element);
+    preview.refresh();
   }
+  syncInlineEditorPosition();
+  if (!inlineEditor.preview) autoSizeInlineEditor(input);
   if (options?.nudgeIntoView !== false) {
     nudgeNodeIntoView(nodeId);
   }
@@ -12258,52 +12267,47 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
     if (isImeComposingEvent(event)) {
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+    const action = nodeLabelEditAction(event);
+    if (action === "next") {
       event.preventDefault();
       // Equivalent to Esc -> DownArrow -> Enter while editing.
-      stopInlineEdit(false, { focusBoard: false });
+      stopInlineEdit(true, { focusBoard: false });
       selectBreadth(1);
       startInlineEdit(viewState.selectedNodeId, { selectAll: false });
       return;
     }
 
-    if (event.key === "Tab") {
+    if (action === "child") {
       event.preventDefault();
       stopInlineEdit(true, { focusBoard: false });
       createNodeByDirectionAndEdit("depth");
       return;
     }
 
-    if (event.key === "Enter") {
-      if (event.shiftKey) {
-        // Keep default textarea behavior: Shift+Enter inserts a newline.
-        return;
-      }
+    if (action === "sibling") {
       event.preventDefault();
-      suppressInlineBlurCommit = true;
       stopInlineEdit(true, { focusBoard: false });
       createNodeByDirectionAndEdit("breadth");
       return;
     }
 
-    if (event.key === "Escape") {
+    if (action === "finish") {
       event.preventDefault();
-      stopInlineEdit(false);
+      // Escape ends label editing with the draft intact; it is not Undo.
+      stopInlineEdit(true);
     }
   });
 
   input.addEventListener("blur", () => {
-    if (suppressInlineBlurCommit) {
-      suppressInlineBlurCommit = false;
-      return;
-    }
-    stopInlineEdit(true);
+    // A departing editor must not commit/close a newly focused editor.
+    if (inlineEditor?.input === input) stopInlineEdit(true);
   });
 
   input.addEventListener("input", () => {
-    if (!isWebGLRendererActive()) {
-      autoSizeInlineEditor(input);
-    }
+    if (inlineEditor?.input !== input) return;
+    // Draft-local only: do not call render, layout, touchDocument or autosave.
+    if (inlineEditor.preview) inlineEditor.preview.refresh();
+    else autoSizeInlineEditor(input);
   });
   syncWebGLInteraction();
 }

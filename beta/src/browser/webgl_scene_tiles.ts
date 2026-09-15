@@ -16,6 +16,8 @@ export interface PaintCommand {
   matrix: PaintMatrix;
   style: PaintStyle;
   nodeId?: string;
+  /** False for associated edge labels; those stay visible during node editing. */
+  editorBody?: boolean;
   sourceNodeId?: string;
   targetNodeId?: string;
   kind: "path" | "text";
@@ -202,6 +204,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
     const nodeId = element.getAttribute("data-node-id") ||
       (element.matches(".alias-badge,.confidence-badge,.confidence-badge-text,.status-badge,.status-badge-text,.lock-icon,[data-collapse-node-id]") ? currentNodeId : undefined);
     if (onlyNodeIds && (!nodeId || !onlyNodeIds.has(nodeId))) return;
+    const editorBody = element.matches(".node-hit,.node-visual-box,.label-root,.label-node");
     const css = getComputedStyle(element);
     if (css.display === "none" || css.visibility === "hidden") return;
     const style = paintStyle(element);
@@ -218,7 +221,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
         if (!text || !run.getNumberOfChars()) return;
         const position = run.getStartPositionOfChar(0);
         const runCss = getComputedStyle(run);
-        commands.push({ kind: "text", bounds, matrix, style: paintStyle(run), nodeId,
+        commands.push({ kind: "text", bounds, matrix, style: paintStyle(run), nodeId, editorBody,
           text, x: position.x, y: position.y,
           font: `${runCss.fontStyle} ${runCss.fontWeight} ${runCss.fontSize} ${runCss.fontFamily}`,
           fontSize: parseFloat(runCss.fontSize), decoration: runCss.textDecorationLine,
@@ -226,7 +229,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
       });
     } else if (element instanceof SVGGeometryElement) {
       const path = shapePath(element);
-      if (path) commands.push({ kind: "path", path, bounds, matrix, style, nodeId,
+      if (path) commands.push({ kind: "path", path, bounds, matrix, style, nodeId, editorBody,
         sourceNodeId:element.getAttribute("data-source-node-id") || element.getAttribute("data-parent-node-id") || undefined,
         targetNodeId:element.getAttribute("data-target-node-id") || element.getAttribute("data-child-node-id") || undefined });
       // Preserve SVG marker geometry, dimensions and direction rather than
@@ -340,7 +343,14 @@ export class WebGLSceneTiles {
   }
   setEditingNode(id: string | null): void {
     if (id === this.editingNodeId) return;
-    this.editingNodeId = id; this.clear();
+    const dirty = this.scene.commands.filter((command) => command.editorBody !== false &&
+      (command.nodeId === id || command.nodeId === this.editingNodeId)).map((command) => command.bounds);
+    this.editingNodeId = id;
+    this.tiles.forEach((tile,key) => {
+      const gutter = GUTTER/this.scale;
+      if (!dirty.some((box) => intersects(box,{x:tile.x-gutter,y:tile.y-gutter,width:tile.size+gutter*2,height:tile.size+gutter*2}))) return;
+      this.gl.deleteTexture(tile.texture); this.tiles.delete(key);
+    });
   }
   refine(camera: TileCamera, dpr: number): void {
     const next = Math.pow(2, Math.ceil(Math.log2(Math.max(0.015625, camera.zoom*dpr))));
@@ -376,7 +386,7 @@ export class WebGLSceneTiles {
         context.setTransform(this.scale,0,0,this.scale,GUTTER-bounds.x*this.scale,GUTTER-bounds.y*this.scale);
         indices.forEach((index) => {
           const command = this.scene.commands[index]!;
-          if (command.kind === "text" && command.nodeId === this.editingNodeId) return;
+          if (command.nodeId === this.editingNodeId && command.editorBody !== false) return;
           paint(context, command, this.paths[index]);
         });
         const texture = this.gl.createTexture();

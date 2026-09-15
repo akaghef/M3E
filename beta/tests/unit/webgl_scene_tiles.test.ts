@@ -110,4 +110,15 @@ describe("retained WebGL scene tiles", () => {
     tiles.draw({x:0,y:0,zoom:1},400,300,1,()=>{});
     expect(context.fillText.mock.calls.some(([text]:string[])=>text==='日本語ラベル 0')).toBe(true);
   });
+  it("hides the edited node body but retains associated edge labels", () => {
+    const {tiles,context} = harness();
+    const body: PaintCommand = {...label(0),kind:"path",path:"M 20 0 H 320 V 45 H 20 Z",editorBody:true};
+    const edgeLabel = {...label(0),text:"edge label",editorBody:false};
+    tiles.setScene({commands:[body,label(0),edgeLabel]});
+    tiles.setEditingNode('n0');
+    tiles.draw({x:0,y:0,zoom:1},400,300,1,()=>{});
+    expect(context.fill).not.toHaveBeenCalled();
+    expect(context.fillText.mock.calls.every(([text]:string[])=>text==='edge label')).toBe(true);
+    expect(context.fillText).toHaveBeenCalled();
+  });
 });
