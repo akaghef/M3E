@@ -277,7 +277,9 @@ function readSnapshot(): UiSnapshot {
   const metaEl = byId("meta");
   const meta = metaEl?.textContent || "";
   const modeMeta = byId("mode-meta")?.textContent || "";
-  const zoom = q<SVGSVGElement>("#canvas")?.style.transform.match(/scale\(([^)]+)\)/)?.[1];
+  const webglCanvas = q<HTMLCanvasElement>("#webgl-canvas");
+  const zoom = webglCanvas && !webglCanvas.hidden ? webglCanvas.dataset.zoom
+    : q<SVGSVGElement>("#canvas")?.style.transform.match(/scale\(([^)]+)\)/)?.[1];
   const displayName = byId<HTMLInputElement>("collab-display-name")?.value.trim() || "Akaghef";
   const selectedNodeId = metaEl?.dataset.selectedNodeId?.trim() || "";
   const selectedNodeLabel = metaEl?.dataset.selectedNodeLabel?.trim() || "";

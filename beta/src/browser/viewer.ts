@@ -24,6 +24,7 @@ import {
   type ScopeLockDrawState,
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
+import { captureSvgPaintScene, sceneWorldBounds, translatePaintScene } from "./webgl_scene_tiles";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
@@ -106,6 +107,9 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const modeBadgeEl = document.getElementById("mode-badge") as HTMLElement | null;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
+// A world-positioned Linear panel can exceed the viewport. Native focus must
+// not scroll the app itself; all map movement belongs to the camera.
+document.querySelector<HTMLElement>(".app")?.style.setProperty("overflow", "clip");
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
 const webglCanvas = document.getElementById("webgl-canvas") as HTMLCanvasElement | null;
 const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
@@ -403,7 +407,7 @@ function basenameFromPath(rawPath: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
-const REQUESTED_RENDERER = (queryParams.get("renderer") || "svg").trim().toLowerCase();
+const REQUESTED_RENDERER = (queryParams.get("renderer") || "webgl").trim().toLowerCase();
 const WEBGL_RENDERER_REQUESTED = REQUESTED_RENDERER === "webgl";
 const WEBGL_DEBUG_REQUESTED = queryParams.get("webglDebug") === "1";
 const REQUESTED_SURFACE = (queryParams.get("surface") || "").trim().toLowerCase();
@@ -537,6 +541,13 @@ let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text
 let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
+let contentMinX = 0;
+let contentMinY = 0;
+let webglPaintedSelection = new Set<string>();
+let webglPaintedPrimary = "";
+let webglPaintedLink: string | null = null;
+let renderedMetaPrefix = "";
+let renderedMetaSuffix = "";
 let webglProjection: WebGLRenderingProjection | null = null;
 let webglRendererActive = false;
 let webglFallbackReason: string | null = null;
@@ -800,7 +811,7 @@ let viewState: ViewState = {
   surfaceSpace: "normal",
   surfaceLayoutDirection: "right",
   surfaceDepthAlign: "packed",
-  surfaceEdgeRoute: "elbow",
+  surfaceEdgeRoute: "bezier",
   surfaceLinkRoute: "simple-bezier",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
@@ -901,7 +912,7 @@ function sanitizeSurfaceEdgeRoute(value: unknown): SurfaceEdgeRoute {
   if (value === "elbow" || value === "bezier" || value === "straight") {
     return value;
   }
-  return "elbow";
+  return "bezier";
 }
 
 function sanitizeSurfaceLinkRoute(value: unknown): SurfaceLinkRoute {
@@ -4481,6 +4492,7 @@ function svgShapeBox(shape: SVGGraphicsElement): { x: number; y: number; width: 
 
 /** Converts the existing canonical SVG scene into a read-only GPU projection. */
 function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
+  const paintScene = captureSvgPaintScene(canvas);
   const labelsById = new Map<string, string[]>();
   const labelElementsById = new Map<string, SVGTextElement>();
   canvas.querySelectorAll<SVGTextElement>("text.label-root[data-node-id], text.label-node[data-node-id]").forEach((label) => {
@@ -4555,11 +4567,12 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     : [];
   return {
     revision: `${map?.savedAt || "unsaved"}:${viewState.surfaceViewMode}:${currentScopeRootId()}`,
+    paintScene,
     nodes,
     edges: parseEdges("path.edge[data-source-node-id][data-target-node-id], line.scatter-guide[data-parent-node-id][data-child-node-id]", "edge"),
     graphLinks: parseEdges("path.graph-link[data-source-node-id][data-target-node-id], line.graph-link[data-source-node-id][data-target-node-id]", "graph-link"),
     groups,
-    bounds: { minX: 0, minY: 0, maxX: contentWidth, maxY: contentHeight },
+    bounds: { minX: contentMinX, minY: contentMinY, maxX: contentMinX + contentWidth, maxY: contentMinY + contentHeight },
   };
 }
 
@@ -4821,6 +4834,7 @@ function translateWebGLDragSnapshot(
   return {
     ...snapshot,
     revision: `${snapshot.revision}:drag`,
+    paintScene: snapshot.paintScene ? translatePaintScene(snapshot.paintScene, moved, delta) : undefined,
     nodes: snapshot.nodes.map((node) => moved.has(node.id)
       ? { ...node, x: node.x + delta.x, y: node.y + delta.y }
       : { ...node }),
@@ -4864,6 +4878,10 @@ function updateWebGLNodeDragPreview(event: PointerEvent): void {
 
 function activateWebGLProjection(): void {
   if (!webglCanvas || !webglSurfaceSupported()) return;
+  // Measure/capture the appearance in the same task that presents WebGL.
+  // Do not show an intermediate SVG frame between renderer updates.
+  canvas.removeAttribute("hidden");
+  applyCanvasViewportTransform();
   // A hidden canvas reports a 0×0 box; expose it before allocating the
   // drawing buffer so DPR sizing is based on the real viewport.
   webglCanvas.hidden = false;
@@ -4888,7 +4906,7 @@ function activateWebGLProjection(): void {
         webglRendererActive = true;
         webglCanvas.hidden = false;
         canvas.setAttribute("hidden", "");
-        if (linearPanelEl) linearPanelEl.hidden = true;
+        syncLinearPanelPosition();
         webglProjection?.resize();
         webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
         syncWebGLInteraction();
@@ -4900,16 +4918,29 @@ function activateWebGLProjection(): void {
   }
   webglProjection.resize();
   if (!lastLayout) return;
-  webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
-  webglProjection.setSnapshot(webglLastSnapshot);
-  webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+  try {
+    webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
+    webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    webglProjection.setSnapshot(webglLastSnapshot);
+    webglPaintedSelection = new Set(viewState.selectedNodeIds);
+    webglPaintedPrimary = viewState.selectedNodeId;
+    webglPaintedLink = selectedGraphLinkId;
+  } catch (error) {
+    webglFallbackReason = error instanceof Error ? error.message : String(error);
+    deactivateWebGLProjection();
+    applyZoom();
+    setStatus(`WebGL appearance unavailable: ${webglFallbackReason}`, true);
+    return;
+  }
   if (WEBGL_DEBUG_REQUESTED) {
     webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
     webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length, groups: webglLastSnapshot.groups.length });
   }
   webglRendererActive = true;
   canvas.setAttribute("hidden", "");
-  if (linearPanelEl) linearPanelEl.hidden = true;
+  webglCanvas.dataset.renderer = "retained-vector-tiles";
+  webglCanvas.dataset.zoom = String(viewState.zoom);
+  syncLinearPanelPosition();
   syncWebGLInteraction();
   syncInlineEditorPosition();
   (globalThis as any).__m3eWebGLProjection = {
@@ -4928,7 +4959,6 @@ function scheduleWebGLProjectionActivation(): void {
   if (webglActivationFrame !== null) cancelAnimationFrame(webglActivationFrame);
   // Keep SVG visible until same-turn camera fitting has settled. This prevents
   // the first WebGL frame from locking in the pre-fit 100% camera.
-  deactivateWebGLProjection();
   webglActivationFrame = requestAnimationFrame(() => {
     webglActivationFrame = null;
     if (webglSurfaceSupported()) activateWebGLProjection();
@@ -4959,7 +4989,9 @@ function applyCanvasViewportTransform(): void {
     canvas.style.height = heightValue;
     _appliedCanvasHeight = heightValue;
   }
-  const transformValue = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  // SVG viewBox offsets its local viewport; compensate so world coordinates
+  // still map to camera + world*zoom, identically to WebGL and HTML overlays.
+  const transformValue = `translate(${viewState.cameraX + contentMinX * viewState.zoom}px, ${viewState.cameraY + contentMinY * viewState.zoom}px) scale(${viewState.zoom})`;
   if (_appliedCanvasTransform !== transformValue) {
     canvas.style.transform = transformValue;
     _appliedCanvasTransform = transformValue;
@@ -4979,10 +5011,6 @@ function applyLinearPanelViewportTransform(): void {
   if (!linearPanelEl || linearPanelEl.hidden || _linearPanelLayoutDirty) {
     return;
   }
-  if (isWebGLRendererActive()) {
-    linearPanelEl.hidden = true;
-    return;
-  }
   if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree" || !map || !lastLayout || visibleOrder.length === 0) {
     return;
   }
@@ -4997,6 +5025,8 @@ function applyLinearPanelViewportTransform(): void {
 function applyZoom(options: ViewportApplyOptions = {}): void {
   if (isWebGLRendererActive()) {
     webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    if (webglCanvas && webglCanvas.dataset.zoom !== String(viewState.zoom)) webglCanvas.dataset.zoom = String(viewState.zoom);
+    applyLinearPanelViewportTransform();
     syncInlineEditorPosition();
     syncWebGLGraphLinkControls();
     if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
@@ -5137,7 +5167,7 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree" || isWebGLRendererActive()) {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     linearPanelEl.hidden = true;
     return;
   }
@@ -8367,12 +8397,21 @@ function render(): void {
   maxX = Math.max(maxX, annotationRender.maxX);
   maxY = Math.max(maxY, annotationRender.maxY);
 
-  contentWidth = maxX;
-  contentHeight = maxY;
-  canvas.setAttribute("width", String(maxX));
-  canvas.setAttribute("height", String(maxY));
-  canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
   (canvas as Element).innerHTML = `${defs}${surfaceFrames}${disperseGroups}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
+  // Measure world geometry, including negative positions and curved paths.
+  // A hidden SVG cannot be measured reliably; it is hidden again by the
+  // projection before presentation, without changing saved node coordinates.
+  const wasHidden = canvas.hasAttribute("hidden");
+  canvas.removeAttribute("hidden");
+  const bounds = sceneWorldBounds(canvas.getBBox(), maxX, maxY);
+  if (wasHidden) canvas.setAttribute("hidden", "");
+  contentMinX = bounds.minX;
+  contentMinY = bounds.minY;
+  contentWidth = bounds.maxX - bounds.minX;
+  contentHeight = bounds.maxY - bounds.minY;
+  canvas.setAttribute("width", String(contentWidth));
+  canvas.setAttribute("height", String(contentHeight));
+  canvas.setAttribute("viewBox", `${contentMinX} ${contentMinY} ${contentWidth} ${contentHeight}`);
   if (webglSurfaceSupported()) {
     scheduleWebGLProjectionActivation();
   } else {
@@ -8411,7 +8450,9 @@ function render(): void {
   metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
   metaEl.dataset.scopeId = normalizedCurrentScopeId();
   metaEl.dataset.mapId = LOCAL_MAP_ID;
-  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  renderedMetaPrefix = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode}`;
+  renderedMetaSuffix = ` | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  syncSelectionMetadata();
   updateScopeMeta();
   updateScopeSummary();
   updateMapTitle();
@@ -9075,6 +9116,59 @@ function normalizeSelectionState(): void {
   }
 }
 
+function syncSelectionMetadata(): void {
+  const selected = map?.state.nodes[viewState.selectedNodeId];
+  metaEl.dataset.selectedNodeId = selected?.id || "";
+  metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
+  metaEl.textContent = `${renderedMetaPrefix} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size})${renderedMetaSuffix}`;
+}
+
+let selectionRefreshFrame: number | null = null;
+function scheduleSelectionRefresh(): void {
+  if (!isWebGLRendererActive() || webglPaintedLink !== selectedGraphLinkId) {
+    scheduleRender();
+    return;
+  }
+  if (selectionRefreshFrame !== null) return;
+  selectionRefreshFrame = requestAnimationFrame(() => {
+    selectionRefreshFrame = null;
+    if (_renderScheduled || !webglProjection || !webglLastSnapshot || !isWebGLRendererActive()) return;
+    const changed = new Set<string>();
+    webglPaintedSelection.forEach((id) => { if (!viewState.selectedNodeIds.has(id)) changed.add(id); });
+    viewState.selectedNodeIds.forEach((id) => { if (!webglPaintedSelection.has(id)) changed.add(id); });
+    if (webglPaintedPrimary !== viewState.selectedNodeId) {
+      changed.add(webglPaintedPrimary); changed.add(viewState.selectedNodeId);
+    }
+    changed.delete("");
+    if (changed.size) {
+      // Retain layout, hit geometry and all unrelated GPU tiles. Only old/new
+      // selection paint changes; keep the canonical SVG's fill/font styling.
+      canvas.removeAttribute("hidden");
+      try {
+        changed.forEach((id) => {
+          canvas.querySelectorAll(`[data-node-id="${CSS.escape(id)}"]`).forEach((element) => {
+            element.classList.toggle("selected", viewState.selectedNodeIds.has(id));
+            element.classList.toggle("multi-selected", viewState.selectedNodeIds.has(id));
+            element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
+          });
+        });
+        const paint = captureSvgPaintScene(canvas, changed);
+        const scene = webglProjection.updateNodePaint(paint, changed);
+        if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
+      } finally {
+        canvas.setAttribute("hidden", "");
+      }
+      webglPaintedSelection = new Set(viewState.selectedNodeIds);
+      webglPaintedPrimary = viewState.selectedNodeId;
+    }
+    syncWebGLInteraction();
+    syncSelectionMetadata();
+    syncNodeComponentUi();
+    syncInlineEditorPosition();
+    syncLinearCaretToSelectedNode();
+  });
+}
+
 function setSingleSelection(nodeId: string, renderNow = true): void {
   getNode(nodeId);
   if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
@@ -9087,7 +9181,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   viewState.selectionAnchorId = null;
   syncV4Panel(false);
   if (renderNow) {
-    scheduleRender();
+    scheduleSelectionRefresh();
   }
 }
 
@@ -9104,6 +9198,7 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 
 function setRangeSelection(targetId: string): void {
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
     ? viewState.selectionAnchorId
     : viewState.selectedNodeId;
@@ -9116,16 +9211,17 @@ function setRangeSelection(targetId: string): void {
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
   viewState.selectedNodeIds.add(targetId);
   syncV4Panel(false);
-  scheduleRender();
+  scheduleSelectionRefresh();
 }
 
 function toggleNodeSelection(nodeId: string): void {
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   viewState.selectionAnchorId = nodeId;
   if (viewState.selectedNodeIds.has(nodeId)) {
     if (viewState.selectedNodeIds.size === 1) {
       viewState.selectedNodeId = nodeId;
-      scheduleRender();
+      scheduleSelectionRefresh();
       return;
     }
     viewState.selectedNodeIds.delete(nodeId);
@@ -9133,14 +9229,14 @@ function toggleNodeSelection(nodeId: string): void {
       viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
     }
     syncV4Panel(false);
-    scheduleRender();
+    scheduleSelectionRefresh();
     return;
   }
 
   viewState.selectedNodeIds.add(nodeId);
   viewState.selectedNodeId = nodeId;
   syncV4Panel(false);
-  scheduleRender();
+  scheduleSelectionRefresh();
 }
 
 function selectNode(nodeId: string): void {
@@ -11962,8 +12058,8 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
   if (!wasWebGL) {
     setEditedSvgLabelVisibility(nodeId, true);
   }
-  input.remove();
   inlineEditor = null;
+  input.remove();
 
   if (commit) {
     applyNodeTextEdit(nodeId, next, mode);
@@ -12010,8 +12106,8 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   const { nodeId, input } = inlineEdgeLabelEditor;
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
-  input.remove();
   inlineEdgeLabelEditor = null;
+  input.remove();
   if (commit) {
     applyIncomingEdgeLabelEdit(nodeId, next);
   }
@@ -13311,8 +13407,8 @@ function fitDocument(options: CameraMoveOptions = {}): boolean {
   const zoom = clampZoom(Math.min(fitX, fitY) * 0.92);
   moveCameraTo({
     zoom,
-    cameraX: (boardRect.width - contentWidth * zoom) / 2,
-    cameraY: (boardRect.height - contentHeight * zoom) / 2,
+    cameraX: (boardRect.width - contentWidth * zoom) / 2 - contentMinX * zoom,
+    cameraY: (boardRect.height - contentHeight * zoom) / 2 - contentMinY * zoom,
   }, options);
   return true;
 }
@@ -15110,11 +15206,7 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
         return;
       }
     }
-    setSingleSelection(hit.nodeId, false);
-    syncWebGLInteraction();
-    // Keep HTML inspector/metadata in the canonical UI state in sync. This is
-    // a discrete selection update, never part of the pan/zoom gesture path.
-    scheduleRender();
+    selectByPointerModifiers(hit.nodeId, { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey });
     board.focus();
     return;
   }
