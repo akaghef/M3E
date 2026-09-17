@@ -77,6 +77,9 @@ OT（[`gyroid-eth/orrery-telemetry`](https://github.com/gyroid-eth/orrery-teleme
 
 ## 主成果物
 
+- [Seam Lab現況調査の回答原文](docs/2026-09-17_seam-lab-audit.md)（2026-09-17時点の記録）
+- [OT力学Lab仕様](docs/force-lab-spec.md)（collapseはTree同義、Viewer Panel再設計は保留）
+
 | 成果物 | 位置 | 状態 |
 |---|---|---|
 | 1枚目の1画面 mock | `mocks/screen01.html` | 初稿提出済（2026-09-15、akaghef「第一案としては優秀」） |

@@ -17,6 +17,7 @@
     "lab:layout": "vite --host 127.0.0.1 --port 14273 --config vite.config.mjs",
     "lab:node": "vite --host 127.0.0.1 --port 14274 --config vite.config.mjs",
     "lab:pn": "vite --host 127.0.0.1 --port 14275 --config vite.config.mjs",
+    "lab:force": "vite --host 127.0.0.1 --port 14279 --strictPort --config vite.config.mjs --configLoader runner",
     "lab:runtime-board": "vite --host 127.0.0.1 --port 14276 --config vite.config.mjs",
     "test:runtime-board": "playwright test --config playwright.runtime-board.config.js",
     "test:node": "npm run build:test && npx vitest run tests/unit/node_draw_*.test.* && playwright test --config playwright.node-lab.config.js",

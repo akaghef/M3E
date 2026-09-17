@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link rel="icon" href="data:," /><title>OT Force · M3E Seam Lab</title></head>
+  <body>
+    <header>
+      <a href="/src/labs/index.html" class="back">← Seam Labs</a>
+      <div class="title"><span class="eyebrow">M3E / PHYSICS WORKSHOP</span><h1>OT Force <span>Seam Lab</span></h1></div>
+      <div class="toolbar">
+        <label>Fixture<select id="fixture"><option value="nested">入れ子 group</option><option value="flat">平坦 network</option><option value="hundred">100 矩形</option><option value="blocked">固定衝突</option></select></label>
+        <label>Surface<select id="mode"><option>Disperse</option><option>Radial</option></select></label>
+        <button id="tune-toggle" aria-expanded="false" aria-controls="tuning">力学を調整</button>
+      </div>
+    </header>
+    <main>
+      <div class="surface-head"><div><span id="status" data-state="running">計算中</span><span id="counts"></span></div><div class="actions"><button id="pause">一時停止</button><button id="reheat">再計算</button><button id="fit">全体表示</button><button id="reset">配置をリセット</button></div></div>
+      <div id="canvas-host">
+        <svg id="canvas" aria-label="力学グラフ" xmlns="http://www.w3.org/2000/svg"><g id="scene"></g></svg>
+        <section id="tuning" hidden aria-label="力学パラメータ">
+          <div class="panel-title"><h2>力学パラメータ</h2><button id="close-tuning" aria-label="調整を閉じる">×</button></div>
+          <p>現在の位置から再計算。開閉は配置に影響しません。</p>
+          <label for="repulsion">斥力 <output for="repulsion"></output><input id="repulsion" type="range" min="200" max="20000" step="100" /></label>
+          <label for="length">リンク自然長 <output for="length"></output><input id="length" type="range" min="40" max="400" step="1" /></label>
+          <label for="spring">ばね定数 <output for="spring"></output><input id="spring" type="range" min="0" max="0.2" step="0.001" /></label>
+          <label for="gravity">中心引力 <output for="gravity"></output><input id="gravity" type="range" min="0" max="0.2" step="0.001" /></label>
+          <button id="defaults">設定を既定値に戻す</button><small>Lab内のみ · 設定は保存されません</small>
+        </section>
+        <div id="selection" hidden>
+          <span id="selected-label"></span><button id="collapse">子孫を畳む</button><button id="pin">固定</button><button id="clear-selection" aria-label="選択解除">×</button>
+        </div>
+        <div class="legend"><span class="graph-key"></span>GraphLink <span class="tree-key"></span>親子edge <span class="group-key"></span>親子group</div>
+      </div>
+      <footer><span>ノードを選択・drag / 枠の見出しでgroup移動 / 背景dragでpan / wheelでzoom</span><span id="metrics"></span></footer>
+    </main>
+    <aside class="note"><strong>OTの力学 ＋ M3Eの矩形・包含制約</strong><span>collapseは親を残して子孫を畳む操作です。Viewer Panelの最終デザインではありません。</span><a id="source-notice" href="./NOTICE.md" download="OT-Force-NOTICE.md">Source / License</a></aside>
+    <script type="module" src="./force-lab.ts"></script>
+  </body>
+</html>
