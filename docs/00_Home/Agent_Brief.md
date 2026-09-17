@@ -1,6 +1,6 @@
 # Agent Brief
 
-最終更新: 2026-04-20
+最終更新: 2026-09-17
 
 セッション開始時に最初に見る作業用チートシート。
 これは正本ではない。余計な説明は置かず、**困った時にどこを見るか**だけを示す。
@@ -8,6 +8,8 @@
 ---
 
 ## Start Here
+
+- **高優先度: PJ08 — M3E × OT 合併吸収**（2026-09-17 ユーザー指定）: [再開ガイド](../../projects/PJ08_M3E_OT_Fusion/resume-cheatsheet.md) → [概要](../../projects/PJ08_M3E_OT_Fusion/README.md) → [計画](../../projects/PJ08_M3E_OT_Fusion/plan.md)。統合の着手・再開はこの repository subproject を入口にする。
 
 - M3E が何か: [Home.md](./Home.md)
 - Planning Hierarchy の入口: [Objective.md](./Objective.md)

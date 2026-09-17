@@ -1,0 +1,131 @@
+# PJ08 — M3E × OT 合併吸収 tasks
+#
+# ID 注意: 本ファイルの done_when で参照する DC/IS は plan.md の PJ08 系列。
+# ADR_011 の DC/IS を指すときは "ADR_011 DC3" のように書く。
+
+current_focus:
+  date: 2026-09-15
+  phase: 1
+  summary: "GUI 収束。DB も agent runtime も作らず、1枚目の1画面の採否を閉じる。"
+  next:
+    - T-1-1
+    - T-1-2
+    - T-1-3
+
+tasks:
+  - id: T-0-1
+    phase: 0
+    verb: bootstrap
+    target: "PJ08 folder skeleton and entry docs"
+    done_when:
+      - "README.md / plan.md / tasks.yaml / resume-cheatsheet.md が存在する"
+      - "mocks/screen01.html が存在する"
+      - "reviews/ と runtime/ が存在する"
+      - "backlog/meta-subpj-candidates.md に PJ08 行がある"
+    eval_required: false
+    status: done
+    round: 1
+    round_max: 1
+
+  - id: T-1-1
+    phase: 1
+    verb: revise
+    target: "mocks/screen01.html — akaghef の差し戻し内容を反映する"
+    done_when:
+      - "akaghef が具体的に指摘した箇所が直っている"
+      - "DB / fetch / agent runtime を導入していない（DC1 を破らない）"
+      - "トークンは OT dashboard.css と viewer.css からの逐語採取を維持している"
+    eval_required: true
+    eval_criteria:
+      - "受入契約に数量条件（「N個ある」）を使っていない"
+      - "akaghef が挙げた劣化点 2件（edge→mail 履歴 / node hover）が動作する"
+    status: blocked
+    blocked_by: "akaghef の差し戻し内容待ち"
+    round: 1
+    round_max: 3
+    contributes_to: "RQ5 指示と観測が同じ面で起きる / RQ6 注意配分"
+
+  - id: T-1-2
+    phase: 1
+    verb: verify
+    target: "IS3 — DECK rail が 1080px 未満で surface の下に落ちる件を実機幅で確認する"
+    done_when:
+      - "akaghef の実機幅で rail が意図どおり出ることを確認済み"
+      - "折返しが問題なら breakpoint を改訂している"
+    eval_required: false
+    note: "GUI の目視確認は akaghef への確認依頼であって、agent の screenshot ループではない"
+    status: pending
+    round: 1
+    round_max: 2
+
+  - id: T-1-3
+    phase: 1
+    verb: decide
+    target: "IS1 — 色の所有権（node type 所有 vs color_semantics の global 7色）"
+    done_when:
+      - "reviews/Q1_color_ownership.md に akaghef の回答がある"
+      - "決着が color_semantics.md か ADR のどちらに反映されるか決まっている"
+    eval_required: false
+    note: "steering 同士の衝突なので、決着は必ず durable な正本側へ書き戻す"
+    status: pending
+    round: 1
+    round_max: 1
+    contributes_to: "RQ6 注意配分（色は遠景で「どれを見るべきか」を決める手段）"
+
+  - id: T-1-4
+    phase: 1
+    verb: resolve
+    target: "codex/ot-absorption-strategy（S17）の dev-beta マージ可否"
+    done_when:
+      - "S17 が dev-beta に入っている、または見送り理由が plan.md に記録されている"
+    eval_required: false
+    note: "S17 が未マージのままだと PJ08 の Strategy 根拠が正本に無い状態が続く"
+    status: pending
+    round: 1
+    round_max: 1
+
+  - id: T-1-5
+    phase: 1
+    verb: gate
+    target: "Gate 1 — GUI 収束の判定"
+    done_when:
+      - "akaghef が 1画面を承認した、または Phase 1 継続を指示した"
+    eval_required: false
+    note: "Phase 遷移判定は人間が◎、Claude は×。Claude はこの判定を出さない"
+    status: pending
+    round: 1
+    round_max: 1
+
+  - id: T-2-1
+    phase: 2
+    verb: catalog
+    target: "node type カタログ — surface に出る type ごとに 見た目 / schema / ロジック / 色 / 操作"
+    done_when:
+      - "agent / task / gate / deliverable / resource / goal / role の各 type が1枚ずつある"
+      - "type 別テンプレが再利用可能な形で書かれている（node seam の趣旨）"
+      - "IS1 の決着が反映されている"
+    eval_required: true
+    eval_criteria:
+      - "codex/agent-card-lab の shared/agent_card.ts と pet_catalog を吸収評価している"
+      - "ADR_011 DC22 の Agent Card 表示要素と矛盾しない"
+    status: pending
+    round: 0
+    round_max: 3
+    contributes_to: "RQ2 AI agent と human の対称性"
+
+  - id: T-3-1
+    phase: 3
+    verb: contract
+    target: "connector seam — OT observation contract から M3E map データ層への境界"
+    done_when:
+      - "seam が exclusive に切られている（部分 seam 化しない）"
+      - "consumer 境界が view 層ではなく map データ層にある（ADR_011 DC2）"
+      - "codex/orchestration-board-seam の先行実装を査読済み"
+    eval_required: true
+    eval_criteria:
+      - "観測由来と自己申告由来を同じ field に流していない（RQ3 / ADR_011 DC21）"
+      - "Telemetry を正本 map に書いていない（RQ4）"
+    status: pending
+    round: 0
+    round_max: 3
+    contributes_to: "RQ3 真偽の源泉が自己申告でない"

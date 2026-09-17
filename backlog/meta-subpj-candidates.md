@@ -17,7 +17,13 @@
 | `PJ01` | AlgLibMove | 進行中 (prj/AlgLibMove ブランチ) | `projects/PJ01_AlgLibMove/` |
 | `PJ02` | MathOntoBridge | 進行中 (prj/02_MathOntoBridge ブランチ、列挙番号 PJ-101) | `projects/PJ02_MathOntoBridge/` |
 | `PJ03` | SelfDrive | 進行中 (2026-04-21 reopen、Plan 1 は基礎工事完了、Plan 2 で graph runtime 実体を追加) | `projects/PJ03_SelfDrive/` |
-| `PJ04+` | 未定 | - | 活性化時に `projects/PJ{NN}_{Name}/` を作成 |
+| `PJ08` | M3E_OT_Fusion | 進行中 (2026-09-15 立ち上げ、Phase 1 = GUI 収束) | `projects/PJ08_M3E_OT_Fusion/` |
+| `PJ09+` | 未定 | - | 活性化時に `projects/PJ{NN}_{Name}/` を作成 |
+
+> ⚠️ **本表は drift している。** `projects/` 配下には `PJ04_MermaidSystemLangGraph` /
+> `PJ05_EmbeddedHtmlPresentation` / `PJ07_M3EQualityCycle` が実在するが本表に行が無い
+> （`PJ06` は欠番）。PJ08 立ち上げ時（2026-09-15）に検出。**本表の修復は PJ08 の範囲外**として
+> 意図的に未着手にしてある — 行を足すだけでは各 PJ の実状態が分からないため。
 
 本ファイル下部の候補一覧（TrustEng 以下）は **未活性の候補ラベル**。活性化判断時に次の連番 (`PJ02` 以降) を採番し直す。以下の `PJ-01` 〜 `PJ-07` は暫定的な候補識別子として本ファイル内でのみ使用する。
 
