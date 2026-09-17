@@ -1,16 +1,6 @@
 import { renderNode, lineHeightForFont, multilineTextStartY } from "../shared/node_draw_svg";
 import type { NodeDrawInput } from "../shared/node_draw_port";
 
-/** Editing semantics are shared by SVG and WebGL; a renderer must not change them. */
-export function nodeLabelEditAction(event: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey" | "isComposing">): "none" | "finish" | "next" | "child" | "sibling" {
-  if (event.isComposing) return "none";
-  if (event.key === "Escape") return "finish";
-  if (event.key === "Tab") return "child";
-  if (event.key !== "Enter" || event.shiftKey) return "none";
-  if ((event.ctrlKey || event.metaKey) && !event.altKey) return "next";
-  return "sibling";
-}
-
 /** Never constrain the draft to the old label's height (including IME/newlines). */
 export function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
   input.style.height = "auto";

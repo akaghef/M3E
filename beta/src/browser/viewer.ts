@@ -25,7 +25,8 @@ import {
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { captureSvgPaintScene, sceneWorldBounds, translatePaintScene } from "./webgl_scene_tiles";
-import { autoSizeInlineEditor, InlineNodeEditorPreview, nodeLabelEditAction } from "./inline_node_editor";
+import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
+import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
@@ -108,6 +109,8 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const modeBadgeEl = document.getElementById("mode-badge") as HTMLElement | null;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
+const KEYBOARD_PLATFORM = keyboardPlatform(navigator.platform);
+const primaryModifier = (event: Pick<KeyboardEvent, "ctrlKey" | "metaKey">): boolean => hasPrimaryModifier(event, KEYBOARD_PLATFORM);
 // A world-positioned Linear panel can exceed the viewport. Native focus must
 // not scroll the app itself; all map movement belongs to the camera.
 document.querySelector<HTMLElement>(".app")?.style.setProperty("overflow", "clip");
@@ -486,7 +489,7 @@ function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
   if (event.altKey && !event.ctrlKey && !event.metaKey) {
     return ["h", "v", "d"].includes(event.key.toLowerCase());
   }
-  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+  if (primaryModifier(event) && !event.altKey) {
     return ["c", "s", "o"].includes(event.key.toLowerCase());
   }
   return false;
@@ -1205,20 +1208,20 @@ function isCopyNodePathShortcut(event: KeyboardEvent): boolean {
   if (!isShortcutLetter(event, "c", "KeyC")) {
     return false;
   }
-  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+  if (primaryModifier(event) && event.altKey && !event.shiftKey) {
     return true;
   }
-  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+  return primaryModifier(event) && event.shiftKey && !event.altKey;
 }
 
 function isCopyScopeIdShortcut(event: KeyboardEvent): boolean {
   if (!isShortcutLetter(event, "i", "KeyI")) {
     return false;
   }
-  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+  if (primaryModifier(event) && event.altKey && !event.shiftKey) {
     return true;
   }
-  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+  return primaryModifier(event) && event.shiftKey && !event.altKey;
 }
 
 function updateCloudSyncUi(): void {
@@ -12038,6 +12041,15 @@ function stringRecordEquals(left: Record<string, string>, right: Record<string, 
   return leftKeys.every((key) => left[key] === right[key]);
 }
 
+function viewerKeyboardMode(): ViewerKeyboardMode {
+  // The edit session owns the mode, not activeElement or renderer readiness.
+  return inlineEditor || inlineEdgeLabelEditor ? "edit" : "navigate";
+}
+
+function syncViewerKeyboardMode(): void {
+  board.dataset.keyboardMode = viewerKeyboardMode();
+}
+
 function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
   if (!inlineEditor) {
     return;
@@ -12051,6 +12063,7 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
     else setEditedSvgLabelVisibility(nodeId, true);
   }
   inlineEditor = null;
+  syncViewerKeyboardMode();
   // Removing a focused input can synchronously dispatch blur. Clear ownership
   // first, but never rely on that reentrant blur to decide whether to commit.
   input.remove();
@@ -12102,6 +12115,7 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
   inlineEdgeLabelEditor = null;
+  syncViewerKeyboardMode();
   input.remove();
   if (commit) {
     applyIncomingEdgeLabelEdit(nodeId, next);
@@ -12150,12 +12164,15 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   input.placeholder = "edge label";
   board.appendChild(input);
   inlineEdgeLabelEditor = { nodeId, input };
+  syncViewerKeyboardMode();
   syncInlineEdgeLabelEditorPosition();
   autoSizeInlineEdgeLabelEditor(input);
   input.focus();
   input.select();
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    // The originating edit session owns this entire key, even after removal.
+    event.stopPropagation();
     if (isImeComposingEvent(event)) {
       return;
     }
@@ -12170,7 +12187,7 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
     }
   });
   input.addEventListener("blur", () => {
-    stopInlineEdgeLabelEdit(true);
+    if (inlineEdgeLabelEditor?.input === input) stopInlineEdgeLabelEdit(true);
   });
   input.addEventListener("input", () => {
     autoSizeInlineEdgeLabelEditor(input);
@@ -12195,14 +12212,9 @@ function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
 }
 
 function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeIntoView?: boolean }): void {
-  if (!map) {
-    return;
-  }
-  if (isWebGLRendererActive()) {
-    if (!webglLastSnapshot?.nodes.some((node) => node.id === nodeId)) {
-      return;
-    }
-  } else if (!lastLayout?.pos[nodeId]) {
+  // New nodes are editable in the same task that creates them. A retained
+  // WebGL snapshot may intentionally still show the previous frame.
+  if (!map?.state.nodes[nodeId] || !lastLayout?.pos[nodeId]) {
     return;
   }
 
@@ -12229,6 +12241,8 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   board.appendChild(input);
 
   inlineEditor = { nodeId, input, mode };
+  input.dataset.nodeId = nodeId;
+  syncViewerKeyboardMode();
   const source = nodeDrawInputs.get(nodeId);
   if (source) {
     let label = canvas.querySelector<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"],text.label-node[data-node-id="${CSS.escape(nodeId)}"]`);
@@ -12264,10 +12278,12 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   }
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    // Keep native text editing/IME defaults, but never bubble into Navigate.
+    event.stopPropagation();
     if (isImeComposingEvent(event)) {
       return;
     }
-    const action = nodeLabelEditAction(event);
+    const action = nodeLabelEditAction(event, KEYBOARD_PLATFORM);
     if (action === "next") {
       event.preventDefault();
       // Equivalent to Esc -> DownArrow -> Enter while editing.
@@ -14917,7 +14933,7 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   if (isImeComposingEvent(event)) {
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key === "Enter") {
     event.preventDefault();
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
     syncLinearNotesToDocState();
@@ -15860,12 +15876,15 @@ document.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 document.addEventListener("keydown", (event: KeyboardEvent) => {
-  if (!map) {
+  if (!map || event.defaultPrevented) {
     return;
   }
   if (isImeComposingEvent(event)) {
     return;
   }
+  if (viewerKeyboardMode() === "edit") return;
+  // The other OS modifier and mixed Command+Control are not aliases.
+  if ((event.ctrlKey || event.metaKey) && !primaryModifier(event)) return;
 
   if (templateCompletionState && event.key === "Escape") {
     event.preventDefault();
@@ -15905,16 +15924,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (inlineEditor && document.activeElement === inlineEditor.input) {
-    return;
-  }
-  if (inlineEdgeLabelEditor && document.activeElement === inlineEdgeLabelEditor.input) {
-    return;
-  }
-
   if (document.activeElement === linearTextEl) {
     return;
   }
+  if (isTextEntryElement(event.target)) return;
 
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
@@ -16112,49 +16125,49 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
     // Arrow keys fall through to normal navigation
   }
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
     undoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && (event.shiftKey && event.key.toLowerCase() === "z")) {
+  if (primaryModifier(event) && !event.altKey && event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
     redoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "y") {
+  if (KEYBOARD_PLATFORM !== "mac" && primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "y") {
     event.preventDefault();
     redoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
     selectAllVisibleInScope();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
     event.preventDefault();
     void copySelected();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
     event.preventDefault();
     cutSelected();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     void pasteClipboard();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key === "Enter") {
     event.preventDefault();
     // Equivalent to Esc -> DownArrow -> Enter in normal mode.
     clearCutClipboard();
@@ -16163,20 +16176,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
     if (clearCutClipboard()) {
       event.preventDefault();
     }
     return;
   }
 
-  if (event.key === "Tab") {
+  if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     createNodeByDirectionAndEdit("depth");
     return;
   }
 
-  if (event.altKey && event.key === "Enter") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === "Enter") {
     if (isTextEntryElement(event.target)) {
       return;
     }
@@ -16197,13 +16210,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Enter") {
+  if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId, { selectAll: event.shiftKey });
     return;
   }
 
-  if (event.key === "F2") {
+  if (event.key === "F2" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId, { selectAll: true });
     return;
@@ -16227,7 +16240,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
     event.preventDefault();
     downloadJson();
     return;
@@ -16245,19 +16258,19 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
+  if (primaryModifier(event) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
     event.preventDefault();
     void generateRelatedTopicsForSelectedNode();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
+  if (primaryModifier(event) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     showScopeDashboard();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "0") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key === "0") {
     event.preventDefault();
     fitDocument();
     return;
@@ -16276,21 +16289,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if (!event.shiftKey && !event.altKey && event.key === "]") {
+  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
     board.focus();
     return;
   }
 
-  if (!event.shiftKey && !event.altKey && event.key === "[") {
+  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
     board.focus();
     return;
   }
 
-  if (event.key === "Delete" || event.key === "Backspace") {
+  if ((event.key === "Delete" || event.key === "Backspace") && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (
           event.key === "Backspace" &&
           !inlineEditor &&
@@ -16324,37 +16337,37 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "e") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleEntityListPanel();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "d") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     toggleMarkdownPreviewForSelectedNode();
     return;
   }
 
-  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
     event.preventDefault();
     openSelectedHyperlinkNode();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "h") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
     window.location.href = buildHomeHref();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "s") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "s") {
     event.preventDefault();
     toggleHomeScreen();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "v") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     if (cycleViewState === "focus") {
       if (map && viewState.selectedNodeId) {
@@ -16370,37 +16383,37 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "j") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "j") {
     event.preventDefault();
     jumpToAliasTarget();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "l") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
     startIncomingEdgeLabelEdit();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "a") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
     addAliasAsChild();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "p") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
     makeSelectedFolder();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "m") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     toggleHoldReparent();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
@@ -16501,7 +16514,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key.toLowerCase() === "p") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
     applyReparent();
     return;
@@ -16513,7 +16526,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowUp") {
+  if (event.key === "ArrowUp" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (event.shiftKey) {
       extendSelectionBreadth(-1);
@@ -16527,7 +16540,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowDown") {
+  if (event.key === "ArrowDown" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (event.shiftKey) {
       extendSelectionBreadth(1);
@@ -16541,13 +16554,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "g") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "g") {
     event.preventDefault();
     groupSelected();
     return;
   }
 
-  if (event.key === "ArrowLeft") {
+  if (event.key === "ArrowLeft" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (currentSurfaceIsFlowMode()) {
       selectFlowHorizontal(-1);
@@ -16561,7 +16574,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowRight") {
+  if (event.key === "ArrowRight" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     const selected = getNode(viewState.selectedNodeId);
     if (currentSurfaceIsFlowMode()) {
@@ -16610,8 +16623,14 @@ window.addEventListener("blur", () => {
   }
 });
 
-/* ── Shortcut cheatsheet: show on Ctrl/Alt hold ── */
+/* ── Shortcut cheatsheet: show on primary modifier / Alt hold ── */
 {
+  const primaryLabel = KEYBOARD_PLATFORM === "mac" ? "Command" : "Ctrl";
+  cheatsheetEl?.querySelectorAll<HTMLElement>("kbd, .automaton-label").forEach((element) => {
+    element.textContent = (element.textContent || "").replace(/Mod/g, primaryLabel);
+  });
+  const historyKey = cheatsheetEl?.querySelector<HTMLElement>("[data-browser-history-key]");
+  if (historyKey && KEYBOARD_PLATFORM === "mac") historyKey.textContent = "Command+Y";
   let cheatsheetTimer: ReturnType<typeof setTimeout> | null = null;
   const HOLD_MS = 400;
 
@@ -16633,10 +16652,13 @@ window.addEventListener("blur", () => {
   }
 
   document.addEventListener("keydown", (event: KeyboardEvent) => {
-    // Only trigger on bare Ctrl or Alt (no other modifier, no repeat)
     if (event.repeat) return;
+    if (event.defaultPrevented || viewerKeyboardMode() === "edit" || isTextEntryElement(event.target)) {
+      clearTimer();
+      return;
+    }
     const isBareMod =
-      (event.key === "Control" && !event.altKey && !event.shiftKey) ||
+      (event.key === (KEYBOARD_PLATFORM === "mac" ? "Meta" : "Control") && primaryModifier(event) && !event.altKey && !event.shiftKey) ||
       (event.key === "Alt" && !event.ctrlKey && !event.metaKey && !event.shiftKey);
     if (!isBareMod) {
       clearTimer();
@@ -16666,6 +16688,7 @@ window.addEventListener("blur", () => {
 }
 
 setVisualCheckStatus("Visual check idle");
+syncViewerKeyboardMode();
 syncMetaPanelToggleUi();
 loadVaultUiPrefs();
 loadLocalFsPrefs();
@@ -16729,6 +16752,7 @@ void initializeDocument().then(() => {
 
   // Skip home screen — go straight to map root
   // To open home screen, user can press the toggle shortcut
+  board.dataset.ready = "true";
 });
 
 window.addEventListener("beforeunload", () => {

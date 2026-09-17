@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { autoSizeInlineEditor, InlineNodeEditorPreview, measureInlineDraft, nodeLabelEditAction } from "../../src/browser/inline_node_editor";
+import { autoSizeInlineEditor, InlineNodeEditorPreview, measureInlineDraft } from "../../src/browser/inline_node_editor";
+import { nodeLabelEditAction as resolveEditAction } from "../../src/browser/viewer_keyboard";
 import type { NodeDrawInput } from "../../src/shared/node_draw_port";
 
 afterEach(() => vi.unstubAllGlobals());
+const nodeLabelEditAction = (event: Parameters<typeof resolveEditAction>[0]) => resolveEditAction(event, "other");
 
 const key = (value: string, modifiers: Partial<KeyboardEvent> = {}) => ({
   key:value, ctrlKey:false, metaKey:false, shiftKey:false, altKey:false, isComposing:false, ...modifiers,
@@ -19,7 +21,7 @@ describe("node label editing contract (SVG and WebGL)", () => {
   });
   it("keeps the draft when moving to the next editor via Control/Command+Enter", () => {
     expect(nodeLabelEditAction(key("Enter",{ctrlKey:true}))).toBe("next");
-    expect(nodeLabelEditAction(key("Enter",{metaKey:true}))).toBe("next");
+    expect(resolveEditAction(key("Enter",{metaKey:true}), "mac")).toBe("next");
   });
   it("does not finish or create nodes while IME is composing", () => {
     for (const value of ["Enter","Escape","Tab"]) {

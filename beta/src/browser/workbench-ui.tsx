@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { hasPrimaryModifier, keyboardPlatform } from "./viewer_keyboard";
 import {
   Bell,
   ChevronDown,
@@ -217,6 +218,10 @@ function currentEdgeRoute(): ProgressiveEdgeRoute {
 function currentLinkRoute(): ProgressiveLinkRoute {
   return document.documentElement.dataset.surfaceLinkRoute as ProgressiveLinkRoute || "simple-bezier";
 }
+
+const keyboardOs = keyboardPlatform(navigator.platform);
+const primaryKeyLabel = keyboardOs === "mac" ? "Command" : "Ctrl";
+const primaryKeyOptions = keyboardOs === "mac" ? { metaKey: true } : { ctrlKey: true };
 
 function sendKey(key: string, options: KeyboardEventInit = {}): void {
   document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...options }));
@@ -635,7 +640,7 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
           value={prompt}
           onChange={(event) => setPrompt(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            if (hasPrimaryModifier(event, keyboardOs) && !event.altKey && !event.shiftKey && !event.nativeEvent.isComposing && event.key === "Enter") {
               event.preventDefault();
               void runPrompt();
             }
@@ -770,7 +775,7 @@ function BottomControls({ snapshot, openModal }: { snapshot: UiSnapshot; openMod
       <IconButton label="Zoom out" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "-", bubbles: true }))}>
         <ZoomOut size={18} />
       </IconButton>
-      <button className="wb-zoom" type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "0", ctrlKey: true, bubbles: true }))}>
+      <button className="wb-zoom" type="button" onClick={() => sendKey("0", primaryKeyOptions)}>
         {snapshot.zoom}
       </button>
       <IconButton label="Zoom in" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "=", bubbles: true }))}>
@@ -1298,14 +1303,19 @@ function HelpModal({ close }: { close: () => void }): React.ReactElement {
         <header><h2>Shortcuts</h2><button type="button" onClick={close}>x</button></header>
         <div className="wb-shortcuts">
           <span><kbd>Tab</kbd>Add child</span>
+          <span><kbd>Enter</kbd>Navigate: edit / Edit: keep text and add sibling</span>
+          <span><kbd>Escape</kbd>Edit: keep text and return to Navigate</span>
+          <span><kbd>Shift+Enter</kbd>Navigate: edit all text / Edit: newline</span>
+          <span><kbd>{primaryKeyLabel}+Enter</kbd>Keep text, next node and edit</span>
+          <span><kbd>{primaryKeyLabel}+C / X / V</kbd>Navigate: nodes / Edit: text</span>
           <span><kbd>[</kbd><kbd>]</kbd>Scope</span>
           <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>Mode</span>
           <span><kbd>-</kbd><kbd>=</kbd>Zoom</span>
-          <span><kbd>Ctrl+Alt+C</kbd>Copy node path</span>
-          <span><kbd>Ctrl+Alt+I</kbd>Copy scope ID</span>
+          <span><kbd>{primaryKeyLabel}+Alt+C</kbd>Copy node path</span>
+          <span><kbd>{primaryKeyLabel}+Alt+I</kbd>Copy scope ID</span>
           <span><kbd>Alt+E</kbd>Entity list</span>
           <span><kbd>Alt+D</kbd>Markdown preview</span>
-          <span><kbd>Cmd/Ctrl+O</kbd>Open hyperlink node</span>
+          <span><kbd>{primaryKeyLabel}+O</kbd>Open hyperlink node</span>
         </div>
       </section>
     </div>
