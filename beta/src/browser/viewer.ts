@@ -1,5 +1,6 @@
 import {
   layout as layoutPortLayout,
+  TreeSpanCache,
   type LayoutSpace,
   type LayoutMode,
   type LayoutNodeMetric,
@@ -24,6 +25,10 @@ import {
   type ScopeLockDrawState,
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
+import { DerivedNodeCache, RetainedSvgScene } from "./incremental_scene";
+import { captureSvgPaintScene, sceneWorldBounds, translatePaintScene } from "./webgl_scene_tiles";
+import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
+import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
@@ -106,6 +111,11 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const modeBadgeEl = document.getElementById("mode-badge") as HTMLElement | null;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
+const KEYBOARD_PLATFORM = keyboardPlatform(navigator.platform);
+const primaryModifier = (event: Pick<KeyboardEvent, "ctrlKey" | "metaKey">): boolean => hasPrimaryModifier(event, KEYBOARD_PLATFORM);
+// A world-positioned Linear panel can exceed the viewport. Native focus must
+// not scroll the app itself; all map movement belongs to the camera.
+document.querySelector<HTMLElement>(".app")?.style.setProperty("overflow", "clip");
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
 const webglCanvas = document.getElementById("webgl-canvas") as HTMLCanvasElement | null;
 const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
@@ -403,7 +413,7 @@ function basenameFromPath(rawPath: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
-const REQUESTED_RENDERER = (queryParams.get("renderer") || "svg").trim().toLowerCase();
+const REQUESTED_RENDERER = (queryParams.get("renderer") || "webgl").trim().toLowerCase();
 const WEBGL_RENDERER_REQUESTED = REQUESTED_RENDERER === "webgl";
 const WEBGL_DEBUG_REQUESTED = queryParams.get("webglDebug") === "1";
 const REQUESTED_SURFACE = (queryParams.get("surface") || "").trim().toLowerCase();
@@ -481,7 +491,7 @@ function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
   if (event.altKey && !event.ctrlKey && !event.metaKey) {
     return ["h", "v", "d"].includes(event.key.toLowerCase());
   }
-  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+  if (primaryModifier(event) && !event.altKey) {
     return ["c", "s", "o"].includes(event.key.toLowerCase());
   }
   return false;
@@ -533,10 +543,29 @@ let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let cycleViewState: "focus" | "fit" = "focus";
-let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
+let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
+const nodeDrawInputs = new Map<string, NodeDrawInput>();
+const layoutMetricCache = new DerivedNodeCache<LayoutNodeMetric>();
+const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
+const edgeSvgCache = new DerivedNodeCache<string>();
+const treeSpanCache = new TreeSpanCache();
+const retainedSvgScene = new RetainedSvgScene();
+let incrementalProjection = false;
+let localEditBatchDepth = 0;
+let localEditBatchPending = false;
+let renderRevision = 0;
+let snapshotNodeCache = new WeakMap<SVGGraphicsElement, { key: string; value: RenderNode }>();
+let snapshotEdgeCache = new WeakMap<SVGGeometryElement, { key: string; value: RenderEdge }>();
 let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
+let contentMinX = 0;
+let contentMinY = 0;
+let webglPaintedSelection = new Set<string>();
+let webglPaintedPrimary = "";
+let webglPaintedLink: string | null = null;
+let renderedMetaPrefix = "";
+let renderedMetaSuffix = "";
 let webglProjection: WebGLRenderingProjection | null = null;
 let webglRendererActive = false;
 let webglFallbackReason: string | null = null;
@@ -608,7 +637,6 @@ let redoStack: UndoSnapshot[] = [];
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
-let suppressInlineBlurCommit = false;
 let flowSurfaceDetailLevel = 0;
 const linearNotesByScope: Record<string, string> = {};
 let linearPanelCanvasWidth = 340;
@@ -800,7 +828,7 @@ let viewState: ViewState = {
   surfaceSpace: "normal",
   surfaceLayoutDirection: "right",
   surfaceDepthAlign: "packed",
-  surfaceEdgeRoute: "elbow",
+  surfaceEdgeRoute: "bezier",
   surfaceLinkRoute: "simple-bezier",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
@@ -901,7 +929,7 @@ function sanitizeSurfaceEdgeRoute(value: unknown): SurfaceEdgeRoute {
   if (value === "elbow" || value === "bezier" || value === "straight") {
     return value;
   }
-  return "elbow";
+  return "bezier";
 }
 
 function sanitizeSurfaceLinkRoute(value: unknown): SurfaceLinkRoute {
@@ -1193,20 +1221,20 @@ function isCopyNodePathShortcut(event: KeyboardEvent): boolean {
   if (!isShortcutLetter(event, "c", "KeyC")) {
     return false;
   }
-  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+  if (primaryModifier(event) && event.altKey && !event.shiftKey) {
     return true;
   }
-  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+  return primaryModifier(event) && event.shiftKey && !event.altKey;
 }
 
 function isCopyScopeIdShortcut(event: KeyboardEvent): boolean {
   if (!isShortcutLetter(event, "i", "KeyI")) {
     return false;
   }
-  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+  if (primaryModifier(event) && event.altKey && !event.shiftKey) {
     return true;
   }
-  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+  return primaryModifier(event) && event.shiftKey && !event.altKey;
 }
 
 function updateCloudSyncUi(): void {
@@ -4481,6 +4509,11 @@ function svgShapeBox(shape: SVGGraphicsElement): { x: number; y: number; width: 
 
 /** Converts the existing canonical SVG scene into a read-only GPU projection. */
 function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
+  if (!incrementalProjection) {
+    snapshotNodeCache = new WeakMap();
+    snapshotEdgeCache = new WeakMap();
+  }
+  const paintScene = captureSvgPaintScene(canvas, undefined, incrementalProjection);
   const labelsById = new Map<string, string[]>();
   const labelElementsById = new Map<string, SVGTextElement>();
   canvas.querySelectorAll<SVGTextElement>("text.label-root[data-node-id], text.label-node[data-node-id]").forEach((label) => {
@@ -4498,16 +4531,19 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     shapeById.set(id, element);
   });
   shapeById.forEach((shape, id) => {
+    const labelElement = labelElementsById.get(id);
+    const cacheKey = shape.outerHTML + (labelElement?.outerHTML || "");
+    const previous = snapshotNodeCache.get(shape);
+    if (previous?.key === cacheKey) { nodes.push(previous.value); return; }
     const box = svgShapeBox(shape);
     if (!box) return;
     const visibleNode = map?.state.nodes[id];
     if (!visibleNode || !Number.isFinite(box.x + box.y + box.width + box.height)) return;
     const visual = canvas.querySelector<SVGGraphicsElement>(`[data-node-id="${CSS.escape(id)}"].node-shape, [data-node-id="${CSS.escape(id)}"].folder-box, [data-node-id="${CSS.escape(id)}"].root-box`) || shape;
     const lines = labelsById.get(id) || [uiLabel(visibleNode) || "(empty)"];
-    const labelElement = labelElementsById.get(id);
     const labelFontSize = labelElement ? Number.parseFloat(getComputedStyle(labelElement).fontSize) : Number.NaN;
     const style = readNodeStyleAttrs(visibleNode.attributes || {});
-    nodes.push({
+    const value: RenderNode = {
       id,
       x: box.x,
       y: box.y,
@@ -4522,14 +4558,19 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
       // effects). Prefer its canonical node style, then its resolved color.
       fill: style.bg || cssColorOf(visual, "fill", "#ffffff"),
       stroke: style.border || cssColorOf(visual, "stroke", "#475569"),
-    });
+    };
+    nodes.push(value);
+    snapshotNodeCache.set(shape, { key: cacheKey, value });
   });
   const parseEdges = (selector: string, kind: "edge" | "graph-link"): RenderEdge[] => Array.from(canvas.querySelectorAll<SVGGeometryElement>(selector))
     .map((element, index) => {
       const sourceNodeId = element.getAttribute("data-source-node-id") || element.getAttribute("data-parent-node-id") || "";
       const targetNodeId = element.getAttribute("data-target-node-id") || element.getAttribute("data-child-node-id") || "";
       const id = element.getAttribute("data-edge-id") || element.getAttribute("data-link-id") || `${kind}-${index}`;
-      return {
+      const key = `${id}:${element.outerHTML}`;
+      const previous = snapshotEdgeCache.get(element);
+      if (previous?.key === key) return previous.value;
+      const value: RenderEdge = {
         id,
         sourceNodeId,
         targetNodeId,
@@ -4539,6 +4580,8 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
         kind,
         direction: element.getAttribute("marker-end") ? "forward" as const : "none" as const,
       };
+      snapshotEdgeCache.set(element, { key, value });
+      return value;
     })
     .filter((edge) => edge.points.length >= 2);
   const groups: RenderGroupBoundary[] = currentSurfaceIsScatterMode()
@@ -4555,11 +4598,12 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     : [];
   return {
     revision: `${map?.savedAt || "unsaved"}:${viewState.surfaceViewMode}:${currentScopeRootId()}`,
+    paintScene,
     nodes,
     edges: parseEdges("path.edge[data-source-node-id][data-target-node-id], line.scatter-guide[data-parent-node-id][data-child-node-id]", "edge"),
     graphLinks: parseEdges("path.graph-link[data-source-node-id][data-target-node-id], line.graph-link[data-source-node-id][data-target-node-id]", "graph-link"),
     groups,
-    bounds: { minX: 0, minY: 0, maxX: contentWidth, maxY: contentHeight },
+    bounds: { minX: contentMinX, minY: contentMinY, maxX: contentMinX + contentWidth, maxY: contentMinY + contentHeight },
   };
 }
 
@@ -4821,6 +4865,7 @@ function translateWebGLDragSnapshot(
   return {
     ...snapshot,
     revision: `${snapshot.revision}:drag`,
+    paintScene: snapshot.paintScene ? translatePaintScene(snapshot.paintScene, moved, delta) : undefined,
     nodes: snapshot.nodes.map((node) => moved.has(node.id)
       ? { ...node, x: node.x + delta.x, y: node.y + delta.y }
       : { ...node }),
@@ -4864,6 +4909,10 @@ function updateWebGLNodeDragPreview(event: PointerEvent): void {
 
 function activateWebGLProjection(): void {
   if (!webglCanvas || !webglSurfaceSupported()) return;
+  // Measure/capture the appearance in the same task that presents WebGL.
+  // Do not show an intermediate SVG frame between renderer updates.
+  canvas.removeAttribute("hidden");
+  applyCanvasViewportTransform();
   // A hidden canvas reports a 0×0 box; expose it before allocating the
   // drawing buffer so DPR sizing is based on the real viewport.
   webglCanvas.hidden = false;
@@ -4888,7 +4937,7 @@ function activateWebGLProjection(): void {
         webglRendererActive = true;
         webglCanvas.hidden = false;
         canvas.setAttribute("hidden", "");
-        if (linearPanelEl) linearPanelEl.hidden = true;
+        syncLinearPanelPosition();
         webglProjection?.resize();
         webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
         syncWebGLInteraction();
@@ -4900,16 +4949,29 @@ function activateWebGLProjection(): void {
   }
   webglProjection.resize();
   if (!lastLayout) return;
-  webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
-  webglProjection.setSnapshot(webglLastSnapshot);
-  webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+  try {
+    webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
+    webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    webglProjection.setSnapshot(webglLastSnapshot);
+    webglPaintedSelection = new Set(viewState.selectedNodeIds);
+    webglPaintedPrimary = viewState.selectedNodeId;
+    webglPaintedLink = selectedGraphLinkId;
+  } catch (error) {
+    webglFallbackReason = error instanceof Error ? error.message : String(error);
+    deactivateWebGLProjection();
+    applyZoom();
+    setStatus(`WebGL appearance unavailable: ${webglFallbackReason}`, true);
+    return;
+  }
   if (WEBGL_DEBUG_REQUESTED) {
     webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
     webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length, groups: webglLastSnapshot.groups.length });
   }
   webglRendererActive = true;
   canvas.setAttribute("hidden", "");
-  if (linearPanelEl) linearPanelEl.hidden = true;
+  webglCanvas.dataset.renderer = "retained-vector-tiles";
+  webglCanvas.dataset.zoom = String(viewState.zoom);
+  syncLinearPanelPosition();
   syncWebGLInteraction();
   syncInlineEditorPosition();
   (globalThis as any).__m3eWebGLProjection = {
@@ -4928,7 +4990,6 @@ function scheduleWebGLProjectionActivation(): void {
   if (webglActivationFrame !== null) cancelAnimationFrame(webglActivationFrame);
   // Keep SVG visible until same-turn camera fitting has settled. This prevents
   // the first WebGL frame from locking in the pre-fit 100% camera.
-  deactivateWebGLProjection();
   webglActivationFrame = requestAnimationFrame(() => {
     webglActivationFrame = null;
     if (webglSurfaceSupported()) activateWebGLProjection();
@@ -4959,7 +5020,9 @@ function applyCanvasViewportTransform(): void {
     canvas.style.height = heightValue;
     _appliedCanvasHeight = heightValue;
   }
-  const transformValue = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  // SVG viewBox offsets its local viewport; compensate so world coordinates
+  // still map to camera + world*zoom, identically to WebGL and HTML overlays.
+  const transformValue = `translate(${viewState.cameraX + contentMinX * viewState.zoom}px, ${viewState.cameraY + contentMinY * viewState.zoom}px) scale(${viewState.zoom})`;
   if (_appliedCanvasTransform !== transformValue) {
     canvas.style.transform = transformValue;
     _appliedCanvasTransform = transformValue;
@@ -4979,10 +5042,6 @@ function applyLinearPanelViewportTransform(): void {
   if (!linearPanelEl || linearPanelEl.hidden || _linearPanelLayoutDirty) {
     return;
   }
-  if (isWebGLRendererActive()) {
-    linearPanelEl.hidden = true;
-    return;
-  }
   if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree" || !map || !lastLayout || visibleOrder.length === 0) {
     return;
   }
@@ -4997,6 +5056,8 @@ function applyLinearPanelViewportTransform(): void {
 function applyZoom(options: ViewportApplyOptions = {}): void {
   if (isWebGLRendererActive()) {
     webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+    if (webglCanvas && webglCanvas.dataset.zoom !== String(viewState.zoom)) webglCanvas.dataset.zoom = String(viewState.zoom);
+    applyLinearPanelViewportTransform();
     syncInlineEditorPosition();
     syncWebGLGraphLinkControls();
     if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
@@ -5137,7 +5198,7 @@ function syncLinearPanelPosition(): void {
     return;
   }
 
-  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree" || isWebGLRendererActive()) {
+  if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     linearPanelEl.hidden = true;
     return;
   }
@@ -5194,32 +5255,13 @@ function syncInlineEditorPosition(): void {
   }
 
   const nodeId = inlineEditor.nodeId;
-  const webglNode = isWebGLRendererActive()
-    ? webglLastSnapshot?.nodes.find((node) => node.id === nodeId) || null
-    : null;
-  if (isWebGLRendererActive()) {
-    if (!webglNode) {
-      return;
-    }
-    const camera = { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom };
-    const topLeft = worldToScreen({ x: webglNode.x, y: webglNode.y }, camera);
-    inlineEditor.input.style.left = `${topLeft.x}px`;
-    inlineEditor.input.style.top = `${topLeft.y}px`;
-    inlineEditor.input.style.width = `${webglNode.width}px`;
-    inlineEditor.input.style.height = `${webglNode.height}px`;
-    inlineEditor.input.style.minWidth = `${webglNode.width}px`;
-    inlineEditor.input.style.minHeight = `${webglNode.height}px`;
-    inlineEditor.input.style.fontSize = `${webglNode.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
-    inlineEditor.input.style.lineHeight = `${lineHeightForFont(webglNode.fontSize || VIEWER_TUNING.typography.nodeFont)}px`;
-    inlineEditor.input.style.fontWeight = nodeId === map.state.rootId ? "500" : "450";
-    inlineEditor.input.style.color = webglNode.textColor || "#232323";
-    inlineEditor.input.style.padding = "0 6px";
-    inlineEditor.input.style.transform = `scale(${viewState.zoom})`;
-    inlineEditor.input.style.transformOrigin = "top left";
-    inlineEditor.input.style.textAlign = "center";
+  if (inlineEditor.preview) {
+    inlineEditor.preview.setCamera({ x:viewState.cameraX,y:viewState.cameraY,zoom:viewState.zoom });
+    if (!isWebGLRendererActive()) setEditedSvgNodeVisibility(nodeId,false);
     return;
   }
-
+  // Placement belongs to the canonical label layout, not WebGL's hit box.
+  // Both renderers use this same HTML editor and the same world camera.
   if (!lastLayout) {
     return;
   }
@@ -5258,7 +5300,13 @@ function syncInlineEditorPosition(): void {
     : `scale(${viewState.zoom})`;
   inlineEditor.input.style.transformOrigin = isRootLabel ? "top center" : "top left";
   inlineEditor.input.style.textAlign = isRootLabel ? "center" : "left";
-  setEditedSvgLabelVisibility(nodeId, false);
+  if (!isWebGLRendererActive()) setEditedSvgLabelVisibility(nodeId, false);
+}
+
+function setEditedSvgNodeVisibility(nodeId: string, visible: boolean): void {
+  canvas.querySelectorAll<SVGGraphicsElement>(`[data-node-id="${CSS.escape(nodeId)}"]`).forEach((element) => {
+    if (element.matches(".node-hit,.node-visual-box,.label-root,.label-node,foreignObject")) element.style.visibility = visible ? "" : "hidden";
+  });
 }
 
 function setEditedSvgLabelVisibility(nodeId: string, visible: boolean): void {
@@ -7548,8 +7596,12 @@ function buildLayout(state: AppState): LayoutResult {
   collectVisible(displayRootId);
   const boxSizes: Record<string, LayoutNodeMetric> = {};
   Array.from(visibleNodeIds).forEach((nodeId) => {
-    boxSizes[nodeId] = measureLayoutNode(state, nodeId, displayRootId, structuredLayoutConfig(structuredMode));
+    const node = state.nodes[nodeId]!;
+    const config = structuredLayoutConfig(structuredMode);
+    const key = JSON.stringify([uiLabel(node), isLatexNode(node), nodeId === displayRootId, visibleChildren(node).length === 0, config]);
+    boxSizes[nodeId] = layoutMetricCache.get(nodeId, key, () => measureLayoutNode(state, nodeId, displayRootId, config));
   });
+  layoutMetricCache.retain(visibleNodeIds);
 
   const publicOptions: PublicLayoutOptions = {
     direction: viewState.surfaceLayoutDirection,
@@ -7558,6 +7610,7 @@ function buildLayout(state: AppState): LayoutResult {
     link: { route: viewState.surfaceLinkRoute },
   };
   const options: LayoutOptions = {
+    treeCache: treeSpanCache,
     ...publicOptions,
     displayRootId,
     structuredMode,
@@ -7731,7 +7784,13 @@ function graphLinkLabelPointForRoute(
   return graphLinkLabelPointWithPorts(source, target, waveOffset);
 }
 
-function render(): void {
+function render(incremental = false): void {
+  renderRevision++;
+  layoutMetricCache.begin(!incremental);
+  nodeSvgCache.begin(!incremental);
+  edgeSvgCache.begin(!incremental);
+  if (!incremental) treeSpanCache.clear();
+  incrementalProjection = incremental;
   updateModeBadge();
   if (!map) {
     syncThinkingModeUi();
@@ -7755,6 +7814,7 @@ function render(): void {
   }
   const layout = buildLayout(state);
   lastLayout = layout;
+  nodeDrawInputs.clear();
   visibleOrder = layout.order;
   _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
@@ -7780,7 +7840,8 @@ function render(): void {
   let graphLinks = "";
   let overlays = "";
   let annotations = "";
-  let nodes = "";
+  const nodeParts: Array<[string, string]> = [];
+  const edgeParts: Array<[string, string]> = [];
 
   if (scatterSurface) {
     layout.groups?.forEach((group) => {
@@ -8203,12 +8264,12 @@ function render(): void {
     };
   }
 
-  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: LayoutResult["pos"][string], childIds: string[]): string {
+  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: LayoutResult["pos"][string], childIds: string[], indexOffset = 0): string {
     let result = "";
     childIds.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) return;
-      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i + indexOffset) % VIEWER_TUNING.palette.edgeColors.length];
       const stroke = nodeStyles.edgeColor || defaultStroke;
       const edgeInline = buildEdgeStyle(nodeStyles);
       const edgePath = layoutEdgePath(structuredMode, p, child);
@@ -8293,26 +8354,34 @@ function render(): void {
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
     if (!nodeComponent) {
-      edges += renderParentChildEdges(nodeId, nodeStyles, p, children);
+      const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
+      children.forEach((id, index) => {
+        const edgeId = `edge:${nodeId}:${id}`;
+        const key = JSON.stringify([geometry(p), geometry(pos[id]), index, nodeStyles,
+          state.nodes[id]?.attributes, parentChildLinkLabels.get(parentChildEdgeKey(nodeId, id)), structuredMode, viewState.surfaceEdgeRoute]);
+        edgeParts.push([edgeId, edgeSvgCache.get(edgeId, key, () => renderParentChildEdges(nodeId, nodeStyles, p, [id], index))]);
+      });
     }
 
-    const output = renderNodeSvg(toNodeDrawInput(node, p, nodeStyles));
-    nodes += output.svg;
+    const drawInput = toNodeDrawInput(node, p, nodeStyles);
+    nodeDrawInputs.set(node.id, drawInput);
+    const output = nodeSvgCache.get(nodeId, JSON.stringify(drawInput), () => renderNodeSvg(drawInput));
+    let nodeMarkup = output.svg;
     maxX = Math.max(maxX, output.bounds.maxX);
     maxY = Math.max(maxY, output.bounds.maxY);
 
     if (!scatterSurface && !nodeComponent && isFolderNode(node)) {
-      nodes += renderFolderPreview(node, nodeStyles, p);
+      nodeMarkup += renderFolderPreview(node, nodeStyles, p);
     }
 
     // In tree surfaces the display root comes through this same path, so a
     // root-owned table is valid. Rootless surfaces intentionally omit their
     // hidden display root and therefore cannot anchor a projection there.
     if (nodeComponent) {
-      nodes += renderNodeComponent(nodeComponent, nodeId, p);
-    } else {
-      children.forEach((cid) => drawNode(cid));
+      nodeMarkup += renderNodeComponent(nodeComponent, nodeId, p);
     }
+    nodeParts.push([`node:${nodeId}`, nodeMarkup]);
+    if (!nodeComponent) children.forEach((cid) => drawNode(cid));
   }
 
   if (scatterSurface) {
@@ -8367,12 +8436,30 @@ function render(): void {
   maxX = Math.max(maxX, annotationRender.maxX);
   maxY = Math.max(maxY, annotationRender.maxY);
 
-  contentWidth = maxX;
-  contentHeight = maxY;
-  canvas.setAttribute("width", String(maxX));
-  canvas.setAttribute("height", String(maxY));
-  canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${disperseGroups}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
+  const replaced = retainedSvgScene.update(canvas, [
+    ["defs", defs], ["frames", surfaceFrames], ["groups", disperseGroups],
+    ["edges", edges], ...edgeParts, ["guides", scatterGuides], ["links", graphLinks],
+    ["overlays", overlays], ...nodeParts, ["annotations", annotations],
+  ], !incremental);
+  nodeSvgCache.retain(new Set(nodeDrawInputs.keys()));
+  edgeSvgCache.retain(new Set(edgeParts.map(([id]) => id)));
+  board.dataset.renderRevision = String(renderRevision);
+  board.dataset.editWork = JSON.stringify({ incremental, measured: layoutMetricCache.computed,
+    branches: treeSpanCache.computed, nodes: nodeSvgCache.computed, edges: edgeSvgCache.computed, fragments: replaced });
+  // Measure world geometry, including negative positions and curved paths.
+  // A hidden SVG cannot be measured reliably; it is hidden again by the
+  // projection before presentation, without changing saved node coordinates.
+  const wasHidden = canvas.hasAttribute("hidden");
+  canvas.removeAttribute("hidden");
+  const bounds = sceneWorldBounds(canvas.getBBox(), maxX, maxY);
+  if (wasHidden) canvas.setAttribute("hidden", "");
+  contentMinX = bounds.minX;
+  contentMinY = bounds.minY;
+  contentWidth = bounds.maxX - bounds.minX;
+  contentHeight = bounds.maxY - bounds.minY;
+  canvas.setAttribute("width", String(contentWidth));
+  canvas.setAttribute("height", String(contentHeight));
+  canvas.setAttribute("viewBox", `${contentMinX} ${contentMinY} ${contentWidth} ${contentHeight}`);
   if (webglSurfaceSupported()) {
     scheduleWebGLProjectionActivation();
   } else {
@@ -8411,7 +8498,9 @@ function render(): void {
   metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
   metaEl.dataset.scopeId = normalizedCurrentScopeId();
   metaEl.dataset.mapId = LOCAL_MAP_ID;
-  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  renderedMetaPrefix = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode}`;
+  renderedMetaSuffix = ` | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  syncSelectionMetadata();
   updateScopeMeta();
   updateScopeSummary();
   updateMapTitle();
@@ -9075,6 +9164,60 @@ function normalizeSelectionState(): void {
   }
 }
 
+function syncSelectionMetadata(): void {
+  const selected = map?.state.nodes[viewState.selectedNodeId];
+  metaEl.dataset.selectedNodeId = selected?.id || "";
+  metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
+  metaEl.textContent = `${renderedMetaPrefix} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size})${renderedMetaSuffix}`;
+}
+
+let selectionRefreshFrame: number | null = null;
+function scheduleSelectionRefresh(): void {
+  if (!isWebGLRendererActive() || webglPaintedLink !== selectedGraphLinkId) {
+    scheduleRender();
+    return;
+  }
+  if (selectionRefreshFrame !== null) return;
+  selectionRefreshFrame = requestAnimationFrame(() => {
+    selectionRefreshFrame = null;
+    if (_renderScheduled || !webglProjection || !webglLastSnapshot || !isWebGLRendererActive()) return;
+    const changed = new Set<string>();
+    webglPaintedSelection.forEach((id) => { if (!viewState.selectedNodeIds.has(id)) changed.add(id); });
+    viewState.selectedNodeIds.forEach((id) => { if (!webglPaintedSelection.has(id)) changed.add(id); });
+    if (webglPaintedPrimary !== viewState.selectedNodeId) {
+      changed.add(webglPaintedPrimary); changed.add(viewState.selectedNodeId);
+    }
+    changed.delete("");
+    if (changed.size) {
+      // Retain layout, hit geometry and all unrelated GPU tiles. Only old/new
+      // selection paint changes; keep the canonical SVG's fill/font styling.
+      canvas.removeAttribute("hidden");
+      try {
+        changed.forEach((id) => {
+          retainedSvgScene.invalidate(`node:${id}`);
+          canvas.querySelectorAll(`[data-node-id="${CSS.escape(id)}"]`).forEach((element) => {
+            element.classList.toggle("selected", viewState.selectedNodeIds.has(id));
+            element.classList.toggle("multi-selected", viewState.selectedNodeIds.has(id));
+            element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
+          });
+        });
+        const paint = captureSvgPaintScene(canvas, changed, true);
+        const scene = webglProjection.updateNodePaint(paint, changed);
+        if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
+      } finally {
+        canvas.setAttribute("hidden", "");
+      }
+      webglPaintedSelection = new Set(viewState.selectedNodeIds);
+      webglPaintedPrimary = viewState.selectedNodeId;
+    }
+    syncWebGLInteraction();
+    syncSelectionMetadata();
+    syncNodeComponentUi();
+    syncInlineEditorPosition();
+    syncLinearCaretToSelectedNode();
+  });
+}
+
 function setSingleSelection(nodeId: string, renderNow = true): void {
   getNode(nodeId);
   if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
@@ -9087,7 +9230,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   viewState.selectionAnchorId = null;
   syncV4Panel(false);
   if (renderNow) {
-    scheduleRender();
+    scheduleSelectionRefresh();
   }
 }
 
@@ -9104,6 +9247,7 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 
 function setRangeSelection(targetId: string): void {
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
     ? viewState.selectionAnchorId
     : viewState.selectedNodeId;
@@ -9116,16 +9260,17 @@ function setRangeSelection(targetId: string): void {
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
   viewState.selectedNodeIds.add(targetId);
   syncV4Panel(false);
-  scheduleRender();
+  scheduleSelectionRefresh();
 }
 
 function toggleNodeSelection(nodeId: string): void {
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   viewState.selectionAnchorId = nodeId;
   if (viewState.selectedNodeIds.has(nodeId)) {
     if (viewState.selectedNodeIds.size === 1) {
       viewState.selectedNodeId = nodeId;
-      scheduleRender();
+      scheduleSelectionRefresh();
       return;
     }
     viewState.selectedNodeIds.delete(nodeId);
@@ -9133,14 +9278,14 @@ function toggleNodeSelection(nodeId: string): void {
       viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
     }
     syncV4Panel(false);
-    scheduleRender();
+    scheduleSelectionRefresh();
     return;
   }
 
   viewState.selectedNodeIds.add(nodeId);
   viewState.selectedNodeId = nodeId;
   syncV4Panel(false);
-  scheduleRender();
+  scheduleSelectionRefresh();
 }
 
 function selectNode(nodeId: string): void {
@@ -11478,8 +11623,8 @@ function addChild(): void {
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
   setSingleSelection(id, false);
-  touchDocument();
-  nudgeActiveNodeIntoView({ animate: false });
+  touchDocument(true);
+  if (!localEditBatchDepth) nudgeActiveNodeIntoView({ animate: false });
   board.focus();
 }
 
@@ -11496,8 +11641,8 @@ function addSibling(): void {
   map!.state.nodes[id] = createNodeRecord(id, parent.id, "");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
-  touchDocument();
-  nudgeActiveNodeIntoView({ animate: false });
+  touchDocument(true);
+  if (!localEditBatchDepth) nudgeActiveNodeIntoView({ animate: false });
   board.focus();
 }
 
@@ -11891,7 +12036,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       latexHtmlCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
-      touchDocument();
+      touchDocument(true);
       preserveNodeViewportCenter(nodeId, viewportCenterBefore);
       return true;
     }
@@ -11901,7 +12046,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     pushUndoSnapshot();
     node.aliasLabel = next;
     node.text = next;
-    touchDocument();
+    touchDocument(true);
     preserveNodeViewportCenter(nodeId, viewportCenterBefore);
     return true;
   }
@@ -11925,7 +12070,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     node.link = applied.link;
     node.attributes = applied.attributes;
     syncAliasDisplayForTarget(node.id);
-    touchDocument();
+    touchDocument(true);
     preserveNodeViewportCenter(nodeId, viewportCenterBefore);
     return true;
   }
@@ -11937,7 +12082,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   latexHtmlCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
-  touchDocument();
+  touchDocument(true);
   preserveNodeViewportCenter(nodeId, viewportCenterBefore);
   return true;
 }
@@ -11951,19 +12096,33 @@ function stringRecordEquals(left: Record<string, string>, right: Record<string, 
   return leftKeys.every((key) => left[key] === right[key]);
 }
 
+function viewerKeyboardMode(): ViewerKeyboardMode {
+  // The edit session owns the mode, not activeElement or renderer readiness.
+  return inlineEditor || inlineEdgeLabelEditor ? "edit" : "navigate";
+}
+
+function syncViewerKeyboardMode(): void {
+  board.dataset.keyboardMode = viewerKeyboardMode();
+}
+
 function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
   if (!inlineEditor) {
     return;
   }
 
-  const { nodeId, input, mode } = inlineEditor;
+  const { nodeId, input, mode, preview } = inlineEditor;
   const next = input.value;
   const wasWebGL = isWebGLRendererActive();
   if (!wasWebGL) {
-    setEditedSvgLabelVisibility(nodeId, true);
+    if (preview) setEditedSvgNodeVisibility(nodeId,true);
+    else setEditedSvgLabelVisibility(nodeId, true);
   }
-  input.remove();
   inlineEditor = null;
+  syncViewerKeyboardMode();
+  // Removing a focused input can synchronously dispatch blur. Clear ownership
+  // first, but never rely on that reentrant blur to decide whether to commit.
+  input.remove();
+  preview?.destroy();
 
   if (commit) {
     applyNodeTextEdit(nodeId, next, mode);
@@ -12010,8 +12169,9 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   const { nodeId, input } = inlineEdgeLabelEditor;
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
-  input.remove();
   inlineEdgeLabelEditor = null;
+  syncViewerKeyboardMode();
+  input.remove();
   if (commit) {
     applyIncomingEdgeLabelEdit(nodeId, next);
   }
@@ -12059,12 +12219,15 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   input.placeholder = "edge label";
   board.appendChild(input);
   inlineEdgeLabelEditor = { nodeId, input };
+  syncViewerKeyboardMode();
   syncInlineEdgeLabelEditorPosition();
   autoSizeInlineEdgeLabelEditor(input);
   input.focus();
   input.select();
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    // The originating edit session owns this entire key, even after removal.
+    event.stopPropagation();
     if (isImeComposingEvent(event)) {
       return;
     }
@@ -12079,28 +12242,31 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
     }
   });
   input.addEventListener("blur", () => {
-    stopInlineEdgeLabelEdit(true);
+    if (inlineEdgeLabelEditor?.input === input) stopInlineEdgeLabelEdit(true);
   });
   input.addEventListener("input", () => {
     autoSizeInlineEdgeLabelEditor(input);
   });
 }
 
-function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
+function createNodeByDirectionAndEdit(direction: "breadth" | "depth", commitEditor = false): void {
   if (!map) {
     return;
   }
-  if (direction === "depth") {
-    addChild();
-  } else {
-    addSibling();
+  localEditBatchDepth++;
+  try {
+    if (commitEditor) stopInlineEdit(true, { focusBoard: false });
+    if (direction === "depth") addChild();
+    else addSibling();
+  } finally {
+    localEditBatchDepth--;
+    if (!localEditBatchDepth && localEditBatchPending) {
+      localEditBatchPending = false;
+      touchDocument(true);
+    }
   }
+  nudgeActiveNodeIntoView({ animate: false });
   startInlineEdit(viewState.selectedNodeId, { nudgeIntoView: false });
-}
-
-function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
-  input.style.height = "auto";
-  input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
 function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
@@ -12109,14 +12275,9 @@ function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
 }
 
 function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeIntoView?: boolean }): void {
-  if (!map) {
-    return;
-  }
-  if (isWebGLRendererActive()) {
-    if (!webglLastSnapshot?.nodes.some((node) => node.id === nodeId)) {
-      return;
-    }
-  } else if (!lastLayout?.pos[nodeId]) {
+  // New nodes are editable in the same task that creates them. A retained
+  // WebGL snapshot may intentionally still show the previous frame.
+  if (!map?.state.nodes[nodeId] || !lastLayout?.pos[nodeId]) {
     return;
   }
 
@@ -12143,10 +12304,31 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   board.appendChild(input);
 
   inlineEditor = { nodeId, input, mode };
-  syncInlineEditorPosition();
-  if (!isWebGLRendererActive()) {
-    autoSizeInlineEditor(input);
+  input.dataset.nodeId = nodeId;
+  syncViewerKeyboardMode();
+  const source = nodeDrawInputs.get(nodeId);
+  if (source) {
+    let label = canvas.querySelector<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"],text.label-node[data-node-id="${CSS.escape(nodeId)}"]`);
+    let probe: SVGTextElement | undefined;
+    if (!label) {
+      probe = document.createElementNS("http://www.w3.org/2000/svg","text");
+      probe.setAttribute("class","label-node selected");
+      probe.style.fontSize = `${source.position.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
+      canvas.appendChild(probe); label = probe;
+    }
+    const labelClasses = label.getAttribute("class");
+    if (label.classList.contains("label-node")) label.classList.add("selected","primary-selected");
+    const preview = new InlineNodeEditorPreview(input, {
+      ...source, view:{...source.view, selected:true,multiSelected:true,primarySelected:true},
+    }, getComputedStyle(label));
+    if (labelClasses !== null) label.setAttribute("class",labelClasses);
+    probe?.remove();
+    inlineEditor.preview = preview;
+    board.appendChild(preview.element);
+    preview.refresh();
   }
+  syncInlineEditorPosition();
+  if (!inlineEditor.preview) autoSizeInlineEditor(input);
   if (options?.nudgeIntoView !== false) {
     nudgeNodeIntoView(nodeId);
   }
@@ -12159,55 +12341,50 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   }
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    // Keep native text editing/IME defaults, but never bubble into Navigate.
+    event.stopPropagation();
     if (isImeComposingEvent(event)) {
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+    const action = nodeLabelEditAction(event, KEYBOARD_PLATFORM);
+    if (action === "next") {
       event.preventDefault();
       // Equivalent to Esc -> DownArrow -> Enter while editing.
-      stopInlineEdit(false, { focusBoard: false });
+      stopInlineEdit(true, { focusBoard: false });
       selectBreadth(1);
       startInlineEdit(viewState.selectedNodeId, { selectAll: false });
       return;
     }
 
-    if (event.key === "Tab") {
+    if (action === "child") {
       event.preventDefault();
-      stopInlineEdit(true, { focusBoard: false });
-      createNodeByDirectionAndEdit("depth");
+      createNodeByDirectionAndEdit("depth", true);
       return;
     }
 
-    if (event.key === "Enter") {
-      if (event.shiftKey) {
-        // Keep default textarea behavior: Shift+Enter inserts a newline.
-        return;
-      }
+    if (action === "sibling") {
       event.preventDefault();
-      suppressInlineBlurCommit = true;
-      stopInlineEdit(true, { focusBoard: false });
-      createNodeByDirectionAndEdit("breadth");
+      createNodeByDirectionAndEdit("breadth", true);
       return;
     }
 
-    if (event.key === "Escape") {
+    if (action === "finish") {
       event.preventDefault();
-      stopInlineEdit(false);
+      // Escape ends label editing with the draft intact; it is not Undo.
+      stopInlineEdit(true);
     }
   });
 
   input.addEventListener("blur", () => {
-    if (suppressInlineBlurCommit) {
-      suppressInlineBlurCommit = false;
-      return;
-    }
-    stopInlineEdit(true);
+    // A departing editor must not commit/close a newly focused editor.
+    if (inlineEditor?.input === input) stopInlineEdit(true);
   });
 
   input.addEventListener("input", () => {
-    if (!isWebGLRendererActive()) {
-      autoSizeInlineEditor(input);
-    }
+    if (inlineEditor?.input !== input) return;
+    // Draft-local only: do not call render, layout, touchDocument or autosave.
+    if (inlineEditor.preview) inlineEditor.preview.refresh();
+    else autoSizeInlineEditor(input);
   });
   syncWebGLInteraction();
 }
@@ -13013,13 +13190,17 @@ function toggleReviewMode(): void {
   render();
 }
 
-function touchDocument(): void {
+function touchDocument(incremental = false): void {
   if (!map) {
+    return;
+  }
+  if (incremental && localEditBatchDepth) {
+    localEditBatchPending = true;
     return;
   }
   syncMapModelStateFromRuntime();
   map.savedAt = nowIso();
-  render();
+  render(incremental);
   scheduleAutosave();
   broadcastState();
 }
@@ -13311,8 +13492,8 @@ function fitDocument(options: CameraMoveOptions = {}): boolean {
   const zoom = clampZoom(Math.min(fitX, fitY) * 0.92);
   moveCameraTo({
     zoom,
-    cameraX: (boardRect.width - contentWidth * zoom) / 2,
-    cameraY: (boardRect.height - contentHeight * zoom) / 2,
+    cameraX: (boardRect.width - contentWidth * zoom) / 2 - contentMinX * zoom,
+    cameraY: (boardRect.height - contentHeight * zoom) / 2 - contentMinY * zoom,
   }, options);
   return true;
 }
@@ -14817,7 +14998,7 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   if (isImeComposingEvent(event)) {
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key === "Enter") {
     event.preventDefault();
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
     syncLinearNotesToDocState();
@@ -15110,11 +15291,7 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
         return;
       }
     }
-    setSingleSelection(hit.nodeId, false);
-    syncWebGLInteraction();
-    // Keep HTML inspector/metadata in the canonical UI state in sync. This is
-    // a discrete selection update, never part of the pan/zoom gesture path.
-    scheduleRender();
+    selectByPointerModifiers(hit.nodeId, { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey });
     board.focus();
     return;
   }
@@ -15764,12 +15941,15 @@ document.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 document.addEventListener("keydown", (event: KeyboardEvent) => {
-  if (!map) {
+  if (!map || event.defaultPrevented) {
     return;
   }
   if (isImeComposingEvent(event)) {
     return;
   }
+  if (viewerKeyboardMode() === "edit") return;
+  // The other OS modifier and mixed Command+Control are not aliases.
+  if ((event.ctrlKey || event.metaKey) && !primaryModifier(event)) return;
 
   if (templateCompletionState && event.key === "Escape") {
     event.preventDefault();
@@ -15809,16 +15989,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (inlineEditor && document.activeElement === inlineEditor.input) {
-    return;
-  }
-  if (inlineEdgeLabelEditor && document.activeElement === inlineEdgeLabelEditor.input) {
-    return;
-  }
-
   if (document.activeElement === linearTextEl) {
     return;
   }
+  if (isTextEntryElement(event.target)) return;
 
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
@@ -16016,49 +16190,49 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
     // Arrow keys fall through to normal navigation
   }
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
     undoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && (event.shiftKey && event.key.toLowerCase() === "z")) {
+  if (primaryModifier(event) && !event.altKey && event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
     redoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "y") {
+  if (KEYBOARD_PLATFORM !== "mac" && primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "y") {
     event.preventDefault();
     redoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
     selectAllVisibleInScope();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
     event.preventDefault();
     void copySelected();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
     event.preventDefault();
     cutSelected();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     void pasteClipboard();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key === "Enter") {
     event.preventDefault();
     // Equivalent to Esc -> DownArrow -> Enter in normal mode.
     clearCutClipboard();
@@ -16067,20 +16241,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
     if (clearCutClipboard()) {
       event.preventDefault();
     }
     return;
   }
 
-  if (event.key === "Tab") {
+  if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     createNodeByDirectionAndEdit("depth");
     return;
   }
 
-  if (event.altKey && event.key === "Enter") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === "Enter") {
     if (isTextEntryElement(event.target)) {
       return;
     }
@@ -16101,13 +16275,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Enter") {
+  if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId, { selectAll: event.shiftKey });
     return;
   }
 
-  if (event.key === "F2") {
+  if (event.key === "F2" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId, { selectAll: true });
     return;
@@ -16131,7 +16305,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
     event.preventDefault();
     downloadJson();
     return;
@@ -16149,19 +16323,19 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
+  if (primaryModifier(event) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
     event.preventDefault();
     void generateRelatedTopicsForSelectedNode();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
+  if (primaryModifier(event) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     showScopeDashboard();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "0") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key === "0") {
     event.preventDefault();
     fitDocument();
     return;
@@ -16180,21 +16354,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if (!event.shiftKey && !event.altKey && event.key === "]") {
+  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
     board.focus();
     return;
   }
 
-  if (!event.shiftKey && !event.altKey && event.key === "[") {
+  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
     board.focus();
     return;
   }
 
-  if (event.key === "Delete" || event.key === "Backspace") {
+  if ((event.key === "Delete" || event.key === "Backspace") && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (
           event.key === "Backspace" &&
           !inlineEditor &&
@@ -16228,37 +16402,37 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "e") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleEntityListPanel();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "d") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     toggleMarkdownPreviewForSelectedNode();
     return;
   }
 
-  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
     event.preventDefault();
     openSelectedHyperlinkNode();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "h") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
     window.location.href = buildHomeHref();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "s") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "s") {
     event.preventDefault();
     toggleHomeScreen();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "v") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     if (cycleViewState === "focus") {
       if (map && viewState.selectedNodeId) {
@@ -16274,37 +16448,37 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "j") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "j") {
     event.preventDefault();
     jumpToAliasTarget();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "l") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
     startIncomingEdgeLabelEdit();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "a") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
     addAliasAsChild();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "p") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
     makeSelectedFolder();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "m") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     toggleHoldReparent();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
@@ -16405,7 +16579,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key.toLowerCase() === "p") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
     applyReparent();
     return;
@@ -16417,7 +16591,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowUp") {
+  if (event.key === "ArrowUp" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (event.shiftKey) {
       extendSelectionBreadth(-1);
@@ -16431,7 +16605,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowDown") {
+  if (event.key === "ArrowDown" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (event.shiftKey) {
       extendSelectionBreadth(1);
@@ -16445,13 +16619,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "g") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "g") {
     event.preventDefault();
     groupSelected();
     return;
   }
 
-  if (event.key === "ArrowLeft") {
+  if (event.key === "ArrowLeft" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (currentSurfaceIsFlowMode()) {
       selectFlowHorizontal(-1);
@@ -16465,7 +16639,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowRight") {
+  if (event.key === "ArrowRight" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     const selected = getNode(viewState.selectedNodeId);
     if (currentSurfaceIsFlowMode()) {
@@ -16514,8 +16688,14 @@ window.addEventListener("blur", () => {
   }
 });
 
-/* ── Shortcut cheatsheet: show on Ctrl/Alt hold ── */
+/* ── Shortcut cheatsheet: show on primary modifier / Alt hold ── */
 {
+  const primaryLabel = KEYBOARD_PLATFORM === "mac" ? "Command" : "Ctrl";
+  cheatsheetEl?.querySelectorAll<HTMLElement>("kbd, .automaton-label").forEach((element) => {
+    element.textContent = (element.textContent || "").replace(/Mod/g, primaryLabel);
+  });
+  const historyKey = cheatsheetEl?.querySelector<HTMLElement>("[data-browser-history-key]");
+  if (historyKey && KEYBOARD_PLATFORM === "mac") historyKey.textContent = "Command+Y";
   let cheatsheetTimer: ReturnType<typeof setTimeout> | null = null;
   const HOLD_MS = 400;
 
@@ -16537,10 +16717,13 @@ window.addEventListener("blur", () => {
   }
 
   document.addEventListener("keydown", (event: KeyboardEvent) => {
-    // Only trigger on bare Ctrl or Alt (no other modifier, no repeat)
     if (event.repeat) return;
+    if (event.defaultPrevented || viewerKeyboardMode() === "edit" || isTextEntryElement(event.target)) {
+      clearTimer();
+      return;
+    }
     const isBareMod =
-      (event.key === "Control" && !event.altKey && !event.shiftKey) ||
+      (event.key === (KEYBOARD_PLATFORM === "mac" ? "Meta" : "Control") && primaryModifier(event) && !event.altKey && !event.shiftKey) ||
       (event.key === "Alt" && !event.ctrlKey && !event.metaKey && !event.shiftKey);
     if (!isBareMod) {
       clearTimer();
@@ -16570,6 +16753,7 @@ window.addEventListener("blur", () => {
 }
 
 setVisualCheckStatus("Visual check idle");
+syncViewerKeyboardMode();
 syncMetaPanelToggleUi();
 loadVaultUiPrefs();
 loadLocalFsPrefs();
@@ -16633,6 +16817,7 @@ void initializeDocument().then(() => {
 
   // Skip home screen — go straight to map root
   // To open home screen, user can press the toggle shortcut
+  board.dataset.ready = "true";
 });
 
 window.addEventListener("beforeunload", () => {

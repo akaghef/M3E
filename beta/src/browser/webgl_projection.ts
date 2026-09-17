@@ -1,3 +1,5 @@
+import { WebGLSceneTiles, type PaintScene } from "./webgl_scene_tiles";
+
 export type RenderNodeShape = "rect" | "circle";
 
 export interface RenderNode {
@@ -43,6 +45,8 @@ export interface RenderSnapshot {
   graphLinks: RenderEdge[];
   groups: RenderGroupBoundary[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  /** Appearance is independent of simplified selection/hit-test geometry. */
+  paintScene?: PaintScene;
 }
 
 export interface CameraState {
@@ -90,22 +94,15 @@ export interface WebGLProjectionDebugState {
   drawCalls: number;
   geometryUploads: number;
   cameraUpdates: number;
+  tileCount: number;
+  textureUploads: number;
+  visibleTextCount: number;
 }
 
 type ProjectionOptions = {
   onUnavailable: (reason: string) => void;
   /** Context resources were rebuilt; the owner must make the projection visible again. */
   onRestored: () => void;
-};
-
-type PackedLabel = {
-  nodeId: string;
-  width: number;
-  height: number;
-  u0: number;
-  v0: number;
-  u1: number;
-  v1: number;
 };
 
 const COLOR_VERTEX_SHADER = `#version 300 es
@@ -239,49 +236,6 @@ function pushRect(target: number[], x: number, y: number, w: number, h: number, 
   pushVertex(target, x2, y2, color);
 }
 
-function pushCircle(target: number[], cx: number, cy: number, radius: number, color: [number, number, number, number]): void {
-  const segments = 20;
-  for (let index = 0; index < segments; index += 1) {
-    const a = (index / segments) * Math.PI * 2;
-    const b = ((index + 1) / segments) * Math.PI * 2;
-    pushVertex(target, cx, cy, color);
-    pushVertex(target, cx + Math.cos(a) * radius, cy + Math.sin(a) * radius, color);
-    pushVertex(target, cx + Math.cos(b) * radius, cy + Math.sin(b) * radius, color);
-  }
-}
-
-function pushSegment(target: number[], a: { x: number; y: number }, b: { x: number; y: number }, width: number, color: [number, number, number, number]): void {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const length = Math.hypot(dx, dy);
-  if (length < 0.001) return;
-  const ox = (-dy / length) * width * 0.5;
-  const oy = (dx / length) * width * 0.5;
-  pushVertex(target, a.x + ox, a.y + oy, color);
-  pushVertex(target, b.x + ox, b.y + oy, color);
-  pushVertex(target, a.x - ox, a.y - oy, color);
-  pushVertex(target, a.x - ox, a.y - oy, color);
-  pushVertex(target, b.x + ox, b.y + oy, color);
-  pushVertex(target, b.x - ox, b.y - oy, color);
-}
-
-function pushArrow(target: number[], from: { x: number; y: number }, to: { x: number; y: number }, color: [number, number, number, number]): void {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length < 0.001) return;
-  const ux = dx / length;
-  const uy = dy / length;
-  const size = 10;
-  const bx = to.x - ux * size;
-  const by = to.y - uy * size;
-  const ox = -uy * size * 0.55;
-  const oy = ux * size * 0.55;
-  pushVertex(target, to.x, to.y, color);
-  pushVertex(target, bx + ox, by + oy, color);
-  pushVertex(target, bx - ox, by - oy, color);
-}
-
 function pushOutline(target: number[], node: RenderNode, color: [number, number, number, number], width: number): void {
   const pad = width + 1;
   const x = node.x - pad;
@@ -292,21 +246,6 @@ function pushOutline(target: number[], node: RenderNode, color: [number, number,
   pushRect(target, x, y + h - width, w, width, color);
   pushRect(target, x, y, width, h, color);
   pushRect(target, x + w - width, y, width, h, color);
-}
-
-function pushGroupBoundary(target: number[], group: RenderGroupBoundary): void {
-  const borderWidth = 2;
-  const fill = rgba("#5f7fad", 0.06);
-  const stroke = rgba("#5f7fad", 0.9);
-  pushRect(target, group.x, group.y, group.width, group.height, fill);
-  const x = group.x - borderWidth / 2;
-  const y = group.y - borderWidth / 2;
-  const width = group.width + borderWidth;
-  const height = group.height + borderWidth;
-  pushRect(target, x, y, width, borderWidth, stroke);
-  pushRect(target, x, y + height - borderWidth, width, borderWidth, stroke);
-  pushRect(target, x, y, borderWidth, height, stroke);
-  pushRect(target, x + width - borderWidth, y, borderWidth, height, stroke);
 }
 
 export function screenToWorld(point: { x: number; y: number }, camera: CameraState): { x: number; y: number } {
@@ -393,10 +332,8 @@ export class WebGLRenderingProjection implements RenderingProjection {
   private gl: WebGL2RenderingContext | null = null;
   private colorProgram: WebGLProgram | null = null;
   private textProgram: WebGLProgram | null = null;
-  private colorBuffer: WebGLBuffer | null = null;
   private overlayBuffer: WebGLBuffer | null = null;
   private textBuffer: WebGLBuffer | null = null;
-  private labelTexture: WebGLTexture | null = null;
   private snapshot: RenderSnapshot | null = null;
   private nodeSpatialIndex = new Map<string, RenderNode[]>();
   private camera: CameraState = { x: 0, y: 0, zoom: 1 };
@@ -408,15 +345,15 @@ export class WebGLRenderingProjection implements RenderingProjection {
     editingNodeId: null,
     gestureActive: false,
   };
-  private colorVertexCount = 0;
   private overlayVertexCount = 0;
-  private textVertexCount = 0;
   private cssWidth = 1;
   private cssHeight = 1;
   private active = false;
   private drawCalls = 0;
   private geometryUploads = 0;
   private cameraUpdates = 0;
+  private sceneTiles: WebGLSceneTiles | null = null;
+  private qualityTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: ProjectionOptions) {
     this.canvas = canvas;
@@ -449,13 +386,12 @@ export class WebGLRenderingProjection implements RenderingProjection {
     });
     if (!gl) throw new Error("WebGL2 is unavailable.");
     this.gl = gl;
+    this.sceneTiles = new WebGLSceneTiles(gl);
     this.colorProgram = createProgram(gl, COLOR_VERTEX_SHADER, COLOR_FRAGMENT_SHADER);
     this.textProgram = createProgram(gl, TEXT_VERTEX_SHADER, TEXT_FRAGMENT_SHADER);
-    this.colorBuffer = gl.createBuffer();
     this.overlayBuffer = gl.createBuffer();
     this.textBuffer = gl.createBuffer();
-    this.labelTexture = gl.createTexture();
-    if (!this.colorBuffer || !this.overlayBuffer || !this.textBuffer || !this.labelTexture) {
+    if (!this.overlayBuffer || !this.textBuffer) {
       throw new Error("Unable to allocate WebGL buffers.");
     }
     gl.enable(gl.BLEND);
@@ -464,19 +400,36 @@ export class WebGLRenderingProjection implements RenderingProjection {
   }
 
   setSnapshot(snapshot: RenderSnapshot): void {
+    if (!snapshot.paintScene) throw new Error("A complete paint scene is required for WebGL rendering.");
     this.snapshot = snapshot;
     this.nodeSpatialIndex = buildNodeSpatialIndex(snapshot.nodes);
     if (!this.active || !this.gl) return;
-    this.uploadSceneGeometry();
-    this.uploadTextGeometry();
+    this.sceneTiles?.setScene(snapshot.paintScene);
+    this.geometryUploads += 1;
     this.uploadInteractionGeometry();
     this.draw();
   }
 
   setCamera(camera: CameraState): void {
+    const zoomChanged = camera.zoom !== this.camera.zoom;
     this.camera = { ...camera };
     this.cameraUpdates += 1;
     if (this.active) this.draw();
+    const needsRefinement = zoomChanged || this.qualityTimer !== null;
+    if (this.qualityTimer) clearTimeout(this.qualityTimer);
+    if (needsRefinement) this.qualityTimer = setTimeout(() => {
+      this.qualityTimer = null;
+      if (!this.active) return;
+      this.sceneTiles?.refine(this.camera, this.canvas.width / this.cssWidth);
+      this.draw();
+    }, 120);
+  }
+
+  updateNodePaint(paint: PaintScene, ids: Set<string>): PaintScene | undefined {
+    if (!this.snapshot || !this.sceneTiles) return;
+    const scene = this.sceneTiles.updateNodePaint(paint, ids);
+    this.snapshot = { ...this.snapshot, paintScene: scene };
+    return scene;
   }
 
   setInteractionState(interaction: RenderInteractionState): void {
@@ -488,7 +441,9 @@ export class WebGLRenderingProjection implements RenderingProjection {
       selectedNodeIds: [...interaction.selectedNodeIds],
     };
     if (!this.active || !this.gl) return;
-    if (editingNodeChanged) this.uploadTextGeometry();
+    if (editingNodeChanged) {
+      this.sceneTiles?.setEditingNode(interaction.editingNodeId ?? null);
+    }
     this.uploadInteractionGeometry();
     this.draw();
   }
@@ -536,148 +491,26 @@ export class WebGLRenderingProjection implements RenderingProjection {
       drawCalls: this.drawCalls,
       geometryUploads: this.geometryUploads,
       cameraUpdates: this.cameraUpdates,
+      tileCount: this.sceneTiles?.cacheSize || 0,
+      textureUploads: this.sceneTiles?.textureUploads || 0,
+      visibleTextCount: this.sceneTiles?.visibleTextCount || 0,
     };
   }
 
   destroy(): void {
     this.active = false;
+    if (this.qualityTimer) clearTimeout(this.qualityTimer);
+    this.sceneTiles?.clear();
     this.canvas.removeEventListener("webglcontextlost", this.onContextLost, false);
     this.canvas.removeEventListener("webglcontextrestored", this.onContextRestored, false);
     const gl = this.gl;
     if (gl) {
-      if (this.colorBuffer) gl.deleteBuffer(this.colorBuffer);
       if (this.overlayBuffer) gl.deleteBuffer(this.overlayBuffer);
       if (this.textBuffer) gl.deleteBuffer(this.textBuffer);
-      if (this.labelTexture) gl.deleteTexture(this.labelTexture);
       if (this.colorProgram) gl.deleteProgram(this.colorProgram);
       if (this.textProgram) gl.deleteProgram(this.textProgram);
     }
     this.gl = null;
-  }
-
-  private uploadSceneGeometry(): void {
-    const gl = this.gl;
-    const snapshot = this.snapshot;
-    if (!gl || !snapshot || !this.colorBuffer) return;
-    const vertices: number[] = [];
-    const renderLine = (edge: RenderEdge): void => {
-      const color = rgba(edge.color, edge.kind === "graph-link" ? 0.9 : 0.72);
-      for (let index = 0; index + 1 < edge.points.length; index += 1) {
-        pushSegment(vertices, edge.points[index]!, edge.points[index + 1]!, edge.width, color);
-      }
-      if (edge.points.length >= 2 && edge.direction && edge.direction !== "none") {
-        const first = edge.points[0]!;
-        const second = edge.points[1]!;
-        const last = edge.points[edge.points.length - 1]!;
-        const beforeLast = edge.points[edge.points.length - 2]!;
-        if (edge.direction === "forward" || edge.direction === "both") pushArrow(vertices, beforeLast, last, color);
-        if (edge.direction === "backward" || edge.direction === "both") pushArrow(vertices, second, first, color);
-      }
-    };
-    snapshot.groups.forEach((group) => pushGroupBoundary(vertices, group));
-    snapshot.edges.forEach(renderLine);
-    snapshot.graphLinks.forEach(renderLine);
-    snapshot.nodes.forEach((node) => {
-      const stroke = rgba(node.stroke);
-      const fill = rgba(node.fill);
-      if (node.shape === "circle") {
-        const cx = node.x + node.width / 2;
-        const cy = node.y + node.height / 2;
-        pushCircle(vertices, cx, cy, Math.max(node.width, node.height) / 2 + 2, stroke);
-        pushCircle(vertices, cx, cy, Math.max(1, Math.max(node.width, node.height) / 2 - 1), fill);
-      } else {
-        pushRect(vertices, node.x - 2, node.y - 2, node.width + 4, node.height + 4, stroke);
-        pushRect(vertices, node.x, node.y, node.width, node.height, fill);
-      }
-    });
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-    this.colorVertexCount = vertices.length / 6;
-    this.geometryUploads += 1;
-  }
-
-  private buildLabelAtlas(): { canvas: HTMLCanvasElement; labels: PackedLabel[] } {
-    const snapshot = this.snapshot;
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-    if (!snapshot || !context) return { canvas, labels: [] };
-    const maxTexture = Math.min(4096, this.gl?.getParameter(this.gl.MAX_TEXTURE_SIZE) || 2048);
-    canvas.width = maxTexture;
-    canvas.height = maxTexture;
-    context.clearRect(0, 0, maxTexture, maxTexture);
-    context.textBaseline = "top";
-    let cursorX = 2;
-    let cursorY = 2;
-    let rowHeight = 0;
-    const labels: PackedLabel[] = [];
-    for (const node of snapshot.nodes) {
-      const lines = (node.labelLines.length > 0 ? node.labelLines : [node.label]).slice(0, 3);
-      const fontSize = Math.max(10, Math.min(52, node.fontSize || 14));
-      const lineHeight = Math.ceil(fontSize * 1.22);
-      context.font = `${fontSize}px "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Meiryo", sans-serif`;
-      const width = Math.min(Math.max(16, ...lines.map((line) => Math.ceil(context.measureText(line).width))) + 4, Math.max(20, node.width - 12));
-      const height = lines.length * lineHeight + 4;
-      if (cursorX + width + 2 > maxTexture) {
-        cursorX = 2;
-        cursorY += rowHeight + 2;
-        rowHeight = 0;
-      }
-      if (cursorY + height + 2 > maxTexture) break;
-      context.save();
-      context.beginPath();
-      context.rect(cursorX, cursorY, width, height);
-      context.clip();
-      context.fillStyle = node.textColor || "#202124";
-      lines.forEach((line, index) => context.fillText(line, cursorX + 2, cursorY + 2 + index * lineHeight));
-      context.restore();
-      labels.push({
-        nodeId: node.id,
-        width,
-        height,
-        u0: cursorX / maxTexture,
-        v0: cursorY / maxTexture,
-        u1: (cursorX + width) / maxTexture,
-        v1: (cursorY + height) / maxTexture,
-      });
-      cursorX += width + 2;
-      rowHeight = Math.max(rowHeight, height);
-    }
-    return { canvas, labels };
-  }
-
-  private uploadTextGeometry(): void {
-    const gl = this.gl;
-    const snapshot = this.snapshot;
-    if (!gl || !snapshot || !this.textBuffer || !this.labelTexture) return;
-    const { canvas, labels } = this.buildLabelAtlas();
-    gl.bindTexture(gl.TEXTURE_2D, this.labelTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
-    const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
-    const vertices: number[] = [];
-    const vertex = (x: number, y: number, u: number, v: number): void => { vertices.push(x, y, u, v); };
-    labels.forEach((label) => {
-      if (label.nodeId === this.interaction.editingNodeId) return;
-      const node = byId.get(label.nodeId);
-      if (!node) return;
-      const x = node.x + Math.max(6, (node.width - label.width) / 2);
-      const y = node.y + Math.max(4, (node.height - label.height) / 2);
-      const x2 = x + label.width;
-      const y2 = y + label.height;
-      vertex(x, y, label.u0, label.v0);
-      vertex(x2, y, label.u1, label.v0);
-      vertex(x, y2, label.u0, label.v1);
-      vertex(x, y2, label.u0, label.v1);
-      vertex(x2, y, label.u1, label.v0);
-      vertex(x2, y2, label.u1, label.v1);
-    });
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-    this.textVertexCount = vertices.length / 4;
   }
 
   private uploadInteractionGeometry(): void {
@@ -687,6 +520,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     const vertices: number[] = [];
     const selected = new Set(this.interaction.selectedNodeIds);
     snapshot.nodes.forEach((node) => {
+      if (node.id === this.interaction.editingNodeId) return;
       if (selected.has(node.id)) pushOutline(vertices, node, rgba("#6f39ff"), node.id === this.interaction.primarySelectedNodeId ? 4 : 2);
       if (node.id === this.interaction.hoveredNodeId && !selected.has(node.id)) pushOutline(vertices, node, rgba("#2f70ff", 0.82), 2);
     });
@@ -719,40 +553,45 @@ export class WebGLRenderingProjection implements RenderingProjection {
     this.drawCalls += 1;
   }
 
-  private drawText(): void {
-    const gl = this.gl;
-    const program = this.textProgram;
-    if (!gl || !program || !this.textBuffer || !this.labelTexture || this.textVertexCount === 0 || this.camera.zoom < 0.18) return;
-    gl.useProgram(program);
-    this.bindCameraUniforms(program);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
-    const stride = 4 * Float32Array.BYTES_PER_ELEMENT;
-    const position = gl.getAttribLocation(program, "a_position");
-    const uv = gl.getAttribLocation(program, "a_uv");
-    gl.enableVertexAttribArray(position);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, stride, 0);
-    gl.enableVertexAttribArray(uv);
-    gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, stride, 2 * Float32Array.BYTES_PER_ELEMENT);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.labelTexture);
-    gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
-    gl.drawArrays(gl.TRIANGLES, 0, this.textVertexCount);
-    this.drawCalls += 1;
-  }
-
   private draw(): void {
     const gl = this.gl;
     if (!gl || !this.active || gl.isContextLost()) return;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    if (this.colorBuffer) this.drawColorBuffer(this.colorBuffer, this.colorVertexCount);
-    this.drawText();
+    if (this.snapshot?.paintScene && this.sceneTiles && this.textProgram && this.textBuffer) {
+      const program = this.textProgram;
+      gl.useProgram(program);
+      this.bindCameraUniforms(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
+      const position = gl.getAttribLocation(program, "a_position");
+      const uv = gl.getAttribLocation(program, "a_uv");
+      gl.enableVertexAttribArray(position);
+      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 16, 0);
+      gl.enableVertexAttribArray(uv);
+      gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 16, 8);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+      // Canvas tiles are premultiplied; SRC_ALPHA would multiply alpha twice
+      // and darken antialiased glyphs/curves.
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      this.drawCalls += this.sceneTiles.draw(this.camera, this.cssWidth, this.cssHeight, this.canvas.width / this.cssWidth, (tile, g) => {
+        const x = tile.x, y = tile.y, r = x + tile.size, b = y + tile.size;
+        gl.bindTexture(gl.TEXTURE_2D, tile.texture);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          x,y,g,g, r,y,1-g,g, x,b,g,1-g,
+          x,b,g,1-g, r,y,1-g,g, r,b,1-g,1-g,
+        ]), gl.STREAM_DRAW);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      });
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
     if (this.overlayBuffer) this.drawColorBuffer(this.overlayBuffer, this.overlayVertexCount);
   }
 
   private onContextLost = (event: Event): void => {
     event.preventDefault();
     this.active = false;
+    if (this.qualityTimer) clearTimeout(this.qualityTimer);
     this.options.onUnavailable("WebGL context was lost; switched to SVG fallback.");
   };
 
@@ -762,8 +601,8 @@ export class WebGLRenderingProjection implements RenderingProjection {
       this.active = true;
       this.resize();
       if (this.snapshot) {
-        this.uploadSceneGeometry();
-        this.uploadTextGeometry();
+        if (this.snapshot.paintScene) this.sceneTiles?.setScene(this.snapshot.paintScene);
+        this.sceneTiles?.setEditingNode(this.interaction.editingNodeId ?? null);
         this.uploadInteractionGeometry();
       }
       this.draw();
