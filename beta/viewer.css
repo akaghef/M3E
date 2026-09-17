@@ -605,7 +605,8 @@
         border: 1px solid #dfdfdf;
         border-radius: 14px;
         background: #ffffff55;
-        overflow: hidden;
+        overflow: clip;
+        overflow-anchor: none;
         cursor: grab;
         user-select: none;
         touch-action: none;
@@ -4767,3 +4768,12 @@
           animation: none;
         }
       }
+
+/* Screen-sized affordance; its position follows the Surface camera. */
+.node-resize-handle {
+  position: absolute; z-index: 21; width: 14px; height: 14px;
+  padding: 0; border: 2px solid #7a35ff; border-radius: 3px;
+  background: white; cursor: nwse-resize; touch-action: none;
+}
+.node-resize-handle[hidden] { display: none; }
+.inline-node-editor { overflow-wrap: anywhere; word-break: break-all; }

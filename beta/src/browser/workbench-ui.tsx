@@ -1247,6 +1247,7 @@ function SettingsModal({
   toggleTheme: () => void;
   close: () => void;
 }): React.ReactElement {
+  const [wrapCharacters, setWrapCharacters] = useState(() => Number(document.documentElement.dataset.nodeWrapCharacters || 24));
   const [grid, setGrid] = useState(true);
   const [objectSize, setObjectSize] = useState(true);
   const [comments, setComments] = useState(true);
@@ -1275,6 +1276,11 @@ function SettingsModal({
             <label className="wb-toggle"><span>Grid</span><input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Board comments</span><input type="checkbox" checked={comments} onChange={(e) => setComments(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Object sizes</span><input type="checkbox" checked={objectSize} onChange={(e) => setObjectSize(e.target.checked)} /></label>
+            <label className="wb-field"><span>Initial node width (full-width characters)</span><input aria-label="Initial node width (full-width characters)" type="number" min="8" max="80" value={wrapCharacters} onChange={(e) => {
+              const characters = Number(e.target.value);
+              setWrapCharacters(characters);
+              window.dispatchEvent(new CustomEvent("m3e:set-node-wrap-characters", { detail: { characters } }));
+            }} /></label>
             <label className="wb-field"><span>Linear font scale</span><input type="range" min="0.8" max="1.5" step="0.05" defaultValue="1" /></label>
             <div className="wb-disabled-list">
               <button disabled type="button"><CircleUserRound size={16} /> Profile settings</button>
