@@ -24,6 +24,30 @@ function harness() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("retained WebGL scene tiles", () => {
+  it("snapshot replacement retains distant tiles, including insertions and removals", () => {
+    const {tiles,gl}=harness();
+    const a={...label(0),bounds:{x:40,y:100,width:100,height:80}};
+    const b=label(10);
+    tiles.setScene({commands:[a,b]});
+    const draw=()=>tiles.draw({x:0,y:0,zoom:1},1000,1000,1,()=>{});
+    draw();
+    const count=tiles.cacheSize;
+    tiles.setScene({commands:[{...a,text:"resized",bounds:{x:40,y:100,width:130,height:80}}, {...b}]});
+    expect(tiles.cacheSize).toBe(count-1);
+    draw();
+    const uploads=gl.texImage2D.mock.calls.length;
+    const inserted={...label(2),bounds:{x:50,y:200,width:50,height:50}};
+    tiles.setScene({commands:[{...a,text:"resized",bounds:{x:40,y:100,width:130,height:80}},inserted,{...b}]});
+    expect(tiles.cacheSize).toBe(count-1);
+    draw(); expect(gl.texImage2D.mock.calls.length-uploads).toBe(1);
+    tiles.setScene({commands:[b]}); expect(tiles.cacheSize).toBe(count-1);
+  });
+  it("invalidates overlaps when unchanged commands change stacking order",()=>{
+    const {tiles}=harness(); const a=label(0),b={...label(1),bounds:a.bounds};
+    tiles.setScene({commands:[a,b]}); tiles.draw({x:0,y:0,zoom:1},1000,1000,1,()=>{});
+    const count=tiles.cacheSize;
+    tiles.setScene({commands:[b,a]}); expect(tiles.cacheSize).toBeLessThan(count);
+  });
   it("includes negative world geometry without rewriting its coordinates", () => {
     const box = {x:-900,y:-1200,width:300,height:200};
     expect(sceneWorldBounds(box,1600,900)).toEqual({minX:-932,minY:-1232,maxX:1600,maxY:900});

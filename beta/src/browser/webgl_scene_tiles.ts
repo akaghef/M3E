@@ -191,8 +191,12 @@ function shapePath(element: SVGGeometryElement): string {
   }
 }
 
-/** Capture once per scene revision, while the SVG is measurable. Never on pan. */
-export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<string>): PaintScene {
+const captureCaches = new WeakMap<SVGSVGElement, WeakMap<SVGGraphicsElement, { key: string; commands: PaintCommand[] }>>();
+/** Capture changed SVG elements only during a local edit. Full renders reset CSS dependencies. */
+export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<string>, incremental = false): PaintScene {
+  let cache = incremental ? captureCaches.get(root) : undefined;
+  if (!cache) { cache = new WeakMap(); captureCaches.set(root, cache); }
+  const markerDefinitions = [...root.querySelectorAll("defs")].map(element => element.innerHTML).join("");
   const commands: PaintCommand[] = [];
   let currentNodeId: string | undefined;
   if (root.querySelector("foreignObject, image, use")) {
@@ -204,6 +208,10 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
     const nodeId = element.getAttribute("data-node-id") ||
       (element.matches(".alias-badge,.confidence-badge,.confidence-badge-text,.status-badge,.status-badge-text,.lock-icon,[data-collapse-node-id]") ? currentNodeId : undefined);
     if (onlyNodeIds && (!nodeId || !onlyNodeIds.has(nodeId))) return;
+    const key = `${nodeId || ""}:${element.outerHTML}:${element.hasAttribute("marker-end") || element.hasAttribute("marker-start") ? markerDefinitions : ""}`;
+    const retained = cache!.get(element);
+    if (retained?.key === key) { commands.push(...retained.commands); return; }
+    const start = commands.length;
     const editorBody = element.matches(".node-hit,.node-visual-box,.label-root,.label-node");
     const css = getComputedStyle(element);
     if (css.display === "none" || css.visibility === "hidden") return;
@@ -260,6 +268,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
         });
       }
     }
+    cache!.set(element, { key, commands: commands.slice(start) });
   });
   return { commands };
 }
@@ -321,10 +330,40 @@ export class WebGLSceneTiles {
     this.scratch.width = this.scratch.height = TILE_PIXELS + GUTTER*2;
   }
   setScene(scene: PaintScene): void {
-    this.clear();
-    this.scene = scene;
-    this.index = new PaintIndex(scene.commands);
-    this.paths = scene.commands.map((command) => command.kind === "path" ? new Path2D(command.path) : undefined);
+    // Content equality also covers regenerated edge fragments and refreshed CSS.
+    // Reuse unchanged paint/paths and invalidate the union of old/new dirty bounds.
+    const buckets = new Map<string, PaintCommand[]>();
+    const previousPaths = new Map(this.scene.commands.map((command, index) => [command, this.paths[index]]));
+    const previousOrder = new Map(this.scene.commands.map((command, index) => [command, index]));
+    for (const command of this.scene.commands) {
+      const key = JSON.stringify(command);
+      const bucket = buckets.get(key) || [];
+      bucket.push(command); buckets.set(key, bucket);
+    }
+    const retained = new Set<PaintCommand>();
+    const dirty: PaintBounds[] = [];
+    let lastIndex = -1;
+    let reordered = false;
+    const commands = scene.commands.map(command => {
+      const old = buckets.get(JSON.stringify(command))?.shift();
+      if (!old) { dirty.push(command.bounds); return command; }
+      retained.add(old);
+      const index = previousOrder.get(old)!;
+      if (index < lastIndex) reordered = true;
+      lastIndex = index;
+      return old;
+    });
+    this.scene.commands.forEach(command => { if (!retained.has(command)) dirty.push(command.bounds); });
+    // A stacking-order change can alter overlaps even when geometry is identical.
+    if (reordered) retained.forEach(command => dirty.push(command.bounds));
+    this.tiles.forEach((tile, key) => {
+      const gutter = GUTTER / this.scale;
+      if (!dirty.some(box => intersects(box, { x: tile.x-gutter, y: tile.y-gutter, width: tile.size+gutter*2, height: tile.size+gutter*2 }))) return;
+      this.gl.deleteTexture(tile.texture); this.tiles.delete(key);
+    });
+    this.scene = { commands };
+    this.index = new PaintIndex(commands);
+    this.paths = commands.map(command => previousPaths.get(command) || (command.kind === "path" ? new Path2D(command.path) : undefined));
   }
   updateNodePaint(updates: PaintScene, ids: Set<string>): PaintScene {
     const previousPaths = new Map(this.scene.commands.map((command,i) => [command,this.paths[i]]));

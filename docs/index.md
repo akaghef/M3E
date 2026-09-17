@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 608
+- Indexed files: 610
 
 ## Reading Routes
 
@@ -59,6 +59,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/home_scope_navigator.md](<./03_Spec/home_scope_navigator.md>) | Markdown | Home Screen / Scope Navigator -- Design Document | Date: 2025-04-09 |
 | [03_Spec/Home_Screen.md](<./03_Spec/Home_Screen.md>) | Markdown | Home Screen 仕様書 | 作成日: 2026-04-14 |
 | [03_Spec/Import_Export.md](<./03_Spec/Import_Export.md>) | Markdown | Import / Export 仕様 | > **MVP 対応状況を含む。** 未実装のものは「未実装」と明記する。 |
+| [03_Spec/Incremental_Viewer_Updates.md](<./03_Spec/Incremental_Viewer_Updates.md>) | Markdown | Viewer の編集確定時の差分更新 | ラベル確定とノード追加だけが差分更新を要求する。その他の変更、Undo / Redo、表示設定変更、外部state受信は既存の全更新経路でキャッシュを無効化する。 |
 | [03_Spec/Joint_Integration_Hub.md](<./03_Spec/Joint_Integration_Hub.md>) | Markdown | Joint Integration Hub — リマインダー & 外部サービス共通連携層 | 最終更新: 2026-04-22 |
 | [03_Spec/Linear_Tree_Conversion.md](<./03_Spec/Linear_Tree_Conversion.md>) | Markdown | Linear <-> Tree 変換仕様（Draft） | M3E の主構造（Tree）と線形表現（Linear）を相互に変換し、 |
 | [03_Spec/local_file_integration.md](<./03_Spec/local_file_integration.md>) | Markdown | ローカルファイル連携設計 | 最終更新: 2026-04-15 |
@@ -148,6 +149,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md](<./09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md>) | Markdown | ADR 009: Agent Orchestration の M3E 融合と実行境界 | Accepted. 一部を [ADR_011](./ADR_011_Agent_Orrery_As_M3E_Map.md) が更新（2026-08-26）: |
 | [09_Decisions/ADR_010_Radial_Surface_View_Removal.md](<./09_Decisions/ADR_010_Radial_Surface_View_Removal.md>) | Markdown | ADR_010: Radial Surface View を廃止し Tree へ畳む | Surface View 正本は `Tree / Axial / Radial / Disperse / System` の5種としていた。 |
 | [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
+| [09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](<./09_Decisions/ADR_012_Radial_Surface_View_Restoration.md>) | Markdown | ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する | ADR_010 は、当時の実装が canon の角度系（`clockwise / counterclockwise / balanced`）を |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections

@@ -1,5 +1,6 @@
 import {
   layout as layoutPortLayout,
+  TreeSpanCache,
   type LayoutSpace,
   type LayoutMode,
   type LayoutNodeMetric,
@@ -24,6 +25,7 @@ import {
   type ScopeLockDrawState,
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
+import { DerivedNodeCache, RetainedSvgScene } from "./incremental_scene";
 import { captureSvgPaintScene, sceneWorldBounds, translatePaintScene } from "./webgl_scene_tiles";
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
 import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
@@ -543,6 +545,17 @@ let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
 const nodeDrawInputs = new Map<string, NodeDrawInput>();
+const layoutMetricCache = new DerivedNodeCache<LayoutNodeMetric>();
+const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
+const edgeSvgCache = new DerivedNodeCache<string>();
+const treeSpanCache = new TreeSpanCache();
+const retainedSvgScene = new RetainedSvgScene();
+let incrementalProjection = false;
+let localEditBatchDepth = 0;
+let localEditBatchPending = false;
+let renderRevision = 0;
+let snapshotNodeCache = new WeakMap<SVGGraphicsElement, { key: string; value: RenderNode }>();
+let snapshotEdgeCache = new WeakMap<SVGGeometryElement, { key: string; value: RenderEdge }>();
 let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
@@ -4496,7 +4509,11 @@ function svgShapeBox(shape: SVGGraphicsElement): { x: number; y: number; width: 
 
 /** Converts the existing canonical SVG scene into a read-only GPU projection. */
 function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
-  const paintScene = captureSvgPaintScene(canvas);
+  if (!incrementalProjection) {
+    snapshotNodeCache = new WeakMap();
+    snapshotEdgeCache = new WeakMap();
+  }
+  const paintScene = captureSvgPaintScene(canvas, undefined, incrementalProjection);
   const labelsById = new Map<string, string[]>();
   const labelElementsById = new Map<string, SVGTextElement>();
   canvas.querySelectorAll<SVGTextElement>("text.label-root[data-node-id], text.label-node[data-node-id]").forEach((label) => {
@@ -4514,16 +4531,19 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     shapeById.set(id, element);
   });
   shapeById.forEach((shape, id) => {
+    const labelElement = labelElementsById.get(id);
+    const cacheKey = shape.outerHTML + (labelElement?.outerHTML || "");
+    const previous = snapshotNodeCache.get(shape);
+    if (previous?.key === cacheKey) { nodes.push(previous.value); return; }
     const box = svgShapeBox(shape);
     if (!box) return;
     const visibleNode = map?.state.nodes[id];
     if (!visibleNode || !Number.isFinite(box.x + box.y + box.width + box.height)) return;
     const visual = canvas.querySelector<SVGGraphicsElement>(`[data-node-id="${CSS.escape(id)}"].node-shape, [data-node-id="${CSS.escape(id)}"].folder-box, [data-node-id="${CSS.escape(id)}"].root-box`) || shape;
     const lines = labelsById.get(id) || [uiLabel(visibleNode) || "(empty)"];
-    const labelElement = labelElementsById.get(id);
     const labelFontSize = labelElement ? Number.parseFloat(getComputedStyle(labelElement).fontSize) : Number.NaN;
     const style = readNodeStyleAttrs(visibleNode.attributes || {});
-    nodes.push({
+    const value: RenderNode = {
       id,
       x: box.x,
       y: box.y,
@@ -4538,14 +4558,19 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
       // effects). Prefer its canonical node style, then its resolved color.
       fill: style.bg || cssColorOf(visual, "fill", "#ffffff"),
       stroke: style.border || cssColorOf(visual, "stroke", "#475569"),
-    });
+    };
+    nodes.push(value);
+    snapshotNodeCache.set(shape, { key: cacheKey, value });
   });
   const parseEdges = (selector: string, kind: "edge" | "graph-link"): RenderEdge[] => Array.from(canvas.querySelectorAll<SVGGeometryElement>(selector))
     .map((element, index) => {
       const sourceNodeId = element.getAttribute("data-source-node-id") || element.getAttribute("data-parent-node-id") || "";
       const targetNodeId = element.getAttribute("data-target-node-id") || element.getAttribute("data-child-node-id") || "";
       const id = element.getAttribute("data-edge-id") || element.getAttribute("data-link-id") || `${kind}-${index}`;
-      return {
+      const key = `${id}:${element.outerHTML}`;
+      const previous = snapshotEdgeCache.get(element);
+      if (previous?.key === key) return previous.value;
+      const value: RenderEdge = {
         id,
         sourceNodeId,
         targetNodeId,
@@ -4555,6 +4580,8 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
         kind,
         direction: element.getAttribute("marker-end") ? "forward" as const : "none" as const,
       };
+      snapshotEdgeCache.set(element, { key, value });
+      return value;
     })
     .filter((edge) => edge.points.length >= 2);
   const groups: RenderGroupBoundary[] = currentSurfaceIsScatterMode()
@@ -7569,8 +7596,12 @@ function buildLayout(state: AppState): LayoutResult {
   collectVisible(displayRootId);
   const boxSizes: Record<string, LayoutNodeMetric> = {};
   Array.from(visibleNodeIds).forEach((nodeId) => {
-    boxSizes[nodeId] = measureLayoutNode(state, nodeId, displayRootId, structuredLayoutConfig(structuredMode));
+    const node = state.nodes[nodeId]!;
+    const config = structuredLayoutConfig(structuredMode);
+    const key = JSON.stringify([uiLabel(node), isLatexNode(node), nodeId === displayRootId, visibleChildren(node).length === 0, config]);
+    boxSizes[nodeId] = layoutMetricCache.get(nodeId, key, () => measureLayoutNode(state, nodeId, displayRootId, config));
   });
+  layoutMetricCache.retain(visibleNodeIds);
 
   const publicOptions: PublicLayoutOptions = {
     direction: viewState.surfaceLayoutDirection,
@@ -7579,6 +7610,7 @@ function buildLayout(state: AppState): LayoutResult {
     link: { route: viewState.surfaceLinkRoute },
   };
   const options: LayoutOptions = {
+    treeCache: treeSpanCache,
     ...publicOptions,
     displayRootId,
     structuredMode,
@@ -7752,7 +7784,13 @@ function graphLinkLabelPointForRoute(
   return graphLinkLabelPointWithPorts(source, target, waveOffset);
 }
 
-function render(): void {
+function render(incremental = false): void {
+  renderRevision++;
+  layoutMetricCache.begin(!incremental);
+  nodeSvgCache.begin(!incremental);
+  edgeSvgCache.begin(!incremental);
+  if (!incremental) treeSpanCache.clear();
+  incrementalProjection = incremental;
   updateModeBadge();
   if (!map) {
     syncThinkingModeUi();
@@ -7802,7 +7840,8 @@ function render(): void {
   let graphLinks = "";
   let overlays = "";
   let annotations = "";
-  let nodes = "";
+  const nodeParts: Array<[string, string]> = [];
+  const edgeParts: Array<[string, string]> = [];
 
   if (scatterSurface) {
     layout.groups?.forEach((group) => {
@@ -8225,12 +8264,12 @@ function render(): void {
     };
   }
 
-  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: LayoutResult["pos"][string], childIds: string[]): string {
+  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: LayoutResult["pos"][string], childIds: string[], indexOffset = 0): string {
     let result = "";
     childIds.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) return;
-      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i + indexOffset) % VIEWER_TUNING.palette.edgeColors.length];
       const stroke = nodeStyles.edgeColor || defaultStroke;
       const edgeInline = buildEdgeStyle(nodeStyles);
       const edgePath = layoutEdgePath(structuredMode, p, child);
@@ -8315,28 +8354,34 @@ function render(): void {
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
     if (!nodeComponent) {
-      edges += renderParentChildEdges(nodeId, nodeStyles, p, children);
+      const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
+      children.forEach((id, index) => {
+        const edgeId = `edge:${nodeId}:${id}`;
+        const key = JSON.stringify([geometry(p), geometry(pos[id]), index, nodeStyles,
+          state.nodes[id]?.attributes, parentChildLinkLabels.get(parentChildEdgeKey(nodeId, id)), structuredMode, viewState.surfaceEdgeRoute]);
+        edgeParts.push([edgeId, edgeSvgCache.get(edgeId, key, () => renderParentChildEdges(nodeId, nodeStyles, p, [id], index))]);
+      });
     }
 
     const drawInput = toNodeDrawInput(node, p, nodeStyles);
     nodeDrawInputs.set(node.id, drawInput);
-    const output = renderNodeSvg(drawInput);
-    nodes += output.svg;
+    const output = nodeSvgCache.get(nodeId, JSON.stringify(drawInput), () => renderNodeSvg(drawInput));
+    let nodeMarkup = output.svg;
     maxX = Math.max(maxX, output.bounds.maxX);
     maxY = Math.max(maxY, output.bounds.maxY);
 
     if (!scatterSurface && !nodeComponent && isFolderNode(node)) {
-      nodes += renderFolderPreview(node, nodeStyles, p);
+      nodeMarkup += renderFolderPreview(node, nodeStyles, p);
     }
 
     // In tree surfaces the display root comes through this same path, so a
     // root-owned table is valid. Rootless surfaces intentionally omit their
     // hidden display root and therefore cannot anchor a projection there.
     if (nodeComponent) {
-      nodes += renderNodeComponent(nodeComponent, nodeId, p);
-    } else {
-      children.forEach((cid) => drawNode(cid));
+      nodeMarkup += renderNodeComponent(nodeComponent, nodeId, p);
     }
+    nodeParts.push([`node:${nodeId}`, nodeMarkup]);
+    if (!nodeComponent) children.forEach((cid) => drawNode(cid));
   }
 
   if (scatterSurface) {
@@ -8391,7 +8436,16 @@ function render(): void {
   maxX = Math.max(maxX, annotationRender.maxX);
   maxY = Math.max(maxY, annotationRender.maxY);
 
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${disperseGroups}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
+  const replaced = retainedSvgScene.update(canvas, [
+    ["defs", defs], ["frames", surfaceFrames], ["groups", disperseGroups],
+    ["edges", edges], ...edgeParts, ["guides", scatterGuides], ["links", graphLinks],
+    ["overlays", overlays], ...nodeParts, ["annotations", annotations],
+  ], !incremental);
+  nodeSvgCache.retain(new Set(nodeDrawInputs.keys()));
+  edgeSvgCache.retain(new Set(edgeParts.map(([id]) => id)));
+  board.dataset.renderRevision = String(renderRevision);
+  board.dataset.editWork = JSON.stringify({ incremental, measured: layoutMetricCache.computed,
+    branches: treeSpanCache.computed, nodes: nodeSvgCache.computed, edges: edgeSvgCache.computed, fragments: replaced });
   // Measure world geometry, including negative positions and curved paths.
   // A hidden SVG cannot be measured reliably; it is hidden again by the
   // projection before presentation, without changing saved node coordinates.
@@ -9140,13 +9194,14 @@ function scheduleSelectionRefresh(): void {
       canvas.removeAttribute("hidden");
       try {
         changed.forEach((id) => {
+          retainedSvgScene.invalidate(`node:${id}`);
           canvas.querySelectorAll(`[data-node-id="${CSS.escape(id)}"]`).forEach((element) => {
             element.classList.toggle("selected", viewState.selectedNodeIds.has(id));
             element.classList.toggle("multi-selected", viewState.selectedNodeIds.has(id));
             element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
           });
         });
-        const paint = captureSvgPaintScene(canvas, changed);
+        const paint = captureSvgPaintScene(canvas, changed, true);
         const scene = webglProjection.updateNodePaint(paint, changed);
         if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
       } finally {
@@ -11568,8 +11623,8 @@ function addChild(): void {
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
   setSingleSelection(id, false);
-  touchDocument();
-  nudgeActiveNodeIntoView({ animate: false });
+  touchDocument(true);
+  if (!localEditBatchDepth) nudgeActiveNodeIntoView({ animate: false });
   board.focus();
 }
 
@@ -11586,8 +11641,8 @@ function addSibling(): void {
   map!.state.nodes[id] = createNodeRecord(id, parent.id, "");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
-  touchDocument();
-  nudgeActiveNodeIntoView({ animate: false });
+  touchDocument(true);
+  if (!localEditBatchDepth) nudgeActiveNodeIntoView({ animate: false });
   board.focus();
 }
 
@@ -11981,7 +12036,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       latexHtmlCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
-      touchDocument();
+      touchDocument(true);
       preserveNodeViewportCenter(nodeId, viewportCenterBefore);
       return true;
     }
@@ -11991,7 +12046,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     pushUndoSnapshot();
     node.aliasLabel = next;
     node.text = next;
-    touchDocument();
+    touchDocument(true);
     preserveNodeViewportCenter(nodeId, viewportCenterBefore);
     return true;
   }
@@ -12015,7 +12070,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     node.link = applied.link;
     node.attributes = applied.attributes;
     syncAliasDisplayForTarget(node.id);
-    touchDocument();
+    touchDocument(true);
     preserveNodeViewportCenter(nodeId, viewportCenterBefore);
     return true;
   }
@@ -12027,7 +12082,7 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   latexHtmlCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
-  touchDocument();
+  touchDocument(true);
   preserveNodeViewportCenter(nodeId, viewportCenterBefore);
   return true;
 }
@@ -12194,15 +12249,23 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   });
 }
 
-function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
+function createNodeByDirectionAndEdit(direction: "breadth" | "depth", commitEditor = false): void {
   if (!map) {
     return;
   }
-  if (direction === "depth") {
-    addChild();
-  } else {
-    addSibling();
+  localEditBatchDepth++;
+  try {
+    if (commitEditor) stopInlineEdit(true, { focusBoard: false });
+    if (direction === "depth") addChild();
+    else addSibling();
+  } finally {
+    localEditBatchDepth--;
+    if (!localEditBatchDepth && localEditBatchPending) {
+      localEditBatchPending = false;
+      touchDocument(true);
+    }
   }
+  nudgeActiveNodeIntoView({ animate: false });
   startInlineEdit(viewState.selectedNodeId, { nudgeIntoView: false });
 }
 
@@ -12295,15 +12358,13 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
 
     if (action === "child") {
       event.preventDefault();
-      stopInlineEdit(true, { focusBoard: false });
-      createNodeByDirectionAndEdit("depth");
+      createNodeByDirectionAndEdit("depth", true);
       return;
     }
 
     if (action === "sibling") {
       event.preventDefault();
-      stopInlineEdit(true, { focusBoard: false });
-      createNodeByDirectionAndEdit("breadth");
+      createNodeByDirectionAndEdit("breadth", true);
       return;
     }
 
@@ -13129,13 +13190,17 @@ function toggleReviewMode(): void {
   render();
 }
 
-function touchDocument(): void {
+function touchDocument(incremental = false): void {
   if (!map) {
+    return;
+  }
+  if (incremental && localEditBatchDepth) {
+    localEditBatchPending = true;
     return;
   }
   syncMapModelStateFromRuntime();
   map.savedAt = nowIso();
-  render();
+  render(incremental);
   scheduleAutosave();
   broadcastState();
 }
