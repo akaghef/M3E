@@ -122,3 +122,49 @@ test('default wrapping preference persists and does not override manually resize
   await expect(page.getByRole('spinbutton',{name:'Initial node width (full-width characters)'})).toHaveValue('12');
   await expect(hit(page)).toHaveAttribute('width',width);
 });
+
+// Native touch events exercise pointer capture and the SVG/board routing boundary.
+for (const origin of ['background', 'node']) {
+  test(`touch pinch from ${origin} follows its midpoint and transitions back to pan`, async ({page}) => {
+    await launch(page);
+    await page.mouse.click(400,650); // Stop the initial fit animation before measuring.
+    const cdp = await page.context().newCDPSession(page);
+    const b = await hit(page).boundingBox();
+    const start = origin === 'node'
+      ? [{id:1,x:b.x+b.width*0.3,y:b.y+b.height/2}, {id:2,x:b.x+b.width*0.7,y:b.y+b.height/2}]
+      : [{id:1,x:400,y:650}, {id:2,x:600,y:650}];
+    const midpoint = {x:(start[0].x+start[1].x)/2,y:(start[0].y+start[1].y)/2};
+    const geometry = () => page.locator('rect.node-hit').evaluateAll(els=>els.map(e=>[e.getAttribute('data-node-id'),e.getAttribute('x'),e.getAttribute('y')]));
+    const layoutBefore = await geometry();
+    const initial = await camera(page);
+    const panel = await page.getByTestId('workbench-right-panel').boundingBox();
+    const send = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent',{type,touchPoints});
+    const translated = start.map(p=>({...p,x:p.x+100,y:p.y+30}));
+    await send('touchStart',start);
+    await send('touchMove',translated);
+    await expect.poll(async()=> (await camera(page)).x).toBeCloseTo(initial.x+100,1);
+    expect((await camera(page)).y).toBeCloseTo(initial.y+30,1);
+    expect((await camera(page)).z).toBeCloseTo(initial.z,5);
+    const enlarged = start.map(p=>({...p,x:midpoint.x+100+(p.x-midpoint.x)*1.5,y:midpoint.y+30+(p.y-midpoint.y)*1.5}));
+    await send('touchMove',enlarged);
+    await expect.poll(async()=> (await camera(page)).z).toBeCloseTo(initial.z*1.5,5);
+    const zoomed = await camera(page);
+    expect(Math.abs(zoomed.x - (midpoint.x+100-(midpoint.x-initial.x)*1.5))).toBeLessThan(0.5);
+    expect(Math.abs(zoomed.y - (midpoint.y+30-(midpoint.y-initial.y)*1.5))).toBeLessThan(0.5);
+    await send('touchEnd',[enlarged[1]]);
+    await send('touchMove',[{...enlarged[0],x:enlarged[0].x+40}]);
+    await expect.poll(async()=> (await camera(page)).x).toBeCloseTo(zoomed.x+40,1);
+    await send('touchEnd',[]);
+    expect(await page.getByTestId('workbench-right-panel').boundingBox()).toEqual(panel);
+    expect(await page.evaluate(()=>visualViewport.scale)).toBe(1);
+    expect(await getNodeCount(page)).toBe(7);
+    await expect(page.locator('#board')).not.toHaveClass(/panning/);
+    await expect(page.getByRole('button',{name:`${Math.round(zoomed.z*100)}%`,exact:true})).toBeVisible();
+    expect(await geometry()).toEqual(layoutBefore);
+    // Pointer capture must also be released so the next single-finger tap selects.
+    const target = await hit(page).boundingBox();
+    await send('touchStart',[{id:4,x:target.x+target.width/2,y:target.y+target.height/2}]);
+    await send('touchEnd',[]);
+    await expect(page.locator('#meta')).toHaveAttribute('data-selected-node-id','child-b');
+  });
+}

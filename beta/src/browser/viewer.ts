@@ -15703,6 +15703,17 @@ function startPinch(): void {
   if (ids.length < 2) return;
   const a = activePointers.get(ids[0])!;
   const b = activePointers.get(ids[1])!;
+  cancelCameraMotion();
+  // A second touch takes ownership from a pending node drag. Never commit a
+  // structural drop when the fingers are being used to navigate the Surface.
+  if (viewState.dragState) {
+    if (viewState.dragState.mode === "scatter" && viewState.dragState.dragged && !webglDragBaseSnapshot) {
+      touchDocument(); // Preserve movement already completed before the pinch.
+    }
+    viewState.dragState = null;
+    webglDragBaseSnapshot = null;
+    scheduleRender();
+  }
   // Cancel single-finger pan
   if (viewState.panState) {
     viewState.panState = null;
@@ -15711,7 +15722,7 @@ function startPinch(): void {
   viewState.pinchState = {
     pointerA: { id: ids[0], x: a.x, y: a.y },
     pointerB: { id: ids[1], x: b.x, y: b.y },
-    initialDistance: pointerDistance(a, b),
+    initialDistance: Math.max(1, pointerDistance(a, b)),
     initialZoom: viewState.zoom,
     initialCameraX: viewState.cameraX,
     initialCameraY: viewState.cameraY,
@@ -15719,6 +15730,20 @@ function startPinch(): void {
     initialCenterY: (a.y + b.y) / 2,
   };
 }
+
+// Observe touches before SVG/WebGL node handlers can stop propagation. The
+// first finger keeps normal selection/drag behavior; two fingers own the camera.
+board.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (event.pointerType !== "touch" || event.button !== 0 || annotationTool !== "select") return;
+  if ((event.target as Element | null)?.closest("button, input, textarea, select, [contenteditable=true], .linear-panel")) return;
+  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (activePointers.size < 2) return;
+  event.preventDefault();
+  event.stopPropagation();
+  prepareViewportGesture(event.target);
+  for (const id of activePointers.keys()) board.setPointerCapture(id);
+  if (!viewState.pinchState) startPinch();
+}, { capture: true });
 
 board.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) {
@@ -15746,16 +15771,6 @@ board.addEventListener("pointerdown", (event: PointerEvent) => {
   }
   if (!prepareViewportGesture(event.target)) {
     return;
-  }
-
-  // Track touch pointers for pinch
-  if (event.pointerType === "touch") {
-    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    board.setPointerCapture(event.pointerId);
-    if (activePointers.size === 2) {
-      startPinch();
-      return;
-    }
   }
 
   viewState.panState = {
@@ -15790,15 +15805,23 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     const b = activePointers.get(pointerB.id);
     if (!a || !b) return;
 
-    const currentDistance = pointerDistance(a, b);
-    const scale = currentDistance / viewState.pinchState.initialDistance;
-    const nextZoom = viewState.pinchState.initialZoom * scale;
-
-    // Zoom anchored to the current midpoint of the two fingers
-    const anchorX = (a.x + b.x) / 2;
-    const anchorY = (a.y + b.y) / 2;
-    scheduleSetZoom(nextZoom, anchorX, anchorY, { syncDependents: false });
+    const pinch = viewState.pinchState;
+    viewState.zoom = clampZoom(pinch.initialZoom * pointerDistance(a, b) / pinch.initialDistance);
+    const scale = viewState.zoom / pinch.initialZoom;
+    const rect = board.getBoundingClientRect();
+    // Keep the world point under the initial midpoint under the moving midpoint.
+    // Computing from the gesture start also avoids cumulative rounding drift.
+    viewState.cameraX = (a.x + b.x) / 2 - rect.left
+      - (pinch.initialCenterX - rect.left - pinch.initialCameraX) * scale;
+    viewState.cameraY = (a.y + b.y) / 2 - rect.top
+      - (pinch.initialCenterY - rect.top - pinch.initialCameraY) * scale;
+    scheduleApplyZoom({ syncDependents: false });
     markViewportDependentSyncPending();
+    const now = performance.now();
+    if (now - _lastZoomStatusAt >= 120) {
+      _lastZoomStatusAt = now;
+      setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
+    }
     return;
   }
 
@@ -15824,8 +15847,15 @@ function endPointer(event: PointerEvent): void {
   // Clean up pinch state
   if (event.pointerType === "touch") {
     activePointers.delete(event.pointerId);
-    if (viewState.pinchState) {
+    const pinch = viewState.pinchState;
+    if (pinch && (event.pointerId === pinch.pointerA.id || event.pointerId === pinch.pointerB.id)) {
       viewState.pinchState = null;
+      setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
+      try { board.releasePointerCapture(event.pointerId); } catch { /* already released */ }
+      if (activePointers.size >= 2) {
+        startPinch();
+        return;
+      }
       // If one finger remains, start a fresh pan from current position
       if (activePointers.size === 1) {
         const [remainingId, pos] = Array.from(activePointers.entries())[0];
