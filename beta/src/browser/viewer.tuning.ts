@@ -6,6 +6,7 @@ interface ViewerTuning {
     rootFont: number;
     nodeFont: number;
     maxNodeTextChars: number;
+    defaultWrapCharacters: number;
   };
   layout: {
     rootHeight: number;
@@ -58,6 +59,7 @@ const VIEWER_TUNING: ViewerTuning = {
     nodeFont: 44,
     // Hard cap used before truncation/wrapping logic prevents layout blowout.
     maxNodeTextChars: 55,
+    defaultWrapCharacters: 24,
   },
   layout: {
     // Baseline block height reserved for the root node.

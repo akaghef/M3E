@@ -1176,3 +1176,11 @@ body.wb-object-size-off .object-size-label {
     display: none;
   }
 }
+
+.wb-selected-card > strong {
+  display: block;
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
