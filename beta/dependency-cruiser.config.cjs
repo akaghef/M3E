@@ -1,6 +1,18 @@
 module.exports = {
   forbidden: [
     {
+      name: "force-seam-must-stay-headless",
+      severity: "error",
+      from: { path: "^src/shared/(ot_force|force_seam_interface)\\.ts$" },
+      to: { path: "^src/(browser|labs)/|node_modules/" },
+    },
+    {
+      name: "force-lab-uses-only-force-seam",
+      severity: "error",
+      from: { path: "^src/labs/force/" },
+      to: { path: "^src/shared/(?!ot_force\\.ts$|force_seam_interface\\.ts$)" },
+    },
+    {
       name: "no-layout-internal-imports",
       severity: "error",
       from: { path: "^src/(browser|labs|shared)" },
