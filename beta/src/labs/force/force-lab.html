@@ -6,15 +6,16 @@
       <a href="/src/labs/index.html" class="back">← Seam Labs</a>
       <div class="title"><span class="eyebrow">M3E / PHYSICS WORKSHOP</span><h1>OT Force <span>Seam Lab</span></h1></div>
       <div class="toolbar">
-        <label>Fixture<select id="fixture"><option value="nested">入れ子 group</option><option value="flat">平坦 network</option><option value="hundred">100 矩形</option><option value="blocked">固定衝突</option></select></label>
+        <label>Fixture<select id="fixture"><option value="nested">入れ子 group</option><option value="flat">平坦 network</option><option value="hundred">100 矩形</option><option value="blocked">固定衝突</option><option value="render-2000">描画負荷 2000（力学停止）</option></select></label>
         <label>Surface<select id="mode"><option>Disperse</option><option>Radial</option></select></label>
         <button id="tune-toggle" aria-expanded="false" aria-controls="tuning">力学を調整</button>
       </div>
     </header>
     <main>
-      <div class="surface-head"><div><span id="status" data-state="running">計算中</span><span id="counts"></span></div><div class="actions"><button id="pause">一時停止</button><button id="reheat">再計算</button><button id="fit">全体表示</button><button id="reset">配置をリセット</button></div></div>
+      <div class="surface-head"><div><span id="renderer-status">WebGL2</span><span id="status" data-state="running">計算中</span><span id="counts"></span></div><div class="actions"><label for="node-picker" class="sr-only">ノード選択</label><select id="node-picker" aria-label="ノード選択"><option value="">ノードを選択</option></select><button id="pause">一時停止</button><button id="reheat">再計算</button><button id="fit">全体表示</button><button id="reset">配置をリセット</button></div></div>
       <div id="canvas-host">
-        <svg id="canvas" aria-label="力学グラフ" xmlns="http://www.w3.org/2000/svg"><g id="scene"></g></svg>
+        <div id="render-host"></div>
+        <div id="renderer-error" role="alert" hidden></div>
         <section id="tuning" hidden aria-label="力学パラメータ">
           <div class="panel-title"><h2>力学パラメータ</h2><button id="close-tuning" aria-label="調整を閉じる">×</button></div>
           <p>現在の位置から再計算。開閉は配置に影響しません。</p>
@@ -29,7 +30,7 @@
         </div>
         <div class="legend"><span class="graph-key"></span>GraphLink <span class="tree-key"></span>親子edge <span class="group-key"></span>親子group</div>
       </div>
-      <footer><span>ノードを選択・drag / 枠の見出しでgroup移動 / 背景dragでpan / wheelでzoom</span><span id="metrics"></span></footer>
+      <footer><span id="canvas-help">ノードdrag / 見出しでgroup移動 / 背景pan / wheelでzoom / 矢印で選択・Cで開閉・Pで固定</span><span id="metrics"></span></footer>
     </main>
     <aside class="note"><strong>OTの力学 ＋ M3Eの矩形・包含制約</strong><span>collapseは親を残して子孫を畳む操作です。Viewer Panelの最終デザインではありません。</span><a id="source-notice" href="./NOTICE.md" download="OT-Force-NOTICE.md">Source / License</a></aside>
     <script type="module" src="./force-lab.ts"></script>

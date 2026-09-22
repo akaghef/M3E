@@ -2,6 +2,10 @@ import type { ForceGraph, ForceNode } from "../../shared/force_seam_interface";
 
 const node = (id: string, label: string, x: number, y: number, parentId?: string, w = 132, h = 56): ForceNode => ({ id, label, x, y, parentId, w, h });
 export function forceFixture(name: string): ForceGraph {
+  if (name === "render-2000") {
+    const nodes = Array.from({ length: 2000 }, (_, i) => node(`r${i}`, `Node ${i + 1}`, (i % 50 - 25) * 190, (Math.floor(i / 50) - 20) * 95, undefined, 140, 54));
+    return { nodes, links: nodes.slice(1).map((n, i) => ({ id: `r-e${i}`, source: nodes[i].id, target: n.id })) };
+  }
   if (name === "blocked") return { nodes: [{ ...node("a", "固定 A", -20, 0), pinned: true }, { ...node("b", "固定 B", 20, 0), pinned: true }], links: [] };
   if (name === "hundred") {
     const nodes = Array.from({ length: 100 }, (_, i) => node(`n${i}`, `Node ${i + 1}`, (i % 10 - 4.5) * 160, (Math.floor(i / 10) - 4.5) * 105, undefined, 70 + (i % 5) * 24, 38 + (i % 3) * 14));

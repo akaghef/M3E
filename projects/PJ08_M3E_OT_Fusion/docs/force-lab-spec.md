@@ -12,6 +12,7 @@ PJ08 の「同じmap面で全体像を把握する」目的と farthest_goal の
 - RQ3（ユーザー）: parameterは常時表示しない。Viewer Panel自体の再設計は保留。Add Childなど編集actionの配置問題も今回解かない。
 - RQ4: Labと将来の製品が同じDOM非依存の力学seamを使える。Lab独自の力学計算を持たない。
 - RQ5: 通常Viewer、既存WebCola、実map、DB、runtime observationは変更しない。ADR_012のWebCola採用は製品上そのまま。OTは今回Labで評価する別実装。
+- RQ6（2026-09-22、ユーザー）: SVGだけでは重いため、力学Labの通常経路はWebGL描画にする。製品接続の判断は別に維持する。
 
 ## 今回の実装判断
 
@@ -27,6 +28,10 @@ PJ08 の「同じmap面で全体像を把握する」目的と farthest_goal の
 - DC8: 世界の引力中心は固定 `(0,0)`。OTのviewport依存clampは移植しない。pan/zoom/resize/設定panel開閉で力学状態は変えない。fitは明示操作。非表示tabでは時計を止め、復帰後に時間を追いかけない。
 - DC9: 調整は斥力KR、リンク自然長L、ばね定数KS、中心引力GR。OT既定値2600/110/.012/.012と範囲を採用する。変更は現在位置から再加熱する。設定を戻す操作と配置をリセットする操作は別。Lab設定はlocalStorage等に保存せず、reloadでfixture既定へ戻る。
 - DC10: 一時的な折り畳み式Lab調整領域を使う。これはViewer Panelの最終デザインではない。開閉はsimulationのstart/stopに関与しない。
+- DC11（2026-09-22）: 既存M3EのWebGL2 rendererを`src/rendering/`へ共有化し、Viewerのimportは互換入口で維持する。Labはforce snapshotから直接描画snapshotを作り、SVGやViewer内部を経由しない。ノード・文字・GraphLink・親子edge・group枠と見出し・固定表示をGPUへ送る。
+- DC12: 文字画像は内容・寸法・styleの変更時だけ再生成する。位置更新では再利用し、atlasは複数ページへ分割して容量超過による文字の無言欠落を避ける。pan/zoomはcamera uniformのみを更新し、位置や文字を再送しない。
+- DC13: WebGL不可・context lossではエラー表示して力学を止める。無言でSVGへ切り替えない。context復旧では同じ位置とcameraを維持する。`?renderer=svg`は明示的な比較経路であり、通常WebGLの裏にSVGを生成しない。
+- DC14: HTMLのノード選択欄とCanvas上の矢印・C・Pキーで選択・折り畳み・固定を維持する。選択欄の項目は可視ノード構成が変わったときだけ再構築する。
 
 ## 型付き契約と所有権
 
@@ -38,9 +43,10 @@ PJ08 の「同じmap面で全体像を把握する」目的と farthest_goal の
 操作: step、parameter変更、mode変更、collapse、pin、drag開始／移動／終了、pause、reheat、配置reset。
 
 seamはDOM、requestAnimationFrame、viewport、storage、network、Viewer、Reactに依存しない。
-LabはSVG描画、camera、入力、60Hz schedulerを所有する。共有map・undo・永続化は所有しない。
+Labは描画adapter、camera、入力、60Hz schedulerを所有する。共有WebGL rendererはGPU資源のみを所有する。共有map・undo・永続化は所有しない。
 rollbackはLab route/index登録を外すだけ。製品の既定経路に変更はない。
 hotPathSafe=false: 有限入力のO(N²)力計算と有界制約反復。性能保証はLab fixture最大100ノードまでで測定する。
+2000ノードfixtureは描画だけの負荷確認用であり、力学計算を生成・実行しない。WebGL化を力学計算の高速化とは主張しない。
 
 ## 出典
 
@@ -89,3 +95,21 @@ Seam Labs一覧からも到達できる。新規依存はない。
 全fixtureが物理的な平衡へ収束した、とは主張しない。自然長400の入れ子fixtureでは収束停止も確認した。
 Windows実機、全製品回帰suite、通常Viewerへの接続、非表示tab復帰の実ブラウザ試験は未実施。
 今回の完了対象はこの独立Labであり、次はhumanによる動作感確認。その後の製品接続は別判断とする。
+
+## WebGL化の検証記録（2026-09-22）
+
+通常経路をWebGL2へ変更した。SVGは`?renderer=svg`を明示した比較時のみ生成する。
+既存Viewerは互換exportを経由して同じ描画実装を使用するが、OT力学のViewer接続は変更していない。
+legacy browser script用のTypeScript対象から互換exportを除外し、既存`tsconfig.renderer.json`で共有実装を検査する。出力先の変更はない。
+
+- 単体: OT力学12件、既存WebGL6件、Astraが追加したadapter/cache/resource18件、合計36件成功。single workerで実施。初回の既存100ノード試験は高負荷下で30秒timeoutとなり、制限やassertionを変更せず再実行して全件成功した。
+- 型・build: `npm run typecheck`全6設定、`npm run build:browser`成功。新規依存なし。
+- 依存境界: `npm run lint:deps`、137 modules / 285 dependencies、違反0。LabsからViewerへのimportは追加していない。
+- 実GPU: Chromiumの`ANGLE Metal Renderer: Apple M1`、WebGL activeを確認。通常経路はCanvas1・SVG0。初期12ノード＋箱見出し4件が表示され、235回のgeometry更新に対して文字atlas送信は1回だった。
+- 表示・操作: 文字・GraphLink・入れ子の箱、collapse 12→10→12、pin後のノードdrag、group見出しdrag、parameter変更と再加熱、Radialの親子edge9本＋GraphLink7本、キーボード選択・pin解除、100ノード、760px幅を実ブラウザで確認。撮影画像を目視した。
+- 描画負荷: 2000ノード・1999リンク・全2000ラベルを4ページのatlasで保持。力学stepは0、予約frameなし。pan/zoomではgeometry/atlas再送なし。これは2000ノードの力学処理の合格ではない。
+- 障害: WebGL不可とcontext lossで表示エラー・力学停止・自動SVG切替なし。復旧時は位置とcameraを維持。Astraレビューで見つかった部分確保時の資源解放漏れと、復旧時に未upload bufferを描く問題を修正し、回帰テストに追加した。修正後の復旧試験はconsole error/warningとも0。
+- 比較経路: 明示SVGで2000ラベル・SVG1・Canvas0を確認。ホスト負荷が変動しているため、SVG対比のFPSや倍率はこの記録から主張しない。
+
+スクリーンショットは`output/playwright/force-webgl-*.png`。CLI診断出力とともにローカル検証成果物であり、commit対象外。
+通常Viewerへの力学接続、全製品回帰suite、Windows実機、公開版へのOT同梱判断は未対象。

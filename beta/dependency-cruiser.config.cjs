@@ -1,6 +1,12 @@
 module.exports = {
   forbidden: [
     {
+      name: "rendering-must-not-import-viewer-state-or-labs",
+      severity: "error",
+      from: { path: "^src/rendering/" },
+      to: { path: "^src/(browser|labs|node)/" },
+    },
+    {
       name: "force-seam-must-stay-headless",
       severity: "error",
       from: { path: "^src/shared/(ot_force|force_seam_interface)\\.ts$" },
