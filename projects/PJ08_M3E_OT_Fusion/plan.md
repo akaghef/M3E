@@ -2,10 +2,19 @@
 pj_id: PJ08
 status: exploring
 phase: 1
-updated: 2026-09-15
+updated: 2026-09-22
 ---
 
 # PJ08 plan — M3E × OT 合併吸収
+
+## 2026-09-22 の進行方針
+
+akaghef の「UI は並行して最終チェックを進めるので、全体を全部進める」という指示により、
+GUI 採否待ちと後続実装を並行化する。対象は NETWORK × 通常 map、DECK は独立。
+旧 Phase 1 の制約は静的 mock の当時の作業範囲として残し、現在の実装停止条件にはしない。
+現在の要求・所有権・試験契約は [実行契約](docs/2026-09-22_integration-contract.md) を参照する。
+[実装・検証結果と残条件](docs/2026-09-22_network-integration.md) および `tasks.yaml` を更新済み。
+最終 UI 採否、実機間接続、command adapter 接続、公開配布判断は、それぞれ別の完了証拠を要する。
 
 > **ID 系列の注意**: 本ファイルの `DC1`–`DC5` は **PJ08 の決定**であり、
 > `ADR_011` の `DC1`–`DC22` とは別系列。ADR 側を指すときは必ず `ADR_011 DC3` と書く。
@@ -56,10 +65,10 @@ Director（Claude）はこれを受けて「M3E性を反証可能な視覚条件
 | Phase | 目的 | 出口条件（Gate） | 状態 |
 |---|---|---|---|
 | **1. GUI 収束** | 完成図の1画面を akaghef が見て採否を判断できる状態 | akaghef が mock を承認、または具体的な差し戻し内容を出す | **進行中**（初稿「第一案としては優秀」） |
-| **2. node type カタログ** | surface に出る node type ごとに 見た目 / schema / ロジック / 色 / 操作 を確定 | IS1 が決着し、type 別テンプレが再利用可能な形で書かれている | 未着手 |
-| **3. connector seam 契約** | OT observation contract → M3E map データ層の seam を exclusive に切る | 実データが M3E map に node として生える | 未着手 |
-| **4. 一枚絵 thin slice** | `Goal / Task ── assignment ── Agent ── resource-use ── お金` を同一 graph で結ぶ | `S17.8` の 1–3 が満たされる | 未着手 |
-| **5. multi-PC** | 複数 PC + 常駐 mac mini が同一 state を矛盾なく共有 | `S17.8` の 4–6 が満たされる | 未着手 |
+| **2. node type カタログ** | surface に出る node type ごとに 見た目 / schema / ロジック / 色 / 操作 を確定 | IS1 が決着し、type 別テンプレが再利用可能な形で書かれている | Agent Card 再利用済み。全 type / LOD 採否は未完了 |
+| **3. connector seam 契約** | OT observation contract → M3E map データ層の seam を exclusive に切る | 実データが M3E map に node として生える | read-only 実装・機械検証・単一 Mac の実データ画面試験済み。採否は別 |
+| **4. 一枚絵 thin slice** | `Goal / Task ── assignment ── Agent ── resource-use ── お金` を同一 graph で結ぶ | `S17.8` の 1–3 が満たされる | runtime 同居を実装。Role / Task binding の実運用接続は未完了 |
+| **5. multi-PC** | 複数 PC + 常駐 mac mini が同一 state を矛盾なく共有 | `S17.8` の 4–6 が満たされる | 複数 source / host 契約を実装。実機共有は未検証 |
 
 Phase 遷移判定は **akaghef のみ**。Claude は判定しない。
 

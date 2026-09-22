@@ -1,3 +1,4 @@
+import { OrreryNetwork } from "./orrery_network";
 import {
   layout as layoutPortLayout,
   type LayoutSpace,
@@ -528,6 +529,7 @@ interface LinearNodeDraft {
 type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let map: SavedMap | null = null;
+const orreryNetwork = new OrreryNetwork({ board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, point: clientToCanvasPoint });
 let fatalLoadError = false;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -4429,6 +4431,7 @@ function refreshLinearPanelCanvasLayout(): boolean {
 }
 
 function webglSurfaceSupported(): boolean {
+  if (orreryNetwork.enabled) return false; // NETWORK retains the existing SVG renderer until card WebGL parity.
   return WEBGL_RENDERER_REQUESTED && !webglFallbackReason && (viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode());
 }
 
@@ -7749,13 +7752,13 @@ function render(): void {
   rebuildImportanceVisibility();
   normalizeSelectionState();
 
-  const state = map.state;
+  const state = orreryNetwork.readView(map.state);
   if (!viewState.currentScopeRootId || !state.nodes[viewState.currentScopeRootId]) {
     viewState.currentScopeRootId = state.rootId;
   }
-  const layout = buildLayout(state);
+  const layout = orreryNetwork.extendLayout(buildLayout(map.state));
   lastLayout = layout;
-  visibleOrder = layout.order;
+  visibleOrder = layout.order.filter((id) => !orreryNetwork.isRuntimeNode(id));
   _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
@@ -7899,10 +7902,10 @@ function render(): void {
     if (isParentChildPair(source, target)) {
       return;
     }
-    if (!isNodeInScope(source.id) || !isNodeInScope(target.id)) {
+    if ((!orreryNetwork.isRuntimeNode(source.id) && !isNodeInScope(source.id)) || (!orreryNetwork.isRuntimeNode(target.id) && !isNodeInScope(target.id))) {
       return;
     }
-    if (!scatterSurface && (!isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id))) {
+    if (!scatterSurface && ((!orreryNetwork.isRuntimeNode(source.id) && !isNodeVisibleByImportance(source.id)) || (!orreryNetwork.isRuntimeNode(target.id) && !isNodeVisibleByImportance(target.id)))) {
       return;
     }
     if (sourceRenderId === targetRenderId) {
@@ -8289,6 +8292,9 @@ function render(): void {
     maxX = Math.max(maxX, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
+    const runtimeCard = orreryNetwork.drawCard(nodeId, p);
+    if (runtimeCard !== null) { nodes += runtimeCard; return; }
+
     const children = scatterSurface ? [] : visibleChildren(node);
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
@@ -8346,6 +8352,8 @@ function render(): void {
   } else {
     drawNode(displayRootId);
   }
+
+  orreryNetwork.runtimeNodeIds.forEach(drawNode);
 
   if (viewState.surfaceViewMode === "tree" && refreshLinearPanelCanvasLayout()) {
     const panelRightPad = 640;

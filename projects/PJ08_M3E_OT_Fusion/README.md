@@ -14,6 +14,19 @@ related:
 
 # PJ08 — M3E × OT 合併吸収
 
+## 2026-09-22 の実行入口
+
+対象は **OT NETWORK と M3E の通常 map 面の融合**。DECK は独立に扱う。
+akaghef が UI の最終チェックを並行して進め、Codex はデータ契約・観測接続・
+実装・検証を進める指示に更新された。以下に残る Phase 1 の GUI 待ちは
+当時の経緯であり、後続実装の停止条件ではない。UI 採否は別管理する。
+
+- [今回の実行契約](docs/2026-09-22_integration-contract.md)
+- [実装・検証結果と残条件](docs/2026-09-22_network-integration.md)
+- 実装 branch: `codex/pj08-network-integration` — 通常 Viewer に読み取り専用の NETWORK 観測を接続。
+- 通常の編集・保存・undo の正本と runtime の表示状態を分離する。
+- Codex 主環境の AgentStack 修復・OT 更新は A-sys が担当し、M3E は portable snapshot を消費する。
+
 OT（[`gyroid-eth/orrery-telemetry`](https://github.com/gyroid-eth/orrery-telemetry)）を M3E の
 一枚絵へ合併吸収する PJ。散在していた6本の worktree・停止した spec・未マージの Strategy を
 1つの器に集約し、**GUI を先に収束させてから**論理と実装へ進む。
@@ -67,8 +80,8 @@ Phase 1 を閉じてから Phase 2 以降で S17.8 に向かう。
 |---|---|---|
 | 1枚目の1画面 mock | `mocks/screen01.html` | 初稿提出済（2026-09-15、akaghef「第一案としては優秀」） |
 | 散在 worktree の吸収表 | `plan.md` | 作成済 |
-| node type カタログ | `docs/`（未着手） | Phase 2 |
-| connector seam 契約 | `.kiro/specs/`（未着手） | Phase 3 |
+| node type カタログ | `beta/src/shared/agent_card.ts` | Agent Card を再利用。全 type と LOD / 色の採否は未完了 |
+| connector seam 契約 | `docs/2026-09-22_integration-contract.md` / `beta/src/shared/orrery_seam_interface.ts` | read-only 観測実装・機械検証済み。Phase 採否は別 |
 
 ## ドキュメント構成
 
