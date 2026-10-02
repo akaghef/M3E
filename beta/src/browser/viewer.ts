@@ -29,6 +29,7 @@ import { DerivedNodeCache, RetainedSvgScene } from "./incremental_scene";
 import { captureSvgPaintScene, sceneWorldBounds, translatePaintScene } from "./webgl_scene_tiles";
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
 import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
+import { reorderInsertionIndex } from "../shared/reorder_insertion";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
@@ -15682,7 +15683,11 @@ function finishNodeDrag(event: PointerEvent): void {
     } else {
       const applied = proposal.kind === "reparent"
         ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
-        : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
+        : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, reorderInsertionIndex(
+          getNode(proposal.parentId).children,
+          getVisibleChildrenForDrop(proposal.parentId, sourceNodeId),
+          proposal.index,
+        ), false);
       if (applied) {
         setSingleSelection(sourceNodeId, false);
         scheduleRender();
