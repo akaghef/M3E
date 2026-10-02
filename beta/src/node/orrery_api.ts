@@ -1,5 +1,28 @@
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { isIP } from "node:net";
 import type { OrrerySnapshotReader } from "../shared/orrery_seam_interface";
+
+function isLoopback(address: string): boolean {
+  const ipv4 = address.startsWith("::ffff:") ? address.slice(7) : address;
+  return address === "::1" || (isIP(ipv4) === 4 && ipv4.startsWith("127."));
+}
+
+/** Private observations are local-only; LAN and proxy publication are not supported. */
+function isLocalObservationRequest(req: IncomingMessage): boolean {
+  if (!isLoopback(req.socket.remoteAddress ?? "")) return false;
+  const host = req.headers.host;
+  if (!host || /[\s/@\\?#]/.test(host)) return false;
+  try {
+    const url = new URL(`http://${host}`);
+    const hostname = url.hostname.replace(/^\[|\]$/g, "");
+    if (hostname !== "localhost" && !isLoopback(hostname)) return false;
+    if (Number(url.port || 80) !== req.socket.localPort) return false;
+    const origin = req.headers.origin;
+    if (origin !== undefined && origin !== url.origin) return false;
+    const site = req.headers["sec-fetch-site"];
+    return site === undefined || site === "same-origin" || site === "none";
+  } catch { return false; }
+}
 
 /** Server-owned SSE clients; shutdown closes streams before Server.close waits for them. */
 export function createOrreryApi(reader: OrrerySnapshotReader) {
@@ -17,6 +40,7 @@ export function createOrreryApi(reader: OrrerySnapshotReader) {
       const pathname = (req.url ?? "/").split("?", 1)[0];
       if (!pathname.startsWith("/api/orrery/")) return false;
       const json = (status: number, value: unknown) => { res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(value)); };
+      if (!isLocalObservationRequest(req)) { json(403, { error: "orrery_local_only" }); return true; }
       if (req.method !== "GET") { res.setHeader("Allow", "GET"); json(405, { error: "orrery_read_only" }); return true; }
       if (pathname !== "/api/orrery/runtime" && pathname !== "/api/orrery/events") { json(404, { error: "orrery_endpoint_unavailable" }); return true; }
       if (closed) { json(503, { error: "orrery_closed" }); return true; }

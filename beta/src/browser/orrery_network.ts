@@ -132,7 +132,13 @@ export class OrreryNetwork {
       }, true);
     }
     document.addEventListener("keydown", event => {
-      if (!this.enabled || !this.selected || (event.target instanceof Element && event.target.closest("input,textarea,[contenteditable=true]"))) return;
+      if (!this.enabled || !this.selected) return;
+      if (event.target instanceof Element && event.target.closest("input,textarea,[contenteditable=true]")) {
+        // Keep native input behavior (including range arrows), but never let it
+        // reach the Viewer's document-level authoring shortcuts.
+        event.stopImmediatePropagation();
+        return;
+      }
       // Preserve browser-owned shortcuts; runtime selection has no authoring command target.
       if ((event.metaKey || event.ctrlKey) && ["l", "r", "t", "n", "w", "f", "p", "s", "+", "-", "=", "0"].includes(event.key.toLowerCase())) return;
       if (["F5", "F11", "F12", "-", "=", "+", "0", "[", "]"].includes(event.key)) return;

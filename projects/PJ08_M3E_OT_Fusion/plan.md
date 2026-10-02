@@ -2,7 +2,7 @@
 pj_id: PJ08
 status: exploring
 phase: 1
-updated: 2026-09-22
+updated: 2026-10-03
 ---
 
 # PJ08 plan — M3E × OT 合併吸収
@@ -22,9 +22,11 @@ GUI 採否待ちと後続実装を並行化する。対象は NETWORK × 通常 
 
 ## TL;DR
 
-論理は揃っている。**完成図が1枚も無い**のが律速。だから Phase 1 は GUI 収束だけに絞り、
-DB も agent runtime も作らず静的 mock の採否を閉じる。閉じてから論理・実装へ進む。
-散在した6本の worktree は PJ08 が吸収先になる。
+通常 Viewer の read-only 観測統合は [PR #104](https://github.com/akaghef/M3E/pull/104) にあり、
+単一 Mac の実観測を画面まで通した。2026-10-03 はレビュー修正と通常 Beta への反映を進める。
+[統合記録](docs/2026-10-03_beta-integration.md) で source / CI / 稼働反映を分けて確認する。
+指示送信、Role / Task binding、複数実機共有、WebGL 同等性、最終 UI 採否は未完了。
+以下の 2026-09-15 の決定・探索ログは履歴であり、GUI 待ちを実装の停止条件へ戻さない。
 
 ## 確定した決定（2026-09-15、akaghef）
 

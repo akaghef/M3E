@@ -34,3 +34,56 @@ it("streams initial and changed snapshots, removes disconnected clients, closes 
   await new Promise<void>(resolve => f.server.close(() => resolve()));
   expect(f.listeners.size).toBe(0); expect(f.reader.close).toHaveBeenCalled(); expect((await activeReader.read()).done).toBe(true);
 });
+
+it("allows same-origin local clients and rejects cross-site requests on both read routes", async () => {
+  const f = await setup();
+  expect((await fetch(`${f.url}/api/orrery/runtime`, { headers: { Origin: f.url, "Sec-Fetch-Site": "same-origin" } })).status).toBe(200);
+  for (const route of ["runtime", "events"]) {
+    for (const headers of [
+      { Host: "attacker.example" },
+      { Origin: "https://attacker.example" },
+      { Origin: "null" },
+      { Origin: "http://localhost:1234" },
+      { "Sec-Fetch-Site": "cross-site" },
+      { "Sec-Fetch-Site": "same-site" },
+    ]) {
+      // Use node:http because Fetch may normalize/replace the Host header.
+      const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        http.get(`${f.url}/api/orrery/${route}`, { headers }, res => {
+          let body = "";
+          res.setEncoding("utf8");
+          res.on("data", chunk => { body += chunk; });
+          res.on("end", () => resolve({ status: res.statusCode!, body }));
+          res.on("error", reject);
+        }).on("error", reject);
+      });
+      expect(response.status, JSON.stringify(headers)).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ error: "orrery_local_only" });
+    }
+  }
+  expect(f.listeners.size).toBe(0);
+});
+
+it("requires a loopback peer and matching local authority before exposing observations", () => {
+  const reader = { snapshot: vi.fn(() => emptyOrrerySnapshot()), subscribe: vi.fn(() => () => {}), close: vi.fn() };
+  const api = createOrreryApi(reader);
+  for (const [remoteAddress, host, expected] of [
+    ["127.0.0.1", "localhost:4173", 200],
+    ["::1", "[::1]:4173", 200],
+    ["::ffff:127.0.0.1", "127.0.0.1:4173", 200],
+    ["192.168.1.20", "localhost:4173", 403],
+    ["::ffff:192.168.1.20", "localhost:4173", 403],
+    ["127.0.0.1", "rebound.example:4173", 403],
+    ["127.0.0.1", "localhost:8770", 403],
+    ["127.0.0.1", "user@localhost:4173", 403],
+    ["127.0.0.1", "localhost:4173/", 403],
+    ["127.0.0.1", undefined, 403],
+  ] as const) {
+    reader.snapshot.mockClear();
+    const req = { url: "/api/orrery/runtime", method: "GET", headers: { host }, socket: { remoteAddress, localPort: 4173 } } as unknown as http.IncomingMessage;
+    const res = { writeHead: vi.fn(), end: vi.fn() };
+    expect(api.handle(req, res as unknown as http.ServerResponse)).toBe(true);
+    expect(res.writeHead.mock.calls[0][0]).toBe(expected);
+    expect(reader.snapshot).toHaveBeenCalledTimes(expected === 200 ? 1 : 0);
+  }
+});

@@ -90,6 +90,41 @@ test('runtime drag and tuning stay out of authoring persistence', async ({ page,
   expect((await (await request.get(`/api/maps/${id}`)).json()).state).toEqual(before.state);
 });
 
+test('runtime input focus preserves native range keys without authoring undo or redo', async ({ page, request }) => {
+  const { id } = await setup(page, request);
+  const task = page.locator('#canvas .node-hit[data-node-id="task"]');
+  const toggle = page.locator('#component-tabular-toggle');
+  await task.click({ force: true });
+  await toggle.dispatchEvent('click');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await (await request.get(`/api/maps/${id}`)).json()).state.nodes.task.attributes).not.toEqual({});
+  const edited = (await (await request.get(`/api/maps/${id}`)).json()).state;
+  const range = page.getByLabel('NETWORK repulsion');
+  const selectRuntime = async () => {
+    await page.locator('[data-orrery-node-id]').first().dispatchEvent('pointerdown', { pointerId: 31, button: 1 });
+    await range.focus();
+  };
+  await selectRuntime();
+  const initial = Number(await range.inputValue());
+  await page.keyboard.press('ArrowRight');
+  expect(Number(await range.inputValue())).toBeGreaterThan(initial);
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Delete');
+  await expect(task).toHaveCount(1);
+  expect((await (await request.get(`/api/maps/${id}`)).json()).state).toEqual(edited);
+
+  // Establish a real redo entry using the authoring selection, then ensure the
+  // same input-focus boundary also blocks redo while a runtime card is selected.
+  await task.click({ force: true });
+  await page.locator('#board').focus();
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await selectRuntime();
+  await page.keyboard.press('ControlOrMeta+Shift+z');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+});
+
 test('drag release keeps the newest queued observation after an older arrival', async ({ page, request }) => {
   const { id, before } = await setup(page, request);
   const card = page.locator('[data-orrery-node-id]').first();
