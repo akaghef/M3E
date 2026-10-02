@@ -32,6 +32,16 @@ export class RetainedSvgScene {
     const part = this.parts.get(key);
     if (part) part.markup = "\u0000";
   }
+  /** Update an existing fragment without visiting or reordering its siblings. */
+  patch(key: string, markup: string): boolean {
+    const part = this.parts.get(key);
+    if (!part) return false;
+    if (part.markup !== markup) {
+      part.element.innerHTML = markup;
+      part.markup = markup;
+    }
+    return true;
+  }
 }
 
 /** Per-node derivation cache, owned by one viewer; never a persistent map field. */

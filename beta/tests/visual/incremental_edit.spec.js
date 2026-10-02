@@ -34,6 +34,20 @@ for(const renderer of ["svg","webgl"]) {
     });
     test.afterEach(()=>expect(errors).toEqual([]));
 
+    test("selection and range selection retain layout and unrelated SVG fragments",async({page})=>{
+      const revision=await page.locator("#board").getAttribute("data-render-revision");
+      await page.evaluate(()=>{window.unrelatedSelectionLabel=document.querySelector('text[data-node-id="extra-299"]');});
+      await page.keyboard.press("ArrowDown");
+      await expect(page.locator("#meta")).toHaveAttribute("data-selected-node-id","child-c");
+      await expect(page.locator('.node-hit[data-node-id="child-c"]')).toHaveClass(/primary-selected/);
+      await expect(page.locator('.node-hit[data-node-id="child-b"]')).not.toHaveClass(/selected/);
+      await page.keyboard.press("Shift+ArrowUp");
+      await expect(page.locator('.node-hit[data-node-id="child-b"]')).toHaveClass(/selected/);
+      await expect(page.locator('.node-hit[data-node-id="child-c"]')).toHaveClass(/selected/);
+      expect(await page.locator("#board").getAttribute("data-render-revision")).toBe(revision);
+      expect(await page.evaluate(()=>window.unrelatedSelectionLabel===document.querySelector('text[data-node-id="extra-299"]'))).toBe(true);
+    });
+
     test("remeasures a resized label only, keeps distant DOM, updates curve and hit box",async({page},testInfo)=>{
       await page.evaluate(()=>{
         window.retainedLabel=document.querySelector('text[data-node-id="extra-299"]');

@@ -26,7 +26,8 @@ import {
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
 import { DerivedNodeCache, RetainedSvgScene } from "./incremental_scene";
-import { captureSvgPaintScene, sceneWorldBounds, translatePaintScene } from "./webgl_scene_tiles";
+import { FrameInvalidation } from "./frame_invalidation";
+import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./webgl_scene_tiles";
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
 import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
 import { reorderInsertionIndex } from "../shared/reorder_insertion";
@@ -546,6 +547,7 @@ let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let cycleViewState: "focus" | "fit" = "focus";
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
 const nodeDrawInputs = new Map<string, NodeDrawInput>();
+const nodeAuxMarkup = new Map<string, string>();
 const layoutMetricCache = new DerivedNodeCache<LayoutNodeMetric>();
 const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
 const edgeSvgCache = new DerivedNodeCache<string>();
@@ -4830,53 +4832,6 @@ function finishWebGLGraphLinkDrag(event: PointerEvent): void {
   board.focus();
 }
 
-function cloneWebGLRenderSnapshot(snapshot: RenderSnapshot): RenderSnapshot {
-  return {
-    ...snapshot,
-    nodes: snapshot.nodes.map((node) => ({ ...node })),
-    edges: snapshot.edges.map((edge) => ({ ...edge, points: edge.points.map((point) => ({ ...point })) })),
-    graphLinks: snapshot.graphLinks.map((edge) => ({ ...edge, points: edge.points.map((point) => ({ ...point })) })),
-    groups: snapshot.groups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
-    bounds: { ...snapshot.bounds },
-  };
-}
-
-function translateWebGLDragSnapshot(
-  snapshot: RenderSnapshot,
-  movedNodeIds: string[],
-  delta: { x: number; y: number },
-): RenderSnapshot {
-  const moved = new Set(movedNodeIds);
-  const edgeWithMovedEndpoints = (edge: RenderEdge): RenderEdge => {
-    const sourceMoved = moved.has(edge.sourceNodeId);
-    const targetMoved = moved.has(edge.targetNodeId);
-    if (!sourceMoved && !targetMoved) {
-      return { ...edge, points: edge.points.map((point) => ({ ...point })) };
-    }
-    const points = edge.points.map((point, index) => {
-      const t = edge.points.length <= 1 ? 0 : index / (edge.points.length - 1);
-      const factor = sourceMoved && targetMoved ? 1 : sourceMoved ? 1 - t : t;
-      return {
-        x: point.x + delta.x * factor,
-        y: point.y + delta.y * factor,
-      };
-    });
-    return { ...edge, points };
-  };
-  return {
-    ...snapshot,
-    revision: `${snapshot.revision}:drag`,
-    paintScene: snapshot.paintScene ? translatePaintScene(snapshot.paintScene, moved, delta) : undefined,
-    nodes: snapshot.nodes.map((node) => moved.has(node.id)
-      ? { ...node, x: node.x + delta.x, y: node.y + delta.y }
-      : { ...node }),
-    edges: snapshot.edges.map(edgeWithMovedEndpoints),
-    graphLinks: snapshot.graphLinks.map(edgeWithMovedEndpoints),
-    groups: snapshot.groups.map((group) => ({ ...group, memberIds: [...group.memberIds] })),
-    bounds: { ...snapshot.bounds },
-  };
-}
-
 function updateWebGLNodeDragPreview(event: PointerEvent): void {
   const drag = viewState.dragState;
   if (!webglProjection || !webglDragBaseSnapshot || !drag || drag.pointerId !== event.pointerId || drag.mode !== "scatter") {
@@ -4900,12 +4855,7 @@ function updateWebGLNodeDragPreview(event: PointerEvent): void {
   if (!startWorld || !currentWorld) {
     return;
   }
-  webglLastSnapshot = translateWebGLDragSnapshot(
-    webglDragBaseSnapshot,
-    drag.sourceRootIds,
-    { x: currentWorld.x - startWorld.x, y: currentWorld.y - startWorld.y },
-  );
-  webglProjection.setSnapshot(webglLastSnapshot);
+  webglProjection.previewNodeDrag({ x: currentWorld.x - startWorld.x, y: currentWorld.y - startWorld.y });
 }
 
 function activateWebGLProjection(): void {
@@ -4975,6 +4925,7 @@ function activateWebGLProjection(): void {
   syncLinearPanelPosition();
   syncWebGLInteraction();
   syncInlineEditorPosition();
+  webglProjection.present();
   (globalThis as any).__m3eWebGLProjection = {
     getDebugState: () => webglProjection?.getDebugState(),
     getSnapshot: () => webglLastSnapshot,
@@ -7816,6 +7767,7 @@ function render(incremental = false): void {
   const layout = buildLayout(state);
   lastLayout = layout;
   nodeDrawInputs.clear();
+  nodeAuxMarkup.clear();
   visibleOrder = layout.order;
   _linearPanelLayoutDirty = true;
   const displayRootId = currentScopeRootId();
@@ -8381,6 +8333,7 @@ function render(incremental = false): void {
     if (nodeComponent) {
       nodeMarkup += renderNodeComponent(nodeComponent, nodeId, p);
     }
+    nodeAuxMarkup.set(nodeId, nodeMarkup.slice(output.svg.length));
     nodeParts.push([`node:${nodeId}`, nodeMarkup]);
     if (!nodeComponent) children.forEach((cid) => drawNode(cid));
   }
@@ -8424,11 +8377,12 @@ function render(incremental = false): void {
     maxY = Math.max(maxY, _linearPanelAnchorCanvasY + _linearPanelCanvasHeight + panelBottomPad);
   }
 
+  let dragOverlay = "";
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
     const bounds = getReorderLineBounds(proposal.parentId, proposal.index, viewState.dragState.sourceNodeId);
     if (bounds) {
-      overlays += `<line class="reorder-line" x1="${bounds.x1}" y1="${proposal.lineY}" x2="${bounds.x2}" y2="${proposal.lineY}" />`;
+      dragOverlay = `<line class="reorder-line" x1="${bounds.x1}" y1="${proposal.lineY}" x2="${bounds.x2}" y2="${proposal.lineY}" />`;
     }
   }
 
@@ -8440,8 +8394,14 @@ function render(incremental = false): void {
   const replaced = retainedSvgScene.update(canvas, [
     ["defs", defs], ["frames", surfaceFrames], ["groups", disperseGroups],
     ["edges", edges], ...edgeParts, ["guides", scatterGuides], ["links", graphLinks],
-    ["overlays", overlays], ...nodeParts, ["annotations", annotations],
+    ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ["annotations", annotations],
   ], !incremental);
+  webglPaintedSelection = new Set(viewState.selectedNodeIds);
+  webglPaintedPrimary = viewState.selectedNodeId;
+  webglPaintedLink = selectedGraphLinkId;
+  paintedDragNodes.clear();
+  if (viewState.dragState) paintedDragNodes.add(viewState.dragState.sourceNodeId);
+  if (viewState.dragState?.proposal?.kind === "reparent") paintedDragNodes.add(viewState.dragState.proposal.parentId);
   nodeSvgCache.retain(new Set(nodeDrawInputs.keys()));
   edgeSvgCache.retain(new Set(edgeParts.map(([id]) => id)));
   board.dataset.renderRevision = String(renderRevision);
@@ -8485,14 +8445,6 @@ function render(incremental = false): void {
   const moveNodes = Array.from(viewState.reparentSourceIds)
     .map((nodeId) => state.nodes[nodeId])
     .filter((node): node is TreeNode => Boolean(node));
-  const dragProposal = viewState.dragState?.proposal;
-  let dropLabel = "none";
-  if (dragProposal?.kind === "reparent") {
-    dropLabel = `child of ${state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId}`;
-  } else if (dragProposal?.kind === "reorder") {
-    const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
-    dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
-  }
   syncThinkingModeUi();
   syncNodeComponentUi();
   metaEl.dataset.selectedNodeId = selected?.id || "";
@@ -8500,7 +8452,7 @@ function render(incremental = false): void {
   metaEl.dataset.scopeId = normalizedCurrentScopeId();
   metaEl.dataset.mapId = LOCAL_MAP_ID;
   renderedMetaPrefix = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode}`;
-  renderedMetaSuffix = ` | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  renderedMetaSuffix = ` | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"}`;
   syncSelectionMetadata();
   updateScopeMeta();
   updateScopeSummary();
@@ -9167,21 +9119,60 @@ function normalizeSelectionState(): void {
 
 function syncSelectionMetadata(): void {
   const selected = map?.state.nodes[viewState.selectedNodeId];
+  const proposal = viewState.dragState?.proposal;
+  const parentLabel = proposal ? (map?.state.nodes[proposal.parentId]?.text ?? proposal.parentId) : "";
+  const dropLabel = proposal?.kind === "reparent" ? `child of ${parentLabel}`
+    : proposal?.kind === "reorder" ? `reorder in ${parentLabel} @ ${proposal.index}` : "none";
   metaEl.dataset.selectedNodeId = selected?.id || "";
   metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
-  metaEl.textContent = `${renderedMetaPrefix} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size})${renderedMetaSuffix}`;
+  metaEl.textContent = `${renderedMetaPrefix} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size})${renderedMetaSuffix} | drop-target: ${dropLabel}`;
 }
 
 let selectionRefreshFrame: number | null = null;
+/** Interaction state does not invalidate metrics, layout, edges or node content. */
+function refreshSvgNodeInteraction(id: string): void {
+  const previous = nodeDrawInputs.get(id);
+  if (!previous) return;
+  const input: NodeDrawInput = { ...previous, view: { ...previous.view,
+    selected: viewState.selectedNodeIds.has(id),
+    multiSelected: viewState.selectedNodeIds.has(id),
+    primarySelected: viewState.selectedNodeId === id,
+    dragSource: viewState.dragState?.sourceNodeId === id,
+    dropTarget: viewState.dragState?.proposal?.kind === "reparent" && viewState.dragState.proposal.parentId === id,
+  } };
+  retainedSvgScene.patch(`node:${id}`, renderNodeSvg(input).svg + (nodeAuxMarkup.get(id) || ""));
+  nodeDrawInputs.set(id, input);
+}
+
+const paintedDragNodes = new Set<string>();
+const dragOverlayFrame = new FrameInvalidation(() => {
+  if (_renderScheduled || isWebGLRendererActive()) return;
+  const next = new Set<string>();
+  const drag = viewState.dragState;
+  if (drag) next.add(drag.sourceNodeId);
+  if (drag?.proposal?.kind === "reparent") next.add(drag.proposal.parentId);
+  new Set([...paintedDragNodes, ...next]).forEach(refreshSvgNodeInteraction);
+  paintedDragNodes.clear(); next.forEach(id => paintedDragNodes.add(id));
+  let markup = "";
+  if (drag?.proposal?.kind === "reorder") {
+    const p = drag.proposal;
+    const bounds = getReorderLineBounds(p.parentId, p.index, drag.sourceNodeId);
+    if (bounds) markup = `<line class="reorder-line" x1="${bounds.x1}" y1="${p.lineY}" x2="${bounds.x2}" y2="${p.lineY}" />`;
+  }
+  retainedSvgScene.patch("drag-overlays", markup);
+  syncSelectionMetadata();
+});
+
 function scheduleSelectionRefresh(): void {
-  if (!isWebGLRendererActive() || webglPaintedLink !== selectedGraphLinkId) {
+  if (!lastLayout || webglPaintedLink !== selectedGraphLinkId) {
     scheduleRender();
     return;
   }
   if (selectionRefreshFrame !== null) return;
   selectionRefreshFrame = requestAnimationFrame(() => {
     selectionRefreshFrame = null;
-    if (_renderScheduled || !webglProjection || !webglLastSnapshot || !isWebGLRendererActive()) return;
+    if (_renderScheduled) return;
+    const webgl = isWebGLRendererActive() && webglProjection && webglLastSnapshot;
     const changed = new Set<string>();
     webglPaintedSelection.forEach((id) => { if (!viewState.selectedNodeIds.has(id)) changed.add(id); });
     viewState.selectedNodeIds.forEach((id) => { if (!webglPaintedSelection.has(id)) changed.add(id); });
@@ -9189,28 +9180,31 @@ function scheduleSelectionRefresh(): void {
       changed.add(webglPaintedPrimary); changed.add(viewState.selectedNodeId);
     }
     changed.delete("");
-    if (changed.size) {
+    if (changed.size && !webgl) {
+      changed.forEach(refreshSvgNodeInteraction);
+    }
+    if (changed.size && webgl) {
       // Retain layout, hit geometry and all unrelated GPU tiles. Only old/new
       // selection paint changes; keep the canonical SVG's fill/font styling.
       canvas.removeAttribute("hidden");
       try {
         changed.forEach((id) => {
           retainedSvgScene.invalidate(`node:${id}`);
-          canvas.querySelectorAll(`[data-node-id="${CSS.escape(id)}"]`).forEach((element) => {
+          capturedNodeElements(canvas, id).forEach((element) => {
             element.classList.toggle("selected", viewState.selectedNodeIds.has(id));
             element.classList.toggle("multi-selected", viewState.selectedNodeIds.has(id));
             element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
           });
         });
         const paint = captureSvgPaintScene(canvas, changed, true);
-        const scene = webglProjection.updateNodePaint(paint, changed);
-        if (scene) webglLastSnapshot = { ...webglLastSnapshot, paintScene: scene };
+        const scene = webglProjection!.updateNodePaint(paint, changed);
+        if (scene) webglLastSnapshot = { ...webglLastSnapshot!, paintScene: scene };
       } finally {
         canvas.setAttribute("hidden", "");
       }
-      webglPaintedSelection = new Set(viewState.selectedNodeIds);
-      webglPaintedPrimary = viewState.selectedNodeId;
     }
+    webglPaintedSelection = new Set(viewState.selectedNodeIds);
+    webglPaintedPrimary = viewState.selectedNodeId;
     syncWebGLInteraction();
     syncSelectionMetadata();
     syncNodeComponentUi();
@@ -13413,7 +13407,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   const anchorId = viewState.selectionAnchorId || viewState.selectedNodeId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
   viewState.selectedNodeIds.add(target);
-  scheduleRender();
+  scheduleSelectionRefresh();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
@@ -15285,7 +15279,8 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
           shiftKey: event.shiftKey,
           startViews: scatterDragStartViews(sourceRootIds),
         };
-        webglDragBaseSnapshot = cloneWebGLRenderSnapshot(webglLastSnapshot);
+        webglDragBaseSnapshot = webglLastSnapshot;
+        webglProjection.beginNodeDrag(sourceRootIds);
         webglCanvas.setPointerCapture(event.pointerId);
         syncWebGLInteraction();
         board.focus();
@@ -15306,7 +15301,8 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
 webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
   if (!isWebGLRendererActive() || !webglProjection || viewState.panState || viewState.pinchState) return;
   if (viewState.dragState?.mode === "scatter" && viewState.dragState.pointerId === event.pointerId) {
-    updateWebGLNodeDragPreview(event);
+    pendingWebGLDragEvent = event;
+    webglDragFrame.invalidate();
     return;
   }
   if (webglHoverFrame !== null) cancelAnimationFrame(webglHoverFrame);
@@ -15331,11 +15327,20 @@ webglCanvas?.addEventListener("pointerleave", () => {
   }
 });
 
+let pendingWebGLDragEvent: PointerEvent | null = null;
+const webglDragFrame = new FrameInvalidation(() => {
+  const event = pendingWebGLDragEvent;
+  pendingWebGLDragEvent = null;
+  if (event) updateWebGLNodeDragPreview(event);
+});
+
 function finishWebGLNodeDrag(event: PointerEvent): void {
   const drag = viewState.dragState;
   if (!drag || drag.mode !== "scatter" || event.pointerId !== drag.pointerId) {
     return;
   }
+  webglDragFrame.clear();
+  pendingWebGLDragEvent = null;
   updateWebGLNodeDragPreview(event);
   const dragged = drag.dragged;
   const sourceRootIds = [...drag.sourceRootIds];
@@ -15618,7 +15623,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
-  scheduleRender();
+  dragOverlayFrame.invalidate();
 });
 
 function finishNodeDrag(event: PointerEvent): void {
@@ -15698,7 +15703,7 @@ function finishNodeDrag(event: PointerEvent): void {
   }
 
   setStatus("No valid drop target.", true);
-  scheduleRender();
+  dragOverlayFrame.invalidate();
   board.focus();
 }
 

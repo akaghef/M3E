@@ -1,4 +1,5 @@
-import { WebGLSceneTiles, type PaintScene } from "./webgl_scene_tiles";
+import { WebGLSceneTiles, translatePaintScene, type PaintScene, type PaintCommand } from "./webgl_scene_tiles";
+import { FrameInvalidation } from "./frame_invalidation";
 
 export type RenderNodeShape = "rect" | "circle";
 
@@ -130,12 +131,15 @@ in vec2 a_position;
 in vec2 a_uv;
 uniform vec3 u_camera;
 uniform vec2 u_viewport;
+uniform vec4 u_tile;
+uniform float u_gutter;
 out vec2 v_uv;
 void main() {
-  vec2 screen = a_position * u_camera.z + u_camera.xy;
+  vec2 world = u_tile.xy + a_position * u_tile.zw;
+  vec2 screen = world * u_camera.z + u_camera.xy;
   vec2 clip = vec2((screen.x / u_viewport.x) * 2.0 - 1.0, 1.0 - (screen.y / u_viewport.y) * 2.0);
   gl_Position = vec4(clip, 0.0, 1.0);
-  v_uv = a_uv;
+  v_uv = mix(vec2(u_gutter), vec2(1.0-u_gutter), a_uv);
 }`;
 
 const TEXT_FRAGMENT_SHADER = `#version 300 es
@@ -336,6 +340,12 @@ export class WebGLRenderingProjection implements RenderingProjection {
   private textBuffer: WebGLBuffer | null = null;
   private snapshot: RenderSnapshot | null = null;
   private nodeSpatialIndex = new Map<string, RenderNode[]>();
+  private nodesById = new Map<string, RenderNode>();
+  private overlayDirty = false;
+  private readonly frame = new FrameInvalidation(() => {
+    if (this.overlayDirty) { this.uploadInteractionGeometry(); this.overlayDirty = false; }
+    this.draw();
+  });
   private camera: CameraState = { x: 0, y: 0, zoom: 1 };
   private interaction: RenderInteractionState = {
     selectedNodeIds: [],
@@ -354,6 +364,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
   private cameraUpdates = 0;
   private sceneTiles: WebGLSceneTiles | null = null;
   private qualityTimer: ReturnType<typeof setTimeout> | null = null;
+  private dragPreview: { ids: Set<string>; nodes: RenderNode[]; slots: number[]; paint: PaintScene } | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: ProjectionOptions) {
     this.canvas = canvas;
@@ -367,7 +378,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
       this.initializeContext();
       this.active = true;
       this.resize();
-      this.draw();
+      this.frame.invalidate();
       return true;
     } catch (error) {
       this.active = false;
@@ -394,6 +405,12 @@ export class WebGLRenderingProjection implements RenderingProjection {
     if (!this.overlayBuffer || !this.textBuffer) {
       throw new Error("Unable to allocate WebGL buffers.");
     }
+    // One immutable unit quad; tile position and size are uniforms, not uploads.
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      0,0,0,0, 1,0,1,0, 0,1,0,1,
+      0,1,0,1, 1,0,1,0, 1,1,1,1,
+    ]), gl.STATIC_DRAW);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.disable(gl.DEPTH_TEST);
@@ -402,26 +419,57 @@ export class WebGLRenderingProjection implements RenderingProjection {
   setSnapshot(snapshot: RenderSnapshot): void {
     if (!snapshot.paintScene) throw new Error("A complete paint scene is required for WebGL rendering.");
     this.snapshot = snapshot;
+    this.dragPreview = null;
     this.nodeSpatialIndex = buildNodeSpatialIndex(snapshot.nodes);
+    this.nodesById = new Map(snapshot.nodes.map(node => [node.id, node]));
     if (!this.active || !this.gl) return;
     this.sceneTiles?.setScene(snapshot.paintScene);
     this.geometryUploads += 1;
-    this.uploadInteractionGeometry();
-    this.draw();
+    this.overlayDirty = true;
+    this.frame.invalidate();
   }
+
+  /** Scan once on drag start; pointer movement touches only this working set. */
+  beginNodeDrag(ids: string[]): void {
+    if (!this.snapshot?.paintScene) return;
+    const moved = new Set(ids);
+    const slots: number[] = [];
+    const commands: PaintCommand[] = [];
+    this.snapshot.paintScene.commands.forEach((command, slot) => {
+      if (![command.nodeId, command.sourceNodeId, command.targetNodeId].some(id => id && moved.has(id))) return;
+      slots.push(slot); commands.push(command);
+    });
+    this.dragPreview = {
+      ids: moved, slots, paint: { commands },
+      nodes: ids.flatMap(id => { const node = this.nodesById.get(id); return node ? [node] : []; }),
+    };
+  }
+
+  previewNodeDrag(delta: { x: number; y: number }): void {
+    const drag = this.dragPreview;
+    if (!drag || !this.sceneTiles) return;
+    const paint = translatePaintScene(drag.paint, drag.ids, delta);
+    this.sceneTiles.updateCommands(new Map(drag.slots.map((slot, i) => [slot, paint.commands[i]!])));
+    for (const node of drag.nodes) this.nodesById.set(node.id, { ...node, x: node.x + delta.x, y: node.y + delta.y });
+    this.overlayDirty = true;
+    this.frame.invalidate();
+  }
+
+  /** Present atomically when the owner switches from the SVG bridge to WebGL. */
+  present(): void { if (this.active) this.frame.flush(); }
 
   setCamera(camera: CameraState): void {
     const zoomChanged = camera.zoom !== this.camera.zoom;
     this.camera = { ...camera };
     this.cameraUpdates += 1;
-    if (this.active) this.draw();
+    if (this.active) this.frame.invalidate();
     const needsRefinement = zoomChanged || this.qualityTimer !== null;
     if (this.qualityTimer) clearTimeout(this.qualityTimer);
     if (needsRefinement) this.qualityTimer = setTimeout(() => {
       this.qualityTimer = null;
       if (!this.active) return;
       this.sceneTiles?.refine(this.camera, this.canvas.width / this.cssWidth);
-      this.draw();
+      this.frame.invalidate();
     }, 120);
   }
 
@@ -429,6 +477,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     if (!this.snapshot || !this.sceneTiles) return;
     const scene = this.sceneTiles.updateNodePaint(paint, ids);
     this.snapshot = { ...this.snapshot, paintScene: scene };
+    this.frame.invalidate();
     return scene;
   }
 
@@ -444,8 +493,8 @@ export class WebGLRenderingProjection implements RenderingProjection {
     if (editingNodeChanged) {
       this.sceneTiles?.setEditingNode(interaction.editingNodeId ?? null);
     }
-    this.uploadInteractionGeometry();
-    this.draw();
+    this.overlayDirty = true;
+    this.frame.invalidate();
   }
 
   resize(): void {
@@ -458,7 +507,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
     this.gl?.viewport(0, 0, width, height);
-    if (this.active) this.draw();
+    if (this.active) this.frame.invalidate();
   }
 
   hitTest(clientX: number, clientY: number): HitResult | null {
@@ -499,6 +548,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
 
   destroy(): void {
     this.active = false;
+    this.frame.clear();
     if (this.qualityTimer) clearTimeout(this.qualityTimer);
     this.sceneTiles?.clear();
     this.canvas.removeEventListener("webglcontextlost", this.onContextLost, false);
@@ -519,7 +569,11 @@ export class WebGLRenderingProjection implements RenderingProjection {
     if (!gl || !snapshot || !this.overlayBuffer) return;
     const vertices: number[] = [];
     const selected = new Set(this.interaction.selectedNodeIds);
-    snapshot.nodes.forEach((node) => {
+    const affected = new Set(selected);
+    if (this.interaction.hoveredNodeId) affected.add(this.interaction.hoveredNodeId);
+    affected.forEach((id) => {
+      const node = this.nodesById.get(id);
+      if (!node) return;
       if (node.id === this.interaction.editingNodeId) return;
       if (selected.has(node.id)) pushOutline(vertices, node, rgba("#6f39ff"), node.id === this.interaction.primarySelectedNodeId ? 4 : 2);
       if (node.id === this.interaction.hoveredNodeId && !selected.has(node.id)) pushOutline(vertices, node, rgba("#2f70ff", 0.82), 2);
@@ -574,13 +628,12 @@ export class WebGLRenderingProjection implements RenderingProjection {
       // Canvas tiles are premultiplied; SRC_ALPHA would multiply alpha twice
       // and darken antialiased glyphs/curves.
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      const tileUniform = gl.getUniformLocation(program, "u_tile");
+      const gutterUniform = gl.getUniformLocation(program, "u_gutter");
       this.drawCalls += this.sceneTiles.draw(this.camera, this.cssWidth, this.cssHeight, this.canvas.width / this.cssWidth, (tile, g) => {
-        const x = tile.x, y = tile.y, r = x + tile.size, b = y + tile.size;
         gl.bindTexture(gl.TEXTURE_2D, tile.texture);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-          x,y,g,g, r,y,1-g,g, x,b,g,1-g,
-          x,b,g,1-g, r,y,1-g,g, r,b,1-g,1-g,
-        ]), gl.STREAM_DRAW);
+        gl.uniform4f(tileUniform, tile.x, tile.y, tile.size, tile.size);
+        gl.uniform1f(gutterUniform, g);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
       });
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -591,6 +644,7 @@ export class WebGLRenderingProjection implements RenderingProjection {
   private onContextLost = (event: Event): void => {
     event.preventDefault();
     this.active = false;
+    this.frame.clear();
     if (this.qualityTimer) clearTimeout(this.qualityTimer);
     this.options.onUnavailable("WebGL context was lost; switched to SVG fallback.");
   };
@@ -603,9 +657,9 @@ export class WebGLRenderingProjection implements RenderingProjection {
       if (this.snapshot) {
         if (this.snapshot.paintScene) this.sceneTiles?.setScene(this.snapshot.paintScene);
         this.sceneTiles?.setEditingNode(this.interaction.editingNodeId ?? null);
-        this.uploadInteractionGeometry();
+        this.overlayDirty = true;
       }
-      this.draw();
+      this.frame.invalidate();
       this.options.onRestored();
     } catch (error) {
       this.active = false;

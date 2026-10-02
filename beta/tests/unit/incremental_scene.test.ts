@@ -1,5 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { DerivedNodeCache } from "../../src/browser/incremental_scene";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DerivedNodeCache, RetainedSvgScene } from "../../src/browser/incremental_scene";
+
+afterEach(() => vi.unstubAllGlobals());
+
+it("patches one retained SVG fragment without visiting or replacing siblings", () => {
+  const elements: any[] = [];
+  vi.stubGlobal("document", { createElementNS: () => {
+    let markup = "";
+    const element = { dataset: {}, nextElementSibling: null,
+      get innerHTML() { return markup; },
+      set innerHTML(value: string) { markup = value; },
+    };
+    elements.push(element);
+    return element;
+  } });
+  const root = {firstElementChild:null,insertBefore:vi.fn(),replaceChildren:vi.fn()} as unknown as SVGSVGElement;
+  const scene = new RetainedSvgScene();
+  scene.update(root, [["a","before"],["b","unaffected"]]);
+  const siblingWrite = vi.spyOn(elements[1], "innerHTML", "set");
+  vi.mocked(root.insertBefore).mockClear();
+  expect(scene.patch("a","selected")).toBe(true);
+  expect(elements[0].innerHTML).toBe("selected");
+  expect(elements[1].innerHTML).toBe("unaffected");
+  expect(root.insertBefore).not.toHaveBeenCalled();
+  expect(siblingWrite).not.toHaveBeenCalled();
+  expect(scene.patch("missing","ignored")).toBe(false);
+});
 
 describe("node derivations",()=>{
   it("remeasures the changed label and retains all unrelated values",()=>{

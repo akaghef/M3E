@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  WebGLRenderingProjection,
   hitTestSnapshot,
   screenToWorld,
   worldToScreen,
   type CameraState,
   type RenderSnapshot,
 } from "../../src/browser/webgl_projection";
+import type { PaintCommand } from "../../src/browser/webgl_scene_tiles";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const camera: CameraState = { x: 120, y: -36, zoom: 1.75 };
 
@@ -60,4 +64,59 @@ describe("WebGL rendering projection geometry", () => {
     const treeSnapshot: RenderSnapshot = { ...snapshot, groups: [] };
     expect(treeSnapshot.groups).toEqual([]);
   });
+});
+
+function projectionHarness() {
+  const pending = new Map<number, FrameRequestCallback>();
+  let serial = 0;
+  vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => {pending.set(++serial,fn);return serial;});
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => pending.delete(id));
+  const canvas = {addEventListener:vi.fn()} as unknown as HTMLCanvasElement;
+  const projection = new WebGLRenderingProjection(canvas,{onUnavailable:vi.fn(),onRestored:vi.fn()});
+  // Exercise scheduling/working-set logic without pretending a mock is GPU proof.
+  const internals = projection as any;
+  internals.active = true; internals.gl = {};
+  internals.sceneTiles = {setScene:vi.fn(),updateCommands:vi.fn(),setEditingNode:vi.fn()};
+  const draw = vi.spyOn(internals,"draw").mockImplementation(()=>{});
+  vi.spyOn(internals,"uploadInteractionGeometry").mockImplementation(()=>{});
+  return {projection,internals,draw,pending,tick:()=>{
+    const callbacks=[...pending.values()];pending.clear();callbacks.forEach(fn=>fn(0));
+  }};
+}
+
+it("coalesces snapshot, camera and interaction setters into one presentation", () => {
+  const {projection,draw,pending,tick}=projectionHarness();
+  projection.setSnapshot({...snapshot,paintScene:{commands:[]}});
+  projection.setCamera({x:10,y:20,zoom:1});
+  projection.setCamera({x:30,y:40,zoom:1});
+  projection.setInteractionState({selectedNodeIds:["root"],primarySelectedNodeId:"root",hoveredNodeId:null,selectedGraphLinkId:null,gestureActive:false});
+  expect(pending.size).toBe(1);expect(draw).not.toHaveBeenCalled();
+  tick();expect(draw).toHaveBeenCalledTimes(1);
+  expect(projection.getDebugState().camera).toEqual({x:30,y:40,zoom:1});
+  projection.setCamera({x:40,y:40,zoom:1});projection.present();tick();
+  expect(draw).toHaveBeenCalledTimes(2);
+});
+
+it("drag patches only moved nodes and incident edges with absolute deltas, not full snapshots", () => {
+  const {projection,internals}=projectionHarness();
+  const base:PaintCommand={kind:"path",nodeId:"root",path:"M 20 30 L 180 30",bounds:{x:20,y:30,width:160,height:48},matrix:[1,0,0,1,0,0],
+    style:{fill:"#fff",stroke:"#222",width:1,opacity:1,fillOpacity:1,strokeOpacity:1,cap:"round",join:"round",dash:[],dashOffset:0,fillRule:"nonzero",strokeFirst:false}};
+  const edge:PaintCommand={...base,nodeId:undefined,sourceNodeId:"root",targetNodeId:"circle",path:"M 180 54 L 280 132"};
+  const unrelated:PaintCommand={...base,nodeId:"circle"};
+  const initial={...snapshot,paintScene:{commands:[base,edge,unrelated]}};
+  projection.setSnapshot(initial);
+  projection.beginNodeDrag(["root"]);
+  projection.previewNodeDrag({x:10,y:20});
+  projection.previewNodeDrag({x:30,y:40});
+  expect(internals.sceneTiles.setScene).toHaveBeenCalledTimes(1);
+  const patches=internals.sceneTiles.updateCommands.mock.calls[1][0] as Map<number,PaintCommand>;
+  expect([...patches.keys()]).toEqual([0,1]);
+  expect(patches.get(0)!.matrix).toEqual([1,0,0,1,30,40]);
+  expect(patches.get(1)!.path).toBe("M 210 94 L 280 132");
+  expect(internals.nodesById.get("root").x).toBe(snapshot.nodes[0]!.x+30);
+  expect(initial.paintScene.commands).toEqual([base,edge,unrelated]);
+  expect(internals.snapshot).toBe(initial);
+  projection.setSnapshot(initial);
+  expect(internals.nodesById.get("root")).toBe(snapshot.nodes[0]);
+  expect(internals.dragPreview).toBeNull();
 });

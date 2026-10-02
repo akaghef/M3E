@@ -103,20 +103,36 @@ export function tileCoordinates(bounds: PaintBounds, scale: number): Array<{ x: 
 // Large paths are kept in one overflow bucket instead of duplicated in thousands
 // of cells. A crossing edge is found even when both endpoints are off screen.
 export class PaintIndex {
-  private cells = new Map<string, number[]>();
-  private large: number[] = [];
+  private cells = new Map<string, Set<number>>();
+  private large = new Set<number>();
+  private memberships = new Map<number, string[]>();
   constructor(private commands: PaintCommand[]) {
-    commands.forEach((command, index) => {
+    commands.forEach((command, index) => this.insert(index, command));
+  }
+  private insert(index: number, command: PaintCommand): void {
       const b = command.bounds;
       const x0 = Math.floor(b.x / INDEX_CELL), x1 = Math.floor((b.x + b.width) / INDEX_CELL);
       const y0 = Math.floor(b.y / INDEX_CELL), y1 = Math.floor((b.y + b.height) / INDEX_CELL);
-      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 64) { this.large.push(index); return; }
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 64) { this.large.add(index); return; }
+      const keys: string[] = [];
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const key = `${x}:${y}`;
-        const bucket = this.cells.get(key) || [];
-        bucket.push(index); this.cells.set(key, bucket);
+        const bucket = this.cells.get(key) || new Set<number>();
+        bucket.add(index); this.cells.set(key, bucket); keys.push(key);
       }
-    });
+      this.memberships.set(index, keys);
+  }
+  /** Stable paint slots allow local movement without rebuilding unrelated cells. */
+  replace(index: number, command: PaintCommand): void {
+    for (const key of this.memberships.get(index) || []) {
+      const cell = this.cells.get(key)!;
+      cell.delete(index);
+      if (!cell.size) this.cells.delete(key);
+    }
+    this.memberships.delete(index);
+    this.large.delete(index);
+    this.commands[index] = command;
+    this.insert(index, command);
   }
   query(bounds: PaintBounds): number[] {
     const found = new Set(this.large);
@@ -192,22 +208,40 @@ function shapePath(element: SVGGeometryElement): string {
 }
 
 const captureCaches = new WeakMap<SVGSVGElement, WeakMap<SVGGraphicsElement, { key: string; commands: PaintCommand[] }>>();
+const captureNodeElements = new WeakMap<SVGSVGElement, Map<string, SVGGraphicsElement[]>>();
+const captureOwners = new WeakMap<SVGGraphicsElement, string>();
+export function capturedNodeElements(root: SVGSVGElement, id: string): readonly SVGGraphicsElement[] {
+  return captureNodeElements.get(root)?.get(id) || [];
+}
 /** Capture changed SVG elements only during a local edit. Full renders reset CSS dependencies. */
 export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<string>, incremental = false): PaintScene {
+  // A partial capture needs ownership/order from a complete scene first.
+  if (onlyNodeIds && !captureNodeElements.has(root)) captureSvgPaintScene(root);
   let cache = incremental ? captureCaches.get(root) : undefined;
   if (!cache) { cache = new WeakMap(); captureCaches.set(root, cache); }
   const markerDefinitions = [...root.querySelectorAll("defs")].map(element => element.innerHTML).join("");
   const commands: PaintCommand[] = [];
   let currentNodeId: string | undefined;
-  if (root.querySelector("foreignObject, image, use")) {
+  if (!onlyNodeIds && root.querySelector("foreignObject, image, use")) {
     throw new Error("This scene contains embedded HTML/images; preserving its SVG appearance requires SVG rendering.");
   }
-  root.querySelectorAll<SVGGraphicsElement>("path, rect, circle, ellipse, line, polygon, polyline, text").forEach((element) => {
+  let nodeElements = captureNodeElements.get(root);
+  if (!onlyNodeIds || !nodeElements) {
+    nodeElements = new Map(); captureNodeElements.set(root, nodeElements);
+  }
+  const elements = onlyNodeIds
+    ? Array.from(onlyNodeIds).flatMap(id => nodeElements!.get(id) || [])
+    : Array.from(root.querySelectorAll<SVGGraphicsElement>("path, rect, circle, ellipse, line, polygon, polyline, text"));
+  elements.forEach((element) => {
     if (element.classList.contains("node-hit")) currentNodeId = element.getAttribute("data-node-id") || undefined;
     if (element.closest("defs, marker, clipPath, mask, .link-port-controls") || element.classList.contains("graph-link-hit")) return;
-    const nodeId = element.getAttribute("data-node-id") ||
+    const nodeId = (onlyNodeIds ? captureOwners.get(element) : undefined) || element.getAttribute("data-node-id") ||
       (element.matches(".alias-badge,.confidence-badge,.confidence-badge-text,.status-badge,.status-badge-text,.lock-icon,[data-collapse-node-id]") ? currentNodeId : undefined);
     if (onlyNodeIds && (!nodeId || !onlyNodeIds.has(nodeId))) return;
+    if (!onlyNodeIds && nodeId) {
+      const owned = nodeElements!.get(nodeId) || [];
+      owned.push(element); nodeElements!.set(nodeId, owned); captureOwners.set(element, nodeId);
+    }
     const key = `${nodeId || ""}:${element.outerHTML}:${element.hasAttribute("marker-end") || element.hasAttribute("marker-start") ? markerDefinitions : ""}`;
     const retained = cache!.get(element);
     if (retained?.key === key) { commands.push(...retained.commands); return; }
@@ -324,6 +358,7 @@ export class WebGLSceneTiles {
   private scale = 0;
   private clock = 0;
   private editingNodeId: string | null = null;
+  private nodeSlots = new Map<string, number[]>();
   textureUploads = 0;
   visibleTextCount = 0;
   constructor(private gl: WebGL2RenderingContext) {
@@ -364,26 +399,60 @@ export class WebGLSceneTiles {
     this.scene = { commands };
     this.index = new PaintIndex(commands);
     this.paths = commands.map(command => previousPaths.get(command) || (command.kind === "path" ? new Path2D(command.path) : undefined));
+    this.nodeSlots.clear();
+    commands.forEach((command, index) => {
+      if (!command.nodeId) return;
+      const slots = this.nodeSlots.get(command.nodeId) || [];
+      slots.push(index); this.nodeSlots.set(command.nodeId, slots);
+    });
   }
-  updateNodePaint(updates: PaintScene, ids: Set<string>): PaintScene {
-    const previousPaths = new Map(this.scene.commands.map((command,i) => [command,this.paths[i]]));
-    const dirty = [...this.scene.commands,...updates.commands]
-      .filter((command) => command.nodeId && ids.has(command.nodeId)).map((command) => command.bounds);
+  /** Patch stable paint slots and their index memberships, preserving z-order. */
+  updateCommands(updates: Map<number, PaintCommand>): PaintScene {
+    const dirty: PaintBounds[] = [];
+    updates.forEach((command, index) => {
+      const old = this.scene.commands[index];
+      if (!old) throw new Error(`Unknown paint slot ${index}`);
+      if (command.nodeId !== old.nodeId) throw new Error("Paint ownership requires setScene");
+      dirty.push(old.bounds, command.bounds);
+      this.index.replace(index, command);
+      if (old.kind !== command.kind || old.path !== command.path) {
+        this.paths[index] = command.kind === "path" ? new Path2D(command.path) : undefined;
+      }
+    });
+    this.invalidateBounds(dirty);
+    return this.scene;
+  }
+  private invalidateBounds(dirty: PaintBounds[]): void {
     this.tiles.forEach((tile,key) => {
       const gutter = GUTTER / this.scale;
-      if (!dirty.some((box) => intersects(box,{x:tile.x-gutter,y:tile.y-gutter,width:tile.size+gutter*2,height:tile.size+gutter*2}))) return;
+      if (!dirty.some(box => intersects(box, {x:tile.x-gutter,y:tile.y-gutter,width:tile.size+gutter*2,height:tile.size+gutter*2}))) return;
       this.gl.deleteTexture(tile.texture); this.tiles.delete(key);
     });
-    this.scene = replaceNodePaint(this.scene,updates,ids);
-    this.index = new PaintIndex(this.scene.commands);
-    this.paths = this.scene.commands.map((command) => previousPaths.get(command) ||
-      (command.kind === "path" ? new Path2D(command.path) : undefined));
-    return this.scene;
+  }
+  updateNodePaint(updates: PaintScene, ids: Set<string>): PaintScene {
+    const byId = new Map<string, PaintCommand[]>();
+    updates.commands.forEach(command => {
+      if (!command.nodeId || !ids.has(command.nodeId)) return;
+      const bucket = byId.get(command.nodeId) || [];
+      bucket.push(command); byId.set(command.nodeId, bucket);
+    });
+    const patches = new Map<number, PaintCommand>();
+    for (const id of ids) {
+      const slots = this.nodeSlots.get(id) || [];
+      const commands = byId.get(id) || [];
+      if (slots.length !== commands.length) {
+        // A structural change (e.g. adding a badge) needs a new stacking order.
+        this.setScene(replaceNodePaint(this.scene, updates, ids));
+        return this.scene;
+      }
+      slots.forEach((slot, index) => patches.set(slot, commands[index]!));
+    }
+    return this.updateCommands(patches);
   }
   setEditingNode(id: string | null): void {
     if (id === this.editingNodeId) return;
-    const dirty = this.scene.commands.filter((command) => command.editorBody !== false &&
-      (command.nodeId === id || command.nodeId === this.editingNodeId)).map((command) => command.bounds);
+    const slots = new Set([...(this.nodeSlots.get(id || "") || []), ...(this.nodeSlots.get(this.editingNodeId || "") || [])]);
+    const dirty = Array.from(slots, slot => this.scene.commands[slot]!).filter(command => command.editorBody !== false).map(command => command.bounds);
     this.editingNodeId = id;
     this.tiles.forEach((tile,key) => {
       const gutter = GUTTER/this.scale;

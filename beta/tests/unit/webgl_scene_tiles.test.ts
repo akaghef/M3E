@@ -82,6 +82,48 @@ describe("retained WebGL scene tiles", () => {
     expect(cameraBounds({x:100,y:-200,zoom:0.5},800,600,100)).toEqual({x:-400,y:200,width:2000,height:1600});
     expect(tileCoordinates({x:-10,y:-10,width:20,height:20},1)).toEqual([{x:-1,y:-1},{x:0,y:-1},{x:-1,y:0},{x:0,y:0}]);
   });
+  it("patches index memberships across cells and the large-path bucket in paint order", () => {
+    const a = label(0), b = label(1);
+    const index = new PaintIndex([a, b]);
+    const viewport = {x:0,y:0,width:400,height:400};
+    index.replace(0, {...a,bounds:{x:-5000,y:-5000,width:100,height:100}});
+    expect(index.query(viewport)).toEqual([1]);
+    expect(index.query({x:-5100,y:-5100,width:300,height:300})).toEqual([0]);
+    index.replace(0, {...a,bounds:{x:-100000,y:0,width:200000,height:100}});
+    expect(index.query(viewport)).toEqual([0,1]);
+    index.replace(0, {...a,bounds:{x:5000,y:5000,width:100,height:100}});
+    expect(index.query(viewport)).toEqual([1]);
+  });
+  it("patches stable paint slots without rebuilding the scene or touching distant tiles", () => {
+    const {tiles,gl} = harness();
+    const a = {...label(0),bounds:{x:40,y:100,width:100,height:80}}, b = label(10);
+    tiles.setScene({commands:[a,b]});
+    const rebuild = vi.spyOn(tiles,"setScene");
+    tiles.draw({x:0,y:0,zoom:1},1000,1000,1,()=>{});
+    const uploads = gl.texImage2D.mock.calls.length;
+    const moved = {...a,bounds:{x:1040,y:100,width:100,height:80},matrix:[1,0,0,1,1000,0] as PaintCommand["matrix"]};
+    const scene = tiles.updateCommands(new Map([[0,moved]]));
+    expect(scene.commands).toEqual([moved,b]);
+    expect(scene.commands[1]).toBe(b);
+    expect(rebuild).not.toHaveBeenCalled();
+    tiles.draw({x:0,y:0,zoom:1},1000,1000,1,()=>{});
+    expect(gl.texImage2D.mock.calls.length-uploads).toBe(2);
+    expect(tiles.updateNodePaint({commands:[a]},new Set(["n0"])).commands[1]).toBe(b);
+    expect(rebuild).not.toHaveBeenCalled();
+  });
+  it("rebuilds stacking slots only when a node gains or loses paint commands", () => {
+    const {tiles}=harness();
+    const a=label(0),b=label(1);
+    tiles.setScene({commands:[a,b]});
+    const rebuild=vi.spyOn(tiles,"setScene");
+    const badge={...a,text:"badge"};
+    expect(tiles.updateNodePaint({commands:[a,badge]},new Set(["n0"])).commands).toEqual([a,badge,b]);
+    expect(rebuild).toHaveBeenCalledTimes(1);
+    rebuild.mockClear();
+    const selected={...a,text:"selected"};
+    expect(tiles.updateNodePaint({commands:[selected,badge]},new Set(["n0"])).commands).toEqual([selected,badge,b]);
+    expect(rebuild).not.toHaveBeenCalled();
+  });
   it("retains paint order and crossing paths with both endpoints off screen", () => {
     const crossing = {...label(0),kind:"path" as const,path:"M -100000 20 C -1000 80 1000 80 100000 20",bounds:{x:-100000,y:20,width:200000,height:60}};
     const commands = [label(0),crossing,label(1)];
