@@ -398,6 +398,9 @@ function TopBar({
   openModal: (id: ModalId) => void;
 }): React.ReactElement {
   const joined = snapshot.collab.includes("joined");
+  useEffect(() => {
+    window.dispatchEvent(new Event("m3e:orrery-control-slot-ready"));
+  }, []);
   return (
     <div className="wb-topbar" data-testid="workbench-topbar">
       <div className="wb-brand">
@@ -411,6 +414,7 @@ function TopBar({
         </button>
       </div>
       <div className="wb-top-actions">
+        <span id="orrery-network-control-slot" />
         <div className="wb-status-chip" title={snapshot.status}>
           <Cloud size={14} />
           <span>{snapshot.cloud.replace("Cloud: ", "")}</span>

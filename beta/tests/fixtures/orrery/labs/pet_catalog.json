@@ -1,0 +1,47 @@
+{
+  "lifecycleAnimationCandidates": {
+    "starting": "waving",
+    "thinking": "running",
+    "tool-running": "running",
+    "awaiting-user": "review",
+    "blocked": "waiting",
+    "idle": "idle",
+    "completed": null,
+    "failed": "failed",
+    "disconnected": null,
+    "unobservable": null
+  },
+  "pets": [
+    {
+      "id": "black-dragon-pet",
+      "displayName": "Black Dragon",
+      "sheet": { "width": 1536, "height": 1872 },
+      "gridStatus": "manifest-confirmed",
+      "grid": { "columns": 8, "rows": 9, "frameWidth": 192, "frameHeight": 208 },
+      "states": {
+        "idle": { "row": 0, "frames": 6, "fps": 6 },
+        "runRight": { "row": 1, "frames": 8, "fps": 10 },
+        "runLeft": { "row": 2, "frames": 8, "fps": 10 },
+        "waving": { "row": 3, "frames": 4, "fps": 6 },
+        "jumping": { "row": 4, "frames": 5, "fps": 8 },
+        "failed": { "row": 5, "frames": 8, "fps": 8 },
+        "waiting": { "row": 6, "frames": 6, "fps": 5 },
+        "running": { "row": 7, "frames": 6, "fps": 10 },
+        "review": { "row": 8, "frames": 6, "fps": 5 }
+      },
+      "evidence": "pet.json manifest"
+    },
+    { "id": "belayer-cat", "displayName": "Cat Belayer", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "bilby-bird", "displayName": "Bilby Bird", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "blue-button-bunny", "displayName": "Blue Button Bunny", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "climber-cat", "displayName": "Climbing Cat", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "fat-robot", "displayName": "Fat Robot", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "foxdungee", "displayName": "Foxdungee", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "glaucira-blue-dragon", "displayName": "Glaucira", "sheet": { "width": 1536, "height": 2288 }, "evidence": "dimensions: 192x208 frames, 8 columns, 11 rows; row meanings unverified" },
+    { "id": "green-slime-v2", "displayName": "Green Slime v2", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "machi-dog", "displayName": "Machi Dog", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "momo-bunny", "displayName": "Momo Bunny", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "peri-the-owl", "displayName": "Peri the Owl", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" },
+    { "id": "white-dog", "displayName": "White Dog", "sheet": { "width": 1536, "height": 1872 }, "evidence": "dimensions: 192x208 frames, 8 columns, 9 rows; row meanings unverified" }
+  ]
+}
