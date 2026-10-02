@@ -121,6 +121,19 @@ node type ごとに形を変えた: goal ◇ / task ▭+左ストライプ / gat
 resource ○¥ / AI agent ○ / human □。**ただし state ring は同型**（`RQ2` 対称性: map に
 「人間の欄」と「AIの欄」を作らない）。観測不能は破線 + 白（`color_semantics` 規則3）。
 
+### 2026-09-21 — AM × OT × herdr 比較 doc の吸収分析
+
+ChatGPT export「AM OT herdr比較検討」（2026-09-07 作成 / 2026-09-21 持込）を、
+OT / herdr の現行 upstream source と ADR_011 / terminology / farthest_goal に照合した。
+詳細は `analysis/260921_am_ot_herdr_layer_comparison.md`。
+
+- OT の project ID `1` フォールバック、herdr prompt の submission 契約、両 repo の license、
+  OT の Mac + WSL2 / native Windows 実験扱いを upstream で再確認。doc の具体コード主張は正しかった。
+- identity 分離 / state 軸分離 / field 所有権 / App Server 維持は既存 canon と一致。
+  新規判断を要するのは **herdr 候補**（IS4）、**OT の公開ライセンス境界**（IS5）、
+  Phase 3 用の binding 台帳 + command 完了 state machine 素案の3点。
+- Phase 1 の DC1（DB / runtime を作らない）は不変。実装・connector・herdr 試験は行っていない。
+
 ## 実行計画（Phase 1 の残り）
 
 1. akaghef の差し戻し内容を受けて `screen01.html` を改訂（**T1**）
