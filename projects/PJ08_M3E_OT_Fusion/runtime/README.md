@@ -6,7 +6,7 @@ Phase 1 は静的 mock のみで、実行 runtime を持たない。以下は Ph
 |---|---|
 | **Progress Board** | `tasks.yaml` の task 状態。誰が何を持っているか |
 | **Evaluation Board** | `eval_required: true` の task の Evaluator 判定。round と round_max |
-| **Review** | `reviews/Qn_*.md` の未決論点。akaghef の回答待ちが可視になる |
+| **Review** | `reviews/` の未決論点（ISn、既存の Q1）。akaghef の回答待ちが可視になる |
 | **Active Workspace** | 実作業中の worktree。`plan.md` の吸収表と対応させる |
 
 ## Phase 1 の扱い

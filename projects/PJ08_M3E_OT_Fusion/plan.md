@@ -50,6 +50,8 @@ Director（Claude）はこれを受けて「M3E性を反証可能な視覚条件
 | **IS1** | **色の所有権。** akaghef「色使いは node type ごとに決まる、global に意味は無い」 vs `color_semantics.md`「map 全体の規約、7色固定」 | `reviews/Q1_color_ownership.md`。mock では **state ring = 7色規約 / 塗り・形 = node type 所有** で暫定分離 |
 | **IS2** | **LOD。** 遠景で Agent Card が読めない（`ADR_011 DC22`）。閾値・字送り・固定幅・attention と Actor 多重度の視覚的分離 | Phase 2。`ADR_011 IS4` が「seam lab で目視決定」と指定済み |
 | **IS3** | **DECK rail の折返し。** 1080px 未満で rail が surface の下に落ちる。実機幅での確認が要る | Phase 1 の残タスク |
+| **IS4** | **herdr を「端末実行層」の第3統一候補として PJ08 に採るか。** OT の tmux lane を適合後に置換する案 | `reviews/IS4_herdr_terminal_lane_candidate.md`。Phase 1 は影響なし。fugu は「候補記録のみ、Phase 5 で再評価」を推奨 |
+| **IS5** | **公開 M3E と OT の PolyForm ライセンス境界。** 個人 A-sys 採用と公開同梱・必須依存化を分けるか | `reviews/IS5_ot_license_public_boundary.md`。fugu は境界明文化 + Phase 3 adapter 撤退線を推奨 |
 
 ## Phase 設計
 
