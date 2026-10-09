@@ -100,6 +100,7 @@ function App(): React.ReactElement {
     <main className="node-lab">
       <aside className="lab-panel">
         <a className="lab-back" href="/src/labs/index.html">← M3E Seam Labs</a>
+        <a className="lab-back" href="/viewer.html?preview=agent-nodes">Agent node をマップで見る →</a>
         <h1 className="lab-title">Agent node · Session Lab</h1>
         <ControlSelect id="dataset" label="表示データ" value={dataset} onChange={(value) => { setDataset(value); setSelectedId(value === "reference" ? referenceCards[0].id : currentSession.id); }}>
           <option value="session">{currentSession.extraction.recordKind === "synthetic-example" ? "表示サンプル" : "このセッション"} · {currentSession.title}</option><option value="reference">既存の比較データ</option><option value="all">両方</option>

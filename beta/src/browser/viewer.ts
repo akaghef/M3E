@@ -404,14 +404,15 @@ function basenameFromPath(rawPath: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
+const AGENT_MAP_PREVIEW = queryParams.get("preview") === "agent-nodes";
 const REQUESTED_RENDERER = (queryParams.get("renderer") || "svg").trim().toLowerCase();
 const WEBGL_RENDERER_REQUESTED = REQUESTED_RENDERER === "webgl";
 const WEBGL_DEBUG_REQUESTED = queryParams.get("webglDebug") === "1";
-const REQUESTED_SURFACE = (queryParams.get("surface") || "").trim().toLowerCase();
+const REQUESTED_SURFACE = AGENT_MAP_PREVIEW ? "scatter" : (queryParams.get("surface") || "").trim().toLowerCase();
 const LOCAL_FS_VIEW_ROOT = firstQueryParam(queryParams, ["localFsRoot", "localFsPath"]) || "";
 const LOCAL_FS_VIEW_MODE = Boolean(LOCAL_FS_VIEW_ROOT.trim());
 const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
-const READ_ONLY_LINK = LOCAL_FS_VIEW_MODE || ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
+const READ_ONLY_LINK = AGENT_MAP_PREVIEW || LOCAL_FS_VIEW_MODE || ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
 const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
 const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
@@ -428,7 +429,7 @@ const REQUESTED_MAP_ID = firstQueryParam(queryParams, ["map", "localMapId"]);
 const HAS_EXPLICIT_MAP_ID = REQUESTED_MAP_ID !== null;
 const LOCAL_MAP_ID = normalizeDocId(REQUESTED_MAP_ID, DEFAULT_MAP_ID);
 const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
-const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
+const MAP_LABEL = AGENT_MAP_PREVIEW ? "Agent nodes" : LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
 const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
 const THEME_PREFS_KEY = "m3e:viewer-theme";
@@ -529,7 +530,12 @@ interface LinearNodeDraft {
 type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let map: SavedMap | null = null;
-const orreryNetwork = new OrreryNetwork({ board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, point: clientToCanvasPoint });
+const networkHost = { board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, point: clientToCanvasPoint };
+// The preview has no transport owner. Do not construct the live NETWORK client,
+// even if the URL also contains network=1.
+let orreryNetwork: Pick<OrreryNetwork, "enabled" | "readView" | "extendLayout" | "isRuntimeNode" | "drawCard" | "runtimeNodeIds"> = AGENT_MAP_PREVIEW
+  ? { enabled: true, readView: state => state, extendLayout: layout => layout, isRuntimeNode: () => false, drawCard: () => null, runtimeNodeIds: [] }
+  : new OrreryNetwork(networkHost);
 let fatalLoadError = false;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1002,6 +1008,7 @@ function setThinkingMode(mode: ThinkingMode): void {
 }
 
 function setSurfaceViewMode(mode: SurfaceViewMode): void {
+  if (AGENT_MAP_PREVIEW && mode !== "scatter") return;
   if (viewState.surfaceViewMode === mode) {
     syncThinkingModeUi();
     return;
@@ -7770,9 +7777,9 @@ function render(): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
-  let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
+  let maxX = AGENT_MAP_PREVIEW ? layout.totalWidth : Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
-    VIEWER_TUNING.layout.minCanvasHeight,
+    AGENT_MAP_PREVIEW ? 0 : VIEWER_TUNING.layout.minCanvasHeight,
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let defs = "<defs>";
@@ -8289,7 +8296,7 @@ function render(): void {
       return;
     }
 
-    maxX = Math.max(maxX, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
+    maxX = Math.max(maxX, p.x + p.w + (AGENT_MAP_PREVIEW ? 40 : VIEWER_TUNING.layout.nodeRightPad));
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
     const runtimeCard = orreryNetwork.drawCard(nodeId, p);
@@ -13042,6 +13049,14 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
+  if (AGENT_MAP_PREVIEW) {
+    const { AgentNodeMapPreview } = await import("../labs/agent-map/agent-map-preview");
+    orreryNetwork = new AgentNodeMapPreview({ ...networkHost, zoom: () => viewState.zoom });
+    const preview = createEmptyDoc();
+    preview.state.nodes[preview.state.rootId].text = "Agent nodes";
+    loadPayload(preview);
+    return;
+  }
   await fetchLinearTransformStatus();
 
   if (LOCAL_FS_VIEW_MODE) {
@@ -16589,8 +16604,8 @@ void initializeDocument().then(() => {
   if (fatalLoadError || !map) {
     return;
   }
-  initClipboardSync();
-  if (!LOCAL_FS_VIEW_MODE) {
+  if (!AGENT_MAP_PREVIEW) initClipboardSync();
+  if (!LOCAL_FS_VIEW_MODE && !AGENT_MAP_PREVIEW) {
     initBroadcastSync();
     initVisibilityManagedLiveStreams();
     void fetchVaultWatchStatus().then(() => {
