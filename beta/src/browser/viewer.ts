@@ -1,3 +1,17 @@
+import { readAgentNode, agentNodeMetric, agentNodeLod } from "../shared/agent_node_data";
+import { initialLifecycleAnimationMapping, petCatalog, resolvePetSprite } from "./agent_node_assets";
+import agentNodeCss from "../shared/agent_node.css?inline";
+const agentNodeStyle = document.createElement("style");
+agentNodeStyle.textContent = agentNodeCss;
+document.head.append(agentNodeStyle);
+let renderedAgentNodeLod = agentNodeLod(1);
+let agentNodeLodRenderPending = false;
+window.addEventListener("m3e:viewport-changed", () => {
+  if (agentNodeLod(viewState.zoom) === renderedAgentNodeLod || agentNodeLodRenderPending
+    || !map || !Object.values(map.state.nodes).some(node => readAgentNode(node))) return;
+  agentNodeLodRenderPending = true;
+  requestAnimationFrame(() => { agentNodeLodRenderPending = false; render(); });
+});
 import { OrreryNetwork } from "./orrery_network";
 import {
   layout as layoutPortLayout,
@@ -417,15 +431,14 @@ function basenameFromPath(rawPath: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
-const AGENT_MAP_PREVIEW = queryParams.get("preview") === "agent-nodes";
 const REQUESTED_RENDERER = (queryParams.get("renderer") || "webgl").trim().toLowerCase();
 const WEBGL_RENDERER_REQUESTED = REQUESTED_RENDERER === "webgl";
 const WEBGL_DEBUG_REQUESTED = queryParams.get("webglDebug") === "1";
-const REQUESTED_SURFACE = AGENT_MAP_PREVIEW ? "scatter" : (queryParams.get("surface") || "").trim().toLowerCase();
+const REQUESTED_SURFACE = (queryParams.get("surface") || "").trim().toLowerCase();
 const LOCAL_FS_VIEW_ROOT = firstQueryParam(queryParams, ["localFsRoot", "localFsPath"]) || "";
 const LOCAL_FS_VIEW_MODE = Boolean(LOCAL_FS_VIEW_ROOT.trim());
 const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
-const READ_ONLY_LINK = AGENT_MAP_PREVIEW || LOCAL_FS_VIEW_MODE || ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
+const READ_ONLY_LINK = LOCAL_FS_VIEW_MODE || ["view", "readonly", "read-only", "viewer"].includes(LINK_ACCESS_MODE);
 const DEFAULT_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR";
 const DEFAULT_WORKSPACE_LABEL = "Akaghef-personal";
 const DEFAULT_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5";
@@ -442,7 +455,7 @@ const REQUESTED_MAP_ID = firstQueryParam(queryParams, ["map", "localMapId"]);
 const HAS_EXPLICIT_MAP_ID = REQUESTED_MAP_ID !== null;
 const LOCAL_MAP_ID = normalizeDocId(REQUESTED_MAP_ID, DEFAULT_MAP_ID);
 const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "cloudMapId"]), LOCAL_MAP_ID);
-const MAP_LABEL = AGENT_MAP_PREVIEW ? "Agent nodes" : LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
+const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
 const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
 const THEME_PREFS_KEY = "m3e:viewer-theme";
@@ -543,12 +556,7 @@ interface LinearNodeDraft {
 type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let map: SavedMap | null = null;
-const networkHost = { board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, point: clientToCanvasPoint };
-// The preview has no transport owner. Do not construct the live NETWORK client,
-// even if the URL also contains network=1.
-let orreryNetwork: Pick<OrreryNetwork, "enabled" | "readView" | "extendLayout" | "isRuntimeNode" | "drawCard" | "runtimeNodeIds"> = AGENT_MAP_PREVIEW
-  ? { enabled: true, readView: state => state, extendLayout: layout => layout, isRuntimeNode: () => false, drawCard: () => null, runtimeNodeIds: [] }
-  : new OrreryNetwork(networkHost);
+const orreryNetwork = new OrreryNetwork({ board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, point: clientToCanvasPoint });
 let fatalLoadError = false;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1040,7 +1048,6 @@ function setThinkingMode(mode: ThinkingMode): void {
 }
 
 function setSurfaceViewMode(mode: SurfaceViewMode): void {
-  if (AGENT_MAP_PREVIEW && mode !== "scatter") return;
   if (viewState.surfaceViewMode === mode) {
     syncThinkingModeUi();
     return;
@@ -4420,6 +4427,8 @@ function refreshLinearPanelCanvasLayout(): boolean {
 }
 
 function webglSurfaceSupported(): boolean {
+  // Agent glyphs use the shared SVG renderer until the WebGL renderer supports them.
+  if (map && Object.values(map.state.nodes).some(node => readAgentNode(node))) return false;
   if (orreryNetwork.enabled) return false; // NETWORK retains the existing SVG renderer until card WebGL parity.
   return WEBGL_RENDERER_REQUESTED && !webglFallbackReason && (viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode());
 }
@@ -5186,6 +5195,21 @@ function syncInlineEditorPosition(): void {
   }
 
   const node = getNode(nodeId);
+  const agentTitle = canvas.querySelector<SVGTextElement>(`[data-agent-node-id="${CSS.escape(nodeId)}"] [data-field="title"]`);
+  if (readAgentNode(node) && agentTitle) {
+    const rect = agentTitle.getBoundingClientRect();
+    const boardRect = board.getBoundingClientRect();
+    const style = getComputedStyle(agentTitle);
+    const fontSize = parseFloat(style.fontSize) * viewState.zoom;
+    Object.assign(inlineEditor.input.style, {
+      left: `${rect.left - boardRect.left}px`, top: `${rect.top - boardRect.top}px`,
+      width: `${Math.max(rect.width, 180 * viewState.zoom)}px`, minWidth: "0",
+      minHeight: `${fontSize * 1.4}px`, fontSize: `${fontSize}px`, lineHeight: "1.4",
+      fontWeight: style.fontWeight, color: style.fill, padding: "0", transform: "none", textAlign: "left",
+    });
+    setEditedSvgLabelVisibility(nodeId, false);
+    return;
+  }
   const isRootLabel = nodeId === map.state.rootId;
   const nodeStyles = readNodeStyleAttrs(node.attributes || {});
   const label = isRootLabel ? uiLabel(node) : diagramLabel(node, nodeStyles);
@@ -5228,7 +5252,7 @@ function setEditedSvgNodeVisibility(nodeId: string, visible: boolean): void {
 
 function setEditedSvgLabelVisibility(nodeId: string, visible: boolean): void {
   canvas
-    .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"]`)
+    .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"], [data-agent-node-id="${CSS.escape(nodeId)}"] [data-field="title"]`)
     .forEach((label) => {
       label.style.visibility = visible ? "" : "hidden";
     });
@@ -7516,6 +7540,8 @@ function measureLayoutNode(state: AppState, nodeId: string, displayRootId: strin
   if (!node) {
     return { w: 120, h: VIEWER_TUNING.layout.leafHeight };
   }
+  const agent = readAgentNode(node);
+  if (agent) return agentNodeMetric(agent);
   const isRoot = nodeId === displayRootId;
   if (!isLatexNode(node) && (config.mode === "tree" || explicitNodeLabelWidth(node) !== null)) {
     const font = config.mode === "tree"
@@ -7577,7 +7603,7 @@ function buildLayout(state: AppState): LayoutResult {
   Array.from(visibleNodeIds).forEach((nodeId) => {
     const node = state.nodes[nodeId]!;
     const config = structuredLayoutConfig(structuredMode);
-    const key = JSON.stringify([uiLabel(node), isLatexNode(node), nodeId === displayRootId, visibleChildren(node).length === 0, explicitNodeLabelWidth(node), defaultWrapCharacters, config]);
+    const key = JSON.stringify([uiLabel(node), isLatexNode(node), nodeId === displayRootId, visibleChildren(node).length === 0, explicitNodeLabelWidth(node), defaultWrapCharacters, node.attributes?.["m3e:agent"], config]);
     boxSizes[nodeId] = layoutMetricCache.get(nodeId, key, () => measureLayoutNode(state, nodeId, displayRootId, config));
   });
   layoutMetricCache.retain(visibleNodeIds);
@@ -7604,7 +7630,8 @@ function buildLayout(state: AppState): LayoutResult {
     descendants.forEach((nodeId) => {
       const depth = scatterDepthOf[nodeId] ?? 0;
       const radius = scatterRadiusFor(nodeId, depth, descendants.length);
-      boxSizes[nodeId] = { w: radius * 2, h: radius * 2 };
+      const agent = readAgentNode(state.nodes[nodeId]);
+      boxSizes[nodeId] = agent ? agentNodeMetric(agent) : { w: radius * 2, h: radius * 2 };
     });
     options.surfaceNodeViews = surface?.nodeViews || {};
     options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
@@ -7770,6 +7797,7 @@ function render(incremental = false): void {
   edgeSvgCache.begin(!incremental);
   if (!incremental) treeSpanCache.clear();
   incrementalProjection = incremental;
+  renderedAgentNodeLod = agentNodeLod(viewState.zoom);
   updateModeBadge();
   if (!map) {
     syncThinkingModeUi();
@@ -7807,9 +7835,9 @@ function render(incremental = false): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
-  let maxX = AGENT_MAP_PREVIEW ? layout.totalWidth : Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
+  let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
-    AGENT_MAP_PREVIEW ? 0 : VIEWER_TUNING.layout.minCanvasHeight,
+    VIEWER_TUNING.layout.minCanvasHeight,
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let defs = "<defs>";
@@ -8196,7 +8224,15 @@ function render(incremental = false): void {
     const label = diagramLabel(node, nodeStyles);
     const aliasState = nodeDrawAliasState(node);
     const fontSize = p.fontSize ?? (treatAsRoot ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
-    const content = isLatexNode(node)
+    const agent = readAgentNode(node);
+    const content: NodeDrawInput["content"] = agent ? {
+      kind: "agent", agent: {
+        card: agent, width: 320, lod: agentNodeLod(viewState.zoom), displayAt: Date.now(),
+        sprite: petCatalog.some(pet => pet.id === agent.icon)
+          ? resolvePetSprite(agent.icon, agent.lifecycleState, initialLifecycleAnimationMapping, true)
+          : undefined,
+      },
+    } : isLatexNode(node)
       ? { kind: "latexHtml" as const, ...renderLatexHtml(node.text) }
       : {
           kind: "plainLabel" as const,
@@ -8327,7 +8363,7 @@ function render(incremental = false): void {
       return;
     }
 
-    maxX = Math.max(maxX, p.x + p.w + (AGENT_MAP_PREVIEW ? 40 : VIEWER_TUNING.layout.nodeRightPad));
+    maxX = Math.max(maxX, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
     const runtimeCard = orreryNetwork.drawCard(nodeId, p);
@@ -13216,14 +13252,6 @@ async function loadDefaultSample(): Promise<void> {
 }
 
 async function initializeDocument(): Promise<void> {
-  if (AGENT_MAP_PREVIEW) {
-    const { AgentNodeMapPreview } = await import("../labs/agent-map/agent-map-preview");
-    orreryNetwork = new AgentNodeMapPreview({ ...networkHost, zoom: () => viewState.zoom });
-    const preview = createEmptyDoc();
-    preview.state.nodes[preview.state.rootId].text = "Agent nodes";
-    loadPayload(preview);
-    return;
-  }
   await fetchLinearTransformStatus();
 
   if (LOCAL_FS_VIEW_MODE) {
@@ -16819,8 +16847,8 @@ void initializeDocument().then(() => {
   if (fatalLoadError || !map) {
     return;
   }
-  if (!AGENT_MAP_PREVIEW) initClipboardSync();
-  if (!LOCAL_FS_VIEW_MODE && !AGENT_MAP_PREVIEW) {
+  initClipboardSync();
+  if (!LOCAL_FS_VIEW_MODE) {
     initBroadcastSync();
     initVisibilityManagedLiveStreams();
     void fetchVaultWatchStatus().then(() => {

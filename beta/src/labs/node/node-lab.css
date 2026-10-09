@@ -1,4 +1,4 @@
-@import "../agent-map/agent-node-visual.css";
+@import "../../shared/agent_node.css";
 * { box-sizing: border-box; }
 body { margin: 0; background: #edf0f4; color: #202631; font-family: Inter, "Segoe UI", "Yu Gothic UI", sans-serif; }
 button, select, input { font: inherit; }
