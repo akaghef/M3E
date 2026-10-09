@@ -3,7 +3,7 @@
 M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。
 **新しい語を skill / map / code に持ち込む前にここへ登録する**。揺れを見つけたら正規語を決めて記載する。
 
-最終更新: 2026-07-19
+最終更新: 2026-09-17
 
 ---
 
@@ -23,7 +23,9 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 |---|---|---|---|
 | **workspace (ws)** | 永続データ実体の単位。SQLite 本体・backup・audit・cloud-sync などをまとめて保持する入れ物 | map, data profile, owner | 概念階層の最上位。`ws > map > scope > node`。workspaceId を単なる表示ラベルとして使う運用は避ける |
 | **map** | workspace 内で扱う 1 つの知識マップ | workspace, node, scope | （別表記）doc / document は非推奨。仕様語は `map`。実装の `docId` は互換名として残る |
-| **node** | 思考要素の最小単位。型: text / image / folder / alias | edge, scope, alias | |
+| **node** | 思考要素の最小単位。`nodeType` を持つ | nodeType, edge, scope, alias | 型の定義と例は `nodeType` の項を参照 |
+| **nodeType** | node の型。例: `text` / `image` / `folder` / `alias` / `agent` | node, agent | 自然言語では `node type` と表記する。例示は閉じた列挙ではない。用語としての型と、現在の保存・実装で対応する型一覧は区別する。後者は [Data Model](../03_Spec/Data_Model.md#nodetype-一覧) を参照 |
+| **agent** | AI agent と human を合わせた上位集合。`agent = AI agent ∪ human` | nodeType, node | `agent` は node type の一例であり、agent を表す node に用いる。無修飾の agent を AI のみに限定しない |
 | **edge** | 親子関係のみを表す有向関係（親→子） | node, GraphLink, EdgeStyle | **3義を混同しない**: 関係線（補助線）は `GraphLink`、描画の経路スタイルは `EdgeStyle`。無修飾の `edge` は常に親子関係を指す |
 | **seam interface** | seam の**型付き契約境界**（ports and adapters の port に相当）。ファイル命名は `*_seam_interface.ts` | seam, seam contract, edge port | **`port` をこの意味で使うな**（幾何の接続点と衝突するため廃語）。`seam contract`（reads/writes/claims を宣言する yaml）とは別artifact — こちらは TypeScript の型面。spec が言う `LayoutPort` は module の通称で、その名の型は実在しない（export は `layout()` 関数）|
 | **edge port** | ノード矩形上の**接続点**。`side = left / right / top / bottom` と座標を持つ幾何要素 | edge, EdgeStyle, LinkPort | 実装 `beta/src/shared/edge_port.ts` の `EdgePortSide` / `EdgePortPoint` / `EdgePorts`。`selectPorts(srcRect, dstRect, branchDirection)` が選ぶ対象。**seam port とは無関係の別概念** |
@@ -59,7 +61,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 
 ### 1.1 M3E ⇄ property graph 対応表
 
-M3E の正規語を維持し、property graph 語彙は対応先として扱う。第三の名称を挟まない。
+M3E の正規語を維持し、property graph 語彙は対応先として扱う。第三の名称を挟まない。この対応表は上記の用語定義を置き換えない。
 
 | M3E 正規語 | property graph 語彙 | 対応 | 備考 |
 |---|---|---|---|
