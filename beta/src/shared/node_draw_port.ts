@@ -1,3 +1,4 @@
+import type { AgentCardRenderInput } from "./agent_node";
 import type { LayoutNodePosition } from "./layout_port";
 
 export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System";
@@ -63,6 +64,7 @@ export interface NodeDrawSurface {
 }
 
 export type NodeDrawContent =
+  | { kind: "agent"; agent: AgentCardRenderInput }
   | { kind: "plainLabel"; labelLines: string[]; fontSize?: number; textAnchor?: "start" | "middle" }
   | { kind: "latexHtml"; html: string; displayMode: boolean };
 

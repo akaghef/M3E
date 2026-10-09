@@ -1,3 +1,4 @@
+import { renderAgentCard } from "./agent_node";
 import {
   nodeDrawConfidenceColor,
   type NodeDrawInput,
@@ -22,6 +23,7 @@ const STATUS_COLORS: Record<NodeDrawStatus, string> = {
 };
 
 export function renderNode(input: NodeDrawInput): NodeDrawOutput {
+  if (input.content.kind === "agent") return renderAgentNode(input, input.content.agent);
   const svg = input.surface.view === "Disperse" ? renderScatterNode(input) : renderStructuredNode(input);
   return {
     svg,
@@ -94,7 +96,7 @@ function renderNonRootNode(input: NodeDrawInput): string {
   if (input.content.kind === "latexHtml") {
     const y = p.y - p.h / 2;
     parts.push(`<foreignObject data-node-id="${escapeAttr(input.node.id)}" x="${fmt(p.x)}" y="${fmt(y)}" width="${fmt(p.w)}" height="${fmt(p.h)}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${input.content.html}</div></foreignObject>`);
-  } else {
+  } else if (input.content.kind === "plainLabel") {
     const font = input.content.fontSize ?? p.fontSize ?? 14;
     const lineHeight = lineHeightForFont(font);
     const startY = multilineTextStartY(p.y, input.content.labelLines.length, font, lineHeight);
@@ -353,4 +355,17 @@ function escapeXml(value: string): string {
 
 function escapeAttr(value: string): string {
   return escapeXml(value).replace(/"/g, "&quot;");
+}
+
+function renderAgentNode(input: NodeDrawInput, agent: import("./agent_node").AgentCardRenderInput): NodeDrawOutput {
+  const output = renderAgentCard(agent);
+  const x = input.position.x + (input.position.w - output.bounds.w) / 2;
+  const y = input.position.y - output.bounds.h / 2;
+  const id = escapeAttr(input.node.id);
+  const classes = nodeStateClasses(input, ["agent-node"]);
+  const hitClasses = nodeStateClasses(input, ["node-hit", "agent-node-hit"]);
+  return {
+    svg: `<g class="${classes.join(" ")}" data-agent-node-id="${id}" data-lod="${agent.lod}" transform="translate(${fmt(x)},${fmt(y)})"><g pointer-events="none">${output.svg}</g><rect class="${hitClasses.join(" ")}" data-node-id="${id}" x="0" y="0" width="${output.bounds.w}" height="${output.bounds.h}" rx="12" fill="transparent" stroke="none" /></g>`,
+    bounds: { x, y, w: output.bounds.w, h: output.bounds.h, maxX: x + output.bounds.w, maxY: y + output.bounds.h },
+  };
 }

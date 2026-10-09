@@ -12,11 +12,11 @@ export default defineConfig({
     {
       name: "agent-node-icon-import-gate",
       buildStart() {
-        execFileSync("python3", [path.resolve(process.cwd(), "../scripts/ops/check-agent-node-icons.py")], { stdio: "inherit" });
+        execFileSync(process.env.M3E_AGENT_ICON_PYTHON || "python3", [path.resolve(process.cwd(), "../scripts/ops/check-agent-node-icons.py")], { stdio: "inherit" });
       },
       handleHotUpdate(context) {
         if (/[/\\]labs[/\\]node[/\\](pets[/\\]|pet_catalog\.json)/.test(context.file)) {
-          execFileSync("python3", [path.resolve(process.cwd(), "../scripts/ops/check-agent-node-icons.py")], { stdio: "inherit" });
+          execFileSync(process.env.M3E_AGENT_ICON_PYTHON || "python3", [path.resolve(process.cwd(), "../scripts/ops/check-agent-node-icons.py")], { stdio: "inherit" });
         }
       },
     },
@@ -64,7 +64,6 @@ export default defineConfig({
         assetFileNames: (assetInfo) => {
           const name = assetInfo.names?.[0] || assetInfo.name || "";
           if (!name.endsWith(".css")) return "assets/[name]-[hash][extname]";
-          if (name.includes("agent-map") || name.includes("agent-node-visual")) return "assets/[name]-[hash][extname]";
           if (name.includes("node-draw-lab")) return "node-draw-lab.css";
           if (name.includes("edge-port-lab")) return "edge-port-lab.css";
           if (name.includes("node-lab")) return "node-lab.css";
