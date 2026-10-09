@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
 async function openLab(page) {
-  await page.goto("/src/labs/node/node-lab.html");
+  await page.goto("/src/labs/node-draw/node-lab.html");
   await expect(page.locator("#sample")).toBeVisible();
 }
 

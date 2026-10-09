@@ -51,3 +51,7 @@ When the user asks to prevent recurrence after an agent failure:
 3. Verification performed
 4. Ambiguities/blocked decisions
 5. Next smallest task
+
+## Agent node icon imports
+
+For Agent node icon assets, frame definitions, or playback changes, read `docs/protocols/agent-node-icon-import.md` and run `npm --prefix beta run check:agent-icons`. Dimensions alone are not verified frame geometry.

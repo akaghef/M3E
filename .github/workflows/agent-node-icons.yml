@@ -1,0 +1,25 @@
+name: Agent node icon import
+on:
+  pull_request:
+    paths:
+      - 'beta/src/labs/node/**'
+      - 'beta/src/shared/agent_card.ts'
+      - 'beta/src/shared/pet_sprite.ts'
+      - 'scripts/ops/*agent-node-icons.py'
+      - '.github/workflows/agent-node-icons.yml'
+  push:
+    branches: [dev-beta]
+    paths:
+      - 'beta/src/labs/node/**'
+      - 'scripts/ops/*agent-node-icons.py'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install Pillow==11.3.0
+      - run: python scripts/ops/test-agent-node-icons.py
+      - run: python scripts/ops/check-agent-node-icons.py
