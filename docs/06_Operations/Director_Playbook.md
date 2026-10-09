@@ -23,7 +23,7 @@ intent → discovery/steering (Claude) → spec/design/tasks (Codex draft → Cl
 5. **Dispatch** — `scripts/codex.sh exec` (read-only for investigation, write in a worktree for implementation).
 6. **Review & verify** — judge Codex output against intent + acceptance criteria + the approved spec;
    verify with fresh evidence (`kiro-verify-completion`). Do not rubber-stamp; verify claims.
-7. **Integrate / iterate** — PR to `dev-beta`, or send Codex a follow-up (`resume --last`).
+7. **Integrate / deliver** — the task owner follows `Worktree_Separation_Rules.md`: direct dev-beta integration, push, build from integrated source, and original-symptom verification. PR is optional.
 8. **Record** — if you learned something reusable, append to the Improvement Log (§5).
 
 ## 2. Codex handoff template
@@ -51,12 +51,12 @@ Rules:
 scripts/ops/worktree.sh new <task>     # create /…/M3E-worktrees/<task> on branch codex/<task>
 scripts/ops/worktree.sh list           # show worktrees + status
 scripts/ops/worktree.sh clean          # prune stale/prunable entries
-scripts/ops/worktree.sh rm <task>      # remove after PR merged (guards uncommitted work)
+scripts/ops/worktree.sh rm <task>      # remove after verified delivery (guards uncommitted work)
 ```
 
 - One worktree per active Codex implementation task.
 - Branch from `dev-beta` unless the task says otherwise.
-- After the PR merges into `dev-beta`, remove the worktree to keep the tree clean.
+- After the task is integrated into `dev-beta` and delivery is verified, remove the worktree.
 - Never discard uncommitted work to remove a worktree — escalate to akaghef.
 
 ## 4. Review checklist
@@ -64,7 +64,7 @@ scripts/ops/worktree.sh rm <task>      # remove after PR merged (guards uncommit
 - Does the diff match the OBJECTIVE and stay within SCOPE?
 - Did Codex actually run the tests it claims passed? (Have it paste the command + result.)
 - Any scope creep, dead code, or broken conventions? Send back if so.
-- Is `dev-beta` still the integration target and the PR base correct?
+- Is the tested change integrated into `dev-beta`, pushed, and verified at the normal runtime?
 
 ## 4.5 Persistent-rule review gate
 
@@ -80,20 +80,10 @@ Director obligations:
 
 Live beta data guard: do not allow Codex to create fixture, test, or temporary maps in the active beta personal workspace for verification. Use Playwright fixtures, isolated `testRun` state, a separate temporary workspace, or an explicit backup/restore cleanup flow.
 
-## 4.6 GUI / browser verification split
+## 4.6 GUI / browser verification
 
-Codex's sandbox refuses `listen 127.0.0.1` with `EPERM`, so **Codex can never run Playwright**.
-Anything that depends on runtime DOM is outside its reach. Enforce this split:
-
-- **Runtime facts are the Director's job.** Write a throwaway probe spec, run it, and hand Codex the
-  measured table. Keep probes out of the branch (scratchpad, or move them out before commit).
-- **Codex must not invent selectors.** Constrain: any selector written into a test must exist as a
-  literal in source, verifiable by grep. If runtime-only information is needed, Codex reports
-  "Director に probe を依頼" instead of guessing.
-- **Codex must not report Playwright results it cannot obtain.** The Playwright field is
-  `未実行（Director 依頼）` plus the list of specs to run. (Mirrored as C8 in `AGENTS.md`.)
-- **Codex must confirm its fix reduces the symptom** before reporting "fixed"; otherwise "未確認".
-  A fix that leaves the defect count unchanged is not a fix.
+Use the current environment's actual capabilities. Do not infer that Codex cannot run browsers from an old sandbox incident. The task owner runs relevant browser checks when available, builds before testing, and verifies the original symptom on the normal runtime after integrated-source delivery.
+If execution is genuinely blocked, report `未実行（Director 依頼）`, the exact reason and specs, and keep delivery unverified. Never report another run's measurements as this run's evidence. Use observed DOM or source-backed selectors.
 
 Director-side traps, all hit in the 2026-08-25 layout merge:
 
@@ -108,20 +98,14 @@ Director-side traps, all hit in the 2026-08-25 layout merge:
 Before claiming a spec failure is a regression, get a **baseline on `dev-beta`** with the same
 command on the same machine, and diff the failing-spec sets.
 
-## 4.7 Merge readiness
+## 4.7 Integration readiness
 
-`gh pr checks` and `mergeable` are **independent gates** — check both.
-
-- `mergeable=MERGEABLE` only means no textual conflict; it says nothing about CI.
-- All checks green says nothing about conflicts. A `CONFLICTING` PR cannot produce a merge ref, so
-  `pull_request`-triggered workflows silently **do not run** — few checks listed is a symptom, not health.
-- Never trust an inherited "ready to merge" claim. Re-measure: `gh pr checks <n>`,
-  `gh pr view <n> --json mergeable,mergeStateStatus`, and `git merge-base --is-ancestor` when a
-  handoff claims one branch is stacked on another.
-- Run the full unit suite yourself. Codex's "green" always excludes the ~17 API/integration suites
-  it cannot start; those have hidden real regressions before.
+Follow `Worktree_Separation_Rules.md`. Review the full task diff against latest dev-beta, run the relevant tests, and serialize integration and runtime delivery. Revalidate affected behavior when the base changes. CI success and runtime verification are separate evidence.
+For an optional PR, inspect both checks and textual mergeability; neither alone proves safe integration. No automatic PR sweep is part of normal delivery.
 
 ## 5. Improvement Log (append-only — newest last)
+
+Historical evidence only: dated procedures below are superseded by the current sections and Worktree_Separation_Rules.md. In particular, worktree bundle copies to normal Beta and blanket sandbox limitations are not current instructions.
 
 Each entry: `YYYY-MM-DD — what changed / what we learned / why`. This is how the
 mechanism gets better across sessions. Future Directors: add here, don't rewrite history.
@@ -278,3 +262,5 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   (2) When Codex reports `index.lock: Operation not permitted`, commit from the Director's own shell
   rather than asking it to retry — but re-check, because the same task committed successfully on its
   next dispatch, so the failure is intermittent, not structural.
+
+- 2026-10-09 — Removed mandatory PR/human merge queue. The task owner delivers integrated dev-beta source to normal Beta and verifies the original symptom. Retired worktree bundle copying; unattended scripts no longer collect dirty work or merge PRs by default.

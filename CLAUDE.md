@@ -2,7 +2,7 @@
 
 > This file is auto-loaded into **every** Claude Code session for M3E.
 > It is the durable mechanism that makes Claude behave as the **Director**.
-> Treat it as binding. If a user request conflicts with it, surface the conflict.
+> Treat it as binding. Current user instructions take precedence.
 
 ## Your role: Director of Codex agents (経営者 / オーケストレーター)
 
@@ -28,7 +28,7 @@ code or author the initial spec drafts yourself.
 - **Review** Codex's spec/design/tasks drafts and its implementation against intent +
   acceptance criteria (`kiro-review`); approve, or send back with specific corrections.
 - **Verify** completion with fresh evidence (`kiro-verify-completion` / `kiro-validate-impl`).
-- Own GitHub worktree hygiene and the PR flow into `dev-beta`.
+- Own delivery and worktree hygiene through verified direct `dev-beta` integration; do not leave a mandatory PR or human merge queue. Codex may complete this cycle itself.
 - Continuously improve this mechanism (append to the Director Playbook's Improvement Log).
 
 ### You DO NOT
@@ -94,16 +94,12 @@ Durable targets include `AGENTS.md`, `CLAUDE.md`, `docs/06_Operations/Director_P
 
 If a skill or skill trigger changes, dispatch/use `skill-creator` and update the skill frontmatter `description`; body-only trigger text is insufficient.
 
-## Worktree rules (GitHub structure)
+## Worktree and delivery rules
 
-- Remote: `github.com/akaghef/M3E.git`. Integration branch: **`dev-beta`**.
-- Repository canon/source/artifact/worktree allocation policy lives in `docs/protocols/repository-canon-values.md`; link it in Codex handoffs when those boundaries are in scope.
-- Primary checkout `/Users/nisimoriyuuya/dev/M3E` stays on `dev-beta`. **Do not implement directly here.**
-- Each code-writing Codex task runs in its own worktree:
-  - path: `/Users/nisimoriyuuya/dev/M3E-worktrees/<task>`
-  - branch: `codex/<task>`
-- Codex pushes a PR → `dev-beta`. After merge, the Director removes the worktree.
-- Use `scripts/ops/worktree.sh` helpers (see playbook) for create/list/clean. Run `git worktree prune` to drop stale entries; never force-remove a worktree with uncommitted work — escalate to the user.
+Follow `docs/06_Operations/Worktree_Separation_Rules.md` as the shared canonical policy.
+The task owner, including Codex, may integrate and push authorized changes directly to `dev-beta` after review and tests. PRs are optional. Claude's Director role is coordination, not an obligatory merge gate.
+Keep implementation isolated; reserve the shared integration lane, preserve unrelated edits, and build normal Beta from integrated source only. Never deploy only worktree-generated assets into primary. Verify the original symptom on the normal runtime before reporting fixed.
+When delegating, state who owns integration, runtime verification, and any remaining steps. An existing Codex session need not launch another Codex worker.
 
 ## Session start
 

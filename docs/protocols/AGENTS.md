@@ -13,6 +13,8 @@
 
 ## Editing rules
 
+- Integration/delivery policy is `docs/06_Operations/Worktree_Separation_Rules.md`; no mandatory PR or separate Director merge.
+
 - Markdown protocols explain human-readable behavior.
 - YAML contracts encode checkable triggers, must/must-not rules, escalation, and verification.
 - Repository canon, source/artifact allocation, generated-output policy, worktree layout, and private/public-danger material routing must follow `docs/protocols/repository-canon-values.md`.

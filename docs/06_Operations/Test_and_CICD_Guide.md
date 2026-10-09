@@ -137,7 +137,7 @@ Rapid では段階導入とする。
 
 ### Stage C (運用安定後)
 
-- PR 必須チェック化
+- dev-beta push 時の検証と稼働反映の証拠確認
 - 失敗時の自動再実行ルール
 - nightly で長時間シナリオ確認
 
@@ -151,7 +151,7 @@ Rapid では公開デプロイを前提にしない。
 
 ## 失敗時の運用
 
-1. CI 失敗時はマージしない
+1. 判明した試験失敗があれば統合しない。dev-beta push 後の CI 失敗は担当 AI が修正または安全な revert を行い、完了にしない
 2. 再現手順を `daily` に短く記録する
 3. 回避策で通した場合は `Decision_Pool.md` に理由を残す
 4. 恒久対応は最小差分で修正し、再発防止ケースを 1 つ追加する
@@ -161,8 +161,8 @@ Rapid では公開デプロイを前提にしない。
 テスト/CI 運用を変更した場合は次を同時更新する。
 
 1. この文書
-2. `00_Home/Current_Status.md`
-3. `daily/YYMMDD.md`
+2. 関連する実行規則・スキル・CI guard
+3. 戦略の変更がある場合だけ `00_Home/Current_Status.md`。履歴は必要な場合に `daily/YYMMDD.md`
 
 更新完了条件は `Documentation_Rules.md` の定義に従う。
 
@@ -172,4 +172,8 @@ Rapid では公開デプロイを前提にしない。
 2. save/load の回帰テストを追加
 3. hit test の半自動テストを追加
 4. visual snapshot を 3 ケースだけ導入
-5. PR 必須チェック化
+5. dev-beta push 時の検証と稼働反映の証拠確認
+
+## 通常 Beta の完了判定
+
+`Worktree_Separation_Rules.md` を参照する。PR は任意。作業枝の試験成功、本流統合、配信 hash 一致、通常起動先での元の症状の確認は別の証拠として扱う。未統合 bundle の通常環境へのコピーは禁止。文書・指示だけの変更では正本・ミラー・guard を検証し、製品再起動は対象外とする。

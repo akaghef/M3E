@@ -7,9 +7,13 @@ const args = new Set(process.argv.slice(2));
 const check = args.has('--check');
 const write = args.has('--write') || !check;
 
+const selected = [...args].filter(arg => arg.startsWith('--skill=')).map(arg => arg.slice(8));
 const root = process.cwd();
 const sourceRoot = path.join(root, 'agent_instructions', 'skills_canonical');
-const mirrorRoots = [
+const requestedMirrors = [...args].filter(arg => arg.startsWith('--mirror=')).map(arg => arg.slice(9));
+const allowedMirrors = ['.codex/skills', '.claude/skills', '.agents/skills'];
+if (requestedMirrors.some(p => !allowedMirrors.includes(p))) throw new Error('Unknown mirror');
+const mirrorRoots = requestedMirrors.length ? requestedMirrors.map(p => path.join(root, p)) : [
   path.join(root, '.codex', 'skills'),
   path.join(root, '.claude', 'skills'),
   path.join(root, '.agents', 'skills'), // compatibility during migration
@@ -64,10 +68,16 @@ function withGeneratedHeader(rel, content) {
   return `${mdHeader}\n\n${content}`;
 }
 
+for (const name of selected) {
+  if (!/^[A-Za-z0-9-]+$/.test(name) || !fs.existsSync(path.join(sourceRoot, name, 'SKILL.md'))) {
+    throw new Error(`Unknown canonical skill: ${name}`);
+  }
+}
 let changed = false;
 
 for (const src of walk(sourceRoot)) {
   const rel = path.relative(sourceRoot, src);
+  if (selected.length && !selected.includes(rel.split(path.sep)[0])) continue;
   const content = fs.readFileSync(src, 'utf8');
   const generated = withGeneratedHeader(rel, content);
 

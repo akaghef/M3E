@@ -1,8 +1,12 @@
 ---
 name: m3e-worker
-description: Minimal instruction for scoped worker agents. Use when receiving or preparing bounded worker tasks in M3E / Akaghef-System, and when an M3E request asks for recurrence prevention, durable rule changes, worker guardrails, or agent instruction updates.
+description: Scoped worker execution through verified direct dev-beta integration and applicable runtime delivery. Use when receiving or preparing bounded worker tasks in M3E / Akaghef-System, and when an M3E request asks for recurrence prevention, durable rule changes, worker guardrails, or agent instruction updates.
 ---
 # M3E Worker Skill
+
+## Delivery
+
+Read `docs/06_Operations/Worktree_Separation_Rules.md`. The task owner verifies, commits, integrates directly into dev-beta, pushes, and verifies applicable normal Beta behavior. PRs and a separate Director merge are optional. Never copy unmerged build outputs into normal Beta. Draft-only or review-only requests stay within their scope.
 
 ## Worker rule
 

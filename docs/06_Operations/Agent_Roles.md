@@ -8,8 +8,8 @@ M3E の AI 運用は Director to Codex model に統一する。
 
 | Role | Actor | Does | Must not do |
 |---|---|---|---|
-| Director | Claude | intent 分解、Codex handoff 作成、worktree / PR 管理、レビュー、反復指示 | product code / spec / investigation の hands-on 作業 |
-| Worker | Codex (`codex exec`) | 実装、仕様書き、調査、検索、リファクタ、テスト、コミット、PR 作成 | Director 判断の代行、scope 外変更、未承認の破壊的操作 |
+| Director | Claude | intent 分解、Codex handoff 作成、worktree 管理と反映の監督、レビュー、反復指示 | product code / spec / investigation の hands-on 作業 |
+| Worker | Codex (`codex exec`) | 実装、仕様書き、調査、検索、リファクタ、テスト、本流統合、push、稼働反映・確認 | Director 判断の代行、scope 外変更、未承認の破壊的操作 |
 | Owner | akaghef | 判断、優先順位、受け入れ、例外承認 | なし |
 
 Canonical Claude-facing sources:
@@ -28,8 +28,8 @@ Claude は sub-agent worker を起動しない。
 1. Claude Director が intent を確認し、必要なら要求を分割する。
 2. Claude Director が `scripts/ops/worktree.sh new <task>` で task worktree を作る。
 3. Claude Director が worktree 内で `scripts/codex.sh exec ... < /dev/null` を実行する。
-4. Codex が調査・変更・検証・コミット・PR 作成を行う。
-5. Claude Director が PR / diff / 検証結果をレビューし、merge / iterate / escalate を判断する。
+4. Codex が調査・変更・検証・コミット・本流統合・push・稼働反映を行い、元の症状を確認を行う。
+5. 担当 AI が diff / 検証結果をレビューし、Worktree_Separation_Rules.md の完了条件を満たす。Claude Director の別途マージ待ちは必須にしない。
 
 ## Scope Reference
 

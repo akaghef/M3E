@@ -16,7 +16,8 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 - make local implementation/doc changes inside assigned boundaries
 - update assigned task status if explicitly instructed
 - report concrete ambiguity with options
-- commit and open a PR when the handoff requests `beta_update`
+- own verification, commit, direct dev-beta integration, push, and applicable runtime verification under `docs/06_Operations/Worktree_Separation_Rules.md`; `beta_update` requires delivery, not a PR
+- use an optional PR only when requested or useful for explicit external review; a separate Director merge is not required
 
 ## Forbidden
 

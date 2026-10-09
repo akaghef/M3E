@@ -90,9 +90,9 @@ Use unit tests for pure logic and Playwright tests for browser-visible viewer be
 ## Worktree and Branch Rules
 
 - Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly there.
-- Task worktree: `$HOME/dev/M3E-<task>`.
+- Task worktree: `$HOME/dev/M3E-worktrees/<task>`.
 - Task branch: `codex/<task>`.
-- PR base: `dev-beta`.
+- Direct integration target: `dev-beta`; PR optional. Follow `docs/06_Operations/Worktree_Separation_Rules.md` through runtime verification.
 - Helper: `scripts/ops/worktree.sh`.
 
 ## Documentation Placement

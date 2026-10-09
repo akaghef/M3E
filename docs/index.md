@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 608
+- Indexed files: 609
 
 ## Reading Routes
 
@@ -21,7 +21,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
-| [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-04-20 |
+| [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-09-17 |
 | [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-07-19 |
 | [00_Home/Glossary.md](<./00_Home/Glossary.md>) | Markdown | Glossary — M3E 用語辞書 | M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。 |
 | [00_Home/Home.md](<./00_Home/Home.md>) | Markdown | M3E — Home | 最終更新: 2026-04-20 |
@@ -131,7 +131,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [06_Operations/Todo_Pool.md](<./06_Operations/Todo_Pool.md>) | Markdown | Todo Pool | 確定前の粗い TODO を一時プールし、正式タスク化前の取りこぼしを防ぐ。 |
 | [06_Operations/TODO_today.md](<./06_Operations/TODO_today.md>) | Markdown | TODO_today — 2026-04-15 | > 今日処理する課題。正本は [Todo_Pool.md](Todo_Pool.md)。 |
 | [06_Operations/Version_Registry.md](<./06_Operations/Version_Registry.md>) | Markdown | Version Registry | リリースタグとデータスキーマバージョンの対応表。 |
-| [06_Operations/Worktree_Separation_Rules.md](<./06_Operations/Worktree_Separation_Rules.md>) | Markdown | Worktree Separation Rules | 最終更新: 2026-08-06 |
+| [06_Operations/Worktree_Separation_Rules.md](<./06_Operations/Worktree_Separation_Rules.md>) | Markdown | Worktree Separation Rules | 最終更新: 2026-10-09 |
 
 ### 09_Decisions - ADR
 
@@ -148,6 +148,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md](<./09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md>) | Markdown | ADR 009: Agent Orchestration の M3E 融合と実行境界 | Accepted. 一部を [ADR_011](./ADR_011_Agent_Orrery_As_M3E_Map.md) が更新（2026-08-26）: |
 | [09_Decisions/ADR_010_Radial_Surface_View_Removal.md](<./09_Decisions/ADR_010_Radial_Surface_View_Removal.md>) | Markdown | ADR_010: Radial Surface View を廃止し Tree へ畳む | Surface View 正本は `Tree / Axial / Radial / Disperse / System` の5種としていた。 |
 | [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
+| [09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](<./09_Decisions/ADR_012_Radial_Surface_View_Restoration.md>) | Markdown | ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する | ADR_010 は、当時の実装が canon の角度系（`clockwise / counterclockwise / balanced`）を |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections
