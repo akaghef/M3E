@@ -1,0 +1,145 @@
+{
+  "source_repository": "gyroid-eth/orrery-telemetry",
+  "source_commit": "22ffe6483530e643c8fc1af486319990e0181de4",
+  "source_root": "dashboard/index.html",
+  "license": {
+    "required_notice": "Copyright (c) 2026 gyroid",
+    "file": "upstream/LICENSE"
+  },
+  "labs": {
+    "surface-overview": {
+      "route": "/src/labs/ot/routes/surface-overview.html",
+      "entry": "entries/surface-overview.ts",
+      "cut": [
+        "cut/surface-overview/logic.js",
+        "cut/surface-overview/markup.html"
+      ]
+    },
+    "agent-detail": {
+      "route": "/src/labs/ot/routes/agent-detail.html",
+      "entry": "entries/agent-detail.ts",
+      "cut": [
+        "cut/agent-detail/logic.js",
+        "cut/agent-detail/markup.html"
+      ]
+    }
+  },
+  "fragments": [
+    {
+      "path": "cut/surface-overview/logic.js",
+      "source_path": "dashboard/index.html",
+      "source_ranges": [
+        [
+          28916,
+          28949
+        ],
+        [
+          30070,
+          34885
+        ]
+      ],
+      "adapted": true,
+      "reason": "Omit cockpit theme bridge and generated inventory; retain upstream route parser, server defaults, suspension flag and the complete operational closure.",
+      "sha256": "d3c625fb39e4dd1c8774f6f4efe9813160b1bd7d707bda0b1b690a7d6faae06c"
+    },
+    {
+      "path": "cut/surface-overview/markup.html",
+      "source_path": "dashboard/index.html",
+      "source_ranges": [
+        [
+          2434,
+          2824
+        ]
+      ],
+      "adapted": false,
+      "reason": "Concatenated verbatim continuous source regions",
+      "sha256": "8654551741e9c8546e18bd620f767b1872c429e9f45704c3b8a258f284004d82"
+    },
+    {
+      "path": "cut/agent-detail/logic.js",
+      "source_path": "dashboard/index.html",
+      "source_ranges": [
+        [
+          30081,
+          30094
+        ],
+        [
+          30114,
+          30136
+        ],
+        [
+          30149,
+          30152
+        ],
+        [
+          30387,
+          30432
+        ],
+        [
+          33418,
+          33906
+        ]
+      ],
+      "adapted": true,
+      "reason": "Bind one fixture agent, disable cockpit terminal dispatch, and auto-open/reopen the upstream panel. No rendering or state algorithms changed.",
+      "sha256": "5bfab59ca50fc4231e35ea4b74014c35dc85ddc296d9c0a7c28c4ef3cafeb72f"
+    },
+    {
+      "path": "cut/agent-detail/markup.html",
+      "source_path": "dashboard/index.html",
+      "source_ranges": [
+        [
+          2777,
+          2824
+        ]
+      ],
+      "adapted": true,
+      "reason": "Add a reopen control and the toast host used by blocked write actions.",
+      "sha256": "42a1a727b5cbc2d652d21ef1353881a205f4ac285f45891fd5ab2aae3209f4d5"
+    }
+  ],
+  "styles": [
+    {
+      "path": "cut/shared/dashboard.css",
+      "source_path": "dashboard/index.html",
+      "source_range": [
+        11,
+        2417
+      ],
+      "sha256": "741e1af857b967779a2bd166865827e0b22623e61cf6582918c9feecc2b09fcd"
+    }
+  ],
+  "assets": [
+    {
+      "path": "upstream/portraits_64/Lovelace.png",
+      "source_path": "dashboard/portraits_64/Lovelace.png",
+      "sha256": "95db46b70e22c04c81ae96478c9d6913c1d28a0230017bdc26729e1bd1e308df"
+    },
+    {
+      "path": "upstream/portraits_64/Turing.png",
+      "source_path": "dashboard/portraits_64/Turing.png",
+      "sha256": "5b5e3829565180576e5069be7a5efe507155d26fec3cd902cc0896eeeb721ae6"
+    },
+    {
+      "path": "upstream/portraits_64/Curie.png",
+      "source_path": "dashboard/portraits_64/Curie.png",
+      "sha256": "b94f3fbedb489ef94374a9be0ce98d0ec5d91516efdd3b7164a46d83ee53d8f2"
+    },
+    {
+      "path": "upstream/assets/anthropic.svg",
+      "source_path": "dashboard/assets/anthropic.svg",
+      "sha256": "e6ce2f7fd33ebc903182ab46b967608571021cd9d9f8472232f45d62c3df40d2"
+    },
+    {
+      "path": "upstream/assets/google.svg",
+      "source_path": "dashboard/assets/google.svg",
+      "sha256": "951ec6e918c9fb99399c81ac8ed6731a7dc6883d515f1e6b13d7a1ad906e259d"
+    },
+    {
+      "path": "upstream/assets/openai.svg",
+      "source_path": "dashboard/assets/openai.svg",
+      "sha256": "955168c5b8c0de266b32d2ba7e76b44303898e934d29a56199643d302a926aac"
+    }
+  ],
+  "source_sha256": "413a6e2f0c5bc8cf07b7e86c16dc22a3d4aae578ffd23fbcc70876567f6305ae"
+}

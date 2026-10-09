@@ -1,0 +1,391 @@
+
+<header>
+  <div class="brand">
+    <b>ORRERY <i>·</i> TELEMETRY</b>
+    <span>tmux × ORRERY Mail</span>
+  </div>
+  <div class="viewtog">
+    <button id="v-deck" class="on" onclick="setView('deck')">▤ Deck</button>
+    <button id="v-net" onclick="setView('net')">⊹ Network</button>
+  </div>
+  <div class="gauges">
+    <div class="gauge run"><div class="v" id="g-run">0</div>
+      <div class="k">running</div><div class="bar"><i id="b-run"></i></div></div>
+    <div class="gauge idle"><div class="v" id="g-idle">0</div>
+      <div class="k">standby</div><div class="bar"><i id="b-idle"></i></div></div>
+    <div class="gauge tot"><div class="v" id="g-tot">0</div>
+      <div class="k">agents</div><div class="bar"><i></i></div></div>
+  </div>
+  <div id="mail-health" class="mail-health" title="mail health: checking...">
+    <span class="mh-dot"></span><span class="mh-label">mail</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="controls">
+    <div class="field">
+      <input type="search" id="q" placeholder="FILTER · name / task" autocomplete="off">
+    </div>
+    <div class="seg" id="history" role="radiogroup" aria-label="history range">
+      <button type="button" data-history="live" title="running and finished sessions only">live</button>
+      <button type="button" data-history="7d" title="also gone / retired agents from the last 7 days">7d</button>
+      <button type="button" data-history="30d" title="also gone / retired agents from the last 30 days">30d</button>
+      <button type="button" data-history="all" title="every agent ever registered">all</button>
+    </div>
+    <button class="newbtn" id="newbtn" onclick="openSpawnModal()"
+            title="spawn a new child agent (open form)"
+            aria-label="spawn new agent">
+      <span class="nb-plus">＋</span><span>NEW AGENT</span>
+    </button>
+  </div>
+</header>
+
+<main id="wrap"><div class="state">ACQUIRING TELEMETRY<span class="caret"></span></div></main>
+
+<section id="net">
+  <div class="nettool">
+    <div class="win" id="winsel">
+      <span class="win-label" id="winlabel">~ 1d</span>
+      <input type="range" id="winrange" min="0" max="1" step="0.01" value="0.48" aria-label="Time window">
+      <button id="winall" class="win-all">ALL</button>
+    </div>
+    <button id="selToggle" class="sel-toggle" title="rectangle multi-select (drag to select / Esc to clear)"><span class="gl">◫</span>Select</button>
+    <span class="netinfo" id="netinfo">…</span>
+    <button class="legend-toggle" type="button" popovertarget="net-legend"
+            aria-label="show graph legend" title="graph legend">?</button>
+    <div class="legend-pop" id="net-legend" popover>
+      <div class="lp-title">Reading the graph</div>
+      <div class="lp-row">
+        <span class="lp-key">Lineage</span>
+        <span><i class="lp-dot parent"></i>parent</span>
+        <span><i class="lp-dot child"></i>child</span>
+        <span><i class="lp-dot both"></i>both</span>
+      </div>
+      <div class="lp-row">
+        <span class="lp-key">Context</span>
+        <span class="lp-arc"></span>
+        <span>context remaining</span>
+      </div>
+      <div class="lp-row">
+        <span class="lp-key">Motion</span>
+        <svg class="lp-motion waiting" width="16" height="16" viewBox="0 0 16 16"
+             aria-hidden="true">
+          <circle cx="8" cy="8" r="6" pathLength="100"></circle>
+        </svg>
+        <span>waiting</span>
+        <svg class="lp-motion working" width="16" height="16" viewBox="0 0 16 16"
+             aria-hidden="true">
+          <circle cx="8" cy="8" r="6" pathLength="100"></circle>
+        </svg>
+        <span>working</span>
+      </div>
+    </div>
+  </div>
+  <!-- Task G: DIGEST REPLAY controller (slide-in above SVG, below .nettool) -->
+  <div id="replayBar" role="region" aria-label="digest replay controller" aria-hidden="true">
+    <div class="rb-rail">
+      <span class="rb-rec"></span>
+      <span class="rb-label">DIGEST REPLAY</span>
+      <span class="rb-sep">·</span>
+      <span class="rb-agents" id="rbAgents">0 agents</span>
+      <button class="rb-filter" id="rbFilter" type="button"
+              role="switch" aria-checked="false"
+              title="only events between selected agents (toggle)">
+        <span class="rb-flt-glyph">◰</span>
+        <span class="rb-flt-lab">GROUP-ONLY</span>
+      </button>
+      <button class="rb-filter rb-tt" id="rbTimeTravel" type="button"
+              role="switch" aria-checked="true"
+              title="rebuild graph state from events (time-travel)
+OFF = legacy snapshot+comet mode">
+        <span class="rb-flt-glyph">◷</span>
+        <span class="rb-flt-lab">TIME-TRAVEL</span>
+      </button>
+      <span class="rb-grow"></span>
+      <span class="rb-flicker" aria-hidden="true"></span>
+      <button class="rb-x" id="rbClose" title="exit replay (Esc)">✕ CLOSE</button>
+    </div>
+    <div class="rb-row">
+      <button class="rb-play" id="rbPlay" type="button"
+              title="play / pause (space)" aria-pressed="false">
+        <span class="rb-glyph">▶</span><span class="rb-plab">PLAY</span>
+      </button>
+      <div class="rb-speed" role="group" aria-label="playback speed">
+        <div class="rb-spd-track" id="rbSpdTrack">
+          <div class="rb-spd-ticks" id="rbSpdTicks"></div>
+          <div class="rb-spd-fill" id="rbSpdFill"></div>
+          <div class="rb-spd-thumb" id="rbSpdThumb"
+               role="slider" tabindex="0"
+               aria-valuemin="1" aria-valuemax="10000" aria-valuenow="1"
+               title="drag to scrub speed (×1 .. ×10000, log)"></div>
+        </div>
+        <output class="rb-spd-val" id="rbSpdVal" for="rbSpdThumb">×1</output>
+      </div>
+      <div class="rb-hold" role="group" aria-label="message display time">
+        <div class="rb-spd-track" id="rbHoldTrack">
+          <div class="rb-spd-ticks" id="rbHoldTicks"></div>
+          <div class="rb-spd-fill" id="rbHoldFill"></div>
+          <div class="rb-spd-thumb" id="rbHoldThumb"
+               role="slider" tabindex="0"
+               aria-valuemin="100" aria-valuemax="15000" aria-valuenow="6000"
+               title="drag to set how long message cards stay (0.1s .. 15s)"></div>
+        </div>
+        <output class="rb-spd-val" id="rbHoldVal" for="rbHoldThumb">6s</output>
+      </div>
+      <div class="rb-scrub" id="rbScrub" aria-label="seek bar">
+        <div class="rb-track">
+          <div class="rb-ticks" id="rbTicks"></div>
+          <div class="rb-fill" id="rbFill"></div>
+          <!-- Task G+++ (1625): event density markers — filmstrip 風 -->
+          <div class="rb-markers" id="rbMarkers" aria-hidden="true"></div>
+          <div class="rb-mk-tip" id="rbMkTip" aria-hidden="true"></div>
+          <div class="rb-thumb" id="rbThumb"
+               role="slider" tabindex="0"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+          <div class="rb-axis" id="rbAxis">
+            <span>-24h</span><span>-18h</span><span>-12h</span>
+            <span>-6h</span><span>now</span>
+          </div>
+        </div>
+      </div>
+      <div class="rb-clock" id="rbClock">
+        <span class="rb-abs" id="rbAbs">--:--</span>
+        <span class="rb-rel" id="rbRel">--</span>
+      </div>
+    </div>
+  </div>
+  <svg id="gsvg" xmlns="http://www.w3.org/2000/svg"></svg>
+  <!-- F1 net-controls: 力学/表示パラメータの即時チューニング（localStorage 永続化） -->
+  <div class="nctl" id="nctl">
+    <div class="nctl-hd" id="nctl-hd" title="クリックで開閉">
+      <span class="ic">▾</span><b>Tune</b><span class="sub">physics · view</span>
+    </div>
+    <div class="nctl-body">
+      <div class="nc-row" data-p="NSIZE">
+        <span class="lab">Node size</span><span class="val"></span>
+        <input type="range" min="6" max="28" step="1" aria-label="Node size">
+      </div>
+      <div class="nc-row" data-p="L">
+        <span class="lab">Link dist</span><span class="val"></span>
+        <input type="range" min="40" max="400" step="5" aria-label="Link distance">
+      </div>
+      <div class="nc-row" data-p="LWMUL">
+        <span class="lab">Link width</span><span class="val"></span>
+        <input type="range" min="0.5" max="3" step="0.1" aria-label="Link width">
+      </div>
+      <div class="nc-row" data-p="KR">
+        <span class="lab">Repel</span><span class="val"></span>
+        <input type="range" min="500" max="10000" step="100" aria-label="Repel force">
+      </div>
+      <div class="nc-row" data-p="GR">
+        <span class="lab">Center</span><span class="val"></span>
+        <input type="range" min="0" max="0.05" step="0.001" aria-label="Center gravity">
+      </div>
+      <div class="nc-row" data-p="KS">
+        <span class="lab">Link force</span><span class="val"></span>
+        <input type="range" min="0" max="0.15" step="0.005" aria-label="Link spring">
+      </div>
+      <div class="nc-foot"><button class="nc-reset" id="nc-reset">Reset</button></div>
+    </div>
+  </div>
+</section>
+
+<div id="toast"></div>
+<div id="gtip"></div>
+
+<!-- + NEW AGENT spawn modal (cockpit launch manifest) -->
+<div id="spawnmd" role="dialog" aria-modal="true" aria-labelledby="spm-tt"
+     aria-hidden="true" onclick="if(event.target===this)closeSpawnModal()">
+  <div class="spm-frame" role="document">
+    <div class="spm-hd">
+      <div>
+        <div class="spm-kicker">NEW AGENT</div>
+        <div class="spm-tt" id="spm-tt">Launch an agent</div>
+        <div class="spm-sub">identity · engine · directory · task</div>
+      </div>
+      <button class="spm-x" type="button" onclick="closeSpawnModal()"
+              title="cancel (Esc)" aria-label="close">✕</button>
+    </div>
+    <div class="spm-grid">
+      <div class="spm-row full spm-section">
+        <div class="spm-section-head">
+          <div class="spm-lab">agent identity</div>
+          <span class="spm-section-meta">optional · auto name available</span>
+        </div>
+        <div class="spm-name-card" id="spm-name-card" aria-live="polite">
+          <span class="spm-name-face">
+            <span id="spm-name-auto">∴</span>
+            <img id="spm-name-portrait" alt="" hidden
+                 onerror="portraitFallback(this)">
+          </span>
+          <span class="spm-name-main">
+            <span class="spm-name-card-label">launch identity</span>
+            <span class="spm-composite">
+              <span id="spm-adjective">AUTO</span><strong id="spm-scientist">NAME</strong>
+            </span>
+            <span class="spm-name-hint" id="spm-name-note">
+              Launcher will choose an available name
+            </span>
+          </span>
+          <button class="spm-shuffle" id="spm-shuffle" type="button">
+            ⟳ SHUFFLE
+          </button>
+        </div>
+        <div class="spm-agent-strip" id="spm-agent-strip" role="listbox"
+             aria-label="Scientist name">
+          <div class="spm-load">loading scientist roster</div>
+        </div>
+      </div>
+      <div class="spm-row full spm-section">
+        <div class="spm-section-head">
+          <div class="spm-lab">engine</div>
+          <span class="spm-section-meta" id="spm-engine-note">provider · model</span>
+        </div>
+        <div class="spm-provider-tabs" id="spm-providers"
+             role="tablist" aria-label="Provider"></div>
+        <div class="spm-models" id="spm-models" role="radiogroup"
+             aria-label="Model">
+          <div class="spm-load">loading engine catalog</div>
+        </div>
+        <div class="spm-effort-row" id="spm-effort-row" hidden>
+          <span class="spm-effort-label">EFFORT</span>
+          <div class="spm-efforts" id="spm-efforts"
+               role="radiogroup" aria-label="Reasoning effort"></div>
+          <span class="spm-effort-hint" id="spm-effort-hint"
+                aria-live="polite" hidden></span>
+        </div>
+      </div>
+      <div class="spm-row full spm-section">
+        <div class="spm-section-head">
+          <label class="spm-lab" for="spm-dir">launch directory</label>
+          <span class="spm-section-meta">presets or exact path</span>
+        </div>
+        <div class="spm-dir-pick">
+          <div class="spm-chipset" id="spm-dir-chips"
+               aria-label="Configured directories"></div>
+          <div class="spm-dir-typeahead">
+            <input type="text" id="spm-dir" maxlength="512"
+                   placeholder="Enter another directory" autocomplete="off"
+                   role="combobox" aria-autocomplete="list"
+                   aria-expanded="false" aria-controls="spm-dir-options">
+            <div class="spm-dir-options" id="spm-dir-options" role="listbox"
+                 aria-label="Directory suggestions" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="spm-row full">
+        <label class="spm-lab" for="spm-task">task description</label>
+        <textarea id="spm-task" maxlength="4000" rows="6"
+          placeholder="What should the child do? (becomes the inbox message body)"></textarea>
+      </div>
+      <details class="spm-row full spm-advanced" id="spm-advanced">
+        <summary>
+          <span>advanced</span>
+          <span class="spm-advanced-meta">parent · role · group · isolation</span>
+        </summary>
+        <div class="spm-advanced-grid">
+          <div class="spm-row full">
+            <label class="spm-lab" for="spm-parent">parent agent <span class="spm-opt">optional</span></label>
+            <select id="spm-parent"></select>
+          </div>
+          <div class="spm-row">
+            <label class="spm-lab" for="spm-role">role <span class="spm-opt">optional</span></label>
+            <input type="text" id="spm-role" maxlength="40" placeholder="調査 / 実装 / 検証">
+          </div>
+          <div class="spm-row">
+            <label class="spm-lab" for="spm-group">group <span class="spm-opt">optional</span></label>
+            <input type="text" id="spm-group" maxlength="24" placeholder="task-A-B">
+          </div>
+          <div class="spm-row full">
+            <label class="spm-lab">isolation</label>
+            <label class="spm-check">
+              <input type="checkbox" id="spm-worktree">
+              <span>Run in isolated worktree branch</span>
+            </label>
+            <div class="spm-wt-base" id="spm-wt-base">
+              <input type="text" id="spm-worktree-base" placeholder="base rev (default: main)"
+                     style="margin-top:0">
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="spm-foot">
+      <span class="spm-stat" id="spm-stat">ready · fill the form &amp; ▸ SPAWN</span>
+      <button type="button" class="spm-cancel" onclick="closeSpawnModal()">× CANCEL</button>
+      <button type="button" class="spm-spawn" id="spm-spawn" onclick="submitSpawn()">
+        <span class="spm-arrow">▸</span><span>SPAWN</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- network view 矩形多選択: 1個以上選択時に slide-in -->
+<div id="selbar" role="toolbar" aria-label="bulk node actions">
+  <div class="sb-cnt"><span class="sb-num" id="selbarNum">0</span><span class="sb-lab">Selected</span></div>
+  <button id="selbarExit" class="sb-btn" title="graceful exit (2-step confirm)"><span class="sb-i">↩</span><span class="sb-tx">Exit</span></button>
+  <button id="selbarResume" class="sb-btn sb-resume" title="resume in tmux (2-step confirm)"><span class="sb-i">↺</span><span class="sb-tx">Resume</span></button>
+  <button id="selbarReplay" class="sb-btn sb-replay" title="digest replay over network view"><span class="sb-i">▸</span><span class="sb-tx">Replay</span></button>
+  <button id="selbarClear" class="sb-x" title="clear selection (Esc)">× CLR</button>
+</div>
+
+<!-- edge thread drawer: network view で edge クリック時に右からスライドイン -->
+<aside id="edrawer" aria-hidden="true">
+  <div class="ed-bar">
+    <div class="ed-pair">
+      <span class="ed-a">—</span>
+      <span class="ed-arr">⇄</span>
+      <span class="ed-b">—</span>
+      <span class="ed-cnt">0</span>
+    </div>
+    <button class="ed-close" onclick="closeDrawer()" title="close (esc)">✕</button>
+  </div>
+  <div class="ed-list" id="ed-list"></div>
+</aside>
+
+<div id="term" aria-hidden="true" data-tab="hist">
+  <div class="tm-box">
+    <div class="tm-bar">
+      <span class="tm-led" id="tm-led"></span>
+      <img class="tm-portrait" id="tm-portrait" alt="" hidden
+           onerror="portraitFallback(this)">
+      <div class="tm-ident">
+        <span class="tm-nm" id="tm-nm">—</span>
+        <span class="tm-meta" id="tm-meta"></span>
+      </div>
+      <span class="tm-tabs" id="tm-tabs">
+        <button class="on" data-tab="hist">History</button>
+        <button data-tab="deliv">Output</button>
+      </span>
+      <span class="tm-grow"></span>
+      <button class="tm-exit-btn" id="tm-exit-btn" style="display:none">Exit</button>
+      <button class="tm-open" id="tm-open">OPEN TMUX</button>
+      <button class="tm-x" id="tm-x" title="Close (Esc)">Close</button>
+    </div>
+    <div class="tm-summary" id="tm-summary" aria-hidden="true"></div>
+    <section class="tm-spark" id="tm-spark" aria-hidden="true">
+      <header class="sp-bar">
+        <span class="sp-led"></span>
+        <span class="sp-ttl" id="sp-ttl">HISTORY</span>
+        <span class="sp-tot" id="sp-tot"></span>
+        <span class="sp-grow"></span>
+        <span class="sp-leg">
+          <span class="sp-chip mail">MAIL</span>
+          <span class="sp-chip spawn">SPAWN</span>
+          <span class="sp-chip exit">EXIT</span>
+        </span>
+      </header>
+      <div class="sp-frame">
+        <svg class="sp-svg" id="sp-svg" viewBox="0 0 720 64"
+             preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"
+             aria-label="agent activity history"></svg>
+        <div class="sp-tip" id="sp-tip" aria-hidden="true"></div>
+      </div>
+      <div class="sp-axis" id="sp-axis"></div>
+    </section>
+    <div class="tm-annot" id="tm-annot" aria-hidden="true"></div>
+    <div class="tm-hist" id="tm-hist"></div>
+    <div class="tm-deliv" id="tm-deliv"></div>
+    <div class="tm-foot">
+      <span id="tm-stat">…</span>
+    </div>
+  </div>
+</div>
