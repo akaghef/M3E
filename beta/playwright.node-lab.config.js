@@ -25,7 +25,7 @@ module.exports = defineConfig({
   },
   webServer: {
     command: `npx vite --host 127.0.0.1 --port ${PORT} --config vite.config.mjs`,
-    url: `http://127.0.0.1:${PORT}/src/labs/node/node-lab.html`,
+    url: `http://127.0.0.1:${PORT}/src/labs/node-draw/node-lab.html`,
     reuseExistingServer: false,
     cwd: __dirname,
     timeout: 30_000,

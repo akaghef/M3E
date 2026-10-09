@@ -1,3 +1,17 @@
+import { readAgentNode, agentNodeMetric, agentNodeLod } from "../shared/agent_node_data";
+import { initialLifecycleAnimationMapping, petCatalog, resolvePetSprite } from "./agent_node_assets";
+import agentNodeCss from "../shared/agent_node.css?inline";
+const agentNodeStyle = document.createElement("style");
+agentNodeStyle.textContent = agentNodeCss;
+document.head.append(agentNodeStyle);
+let renderedAgentNodeLod = agentNodeLod(1);
+let agentNodeLodRenderPending = false;
+window.addEventListener("m3e:viewport-changed", () => {
+  if (agentNodeLod(viewState.zoom) === renderedAgentNodeLod || agentNodeLodRenderPending
+    || !map || !Object.values(map.state.nodes).some(node => readAgentNode(node))) return;
+  agentNodeLodRenderPending = true;
+  requestAnimationFrame(() => { agentNodeLodRenderPending = false; render(); });
+});
 import { OrreryNetwork } from "./orrery_network";
 import {
   layout as layoutPortLayout,
@@ -4431,6 +4445,8 @@ function refreshLinearPanelCanvasLayout(): boolean {
 }
 
 function webglSurfaceSupported(): boolean {
+  // Agent glyphs use the shared SVG renderer until the WebGL renderer supports them.
+  if (map && Object.values(map.state.nodes).some(node => readAgentNode(node))) return false;
   if (orreryNetwork.enabled) return false; // NETWORK retains the existing SVG renderer until card WebGL parity.
   return WEBGL_RENDERER_REQUESTED && !webglFallbackReason && (viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode());
 }
@@ -5232,6 +5248,21 @@ function syncInlineEditorPosition(): void {
   }
 
   const node = getNode(nodeId);
+  const agentTitle = canvas.querySelector<SVGTextElement>(`[data-agent-node-id="${CSS.escape(nodeId)}"] [data-field="title"]`);
+  if (readAgentNode(node) && agentTitle) {
+    const rect = agentTitle.getBoundingClientRect();
+    const boardRect = board.getBoundingClientRect();
+    const style = getComputedStyle(agentTitle);
+    const fontSize = parseFloat(style.fontSize) * viewState.zoom;
+    Object.assign(inlineEditor.input.style, {
+      left: `${rect.left - boardRect.left}px`, top: `${rect.top - boardRect.top}px`,
+      width: `${Math.max(rect.width, 180 * viewState.zoom)}px`, minWidth: "0",
+      minHeight: `${fontSize * 1.4}px`, fontSize: `${fontSize}px`, lineHeight: "1.4",
+      fontWeight: style.fontWeight, color: style.fill, padding: "0", transform: "none", textAlign: "left",
+    });
+    setEditedSvgLabelVisibility(nodeId, false);
+    return;
+  }
   const isRootLabel = nodeId === map.state.rootId;
   const nodeStyles = readNodeStyleAttrs(node.attributes || {});
   const label = isRootLabel ? uiLabel(node) : diagramLabel(node, nodeStyles);
@@ -5266,7 +5297,7 @@ function syncInlineEditorPosition(): void {
 
 function setEditedSvgLabelVisibility(nodeId: string, visible: boolean): void {
   canvas
-    .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"]`)
+    .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"], [data-agent-node-id="${CSS.escape(nodeId)}"] [data-field="title"]`)
     .forEach((label) => {
       label.style.visibility = visible ? "" : "hidden";
     });
@@ -7489,6 +7520,8 @@ function measureLayoutNode(state: AppState, nodeId: string, displayRootId: strin
   if (!node) {
     return { w: 120, h: VIEWER_TUNING.layout.leafHeight };
   }
+  const agent = readAgentNode(node);
+  if (agent) return agentNodeMetric(agent);
   if (nodeId === displayRootId) {
     if (config.mode === "tree") {
       const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
@@ -7575,7 +7608,8 @@ function buildLayout(state: AppState): LayoutResult {
     descendants.forEach((nodeId) => {
       const depth = scatterDepthOf[nodeId] ?? 0;
       const radius = scatterRadiusFor(nodeId, depth, descendants.length);
-      boxSizes[nodeId] = { w: radius * 2, h: radius * 2 };
+      const agent = readAgentNode(state.nodes[nodeId]);
+      boxSizes[nodeId] = agent ? agentNodeMetric(agent) : { w: radius * 2, h: radius * 2 };
     });
     options.surfaceNodeViews = surface?.nodeViews || {};
     options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
@@ -7735,6 +7769,7 @@ function graphLinkLabelPointForRoute(
 }
 
 function render(): void {
+  renderedAgentNodeLod = agentNodeLod(viewState.zoom);
   updateModeBadge();
   if (!map) {
     syncThinkingModeUi();
@@ -8158,7 +8193,15 @@ function render(): void {
     const label = diagramLabel(node, nodeStyles);
     const aliasState = nodeDrawAliasState(node);
     const fontSize = p.fontSize ?? (treatAsRoot ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
-    const content = isLatexNode(node)
+    const agent = readAgentNode(node);
+    const content: NodeDrawInput["content"] = agent ? {
+      kind: "agent", agent: {
+        card: agent, width: 320, lod: agentNodeLod(viewState.zoom), displayAt: Date.now(),
+        sprite: petCatalog.some(pet => pet.id === agent.icon)
+          ? resolvePetSprite(agent.icon, agent.lifecycleState, initialLifecycleAnimationMapping, true)
+          : undefined,
+      },
+    } : isLatexNode(node)
       ? { kind: "latexHtml" as const, ...renderLatexHtml(node.text) }
       : {
           kind: "plainLabel" as const,
@@ -11970,8 +12013,9 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
   if (!wasWebGL) {
     setEditedSvgLabelVisibility(nodeId, true);
   }
-  input.remove();
+  // Removing a focused textarea synchronously fires blur. Clear ownership first.
   inlineEditor = null;
+  input.remove();
 
   if (commit) {
     applyNodeTextEdit(nodeId, next, mode);
@@ -12018,8 +12062,8 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   const { nodeId, input } = inlineEdgeLabelEditor;
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
-  input.remove();
   inlineEdgeLabelEditor = null;
+  input.remove();
   if (commit) {
     applyIncomingEdgeLabelEdit(nodeId, next);
   }

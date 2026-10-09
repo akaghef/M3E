@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 608
+- Indexed files: 611
 
 ## Reading Routes
 
@@ -21,7 +21,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
-| [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-04-20 |
+| [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-09-17 |
 | [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-07-19 |
 | [00_Home/Glossary.md](<./00_Home/Glossary.md>) | Markdown | Glossary — M3E 用語辞書 | M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。 |
 | [00_Home/Home.md](<./00_Home/Home.md>) | Markdown | M3E — Home | 最終更新: 2026-04-20 |
@@ -148,6 +148,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md](<./09_Decisions/ADR_009_Orchestration_Fusion_Into_M3E.md>) | Markdown | ADR 009: Agent Orchestration の M3E 融合と実行境界 | Accepted. 一部を [ADR_011](./ADR_011_Agent_Orrery_As_M3E_Map.md) が更新（2026-08-26）: |
 | [09_Decisions/ADR_010_Radial_Surface_View_Removal.md](<./09_Decisions/ADR_010_Radial_Surface_View_Removal.md>) | Markdown | ADR_010: Radial Surface View を廃止し Tree へ畳む | Surface View 正本は `Tree / Axial / Radial / Disperse / System` の5種としていた。 |
 | [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
+| [09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](<./09_Decisions/ADR_012_Radial_Surface_View_Restoration.md>) | Markdown | ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する | ADR_010 は、当時の実装が canon の角度系（`clockwise / counterclockwise / balanced`）を |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections
@@ -644,6 +645,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
+| [tasks/agent-node-map.md](<./tasks/agent-node-map.md>) | Markdown | Agent nodeを通常マップへ組み込む | 新規のM3EマップにAgent nodeを並べる。除外するのはAgent runtimeへの接続であり、既存M3Eの作成・保存・編集・Undo・再読み込みは使用する。専用preview URL、読み取り専用化、追加の操作バー、独立した... |
 | [tasks/handoff_20260604_1411_mapify-io-possibilities.md](<./tasks/handoff_20260604_1411_mapify-io-possibilities.md>) | Markdown | Handoff: Mapify I/O 機能の可能性 | 作成日時: 2026-06-04 14:11 JST |
 | [tasks/handoff_cloud_sync_conflict_resolution.md](<./tasks/handoff_cloud_sync_conflict_resolution.md>) | Markdown | Handoff: Cloud Sync 競合解決 — Merge Mode 実装 | Cloud Sync 競合時に GitHub-like な diff 表示 + node 単位マージ選択を実装する。 |
 | [tasks/handoff_cloud_sync_conflict_ui.md](<./tasks/handoff_cloud_sync_conflict_ui.md>) | Markdown | Handoff: Cloud Sync 競合UI改善 | Cloud Sync で競合 (conflict) が発生した際の UI を改善する。 |
@@ -694,6 +696,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
+| [protocols/agent-node-icon-import.md](<./protocols/agent-node-icon-import.md>) | Markdown | Agent node アイコン取り込み規則 | Agent node の素材追加・画像差し替え・コマ定義・再生処理を変更するときに適用する。 |
 | [protocols/AGENTS.md](<./protocols/AGENTS.md>) | Markdown | Protocols Agent Guide | `docs/protocols/` contains AI operating contracts. Treat these files as canonical for agent behavior. |
 | [protocols/codex-claude-sync.md](<./protocols/codex-claude-sync.md>) | Markdown | Codex / Claude Instruction Sync Protocol | Codex and Claude must see compatible M3E rules while preserving their different roles: |
 | [protocols/contracts/map_manager_contract.yaml](<./protocols/contracts/map_manager_contract.yaml>) | File | map manager contract | File |

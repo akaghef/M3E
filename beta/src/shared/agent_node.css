@@ -1,0 +1,47 @@
+:where(.node-lab, .agent-node) {
+  --agent-normal: #3978d4;
+  --agent-awaiting: #e5b91f;
+  --agent-stalled: #df7b24;
+  --agent-done: #34935c;
+  --agent-error: #c94747;
+  --agent-archived: #7d8797;
+  --agent-unset: #ffffff;
+}
+
+:where(.node-lab, .agent-node) .agent-semantic-normal { --agent-color: var(--agent-normal); --agent-color-ink: #245ca8; }
+:where(.node-lab, .agent-node) .agent-semantic-awaiting { --agent-color: var(--agent-awaiting); --agent-color-ink: #8a6a00; }
+:where(.node-lab, .agent-node) .agent-semantic-stalled { --agent-color: var(--agent-stalled); --agent-color-ink: #a34f0b; }
+:where(.node-lab, .agent-node) .agent-semantic-done { --agent-color: var(--agent-done); --agent-color-ink: #247444; }
+:where(.node-lab, .agent-node) .agent-semantic-error { --agent-color: var(--agent-error); --agent-color-ink: #a52f2f; }
+:where(.node-lab, .agent-node) .agent-semantic-archived { --agent-color: var(--agent-archived); --agent-color-ink: #586171; }
+:where(.node-lab, .agent-node) .agent-semantic-unset { --agent-color: var(--agent-unset); --agent-color-ink: #687181; }
+:where(.node-lab, .agent-node) .agent-card { font-family: Inter, "Segoe UI", "Yu Gothic UI", sans-serif; }
+:where(.node-lab, .agent-node) .agent-card-outer { fill: rgba(255, 255, 255, .7); stroke: var(--agent-color); stroke-width: 1.8; }
+:where(.node-lab, .agent-node) .agent-card-outer.agent-card-attention { stroke: var(--agent-awaiting); stroke-width: 3; filter: drop-shadow(0 0 3px rgba(229, 185, 31, .4)); }
+:where(.node-lab, .agent-node) .agent-card-semantic-dot { fill: var(--agent-color); stroke: rgba(32, 38, 49, .45); stroke-width: 1; }
+:where(.node-lab, .agent-node) .agent-card-surface { fill: var(--agent-color); fill-opacity: .10; stroke: var(--agent-color); stroke-opacity: .38; stroke-width: 1; }
+:where(.node-lab, .agent-node) .agent-card-pet { overflow: hidden; }
+:where(.node-lab, .agent-node) .agent-card-pet-placeholder { fill: #eef1f5; stroke: #adb5c1; stroke-width: 1; stroke-dasharray: 3 2; }
+:where(.node-lab, .agent-node) .agent-card-pet-placeholder-text { fill: #586270; font-size: 9px; }
+:where(.node-lab, .agent-node) .agent-card-header { fill: #242c37; font-weight: 650; letter-spacing: .012em; }
+:where(.node-lab, .agent-node) .agent-card-field-label { fill: #303946; font-weight: 650; }
+:where(.node-lab, .agent-node) .agent-card-field-value { fill: #485261; }
+:where(.node-lab, .agent-node) .agent-card-rule { stroke: #919aa7; stroke-width: 1; }
+:where(.node-lab, .agent-node) .agent-card-meta { fill: #505a68; font-weight: 550; }
+:where(.node-lab, .agent-node) .agent-card-state { fill: var(--agent-color-ink); font-weight: 750; }
+:where(.node-lab, .agent-node) .agent-card-middle-name { fill: #252d38; font-size: 12px; font-weight: 650; }
+:where(.node-lab, .agent-node) .agent-card-middle-state { fill: var(--agent-color-ink); font-size: 10px; font-weight: 700; }
+
+
+:where(.node-lab, .agent-node) .agent-node-content-rule{stroke:#bcc7d7;stroke-width:.8}
+:where(.node-lab, .agent-node) .agent-card-surface.agent-card-attention{stroke:var(--agent-awaiting);stroke-opacity:1;stroke-width:2.5}
+
+/* Disperse uses the product's dark map canvas. */
+.scatter-surface-active .agent-node .agent-card-header,
+.scatter-surface-active .agent-node .agent-card-middle-name { fill: #e6edf7; }
+.scatter-surface-active .agent-node .agent-card-field-value,
+.scatter-surface-active .agent-node .agent-card-meta { fill: #aebed4; }
+.scatter-surface-active .agent-node .agent-card-state { fill: var(--agent-color); }
+.agent-node.selected .agent-card-surface { stroke: #739fea; stroke-opacity: .9; stroke-width: 2; }
+.agent-node.cut-pending { opacity: .45; }
+.agent-node .agent-node-hit { fill: transparent !important; stroke: none !important; pointer-events: all; }
