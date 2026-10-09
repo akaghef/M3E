@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "state": {
+    "rootId": "root",
+    "nodes": {
+      "root": { "id": "root", "parentId": null, "children": ["1", "2", "3", "4", "5"], "text": "並べ替え", "collapsed": false, "details": "", "note": "", "attributes": {}, "link": "" },
+      "1": { "id": "1", "parentId": "root", "children": [], "text": "1", "collapsed": false, "details": "", "note": "", "attributes": {}, "link": "" },
+      "2": { "id": "2", "parentId": "root", "children": [], "text": "2", "collapsed": false, "details": "", "note": "", "attributes": {}, "link": "" },
+      "3": { "id": "3", "parentId": "root", "children": [], "text": "3", "collapsed": false, "details": "", "note": "", "attributes": {}, "link": "" },
+      "4": { "id": "4", "parentId": "root", "children": [], "text": "4", "collapsed": false, "details": "", "note": "", "attributes": {}, "link": "" },
+      "5": { "id": "5", "parentId": "root", "children": [], "text": "5", "collapsed": false, "details": "", "note": "", "attributes": {}, "link": "" }
+    }
+  }
+}

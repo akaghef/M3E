@@ -149,6 +149,8 @@ function edgeDirectionForLayout(
 }
 
 export interface LayoutOptions {
+  /** Viewer-owned derived cache. Omit for a stateless reference layout. */
+  treeCache?: TreeSpanCache;
   displayRootId?: string;
   structuredMode?: StructuredLayoutMode;
   space?: LayoutSpace;
@@ -190,6 +192,7 @@ interface StructuredLayoutConfig {
 }
 
 interface MeasuredTreeContext {
+  spans?: Record<string, number>;
   displayRootId: string;
   metrics: Record<string, LayoutNodeMetric>;
   depthOf: Record<string, number>;
@@ -276,7 +279,44 @@ function buildMeasuredTreeContext(
   }
 
   visit(displayRootId, 0);
-  return { displayRootId, metrics, depthOf, depthMaxExtent, maxDepth, config, depthAlign: options.depthAlign || "packed", axis };
+  const spans = options.treeCache?.prepare(displayRootId, graph.childrenOf, metrics, axis.breadthExtent, config.siblingGap);
+  return { displayRootId, metrics, depthOf, depthMaxExtent, maxDepth, config, depthAlign: options.depthAlign || "packed", axis, spans };
+}
+
+/** Recompute changed branch extents only; unchanged child results stop propagation.
+ * Traversal/order and level alignment still use the canonical layout algorithm.
+ */
+export class TreeSpanCache {
+  private entries = new Map<string, { key: string; span: number }>();
+  computed = 0;
+  clear(): void { this.entries.clear(); }
+  prepare(root: string, childrenOf: (id: string) => string[], metrics: Record<string, LayoutNodeMetric>,
+    breadth: (metric: LayoutNodeMetric) => number, gap: number): Record<string, number> {
+    this.computed = 0;
+    const spans: Record<string, number> = {};
+    const visit = (id: string): number => {
+      const metric = metrics[id];
+      if (!metric) return LAYOUT.leafHeight;
+      const children = childrenOf(id);
+      const childSpans = children.map(visit);
+      const extent = breadth(metric);
+      const key = JSON.stringify([extent, gap, children, childSpans]);
+      let entry = this.entries.get(id);
+      if (entry?.key !== key) {
+        const span = children.length === 0
+          ? Math.max(LAYOUT.leafHeight, extent + gap)
+          : Math.max(childSpans.reduce((sum, value) => sum + value, 0) + gap * (children.length - 1), extent + 24);
+        entry = { key, span };
+        this.entries.set(id, entry);
+        this.computed++;
+      }
+      spans[id] = entry.span;
+      return entry.span;
+    };
+    visit(root);
+    this.entries.forEach((_entry, id) => { if (!(id in spans)) this.entries.delete(id); });
+    return spans;
+  }
 }
 
 function normalizeLayoutMode(mode: LayoutModeInput): LayoutMode {
@@ -414,7 +454,7 @@ function buildRightTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeContex
     cursorX += (depthMaxExtent[d] ?? 120) + config.columnGap;
   }
 
-  const subtreeHeightCache: Record<string, number> = {};
+  const subtreeHeightCache: Record<string, number> = ctx.spans || {};
   const pos: Record<string, LayoutNodePosition> = {};
   const order: string[] = [];
   const depthOffsetFactor = depthAlign === "aligned" ? 0 : LAYOUT.depthOffsetFactor;
@@ -512,7 +552,7 @@ function buildBifurcatedTreeLayout(graph: VisibleLayoutGraph, ctx: MeasuredTreeC
     rightXByDepth[d] = rightXByDepth[d - 1]! + (depthMaxExtent[d - 1] ?? 120) + config.columnGap;
     leftXByDepth[d] = leftXByDepth[d - 1]! - config.columnGap - (depthMaxExtent[d] ?? 120);
   }
-  const spanCache: Record<string, number> = {};
+  const spanCache: Record<string, number> = ctx.spans || {};
   const { left, right } = splitBifurcatedTreeSides(graph, displayRootId, config.spread);
   const sideGap = config.sideGap;
   const sideSpan = (ids: string[]) => ids.reduce((sum, id, index) => (

@@ -4,6 +4,28 @@
 > アクションの説明は [Actions_Beta.md](./Actions_Beta.md) を参照。  
 > `—` は未割り当て。
 
+## プラットフォームとモード（2026-09-17）
+
+`Mod` は共通操作用の修飾キーを表す。Mac は **Command**、Windows / Linux は **Control**。
+Mac の Control と Command は同義ではない。Windows の Windows キー（Meta）も Control の代替にしない。
+両方同時押しや未定義の修飾キー組合せは、修飾なしのノード操作へ読み替えない。
+
+| 操作 | Mac | Windows |
+|---|---|---|
+| コピー / カット / 貼り付け | Command+C / X / V | Control+C / X / V |
+| Undo | Command+Z | Control+Z |
+| Redo | Command+Shift+Z | Control+Shift+Z または Control+Y |
+| 全選択 | Command+A | Control+A |
+| 次ノードの編集 | Command+Enter | Control+Enter |
+
+上表の対象はモードで変わる。Navigate ではノード・マップ、Edit では入力中文字列が対象。
+Edit の `Mod+Enter` だけは次ノードへの編集移動となる。
+文字入力・文字選択・文字の Undo・IME はブラウザの入力欄が所有する。
+ホイールのピンチ判定やポインターの修飾キーは、このキーボード変更の対象外。
+
+モード遷移と確定タイミングの正本は [Actions_Beta.md のモード定義](./Actions_Beta.md#edit--navigate-のモード定義2026-09-17)。
+以下の割り当て表は、特記がなければ **Navigate** のもの。
+
 ---
 
 ## 単体キー（a–z）
@@ -39,44 +61,44 @@
 
 ---
 
-## Ctrl / Cmd + キー
+## Mod + キー
 
 | キー | アクション |
 |------|------------|
-| `Ctrl+a` | `selectAll` |
-| `Ctrl+b` | — |
-| `Ctrl+c` | `copy`（部分木と subtree 内 link を structured clipboard にコピー） |
-| `Ctrl+d` | — |
-| `Ctrl+e` | — |
-| `Ctrl+f` | — |
-| `Ctrl+g` | `groupSelected` |
-| `Ctrl+h` | — |
-| `Ctrl+i` | — |
-| `Ctrl+j` | — |
-| `Ctrl+k` | — |
-| `Ctrl+l` | — |
-| `Ctrl+m` | — |
-| `Ctrl+n` | — |
-| `Ctrl+o` | — |
-| `Ctrl+p` | — |
-| `Ctrl+q` | — |
-| `Ctrl+r` | — |
-| `Ctrl+s` | `downloadJson` |
-| `Ctrl+t` | — |
-| `Ctrl+u` | — |
-| `Ctrl+v` | `paste`（同一タブまたは structured clipboard から貼り付け） |
-| `Ctrl+w` | — |
-| `Ctrl+x` | `cut` |
-| `Ctrl+y` | `redo` |
-| `Ctrl+z` | `undo` |
-| `Ctrl+Shift+c` | `copyNodePath` |
-| `Ctrl+Shift+i` | `copyScopeId` |
-| `Ctrl+Shift+z` | `redo` |
-| `Ctrl+Shift+t` | `generateRelatedTopics` |
-| `Ctrl+Shift+l` | `applyMarkedLink` |
-| `Ctrl+Alt+c` | `copyNodePath`（Mac-safe 代替。Option 入力は物理キーで判定） |
-| `Ctrl+Alt+i` | `copyScopeId`（Mac-safe 代替。Option 入力は物理キーで判定） |
-| `Ctrl+0` | `fitAll` |
+| `Mod+a` | `selectAll` |
+| `Mod+b` | — |
+| `Mod+c` | `copy`（部分木と subtree 内 link を structured clipboard にコピー） |
+| `Mod+d` | — |
+| `Mod+e` | — |
+| `Mod+f` | — |
+| `Mod+g` | `groupSelected` |
+| `Mod+h` | — |
+| `Mod+i` | — |
+| `Mod+j` | — |
+| `Mod+k` | — |
+| `Mod+l` | — |
+| `Mod+m` | `toggleReparentSource`（移動元の指定を切替） |
+| `Mod+n` | — |
+| `Mod+o` | `openSelectedHyperlinkNode` |
+| `Mod+p` | — |
+| `Mod+q` | — |
+| `Mod+r` | — |
+| `Mod+s` | `downloadJson` |
+| `Mod+t` | — |
+| `Mod+u` | — |
+| `Mod+v` | `paste`（同一タブまたは structured clipboard から貼り付け） |
+| `Mod+w` | — |
+| `Mod+x` | `cut` |
+| `Ctrl+y`（Windows / Linux のみ） | `redo` |
+| `Mod+z` | `undo` |
+| `Mod+Shift+c` | `copyNodePath` |
+| `Mod+Shift+i` | `copyScopeId` |
+| `Mod+Shift+z` | `redo` |
+| `Mod+Shift+t` | `generateRelatedTopics` |
+| `Shift+l`（Mod なし） | `applyMarkedLink` |
+| `Mod+Alt+c` | `copyNodePath`（Mac-safe 代替。Option 入力は物理キーで判定） |
+| `Mod+Alt+i` | `copyScopeId`（Mac-safe 代替。Option 入力は物理キーで判定） |
+| `Mod+0` | `fitAll` |
 
 ---
 
@@ -86,15 +108,15 @@ M3E が `preventDefault()` していないため、通常のブラウザ操作�
 
 | キー | ブラウザ動作 |
 |------|--------------|
-| `Ctrl+f` | ページ内検索 |
-| `Ctrl+h` | 履歴を開く |
-| `Ctrl+l` | アドレスバーへフォーカス |
-| `Ctrl+r` | 再読み込み |
+| `Mod+f` | ページ内検索 |
+| `Ctrl+h`（Windows） / `Command+y`（Mac） | 履歴を開く |
+| `Mod+l` | アドレスバーへフォーカス |
+| `Mod+r` | 再読み込み |
 | `F5` | 再読み込み |
-| `Ctrl+t` | 新しいタブ |
-| `Ctrl+w` | 現在のタブを閉じる |
+| `Mod+t` | 新しいタブ |
+| `Mod+w` | 現在のタブを閉じる |
 
-補足: `Ctrl+s` は M3E の `downloadJson`、`Ctrl+0` は `fitAll` として扱うためブラウザ標準動作ではない。
+補足: `Mod+s` は M3E の `downloadJson`、`Mod+0` は `fitAll` として扱うためブラウザ標準動作ではない。
 
 ---
 
@@ -121,7 +143,7 @@ M3E が `preventDefault()` していないため、通常のブラウザ操作�
 | `Tab` | `addChild` |
 | `Enter` | `startEditCursorEnd` |
 | `Shift+Enter` | `startEditSelectAll` |
-| `Ctrl+Enter` | `cancelAndEditNext`（`Esc` -> `Down` -> `Enter` と同等） |
+| `Mod+Enter` | `finishAndEditNext`（`Esc` -> `Down` -> `Enter` と同等。編集中の内容は保持） |
 | `Alt+J` | `jumpToAliasTarget` |
 | `Alt+A` | `addAliasAsChild` |
 | `Alt+V` | `cycleView`（focus → fit all のトグル） |
@@ -133,7 +155,7 @@ M3E が `preventDefault()` していないため、通常のブラウザ操作�
 | `Backspace` | `delete` |
 | `Escape` | `cancelCut` |
 
-| `Ctrl (hold 400ms)` | `showShortcutCheatsheet` |
+| `Mod (hold 400ms)` | `showShortcutCheatsheet` |
 | `Alt (hold 400ms)` | `showShortcutCheatsheet` |
 
 補足: `addSibling` は通常モードでは割り当てず、編集モード中の `Enter` に限定する。

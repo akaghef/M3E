@@ -2,6 +2,7 @@
 
 > アクション名 → 説明のリスト。アルファベット順。  
 > キーへの割り当ては [Keybindings_Beta.md](./Keybindings_Beta.md) を参照。
+> `Mod` = Mac の Command / Windows・Linux の Control。両者を同時に別名として扱わない。
 
 ---
 
@@ -12,10 +13,10 @@
 | `addSibling` | 選択ノードの兄弟を追加して編集開始 | breadth 方向に展開。`Enter`（編集モード中）で実行 |
 | `applyReparent` | `markReparent` でマークしたノードを現在の選択ノードの子として移動 | `markReparent` とセットで使用。循環移動は拒否 |
 | `cancelCut` | カット状態（`cut` で予約した移動）をキャンセル | |
-| `cancelAndEditNext` | `Esc` -> `Down` -> `Enter` を連続実行したのと同等の動作 | 通常モードでは cut 解除 -> 次ノード選択 -> 編集開始（文末カーソル）。編集モードでは編集破棄 -> 次ノード選択 -> 編集開始（文末カーソル） |
+| `finishAndEditNext` | `Esc` -> `Down` -> `Enter` を連続実行したのと同等の動作 | Navigate では cut 解除 -> 次ノード選択 -> 編集開始。Edit では編集確定 -> 次ノード選択 -> 編集開始。いずれも文末カーソル。旧 `cancelAndEditNext` の変更破棄という記述は廃止 |
 | `cycleView` | 1回目: 選択ノードを中央にフォーカス / 2回目: 全体フィット（交互にトグル） | `Alt+V` で連打 |
-| `copyNodePath` | 選択ノードのルートからのパス（`A / B / C` 形式）をクリップボードにコピー | `Ctrl+Shift+C` / `Ctrl+Alt+C`（Mac-safe 代替） |
-| `copyScopeId` | 現在のスコープの ID をクリップボードにコピー | `Ctrl+Shift+I` / `Ctrl+Alt+I`（Mac-safe 代替） |
+| `copyNodePath` | 選択ノードのルートからのパス（`A / B / C` 形式）をクリップボードにコピー | `Mod+Shift+C` / `Mod+Alt+C`（Mac-safe 代替） |
+| `copyScopeId` | 現在のスコープの ID をクリップボードにコピー | `Mod+Shift+I` / `Mod+Alt+I`（Mac-safe 代替） |
 | `copy` | 選択ノードの部分木をクリップボードにコピー | システムクリップボードには M3E structured clipboard をコピー。node 状態と subtree 内で完結する link を含む |
 | `cut` | 選択ノードを移動予約（カット）。`paste` で移動先に確定する | ノードはグレーアウト表示。`Esc` でキャンセル |
 | `delete` | 選択ノードの部分木を削除 | 複数選択中は selection root をすべて削除。root ノードは削除不可。`Backspace` で scope root を選択中かつ scope 履歴あり → scope を一段上に戻る |
@@ -24,16 +25,18 @@
 | `extendSelectionDown` | 選択範囲を breadth 方向に1ノード下へ拡張 | `navigateDown` との違い：単一選択に戻さず範囲を広げる |
 | `extendSelectionUp` | 選択範囲を breadth 方向に1ノード上へ拡張 | `navigateUp` との違い：単一選択に戻さず範囲を広げる |
 | `groupSelected` | 選択ノードを新しい共通親ノードにまとめる | 2ノード以上選択時のみ有効。新ノードの名前入力が開始される |
-| `downloadJson` | 現在のドキュメントを JSON ファイルとしてダウンロード | `Ctrl+S` で実行 |
+| `downloadJson` | 現在のドキュメントを JSON ファイルとしてダウンロード | `Mod+S` で実行 |
 | `jumpToAliasTarget` | エイリアスノードの参照先ノードへジャンプ | alias 以外では無効 |
 | `toggleFolder` | 選択ノードの folder スコープをトグル（folder ↔ 通常） | alias ノードは対象外。旧名 `makeFolder` |
 | `zoomIn` | ズームイン | `=` / `+` キー |
 | `zoomOut` | ズームアウト | `-` キー |
 | `zoomReset` | ズームを 100% にリセット | `0` キー |
-| `fitAll` | 全ノードが画面に収まるようフィット | `Ctrl+0` |
+| `fitAll` | 全ノードが画面に収まるようフィット | `Mod+0` |
 | `toggleMetaPanel` | メタパネルの表示/非表示をトグル | `I` キー |
 | `holdReparent` | ホールド未設定 → 選択ノードをホールド。ホールド済み → ホールドノードを現在選択ノードの子として reparent | `Alt+M` でトグル操作。`Esc` でキャンセル |
 | `markReparent` | 選択ノードを reparent の移動元としてマーク | 複数選択中は全選択ノードをマーク。その後 `applyReparent` で実行 |
+| `toggleReparentSource` | 選択ノードの移動元指定を切り替える | `Mod+M` |
+| `openSelectedHyperlinkNode` | 選択ノードのハイパーリンクを開く | `Mod+O` |
 | `navigateDown` | 選択を1ステップ下方向へ移動 | tree surface では breadth 方向（兄弟）の次ノード。system surface では下段候補へ移動。単一選択に戻す |
 | `navigateLeft` | 選択を1ステップ左方向へ移動 | tree surface では親方向。scope root では `exitScope`。system surface では左隣候補へ移動 |
 | `navigateRight` | 選択を1ステップ右方向へ移動 | tree surface では第一子方向。folder 選択時は `enterScope` を優先するが、子が無い場合のみ。system surface では右隣候補へ移動 |
@@ -48,7 +51,7 @@
 | `thinkingDeep` | 思考モードを deep（深掘り）に切り替え | |
 | `thinkingFlash` | 思考モードを flash（素早い発想）に切り替え | |
 | `thinkingRapid` | 思考モードを rapid（標準）に切り替え | |
-| `showShortcutCheatsheet` | ショートカット一覧をオーバーレイ表示 | Ctrl または Alt を単体で 400ms 長押しすると表示。キーを離すと閉じる |
+| `showShortcutCheatsheet` | ショートカット一覧をオーバーレイ表示 | Mod または Alt を単体で 400ms 長押しすると表示。キーを離すと閉じる |
 | `toggleCollapse` | 選択ノードの折り畳み／展開をトグル | 複数選択中は全選択ノードに適用 |
 | `undo` | 直前の操作を取り消す | |
 
@@ -59,27 +62,61 @@
 | 操作 | 説明 | 備考 |
 |------|------|------|
 | クリック | ノードを単一選択 | アンカーをリセット |
-| `Ctrl/Cmd` + クリック | ノードを選択にトグル追加／除外 | アンカーをクリックしたノードに更新 |
+| `Mod` + クリック | ノードを選択にトグル追加／除外 | アンカーをクリックしたノードに更新 |
 | `Shift` + クリック | アンカー〜クリックしたノードの範囲を選択 | `visibleOrder`（表示順）で範囲を決定 |
 | ダブルクリック | 子なし → `startEdit` / 子あり → `enterScope` | |
 | ノードをドラッグ → ドロップ | ドロップ先の子として reparent | |
 | 背景をドラッグ | キャンバスをパン | |
-| `Ctrl/Cmd` + ホイール | ズームイン／アウト | ポインター位置を中心にズーム |
+| `Mod` + ホイール | ズームイン／アウト | ポインター位置を中心にズーム |
 | ホイール（縦） | 上下スクロール（pan Y） | |
 | ホイール（横） | 左右スクロール（pan X） | |
 
 ---
 
-## インライン編集中のキー
+## Edit / Navigate のモード定義（2026-09-17）
 
-編集モード（`startEdit` 後）は通常モードとは別のキーマップになる。
+ノードラベル編集を対象とする。Edit 中も対象ノードの選択は維持する。
+Navigate はノードを選択・移動・操作する状態、Edit は選択ノードの文字列を編集する状態。
+モードの正本は編集セッションであり、DOM フォーカス・SVG/WebGL・描画フレームの完了ではない。
 
-| キー | 動作 |
-|------|------|
-| `Enter` | 編集を確定し、兄弟ノードを追加してそのまま編集開始 |
-| `Ctrl/Cmd+Enter` | 編集を破棄し、次ノードへ移動して編集開始（`Esc` -> `Down` -> `Enter` 相当） |
-| `Escape` | 編集をキャンセル（変更破棄） |
-| `Shift+Enter` | 改行を挿入 |
-| その他 | ブラウザ標準のテキスト入力（Ctrl+C/V/Z なども通常通り動作） |
+### Navigate：ノードを選択中
 
-補足: sibling 追加は編集モード中の `Enter` に限定し、通常モードの `Enter` は編集開始（文末カーソル）として扱う。
+| キー | 動作 | 次のモード |
+|---|---|---|
+| 矢印 | 選択ノードを移動 | Navigate |
+| Shift+↑ / ↓ | ノードの選択範囲を拡張 | Navigate |
+| Enter | 選択ノードの文末から編集 | Edit：同じノード |
+| Shift+Enter / F2 | 選択ノードの文字列を全選択して編集 | Edit：同じノード |
+| Tab / Shift+Tab | 子を1つ追加して編集（Shift+Tab は従来互換） | Edit：新しい子 |
+| Mod+Enter | cut 解除、次ノードを選択して文末から編集 | Edit：移動先 |
+| Escape | cut 予約を解除。ノード選択は保持 | Navigate |
+| Delete / Backspace | 選択部分木を削除。root 保護、Backspace の scope 戻りは既存条件を維持 | Navigate |
+| Mod+C / X / V / A / Z | 部分木コピー / カット / 貼付 / 全ノード選択 / マップ Undo | Navigate |
+| 文字キー | 定義済みの操作のみ。自動で Edit に入らない | Navigate |
+
+### Edit：ノードの文字列を編集中
+
+| キー | 動作 | 次のモード |
+|---|---|---|
+| 文字入力 / 矢印 / Shift+矢印 / Delete / Backspace | 文字入力・カーソル移動・文字選択・文字削除 | Edit：同じノード |
+| Enter | 編集確定、兄弟を1つ追加して編集 | Edit：新しい兄弟 |
+| Tab / Shift+Tab | 編集確定、子を1つ追加して編集（Shift+Tab は従来互換） | Edit：新しい子 |
+| Mod+Enter | 編集確定、次ノードへ移動して文末から編集 | Edit：移動先 |
+| Escape | **変更を保持・確定して編集終了**。キャンセルや Undo ではない | Navigate：同じノード |
+| Shift+Enter | 改行 | Edit：同じノード |
+| Mod+C / X / V / A / Z | ブラウザ標準の文字コピー / カット / 貼付 / 全文字選択 / 文字 Undo | Edit：同じノード |
+
+### 境界条件と実装契約
+
+- IME 変換中は Enter / Escape / Tab をノード操作にしない。文字入力側に委ねる。
+- 編集欄からの blur は内容を確定して Navigate へ戻る。削除に伴う再入 blur は、終了済み編集や次の編集を確定し直さない。
+- Edit で受けたキーは、その処理で編集欄を削除しても Navigate に伝播しない。1回のキー入力でノードを二重作成しない。
+- 新規ノードの編集開始は最新 map / layout を参照する。古い WebGL snapshot に存在しないことを理由に拒否しない。
+- 入力ごとの変更は対象ノードの draft とプレビューのみ。全体 layout・保存・Undo の更新は確定時。
+- root に兄弟は作れないため、root 編集中の Enter は既存どおり子作成。alias への子作成は禁止し、作成失敗を別の作成操作に読み替えない。
+- 次ノードがない場合は既存の選択移動規則に従い、現在ノードの Edit に留まる。
+- メニュー・ダイアログ・edge ラベル編集は別の入力所有者。edge ラベルの Escape による破棄は今回変更しない。
+- 非修飾キーへのフォールスルーは禁止。例：Mac の Control+Enter、Mod+Tab、Alt+Enter（ノードラベル編集中）でノードを追加しない。
+
+この節は、以前の「Escape / Mod+Enter でノードラベル変更を破棄」という記述を置き換える。
+描画方式の変更で本契約を変更しない。SVG と WebGL の両方で、編集後の内容・選択・ノード作成数・次のモードを検証する。

@@ -320,7 +320,7 @@ function diamondPath(cx: number, cy: number, w: number, h: number): string {
   return `M ${fmt(cx)} ${fmt(cy - h / 2)} L ${fmt(cx + w / 2)} ${fmt(cy)} L ${fmt(cx)} ${fmt(cy + h / 2)} L ${fmt(cx - w / 2)} ${fmt(cy)} Z`;
 }
 
-function multilineTextStartY(centerY: number, lines: number, fontSize: number, lineHeight: number): number {
+export function multilineTextStartY(centerY: number, lines: number, fontSize: number, lineHeight: number): number {
   if (lines <= 1) return centerY + fontSize * 0.35;
   return centerY - ((lines - 1) * lineHeight) / 2 + fontSize * 0.35;
 }
@@ -333,7 +333,7 @@ function multilineTspans(lines: string[], x: number, lineHeight: number): string
   )).join("");
 }
 
-function lineHeightForFont(fontSize: number): number {
+export function lineHeightForFont(fontSize: number): number {
   return Math.max(14, Math.round(fontSize * 1.25));
 }
 

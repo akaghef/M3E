@@ -22,8 +22,12 @@ const FIXTURE_PATH = path.resolve(__dirname, "..", "fixtures", "shortcut_test.js
  */
 async function launchViewer(page, map) {
   const isolatedRunId = `shortcut-test-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `testRun=${encodeURIComponent(isolatedRunId)}`;
+  // This legacy suite queries SVG DOM. WebGL parity has its own explicit suite.
+  const qs = `renderer=svg&testRun=${encodeURIComponent(isolatedRunId)}`;
   await page.goto(`/viewer.html?${qs}`);
+  // Do not race initial sample loading with the fixture import below.
+  await expect(page.locator("#board")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("#meta")).toContainText("nodes:");
 
   const payload = map || JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf-8"));
 

@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 609
+- Indexed files: 610
 
 ## Reading Routes
 
@@ -59,6 +59,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/home_scope_navigator.md](<./03_Spec/home_scope_navigator.md>) | Markdown | Home Screen / Scope Navigator -- Design Document | Date: 2025-04-09 |
 | [03_Spec/Home_Screen.md](<./03_Spec/Home_Screen.md>) | Markdown | Home Screen 仕様書 | 作成日: 2026-04-14 |
 | [03_Spec/Import_Export.md](<./03_Spec/Import_Export.md>) | Markdown | Import / Export 仕様 | > **MVP 対応状況を含む。** 未実装のものは「未実装」と明記する。 |
+| [03_Spec/Incremental_Viewer_Updates.md](<./03_Spec/Incremental_Viewer_Updates.md>) | Markdown | Viewer の編集確定時の差分更新 | ラベル確定とノード追加だけが差分更新を要求する。その他の変更、Undo / Redo、表示設定変更、外部state受信は既存の全更新経路でキャッシュを無効化する。 |
 | [03_Spec/Joint_Integration_Hub.md](<./03_Spec/Joint_Integration_Hub.md>) | Markdown | Joint Integration Hub — リマインダー & 外部サービス共通連携層 | 最終更新: 2026-04-22 |
 | [03_Spec/Linear_Tree_Conversion.md](<./03_Spec/Linear_Tree_Conversion.md>) | Markdown | Linear <-> Tree 変換仕様（Draft） | M3E の主構造（Tree）と線形表現（Linear）を相互に変換し、 |
 | [03_Spec/local_file_integration.md](<./03_Spec/local_file_integration.md>) | Markdown | ローカルファイル連携設計 | 最終更新: 2026-04-15 |
