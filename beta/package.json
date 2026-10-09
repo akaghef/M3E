@@ -48,7 +48,9 @@
     "test:e2e": "playwright test --config playwright.e2e.config.js",
     "test:e2e:headed": "playwright test --config playwright.e2e.config.js --headed",
     "perf:webgl:fixture": "node perf/run_webgl_pan_zoom.mjs --verify-only",
-    "perf:webgl:pan-zoom": "node perf/run_webgl_pan_zoom.mjs"
+    "perf:webgl:pan-zoom": "node perf/run_webgl_pan_zoom.mjs",
+    "check:agent-icons": "python3 ../scripts/ops/check-agent-node-icons.py",
+    "test:agent-node": "python3 ../scripts/ops/test-agent-node-icons.py && npm run check:agent-icons && vitest run tests/unit/agent_node.test.ts tests/unit/pet_sprite.test.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",

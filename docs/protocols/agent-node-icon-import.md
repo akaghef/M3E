@@ -1,0 +1,41 @@
+# Agent node アイコン取り込み規則
+
+Agent node の素材追加・画像差し替え・コマ定義・再生処理を変更するときに適用する。
+画像の寸法が割り切れることを、コマ配置や再生確認の証拠にしてはならない。
+
+## 素材と取り込み状態
+
+- 元画像は `beta/src/labs/node/pets/<pet>/spritesheet.webp` に置く。
+- `pet_catalog.json` は素材の識別子、実寸、SHA-256、取り込み状態を持つ。動作のコマ数を重複定義しない。
+- `pending-review` は未取り込み。ノードでは未取り込み表示、検査欄では元画像全体だけを表示する。固定192×208などで推測した切り出しを「静止アイコン」として出さない。
+- `verified` は同じディレクトリの `frame-regions.json` と画像検査・ブラウザ確認が揃った素材に限る。不正な定義を黙って静止画や別の素材に置き換えない。
+
+## コマ定義
+
+`frame-regions.json` は version、元画像のSHA-256と実寸、共通viewport、動作ごとの順序付きframes・fps、reviewを必須とする。
+各frameは元画像の整数矩形 `x/y/width/height` と、共通viewportでの `offsetX/offsetY` を持つ。
+コマ数はframesの長さを唯一の正本にする。画像の透明領域の解析は候補抽出の補助に限り、動作名・順序・正しいコマ数を確定する根拠にしない。
+
+各コマは独立して切り出し、一定倍率と共通の配置基準で描画する。隣コマへの横スライドで再生しない。
+ノード本体と動作プレビューは同じ `renderPetSprite` を使う。状態と動作の対応は別設定とし、見た目の動作から実際の稼働状態を推定しない。
+
+## 取り込み手順と必須検査
+
+1. 素材をpending-reviewとして登録し、元画像全体を目視する。
+2. 全動作の矩形・順序・fps・共通配置を定義する。idleを含める。
+3. 検査環境はPython 3とPillowを使う（`python3 -m pip install Pillow==11.3.0`）。`npm --prefix beta run check:agent-icons` を実行する。SHA-256、実寸、矩形境界、透明余白、コマ重複、可視画素の欠落、reviewとの対応を検査する。alpha > 16を可視画素とする。
+4. Agent node Labで各動作を再生・停止・再開し、全コマの欠け、隣コマ混入、倍率変化、不自然な位置ずれ、ループ境界を目視する。far/middle/nearで確認する。
+5. 確認した画像のSHA-256、日付、方法、全動作名をreviewに記録してverifiedへ進める。機械検査成功だけを目視確認と記録しない。
+6. 描画テストとブラウザテストを実行する。Seam Labs一覧から往復できることも確認する。
+
+画像を差し替えたら元のreviewは失効する。ハッシュだけを更新して検査を通してはならない。再びpending-reviewから確認する。
+この取り込みゲートはViteの起動・buildとCIで実行する。Pillow未導入など検査環境の不備はエラーにし、検査を省略して起動しない。
+
+## レイアウトの保持
+
+Agent node Labの正規URLは `/src/labs/node/node-lab.html`。Seam Labs一覧との相互リンクを保つ。
+far/middle/near、幅、Attention、Actor枚数、全素材選択、再生停止、経過時間更新、状態と動作の対応編集、動作検査、型付き入力確認を削らない。
+middleはアイコン・名前・タイトル・時間。近景は左アイコン、Realm/team/name、タイトル、本文、model/time/state。項目ラベルは付けず、診断情報は検査欄へ置く。
+装飾外枠なし、背景色の不透明度10%、文字とアイコンは通常の不透明度。状態見本は区切らず並べる。
+
+現在の描画はLab内の `beta/src/labs/node/agent_node.ts`。通常Viewerへの昇格は別工程であり、Labの成功を製品統合完了とみなさない。

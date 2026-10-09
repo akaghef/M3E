@@ -696,6 +696,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
+| [protocols/agent-node-icon-import.md](<./protocols/agent-node-icon-import.md>) | Markdown | Agent node アイコン取り込み規則 | Agent node の素材追加・画像差し替え・コマ定義・再生処理を変更するときに適用する。 |
 | [protocols/AGENTS.md](<./protocols/AGENTS.md>) | Markdown | Protocols Agent Guide | `docs/protocols/` contains AI operating contracts. Treat these files as canonical for agent behavior. |
 | [protocols/codex-claude-sync.md](<./protocols/codex-claude-sync.md>) | Markdown | Codex / Claude Instruction Sync Protocol | Codex and Claude must see compatible M3E rules while preserving their different roles: |
 | [protocols/contracts/map_manager_contract.yaml](<./protocols/contracts/map_manager_contract.yaml>) | File | map manager contract | File |
