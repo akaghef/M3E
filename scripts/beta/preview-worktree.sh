@@ -1,50 +1,35 @@
 #!/usr/bin/env bash
-# Preview a worktree's browser changes through the MAIN checkout's beta server.
-#
-# Why this exists: code-writing Codex tasks run in worktrees (/…/M3E-<task>),
-# but a worktree has no `better-sqlite3` native binding, so `npm start` crashes
-# there. The only way to *see* a worktree's UI change is to build its browser
-# bundle, drop the dist artifacts into the main checkout, and let the main
-# server (which DOES have the native binding) serve them. This collapses that
-# 3-step manual dance (build → copy dist → (re)start server) into one command.
-#
-# Usage:
-#   scripts/beta/preview-worktree.sh <worktree-path>
-#
-# After it runs, just RELOAD the browser at http://localhost:4173 — the server
-# serves dist/browser statically, so copied files show up on reload.
+# Preview a worktree on an isolated port and temporary database.
+# Never copy unmerged browser assets into the primary Beta checkout.
 set -euo pipefail
 
-# arm64 node: the system PATH puts an old Rosetta x64 node v14 first, which dies
-# on modern syntax (`??=`) during the vite build. Force Homebrew arm64 node v26.
-export PATH="/opt/homebrew/bin:${PATH}"
-
-MAIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKTREE="${1:?usage: preview-worktree.sh <worktree-path>}"
-PORT=4173
+WORKTREE="$(cd "$WORKTREE" && pwd)"
+PORT="${M3E_PREVIEW_PORT:-14175}"
 
-WORKTREE="$(cd "$WORKTREE" && pwd)"  # normalize to absolute
-if [[ ! -d "$WORKTREE/beta" ]]; then
-  echo "[preview] not an M3E worktree (no beta/): $WORKTREE" >&2
-  exit 1
+if [[ ! -f "$WORKTREE/beta/package.json" ]]; then
+  echo "[preview] not an M3E worktree: $WORKTREE" >&2
+  exit 2
 fi
-if [[ "$WORKTREE" == "$MAIN_DIR" ]]; then
-  echo "[preview] target is the main checkout — just run scripts/beta/launch.sh" >&2
-  exit 1
+if [[ ! "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 || PORT == 4173 )); then
+  echo "[preview] use a dedicated port other than 4173 (M3E_PREVIEW_PORT)." >&2
+  exit 2
 fi
-
-echo "[preview] building browser bundle in $WORKTREE"
-npm --prefix "$WORKTREE/beta" run build:browser
-
-echo "[preview] syncing dist/browser → main checkout"
-# No --delete: the main build may carry assets build:browser doesn't regenerate.
-rsync -a "$WORKTREE/beta/dist/browser/" "$MAIN_DIR/beta/dist/browser/"
-
 if lsof -ti tcp:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "[preview] server already live on :$PORT — RELOAD your browser to see changes"
-else
-  echo "[preview] no server on :$PORT — starting main server"
-  ( cd "$MAIN_DIR" && nohup npm --prefix beta start >/tmp/m3e-beta-"$PORT".log 2>&1 & )
-  echo "[preview] started in background (log: /tmp/m3e-beta-$PORT.log)"
-  echo "[preview] give it a few seconds, then open http://localhost:$PORT"
+  echo "[preview] port $PORT is already in use." >&2
+  exit 2
 fi
+if ! node -e 'const major = Number(process.versions.node.split(".")[0]); process.exit([20,22,23,24,25].includes(major) ? 0 : 1)'; then
+  echo "[preview] use a Node.js version supported by better-sqlite3 (20, 22-25)." >&2
+  exit 2
+fi
+if [[ ! -d "$WORKTREE/beta/node_modules" ]]; then
+  echo "[preview] install worktree dependencies first: npm --prefix '$WORKTREE/beta' ci" >&2
+  exit 2
+fi
+
+npm --prefix "$WORKTREE/beta" run build
+echo "[preview] isolated sample map: http://127.0.0.1:$PORT/viewer.html"
+echo "[preview] this server uses temporary data and exits with Ctrl-C."
+cd "$WORKTREE/beta"
+M3E_PORT="$PORT" exec node ./e2e_test_server.js

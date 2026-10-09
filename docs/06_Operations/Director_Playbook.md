@@ -82,8 +82,8 @@ Live beta data guard: do not allow Codex to create fixture, test, or temporary m
 
 ## 4.6 GUI / browser verification split
 
-Codex's sandbox refuses `listen 127.0.0.1` with `EPERM`, so **Codex can never run Playwright**.
-Anything that depends on runtime DOM is outside its reach. Enforce this split:
+ブラウザ検証の可否は実行環境で確認する。`listen 127.0.0.1` が `EPERM` になる環境では
+Director に実測を依頼する。実行できた worker は、そのターンで観測した結果だけを報告する。
 
 - **Runtime facts are the Director's job.** Write a throwaway probe spec, run it, and hand Codex the
   measured table. Keep probes out of the branch (scratchpad, or move them out before commit).
@@ -94,6 +94,10 @@ Anything that depends on runtime DOM is outside its reach. Enforce this split:
   `未実行（Director 依頼）` plus the list of specs to run. (Mirrored as C8 in `AGENTS.md`.)
 - **Codex must confirm its fix reduces the symptom** before reporting "fixed"; otherwise "未確認".
   A fix that leaves the defect count unchanged is not a fix.
+
+未マージ worktree のプレビューは `scripts/beta/preview-worktree.sh <worktree>` を使い、
+専用ポートと一時データで配信する。通常 Beta の `dist/browser` や 4173 番へ生成物をコピーしない。
+通常 Beta の受入確認は、ソースのマージ後に primary checkout から再ビルドして行う。
 
 Director-side traps, all hit in the 2026-08-25 layout merge:
 
@@ -164,10 +168,8 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   succeeded — verify by inspecting the worktree (git log / file contents), don't rely on its report.
 - 2026-06-16 — Codified four recurring Director inefficiencies into helpers (built after a
   layout-refactor session repeated the same manual steps 3+ times):
-  (1) **`scripts/beta/preview-worktree.sh <worktree>`** — a worktree has no `better-sqlite3`
-  native binding, so `npm start` can't run there. To *see* a worktree's UI change you must build
-  its browser bundle, copy dist into the main checkout, and serve from main. This script does all
-  three in one call; then just RELOAD http://localhost:4173 (server serves dist/browser statically).
+  (1) **`scripts/beta/preview-worktree.sh <worktree>`** — 当時は worktree の生成物を main checkout
+  へコピーしていた。この経路は 2026-10-09 に廃止し、専用ポート・一時データのプレビューへ変更した。
   (2) **`scripts/codex.sh exec --final "<handoff>"`** — plain `codex exec` dumps the whole run
   (often >1MB) to stdout; `--final` runs `--json` and prints ONLY Codex's last message. The live
   `--json` final event is `{"type":"item.completed","item":{"type":"agent_message","text":...}}`
@@ -175,10 +177,8 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   (3) **`scripts/ops/codex-grep.sh <query> [context]`** — search past Codex session logs
   (`~/.codex/sessions/**/*.jsonl`) for the user's own messages. Unescape via `json.loads('"'+body+'"')`,
   not naive `.replace` (handles `\uXXXX` / Japanese correctly). Newest-first; optional 2nd keyword to narrow.
-  (4) **Visual verification is impossible in this sandbox — do NOT retry it.** Playwright Chromium
-  (SIGTRAP), system Chrome (Crashpad SIGABRT), the Chrome extension (disconnects), and computer-use
-  (access denied) all fail here. Build + `preview-worktree.sh`, then DELEGATE the eyeball check to
-  akaghef (or a Codex session that has working browser access). Don't burn turns on screenshots.
+  (4) **当時の sandbox では visual verification が失敗した。** 現在の可否は実行環境ごとに検証し、
+  実際に観測した結果と未実行の結果を分けて報告する。
   Aside: `codex-session` `start.sh` hardcoded `MODEL=gpt-5.2` (rejected by ChatGPT-account Codex);
   patched to `${MODEL:-gpt-5.5}`, and its scripts needed `chmod +x`.
 - 2026-06-16 — Built isolated app `apps/test-case-board/` (Vite + React + @dnd-kit kanban) from a
