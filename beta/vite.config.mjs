@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 export default defineConfig({
+  base: "./",
   cacheDir: "../tmp/vite-cache",
   plugins: [
     react(),
@@ -63,12 +64,15 @@ export default defineConfig({
         assetFileNames: (assetInfo) => {
           const name = assetInfo.names?.[0] || assetInfo.name || "";
           if (!name.endsWith(".css")) return "assets/[name]-[hash][extname]";
+          if (name.includes("agent-map") || name.includes("agent-node-visual")) return "assets/[name]-[hash][extname]";
           if (name.includes("node-draw-lab")) return "node-draw-lab.css";
           if (name.includes("edge-port-lab")) return "edge-port-lab.css";
           if (name.includes("node-lab")) return "node-lab.css";
           if (name.includes("pn-lab")) return "pn-lab.css";
           if (name.includes("runtime-board")) return "runtime-board.css";
-          return name.includes("layout-lab") ? "layout-lab.css" : "workbench-ui.css";
+          if (name.includes("layout-lab")) return "layout-lab.css";
+          if (name.includes("workbench-ui")) return "workbench-ui.css";
+          return "assets/[name]-[hash][extname]";
         },
       },
     },
