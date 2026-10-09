@@ -37,6 +37,7 @@ export default defineConfig({
         "node-lab": "src/labs/node/node-lab.html",
         "pn-lab": "src/labs/pn/pn-lab.html",
         "runtime-board": "src/labs/runtime-board/runtime-board.html",
+        "agent-orrery-lab": "src/labs/agent-orrery/agent-orrery-lab.html",
       },
       output: {
         entryFileNames: "[name].js",
@@ -46,6 +47,7 @@ export default defineConfig({
           if (name.includes("node-lab")) return "node-lab.css";
           if (name.includes("pn-lab")) return "pn-lab.css";
           if (name.includes("runtime-board")) return "runtime-board.css";
+          if (name.includes("agent-orrery-lab")) return "agent-orrery-lab.css";
           return name.includes("layout-lab") ? "layout-lab.css" : "workbench-ui.css";
         },
       },
