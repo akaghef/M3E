@@ -8,8 +8,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 DRY_RUN=0
-NO_PR=0
-NO_CI_FIX=0
+NO_PR=1
+NO_CI_FIX=1
 NO_DATA=0
 TODAY="$(date +%F)"
 START_EPOCH="$(date +%s)"
@@ -50,7 +50,7 @@ usage() {
 Usage: scripts/ops/nightly-autopilot.sh [--dry-run] [--no-pr] [--no-ci-fix] [--no-data]
 
   --dry-run     Read and report only; no commits, pushes, PR merges, codex runs, or repo log writes.
-  --no-pr       Skip green PR merge stage.
+  --no-pr       Compatibility flag; PR sweep is disabled.
   --no-ci-fix   Poll/report CI but do not invoke codex to fix failures.
   --no-data     Skip m3e-data SQL snapshot stage.
   -h, --help    Show this help.
@@ -160,175 +160,40 @@ stage_data_snapshot() {
 }
 
 stage_dev_beta_latest() {
-  CURRENT_STEP="stage 0 dev-beta latest"
-  HEAD_BEFORE="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-
+  CURRENT_STEP="stage 0 clean dev-beta sync"
+  HEAD_BEFORE="$(git rev-parse --short HEAD)"
+  HEAD_AFTER="$HEAD_BEFORE"
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    local current_branch
-    current_branch="$(git branch --show-current)"
     STAGE_DEV_BETA="dry-run"
-    log "Dry run: current branch=$current_branch head=$HEAD_BEFORE"
-    log "Dry run: would ensure dev-beta, pull --ff-only, commit tracked changes, and push origin dev-beta."
-    HEAD_AFTER="$HEAD_BEFORE"
+    log "Dry run: require clean dev-beta and no unpublished commits; fetch and fast-forward only."
     return 0
   fi
-
-  if ! run git fetch origin dev-beta; then
-    STAGE_DEV_BETA="fail (git fetch)"
+  if [[ "$(git branch --show-current)" != "dev-beta" || -n "$(git status --porcelain)" ]]; then
+    STAGE_DEV_BETA="fail (dirty or wrong branch)"
     SKIP_CODE_STAGES=1
-    record_abort "git fetch origin dev-beta failed; code stages skipped"
+    record_abort "preserving unfinished work; require clean dev-beta"
     return 0
   fi
-
-  local current_branch
-  current_branch="$(git branch --show-current)"
-  if [[ "$current_branch" == "main" ]]; then
-    STAGE_DEV_BETA="fail (current branch main)"
+  if ! run git fetch origin dev-beta || ! git merge-base --is-ancestor HEAD origin/dev-beta; then
+    STAGE_DEV_BETA="fail (fetch or unpublished commits)"
     SKIP_CODE_STAGES=1
-    record_abort "refusing to operate from main branch"
+    record_abort "task owner must deliver unpublished/diverged commits"
     return 0
   fi
-
-  if [[ "$current_branch" != "dev-beta" ]]; then
-    if ! run git checkout dev-beta; then
-      STAGE_DEV_BETA="fail (checkout dev-beta)"
-      SKIP_CODE_STAGES=1
-      record_abort "git checkout dev-beta failed; code stages skipped"
-      return 0
-    fi
-  fi
-
-  set +e
-  git pull --ff-only origin dev-beta
-  local pull_status=$?
-  set -e
-  if [[ "$pull_status" -ne 0 ]]; then
-    STAGE_DEV_BETA="fail (non-fast-forward)"
+  if ! run git merge --ff-only origin/dev-beta; then
+    STAGE_DEV_BETA="fail (fast-forward)"
     SKIP_CODE_STAGES=1
-    record_abort "dev-beta is not fast-forwardable from origin/dev-beta; code stages skipped"
     return 0
   fi
-
-  if ! run git add -u; then
-    STAGE_DEV_BETA="fail (git add -u)"
-    SKIP_CODE_STAGES=1
-    record_abort "git add -u failed; code stages skipped"
-    return 0
-  fi
-  if git diff --cached --quiet; then
-    AUTO_COMMIT="none"
-  else
-    if ! run git commit -m "chore: nightly auto-commit ($TODAY)"; then
-      STAGE_DEV_BETA="fail (auto-commit)"
-      SKIP_CODE_STAGES=1
-      record_abort "nightly auto-commit failed; code stages skipped"
-      return 0
-    fi
-    AUTO_COMMIT="$(git rev-parse --short HEAD)"
-  fi
-
-  if ! run git push origin dev-beta; then
-    STAGE_DEV_BETA="fail (push dev-beta)"
-    SKIP_CODE_STAGES=1
-    record_abort "git push origin dev-beta failed; code stages skipped"
-    return 0
-  fi
-  PUSH_RESULT="pushed"
   HEAD_AFTER="$(git rev-parse --short HEAD)"
   STAGE_DEV_BETA="pass"
 }
 
-pr_checks_success_expr() {
-  cat <<'EOF'
-.[] |
-[
-  (.number | tostring),
-  (.title | gsub("\t"; " ") | gsub("\n"; " ")),
-  .mergeable,
-  .headRefName,
-  (
-    if ([.statusCheckRollup[]? |
-      select(
-        ((.status? // "COMPLETED") != "COMPLETED") or
-        ((.conclusion? // "SUCCESS") != "SUCCESS")
-      )
-    ] | length) == 0 then "checks-success" else "checks-not-success" end
-  )
-] | @tsv
-EOF
-}
-
 stage_green_pr_merge() {
-  CURRENT_STEP="stage 1 green PR merge"
-  if [[ "$NO_PR" -eq 1 ]]; then
-    STAGE_PR="skipped (--no-pr)"
-    return 0
-  fi
-
-  if [[ "$SKIP_CODE_STAGES" -eq 1 ]]; then
-    STAGE_PR="skipped (stage 0 failed)"
-    return 0
-  fi
-
-  set +e
-  gh auth status -h github.com >/dev/null 2>&1
-  local auth_status=$?
-  set -e
-  if [[ "$auth_status" -ne 0 ]]; then
-    STAGE_PR="fail (gh auth)"
-    record_abort "gh auth status failed; PR merge stage skipped"
-    return 0
-  fi
-
-  local pr_lines
-  set +e
-  pr_lines="$(gh pr list --base dev-beta --state open --json number,title,mergeable,headRefName,statusCheckRollup --jq "$(pr_checks_success_expr)" 2>&1)"
-  local list_status=$?
-  set -e
-  if [[ "$list_status" -ne 0 ]]; then
-    STAGE_PR="fail (gh pr list)"
-    record_abort "gh pr list failed: $pr_lines"
-    return 0
-  fi
-
-  if [[ -z "$pr_lines" ]]; then
-    STAGE_PR="pass (no open PRs)"
-    return 0
-  fi
-
-  local number title mergeable head_ref checks
-  while IFS=$'\t' read -r number title mergeable head_ref checks; do
-    if [[ -z "${number:-}" ]]; then
-      continue
-    fi
-
-    if [[ "$mergeable" == "MERGEABLE" && "$checks" == "checks-success" ]]; then
-      if [[ "$DRY_RUN" -eq 1 ]]; then
-        MERGED_PRS+="- #$number $title ($head_ref): would squash merge"$'\n'
-      else
-        if run gh pr merge "$number" --squash --delete-branch; then
-          MERGED_PRS+="- #$number $title ($head_ref)"$'\n'
-        else
-          SKIPPED_PRS+="- #$number $title ($head_ref): merge command failed"$'\n'
-        fi
-      fi
-    else
-      SKIPPED_PRS+="- #$number $title ($head_ref): mergeable=$mergeable checks=$checks"$'\n'
-    fi
-  done <<< "$pr_lines"
-
-  if [[ "$DRY_RUN" -eq 0 && -n "$MERGED_PRS" ]]; then
-    if run git pull --ff-only origin dev-beta; then
-      HEAD_AFTER="$(git rev-parse --short HEAD)"
-    else
-      STAGE_PR="partial (post-merge pull failed)"
-      record_abort "post-merge git pull --ff-only failed"
-      return 0
-    fi
-  fi
-
-  STAGE_PR="pass"
+  STAGE_PR="not-applicable (PR sweep retired)"
+  log "PR sweep retired; integrate only scoped, verified tasks."
 }
+
 
 run_list_for_head() {
   local head_sha="$1"
@@ -441,42 +306,8 @@ poll_ci_for_head() {
 }
 
 codex_ci_fix_once() {
-  local failed_id="$1"
-  local workflow="$2"
-  local log_excerpt
-  local handoff
-
-  set +e
-  log_excerpt="$(gh run view "$failed_id" --log-failed 2>&1 | head -c 12000)"
-  local log_status=$?
-  set -e
-  if [[ "$log_status" -ne 0 ]]; then
-    log_excerpt="Unable to fetch failed log for run $failed_id: $log_excerpt"
-  fi
-
-  handoff="$(cat <<EOF
-OBJECTIVE: Fix failing CI on dev-beta.
-
-Failing workflow: $workflow
-Failed run id: $failed_id
-
-Log excerpt:
-\`\`\`
-$log_excerpt
-\`\`\`
-
-Scope: this repository only.
-Constraints:
-- Make the minimal fix needed to restore CI.
-- Commit directly on dev-beta.
-- Do not touch final/ or main.
-- Do not force-push.
-- Run the narrowest relevant verification.
-EOF
-)"
-
-  run codex exec "$handoff" < /dev/null
-  run git push origin dev-beta
+  echo "CI repair requires a scoped worktree task under Worktree_Separation_Rules.md; this unattended script does not dispatch or push fixes." >&2
+  return 1
 }
 
 stage_ci_green_up() {
@@ -585,7 +416,7 @@ write_report() {
   {
     echo "# Nightly Autopilot Report - $TODAY"
     echo ""
-    echo "- started: $(date -r "$START_EPOCH" '+%Y-%m-%d %H:%M:%S')"
+    echo "- started: $(date -r "$START_EPOCH" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d "@$START_EPOCH" '+%Y-%m-%d %H:%M:%S')"
     echo "- finished: $(timestamp)"
     echo "- dry_run: $DRY_RUN"
     echo "- wall_budget_seconds: $WALL_BUDGET"
@@ -652,6 +483,7 @@ main() {
   run_stage "Stage 1: green PR merge" stage_green_pr_merge
   run_stage "Stage 2: CI green-up" stage_ci_green_up
   run_stage "Stage 3: report" write_report
+  [[ "$(overall_verdict)" != "FAIL" ]]
 }
 
 main

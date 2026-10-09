@@ -15,7 +15,7 @@ Claude-facing operating authority:
 
 Current execution model:
 
-- Claude = Director only: route, decompose, handoff, dispatch, review, worktree / PR management.
+- Claude = Director only: route, decompose, handoff, dispatch, review, worktree management and verified delivery.
 - Codex (`codex exec`) = sole worker: implementation, spec writing, refactoring, investigation, tests.
 - Claude sub-agent workers (`manage` / `visual` / `data` / `team`) are obsolete.
 

@@ -18,10 +18,10 @@ Use the Director Playbook template:
 
 For code-writing tasks, also include:
 
-- target worktree: `$HOME/dev/M3E-<task>`
-- target branch: `codex/<task>`
-- PR base: `dev-beta`
-- whether `beta_update` is required
+- target worktree: `$HOME/dev/M3E-worktrees/<task>`
+- target branch: `codex/<task>`; integration target: `dev-beta`
+- delivery owner, original symptom/acceptance, normal runtime URL and verification
+- whether this is explicitly draft-only; otherwise authorized implementation includes direct integration and applicable delivery under Worktree_Separation_Rules.md
 
 ## What to Include for Codex
 

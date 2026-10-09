@@ -62,6 +62,8 @@ $HOME/dev/
   M3E-private/         # repo-external private/public-danger material
 ```
 
+Integration and runtime delivery follow `docs/06_Operations/Worktree_Separation_Rules.md`. Generated assets from an unmerged branch must never replace normal Beta assets.
+
 Never place Git worktrees inside the primary checkout. Use `scripts/ops/worktree.sh` to create/list/remove task worktrees.
 
 ## Agent behavior

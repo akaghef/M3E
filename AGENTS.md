@@ -16,21 +16,14 @@ Orrery Telemetry と M3E の統合、PJ08 の着手・再開については、�
 
 ## Objective
 
-This repository is operated with a Director to Codex model.
+This repository uses isolated work and direct, verified delivery to dev-beta.
 Prefer small validated changes over broad refactors.
 
 ## Operating Model
 
-Canonical Claude-facing sources:
+The assigned AI owns delivery of the authorized task through verification, direct integration into `dev-beta`, push, and applicable normal-Beta verification. Pull Requests and a separate Director's merge are not required.
 
-1. `CLAUDE.md`
-2. `docs/06_Operations/Director_Playbook.md`
-
-Current model:
-
-- Claude = Director only. Claude routes, decomposes intent, writes Codex handoffs, dispatches Codex, reviews results, and manages worktrees / PRs.
-- Codex (`codex exec`) = sole worker for implementation, spec writing, refactoring, investigation, tests, commits, and PR creation.
-- The old Claude sub-agent worker model (`manage` / `visual` / `data` / `team`) is superseded. Do not launch Claude Agent Teams for implementation.
+The canonical workflow is [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.md). Claude may coordinate Codex workers using `CLAUDE.md` and the Director Playbook; an existing Codex session works directly without launching a replacement worker. Parallel work stays isolated. Do not start extra agents unless authorized.
 
 ## Environment Structure
 
@@ -141,92 +134,19 @@ The agent must not begin work until it can state, in its own words:
 
 If this context check is missing, the task is considered not started.
 
-## Director to Codex Workflow
+## Integration, Worktrees, and beta_update
 
-1. Claude Director reads scope and current status.
-2. Claude Director defines one smallest deliverable task.
-3. Claude Director creates a task worktree when writes can conflict with implementation, shared canonical documents, or existing files:
-   ```bash
-   scripts/ops/worktree.sh new <task>
-   ```
-4. Claude Director dispatches Codex:
-   ```bash
-   # Investigation / search
-   scripts/codex.sh exec --sandbox read-only "<handoff>" < /dev/null
+Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.md), the canonical policy for all agents.
 
-   # Implementation
-   ( cd "$HOME/dev/M3E-worktrees/<task>" && scripts/codex.sh exec "<handoff>" < /dev/null )
-   ```
-5. Codex implements with minimal changes, verifies, commits, pushes `codex/<task>`, and opens a PR to `dev-beta`.
-6. Claude Director reviews and decides merge / iterate / escalate.
-7. Claude Director removes the task worktree after merge.
-
-Always invoke Codex via `scripts/codex.sh exec ... < /dev/null`.
-
-## Worktree Rules
-
-- Primary checkout: `$HOME/dev/M3E` on `dev-beta`; no product implementation directly here.
-- Each code-writing Codex task runs at `$HOME/dev/M3E-worktrees/<task>`.
-- A new, public-safe, append-only idea bundle may be written directly in the primary checkout when it creates a unique subtree under `docs/ideas/`, does not overwrite or reorganize existing content, and only updates its parent idea index plus generated `docs/index.md`.
-- Use a task worktree for idea work if it edits an existing idea body, overlaps another active task, changes specs/architecture/operations/current status, introduces implementation, or has unresolved placement/overwrite risk.
-- Each task branch is `codex/<task>`, branched from `dev-beta`.
-- PR target is `dev-beta`.
-- Use `scripts/ops/worktree.sh new/list/clean/rm`.
-- Do not use obsolete role branches (`dev-visual`, `dev-data`, `dev-team`) for new work.
-
-Required check before implementation dispatch:
-
-```bash
-git worktree list --porcelain
-git branch --show-current
-pwd
-```
-
-After creating or selecting a worktree, every subsequent write command must
-either run with that worktree as its explicit working directory or use
-`git -C <worktree-path>`. Do not assume that `git worktree add` changes the
-current shell directory. Before the first write, verify both `pwd` and
-`git branch --show-current` from the target worktree.
-
-## Definition of Update-Complete
-
-A task is update-complete only when all required state sync is done:
-
-1. Changes are committed.
-2. PR to `dev-beta` is created for code-writing Codex tasks.
-3. Shared map state / task state is updated when the task affects ongoing coordination.
-4. `docs/00_Home/Current_Status.md` is updated by Director only when active strategy status has changed.
-
-If any item is missing, task state is still in-progress.
-
-## Branch Operation Policy
-
-Codex task branches use `codex/<task>`.
-
-Allowed without per-step confirmation on `codex/*` branches:
-
-- create task branch/worktree via `scripts/ops/worktree.sh`
-- stage changes
-- commit
-- push
-- create PR to `dev-beta`
-
-Still require explicit confirmation:
-
-- destructive history rewrite or force-push
-- `reset --hard`
-- operations on `main` or release branches
-- secret/credential related operations
-
-## beta_update
-
-A task is **beta_update-complete** when all three steps are done in order:
-
-1. `git commit` — changes committed on `codex/<task>`.
-2. `git push origin codex/<task>` — branch pushed to remote.
-3. PR created with base `dev-beta` — opened and ready for Director review.
-
-Claude Director reviews and merges; Codex does not merge its own PR.
+- Use isolated `codex/<task>` worktrees for implementation and conflicting writes.
+- The task owner reviews, tests, commits, integrates into `dev-beta`, and pushes directly. No mandatory PR or human merge queue.
+- Serialize integration/build/restart with the shared `M3E/dev-beta-integration` reservation. Preserve unrelated dirty work.
+- Build normal Beta only from integrated source. Never copy unmerged worktree bundles into the normal runtime.
+- `beta_update` and update-complete require applicable runtime readback / original-symptom verification after delivery, not merely commit, push, or PR creation.
+- Documentation-only changes need canonical/mirror/guard verification; a product restart is not required.
+- Optional PRs remain available for explicit review requests. A review-only request does not authorize merge.
+- Destructive history changes, main/release operations, and secret changes still require explicit authorization.
+- When dispatching an external Codex worker, use `scripts/codex.sh exec ... < /dev/null`. Do not redispatch the already active Codex session merely to satisfy this convention.
 
 ## Development Phase Constraints
 

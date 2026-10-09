@@ -21,7 +21,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
-| [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-04-20 |
+| [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-09-17 |
 | [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-07-19 |
 | [00_Home/Glossary.md](<./00_Home/Glossary.md>) | Markdown | Glossary — M3E 用語辞書 | M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。 |
 | [00_Home/Home.md](<./00_Home/Home.md>) | Markdown | M3E — Home | 最終更新: 2026-04-20 |
@@ -132,7 +132,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [06_Operations/Todo_Pool.md](<./06_Operations/Todo_Pool.md>) | Markdown | Todo Pool | 確定前の粗い TODO を一時プールし、正式タスク化前の取りこぼしを防ぐ。 |
 | [06_Operations/TODO_today.md](<./06_Operations/TODO_today.md>) | Markdown | TODO_today — 2026-04-15 | > 今日処理する課題。正本は [Todo_Pool.md](Todo_Pool.md)。 |
 | [06_Operations/Version_Registry.md](<./06_Operations/Version_Registry.md>) | Markdown | Version Registry | リリースタグとデータスキーマバージョンの対応表。 |
-| [06_Operations/Worktree_Separation_Rules.md](<./06_Operations/Worktree_Separation_Rules.md>) | Markdown | Worktree Separation Rules | 最終更新: 2026-08-06 |
+| [06_Operations/Worktree_Separation_Rules.md](<./06_Operations/Worktree_Separation_Rules.md>) | Markdown | Worktree Separation Rules | 最終更新: 2026-10-09 |
 
 ### 09_Decisions - ADR
 

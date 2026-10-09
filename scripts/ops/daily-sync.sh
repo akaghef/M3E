@@ -8,7 +8,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 DRY_RUN=0
-NO_FINAL=0
+NO_FINAL=1
 TODAY="$(date +%F)"
 DEV_COMMITTED=0
 FINAL_COMMITTED=0
@@ -29,10 +29,11 @@ trap on_error ERR
 
 usage() {
   cat <<'EOF'
-Usage: scripts/ops/daily-sync.sh [--dry-run] [--no-final]
+Usage: scripts/ops/daily-sync.sh [--dry-run] [--no-final] [--with-final]
 
   --dry-run   Print planned actions only; do not checkout, commit, push, sync, build, or test.
-  --no-final  Commit/push dev-beta only; skip beta/ -> final/ sync and final gate.
+  --no-final  Sync clean dev-beta only (default).
+  --with-final  Explicitly requested beta -> final sync and verification.
 EOF
 }
 
@@ -40,6 +41,7 @@ for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --no-final) NO_FINAL=1 ;;
+    --with-final) NO_FINAL=0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $arg" >&2; usage >&2; exit 2 ;;
   esac
@@ -62,17 +64,8 @@ Repository: $ROOT_DIR
 Date: $TODAY
 
 Planned sequence:
-1. Ensure branch dev-beta:
-   - git fetch origin dev-beta
-   - checkout dev-beta if needed
-   - git pull --ff-only origin dev-beta
-   - abort on non-fast-forward divergence; never auto-merge
-2. Stage tracked modifications only:
-   - git add -u
-   - commit if staged changes exist:
-     chore: daily auto-commit ($TODAY)
-3. Push dev-beta:
-   - git push origin dev-beta
+1. Require dev-beta, clean working tree, and no unpublished local commits.
+2. Fetch origin/dev-beta and fast-forward only. Never collect dirty work or push unknown commits.
 EOF
   if [[ "$NO_FINAL" -eq 1 ]]; then
     cat <<'EOF'
@@ -135,40 +128,22 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   exit 0
 fi
 
-header "1. Ensure dev-beta is current"
-CURRENT_STEP="ensure dev-beta is current"
+header "1. Sync clean dev-beta"
+CURRENT_STEP="sync clean dev-beta"
+if [[ "$(git branch --show-current)" != "dev-beta" || -n "$(git status --porcelain)" ]]; then
+  echo "ERROR: require clean dev-beta; preserve unfinished work." >&2
+  exit 1
+fi
 run git fetch origin dev-beta
-CURRENT_BRANCH="$(git branch --show-current)"
-if [[ "$CURRENT_BRANCH" != "dev-beta" ]]; then
-  run git checkout dev-beta
+if ! git merge-base --is-ancestor HEAD origin/dev-beta; then
+  echo "ERROR: unpublished or diverged local commits; task owner must deliver them." >&2
+  exit 1
 fi
-
-set +e
-git pull --ff-only origin dev-beta
-PULL_STATUS=$?
-set -e
-if [[ "$PULL_STATUS" -ne 0 ]]; then
-  echo "ERROR: dev-beta is not fast-forwardable from origin/dev-beta. Aborting; resolve divergence manually." >&2
-  exit "$PULL_STATUS"
-fi
-
-header "2. Commit tracked pending work on dev-beta"
-CURRENT_STEP="commit tracked pending work on dev-beta"
-run git add -u
-if git diff --cached --quiet; then
-  echo "No tracked modifications staged; skipping dev-beta auto-commit."
-else
-  run git commit -m "chore: daily auto-commit ($TODAY)"
-  DEV_COMMITTED=1
-fi
-
-header "3. Push dev-beta"
-CURRENT_STEP="push dev-beta"
-run git push origin dev-beta
+run git merge --ff-only origin/dev-beta
 
 if [[ "$NO_FINAL" -eq 1 ]]; then
   header "4. Final sync skipped"
-  echo "--no-final supplied; skipping beta/ -> final/ sync and final gate."
+  echo "Default/--no-final: skipping beta/ -> final/ sync and final gate."
 else
   header "4. Sync beta/ into final/"
   CURRENT_STEP="sync beta into final"

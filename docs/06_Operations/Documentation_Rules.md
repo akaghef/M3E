@@ -19,7 +19,7 @@
 2. 粗い TODO は `docs/06_Operations/Todo_Pool.md` にプールする
 3. 日次ログ (`docs/daily/YYMMDD.md`) は必須更新対象から外す
 4. 役割分担:
-   - Claude Director: intent 分解、Codex handoff、worktree / PR 管理、レビュー、必要時の `Current_Status.md` 更新
+   - Claude Director: intent 分解、Codex handoff、worktree 管理と本流への反映、レビュー、必要時の `Current_Status.md` 更新
    - Codex worker: 実装、仕様書き、調査、検証、必要な map / task 状態更新
 5. 実装・既存文書・共有正典への競合可能な書き込みはCodex task worktreeで分離する。`docs/ideas/`への一意な新規append-only bundleは、既存本文を変更せず親READMEと生成indexだけを更新する場合、primary checkoutへ直接stowしてよい
 
@@ -154,33 +154,11 @@ Primary checkout `$HOME/dev/M3E` is for Director coordination and operating-docu
 
 `Promoted` には、正式文書へ反映した先のパスを書く。未反映なら `-` にする。
 
-## 更新完了の定義
+## 更新完了の定義・ブランチ運用・統合
 
-M3E では、次を満たした時点を「更新完了」とする。
-
-1. コードまたは文書の変更がコミットされている
-2. code-writing Codex task では PR が `dev-beta` に作成されている
-3. マップ (`DEV/strategy/` など) が現状を反映している（task が coordination state に影響する場合）
-4. Claude Director は必要に応じて `00_Home/Current_Status.md` を更新する
-
-この条件のうち必要項目が未実施なら、作業は「進行中」として扱う。
-
-## ブランチ運用
-
-- 新規作業ブランチは `codex/<task>` とする
-- `codex/*` では、Codex は handoff scope 内で `add` / `commit` / `push` / PR 作成を実行してよい
-- ただし次は明示確認が必要:
-  - 履歴破壊操作 (`reset --hard`, 強制 push, 履歴書き換え)
-  - `main` / release ブランチへの直接操作
-  - 機密情報に関わる操作
-
-## 統合フロー
-
-1. Claude Director が task worktree と `codex/<task>` branch を用意する
-2. Claude Director が Codex を dispatch する
-3. Codex が変更・検証・commit・push・PR 作成を行う
-4. Claude Director が PR を確認して `dev-beta` への merge / iterate / escalate を判断する
-5. merge 後、Claude Director が task worktree を削除する
+[Worktree Separation Rules](Worktree_Separation_Rules.md) を正本とする。
+担当 AI が検証、commit、本流 dev-beta への統合、push、必要な通常 Beta 反映と対象操作の確認まで担当する。PR は任意。文書・指示変更は正本とミラーの整合検証を行い、稼働反映は対象外にできる。
+coordination に影響する task/map 状態は更新し、戦略が変わる時だけ Current_Status を更新する。他者の未コミット作業をまとめて commit しない。途中段階は進行中として報告する。
 
 ## 軽い担当ルール
 
