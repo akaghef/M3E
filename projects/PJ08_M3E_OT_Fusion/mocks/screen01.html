@@ -1,0 +1,648 @@
+<title>M3E Orrery Surface</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    /* ── OT (orrery-telemetry / dashboard.css) 逐語 ───────── */
+    --void:#080a0c;
+    --bg:#0b0e11;
+    --bone:#ece2cc;
+    --bone-dim:#8d8a7c;
+    --amber:#ffb02e;
+    --amber-deep:#c97f12;
+    --cyan:#36e8ff;
+    --alert:#ff4d3a;
+    --line:rgba(255,176,46,.16);
+    --line-soft:rgba(236,226,204,.08);
+    --panel:rgba(255,255,255,.018);
+    --glow-a:0 0 14px rgba(255,176,46,.45);
+    --glow-c:0 0 16px rgba(54,232,255,.55);
+
+    /* ── M3E (viewer.css · body.scatter-surface-active) 逐語 ─ */
+    --m3e-surface:#0a0a12;
+    --m3e-node:#60a5fa;
+    --m3e-group:#818cf8;
+    --m3e-group-stroke:#a78bfa;
+    --m3e-downstream:#fbbf24;
+    --m3e-guide:rgba(56,189,248,.46);
+    --disperse-fill:rgba(95,127,173,.06);
+    --disperse-stroke:#5f7fad;
+    --m3e-board-edge:rgba(148,163,184,.18);
+
+    /* ── color_semantics.md の7色（意味名でトークン化） ───── */
+    --st-normal:#60a5fa;   /* 青  正常稼働 */
+    --st-awaiting:#ffb02e; /* 黄  判断待ち */
+    --st-stalled:#f97316;  /* 橙  停滞     */
+    --st-done:#4ade80;     /* 緑  完了     */
+    --st-error:#ff4d3a;    /* 赤  異常     */
+    --st-archived:#6b7280; /* 灰  アーカイブ */
+    --st-unset:#ece2cc;    /* 白  未配色   */
+
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:"Chakra Petch","IBM Plex Mono",sans-serif;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:radial-gradient(120% 90% at 50% -10%, #14181d 0%, var(--bg) 45%, var(--void) 100%);
+    color:var(--bone);
+    font-family:var(--mono);
+    font-size:13px; line-height:1.55; letter-spacing:.2px;
+    min-height:100vh; margin:0;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--cyan);color:#06181c}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  /* CRT atmosphere — OT 由来 */
+  .fx{position:fixed;inset:0;pointer-events:none;z-index:90}
+  .fx.scan{background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;opacity:.5}
+  .fx.vignette{background:radial-gradient(115% 100% at 50% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
+
+  /* ── mock 宣言帯 ───────────────────────────────────────── */
+  .mockbar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:7px 26px;background:rgba(255,176,46,.07);
+    border-bottom:1px solid var(--line);
+    font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--amber)}
+  .mockbar b{font-family:var(--disp);letter-spacing:2.4px}
+  .mockbar span{color:var(--bone-dim);letter-spacing:1.2px;text-transform:none;font-size:11px}
+
+  /* ── OT command bar ───────────────────────────────────── */
+  header{
+    position:sticky;top:0;z-index:50;
+    background:linear-gradient(180deg,rgba(8,10,12,.96),rgba(8,10,12,.72));
+    backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);
+    padding:13px 26px 12px;
+    display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+  header::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+    background:linear-gradient(90deg,transparent,var(--amber),transparent);opacity:.4}
+  .brand{display:flex;flex-direction:column;gap:1px;min-width:190px}
+  .brand b{font-family:var(--disp);font-weight:700;font-size:17px;letter-spacing:3.5px;
+    color:var(--bone);text-shadow:var(--glow-a)}
+  .brand b i{color:var(--amber);font-style:normal}
+  .brand span{font-size:10.5px;letter-spacing:2.5px;color:var(--bone-dim);text-transform:uppercase}
+
+  .gauges{display:flex;gap:20px}
+  .gauge{display:flex;flex-direction:column;gap:5px;min-width:78px}
+  .gauge .v{font-family:var(--disp);font-weight:700;font-size:22px;letter-spacing:1px;
+    font-variant-numeric:tabular-nums;line-height:1}
+  .gauge .k{font-size:9px;letter-spacing:2.5px;color:var(--bone-dim);text-transform:uppercase}
+  .gauge .bar{height:3px;background:var(--line-soft);overflow:hidden}
+  .gauge .bar i{display:block;height:100%}
+  .gauge.run .v{color:var(--amber);text-shadow:var(--glow-a)}
+  .gauge.run .bar i{background:var(--amber);box-shadow:var(--glow-a);width:62%}
+  .gauge.idle .v{color:var(--bone-dim)}
+  .gauge.idle .bar i{background:var(--bone-dim);width:25%}
+  .gauge.att .v{color:var(--st-awaiting);text-shadow:var(--glow-a)}
+  .gauge.att .bar i{background:var(--st-awaiting);width:18%}
+  .gauge.tot .v{color:var(--cyan);text-shadow:var(--glow-c)}
+  .gauge.tot .bar i{background:var(--cyan);box-shadow:var(--glow-c);width:100%}
+
+  .health{display:flex;align-items:center;gap:8px;margin-left:auto;
+    font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--bone-dim)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--st-done);
+    box-shadow:0 0 10px rgba(74,222,128,.7)}
+  .filter{display:flex;gap:6px}
+  .chip{border:1px solid var(--line);background:transparent;color:var(--bone-dim);
+    font-family:var(--mono);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;
+    padding:5px 11px;cursor:pointer}
+  .chip:hover{color:var(--bone);border-color:var(--amber-deep)}
+  .chip.on{color:var(--void);background:var(--amber);border-color:var(--amber);font-weight:600}
+
+  /* ── M3E path bar ─────────────────────────────────────── */
+  .pathbar{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:9px 26px;border-bottom:1px solid var(--line-soft);
+    background:rgba(10,10,18,.6)}
+  .crumb{font-size:12px;color:var(--bone-dim);display:flex;align-items:center;gap:7px}
+  .crumb em{font-style:normal;color:var(--bone)}
+  .crumb b{font-style:normal;font-weight:600;color:var(--cyan);text-shadow:var(--glow-c)}
+  .crumb u{text-decoration:none;color:var(--bone-dim);opacity:.55}
+  .views{display:flex;gap:4px;margin-left:auto}
+  .views .chip{font-size:9.5px;padding:4px 10px}
+
+  /* ── layout ───────────────────────────────────────────── */
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 312px;gap:0;align-items:stretch}
+  @media (max-width:1080px){.stage{grid-template-columns:minmax(0,1fr)}}
+
+  .surface{
+    position:relative;background:var(--m3e-surface);
+    border-right:1px solid var(--m3e-board-edge);
+    min-height:560px;padding:8px}
+  .surface svg{display:block;width:100%;height:auto}
+  .legend{
+    display:flex;gap:16px;flex-wrap:wrap;padding:10px 18px 12px;
+    border-top:1px solid var(--line-soft);font-size:10px;color:var(--bone-dim);
+    letter-spacing:1.2px;text-transform:uppercase}
+  .legend i{display:inline-block;width:20px;height:0;border-top-width:2px;
+    vertical-align:middle;margin-right:6px}
+  .legend s{text-decoration:none;color:var(--bone)}
+
+  /* node visuals */
+  .nd{cursor:pointer}
+  .nd .hit{fill:transparent}
+  .nd:hover .body,.nd.sel .body{filter:drop-shadow(0 0 7px rgba(54,232,255,.75))}
+  .lbl{font-family:var(--mono);font-size:10.5px;fill:var(--bone);letter-spacing:.3px}
+  .lbl.dim{fill:var(--bone-dim);font-size:9px;letter-spacing:1.4px;text-transform:uppercase}
+  .grp-lbl{font-family:var(--disp);font-size:10px;fill:var(--disperse-stroke);
+    letter-spacing:2.4px;text-transform:uppercase}
+  .scope-lbl{font-family:var(--disp);font-size:10px;fill:var(--m3e-group-stroke);
+    letter-spacing:2.4px;text-transform:uppercase}
+
+  .disperse-group{fill:var(--disperse-fill);stroke:var(--disperse-stroke);
+    stroke-width:1.5;stroke-dasharray:6 4;pointer-events:none}
+  .scope-box{fill:rgba(129,140,248,.05);stroke:var(--m3e-group-stroke);
+    stroke-width:1.5;stroke-dasharray:5 5;pointer-events:none}
+
+  .spine{fill:none;stroke:rgba(148,163,184,.5);stroke-width:2;stroke-linecap:round}
+  .glink{fill:none;stroke-width:2;stroke-linecap:round;cursor:pointer}
+  .glink.assign{stroke:var(--cyan);stroke-dasharray:7 5;opacity:.85}
+  .glink.produce{stroke:var(--st-done);stroke-dasharray:2 5;opacity:.8}
+  .glink.gate{stroke:var(--st-awaiting);stroke-dasharray:9 4;opacity:.9}
+  .glink.comm{stroke:var(--amber);stroke-width:2.4;opacity:.95}
+  .glink.spawn{stroke:var(--m3e-group);stroke-dasharray:1 6;opacity:.85}
+  .glink.res{stroke:var(--m3e-downstream);stroke-dasharray:4 4;opacity:.7}
+  .ghit{fill:none;stroke:transparent;stroke-width:16;cursor:pointer}
+  .glink.hot{stroke-width:4;filter:drop-shadow(0 0 6px currentColor)}
+
+  /* ── OT DECK rail ─────────────────────────────────────── */
+  .rail{display:flex;flex-direction:column;min-width:0;background:var(--panel)}
+  .rail h2{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:3px;
+    text-transform:uppercase;color:var(--bone-dim);margin:0;
+    padding:12px 16px 10px;border-bottom:1px solid var(--line)}
+  .deck{display:flex;flex-direction:column;overflow-y:auto;max-height:330px}
+  .card{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:center;
+    padding:10px 16px;border-bottom:1px solid var(--line-soft);cursor:pointer;
+    border-left:3px solid transparent}
+  .card:hover{background:rgba(255,176,46,.05)}
+  .card.sel{background:rgba(54,232,255,.07);border-left-color:var(--cyan)}
+  .card .mk{width:26px;height:26px;border-radius:50%;border:2px solid currentColor;
+    display:grid;place-items:center;font-size:11px;font-weight:600}
+  .card .nm{font-size:12px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .sub{font-size:9.5px;color:var(--bone-dim);letter-spacing:1.2px;text-transform:uppercase;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .t{font-size:10px;color:var(--bone-dim);font-variant-numeric:tabular-nums}
+
+  .detail{border-top:1px solid var(--line);padding:14px 16px 16px;flex:1;min-height:210px}
+  .detail .dh{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:3px}
+  .detail .dt{font-family:var(--disp);font-size:15px;font-weight:700;letter-spacing:1.2px;color:var(--bone)}
+  .detail .dk{font-size:9px;letter-spacing:2.2px;text-transform:uppercase;color:var(--bone-dim)}
+  .detail .path{font-size:10px;color:var(--bone-dim);margin-bottom:11px;word-break:break-all}
+  .detail .path b{font-weight:500;color:var(--cyan)}
+  .kv{display:grid;grid-template-columns:78px minmax(0,1fr);gap:4px 10px;font-size:11px}
+  .kv dt{color:var(--bone-dim);font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;padding-top:2px}
+  .kv dd{margin:0;color:var(--bone);word-break:break-word}
+  .msg{margin-top:11px;padding:9px 11px;border-left:2px solid var(--amber-deep);
+    background:rgba(255,176,46,.05);font-size:11px;color:var(--bone);line-height:1.6}
+  .hintline{margin-top:12px;font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--bone-dim)}
+
+  /* ── edge inspector ───────────────────────────────────── */
+  .inspector{border-top:1px solid var(--line);background:rgba(8,10,12,.75)}
+  .inspector h2{font-family:var(--disp);font-size:11px;font-weight:700;letter-spacing:3px;
+    text-transform:uppercase;color:var(--bone-dim);margin:0;padding:11px 26px 9px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .inspector h2 em{font-style:normal;color:var(--amber);letter-spacing:1.6px}
+  .mail{display:grid;grid-template-columns:104px 88px 88px minmax(0,1fr);gap:0;
+    font-size:11px;border-top:1px solid var(--line-soft)}
+  .mail>div{padding:7px 12px;border-bottom:1px solid var(--line-soft);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mail>div:nth-child(4n+1){padding-left:26px;color:var(--bone-dim);font-variant-numeric:tabular-nums}
+  .mail>div:nth-child(4n+2){color:var(--cyan)}
+  .mail>div:nth-child(4n+3){color:var(--m3e-downstream)}
+  .mail>div:nth-child(4n){white-space:normal;color:var(--bone)}
+  .mail .hd{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--bone-dim)!important;
+    background:rgba(255,255,255,.02)}
+  .empty{padding:16px 26px 20px;font-size:11px;color:var(--bone-dim)}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="fx scan"></div>
+<div class="fx vignette"></div>
+
+<div class="mockbar">
+  <b>Static Mock</b>
+  <span>DB なし / agent runtime なし。数値・名前・mail は固定 fixture で、観測値ではない。</span>
+</div>
+
+<header>
+  <div class="brand">
+    <b>M3E<i>·</i>ORRERY</b>
+    <span>unified work graph</span>
+  </div>
+  <div class="gauges">
+    <div class="gauge run"><div class="v">5</div><div class="k">running</div><div class="bar"><i></i></div></div>
+    <div class="gauge idle"><div class="v">2</div><div class="k">standby</div><div class="bar"><i></i></div></div>
+    <div class="gauge att"><div class="v">1</div><div class="k">awaiting you</div><div class="bar"><i></i></div></div>
+    <div class="gauge tot"><div class="v">8</div><div class="k">agents</div><div class="bar"><i></i></div></div>
+  </div>
+  <div class="health">
+    <span class="dot"></span> orrery mail
+    <div class="filter">
+      <button class="chip on" type="button">all</button>
+      <button class="chip" type="button">attention</button>
+      <button class="chip" type="button">running</button>
+    </div>
+  </div>
+</header>
+
+<div class="pathbar">
+  <div class="crumb">
+    <u>ws</u> <em>akaghef</em>
+    <u>&gt;</u> <em>M3E</em>
+    <u>&gt;</u> <em>PJ08 OT合併吸収</em>
+    <u>&gt;</u> <b>surface</b>
+  </div>
+  <div class="views">
+    <button class="chip" type="button">tree</button>
+    <button class="chip" type="button">axial</button>
+    <button class="chip" type="button">radial</button>
+    <button class="chip on" type="button">disperse</button>
+    <button class="chip" type="button">system</button>
+  </div>
+</div>
+
+<div class="stage">
+  <section class="surface">
+    <svg viewBox="0 0 860 546" role="img" aria-label="M3E Disperse surface: goal, task, gate, deliverable, resource and agent nodes across three machines">
+
+      <!-- ══ scope: 認知境界（M3E） ══ -->
+      <rect class="scope-box" x="28" y="34" width="424" height="246" rx="8"></rect>
+      <text class="scope-lbl" x="40" y="27">scope ▸ work</text>
+
+      <!-- ══ disperse-group: PC カテゴリ（multi-PC は新軸ではない） ══ -->
+      <rect class="disperse-group" x="28" y="300" width="262" height="168" rx="6"></rect>
+      <text class="grp-lbl" x="38" y="293">mac mini · 常駐</text>
+
+      <rect class="disperse-group" x="306" y="300" width="250" height="168" rx="6"></rect>
+      <text class="grp-lbl" x="316" y="293">macbook pro</text>
+
+      <rect class="disperse-group" x="572" y="300" width="256" height="168" rx="6"></rect>
+      <text class="grp-lbl" x="582" y="293">win desktop</text>
+
+      <!-- ══ edges: parent-child spine（正本の背骨） ══ -->
+      <path class="spine" d="M238,102 L100,148"></path>
+      <path class="spine" d="M238,102 L238,146"></path>
+      <path class="spine" d="M238,102 L378,148"></path>
+
+      <!-- ══ edges: typed GraphLink（非木関係） ══ -->
+      <g id="e-gate">
+        <path class="glink gate" d="M238,194 L238,222"></path>
+        <path class="ghit" d="M238,194 L238,222"></path>
+      </g>
+      <g id="e-a1">
+        <path class="glink assign" d="M100,194 C 90,250 96,300 100,352"></path>
+        <path class="ghit" d="M100,194 C 90,250 96,300 100,352"></path>
+      </g>
+      <g id="e-a2">
+        <path class="glink assign" d="M238,250 C 290,290 350,320 372,352"></path>
+        <path class="ghit" d="M238,250 C 290,290 350,320 372,352"></path>
+      </g>
+      <g id="e-a3">
+        <path class="glink assign" d="M378,194 C 470,240 600,290 656,352"></path>
+        <path class="ghit" d="M378,194 C 470,240 600,290 656,352"></path>
+      </g>
+      <g id="e-comm">
+        <path class="glink comm" d="M348,376 C 300,420 264,420 220,392"></path>
+        <path class="ghit" d="M348,376 C 300,420 264,420 220,392"></path>
+      </g>
+      <g id="e-spawn">
+        <path class="glink spawn" d="M404,368 C 500,330 580,338 632,362"></path>
+        <path class="ghit" d="M404,368 C 500,330 580,338 632,362"></path>
+      </g>
+      <g id="e-p1">
+        <path class="glink produce" d="M392,352 C 470,250 520,150 556,108"></path>
+        <path class="ghit" d="M392,352 C 470,250 520,150 556,108"></path>
+      </g>
+      <g id="e-p2">
+        <path class="glink produce" d="M200,358 C 380,200 560,74 668,74"></path>
+        <path class="ghit" d="M200,358 C 380,200 560,74 668,74"></path>
+      </g>
+      <g id="e-res">
+        <path class="glink res" d="M124,362 C 300,300 560,230 636,186"></path>
+        <path class="ghit" d="M124,362 C 300,300 560,230 636,186"></path>
+      </g>
+      <g id="e-att">
+        <path class="glink gate" d="M296,252 C 360,290 430,322 466,352"></path>
+        <path class="ghit" d="M296,252 C 360,290 430,322 466,352"></path>
+      </g>
+
+      <!-- ══ node: goal ◇ ══ -->
+      <g class="nd" data-n="goal" tabindex="0">
+        <path d="M238,58 L280,80 L238,102 L196,80 Z" fill="#0a0a12"></path>
+        <path class="body" d="M238,58 L280,80 L238,102 L196,80 Z" fill="rgba(96,165,250,.16)" stroke="#60a5fa" stroke-width="2"></path>
+        <text class="lbl" x="238" y="84" text-anchor="middle">OT合併吸収</text>
+        <text class="lbl dim" x="238" y="50" text-anchor="middle">goal</text>
+        <rect class="hit" x="192" y="44" width="92" height="62"></rect>
+      </g>
+
+      <!-- ══ node: task ▭ ══ -->
+      <g class="nd" data-n="t1" tabindex="0">
+        <rect x="48" y="148" width="104" height="46" rx="4" fill="#0a0a12"></rect>
+        <rect class="body" x="48" y="148" width="104" height="46" rx="4" fill="rgba(96,165,250,.1)" stroke="#60a5fa" stroke-width="1.6"></rect>
+        <rect x="48" y="148" width="4" height="46" fill="var(--st-normal)"></rect>
+        <text class="lbl" x="62" y="168">T1 OT spec抽出</text>
+        <text class="lbl dim" x="62" y="184">task · running</text>
+        <rect class="hit" x="48" y="148" width="104" height="46"></rect>
+      </g>
+      <g class="nd" data-n="t2" tabindex="0">
+        <rect x="186" y="146" width="104" height="48" rx="4" fill="#0a0a12"></rect>
+        <rect class="body" x="186" y="146" width="104" height="48" rx="4" fill="rgba(255,176,46,.1)" stroke="#ffb02e" stroke-width="1.6"></rect>
+        <rect x="186" y="146" width="4" height="48" fill="var(--st-awaiting)"></rect>
+        <text class="lbl" x="200" y="167">T2 GUI収束</text>
+        <text class="lbl dim" x="200" y="183">task · awaiting</text>
+        <rect class="hit" x="186" y="146" width="104" height="48"></rect>
+      </g>
+      <g class="nd" data-n="t3" tabindex="0">
+        <rect x="326" y="148" width="104" height="46" rx="4" fill="#0a0a12"></rect>
+        <rect class="body" x="326" y="148" width="104" height="46" rx="4" fill="rgba(249,115,22,.1)" stroke="#f97316" stroke-width="1.6"></rect>
+        <rect x="326" y="148" width="4" height="46" fill="var(--st-stalled)"></rect>
+        <text class="lbl" x="340" y="168">T3 multi-PC</text>
+        <text class="lbl dim" x="340" y="184">task · stalled</text>
+        <rect class="hit" x="326" y="148" width="104" height="46"></rect>
+      </g>
+
+      <!-- ══ node: gate ⬡ ══ -->
+      <g class="nd" data-n="gate" tabindex="0">
+        <path d="M190,222 L286,222 L304,244 L286,266 L190,266 L172,244 Z" fill="#0a0a12"></path>
+        <path class="body" d="M190,222 L286,222 L304,244 L286,266 L190,266 L172,244 Z" fill="rgba(255,176,46,.14)" stroke="#ffb02e" stroke-width="2"></path>
+        <text class="lbl" x="238" y="241" text-anchor="middle">G1 akaghef承認</text>
+        <text class="lbl dim" x="238" y="256" text-anchor="middle">gate · closed</text>
+        <rect class="hit" x="170" y="220" width="136" height="48"></rect>
+      </g>
+
+      <!-- ══ node: deliverable ══ -->
+      <g class="nd" data-n="d1" tabindex="0">
+        <path d="M508,46 L586,46 L600,60 L600,108 L508,108 Z" fill="#0a0a12"></path>
+        <path class="body" d="M508,46 L586,46 L600,60 L600,108 L508,108 Z" fill="rgba(74,222,128,.08)" stroke="#4ade80" stroke-width="1.6"></path>
+        <path d="M586,46 L586,60 L600,60" fill="none" stroke="#4ade80" stroke-width="1.6"></path>
+        <text class="lbl" x="520" y="76">screen01.html</text>
+        <text class="lbl dim" x="520" y="92">deliverable</text>
+        <rect class="hit" x="508" y="46" width="92" height="62"></rect>
+      </g>
+      <g class="nd" data-n="d2" tabindex="0">
+        <path d="M672,46 L750,46 L764,60 L764,108 L672,108 Z" fill="#0a0a12"></path>
+        <path class="body" d="M672,46 L750,46 L764,60 L764,108 L672,108 Z" fill="rgba(74,222,128,.08)" stroke="#4ade80" stroke-width="1.6"></path>
+        <path d="M750,46 L750,60 L764,60" fill="none" stroke="#4ade80" stroke-width="1.6"></path>
+        <text class="lbl" x="684" y="76">S17 Strategy</text>
+        <text class="lbl dim" x="684" y="92">deliverable</text>
+        <rect class="hit" x="672" y="46" width="92" height="62"></rect>
+      </g>
+
+      <!-- ══ node: resource ¥ ══ -->
+      <g class="nd" data-n="res" tabindex="0">
+        <circle cx="656" cy="176" r="26" fill="#0a0a12"></circle>
+        <circle class="body" cx="656" cy="176" r="26" fill="rgba(251,191,36,.12)" stroke="#fbbf24" stroke-width="2"></circle>
+        <text class="lbl" x="656" y="181" text-anchor="middle" style="font-size:15px;fill:#fbbf24">¥</text>
+        <text class="lbl dim" x="656" y="220" text-anchor="middle">resource</text>
+        <text class="lbl" x="656" y="234" text-anchor="middle">API quota</text>
+        <rect class="hit" x="626" y="146" width="60" height="60"></rect>
+      </g>
+
+      <!-- ══ node: agent ○ ══ -->
+      <g class="nd" data-n="codex" tabindex="0">
+        <circle cx="100" cy="376" r="25" fill="none" stroke="var(--st-normal)" stroke-width="3"></circle>
+        <circle class="body" cx="100" cy="376" r="19" fill="#60a5fa" stroke="#0a0a12" stroke-width="2"></circle>
+        <text class="lbl" x="100" y="381" text-anchor="middle" style="fill:#0a0a12;font-weight:600">CX</text>
+        <text class="lbl" x="100" y="420" text-anchor="middle">Codex</text>
+        <text class="lbl dim" x="100" y="434" text-anchor="middle">implementer</text>
+        <rect class="hit" x="72" y="348" width="56" height="56"></rect>
+      </g>
+      <g class="nd" data-n="hermes" tabindex="0">
+        <circle cx="216" cy="376" r="25" fill="none" stroke="var(--st-normal)" stroke-width="3"></circle>
+        <circle class="body" cx="216" cy="376" r="19" fill="#60a5fa" stroke="#0a0a12" stroke-width="2"></circle>
+        <text class="lbl" x="216" y="381" text-anchor="middle" style="fill:#0a0a12;font-weight:600">FG</text>
+        <text class="lbl" x="216" y="420" text-anchor="middle">Fugu</text>
+        <text class="lbl dim" x="216" y="434" text-anchor="middle">hermes · backend</text>
+        <rect class="hit" x="188" y="348" width="56" height="56"></rect>
+      </g>
+      <g class="nd sel" data-n="claude" tabindex="0">
+        <circle cx="376" cy="376" r="25" fill="none" stroke="var(--st-normal)" stroke-width="3"></circle>
+        <circle class="body" cx="376" cy="376" r="19" fill="#60a5fa" stroke="#0a0a12" stroke-width="2"></circle>
+        <text class="lbl" x="376" y="381" text-anchor="middle" style="fill:#0a0a12;font-weight:600">CL</text>
+        <text class="lbl" x="376" y="420" text-anchor="middle">Claude</text>
+        <text class="lbl dim" x="376" y="434" text-anchor="middle">director</text>
+        <rect class="hit" x="348" y="348" width="56" height="56"></rect>
+      </g>
+      <g class="nd" data-n="akaghef" tabindex="0">
+        <circle cx="486" cy="376" r="27" fill="none" stroke="var(--st-awaiting)" stroke-width="3.5"></circle>
+        <rect class="body" x="464" y="354" width="44" height="44" rx="3" fill="#ffb02e" stroke="#0a0a12" stroke-width="2"></rect>
+        <text class="lbl" x="486" y="382" text-anchor="middle" style="fill:#0a0a12;font-weight:600">AK</text>
+        <text class="lbl" x="486" y="422" text-anchor="middle">akaghef</text>
+        <text class="lbl dim" x="486" y="436" text-anchor="middle">human · 判断待ち</text>
+        <rect class="hit" x="458" y="348" width="58" height="58"></rect>
+      </g>
+      <g class="nd" data-n="cxwin" tabindex="0">
+        <circle cx="656" cy="376" r="25" fill="none" stroke="var(--st-stalled)" stroke-width="3"></circle>
+        <circle class="body" cx="656" cy="376" r="19" fill="#60a5fa" stroke="#0a0a12" stroke-width="2"></circle>
+        <text class="lbl" x="656" y="381" text-anchor="middle" style="fill:#0a0a12;font-weight:600">CX</text>
+        <text class="lbl" x="656" y="420" text-anchor="middle">Codex-win</text>
+        <text class="lbl dim" x="656" y="434" text-anchor="middle">idle 4h12m</text>
+        <rect class="hit" x="628" y="348" width="56" height="56"></rect>
+      </g>
+      <g class="nd" data-n="ghost" tabindex="0">
+        <circle cx="766" cy="376" r="25" fill="none" stroke="var(--st-unset)" stroke-width="2" stroke-dasharray="4 4"></circle>
+        <circle class="body" cx="766" cy="376" r="19" fill="rgba(236,226,204,.12)" stroke="#ece2cc" stroke-width="1.6" stroke-dasharray="3 3"></circle>
+        <text class="lbl" x="766" y="381" text-anchor="middle" style="font-weight:600">?</text>
+        <text class="lbl" x="766" y="420" text-anchor="middle">Hermes-win</text>
+        <text class="lbl dim" x="766" y="434" text-anchor="middle">unobservable</text>
+        <rect class="hit" x="738" y="348" width="56" height="56"></rect>
+      </g>
+    </svg>
+
+    <div class="legend">
+      <span><i style="border-top:2px solid rgba(148,163,184,.6)"></i><s>parent-child</s> 正本の背骨</span>
+      <span><i style="border-top:2px dashed var(--cyan)"></i>assigned-to</span>
+      <span><i style="border-top:2px dotted var(--st-done)"></i>produces</span>
+      <span><i style="border-top:2px dashed var(--st-awaiting)"></i>gated-by</span>
+      <span><i style="border-top:2px solid var(--amber)"></i>communication</span>
+      <span><i style="border-top:2px dotted var(--m3e-group)"></i>spawned</span>
+      <span><i style="border-top:2px dashed var(--m3e-downstream)"></i>resource-use</span>
+    </div>
+  </section>
+
+  <aside class="rail">
+    <h2>Deck</h2>
+    <div class="deck" id="deck"></div>
+    <div class="detail" id="detail"></div>
+  </aside>
+</div>
+
+<section class="inspector">
+  <h2>Edge Inspector <em id="einfo">communication · Claude ⇄ Fugu · macbook pro → mac mini</em></h2>
+  <div class="mail" id="mail"></div>
+  <div class="empty" id="mempty" hidden>この edge には mail 履歴がない。typed relation のみ。</div>
+</section>
+
+<script>
+(function(){
+  "use strict";
+
+  var NODES = {
+    goal:{t:"OT合併吸収",k:"goal",st:"normal",stl:"正常稼働",path:"akaghef &gt; M3E &gt; PJ08 &gt; work &gt; goal",
+      kv:[["type","goal"],["owner","akaghef (human)"],["refs","RQ1 / S17"],["children","3 task"]],
+      msg:"OT を M3E の一枚絵へ合併吸収する。Agent 管理 slice を Goal / Task / Resource と同一 graph に載せる。"},
+    t1:{t:"T1 OT spec抽出",k:"task",st:"normal",stl:"正常稼働",path:"… &gt; work &gt; goal &gt; T1",
+      kv:[["type","task"],["assigned","Codex @ mac mini"],["provenance","connector"],["elapsed","2h 41m"]],
+      msg:"gyroid-eth/orrery-telemetry の versioned schema から observation contract を抽出中。"},
+    t2:{t:"T2 GUI収束",k:"task",st:"awaiting",stl:"判断待ち",path:"… &gt; work &gt; goal &gt; T2",
+      kv:[["type","task"],["assigned","Claude @ macbook pro"],["gated by","G1"],["elapsed","0h 18m"]],
+      msg:"1枚目の1画面を提出。akaghef の判断を待って停止している。"},
+    t3:{t:"T3 multi-PC",k:"task",st:"stalled",stl:"停滞・要注意",path:"… &gt; work &gt; goal &gt; T3",
+      kv:[["type","task"],["assigned","Codex-win @ win desktop"],["provenance","connector"],["elapsed","4h 12m"]],
+      msg:"disperse-group を PC カテゴリに割り当てる。描画ロジック上は新軸を作らない。"},
+    gate:{t:"G1 akaghef承認",k:"gate",st:"awaiting",stl:"判断待ち",path:"… &gt; work &gt; G1",
+      kv:[["type","gate"],["state","closed"],["decided by","human"],["blocks","T2"]],
+      msg:"証拠が揃うまで閉じる。開けられるのは human のみ。"},
+    d1:{t:"screen01.html",k:"deliverable",st:"done",stl:"完了",path:"… &gt; PJ08 &gt; mocks &gt; screen01.html",
+      kv:[["type","deliverable"],["produced by","Claude"],["mtime","今日 15:58"],["size","23 KB"]],
+      msg:"DB / runtime を持たない静的 mock。M3E surface と OT 描画物の合成。"},
+    d2:{t:"S17 Strategy",k:"deliverable",st:"done",stl:"完了",path:"… &gt; docs &gt; 01_Vision &gt; Strategy.md",
+      kv:[["type","deliverable"],["produced by","Fugu"],["branch","codex/ot-absorption-strategy"],["state","未マージ"]],
+      msg:"OT を合併吸収し、個人ツールとしての一枚絵運用を主戦場にする。"},
+    res:{t:"API quota",k:"resource",st:"normal",stl:"正常稼働",path:"… &gt; PJ08 &gt; resource &gt; お金",
+      kv:[["type","resource"],["canonical owner","外部会計"],["shared by","3 agent"],["残"," 62%"]],
+      msg:"明細は複製しない。owner / 参照 / 配分 / 制約 / provenance を分離して持つ。"},
+    codex:{t:"Codex",k:"agent",st:"normal",stl:"正常稼働",path:"realm akaghef &gt; role implementer &gt; Codex",
+      kv:[["role","implementer"],["machine","mac mini · 常駐"],["model","gpt-5.5"],["actors","2 session"],["state","tool-running"]],
+      msg:"beta/src/labs/ot/cut/surface-overview/logic.js を読み込み、route parser の責務境界を確認しています。"},
+    hermes:{t:"Fugu",k:"agent",st:"normal",stl:"正常稼働",path:"realm akaghef &gt; role backend &gt; Fugu",
+      kv:[["role","backend"],["machine","mac mini · 常駐"],["model","fugu / sakana"],["actors","1 session"],["state","thinking"]],
+      msg:"observation contract 側の schema を詰めています。front は Claude に委譲済み。"},
+    claude:{t:"Claude",k:"agent",st:"normal",stl:"正常稼働",path:"realm akaghef &gt; role director &gt; Claude",
+      kv:[["role","director"],["machine","macbook pro"],["model","opus-5"],["actors","1 session"],["state","awaiting-user"]],
+      msg:"1枚目の1画面を提出しました。DB も runtime も持たない静的 mock です。判断をください。"},
+    akaghef:{t:"akaghef",k:"agent · human",st:"awaiting",stl:"判断待ち",path:"realm akaghef &gt; role owner &gt; akaghef",
+      kv:[["role","owner"],["machine","macbook pro"],["model","—"],["actors","—"],["state","awaiting-user"]],
+      msg:"human も AI agent と同じ node 型で載る。欄を分けない（RQ2 対称性）。"},
+    cxwin:{t:"Codex-win",k:"agent",st:"stalled",stl:"停滞・要注意",path:"realm akaghef &gt; role implementer &gt; Codex-win",
+      kv:[["role","implementer"],["machine","win desktop"],["model","gpt-5.5"],["actors","1 session"],["state","idle 4h12m"]],
+      msg:"止まっているが壊れてはいない。人を呼んでいないが進んでいない。"},
+    ghost:{t:"Hermes-win",k:"agent",st:"unset",stl:"未配色 · 観測不能",path:"realm akaghef &gt; role ? &gt; Hermes-win",
+      kv:[["role","未確定"],["machine","win desktop"],["model","—"],["actors","—"],["state","unobservable"]],
+      msg:"観測できないから色を決められない。終了(緑)とも切断(赤)とも区別して残す。"}
+  };
+
+  var DECK = ["claude","codex","hermes","akaghef","cxwin","ghost"];
+  var MK = {normal:"var(--st-normal)",awaiting:"var(--st-awaiting)",stalled:"var(--st-stalled)",
+            done:"var(--st-done)",error:"var(--st-error)",archived:"var(--st-archived)",unset:"var(--st-unset)"};
+  var TIME = {claude:"0:18",codex:"2:41",hermes:"1:04",akaghef:"—",cxwin:"4:12",ghost:"—"};
+
+  var MAIL = {
+    "e-comm":{label:"communication · Claude ⇄ Fugu · macbook pro → mac mini",rows:[
+      ["15:41:08","Claude","Fugu","front は俺が持つ。backend の observation contract を先に固めてくれ"],
+      ["15:44:52","Fugu","Claude","了解。snapshot.json schema_version 1 を片側固定の契約として扱う"],
+      ["15:47:19","Fugu","Claude","終了理由が payload に無い。RK3 の分岐を踏む。上流に寄与するか自前化するか要判断"],
+      ["15:52:30","Claude","Fugu","今は決めない。分岐の存在だけ記録して先へ進め"],
+      ["15:58:04","Claude","akaghef","1枚目の1画面を提出。G1 を開けてください"]
+    ]},
+    "e-spawn":{label:"spawned · Claude → Codex-win · macbook pro → win desktop",rows:[
+      ["11:46:00","Claude","Codex-win","T3 multi-PC を担当。disperse-group に PC を割り当てる"],
+      ["11:46:02","system","—","actor instance 起動。role=implementer にバインド"]
+    ]},
+    "e-a2":{label:"assigned-to · T2 GUI収束 → Claude",rows:[
+      ["15:40:11","akaghef","Claude","GUIが収束しないと目標がブレる。君に賭ける"],
+      ["15:40:30","system","—","role=director に T2 を割当。scope 境界を越える typed relation"]
+    ]},
+    "e-gate":{label:"gated-by · T2 GUI収束 ← G1 akaghef承認",rows:[]},
+    "e-a1":{label:"assigned-to · T1 OT spec抽出 → Codex",rows:[]},
+    "e-a3":{label:"assigned-to · T3 multi-PC → Codex-win",rows:[]},
+    "e-att":{label:"gated-by · G1 akaghef承認 → akaghef（黄は人を呼ぶ色）",rows:[]},
+    "e-p1":{label:"produces · Claude → screen01.html",rows:[]},
+    "e-p2":{label:"produces · Fugu → S17 Strategy",rows:[]},
+    "e-res":{label:"resource-use · Codex → API quota",rows:[]}
+  };
+
+  var deck = document.getElementById("deck");
+  var detail = document.getElementById("detail");
+  var mail = document.getElementById("mail");
+  var mempty = document.getElementById("mempty");
+  var einfo = document.getElementById("einfo");
+
+  DECK.forEach(function(id){
+    var n = NODES[id];
+    var el = document.createElement("div");
+    el.className = "card" + (id === "claude" ? " sel" : "");
+    el.setAttribute("data-n", id);
+    el.setAttribute("tabindex", "0");
+    el.innerHTML =
+      '<span class="mk" style="color:' + MK[n.st] + '">∴</span>' +
+      '<span><span class="nm">' + n.t + '</span><br><span class="sub">' +
+        n.kv[0][1] + ' · ' + n.kv[1][1] + '</span></span>' +
+      '<span class="t">' + TIME[id] + '</span>';
+    deck.appendChild(el);
+  });
+
+  function paint(id){
+    var n = NODES[id];
+    if (!n) return;
+    var rows = n.kv.map(function(p){
+      return '<dt>' + p[0] + '</dt><dd>' + p[1] + '</dd>';
+    }).join("");
+    detail.innerHTML =
+      '<div class="dh"><span class="dt">' + n.t + '</span>' +
+      '<span class="dk" style="color:' + MK[n.st] + '">' + n.stl + '</span></div>' +
+      '<div class="path">' + n.path + '</div>' +
+      '<dl class="kv">' + rows + '</dl>' +
+      '<div class="msg">' + n.msg + '</div>' +
+      '<div class="hintline">node hover で出る · card に出るのは connector 所有の field</div>';
+
+    document.querySelectorAll('.nd').forEach(function(g){
+      g.classList.toggle("sel", g.getAttribute("data-n") === id);
+    });
+    document.querySelectorAll('.card').forEach(function(c){
+      c.classList.toggle("sel", c.getAttribute("data-n") === id);
+    });
+  }
+
+  function showMail(eid){
+    var m = MAIL[eid];
+    if (!m) return;
+    einfo.textContent = m.label;
+    if (!m.rows.length){
+      mail.innerHTML = "";
+      mempty.hidden = false;
+      return;
+    }
+    mempty.hidden = true;
+    var html = '<div class="hd">time</div><div class="hd">from</div><div class="hd">to</div><div class="hd">body</div>';
+    m.rows.forEach(function(r){
+      html += '<div>' + r[0] + '</div><div>' + r[1] + '</div><div>' + r[2] + '</div><div>' + r[3] + '</div>';
+    });
+    mail.innerHTML = html;
+
+    document.querySelectorAll('.glink').forEach(function(p){ p.classList.remove("hot"); });
+    var g = document.getElementById(eid);
+    if (g) { var l = g.querySelector('.glink'); if (l) l.classList.add("hot"); }
+  }
+
+  document.querySelectorAll('.nd').forEach(function(g){
+    var id = g.getAttribute("data-n");
+    g.addEventListener("mouseenter", function(){ paint(id); });
+    g.addEventListener("focus", function(){ paint(id); });
+    g.addEventListener("click", function(){ paint(id); });
+  });
+  document.querySelectorAll('.card').forEach(function(c){
+    var id = c.getAttribute("data-n");
+    c.addEventListener("mouseenter", function(){ paint(id); });
+    c.addEventListener("focus", function(){ paint(id); });
+    c.addEventListener("click", function(){ paint(id); });
+  });
+  Object.keys(MAIL).forEach(function(eid){
+    var g = document.getElementById(eid);
+    if (!g) return;
+    g.addEventListener("click", function(){ showMail(eid); });
+    g.addEventListener("mouseenter", function(){
+      var l = g.querySelector('.glink'); if (l) l.style.strokeWidth = "3.4";
+    });
+    g.addEventListener("mouseleave", function(){
+      var l = g.querySelector('.glink'); if (l) l.style.strokeWidth = "";
+    });
+  });
+
+  paint("claude");
+  showMail("e-comm");
+})();
+</script>

@@ -1,5 +1,19 @@
 # M3E Agent Execution Guide
 
+## 高優先度のサブプロジェクト入口
+
+2026-09-17 のユーザー指定: **PJ08 — M3E × OT 合併吸収を高優先度で扱う。**
+Orrery Telemetry と M3E の統合、PJ08 の着手・再開については、まず
+[再開ガイド](projects/PJ08_M3E_OT_Fusion/resume-cheatsheet.md)、
+[概要](projects/PJ08_M3E_OT_Fusion/README.md)、
+[計画](projects/PJ08_M3E_OT_Fusion/plan.md) を読む。
+対象はこのリポジトリの `projects/PJ08_M3E_OT_Fusion/`。
+保存済み Codex プロジェクト名、neoM3E、runtime map から対象を推測し直さない。
+別のサブプロジェクトを探す場合も、まず `projects/` と
+[サブプロジェクト一覧](backlog/meta-subpj-candidates.md) を確認する。
+この優先指定は、既存の必須コンテキスト確認・設計・Phase 移行条件を変更しない。
+
+
 ## Objective
 
 This repository is operated with a Director to Codex model.

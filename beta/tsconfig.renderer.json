@@ -10,6 +10,7 @@
     "types": []
   },
   "include": [
-    "src/browser/webgl_projection.ts"
+    "src/browser/webgl_projection.ts",
+    "src/browser/orrery_network.ts"
   ]
 }

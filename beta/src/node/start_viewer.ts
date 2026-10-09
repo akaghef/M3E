@@ -5,6 +5,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import http from "http";
+import { createOrreryRuntime } from "./orrery_runtime";
+import { createOrreryApi } from "./orrery_api";
 import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
@@ -4025,11 +4027,13 @@ async function handleCollabApi(
 export function createAppServer(): http.Server {
   refreshCloudSyncConfigFromEnv();
 
-  return http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
+  const orreryApi = createOrreryApi(createOrreryRuntime());
+  const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
     instrumentRequestForPerfLog(req, res);
     if (redirectLoopbackHost(req, res)) {
       return;
     }
+    if (orreryApi.handle(req, res)) return;
     if (await handleOpenLocalPathApi(req, res)) {
       return;
     }
@@ -4234,6 +4238,8 @@ export function createAppServer(): http.Server {
 
     sendFile(res, target);
   });
+  orreryApi.attach(server);
+  return server;
 }
 
 if (require.main === module) {
