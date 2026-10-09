@@ -206,7 +206,8 @@ test.describe("Tab: add child node", () => {
         unscaledEditorWidth: element.getBoundingClientRect().width / transform.a,
       };
     });
-    expect(editorMetrics.configuredMinWidth).toBe("40ch");
+    expect(editorMetrics.configuredMinWidth).toBe("0px");
+    expect(editorMetrics.unscaledEditorWidth).toBeCloseTo(24 * 44, 0);
     expect(editorMetrics.unscaledEditorWidth).toBeGreaterThanOrEqual(editorMetrics.computedMinWidth - 1);
 
     await editor.fill("あ".repeat(80));

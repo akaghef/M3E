@@ -1673,7 +1673,7 @@ function hideLocalFsPanel(): void {
   localFsPanelEl.hidden = true;
   localFsToggleBtn?.setAttribute("aria-expanded", "false");
   localFsToggleBtn?.classList.remove("is-active");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function toggleLocalFsPanel(): void {
@@ -1987,7 +1987,7 @@ function hideV4Panel(): void {
   }
   v4PanelVisible = false;
   v4PanelEl.hidden = true;
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function addV4DiscussionNode(kind: "sticky" | "decision"): void {
@@ -2021,7 +2021,7 @@ function addV4DiscussionNode(kind: "sticky" | "decision"): void {
   touchDocument();
   syncV4Panel(false);
   setStatus(`V4 ${kind} node added.`);
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function parseSseFrames(text: string): Array<{ event: string; data: unknown }> {
@@ -3524,7 +3524,7 @@ function textWidth(str: string, fontSize: number): number {
   const normalized = String(str || "");
   const measureContext = getTextMeasureContext();
   if (measureContext) {
-    measureContext.font = `${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
+    measureContext.font = `450 ${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
     return Math.max(80, Math.ceil(measureContext.measureText(normalized).width));
   }
   return Math.max(80, normalized.length * fontSize * 0.62);
@@ -3550,6 +3550,40 @@ function multilineTspans(lines: string[], x: number, lineHeight: number): string
   return lines
     .map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line || " ")}</tspan>`)
     .join("");
+}
+
+const NODE_LABEL_WIDTH_ATTR = "m3e:label-width";
+const WRAP_CHARACTERS_PREF = "m3e:node-wrap-characters";
+let defaultWrapCharacters = VIEWER_TUNING.typography.defaultWrapCharacters;
+try {
+  const saved = Number(localStorage.getItem(WRAP_CHARACTERS_PREF));
+  if (Number.isFinite(saved) && saved >= 8 && saved <= 80) defaultWrapCharacters = Math.round(saved);
+} catch { /* Local storage may be unavailable. */ }
+document.documentElement.dataset.nodeWrapCharacters = String(defaultWrapCharacters);
+window.addEventListener("m3e:set-node-wrap-characters", (event: Event) => {
+  const value = Number((event as CustomEvent).detail?.characters);
+  if (!Number.isFinite(value) || value < 8 || value > 80) return;
+  const anchor = nodeViewportAnchor(viewState.selectedNodeId);
+  defaultWrapCharacters = Math.round(value);
+  document.documentElement.dataset.nodeWrapCharacters = String(defaultWrapCharacters);
+  try { localStorage.setItem(WRAP_CHARACTERS_PREF, String(defaultWrapCharacters)); } catch { /* optional preference */ }
+  render();
+  preserveNodeViewportAnchor(viewState.selectedNodeId, anchor);
+});
+
+function explicitNodeLabelWidth(node: TreeNode): number | null {
+  const width = Number(node.attributes?.[NODE_LABEL_WIDTH_ATTR]);
+  return Number.isFinite(width) && width >= 120 && width <= 4000 ? width : null;
+}
+
+function measureTextNode(node: TreeNode, fontSize: number, isRoot = false): LayoutNodeMetric {
+  const explicit = explicitNodeLabelWidth(node);
+  const maxWidth = explicit ?? defaultWrapCharacters * fontSize + 20;
+  return measureWrappedNodeLabel(uiLabel(node), fontSize, maxWidth, {
+    minWidth: explicit ?? (isRoot ? 280 : 80),
+    minHeight: isRoot ? VIEWER_TUNING.layout.rootHeight : VIEWER_TUNING.layout.leafHeight,
+    padX: 20, padY: 8,
+  });
 }
 
 function measureNodeLabel(text: string, fontSize: number): { w: number; h: number } {
@@ -3882,7 +3916,7 @@ function enterScope(scopeNodeId: string): boolean {
   render();
   triggerCameraMove("scope");
   setStatus(`Entered scope: ${uiLabel(node)}`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3922,7 +3956,7 @@ function exitScope(): boolean {
   render();
   triggerCameraMove("scope");
   setStatus("Returned to parent scope.");
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3945,7 +3979,7 @@ function makeSelectedFolder(): boolean {
     touchDocument();
     setStatus(`Marked as folder scope: ${uiLabel(node)}`);
   }
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3986,7 +4020,7 @@ function addAliasInCurrentScope(): boolean {
   setSingleSelection(aliasId, false);
   touchDocument();
   setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -4026,7 +4060,7 @@ function addAliasAsChild(): boolean {
   viewState.selectedNodeId = aliasId;
   touchDocument();
   setStatus(`Alias created as child of ${uiLabel(target)}.`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -4060,7 +4094,7 @@ function jumpToAliasTarget(): boolean {
   triggerCameraMove("scope");
   updateScopeInUrl(targetScopeId);
   setStatus(`Jumped to target: ${uiLabel(target)}`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -4226,7 +4260,7 @@ function undoLastChange(): void {
   render();
   scheduleAutosave();
   setStatus("Undo applied.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function redoLastChange(): void {
@@ -4259,7 +4293,7 @@ function redoLastChange(): void {
   render();
   scheduleAutosave();
   setStatus("Redo applied.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function setStatus(message: string, isError = false): void {
@@ -4398,7 +4432,6 @@ function refreshLinearPanelCanvasLayout(): boolean {
   }
 
   const layout = lastLayout;
-  let deepestDepth = -1;
   let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
   let treeMinY = Number.POSITIVE_INFINITY;
   let treeMaxY = Number.NEGATIVE_INFINITY;
@@ -4409,14 +4442,8 @@ function refreshLinearPanelCanvasLayout(): boolean {
     }
     treeMinY = Math.min(treeMinY, p.y - p.h / 2);
     treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
-    if (p.depth > deepestDepth) {
-      deepestDepth = p.depth;
-      deepestRightEdge = p.x + p.w;
-      return;
-    }
-    if (p.depth === deepestDepth) {
-      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
-    }
+    // Wide shallow nodes must also leave room for the linear representation.
+    deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
   });
   if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
     treeMinY = VIEWER_TUNING.layout.topPad;
@@ -4637,7 +4664,7 @@ function createWebGLGraphLinkEndpointControls(
         touchDocument();
         setStatus(`Link ${endpoint} port: ${side}.`);
       }
-      board.focus();
+      board.focus({ preventScroll: true });
     });
     controls.appendChild(dot);
   });
@@ -4727,7 +4754,7 @@ function startWebGLGraphLinkDrag(
   } catch {
     // The browser may reject capture for a synthetic or already-ended pointer.
   }
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function updateWebGLGraphLinkDragPreview(event: PointerEvent): void {
@@ -4756,7 +4783,7 @@ function finishWebGLGraphLinkDrag(event: PointerEvent): void {
   const shouldCommit = event.type !== "pointercancel" && drag.dragged;
   if (!shouldCommit) {
     syncWebGLGraphLinkControls();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -4768,7 +4795,7 @@ function finishWebGLGraphLinkDrag(event: PointerEvent): void {
   if (!point || !targetNode) {
     setStatus("No valid GraphLink endpoint.", true);
     syncWebGLGraphLinkControls();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -4778,14 +4805,14 @@ function finishWebGLGraphLinkDrag(event: PointerEvent): void {
   );
   if (!setGraphLinkEndpointPort(drag.linkId, drag.endpoint, side, true, targetNode.id)) {
     syncWebGLGraphLinkControls();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   // The command has now been accepted. Re-render only after the WebGL-only
   // drag preview has ended, matching the existing SVG commit boundary.
   touchDocument();
   setStatus(`Link ${drag.endpoint} endpoint updated.`);
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function cloneWebGLRenderSnapshot(snapshot: RenderSnapshot): RenderSnapshot {
@@ -4975,6 +5002,7 @@ function syncViewportDependents(): void {
   syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
   syncTemplateCompletionPlacement();
+  syncNodeResizeHandle();
   window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
 }
 
@@ -4998,6 +5026,7 @@ function applyLinearPanelViewportTransform(): void {
 }
 
 function applyZoom(options: ViewportApplyOptions = {}): void {
+  syncNodeResizeHandle();
   if (isWebGLRendererActive()) {
     webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
     syncInlineEditorPosition();
@@ -5208,9 +5237,9 @@ function syncInlineEditorPosition(): void {
     const topLeft = worldToScreen({ x: webglNode.x, y: webglNode.y }, camera);
     inlineEditor.input.style.left = `${topLeft.x}px`;
     inlineEditor.input.style.top = `${topLeft.y}px`;
-    inlineEditor.input.style.width = `${webglNode.width}px`;
+    inlineEditor.input.style.width = `${Math.max(40, webglNode.width - 20)}px`;
     inlineEditor.input.style.height = `${webglNode.height}px`;
-    inlineEditor.input.style.minWidth = `${webglNode.width}px`;
+    inlineEditor.input.style.minWidth = "0";
     inlineEditor.input.style.minHeight = `${webglNode.height}px`;
     inlineEditor.input.style.fontSize = `${webglNode.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
     inlineEditor.input.style.lineHeight = `${lineHeightForFont(webglNode.fontSize || VIEWER_TUNING.typography.nodeFont)}px`;
@@ -5235,7 +5264,7 @@ function syncInlineEditorPosition(): void {
   const isRootLabel = nodeId === map.state.rootId;
   const nodeStyles = readNodeStyleAttrs(node.attributes || {});
   const label = isRootLabel ? uiLabel(node) : diagramLabel(node, nodeStyles);
-  const labelLines = splitLabelLines(label || "(empty)");
+  const labelLines = nodePos.labelLines || splitLabelLines(label || "(empty)");
   const fontSize = nodePos.fontSize ?? (isRootLabel ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
   const lineHeight = lineHeightForFont(fontSize);
   const labelX = isRootLabel
@@ -5245,15 +5274,17 @@ function syncInlineEditorPosition(): void {
   const textHeight = Math.max(lineHeight, labelLines.length * lineHeight);
   const left = viewState.cameraX + labelX * viewState.zoom;
   const top = viewState.cameraY + (textStartY - fontSize * 0.82) * viewState.zoom;
-  const width = Math.max(28, nodePos.w + (isRootLabel ? 0 : 12));
+  const width = Math.max(40, (explicitNodeLabelWidth(node) ?? (viewState.surfaceViewMode === "tree" ? defaultWrapCharacters * fontSize + 20 : nodePos.w)) - 20);
   const height = Math.max(lineHeight, textHeight);
 
   inlineEditor.input.style.left = `${left}px`;
   inlineEditor.input.style.top = `${top}px`;
   inlineEditor.input.style.width = `${width}px`;
-  inlineEditor.input.style.minWidth = "40ch";
+  inlineEditor.input.style.minWidth = "0";
   inlineEditor.input.style.minHeight = `${height}px`;
+  inlineEditor.input.style.fontFamily = TEXT_MEASURE_FONT_FAMILY;
   inlineEditor.input.style.fontSize = `${fontSize}px`;
+  inlineEditor.input.style.lineHeight = `${lineHeight}px`;
   inlineEditor.input.style.lineHeight = `${lineHeight}px`;
   inlineEditor.input.style.fontWeight = isRootLabel ? "500" : "450";
   inlineEditor.input.style.transform = isRootLabel
@@ -5328,7 +5359,66 @@ function setEditedEdgeLabelVisibility(nodeId: string, visible: boolean): void {
     });
 }
 
-function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
+let nodeResizeHandle: HTMLButtonElement | null = null;
+let nodeResize: { id: string; pointerId: number; x: number; width: number; changed: boolean } | null = null;
+function syncNodeResizeHandle(): void {
+  if (!nodeResizeHandle) {
+    nodeResizeHandle = document.createElement("button");
+    nodeResizeHandle.className = "node-resize-handle";
+    nodeResizeHandle.setAttribute("aria-label", "Resize node width");
+    nodeResizeHandle.title = "Drag to resize node width";
+    board.appendChild(nodeResizeHandle);
+    nodeResizeHandle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.button !== 0 || !map || !lastLayout) return;
+      stopInlineEdit(true, { focusBoard: false });
+      cancelCameraMotion();
+      const id = viewState.selectedNodeId;
+      const p = lastLayout.pos[id];
+      if (!p) return;
+      nodeResize = { id, pointerId: event.pointerId, x: event.clientX, width: p.w,
+        changed: false };
+      nodeResizeHandle!.setPointerCapture(event.pointerId);
+    });
+    nodeResizeHandle.addEventListener("pointermove", (event) => {
+      const drag = nodeResize;
+      if (!drag || event.pointerId !== drag.pointerId || !map) return;
+      const width = Math.round(Math.max(120, Math.min(4000, drag.width + (event.clientX - drag.x) / viewState.zoom)));
+      if (!drag.changed && Math.abs(width - drag.width) < 2) return;
+      if (!drag.changed) { pushUndoSnapshot(); drag.changed = true; }
+      const before = nodeViewportAnchor(drag.id);
+      const node = map.state.nodes[drag.id]!;
+      node.attributes = { ...node.attributes, [NODE_LABEL_WIDTH_ATTR]: String(width) };
+      render();
+      preserveNodeViewportAnchor(drag.id, before);
+    });
+    const finish = (event: PointerEvent) => {
+      const drag = nodeResize;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      nodeResize = null;
+      if (nodeResizeHandle!.hasPointerCapture(event.pointerId)) nodeResizeHandle!.releasePointerCapture(event.pointerId);
+      if (drag.changed) {
+        touchDocument();
+        nudgeNodeIntoView(drag.id, { animate: false });
+      }
+      board.focus({ preventScroll: true });
+    };
+    nodeResizeHandle.addEventListener("pointerup", finish);
+    nodeResizeHandle.addEventListener("pointercancel", finish);
+    nodeResizeHandle.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); });
+  }
+  const id = viewState.selectedNodeId;
+  const node = map?.state.nodes[id];
+  const rect = nodeViewportRect(id);
+  nodeResizeHandle.hidden = !node || !rect || isLatexNode(node) || currentSurfaceIsScatterMode() || currentSurfaceIsFlowMode() || isReadOnlyLink() || Boolean(inlineEditor) || annotationTool !== "select";
+  if (rect) {
+    nodeResizeHandle.style.left = `${rect.right - 7}px`;
+    nodeResizeHandle.style.top = `${rect.bottom - 7}px`;
+  }
+}
+
+function nodeViewportAnchor(nodeId: string): { x: number; y: number } | null {
   if (!map || !lastLayout) {
     return null;
   }
@@ -5336,18 +5426,18 @@ function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
   if (!nodePos) {
     return null;
   }
-  const centerX = nodeId === map.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
+  const anchorX = nodePos.x;
   return {
-    x: viewState.cameraX + centerX * viewState.zoom,
-    y: viewState.cameraY + nodePos.y * viewState.zoom,
+    x: viewState.cameraX + anchorX * viewState.zoom,
+    y: viewState.cameraY + (nodePos.y - nodePos.h / 2) * viewState.zoom,
   };
 }
 
-function preserveNodeViewportCenter(nodeId: string, before: { x: number; y: number } | null): void {
+function preserveNodeViewportAnchor(nodeId: string, before: { x: number; y: number } | null): void {
   if (!before) {
     return;
   }
-  const after = nodeViewportCenter(nodeId);
+  const after = nodeViewportAnchor(nodeId);
   if (!after) {
     return;
   }
@@ -5355,7 +5445,7 @@ function preserveNodeViewportCenter(nodeId: string, before: { x: number; y: numb
     cameraX: viewState.cameraX + before.x - after.x,
     cameraY: viewState.cameraY + before.y - after.y,
     zoom: viewState.zoom,
-  });
+  }, { animate: false });
 }
 
 function nodeViewportRect(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
@@ -5376,15 +5466,19 @@ function nodeViewportRect(nodeId: string): { left: number; right: number; top: n
 
 function activeSafeViewport(): { left: number; right: number; top: number; bottom: number } {
   const boardRect = board.getBoundingClientRect();
-  const toolbarRect = toolbarEl?.getBoundingClientRect();
-  const toolbarBottom = toolbarRect ? Math.max(0, toolbarRect.bottom - boardRect.top) : 0;
-  const pad = 52;
-  return {
-    left: pad,
-    right: Math.max(pad, boardRect.width - pad),
-    top: Math.max(pad, toolbarBottom + 28),
-    bottom: Math.max(pad, boardRect.height - pad),
-  };
+  const safe = { left: 24, right: boardRect.width - 24, top: 24, bottom: boardRect.height - 64 };
+  // Workbench chrome is fixed in screen coordinates, outside the Surface camera.
+  for (const [selector, side] of [[".wb-left-rail", "left"], [".wb-right-panel", "right"], [".wb-topbar", "top"]] as const) {
+    const el = document.querySelector<HTMLElement>(selector);
+    if (!el || el.hidden || !el.getClientRects().length) continue;
+    const r = el.getBoundingClientRect();
+    if (side === "left") safe.left = Math.max(safe.left, r.right - boardRect.left + 20);
+    if (side === "right") safe.right = Math.min(safe.right, r.left - boardRect.left - 20);
+    if (side === "top") safe.top = Math.max(safe.top, r.bottom - boardRect.top + 20);
+  }
+  safe.right = Math.max(safe.left + 80, safe.right);
+  safe.bottom = Math.max(safe.top + 80, safe.bottom);
+  return safe;
 }
 
 function nudgeNodeIntoView(nodeId: string, options: CameraMoveOptions = {}): boolean {
@@ -5395,12 +5489,12 @@ function nudgeNodeIntoView(nodeId: string, options: CameraMoveOptions = {}): boo
   const safe = activeSafeViewport();
   let dx = 0;
   let dy = 0;
-  if (rect.left < safe.left) {
+  if (rect.right - rect.left > safe.right - safe.left || rect.left < safe.left) {
     dx = safe.left - rect.left;
   } else if (rect.right > safe.right) {
     dx = safe.right - rect.right;
   }
-  if (rect.top < safe.top) {
+  if (rect.bottom - rect.top > safe.bottom - safe.top || rect.top < safe.top) {
     dy = safe.top - rect.top;
   } else if (rect.bottom > safe.bottom) {
     dy = safe.bottom - rect.bottom;
@@ -5456,9 +5550,11 @@ function setZoom(
   const previousZoom = viewState.zoom;
   viewState.zoom = clampZoom(nextZoom);
 
+  refreshBoardViewportRect();
   const boardRect = _boardViewportRect;
-  const pointerX = anchorClientX ?? boardRect.left + boardRect.width / 2;
-  const pointerY = anchorClientY ?? boardRect.top + boardRect.height / 2;
+  const safe = activeSafeViewport();
+  const pointerX = anchorClientX ?? boardRect.left + (safe.left + safe.right) / 2;
+  const pointerY = anchorClientY ?? boardRect.top + (safe.top + safe.bottom) / 2;
   const localViewportX = pointerX - boardRect.left;
   const localViewportY = pointerY - boardRect.top;
   const contentX = (localViewportX - viewState.cameraX) / previousZoom;
@@ -6697,7 +6793,7 @@ async function generateRelatedTopicsForSelectedNode(): Promise<void> {
     }
     setStatus(`AI suggested ${added} related topic(s).`);
     render();
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`AI topic suggestion failed (${(err as Error).message}).`, true);
   }
@@ -6728,7 +6824,7 @@ async function generateRapidActionForSelectedNode(
     const mergedSuffix = merged > 0 ? `, merged ${merged}` : "";
     setStatus(`${sourceLabel} generated ${added} node(s)${mergedSuffix}: ${label || action}`);
     render();
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`CAS generation failed: ${(err as Error).message}`, true);
   }
@@ -6750,7 +6846,7 @@ window.addEventListener("m3e:ai-append-topics", (event: Event) => {
     }
     setStatus(`AI applied ${added} topic node(s).`);
     render();
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`AI apply failed: ${(err as Error).message}`, true);
   }
@@ -6763,7 +6859,7 @@ window.addEventListener("m3e:ai-detail-active-node", () => {
 window.addEventListener("m3e:rapid-action-preview", (event: Event) => {
   const label = String((event as CustomEvent<{ label?: unknown }>).detail?.label || "").trim();
   setStatus(`Rapid: ${label || "action"}`);
-  board.focus();
+  board.focus({ preventScroll: true });
 });
 
 window.addEventListener("m3e:rapid-action-generate", (event: Event) => {
@@ -6981,7 +7077,7 @@ function applyLinearTextToScope(): void {
     linearDirty = false;
     touchDocument();
     setStatus("Linear text applied to current scope.");
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`Linear apply failed: ${(err as Error).message}`, true);
   }
@@ -7489,14 +7585,14 @@ function measureLayoutNode(state: AppState, nodeId: string, displayRootId: strin
   if (!node) {
     return { w: 120, h: VIEWER_TUNING.layout.leafHeight };
   }
-  if (nodeId === displayRootId) {
-    if (config.mode === "tree") {
-      const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
-      return {
-        w: Math.max(280, rootLabelMeasure.w + 100),
-        h: Math.max(VIEWER_TUNING.layout.rootHeight, rootLabelMeasure.h + 8),
-      };
-    }
+  const isRoot = nodeId === displayRootId;
+  if (!isLatexNode(node) && (config.mode === "tree" || explicitNodeLabelWidth(node) !== null)) {
+    const font = config.mode === "tree"
+      ? (isRoot ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont)
+      : (isRoot ? config.rootFontSize : config.fontSize);
+    return measureTextNode(node, font, isRoot);
+  }
+  if (isRoot) {
     return measureWrappedNodeLabel(uiLabel(node), config.rootFontSize, config.rootMaxWidth, {
       minWidth: config.rootMinWidth,
       minHeight: VIEWER_TUNING.layout.rootHeight,
@@ -7507,9 +7603,6 @@ function measureLayoutNode(state: AppState, nodeId: string, displayRootId: strin
   if (isLatexNode(node)) {
     const m = measureLatex(node.text);
     return { w: m.w, h: m.h };
-  }
-  if (config.mode === "tree") {
-    return measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.nodeFont);
   }
   const children = visibleChildren(node);
   const maxWidth = children.length === 0 ? config.leafMaxWidth : config.nodeMaxWidth;
@@ -8425,6 +8518,7 @@ function render(): void {
   updateMapTitle();
   syncInlineEditorPosition();
   renderLinearPanel();
+  syncNodeResizeHandle();
 }
 
 interface LayoutDiagnosticBox {
@@ -9172,7 +9266,7 @@ function selectGraphLink(linkId: string, renderNow = true): void {
   if (renderNow) {
     scheduleRender();
   }
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
@@ -9475,7 +9569,7 @@ function hideHomeScreen(): void {
   homeScreenEl.hidden = true;
   scopeNavBtn?.setAttribute("aria-expanded", "false");
   appEl?.classList.remove("home-active");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function toggleHomeScreen(): void {
@@ -9730,7 +9824,7 @@ function hideEntityListPanel(): void {
   entityListVisible = false;
   entityListPanelEl.hidden = true;
   stopPresenceWatch();
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function toggleEntityListPanel(): void {
@@ -10748,7 +10842,7 @@ function hideTemplateCompletion(): void {
   document.removeEventListener("mousedown", templateCompletionState.closeHandler, true);
   templateCompletionState.root.remove();
   templateCompletionState = null;
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function cloneTemplateNodeSubtree(sourceId: string, parentId: string): number {
@@ -10927,7 +11021,7 @@ function showTemplateCompletion(): void {
   };
   renderTemplateCompletion();
   setTimeout(() => document.addEventListener("mousedown", closeHandler, true), 0);
-  input.focus();
+  input.focus({ preventScroll: true });
   input.select();
 }
 
@@ -11026,7 +11120,7 @@ function toggleSelectedTabularComponent(): void {
     delete attrs[LEGACY_VIEW_TYPE_ATTR];
     touchDocument();
     setStatus("Tabular component removed.");
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -11034,7 +11128,7 @@ function toggleSelectedTabularComponent(): void {
   delete attrs[LEGACY_VIEW_TYPE_ATTR];
   touchDocument();
   setStatus("Tabular component enabled.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 // ---- Context Menu ----
@@ -11198,7 +11292,7 @@ function editEdgeLabelForSelectedNode(): void {
     setStatus("Edge label cleared.");
   }
   touchDocument();
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function hideColorPalette(): void {
@@ -11436,7 +11530,7 @@ function hideConflictPanel(): void {
   if (conflictUseRemoteBtn) {
     conflictUseRemoteBtn.textContent = "Use Remote";
   }
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 if (conflictCloseBtn) {
@@ -11474,6 +11568,7 @@ if (conflictUseRemoteBtn) {
 
 function addChild(): void {
   const parentId = viewState.selectedNodeId;
+  const before = nodeViewportAnchor(parentId);
   const parent = getNode(parentId);
   if (isAliasNode(parent)) {
     setStatus("Alias nodes cannot own children.", true);
@@ -11487,12 +11582,14 @@ function addChild(): void {
   parent.collapsed = false;
   setSingleSelection(id, false);
   touchDocument();
+  preserveNodeViewportAnchor(parentId, before);
   nudgeActiveNodeIntoView({ animate: false });
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function addSibling(): void {
   const node = getNode(viewState.selectedNodeId);
+  const before = nodeViewportAnchor(node.id);
   if (node.parentId === null) {
     addChild();
     return;
@@ -11505,8 +11602,9 @@ function addSibling(): void {
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument();
+  preserveNodeViewportAnchor(node.id, before);
   nudgeActiveNodeIntoView({ animate: false });
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function selectedLinkableNode(): TreeNode | null {
@@ -11638,7 +11736,7 @@ function applyMarkedLink(): void {
   viewState.linkSourceNodeId = "";
   touchDocument();
   setStatus(`Linked ${uiLabel(source)} -> ${uiLabel(target)}.`);
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function createGraphLinkBetween(sourceId: string, targetId: string): boolean {
@@ -11700,7 +11798,7 @@ function addScatterNodeAt(clientX: number, clientY: number): void {
   setSingleSelection(id, false);
   touchDocument();
   setStatus("Disperse node added.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function deleteScatterEdge(linkId: string): void {
@@ -11878,7 +11976,7 @@ function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
 
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
-  const viewportCenterBefore = nodeViewportCenter(nodeId);
+  const viewportAnchorBefore = nodeViewportAnchor(nodeId);
   const next = String(nextRaw || "").trim();
   if (next === "") {
     setStatus("Node text cannot be empty.", true);
@@ -11900,7 +11998,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       target.text = next;
       syncAliasDisplayForTarget(target.id);
       touchDocument();
-      preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+      preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+      nudgeNodeIntoView(nodeId, { animate: false });
       return true;
     }
     if ((node.aliasLabel || node.text) === next) {
@@ -11910,7 +12009,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     node.aliasLabel = next;
     node.text = next;
     touchDocument();
-    preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+    preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+    nudgeNodeIntoView(nodeId, { animate: false });
     return true;
   }
   if (mode === "node-text") {
@@ -11934,7 +12034,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     node.attributes = applied.attributes;
     syncAliasDisplayForTarget(node.id);
     touchDocument();
-    preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+    preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+    nudgeNodeIntoView(nodeId, { animate: false });
     return true;
   }
   if (node.text === next) {
@@ -11946,7 +12047,8 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   node.text = next;
   syncAliasDisplayForTarget(node.id);
   touchDocument();
-  preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+  preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+  nudgeNodeIntoView(nodeId, { animate: false });
   return true;
 }
 
@@ -11979,9 +12081,10 @@ function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): vo
   if (wasWebGL) {
     syncWebGLInteraction();
   }
+  syncNodeResizeHandle();
 
   if (options?.focusBoard !== false) {
-    board.focus();
+    board.focus({ preventScroll: true });
   }
 }
 
@@ -12024,7 +12127,7 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
     applyIncomingEdgeLabelEdit(nodeId, next);
   }
   if (options?.focusBoard !== false) {
-    board.focus();
+    board.focus({ preventScroll: true });
   }
 }
 
@@ -12069,7 +12172,7 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   inlineEdgeLabelEditor = { nodeId, input };
   syncInlineEdgeLabelEditorPosition();
   autoSizeInlineEdgeLabelEditor(input);
-  input.focus();
+  input.focus({ preventScroll: true });
   input.select();
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -12158,7 +12261,8 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   if (options?.nudgeIntoView !== false) {
     nudgeNodeIntoView(nodeId);
   }
-  input.focus();
+  syncNodeResizeHandle();
+  input.focus({ preventScroll: true });
   if (options?.selectAll ?? true) {
     input.select();
   } else {
@@ -13295,12 +13399,12 @@ function centerOnNode(nodeId: string, zoom = viewState.zoom, options: CameraMove
     return false;
   }
   const nodePos = lastLayout.pos[nodeId]!;
-  const boardRect = board.getBoundingClientRect();
+  const safe = activeSafeViewport();
   const targetZoom = clampZoom(zoom);
   moveCameraTo({
     zoom: targetZoom,
-    cameraX: boardRect.width / 2 - (nodePos.x + nodePos.w / 2) * targetZoom,
-    cameraY: boardRect.height / 2 - nodePos.y * targetZoom,
+    cameraX: (safe.left + safe.right) / 2 - (nodePos.x + nodePos.w / 2) * targetZoom,
+    cameraY: (safe.top + safe.bottom) / 2 - nodePos.y * targetZoom,
   }, options);
   return true;
 }
@@ -13310,17 +13414,17 @@ function fitDocument(options: CameraMoveOptions = {}): boolean {
     return false;
   }
   render();
-  const boardRect = board.getBoundingClientRect();
-  if (!boardRect.width || !boardRect.height || !contentWidth || !contentHeight) {
+  const safe = activeSafeViewport();
+  if (safe.right <= safe.left || safe.bottom <= safe.top || !contentWidth || !contentHeight) {
     return false;
   }
-  const fitX = boardRect.width / contentWidth;
-  const fitY = boardRect.height / contentHeight;
+  const fitX = (safe.right - safe.left) / contentWidth;
+  const fitY = (safe.bottom - safe.top) / contentHeight;
   const zoom = clampZoom(Math.min(fitX, fitY) * 0.92);
   moveCameraTo({
     zoom,
-    cameraX: (boardRect.width - contentWidth * zoom) / 2,
-    cameraY: (boardRect.height - contentHeight * zoom) / 2,
+    cameraX: safe.left + (safe.right - safe.left - contentWidth * zoom) / 2,
+    cameraY: safe.top + (safe.bottom - safe.top - contentHeight * zoom) / 2,
   }, options);
   return true;
 }
@@ -15114,7 +15218,7 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
         webglDragBaseSnapshot = cloneWebGLRenderSnapshot(webglLastSnapshot);
         webglCanvas.setPointerCapture(event.pointerId);
         syncWebGLInteraction();
-        board.focus();
+        board.focus({ preventScroll: true });
         return;
       }
     }
@@ -15123,14 +15227,14 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
     // Keep HTML inspector/metadata in the canonical UI state in sync. This is
     // a discrete selection update, never part of the pan/zoom gesture path.
     scheduleRender();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   // Link selection is read-only in Phase 1; it only mirrors existing UI state.
   selectGraphLink(hit.edgeId, false);
   syncWebGLInteraction();
   scheduleRender();
-  board.focus();
+  board.focus({ preventScroll: true });
 });
 
 webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
@@ -15186,13 +15290,13 @@ function finishWebGLNodeDrag(event: PointerEvent): void {
       range: drag.shiftKey,
     });
     syncWebGLInteraction();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
   if (!startWorld || !endWorld) {
     syncWebGLInteraction();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   applyScatterDragDelta(sourceRootIds, startViews, {
@@ -15203,7 +15307,7 @@ function finishWebGLNodeDrag(event: PointerEvent): void {
   // and broadcast after the WebGL-only preview has ended.
   touchDocument();
   setStatus("Disperse position updated.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 webglCanvas?.addEventListener("pointerup", finishWebGLNodeDrag);
@@ -15262,7 +15366,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       dragged: false,
     };
     canvas.setPointerCapture(event.pointerId);
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   const linkPortChoice = targetEl?.getAttribute("data-link-port-choice") as LinkEndpointKind | null;
@@ -15274,7 +15378,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     setGraphLinkEndpointPort(choiceLinkId, linkPortChoice, linkPortSide);
     touchDocument();
     setStatus(`Link ${linkPortChoice} port: ${linkPortSide}.`);
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   const linkId = targetEl?.getAttribute("data-link-id") ?? null;
@@ -15288,7 +15392,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     } else {
       selectGraphLink(linkId);
     }
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   if (map && linkId && event.button === 0) {
@@ -15306,7 +15410,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       scheduleRender();
       setStatus("Expanded collapsed branch.");
     }
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
@@ -15331,7 +15435,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
         setSingleSelection(nodeId, false);
         runScatterReflow(60, { withUndo: false, withTouch: true });
         setStatus("Expanded scatter group.");
-        board.focus();
+        board.focus({ preventScroll: true });
         return;
       }
     }
@@ -15339,14 +15443,14 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       event.preventDefault();
       setSingleSelection(nodeId, false);
       deleteSelected();
-      board.focus();
+      board.focus({ preventScroll: true });
       return;
     }
     if (scatterToolMode === "colorize") {
       event.preventDefault();
       setSingleSelection(nodeId, false);
       showColorPalette();
-      board.focus();
+      board.focus({ preventScroll: true });
       return;
     }
     if (scatterToolMode === "add-edge") {
@@ -15362,7 +15466,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
           scheduleRender();
         }
       }
-      board.focus();
+      board.focus({ preventScroll: true });
       return;
     }
     const rootIds = viewState.selectedNodeIds.has(nodeId)
@@ -15389,7 +15493,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     event.preventDefault();
     setSingleSelection(nodeId, event.shiftKey);
     pinMarkdownHoverPreviewForNode(nodeId);
-    board.focus();
+    board.focus({ preventScroll: true });
     scheduleRender();
     return;
   }
@@ -15461,7 +15565,7 @@ function finishNodeDrag(event: PointerEvent): void {
     canvas.releasePointerCapture(event.pointerId);
     touchDocument();
     setStatus("Link port updated.");
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
@@ -15478,14 +15582,14 @@ function finishNodeDrag(event: PointerEvent): void {
       range: shiftKey,
     });
     pinMarkdownHoverPreviewForNode(sourceNodeId);
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
   if (mode === "scatter") {
     touchDocument();
     setStatus("Disperse position updated.");
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -15507,7 +15611,7 @@ function finishNodeDrag(event: PointerEvent): void {
         setSingleSelection(proposal.parentId, false);
         touchDocument();
         setStatus(`Moved ${movedCount} node(s).`);
-        board.focus();
+        board.focus({ preventScroll: true });
         return;
       }
     } else {
@@ -15517,7 +15621,7 @@ function finishNodeDrag(event: PointerEvent): void {
       if (applied) {
         setSingleSelection(sourceNodeId, false);
         scheduleRender();
-        board.focus();
+        board.focus({ preventScroll: true });
         return;
       }
     }
@@ -15525,7 +15629,7 @@ function finishNodeDrag(event: PointerEvent): void {
 
   setStatus("No valid drop target.", true);
   scheduleRender();
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 canvas.addEventListener("pointerup", finishNodeDrag);
@@ -15607,6 +15711,17 @@ function startPinch(): void {
   if (ids.length < 2) return;
   const a = activePointers.get(ids[0])!;
   const b = activePointers.get(ids[1])!;
+  cancelCameraMotion();
+  // A second touch takes ownership from a pending node drag. Never commit a
+  // structural drop when the fingers are being used to navigate the Surface.
+  if (viewState.dragState) {
+    if (viewState.dragState.mode === "scatter" && viewState.dragState.dragged && !webglDragBaseSnapshot) {
+      touchDocument(); // Preserve movement already completed before the pinch.
+    }
+    viewState.dragState = null;
+    webglDragBaseSnapshot = null;
+    scheduleRender();
+  }
   // Cancel single-finger pan
   if (viewState.panState) {
     viewState.panState = null;
@@ -15615,7 +15730,7 @@ function startPinch(): void {
   viewState.pinchState = {
     pointerA: { id: ids[0], x: a.x, y: a.y },
     pointerB: { id: ids[1], x: b.x, y: b.y },
-    initialDistance: pointerDistance(a, b),
+    initialDistance: Math.max(1, pointerDistance(a, b)),
     initialZoom: viewState.zoom,
     initialCameraX: viewState.cameraX,
     initialCameraY: viewState.cameraY,
@@ -15623,6 +15738,20 @@ function startPinch(): void {
     initialCenterY: (a.y + b.y) / 2,
   };
 }
+
+// Observe touches before SVG/WebGL node handlers can stop propagation. The
+// first finger keeps normal selection/drag behavior; two fingers own the camera.
+board.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (event.pointerType !== "touch" || event.button !== 0 || annotationTool !== "select") return;
+  if ((event.target as Element | null)?.closest("button, input, textarea, select, [contenteditable=true], .linear-panel")) return;
+  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (activePointers.size < 2) return;
+  event.preventDefault();
+  event.stopPropagation();
+  prepareViewportGesture(event.target);
+  for (const id of activePointers.keys()) board.setPointerCapture(id);
+  if (!viewState.pinchState) startPinch();
+}, { capture: true });
 
 board.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) {
@@ -15650,16 +15779,6 @@ board.addEventListener("pointerdown", (event: PointerEvent) => {
   }
   if (!prepareViewportGesture(event.target)) {
     return;
-  }
-
-  // Track touch pointers for pinch
-  if (event.pointerType === "touch") {
-    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    board.setPointerCapture(event.pointerId);
-    if (activePointers.size === 2) {
-      startPinch();
-      return;
-    }
   }
 
   viewState.panState = {
@@ -15694,15 +15813,23 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     const b = activePointers.get(pointerB.id);
     if (!a || !b) return;
 
-    const currentDistance = pointerDistance(a, b);
-    const scale = currentDistance / viewState.pinchState.initialDistance;
-    const nextZoom = viewState.pinchState.initialZoom * scale;
-
-    // Zoom anchored to the current midpoint of the two fingers
-    const anchorX = (a.x + b.x) / 2;
-    const anchorY = (a.y + b.y) / 2;
-    scheduleSetZoom(nextZoom, anchorX, anchorY, { syncDependents: false });
+    const pinch = viewState.pinchState;
+    viewState.zoom = clampZoom(pinch.initialZoom * pointerDistance(a, b) / pinch.initialDistance);
+    const scale = viewState.zoom / pinch.initialZoom;
+    const rect = board.getBoundingClientRect();
+    // Keep the world point under the initial midpoint under the moving midpoint.
+    // Computing from the gesture start also avoids cumulative rounding drift.
+    viewState.cameraX = (a.x + b.x) / 2 - rect.left
+      - (pinch.initialCenterX - rect.left - pinch.initialCameraX) * scale;
+    viewState.cameraY = (a.y + b.y) / 2 - rect.top
+      - (pinch.initialCenterY - rect.top - pinch.initialCameraY) * scale;
+    scheduleApplyZoom({ syncDependents: false });
     markViewportDependentSyncPending();
+    const now = performance.now();
+    if (now - _lastZoomStatusAt >= 120) {
+      _lastZoomStatusAt = now;
+      setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
+    }
     return;
   }
 
@@ -15728,8 +15855,15 @@ function endPointer(event: PointerEvent): void {
   // Clean up pinch state
   if (event.pointerType === "touch") {
     activePointers.delete(event.pointerId);
-    if (viewState.pinchState) {
+    const pinch = viewState.pinchState;
+    if (pinch && (event.pointerId === pinch.pointerA.id || event.pointerId === pinch.pointerB.id)) {
       viewState.pinchState = null;
+      setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
+      try { board.releasePointerCapture(event.pointerId); } catch { /* already released */ }
+      if (activePointers.size >= 2) {
+        startPinch();
+        return;
+      }
       // If one finger remains, start a fresh pan from current position
       if (activePointers.size === 1) {
         const [remainingId, pos] = Array.from(activePointers.entries())[0];
@@ -15831,7 +15965,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
     hideMarkdownPreview();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -16191,14 +16325,14 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.shiftKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
   if (!event.shiftKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
