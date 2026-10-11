@@ -4229,6 +4229,12 @@ export function createAppServer(): http.Server {
       return;
     }
 
+    // The optional local Agent fixture has the same absent-state contract as Vite.
+    if (new URL(req.url ?? "/", "http://localhost").pathname === "/agent-node-session.local.json"
+      && !fs.existsSync(path.join(ROOT, "agent-node-session.local.json"))) {
+      sendJson(res, 200, null);
+      return;
+    }
     // Daily Beta serves compiled Lab pages; source TS/TSX requires Vite.
     const labPath = new URL(req.url ?? "/", "http://localhost").pathname;
     if (labPath.startsWith("/src/labs/") && labPath.endsWith(".html")) {
