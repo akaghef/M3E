@@ -58,17 +58,23 @@ jobs:
       - name: Test channel boundaries
         run: node --test scripts/ops/channel-runtime.test.mjs
 
+      - name: Package launcher checks for Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: channel-scripts
+          path: scripts/
+          retention-days: 1
+
   windows-channel-entrypoints:
+    needs: agent-instruction-lint
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      # Transfer only scripts from the Linux checkout: legacy Final filenames
+      # cannot be indexed by Git for Windows, even with sparse checkout.
+      - uses: actions/download-artifact@v4
         with:
-          # Legacy Final contains a Windows-invalid filename. This job exercises
-          # script refusal paths only and must not materialize product/data files.
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /scripts/
-            /.gitattributes
+          name: channel-scripts
+          path: scripts
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -77,7 +83,7 @@ jobs:
         run: |
           $scratch = Join-Path $env:RUNNER_TEMP "m3e-channel-no-write"
           $env:M3E_HOME = $scratch
-          git switch -c codex/channel-test
+          git init -b codex/channel-test
           cmd /c scripts\beta\launch.bat
           if ($LASTEXITCODE -eq 0) { throw "Task branch unexpectedly launched Beta" }
           cmd /c scripts\final\update-and-launch.bat
