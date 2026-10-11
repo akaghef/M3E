@@ -556,12 +556,18 @@ interface LinearNodeDraft {
 type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let map: SavedMap | null = null;
-const orreryNetwork = new OrreryNetwork({ board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, point: clientToCanvasPoint });
+const orreryNetwork = new OrreryNetwork({ board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, cycleFit: (reverse) => cycleFit(reverse), point: clientToCanvasPoint });
 let fatalLoadError = false;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-let cycleViewState: "focus" | "fit" = "focus";
+const FIT_MODES = ["graph", "subtree", "graph-linear", "node"] as const;
+type FitMode = typeof FIT_MODES[number];
+let fitCycleMode: FitMode | null = null;
+let fitCycleScope = "";
+const FIT_LABELS: Record<FitMode, string> = {
+  graph: "graph全体", subtree: "選択ノード＋子孫", "graph-linear": "graph＋linear panel", node: "選択ノード",
+};
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
 const nodeDrawInputs = new Map<string, NodeDrawInput>();
 const nodeAuxMarkup = new Map<string, string>();
@@ -5501,6 +5507,7 @@ function setZoom(
   statusMode: "immediate" | "throttled" | "silent" = "immediate",
   options: ViewportApplyOptions = {},
 ): void {
+  resetFitCycle();
   cancelCameraMotion();
   const previousZoom = viewState.zoom;
   viewState.zoom = clampZoom(nextZoom);
@@ -7791,6 +7798,11 @@ function graphLinkLabelPointForRoute(
 }
 
 function render(incremental = false): void {
+  const scope = map ? normalizedCurrentScopeId() : "";
+  if (scope !== fitCycleScope) {
+    resetFitCycle();
+    fitCycleScope = scope;
+  }
   renderRevision++;
   layoutMetricCache.begin(!incremental);
   nodeSvgCache.begin(!incremental);
@@ -13454,6 +13466,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
 }
 
 function loadPayload(payload: unknown): void {
+  resetFitCycle();
   try {
     map = ensureDocShape(payload);
     lastServerSavedAt = map.savedAt || null;
@@ -13492,6 +13505,7 @@ function loadPayload(payload: unknown): void {
 }
 
 function resetCamera(): void {
+  resetFitCycle();
   cancelCameraMotion();
   applyCameraTarget({
     zoom: 1,
@@ -13515,24 +13529,107 @@ function centerOnNode(nodeId: string, zoom = viewState.zoom, options: CameraMove
   return true;
 }
 
-function fitDocument(options: CameraMoveOptions = {}): boolean {
-  if (!map) {
-    return false;
+function resetFitCycle(): void {
+  fitCycleMode = null;
+  delete board.dataset.fitMode;
+}
+
+function linearPanelAvailableForFit(): boolean {
+  return Boolean(linearPanelEl && !linearPanelEl.hidden && !LOCAL_FS_VIEW_MODE &&
+    viewState.surfaceViewMode === "tree" && lastLayout && visibleOrder.length);
+}
+
+function selectedFitNodeIds(includeDescendants: boolean): Set<string> {
+  const id = orreryNetwork.selectedNodeId ?? viewState.selectedNodeId;
+  const ids = new Set<string>();
+  if (!map || !id || !lastLayout?.pos[id]) return ids;
+  const visit = (nodeId: string): void => {
+    if (ids.has(nodeId) || !lastLayout?.pos[nodeId]) return;
+    ids.add(nodeId);
+    if (includeDescendants && map!.state.nodes[nodeId]) {
+      visibleChildren(map!.state.nodes[nodeId]).forEach(visit);
+    }
+  };
+  visit(id);
+  // Rootless surfaces have a layout root but no painted root node.
+  const painted = new Set(Array.from(canvas.children).map(el => (el as SVGElement).dataset.renderKey));
+  return new Set([...ids].filter(nodeId => painted.has(`node:${nodeId}`)));
+}
+
+function fitTarget(mode: FitMode, options: CameraMoveOptions = {}): boolean {
+  if (!map) return false;
+  if (mode === "graph-linear" && !linearPanelAvailableForFit()) return false;
+  const selected = mode === "node" || mode === "subtree" ? selectedFitNodeIds(mode === "subtree") : null;
+  if (selected && !selected.size) return false;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const include = (x: number, y: number, width: number, height: number): void => {
+    if (!Number.isFinite(x + y + width + height) || (width <= 0 && height <= 0)) return;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + width); maxY = Math.max(maxY, y + height);
+  };
+  // Measure retained graph geometry, even while WebGL presents it. Canvas extent
+  // also contains the linear panel and minimum padding, which are not graph fit.
+  const wasHidden = canvas.hasAttribute("hidden");
+  canvas.removeAttribute("hidden");
+  try {
+    for (const fragment of Array.from(canvas.children) as SVGGraphicsElement[]) {
+      const key = fragment.dataset.renderKey || "";
+      let wanted = key.startsWith("node:") || key.startsWith("edge:") ||
+        ["frames", "groups", "edges", "links"].includes(key);
+      if (selected) {
+        wanted = key.startsWith("node:") && selected.has(key.slice(5));
+        if (key.startsWith("edge:")) {
+          const edge = fragment.querySelector("[data-source-node-id][data-target-node-id]");
+          wanted = Boolean(edge && selected.has(edge.getAttribute("data-source-node-id")!) &&
+            selected.has(edge.getAttribute("data-target-node-id")!));
+        }
+      }
+      if (!wanted || !fragment.childElementCount) continue;
+      const box = fragment.getBBox();
+      include(box.x, box.y, box.width, box.height);
+    }
+  } finally {
+    if (wasHidden) canvas.setAttribute("hidden", "");
   }
-  render();
+  if (mode === "graph-linear") {
+    include(_linearPanelAnchorCanvasX, _linearPanelAnchorCanvasY, linearPanelCanvasWidth, _linearPanelCanvasHeight);
+  }
+  if (!Number.isFinite(minX + minY + maxX + maxY)) return false;
   const safe = activeSafeViewport();
-  if (safe.right <= safe.left || safe.bottom <= safe.top || !contentWidth || !contentHeight) {
-    return false;
-  }
-  const fitX = (safe.right - safe.left) / contentWidth;
-  const fitY = (safe.bottom - safe.top) / contentHeight;
-  const zoom = clampZoom(Math.min(fitX, fitY) * 0.92);
+  const width = Math.max(1, maxX - minX), height = Math.max(1, maxY - minY);
+  // A single node stays readable without becoming a screen-sized glyph.
+  const zoom = clampZoom(Math.min(
+    Math.min((safe.right - safe.left) / width, (safe.bottom - safe.top) / height) * 0.92,
+    mode === "node" ? 1 : Infinity,
+  ));
   moveCameraTo({
     zoom,
-    cameraX: safe.left + (safe.right - safe.left - contentWidth * zoom) / 2 - contentMinX * zoom,
-    cameraY: safe.top + (safe.bottom - safe.top - contentHeight * zoom) / 2 - contentMinY * zoom,
+    cameraX: (safe.left + safe.right) / 2 - (minX + maxX) / 2 * zoom,
+    cameraY: (safe.top + safe.bottom) / 2 - (minY + maxY) / 2 * zoom,
   }, options);
+  board.dataset.fitMode = mode;
+  setStatus(`Fit：${FIT_LABELS[mode]}`);
   return true;
+}
+
+function fitDocument(options: CameraMoveOptions = {}): boolean {
+  resetFitCycle();
+  render();
+  return fitTarget("graph", options);
+}
+
+function cycleFit(reverse = false): void {
+  if (!map) return;
+  render();
+  const direction = reverse ? -1 : 1;
+  const start = fitCycleMode === null ? (reverse ? 0 : -1) : FIT_MODES.indexOf(fitCycleMode);
+  for (let step = 1; step <= FIT_MODES.length; step++) {
+    const mode = FIT_MODES[(start + direction * step + FIT_MODES.length) % FIT_MODES.length]!;
+    if (fitTarget(mode)) {
+      fitCycleMode = mode;
+      return;
+    }
+  }
 }
 
 function syncCameraMoveUi(): void {
@@ -15798,6 +15895,7 @@ board.addEventListener("wheel", (event: WheelEvent) => {
     return;
   }
   if (!event.ctrlKey && !event.metaKey) {
+    resetFitCycle();
     viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
     viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
     scheduleApplyZoom({ syncDependents: false });
@@ -15930,6 +16028,7 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     const b = activePointers.get(pointerB.id);
     if (!a || !b) return;
 
+    resetFitCycle();
     const pinch = viewState.pinchState;
     viewState.zoom = clampZoom(pinch.initialZoom * pointerDistance(a, b) / pinch.initialDistance);
     const scale = viewState.zoom / pinch.initialZoom;
@@ -15955,6 +16054,7 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   cancelCameraMotion();
+  resetFitCycle();
   viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
   viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
   scheduleApplyZoom({ syncDependents: false });
@@ -16514,19 +16614,9 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "v") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && (event.code === "KeyV" || event.key.toLowerCase() === "v")) {
     event.preventDefault();
-    if (cycleViewState === "focus") {
-      if (map && viewState.selectedNodeId) {
-        centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
-        setStatus("Focus: centered on selected node.");
-      }
-      cycleViewState = "fit";
-    } else {
-      fitDocument();
-      setStatus("Fit all.");
-      cycleViewState = "focus";
-    }
+    cycleFit(event.shiftKey);
     return;
   }
 

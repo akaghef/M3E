@@ -13,6 +13,7 @@ interface NetworkHost {
   toolbar: HTMLElement | null;
   render(): void;
   fit(): void;
+  cycleFit(reverse: boolean): void;
   point(x: number, y: number): { x: number; y: number };
 }
 const escape = (value: string): string => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
@@ -39,6 +40,8 @@ export class OrreryNetwork {
   private readonly status = document.createElement("span");
   private readonly detail = document.createElement("pre");
   private readonly tune = document.createElement("details");
+
+  get selectedNodeId(): string | null { return this.enabled ? this.selected : null; }
 
   constructor(private readonly host: NetworkHost) {
     this.toggle.id = "orrery-network-toggle";
@@ -142,7 +145,7 @@ export class OrreryNetwork {
       // Preserve browser-owned shortcuts; runtime selection has no authoring command target.
       if ((event.metaKey || event.ctrlKey) && ["l", "r", "t", "n", "w", "f", "p", "s", "+", "-", "=", "0"].includes(event.key.toLowerCase())) return;
       if (["F5", "F11", "F12", "-", "=", "+", "0", "[", "]"].includes(event.key)) return;
-      if (event.altKey && event.key.toLowerCase() === "v") { event.preventDefault(); event.stopImmediatePropagation(); host.fit(); return; }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && (event.code === "KeyV" || event.key.toLowerCase() === "v")) { event.preventDefault(); event.stopImmediatePropagation(); host.cycleFit(event.shiftKey); return; }
       if (event.key === "Escape") { this.selected = null; this.updateDetail(); host.render(); }
       event.preventDefault(); event.stopImmediatePropagation();
     }, true);

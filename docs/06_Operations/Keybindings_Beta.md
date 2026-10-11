@@ -146,7 +146,8 @@ M3E が `preventDefault()` していないため、通常のブラウザ操作�
 | `Mod+Enter` | `finishAndEditNext`（`Esc` -> `Down` -> `Enter` と同等。編集中の内容は保持） |
 | `Alt+J` | `jumpToAliasTarget` |
 | `Alt+A` | `addAliasAsChild` |
-| `Alt+V` | `cycleView`（focus → fit all のトグル） |
+| `Alt+V` | `cycleView`（graph全体 → 選択ノード＋表示中の子孫 → graph＋linear panel → 選択ノード） |
+| `Alt+Shift+V` | `cycleView` を逆順に巡回 |
 | `Alt+M` | `holdReparent` |
 | `Alt+P` | `toggleFolder`（`F` と同じ） |
 | `F2` | `startEditSelectAll` |

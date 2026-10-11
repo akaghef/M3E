@@ -14,7 +14,7 @@
 | `applyReparent` | `markReparent` でマークしたノードを現在の選択ノードの子として移動 | `markReparent` とセットで使用。循環移動は拒否 |
 | `cancelCut` | カット状態（`cut` で予約した移動）をキャンセル | |
 | `finishAndEditNext` | `Esc` -> `Down` -> `Enter` を連続実行したのと同等の動作 | Navigate では cut 解除 -> 次ノード選択 -> 編集開始。Edit では編集確定 -> 次ノード選択 -> 編集開始。いずれも文末カーソル。旧 `cancelAndEditNext` の変更破棄という記述は廃止 |
-| `cycleView` | 1回目: 選択ノードを中央にフォーカス / 2回目: 全体フィット（交互にトグル） | `Alt+V` で連打 |
+| `cycleView` | graph全体 → 選択ノード＋表示中の子孫 → graph＋linear panel → 選択ノード | `Alt+V`。`Alt+Shift+V` は逆順 |
 | `copyNodePath` | 選択ノードのルートからのパス（`A / B / C` 形式）をクリップボードにコピー | `Mod+Shift+C` / `Mod+Alt+C`（Mac-safe 代替） |
 | `copyScopeId` | 現在のスコープの ID をクリップボードにコピー | `Mod+Shift+I` / `Mod+Alt+I`（Mac-safe 代替） |
 | `copy` | 選択ノードの部分木をクリップボードにコピー | システムクリップボードには M3E structured clipboard をコピー。node 状態と subtree 内で完結する link を含む |
@@ -31,7 +31,7 @@
 | `zoomIn` | ズームイン | `=` / `+` キー |
 | `zoomOut` | ズームアウト | `-` キー |
 | `zoomReset` | ズームを 100% にリセット | `0` キー |
-| `fitAll` | 全ノードが画面に収まるようフィット | `Mod+0` |
+| `fitAll` | 現在のスコープのgraph全体が画面に収まるようフィット（linear panelを除く） | `Mod+0` |
 | `toggleMetaPanel` | メタパネルの表示/非表示をトグル | `I` キー |
 | `holdReparent` | ホールド未設定 → 選択ノードをホールド。ホールド済み → ホールドノードを現在選択ノードの子として reparent | `Alt+M` でトグル操作。`Esc` でキャンセル |
 | `markReparent` | 選択ノードを reparent の移動元としてマーク | 複数選択中は全選択ノードをマーク。その後 `applyReparent` で実行 |
@@ -120,3 +120,10 @@ Navigate はノードを選択・移動・操作する状態、Edit は選択ノ
 
 この節は、以前の「Escape / Mod+Enter でノードラベル変更を破棄」という記述を置き換える。
 描画方式の変更で本契約を変更しない。SVG と WebGL の両方で、編集後の内容・選択・ノード作成数・次のモードを検証する。
+
+### Fit の対象と巡回
+
+通常の自動フィットと `Mod+0` は graph 全体を対象にし、linear panel を含めない。
+`Alt+V` の初回は graph 全体、逆送りの初回は選択ノード。手動パン・ズーム、map 読み込み、scope 移動、自動フィットで巡回をリセットする。選択変更だけでは巡回位置を維持する。
+
+選択対象が描画されていない場合は選択系を、linear panel が非表示の場合は panel 込みをスキップする。子孫は現在表示中の範囲とし、折りたたみや scope 境界は開かない。選択ノード単独は最大100%で fit する。各 fit は固定UIを避けた表示領域へ収め、対象をステータスに表示する。
