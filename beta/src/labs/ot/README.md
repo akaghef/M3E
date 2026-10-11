@@ -57,3 +57,7 @@ Vitest は jsdom 内で各 cut を実行し、fixture が作る DOM と control 
 Playwright は production preview の 2 routes を開く。surface では中立 card / graph、portrait DOM と portrait PNG request が 0 件であること、Reset / view / history / selection / hover を検証する。detail では Ada の具体データと panel 操作を検証する。page error、console error（ReferenceError を含む）、asset 失敗、live API request は失敗。DOM と screenshot は test artifact に添付する。
 
 この worker 環境では preview bind が `listen EPERM 127.0.0.1:14278`、単独 Chromium 起動も `SIGTRAP` で停止した。**Playwright: 未実行（Director 依頼）**。対象: `tests/visual/ot_component_seam_labs.spec.js` の 2 tests。DOM 実行テストを browser 描画成功と読み替えない。
+
+## CI と上流照合
+
+`npm run check:ot-provenance` は作業者の一時ディレクトリに依存せず、記録済み commit・SHA256 とローカル cut / asset / notice の整合を検査する。これはローカル整合検査であり上流の再取得を意味しない。上流を独立に再照合する場合は `node scripts/check_ot_provenance.mjs <pinned-upstream-checkout>` を使う。明示した上流が欠ける、または記録した source digest / region / asset と異なる場合は失敗する。

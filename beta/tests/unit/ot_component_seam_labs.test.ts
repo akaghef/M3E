@@ -160,22 +160,23 @@ describe("OT boundaries and provenance", () => {
     } finally { restore(); globalThis.fetch = original; }
   });
 
-  test("pinned source regions and declared adaptations validate; altered upstream logic is rejected", async () => {
+  test("recorded local digests validate offline; altered logic and missing explicit upstream are rejected", async () => {
     const { validateOtProvenance } = await import('../../scripts/ot_provenance_lib.mjs');
     expect(manifest.source_commit).toBe('22ffe6483530e643c8fc1af486319990e0181de4');
     expect(manifest.license.required_notice).toBe('Copyright (c) 2026 gyroid');
     expect(read('upstream/LICENSE')).toContain(manifest.license.required_notice);
-    const checked = validateOtProvenance(root, '/tmp/orrery-telemetry-inspect');
+    const checked = validateOtProvenance(root);
     expect(checked.errors).toEqual([]);
     expect(checked.ok).toBe(true);
+    expect(validateOtProvenance(root, resolve(tmpdir(), "missing-ot-upstream")).ok).toBe(false);
     const temp = mkdtempSync(resolve(tmpdir(), 'ot-seam-provenance-'));
     try {
       cpSync(otRoot, resolve(temp, 'src/labs/ot'), { recursive: true });
       const path = resolve(temp, 'src/labs/ot/cut/surface-overview/logic.js');
       writeFileSync(path, readFileSync(path, 'utf8').replace('function reportJsError(where,err,extra){', 'function brokenReportJsError(where,err,extra){'));
-      const checked = validateOtProvenance(temp, '/tmp/orrery-telemetry-inspect');
+      const checked = validateOtProvenance(temp);
       expect(checked.ok).toBe(false);
-      expect(checked.errors.join('\n')).toContain('missing verbatim source region');
+      expect(checked.errors.join('\n')).toContain('sha256 drift');
     } finally { rmSync(temp, { recursive: true, force: true }); }
   });
 });

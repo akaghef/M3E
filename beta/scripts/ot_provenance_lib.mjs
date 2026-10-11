@@ -9,6 +9,8 @@ function checkFragment(root, upstreamRoot, fragment, errors) {
   const local = read(resolve(root, "src/labs/ot", fragment.path));
   if (!local) { errors.push(`missing fragment ${fragment.path}`); return; }
   if (sha256(local) !== fragment.sha256) errors.push(`${fragment.path}: sha256 drift`);
+  if (fragment.adapted && !fragment.reason?.trim()) errors.push(`${fragment.path}: adapted cut has no reason`);
+  if (!upstreamRoot) return;
   const upstream = read(resolve(upstreamRoot, fragment.source_path));
   if (!upstream) { errors.push(`${fragment.path}: missing pinned source ${fragment.source_path}`); return; }
   const ranges = fragment.source_ranges || [fragment.source_range];
@@ -33,17 +35,21 @@ function checkFragment(root, upstreamRoot, fragment, errors) {
 export function validateOtProvenance(root, upstreamRoot) {
   const manifest = JSON.parse(readFileSync(resolve(root, "src/labs/ot/provenance.json"), "utf8"));
   const errors = [];
-  const source = read(resolve(upstreamRoot, manifest.source_root));
-  if (!source) return { ok: false, errors: [`missing pinned upstream source ${upstreamRoot}`] };
-  if (sha256(source) !== manifest.source_sha256) errors.push('pinned upstream source digest drift');
+  if (upstreamRoot) {
+    const source = read(resolve(upstreamRoot, manifest.source_root));
+    if (!source) return { ok: false, errors: [`missing pinned upstream source ${upstreamRoot}`] };
+    if (sha256(source) !== manifest.source_sha256) errors.push("pinned upstream source digest drift");
+  }
   const license = read(resolve(root, "src/labs/ot", manifest.license.file));
   if (!license?.includes(manifest.license.required_notice) || !license?.includes('PolyForm Perimeter License 1.0.1')) errors.push('missing PolyForm license/notice');
   for (const fragment of [...manifest.fragments, ...manifest.styles]) checkFragment(root, upstreamRoot, fragment, errors);
   for (const asset of manifest.assets) {
     const local = read(resolve(root, "src/labs/ot", asset.path));
-    const upstream = read(resolve(upstreamRoot, asset.source_path));
-    if (!local || !upstream) { errors.push(`missing asset/source ${asset.path}`); continue; }
-    if (sha256(local) !== asset.sha256 || !local.equals(upstream)) errors.push(`${asset.path}: asset drift`);
+    if (!local || sha256(local) !== asset.sha256) errors.push(`${asset.path}: asset drift`);
+    if (upstreamRoot) {
+      const upstream = read(resolve(upstreamRoot, asset.source_path));
+      if (!upstream || !local?.equals(upstream)) errors.push(`${asset.path}: pinned asset/source drift`);
+    }
   }
   return { ok: errors.length === 0, errors };
 }
