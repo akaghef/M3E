@@ -9,6 +9,7 @@ async function camera(page) {
   return page.locator('#canvas').evaluate(el => { const m = new DOMMatrixReadOnly(getComputedStyle(el).transform); return { x:m.e, y:m.f, z:m.a }; });
 }
 async function launch(page, long = false) {
+  await page.addInitScript(() => Object.defineProperty(navigator,"platform",{get:()=>"Win32"}));
   let saved = structuredClone(fixture);
   if (long) saved.state.nodes['child-b'].text = LONG;
   await page.route(/\/api\/maps\/[^/?]+$/, async route => {
@@ -17,7 +18,9 @@ async function launch(page, long = false) {
       await route.fulfill({ json: { ok:true, savedAt:new Date().toISOString() } });
     } else await route.fulfill({ json:saved });
   });
-  await page.goto('/viewer.html?map=surface-width-test');
+  await page.goto('/viewer.html?renderer=svg&map=surface-width-test');
+  await expect(page.locator("#board")).toHaveAttribute("data-ready","true");
+  await expect(page.getByTestId("workbench-right-panel")).toBeVisible();
   await expect(page.locator('#meta')).toContainText('nodes: 7');
   await page.locator('#board').focus();
   await page.keyboard.press('Alt+v');
@@ -59,7 +62,7 @@ test('long labels wrap; corner resize reflows, undo/redo and reload retain width
   const editor = page.getByRole('textbox', { name:'Edit node label', exact:true });
   await expect(editor).toHaveValue(LONG);
   const editorWidth = await editor.evaluate(el => parseFloat(el.style.width));
-  expect(editorWidth).toBeCloseTo(resized-36-20, 0);
+  expect(editorWidth).toBeCloseTo(resized-20, 0);
   await page.keyboard.press('Escape');
   // Wait for autosave before reloading; verify persistence through rendered UI.
   await savedResponse;

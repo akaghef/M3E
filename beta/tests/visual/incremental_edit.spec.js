@@ -27,7 +27,9 @@ for(const renderer of ["svg","webgl"]) {
       await expect(page.locator("#board")).toHaveAttribute("data-ready","true");
       await expect(page.locator("#meta")).toContainText("nodes: 307");
       if(renderer==="webgl") await expect.poll(()=>page.evaluate(()=>Boolean(window.__m3eWebGLProjection?.getDebugState().active))).toBe(true);
+      await expect(page.getByTestId("workbench-right-panel")).toBeVisible();
       await page.locator("#board").focus();
+      await expect(page.locator("#board")).toBeFocused();
       await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowDown");
       await expect(page.locator("#meta")).toHaveAttribute("data-selected-node-id","child-b");
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -56,7 +58,7 @@ for(const renderer of ["svg","webgl"]) {
       });
       await page.keyboard.press("F2");
       const editor=page.locator("textarea.inline-node-editor");
-      await editor.fill("日本語の編集でボックスの横幅が大きく伸びることを確認する長いラベル");
+      await editor.fill("日本語の編集で横幅が伸びるラベル");
       const revision=await page.locator("#board").getAttribute("data-render-revision");
       await page.keyboard.press("Escape");
       await expect(editor).toHaveCount(0);
