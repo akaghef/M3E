@@ -34,7 +34,7 @@ Agent Orrery requirements は現行ファイルと同一だったため再導入
 - Agent Lab 1件、OT Overview/Detail 2件、Agent Orrery 2件成功。
 - compiled Lab を application server 経由で開く7件成功。Force は software WebGL で正しさと操作を検証し、GPU 性能測定ではない。
 - dependency boundaries、source copy drift、icon 52 frame regions、docs index、delivery rules、persistent rule gate、m3e-worker canonical/mirrors の一致を検証。
-- GitHub の対象 SHA で Build & Test、Agent node icon import、Agent Instruction Lint、Installer & Script Lint の全 workflow 成功。
+- GitHub の対象 SHA で Build & Test、Agent node icon import、Agent Instruction Lint、Installer & Script Lint の全 workflow 成功。[Build & Test の実行](https://github.com/akaghef/M3E/actions/runs/38114729975)。
 
 ## 通常 Beta の配信
 
@@ -44,7 +44,8 @@ Agent Orrery requirements は現行ファイルと同一だったため再導入
 - 稼働 PID は `43260`、cwd は `/Users/akaghef/dev/M3E/beta`。
 - `http://localhost:4173/dist/browser/viewer.js` と primary build の SHA256 は両方 `1f506ad2dec7f23104d2771fa5e5ab90ba54f4b9944c9702d7744fe945fbb1ed`。
 - 4173 の通常 Viewer を fresh browser で開き、page error 0。曲線と幅変更ハンドルを目視した。
-- 4173 の Lab index → Agent node の往復で compiled ページを表示。追加 Vite process を必要としない。
+- 4173 の Lab index → Agent node → Lab index の往復で compiled ページを表示。追加 Vite process を必要としない。
+- 4173 配信の同じ bundle を fixture / testRun とブラウザ内 API interception で再操作し、Escape の入力保持、Command Undo/Redo、幅変更、reload 後の保持を確認。個人 workspace への書込は0、page errorは0。API interception の成功を SQLite の実保存と同一視せず、実保存は前述の一時DB検証で確認した。
 - 個人 workspace に試験マップを作成していない。保存・幅変更・Undo の書込検証は fixture / 一時 DB で実施した。
 
 スクリーンショットは repo 外の `/Users/akaghef/.codex/visualizations/2026/10/11/m3e-beta-recovery/` に保存。
