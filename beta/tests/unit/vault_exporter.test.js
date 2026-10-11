@@ -124,6 +124,8 @@ test("vault export/import round-trip preserves node identities, body, text, and 
     beforeNode.attributes["m3e:provenance"] = "human-authored";
     beforeNode.attributes["m3e:role.icon"] = "orbit";
     beforeNode.attributes["m3e:actor.state"] = "active";
+    beforeNode.attributes["m3e:agent"] = JSON.stringify({version:1,agentKind:"human",icon:"orbit"});
+    beforeNode.attributes["m3e:label-width"] = "420";
     beforeNode.attributes["m3e:component"] = "private-runtime";
     beforeModel.saveToSqlite(dbPath, mapId);
     const beforeState = beforeModel.toJSON();
@@ -139,6 +141,8 @@ test("vault export/import round-trip preserves node identities, body, text, and 
     expect(exported).toContain('"m3e:provenance": "human-authored"');
     expect(exported).toContain('"m3e:role.icon": "orbit"');
     expect(exported).toContain('"m3e:actor.state": "active"');
+    expect(exported).toContain('"m3e:label-width": "420"');
+    expect(exported).toContain('"m3e:agent"');
     expect(exported).not.toContain("m3e:component");
     expect(exported).not.toContain("vault:kind");
 
