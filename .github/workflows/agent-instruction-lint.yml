@@ -62,6 +62,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Legacy Final contains a Windows-invalid filename. This job exercises
+          # script refusal paths only and must not materialize product/data files.
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /.gitattributes
       - uses: actions/setup-node@v4
         with:
           node-version: 22
