@@ -4229,6 +4229,17 @@ export function createAppServer(): http.Server {
       return;
     }
 
+    // Daily Beta serves compiled Lab pages; source TS/TSX requires Vite.
+    const labPath = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (labPath.startsWith("/src/labs/") && labPath.endsWith(".html")) {
+      const builtUrl = `/dist/browser${labPath}`;
+      const built = safeResolve(builtUrl);
+      if (built && fs.existsSync(built)) {
+        res.writeHead(302, { Location: builtUrl });
+        res.end();
+        return;
+      }
+    }
     const target = safeResolve(req.url ?? "/");
     if (!target) {
       res.statusCode = 403;
