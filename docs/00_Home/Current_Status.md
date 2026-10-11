@@ -1,6 +1,6 @@
 # Current Status
 
-最終更新: 2026-09-14
+最終更新: 2026-10-11
 
 この文書は、**今後数日でどの `S*` を主戦場にしているか**を示す短期の戦略スナップショット。
 履歴・運用ルール・詳細ロードマップ・具体 task は別ドキュメントへ分離する。
@@ -34,8 +34,8 @@
 
 ### S17. OT を合併吸収し、個人ツールとしての一枚絵運用を主戦場にする
 
-- 状態: **主戦場へ昇格。Strategy 化済み、統合境界の確定前**
-- 現在地: 合併吸収対象は外部repository `gyroid-eth/orrery-telemetry`。ORRERY Mail / launcher / hooks / provider integration / dashboard API が実装されている。Akaghef自作の `playground/agent-orrery` は対象外。M3E 側では ADR_011 に意味境界があり、外部OT→M3E connector と Goal / Task / Resource への binding は未実装
+- 状態: **主戦場。読み取り専用観測を実装済み、後続の実運用接続を継続**
+- 現在地: 合併吸収対象は外部repository `gyroid-eth/orrery-telemetry`。ORRERY Mail / launcher / hooks / provider integration / dashboard API が実装されている。Akaghef自作の `playground/agent-orrery` は対象外。M3E 側では ADR_011 に意味境界があり、外部OT→M3E の読み取り専用 NETWORK connector は本流統合・通常 Beta 検証済み。Goal / Task / Resource への binding と command owner adapter の実運用接続は未完了
 - 数日内の焦点: OT の observation contract と M3E map data seam を確定し、`Goal / Task — Agent — お金 / machine` を同一 PJ graph で結ぶ最初の thin slice を設計する。成功基準は複数人対応ではなく、Akaghef 個人の注意 1 単位あたりに成立する仕事量
 
 ### S2. Team Collaboration の一般解を保留する

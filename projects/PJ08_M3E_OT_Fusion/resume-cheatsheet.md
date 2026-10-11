@@ -8,6 +8,8 @@
 - **読むもの**: [通常 Beta への統合記録](docs/2026-10-03_beta-integration.md)、[実行契約](docs/2026-09-22_integration-contract.md)、[検証結果と残条件](docs/2026-09-22_network-integration.md)、`tasks.yaml`。以下は以前の停止地点であり、現在の停止条件ではない。
 - **運用依存**: A-sys 側で OT 2026.09.19 と Codex runtime 通知修正を統合。フック信頼の承認は human が `/hooks` で確認する。
 
+- **明示保留**（2026-10-11）: OT 力学の通常 Disperse 採用。独立 Lab の回収は進める。
+
 ## 以前の停止地点（履歴）
 
 - **Phase**: 1（GUI 収束）
