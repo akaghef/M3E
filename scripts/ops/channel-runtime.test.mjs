@@ -60,12 +60,13 @@ test('channel lock excludes concurrent owners and is released on failure',()=>fi
 test('published Final installs separately and preserves the checkout and workspace',()=>fixture(root=>{
  const generated=spawnSync(process.platform==='win32'?'npm.cmd':'npm',['install','--package-lock-only','--ignore-scripts','--no-audit','--no-fund'],{cwd:path.join(root,'final'),encoding:'utf8',shell:process.platform==='win32'});
  assert.equal(generated.status,0,generated.stderr);
+ fs.writeFileSync(path.join(root,'final','old-data.sqlite'),'must not ship');
  git(root,'add','.');git(root,'commit','-m','published fixture');git(root,'tag','-f','v1');git(root,'branch','main');git(root,'remote','add','origin',root);
  const appHome=path.join(root,'personal');fs.mkdirSync(appHome);fs.writeFileSync(path.join(appHome,'data.sqlite'),'personal data');
  const original=process.env.M3E_HOME;process.env.M3E_HOME=appHome;
  try {
   const before=git(root,'rev-parse','HEAD');const product=fs.readFileSync(path.join(root,'final/source.txt'),'utf8');
-  const target=installFinal(root,'v1');assert.notEqual(target,root);assert.equal(guardFinal(target),before);
+  const target=installFinal(root,'v1');assert.notEqual(target,root);assert.equal(guardFinal(target),before);assert.equal(fs.existsSync(path.join(target,'final/old-data.sqlite')),false);
   assert.equal(git(root,'rev-parse','HEAD'),before);assert.equal(fs.readFileSync(path.join(root,'final/source.txt'),'utf8'),product);
   assert.equal(fs.readFileSync(path.join(appHome,'data.sqlite'),'utf8'),'personal data');assert.equal(installFinal(root,'v1'),target);
  }finally{if(original===undefined)delete process.env.M3E_HOME;else process.env.M3E_HOME=original;}

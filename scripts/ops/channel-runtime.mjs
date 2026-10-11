@@ -100,15 +100,17 @@ export function installFinal(root,tag) {
   if(fs.existsSync(target)) {guardFinal(target);return target;}
   const stage=fs.mkdtempSync(path.join(releases,'.prepare-'));
   try {
+    const files=git(root,'ls-tree','-rz','--name-only',info.commit,'final').split('\0').filter(Boolean)
+      .filter(f=>!/[\\:*?"<>|]/.test(f) && !/\.sqlite(?:$|[-.])|(?:^|\/)\.env(?:$|\.)/.test(f));
+    if(!files.includes('final/package.json') || !files.includes('final/package-lock.json')) throw Error('Published release lacks build inputs.');
     const tar=path.join(stage,'source.tar');
-    git(root,'archive','--format=tar',`--output=${tar}`,info.commit,'final','install/assets');
+    git(root,'archive','--format=tar',`--output=${tar}`,info.commit,...files,'install/assets');
     execFileSync('tar',['-xf',tar,'-C',stage]);fs.unlinkSync(tar);
     // Current checked-in launch policy also supports old published product versions.
     fs.mkdirSync(path.join(stage,'scripts'),{recursive:true});
     fs.cpSync(path.join(root,'scripts/final'),path.join(stage,'scripts/final'),{recursive:true});
     fs.mkdirSync(path.join(stage,'scripts/ops'),{recursive:true});
     fs.copyFileSync(path.join(root,'scripts/ops/channel-runtime.mjs'),path.join(stage,'scripts/ops/channel-runtime.mjs'));
-    const files=git(root,'ls-tree','-r','--name-only',info.commit,'final').split('\n').filter(Boolean);
     fs.writeFileSync(path.join(stage,'.m3e-release.json'),JSON.stringify({schemaVersion:1,channel:'final',...info,files,sourceHash:fingerprint(stage,files)},null,2)+'\n');
     ensureBuild(stage,'final',{force:true,install:true});
     fs.renameSync(stage,target);
