@@ -22,7 +22,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | File | Type | Title | Summary |
 |---|---:|---|---|
 | [00_Home/Agent_Brief.md](<./00_Home/Agent_Brief.md>) | Markdown | Agent Brief | 最終更新: 2026-09-17 |
-| [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-09-14 |
+| [00_Home/Current_Status.md](<./00_Home/Current_Status.md>) | Markdown | Current Status | 最終更新: 2026-10-11 |
 | [00_Home/Glossary.md](<./00_Home/Glossary.md>) | Markdown | Glossary — M3E 用語辞書 | M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。 |
 | [00_Home/Home.md](<./00_Home/Home.md>) | Markdown | M3E — Home | 最終更新: 2026-04-20 |
 | [00_Home/Objective.md](<./00_Home/Objective.md>) | Markdown | Objective — Planning Hierarchy | 最終更新: 2026-04-20 |
