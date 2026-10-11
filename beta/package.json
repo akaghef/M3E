@@ -52,7 +52,9 @@
     "perf:webgl:fixture": "node perf/run_webgl_pan_zoom.mjs --verify-only",
     "perf:webgl:pan-zoom": "node perf/run_webgl_pan_zoom.mjs",
     "check:agent-icons": "python3 ../scripts/ops/check-agent-node-icons.py",
-    "test:agent-node": "python3 ../scripts/ops/test-agent-node-icons.py && npm run check:agent-icons && vitest run tests/unit/agent_node.test.ts tests/unit/pet_sprite.test.ts"
+    "test:agent-node": "python3 ../scripts/ops/test-agent-node-icons.py && npm run check:agent-icons && vitest run tests/unit/agent_node.test.ts tests/unit/pet_sprite.test.ts",
+    "check:ot-provenance": "node scripts/check_ot_provenance.mjs",
+    "check:ot-build-artifacts": "node scripts/check_ot_build_artifacts.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",

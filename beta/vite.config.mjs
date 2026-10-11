@@ -50,6 +50,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         viewer: "src/browser/viewer.ts",
+        "ot-surface-overview": "src/labs/ot/routes/surface-overview.html",
+        "ot-agent-detail": "src/labs/ot/routes/agent-detail.html",
         "workbench-ui": "src/browser/workbench-ui.tsx",
         "seam-lab-index": "src/labs/index.html",
         "layout-lab": "src/labs/layout/layout-lab.html",
