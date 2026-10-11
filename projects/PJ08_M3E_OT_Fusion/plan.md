@@ -61,6 +61,8 @@ Director（Claude）はこれを受けて「M3E性を反証可能な視覚条件
 | **IS1** | **色の所有権。** akaghef「色使いは node type ごとに決まる、global に意味は無い」 vs `color_semantics.md`「map 全体の規約、7色固定」 | `reviews/Q1_color_ownership.md`。mock では **state ring = 7色規約 / 塗り・形 = node type 所有** で暫定分離 |
 | **IS2** | **LOD。** 遠景で Agent Card が読めない（`ADR_011 DC22`）。閾値・字送り・固定幅・attention と Actor 多重度の視覚的分離 | Phase 2。`ADR_011 IS4` が「seam lab で目視決定」と指定済み |
 | **IS3** | **DECK rail の折返し。** 1080px 未満で rail が surface の下に落ちる。実機幅での確認が要る | Phase 1 の残タスク |
+| **IS4** | **herdr を「端末実行層」の第3統一候補として PJ08 に採るか。** OT の tmux lane を適合後に置換する案 | `reviews/Q2_herdr_terminal_lane_candidate.md`。Phase 1 は影響なし。fugu は「候補記録のみ、Phase 5 で再評価」を推奨 |
+| **IS5** | **公開 M3E と OT の PolyForm ライセンス境界。** 個人 A-sys 採用と公開同梱・必須依存化を分けるか | `reviews/Q3_ot_license_public_boundary.md`。fugu は境界明文化 + Phase 3 adapter 撤退線を推奨 |
 
 ## Phase 設計
 
@@ -131,6 +133,19 @@ RK1–RK4）/ `color_semantics.md` / `codex/ot-absorption-strategy` の S17 / 9�
 node type ごとに形を変えた: goal ◇ / task ▭+左ストライプ / gate ⬡ / deliverable 角折れ /
 resource ○¥ / AI agent ○ / human □。**ただし state ring は同型**（`RQ2` 対称性: map に
 「人間の欄」と「AIの欄」を作らない）。観測不能は破線 + 白（`color_semantics` 規則3）。
+
+### 2026-09-21 — AM × OT × herdr 比較 doc の吸収分析
+
+ChatGPT export「AM OT herdr比較検討」（2026-09-07 作成 / 2026-09-21 持込）を、
+OT / herdr の現行 upstream source と ADR_011 / terminology / farthest_goal に照合した。
+詳細は `analysis/260921_am_ot_herdr_layer_comparison.md`。
+
+- OT の project ID `1` フォールバック、herdr prompt の submission 契約、両 repo の license、
+  OT の Mac + WSL2 / native Windows 実験扱いを upstream で再確認。doc の具体コード主張は正しかった。
+- identity 分離 / state 軸分離 / field 所有権 / App Server 維持は既存 canon と一致。
+  新規判断を要するのは **herdr 候補**（IS4）、**OT の公開ライセンス境界**（IS5）、
+  Phase 3 用の binding 台帳 + command 完了 state machine 素案の3点。
+- Phase 1 の DC1（DB / runtime を作らない）は不変。実装・connector・herdr 試験は行っていない。
 
 ## 実行計画（Phase 1 の残り）
 

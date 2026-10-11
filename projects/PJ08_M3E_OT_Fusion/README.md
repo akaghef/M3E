@@ -96,6 +96,7 @@ projects/PJ08_M3E_OT_Fusion/
 ├── tasks.yaml             ← sprint contract
 ├── resume-cheatsheet.md   ← セッション再開用
 ├── retrospective.md       ← 振り返り
+├── analysis/              ← 外部入力の照合・吸収分析（決定の正本ではない）
 ├── mocks/                 ← 静的 mock（DB / runtime なし）
 ├── reviews/               ← 未決論点 Qn
 └── runtime/               ← Progress / Evaluation / Review board

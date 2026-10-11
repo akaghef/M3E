@@ -3,7 +3,7 @@
 M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。
 **新しい語を skill / map / code に持ち込む前にここへ登録する**。揺れを見つけたら正規語を決めて記載する。
 
-最終更新: 2026-09-17
+最終更新: 2026-10-11
 
 ---
 
@@ -14,6 +14,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 - 実装命名（code identifier）と仕様語（spec term）が食い違う場合は両方書き、どちらを正とするか明示する
 - 凍結・廃止した語は削除せず `status: deprecated` で残す（歴史追跡のため）
 - 表形式: `正規語 | 意味 | 関連語 | 備考（禁止・別表記・注意事項を含む）`
+- GUI の仕様・設計・レビューでは、画面を分割して確保した区画を `Pane`、他の領域の上に浮かせて表示する UI のまとまりを `Panel` と呼び分ける。既存の名称・コード識別子に含まれる `panel` は表示方式の根拠にせず、現状の表示方式を確認して記述する。
 
 ---
 
@@ -234,6 +235,8 @@ M3E の正規語を維持し、property graph 語彙は対応先として扱う�
 | **map** | M3E マップ本体（データとしてのグラフ） | canvas, viewer, graph | §1 参照 |
 | **canvas** | map を agent ↔ 人間の共有ホワイトボードとして使う時の呼称 | map, reviews/Qn, Agent Status | canvas-protocol skill 参照。（禁止）whiteboard — canvas に統一 |
 | **viewer** | map を描画するブラウザ UI | map, meta-panel | |
+| **Pane** | 画面のレイアウトを分割して確保した区画 | Panel, viewer | M3E リポジトリでの GUI 用語法。Inspector などの役割とは独立し、分割区画として配置する場合は `Inspector pane` と呼ぶ |
+| **Panel** | 他の領域の上に浮かせて表示する UI のまとまり | Pane, viewer | M3E リポジトリでの GUI 用語法。ドラッグで移動できることは必須としない。Inspector を浮かせて表示する場合は `Inspector panel` と呼ぶ |
 | **meta-panel** | viewer 上部の UI パネル。モード / scope / ステータス等を表示 | viewer | `beta/README.md` 記載の正式名。（別表記）メタパネル |
 | **graph** | map の**グラフ形式**表現（node + edge の構造そのもの） | map, linear | M3E の既定ビュー。`linear` との対比で使う |
 | **linear** | 同じ内容を**線形表記**（リスト・アウトライン・本文）で扱う形式 | graph, linear-text, linear-transform | tree → list の写像。編集は linear 側でもできる。（別表記）linear view |
