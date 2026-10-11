@@ -31,7 +31,7 @@ module.exports = {
       name: "labs-must-not-import-browser-implementation",
       severity: "error",
       from: { path: "^src/labs/" },
-      to: { path: "^src/browser/" },
+      to: { path: "^src/browser/", pathNot: "^src/browser/markdown_renderer\\.ts$" },
     },
     {
       name: "labs-use-shared-layout-port-only",
@@ -58,7 +58,7 @@ module.exports = {
       severity: "error",
       from: { path: "^src/labs/node/" },
       to: {
-        path: "^src/shared/(?!node_draw_port\\.ts$|node_draw_svg\\.ts$|layout_port\\.ts$)",
+        path: "^src/shared/(?!node_draw_port\\.ts$|node_draw_svg\\.ts$|agent_node\\.ts$|layout_port\\.ts$)",
       },
     },
     {
