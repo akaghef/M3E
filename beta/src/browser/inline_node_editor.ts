@@ -7,8 +7,16 @@ export function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
   input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
-export function measureInlineDraft(text: string, fontSize: number, measure: (line: string) => number) {
-  const lines = text.replaceAll("\r", "").split("\n");
+export function measureInlineDraft(text: string, fontSize: number, measure: (line: string) => number, maxWidth?: number) {
+  const lines = text.replaceAll("\r", "").split("\n").flatMap(line => {
+    if (!maxWidth) return [line];
+    const wrapped: string[] = []; let current = "";
+    for (const char of Array.from(line)) {
+      if (current && measure(current + char) > maxWidth - 20) { wrapped.push(current); current = ""; }
+      current += char;
+    }
+    wrapped.push(current); return wrapped;
+  });
   const lineHeight = lineHeightForFont(fontSize);
   return { lines, lineHeight, width: lines.reduce((width,line) => Math.max(width,Math.ceil(measure(line))+20),100),
     height: Math.max(34, lines.length*lineHeight) };
@@ -26,7 +34,7 @@ export class InlineNodeEditorPreview {
   private initialDraft: ReturnType<typeof measureInlineDraft>;
   private camera = { x:0, y:0, zoom:1 };
 
-  constructor(private input: HTMLTextAreaElement, private source: NodeDrawInput, labelCss: CSSStyleDeclaration) {
+  constructor(private input: HTMLTextAreaElement, private source: NodeDrawInput, labelCss: CSSStyleDeclaration, private maxWidth?: number) {
     this.element.className = "inline-node-preview";
     this.element.dataset.nodeId = source.node.id;
     this.element.style.cssText = "position:absolute;z-index:20;contain:layout style;pointer-events:none;transform-origin:top left;";
@@ -42,7 +50,7 @@ export class InlineNodeEditorPreview {
     this.input.style.letterSpacing = labelCss.letterSpacing;
     this.input.style.color = labelCss.fill;
     this.input.style.textDecoration = labelCss.textDecorationLine;
-    this.input.wrap = "off";
+    this.input.wrap = maxWidth ? "soft" : "off";
     this.fontSize = parseFloat(labelCss.fontSize) || source.position.fontSize || 44;
     this.measure.font = `${labelCss.fontStyle} ${labelCss.fontWeight} ${this.fontSize}px ${labelCss.fontFamily}`;
     this.measure.letterSpacing = labelCss.letterSpacing;
@@ -50,17 +58,17 @@ export class InlineNodeEditorPreview {
     const ascent = metrics.fontBoundingBoxAscent ?? this.fontSize*0.8;
     const descent = metrics.fontBoundingBoxDescent ?? this.fontSize*0.2;
     this.baselineOffset = ascent + (lineHeightForFont(this.fontSize)-ascent-descent)/2;
-    this.initialDraft = measureInlineDraft(input.value,this.fontSize,(line) => this.measure.measureText(line).width);
+    this.initialDraft = measureInlineDraft(input.value,this.fontSize,(line) => this.measure.measureText(line).width,this.maxWidth);
     this.element.append(this.shape,input);
   }
 
   refresh(): void {
-    const draft = measureInlineDraft(this.input.value,this.fontSize,(line) => this.measure.measureText(line).width);
+    const draft = measureInlineDraft(this.input.value,this.fontSize,(line) => this.measure.measureText(line).width,this.maxWidth);
     const centered = Boolean(this.source.node.isRoot && !this.source.surface.rootless);
     const scatter = this.source.surface.view === "Disperse";
     // A Disperse circle denotes a node, not its text width. Its label editor
     // grows independently; structured node boxes follow the draft dimensions.
-    const width = scatter ? this.source.position.w : Math.max(100,this.source.position.w+draft.width-this.initialDraft.width);
+    const width = scatter ? this.source.position.w : this.maxWidth ?? Math.max(100,this.source.position.w+draft.width-this.initialDraft.width);
     const height = scatter ? this.source.position.h : Math.max(34,this.source.position.h+draft.height-this.initialDraft.height);
     this.left = this.source.position.x + (centered ? (this.source.position.w-width)/2 : 0);
     this.top = this.source.position.y-height/2;
@@ -79,12 +87,12 @@ export class InlineNodeEditorPreview {
     // Decorations and collapse controls remain in the retained scene; don't
     // duplicate them in the draft box or change their interactions mid-edit.
     this.shape.querySelectorAll(".alias-badge,.confidence-badge,.confidence-badge-text,.lock-icon,[data-collapse-node-id]").forEach((badge) => badge.remove());
-    const labelX = centered ? (width-draft.width)/2 : scatter ? width+7 : this.source.node.isScopePortal ? 12 : 0;
+    const labelX = centered ? (width-(this.maxWidth ? width - 20 : draft.width))/2 : scatter ? width+7 : this.source.node.isScopePortal ? 12 : 0;
     const baseline = scatter ? height/2+this.fontSize*0.35
       : multilineTextStartY(height/2,draft.lines.length,this.fontSize,draft.lineHeight);
     this.input.style.left = `${labelX}px`;
     this.input.style.top = `${baseline-this.baselineOffset}px`;
-    this.input.style.width = `${draft.width}px`;
+    this.input.style.width = `${this.maxWidth ? width - 20 : draft.width}px`;
     this.input.style.lineHeight = `${draft.lineHeight}px`;
     this.input.style.textAlign = centered ? "center" : "left";
     this.input.style.height = `${draft.lines.length*draft.lineHeight}px`;

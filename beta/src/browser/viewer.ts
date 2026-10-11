@@ -12356,7 +12356,7 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
     if (label.classList.contains("label-node")) label.classList.add("selected","primary-selected");
     const preview = new InlineNodeEditorPreview(input, {
       ...source, view:{...source.view, selected:true,multiSelected:true,primarySelected:true},
-    }, getComputedStyle(label));
+    }, getComputedStyle(label), source.surface.structuredMode === "Tree" ? (explicitNodeLabelWidth(node) ?? defaultWrapCharacters * (source.position.fontSize || VIEWER_TUNING.typography.nodeFont) + 20) : undefined);
     if (labelClasses !== null) label.setAttribute("class",labelClasses);
     probe?.remove();
     inlineEditor.preview = preview;

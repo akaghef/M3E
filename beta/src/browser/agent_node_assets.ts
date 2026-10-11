@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { AgentCardSprite, AgentLifecycleState } from "../shared/agent_node";
 import catalogJson from "../labs/node/pet_catalog.json";
 import { assertPetAtlas, type PetAtlas } from "../shared/pet_sprite";

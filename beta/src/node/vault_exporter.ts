@@ -49,7 +49,7 @@ function isVaultFile(node: TreeNode | undefined): boolean {
 }
 
 function isPortableM3eAttribute(key: string): boolean {
-  return key === "m3e:provenance" || key.startsWith("m3e:role.") || key.startsWith("m3e:actor.");
+  return key === "m3e:provenance" || key === "m3e:agent" || key === "m3e:label-width" || key.startsWith("m3e:role.") || key.startsWith("m3e:actor.");
 }
 
 function buildExportPlan(
