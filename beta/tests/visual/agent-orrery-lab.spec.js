@@ -5,7 +5,7 @@ test("tracks the RG1 payment issue through assignments, chat, evidence, and rele
   await expect(page.getByRole("heading", { name: "Duplicate charge incident" })).toBeVisible();
   await expect(page.getByTestId("issue-row-PAY-4827")).toContainText("1 click created 2 charges");
   await expect(page.getByTestId("m3e-map-path")).toHaveText("ws:demo / map:Payments / scope:CASE-0914");
-  await expect(page.getByTestId("surface-mode")).toContainText("Disperse / Force / Orrery");
+  await expect(page.getByTestId("surface-mode")).toContainText("Disperse · static Orrery reference");
   await expect(page.getByTestId("m3e-surface").locator("[data-scope-boundary]")).toHaveCount(3);
   await expect(page.getByTestId("m3e-surface").locator('[data-node-kind="folder"]')).toHaveCount(1);
   await expect(page.getByTestId("m3e-surface").locator('[data-node-kind="alias"]')).toHaveCount(1);

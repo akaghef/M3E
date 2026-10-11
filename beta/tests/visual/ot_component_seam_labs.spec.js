@@ -52,10 +52,10 @@ test("surface-overview renders structural cards and graph; controls change upstr
   await expect(page.locator('#gsvg .node.run')).toHaveCount(2);
   // Hover/click via actual pointers; force layout may still be settling.
   const node = page.locator('#gsvg .node.run').first();
-  await node.hover({ force: true });
+  await node.locator(".dot").hover();
   await expect(page.locator('#gtip')).toHaveClass(/on/);
   await page.locator('#selToggle').click();
-  await node.click({ force: true });
+  await node.locator(".dot").click();
   await expect(page.locator('#gsvg .selnode')).toHaveCount(1);
   await expect(page.locator('#selbarNum')).toHaveText('1');
   await evidence(page, testInfo, 'surface-network');

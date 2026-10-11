@@ -198,3 +198,9 @@ h1 { margin: 3px 0 0; font-size: clamp(21px, 2.1vw, 29px); letter-spacing: -.045
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+.reference-map { display:block; width:100%; height:auto; min-height:420px; }
+.reference-map [role="button"]:focus rect { stroke:#51d7e8; stroke-width:3; }
+.map-path,.map-inspector { padding:10px 14px; color:var(--muted); font-size:12px; line-height:1.5; }
+.map-inspector { border-top:1px solid var(--line); }
+.map-inspector strong { color:var(--cyan); }

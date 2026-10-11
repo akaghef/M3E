@@ -175,69 +175,38 @@ function App(): React.ReactElement {
               <div><span className="section-label">Case topology</span><h2>Work → Agent → Evidence</h2></div>
               <span className="board-note"><CircleDot size={14} /> Select either side to trace ownership</span>
             </div>
-            <div className="board-labels"><span>Work items</span><span>Assigned agents</span></div>
-            <div className="assignment-grid">
-              <svg className="assignment-layer" data-testid="assignment-layer" viewBox="0 0 100 600" preserveAspectRatio="none" aria-hidden="true">
-                {fixture.tasks.map((task, index) => {
-                  const selected = selectedTaskId === task.id;
-                  const y = 50 + index * 100;
-                  return <path key={task.id} data-relation="assigned-to" data-task={task.id} className={selected ? "selected" : ""} d={`M 0 ${y} C 32 ${y}, 68 ${y}, 100 ${y}`} />;
-                })}
-              </svg>
-              <div className="task-list">
-                {fixture.tasks.map((task) => {
-                  const state = taskStateAt(task, at);
-                  const selected = selectedTaskId === task.id;
-                  const deliverable = fixture.deliverables.find((item) => item.id === task.deliverableId)!;
-                  return (
-                    <button
-                      key={task.id}
-                      className={`task-card state-${state} ${selected ? "selected" : ""}`}
-                      data-task-id={task.id}
-                      data-testid={`task-${task.id}`}
-                      aria-selected={selected}
-                      onClick={() => selectTask(task)}
-                    >
-                      <span className={`task-state state-${state}`}>{state === "done" ? <Check size={13} /> : state === "blocked" ? <Pause size={12} /> : <Activity size={13} />}{taskStateLabel(task, at)}</span>
-                      <strong>{task.title}</strong>
-                      <span>{task.description}</span>
-                      <span className={`deliverable-link ${deliverable.producedAt <= at ? "ready" : "pending"}`}><FileCheck2 size={12} /> {deliverable.producedAt <= at ? deliverable.title : "Evidence pending"}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="agent-deck" data-testid="agent-deck">
-                {fixture.agents.map((agent) => {
-                  const state = agentStateAt(agent, at);
-                  const selected = selectedAgentId === agent.id;
-                  const available = at >= agent.bornAt;
-                  return (
-                    <div
-                      key={agent.id}
-                      role="button"
-                      tabIndex={0}
-                      className={`agent-card state-${state} ${selected ? "selected" : ""}`}
-                      data-agent-id={agent.id}
-                      data-testid={`agent-${agent.id}`}
-                      aria-selected={selected}
-                      aria-disabled={!available}
-                      onClick={() => selectAgent(agent)}
-                      onKeyDown={(event) => selectOnKeyboard(event, () => selectAgent(agent))}
-                    >
-                      <div className="agent-orbit">
-                        <span>{agent.initials}</span>
-                        <i className={`presence state-${state}`} />
-                      </div>
-                      <div className="agent-copy">
-                        <strong>{agent.name}</strong>
-                        <span className="role-chip">{agent.promptRole}</span>
-                        <small>{agent.model} · {state}</small>
-                      </div>
-                      {agent.attention && at >= agent.attention[0] && at < agent.attention[1] ? <span className="attention-glyph">!</span> : <ChevronRight size={15} />}
-                    </div>
-                  );
-                })}
-              </div>
+
+            <div data-testid="m3e-map-path" className="map-path">{fixture.mapPath}</div>
+            <div data-testid="surface-mode" className="map-path">Disperse · static Orrery reference · no force solver</div>
+            <svg data-testid="m3e-surface" viewBox="0 0 1000 700" className="reference-map" aria-label="Incident map reference">
+              {fixture.scopes.map(scope=><g key={scope.id} data-scope-boundary={scope.id}>
+                <rect x={scope.x} y={scope.y} width={scope.width} height={scope.height} rx="12" fill="#0c1722" stroke="#314258" strokeDasharray="5 4" />
+                <text x={scope.x+12} y={scope.y+20} fill="#a8b5c7" fontSize="14">{scope.label}</text>
+              </g>)}
+              {fixture.graphLinks.map(link=>{
+                const from=fixture.graphNodes.find(n=>n.id===link.from)!,to=fixture.graphNodes.find(n=>n.id===link.to)!;
+                const x1=from.x+(from.width??100)/2,y1=from.y+20,x2=to.x+(to.width??100)/2,y2=to.y+20;
+                return <path key={link.id} data-link-class={link.class} data-relation={link.relation}
+                  d={`M${x1} ${y1} C${(x1+x2)/2} ${y1},${(x1+x2)/2} ${y2},${x2} ${y2}`} fill="none"
+                  stroke={link.taskId===selectedTaskId?"#51d7e8":link.class==="edge"?"#48576b":"#557e76"}
+                  strokeWidth={link.taskId===selectedTaskId?2.5:1.3} strokeDasharray={link.class==="GraphLink"?"4 3":undefined} />;
+              })}
+              {fixture.graphNodes.filter(n=>!["case-root","evidence-root"].includes(n.id)).map(n=>{
+                const selected=Boolean(n.taskId&&n.taskId===selectedTaskId),task=fixture.tasks.find(t=>t.id===n.taskId);
+                return <g key={n.id} data-node-kind={n.kind} data-testid={n.agentId?`agent-${n.agentId}`:task&&n.id===`graph-${task.id}`?`task-${task.id}`:n.id}
+                  role={task?"button":undefined} tabIndex={task?0:undefined} aria-selected={task?selected:undefined}
+                  onClick={()=>task&&selectTask(task)} onKeyDown={event=>task&&selectOnKeyboard(event,()=>selectTask(task))}
+                  transform={`translate(${n.x},${n.y})`} style={{cursor:task?"pointer":"default"}}>
+                  <title>{n.label}</title>
+                  <rect width={n.width??140} height="44" rx={n.kind==="agent"?22:7} fill={selected?"#193c48":"#142333"} stroke={selected?"#51d7e8":"#60718a"} />
+                  <text x="8" y="27" fill="#edf2f8" fontSize="14">{n.label.length>20?n.label.slice(0,19)+"…":n.label}</text>
+                </g>;
+              })}
+            </svg>
+            <div data-testid="m3e-inspector" className="map-inspector">
+              <strong>{selectedTask?.title??"Incident map"}</strong>
+              <p>{selectedTask?.description??"Select a node to trace its work and evidence."}</p>
+              <span>GraphLinks: {fixture.graphLinks.filter(l=>l.class==="GraphLink"&&(!selectedTaskId||l.taskId===selectedTaskId)).map(l=>l.relation).join(" · ")}</span>
             </div>
           </section>
         </section>
