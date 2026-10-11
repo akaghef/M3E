@@ -13,7 +13,8 @@ on:
       - ".claude/skills/**"
       - "scripts/hooks/**"
       - "scripts/ops/**"
-      - "scripts/beta/preview-worktree.sh"
+      - "scripts/beta/**"
+      - "scripts/final/**"
       - "tools/sync_agent_instructions.mjs"
       - ".github/workflows/agent-instruction-lint.yml"
   pull_request:
@@ -28,7 +29,8 @@ on:
       - ".claude/skills/**"
       - "scripts/hooks/**"
       - "scripts/ops/**"
-      - "scripts/beta/preview-worktree.sh"
+      - "scripts/beta/**"
+      - "scripts/final/**"
       - "tools/sync_agent_instructions.mjs"
       - ".github/workflows/agent-instruction-lint.yml"
 
@@ -52,3 +54,32 @@ jobs:
 
       - name: Test delivery safety boundaries
         run: node --test scripts/ops/delivery-policy.test.mjs
+
+      - name: Test channel boundaries
+        run: node --test scripts/ops/channel-runtime.test.mjs
+
+  windows-channel-entrypoints:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check refusal paths without starting a server
+        shell: pwsh
+        run: |
+          $scratch = Join-Path $env:RUNNER_TEMP "m3e-channel-no-write"
+          $env:M3E_HOME = $scratch
+          git switch -c codex/channel-test
+          cmd /c scripts\beta\launch.bat
+          if ($LASTEXITCODE -eq 0) { throw "Task branch unexpectedly launched Beta" }
+          cmd /c scripts\final\update-and-launch.bat
+          if ($LASTEXITCODE -eq 0) { throw "Final update accepted missing release" }
+          cmd /c scripts\final\migrate-from-beta.bat
+          if ($LASTEXITCODE -ne 2) { throw "Legacy promotion did not refuse" }
+          if (Test-Path $scratch) { throw "Refused launch modified app data" }
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD "scripts/beta/launch-with-ai.ps1"), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw $parseErrors }
+          exit 0

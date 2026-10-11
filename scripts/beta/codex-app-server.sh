@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+node "$ROOT_DIR/scripts/ops/channel-runtime.mjs" build-beta "$ROOT_DIR"
 PORT="${M3E_PORT:-4173}"
 
 export M3E_PORT="$PORT"
@@ -35,11 +36,6 @@ fi
 cd "$ROOT_DIR"
 
 ENTRY_JS="$ROOT_DIR/beta/dist/node/start_viewer.js"
-STALE_SOURCE="$(find "$ROOT_DIR/beta/src" "$ROOT_DIR/beta/home.html" "$ROOT_DIR/beta/viewer.html" "$ROOT_DIR/beta/viewer.css" -newer "$ENTRY_JS" -print -quit 2>/dev/null || true)"
-if [[ ! -f "$ENTRY_JS" || -n "$STALE_SOURCE" ]]; then
-  echo "[codex-app-server] beta build output missing or stale; building..."
-  npm --prefix beta run build
-fi
 
 echo "[codex-app-server] M3E Beta serving on http://127.0.0.1:${PORT}/viewer.html?ws=${M3E_WORKSPACE_ID}&map=${M3E_MAP_ID}"
 exec npm --prefix beta start

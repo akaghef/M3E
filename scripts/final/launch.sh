@@ -10,6 +10,13 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PA
 # ============================================================
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+POLICY_NODE=node
+if [[ -x "$ROOT_DIR/install2/node/bin/node" ]]; then
+  POLICY_NODE="$ROOT_DIR/install2/node/bin/node"
+elif [[ -x "$ROOT_DIR/install/node/bin/node" ]]; then
+  POLICY_NODE="$ROOT_DIR/install/node/bin/node"
+fi
+"$POLICY_NODE" "$ROOT_DIR/scripts/ops/channel-runtime.mjs" build-final "$ROOT_DIR"
 
 if [[ -z "${M3E_HOME:-}" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then

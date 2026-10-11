@@ -12,3 +12,7 @@ description: M3E の実装・修正・仕様変更を、独立作業から dev-b
 5. 意図、commit、試験、稼働反映、未確認事項を報告する。文書だけなら稼働反映は対象外。必要な task 状態だけ更新する。
 
 機能判断を勝手に広げない。draft-only / review-only の依頼はその範囲で止める。新しい日記、map 更新、別 AI や PR を形式的に追加しない。PR はユーザーが求めた場合の任意経路。
+
+## Beta / Final channel policy
+
+Follow `docs/06_Operations/Channel_Release_Policy.md` for launch, update, release, data, rollback, and per-device evidence. Beta delivery does not authorize Final promotion. Final updates select an already published tag; never copy current Beta into the daily Final runtime.

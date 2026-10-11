@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 614
+- Indexed files: 615
 
 ## Reading Routes
 
@@ -110,6 +110,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [06_Operations/Actions_Beta.md](<./06_Operations/Actions_Beta.md>) | Markdown | アクション定義（beta） | > アクション名 → 説明のリスト。アルファベット順。 |
 | [06_Operations/Agent_Roles.md](<./06_Operations/Agent_Roles.md>) | Markdown | Agent Roles | 最終更新: 2026-06-14 |
 | [06_Operations/AI_Instruction_Routing.md](<./06_Operations/AI_Instruction_Routing.md>) | Markdown | AI Instruction Routing | 最終更新: 2026-06-14 |
+| [06_Operations/Channel_Release_Policy.md](<./06_Operations/Channel_Release_Policy.md>) | Markdown | Beta / Final の運用方針 | 2026-10-11 合意。チャネル運用・起動・更新・昇格の正本。 |
 | [06_Operations/Codex_Task_Scope_Reference.md](<./06_Operations/Codex_Task_Scope_Reference.md>) | Markdown | Codex Task Scope Reference | 最終更新: 2026-06-14 |
 | [06_Operations/Command_Panel_Security_Test_Cases.md](<./06_Operations/Command_Panel_Security_Test_Cases.md>) | Markdown | Command Panel Security Test Cases | `Command_Language.md` の Security Model 受け入れ条件を、実装前から検証可能なテストケースとして固定する。 |
 | [06_Operations/Command_Reference.md](<./06_Operations/Command_Reference.md>) | Markdown | コマンド操作リファレンス（Rapid） | > **Rapid 用:** このリファレンスは current beta 実装に基づきます。 |

@@ -14,7 +14,7 @@ Akaghef の単独開発を前提とする。複数の AI が作業しても、Pu
 - コード変更・競合し得る文書変更は `$HOME/dev/M3E-worktrees/<task>`、`codex/<task>` で行う。
 - `scripts/ops/worktree.sh new/list/clean/rm` を使う。既存の適切な作業ツリーは再利用できる。
 - 書く前に `pwd`、`git branch --show-current`、`git worktree list --porcelain` と既存差分を確認する。各書き込みに作業ディレクトリを明示する。
-- ファイル予約を取得する。統合・通常 Beta の build/restart は一担当だけが行い、共有予約 `M3E/dev-beta-integration` を取得して直列化する。予約が使えない場合は共有更新を止める。
+- 統合・通常 Beta の build/restart は一担当だけが行い、下記のタスク有効化条件に従って直列化する。
 - primary への直接実装は行わない。新規の public-safe な `docs/ideas/` への append-only stow、隣接 index 更新、競合しない運用文書保守は従来どおり許容する。
 - 他者の未コミット変更を stage、stash、上書き、削除しない。移行前からある未統合枝も消さない。
 
@@ -22,11 +22,11 @@ Akaghef の単独開発を前提とする。複数の AI が作業しても、Pu
 
 1. 元の症状・期待動作・通常起動先を定義する。文書だけの変更は稼働反映を不要と記録できる。
 2. 作業枝で最小の変更と関連試験を行い、対象ファイルだけを commit する。`git add -A` や定期処理で他の作業を一括回収しない。
-3. 統合予約を取り、`git fetch origin dev-beta`。本流と remote の進みを確認する。remote に新しい変更がある場合は取り込み、重なりをレビュー・再検証する。
+3. 統合排他を取り、`git fetch origin dev-beta`。本流と remote の進みを確認する。remote に新しい変更がある場合は取り込み、重なりをレビュー・再検証する。
 4. primary が `dev-beta` であることを確認する。未コミット差分は所有者と範囲を確認し、統合と干渉するなら止める。無関係な差分は保持する。作業枝へ最新本流を通常の merge で取り込み、検証した上で primary を `git merge --ff-only codex/<task>` で進める。競合解決は作業枝で行う。失敗時に reset や force-push で押し通さない。
 5. `git push origin dev-beta`。remote の SHA と統合した SHA を照合する。remote が進んで拒否されたら fetch して 3 へ戻る。PR は作らなくてよい。
 6. 下記の通常 Beta 反映を実施する。統合後の CI が失敗したら、修正または安全な revert を担当し、完了にしない。CI の対象外は対象外として記録する。
-7. 必要な task / map 状態を更新する。戦略の変更がある時だけ Current_Status を更新する。完了証拠を残し、予約を解放する。
+7. 必要な task / map 状態を更新する。戦略の変更がある時だけ Current_Status を更新する。完了証拠を残し、排他を解放する。
 
 作業枝への commit、通常の merge、`dev-beta` への fast-forward と push、既存設定を保つ通常 Beta の build/restart は、承認された実装を届ける工程として追加確認不要。force-push、`reset --hard`、履歴破壊、main/release操作、秘密情報の変更は別途明示承認が必要。
 
@@ -61,3 +61,9 @@ Akaghef の単独開発を前提とする。複数の AI が作業しても、Pu
 ## 作業ツリーの終了
 
 担当変更が本流へ到達し、必要な稼働確認が終わってから `worktree.sh rm`。未コミット・未追跡・無視対象の必要な成果物を確認する。`--force` は使わない。branch 削除は取り込みを確認したものに限る。
+
+## チャネルと稼働版
+
+起動・更新・Final 昇格・データ・復旧は [Beta / Final の運用方針](Channel_Release_Policy.md) に従う。Beta 反映は Final 昇格を含まない。
+
+ORRERY の登録・予約はユーザーが `OT使用` を明示したタスクだけに適用する。非有効時に予約サービスを要求しない。統合・build・restart の直列化には Git common directory 内のローカル排他を使用し、他の担当が取得中なら待つ。

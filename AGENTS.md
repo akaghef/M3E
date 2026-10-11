@@ -40,7 +40,7 @@ The canonical workflow is [Worktree Separation Rules](docs/06_Operations/Worktre
 |--------|-----|
 | `scripts/beta/launch.bat` | Daily use — launch Beta (build required) |
 | `scripts/beta/update-and-launch.bat` | Pull latest → install → build → launch |
-| `scripts/final/migrate-from-beta.bat` | Sync Beta → Final, migrate data, launch |
+| `scripts/final/update-and-launch.bat --release <tag>` | Install a selected published Final tag (update-and-launch --release) |
 
 ## Source of Truth
 
@@ -140,7 +140,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 
 - Use isolated `codex/<task>` worktrees for implementation and conflicting writes.
 - The task owner reviews, tests, commits, integrates into `dev-beta`, and pushes directly. No mandatory PR or human merge queue.
-- Serialize integration/build/restart with the shared `M3E/dev-beta-integration` reservation. Preserve unrelated dirty work.
+- Serialize integration/build/restart using the channel policy local lock; ORRERY reservations apply only while explicitly activated. Preserve unrelated dirty work.
 - Build normal Beta only from integrated source. Never copy unmerged worktree bundles into the normal runtime.
 - `beta_update` and update-complete require applicable runtime readback / original-symptom verification after delivery, not merely commit, push, or PR creation.
 - Documentation-only changes need canonical/mirror/guard verification; a product restart is not required.
@@ -159,7 +159,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 
 ### Final (`final/`) — Stable
 
-1. Only receives validated code from Beta via `migrate-from-beta.bat`.
+1. Only receives a selected, verified release; promotion requires explicit authorization.
 2. No direct development in `final/`.
 3. All data migrations must be scripted and reversible.
 
@@ -195,3 +195,7 @@ Do not report Playwright, browser, screenshot, or GUI results as measurements un
 ## Agent node icon imports
 
 Before adding or replacing Agent node icon assets, frame definitions, or playback logic, follow [the icon import protocol](docs/protocols/agent-node-icon-import.md). Run `npm --prefix beta run check:agent-icons`; image dimensions alone never certify frame layout.
+
+## Beta / Final channel policy
+
+Follow `docs/06_Operations/Channel_Release_Policy.md` for launch, update, release, data, rollback, and per-device evidence. Beta delivery does not authorize Final promotion. Final updates select an already published tag; never copy current Beta into the daily Final runtime.

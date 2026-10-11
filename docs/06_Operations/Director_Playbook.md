@@ -264,3 +264,7 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   next dispatch, so the failure is intermittent, not structural.
 
 - 2026-10-09 — Removed mandatory PR/human merge queue. The task owner delivers integrated dev-beta source to normal Beta and verifies the original symptom. Retired worktree bundle copying; unattended scripts no longer collect dirty work or merge PRs by default.
+
+## Beta / Final channel policy
+
+Follow `docs/06_Operations/Channel_Release_Policy.md` for launch, update, release, data, rollback, and per-device evidence. Beta delivery does not authorize Final promotion. Final updates select an already published tag; never copy current Beta into the daily Final runtime.

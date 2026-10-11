@@ -4,6 +4,7 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+node "$ROOT_DIR/scripts/ops/channel-runtime.mjs" build-beta "$ROOT_DIR"
 PORT="${M3E_PORT:-4173}"
 if [[ -z "${M3E_HOME:-}" ]]; then
   if [[ "$(uname -s)" == "Darwin" ]]; then

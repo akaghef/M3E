@@ -59,3 +59,7 @@ When the user asks to prevent recurrence after an agent failure:
 ## Agent node icon imports
 
 For Agent node icon assets, frame definitions, or playback changes, read `docs/protocols/agent-node-icon-import.md` and run `npm --prefix beta run check:agent-icons`. Dimensions alone are not verified frame geometry.
+
+## Beta / Final channel policy
+
+Follow `docs/06_Operations/Channel_Release_Policy.md` for launch, update, release, data, rollback, and per-device evidence. Beta delivery does not authorize Final promotion. Final updates select an already published tag; never copy current Beta into the daily Final runtime.

@@ -110,3 +110,7 @@ to frame scope before decomposing into Codex handoffs (see "Spec-Driven harness"
 Legacy note: older docs (`AGENTS.md`, `.claude/agents/*`, `docs/06_Operations/Agent_Roles.md`)
 describe a *Claude-subagent* worker model. That is **superseded**: the worker is now **Codex**.
 Reuse the existing protocols and specs as reference, but the operating model is Director→Codex.
+
+## Beta / Final channel policy
+
+Follow `docs/06_Operations/Channel_Release_Policy.md` for launch, update, release, data, rollback, and per-device evidence. Beta delivery does not authorize Final promotion. Final updates select an already published tag; never copy current Beta into the daily Final runtime.

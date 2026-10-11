@@ -1,0 +1,72 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {git,guardBeta,guardFinal,releaseInfo,installFinal,ensureBuild,fingerprint,withChannelLock} from './channel-runtime.mjs';
+const project=process.cwd();
+function fixture(fn){const root=fs.mkdtempSync(path.join(os.tmpdir(),'m3e-channel-'));try{
+ git(root,'init','-b','dev-beta');git(root,'config','user.name','Test');git(root,'config','user.email','test@example.invalid');
+ for(const d of ['beta','final','docs/06_Operations','scripts/ops','scripts/final','install/assets'])fs.mkdirSync(path.join(root,d),{recursive:true});
+ for(const c of ['beta','final']){fs.writeFileSync(path.join(root,c,'source.txt'),c);fs.writeFileSync(path.join(root,c,'package.json'),JSON.stringify({name:'fixture',version:'1.0.0',scripts:{build:"node -e \"require('fs').mkdirSync('dist/browser',{recursive:true});require('fs').writeFileSync('dist/browser/viewer.js','built');require('fs').mkdirSync('dist/node',{recursive:true});require('fs').writeFileSync('dist/node/start_viewer.js','')\""}}));}
+ fs.writeFileSync(path.join(root,'.gitignore'),'node_modules/\ndist/\n');fs.writeFileSync(path.join(root,'install/assets/seed.txt'),'seed');
+ fs.writeFileSync(path.join(root,'docs/06_Operations/Version_Registry.md'),'| v1 | v1 | test |\n| v2 | v2 | test |\n');
+ fs.copyFileSync(path.join(project,'scripts/ops/channel-runtime.mjs'),path.join(root,'scripts/ops/channel-runtime.mjs'));
+ git(root,'add','.');git(root,'commit','-m','base');git(root,'update-ref','refs/remotes/origin/dev-beta','HEAD');git(root,'update-ref','refs/remotes/origin/main','HEAD');git(root,'tag','v1');git(root,'tag','v2');
+ fn(root);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}}
+function deps(root,c){fs.mkdirSync(path.join(root,c,'node_modules/dotenv'),{recursive:true});fs.writeFileSync(path.join(root,c,'node_modules/dotenv/config.js'),'');}
+test('Beta accepts integrated clean source while preserving unrelated documents',()=>fixture(root=>{
+ fs.writeFileSync(path.join(root,'notes.md'),'unfinished');assert.equal(guardBeta(root),git(root,'rev-parse','HEAD'));assert.equal(fs.readFileSync(path.join(root,'notes.md'),'utf8'),'unfinished');
+}));
+test('Beta rejects dirty, untracked, task branch and unpublished source',()=>fixture(root=>{
+ fs.writeFileSync(path.join(root,'beta/new.txt'),'new');assert.throws(()=>guardBeta(root),/dirty/);fs.unlinkSync(path.join(root,'beta/new.txt'));
+ fs.appendFileSync(path.join(root,'beta/source.txt'),'dirty');assert.throws(()=>guardBeta(root),/dirty/);git(root,'add','.');git(root,'commit','-m','unpublished');assert.throws(()=>guardBeta(root),/match/);
+ git(root,'checkout','-b','codex/task');assert.throws(()=>guardBeta(root),/dev-beta/);
+}));
+test('build stamps source and output; tampered bundle is rebuilt',()=>fixture(root=>{
+ deps(root,'beta');ensureBuild(root,'beta');const stamp=JSON.parse(fs.readFileSync(path.join(root,'beta/dist/.m3e-build.json')));assert.equal(stamp.source,git(root,'rev-parse','HEAD'));
+ fs.writeFileSync(path.join(root,'beta/dist/browser/viewer.js'),'old preview');ensureBuild(root,'beta');assert.equal(fs.readFileSync(path.join(root,'beta/dist/browser/viewer.js'),'utf8'),'built');
+}));
+test('failed build never certifies the new version',()=>fixture(root=>{
+ deps(root,'beta');fs.writeFileSync(path.join(root,'beta/package.json'),JSON.stringify({name:'fixture',version:'1.0.0',scripts:{build:'node -e "process.exit(3)"'}}));git(root,'add','.');git(root,'commit','-m','failure fixture');git(root,'update-ref','refs/remotes/origin/dev-beta','HEAD');
+ assert.throws(()=>ensureBuild(root,'beta'),/failed/);assert.equal(fs.existsSync(path.join(root,'beta/dist/.m3e-build.json')),false);
+}));
+test('Final selection requires registered published tag and supported schema',()=>fixture(root=>{
+ assert.equal(releaseInfo(root,'v1').dataSchema,'v1');assert.throws(()=>releaseInfo(root,'dev-beta'),/published/);assert.throws(()=>releaseInfo(root,'v2'),/schema/);
+ fs.writeFileSync(path.join(root,'beta/change'),'change');git(root,'add','.');git(root,'commit','-m','unreleased');git(root,'tag','v3');assert.throws(()=>releaseInfo(root,'v3'),/not published/);
+}));
+test('Final manifest checks immutable release source',()=>fixture(root=>{
+ const files=['final/source.txt'];fs.writeFileSync(path.join(root,'.m3e-release.json'),JSON.stringify({schemaVersion:1,channel:'final',files,sourceHash:fingerprint(root,files),commit:'fixed'}));assert.equal(guardFinal(root),'fixed');
+ fs.appendFileSync(path.join(root,'final/source.txt'),'mutation');assert.throws(()=>guardFinal(root),/changed/);
+}));
+test('Final legacy checkout refuses dirty product source',()=>fixture(root=>{
+ assert.ok(guardFinal(root));fs.writeFileSync(path.join(root,'final/new.txt'),'new');assert.throws(()=>guardFinal(root),/dirty/);
+}));
+test('missing release selection has no filesystem or network effects',()=>fixture(root=>{
+ const before=git(root,'status','--porcelain');assert.throws(()=>installFinal(root,undefined),/--release/);assert.equal(git(root,'status','--porcelain'),before);
+}));
+test('retired promotion commands and daily --with-final leave checkout unchanged',()=>fixture(root=>{
+ const before=git(root,'status','--porcelain');for(const s of ['migrate-from-beta','sync-beta-to-final']){const r=spawnSync('bash',[path.join(project,`scripts/final/${s}.sh`)],{cwd:root,encoding:'utf8'});assert.equal(r.status,2);}
+ const r=spawnSync('bash',[path.join(project,'scripts/ops/daily-sync.sh'),'--with-final'],{cwd:root,encoding:'utf8'});assert.equal(r.status,2);assert.equal(git(root,'status','--porcelain'),before);
+}));
+
+test('channel lock excludes concurrent owners and is released on failure',()=>fixture(root=>{
+ withChannelLock(root,()=>assert.throws(()=>withChannelLock(root,()=>{}),/busy/));
+ assert.throws(()=>withChannelLock(root,()=>{throw Error('fixture failure');}),/fixture failure/);
+ assert.doesNotThrow(()=>withChannelLock(root,()=>{}));
+}));
+test('published Final installs separately and preserves the checkout and workspace',()=>fixture(root=>{
+ const generated=spawnSync(process.platform==='win32'?'npm.cmd':'npm',['install','--package-lock-only','--ignore-scripts','--no-audit','--no-fund'],{cwd:path.join(root,'final'),encoding:'utf8',shell:process.platform==='win32'});
+ assert.equal(generated.status,0,generated.stderr);
+ git(root,'add','.');git(root,'commit','-m','published fixture');git(root,'tag','-f','v1');git(root,'branch','main');git(root,'remote','add','origin',root);
+ const appHome=path.join(root,'personal');fs.mkdirSync(appHome);fs.writeFileSync(path.join(appHome,'data.sqlite'),'personal data');
+ const original=process.env.M3E_HOME;process.env.M3E_HOME=appHome;
+ try {
+  const before=git(root,'rev-parse','HEAD');const product=fs.readFileSync(path.join(root,'final/source.txt'),'utf8');
+  const target=installFinal(root,'v1');assert.notEqual(target,root);assert.equal(guardFinal(target),before);
+  assert.equal(git(root,'rev-parse','HEAD'),before);assert.equal(fs.readFileSync(path.join(root,'final/source.txt'),'utf8'),product);
+  assert.equal(fs.readFileSync(path.join(appHome,'data.sqlite'),'utf8'),'personal data');assert.equal(installFinal(root,'v1'),target);
+ }finally{if(original===undefined)delete process.env.M3E_HOME;else process.env.M3E_HOME=original;}
+}));

@@ -1,3 +1,7 @@
+# Beta の日常運用
+
+Beta は本人が日常利用する検証済み最新版。未統合実験は独立 Preview で行う。起動・更新・完了判定は [チャネル運用の正本](../docs/06_Operations/Channel_Release_Policy.md) に従う。以下は品質方針の背景。
+
 # Beta方針
 
 ## 位置づけ

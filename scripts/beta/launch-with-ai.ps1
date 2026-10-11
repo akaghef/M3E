@@ -29,16 +29,6 @@ function Get-FieldValue {
     return $null
 }
 
-function Stop-Port4173 {
-    $listeners = Get-NetTCPConnection -LocalPort 4173 -State Listen -ErrorAction SilentlyContinue
-    foreach ($listener in @($listeners)) {
-        if ($listener.OwningProcess -and $listener.OwningProcess -ne 0) {
-            Write-Host "Stopping existing process on port 4173 (PID $($listener.OwningProcess))..."
-            Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
-        }
-    }
-}
-
 Require-Command bw
 Require-Command npm
 Require-Command git
@@ -97,56 +87,17 @@ $env:M3E_LINEAR_TRANSFORM_SYSTEM_PROMPT_FILE = Join-Path $repoRoot "beta\prompts
 $env:M3E_LINEAR_TRANSFORM_TREE_TO_LINEAR_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\tree-to-linear.txt"
 $env:M3E_LINEAR_TRANSFORM_LINEAR_TO_TREE_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\linear-agent\linear-to-tree.txt"
 $env:M3E_TOPIC_SUGGEST_PROMPT_FILE = Join-Path $repoRoot "beta\prompts\topic-agent\topic-suggest.txt"
-$env:M3E_HOME = Join-Path $env:LOCALAPPDATA "M3E"
+if (-not $env:M3E_HOME) { $env:M3E_HOME = Join-Path $env:LOCALAPPDATA "M3E" }
 $env:M3E_CHANNEL = "beta"
-$env:M3E_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR"
-$env:M3E_WORKSPACE_LABEL = "Akaghef-personal"
-$env:M3E_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5"
-$env:M3E_MAP_LABEL = "開発"
-$env:M3E_MAP_SLUG = "beta-dev"
-$env:M3E_SEED_DB_PATH = Join-Path $env:M3E_HOME "seeds\core-seed.sqlite"
-$env:M3E_DATA_DIR = Join-Path $env:M3E_HOME ("workspaces\" + $env:M3E_WORKSPACE_ID)
-$env:M3E_DB_FILE = "data.sqlite"
-$env:M3E_MAP_ID = $env:M3E_MAP_ID
-
-if (-not (Test-Path $env:M3E_DATA_DIR)) {
-    New-Item -ItemType Directory -Path $env:M3E_DATA_DIR | Out-Null
-}
-if (-not (Test-Path (Split-Path $env:M3E_SEED_DB_PATH -Parent))) {
-    New-Item -ItemType Directory -Path (Split-Path $env:M3E_SEED_DB_PATH -Parent) | Out-Null
-}
-if (-not (Test-Path $env:M3E_SEED_DB_PATH)) {
-    $repoSeed = Join-Path $repoRoot "install\assets\seeds\core-seed.sqlite"
-    if (Test-Path $repoSeed) {
-        Copy-Item -Path $repoSeed -Destination $env:M3E_SEED_DB_PATH -Force
-    }
-}
-if (-not (Test-Path (Join-Path $env:M3E_DATA_DIR $env:M3E_DB_FILE)) -and (Test-Path $env:M3E_SEED_DB_PATH)) {
-    Copy-Item -Path $env:M3E_SEED_DB_PATH -Destination (Join-Path $env:M3E_DATA_DIR $env:M3E_DB_FILE) -Force
-}
-
-Stop-Port4173
-
+if (-not $env:M3E_WORKSPACE_ID) { $env:M3E_WORKSPACE_ID = "ws_REMH1Z5TFA7S93R3HA0XK58JNR" }
+if (-not $env:M3E_WORKSPACE_LABEL) { $env:M3E_WORKSPACE_LABEL = "Akaghef-personal" }
+if (-not $env:M3E_MAP_ID) { $env:M3E_MAP_ID = "map_BG9BZP6NRDTEH1JYNDFGS6S3T5" }
+if (-not $env:M3E_MAP_LABEL) { $env:M3E_MAP_LABEL = "開発" }
+if (-not $env:M3E_MAP_SLUG) { $env:M3E_MAP_SLUG = "beta-dev" }
+if (-not $env:M3E_SEED_DB_PATH) { $env:M3E_SEED_DB_PATH = Join-Path $env:M3E_HOME "seeds\core-seed.sqlite" }
 if ($Update) {
-    Write-Host "[1/4] Git fetch..."
-    git fetch --all
-    if ($LASTEXITCODE -ne 0) { throw "git fetch failed." }
-
-    Write-Host "[2/4] Git pull..."
-    git pull --ff-only
-    if ($LASTEXITCODE -ne 0) { throw "git pull failed." }
-
-    Write-Host "[3/4] Install dependencies (beta)..."
-    npm --prefix beta ci
-    if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
-
-    Write-Host "[4/4] Build (beta)..."
-    npm --prefix beta run build
-    if ($LASTEXITCODE -ne 0) { throw "beta build failed." }
+    & (Join-Path $PSScriptRoot "update-and-launch.bat")
+} else {
+    & (Join-Path $PSScriptRoot "launch.bat")
 }
-
-Write-Host "Launching Beta with AI provider=$($env:M3E_AI_PROVIDER) model=$($env:M3E_AI_MODEL)"
-npm --prefix beta start
-if ($LASTEXITCODE -ne 0) {
-    throw "Beta launch failed."
-}
+if ($LASTEXITCODE -ne 0) { throw "Beta launch failed." }

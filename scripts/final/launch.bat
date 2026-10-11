@@ -9,6 +9,11 @@ REM - Use setup.bat for first-time setup
 REM ============================================================
 
 cd /d "%~dp0\..\.."
+set "POLICY_NODE=node"
+if exist "%cd%\install\node\node.exe" set "POLICY_NODE=%cd%\install\node\node.exe"
+if exist "%cd%\install2\node\node.exe" set "POLICY_NODE=%cd%\install2\node\node.exe"
+"%POLICY_NODE%" "%~dp0..\ops\channel-runtime.mjs" build-final "%cd%"
+if errorlevel 1 exit /b 1
 set "ROOT=%cd%"
 if "%M3E_HOME%"=="" set "M3E_HOME=%LOCALAPPDATA%\M3E"
 set "LOG_FILE=%M3E_HOME%\launch.log"

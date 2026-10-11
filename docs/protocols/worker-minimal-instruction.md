@@ -60,3 +60,7 @@ If the user asks for recurrence prevention after a worker failure:
 3. Verification performed
 4. Ambiguities or blocked decisions
 5. Next smallest task
+
+## Beta / Final channel policy
+
+Follow `docs/06_Operations/Channel_Release_Policy.md` for launch, update, release, data, rollback, and per-device evidence. Beta delivery does not authorize Final promotion. Final updates select an already published tag; never copy current Beta into the daily Final runtime.
