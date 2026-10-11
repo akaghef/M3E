@@ -10,7 +10,7 @@
 
 `shared/agent_node.ts`と`shared/agent_node.css`をLabと通常Viewerで共有し、通常のNodeDrawContentから描画する。アイコンは同じ検証済みカタログとコマ定義を使う。未取り込み素材は未取り込み表示を維持する。
 
-標準の選択・ドラッグ・編集・保存経路を使う。ズーム40%未満はfar、80%未満はmiddle、それ以上はnear。レイアウトの占有範囲はnearの大きさで固定し、表示密度の切り替えで配置を動かさない。Agent nodeを含むマップはSVG描画を使用する。WebGLのAgent node描画は未対応。
+標準の選択・ドラッグ・編集・保存経路を使う。Escape は通常ノードと同じく入力を保持して編集を終了し、取り消しは Undo で行う。ズーム40%未満はfar、80%未満はmiddle、それ以上はnear。レイアウトの占有範囲はnearの大きさで固定し、表示密度の切り替えで配置を動かさない。Agent nodeを含むマップはSVG描画を使用する。WebGLのAgent node描画は未対応。
 
 ## 新規マップの表示意図
 

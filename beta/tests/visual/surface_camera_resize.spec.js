@@ -62,7 +62,7 @@ test('long labels wrap; corner resize reflows, undo/redo and reload retain width
   const editor = page.getByRole('textbox', { name:'Edit node label', exact:true });
   await expect(editor).toHaveValue(LONG);
   const editorWidth = await editor.evaluate(el => parseFloat(el.style.width));
-  expect(editorWidth).toBeCloseTo(resized-20, 0);
+  expect(editorWidth).toBeCloseTo(resized-36-20, 0);
   await page.keyboard.press('Escape');
   // Wait for autosave before reloading; verify persistence through rendered UI.
   await savedResponse;

@@ -33,8 +33,10 @@ test('ordinary saved map renders, edits, moves, undoes and reloads Agent nodes w
   await page.keyboard.press('Enter');
   const editor = page.locator('textarea.inline-node-editor');
   await expect(editor).toBeVisible();
-  await editor.fill('Cancelled change');
+  await editor.fill('Escape-kept change');
   await page.keyboard.press('Escape');
+  await expect(node).toContainText('Escape-kept change');
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(node).toContainText('Editable Agent title');
   await page.keyboard.press('Enter');
   await editor.fill('Persisted Agent title');
