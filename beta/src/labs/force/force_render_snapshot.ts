@@ -1,3 +1,4 @@
+import type { PaintCommand, PaintStyle } from "../../rendering/webgl_scene_tiles";
 import type { ForceSnapshot } from "../../shared/force_seam_interface";
 import type { RenderSnapshot, RenderLabel, CameraState } from "../../rendering/webgl_projection";
 
@@ -43,7 +44,39 @@ export function forceRenderSnapshot(snapshot: ForceSnapshot, selected: string | 
   const bounds = boxes.reduce((b, n) => ({ minX: Math.min(b.minX, n.x), minY: Math.min(b.minY, n.y),
     maxX: Math.max(b.maxX, n.x + n.width), maxY: Math.max(b.maxY, n.y + n.height) }),
   boxes.length ? { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity } : { minX: 0, minY: 0, maxX: 0, maxY: 0 });
-  return { revision: `${snapshot.mode}:${snapshot.steps}`, nodes, groups, labels,
+  const commands: PaintCommand[] = [];
+  const style = (fill = "none", stroke = "none", width = 1, dash: number[] = [], opacity = 1): PaintStyle => ({
+    fill, stroke, width, dash, opacity, fillOpacity: 1, strokeOpacity: 1,
+    cap: "round", join: "round", dashOffset: 0, fillRule: "nonzero", strokeFirst: false,
+  });
+  const rectPath = (x: number, y: number, w: number, h: number, r = 0) =>
+    `M${x+r} ${y}H${x+w-r}Q${x+w} ${y} ${x+w} ${y+r}V${y+h-r}Q${x+w} ${y+h} ${x+w-r} ${y+h}H${x+r}Q${x} ${y+h} ${x} ${y+h-r}V${y+r}Q${x} ${y} ${x+r} ${y}Z`;
+  const box = (x: number, y: number, width: number, height: number, paint: PaintStyle, radius = 0, nodeId?: string) => {
+    commands.push({ kind: "path", path: rectPath(x,y,width,height,radius), bounds: {x,y,width,height},
+      matrix: [1,0,0,1,0,0], style: paint, nodeId });
+  };
+  for (const g of groups) {
+    box(g.x,g.y,g.width,g.height,style(g.fill,g.stroke,g.strokeWidth,g.dash),g.radius);
+    box(g.x,g.y,g.width,g.headerHeight,style(g.headerFill));
+  }
+  for (const link of links) {
+    const [a,b] = link.points;
+    commands.push({kind:"path", path:`M${a.x} ${a.y}L${b.x} ${b.y}`,
+      bounds:{x:Math.min(a.x,b.x)-2,y:Math.min(a.y,b.y)-2,width:Math.abs(a.x-b.x)+4,height:Math.abs(a.y-b.y)+4},
+      matrix:[1,0,0,1,0,0],style:style("none",link.color,link.width,link.dash,link.opacity),
+      sourceNodeId:link.sourceNodeId,targetNodeId:link.targetNodeId});
+  }
+  const label = (lines: string[], x: number, y: number, width: number, fontSize: number, color: string, nodeId?: string) => {
+    lines.forEach((text,index) => commands.push({kind:"text",text,x,y:y+fontSize*(index+1),
+      font:`${fontSize}px system-ui`,fontSize, bounds:{x,y:y+fontSize*index,width,height:fontSize*1.3},
+      matrix:[1,0,0,1,0,0],style:style(color),nodeId}));
+  };
+  for (const n of nodes) {
+    box(n.x,n.y,n.width,n.height,style(n.fill,n.stroke,n.strokeWidth,n.strokeDash),n.radius,n.id);
+    label(n.labelLines,n.x+8,n.y+(n.height-n.labelLines.length*16)/2-3,n.width-16,n.fontSize,n.textColor,n.id);
+  }
+  for (const l of labels) label(l.lines,l.x,l.y,l.width,l.fontSize,l.color);
+  return { paintScene: {commands}, revision: `${snapshot.mode}:${snapshot.steps}`, nodes, groups, labels,
     edges: links.filter(e => e.kind === "edge"), graphLinks: links.filter(e => e.kind === "graph-link"), bounds };
 }
 

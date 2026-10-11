@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ForceSnapshot } from "../../src/shared/force_seam_interface";
 import { forceRenderCamera, forceRenderSnapshot, hitForceGroupHeader } from "../../src/labs/force/force_render_snapshot";
-import { labelAtlasKey, worldToScreen } from "../../src/rendering/webgl_projection";
+import { worldToScreen } from "../../src/rendering/webgl_projection";
 
 function fixture(): ForceSnapshot {
   return {
@@ -91,22 +91,12 @@ describe("ForceSnapshot rendering adapter", () => {
   });
 });
 
-describe("label atlas cache key", () => {
-  it("ignores positions, group box motion/size and selection decoration", () => {
-    const input = fixture();
-    const key = labelAtlasKey(forceRenderSnapshot(input));
-    input.nodes.forEach(node => { node.x += 37; node.y -= 19; });
-    input.groups.forEach(group => { group.x += 37; group.y -= 19; group.w += 50; });
-    expect(labelAtlasKey(forceRenderSnapshot(input, "a"))).toBe(key);
-  });
-
-  it("invalidates for text, label width, style and aggregate-weight changes", () => {
-    const base = forceRenderSnapshot(fixture());
-    const key = labelAtlasKey(base);
-    const changedText = structuredClone(base); changedText.nodes[0]!.labelLines[0] = "改名";
-    const changedWidth = structuredClone(base); changedWidth.nodes[0]!.width += 1;
-    const changedStyle = structuredClone(base); changedStyle.nodes[0]!.textColor = "#ffffff";
-    const changedWeight = structuredClone(base); changedWeight.labels!.find(label => label.id === "weight:related")!.lines = ["×5"];
-    for (const changed of [changedText, changedWidth, changedStyle, changedWeight]) expect(labelAtlasKey(changed)).not.toBe(key);
+describe("Force paint conversion",()=>{
+  it("supplies all labels and relations without changing physics",()=>{
+    const input=fixture(),before=JSON.stringify(input),result=forceRenderSnapshot(input);
+    const text=result.paintScene!.commands.filter(c=>c.kind==="text").map(c=>c.text);
+    expect(text).toEqual(expect.arrayContaining(["親","子","PIN · +3 hidden","外箱 · 2","内箱 · 1","×4"]));
+    expect(result.paintScene!.commands.filter(c=>c.kind==="path"&&c.sourceNodeId)).toHaveLength(2);
+    expect(JSON.stringify(input)).toBe(before);
   });
 });

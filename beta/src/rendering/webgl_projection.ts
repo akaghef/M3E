@@ -2,7 +2,6 @@ import { WebGLSceneTiles, translatePaintScene, type PaintScene, type PaintComman
 import { FrameInvalidation } from "./frame_invalidation";
 
 export type RenderNodeShape = "rect" | "circle";
-
 export interface RenderNode {
   id: string;
   x: number;
@@ -16,6 +15,9 @@ export interface RenderNode {
   shape: RenderNodeShape;
   fill: string;
   stroke: string;
+  radius?: number;
+  strokeWidth?: number;
+  strokeDash?: number[];
 }
 
 export interface RenderEdge {
@@ -27,6 +29,8 @@ export interface RenderEdge {
   width: number;
   kind: "edge" | "graph-link";
   direction?: "none" | "forward" | "backward" | "both";
+  dash?: number[];
+  opacity?: number;
 }
 
 /** A drawable Disperse boundary; groups are not nodes and never participate in hit testing. */
@@ -37,6 +41,25 @@ export interface RenderGroupBoundary {
   y: number;
   width: number;
   height: number;
+  radius?: number;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  dash?: number[];
+  headerHeight?: number;
+  headerFill?: string;
+}
+
+export interface RenderLabel {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  lines: string[];
+  fontSize: number;
+  color: string;
+  align?: "left" | "center";
 }
 
 export interface RenderSnapshot {
@@ -45,6 +68,7 @@ export interface RenderSnapshot {
   edges: RenderEdge[];
   graphLinks: RenderEdge[];
   groups: RenderGroupBoundary[];
+  labels?: RenderLabel[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   /** Appearance is independent of simplified selection/hit-test geometry. */
   paintScene?: PaintScene;
@@ -104,6 +128,7 @@ type ProjectionOptions = {
   onUnavailable: (reason: string) => void;
   /** Context resources were rebuilt; the owner must make the projection visible again. */
   onRestored: () => void;
+  labelMinZoom?: number;
 };
 
 const COLOR_VERTEX_SHADER = `#version 300 es
