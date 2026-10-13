@@ -264,6 +264,8 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   next dispatch, so the failure is intermittent, not structural.
 
 - 2026-10-09 — Removed mandatory PR/human merge queue. The task owner delivers integrated dev-beta source to normal Beta and verifies the original symptom. Retired worktree bundle copying; unattended scripts no longer collect dirty work or merge PRs by default.
+- 2026-10-13 — Handoffs that enumerate owner decisions must label them `DCn` (closed prefix set: RQ/IS/OP/PR/RK/DC/AX). A handoff used an invented `DAn` series and Codex copied it into `protocols/agmsg_routing.md` headings. Check prefixes before dispatch, and scan Codex output for non-canonical IDs before approving.
+- 2026-10-13 — `scripts/codex.sh` prefers the Codex.app-bundled CLI. A drifted standalone CLI (`~/.local/bin/codex` 0.153) made the account reject every configured model ("not supported when using Codex with a ChatGPT account").
 
 ## Beta / Final channel policy
 

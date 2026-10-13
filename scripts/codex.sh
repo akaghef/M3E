@@ -11,8 +11,14 @@ export PATH="/opt/homebrew/bin:${PATH}"
 # shadow a newer codex binary installed elsewhere: Homebrew's codex lags behind
 # the user-installed one in ~/.local/bin, and an outdated CLI rejects newer
 # models ("requires a newer version of Codex"). Prefer ~/.local/bin when present.
+# The Codex desktop app bundles the CLI it auto-updates; standalone installs
+# drift behind it and the account then rejects the configured model ("model is
+# not supported when using Codex with a ChatGPT account"). Prefer the bundled one.
 CODEX_BIN="codex"
-if [[ -x "${HOME}/.local/bin/codex" ]]; then
+APP_CODEX="/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex"
+if [[ -x "${APP_CODEX}" ]]; then
+  CODEX_BIN="${APP_CODEX}"
+elif [[ -x "${HOME}/.local/bin/codex" ]]; then
   CODEX_BIN="${HOME}/.local/bin/codex"
 fi
 
