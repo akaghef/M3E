@@ -9,7 +9,7 @@
     "selectedNodeId": "n_animals",
     "selectedLabel": "動物"
   },
-  "sourceBundle": "/Users/nisimoriyuuya/Downloads/m3e-rapid-mapify-oracle-system.zip",
+  "sourceBundle": "/Users/akaghef/Downloads/m3e-rapid-mapify-oracle-system.zip",
   "teacherDelta": "tools/rapid_mapify_oracle/fixtures/biology/mapify_teacher_delta.json",
   "canonicalWrite": "M3E AppState via /rapid/mapify-oracle",
   "noFallbackEvidence": "unsupported_no_fallback_response.json",

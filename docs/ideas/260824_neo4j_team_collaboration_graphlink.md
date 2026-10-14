@@ -487,7 +487,7 @@ lease timeout → 新hostがlast durable cursorからhydrate
 - 2026-08-24 本対話: Neo4j化要件、標準化コスト、GraphLinkをnodeとして参照・詳細化する要求、親子edgeは対象外、multi-userはTeam Collaboration / 多数PC同期を意味するという訂正、Cloudflare非hostのstore-and-forward、`N=0 / 1 / >1`、PC host lease / epoch / fencing、local project binding、SupabaseからCloudflareへの移行要求。current conversation URIは利用できない。
 - [Codex thread: Neo4j化計画の決定済み・保留・未着手](codex://threads/019fd325-36a0-7a51-afe2-5313cf6540bf) — owner concern、proposal journal、raw write /双方向同期禁止、Rapid lane維持。
 - [Codex thread: Aura lifecycle operational signal](codex://threads/01a02167-937b-7390-8044-324e5aed3f7e) — managed runtimeのinactive deletion、export、rebuild運用。
-- [2026年8月会話 Neo4j化要件 ledger](file:///Users/nisimoriyuuya/data/01_ai/chat-log/neo4j-requirements-2026-08.md) — Codex / Claude Code横断要件とsource coverage。ChatGPT exportはsource unavailable。
+- [2026年8月会話 Neo4j化要件 ledger](file:///Users/akaghef/data/01_ai/chat-log/neo4j-requirements-2026-08.md) — Codex / Claude Code横断要件とsource coverage。ChatGPT exportはsource unavailable。
 
 ### Repository canon / source layer
 

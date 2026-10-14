@@ -189,7 +189,7 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
   calibration UI: the model numbers were wrong and un-tunable blind; measured boxes (80 keys, % of image)
   fixed it in one pass. Lesson: when output is visual but *deterministically measurable*, measure+render+Read
   instead of guessing or offloading the eyeball to akaghef. (Also reconfirmed: background Bash starts at an
-  unspecified cwd — always `cd /Users/nisimoriyuuya/dev/M3E && scripts/codex.sh …` or it 127s on the
+  unspecified cwd — always `cd /Users/akaghef/dev/M3E && scripts/codex.sh …` or it 127s on the
   relative path; and `--final` is exec-only, not valid on `resume`.)
 - 2026-06-16 — **Adopted Kiro / cc-sdd as M3E's default execution harness** (akaghef decision,
   relayed from a codex DACP-rollout notice). Phase ownership is **hybrid**: Claude owns

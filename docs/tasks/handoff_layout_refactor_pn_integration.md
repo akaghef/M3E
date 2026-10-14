@@ -1,7 +1,7 @@
 # Handoff: layout() 純関数化 + PN layout設定統合
 
 **日付**: 2026-06-16  
-**worktree**: `/Users/nisimoriyuuya/dev/M3E-layout-refactor`  
+**worktree**: `/Users/akaghef/dev/M3E-layout-refactor`
 **branch**: `codex/layout-refactor`  
 **ベース**: `dev-beta`
 

@@ -2,7 +2,7 @@
 
 Date: 2026-06-25
 Reviewer role: independent Codex reviewer, not the implementer
-Worktree: `/Users/nisimoriyuuya/dev/M3E-layout-seam-lab`
+Worktree: `/Users/akaghef/dev/M3E-layout-seam-lab`
 Branch: `codex/layout-seam-lab`
 
 ## Verdict

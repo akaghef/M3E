@@ -65,7 +65,7 @@
 
 ## 5. 運用
 
-- worktree: `/Users/nisimoriyuuya/dev/M3E-worktrees/orchestration-board-seam`、branch `codex/orchestration-board-seam`、PR → `dev-beta`（Draft、Director review）
+- worktree: `/Users/akaghef/dev/M3E-worktrees/orchestration-board-seam`、branch `codex/orchestration-board-seam`、PR → `dev-beta`（Draft、Director review）
 - **注意**: codex sandbox は worktree の git metadata（primary 側 `.git/worktrees/`）へ書けない。**commit / push / PR は Director が実行**する（本スレで確立した標準手順）
 - codex dispatch は `scripts/codex.sh exec -m gpt-5.5`（グローバル config の gpt-5.6-sol は CLI v0.139.0 非対応）
 - 参考資料: `docs/tasks/agent_network_dashboard_reference_260707/`（orchestration dashboard の参照物）

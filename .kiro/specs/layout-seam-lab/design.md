@@ -73,7 +73,7 @@ Current `dev-beta` has:
 - `beta/src/shared/`
   - Shared source exists for other contracts.
   - `layout_bridge.ts` is not present on current `dev-beta`.
-- `/Users/nisimoriyuuya/dev/M3E-layout-bridge-module/beta/src/shared/layout_bridge.ts`
+- `/Users/akaghef/dev/M3E-layout-bridge-module/beta/src/shared/layout_bridge.ts`
   - Prior worktree bridge exposes `m3eLayout(graph, boxSizes, mode, options)`.
   - It is useful prior art only. Director decision DC-Q1 says the first unit must not create `layout_bridge.ts`; `layout_port.ts` is the only canonical contract.
 - `beta/tsconfig.browser.json`

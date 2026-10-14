@@ -34,7 +34,7 @@ if [[ "${1:-}" == "exec" ]]; then
   shift
   if [[ "${1:-}" == "--final" ]]; then
     shift
-    "$CODEX_BIN" exec --json --add-dir "/Users/nisimoriyuuya/Akaghef-Bridge" "$@" \
+    "$CODEX_BIN" exec --json --add-dir "${HOME}/Akaghef-Bridge" "$@" \
       | python3 -c '
 import sys, json
 # codex exec --json streams events; the final answer arrives as
@@ -59,7 +59,7 @@ print(final)
     exit "${PIPESTATUS[0]}"
   fi
   exec "$CODEX_BIN" exec \
-    --add-dir "/Users/nisimoriyuuya/Akaghef-Bridge" \
+    --add-dir "${HOME}/Akaghef-Bridge" \
     "$@"
 fi
 

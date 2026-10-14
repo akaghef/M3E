@@ -5,7 +5,7 @@ const { createRequire } = require("node:module");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const DEFAULT_SOURCE = path.join(REPO_ROOT, "docs/semantic/m3e-design.source.json");
-const DEFAULT_ENV = "/Users/nisimoriyuuya/dev/M3E-private/pilot/neo4j-credentials.env";
+const DEFAULT_ENV = path.join(require("node:os").homedir(), "dev/M3E-private/pilot/neo4j-credentials.env");
 const DEFAULT_URI = "bolt://127.0.0.1:7687";
 const PILOT_KEY = "orchestration-map-pilot-260719";
 const SNAPSHOT_SCHEMA = "m3e.orchestration-map-pilot.snapshot.v1";

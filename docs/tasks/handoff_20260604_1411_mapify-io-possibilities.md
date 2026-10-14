@@ -1,7 +1,7 @@
 # Handoff: Mapify I/O 機能の可能性
 
 作成日時: 2026-06-04 14:11 JST
-作業場所: `/Users/nisimoriyuuya/dev/M3E`
+作業場所: `/Users/akaghef/dev/M3E`
 現在branch: `dev-beta`
 
 ## 現在の目的
@@ -22,7 +22,7 @@
 
 ## 変更済みファイル
 
-- `/Users/nisimoriyuuya/dev/M3E/docs/tasks/handoff_20260604_1411_mapify-io-possibilities.md`: この引き継ぎ文書を追加。
+- `/Users/akaghef/dev/M3E/docs/tasks/handoff_20260604_1411_mapify-io-possibilities.md`: この引き継ぎ文書を追加。
 
 この handoff 作成では、既存の dirty worktree 変更には触れていない。
 
@@ -35,19 +35,19 @@
   - in-app browser でログイン済み Mapify を開き、`共有 > その他の形式` に `PDF / SVG / Markdown / Xmind ファイル / 印刷 / Xmindで開く` があることを確認。
   - in-app browser は download 非対応のため、実ダウンロードは out-app Chrome で実施済み。
 - XMind export 実体:
-  - `/Users/nisimoriyuuya/Downloads/Hopf Algebra_ definition and structure.xmind`
+  - `/Users/akaghef/Downloads/Hopf Algebra_ definition and structure.xmind`
   - SHA256: `857393498cd7a228af73fa3223a3264a2da50db76ef220de3a30fdc06add2e26`
   - unzip 後の主要ファイル:
-    - `/Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked/content.json`: 45,358 bytes
-    - `/Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked/metadata.json`: 28 bytes
-    - `/Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked/manifest.json`: 55 bytes
-    - `/Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked/content.xml`: 4,309 bytes
+    - `/Users/akaghef/.codex/tmp/mapify/xmind-unpacked/content.json`: 45,358 bytes
+    - `/Users/akaghef/.codex/tmp/mapify/xmind-unpacked/metadata.json`: 28 bytes
+    - `/Users/akaghef/.codex/tmp/mapify/xmind-unpacked/manifest.json`: 55 bytes
+    - `/Users/akaghef/.codex/tmp/mapify/xmind-unpacked/content.xml`: 4,309 bytes
   - `content.json` は 1 sheet / 177 nodes / max depth 4 / root `Hopf Algebra: definition and structure`。
 - 変換済み artifacts:
-  - `/Users/nisimoriyuuya/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.md`
-  - `/Users/nisimoriyuuya/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.mmd`
-  - `/Users/nisimoriyuuya/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.render-safe.mmd`
-  - `/Users/nisimoriyuuya/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.render-safe.svg`
+  - `/Users/akaghef/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.md`
+  - `/Users/akaghef/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.mmd`
+  - `/Users/akaghef/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.render-safe.mmd`
+  - `/Users/akaghef/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.render-safe.svg`
 - Mermaid:
   - raw `.mmd` は数式中の `{}` 等で Mermaid parser が落ちた。
   - render-safe 版は Mermaid CLI で SVG 生成成功。
@@ -156,18 +156,18 @@ await fetch("/api/history/download-user-file", {
 ## 再開コマンド
 
 ```bash
-cd /Users/nisimoriyuuya/dev/M3E
+cd /Users/akaghef/dev/M3E
 git status --short
-ls -lh /Users/nisimoriyuuya/.codex/tmp/mapify
-find /Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked -maxdepth 1 -type f -print -exec sh -c 'printf "  "; wc -c "$1"' sh {} \;
+ls -lh /Users/akaghef/.codex/tmp/mapify
+find /Users/akaghef/.codex/tmp/mapify/xmind-unpacked -maxdepth 1 -type f -print -exec sh -c 'printf "  "; wc -c "$1"' sh {} \;
 ```
 
 Mapify export artifact を再展開する場合:
 
 ```bash
-rm -rf /Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked
-mkdir -p /Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked
-unzip -q "/Users/nisimoriyuuya/Downloads/Hopf Algebra_ definition and structure.xmind" -d /Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked
+rm -rf /Users/akaghef/.codex/tmp/mapify/xmind-unpacked
+mkdir -p /Users/akaghef/.codex/tmp/mapify/xmind-unpacked
+unzip -q "/Users/akaghef/Downloads/Hopf Algebra_ definition and structure.xmind" -d /Users/akaghef/.codex/tmp/mapify/xmind-unpacked
 ```
 
 ## 参照メモ
@@ -175,8 +175,8 @@ unzip -q "/Users/nisimoriyuuya/Downloads/Hopf Algebra_ definition and structure.
 - Official: Mapify Markdown blog: `https://mapify.so/blog/convert-markdown-to-mind-map`
 - Official: Mapify Markdown tool page: `https://mapify.so/cn/tools/markdown-to-mind-map`
 - Mapify editor URL used in testing: `https://mapify.so/ja/app/fe613410-9135-4622-b48c-1b627279961a`
-- Existing `.xmind`: `/Users/nisimoriyuuya/Downloads/Hopf Algebra_ definition and structure.xmind`
-- Extracted `content.json`: `/Users/nisimoriyuuya/.codex/tmp/mapify/xmind-unpacked/content.json`
-- Generated Markdown: `/Users/nisimoriyuuya/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.md`
-- Generated Mermaid SVG: `/Users/nisimoriyuuya/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.render-safe.svg`
+- Existing `.xmind`: `/Users/akaghef/Downloads/Hopf Algebra_ definition and structure.xmind`
+- Extracted `content.json`: `/Users/akaghef/.codex/tmp/mapify/xmind-unpacked/content.json`
+- Generated Markdown: `/Users/akaghef/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.md`
+- Generated Mermaid SVG: `/Users/akaghef/.codex/tmp/mapify/hopf-algebra-definition-from-xmind.render-safe.svg`
 

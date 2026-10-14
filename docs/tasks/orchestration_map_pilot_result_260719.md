@@ -3,7 +3,7 @@
 ## Scope
 
 - 対象: `docs/tasks/handoff_orchestration_map_pilot_260719.md` §6 acceptance の pilot CLI surface
-- 作業 worktree: `/Users/nisimoriyuuya/dev/M3E-worktrees/orchestration-map-pilot`
+- 作業 worktree: `/Users/akaghef/dev/M3E-worktrees/orchestration-map-pilot`
 - branch: `codex/orchestration-map-pilot`
 - live 実行境界: sandbox から `127.0.0.1:7687` への TCP 接続が `EPERM` で拒否されたため、Neo4j live import / query / recovery drill は未実行
 - secret 境界: credentials env の内容は成果物・log・PR へ複製しない
@@ -41,7 +41,7 @@ Result: exit code 0.
 Semantic source import check:
 
 ```json
-{"ok":true,"mode":"check","source":"/Users/nisimoriyuuya/dev/M3E-worktrees/orchestration-map-pilot/docs/semantic/m3e-design.source.json","issues":[]}
+{"ok":true,"mode":"check","source":"/Users/akaghef/dev/M3E-worktrees/orchestration-map-pilot/docs/semantic/m3e-design.source.json","issues":[]}
 ```
 
 Query check:
@@ -67,7 +67,7 @@ Restore-drill check:
 Run from repo root after installing dependencies in `beta/`.
 
 ```bash
-cd /Users/nisimoriyuuya/dev/M3E-worktrees/orchestration-map-pilot/beta
+cd /Users/akaghef/dev/M3E-worktrees/orchestration-map-pilot/beta
 npm install
 cd ..
 ```
@@ -75,7 +75,7 @@ cd ..
 Then execute the pilot sequence. Do not print the credentials file.
 
 ```bash
-export M3E_NEO4J_ENV=/Users/nisimoriyuuya/dev/M3E-private/pilot/neo4j-credentials.env
+export M3E_NEO4J_ENV=/Users/akaghef/dev/M3E-private/pilot/neo4j-credentials.env
 
 scripts/pilot/import --env "$M3E_NEO4J_ENV"
 scripts/pilot/orchestration-seed --env "$M3E_NEO4J_ENV"

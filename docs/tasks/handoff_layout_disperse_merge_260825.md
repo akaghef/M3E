@@ -154,11 +154,11 @@ viewer への Disperse 反映を3段で計画済み。**まだ1行も着手し�
 
 ## 9. 環境の落とし穴
 
-- **`webcola` は `--no-save` で primary の `node_modules` に入れてある**（`/Users/nisimoriyuuya/dev/M3E/beta/node_modules/webcola`、`@types/d3-dispatch`、`@types/d3-timer` も同様）。**primary で `npm install` が走ると prune されて消える。** `#90` の `beta/package.json` は `webcola` を宣言済みだが、型2つは未宣言 — **マージ前に devDependencies へ追加すること**（無いと typecheck が TS7016 で落ちる）。
+- **`webcola` は `--no-save` で primary の `node_modules` に入れてある**（`/Users/akaghef/dev/M3E/beta/node_modules/webcola`、`@types/d3-dispatch`、`@types/d3-timer` も同様）。**primary で `npm install` が走ると prune されて消える。** `#90` の `beta/package.json` は `webcola` を宣言済みだが、型2つは未宣言 — **マージ前に devDependencies へ追加すること**（無いと typecheck が TS7016 で落ちる）。
 - worktree の `beta/node_modules` は primary への **symlink**。`npm install` を worktree で打つと symlink を壊す可能性がある。
 - **vite dev server の稼働中に共有 `node_modules` へ `npm install` すると、開いているページが白飛びする**（依存最適化キャッシュの不整合）。リロードで復帰。
 - `scripts/codex.sh` は `~/.local/bin/codex`（0.149.0）を優先するよう修正済み。Homebrew 版（0.139.0）が新モデルを拒否する問題への対処。
-- Codex は **worktree での commit に `--add-dir /Users/nisimoriyuuya/dev/M3E/.git` が要る**（worktree の git メタデータが sandbox 外のため）。
+- Codex は **worktree での commit に `--add-dir /Users/akaghef/dev/M3E/.git` が要る**（worktree の git メタデータが sandbox 外のため）。
 - Codex は **DNS 制限で push できない**。push は Director 側で行う。
 
 ---
