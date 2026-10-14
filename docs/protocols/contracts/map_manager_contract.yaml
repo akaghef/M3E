@@ -1,19 +1,44 @@
-version: 0.1
+version: 0.2
 id: m3e.map_manager_contract
 owner: Map Manager
 status: proposed
 source_docs:
+  vocabulary:
+    - docs/00_Home/Glossary.md
   product:
     - docs/03_Spec/Data_Model.md
     - docs/03_Spec/Scope_and_Alias.md
     - docs/03_Spec/Node_Path_Notation.md
     - docs/03_Spec/map_layout_modes.md
+    - docs/04_Architecture/Visual_Design_Guidelines.md
   protocols:
     - docs/protocols/map-manager/README.md
     - docs/protocols/map-manager/gates.md
     - docs/protocols/map-manager/projection-rule.md
     - docs/protocols/map-write-protocol.md
     - docs/protocols/scope-operation-protocol.md
+# Handoff categories only; not a new product API or storage schema.
+input:
+  content:
+    - information units, claims, semantic relations, and provenance
+  constraints:
+    - explicit Topology, Layout, and Style requirements with source and decision state
+    - existing map conventions
+  proposals:
+    - worker suggestions separated from explicit requirements
+  display_intent:
+    - recognition priority, comparison targets, and primary reading relation
+output:
+  content:
+    - represented information and provenance mapped to nodes and relations
+  topology:
+    - elements, relation choices, sibling order, scope boundaries, and spine
+  layout:
+    - supported Surface View options and placement conditions
+  style:
+    - visual conventions and required presentation settings
+  review:
+    - display intent, confirmed decisions, and unresolved constraints or proposals
 triggers:
   - map restructuring
   - scope or scopen or unscopen
@@ -30,10 +55,18 @@ must:
   - decide facet before non-trivial structural write
   - distinguish edge, GraphLink, and node-level link
   - keep worker responsibility bounded
-  - verify structure after write
+  - separate Content from Topology and explicit requirements from worker proposals
+  - decide unresolved Topology, Layout, and Style under Content fidelity and display intent
+  - follow existing Surface View and visual design specifications
+  - verify Content fidelity, provenance, explicit constraints, and structure after write
 must_not:
   - delegate scope boundary decisions to worker without explicit handoff
   - treat GraphLink as parent-child edge
+  - replace explicit input constraints silently
+  - add claims or provenance from structure, placement, or color alone
+  - treat display intent as a fifth category
+  - treat collapse as an edit of persistent Topology
+  - infer one-to-one storage fields or a fixed pipeline from the four categories
   - treat MF or Mermaid as native M3E storage
   - create aliases or links across facets silently
   - insert synthetic anchors without display intent
@@ -44,9 +77,15 @@ escalate_when:
   - alias vs move vs GraphLink is undecided
   - layout mode is requested but unsupported
   - worker needs to touch outside assigned scope
+  - explicit constraints conflict with each other, product invariants, or supported capabilities
+  - a structural requirement source or decision state is unclear
 verification:
   - target path resolved
   - tree invariants preserved
   - link endpoints valid
   - scope/display intent preserved
+  - Content and provenance checked against received input
+  - explicit Topology, Layout, and Style constraints preserved
+  - Style dimensions and Layout inputs are consistent
+  - collapse distinguished from persistent Topology edits
   - worker handoff contains allowed and forbidden changes

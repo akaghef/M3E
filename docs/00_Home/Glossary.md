@@ -3,7 +3,7 @@
 M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。
 **新しい語を skill / map / code に持ち込む前にここへ登録する**。揺れを見つけたら正規語を決めて記載する。
 
-最終更新: 2026-10-11
+最終更新: 2026-10-14
 
 ---
 
@@ -141,6 +141,19 @@ M3E の正規語を維持し、property graph 語彙は対応先として扱う�
 |---|---|---|---|---|
 | `left/right` / `left` / `right` | X | Y | `w` | `h` |
 | `up/down` / `up` / `down` | Y | X | `h` | `w` |
+
+## 1.8 Content / Topology / Layout / Style
+
+map を記述・設計する4区分。独立した保存層や固定の処理順ではなく、相互に制約を持つ観点として使う。詳細と境界は [Data Model](../03_Spec/Data_Model.md#content--topology--layout--style) を正本とする。
+
+| 正規語 | 意味 | 関連語 | 備考 |
+|---|---|---|---|
+| **Content（内容）** | What is represented? — 何を情報として表現するか。情報単位・主張・意味上の関係・根拠を含む | Topology, provenance, node | 存在論的な型付けを要求しない。Content に含まれる関係を M3E の接続構造と同一視しない。node の `nodeType` 要件は別に維持する |
+| **Topology（構造）** | How is it structured? — 情報をどのような要素・接続・順序・境界で組織するか | Content, node, edge, GraphLink, alias, scope, spine, Layout | Content の解釈・構造化結果。接続だけでなく scope の認知・編集境界と `children[]` の兄弟順序を含む。座標は含まない |
+| **Layout（配置）** | Where is it placed? — 構造をどのように空間配置するか | Topology, Style, Surface View, depth 軸, breadth 軸 | 座標・間隔・方向・接続経路の幾何を扱う。既存 [Surface View 仕様](../03_Spec/map_layout_modes.md) を再利用する。View の切替だけでは Topology を変えない |
+| **Style（視覚表現）** | How does it appear? — 各表示要素をどのように視覚表現するか | Content, Layout, EdgeStyle, LinkStyle | 色・形状・線種・書体・文字サイズ・強調など。文字の内容は Content。既存 [視覚設計方針](../04_Architecture/Visual_Design_Guidelines.md) を再利用する。描画寸法を通じて Layout を制約する |
+| **display intent（表示目的）** | 何を先に認識し、何を比較し、どの関係を主として読ませるかという目的・要求条件 | Topology, Layout, Style, Map Manager | 第5の区分ではない。Content の忠実性と明示的な構造制約を守った上で、Topology・Layout・Style の判断を方向付ける |
+| **collapse（折り畳み）** | 永続的な接続・順序・scope 境界を保ち、可視部分木を縮約する表示操作 | Topology, Layout, scope, Surface View | Topology の編集とは区別する。可視グラフ・配置入力・表示記号は変わる。collapse 状態の保存は永続 Topology の変更を意味しない。`scopen` とは別操作 |
 
 ## 2. 帯域（Band）
 

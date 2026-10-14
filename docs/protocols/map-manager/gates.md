@@ -9,6 +9,8 @@ Required before every map operation.
 - Resolve map label/id.
 - Resolve canonical path, node id, or current scope.
 - Reject ambiguous name matches unless the handoff explicitly permits a choice.
+- Separate Content, explicit Topology / Layout / Style constraints, proposals,
+  and display intent using the [input/output contract](./README.md#content--topology--layout--style-の入出力契約).
 
 ## G1 Product / Operation Split
 
@@ -40,6 +42,8 @@ Required when a relation is created or changed.
 - Use `GraphLink` for non-tree map relation.
 - Use node-level `link` for an external URL/attribute.
 - Use `alias` for cross-scope visibility without ownership move.
+- Preserve the Content relation meaning and explicit Topology constraints.
+  A Content relation alone does not mandate a parent-child edge.
 
 ## G4 Projection
 
@@ -56,8 +60,9 @@ request format.
 Required before assigning to a worker.
 
 - Worker gets a bounded target and explicit allowed changes.
-- Worker does not decide storage, scope, layout, alias-vs-move, or cross-facet
-  relations.
+- Worker does not decide storage, scope, Layout / Style, alias-vs-move, or
+  cross-facet relations outside the handoff.
+- Preserve explicit input constraints; identify worker suggestions as proposals.
 - Worker does not write M3E maps via direct API, SQLite, or runtime files unless
   the handoff explicitly delegates an authorized `m3e-map` execution path.
 
@@ -68,4 +73,7 @@ Required after mutation.
 - Re-read target path/scope.
 - Verify tree invariants and relation endpoints.
 - Verify scope/display intent was preserved.
+- Verify Content / provenance and explicit Topology / Layout / Style constraints
+  against the received input, not only against the generated map.
+- Distinguish collapse of the visible graph from persistent Topology changes.
 - Report unresolved ambiguity instead of silently normalizing it.

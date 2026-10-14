@@ -5,6 +5,45 @@
 この文書は、M3E の実体モデルに関する不変条件を定義する。  
 実装方式や UI に関係なく守るべき制約をここに置く。
 
+## Content / Topology / Layout / Style
+
+M3E の map を扱う正規の4区分を次のように定義する。語の入口は [Glossary](../00_Home/Glossary.md#18-content--topology--layout--style)、詳細な意味と境界はこの節を正本とする。これは概念上の区別であり、4つの保存層・新しい schema・固定の処理順を要求しない。
+
+| 区分 | 問い・定義 | 例・既存仕様との対応 |
+|---|---|---|
+| Content | What is represented? — 何を情報として表現するか。情報単位、主張、意味上の関係、根拠を含む | `Animalia`、`Porifera`、「Porifera は Animalia に属する」、provenance。node や relation が担う内容 |
+| Topology | How is it structured? — 情報をどのような要素・接続・順序・境界で組織するか | node、親子 `edge`、非木関係 `GraphLink`、`alias`、`scope`、`spine`、`children[]` の兄弟順序。本書と [Scope and Alias](./Scope_and_Alias.md) |
+| Layout | Where is it placed? — 構造をどのように空間配置するか | 座標、direction、depth/breadth、間隔、接続経路の幾何。[Surface View](./map_layout_modes.md) の Tree / Axial / Radial / Disperse / System |
+| Style | How does it appear? — 各表示要素をどのように視覚表現するか | 色、形状、線種、書体、文字サイズ、強調。[Visual Design Guidelines](../04_Architecture/Visual_Design_Guidelines.md)、`m3e:style`、`NodeDrawStyle` |
+
+### Content と Topology
+
+Content は存在論的な型付けを要求しない。情報の入力に「分類群」等の ontology を先に定義する必要はない。一方、M3E 上で node として構造化するときの `nodeType` と本書の不変条件は維持する。
+
+「Porifera は Animalia に属する」は Content である。それを `Animalia` の子 node として表すか、別 node 間の typed `GraphLink` として表すかは Topology の選択である。Content の意味上の関係と M3E の接続構造は同一ではない。親子 `edge` の意味は facet / 文脈に従い、無条件に「属する」を意味しない。GraphLink でも、関係の意味を label / type 等で識別できる必要がある。
+
+Topology は Content の忠実性、既存 map 規約、明示的な構造制約を満たす必要がある。構造・配置・色から、入力にない主張や根拠を確定してはならない。例えば「生物 → 界 → 門」を明示的な階層要件として受け取った場合は、Content だけでなく Topology の制約も入力されている。別の接続方式へ黙って変更しない。
+
+### Topology と Layout
+
+`children[]` に保存された兄弟順序は Topology。その順序を上下・左右・曲線上のどこへ置くかは Layout。scope は認知・編集境界を持つ Topology であり、単なる座標上の囲みではない。`scopen` / `unscopen` は境界の変更として扱う。
+
+Surface View の切替は同じ永続 Topology の表示方式を変える。`collapse` は永続的な接続・兄弟順序・scope 境界を変更せず、可視グラフを縮約する表示操作である。縮約結果は Layout の入力に影響するが、永続 Topology の編集と混同しない。collapse 状態自体を保存する場合もこの区別は変わらない。
+
+GraphLink の配置への寄与は [Surface View 仕様](./map_layout_modes.md) に従う。Tree の部分木配置には寄与せず、force 配置では張力の入力になり得る。この依存は GraphLink を親子 `edge` に変えるものではない。
+
+### Layout と Style
+
+フォント・文字サイズ・形状・余白は描画寸法を変え、その寸法を Layout が入力として使う。両者は概念上異なるが、計算上は依存する。線種・色・太さは Style、線の接続点や経路の幾何は Layout。既存の `EdgeStyle` 名や Surface View の `edge` option は維持し、名称だけで区分を判定しない。
+
+文字列や状態・確度等が表す情報は Content、それを文字・色・badge 等に写す規則は Style。同じ保存 object に複数区分の値があることは許容する。4区分を TypeScript 型や属性キーと一対一に対応させない。
+
+`display intent` は「何を先に認識し、何を比較し、どの関係を主として読ませるか」という目的・要求条件であり、第5の区分ではない。Content の忠実性と明示的な構造制約の下で、Topology・Layout・Style の判断を方向付ける。
+
+### 検証観点
+
+用語・契約のレビューでは、意味上の関係と接続方式、兄弟順序と座標、scope 境界と collapse、文字内容と書体、接続経路の幾何と線種をそれぞれ区別できることを確認する。Map Manager の入出力・変更後の確認は [Map Manager 契約](../protocols/map-manager/README.md#content--topology--layout--style-の入出力契約) に従う。この区分の採用だけで未実装の View や描画能力が実装済みになったとは扱わない。
+
 ## 基本要素
 
 ### Node

@@ -6,6 +6,12 @@
 
 ---
 
+## Content / Topology / Layout / Style との対応
+
+4区分の意味と境界は [Data Model](./Data_Model.md#content--topology--layout--style) に従う。本書の配置アルゴリズム・direction・space・座標・接続経路の幾何は Layout、親子を線または group で読ませる視覚表現は Style に関わる。Surface View は複数区分の表示設定を束ねるもので、Layout だけと同一視しない。
+
+Surface View の切替と collapse は永続 Topology を保ったまま表示・配置入力を変える。force 配置で GraphLink を張力に使うことと、GraphLink を親子 `edge` として扱うことは区別する。以下の5種類と既存 option を再利用し、4区分のために新しい View を増やさない。
+
 ## 1. 背景と目的
 
 現在の M3E viewer は単一のレイアウトアルゴリズム (right-tree) のみ実装している。

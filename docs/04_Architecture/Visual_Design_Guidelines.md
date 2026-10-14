@@ -17,6 +17,12 @@ This document focuses on:
 - metadata presentation
 - implementation policy for design evolution
 
+## Content / Topology / Layout / Style との対応
+
+4区分の意味と境界は [Data Model](../03_Spec/Data_Model.md#content--topology--layout--style) に従う。本書の色・形状・線種・書体・文字サイズ・強調規則は Style の既存方針として再利用する。文字・metadata の内容や状態が表す意味は Content であり、色や badge はその視覚表現である。
+
+本書は視覚設計全体を扱うため、Density / Spacing の座標・間隔は Layout、Typography / 形状 / padding が生む描画寸法は Layout の入力でもある。Style の変更時は既存の寸法計算との整合を確認する。`NodeDrawStyle` や `m3e:style` は実装上の容器であり、4区分と一対一の保存 schema を要求しない。
+
 ## Design Direction
 
 The MVP should feel:
@@ -477,6 +483,6 @@ focus, right-side contract inspector, minimap, and trace replay controls.
 ### Development Policy
 
 - keep `edge` tuning and `link` tuning in separate buckets
-- do not let `Link` affect layout rules
+- keep `GraphLink` out of Tree subtree placement; force placement may use it as tension input under [Surface View rules](../03_Spec/map_layout_modes.md)
 - do not render `Link` exactly like `Edge`
 - prepare `viewer.tuning.js` to split `edge` and `link` when implementation starts
