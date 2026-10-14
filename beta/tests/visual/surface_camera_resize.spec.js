@@ -42,6 +42,44 @@ async function resize(page, delta) {
   await page.mouse.up();
 }
 
+test('selection frame and resize handle share target and follow selection, pan and zoom', async ({page}) => {
+  await launch(page);
+  const handle = page.getByRole('button', { name:'Resize node width' });
+  const checkCorner = async (id) => {
+    await expect(handle).toHaveAttribute('data-node-id', id);
+    await expect(handle).toBeVisible();
+    await expect.poll(async () => {
+      const frame = await page.locator(`.node-visual-box.primary-selected[data-node-id="${id}"]`).evaluate(el => {
+        const box = el.getBBox(), matrix = el.getScreenCTM();
+        const corner = new DOMPoint(box.x + box.width, box.y + box.height).matrixTransform(matrix);
+        return { right:corner.x, bottom:corner.y };
+      });
+      const grip = await handle.boundingBox();
+      if (!frame || !grip) return Infinity;
+      return Math.max(Math.abs(grip.x + grip.width/2 - frame.right),
+        Math.abs(grip.y + grip.height/2 - frame.bottom));
+    }).toBeLessThan(1);
+  };
+  await selectTarget(page);
+  await checkCorner('child-b');
+  const revision = await page.locator('#board').getAttribute('data-render-revision');
+  await page.locator('rect.node-hit[data-node-id="child-a"]').click();
+  await checkCorner('child-a');
+  expect(await page.locator('#board').getAttribute('data-render-revision')).toBe(revision);
+  await page.locator('#board').focus();
+  await page.keyboard.press('ArrowDown');
+  await checkCorner(await page.locator('#meta').getAttribute('data-selected-node-id'));
+  await page.mouse.move(400,650);
+  await page.mouse.down({button:'middle'});
+  await page.mouse.move(440,680,{steps:4});
+  await page.mouse.up({button:'middle'});
+  await checkCorner(await page.locator('#meta').getAttribute('data-selected-node-id'));
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0,-120);
+  await page.keyboard.up('Control');
+  await checkCorner(await page.locator('#meta').getAttribute('data-selected-node-id'));
+});
+
 test('long labels wrap; corner resize reflows, undo/redo and reload retain width and text', async ({page}) => {
   await launch(page, true);
   await selectTarget(page);

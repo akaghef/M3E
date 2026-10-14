@@ -63,8 +63,7 @@ function renderStructuredNode(input: NodeDrawInput): string {
 
 function renderRootNode(input: NodeDrawInput): string {
   const p = input.position;
-  const h = p.h;
-  const y = p.y - h / 2;
+  const { y, h } = nodeSelectionFrameRect(input);
   const rx = input.surface.structuredMode === "Tree" ? shapeRx(input.style, true) : Math.min(28, h / 2);
   const visualClasses = nodeStateClasses(input, ["root-box", "node-visual-box"]);
   const inline = visualStyle(input.style);
@@ -132,15 +131,18 @@ function renderScatterNode(input: NodeDrawInput): string {
   ].join("");
 }
 
+/** Shared visible frame geometry for selection paint and screen-sized controls. */
+export function nodeSelectionFrameRect(input: NodeDrawInput): { x: number; y: number; w: number; h: number } {
+  const p = input.position;
+  const root = input.node.isRoot && !input.surface.rootless;
+  const padX = !root && input.surface.structuredMode === "Tree" ? 14 : 0;
+  const h = root ? p.h : Math.max(NODE_HIT_HEIGHT, p.h) - (input.surface.structuredMode === "Tree" ? 12 : 0);
+  return { x: p.x - padX, y: p.y - h / 2, w: p.w + padX * 2, h };
+}
+
 function renderNodeShape(input: NodeDrawInput, classes: string[]): string {
   const p = input.position;
-  const hitH = Math.max(NODE_HIT_HEIGHT, p.h);
-  const shapePadX = input.surface.structuredMode === "Tree" ? 14 : 0;
-  const shapePadY = input.surface.structuredMode === "Tree" ? 6 : 0;
-  const x = p.x - shapePadX;
-  const y = p.y - hitH / 2 + shapePadY;
-  const w = p.w + shapePadX * 2;
-  const h = hitH - shapePadY * 2;
+  const { x, y, w, h } = nodeSelectionFrameRect(input);
   const inline = visualStyle(input.style);
   if (input.style.shape === "diamond") {
     return `<path class="node-shape ${classes.join(" ")}" data-node-id="${escapeAttr(input.node.id)}" d="${diamondPath(p.x + p.w / 2, p.y, w, h)}"${inline} />`;
@@ -150,13 +152,7 @@ function renderNodeShape(input: NodeDrawInput, classes: string[]): string {
 
 function renderFolderFrame(input: NodeDrawInput, classes: string[]): string {
   const p = input.position;
-  const frameInsetY = input.surface.structuredMode === "Tree" ? 12 : 0;
-  const framePadX = input.surface.structuredMode === "Tree" ? 14 : 0;
-  const frameH = Math.max(NODE_HIT_HEIGHT, p.h) - frameInsetY;
-  const x = p.x - framePadX;
-  const y = p.y - frameH / 2;
-  const w = p.w + framePadX * 2;
-  const h = frameH;
+  const { x, y, w, h } = nodeSelectionFrameRect(input);
   const inline = visualStyle(input.style);
   const parts: string[] = [];
   if (input.node.isScopePortal) {

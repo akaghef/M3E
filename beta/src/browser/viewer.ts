@@ -39,7 +39,7 @@ import {
   type NodeDrawSurface,
   type ScopeLockDrawState,
 } from "../shared/node_draw_port";
-import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
+import { renderNode as renderNodeSvg, nodeSelectionFrameRect } from "../shared/node_draw_svg";
 import { DerivedNodeCache, RetainedSvgScene } from "./incremental_scene";
 import { FrameInvalidation } from "./frame_invalidation";
 import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./webgl_scene_tiles";
@@ -5371,8 +5371,17 @@ function syncNodeResizeHandle(): void {
   }
   const id = viewState.selectedNodeId;
   const node = map?.state.nodes[id];
-  const rect = nodeViewportRect(id);
-  nodeResizeHandle.hidden = !node || !rect || isLatexNode(node) || currentSurfaceIsScatterMode() || currentSurfaceIsFlowMode() || isReadOnlyLink() || Boolean(inlineEditor) || annotationTool !== "select";
+  // Use the same retained geometry and selection state as the painted frame,
+  // rather than an independently reconstructed hit/viewport rectangle.
+  const input = nodeDrawInputs.get(id);
+  const selected = nodeSelectionView(id);
+  const p = input && (input.content.kind === "agent" ? renderNodeSvg(input).bounds : nodeSelectionFrameRect(input));
+  nodeResizeHandle.dataset.nodeId = id;
+  nodeResizeHandle.hidden = !node || !p || !selected.selected || !selected.primarySelected || isLatexNode(node) || currentSurfaceIsScatterMode() || currentSurfaceIsFlowMode() || isReadOnlyLink() || Boolean(inlineEditor) || annotationTool !== "select";
+  const rect = p && {
+    right: viewState.cameraX + (p.x + p.w) * viewState.zoom,
+    bottom: viewState.cameraY + (p.y + p.h) * viewState.zoom,
+  };
   if (rect) {
     nodeResizeHandle.style.left = `${rect.right - 7}px`;
     nodeResizeHandle.style.top = `${rect.bottom - 7}px`;
@@ -8274,9 +8283,7 @@ function render(incremental = false): void {
       position: p,
       style: nodeDrawStyleFromAttrs(nodeStyles),
       view: {
-        selected: viewState.selectedNodeIds.has(node.id),
-        primarySelected: node.id === viewState.selectedNodeId,
-        multiSelected: viewState.selectedNodeIds.has(node.id),
+        ...nodeSelectionView(node.id),
         linkSource: viewState.linkSourceNodeId === node.id,
         cutPending: viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(node.id),
         reparentSource: viewState.reparentSourceIds.has(node.id),
@@ -8529,20 +8536,17 @@ function render(incremental = false): void {
     .map((nodeId) => state.nodes[nodeId])
     .filter((node): node is TreeNode => Boolean(node));
   syncThinkingModeUi();
-  syncNodeComponentUi();
   metaEl.dataset.selectedNodeId = selected?.id || "";
   metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
   metaEl.dataset.scopeId = normalizedCurrentScopeId();
   metaEl.dataset.mapId = LOCAL_MAP_ID;
   renderedMetaPrefix = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode}`;
   renderedMetaSuffix = ` | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"}`;
-  syncSelectionMetadata();
+  syncNodeSelectionPresentation();
   updateScopeMeta();
   updateScopeSummary();
   updateMapTitle();
-  syncInlineEditorPosition();
   renderLinearPanel();
-  syncNodeResizeHandle();
 }
 
 interface LayoutDiagnosticBox {
@@ -9213,14 +9217,28 @@ function syncSelectionMetadata(): void {
 }
 
 let selectionRefreshFrame: number | null = null;
+function nodeSelectionView(id: string) {
+  return {
+    selected: viewState.selectedNodeIds.has(id),
+    multiSelected: viewState.selectedNodeIds.has(id),
+    primarySelected: viewState.selectedNodeId === id,
+  };
+}
+
+/** Frame paint and its controls form one selection presentation transaction. */
+function syncNodeSelectionPresentation(): void {
+  syncSelectionMetadata();
+  syncNodeComponentUi();
+  syncInlineEditorPosition();
+  syncNodeResizeHandle();
+}
+
 /** Interaction state does not invalidate metrics, layout, edges or node content. */
 function refreshSvgNodeInteraction(id: string): void {
   const previous = nodeDrawInputs.get(id);
   if (!previous) return;
   const input: NodeDrawInput = { ...previous, view: { ...previous.view,
-    selected: viewState.selectedNodeIds.has(id),
-    multiSelected: viewState.selectedNodeIds.has(id),
-    primarySelected: viewState.selectedNodeId === id,
+    ...nodeSelectionView(id),
     dragSource: viewState.dragState?.sourceNodeId === id,
     dropTarget: viewState.dragState?.proposal?.kind === "reparent" && viewState.dragState.proposal.parentId === id,
   } };
@@ -9290,9 +9308,7 @@ function scheduleSelectionRefresh(): void {
     webglPaintedSelection = new Set(viewState.selectedNodeIds);
     webglPaintedPrimary = viewState.selectedNodeId;
     syncWebGLInteraction();
-    syncSelectionMetadata();
-    syncNodeComponentUi();
-    syncInlineEditorPosition();
+    syncNodeSelectionPresentation();
     syncLinearCaretToSelectedNode();
   });
 }
