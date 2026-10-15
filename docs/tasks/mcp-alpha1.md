@@ -44,8 +44,8 @@ Focusは一つ、Subscriptionは複数。参加状態は短命のContextハン�
 
 - [x] Map / ScopeのMention Searchを実装
 - [x] 検索結果にResource URIを付与
-- [ ] ChatGPT Desktopで補完・選択・参照を実証
-- [ ] 選択したURIからcontextへ接続
+- [x] ChatGPT Desktopで補完・選択・参照を実証
+- [x] 選択したURIからcontextへ接続
 
 ### Session・変更認識
 
@@ -68,7 +68,7 @@ Focusは一つ、Subscriptionは複数。参加状態は短命のContextハン�
 - [x] 既知Scopeで再GETなしの連続編集
 - [x] 生物分類図67ノードの一括作成
 - [x] 他ActorによるScope削除・再判断
-- [ ] Scopeメンション指定から実際の書込まで成功
+- [x] Scopeメンション指定から実際の書込まで成功
 - [x] Feedbackログ保存と新規Sessionでの再現
 
 ## 検証境界
@@ -83,4 +83,4 @@ Focusは一つ、Subscriptionは複数。参加状態は短命のContextハン�
 
 Core・MCP・フックの関連試験69件、既存保存系の回帰試験108件が成功。Skillなしの新規セッションでコピーと連続編集、67ノードの一括作成、別ActorによるScope削除後の停止を確認した。実フックがバックエンドへの書込呼出しを止めたことも独立検証済み。
 
-デスクトップのメンション補完・選択から書込までの経路は未確認のため、α1全体の完了とはしない。実装・統合・通常稼働の状態と試験の証拠・制約は [検証記録](mcp-alpha1-verification.md) に記載する。
+デスクトップでは実ユーザーのメンション選択から参加、67ノードのコピー、名称変更、保存・Viewer表示まで確認した。33項目の個別証拠は揃ったが、同一実機Sessionでメンションから外部Scope削除後の停止まで連続する総合シナリオと、既存Viewerの識別子非表示条件は未完了。個別成功を総合受入へ読み替えない。実装・統合・通常稼働の状態と試験の証拠・制約は [検証記録](mcp-alpha1-verification.md) に記載する。

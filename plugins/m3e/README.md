@@ -30,6 +30,10 @@ Codex CLIでは `/hooks` からM3Eの定義を確認して信頼する。イン�
 ファイルの存在、CLI の導入成功、フックの単体試験だけではデスクトップの
 メンション選択や実際の書込み前拒否を実証したことにはならない。
 
+Codexの入力欄で `@M3E` を入力し、M3E候補が選ばれた状態で **Tab** を押すと
+Map／Scopeの候補を開ける。対象を選択して送信するとResource参照が付く。
+M3E候補をクリックして付けるプラグイン参照、Browserタブ参照とは区別する。
+
 ## 設定と配置
 
 `M3E_HOME/mcp-client.json` に `repoRoot`、`nodeExecutable`、`apiUrl` を保存する。
