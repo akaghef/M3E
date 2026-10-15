@@ -63,15 +63,19 @@ Required before assigning to a worker.
 - Worker does not decide storage, scope, Layout / Style, alias-vs-move, or
   cross-facet relations outside the handoff.
 - Preserve explicit input constraints; identify worker suggestions as proposals.
-- Worker does not write M3E maps via direct API, SQLite, or runtime files unless
-  the handoff explicitly delegates an authorized `m3e-map` execution path.
+- Worker executes authorized map changes through the MCP semantic Tools and
+  Core validation, following [MCP map operations](../mcp-map-operations.md).
+  Direct SQLite, runtime-file replacement, or generated full-state REST scripts
+  are not the normal execution route.
 
 ## G6 Verification
 
 Required after mutation.
 
-- Re-read target path/scope.
-- Verify tree invariants and relation endpoints.
+- Use authoritative MCP results and change events for normal completion;
+  re-read only when necessary context is missing, stale, or notifications were
+  lost. A visible-result acceptance requires actual rendered observation.
+- Require Core validation of tree invariants and relation endpoints.
 - Verify scope/display intent was preserved.
 - Verify Content / provenance and explicit Topology / Layout / Style constraints
   against the received input, not only against the generated map.

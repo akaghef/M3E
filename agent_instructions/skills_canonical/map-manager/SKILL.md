@@ -1,8 +1,18 @@
 ---
 name: map-manager
-description: Decide M3E map structure before writing or delegating. Use when a task involves scope, scopen/unscopen, layouting, display intent, facet choice, edge/link/alias choice, cross-facet relations, path ambiguity, or worker handoff.
+description: Resolve open M3E structural decisions about scope purpose, layout, display intent, facet or relation choice, path ambiguity, or worker ownership. Fully specified map operations use MCP directly without this skill.
 ---
 # Map Manager Skill
+
+## DP Router
+
+- DP0: clarify unresolved structure and explicit constraints before implementation.
+- DP1: apply the same canonical guidance during initial MCP adoption.
+- DP2: use MCP directly for specified operations; consult this guidance only for an open structural decision.
+
+Canonical guidance is also available through MCP Resources / Prompts. This skill
+is a repository-local entry point, not a prerequisite for map operations or a
+requirement to launch a separate agent.
 
 ## Decision order
 
@@ -13,7 +23,7 @@ description: Decide M3E map structure before writing or delegating. Use when a t
 5. Scope granularity
 6. Move vs alias vs GraphLink
 7. Remaining Layout / Style decisions under display intent and explicit constraints
-8. Worker handoff or direct m3e-map execution
+8. Bounded worker handoff or direct MCP execution under `docs/protocols/mcp-map-operations.md`
 9. Verification against received Content / provenance and explicit constraints
 
 ## Must preserve distinctions
@@ -36,6 +46,7 @@ definitions live in the Data Model; do not redefine them in this skill.
 - `docs/protocols/map-manager/README.md`
 - `docs/protocols/map-manager/gates.md`
 - `docs/protocols/map-manager/projection-rule.md`
+- `docs/protocols/mcp-map-operations.md`
 - `docs/protocols/contracts/map_manager_contract.yaml`
 - `docs/protocols/contracts/scope_contract.yaml`
 - `docs/protocols/contracts/write_contract.yaml`

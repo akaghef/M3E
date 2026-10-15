@@ -40,6 +40,20 @@ GraphLink の配置への寄与は [Surface View 仕様](./map_layout_modes.md) 
 
 `display intent` は「何を先に認識し、何を比較し、どの関係を主として読ませるか」という目的・要求条件であり、第5の区分ではない。Content の忠実性と明示的な構造制約の下で、Topology・Layout・Style の判断を方向付ける。
 
+### 任意の表示用metadata
+
+表示のために追加した構造と元のContentを区別する必要がある場合、`attributes` に次の既存キーを任意で記録できる。通常のNode作成で必須にせず、キーの存在からScope・facet・表示能力を推定しない。
+
+| キー | 意味と既存値の例 |
+|---|---|
+| `m3e:facet` | 構造の文脈を記録した旧来の属性。既存値の例は `flow` / `dependency` / `reviews` / `timeseries` / `document`。これらの値だけでは正規語のfacetであることを証明しない |
+| `m3e:display-role` | 表示上の役割。既存値の例は `anchor` / `question` / `option` / `rationale` / `downside` / `stage`。Nodeの型や所有関係とは別に扱う |
+| `m3e:synthetic` | 表示目的だけで追加したgrouping Nodeには既存値 `anchor` を使える。元からある意味上の階層を、見やすさに役立つという理由でsynthetic扱いしない |
+
+正規語のfacetは [Glossary](../00_Home/Glossary.md#25-facetプロジェクト観点) に従い、PJ直下で意味的に凝集したScopeに限定する。旧属性値や旧資料の広いfacet用法とは区別する。既存のキー・値を黙って改名したり、値に合わせてScopeを作ったりしない。これらのmetadataは新しい保存schemaや自動処理の採用を意味しない。
+
+表示目的のanchorでも、Nodeを追加すればTopologyが変わる。元のContent、明示された階層・順序・Scope、既存metadataを保持し、許可された表示上の判断がある場合だけ追加する。構造・anchor・色の文脈別の例は [Map Manager規約](../protocols/map-manager/README.md#文脈に応じた構造の例) に置く。
+
 ### 検証観点
 
 用語・契約のレビューでは、意味上の関係と接続方式、兄弟順序と座標、scope 境界と collapse、文字内容と書体、接続経路の幾何と線種をそれぞれ区別できることを確認する。Map Manager の入出力・変更後の確認は [Map Manager 契約](../protocols/map-manager/README.md#content--topology--layout--style-の入出力契約) に従う。この区分の採用だけで未実装の View や描画能力が実装済みになったとは扱わない。

@@ -41,6 +41,8 @@ final/test-results/
 .agents/*
 !.agents/skills/
 !.agents/skills/**
+!.agents/plugins/
+!.agents/plugins/marketplace.json
 .agents/**/.DS_Store
 docs/ideas/user_memo.md
 memo.md

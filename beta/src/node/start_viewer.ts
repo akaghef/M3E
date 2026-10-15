@@ -10,6 +10,7 @@ import { createOrreryApi } from "./orrery_api";
 import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
+import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
 import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { parseMdContent } from "./md_reader";
@@ -173,6 +174,84 @@ function currentSqliteDbPath(): string {
   return path.join(currentDataDir(), dbFile);
 }
 
+const activeMapSaves = new Set<string>();
+const mcpService = new M3eMcpService({
+  dbPath: currentSqliteDbPath,
+  feedbackDir: () => path.join(currentDataDir(), "mcp"),
+  canWrite: (mapId) => activeMapSaves.has(mapId)
+    ? "A map save is in progress. Retry after its change notification."
+    : getVaultWatchStatus(mapId)?.running
+      ? "This map uses live Obsidian storage. Atomic MCP writes to that storage are not available yet."
+      : null,
+  onSaved: (mapId, savedAt) => {
+    broadcastMapUpdate(mapId, savedAt, null);
+    handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
+  },
+});
+
+async function handleMcpApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  if (!url.pathname.startsWith("/api/mcp/")) return false;
+  if (!mcpRequestAllowed(req)) {
+    sendJson(res, 403, { ok: false, error: { code: "LOCAL_ONLY", message: "MCP access is limited to the local application." } });
+    return true;
+  }
+  try {
+    if (url.pathname === "/api/mcp/call" && req.method === "POST") {
+      if (!(req.headers["content-type"] || "").startsWith("application/json")) {
+        sendJson(res, 415, { ok: false, error: { code: "INVALID_CONTENT_TYPE", message: "Use application/json." } });
+        return true;
+      }
+      const body = JSON.parse(await readRequestBody(req, 1_000_000));
+      if (!body || typeof body.name !== "string" || Object.keys(body).some((key) => !["name", "arguments"].includes(key))) {
+        sendJson(res, 400, { ok: false, error: { code: "INVALID_REQUEST", message: "Provide name and arguments." } });
+        return true;
+      }
+      const result = mcpService.call(body.name, body.arguments);
+      sendJson(res, result.ok ? 200 : 400, result);
+      return true;
+    }
+    if ((url.pathname === "/api/mcp/events" || url.pathname === "/api/mcp/events/stream") && req.method === "GET") {
+      const contextId = url.searchParams.get("context_id") ?? "";
+      const after = Number(url.searchParams.get("after") ?? 0);
+      const result = mcpService.events(contextId, after);
+      if (!result.ok || url.pathname === "/api/mcp/events") { sendJson(res, result.ok ? 200 : 400, result); return true; }
+      // Listener and replay are installed in the same synchronous turn: no event gap.
+      const remove = mcpService.listen(contextId, (event) => {
+        if (!res.write(`event: change\nid: ${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`)) res.end();
+      });
+      res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+      res.write("retry: 1500\n: connected\n\n");
+      if (result.resync_required) res.write(`event: change\ndata: ${JSON.stringify({ type: "resync_required", cursor: after, requires_refocus: result.requires_refocus, message: "Event history was truncated. Read current state before continuing." })}\n\n`);
+      for (const event of result.events) res.write(`event: change\nid: ${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`);
+      const heartbeat = setInterval(() => res.write(": keepalive\n\n"), 25_000);
+      res.on("close", () => { clearInterval(heartbeat); remove(); });
+      return true;
+    }
+    if (url.pathname === "/api/mcp/docs" && req.method === "GET") {
+      const name = url.searchParams.get("name") ?? "";
+      const files: Record<string, string> = { glossary: "docs/00_Home/Glossary.md", "data-model": "docs/03_Spec/Data_Model.md", "map-manager": "docs/protocols/map-manager/README.md", operations: "docs/protocols/mcp-map-operations.md" };
+      if (!files[name]) { sendJson(res, 404, { ok: false, error: { code: "DOCUMENT_NOT_FOUND", message: "Choose a published M3E document." } }); return true; }
+      const sources = name === "map-manager" ? [
+        "docs/protocols/map-manager/README.md",
+        "docs/protocols/map-manager/gates.md",
+        "docs/protocols/map-manager/projection-rule.md",
+        "docs/protocols/contracts/map_manager_contract.yaml",
+        "docs/protocols/contracts/scope_contract.yaml",
+        "docs/protocols/contracts/write_contract.yaml",
+      ] : [files[name]!];
+      const text = sources.map((file) => `${sources.length > 1 ? `# ${file}\n\n` : ""}${fs.readFileSync(path.join(REPO_ROOT, file), "utf8")}`).join("\n\n");
+      sendJson(res, 200, { ok: true, name, text });
+      return true;
+    }
+    sendJson(res, 404, { ok: false, error: { code: "ROUTE_NOT_FOUND", message: "This MCP endpoint is unavailable." } });
+  } catch {
+    if (!res.headersSent) sendJson(res, 400, { ok: false, error: { code: "INVALID_REQUEST", message: "The MCP request could not be processed." } });
+    else res.end();
+  }
+  return true;
+}
+
 function currentFirstRunMarker(): string {
   return path.join(currentDataDir(), ".m3e-launched");
 }
@@ -292,6 +371,7 @@ function addMapWatchClient(mapId: string, res: http.ServerResponse): void {
 }
 
 function broadcastMapUpdate(mapId: string, savedAt: string, sourceTabId: string | null): void {
+  mcpService.notifyMapChanged(mapId);
   const payload = JSON.stringify({ mapId, savedAt, sourceTabId });
   const frame = `event: map_updated\ndata: ${payload}\n\n`;
   for (let i = mapWatchClients.length - 1; i >= 0; i--) {
@@ -1358,6 +1438,7 @@ async function handleHomeApi(
     if (route.kind === "delete") {
       try {
         RapidMvpModel.deleteMap(currentSqliteDbPath(), route.mapId);
+        broadcastMapUpdate(route.mapId, new Date().toISOString(), null);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg === "Map not found.") {
@@ -2432,8 +2513,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
   }
 
   if (req.method === "POST") {
+    let saveAcquired = false;
     try {
       const rawBody = await readRequestBody(req);
+      if (activeMapSaves.has(mapId)) {
+        sendJson(res, 409, { ok: false, code: "DOC_CONFLICT", error: "A map save is already in progress." });
+        return true;
+      }
+      activeMapSaves.add(mapId);
+      saveAcquired = true;
       const parsed = JSON.parse(rawBody) as { state?: unknown; baseSavedAt?: unknown; baseState?: unknown; force?: unknown };
       const candidate = parsed && parsed.state ? parsed : { state: parsed };
       if (!candidate.state || typeof candidate.state !== "object") {
@@ -2482,6 +2570,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         return true;
       }
 
+      const commitRevision = RapidMvpModel.mapExists(currentSqliteDbPath(), mapId)
+        ? RapidMvpModel.savedRevision(RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId)) : null;
       const force = Boolean(parsed?.force);
       const baseSavedAt = typeof parsed?.baseSavedAt === "string" ? parsed.baseSavedAt : null;
       const baseState = parsed?.baseState && typeof parsed.baseState === "object"
@@ -2513,7 +2603,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
                 return true;
               }
               const liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, mergedModel.toJSON());
-              mergedModel.saveToSqlite(currentSqliteDbPath(), mapId);
+              // Preserve the existing live-vault commit protocol. MCP currently declines that storage owner.
+              if (liveWrite) mergedModel.saveToSqlite(currentSqliteDbPath(), mapId);
+              else mergedModel.saveToSqliteIfUnchanged(currentSqliteDbPath(), mapId, RapidMvpModel.savedRevision(currentDoc));
               const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
               const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
               broadcastMapUpdate(mapId, savedAt, sourceTabId);
@@ -2550,7 +2642,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       }
 
       const liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, model.toJSON());
-      model.saveToSqlite(currentSqliteDbPath(), mapId);
+      if (commitRevision && !liveWrite) model.saveToSqliteIfUnchanged(currentSqliteDbPath(), mapId, commitRevision);
+      else model.saveToSqlite(currentSqliteDbPath(), mapId);
       const savedAt = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId).savedAt;
       const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
       broadcastMapUpdate(mapId, savedAt, sourceTabId);
@@ -2567,11 +2660,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
       });
     } catch (err) {
       const message = (err as Error).message || "Unknown error";
-      if (err instanceof SyntaxError) {
+      if (message === "REVISION_CONFLICT") {
+        sendJson(res, 409, { ok: false, code: "DOC_CONFLICT", error: "The map changed during save. Refresh before retrying." });
+      } else if (err instanceof SyntaxError) {
         sendJson(res, 400, { error: "Invalid JSON body." });
       } else {
         sendJson(res, 400, { error: message });
       }
+    } finally {
+      if (saveAcquired) activeMapSaves.delete(mapId);
     }
     return true;
   }
@@ -4033,6 +4130,7 @@ export function createAppServer(): http.Server {
     if (redirectLoopbackHost(req, res)) {
       return;
     }
+    if (await handleMcpApi(req, res)) return;
     if (orreryApi.handle(req, res)) return;
     if (await handleOpenLocalPathApi(req, res)) {
       return;

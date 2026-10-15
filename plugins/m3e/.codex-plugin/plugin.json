@@ -1,0 +1,14 @@
+{
+  "name": "m3e",
+  "version": "0.1.0",
+  "description": "Participate in M3E Maps, retain Scope context, and make semantic edits through the existing M3E application.",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "M3E",
+    "shortDescription": "Read and edit Maps with retained Scope context",
+    "developerName": "M3E",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"]
+  }
+}

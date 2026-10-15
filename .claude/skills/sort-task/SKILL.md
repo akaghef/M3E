@@ -9,6 +9,7 @@ description: >
   - backlog/*.md や docs/ideas/ 配下のリストを「整理して」と依頼されたとき
   - 既存 `projects/deps.json` への追記・編集を依頼されたとき
   - SortedTaskView の更新・再描画を依頼されたとき
+  Mapへの書込はMCPの対応範囲で行い、旧REST writerへ切り替えない。
 ---
 
 # sort-task — タスク依存の整理と出力
@@ -16,17 +17,22 @@ description: >
 相互依存のあるタスク群を DAG として `projects/deps.json` に書き出し、
 その DAG を 3 つの形式（md / chat / map）で出力する。
 
+## DP Router
+
+- DP0: 依存関係と出力先・表示規約を確定する。
+- DP1: 初回はローカル計算環境と、map出力を使う場合のMCP対応範囲を確認する。
+- DP2: 既存データを最小変更し、計算・検証後に要求された出力だけを更新する。
+
 ## 構成
 
 ```
 .claude/skills/sort-task/
 ├── SKILL.md           ← この文書
-├── deps.py            ← CLI（DAG 操作・クエリ）
-└── render_map.mjs     ← M3E マップへの書き出し
+└── deps.py            ← CLI（DAG 操作・クエリ）
 ```
 
 データ: `projects/deps.json`（single source of truth）
-依存: Python 3.10+ / networkx / Node.js
+依存: Python 3.10+ / networkx。map出力にはM3E MCPを利用する。
 
 ## 入力
 
@@ -101,7 +107,13 @@ PJ-01, PJ-04, PJ-06, PJ-08, PJ-00, PJ-05
 
 ### map
 
-`node .claude/skills/sort-task/render_map.mjs` を実行。
+`docs/protocols/mcp-map-operations.md` に従い、六つのMCP Toolsで対象の発見・参加・
+意味操作・検証を行う。`deps.py` は依存計算を担当し、Mapの全状態編集やREST保存は行わない。
+以下の表示規約は、ユーザーがこのSortedTaskViewを指定した場合に適用する。
+
+書込前に、必要な操作がMCP Schemaにあることを確認する。特にGraphLink生成が未対応なら、
+必要な非木依存を失うMapを保存せず、不足機能を報告する。旧writerや一時スクリプトへ
+切り替えたり、GraphLinkを親子関係で代用したりしない。
 
 **レイアウト原則**:
 - **tree-depth = DAG layer** — 深さが依存の方向に対応
@@ -138,13 +150,12 @@ critical path 上のエッジは `style: "emphasis"`。
 
 **PJ ノード attributes**: `{ pj_id, state, layer, on_critical }`
 
-**環境変数**:
-- `M3E_PORT` (既定 `4173`)
-- `M3E_MAP_ID` (既定 `map_BG9BZP6NRDTEH1JYNDFGS6S3T5` = dev map)
+**対象**: ユーザー指定のMap / pathをMCPで解決する。保存済みIDを既定値として推測しない。
 
-**冪等性**: 既存 `SortedTaskView` があれば子孫ノードと depends-on リンクを全削除して再構築。ノード本体（ID）は再利用。
+**再更新**: 既存 `SortedTaskView` の対象・制約を確認し、必要な差分だけを適用する。
+一括削除・再構築を既定にしない。保持済みContextと変更結果を使い、再GETは不足・失効時だけ行う。
 
-**前提**: M3E beta サーバが起動（停止中は `/launch-beta` を促す）。
+**前提**: 既存Betaへ接続したMCPが利用できること。未接続・非対応ならその不足を報告する。
 
 ## 依存推論の原則
 
@@ -172,7 +183,7 @@ critical path 上のエッジは `style: "emphasis"`。
 ### 例2: DAG 更新 → map 再描画
 ```
 ユーザ: PJ-09 を追加、PJ-01 の後、そして map 更新して
-→ deps.py add PJ-09 + dep PJ-01 PJ-09、その後 render_map.mjs
+→ deps.py add PJ-09 + dep PJ-01 PJ-09、その後MCPの対応範囲を確認して指定Mapを更新
 ```
 
 ### 例3: md 形式でレビュー用に書き出し
@@ -184,6 +195,6 @@ critical path 上のエッジは `style: "emphasis"`。
 ## 関連
 
 - `projects/deps.json` — データ
-- `.claude/skills/m3e-map/` — マップ API 規約（※ドキュメントは `/api/docs/` の古い表記、実エンドポイントは `/api/maps/{mapId}`）
+- `docs/protocols/mcp-map-operations.md` — MCPによるMap操作
 - `backlog/pj-vision-100.md` — PJ ビジョン
 - feedback memory `feedback_ambiguity_pooling` — 曖昧な依存は pool 化

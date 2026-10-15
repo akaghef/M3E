@@ -22,7 +22,7 @@ must:
 must_not:
   - create a scope only because a tree is visually large
   - create a scope without a purpose-bearing boundary
-  - let worker scopen or unscopen without explicit handoff
+  - let worker scopen or unscopen without an explicit authorized user request or handoff
   - duplicate entity nodes across scopes
   - use alias as a move operation
 soft_guidelines:

@@ -1,0 +1,9 @@
+{
+  "name": "m3e-local",
+  "plugins": [{
+    "name": "m3e",
+    "source": { "source": "local", "path": "./plugins/m3e" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+    "category": "Productivity"
+  }]
+}

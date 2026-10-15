@@ -37,6 +37,7 @@
     "build:browser": "tsc -p tsconfig.browser.json && tsc --noEmit -p tsconfig.renderer.json && tsc -p tsconfig.workbench.json && vite build --config vite.config.mjs",
     "demo:pj03": "npm run build:node && node dist/node/pj03_demo.js --mode full",
     "start": "node dist/node/start_viewer.js",
+    "start:mcp": "node dist/node/start_mcp.js",
     "start:codex-app": "../scripts/beta/codex-app-server.sh",
     "test": "npm run test:unit",
     "test:unit": "npm run build:test && npx vitest run",
@@ -78,6 +79,7 @@
     "@antv/x6": "^3.1.7",
     "@joint/core": "^4.2.4",
     "@langchain/langgraph": "^1.3.6",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@supabase/supabase-js": "^2.103.0",
     "@types/js-yaml": "^4.0.9",
     "@xyflow/react": "^12.10.2",
@@ -85,6 +87,7 @@
     "cytoscape": "^3.33.4",
     "dotenv": "^17.4.1",
     "elkjs": "^0.11.1",
+    "eventsource-parser": "3.0.6",
     "js-yaml": "^4.1.1",
     "katex": "^0.16.45",
     "langchain": "^1.4.4",
@@ -92,6 +95,7 @@
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "webcola": "^3.4.0"
+    "webcola": "^3.4.0",
+    "zod": "4.4.3"
   }
 }

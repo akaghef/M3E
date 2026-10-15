@@ -65,11 +65,11 @@ For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 - Repository-level canon, source/artifact allocation, generated-output policy, worktree placement, and private/public-danger material routing live in `docs/protocols/repository-canon-values.md`.
 - Agent operating behavior lives under `docs/protocols/`.
 - Claude Director behavior lives in `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md`.
-- Map read/write execution uses the `m3e-map` skill.
-- Structural map decisions use `docs/protocols/map-manager/` (with `docs/protocols/map-manager.md` as a compatibility pointer) and the `map-manager` skill.
+- Map read/write execution uses the six MCP tools under `docs/protocols/mcp-map-operations.md`: `m3e_context`, `m3e_get`, `m3e_create`, `m3e_update`, `m3e_delete`, and `m3e_feedback`. No local map skill is required.
+- Open structural map decisions use `docs/protocols/map-manager/` (with `docs/protocols/map-manager.md` as a compatibility pointer), exposed through MCP Resources / Prompts. The `map-manager` skill is an optional repository-local entry point for those decisions.
 - Codex workers must follow `docs/protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
 
-When a map task involves scope, scopen / unscopen, layouting, path ambiguity, edge / GraphLink / alias choice, or worker handoff, route it through Map Manager before mutation.
+Consult Map Manager guidance when a map task leaves scope purpose, layouting, path resolution, edge / GraphLink / alias choice, or worker ownership undecided. A fully specified operation uses MCP directly, including an explicitly specified scopen / unscopen or cross-scope move. A guidance reference does not require a separate agent or skill invocation.
 
 ## Scope and Persistent Rule Gate
 
@@ -111,9 +111,11 @@ unbounded structural design.
 
 It does **not** apply to an explicitly-targeted, direct M3E runtime operation
 (for example, a supplied map/scope URL with an unambiguous copy, read, rename,
-or attribute update). Those operators follow the direct-operator route in the
-`m3e-map` skill: resolve the target, read the relevant state, perform only the
-requested operation, and verify it. Do not load internal goals or route through
+or attribute update). Those operators follow `docs/protocols/mcp-map-operations.md`:
+resolve the target, enter the MCP context, perform only the requested operation,
+and verify its authoritative result. Reuse retained context and change results;
+do not require a successful write to be followed by another GET. Retrieve state
+when context is missing or invalidated. Do not load internal goals or route through
 Map Manager unless the requested operation requires a structural decision not
 already specified by the user.
 

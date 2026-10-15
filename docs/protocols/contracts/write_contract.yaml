@@ -1,4 +1,4 @@
-version: 0.1
+version: 0.2
 id: m3e.write_contract
 owner: Map Manager
 status: proposed
@@ -13,15 +13,17 @@ steps:
   - identify_map
   - resolve_target_path_or_scope
   - classify_projection_or_native_write
-  - read_current_state
+  - enter_or_reuse_current_mcp_context
+  - read_missing_state_or_reconcile_change_events
   - classify_write_as_trivial_or_display_governed
   - decide_facet_and_display_intent_if_needed
-  - mutate_in_memory
-  - validate_invariants
-  - write_state
-  - verify_after_write
+  - execute_authorized_semantic_mcp_operation
+  - core_validates_and_commits_atomically
+  - verify_operation_result_and_required_visual_behavior
 must:
-  - read before write
+  - hold sufficient current context before write
+  - reconcile relevant changes and explicitly refocus after invalidation
+  - use successful operation results for routine continuation without redundant reads
   - keep projection formats separate from M3E storage
   - maintain bidirectional parent-child consistency
   - preserve root parentId null
@@ -32,7 +34,8 @@ must_not:
   - write unresolved ambiguous paths
   - convert `/` or Mermaid arrows into ownership edges by default
   - confuse edge with GraphLink
-  - apply default difficulty coloring over explicit display-intent colors
+  - apply unsolicited coloring or layout changes
+  - replace unavailable MCP operations with agent-authored REST or SQLite writes
   - leave orphan nodes or broken non-broken links
 verification:
   - no orphan nodes

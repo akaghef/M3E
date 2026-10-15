@@ -15,6 +15,7 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 - read assigned files and assigned map scope
 - make local implementation/doc changes inside assigned boundaries
 - update assigned task status if explicitly instructed
+- perform fully specified map operations with the six MCP tools in `docs/protocols/mcp-map-operations.md`; preserve retained context and verify authoritative results without a mandatory post-write GET
 - report concrete ambiguity with options
 - own verification, commit, direct dev-beta integration, push, and applicable runtime verification under `docs/06_Operations/Worktree_Separation_Rules.md`; `beta_update` requires delivery, not a PR
 - use an optional PR only when requested or useful for explicit external review; a separate Director merge is not required
@@ -25,7 +26,7 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 - do not create cross-facet alias or GraphLink unless explicitly instructed
 - do not restructure outside assigned path
 - do not decide M3E storage shape
-- do not mutate M3E maps through direct API, SQLite, or runtime files unless the handoff explicitly delegates an authorized `m3e-map` execution path
+- do not mutate M3E maps through direct REST API, SQLite, runtime files, or temporary write scripts; use the authorized MCP operation
 - do not create test maps, fixture maps, or temporary maps in the active beta personal workspace for verification; use Playwright fixtures, isolated `testRun` state, a separate temp workspace, or an explicit backup/restore flow
 - do not change `docs/00_Home/Current_Status.md` unless the Director explicitly scopes that operating-doc update
 - do not invent path notation
@@ -36,12 +37,16 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 ## Escalate to Map Manager when
 
 - target path is ambiguous
-- scopen / unscopen is needed
-- write crosses scope or facet boundary
+- the purpose or boundary of scopen / unscopen remains undecided
+- a cross-scope or cross-facet write leaves ownership or relation semantics undecided
 - alias vs move vs GraphLink is a real choice
 - layout/display intent is unclear
 - requested output is MF, WMF, Mermaid, or Markdown and writeback semantics are unclear
 - more than 3 nodes outside assigned scope would change
+
+A specified target and operation do not need Map Manager mediation merely because
+they use scope boundaries or are delegated. Structural guidance is available as
+MCP Resources / Prompts; its use does not require a separate agent or local skill.
 
 ## Persistent rule gate
 

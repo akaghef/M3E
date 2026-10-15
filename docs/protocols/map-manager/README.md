@@ -6,7 +6,13 @@ Map Manager prevents repeated AI confusion when reading, writing, laying out,
 scoping, projecting, and delegating M3E maps.
 
 This package is the operational SSOT for Map Manager behavior. Product meaning
-stays in `docs/03_Spec/`; skill files only route and invoke.
+stays in `docs/03_Spec/`. MCP Resources / Prompts publish this guidance; a local
+skill is an optional entry point, not an execution prerequisite.
+
+Fully specified targets and operations use the six MCP tools in
+[MCP map operations](../mcp-map-operations.md) directly. This package guides open
+structural decisions; consulting it does not require a separate agent or a new
+decision when the user has already supplied the required constraints.
 
 ## Package files
 
@@ -36,6 +42,9 @@ rules belong here.
 
 ## Map Manager owns
 
+When an open structural decision is assigned, the responsibility covers the
+relevant items below. Already specified targets and constraints remain binding.
+
 - target map / path / scope resolution
 - projection target and purpose
 - scope purpose and scope granularity
@@ -55,14 +64,16 @@ rules belong here.
 - changing Layout / Style / display intent outside the handoff
 - restructuring outside assigned path
 - deciding M3E storage shape
-- writing M3E maps by direct API / SQLite / runtime-file mutation
-- writing cross-facet relations without explicit Map Manager handoff
+- writing M3E maps by direct REST API / SQLite / runtime-file mutation rather than an authorized MCP semantic operation
+- writing cross-facet relations outside the explicit user request or assigned handoff
 
 Workers return a handoff or ambiguity report when those decisions are needed.
 
 ## Decision order
 
-Before any non-trivial map write:
+When a write leaves structural decisions open, consider the relevant items below.
+Keep specified choices; do not add a facet, Scope, anchor, or color merely to
+complete this list. A fully specified operation proceeds directly through MCP.
 
 1. Identify the map and target path using canonical display path notation; separate
    Content, explicit Topology / Layout / Style constraints, and open decisions.
@@ -158,8 +169,8 @@ Soft guide: semantic cohesion first; node count is only a smell, not a rule.
 
 - `scopen`: make an existing node or node group a scope boundary.
 - `unscopen`: remove the boundary while preserving content.
-- Worker does not scopen/unscopen unless explicitly instructed by Map Manager.
-- If scopen affects worker ownership, Map Manager must update the handoff.
+- A worker may execute explicitly specified scopen/unscopen through MCP within the user-authorized target or handoff. An unresolved boundary purpose or ownership change requires structural judgment first.
+- If scopen changes assigned worker ownership, update the handoff before work continues.
 
 ## Layouting and display intent
 
@@ -179,6 +190,28 @@ Before inserting anchors or colors, decide:
 Tree subtree placement excludes `GraphLink`; force placement follows the
 existing Surface View specification. Neither placement choice changes relation
 ownership. Collapse changes the visible graph, not persistent Topology.
+
+### 文脈に応じた構造の例
+
+以下は旧資料の `flow` / `dependency` / `reviews` / `timeseries` / `document` の例を、意味判断の参考として保持したもの。必須の型・テンプレート・Scope分類ではない。これらのラベルや `m3e:facet` の旧属性値だけからfacetを認定しない。正規語のfacetはGlossaryに従い、PJ直下の意味的に凝集したScopeに限定する。既存の属性値を黙って変更せず、Scopeのない文書やレビューにも必要に応じて以下の構造例を参照できる。
+
+| 文脈 | 親子edgeの意味の例 | GraphLinkの意味の例 | aliasとanchorの使い方の例 |
+|---|---|---|---|
+| 手順・処理の流れ (`flow`) | 明示された処理段階をdepth方向の骨格で表す | 追加の依存、合流、段階をまたぐ関係 | 他の文脈が正本を持つ場合にaliasで参照する。anchorを新しい処理段階に見せない |
+| 依存関係 (`dependency`) | 依存方向を追えるspine・全域木 | 木に選ばれなかった依存 | 別の章別・実装別表示はaliasで参照できる。元資料にないgroupingは表示目的であることを区別する |
+| レビュー・判断 (`reviews`) | 問い → 選択肢 → 根拠・不利益 | 問い同士の前提、競合、結び付き | 正本の問い・選択肢をaliasで再利用できる。必要なら文脈別anchorでレビュー単位をまとめる |
+| 時系列 (`timeseries`) | 出来事の時期や段階の進行 | 主たる時系列に収まらない因果・依存 | aliasは相互参照に使える。anchorを入れる場合も時間順を維持する |
+| 文書 (`document`) | 元の章・節の階層 | 引用、相互参照、主題上の関係 | aliasは索引や別の表示位置に使える。既存階層だけで読めるならanchorを追加しない |
+
+ユーザーが指定した関係・階層・順序・表示を優先し、未決の部分にだけこれらの例を適用する。利用可能なMCP操作が必要な関係型や表示を扱えない場合、別の意味へ変換して実行せず不足を報告する。
+
+### anchorと色の判断例
+
+互いの関係が薄い項目を多数比較する場面では、文脈別のanchorが読み取りを助けることがある。一方、意味のある連続手順や元から明確な階層にanchorを挟むと、新しい処理段階や根拠のない分類に見えることがある。anchorは表示のための判断であっても、その挿入はTopologyの変更である。元資料の意味上のgroupingと表示目的のgroupingを区別し、後者を記録する任意のmetadataはData Modelの規約に従う。
+
+例えばユーザーが「問いを文脈別に比較し、重要度・緊急度・確信度を見分け、Scopeは追加しない」と指定した場合、文脈別anchorの下に問い・選択肢・根拠・不利益を置く案がある。問いのfillを重要度、borderを緊急度、選択肢のfillを確信度に対応させる案もある。これは当該表示意図に対する例であり、一般のレビューやMapに適用する既定色ではない。既存の色の意味を保持し、明示されていない再着色を行わない。
+
+処理順をdepth方向へ置き、同段階の `実行1` と `実行2` をbreadth方向で並べる要求では、その並列関係を保つ。読み取り上の必要がない `実行フェーズ` anchorを追加しない。順序、Scopeの有無、anchor、色の判断が既に指定されていれば、検討をやり直して変更しない。
 
 ## Worker handoff packet
 

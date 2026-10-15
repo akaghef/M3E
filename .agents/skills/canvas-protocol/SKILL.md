@@ -15,6 +15,7 @@ description: |
     - 曖昧点があれば reviews/Qn として起票する
   以下の場面でトリガー: agent が「マップに書く」「canvas 確認」「reviews を見る」と判断した時、
   または devM3E オーケストレーターが Auto Map Sync を実行する時。
+  実行はMCPを利用し、このSkillはcanvasの運用規約だけを補う。
 ---
 
 <!-- generated from agent_instructions/skills_canonical/canvas-protocol/SKILL.md; do not edit mirror directly -->
@@ -25,11 +26,18 @@ description: |
 M3E マップを共有 canvas として agent と人間で使う。canvas は **任意の同期ポイント**であり、
 agent の主作業 (実装・テスト・本流統合) は canvas 不在でも完結できる設計を保つ。
 
+## DP Router
+
+- DP0: canvasの対象と運用規約を決める。
+- DP1: 初期導入時はMCP接続と対象を確認する。
+- DP2: 既知のContextで日常の参照・更新を行い、結果と変更通知を利用する。
+
 ## 1. Target server
 
-- **default**: beta (port 4173)
-- map discovery: `GET /api/maps` で `label="開発"` の `mapId` を取得
-- final (38482) は本番確認時のみ使う (m3e-map skill 参照)
+- **default**: 既存Betaに接続されたMCP。
+- map discovery: `m3e_get` で名前が「開発」のMapを特定し、返されたResource URIを使う。
+- Finalは本番確認を明示されたときだけ対象にする。
+- 操作規約: `docs/protocols/mcp-map-operations.md`。MCPが使えない場合にRESTや一時スクリプトへ切り替えない。
 
 ## 2. Canvas Layout (固定パス)
 
@@ -53,10 +61,8 @@ M:(開発)> SYSTEM > DEV
 
 着手前に必ず実施:
 
-```bash
-# reviews/{Project} を読み、status="open" の Q に未回答が無いか確認
-curl -s http://localhost:4173/api/maps | node -e "..."
-```
+`m3e_get` で `reviews/{Project}` の必要な範囲を読み、`status="open"` のQに
+未回答が無いか確認する。既存Contextが現在の状態を保持している場合はそれを利用する。
 
 判断:
 - 該当 Q が `attributes.selected="yes"` 付き選択肢を持つ → その決定で進める
@@ -69,14 +75,17 @@ curl -s http://localhost:4173/api/maps | node -e "..."
 ## 4. Write Protocol (agent → canvas)
 
 ### 4.1 タスク開始
+
+更新時は対象へ `m3e_context` で参加し、`m3e_update` の `kind="content"` と
+`attributes` で必要なキーだけを変更する。以下は更新内容の例であり、全状態を書き戻す手順ではない。
+
 ```js
-// strategy/{Project}/{Role} tasks/{taskNode}.attributes.status = "in_progress"
-node.attributes = {...node.attributes, status: "in_progress", startedAt: "2026-04-14"};
+{status: "in_progress", startedAt: "YYYY-MM-DD"}
 ```
 
 ### 4.2 タスク完了
 ```js
-node.attributes = {...node.attributes, status: "done", completedAt: "2026-04-14"};
+{status: "done", completedAt: "YYYY-MM-DD"}
 ```
 
 ### 4.3 新規 Q 起票 — Ambiguity Pooling (MUST)
@@ -112,11 +121,8 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 
 **固定パス**: `M:(開発)> SYSTEM > DEV >> Agent Status`。
 
-**効率化は API 側の責務 (重要)**: 「他 subtree を読まない」というルールは GET が全文書を返す限り無効 — 全ノードが context に入る。本当の効率化は Q11 scoped API (`?scope=<nodeId>&depth=N`) merge 後に達成される。
-- 現状 (Q11 未 merge): full GET → path 走査して該当 subtree のみ抽出 (provisional)
-- Q11 merge 後: `GET ?scope=<AgentStatus.id>&depth=1` / `POST ?scope=<AgentStatus.id>` に切替 (mandatory)
-
-**Scope を使うかの判断**: DEV マップは ~50-300 ノード前提。subtree が小さい (<30 ノード目安) なら scope param 不要 — full GET で十分。scope は大きな subtree (例: strategy 全体, reviews 全体) に対してのみ使う。深い入れ子を作らない (ノード総数 300 を超えそうなら整理)。
+既知の対象は保持済みContextで更新し、保存結果・変更通知で次の操作に必要な情報を得る。
+Contextが不足・失効したときだけ必要な範囲を取得する。Node数を理由にScopeを追加しない。
 
 **ノード形式 (既存ロール 1 行更新; 新規追加しない)**:
 - text: `[<role>: <status> ; <YYMMDD> <現在状態>]-[next: <次タスク>]`
@@ -125,7 +131,8 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 
 既存ロールノード (visual, data, data2, team, manage) を **書き換える**。重複ノードを足さない。
 
-実装: beta (4173) の `/api/maps` で `開発` map を discovery し、固定 path `M:(開発)> SYSTEM > DEV >> Agent Status` を解決して更新する。subtree 外は触らない。tmp script はリポジトリ root に書かない。
+実行: MCPで「開発」Mapと固定path `M:(開発)> SYSTEM > DEV >> Agent Status` を
+解決して更新する。subtree外は触らず、自動再着色や一時書込スクリプトを追加しない。
 
 ## 5. Independence (canvas 障害時の挙動)
 
@@ -133,8 +140,8 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 |------|-------------|
 | canvas server 停止 | ローカル作業継続。作業報告に「canvas 未同期」フラグ |
 | reviews/Qn 未起票 | 自己解釈せず 作業報告 で人間に質問 |
-| 同時編集衝突 | 後勝ち。次回 fetch で取り直して再 patch |
-| 削除されたノード参照 | 警告ログ後スキップ。再作成しない |
+| 同時編集衝突 | MCPの競合結果・変更通知を確認して再判断する。失効した前提で再試行しない |
+| 削除されたノード参照 | 旧書込を中断して生存する対象を再確認する。自動再作成・退避先への自動適用はしない |
 
 ## 6. Naming Conventions
 
@@ -153,10 +160,10 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 
 ## 8. Link / Alias ルール
 
-- **scope をまたぐ relation は Map Manager gate を通す。** 異なる scope 間の可視性は alias、非木関係は GraphLink として区別する
-- GraphLink は tree ownership や layouting に参加しない
+- **scopeをまたぐrelationの意味や所有関係が未決ならMap Manager規約を参照する。** 指定済みの操作はMCPへ直接渡せる。異なるscope間の可視性はalias、非木関係はGraphLinkとして区別する
+- GraphLink はtree ownershipやTreeの部分木配置を定義しない。force配置への寄与はSurface View仕様に従う
 - alias は参照先ノードの「別の場所での出現」を表す。alias 経由で関係を可視化する
-- 詳細は `m3e-map` skill の `references/data-model.md` Critical Invariants §7 を参照
+- 詳細は `docs/03_Spec/Data_Model.md` と `docs/03_Spec/Scope_and_Alias.md` を参照。MCPで必要なrelation操作が未対応なら、その不足を報告し、別の関係型やRESTで代用しない
 
 ## 9. What NOT to write to canvas
 
@@ -167,6 +174,6 @@ reviews/{Project}/Qn (text="Qn: <一文の質問>",
 
 ## Reference
 
-- `m3e-map` skill: REST API の使い方、target 選択
+- `docs/protocols/mcp-map-operations.md`: MCPによるtarget選択、参加、操作、検証
 - `map-update` skill: status の一括更新
 - `devM3E` skill: Auto Map Sync 義務、Core Loop との接続

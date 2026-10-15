@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "m3e": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./scripts/start-mcp.mjs"],
+      "cwd": "."
+    }
+  }
+}
