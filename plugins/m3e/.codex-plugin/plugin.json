@@ -9,6 +9,8 @@
     "shortDescription": "Read and edit Maps with retained Scope context",
     "developerName": "M3E",
     "category": "Productivity",
+    "composerIcon": "./assets/m3e-app.png",
+    "logo": "./assets/m3e-app.png",
     "capabilities": ["Read", "Write"]
   }
 }
