@@ -2,10 +2,13 @@ const {test,expect}=require("@playwright/test");
 const fixture=require("../fixtures/shortcut_test.json");
 test.use({launchOptions:{args:["--use-angle=swiftshader","--enable-unsafe-swiftshader"]}});
 test.beforeEach(async ({page},testInfo)=>{
-  const errors=[];
-  page.on("pageerror",error=>errors.push(error.stack || error.message));
+  const errors=[], pageErrors=[];
+  page.on("pageerror",error=>{const message=error.stack || error.message;errors.push(message);pageErrors.push(message);});
   page.on("console",message=>{if(message.type()==="error") errors.push(message.text());});
-  testInfo.attachBrowserErrors=()=>testInfo.attach("browser-errors",{body:JSON.stringify(errors,null,2),contentType:"application/json"});
+  testInfo.attachBrowserErrors=async()=>{
+    await testInfo.attach("browser-errors",{body:JSON.stringify(errors,null,2),contentType:"application/json"});
+    expect(pageErrors).toEqual([]);
+  };
 });
 test.afterEach(async ({},testInfo)=>{await testInfo.attachBrowserErrors();});
 
@@ -16,7 +19,7 @@ async function load(page,renderer,platform="MacIntel",direction="right",access="
   saved.state.nodes["child-a"].collapsed=collapsed;
   saved.state.nodes["child-b"].collapsed=collapsed;
   saved.state.nodes.root.attributes["m3e:branch-direction"]=direction;
-  await page.addInitScript(platform=>Object.defineProperty(navigator,"platform",{get:()=>platform}),platform);
+  await page.addInitScript(platform=>Object.defineProperty(navigator,"platform",{get:()=>platform,configurable:true}),platform);
   await page.route("**/api/**",route=>{
     if(new URL(route.request().url()).pathname==="/api/maps/grab-fixture") {
       if(route.request().method()==="POST") {saved=route.request().postDataJSON();writes.push(saved);return route.fulfill({json:{ok:true,savedAt:saved.savedAt}});}

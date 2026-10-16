@@ -36,7 +36,7 @@ SVG/WebGL、Mac/Windowsの入力契約を確認する。M保持開始、未移�
 
 型検査・browser build・依存方向検査・重複検査が成功。関連unit 78件が成功。ブラウザ検証は `grab_tree_move.spec.js` 17件、`keyboard_modes.spec.js` 12件、`render_interaction_updates.spec.js` 14件を専用portで実施し、計43件が成功した。Mac/Windowsはnavigator.platformと修飾キーの契約を再現したもので、実OSを2台使った試験ではない。blurはイベント契約の試験と区別する。
 
-初期試行ではWebGL debug公開前の初期化待ちが10秒で失敗した。単独の診断試行は成功し、同じ判定・タイムアウトのまま全43件の回帰を再実行し、成功した。原因未確定の初期失敗も証拠に残し、成功結果へ書き換えない。
+初期試行ではWebGL debug公開前の初期化待ちが10秒で失敗した。単独の診断試行は成功し、同じ判定・タイムアウトのまま全43件の回帰を再実行し、成功した。原因未確定の初期失敗も証拠に残し、成功結果へ書き換えない。ログ点検で試験側navigator.platformの再定義エラーを検出したため、再設定可能なfixtureとし、未処理のpageerrorが0件である判定を追加した。
 
 画面付き試験が利用者の作業を妨げたため、以後は自動試験をheadless、可視確認を既存ウィンドウ内のタブに限定する原則をWorktree_Separation_Rulesへ追加した。Akaghef-SystemのAGENTSにも同じ原則を保存済み。Skill自体は変更しておらず、ミラー同期は対象外。
 
