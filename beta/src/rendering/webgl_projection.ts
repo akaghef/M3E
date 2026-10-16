@@ -87,6 +87,9 @@ export interface RenderInteractionState {
   hoveredNodeId: string | null;
   editingNodeId?: string | null;
   gestureActive: boolean;
+  dragSourceNodeIds?: string[];
+  dropTargetNodeId?: string | null;
+  reorderLine?: { x1: number; x2: number; y: number } | null;
 }
 
 export type HitResult =
@@ -117,6 +120,9 @@ export interface WebGLProjectionDebugState {
   selectedNodeIds: string[];
   selectedGraphLinkId: string | null;
   drawCalls: number;
+  dragSourceNodeIds: string[];
+  dropTargetNodeId: string | null;
+  reorderLine: RenderInteractionState["reorderLine"];
   geometryUploads: number;
   cameraUpdates: number;
   tileCount: number;
@@ -513,6 +519,8 @@ export class WebGLRenderingProjection implements RenderingProjection {
       editingNodeId: interaction.editingNodeId ?? null,
       selectedGraphLinkId: interaction.selectedGraphLinkId ?? null,
       selectedNodeIds: [...interaction.selectedNodeIds],
+      dragSourceNodeIds: [...(interaction.dragSourceNodeIds || [])],
+      reorderLine: interaction.reorderLine ? { ...interaction.reorderLine } : null,
     };
     if (!this.active || !this.gl) return;
     if (editingNodeChanged) {
@@ -562,6 +570,9 @@ export class WebGLRenderingProjection implements RenderingProjection {
       camera: { ...this.camera },
       selectedNodeIds: [...this.interaction.selectedNodeIds],
       selectedGraphLinkId: this.interaction.selectedGraphLinkId,
+      dragSourceNodeIds: [...(this.interaction.dragSourceNodeIds || [])],
+      dropTargetNodeId: this.interaction.dropTargetNodeId || null,
+      reorderLine: this.interaction.reorderLine ? { ...this.interaction.reorderLine } : null,
       drawCalls: this.drawCalls,
       geometryUploads: this.geometryUploads,
       cameraUpdates: this.cameraUpdates,
@@ -595,6 +606,9 @@ export class WebGLRenderingProjection implements RenderingProjection {
     const vertices: number[] = [];
     const selected = new Set(this.interaction.selectedNodeIds);
     const affected = new Set(selected);
+    const dragged = new Set(this.interaction.dragSourceNodeIds);
+    dragged.forEach(id => affected.add(id));
+    if (this.interaction.dropTargetNodeId) affected.add(this.interaction.dropTargetNodeId);
     if (this.interaction.hoveredNodeId) affected.add(this.interaction.hoveredNodeId);
     affected.forEach((id) => {
       const node = this.nodesById.get(id);
@@ -602,7 +616,11 @@ export class WebGLRenderingProjection implements RenderingProjection {
       if (node.id === this.interaction.editingNodeId) return;
       if (selected.has(node.id)) pushOutline(vertices, node, rgba("#6f39ff"), node.id === this.interaction.primarySelectedNodeId ? 4 : 2);
       if (node.id === this.interaction.hoveredNodeId && !selected.has(node.id)) pushOutline(vertices, node, rgba("#2f70ff", 0.82), 2);
+      if (dragged.has(node.id)) pushOutline(vertices, node, rgba("#d99a16"), 3);
+      if (node.id === this.interaction.dropTargetNodeId) pushOutline(vertices, node, rgba("#1b9c64"), 4);
     });
+    const line = this.interaction.reorderLine;
+    if (line) pushRect(vertices, line.x1, line.y - 2, line.x2 - line.x1, 4, rgba("#1b9c64"));
     gl.bindBuffer(gl.ARRAY_BUFFER, this.overlayBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
     this.overlayVertexCount = vertices.length / 6;

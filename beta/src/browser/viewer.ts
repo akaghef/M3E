@@ -4588,6 +4588,9 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
 
 function syncWebGLInteraction(): void {
   if (!webglProjection || !isWebGLRendererActive()) return;
+  const drag = viewState.dragState?.mode === "structure" && viewState.dragState.dragged ? viewState.dragState : null;
+  const proposal = drag?.proposal;
+  const line = proposal?.kind === "reorder" ? getReorderLineBounds(proposal.parentId, proposal.index, drag!.sourceNodeId) : null;
   webglProjection.setInteractionState({
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     primarySelectedNodeId: viewState.selectedNodeId || null,
@@ -4595,6 +4598,9 @@ function syncWebGLInteraction(): void {
     hoveredNodeId: webglHoveredNodeId,
     editingNodeId: inlineEditor?.nodeId || null,
     gestureActive: Boolean(viewState.panState || viewState.pinchState || viewState.dragState),
+    dragSourceNodeIds: drag?.sourceRootIds || [],
+    dropTargetNodeId: proposal?.kind === "reparent" ? proposal.parentId : null,
+    reorderLine: line && proposal?.kind === "reorder" ? { ...line, y: proposal.lineY } : null,
   });
   syncWebGLGraphLinkControls();
 }
@@ -4846,6 +4852,7 @@ function activateWebGLProjection(): void {
   if (!webglProjection) {
     webglProjection = new WebGLRenderingProjection(webglCanvas, {
       onUnavailable: (reason) => {
+        cancelStructureNodeDrag();
         webglFallbackReason = reason;
         webglRendererActive = false;
         webglCanvas.hidden = true;
@@ -9248,7 +9255,12 @@ function refreshSvgNodeInteraction(id: string): void {
 
 const paintedDragNodes = new Set<string>();
 const dragOverlayFrame = new FrameInvalidation(() => {
-  if (_renderScheduled || isWebGLRendererActive()) return;
+  if (_renderScheduled) return;
+  if (isWebGLRendererActive()) {
+    syncWebGLInteraction();
+    syncSelectionMetadata();
+    return;
+  }
   const next = new Set<string>();
   const drag = viewState.dragState;
   if (drag) next.add(drag.sourceNodeId);
@@ -15398,14 +15410,18 @@ document.addEventListener("click", () => {
   closeToolbarMenus();
 });
 
-/** Phase 1 WebGL input: selection and Disperse node drag. Other mutating gestures remain on SVG. */
+/** WebGL hit testing feeds the same structural drag commands as SVG. */
 webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
-  if (!isWebGLRendererActive() || event.button !== 0 || !webglProjection) return;
+  if (!isWebGLRendererActive() || event.button !== 0 || !webglProjection || annotationTool !== "select") return;
   const hit = webglProjection.hitTest(event.clientX, event.clientY);
   if (!hit) return; // Allow the board's canonical camera controller to start a pan.
   event.preventDefault();
   event.stopPropagation();
   if (hit.kind === "node") {
+    if (!currentSurfaceIsScatterMode() && !isReadOnlyLink()) {
+      beginStructureNodeDrag(hit.nodeId, event, webglCanvas);
+      return;
+    }
     const canStartScatterDrag = currentSurfaceIsScatterMode() && scatterToolMode === "normal" && !isReadOnlyLink();
     if (canStartScatterDrag && webglLastSnapshot) {
       const wasSelected = viewState.selectedNodeIds.has(hit.nodeId);
@@ -15455,6 +15471,10 @@ webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
 
 webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
   if (!isWebGLRendererActive() || !webglProjection || viewState.panState || viewState.pinchState) return;
+  if (viewState.dragState?.mode === "structure") {
+    updateStructureNodeDrag(event);
+    return;
+  }
   if (viewState.dragState?.mode === "scatter" && viewState.dragState.pointerId === event.pointerId) {
     pendingWebGLDragEvent = event;
     webglDragFrame.invalidate();
@@ -15491,6 +15511,10 @@ const webglDragFrame = new FrameInvalidation(() => {
 
 function finishWebGLNodeDrag(event: PointerEvent): void {
   const drag = viewState.dragState;
+  if (drag?.mode === "structure") {
+    finishNodeDrag(event);
+    return;
+  }
   if (!drag || drag.mode !== "scatter" || event.pointerId !== drag.pointerId) {
     return;
   }
@@ -15723,6 +15747,11 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     scheduleRender();
     return;
   }
+  beginStructureNodeDrag(nodeId, event, canvas);
+});
+
+function beginStructureNodeDrag(nodeId: string, event: PointerEvent, surface: Element): void {
+  cancelCameraMotion();
   viewState.dragState = {
     mode: "structure",
     pointerId: event.pointerId,
@@ -15737,8 +15766,32 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     toggleKey: event.ctrlKey || event.metaKey,
     shiftKey: event.shiftKey,
   };
-  canvas.setPointerCapture(event.pointerId);
-});
+  surface.setPointerCapture(event.pointerId);
+  board.focus({ preventScroll: true });
+}
+
+function updateStructureNodeDrag(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!drag || drag.mode !== "structure" || drag.pointerId !== event.pointerId) return;
+  if (!drag.dragged && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < VIEWER_TUNING.drag.reparentThreshold) return;
+  drag.dragged = true;
+  drag.proposal = proposeDropForSources(drag.sourceRootIds, event.clientX, event.clientY);
+  dragOverlayFrame.invalidate();
+}
+
+function releaseNodeDragCapture(pointerId: number): void {
+  for (const surface of [canvas, webglCanvas]) {
+    if (surface?.hasPointerCapture(pointerId)) surface.releasePointerCapture(pointerId);
+  }
+}
+
+function cancelStructureNodeDrag(event?: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!drag || drag.mode !== "structure" || (event && drag.pointerId !== event.pointerId)) return;
+  viewState.dragState = null;
+  releaseNodeDragCapture(drag.pointerId);
+  dragOverlayFrame.invalidate();
+}
 
 canvas.addEventListener("pointermove", (event: PointerEvent) => {
   if (linkPortDragState && event.pointerId === linkPortDragState.pointerId) {
@@ -15752,6 +15805,10 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
+    return;
+  }
+  if (viewState.dragState.mode === "structure") {
+    updateStructureNodeDrag(event);
     return;
   }
   const dx = event.clientX - viewState.dragState.startX;
@@ -15777,8 +15834,6 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     scheduleRender();
     return;
   }
-  viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
-  dragOverlayFrame.invalidate();
 });
 
 function finishNodeDrag(event: PointerEvent): void {
@@ -15797,10 +15852,20 @@ function finishNodeDrag(event: PointerEvent): void {
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
+  if (viewState.dragState.mode === "structure") {
+    if (event.type === "pointercancel") {
+      cancelStructureNodeDrag(event);
+      return;
+    }
+    // Resolve the release position too: the last pointermove may be coalesced
+    // or missing. Never commit a stale preview from a previous target.
+    updateStructureNodeDrag(event);
+  }
   const { sourceNodeId, sourceRootIds, proposal, dragged, mode } = viewState.dragState;
   const { toggleKey, shiftKey } = viewState.dragState;
   viewState.dragState = null;
-  canvas.releasePointerCapture(event.pointerId);
+  releaseNodeDragCapture(event.pointerId);
+  dragOverlayFrame.invalidate();
 
   if (!dragged) {
     selectByPointerModifiers(sourceNodeId, {
@@ -15864,6 +15929,8 @@ function finishNodeDrag(event: PointerEvent): void {
 
 canvas.addEventListener("pointerup", finishNodeDrag);
 canvas.addEventListener("pointercancel", finishNodeDrag);
+canvas.addEventListener("lostpointercapture", cancelStructureNodeDrag);
+webglCanvas?.addEventListener("lostpointercapture", cancelStructureNodeDrag);
 canvas.addEventListener("dblclick", (event: MouseEvent) => {
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
@@ -16146,6 +16213,11 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
   if (viewerKeyboardMode() === "edit") return;
+  if (event.key === "Escape" && viewState.dragState?.mode === "structure") {
+    event.preventDefault();
+    cancelStructureNodeDrag();
+    return;
+  }
   // The other OS modifier and mixed Command+Control are not aliases.
   if ((event.ctrlKey || event.metaKey) && !primaryModifier(event)) return;
 
