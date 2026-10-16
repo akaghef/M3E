@@ -1,0 +1,14 @@
+{
+  "name": "m3e",
+  "displayName": "M3E",
+  "version": "0.1.0",
+  "description": "Participate in M3E Maps, retain Scope context, and make semantic edits through the existing M3E application.",
+  "author": { "name": "akaghef" },
+  "icon": "./assets/m3e-app.png",
+  "mcpServers": {
+    "m3e": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs", "start-mcp.mjs"]
+    }
+  }
+}

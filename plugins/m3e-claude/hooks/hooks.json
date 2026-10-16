@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "^mcp__plugin_m3e_m3e__m3e_(context|get|create|update|delete|feedback)$",
+      "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs\" hook.mjs PreToolUse", "timeout": 5 }]
+    }],
+    "PostToolUse": [{
+      "matcher": "^mcp__plugin_m3e_m3e__m3e_(context|get|create|update|delete|feedback)$",
+      "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs\" hook.mjs PostToolUse", "timeout": 5 }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs\" hook.mjs SessionEnd", "timeout": 3 }]
+    }]
+  }
+}

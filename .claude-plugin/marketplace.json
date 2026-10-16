@@ -1,0 +1,11 @@
+{
+  "name": "m3e-local",
+  "owner": { "name": "akaghef" },
+  "plugins": [
+    {
+      "name": "m3e",
+      "source": "./plugins/m3e-claude",
+      "description": "M3E Maps over MCP for Claude Code"
+    }
+  ]
+}

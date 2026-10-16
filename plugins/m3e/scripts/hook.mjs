@@ -16,6 +16,16 @@ const validId = value => typeof value === 'string' && value.length > 0 && value.
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 const inputHash = args => digest(JSON.stringify(canonical(args)));
+// Codex passes the MCP result object ({ structuredContent, isError }); Claude Code
+// passes the tool's text content, as a JSON string or as content blocks.
+const parseText = text => { try { const value = JSON.parse(text); return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined; } catch { return undefined; } };
+const toolResult = response => {
+  if (typeof response === 'string') return parseText(response);
+  if (Array.isArray(response)) { const block = response.find(item => item?.type === 'text'); return block ? parseText(block.text) : undefined; }
+  if (!response || response.isError) return undefined;
+  if (response.structuredContent) return response.structuredContent;
+  return Array.isArray(response.content) ? toolResult(response.content) : undefined;
+};
 let ownWrite = false;
 let parsed = false;
 
@@ -128,9 +138,7 @@ async function main() {
   const pending = await readJson(pendingFile);
   await fs.rm(pendingFile, { force: true });
   if (!pending || pending.expires_at <= Date.now() || pending.name !== name || pending.input_hash !== inputHash(args)) return;
-  const response = input.tool_response;
-  if (response?.isError) return;
-  const result = response?.structuredContent;
+  const result = toolResult(input.tool_response);
   if (!result || result.ok === false || !validId(result.context_id)) return;
   if (pending.context_id && pending.context_id !== result.context_id) {
     inform('M3E returned a different context from the requested one. The local binding was not changed; enter the intended Scope again.'); return;

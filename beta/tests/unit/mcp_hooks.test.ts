@@ -101,6 +101,27 @@ describe('M3E session hooks (protocol diagnostics)', () => {
     expect(requests.every(request => ['/api/mcp/events', '/api/mcp/events/stream'].includes(request.path))).toBe(true);
   });
 
+  it('binds Claude Code results passed as JSON text or content blocks, and ignores non-JSON error text', async () => {
+    const claude = async (phase: string, call: string, session: string, response?: unknown) => {
+      const result = await run(hook, [phase], JSON.stringify({
+        hook_event_name: phase, session_id: session, tool_use_id: call, tool_name: 'mcp__plugin_m3e_m3e__m3e_context',
+        tool_input: { action: 'enter', target: focus.uri }, ...(response !== undefined ? { tool_response: response } : {}),
+      }));
+      expect(result.stderr).toBe('');
+      expect(result.code).toBe(0);
+    };
+    const ok = (context: string) => JSON.stringify({ ok: true, context_id: context, revision: 'revision-a', event_cursor: 0, focus });
+    await claude('PreToolUse', 'text-call', 'claude-text');
+    await claude('PostToolUse', 'text-call', 'claude-text', ok('context-text'));
+    expect(JSON.parse(await fs.readFile(bindingFile('context-text', 'claude-text'), 'utf8')).context_id).toBe('context-text');
+    await claude('PreToolUse', 'block-call', 'claude-block');
+    await claude('PostToolUse', 'block-call', 'claude-block', [{ type: 'text', text: ok('context-block') }]);
+    expect(JSON.parse(await fs.readFile(bindingFile('context-block', 'claude-block'), 'utf8')).context_id).toBe('context-block');
+    await claude('PreToolUse', 'error-call', 'claude-error');
+    await claude('PostToolUse', 'error-call', 'claude-error', 'Error: The local M3E app is unavailable.');
+    await expect(fs.readdir(path.join(temp, 'state', hash('claude-error'), 'contexts'))).rejects.toThrow();
+  });
+
   it('keeps sibling contexts separate when the host shares the parent session id', async () => {
     await enter('context-a', 'agent-a-call');
     await enter('context-b', 'agent-b-call');
