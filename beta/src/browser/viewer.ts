@@ -641,7 +641,7 @@ let cameraMotion: {
   raf: number | null;
   from: CameraTarget;
   to: CameraTarget;
-  startedAt: number;
+  startedAt: number | null;
   durationMs: number;
 } | null = null;
 let annotationTool: AnnotationTool = "select";
@@ -1082,9 +1082,6 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   syncThinkingModeUi();
   render();
   fitDocument();
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
   if (mode === "scatter" && scatterAnimationEnabled) {
     startScatterAnimation();
   }
@@ -1099,9 +1096,6 @@ function setSurfaceSpace(space: SurfaceSpace): void {
   syncThinkingModeUi();
   render();
   fitDocument();
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
   scheduleAutosave();
   setStatus(`Space: ${surfaceSpaceLabel(space)}`);
 }
@@ -1113,9 +1107,6 @@ function setSurfaceLayoutDirection(direction: SurfaceLayoutDirection): void {
   syncThinkingModeUi();
   render();
   fitDocument();
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
   scheduleAutosave();
   setStatus(`Direction: ${surfaceLayoutDirectionLabel(direction)}`);
 }
@@ -5016,6 +5007,9 @@ function applyZoom(options: ViewportApplyOptions = {}): void {
       webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
     }
     if (options.syncDependents !== false) {
+      // Keep retained SVG geometry aligned for measurement and fallback without
+      // rebuilding the scene merely to finish a camera move.
+      applyCanvasViewportTransform();
       refreshBoardViewportRect();
       window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
     }
@@ -5119,7 +5113,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     raf: null,
     from,
     to: clampedTarget,
-    startedAt: performance.now(),
+    startedAt: null,
     durationMs,
   };
 
@@ -5128,6 +5122,9 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
       return;
     }
     const motion = cameraMotion;
+    // Start after the pending scene presentation, not while it is being built.
+    // Otherwise a slow scope snapshot consumes the animation before its first frame.
+    if (motion.startedAt === null) motion.startedAt = performance.now();
     const rawT = Math.min(1, Math.max(0, (now - motion.startedAt) / motion.durationMs));
     const t = easeInOutCubic(rawT);
     viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
@@ -13727,13 +13724,12 @@ function fitTarget(mode: FitMode, options: CameraMoveOptions = {}): boolean {
 
 function fitDocument(options: CameraMoveOptions = {}): boolean {
   resetFitCycle();
-  render();
+  // Model/layout changes render at their owner; fitting only moves the camera.
   return fitTarget("graph", options);
 }
 
 function cycleFit(reverse = false): void {
   if (!map) return;
-  render();
   const direction = reverse ? -1 : 1;
   const start = fitCycleMode === null ? (reverse ? 0 : -1) : FIT_MODES.indexOf(fitCycleMode);
   for (let step = 1; step <= FIT_MODES.length; step++) {
@@ -13769,9 +13765,6 @@ function triggerCameraMove(reason: CameraMoveTrigger): void {
   }
   if (reason === "scope" || reason === "layout" || reason === "command") {
     fitDocument({ animate: reason !== "command" });
-    requestAnimationFrame(() => {
-      fitDocument({ animate: reason !== "command" });
-    });
     return;
   }
   if (reason === "selection" && viewState.selectedNodeId) {

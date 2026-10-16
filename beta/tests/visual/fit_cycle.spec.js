@@ -1,6 +1,8 @@
 const { test, expect } = require('@playwright/test');
 const fixture = require('../fixtures/shortcut_test.json');
-test.use({ launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, reducedMotion: 'reduce', viewport: { width: 1600, height: 1000 } });
+// Headless macOS can stop BeginFrame delivery without a display refresh source.
+// Keep animation correctness tests running; real timing is checked in normal Chrome.
+test.use({ launchOptions: { args: ['--disable-frame-rate-limit', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, reducedMotion: 'reduce', viewport: { width: 1600, height: 1000 } });
 async function launch(page, renderer, options = {}) {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(platform => Object.defineProperty(navigator, 'platform', { get: () => platform }), options.platform || 'Win32');
@@ -126,3 +128,29 @@ test('macOS physical Option+V, reverse, command fit and smaller viewport', async
   await expect(page.locator('#board')).toHaveAttribute('data-fit-mode', 'graph');
   await fit(page, 'graph');
 });
+
+for (const renderer of ['svg', 'webgl']) {
+  test(`${renderer}: camera-only fit retains scene and scope fit renders once`, async ({ page }) => {
+    await launch(page, renderer);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.keyboard.press('=');
+    const revision = Number(await page.locator('#board').getAttribute('data-render-revision'));
+    await fit(page, 'graph');
+    expect(Number(await page.locator('#board').getAttribute('data-render-revision'))).toBe(revision);
+    await expectFits(page);
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('#meta')).toHaveAttribute('data-selected-node-id', 'child-c');
+    if (await page.locator('#camera-follow-btn').getAttribute('aria-pressed') !== 'true') {
+      await page.getByRole('button', { name: 'Camera follow', exact: true }).click();
+    }
+    await page.locator('#board').focus();
+    const beforeScope = Number(await page.locator('#board').getAttribute('data-render-revision'));
+    await page.keyboard.press(']');
+    await expect(page.locator('#meta')).toHaveAttribute('data-scope-id', 'child-c');
+    await page.waitForTimeout(500);
+    expect(Number(await page.locator('#board').getAttribute('data-render-revision'))).toBe(beforeScope + 1);
+    await expectFits(page);
+  });
+}
