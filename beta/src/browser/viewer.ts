@@ -46,6 +46,7 @@ import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
 import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
 import { reorderInsertionIndex } from "../shared/reorder_insertion";
+import { treeGrabMove } from "../shared/tree_grab";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
@@ -536,6 +537,7 @@ let lastServerBaseState: AppState | null = null;
 
 interface UndoSnapshot {
   state: AppState;
+  collapsedIds?: string[];
   selectedNodeId: string;
   selectedNodeIds: string[];
   selectionAnchorId: string | null;
@@ -660,6 +662,14 @@ let lastLayout: LayoutResult | null = null;
 let visualCheckRunId = 0;
 let undoStack: UndoSnapshot[] = [];
 let redoStack: UndoSnapshot[] = [];
+let grabSession: {
+  map: SavedMap;
+  sourceId: string;
+  before: UndoSnapshot;
+  collapsedIds: Set<string>;
+  pendingSave: boolean;
+  moved: boolean;
+} | null = null;
 let linearDirty = false;
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
@@ -4195,6 +4205,7 @@ function pushUndoSnapshot(): void {
   }
   undoStack.push({
     state: cloneState(map.state),
+    collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -4213,6 +4224,7 @@ function undoLastChange(): void {
 
   redoStack.push({
     state: cloneState(map.state),
+    collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -4223,6 +4235,7 @@ function undoLastChange(): void {
 
   const snapshot = undoStack.pop()!;
   map.state = snapshot.state;
+  if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const undoState = map.state;
   viewState.selectedNodeId = undoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : undoState.rootId;
   viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(undoState.nodes[nodeId])));
@@ -4246,6 +4259,7 @@ function redoLastChange(): void {
 
   undoStack.push({
     state: cloneState(map.state),
+    collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -4256,6 +4270,7 @@ function redoLastChange(): void {
 
   const snapshot = redoStack.pop()!;
   map.state = snapshot.state;
+  if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const redoState = map.state;
   viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
   viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(redoState.nodes[nodeId])));
@@ -10377,6 +10392,7 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
 }
 
 async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
+  if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map || !collabToken || !collabEntityId) {
     return false;
   }
@@ -12173,11 +12189,71 @@ function stringRecordEquals(left: Record<string, string>, right: Record<string, 
 
 function viewerKeyboardMode(): ViewerKeyboardMode {
   // The edit session owns the mode, not activeElement or renderer readiness.
-  return inlineEditor || inlineEdgeLabelEditor ? "edit" : "navigate";
+  return inlineEditor || inlineEdgeLabelEditor ? "edit" : grabSession ? "grab" : "navigate";
 }
 
 function syncViewerKeyboardMode(): void {
   board.dataset.keyboardMode = viewerKeyboardMode();
+}
+
+function beginGrab(): void {
+  if (!map || grabSession || isReadOnlyLink()) return;
+  const roots = getMovableSelectionRoots();
+  if (viewState.surfaceViewMode !== "tree" || roots.length !== 1 || roots[0] !== viewState.selectedNodeId || roots[0] === currentScopeRootId()) {
+    setStatus("Grab: select one movable subtree in Tree.", true);
+    return;
+  }
+  cancelStructureNodeDrag();
+  cancelCameraMotion();
+  grabSession = {
+    map, sourceId: roots[0],
+    before: { state: cloneState(map.state), collapsedIds: Array.from(viewState.collapsedIds), selectedNodeId: viewState.selectedNodeId,
+      selectedNodeIds: Array.from(viewState.selectedNodeIds), selectionAnchorId: viewState.selectionAnchorId },
+    collapsedIds: new Set(viewState.collapsedIds), pendingSave: autosaveTimer !== null, moved: false,
+  };
+  if (autosaveTimer !== null) clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  syncViewerKeyboardMode();
+  setStatus("Grab · arrows move the subtree · release M to finish · Escape to cancel");
+}
+
+function moveGrab(key: string): void {
+  const grab = grabSession;
+  if (!grab || !map || map !== grab.map || !lastLayout) return;
+  const proposal = treeGrabMove(map.state.nodes, lastLayout.pos, grab.sourceId, currentScopeRootId(), viewState.surfaceLayoutDirection, key);
+  if (!proposal || !applyMoveByParentAndIndex(grab.sourceId, proposal.parentId, proposal.index, true,
+    { withUndo: false, withTouch: false, withStatus: false })) return;
+  grab.moved = true;
+  viewState.selectedNodeId = grab.sourceId;
+  viewState.selectedNodeIds = new Set([grab.sourceId]);
+  render();
+  setStatus("Grab · arrows move the subtree · release M to finish · Escape to cancel");
+}
+
+function finishGrab(commit: boolean): void {
+  const grab = grabSession;
+  if (!grab) return;
+  grabSession = null;
+  syncViewerKeyboardMode();
+  if (map !== grab.map) return;
+  if (!commit) {
+    map.state = grab.before.state;
+    viewState.collapsedIds = grab.collapsedIds;
+    viewState.selectedNodeId = grab.before.selectedNodeId;
+    viewState.selectedNodeIds = new Set(grab.before.selectedNodeIds);
+    viewState.selectionAnchorId = grab.before.selectionAnchorId;
+    render();
+    if (grab.pendingSave) scheduleAutosave();
+    setStatus("Grab canceled.");
+    return;
+  }
+  if (grab.moved && JSON.stringify(map.state) !== JSON.stringify(grab.before.state)) {
+    undoStack.push(grab.before);
+    if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
+    redoStack = [];
+    touchDocument();
+  } else if (grab.pendingSave) scheduleAutosave();
+  setStatus("Navigate · Grab finished.");
 }
 
 function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
@@ -12626,6 +12702,7 @@ function parseCloudMapVersion(payload: { cloudMapVersion?: unknown; mapVersion?:
 }
 
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
+  if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map) {
     return false;
   }
@@ -12641,6 +12718,8 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
   }
 
   try {
+    const submitted = currentDocSnapshot();
+    const submittedState = cloneStateForSave(submitted.state);
     const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, {
       method: "POST",
       headers: {
@@ -12648,7 +12727,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
         "X-M3E-Tab-Id": TAB_ID,
       },
       body: JSON.stringify({
-        ...currentDocSnapshot(),
+        ...submitted,
         baseSavedAt: lastServerSavedAt,
         baseState: cloneStateForSave(lastServerBaseState),
         force,
@@ -12703,7 +12782,8 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
       (map as SavedMap & { mapVersion?: number }).mapVersion = Number(payload.mapVersion);
     }
     lastServerSavedAt = map.savedAt;
-    lastServerBaseState = cloneStateForSave(map.state);
+    // A held Grab may already be previewing a new state while this save returns.
+    lastServerBaseState = submittedState;
     broadcastState();
     if (collabEntityId && collabToken) {
       void pushCurrentScopeToCollab(false);
@@ -12753,6 +12833,7 @@ async function fetchCloudSyncStatus(): Promise<void> {
 }
 
 async function pushDocToCloud(showStatus = false, force = false): Promise<boolean> {
+  if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map || !cloudSyncEnabled) {
     return false;
   }
@@ -12949,6 +13030,7 @@ async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
 }
 
 function scheduleAutosave(): void {
+  if (grabSession) { grabSession.pendingSave = true; return; }
   if (!map) {
     return;
   }
@@ -12997,6 +13079,7 @@ function initBroadcastSync(): void {
       return;
     }
     if (ev.data.type === "STATE_UPDATE" && isValidAppState(ev.data.state)) {
+      finishGrab(false);
       map.state = ev.data.state;
       if (typeof ev.data.savedAt === "string" && ev.data.savedAt) {
         // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
@@ -13010,7 +13093,7 @@ function initBroadcastSync(): void {
 }
 
 function broadcastState(): void {
-  if (!bc || !map) {
+  if (!bc || !map || grabSession) {
     return;
   }
   const msg: BcStateMessage = {
@@ -13101,6 +13184,7 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
     const newDoc = ensureDocShape(payload);
     // Only apply if actually newer
     if (map && newDoc.savedAt <= (map.savedAt || "")) return;
+    finishGrab(false);
     lastAppliedSavedAt = savedAt;
 
     // Preserve view state
@@ -13494,6 +13578,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
 }
 
 function loadPayload(payload: unknown): void {
+  finishGrab(false);
   resetFitCycle();
   try {
     map = ensureDocShape(payload);
@@ -16264,6 +16349,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   }
   if (isTextEntryElement(event.target)) return;
 
+  if (grabSession) {
+    event.preventDefault();
+    if (event.key === "Escape") finishGrab(false);
+    else if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.startsWith("Arrow")) moveGrab(event.key);
+    return;
+  }
+
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
     hideMarkdownPreview();
@@ -16817,10 +16909,10 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key.toLowerCase() === "m") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (!event.repeat) {
-      toggleReparentSource();
+      beginGrab();
     }
     return;
   }
@@ -16916,6 +17008,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
 document.addEventListener("keyup", (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
+  if (key === "m" || event.code === "KeyM") finishGrab(true);
   if (routingScopeHoldDown && (key === "r" || event.key === "Shift")) {
     if (routingSwitcherOpen) {
       const routed = applyRoutingSwitcherRoute();
@@ -16939,6 +17032,7 @@ document.addEventListener("keyup", (event: KeyboardEvent) => {
 });
 
 window.addEventListener("blur", () => {
+  finishGrab(true);
   routingPanKeyDown = false;
   routingScopeHoldDown = false;
   routingWheelCarryX = 0;
@@ -16946,6 +17040,14 @@ window.addEventListener("blur", () => {
   if (routingSwitcherOpen) {
     closeRoutingSwitcher();
   }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") finishGrab(true);
+});
+document.addEventListener("pointerdown", () => finishGrab(true), true);
+document.addEventListener("focusin", (event) => {
+  if (event.target !== board) finishGrab(true);
 });
 
 /* ── Shortcut cheatsheet: show on primary modifier / Alt hold ── */

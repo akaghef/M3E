@@ -160,6 +160,7 @@ type ProgressiveNode = {
 
 type UiSnapshot = {
   mode: string;
+  keyboardMode: string;
   surface: string;
   scope: string;
   mapId: string;
@@ -290,6 +291,7 @@ function readSnapshot(): UiSnapshot {
   const selectedNodeLabel = metaEl?.dataset.selectedNodeLabel?.trim() || "";
   return {
     mode: modeMeta.match(/mode:\s*([^/]+)/)?.[1]?.trim() || "Rapid",
+    keyboardMode: byId("board")?.dataset.keyboardMode || "navigate",
     surface: modeMeta.match(/\/\s*(.+)$/)?.[1]?.trim() || "Tree",
     scope: metaEl?.dataset.scopeId?.trim() || parseField(meta, "scope"),
     mapId: metaEl?.dataset.mapId?.trim() || meta.match(/map:\s*[^|]*\(([^)]+)\)/)?.[1]?.trim() || "local-map",
@@ -318,6 +320,8 @@ function useViewerSnapshot(): UiSnapshot {
       const el = byId(id);
       if (el) observer.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
     });
+    const board = byId("board");
+    if (board) observer.observe(board, { attributes: true, attributeFilter: ["data-keyboard-mode"] });
     const interval = window.setInterval(update, 500);
     update();
     return () => {
@@ -415,6 +419,9 @@ function TopBar({
           <Home size={17} />
         </button>
         <div className="wb-logo">M3E</div>
+        <span className="wb-operation-mode" aria-label="Node operation mode" aria-live="polite">
+          {snapshot.keyboardMode === "grab" ? "Grab" : snapshot.keyboardMode === "edit" ? "Edit" : "Navigate"}
+        </span>
         <button className="wb-board-title" type="button" onClick={() => openModal("menu")}>
           <small>{snapshot.surface}</small>
           <ChevronDown size={14} />
@@ -1315,6 +1322,8 @@ function HelpModal({ close }: { close: () => void }): React.ReactElement {
           <span><kbd>Tab</kbd>Add child</span>
           <span><kbd>Enter</kbd>Navigate: edit / Edit: keep text and add sibling</span>
           <span><kbd>Escape</kbd>Edit: keep text and return to Navigate</span>
+          <span><kbd>M + arrows</kbd>Hold M to Grab a subtree; release to finish; Escape to cancel</span>
+          <span><kbd>{primaryKeyLabel}+M → P</kbd>Mark move source, then choose its new parent</span>
           <span><kbd>Shift+Enter</kbd>Navigate: edit all text / Edit: newline</span>
           <span><kbd>{primaryKeyLabel}+Enter</kbd>Keep text, next node and edit</span>
           <span><kbd>{primaryKeyLabel}+C / X / V</kbd>Navigate: nodes / Edit: text</span>

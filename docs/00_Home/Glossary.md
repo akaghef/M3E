@@ -35,6 +35,20 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **先祖 (ancestor)** | ある node から親子 edge を親方向へ辿って到達する node。親、祖父母、root を含むが、起点 node 自身は含まない | node, edge, 子孫, パンくず | パンくず表示は、現在位置の node に至る**先祖 chain**を root から順に表示する |
 | **子孫 (descendant)** | ある node から親子 edge を子方向へ1段以上辿って到達する node。起点 node 自身は含まない | node, edge, 先祖, 部分木 | node copy は、選択 node を根とする部分木、すなわち選択 node とその**全子孫**を複製する仕様 |
 
+### ノード操作の状態と移動
+
+| 正規語 | 意味 | 関連語 | 備考 |
+|---|---|---|---|
+| **Navigate** | ノードを選択し、操作対象を移す通常状態 | Edit, Grab | 会話上の略記 `navi`。方向キーは選択の移動 |
+| **Edit** | 選択ノードの文字列を編集する状態 | Navigate, Grab | 方向キーは文字カーソルの移動 |
+| **Grab** | 選択ノードと全子孫をつかみ、方向入力で部分木を構造移動する状態 | Navigate, Edit, node move, Dragging | 未移動の保持中も含む。TreeでM保持中に有効、解放でNavigateへ戻る。操作契約はActions_Betaを参照 |
+| **Dragging** | ポインターによるノード移動中、仮位置とdrop候補を保持する内部状態 | Grab | 利用者向けのGrabと同義ではない |
+| **node move** | reparentとreorderを総称する構造移動操作。選択ノードと全子孫をまとめて移動する | Grab, reparent, reorder, 子孫 | 自由配置の座標変更とは区別する |
+| **reparent** | ノードの親を変更する操作 | node move, reorder | 移動する部分木の内部構造は保持 |
+| **reorder** | 同じ親の下で兄弟順を変更する操作 | node move, reparent | 親と部分木の内部構造は保持 |
+
+操作・状態遷移の正本は [Actions_Beta.md](../06_Operations/Actions_Beta.md)。Grab は2026-10-16採用の定義。単体Mの従来操作はGrabに置換し、移動元指定はMod+Mに残す。
+
 ### 1.0.1 Progressive Navigation（PN）
 
 | 正規語 | 意味 | 関連語 | 備考 |

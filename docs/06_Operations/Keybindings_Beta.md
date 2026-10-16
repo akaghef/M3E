@@ -28,6 +28,12 @@ Edit の `Mod+Enter` だけは次ノードへの編集移動となる。
 
 ---
 
+## Grab のキー割り当て（2026-10-16）
+
+[Actions_Beta.md](./Actions_Beta.md) に Grab の要求仕様を追加した。Navigate で M を押している間、方向キーで選択部分木を移動し、M 解放で Navigate へ戻る。
+
+単体 `m` の移動元指定をGrabへ置換することをユーザーが確定。単体 M → P は廃止し、移動元指定は既存の `Mod+M`、親への適用は `P` に残す。`Alt+M` は別の既存操作として維持。Edit 中の M は文字入力。Grab 中は方向キーで移動し、M解放またはフォーカス喪失で1回のUndoとして確定、Escapeで今回の移動を取り消す。
+
 ## 単体キー（a–z）
 
 | キー | アクション |
@@ -44,7 +50,7 @@ Edit の `Mod+Enter` だけは次ノードへの編集移動となる。
 | `j` | tree: `navigateRight` / system: `increaseSystemDetail` |
 | `k` | tree: `navigateLeft` / system: `decreaseSystemDetail` |
 | `l` | `markLinkSource` |
-| `m` | `markReparent` |
+| `m` 保持 | `Grab`（Treeの選択部分木を方向キーで移動） |
 | `n` | — |
 | `o` | — |
 | `p` | `applyReparent` |

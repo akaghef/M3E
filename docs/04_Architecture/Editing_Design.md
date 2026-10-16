@@ -32,6 +32,12 @@
 - `two-finger pan`: trackpad の二本指移動、または同等のホイール入力で viewport を動かす操作
 - 本文書で `pan` とだけ書く場合は、以後は `two-finger pan` を指す
 
+## 利用者向け状態との対応
+
+Navigate・Edit・Grab の意味と遷移の正本は [Actions_Beta.md](../06_Operations/Actions_Beta.md)。以下の編集状態は内部状態であり、利用者向け状態と一対一とは限らない。`EditingText` は Edit に対応し、`Dragging` はポインター移動中の仮位置・drop 候補を扱う。Grab は移動前の保持中も含むため、`Dragging` の別名にはしない。
+
+Grab のキーボード入力も、選択部分木に対する reparent / reorder として既存の構造変更 Command を使う設計とする。描画方式によって操作の意味を変えない。viewerKeyboardModeにgrabを加え、開始時の状態・選択・折りたたみを保持する。構造変更CommandはwithUndo/withTouchを無効にしてプレビューを更新し、M解放・blurで開始時スナップショットを1件のUndoとして保存する。Escapeは保存せず開始状態に戻す。保存・配信は保持中に保留し、外部状態の置換時にはGrabを取り消す。
+
 ## 編集状態
 
 ### Idle

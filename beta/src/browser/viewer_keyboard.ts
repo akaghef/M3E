@@ -1,6 +1,6 @@
 /** Keyboard semantics are independent of SVG/WebGL and DOM focus. */
 export type KeyboardPlatform = "mac" | "other";
-export type ViewerKeyboardMode = "navigate" | "edit";
+export type ViewerKeyboardMode = "navigate" | "edit" | "grab";
 type Modifiers = Pick<KeyboardEvent, "ctrlKey" | "metaKey" | "altKey" | "shiftKey">;
 type KeyInput = Modifiers & Pick<KeyboardEvent, "key" | "isComposing">;
 

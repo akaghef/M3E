@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 615
+- Indexed files: 629
 
 ## Reading Routes
 
@@ -519,6 +519,16 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 |---|---:|---|---|
 | [legacy/Canvas_Centric_Architecture.md](<./legacy/Canvas_Centric_Architecture.md>) | Markdown | Canvas-Centric Architecture | Legacy |
 | [legacy/Current_Pivot_Freeplane_First.md](<./legacy/Current_Pivot_Freeplane_First.md>) | Markdown | Current Pivot: Freeplane-Informed Custom Engine | 当面の M3E は、Freeplane をそのまま土台 UI として使うのではなく、 |
+| [legacy/m3e-map-rest/README.md](<./legacy/m3e-map-rest/README.md>) | Markdown | M3E Map REST手順の履歴 | 旧 `m3e-map` SkillをMCPへ移行した際の保存資料。ここはSkillカタログでも現行の実行経路でもない。元の手順・例・補助スクリプトは履歴として保持し、`SKILL.md` は置かず、スクリプトは実行しない `.txt`... |
+| [legacy/m3e-map-rest/references/data-model.md](<./legacy/m3e-map-rest/references/data-model.md>) | Markdown | M3E Data Model | > 歴史資料。MCP移行前の内容を保存しており、現行の実行指示ではない。現行手順は `docs/protocols/mcp-map-operations.md` を参照する。 |
+| [legacy/m3e-map-rest/references/direct-operator.md](<./legacy/m3e-map-rest/references/direct-operator.md>) | Markdown | Direct M3E Runtime Operator | > 歴史資料。MCP移行前の内容を保存しており、現行の実行指示ではない。現行手順は `docs/protocols/mcp-map-operations.md` を参照する。 |
+| [legacy/m3e-map-rest/references/display-intent.md](<./legacy/m3e-map-rest/references/display-intent.md>) | Markdown | Display Intent | > 歴史資料。MCP移行前の内容を保存しており、現行の実行指示ではない。現行手順は `docs/protocols/mcp-map-operations.md` を参照する。 |
+| [legacy/m3e-map-rest/references/facet-contracts.md](<./legacy/m3e-map-rest/references/facet-contracts.md>) | Markdown | Facet Contracts | > 歴史資料。MCP移行前の内容を保存しており、現行の実行指示ではない。現行手順は `docs/protocols/mcp-map-operations.md` を参照する。 |
+| [legacy/m3e-map-rest/references/read.md](<./legacy/m3e-map-rest/references/read.md>) | Markdown | Reading the M3E Map | > 歴史資料。MCP移行前の内容を保存しており、現行の実行指示ではない。現行手順は `docs/protocols/mcp-map-operations.md` を参照する。 |
+| [legacy/m3e-map-rest/references/write.md](<./legacy/m3e-map-rest/references/write.md>) | Markdown | Writing the M3E Map | > 歴史資料。MCP移行前の内容を保存しており、現行の実行指示ではない。現行手順は `docs/protocols/mcp-map-operations.md` を参照する。 |
+| [legacy/m3e-map-rest/rest-instructions.md](<./legacy/m3e-map-rest/rest-instructions.md>) | Markdown | M3E Map API Skill | > 歴史資料。MCP移行前の内容を保存しており、現行の実行指示ではない。現行手順は `docs/protocols/mcp-map-operations.md` を参照する。 |
+| [legacy/m3e-map-rest/scripts/color_by_difficulty.js.txt](<./legacy/m3e-map-rest/scripts/color_by_difficulty.js.txt>) | Text | color by difficulty.js | // Default coloring pass: paint a map's nodes white→red by estimated execution difficulty. |
+| [legacy/m3e-map-rest/scripts/sort-task-render_map.mjs.txt](<./legacy/m3e-map-rest/scripts/sort-task-render_map.mjs.txt>) | Text | sort task render map.mjs | #!/usr/bin/env node |
 | [legacy/M3E仕様2.md](<./legacy/M3E仕様2.md>) | Markdown | M3E仕様2 | 現時点であなたが置いている前提を整理すると、次のようになります。 |
 | [legacy/M3E仕様設計書.md](<./legacy/M3E仕様設計書.md>) | Markdown | Mind Map Model Engine (M3E) 仕様設計書（会話ログ統合） | 本書は、これまでの会話で合意された世界観・制約・設計意図を、実装詳細に過度に踏み込まずに「仕様」として再構成したものである。特に、個人オフライン・スコープ境界・親子主構造・帯域（Flash/Rapid/Deep）・AIは提案で承認が確... |
 | [legacy/mvp-cleanup-plan.md](<./legacy/mvp-cleanup-plan.md>) | Markdown | mvp 痕跡の削除計画 | mvp/ を「バージョン履歴だけのもの」として扱い、実行可能な参照をすべて消す。 |
@@ -650,6 +660,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | File | Type | Title | Summary |
 |---|---:|---|---|
 | [tasks/agent-node-map.md](<./tasks/agent-node-map.md>) | Markdown | Agent nodeを通常マップへ組み込む | 新規のM3EマップにAgent nodeを並べる。除外するのはAgent runtimeへの接続であり、既存M3Eの作成・保存・編集・Undo・再読み込みは使用する。専用preview URL、読み取り専用化、追加の操作バー、独立した... |
+| [tasks/grab_tree_move.md](<./tasks/grab_tree_move.md>) | Markdown | Grabによる部分木移動 | 状態: 実装・ローカル回帰完了。通常Betaの配信証拠は末尾の記録先を参照。 |
 | [tasks/handoff_20260604_1411_mapify-io-possibilities.md](<./tasks/handoff_20260604_1411_mapify-io-possibilities.md>) | Markdown | Handoff: Mapify I/O 機能の可能性 | 作成日時: 2026-06-04 14:11 JST |
 | [tasks/handoff_cloud_sync_conflict_resolution.md](<./tasks/handoff_cloud_sync_conflict_resolution.md>) | Markdown | Handoff: Cloud Sync 競合解決 — Merge Mode 実装 | Cloud Sync 競合時に GitHub-like な diff 表示 + node 単位マージ選択を実装する。 |
 | [tasks/handoff_cloud_sync_conflict_ui.md](<./tasks/handoff_cloud_sync_conflict_ui.md>) | Markdown | Handoff: Cloud Sync 競合UI改善 | Cloud Sync で競合 (conflict) が発生した際の UI を改善する。 |
@@ -661,6 +672,8 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [tasks/handoff_template.md](<./tasks/handoff_template.md>) | Markdown | Handoff: {TOPIC} | {タスクの説明。何を実装/修正/調査するか。} |
 | [tasks/handoff_track_u_orchestration_seam_260719.md](<./tasks/handoff_track_u_orchestration_seam_260719.md>) | Markdown | Handoff: Track U — Orchestration Board Seam（別スレ実行用） | Handoff: Track U — Orchestration Board Seam（別スレ実行用） |
 | [tasks/handoff_u1_5_board_renderer_svg_260720.md](<./tasks/handoff_u1_5_board_renderer_svg_260720.md>) | Markdown | Handoff: U1.5 — Board Renderer SVG 化（OP2 移行） | akaghef の指摘により停止。renderer 技術方針（OP2=SVG）自体は有効だが、board の製品要件を |
+| [tasks/mcp-alpha1-verification.md](<./tasks/mcp-alpha1-verification.md>) | Markdown | M3E MCP α1 検証記録 | Basis: DP1 / TOB-V |
+| [tasks/mcp-alpha1.md](<./tasks/mcp-alpha1.md>) | Markdown | M3E MCP α1 | Basis: DP1 / TOB-V |
 | [tasks/orchestration_map_pilot_result_260719.md](<./tasks/orchestration_map_pilot_result_260719.md>) | Markdown | Orchestration Map Pilot Result 260719 | All scripts are under `scripts/pilot/` and emit one JSON object per run. |
 | [tasks/README.md](<./tasks/README.md>) | Markdown | tasks/ | **役割**: 具体 task と handoff の置き場。ロール間・セッション間の引き継ぎ場所。 |
 | [tasks/requirements_agent_dialogue_monitor_260720.md](<./tasks/requirements_agent_dialogue_monitor_260720.md>) | Markdown | 要求定義: Agent 対話監視面（Akaghef-System 帰属 backend + M3E 表示面） | [agent_network_dashboard_reference_260707/](agent_network_dashboard_reference_260707/) / |
@@ -714,6 +727,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [protocols/map-manager/projection-rule.md](<./protocols/map-manager/projection-rule.md>) | Markdown | Projection Rule | M3E storage is not MF, WMF, Mermaid, Markdown, or any other exchange syntax. |
 | [protocols/map-manager/README.md](<./protocols/map-manager/README.md>) | Markdown | Map Manager Protocol Package | Map Manager prevents repeated AI confusion when reading, writing, laying out, |
 | [protocols/map-write-protocol.md](<./protocols/map-write-protocol.md>) | Markdown | Map Write Protocol | Define how AI writes M3E maps without corrupting structure or confusing semantic structure with display decisions. |
+| [protocols/mcp-map-operations.md](<./protocols/mcp-map-operations.md>) | Markdown | MCPによるMap操作 | Basis: DP2 / TOB-E |
 | [protocols/persistent-rule-change-protocol.md](<./protocols/persistent-rule-change-protocol.md>) | Markdown | Persistent Rule Change Protocol | This protocol governs agent behavior when a user asks for recurrence prevention or a durable rule-system change. |
 | [protocols/README.md](<./protocols/README.md>) | Markdown | Protocols | This directory is the canonical home for AI operating protocols in M3E / Akaghef-System. |
 | [protocols/repository-canon-values.md](<./protocols/repository-canon-values.md>) | Markdown | Repository Canon Values | This protocol is the canonical statement of repository-level values for M3E agents. |
