@@ -17043,7 +17043,7 @@ document.addEventListener("focusin", (event) => {
   if (event.target !== board) finishGrab(true);
 });
 
-/* ── Shortcut cheatsheet: show on primary modifier / Alt hold ── */
+/* ── Shortcut cheatsheet: show on primary modifier + Alt hold ── */
 {
   const primaryLabel = KEYBOARD_PLATFORM === "mac" ? "Command" : "Ctrl";
   cheatsheetEl?.querySelectorAll<HTMLElement>("kbd, .automaton-label").forEach((element) => {
@@ -17077,10 +17077,10 @@ document.addEventListener("focusin", (event) => {
       clearTimer();
       return;
     }
-    const isBareMod =
-      (event.key === (KEYBOARD_PLATFORM === "mac" ? "Meta" : "Control") && primaryModifier(event) && !event.altKey && !event.shiftKey) ||
-      (event.key === "Alt" && !event.ctrlKey && !event.metaKey && !event.shiftKey);
-    if (!isBareMod) {
+    const isModifierChord =
+      (event.key === (KEYBOARD_PLATFORM === "mac" ? "Meta" : "Control") || event.key === "Alt") &&
+      primaryModifier(event) && event.altKey && !event.shiftKey;
+    if (!isModifierChord) {
       clearTimer();
       return;
     }

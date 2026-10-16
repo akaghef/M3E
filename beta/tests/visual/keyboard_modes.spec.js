@@ -36,6 +36,37 @@ for (const platform of ["MacIntel", "Win32"]) {
         await expect(page.locator("#meta")).toHaveAttribute("data-selected-node-id","child-a");
       });
 
+      test("shortcut list requires primary modifier and Alt held together",async ({page})=>{
+        const list=page.locator("#shortcut-cheatsheet");
+        for (const key of [primary,"Alt",secondary]) {
+          await page.keyboard.down(key);
+          await page.waitForTimeout(450);
+          await expect(list).toBeHidden();
+          await page.keyboard.up(key);
+        }
+        for (const order of [[primary,"Alt"],["Alt",primary]]) {
+          await page.keyboard.down(order[0]);
+          await page.keyboard.down(order[1]);
+          await expect(list).toBeVisible();
+          await page.keyboard.up(order[0]);
+          await expect(list).toBeHidden();
+          await page.keyboard.up(order[1]);
+        }
+        await page.keyboard.down(primary);
+        await page.keyboard.down("Alt");
+        await page.keyboard.up("Alt");
+        await page.waitForTimeout(450);
+        await expect(list).toBeHidden();
+        await page.keyboard.up(primary);
+        await page.keyboard.press("Enter");
+        await page.keyboard.down(primary);
+        await page.keyboard.down("Alt");
+        await page.waitForTimeout(450);
+        await expect(list).toBeHidden();
+        await page.keyboard.up("Alt");
+        await page.keyboard.up(primary);
+      });
+
       test("Edit input, Escape and next-editor retain text without navigating twice",async ({page})=>{
         const board=page.locator("#board");
         const editor=page.locator("textarea.inline-node-editor");
