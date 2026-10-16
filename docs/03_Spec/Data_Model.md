@@ -13,7 +13,7 @@ M3E の map を扱う正規の4区分を次のように定義する。語の入�
 |---|---|---|
 | Content | What is represented? — 何を情報として表現するか。情報単位、主張、意味上の関係、根拠を含む | `Animalia`、`Porifera`、「Porifera は Animalia に属する」、provenance。node や relation が担う内容 |
 | Topology | How is it structured? — 情報をどのような要素・接続・順序・境界で組織するか | node、親子 `edge`、非木関係 `GraphLink`、`alias`、`scope`、`spine`、`children[]` の兄弟順序。本書と [Scope and Alias](./Scope_and_Alias.md) |
-| Layout | Where is it placed? — 構造をどのように空間配置するか | 座標、direction、depth/breadth、間隔、接続経路の幾何。[Surface View](./map_layout_modes.md) の Tree / Axial / Radial / Disperse / System |
+| Layout | Where is it placed? — 構造をどのように空間配置するか | 座標、direction、depth/breadth、間隔、接続経路の幾何。[Surface View](./map_layout_modes.md) の Tree / Axial / Radial / Disperse / System / Lane |
 | Style | How does it appear? — 各表示要素をどのように視覚表現するか | 色、形状、線種、書体、文字サイズ、強調。[Visual Design Guidelines](../04_Architecture/Visual_Design_Guidelines.md)、`m3e:style`、`NodeDrawStyle` |
 
 ### Content と Topology
@@ -282,8 +282,11 @@ interface GraphLink {
   label?: string
   direction?: "none" | "forward" | "backward" | "both"
   style?: "default" | "dashed" | "soft" | "emphasis"
+  attributes?: Record<string, string>
 }
 ```
+
+`GraphLink.attributes` は関係に付随する任意のカスタムデータを key-value で保持する。関係の確度などが表す情報は Content、値を線種へ写す規則は Style として扱う。このプロパティは仕様のみで、現行 `beta/src/shared/types.ts` と `beta/src/browser/viewer.globals.d.ts` の GraphLink 型には未実装である。
 
 Beta では `links` は optional でよい。
 未実装 viewer と既存 save data を壊さないためである。

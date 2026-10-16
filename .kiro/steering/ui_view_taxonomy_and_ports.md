@@ -7,14 +7,14 @@
 
 ## Canonical 正本（参照先）
 
-- **Surface View 正本**: `docs/03_Spec/map_layout_modes.md` — `Tree / Axial / Radial / Disperse / System` の5種＋ `subtype / direction / space / edge` option。
+- **Surface View 正本**: `docs/03_Spec/map_layout_modes.md` — `Tree / Axial / Radial / Disperse / System / Lane` の6種＋ `subtype / direction / space / edge` option。
 - **用語**: `docs/00_Home/Glossary.md`。
 - **state 分離**: `docs/03_Spec/Model_State_And_Schema_V2.md` — `ViewState`(transient UI) と `Structure state`(canonical model) と `view logic`(投影規則)。
 - **UI 分岐の網羅ソース（map）**: ws `ws_REMH1Z5TFA7S93R3HA0XK58JNR` / map `map_1780450175739_m0ybyy` / scope `n_1780450268817_0y2l7w`。View 配下に Tree/Axial/Radial/Disperse/System、加えて Scatter・Mindmap・Annotation・Panel の action 群、PN(`pn:id`/`pn:hint`/`pn:action`)。
 
 ## 拘束規則
 
-1. **Surface View 名は canonical を使う**: `Tree / Axial / Radial / Disperse / System`。legacy 名（`tree / mindmap / logic-chart / timeline / scatter / system`）は migration 専用で、canonical へ map する。確定 map: `tree→Tree` / `timeline→Axial(timeline)` / `scatter→Disperse(scatter)` / `system→System`。**要確認**（`map_layout_modes.md` を正とする）: `mindmap→Tree(direction=left/right)?` / `logic-chart→Tree(down) か Axial?`。新規実装で legacy 名を増やさない。
+1. **Surface View 名は canonical を使う**: `Tree / Axial / Radial / Disperse / System / Lane`。legacy 名（`tree / mindmap / logic-chart / timeline / scatter / system`）は migration 専用で、canonical へ map する。確定 map: `tree→Tree` / `timeline→Axial(timeline)` / `scatter→Disperse(scatter)` / `system→System`。**要確認**（`map_layout_modes.md` を正とする）: `mindmap→Tree(direction=left/right)?` / `logic-chart→Tree(down) か Axial?`。新規実装で canonical にない Surface View 名を増やさない。
 
 2. **`edge` の両義を分離する**: parent-child relation（tree edge）と route style（option: `orthogonal / line / curve / force-link`）と `GraphLink`（cross relation）は別物。spec/コードで混同禁止。
 

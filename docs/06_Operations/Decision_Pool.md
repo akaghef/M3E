@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-10-17-001
+
+- Date: 2026-10-17
+- Topic: Lane Surface View の追加と GraphLink の任意属性
+- Status: accepted
+- Decision:
+  - `Lane` を Surface View の第6種として追加する。root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンへ投影し、孫 node 間の GraphLink を主線として表示する。
+  - `System` はレーンに整列できないフローチャート様の構造を扱い、既存 subtype `containment / module / architecture` を維持する。
+  - `GraphLink.attributes` に任意の key-value data を持たせる。確度などの情報は Content、`LinkStyle` への写像は Style として扱う。
+  - レーン順、孫 node の所属、GraphLink の親 node ごとの集計、レーンを飛び越す関係、GraphLink のない異なるレーンの孫 node の組は導出値とし、保存しない。選択から計算する内訳の線は GraphLink とせず、Lane view の Topology に含めない。
+  - 図式内の孫 node に識別コードを付けない。root node は scope でなくてもよい。
+- Why: 層状の図式を既存の tree と GraphLink で保持しながら投影する方式を定義し、フローチャート様でレーンに整列できない System view と区別するため。
+- Next: beta の GraphLink 型への属性追加と Lane view 実装は別タスク。
+- Source: akaghef の 2026-10-17 の決定。
+- Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md), [../03_Spec/Data_Model.md](../03_Spec/Data_Model.md), [../09_Decisions/ADR_013_Lane_Surface_View.md](../09_Decisions/ADR_013_Lane_Surface_View.md)
+
 ## 2026-09-03-001
 
 - Date: 2026-09-03
@@ -21,6 +37,7 @@
 - Next: seam lab（layout-lab）に Radial の scatter/force コントロールを追加。Disperse の実装（`disperse_layout.ts` 等）と配置エンジンを共有させる形で Radial を再導入する。角度系コードは復元しない。
 - Source: 2026-08-27 akaghef「radial, disperseの違いがわからないという話だったが、両者を復活させたい。ラディアルは親子のエッジを表示する。グラフリンクも表示する。一方でディスパースは、親子同士はエッジではなく、入れ子のカテゴリとして表す」+「構造としては木だから[Radial/Disperseが自由配置で構造を持たないかのような]説明は変だ」
 - Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md), [../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md)
+- Superseded in part by [2026-10-17-001](#2026-10-17-001): Surface View の種別一覧と layered architecture 図の対応のみ。Radial / Disperse の決定は維持する。
 
 ## 2026-08-29-001
 

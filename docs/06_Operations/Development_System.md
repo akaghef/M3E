@@ -78,7 +78,7 @@ seam を彫る spec には必ず2点を入れる:
   - 各 component は logic を型付き port 経由で消費し、検証は「port 入出力への適合」の薄いテストのみ。
   - 直積セルは手書きテストでなく golden sample の**行**になる（例: `(node, style)` セル = NodeStyleAttrs 入力 → SVG fragment 出力の golden 一致）。機械的に列挙・実行できる。
   - 目視は全セルではなく、リスクセルのサンプリングを lab で akaghef が承認する（§3.4 G-GUI と接続）。
-- **隠れた第3軸**: Surface View（Tree / Axial / Radial / Disperse / System）が layout 検証にさらに乗算される。過去の PN / scatter 破綻は `layout × surface` セルの未検証が原因（§2.3 の実例と同根）。純関数 + golden 表方式なら第3軸の追加は表の行が増えるだけで、手書きテスト数は増えない。
+- **隠れた第3軸**: Surface View（Tree / Axial / Radial / Disperse / System / Lane）が layout 検証にさらに乗算される。過去の PN / scatter 破綻は `layout × surface` セルの未検証が原因（§2.3 の実例と同根）。純関数 + golden 表方式なら第3軸の追加は表の行が増えるだけで、手書きテスト数は増えない。
 - **第3軸の剪定（Decision_Pool 2026-07-18-002）**: 第3軸は優先度で剪定する — **Tree = 最優先（ほぼ完成、仕上げ）、Disperse = 次点（最大エフォート）、Axial / Radial / System = 凍結（non-regression のみ）**。golden 表・lab・目視ゲートの展開対象は Tree / Disperse 行のみ。凍結セルは台帳上 `frozen` と明示し、未着手の空欄と区別する。乗算→加算の分解は「軸を剪定してから加算に落とす」の二段で効かせる。
 - **soft-goal 化**: 「検証乗算を O(N+M) に潰す」は GOA ゴールツリーで seam 体制 soft-goal 直下の測定可能ゴールとして扱う。
 

@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 629
+- Indexed files: 630
 
 ## Reading Routes
 
@@ -151,6 +151,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_010_Radial_Surface_View_Removal.md](<./09_Decisions/ADR_010_Radial_Surface_View_Removal.md>) | Markdown | ADR_010: Radial Surface View を廃止し Tree へ畳む | Surface View 正本は `Tree / Axial / Radial / Disperse / System` の5種としていた。 |
 | [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
 | [09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](<./09_Decisions/ADR_012_Radial_Surface_View_Restoration.md>) | Markdown | ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する | ADR_010 は、当時の実装が canon の角度系（`clockwise / counterclockwise / balanced`）を |
+| [09_Decisions/ADR_013_Lane_Surface_View.md](<./09_Decisions/ADR_013_Lane_Surface_View.md>) | Markdown | ADR_013: Lane Surface View を追加し System と区別する | 層状の図式は、root node の直下の子 node を並列に見せ、その下の孫 node 間の関係を読む。root node は必ずしも scope ではない。この投影はレーンに整列できないフローチャート様の構造を扱う System... |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections

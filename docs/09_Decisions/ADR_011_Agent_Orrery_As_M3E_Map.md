@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-08-26
 - Deciders: akaghef
+- Superseded in part by: [ADR_013](ADR_013_Lane_Surface_View.md) — Surface View の種別一覧のみ。Agent Orrery を map data とする決定は維持する。
 - Related: [ADR_009](./ADR_009_Orchestration_Fusion_Into_M3E.md) / [ADR_010](./ADR_010_Radial_Surface_View_Removal.md) / [Decision_Pool 2026-08-26-001](../06_Operations/Decision_Pool.md) / [ui_view_taxonomy_and_ports](../../.kiro/steering/ui_view_taxonomy_and_ports.md)
 - 思想の出典: [260808_agent_mapping_plugin_boundary.md](../ideas/260808_agent_mapping_plugin_boundary.md) / [260824_node_plugin_and_layout_contract.md](../ideas/260824_node_plugin_and_layout_contract.md)
 - Supersedes (partial): ADR_009 §2 の Agent = Session 1:1 を **node 粒度については** 更新。ADR_009 §4 の「live 観測 runtime は別 lane」を **本 ADR のスコープ内へ移す**。

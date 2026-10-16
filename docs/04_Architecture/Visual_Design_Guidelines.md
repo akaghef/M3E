@@ -422,7 +422,7 @@ tree visual policy.
 Use this reference when the surface is explicitly about reading execution
 structure, dependency flow, GraphSpec nodes, or runtime trace:
 
-- left-to-right flow is useful for `Axial` pipeline and `System` architecture views
+- left-to-right flow is useful for `Axial` pipeline and `Lane` layered architecture views
 - node type may use stronger card treatments than the default Rapid tree
 - color must be paired with badge or shape, not used alone
 - selected path emphasis should override permanent semantic color

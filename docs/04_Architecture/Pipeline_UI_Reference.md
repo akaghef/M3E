@@ -33,7 +33,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 | 参照 UI の要素 | M3E での対応 | 実装上の扱い |
 |---|---|---|
 | 全体 canvas | `viewer` の rendering surface | UI shell ではなく描画 layer |
-| 左から右の列 | Surface View の `Axial` / `System` | `layout=flow-lr` の候補 |
+| 左から右の列 | Surface View の `Axial` / `Lane` | `layout=flow-lr` の候補。pipeline の進行は `Axial`、層状 architecture 図は `Lane` に対応する |
 | card node | `TreeNode` の表示 | node 本体は既存 `AppState.nodes` |
 | card type | `attributes` / `GraphSpecNode.kind` | color だけでなく badge / shape で表現 |
 | data flow line | `GraphLink` | 親子 `edge` と混同しない |

@@ -4,6 +4,7 @@
 - Date: 2026-09-03
 - Deciders: akaghef
 - Supersedes: [ADR_010: Radial Surface View を廃止し Tree へ畳む](ADR_010_Radial_Surface_View_Removal.md)
+- Superseded in part by: [ADR_013](ADR_013_Lane_Surface_View.md) — Surface View の種別一覧と layered architecture 図の対応のみ。Radial / Disperse の決定は維持する。
 - Related: [map_layout_modes.md](../03_Spec/map_layout_modes.md) / [Disperse_Layout_Design.md](../04_Architecture/Disperse_Layout_Design.md) / [Decision_Pool 2026-08-27-002](../06_Operations/Decision_Pool.md)
 
 ## Context

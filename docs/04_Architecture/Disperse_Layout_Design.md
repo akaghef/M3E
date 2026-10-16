@@ -51,7 +51,7 @@ Eclipse モデリング世界出身。中心は**層化（Sugiyama）レイア�
 
 - 包含構造は native で扱える
 - ただし思想の重心が層化された図。「近接と密度で読む」という Disperse の主眼とは向きが違う
-- 既存決定 [2026-06-06-001](../06_Operations/Decision_Pool.md) の elkjs 優先指定は `Axial.subtype=pipeline` / `System.subtype=architecture`（層化された図）の文脈であり、Disperse には射程が及んでいない
+- 既存決定 [2026-06-06-001](../06_Operations/Decision_Pool.md) の elkjs 優先指定は `Axial.subtype=pipeline` / `Lane`（層状 architecture 図）の文脈であり、Disperse には射程が及んでいない
 
 ### OP3: WebCola — 制約を宣言して満たす解を解く（採用）
 

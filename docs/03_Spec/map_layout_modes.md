@@ -10,7 +10,7 @@
 
 4区分の意味と境界は [Data Model](./Data_Model.md#content--topology--layout--style) に従う。本書の配置アルゴリズム・direction・space・座標・接続経路の幾何は Layout、親子を線または group で読ませる視覚表現は Style に関わる。Surface View は複数区分の表示設定を束ねるもので、Layout だけと同一視しない。
 
-Surface View の切替と collapse は永続 Topology を保ったまま表示・配置入力を変える。force 配置で GraphLink を張力に使うことと、GraphLink を親子 `edge` として扱うことは区別する。以下の5種類と既存 option を再利用し、4区分のために新しい View を増やさない。
+Surface View の切替と collapse は永続 Topology を保ったまま表示・配置入力を変える。force 配置で GraphLink を張力に使うことと、GraphLink を親子 `edge` として扱うことは区別する。以下の6種類と既存 option を用いる。
 
 ## 1. 背景と目的
 
@@ -31,10 +31,10 @@ Rapid モードでは「多様なグラフ構造」が目標であり、
 | draw.io | Horizontal tree, Vertical tree, Radial tree, Org chart (linear/hanger/fishbone) |
 | yEd | Hierarchical, Organic (force-directed), Tree, Radial, Circular, Balloon |
 
-### 1.1 Surface View 正本 (2026-06-03)
+### 1.1 Surface View 正本（2026-10-17 更新）
 
 M3E の見た目分類は、外部ツール名や旧実装名をそのまま Surface View にしない。
-正本は次の 5 種とし、細かい違いは option / subtype として扱う。
+2026-10-17 に akaghef が採択した更新を反映し、正本は次の6種とする。細かい違いは option / subtype として扱う。
 
 ```text
 Surface View
@@ -55,9 +55,13 @@ Surface View
 │  ├─ subtype: scatter / force
 │  ├─ space: tight / normal / loose
 │  └─ edge: line / curve / force-link
-└─ System
+├─ System
    ├─ subtype: containment / module / architecture
    ├─ direction: right / down / free
+   ├─ space: tight / normal / loose
+   └─ edge: orthogonal / line / curve
+└─ Lane
+   ├─ direction: right / down
    ├─ space: tight / normal / loose
    └─ edge: orthogonal / line / curve
 ```
@@ -74,7 +78,8 @@ Radial と Disperse は同一の力学配置エンジン（WebCola）を共有�
 | Timeline | Axial | timeline は Surface View ではなく Axial の subtype |
 | Roadmap / Pipeline / Sequence | Axial | 軸に沿って進行・順序・段階を読む見た目 |
 | Scatter / Force-directed | Disperse | 力学配置 + 親子を入れ子（包含）で描く見た目 |
-| System surface | System | containment / module / architecture を扱う見た目 |
+| 層状の architecture 図 | Lane | root 直下の子 node を並行するレーンとして投影する見た目 |
+| System surface | System | レーンに整列できないフローチャート様の構造を扱う見た目。subtype は containment / module / architecture |
 | Matrix / Table | node object | Surface View ではなく、表・行列を表すノードオブジェクトとして実装する |
 
 #### 意味上の分離
@@ -87,7 +92,12 @@ Radial と Disperse は同一の力学配置エンジン（WebCola）を共有�
 - **Axial**: 親子階層を **1本の軸に沿った進行** として投影する。主眼は時間・順序・進行・段階。
 - **Radial**: 親子階層を **力学配置 + edge** として投影する。関係を線で読む。
 - **Disperse**: 親子階層を **力学配置 + 入れ子（包含）** として投影する。関係は GraphLink の線のみで読み、親子は tree の group（枠）として現れる。
-- **System**: 箱・境界・モジュール・リンクとして投影する。主眼は構造、責務、接続。
+- **System**: レーンに整列できないフローチャート様の構造を、箱・境界・モジュール・リンクとして投影する。subtype は containment / module / architecture とし、主眼は構造、責務、接続。
+- **Lane**: root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンとして投影し、各孫 node を親のレーン内に置く。direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。root node は scope でなくてもよい。孫 node 間の GraphLink を主線として表示し、レーン境界をまたぐ関係も表す。図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
+
+Lane の切替は永続 Topology を変えない。レーン順は `children[]` の兄弟順序から、孫 node の所属は親子 `edge` から導出する。GraphLink を両端の親 node の組ごとに集計した行列、親 node の兄弟順序の差が2以上の GraphLink、異なるレーンの孫 node の組のうち GraphLink が無い組も導出値とし、永続データに保存しない。選択に応じて計算する内訳の線は GraphLink ではなく、Lane view の Topology に含めない。
+
+検証観点: 正常系では root の子 node の順序がレーン順に保たれ、孫 node 間の GraphLink がレーンをまたいで表示されることを確認する。境界系では root が scope でない場合、`right` / `down` の方向、レーンを飛び越す GraphLink を確認する。失敗系では選択から計算した内訳線が GraphLink として保存されず、View 切替で Topology が変わらないことを確認する。
 
 Radial と Disperse は同一の力学配置エンジンを共有し、**親子関係を edge にするか group にするかだけが異なる**。座標計算のアルゴリズムに違いはない。
 
@@ -114,8 +124,7 @@ Radial と Disperse は同一の力学配置エンジンを共有し、**親子�
 #### pipeline / system graph の参照 UI
 
 2026-06-06 に取り込んだ [Pipeline UI Reference](../04_Architecture/Pipeline_UI_Reference.md)
-は、`Axial.subtype=pipeline` と `System.subtype=architecture` の視覚・操作参考として扱う。
-新しい Surface View 名は増やさない。M3E へ移植する対象は、左から右へ読む flow、typed card、port、selected-path focus、inspector、minimap、trace replay である。
+は、進行を読む pipeline を `Axial.subtype=pipeline`、層状 architecture 図を `Lane` として扱う際の視覚・操作参考とする。レーンに整列できないフローチャート様の構造は `System` に属する。M3E へ移植する対象は、左から右へ読む flow、typed card、port、selected-path focus、inspector、minimap、trace replay である。
 既定の Rapid tree view を置き換えるものではない。
 
 ---
@@ -426,7 +435,7 @@ layout: {
 ### 8.1 buildLayout のストラテジーパターン化
 
 ```typescript
-type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system";
+type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system" | "lane";
 
 type SurfaceViewEdge = "orthogonal" | "line" | "curve" | "force-link";
 type SurfaceViewSpace = "tight" | "normal" | "loose";
@@ -543,7 +552,7 @@ layout: {
 `beta/src/shared/types.ts` に追加:
 
 ```typescript
-export type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system";
+export type SurfaceViewKind = "tree" | "axial" | "radial" | "disperse" | "system" | "lane";
 
 export interface SurfaceViewConfig {
   kind: SurfaceViewKind;

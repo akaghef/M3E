@@ -3,7 +3,7 @@
 M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。
 **新しい語を skill / map / code に持ち込む前にここへ登録する**。揺れを見つけたら正規語を決めて記載する。
 
-最終更新: 2026-10-16
+最終更新: 2026-10-17
 
 ---
 
@@ -32,6 +32,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **edge port** | ノード矩形上の**接続点**。`side = left / right / top / bottom` と座標を持つ幾何要素 | edge, EdgeStyle, LinkPort | 実装 `beta/src/shared/edge_port.ts` の `EdgePortSide` / `EdgePortPoint` / `EdgePorts`。`selectPorts(srcRect, dstRect, branchDirection)` が選ぶ対象。**seam port とは無関係の別概念** |
 | **LinkPort** | GraphLink に保存される端点指定。`auto / left / right / top / bottom` | edge port, GraphLink | `edge port` をデータとして持つもの。`auto` の意味が fixed-side sanitize と齟齬あり（reconcile 対象）|
 | **EdgeStyle** | 親子 edge の**描画スタイル**。`orthogonal / line / curve / force-link`。関係ではなく描画指定 | edge, LinkStyle, Surface View | `LinkStyle`（GraphLink の描画スタイル: default/dashed/soft/emphasis）と対をなす。正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md) では Surface View の `edge` option（型名 `SurfaceViewEdge`）。実装正本は `beta/src/shared/edge_route.ts`（現行型名 `EdgeRouteStyle`、canon 値と一致）。`layout_port.ts` の `LayoutEdgeRoute`(elbow/bezier/straight) と `LayoutLinkRoute`(simple-bezier/orthogonal/straight) は drift で reconcile 対象 |
+| **Surface View** | 同じ Topology を表示・配置する方式 | Layout, Topology, Tree, Axial, Radial, Disperse, System, Lane | 正本は `Tree / Axial / Radial / Disperse / System / Lane`。View の切替だけでは永続 Topology を変えない。`Lane` は root 直下の子 node を並行するレーンとして並べ、孫 node 間の GraphLink を主線として表示する。詳細は [map_layout_modes.md](../03_Spec/map_layout_modes.md) を参照 |
 | **先祖 (ancestor)** | ある node から親子 edge を親方向へ辿って到達する node。親、祖父母、root を含むが、起点 node 自身は含まない | node, edge, 子孫, パンくず | パンくず表示は、現在位置の node に至る**先祖 chain**を root から順に表示する |
 | **子孫 (descendant)** | ある node から親子 edge を子方向へ1段以上辿って到達する node。起点 node 自身は含まない | node, edge, 先祖, 部分木 | node copy は、選択 node を根とする部分木、すなわち選択 node とその**全子孫**を複製する仕様 |
 
