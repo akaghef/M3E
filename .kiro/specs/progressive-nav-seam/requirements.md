@@ -73,7 +73,7 @@ visible-fix scope として `pn_layout` typed pure seam を定義する。入力
 - `beta/src/browser/workbench-ui.tsx:1202-1212` listens to `m3e:viewport-changed` and calls `measureRootAnchor`, which reads DOM rects and mutates `rootRect` / placement.
 - `beta/src/browser/workbench-ui.tsx:1171-1200` uses live DOM measurement inside the React component, so every viewport event can cause layout state updates.
 
-**Root cause:** pan/zoom fast path and PN measurement path share a high-frequency event. During camera movement, PN should translate from cached anchor/viewport state or defer remeasure; it should not recompute layout on every viewport transform.
+**Root cause:** pan/zoom fast path and PN measurement path share a high-frequency event. During viewport movement, PN should translate from cached anchor/viewport state or defer remeasure; it should not recompute layout on every viewport transform.
 
 ### EA4: 3rd-level / overflow behavior regressed after 2026-06-16 PN+layout attempt
 
@@ -122,7 +122,7 @@ visible-fix scope として `pn_layout` typed pure seam を定義する。入力
 5. chosen placement の `overlayRect` と placed node rects は selected / visible canvas node rects と重なってはならず、chosen placement の対 canvas-node `overlapScore` は必ず `0` でなければならない。
 6. output は選ばれた placement reason、ordered candidate list、rejected candidate overlap score を持ち、golden で検査できなければならない。
 7. CSS layer contract は PN overlay、PN edge layer、PN node layer、canvas content、modal/popover の z-order を明示しなければならない。
-8. PN overlay は product canvas transform の子になってはならず、camera pan/zoom scale の影響を受けない screen-space overlay として扱わなければならない。
+8. PN overlay は product canvas transform の子になってはならず、viewport pan/zoom transform の影響を受けない screen-space overlay として扱わなければならない。
 9. どの placement でも canvas-node overlap を避けられない場合は `overflow.mode` を `scroll` / `compact` / `side-panel` のいずれかにし、silent clip を禁止しなければならない。
 10. canvas overlap rule は selected / visible canvas node content safeZones に対する規則であり、overlay 自身の内部レイアウトや空白 canvas との関係には適用しない設計でなければならない。
 
@@ -147,8 +147,8 @@ visible-fix scope として `pn_layout` typed pure seam を定義する。入力
 #### Acceptance Criteria
 
 1. implementation phase では `m3e:viewport-changed` を PN layout remeasure の唯一 trigger にしてはならない。
-2. PN は anchor measurement snapshot と viewport snapshot を持ち、camera transform 中は cheap translate / cached placement path を使う設計でなければならない。
-3. DOM remeasure は open, active path change, anchor identity change, layout option change, resize, settled camera event のような bounded trigger に限定しなければならない。
+2. PN は anchor measurement snapshot と viewport snapshot を持ち、viewport transform 中は cheap translate / cached placement path を使う設計でなければならない。
+3. DOM remeasure は open, active path change, anchor identity change, layout option change, resize, settled viewport event のような bounded trigger に限定しなければならない。
 4. high-frequency pan/zoom event が発生しても `layoutProgressiveNav` の recompute count が増え続けないことを Playwright or unit harness で検査しなければならない。
 5. `viewer.ts applyZoom()` の fast path は canvas transform / inline editor / linear panel sync を阻害してはならない。
 6. PN remeasure が必要な場合でも requestAnimationFrame / debounce / settled event などで coalesce し、multiple synchronous state updates を避けなければならない。
@@ -166,7 +166,7 @@ visible-fix scope として `pn_layout` typed pure seam を定義する。入力
 4. overflow は hidden accidental clipping ではなく explicit state (`scroll`, `compact`, `side-panel`, etc.) として扱わなければならない。
 5. keyboard focus order は `focusOrder` output と一致し、search filtering 後も selected/focused row が visible でなければならない。
 6. hover / focus / click activation は active path と output `visibleNodeIds` を一致させなければならない。
-7. product test は 3rd-level と active-node PN の両方を検査しなければならない。
+7. product test は 3rd-level と Node PN の両方を検査しなければならない。
 
 ### Requirement 6: PN lab based on action-tree prototype
 
@@ -203,7 +203,7 @@ visible-fix scope として `pn_layout` typed pure seam を定義する。入力
 
 1. **map-backing / `pn_model`**: `pn:id` / `pn:hint` / `pn:action` を map subtree から読む model adapter は visible-fix 後の follow-up。
 2. **canonical Surface View name reconcile**: product PN の legacy labels / modes (`mindmap`, `logic-chart`, `timeline`, `scatter`) を `Tree / Axial / Radial / Disperse / System` へ reconcile する作業は follow-up。ただし新しい spec/type では canonical naming を使い、legacy を増やさない。
-3. **AI generation / prepared-answer fixes**: active-node PN actions の generation quality や fixture fallback removal は別 task。
+3. **AI generation / prepared-answer fixes**: Node PN actions の generation quality や fixture fallback removal は別 task。
 4. **GraphLink editing**: PN edge is parent-child tree edge only; GraphLink endpoint edit semantics are out of scope.
 
 ## Director Resolved

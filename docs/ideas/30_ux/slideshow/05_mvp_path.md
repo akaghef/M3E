@@ -9,7 +9,7 @@
 
 - 1マップに1ツアー（論点D=D1）
 - ステップ = nodeId の配列（論点A=A1, B=B3, C=C1）
-- カメラはパン演出（論点E=E3）+ 周辺フェード（論点F=F2）
+- viewport の動きはパン演出（論点E=E3）+ 周辺フェード（論点F=F2）
 - UI は下部オーバーレイバー（論点G=G1）
 - 操作は矢印キーと Prev/Next ボタン（論点I=I1+I4）
 - 注釈は ノードの details 流用（論点H=H1）
@@ -50,7 +50,7 @@
 
 - 純フロント変更: viewer.ts に ~150 行、CSS に ~50 行、HTML に控えめなバー要素
 - データ層: rapid_mvp.ts のスキーマに `tour` フィールド追加、保存・読込パス1個
-- 既存の `centerOnNode` をそのまま使えば、目玉のカメラ移動はほぼ書かなくて良い
+- 既存の `centerOnNode` をそのまま使えば、目玉の viewport 移動はほぼ書かなくて良い
 - 新規ファイル: たぶん不要（viewer.ts に閉じ込められる）
 
 これで「動く」最小形になる。
@@ -82,7 +82,7 @@
 Phase 1 (MVP)         : 上記の暫定スコープ全部
 Phase 2 (Polish)      : 並び替え UI / ツアー編集モード / 注釈フィールド分離
 Phase 3 (Multi)       : 名前付き複数ツアー / 切替 UI
-Phase 4 (Present)     : フルスクリーン / カメラ演出 / リモコン
+Phase 4 (Present)     : フルスクリーン / viewport 演出 / リモコン
 Phase 5 (Export)      : PDF / 共有リンク / 静的 HTML
 Phase 6 (Smart)       : エージェント自動生成ツアー / クエリ駆動ツアー
 ```

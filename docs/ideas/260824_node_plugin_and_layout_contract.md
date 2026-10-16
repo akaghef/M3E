@@ -453,7 +453,7 @@ HTMLなら `flex/grid/input/button/tooltip/context menu` が全部素直に使�
 $$
 p_{\mathrm{screen}}
 =
-T_{\mathrm{camera}}\,p_{\mathrm{world}}
+T_{\mathrm{viewport}}\,p_{\mathrm{world}}
 $$
 
 を計算して、
@@ -462,7 +462,7 @@ $$
 transform: translate(x, y);
 ```
 
-でHTML nodeを配置する。WebGLとHTMLが同じ `camera transform` を共有すればよい。
+でHTML nodeを配置する。WebGLとHTMLが同じ `viewport transform` を共有すればよい。
 
 ---
 
@@ -569,7 +569,7 @@ $$
 担当するのは主に、
 
 $$
-\text{layout / camera / edge / culling / hit-test / LOD}
+\text{layout / viewport / edge / culling / hit-test / LOD}
 $$
 
 つまり「大量の空間要素を高速に扱う」部分だけ。
@@ -620,7 +620,7 @@ $$
 \boxed{\text{world coordinates} \leftrightarrow \text{screen DOM coordinates}}
 $$
 
-つまり camera transform、zoom、scroll、devicePixelRatio、resize の同期。
+つまり viewport transform、zoom、scroll、devicePixelRatio、resize の同期。
 
 ここさえ `ViewportTransform` のような**単一SSOT**にすればかなり強い。
 

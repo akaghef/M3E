@@ -312,7 +312,7 @@ Currently used only for computing `xByDepth`. With per-parent X positioning, `de
 
 `syncInlineEditorPosition()` uses `lastLayout.pos[nodeId]` (line 1279-1284). **No changes needed.**
 
-### 4.6 `scrollNodeIntoView` / Camera
+### 4.6 `scrollNodeIntoView` / viewport
 
 These functions use `lastLayout.pos[nodeId]` for X/Y. **No changes needed.**
 

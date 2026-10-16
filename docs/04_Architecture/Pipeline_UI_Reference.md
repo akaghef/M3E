@@ -40,7 +40,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 | system spine | 親子 `edge` | scope / contract の主骨格 |
 | right detail panel | inspector / Contract Tree preview | 選択状態は `ViewState`、正本変更は Model 経由 |
 | replay button | Run / Trace 表示 | runtime state を Authoring Map に直接書き戻さない |
-| minimap | camera overview | `ViewState` に属する |
+| minimap | viewport overview | `ViewState` に属する |
 | legend | type encoding guide | color-only encoding を避ける |
 
 ## Visual Rules
@@ -64,7 +64,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 | Edge label chip | branch / condition label | hidden by default, shown on focus |
 | Inspector panel | selected node contract | React panel fed by selected `TreeNode` / `GraphSpecNode` |
 | Trace replay control | execution playback | derived from Run / Trace, not stored as node edits |
-| Minimap | spatial orientation | camera ViewState |
+| Minimap | spatial orientation | viewport ViewState |
 
 ## Implementation Contract
 
@@ -73,7 +73,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 - UI shell: React component。toolbar / inspector / legend / replay control を持つ。
 - Rendering layer: graph surface。node / edge / GraphLink / port / minimap を描く。
 - Model: `AppState`、`TreeNode`、`GraphLink`、`MapSurface` を保持する。
-- ViewState: selected node, selected link, camera, hover, replay step, dimming を保持する。
+- ViewState: selected node, selected link, viewport, hover, replay step, dimming を保持する。
 - GraphSpec: 実行可能な system contract へ compile する derived data。map 正本ではない。
 
 既存 dependency を使う。
@@ -111,7 +111,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 - `flow-lr` surface で node が左から右へ安定配置される。
 - node 選択時に inspector が対象 node / GraphSpec 情報を表示する。
 - selected path の強調と非関連 node の dimming が働く。
-- minimap と fit-to-content が camera state と一致する。
+- minimap と fit-to-content が viewport state と一致する。
 
 ### Boundary
 

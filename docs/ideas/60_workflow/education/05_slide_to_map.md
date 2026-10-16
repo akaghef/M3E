@@ -103,7 +103,7 @@ N4 はその逆方向。両者を組み合わせると:
 
 ### 共通化できる論点
 - ノード順序の表現（slideshow のトピック C）
-- カメラ挙動（slideshow E）
+- viewport 挙動（slideshow E）
 - ナレーション欄（slideshow H）
 
 ## 7. ユースケース

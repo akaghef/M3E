@@ -394,7 +394,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/30_ux/map_views/visualsitemaps/README.md](<./ideas/30_ux/map_views/visualsitemaps/README.md>) | Markdown | VisualSitemaps 参考idea | VisualSitemapsは、URLを起点にWebサイトをクロールし、各ページのスクリーンショットを階層的なvisual sitemapとして表示するサービス。 |
 | [ideas/30_ux/slideshow/01_concept.md](<./ideas/30_ux/slideshow/01_concept.md>) | Markdown | 01. コンセプト | M3E マップ上のノードを **作者が指定した順序で1つずつフォーカス** し、 |
 | [ideas/30_ux/slideshow/02_authoring.md](<./ideas/30_ux/slideshow/02_authoring.md>) | Markdown | 02. オーサリング（ツアーの定義方法） | 「どのノードを、どの順番で見せるか」をどこに、どう書くか。 |
-| [ideas/30_ux/slideshow/03_runtime_ui.md](<./ideas/30_ux/slideshow/03_runtime_ui.md>) | Markdown | 03. 再生時の UI とカメラ挙動 | ツアー再生中の見た目・操作・演出。 |
+| [ideas/30_ux/slideshow/03_runtime_ui.md](<./ideas/30_ux/slideshow/03_runtime_ui.md>) | Markdown | 03. 再生時の UI と viewport 挙動 | ツアー再生中の見た目・操作・演出。 |
 | [ideas/30_ux/slideshow/04_data_model.md](<./ideas/30_ux/slideshow/04_data_model.md>) | Markdown | 04. データモデルと永続化・エクスポート | 最小モデル: |
 | [ideas/30_ux/slideshow/05_mvp_path.md](<./ideas/30_ux/slideshow/05_mvp_path.md>) | Markdown | 05. MVP 設計案と未決の質問 | レビューが入る前の **デフォルト案**（暫定）。 |
 | [ideas/30_ux/slideshow/06_viewer_presentation_html_export.md](<./ideas/30_ux/slideshow/06_viewer_presentation_html_export.md>) | Markdown | Viewer Presentation View と HTML Export | DaveJ 型の architecture-flow UI を参考に、M3E の通常ビューを壊さず「presentation view」と「standalone HTML export」を増やす案。 |

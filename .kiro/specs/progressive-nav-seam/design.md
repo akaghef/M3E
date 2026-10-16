@@ -39,7 +39,7 @@ This is not enough to prevent overlap with visible canvas content. The current c
 
 `beta/src/browser/viewer.ts:4201-4222` applies canvas transform and dispatches `m3e:viewport-changed`. PN listens to that event in `workbench-ui.tsx:1202-1212` and immediately calls `measureRootAnchor`, which reads DOM rects and mutates React layout state in `workbench-ui.tsx:1171-1200`.
 
-This makes high-frequency camera movement and expensive PN remeasurement share a trigger. It also means PN can shift/reflow during pan/zoom, exactly when the canvas fast path should remain cheap and stable.
+This makes high-frequency viewport movement and expensive PN remeasurement share a trigger. It also means PN can shift/reflow during pan/zoom, exactly when the canvas fast path should remain cheap and stable.
 
 ### D4: 2026-06-16 PN + scatter break relation
 
@@ -297,7 +297,7 @@ Layer contract:
 
 | Layer | Ownership | Rule |
 |---|---|---|
-| canvas content | viewer canvas | transformed by camera |
+| canvas content | viewer canvas | transformed by viewport transform |
 | PN overlay | workbench overlay root | screen-space; not inside transformed canvas |
 | PN edge layer | PN overlay child | below PN cards |
 | PN node layer | PN overlay child | above PN edges |
@@ -349,7 +349,7 @@ applyZoom()
 Target behavior:
 
 ```text
-camera fast path
+viewport fast path
   -> canvas transform update
   -> cheap overlay transform or no PN change
   -> no full PN remeasure
@@ -360,7 +360,7 @@ bounded PN remeasure triggers
   -> root/anchor identity changes
   -> resize
   -> layout-options-changed
-  -> camera settled event, not every camera tick
+  -> viewport settled event, not every viewport tick
   -> explicit PN refresh
 ```
 

@@ -660,8 +660,8 @@ function buildLayout(state: AppState): LayoutResult {
 ViewState はメモリ上のトランジェントな状態であり、Surface View は保持しない。
 Surface View は常に `doc.state` から解決する。
 
-ただし、スコープ切替時のカメラ位置リセットについて:
-- Surface View kind が変わる遷移 (例: Tree スコープ -> Disperse スコープ) ではカメラを初期位置にリセットするのが望ましい
+ただし、スコープ切替時の viewport リセットについて:
+- Surface View kind が変わる遷移 (例: Tree スコープ -> Disperse スコープ) では viewport を初期位置にリセットするのが望ましい
 - `viewState.zoom`, `viewState.cameraX`, `viewState.cameraY` を初期値に戻す
 
 ```typescript
@@ -935,15 +935,15 @@ test("selection preserved after layout switch", async ({ page }) => {
   await expect(nodeA).toHaveClass(/selected/);
 });
 
-// 2. zoom/pan 状態: レイアウトモードが変わるとカメラリセット
-test("camera resets on layout mode change", async ({ page }) => {
+// 2. zoom/pan 状態: レイアウトモードが変わると viewport をリセット
+test("viewport resets on layout mode change", async ({ page }) => {
   await loadJsonDocWithLayout(page, standardDoc, "right-tree");
   // ズームイン
   await page.click("#zoom-in");
   await page.click("#zoom-in");
   // レイアウト切替
   await switchLayout(page, "outline");
-  // fit-all 相当の状態になっている (カメラリセットを確認)
+  // fit-all 相当の状態になっている (viewport リセットを確認)
   // -- 具体的には SVG の transform を検証
 });
 

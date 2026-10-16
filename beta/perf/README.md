@@ -1,6 +1,6 @@
 # WebGL pan / zoom experiment
 
-This is a reproducible measurement artifact, not a CI performance gate. It records browser timing evidence for the same deterministic camera gesture through the `renderer=webgl` and `renderer=svg` paths. Human review decides whether the values are acceptable; the runner only rejects an invalid fixture, rendering failure, or unavailable requested WebGL projection.
+This is a reproducible measurement artifact, not a CI performance gate. It records browser timing evidence for the same deterministic viewport gesture through the `renderer=webgl` and `renderer=svg` paths. Human review decides whether the values are acceptable; the runner only rejects an invalid fixture, rendering failure, or unavailable requested WebGL projection.
 
 ## Fixture contract
 
@@ -44,4 +44,4 @@ The script reads `GET /api/maps/{sourceMapId}`, converts every `nodeType: "folde
 
 ## Measurement semantics
 
-Every experiment creates one isolated headless browser context and one fixed page. WebGL and SVG are loaded sequentially in that same page; every warmup and measured run stays in it and follows the same ordered gesture sequence. The runner never creates or closes a page/context/tab per run. Each operation records request-animation-frame intervals (count, median, p95, max, `>16.7 ms`, `>33.3 ms`), Long Task count/total/max, and operation duration from that probe's own `startedAt`/`endedAt` window. For WebGL the runner additionally requires camera updates to increase, geometry uploads to remain unchanged, and snapshot node/edge/GraphLink counts to remain invariant. A WebGL context that is unavailable or falls back to SVG writes `status: "no-measurement"` and exits non-zero; it is never reported as a WebGL result.
+Every experiment creates one isolated headless browser context and one fixed page. WebGL and SVG are loaded sequentially in that same page; every warmup and measured run stays in it and follows the same ordered gesture sequence. The runner never creates or closes a page/context/tab per run. Each operation records request-animation-frame intervals (count, median, p95, max, `>16.7 ms`, `>33.3 ms`), Long Task count/total/max, and operation duration from that probe's own `startedAt`/`endedAt` window. For WebGL the runner additionally requires viewport updates to increase, geometry uploads to remain unchanged, and snapshot node/edge/GraphLink counts to remain invariant. A WebGL context that is unavailable or falls back to SVG writes `status: "no-measurement"` and exits non-zero; it is never reported as a WebGL result.

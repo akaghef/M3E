@@ -32,7 +32,7 @@
 以下は document 本体の競合判定から外す。
 
 - 選択状態
-- カメラ位置
+- viewport
 - drag 中の一時状態
 - hover 状態
 

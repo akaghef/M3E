@@ -66,7 +66,7 @@ type TourStep = {
 ## 既存機能との衝突チェック
 
 - `?ws=` `?map=` `?scope=` 既存 URL params と並ぶ → `?tour=` `?step=` を追加で衝突なし（コミット d0b5173 と整合）
-- `centerOnNode` の zoom 引数は既に存在 → カメラ制御は流用可
+- `centerOnNode` の zoom 引数は既に存在 → viewport 制御は流用可
 - collapse 状態との関係: ツアー再生時に折りたたまれていたら自動で展開するか
   - L1. 自動展開（推し）
   - L2. そのまま（折りたたみ表示で見せる）

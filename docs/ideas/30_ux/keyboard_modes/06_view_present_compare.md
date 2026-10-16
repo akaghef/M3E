@@ -29,7 +29,7 @@
 
 別ファイル `docs/ideas/slideshow/` で詳細扱い済。
 ここでは **モード群の中での位置付け** だけメモ:
-- Read mode の発展形（編集無効 + カメラがツアー順序で自動移動）
+- Read mode の発展形（編集無効 + viewport がツアー順序に沿って自動移動）
 - Read mode と共通の操作を持たせると学習コスト下がる
 
 ## M21. Compare Mode

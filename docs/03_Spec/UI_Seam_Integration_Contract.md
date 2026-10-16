@@ -18,7 +18,7 @@ into less than A+B+C because they collide on shared runtime resources.
 
 RQ2. The current collision surface is concentrated in
 `beta/src/browser/viewer.ts`: selection, focus, keyboard, pointer capture,
-drag, edit mode, scope/navigation, camera, layout coordinates, render layers,
+drag, edit mode, scope/navigation, viewport, layout coordinates, render layers,
 save queue, undo/redo, clipboard, z-index, and performance hot paths.
 
 RQ3. Per-seam quality does not compose automatically. A seam can pass its unit
@@ -100,7 +100,7 @@ views and mutate only through the owner, registry, controller, port, or command.
 | Hover / hit-test | CSS/DOM transient; no central hover state | `RenderRegistry` + `InteractionArbiter` | Claim hit-test zones and z-order, not hover. |
 | Edit mode | `inlineEditor`, `inlineEdgeLabelEditor`, `suppressInlineBlurCommit`, `annotationTool` | `EditModeStore` | One active editor unless compatible nesting is declared. |
 | Scope/navigation | `currentScopeId`, `currentScopeRootId`, `scopeHistory`, URL scope query | `ScopeNavigationController` | Scope transitions via commands; view routing does not mutate map. |
-| Camera/viewport | `zoom`, `cameraX/Y`, camera motion, pending zoom globals | `ViewportController` | Pan/zoom/follow scheduled; hot paths stay bounded. |
+| viewport | `zoom`, `cameraX/Y`, viewport motion, pending zoom globals | `ViewportController` | Pan/zoom/follow scheduled; hot paths stay bounded. |
 | Layout coordinates | `lastLayout`, `visibleOrder`, dimensions in `render()`; `layout_port.ts` | `LayoutPort` existing | Consume `LayoutResult`; no layout mutation during draw. |
 | Render layers | string buckets in `render()` and fixed SVG order | `RenderRegistry` | Claim slots, bands, and order; no ad hoc bucket append. |
 | Save queue | autosave timer, server saved state, local save/push paths | `PersistencePort` | UI seams mark dirty through persistence commands only. |

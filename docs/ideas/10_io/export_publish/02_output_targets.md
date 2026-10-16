@@ -81,7 +81,7 @@
 ### 何が出るか
 - PPTX または Reveal.js（HTML）形式のスライド
 - マップ subtree → 1ノード1スライド or 1subtree1スライド
-- カメラワーク（slideshow との連携）
+- viewport 移動（slideshow との連携）
 
 ### 読者と慣習
 - **聴衆**: 1分1枚ペース、図中心、テキスト最小
@@ -96,14 +96,14 @@
 | B3d | テンプレ別: title slide / chart / quote | リッチ | テンプレ整備コスト |
 
 ### slideshow との関係
-- slideshow（docs/ideas/slideshow/）はマップ上のカメラワーク
+- slideshow（docs/ideas/slideshow/）はマップ上の viewport 移動
 - B3 はそれを「外部ファイル」として書き出すバージョン
 - → 同じツアー定義を流用、出力先だけ切替（マップ内 / PPTX / Reveal.js）
 
 ## B4. ナレーション付き動画書き出し △
 
 ### 何が出るか
-- マップツアー（カメラ動作）の画面録画 mp4
+- マップツアー（viewport 移動）の画面録画 mp4
 - 音声合成によるナレーション（ノードの details を読み上げ）
 - 字幕 .srt
 

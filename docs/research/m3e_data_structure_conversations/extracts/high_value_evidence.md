@@ -79,7 +79,7 @@ raw conversation全体は `raw_conversations/`、網羅的なスコアは `sourc
 > L94: ただし「別プロセス」「別言語」まで分ける必要は、初期はありません。まずは同一コードベース内で、層として分ければ足ります。
 > L96: 最小分離案（実装単位の提案）
 > L97: 1) Core：Node/Folder/Alias制約、操作コマンド、Undo/Redo、スナップショット、保存形式
-> L98: 2) ViewModel：表示用の派生状態（折りたたみ、帯域、選択、カメラ座標など）
+> L98: 2) ViewModel：表示用の派生状態（折りたたみ、帯域、選択、viewport 座標など）
 > L99: 3) Renderer：ViewModelを入力にCanvasへ描画（副作用は描画のみに限定）
 
 ### 260304_開発言語選定.md:106-117
@@ -121,7 +121,7 @@ raw conversation全体は `raw_conversations/`、網羅的なスコアは `sourc
 > L40: 結論だけ言うと、Reactは使ってよいが、中心に置かないほうがよい。
 > L42: あなたの今の前提は、Chrome上のTypeScript製Webアプリ、MVC系、Model中心、Commandで更新、ドラッグ中はViewStateでプレビューという構成だったはずで、これはかなり妥当です。fileciteturn1file2 Reactはこの上で、アプリの外枠には向くが、キャンバスの操作感そのものを支配させると重くなりやすいです。
 > L44: 特に、Miroっぽい心地よさはReactというより、次で決まります。
-> L45: 1. パン中のカメラ更新を毎フレーム安定して回せること
+> L45: 1. パン中の viewport 更新を毎フレーム安定して回せること
 > L46: 2. ドラッグ中にModelを書き換えず、ViewStateだけで追従させること
 > L47: 3. ヒットテストと描画を細かく分離すること
 > L48: 4. 慣性や速度補間を入れること
@@ -172,7 +172,7 @@ raw conversation全体は `raw_conversations/`、網羅的なスコアは `sourc
 > L27: View：Canvas描画のみ
 > L28: Controller：入力列を解釈し、HitTest結果を用いてCommandを作りModelへ渡す
 > L29: HitTest：座標→対象（nodeId等）を返す
-> L30: ViewState：カメラ、選択、ドラッグ中のプレビュー状態
+> L30: ViewState：viewport、選択、ドラッグ中のプレビュー状態
 > L31: 
 > L32: 初期状態
 > L33: ViewはModelのsnapshotを描画している。ControllerはIdle。

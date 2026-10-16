@@ -98,7 +98,7 @@
 - [ ] 14. Wire `ProgressiveNavigation` through `layoutProgressiveNav`
   - **Boundary:** `workbench-ui.tsx` and optional PN adapter.
   - Replace component-local layout/edge computation with shared output.
-  - Preserve existing PN node labels/actions and active-node PN behavior.
+  - Preserve existing PN node labels/actions and Node PN behavior.
   - Preserve current click/hover/focus activation semantics unless tests expose a visible bug.
   - **Acceptance:** existing `workbench_progressive_nav.spec.js` visible behavior passes; 3rd-level layout route group remains visible.
 
@@ -116,16 +116,16 @@
   - Count `layoutProgressiveNav` recomputes while many `m3e:viewport-changed` events fire.
   - **Acceptance:** test initially fails or is marked expected-fail because current PN remeasures from the high-frequency viewport event.
 
-- [ ] 17. Split camera fast path from PN remeasure
+- [ ] 17. Split viewport fast path from PN remeasure
   - **Boundary:** `workbench-ui.tsx`, PN adapter, minimal `viewer.ts` event change if needed.
-  - Limit full DOM remeasure to open/activeId/anchor identity/layout option/resize/camera settled triggers.
+  - Limit full DOM remeasure to open/activeId/anchor identity/layout option/resize/viewport settled triggers.
   - Coalesce measurement through requestAnimationFrame or debounce.
   - Do not regress linear panel immediate transform sync.
   - **Acceptance:** recompute counter test passes; active PN remains visually stable during drag pan; no synchronous remeasure loop occurs.
 
 - [ ] 18. Add product viewport Playwright regression
   - **Boundary:** `beta/tests/visual/workbench_progressive_nav.spec.js` or new focused spec.
-  - Open active-node PN, simulate pan/zoom or repeated viewport events, assert overlay remains usable and recompute count is bounded.
+  - Open Node PN, simulate pan/zoom or repeated viewport events, assert overlay remains usable and recompute count is bounded.
   - **Acceptance:** test fails if PN recomputes on every viewport tick or jumps into canvas content.
 
 ## Phase 5: Collapse, Overflow, and 3rd-level Product Coverage

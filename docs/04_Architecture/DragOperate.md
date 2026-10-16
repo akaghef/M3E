@@ -5,7 +5,7 @@ Model：ツリー整合性を保証しつつ、Commandを適用・Undo記録・�
 View：Canvas描画のみ
 Controller：入力列を解釈し、HitTest結果を用いてCommandを作りModelへ渡す
 HitTest：座標→対象（nodeId等）を返す
-ViewState：カメラ、選択、ドラッグ中のプレビュー状態
+ViewState：viewport、選択、ドラッグ中のプレビュー状態
 
 初期状態
 ViewはModelのsnapshotを描画している。ControllerはIdle。
