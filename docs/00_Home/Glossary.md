@@ -3,7 +3,7 @@
 M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。
 **新しい語を skill / map / code に持ち込む前にここへ登録する**。揺れを見つけたら正規語を決めて記載する。
 
-最終更新: 2026-10-14
+最終更新: 2026-10-16
 
 ---
 
@@ -55,7 +55,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 |---|---|---|---|
 | **Progressive Navigation (PN)** | 段階的に操作項目を辿るナビゲーションUIの総称 | Surface PN, Node PN | 無修飾の `PN` はこの総称を指す |
 | **Surface Progressive Navigation (Surface PN)** | Surface・表示・ツール群を辿る PN | Progressive Navigation, Node PN | 旧 `[GUI] navigation root`。実装識別子 `gui` は互換名として残す |
-| **Node Context Progressive Navigation (Node PN)** | 選択中 node を文脈として、その node と子孫に対する操作を辿る PN | Progressive Navigation, Surface PN, node, 子孫 | node 自体の階層表示ではなく、選択 node を文脈にした操作UI。旧 `active-node PN`。実装識別子 `active-node` は互換名として残す |
+| **Node Progressive Navigation (Node PN)** | 選択中 node を文脈として、その node と子孫に対する操作を辿る PN | Progressive Navigation, Surface PN, node, 子孫 | node 自体の階層表示ではなく、選択 node を文脈にした操作UI。旧称は `Node Context Progressive Navigation` と `active-node PN`。実装識別子 `active-node` は互換名として残す |
 
 | **spine** | 分散した node / alias / link 群を、人間が木または DAG として読めるようにする主骨格 | node, edge, scope, syntax tree, semantic graph | Rapid では主に親子 edge の列として保存される。個々の node が参照関係や GraphLink を持っていても、説明順序・階層・責任分解の本質を捕まえる背骨を spine と呼ぶ。Scatter などの自由配置でも、spine が決まれば木/DAG へ戻せる。表示上の線や補助関係とは混同しない |
 | **folder** | 一般向け説明で scope を直感的に伝えるために使う語。実装上は nodeType の一種でもある | scope | UI/導入説明で使ってよいが、**仕様・実装の正規語は `scope`** |
@@ -264,6 +264,7 @@ map を記述・設計する4区分。独立した保存層や固定の処理順
 | **viewer** | map を描画するブラウザ UI | map, meta-panel | |
 | **Pane** | 画面のレイアウトを分割して確保した区画 | Panel, viewer | M3E リポジトリでの GUI 用語法。Inspector などの役割とは独立し、分割区画として配置する場合は `Inspector pane` と呼ぶ |
 | **Panel** | 他の領域の上に浮かせて表示する UI のまとまり | Pane, viewer | M3E リポジトリでの GUI 用語法。ドラッグで移動できることは必須としない。Inspector を浮かせて表示する場合は `Inspector panel` と呼ぶ |
+| **viewport** | Viewer の描画面に表示される範囲。pan（camera position）と zoom によって決まる | viewer, pan, zoom, ViewState, scope | ViewState のセッション状態として scope ごとに保持する。scope に入る時は fit-to-content にリセットし、戻る時は元の位置に復元する。map には保存せず、Cloud Sync 対象外 |
 | **meta-panel** | viewer 上部の UI パネル。モード / scope / ステータス等を表示 | viewer | `beta/README.md` 記載の正式名。（別表記）メタパネル |
 | **graph** | map の**グラフ形式**表現（node + edge の構造そのもの） | map, linear | M3E の既定ビュー。`linear` との対比で使う |
 | **linear** | 同じ内容を**線形表記**（リスト・アウトライン・本文）で扱う形式 | graph, linear-text, linear-transform | tree → list の写像。編集は linear 側でもできる。（別表記）linear view |
