@@ -1,3 +1,4 @@
+import { renderUpdateMetrics } from "../rendering/render_update_metrics";
 import { readAgentNode, agentNodeMetric, agentNodeLod } from "../shared/agent_node_data";
 import { initialLifecycleAnimationMapping, petCatalog, resolvePetSprite } from "./agent_node_assets";
 import agentNodeCss from "../shared/agent_node.css?inline";
@@ -4848,83 +4849,88 @@ function updateWebGLNodeDragPreview(event: PointerEvent): void {
 
 function activateWebGLProjection(): void {
   if (!webglCanvas || !webglSurfaceSupported()) return;
-  // Measure/capture the appearance in the same task that presents WebGL.
-  // Do not show an intermediate SVG frame between renderer updates.
-  canvas.removeAttribute("hidden");
-  applyCanvasViewportTransform();
-  // A hidden canvas reports a 0×0 box; expose it before allocating the
-  // drawing buffer so DPR sizing is based on the real viewport.
-  webglCanvas.hidden = false;
-  if (!webglProjection) {
-    webglProjection = new WebGLRenderingProjection(webglCanvas, {
-      onUnavailable: (reason) => {
-        cancelStructureNodeDrag();
-        webglFallbackReason = reason;
-        webglRendererActive = false;
-        webglCanvas.hidden = true;
-        canvas.removeAttribute("hidden");
-        canvas.style.transform = "";
-        syncInlineEditorPosition();
-        setStatus(`WebGL unavailable: ${reason} SVG fallback is active.`, true);
-      },
-      onRestored: () => {
-        // Context loss temporarily displays the canonical SVG. The projection
-        // retains its derived snapshot/camera/interaction state, so resume it
-        // without rebuilding the map or changing canonical UI selection.
-        webglFallbackReason = null;
-        const renderableSurface = viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode();
-        if (!WEBGL_RENDERER_REQUESTED || !renderableSurface) return;
-        webglRendererActive = true;
-        webglCanvas.hidden = false;
-        canvas.setAttribute("hidden", "");
-        syncLinearPanelPosition();
-        webglProjection?.resize();
-        webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
-        syncWebGLInteraction();
-        syncInlineEditorPosition();
-        setStatus("WebGL context restored.");
-      },
-    });
-    if (!webglProjection.mount()) return;
-  }
-  webglProjection.resize();
-  if (!lastLayout) return;
+  const metricStartedAt = performance.now();
   try {
-    webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
-    webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
-    webglProjection.setSnapshot(webglLastSnapshot);
-    webglPaintedSelection = new Set(viewState.selectedNodeIds);
-    webglPaintedPrimary = viewState.selectedNodeId;
-    webglPaintedLink = selectedGraphLinkId;
-  } catch (error) {
-    webglFallbackReason = error instanceof Error ? error.message : String(error);
-    deactivateWebGLProjection();
-    applyZoom();
-    setStatus(`WebGL appearance unavailable: ${webglFallbackReason}`, true);
-    return;
+    // Measure/capture the appearance in the same task that presents WebGL.
+    // Do not show an intermediate SVG frame between renderer updates.
+    canvas.removeAttribute("hidden");
+    applyCanvasViewportTransform();
+    // A hidden canvas reports a 0×0 box; expose it before allocating the
+    // drawing buffer so DPR sizing is based on the real viewport.
+    webglCanvas.hidden = false;
+    if (!webglProjection) {
+      webglProjection = new WebGLRenderingProjection(webglCanvas, {
+        onUnavailable: (reason) => {
+          cancelStructureNodeDrag();
+          webglFallbackReason = reason;
+          webglRendererActive = false;
+          webglCanvas.hidden = true;
+          canvas.removeAttribute("hidden");
+          canvas.style.transform = "";
+          syncInlineEditorPosition();
+          setStatus(`WebGL unavailable: ${reason} SVG fallback is active.`, true);
+        },
+        onRestored: () => {
+          // Context loss temporarily displays the canonical SVG. The projection
+          // retains its derived snapshot/camera/interaction state, so resume it
+          // without rebuilding the map or changing canonical UI selection.
+          webglFallbackReason = null;
+          const renderableSurface = viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode();
+          if (!WEBGL_RENDERER_REQUESTED || !renderableSurface) return;
+          webglRendererActive = true;
+          webglCanvas.hidden = false;
+          canvas.setAttribute("hidden", "");
+          syncLinearPanelPosition();
+          webglProjection?.resize();
+          webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+          syncWebGLInteraction();
+          syncInlineEditorPosition();
+          setStatus("WebGL context restored.");
+        },
+      });
+      if (!webglProjection.mount()) return;
+    }
+    webglProjection.resize();
+    if (!lastLayout) return;
+    try {
+      webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
+      webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      webglProjection.setSnapshot(webglLastSnapshot);
+      webglPaintedSelection = new Set(viewState.selectedNodeIds);
+      webglPaintedPrimary = viewState.selectedNodeId;
+      webglPaintedLink = selectedGraphLinkId;
+    } catch (error) {
+      webglFallbackReason = error instanceof Error ? error.message : String(error);
+      deactivateWebGLProjection();
+      applyZoom();
+      setStatus(`WebGL appearance unavailable: ${webglFallbackReason}`, true);
+      return;
+    }
+    if (WEBGL_DEBUG_REQUESTED) {
+      webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length, groups: webglLastSnapshot.groups.length });
+    }
+    webglRendererActive = true;
+    canvas.setAttribute("hidden", "");
+    webglCanvas.dataset.renderer = "retained-vector-tiles";
+    webglCanvas.dataset.zoom = String(viewState.zoom);
+    syncLinearPanelPosition();
+    syncWebGLInteraction();
+    syncInlineEditorPosition();
+    webglProjection.present();
+    (globalThis as any).__m3eWebGLProjection = {
+      getDebugState: () => webglProjection?.getDebugState(),
+      getSnapshot: () => webglLastSnapshot,
+      forceFallback: () => {
+        webglProjection?.destroy();
+        webglProjection = null;
+        webglFallbackReason = "Forced fallback";
+        render();
+      },
+    };
+  } finally {
+    renderUpdateMetrics.record("projection", performance.now() - metricStartedAt);
   }
-  if (WEBGL_DEBUG_REQUESTED) {
-    webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
-    webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length, groups: webglLastSnapshot.groups.length });
-  }
-  webglRendererActive = true;
-  canvas.setAttribute("hidden", "");
-  webglCanvas.dataset.renderer = "retained-vector-tiles";
-  webglCanvas.dataset.zoom = String(viewState.zoom);
-  syncLinearPanelPosition();
-  syncWebGLInteraction();
-  syncInlineEditorPosition();
-  webglProjection.present();
-  (globalThis as any).__m3eWebGLProjection = {
-    getDebugState: () => webglProjection?.getDebugState(),
-    getSnapshot: () => webglLastSnapshot,
-    forceFallback: () => {
-      webglProjection?.destroy();
-      webglProjection = null;
-      webglFallbackReason = "Forced fallback";
-      render();
-    },
-  };
 }
 
 function scheduleWebGLProjectionActivation(): void {
@@ -4996,32 +5002,37 @@ function applyLinearPanelViewportTransform(): void {
 }
 
 function applyZoom(options: ViewportApplyOptions = {}): void {
-  syncNodeResizeHandle();
-  if (isWebGLRendererActive()) {
-    webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
-    if (webglCanvas && webglCanvas.dataset.zoom !== String(viewState.zoom)) webglCanvas.dataset.zoom = String(viewState.zoom);
-    applyLinearPanelViewportTransform();
-    syncInlineEditorPosition();
-    syncWebGLGraphLinkControls();
-    if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
-      webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+  const metricStartedAt = performance.now();
+  try {
+    syncNodeResizeHandle();
+    if (isWebGLRendererActive()) {
+      webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      if (webglCanvas && webglCanvas.dataset.zoom !== String(viewState.zoom)) webglCanvas.dataset.zoom = String(viewState.zoom);
+      applyLinearPanelViewportTransform();
+      syncInlineEditorPosition();
+      syncWebGLGraphLinkControls();
+      if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
+        webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      }
+      if (options.syncDependents !== false) {
+        // Keep retained SVG geometry aligned for measurement and fallback without
+        // rebuilding the scene merely to finish a camera move.
+        applyCanvasViewportTransform();
+        refreshBoardViewportRect();
+        window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+      }
+      return;
     }
-    if (options.syncDependents !== false) {
-      // Keep retained SVG geometry aligned for measurement and fallback without
-      // rebuilding the scene merely to finish a camera move.
-      applyCanvasViewportTransform();
-      refreshBoardViewportRect();
-      window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+    // Continuous pan/zoom only writes affine transforms; layout-dependent sync trails the gesture.
+    applyCanvasViewportTransform();
+    if (options.syncDependents === false) {
+      applyLinearPanelViewportTransform();
+      return;
     }
-    return;
+    syncViewportDependents();
+  } finally {
+    renderUpdateMetrics.record("applyZoom", performance.now() - metricStartedAt);
   }
-  // Continuous pan/zoom only writes affine transforms; layout-dependent sync trails the gesture.
-  applyCanvasViewportTransform();
-  if (options.syncDependents === false) {
-    applyLinearPanelViewportTransform();
-    return;
-  }
-  syncViewportDependents();
 }
 
 function markViewportDependentSyncPending(): void {
@@ -7826,6 +7837,15 @@ function graphLinkLabelPointForRoute(
 }
 
 function render(incremental = false): void {
+  const metricStartedAt = performance.now();
+  try {
+    renderScene(incremental);
+  } finally {
+    renderUpdateMetrics.record("render", performance.now() - metricStartedAt);
+  }
+}
+
+function renderScene(incremental: boolean): void {
   const scope = map ? normalizedCurrentScopeId() : "";
   if (scope !== fitCycleScope) {
     resetFitCycle();

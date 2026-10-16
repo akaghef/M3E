@@ -1,3 +1,4 @@
+import { RENDER_UPDATE_KEYS, renderUpdateMetrics, renderUpdateRate } from "../rendering/render_update_metrics";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { hasPrimaryModifier, keyboardPlatform } from "./viewer_keyboard";
@@ -671,6 +672,57 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
   );
 }
 
+const RENDER_UPDATE_LABELS = {
+  render: ["シーン更新", "render() — 全体・差分のレイアウトと描画データの更新"],
+  projection: ["WebGL再構築", "activateWebGLProjection() — 描画データの再構築と反映"],
+  applyZoom: ["表示位置更新", "applyZoom() — カメラと関連表示の更新"],
+  setCamera: ["カメラ設定", "setCamera() — WebGLへのカメラ更新要求"],
+  draw: ["WebGL描画", "draw() — 描画処理の実行回数。GPU draw call数・FPSとは異なります"],
+};
+
+const RenderUpdatesPanel = React.memo(function RenderUpdatesPanel(): React.ReactElement {
+  const [sample, setSample] = useState(() => {
+    const current = renderUpdateMetrics.snapshot();
+    return { previous: current, current };
+  });
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      const current = renderUpdateMetrics.snapshot();
+      setSample(previous => ({ previous: previous.current, current }));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const webgl = q<HTMLCanvasElement>("#webgl-canvas");
+  const renderer = webgl && !webgl.hidden ? "WebGL" : "SVG";
+  return (
+    <section className="wb-panel-section wb-render-updates" data-testid="render-updates">
+      <div className="wb-render-updates-head">
+        <div className="wb-section-title">更新情報 · {renderer}</div>
+        <button type="button" onClick={() => {
+          renderUpdateMetrics.reset();
+          const current = renderUpdateMetrics.snapshot();
+          setSample({ previous: current, current });
+        }} aria-label="描画計測をリセット">リセット</button>
+      </div>
+      <table aria-label="描画更新の計測">
+        <thead><tr><th scope="col">処理</th><th scope="col">回/秒</th><th scope="col">累計</th><th scope="col">最大ms</th></tr></thead>
+        <tbody>{RENDER_UPDATE_KEYS.map(key => {
+          const metric = sample.current.metrics[key];
+          const unavailable = renderer !== "WebGL" && (key === "projection" || key === "setCamera" || key === "draw");
+          return <tr key={key} data-metric={key} title={RENDER_UPDATE_LABELS[key][1]}>
+            <th scope="row">{RENDER_UPDATE_LABELS[key][0]}</th>
+            <td data-value="rate">{unavailable ? "—" : renderUpdateRate(key, sample.previous, sample.current).toFixed(1)}</td>
+            <td data-value="count">{metric.count}</td>
+            <td data-value="max">{metric.count ? metric.maxMs.toFixed(1) : "—"}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+      <p>1秒ごとに表示。累計・最大は読込／リセット以降。msは関数の経過時間（GPU完了時間ではありません）。</p>
+    </section>
+  );
+});
+
 function RightPanel({
   snapshot,
   tool,
@@ -719,7 +771,7 @@ function RightPanel({
         <div className="wb-section-title">Selected node</div>
         <div className="wb-selected-card">
           <strong>{snapshot.selected.replace(/\s*\(\d+\)$/, "")}</strong>
-          <span>scope {snapshot.scope}</span>
+          <span>{byId("scope-meta")?.textContent || "Scope"}</span>
         </div>
         <div className="wb-stats">
           <span>{snapshot.nodes} nodes</span>
@@ -727,15 +779,7 @@ function RightPanel({
           <span>{snapshot.annotations} marks</span>
         </div>
       </section>
-      <section className="wb-panel-section">
-        <div className="wb-section-title">Node actions</div>
-        <div className="wb-action-grid">
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }))}>Add child</button>
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }))}>Toggle scope</button>
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "]", bubbles: true }))}>Enter scope</button>
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "[", bubbles: true }))}>Exit scope</button>
-        </div>
-      </section>
+      <RenderUpdatesPanel />
       <section className="wb-panel-section">
         <div className="wb-section-title">Annotation</div>
         <div className="wb-tool-summary">

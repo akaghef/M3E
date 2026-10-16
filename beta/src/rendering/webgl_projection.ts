@@ -1,3 +1,4 @@
+import { renderUpdateMetrics } from "./render_update_metrics";
 import { WebGLSceneTiles, translatePaintScene, type PaintScene, type PaintCommand } from "./webgl_scene_tiles";
 import { FrameInvalidation } from "./frame_invalidation";
 
@@ -490,18 +491,23 @@ export class WebGLRenderingProjection implements RenderingProjection {
   present(): void { if (this.active) this.frame.flush(); }
 
   setCamera(camera: CameraState): void {
-    const zoomChanged = camera.zoom !== this.camera.zoom;
-    this.camera = { ...camera };
-    this.cameraUpdates += 1;
-    if (this.active) this.frame.invalidate();
-    const needsRefinement = zoomChanged || this.qualityTimer !== null;
-    if (this.qualityTimer) clearTimeout(this.qualityTimer);
-    if (needsRefinement) this.qualityTimer = setTimeout(() => {
-      this.qualityTimer = null;
-      if (!this.active) return;
-      this.sceneTiles?.refine(this.camera, this.canvas.width / this.cssWidth);
-      this.frame.invalidate();
-    }, 120);
+    const metricStartedAt = performance.now();
+    try {
+      const zoomChanged = camera.zoom !== this.camera.zoom;
+      this.camera = { ...camera };
+      this.cameraUpdates += 1;
+      if (this.active) this.frame.invalidate();
+      const needsRefinement = zoomChanged || this.qualityTimer !== null;
+      if (this.qualityTimer) clearTimeout(this.qualityTimer);
+      if (needsRefinement) this.qualityTimer = setTimeout(() => {
+        this.qualityTimer = null;
+        if (!this.active) return;
+        this.sceneTiles?.refine(this.camera, this.canvas.width / this.cssWidth);
+        this.frame.invalidate();
+      }, 120);
+    } finally {
+      renderUpdateMetrics.record("setCamera", performance.now() - metricStartedAt);
+    }
   }
 
   updateNodePaint(paint: PaintScene, ids: Set<string>): PaintScene | undefined {
@@ -653,35 +659,40 @@ export class WebGLRenderingProjection implements RenderingProjection {
   private draw(): void {
     const gl = this.gl;
     if (!gl || !this.active || gl.isContextLost()) return;
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    if (this.snapshot?.paintScene && this.sceneTiles && this.textProgram && this.textBuffer) {
-      const program = this.textProgram;
-      gl.useProgram(program);
-      this.bindCameraUniforms(program);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
-      const position = gl.getAttribLocation(program, "a_position");
-      const uv = gl.getAttribLocation(program, "a_uv");
-      gl.enableVertexAttribArray(position);
-      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 16, 0);
-      gl.enableVertexAttribArray(uv);
-      gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 16, 8);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
-      // Canvas tiles are premultiplied; SRC_ALPHA would multiply alpha twice
-      // and darken antialiased glyphs/curves.
-      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      const tileUniform = gl.getUniformLocation(program, "u_tile");
-      const gutterUniform = gl.getUniformLocation(program, "u_gutter");
-      this.drawCalls += this.sceneTiles.draw(this.camera, this.cssWidth, this.cssHeight, this.canvas.width / this.cssWidth, (tile, g) => {
-        gl.bindTexture(gl.TEXTURE_2D, tile.texture);
-        gl.uniform4f(tileUniform, tile.x, tile.y, tile.size, tile.size);
-        gl.uniform1f(gutterUniform, g);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-      });
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    const metricStartedAt = performance.now();
+    try {
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      if (this.snapshot?.paintScene && this.sceneTiles && this.textProgram && this.textBuffer) {
+        const program = this.textProgram;
+        gl.useProgram(program);
+        this.bindCameraUniforms(program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
+        const position = gl.getAttribLocation(program, "a_position");
+        const uv = gl.getAttribLocation(program, "a_uv");
+        gl.enableVertexAttribArray(position);
+        gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(uv);
+        gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 16, 8);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+        // Canvas tiles are premultiplied; SRC_ALPHA would multiply alpha twice
+        // and darken antialiased glyphs/curves.
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        const tileUniform = gl.getUniformLocation(program, "u_tile");
+        const gutterUniform = gl.getUniformLocation(program, "u_gutter");
+        this.drawCalls += this.sceneTiles.draw(this.camera, this.cssWidth, this.cssHeight, this.canvas.width / this.cssWidth, (tile, g) => {
+          gl.bindTexture(gl.TEXTURE_2D, tile.texture);
+          gl.uniform4f(tileUniform, tile.x, tile.y, tile.size, tile.size);
+          gl.uniform1f(gutterUniform, g);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        });
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      }
+      if (this.overlayBuffer) this.drawColorBuffer(this.overlayBuffer, this.overlayVertexCount);
+    } finally {
+      renderUpdateMetrics.record("draw", performance.now() - metricStartedAt);
     }
-    if (this.overlayBuffer) this.drawColorBuffer(this.overlayBuffer, this.overlayVertexCount);
   }
 
   private onContextLost = (event: Event): void => {

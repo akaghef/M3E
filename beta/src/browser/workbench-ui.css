@@ -361,6 +361,14 @@
   font-weight: 700;
 }
 
+.wb-render-updates-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.wb-render-updates-head button { border: 1px solid currentColor; border-radius: 4px; padding: 2px 5px; color: inherit; background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
+.wb-render-updates table { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.wb-render-updates th, .wb-render-updates td { padding: 4px 2px; text-align: right; }
+.wb-render-updates th:first-child { text-align: left; font-weight: 500; }
+.wb-render-updates thead { opacity: .7; }
+.wb-render-updates p { margin: 8px 0 0; font-size: 10px; line-height: 1.5; opacity: .7; }
+
 .wb-tool-summary,
 .wb-user-row {
   display: flex;
