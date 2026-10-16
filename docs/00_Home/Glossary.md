@@ -264,6 +264,7 @@ map を記述・設計する4区分。独立した保存層や固定の処理順
 | **viewer** | map を描画するブラウザ UI | map, meta-panel | |
 | **Pane** | 画面のレイアウトを分割して確保した区画 | Panel, viewer | M3E リポジトリでの GUI 用語法。Inspector などの役割とは独立し、分割区画として配置する場合は `Inspector pane` と呼ぶ |
 | **Panel** | 他の領域の上に浮かせて表示する UI のまとまり | Pane, viewer | M3E リポジトリでの GUI 用語法。ドラッグで移動できることは必須としない。Inspector を浮かせて表示する場合は `Inspector panel` と呼ぶ |
+| **Annotation Panel** | 注釈ツール（Pen / Highlighter / Date label / Eraser / Select）の切り替えと、色・太さ・透明度の設定をまとめた Panel | Panel, Inspector, viewer | Inspector は node 情報・Node actions・Collaboration などのメタ要素を置く場所で、注釈の色・太さ・透明度は Annotation Panel に分離した |
 | **viewport** | Viewer の描画面に表示される範囲。pan（表示範囲の位置）と zoom によって決まる | viewer, pan, zoom, ViewState, scope | ViewState のセッション状態として scope ごとに保持する。scope に入る時は fit-to-content にリセットし、戻る時は元の位置に復元する。map には保存せず、Cloud Sync 対象外 |
 | **meta-panel** | viewer 上部の UI パネル。モード / scope / ステータス等を表示 | viewer | `beta/README.md` 記載の正式名。（別表記）メタパネル |
 | **status bar** | viewer の左下にあり、現在の状態を短いテキスト（例: `Ready`、`MERGING (n/m resolved)`、warnings）で示す領域 | viewer, meta-panel | meta-panel とは別の表示領域 |
