@@ -126,7 +126,7 @@ Merge Mode は通常のマップ編集とは異なる専用モードである。
 - 突入条件: `sync pull` or `sync push` で競合検出時
 - 退出条件: `sync resolve`（全競合解決後）or `sync abort`
 - Merge Mode 中はノードの編集・追加・削除を禁止する（read-only + 選択のみ）
-- ステータスバーに `MERGING (n/m resolved)` を常時表示
+- status bar に `MERGING (n/m resolved)` を常時表示
 
 ### 3.2 マップ上のビジュアル表現
 

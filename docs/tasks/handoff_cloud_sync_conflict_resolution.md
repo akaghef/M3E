@@ -122,7 +122,7 @@ let mergeSession: MergeSession | null = null;
 
 - `mergeSession !== null` 時に Merge Mode
 - ノード編集・追加・削除を無効化（read-only）
-- ステータスバーに `MERGING (n/m resolved)` 表示
+- status bar に `MERGING (n/m resolved)` 表示
 - 既存の `cloudSyncBadgeEl` 周辺を拡張
 
 **2-2. マップ上の色分け**
@@ -226,7 +226,7 @@ resolve 確定時、不採用変更を IndexedDB `m3e-conflict-backups` に退�
 | `beta/src/node/start_viewer.ts` | `sync fetch` / `sync resolve` API 追加 |
 | `beta/src/node/cloud_sync.ts` | 変更なし（detectCloudConflict はそのまま利用） |
 | `beta/src/shared/types.ts` | NodeDiff, MergeSession, ConflictBackup 型追加 |
-| `beta/viewer.html` | Merge Resolution パネル DOM、ステータスバー拡張 |
+| `beta/viewer.html` | Merge Resolution パネル DOM、status bar 拡張 |
 | `beta/viewer.css` | 競合色分け、カードずらし、グロー、パネルスタイル |
 | `beta/tests/unit/merge_diff.test.js` | **新規** — diff エンジンのユニットテスト |
 | `beta/tests/unit/cloud_sync_api_integration.test.js` | fetch/resolve API テスト追加 |

@@ -152,7 +152,7 @@ interface TreeNode {
 - エッジ描画ループ（viewer.ts:2890）の可視性判定に加える
 - `ViewState` に `linkKindFilter: string[] | "all" | "semantic_only" | "uses_only"` を追加
 - キーボードショートカット（例: `Shift+E` で循環、`Shift+U` で uses トグル）
-- ステータスバーに現在のフィルタ表示
+- status bar に現在のフィルタ表示
 
 ### 得られる機能
 

@@ -266,6 +266,7 @@ map を記述・設計する4区分。独立した保存層や固定の処理順
 | **Panel** | 他の領域の上に浮かせて表示する UI のまとまり | Pane, viewer | M3E リポジトリでの GUI 用語法。ドラッグで移動できることは必須としない。Inspector を浮かせて表示する場合は `Inspector panel` と呼ぶ |
 | **viewport** | Viewer の描画面に表示される範囲。pan（表示範囲の位置）と zoom によって決まる | viewer, pan, zoom, ViewState, scope | ViewState のセッション状態として scope ごとに保持する。scope に入る時は fit-to-content にリセットし、戻る時は元の位置に復元する。map には保存せず、Cloud Sync 対象外 |
 | **meta-panel** | viewer 上部の UI パネル。モード / scope / ステータス等を表示 | viewer | `beta/README.md` 記載の正式名。（別表記）メタパネル |
+| **status bar** | viewer の左下にあり、現在の状態を短いテキスト（例: `Ready`、`MERGING (n/m resolved)`、warnings）で示す領域 | viewer, meta-panel | meta-panel とは別の表示領域 |
 | **graph** | map の**グラフ形式**表現（node + edge の構造そのもの） | map, linear | M3E の既定ビュー。`linear` との対比で使う |
 | **linear** | 同じ内容を**線形表記**（リスト・アウトライン・本文）で扱う形式 | graph, linear-text, linear-transform | tree → list の写像。編集は linear 側でもできる。（別表記）linear view |
 | **linear-text** | linear 形式のテキスト実体（Markdown など） | linear, linear-transform | Obsidian/vault export の出力形。linear-transform 経由で生成 |
