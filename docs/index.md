@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 630
+- Indexed files: 631
 
 ## Reading Routes
 
@@ -367,6 +367,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260824_node_plugin_and_layout_contract.md](<./ideas/260824_node_plugin_and_layout_contract.md>) | Markdown | Node plugin と layout 契約 — 設計会話ログ (2026-08-24) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 要点は node core を最小に保つ、layout ... |
 | [ideas/260914_ot_prompt_role_agent_node_orrery_force.md](<./ideas/260914_ot_prompt_role_agent_node_orrery_force.md>) | Markdown | OT prompt-roleとAgent nodeを先行吸収する実行設計 | > Status: idea / implementation-direction memo。Role canonの完成仕様ではない。 |
 | [ideas/260914_unified_work_graph_multi_pc_resource_ot.md](<./ideas/260914_unified_work_graph_multi_pc_resource_ot.md>) | Markdown | 一枚絵としてのM3E — 個人multi-PC、常駐host、Resource、OT統合 | > Status: idea / vision memo。決定・仕様ではない。 |
+| [ideas/261017_lane_view_graphlink_reification.md](<./ideas/261017_lane_view_graphlink_reification.md>) | Markdown | Lane view と GraphLink の関係の実体化 | 最終更新: 2026-10-17 |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
 | [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |
