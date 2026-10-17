@@ -1,3 +1,5 @@
+import { LaneViewController } from "./lane_view_controller";
+import { laneFrames, laneLinkParts } from "./lane_scene";
 import { renderUpdateMetrics } from "../rendering/render_update_metrics";
 import { sanitizeGraphLinkAttributes } from "../shared/graph_link_attributes";
 import { readAgentNode, agentNodeMetric, agentNodeLod } from "../shared/agent_node_data";
@@ -904,6 +906,7 @@ function thinkingModeLabel(mode: ThinkingMode): string {
 }
 
 function surfaceViewModeLabel(mode: SurfaceViewMode): string {
+  if (mode === "lane") return "Lane";
   if (mode === "system") return "System";
   if (mode === "scatter") return "Disperse";
   if (mode === "logic-chart") return "Logic Chart";
@@ -933,6 +936,7 @@ function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
 }
 
 function surfaceLayoutForKind(kind: SurfaceKind): SurfaceLayout {
+  if (kind === "lane") return "lane";
   if (kind === "system") return "flow-lr";
   if (kind === "scatter") return "scatter";
   if (kind === "logic-chart") return "logic-chart";
@@ -1004,6 +1008,8 @@ function inferSurfaceLayoutDirectionForScope(scopeId: string): SurfaceLayoutDire
 }
 
 function syncThinkingModeUi(): void {
+  document.documentElement.dataset.surfaceViewMode = viewState.surfaceViewMode;
+  document.documentElement.dataset.surfaceSpace = viewState.surfaceSpace;
   const mode = viewState.thinkingMode;
   const surfaceMode = structuredSurfaceMode();
   document.body.classList.toggle("scatter-surface-active", viewState.surfaceViewMode === "scatter");
@@ -1073,6 +1079,7 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   if (viewState.surfaceViewMode === "scatter" && mode !== "scatter") {
     stopScatterAnimation(true);
   }
+  try { laneView.selectSurface(mode); } catch { setStatus("Lane の root node を指定し直してください。"); return; }
   viewState.surfaceViewMode = mode;
   viewState.surfaceSpace = inferSurfaceSpaceForScope(currentScopeRootId(), mode);
   viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
@@ -1126,6 +1133,7 @@ function setPublicLayoutOptions(options: Partial<PublicLayoutOptions>): void {
   if (options.link?.route) {
     viewState.surfaceLinkRoute = sanitizeSurfaceLinkRoute(options.link.route);
   }
+  if (viewState.surfaceViewMode === "lane") { syncMapModelStateFromRuntime(); scheduleAutosave(); }
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -2478,7 +2486,7 @@ function sanitizeSurfaceKind(raw: unknown): SurfaceKind | null {
     || raw === "system"
     || raw === "scatter"
     || raw === "logic-chart"
-    || raw === "timeline"
+    || raw === "timeline" || raw === "lane"
     ? raw
     : null;
 }
@@ -2488,7 +2496,7 @@ function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
     || raw === "flow-lr"
     || raw === "scatter"
     || raw === "logic-chart"
-    || raw === "timeline"
+    || raw === "timeline" || raw === "lane"
     ? raw
     : null;
 }
@@ -2564,6 +2572,7 @@ function sanitizeMapModelState(state: AppState): void {
       id: typeof surface.id === "string" && surface.id ? surface.id : surfaceKey,
       scopeId,
       kind,
+      displayRootId: typeof surface.displayRootId === "string" ? surface.displayRootId : undefined,
       layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
       surfaceView: migrateSurfaceViewFromMapRead(
         state,
@@ -2608,6 +2617,7 @@ function sanitizeMapModelState(state: AppState): void {
       id: existingSurface?.id || preferredPrimarySurfaceId,
       scopeId,
       kind: existingSurface?.kind || surfaceKind,
+      displayRootId: existingSurface?.displayRootId,
       layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
       surfaceView: existingSurface?.surfaceView || migrateSurfaceViewFromMapRead(state, scopeId, undefined),
       nodeViews: existingSurface?.nodeViews || {},
@@ -7630,7 +7640,16 @@ window.m3eLayout = (
   options: LayoutOptions = {},
 ): LayoutResult => layoutPortLayout(graph, boxSizes, mode, options);
 
+const laneView = new LaneViewController({
+  state: () => map?.state ?? null, scopeRoot: currentScopeRootId, view: () => viewState,
+  measure: (id, root) => measureLayoutNode(map!.state, id, root, structuredLayoutConfig("tree")),
+  render: scheduleRender, fit: fitDocument, status: setStatus, apply: setSurfaceViewMode,
+  undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
+  clear: () => { retainedSvgScene.update(canvas, [], true); },
+});
+
 function buildLayout(state: AppState): LayoutResult {
+  if (viewState.surfaceViewMode === "lane") return laneView.layout();
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
   const mode = surfaceKindForViewMode(viewState.surfaceViewMode);
@@ -7848,6 +7867,7 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
+  if (!laneView.prepare()) return;
   const scope = map ? normalizedCurrentScopeId() : "";
   if (scope !== fitCycleScope) {
     resetFitCycle();
@@ -7887,12 +7907,12 @@ function renderScene(incremental: boolean): void {
   nodeAuxMarkup.clear();
   visibleOrder = layout.order.filter((id) => !orreryNetwork.isRuntimeNode(id));
   _linearPanelLayoutDirty = true;
-  const displayRootId = currentScopeRootId();
+  const displayRootId = laneView.displayRootId();
   const displayRootNode = state.nodes[displayRootId];
   const flowSurface = currentSurfaceIsFlowMode();
   const scatterSurface = currentSurfaceIsScatterMode();
   const structuredMode = structuredSurfaceMode() || "tree";
-  const rootlessSurface = flowSurface || scatterSurface;
+  const rootlessSurface = flowSurface || scatterSurface || Boolean(layout.lane);
   const scatterNodeRenderable = (nodeId: string): boolean =>
     !scatterSurface || nodeId !== displayRootId;
 
@@ -7903,11 +7923,12 @@ function renderScene(incremental: boolean): void {
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let defs = "<defs>";
-  let surfaceFrames = "";
+  let surfaceFrames = laneFrames(layout, escapeXml);
   let disperseGroups = "";
   let edges = "";
   let scatterGuides = "";
   let graphLinks = "";
+  let graphLinkHits = "";
   let overlays = "";
   let annotations = "";
   const nodeParts: Array<[string, string]> = [];
@@ -8178,7 +8199,8 @@ function renderScene(incremental: boolean): void {
 
     const selectedClass = viewState.selectedLinkId === link.id || selectedGraphLinkId === link.id ? " selected" : "";
     graphLinks += `<path class="graph-link${styleClass}${selectedClass}" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
-    graphLinks += `<path class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" d="${graphLinkPathD}" />`;
+    const hit = `<path class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" d="${graphLinkPathD}" />`;
+    if (layout.lane) graphLinkHits += hit; else graphLinks += hit;
     if (label) {
       const labelWidth = Math.max(48, label.length * 7 + 18);
       const labelY = controlY - 10;
@@ -8260,7 +8282,7 @@ function renderScene(incremental: boolean): void {
 
   function nodeDrawSurface(): NodeDrawSurface {
     return {
-      view: canonicalSurfaceViewName(scatterSurface ? "scatter" : structuredMode),
+      view: canonicalSurfaceViewName(layout.lane ? "lane" : scatterSurface ? "scatter" : structuredMode),
       structuredMode: canonicalSurfaceViewName(structuredMode),
       displayRootId,
       rootless: rootlessSurface,
@@ -8330,9 +8352,9 @@ function renderScene(incremental: boolean): void {
         reparentSource: viewState.reparentSourceIds.has(node.id),
         dragSource: Boolean(viewState.dragState && node.id === viewState.dragState.sourceNodeId),
         dropTarget: viewState.dragState?.proposal?.kind === "reparent" && node.id === viewState.dragState.proposal.parentId,
-        collapsedCount: viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
+        collapsedCount: layout.lane?.hiddenCounts[node.id] || (viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
           ? Math.max(1, countHiddenDescendants(node.id))
-          : undefined,
+          : undefined),
         lockedBy: nodeDrawLockState(node.id),
       },
       surface: nodeDrawSurface(),
@@ -8435,7 +8457,7 @@ function renderScene(incremental: boolean): void {
     const children = scatterSurface ? [] : visibleChildren(node);
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
-    if (!nodeComponent) {
+    if (!layout.lane && !nodeComponent) {
       const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
       children.forEach((id, index) => {
         const edgeId = `edge:${nodeId}:${id}`;
@@ -8467,7 +8489,9 @@ function renderScene(incremental: boolean): void {
     if (!nodeComponent) children.forEach((cid) => drawNode(cid));
   }
 
-  if (scatterSurface) {
+  if (layout.lane) {
+    visibleOrder.forEach(drawNode);
+  } else if (scatterSurface) {
     visibleOrder.filter(scatterNodeRenderable).forEach((nodeId) => drawNode(nodeId));
   } else if (rootlessSurface && displayRootNode) {
     const surfaceNodeIds = visibleChildren(displayRootNode).filter((nodeId) => Boolean(pos[nodeId]));
@@ -8524,8 +8548,8 @@ function renderScene(incremental: boolean): void {
 
   const replaced = retainedSvgScene.update(canvas, [
     ["defs", defs], ["frames", surfaceFrames], ["groups", disperseGroups],
-    ["edges", edges], ...edgeParts, ["guides", scatterGuides], ["links", graphLinks],
-    ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ["annotations", annotations],
+    ["edges", edges], ...edgeParts, ["guides", scatterGuides], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
+    ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
   ], !incremental);
   webglPaintedSelection = new Set(viewState.selectedNodeIds);
   webglPaintedPrimary = viewState.selectedNodeId;

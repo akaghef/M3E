@@ -4,8 +4,8 @@ export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
 export type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 export type MapNodeClass = "entity" | "scope";
-export type SurfaceKind = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
-export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "logic-chart" | "timeline";
+export type SurfaceKind = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
+export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "logic-chart" | "timeline" | "lane";
 
 export interface TreeNode {
   id: string;
@@ -49,6 +49,8 @@ export interface SurfaceNodeView {
 }
 
 export interface MapSurface {
+  displayRootId?: string;
+  surfaceView?: { direction: "left/right" | "left" | "right" | "up/down" | "up" | "down"; space: "tight" | "normal" | "loose" };
   id: string;
   scopeId: string;
   kind: SurfaceKind;

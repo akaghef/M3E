@@ -13,7 +13,7 @@ Lane と GraphLink.attributes は正本文書にあるが、対象ソースに�
 **(c) 変えたいこと**
 Track A で任意の `Record<string, string>` を既存の GraphLink 保存経路に通す。Track B で elkjs の layered / partitioning を使う shared 側の配置処理を追加し、既存の SVG 描画、GraphLink 描画、Surface Progressive Navigation、保存経路を Lane の場合だけ拡張する。A を先に統合する。
 
-> Status: 2026-10-17、Director が草案を審査済み。Phase 1 の文書を commit 済み。IS46 の MapSurface 案と条件7 / 8 / 10の明確化を採用。現在は Track A の実装 go-ahead のみ受領、Track B は A 統合後の指示待ち。commit / 統合 / push は Director が担当する。
+> Status: 2026-10-17、Director が草案を審査済み。Phase 1 の文書を commit 済み。IS46 の MapSurface 案と条件7 / 8 / 10の明確化を採用。Track A は `4327ca0`（GraphLink.attributes の保持）として本流統合済み。Track B の task 7〜16の実装 go-ahead を受領し、worker の検証と Director の独立 browser 検証を進めている。commit / 統合 / push は Director が担当する。
 
 ## Boundary Context
 

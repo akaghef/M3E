@@ -4777,3 +4777,9 @@
 }
 .node-resize-handle[hidden] { display: none; }
 .inline-node-editor { overflow-wrap: anywhere; word-break: break-all; }
+
+/* Lane reuses the SVG scene: visible relationships never consume pointer input. */
+.lane-visible-links, .lane-visible-links * { pointer-events: none !important; }
+.board[data-lane-state="pending"] #canvas,
+.board[data-lane-state="failed"] #canvas { pointer-events: none; }
+.lane-boundary { fill: transparent; }
