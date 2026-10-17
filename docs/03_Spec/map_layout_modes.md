@@ -62,8 +62,7 @@ Surface View
    └─ edge: orthogonal / line / curve
 └─ Lane
    ├─ direction: right / down
-   ├─ space: tight / normal / loose
-   └─ edge: orthogonal / line / curve
+   └─ space: tight / normal / loose
 ```
 
 Radial と Disperse は同一の力学配置エンジン（WebCola）を共有し、**親子関係の描画方式だけが異なる**（§ 意味上の分離）。
@@ -94,6 +93,8 @@ Radial と Disperse は同一の力学配置エンジン（WebCola）を共有�
 - **Disperse**: 親子階層を **力学配置 + 入れ子（包含）** として投影する。関係は GraphLink の線のみで読み、親子は tree の group（枠）として現れる。
 - **System**: レーンに整列できないフローチャート様の構造を、箱・境界・モジュール・リンクとして投影する。subtype は containment / module / architecture とし、主眼は構造、責務、接続。
 - **Lane**: root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンとして投影し、各孫 node を親のレーン内に置く。direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。root node は scope でなくてもよい。孫 node 間の GraphLink を主線として表示し、レーン境界をまたぐ関係も表す。図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
+
+2026-10-17、akaghef の決定により、Lane には `edge` option を設けない。`EdgeStyle` は親子 `edge` の描画指定であり、Lane は親子 `edge` を線として描かない。Lane の GraphLink の経路は、既存の GraphLink 経路設定（UI の `Link Route`、実装型 `LayoutLinkRoute`）に従う。この設定を親子 `edge` の option として読み替えない。
 
 Lane の切替は永続 Topology を変えない。レーン順は `children[]` の兄弟順序から、孫 node の所属は親子 `edge` から導出する。GraphLink を両端の親 node の組ごとに集計した行列、親 node の兄弟順序の差が2以上の GraphLink、異なるレーンの孫 node の組のうち GraphLink が無い組も導出値とし、永続データに保存しない。選択に応じて計算する内訳の線は GraphLink ではなく、Lane view の Topology に含めない。
 
