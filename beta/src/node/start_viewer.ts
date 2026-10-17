@@ -2218,6 +2218,7 @@ async function handleLinkApi(
         style?: unknown;
         sourcePort?: unknown;
         targetPort?: unknown;
+        attributes?: unknown;
       };
       try {
         const raw = await readRequestBody(req);
@@ -2240,6 +2241,7 @@ async function handleLinkApi(
         style?: LinkStyle;
         sourcePort?: LinkPort;
         targetPort?: LinkPort;
+        attributes?: Record<string, string>;
       } = {};
       if (typeof body.relationType === "string") options.relationType = body.relationType;
       if (typeof body.label === "string") options.label = body.label;
@@ -2247,6 +2249,8 @@ async function handleLinkApi(
       if (typeof body.style === "string") options.style = body.style as LinkStyle;
       if (typeof body.sourcePort === "string") options.sourcePort = body.sourcePort as LinkPort;
       if (typeof body.targetPort === "string") options.targetPort = body.targetPort as LinkPort;
+      // addLink validates before mutating state; do not sanitize invalid writes.
+      options.attributes = body.attributes as Record<string, string> | undefined;
 
       let linkId: string;
       try {

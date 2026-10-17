@@ -53,6 +53,7 @@ interface GraphLink {
   color?: string;
   sourcePort?: LinkPort;
   targetPort?: LinkPort;
+  attributes?: Record<string, string>;
 }
 
 interface SurfaceNodeView {

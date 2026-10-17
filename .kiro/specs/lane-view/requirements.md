@@ -13,7 +13,7 @@ Lane と GraphLink.attributes は正本文書にあるが、対象ソースに�
 **(c) 変えたいこと**
 Track A で任意の `Record<string, string>` を既存の GraphLink 保存経路に通す。Track B で elkjs の layered / partitioning を使う shared 側の配置処理を追加し、既存の SVG 描画、GraphLink 描画、Surface Progressive Navigation、保存経路を Lane の場合だけ拡張する。A を先に統合する。
 
-> Status: spec-only draft、2026-10-17。Director 審査前。今回の Phase 1 はこの3文書と指定された正本文書修正だけ。製品コード、試験実装、build、push は行わない。実装開始には Director の ORRERY Mail による go-ahead が必要。
+> Status: 2026-10-17、Director が草案を審査済み。Phase 1 の文書を commit 済み。IS46 の MapSurface 案と条件7 / 8 / 10の明確化を採用。現在は Track A の実装 go-ahead のみ受領、Track B は A 統合後の指示待ち。commit / 統合 / push は Director が担当する。
 
 ## Boundary Context
 
@@ -58,7 +58,7 @@ Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は
 - `lane` を既存の保存値・読込・列挙へ追加し、未知値を Tree へ落とす既存分岐で Lane が消えないようにする。他の種類の保存値は改名しない。
 - Lane の direction は `right / down`、space は `tight / normal / loose`。初期値は既存の既定と同じ `right / normal`。Lane には edge option を提示しない。
 - root は図式の root node。scope である必要はない。scope の所有・保存・編集境界と、配置入力の root を分ける。暗黙の scopen や node の複製を行わない。
-- 非 scope root の保存先と指定操作は design.md の IS46 の2案から Director が選ぶ。決定前に保存形を実装しない。
+- 非 scope root の保存先と指定操作は design.md の IS46 の MapSurface に displayRootId を任意追加する案を Director が採用した。node attributes 案は不採用。Track B の go-ahead まで保存形を実装しない。
 - 再読込で scope の Lane / direction / space と選択した非 scope root を復元する。root が失われた場合は人に読める説明を出し、他の node を root に書き換えない。
 
 ### Requirement 3: elkjs 配置と同期 render への接続（B-2）
@@ -108,10 +108,10 @@ Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は
 5. persistence_db_behavior.test.js を含む既存の link テストが通る。
 ### B 系
 6. fixture: root > 子 node 3 > 孫 node 各2〜3、隣のレーン間・レーンを飛ばす・同じレーン内の GraphLink を含む。direction down では子 node ごとの孫 node が一つの帯に入り、帯が children[] の順に上から並ぶ。right では左から列として並ぶ。孫 node の矩形は重ならない（配置関数の単体テスト）。
-7. 子 node の children[] の順を入れ替えるとレーンの順が変わる。Tree → Lane → Tree の切替で state.nodes と state.links が変わらず、変わるのは surface の設定だけ。
-8. Lane では親子線を描かない。両端が表示中の GraphLink はすべて描かれ、LinkStyle と direction の矢印が保存値どおり。
+7. root node の children[]（root 直下の子 node の兄弟順序）を入れ替えるとレーンの順が変わる。Tree → Lane → Tree の切替で state.nodes と state.links が変わらず、変わるのは surface の設定だけ。
+8. Lane では親子線を描かない。両端が表示中の孫 node である GraphLink はすべて描かれ、LinkStyle と direction の矢印が保存値どおり。
 9. 表示ラベルに自動生成のコードや ID が出ない。
-10. map を開き直すと、その scope の Lane 選択と direction が復元される。
+10. map を開き直すと、その scope の Lane 選択と direction が復元される。scope でない node を root に指定した場合も、同じ root が復元され、その node は scope にならない。
 11. Surface PN に Lane があり、direction の選択肢は right/down だけ。
 12. 既存の種類が変わらない: layout_port_contract / layout_axis_direction / disperse_layout / viewer_surface_edge_path の単体テストと、viewer.visual / viewer_surface_edge_paths の可視テストが通る。
 13. 孫 node 100 / GraphLink 200 の fixture で、矩形が重ならず、配置が 1 秒以内に終わる。
@@ -122,9 +122,9 @@ Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は
 18. Lane 以外の Surface View では、GraphLink と node の層順が現行と同じ。
 
 
-## Proposed changes to acceptance criteria
+## Proposed changes to acceptance criteria — 採用済み（2026-10-17）
 
-原文は変更していない。いずれも Director の明示採択まで新しい合否基準にしない。
+Director が以下の3件を採択した。上の Director 条件は、共有ノートの更新済み原文と一致させた。Codex による独断の基準変更ではない。
 
 | 対象 | 提案 | 理由 |
 |---|---|---|
@@ -132,7 +132,7 @@ Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は
 | 条件8の表示対象 | 「両端が表示中の GraphLink」を「両端が表示中の孫 node である GraphLink」と明記する | IS41 は root / 子 node / 他 scope 等を端点とする link を省く。子 node の見出し表示を「表示中」に含める読み方と衝突し得る |
 | 条件10の検証追加 | scope の復元を保持した上で「非 scope root の指定・保存・再読込でも同じ root を復元し、scopen しない」を追加する | DC30 / B-7 が既存の18条件では明示的に検収されていない |
 
-node attributes を使う案を採る場合は node attributes が変わるため条件7とも衝突する。MapSurface を使う案の推奨は条件7の nodes / links 不変を維持するためでもある。nodes / links 不変の緩和は提案しない。条件7前半の提案を採択するまでは root.children[] と子 node 自身の children[] の入替を別々に試験し、原文との不一致を隠さず報告する。
+node attributes を使う案を採る場合は node attributes が変わるため条件7とも衝突する。MapSurface を使う案の推奨は条件7の nodes / links 不変を維持するためでもある。nodes / links 不変の緩和は提案しない。条件7前半は root.children[] を指すことが採択済み。子 node 自身の children[] の入替ではレーン順が変わらないことも試験する。
 
 ## Requirements Traceability Notes
 

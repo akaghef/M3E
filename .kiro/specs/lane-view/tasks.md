@@ -1,16 +1,16 @@
 # Implementation Plan
 
-> spec-only draft、2026-10-17。以下は実装 go-ahead 後の計画で、未チェックのまま提出する。Phase 1 では製品コード・試験コードを変更しない。Director が保存先と草案を審査し、ORRERY Mail で実装を指示する。A を先に検証・統合してから B を進める。本流統合・push は Director が所有する。
+> 2026-10-17、Director が保存先と条件7 / 8 / 10の明確化を採択し、Track A の task 2〜5とtask 6の検証を指示済み。Track B は未着手。A を先に検証・統合してから B を進める。本流統合・push は Director が所有する。
 
 ## Phase 0: Baseline and Review Gate
 
-- [ ] 1. Director が草案と IS46 を審査する
+- [x] 1. Director が草案と IS46 を審査する
   - **Boundary:** `.kiro/specs/lane-view/{requirements,design,tasks}.md` のレビューのみ。
   - MapSurface に displayRootId を任意追加する案（推奨）/ node attributes を使う案を判断する。後者と条件7の衝突を隠さない。
   - requirements.md の条件7 / 8 / 10への提案を判断し、原文18条件の所有を維持する。
   - **Acceptance:** Director の選択と実装 go-ahead が記録されている。無応答を承認にしない。
 
-- [ ] 2. 実装開始時の baseline と既存経路を確認する
+- [x] 2. 実装開始時の baseline と既存経路を確認する
   - **Boundary:** read-only、現在の source と実行環境。
   - A-1..A-4 / B-1..B-7 のファイル、renderer 選択、保存入口、起動先、依存 / lockfile を再確認する。
   - 下記の既存 unit / visual 回帰コマンドを実行し、既存失敗を実装後の結果と区別する。
@@ -18,7 +18,7 @@
 
 ## Phase 1: Track A — GraphLink.attributes
 
-- [ ] 3. A の経路を実試験で固定する（A-1..A-4）
+- [x] 3. A の経路を実試験で固定する（A-1..A-4）
   - **Boundary:** `beta/tests/unit/graph_link_attributes.test.ts`、`graph_link_attributes_api.test.js`、`beta/tests/visual/graph_link_attributes.spec.js`。
   - 保存値は `{"confidence":"declared"}`。省略 / 空 object / mixed 値 / null / 配列 / scalar を含める。
   - API 試験は既存 app server を一時 DB と `127.0.0.1:0` で起動し、link POST→map GET、無効値の4xx、拒否前後で永続値が不変であることを確認する。
@@ -29,8 +29,9 @@
   - **Boundary:** `shared/types.ts`、`browser/viewer.globals.d.ts`、`shared/layout_port.ts:GraphLinkLike`、`shared/graph_link_attributes.ts`、既存 viewer 読込呼出。
   - optional string map を通し、viewer の permissive sanitizer で string entry だけ保持する。LinkStyle は変えない。
   - **Acceptance:** 条件2 / 3と条件4の viewer 読込側が通る。省略した旧データも通る。
+  - **現状（2026-10-17）:** 型と viewer 読込の実装、値検証の単体試験は完了。条件2 / 3 / 4の実 browser 検証は Chromium の sandbox 起動制約により Director の独立実行待ち。
 
-- [ ] 5. サーバーの検証と link 作成 API を延長する（A-3 / A-4）
+- [x] 5. サーバーの検証と link 作成 API を延長する（A-3 / A-4）
   - **Boundary:** `rapid_mvp.ts` の既存 model / 書込検証、`start_viewer.ts:handleLinkApi`、A の値検証 module。
   - link POST と全 map 書込を strict validation に通してから mutation / SQLite 保存を行う。
   - **Acceptance:** 条件1 / 4、無効書込の非破壊、既存 link / DB 試験が通る。新 DB table / API / MCP tool は無い。
@@ -142,10 +143,10 @@ git diff --numstat "${LANE_IMPLEMENTATION_BASE:?B 実装開始時の commit を�
 | 4 | A の unit / API / visual 3ファイル / U・V | strict 4xx、永続値不変、viewer の string entry のみ保持 |
 | 5 | R の `persistence_db_behavior` / `scope_param` / `rapid_mvp` / `data_model_integrity` / `blueprint_importer` / `blueprint_import_api_integration` / `mcp_service` | 既存 link を含む7ファイルの保存・削除・import・scope 境界の回帰。MCP機能の追加はしない |
 | 6 | `lane_layout.test.ts` / U、`lane_view.spec.js` / V | 実 ELK、down/right の partition 区間順、矩形の独立な交差判定 |
-| 7 | `lane_layout.test.ts`、`lane_view_state.test.ts` / U、`lane_view.spec.js` / V | root.children[] と子 node 自身の children[] を各々入替。前者でレーン順が変わり後者では変わらない事実と原文の関係を Director が判断。切替前後の nodes / links は全体の deep equality |
+| 7 | `lane_layout.test.ts`、`lane_view_state.test.ts` / U、`lane_view.spec.js` / V | root.children[] と子 node 自身の children[] を各々入替。前者でレーン順が変わり後者では変わらない事実と採択済みの条件7を検証。切替前後の nodes / links は全体の deep equality |
 | 8 | `lane_view.spec.js` / V、`lane_view_projection.test.ts` / U | 親子線ゼロ、可視孫間の全 link、4 LinkStyle / 4 direction / label、既存 Link Route |
 | 9 | `lane_view.spec.js` / V | node・境界・status・title・accessible text に raw ID / 自動コードが無い。data-* の内部参照は可 |
-| 10 | `lane_view_persistence.test.js` / U、`lane_view.spec.js` / V | scope の保存→再読込、direction / space / root。非 scope root の明示追加検収は提案の採択後 |
+| 10 | `lane_view_persistence.test.js` / U、`lane_view.spec.js` / V | scope の保存→再読込、direction / space / root。非 scope root の追加検収は採択済み |
 | 11 | `lane_view.spec.js` / V、`lane_view_state.test.ts` / U | 実 Surface Progressive Navigation の Lane、right/down のみ、保存結果 |
 | 12 | 既存4 unit / 2 visual / R | 原文の全6ファイルを変更せず実行する |
 | 13 | `lane_layout_performance.test.ts` / U | 100孫/200 link、実 ELK の cache miss 計算終了まで1秒以内、全矩形非重複。初回起動も別記録 |
@@ -160,3 +161,25 @@ git diff --numstat "${LANE_IMPLEMENTATION_BASE:?B 実装開始時の commit を�
 Phase 1 の検証は原文18件の完全一致、docs index、差分・境界・リンク・採番・用語の点検。product unit / Playwright は未実行（spec-only phase のため）。実装 phase で sandbox が Playwright を実行できない場合は結果を `未実行（Director 依頼）` とし、上記 V / R の該当 spec と具体的な理由を渡す。
 
 Phase 1 の完了報告には草案3ファイル・正本修正、1 commit の意図と SHA、IS46 の2案と推奨、未決、受け入れ条件の変更提案を含め、ORRERY Mail で WhitePauling に送る。push はしない。実装指示を受けるまで製品コードに着手しない。
+
+## Track A Verification Record — 2026-10-17
+
+Director は仕様草案を `7021405`（Lane の最初の仕様と edge option 正本修正）として commit し、Track A の実装を指示した。以下はこの worker が現在の turn で実行した結果。製品コードと本節は Director に未 commit のまま提出し、Track B は変更していない。
+
+| コマンド / 範囲 | 変更前 | Track A 実装後 |
+|---|---|---|
+| `npm --prefix beta ci` | Node 26 に対応する better-sqlite3 binary がなく、source build は `No Xcode or CLT version detected!` で失敗 | Director が同じ依存版の native build を用意。worker も実 SQLite の memory 接続を確認。package / lockfile は不変、以後 ci は再実行していない |
+| `npm --prefix beta run build:test`（node build / 全 typecheck） | 合格 | 合格 |
+| `npm --prefix beta run build:browser` | 合格 | 合格 |
+| R の既存 unit 12ファイル | 142試験合格、既存の試験失敗なし | 全て合格 |
+| A の新規2 unitファイル | 製品変更前に32試験が失敗。属性欠落と不正値の200受理を検出 | 32試験合格。Rと合わせて14ファイル / 174試験合格 |
+| `npm --prefix beta run lint:deps` | 合格（191 modules / 341 dependencies） | 合格（192 modules / 343 dependencies） |
+| `npm --prefix beta run lint:copy` | 合格、0 clones | 合格、0 clones |
+| Playwright | 未実行（Director 依頼） | 未実行（Director 依頼） |
+| `git diff --check` / docs index `--check` | 合格 | 合格 |
+
+unit の実行は上の U のうち Track A の `graph_link_attributes.test.ts` / `graph_link_attributes_api.test.js` と、R の全12ファイルを指定した。Track B の予定ファイルは今回の実行対象にしない。API 試験は既存 createAppServer を一時 DB / ephemeral localhost port で起動し、実 link POST→map GET、全 map POST、拒否前後の SQLite 値不変まで観測した。
+
+Playwright は変更前に `viewer.visual.spec.js` / `viewer_surface_edge_paths.spec.js` を実行しようとしたが、Chromium の `bootstrap_check_in … Permission denied (1100)` / SIGTRAP で全16件が browser 起動前に失敗した。新規 `graph_link_attributes.spec.js --max-failures=1` も同じ理由で最初の1件が起動失敗、残り2件は未実行だった。画面・保存操作・JSON import/export の合格測定は得られていない。Director はこの3 spec を独立実行する。単体試験の成功を browser 条件2 / 3 / 4の合格と扱わない。
+
+共有ノートの採択済み受け入れ条件18件と requirements.md の完全一致も確認した。新しい docs 配下のファイルを追加していないため index の再生成は不要だった。通常 Beta の build / restart / 個人 map の変更は行っていない。

@@ -1,4 +1,5 @@
 import { renderUpdateMetrics } from "../rendering/render_update_metrics";
+import { sanitizeGraphLinkAttributes } from "../shared/graph_link_attributes";
 import { readAgentNode, agentNodeMetric, agentNodeLod } from "../shared/agent_node_data";
 import { initialLifecycleAnimationMapping, petCatalog, resolvePetSprite } from "./agent_node_assets";
 import agentNodeCss from "../shared/agent_node.css?inline";
@@ -2710,6 +2711,7 @@ function ensureDocShape(payload: unknown): SavedMap {
       color: sanitizeColor(record.color) || undefined,
       sourcePort: sanitizeLinkPort(record.sourcePort),
       targetPort: sanitizeLinkPort(record.targetPort),
+      attributes: sanitizeGraphLinkAttributes(record.attributes),
     };
   });
   candidate.state.annotations = sanitizeAnnotations(candidate.state.annotations);

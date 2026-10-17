@@ -2,7 +2,7 @@
 
 ## Overview
 
-既存の `AppState` と viewer に、GraphLink.attributes の保存と Lane の表示を追加する草案。実装承認ではない。Track A を先に統合し、Track B は B-7 の保存先を Director が選んでから進める。
+既存の `AppState` と viewer に、GraphLink.attributes の保存と Lane の表示を追加する草案。2026-10-17 に Director 審査済み。Track A の実装のみ承認され、Track B は A の統合後の指示待ち。B-7 の保存先は MapSurface 案を採用した。
 
 ### Goals
 
@@ -37,7 +37,7 @@
 
 ```text
 A-1 -> A-2 / A-3 -> A-4 -> Aの検証・Director統合
-B-1 -> B-7の保存先決定・root解決 -> B-2 -> B-3 -> B-4 -> B-5
+B-1 -> B-7のroot解決（保存先は採用済み） -> B-2 -> B-3 -> B-4 -> B-5
 B-1 -> B-6 -> B-5                  （B-6はB-2から独立）
 IS38/40/41/44 -> B-3、IS39 -> B-2   （いずれも決定済み）
 ```
@@ -100,15 +100,15 @@ own enumerable entries を扱い、prototype 由来の値は取り込まない�
 
 ## Track B: Root and Persistence (B-7)
 
-### IS46 — 非 scope root の保存先と指定操作（Director 決定待ち）
+### IS46 — 非 scope root の保存先と指定操作（2026-10-17、Director 採用済み）
 
 IS37 は閉じている。ここで審査するのは root が scope でよいかではなく、決定済みの非 scope root を既存のどこへ保存するかである。現行の MapSurface / scope.primarySurfaceId / node attributes を比較した。
 
 **MapSurface に displayRootId を任意追加する案（推奨）。** 既存 MapSurface に `displayRootId?: string` を追加し、scopeId は実際の所属 scope のまま、scope.primarySurfaceId はその Lane surface を選ぶ。Node Progressive Navigation で選択 node に「Lane で表示」を実行し、所属 scope の Lane surface に root を記録する。表示設定を surface に集め、state.nodes / state.links 不変の条件7を維持でき、既存 displayRootId layout option と対応する。型・sanitizer・保存コピー・読込の保持が必要。最初は所属 scope ごとに1つの Lane root を保存し、別 node の指定でそれを更新する。
 
-**node attributes を使う案。** node.attributes の既存表示用 namespace に `m3e:surface.lane` の JSON 文字列案 `{direction, space}` を保存する。Node Progressive Navigation から同じ操作を行い、所属 scope の既存 MapSurface を選択状態の保存に利用する。既存 string attributes と node の保存を利用できる一方、root ごとの設定と scope.primarySurfaceId の2箇所を解決し、再読込時の root 選択参照も surface 側に持つ必要がある。Lane 適用時に node.attributes が変わるため、そのままでは条件7と衝突する。新 key は未採択。
+**node attributes を使う案（不採用）。** node.attributes の既存表示用 namespace に `m3e:surface.lane` の JSON 文字列案 `{direction, space}` を保存する。Node Progressive Navigation から同じ操作を行い、所属 scope の既存 MapSurface を選択状態の保存に利用する。既存 string attributes と node の保存を利用できる一方、root ごとの設定と scope.primarySurfaceId の2箇所を解決し、再読込時の root 選択参照も surface 側に持つ必要がある。Lane 適用時に node.attributes が変わるため、そのままでは条件7と衝突する。新 key は未採択。
 
-MapSurface を使う案を採る前提で以下を具体化した。Director が選ぶまでは draft contract であり、DC を新設して確定扱いしない。条件7を維持できるため MapSurface を使う案を推奨する。新しい top-level collection、nodeType、scope、保存 DB は必要ない。
+Director が MapSurface を使う案を採用したため、以下をその設計として扱う。node attributes 案は採用しない。新たな DC は割り当てない。新しい top-level collection、nodeType、scope、保存 DB は必要ない。
 
 ### MapSurface を使う案の操作・解決順
 
@@ -122,7 +122,7 @@ MapSurface の `surfaceView` は既存の direction / space を使い、新し�
 
 ## Track B: Visible Input (B-3)
 
-root は箱を描かず、現在の scope / map 名と同様の人に読める表示で対象を伝える。root 直下の子 node の children[] 順をレーン順にし、子 node 自体はレーンの境界と見出しとして既存の文字描画へ渡す。孫 node を既存の node SVG に渡す。必要な header metric も配置入力に含める。見出し・node の選択と表示条件8の読み方は requirements.md の変更提案を Director が判断する。
+root は箱を描かず、現在の scope / map 名と同様の人に読める表示で対象を伝える。root 直下の子 node の children[] 順をレーン順にし、子 node 自体はレーンの境界と見出しとして既存の文字描画へ渡す。孫 node を既存の node SVG に渡す。必要な header metric も配置入力に含める。見出し・node の選択と表示条件8の読み方は requirements.md の条件8の明確化は Director が採択済み。
 
 孫 node より深い node はその孫 node の下で表示上 collapse し、既存の collapse 数表示を再利用する。孫 node の元の collapsed 値は書き換えない。明示的に collapse された子 node はレーンを残して中身を畳み、元の Topology を保つ。
 
@@ -208,7 +208,7 @@ Lane の visible wrapper と内部の stroke / label background / text を point
 | 契約 | 実装境界 | Director 条件 |
 |---|---|---|
 | A-1–A-4 | 型、読込、model、既存 API、保存 | 1–5 |
-| B-1 / B-7 | 種類、MapSurface、root、操作、復元 | 7 / 9–11 / 14、B-7 の追加検証は採択待ち |
+| B-1 / B-7 | 種類、MapSurface、root、操作、復元 | 7 / 9–11 / 14、B-7 の追加検証は条件10として採択済み |
 | B-2 | shared の実 ELK、cache、同期 adapter | 6 / 7 / 13 / 14 |
 | B-3 / B-4 | 既存 SVG と Progressive Navigation | 8–11 / 14 |
 | B-6 | visible / hit parts | 16–18 |
@@ -218,14 +218,14 @@ Lane の visible wrapper と内部の stroke / label background / text を point
 
 | リスク / 未決 | 対応と停止条件 |
 |---|---|
-| IS46 の保存先 | MapSurface を使う案を推奨。Director 決定まで B-7 の保存実装を始めない |
+| IS46 の保存先 | MapSurface を使う案を採用済み。Track B の go-ahead まで B-7 の保存実装を始めない |
 | ELK partition と逆向き / 循環 / 空レーン | 実ライブラリの試験を先に置く。不足は配置能力の gap として報告し、手作業の配置へ逃げない |
 | stale promise / render loop | 完全な入力 key、世代照合、promise の共有、失敗の保持で試験する |
 | worker 配信と1秒 | build と実 ELK 計測を独立に行い、どちらかの失敗を単体試験で代用しない |
-| 条件7 / 8 / 10 の読み方 | requirements.md の提案を Director が判断。元の18条件は編集しない |
+| 条件7 / 8 / 10 の読み方 | Director 採択済み。共有ノートの更新済み原文を保持する |
 | 条件14と既存 viewer の大きさ | 新規の算法・controller は外に置く。80行目安は実 diff で確認し、行数だけを満たす移動を行わない |
 | 正本文書の旧記述 | map_layout_modes の後続決定を優先。ADR_013 / Data_Model 等の広い改訂を無断で取り込まない |
 
 ## Director Review Gate
 
-今回必要な判断は IS46 の2案、条件7の children[] の所有 node の明確化、条件8の表示対象の明確化、条件10への B-7 検証追加である。18条件の削除、閾値変更、fixture-only への格下げは提案しない。Director の審査と ORRERY Mail の実装 go-ahead を受けてから tasks.md を実行する。本流統合・push・通常 Beta 確認の所有者は今回の handoff に従い Director。
+2026-10-17、Director が IS46 の MapSurface 案、条件7の children[] の所有 node の明確化、条件8の表示対象の明確化、条件10への B-7 検証追加を採択した。18条件の削除、閾値変更、fixture-only への格下げは提案しない。Track A は ORRERY Mail の go-ahead を受領済み。Track B は A の統合後の別指示まで開始しない。本流統合・push・通常 Beta 確認の所有者は今回の handoff に従い Director。

@@ -6,6 +6,7 @@ import { createHash } from "crypto";
 import Database from "better-sqlite3";
 import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle, LinkPort } from "../shared/types";
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
+import { isGraphLinkAttributes } from "../shared/graph_link_attributes";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -338,7 +339,11 @@ class RapidMvpModel {
     style?: LinkStyle;
     sourcePort?: LinkPort;
     targetPort?: LinkPort;
+    attributes?: Record<string, string>;
   }): string {
+    if (!isGraphLinkAttributes(options?.attributes)) {
+      throw new Error("GraphLink attributes must be an object with string values.");
+    }
     const source = this._requireNode(sourceNodeId);
     const target = this._requireNode(targetNodeId);
     if (source.nodeType === "alias" || target.nodeType === "alias") {
@@ -361,6 +366,7 @@ class RapidMvpModel {
       style: options?.style,
       sourcePort: options?.sourcePort,
       targetPort: options?.targetPort,
+      attributes: options?.attributes === undefined ? undefined : { ...options.attributes },
     });
     return id;
   }
@@ -757,6 +763,9 @@ class RapidMvpModel {
     const links = this.state.links ?? {};
     Object.values(links).forEach((link) => {
       const normalized = this._normalizeLink(link);
+      if (!isGraphLinkAttributes(link.attributes)) {
+        errors.push(`Link ${normalized.id} attributes must be an object with string values.`);
+      }
       const source = nodes[normalized.sourceNodeId];
       const target = nodes[normalized.targetNodeId];
       if (!source) {

@@ -56,7 +56,7 @@ export type LayoutLinkRoute = "simple-bezier" | "orthogonal" | "straight";
 
 export type GraphLinkLike = Pick<
   GraphLink,
-  "id" | "sourceNodeId" | "targetNodeId" | "relationType" | "label" | "direction" | "style" | "color" | "sourcePort" | "targetPort"
+  "id" | "sourceNodeId" | "targetNodeId" | "relationType" | "label" | "direction" | "style" | "color" | "sourcePort" | "targetPort" | "attributes"
 >;
 
 export interface VisibleLayoutGraph {
