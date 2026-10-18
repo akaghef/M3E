@@ -10,13 +10,13 @@ declare const joint: any;
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
-type SurfaceViewMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
+type SurfaceViewMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 type MapNodeClass = "entity" | "scope";
-type SurfaceKind = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
-type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "logic-chart" | "timeline" | "lane";
+type SurfaceKind = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
+type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "logic-chart" | "timeline";
 type SurfaceSpace = "tight" | "normal" | "loose";
 type SurfaceLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type SurfaceDepthAlign = "aligned" | "packed";
@@ -65,7 +65,6 @@ interface SurfaceNodeView {
 }
 
 interface MapSurface {
-  displayRootId?: string;
   id: string;
   scopeId: string;
   kind: SurfaceKind;

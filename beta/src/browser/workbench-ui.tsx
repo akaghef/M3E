@@ -44,7 +44,7 @@ import "./workbench-ui.css";
 
 type ToolId = "select" | "nodes" | "pen" | "highlighter" | "date" | "eraser" | "note";
 type ModalId = "menu" | "settings" | "share" | "help" | "ai" | null;
-type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
+type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline";
 type ProgressiveLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type ProgressiveDepthAlign = "aligned" | "packed";
 type ProgressiveEdgeRoute = "elbow" | "bezier" | "straight";
@@ -55,15 +55,6 @@ type ViewerTheme = "light" | "dark";
 type ProgressiveNodeId =
   | "gui"
   | "active-root"
-  | "lane-root"
-  | "lane-surface"
-  | "lane-direction"
-  | "lane-direction-right"
-  | "lane-direction-down"
-  | "lane-space"
-  | "lane-space-tight"
-  | "lane-space-normal"
-  | "lane-space-loose"
   | "rapid-expand"
   | "rapid-detail"
   | "rapid-examples"
@@ -902,8 +893,8 @@ function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement |
   );
 }
 
-function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): ProgressiveNode[] {
-  const nodes: ProgressiveNode[] = [
+function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode[] {
+  return [
     { id: "gui", label: "[GUI]", hint: "overlay root" },
     { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
     { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
@@ -932,14 +923,6 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): 
     { id: "timeline-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "tight") },
     { id: "timeline-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "normal") },
     { id: "timeline-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "loose") },
-    { id: "lane-surface", label: "Lane", hint: "root children in sibling order", parentId: "view" },
-    { id: "lane-direction", label: "Direction", hint: "lane order axis", parentId: "lane-surface" },
-    { id: "lane-direction-right", label: "Right", hint: "lanes from left to right", parentId: "lane-direction", action: () => setSurfaceLayout("lane", currentLayoutSpace(), "right") },
-    { id: "lane-direction-down", label: "Down", hint: "lanes from top to bottom", parentId: "lane-direction", action: () => setSurfaceLayout("lane", currentLayoutSpace(), "down") },
-    { id: "lane-space", label: "Space", hint: "within and between lanes", parentId: "lane-surface" },
-    { id: "lane-space-tight", label: "Tight", hint: "tight spacing", parentId: "lane-space", action: () => setSurfaceLayout("lane", "tight", laneDirectionForNavigation()) },
-    { id: "lane-space-normal", label: "Normal", hint: "normal spacing", parentId: "lane-space", action: () => setSurfaceLayout("lane", "normal", laneDirectionForNavigation()) },
-    { id: "lane-space-loose", label: "Loose", hint: "loose spacing", parentId: "lane-space", action: () => setSurfaceLayout("lane", "loose", laneDirectionForNavigation()) },
     { id: "system", label: "System surface", hint: "diagram canvas", parentId: "view", action: () => clickLegacy("view-system") },
     { id: "scatter-surface", label: "Disperse surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
     { id: "layout", label: "Layout", hint: "surface layout options", parentId: "view" },
@@ -983,18 +966,6 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): 
     { id: "settings", label: "Settings", hint: "open panel settings", parentId: "panel", action: () => openModal("settings") },
     { id: "help", label: "Shortcuts", hint: "keyboard reference", parentId: "panel", action: () => openModal("help") },
   ];
-  return lane ? nodes.filter(node => !["layout-depth-align", "layout-depth-aligned", "layout-depth-packed",
-    "layout-edge-route", "layout-edge-elbow", "layout-edge-bezier", "layout-edge-straight",
-    "layout-direction-left-right", "layout-direction-left", "layout-direction-up-down", "layout-direction-up"].includes(node.id)) : nodes;
-}
-
-function laneDirectionForNavigation(): "right" | "down" {
-  return currentLayoutDirection() === "down" ? "down" : "right";
-}
-
-function currentLayoutSpace(): "tight" | "normal" | "loose" {
-  const space = document.documentElement.dataset.surfaceSpace;
-  return space === "tight" || space === "loose" ? space : "normal";
 }
 
 function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
@@ -1004,7 +975,6 @@ function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
   );
   return [
     { id: "active-root", label: rootLabel, hint: "active node" },
-    { id: "lane-root", label: "Lane で表示", hint: "この node を Lane の root にする", parentId: "active-root", action: () => window.dispatchEvent(new CustomEvent("m3e:lane-root")) },
     { id: "rapid-expand", label: "N2 展開", hint: "node/subtree を広げる", parentId: "active-root" },
     { id: "rapid-detail", label: "N3 詳細化", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("detail", "N3 詳細化", "詳細を追加") },
     { id: "rapid-examples", label: "N4 例を追加", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("examples", "N4 例を追加", "具体例を追加") },
@@ -1098,10 +1068,9 @@ function ProgressiveNavigation({
   activeRootLabel: string;
 }): React.ReactElement {
   const rootId: ProgressiveNodeId = mode === "active-node" ? "active-root" : "gui";
-  const lane = document.documentElement.dataset.surfaceViewMode === "lane";
   const nodes = useMemo(
-    () => (mode === "active-node" ? makeActiveNodeProgressiveNodes(activeRootLabel) : makeProgressiveNodes(openModal, lane)),
-    [activeRootLabel, mode, openModal, lane],
+    () => (mode === "active-node" ? makeActiveNodeProgressiveNodes(activeRootLabel) : makeProgressiveNodes(openModal)),
+    [activeRootLabel, mode, openModal],
   );
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const childrenByParent = useMemo(() => {

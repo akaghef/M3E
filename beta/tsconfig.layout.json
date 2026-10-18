@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "skipLibCheck": true,
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "Bundler",

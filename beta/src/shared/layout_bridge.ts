@@ -6,7 +6,7 @@ import {
   type VisibleLayoutGraph,
 } from "./layout_port";
 
-export type LayoutMode = "tree" | "logic-chart" | "timeline" | "lane";
+export type LayoutMode = "tree" | "logic-chart" | "timeline";
 
 export interface LayoutGraph {
   nodeIds: string[];

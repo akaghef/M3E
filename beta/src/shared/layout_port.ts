@@ -1,4 +1,3 @@
-import type { LaneLayoutMetadata } from "./lane_view";
 import type { GraphLink, SurfaceNodeView } from "./types";
 import { selectPorts, type EdgeDirection, type EdgePortPoint, type EdgePorts, type EdgeRect } from "./edge_port";
 import { route, type EdgePath, type EdgeRouteStyle } from "./edge_route";
@@ -11,7 +10,7 @@ import {
   type SuperNodeFootprint,
 } from "./disperse_layout";
 
-export type LayoutMode = "Tree" | "Axial" | "Disperse" | "System" | "Lane";
+export type LayoutMode = "Tree" | "Axial" | "Disperse" | "System";
 export type LegacyLayoutMode =
   | "tree"
   | "right-tree"
@@ -22,8 +21,7 @@ export type LegacyLayoutMode =
   | "mindmap"
   | "balanced-tree"
   | "logic-chart"
-  | "timeline"
-  | "lane";
+  | "timeline";
 export type LayoutModeInput = LayoutMode | LegacyLayoutMode;
 export type StructuredLayoutMode = LayoutMode | "tree" | "logic-chart" | "timeline" | "right-tree" | "down-tree" | "balanced-tree";
 type LayoutAlgorithmMode = "tree" | "logic-chart" | "timeline";
@@ -151,7 +149,6 @@ function edgeDirectionForLayout(
 }
 
 export interface LayoutOptions {
-  laneResult?: LayoutResult;
   /** Viewer-owned derived cache. Omit for a stateless reference layout. */
   treeCache?: TreeSpanCache;
   displayRootId?: string;
@@ -175,7 +172,6 @@ export interface LayoutOptions {
 }
 
 export interface LayoutResult {
-  lane?: LaneLayoutMetadata;
   pos: Record<string, LayoutNodePosition>;
   order: string[];
   totalHeight: number;
@@ -324,12 +320,11 @@ export class TreeSpanCache {
 }
 
 function normalizeLayoutMode(mode: LayoutModeInput): LayoutMode {
-  if (mode === "Tree" || mode === "Axial" || mode === "Disperse" || mode === "System" || mode === "Lane") return mode;
+  if (mode === "Tree" || mode === "Axial" || mode === "Disperse" || mode === "System") return mode;
   if (mode === "mindmap" || mode === "balanced-tree") return "Tree";
   if (mode === "timeline") return "Axial";
   if (mode === "scatter" || mode === "force-directed") return "Disperse";
   if (mode === "system") return "System";
-  if (mode === "lane") return "Lane";
   return "Tree";
 }
 
@@ -773,10 +768,6 @@ export function layout(
   options: LayoutOptions = {},
 ): LayoutResult {
   const canonicalMode = normalizeLayoutMode(mode);
-  if (canonicalMode === "Lane") {
-    if (!options.laneResult) throw new Error("Lane layout is pending; request the shared elkjs strategy first.");
-    return options.laneResult;
-  }
   const legacyBalancedTree = mode === "mindmap" || mode === "balanced-tree" || options.structuredMode === "balanced-tree";
   const normalizedOptions = legacyBalancedTree && options.direction === undefined
     ? { ...options, direction: "left/right" as const }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-既存の `AppState` と viewer に、GraphLink.attributes の保存と Lane の表示を追加する草案。2026-10-17 に Director 審査済み。Track A は `4327ca0`（GraphLink.attributes の保持）として本流統合済みで、その commit を基準に Track B の実装を承認された。B-7 の保存先は MapSurface 案を採用した。
+既存の `AppState` と viewer に、GraphLink.attributes の保存と Lane の表示を追加する草案。2026-10-17 に Director 審査済み。Track A の実装のみ承認され、Track B は A の統合後の指示待ち。B-7 の保存先は MapSurface 案を採用した。
 
 ### Goals
 
@@ -65,7 +65,7 @@ A と B の意味上の依存はないが、viewer.ts の変更と保存試験�
 
 ### Module Plan
 
-以下は審査時の配置先案。Track B はこの責任分担で実装し、既存 renderer へ接続する。
+以下は実装時の配置先案であり、Phase 1 では作成しない。既存の同等 module があればそこへ追加する。
 
 | 境界 | ファイル案 | 責任 |
 |---|---|---|
@@ -118,7 +118,7 @@ Director が MapSurface を使う案を採用したため、以下をその設�
 
 MapSurface の `surfaceView` は既存の direction / space を使い、新しい field は displayRootId だけとする。Tree へ戻すと Tree の primarySurfaceId を選び、Lane surface の保存設定は残す。Lane に戻ると同じ root / direction / space を復元する。root の変更も既存 undo / autosave の表示設定更新として扱う。
 
-読込・全 map 保存・scoped 保存・既存コピーで displayRootId を落とさない。既存の scoped 保存には、範囲内に完全に入る scope のうち Lane 設定を持つ scope と、その scope の surface 設定を通す。Tree に戻した primarySurfaceId も保持し、他の scope の設定へ書き込まない。不正な Lane root の scoped 書込は保存前に拒否する。clone の node ID remap がある経路では root 参照も既存 nodeViews 等と同時に remap する。MapSurface.scopeId と異なる scope への参照、欠損 root は有効な設定として採用せず、「Lane の root node が見つかりません」等の説明を出し、通常 scope 表示へ戻れるようにする。無効参照を勝手な別 node へ永続化しない。scope 内の新しい root を明示指定すれば復帰できる。
+読込・全 map 保存・scoped 保存・既存コピーで displayRootId を落とさない。clone の node ID remap がある経路では root 参照も既存 nodeViews 等と同時に remap する。MapSurface.scopeId と異なる scope への参照、欠損 root は有効な設定として採用せず、「Lane の root node が見つかりません」等の説明を出し、通常 scope 表示へ戻れるようにする。無効参照を勝手な別 node へ永続化しない。scope 内の新しい root を明示指定すれば復帰できる。
 
 ## Track B: Visible Input (B-3)
 
@@ -143,8 +143,7 @@ root は箱を描かず、現在の scope / map 名と同様の人に読める�
 | `org.eclipse.elk.partitioning.activate` | `true` |
 | 各配置対象の `org.eclipse.elk.partitioning.partition` | `root.children[]` の0始まりの位置。全 node に設定 |
 | `org.eclipse.elk.separateConnectedComponents` | `false`。別成分の packing がレーン順を変えないようにする |
-| `org.eclipse.elk.randomSeed` | 固定値1。座標の安定性に使い、兄弟順序の代用にしない |
-| `org.eclipse.elk.layered.thoroughness` | 1。ELK が標準で行う探索の量を制限する。自作の crossing 算法を加えず、初回を含む1秒の条件を検査する |
+| `org.eclipse.elk.randomSeed` | 固定値。座標の安定性に使い、兄弟順序の代用にしない |
 | `org.eclipse.elk.spacing.nodeNode` | 同じレーン内の間隔 |
 | `org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers` | partition をまたぐ間隔。境界余白を含む |
 
@@ -230,11 +229,3 @@ Lane の visible wrapper と内部の stroke / label background / text を point
 ## Director Review Gate
 
 2026-10-17、Director が IS46 の MapSurface 案、条件7の children[] の所有 node の明確化、条件8の表示対象の明確化、条件10への B-7 検証追加を採択した。18条件の削除、閾値変更、fixture-only への格下げは提案しない。Track A は ORRERY Mail の go-ahead を受領済み。Track B は A の統合後の別指示まで開始しない。本流統合・push・通常 Beta 確認の所有者は今回の handoff に従い Director。
-
-## Implementation Verification Notes — 2026-10-17
-
-Track B の基準は `4327ca0`（GraphLink.attributes の保持）。browser は `elk-api.js` と Vite の `elk-worker.min.js?url` を使い、worker asset の build を確認した。既存同期 layout は Lane の cached LayoutResult だけを受け取り、pending に Tree 配置を計算して返さない。`lane_view_controller.ts` は lifecycle と UI 呼出を所有し、配置処理は shared に置いた。
-
-elkjs 0.11.1 の外部宣言 `elk-api.d.ts` に、現 TypeScript の strict 検査で `T["children"][number]` の互換性エラーがある。既存 node build と同様、elkjs を読む `tsconfig.layout.json` で `skipLibCheck` を指定した。製品 source の strict / noEmit 検査は維持し、依存本体・package.json・lockfile は変更していない。
-
-標準 thoroughness=7 の初回計算は1153.2msで1秒超過を観測した。設定1への変更後、同じ100孫/200 link・同じ計測範囲で初回779.5ms、次回 cache miss304.8msを観測した。初回にも1秒の assert を置き、結果を隠す warm-up は行わない。最終値と browser の残条件は tasks.md に記録する。
