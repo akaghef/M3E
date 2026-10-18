@@ -96,6 +96,15 @@ Radial と Disperse は同一の力学配置エンジン（WebCola）を共有�
 
 2026-10-17、akaghef の決定により、Lane には `edge` option を設けない。`EdgeStyle` は親子 `edge` の描画指定であり、Lane は親子 `edge` を線として描かない。Lane の GraphLink の経路は、既存の GraphLink 経路設定（UI の `Link Route`、実装型 `LayoutLinkRoute`）に従う。この設定を親子 `edge` の option として読み替えない。
 
+#### Lane と System の区別
+
+2026-10-18、akaghef の指摘により明記する。Lane と System は、レーン状の枠を描くかどうかではなく、孫 node の位置を何が決めるかで区別する。
+
+- **Lane**: 同じレーンの孫 node は、そのレーンの帯の中心線に揃って一列に並ぶ。`down` では1行、`right` では1列である。レーン内の並びは孫 node の兄弟順序で決まる。GraphLink は描画するだけで、孫 node の位置を決める入力にしない。
+- **System**: GraphLink が表す流れの向きに沿って node を段に振り分ける。同じ枠の中でも、流れに沿って node が並ぶ。
+- **判定**: 孫 node 間の GraphLink を全て取り除いても孫 node の座標が変わらないなら Lane である。座標が変わるなら、レーンの枠を重ねていても System である。
+- **配置方式**: layered 配置や flow 配置（elkjs の `layered`、dagre など、辺の向きから段を決める方式）は System 側の方式であり、Lane の配置に使わない。partitioning でレーン順を固定しても、レーン内では辺の向きに沿って広がるため Lane にならない。
+
 Lane の切替は永続 Topology を変えない。レーン順は `children[]` の兄弟順序から、孫 node の所属は親子 `edge` から導出する。GraphLink を両端の親 node の組ごとに集計した行列、親 node の兄弟順序の差が2以上の GraphLink、異なるレーンの孫 node の組のうち GraphLink が無い組も導出値とし、永続データに保存しない。選択に応じて計算する内訳の線は GraphLink ではなく、Lane view の Topology に含めない。
 
 検証観点: 正常系では root の子 node の順序がレーン順に保たれ、孫 node 間の GraphLink がレーンをまたいで表示されることを確認する。境界系では root が scope でない場合、`right` / `down` の方向、レーンを飛び越す GraphLink を確認する。失敗系では選択から計算した内訳線が GraphLink として保存されず、View 切替で Topology が変わらないことを確認する。
