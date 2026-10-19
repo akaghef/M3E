@@ -1,7 +1,7 @@
 import type { AgentCardRenderInput } from "./agent_node";
 import type { LayoutNodePosition } from "./layout_port";
 
-export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System";
+export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System" | "Lane";
 export type NodeDrawKind = "root" | "plain" | "folder" | "latex" | "status";
 export type NodeDrawType = "text" | "image" | "folder" | "alias";
 export type AliasDrawState = "none" | "read" | "write" | "broken";
@@ -160,6 +160,8 @@ export function canonicalSurfaceViewName(raw: string | undefined | null): Surfac
     case "scatter":
     case "disperse":
       return "Disperse";
+    case "lane":
+      return "Lane";
     case "system":
       return "System";
     case "tree":

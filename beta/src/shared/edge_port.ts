@@ -13,7 +13,7 @@ export interface EdgePortPoint {
   side: EdgePortSide;
 }
 
-export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System";
+export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System" | "Lane";
 export type PrimaryDirection = "right" | "left" | "up" | "down";
 export type TreeDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 export type TreeBranchSide = "left" | "right" | "up" | "down";
@@ -27,6 +27,7 @@ export type EdgeDirection =
   | { view: "Tree"; direction: "both"; branchSide: TreeBranchSide }
   | { view: "Axial"; direction: PrimaryDirection }
   | { view: "Disperse"; direction: DisperseDirection; vector?: { x: number; y: number } }
+  | { view: "Lane"; direction: "right" | "down" }
   | { view: "System"; direction: SystemDirection; vector?: { x: number; y: number } };
 
 export interface EdgePorts {
@@ -71,6 +72,12 @@ function sideForVector(srcRect: EdgeRect, dstRect: EdgeRect, explicitVector?: { 
 }
 
 function sourceSideForDirection(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirection: EdgeDirection): EdgePortSide {
+  if (edgeDirection.view === "Lane") {
+    const src = center(srcRect), dst = center(dstRect);
+    return edgeDirection.direction === "down"
+      ? (dst.y < src.y ? "top" : "bottom")
+      : (dst.x < src.x ? "left" : "right");
+  }
   if (edgeDirection.view === "Tree") {
     if (edgeDirection.direction === "left/right") {
       if (edgeDirection.branchSide !== "left" && edgeDirection.branchSide !== "right") {
@@ -93,9 +100,13 @@ function sourceSideForDirection(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirect
   return sideForPrimaryDirection(edgeDirection.direction);
 }
 
-export function selectPorts(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirection: EdgeDirection): EdgePorts {
-  const sourceSide = sourceSideForDirection(srcRect, dstRect, edgeDirection);
-  const targetSide = opposite(sourceSide);
+export function selectPorts(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirection: EdgeDirection,
+  explicit: { sourceSide?: EdgePortSide; targetSide?: EdgePortSide } = {}): EdgePorts {
+  const defaultSide = sourceSideForDirection(srcRect, dstRect, edgeDirection);
+  const src = center(srcRect), dst = center(dstRect);
+  const sameLane = edgeDirection.view === "Lane" && (edgeDirection.direction === "down" ? src.y === dst.y : src.x === dst.x);
+  const sourceSide = explicit.sourceSide ?? defaultSide;
+  const targetSide = explicit.targetSide ?? (sameLane ? defaultSide : opposite(defaultSide));
   return {
     source: portForSide(srcRect, sourceSide),
     target: portForSide(dstRect, targetSide),

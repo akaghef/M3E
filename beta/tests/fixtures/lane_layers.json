@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "savedAt": "2026-10-17T00:00:00.000Z",
+  "state": {
+    "rootId": "workspace",
+    "nodes": {
+      "workspace": {
+        "id": "workspace",
+        "text": "Workspace",
+        "parentId": null,
+        "children": [
+          "diagram"
+        ],
+        "nodeType": "folder",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "diagram": {
+        "id": "diagram",
+        "text": "Project structure",
+        "parentId": "workspace",
+        "children": [
+          "research",
+          "development",
+          "operations"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "research": {
+        "id": "research",
+        "text": "Research",
+        "parentId": "diagram",
+        "children": [
+          "reading"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "reading": {
+        "id": "reading",
+        "text": "Review work",
+        "parentId": "research",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "m3e:shape": "rect",
+          "m3e:style": "{\"fill\":\"#ffffff\",\"border\":\"#777777\"}"
+        },
+        "link": ""
+      },
+      "development": {
+        "id": "development",
+        "text": "Development",
+        "parentId": "diagram",
+        "children": [
+          "viewer"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "viewer": {
+        "id": "viewer",
+        "text": "Review work",
+        "parentId": "development",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "m3e:shape": "rect",
+          "m3e:style": "{\"fill\":\"#ffffff\",\"border\":\"#777777\"}"
+        },
+        "link": ""
+      },
+      "operations": {
+        "id": "operations",
+        "text": "Operations",
+        "parentId": "diagram",
+        "children": [
+          "delivery"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "delivery": {
+        "id": "delivery",
+        "text": "Review work",
+        "parentId": "operations",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "m3e:shape": "rect",
+          "m3e:style": "{\"fill\":\"#ffffff\",\"border\":\"#777777\"}"
+        },
+        "link": ""
+      }
+    },
+    "links": {
+      "crossing": {
+        "id": "crossing",
+        "sourceNodeId": "reading",
+        "targetNodeId": "delivery",
+        "label": "Depends on",
+        "direction": "forward",
+        "style": "default",
+        "sourcePort": "right",
+        "targetPort": "left"
+      },
+      "adjacent-one": {
+        "id": "adjacent-one",
+        "sourceNodeId": "reading",
+        "targetNodeId": "viewer",
+        "label": "Uses",
+        "direction": "forward",
+        "style": "default",
+        "sourcePort": "bottom",
+        "targetPort": "top"
+      },
+      "adjacent-two": {
+        "id": "adjacent-two",
+        "sourceNodeId": "viewer",
+        "targetNodeId": "delivery",
+        "label": "Sends",
+        "direction": "forward",
+        "style": "default",
+        "sourcePort": "bottom",
+        "targetPort": "top"
+      }
+    }
+  }
+}

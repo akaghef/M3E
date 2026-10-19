@@ -4777,3 +4777,13 @@
 }
 .node-resize-handle[hidden] { display: none; }
 .inline-node-editor { overflow-wrap: anywhere; word-break: break-all; }
+
+/* Lane reuses the SVG scene: visible relationships never consume pointer input. */
+.lane-visible-links, .lane-visible-links * { pointer-events: none !important; }
+.board[data-lane-state="failed"] #canvas { pointer-events: none; }
+.lane-boundary { fill: #ffffff; stroke: #e3e5ea; stroke-width: 1; stroke-dasharray: none; opacity: 0.92; }
+.lane-boundary.lane-alternate { fill: #f8f9fb; }
+.lane-heading { fill: #24242a; font-size: 36px; font-weight: 700; }
+.lane-title { fill: #5d6170; font-size: 28px; font-weight: 800; }
+.lane-count { fill: #8a8e9a; font-size: 20px; font-weight: 500; }
+.lane-summary { font-size: 20px; }

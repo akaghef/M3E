@@ -1,3 +1,7 @@
+import { laneLinkGeometry } from "../shared/lane_layout";
+import { laneGrabMove, laneNavigationTarget, type LaneGrid } from "../shared/lane_navigation";
+import { LaneViewController } from "./lane_view_controller";
+import { laneFrames, laneLinkParts, laneNodeInput } from "./lane_scene";
 import { renderUpdateMetrics } from "../rendering/render_update_metrics";
 import { sanitizeGraphLinkAttributes } from "../shared/graph_link_attributes";
 import { readAgentNode, agentNodeMetric, agentNodeLod } from "../shared/agent_node_data";
@@ -904,6 +908,7 @@ function thinkingModeLabel(mode: ThinkingMode): string {
 }
 
 function surfaceViewModeLabel(mode: SurfaceViewMode): string {
+  if (mode === "lane") return "Lane";
   if (mode === "system") return "System";
   if (mode === "scatter") return "Disperse";
   if (mode === "logic-chart") return "Logic Chart";
@@ -933,6 +938,7 @@ function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
 }
 
 function surfaceLayoutForKind(kind: SurfaceKind): SurfaceLayout {
+  if (kind === "lane") return "lane";
   if (kind === "system") return "flow-lr";
   if (kind === "scatter") return "scatter";
   if (kind === "logic-chart") return "logic-chart";
@@ -1004,6 +1010,8 @@ function inferSurfaceLayoutDirectionForScope(scopeId: string): SurfaceLayoutDire
 }
 
 function syncThinkingModeUi(): void {
+  document.documentElement.dataset.surfaceViewMode = viewState.surfaceViewMode;
+  document.documentElement.dataset.surfaceSpace = viewState.surfaceSpace;
   const mode = viewState.thinkingMode;
   const surfaceMode = structuredSurfaceMode();
   document.body.classList.toggle("scatter-surface-active", viewState.surfaceViewMode === "scatter");
@@ -1073,6 +1081,7 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   if (viewState.surfaceViewMode === "scatter" && mode !== "scatter") {
     stopScatterAnimation(true);
   }
+  try { laneView.selectSurface(mode); } catch { setStatus("Lane の root node を指定し直してください。"); return; }
   viewState.surfaceViewMode = mode;
   viewState.surfaceSpace = inferSurfaceSpaceForScope(currentScopeRootId(), mode);
   viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
@@ -1126,6 +1135,7 @@ function setPublicLayoutOptions(options: Partial<PublicLayoutOptions>): void {
   if (options.link?.route) {
     viewState.surfaceLinkRoute = sanitizeSurfaceLinkRoute(options.link.route);
   }
+  if (viewState.surfaceViewMode === "lane") { syncMapModelStateFromRuntime(); scheduleAutosave(); }
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -2478,7 +2488,7 @@ function sanitizeSurfaceKind(raw: unknown): SurfaceKind | null {
     || raw === "system"
     || raw === "scatter"
     || raw === "logic-chart"
-    || raw === "timeline"
+    || raw === "timeline" || raw === "lane"
     ? raw
     : null;
 }
@@ -2488,7 +2498,7 @@ function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
     || raw === "flow-lr"
     || raw === "scatter"
     || raw === "logic-chart"
-    || raw === "timeline"
+    || raw === "timeline" || raw === "lane"
     ? raw
     : null;
 }
@@ -2564,6 +2574,7 @@ function sanitizeMapModelState(state: AppState): void {
       id: typeof surface.id === "string" && surface.id ? surface.id : surfaceKey,
       scopeId,
       kind,
+      displayRootId: typeof surface.displayRootId === "string" ? surface.displayRootId : undefined,
       layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
       surfaceView: migrateSurfaceViewFromMapRead(
         state,
@@ -2608,6 +2619,7 @@ function sanitizeMapModelState(state: AppState): void {
       id: existingSurface?.id || preferredPrimarySurfaceId,
       scopeId,
       kind: existingSurface?.kind || surfaceKind,
+      displayRootId: existingSurface?.displayRootId,
       layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
       surfaceView: existingSurface?.surfaceView || migrateSurfaceViewFromMapRead(state, scopeId, undefined),
       nodeViews: existingSurface?.nodeViews || {},
@@ -5646,6 +5658,28 @@ function currentSurfaceIsFlowMode(): boolean {
   return viewState.surfaceViewMode === "system";
 }
 
+/** Lanes and their drawn grandchildren, when the current surface is Lane. */
+function currentLaneGrid(): LaneGrid | null {
+  const lane = lastLayout?.lane;
+  if (viewState.surfaceViewMode !== "lane" || !lane || !map) return null;
+  const laneIds = lane.boundaries.map((b) => b.id);
+  return { laneIds, lanes: laneIds.map((id) => (map!.state.nodes[id]?.children ?? []).filter((c) => Boolean(lastLayout!.pos[c]))) };
+}
+
+/** Arrow keys in Lane follow the drawn rows/columns, not tree depth. */
+function laneArrow(key: string, extend: boolean): void {
+  const grid = currentLaneGrid();
+  if (!grid || !lastLayout?.lane) return;
+  const target = laneNavigationTarget(grid, lastLayout.pos, viewState.selectedNodeId, lastLayout.lane.direction, key);
+  if (!target) return;
+  if (!extend) { selectNode(target); return; }
+  viewState.selectionAnchorId ||= viewState.selectedNodeId;
+  viewState.selectedNodeId = target;
+  viewState.selectedNodeIds.add(target);
+  scheduleSelectionRefresh();
+  setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
+}
+
 function currentSurfaceIsScatterMode(): boolean {
   return viewState.surfaceViewMode === "scatter";
 }
@@ -7630,7 +7664,15 @@ window.m3eLayout = (
   options: LayoutOptions = {},
 ): LayoutResult => layoutPortLayout(graph, boxSizes, mode, options);
 
+const laneView = new LaneViewController({
+  state: () => map?.state ?? null, scopeRoot: currentScopeRootId, view: () => viewState,
+  measure: (id, root) => measureLayoutNode(map!.state, id, root, structuredLayoutConfig("tree")),
+  render, fit: fitDocument, status: setStatus, apply: setSurfaceViewMode,
+  undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
+});
+
 function buildLayout(state: AppState): LayoutResult {
+  if (viewState.surfaceViewMode === "lane") return laneView.layout();
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
   const mode = surfaceKindForViewMode(viewState.surfaceViewMode);
@@ -7848,6 +7890,7 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
+  if (!laneView.prepare()) return;
   const scope = map ? normalizedCurrentScopeId() : "";
   if (scope !== fitCycleScope) {
     resetFitCycle();
@@ -7887,12 +7930,12 @@ function renderScene(incremental: boolean): void {
   nodeAuxMarkup.clear();
   visibleOrder = layout.order.filter((id) => !orreryNetwork.isRuntimeNode(id));
   _linearPanelLayoutDirty = true;
-  const displayRootId = currentScopeRootId();
+  const displayRootId = laneView.displayRootId();
   const displayRootNode = state.nodes[displayRootId];
   const flowSurface = currentSurfaceIsFlowMode();
   const scatterSurface = currentSurfaceIsScatterMode();
   const structuredMode = structuredSurfaceMode() || "tree";
-  const rootlessSurface = flowSurface || scatterSurface;
+  const rootlessSurface = flowSurface || scatterSurface || Boolean(layout.lane);
   const scatterNodeRenderable = (nodeId: string): boolean =>
     !scatterSurface || nodeId !== displayRootId;
 
@@ -7903,11 +7946,12 @@ function renderScene(incremental: boolean): void {
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let defs = "<defs>";
-  let surfaceFrames = "";
+  let surfaceFrames = laneFrames(layout, escapeXml);
   let disperseGroups = "";
   let edges = "";
   let scatterGuides = "";
   let graphLinks = "";
+  let graphLinkHits = "";
   let overlays = "";
   let annotations = "";
   const nodeParts: Array<[string, string]> = [];
@@ -8083,7 +8127,7 @@ function renderScene(incremental: boolean): void {
     renderedPairOffsets.set(pairKey, pairOffsetIndex + 1);
 
     const linkBoundsMode: LinkConnectionBoundsMode = structuredMode === "tree" ? "tree" : "box";
-    const { source: sourceEnd, target: targetEnd } = edgeEndsForGraphLink(sourcePos, targetPos, link, 0, linkBoundsMode);
+    const { source: sourceEnd, target: targetEnd } = layout.lane ? laneLinkGeometry(layout, link) : edgeEndsForGraphLink(sourcePos, targetPos, link, 0, linkBoundsMode);
     // If the rendered node appears as a portal subsystem (`[[...]]`), push the edge end past the bracket glyph.
     const sourceIsPortal = isScopePortalNode(sourceRenderNode);
     const targetIsPortal = isScopePortalNode(targetRenderNode);
@@ -8106,7 +8150,7 @@ function renderScene(incremental: boolean): void {
       || (targetPos.depth === sourcePos.depth && targetY < sourceY);
     const isReverseFlow = flowSurface && !forward;
     const needsUArch = flowSurface && (depthBack || isReverseFlow);
-    const pairWaveOffset = pairOffsetIndex === 0
+    const pairWaveOffset = layout.lane || pairOffsetIndex === 0
       ? 0
       : Math.ceil(pairOffsetIndex / 2) * 26 * (pairOffsetIndex % 2 === 0 ? -1 : 1);
 
@@ -8178,7 +8222,8 @@ function renderScene(incremental: boolean): void {
 
     const selectedClass = viewState.selectedLinkId === link.id || selectedGraphLinkId === link.id ? " selected" : "";
     graphLinks += `<path class="graph-link${styleClass}${selectedClass}" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
-    graphLinks += `<path class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" d="${graphLinkPathD}" />`;
+    const hit = `<path class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" d="${graphLinkPathD}" />`;
+    if (layout.lane) graphLinkHits += hit; else graphLinks += hit;
     if (label) {
       const labelWidth = Math.max(48, label.length * 7 + 18);
       const labelY = controlY - 10;
@@ -8260,7 +8305,7 @@ function renderScene(incremental: boolean): void {
 
   function nodeDrawSurface(): NodeDrawSurface {
     return {
-      view: canonicalSurfaceViewName(scatterSurface ? "scatter" : structuredMode),
+      view: canonicalSurfaceViewName(layout.lane ? "lane" : scatterSurface ? "scatter" : structuredMode),
       structuredMode: canonicalSurfaceViewName(structuredMode),
       displayRootId,
       rootless: rootlessSurface,
@@ -8330,9 +8375,9 @@ function renderScene(incremental: boolean): void {
         reparentSource: viewState.reparentSourceIds.has(node.id),
         dragSource: Boolean(viewState.dragState && node.id === viewState.dragState.sourceNodeId),
         dropTarget: viewState.dragState?.proposal?.kind === "reparent" && node.id === viewState.dragState.proposal.parentId,
-        collapsedCount: viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
+        collapsedCount: layout.lane?.hiddenCounts[node.id] || (viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
           ? Math.max(1, countHiddenDescendants(node.id))
-          : undefined,
+          : undefined),
         lockedBy: nodeDrawLockState(node.id),
       },
       surface: nodeDrawSurface(),
@@ -8435,7 +8480,7 @@ function renderScene(incremental: boolean): void {
     const children = scatterSurface ? [] : visibleChildren(node);
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
-    if (!nodeComponent) {
+    if (!layout.lane && !nodeComponent) {
       const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
       children.forEach((id, index) => {
         const edgeId = `edge:${nodeId}:${id}`;
@@ -8445,7 +8490,7 @@ function renderScene(incremental: boolean): void {
       });
     }
 
-    const drawInput = toNodeDrawInput(node, p, nodeStyles);
+    const drawInput = laneNodeInput(toNodeDrawInput(node, p, nodeStyles), Boolean(layout.lane));
     nodeDrawInputs.set(node.id, drawInput);
     const output = nodeSvgCache.get(nodeId, JSON.stringify(drawInput), () => renderNodeSvg(drawInput));
     let nodeMarkup = output.svg;
@@ -8467,7 +8512,9 @@ function renderScene(incremental: boolean): void {
     if (!nodeComponent) children.forEach((cid) => drawNode(cid));
   }
 
-  if (scatterSurface) {
+  if (layout.lane) {
+    visibleOrder.forEach(drawNode);
+  } else if (scatterSurface) {
     visibleOrder.filter(scatterNodeRenderable).forEach((nodeId) => drawNode(nodeId));
   } else if (rootlessSurface && displayRootNode) {
     const surfaceNodeIds = visibleChildren(displayRootNode).filter((nodeId) => Boolean(pos[nodeId]));
@@ -8524,8 +8571,8 @@ function renderScene(incremental: boolean): void {
 
   const replaced = retainedSvgScene.update(canvas, [
     ["defs", defs], ["frames", surfaceFrames], ["groups", disperseGroups],
-    ["edges", edges], ...edgeParts, ["guides", scatterGuides], ["links", graphLinks],
-    ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ["annotations", annotations],
+    ["edges", edges], ...edgeParts, ["guides", scatterGuides], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
+    ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
   ], !incremental);
   webglPaintedSelection = new Set(viewState.selectedNodeIds);
   webglPaintedPrimary = viewState.selectedNodeId;
@@ -12218,8 +12265,10 @@ function syncViewerKeyboardMode(): void {
 function beginGrab(): void {
   if (!map || grabSession || isReadOnlyLink()) return;
   const roots = getMovableSelectionRoots();
-  if (viewState.surfaceViewMode !== "tree" || roots.length !== 1 || roots[0] !== viewState.selectedNodeId || roots[0] === currentScopeRootId()) {
-    setStatus("Grab: select one movable subtree in Tree.", true);
+  const laneGrid = currentLaneGrid();
+  const movable = viewState.surfaceViewMode === "tree" || Boolean(laneGrid?.lanes.some((ids) => ids.includes(viewState.selectedNodeId)));
+  if (!movable || roots.length !== 1 || roots[0] !== viewState.selectedNodeId || roots[0] === currentScopeRootId()) {
+    setStatus("Grab: select one movable subtree in Tree, or one item in Lane.", true);
     return;
   }
   cancelStructureNodeDrag();
@@ -12239,7 +12288,10 @@ function beginGrab(): void {
 function moveGrab(key: string): void {
   const grab = grabSession;
   if (!grab || !map || map !== grab.map || !lastLayout) return;
-  const proposal = treeGrabMove(map.state.nodes, lastLayout.pos, grab.sourceId, currentScopeRootId(), viewState.surfaceLayoutDirection, key);
+  const laneGrid = currentLaneGrid();
+  const proposal = laneGrid && lastLayout.lane
+    ? laneGrabMove(laneGrid, lastLayout.pos, grab.sourceId, lastLayout.lane.direction, key)
+    : treeGrabMove(map.state.nodes, lastLayout.pos, grab.sourceId, currentScopeRootId(), viewState.surfaceLayoutDirection, key);
   if (!proposal || !applyMoveByParentAndIndex(grab.sourceId, proposal.parentId, proposal.index, true,
     { withUndo: false, withTouch: false, withStatus: false })) return;
   grab.moved = true;
@@ -12427,7 +12479,9 @@ function createNodeByDirectionAndEdit(direction: "breadth" | "depth", commitEdit
   localEditBatchDepth++;
   try {
     if (commitEditor) stopInlineEdit(true, { focusBoard: false });
-    if (direction === "depth") addChild();
+    // Lane hides a grandchild's children, so a new child would vanish: add in the same lane.
+    const laneItem = currentLaneGrid()?.lanes.some((ids) => ids.includes(viewState.selectedNodeId));
+    if (direction === "depth" && !laneItem) addChild();
     else addSibling();
   } finally {
     localEditBatchDepth--;
@@ -16955,6 +17009,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleCollapse();
+    return;
+  }
+
+  if (event.key.startsWith("Arrow") && !event.ctrlKey && !event.metaKey && !event.altKey && currentLaneGrid()) {
+    event.preventDefault();
+    laneArrow(event.key, event.shiftKey);
     return;
   }
 
