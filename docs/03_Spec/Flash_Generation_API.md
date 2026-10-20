@@ -20,7 +20,7 @@
 `target` は `m3e_get` で解決した canonical URI を推奨する。表示名パスも受理するが、受付時にURIへ固定する。
 任意で `title`, `instruction` を指定できる。
 sourceは既存Flash契約の `topic/text` + `text`、`url/audio/video` + `url`、またはファイル種別 + `filename/mime_type/base64`。
-この入口のJSON全体は1 MBまで。ローカルパスの読み出しは行わない。
+この入口のJSON全体は64 MiBまで（添付のbase64を含む）。生成サービス側の入力制限は別途適用される。ローカルパスの読み出しは行わない。
 
 受付は202と `job_id`, `state`, `target` を返す。
 `GET /api/flash/jobs/<job_id>` で状態を取得する。

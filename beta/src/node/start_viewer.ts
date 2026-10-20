@@ -211,7 +211,7 @@ async function handleFlashJobsApi(req: http.IncomingMessage, res: http.ServerRes
   try {
     if (pathname === "/api/flash/jobs" && req.method === "POST") {
       if (!(req.headers["content-type"] || "").startsWith("application/json")) throw new Error("Use application/json");
-      const result = currentFlashJobs().submit(JSON.parse(await readRequestBody(req, 1_000_000)));
+      const result = currentFlashJobs().submit(JSON.parse(await readRequestBody(req, 64 * 1024 * 1024)));
       sendJson(res, result.state === "processing" ? 202 : 200, result);
     } else if (req.method === "GET" && /^\/api\/flash\/jobs\/[a-f0-9]{64}$/.test(pathname)) {
       sendJson(res, 200, currentFlashJobs().get(pathname.split("/").pop()!));
