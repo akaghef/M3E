@@ -44,6 +44,10 @@ export function guardFinal(root) {
 }
 export function ensureBuild(root,channel,{force=false,install=false}={}) {
   const source=channel==='beta'?guardBeta(root):guardFinal(root);
+  const modules=path.join(root,channel,'node_modules');
+  // Outside channel inputs, under the existing node_modules/ ignore rule.
+  const backup=path.join(root,'node_modules',`.m3e-${channel}-backup`);
+  if(fs.existsSync(backup)) throw Error(`Dependency backup remains: ${backup}. A previous install may have been interrupted; inspect and recover it before retrying. current server has not been stopped.`);
   const manifest=path.join(root,'.m3e-release.json');
   const files=channel==='final' && fs.existsSync(manifest)?read(manifest).files:sourceFiles(root,channel);
   const inputHash=fingerprint(root,files);
@@ -59,7 +63,21 @@ export function ensureBuild(root,channel,{force=false,install=false}={}) {
       : spawnSync(npm,argv,{cwd:path.join(root,channel),stdio:'inherit'});
     if(result.status!==0) throw Error(`npm ${args.join(' ')} failed; current server has not been stopped.`);
   }
-  if(install || !fs.existsSync(path.join(root,channel,'node_modules/dotenv/config.js'))) run(['ci']);
+  if(install || !fs.existsSync(path.join(modules,'dotenv/config.js'))) {
+    const saved=fs.existsSync(modules);
+    if(saved) {
+      fs.mkdirSync(path.dirname(backup),{recursive:true});
+      fs.renameSync(modules,backup);
+    }
+    try {run(['ci']);} catch(e) {
+      if(saved) {
+        fs.rmSync(modules,{recursive:true,force:true});
+        fs.renameSync(backup,modules);
+      }
+      throw e;
+    }
+    if(saved) fs.rmSync(backup,{recursive:true,force:true});
+  }
   if(force || !old || old.inputHash!==inputHash || !fs.existsSync(bundle) || !fs.existsSync(entry) || old.entryHash!==hash(fs.readFileSync(entry)) || old.bundleHash!==hash(fs.readFileSync(bundle)) || old.node!==process.version) {
     run(['run','build']);
     if((channel==='beta'?guardBeta(root):guardFinal(root))!==source || fingerprint(root,files)!==inputHash) throw Error('Source changed during build; refusing launch.');

@@ -17,6 +17,41 @@ function fixture(fn){const root=fs.mkdtempSync(path.join(os.tmpdir(),'m3e-channe
  fn(root);
  }finally{fs.rmSync(root,{recursive:true,force:true});}}
 function deps(root,c){fs.mkdirSync(path.join(root,c,'node_modules/dotenv'),{recursive:true});fs.writeFileSync(path.join(root,c,'node_modules/dotenv/config.js'),'');}
+function installFixture(root,{fail=false}={}) {
+ const dir=path.join(root,'beta'),pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
+ if(fail) pkg.scripts.preinstall="node -e \"require('fs').mkdirSync('node_modules/partial',{recursive:true});require('fs').writeFileSync('node_modules/partial/new.txt','incomplete');process.exit(3)\"";
+ fs.writeFileSync(path.join(dir,'package.json'),JSON.stringify(pkg));
+ fs.writeFileSync(path.join(dir,'package-lock.json'),JSON.stringify({name:pkg.name,version:pkg.version,lockfileVersion:3,requires:true,packages:{'':{name:pkg.name,version:pkg.version,...(fail?{hasInstallScript:true}:{})}}}));
+ git(root,'add','beta/package.json','beta/package-lock.json');git(root,'commit','-m','install fixture');git(root,'update-ref','refs/remotes/origin/dev-beta','HEAD');
+ deps(root,'beta');fs.writeFileSync(path.join(dir,'node_modules/keep.bin'),Buffer.from([0,255,13,10]));
+ return path.join(root,'node_modules/.m3e-beta-backup');
+}
+test('failed npm ci restores existing dependencies and removes partial install',()=>fixture(root=>{
+ const backup=installFixture(root,{fail:true});
+ assert.throws(()=>ensureBuild(root,'beta',{install:true}),/npm ci failed; current server has not been stopped/);
+ assert.deepEqual(fs.readFileSync(path.join(root,'beta/node_modules/keep.bin')),Buffer.from([0,255,13,10]));
+ assert.equal(fs.readFileSync(path.join(root,'beta/node_modules/dotenv/config.js'),'utf8'),'');
+ assert.deepEqual(fs.readdirSync(path.join(root,'beta/node_modules')).sort(),['dotenv','keep.bin']);
+ assert.equal(fs.existsSync(backup),false);assert.equal(fs.existsSync(path.join(root,'beta/dist/.m3e-build.json')),false);
+ assert.doesNotThrow(()=>guardBeta(root));
+}));
+test('successful npm ci removes backup and leaves Beta build inputs clean',()=>fixture(root=>{
+ const backup=installFixture(root);
+ ensureBuild(root,'beta',{install:true});
+ assert.equal(fs.existsSync(backup),false);assert.equal(fs.existsSync(path.join(root,'beta/node_modules/keep.bin')),false);
+ assert.equal(fs.readFileSync(path.join(root,'beta/dist/browser/viewer.js'),'utf8'),'built');
+ assert.doesNotThrow(()=>guardBeta(root));assert.equal(git(root,'status','--porcelain','--untracked-files=all'),'');
+}));
+test('leftover dependency backup blocks installation without deleting either copy',()=>fixture(root=>{
+ const backup=installFixture(root);fs.mkdirSync(backup,{recursive:true});fs.writeFileSync(path.join(backup,'old.txt'),'recover me');
+ for(const install of [true,false]) {
+  assert.throws(()=>ensureBuild(root,'beta',{install}),/Dependency backup remains:.*previous install may have been interrupted/);
+  assert.equal(fs.readFileSync(path.join(backup,'old.txt'),'utf8'),'recover me');
+  assert.deepEqual(fs.readFileSync(path.join(root,'beta/node_modules/keep.bin')),Buffer.from([0,255,13,10]));
+  assert.deepEqual(fs.readdirSync(path.join(root,'beta/node_modules')).sort(),['dotenv','keep.bin']);
+  assert.equal(fs.existsSync(path.join(root,'beta/dist')),false);
+ }
+}));
 test('Beta accepts integrated clean source while preserving unrelated documents',()=>fixture(root=>{
  fs.writeFileSync(path.join(root,'notes.md'),'unfinished');assert.equal(guardBeta(root),git(root,'rev-parse','HEAD'));assert.equal(fs.readFileSync(path.join(root,'notes.md'),'utf8'),'unfinished');
 }));

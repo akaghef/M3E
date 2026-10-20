@@ -12,7 +12,7 @@
 
 開発ソースは beta/ を正本とし、Final 独自開発はしない。現存 final/ は移行期間の互換用スナップショットとして保持する。ソース二重配置の撤去は別の移行として行う。通常変更は Worktree Separation Rules に従い、PR 必須・人間のマージ待ちは設けない。
 
-通常 Beta は dev-beta と origin/dev-beta の一致、ソース・依存・起動入力の clean を共通検査する。起動時は入力内容と配信 bundle のハッシュ、Node 版を build 記録と照合し、古ければ再生成する。更新は fetch → fast-forward → npm ci → build →通常起動。失敗した build のために既存サーバーを先に停止しない。起動成功やハッシュ一致と、元の症状の動作確認は別。担当 AI が対象操作・保存・再読込を確認して初めて完了とする。
+通常 Beta は dev-beta と origin/dev-beta の一致、ソース・依存・起動入力の clean を共通検査する。起動時は入力内容と配信 bundle のハッシュ、Node 版を build 記録と照合し、古ければ再生成する。更新は fetch → fast-forward → npm ci → build →通常起動。失敗した build のために既存サーバーを先に停止しない。npm ci が失敗した場合も、退避した既存の依存を元に戻す。起動成功やハッシュ一致と、元の症状の動作確認は別。担当 AI が対象操作・保存・再読込を確認して初めて完了とする。
 
 ## Final 更新と昇格の分離
 
