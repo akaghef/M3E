@@ -147,3 +147,16 @@ Dependency installation initially failed compiling better-sqlite3; the existing
 primary dependency installation was reused after verifying identical lockfiles
 and executing a real SQLite query. No dependency definition was changed by this
 recovery. Normal Beta delivery verification remains to be recorded.
+
+Normal Beta delivery: integrated and pushed as 7171d4a, then built from clean
+tracked Beta inputs with the channel lock. Served viewer.js matches the recorded
+build hash. Headless checks on localhost:4173 pass in SVG and active WebGL:
+select an existing parent-child line, open F2, cancel edited text, and return to
+the node. Non-GET requests: zero. The initial check attempted keyboard selection
+before the live scene was ready; the corrected check waits for the scene and
+clicks its actual rendered child before selecting the incoming edge.
+All six isolated preview URLs also load current selection scenes.
+
+Push CI exposed a pre-existing retired personal path in agent-orrery-map source
+citations. Replaced only the machine-specific project directory with a documented
+placeholder, retaining session filenames. No CI rule was changed.

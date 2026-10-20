@@ -29,15 +29,18 @@
 
 ## 2. 会話セッションの出典
 
+`<M3E-project>` は端末ごとのClaudeプロジェクト保存ディレクトリを表す。
+機種固有のユーザー名は省略し、照合用の会話ファイル名は保持する。
+
 | # | 日時 (UTC) | 実行 | 要点（akaghef の発言） | ファイル |
 |---|---|---|---|---|
-| S1 | 2026-08-26 13:49 | Claude Code / M3E | agent mapping を M3E plugin 化。map のひとつを agent orrery として稼働。backend は引き継ぎ、ロジックを M3E に寄せる。node seam lab で agent 1体の描画要素を調整 | `~/.claude/projects/-Users-nisimoriyuuya-dev-M3E/672505e1-b0e5-4bde-b0cc-0b053cfe8986.jsonl` |
+| S1 | 2026-08-26 13:49 | Claude Code / M3E | agent mapping を M3E plugin 化。map のひとつを agent orrery として稼働。backend は引き継ぎ、ロジックを M3E に寄せる。node seam lab で agent 1体の描画要素を調整 | `~/.claude/projects/<M3E-project>/672505e1-b0e5-4bde-b0cc-0b053cfe8986.jsonl` |
 | S2 | 2026-08-26 14:12 | 同上 | 動いている agent orrery は参考に（バグあり）。最初は読み取り専用で既存の会話セッションを観測し、M3E に node を生やす | 同上 |
 | S3 | 2026-08-28 13:01 | 同上 | M3E node としての表示データを考えたい。orrery が surface に何を表示していたか | 同上 |
-| S4 | 2026-09-12 22:31 | Claude Code / M3E | 画面全体やパネルは良いが、OT より UI が劣化している部分が surface にある（edge からメール履歴、node ホバーで情報）。用例：自分の複数 PC 間でしりとり | `~/.claude/projects/-Users-nisimoriyuuya-dev-M3E/c37bb36e-421a-4733-a240-2f9f935508b0.jsonl` |
+| S4 | 2026-09-12 22:31 | Claude Code / M3E | 画面全体やパネルは良いが、OT より UI が劣化している部分が surface にある（edge からメール履歴、node ホバーで情報）。用例：自分の複数 PC 間でしりとり | `~/.claude/projects/<M3E-project>/c37bb36e-421a-4733-a240-2f9f935508b0.jsonl` |
 | S5 | 2026-09-13 03:48 / 04:05 | 同上 | OT 実装から仕様を洗い出し、解体して M3E に取り込む。node seam は node type 混在でも分離して実装するため。色使いは node type ごとに決まり global な意味は無い。front 寄りに集中 | 同上 |
 | S6 | 2026-09-07 03:42 | Codex | OT が非公開だったので内製化を試みたが開発コストを割けなかった。M3E に goal graph などを含めたい思想に近づいた | `~/.codex/sessions/2026/09/07/rollout-2026-09-07T12-39-02-01a079f2-ae3f-7072-a007-02c1c9ba03f1.jsonl` |
-| S7 | 2026-09-15 06:53 | Claude Code / M3E | M3E＋OT 融合を新 PJ で。論理は GPT と詰めるが、GUI が収束しないと目標がブレる。より難しいのは既存実装への組み込み | `~/.claude/projects/-Users-nisimoriyuuya-dev-M3E/b42b2149-877f-4255-b707-0135682679d0.jsonl` |
+| S7 | 2026-09-15 06:53 | Claude Code / M3E | M3E＋OT 融合を新 PJ で。論理は GPT と詰めるが、GUI が収束しないと目標がブレる。より難しいのは既存実装への組み込み | `~/.claude/projects/<M3E-project>/b42b2149-877f-4255-b707-0135682679d0.jsonl` |
 | S8 | 2026-10-13 07:24 | Claude Code / M3E | ゆくゆくは複雑なドメインのタスクは Obsidian・M3E GUI が自分の GUI のメイン。Orrery mail は他端末非対応なので agmsg をネットワークとする | `~/.claude/projects/-Users-akaghef-dev-M3E/8a18f506-c9a0-4399-9f12-575443d69ad9.jsonl`（同内容が他の分岐セッションにも残る） |
 | S9 | 2026-10-14 00:09 | Claude Code / M3E | OT の操作部分はデスクトップアプリと相性が悪い（tmux 前提）。観測は hook 経由で両アプリで使える | `~/.claude/projects/-Users-akaghef-dev-M3E/05a031cf-8643-4379-89a3-af8aa6e055a2.jsonl` |
 | S10 | 2026-10-14 01:57 | Claude Code / M3E | デスクトップアプリの会話履歴 JSONL を観測すれば、メールを読まずにエージェントのマッピングが可能。過去にそれで構築した | `~/.claude/projects/-Users-akaghef-dev-M3E/8a18f506-c9a0-4399-9f12-575443d69ad9.jsonl` |
