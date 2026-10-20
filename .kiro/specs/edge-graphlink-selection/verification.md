@@ -68,3 +68,17 @@ original node text/attributes/children and GraphLinks retained, except the speci
 review root display name and Surface selection. `node --check` and diff check pass.
 No live/personal map write. This is a selection review build; L3 editing remains
 unimplemented. Human acceptance is not inferred from successful URL readback.
+
+## Editing task 6: shared intent implementation
+
+Added `beta/src/shared/edge_graphlink_edit.ts` and its independent unit tests.
+The module resolves current scene membership, refuses aggregate/stale/read-only
+references and key repeats, emits typed label/port/style/direction/delete intents,
+and blocks node-edit fallback. It reuses existing deletion guards and status
+formatting. Port, style and direction full cycles and normalized label no-op vs
+removal are tested. No mutation or new storage route is present in this module.
+
+`edge_graphlink_edit.test.ts` (22 tests) plus existing selection tests (37):
+59 PASS. `tsc --noEmit -p tsconfig.node.json`: PASS. Browser adapter still uses
+the selection-only guard: this commit does not enable editing in the preview.
+Task 7 (fixed-ref editor, existing history/save integration) is the next boundary.
