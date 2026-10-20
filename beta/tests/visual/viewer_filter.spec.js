@@ -1,6 +1,6 @@
 const {test,expect}=require('@playwright/test');
 const {laneServer,surfaceAction,ready}=require('./lane_helpers');
-const {research,bar,chip,choose,domain,geometry,paint,laneSets}=require('./viewer_filter_helpers');
+const {research,bar,chip,choose,domain,geometry,paint,laneSets,hitTargets,settled}=require('./viewer_filter_helpers');
 const open=laneServer(test);
 const fixture=require('../fixtures/lane_asys_domains.json');
 const original=require('../fixtures/lane_asys.json');
@@ -10,21 +10,23 @@ const currentResearch=researchLinks.filter(l=>l.attributes?.confidence==='system
 for(const direction of ['down','right'])test(`Lane ${direction}: independent sets, counts, geometry, reset and persistence`,async({page})=>{
  const {read}=await open(page,fixture);
  await surfaceAction(page,'view','lane-surface','lane-direction',`lane-direction-${direction}`);await ready(page);
- const saved=await read(),before=await geometry(page),basePaint=await paint(page);
+ await page.mouse.move(1,1);await page.keyboard.press('Escape');await settled(page);
+ const saved=await read(),before=await geometry(page),basePaint=await paint(page),hits=await hitTargets(page);
  expect(research.size).toBe(12);expect(researchLinks.length).toBe(26);expect(currentResearch.length).toBe(1);
- await domain(page,'Research');await laneSets(page,research,new Set(researchLinks.map(l=>l.id)));
+ await domain(page,'Research');expect(await hitTargets(page)).toEqual(hits);await laneSets(page,research,new Set(researchLinks.map(l=>l.id)));
  expect(await geometry(page)).toEqual(before);
  await choose(page,'実現段階','CURRENT');
  await laneSets(page,new Set(['item_mac','item_dell']),new Set(currentResearch.map(l=>l.id)));
  expect(await geometry(page)).toEqual(before);
  await page.waitForTimeout(2700);await expect(page.locator('.viewer-filter-count')).toHaveText('node 2/25 · GraphLink 1/82');
  // Selecting a dim body must preserve the filtered appearance after selection patch.
- await page.locator('.node-hit[data-node-id="item_chats"]').click();
+ await page.locator('.node-visual-box[data-node-id="item_chats"]').click();
  await expect.poll(()=>page.locator('.node-shape[data-node-id="item_chats"]').evaluate(e=>Number(getComputedStyle(e).opacity))).toBeLessThan(1);
  await bar(page).getByRole('button',{name:'解除',exact:true}).click();
  await expect(page.locator('.viewer-filter-count')).toHaveCount(0);expect(await geometry(page)).toEqual(before);
  // Return selection to the original root before comparing selection-dependent opacity.
- await page.locator('[data-lane-header][data-node-id="asys"]').click();
+ await page.locator('#board').focus();await page.keyboard.press('k');await page.keyboard.press('k');
+ await expect(page.locator('[data-lane-header][data-node-id="asys"]')).toHaveClass(/selected/);
  expect(await paint(page)).toEqual(basePaint);
  await choose(page,'実現段階','CURRENT');
  const current=links.filter(l=>l.attributes?.confidence==='system-evidenced');
