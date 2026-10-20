@@ -226,3 +226,23 @@ Final supplemental comparison: pre-filter base **6 PASS (11.9s)**; filter worktr
 waiting was corrected, the baseline had 5 PASS / 1 transient bounding-box failure;
 the filter run had 12 PASS. Both runs are retained. This is Tree/SVG interaction
 evidence, not coverage of every surface, WebGL interaction, or old screenshots.
+
+## Legacy operation repair (2026-10-21)
+
+Repaired the original Viewer test controls under the user's continuation
+authorization: import the same sample through the existing file input, use
+current Tab/mark/link keys, verify both Mac and Windows undo mappings, and
+explicitly select SVG for SVG-coordinate tests. Selection redraw is awaited
+before reading counts and drag hit regions. Original operation expectations
+are preserved. The complete operation run passes 13 tests (15.2 seconds).
+The preceding run retained a transient missing hit region (12 pass / 1 fail);
+the final run includes the redraw wait. No product code was changed here.
+
+The three original image tests remain failing with snapshot updates disabled:
+default-sample lacks its Darwin reference; aircraft.mm returns 404; latex has
+an expected 1252x692 image versus actual 1280x720, with 49,837 differing pixels
+(6%). These are not accepted baseline changes or waived acceptance conditions.
+Filter integration remains blocked on restoring these inputs/references or
+an explicit review of the visual baseline. Latest dev-beta combination still
+requires verification. Logs: takeover-filter-final-operations2.log and
+takeover-filter-baseline-gaps.log in the takeover evidence packet.
