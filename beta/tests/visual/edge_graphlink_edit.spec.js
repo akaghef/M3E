@@ -4,6 +4,7 @@ const {withSurface}=require('../selection_review_server');
 const fixture=require('../fixtures/edge_graphlink_selection.json');
 const open=laneServer(test);
 test.use({launchOptions:{args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']}});
+const poll=callback=>expect.poll(callback,{intervals:[50]});
 const inspect=page=>page.locator('#board').evaluate(board=>board.edgeGraphlinkSelection());
 async function press(page,key){
  await page.keyboard.press(key);
@@ -42,31 +43,31 @@ for(const [kind,direction,renderer] of [
   await expect(editor).toBeFocused();
   await editor.fill('  edited relationship  ');await press(page,'Enter');
   await expect(editor).toHaveCount(0);
-  await expect.poll(async()=>(await read()).links[id].label).toBe('edited relationship');
+  await poll(async()=>(await read()).links[id].label).toBe('edited relationship');
   await press(page,'ControlOrMeta+z');
-  await expect.poll(async()=>(await read()).links[id].label??'').toBe(original.label??'');
+  await poll(async()=>(await read()).links[id].label??'').toBe(original.label??'');
   await press(page,'ControlOrMeta+Shift+z');
-  await expect.poll(async()=>(await read()).links[id].label).toBe('edited relationship');
+  await poll(async()=>(await read()).links[id].label).toBe('edited relationship');
   await press(page,'F2');await editor.fill('cancelled');await press(page,'Escape');
   await press(page,'F2');await editor.fill(' edited relationship ');await press(page,'Enter');
   await press(page,'ControlOrMeta+z');
-  await expect.poll(async()=>(await read()).links[id].label??'').toBe(original.label??'');
+  await poll(async()=>(await read()).links[id].label??'').toBe(original.label??'');
   await press(page,'ControlOrMeta+Shift+z');
-  await expect.poll(async()=>(await read()).links[id].label).toBe('edited relationship');
-  await press(page,'[');await expect.poll(async()=>(await read()).links[id].sourcePort).toBe('right');
+  await poll(async()=>(await read()).links[id].label).toBe('edited relationship');
+  await press(page,'[');await poll(async()=>(await read()).links[id].sourcePort).toBe('right');
   for(const value of ['bottom','left','top','right']){
-   await press(page,'[');await expect.poll(async()=>(await read()).links[id].sourcePort).toBe(value);
+   await press(page,'[');await poll(async()=>(await read()).links[id].sourcePort).toBe(value);
   }
   for(const value of ['right','bottom','left','top','right']){
-   await press(page,']');await expect.poll(async()=>(await read()).links[id].targetPort).toBe(value);
+   await press(page,']');await poll(async()=>(await read()).links[id].targetPort).toBe(value);
   }
   for(const value of ['dashed','soft','emphasis','default']){
-   await press(page,'Shift+s');await expect.poll(async()=>(await read()).links[id].style).toBe(value);
+   await press(page,'Shift+s');await poll(async()=>(await read()).links[id].style).toBe(value);
   }
   // The independent fixture starts at forward; traverse the accepted cycle from that value.
   expect(original.direction).toBe('forward');
   for(const value of ['backward','both','none','forward']){
-   await press(page,'Shift+b');await expect.poll(async()=>(await read()).links[id].direction).toBe(value);
+   await press(page,'Shift+b');await poll(async()=>(await read()).links[id].direction).toBe(value);
   }
   const after=await read();
   expect(after.nodes).toEqual(before.nodes);
@@ -90,14 +91,14 @@ test('GraphLink blur commits, IME and Alt arrows stay in editor, Delete and undo
  await press(page,'Alt+ArrowLeft');
  expect(await page.evaluate(()=>window.lineAltDefaults)).toEqual([false]);
  await page.locator('#board').focus();
- await expect.poll(async()=>(await read()).links[id].label).toBe('IME edit');
+ await poll(async()=>(await read()).links[id].label).toBe('IME edit');
  await press(page,'F2');await editor.fill('');await press(page,'Enter');
- await expect.poll(async()=>(await read()).links[id].label??'').toBe('');
+ await poll(async()=>(await read()).links[id].label??'').toBe('');
  await press(page,'Delete');
- await expect.poll(async()=>Boolean((await read()).links[id])).toBe(false);
- await expect.poll(async()=>(await inspect(page)).selection).toEqual({kind:'node',nodeId:'sort'});
+ await poll(async()=>Boolean((await read()).links[id])).toBe(false);
+ await poll(async()=>(await inspect(page)).selection).toEqual({kind:'node',nodeId:'sort'});
  await press(page,'ControlOrMeta+z');
- await expect.poll(async()=>Boolean((await read()).links[id])).toBe(true);
+ await poll(async()=>Boolean((await read()).links[id])).toBe(true);
  expect((await read()).nodes).toEqual(before.nodes);
 });
 test('read-only line selection refuses all edit keys without writes',async({page})=>{
@@ -113,20 +114,37 @@ test('read-only line selection refuses all edit keys without writes',async({page
  await expect(page.locator('textarea.inline-edge-label-editor')).toHaveCount(0);
  expect(await read()).toEqual(before);expect(writes).toEqual([]);
 });
+test('System label change into an aggregate removes singleton port controls immediately',async({page})=>{
+ const {read}=await open(page,withSurface(fixture,'system','right'),{surfaceReady:true});
+ await choose(page,'graph-link','plan');
+ for(let n=0;n<16;n++){
+  const s=(await inspect(page)).selection;
+  if(s.kind==='graph-link'&&s.linkIds.length===1&&s.linkIds[0]==='handoff')break;
+  await press(page,'Alt+ArrowRight');
+ }
+ expect((await inspect(page)).selection.linkIds).toEqual(['handoff']);
+ await press(page,'F2');
+ await page.getByRole('textbox',{name:'Edit selected line label',exact:true}).fill('参照');
+ await press(page,'Enter');
+ await poll(async()=>(await read()).links.handoff.label).toBe('参照');
+ await expect(page.locator('.link-port-controls')).toHaveCount(0);
+ await poll(async()=>(await inspect(page)).selection.kind).toBe('node');
+ expect((await read()).links.reference.label).toBe('参照');
+});
 for(const [kind,direction] of [['tree','right'],['timeline','right'],['scatter','right'],['lane','down'],['lane','right']])
 test(`${kind} ${direction}: parent label clears, cancellation has no undo entry, Delete preserves children`,async({page})=>{
  const {read}=await open(page,withSurface(fixture,kind,direction),{surfaceReady:true});
  const before=await read();await choose(page,'parent-child','sort');
  const editor=page.getByRole('textbox',{name:'Edit selected line label',exact:true});
  await press(page,'F2');await editor.fill('edge text');await press(page,'Enter');
- await expect.poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']).toBe('edge text');
+ await poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']).toBe('edge text');
  await press(page,'F2');await editor.fill('discard');await press(page,'Escape');
  await press(page,'ControlOrMeta+z');
- await expect.poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']??'').toBe(before.nodes.sort.attributes['m3e:edge-label']??'');
+ await poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']??'').toBe(before.nodes.sort.attributes['m3e:edge-label']??'');
  await press(page,'ControlOrMeta+Shift+z');
- await expect.poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']).toBe('edge text');
+ await poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']).toBe('edge text');
  await press(page,'F2');await editor.fill('  ');await press(page,'Enter');
- await expect.poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']??'').toBe('');
+ await poll(async()=>(await read()).nodes.sort.attributes['m3e:edge-label']??'').toBe('');
  await press(page,'Delete');
  expect((await read()).nodes.plan.children).toEqual(before.nodes.plan.children);
  await expect(page.locator('#status')).toContainText('削除できません');

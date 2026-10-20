@@ -6,6 +6,8 @@ Status: working-agreement（決定 = [Decision_Pool 2026-08-23-003](../06_Operat
 
 Surface View 正本: [map_layout_modes.md](../03_Spec/map_layout_modes.md)
 
+> 2026-10-20: 対話的な通常 Disperse は共有 OT 力学 seam へ移行する。以下の WebCola 採用記録は headless 配置計算と制約ソルバーに残る。[ADR_012 の追記](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md)と[検証記録](../tasks/261020_disperse_force_promotion.md)を参照。
+
 ## 1. 目的（正本の再掲）
 
 > **Disperse**: 空間的な近さやクラスタで読む。主眼は関係密度・分布・近接。

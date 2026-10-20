@@ -1344,16 +1344,6 @@
         pointer-events: none;
       }
 
-      body.scatter-surface-active .app {
-        background-color: #0a0a12;
-        background-image: none;
-      }
-
-      body.scatter-surface-active .board {
-        border-color: rgba(148, 163, 184, 0.18);
-        background: #0a0a12;
-      }
-
       body.scatter-surface-active .scatter-guide {
         stroke: rgba(56, 189, 248, 0.46);
         stroke-width: 3;
@@ -1683,12 +1673,6 @@
   stroke-dasharray: 10 6;
   pointer-events: none;
 }
-
-      body.scatter-surface-active .scatter-label {
-        fill: #cbd5e1;
-        stroke: #0a0a12;
-        stroke-width: 4px;
-      }
 
       .label-root {
         font-size: 42px;
@@ -4808,3 +4792,8 @@
   stroke: var(--accent, #2563eb) !important;
   stroke-width: 3px !important;
 }
+:root[data-theme="dark"] .lane-heading,
+:root[data-theme="dark"] .lane-title { fill: var(--ink); }
+:root[data-theme="dark"] .lane-count { fill: var(--status-ink); }
+:root[data-theme="dark"] .lane-heading.selected,
+:root[data-theme="dark"] .lane-title.selected { fill: var(--accent); }

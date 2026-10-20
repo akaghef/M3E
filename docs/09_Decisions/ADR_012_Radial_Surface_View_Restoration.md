@@ -60,3 +60,14 @@ akaghef が改めて Radial と Disperse の違いを与えた:
 
 - seam lab（layout-lab）に Radial の subtype（scatter / force）コントロールを追加する。
 - `LayoutResult.groups?` は Disperse のみが埋める（Radial は使わない）契約のままでよいか、実装時に確認する。
+
+## 2026-10-20 — 通常 Disperse の対話的力学の更新
+
+ユーザーが Force Lab の通常 Disperse 昇格を明示的に指示した。
+対話的な力学は `shared/ot_force.ts` を Lab / NETWORK / Viewer で共用する。
+斥力は D3 quadtree による Barnes–Hut 近似、矩形衝突の候補抽出は RBush を使う。
+OT の距離二乗反比例・距離上限・再加熱・一時固定ドラッグ・冷却・収束停止の制御を維持する。
+この採用は旧 Viewer 独自シミュレーションを置き換える。
+既存の headless `layout_port` / WebCola と手動配置の保存形式は保持する。
+Radial / Disperse の edge と包含の意味の区別は変更しない。
+実装範囲・判定条件・稼働証拠は [昇格タスク](../tasks/261020_disperse_force_promotion.md)を参照。

@@ -130,3 +130,20 @@ rejects all edit keys and port controls.
 Keybindings, Actions and the existing viewer shortcut sheet now describe the
 accepted line selection/editing contexts, including the different Esc behavior
 for node text versus line labels. No new help surface was created.
+
+## Integrated development source verification (2026-10-21)
+
+Merged dev-beta 645aad3 into the task branch, preserving the Disperse force
+implementation, theme handling and line editing. Build and 68 unit tests pass.
+The integrated browser run passes all 32 edit, selection and Lane tests.
+This includes a singleton becoming a System aggregate after label editing:
+port controls are filtered against final rendered membership.
+viewer.ts versus integrated dev-beta is +50/-37 (net +13), within its budget.
+
+The initial integrated run hit the existing 30-second whole-test timeout in a
+sequential Disperse WebGL edit cycle. Poll intervals were reduced to 50ms;
+test and assertion timeouts and expected states were not relaxed.
+Dependency installation initially failed compiling better-sqlite3; the existing
+primary dependency installation was reused after verifying identical lockfiles
+and executing a real SQLite query. No dependency definition was changed by this
+recovery. Normal Beta delivery verification remains to be recorded.

@@ -83,6 +83,25 @@ describe("shared retained projection GPU lifecycle",()=>{
     h.projection.setSnapshot(next);h.projection.present();expect(h.calls.texImage2D.mock.calls.length).toBeGreaterThan(uploads);
     expect(h.raster.fillText).toHaveBeenCalledWith("Renamed",20,50);h.projection.destroy();
   });
+  it("repaints unchanged text and replaces textures when resolved colors change in either direction", () => {
+    const h = harness();
+    h.projection.mount();
+    const input = scene();
+    h.projection.setSnapshot(input);
+    h.projection.present();
+    for (const fill of ["#f8fafc", "black"]) {
+      const uploads = h.calls.texImage2D.mock.calls.length;
+      const next = structuredClone(input);
+      next.paintScene!.commands[0].style.fill = fill;
+      h.raster.fillText.mockClear();
+      h.projection.setSnapshot(next);
+      h.projection.present();
+      expect(h.calls.texImage2D.mock.calls.length).toBeGreaterThan(uploads);
+      expect(h.raster.fillText).toHaveBeenCalledWith("Node", 20, 50);
+      expect(h.raster.fillStyle).toBe(fill);
+    }
+    h.projection.destroy();
+  });
   it("restores the latest scene, camera and selection after context loss",()=>{
     const h=harness();h.projection.mount();h.projection.setSnapshot(scene());h.projection.present();h.projection.setCamera({x:10,y:10,zoom:1});
     h.projection.setInteractionState({selectedNodeIds:["n0"],primarySelectedNodeId:"n0",selectedGraphLinkId:null,hoveredNodeId:null,gestureActive:false});
