@@ -14,6 +14,10 @@
 
 通常 Beta は dev-beta と origin/dev-beta の一致、ソース・依存・起動入力の clean を共通検査する。起動時は入力内容と配信 bundle のハッシュ、Node 版を build 記録と照合し、古ければ再生成する。更新は fetch → fast-forward → npm ci → build →通常起動。失敗した build のために既存サーバーを先に停止しない。npm ci が失敗した場合も、退避した既存の依存を元に戻す。起動成功やハッシュ一致と、元の症状の動作確認は別。担当 AI が対象操作・保存・再読込を確認して初めて完了とする。
 
+Mac で通常 Beta を所有する launchd job が読み込まれている場合は、WorkingDirectory の実パスと M3E_PORT が対象と一致することを確認し、既存設定を保つ launchd 経由で再起動する。
+
+icon 検査は M3E_AGENT_ICON_PYTHON の指定を優先し、未指定の Unix 環境では PATH 順に import PIL が成功する python3 の絶対パスを build に渡す（Windows は従来の Python 解決を維持する）。
+
 ## Final 更新と昇格の分離
 
 日常の Final 更新は `scripts/final/update-and-launch.sh --release <公開済みタグ>`（Windows は .bat）。タグを省略して最新 Beta を選ぶことは禁止する。main 到達と Version Registry のタグ・データ schema を検査し、M3E_HOME/releases/<tag>-<commit> に選定版の final/ を構築して起動する。元の checkout、旧リリース、個人 DB は上書きしない。展開された scripts/final/launch を次回起動にも使用できる。
