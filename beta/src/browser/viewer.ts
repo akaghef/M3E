@@ -1,3 +1,6 @@
+import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
+import { viewerFilter } from "./viewer-filter-controller";
+import { filterSceneInput, ViewerFilterScene } from "./viewer-filter-scene";
 import { laneLinkGeometry } from "../shared/lane_layout";
 import { laneGrabMove, laneNavigationTarget, type LaneGrid } from "../shared/lane_navigation";
 import { LaneViewController } from "./lane_view_controller";
@@ -561,7 +564,6 @@ interface LinearNodeDraft {
   children: LinearNodeDraft[];
 }
 
-type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let map: SavedMap | null = null;
 const orreryNetwork = new OrreryNetwork({ board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, cycleFit: (reverse) => cycleFit(reverse), point: clientToCanvasPoint });
@@ -584,6 +586,20 @@ const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
 const edgeSvgCache = new DerivedNodeCache<string>();
 const treeSpanCache = new TreeSpanCache();
 const retainedSvgScene = new RetainedSvgScene();
+const filterScene = new ViewerFilterScene();
+function applyViewFilter(): void {
+  const { result, selection } = viewerFilter.getSnapshot();
+  filterScene.apply(canvas, result, selection, map?.state.nodes || {});
+}
+let paintedFilterSelection = viewerFilter.getSnapshot().selection;
+viewerFilter.subscribe(() => {
+  const { selection } = viewerFilter.getSnapshot();
+  if (selection === paintedFilterSelection) return;
+  paintedFilterSelection = selection;
+  if (!lastLayout) return;
+  applyViewFilter();
+  if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
+});
 let incrementalProjection = false;
 let localEditBatchDepth = 0;
 let localEditBatchPending = false;
@@ -683,8 +699,6 @@ let flowSurfaceDetailLevel = 0;
 const linearNotesByScope: Record<string, string> = {};
 let linearPanelCanvasWidth = 340;
 let linearResizeState: { pointerId: number; startClientX: number; startCanvasWidth: number } | null = null;
-let importanceViewMode: ImportanceViewMode = "all";
-let importanceVisibleNodeIds: Set<string> | null = null;
 let cloudSyncEnabled = false;
 let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
@@ -6316,78 +6330,6 @@ function scopedChildrenRaw(nodeId: string): string[] {
   return (node.children || []).filter((childId) => isNodeInScope(childId));
 }
 
-function importanceScore(nodeId: string): number {
-  if (!map) {
-    return 0;
-  }
-  const node = map.state.nodes[nodeId];
-  if (!node) {
-    return 0;
-  }
-  const attrs = node.attributes || {};
-  const raw = String(attrs["importance"] ?? attrs["priority"] ?? attrs["重要度"] ?? "").trim().toLowerCase();
-  if (!raw) {
-    return 0;
-  }
-  if (/^[0-9]+$/.test(raw)) {
-    return Math.max(0, Number(raw));
-  }
-  if (raw.includes("critical") || raw.includes("urgent") || raw.includes("highest") || raw.includes("緊急")) {
-    return 4;
-  }
-  if (raw === "h" || raw.includes("high") || raw.includes("top") || raw.includes("高")) {
-    return 3;
-  }
-  if (raw === "m" || raw.includes("medium") || raw.includes("mid") || raw.includes("中")) {
-    return 2;
-  }
-  if (raw === "l" || raw.includes("low") || raw.includes("低")) {
-    return 1;
-  }
-  return 0;
-}
-
-function isNodeVisibleByImportance(nodeId: string): boolean {
-  if (!importanceVisibleNodeIds) {
-    return true;
-  }
-  return importanceVisibleNodeIds.has(nodeId);
-}
-
-function rebuildImportanceVisibility(): void {
-  if (!map || importanceViewMode === "all") {
-    importanceVisibleNodeIds = null;
-    return;
-  }
-
-  const threshold = importanceViewMode === "high-only" ? 3 : 2;
-  const scopeRootId = normalizedCurrentScopeId();
-  const visible = new Set<string>();
-
-  function walk(nodeId: string): boolean {
-    const node = map!.state.nodes[nodeId];
-    if (!node) {
-      return false;
-    }
-    const selfMatched = importanceScore(nodeId) >= threshold;
-    let childMatched = false;
-    scopedChildrenRaw(nodeId).forEach((childId) => {
-      if (walk(childId)) {
-        childMatched = true;
-      }
-    });
-    const keep = selfMatched || childMatched;
-    if (keep) {
-      visible.add(nodeId);
-    }
-    return keep;
-  }
-
-  walk(scopeRootId);
-  visible.add(scopeRootId);
-  importanceVisibleNodeIds = visible;
-}
-
 function scopeChildren(nodeId: string): string[] {
   if (!map) {
     return [];
@@ -6396,7 +6338,7 @@ function scopeChildren(nodeId: string): string[] {
   if (!node) {
     return [];
   }
-  return scopedChildrenRaw(nodeId).filter((childId) => isNodeVisibleByImportance(childId));
+  return scopedChildrenRaw(nodeId);
 }
 
 function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
@@ -7917,7 +7859,6 @@ function renderScene(incremental: boolean): void {
     return;
   }
 
-  rebuildImportanceVisibility();
   normalizeSelectionState();
 
   const state = orreryNetwork.readView(map.state);
@@ -8075,9 +8016,6 @@ function renderScene(incremental: boolean): void {
       return;
     }
     if ((!orreryNetwork.isRuntimeNode(source.id) && !isNodeInScope(source.id)) || (!orreryNetwork.isRuntimeNode(target.id) && !isNodeInScope(target.id))) {
-      return;
-    }
-    if (!scatterSurface && ((!orreryNetwork.isRuntimeNode(source.id) && !isNodeVisibleByImportance(source.id)) || (!orreryNetwork.isRuntimeNode(target.id) && !isNodeVisibleByImportance(target.id)))) {
       return;
     }
     if (sourceRenderId === targetRenderId) {
@@ -8576,6 +8514,9 @@ function renderScene(incremental: boolean): void {
     ["edges", edges], ...edgeParts, ["guides", scatterGuides], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
     ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
   ], !incremental);
+  viewerFilter.enterMap(LOCAL_MAP_ID);
+  viewerFilter.setScene(LOCAL_MAP_ID, filterSceneInput(canvas, state.nodes, state.links || {}));
+  applyViewFilter();
   webglPaintedSelection = new Set(viewState.selectedNodeIds);
   webglPaintedPrimary = viewState.selectedNodeId;
   webglPaintedLink = selectedGraphLinkId;
@@ -8630,7 +8571,7 @@ function renderScene(incremental: boolean): void {
   metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
   metaEl.dataset.scopeId = normalizedCurrentScopeId();
   metaEl.dataset.mapId = LOCAL_MAP_ID;
-  renderedMetaPrefix = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode}`;
+  renderedMetaPrefix = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()}`;
   renderedMetaSuffix = ` | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"}`;
   syncNodeSelectionPresentation();
   updateScopeMeta();
@@ -9244,13 +9185,13 @@ function normalizeSelectionState(): void {
     return;
   }
 
-  if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+  if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId)) {
     viewState.selectedNodeId = preferredSelectionForScope(normalizedCurrentScopeId());
   }
 
   const normalizedSelectedIds = new Set<string>();
   viewState.selectedNodeIds.forEach((nodeId) => {
-    if (map!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
+    if (map!.state.nodes[nodeId] && isNodeInScope(nodeId)) {
       normalizedSelectedIds.add(nodeId);
     }
   });
@@ -9335,6 +9276,7 @@ function refreshSvgNodeInteraction(id: string): void {
     dropTarget: viewState.dragState?.proposal?.kind === "reparent" && viewState.dragState.proposal.parentId === id,
   } };
   retainedSvgScene.patch(`node:${id}`, renderNodeSvg(input).svg + (nodeAuxMarkup.get(id) || ""));
+  applyViewFilter();
   nodeDrawInputs.set(id, input);
 }
 
@@ -9395,6 +9337,7 @@ function scheduleSelectionRefresh(): void {
             element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
           });
         });
+        applyViewFilter();
         const paint = captureSvgPaintScene(canvas, changed, true);
         const scene = webglProjection!.updateNodePaint(paint, changed);
         if (scene) webglLastSnapshot = { ...webglLastSnapshot!, paintScene: scene };
@@ -9412,7 +9355,7 @@ function scheduleSelectionRefresh(): void {
 
 function setSingleSelection(nodeId: string, renderNow = true): void {
   getNode(nodeId);
-  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+  if (!isNodeInScope(nodeId)) {
     return;
   }
   viewState.selectedLinkId = "";
@@ -9506,7 +9449,7 @@ function selectGraphLink(linkId: string, renderNow = true): void {
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
   getNode(nodeId);
-  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+  if (!isNodeInScope(nodeId)) {
     return;
   }
   if (options.range) {
@@ -11351,14 +11294,7 @@ function showContextMenu(x: number, y: number, items: { label: string; danger?: 
   document.body.appendChild(menu);
   activeContextMenu = menu;
 
-  // Close on outside click
-  const closeHandler = (e: MouseEvent) => {
-    if (!menu.contains(e.target as Node)) {
-      hideContextMenu();
-      document.removeEventListener("click", closeHandler, true);
-    }
-  };
-  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
+  closeOnOutsideClick(menu, hideContextMenu);
 }
 
 function hideContextMenu(): void {
@@ -15470,13 +15406,6 @@ exportVaultBtn?.addEventListener("click", () => {
 });
 
 /* ── Hamburger & Export dropdown toggle ── */
-function toggleDropdown(menu: HTMLElement | null, btn: HTMLElement | null): void {
-  if (!menu || !btn) return;
-  const open = menu.hidden;
-  menu.hidden = !open;
-  btn.setAttribute("aria-expanded", open ? "true" : "false");
-}
-
 hamburgerBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   closeToolbarMenus();

@@ -11,6 +11,7 @@
   },
   "include": [
     "src/browser/webgl_projection.ts",
-    "src/browser/orrery_network.ts"
+    "src/browser/orrery_network.ts",
+    "src/browser/viewer-filter-scene.ts"
   ]
 }

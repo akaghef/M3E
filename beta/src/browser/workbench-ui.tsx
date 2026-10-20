@@ -1,3 +1,4 @@
+import { ViewerFilterBar, ViewerFilterCount } from "./viewer-filter-bar";
 import { RENDER_UPDATE_KEYS, renderUpdateMetrics, renderUpdateRate } from "../rendering/render_update_metrics";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -1452,6 +1453,7 @@ function WorkbenchApp(): React.ReactElement {
   return (
     <div className="wb-shell">
       <TopBar snapshot={snapshot} theme={theme} toggleTheme={toggleTheme} openModal={setModal} />
+      <ViewerFilterBar />
       <LeftRail
         tool={tool}
         setTool={setTool}
@@ -1476,6 +1478,7 @@ function WorkbenchApp(): React.ReactElement {
       />
       <BottomControls snapshot={snapshot} openModal={setModal} />
       <div className="wb-toast">{snapshot.status}</div>
+      <ViewerFilterCount />
       {modalContent}
     </div>
   );

@@ -1192,3 +1192,16 @@ body.wb-object-size-off .object-size-label {
   overflow-wrap: anywhere;
   overscroll-behavior: contain;
 }
+
+.viewer-filter-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start; gap: 6px; padding: 6px; background: var(--panel-bg, #fff); color: var(--text-color, #24242a); border: 1px solid #aaa6; border-radius: 8px; pointer-events: auto; }
+.viewer-filter-axis { position: relative; display: flex; flex-direction: column; }
+.viewer-filter-bar button { display: flex; align-items: center; gap: 5px; min-height: 32px; padding: 5px 8px; border: 1px solid #aaa6; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.viewer-filter-bar button > strong { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-filter-bar button.is-active { border-color: #4262ff; background: #4262ff18; }
+.viewer-filter-bar button:disabled { cursor: default; opacity: .55; }
+.viewer-filter-bar small { display: block; font-size: 10px; }
+.viewer-filter-axis > small { max-width: 130px; }
+.viewer-filter-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 260px; padding: 6px; border: 1px solid #aaa6; border-radius: 8px; background: #fff; color: #24242a; box-shadow: 0 10px 28px #0003; }
+.viewer-filter-menu button { width: 100%; text-align: left; border: 0; }
+.viewer-filter-menu button:hover, .viewer-filter-menu button:focus-visible { background: #4262ff18; }
+.viewer-filter-count { position: absolute; left: 76px; bottom: 64px; padding: 9px 12px; border-radius: 8px; background: #14141cd9; color: #fff; font-size: 12px; pointer-events: auto; }

@@ -263,7 +263,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
         if (!text || !run.getNumberOfChars()) return;
         const position = run.getStartPositionOfChar(0);
         const runCss = getComputedStyle(run);
-        commands.push({ kind: "text", bounds, matrix, style: paintStyle(run), nodeId, editorBody,
+        commands.push({ kind: "text", bounds, matrix, style: { ...paintStyle(run), opacity: paintStyle(run).opacity * (run === element ? 1 : style.opacity) }, nodeId, editorBody,
           text, x: position.x, y: position.y,
           font: `${runCss.fontStyle} ${runCss.fontWeight} ${runCss.fontSize} ${runCss.fontFamily}`,
           fontSize: parseFloat(runCss.fontSize), decoration: runCss.textDecorationLine,
@@ -297,7 +297,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
         const markerMatrix = multiply(matrix, multiply(rotate, [1,0,0,1,-marker.refX.baseVal.value,-marker.refY.baseVal.value]));
         marker.querySelectorAll<SVGGeometryElement>("path, polygon, rect, circle").forEach((child) => {
           commands.push({ kind: "path", path: shapePath(child), matrix: markerMatrix,
-            bounds: transformedBounds(child.getBBox(), markerMatrix, pad), style: paintStyle(child),
+            bounds: transformedBounds(child.getBBox(), markerMatrix, pad), style: { ...paintStyle(child), opacity: paintStyle(child).opacity * style.opacity },
             nodeId:element.getAttribute(end === "start" ? "data-source-node-id" : "data-target-node-id") || undefined });
         });
       }
