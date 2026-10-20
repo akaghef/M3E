@@ -286,7 +286,7 @@ interface GraphLink {
 }
 ```
 
-`GraphLink.attributes` は関係に付随する任意のカスタムデータを key-value で保持する。関係の確度などが表す情報は Content、値を線種へ写す規則は Style として扱う。このプロパティは仕様のみで、現行 `beta/src/shared/types.ts` と `beta/src/browser/viewer.globals.d.ts` の GraphLink 型には未実装である。
+`GraphLink.attributes` は関係に付随する任意のカスタムデータを key-value で保持する。関係の実現段階などが表す情報は Content、値を線種へ写す規則は Style として扱う。このプロパティは仕様のみで、現行 `beta/src/shared/types.ts` と `beta/src/browser/viewer.globals.d.ts` の GraphLink 型には未実装である。
 
 Beta では `links` は optional でよい。
 未実装 viewer と既存 save data を壊さないためである。

@@ -20,7 +20,7 @@ Surface View に `Lane` を第6種として追加する。正本は `Tree / Axia
 - レーン順、親子 `edge` から導出する孫 node の所属、親 node の組ごとに集計した GraphLink、兄弟順序の差が2以上の親 node 間の関係、異なるレーンで GraphLink を持たない孫 node の組は保存しない。
 - 選択から計算する内訳の線は GraphLink ではなく、Lane view の Topology に含めない。
 - 図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
-- GraphLink に任意の key-value data を保持する `attributes` property を仕様として加える。関係の確度などが表す情報は Content とし、`LinkStyle` への写像は Style とする。
+- GraphLink に任意の key-value data を保持する `attributes` property を仕様として加える。関係の実現段階などが表す情報は Content とし、`LinkStyle` への写像は Style とする。
 - System はレーンに整列できないフローチャート様の構造を扱う。既存 subtype `containment / module / architecture` は維持する。
 
 ## Rationale
