@@ -1,3 +1,4 @@
+import { EdgeGraphLinkSelectionAdapter } from "./edge_graphlink_selection_adapter";
 import { dispersePositionFrame, disperseGuideEndpoints } from "./disperse_frame";
 import type { ForceSnapshot } from "../shared/force_seam_interface";
 import { DisperseForceController } from "./disperse_force_controller";
@@ -592,7 +593,8 @@ let localEditBatchPending = false;
 let renderRevision = 0;
 let snapshotNodeCache = new WeakMap<SVGGraphicsElement, { key: string; value: RenderNode }>();
 let snapshotEdgeCache = new WeakMap<SVGGeometryElement, { key: string; value: RenderEdge }>();
-let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
+type LineLabelEditorOptions = { value: string; anchor: () => { x: number; y: number } | null; commit: (value: string) => void };
+let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement; options?: LineLabelEditorOptions } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let contentMinX = 0;
@@ -2721,8 +2723,8 @@ function ensureDocShape(payload: unknown): SavedMap {
       id: record.id || linkId,
       sourceNodeId: String(record.sourceNodeId || ""),
       targetNodeId: String(record.targetNodeId || ""),
-      relationType: record.relationType || undefined,
-      label: record.label || undefined,
+      relationType: record.relationType ?? undefined,
+      label: record.label ?? undefined,
       direction: record.direction || "none",
       style: record.style || "default",
       color: sanitizeColor(record.color) || undefined,
@@ -4306,7 +4308,7 @@ function setStatus(message: string, isError = false): void {
   statusEl.style.color = isError ? "var(--danger)" : "var(--status-ink)";
   if (message) {
     statusTimer = setTimeout(() => {
-      statusEl.textContent = "";
+      statusEl.textContent = lineSelection.status();
     }, 2500);
   }
 }
@@ -4701,7 +4703,7 @@ function createWebGLGraphLinkEndpointControls(
 }
 
 function syncWebGLGraphLinkControls(): void {
-  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId) {
+  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId || !lineSelection.portControls(selectedGraphLinkId)) {
     removeWebGLGraphLinkControls();
     return;
   }
@@ -5312,7 +5314,10 @@ function syncInlineEdgeLabelEditorPosition(): void {
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const edgeLabel = incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
+  const options = inlineEdgeLabelEditor.options, anchor = options?.anchor(), rect = board.getBoundingClientRect();
+  if (options && !anchor) { stopInlineEdgeLabelEdit(false, { focusBoard: false }); return; }
+  const edgeLabel = anchor ? { x: (anchor.x - rect.left - board.clientLeft - viewState.cameraX) / viewState.zoom,
+    y: (anchor.y - rect.top - board.clientTop - viewState.cameraY) / viewState.zoom, width: 180 } : incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
   if (!edgeLabel) {
     return;
   }
@@ -7465,6 +7470,18 @@ const laneView = new LaneViewController({
   undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
 });
 
+const lineSelection = new EdgeGraphLinkSelectionAdapter({
+  state: () => map?.state ?? null, view: () => viewState, canvas, board, scope: currentScopeRootId, inScope: isNodeInScope,
+  label: id => map?.state.nodes[id] ? uiLabel(map.state.nodes[id]) : null,
+  single: setSingleSelection, link: id => { selectedGraphLinkId = id; viewState.selectedLinkId = id ?? ""; },
+  clearNodeActions: () => { viewState.reparentSourceIds.clear(); clearCutClipboard(); },
+  writable: () => !isReadOnlyLink(), undo: pushUndoSnapshot, touch: touchDocument,
+  port: cycleSelectedGraphLinkPort, editor: options => startIncomingEdgeLabelEdit("", options),
+  parentLabel: applyIncomingEdgeLabelEdit, deleteLink: deleteSelectedGraphLink,
+  render: scheduleRender, status: setStatus, editing: () => viewerKeyboardMode() === "edit",
+  owns: () => !grabSession && !viewState.panState && !viewState.pinchState && !linkPortDragState && !webglGraphLinkDragState && !viewState.dragState && !routingSwitcherOpen && !templateCompletionState && !entityListVisible && !conflictPanelVisible && !homeScreenVisible && !activeColorPalette && !linearAdjustMenuOpen,
+});
+
 function buildLayout(state: AppState): LayoutResult {
   if (viewState.surfaceViewMode === "lane") return laneView.layout();
   const displayRootId = currentScopeRootId();
@@ -7752,6 +7769,7 @@ function renderScene(incremental: boolean): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
+  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}`);
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
     VIEWER_TUNING.layout.minCanvasHeight,
@@ -7765,6 +7783,7 @@ function renderScene(incremental: boolean): void {
   let graphLinks = "";
   let graphLinkHits = "";
   let overlays = "";
+  const linePortOverlays: Array<{ id: string; svg: string }> = [];
   let annotations = "";
   const nodeParts: Array<[string, string]> = [];
   const edgeParts: Array<[string, string]> = [];
@@ -7905,6 +7924,7 @@ function renderScene(incremental: boolean): void {
     const surfaceKey = flowSurface
       ? `${sourceRenderId}->${targetRenderId}:${link.label || link.relationType || ""}`
       : link.id;
+    lineSelection.graph(surfaceKey, link, sourceRenderId, targetRenderId);
     if (renderedSurfaceLinks.has(surfaceKey)) {
       return;
     }
@@ -8044,10 +8064,12 @@ function renderScene(incremental: boolean): void {
       graphLinks += `<rect class="graph-link-label-bg" data-link-id="${link.id}" x="${controlX - labelWidth / 2}" y="${labelY - 14}" width="${labelWidth}" height="19" rx="9.5" />`;
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
-    if (selectedGraphLinkId === link.id) {
-      overlays += renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode);
+    if (lineSelection.portControls(link.id)) {
+      linePortOverlays.push({ id: link.id, svg: renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode) });
     }
   });
+  // Later links can merge into a previously singleton presentation.
+  overlays += linePortOverlays.filter(item => lineSelection.portControls(item.id)).map(item => item.svg).join("");
   defs += "</defs>";
 
   function renderNodeComponent(
@@ -8297,6 +8319,7 @@ function renderScene(incremental: boolean): void {
     if (!layout.lane && !nodeComponent) {
       const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
       children.forEach((id, index) => {
+        lineSelection.parent(nodeId, id);
         const edgeId = `edge:${nodeId}:${id}`;
         const key = JSON.stringify([geometry(p), geometry(pos[id]), index, nodeStyles,
           state.nodes[id]?.attributes, parentChildLinkLabels.get(parentChildEdgeKey(nodeId, id)), structuredMode, viewState.surfaceEdgeRoute]);
@@ -8388,6 +8411,7 @@ function renderScene(incremental: boolean): void {
     ["edges", edges], ...edgeParts, ["guides", scatterGuides], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
     ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
   ], !incremental);
+  lineSelection.finish();
   webglPaintedSelection = new Set(viewState.selectedNodeIds);
   webglPaintedPrimary = viewState.selectedNodeId;
   webglPaintedLink = selectedGraphLinkId;
@@ -9120,11 +9144,11 @@ function syncSelectionMetadata(): void {
 
 let selectionRefreshFrame: number | null = null;
 function nodeSelectionView(id: string) {
-  return {
+  return lineSelection.nodeView(id, {
     selected: viewState.selectedNodeIds.has(id),
     multiSelected: viewState.selectedNodeIds.has(id),
     primarySelected: viewState.selectedNodeId === id,
-  };
+  });
 }
 
 /** Frame paint and its controls form one selection presentation transaction. */
@@ -9229,6 +9253,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   }
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
+  lineSelection.node(nodeId);
   viewState.selectedNodeId = nodeId;
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
@@ -9250,6 +9275,7 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 }
 
 function setRangeSelection(targetId: string): void {
+  lineSelection.node(targetId);
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
@@ -9268,6 +9294,7 @@ function setRangeSelection(targetId: string): void {
 }
 
 function toggleNodeSelection(nodeId: string): void {
+  lineSelection.node(nodeId);
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   viewState.selectionAnchorId = nodeId;
@@ -9297,23 +9324,7 @@ function selectNode(nodeId: string): void {
 }
 
 function selectGraphLink(linkId: string, renderNow = true): void {
-  if (!map?.state.links?.[linkId]) {
-    return;
-  }
-  viewState.selectedLinkId = linkId;
-  selectedGraphLinkId = linkId;
-  viewState.selectedNodeIds = new Set();
-  viewState.selectionAnchorId = null;
-  viewState.reparentSourceIds.clear();
-  clearCutClipboard();
-  const link = map.state.links[linkId];
-  const source = map.state.nodes[link.sourceNodeId];
-  const target = map.state.nodes[link.targetNodeId];
-  setStatus(`Selected link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}. [ and ] adjust ports, Delete removes.`);
-  if (renderNow) {
-    scheduleRender();
-  }
-  board.focus({ preventScroll: true });
+  lineSelection.click(linkId);
 }
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
@@ -11934,7 +11945,7 @@ function deleteSelectedGraphLink(): boolean {
   selectedGraphLinkId = null;
   touchDocument();
   flushAutosaveNow();
-  setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
+  setStatus(`Deleted link: ${source ? uiLabel(source) || "名称未設定" : "参照先がありません"} -> ${target ? uiLabel(target) || "名称未設定" : "参照先がありません"}.`);
   return true;
 }
 
@@ -12194,14 +12205,14 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const { nodeId, input } = inlineEdgeLabelEditor;
+  const { nodeId, input, options: editorOptions } = inlineEdgeLabelEditor;
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
   inlineEdgeLabelEditor = null;
   syncViewerKeyboardMode();
   input.remove();
   if (commit) {
-    applyIncomingEdgeLabelEdit(nodeId, next);
+    if (editorOptions) editorOptions.commit(next); else applyIncomingEdgeLabelEdit(nodeId, next);
   }
   if (options?.focusBoard !== false) {
     board.focus({ preventScroll: true });
@@ -12221,16 +12232,16 @@ function prepareViewportGesture(target: EventTarget | null): boolean {
   return true;
 }
 
-function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
+function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId, options?: LineLabelEditorOptions): void {
   if (!map || !lastLayout) {
     return;
   }
-  const node = getNode(nodeId);
-  if (!node.parentId) {
+  const node = options ? null : getNode(nodeId);
+  if (!options && !node?.parentId) {
     setStatus("Root has no incoming edge label.", true);
     return;
   }
-  if (!incomingTreeEdgeLabelLayout(nodeId)) {
+  if (!options && !incomingTreeEdgeLabelLayout(nodeId)) {
     return;
   }
   if (inlineEditor) {
@@ -12241,12 +12252,12 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   }
   const input = document.createElement("textarea");
   input.rows = 1;
-  input.value = (node.attributes?.["m3e:edge-label"] || "").trim();
+  input.value = options ? options.value : (node?.attributes?.["m3e:edge-label"] || "").trim();
   input.className = "inline-edge-label-editor";
-  input.setAttribute("aria-label", "Edit incoming edge label");
+  input.setAttribute("aria-label", options ? "Edit selected line label" : "Edit incoming edge label");
   input.placeholder = "edge label";
   board.appendChild(input);
-  inlineEdgeLabelEditor = { nodeId, input };
+  inlineEdgeLabelEditor = { nodeId, input, options };
   syncViewerKeyboardMode();
   syncInlineEdgeLabelEditorPosition();
   autoSizeInlineEdgeLabelEditor(input);
@@ -16233,6 +16244,8 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     else if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.startsWith("Arrow")) moveGrab(event.key);
     return;
   }
+
+  if (lineSelection.key(event)) return;
 
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
