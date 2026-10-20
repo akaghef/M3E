@@ -23,13 +23,13 @@ async function main(){
   for(const [kind,key] of [['tree','tree'],['timeline','axial'],['system','system'],['scatter','disperse']]) {
    maps[`selection-${key}`]=withSurface(fixture,kind);maps[`selection-${key}`].state.nodes.root.text=`選択確認・${names[kind]}`;
   }
-  // SQLite's read transaction exports only the named map; the original is never opened writable.
-  const Database=require('better-sqlite3');
-  const source=process.env.M3E_SELECTION_LANE_SOURCE||'/Users/akaghef/dev/M3E-worktrees/lane-view-data/lane.sqlite';
-  const db=new Database(source,{readonly:true,fileMustExist:true});
-  let row;try{row=db.prepare('SELECT state_json FROM maps WHERE id = ?').get('asys-lane');}finally{db.close();}
-  if(!row)throw new Error('A-sys source map is missing');
-  const original=JSON.parse(row.state_json);const payload={version:1,state:original.state||original};
+  // Export the named review map through the existing product API. Never open
+  // the source database or write to the source review server.
+  const source=process.env.M3E_SELECTION_LANE_SOURCE_URL||'http://127.0.0.1:4187/api/maps/asys-lane';
+  const exported=await fetch(source,{signal:AbortSignal.timeout(10000)});
+  if(!exported.ok)throw new Error(`A-sys source export failed: ${exported.status}`);
+  const payload=await exported.json();
+  if(!payload?.state?.nodes?.[payload.state.rootId])throw new Error('A-sys source map is invalid');
   for(const direction of ['down','right']) {
    const copy=withSurface(payload,'lane',direction);copy.state.nodes[copy.state.rootId].text=`Akaghef-System 構成・${direction==='down'?'横':'縦'}の帯`;
    maps[`selection-asys-${direction}`]=copy;

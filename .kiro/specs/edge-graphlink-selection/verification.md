@@ -48,3 +48,23 @@ hit padding・System 初期選択の修正をレビューし、コミットし�
 Headless browser readback confirmed all six preview URLs use the requested surface
 and the selection adapter. A Lane screenshot was inspected. This confirms the
 artificial preview works, not acceptance of editing or an A-sys map migration.
+
+## 2026-10-21 full-session takeover audit follow-up
+
+Completed the missing A-sys review copy. `selection_review_server.js` now exports
+only the named map through the existing source API (default 4187/asys-lane), instead
+of opening source SQLite directly. Missing/unavailable export fails with an explicit
+error; no alternate source is silently substituted. Temporary target still uses
+the unchanged real product server and disposable database.
+
+Started the script on 4188; headless Chromium confirmed ready map/view for Tree,
+Axial, System, Disperse and A-sys Lane down/right. The canonical task URLs are now
+live: selection-tree, selection-axial, selection-system, selection-disperse,
+selection-asys-down, selection-asys-right. Earlier artificial-only URLs in this
+record describe the prior preview, which is no longer running.
+
+Source API readback before/after: identical state. Both A-sys copies: 33 nodes,
+original node text/attributes/children and GraphLinks retained, except the specified
+review root display name and Surface selection. `node --check` and diff check pass.
+No live/personal map write. This is a selection review build; L3 editing remains
+unimplemented. Human acceptance is not inferred from successful URL readback.
