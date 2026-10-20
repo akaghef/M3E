@@ -5101,6 +5101,7 @@ function currentCameraTarget(): CameraTarget {
 }
 
 function cancelCameraMotion(): void {
+  delete board.dataset.cameraMoving;
   if (!cameraMotion) {
     return;
   }
@@ -5156,6 +5157,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     startedAt: null,
     durationMs,
   };
+  board.dataset.cameraMoving = "true";
 
   const step = (now: number): void => {
     if (!cameraMotion) {
@@ -5174,6 +5176,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     if (rawT >= 1) {
       applyCameraTarget(motion.to);
       cameraMotion = null;
+      delete board.dataset.cameraMoving;
       return;
     }
     motion.raf = requestAnimationFrame(step);

@@ -12,7 +12,13 @@ async function laneSets(page,nodes,links){
  await expect(page.locator('.viewer-filter-count')).toHaveText(`node ${nodes.size}/25 · GraphLink ${links.size}/82`);
 }
 async function settled(page){
- const snapshot=async()=>({geometry:await geometry(page),screen:await page.locator('#canvas').evaluate(svg=>Array.from(svg.querySelectorAll('.node-hit')).map(e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height];}))});
+ await page.evaluate(()=>document.fonts.ready);
+ // A paused animation frame is not completion. Observe the motion lifecycle,
+ // then verify stable geometry and the actual presentation camera below.
+ await expect(page.locator('#board')).not.toHaveAttribute('data-camera-moving','true');
+ // Hidden SVG hit rectangles have zero screen bounds in WebGL mode. Observe
+ // the camera that actually presents the pixels before fixing a screenshot clip.
+ const snapshot=async()=>({geometry:await geometry(page),camera:await page.evaluate(()=>window.__m3eWebGLProjection?.getDebugState()?.camera),screen:await page.locator('#canvas').evaluate(svg=>Array.from(svg.querySelectorAll('.node-hit')).map(e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height];}))});
  await expect.poll(async()=>{const a=await snapshot();await page.waitForTimeout(150);return JSON.stringify(a)===JSON.stringify(await snapshot());},{timeout:10000}).toBe(true);
 }
 module.exports={research,bar,chip,choose,domain,geometry,paint,laneSets,settled};

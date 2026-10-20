@@ -15,9 +15,9 @@ async function mode(page,mode){
  // Surface/direction changes autosave and redraw asynchronously. Finish that operation
  // before measuring filter-only render counts (the filter must never save or relayout).
  const saved=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname.startsWith('/api/maps/'));
+ const revision=Number(await page.locator('#board').getAttribute('data-render-revision'));
  await page.evaluate(mode=>window.dispatchEvent(new CustomEvent('m3e:set-surface-layout',{detail:{mode,direction:'right'}})),mode);
  await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.surfaceViewMode)).toBe(mode);
- const revision=Number(await page.locator('#board').getAttribute('data-render-revision'));
  await (await saved).finished();
  await expect.poll(async()=>Number(await page.locator('#board').getAttribute('data-render-revision'))).toBeGreaterThan(revision);
  await page.mouse.move(1,1);await page.keyboard.press('Escape');await settled(page);
