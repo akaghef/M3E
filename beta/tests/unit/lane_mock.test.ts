@@ -100,7 +100,9 @@ test("M1/M4 root heading and lane counts accompany the scene without drawing a r
   svg.innerHTML = laneFrames(result, s => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;"));
   expect(svg.querySelector(".lane-heading")?.textContent).toBe("Akaghef-System 構成");
   expect([...svg.querySelectorAll(".lane-count")].map(n => n.textContent)).toEqual(["3 個", "3 個", "5 個", "6 個", "5 個", "3 個"]);
-  expect(svg.querySelector('[data-node-id="asys"]')).toBeNull();
+  // The root is a selectable heading, not a node card.
+  expect(svg.querySelector('.node-hit[data-node-id="asys"], .node-visual-box[data-node-id="asys"]')).toBeNull();
+  expect(svg.querySelector('.lane-heading[data-node-id="asys"]')).not.toBeNull();
 });
 
 test("M2 labels remain in the existing node renderer and selection keeps its common state", () => {

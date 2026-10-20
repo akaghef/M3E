@@ -5663,7 +5663,7 @@ function currentLaneGrid(): LaneGrid | null {
   const lane = lastLayout?.lane;
   if (viewState.surfaceViewMode !== "lane" || !lane || !map) return null;
   const laneIds = lane.boundaries.map((b) => b.id);
-  return { laneIds, lanes: laneIds.map((id) => (map!.state.nodes[id]?.children ?? []).filter((c) => Boolean(lastLayout!.pos[c]))) };
+  return { rootId: lane.rootId, laneIds, lanes: laneIds.map((id) => (map!.state.nodes[id]?.children ?? []).filter((c) => Boolean(lastLayout!.pos[c]) && lastLayout!.order.includes(c))) };
 }
 
 /** Arrow keys in Lane follow the drawn rows/columns, not tree depth. */
@@ -7946,7 +7946,7 @@ function renderScene(incremental: boolean): void {
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let defs = "<defs>";
-  let surfaceFrames = laneFrames(layout, escapeXml);
+  let surfaceFrames = laneFrames(layout, escapeXml, viewState.selectedNodeIds);
   let disperseGroups = "";
   let edges = "";
   let scatterGuides = "";
@@ -8083,6 +8083,8 @@ function renderScene(incremental: boolean): void {
     if (sourceRenderId === targetRenderId) {
       return;
     }
+    // Lane draws only links between drawn grandchildren; lane names and root have positions for editing only.
+    if (layout.lane && !(layout.order.includes(sourceRenderId) && layout.order.includes(targetRenderId))) return;
     const sourceRenderNode = state.nodes[sourceRenderId] || source;
     const targetRenderNode = state.nodes[targetRenderId] || target;
     if (isParentChildPair(sourceRenderNode, targetRenderNode)) {
@@ -9324,6 +9326,8 @@ function syncNodeSelectionPresentation(): void {
 /** Interaction state does not invalidate metrics, layout, edges or node content. */
 function refreshSvgNodeInteraction(id: string): void {
   const previous = nodeDrawInputs.get(id);
+  // Lane names and the root heading are frame text, not node cards.
+  canvas.querySelector(`[data-lane-header][data-node-id="${CSS.escape(id)}"]`)?.classList.toggle("selected", viewState.selectedNodeIds.has(id));
   if (!previous) return;
   const input: NodeDrawInput = { ...previous, view: { ...previous.view,
     ...nodeSelectionView(id),
@@ -15827,6 +15831,12 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     return;
   }
   if (!map || !nodeId || event.button !== 0) {
+    return;
+  }
+  if ((event.target as Element).hasAttribute("data-lane-header")) {
+    event.preventDefault();
+    setSingleSelection(nodeId);
+    board.focus({ preventScroll: true });
     return;
   }
   if (currentSurfaceIsScatterMode()) {

@@ -49,6 +49,15 @@ export function computeLaneLayout(input: LaneLayoutInput): LayoutResult {
       x: down ? 64 : bandStart, y: down ? bandStart : 128,
       w: down ? bandLength : thickness, h: down ? thickness : bandLength };
   });
+  // Lane names and the root heading are editable nodes: give them geometry so
+  // selection and the inline editor can place them. They are not in `order`,
+  // so the node renderer does not draw them as cards.
+  boundaries.forEach((b, index) => {
+    const m = headers[index]!;
+    pos[b.id] = { x: b.x + 16, y: b.y + 26, w: m.w, h: 36, depth: 1, fontSize: 28, labelLines: m.labelLines };
+  });
+  const rootMetric = metrics[projection.rootId] ?? { w: 320, h: 44 };
+  pos[projection.rootId] = { x: 64, y: 70, w: rootMetric.w, h: 44, depth: 0, fontSize: 36, labelLines: rootMetric.labelLines };
   return { pos, order: ids,
     totalWidth: down ? start + extent + 64 : Math.max(1440, 64 + boundaries.length * thickness + 80),
     totalHeight: (down ? 128 + boundaries.length * thickness : 128 + bandLength) + 64,

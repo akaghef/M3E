@@ -27,7 +27,9 @@ for (const [name, payload, rootId, counts] of [["first slice", fixture, "diagram
       const bands = result.lane!.boundaries;
       expect(bands.map(b => b.id)).toEqual(state.nodes[rootId].children);
       expect(data.projection.lanes.map(l => l.nodeIds.length)).toEqual(counts);
-      expect(result.pos[rootId]).toBeUndefined();
+      // Root and lane names are headings (editable), never drawn as node cards.
+      expect(result.order).not.toContain(rootId);
+      bands.forEach(b => expect(result.order).not.toContain(b.id));
       data.projection.lanes.forEach((lane, index) => {
         const points = lane.nodeIds.map(id => result.pos[id]);
         const center = direction === "down" ? bands[index].y + bands[index].h / 2 : bands[index].x + bands[index].w / 2;

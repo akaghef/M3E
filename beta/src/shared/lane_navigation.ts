@@ -1,14 +1,16 @@
 /**
  * Keyboard movement for Lane view, following what is on screen: along a lane
  * moves to the neighbouring grandchild, across lanes moves to the grandchild of
- * the next non-empty lane whose position is nearest. Never returns a node that
- * Lane does not draw (root, lane node, collapsed descendants).
+ * the next non-empty lane whose position is nearest. Lane names and the root
+ * heading are reachable as the outer levels; collapsed descendants never are.
  */
 export type LaneDirection = "right" | "down";
 type Position = { x: number; y: number; w: number; h: number };
 
 export interface LaneGrid {
-  /** Lane node ids in sibling order. */
+  /** The Lane root, drawn as the heading above the lanes. */
+  rootId?: string;
+  /** Lane node ids in sibling order, drawn as each lane's name. */
   laneIds: string[];
   /** Drawn grandchildren of each lane, in sibling order. */
   lanes: string[][];
@@ -53,13 +55,35 @@ export function laneFirstNode(grid: LaneGrid): string | null {
   return grid.lanes.find(ids => ids.length > 0)?.[0] ?? null;
 }
 
+/**
+ * Arrow keys: along the lane between items; across to the nearest item of the
+ * next non-empty lane. Going back past the first item, or back across from the
+ * first lane, reaches the lane name, and from a lane name the root heading
+ * (down: Left/Up, right: Up/Left). From a lane name, across moves between lane
+ * names and forward along enters its first item.
+ */
 export function laneNavigationTarget(grid: LaneGrid, positions: Record<string, Position>,
   currentId: string, direction: LaneDirection, key: string): string | null {
   const move = step(direction, key);
   if (!move) return null;
+  const header = grid.laneIds.indexOf(currentId);
+  if (currentId === grid.rootId) {
+    return move.delta > 0 ? grid.laneIds[0] ?? null : null;
+  }
+  if (header >= 0) {
+    if (move.along) return move.delta > 0 ? grid.lanes[header]![0] ?? null : grid.rootId ?? null;
+    const next = header + move.delta;
+    if (next < 0) return grid.rootId ?? null;
+    return grid.laneIds[next] ?? null;
+  }
   const here = locate(grid, currentId);
   if (!here) return laneFirstNode(grid);
-  if (move.along) return grid.lanes[here.lane]![here.index + move.delta] ?? null;
+  if (move.along) {
+    const target = grid.lanes[here.lane]![here.index + move.delta];
+    if (target) return target;
+    return move.delta < 0 ? grid.laneIds[here.lane]! : null;
+  }
+  if (move.delta < 0 && !grid.lanes.slice(0, here.lane).some(ids => ids.length)) return grid.laneIds[here.lane]!;
   const current = positions[currentId];
   if (!current) return null;
   for (let lane = here.lane + move.delta; lane >= 0 && lane < grid.lanes.length; lane += move.delta) {

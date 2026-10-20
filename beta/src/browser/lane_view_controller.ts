@@ -71,6 +71,7 @@ export class LaneViewController {
       view.surfaceLayoutDirection = laneDirection(view.surfaceLayoutDirection);
       const projection = projectLane(state, rootId, view.collapsedIds);
       const metrics = Object.fromEntries([
+        [rootId, this.bridge.measure(rootId, rootId)],
         ...projection.lanes.map(l => [l.id, this.bridge.measure(l.id, rootId)]),
         ...projection.nodeIds.map(id => [id, this.bridge.measure(id, rootId)]),
       ]);

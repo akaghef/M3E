@@ -6,14 +6,15 @@ export function laneLinkParts(lane: boolean, visible: string, hit: string, front
   return front ? [["lane-visible-links", `<g class="lane-visible-links" pointer-events="none">${visible}</g>`]] : [["graph-link-hits", hit]];
 }
 
-export function laneFrames(layout: LayoutResult, escape: (text: string) => string): string {
+export function laneFrames(layout: LayoutResult, escape: (text: string) => string, selected: ReadonlySet<string> = new Set()): string {
   if (!layout.lane) return "";
   const down = layout.lane.direction === "down";
-  return `<text class="lane-heading" x="64" y="82" pointer-events="none">${escape(layout.lane.rootLabel ?? "名称未設定")}</text>` +
+  const pick = (id: string) => `${selected.has(id) ? " selected" : ""}" data-node-id="${escape(id)}" data-lane-header="true`;
+  return `<text class="lane-heading${pick(layout.lane.rootId)}" x="64" y="82">${escape(layout.lane.rootLabel ?? "名称未設定")}</text>` +
     layout.lane.boundaries.map((b, index) => {
       const x = b.x + 16, y = b.y + 36;
       return `<rect class="surface-scope-box lane-boundary${index % 2 ? " lane-alternate" : ""}" data-lane-node-id="${escape(b.id)}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${down && (index === 0 || index === layout.lane!.boundaries.length - 1) ? 6 : 0}" pointer-events="none" />` +
-        `<text class="lane-title" x="${x}" y="${y}" pointer-events="none">${escape(b.label)}</text>` +
+        `<text class="lane-title${pick(b.id)}" x="${x}" y="${y}">${escape(b.label)}</text>` +
         `<text class="lane-count" x="${down ? x : x + b.label.length * 18 + 12}" y="${down ? y + 28 : y}" pointer-events="none">${b.count} 個</text>`;
     }).join("") + `<text class="surface-scope-title lane-summary" x="64" y="${layout.totalHeight - 24}" pointer-events="none">表示しない GraphLink: ${layout.lane.omittedLinkCount}</text>`;
 }
