@@ -137,19 +137,35 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
     ids.forEach(id => { const b = body(id); b.x += dx; b.y += dy; b.vx = 0; b.vy = 0; });
   };
   const projectConstraints = (passes = FORCE_POLICY.constraintPasses): void => {
+    // A single sibling set has no enclosing groups to recompute. Its rectangles
+    // and RBush entries are updated in place below, so reuse that live index
+    // across projection passes. Nested sets still rebuild their envelopes after
+    // inner branches move, preserving the containment constraint order.
+    const initial = geometry().siblingSets;
+    const flatSet = initial.length === 1 ? initial[0] : null;
+    const flatIndex = flatSet ? new ForceBoxIndex(flatSet.map(n => n.bounds), FORCE_POLICY.gap) : null;
     for (let pass = 0; pass < passes; pass++) {
-      let moved = false;
+      // Rebase from body centres just as geometry() does between passes. Adding
+      // shifts to box corners can otherwise accumulate different float rounding.
+      if (pass && flatSet) for (let i = 0; i < flatSet.length; i++) {
+        const unit = flatSet[i], n = body(unit.members[0]);
+        const x = n.x - n.w / 2, y = n.y - n.h / 2;
+        if (unit.bounds.x !== x || unit.bounds.y !== y) {
+          unit.bounds.x = x; unit.bounds.y = y; flatIndex!.update(i, unit.bounds);
+        }
+      }
+      let moved = false, fixedConflicts = 0;
       // Recompute after each sibling set; nested envelopes can have changed below it.
-      const count = geometry().siblingSets.length;
+      const count = flatSet ? 1 : geometry().siblingSets.length;
       for (let si = 0; si < count; si++) {
-        const set = geometry().siblingSets[si], len = set.length;
-        const index = new ForceBoxIndex(set.map(n => n.bounds), FORCE_POLICY.gap);
+        const set = flatSet ?? geometry().siblingSets[si], len = set.length;
+        const index = flatIndex ?? new ForceBoxIndex(set.map(n => n.bounds), FORCE_POLICY.gap);
         for (let i = 0; i < len; i++) for (const j of index.candidates(i)) {
           const a = set[i], b = set[j];
           const p = penetration(a.bounds, b.bounds);
           if (!p) continue;
           const af = a.members.some(fixed), bf = b.members.some(fixed);
-          if (af && bf) continue;
+          if (af && bf) { fixedConflicts++; continue; }
           const share = af || bf ? 1 : .5;
           // One world-unit clearance avoids asymptotic contact chains at the
           // exact minimum gap; this is extra room, not a relaxed violation test.
@@ -161,7 +177,13 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
           moved = true;
         }
       }
-      if (!moved) break;
+      if (!moved) {
+        // This pass checked every candidate without changing any rectangle.
+        // Reuse its exact conflict count instead of rebuilding the same index
+        // again for the step status and snapshot. Fixed overlaps still count.
+        violationCache = fixedConflicts;
+        break;
+      }
     }
   };
   const finishConstraints = (): void => {
