@@ -8,16 +8,16 @@
 
 **変更すること:** viewer 上段の独立したグループに各軸の現在値を置き、選択肢は chip のメニューで開く。対象外の node / GraphLink / edge を opacity で薄くし、status bar に一致数を常時表示する。
 
-> Status: 2026-10-20、Director 審査前の仕様草案。確定条件と akaghef 確認待ちの仕様案を区別する。今回の成果物は本ディレクトリの文書と提供済み mock の commit のみ。Phase 0 完了前に製品実装を始めない。
+> Status: 2026-10-20、Director レビュー済み草案（259889b）を akaghef の決定で改訂。今回の変更は3仕様文書と Glossary の2行のみ。製品実装・mock 変更は行わない。
 
 ## Boundary Context
 
 | 区分 | 範囲 |
 |---|---|
-| 今回 | `requirements.md` / `design.md` / `tasks.md` と提供済み mock 2ファイル。日本語の仕様、ソース根拠、検証計画 |
-| 承認後の最初の実装範囲 | 確度・重要度・scope の3軸、解除、濃淡、永続表示の件数。既存 viewer / WorkbenchApp / renderer を利用 |
+| 今回 | `requirements.md` / `design.md` / `tasks.md` と Glossary の2行。日本語の仕様、ソース根拠、検証計画 |
+| 承認後の最初の実装範囲 | 実現段階・重要度・緊急度・所属の4軸、解除、濃淡、永続表示の件数。既存 viewer / WorkbenchApp / renderer を利用 |
 | 対象外 | 時間・文字列、軸の動的追加、EDGE AUDIT の候補ペア導出、保存 schema / API、Inspector の再設計、独自 renderer / server、Radial の新規実装、WebGL 対応 View の拡張、Final |
-| 所有者 | Director が未決への回答・実装承認を記録し、本流統合・push・通常 Beta 検証を担当する |
+| 所有者 | 今回の担当は仕様改訂を codex/viewer-filter に commit。後続実装は別途承認する |
 
 正規語は [Glossary](../../../docs/00_Home/Glossary.md)、[Surface View](../../../docs/03_Spec/map_layout_modes.md)、[Data Model](../../../docs/03_Spec/Data_Model.md) に従う。edge は親子関係のみ。GraphLink と混同しない。scope は構造境界であり、A-sys の Domain の固定リストを持ち込まない。浮くメニューは Panel として既存の上段 UI に接続する。
 
@@ -27,7 +27,7 @@
 
 [FilterChips.dc.html](mock/FilterChips.dc.html) は bar / menu の構造、[FilterSurface.dc.html](mock/FilterSurface.dc.html) は A-sys を Lane で表示したときの濃淡と status bar の参考とする。色、角丸、寸法、opacity の特定数値、線の装飾は受け入れ条件にしない。mock は実装や試験 fixture の代替ではない。
 
-mock にある「＋ 軸を追加」（時間・文字列）は最初の実装範囲に含めず、ボタンも出さない。EDGE AUDIT は除外し、TO-BE を絞らない値・既定値にする案を採る。mock の解除先 `audit` と active 判定は転用しない。Facet / Domain は scope へ置き換え、重要度を追加する。mock の Domain ごとの手書き集合、候補関係、描画順変更、枠色変更は移植しない。最初の実装では一致時の従来描画を保ち、非一致時の opacity だけを変更する。
+mock にある「＋ 軸を追加」（時間・文字列）は最初の実装範囲に含めず、ボタンも出さない。EDGE AUDIT は除外し、TO-BE を絞らない値・既定値にする。mock の解除先 `audit` と active 判定は転用しない。Facet / Domain は node の所属 attributes で表し、重要度・緊急度を追加する。mock の Domain ごとの手書き集合、候補関係、描画順変更、枠色変更は移植しない。最初の実装では一致時の従来描画を保ち、非一致時の opacity だけを変更する。
 
 ## Requirements
 
@@ -37,11 +37,11 @@ mock にある「＋ 軸を追加」（時間・文字列）は最初の実装�
 
 **条件2:** 複数の軸は AND で組み合わせる。軸を追加選択して Layout の入力、寸法、兄弟順序、collapse、force simulation を変更せず、再配置・force の起動や再起動を発生させない。
 
-**条件3:** A-sys の Facet（Domain を選ぶ）は、M3E では「scope で絞る」とする。
+**条件3:** A-sys の CROSS-DOMAIN VIEW は node の所属 attributes で絞る（IS92）。scope 軸は設けない。
 
 **条件4:** 案F2として bar を viewer の上段、左 top bar と右 top bar の間の水平中央に、独立したグループとして置く。`WorkbenchApp` から `TopBar` の隣に新しい browser module を mount する。
 
-**条件5:** 軸ごとに chip を1つ置き、軸名・現在値・下向き chevron を表示する。選択肢の全体は chip から開いたメニューだけに表示する。絞らない値以外を選択した chip は active と視認できる。
+**条件5:** 登録済みの全軸に常に chip を1つ置き、軸名・現在値・下向き chevron を表示する。選択肢の全体は chip から開いたメニューだけに表示する。絞らない値以外を選択した有効な chip は active と視認できる。描画対象の node / GraphLink に当該軸の attributes が一つもなければ disabled にし、理由「この map には値がありません」を常時読める形で示す（IS99）。
 
 **条件6:** chip の click でその直下にメニューを開き、再 click で閉じる。同時に開くメニューは1つ。Escape で閉じる。
 
@@ -61,31 +61,36 @@ mock にある「＋ 軸を追加」（時間・文字列）は最初の実装�
 
 **条件14:** opacity は祖先 group だけでなく WebGL capture 対象の各 primitive に到達させる。フィルタ変更時に capture / tile cache を更新し、SVG だけが変わる状態を合格にしない。選択差分にも同じ濃淡を再適用する。
 
-### 仕様案の受け入れ条件（すべて akaghef 確認待ち）
+### 決定に基づく受け入れ条件
 
-以下は Director 提案を採用候補として具体化したもの。確定済みとは扱わない。
+**条件15:** 実現段階は GraphLink.attributes.confidence を読む。CURRENT「動作を確認した関係だけ」は `system-evidenced` のみ、TO-BE「採用した設計（図に書いた関係すべて）」は全 GraphLink を対象とする。TO-BE の値は `all`（絞らない・既定）。欠落は `declared` 相当、未知文字列も CURRENT には一致せず TO-BE には含む。保存値を書き換えない。CURRENT 中はこの軸に一致する描画 GraphLink の端点を1つも持たない node を薄くする。EDGE AUDIT は対象外。
 
-**条件15:** 確度は GraphLink.attributes.confidence を読む。CURRENT「確認済みの関係だけ」は `system-evidenced` のみ、TO-BE「図に書いた関係すべて」は全 GraphLink を対象とし、後者を絞らない値・既定値とする。欠落は `declared` 相当。未知の文字列も CURRENT には一致せず TO-BE には含む。属性を書き換えない。CURRENT 中は確度に一致する描画対象 GraphLink の端点を1つも持たない node を薄くする。EDGE AUDIT は対象外。
+**条件16:** 「attributes の値で絞る軸」を共通の仕組みとする。定義は対象（node / GraphLink）、attributes key(s)、値の順序または複数選択、表示名、各値のラベルと1行の意味、絞らない値を持つ。定義表は全 map 共通の checked-in shared module（`beta/src/shared/view_filter_axes.ts`）に置く。map 別設定・利用者の編集 UI はない。重要度は `importance` → `priority` → `重要度` の nullish 優先で既存 score を再利用し、低=1 / 中=2 / 高=3 / 緊急=4、整数文字列と既存の英語表記を維持する。空文字を次の key へ落とさず、欠落・不明は0。「すべて」（絞らない）/「中以上」（>=2）/「高以上」（>=3）とし、広い段階は狭い段階を「含む」。緊急度も同じ尺度・選択肢とし、既存設計の `attributes.urgency` を使う（design.md の調査根拠）。node 自身だけで判定し、先祖/root の救済をしない。`ImportanceViewMode` は撤去し、score を shared module へ移す。viewer.ts の正味行数を増やさない。
 
-**条件16:** 重要度は node 自身の既存 score を用い、「すべて」（絞らない・既定）/「高以上」（`high-plus`、score >= 2）/「高のみ」（`high-only`、score >= 3）。属性の優先順は `importance` → `priority` → `重要度`。子孫の一致による先祖救済や root の特例は設けない。現在操作できない `ImportanceViewMode` と分岐を新 module に置き換える。なお既存 score 2 は「中」であり、「高以上」というラベルと閾値の対応は確認が必要である。
+**条件17:** 所属は node の `attributes.domain` にあるカンマ区切りの名前を複数選択する。attributes は string→string とし配列を保存しない。各名前を trim し、空要素を捨て、重複を除く。候補は描画 node に存在する名前の distinct 集合。選択集合が空なら「すべて」（絞らない）、それ以外は名前が一つでも選択集合に含まれる node が一致する。欠落・空文字の node は選択中には一致しない。候補が1つでも使用可能。所属が一致していれば GraphLink のない node も一致する。
 
-**条件17:** scope は複数選択。値は現在の Surface View の描画 node が所属する scope の集合。node の最も近い先祖 scope 境界を所有 scope とし、それがない場合は現在の root scope とする。境界 node 自身は親側の scope に所属し、現在の root scope の node 自身だけは現在の scope に所属する。空集合はすべてに一致、複数 scope の選択は同一軸内ではいずれかへの所属で一致する。2 scope 未満なら chip を disabled とし「この表示に scope が1つしかありません」を理由として表示する。`isNodeInScope()` をこの判定に転用しない。
+**条件18:** フィルタなしの描画集合を固定する。B＝有効な全 node 軸（重要度・緊急度・所属）に一致する node。L＝実現段階に一致し、両端が B に属する GraphLink。node は B に属し、かつ CURRENT が有効なら L の端点であるときに一致する。GraphLink は L に属するときに一致する。親子 edge は両端 node の一致で判定する。計算はこの1回で終え、反復しない。CURRENT が無効なら、所属などの node 軸に一致した孤立 node も一致する。
 
-**条件18:** node は active な全 node 軸と、確度 active 時の端点条件をすべて満たした場合に一致する。GraphLink は確度と両端 node の一致を満たす場合に一致する。親子 edge は両端の一致で判定する。端点条件は最終 GraphLink 一致結果から再帰的に求めず、確度だけで先に判定した GraphLink から求める。
+**条件19:** 状態は viewer session 限定で保存しない。map 変更で全軸を絞らない値に戻しメニューを閉じ、再読込でも既定値で始める。同一 map の scope / Surface View 切替では選択を保持し、現在の描画集合で再評価する。値のない軸は disabled の間は非適用・非 active とし、内部選択は保持する。値が戻れば再適用する。候補が変わっても選択を自動消去しない。
 
-**条件19:** 状態は viewer session ごとに持ち、保存しない。map が変わると全軸を絞らない値へ戻し、メニューを閉じる。再読込でも既定値で始める。
+## 決定記録（2026-10-20）
+
+| ID | 決定者 | 決定 |
+|---|---|---|
+| IS90 | akaghef | 表示名は「実現段階」。保存キー confidence、CURRENT / TO-BE、欠落・未知値、端点条件、EDGE AUDIT 除外は条件15 |
+| IS91 | akaghef | 重要度専用の仕組みを廃し、attributes の値で絞る共通の軸定義表と4軸を採用（条件16〜17） |
+| IS92 | akaghef | 以前の決定（元の番号20）の「Facet は scope で絞る」を「所属 attributes で絞る」へ変更。scope 軸・scope 所有の判定は不採用。既存決定の変更を本仕様の割当内の IS92 で追跡する |
+| IS93 | Director | 条件18の評価順と AND。所属だけでは「残る GraphLink の端点であること」を node に要求しない。CURRENT の端点条件は node 軸に一致した両端を持つ GraphLink から求め、A-sys の CURRENT × Domain と同じ結果にする |
+| IS94 | Director | session 限定、map 変更 reset、同一 map 内で選択保持（条件19） |
+| IS95 | akaghef | Glossary の GUI 表に「フィルタ」「実現段階」を指定の定義で追加 |
+| IS96 | Director | design.md の描画数・一致数の境界を採用。scope 固有の行・規則は削除 |
+| IS97 | akaghef | 「＋ 軸を追加」はこの範囲では表示しない |
+| IS99 | Director | 登録済み全軸の chip を常設し、描画対象に当該 attributes がなければ disabled と理由「この map には値がありません」を表示 |
 
 ## 未決
 
-- IS90（akaghef 確認待ち）: 確度の2値・既定値・欠落値と未知値・CURRENT の端点条件、EDGE AUDIT の除外（条件15）。
-- IS91（akaghef 確認待ち）: 重要度のラベルと閾値、自身だけの判定、操作不能な旧状態の撤去（条件16）。既存 score 2 は「中」なので、Director 案はラベルを「すべて／中以上（score >= 2）／高以上（score >= 3）」に改める。
-- IS92（akaghef 確認待ち）: scope の値集合・最も近い先祖による所有・境界 node 自身の扱い・disabled 理由（条件17）。
-- IS93（Director 決定、異議があれば akaghef）: node / GraphLink / edge の AND と端点条件の評価順は条件18のとおり。
-- IS94（Director 決定、異議があれば akaghef）: session 限定と map 変更時の reset（条件19）。同一 map 内の scope / Surface View 切替では選択を維持し、scope 候補が2未満の間はその軸を非適用とする。
-- IS95（akaghef 確認待ち）: `フィルタ` の Glossary 登録。現行 Glossary に項目がないため、承認までは冒頭の説明を使い、この作業では Glossary を変更しない。
-- IS96（Director 決定、異議があれば akaghef）: 描画数は画面外も含む現在の scene の node 本体と実際に描画した GraphLink を各1件とする。Lane 見出し・System preview・NETWORK・alias・代表端点への集約は design.md の境界案のとおり。
-- IS97（akaghef 確認待ち）: mock の「＋ 軸を追加」（時間・文字列）を最初の実装範囲から外す。
+なし。緊急度には既存設計の直接キー `urgency` が見つかったため、新規キー提案の IS98 は起票しない。実装の開始承認は本改訂とは別。
 
 ## Verification and Handoff
 
-条件1〜14を固定し、条件15〜19と上記の境界案は Phase 0 で回答を記録する。試験は [tasks.md](tasks.md) に従い、独立した fixture 期待値と画面を照合する。mock の自身との比較や試験合格だけを通常 Beta の受け入れにしない。今回の文書 commit は実装・統合・稼働確認を意味しない。
+条件1〜19と上記の決定を検証計画の基準とする。試験は [tasks.md](tasks.md) に従い、製品の判定関数から独立した期待値と画面を照合する。A-sys の孤立 node に関する差分も明示して検査する。今回の文書 commit は実装・統合・稼働確認を意味しない。

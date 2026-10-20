@@ -2,7 +2,7 @@
 
 ## Overview
 
-案F2の表示する対象を選ぶ選択 UI（以下フィルタ）を、既存 WorkbenchApp と共通 scene に接続する設計草案。確定条件・未決は [requirements.md](requirements.md) を正本とする。以下の実装配置と境界案も Phase 0 の審査対象であり、製品コードは変更していない。
+案F2のフィルタを、既存 WorkbenchApp と共通 scene に接続する設計。確定条件・未決は [requirements.md](requirements.md) を正本とする。2026-10-20 の決定を反映済み。製品コードは変更していない。
 
 ### Goals
 
@@ -45,7 +45,8 @@ Layout を保持して濃淡と件数だけを更新する。判定・操作・�
 
 | ファイル案 | 責任 |
 |---|---|
-| `beta/src/shared/view_filter.ts` | 入力を変更しない score・scope 所有・各軸・AND・件数判定。DOM / React / viewer を import しない |
+| `beta/src/shared/view_filter_axes.ts` | 全 map 共通の軸定義表と既存 score。対象・keys・値順序/複数選択・表示名・各値のラベル/意味・絞らない値を定義 |
+| `beta/src/shared/view_filter.ts` | 定義表から各軸・AND・候補・disabled・件数を評価。入力を変更せず DOM / React / viewer を import しない |
 | `beta/src/browser/viewer-filter-controller.ts` | viewer session 内の状態、購読・通知、map 変更 reset、scene 入力と評価結果の保持 |
 | `beta/src/browser/viewer-filter-bar.tsx` | chip、直下メニュー、選択・解除、ARIA、keyboard、disabled 理由。WorkbenchApp から mount |
 | `beta/src/browser/viewer-filter-scene.ts` | 既存 scene parts / node patch に同じ濃淡を適用。元 markup / opacity を基準に復元可能にする |
@@ -55,35 +56,59 @@ Layout を保持して濃淡と件数だけを更新する。判定・操作・�
 
 ### State and Data Flow
 
-状態案は `{confidence: "all" | "system-evidenced", importance: "all" | "high-plus" | "high-only", scopes: Set<string>}`。内部参照キーは表示しない。scope 名は node の既存表示ラベルを使い、名称がないときも raw ID にフォールバックしない。
+状態は定義表の軸ごとに持つ。実現段階は `all` / `system-evidenced`、重要度・緊急度は `all` / `medium-plus` / `high-plus`、所属は名前の集合（空集合が絞らない値）。内部参照キーは表示せず、画面には定義表の表示名・ラベルを使う。所属は attributes の名前を表示する。
+
+### 全 map 共通の軸定義表（IS90 / IS91）
+
+| 表示名 | 対象・attributes key(s) | 順序または複数選択 | 値：ラベル — 1行の意味 | 絞らない値 |
+|---|---|---|---|---|
+| 実現段階 | GraphLink / `confidence` | CURRENT ⊂ TO-BE | `system-evidenced`: CURRENT — 動作を確認した関係だけ。`all`: TO-BE — 採用した設計（図に書いた関係すべて） | `all` |
+| 重要度 | node / `importance` → `priority` → `重要度` | 高以上 ⊂ 中以上 ⊂ すべて | `high-plus`: 高以上 — score 3以上。`medium-plus`: 中以上 — score 2以上。`all`: すべて — 重要度で絞らない | `all` |
+| 緊急度 | node / `urgency` | 高以上 ⊂ 中以上 ⊂ すべて | `high-plus`: 高以上 — score 3以上。`medium-plus`: 中以上 — score 2以上。`all`: すべて — 緊急度で絞らない | `all` |
+| 所属 | node / `domain` | 複数選択、同一軸内 OR | 名前: その名前 — 所属にこの名前を含む node。空集合: すべて — 所属で絞らない | 空集合 |
+
+定義表は checked-in shared module のみで管理し、map 別設定と編集 UI は作らない。緊急度も既存重要度の score 関数を共有する。node 専用の重要度条件を controller / bar に重複実装しない。
+
+### 緊急度のキー調査（2026-10-20）
+
+`beta/src`、`beta/tests`（fixtures 含む）、`docs`、`.kiro/specs` の urgency / 緊急度 / deadline / dueDate / due_date を確認した。`docs/ideas/30_ux/map_views/01_2d_matrices.md:18` に `attributes.urgency` が明記されているため、この直接キーを再利用する。これは既存設計の根拠であり、既存 map への保存実績を示すものではない。
+
+`beta/src/shared/node_draw_port.ts:117–119` と `beta/tests/unit/node_draw_contract.test.ts:61` の urgency は `m3e:style` JSON 内の数値で、直接の attributes key ではない。`.kiro/specs/node-draw-seam/design.md:335` も同じ style 用途である。0..3 の色計算（`node_draw_port.ts:233–234`）を緊急度軸の尺度へ転用しない。`docs/03_Spec/Resource_Design.md:183–189` の deadline は日付、`docs/03_Spec/Joint_Integration_Hub.md:127–128` の due_date は取り込み計画であり、緊急度 score に暗黙変換しない。直接キーの設計先例があるため IS98 の新規提案は不要。
+
 
 chip 操作 → controller の状態更新 → 最新の描画対象と純粋判定 → 保存済みの scene parts に濃淡を適用 → `RetainedSvgScene.update` → WebGL の paint capture / tile 更新 → status bar の件数購読通知とする。通常の `renderScene` で作る無加工の parts と同じ適用関数を使い、フィルタ変更だけで `buildLayout` や通常の Layout を含む `scheduleRender` を呼ばない。scene parts の所有・更新を既存 retained scene に接続し、別 renderer を持たない。
 
 通常の編集や View 切替は従来どおり Layout を計算し、最後に現在の状態を再適用する。フィルタは Layout cache key / force 入力 / metric 入力に参加しない。実行中 force を停止・再起動しないことを呼出数でも検証する。座標不変試験は同一の安定した配置の前後を比較し、force 自身の進行をフィルタ起因の移動と混同しない。
 
-map 切替では通知前に reset し、古い map の応答で上書きされないよう controller の現 map を照合する。保存・localStorage・URL・履歴へ書かない。同一 map の scope / View 切替は選択を保持する案。候補が2未満の scope 軸は非適用・非 active として「すべて」を表示し、内部選択を保持して再び候補が増えたら適用する。候補から外れた選択は自動消去しない。これは requirements の未決に含み、承認前に実装しない。
+map 切替では通知前に reset し、古い map の応答で上書きされないよう controller の現 map を照合する。保存・localStorage・URL・履歴へ書かない。同一 map の scope / View 切替は選択を保持する。現在の描画集合に軸の keys が一つもなければ、その軸は disabled・非適用・非 active とし「この map には値がありません」を表示する（IS99）。内部選択は保持し、値が戻れば再適用する。候補から外れた選択は自動消去しない。キーの有無と値の解釈を区別し、空文字・未知値が保存されていればキーは存在するものとする。キー欠落の個々の対象は各軸の欠落規則で評価する。所属候補が1つでも disabled にしない。
 
 ## Predicate Contract
 
-確度の判定を先に求める。CURRENT は文字列の完全一致 `system-evidenced`、TO-BE は属性の有無に関わらず true。欠落値を保存上 `declared` に補完しない。重要度 score は既存関数の純粋な抽出とし、数字・文字列・欠落時の意味を変えない。
+実現段階を先に評価する。CURRENT は `system-evidenced` の完全一致、TO-BE は attributes の有無に関わらず true。欠落は declared 相当とするが保存内容は補完しない。重要度のキー優先順と score は既存関数（`viewer.ts:6319–6348`）を shared へ抽出する。低=1、中=2、高=3、緊急=4、整数文字列・既存英語表記を維持し、欠落・不明=0。緊急度も同じ score と閾値を使う。
 
-scope 所有は node の parent から先祖 chain を辿り、最も近い scope 境界を使う。現在の scope の root 自身は現在の scope とする。scope を示す既存 model 情報を用い、folder の通常境界と整合させる。alias は参照先ではなく alias node 自身の所有と属性で判定する案。`isNodeInScope` は root の子孫かを返す別用途（`viewer.ts:6290`）である。
+所属は `domain` をカンマで分割し各要素を trim、空要素を捨て重複を除く。保存は string→string のまま。候補は描画 node にある名前の distinct 集合。選択なしなら全件一致、選択ありなら集合の交差が空でない node が一致する。欠落は空集合。alias は表示中の alias node 自身の attributes を使う。
 
-フィルタなしで描画される node 集合と GraphLink 集合を先に確定し、その集合をフィルタで縮めない。確度に一致する GraphLink の端点集合を作り、各 node の重要度・scope・確度端点条件を AND する。その後 GraphLink の確度と両端 node の一致、edge の両端 node の一致を計算する。一致しない相手を持つことで隣接 node を連鎖的に不一致へ変えない。すべて絞らない場合、GraphLink を持たない node も一致する。
+フィルタなしの描画 node 集合を N、GraphLink 集合を G とする。B は全有効 node 軸に一致する N の部分集合、P は実現段階に一致する G の部分集合、L は P のうち両端が B に属するもの（描画上の端点で判定）。node の一致集合 M は、CURRENT が有効なら B ∩ endpoints(L)、無効なら B。最終 GraphLink は L（両端は自動的に M に属する）、edge は両端が M に属するもの。計算は1回で、反復しない。一致集合を Layout 入力へ戻さない。CURRENT が無効なら、所属などに一致した孤立 node も一致する。
 
-### 描画対象と件数の境界案（akaghef 確認待ち）
+### A-sys との差分と不採用（IS92）
 
-| 対象 | 判定・件数の案 |
+以前の「Facet は scope で絞る」は「所属 attributes で絞る」へ変更された。最も近い scope 境界・境界 node 自身・root による所有の設計は不採用。
+
+A-sys は選択 Domain 内の両端を持つ GraphLink のみを残し、node も残る GraphLink の端点だけを残す（参照 HTML:153–157）。本仕様の差分は1点だけで、CURRENT が無効のとき、所属が一致する孤立 node（GraphLink を持たない node）も一致させる（IS93、Director 決定）。CURRENT が有効なときは端点条件を L から求めるので、選択外の相手への確認済み GraphLink しかない node は薄くなり、A-sys の CURRENT × Domain と同じ結果になる。
+
+### 描画対象と件数（IS96、Director 決定）
+
+| 対象 | 判定・件数 |
 |---|---|
 | 通常 node | 現在の scene に本体を描く node を各1件。viewport 外も含める。collapse / scope により初めから描かれない node は分母に含めない |
 | Lane | 見出し・レーン名・個数は構造を示すため保持し、node 件数は本体のある孫だけ。対応 node の見出し文字にもその node の濃淡を適用するが、飾り枠や個数は node と数えない。A-sys の分母は25 / 82 |
 | GraphLink | 実際に線を描く保存 GraphLink を1件。hit / visible / label / 矢印を重複計数しない。省略 link と候補ペアは含めない |
 | 集約された端点 | System / Disperse で代表 node に接続する線は描画上の代表端点で node 一致・端点集合を判定し、confidence は元 GraphLink から読む。元の隠れた node を分母に増やさない |
-| System preview | 独立した node 本体ではない内部 preview は件数に含めず、所有する表示カードの濃淡に従う。preview 自体を scope 選択肢に増やさない |
-| NETWORK | 現行 scene の独立した node 本体と GraphLink があれば同じ判定対象。所有 scope を持たない runtime node は現在の root scope に割り当てる案。既存 SVG fallback を保持 |
-| alias | 表示中の alias node を1件。参照先を二重計数しない。scope 所有も表示位置から求める |
+| System preview | 独立した node 本体ではない内部 preview は件数に含めず、所有する表示カードの濃淡に従う |
+| NETWORK | 現行 scene の独立した node 本体と GraphLink があれば同じ判定対象。attributes の有無と値で同じ規則を適用する。既存 SVG fallback を保持 |
+| alias | 表示中の alias node を1件。参照先を二重計数しない。表示中の alias 自身の attributes を使う |
 
-これらは確定条件を省略する例外ではなく、scene 上の node と装飾・preview の識別案である。Director は描画上の代表端点か元の端点か、Lane 見出し・preview の扱いを akaghef に確認する。回答が異なれば実装前に明記して改訂する。
+これらは scene 上の node と装飾・preview の区別であり、同じ境界を判定・分母・分子に用いる。
 
 ## Presentation and WebGL
 
@@ -95,7 +120,7 @@ primitive の paint 変更が capture に渡るよう、変更された属性を
 
 ## UI and Accessibility
 
-bar は左右 top bar 間の利用可能な横幅の中央に置く。chip の現在値は scope 複数選択時に人に読める省略表示とし、全ラベルはメニューで読める。各単一選択行に意味を1行付け、TO-BE 選択時は CURRENT、「すべて」選択時は重要度の狭い2値、「高以上」選択時は「高のみ」に「含む」を付ける。
+bar は左右 top bar 間の利用可能な横幅の中央に置く。chip の現在値は 所属複数選択時に人に読める省略表示とし、全ラベルはメニューで読める。各単一選択行に意味を1行付け、TO-BE 選択時は CURRENT、「すべて」選択時は重要度・緊急度の狭い2値、「中以上」選択時は「高以上」に「含む」を付ける。
 
 既存 `showContextMenu` の外側 click と `toggleDropdown` の開閉 / aria-expanded の挙動を再利用する。既存 helper は viewer 内の DOM 操作であり React の完成済み部品ではないため、適合する小さな処理だけを共通化し、全メニューの刷新はしない。native button と menu role に keyboard focus 管理を加える。外側 click でも閉じ、Escape・単一選択・閉じるで元 chip に focus を戻す。checkbox は focus を保って即時更新、Tab は閉じて次の操作へ進む。disabled 理由は hover に依存せず説明文と `aria-describedby` で読めるようにする。
 
