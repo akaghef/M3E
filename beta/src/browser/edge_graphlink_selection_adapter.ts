@@ -17,6 +17,7 @@ export class EdgeGraphLinkSelectionAdapter {
   private highlighted:readonly string[]=[];
   private context='';
   private camera='';
+  private pendingReason:string|null=null;
   private visible:string[]=[];
   private reasons:Record<string,NotDrawnReason>={};
   constructor(private bridge:Bridge) {
@@ -24,7 +25,7 @@ export class EdgeGraphLinkSelectionAdapter {
     Object.defineProperty(bridge.board, 'edgeGraphlinkSelection', {value:()=>structuredClone({selection:this.current(),scene:this.scene()})});
   }
   begin(layout:LayoutResult, context:string):void {
-    if(this.context!==context) {this.selection=null;this.bridge.link(null);this.context=context;}
+    if(this.context!==context) {this.pendingReason=null;this.selection=null;this.bridge.link(null);this.context=context;}
     this.highlighted=selectionHighlight(this.current(),this.scene()).nodeIds;this.project();
     this.layout=layout;this.records=[];this.graphRecords.clear();this.revision++;
   }
@@ -103,7 +104,8 @@ export class EdgeGraphLinkSelectionAdapter {
       this.project();
     }
     this.paint();
-    if(this.selection&&this.selection.kind!=='node')this.bridge.status(this.status());
+    if(this.pendingReason!==null) {this.bridge.status(this.pendingReason);this.pendingReason=null;}
+    else if(this.selection&&this.selection.kind!=='node')this.bridge.status(this.status());
   }
   scene():Scene {
     const v=this.bridge.view(),rect=this.bridge.board.getBoundingClientRect();
@@ -119,7 +121,7 @@ export class EdgeGraphLinkSelectionAdapter {
     this.bridge.link(selection?.kind==='graph-link'&&selection.linkIds.length===1?selection.linkIds[0]:null);
     if(selection&&selection.kind!=='node') {this.bridge.view().selectedNodeIds=new Set();this.bridge.view().selectionAnchorId=null;}
   }
-  node(id:string):void {const previous=this.selection;this.selection={kind:'node',nodeId:id};this.highlighted=[];this.bridge.link(null);this.paint();if(previous&&previous.kind!=='node')this.bridge.render();}
+  node(id:string):void {this.pendingReason=null;const previous=this.selection;this.selection={kind:'node',nodeId:id};this.highlighted=[];this.bridge.link(null);this.paint();if(previous&&previous.kind!=='node')this.bridge.render();}
   portControls(_id:string):boolean {return false;}
   click(id:string):void {
     const item=this.records.find(item=>item.ref.kind==='graph-link'&&item.ref.linkIds.includes(id));
@@ -129,6 +131,7 @@ export class EdgeGraphLinkSelectionAdapter {
     this.bridge.board.focus({preventScroll:true});
   }
   private select(selection:Selection|null):void {
+    this.pendingReason=null;
     if(selection&&selection.kind!=='node')this.bridge.clearNodeActions();
     this.selection=selection;this.highlighted=selection?selectionHighlight(selection,this.scene()).nodeIds:[];
     if(selection?.kind==='node') this.bridge.single(selection.nodeId);
@@ -141,7 +144,7 @@ export class EdgeGraphLinkSelectionAdapter {
     const state=this.bridge.state();if(!state)return false;
     const scene=this.scene(),selection=this.current();
     const result=selectionTransition({selection,key,topology:state,scene,scopeRootId:this.bridge.scope()});
-    if(result.kind==='consume') {event.preventDefault();this.select(result.next);if(result.reason)this.bridge.status(selectionReason(result.reason));return true;}
+    if(result.kind==='consume') {event.preventDefault();this.select(result.next);if(result.reason){this.pendingReason=selectionReason(result.reason);this.bridge.status(this.pendingReason);}return true;}
     const edit=editIntent(selection,key,scene);
     if(edit.kind==='blocked') {event.preventDefault();this.bridge.status(edit.reason);return true;}
     return false;

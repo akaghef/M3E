@@ -54,4 +54,24 @@ describe('renderer registration bridge',()=>{
   adapter.begin({...layout,lane:{rootId:'root',direction:'down',boundaries:[],hiddenCounts:{},omittedLinkCount:0}},'map:root');adapter.finish();send('ArrowUp',{altKey:true});adapter.paint();
   expect(inspect().selection).toMatchObject({kind:'parent-child',parentNodeId:'root',childNodeId:'a'});expect(canvas.querySelectorAll('.lane-boundary.relation-selected')).toHaveLength(1);expect(canvas.querySelectorAll('[data-lane-header].relation-endpoint')).toHaveLength(2);
  });
+ it('restores a depth refusal after Lane render status without replaying it on later renders',()=>{
+  state.nodes.root.children=['a'];state.nodes.a.children=['b'];
+  state.nodes.b.parentId='a';state.nodes.b.children=['deep'];
+  state.nodes.deep={...state.nodes.b,id:'deep',parentId:'b',children:[],text:'詳細'};
+  const laneLayout={...layout,lane:{rootId:'root',direction:'down' as const,boundaries:[],hiddenCounts:{},omittedLinkCount:0}};
+  adapter.node('b');view.selectedNodeId='b';
+  adapter.begin(laneLayout,'map:root');adapter.finish();
+  expect(send('ArrowDown',{altKey:true})).toEqual({consumed:true,prevented:true});
+  expect(inspect().selection).toEqual({kind:'node',nodeId:'b'});
+  const reason='Lane では孫より深い node を描きません';
+  expect(status).toHaveBeenLastCalledWith(reason);
+  status('Lane · 表示しない GraphLink: 2');
+  adapter.begin(laneLayout,'map:root');adapter.finish();
+  expect(status).toHaveBeenLastCalledWith(reason);
+  status.mockClear();adapter.begin(laneLayout,'map:root');adapter.finish();
+  expect(status).not.toHaveBeenCalled();
+  send('ArrowDown',{altKey:true});adapter.node('a');
+  status.mockClear();adapter.begin(laneLayout,'map:root');adapter.finish();
+  expect(status).not.toHaveBeenCalled();
+ });
 });

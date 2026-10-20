@@ -23,11 +23,26 @@ async function highlighted(page,presentation){
  for(const end of [i.source,i.target]) await expect(page.locator(`[data-node-id="${end.renderedNodeId}"].relation-endpoint`).first()).toHaveCount(1);
 }
 const cases=[['tree','right'],['timeline','right'],['scatter','right'],['system','right'],['lane','down'],['lane','right']];
-for(const renderer of ['svg','webgl'])for(const [kind,direction] of cases){
+for(const [kind,direction] of cases)for(const renderer of (kind==='tree'||kind==='scatter'?['svg','webgl']:['svg'])){
  test(`${kind} ${direction} ${renderer}: keyboard selection, full wrap, endpoints, editor boundary`,async({page})=>{
+  await page.addInitScript(()=>{
+   window.selectionRendererNotices=[];
+   new MutationObserver(()=>{const text=document.querySelector('#status')?.textContent;
+    if(text?.includes('WebGL')&&window.selectionRendererNotices.at(-1)!==text)window.selectionRendererNotices.push(text);
+   }).observe(document,{subtree:true,childList:true,characterData:true});
+  });
   const {read}=await open(page,withSurface(fixture,kind,direction),{surfaceReady:true,renderer});
   const before=await read();
-  if(renderer==='webgl')await expect.poll(()=>page.evaluate(()=>Boolean(window.__m3eWebGLProjection?.getDebugState().active))).toBe(true);
+  try {
+   if(renderer==='webgl')await expect.poll(()=>page.evaluate(()=>Boolean(window.__m3eWebGLProjection?.getDebugState().active))).toBe(true);
+  } finally {
+   // Record actual presentation, including failure diagnostics; an eligible-view fallback is not a pass.
+   const actual=await page.evaluate(()=>({surface:document.documentElement.dataset.surfaceViewMode,
+    renderer:window.__m3eWebGLProjection?.getDebugState().active?'webgl':'svg',status:document.querySelector('#status').textContent,
+    notices:window.selectionRendererNotices||[]}));
+   await test.info().attach('renderer',{body:JSON.stringify({requested:renderer,...actual}),contentType:'application/json'});
+   test.info().annotations.push({type:'renderer',description:`${kind}: requested ${renderer}, actual ${actual.renderer}`});
+  }
   // Independent expected renderer set, not candidates fed back as their own oracle.
   const expected=fixture.expected[kind];
   await expect.poll(()=>page.locator('.graph-link').evaluateAll(els=>els.map(el=>el.dataset.linkId).sort())).toEqual([...expected.graphLinks].sort());
@@ -38,13 +53,19 @@ for(const renderer of ['svg','webgl'])for(const [kind,direction] of cases){
    const errors=await page.locator('#board').evaluate(board=>{
     const {scene}=board.edgeGraphlinkSelection();return scene.items.flatMap(item=>[item.source,item.target]).map(end=>{
      const el=document.querySelector(`.node-hit[data-node-id="${end.renderedNodeId}"], [data-lane-header][data-node-id="${end.renderedNodeId}"]`);
-     const box=el.getBoundingClientRect();return Math.hypot(end.center.x-box.x-box.width/2,end.center.y-box.y-box.height/2);
+     // node_draw_svg: non-root hitX=p.x-8, hitW=p.w+36; the hit center is layout center+10.
+     // Circle hits, root boxes and measured Lane headings already have the intended center.
+     const box=el.getBBox(),root=document.querySelector(`.root-box[data-node-id="${end.renderedNodeId}"]`);
+     const padding=el.tagName.toLowerCase()==='rect'&&el.classList.contains('node-hit')&&!root?10:0;
+     const point=new DOMPoint(box.x+box.width/2-padding,box.y+box.height/2).matrixTransform(el.getScreenCTM());
+     return Math.hypot(end.center.x-point.x,end.center.y-point.y);
     });
    });
    expect(Math.max(0,...errors)).toBeLessThan(2);
   }
   await boardFocus(page);
   // Setup ended. Selection is changed only by keyboard from here on.
+  if(kind==='system')await press(page,'ControlOrMeta+a'); // visible primary becomes 計画; Alt selection collapses the multi-selection.
   if(kind==='tree'||kind==='timeline'||kind==='scatter')await press(page,'ArrowRight'); // root -> 計画
   if(kind==='lane') {
    // Lane's initial primary can be the heading or first item; reach root using existing navigation.
@@ -89,7 +110,7 @@ for(const renderer of ['svg','webgl'])for(const [kind,direction] of cases){
   }
   await press(page,'Escape');await press(page,'F2');
   const editor=page.locator('textarea.inline-node-editor');await expect(editor).toBeFocused();
-  await editor.evaluate(el=>{window.altDefaults=[];el.addEventListener('keydown',event=>{if(event.altKey)queueMicrotask(()=>window.altDefaults.push(event.defaultPrevented));});});
+  await editor.evaluate(el=>{window.altDefaults=[];el.addEventListener('keydown',event=>{if(event.altKey&&/^Arrow(Up|Down|Left|Right)$/.test(event.key))queueMicrotask(()=>window.altDefaults.push(event.defaultPrevented));});});
   for(const arrow of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'])await page.keyboard.press(`Alt+${arrow}`);
   expect(await page.evaluate(()=>window.altDefaults)).toEqual([false,false,false,false]);
   await press(page,'Escape');
@@ -100,6 +121,7 @@ for(const renderer of ['svg','webgl'])for(const [kind,direction] of cases){
 
 test('System aggregate has three members, one candidate, count status and no port controls or edits',async({page})=>{
  const {read}=await open(page,withSurface(fixture,'system'),{surfaceReady:true});const before=await read();await boardFocus(page);
+ await press(page,'ControlOrMeta+a'); // System's hidden root has no layout position for ordinary arrows.
  expect((await inspect(page)).selection).toEqual({kind:'node',nodeId:'plan'});
  const scene=(await inspect(page)).scene;
  const aggregate=scene.items.filter(i=>i.ref.kind==='graph-link'&&i.ref.linkIds.length>1);
@@ -119,7 +141,9 @@ test('OP41 collapsed child, Lane depth and scope parent remain unselected',async
  await press(page,'Alt+ArrowDown');await expect(page.locator('#status')).toHaveText('子は折り畳まれています');expect((await inspect(page)).selection).toEqual({kind:'node',nodeId:'sort'});
  await open(page,withSurface(fixture,'lane','down'),{surfaceReady:true});await boardFocus(page);
  for(let n=0;n<3&&(await inspect(page)).selection.nodeId!=='root';n++)await press(page,'ArrowLeft');
- await press(page,'ArrowRight');await press(page,'ArrowRight');await press(page,'Alt+ArrowDown');
+ await press(page,'ArrowRight');await press(page,'ArrowRight');
+ expect((await inspect(page)).selection).toEqual({kind:'node',nodeId:'sort'});
+ await press(page,'Alt+ArrowDown');
  await expect(page.locator('#status')).toHaveText('Lane では孫より深い node を描きません');expect((await inspect(page)).selection).toEqual({kind:'node',nodeId:'sort'});
  await open(page,withSurface(fixture,'tree'),{surfaceReady:true,scope:'plan'});await boardFocus(page);await press(page,'Alt+ArrowUp');
  await expect(page.locator('#status')).toHaveText('親は scope の外です');expect((await inspect(page)).selection).toEqual({kind:'node',nodeId:'plan'});
