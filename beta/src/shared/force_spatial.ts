@@ -23,27 +23,19 @@ export function applySpatialRepulsion<T extends Particle>(bodies: T[], strength:
     mass.set(node, { count, x: x / count, y: y / count });
   });
   let visits = 0;
+  const thetaSquared = theta * theta;
   for (const a of bodies) {
     if (fixed(a)) continue;
     tree.visit((node, x0, y0, x1, y1) => {
       visits++;
-      const nearX = Math.max(x0 - a.x, 0, a.x - x1), nearY = Math.max(y0 - a.y, 0, a.y - y1);
-      if (nearX * nearX + nearY * nearY >= 90000) return true;
-      const m = mass.get(node)!;
-      let dx = a.x - m.x, dy = a.y - m.y, d2 = dx * dx + dy * dy;
-      const farX = Math.max(Math.abs(x0 - a.x), Math.abs(x1 - a.x));
-      const farY = Math.max(Math.abs(y0 - a.y), Math.abs(y1 - a.y));
-      const containsSelf = a.x >= x0 && a.x < x1 && a.y >= y0 && a.y < y1;
-      if (node.length && !containsSelf && farX * farX + farY * farY < 90000 && (x1 - x0) ** 2 < theta * theta * d2) {
-        const f = strength * m.count / (d2 * Math.sqrt(d2)); a.vx += dx * f; a.vy += dy * f;
-        return true;
-      }
+      // Leaves use the exact point cutoff below; internal-cell bounds and mass
+      // approximation checks would be redundant work for every leaf visit.
       if (!node.length) {
         let leaf: QuadtreeLeaf<T> | undefined = node;
         do {
           const b = leaf.data;
           if (a !== b) {
-            dx = a.x - b.x; dy = a.y - b.y; d2 = dx * dx + dy * dy;
+            let dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
             if (d2 < 1e-8) {
               const i = indices.get(a)!, j = indices.get(b)!;
               const angle = (Math.min(i, j) * 31 + Math.max(i, j) * 17) * 2.399963;
@@ -53,6 +45,20 @@ export function applySpatialRepulsion<T extends Particle>(bodies: T[], strength:
           }
           leaf = leaf.next;
         } while (leaf);
+        return false;
+      }
+      const nearX = Math.max(x0 - a.x, 0, a.x - x1), nearY = Math.max(y0 - a.y, 0, a.y - y1);
+      if (nearX * nearX + nearY * nearY >= 90000) return true;
+      const m = mass.get(node)!;
+      const dx = a.x - m.x, dy = a.y - m.y, d2 = dx * dx + dy * dy;
+      const containsSelf = a.x >= x0 && a.x < x1 && a.y >= y0 && a.y < y1;
+      if (!containsSelf && (x1 - x0) ** 2 < thetaSquared * d2) {
+        const farX = Math.max(Math.abs(x0 - a.x), Math.abs(x1 - a.x));
+        const farY = Math.max(Math.abs(y0 - a.y), Math.abs(y1 - a.y));
+        if (farX * farX + farY * farY < 90000) {
+          const f = strength * m.count / (d2 * Math.sqrt(d2)); a.vx += dx * f; a.vy += dy * f;
+          return true;
+        }
       }
       return false;
     });
