@@ -36,6 +36,7 @@ for(const surface of ['tree','timeline','logic-chart','system','scatter','lane']
   await choose(page,axis,'高以上');
   expect(await hitTargets(page)).toEqual(hits);expect(await geometry(page)).toEqual(before);expect(await page.locator('#board').getAttribute('data-render-revision')).toBe(revision);
   const after=await paint(page);expect(Object.values(after).some(v=>v<1)).toBe(true);
+  if(surface==='scatter')expect(await page.locator('.scatter-node-circle').evaluateAll(es=>es.filter(e=>Number(getComputedStyle(e).opacity)<1).map(e=>e.getAttribute('data-node-id')).sort())).toEqual(['low','mid']);
   await bar(page).getByRole('button',{name:'解除',exact:true}).click();expect(await paint(page)).toEqual(basePaint);
  }
 });
@@ -93,6 +94,8 @@ test('Disperse WebGL dims canvas pixels and preserves settled geometry',async({p
  const before=await geometry(page),clip=await region(page,'low'),pixels=await page.screenshot({clip});
  const revision=await page.locator('#board').getAttribute('data-render-revision');
  await choose(page,'重要度','高以上');await expect.poll(async()=>!(await page.screenshot({clip})).equals(pixels)).toBe(true);
+ expect(await page.locator('.scatter-node-circle').evaluateAll(es=>es.filter(e=>Number(getComputedStyle(e).opacity)<1).map(e=>e.getAttribute('data-node-id')).sort())).toEqual(['low','mid']);
+ const body=await page.evaluate(()=>window.__m3eWebGLProjection.getSnapshot().paintScene.commands.filter(c=>c.nodeId==='low'&&c.kind==='path'));expect(body.length).toBeGreaterThan(0);expect(body.every(c=>c.style.opacity<1)).toBe(true);
  expect(await geometry(page)).toEqual(before);expect(await page.locator('#board').getAttribute('data-render-revision')).toBe(revision);
  await bar(page).getByRole('button',{name:'解除',exact:true}).click();await expect.poll(async()=> (await page.screenshot({clip})).equals(pixels)).toBe(true);
 });

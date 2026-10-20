@@ -71,3 +71,16 @@ it('Axial stems use both parent and child, while decorations stay in the scene',
   expect(root.querySelector<SVGElement>('.timeline-stem')!.style.opacity).toBe('0.18');
   for(const selector of ['.timeline-dot','.lane-boundary','.lane-count'])expect(root.querySelector(selector)!.getAttribute('style')).toBeNull();
 });
+
+it('dims visible Disperse hit circles while preserving transparent hit rectangles', () => {
+  document.body.innerHTML='<svg><circle class="node-hit scatter-node-circle" data-node-id="low" cx="20" cy="30" r="10" style="opacity:0.8;pointer-events:all"/><rect class="node-hit" data-node-id="low" x="1" width="20"/></svg>';
+  const svg=document.querySelector('svg')!, circle=svg.querySelector<SVGElement>('circle')!, scene=new ViewerFilterScene();
+  const nodes={low:{id:'low',attributes:{importance:'1'}}}, input={nodes:Object.values(nodes),links:[]};
+  const selection={...defaultFilterSelection(),importance:'high-plus'};
+  scene.apply(svg,evaluateViewFilter(input,selection),selection,nodes);
+  expect(Number(circle.style.opacity)).toBeCloseTo(.144);
+  expect(circle.style.pointerEvents).toBe('all');expect(circle.getAttribute('r')).toBe('10');
+  expect(svg.querySelector('rect')!.getAttribute('style')).toBeNull();
+  const all=defaultFilterSelection();scene.apply(svg,evaluateViewFilter(input,all),all,nodes);
+  expect(circle.style.opacity).toBe('0.8');
+});

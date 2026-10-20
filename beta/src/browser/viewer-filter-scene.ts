@@ -19,7 +19,7 @@ export class ViewerFilterScene {
   apply(root: SVGSVGElement, result: FilterResult, selection: FilterSelection, nodes: Record<string, FilterNode & { parentId?: string | null }>): void {
     this.dimmedNodes = new Set(result.active ? Object.keys(nodes).filter(id => !result.nodes.has(id)) : []);
     const elements = Array.from(root.querySelectorAll<SVGElement>(primitives)).filter(element =>
-      !element.closest("defs,marker,clipPath,mask,.link-port-controls") && !element.matches(".node-hit,.graph-link-hit"));
+      !element.closest("defs,marker,clipPath,mask,.link-port-controls") && !element.matches(".node-hit:not(.scatter-node-circle),.graph-link-hit"));
     // Restore first: computed styles can depend on selection and inherited styles.
     for (const element of elements) {
       const original = this.originals.get(element);
