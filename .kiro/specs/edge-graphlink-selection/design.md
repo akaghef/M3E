@@ -324,7 +324,7 @@ fixtureごとに独立して手書きした期待描画集合（除外・集約�
 
 専用mapで実装済みの **Tree / Axial / Disperse / System / Lane down / Lane right** を確認する。少なくともTree / Disperse / System / Lane down / Lane rightでkeyboard-only E2Eを行う。Axialは同じ人工fixtureを既存timeline表示で開く案を基本とし、費用が小さくない場合は具体的理由とsnapshot・unitの代替検証を記録する。Radialは本仕様の完了条件に含めず、IS113を通じて将来のRadial実装作業の受入に「Radial の線選択確認」を引き継ぐ。別viewで代用しない。現時点ではブラウザ測定未実行。
 
-各ケースは map を適切な Surface View・root 選択で開いた後、Tab による board focus とキーだけで node→親子 edge→Esc→子への edge→F2→確定→Undo / Redo→Esc→左右巡回→L2→再選択→GraphLink F2 / ports / style / direction / Delete→Undo を行う。選択を設定する `evaluate` や `.click()` は受入操作に使わない。setup で保存済み view / fixture をロードすることと、実操作を分ける。DOM / screenshot / API readback は観測だけに使う。
+各ケースは map を適切な Surface View・root 選択で開いた後、Tab は node 操作に割り当てられているため setup で選択を変更せず `page.locator("#board").focus()` により board にフォーカスを置き、その後はキーだけで node→親子 edge→Esc→子への edge→F2→確定→Undo / Redo→Esc→左右巡回→L2→再選択→GraphLink F2 / ports / style / direction / Delete→Undo を行う。選択を設定する `evaluate` や `.click()` は受入操作に使わない。setup で保存済み view / fixture をロードすることと、実操作を分ける。DOM / screenshot / API readback は観測だけに使う。
 
 System集約線では選択・件数表示・L2・Escを確認した上で、F2 / brackets / Shift+S / Shift+B / Delete / Backspaceの拒否と保存三件の不変を確認する。OP41の三つの非描画理由もキーボードで確認する。
 

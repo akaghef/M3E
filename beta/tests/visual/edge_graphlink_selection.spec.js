@@ -7,8 +7,11 @@ test.use({launchOptions:{args:['--use-angle=swiftshader','--enable-unsafe-swifts
 const inspect=page=>page.locator('#board').evaluate(board=>board.edgeGraphlinkSelection());
 const identity=selection=>selection.kind==='parent-child'?`parent:${selection.parentNodeId}:${selection.childNodeId}`:selection.kind==='graph-link'?selection.renderKey:`node:${selection.nodeId}`;
 async function boardFocus(page){
- for(let n=0;n<100;n++) {if(await page.locator('#board').evaluate(el=>el===document.activeElement))return;await page.keyboard.press('Tab');}
- throw new Error('Board not reachable with Tab');
+ // Setup only: Tab belongs to node operations, not focus traversal in this viewer.
+ const before=(await inspect(page)).selection;
+ await page.locator('#board').focus();
+ await expect(page.locator('#board')).toBeFocused();
+ expect((await inspect(page)).selection).toEqual(before);
 }
 async function press(page,key){await page.keyboard.press(key);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await expect.poll(()=>page.locator('#board').getAttribute('data-ready')).toBe('true');}
 async function selected(page,kind){await expect.poll(async()=>(await inspect(page)).selection.kind).toBe(kind);return (await inspect(page)).selection;}
@@ -81,7 +84,7 @@ for(const renderer of ['svg','webgl'])for(const [kind,direction] of cases){
   // First left is the last candidate; all mutation keys are consumed in this slice.
   await press(page,'Alt+ArrowLeft');await expect.poll(async()=>(await inspect(page)).selection.kind).not.toBe('node');
   const fixed=identity((await inspect(page)).selection);
-  for(const key of ['F2','[',']','Shift+S','Shift+B','Delete','Backspace','Enter','Tab','m','Control+x','Control+v']){
+  for(const key of ['F2','[',']','Shift+S','Shift+B','Delete','Backspace','Enter','m','Control+x','Control+v']){
    await press(page,key);expect(identity((await inspect(page)).selection)).toBe(fixed);await expect(page.locator('textarea.inline-node-editor')).toHaveCount(0);
   }
   await press(page,'Escape');await press(page,'F2');
@@ -97,6 +100,7 @@ for(const renderer of ['svg','webgl'])for(const [kind,direction] of cases){
 
 test('System aggregate has three members, one candidate, count status and no port controls or edits',async({page})=>{
  const {read}=await open(page,withSurface(fixture,'system'),{surfaceReady:true});const before=await read();await boardFocus(page);
+ expect((await inspect(page)).selection).toEqual({kind:'node',nodeId:'plan'});
  const scene=(await inspect(page)).scene;
  const aggregate=scene.items.filter(i=>i.ref.kind==='graph-link'&&i.ref.linkIds.length>1);
  expect(aggregate).toHaveLength(1);expect([...aggregate[0].ref.linkIds].sort()).toEqual([...fixture.expected.system.aggregateIds].sort());
