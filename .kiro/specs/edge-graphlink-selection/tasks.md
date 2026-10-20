@@ -8,7 +8,11 @@
 
 ## Tasks
 
-- [ ] 1. 専用 map とレビュー・テスト起動手順を用意する
+2026-10-21 更新: 実装・自動検証・通常Beta反映は verification.md に記録。
+task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採否は自動試験から
+推測せず未完了のまま保持する。継続実装は利用者の引き継ぎ・実行指示に従った。
+
+- [x] 1. 専用 map とレビュー・テスト起動手順を用意する
   - 下記「レビュー用 map / URL」の人工 map を fixture にする。子順と画面順の違い、incoming / outgoing、同じ両端の異なる GraphLink、label / relationType、空 label、親なし / 子なし、非描画endpointの三理由、Systemの保存三件→描画一線を含める。fixtureごとに期待描画集合を手書きし、renderer outputから生成しない。
   - `lane_helpers.js` の既存 `createAppServer` と一時データ方式を使う。テストサーバーを模倣実装しない。node / browser のビルド成功と対象 checkout を記録する。
   - 既存 A-sys は `lane.sqlite` の読み取り専用取得または既存 API export から新しい temp data profile へ複製する。稼働中 SQLite の単純ファイルコピーではなく SQLite backup または API を使う。元データの値を変更しない。
@@ -21,7 +25,7 @@
   - _Browser verification: 各 URL が指定 map / view を開くこと。キー機能の受入とは別_
   - _Data safety note: review コピーと人工 map のみ。sync / cloud を接続しない_
 
-- [ ] 2. 共通の選択・移動 pure function を実装する
+- [x] 2. 共通の選択・移動 pure function を実装する
   - design.md の Selection / Scene / Presented と typed signatures を実装する。OP40の件数statusと集約線の編集拒否に必要なformatStatus / editIntentの共通部分も先に実装する（個別編集のcycleはtask 6）。
   - selectionTransition と parentChildTarget、enumerateDrawn、orderDrawn、cycleDrawn、arrowEndpoint、escapeNode、reconcileSelection、selectionHighlight を単体試験する。複数選択のprimaryを起点にする契約も含む。
   - 6px境界、0/5/10pxの非連鎖行分け、同点、入力配列の順序差、wrap、両方向 GraphLink、親への edge の左右除外、集約一候補、OP41のorigin維持・理由表示を確認する。
@@ -33,7 +37,7 @@
   - _Browser verification: 後続4・5で必要_
   - _Data safety note: pure function。永続化なし_
 
-- [ ] 3. 描画 snapshot と親子 edge の強調を接続する
+- [x] 3. 描画 snapshot と親子 edge の強調を接続する
   - 既存 geometry / path から元 identity、両端中心、labelAnchor、line / lane-band / group-frame を公開する。preview / hit / ガイド / 内訳線は候補に登録しない。
   - 既存 render hook、lane_scene、選択表示へ adapter を接続する。DC37 の root→lane / lane→item / Disperse の親 frame と両端が識別できることを確認する。
   - OP40に従い既存の除外・集約結果をsnapshotへ記録する。Systemの集約線には全linkIdsを対応させ、一本だけを候補にする。Disperseのguideは候補外とし、描画は変更しない。
@@ -46,7 +50,7 @@
   - _Browser verification: `npm run build:browser` 後、SVG / WebGL の両端・帯・枠と描画集合を観測_
   - _Data safety note: 表示変更で nodes / children[] / links を改変しない_
 
-- [ ] 4. キー・既存 click・Lane navigation を共通選択へ接続する
+- [x] 4. キー・既存 click・Lane navigation を共通選択へ接続する
   - キー所有権 guard 後、既存 F2 / Esc / Delete / brackets / Disperse tool / Lane arrow より前に共通 adapter を接続する。
   - Alt 巡回、上下選択、L2 の端移動と Esc、click からの origin、node 状態に戻った後の Lane 行・列移動を確認する。task 2の集約件数status・編集拒否を接続し、選択レビューの段階から旧編集helperへの落下を防ぐ。
   - input / activeElement / editor session / IME を調べ、編集中の Alt+矢印で preventDefault しない。
@@ -70,7 +74,7 @@
   - _Browser verification: 必須。観測と akaghef の承認を別記_
   - _Data safety note: レビュー用コピーのみ_
 
-- [ ] 6. 編集要求と status の pure function を実装する
+- [x] 6. 編集要求と status の pure function を実装する
   - L3 採用時は editIntent / canDelete、全 cycle、parent-child 拒否、read-only、repeat を実装する。
   - task 2のformatStatusをL4採用内容に合わせて拡張する。ID非表示とOP40の集約件数表示・全編集キー拒否はL4の採否によらず守る。
   - _Requirements: 4.1–4.11, 5.2–5.7, 6.3_
@@ -81,7 +85,7 @@
   - _Browser verification: 後続7・8で必要_
   - _Data safety note: mutation 自体は行わない_
 
-- [ ] 7. label editor と履歴・保存を接続する
+- [x] 7. label editor と履歴・保存を接続する
   - 集約線で全編集キーとport操作UIを拒否し、編集可能な単一対象だけF2 を固定された Ref と Presentation.labelAnchor に結び、Enter / blur / Esc / IME の lifecycle を実装する。親子 label は child attribute、GraphLink は label のみ。
   - 既存 port / Delete と新しい style / direction を共通 writable guard に通し、既存 snapshot → mutation → touchDocument を一回だけ呼ぶ。
   - node 選択へ戻るまで旧 node 変更キーを消費・拒否する。Undo / Redo 後の reconcile と status 復帰を接続する。
@@ -105,7 +109,7 @@
   - _Browser verification: `cd beta && npm run build:node && npm run build:browser` 成功後に新規2specと既存 `lane_view.spec.js`, `lane_graphlink_layers.spec.js`, `keyboard_modes.spec.js` を実行_
   - _Data safety note: 期待値を製品出力から生成して自己比較しない。personal workspace 不使用_
 
-- [ ] 9. 採用した操作を既存キー文書・チートシートへ同期する
+- [x] 9. 採用した操作を既存キー文書・チートシートへ同期する
   - Shift+S / Shift+B、Alt矢印、F2の文脈、Delete禁止、Escを既存一覧へ追加する。
   - 既存の割当を再照合し、未承認群や未対応範囲を完成機能として書かない。
   - _Requirements: 4.1–4.7, 4.11, 5.7, 6.2, 6.7_

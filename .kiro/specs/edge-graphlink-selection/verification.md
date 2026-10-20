@@ -171,3 +171,9 @@ Before/after vectors match exactly for 2/400/2000 bodies, coincident points,
 and theta 0/0.6. Independent force tests: 20 pass, including the same performance
 budgets. Full build and all four Disperse browser acceptance tests pass;
 400-node browser p95 frame 13.1ms, zero final overlap violations.
+
+Final source 185a77c: remote SHA equals local dev-beta; Build & Test and
+Personal Path Check CI both succeed. Normal Beta was rebuilt and the SVG/WebGL
+selection/editor-cancel checks repeated successfully with zero write requests
+and a matching served bundle hash. Task checkboxes reflect implementation
+evidence; human review tasks remain distinct from these automated results.
