@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>案F2 選んだ値だけ出す</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#4262ff}a:hover{color:#2f4fe0}
+.c *{box-sizing:border-box}
+.c svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.c .opt:hover{background:#f3f4f7}
+</style>
+</helmet>
+<div class="c" style="width: 1440px; height: 900px; position: relative; overflow: hidden; font-family: Inter, 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif; font-size: 13px; color: #24242a">
+<div style="position: absolute; left: 0; top: 0">
+<dc-import name="FilterSurface" phase="{{phase}}" domains="{{domains}}" hint-size="1440px,900px"></dc-import>
+</div>
+
+<div role="toolbar" aria-label="フィルタ" style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 5px 6px; border-radius: 8px; background: rgba(255,255,255,0.97); border: 1px solid rgba(20,20,30,0.11); box-shadow: 0 10px 28px rgba(20,20,30,0.16); white-space: nowrap">
+<span aria-hidden="true" style="width: 28px; height: 32px; display: grid; place-items: center; color: #565a66"><svg class="i" width="17" height="17" viewBox="0 0 24 24"><path d="M3 4h18l-7 8.5V18l-4 2v-7.5z"></path></svg></span>
+
+<span style="position: relative">
+<button type="button" aria-haspopup="true" aria-expanded="{{phaseExpanded}}" onClick="{{togglePhase}}" style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; border: 1px solid {{phaseChipBorder}}; border-radius: 16px; background: {{phaseChipBg}}; font: inherit; font-size: 12px; cursor: pointer"><span style="color: #565a66; font-weight: 600">確度</span><strong style="font: 700 11px Consolas, monospace">{{phaseLabel}}</strong><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+<sc-if value="{{phaseOpen}}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="確度" style="position: absolute; top: 40px; left: 0; width: 290px; padding: 6px; border-radius: 9px; background: #ffffff; border: 1px solid rgba(20,20,30,0.12); box-shadow: 0 14px 34px rgba(20,20,30,0.2); white-space: normal; z-index: 5">
+<sc-for list="{{phaseOpts}}" as="o" hint-placeholder-count="3">
+<button type="button" class="opt" role="menuitemradio" aria-checked="{{o.checked}}" onClick="{{o.pick}}" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px; border: 0; border-radius: 7px; background: {{o.bg}}; font: inherit; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%; border: 2px solid {{o.ring}}; display: grid; place-items: center"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{o.dot}}"></span></span>
+<span style="flex: 1 1 0%; display: flex; flex-direction: column; gap: 2px"><strong style="font: 700 11px Consolas, monospace">{{o.label}}</strong><small style="color: #5d6170; font-size: 11px">{{o.sub}}</small></span>
+<sc-if value="{{o.inside}}" hint-placeholder-val="{{ false }}"><span style="padding: 1px 7px; border-radius: 9px; background: #eceef2; color: #4b4f5c; font-size: 10px; font-weight: 700">含む</span></sc-if>
+</button>
+</sc-for>
+</div>
+</sc-if>
+</span>
+
+<span style="position: relative">
+<button type="button" aria-haspopup="true" aria-expanded="{{domExpanded}}" onClick="{{toggleDom}}" style="height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; border: 1px solid {{domChipBorder}}; border-radius: 16px; background: {{domChipBg}}; font: inherit; font-size: 12px; cursor: pointer"><span style="color: #565a66; font-weight: 600">Domain</span><strong>{{domLabel}}</strong><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+<sc-if value="{{domOpen}}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="Domain（複数選べる）" style="position: absolute; top: 40px; left: 0; width: 220px; padding: 6px; border-radius: 9px; background: #ffffff; border: 1px solid rgba(20,20,30,0.12); box-shadow: 0 14px 34px rgba(20,20,30,0.2); white-space: normal; z-index: 5">
+<button type="button" class="opt" role="menuitemcheckbox" aria-checked="{{allChecked}}" onClick="{{pickAll}}" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 0; border-radius: 7px; background: transparent; font: inherit; text-align: left; cursor: pointer"><span aria-hidden="true" style="width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; border: 2px solid {{allBox}}; background: {{allFill}}; color: #ffffff"><sc-if value="{{allOn}}" hint-placeholder-val="{{ true }}"><svg class="i" width="11" height="11" viewBox="0 0 24 24" style="stroke-width: 3"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span><span style="font-weight: 700">すべて</span></button>
+<div aria-hidden="true" style="height: 1px; margin: 4px 6px; background: #eceef2"></div>
+<sc-for list="{{domOpts}}" as="o" hint-placeholder-count="6">
+<button type="button" class="opt" role="menuitemcheckbox" aria-checked="{{o.checked}}" onClick="{{o.pick}}" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 0; border-radius: 7px; background: transparent; font: inherit; text-align: left; cursor: pointer"><span aria-hidden="true" style="width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; border: 2px solid {{o.box}}; background: {{o.fill}}; color: #ffffff"><sc-if value="{{o.on}}" hint-placeholder-val="{{ false }}"><svg class="i" width="11" height="11" viewBox="0 0 24 24" style="stroke-width: 3"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span><span>{{o.label}}</span></button>
+</sc-for>
+<div style="display: flex; justify-content: flex-end; padding: 6px 4px 2px"><button type="button" onClick="{{closeAll}}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #24242a; color: #ffffff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer">閉じる</button></div>
+</div>
+</sc-if>
+</span>
+
+<span style="position: relative">
+<button type="button" aria-haspopup="true" aria-expanded="{{addExpanded}}" onClick="{{toggleAdd}}" style="height: 32px; padding: 0 10px; border: 1px dashed #b9bdc8; border-radius: 16px; background: transparent; color: #3a3d48; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer">＋ 軸を追加</button>
+<sc-if value="{{addOpen}}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="軸を追加" style="position: absolute; top: 40px; left: 0; width: 240px; padding: 6px; border-radius: 9px; background: #ffffff; border: 1px solid rgba(20,20,30,0.12); box-shadow: 0 14px 34px rgba(20,20,30,0.2); white-space: normal; z-index: 5">
+<button type="button" role="menuitem" disabled style="width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 8px; border: 0; border-radius: 7px; background: transparent; font: inherit; text-align: left; color: #5d6170"><strong style="color: #3a3d48">時間</strong><small style="font-size: 11px">この図には値がありません</small></button>
+<button type="button" role="menuitem" disabled style="width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 8px; border: 0; border-radius: 7px; background: transparent; font: inherit; text-align: left; color: #5d6170"><strong style="color: #3a3d48">文字列（検索）</strong><small style="font-size: 11px">項目名で絞る</small></button>
+</div>
+</sc-if>
+</span>
+
+<button type="button" onClick="{{reset}}" style="height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #4262ff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer">解除</button>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const s = this.state || {};
+const phase = s.phase || 'tobe';
+const domains = s.domains || [];
+const open = s.open || null;
+const order = { current: 0, tobe: 1, audit: 2 };
+const PH = [['current', 'CURRENT', '確認済みの関係だけ'], ['tobe', 'TO-BE', '図に書いた関係（採用する設計）'], ['audit', 'EDGE AUDIT', '未判断の組も含める（絞らない）']];
+const DM = [['m3e', 'M3E'], ['system', 'System'], ['research', 'Research'], ['family', 'Family'], ['engineering', 'Engineering'], ['business', 'Business']];
+const toggle = (k) => () => this.setState({ open: open === k ? null : k });
+const phaseOpts = PH.map((p) => {
+const on = p[0] === phase;
+return { label: p[1], sub: p[2], checked: on ? 'true' : 'false', inside: order[p[0]] < order[phase], bg: on ? '#eef3ff' : 'transparent', ring: on ? '#4262ff' : '#a3a8b4', dot: on ? '#4262ff' : 'transparent', pick: () => this.setState({ phase: p[0], open: null }) };
+});
+const domOpts = DM.map((d) => {
+const on = domains.indexOf(d[0]) >= 0;
+return { label: d[1], on: on, checked: on ? 'true' : 'false', box: on ? '#5b26d9' : '#a3a8b4', fill: on ? '#5b26d9' : '#ffffff', pick: () => this.setState({ domains: on ? domains.filter((x) => x !== d[0]) : domains.concat([d[0]]) }) };
+});
+const all = domains.length === 0;
+const DL = {}; DM.forEach((d) => { DL[d[0]] = d[1]; });
+const domLabel = all ? 'すべて' : (domains.length <= 2 ? domains.map((x) => DL[x]).join('・') : DL[domains[0]] + ' ほか' + (domains.length - 1));
+const phaseActive = phase !== 'audit';
+return {
+phase: phase, domains: domains,
+phaseLabel: PH.filter((p) => p[0] === phase)[0][1],
+phaseOpen: open === 'phase', domOpen: open === 'dom', addOpen: open === 'add',
+phaseExpanded: open === 'phase' ? 'true' : 'false', domExpanded: open === 'dom' ? 'true' : 'false', addExpanded: open === 'add' ? 'true' : 'false',
+togglePhase: toggle('phase'), toggleDom: toggle('dom'), toggleAdd: toggle('add'),
+phaseChipBg: phaseActive ? '#eef3ff' : '#ffffff', phaseChipBorder: phaseActive ? '#9db0ff' : '#d9dce3',
+domChipBg: all ? '#ffffff' : '#efe7ff', domChipBorder: all ? '#d9dce3' : '#b79cf7',
+phaseOpts: phaseOpts, domOpts: domOpts, domLabel: domLabel,
+allOn: all, allChecked: all ? 'true' : 'false', allBox: all ? '#5b26d9' : '#a3a8b4', allFill: all ? '#5b26d9' : '#ffffff',
+pickAll: () => this.setState({ domains: [] }),
+closeAll: () => this.setState({ open: null }),
+reset: () => this.setState({ phase: 'audit', domains: [], open: null })
+};
+}
+}
+</script>
+</body>
+</html>
