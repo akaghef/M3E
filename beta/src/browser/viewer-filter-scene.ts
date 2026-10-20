@@ -13,8 +13,11 @@ export function filterSceneInput(root: SVGSVGElement, nodes: Record<string, Filt
 }
 /** Retained elements keep their unfiltered inline opacity; replacements start fresh. */
 export class ViewerFilterScene {
+  nodeOpacity(id: string): number { return this.dimmedNodes.has(id) ? 0.18 : 1; }
+  private dimmedNodes = new Set<string>();
   private originals = new WeakMap<SVGElement, { value: string; priority: string }>();
   apply(root: SVGSVGElement, result: FilterResult, selection: FilterSelection, nodes: Record<string, FilterNode & { parentId?: string | null }>): void {
+    this.dimmedNodes = new Set(result.active ? Object.keys(nodes).filter(id => !result.nodes.has(id)) : []);
     const elements = Array.from(root.querySelectorAll<SVGElement>(primitives)).filter(element =>
       !element.closest("defs,marker,clipPath,mask,.link-port-controls") && !element.matches(".node-hit,.graph-link-hit"));
     // Restore first: computed styles can depend on selection and inherited styles.

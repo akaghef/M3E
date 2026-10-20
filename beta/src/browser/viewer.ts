@@ -4546,7 +4546,7 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
   });
   shapeById.forEach((shape, id) => {
     const labelElement = labelElementsById.get(id);
-    const cacheKey = shape.outerHTML + (labelElement?.outerHTML || "");
+    const cacheKey = shape.outerHTML + (labelElement?.outerHTML || "") + filterScene.nodeOpacity(id);
     const previous = snapshotNodeCache.get(shape);
     if (previous?.key === cacheKey) { nodes.push(previous.value); return; }
     const box = svgShapeBox(shape);
@@ -4559,6 +4559,7 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     const style = readNodeStyleAttrs(visibleNode.attributes || {});
     const value: RenderNode = {
       id,
+      opacity: filterScene.nodeOpacity(id),
       x: box.x,
       y: box.y,
       width: Math.max(1, box.width),

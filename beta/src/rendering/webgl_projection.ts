@@ -4,6 +4,8 @@ import { FrameInvalidation } from "./frame_invalidation";
 
 export type RenderNodeShape = "rect" | "circle";
 export interface RenderNode {
+  /** Display-only filter factor; does not affect geometry or hit testing. */
+  opacity?: number;
   id: string;
   x: number;
   y: number;
@@ -620,10 +622,10 @@ export class WebGLRenderingProjection implements RenderingProjection {
       const node = this.nodesById.get(id);
       if (!node) return;
       if (node.id === this.interaction.editingNodeId) return;
-      if (selected.has(node.id)) pushOutline(vertices, node, rgba("#6f39ff"), node.id === this.interaction.primarySelectedNodeId ? 4 : 2);
-      if (node.id === this.interaction.hoveredNodeId && !selected.has(node.id)) pushOutline(vertices, node, rgba("#2f70ff", 0.82), 2);
-      if (dragged.has(node.id)) pushOutline(vertices, node, rgba("#d99a16"), 3);
-      if (node.id === this.interaction.dropTargetNodeId) pushOutline(vertices, node, rgba("#1b9c64"), 4);
+      if (selected.has(node.id)) pushOutline(vertices, node, rgba("#6f39ff", node.opacity ?? 1), node.id === this.interaction.primarySelectedNodeId ? 4 : 2);
+      if (node.id === this.interaction.hoveredNodeId && !selected.has(node.id)) pushOutline(vertices, node, rgba("#2f70ff", 0.82 * (node.opacity ?? 1)), 2);
+      if (dragged.has(node.id)) pushOutline(vertices, node, rgba("#d99a16", node.opacity ?? 1), 3);
+      if (node.id === this.interaction.dropTargetNodeId) pushOutline(vertices, node, rgba("#1b9c64", node.opacity ?? 1), 4);
     });
     const line = this.interaction.reorderLine;
     if (line) pushRect(vertices, line.x1, line.y - 2, line.x2 - line.x1, 4, rgba("#1b9c64"));
