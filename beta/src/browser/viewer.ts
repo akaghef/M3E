@@ -1,3 +1,4 @@
+import { initializeViewerTheme } from "./viewer_theme";
 import { laneLinkGeometry } from "../shared/lane_layout";
 import { laneGrabMove, laneNavigationTarget, type LaneGrid } from "../shared/lane_navigation";
 import { LaneViewController } from "./lane_view_controller";
@@ -84,7 +85,6 @@ const viewLogicChartBtn = document.getElementById("view-logic-chart");
 const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
-const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
 const scopeNavBtn = document.getElementById("scope-nav-btn") as HTMLButtonElement | null;
 const localFsToggleBtn = document.getElementById("local-fs-toggle") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
@@ -465,7 +465,6 @@ const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "clou
 const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
 const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
-const THEME_PREFS_KEY = "m3e:viewer-theme";
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 function createTabId(): string {
@@ -776,8 +775,6 @@ let vaultLastInboundAt: string | null = null;
 let vaultLastOutboundAt: string | null = null;
 let vaultLastError: string | null = null;
 let liveStreamVisibilityHandlerInstalled = false;
-type ViewerTheme = "light" | "dark";
-let viewerTheme: ViewerTheme = readStoredViewerTheme();
 let localFsVisible = false;
 let localFsSelectedPath: string | null = null;
 let localFsLoadingPath: string | null = null;
@@ -4303,46 +4300,7 @@ function setStatus(message: string, isError = false): void {
   }
 }
 
-function normalizeViewerTheme(value: unknown): ViewerTheme {
-  return value === "dark" ? "dark" : "light";
-}
-
-function readStoredViewerTheme(): ViewerTheme {
-  try {
-    return normalizeViewerTheme(window.localStorage.getItem(THEME_PREFS_KEY));
-  } catch {
-    return "light";
-  }
-}
-
-function applyViewerTheme(theme: ViewerTheme, options: { persist?: boolean; announce?: boolean } = {}): void {
-  viewerTheme = normalizeViewerTheme(theme);
-  document.documentElement.dataset.theme = viewerTheme;
-  document.documentElement.style.colorScheme = viewerTheme;
-  document.body.dataset.theme = viewerTheme;
-  if (themeToggleBtn) {
-    themeToggleBtn.textContent = viewerTheme === "dark" ? "Light" : "Dark";
-    themeToggleBtn.setAttribute("aria-pressed", viewerTheme === "dark" ? "true" : "false");
-    themeToggleBtn.title = viewerTheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
-  }
-  if (options.persist) {
-    try {
-      window.localStorage.setItem(THEME_PREFS_KEY, viewerTheme);
-    } catch {
-      // Local storage may be unavailable in restricted browser contexts.
-    }
-  }
-  window.dispatchEvent(new CustomEvent("m3e:theme-changed", { detail: { theme: viewerTheme } }));
-  if (options.announce) {
-    setStatus(viewerTheme === "dark" ? "Dark mode enabled." : "Light mode enabled.");
-  }
-}
-
-function toggleViewerTheme(): void {
-  applyViewerTheme(viewerTheme === "dark" ? "light" : "dark", { persist: true, announce: true });
-}
-
-applyViewerTheme(viewerTheme);
+initializeViewerTheme({ redraw: scheduleRender, setStatus });
 
 function showFatalLoadError(title: string, detail: string): void {
   fatalLoadError = true;
@@ -15097,21 +15055,8 @@ viewScatterBtn?.addEventListener("click", () => {
   setSurfaceViewMode("scatter");
 });
 
-themeToggleBtn?.addEventListener("click", () => {
-  toggleViewerTheme();
-});
-
 componentTabularToggleBtn?.addEventListener("click", () => {
   toggleSelectedTabularComponent();
-});
-
-window.addEventListener("m3e:set-theme", (event: Event) => {
-  const theme = normalizeViewerTheme((event as CustomEvent<{ theme?: unknown }>).detail?.theme);
-  applyViewerTheme(theme, { persist: true, announce: Boolean((event as CustomEvent<{ announce?: unknown }>).detail?.announce) });
-});
-
-window.addEventListener("m3e:toggle-theme", () => {
-  toggleViewerTheme();
 });
 
 window.addEventListener("m3e:set-surface-layout", (event: Event) => {

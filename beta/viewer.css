@@ -4789,3 +4789,8 @@
 .lane-heading.selected, .lane-title.selected { fill: #6f39ff; text-decoration: underline; }
 .lane-count { fill: #8a8e9a; font-size: 20px; font-weight: 500; }
 .lane-summary { font-size: 20px; }
+:root[data-theme="dark"] .lane-heading,
+:root[data-theme="dark"] .lane-title { fill: var(--ink); }
+:root[data-theme="dark"] .lane-count { fill: var(--status-ink); }
+:root[data-theme="dark"] .lane-heading.selected,
+:root[data-theme="dark"] .lane-title.selected { fill: var(--accent); }
