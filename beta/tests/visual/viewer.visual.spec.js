@@ -21,10 +21,17 @@ async function loadAndStabilize(page, buttonId) {
   const qs = `testRun=${encodeURIComponent(isolatedDocId)}&renderer=svg`;
   await page.goto(`/viewer.html?${qs}`);
   const sample = buttonId === "#load-default" ? "rapid-sample.json" : "aircraft.mm";
-  const response = await page.request.get(`/data/${sample}`);
-  expect(response.ok()).toBeTruthy();
+  let buffer;
+  if (sample === "aircraft.mm") {
+    // Original sample restored from 67b7cc9^ after production data cleanup.
+    buffer = require("node:fs").readFileSync(require("node:path").join(__dirname, "../fixtures/aircraft.mm"));
+  } else {
+    const response = await page.request.get(`/data/${sample}`);
+    expect(response.ok()).toBeTruthy();
+    buffer = await response.body();
+  }
   await page.setInputFiles("#file-input", {
-    name: sample, mimeType: "application/octet-stream", buffer: await response.body(),
+    name: sample, mimeType: "application/octet-stream", buffer,
   });
   await expect(page.locator("#meta")).toContainText("nodes:");
   await fitViewer(page);

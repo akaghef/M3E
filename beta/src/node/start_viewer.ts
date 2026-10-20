@@ -1,5 +1,7 @@
 "use strict";
 
+import { FlashJobs, InstalledFlashProvider } from "./flash_jobs";
+
 import "dotenv/config";
 import fs from "fs";
 import os from "os";
@@ -188,6 +190,35 @@ const mcpService = new M3eMcpService({
     handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
   },
 });
+
+const flashJobsByWorkspace = new Map<string, FlashJobs>();
+function currentFlashJobs(): FlashJobs {
+  const db = currentSqliteDbPath();
+  let jobs = flashJobsByWorkspace.get(db);
+  if (!jobs) {
+    const manager = new M3eMcpService({ dbPath: () => db, feedbackDir: () => path.join(path.dirname(db), "mcp"),
+      canWrite: mapId => activeMapSaves.has(mapId) || getVaultWatchStatus(mapId)?.running ? "Map has an active writer" : null,
+      onSaved: (mapId, savedAt) => { broadcastMapUpdate(mapId, savedAt, null); handleMapSavedForVaultWatch(db, mapId); } });
+    jobs = new FlashJobs(path.join(path.dirname(db), "flash-jobs", path.basename(db)), manager, new InstalledFlashProvider());
+    flashJobsByWorkspace.set(db, jobs); jobs.resume();
+  }
+  return jobs;
+}
+async function handleFlashJobsApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  if (pathname !== "/api/flash/jobs" && !pathname.startsWith("/api/flash/jobs/")) return false;
+  if (!mcpRequestAllowed(req)) { sendJson(res, 403, { ok: false, error: "LOCAL_ONLY" }); return true; }
+  try {
+    if (pathname === "/api/flash/jobs" && req.method === "POST") {
+      if (!(req.headers["content-type"] || "").startsWith("application/json")) throw new Error("Use application/json");
+      const result = currentFlashJobs().submit(JSON.parse(await readRequestBody(req, 64 * 1024 * 1024)));
+      sendJson(res, result.state === "processing" ? 202 : 200, result);
+    } else if (req.method === "GET" && /^\/api\/flash\/jobs\/[a-f0-9]{64}$/.test(pathname)) {
+      sendJson(res, 200, currentFlashJobs().get(pathname.split("/").pop()!));
+    } else sendJson(res, 405, { ok: false, error: "Unsupported job operation" });
+  } catch (error) { sendJson(res, 400, { ok: false, error: (error as NodeJS.ErrnoException).code === "ENOENT" ? "Job unavailable" : (error as Error).message }); }
+  return true;
+}
 
 async function handleMcpApi(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -3860,6 +3891,7 @@ function startServer(): void {
   const server = createAppServer();
 
   server.listen(PORT, () => {
+    currentFlashJobs();
     const isFirstRun = !fs.existsSync(currentFirstRunMarker());
     const params = new URLSearchParams({ ws: WORKSPACE_ID });
     if (DEFAULT_PAGE !== "home.html") {
@@ -4162,6 +4194,7 @@ export function createAppServer(): http.Server {
       return;
     }
 
+    if (await handleFlashJobsApi(req, res)) return;
     const flashRoute = parseFlashRoute(req.url ?? "/", req.method ?? "GET");
     if (flashRoute) {
       await handleFlashApi(req, res, flashRoute);

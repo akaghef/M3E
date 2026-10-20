@@ -16,6 +16,7 @@ export interface PaintCommand {
   matrix: PaintMatrix;
   style: PaintStyle;
   nodeId?: string;
+  groupId?: string;
   /** False for associated edge labels; those stay visible during node editing. */
   editorBody?: boolean;
   sourceNodeId?: string;
@@ -271,7 +272,7 @@ export function captureSvgPaintScene(root: SVGSVGElement, onlyNodeIds?: Set<stri
       });
     } else if (element instanceof SVGGeometryElement) {
       const path = shapePath(element);
-      if (path) commands.push({ kind: "path", path, bounds, matrix, style, nodeId, editorBody,
+      if (path) commands.push({ kind: "path", path, bounds, matrix, style, nodeId, editorBody, groupId: element.getAttribute("data-group-id") || undefined,
         sourceNodeId:element.getAttribute("data-source-node-id") || element.getAttribute("data-parent-node-id") || undefined,
         targetNodeId:element.getAttribute("data-target-node-id") || element.getAttribute("data-child-node-id") || undefined });
       // Preserve SVG marker geometry, dimensions and direction rather than

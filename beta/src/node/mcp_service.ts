@@ -365,7 +365,7 @@ export class M3eMcpService {
     return { ok: true, target: publicRef(ref), revision: revision(doc), nodes: result.items, links: linkResult.items, scope_payload: payloadResult.items, payload_total: payload.length, next_payload_offset: payloadResult.next, total: nodes.length, link_total: links.length, offset, limit, next_offset: result.next, next_link_offset: linkResult.next, ...(context ? { context_id: context.id, requires_refocus: context.invalidated, event_cursor: context.cursor } : {}) };
   }
   private mutate(tool: string, args: Args, context: Context): Args {
-    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "expected_revision"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision"] : ["context_id", "target", "expected_revision"];
+    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "expected_revision"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision"] : ["context_id", "target", "expected_revision"];
     fields(args, allowed);
     if (context.invalidated || !context.focus) fail("FOCUS_INVALIDATED", "The focused boundary disappeared. Explicitly focus a surviving target before writing.");
     const mapId = context.focus.mapId;
@@ -389,7 +389,7 @@ export class M3eMcpService {
       if (model.state.nodes[target]!.nodeType === "alias") fail("INVALID_OPERATION", "Alias nodes cannot own children.");
       const kind = str(args.kind, "kind", 30);
       const common = ["kind", "context_id", "target", "expected_revision"];
-      fields(args, [...common, ...(kind === "node" ? ["text", "attributes"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : [])]);
+      fields(args, [...common, ...(kind === "node" ? ["text", "attributes"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : [])]);
       if (kind === "node") {
         const id = model.addNode(target, str(args.text, "text")); created.push(id);
         if (args.attributes !== undefined) this.patchAttributes(model.state.nodes[id]!, args.attributes);
@@ -403,6 +403,36 @@ export class M3eMcpService {
           if ([...ids].some((id) => { const node = source.doc.state.nodes[id]!; return node.nodeType === "alias" && node.targetNodeId && !ids.has(node.targetNodeId); })) fail("CROSS_MAP_ALIAS", "The subtree contains an external alias. Resolve its cross-map meaning before copying.");
         }
         created.push(...model.copySubtree(source.doc.state, source.ref.nodeId, target));
+      } else if (kind === "import_structure") {
+        const graph = object(args.structure);
+        const key = str(args.import_key, "import_key", 200);
+        // The marker and whole scope commit together; a lost HTTP response is replay-safe.
+        const prior = Object.values(model.state.nodes).find(n => n.attributes?.["m3e:flashImportKey"] === key);
+        if (prior) {
+          if (prior.parentId !== target) fail("IMPORT_CONFLICT", "The imported scope was moved; do not append it again.");
+          return { ok: true, ...this.summary(context), changed: { created: 0, updated: 0, deleted: 0 }, created: [publicRef(refFor(mapId, model.state, prior.id))], replayed: true };
+        }
+        if (!Array.isArray(graph.nodes) || !graph.nodes.length || graph.nodes.length > MAX_BATCH || !Array.isArray(graph.roots) || graph.roots.length !== 1) fail("INVALID_STRUCTURE", "Use one rooted tree with at most 1000 nodes.");
+        const byId = new Map<string, Args>();
+        for (const raw of graph.nodes) {
+          const n = object(raw), id = str(n.id, "node id", 200);
+          str(n.title, "node title");
+          if (/[\r\n]/.test(n.title as string) || !Array.isArray(n.children) || byId.has(id)) fail("INVALID_STRUCTURE", "Invalid title, children or duplicate id.");
+          byId.set(id, n);
+        }
+        const visited = new Set<string>();
+        const add = (id: string, parent: string, sourceParent: string | null): string => {
+          const n = byId.get(id);
+          if (!n || visited.has(id) || n.parent !== sourceParent) fail("INVALID_STRUCTURE", "The tree has missing, repeated or inconsistent ownership.");
+          visited.add(id);
+          const real = model.addNode(parent, n.title as string); created.push(real);
+          for (const child of n.children as unknown[]) add(str(child, "child", 200), real, id);
+          return real;
+        };
+        const root = add(str(graph.roots[0], "root", 200), target, null);
+        if (visited.size !== byId.size) fail("INVALID_STRUCTURE", "The tree contains unreachable nodes.");
+        model.setScopeBoundary(root, true);
+        model.state.nodes[root]!.attributes = { "m3e:flashImportKey": key, "m3e:band": "flash", "m3e:status": "unverified" };
       } else if (kind === "import_mfh") {
         const text = str(args.mfh, "mfh", 300_000);
         let depth = 0, count = 0;

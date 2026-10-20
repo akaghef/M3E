@@ -149,6 +149,7 @@ type ProgressiveNodeId =
   | "scatter-delete"
   | "scatter-animate"
   | "scatter-reflow"
+  | "scatter-collapse"
   | "add-child"
   | "toggle-scope"
   | "enter-scope"
@@ -873,6 +874,7 @@ function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement |
       </div>
       <div className="wb-scatter-sim">
         <button type="button" onClick={() => clickLegacy("scatter-animate")}>Animate</button>
+        <button type="button" onClick={() => clickLegacy("scatter-collapse")}>折り畳み・展開</button>
         <button type="button" onClick={() => clickLegacy("scatter-reflow")}>
           <RefreshCw size={15} /> Reflow
         </button>
@@ -972,6 +974,7 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): 
     { id: "scatter-colorize", label: "Colorize", hint: "apply scatter color", parentId: "scatter", action: () => clickLegacy("scatter-colorize") },
     { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
     { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
+    { id: "scatter-collapse", label: "折り畳み・展開", hint: "選択したノードの子孫を畳む・展開する", parentId: "scatter", action: () => clickLegacy("scatter-collapse") },
     { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
     { id: "add-child", label: "Add child", hint: "Tab", parentId: "gui", action: () => sendKey("Tab") },
     { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "gui", action: () => sendKey("f") },

@@ -113,3 +113,10 @@ legacy browser script用のTypeScript対象から互換exportを除外し、既�
 
 スクリーンショットは`output/playwright/force-webgl-*.png`。CLI診断出力とともにローカル検証成果物であり、commit対象外。
 通常Viewerへの力学接続、全製品回帰suite、Windows実機、公開版へのOT同梱判断は未対象。
+
+## 2026-10-20 — 通常 Disperse 昇格の着手
+
+ユーザーの明示指示で、従来未対象だった通常 Viewer 接続を実施する。
+[要件・受入条件・検証記録](../../../docs/tasks/261020_disperse_force_promotion.md)。
+既存の再加熱・ドラッグ一時固定・収束停止を維持し、D3 quadtree と RBush によって全ペア計算を減らす。
+既存の100ノード検証・2000ノード描画試験は新しい性能保証へ転用しない。

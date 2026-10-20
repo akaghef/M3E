@@ -1,6 +1,11 @@
 import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
 import { viewerFilter } from "./viewer-filter-controller";
 import { filterSceneInput, ViewerFilterScene } from "./viewer-filter-scene";
+import { EdgeGraphLinkSelectionAdapter } from "./edge_graphlink_selection_adapter";
+import { dispersePositionFrame, disperseGuideEndpoints } from "./disperse_frame";
+import type { ForceSnapshot } from "../shared/force_seam_interface";
+import { DisperseForceController } from "./disperse_force_controller";
+import { initializeViewerTheme } from "./viewer_theme";
 import { laneLinkGeometry } from "../shared/lane_layout";
 import { laneGrabMove, laneNavigationTarget, type LaneGrid } from "../shared/lane_navigation";
 import { LaneViewController } from "./lane_view_controller";
@@ -87,7 +92,6 @@ const viewLogicChartBtn = document.getElementById("view-logic-chart");
 const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
-const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
 const scopeNavBtn = document.getElementById("scope-nav-btn") as HTMLButtonElement | null;
 const localFsToggleBtn = document.getElementById("local-fs-toggle") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
@@ -468,7 +472,6 @@ const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "clou
 const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
 const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
-const THEME_PREFS_KEY = "m3e:viewer-theme";
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 function createTabId(): string {
@@ -606,7 +609,8 @@ let localEditBatchPending = false;
 let renderRevision = 0;
 let snapshotNodeCache = new WeakMap<SVGGraphicsElement, { key: string; value: RenderNode }>();
 let snapshotEdgeCache = new WeakMap<SVGGeometryElement, { key: string; value: RenderEdge }>();
-let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
+type LineLabelEditorOptions = { value: string; anchor: () => { x: number; y: number } | null; commit: (value: string) => void };
+let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement; options?: LineLabelEditorOptions } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let contentMinX = 0;
@@ -790,8 +794,6 @@ let vaultLastInboundAt: string | null = null;
 let vaultLastOutboundAt: string | null = null;
 let vaultLastError: string | null = null;
 let liveStreamVisibilityHandlerInstalled = false;
-type ViewerTheme = "light" | "dark";
-let viewerTheme: ViewerTheme = readStoredViewerTheme();
 let localFsVisible = false;
 let localFsSelectedPath: string | null = null;
 let localFsLoadingPath: string | null = null;
@@ -840,12 +842,6 @@ type ScatterToolMode = "normal" | "add-node" | "add-edge" | "colorize" | "delete
 let scatterToolMode: ScatterToolMode = "normal";
 const SCATTER_DEFAULT_EDGE_COLOR = "#2f7d6d";
 const SCATTER_REPULSION_DEFAULT = 200000;
-const SCATTER_SPRING_K = 7;
-const SCATTER_GUIDE_SPRING_WEIGHT = 0.42;
-const SCATTER_DAMPING = 0.73;
-const SCATTER_MASS = 10;
-const SCATTER_DT = 0.2;
-const SCATTER_MAX_V = 100;
 const SCATTER_EDGE_LENGTH_DEFAULT = 180;
 const SCATTER_NODE_RADIUS = 36;
 const SCATTER_MIN_RADIUS = 18;
@@ -854,11 +850,21 @@ const SCATTER_MIN_SCALE = 0.52;
 const STRUCTURED_CLIPBOARD_PREFIX = "M3E_CLIPBOARD_V1\n";
 const STRUCTURED_CLIPBOARD_STORAGE_KEY = "m3e:subtree-clipboard:v1";
 const STRUCTURED_CLIPBOARD_MAX_AGE_MS = 10 * 60 * 1000;
-let scatterAnimationEnabled = false;
+let scatterAnimationEnabled = true;
+const disperseForce = new DisperseForceController();
+let disperseForceUndoPending = false;
+let disperseForceDirty = false;
+let disperseForceSurface: MapSurface | null = null;
+let disperseForceKey = "";
+let disperseFitAfterSettle = false;
+let dispersePauseOnRestore = false;
+const disperseFrameTimes: number[] = [];
+let disperseFastFrames = 0;
+let disperseFastGate = "not started";
 let scatterAnimationFrame: number | null = null;
 let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
 let scatterEdgeLength = SCATTER_EDGE_LENGTH_DEFAULT;
-const scatterVelocities = new Map<string, { x: number; y: number }>();
+
 let selectedGraphLinkId: string | null = null;
 let linkPortDragState: {
   pointerId: number;
@@ -1101,7 +1107,7 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
   syncMapModelStateFromRuntime();
   if (mode === "scatter") {
-    seedMissingScatterPositions();
+    disperseForce.invalidate();
   }
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
@@ -1216,7 +1222,8 @@ function setScatterAnimationEnabled(enabled: boolean): void {
     setStatus("Switch to Disperse to animate layout.", true);
     return;
   }
-  seedMissingScatterPositions();
+  disperseForce.reheat();
+  render();
   startScatterAnimation();
   setStatus("Disperse animation running.");
 }
@@ -2730,8 +2737,8 @@ function ensureDocShape(payload: unknown): SavedMap {
       id: record.id || linkId,
       sourceNodeId: String(record.sourceNodeId || ""),
       targetNodeId: String(record.targetNodeId || ""),
-      relationType: record.relationType || undefined,
-      label: record.label || undefined,
+      relationType: record.relationType ?? undefined,
+      label: record.label ?? undefined,
       direction: record.direction || "none",
       style: record.style || "default",
       color: sanitizeColor(record.color) || undefined,
@@ -4086,6 +4093,7 @@ function jumpToAliasTarget(): boolean {
   const targetScopeId = scopeRootForNode(target.id);
   const currentScopeId = normalizedCurrentScopeId();
   if (targetScopeId !== currentScopeId) {
+    stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
     viewState.scopeHistory.push(currentScopeId);
     viewState.currentScopeId = targetScopeId;
     viewState.currentScopeRootId = targetScopeId;
@@ -4254,6 +4262,7 @@ function undoLastChange(): void {
   }
 
   const snapshot = undoStack.pop()!;
+  stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
   map.state = snapshot.state;
   if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const undoState = map.state;
@@ -4289,6 +4298,7 @@ function redoLastChange(): void {
   }
 
   const snapshot = redoStack.pop()!;
+  stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
   map.state = snapshot.state;
   if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const redoState = map.state;
@@ -4312,51 +4322,12 @@ function setStatus(message: string, isError = false): void {
   statusEl.style.color = isError ? "var(--danger)" : "var(--status-ink)";
   if (message) {
     statusTimer = setTimeout(() => {
-      statusEl.textContent = "";
+      statusEl.textContent = lineSelection.status();
     }, 2500);
   }
 }
 
-function normalizeViewerTheme(value: unknown): ViewerTheme {
-  return value === "dark" ? "dark" : "light";
-}
-
-function readStoredViewerTheme(): ViewerTheme {
-  try {
-    return normalizeViewerTheme(window.localStorage.getItem(THEME_PREFS_KEY));
-  } catch {
-    return "light";
-  }
-}
-
-function applyViewerTheme(theme: ViewerTheme, options: { persist?: boolean; announce?: boolean } = {}): void {
-  viewerTheme = normalizeViewerTheme(theme);
-  document.documentElement.dataset.theme = viewerTheme;
-  document.documentElement.style.colorScheme = viewerTheme;
-  document.body.dataset.theme = viewerTheme;
-  if (themeToggleBtn) {
-    themeToggleBtn.textContent = viewerTheme === "dark" ? "Light" : "Dark";
-    themeToggleBtn.setAttribute("aria-pressed", viewerTheme === "dark" ? "true" : "false");
-    themeToggleBtn.title = viewerTheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
-  }
-  if (options.persist) {
-    try {
-      window.localStorage.setItem(THEME_PREFS_KEY, viewerTheme);
-    } catch {
-      // Local storage may be unavailable in restricted browser contexts.
-    }
-  }
-  window.dispatchEvent(new CustomEvent("m3e:theme-changed", { detail: { theme: viewerTheme } }));
-  if (options.announce) {
-    setStatus(viewerTheme === "dark" ? "Dark mode enabled." : "Light mode enabled.");
-  }
-}
-
-function toggleViewerTheme(): void {
-  applyViewerTheme(viewerTheme === "dark" ? "light" : "dark", { persist: true, announce: true });
-}
-
-applyViewerTheme(viewerTheme);
+initializeViewerTheme({ redraw: scheduleRender, setStatus });
 
 function showFatalLoadError(title: string, detail: string): void {
   fatalLoadError = true;
@@ -4391,7 +4362,12 @@ function showFatalLoadError(title: string, detail: string): void {
 }
 
 function clampZoom(nextZoom: number): number {
-  return Math.min(VIEWER_TUNING.zoom.max, Math.max(VIEWER_TUNING.zoom.min, nextZoom));
+  // Nested Disperse envelopes can exceed the old 15% floor. Keep its whole
+  // geometry reachable without changing the other surfaces' zoom policy.
+  const minimum = currentSurfaceIsScatterMode()
+    ? Math.min(VIEWER_TUNING.zoom.min, Math.min(board.clientWidth / Math.max(1, contentWidth), board.clientHeight / Math.max(1, contentHeight)) * .5)
+    : VIEWER_TUNING.zoom.min;
+  return Math.min(VIEWER_TUNING.zoom.max, Math.max(minimum, nextZoom));
 }
 
 function setVisualCheckStatus(lines: string | string[]): void {
@@ -4742,7 +4718,7 @@ function createWebGLGraphLinkEndpointControls(
 }
 
 function syncWebGLGraphLinkControls(): void {
-  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId) {
+  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId || !lineSelection.portControls(selectedGraphLinkId)) {
     removeWebGLGraphLinkControls();
     return;
   }
@@ -4860,20 +4836,17 @@ function updateWebGLNodeDragPreview(event: PointerEvent): void {
     return;
   }
   if (!drag.dragged) {
-    if (scatterAnimationEnabled) {
-      scatterAnimationEnabled = false;
-      stopScatterAnimation(true);
-      syncScatterToolbarUi();
-    }
-    pushUndoSnapshot();
+    commitDispersePositions(); pushUndoSnapshot(); disperseForce.beginDrag(drag.sourceNodeId, drag.sourceRootIds);
   }
   drag.dragged = true;
-  const startWorld = drag.startWorld;
-  const currentWorld = webglClientToWorld(event.clientX, event.clientY);
-  if (!startWorld || !currentWorld) {
-    return;
-  }
-  webglProjection.previewNodeDrag({ x: currentWorld.x - startWorld.x, y: currentWorld.y - startWorld.y });
+  const startWorld = drag.startWorld, currentWorld = webglClientToWorld(event.clientX, event.clientY);
+  if (!startWorld || !currentWorld) return;
+  disperseForce.moveDrag(currentWorld.x - startWorld.x, currentWorld.y - startWorld.y);
+  disperseForceDirty = true;
+  const snapshot = disperseForce.snapshot();
+  if (!snapshot || !presentDispersePositionFrame(snapshot)) render(true);
+  startScatterAnimation();
+
 }
 
 function activateWebGLProjection(): void {
@@ -4963,7 +4936,9 @@ function activateWebGLProjection(): void {
 }
 
 function scheduleWebGLProjectionActivation(): void {
-  if (webglActivationFrame !== null) cancelAnimationFrame(webglActivationFrame);
+  // Coalesce onto the pending presentation. Repeated physics renders must not
+  // cancel it forever and leave the animated view on its SVG fallback.
+  if (webglActivationFrame !== null) return;
   // Keep SVG visible until same-turn camera fitting has settled. This prevents
   // the first WebGL frame from locking in the pre-fit 100% camera.
   webglActivationFrame = requestAnimationFrame(() => {
@@ -5357,7 +5332,10 @@ function syncInlineEdgeLabelEditorPosition(): void {
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const edgeLabel = incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
+  const options = inlineEdgeLabelEditor.options, anchor = options?.anchor(), rect = board.getBoundingClientRect();
+  if (options && !anchor) { stopInlineEdgeLabelEdit(false, { focusBoard: false }); return; }
+  const edgeLabel = anchor ? { x: (anchor.x - rect.left - board.clientLeft - viewState.cameraX) / viewState.zoom,
+    y: (anchor.y - rect.top - board.clientTop - viewState.cameraY) / viewState.zoom, width: 180 } : incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
   if (!edgeLabel) {
     return;
   }
@@ -7159,10 +7137,19 @@ function scatterSeedPositions(
   depthOf: Record<string, number>,
 ): Record<string, { x: number; y: number }> {
   const center = scatterSeedCenter();
+  const byDepth: Record<number, string[]> = {};
   const idSet = new Set(ids);
+  const peerIndices = new Map<string, number>();
+  ids.forEach((nodeId) => {
+    const depth = depthOf[nodeId] ?? 0;
+    if (!byDepth[depth]) byDepth[depth] = [];
+    peerIndices.set(nodeId, byDepth[depth]!.length);
+    byDepth[depth]!.push(nodeId);
+  });
+
+  const childLeafCount = new Map<string, number>();
   const visibleChildrenForSeed = (nodeId: string): string[] =>
     (state.nodes[nodeId]?.children || []).filter((childId) => idSet.has(childId));
-  const childLeafCount = new Map<string, number>();
   const leafCount = (nodeId: string): number => {
     const cached = childLeafCount.get(nodeId);
     if (cached != null) return cached;
@@ -7171,63 +7158,38 @@ function scatterSeedPositions(
     childLeafCount.set(nodeId, count);
     return count;
   };
-
-  const yByNode: Record<string, number> = {};
-  const assignBreadth = (nodeId: string, top: number): number => {
+  const angles: Record<string, number> = {};
+  const assignAngles = (nodeId: string, start: number, end: number): void => {
+    angles[nodeId] = (start + end) / 2;
     const children = visibleChildrenForSeed(nodeId);
-    if (!children.length) {
-      yByNode[nodeId] = top;
-      return top + scatterEdgeLength * 0.76;
-    }
-    let cursor = top;
+    if (!children.length) return;
+    const total = Math.max(1, children.reduce((sum, childId) => sum + leafCount(childId), 0));
+    let cursor = start;
     children.forEach((childId) => {
-      cursor = assignBreadth(childId, cursor);
+      const span = ((end - start) * leafCount(childId)) / total;
+      assignAngles(childId, cursor, cursor + span);
+      cursor += span;
     });
-    yByNode[nodeId] = (yByNode[children[0]!]! + yByNode[children[children.length - 1]!]!) / 2;
-    return cursor;
   };
-  const totalBreadth = leafCount(rootId) * scatterEdgeLength * 0.76;
-  assignBreadth(rootId, center.y - totalBreadth / 2);
+  assignAngles(rootId, -Math.PI * 0.96, Math.PI * 0.96);
 
-  const rankPeers: Record<number, string[]> = {};
+  const seeded: Record<string, { x: number; y: number }> = {
+    [rootId]: center,
+  };
   ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    if (!rankPeers[depth]) rankPeers[depth] = [];
-    rankPeers[depth]!.push(nodeId);
-  });
-
-  const seeded: Record<string, { x: number; y: number }> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const peers = rankPeers[depth] || [];
-    const peerIndex = Math.max(0, peers.indexOf(nodeId));
-    const siblingNudge = ((peerIndex % 3) - 1) * 12;
+    if (nodeId === rootId) return;
+    const depth = depthOf[nodeId] ?? 1;
+    const depthPeers = byDepth[depth] || [];
+    const peerIndex = peerIndices.get(nodeId) ?? 0;
+    const angle = angles[nodeId] ?? (peerIndex / Math.max(1, depthPeers.length)) * Math.PI * 2;
+    const ring = scatterEdgeLength * (1.08 + Math.max(0, depth - 1) * 0.82);
+    const stagger = ((peerIndex % 3) - 1) * 22;
     seeded[nodeId] = {
-      x: center.x + (depth - 1) * scatterEdgeLength * 1.26,
-      y: (yByNode[nodeId] ?? center.y) + siblingNudge,
+      x: center.x + Math.cos(angle) * ring,
+      y: center.y + Math.sin(angle) * ring * 0.74 + stagger,
     };
   });
-  if (ids.includes(rootId)) {
-    seeded[rootId] = {
-      x: center.x - scatterEdgeLength * 1.18,
-      y: yByNode[rootId] ?? center.y,
-    };
-  }
   return seeded;
-}
-
-function scatterApplyRankFlowSeed(state: AppState, rootId: string, ids: string[], depthOf: Record<string, number>): void {
-  const seeds = scatterSeedPositions(state, rootId, ids, depthOf);
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(nodeId, depth, ids.length);
-    const view = ensureSurfaceNodeView(nodeId);
-    const seed = seeds[nodeId];
-    if (!view || !seed) return;
-    view.x = Math.round(seed.x - radius);
-    view.y = Math.round(seed.y);
-    scatterVelocities.set(nodeId, { x: 0, y: 0 });
-  });
 }
 
 function scatterRenderNodeIdFor(state: AppState, nodeId: string, pos: Record<string, NodePosition>): string | null {
@@ -7252,25 +7214,6 @@ function scatterDisplayLabel(node: TreeNode): string {
   return label;
 }
 
-function seedMissingScatterPositions(): void {
-  if (!map || !currentSurfaceIsScatterMode()) {
-    return;
-  }
-  syncMapModelStateFromRuntime();
-  const rootId = currentScopeRootId();
-  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
-  const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(nodeId, depth, ids.length);
-    const seed = seeds[nodeId];
-    const view = ensureSurfaceNodeView(nodeId);
-    if (!view || !seed) return;
-    if (!Number.isFinite(view.x)) view.x = Math.round(seed.x - radius);
-    if (!Number.isFinite(view.y)) view.y = Math.round(seed.y);
-  });
-}
-
 function scatterCircleGeometry(p: NodePosition): { cx: number; cy: number; r: number } {
   const r = Math.max(SCATTER_MIN_RADIUS, p.w / 2);
   return {
@@ -7284,236 +7227,92 @@ function scatterLineEndpoints(
   source: NodePosition,
   target: NodePosition,
 ): { x1: number; y1: number; x2: number; y2: number; mx: number; my: number } {
-  const s = scatterCircleGeometry(source);
-  const t = scatterCircleGeometry(target);
-  const dx = t.cx - s.cx;
-  const dy = t.cy - s.cy;
-  const len = Math.max(1, Math.hypot(dx, dy));
-  return {
-    x1: s.cx + (dx / len) * s.r,
-    y1: s.cy + (dy / len) * s.r,
-    x2: t.cx - (dx / len) * t.r,
-    y2: t.cy - (dy / len) * t.r,
-    mx: (s.cx + t.cx) / 2,
-    my: (s.cy + t.cy) / 2,
-  };
+  return disperseGuideEndpoints(source, target);
 }
 
 function scatterLabel(node: TreeNode): string {
-  return (uiLabel(node) || node.id || "").trim();
+  return (uiLabel(node) || "無題のノード").trim();
 }
 
-function collectScatterSimulationEdges(state: AppState, ids: string[]): ScatterSimEdge[] {
-  const idSet = new Set(ids);
-  const pairSeen = new Set<string>();
-  const edges: ScatterSimEdge[] = [];
-  const renderIdFor = (nodeId: string): string | null => {
-    if (idSet.has(nodeId)) return nodeId;
-    let current = state.nodes[nodeId]?.parentId ?? null;
-    while (current) {
-      if (idSet.has(current) && scatterNodeIsCollapsedGroup(state, current)) {
-        return current;
-      }
-      current = state.nodes[current]?.parentId ?? null;
-    }
-    return null;
-  };
-  const pushEdge = (sourceId: string, targetId: string, weight: number): void => {
-    if (!idSet.has(sourceId) || !idSet.has(targetId) || sourceId === targetId) return;
-    const key = `${sourceId}->${targetId}`;
-    if (pairSeen.has(key)) return;
-    pairSeen.add(key);
-    edges.push({ sourceId, targetId, weight });
-  };
-  ids.forEach((nodeId) => {
-    const parentId = state.nodes[nodeId]?.parentId;
-    if (parentId) {
-      pushEdge(parentId, nodeId, SCATTER_GUIDE_SPRING_WEIGHT);
-    }
-  });
-  Object.values(state.links || {}).forEach((rawLink) => {
-    const link = normalizeGraphLink(rawLink);
-    const sourceId = renderIdFor(link.sourceNodeId);
-    const targetId = renderIdFor(link.targetNodeId);
-    if (sourceId && targetId) {
-      pushEdge(sourceId, targetId, 1);
-    }
-  });
-  return edges;
+function commitDispersePositions(): void {
+  if (!map || !disperseForceDirty || isReadOnlyLink()) return;
+  const snapshot = disperseForce.snapshot();
+  if (!snapshot) return;
+  if (disperseForceUndoPending) { pushUndoSnapshot(); disperseForceUndoPending = false; }
+  for (const node of disperseForce.positions()) {
+    const views = disperseForceSurface?.nodeViews;
+    if (views) { const view = views[node.id] ||= {}; view.x = node.x - node.w / 2; view.y = node.y; }
+  }
+  disperseForceDirty = false;
+  map.savedAt = nowIso(); scheduleAutosave(); broadcastState();
 }
 
-function runScatterSimulation(iterations: number): boolean {
-  if (!map || !currentSurfaceIsScatterMode()) {
-    return false;
-  }
-  syncMapModelStateFromRuntime();
-  seedMissingScatterPositions();
-  const rootId = currentScopeRootId();
-  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
-  if (ids.length === 0) {
-    return false;
-  }
-  const surface = currentMapSurface();
-  const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
-  const particles: Record<string, { cx: number; cy: number; r: number; vx: number; vy: number }> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const r = scatterRadiusFor(nodeId, depth, ids.length);
-    const view = surface?.nodeViews?.[nodeId];
-    const seed = seeds[nodeId] || scatterSeedCenter();
-    const x = Number.isFinite(view?.x) ? Number(view!.x) : seed.x - r;
-    const y = Number.isFinite(view?.y) ? Number(view!.y) : seed.y;
-    const velocity = scatterVelocities.get(nodeId) || { x: 0, y: 0 };
-    particles[nodeId] = { cx: x + r, cy: y, r, vx: velocity.x, vy: velocity.y };
-  });
-  const simEdges = collectScatterSimulationEdges(map.state, ids);
-  const center = scatterSeedCenter();
-  let changed = false;
-  for (let step = 0; step < iterations; step += 1) {
-    const forces: Record<string, { x: number; y: number }> = {};
-    ids.forEach((nodeId) => {
-      forces[nodeId] = { x: 0, y: 0 };
-    });
-
-    for (let i = 0; i < ids.length; i += 1) {
-      for (let j = i + 1; j < ids.length; j += 1) {
-        const aId = ids[i]!;
-        const bId = ids[j]!;
-        const a = particles[aId]!;
-        const b = particles[bId]!;
-        let dx = a.cx - b.cx;
-        let dy = a.cy - b.cy;
-        let distSq = dx * dx + dy * dy;
-        if (distSq < 1) {
-          dx = seededJitter(aId, bId);
-          dy = seededJitter(bId, aId);
-          distSq = dx * dx + dy * dy;
-        }
-        const dist = Math.sqrt(Math.max(1, distSq));
-        const force = scatterRepulsion / Math.max(1600, distSq);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        forces[aId]!.x += fx;
-        forces[aId]!.y += fy;
-        forces[bId]!.x -= fx;
-        forces[bId]!.y -= fy;
-      }
-    }
-
-    simEdges.forEach((edge) => {
-      const a = particles[edge.sourceId];
-      const b = particles[edge.targetId];
-      if (!a || !b) return;
-      const dx = b.cx - a.cx;
-      const dy = b.cy - a.cy;
-      const dist = Math.max(1, Math.hypot(dx, dy));
-      const force = (dist - scatterEdgeLength) * SCATTER_SPRING_K * edge.weight;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      forces[edge.sourceId]!.x += fx;
-      forces[edge.sourceId]!.y += fy;
-      forces[edge.targetId]!.x -= fx;
-      forces[edge.targetId]!.y -= fy;
-    });
-
-    ids.forEach((nodeId) => {
-      const p = particles[nodeId]!;
-      const depth = depthOf[nodeId] ?? 0;
-      const centeringStrength = nodeId === rootId ? 0.12 : Math.max(0.012, 0.04 / (depth + 1));
-      forces[nodeId]!.x += (center.x - p.cx) * centeringStrength;
-      forces[nodeId]!.y += (center.y - p.cy) * centeringStrength;
-    });
-
-    ids.forEach((nodeId) => {
-      const p = particles[nodeId]!;
-      const f = forces[nodeId]!;
-      p.vx = (p.vx + (f.x * SCATTER_DT) / SCATTER_MASS) * SCATTER_DAMPING;
-      p.vy = (p.vy + (f.y * SCATTER_DT) / SCATTER_MASS) * SCATTER_DAMPING;
-      const speed = Math.hypot(p.vx, p.vy);
-      if (speed > SCATTER_MAX_V) {
-        p.vx = (p.vx / speed) * SCATTER_MAX_V;
-        p.vy = (p.vy / speed) * SCATTER_MAX_V;
-      }
-      const prevCx = p.cx;
-      const prevCy = p.cy;
-      p.cx = Math.max(80, p.cx + p.vx * SCATTER_DT);
-      p.cy = Math.max(80, p.cy + p.vy * SCATTER_DT);
-      if (Math.hypot(p.cx - prevCx, p.cy - prevCy) > 0.1) {
-        changed = true;
-      }
-    });
-  }
-
-  ids.forEach((nodeId) => {
-    const particle = particles[nodeId]!;
-    const view = ensureSurfaceNodeView(nodeId);
-    if (!view) return;
-    view.x = Math.round(particle.cx - particle.r);
-    view.y = Math.round(particle.cy);
-    scatterVelocities.set(nodeId, { x: particle.vx, y: particle.vy });
-  });
-  return changed;
-}
-
-function seededJitter(a: string, b: string): number {
-  let hash = 0;
-  const input = `${a}:${b}`;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash * 31 + input.charCodeAt(i)) | 0;
-  }
-  return ((hash % 200) - 100) / 10 || 1;
-}
-
-function runScatterReflow(iterations = 160, opts: { withUndo?: boolean; withTouch?: boolean } = {}): void {
-  if (!map || !currentSurfaceIsScatterMode()) {
-    return;
-  }
-  const withUndo = opts.withUndo ?? true;
-  const withTouch = opts.withTouch ?? true;
-  if (withUndo) {
-    pushUndoSnapshot();
-  }
-  syncMapModelStateFromRuntime();
-  const rootId = currentScopeRootId();
-  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
-  scatterApplyRankFlowSeed(map.state, rootId, ids, depthOf);
-  runScatterSimulation(Math.min(iterations, 44));
-  if (withTouch) {
-    touchDocument();
-  } else {
-    render();
-  }
-  setStatus("Disperse rank-flow reflow applied.");
+function runScatterReflow(_iterations = 160, opts: { withUndo?: boolean; withTouch?: boolean } = {}): void {
+  if (!map || !currentSurfaceIsScatterMode() || isReadOnlyLink()) return;
+  if (opts.withUndo !== false) disperseForceUndoPending = true;
+  scatterAnimationEnabled = true; disperseFitAfterSettle = true;
+  render(); disperseForce.reheat(); startScatterAnimation(); syncScatterToolbarUi();
 }
 
 function startScatterAnimation(): void {
-  if (scatterAnimationFrame !== null || !scatterAnimationEnabled || !currentSurfaceIsScatterMode()) {
-    return;
-  }
+  if (scatterAnimationFrame !== null || !scatterAnimationEnabled || !currentSurfaceIsScatterMode() || document.hidden || isReadOnlyLink()) return;
+  if (disperseForce.snapshot()?.status !== "running") return;
   scatterAnimationFrame = requestAnimationFrame(tickScatterAnimation);
+}
+
+function presentDispersePositionFrame(snapshot: ForceSnapshot): boolean {
+  if (!isWebGLRendererActive() || !webglProjection || !webglLastSnapshot || !lastLayout || inlineEditor || orreryNetwork.enabled) {
+    disperseFastGate = `active=${isWebGLRendererActive()} snapshot=${Boolean(webglLastSnapshot)} editor=${Boolean(inlineEditor)} network=${orreryNetwork.enabled}`;
+    return false;
+  }
+  const next = dispersePositionFrame(webglLastSnapshot, lastLayout, snapshot);
+  if (!next) { disperseFastGate = `topology=${webglLastSnapshot.nodes.length}/${snapshot.nodes.length} links=${webglLastSnapshot.graphLinks.length}`; return false; }
+  disperseFastFrames++; disperseFastGate = "positions";
+  lastLayout = next.layout; webglLastSnapshot = next.scene;
+  contentMinX = next.scene.bounds.minX; contentMinY = next.scene.bounds.minY;
+  contentWidth = next.scene.bounds.maxX - contentMinX; contentHeight = next.scene.bounds.maxY - contentMinY;
+  webglProjection.setSnapshot(next.scene);
+  return true;
 }
 
 function tickScatterAnimation(): void {
   scatterAnimationFrame = null;
-  if (!scatterAnimationEnabled || !currentSurfaceIsScatterMode() || !map) {
-    return;
+  if (!scatterAnimationEnabled || !currentSurfaceIsScatterMode() || !map || document.hidden || isReadOnlyLink()) return;
+  const frameStarted = performance.now();
+  const next = disperseForce.step();
+  if (!next) return;
+  disperseForceDirty = true;
+  if (next.status !== "running" || !presentDispersePositionFrame(next)) render(true);
+  disperseFrameTimes.push(performance.now() - frameStarted);
+  if (disperseFrameTimes.length > 240) disperseFrameTimes.shift();
+  if (next.status === "running") startScatterAnimation();
+  else {
+    commitDispersePositions();
+    if (disperseFitAfterSettle) {
+      disperseFitAfterSettle = false;
+      const scope = currentScopeRootId();
+      // Fit the final painted snapshot after the retained renderer has accepted it.
+      requestAnimationFrame(() => { if (map && currentSurfaceIsScatterMode() && currentScopeRootId() === scope) fitDocument({ animate: false }); });
+    }
+    setStatus(next.status === "settled" ? "配置が安定しました。" : next.status === "blocked" ? "配置の重なりが残っています。" : "配置計算の上限で停止しました。");
   }
-  runScatterSimulation(1);
-  scheduleRender();
-  scatterAnimationFrame = requestAnimationFrame(tickScatterAnimation);
 }
 
 function stopScatterAnimation(saveCurrentPositions: boolean): void {
-  if (scatterAnimationFrame !== null) {
-    cancelAnimationFrame(scatterAnimationFrame);
-    scatterAnimationFrame = null;
-  }
-  if (saveCurrentPositions && map && currentSurfaceIsScatterMode()) {
-    map.savedAt = nowIso();
-    scheduleAutosave();
-    broadcastState();
-  }
+  if (scatterAnimationFrame !== null) cancelAnimationFrame(scatterAnimationFrame);
+  scatterAnimationFrame = null; disperseForce.pause();
+  if (saveCurrentPositions) commitDispersePositions();
+  else { disperseForceDirty = false; disperseForceUndoPending = false; }
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    releaseDisperseDrag();
+    if (scatterAnimationFrame !== null) cancelAnimationFrame(scatterAnimationFrame);
+    scatterAnimationFrame = null;
+  } else startScatterAnimation();
+});
+window.addEventListener("pagehide", () => stopScatterAnimation(true));
 
 type StructuredSurfaceMode = StructuredLayoutMode;
 
@@ -7617,6 +7416,18 @@ const laneView = new LaneViewController({
   undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
 });
 
+const lineSelection = new EdgeGraphLinkSelectionAdapter({
+  state: () => map?.state ?? null, view: () => viewState, canvas, board, scope: currentScopeRootId, inScope: isNodeInScope,
+  label: id => map?.state.nodes[id] ? uiLabel(map.state.nodes[id]) : null,
+  single: setSingleSelection, link: id => { selectedGraphLinkId = id; viewState.selectedLinkId = id ?? ""; },
+  clearNodeActions: () => { viewState.reparentSourceIds.clear(); clearCutClipboard(); },
+  writable: () => !isReadOnlyLink(), undo: pushUndoSnapshot, touch: touchDocument,
+  port: cycleSelectedGraphLinkPort, editor: options => startIncomingEdgeLabelEdit("", options),
+  parentLabel: applyIncomingEdgeLabelEdit, deleteLink: deleteSelectedGraphLink,
+  render: scheduleRender, status: setStatus, editing: () => viewerKeyboardMode() === "edit",
+  owns: () => !grabSession && !viewState.panState && !viewState.pinchState && !linkPortDragState && !webglGraphLinkDragState && !viewState.dragState && !routingSwitcherOpen && !templateCompletionState && !entityListVisible && !conflictPanelVisible && !homeScreenVisible && !activeColorPalette && !linearAdjustMenuOpen,
+});
+
 function buildLayout(state: AppState): LayoutResult {
   if (viewState.surfaceViewMode === "lane") return laneView.layout();
   const displayRootId = currentScopeRootId();
@@ -7660,35 +7471,53 @@ function buildLayout(state: AppState): LayoutResult {
 
   if (mode === "scatter" && displayRootNode) {
     const surface = currentMapSurface();
-    const { ids: descendants, depthOf: scatterDepthOf } = collectScatterNodes(state, displayRootId);
-    visibleNodeIds.clear();
-    descendants.forEach((nodeId) => visibleNodeIds.add(nodeId));
-    descendants.forEach((nodeId) => {
-      const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = scatterRadiusFor(nodeId, depth, descendants.length);
-      const agent = readAgentNode(state.nodes[nodeId]);
-      boxSizes[nodeId] = agent ? agentNodeMetric(agent) : { w: radius * 2, h: radius * 2 };
+    const all: string[] = [], collected = new Set<string>(), depthOf: Record<string, number> = {};
+    const visit = (id: string, depth: number): void => {
+      const node = state.nodes[id]; if (!node || collected.has(id)) return;
+      collected.add(id); all.push(id); depthOf[id] = depth;
+      if (id !== displayRootId && isScopePortalNode(node)) return;
+      for (const child of node.children || []) visit(child, depth + 1);
+    };
+    visit(displayRootId, 0);
+    const ids = all.filter(id => id !== displayRootId), idSet = new Set(ids);
+    const seeds = scatterSeedPositions(state, displayRootId, all, depthOf);
+    const metrics = new Map(ids.map(id => {
+      const radius = scatterRadiusFor(id, depthOf[id], ids.length), fontSize = scatterFontSizeFor(radius);
+      const agent = readAgentNode(state.nodes[id]);
+      const label = scatterDisplayLabel(state.nodes[id]);
+      const w = agent ? agentNodeMetric(agent).w : radius * 2 + 7 + textWidth(label.replace(/\n/g, " "), fontSize) + 8;
+      return [id, { radius, fontSize, w, h: agent ? agentNodeMetric(agent).h : Math.max(radius * 2, fontSize * 1.4), agent }];
+    }));
+    const nodes = ids.map(id => {
+      const m = metrics.get(id)!, saved = surface?.nodeViews?.[id], seed = seeds[id];
+      const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seed.x - m.radius;
+      const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seed.y;
+      return { id, label: uiLabel(state.nodes[id]), parentId: idSet.has(state.nodes[id].parentId || "") ? state.nodes[id].parentId! : undefined,
+        x: x + m.w / 2, y, w: m.w, h: m.h };
     });
-    options.surfaceNodeViews = surface?.nodeViews || {};
-    options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
-    options.disperse = { subtype: "scatter" };
-    // Scatter layout reads persisted per-node view coordinates; scatter simulation writes them elsewhere.
-    options.scatter = { edgeLength: scatterEdgeLength };
-    return layoutPortLayout(
-      {
-        nodeIds: descendants,
-        childrenOf: (nodeId) => {
-          const node = state.nodes[nodeId];
-          return node && (nodeId === displayRootId || !viewState.collapsedIds.has(nodeId))
-            ? (node.children || []).filter((childId) => descendants.includes(childId))
-            : [];
-        },
-        graphLinks,
-      },
-      boxSizes,
-      mode,
-      options,
-    );
+    const links = Object.values(state.links || {}).filter(e => idSet.has(e.sourceNodeId) && idSet.has(e.targetNodeId))
+      .map(e => ({ id: e.id, source: e.sourceNodeId, target: e.targetNodeId }));
+    const key = `${LOCAL_MAP_ID || state.rootId}:${displayRootId}`;
+    if (key !== disperseForceKey) { commitDispersePositions(); disperseForceKey = key; disperseFitAfterSettle = true; }
+    disperseForceSurface = surface;
+    const hasSavedPositions = ids.every(id => Number.isFinite(surface?.nodeViews?.[id]?.x) && Number.isFinite(surface?.nodeViews?.[id]?.y));
+    if (hasSavedPositions) disperseFitAfterSettle = false;
+    const changed = disperseForce.sync(key, { nodes, links }, viewState.collapsedIds, scatterAnimationEnabled && !isReadOnlyLink(), !hasSavedPositions && !dispersePauseOnRestore, { repulsion: scatterRepulsion / 100, length: scatterEdgeLength });
+    dispersePauseOnRestore = false;
+    const snapshot = disperseForce.snapshot()!;
+    if (changed) { disperseForceUndoPending = false; }
+    const pos: LayoutResult["pos"] = {};
+    for (const n of snapshot.nodes) {
+      const m = metrics.get(n.id)!;
+      pos[n.id] = { x: n.x - n.w / 2, y: n.y, w: m.agent ? m.w : m.radius * 2, h: m.agent ? m.h : m.radius * 2,
+        depth: depthOf[n.id], fontSize: m.fontSize, scatterCollapsedGroup: n.collapsed };
+    }
+    visibleNodeIds.clear(); snapshot.nodes.forEach(n => visibleNodeIds.add(n.id));
+    const result: LayoutResult = { pos, order: snapshot.nodes.map(n => n.id), groups: snapshot.groups.map(g => ({ ...g, memberIds: g.members })),
+      totalWidth: Math.max(800, ...snapshot.nodes.map(n => n.x + n.w / 2 + 80), ...snapshot.groups.map(g => g.x + g.w + 80)),
+      totalHeight: Math.max(600, ...snapshot.nodes.map(n => n.y + n.h / 2 + 80), ...snapshot.groups.map(g => g.y + g.h + 80)) };
+    startScatterAnimation();
+    return result;
   }
 
   if (mode === "system" && displayRootNode) {
@@ -7885,6 +7714,7 @@ function renderScene(incremental: boolean): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
+  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}`);
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
     VIEWER_TUNING.layout.minCanvasHeight,
@@ -7898,6 +7728,7 @@ function renderScene(incremental: boolean): void {
   let graphLinks = "";
   let graphLinkHits = "";
   let overlays = "";
+  const linePortOverlays: Array<{ id: string; svg: string }> = [];
   let annotations = "";
   const nodeParts: Array<[string, string]> = [];
   const edgeParts: Array<[string, string]> = [];
@@ -8035,6 +7866,7 @@ function renderScene(incremental: boolean): void {
     const surfaceKey = flowSurface
       ? `${sourceRenderId}->${targetRenderId}:${link.label || link.relationType || ""}`
       : link.id;
+    lineSelection.graph(surfaceKey, link, sourceRenderId, targetRenderId);
     if (renderedSurfaceLinks.has(surfaceKey)) {
       return;
     }
@@ -8174,10 +8006,12 @@ function renderScene(incremental: boolean): void {
       graphLinks += `<rect class="graph-link-label-bg" data-link-id="${link.id}" x="${controlX - labelWidth / 2}" y="${labelY - 14}" width="${labelWidth}" height="19" rx="9.5" />`;
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
-    if (selectedGraphLinkId === link.id) {
-      overlays += renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode);
+    if (lineSelection.portControls(link.id)) {
+      linePortOverlays.push({ id: link.id, svg: renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode) });
     }
   });
+  // Later links can merge into a previously singleton presentation.
+  overlays += linePortOverlays.filter(item => lineSelection.portControls(item.id)).map(item => item.svg).join("");
   defs += "</defs>";
 
   function renderNodeComponent(
@@ -8427,6 +8261,7 @@ function renderScene(incremental: boolean): void {
     if (!layout.lane && !nodeComponent) {
       const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
       children.forEach((id, index) => {
+        lineSelection.parent(nodeId, id);
         const edgeId = `edge:${nodeId}:${id}`;
         const key = JSON.stringify([geometry(p), geometry(pos[id]), index, nodeStyles,
           state.nodes[id]?.attributes, parentChildLinkLabels.get(parentChildEdgeKey(nodeId, id)), structuredMode, viewState.surfaceEdgeRoute]);
@@ -8518,6 +8353,7 @@ function renderScene(incremental: boolean): void {
     ["edges", edges], ...edgeParts, ["guides", scatterGuides], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
     ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
   ], !incremental);
+  lineSelection.finish();
   viewerFilter.enterMap(LOCAL_MAP_ID);
   viewerFilter.setScene(LOCAL_MAP_ID, filterSceneInput(canvas, state.nodes, state.links || {}));
   applyViewFilter();
@@ -9253,11 +9089,11 @@ function syncSelectionMetadata(): void {
 
 let selectionRefreshFrame: number | null = null;
 function nodeSelectionView(id: string) {
-  return {
+  return lineSelection.nodeView(id, {
     selected: viewState.selectedNodeIds.has(id),
     multiSelected: viewState.selectedNodeIds.has(id),
     primarySelected: viewState.selectedNodeId === id,
-  };
+  });
 }
 
 /** Frame paint and its controls form one selection presentation transaction. */
@@ -9364,6 +9200,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   }
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
+  lineSelection.node(nodeId);
   viewState.selectedNodeId = nodeId;
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
@@ -9385,6 +9222,7 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 }
 
 function setRangeSelection(targetId: string): void {
+  lineSelection.node(targetId);
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
@@ -9403,6 +9241,7 @@ function setRangeSelection(targetId: string): void {
 }
 
 function toggleNodeSelection(nodeId: string): void {
+  lineSelection.node(nodeId);
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   viewState.selectionAnchorId = nodeId;
@@ -9432,23 +9271,7 @@ function selectNode(nodeId: string): void {
 }
 
 function selectGraphLink(linkId: string, renderNow = true): void {
-  if (!map?.state.links?.[linkId]) {
-    return;
-  }
-  viewState.selectedLinkId = linkId;
-  selectedGraphLinkId = linkId;
-  viewState.selectedNodeIds = new Set();
-  viewState.selectionAnchorId = null;
-  viewState.reparentSourceIds.clear();
-  clearCutClipboard();
-  const link = map.state.links[linkId];
-  const source = map.state.nodes[link.sourceNodeId];
-  const target = map.state.nodes[link.targetNodeId];
-  setStatus(`Selected link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}. [ and ] adjust ports, Delete removes.`);
-  if (renderNow) {
-    scheduleRender();
-  }
-  board.focus({ preventScroll: true });
+  lineSelection.click(linkId);
 }
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
@@ -9487,6 +9310,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   if (scopeId === currentScopeId) {
     return;
   }
+  stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
   viewState.currentScopeRootId = scopeId;
@@ -9505,6 +9329,7 @@ function ExitScopeCommand(): void {
   if (!map || viewState.scopeHistory.length === 0) {
     return;
   }
+  stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   const exitedScopeId = normalizedCurrentScopeId();
   const previousScopeId = viewState.scopeHistory.pop()!;
   viewState.currentScopeId = map.state.nodes[previousScopeId] ? previousScopeId : map.state.rootId;
@@ -12038,22 +11863,9 @@ function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y
 }
 
 function applyScatterDragDelta(
-  sourceRootIds: string[],
-  startViews: Record<string, { x: number; y: number }>,
-  delta: { x: number; y: number },
+  _sourceRootIds: string[], _startViews: Record<string, { x: number; y: number }>, delta: { x: number; y: number },
 ): void {
-  if (!map) {
-    return;
-  }
-  syncMapModelStateFromRuntime();
-  sourceRootIds.forEach((nodeId) => {
-    const start = startViews[nodeId];
-    if (!start) return;
-    const view = ensureSurfaceNodeView(nodeId);
-    if (!view) return;
-    view.x = Math.round(start.x + delta.x);
-    view.y = Math.round(start.y + delta.y);
-  });
+  disperseForce.moveDrag(delta.x, delta.y); disperseForceDirty = true; startScatterAnimation();
 }
 
 function deleteSelectedGraphLink(): boolean {
@@ -12073,7 +11885,7 @@ function deleteSelectedGraphLink(): boolean {
   selectedGraphLinkId = null;
   touchDocument();
   flushAutosaveNow();
-  setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
+  setStatus(`Deleted link: ${source ? uiLabel(source) || "名称未設定" : "参照先がありません"} -> ${target ? uiLabel(target) || "名称未設定" : "参照先がありません"}.`);
   return true;
 }
 
@@ -12333,14 +12145,14 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const { nodeId, input } = inlineEdgeLabelEditor;
+  const { nodeId, input, options: editorOptions } = inlineEdgeLabelEditor;
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
   inlineEdgeLabelEditor = null;
   syncViewerKeyboardMode();
   input.remove();
   if (commit) {
-    applyIncomingEdgeLabelEdit(nodeId, next);
+    if (editorOptions) editorOptions.commit(next); else applyIncomingEdgeLabelEdit(nodeId, next);
   }
   if (options?.focusBoard !== false) {
     board.focus({ preventScroll: true });
@@ -12360,16 +12172,16 @@ function prepareViewportGesture(target: EventTarget | null): boolean {
   return true;
 }
 
-function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
+function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId, options?: LineLabelEditorOptions): void {
   if (!map || !lastLayout) {
     return;
   }
-  const node = getNode(nodeId);
-  if (!node.parentId) {
+  const node = options ? null : getNode(nodeId);
+  if (!options && !node?.parentId) {
     setStatus("Root has no incoming edge label.", true);
     return;
   }
-  if (!incomingTreeEdgeLabelLayout(nodeId)) {
+  if (!options && !incomingTreeEdgeLabelLayout(nodeId)) {
     return;
   }
   if (inlineEditor) {
@@ -12380,12 +12192,12 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   }
   const input = document.createElement("textarea");
   input.rows = 1;
-  input.value = (node.attributes?.["m3e:edge-label"] || "").trim();
+  input.value = options ? options.value : (node?.attributes?.["m3e:edge-label"] || "").trim();
   input.className = "inline-edge-label-editor";
-  input.setAttribute("aria-label", "Edit incoming edge label");
+  input.setAttribute("aria-label", options ? "Edit selected line label" : "Edit incoming edge label");
   input.placeholder = "edge label";
   board.appendChild(input);
-  inlineEdgeLabelEditor = { nodeId, input };
+  inlineEdgeLabelEditor = { nodeId, input, options };
   syncViewerKeyboardMode();
   syncInlineEdgeLabelEditorPosition();
   autoSizeInlineEdgeLabelEditor(input);
@@ -12688,6 +12500,7 @@ function toggleCollapse(): void {
 }
 
 function downloadJson(): void {
+  commitDispersePositions();
   const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state: map!.state }, null, 2)], {
     type: "application/json;charset=utf-8",
   });
@@ -12719,6 +12532,7 @@ function parseCloudMapVersion(payload: { cloudMapVersion?: unknown; mapVersion?:
 }
 
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
+  if (showStatus) commitDispersePositions();
   if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map) {
     return false;
@@ -13097,6 +12911,7 @@ function initBroadcastSync(): void {
     }
     if (ev.data.type === "STATE_UPDATE" && isValidAppState(ev.data.state)) {
       finishGrab(false);
+      stopScatterAnimation(false); disperseForce.invalidate();
       map.state = ev.data.state;
       if (typeof ev.data.savedAt === "string" && ev.data.savedAt) {
         // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
@@ -13210,6 +13025,7 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
     const prevCollapsed = new Set(viewState.collapsedIds);
     const prevScopeHistory = [...viewState.scopeHistory];
 
+    stopScatterAnimation(false); disperseForce.invalidate();
     map = newDoc;
     lastServerSavedAt = newDoc.savedAt || lastServerSavedAt;
     lastServerBaseState = cloneStateForSave(newDoc.state);
@@ -13595,6 +13411,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
 }
 
 function loadPayload(payload: unknown): void {
+  stopScatterAnimation(false); disperseForce.invalidate(); disperseForceDirty = false; disperseForceKey = "";
   finishGrab(false);
   resetFitCycle();
   try {
@@ -15037,21 +14854,8 @@ viewScatterBtn?.addEventListener("click", () => {
   setSurfaceViewMode("scatter");
 });
 
-themeToggleBtn?.addEventListener("click", () => {
-  toggleViewerTheme();
-});
-
 componentTabularToggleBtn?.addEventListener("click", () => {
   toggleSelectedTabularComponent();
-});
-
-window.addEventListener("m3e:set-theme", (event: Event) => {
-  const theme = normalizeViewerTheme((event as CustomEvent<{ theme?: unknown }>).detail?.theme);
-  applyViewerTheme(theme, { persist: true, announce: Boolean((event as CustomEvent<{ announce?: unknown }>).detail?.announce) });
-});
-
-window.addEventListener("m3e:toggle-theme", () => {
-  toggleViewerTheme();
 });
 
 window.addEventListener("m3e:set-surface-layout", (event: Event) => {
@@ -15097,6 +14901,9 @@ scatterAddEdgeBtn?.addEventListener("click", () => setScatterToolMode("add-edge"
 scatterColorizeBtn?.addEventListener("click", () => setScatterToolMode("colorize"));
 scatterDeleteBtn?.addEventListener("click", () => setScatterToolMode("delete"));
 scatterAnimateBtn?.addEventListener("click", () => toggleScatterAnimation());
+document.getElementById("scatter-collapse")?.addEventListener("click", () => {
+  if (!isReadOnlyLink()) { commitDispersePositions(); toggleCollapse(); }
+});
 scatterReflowBtn?.addEventListener("click", () => {
   runScatterReflow(180);
   fitDocument();
@@ -15105,13 +14912,17 @@ scatterRepulsionInput?.addEventListener("input", () => {
   scatterRepulsion = Number(scatterRepulsionInput.value) || SCATTER_REPULSION_DEFAULT;
 });
 scatterRepulsionInput?.addEventListener("change", () => {
-  runScatterReflow(60);
+  scatterAnimationEnabled = true; syncScatterToolbarUi();
+  disperseForce.parameters({ repulsion: Math.max(200, Math.min(20000, scatterRepulsion / 100)), length: scatterEdgeLength });
+  startScatterAnimation();
 });
 scatterEdgeLengthInput?.addEventListener("input", () => {
   scatterEdgeLength = Number(scatterEdgeLengthInput.value) || SCATTER_EDGE_LENGTH_DEFAULT;
 });
 scatterEdgeLengthInput?.addEventListener("change", () => {
-  runScatterReflow(60);
+  scatterAnimationEnabled = true; syncScatterToolbarUi();
+  disperseForce.parameters({ repulsion: Math.max(200, Math.min(20000, scatterRepulsion / 100)), length: scatterEdgeLength });
+  startScatterAnimation();
 });
 
 penToolBtn?.addEventListener("click", () => {
@@ -15501,14 +15312,64 @@ document.addEventListener("click", () => {
   closeToolbarMenus();
 });
 
+function performScatterNodeAction(nodeId: string): boolean {
+  if (!map || isReadOnlyLink()) return false;
+    if (scatterToolMode === "normal" && viewState.collapsedIds.has(nodeId)) {
+      const node = map.state.nodes[nodeId];
+      if (node && (node.children || []).length > 0) {
+        viewState.collapsedIds.delete(nodeId);
+        node.collapsed = false;
+        setSingleSelection(nodeId, false);
+        runScatterReflow(60, { withUndo: false, withTouch: true });
+        setStatus("Expanded scatter group.");
+        board.focus({ preventScroll: true });
+        return true;
+      }
+    }
+    if (scatterToolMode === "delete") {
+      setSingleSelection(nodeId, false);
+      deleteSelected();
+      board.focus({ preventScroll: true });
+      return true;
+    }
+    if (scatterToolMode === "colorize") {
+      setSingleSelection(nodeId, false);
+      showColorPalette();
+      board.focus({ preventScroll: true });
+      return true;
+    }
+    if (scatterToolMode === "add-edge") {
+      if (!viewState.linkSourceNodeId) {
+        setSingleSelection(nodeId, false);
+        markLinkSource();
+      } else {
+        const sourceId = viewState.linkSourceNodeId;
+        setSingleSelection(nodeId, false);
+        if (createGraphLinkBetween(sourceId, nodeId)) {
+          viewState.linkSourceNodeId = "";
+          scheduleRender();
+        }
+      }
+      board.focus({ preventScroll: true });
+      return true;
+    }
+  return false;
+}
+
 /** WebGL hit testing feeds the same structural drag commands as SVG. */
 webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
   if (!isWebGLRendererActive() || event.button !== 0 || !webglProjection || annotationTool !== "select") return;
   const hit = webglProjection.hitTest(event.clientX, event.clientY);
-  if (!hit) return; // Allow the board's canonical camera controller to start a pan.
+  if (!hit) {
+    if (currentSurfaceIsScatterMode() && scatterToolMode === "add-node" && !isReadOnlyLink()) {
+      event.preventDefault(); event.stopPropagation(); addScatterNodeAt(event.clientX, event.clientY);
+    }
+    return;
+  }
   event.preventDefault();
   event.stopPropagation();
   if (hit.kind === "node") {
+    if (currentSurfaceIsScatterMode() && performScatterNodeAction(hit.nodeId)) return;
     if (!currentSurfaceIsScatterMode() && !isReadOnlyLink()) {
       beginStructureNodeDrag(hit.nodeId, event, webglCanvas);
       return;
@@ -15602,6 +15463,7 @@ const webglDragFrame = new FrameInvalidation(() => {
 
 function finishWebGLNodeDrag(event: PointerEvent): void {
   const drag = viewState.dragState;
+  if (drag?.mode === "scatter" && event.type === "pointercancel") { releaseDisperseDrag(event); return; }
   if (drag?.mode === "structure") {
     finishNodeDrag(event);
     return;
@@ -15613,8 +15475,6 @@ function finishWebGLNodeDrag(event: PointerEvent): void {
   pendingWebGLDragEvent = null;
   updateWebGLNodeDragPreview(event);
   const dragged = drag.dragged;
-  const sourceRootIds = [...drag.sourceRootIds];
-  const startViews = { ...(drag.startViews || {}) };
   const startWorld = drag.startWorld;
   const endWorld = webglClientToWorld(event.clientX, event.clientY);
   viewState.dragState = null;
@@ -15640,12 +15500,7 @@ function finishWebGLNodeDrag(event: PointerEvent): void {
     board.focus({ preventScroll: true });
     return;
   }
-  applyScatterDragDelta(sourceRootIds, startViews, {
-    x: endWorld.x - startWorld.x,
-    y: endWorld.y - startWorld.y,
-  });
-  // Reuse the existing SVG drag commit path: one canonical render, autosave,
-  // and broadcast after the WebGL-only preview has ended.
+  disperseForce.endDrag(); commitDispersePositions(); startScatterAnimation();
   touchDocument();
   setStatus("Disperse position updated.");
   board.focus({ preventScroll: true });
@@ -15773,49 +15628,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     return;
   }
   if (currentSurfaceIsScatterMode()) {
-    if (scatterToolMode === "normal" && viewState.collapsedIds.has(nodeId)) {
-      const node = map.state.nodes[nodeId];
-      if (node && (node.children || []).length > 0) {
-        event.preventDefault();
-        viewState.collapsedIds.delete(nodeId);
-        node.collapsed = false;
-        setSingleSelection(nodeId, false);
-        runScatterReflow(60, { withUndo: false, withTouch: true });
-        setStatus("Expanded scatter group.");
-        board.focus({ preventScroll: true });
-        return;
-      }
-    }
-    if (scatterToolMode === "delete") {
-      event.preventDefault();
-      setSingleSelection(nodeId, false);
-      deleteSelected();
-      board.focus({ preventScroll: true });
-      return;
-    }
-    if (scatterToolMode === "colorize") {
-      event.preventDefault();
-      setSingleSelection(nodeId, false);
-      showColorPalette();
-      board.focus({ preventScroll: true });
-      return;
-    }
-    if (scatterToolMode === "add-edge") {
-      event.preventDefault();
-      if (!viewState.linkSourceNodeId) {
-        setSingleSelection(nodeId, false);
-        markLinkSource();
-      } else {
-        const sourceId = viewState.linkSourceNodeId;
-        setSingleSelection(nodeId, false);
-        if (createGraphLinkBetween(sourceId, nodeId)) {
-          viewState.linkSourceNodeId = "";
-          scheduleRender();
-        }
-      }
-      board.focus({ preventScroll: true });
-      return;
-    }
+    if (performScatterNodeAction(nodeId)) { event.preventDefault(); return; }
     const rootIds = viewState.selectedNodeIds.has(nodeId)
       ? getMovableSelectionRoots(viewState.selectedNodeIds)
       : getMovableSelectionRoots(new Set([nodeId]));
@@ -15915,11 +15728,7 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   if (!viewState.dragState.dragged && viewState.dragState.mode === "scatter") {
-    if (scatterAnimationEnabled) {
-      scatterAnimationEnabled = false;
-      stopScatterAnimation(true);
-      syncScatterToolbarUi();
-    }
+    commitDispersePositions(); disperseForce.beginDrag(viewState.dragState.sourceNodeId, viewState.dragState.sourceRootIds);
     pushUndoSnapshot();
   }
   viewState.dragState.dragged = true;
@@ -15975,6 +15784,7 @@ function finishNodeDrag(event: PointerEvent): void {
   }
 
   if (mode === "scatter") {
+    disperseForce.endDrag(); commitDispersePositions(); startScatterAnimation();
     touchDocument();
     setStatus("Disperse position updated.");
     board.focus({ preventScroll: true });
@@ -16367,6 +16177,8 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     else if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.startsWith("Arrow")) moveGrab(event.key);
     return;
   }
+
+  if (lineSelection.key(event)) return;
 
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
@@ -17205,3 +17017,17 @@ window.addEventListener("beforeunload", () => {
     void unregisterCollabEntity(false);
   }
 });
+
+// Read-only diagnostics for acceptance and profiling; no mutation API.
+Object.assign(window, { disperseDiagnostics: () => ({ snapshot: disperseForce.snapshot(), pendingFrame: scatterAnimationFrame !== null,
+  renderer: { requested: REQUESTED_RENDERER, active: isWebGLRendererActive(), fallback: webglFallbackReason }, fastFrames: disperseFastFrames, fastGate: disperseFastGate, frameTimes: [...disperseFrameTimes], stepMs: disperseForce.lastStepMs, engine: "ot-barnes-hut", enabled: scatterAnimationEnabled }) });
+function releaseDisperseDrag(event?: Event): void {
+  if (viewState.dragState?.mode !== "scatter") return;
+  if (event instanceof PointerEvent && event.pointerId !== viewState.dragState.pointerId) return;
+  const pointer = viewState.dragState.pointerId;
+  viewState.dragState = null; webglDragBaseSnapshot = null;
+  disperseForce.endDrag(); commitDispersePositions(); releaseNodeDragCapture(pointer); startScatterAnimation();
+}
+window.addEventListener("blur", releaseDisperseDrag);
+webglCanvas?.addEventListener("lostpointercapture", releaseDisperseDrag);
+canvas.addEventListener("lostpointercapture", releaseDisperseDrag);

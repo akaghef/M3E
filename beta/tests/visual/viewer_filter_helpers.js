@@ -13,6 +13,18 @@ async function laneSets(page,nodes,links){
 }
 async function settled(page){
  await page.evaluate(()=>document.fonts.ready);
+ const computing=await page.evaluate(()=>document.documentElement.dataset.surfaceViewMode==='scatter'&&window.disperseDiagnostics?.().snapshot?.status==='running');
+ // The final force positions autosave, and its response schedules one redraw.
+ // Finish that pre-filter operation before measuring filter-only work.
+ const saved=computing?page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname.startsWith('/api/maps/')):null;
+ // The shared force controller can have a pending final frame even when two
+ // geometry samples agree. Observe completion without pausing the simulation.
+ await page.waitForFunction(()=>{
+  if(document.documentElement.dataset.surfaceViewMode!=='scatter')return true;
+  const force=window.disperseDiagnostics?.();
+  return !force || (!force.pendingFrame && force.snapshot?.status!=='running');
+ });
+ if(saved){await (await saved).finished();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
  // A paused animation frame is not completion. Observe the motion lifecycle,
  // then verify stable geometry and the actual presentation camera below.
  await expect(page.locator('#board')).not.toHaveAttribute('data-camera-moving','true');
