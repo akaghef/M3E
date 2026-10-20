@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "state": {
+    "rootId": "root",
+    "nodes": {
+      "root": {
+        "id": "root",
+        "text": "選択確認",
+        "parentId": null,
+        "children": [
+          "plan",
+          "do",
+          "check"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "plan": {
+        "id": "plan",
+        "text": "計画",
+        "parentId": "root",
+        "children": [
+          "sort",
+          "research",
+          "consult"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "m3e:flow-col": "0",
+          "m3e:flow-row": "1"
+        },
+        "link": ""
+      },
+      "do": {
+        "id": "do",
+        "text": "実行",
+        "parentId": "root",
+        "children": [
+          "implement",
+          "test"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "m3e:flow-col": "2",
+          "m3e:flow-row": "0"
+        },
+        "link": ""
+      },
+      "check": {
+        "id": "check",
+        "text": "確認",
+        "parentId": "root",
+        "children": [
+          "record"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {
+          "m3e:flow-col": "1",
+          "m3e:flow-row": "2"
+        },
+        "link": ""
+      },
+      "sort": {
+        "id": "sort",
+        "text": "整理",
+        "parentId": "plan",
+        "children": [
+          "detail"
+        ],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "research": {
+        "id": "research",
+        "text": "調査",
+        "parentId": "plan",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "consult": {
+        "id": "consult",
+        "text": "相談",
+        "parentId": "plan",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "implement": {
+        "id": "implement",
+        "text": "実装",
+        "parentId": "do",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "test": {
+        "id": "test",
+        "text": "試験",
+        "parentId": "do",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "record": {
+        "id": "record",
+        "text": "記録",
+        "parentId": "check",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      },
+      "detail": {
+        "id": "detail",
+        "text": "詳細",
+        "parentId": "sort",
+        "children": [],
+        "nodeType": "text",
+        "collapsed": false,
+        "details": "",
+        "note": "",
+        "attributes": {},
+        "link": ""
+      }
+    },
+    "links": {
+      "handoff": {
+        "id": "handoff",
+        "sourceNodeId": "sort",
+        "targetNodeId": "implement",
+        "label": "引継ぎ",
+        "relationType": "supports",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "reference": {
+        "id": "reference",
+        "sourceNodeId": "sort",
+        "targetNodeId": "implement",
+        "label": "参照",
+        "relationType": "references",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "return": {
+        "id": "return",
+        "sourceNodeId": "test",
+        "targetNodeId": "sort",
+        "label": "差戻し",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "save": {
+        "id": "save",
+        "sourceNodeId": "sort",
+        "targetNodeId": "record",
+        "label": "保存",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "folded": {
+        "id": "folded",
+        "sourceNodeId": "plan",
+        "targetNodeId": "sort",
+        "label": "補足",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "lane-hidden": {
+        "id": "lane-hidden",
+        "sourceNodeId": "root",
+        "targetNodeId": "implement",
+        "label": "全体",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "aggregate-one": {
+        "id": "aggregate-one",
+        "sourceNodeId": "sort",
+        "targetNodeId": "implement",
+        "label": "連携",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "aggregate-two": {
+        "id": "aggregate-two",
+        "sourceNodeId": "research",
+        "targetNodeId": "test",
+        "label": "連携",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "aggregate-three": {
+        "id": "aggregate-three",
+        "sourceNodeId": "consult",
+        "targetNodeId": "implement",
+        "label": "連携",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      },
+      "empty": {
+        "id": "empty",
+        "sourceNodeId": "research",
+        "targetNodeId": "record",
+        "label": "",
+        "relationType": "",
+        "direction": "forward",
+        "style": "default",
+        "attributes": {}
+      }
+    }
+  },
+  "expected": {
+    "tree": {
+      "graphLinks": [
+        "handoff",
+        "reference",
+        "return",
+        "save",
+        "lane-hidden",
+        "aggregate-one",
+        "aggregate-two",
+        "aggregate-three",
+        "empty"
+      ],
+      "parentChildCount": 10
+    },
+    "timeline": {
+      "graphLinks": [
+        "handoff",
+        "reference",
+        "return",
+        "save",
+        "lane-hidden",
+        "aggregate-one",
+        "aggregate-two",
+        "aggregate-three",
+        "empty"
+      ],
+      "parentChildCount": 10
+    },
+    "scatter": {
+      "graphLinks": [
+        "handoff",
+        "reference",
+        "return",
+        "save",
+        "aggregate-one",
+        "aggregate-two",
+        "aggregate-three",
+        "empty"
+      ],
+      "parentChildCount": 0
+    },
+    "system": {
+      "graphLinks": [
+        "handoff",
+        "reference",
+        "return",
+        "save",
+        "aggregate-one",
+        "empty"
+      ],
+      "parentChildCount": 0,
+      "aggregateIds": [
+        "aggregate-one",
+        "aggregate-two",
+        "aggregate-three"
+      ]
+    },
+    "lane": {
+      "graphLinks": [
+        "handoff",
+        "reference",
+        "return",
+        "save",
+        "aggregate-one",
+        "aggregate-two",
+        "aggregate-three",
+        "empty"
+      ],
+      "parentChildCount": 0
+    }
+  }
+}

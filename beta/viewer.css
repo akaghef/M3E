@@ -4789,3 +4789,22 @@
 .lane-heading.selected, .lane-title.selected { fill: #6f39ff; text-decoration: underline; }
 .lane-count { fill: #8a8e9a; font-size: 20px; font-weight: 500; }
 .lane-summary { font-size: 20px; }
+
+/* Transient parent-child edge / GraphLink selection; never a multi-node selection. */
+.edge.relation-selected, .graph-link.relation-selected {
+  stroke: var(--accent, #2563eb) !important;
+  stroke-width: 4px !important;
+}
+.lane-boundary.relation-selected, .disperse-group.relation-selected {
+  stroke: var(--accent, #2563eb) !important;
+  stroke-width: 3px !important;
+}
+[data-lane-header].relation-endpoint, [data-lane-header].relation-selected {
+  fill: var(--accent, #2563eb) !important;
+  text-decoration: underline;
+  font-weight: 700;
+}
+.node-shape.relation-endpoint, .scatter-node-circle.relation-endpoint {
+  stroke: var(--accent, #2563eb) !important;
+  stroke-width: 3px !important;
+}

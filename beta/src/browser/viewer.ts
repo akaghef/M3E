@@ -1,3 +1,4 @@
+import { EdgeGraphLinkSelectionAdapter } from "./edge_graphlink_selection_adapter";
 import { laneLinkGeometry } from "../shared/lane_layout";
 import { laneGrabMove, laneNavigationTarget, type LaneGrid } from "../shared/lane_navigation";
 import { LaneViewController } from "./lane_view_controller";
@@ -4298,7 +4299,7 @@ function setStatus(message: string, isError = false): void {
   statusEl.style.color = isError ? "var(--danger)" : "var(--status-ink)";
   if (message) {
     statusTimer = setTimeout(() => {
-      statusEl.textContent = "";
+      statusEl.textContent = lineSelection.status();
     }, 2500);
   }
 }
@@ -4727,7 +4728,7 @@ function createWebGLGraphLinkEndpointControls(
 }
 
 function syncWebGLGraphLinkControls(): void {
-  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId) {
+  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId || !lineSelection.portControls(selectedGraphLinkId)) {
     removeWebGLGraphLinkControls();
     return;
   }
@@ -7671,6 +7672,15 @@ const laneView = new LaneViewController({
   undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
 });
 
+const lineSelection = new EdgeGraphLinkSelectionAdapter({
+  state: () => map?.state ?? null, view: () => viewState, canvas, board, scope: currentScopeRootId, inScope: isNodeInScope,
+  label: id => map?.state.nodes[id] ? uiLabel(map.state.nodes[id]) : null,
+  single: setSingleSelection, link: id => { selectedGraphLinkId = id; viewState.selectedLinkId = id ?? ""; },
+  clearNodeActions: () => { viewState.reparentSourceIds.clear(); clearCutClipboard(); },
+  render: scheduleRender, status: setStatus, editing: () => viewerKeyboardMode() === "edit",
+  owns: () => !grabSession && !viewState.panState && !viewState.pinchState && !linkPortDragState && !webglGraphLinkDragState && !viewState.dragState && !routingSwitcherOpen && !templateCompletionState && !entityListVisible && !conflictPanelVisible && !homeScreenVisible && !activeColorPalette && !linearAdjustMenuOpen,
+});
+
 function buildLayout(state: AppState): LayoutResult {
   if (viewState.surfaceViewMode === "lane") return laneView.layout();
   const displayRootId = currentScopeRootId();
@@ -7940,6 +7950,7 @@ function renderScene(incremental: boolean): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
+  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}`);
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
     VIEWER_TUNING.layout.minCanvasHeight,
@@ -8093,6 +8104,7 @@ function renderScene(incremental: boolean): void {
     const surfaceKey = flowSurface
       ? `${sourceRenderId}->${targetRenderId}:${link.label || link.relationType || ""}`
       : link.id;
+    lineSelection.graph(surfaceKey, link, sourceRenderId, targetRenderId);
     if (renderedSurfaceLinks.has(surfaceKey)) {
       return;
     }
@@ -8232,7 +8244,7 @@ function renderScene(incremental: boolean): void {
       graphLinks += `<rect class="graph-link-label-bg" data-link-id="${link.id}" x="${controlX - labelWidth / 2}" y="${labelY - 14}" width="${labelWidth}" height="19" rx="9.5" />`;
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
-    if (selectedGraphLinkId === link.id) {
+    if (lineSelection.portControls(link.id)) {
       overlays += renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode);
     }
   });
@@ -8485,6 +8497,7 @@ function renderScene(incremental: boolean): void {
     if (!layout.lane && !nodeComponent) {
       const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
       children.forEach((id, index) => {
+        lineSelection.parent(nodeId, id);
         const edgeId = `edge:${nodeId}:${id}`;
         const key = JSON.stringify([geometry(p), geometry(pos[id]), index, nodeStyles,
           state.nodes[id]?.attributes, parentChildLinkLabels.get(parentChildEdgeKey(nodeId, id)), structuredMode, viewState.surfaceEdgeRoute]);
@@ -8576,6 +8589,7 @@ function renderScene(incremental: boolean): void {
     ["edges", edges], ...edgeParts, ["guides", scatterGuides], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
     ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
   ], !incremental);
+  lineSelection.finish();
   webglPaintedSelection = new Set(viewState.selectedNodeIds);
   webglPaintedPrimary = viewState.selectedNodeId;
   webglPaintedLink = selectedGraphLinkId;
@@ -9308,11 +9322,11 @@ function syncSelectionMetadata(): void {
 
 let selectionRefreshFrame: number | null = null;
 function nodeSelectionView(id: string) {
-  return {
+  return lineSelection.nodeView(id, {
     selected: viewState.selectedNodeIds.has(id),
     multiSelected: viewState.selectedNodeIds.has(id),
     primarySelected: viewState.selectedNodeId === id,
-  };
+  });
 }
 
 /** Frame paint and its controls form one selection presentation transaction. */
@@ -9417,6 +9431,7 @@ function setSingleSelection(nodeId: string, renderNow = true): void {
   }
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
+  lineSelection.node(nodeId);
   viewState.selectedNodeId = nodeId;
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
@@ -9438,6 +9453,7 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 }
 
 function setRangeSelection(targetId: string): void {
+  lineSelection.node(targetId);
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
@@ -9456,6 +9472,7 @@ function setRangeSelection(targetId: string): void {
 }
 
 function toggleNodeSelection(nodeId: string): void {
+  lineSelection.node(nodeId);
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
   viewState.selectionAnchorId = nodeId;
@@ -9485,23 +9502,7 @@ function selectNode(nodeId: string): void {
 }
 
 function selectGraphLink(linkId: string, renderNow = true): void {
-  if (!map?.state.links?.[linkId]) {
-    return;
-  }
-  viewState.selectedLinkId = linkId;
-  selectedGraphLinkId = linkId;
-  viewState.selectedNodeIds = new Set();
-  viewState.selectionAnchorId = null;
-  viewState.reparentSourceIds.clear();
-  clearCutClipboard();
-  const link = map.state.links[linkId];
-  const source = map.state.nodes[link.sourceNodeId];
-  const target = map.state.nodes[link.targetNodeId];
-  setStatus(`Selected link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}. [ and ] adjust ports, Delete removes.`);
-  if (renderNow) {
-    scheduleRender();
-  }
-  board.focus({ preventScroll: true });
+  lineSelection.click(linkId);
 }
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
@@ -16434,6 +16435,8 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     else if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.startsWith("Arrow")) moveGrab(event.key);
     return;
   }
+
+  if (lineSelection.key(event)) return;
 
   if (markdownPreviewMode && event.key === "Escape") {
     event.preventDefault();
