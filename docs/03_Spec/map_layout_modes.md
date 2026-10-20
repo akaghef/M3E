@@ -65,7 +65,7 @@ Surface View
    └─ space: tight / normal / loose
 ```
 
-Radial と Disperse は同一の力学配置エンジン（WebCola）を共有し、**親子関係の描画方式だけが異なる**（§ 意味上の分離）。
+Radial と Disperse は同一の力学配置契約を共有し（対話的処理は OT 力学 seam、headless の配置計算は既存 WebCola。ADR_012 の2026-10-20追記参照）、**親子関係の描画方式だけが異なる**（§ 意味上の分離）。
 
 #### 旧ラベルとの対応
 

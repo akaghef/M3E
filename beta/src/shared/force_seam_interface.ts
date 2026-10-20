@@ -32,12 +32,16 @@ export interface ForceSnapshot {
 }
 export interface ForceSimulation {
   snapshot(): ForceSnapshot;
+  /** All positions, including collapsed descendants, for an explicit save boundary. */
+  positions(): ForceNode[];
+  /** Topology/content/dimensions update retains surviving nodes’ runtime positions. */
+  updateGraph(graph: ForceGraph): void;
   step(): ForceSnapshot;
   setParameters(patch: Partial<ForceParameters>): void;
   setMode(mode: ForceMode): void;
   setCollapsed(id: string, collapsed: boolean): void;
   setPinned(id: string, pinned: boolean): void;
-  beginDrag(id: string, group?: boolean): void;
+  beginDrag(id: string, group?: boolean, additionalIds?: readonly string[]): void;
   moveDrag(dx: number, dy: number): void;
   endDrag(): void;
   pause(): void;

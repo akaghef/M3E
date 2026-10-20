@@ -4,6 +4,8 @@
  * PolyForm Perimeter 1.0.1: https://polyformproject.org/licenses/perimeter/1.0.1/
  * See ../labs/force/NOTICE.md for source regions and M3E adaptations.
  */
+import { Rectangle, removeOverlaps } from "webcola/dist/src/rectangle";
+import { applySpatialRepulsion, ForceBoxIndex } from "./force_spatial";
 import type { ForceGraph, ForceGroup, ForceMode, ForceNode, ForceParameters, ForceRect,
   ForceSimulation, ForceSnapshot, ForceStatus, ForceVisibleLink } from "./force_seam_interface";
 
@@ -45,12 +47,12 @@ function validate(graph: ForceGraph): void {
 export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): ForceSimulation {
   validate(graph);
   if (mode !== "Radial" && mode !== "Disperse") throw new Error("Unknown mode");
-  const original = graph.nodes.map(n => ({ ...n }));
-  const originalLinks = graph.links.map(e => ({ ...e }));
+  let original = graph.nodes.map(n => ({ ...n }));
+  let originalLinks = graph.links.map(e => ({ ...e }));
   const bodies = new Map<string, Body>(original.map(n => [n.id, { ...n, vx: 0, vy: 0 }]));
   const children = new Map<string, string[]>();
   for (const n of original) if (n.parentId !== undefined) children.set(n.parentId, [...(children.get(n.parentId) || []), n.id]);
-  const roots = original.filter(n => n.parentId === undefined).map(n => n.id);
+  let roots = original.filter(n => n.parentId === undefined).map(n => n.id);
   const collapsed = new Map<string, { x: number; y: number }>();
   let parameters = { ...FORCE_DEFAULTS };
   let status: ForceStatus = "running", remaining = FORCE_POLICY.budget, stable = 0, steps = 0, maxMove = 0;
@@ -78,6 +80,8 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
       for (const child of children.get(id) || []) visit(child, ancestor || (collapsed.has(id) ? id : undefined));
     };
     roots.forEach(id => visit(id));
+    // refresh is first called after the geometry cache has been initialized.
+    dirtyGeometry();
     const aggregates = new Map<string, ForceVisibleLink>();
     const add = (source: string, target: string, weight: number, kind: "tree" | "graph"): void => {
       const s = representative.get(source)!, t = representative.get(target)!;
@@ -91,6 +95,10 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
     originalLinks.forEach(e => add(e.source, e.target, e.weight ?? 1, "graph"));
     links = [...aggregates.values()];
   };
+
+  let geometryCache: { groups: ForceGroup[]; siblingSets: Unit[][] } | null = null;
+  let violationCache: number | null = null;
+  const dirtyGeometry = (): void => { geometryCache = null; violationCache = null; };
 
   // A group's envelope includes its nested child envelopes, not only leaf rects.
   const units = (id: string, groups: ForceGroup[], siblingSets: Unit[][]): Unit => {
@@ -107,10 +115,11 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
     return { members, bounds: b };
   };
   const geometry = (): { groups: ForceGroup[]; siblingSets: Unit[][] } => {
+    if (geometryCache) return geometryCache;
     const groups: ForceGroup[] = [], siblingSets: Unit[][] = [];
     if (mode === "Disperse") siblingSets.push(roots.map(id => units(id, groups, siblingSets)));
     else siblingSets.push(visible.map(id => ({ members: [id], bounds: rect(body(id)) })));
-    return { groups, siblingSets };
+    return geometryCache = { groups, siblingSets };
   };
   const penetration = (a: ForceRect, b: ForceRect): { dx: number; dy: number } | null => {
     const px = Math.min(a.x + a.w - b.x, b.x + b.w - a.x) + FORCE_POLICY.gap;
@@ -119,19 +128,23 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
     return px < py ? { dx: (a.x + a.w / 2 <= b.x + b.w / 2 ? -1 : 1) * px, dy: 0 }
       : { dx: 0, dy: (a.y + a.h / 2 <= b.y + b.h / 2 ? -1 : 1) * py };
   };
-  const violations = (): number => geometry().siblingSets.reduce((total, set) => total + set.reduce((count, a, i) =>
-    count + set.slice(i + 1).filter(b => penetration(a.bounds, b.bounds)).length, 0), 0);
+  const violations = (): number => violationCache ??= geometry().siblingSets.reduce((total, set) => {
+    const index = new ForceBoxIndex(set.map(n => n.bounds), FORCE_POLICY.gap);
+    return total + set.reduce((count, a, i) => count + index.candidates(i).filter(j => penetration(a.bounds, set[j].bounds)).length, 0);
+  }, 0);
   const shift = (ids: string[], dx: number, dy: number): void => {
+    dirtyGeometry();
     ids.forEach(id => { const b = body(id); b.x += dx; b.y += dy; b.vx = 0; b.vy = 0; });
   };
-  const projectConstraints = (): void => {
-    for (let pass = 0; pass < FORCE_POLICY.constraintPasses; pass++) {
+  const projectConstraints = (passes = FORCE_POLICY.constraintPasses): void => {
+    for (let pass = 0; pass < passes; pass++) {
       let moved = false;
       // Recompute after each sibling set; nested envelopes can have changed below it.
       const count = geometry().siblingSets.length;
       for (let si = 0; si < count; si++) {
         const set = geometry().siblingSets[si], len = set.length;
-        for (let i = 0; i < len; i++) for (let j = i + 1; j < len; j++) {
+        const index = new ForceBoxIndex(set.map(n => n.bounds), FORCE_POLICY.gap);
+        for (let i = 0; i < len; i++) for (const j of index.candidates(i)) {
           const a = set[i], b = set[j];
           const p = penetration(a.bounds, b.bounds);
           if (!p) continue;
@@ -144,36 +157,81 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
           const dy = (p.dy ? p.dy + Math.sign(p.dy) : 0) * share;
           if (!af) { shift(a.members, dx, dy); a.bounds.x += dx; a.bounds.y += dy; }
           if (!bf) { shift(b.members, -dx, -dy); b.bounds.x -= dx; b.bounds.y -= dy; }
+          index.update(i, a.bounds); index.update(j, b.bounds);
           moved = true;
         }
       }
       if (!moved) break;
     }
   };
+  const finishConstraints = (): void => {
+    // WebCola/VPSC solves dense free rectangle contact chains in one projection.
+    // Process inner sibling sets before outer envelopes; moving a branch rigidly
+    // preserves every already solved containment relation. Fixed sets retain the
+    // interactive pin-aware projector and may correctly report blocked.
+    const count = geometry().siblingSets.length;
+    for (let si = 0; si < count; si++) {
+      const set = geometry().siblingSets[si];
+      if (set.length < 2 || set.some(unit => unit.members.some(fixed))) continue;
+      const padding = (FORCE_POLICY.gap + 1) / 2;
+      const usedX = new Set<number>(), usedY = new Set<number>();
+      const boxes = set.map(({ bounds: b }) => {
+        let x = b.x, y = b.y;
+        // WebCola's sweep-line RBTree compares centres only. Exact ties would
+        // collapse distinct rectangles into one tree entry. Break those ties
+        // deterministically before invoking the existing solver.
+        while (usedX.has(x + b.w / 2)) x += .001;
+        while (usedY.has(y + b.h / 2)) y += .001;
+        usedX.add(x + b.w / 2); usedY.add(y + b.h / 2);
+        return new Rectangle(x - padding, x + b.w + padding, y - padding, y + b.h + padding);
+      });
+      removeOverlaps(boxes);
+      set.forEach((unit, i) => {
+        const b = unit.bounds, r = boxes[i];
+        shift(unit.members, r.cx() - (b.x + b.w / 2), r.cy() - (b.y + b.h / 2));
+      });
+    }
+  };
   const snapshot = (): ForceSnapshot => ({
     nodes: visible.map(id => { const { vx: _vx, vy: _vy, ...n } = body(id); return { ...n, collapsed: collapsed.has(id), hiddenCount: collapsed.has(id) ? descendants(id).length : 0 }; }),
-    groups: geometry().groups, links: links.map(e => ({ ...e })), mode, parameters: { ...parameters }, status, steps, remaining, maxMove, violations: violations(),
+    groups: geometry().groups.map(g => ({ ...g, members: [...g.members] })), links: links.map(e => ({ ...e })), mode, parameters: { ...parameters }, status, steps, remaining, maxMove, violations: violations(),
   });
   refresh();
   if (!visible.length) status = "settled";
 
   return {
     snapshot,
+    positions() {
+      return original.map(node => {
+        const n = body(node.id), rep = representative.get(n.id), anchor = rep && collapsed.get(rep);
+        const dx = anchor && rep !== n.id ? body(rep!).x - anchor.x : 0;
+        const dy = anchor && rep !== n.id ? body(rep!).y - anchor.y : 0;
+        const { vx: _vx, vy: _vy, ...position } = n;
+        return { ...position, x: n.x + dx, y: n.y + dy };
+      });
+    },
+    updateGraph(next) {
+      validate(next);
+      original = next.nodes.map(n => ({ ...n })); originalLinks = next.links.map(e => ({ ...e }));
+      const ids = new Set(original.map(n => n.id));
+      for (const id of bodies.keys()) if (!ids.has(id)) { bodies.delete(id); collapsed.delete(id); }
+      children.clear();
+      for (const n of original) {
+        const existing = bodies.get(n.id);
+        if (existing) { existing.label = n.label; existing.parentId = n.parentId; existing.w = n.w; existing.h = n.h; }
+        else bodies.set(n.id, { ...n, vx: 0, vy: 0 });
+        if (n.parentId !== undefined) children.set(n.parentId, [...(children.get(n.parentId) || []), n.id]);
+      }
+      for (const id of collapsed.keys()) if (!children.has(id)) collapsed.delete(id);
+      roots = original.filter(n => n.parentId === undefined).map(n => n.id);
+      drag = drag.filter(id => ids.has(id)); refresh(); reheat();
+    },
     step() {
       if (status !== "running") return snapshot();
       const arr = visible.map(body), before = new Map(arr.map(n => [n.id, { x: n.x, y: n.y }]));
       // OT step: inverse-square repulsion (300-unit cutoff), Hooke springs,
       // weak centre pull, .86 damping, component velocity cap 18. DOM removed.
-      for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) {
-        const a = arr[i], b = arr[j];
-        let dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
-        if (d2 < 1e-8) { const angle = (i * 31 + j * 17) * 2.399963; dx = Math.cos(angle); dy = Math.sin(angle); d2 = 1; }
-        if (d2 < 90000) {
-          const f = parameters.repulsion / d2, d = Math.sqrt(d2), ux = dx / d * f, uy = dy / d * f;
-          if (!fixed(a.id)) { a.vx += ux; a.vy += uy; }
-          if (!fixed(b.id)) { b.vx -= ux; b.vy -= uy; }
-        }
-      }
+      applySpatialRepulsion(arr, parameters.repulsion, n => fixed(n.id));
       for (const e of links) {
         const a = body(e.source), b = body(e.target), dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
         const f = (d - parameters.length) * parameters.spring * e.weight, ux = dx / d * f, uy = dy / d * f;
@@ -200,13 +258,18 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
         g.vx *= .86 * cool; g.vy *= .86 * cool;
         g.x += clamp(g.vx, -18, 18); g.y += clamp(g.vy, -18, 18);
       }
-      projectConstraints();
+      dirtyGeometry(); projectConstraints();
+      steps++; remaining--;
+      // Once cooling has exhausted its bounded budget, finish the same exact
+      // box constraints without introducing fresh forces. Large contact chains
+      // need more projection passes than the per-frame interactive allowance.
+      if (remaining <= 0) for (let pass = 0; pass < 4 && violations(); pass++) finishConstraints();
+      // Stability and finite-state checks include the final constraint projection.
       maxMove = Math.max(0, ...arr.map(n => Math.hypot(n.x - before.get(n.id)!.x, n.y - before.get(n.id)!.y)));
       const invalid = arr.some(n => ![n.x, n.y, n.vx, n.vy].every(finite));
-      steps++; remaining--;
       const conflicts = violations();
       stable = !drag.length && !conflicts && maxMove < FORCE_POLICY.settleMove ? stable + 1 : 0;
-      if (invalid) { for (const n of arr) Object.assign(n, before.get(n.id), { vx: 0, vy: 0 }); status = "blocked"; }
+      if (invalid) { dirtyGeometry(); for (const n of arr) Object.assign(n, before.get(n.id), { vx: 0, vy: 0 }); status = "blocked"; }
       else if (stable >= FORCE_POLICY.settleFrames) status = "settled";
       else if (remaining <= 0) status = conflicts ? "blocked" : "budget";
       if (status !== "running") arr.forEach(n => { n.vx = 0; n.vy = 0; });
@@ -237,10 +300,10 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
       refresh(); reheat();
     },
     setPinned(id, value) { body(id).pinned = value; body(id).vx = 0; body(id).vy = 0; reheat(); },
-    beginDrag(id, group = false) {
+    beginDrag(id, group = false, additionalIds = []) {
       body(id);
       if (representative.get(id) !== id) throw new Error("Cannot drag hidden node");
-      drag = group ? [id, ...descendants(id)].filter(x => representative.get(x) === x) : [id];
+      drag = [...new Set(group ? [id, ...descendants(id)] : [id, ...additionalIds])].filter(x => bodies.has(x) && representative.get(x) === x);
       reheat();
     },
     moveDrag(dx, dy) { if (![dx, dy].every(finite)) throw new Error("Invalid drag delta"); shift(drag, dx, dy); reheat(); },
