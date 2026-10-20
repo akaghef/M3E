@@ -5,6 +5,7 @@ import {EdgeGraphLinkSelectionAdapter} from '../../src/browser/edge_graphlink_se
 import type {AppState} from '../../src/shared/types';
 import type {LayoutResult} from '../../src/shared/layout_port';
 let adapter:EdgeGraphLinkSelectionAdapter,board:HTMLElement,canvas:SVGSVGElement,state:AppState,view:any,status:ReturnType<typeof vi.fn>,project:ReturnType<typeof vi.fn>;
+let editor:ReturnType<typeof vi.fn>,undo:ReturnType<typeof vi.fn>,touch:ReturnType<typeof vi.fn>,writable:boolean;
 const layout={pos:{root:{x:0,y:0,w:20,h:10},a:{x:30,y:40,w:20,h:10},b:{x:90,y:80,w:20,h:10}},order:['root','a','b'],totalWidth:120,totalHeight:100} as LayoutResult;
 const send=(key:string,extra:KeyboardEventInit={})=>{const e=new KeyboardEvent('keydown',{key,cancelable:true,...extra});const consumed=adapter.key(e);return {consumed,prevented:e.defaultPrevented};};
 const inspect=()=> (board as any).edgeGraphlinkSelection();
@@ -15,11 +16,28 @@ beforeEach(()=>{
  canvas.querySelectorAll('rect').forEach(el=>{(el as any).getBBox=()=>({x:Number(el.getAttribute('x')),y:Number(el.getAttribute('y')),width:20,height:10});});
  state={rootId:'root',nodes:Object.fromEntries(['root','a','b'].map(id=>[id,{id,text:id==='a'?'計画':id==='b'?'実行':'全体',parentId:id==='root'?null:'root',children:id==='root'?['a','b']:[],attributes:{},collapsed:false,details:'',note:'',link:''}])),links:{one:{id:'one',sourceNodeId:'a',targetNodeId:'b',label:'関係'},two:{id:'two',sourceNodeId:'a',targetNodeId:'b'},three:{id:'three',sourceNodeId:'a',targetNodeId:'b'}}};
  view={selectedNodeId:'a',selectedNodeIds:new Set(['a']),selectedLinkId:'',selectionAnchorId:null,cameraX:10,cameraY:20,zoom:2,collapsedIds:new Set()};status=vi.fn();project=vi.fn();
+ editor=vi.fn();undo=vi.fn();touch=vi.fn();writable=true;
  adapter=new EdgeGraphLinkSelectionAdapter({state:()=>state,view:()=>view,canvas,board,scope:()=>state.rootId,inScope:()=>true,label:id=>state.nodes[id]?.text??null,
- single:id=>{view.selectedNodeId=id;view.selectedNodeIds=new Set([id]);adapter.node(id);},link:project,render:vi.fn(),status,clearNodeActions:vi.fn(),owns:()=>true,editing:()=>false});
+ single:id=>{view.selectedNodeId=id;view.selectedNodeIds=new Set([id]);adapter.node(id);},link:project,render:vi.fn(),status,clearNodeActions:vi.fn(),owns:()=>true,editing:()=>false,
+ writable:()=>writable,undo,touch,port:()=>true,parentLabel:()=>true,deleteLink:()=>true,editor});
  adapter.begin(layout,'map:root');adapter.parent('root','a');adapter.graph('same',state.links!.one!,'a','b');adapter.finish();
 });
 describe('renderer registration bridge',()=>{
+ it('label completion keeps its original GraphLink after node selection changes, and no-op adds no history',()=>{
+  adapter.click('one');send('F2');
+  const session=editor.mock.calls[0][0];
+  adapter.node('b');session.commit('new relation');
+  expect(state.links!.one!.label).toBe('new relation');expect(state.nodes.b.text).toBe('実行');
+  expect(undo).toHaveBeenCalledTimes(1);expect(touch).toHaveBeenCalledTimes(1);
+  session.commit(' new relation ');expect(undo).toHaveBeenCalledTimes(1);
+ });
+ it('in-flight label completion refuses a replaced document, read-only state, or changed aggregate membership',()=>{
+  adapter.click('one');send('F2');const session=editor.mock.calls[0][0];
+  writable=false;session.commit('denied');expect(undo).not.toHaveBeenCalled();
+  writable=true;adapter.begin(layout,'map:root');adapter.graph('same',state.links!.one!,'a','b');adapter.graph('same',state.links!.two!,'a','b');adapter.finish();
+  session.commit('denied');expect(undo).not.toHaveBeenCalled();
+  state=structuredClone(state);expect(session.anchor()).toBeNull();session.commit('denied');expect(undo).not.toHaveBeenCalled();
+ });
  it('uses measured endpoints and camera CSS pixels; label anchor is the drawn label',()=>{
   const graph=inspect().scene.items.find((i:any)=>i.ref.kind==='graph-link');
   expect(graph.source.center).toEqual({x:90,y:100});expect(graph.target.center).toEqual({x:210,y:180});expect(graph.presentation.labelAnchor).toEqual({x:130,y:120});

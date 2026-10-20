@@ -591,7 +591,8 @@ let localEditBatchPending = false;
 let renderRevision = 0;
 let snapshotNodeCache = new WeakMap<SVGGraphicsElement, { key: string; value: RenderNode }>();
 let snapshotEdgeCache = new WeakMap<SVGGeometryElement, { key: string; value: RenderEdge }>();
-let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
+type LineLabelEditorOptions = { value: string; anchor: () => { x: number; y: number } | null; commit: (value: string) => void };
+let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement; options?: LineLabelEditorOptions } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
 let contentMinX = 0;
@@ -2717,8 +2718,8 @@ function ensureDocShape(payload: unknown): SavedMap {
       id: record.id || linkId,
       sourceNodeId: String(record.sourceNodeId || ""),
       targetNodeId: String(record.targetNodeId || ""),
-      relationType: record.relationType || undefined,
-      label: record.label || undefined,
+      relationType: record.relationType ?? undefined,
+      label: record.label ?? undefined,
       direction: record.direction || "none",
       style: record.style || "default",
       color: sanitizeColor(record.color) || undefined,
@@ -5340,7 +5341,10 @@ function syncInlineEdgeLabelEditorPosition(): void {
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const edgeLabel = incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
+  const options = inlineEdgeLabelEditor.options, anchor = options?.anchor(), rect = board.getBoundingClientRect();
+  if (options && !anchor) { stopInlineEdgeLabelEdit(false, { focusBoard: false }); return; }
+  const edgeLabel = anchor ? { x: (anchor.x - rect.left - board.clientLeft - viewState.cameraX) / viewState.zoom,
+    y: (anchor.y - rect.top - board.clientTop - viewState.cameraY) / viewState.zoom, width: 180 } : incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
   if (!edgeLabel) {
     return;
   }
@@ -7677,6 +7681,9 @@ const lineSelection = new EdgeGraphLinkSelectionAdapter({
   label: id => map?.state.nodes[id] ? uiLabel(map.state.nodes[id]) : null,
   single: setSingleSelection, link: id => { selectedGraphLinkId = id; viewState.selectedLinkId = id ?? ""; },
   clearNodeActions: () => { viewState.reparentSourceIds.clear(); clearCutClipboard(); },
+  writable: () => !isReadOnlyLink(), undo: pushUndoSnapshot, touch: touchDocument,
+  port: cycleSelectedGraphLinkPort, editor: options => startIncomingEdgeLabelEdit("", options),
+  parentLabel: applyIncomingEdgeLabelEdit, deleteLink: deleteSelectedGraphLink,
   render: scheduleRender, status: setStatus, editing: () => viewerKeyboardMode() === "edit",
   owns: () => !grabSession && !viewState.panState && !viewState.pinchState && !linkPortDragState && !webglGraphLinkDragState && !viewState.dragState && !routingSwitcherOpen && !templateCompletionState && !entityListVisible && !conflictPanelVisible && !homeScreenVisible && !activeColorPalette && !linearAdjustMenuOpen,
 });
@@ -12134,7 +12141,7 @@ function deleteSelectedGraphLink(): boolean {
   selectedGraphLinkId = null;
   touchDocument();
   flushAutosaveNow();
-  setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
+  setStatus(`Deleted link: ${source ? uiLabel(source) || "名称未設定" : "参照先がありません"} -> ${target ? uiLabel(target) || "名称未設定" : "参照先がありません"}.`);
   return true;
 }
 
@@ -12394,14 +12401,14 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const { nodeId, input } = inlineEdgeLabelEditor;
+  const { nodeId, input, options: editorOptions } = inlineEdgeLabelEditor;
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
   inlineEdgeLabelEditor = null;
   syncViewerKeyboardMode();
   input.remove();
   if (commit) {
-    applyIncomingEdgeLabelEdit(nodeId, next);
+    if (editorOptions) editorOptions.commit(next); else applyIncomingEdgeLabelEdit(nodeId, next);
   }
   if (options?.focusBoard !== false) {
     board.focus({ preventScroll: true });
@@ -12421,16 +12428,16 @@ function prepareViewportGesture(target: EventTarget | null): boolean {
   return true;
 }
 
-function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
+function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId, options?: LineLabelEditorOptions): void {
   if (!map || !lastLayout) {
     return;
   }
-  const node = getNode(nodeId);
-  if (!node.parentId) {
+  const node = options ? null : getNode(nodeId);
+  if (!options && !node?.parentId) {
     setStatus("Root has no incoming edge label.", true);
     return;
   }
-  if (!incomingTreeEdgeLabelLayout(nodeId)) {
+  if (!options && !incomingTreeEdgeLabelLayout(nodeId)) {
     return;
   }
   if (inlineEditor) {
@@ -12441,12 +12448,12 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   }
   const input = document.createElement("textarea");
   input.rows = 1;
-  input.value = (node.attributes?.["m3e:edge-label"] || "").trim();
+  input.value = options ? options.value : (node?.attributes?.["m3e:edge-label"] || "").trim();
   input.className = "inline-edge-label-editor";
-  input.setAttribute("aria-label", "Edit incoming edge label");
+  input.setAttribute("aria-label", options ? "Edit selected line label" : "Edit incoming edge label");
   input.placeholder = "edge label";
   board.appendChild(input);
-  inlineEdgeLabelEditor = { nodeId, input };
+  inlineEdgeLabelEditor = { nodeId, input, options };
   syncViewerKeyboardMode();
   syncInlineEdgeLabelEditorPosition();
   autoSizeInlineEdgeLabelEditor(input);

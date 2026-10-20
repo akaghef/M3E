@@ -82,3 +82,51 @@ removal are tested. No mutation or new storage route is present in this module.
 59 PASS. `tsc --noEmit -p tsconfig.node.json`: PASS. Browser adapter still uses
 the selection-only guard: this commit does not enable editing in the preview.
 Task 7 (fixed-ref editor, existing history/save integration) is the next boundary.
+
+## Browser editing connection (2026-10-21, in progress)
+
+Connected the accepted shared intents to the existing textarea lifecycle,
+parent-label/port/delete helpers, undo snapshots and document autosave.
+The editor captures its original reference and document, uses the presentation's
+screen anchor, and refuses completion after document replacement, lost rendered
+membership or a read-only transition. Style/direction patch only their own field.
+The existing selection-only test now checks node-operation refusal; accepted
+line-edit keys are covered by the new edit suite. Aggregate refusal remains
+unchanged. No screenshot baseline or acceptance threshold was changed.
+
+The browser test found that ensureDocShape removed an unrelated GraphLink's
+explicit empty relationType on load. Changed relationType/label defaulting from
+truthiness to nullish fallback so unrelated fields survive a subsequent save.
+The exact full-link comparison remains in the test.
+
+Unit tests: 68 pass across selection, edit and browser adapter contracts.
+build:node and build:browser pass. viewer.ts versus ad1f40b: +46/-36,
+net +10, within the accepted added <=120 / net <=40 limit.
+
+Editing run: eight surface/renderer cases passed label commit, no-op/cancel,
+Undo/Redo, both port cycles, style/direction cycles, exact unchanged nodes and
+other GraphLinks, and API readback/reload. Cases: Tree SVG/WebGL, Axial SVG,
+Disperse SVG/WebGL, System SVG, Lane down/right SVG.
+The run then failed its Alt-arrow diagnostic because the listener counted the
+Alt modifier event as well as ArrowLeft. Restricted that diagnostic to ArrowLeft;
+the expected defaultPrevented=false is unchanged. Guard/parent cases are being
+rerun separately.
+
+Earlier diagnostic failures retained: first direction expectation incorrectly
+assumed none while the independent fixture starts forward (corrected expected
+cycle to backward/both/none/forward); WebGL setup queried a hidden SVG element's
+bounding box (now clicks the renderer's measured endpoint); unrelated empty
+relationType loss (product fix above). These failures are not acceptance passes.
+Final regression, integrated-source verification and review delivery remain open.
+
+Guard/parent rerun: **7 PASS**. Includes GraphLink blur/IME/native Alt-arrow,
+empty label, deletion returning to origin and Undo, read-only refusal with zero
+map writes, and parent label commit/clear/cancel/Undo/Delete protection in Tree,
+Axial, Disperse and both Lane directions.
+Selection and regression run: **32 PASS** across edge_graphlink_selection,
+keyboard_modes (Mac/Windows mapping, SVG/WebGL), lane_graphlink_layers and
+lane_view. The aggregate case retains three unchanged stored GraphLinks and
+rejects all edit keys and port controls.
+Keybindings, Actions and the existing viewer shortcut sheet now describe the
+accepted line selection/editing contexts, including the different Esc behavior
+for node text versus line labels. No new help surface was created.

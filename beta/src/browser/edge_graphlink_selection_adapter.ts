@@ -1,11 +1,15 @@
 import type { AppState, GraphLink } from '../shared/types';
 import type { LayoutResult } from '../shared/layout_port';
-import { editIntent, formatStatus, presented, reconcileSelection, selectionHighlight, selectionReason, selectionTransition,
+import { editIntent, labelChange, type EditableRef, type EditIntent } from '../shared/edge_graphlink_edit';
+import { formatStatus, presented, reconcileSelection, selectionHighlight, selectionReason, selectionTransition,
   type Endpoint, type KeyInput, type NotDrawnReason, type Point, type Presented, type Scene, type Selection } from '../shared/edge_graphlink_selection';
 
 type View = {selectedNodeId:string;selectedNodeIds:Set<string>;selectedLinkId:string;selectionAnchorId:string|null;cameraX:number;cameraY:number;zoom:number;collapsedIds:Set<string>};
 type Bridge = {state:()=>AppState|null;view:()=>View;canvas:SVGSVGElement;board:HTMLElement;scope:()=>string;inScope:(id:string)=>boolean;
-  label:(id:string)=>string|null;single:(id:string)=>void;link:(id:string|null)=>void;render:()=>void;status:(text:string)=>void;clearNodeActions:()=>void;owns:()=>boolean;editing:()=>boolean};
+  label:(id:string)=>string|null;single:(id:string)=>void;link:(id:string|null)=>void;render:()=>void;status:(text:string)=>void;clearNodeActions:()=>void;owns:()=>boolean;editing:()=>boolean;
+  writable:()=>boolean;undo:()=>void;touch:()=>void;port:(endpoint:'source'|'target')=>boolean;
+  parentLabel:(child:string,value:string)=>boolean;deleteLink:()=>boolean;
+  editor:(options:{value:string;anchor:()=>Point|null;commit:(value:string)=>void})=>void};
 
 /** Records identities at the existing renderer's acceptance points, never reconstructing its filtering or geometry. */
 export class EdgeGraphLinkSelectionAdapter {
@@ -122,7 +126,10 @@ export class EdgeGraphLinkSelectionAdapter {
     if(selection&&selection.kind!=='node') {this.bridge.view().selectedNodeIds=new Set();this.bridge.view().selectionAnchorId=null;}
   }
   node(id:string):void {this.pendingReason=null;const previous=this.selection;this.selection={kind:'node',nodeId:id};this.highlighted=[];this.bridge.link(null);this.paint();if(previous&&previous.kind!=='node')this.bridge.render();}
-  portControls(_id:string):boolean {return false;}
+  portControls(id:string):boolean {
+    const item=presented(this.current(),this.scene());
+    return this.bridge.writable()&&item?.ref.kind==='graph-link'&&item.ref.linkIds.length===1&&item.ref.linkIds[0]===id;
+  }
   click(id:string):void {
     const item=this.records.find(item=>item.ref.kind==='graph-link'&&item.ref.linkIds.includes(id));
     if(!item) return;
@@ -145,9 +152,42 @@ export class EdgeGraphLinkSelectionAdapter {
     const scene=this.scene(),selection=this.current();
     const result=selectionTransition({selection,key,topology:state,scene,scopeRootId:this.bridge.scope()});
     if(result.kind==='consume') {event.preventDefault();this.select(result.next);if(result.reason){this.pendingReason=selectionReason(result.reason);this.bridge.status(this.pendingReason);}return true;}
-    const edit=editIntent(selection,key,scene);
+    const edit=editIntent(selection,key,scene,state.links??{},this.bridge.writable());
     if(edit.kind==='blocked') {event.preventDefault();this.bridge.status(edit.reason);return true;}
+    if(edit.kind==='edit') {event.preventDefault();this.edit(edit.intent,selection);return true;}
     return false;
+  }
+  private edit(intent:EditIntent, selection:Selection):void {
+    const state=this.bridge.state();if(!state||!this.bridge.writable())return;
+    const context=this.context;
+    const target=(ref:EditableRef)=>{
+      if(this.bridge.state()!==state||this.context!==context||!this.bridge.writable())return null;
+      if(ref.kind==='graph-link')return state.links?.[ref.linkId]??null;
+      const child=state.nodes[ref.childNodeId];
+      return child?.parentId===ref.parentNodeId?child:null;
+    };
+    if(intent.kind==='label') {
+      const ref=intent.ref,obj=target(ref);if(!obj)return;
+      const before=ref.kind==='parent-child'?state.nodes[ref.childNodeId]!.attributes['m3e:edge-label']:state.links![ref.linkId]!.label;
+      this.bridge.editor({value:before??'',anchor:()=>this.context===context&&this.bridge.state()===state?presented(selection,this.scene())?.presentation.labelAnchor??null:null,
+        commit:value=>{
+          if(!target(ref)||!presented(selection,this.scene()))return;
+          const current=ref.kind==='parent-child'?state.nodes[ref.childNodeId]!.attributes['m3e:edge-label']:state.links![ref.linkId]!.label;
+          const next=labelChange(current,value);if(next===null)return;
+          if(ref.kind==='parent-child'){this.bridge.parentLabel(ref.childNodeId,next);return;}
+          this.bridge.undo();
+          const link=state.links![ref.linkId]!;if(next)link.label=next;else delete link.label;
+          this.bridge.touch();
+        }});
+      return;
+    }
+    const link=state.links?.[intent.linkId];if(!link)return;
+    if(intent.kind==='port'){this.bridge.port(intent.endpoint);return;}
+    if(intent.kind==='delete'){this.bridge.deleteLink();return;}
+    this.bridge.undo();
+    if(intent.kind==='style')link.style=intent.value;
+    else link.direction=intent.value;
+    this.bridge.touch();
   }
   nodeView(id:string,view:{selected:boolean;multiSelected:boolean;primarySelected:boolean}) {
     if(!this.selection||this.selection.kind==='node')return view;

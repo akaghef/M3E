@@ -102,10 +102,10 @@ for(const [kind,direction] of cases)for(const renderer of (kind==='tree'||kind==
   await press(page,arrow);await selected(page,'node');expect((await inspect(page)).selection.nodeId).toBe(i.target.renderedNodeId);
   const nextOrigin=(await inspect(page)).selection.nodeId;
   await press(page,'Alt+ArrowRight');await press(page,'Escape');await selected(page,'node');expect((await inspect(page)).selection.nodeId).toBe(nextOrigin);
-  // First left is the last candidate; all mutation keys are consumed in this slice.
+  // Node mutation keys stay blocked; accepted line edits are exercised in edge_graphlink_edit.spec.js.
   await press(page,'Alt+ArrowLeft');await expect.poll(async()=>(await inspect(page)).selection.kind).not.toBe('node');
   const fixed=identity((await inspect(page)).selection);
-  for(const key of ['F2','[',']','Shift+S','Shift+B','Delete','Backspace','Enter','m','Control+x','Control+v']){
+  for(const key of ['Enter','m','Control+x','Control+v']){
    await press(page,key);expect(identity((await inspect(page)).selection)).toBe(fixed);await expect(page.locator('textarea.inline-node-editor')).toHaveCount(0);
   }
   await press(page,'Escape');await press(page,'F2');
