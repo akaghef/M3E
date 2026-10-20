@@ -147,3 +147,27 @@ Dependency installation initially failed compiling better-sqlite3; the existing
 primary dependency installation was reused after verifying identical lockfiles
 and executing a real SQLite query. No dependency definition was changed by this
 recovery. Normal Beta delivery verification remains to be recorded.
+
+Normal Beta delivery: integrated and pushed as 7171d4a, then built from clean
+tracked Beta inputs with the channel lock. Served viewer.js matches the recorded
+build hash. Headless checks on localhost:4173 pass in SVG and active WebGL:
+select an existing parent-child line, open F2, cancel edited text, and return to
+the node. Non-GET requests: zero. The initial check attempted keyboard selection
+before the live scene was ready; the corrected check waits for the scene and
+clicks its actual rendered child before selecting the incoming edge.
+All six isolated preview URLs also load current selection scenes.
+
+Push CI exposed a pre-existing retired personal path in agent-orrery-map source
+citations. Replaced only the machine-specific project directory with a documented
+placeholder, retaining session filenames. No CI rule was changed.
+
+CI also reproduced a 2,000-node force-step budget failure: p95 57.3ms versus
+the unchanged 50ms limit (local reproduction 63.1ms). CPU profiling identified
+quadtree traversal as the largest individual cost. Exact leaf forces now skip
+internal-cell approximation calculations; internal far bounds are computed
+only when the approximation could apply. The existing D3 implementation,
+cutoff, approximation threshold and force law remain unchanged.
+Before/after vectors match exactly for 2/400/2000 bodies, coincident points,
+and theta 0/0.6. Independent force tests: 20 pass, including the same performance
+budgets. Full build and all four Disperse browser acceptance tests pass;
+400-node browser p95 frame 13.1ms, zero final overlap violations.
