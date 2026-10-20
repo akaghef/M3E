@@ -246,3 +246,32 @@ Filter integration remains blocked on restoring these inputs/references or
 an explicit review of the visual baseline. Latest dev-beta combination still
 requires verification. Logs: takeover-filter-final-operations2.log and
 takeover-filter-baseline-gaps.log in the takeover evidence packet.
+
+## Latest development combination (2026-10-21, final run)
+
+Combined with dev-beta through 185a77c (line editing, theme, Disperse shared
+force and its performance repair). Conflict resolution retains both scene
+selection finalization and filter application, and both module exclusions.
+Full build, typecheck, dependency boundaries, copy drift and build:test pass.
+The specified filter/regression unit files pass 92 tests; outline tests add
+4 passes (96 total, including all 42 filter-specific tests).
+
+The complete requested browser run, including the 14 new filter tests:
+**60 PASS / 3 FAIL / 6 SKIP** (2.5 minutes). All three failures are image
+references; all operation/filter tests pass. Existing WebGL projection skips
+remain skips, not passes. The dedicated new filter WebGL cases ran and passed.
+
+The first combined run failed two Disperse render-count checks. A trace showed
+the final force-position autosave response scheduling one redraw. Test setup
+now observes the real force completion and that existing save response before
+sampling filter-only state. It does not pause the simulation or alter post-filter
+geometry, paint, render-count expectations, global test timeouts or pixel limits.
+Temporary tracing was removed before the final build and regression run.
+
+Aircraft input was recovered byte-for-byte from 67b7cc9^:beta/data/aircraft.mm
+into tests/fixtures/aircraft.mm; production data cleanup remains intact.
+Final blockers: default-sample and aircraft macOS references do not exist;
+latex expected 1252x692 versus actual 1280x720, 49,831 differing pixels (6%).
+Snapshot update mode was none. No baseline was generated or replaced.
+The branch remains isolated pending explicit visual-reference judgment;
+successful additional tests do not waive these three failures.
