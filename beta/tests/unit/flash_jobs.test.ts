@@ -53,3 +53,33 @@ test("crash after map commit before job success resumes without a duplicate scop
 test("missing destination is rejected before generation", () => {
   expect(() => jobs.submit({ ...request(), target: `m3e://maps/${map}/nodes/missing` })).toThrow("Target unavailable"); expect(submitted).toBe(0);
 });
+
+test("multiline source text is preserved in the saved tree", async () => {
+  const multiline = "Formula\nExplanation";
+  provider.call = async route => route === "/v1/jobs" ? { job_id: "remote" } : route.endsWith("/structure") ? { ...graph, nodes: graph.nodes.map(n => n.id === "b" ? { ...n, title: multiline } : n) } : { state: "succeeded" };
+  const result = await completed(jobs.submit(request()).job_id);
+  expect(result.state).toBe("succeeded");
+  const root = state().nodes[parent].children[0];
+  expect(state().nodes[state().nodes[root].children[0]].text).toBe(multiline);
+});
+test("import retry reuses the generated result and survives concurrent requests without duplication", async () => {
+  const call = manager.call.bind(manager);
+  manager.call = (name, args) => name === "m3e_create" ? { ok: false, error: { code: "IMPORT_FAILED" } } : call(name, args);
+  const id = jobs.submit(request()).job_id;
+  expect((await completed(id)).state).toBe("failed");
+  expect(state().nodes[parent].children).toHaveLength(0);
+  manager.call = call;
+  await Promise.all([jobs.retryImport(id), jobs.retryImport(id)]);
+  expect((await completed(id)).state).toBe("succeeded");
+  await jobs.retryImport(id);
+  expect(submitted).toBe(1);
+  expect(state().nodes[parent].children).toHaveLength(1);
+});
+test("import retry refuses a provider rejection without a new generation", async () => {
+  provider.call = async route => { if (route === "/v1/jobs") { submitted++; return { job_id: "rejected" }; } return { state: "failed" }; };
+  const id = jobs.submit(request()).job_id;
+  expect((await completed(id)).state).toBe("failed");
+  await expect(jobs.retryImport(id)).rejects.toThrow("cannot regenerate");
+  expect(submitted).toBe(1);
+  expect(state().nodes[parent].children).toHaveLength(0);
+});

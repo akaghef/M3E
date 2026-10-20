@@ -417,7 +417,8 @@ export class M3eMcpService {
         for (const raw of graph.nodes) {
           const n = object(raw), id = str(n.id, "node id", 200);
           str(n.title, "node title");
-          if (/[\r\n]/.test(n.title as string) || !Array.isArray(n.children) || byId.has(id)) fail("INVALID_STRUCTURE", "Invalid title, children or duplicate id.");
+          // TreeNode text supports multiline content; preserve source text verbatim.
+          if (!Array.isArray(n.children) || byId.has(id)) fail("INVALID_STRUCTURE", "Invalid children or duplicate id.");
           byId.set(id, n);
         }
         const visited = new Set<string>();

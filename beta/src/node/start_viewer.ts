@@ -213,6 +213,9 @@ async function handleFlashJobsApi(req: http.IncomingMessage, res: http.ServerRes
       if (!(req.headers["content-type"] || "").startsWith("application/json")) throw new Error("Use application/json");
       const result = currentFlashJobs().submit(JSON.parse(await readRequestBody(req, 64 * 1024 * 1024)));
       sendJson(res, result.state === "processing" ? 202 : 200, result);
+    } else if (req.method === "POST" && /^\/api\/flash\/jobs\/[a-f0-9]{64}\/retry-import$/.test(pathname)) {
+      const result = await currentFlashJobs().retryImport(pathname.split("/")[4]!);
+      sendJson(res, result.state === "processing" ? 202 : 200, result);
     } else if (req.method === "GET" && /^\/api\/flash\/jobs\/[a-f0-9]{64}$/.test(pathname)) {
       sendJson(res, 200, currentFlashJobs().get(pathname.split("/").pop()!));
     } else sendJson(res, 405, { ok: false, error: "Unsupported job operation" });
