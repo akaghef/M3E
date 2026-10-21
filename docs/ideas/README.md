@@ -13,6 +13,8 @@
 
 ## 試作成果物
 
+- [外部スコープ追加中の更新レート低下](./261021_external_scope_append_update_rate.md) — 約20Hzへの低下とスコープ外での約60Hzの利用者報告、投入状況、未検証の原因候補。
+
 - [M3E Ultimate Graphics](./260704_graphics_showcase.html) — 4種類のアニメーションテーマを比較する自己完結型HTML。
 - [MemForest typed graph](./260719_memforest_conversation_to_typed_graph.md) — 会話履歴を型付きグラフとして保持・再利用する構想。
 - [Knowledge Workbench Slice](./260809_knowledge_workbench_slice.md) — 不可視多次元グラフと人間有限スライス作業台の Vision 再定式化。
