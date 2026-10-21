@@ -14,7 +14,7 @@ test("synchronous Lane switches direction and map immediately, rejects invalid r
   const save = vi.fn(), fit = vi.fn(), undo = vi.fn();
   const measure = vi.fn((id: string, _root: string) => ({w: 100, h: id === "reading" ? 96 : 40, labelLines: ["wrapped", "label"]}));
   const controller = new LaneViewController({ state: () => state, scopeRoot: () => "workspace", view: () => view,
-    measure, render: () => { controller.prepare(); }, fit, status: () => {},
+    measure, cache: (_key, compute) => compute(), render: () => { controller.prepare(); }, fit, status: () => {},
     apply: mode => { view.surfaceViewMode = mode; }, undo, save, writable: () => true });
   const board = document.getElementById("board")!;
   expect(controller.prepare()).toBe(true); expect(board.dataset.laneState).toBe("ready");

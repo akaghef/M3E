@@ -51,7 +51,7 @@ import {
   type ScopeLockDrawState,
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg, nodeSelectionFrameRect } from "../shared/node_draw_svg";
-import { DerivedNodeCache, RetainedSvgScene } from "./incremental_scene";
+import { DerivedNodeCache, RetainedSvgScene, ScopeDerivedCache } from "./incremental_scene";
 import { FrameInvalidation } from "./frame_invalidation";
 import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./webgl_scene_tiles";
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
@@ -582,10 +582,17 @@ const FIT_LABELS: Record<FitMode, string> = {
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
 const nodeDrawInputs = new Map<string, NodeDrawInput>();
 const nodeAuxMarkup = new Map<string, string>();
-const layoutMetricCache = new DerivedNodeCache<LayoutNodeMetric>();
+const scopeLayoutCaches = new ScopeDerivedCache(() => ({
+  metrics: new DerivedNodeCache<LayoutNodeMetric>(),
+  spans: new TreeSpanCache(),
+  previews: new DerivedNodeCache<FlowPreviewLayout | null>(),
+  result: new DerivedNodeCache<LayoutResult>(),
+}));
+let activeLayoutCache = scopeLayoutCaches.get("");
+let layoutMetricCache = activeLayoutCache.metrics;
 const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
 const edgeSvgCache = new DerivedNodeCache<string>();
-const treeSpanCache = new TreeSpanCache();
+let treeSpanCache = activeLayoutCache.spans;
 const retainedSvgScene = new RetainedSvgScene();
 let incrementalProjection = false;
 let localEditBatchDepth = 0;
@@ -5675,6 +5682,15 @@ function currentFlowSurfaceDetailLevel(): number {
 }
 
 function buildFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewLayout | null {
+  if (!map || !node || !isFolderNode(node) || currentFlowSurfaceDetailLevel() <= 0) return null;
+  const key = JSON.stringify((node.children || []).map(id => {
+    const child = map!.state.nodes[id];
+    return child ? [id, uiLabel(child), child.text, child.nodeType, child.attributes] : [id];
+  }));
+  return activeLayoutCache.previews.get(node.id, key, () => computeFlowPreviewLayout(node));
+}
+
+function computeFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewLayout | null {
   if (!map || !node || !isFolderNode(node) || currentFlowSurfaceDetailLevel() <= 0) {
     return null;
   }
@@ -7474,7 +7490,8 @@ window.m3eLayout = (
 
 const laneView = new LaneViewController({
   state: () => map?.state ?? null, scopeRoot: currentScopeRootId, view: () => viewState,
-  measure: (id, root) => measureLayoutNode(map!.state, id, root, structuredLayoutConfig("tree")),
+  measure: (id, root) => cachedLayoutNode(map!.state, id, root, structuredLayoutConfig("tree")),
+  cache: (key, compute) => activeLayoutCache.result.get("layout", key, compute),
   render, fit: fitDocument, status: setStatus, apply: setSurfaceViewMode,
   undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
 });
@@ -7490,6 +7507,14 @@ const lineSelection = new EdgeGraphLinkSelectionAdapter({
   render: scheduleRender, status: setStatus, editing: () => viewerKeyboardMode() === "edit",
   owns: () => !grabSession && !viewState.panState && !viewState.pinchState && !linkPortDragState && !webglGraphLinkDragState && !viewState.dragState && !routingSwitcherOpen && !templateCompletionState && !entityListVisible && !conflictPanelVisible && !homeScreenVisible && !activeColorPalette && !linearAdjustMenuOpen,
 });
+
+function cachedLayoutNode(state: AppState, id: string, root: string, config: StructuredLayoutConfig): LayoutNodeMetric {
+  const node = state.nodes[id]!;
+  const key = JSON.stringify([uiLabel(node), node.text, isLatexNode(node), id === root,
+    visibleChildren(node).length === 0, explicitNodeLabelWidth(node), defaultWrapCharacters,
+    readAgentNode(node), config]);
+  return layoutMetricCache.get(id, key, () => measureLayoutNode(state, id, root, config));
+}
 
 function buildLayout(state: AppState): LayoutResult {
   if (viewState.surfaceViewMode === "lane") return laneView.layout();
@@ -7511,10 +7536,8 @@ function buildLayout(state: AppState): LayoutResult {
   collectVisible(displayRootId);
   const boxSizes: Record<string, LayoutNodeMetric> = {};
   Array.from(visibleNodeIds).forEach((nodeId) => {
-    const node = state.nodes[nodeId]!;
-    const config = structuredLayoutConfig(structuredMode);
-    const key = JSON.stringify([uiLabel(node), isLatexNode(node), nodeId === displayRootId, visibleChildren(node).length === 0, explicitNodeLabelWidth(node), defaultWrapCharacters, node.attributes?.["m3e:agent"], config]);
-    boxSizes[nodeId] = layoutMetricCache.get(nodeId, key, () => measureLayoutNode(state, nodeId, displayRootId, config));
+    if (mode === "system" && nodeId !== displayRootId) return;
+    boxSizes[nodeId] = cachedLayoutNode(state, nodeId, displayRootId, structuredLayoutConfig(structuredMode));
   });
   layoutMetricCache.retain(visibleNodeIds);
 
@@ -7565,9 +7588,10 @@ function buildLayout(state: AppState): LayoutResult {
     disperseForceSurface = surface;
     const hasSavedPositions = ids.every(id => Number.isFinite(surface?.nodeViews?.[id]?.x) && Number.isFinite(surface?.nodeViews?.[id]?.y));
     if (hasSavedPositions) disperseFitAfterSettle = false;
-    const changed = disperseForce.sync(key, { nodes, links }, viewState.collapsedIds, scatterAnimationEnabled && !isReadOnlyLink(), !hasSavedPositions && !dispersePauseOnRestore, { repulsion: scatterRepulsion / 100, length: scatterEdgeLength });
+    const changed = disperseForce.sync(key, { nodes, links }, new Set([...viewState.collapsedIds].filter(id => idSet.has(id))), scatterAnimationEnabled && !isReadOnlyLink(), !hasSavedPositions && !dispersePauseOnRestore, { repulsion: scatterRepulsion / 100, length: scatterEdgeLength });
     dispersePauseOnRestore = false;
     const snapshot = disperseForce.snapshot()!;
+    activeLayoutCache.result.computed = changed ? 1 : 0;
     if (changed) { disperseForceUndoPending = false; }
     const pos: LayoutResult["pos"] = {};
     for (const n of snapshot.nodes) {
@@ -7594,31 +7618,31 @@ function buildLayout(state: AppState): LayoutResult {
       visibleNodeIds.add(nodeId);
       const nodeStyles = effectiveNodeStyleAttrs(node);
       const label = diagramLabel(node, nodeStyles);
-      const baseMetric = isLatexNode(node)
-        ? measureLatex(node.text)
-        : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
       const previewLayout = buildFlowPreviewLayout(node);
-      boxSizes[nodeId] = previewLayout
-        ? {
-            w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
-            h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
-          }
-        : baseMetric;
+      const metricKey = JSON.stringify([label, isLatexNode(node), node.text, previewLayout?.totalWidth, previewLayout?.totalHeight]);
+      boxSizes[nodeId] = layoutMetricCache.get(nodeId, metricKey, () => {
+        const baseMetric = isLatexNode(node) ? measureLatex(node.text) : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
+        return previewLayout ? {
+          w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
+          h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
+        } : baseMetric;
+      });
       flowCells[nodeId] = { col: flowColOf(node, surfaceNodes.indexOf(nodeId)), row: flowRowOf(node, 0), isReference: isReferenceNode(node) };
     });
+    activeLayoutCache.previews.retain(new Set(surfaceNodes));
     options.flowCells = flowCells;
   }
 
-  return layoutPortLayout(
-    {
-      nodeIds: Array.from(visibleNodeIds),
-      childrenOf,
-      graphLinks,
-    },
-    boxSizes,
-    mode,
-    options,
-  );
+  // Compare only the visible layout inputs. Hidden scopes and unrelated links do
+  // not invalidate this result; aliases and System previews contribute metrics.
+  const nodeIds = Array.from(visibleNodeIds);
+  const localLinks = graphLinks.filter(link => visibleNodeIds.has(link.sourceNodeId) && visibleNodeIds.has(link.targetNodeId));
+  const { treeCache: _cache, ...layoutOptions } = options;
+  const key = JSON.stringify([mode, layoutOptions,
+    nodeIds.map(id => [id, childrenOf(id), boxSizes[id]]), localLinks]);
+  return activeLayoutCache.result.get("layout", key, () => layoutPortLayout(
+    { nodeIds, childrenOf, graphLinks: localLinks }, boxSizes, mode, options,
+  ));
 }
 
 function updateMapTitle(): void {
@@ -7728,6 +7752,12 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
+  activeLayoutCache = scopeLayoutCaches.get(JSON.stringify([LOCAL_MAP_ID, map?.state.rootId, currentScopeRootId(), viewState.surfaceViewMode]));
+  layoutMetricCache = activeLayoutCache.metrics;
+  treeSpanCache = activeLayoutCache.spans;
+  layoutMetricCache.begin();
+  activeLayoutCache.result.begin();
+  treeSpanCache.computed = 0;
   if (!laneView.prepare()) return;
   const scope = map ? normalizedCurrentScopeId() : "";
   if (scope !== fitCycleScope) {
@@ -7735,10 +7765,8 @@ function renderScene(incremental: boolean): void {
     fitCycleScope = scope;
   }
   renderRevision++;
-  layoutMetricCache.begin(!incremental);
   nodeSvgCache.begin(!incremental);
   edgeSvgCache.begin(!incremental);
-  if (!incremental) treeSpanCache.clear();
   incrementalProjection = incremental;
   renderedAgentNodeLod = agentNodeLod(viewState.zoom);
   updateModeBadge();
@@ -8431,7 +8459,7 @@ function renderScene(incremental: boolean): void {
   edgeSvgCache.retain(new Set(edgeParts.map(([id]) => id)));
   board.dataset.renderRevision = String(renderRevision);
   board.dataset.editWork = JSON.stringify({ incremental, measured: layoutMetricCache.computed,
-    branches: treeSpanCache.computed, nodes: nodeSvgCache.computed, edges: edgeSvgCache.computed, fragments: replaced });
+    layouts: activeLayoutCache.result.computed, branches: treeSpanCache.computed, nodes: nodeSvgCache.computed, edges: edgeSvgCache.computed, fragments: replaced });
   // Measure world geometry, including negative positions and curved paths.
   // A hidden SVG cannot be measured reliably; it is hidden again by the
   // projection before presentation, without changing saved node coordinates.
