@@ -427,13 +427,15 @@ export class M3eMcpService {
           if (!n || visited.has(id) || n.parent !== sourceParent) fail("INVALID_STRUCTURE", "The tree has missing, repeated or inconsistent ownership.");
           visited.add(id);
           const real = model.addNode(parent, n.title as string); created.push(real);
+          // Reuse native attributes, including incoming tree-edge labels and provenance.
+          if (n.attributes !== undefined) this.patchAttributes(model.state.nodes[real]!, n.attributes);
           for (const child of n.children as unknown[]) add(str(child, "child", 200), real, id);
           return real;
         };
         const root = add(str(graph.roots[0], "root", 200), target, null);
         if (visited.size !== byId.size) fail("INVALID_STRUCTURE", "The tree contains unreachable nodes.");
         model.setScopeBoundary(root, true);
-        model.state.nodes[root]!.attributes = { "m3e:flashImportKey": key, "m3e:band": "flash", "m3e:status": "unverified" };
+        model.state.nodes[root]!.attributes = { ...model.state.nodes[root]!.attributes, "m3e:flashImportKey": key, "m3e:band": "flash", "m3e:status": "unverified" };
       } else if (kind === "import_mfh") {
         const text = str(args.mfh, "mfh", 300_000);
         let depth = 0, count = 0;

@@ -45,6 +45,10 @@ Flash接続は既存clientの `connection.json` を利用する。`FLASH_CLIENT_
 
 Map Managerの `m3e_create(kind=import_structure)` は明示的なscope取り込み操作。
 単一root、最大1000ノード、重複ID・欠落・循環・所有矛盾・到達不能ノードを検査する。
+各入力ノードの任意の `attributes` を既存の属性検証を通して保存する。
+親子辺のラベルは子ノードの `attributes["m3e:edge-label"]`、出典は既存の属性として渡す。
+ラベルをGraphLinkへ変換せず、本文・兄弟順序・scope境界も保持する。
+不正な属性が一つでもあれば部分保存しない。rootの重複防止マーカーは入力属性では上書きできない。
 生成内容の数学的正しさや参照の完全性は、このAPIの成功条件には含まれない。
 
 単体試験は診断用providerと実Core・一時SQLiteで失敗時保持、指定親、scope化、再送、commit後再開を検査する。

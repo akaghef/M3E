@@ -55,6 +55,49 @@ describe("M3E MCP semantic service", () => {
     }
   });
 
+  test("structure import preserves native incoming edge labels and provenance atomically across replay", () => {
+    const before = saved().state;
+    const context = enter();
+    const args = { kind: "import_structure", context_id: context.context_id, import_key: "labeled-source", structure: {
+      roots: ["concept"], nodes: [
+        { id: "concept", title: "群", parent: null, children: ["definition", "example"], attributes: { source: "source.mmd", "m3e:flashImportKey": "must-not-replace-key" } },
+        { id: "definition", title: "定義", parent: "concept", children: [], attributes: { "m3e:edge-label": "定義を述べる" } },
+        { id: "example", title: "対称群", parent: "concept", children: [], attributes: { "m3e:edge-label": "例を挙げる" } },
+      ],
+    } };
+    const result = service.call("m3e_create", args);
+    expect(result.ok).toBe(true);
+    expect(result.changed.created).toBe(3);
+    const state = saved().state;
+    const root = state.nodes[state.nodes[state.rootId].children.at(-1)!];
+    expect(root.nodeType).toBe("folder");
+    expect(root.attributes).toMatchObject({ source: "source.mmd", "m3e:flashImportKey": "labeled-source" });
+    expect(root.children.map(id => state.nodes[id].text)).toEqual(["定義", "対称群"]);
+    expect(root.children.map(id => state.nodes[id].attributes["m3e:edge-label"])).toEqual(["定義を述べる", "例を挙げる"]);
+    expect(state.links).toEqual(before.links);
+    expect(loaded().validate()).toEqual([]);
+    const replay = service.call("m3e_create", args);
+    expect(replay.ok).toBe(true);
+    expect(replay.replayed).toBe(true);
+    expect(saved().state).toEqual(state);
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+
+  test("invalid imported node attributes reject the whole structure without saving", () => {
+    const before = saved();
+    const context = enter();
+    const result = service.call("m3e_create", { kind: "import_structure", context_id: context.context_id, import_key: "invalid-metadata", structure: {
+      roots: ["a"], nodes: [
+        { id: "a", title: "Root", parent: null, children: ["b"] },
+        { id: "b", title: "Child", parent: "a", children: [], attributes: { "m3e:edge-label": 7 } },
+      ],
+    } });
+    expect(result.ok).toBe(false);
+    expect(result.error.code).toBe("INVALID_ARGUMENT");
+    expect(saved()).toEqual(before);
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   test("the MCP endpoint rejects remote clients, cross-site origins and DNS-rebinding Hosts", () => {
     const rejected = [
       { socket: { remoteAddress: "192.0.2.10" }, headers: { host: "localhost:4173" } },
