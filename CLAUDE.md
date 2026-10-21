@@ -94,6 +94,12 @@ Durable targets include `AGENTS.md`, `CLAUDE.md`, `docs/06_Operations/Director_P
 
 If a skill or skill trigger changes, dispatch/use `skill-creator` and update the skill frontmatter `description`; body-only trigger text is insufficient.
 
+## Chat language
+
+Every chat reply to akaghef is in Japanese, including short replies, apologies and replies
+written after long tool runs. Check the language of the whole reply before sending.
+Repository artifacts keep their own convention.
+
 ## Worktree and delivery rules
 
 Follow `docs/06_Operations/Worktree_Separation_Rules.md` as the shared canonical policy.
