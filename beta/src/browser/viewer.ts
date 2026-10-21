@@ -681,6 +681,7 @@ let grabSession: {
   moved: boolean;
 } | null = null;
 let linearDirty = false;
+let linearDisplayedScopeId = "";
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
 let flowSurfaceDetailLevel = 0;
@@ -6922,13 +6923,16 @@ function syncLinearCaretToSelectedNode(): void {
   suppressLinearSelectionSync = false;
 }
 
-function renderLinearPanel(): void {
+function renderLinearPanel(action?: "load" | "reset"): void {
   if (linearPanelEl) {
     linearPanelEl.hidden = LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree";
   }
   if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     return;
   }
+  // Scene rendering and external updates may adjust visibility, but must never
+  // traverse the tree or rewrite the editor without an explicit panel action.
+  if (!action) return;
   if (!linearTextEl) {
     return;
   }
@@ -6944,16 +6948,17 @@ function renderLinearPanel(): void {
 
   const scopeRootId = currentLinearMemoScopeId();
   const templateText = buildLinearFromScope().text;
-  if (!(scopeRootId in linearNotesByScope)) {
+  if (action === "reset" || !(scopeRootId in linearNotesByScope)) {
     linearNotesByScope[scopeRootId] = templateText;
     syncLinearNotesToDocState();
   }
   const scopeMemo = linearNotesByScope[scopeRootId] || "";
   linearDirty = scopeMemo !== templateText;
 
-  if (document.activeElement !== linearTextEl) {
+  if (action === "reset" || linearDisplayedScopeId !== scopeRootId || document.activeElement !== linearTextEl) {
     linearTextEl.value = scopeMemo;
   }
+  linearDisplayedScopeId = scopeRootId;
   linearLineMap = [];
 
   const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
@@ -6961,7 +6966,7 @@ function renderLinearPanel(): void {
     linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
-  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = false;
 }
 
 function parseLinearText(text: string): LinearNodeDraft {
@@ -7076,6 +7081,10 @@ function reconcileLinearSubtree(nodeId: string, draft: LinearNodeDraft): void {
 
 function applyLinearTextToScope(): void {
   if (!map) {
+    return;
+  }
+  if (linearDisplayedScopeId !== currentLinearMemoScopeId()) {
+    renderLinearPanel("load");
     return;
   }
   try {
@@ -15056,7 +15065,7 @@ fileInput.addEventListener("change", (event: Event) => {
         linearNotesByScope[scopeRootId] = markdownToLinearText(text);
         syncLinearNotesToDocState();
         scheduleAutosave();
-        renderLinearPanel();
+        renderLinearPanel("load");
         setStatus(`Imported .md file to Linear Text: ${file.name}`);
         return;
       }
@@ -15074,6 +15083,7 @@ fileInput.addEventListener("change", (event: Event) => {
 
 linearMenuToggleBtn?.addEventListener("click", (event: MouseEvent) => {
   event.preventDefault();
+  renderLinearPanel("load");
   linearMenuVisible = true;
   linearAdjustMenuOpen = !linearAdjustMenuOpen;
   syncLinearAdjustMenuUi();
@@ -15095,11 +15105,13 @@ linearFontResetBtn?.addEventListener("click", (event: MouseEvent) => {
 });
 
 linearTextEl?.addEventListener("pointerdown", () => {
+  if (document.activeElement === linearTextEl) renderLinearPanel("load");
   linearMenuVisible = true;
   syncLinearAdjustMenuUi();
 });
 
 linearTextEl?.addEventListener("focus", () => {
+  renderLinearPanel("load");
   linearMenuVisible = true;
   syncLinearAdjustMenuUi();
 });
@@ -15109,6 +15121,10 @@ linearTextEl?.addEventListener("input", () => {
     return;
   }
   const scopeRootId = currentLinearMemoScopeId();
+  if (linearDisplayedScopeId !== scopeRootId) {
+    renderLinearPanel("load");
+    return;
+  }
   linearNotesByScope[scopeRootId] = linearTextEl.value;
   syncLinearNotesToDocState();
   scheduleAutosave();
@@ -15119,7 +15135,7 @@ linearTextEl?.addEventListener("input", () => {
     linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
-  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = false;
 });
 
 linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -15131,11 +15147,22 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   }
   if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key === "Enter") {
     event.preventDefault();
+    if (linearDisplayedScopeId !== currentLinearMemoScopeId()) {
+      renderLinearPanel("load");
+      return;
+    }
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
     syncLinearNotesToDocState();
     scheduleAutosave();
     setStatus("Linear memo saved in current scope.");
     return;
+  }
+});
+
+linearPanelEl?.addEventListener("keydown", (event: KeyboardEvent) => {
+  // Keep native button activation inside the panel, away from map shortcuts.
+  if ((event.target as Element | null)?.closest("button") && (event.key === "Enter" || event.key === " ")) {
+    event.stopPropagation();
   }
 });
 
@@ -15199,8 +15226,8 @@ linearApplyBtn?.addEventListener("click", () => {
 });
 
 linearResetBtn?.addEventListener("click", () => {
-  linearDirty = false;
-  renderLinearPanel();
+  renderLinearPanel("reset");
+  scheduleAutosave();
   setStatus("Linear text reset to tree state.");
 });
 
