@@ -36,12 +36,13 @@
 :where(.node-lab, .agent-node) .agent-node-content-rule{stroke:#bcc7d7;stroke-width:.8}
 :where(.node-lab, .agent-node) .agent-card-surface.agent-card-attention{stroke:var(--agent-awaiting);stroke-opacity:1;stroke-width:2.5}
 
-/* Disperse uses the product's dark map canvas. */
-.scatter-surface-active .agent-node .agent-card-header,
-.scatter-surface-active .agent-node .agent-card-middle-name { fill: #e6edf7; }
-.scatter-surface-active .agent-node .agent-card-field-value,
-.scatter-surface-active .agent-node .agent-card-meta { fill: #aebed4; }
-.scatter-surface-active .agent-node .agent-card-state { fill: var(--agent-color); }
+/* Light card text only on the dark theme; Disperse follows the shared theme, so on the
+   light theme the default dark ink above stays (light text there was white on white). */
+:root[data-theme="dark"] .scatter-surface-active .agent-node .agent-card-header,
+:root[data-theme="dark"] .scatter-surface-active .agent-node .agent-card-middle-name { fill: #e6edf7; }
+:root[data-theme="dark"] .scatter-surface-active .agent-node .agent-card-field-value,
+:root[data-theme="dark"] .scatter-surface-active .agent-node .agent-card-meta { fill: #aebed4; }
+:root[data-theme="dark"] .scatter-surface-active .agent-node .agent-card-state { fill: var(--agent-color); }
 .agent-node.selected .agent-card-surface { stroke: #739fea; stroke-opacity: .9; stroke-width: 2; }
 .agent-node.cut-pending { opacity: .45; }
 .agent-node .agent-node-hit { fill: transparent !important; stroke: none !important; pointer-events: all; }
