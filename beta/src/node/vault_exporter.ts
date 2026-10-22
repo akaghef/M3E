@@ -183,7 +183,14 @@ export async function exportVaultFromAppState(
     throw new Error(`Export root not found: ${exportRootId}`);
   }
 
-  const exportPlan = buildExportPlan(state, exportRootId);
+  const exportPlan = request.nodeId && !isVaultFolder(exportRoot)
+    ? { folders: [], files: [{ nodeId: exportRootId, relativePath: `${sanitizeSegment(exportRoot.text)}.md` }] }
+    : buildExportPlan(state, exportRootId);
+  // A selected ordinary subtree is one Markdown file. Keep the existing
+  // multi-file plan for a Vault folder, and include a selected Vault file itself.
+  if (request.nodeId && exportPlan.files.length === 0) {
+    exportPlan.files.push({ nodeId: exportRootId, relativePath: `${sanitizeSegment(exportRoot.text)}.md` });
+  }
   hooks?.onProgress?.({
     phase: "analysis",
     total: exportPlan.files.length,
@@ -208,7 +215,11 @@ export async function exportVaultFromAppState(
       status: "ok",
     });
 
-    const body = await renderFileBody(state, node, request);
+    const rendered = await renderFileBody(state, node, request);
+    const ordinarySubtree = request.nodeId === node.id && !isVaultFile(node);
+    const body = ordinarySubtree
+      ? [`# ${node.text}`, node.details, node.note ? `> ${node.note.replace(/\n/g, "\n> ")}` : "", node.children.some(id => state.nodes[id]?.nodeType !== "alias") ? rendered : ""].filter(Boolean).join("\n\n")
+      : rendered;
     const wikilinks = collectAliasWikilinks(state, node, exportPlan);
     const frontmatter = attributeFrontmatter(node);
     const parts: string[] = [];

@@ -84,10 +84,9 @@ type ProgressiveNodeId =
   | "rapid-unknowns"
   | "rapid-evidence"
   | "rapid-output"
-  | "rapid-markdown"
-  | "rapid-outline"
-  | "rapid-presentation"
-  | "rapid-export"
+  | "node-export-json"
+  | "node-export-mm"
+  | "node-export-vault"
   | "board"
   | "view"
   | "scatter"
@@ -986,6 +985,9 @@ function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
   const rapidGenerate = (action: RapidGenerateAction, label: string, instruction: string) => (
     () => dispatchRapidGenerateAction(action, label, instruction)
   );
+  const exportSubtree = (format: "json" | "mm" | "vault") => () => {
+    window.dispatchEvent(new CustomEvent("m3e:export-subtree", { detail: { format } }));
+  };
   return [
     { id: "active-root", label: rootLabel, hint: "active node" },
     { id: "rapid-expand", label: "N2 展開", hint: "node/subtree を広げる", parentId: "active-root" },
@@ -1008,11 +1010,10 @@ function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
     { id: "rapid-question-subtree", label: "N19 subtreeに質問", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N19 subtreeに質問") },
     { id: "rapid-unknowns", label: "N20 不明点を列挙", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N20 不明点を列挙") },
     { id: "rapid-evidence", label: "N21 根拠を確認", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N21 根拠を確認") },
-    { id: "rapid-output", label: "N22 出力", hint: "形式へ変換", parentId: "active-root" },
-    { id: "rapid-markdown", label: "N23 Markdown化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N23 Markdown化") },
-    { id: "rapid-outline", label: "N24 outline化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N24 outline化") },
-    { id: "rapid-presentation", label: "N25 presentation化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N25 presentation化") },
-    { id: "rapid-export", label: "N26 export用に整形", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N26 export用に整形") },
+    { id: "rapid-output", label: "出力", hint: "選択ノードと全子孫", parentId: "active-root" },
+    { id: "node-export-json", label: "Export JSON", hint: "部分木をダウンロード", parentId: "rapid-output", action: exportSubtree("json") },
+    { id: "node-export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "rapid-output", action: exportSubtree("mm") },
+    { id: "node-export-vault", label: "Export to Vault", hint: "部分木を Markdown へ出力", parentId: "rapid-output", action: exportSubtree("vault") },
   ];
 }
 

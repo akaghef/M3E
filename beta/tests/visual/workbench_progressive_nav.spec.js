@@ -110,8 +110,7 @@ function rapidFixture() {
   };
 }
 
-async function routeRapidFixture(page, mapId) {
-  const doc = rapidFixture();
+async function routeRapidFixture(page, mapId, doc = rapidFixture()) {
   await page.route(`**/api/maps/${mapId}`, async (route) => {
     if (route.request().method() !== "GET") {
       await route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Method not allowed." }) });
@@ -122,6 +121,82 @@ async function routeRapidFixture(page, mapId) {
 }
 
 test.describe("Workbench progressive navigation", () => {
+  test("Node Vault output passes the selected root after saving current edits", async ({ page }) => {
+    const mapId = "pn-vault-subtree";
+    const doc = rapidFixture();
+    let saved = false;
+    let exported;
+    await page.route(`**/api/maps/${mapId}`, async route => {
+      if (route.request().method() === "POST") saved = true;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(doc) });
+    });
+    await page.route("**/api/vault/export", async route => {
+      expect(saved).toBe(true);
+      exported = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: vault-export-complete\ndata: {"ok":true,"fileCount":1}\n\n' });
+    });
+    await page.goto(`/viewer.html?renderer=svg&localMapId=${mapId}&cloudMapId=${mapId}`);
+    await page.locator('.node-hit[data-node-id="background"]').click();
+    await page.keyboard.press("Space");
+    await page.locator('[data-pn-node="rapid-output"]').hover();
+    page.once("dialog", dialog => dialog.accept("/tmp/pn-export-destination"));
+    await page.locator('[data-pn-node="node-export-vault"]').click();
+    await expect(page.locator("#status")).toContainText("Exported to Vault");
+    expect(exported).toMatchObject({ mapId, nodeId: "background", vaultPath: "/tmp/pn-export-destination", options: { skipAiTransform: true } });
+  });
+  for (const format of ["json", "mm"]) {
+    test(`Node output downloads the complete selected subtree as ${format}`, async ({ page }) => {
+      const mapId = `pn-subtree-export-${format}`;
+      const doc = rapidFixture();
+      doc.state.nodes.background.children = ["hidden", "nested"];
+      doc.state.nodes.background.collapsed = true;
+      doc.state.nodes.background.details = "Selected details";
+      doc.state.nodes.background.note = "Selected note";
+      doc.state.nodes.hidden = { ...doc.state.nodes.question, id: "hidden", parentId: "background", text: "Hidden descendant" };
+      doc.state.nodes.nested = { ...doc.state.nodes.question, id: "nested", parentId: "background", nodeType: "folder", text: "Nested scope", children: ["deep"] };
+      doc.state.nodes.deep = { ...doc.state.nodes.question, id: "deep", parentId: "nested", text: "Deep descendant" };
+      doc.state.links = {
+        internal: { id: "internal", sourceNodeId: "hidden", targetNodeId: "deep", label: "Internal" },
+        external: { id: "external", sourceNodeId: "hidden", targetNodeId: "question", label: "Outside" },
+      };
+      await routeRapidFixture(page, mapId, doc);
+      await page.goto(`/viewer.html?renderer=svg&localMapId=${mapId}&cloudMapId=${mapId}`);
+      await page.locator('.node-hit[data-node-id="background"]').click();
+      await page.keyboard.press("Space");
+      await page.locator('[data-pn-node="rapid-output"]').hover();
+      await expect(page.locator('[data-pn-node="rapid-markdown"], [data-pn-node="rapid-presentation"]')).toHaveCount(0);
+      const downloadPromise = page.waitForEvent("download");
+      await page.locator(`[data-pn-node="node-export-${format}"]`).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toBe(`Background.${format}`);
+      const content = require("node:fs").readFileSync(await download.path(), "utf8");
+      if (format === "json") {
+        const state = JSON.parse(content).state;
+        expect(state.rootId).toBe("background");
+        expect(Object.keys(state.nodes).sort()).toEqual(["background", "deep", "hidden", "nested"]);
+        expect(state.nodes.background.parentId).toBeNull();
+        expect(state.nodes.background.details).toBe("Selected details");
+        expect(state.nodes.background.note).toBe("Selected note");
+        expect(state.nodes.background.children).toEqual(["hidden", "nested"]);
+        expect(Object.keys(state.links)).toEqual(["internal"]);
+      } else {
+        expect(content).toContain('TEXT="Background"');
+        expect(content).toContain('TEXT="Hidden descendant"');
+        expect(content).toContain('TEXT="Deep descendant"');
+        expect(content).toContain("Selected details");
+        expect(content).toContain("Selected note");
+        expect(content).not.toContain('TEXT="Question"');
+        expect(content).not.toContain('TEXT="Research Root"');
+      }
+      // Export detaches only the downloaded root; the working map stays intact.
+      const wholePromise = page.waitForEvent("download");
+      await page.locator("#download-btn").evaluate(element => element.click());
+      const whole = JSON.parse(require("node:fs").readFileSync(await (await wholePromise).path(), "utf8"));
+      expect(whole.state.rootId).toBe("root");
+      expect(whole.state.nodes.background.parentId).toBe("root");
+      expect(whole.state.nodes.question.text).toBe("Question");
+    });
+  }
   test("root edges attach to DOM rect boundaries", async ({ page }) => {
     const mapId = "pn-edge-root";
     await routeRapidFixture(page, mapId);

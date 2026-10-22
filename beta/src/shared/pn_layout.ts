@@ -345,6 +345,11 @@ function placeNodes(
     effectiveOverlayRect = rect(overlayRect.x, overlayRect.y + rebaseY, overlayRect.w, overlayRect.h - rebaseY);
   }
   const maxBottom = Math.max(effectiveOverlayRect.h, ...renderedIds.map((id) => rectBottom(byId[id]!)));
+  // Descendants of a lower sibling grow below the estimated column height.
+  // Use available viewport space before introducing a scrolling container:
+  // scrolling a newly hovered child otherwise moves its parent away.
+  effectiveOverlayRect = rect(effectiveOverlayRect.x, effectiveOverlayRect.y, effectiveOverlayRect.w,
+    Math.max(effectiveOverlayRect.h, Math.min(maxBottom + 12, input.viewport.height - effectiveOverlayRect.y - VIEWPORT_MARGIN)));
   const clippedIds = renderedIds.filter((id) => {
     const item = byId[id]!;
     return item.x < 0 || item.y < 0 || rectRight(item) > effectiveOverlayRect.w || rectBottom(item) > effectiveOverlayRect.h;

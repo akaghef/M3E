@@ -2247,13 +2247,14 @@ async function runVaultImport(vaultPath: string): Promise<boolean> {
   return true;
 }
 
-async function runVaultExport(vaultPath: string): Promise<boolean> {
+async function runVaultExport(vaultPath: string, nodeId?: string): Promise<boolean> {
   const response = await fetch("/api/vault/export", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
       mapId: LOCAL_MAP_ID,
       vaultPath,
+      ...(nodeId ? { nodeId, options: { skipAiTransform: true } } : {}),
     }),
   });
   if (!response.ok) {
@@ -5536,11 +5537,26 @@ function reserveActiveNodeRightSpace(requiredWidth = 520): boolean {
 }
 
 window.addEventListener("m3e:prepare-progressive-navigation", () => {
+  cancelCameraMotion();
   reserveActiveNodeRightSpace();
 });
 
 window.addEventListener("m3e:query-node-pn-anchor", (event) => {
-  if (!webglRendererActive) return;
+  if (!webglRendererActive) {
+    // Selection classes are painted on the next frame. Resolve the current
+    // selection by identity so opening immediately after a click is stable.
+    const selector = `[data-node-id="${CSS.escape(viewState.selectedNodeId)}"]`;
+    const element = canvas.querySelector(`.label-node${selector}`)
+      || canvas.querySelector(`.node-visual-box${selector}`)
+      || canvas.querySelector(`.scatter-node-circle${selector}`)
+      || canvas.querySelector(`.node-hit${selector}`);
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      (event as CustomEvent).detail.rect = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+    }
+    return;
+  }
+  if (!webglCanvas) return;
   const node = webglLastSnapshot?.nodes.find((entry) => entry.id === viewState.selectedNodeId);
   if (!node) return;
   const rect = webglCanvas.getBoundingClientRect();
@@ -9462,8 +9478,8 @@ function escapeXmlAttr(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function downloadMm(): void {
-  const state = map!.state;
+function downloadMm(rootId?: string): void {
+  const state = stateForExport(rootId);
   const xml = treeToMm(state);
   const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -12609,18 +12625,72 @@ function toggleCollapse(): void {
   touchDocument();
 }
 
-function downloadJson(): void {
+function downloadJson(rootId?: string): void {
   commitDispersePositions();
-  const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state: map!.state }, null, 2)], {
+  const state = stateForExport(rootId);
+  const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state }, null, 2)], {
     type: "application/json;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "rapid-edited.json";
+  anchor.download = rootId ? `${exportFileName(state.nodes[state.rootId]!.text)}.json` : "rapid-edited.json";
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+function exportFileName(label: string): string {
+  return label.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim().substring(0, 100) || "export";
+}
+
+function stateForExport(rootId?: string): AppState {
+  if (!map) throw new Error("No map loaded.");
+  if (!rootId) return map.state;
+  if (!map.state.nodes[rootId]) throw new Error("Export node is no longer available.");
+  const included = new Set<string>();
+  collectSubtreeNodeIds(rootId, included);
+  const state = JSON.parse(JSON.stringify(map.state)) as AppState;
+  state.rootId = rootId;
+  state.nodes = Object.fromEntries(Object.entries(state.nodes).filter(([id]) => included.has(id)));
+  state.nodes[rootId]!.parentId = null;
+  state.links = Object.fromEntries(Object.entries(state.links || {}).filter(([, link]) => included.has(link.sourceNodeId) && included.has(link.targetNodeId)));
+  state.scopes = Object.fromEntries(Object.entries(state.scopes || {}).filter(([, scope]) => scope.rootNodeIds.length > 0 && scope.rootNodeIds.every(id => included.has(id))));
+  for (const scope of Object.values(state.scopes)) {
+    scope.relationIds = scope.relationIds.filter(id => state.links![id]);
+  }
+  state.surfaces = Object.fromEntries(Object.entries(state.surfaces || {}).filter(([, surface]) => state.scopes![surface.scopeId]));
+  for (const surface of Object.values(state.surfaces)) {
+    surface.nodeViews = Object.fromEntries(Object.entries(surface.nodeViews || {}).filter(([id]) => included.has(id)));
+    if (surface.displayRootId && !included.has(surface.displayRootId)) delete surface.displayRootId;
+  }
+  state.annotations = Object.fromEntries(Object.entries(state.annotations || {}).filter(([, annotation]) => annotation.scopeId && included.has(annotation.scopeId)));
+  state.linearNotesByScope = Object.fromEntries(Object.entries(state.linearNotesByScope || {}).filter(([id]) => included.has(id)));
+  for (const node of Object.values(state.nodes)) {
+    if (node.scopeId && !state.scopes[node.scopeId]) delete node.scopeId;
+    if (node.nodeType === "alias" && node.targetNodeId && !included.has(node.targetNodeId)) node.isBroken = true;
+  }
+  return state;
+}
+
+window.addEventListener("m3e:export-subtree", (event) => {
+  const format = (event as CustomEvent).detail?.format;
+  const nodeId = viewState.selectedNodeId;
+  if (!map?.state.nodes[nodeId]) return;
+  if (format === "json") downloadJson(nodeId);
+  else if (format === "mm") downloadMm(nodeId);
+  else if (format === "vault") {
+    void (async () => {
+      try {
+        const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+        if (!vaultPath) return;
+        if (!await saveDocToLocalDb(false)) throw new Error("Save the current map before exporting to Vault.");
+        await runVaultExport(vaultPath, nodeId);
+      } catch (err) {
+        setStatus(`Vault export failed (${(err as Error).message}).`, true);
+      }
+    })();
+  }
+});
 
 function currentDocSnapshot(): SavedMap {
   syncLinearNotesToDocState();
