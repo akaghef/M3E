@@ -1139,7 +1139,13 @@ function ProgressiveNavigation({
     const rootAnchor = mode === "active-node"
       ? activeNodeAnchorElement() || fallbackProgressiveAnchorElement()
       : fallbackProgressiveAnchorElement();
-    const nextAnchorRect = rootAnchor ? pnRectFromDom(rootAnchor.getBoundingClientRect()) : defaultProgressiveAnchorRect();
+    // WebGL has no visible per-node DOM element. Ask the viewer for the
+    // selected node's painted bounds before falling back to SVG geometry.
+    const query: { rect?: PnRect } = {};
+    if (mode === "active-node") {
+      window.dispatchEvent(new CustomEvent("m3e:query-node-pn-anchor", { detail: query }));
+    }
+    const nextAnchorRect = query.rect || (rootAnchor ? pnRectFromDom(rootAnchor.getBoundingClientRect()) : defaultProgressiveAnchorRect());
     setAnchorRect((current) => (
       Math.abs(current.x - nextAnchorRect.x) > 0.5
         || Math.abs(current.y - nextAnchorRect.y) > 0.5

@@ -5539,6 +5539,19 @@ window.addEventListener("m3e:prepare-progressive-navigation", () => {
   reserveActiveNodeRightSpace();
 });
 
+window.addEventListener("m3e:query-node-pn-anchor", (event) => {
+  if (!webglRendererActive) return;
+  const node = webglLastSnapshot?.nodes.find((entry) => entry.id === viewState.selectedNodeId);
+  if (!node) return;
+  const rect = webglCanvas.getBoundingClientRect();
+  (event as CustomEvent).detail.rect = {
+    x: rect.left + viewState.cameraX + node.x * viewState.zoom,
+    y: rect.top + viewState.cameraY + node.y * viewState.zoom,
+    w: node.width * viewState.zoom,
+    h: node.height * viewState.zoom,
+  };
+});
+
 function setZoom(
   nextZoom: number,
   anchorClientX: number | null = null,
