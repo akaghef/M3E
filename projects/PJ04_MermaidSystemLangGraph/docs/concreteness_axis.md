@@ -10,6 +10,8 @@ related:
   - langgraph_integration_plan.md (下層レイヤ露出の IPC)
 ---
 
+> 2026-10-23: 現行のConcreteness Axisと`j/k`の定義は[製品仕様](../../../docs/03_Spec/Concreteness_Axis.md)を正本とする。本書のL0〜L5は以前のSystem preview詳細度案であり、現行のlevelやその保存条件には適用しない。
+
 # 具象軸の拡張 — Python / 下層レイヤまで覗けるようにする
 
 ## 0. Why extend

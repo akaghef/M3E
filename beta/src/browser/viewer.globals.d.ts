@@ -338,6 +338,7 @@ type ClipboardState =
   | null;
 
 interface ViewState {
+  concretenessLevel: number;
   selectedNodeId: string;
   selectedNodeIds: Set<string>;
   selectionAnchorId: string | null;

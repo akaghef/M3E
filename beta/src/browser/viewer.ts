@@ -1,3 +1,4 @@
+import { ConcretenessView, hasConcretenessData, concretenessSubtree, reconnectConcretenessCopies } from "../shared/concreteness_axis";
 import { EdgeGraphLinkSelectionAdapter } from "./edge_graphlink_selection_adapter";
 import { dispersePositionFrame, disperseGuideEndpoints } from "./disperse_frame";
 import type { ForceSnapshot } from "../shared/force_seam_interface";
@@ -545,6 +546,8 @@ let lastServerSavedAt: string | null = null;
 let lastServerBaseState: AppState | null = null;
 
 interface UndoSnapshot {
+  concretenessLevel?: number;
+  scopeRootId?: string;
   state: AppState;
   collapsedIds?: string[];
   selectedNodeId: string;
@@ -879,6 +882,7 @@ let viewState: ViewState = {
   currentScopeId: "",
   scopeHistory: [],
   currentScopeRootId: "",
+  concretenessLevel: 0,
   thinkingMode: "rapid",
   surfaceViewMode: "tree",
   surfaceSpace: "normal",
@@ -1036,7 +1040,7 @@ function syncThinkingModeUi(): void {
   const layoutSuffix = surfaceMode
     ? ` / ${surfaceSpaceLabel(viewState.surfaceSpace)} / ${surfaceLayoutDirectionLabel(viewState.surfaceLayoutDirection)}`
     : "";
-  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix}`;
+  modeMetaEl.textContent = `level: ${viewState.concretenessLevel} | mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix}`;
   modeFlashBtn?.classList.toggle("is-active", mode === "flash");
   modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
@@ -2647,6 +2651,7 @@ function sanitizeMapModelState(state: AppState): void {
 }
 
 function syncMapModelStateFromRuntime(): void {
+  if (viewState.concretenessLevel !== 0) return;
   if (!map) {
     return;
   }
@@ -3973,18 +3978,18 @@ function makeSelectedFolder(): boolean {
   }
   const node = getNode(viewState.selectedNodeId);
   if (isAliasNode(node)) {
-    setStatus("Alias nodes cannot become folders.", true);
+    setStatus("Alias nodes cannot become scopes.", true);
     return false;
   }
   pushUndoSnapshot();
   if (isFolderNode(node)) {
     node.nodeType = undefined;
     touchDocument();
-    setStatus(`Removed folder scope: ${uiLabel(node)}`);
+    setStatus(`Removed scope: ${uiLabel(node)}`);
   } else {
     node.nodeType = "folder";
     touchDocument();
-    setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+    setStatus(`Marked as scope: ${uiLabel(node)}`);
   }
   board.focus({ preventScroll: true });
   return true;
@@ -4218,6 +4223,66 @@ function nodeBadge(node: TreeNode): string {
   return aliasBadge(node);
 }
 
+let concretenessView: ConcretenessView | null = null;
+const concretenessFrames = new Map<number, { scope: string; selected: string; collapsed: string[]; mode: SurfaceViewMode }>();
+
+function canonicalMapState(): AppState {
+  if (!map) throw new Error("No map loaded.");
+  if (concretenessView?.state === map.state) return concretenessView.commit();
+  return map.state;
+}
+
+function prepareConcretenessView(): void {
+  if (!map || concretenessView?.state === map.state) return;
+  if (viewState.concretenessLevel !== 0 || hasConcretenessData(map.state)) {
+    concretenessView = new ConcretenessView(map.state, viewState.concretenessLevel);
+    map.state = concretenessView.state;
+  } else concretenessView = null;
+}
+
+function restoreConcretenessSnapshot(snapshot: UndoSnapshot): void {
+  viewState.concretenessLevel = snapshot.concretenessLevel || 0;
+  concretenessView = null;
+  map!.state = snapshot.state;
+  prepareConcretenessView();
+  viewState.currentScopeId = viewState.currentScopeRootId = map!.state.nodes[snapshot.scopeRootId || ""] ? snapshot.scopeRootId! : map!.state.rootId;
+  viewState.scopeHistory = [];
+}
+
+function moveConcretenessLevel(delta: -1 | 1): void {
+  if (!map) return;
+  finishGrab(true);
+  const source = canonicalMapState();
+  const level = viewState.concretenessLevel + delta;
+  const next = new ConcretenessView(source, level);
+  // Do not scroll indefinitely through identical empty or fully expanded views.
+  const topology = (state: AppState): string => JSON.stringify(Object.values(state.nodes).map(n => [n.id, n.parentId, n.children, n.nodeType]));
+  if (topology(next.state) === topology(map.state) && ((delta < 0 && level < -1) || (delta > 0 && level > 0))) {
+    setStatus(delta < 0 ? "No further scopes to collapse. Create a scope at this level to continue." : "All scopes are expanded.");
+    return;
+  }
+  concretenessFrames.set(viewState.concretenessLevel, { scope: currentScopeRootId(), selected: viewState.selectedNodeId,
+    collapsed: [...viewState.collapsedIds], mode: viewState.surfaceViewMode });
+  const previousSelection = viewState.selectedNodeId;
+  const frame = concretenessFrames.get(level);
+  stopScatterAnimation(false); disperseForce.invalidate();
+  concretenessView = next; map.state = next.state; viewState.concretenessLevel = level;
+  viewState.surfaceViewMode = level === 0 ? frame?.mode || "tree" : "tree";
+  viewState.currentScopeId = viewState.currentScopeRootId = frame && next.state.nodes[frame.scope] ? frame.scope : next.state.rootId;
+  viewState.scopeHistory = [];
+  let selected = frame?.selected || previousSelection;
+  while (!next.state.nodes[selected] && source.nodes[selected]?.parentId) selected = source.nodes[selected]!.parentId!;
+  if (!next.state.nodes[selected]) selected = next.state.rootId;
+  viewState.collapsedIds = new Set(frame?.collapsed || Object.values(next.state.nodes).filter(n => n.collapsed).map(n => n.id));
+  viewState.selectedNodeId = selected; viewState.selectedNodeIds = new Set([selected]); viewState.selectionAnchorId = null;
+  viewState.reparentSourceIds.clear(); viewState.linkSourceNodeId = ""; viewState.selectedLinkId = "";
+  resetFitCycle();
+  render(); fitDocument({ animate: false });
+  updateScopeInUrl(viewState.currentScopeRootId);
+  setStatus(`Concreteness level ${level} · j: inward · k: outward`);
+  board.focus({ preventScroll: true });
+}
+
 function cloneState(state: AppState): AppState {
   return JSON.parse(JSON.stringify(state)) as AppState;
 }
@@ -4227,7 +4292,8 @@ function pushUndoSnapshot(): void {
     return;
   }
   undoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
@@ -4246,7 +4312,8 @@ function undoLastChange(): void {
   }
 
   redoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
@@ -4258,7 +4325,7 @@ function undoLastChange(): void {
 
   const snapshot = undoStack.pop()!;
   stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
-  map.state = snapshot.state;
+  restoreConcretenessSnapshot(snapshot);
   if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const undoState = map.state;
   viewState.selectedNodeId = undoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : undoState.rootId;
@@ -4282,7 +4349,8 @@ function redoLastChange(): void {
   }
 
   undoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
@@ -4294,7 +4362,7 @@ function redoLastChange(): void {
 
   const snapshot = redoStack.pop()!;
   stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
-  map.state = snapshot.state;
+  restoreConcretenessSnapshot(snapshot);
   if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const redoState = map.state;
   viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
@@ -7781,7 +7849,9 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
-  activeLayoutCache = scopeLayoutCaches.get(JSON.stringify([LOCAL_MAP_ID, map?.state.rootId, currentScopeRootId(), viewState.surfaceViewMode]));
+  prepareConcretenessView();
+  board.dataset.concretenessLevel = String(viewState.concretenessLevel);
+  activeLayoutCache = scopeLayoutCaches.get(JSON.stringify([LOCAL_MAP_ID, map?.state.rootId, currentScopeRootId(), viewState.surfaceViewMode, viewState.concretenessLevel]));
   layoutMetricCache = activeLayoutCache.metrics;
   treeSpanCache = activeLayoutCache.spans;
   layoutMetricCache.begin();
@@ -7835,7 +7905,7 @@ function renderScene(incremental: boolean): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
-  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}`);
+  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}:${viewState.concretenessLevel}`);
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
     VIEWER_TUNING.layout.minCanvasHeight,
@@ -10310,11 +10380,11 @@ function getOwnedScopeLock(scopeId: string): ClientScopeLock | null {
   return lock;
 }
 
-function cloneNodeForCollab(nodeId: string): TreeNode | null {
+function cloneNodeForCollab(nodeId: string, source: AppState): TreeNode | null {
   if (!map) {
     return null;
   }
-  const node = map.state.nodes[nodeId];
+  const node = source.nodes[nodeId];
   if (!node) {
     return null;
   }
@@ -10330,6 +10400,7 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
   if (!map || !map.state.nodes[scopeId]) {
     return changes;
   }
+  const source = canonicalMapState();
   const stack = [scopeId];
   const seen = new Set<string>();
   while (stack.length > 0) {
@@ -10338,7 +10409,7 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
       continue;
     }
     seen.add(nodeId);
-    const snapshot = cloneNodeForCollab(nodeId);
+    const snapshot = cloneNodeForCollab(nodeId, source);
     if (!snapshot) {
       continue;
     }
@@ -10358,7 +10429,7 @@ async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
     return false;
   }
   const mapWithVersion = map as SavedMap & { mapVersion?: number };
-  const scopeId = currentScopeRootId();
+  const scopeId = viewState.concretenessLevel === 0 ? currentScopeRootId() : canonicalMapState().rootId;
   const lock = getOwnedScopeLock(scopeId);
   if (!lock) {
     return false;
@@ -12157,7 +12228,8 @@ function beginGrab(): void {
   cancelCameraMotion();
   grabSession = {
     map, sourceId: roots[0],
-    before: { state: cloneState(map.state), collapsedIds: Array.from(viewState.collapsedIds), selectedNodeId: viewState.selectedNodeId,
+    before: { state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(), collapsedIds: Array.from(viewState.collapsedIds), selectedNodeId: viewState.selectedNodeId,
       selectedNodeIds: Array.from(viewState.selectedNodeIds), selectionAnchorId: viewState.selectionAnchorId },
     collapsedIds: new Set(viewState.collapsedIds), pendingSave: autosaveTimer !== null, moved: false,
   };
@@ -12190,7 +12262,7 @@ function finishGrab(commit: boolean): void {
   syncViewerKeyboardMode();
   if (map !== grab.map) return;
   if (!commit) {
-    map.state = grab.before.state;
+    restoreConcretenessSnapshot(grab.before);
     viewState.collapsedIds = grab.collapsedIds;
     viewState.selectedNodeId = grab.before.selectedNodeId;
     viewState.selectedNodeIds = new Set(grab.before.selectedNodeIds);
@@ -12200,7 +12272,7 @@ function finishGrab(commit: boolean): void {
     setStatus("Grab canceled.");
     return;
   }
-  if (grab.moved && JSON.stringify(map.state) !== JSON.stringify(grab.before.state)) {
+  if (grab.moved && JSON.stringify(canonicalMapState()) !== JSON.stringify(grab.before.state)) {
     undoStack.push(grab.before);
     if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
     redoStack = [];
@@ -12645,14 +12717,10 @@ function exportFileName(label: string): string {
 
 function stateForExport(rootId?: string): AppState {
   if (!map) throw new Error("No map loaded.");
-  if (!rootId) return map.state;
+  if (!rootId) return canonicalMapState();
   if (!map.state.nodes[rootId]) throw new Error("Export node is no longer available.");
-  const included = new Set<string>();
-  collectSubtreeNodeIds(rootId, included);
-  const state = JSON.parse(JSON.stringify(map.state)) as AppState;
-  state.rootId = rootId;
-  state.nodes = Object.fromEntries(Object.entries(state.nodes).filter(([id]) => included.has(id)));
-  state.nodes[rootId]!.parentId = null;
+  const state = concretenessSubtree(canonicalMapState(), map.state, rootId);
+  const included = new Set(Object.keys(state.nodes));
   state.links = Object.fromEntries(Object.entries(state.links || {}).filter(([, link]) => included.has(link.sourceNodeId) && included.has(link.targetNodeId)));
   state.scopes = Object.fromEntries(Object.entries(state.scopes || {}).filter(([, scope]) => scope.rootNodeIds.length > 0 && scope.rootNodeIds.every(id => included.has(id))));
   for (const scope of Object.values(state.scopes)) {
@@ -12698,7 +12766,7 @@ function currentDocSnapshot(): SavedMap {
   return {
     version: 1,
     savedAt: nowIso(),
-    state: map!.state,
+    state: canonicalMapState(),
   };
 }
 
@@ -13111,7 +13179,7 @@ function broadcastState(): void {
   const msg: BcStateMessage = {
     type: "STATE_UPDATE",
     fromTabId: TAB_ID,
-    state: map.state,
+    state: canonicalMapState(),
     savedAt: lastServerSavedAt || "",
   };
   bc.postMessage(msg);
@@ -13596,6 +13664,7 @@ function loadPayload(payload: unknown): void {
   resetFitCycle();
   try {
     map = ensureDocShape(payload);
+    concretenessView = null; concretenessFrames.clear(); viewState.concretenessLevel = 0;
     lastServerSavedAt = map.savedAt || null;
     lastServerBaseState = cloneStateForSave(map.state);
     hydrateLinearNotesFromDocState();
@@ -14411,8 +14480,8 @@ function selectAllVisibleInScope(): void {
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
-function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
-  const node = getNode(nodeId);
+function toSubtreeSnapshot(nodeId: string, source = concretenessSubtree(canonicalMapState(), map!.state, nodeId)): SubtreeSnapshot {
+  const node = source.nodes[nodeId]!;
   return {
     id: node.id,
     nodeType: node.nodeType || "text",
@@ -14427,7 +14496,7 @@ function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
     access: node.nodeType === "alias" ? aliasAccess(node) : undefined,
     targetSnapshotLabel: node.targetSnapshotLabel || undefined,
     isBroken: node.nodeType === "alias" ? Boolean(node.isBroken) : undefined,
-    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId)),
+    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId, source)),
   };
 }
 
@@ -14451,8 +14520,9 @@ function collectInternalLinksForRoots(rootIds: string[]): GraphLink[] {
     return [];
   }
   const copiedNodeIds = new Set<string>();
-  rootIds.forEach((rootId) => collectSubtreeNodeIds(rootId, copiedNodeIds));
-  return Object.values(map.state.links || {})
+  const source = canonicalMapState();
+  rootIds.forEach(rootId => Object.keys(concretenessSubtree(source, map!.state, rootId).nodes).forEach(id => copiedNodeIds.add(id)));
+  return Object.values(source.links || {})
     .map((link) => normalizeGraphLink(link))
     .filter((link) => copiedNodeIds.has(link.sourceNodeId) && copiedNodeIds.has(link.targetNodeId))
     .map((link) => JSON.parse(JSON.stringify(link)) as GraphLink);
@@ -14509,10 +14579,14 @@ function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[]
     return;
   }
   pushUndoSnapshot();
+  map.state = canonicalMapState();
+  concretenessView = null;
+  const pastedRoots: string[] = [];
   const idMap = new Map<string, string>();
   let firstPastedId: string | null = null;
   snapshots.forEach((snapshot) => {
     const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot, idMap);
+    pastedRoots.push(pastedId);
     if (!firstPastedId) {
       firstPastedId = pastedId;
     }
@@ -14541,6 +14615,8 @@ function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[]
     });
     pastedLinks += 1;
   });
+  reconnectConcretenessCopies(map.state, idMap, pastedRoots, targetParentId, viewState.concretenessLevel);
+  prepareConcretenessView();
   if (firstPastedId) {
     setSingleSelection(firstPastedId, false);
   }
@@ -16905,36 +16981,9 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && ["j", "k"].includes(event.key.toLowerCase())) {
     event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      flowSurfaceDetailLevel = Math.min(FLOW_SURFACE_PREVIEW_MAX_DETAIL, flowSurfaceDetailLevel + 1);
-      render();
-      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
-      return;
-    }
-    const selected = getNode(viewState.selectedNodeId);
-    if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
-      EnterScopeCommand(selected.id);
-      return;
-    }
-    selectChild();
-    return;
-  }
-
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      flowSurfaceDetailLevel = Math.max(0, flowSurfaceDetailLevel - 1);
-      render();
-      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
-      return;
-    }
-    if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
-      ExitScopeCommand();
-      return;
-    }
-    selectParent();
+    if (!event.repeat) moveConcretenessLevel(event.key.toLowerCase() === "j" ? 1 : -1);
     return;
   }
 

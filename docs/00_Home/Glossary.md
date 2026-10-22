@@ -371,7 +371,7 @@ PJ04 の用語を全体 glossary に昇格したもの。
 | **Run** | GraphSpec + input + provider 設定から開始される 1 回の実行 | Runtime, Thread, Trace Store | Run は Thread を生成または再開する |
 | **Thread** | 1 回または resume 可能な実行系列。checkpoint chain を `thread_id` で辿る | Run, checkpoint, Runtime Board | LangGraph 的な thread と対応する |
 | **Publish** | Authoring Map を GraphSpec へ固定し、Runtime Board で実行可能にする操作 | compile, GraphSpec, Authoring Map | `compile` より上位の運用語。設計から稼働対象へ送る境界 |
-| **Concreteness Axis** | 同じ node / edge をどの粒度で見るかの window 側の軸。`j/k` で L0〜L5 を切り替える | window, System Diagram, Runtime Board | map 構造は変えない。L0 箱のみ、L5 live state / trace。具象軸を map 正本へ永続化しない |
+| **Concreteness Axis** | 通常のmapをlevel 0とする仮想z軸。`j`で奥（+1）、`k`で手前（−1）。scopeのgroupingを段階的にcollapseする | node, scope, Surface Tree | [正本](../03_Spec/Concreteness_Axis.md)。現在levelはViewState。各levelのscope境界・親子関係は既存attributesで保存し、元のlevel 0の親子関係を保持する |
 
 **基本分離**:
 
