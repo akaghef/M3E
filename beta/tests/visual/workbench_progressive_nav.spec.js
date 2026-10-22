@@ -137,13 +137,17 @@ test.describe("Workbench progressive navigation", () => {
       '.wb-progressive-edges path',
     );
 
-    expect(geometry.pathCount).toBeGreaterThanOrEqual(6);
+    expect(geometry.pathCount).toBe(5);
+    await expect(page.locator('[data-pn-node="add-child"], [data-pn-node="toggle-scope"], [data-pn-node="enter-scope"], [data-pn-node="exit-scope"]')).toHaveCount(0);
     await expect(page.locator('.wb-progressive-edges path').first()).toHaveAttribute("data-source-side", "right");
     await expect(page.locator('.wb-progressive-edges path').first()).toHaveAttribute("data-target-side", "left");
     expect(geometry.endpoints.sx).toBeCloseTo(geometry.fromRect.right, 1);
     expect(geometry.endpoints.sy).toBeCloseTo(geometry.fromRect.cy, 1);
     expect(geometry.endpoints.tx).toBeCloseTo(geometry.toRect.left, 1);
     expect(geometry.endpoints.ty).toBeCloseTo(geometry.toRect.cy, 1);
+    await page.locator('[data-pn-node="scatter"]').hover();
+    await expect(page.locator('[data-pn-node="scatter-reflow"]')).toBeVisible();
+    await expect(page.locator('[data-pn-node="scatter-add-node"], [data-pn-node="scatter-add-edge"], [data-pn-node="scatter-colorize"], [data-pn-node="scatter-delete"], [data-pn-node="scatter-collapse"]')).toHaveCount(0);
   });
 
   test("child edges attach to DOM rect boundaries", async ({ page }) => {
@@ -342,6 +346,7 @@ test.describe("Workbench progressive navigation", () => {
     await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toBeVisible();
     await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toHaveAttribute("data-pn-placement", "right-of-anchor");
     await expect(page.locator('[data-pn-node="rapid"]')).toHaveCount(0);
+    await expect(page.locator('[data-pn-node="lane-root"]')).toHaveCount(0);
     await expect(page.locator('[data-pn-node="rapid-expand"]')).toContainText("N2 展開");
 
     await page.locator('[data-pn-node="rapid-expand"]').hover();

@@ -55,7 +55,6 @@ type ViewerTheme = "light" | "dark";
 type ProgressiveNodeId =
   | "gui"
   | "active-root"
-  | "lane-root"
   | "lane-surface"
   | "lane-direction"
   | "lane-direction-right"
@@ -142,17 +141,8 @@ type ProgressiveNodeId =
   | "system"
   | "scatter-surface"
   | "scatter-normal"
-  | "scatter-add-node"
-  | "scatter-add-edge"
-  | "scatter-colorize"
-  | "scatter-delete"
   | "scatter-animate"
   | "scatter-reflow"
-  | "scatter-collapse"
-  | "add-child"
-  | "toggle-scope"
-  | "enter-scope"
-  | "exit-scope"
   | "pen"
   | "highlighter"
   | "date"
@@ -909,7 +899,7 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): 
     { id: "gui", label: "[GUI]", hint: "overlay root" },
     { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
     { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
-    { id: "scatter", label: "Disperse", hint: "Disperse editing tools", parentId: "gui" },
+    { id: "scatter", label: "Disperse", hint: "Disperse layout controls", parentId: "gui" },
     { id: "annotation", label: "Annotation", hint: "drawing tools", parentId: "gui" },
     { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
     { id: "import", label: "Import file", hint: "board input", parentId: "board", action: () => clickLegacy("import-file-btn") },
@@ -968,17 +958,8 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): 
     { id: "layout-link-orthogonal", label: "Orthogonal", hint: "right-angle GraphLink", parentId: "layout-link-route", action: () => setLayoutOptions({ linkRoute: "orthogonal" }), active: () => currentLinkRoute() === "orthogonal" },
     { id: "layout-link-straight", label: "Straight", hint: "direct GraphLink", parentId: "layout-link-route", action: () => setLayoutOptions({ linkRoute: "straight" }), active: () => currentLinkRoute() === "straight" },
     { id: "scatter-normal", label: "Normal", hint: "select scatter objects", parentId: "scatter", action: () => clickLegacy("scatter-normal") },
-    { id: "scatter-add-node", label: "Add node", hint: "create scatter node", parentId: "scatter", action: () => clickLegacy("scatter-add-node") },
-    { id: "scatter-add-edge", label: "Add edge", hint: "connect scatter nodes", parentId: "scatter", action: () => clickLegacy("scatter-add-edge") },
-    { id: "scatter-colorize", label: "Colorize", hint: "apply scatter color", parentId: "scatter", action: () => clickLegacy("scatter-colorize") },
-    { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
     { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
-    { id: "scatter-collapse", label: "折り畳み・展開", hint: "選択したノードの子孫を畳む・展開する", parentId: "scatter", action: () => clickLegacy("scatter-collapse") },
     { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
-    { id: "add-child", label: "Add child", hint: "Tab", parentId: "gui", action: () => sendKey("Tab") },
-    { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "gui", action: () => sendKey("f") },
-    { id: "enter-scope", label: "Enter scope", hint: "]", parentId: "gui", action: () => sendKey("]") },
-    { id: "exit-scope", label: "Exit scope", hint: "[", parentId: "gui", action: () => sendKey("[") },
     { id: "pen", label: "Pen", hint: "freehand draw", parentId: "annotation", action: () => clickLegacy("draw-pen") },
     { id: "highlighter", label: "Highlighter", hint: "wide translucent stroke", parentId: "annotation", action: () => clickLegacy("draw-highlighter") },
     { id: "date", label: "Date label", hint: "stamp date", parentId: "annotation", action: () => clickLegacy("draw-date") },
@@ -1007,7 +988,6 @@ function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
   );
   return [
     { id: "active-root", label: rootLabel, hint: "active node" },
-    { id: "lane-root", label: "Lane で表示", hint: "この node を Lane の root にする", parentId: "active-root", action: () => window.dispatchEvent(new CustomEvent("m3e:lane-root")) },
     { id: "rapid-expand", label: "N2 展開", hint: "node/subtree を広げる", parentId: "active-root" },
     { id: "rapid-detail", label: "N3 詳細化", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("detail", "N3 詳細化", "詳細を追加") },
     { id: "rapid-examples", label: "N4 例を追加", hint: "生成", parentId: "rapid-expand", action: rapidGenerate("examples", "N4 例を追加", "具体例を追加") },
