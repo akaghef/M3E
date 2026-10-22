@@ -1,6 +1,7 @@
 "use strict";
 
 import fs from "fs";
+import { concretenessSubtree, projectConcreteness } from "../shared/concreteness_axis";
 import path from "path";
 import { runLinearTransform } from "./linear_agent";
 import { buildSubtreeOutline } from "./indented_text_parser";
@@ -177,6 +178,15 @@ export async function exportVaultFromAppState(
 ): Promise<VaultExportResult> {
   const outputRoot = validateVaultPath(request.vaultPath, { mustExist: false, allowCreate: true });
 
+  if (request.nodeId && request.concretenessLevel !== undefined && request.concretenessLevel !== 0) {
+    const level = request.concretenessLevel;
+    // Every reachable level needs either a source scope or an edited boundary.
+    const bound = Object.values(state.nodes).reduce((n, node) => n + 1 + Object.keys(node.attributes || {}).length, 1);
+    if (!Number.isSafeInteger(level) || Math.abs(level) > bound) throw new Error("Invalid concreteness level.");
+    const displayed = projectConcreteness(state, level);
+    if (!displayed.nodes[request.nodeId]) throw new Error("Export node is not present at this level.");
+    state = concretenessSubtree(state, displayed, request.nodeId);
+  }
   const exportRootId = request.nodeId || state.rootId;
   const exportRoot = state.nodes[exportRootId];
   if (!exportRoot) {

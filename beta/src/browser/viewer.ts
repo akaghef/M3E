@@ -1040,7 +1040,7 @@ function syncThinkingModeUi(): void {
   const layoutSuffix = surfaceMode
     ? ` / ${surfaceSpaceLabel(viewState.surfaceSpace)} / ${surfaceLayoutDirectionLabel(viewState.surfaceLayoutDirection)}`
     : "";
-  modeMetaEl.textContent = `level: ${viewState.concretenessLevel} | mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix}`;
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix} / level ${viewState.concretenessLevel}`;
   modeFlashBtn?.classList.toggle("is-active", mode === "flash");
   modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
@@ -2258,7 +2258,7 @@ async function runVaultExport(vaultPath: string, nodeId?: string): Promise<boole
     body: JSON.stringify({
       mapId: LOCAL_MAP_ID,
       vaultPath,
-      ...(nodeId ? { nodeId, options: { skipAiTransform: true } } : {}),
+      ...(nodeId ? { nodeId, concretenessLevel: viewState.concretenessLevel, options: { skipAiTransform: true } } : {}),
     }),
   });
   if (!response.ok) {
@@ -4246,7 +4246,7 @@ function restoreConcretenessSnapshot(snapshot: UndoSnapshot): void {
   map!.state = snapshot.state;
   prepareConcretenessView();
   viewState.currentScopeId = viewState.currentScopeRootId = map!.state.nodes[snapshot.scopeRootId || ""] ? snapshot.scopeRootId! : map!.state.rootId;
-  viewState.scopeHistory = [];
+  viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
 }
 
 function moveConcretenessLevel(delta: -1 | 1): void {
@@ -4269,7 +4269,7 @@ function moveConcretenessLevel(delta: -1 | 1): void {
   concretenessView = next; map.state = next.state; viewState.concretenessLevel = level;
   viewState.surfaceViewMode = level === 0 ? frame?.mode || "tree" : "tree";
   viewState.currentScopeId = viewState.currentScopeRootId = frame && next.state.nodes[frame.scope] ? frame.scope : next.state.rootId;
-  viewState.scopeHistory = [];
+  viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
   let selected = frame?.selected || previousSelection;
   while (!next.state.nodes[selected] && source.nodes[selected]?.parentId) selected = source.nodes[selected]!.parentId!;
   if (!next.state.nodes[selected]) selected = next.state.rootId;

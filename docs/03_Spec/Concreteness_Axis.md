@@ -25,4 +25,4 @@ levelごとの親子関係はlevel 0の親子関係から独立する。例え�
 
 従来のSystem previewのdetail設定は別の表示機能。以前のPJ04のL0〜L5案は、このlevelの定義には適用しない。
 
-コピー・JSON / FreeMind出力は、選択したTreeとそれが表す元のscope内部を含む。共同編集の非zero level保存には、元のmap全体に及ぶ変更を扱うため既存のroot scope lockを必要とする。
+コピー・JSON / FreeMind / Vault出力は、選択したTreeとそれが表す元のscope内部を含む。共同編集のlevel 0以外での保存には、元のmap全体に及ぶ変更を扱うため既存のroot scope lockを必要とする。

@@ -99,3 +99,11 @@ it('copies a coarse grouping with canonical contents and remaps all level parent
  expect(projectConcreteness(target,0).nodes['copy-G']).toBeUndefined();
  expect(projectConcreteness(sub,-1).nodes.G).toBeDefined();
 });
+
+it('turns nested scope containment into ordinary node parent/child edges',()=>{
+ const source=fixture();source.nodes.a.nodeType='folder';source.nodes.a.children=['detail'];source.nodes.detail=node('detail','a',[]);
+ const projected=projectConcreteness(source,-1);
+ expect(projected.nodes.A.children).toEqual(['a']);expect(projected.nodes.a.parentId).toBe('A');
+ expect(projected.nodes.A.nodeType).toBe('text');expect(projected.nodes.a.nodeType).toBe('text');
+ expect(projected.nodes.detail).toBeUndefined();expect(source.nodes.detail.text).toBe('detail');
+});

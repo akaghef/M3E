@@ -13,24 +13,35 @@ async function key(page,k,level){await page.locator('#board').focus();await page
 for(const renderer of ['svg','webgl']){
  test(`${renderer}: j/k changes concreteness on the normal Tree without saving topology`,async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  const {read}=await open(page,fixture(),{renderer});const before=await read();
-  await key(page,'k',-1);expect(await hits(page)).toEqual(['A','B','C','D','root']);
-  await key(page,'j',0);expect(await hits(page)).toEqual(['A','B','C','D','X','Y','root']);
-  await key(page,'j',1);expect(await hits(page)).toContain('b');
-  await key(page,'k',0);expect(await hits(page)).not.toContain('b');
+  const {read}=await open(page,fixture(),{renderer,surfaceReady:renderer==='webgl'});const before=await read();
+  const rendered=async()=>{
+   if(renderer==='svg') {await expect(page.locator('#canvas')).toBeVisible();return hits(page);}
+   await expect(page.locator('#webgl-canvas')).toBeVisible();
+   await expect.poll(()=>page.evaluate(()=>window.__m3eWebGLProjection?.getDebugState()?.active)).toBe(true);
+   return page.evaluate(()=>window.__m3eWebGLProjection.getSnapshot().nodes.map(n=>n.id).sort());
+  };
+  await expect.poll(rendered).toEqual(['A','B','C','D','X','Y','root']);
+  await key(page,'k',-1);await expect.poll(rendered).toEqual(['A','B','C','D','root']);
+  await expect(page.locator('.wb-board-title')).toContainText('level -1');
+  await key(page,'j',0);await expect.poll(rendered).toEqual(['A','B','C','D','X','Y','root']);
+  await key(page,'j',1);await expect.poll(rendered).toContain('b');
+  await key(page,'k',0);await expect.poll(rendered).not.toContain('b');
   expect(await read()).toEqual(before);expect(errors).toEqual([]);
  });
 }
 test('cross-parent grouping and recursive scopes persist, undo, and reopen without changing level 0',async({page})=>{
- const {read}=await open(page,fixture());
+ const {read,url}=await open(page,fixture());
  await key(page,'k',-1);
  await page.locator('.node-hit[data-node-id="C"]').click();
  await page.locator('.node-hit[data-node-id="B"]').click({modifiers:['Shift']});
  await page.keyboard.press('ControlOrMeta+g');
- const editor=page.locator('.inline-node-editor');await expect(editor).toBeVisible();await editor.fill('Group');await editor.press('Enter');
+ const editor=page.locator('.inline-node-editor');await expect(editor).toBeVisible();await editor.fill('Group');await editor.press('Escape');await expect(editor).toHaveCount(0);
  const id=await page.locator('#meta').getAttribute('data-selected-node-id');
  await key(page,'f');
  await expect.poll(async()=> (await read()).nodes[id]?.attributes['m3e:concreteness:scope:-1']).toBe('true');
+ const grouped=await read();expect(grouped.nodes[id].text).toBe('Group');
+ expect(grouped.nodes.B.attributes['m3e:concreteness:parent:-1']).toBe(id);
+ expect(grouped.nodes.C.attributes['m3e:concreteness:parent:-1']).toBe(id);
  await key(page,'k',-2);expect(await hits(page)).toEqual([id,'root'].sort());
  await page.locator(`.node-shape[data-node-id="${id}"]`).click();await key(page,'f');
  await key(page,'k',-3);expect(await hits(page)).toEqual([id,'root'].sort());
@@ -43,6 +54,15 @@ test('cross-parent grouping and recursive scopes persist, undo, and reopen witho
  await page.reload();await expect(page.locator('#board')).toHaveAttribute('data-ready','true');
  await key(page,'k',-1);expect(await hits(page)).toContain(id);
  await key(page,'k',-2);expect(await hits(page)).toEqual([id,'root'].sort());
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const vaultPath=fs.mkdtempSync(path.join(os.tmpdir(),'m3e-concreteness-export-'));
+ try {
+  const api=new URL(url),mapId=api.pathname.split('/').at(-1);
+  const response=await page.request.post(`${api.origin}/api/vault/export`,{data:{mapId,vaultPath,nodeId:id,concretenessLevel:-1,options:{skipAiTransform:true}}});
+  expect(await response.text()).toContain('vault-export-complete');
+  const output=fs.readFileSync(path.join(vaultPath,'Group.md'),'utf8');
+  expect(output).toMatch(/\bb\b/);expect(output).toMatch(/\bc\b/);
+ } finally {fs.rmSync(vaultPath,{recursive:true,force:true});}
 });
 
 test('copy, paste, export and undo retain contents hidden by a negative level',async({page})=>{
@@ -73,4 +93,5 @@ test('returning to level zero restores an entered scope and its selected content
  await key(page,'k',-1);expect(await hits(page)).toContain('B');
  await key(page,'j',0);expect(await hits(page)).toEqual(['B','b']);
  await expect(page.locator('#meta')).toHaveAttribute('data-selected-node-id','b');
+ await key(page,'[',0);expect(await hits(page)).toEqual(['A','B','C','D','X','Y','root']);
 });
