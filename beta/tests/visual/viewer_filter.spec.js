@@ -1,7 +1,8 @@
 const {test,expect}=require('@playwright/test');
 const {laneServer,surfaceAction,ready}=require('./lane_helpers');
-const {research,bar,chip,choose,domain,geometry,paint,laneSets,hitTargets,settled}=require('./viewer_filter_helpers');
+const {research,bar,chip,choose,domain,geometry,paint,laneSets,hitTargets,settled,trackMapSaves}=require('./viewer_filter_helpers');
 const open=laneServer(test);
+test.beforeEach(({page})=>{trackMapSaves(page);});
 const fixture=require('../fixtures/lane_asys_domains.json');
 const original=require('../fixtures/lane_asys.json');
 const links=Object.values(original.state.links);
@@ -24,8 +25,9 @@ for(const direction of ['down','right'])test(`Lane ${direction}: independent set
  await expect.poll(()=>page.locator('.node-shape[data-node-id="item_chats"]').evaluate(e=>Number(getComputedStyle(e).opacity))).toBeLessThan(1);
  await bar(page).getByRole('button',{name:'解除',exact:true}).click();
  await expect(page.locator('.viewer-filter-count')).toHaveCount(0);expect(await geometry(page)).toEqual(before);
- // Return selection to the original root before comparing selection-dependent opacity.
- await page.locator('#board').focus();await page.keyboard.press('k');await page.keyboard.press('k');
+ // Lane arrows follow drawn rows/columns; they do not select tree parents.
+ // Restore the original root selection before comparing selection-dependent opacity.
+ await page.locator('[data-lane-header][data-node-id="asys"]').click();
  await expect(page.locator('[data-lane-header][data-node-id="asys"]')).toHaveClass(/selected/);
  expect(await paint(page)).toEqual(basePaint);
  await choose(page,'実現段階','CURRENT');

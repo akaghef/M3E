@@ -7707,9 +7707,15 @@ function scheduleRender(): void {
     return;
   }
   _renderScheduled = true;
+  board.dataset.renderPending = "true";
   requestAnimationFrame(() => {
     _renderScheduled = false;
-    render();
+    try {
+      render();
+    } finally {
+      // Preserve pending state if this render queued another frame.
+      if (!_renderScheduled) delete board.dataset.renderPending;
+    }
   });
 }
 

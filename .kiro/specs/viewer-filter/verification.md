@@ -1,5 +1,67 @@
 # Phase 1–3 実装・検証記録
 
+## Director の trace 結果に基づく readiness 修復（2026-10-24）
+
+Director の診断では、Tree の revision は期待した2から3へ進んだが、記録されたのは全体 render の実行1件だけだった。trace 有効中の render 予約はなかった。stack は scheduleRender の requestAnimationFrame callback を示していた。つまり filter 選択より前に予約された描画が、選択操作中に完了した。filter が render を要求したのではなく、spec が予約済み描画の完了前に baseline を採取した競合である。このブラウザ観測は依頼元から提供された証拠であり、本 run の実測ではない。
+
+製品には読み取り専用の lifecycle 属性 `#board[data-render-pending="true"]` を追加した。scheduleRender が予約時に設定し、callback の render 完了後に finally で解除する。render が早期 return または例外で終了しても解除し、その render 中に次の frame を予約した場合は true を維持する。描画の予約・統合・実行順序は変更していない。
+
+`settled()` は pending render がないことも待ち、既存の900 ms静止期間の判定にも含める。mode 準備と各 revision baseline の採取前にも pending がないことを確認する。geometry、hit targets、revision、paint の filter 後の等値 assertion は変更していない。force simulation や camera を停止せず、保存・camera・geometry・revision の観測も維持する。
+
+前 run の修復も保持した。Lane は方向キーによる移動では root に戻る保証がないため、元の root heading を直接 click して選択を復元する。既存の selected、集合、件数、paint、geometry、保存期待値は維持する。保存開始・完了・失敗は navigation 前から追跡し、保存が発生しない経路も許容する。renderer の fixture と mode 準備は共通 helper に保持する。
+
+一時 trace hook と診断専用 spec は削除した。診断用ログの採取を完了扱いにせず、最終ブラウザ検証を Director に残す。既存 non-filter specs / baselines は未変更。
+
+本 run の実測: `build:test` / `build:browser` PASS、filter unit 4 files / 42 PASS、変更した JavaScript 4 files の syntax check PASS、`git diff --check` PASS。Playwright の test discovery は2 specs / 14 tests。viewer.ts は17,226行で、origin/dev-beta の17,287行を下回る。一時 trace hook は source / tests / 生成 browser bundle に残っていない。ログは `/tmp/viewer-filter-pending-{build-test,build-browser,unit}.log`。
+
+Playwright 結果: **未実行（Director 依頼）**。既知の sandbox による Chromium Mach port 登録拒否があり、本依頼は Director の最終ブラウザ run への準備を範囲とする。対象は `viewer_filter.spec.js` と `viewer_filter_renderers.spec.js`。修復後のブラウザ合格はまだ確認していない。
+
+commit は未作成。対象6 paths を明示した `git add` が `/Users/akaghef/dev/M3E/.git/worktrees/viewer-filter/index.lock: Operation not permitted` で失敗した。依頼どおり全変更を未commitで保持し、削除した未追跡の診断 spec は staging 対象に含めていない。
+
+Director 最終確認コマンド（worktree root から）:
+
+```sh
+export PATH="/opt/homebrew/bin:$PATH" M3E_AGENT_ICON_PYTHON=/usr/bin/python3
+npm --prefix beta run build:browser
+(cd beta && npx playwright test tests/visual/viewer_filter.spec.js tests/visual/viewer_filter_renderers.spec.js --workers=1)
+```
+
+## 2026-10-24 最新 merge 後の修復（未完了・ブラウザ起動制約）
+
+開始点は `85eeae2`（`944a9bd` を取り込んだ viewer-filter 枝）。本 run の目的は新規 visual の5失敗の修復であり、受け入れ条件の変更はない。
+
+### 原因の確認範囲と変更
+
+- Lane down / right: spec の `k` 2回は、`324fc8d` で親選択から Concreteness Axis 移動に変わった操作。現行 `ArrowLeft` → `selectParent()` に置換。root selected class、集合、件数、geometry、paint の全期待値は維持。ソースから確認した spec 修正であり、ブラウザでの修復確認は未実行。
+- Tree render revision: filter 経路と先行 autosave redraw の切り分けは未完了。推測による readiness 変更はしていない。
+- Timeline / Logic Chart camera readiness: ブラウザ起動前に阻害されたため原因未確定。camera 待機を削除せず、product / layout / force は変更していない。
+
+### 本 run の実測
+
+実行環境に依存パッケージがなかったため、最初の build:test は `tsc: command not found`。`npm --prefix beta ci --cache /tmp/viewer-filter-npm-cache` で lockfile 通り復元した。package / lockfile の変更なし。
+
+```sh
+export PATH="/opt/homebrew/bin:$PATH" M3E_AGENT_ICON_PYTHON=/usr/bin/python3
+npm --prefix beta run build:test
+npm --prefix beta run build:browser
+(cd beta && npx vitest run tests/unit/view_filter.test.ts tests/unit/viewer_filter_controller.test.ts tests/unit/viewer_filter_scene.test.ts tests/unit/viewer_filter_outline.test.ts)
+(cd beta && npx vitest run tests/unit/node_draw_contract.test.ts tests/unit/lane_view_projection.test.ts tests/unit/lane_scene.test.ts tests/unit/lane_view_controller.test.ts tests/unit/graph_link_attributes.test.ts tests/unit/graph_link_attributes_api.test.js tests/unit/webgl_scene_tiles.test.ts)
+(cd beta && npx playwright test tests/visual/viewer_filter.spec.js tests/visual/viewer_filter_renderers.spec.js --trace on --output /tmp/viewer-filter-before)
+node --check beta/tests/visual/viewer_filter.spec.js
+git diff --check
+```
+
+復元後の build:test / build:browser PASS。filter unit は outline を含む既存4 files / 42 PASS、既存回帰 unit は7 files / 54 PASS。修正後の JavaScript syntax / diff check PASS。
+
+Playwright 結果: **未実行（Director 依頼）**。上記2 specs の14件すべてが Chromium 起動時に失敗し、製品の assertion に到達していない。macOS の実エラーは `FATAL:base/apple/mach_port_rendezvous_mac.cc:155 ... bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer.<pid>: Permission denied (1100)`、終了 signal は SIGTRAP。localhost server の起動は成功しており、阻害点は networking ではなく Chromium の Mach port 登録。approval policy が never のため権限昇格は不可。
+
+起動不能が確定したため、修正後3反復・Tree/camera 診断 trace・tasks.md の既存 visual 11 specs は未実行。同じ起動失敗を製品回帰として集計しない。診断用一時 spec は削除済み。既存 spec / baseline / requirements は変更なし。
+依頼元 baseline は lane_view 3、lane_graphlink_layers 2、scatter_surface 2、incremental_edit 7、viewer.visual 12（計26失敗）。本 run では比較対象の assertion が動作していないため、同一失敗集合・新規失敗ゼロとは確認できない。
+
+ログ: `/tmp/viewer-filter-{build-test,build-browser,unit,regression-unit,before}.log`。起動失敗 trace: `/tmp/viewer-filter-before/`。viewer.ts は本 run 未変更、17,220行、`944a9bd` の17,287行に対し正味−67（追加34 / 削除101）。
+commit は未作成。明示した2 paths の `git add` が `/Users/akaghef/dev/M3E/.git/worktrees/viewer-filter/index.lock: Operation not permitted` で失敗したため、依頼通り未commitで残した。
+再開条件: Chromium の Mach port 登録を許可する実行環境。そこで上記2 filter specs と Tree/camera 診断を実行し、残原因を修正、修正した5件を3反復、tasks.md の既存 visual 11 specs を1回実行して失敗集合を比較する。現時点では5失敗の修復完了とは扱わない。
+
 ## 2026-10-20 追試（本セッションで実行）
 
 作業枝 `codex/viewer-filter`、開始 `eda1f4c`。Phase 4 は対象外。

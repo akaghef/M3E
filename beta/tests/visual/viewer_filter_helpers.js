@@ -11,29 +11,51 @@ async function laneSets(page,nodes,links){
  expect(actual).toEqual({nodes:[...nodes].sort(),links:[...links].sort()});
  await expect(page.locator('.viewer-filter-count')).toHaveText(`node ${nodes.size}/25 · GraphLink ${links.size}/82`);
 }
+// Install before navigation so saves already in flight at settled() are observed.
+const mapSaves=new WeakMap();
+function trackMapSaves(page){
+ if(mapSaves.has(page))return mapSaves.get(page);
+ const saves={pending:new Set(),activity:0};mapSaves.set(page,saves);
+ page.on('request',request=>{
+  if(request.method()==='POST'&&new URL(request.url()).pathname.startsWith('/api/maps/')){
+   saves.pending.add(request);saves.activity++;
+  }
+ });
+ const finished=request=>{if(saves.pending.delete(request))saves.activity++;};
+ page.on('requestfinished',finished);page.on('requestfailed',finished);
+ return saves;
+}
 async function settled(page){
+ const saves=trackMapSaves(page);
  await page.evaluate(()=>document.fonts.ready);
- const computing=await page.evaluate(()=>document.documentElement.dataset.surfaceViewMode==='scatter'&&window.disperseDiagnostics?.().snapshot?.status==='running');
- // The final force positions autosave, and its response schedules one redraw.
- // Finish that pre-filter operation before measuring filter-only work.
- const saved=computing?page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname.startsWith('/api/maps/')):null;
- // The shared force controller can have a pending final frame even when two
- // geometry samples agree. Observe completion without pausing the simulation.
+ // Observe the real force lifecycle without pausing it or requiring an autosave.
  await page.waitForFunction(()=>{
   if(document.documentElement.dataset.surfaceViewMode!=='scatter')return true;
   const force=window.disperseDiagnostics?.();
   return !force || (!force.pendingFrame && force.snapshot?.status!=='running');
  });
- if(saved){await (await saved).finished();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
- // A paused animation frame is not completion. Observe the motion lifecycle,
- // then verify stable geometry and the actual presentation camera below.
  await expect(page.locator('#board')).not.toHaveAttribute('data-camera-moving','true');
+ await expect(page.locator('#board')).not.toHaveAttribute('data-render-pending','true');
  // Hidden SVG hit rectangles have zero screen bounds in WebGL mode. Observe
  // the camera that actually presents the pixels before fixing a screenshot clip.
- const snapshot=async()=>({geometry:await geometry(page),camera:await page.evaluate(()=>window.__m3eWebGLProjection?.getDebugState()?.camera),screen:await page.locator('#canvas').evaluate(svg=>Array.from(svg.querySelectorAll('.node-hit')).map(e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height];}))});
- await expect.poll(async()=>{const a=await snapshot();await page.waitForTimeout(150);return JSON.stringify(a)===JSON.stringify(await snapshot());},{timeout:10000}).toBe(true);
+ // 900 ms covers the current 700 ms autosave debounce. Any save, revision,
+ // pending render, camera or geometry activity restarts the quiet period; no POST is required.
+ let previous=null,quietSince=0;
+ await expect.poll(async()=>{
+  const state=await page.evaluate(()=>{
+   const board=document.querySelector('#board'),force=window.disperseDiagnostics?.();
+   return {revision:board.dataset.renderRevision,renderPending:board.dataset.renderPending==='true',cameraMoving:board.dataset.cameraMoving==='true',
+    forceRunning:document.documentElement.dataset.surfaceViewMode==='scatter'&&Boolean(force?.pendingFrame||force?.snapshot?.status==='running'),
+    camera:window.__m3eWebGLProjection?.getDebugState()?.camera,
+    screen:Array.from(document.querySelectorAll('#canvas .node-hit')).map(e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height];})};
+  });
+  const sample=JSON.stringify({state,geometry:await geometry(page),saveActivity:saves.activity});
+  if(saves.pending.size||state.renderPending||state.forceRunning||state.cameraMoving){previous=null;quietSince=0;return false;}
+  if(sample!==previous){previous=sample;quietSince=Date.now();return false;}
+  return Date.now()-quietSince>=900;
+ },{timeout:10000,intervals:[50,100]}).toBe(true);
 }
-module.exports={research,bar,chip,choose,domain,geometry,paint,laneSets,settled};
+module.exports={research,bar,chip,choose,domain,geometry,paint,laneSets,settled,trackMapSaves};
 
 // Compare actual browser hit routing, including the transparent hit margin.
 async function hitTargets(page){return page.locator('#canvas').evaluate(svg=>Array.from(svg.querySelectorAll('.node-hit')).map(e=>{
