@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DerivedNodeCache, RetainedSvgScene } from "../../src/browser/incremental_scene";
+import { DerivedNodeCache, RetainedSvgScene, ScopeDerivedCache } from "../../src/browser/incremental_scene";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -42,4 +42,16 @@ describe("node derivations",()=>{
     cache.begin(true);
     expect(cache.get("a","after",()=>({w:50}))).toEqual({w:50});
   });
+});
+
+it("retains separate scope derivations across visits, with bounded eviction", () => {
+  const scopes = new ScopeDerivedCache(() => new DerivedNodeCache<number>(), 2);
+  const a = scopes.get("map:A"), b = scopes.get("map:B");
+  a.get("node", "before", () => 1); b.get("node", "before", () => 2);
+  expect(scopes.get("map:A")).toBe(a);
+  b.get("node", "after", () => 3);
+  expect(a.get("node", "before", () => { throw Error("unaffected scope recomputed"); })).toBe(1);
+  expect(scopes.get("other-map:A")).not.toBe(a);
+  expect(scopes.get("map:A")).toBe(a);
+  expect(scopes.get("map:B")).not.toBe(b);
 });

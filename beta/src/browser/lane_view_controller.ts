@@ -8,6 +8,7 @@ interface LaneBridge {
   scopeRoot(): string;
   view(): { surfaceViewMode: SurfaceKind; surfaceSpace: "tight" | "normal" | "loose"; surfaceLayoutDirection: string; collapsedIds: Set<string>; selectedNodeId: string };
   measure(id: string, root: string): LayoutNodeMetric;
+  cache(key: string, compute: () => LayoutResult): LayoutResult;
   render(): void;
   fit(): void;
   status(text: string): void;
@@ -75,8 +76,9 @@ export class LaneViewController {
         ...projection.lanes.map(l => [l.id, this.bridge.measure(l.id, rootId)]),
         ...projection.nodeIds.map(id => [id, this.bridge.measure(id, rootId)]),
       ]);
-      this.result = computeLaneLayout({ projection: { rootId, lanes: projection.lanes }, metrics,
-        direction: laneDirection(view.surfaceLayoutDirection), space: view.surfaceSpace });
+      const input = { projection: { rootId, lanes: projection.lanes }, metrics,
+        direction: laneDirection(view.surfaceLayoutDirection), space: view.surfaceSpace };
+      this.result = this.bridge.cache(JSON.stringify(input), () => computeLaneLayout(input));
       this.result.lane!.rootLabel = state.nodes[rootId].text || "名称未設定";
       this.result.lane!.hiddenCounts = projection.hiddenCounts;
       this.result.lane!.omittedLinkCount = projection.omittedLinkCount;

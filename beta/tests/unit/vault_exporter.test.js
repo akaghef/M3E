@@ -17,6 +17,36 @@ function writeFile(rootDir, relativePath, content) {
   fs.writeFileSync(absolutePath, content, "utf8");
 }
 
+test("selected ordinary subtree exports itself and collapsed descendants without siblings", async () => {
+  const dataDir = tmpDir();
+  const outVault = tmpDir();
+  try {
+    const model = new RapidMvpModel("Whole map");
+    const root = model.state.rootId;
+    const make = (id, parentId, text, children = []) => ({ id, parentId, text, children, nodeType: "text", collapsed: true, details: "", note: "", attributes: {}, link: "" });
+    model.state.nodes[root].children = ["selected", "sibling"];
+    model.state.nodes.selected = { ...make("selected", root, "Selected branch", ["child"]), details: "Selected details", note: "Selected note" };
+    model.state.nodes.child = make("child", "selected", "Hidden child", ["grandchild"]);
+    model.state.nodes.grandchild = make("grandchild", "child", "Hidden grandchild");
+    model.state.nodes.sibling = make("sibling", root, "Outside sibling");
+    const dbPath = path.join(dataDir, "subtree.sqlite");
+    model.saveToSqlite(dbPath, "subtree-export");
+    const result = await exportVaultFromSqlite(dbPath, { mapId: "subtree-export", vaultPath: outVault, nodeId: "selected", options: { skipAiTransform: true } });
+    expect(result.fileCount).toBe(1);
+    const body = fs.readFileSync(path.join(outVault, "Selected branch.md"), "utf8");
+    expect(body).toContain("# Selected branch");
+    expect(body).toContain("Selected details");
+    expect(body).toContain("Selected note");
+    expect(body).toContain("Hidden child");
+    expect(body).toContain("Hidden grandchild");
+    expect(body).not.toContain("Outside sibling");
+    expect(RapidMvpModel.loadFromSqlite(dbPath, "subtree-export").state.nodes.selected.parentId).toBe(root);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(outVault, { recursive: true, force: true });
+  }
+});
+
 test("exportVaultFromSqlite writes markdown files and preserves wikilinks", async () => {
   const sourceVault = tmpDir();
   const dataDir = tmpDir();

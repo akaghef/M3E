@@ -1,6 +1,7 @@
 import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
 import { viewerFilter } from "./viewer-filter-controller";
 import { filterSceneInput, ViewerFilterScene } from "./viewer-filter-scene";
+import { ConcretenessView, hasConcretenessData, concretenessSubtree, reconnectConcretenessCopies } from "../shared/concreteness_axis";
 import { EdgeGraphLinkSelectionAdapter } from "./edge_graphlink_selection_adapter";
 import { dispersePositionFrame, disperseGuideEndpoints } from "./disperse_frame";
 import type { ForceSnapshot } from "../shared/force_seam_interface";
@@ -54,7 +55,7 @@ import {
   type ScopeLockDrawState,
 } from "../shared/node_draw_port";
 import { renderNode as renderNodeSvg, nodeSelectionFrameRect } from "../shared/node_draw_svg";
-import { DerivedNodeCache, RetainedSvgScene } from "./incremental_scene";
+import { DerivedNodeCache, RetainedSvgScene, ScopeDerivedCache } from "./incremental_scene";
 import { FrameInvalidation } from "./frame_invalidation";
 import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./webgl_scene_tiles";
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
@@ -548,6 +549,8 @@ let lastServerSavedAt: string | null = null;
 let lastServerBaseState: AppState | null = null;
 
 interface UndoSnapshot {
+  concretenessLevel?: number;
+  scopeRootId?: string;
   state: AppState;
   collapsedIds?: string[];
   selectedNodeId: string;
@@ -584,10 +587,17 @@ const FIT_LABELS: Record<FitMode, string> = {
 let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
 const nodeDrawInputs = new Map<string, NodeDrawInput>();
 const nodeAuxMarkup = new Map<string, string>();
-const layoutMetricCache = new DerivedNodeCache<LayoutNodeMetric>();
+const scopeLayoutCaches = new ScopeDerivedCache(() => ({
+  metrics: new DerivedNodeCache<LayoutNodeMetric>(),
+  spans: new TreeSpanCache(),
+  previews: new DerivedNodeCache<FlowPreviewLayout | null>(),
+  result: new DerivedNodeCache<LayoutResult>(),
+}));
+let activeLayoutCache = scopeLayoutCaches.get("");
+let layoutMetricCache = activeLayoutCache.metrics;
 const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
 const edgeSvgCache = new DerivedNodeCache<string>();
-const treeSpanCache = new TreeSpanCache();
+let treeSpanCache = activeLayoutCache.spans;
 const retainedSvgScene = new RetainedSvgScene();
 const filterScene = new ViewerFilterScene();
 function applyViewFilter(): void {
@@ -697,6 +707,7 @@ let grabSession: {
   moved: boolean;
 } | null = null;
 let linearDirty = false;
+let linearDisplayedScopeId = "";
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
 let flowSurfaceDetailLevel = 0;
@@ -885,6 +896,7 @@ let viewState: ViewState = {
   currentScopeId: "",
   scopeHistory: [],
   currentScopeRootId: "",
+  concretenessLevel: 0,
   thinkingMode: "rapid",
   surfaceViewMode: "tree",
   surfaceSpace: "normal",
@@ -1042,7 +1054,7 @@ function syncThinkingModeUi(): void {
   const layoutSuffix = surfaceMode
     ? ` / ${surfaceSpaceLabel(viewState.surfaceSpace)} / ${surfaceLayoutDirectionLabel(viewState.surfaceLayoutDirection)}`
     : "";
-  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix}`;
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix} / level ${viewState.concretenessLevel}`;
   modeFlashBtn?.classList.toggle("is-active", mode === "flash");
   modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
@@ -2253,13 +2265,14 @@ async function runVaultImport(vaultPath: string): Promise<boolean> {
   return true;
 }
 
-async function runVaultExport(vaultPath: string): Promise<boolean> {
+async function runVaultExport(vaultPath: string, nodeId?: string): Promise<boolean> {
   const response = await fetch("/api/vault/export", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
       mapId: LOCAL_MAP_ID,
       vaultPath,
+      ...(nodeId ? { nodeId, concretenessLevel: viewState.concretenessLevel, options: { skipAiTransform: true } } : {}),
     }),
   });
   if (!response.ok) {
@@ -2652,6 +2665,7 @@ function sanitizeMapModelState(state: AppState): void {
 }
 
 function syncMapModelStateFromRuntime(): void {
+  if (viewState.concretenessLevel !== 0) return;
   if (!map) {
     return;
   }
@@ -3978,18 +3992,18 @@ function makeSelectedFolder(): boolean {
   }
   const node = getNode(viewState.selectedNodeId);
   if (isAliasNode(node)) {
-    setStatus("Alias nodes cannot become folders.", true);
+    setStatus("Alias nodes cannot become scopes.", true);
     return false;
   }
   pushUndoSnapshot();
   if (isFolderNode(node)) {
     node.nodeType = undefined;
     touchDocument();
-    setStatus(`Removed folder scope: ${uiLabel(node)}`);
+    setStatus(`Removed scope: ${uiLabel(node)}`);
   } else {
     node.nodeType = "folder";
     touchDocument();
-    setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+    setStatus(`Marked as scope: ${uiLabel(node)}`);
   }
   board.focus({ preventScroll: true });
   return true;
@@ -4223,6 +4237,66 @@ function nodeBadge(node: TreeNode): string {
   return aliasBadge(node);
 }
 
+let concretenessView: ConcretenessView | null = null;
+const concretenessFrames = new Map<number, { scope: string; selected: string; collapsed: string[]; mode: SurfaceViewMode }>();
+
+function canonicalMapState(): AppState {
+  if (!map) throw new Error("No map loaded.");
+  if (concretenessView?.state === map.state) return concretenessView.commit();
+  return map.state;
+}
+
+function prepareConcretenessView(): void {
+  if (!map || concretenessView?.state === map.state) return;
+  if (viewState.concretenessLevel !== 0 || hasConcretenessData(map.state)) {
+    concretenessView = new ConcretenessView(map.state, viewState.concretenessLevel);
+    map.state = concretenessView.state;
+  } else concretenessView = null;
+}
+
+function restoreConcretenessSnapshot(snapshot: UndoSnapshot): void {
+  viewState.concretenessLevel = snapshot.concretenessLevel || 0;
+  concretenessView = null;
+  map!.state = snapshot.state;
+  prepareConcretenessView();
+  viewState.currentScopeId = viewState.currentScopeRootId = map!.state.nodes[snapshot.scopeRootId || ""] ? snapshot.scopeRootId! : map!.state.rootId;
+  viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
+}
+
+function moveConcretenessLevel(delta: -1 | 1): void {
+  if (!map) return;
+  finishGrab(true);
+  const source = canonicalMapState();
+  const level = viewState.concretenessLevel + delta;
+  const next = new ConcretenessView(source, level);
+  // Do not scroll indefinitely through identical empty or fully expanded views.
+  const topology = (state: AppState): string => JSON.stringify(Object.values(state.nodes).map(n => [n.id, n.parentId, n.children, n.nodeType]));
+  if (topology(next.state) === topology(map.state) && ((delta < 0 && level < -1) || (delta > 0 && level > 0))) {
+    setStatus(delta < 0 ? "No further scopes to collapse. Create a scope at this level to continue." : "All scopes are expanded.");
+    return;
+  }
+  concretenessFrames.set(viewState.concretenessLevel, { scope: currentScopeRootId(), selected: viewState.selectedNodeId,
+    collapsed: [...viewState.collapsedIds], mode: viewState.surfaceViewMode });
+  const previousSelection = viewState.selectedNodeId;
+  const frame = concretenessFrames.get(level);
+  stopScatterAnimation(false); disperseForce.invalidate();
+  concretenessView = next; map.state = next.state; viewState.concretenessLevel = level;
+  viewState.surfaceViewMode = level === 0 ? frame?.mode || "tree" : "tree";
+  viewState.currentScopeId = viewState.currentScopeRootId = frame && next.state.nodes[frame.scope] ? frame.scope : next.state.rootId;
+  viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
+  let selected = frame?.selected || previousSelection;
+  while (!next.state.nodes[selected] && source.nodes[selected]?.parentId) selected = source.nodes[selected]!.parentId!;
+  if (!next.state.nodes[selected]) selected = next.state.rootId;
+  viewState.collapsedIds = new Set(frame?.collapsed || Object.values(next.state.nodes).filter(n => n.collapsed).map(n => n.id));
+  viewState.selectedNodeId = selected; viewState.selectedNodeIds = new Set([selected]); viewState.selectionAnchorId = null;
+  viewState.reparentSourceIds.clear(); viewState.linkSourceNodeId = ""; viewState.selectedLinkId = "";
+  resetFitCycle();
+  render(); fitDocument({ animate: false });
+  updateScopeInUrl(viewState.currentScopeRootId);
+  setStatus(`Concreteness level ${level} · j: inward · k: outward`);
+  board.focus({ preventScroll: true });
+}
+
 function cloneState(state: AppState): AppState {
   return JSON.parse(JSON.stringify(state)) as AppState;
 }
@@ -4232,7 +4306,8 @@ function pushUndoSnapshot(): void {
     return;
   }
   undoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
@@ -4251,7 +4326,8 @@ function undoLastChange(): void {
   }
 
   redoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
@@ -4263,7 +4339,7 @@ function undoLastChange(): void {
 
   const snapshot = undoStack.pop()!;
   stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
-  map.state = snapshot.state;
+  restoreConcretenessSnapshot(snapshot);
   if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const undoState = map.state;
   viewState.selectedNodeId = undoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : undoState.rootId;
@@ -4287,7 +4363,8 @@ function redoLastChange(): void {
   }
 
   undoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
     collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
@@ -4299,7 +4376,7 @@ function redoLastChange(): void {
 
   const snapshot = redoStack.pop()!;
   stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
-  map.state = snapshot.state;
+  restoreConcretenessSnapshot(snapshot);
   if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const redoState = map.state;
   viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
@@ -5546,7 +5623,35 @@ function reserveActiveNodeRightSpace(requiredWidth = 520): boolean {
 }
 
 window.addEventListener("m3e:prepare-progressive-navigation", () => {
+  cancelCameraMotion();
   reserveActiveNodeRightSpace();
+});
+
+window.addEventListener("m3e:query-node-pn-anchor", (event) => {
+  if (!webglRendererActive) {
+    // Selection classes are painted on the next frame. Resolve the current
+    // selection by identity so opening immediately after a click is stable.
+    const selector = `[data-node-id="${CSS.escape(viewState.selectedNodeId)}"]`;
+    const element = canvas.querySelector(`.label-node${selector}`)
+      || canvas.querySelector(`.node-visual-box${selector}`)
+      || canvas.querySelector(`.scatter-node-circle${selector}`)
+      || canvas.querySelector(`.node-hit${selector}`);
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      (event as CustomEvent).detail.rect = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+    }
+    return;
+  }
+  if (!webglCanvas) return;
+  const node = webglLastSnapshot?.nodes.find((entry) => entry.id === viewState.selectedNodeId);
+  if (!node) return;
+  const rect = webglCanvas.getBoundingClientRect();
+  (event as CustomEvent).detail.rect = {
+    x: rect.left + viewState.cameraX + node.x * viewState.zoom,
+    y: rect.top + viewState.cameraY + node.y * viewState.zoom,
+    w: node.width * viewState.zoom,
+    h: node.height * viewState.zoom,
+  };
 });
 
 function setZoom(
@@ -5692,6 +5797,15 @@ function currentFlowSurfaceDetailLevel(): number {
 }
 
 function buildFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewLayout | null {
+  if (!map || !node || !isFolderNode(node) || currentFlowSurfaceDetailLevel() <= 0) return null;
+  const key = JSON.stringify((node.children || []).map(id => {
+    const child = map!.state.nodes[id];
+    return child ? [id, uiLabel(child), child.text, child.nodeType, child.attributes] : [id];
+  }));
+  return activeLayoutCache.previews.get(node.id, key, () => computeFlowPreviewLayout(node));
+}
+
+function computeFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewLayout | null {
   if (!map || !node || !isFolderNode(node) || currentFlowSurfaceDetailLevel() <= 0) {
     return null;
   }
@@ -6868,13 +6982,16 @@ function syncLinearCaretToSelectedNode(): void {
   suppressLinearSelectionSync = false;
 }
 
-function renderLinearPanel(): void {
+function renderLinearPanel(action?: "load" | "reset"): void {
   if (linearPanelEl) {
     linearPanelEl.hidden = LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree";
   }
   if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     return;
   }
+  // Scene rendering and external updates may adjust visibility, but must never
+  // traverse the tree or rewrite the editor without an explicit panel action.
+  if (!action) return;
   if (!linearTextEl) {
     return;
   }
@@ -6890,16 +7007,17 @@ function renderLinearPanel(): void {
 
   const scopeRootId = currentLinearMemoScopeId();
   const templateText = buildLinearFromScope().text;
-  if (!(scopeRootId in linearNotesByScope)) {
+  if (action === "reset" || !(scopeRootId in linearNotesByScope)) {
     linearNotesByScope[scopeRootId] = templateText;
     syncLinearNotesToDocState();
   }
   const scopeMemo = linearNotesByScope[scopeRootId] || "";
   linearDirty = scopeMemo !== templateText;
 
-  if (document.activeElement !== linearTextEl) {
+  if (action === "reset" || linearDisplayedScopeId !== scopeRootId || document.activeElement !== linearTextEl) {
     linearTextEl.value = scopeMemo;
   }
+  linearDisplayedScopeId = scopeRootId;
   linearLineMap = [];
 
   const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
@@ -6907,7 +7025,7 @@ function renderLinearPanel(): void {
     linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
-  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = false;
 }
 
 function parseLinearText(text: string): LinearNodeDraft {
@@ -7022,6 +7140,10 @@ function reconcileLinearSubtree(nodeId: string, draft: LinearNodeDraft): void {
 
 function applyLinearTextToScope(): void {
   if (!map) {
+    return;
+  }
+  if (linearDisplayedScopeId !== currentLinearMemoScopeId()) {
+    renderLinearPanel("load");
     return;
   }
   try {
@@ -7411,7 +7533,8 @@ window.m3eLayout = (
 
 const laneView = new LaneViewController({
   state: () => map?.state ?? null, scopeRoot: currentScopeRootId, view: () => viewState,
-  measure: (id, root) => measureLayoutNode(map!.state, id, root, structuredLayoutConfig("tree")),
+  measure: (id, root) => cachedLayoutNode(map!.state, id, root, structuredLayoutConfig("tree")),
+  cache: (key, compute) => activeLayoutCache.result.get("layout", key, compute),
   render, fit: fitDocument, status: setStatus, apply: setSurfaceViewMode,
   undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
 });
@@ -7427,6 +7550,14 @@ const lineSelection = new EdgeGraphLinkSelectionAdapter({
   render: scheduleRender, status: setStatus, editing: () => viewerKeyboardMode() === "edit",
   owns: () => !grabSession && !viewState.panState && !viewState.pinchState && !linkPortDragState && !webglGraphLinkDragState && !viewState.dragState && !routingSwitcherOpen && !templateCompletionState && !entityListVisible && !conflictPanelVisible && !homeScreenVisible && !activeColorPalette && !linearAdjustMenuOpen,
 });
+
+function cachedLayoutNode(state: AppState, id: string, root: string, config: StructuredLayoutConfig): LayoutNodeMetric {
+  const node = state.nodes[id]!;
+  const key = JSON.stringify([uiLabel(node), node.text, isLatexNode(node), id === root,
+    visibleChildren(node).length === 0, explicitNodeLabelWidth(node), defaultWrapCharacters,
+    readAgentNode(node), config]);
+  return layoutMetricCache.get(id, key, () => measureLayoutNode(state, id, root, config));
+}
 
 function buildLayout(state: AppState): LayoutResult {
   if (viewState.surfaceViewMode === "lane") return laneView.layout();
@@ -7448,10 +7579,8 @@ function buildLayout(state: AppState): LayoutResult {
   collectVisible(displayRootId);
   const boxSizes: Record<string, LayoutNodeMetric> = {};
   Array.from(visibleNodeIds).forEach((nodeId) => {
-    const node = state.nodes[nodeId]!;
-    const config = structuredLayoutConfig(structuredMode);
-    const key = JSON.stringify([uiLabel(node), isLatexNode(node), nodeId === displayRootId, visibleChildren(node).length === 0, explicitNodeLabelWidth(node), defaultWrapCharacters, node.attributes?.["m3e:agent"], config]);
-    boxSizes[nodeId] = layoutMetricCache.get(nodeId, key, () => measureLayoutNode(state, nodeId, displayRootId, config));
+    if (mode === "system" && nodeId !== displayRootId) return;
+    boxSizes[nodeId] = cachedLayoutNode(state, nodeId, displayRootId, structuredLayoutConfig(structuredMode));
   });
   layoutMetricCache.retain(visibleNodeIds);
 
@@ -7502,9 +7631,10 @@ function buildLayout(state: AppState): LayoutResult {
     disperseForceSurface = surface;
     const hasSavedPositions = ids.every(id => Number.isFinite(surface?.nodeViews?.[id]?.x) && Number.isFinite(surface?.nodeViews?.[id]?.y));
     if (hasSavedPositions) disperseFitAfterSettle = false;
-    const changed = disperseForce.sync(key, { nodes, links }, viewState.collapsedIds, scatterAnimationEnabled && !isReadOnlyLink(), !hasSavedPositions && !dispersePauseOnRestore, { repulsion: scatterRepulsion / 100, length: scatterEdgeLength });
+    const changed = disperseForce.sync(key, { nodes, links }, new Set([...viewState.collapsedIds].filter(id => idSet.has(id))), scatterAnimationEnabled && !isReadOnlyLink(), !hasSavedPositions && !dispersePauseOnRestore, { repulsion: scatterRepulsion / 100, length: scatterEdgeLength });
     dispersePauseOnRestore = false;
     const snapshot = disperseForce.snapshot()!;
+    activeLayoutCache.result.computed = changed ? 1 : 0;
     if (changed) { disperseForceUndoPending = false; }
     const pos: LayoutResult["pos"] = {};
     for (const n of snapshot.nodes) {
@@ -7531,31 +7661,31 @@ function buildLayout(state: AppState): LayoutResult {
       visibleNodeIds.add(nodeId);
       const nodeStyles = effectiveNodeStyleAttrs(node);
       const label = diagramLabel(node, nodeStyles);
-      const baseMetric = isLatexNode(node)
-        ? measureLatex(node.text)
-        : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
       const previewLayout = buildFlowPreviewLayout(node);
-      boxSizes[nodeId] = previewLayout
-        ? {
-            w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
-            h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
-          }
-        : baseMetric;
+      const metricKey = JSON.stringify([label, isLatexNode(node), node.text, previewLayout?.totalWidth, previewLayout?.totalHeight]);
+      boxSizes[nodeId] = layoutMetricCache.get(nodeId, metricKey, () => {
+        const baseMetric = isLatexNode(node) ? measureLatex(node.text) : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
+        return previewLayout ? {
+          w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
+          h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
+        } : baseMetric;
+      });
       flowCells[nodeId] = { col: flowColOf(node, surfaceNodes.indexOf(nodeId)), row: flowRowOf(node, 0), isReference: isReferenceNode(node) };
     });
+    activeLayoutCache.previews.retain(new Set(surfaceNodes));
     options.flowCells = flowCells;
   }
 
-  return layoutPortLayout(
-    {
-      nodeIds: Array.from(visibleNodeIds),
-      childrenOf,
-      graphLinks,
-    },
-    boxSizes,
-    mode,
-    options,
-  );
+  // Compare only the visible layout inputs. Hidden scopes and unrelated links do
+  // not invalidate this result; aliases and System previews contribute metrics.
+  const nodeIds = Array.from(visibleNodeIds);
+  const localLinks = graphLinks.filter(link => visibleNodeIds.has(link.sourceNodeId) && visibleNodeIds.has(link.targetNodeId));
+  const { treeCache: _cache, ...layoutOptions } = options;
+  const key = JSON.stringify([mode, layoutOptions,
+    nodeIds.map(id => [id, childrenOf(id), boxSizes[id]]), localLinks]);
+  return activeLayoutCache.result.get("layout", key, () => layoutPortLayout(
+    { nodeIds, childrenOf, graphLinks: localLinks }, boxSizes, mode, options,
+  ));
 }
 
 function updateMapTitle(): void {
@@ -7665,6 +7795,14 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
+  prepareConcretenessView();
+  board.dataset.concretenessLevel = String(viewState.concretenessLevel);
+  activeLayoutCache = scopeLayoutCaches.get(JSON.stringify([LOCAL_MAP_ID, map?.state.rootId, currentScopeRootId(), viewState.surfaceViewMode, viewState.concretenessLevel]));
+  layoutMetricCache = activeLayoutCache.metrics;
+  treeSpanCache = activeLayoutCache.spans;
+  layoutMetricCache.begin();
+  activeLayoutCache.result.begin();
+  treeSpanCache.computed = 0;
   if (!laneView.prepare()) return;
   const scope = map ? normalizedCurrentScopeId() : "";
   if (scope !== fitCycleScope) {
@@ -7672,10 +7810,8 @@ function renderScene(incremental: boolean): void {
     fitCycleScope = scope;
   }
   renderRevision++;
-  layoutMetricCache.begin(!incremental);
   nodeSvgCache.begin(!incremental);
   edgeSvgCache.begin(!incremental);
-  if (!incremental) treeSpanCache.clear();
   incrementalProjection = incremental;
   renderedAgentNodeLod = agentNodeLod(viewState.zoom);
   updateModeBadge();
@@ -7714,7 +7850,7 @@ function renderScene(incremental: boolean): void {
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
-  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}`);
+  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}:${viewState.concretenessLevel}`);
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
     VIEWER_TUNING.layout.minCanvasHeight,
@@ -8367,7 +8503,7 @@ function renderScene(incremental: boolean): void {
   edgeSvgCache.retain(new Set(edgeParts.map(([id]) => id)));
   board.dataset.renderRevision = String(renderRevision);
   board.dataset.editWork = JSON.stringify({ incremental, measured: layoutMetricCache.computed,
-    branches: treeSpanCache.computed, nodes: nodeSvgCache.computed, edges: edgeSvgCache.computed, fragments: replaced });
+    layouts: activeLayoutCache.result.computed, branches: treeSpanCache.computed, nodes: nodeSvgCache.computed, edges: edgeSvgCache.computed, fragments: replaced });
   // Measure world geometry, including negative positions and curved paths.
   // A hidden SVG cannot be measured reliably; it is hidden again by the
   // projection before presentation, without changing saved node coordinates.
@@ -9359,8 +9495,8 @@ function escapeXmlAttr(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function downloadMm(): void {
-  const state = map!.state;
+function downloadMm(rootId?: string): void {
+  const state = stateForExport(rootId);
   const xml = treeToMm(state);
   const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -10191,11 +10327,11 @@ function getOwnedScopeLock(scopeId: string): ClientScopeLock | null {
   return lock;
 }
 
-function cloneNodeForCollab(nodeId: string): TreeNode | null {
+function cloneNodeForCollab(nodeId: string, source: AppState): TreeNode | null {
   if (!map) {
     return null;
   }
-  const node = map.state.nodes[nodeId];
+  const node = source.nodes[nodeId];
   if (!node) {
     return null;
   }
@@ -10211,6 +10347,7 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
   if (!map || !map.state.nodes[scopeId]) {
     return changes;
   }
+  const source = canonicalMapState();
   const stack = [scopeId];
   const seen = new Set<string>();
   while (stack.length > 0) {
@@ -10219,7 +10356,7 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
       continue;
     }
     seen.add(nodeId);
-    const snapshot = cloneNodeForCollab(nodeId);
+    const snapshot = cloneNodeForCollab(nodeId, source);
     if (!snapshot) {
       continue;
     }
@@ -10239,7 +10376,7 @@ async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
     return false;
   }
   const mapWithVersion = map as SavedMap & { mapVersion?: number };
-  const scopeId = currentScopeRootId();
+  const scopeId = viewState.concretenessLevel === 0 ? currentScopeRootId() : canonicalMapState().rootId;
   const lock = getOwnedScopeLock(scopeId);
   if (!lock) {
     return false;
@@ -12031,7 +12168,8 @@ function beginGrab(): void {
   cancelCameraMotion();
   grabSession = {
     map, sourceId: roots[0],
-    before: { state: cloneState(map.state), collapsedIds: Array.from(viewState.collapsedIds), selectedNodeId: viewState.selectedNodeId,
+    before: { state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(), collapsedIds: Array.from(viewState.collapsedIds), selectedNodeId: viewState.selectedNodeId,
       selectedNodeIds: Array.from(viewState.selectedNodeIds), selectionAnchorId: viewState.selectionAnchorId },
     collapsedIds: new Set(viewState.collapsedIds), pendingSave: autosaveTimer !== null, moved: false,
   };
@@ -12064,7 +12202,7 @@ function finishGrab(commit: boolean): void {
   syncViewerKeyboardMode();
   if (map !== grab.map) return;
   if (!commit) {
-    map.state = grab.before.state;
+    restoreConcretenessSnapshot(grab.before);
     viewState.collapsedIds = grab.collapsedIds;
     viewState.selectedNodeId = grab.before.selectedNodeId;
     viewState.selectedNodeIds = new Set(grab.before.selectedNodeIds);
@@ -12074,7 +12212,7 @@ function finishGrab(commit: boolean): void {
     setStatus("Grab canceled.");
     return;
   }
-  if (grab.moved && JSON.stringify(map.state) !== JSON.stringify(grab.before.state)) {
+  if (grab.moved && JSON.stringify(canonicalMapState()) !== JSON.stringify(grab.before.state)) {
     undoStack.push(grab.before);
     if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
     redoStack = [];
@@ -12499,18 +12637,68 @@ function toggleCollapse(): void {
   touchDocument();
 }
 
-function downloadJson(): void {
+function downloadJson(rootId?: string): void {
   commitDispersePositions();
-  const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state: map!.state }, null, 2)], {
+  const state = stateForExport(rootId);
+  const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state }, null, 2)], {
     type: "application/json;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "rapid-edited.json";
+  anchor.download = rootId ? `${exportFileName(state.nodes[state.rootId]!.text)}.json` : "rapid-edited.json";
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+function exportFileName(label: string): string {
+  return label.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim().substring(0, 100) || "export";
+}
+
+function stateForExport(rootId?: string): AppState {
+  if (!map) throw new Error("No map loaded.");
+  if (!rootId) return canonicalMapState();
+  if (!map.state.nodes[rootId]) throw new Error("Export node is no longer available.");
+  const state = concretenessSubtree(canonicalMapState(), map.state, rootId);
+  const included = new Set(Object.keys(state.nodes));
+  state.links = Object.fromEntries(Object.entries(state.links || {}).filter(([, link]) => included.has(link.sourceNodeId) && included.has(link.targetNodeId)));
+  state.scopes = Object.fromEntries(Object.entries(state.scopes || {}).filter(([, scope]) => scope.rootNodeIds.length > 0 && scope.rootNodeIds.every(id => included.has(id))));
+  for (const scope of Object.values(state.scopes)) {
+    scope.relationIds = scope.relationIds.filter(id => state.links![id]);
+  }
+  state.surfaces = Object.fromEntries(Object.entries(state.surfaces || {}).filter(([, surface]) => state.scopes![surface.scopeId]));
+  for (const surface of Object.values(state.surfaces)) {
+    surface.nodeViews = Object.fromEntries(Object.entries(surface.nodeViews || {}).filter(([id]) => included.has(id)));
+    if (surface.displayRootId && !included.has(surface.displayRootId)) delete surface.displayRootId;
+  }
+  state.annotations = Object.fromEntries(Object.entries(state.annotations || {}).filter(([, annotation]) => annotation.scopeId && included.has(annotation.scopeId)));
+  state.linearNotesByScope = Object.fromEntries(Object.entries(state.linearNotesByScope || {}).filter(([id]) => included.has(id)));
+  for (const node of Object.values(state.nodes)) {
+    if (node.scopeId && !state.scopes[node.scopeId]) delete node.scopeId;
+    if (node.nodeType === "alias" && node.targetNodeId && !included.has(node.targetNodeId)) node.isBroken = true;
+  }
+  return state;
+}
+
+window.addEventListener("m3e:export-subtree", (event) => {
+  const format = (event as CustomEvent).detail?.format;
+  const nodeId = viewState.selectedNodeId;
+  if (!map?.state.nodes[nodeId]) return;
+  if (format === "json") downloadJson(nodeId);
+  else if (format === "mm") downloadMm(nodeId);
+  else if (format === "vault") {
+    void (async () => {
+      try {
+        const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+        if (!vaultPath) return;
+        if (!await saveDocToLocalDb(false)) throw new Error("Save the current map before exporting to Vault.");
+        await runVaultExport(vaultPath, nodeId);
+      } catch (err) {
+        setStatus(`Vault export failed (${(err as Error).message}).`, true);
+      }
+    })();
+  }
+});
 
 function currentDocSnapshot(): SavedMap {
   syncLinearNotesToDocState();
@@ -12518,7 +12706,7 @@ function currentDocSnapshot(): SavedMap {
   return {
     version: 1,
     savedAt: nowIso(),
-    state: map!.state,
+    state: canonicalMapState(),
   };
 }
 
@@ -12931,7 +13119,7 @@ function broadcastState(): void {
   const msg: BcStateMessage = {
     type: "STATE_UPDATE",
     fromTabId: TAB_ID,
-    state: map.state,
+    state: canonicalMapState(),
     savedAt: lastServerSavedAt || "",
   };
   bc.postMessage(msg);
@@ -13416,6 +13604,7 @@ function loadPayload(payload: unknown): void {
   resetFitCycle();
   try {
     map = ensureDocShape(payload);
+    concretenessView = null; concretenessFrames.clear(); viewState.concretenessLevel = 0;
     lastServerSavedAt = map.savedAt || null;
     lastServerBaseState = cloneStateForSave(map.state);
     hydrateLinearNotesFromDocState();
@@ -14231,8 +14420,8 @@ function selectAllVisibleInScope(): void {
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
-function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
-  const node = getNode(nodeId);
+function toSubtreeSnapshot(nodeId: string, source = concretenessSubtree(canonicalMapState(), map!.state, nodeId)): SubtreeSnapshot {
+  const node = source.nodes[nodeId]!;
   return {
     id: node.id,
     nodeType: node.nodeType || "text",
@@ -14247,7 +14436,7 @@ function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
     access: node.nodeType === "alias" ? aliasAccess(node) : undefined,
     targetSnapshotLabel: node.targetSnapshotLabel || undefined,
     isBroken: node.nodeType === "alias" ? Boolean(node.isBroken) : undefined,
-    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId)),
+    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId, source)),
   };
 }
 
@@ -14271,8 +14460,9 @@ function collectInternalLinksForRoots(rootIds: string[]): GraphLink[] {
     return [];
   }
   const copiedNodeIds = new Set<string>();
-  rootIds.forEach((rootId) => collectSubtreeNodeIds(rootId, copiedNodeIds));
-  return Object.values(map.state.links || {})
+  const source = canonicalMapState();
+  rootIds.forEach(rootId => Object.keys(concretenessSubtree(source, map!.state, rootId).nodes).forEach(id => copiedNodeIds.add(id)));
+  return Object.values(source.links || {})
     .map((link) => normalizeGraphLink(link))
     .filter((link) => copiedNodeIds.has(link.sourceNodeId) && copiedNodeIds.has(link.targetNodeId))
     .map((link) => JSON.parse(JSON.stringify(link)) as GraphLink);
@@ -14329,10 +14519,14 @@ function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[]
     return;
   }
   pushUndoSnapshot();
+  map.state = canonicalMapState();
+  concretenessView = null;
+  const pastedRoots: string[] = [];
   const idMap = new Map<string, string>();
   let firstPastedId: string | null = null;
   snapshots.forEach((snapshot) => {
     const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot, idMap);
+    pastedRoots.push(pastedId);
     if (!firstPastedId) {
       firstPastedId = pastedId;
     }
@@ -14361,6 +14555,8 @@ function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[]
     });
     pastedLinks += 1;
   });
+  reconnectConcretenessCopies(map.state, idMap, pastedRoots, targetParentId, viewState.concretenessLevel);
+  prepareConcretenessView();
   if (firstPastedId) {
     setSingleSelection(firstPastedId, false);
   }
@@ -14996,7 +15192,7 @@ fileInput.addEventListener("change", (event: Event) => {
         linearNotesByScope[scopeRootId] = markdownToLinearText(text);
         syncLinearNotesToDocState();
         scheduleAutosave();
-        renderLinearPanel();
+        renderLinearPanel("load");
         setStatus(`Imported .md file to Linear Text: ${file.name}`);
         return;
       }
@@ -15014,6 +15210,7 @@ fileInput.addEventListener("change", (event: Event) => {
 
 linearMenuToggleBtn?.addEventListener("click", (event: MouseEvent) => {
   event.preventDefault();
+  renderLinearPanel("load");
   linearMenuVisible = true;
   linearAdjustMenuOpen = !linearAdjustMenuOpen;
   syncLinearAdjustMenuUi();
@@ -15035,11 +15232,13 @@ linearFontResetBtn?.addEventListener("click", (event: MouseEvent) => {
 });
 
 linearTextEl?.addEventListener("pointerdown", () => {
+  if (document.activeElement === linearTextEl) renderLinearPanel("load");
   linearMenuVisible = true;
   syncLinearAdjustMenuUi();
 });
 
 linearTextEl?.addEventListener("focus", () => {
+  renderLinearPanel("load");
   linearMenuVisible = true;
   syncLinearAdjustMenuUi();
 });
@@ -15049,6 +15248,10 @@ linearTextEl?.addEventListener("input", () => {
     return;
   }
   const scopeRootId = currentLinearMemoScopeId();
+  if (linearDisplayedScopeId !== scopeRootId) {
+    renderLinearPanel("load");
+    return;
+  }
   linearNotesByScope[scopeRootId] = linearTextEl.value;
   syncLinearNotesToDocState();
   scheduleAutosave();
@@ -15059,7 +15262,7 @@ linearTextEl?.addEventListener("input", () => {
     linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
   }
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
-  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = false;
 });
 
 linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -15071,11 +15274,22 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   }
   if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key === "Enter") {
     event.preventDefault();
+    if (linearDisplayedScopeId !== currentLinearMemoScopeId()) {
+      renderLinearPanel("load");
+      return;
+    }
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
     syncLinearNotesToDocState();
     scheduleAutosave();
     setStatus("Linear memo saved in current scope.");
     return;
+  }
+});
+
+linearPanelEl?.addEventListener("keydown", (event: KeyboardEvent) => {
+  // Keep native button activation inside the panel, away from map shortcuts.
+  if ((event.target as Element | null)?.closest("button") && (event.key === "Enter" || event.key === " ")) {
+    event.stopPropagation();
   }
 });
 
@@ -15139,8 +15353,8 @@ linearApplyBtn?.addEventListener("click", () => {
 });
 
 linearResetBtn?.addEventListener("click", () => {
-  linearDirty = false;
-  renderLinearPanel();
+  renderLinearPanel("reset");
+  scheduleAutosave();
   setStatus("Linear text reset to tree state.");
 });
 
@@ -16700,36 +16914,9 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && ["j", "k"].includes(event.key.toLowerCase())) {
     event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      flowSurfaceDetailLevel = Math.min(FLOW_SURFACE_PREVIEW_MAX_DETAIL, flowSurfaceDetailLevel + 1);
-      render();
-      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
-      return;
-    }
-    const selected = getNode(viewState.selectedNodeId);
-    if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
-      EnterScopeCommand(selected.id);
-      return;
-    }
-    selectChild();
-    return;
-  }
-
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      flowSurfaceDetailLevel = Math.max(0, flowSurfaceDetailLevel - 1);
-      render();
-      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
-      return;
-    }
-    if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
-      ExitScopeCommand();
-      return;
-    }
-    selectParent();
+    if (!event.repeat) moveConcretenessLevel(event.key.toLowerCase() === "j" ? 1 : -1);
     return;
   }
 

@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 631
+- Indexed files: 634
 
 ## Reading Routes
 
@@ -56,6 +56,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/Data_Model.md](<./03_Spec/Data_Model.md>) | Markdown | Data Model | この文書は、M3E の実体モデルに関する不変条件を定義する。 |
 | [03_Spec/Data_Runtime_Layout.md](<./03_Spec/Data_Runtime_Layout.md>) | Markdown | Data Runtime Layout | 永続データ実体。`data.sqlite` だけでなく backup, audit, cloud-sync, conflict-backups を含むフォルダ単位 |
 | [03_Spec/Federated_Semantic_Source.md](<./03_Spec/Federated_Semantic_Source.md>) | Markdown | Federated Semantic Source | 最終更新: 2026-07-19 |
+| [03_Spec/Flash_Generation_API.md](<./03_Spec/Flash_Generation_API.md>) | Markdown | Flash 生成とスコープ追加 API | 外部エージェントは、通常 Beta のローカル API に生成入力と配置先を渡す。 |
 | [03_Spec/home_scope_navigator.md](<./03_Spec/home_scope_navigator.md>) | Markdown | Home Screen / Scope Navigator -- Design Document | Date: 2025-04-09 |
 | [03_Spec/Home_Screen.md](<./03_Spec/Home_Screen.md>) | Markdown | Home Screen 仕様書 | 作成日: 2026-04-14 |
 | [03_Spec/Import_Export.md](<./03_Spec/Import_Export.md>) | Markdown | Import / Export 仕様 | > **MVP 対応状況を含む。** 未実装のものは「未実装」と明記する。 |
@@ -368,6 +369,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260914_ot_prompt_role_agent_node_orrery_force.md](<./ideas/260914_ot_prompt_role_agent_node_orrery_force.md>) | Markdown | OT prompt-roleとAgent nodeを先行吸収する実行設計 | > Status: idea / implementation-direction memo。Role canonの完成仕様ではない。 |
 | [ideas/260914_unified_work_graph_multi_pc_resource_ot.md](<./ideas/260914_unified_work_graph_multi_pc_resource_ot.md>) | Markdown | 一枚絵としてのM3E — 個人multi-PC、常駐host、Resource、OT統合 | > Status: idea / vision memo。決定・仕様ではない。 |
 | [ideas/261017_lane_view_graphlink_reification.md](<./ideas/261017_lane_view_graphlink_reification.md>) | Markdown | Lane view と GraphLink の関係の実体化 | 最終更新: 2026-10-17 |
+| [ideas/261021_external_scope_append_update_rate.md](<./ideas/261021_external_scope_append_update_rate.md>) | Markdown | 外部からのスコープ追加中に画面更新レートが低下した観察 | Basis: TOB-O |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
 | [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |
@@ -661,6 +663,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 
 | File | Type | Title | Summary |
 |---|---:|---|---|
+| [tasks/261020_disperse_force_promotion.md](<./tasks/261020_disperse_force_promotion.md>) | Markdown | Disperse 共通力学の通常 Beta 接続 | 2026-10-20。ユーザー指示: Labだけで終わらせず、通常Disperseで操作・保存・性能まで検証する。 |
 | [tasks/agent-node-map.md](<./tasks/agent-node-map.md>) | Markdown | Agent nodeを通常マップへ組み込む | 新規のM3EマップにAgent nodeを並べる。除外するのはAgent runtimeへの接続であり、既存M3Eの作成・保存・編集・Undo・再読み込みは使用する。専用preview URL、読み取り専用化、追加の操作バー、独立した... |
 | [tasks/grab_tree_move.md](<./tasks/grab_tree_move.md>) | Markdown | Grabによる部分木移動 | 状態: 実装・ローカル回帰完了。通常Betaの配信証拠は末尾の記録先を参照。 |
 | [tasks/handoff_20260604_1411_mapify-io-possibilities.md](<./tasks/handoff_20260604_1411_mapify-io-possibilities.md>) | Markdown | Handoff: Mapify I/O 機能の可能性 | 作成日時: 2026-06-04 14:11 JST |

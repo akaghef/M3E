@@ -61,3 +61,16 @@ export class DerivedNodeCache<T> {
     this.values.forEach((_value, id) => { if (!ids.has(id)) this.values.delete(id); });
   }
 }
+
+/** Bounded viewer-local cache: visiting another scope must not flush this scope. */
+export class ScopeDerivedCache<T> {
+  private entries = new Map<string, T>();
+  constructor(private create: () => T, private capacity = 32) {}
+  get(key: string): T {
+    const value = this.entries.get(key) ?? this.create();
+    this.entries.delete(key);
+    this.entries.set(key, value);
+    if (this.entries.size > this.capacity) this.entries.delete(this.entries.keys().next().value!);
+    return value;
+  }
+}

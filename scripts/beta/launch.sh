@@ -24,13 +24,6 @@ export M3E_DATA_DIR="${M3E_DATA_DIR:-$M3E_HOME/workspaces/$M3E_WORKSPACE_ID}"
 export M3E_DB_FILE="${M3E_DB_FILE:-data.sqlite}"
 export M3E_PORT="$PORT"
 LOG_FILE="$M3E_HOME/beta-launch.log"
-mkdir -p "$M3E_DATA_DIR" "$(dirname "$M3E_SEED_DB_PATH")"
-if [[ ! -f "$M3E_SEED_DB_PATH" && -f "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" ]]; then
-  cp "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" "$M3E_SEED_DB_PATH"
-fi
-if [[ ! -f "$M3E_DATA_DIR/$M3E_DB_FILE" && -f "$M3E_SEED_DB_PATH" ]]; then
-  cp "$M3E_SEED_DB_PATH" "$M3E_DATA_DIR/$M3E_DB_FILE"
-fi
 URL="http://localhost:${PORT}/viewer.html?ws=${M3E_WORKSPACE_ID}&map=${M3E_MAP_ID}"
 
 find_runtime() {
@@ -80,16 +73,66 @@ cleanup() {
 wait_for_server() {
   local attempt
   for attempt in {1..80}; do
-    if curl -fsS --max-time 2 "http://localhost:${PORT}/api/maps/${M3E_MAP_ID}" >/dev/null 2>&1; then
+    if [[ -z "${LAUNCHD_TARGET:-}" ]] && curl -fsS --max-time 2 "http://localhost:${PORT}/api/maps/${M3E_MAP_ID}" >/dev/null 2>&1; then
       return 0
     fi
-    if ! kill -0 "$APP_PID" 2>/dev/null; then
+    if [[ -n "${LAUNCHD_TARGET:-}" ]]; then
+      local job_pid listener_pids
+      job_pid="$(launchctl print "$LAUNCHD_TARGET" 2>/dev/null | awk '$1 == "pid" && $2 == "=" {print $3; exit}' || true)"
+      listener_pids="$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null | sort -u || true)"
+      if [[ "$job_pid" =~ ^[0-9]+$ && "$listener_pids" == "$job_pid" ]] &&
+        curl -fsS --max-time 2 "http://localhost:${PORT}/api/maps/${M3E_MAP_ID}" >/dev/null 2>&1; then
+        return 0
+      fi
+    elif ! kill -0 "$APP_PID" 2>/dev/null; then
       return 1
     fi
     sleep 0.25
   done
   return 1
 }
+
+# Only restart the loaded job when it owns this checkout and port.
+restart_launchd() {
+  [[ "$(uname -s)" == "Darwin" ]] || return 0
+  local target info job_dir job_port expected_dir stderr_path
+  target="gui/$(id -u)/${M3E_BETA_LAUNCHD_LABEL:-com.m3e.beta-nosync}"
+  if ! info="$(launchctl print "$target" 2>/dev/null)"; then
+    return 0
+  fi
+  job_port="$(printf '%s\n' "$info" | awk '$1 == "M3E_PORT" && $2 == "=>" {print $3; exit}')"
+  [[ "$job_port" == "$PORT" ]] || return 0
+  job_dir="$(printf '%s\n' "$info" | sed -n 's/^[[:space:]]*working directory = //p')"
+  expected_dir="$(cd "$ROOT_DIR/beta" && pwd -P)"
+  if [[ -z "$job_dir" || "$(cd "$job_dir" 2>/dev/null && pwd -P)" != "$expected_dir" ]]; then
+    echo "[ERROR] launchd job $target owns port $PORT from checkout: ${job_dir:-unknown WorkingDirectory}; requested: $expected_dir. Nothing has been stopped." >&2
+    exit 1
+  fi
+  LAUNCHD_TARGET="$target"
+  stderr_path="$(printf '%s\n' "$info" | sed -n 's/^[[:space:]]*stderr path = //p')"
+  if ! launchctl kickstart -k "$target" || ! wait_for_server; then
+    echo "[ERROR] launchd server did not become ready with its own listener on port $PORT." >&2
+    echo "[ERROR] See ${stderr_path:-the job StandardErrorPath in its launchd plist}" >&2
+    exit 1
+  fi
+  if command -v open >/dev/null 2>&1; then
+    open "$URL"
+  else
+    echo "Open $URL in your browser."
+  fi
+  exit 0
+}
+
+LAUNCHD_TARGET=""
+restart_launchd
+
+mkdir -p "$M3E_DATA_DIR" "$(dirname "$M3E_SEED_DB_PATH")"
+if [[ ! -f "$M3E_SEED_DB_PATH" && -f "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" ]]; then
+  cp "$ROOT_DIR/install/assets/seeds/core-seed.sqlite" "$M3E_SEED_DB_PATH"
+fi
+if [[ ! -f "$M3E_DATA_DIR/$M3E_DB_FILE" && -f "$M3E_SEED_DB_PATH" ]]; then
+  cp "$M3E_SEED_DB_PATH" "$M3E_DATA_DIR/$M3E_DB_FILE"
+fi
 
 find_runtime
 

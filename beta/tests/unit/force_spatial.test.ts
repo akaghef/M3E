@@ -79,3 +79,23 @@ test('save coordinates include hidden descendants translated with the collapsed 
   expect(sim.positions().find(n => n.id === 'b')).toMatchObject({x:140,y:100});
   sim.setCollapsed('a',false); expect(sim.snapshot().nodes.find(n => n.id === 'b')).toMatchObject({x:140,y:100});
 });
+
+test("flat constraint passes retain pin positions and resolve moving collision candidates", () => {
+  const nodes = Array.from({ length: 32 }, (_, i) => ({
+    id: `flat${i}`, label: `Flat ${i}`, x: (i % 8) * 70, y: Math.floor(i / 8) * 35,
+    w: 100, h: 40, pinned: i === 0,
+  }));
+  const original = structuredClone(nodes);
+  const sim = createOtForce({ nodes, links: [] });
+  let result = sim.snapshot();
+  for (let i = 0; i < 240 && result.status === "running"; i++) result = sim.step();
+  expect(result.nodes[0]).toMatchObject({ x: 0, y: 0, pinned: true });
+  expect(result.violations).toBe(0);
+  expect(result.status).not.toBe("blocked");
+  for (let i = 0; i < result.nodes.length; i++) for (let j = i + 1; j < result.nodes.length; j++) {
+    const a = result.nodes[i], b = result.nodes[j];
+    expect(Math.abs(a.x - b.x) >= (a.w + b.w) / 2 + 16 - 1e-4 ||
+      Math.abs(a.y - b.y) >= (a.h + b.h) / 2 + 16 - 1e-4).toBe(true);
+  }
+  expect(nodes).toEqual(original);
+});

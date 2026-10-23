@@ -255,6 +255,8 @@ export interface VaultExportOptions {
 }
 
 export interface VaultExportRequest {
+  /** View selection for subtree output; not part of persisted map storage. */
+  concretenessLevel?: number;
   mapId: string;
   vaultPath: string;
   nodeId?: string;

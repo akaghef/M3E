@@ -175,6 +175,7 @@
                 <button id="linear-font-dec" type="button" aria-label="Decrease linear text font">A-</button>
                 <button id="linear-font-inc" type="button" aria-label="Increase linear text font">A+</button>
                 <button id="linear-font-reset" type="button" aria-label="Reset linear text font">Reset</button>
+                <button id="linear-reset" type="button">Load from tree</button>
               </div>
             </div>
             <textarea
@@ -182,6 +183,7 @@
               class="linear-text"
               spellcheck="false"
               aria-label="Linear text mapped from current tree scope"
+              placeholder="Focus here to load this scope's memo"
             ></textarea>
             <div id="linear-resize-handle" class="linear-resize-handle" aria-hidden="true"></div>
           </aside>
@@ -319,8 +321,8 @@
               <div class="cheatsheet-row"><kbd>↑↓←→</kbd><span>Move selection</span></div>
               <div class="cheatsheet-row"><kbd>[</kbd> / <kbd>]</kbd><span>Exit / enter scope</span></div>
               <div class="cheatsheet-row"><kbd>Shift+↑↓</kbd><span>Extend selection</span></div>
-              <div class="cheatsheet-row"><kbd>J</kbd><span>Tree: deeper / Flow LR: more detail</span></div>
-              <div class="cheatsheet-row"><kbd>K</kbd><span>Tree: shallower / Flow LR: less detail</span></div>
+              <div class="cheatsheet-row"><kbd>J</kbd><span>Concreteness: inward (level +1)</span></div>
+              <div class="cheatsheet-row"><kbd>K</kbd><span>Concreteness: outward (level −1)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+H</kbd><span>Open Home (map list)</span></div>
               <div class="cheatsheet-row"><kbd>Alt+S</kbd><span>Scope navigator</span></div>
               <div class="cheatsheet-row"><kbd>Alt+E</kbd><span>Entity list panel</span></div>

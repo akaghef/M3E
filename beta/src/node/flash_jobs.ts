@@ -50,6 +50,22 @@ export class FlashJobs {
   }
   private view(j: Job): RecordValue { return { ok: true, job_id: j.id, state: j.state, created_at: j.created_at, target: j.target, ...(j.result ? { result: j.result } : {}), ...(j.error ? { error: j.error } : {}) }; }
   get(id: string): RecordValue { return this.view(this.read(id)); }
+  /** Retry only an already-generated result; never submit a second provider job. */
+  async retryImport(id: string): Promise<RecordValue> {
+    const job = this.read(id);
+    if (job.state === "succeeded" || job.state === "processing") return this.view(job);
+    if (!job.provider_job_id) throw new Error("No generated provider result");
+    const status = await this.provider.call(`/v1/jobs/${encodeURIComponent(job.provider_job_id)}`);
+    if (status.state !== "succeeded") throw new Error("Provider generation has not succeeded; import retry cannot regenerate");
+    const target = this.mcp.call("m3e_get", { kind: "state", target: job.target, limit: 1 });
+    if (!target.ok || target.nodes?.[0]?.node_type === "alias") throw new Error("Destination no longer available");
+    // A concurrent retry may have started or completed while provider status was read.
+    const current = this.read(id);
+    if (current.state === "succeeded" || current.state === "processing") return this.view(current);
+    current.state = "processing"; current.deadline = Date.now() + 35 * 60_000;
+    delete current.error; this.save(current); void this.run(current);
+    return this.view(current);
+  }
   submit(body: RecordValue): RecordValue {
     if (!body || typeof body !== "object" || Object.keys(body).some(k => !["request_id", "target", "source", "language", "instruction", "title"].includes(k))) throw new Error("Invalid job request");
     if (typeof body.request_id !== "string" || !body.request_id.trim() || body.request_id.length > 200 || typeof body.target !== "string") throw new Error("request_id and target are required");

@@ -1,6 +1,7 @@
 "use strict";
 
 import fs from "fs";
+import { concretenessSubtree, projectConcreteness } from "../shared/concreteness_axis";
 import path from "path";
 import { runLinearTransform } from "./linear_agent";
 import { buildSubtreeOutline } from "./indented_text_parser";
@@ -177,13 +178,29 @@ export async function exportVaultFromAppState(
 ): Promise<VaultExportResult> {
   const outputRoot = validateVaultPath(request.vaultPath, { mustExist: false, allowCreate: true });
 
+  if (request.nodeId && request.concretenessLevel !== undefined && request.concretenessLevel !== 0) {
+    const level = request.concretenessLevel;
+    // Every reachable level needs either a source scope or an edited boundary.
+    const bound = Object.values(state.nodes).reduce((n, node) => n + 1 + Object.keys(node.attributes || {}).length, 1);
+    if (!Number.isSafeInteger(level) || Math.abs(level) > bound) throw new Error("Invalid concreteness level.");
+    const displayed = projectConcreteness(state, level);
+    if (!displayed.nodes[request.nodeId]) throw new Error("Export node is not present at this level.");
+    state = concretenessSubtree(state, displayed, request.nodeId);
+  }
   const exportRootId = request.nodeId || state.rootId;
   const exportRoot = state.nodes[exportRootId];
   if (!exportRoot) {
     throw new Error(`Export root not found: ${exportRootId}`);
   }
 
-  const exportPlan = buildExportPlan(state, exportRootId);
+  const exportPlan = request.nodeId && !isVaultFolder(exportRoot)
+    ? { folders: [], files: [{ nodeId: exportRootId, relativePath: `${sanitizeSegment(exportRoot.text)}.md` }] }
+    : buildExportPlan(state, exportRootId);
+  // A selected ordinary subtree is one Markdown file. Keep the existing
+  // multi-file plan for a Vault folder, and include a selected Vault file itself.
+  if (request.nodeId && exportPlan.files.length === 0) {
+    exportPlan.files.push({ nodeId: exportRootId, relativePath: `${sanitizeSegment(exportRoot.text)}.md` });
+  }
   hooks?.onProgress?.({
     phase: "analysis",
     total: exportPlan.files.length,
@@ -208,7 +225,11 @@ export async function exportVaultFromAppState(
       status: "ok",
     });
 
-    const body = await renderFileBody(state, node, request);
+    const rendered = await renderFileBody(state, node, request);
+    const ordinarySubtree = request.nodeId === node.id && !isVaultFile(node);
+    const body = ordinarySubtree
+      ? [`# ${node.text}`, node.details, node.note ? `> ${node.note.replace(/\n/g, "\n> ")}` : "", node.children.some(id => state.nodes[id]?.nodeType !== "alias") ? rendered : ""].filter(Boolean).join("\n\n")
+      : rendered;
     const wikilinks = collectAliasWikilinks(state, node, exportPlan);
     const frontmatter = attributeFrontmatter(node);
     const parts: string[] = [];

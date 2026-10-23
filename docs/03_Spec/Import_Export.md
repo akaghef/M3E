@@ -17,6 +17,16 @@ Git / Obsidian / external provider を canonical source として接続する場
 
 ## フォーマット一覧
 
+### Node Progressive Navigation の部分木出力
+
+選択 node の「出力」から、Surface Progressive Navigation と同じ JSON / `.mm` / Vault の書き出しを使う。
+対象は選択 node 自身と全子孫で、折り畳み・scope 境界で打ち切らない。元の map の親子構造は変更しない。
+
+- JSON は選択 node を親なしの root とし、内部 GraphLink と対象内の scope / surface / 注釈 / linear note を保持する。範囲外の node と GraphLink は含めず、外部 alias は参照先 ID を保った broken 状態で出力する。
+- `.mm` は既存の FreeMind / Freeplane 変換を使う。alias と GraphLink は既存変換の対象外。
+- Vault は現在の編集を保存してから選択 node を既存 exporter に渡す。通常の部分木は Markdown 一つ、Vault folder は既存のフォルダー・ファイル構造で出力する。部分木出力では AI による本文の書き換えを行わない。
+- JSON / `.mm` のファイル名は選択 node の表示名から生成する。
+
 | フォーマット | Import | Export | 状態 |
 |-------------|--------|--------|------|
 | M3E SavedDoc JSON | ✅ | ✅ | 実装済み |
