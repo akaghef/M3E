@@ -17,7 +17,7 @@ export type TargetResult = { kind: 'selected'; ref: Ref } | { kind: 'none'; reas
 export type KeyInput = Readonly<{ key: string; shift: boolean; alt: boolean; ctrl: boolean; meta: boolean; repeat: boolean; composing: boolean; textEditing: boolean; boardOwnsInput: boolean }>;
 export type SelectionReason = Extract<TargetResult, {kind:'none'}>['reason'] | 'origin-unavailable';
 export type SelectionResult = { kind: 'pass' } | { kind: 'consume'; next: Selection | null; reason?: SelectionReason };
-export type Highlight = Readonly<{ nodeIds: readonly string[]; presentation: Presentation | null }>;
+export type Highlight = Readonly<{ nodeIds: readonly string[]; presentation: Presentation | null; guide: ParentChildEdgeRef | null }>;
 const lexical = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 export function refKey(ref: Ref): string {
   return ref.kind === 'parent-child' ? JSON.stringify([0, ref.parentNodeId, ref.childNodeId]) : JSON.stringify([1, ref.renderKey, [...ref.linkIds].sort(lexical)]);
@@ -89,7 +89,8 @@ export function reconcileSelection(selection: Selection, topology: Topology, lin
 }
 export function selectionHighlight(selection: Selection, scene: Scene): Highlight {
   const item=presented(selection,scene);
-  return item?{nodeIds:[item.source.renderedNodeId,item.target.renderedNodeId],presentation:item.presentation}:{nodeIds:[],presentation:null};
+  return item?{nodeIds:[item.source.renderedNodeId,item.target.renderedNodeId],presentation:item.presentation,
+    guide:item.ref.kind==='parent-child'&&item.presentation.kind==='group-frame'?item.ref:null}:{nodeIds:[],presentation:null,guide:null};
 }
 export function selectionTransition({selection,key,topology,scene,scopeRootId}: Readonly<{selection:Selection;key:KeyInput;topology:Topology;scene:Scene;scopeRootId:string}>): SelectionResult {
   if(key.textEditing || key.composing || !key.boardOwnsInput) return {kind:'pass'};

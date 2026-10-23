@@ -64,8 +64,25 @@ describe('endpoint axis and state transitions',()=>{
   expect(reconcileSelection(selected,topology,links,scene([],{visibleNodeIds:['root']}),'root')).toEqual({kind:'node',nodeId:'root'});
   const edge=item('c','a','c',10,0,'parent-child');expect(reconcileSelection({...edge.ref,originNodeId:'a'},topology,{},scene([edge]),'root')).toEqual({...edge.ref,originNodeId:'a'});
  });
+ it('DC40 plans only the selected group-frame parent-child guide without adding a cycle candidate',()=>{
+  const first={...item('first','a','c',20,10,'parent-child'),presentation:{kind:'group-frame' as const,renderKey:'a',ownerNodeId:'a',labelAnchor:{x:20,y:10}}};
+  const sibling={...item('sibling','a','d',30,20,'parent-child'),presentation:first.presentation};
+  const graph=item('g'),s=scene([first,sibling,graph]);
+  expect(selectionHighlight(origin,s).guide).toBeNull();
+  for(const edge of [first,sibling]) {
+   expect(selectionHighlight({...edge.ref,originNodeId:'a'},s)).toEqual({nodeIds:[edge.source.renderedNodeId,edge.target.renderedNodeId],presentation:edge.presentation,guide:edge.ref});
+   expect(enumerateDrawn('a',topology,s)).toEqual([graph]);
+  }
+  expect(selectionHighlight({...first.ref,originNodeId:'c'},s).guide).toEqual(first.ref);
+  expect(selectionHighlight({...first.ref,originNodeId:'a'},scene()).guide).toBeNull();
+  for(const kind of ['line','lane-band'] as const) {
+   const edge={...first,presentation:{...first.presentation,kind}};
+   expect(selectionHighlight({...edge.ref,originNodeId:'a'},scene([edge])).guide).toBeNull();
+  }
+  expect(selectionHighlight({...graph.ref,originNodeId:'a'},s).guide).toBeNull();
+ });
  it('plans both ends and presentation, separate from node selection',()=>{
-  const i=item('g');expect(selectionHighlight({...i.ref,originNodeId:'a'},scene([i]))).toEqual({nodeIds:['a','b'],presentation:i.presentation});expect(selectionHighlight(origin,scene([i]))).toEqual({nodeIds:[],presentation:null});
+  const i=item('g');expect(selectionHighlight({...i.ref,originNodeId:'a'},scene([i]))).toEqual({nodeIds:['a','b'],presentation:i.presentation,guide:null});expect(selectionHighlight(origin,scene([i]))).toEqual({nodeIds:[],presentation:null,guide:null});
  });
 });
 describe('status and selection-only editing refusal',()=>{

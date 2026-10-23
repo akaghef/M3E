@@ -204,7 +204,7 @@ A/B（PR7）が依存するのは PR2 の妥当な性能計測経路だけであ
 | 項目 | 内容 |
 |---|---|
 | 前提 | PR9 |
-| 守る挙動 | SVG/WebGL/default、layout/edge/GraphLink、node種類、folder preview、annotations、LOD、selection、cache invalidation、SSE更新、fallback、fit target と scene revision |
+| 守る挙動 | SVG/WebGL/default、layout/Connection、node種類、folder preview、annotations、LOD、selection、cache invalidation、SSE更新、fallback、fit target と scene revision |
 | 最小検証 | 共通検証、`npm --prefix beta run test:edge-port` / `test:layout` / `test:node`。`cd beta` で `npx playwright test tests/visual/incremental_edit.spec.js tests/visual/render_updates.spec.js tests/visual/render_interaction_updates.spec.js tests/visual/webgl_projection.spec.js tests/visual/layout_integrity.spec.js tests/visual/viewer_surface_edge_paths.spec.js` |
 | ゲート目標 | viewer500行以上・let8以上減少。旧renderScene CCN 46 / 686行を撤去し、新規pipeline/handlerは20/100以内。GraphLink描画のCCN 88の入れ子も改善対象。source copyによる二重本体0 |
 | 性能 | 必須。共通前後比較、geometry upload、描画更新/idle、通常Beta元操作 |

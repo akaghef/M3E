@@ -36,7 +36,7 @@ M3E 上で **semantic tree**（意味の木）と **syntax tree**（構文の木
 
 | # | 目標 | 完了の定義（成功基準） | 担当 |
 |---|---|---|---|
-| G1 | **Edge protocol を最小実装する** — 親子 edge と GraphLink の両方に kind を載せる共通プロトコル | `relationType` kind 語彙 (uses / generalizes / dual / example_of / motivates / contradicts / see_also...) が beta で型として定義され、kind 別描画が viewer で可視化される | Claude（plan.md Phase 0-1） |
+| G1 | **Edge protocol を最小実装する** — Connection に kind を載せる共通プロトコル | `relationType` kind 語彙 (uses / generalizes / dual / example_of / motivates / contradicts / see_also...) が beta で型として定義され、kind 別描画が viewer で可視化される | Claude（plan.md Phase 0-1） |
 | G2 | **Syntax tree（Blueprint）取込のインターフェースを設計する** | mathlib4 Blueprint `dep_graph.json` を M3E ノード/リンクに変換する I/F が設計され、Codex に委任可能な仕様書として確定 | Claude 設計 / Codex 実装 |
 | G3 | **既存考察を設計判断に統合する** | `prior_art.md` に集約した typed_edges / ontology 議論が、G1 の語彙選定と G2 の I/F 設計に明示的に反映される | Claude |
 | G4 | **Deep 帯域の表現力が dogfood 可能になる** | PJ02 自体（および M3E 上の他の研究）で、edge kind を使い分けた semantic graph 編集が日常運用に乗る | akaghef + Claude |

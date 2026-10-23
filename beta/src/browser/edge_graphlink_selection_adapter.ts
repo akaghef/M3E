@@ -1,5 +1,6 @@
 import type { AppState, GraphLink } from '../shared/types';
 import type { LayoutResult } from '../shared/layout_port';
+import { disperseGuideEndpoints } from './disperse_frame';
 import { editIntent, labelChange, type EditableRef, type EditIntent } from '../shared/edge_graphlink_edit';
 import { formatStatus, presented, reconcileSelection, selectionHighlight, selectionReason, selectionTransition,
   type Endpoint, type KeyInput, type NotDrawnReason, type Point, type Presented, type Scene, type Selection } from '../shared/edge_graphlink_selection';
@@ -202,8 +203,22 @@ export class EdgeGraphLinkSelectionAdapter {
   }
   paint():void {
     const canvas=this.bridge.canvas;
+    canvas.querySelectorAll('.scatter-guide').forEach(el=>el.remove());
     canvas.querySelectorAll('.relation-endpoint, .relation-selected').forEach(el=>el.classList.remove('relation-endpoint','relation-selected'));
     const selection=this.current(),highlight=selectionHighlight(selection,this.scene());
+    if(highlight.guide) {
+      const {parentNodeId,childNodeId}=highlight.guide;
+      const parent=this.layout?.pos[parentNodeId],child=this.layout?.pos[childNodeId];
+      const layer=canvas.querySelector('[data-render-key="guides"]');
+      if(parent&&child&&layer) {
+        const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+        const {x1,y1,x2,y2}=disperseGuideEndpoints(parent,child);
+        line.setAttribute('class','scatter-guide');
+        line.dataset.parentNodeId=parentNodeId;line.dataset.childNodeId=childNodeId;
+        for(const [key,value] of Object.entries({x1,y1,x2,y2}))line.setAttribute(key,String(value));
+        layer.append(line);
+      }
+    }
     for(const id of highlight.nodeIds) {
       canvas.querySelectorAll(`[data-node-id="${CSS.escape(id)}"]`).forEach(el=>el.classList.add('relation-endpoint'));
     }

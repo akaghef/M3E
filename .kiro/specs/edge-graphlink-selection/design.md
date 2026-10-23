@@ -2,7 +2,7 @@
 
 ## Overview
 
-全 Surface View の親子 edge / GraphLink 選択を、描画 snapshot を入力にする pure function と既存 viewer の接続アダプターで実現する。L1 / DC35–DC38 を固定し、L2 / L3 / L4 は requirements.md の提案群として独立してレビューする。OP40 / OP41（承認済み 2026-10-20）を採用し、IS111 / IS112は解決済み。完了対象は実装済みのTree / Axial / Disperse / System / Lane down/right。IS113のRadialとIS114の描画driftは別作業へ引き継ぐ。
+全 Surface View の Connection 選択を、描画 snapshot を入力にする pure function と既存 viewer の接続アダプターで実現する。L1 / DC35–DC38 を固定し、L2 / L3 / L4 は requirements.md の提案群として独立してレビューする。OP40 / OP41（承認済み 2026-10-20）を採用し、IS111 / IS112は解決済み。完了対象は実装済みのTree / Axial / Disperse / System / Lane down/right。IS110 / IS114 は DC39 / DC40（2026-10-24 akaghef）で解決済み。IS113のRadialは別作業へ引き継ぐ。
 
 ### Goals / Non-Goals
 
@@ -12,11 +12,11 @@
 
 ### This Spec Owns
 
-選択の一時状態、キーから選択・編集要求への純粋な変換、描画された対象の snapshot 契約、強調と label editor の表示アダプター、既存 mutation 経路への接続、受入確認を所有する。実装上の union 型名はコード識別子であり、新しい製品用語ではない（IS110）。
+選択の一時状態、キーから選択・編集要求への純粋な変換、描画された対象の snapshot 契約、強調と label editor の表示アダプター、既存 mutation 経路への接続、受入確認を所有する。製品用語は Connection（DC39、IS110 解決済み）とする。実装上の union 型名は既存のコード識別子を維持する。
 
 ### Out of Boundary / Allowed Dependencies
 
-永続 Topology、Surface View 配置、scope authority、GraphLink 作成、sync protocol、rendererのGraphLink除外・集約規則、Disperseのガイド描画は変更しない。`types.ts`、`parent_child_edge_adapter.ts` の `ParentChildEdgeRef`、`edge_port.ts` / `edge_route.ts`、既存 GraphLink 経路、`lane_navigation.ts`、node 描画、既存 Undo / Redo / autosave を依存先とする。選択のために route のコピーや最近傍 port 再計算を作らない。
+永続 Topology、Surface View 配置、scope authority、GraphLink 作成、sync protocol、rendererのGraphLink除外・集約規則は変更しない。Disperse のガイドは DC40 に従って選択時のみ描画する。`types.ts`、`parent_child_edge_adapter.ts` の `ParentChildEdgeRef`、`edge_port.ts` / `edge_route.ts`、既存 GraphLink 経路、`lane_navigation.ts`、node 描画、既存 Undo / Redo / autosave を依存先とする。選択のために route のコピーや最近傍 port 再計算を作らない。
 
 ### Revalidation Triggers
 
@@ -45,7 +45,7 @@ flowchart LR
   A --> U["既存 Undo → mutation → autosave"]
 ```
 
-選択 pure function は Surface View を入力に取らない。描画側が「線・帯・枠のどれを描いたか」と元の親子 edge / GraphLink への対応を供給する。Lane の描画差は `lane_scene.ts` と表示アダプターだけに閉じる。
+選択 pure function は Surface View を入力に取らない。描画側が「線・帯・枠のどれを描いたか」と元の Connection への対応を供給する。Lane の描画差は `lane_scene.ts` と表示アダプターだけに閉じる。
 
 ### Technology Stack
 
@@ -173,6 +173,7 @@ declare function reconcileSelection(
 type Highlight = Readonly<{
   nodeIds: readonly NodeId[];
   presentation: Presentation | null;
+  guide: ParentChildEdgeRef | null; // group-frame の選択中の親子 edge のみ
 }>;
 declare function selectionHighlight(selection: Selection, scene: Scene): Highlight;
 ```
@@ -185,7 +186,7 @@ declare function selectionHighlight(selection: Selection, scene: Scene): Highlig
 
 ### 描画済み集合の供給契約
 
-既存 render pass が geometry を決定した後、描画した親子 edge / GraphLink とその両端を snapshot に記録する。DOM の全 path を拾うだけの実装は不可（hit path、プレビュー、ガイド、集計線の重複を含むため）。renderKey は既存描画要素または scene 要素を指す内部キーとする。
+既存 render pass が geometry を決定した後、描画した Connection とその両端を snapshot に記録する。DOM の全 path を拾うだけの実装は不可（hit path、プレビュー、ガイド、集計線の重複を含むため）。renderKey は既存描画要素または scene 要素を指す内部キーとする。
 
 | Surface View | renderer が公開するもの | shared が使うもの |
 |---|---|---|
@@ -218,13 +219,13 @@ L2が返すNodeIdはrenderedNodeIdであり、集約線でも表示された代�
 |---|---|---|
 | node | Alt+↑/↓ | parentChildTarget。非描画ならorigin維持と理由表示、描画される場合だけ親子edgeへ |
 | node | Alt+←/→ | enumerate → order → cycle。origin はその node |
-| 親子 edge / GraphLink | Alt+矢印 | 同じ origin に対して再選択 / 巡回 |
-| 親子 edge / GraphLink | 素の対応矢印 | endpoint の node 選択 |
-| 親子 edge / GraphLink | 素の非対応矢印 | 状態維持、既存 node navigation へ渡さない |
-| 親子 edge / GraphLink | Esc | origin の node 選択 |
-| 親子 edge / 単一GraphLinkの線 | F2 | 対象 identity を固定した editor を開く |
+| Connection | Alt+矢印 | 同じ origin に対して再選択 / 巡回 |
+| Connection | 素の対応矢印 | endpoint の node 選択 |
+| Connection | 素の非対応矢印 | 状態維持、既存 node navigation へ渡さない |
+| Connection | Esc | origin の node 選択 |
+| Connection（集約 GraphLink を除く） | F2 | 対象 identity を固定した editor を開く |
 | 集約されたGraphLinkの線 | F2 / brackets / Shift+S / Shift+B / Delete / Backspace | 理由を表示して拒否、状態・履歴・データ維持 |
-| editor | Esc | 編集取消、親子 edge / GraphLink 選択維持。次の Esc で origin |
+| editor | Esc | 編集取消、Connection 選択維持。次の Esc で origin |
 | 単一GraphLinkの線 | Delete | 一件削除後 origin の node 選択 |
 | 任意 | map / scope 切替、対象削除 | reconcile。無効な参照を破棄 |
 
@@ -232,15 +233,15 @@ L2が返すNodeIdはrenderedNodeIdであり、集約線でも表示された代�
 
 既存 click による GraphLink 選択も同じ遷移を呼ぶ。origin は click 直前の有効な primary node、なければ source の描画 node とする。node click は node 選択へ戻る。ポインター位置で L2 の方向を変えない。親子 edge の click 選択を新設することは必須ではない。
 
-node 状態では既存 `laneNavigationTarget` / `laneArrow` にそのまま渡す。親子 edge / GraphLink 状態だけ共通処理が先に消費する。Lane down/right の root / レーン名の F2 は node text 編集を維持する。
+node 状態では既存 `laneNavigationTarget` / `laneArrow` にそのまま渡す。Connection 状態だけ共通処理が先に消費する。Lane down/right の root / レーン名の F2 は node text 編集を維持する。
 
-### DC37 の表示アダプター
+### DC37 / DC40 の表示アダプター
 
 親→子が root→lane の時は子 lane の帯とレーン名、lane→孫の時は親 lane の帯とレーン名を所有表現とする。両端の強調には root / lane heading も含む。Disperse は親の group frame を使い、子がさらに group の場合も両端として別に示す。共有される同じ帯 / frame だけではどの親子 edge か区別できないため、必ず両端の強調を併用する。
 
 OP41により深い非描画child、折り畳み内の端、scope外の親は選択しない。origin nodeの単一選択を維持し、「子は折り畳まれています」「Lane では孫より深い node を描きません」「親は scope の外です」と理由を示す。別childで代用せず、自動展開・scope移動・復帰lifecycleを追加しない。これはIS112の解決済み契約であり、正常な拒否結果として試験する。
 
-強調計画はSVGとWebGLの双方へ渡す。既存GraphLink選択class / projectionとnode selection presentationを使い、cache keyに選択identityを含める。Laneの前景GraphLinkと後方hitを維持する。Disperseのscatter-guide描画は変更せず、選択snapshotの候補には含めない。親子選択にはgroup-frameと両端を使う。正本との描画driftはIS114として別作業に記録し、本仕様の前提にしない。
+強調計画はSVGとWebGLの双方へ渡す。既存GraphLink選択class / projectionとnode selection presentationを使い、cache keyに選択identityを含める。Laneの前景GraphLinkと後方hitを維持する。Disperse の `scatter-guide` は shared `selectionHighlight` の `guide` に選択中の親子 edge がある場合だけ、既存 adapter が `disperseGuideEndpoints` を用いて両端を結ぶ一本を描く（DC40）。親子 edge 未選択時・Esc 後は描かない。group-frame と両端の強調を維持し、兄弟で共有する枠に加えて選択中の子を示す。guide は選択表示であり、Presentation は group-frame のままなので Alt+←/→ の候補に入らない（DC37 維持）。adapter の描画後に既存 WebGL snapshot が同じ guide を読む。viewer.ts に選択判定の分岐を追加しない。IS114 は解決済み。
 
 ### L3 / L4 の pure function
 
@@ -346,7 +347,7 @@ tasks.md の2回のレビューで URL と source/build を渡す。既存4187�
 
 ## Risks and Mitigations
 
-IS111 / IS112はOP40 / OP41により解決済み。IS113（将来のRadial実装）、IS114（Disperse描画drift）、RK12（どのviewも描かない保存GraphLinkへの到達不可）は別の後続事項であり、本仕様完了の前提ではない。RK9–RK11のキー・履歴・build混同を試験で抑える。
+IS111 / IS112はOP40 / OP41により解決済み。IS110 / IS114 は DC39 / DC40 により解決済み。IS113（将来のRadial実装）、RK12（どのviewも描かない保存GraphLinkへの到達不可）は別の後続事項であり、本仕様完了の前提ではない。RK9–RK11のキー・履歴・build混同を試験で抑える。
 
 ## Supporting References
 

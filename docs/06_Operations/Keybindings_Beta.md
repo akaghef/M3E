@@ -156,7 +156,7 @@ M3E が `preventDefault()` していないため、通常のブラウザ操作�
 | `Alt+Shift+V` | `cycleView` を逆順に巡回 |
 | `Alt+M` | `holdReparent` |
 | `Alt+P` | `toggleFolder`（`F` と同じ） |
-| `F2` | node選択: `startEditSelectAll`。線選択: 選択線のlabel編集（下記参照） |
+| `F2` | node選択: `startEditSelectAll`。Connection 選択: 選択した Connection の label編集（下記参照） |
 | `Space` | `toggleCollapse` |
 | `Delete` | `delete` |
 | `Backspace` | `delete` |
@@ -171,18 +171,18 @@ M3E が `preventDefault()` していないため、通常のブラウザ操作�
 
 ## 矢印キー
 
-### 親子 edge / GraphLink の選択・編集
+### Connection の選択・編集
 
 board が入力を持つときの操作。入力欄・IME変換中には適用しない。
 Tree / Axial / System / Disperse / Lane の描画されている対象に共通。
 
-| キー | node 選択中 / 線選択中の動作 |
+| キー | node 選択中 / Connection 選択中の動作 |
 |---|---|
 | `Alt+←` / `Alt+→` | 起点nodeに接続する描画線を逆順 / 正順に巡回 |
 | `Alt+↑` / `Alt+↓` | 親へのedge / 子へのedgeを選択 |
-| 矢印 | 線選択中は、対応する描画端のnodeへ移動。対応しない方向では移動しない |
-| `Esc` | 線選択前のnodeへ戻る |
-| `F2` | 選択した親子edge / 単一GraphLinkのラベルを編集 |
+| 矢印 | Connection 選択中は、対応する描画端のnodeへ移動。対応しない方向では移動しない |
+| `Esc` | Connection 選択前のnodeへ戻る |
+| `F2` | 選択した Connection（集約 GraphLink を除く）のラベルを編集 |
 | `[` / `]` | 単一GraphLinkのsource / target portを right → bottom → left → top で巡回 |
 | `Shift+S` | 単一GraphLinkのstyleを default → dashed → soft → emphasis で巡回 |
 | `Shift+B` | 単一GraphLinkのdirectionを none → forward → backward → both で巡回 |
@@ -193,7 +193,7 @@ Tree / Axial / System / Disperse / Lane の描画されている対象に共通�
 前後の空白を除き、空文字ならラベルを解除する。無変更・取消は履歴を追加しない。
 複数GraphLinkを表す集約線は件数を表示し、全編集とport操作を拒否する。
 読み取り専用では選択・移動だけを許可する。非描画端への移動は理由を表示して拒否し、
-自動展開やscope変更はしない。線選択中のnode変更キーはnodeを選び直すまで拒否する。
+自動展開やscope変更はしない。Connection 選択中のnode変更キーはnodeを選び直すまで拒否する。
 
 ### tree surface
 

@@ -4,7 +4,7 @@
 
 ## Phase 0: Baseline and Scope Lock
 
-- [ ] 1. Confirm current edge / GraphLink implementation surface
+- [ ] 1. Confirm current Connection implementation surface
   - **Boundary:** investigation only.
   - Inspect `viewer.ts` edge helpers, GraphLink endpoint edit code, shared `GraphLink` / `LinkPort` types, and current layout direction state.
   - Record exact current symbols and files in implementation handoff.

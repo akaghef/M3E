@@ -77,7 +77,7 @@
   - **Boundary:** product PN adapter / `workbench-ui.tsx` only.
   - Stop importing `edgePathBetweenRects` in PN code.
   - Render `PnRoutedEdge.d` and metadata from `layoutProgressiveNav`.
-  - Do not change GraphLink or normal map edge rendering.
+  - Do not change normal map Connection rendering.
   - **Acceptance:** existing PN edge Playwright tests pass with EdgePort output; grep confirms no PN path calls `edgePathBetweenRects`.
 
 - [ ] 12. Add dependency-cruiser PN edge bypass rule

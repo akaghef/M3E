@@ -7892,7 +7892,6 @@ function renderScene(incremental: boolean): void {
   let surfaceFrames = laneFrames(layout, escapeXml, viewState.selectedNodeIds);
   let disperseGroups = "";
   let edges = "";
-  let scatterGuides = "";
   let graphLinks = "";
   let graphLinkHits = "";
   let overlays = "";
@@ -7955,20 +7954,6 @@ function renderScene(incremental: boolean): void {
     () => true,
     flowSurface ? PORTAL_BRACKET_ARM : 0,
   );
-
-  if (scatterSurface) {
-    visibleOrder.forEach((nodeId) => {
-      const node = state.nodes[nodeId];
-      const childPos = pos[nodeId];
-      const parentId = node?.parentId ?? null;
-      const parentPos = parentId ? pos[parentId] : null;
-      if (!node || !childPos || !parentId || !parentPos || !scatterNodeRenderable(nodeId) || !scatterNodeRenderable(parentId)) {
-        return;
-      }
-      const line = scatterLineEndpoints(parentPos, childPos);
-      scatterGuides += `<line class="scatter-guide" data-parent-node-id="${parentId}" data-child-node-id="${nodeId}" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}" />`;
-    });
-  }
 
   if (structuredMode === "timeline" && displayRootNode) {
     const rootPos = pos[displayRootId];
@@ -8518,7 +8503,7 @@ function renderScene(incremental: boolean): void {
 
   const replaced = retainedSvgScene.update(canvas, [
     ["defs", defs], ["frames", surfaceFrames], ["groups", disperseGroups],
-    ["edges", edges], ...edgeParts, ["guides", scatterGuides], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
+    ["edges", edges], ...edgeParts, ["guides", ""], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
     ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
   ], !incremental);
   lineSelection.finish();
