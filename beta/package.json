@@ -56,7 +56,8 @@
     "test:agent-node": "python3 ../scripts/ops/test-agent-node-icons.py && npm run check:agent-icons && vitest run tests/unit/agent_node.test.ts tests/unit/pet_sprite.test.ts",
     "check:ot-provenance": "node scripts/check_ot_provenance.mjs",
     "check:ot-build-artifacts": "node scripts/check_ot_build_artifacts.mjs",
-    "test:disperse": "npm run build && playwright test --config playwright.disperse.config.js"
+    "test:disperse": "npm run build && playwright test --config playwright.disperse.config.js",
+    "test:perf": "M3E_FORCE_PERF=1 vitest run tests/unit/force_spatial.test.ts -t \"force \\+ collision step budget\""
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1",

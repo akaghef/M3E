@@ -7,13 +7,4 @@ jobs:
       - uses: actions/checkout@v4
       - name: Reject retired personal identifier in tracked files
         shell: bash
-        run: |
-          set +e
-          git grep -I -l -i 'nisimori[y]uuya' -- .
-          result=$?
-          set -e
-          if [ "$result" -eq 0 ]; then
-            echo 'Retired personal identifier found. Rewrite source, fixtures, and historical documents before publishing.' >&2
-            exit 1
-          fi
-          test "$result" -eq 1
+        run: bash scripts/ops/check-personal-path.sh

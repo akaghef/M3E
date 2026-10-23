@@ -24,9 +24,13 @@ Akaghef の単独開発を前提とする。複数の AI が作業しても、Pu
 2. 作業枝で最小の変更と関連試験を行い、対象ファイルだけを commit する。`git add -A` や定期処理で他の作業を一括回収しない。
 3. 統合排他を取り、`git fetch origin dev-beta`。本流と remote の進みを確認する。remote に新しい変更がある場合は取り込み、重なりをレビュー・再検証する。
 4. primary が `dev-beta` であることを確認する。未コミット差分は所有者と範囲を確認し、統合と干渉するなら止める。無関係な差分は保持する。作業枝へ最新本流を通常の merge で取り込み、検証した上で primary を `git merge --ff-only codex/<task>` で進める。競合解決は作業枝で行う。失敗時に reset や force-push で押し通さない。
-5. `git push origin dev-beta`。remote の SHA と統合した SHA を照合する。remote が進んで拒否されたら fetch して 3 へ戻る。PR は作らなくてよい。
-6. 下記の通常 Beta 反映を実施する。統合後の CI が失敗したら、修正または安全な revert を担当し、完了にしない。CI の対象外は対象外として記録する。
+5. push する統合 SHA を `scripts/ops/preflight.sh --commit <統合 SHA>`（pre-push hook が自動実行。無関係な未コミット差分は検査対象外）で検査し、全件成功してから `git push origin dev-beta`。remote の SHA と統合した SHA を照合する。remote が進んで拒否されたら fetch して 3 へ戻る。PR は作らなくてよい。
+6. `scripts/ops/watch-ci.sh <統合 SHA>` の成功を完了条件とし、下記の通常 Beta 反映を実施する。CI が赤のまま次の通常 push を重ねず、先に原因を修正した変更または安全な revert を検証して届け、その SHA の CI 成功まで担当する。paths 条件等で push run が存在しない workflow は対象外として記録する。
 7. 必要な task / map 状態を更新する。戦略の変更がある時だけ Current_Status を更新する。完了証拠を残し、排他を解放する。
+
+初回のみ `scripts/ops/install-git-hooks.sh` で `core.hooksPath=.githooks` を設定する。既存の別設定は上書きしない。共有 Git 設定を使う worktree でも各 checkout の `.githooks/pre-push` が実行されるため、hook を含む枝を使う（worktree 固有設定がある場合は別途照合）。`git push --no-verify` は hook を迂回できるが、使用しない。依存導入は検査と分ける。commit 検査では push 元と対象 SHA の lockfile が一致する時だけ `beta/node_modules` を複製し、不一致または未導入なら `npm --prefix beta ci` を求めて停止する。ローカルは導入済みの Node で検査し、CI との版の差は push 後の `watch-ci.sh` で確認する。Pillow は agent-icon 検査に必要。shellcheck は `install/setup.sh` がある場合だけ必要。ローカルでは Beta と共有検査を全件実行し、Final build と Windows 専用検査は CI で確認する。実時間の性能閾値は `npm --prefix beta run test:perf` で明示実行する。
+
+CI 待機は push event の run を再取得し、追加 run がない状態を 60 秒確認する。未登録・登録が収束しない場合は 180 秒、完了は 1800 秒で失敗にする。調整は `M3E_CI_DISCOVERY_SECONDS`、`M3E_CI_REGISTRATION_TIMEOUT_SECONDS`、`M3E_CI_TIMEOUT_SECONDS`、`M3E_CI_POLL_SECONDS`（既定 10 秒）。登録窓より遅れて出現する run は検出保証外なので、GitHub の障害時は対象外扱いで完了せず再確認する。
 
 作業枝への commit、通常の merge、`dev-beta` への fast-forward と push、既存設定を保つ通常 Beta の build/restart は、承認された実装を届ける工程として追加確認不要。force-push、`reset --hard`、履歴破壊、main/release操作、秘密情報の変更は別途明示承認が必要。
 

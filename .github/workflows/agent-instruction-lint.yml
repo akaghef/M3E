@@ -12,6 +12,7 @@ on:
       - ".agents/skills/**"
       - ".claude/skills/**"
       - "scripts/hooks/**"
+      - ".githooks/**"
       - "scripts/ops/**"
       - "scripts/beta/**"
       - "scripts/final/**"
@@ -28,6 +29,7 @@ on:
       - ".agents/skills/**"
       - ".claude/skills/**"
       - "scripts/hooks/**"
+      - ".githooks/**"
       - "scripts/ops/**"
       - "scripts/beta/**"
       - "scripts/final/**"
@@ -50,13 +52,19 @@ jobs:
           node-version: 22
 
       - name: Check delivery policy and skill mirrors
-        run: node scripts/ops/check-delivery-policy.mjs
+        run: bash scripts/ops/preflight.sh --check delivery-policy
 
       - name: Test delivery safety boundaries
-        run: node --test scripts/ops/delivery-policy.test.mjs
+        run: bash scripts/ops/preflight.sh --check delivery-tests
 
       - name: Test channel boundaries
-        run: node --test scripts/ops/channel-runtime.test.mjs
+        run: bash scripts/ops/preflight.sh --check channel-tests
+
+      - name: Test Beta launcher
+        run: bash scripts/ops/preflight.sh --check beta-launch-tests
+
+      - name: Test CI push gate
+        run: bash scripts/ops/preflight.sh --check ci-gate-tests
 
       - name: Package launcher checks for Windows
         uses: actions/upload-artifact@v4

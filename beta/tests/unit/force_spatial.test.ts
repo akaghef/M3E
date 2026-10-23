@@ -47,7 +47,7 @@ test("Viewer adapter retains drag across projections without authoring mutations
   controller.step(); expect(controller.snapshot()!.nodes[0].y).toBe(100);
   controller.endDrag(); controller.pause(); expect(controller.snapshot()!.status).toBe("paused"); expect(graph).toEqual(before);
 });
-test.each([400, 2000])("force + collision step budget for %i nodes", count => {
+test.runIf(process.env.M3E_FORCE_PERF === "1").each([400, 2000])("force + collision step budget for %i nodes", count => {
   const nodes = Array.from({ length: count }, (_, i) => ({ id: `n${i}`, label: `Node ${i + 1}`, x: (i % 40) * 180, y: Math.floor(i / 40) * 100, w: 120, h: 50 }));
   const sim = createOtForce({ nodes, links: nodes.slice(1).map((n, i) => ({ id: `e${i}`, source: nodes[i].id, target: n.id })) });
   const times: number[] = [];
@@ -55,6 +55,27 @@ test.each([400, 2000])("force + collision step budget for %i nodes", count => {
   times.sort((a, b) => a - b); const p95 = times[Math.floor(times.length * .95)];
   console.info(JSON.stringify({ nodes: count, p95StepMs: p95 }));
   expect(p95).toBeLessThanOrEqual(count === 400 ? 16 : 50);
+});
+// Fixed density makes work growth comparable as the graph grows. These are
+// actual broad-phase candidates and D3 tree visits, independent of runner speed.
+test("spatial work grows near-linearly at fixed density", () => {
+  const measure = (count: number) => {
+    const nodes = Array.from({ length: count }, (_, i) => ({
+      x: (i % 40) * 100, y: Math.floor(i / 40) * 60, w: 120, h: 50, vx: 0, vy: 0,
+    }));
+    const visits = applySpatialRepulsion(nodes, 2600, () => false);
+    const index = new ForceBoxIndex(nodes, 16);
+    const candidates = nodes.reduce((sum, _, i) => sum + index.candidates(i).length, 0);
+    // All-pairs would exceed both bounds at 2,000 nodes.
+    expect(visits).toBeGreaterThan(count);
+    expect(visits).toBeLessThan(count * 160);
+    expect(candidates).toBeGreaterThan(count);
+    expect(candidates).toBeLessThan(count * 8);
+    return { visits: visits / count, candidates: candidates / count };
+  };
+  const small = measure(400), large = measure(2000);
+  expect(large.visits).toBeLessThan(small.visits * 2);
+  expect(large.candidates).toBeLessThan(small.candidates * 2);
 });
 test('dense free sibling groups finish without overlaps after the cooling budget', () => {
   const nodes = Array.from({ length: 400 }, (_, i) => ({ id: `n${i}`, label: `Node ${i + 1}`,

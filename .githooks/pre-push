@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+commit=""
+while read -r _local_ref local_sha remote_ref _remote_sha || [[ -n "${remote_ref:-}" ]]; do
+  if [[ "$remote_ref" == refs/heads/dev-beta && ! "$local_sha" =~ ^0+$ ]]; then
+    commit="$local_sha"
+  fi
+done
+if [[ -n "$commit" ]]; then
+  bash "$root/scripts/ops/preflight.sh" --commit "$commit"
+fi
