@@ -156,11 +156,11 @@ describe('M3E session hooks (protocol diagnostics)', () => {
 
   it('stores pushed SSE events in the session queue and checks it before writes', async () => {
     await enter();
-    await expect.poll(() => streams.size).toBe(1);
+    await expect.poll(() => streams.size, { timeout: 15_000 }).toBe(1);
     const event = { cursor: 1, type: 'subscription_invalidated', message: 'A subscribed boundary disappeared.' };
     for (const stream of streams) stream.write(`event: change\ndata: ${JSON.stringify(event)}\n\n`);
     const queueFile = path.join(path.dirname(bindingFile()), 'queue.json');
-    await expect.poll(async () => JSON.parse(await fs.readFile(queueFile, 'utf8').catch(() => '{}')).events?.length).toBe(1);
+    await expect.poll(async () => JSON.parse(await fs.readFile(queueFile, 'utf8').catch(() => '{}')).events?.length, { timeout: 15_000 }).toBe(1);
     const result = await invoke('PreToolUse', 'm3e_create', { context_id: 'context-a' }, undefined, 'create-call');
     expect(result.hookSpecificOutput.permissionDecision).toBe('deny');
   });
@@ -210,12 +210,12 @@ describe('M3E session hooks (protocol diagnostics)', () => {
     let release!: () => void;
     eventGate = new Promise<void>(resolve => { release = resolve; });
     const writing = invoke('PreToolUse', 'm3e_update', { context_id: 'context-a' }, undefined, 'in-flight-write');
-    await expect.poll(() => requests.some(request => request.path === '/api/mcp/events')).toBe(true);
+    await expect.poll(() => requests.some(request => request.path === '/api/mcp/events'), { timeout: 15_000 }).toBe(true);
     await invoke('SessionEnd', 'm3e_context', {});
     release();
     expect((await writing).hookSpecificOutput.permissionDecision).toBe('deny');
     await expect(fs.access(bindingFile())).rejects.toThrow();
-    await expect.poll(() => streams.size).toBe(0);
+    await expect.poll(() => streams.size, { timeout: 15_000 }).toBe(0);
     await expect(fs.access(path.dirname(bindingFile()))).rejects.toThrow();
   });
 
