@@ -71,8 +71,12 @@ cleanup() {
 }
 
 wait_for_server() {
-  local attempt
-  for attempt in {1..80}; do
+  local attempt attempts="${M3E_LAUNCH_WAIT_ATTEMPTS:-80}"
+  if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[ERROR] M3E_LAUNCH_WAIT_ATTEMPTS must be a positive integer." >&2
+    return 1
+  fi
+  for ((attempt=0; attempt<attempts; attempt++)); do
     if [[ -z "${LAUNCHD_TARGET:-}" ]] && curl -fsS --max-time 2 "http://localhost:${PORT}/api/maps/${M3E_MAP_ID}" >/dev/null 2>&1; then
       return 0
     fi
