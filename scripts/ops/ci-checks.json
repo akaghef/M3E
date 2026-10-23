@@ -1,0 +1,70 @@
+{
+  "personal-path": [
+    ".",
+    "bash scripts/ops/check-personal-path.sh"
+  ],
+  "typecheck": [
+    "beta",
+    "npm run typecheck"
+  ],
+  "lint-deps": [
+    "beta",
+    "npm run lint:deps"
+  ],
+  "lint-copy": [
+    "beta",
+    "npm run lint:copy"
+  ],
+  "build": [
+    "beta",
+    "npm run build"
+  ],
+  "semantic-source": [
+    "beta",
+    "npm run semantic-source:validate -- tests/fixtures/semantic-source/revision-001.json tests/fixtures/semantic-source/revision-002-renamed.json ../docs/semantic/m3e-design.source.json"
+  ],
+  "test": [
+    "beta",
+    "npm test"
+  ],
+  "persistent-rule": [
+    ".",
+    "bash scripts/ops/check-persistent-rule-gate.sh"
+  ],
+  "delivery-policy": [
+    ".",
+    "node scripts/ops/check-delivery-policy.mjs"
+  ],
+  "delivery-tests": [
+    ".",
+    "node --test scripts/ops/delivery-policy.test.mjs"
+  ],
+  "channel-tests": [
+    ".",
+    "node --test scripts/ops/channel-runtime.test.mjs"
+  ],
+  "beta-launch-tests": [
+    ".",
+    "node --test scripts/ops/beta-launch.test.mjs"
+  ],
+  "ci-gate-tests": [
+    ".",
+    "node --test scripts/ops/ci-push-gate.test.mjs"
+  ],
+  "installer-lint": [
+    ".",
+    "node scripts/ops/check-installer.mjs"
+  ],
+  "shellcheck": [
+    ".",
+    "if [ -f install/setup.sh ]; then shellcheck -e SC2034 install/setup.sh; else echo 'No install/setup.sh; shellcheck not applicable (same as CI)'; fi"
+  ],
+  "agent-icon-tests": [
+    ".",
+    "python3 scripts/ops/test-agent-node-icons.py"
+  ],
+  "agent-icons": [
+    ".",
+    "python3 scripts/ops/check-agent-node-icons.py"
+  ]
+}

@@ -10,6 +10,8 @@ on:
       - final/**
       - docs/semantic/**
       - .github/workflows/test.yml
+      - scripts/ops/preflight.*
+      - scripts/ops/ci-checks.json
   pull_request:
     branches:
       - dev-beta
@@ -19,6 +21,8 @@ on:
       - final/**
       - docs/semantic/**
       - .github/workflows/test.yml
+      - scripts/ops/preflight.*
+      - scripts/ops/ci-checks.json
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -53,25 +57,25 @@ jobs:
         run: python3 -m pip install Pillow
 
       - name: Typecheck
-        run: npm run typecheck
+        run: bash ../scripts/ops/preflight.sh --check typecheck
 
       - name: Check dependency boundaries
-        run: npm run lint:deps
+        run: bash ../scripts/ops/preflight.sh --check lint-deps
 
       - name: Check source copy drift
-        run: npm run lint:copy
+        run: bash ../scripts/ops/preflight.sh --check lint-copy
 
       # Build node + browser artifacts first. Some unit tests load built browser
       # bundles (dist/browser/*.js); `npm test` only runs build:node, so a clean
       # checkout would be missing them. `npm run build` covers node + browser.
       - name: Build
-        run: npm run build
+        run: bash ../scripts/ops/preflight.sh --check build
 
       - name: Validate repository-local semantic source specimen
-        run: npm run semantic-source:validate -- tests/fixtures/semantic-source/revision-001.json tests/fixtures/semantic-source/revision-002-renamed.json ../docs/semantic/m3e-design.source.json
+        run: bash ../scripts/ops/preflight.sh --check semantic-source
 
       - name: Run tests
-        run: npm test
+        run: bash ../scripts/ops/preflight.sh --check test
 
   final:
     name: Final build
