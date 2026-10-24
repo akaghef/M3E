@@ -98,10 +98,55 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 
 ## 判断の前に揃える材料（提案）
 
-- PR14：論理レコードモデルの草案を作る（Codex が起草し、Director がレビューする）。OP43 と OP44 のどちらにも必要な共通の入力で、RQ28 を満たす形にする。
-- PR15：約 27 本の書込み経路それぞれを、Command intent に対応付けた表にする。対応が付かない経路が、移行の範囲を決める。
+- PR14：論理レコードモデルの草案を作る。OP43 と OP44 のどちらにも必要な共通の入力で、RQ28 を満たす形にする。→ 草案は [draft-record-model.md](./draft-record-model.md)（2026-10-25、Claude の調査エージェントが起草、Director がレビュー済み、未承認）。
+- PR15：書込み経路それぞれを Command intent に対応付けた表にする。対応が付かない経路が、移行の範囲を決める。→ 草案は [draft-write-path-commands.md](./draft-write-path-commands.md)（同上）。サーバー・プロセス側 63 行、ブラウザ操作 61 行。
 - PR16：同じ Command 列を、SQLite の正規化テーブルと Neo4j の両方に研究 map 規模で適用し、計測して比べる。これは ADR 008 が求める「同一操作の比較」にあたる。計測は一時データで行い、個人の workspace は使わない。
 - PR17：いま実際に必要な Deep query を棚卸しする。ADR 008 の Demand Gate（3 件）が満たせるかを確かめる。
+
+### PR14・PR15 の草案レビュー（2026-10-25、Director）
+
+用語、追跡 ID、個人のパス、主張の裏付けを確認した。
+
+- PR14 で直したのは節番号の参照 2 か所だけ。
+- 次の 2 点はコードで確かめた。
+  - 起動時に `ensureMap` が研究 map を全置換する（start_viewer.ts `startServer`）。
+  - 保存前の `syncMapModelStateFromRuntime` が、全 node 分の空の配置値を作る（viewer.ts）。
+- PR15 の intent は、Command_Language.md 4 節の定義語（`assert`、`rename`、`reparent`、`bind`、`delete`、`set-attribute`、`unset-attribute`、`set-type`、`clone`、`view`、`load`、`export`、`history`）と、Glossary の `scopen` / `unscopen` に収まっている。
+
+2 つの草案の未決事項（PR14 の 15 問、PR15 の 20 問）を重複なくまとめると、次のとおり。括弧内は各草案の未決事項の番号。
+
+- IS133：定義語がない。
+  - 確定の通し番号、record 単位の変更、所属が解決しない付随レコード、型定義外の field を保持する欄（PR14 の 1）
+  - Command intent のない操作（PR14 の 10、PR15 の 3・6）。選択した node 群の上に親を挿入する、同名の子へ合流させながら追加する、部分木を差し替える、map 全体を置換・復元する、外部の canonical source から作り直す、map 行の作成・複製・削除・属性変更、canonical owner の宣言と解除、GraphLink の端点の付け替え、linear-text の更新と削除、Layout と Surface View の設定の保存、注釈の追加と削除、競合時に相手側を採る、取り込んだ内容から新しい map を作る。
+  - collapse は `view` に分類されているのに保存されている。
+- IS134：何を正本 data とし、何を導出値または表示状態とするか。対象は scopes と surfaces の記録、Layout・Surface View・collapse・linear-text の表示設定、保持された scope の label、top-level に混入した `selectedId` / `scopeId`、map 行の属性の変更を journal に通すか（PR14 の 5・6・8、PR15 の 1・2・20）。
+- IS135：親子 edge の label（研究 map の node の 78%）を edge のレコードに置くか、attribute に置くか。reparent したときの扱い（PR14 の 2、PR15 の 4）。
+- IS136：attribute を独立したレコードにするか、node のレコードに含めるか（PR14 の 3）。
+- IS137：移行時の孤立データと型定義外の値。所属が解決しない linear-text（63 key、868 KB）、folder でない node を指す linear-text、孤立した surface、型定義外の key、`nodeType: "leaf"`（PR14 の 4・5・7、PR15 の 9・10）。
+- IS138：ID の一意性の範囲（map 内か workspace 内か）。実データでは map ID 3 件、node ID 1,148 件、GraphLink ID 74 件が、map や workspace をまたいで重複している。Rapid の SourceId、本文を含む node ID の扱い（PR14 の 12・15、PR15 の 11）。
+- IS139：delete と同時編集の規則。delete で linear-text・注釈・配置値を同じ transaction に含めるか（PR15 の 5・8・9）。
+- IS140：冪等キーを node の attribute（Flash の重複防止キー）から commandId に移すか。MCP で応答を失ったときに、確定したかをどこで確かめるか（PR15 の 7）。
+- IS141：linear-text を差分で journal に記録するか。1 値の最大は 848 KB ある（PR14 の 11）。
+- IS142：複数 PC。journal を map ごとに持つか workspace ごとに持つか、端末ごとの採番、Syncthing による `data.sqlite` 全体の同期をやめるか、端末ごとに違う値（Vault のパスなど）の置き場所、cloud sync を移行範囲に含めるか（PR14 の 13、PR15 の 19。IS128 と関連）。
+- IS143：移行後に古い版を締め出す。古い実装は `maps` 表が見つからないと空の表を作り、`launch.sh` は DB がなければ seed を複写する。そのため、同期された PC で古い版が動くと、正本が二重にできる（PR14 の 14、PR15 の 15）。
+- IS144：未実装の Schema v2（Model_State_And_Schema_V2.md）を、この移行で置き換えるか。RQ19 のもとでは、後でもう一度変える機会がない（PR14 の 9）。
+- IS145：Concreteness Axis の level ごとの編集を Command にするか（PR15 の 13）。
+- IS146：collab の経路、使われていない REST の経路、UI からの取り込みをどうするか（PR15 の 16・17・18）。
+- 外部の変更を取り込んだ後の Undo の範囲（PR15 の 14）は IS127 に含める。起動時の書き直しをやめること（PR15 の 12）は IS132 に含める。
+
+PR15 は、IS116〜IS132 にない「成功扱いで編集が消える」危険を 19 件挙げた（[draft-write-path-commands.md](./draft-write-path-commands.md) 5.5 節）。主なものは次のとおり。
+
+- 応答と通知の savedAt が、DB に保存した値と違う経路が 8 本ある。
+- Undo と Redo が、外部の変更を取り込む前の全状態に戻す。
+- linear-text の Apply が、children を位置で対応させる。
+- Vault の live 連携で、Obsidian 側の変更を捨てる。
+- GraphLink の REST 追加が、再送で重複する。
+- 閲覧しているだけの tab が、全 node 分の配置値を書く。
+
+PR18（提案）：保存形式を変えずに、移行より先に直せる不具合。どちらも DC39 と DC40 の結果に関係なく必要で、移行前のデータの汚れを減らす。
+
+- 起動時の全置換（IS132）
+- 閲覧しているだけの tab が全 node 分の空の配置値を書くこと。実データでは合計 5.3 MB ある。
 
 評価の観点：AX5 正しさ（RQ21〜RQ24）、AX6 移行の回数と危険度、AX7 PC ごとの運用費用、AX8 Deep query の能力、AX9 復旧（RQ26）、AX10 複数 PC の同期と offline 編集、AX11 依存先の成熟度、AX12 編集あたりの計算量（RQ20）。
 
