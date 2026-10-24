@@ -5,6 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 const root = fileURLToPath(new URL('../../', import.meta.url));
+// Checks that run the agent icon gate (directly, or through the Vite build).
+const ICON_PYTHON_CHECKS = new Set(['build', 'agent-icon-tests', 'agent-icons']);
 const args = process.argv.slice(2);
 // Git hooks export repository selectors; cwd alone cannot isolate child Git calls.
 const childEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
@@ -92,8 +94,17 @@ if (commitMode) {
     console.error('Usage: preflight.sh [--check <name>]'); process.exitCode = 1;
   } else {
     const selected = args.length ? [args[1]] : Object.keys(checks);
+    let iconPythonError = '';
+    // Same Python choice as the Beta build: M3E_AGENT_ICON_PYTHON, else the first python3 on PATH that imports PIL.
+    if (process.platform !== 'win32' && selected.some(name => ICON_PYTHON_CHECKS.has(name))) {
+      // Loaded only here: other checks keep running from a preflight.mjs copied without channel-runtime.mjs.
+      try { process.env.M3E_AGENT_ICON_PYTHON = (await import('./channel-runtime.mjs')).agentIconPython(); }
+      catch { iconPythonError = 'No python3 with Pillow found on PATH; install Pillow or set M3E_AGENT_ICON_PYTHON to a Python that can import PIL.'; }
+    }
     if (selected.some(name => checks[name][0] === 'beta') && !fs.existsSync(resolve(root, 'beta/node_modules'))) {
       console.error('FAIL prerequisites: beta/node_modules is missing. Run npm ci in beta explicitly; preflight never installs dependencies.'); process.exitCode = 1;
+    } else if (iconPythonError) {
+      console.error('FAIL prerequisites: ' + iconPythonError); process.exitCode = 1;
     } else {
       const started = Date.now(), failed = [];
       for (const name of selected) {

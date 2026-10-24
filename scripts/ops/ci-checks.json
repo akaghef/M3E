@@ -49,7 +49,7 @@
   ],
   "ci-gate-tests": [
     ".",
-    "node --test scripts/ops/ci-push-gate.test.mjs scripts/ops/preflight-git-env.test.mjs"
+    "node --test scripts/ops/ci-push-gate.test.mjs scripts/ops/preflight-git-env.test.mjs scripts/ops/preflight-icon-python.test.mjs"
   ],
   "installer-lint": [
     ".",
@@ -61,10 +61,10 @@
   ],
   "agent-icon-tests": [
     ".",
-    "python3 scripts/ops/test-agent-node-icons.py"
+    "\"${M3E_AGENT_ICON_PYTHON:-python3}\" scripts/ops/test-agent-node-icons.py"
   ],
   "agent-icons": [
     ".",
-    "python3 scripts/ops/check-agent-node-icons.py"
+    "\"${M3E_AGENT_ICON_PYTHON:-python3}\" scripts/ops/check-agent-node-icons.py"
   ]
 }
