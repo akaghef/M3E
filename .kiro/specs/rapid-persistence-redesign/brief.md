@@ -101,6 +101,11 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - PR14：論理レコードモデルの草案を作る。OP43 と OP44 のどちらにも必要な共通の入力で、RQ28 を満たす形にする。→ 草案は [draft-record-model.md](./draft-record-model.md)（2026-10-25、Claude の調査エージェントが起草、Director がレビュー済み、未承認）。
 - PR15：書込み経路それぞれを Command intent に対応付けた表にする。対応が付かない経路が、移行の範囲を決める。→ 草案は [draft-write-path-commands.md](./draft-write-path-commands.md)（同上）。サーバー・プロセス側 63 行、ブラウザ操作 61 行。
 - PR16：同じ Command 列を、SQLite の正規化テーブルと Neo4j の両方に研究 map 規模で適用し、計測して比べる。これは ADR 008 が求める「同一操作の比較」にあたる。計測は一時データで行い、個人の workspace は使わない。
+  - → 結果は [bench-pr16-results.md](./bench-pr16-results.md)（2026-10-25）。
+    - 1 回の編集の確定時間の p50（20,150 node → 201,491 node）は、全 JSON の現行方式が 52 → 769 ms で、map の大きさにほぼ比例して増える。
+    - 草案のレコードモデルではほぼ横ばいで、SQLite（DELETE）が 0.32 → 0.38 ms、Neo4j が 5.9 → 7.1 ms。
+    - 3 歩先までの近傍は Neo4j が約 2 倍速く、1 点の読取りと map 全体の読込みは SQLite が速い。
+    - 同じ Command 列を適用すると、どのエンジンの最終状態も兄弟順キーまで一致した。
 - PR17：いま実際に必要な Deep query を棚卸しする。ADR 008 の Demand Gate（3 件）が満たせるかを確かめる。
 
 ### PR14・PR15 の草案レビュー（2026-10-25、Director）
@@ -132,6 +137,9 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS144：未実装の Schema v2（Model_State_And_Schema_V2.md）を、この移行で置き換えるか。RQ19 のもとでは、後でもう一度変える機会がない（PR14 の 9）。
 - IS145：Concreteness Axis の level ごとの編集を Command にするか（PR15 の 13）。
 - IS146：collab の経路、使われていない REST の経路、UI からの取り込みをどうするか（PR15 の 16・17・18）。
+- IS147：エンジンを問わず、再帰や可変長の問い合わせには、実行計画を固定する試験が要る。
+  - PR16 で、SQLite の再帰 CTE は結合の順序を固定しないと、16,400 node の部分木の読取りに約 9 秒かかった。
+  - Neo4j の可変長の pattern は、始点を固定しないと全 node から展開して 2.6 秒かかった。
 - 外部の変更を取り込んだ後の Undo の範囲（PR15 の 14）は IS127 に含める。起動時の書き直しをやめること（PR15 の 12）は IS132 に含める。
 
 PR15 は、IS116〜IS132 にない「成功扱いで編集が消える」危険を 19 件挙げた（[draft-write-path-commands.md](./draft-write-path-commands.md) 5.5 節）。主なものは次のとおり。

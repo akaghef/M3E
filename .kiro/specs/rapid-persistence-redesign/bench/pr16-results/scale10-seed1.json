@@ -1,0 +1,471 @@
+{
+  "scale": 10,
+  "sample": {
+    "nodes": 201491,
+    "edges": 201490,
+    "attrs": 197120,
+    "links": 0,
+    "linear": 15
+  },
+  "commands": 2000,
+  "wholeJsonCommands": 100,
+  "readSizes": {
+    "subtreeLarge": 16400,
+    "subtreeMid": 231,
+    "children": 646
+  },
+  "mix": {
+    "rename": 30,
+    "set-attribute": 15,
+    "unset-attribute": 5,
+    "add-child": 15,
+    "add-sibling": 10,
+    "reorder": 5,
+    "reparent": 8,
+    "delete": 5,
+    "link-create": 4,
+    "linear-set": 2,
+    "import-subtree": 1
+  },
+  "engines": {
+    "whole-json": {
+      "importMs": 379.947,
+      "totalCommitMs": 78700.841,
+      "commitsPerSecond": 1.271,
+      "commit": {
+        "p50": 769.058,
+        "p95": 1065.441,
+        "p99": 1171.494,
+        "max": 1171.494
+      },
+      "byIntent": {
+        "add-child": {
+          "n": 14,
+          "p50": 769.058,
+          "p95": 1006.438,
+          "max": 1006.438
+        },
+        "link-create": {
+          "n": 8,
+          "p50": 750.547,
+          "p95": 966.664,
+          "max": 966.664
+        },
+        "add-sibling": {
+          "n": 10,
+          "p50": 681.235,
+          "p95": 1171.494,
+          "max": 1171.494
+        },
+        "import-subtree": {
+          "n": 3,
+          "p50": 630.925,
+          "p95": 864.744,
+          "max": 864.744
+        },
+        "reparent": {
+          "n": 9,
+          "p50": 766.26,
+          "p95": 955.443,
+          "max": 955.443
+        },
+        "rename": {
+          "n": 28,
+          "p50": 839.356,
+          "p95": 1069.998,
+          "max": 1163.4
+        },
+        "set-attribute": {
+          "n": 11,
+          "p50": 785.025,
+          "p95": 993.718,
+          "max": 993.718
+        },
+        "linear-set": {
+          "n": 3,
+          "p50": 828.494,
+          "p95": 868.545,
+          "max": 868.545
+        },
+        "delete": {
+          "n": 6,
+          "p50": 862.033,
+          "p95": 1138.888,
+          "max": 1138.888
+        },
+        "reorder": {
+          "n": 6,
+          "p50": 666.578,
+          "p95": 809.555,
+          "max": 809.555
+        },
+        "unset-attribute": {
+          "n": 2,
+          "p50": 933.913,
+          "p95": 933.913,
+          "max": 933.913
+        }
+      },
+      "reads": {
+        "fullLoad": {
+          "medianMs": 289.826
+        },
+        "subtree": {
+          "medianMs": 303.574,
+          "result": 16394
+        },
+        "subtreeMid": {
+          "medianMs": 293.481,
+          "result": 231
+        },
+        "children": {
+          "medianMs": 551.086,
+          "result": 646
+        },
+        "ancestors": {
+          "medianMs": 477.896,
+          "result": 7
+        },
+        "neighborhood": {
+          "medianMs": 500.635,
+          "result": 5215
+        }
+      },
+      "sizeBytes": 159330304,
+      "valid": {
+        "structure": true
+      }
+    },
+    "sqlite-delete": {
+      "importMs": 1451.877,
+      "totalCommitMs": 854.953,
+      "commitsPerSecond": 2339.309,
+      "commit": {
+        "p50": 0.382,
+        "p95": 0.588,
+        "p99": 0.824,
+        "max": 35.305
+      },
+      "byIntent": {
+        "add-child": {
+          "n": 314,
+          "p50": 0.447,
+          "p95": 0.624,
+          "max": 3.941
+        },
+        "link-create": {
+          "n": 80,
+          "p50": 0.38,
+          "p95": 0.473,
+          "max": 0.528
+        },
+        "add-sibling": {
+          "n": 208,
+          "p50": 0.425,
+          "p95": 0.585,
+          "max": 0.71
+        },
+        "import-subtree": {
+          "n": 19,
+          "p50": 0.775,
+          "p95": 0.971,
+          "max": 0.971
+        },
+        "reparent": {
+          "n": 171,
+          "p50": 0.417,
+          "p95": 0.556,
+          "max": 0.829
+        },
+        "rename": {
+          "n": 602,
+          "p50": 0.333,
+          "p95": 0.441,
+          "max": 1.95
+        },
+        "set-attribute": {
+          "n": 317,
+          "p50": 0.341,
+          "p95": 0.483,
+          "max": 35.305
+        },
+        "linear-set": {
+          "n": 40,
+          "p50": 0.484,
+          "p95": 0.725,
+          "max": 0.824
+        },
+        "delete": {
+          "n": 99,
+          "p50": 0.505,
+          "p95": 0.855,
+          "max": 1.844
+        },
+        "reorder": {
+          "n": 64,
+          "p50": 0.375,
+          "p95": 0.491,
+          "max": 2.328
+        },
+        "unset-attribute": {
+          "n": 86,
+          "p50": 0.34,
+          "p95": 0.459,
+          "max": 0.595
+        }
+      },
+      "reads": {
+        "fullLoad": {
+          "medianMs": 297.022
+        },
+        "subtree": {
+          "medianMs": 12.603,
+          "result": 16401
+        },
+        "subtreeMid": {
+          "medianMs": 0.147,
+          "result": 229
+        },
+        "children": {
+          "medianMs": 0.087,
+          "result": 645
+        },
+        "ancestors": {
+          "medianMs": 0.009,
+          "result": 7
+        },
+        "neighborhood": {
+          "medianMs": 9.947,
+          "result": 5207
+        }
+      },
+      "sizeBytes": 110534656,
+      "valid": {
+        "records": true,
+        "structure": true
+      }
+    },
+    "sqlite-wal": {
+      "importMs": 1652.687,
+      "totalCommitMs": 170.706,
+      "commitsPerSecond": 11716.021,
+      "commit": {
+        "p50": 0.038,
+        "p95": 0.114,
+        "p99": 0.244,
+        "max": 6.367
+      },
+      "byIntent": {
+        "add-child": {
+          "n": 314,
+          "p50": 0.047,
+          "p95": 0.112,
+          "max": 5.683
+        },
+        "link-create": {
+          "n": 80,
+          "p50": 0.039,
+          "p95": 0.083,
+          "max": 6.07
+        },
+        "add-sibling": {
+          "n": 208,
+          "p50": 0.045,
+          "p95": 0.124,
+          "max": 5.817
+        },
+        "import-subtree": {
+          "n": 19,
+          "p50": 0.181,
+          "p95": 0.294,
+          "max": 0.294
+        },
+        "reparent": {
+          "n": 171,
+          "p50": 0.048,
+          "p95": 0.099,
+          "max": 0.164
+        },
+        "rename": {
+          "n": 602,
+          "p50": 0.027,
+          "p95": 0.054,
+          "max": 5.889
+        },
+        "set-attribute": {
+          "n": 317,
+          "p50": 0.03,
+          "p95": 0.078,
+          "max": 5.967
+        },
+        "linear-set": {
+          "n": 40,
+          "p50": 0.112,
+          "p95": 0.247,
+          "max": 5.886
+        },
+        "delete": {
+          "n": 99,
+          "p50": 0.082,
+          "p95": 0.219,
+          "max": 5.594
+        },
+        "reorder": {
+          "n": 64,
+          "p50": 0.039,
+          "p95": 0.065,
+          "max": 6.367
+        },
+        "unset-attribute": {
+          "n": 86,
+          "p50": 0.031,
+          "p95": 0.076,
+          "max": 0.108
+        }
+      },
+      "reads": {
+        "fullLoad": {
+          "medianMs": 276.01
+        },
+        "subtree": {
+          "medianMs": 12.499,
+          "result": 16401
+        },
+        "subtreeMid": {
+          "medianMs": 0.149,
+          "result": 229
+        },
+        "children": {
+          "medianMs": 0.089,
+          "result": 645
+        },
+        "ancestors": {
+          "medianMs": 0.007,
+          "result": 7
+        },
+        "neighborhood": {
+          "medianMs": 9.96,
+          "result": 5207
+        }
+      },
+      "sizeBytes": 219035848,
+      "valid": {
+        "records": true,
+        "structure": true
+      }
+    },
+    "neo4j": {
+      "importMs": 11646.724,
+      "totalCommitMs": 17178.025,
+      "commitsPerSecond": 116.428,
+      "commit": {
+        "p50": 7.106,
+        "p95": 11.372,
+        "p99": 30.517,
+        "max": 457.002
+      },
+      "byIntent": {
+        "add-child": {
+          "n": 314,
+          "p50": 7.186,
+          "p95": 10.753,
+          "max": 457.002
+        },
+        "link-create": {
+          "n": 80,
+          "p50": 7.026,
+          "p95": 10.703,
+          "max": 73.357
+        },
+        "add-sibling": {
+          "n": 208,
+          "p50": 7.19,
+          "p95": 12.002,
+          "max": 144.891
+        },
+        "import-subtree": {
+          "n": 19,
+          "p50": 9.41,
+          "p95": 87.693,
+          "max": 87.693
+        },
+        "reparent": {
+          "n": 171,
+          "p50": 7.881,
+          "p95": 12.969,
+          "max": 228.617
+        },
+        "rename": {
+          "n": 602,
+          "p50": 6.816,
+          "p95": 10.154,
+          "max": 65.01
+        },
+        "set-attribute": {
+          "n": 317,
+          "p50": 6.941,
+          "p95": 10.881,
+          "max": 69.096
+        },
+        "linear-set": {
+          "n": 40,
+          "p50": 7.132,
+          "p95": 30.517,
+          "max": 47.83
+        },
+        "delete": {
+          "n": 99,
+          "p50": 9.079,
+          "p95": 55.767,
+          "max": 249.746
+        },
+        "reorder": {
+          "n": 64,
+          "p50": 7.924,
+          "p95": 12.834,
+          "max": 127.263
+        },
+        "unset-attribute": {
+          "n": 86,
+          "p50": 6.989,
+          "p95": 10.016,
+          "max": 38.715
+        }
+      },
+      "journalAppend": {
+        "p50": 0.667,
+        "p95": 2.009
+      },
+      "reads": {
+        "fullLoad": {
+          "medianMs": 1262.441
+        },
+        "subtree": {
+          "medianMs": 13.111,
+          "result": 16401
+        },
+        "subtreeMid": {
+          "medianMs": 0.628,
+          "result": 229
+        },
+        "children": {
+          "medianMs": 1.373,
+          "result": 645
+        },
+        "ancestors": {
+          "medianMs": 0.569,
+          "result": 7
+        },
+        "neighborhood": {
+          "medianMs": 4.265,
+          "result": 5207
+        }
+      },
+      "sizeBytes": 231365650,
+      "valid": {
+        "records": true,
+        "structure": true
+      }
+    }
+  }
+}
