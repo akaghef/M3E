@@ -75,6 +75,10 @@ mock にある「＋ 軸を追加」（時間・文字列）は最初の実装�
 
 ## 決定記録（2026-10-20）
 
+akaghef の決定には DC60〜DC69 の範囲から決定番号を振る（親 session 割当、2026-10-25）。DC60＝IS90、DC61＝IS91、DC62＝IS92、DC63＝IS95、DC64＝IS97。IS93・IS94・IS96・IS99 は Director 決定のため DC を振らない。
+
+2026-10-25 の配置の訂正（Director 決定）：1440 px 幅で bar が左右の top bar の操作（表示中の Surface View の表示と NETWORK）を覆ったため、bar は top bar の間に収まるときだけ間に置き、収まらないときは top bar の直下の行に中央揃えで置く。disabled の理由は軸ごとではなく1行にまとめて表示する（条件4・条件5・条件10）。回帰試験は `viewer_filter_renderers.spec.js` の「Lane filter never covers top-bar controls or Inspector across window resizes」。
+
 | ID | 決定者 | 決定 |
 |---|---|---|
 | IS90 | akaghef | 表示名は「実現段階」。保存キー confidence、CURRENT / TO-BE、欠落・未知値、端点条件、EDGE AUDIT 除外は条件15 |
