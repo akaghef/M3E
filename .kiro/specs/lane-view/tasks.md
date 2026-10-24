@@ -1,3 +1,5 @@
+> 2026-10-25 変更（akaghef）: B-7 と IS46（scope でない node を Lane の root にする操作、`MapSurface.displayRootId`）は取り消し。Lane の root は scope の root node。以下の B-7 の記述は経緯として残す。
+
 # Implementation Plan
 
 > 2026-10-17、Director が保存先と条件7 / 8 / 10の明確化を採択し、Track A は `4327ca0`（GraphLink.attributes の保持）として統合済み。Director の指示で、この commit を基準に Track B の task 7〜16を実装・検証している。本流統合・push は Director が所有する。

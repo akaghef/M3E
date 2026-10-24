@@ -15,7 +15,8 @@
   - `System` はレーンに整列できないフローチャート様の構造を扱い、既存 subtype `containment / module / architecture` を維持する。
   - `GraphLink.attributes` に任意の key-value data を持たせる。実現段階などの情報は Content、`LinkStyle` への写像は Style として扱う。
   - レーン順、孫 node の所属、GraphLink の親 node ごとの集計、レーンを飛び越す関係、GraphLink のない異なるレーンの孫 node の組は導出値とし、保存しない。選択から計算する内訳の線は GraphLink とせず、Lane view の Topology に含めない。
-  - 図式内の孫 node に識別コードを付けない。root node は scope でなくてもよい。
+  - 図式内の孫 node に識別コードを付けない。
+  - 2026-10-25 変更: Lane は scope の Surface View で、root はその scope の root node とする。scope でない node を root にする操作と保存は廃止した（akaghef）。
 - Why: 層状の図式を既存の tree と GraphLink で保持しながら投影する方式を定義し、フローチャート様でレーンに整列できない System view と区別するため。
 - Next: beta の GraphLink 型への属性追加と Lane view 実装は別タスク。
 - Source: akaghef の 2026-10-17 の決定。

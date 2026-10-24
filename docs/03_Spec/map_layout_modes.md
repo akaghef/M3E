@@ -115,7 +115,7 @@ Radial と Disperse は同一の力学配置契約を共有し（対話的処理
 - **Radial**: 親子階層を **力学配置 + edge** として投影する。関係を線で読む。
 - **Disperse**: 親子階層を **力学配置 + 入れ子（包含）** として投影する。親子表現の正本は tree の group（枠）とし、GraphLink は線で読む。選択中の親子 edge に限り、その両端 node を結ぶガイドを一本描き、親子 edge 未選択時はガイドを描かない（DC51）。
 - **System**: レーンに整列できないフローチャート様の構造を、箱・境界・モジュール・リンクとして投影する。subtype は containment / module / architecture とし、主眼は構造、責務、接続。
-- **Lane**: root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンとして投影し、各孫 node を親のレーン内に置く。direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。root node は scope でなくてもよい。孫 node 間の GraphLink を主線として表示し、レーン境界をまたぐ関係も表す。図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
+- **Lane**: root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンとして投影し、各孫 node を親のレーン内に置く。direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。Lane は scope の Surface View であり、root はその scope の root node である（図式を Lane で見るときは、その root を scope にして入る。2026-10-25、akaghef の決定）。孫 node 間の GraphLink を主線として表示し、レーン境界をまたぐ関係も表す。図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
 
 2026-10-17、akaghef の決定により、Lane には `edge` option を設けない。`EdgeStyle` は親子 `edge` の描画指定であり、Lane は親子 `edge` を線として描かない。Lane の GraphLink の経路は、既存の GraphLink 経路設定（UI の `Link Route`、実装型 `LayoutLinkRoute`）に従う。この設定を親子 `edge` の option として読み替えない。
 
@@ -130,7 +130,7 @@ Radial と Disperse は同一の力学配置契約を共有し（対話的処理
 
 Lane の切替は永続 Topology を変えない。レーン順は `children[]` の兄弟順序から、孫 node の所属は親子 `edge` から導出する。GraphLink を両端の親 node の組ごとに集計した行列、親 node の兄弟順序の差が2以上の GraphLink、異なるレーンの孫 node の組のうち GraphLink が無い組も導出値とし、永続データに保存しない。選択に応じて計算する内訳の線は GraphLink ではなく、Lane view の Topology に含めない。
 
-検証観点: 正常系では root の子 node の順序がレーン順に保たれ、孫 node 間の GraphLink がレーンをまたいで表示されることを確認する。境界系では root が scope でない場合、`right` / `down` の方向、レーンを飛び越す GraphLink を確認する。失敗系では選択から計算した内訳線が GraphLink として保存されず、View 切替で Topology が変わらないことを確認する。
+検証観点: 正常系では root の子 node の順序がレーン順に保たれ、孫 node 間の GraphLink がレーンをまたいで表示されることを確認する。境界系では `right` / `down` の方向、レーンを飛び越す GraphLink を確認する。失敗系では選択から計算した内訳線が GraphLink として保存されず、View 切替で Topology が変わらないことを確認する。
 
 Radial と Disperse は同一の力学配置エンジンを共有し、**親子関係を edge にするか group にするかだけが異なる**。座標計算のアルゴリズムに違いはない。
 
