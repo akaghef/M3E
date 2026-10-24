@@ -2611,7 +2611,6 @@ function sanitizeMapModelState(state: AppState): void {
       id: typeof surface.id === "string" && surface.id ? surface.id : surfaceKey,
       scopeId,
       kind,
-      displayRootId: typeof surface.displayRootId === "string" ? surface.displayRootId : undefined,
       layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
       surfaceView: migrateSurfaceViewFromMapRead(
         state,
@@ -2656,7 +2655,6 @@ function sanitizeMapModelState(state: AppState): void {
       id: existingSurface?.id || preferredPrimarySurfaceId,
       scopeId,
       kind: existingSurface?.kind || surfaceKind,
-      displayRootId: existingSurface?.displayRootId,
       layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
       surfaceView: existingSurface?.surfaceView || migrateSurfaceViewFromMapRead(state, scopeId, undefined),
       nodeViews: existingSurface?.nodeViews || {},
@@ -12693,7 +12691,6 @@ function stateForExport(rootId?: string): AppState {
   state.surfaces = Object.fromEntries(Object.entries(state.surfaces || {}).filter(([, surface]) => state.scopes![surface.scopeId]));
   for (const surface of Object.values(state.surfaces)) {
     surface.nodeViews = Object.fromEntries(Object.entries(surface.nodeViews || {}).filter(([id]) => included.has(id)));
-    if (surface.displayRootId && !included.has(surface.displayRootId)) delete surface.displayRootId;
   }
   state.annotations = Object.fromEntries(Object.entries(state.annotations || {}).filter(([, annotation]) => annotation.scopeId && included.has(annotation.scopeId)));
   state.linearNotesByScope = Object.fromEntries(Object.entries(state.linearNotesByScope || {}).filter(([id]) => included.has(id)));

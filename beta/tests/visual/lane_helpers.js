@@ -43,10 +43,9 @@ async function surfaceAction(page,...path){
  }
  await page.locator(`[data-pn-node="${path.at(-1)}"]`).click();
 }
-async function applyRoot(page,id="diagram"){
- await page.locator(`.node-hit[data-node-id="${id}"]`).click();await page.keyboard.press("Space");
- await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toBeVisible();
- await page.locator('[data-pn-node="lane-root"]').click();await ready(page);
+/** Lane is a Surface View of the current scope: switch it from Surface PN. */
+async function applyLane(page,direction="right"){
+ await surfaceAction(page,"view","lane-surface","lane-direction",`lane-direction-${direction}`);await ready(page);
 }
 async function ready(page){await expect(page.locator("#board")).toHaveAttribute("data-lane-state","ready");}
-module.exports={laneServer,surfaceAction,applyRoot,ready,isolatedProductServer};
+module.exports={laneServer,surfaceAction,applyLane,ready,isolatedProductServer};

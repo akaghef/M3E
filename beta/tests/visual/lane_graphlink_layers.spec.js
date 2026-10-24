@@ -1,9 +1,9 @@
 const {test,expect}=require("@playwright/test");
-const {laneServer,surfaceAction,applyRoot,ready}=require("./lane_helpers");
+const {laneServer,surfaceAction,applyLane,ready}=require("./lane_helpers");
 const open=laneServer(test);
 
 async function openCrossing(page){
- await open(page,require("../fixtures/lane_layers.json"));await applyRoot(page);
+ await open(page,require("../fixtures/lane_layers.json"),{scope:"diagram"});await applyLane(page);
  await surfaceAction(page,"view","lane-surface","lane-direction","lane-direction-down");await ready(page);
  await surfaceAction(page,"view","layout","layout-link-route","layout-link-straight");
  const node=page.locator('.node-hit[data-node-id="viewer"]'),link=page.locator('.graph-link[data-link-id="crossing"]');

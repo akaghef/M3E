@@ -1,9 +1,9 @@
 const {test,expect}=require("@playwright/test");
-const {laneServer,surfaceAction,applyRoot,ready}=require("./lane_helpers");
+const {laneServer,surfaceAction,applyLane,ready}=require("./lane_helpers");
 const open=laneServer(test);
 
-test("non-scope Lane root, links, labels and preferences survive real save and reopening",async({page})=>{
- const {read}=await open(page);await applyRoot(page);
+test("scope Lane, links, labels and preferences survive real save and reopening",async({page})=>{
+ const {read}=await open(page,undefined,{scope:"diagram"});await applyLane(page);
  await expect(page.locator(".lane-title")).toHaveText(["Research","Development","Operations"]);
  await expect(page.locator(".node-hit")).toHaveCount(7);
  await expect(page.locator('.node-hit[data-node-id="diagram"]')).toHaveCount(0);
@@ -24,26 +24,26 @@ test("non-scope Lane root, links, labels and preferences survive real save and r
  expect(humanText.join(" ")).not.toMatch(/relation-\d|workspace|diagram|lane-empty:|surface:|[0-9a-f]{8}-[0-9a-f]{4}/);
  await surfaceAction(page,"view","lane-surface","lane-direction","lane-direction-down");await ready(page);
  await surfaceAction(page,"view","lane-surface","lane-space","lane-space-loose");await ready(page);
- await expect.poll(async()=> (await read()).surfaces?.["surface:workspace:lane"]?.surfaceView).toEqual({direction:"down",space:"loose"});
- const saved=await read();expect(saved.nodes.diagram.nodeType).toBe("text");expect(saved.surfaces["surface:workspace:lane"].displayRootId).toBe("diagram");
+ await expect.poll(async()=> (await read()).surfaces?.["surface:diagram:lane"]?.surfaceView).toEqual({direction:"down",space:"loose"});
+ const saved=await read();expect(saved.nodes.diagram.nodeType).toBe("folder");expect(saved.surfaces["surface:diagram:lane"]).not.toHaveProperty("displayRootId");
  await page.reload();await ready(page);await expect(page.locator("#board")).toHaveAttribute("data-lane-root","diagram");
  await expect(page.locator("html")).toHaveAttribute("data-surface-layout-direction","down");await expect(page.locator("html")).toHaveAttribute("data-surface-space","loose");
 });
 
 test("Tree to Lane to Tree leaves all nodes and GraphLinks intact and restores Lane preferences",async({page})=>{
- const {read}=await open(page);const before=await read();await applyRoot(page);
+ const {read}=await open(page,undefined,{scope:"diagram"});const before=await read();await applyLane(page);
  await surfaceAction(page,"view","lane-surface","lane-direction","lane-direction-down");await ready(page);
  await surfaceAction(page,"view","tree");
  await expect(page.locator("html")).toHaveAttribute("data-surface-view-mode","tree");
  await expect(page.locator('.node-hit[data-node-id="diagram"]')).toBeVisible();
- await expect.poll(async()=> (await read()).scopes?.["scope:workspace"]?.primarySurfaceId).toBe("surface:workspace:tree");
+ await expect.poll(async()=> (await read()).scopes?.["scope:diagram"]?.primarySurfaceId).toBe("surface:diagram:tree");
  const after=await read();expect(after.nodes).toEqual(before.nodes);expect(after.links).toEqual(before.links);
  await surfaceAction(page,"view","lane-surface","lane-direction","lane-direction-down");await ready(page);
  await expect(page.locator("#board")).toHaveAttribute("data-lane-root","diagram");
 });
 
 test("Lane navigation offers only right/down, has no parent-child Edge Route and retains Link Route",async({page})=>{
- await open(page);await applyRoot(page);
+ await open(page,undefined,{scope:"diagram"});await applyLane(page);
  const nav=page.getByTestId("progressive-navigation");
  await page.getByRole("button",{name:"Surface PN root",exact:true}).click();
  for(const id of ["view","lane-surface","lane-direction"]){await page.locator(`[data-pn-node="${id}"]`).hover();await expect(nav).toHaveAttribute("data-active-pn-node",id);}

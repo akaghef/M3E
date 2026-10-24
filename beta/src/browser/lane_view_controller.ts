@@ -23,17 +23,6 @@ export class LaneViewController {
   private result?: LayoutResult;
 
   constructor(private bridge: LaneBridge) {
-    window.addEventListener("m3e:lane-root", () => {
-      const state = bridge.state();
-      if (!state || !bridge.writable()) return;
-      try {
-        // Validate before adding undo history or changing persistent settings.
-        resolveLaneRoot(state, bridge.scopeRoot(), { displayRootId: bridge.view().selectedNodeId } as never);
-        bridge.undo();
-        selectLaneSurface(state, bridge.scopeRoot(), bridge.view().selectedNodeId);
-        bridge.apply("lane"); bridge.render(); bridge.fit(); bridge.save();
-      } catch { bridge.status("この node を現在の scope の Lane root に指定できません。"); }
-    });
     window.addEventListener("keydown", event => {
       if (bridge.view().surfaceViewMode === "lane" && document.getElementById("board")?.dataset.laneState === "failed" && !["Escape", "Alt", "Meta", "Control", "Shift"].includes(event.key)) {
         event.preventDefault(); event.stopImmediatePropagation();
@@ -56,8 +45,7 @@ export class LaneViewController {
   displayRootId(): string {
     const state = this.bridge.state();
     if (!state || this.bridge.view().surfaceViewMode !== "lane") return this.bridge.scopeRoot();
-    const scope = state.scopes?.[`scope:${this.bridge.scopeRoot()}`];
-    return resolveLaneRoot(state, this.bridge.scopeRoot(), state.surfaces?.[scope?.primarySurfaceId ?? ""]);
+    return resolveLaneRoot(state, this.bridge.scopeRoot());
   }
 
   prepare(): boolean {

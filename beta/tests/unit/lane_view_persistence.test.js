@@ -16,31 +16,29 @@ afterAll(async()=>{
  if(oldDb===undefined)delete process.env.M3E_DB_FILE;else process.env.M3E_DB_FILE=oldDb;
  if(dataDir)fs.rmSync(dataDir,{recursive:true,force:true});
 });
-function seed(){const state=structuredClone(fixture.state);state.scopes={"scope:workspace":{id:"scope:workspace",label:"Workspace",rootNodeIds:["workspace"],relationIds:[]}};return state;}
-test("existing map API and SQLite retain Lane root, direction and spacing",async()=>{
+function seed(){const state=structuredClone(fixture.state);state.scopes={"scope:diagram":{id:"scope:diagram",label:"Project structure",rootNodeIds:["diagram"],relationIds:[]}};return state;}
+test("existing map API and SQLite retain the scope's Lane direction and spacing",async()=>{
  const state=RapidMvpModel.fromJSON(seed()).toJSON(),nodes=structuredClone(state.nodes),links=structuredClone(state.links);
- const surface=selectLaneSurface(state,"workspace","diagram");surface.surfaceView={direction:"down",space:"loose"};
+ const surface=selectLaneSurface(state,"diagram");surface.surfaceView={direction:"down",space:"loose"};
  const response=await fetch(`${baseUrl}/api/maps/lane`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({state})});expect(response.status).toBe(200);
  const read=await (await fetch(`${baseUrl}/api/maps/lane`)).json();expect(read.state.surfaces[surface.id]).toEqual(surface);
- expect(read.state.scopes["scope:workspace"].primarySurfaceId).toBe(surface.id);
- expect(read.state.nodes).toEqual(nodes);expect(read.state.links).toEqual(links);expect(read.state.nodes.diagram.nodeType).toBe("text");
+ expect(read.state.scopes["scope:diagram"].primarySurfaceId).toBe(surface.id);
+ expect(read.state.nodes).toEqual(nodes);expect(read.state.links).toEqual(links);
  const db=RapidMvpModel.loadFromSqlite(path.join(dataDir,"lane.sqlite"),"lane");expect(db.toJSON().surfaces[surface.id]).toEqual(surface);
 });
-test("existing subtree copy remaps display root into copied topology",()=>{
- const state=seed();selectLaneSurface(state,"workspace","diagram");
- const target=new RapidMvpModel("Destination"),ids=target.copySubtree(state,"workspace",target.state.rootId);
- const displayRoot=ids.find(id=>target.state.nodes[id].text==="Project structure");
+test("existing subtree copy carries the copied scope's Lane surface",()=>{
+ const state=seed();selectLaneSurface(state,"diagram");
+ const target=new RapidMvpModel("Destination"),ids=target.copySubtree(state,"diagram",target.state.rootId);
+ const copiedRoot=ids.find(id=>target.state.nodes[id].text==="Project structure");
  const surface=Object.values(target.state.surfaces).find(surface=>surface.kind==="lane");
- expect(surface.displayRootId).toBe(displayRoot);expect(surface.displayRootId).not.toBe("diagram");
+ expect(surface.scopeId).toBe(`scope:${copiedRoot}`);expect(surface).not.toHaveProperty("displayRootId");
  expect(target.validate()).toEqual([]);
 });
-test("scoped SQLite read and write retain Lane selection and reject roots outside the boundary",()=>{
- const db=path.join(dataDir,"scope.sqlite"),state=seed();selectLaneSurface(state,"workspace","diagram");RapidMvpModel.fromJSON(state).saveToSqlite(db,"scope");
- const read=RapidMvpModel.readScopedState(db,"scope","workspace");expect(read.ok).toBe(true);
- const scoped=read.map.state,surface=scoped.surfaces["surface:workspace:lane"];
- expect(surface.displayRootId).toBe("diagram");surface.surfaceView={direction:"down",space:"tight"};
- expect(RapidMvpModel.writeScopedState(db,"scope","workspace",scoped).ok).toBe(true);
- const before=RapidMvpModel.loadFromSqlite(db,"scope").toJSON();expect(before.surfaces[surface.id].surfaceView).toEqual({direction:"down",space:"tight"});
- surface.displayRootId="missing";expect(RapidMvpModel.writeScopedState(db,"scope","workspace",scoped).ok).toBe(false);
- expect(RapidMvpModel.loadFromSqlite(db,"scope").toJSON()).toEqual(before);
+test("scoped SQLite read and write retain the scope's Lane selection",()=>{
+ const db=path.join(dataDir,"scope.sqlite"),state=seed();selectLaneSurface(state,"diagram");RapidMvpModel.fromJSON(state).saveToSqlite(db,"scope");
+ const read=RapidMvpModel.readScopedState(db,"scope","diagram");expect(read.ok).toBe(true);
+ const scoped=read.map.state,surface=scoped.surfaces["surface:diagram:lane"];
+ expect(surface.kind).toBe("lane");surface.surfaceView={direction:"down",space:"tight"};
+ expect(RapidMvpModel.writeScopedState(db,"scope","diagram",scoped).ok).toBe(true);
+ expect(RapidMvpModel.loadFromSqlite(db,"scope").toJSON().surfaces[surface.id].surfaceView).toEqual({direction:"down",space:"tight"});
 });

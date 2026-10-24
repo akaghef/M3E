@@ -22,32 +22,24 @@ export function laneDirection(raw: unknown): "right" | "down" {
   return raw === "down" ? "down" : "right";
 }
 
-export function resolveLaneRoot(state: AppState, scopeRootId: string, surface?: MapSurface | null): string {
-  const rootId = surface?.displayRootId ?? scopeRootId;
-  const visited = new Set<string>();
-  let cursor: string | null = rootId;
-  while (cursor && !visited.has(cursor)) {
-    visited.add(cursor);
-    const node: TreeNode | undefined = state.nodes[cursor];
-    if (!node) break;
-    if (cursor === scopeRootId) return rootId;
-    if (node.nodeType === "folder") break;
-    cursor = node.parentId;
-  }
-  throw new Error("Lane の root node が見つからないか、別の scope に属しています。");
+/** Lane is a Surface View of a scope: its root is that scope's root node. */
+export function resolveLaneRoot(state: AppState, scopeRootId: string): string {
+  if (!state.nodes[scopeRootId]) throw new Error("Lane の root node が見つかりません。");
+  return scopeRootId;
 }
 
 /** Select existing surface settings without altering nodes, links, or scope roots. */
-export function selectLaneSurface(state: AppState, scopeRootId: string, rootId?: string): MapSurface {
+export function selectLaneSurface(state: AppState, scopeRootId: string): MapSurface {
   const scopeId = `scope:${scopeRootId}`;
   const scope = state.scopes?.[scopeId];
   if (!scope) throw new Error("Lane を保存する scope が見つかりません。");
   const id = `surface:${scopeRootId}:lane`;
   const previous = state.surfaces?.[id];
-  resolveLaneRoot(state, scopeRootId, { ...previous, displayRootId: rootId ?? previous?.displayRootId } as MapSurface);
+  resolveLaneRoot(state, scopeRootId);
   state.surfaces ??= {};
   const surface: MapSurface = previous ?? { id, scopeId, kind: "lane", layout: "lane", surfaceView: { direction: "right", space: "normal" }, nodeViews: {} };
-  if (rootId !== undefined) surface.displayRootId = rootId;
+  // Saves from the reverted non-scope-root option may still carry a root field.
+  delete (surface as MapSurface & { displayRootId?: string }).displayRootId;
   surface.surfaceView = { direction: laneDirection(surface.surfaceView?.direction), space: surface.surfaceView?.space ?? "normal" };
   state.surfaces[id] = surface;
   scope.primarySurfaceId = id;

@@ -65,7 +65,6 @@ interface SurfaceNodeView {
 }
 
 interface MapSurface {
-  displayRootId?: string;
   id: string;
   scopeId: string;
   kind: SurfaceKind;
