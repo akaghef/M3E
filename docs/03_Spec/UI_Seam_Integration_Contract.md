@@ -147,7 +147,7 @@ RQ9. Full YAML example:
 ```yaml
 id: edge-label-edit
 responsibility: >
-  Edit an existing incoming edge or graph-link label without owning selection,
+  Edit an existing Connection label (an incoming parent-child edge or GraphLink) without owning selection,
   layout, render ordering, keyboard routing, or persistence scheduling.
 inputs:
   stateViews:

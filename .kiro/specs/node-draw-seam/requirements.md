@@ -16,7 +16,7 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
 ## Boundary Context
 
 - **In scope**: `.kiro/specs/node-draw-seam/` の spec 草案、`NodeDrawPort` 契約、style normalize、label split、plain/latex content adapter、`node_draw_svg.ts` shared renderer、`src/labs/node/node-lab.tsx`、fragment golden、node-lab Playwright、EN1-5 / jscpd / dependency-cruiser ratchet 設計。
-- **Out of scope**: この spec 作成時点での implementation code、`beta/` source 変更、package/workflow 変更、actual lab 実装、actual golden 採取、PR 作成、Markdown/Mermaid preview、parent-child edge / GraphLink / EdgePort 実装、layout algorithm 変更、RenderGraph 全体 seam、tabular node component seam、folder preview mini graph seam。
+- **Out of scope**: この spec 作成時点での implementation code、`beta/` source 変更、package/workflow 変更、actual lab 実装、actual golden 採取、PR 作成、Markdown/Mermaid preview、Connection / EdgePort 実装、layout algorithm 変更、RenderGraph 全体 seam、tabular node component seam、folder preview mini graph seam。
 - **Binding sources**:
   - `.kiro/steering/ui_view_taxonomy_and_ports.md`
   - `docs/03_Spec/map_layout_modes.md`
@@ -57,7 +57,7 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
 2. public contract は `renderNode(input: NodeDrawInput, adapters?: NodeDrawAdapters): NodeDrawOutput` 相当を export しなければならない。
 3. `NodeDrawInput` は node data、`position: LayoutNodePosition`、normalized style、view state、surface、content を入力にしなければならない。
 4. `NodeDrawOutput` は `{ svg: string, overlays?: string, bounds: NodeDrawBounds }` 相当を返さなければならない。
-5. output `svg` は node-only fragment であり、parent-child edge、GraphLink、Markdown/Mermaid preview、canvas-level surface frame を含んではならない。
+5. output `svg` は node-only fragment であり、Connection、Markdown/Mermaid preview、canvas-level surface frame を含んではならない。
 6. `renderNode` は AppState、global `viewState`、DOM canvas、current scope globals、network、persistence に依存してはならない。
 7. helper は shared module 内で module-private にし、product / lab / tests は public contract だけを呼ぶ設計でなければならない。
 

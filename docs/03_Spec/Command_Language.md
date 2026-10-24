@@ -17,7 +17,7 @@ Related:
 
 | 平面 | 役割 | 正規語彙 | 禁止事項 |
 |---|---|---|---|
-| 読み平面 | graph / node / edge / GraphLink / attributes を読む | openCypher / ISO GQL の read-only 語彙 | M3E 独自 query 言語、`CREATE` / `MERGE` / `SET` / `DELETE` |
+| 読み平面 | graph / node / Connection / attributes を読む | openCypher / ISO GQL の read-only 語彙 | M3E 独自 query 言語、`CREATE` / `MERGE` / `SET` / `DELETE` |
 | 書き平面 | M3E の state を変更する | M3E Command intent | 生 Cypher write、database raw write、owner routing 迂回 |
 | 精錬平面 | source から derived read model / assertion を作る | `materialize` / `aggregate` / `derive` | transform / inputs / provenance なしの生成 |
 
@@ -116,12 +116,12 @@ interface GraphOperation {
 
 | Command intent | 既存 API / graph operation 対応 | 意味 | Cypher 類比 | 制約 |
 |---|---|---|---|---|
-| `assert` | `m3e.add`, `m3e.sibling`, `operation: "create"` / `"connect"` | node、edge、GraphLink、attribute assertion を追加する | `CREATE` / `MERGE` | 生 Cypher は実行しない。owner と `baseRevision` を検証する |
+| `assert` | `m3e.add`, `m3e.sibling`, `operation: "create"` / `"connect"` | node、Connection、attribute assertion を追加する | `CREATE` / `MERGE` | 生 Cypher は実行しない。owner と `baseRevision` を検証する |
 | `rename` | `m3e.edit`, `operation: "set"` with `key: "text"` | node の表示 text を変更する | `SET n.text = ...` | identity を text に依存させない |
 | `reparent` | `m3e.move`, `m3e.promote`, `m3e.demote`, `operation: "reparent"` | edge を差し替え、親子構造を変更する | Relationship delete + create | tree invariant を保持する。authority を跨ぐ場合は `transfer` を要求する |
 | `bind` | entity binding / scope bind / alias 作成 | occurrence、entity、scope / facet 表示を対応付ける | `MERGE` relationship | `edge`、`alias`、`GraphLink`、`scope bind` を混同しない |
 | `transfer` | ownership transfer workflow | canonical owner を跨ぐ移動を二相以上で処理する | 複数 transaction + tombstone / redirect | 通常 `reparent` として確定しない |
-| `delete` | `m3e.del`, `operation: "remove"` / `"disconnect"` | node subtree、edge、GraphLink、attribute を削除する | `DELETE` / `DETACH DELETE` | root 削除不可。source-owned target は owner adapter へ route する |
+| `delete` | `m3e.del`, `operation: "remove"` / `"disconnect"` | node subtree、Connection、attribute を削除する | `DELETE` / `DETACH DELETE` | root 削除不可。source-owned target は owner adapter へ route する |
 | `set-attribute` | `m3e.attr`, `m3e.set`, `operation: "set"` | `attributes` または許可 field を設定する | `SET n.key = ...` | field allowlist と classification を検証する |
 | `unset-attribute` | `m3e.attrDel`, `m3e.unset`, `operation: "remove"` with `key` | `attributes` または許可 field を削除する | `REMOVE n.key` | 削除対象 field を明示する |
 | `set-type` | `m3e.setType`, `m3e.active_node.setType` | `nodeType` を変更する | Label 変更 / `SET n.nodeType = ...` | `text` / `image` / `folder` / `alias` の意味は Data Model と Scope / Alias に従う |

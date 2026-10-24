@@ -71,7 +71,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 実装に進む場合は、次の境界を守る。
 
 - UI shell: React component。toolbar / inspector / legend / replay control を持つ。
-- Rendering layer: graph surface。node / edge / GraphLink / port / minimap を描く。
+- Rendering layer: graph surface。node / Connection / port / minimap を描く。
 - Model: `AppState`、`TreeNode`、`GraphLink`、`MapSurface` を保持する。
 - ViewState: selected node, selected link, viewport, hover, replay step, dimming を保持する。
 - GraphSpec: 実行可能な system contract へ compile する derived data。map 正本ではない。

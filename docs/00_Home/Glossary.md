@@ -3,7 +3,7 @@
 M3E プロジェクト固有の語、および揺れがちな語を正規化する辞書。
 **新しい語を skill / map / code に持ち込む前にここへ登録する**。揺れを見つけたら正規語を決めて記載する。
 
-最終更新: 2026-10-17
+最終更新: 2026-10-24
 
 ---
 
@@ -28,6 +28,7 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **nodeType** | node の型。例: `text` / `image` / `folder` / `alias` / `agent` | node, agent | 自然言語では `node type` と表記する。例示は閉じた列挙ではない。用語としての型と、現在の保存・実装で対応する型一覧は区別する。後者は [Data Model](../03_Spec/Data_Model.md#nodetype-一覧) を参照 |
 | **agent** | AI agent と human を合わせた上位集合。`agent = AI agent ∪ human` | nodeType, node | `agent` は node type の一例であり、agent を表す node に用いる。無修飾の agent を AI のみに限定しない |
 | **edge** | 親子関係のみを表す有向関係（親→子） | node, GraphLink, EdgeStyle | **3義を混同しない**: 関係線（補助線）は `GraphLink`、描画の経路スタイルは `EdgeStyle`。無修飾の `edge` は常に親子関係を指す |
+| **Connection**（線要素） | 親子 edge と GraphLink の総称。選択・表示の単位として両者をまとめて扱うときに使う。 | edge, GraphLink, LinkStyle, EdgeStyle | DC50（2026-10-24 akaghef 決定）。保存実体ではなく、新しいデータ型は追加しない。外部接続（connector / joint）の意味では使わない。 |
 | **seam interface** | seam の**型付き契約境界**（ports and adapters の port に相当）。ファイル命名は `*_seam_interface.ts` | seam, seam contract, edge port | **`port` をこの意味で使うな**（幾何の接続点と衝突するため廃語）。`seam contract`（reads/writes/claims を宣言する yaml）とは別artifact — こちらは TypeScript の型面。spec が言う `LayoutPort` は module の通称で、その名の型は実在しない（export は `layout()` 関数）|
 | **edge port** | ノード矩形上の**接続点**。`side = left / right / top / bottom` と座標を持つ幾何要素 | edge, EdgeStyle, LinkPort | 実装 `beta/src/shared/edge_port.ts` の `EdgePortSide` / `EdgePortPoint` / `EdgePorts`。`selectPorts(srcRect, dstRect, branchDirection)` が選ぶ対象。**seam port とは無関係の別概念** |
 | **LinkPort** | GraphLink に保存される端点指定。`auto / left / right / top / bottom` | edge port, GraphLink | `edge port` をデータとして持つもの。`auto` の意味が fixed-side sanitize と齟齬あり（reconcile 対象）|

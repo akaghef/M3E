@@ -38,6 +38,23 @@ describe('renderer registration bridge',()=>{
   session.commit('denied');expect(undo).not.toHaveBeenCalled();
   state=structuredClone(state);expect(session.anchor()).toBeNull();session.commit('denied');expect(undo).not.toHaveBeenCalled();
  });
+ it('DC51 paints one guide at circle boundaries and clears it for node or GraphLink selection',()=>{
+  canvas.querySelector('.edge')!.remove();
+  canvas.insertAdjacentHTML('afterbegin','<g data-render-key="guides"></g><rect class="disperse-group" data-group-id="root"/>');
+  adapter.begin(layout,'map:root');adapter.graph('same',state.links!.one!,'a','b');adapter.finish();
+  expect(canvas.querySelectorAll('.scatter-guide')).toHaveLength(0);
+  send('ArrowUp',{altKey:true});adapter.paint();adapter.paint();
+  const guide=canvas.querySelector('.scatter-guide')!;
+  expect(canvas.querySelectorAll('.scatter-guide')).toHaveLength(1);
+  expect(guide.getAttribute('data-parent-node-id')).toBe('root');expect(guide.getAttribute('data-child-node-id')).toBe('a');
+  // Independent 3:4:5 triangle, radius 18: camera scale must not enter world geometry.
+  for(const [name,value] of Object.entries({x1:28.8,y1:14.4,x2:37.2,y2:25.6}))expect(Number(guide.getAttribute(name))).toBeCloseTo(value);
+  expect(canvas.querySelectorAll('.disperse-group.relation-selected')).toHaveLength(1);
+  send('Escape');adapter.paint();expect(canvas.querySelectorAll('.scatter-guide')).toHaveLength(0);
+  adapter.node('root');view.selectedNodeId='root';send('ArrowDown',{altKey:true});adapter.paint();
+  expect(canvas.querySelector('.scatter-guide')?.getAttribute('data-child-node-id')).toBe('a');
+  adapter.click('one');adapter.paint();expect(canvas.querySelectorAll('.scatter-guide')).toHaveLength(0);
+ });
  it('uses measured endpoints and camera CSS pixels; label anchor is the drawn label',()=>{
   const graph=inspect().scene.items.find((i:any)=>i.ref.kind==='graph-link');
   expect(graph.source.center).toEqual({x:90,y:100});expect(graph.target.center).toEqual({x:210,y:180});expect(graph.presentation.labelAnchor).toEqual({x:130,y:120});

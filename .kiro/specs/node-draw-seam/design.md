@@ -26,7 +26,7 @@
 
 - この spec draft で implementation code を書かない。
 - layout algorithm / `LayoutPort` を変更しない。
-- parent-child edge / GraphLink / EdgePort を実装しない。
+- Connection / EdgePort を実装しない。
 - Markdown/Mermaid preview panel を nodeDraw に統合しない。
 - tabular node component を第一 ratchet で所有しない。tabular は後続の別 seam として起票する。
 - folder preview mini graph / preview edge を第一 ratchet で所有しない。viewer-owned helper として温存し、将来 `folderPreview` または `surfaceDraw` seam として別起票する。

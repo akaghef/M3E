@@ -25,7 +25,7 @@
 
 ## 現状の境界と移譲先
 
-`viewer.ts` は DOM 取得と起動だけでなく、`viewState`、map、render cache、timer、WebGL、SSE、入力 handler を直接結んでいる。例えば `applyZoom` は WebGL camera と SVG transform、linear 表示、editor、viewport event を更新し、`moveCameraTo`、wheel、pointer、fit が同じ座標を書いている。`renderScene` は layout、node、edge、GraphLink、annotation と DOM/WebGL snapshot を組み立てる。factory への機械的な移動だけでは依存は解消しない。
+`viewer.ts` は DOM 取得と起動だけでなく、`viewState`、map、render cache、timer、WebGL、SSE、入力 handler を直接結んでいる。例えば `applyZoom` は WebGL camera と SVG transform、linear 表示、editor、viewport event を更新し、`moveCameraTo`、wheel、pointer、fit が同じ座標を書いている。`renderScene` は layout、node、Connection、annotation と DOM/WebGL snapshot を組み立てる。factory への機械的な移動だけでは依存は解消しない。
 
 以下の module 名は実装パスの予定であり、新しい製品概念名ではない。
 

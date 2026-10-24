@@ -6,8 +6,10 @@ import {join, resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const args = process.argv.slice(2);
+// Git hooks export repository selectors; cwd alone cannot isolate child Git calls.
+const childEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
 const command = (name, args, options = {}) => spawnSync(name, args, {
-  encoding: 'utf8', ...options,
+  encoding: 'utf8', ...options, env: childEnv(),
 });
 const reportCommandFailure = (label, result) => {
   if (result.stdout) process.stdout.write(result.stdout);
@@ -97,7 +99,7 @@ if (commitMode) {
       for (const name of selected) {
         console.log('\n[preflight] ' + name);
         const [cwd, check] = checks[name];
-        const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', check], {cwd: resolve(root, cwd), stdio: 'inherit'});
+        const result = command('bash', ['-e', '-o', 'pipefail', '-c', check], {cwd: resolve(root, cwd), stdio: 'inherit'});
         if (result.status !== 0) { failed.push(name); console.error('FAIL ' + name + (result.error ? ': ' + result.error.message : '')); }
       }
       console.log('\n[preflight] ' + (failed.length ? 'FAIL: ' + failed.join(', ') : 'PASS: ' + selected.join(', ')) + ' (' + ((Date.now()-started)/1000).toFixed(1) + 's)');

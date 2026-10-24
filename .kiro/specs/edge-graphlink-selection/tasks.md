@@ -2,7 +2,7 @@
 
 ## 実行条件
 
-本書は実装タスク。2026-10-20 に akaghef が本仕様を承認し、L2 / L3 / L4 は全て採用された（requirements.md 承認記録）。実装の前提は本仕様の承認（OP40 / OP41は承認済み 2026-10-20）。IS111 / IS112は解決済み。IS113 / IS114 / RK12は別の後続事項であり、タスクの依存条件ではない。OP42は却下。各作業は原則1–3時間の境界とし、超える場合は同じ受入条件を保って分割する。
+本書は実装タスク。2026-10-20 に akaghef が本仕様を承認し、L2 / L3 / L4 は全て採用された（requirements.md 承認記録）。実装の前提は本仕様の承認（OP40 / OP41は承認済み 2026-10-20）。IS111 / IS112は解決済み。IS110 / IS114 は DC50 / DC51（2026-10-24 akaghef）で解決済み。IS113 / RK12は別の後続事項であり、タスクの依存条件ではない。OP42は却下。各作業は原則1–3時間の境界とし、超える場合は同じ受入条件を保って分割する。
 
 通常 Beta / personal workspace / 4173 には検証データを書かない。既存4187の起動・停止・ビルド差替えはこの計画の既定操作に含めない。製品実装承認後の通常 Beta 配備は別の運用手順に従い、以下のレビュー完了と混同しない。
 
@@ -40,7 +40,7 @@ task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採
 - [x] 3. 描画 snapshot と親子 edge の強調を接続する
   - 既存 geometry / path から元 identity、両端中心、labelAnchor、line / lane-band / group-frame を公開する。preview / hit / ガイド / 内訳線は候補に登録しない。
   - 既存 render hook、lane_scene、選択表示へ adapter を接続する。DC37 の root→lane / lane→item / Disperse の親 frame と両端が識別できることを確認する。
-  - OP40に従い既存の除外・集約結果をsnapshotへ記録する。Systemの集約線には全linkIdsを対応させ、一本だけを候補にする。Disperseのguideは候補外とし、描画は変更しない。
+  - OP40に従い既存の除外・集約結果をsnapshotへ記録する。Systemの集約線には全linkIdsを対応させ、一本だけを候補にする。Disperse の guide は候補外を維持し、DC51 に従い親子 edge 選択時の一本だけを shared highlight plan と adapter から描く。
   - SVG / WebGL で同じ対象が強調される。Lane の前景描画と node 優先 hit を保持する。
   - _Requirements: 1.4, 1.6, 2.1, 2.2, 2.5, 2.7, 5.1, 5.6, 5.7, 6.3, 6.4_
   - _Boundary: 既存 renderer と selection adapter の明示的な統合作業_
@@ -62,7 +62,8 @@ task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採
   - _Browser verification: build:browser 後、Tree / System / Disperse / Lane down / Lane right の keyboard-only 遷移、Axialも同じfixtureで確認（省略時は具体的理由と代替検証結果を記録）_
   - _Data safety note: 選択・移動・Esc が Undo や map state に変更を追加しない_
 
-- [ ] 5. 選択・移動のレビュー viewer を akaghef に渡す
+- [x] 5. 選択・移動のレビュー viewer を akaghef に渡す
+  - 2026-10-24 akaghef 受け入れ
   - A-sys コピーの Lane down/right と人工 map の Tree / System / Disperse の実URLを渡す。source revision、dirty差分の有無、build:browser の時刻を添える。
   - 初期 node、Alt+上下、左右全周、L2 の対応 / 非対応、Esc、帯 / 枠と両端、集約線の件数表示・編集拒否、非描画端の理由表示の確認手順を渡す。未対応ケースは未達として記載する。
   - 下記URLが開けることを自身で観測してから提示する。古い4187だけを渡してチェックポイント完了にしない。
@@ -97,7 +98,8 @@ task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採
   - _Browser verification: build:node / build:browser 後、キーボード編集、Undo / Redo / reload / API readback、read-only 拒否、Mac入力欄のAlt矢印_
   - _Data safety note: 新規保存経路を作らず隔離データで検証_
 
-- [ ] 8. 実装済み Surface View の確認と編集レビュー viewer を渡す
+- [x] 8. 実装済み Surface View の確認と編集レビュー viewer を渡す
+  - 2026-10-24 akaghef 受け入れ
   - design.md の実装済み6ケースを対象にSVG / WebGLを確認する。Tree / Disperse / System / Lane down / Lane rightのkeyboard-only E2Eは必須。Axialも同じ人工fixtureを用いるが、省略時は具体的理由とsnapshot・unitの代替検証結果を記録する。Radialは本タスクの受入対象外であり、他viewによる代用もしない。
   - port / style / direction 全周、label解除、Delete禁止、両端強調、ID非表示、node F2とLane navigation回帰、text edit exclusion、集約線の件数と編集拒否・元の保存三件不変、非描画端のorigin維持・理由表示を確認する。
   - A-sys と人工mapのURLを再読込し、**編集を含む今回のビルド**の source/build と実測結果を akaghef に渡す。task 5 のビルドと区別する。

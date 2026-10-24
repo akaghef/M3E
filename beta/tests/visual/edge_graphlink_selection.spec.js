@@ -22,6 +22,23 @@ async function highlighted(page,presentation){
  expect(i).toBeTruthy();
  for(const end of [i.source,i.target]) await expect(page.locator(`[data-node-id="${end.renderedNodeId}"].relation-endpoint`).first()).toHaveCount(1);
 }
+async function disperseGuide(page,renderer,parent,child){
+ const guide=page.locator('.scatter-guide');
+ await expect(guide).toHaveCount(parent?1:0);
+ if(renderer==='webgl')await expect.poll(()=>page.evaluate(()=>window.__m3eWebGLProjection.getDebugState().edgeCount)).toBe(parent?1:0);
+ if(!parent)return;
+ expect((await inspect(page)).selection).toMatchObject({kind:'parent-child',parentNodeId:parent,childNodeId:child});
+ await expect(guide).toHaveAttribute('data-parent-node-id',parent);
+ await expect(guide).toHaveAttribute('data-child-node-id',child);
+ // Compare world endpoints to independently observed node circles, including hidden SVG in WebGL.
+ const errors=await guide.evaluate((line,{parent,child})=>{
+  const circle=id=>{const c=document.querySelector(`.scatter-node-circle[data-node-id="${id}"]`);return {x:Number(c.getAttribute('cx')),y:Number(c.getAttribute('cy')),r:Number(c.getAttribute('r'))};};
+  const a=circle(parent),b=circle(child),angle=Math.atan2(b.y-a.y,b.x-a.x);
+  return [Number(line.getAttribute('x1'))-(a.x+Math.cos(angle)*a.r),Number(line.getAttribute('y1'))-(a.y+Math.sin(angle)*a.r),
+   Number(line.getAttribute('x2'))-(b.x-Math.cos(angle)*b.r),Number(line.getAttribute('y2'))-(b.y-Math.sin(angle)*b.r)];
+ },{parent,child});
+ for(const error of errors)expect(Math.abs(error)).toBeLessThan(0.01);
+}
 const cases=[['tree','right'],['timeline','right'],['scatter','right'],['system','right'],['lane','down'],['lane','right']];
 for(const [kind,direction] of cases)for(const renderer of (kind==='tree'||kind==='scatter'?['svg','webgl']:['svg'])){
  test(`${kind} ${direction} ${renderer}: keyboard selection, full wrap, endpoints, editor boundary`,async({page})=>{
@@ -63,6 +80,7 @@ for(const [kind,direction] of cases)for(const renderer of (kind==='tree'||kind==
    });
    expect(Math.max(0,...errors)).toBeLessThan(2);
   }
+  if(kind==='scatter')await disperseGuide(page,renderer);
   await boardFocus(page);
   // Setup ended. Selection is changed only by keyboard from here on.
   if(kind==='system')await press(page,'ControlOrMeta+a'); // visible primary becomes 計画; Alt selection collapses the multi-selection.
@@ -82,11 +100,23 @@ for(const [kind,direction] of cases)for(const renderer of (kind==='tree'||kind==
   if(kind==='system')await selected(page,'node'); // children represented by the top-level card, not endpoints.
   else {
    await selected(page,'parent-child');await highlighted(page,kind==='lane'?'lane-boundary':kind==='scatter'?'disperse-group':'edge');
+   if(kind==='scatter') {
+    await disperseGuide(page,renderer,'plan','sort');
+    await press(page,'Escape');await selected(page,'node');await disperseGuide(page,renderer);
+    await press(page,'Alt+ArrowDown');await disperseGuide(page,renderer,'plan','sort');
+   }
    // Move to 整理 using a corresponding bare arrow, then Esc has ordinary node behavior.
    const {selection,scene}=await inspect(page),i=scene.items.find(i=>identity(i.ref)===identity(selection));
    const dx=i.target.center.x-i.source.center.x,dy=i.target.center.y-i.source.center.y;
    await press(page,Math.abs(dx)>=Math.abs(dy)?(dx>=0?'ArrowRight':'ArrowLeft'):(dy>=0?'ArrowDown':'ArrowUp'));
    await selected(page,'node');expect((await inspect(page)).selection.nodeId).toBe('sort');
+   if(kind==='scatter') {
+    await disperseGuide(page,renderer);
+    await press(page,'Alt+ArrowUp');await disperseGuide(page,renderer,'plan','sort');
+    await press(page,'Alt+ArrowRight');await selected(page,'graph-link');await disperseGuide(page,renderer);
+    await press(page,'Escape');expect((await inspect(page)).selection.nodeId).toBe('sort');
+    await disperseGuide(page,renderer);
+   }
   }
   await test.info().attach(`${kind}-${direction}-${renderer}-selection`,{body:await page.screenshot(),contentType:'image/png'});
   const expectedCount=kind==='system'?6:kind==='tree'||kind==='timeline'?6:5;

@@ -177,3 +177,63 @@ Personal Path Check CI both succeed. Normal Beta was rebuilt and the SVG/WebGL
 selection/editor-cancel checks repeated successfully with zero write requests
 and a matching served bundle hash. Task checkboxes reflect implementation
 evidence; human review tasks remain distinct from these automated results.
+
+## 2026-10-24 DC50 / DC51 反映
+
+DC50 の Connection（線要素）を Glossary に登録し、IS110 を解決済みにした。
+DC51 は shared `selectionHighlight.guide` と既存 adapter で実装。既存の
+`disperseGuideEndpoints` を再利用し、選択中の親子 edge 一組だけを描く。
+group-frame の選択 identity と左右巡回候補は維持する。adapter の描画後に
+既存 WebGL snapshot が同じ SVG guide を読み取る。GraphLink の除外・集約、
+Lane 描画、layout engine、保存形式は変更していない。
+
+タスク5・8は **2026-10-24 akaghef 受け入れ** として記録した。
+これはユーザーから与えられた受け入れ記録であり、今回の DC51 ブラウザ試験の成功とは区別する。
+
+| 今回実行した検証 | 結果 |
+|---|---|
+| `cd beta && npm run build:node && npm run build:browser` | PASS |
+| `cd beta && npx vitest run tests/unit/{edge_graphlink_selection,edge_graphlink_selection_adapter,edge_graphlink_edit,disperse_frame}.test.ts` | 4 files / 74 tests PASS |
+| `node --check beta/tests/visual/edge_graphlink_selection.spec.js` / `node --check beta/tests/visual/scatter_surface.spec.js` | PASS |
+| `git diff --check` | PASS |
+| Playwright | 未実行（Director 依頼）。sandbox が port を開けないため |
+
+Director 実行対象は `edge_graphlink_selection.spec.js` と `scatter_surface.spec.js`。
+前者の Disperse SVG / WebGL ケースに、未選択時0本、Alt+↓後1本、選択した親子の
+identity と実 node 円境界への両端一致、Esc後0本、子からAlt+↑で親への1本、
+Alt+→でGraphLinkへ切替後0本を追加した。WebGL は既存 debug snapshot の edgeCount も確認する。
+後者の常時ガイド1本という旧 assertion を未選択時0本へ更新した。
+
+viewer.ts の機能分のみの累積: **added 47 / deleted 52 / net −5**。
+`git show --numstat e8bf4be 1e37ee9 -- beta/src/browser/viewer.ts` で既存機能分を
+25/22 + 21/14 = 46/36 と確認。今回の `git diff --numstat -- beta/src/browser/viewer.ts`
+は1/16。基準 `ad1f40b` 以後の無関係な force / cache / Concreteness Axis 等の変更は合算しない。
+上限 added ≤120 / net ≤40 を満たす。viewer.ts に選択分岐の追加はない。
+
+### DC50 文書 sweep
+
+`docs/`、`.kiro/`、`agent_instructions/`、全 README、`AGENTS.md`、`CLAUDE.md` を対象に、
+日本語・英語の edge / GraphLink 併記、線要素、選択・表示文脈を検索・確認した。
+種別の対比、別々の型・保存 field の列挙、歴史的判断の引用は維持。
+agent_instructions と AGENTS.md / CLAUDE.md は置換対象なし。Improvement Log は未変更。
+以下は新規定義・解決済み記載も含む全置換位置（変更後の行番号）。
+
+| 文書 | 行 |
+|---|---|
+| `.kiro/specs/edge-graphlink-selection/design.md` | 5, 15, 48, 189, 222, 223, 224, 225, 226, 228, 236 |
+| `.kiro/specs/edge-graphlink-selection/requirements.md` | 5, 11, 38, 60, 62, 64, 65, 67, 83, 87, 88, 102, 111, 121, 137, 148 |
+| `.kiro/specs/edge-graphlink-selection/research.md` | 31, 37, 59, 102, 168 |
+| `.kiro/specs/edge-port-seam/tasks.md` | 7 |
+| `.kiro/specs/node-draw-seam/design.md` | 29 |
+| `.kiro/specs/node-draw-seam/requirements.md` | 19, 60 |
+| `.kiro/specs/progressive-nav-seam/tasks.md` | 80 |
+| `.kiro/specs/source-restructure/design.md` | 28 |
+| `.kiro/specs/source-restructure/tasks.md` | 207 |
+| `docs/00_Home/Glossary.md` | 31 |
+| `docs/03_Spec/Command_Language.md` | 20, 119, 124 |
+| `docs/03_Spec/UI_Seam_Integration_Contract.md` | 150 |
+| `docs/03_Spec/home_scope_navigator.md` | 328 |
+| `docs/04_Architecture/Pipeline_UI_Reference.md` | 74 |
+| `docs/06_Operations/Actions_Beta.md` | 97, 99, 105 |
+| `docs/06_Operations/Keybindings_Beta.md` | 159, 174, 179, 183, 184, 185, 196 |
+| `projects/PJ02_MathOntoBridge/README.md` | 39 |

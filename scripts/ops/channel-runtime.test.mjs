@@ -7,6 +7,9 @@ import {spawnSync} from 'node:child_process';
 import {git,guardBeta,guardFinal,releaseInfo,installFinal,ensureBuild,fingerprint,withChannelLock,agentIconPython} from './channel-runtime.mjs';
 const project=process.cwd();
 function fixture(fn){const root=fs.mkdtempSync(path.join(os.tmpdir(),'m3e-channel-'));
+ // The imported runtime's internal Git calls also need the fixture's environment.
+ const hookEnv=Object.fromEntries(Object.entries(process.env).filter(([key])=>key.startsWith('GIT_')));
+ for(const key of Object.keys(hookEnv))delete process.env[key];
  const originalPython=process.env.M3E_AGENT_ICON_PYTHON;
  // Generic build fixtures do not run the icon gate or require host Pillow.
  process.env.M3E_AGENT_ICON_PYTHON=process.execPath;
@@ -19,7 +22,7 @@ function fixture(fn){const root=fs.mkdtempSync(path.join(os.tmpdir(),'m3e-channe
  fs.copyFileSync(path.join(project,'scripts/ops/channel-runtime.mjs'),path.join(root,'scripts/ops/channel-runtime.mjs'));
  git(root,'add','.');git(root,'commit','-m','base');git(root,'update-ref','refs/remotes/origin/dev-beta','HEAD');git(root,'update-ref','refs/remotes/origin/main','HEAD');git(root,'tag','v1');git(root,'tag','v2');
  fn(root);
- }finally{fs.rmSync(root,{recursive:true,force:true});if(originalPython===undefined)delete process.env.M3E_AGENT_ICON_PYTHON;else process.env.M3E_AGENT_ICON_PYTHON=originalPython;}}
+ }finally{fs.rmSync(root,{recursive:true,force:true});Object.assign(process.env,hookEnv);if(originalPython===undefined)delete process.env.M3E_AGENT_ICON_PYTHON;else process.env.M3E_AGENT_ICON_PYTHON=originalPython;}}
 function deps(root,c){fs.mkdirSync(path.join(root,c,'node_modules/dotenv'),{recursive:true});fs.writeFileSync(path.join(root,c,'node_modules/dotenv/config.js'),'');}
 function installFixture(root,{fail=false}={}) {
  const dir=path.join(root,'beta'),pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
