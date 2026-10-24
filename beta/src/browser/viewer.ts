@@ -2713,7 +2713,12 @@ function syncMapModelStateFromRuntime(): void {
     if (shape === "rect" || shape === "diamond" || shape === "rounded") {
       nodeView.shape = shape;
     }
-    surface.nodeViews![node.id] = nodeView;
+    // Same rule as sanitizeSurfaceNodeViews: an empty node view carries nothing and is not stored.
+    if (Object.keys(nodeView).length > 0) {
+      surface.nodeViews![node.id] = nodeView;
+    } else {
+      delete surface.nodeViews![node.id];
+    }
   });
 }
 
