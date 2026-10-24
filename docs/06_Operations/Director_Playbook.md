@@ -1,8 +1,16 @@
 # Director Playbook
 
-The operating manual for Claude-as-Director driving Codex workers on M3E.
+The operating manual for Claude working on M3E.
 `CLAUDE.md` (repo root) is the binding contract; this file is the **how-to** and the
 **memory of what works**. Keep it current — improvements compound here.
+
+> **2026-10-25 — operating model changed.** akaghef: "Codex subをやめてopusにやらせよう … 全般がそう."
+> Claude (Opus) now does the work itself in every phase (investigate, spec, implement, test,
+> integrate, verify). Codex is used only when akaghef explicitly asks for it in the current
+> request. Where §1–§4 below say "dispatch to Codex" / "Codex drafts", read them as steps
+> Claude performs itself; the handoff template (§2) and the acceptance rules (criteria fixed
+> before the work, regression test that fails without the fix, independent runtime check)
+> still apply, to Claude's own work and to Codex when it is requested.
 
 ---
 
@@ -282,6 +290,7 @@ mechanism gets better across sessions. Future Directors: add here, don't rewrite
 - 2026-10-24 — A gate defers only the concern it measures. Before recording that a proposal is deferred behind a gate, split it into its concerns and write down which of them stay open for work now. "Neo4j 化" bundled four decisions: the write algorithm, the logical record model, the engine, and ownership and sync. ADR 008's Demand Gate measures Deep query demand, yet it deferred all four. So from 2026-08 the Rapid whole-JSON save stayed in place (full-state replacement, conflict merge by snapshot comparison) until the 研究 map reached 20,150 nodes; its ~15.9 MB save requests then exceeded the 10 MB body limit and failed silently. ADR 004's premise "backend scale is not the main risk" had no numeric review trigger. Every ADR premise about scale must carry a measurable review trigger (node count, request size, latency). Also: number investigation questions in a handoff as plain sections, not single-letter IDs. A handoff used Q1–Q13, and its output had to be renumbered before it was stowed. See `.kiro/specs/rapid-persistence-redesign/brief.md`.
 - 2026-10-25 — Keyboard-only Playwright acceptance in the viewer gives `#board` focus in setup with `locator.focus()`; never by pressing Tab. M3E binds Tab globally to node operations, so a spec that tabbed to the board failed all 14 cases in setup (edge-graphlink-selection, 2026-10-20). When the default Playwright port (14174) is held by another worktree's test server, run with `M3E_PORT=<free port>` instead of stopping it.
 - 2026-10-25 — In a session family, mint DC/IS/OP numbers only from the range the top session assigned; scanning for the current maximum is not enough while sibling sessions write unpushed specs. This session's DC39/DC40 collided with rapid-persistence-redesign's DC39–DC41 pushed the same day and were renumbered to DC50/DC51 before integration.
+- 2026-10-25 — Operating model: Claude (Opus) does the work; Codex only on explicit request (akaghef: "Codex subをやめてopusにやらせよう … 全般がそう"). Trigger: Codex sub-workers repeatedly stalled or could not commit/push from linked worktrees, while the coordinating Claude session already held the context; the preflight GIT_* fix (8c8e29a) was finished by the Opus session itself. Keep the acceptance discipline: fix criteria before the work and prove regression tests fail without the fix.
 
 ## Beta / Final channel policy
 
