@@ -211,7 +211,7 @@ async function handleFlashJobsApi(req: http.IncomingMessage, res: http.ServerRes
   try {
     if (pathname === "/api/flash/jobs" && req.method === "POST") {
       if (!(req.headers["content-type"] || "").startsWith("application/json")) throw new Error("Use application/json");
-      const result = currentFlashJobs().submit(JSON.parse(await readRequestBody(req, 64 * 1024 * 1024)));
+      const result = currentFlashJobs().submit(JSON.parse(await readRequestBody(req, res, 64 * 1024 * 1024)));
       sendJson(res, result.state === "processing" ? 202 : 200, result);
     } else if (req.method === "POST" && /^\/api\/flash\/jobs\/[a-f0-9]{64}\/retry-import$/.test(pathname)) {
       const result = await currentFlashJobs().retryImport(pathname.split("/")[4]!);
@@ -236,7 +236,7 @@ async function handleMcpApi(req: http.IncomingMessage, res: http.ServerResponse)
         sendJson(res, 415, { ok: false, error: { code: "INVALID_CONTENT_TYPE", message: "Use application/json." } });
         return true;
       }
-      const body = JSON.parse(await readRequestBody(req, 1_000_000));
+      const body = JSON.parse(await readRequestBody(req, res, 1_000_000));
       if (!body || typeof body.name !== "string" || Object.keys(body).some((key) => !["name", "arguments"].includes(key))) {
         sendJson(res, 400, { ok: false, error: { code: "INVALID_REQUEST", message: "Provide name and arguments." } });
         return true;
@@ -530,6 +530,7 @@ function openBrowser(url: string): void {
 }
 
 function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+  if (res.writableEnded) return;
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
@@ -767,7 +768,7 @@ async function handleOpenLocalPathApi(req: http.IncomingMessage, res: http.Serve
     return true;
   }
   try {
-    const rawBody = await readRequestBody(req, 1_000_000);
+    const rawBody = await readRequestBody(req, res, 1_000_000);
     const body = JSON.parse(rawBody) as { path?: unknown };
     const requested = typeof body.path === "string" ? body.path.trim() : "";
     if (!requested) {
@@ -826,7 +827,7 @@ async function handleSystemClipboardApi(req: http.IncomingMessage, res: http.Ser
     return true;
   }
   try {
-    const rawBody = await readRequestBody(req, 5_000_000);
+    const rawBody = await readRequestBody(req, res, 5_000_000);
     const body = JSON.parse(rawBody) as { text?: unknown };
     if (typeof body.text !== "string" || body.text.length === 0) {
       sendJson(res, 400, { ok: false, error: "Field 'text' must be a non-empty string." });
@@ -1179,7 +1180,7 @@ async function handleHomeApi(
     if (route.kind === "new") {
       let label: string | undefined;
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res);
         if (raw.trim().length > 0) {
           const parsed = JSON.parse(raw) as { label?: unknown };
           if (parsed && typeof parsed.label === "string") {
@@ -1217,7 +1218,7 @@ async function handleHomeApi(
     if (route.kind === "rename") {
       let label: string;
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res);
         const parsed = JSON.parse(raw) as { label?: unknown };
         if (!parsed || typeof parsed.label !== "string") {
           sendHomeError(res, 400, "INVALID_LABEL", "label (string) is required.");
@@ -1266,7 +1267,7 @@ async function handleHomeApi(
     if (route.kind === "tags") {
       let tags: string[];
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res);
         const parsed = JSON.parse(raw) as { tags?: unknown };
         if (!parsed || !Array.isArray(parsed.tags) || !parsed.tags.every((t) => typeof t === "string")) {
           sendHomeError(res, 400, "INVALID_TAGS", "tags must be a string[].");
@@ -1301,7 +1302,7 @@ async function handleHomeApi(
     if (route.kind === "pin") {
       let pinned: boolean;
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res);
         const parsed = JSON.parse(raw) as { pinned?: unknown };
         if (typeof parsed?.pinned !== "boolean") {
           sendHomeError(res, 400, "INVALID_BODY", "pinned (boolean) is required.");
@@ -1345,7 +1346,7 @@ async function handleHomeApi(
 
       let vaultPath = "";
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res);
         const parsed = JSON.parse(raw) as { vaultPath?: unknown };
         if (typeof parsed?.vaultPath !== "string" || parsed.vaultPath.trim().length === 0) {
           sendHomeError(res, 400, "INVALID_BODY", "vaultPath (string) is required.");
@@ -1379,7 +1380,7 @@ async function handleHomeApi(
       let filename = "";
       let content = "";
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res, MAP_STATE_BODY_LIMIT_BYTES);
         const parsed = JSON.parse(raw) as { filename?: unknown; content?: unknown };
         if (typeof parsed?.filename !== "string" || typeof parsed?.content !== "string") {
           sendHomeError(res, 400, "INVALID_BODY", "filename and content (string) are required.");
@@ -1427,7 +1428,7 @@ async function handleHomeApi(
       let vaultPath = "";
       let label = "";
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res);
         const parsed = JSON.parse(raw) as { vaultPath?: unknown; label?: unknown };
         if (typeof parsed?.vaultPath !== "string" || parsed.vaultPath.trim().length === 0) {
           sendHomeError(res, 400, "INVALID_BODY", "vaultPath (string) is required.");
@@ -1642,7 +1643,7 @@ async function handleLinearNoteApi(
   if (req.method === "PUT") {
     let text: string;
     try {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const parsed = JSON.parse(rawBody) as { text?: unknown };
       if (typeof parsed.text !== "string") {
         sendJson(res, 400, { ok: false, error: "Field 'text' (string) is required." });
@@ -1864,7 +1865,7 @@ async function handleFlashApi(
   try {
     switch (route.action) {
       case "ingest": {
-        const rawBody = await readRequestBody(req);
+        const rawBody = await readRequestBody(req, res);
         const parsed = JSON.parse(rawBody);
 
         // Support batch: { items: [...] }
@@ -1929,7 +1930,7 @@ async function handleFlashApi(
       }
 
       case "approve": {
-        const rawBody = await readRequestBody(req);
+        const rawBody = await readRequestBody(req, res);
         const request = JSON.parse(rawBody) as FlashApproveRequest;
         const draft = getDraft(route.draftId);
         if (!draft) {
@@ -2017,7 +2018,7 @@ async function handleVaultApi(
 ): Promise<void> {
   try {
     if (route.action === "import") {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const request = JSON.parse(rawBody) as VaultImportRequest;
       if (!request || typeof request.vaultPath !== "string" || request.vaultPath.trim().length === 0) {
         sendJson(res, 400, { ok: false, error: "vaultPath is required." });
@@ -2046,7 +2047,7 @@ async function handleVaultApi(
     }
 
     if (route.action === "export") {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const request = JSON.parse(rawBody) as VaultExportRequest;
       if (!request?.mapId?.trim()) {
         sendJson(res, 400, { ok: false, error: "mapId is required." });
@@ -2070,7 +2071,7 @@ async function handleVaultApi(
     }
 
     if (route.action === "watch-start") {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const request = JSON.parse(rawBody) as VaultWatchStartRequest;
       validateVaultPath(request.vaultPath, { mustExist: true });
       const status = startVaultWatch(currentSqliteDbPath(), request);
@@ -2079,7 +2080,7 @@ async function handleVaultApi(
     }
 
     if (route.action === "watch-stop") {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const request = JSON.parse(rawBody) as VaultWatchStopRequest;
       if (!request?.mapId?.trim()) {
         sendJson(res, 400, { ok: false, error: "mapId is required." });
@@ -2142,7 +2143,7 @@ async function handleBlueprintApi(
 ): Promise<void> {
   try {
     if (route.action === "import") {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const request = JSON.parse(rawBody) as BlueprintImportRequest;
       if (!request || typeof request.blueprintPath !== "string" || request.blueprintPath.trim().length === 0) {
         sendJson(res, 400, { ok: false, error: "blueprintPath is required." });
@@ -2175,21 +2176,28 @@ async function handleBlueprintApi(
 
 // Cloud sync helpers removed — now handled by CloudSyncTransport implementations
 
-function readRequestBody(req: http.IncomingMessage, maxBytes = 10_000_000): Promise<string> {
+const MAP_STATE_BODY_LIMIT_BYTES = 64 * 1024 * 1024;
+
+function readRequestBody(req: http.IncomingMessage, res: http.ServerResponse, maxBytes = 10_000_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
+    let tooLarge = false;
     req.on("data", (chunk: Buffer) => {
+      if (tooLarge) return;
       totalBytes += chunk.length;
       if (totalBytes > maxBytes) {
+        tooLarge = true;
+        chunks.length = 0;
+        res.setHeader("Connection", "close");
+        sendJson(res, 413, { error: "Request body too large.", limitBytes: maxBytes });
         reject(new Error("Request body too large."));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
     });
     req.on("end", () => {
-      resolve(Buffer.concat(chunks).toString("utf8"));
+      if (!tooLarge) resolve(Buffer.concat(chunks).toString("utf8"));
     });
     req.on("error", (err) => {
       reject(err);
@@ -2255,7 +2263,7 @@ async function handleLinkApi(
         attributes?: unknown;
       };
       try {
-        const raw = await readRequestBody(req);
+        const raw = await readRequestBody(req, res);
         body = raw.trim().length > 0 ? JSON.parse(raw) : {};
       } catch (err) {
         if (err instanceof SyntaxError) {
@@ -2553,7 +2561,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
   if (req.method === "POST") {
     let saveAcquired = false;
     try {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res, MAP_STATE_BODY_LIMIT_BYTES);
       if (activeMapSaves.has(mapId)) {
         sendJson(res, 409, { ok: false, code: "DOC_CONFLICT", error: "A map save is already in progress." });
         return true;
@@ -3147,7 +3155,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       return true;
     }
     try {
-      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const body = JSON.parse(await readRequestBody(req, res)) as Record<string, unknown>;
       const nodeId = typeof body.nodeId === "string" ? body.nodeId.trim() : "";
       if (!nodeId) {
         sendJson(res, 400, { ok: false, error: "nodeId is required." });
@@ -3185,7 +3193,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       return true;
     }
     try {
-      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const body = JSON.parse(await readRequestBody(req, res)) as Record<string, unknown>;
       const fragment = typeof body.fragment === "string" ? body.fragment.trim() : "";
       if (!fragment) {
         sendJson(res, 400, { ok: false, error: "fragment is required." });
@@ -3271,7 +3279,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       return true;
     }
     try {
-      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const body = JSON.parse(await readRequestBody(req, res)) as Record<string, unknown>;
       const workspaceId = requestWorkspaceId(url, body);
       const agentId = requestAgentId(url, body) || RAPID_MAPIFY_ORACLE_AGENT_ID;
       const requestedOpId = typeof body.opId === "string" ? body.opId.trim() : "";
@@ -3384,7 +3392,7 @@ async function handleAgentMapApi(req: http.IncomingMessage, res: http.ServerResp
       return true;
     }
     try {
-      const body = JSON.parse(await readRequestBody(req)) as Record<string, unknown>;
+      const body = JSON.parse(await readRequestBody(req, res)) as Record<string, unknown>;
       const workspaceId = requestWorkspaceId(url, body);
       // Prefer explicit body/query agentId when provided; otherwise default to CAS PN agent.
       const fromBodyAgentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
@@ -3593,12 +3601,13 @@ async function handleSyncApi(
       // Parse body to check for localState (for conflict backup)
       let localState: AppState | null = null;
       try {
-        const rawBody = await readRequestBody(req);
+        const rawBody = await readRequestBody(req, res, MAP_STATE_BODY_LIMIT_BYTES);
         const body = JSON.parse(rawBody) as { localState?: AppState };
         if (body.localState && typeof body.localState === "object") {
           localState = body.localState;
         }
       } catch {
+        if (res.writableEnded) return true;
         // Empty or invalid body is fine for pull
       }
 
@@ -3642,7 +3651,7 @@ async function handleSyncApi(
 
   if (route.action === "push" && req.method === "POST") {
     try {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res, MAP_STATE_BODY_LIMIT_BYTES);
       const parsed = JSON.parse(rawBody) as { state?: unknown; savedAt?: string; baseSavedAt?: string | null; baseMapVersion?: number | null; force?: boolean };
       const candidate = parsed && parsed.state ? parsed : { state: parsed, savedAt: new Date().toISOString() };
       if (!candidate.state || typeof candidate.state !== "object") {
@@ -3749,7 +3758,7 @@ async function handleLinearTransformApi(req: http.IncomingMessage, res: http.Ser
     }
 
     try {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const parsed = JSON.parse(rawBody) as LinearTransformRequest;
       if (!parsed || (parsed.direction !== "tree-to-linear" && parsed.direction !== "linear-to-tree")) {
         sendJson(res, 400, {
@@ -3857,7 +3866,7 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
   }
 
   try {
-    const rawBody = await readRequestBody(req);
+    const rawBody = await readRequestBody(req, res);
     const parsed = JSON.parse(rawBody) as AiSubagentRequest;
     const result = await runAiSubagent(subagentRoute.subagent, parsed);
     sendJson(res, 200, result);
@@ -4038,7 +4047,7 @@ async function handleCollabApi(
   }
 
   if (route.action === "register" && req.method === "POST") {
-    const rawBody = await readRequestBody(req);
+    const rawBody = await readRequestBody(req, res);
     const body = JSON.parse(rawBody) as {
       displayName?: string;
       role?: CollabRole;
@@ -4077,7 +4086,7 @@ async function handleCollabApi(
   switch (route.action) {
     case "heartbeat": {
       if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: "Method not allowed." }); return; }
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req, res);
       const body = JSON.parse(rawBody) as { lockIds?: string[]; mapId?: string };
       heartbeat(entity.entityId, body.lockIds ?? []);
       // Refresh presence on heartbeat
@@ -4131,7 +4140,7 @@ async function handleCollabApi(
       const mapId = route.param;
       if (!mapId) { sendJson(res, 400, { ok: false, error: "Map ID required." }); return; }
       try {
-        const rawBody = await readRequestBody(req);
+        const rawBody = await readRequestBody(req, res, MAP_STATE_BODY_LIMIT_BYTES);
         const body = JSON.parse(rawBody) as { scopeId?: string; lockId?: string; baseVersion?: number; changes?: { nodes?: Record<string, unknown> } };
         if (!body.scopeId || !body.lockId || body.baseVersion === undefined || !body.changes?.nodes) {
           sendJson(res, 400, { ok: false, error: "scopeId, lockId, baseVersion, and changes.nodes are required." });
@@ -4183,7 +4192,11 @@ export function createAppServer(): http.Server {
 
     const collabRoute = parseCollabRoute(req.url ?? "/");
     if (collabRoute) {
-      await handleCollabApi(req, res, collabRoute);
+      try {
+        await handleCollabApi(req, res, collabRoute);
+      } catch (err) {
+        if (!res.writableEnded) throw err;
+      }
       return;
     }
 
