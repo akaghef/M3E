@@ -577,6 +577,9 @@ let fatalLoadError = false;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+let localSaveFailure: string | null = null;
+let localSaveRevision = 0;
+let localSavedRevision = -1;
 const FIT_MODES = ["graph", "subtree", "graph-linear", "node"] as const;
 type FitMode = typeof FIT_MODES[number];
 let fitCycleMode: FitMode | null = null;
@@ -4395,13 +4398,39 @@ function redoLastChange(): void {
 
 function setStatus(message: string, isError = false): void {
   if (statusTimer !== null) clearTimeout(statusTimer);
+  if (localSaveFailure && !isError) {
+    message = localSaveFailure;
+    isError = true;
+  }
   statusEl.textContent = message;
   statusEl.style.color = isError ? "var(--danger)" : "var(--status-ink)";
-  if (message) {
+  if (message && message !== localSaveFailure) {
     statusTimer = setTimeout(() => {
-      statusEl.textContent = lineSelection.status();
+      statusEl.textContent = localSaveFailure || lineSelection.status();
+      if (localSaveFailure) statusEl.style.color = "var(--danger)";
     }, 2500);
   }
+}
+
+function updateLinearSaveStatus(): void {
+  if (!linearMetaEl || !map) return;
+  const scopeLabel = map.state.nodes[currentLinearMemoScopeId()]?.text || "scope";
+  const saveState = localSaveFailure || (localSaveRevision === localSavedRevision ? "saved" : "saving");
+  linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}${localSaveRevision > 0 || localSavedRevision >= 0 || localSaveFailure ? ` | ${saveState}` : ""}`;
+}
+
+function showLocalSaveFailure(reason: string): void {
+  localSaveFailure = `Local save failed (${reason}).`;
+  setStatus(localSaveFailure, true);
+  updateLinearSaveStatus();
+}
+
+function markLocalSaveSucceeded(revision: number): void {
+  const hadFailure = localSaveFailure !== null;
+  localSaveFailure = null;
+  localSavedRevision = Math.max(localSavedRevision, revision);
+  updateLinearSaveStatus();
+  if (hadFailure) setStatus("Saved locally.");
 }
 
 initializeViewerTheme({ redraw: scheduleRender, setStatus });
@@ -7020,10 +7049,7 @@ function renderLinearPanel(action?: "load" | "reset"): void {
   linearDisplayedScopeId = scopeRootId;
   linearLineMap = [];
 
-  const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
-  if (linearMetaEl) {
-    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
-  }
+  updateLinearSaveStatus();
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
   if (linearResetBtn) linearResetBtn.disabled = false;
 }
@@ -10381,10 +10407,12 @@ async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
   if (!map || !collabToken || !collabEntityId) {
     return false;
   }
+  const revision = localSaveRevision;
   const mapWithVersion = map as SavedMap & { mapVersion?: number };
   const scopeId = viewState.concretenessLevel === 0 ? currentScopeRootId() : canonicalMapState().rootId;
   const lock = getOwnedScopeLock(scopeId);
   if (!lock) {
+    showLocalSaveFailure("scope lock unavailable");
     return false;
   }
   const nodes = collectScopeNodeChanges(scopeId);
@@ -10447,17 +10475,22 @@ async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
           return false;
         }
       }
+      if (payload.error !== "Version conflict.") {
+        showLocalSaveFailure(payload.error === "Request body too large." ? "too large" : "server error");
+      }
       if (showStatus) {
         setStatus(`Collab push failed: ${payload.error || "Unknown error"}`, true);
       }
       return false;
     }
     mapWithVersion.mapVersion = payload.version;
+    markLocalSaveSucceeded(revision);
     if (showStatus) {
       setStatus(`Collab push completed (${payload.applied.length} nodes).`);
     }
     return true;
   } catch (err) {
+    showLocalSaveFailure("network error");
     if (showStatus) {
       setStatus(`Collab push failed: ${(err as Error).message}`, true);
     }
@@ -12738,28 +12771,34 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     return false;
   }
 
-  if (collabEntityId && collabToken && !force) {
-    return await pushCurrentScopeToCollab(showStatus);
-  }
-
+  const revision = localSaveRevision;
+  let saveConflict = false;
+  let failureReason = "save error";
   try {
+    if (collabEntityId && collabToken && !force) {
+      return await pushCurrentScopeToCollab(showStatus);
+    }
     const submitted = currentDocSnapshot();
     const submittedState = cloneStateForSave(submitted.state);
+    const body = JSON.stringify({
+      ...submitted,
+      baseSavedAt: lastServerSavedAt,
+      baseState: cloneStateForSave(lastServerBaseState),
+      force,
+    });
+    failureReason = "network error";
     const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "X-M3E-Tab-Id": TAB_ID,
       },
-      body: JSON.stringify({
-        ...submitted,
-        baseSavedAt: lastServerSavedAt,
-        baseState: cloneStateForSave(lastServerBaseState),
-        force,
-      }),
+      body,
     });
+    failureReason = response.status === 413 ? "too large" : `server error (HTTP ${response.status})`;
 
     if (response.status === 409) {
+      saveConflict = true;
       const conflict = await response.json().catch(() => ({ error: "Map conflict." }));
       const remoteState = (conflict as { state?: AppState }).state;
       const conflictCode = String((conflict as { code?: unknown }).code || "");
@@ -12801,6 +12840,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
       throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
     }
 
+    failureReason = "save error";
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     map.savedAt = String(payload.savedAt || nowIso());
     if (typeof payload.mapVersion === "number") {
@@ -12816,12 +12856,14 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     if (cloudSyncEnabled) {
       void pushDocToCloud(false);
     }
+    markLocalSaveSucceeded(revision);
     if (showStatus) {
       setStatus("Saved locally.");
     }
     scheduleRender();
     return true;
   } catch (err) {
+    if (!saveConflict) showLocalSaveFailure(failureReason);
     if (showStatus) {
       setStatus(`Local save failed (${(err as Error).message}).`, true);
     }
@@ -13062,6 +13104,8 @@ function scheduleAutosave(): void {
   if (isReadOnlyLink()) {
     return;
   }
+  localSaveRevision += 1;
+  updateLinearSaveStatus();
   if (autosaveTimer !== null) {
     clearTimeout(autosaveTimer);
   }
@@ -15263,10 +15307,7 @@ linearTextEl?.addEventListener("input", () => {
   scheduleAutosave();
   const templateText = buildLinearFromScope().text;
   linearDirty = linearTextEl.value !== templateText;
-  if (linearMetaEl) {
-    const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
-    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
-  }
+  updateLinearSaveStatus();
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
   if (linearResetBtn) linearResetBtn.disabled = false;
 });
@@ -15287,7 +15328,7 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
     syncLinearNotesToDocState();
     scheduleAutosave();
-    setStatus("Linear memo saved in current scope.");
+    setStatus("Saving locally...");
     return;
   }
 });
