@@ -132,3 +132,30 @@ test('WebGL node and GraphLink authoring use the same canonical commands as SVG'
   await page.locator('#scatter-normal').dispatchEvent('click');
   await stop(page);
 });
+
+test('repeated drag reheats keep the force set where the camera is', async ({ page }) => {
+  // Each drag ends in a fresh run. Pulling towards the world origin and the
+  // uneven parent/branch constraint split each walked the whole set ~70 world
+  // units per run, so a few drags carried it off-camera.
+  await load(page, 12); await stop(page);
+  const centroid = () => page.evaluate(() => {
+    const nodes = window.disperseDiagnostics().snapshot.nodes;
+    return { x: nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length, y: nodes.reduce((sum, n) => sum + n.y, 0) / nodes.length };
+  });
+  const start = await centroid();
+  for (let run = 0; run < 6; run++) {
+    const sign = run % 2 ? -1 : 1, p = await point(page, 'node4');
+    await page.mouse.move(p.x, p.y); await page.mouse.down();
+    await page.mouse.move(p.x + sign * 45, p.y + sign * 35, { steps: 4 }); await page.mouse.up();
+    await stop(page);
+  }
+  const end = await centroid();
+  // The drags themselves move the set a little (~10); the old drift was ~180.
+  expect(Math.hypot(end.x - start.x, end.y - start.y)).toBeLessThan(40);
+  const r = await page.locator('#webgl-canvas').boundingBox();
+  for (let i = 0; i < 12; i++) {
+    const p = await point(page, 'node' + i);
+    expect(p.x).toBeGreaterThan(r.x); expect(p.x).toBeLessThan(r.x + r.width);
+    expect(p.y).toBeGreaterThan(r.y); expect(p.y).toBeLessThan(r.y + r.height);
+  }
+});

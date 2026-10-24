@@ -70,7 +70,17 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
     const root = a[i];
     return [root, ...descendants(root)].filter(id => representative.get(id) === id);
   };
-  const reheat = (): void => { remaining = FORCE_POLICY.budget; stable = 0; status = visible.length ? "running" : "settled"; };
+  // M3E world coordinates are not centred on the origin, so OT's pull towards
+  // (0, 0) translated the whole set off-camera on every run. Pull towards the
+  // visible centroid captured when the run (re)starts instead: gravity only
+  // compacts the set and never moves it as a whole.
+  let centre = { x: 0, y: 0 };
+  const recentre = (): void => {
+    if (!visible.length) return;
+    centre = { x: visible.reduce((sum, id) => sum + body(id).x, 0) / visible.length,
+      y: visible.reduce((sum, id) => sum + body(id).y, 0) / visible.length };
+  };
+  const reheat = (): void => { remaining = FORCE_POLICY.budget; stable = 0; status = visible.length ? "running" : "settled"; recentre(); };
   const refresh = (): void => {
     visible = []; representative = new Map(); links = [];
     const visit = (id: string, ancestor?: string): void => {
@@ -166,13 +176,16 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
           if (!p) continue;
           const af = a.members.some(fixed), bf = b.members.some(fixed);
           if (af && bf) { fixedConflicts++; continue; }
-          const share = af || bf ? 1 : .5;
+          // Split the push by member count so the node centroid does not move.
+          // An even split let a parent and its larger child branch, held in
+          // contact by cohesion, walk the whole set one way on every frame.
+          const total = a.members.length + b.members.length;
+          const aShare = bf ? 1 : af ? 0 : b.members.length / total, bShare = af ? 1 : bf ? 0 : a.members.length / total;
           // One world-unit clearance avoids asymptotic contact chains at the
           // exact minimum gap; this is extra room, not a relaxed violation test.
-          const dx = (p.dx ? p.dx + Math.sign(p.dx) : 0) * share;
-          const dy = (p.dy ? p.dy + Math.sign(p.dy) : 0) * share;
-          if (!af) { shift(a.members, dx, dy); a.bounds.x += dx; a.bounds.y += dy; }
-          if (!bf) { shift(b.members, -dx, -dy); b.bounds.x -= dx; b.bounds.y -= dy; }
+          const px = p.dx ? p.dx + Math.sign(p.dx) : 0, py = p.dy ? p.dy + Math.sign(p.dy) : 0;
+          if (!af) { const dx = px * aShare, dy = py * aShare; shift(a.members, dx, dy); a.bounds.x += dx; a.bounds.y += dy; }
+          if (!bf) { const dx = px * bShare, dy = py * bShare; shift(b.members, -dx, -dy); b.bounds.x -= dx; b.bounds.y -= dy; }
           index.update(i, a.bounds); index.update(j, b.bounds);
           moved = true;
         }
@@ -208,17 +221,20 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
         return new Rectangle(x - padding, x + b.w + padding, y - padding, y + b.h + padding);
       });
       removeOverlaps(boxes);
-      set.forEach((unit, i) => {
-        const b = unit.bounds, r = boxes[i];
-        shift(unit.members, r.cx() - (b.x + b.w / 2), r.cy() - (b.y + b.h / 2));
-      });
+      // VPSC weighs every rectangle equally; remove the member-weighted mean
+      // displacement so the solved set does not translate as a whole.
+      const moves = set.map(({ bounds: b }, i) => ({ x: boxes[i].cx() - (b.x + b.w / 2), y: boxes[i].cy() - (b.y + b.h / 2) }));
+      const count = set.reduce((sum, unit) => sum + unit.members.length, 0);
+      const mx = set.reduce((sum, unit, i) => sum + moves[i].x * unit.members.length, 0) / count;
+      const my = set.reduce((sum, unit, i) => sum + moves[i].y * unit.members.length, 0) / count;
+      set.forEach((unit, i) => shift(unit.members, moves[i].x - mx, moves[i].y - my));
     }
   };
   const snapshot = (): ForceSnapshot => ({
     nodes: visible.map(id => { const { vx: _vx, vy: _vy, ...n } = body(id); return { ...n, collapsed: collapsed.has(id), hiddenCount: collapsed.has(id) ? descendants(id).length : 0 }; }),
     groups: geometry().groups.map(g => ({ ...g, members: [...g.members] })), links: links.map(e => ({ ...e })), mode, parameters: { ...parameters }, status, steps, remaining, maxMove, violations: violations(),
   });
-  refresh();
+  refresh(); recentre();
   if (!visible.length) status = "settled";
 
   return {
@@ -276,7 +292,7 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
       const cool = drag.length ? 1 : remaining < 30 ? .70 : remaining < 60 ? .90 : 1;
       for (const g of arr) {
         if (fixed(g.id)) { g.vx = 0; g.vy = 0; continue; }
-        g.vx += -g.x * parameters.gravity * .04; g.vy += -g.y * parameters.gravity * .04;
+        g.vx += (centre.x - g.x) * parameters.gravity * .04; g.vy += (centre.y - g.y) * parameters.gravity * .04;
         g.vx *= .86 * cool; g.vy *= .86 * cool;
         g.x += clamp(g.vx, -18, 18); g.y += clamp(g.vy, -18, 18);
       }
@@ -286,6 +302,15 @@ export function createOtForce(graph: ForceGraph, mode: ForceMode = "Disperse"): 
       // box constraints without introducing fresh forces. Large contact chains
       // need more projection passes than the per-frame interactive allowance.
       if (remaining <= 0) for (let pass = 0; pass < 4 && violations(); pass++) finishConstraints();
+      // Barnes-Hut approximation and the velocity cap are not pairwise
+      // symmetric, so a free set still creeps a little each frame. Without a
+      // pin or drag nothing may move the set as a whole: undo the translation.
+      // A uniform shift leaves every constraint and relative position intact.
+      if (arr.length && !arr.some(n => fixed(n.id))) {
+        const dx = centre.x - arr.reduce((sum, n) => sum + n.x, 0) / arr.length;
+        const dy = centre.y - arr.reduce((sum, n) => sum + n.y, 0) / arr.length;
+        if (dx || dy) { dirtyGeometry(); for (const n of arr) { n.x += dx; n.y += dy; } }
+      }
       // Stability and finite-state checks include the final constraint projection.
       maxMove = Math.max(0, ...arr.map(n => Math.hypot(n.x - before.get(n.id)!.x, n.y - before.get(n.id)!.y)));
       const invalid = arr.some(n => ![n.x, n.y, n.vx, n.vy].every(finite));

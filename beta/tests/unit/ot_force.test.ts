@@ -52,6 +52,25 @@ describe("OT force seam", () => {
     }
   });
 
+  test("runs away from the world origin keep the set where it is instead of drifting towards (0, 0)", () => {
+    // M3E Disperse seeds sit around (700, 450) in world space. A pull towards
+    // the origin moved the whole set ~70 units up-left per run, cumulatively
+    // across reheats, until it left the camera.
+    for (const fixture of ["nested", "flat"]) {
+      const graph = forceFixture(fixture);
+      graph.nodes.forEach(node => { node.x += 2000; node.y += 1500; });
+      const sim = createOtForce(graph);
+      const centroid = (): { x: number; y: number } => {
+        const nodes = sim.snapshot().nodes;
+        return { x: nodes.reduce((sum, node) => sum + node.x, 0) / nodes.length, y: nodes.reduce((sum, node) => sum + node.y, 0) / nodes.length };
+      };
+      const start = centroid();
+      for (let run = 0; run < 3; run++) { finish(sim); sim.reheat(); }
+      const end = centroid();
+      expect(Math.hypot(end.x - start.x, end.y - start.y)).toBeLessThan(1);
+    }
+  });
+
   test("deterministic from identical geometry; coincident seeds separate", () => {
     const graph = { nodes: [n("a", 0, 0), n("b", 0, 0), n("c", 0, 0)], links: [] };
     const first = finish(createOtForce(graph)), second = finish(createOtForce(graph));

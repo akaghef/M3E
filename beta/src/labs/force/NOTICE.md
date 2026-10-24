@@ -15,7 +15,10 @@ Source dashboard SHA-256 (OT Component Seam Labs provenance):
 inverse-square repulsion cutoff 300、Hooke spring、中心引力倍率 .04、減衰 .86、
 成分速度上限18、二段冷却 .9/.7、移動量 .45 未満5frameの収束判定を踏襲する。
 
-変更: DOM/global変数を型付き入力に変更。viewport中心・境界clampを固定world中心へ変更。
+変更: DOM/global変数を型付き入力に変更。viewport中心・境界clampを、run開始（再加熱）時の
+可視node重心への中心引力へ変更（M3Eのworld座標は原点中心ではなく、原点への引力は集合全体を
+画面外へ並進させた）。pinもdragも無いrunでは各stepの全体並進を打ち消し、矩形制約の押し戻しは
+member数で配分して重心を動かさない。
 spawn専用ばねはM3Eの親子意味に流用しない。ばねは明示した関係のみ。
 再加熱予算240 fixed steps、完全同座標の決定論的分離、矩形衝突、入れ子group、
 collapseによる可視縮約、pin、停止理由、入力検証を追加。group間ばねの力はbranchの
