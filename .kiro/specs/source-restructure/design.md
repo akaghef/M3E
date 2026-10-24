@@ -2,6 +2,8 @@
 
 2026-10-16。状態: spec 承認済み（DC12、2026-10-16 23:03 JST）。対象要件は [requirements.md](requirements.md)。現在は文書のみで、以下の新規 module / command / gate は未実装。
 
+改訂: DC17（2026-10-16 23:37 JST）の fit モーション修正トラックを反映。実装・実測は別の Codex app スレッドが担い、この文書作成担当は製品コードを変更していない。
+
 ## 合意した判断
 
 | 決定 | Director の判断 | 対応した選択肢 |
@@ -18,6 +20,7 @@
 | DC10 | N=20、warmup 2 / runs 5、中央値と90パーセンタイル、k=3 | OP7 の全体最大値による合否案は不採用。最大値超過は報告する |
 | DC11 | 製品 src 内の試験・デモ・PJ専用ファイル数を追加指標にする | OP8 承認。配置移動に無関係の改善を混ぜない |
 | DC12 | 3文書とレビュー修正5点を承認。実装は人間の確認後、sol6.1 へ別途指示 | 設計担当は新規作業を開始せず待機 |
+| DC17 | PR7 を既存 Codex app スレッドによる fit モーション修正へ拡張。PR1〜PR3 と並行、PR4 は修正統合後、PR8 は修正後の挙動を保持 | DC3/DC9 の調査限定・PR2待ちを更新。Director は判定、構造整理は混ぜない |
 
 合意は ORRERY Mail の KeenBell からの「OP1〜OP5 の裁定」「OP6 / Fastify 互換 / A/B の裁定」「OP7 / OP8 の裁定」に基づく。実装中の要件変更は別提案とし、失敗後に基準を書き換えない。
 
@@ -56,7 +59,7 @@
 
 ### 描画・camera の保持条件
 
-camera owner は fit target、clamp、anchored zoom、animation cancel、reduced-motion、同時入力、fit cycle reset と viewport 同期の時機を引き取る。現在の300ms animation、120ms trailing sync などは本整理で調整しない。保存された座標の復元も owner の命令に統一する。
+camera owner は fit target、clamp、anchored zoom、animation cancel、reduced-motion、同時入力、fit cycle reset と viewport 同期の時機を引き取る。構造整理では PR7 の修正後に受理された補間・開始時刻・描画・cache 更新の時機を保持し、修正前の300ms/cubicを復活させない。120ms trailing sync など修正対象外の時機も勝手に変えない。保存された座標の復元も owner の命令に統一する。
 
 render owner は existing layout/node/edge の計算、cache invalidation、SVG retained geometry、WebGL snapshot 生成の順序を維持する。現状の SVG から WebGL snapshot を生成する経路を direct snapshot へ変更する最適化は別タスク。`renderScene` の state 正規化や scope reset を移す場合も、描画前後の副作用順序を characterization test で固定する。camera gesture で geometry upload が増えないという既存 runner の invariant を維持する。
 
@@ -138,6 +141,8 @@ ESLint の基準値・方針ファイル、性能比較器と policy（N/k/集�
 
 基準更新は人がレビューする source policy として commit する。測定 JSON や大量の runtime trace は commit せず CI artifact 等に保存する。更新 command は無条件 overwrite を提供せず、上限増加を拒否する。CI は候補 branch の policy だけで判定せず、検証対象の base revision に保存された基準と比較する。同じ変更で baseline を引き上げたり検査対象を外したりして自己承認できないようにする。初期導入だけは Director が現在値をレビューし、その後の更新は非増加を機械検査する。CI 自体が未収集・parse error・baseline 欠損なら失敗する。
 
+DC17 の順序規則: PR7 が静的ゲートより先に統合された場合は、Director が PR1 統合時に修正後 source を再計測して初期基準を封じる。静的ゲートの後なら PR7 もゲートに従い、viewer 行数・let を増やさない。PR7 は挙動修正なので構造削減量の達成を目的に関数を移動・分割しない。既に固定済みのゲートを修正に都合よく引き上げる例外ではない。
+
 ### viewer 以外の巨大関数
 
 初期実測で labs を除く製品 src の CCN 50超を一覧化する。server の既存 handler は routing 移行で、残りは tasks の専用段階で責任別に分割し、対象と分割後の関数を20/100以内にする。基準一覧を凍結し、関数の移動・rename・分割対応を追跡する。
@@ -171,13 +176,39 @@ p90(c)    <= p90(b)    + 3 * MAD(b)
 
 基準 build の20回から求めた上限を候補変更前に封じる。各段階で直前統合版を比較対象に加え、最初の受理基準も維持して小さな悪化の累積を検出する。後付けの外れ値除外、成功するまで再測定、k/N/fixture の変更、基準の引上げは禁止。環境無効は無効として全結果を保存し、条件変更は別提案にする。初期20回すら未測定なので、この文書に架空の ms 値は置かない。
 
-### A/B 調査の通過条件
+### fit モーション修正トラックと A/B（DC17）
 
-最初に fit 重複除去前 `e2faa94^` と除去後 `e2faa94` を独立 checkout/build する。現在版との比較も追加し、後続の shortcut・計測表示変更を fit 変更と混同しない。同一固定 runner で再起動後の実操作を再現し、A/B/A の順序など事前に定めた順序で測る。冷起動直後と runner warmup 後の違いを記録する。通常 runner は tree の pan/zoom なので、報告操作の scope/fit/renderer が違うならその再現を追加し、fixture 成功を代用品にしない。
+担当は fit の悪化を調査中の既存 Codex app スレッド。Director は基準・合否の独立判定を行い、構造整理担当は fit 修正を代行しない。PR1〜PR3 と別 worktree で並行し、同じ viewer logic を両担当が同時に変更しない。PR4 は修正の `dev-beta` 統合後、PR8 は修正後の受理された挙動から始める。統合・build/restart の排他は既存運用に従う。
 
-調査中は本流を変えず、独立 build で差分部位の限定的な無効化/復帰を行う介入診断を承認された範囲で実施する。これを受入測定と別の名前・結果にする。介入前後で症状と計測が変わり、戻すと再現する証拠と原因説明を出す。差が出なければ「未再現／原因未確定」で止め、camera 段階を開けない。別の後続 commit が原因なら、その前後の追加比較と介入を行う。
+#### 別スレッドから報告された観測と候補
 
-修正が必要なら別の変更として提案し、修正前後を評価してから構造整理の基準版を確定する。現状の既知悪化を黙って「正常」として固定しない。
+出典は KeenBell の2026-10-16 23:37 JST の改訂依頼。報告時点でコード未変更。この文書作成担当は実測しておらず、以下は当担当の測定証拠でも原因確定でもない。
+
+| 報告された観測 | 限界 |
+|---|---|
+| 30回/秒の頭打ちは一時的で、報告時点では60へ復帰 | 原因未確定。fit 修正の成功証拠にしない |
+| 130%→23% の fit: 入力処理約13ms、WebGL再構築約33ms、補間300ms、入力から最終描画まで約385ms | 1秒の停止は未再現。区間の概数を足して厳密な総時間とみなさず、生traceで前後比較する |
+
+元通知の4候補は次の内容で引き継ぐ。外部通知の候補接頭辞を本 spec の識別子として増やさない。
+
+| 原因候補 | PR7 の修正・検証 |
+|---|---|
+| e2faa94 が開始時刻を再構築後へ遅らせ、`performance.now()` と frame時刻の混用で初回差分が0に丸められる | 変更前後・限定介入を測り、根拠を示して開始時刻の変更を復帰または修正。同じ時間基準で進行を算出 |
+| camera 更新と WebGL 描画が別frameで予約される | 同一frameで描画できるか実測し、採否と副作用を記録。未検証のまま変更しない |
+| 縮小中にtile再生成とcache全消去が走る | 移動終了後へ遅らせる。完了・cancel・新しい移動への置換時の処理を決め、欠け/古い描画/資源漏れがないことを検証 |
+| 倍率を線形空間の `easeInOutCubic` で補間し、中央150msに123%→30%が集中する | 自作補間をやめ、直接依存 `d3-interpolate` の `interpolateZoom` を使う。関数移動・分割は混ぜない |
+
+`interpolateZoom` の入出力は viewport 中心と幅の3値であり、camera translation/zoom をそのまま3値に渡さない。既存の fit 始点・終点・viewport から対応を確認する。補間器は推奨 duration も提供するが、採用する時間設定は修正前の比較基準とともに Director が事前に確認する。自作 easing を重ねて旧挙動を再現する代用はしない。[D3 の公式 zoom interpolation 契約](https://d3js.org/d3-interpolate/zoom)。
+
+#### 比較・判定・引継ぎ
+
+`e2faa94^` / `e2faa94` の独立 build による A/B と差分部位への介入を継続し、今回の修正前版/修正版の比較と区別する。後続 commit の影響、冷起動直後とwarmup後の違いも残す。診断用介入の結果を通常版の受入証拠に混ぜない。未再現の1秒停止や一時的30回/秒の原因まで確定したとは報告しない。
+
+Inspector の各更新カウンターと、入力→最初の変化→終点描画の時刻、各frameの倍率/時刻を変更前後で保存する。camera 値を書いた時刻を終点の描画完了時刻として代用せず、描画観測の方法と限界を記す。130%→23%を含む元の操作を通常 Beta の実機Chrome/hardware GPUで確認する。目標座標、fit cycle、cancel、reduced-motion、SVG/WebGL、保存/API互換も保つ。約385msは単一の報告値であって新しい合否閾値ではない。Director が比較結果と通常Betaの動作を独立に判定する。
+
+PR7 は PR2 完了を待たず進める。PR2 runner が利用可能なら DC6/DC10 の共通判定も必須にする。PR7 が先に統合された場合は、Inspector/実frame比較/通常Beta確認の結果と、PR2 比較が未実施であることを区別する。PR2 が利用可能になった時点で保存した修正前版と修正版を同一runnerで比較し、PR4 の着手前に Director が修正後の性能基準を受理する。旧基準と全結果も保持し、候補失敗を隠す基準引上げはしない。
+
+PR8 は修正後の補間・開始時刻・描画予約・cache更新時機を characterization test と計測結果で保持する。原因と修正内容が説明できない、通常Beta未確認、適用可能な性能判定が未通過なら構造整理を進めたことで解決済みにしない。
 
 ## 配置整理と既存 seam
 
@@ -211,7 +242,7 @@ compile root / outDir、package scripts、test import、launch shell/bat、`__di
 | リスク | 対処・残る条件 |
 |---|---|
 | RK1 headless が software GPU | 無効。実機 hardware GPU の同一条件 A/B が取れるまで性能 gate は未通過 |
-| RK2 e2faa94 の悪化が未再現 | 原因を断定せず、camera の着手を止める。元の操作・環境を追加確認 |
+| RK2 fit修正と未再現症状の混同 | PR7の原因/介入/修正を独立判定。一時的30回/秒や1秒停止は未確定のまま残し、全症状の解消を断定しない。PR8は受理済み修正後の挙動から始める |
 | RK3 Fastify の body/HEAD/ready/close が旧契約と異なる | 契約試験と標準拡張点の実証を先行。独自 wrapper が要るなら選定を再判断 |
 | RK4 let 0 でも共有 mutable state が残る | 可変 const も台帳と依存検査で追う。factory 外の singleton を owner 移譲と数えない |
 | RK5 非同期・イベント順序が変わる | 既存 order を characterization、複数 connection/cleanup と stale response を試す |

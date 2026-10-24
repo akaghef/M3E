@@ -2,6 +2,8 @@
 
 2026-10-16。状態: spec 承認済み（DC12、2026-10-16 23:03 JST）。実装開始は人間の確認後の別指示による。全項目未実施。チェック欄は後続の実装証拠が揃ってから更新する。
 
+DC17 改訂（2026-10-16 23:37 JST）: PR7 を fit モーション修正トラックへ拡張。担当は既存の別 Codex app スレッド、構造整理は sol6.1、Director は判定を担当する。別スレッドの調査は design に出典・限界付きで記録し、下記の未実施チェックを測定済み/修正済みとして埋めない。
+
 この文書の PR1〜PR13 は本 spec 内の段階番号であり、`backlog/source-quality-static-scan.md` の対策候補 PR1〜PR5 とは別スコープである。対応は、backlog PR1→本 spec PR1、backlog PR2→PR4、backlog PR3→PR5、backlog PR4→PR2/PR7/PR8、backlog PR5→PR10/PR11。
 
 範囲は [requirements.md](requirements.md)、設計と判断 DC1〜DC11 は [design.md](design.md)。この文書作成では製品・試験・設定を編集せず、以下の検証コマンドも実行していない。
@@ -13,6 +15,8 @@
 判定の所有者は Director。ESLint の基準値・方針ファイル、性能比較器と policy（N/k/集約）、各段階のゲート目標値は Director が所有する。実装者（sol6.1）は変更を提案できるが、自分で上限を上げる、基準を作り直す、判定を変更することはできない。初期基準の生成案も Director が独立に実行・照合して承認する。実装者の自己検証に加え、Director が合否コマンドを独立に実行して段階を判定し、その後に統合する。
 
 各段階の表の数値は変更前に設定する削減目標。source が変われば作業開始前に Director へ差分を提示する。失敗後に下げない。viewer の17,202行・154 let は今回の調査時点の暫定値であり、PR1 開始時に再計測し Director が封じる。以後は直前の受理値を基準にする。各指標は非増加、少なくとも指定した対象指標は厳密に減らす。全関数の上限・移動追跡も同時に検査し、行数だけで合格にしない。
+
+PR7 は挙動修正専用であり、構造削減のための関数移動・分割を含めない。PR1 より先に統合する場合は Director が PR1 統合時に基準を再計測して封じる。後なら既存静的ゲートに従い viewer の行数・let を増やさない。PR1未導入時に存在しない静的commandを実行済み扱いにしない。通常の型・build・既存試験は維持する。
 
 各段階に共通する実装後コマンド（repository root から）:
 
@@ -66,7 +70,7 @@ node perf/compare_webgl_pan_zoom.mjs --baseline-dir "$RESTRUCTURE_BASELINE" --ca
 | 作業 | labs を除く製品 src の CCN 50超関数を全列挙し、PR12 の対象台帳にする。移動先まで同一関数として追跡 |
 | 守る挙動 | 製品コードは変更しない。既存試験の内容と件数を保持 |
 | 最小検証 | 共通検証、新しい静的 gate の正例・負例試験 |
-| ゲート目標 | 初回は上限を導入する工程。viewer17,202 / let154 / 配置対象13は暫定。開始時の実測を Director が固定し、新規違反0を保証 |
+| ゲート目標 | 初回は上限を導入する工程。viewer17,202 / let154 / 配置対象13は暫定。開始時の実測を Director が固定し、新規違反0を保証。PR7が先に統合されたらPR1統合時にそのsourceを再計測して封じる |
 | 負例検証 | 新規違反、既存悪化、let/行数増加、parse error、欠損 baseline、候補branchでの上限引上げ、rename の免責、移動先未収集を拒否。負例は tests 内だけに置く |
 | 性能 | 不要。製品コードを変えない静的 gate のため、GPU 環境なしで単独出荷できる |
 | 巻き戻し | 新規 tool/config/policy だけを一括 revert。後続は開始せずゲートを再設計 |
@@ -77,7 +81,7 @@ node perf/compare_webgl_pan_zoom.mjs --baseline-dir "$RESTRUCTURE_BASELINE" --ca
 
 | 項目 | 内容 |
 |---|---|
-| 前提 | PR1 と独立に着手可能。Director が計測契約を固定。PR1 の完了や配置整理を A/B の前提にしない |
+| 前提 | PR1 と独立に着手可能。Director が計測契約を固定。PR7の着手/修正をPR2待ちにしない |
 | 作業 | 既存 runner へ GPU renderer 記録/妥当性判定を追加。比較器と policy を Director 所有で準備し、hardware GPU で同一 build20回の基準を取得 |
 | 守る挙動 | 製品コード不変。fixture hash・1 page・geometry upload不変・runner CLI互換を保持 |
 | 最小検証 | `cd beta` で `npx vitest run tests/unit/webgl_pan_zoom_runner_contract.test.js`、新 comparator 試験、共通性能コマンド。Director が独立再実行 |
@@ -86,7 +90,7 @@ node perf/compare_webgl_pan_zoom.mjs --baseline-dir "$RESTRUCTURE_BASELINE" --ca
 | 性能 | 必須。hardware GPU evidenceがなければ未完了。静的ゲートPR1の出荷は止めない |
 | 巻き戻し | runner/比較器/policyだけを戻し、性能依存の後続を停止。製品sourceは変更しない |
 
-A/B（PR7）が依存するのは PR2 の妥当な性能計測経路だけであり、PR1/PR3〜PR6 の完了ではない。PR2 の同一 runner を両 historical build に向ける。historical 製品 source へ新計測表示を backport しない。
+PR7 は PR2 の完了前でも実frame時刻とInspectorによる比較で進行する。PR2 が利用可能になり次第、同一runnerによる共通判定を追加する。PR7が先に統合された場合も修正前版/修正版を比較し、PR4前に修正後基準をDirectorが受理する。historical製品sourceへ新計測表示をbackportしない。
 
 ### PR3 早期の配置整理（RQ3・RQ5・RQ6）
 
@@ -108,11 +112,11 @@ A/B（PR7）が依存するのは PR2 の妥当な性能計測経路だけであ
 
 | 項目 | 内容 |
 |---|---|
-| 前提 | PR3 と PR2。性能基準が取得済み |
+| 前提 | PR3 と PR2。PR7のfit修正がdev-betaへ統合済みで、通常Beta確認と修正後の性能基準をDirectorが受理済み |
 | 守る挙動 | Mac/Windows 修飾キー、primary+Alt の shortcut 表示、IME、editor、grab、read-only、Escape 優先、repeat、keyup/blur、focus、fit/zoom command |
 | 最小検証 | 共通検証。`cd beta` で `npx vitest run tests/unit/viewer_keyboard.test.ts`、`npx playwright test tests/visual/shortcuts.spec.js tests/visual/keyboard_modes.spec.js tests/visual/grab_tree_move.spec.js tests/visual/fit_cycle.spec.js` |
 | ゲート目標 | viewer の行数を直前から500以上減らす。CCN 411 の旧 keydown を削除し、一覧/dispatcher/新 handler は各20/100以内。let 非増加、key owner へ状態を移譲 |
-| 性能 | 必須。pan/zoom 共通比較に加え、キーからの zoom/fit の実操作を検証。camera implementation の変更は A/B 確定まで行わない |
+| 性能 | 必須。pan/zoom 共通比較に加え、キーからのzoom/fitでPR7修正後の動作を保持することを検証。camera implementationの挙動修正を混ぜない |
 | 巻き戻し | 一覧、listener binding、旧本体削除、関連 gate 更新を同じ単位で戻す |
 
 ### PR5 サーバーを1分野ずつ移行（RQ1・RQ2・RQ3・RQ5・RQ6）
@@ -161,15 +165,29 @@ A/B（PR7）が依存するのは PR2 の妥当な性能計測経路だけであ
 | 性能 | 必須。同期通知が render/fit を呼ぶため共通比較と、remote update→対象 scope 表示の元操作確認 |
 | 巻き戻し | connection owner 単位で戻す。subscription が二重になる暫定併走をしない |
 
-## A/B の独立した進行ゲート（RQ7）
+## PR7 fit モーション修正トラック（RQ1・RQ3・RQ6・RQ7、DC17）
 
-- [ ] PR7 原因説明と介入検証を Director が受理し、camera 段階を開く。
+- [ ] PR7 別の Codex app スレッドがfit修正を実装し、Directorの判定、dev-beta統合、通常Beta実機確認を完了する。
 
-着手は先頭。必要な依存は PR2 の妥当な計測経路だけであり、PR1/PR3〜PR6 の完了を待たない。製品 source を本流に変更せず、`e2faa94^` / `e2faa94` を独立 build し、同一 GPU/fixture/browser/runner で比較する。現在版も比較し、報告された再起動後の操作を再現する。診断用の限定介入は別の結果として保管し、通常版の受入結果に混ぜない。
+| 項目 | 内容 |
+|---|---|
+| 担当・並行範囲 | fit悪化を調査中の既存Codex appスレッドが実装、Directorは判定のみ。viewer logicに触れないPR1〜PR3と並行可能。構造整理の関数移動・分割を混ぜない |
+| 前提 | PR2完了は着手条件ではない。既存調査のsource/環境/traceを確認し、変更前のInspector/frame計測を保存 |
+| 原因検証 | e2faa94^/e2faa94のA/Bと限定介入を継続。修正前/修正版の比較は別に保存。未再現の1秒停止・一時的30回/秒を解決済みとしない |
+| 補間 | 自作cubic/倍率の線形補間をd3-interpolateのinterpolateZoomへ置換し、直接依存とlockfileを更新。viewport中心/幅との変換、時間設定、始終点を検証 |
+| 開始時刻 | e2faa94の開始時刻変更を根拠付きで復帰または修正。frame時刻との混用による初回0進行を前後測定 |
+| タイル・cache | 移動中の再生成/全消去を終了後へ遅延。cancel/連続fit/新移動での更新漏れ、描画欠け、資源漏れを検証 |
+| 描画予約 | camera更新とWebGL描画を同じframeで行えるか検証し、採否をDirectorへ報告 |
+| 守る挙動 | fit target/cycle、anchored zoom、cancel、reduced-motion、SVG/WebGL、他の操作、保存/API。モーションの指定修正以外を変えない |
+| 最小検証 | 通常のtypecheck/build/既存試験。`cd beta` で `npx playwright test tests/visual/fit_cycle.spec.js tests/visual/surface_camera_resize.spec.js tests/visual/camera_follow.spec.js tests/visual/webgl_projection.spec.js tests/visual/render_updates.spec.js`。下記の実frame比較と通常Beta確認 |
+| 静的ゲート | PR1より先に統合ならDirectorがPR1統合時に再計測/初期基準固定。後なら既存ゲート遵守、viewer行数/let非増加。構造削減のための改造を加えない |
+| 性能・判定 | Inspector更新カウンター、入力→終点描画の時間、frameごとの倍率を変更前後で比較。通常Betaの実機Chrome/hardware GPU確認を必須とし、Directorが独立判定。PR2利用可能後は共通runner判定も必須 |
+| 後続への条件 | PR4は修正のdev-beta統合後に開始。PR8は修正後の受理された補間/開始/描画/cache動作を基準にする |
+| 巻き戻し | fit挙動修正と直接依存を同一変更単位で戻す。後続がその挙動へ依存していたら作業停止/依存順に再検証。構造変更を巻き込まない |
 
-検証は共通性能コマンドと、原因候補に対応する `fit_cycle.spec.js`、`surface_camera_resize.spec.js`、`camera_follow.spec.js`、`webgl_projection.spec.js`。実操作と時系列を確認し、静止画や最終座標を性能の代用にしない。結果は原因、症状、再現条件、A/B数値、介入で消え復帰で再現する証拠、未確定点を含む。
+元の130%→23%を含むfit操作を同じ環境で前後比較する。Inspectorのカウンター値・frame timestamp/倍率の全系列・終点描画の観測方法・未確定点を保存し、最終座標だけで滑らかさを判定しない。報告された約385msや60回/秒を新しい合否閾値にしない。実frame計測の具体的な取得手段は当該スレッドの既存調査経路を再利用し、実行コマンド/操作条件をDirectorへ提示する。存在しない計測commandをこのspecで実行済みとしない。
 
-静的値は変更しないため削減条件の対象外。未再現・環境無効・原因未確定ならゲート未通過。原因修正が必要な場合は別承認の変更とし、構造整理と混ぜない。独立調査の終了時には試験専用 process/workspace だけを終了し、共有サービスを止めない。
+PR2がまだ利用できない場合は、その比較だけを未実施として担当・残条件を記録し、PR7の実frame比較/通常Beta確認と混同しない。PR2利用可能後は保存した修正前版/修正版で共通コマンドを実行し、PR4着手前にDirectorが修正後基準を受理する。独立調査の終了時は試験専用process/workspaceだけを終了する。
 
 ### PR8 カメラ・viewport（RQ1・RQ3・RQ4・RQ6・RQ7）
 
@@ -177,7 +195,7 @@ A/B（PR7）が依存するのは PR2 の妥当な性能計測経路だけであ
 
 | 項目 | 内容 |
 |---|---|
-| 前提 | PR6、PR7 の両方が完了。受理された基準 build を固定 |
+| 前提 | PR6、PR7の両方が完了。PR7修正後の統合buildと受理されたモーション/性能を基準として固定 |
 | 守る挙動 | anchored zoom、wheel pan、fit cycle、scope/layout/selection trigger、animation開始/取消、reduced-motion、clamp、resize、linear/editor/PNの追従、永続化復元 |
 | 最小検証 | 共通検証。`cd beta` で `npx vitest run tests/unit/pinch_zoom.test.js tests/unit/frame_invalidation.test.ts`、`npx playwright test tests/visual/fit_cycle.spec.js tests/visual/camera_follow.spec.js tests/visual/surface_camera_resize.spec.js tests/visual/workbench_progressive_nav.spec.js tests/visual/webgl_projection.spec.js` |
 | ゲート目標 | viewer500行以上・let10以上減少。cameraの外部直接writer 0、owner1。全関数上限維持 |
@@ -257,6 +275,6 @@ A/B（PR7）が依存するのは PR2 の妥当な性能計測経路だけであ
 | RQ4 | viewer≤2,000/let0、5必須分野と残りのowner台帳、依存検査、本体削除 |
 | RQ5 | 旧→新 path/command表、製品srcの非製品対象0、起動とモデル互換 |
 | RQ6 | 各段階の統合/push/通常Beta確認、revert範囲、未統合残作業の明示 |
-| RQ7 | 原因の再現・介入証拠とDirector受理、camera着手がその後である記録 |
+| RQ7 | PR7の原因/介入・fit修正の前後計測・Director判定・通常Beta実機確認。PR4が修正統合後、PR8が修正後挙動を保持する記録。未再現症状とPR2追加判定の状態 |
 
 PR13 は新たな製品変更ではなく検証工程なので、静的削減値は最終値を維持する。生成物は artifact に置き、ソースの基準/判定定義だけを version 管理する。変更ファイル・実施検証・未達条件・次の最小タスクを報告し、spec、実装、統合、稼働、体感確認を区別する。
