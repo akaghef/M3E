@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 const root = process.cwd();
-function run(cmd,args,cwd){return spawnSync(cmd,args,{cwd,encoding:'utf8'});}
+const childEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+function run(cmd,args,cwd){return spawnSync(cmd,args,{cwd,env:childEnv(),encoding:'utf8'});}
 function tmp(fn){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'m3e-policy-'));try{fn(dir);}finally{fs.rmSync(dir,{recursive:true,force:true});}}
 function git(dir,...args){const r=run('git',args,dir);assert.equal(r.status,0,r.stderr);return r.stdout.trim();}
 function fixture(dir){
@@ -17,7 +18,7 @@ function fixture(dir){
 test('retired preview rejects without invoking build, copying assets, or starting a service',()=>tmp(dir=>{
  const bin=path.join(dir,'bin');fs.mkdirSync(bin); const marker=path.join(dir,'called');
  for(const c of ['npm','rsync','cp','lsof','nohup'])fs.writeFileSync(path.join(bin,c),`#!/bin/sh\ntouch '${marker}'\nexit 99\n`,{mode:0o755});
- const r=spawnSync('/bin/bash',[path.join(root,'scripts/beta/preview-worktree.sh'),dir],{env:{...process.env,PATH:bin+':/usr/bin:/bin'},encoding:'utf8'});
+ const r=spawnSync('/bin/bash',[path.join(root,'scripts/beta/preview-worktree.sh'),dir],{env:{...childEnv(),PATH:bin+':/usr/bin:/bin'},encoding:'utf8'});
  assert.equal(r.status,2);assert.match(r.stderr,/retired/);assert.equal(fs.existsSync(marker),false);
 }));
 test('daily sync preserves dirty staged and unstaged work without committing',()=>tmp(dir=>{
@@ -46,6 +47,6 @@ test('scoped skill sync avoids unrelated broken mirrors and detects edited track
 test('nightly preserves dirty work, does not merge PRs, and returns failure',()=>tmp(dir=>{
  fixture(dir);fs.copyFileSync(path.join(root,'scripts/ops/nightly-autopilot.sh'),path.join(dir,'scripts/ops/nightly-autopilot.sh'));
  git(dir,'add','scripts/ops/nightly-autopilot.sh');git(dir,'commit','-m','nightly');const before=git(dir,'rev-parse','HEAD');fs.writeFileSync(path.join(dir,'source.txt'),'unfinished');
- const r=spawnSync('bash',['scripts/ops/nightly-autopilot.sh','--no-data'],{cwd:dir,env:{...process.env,TMPDIR:dir},encoding:'utf8'});
+ const r=spawnSync('bash',['scripts/ops/nightly-autopilot.sh','--no-data'],{cwd:dir,env:{...childEnv(),TMPDIR:dir},encoding:'utf8'});
  assert.equal(r.status,1,r.stdout+r.stderr);assert.match(r.stdout,/PR sweep retired/);assert.equal(git(dir,'rev-parse','HEAD'),before);assert.equal(fs.readFileSync(path.join(dir,'source.txt'),'utf8'),'unfinished');
 }));

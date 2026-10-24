@@ -7,7 +7,9 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 // Hang watchdog only; elapsed time is not an acceptance criterion.
-const invoke = (cmd, args, cwd, env = {}, input) => spawnSync(cmd,args,{cwd,env:{...process.env,...env},input,encoding:'utf8',timeout:120000});
+const childEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+// Explicit overrides include commitFiles' private fixture index; never inherit a hook index.
+const invoke = (cmd, args, cwd, env = {}, input) => spawnSync(cmd,args,{cwd,env:{...childEnv(),...env},input,encoding:'utf8',timeout:120000});
 function scratch(t) { const dir=fs.mkdtempSync(path.join(os.tmpdir(),'m3e-ci-gate-')); t.after(()=>fs.rmSync(dir,{recursive:true,force:true})); return dir; }
 function executable(file, body) { fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,body,{mode:0o755}); }
 function git(dir,args,input,env={}) { const r=invoke('git',args,dir,env,input);assert.equal(r.status,0,r.stderr);return r.stdout.trim(); }

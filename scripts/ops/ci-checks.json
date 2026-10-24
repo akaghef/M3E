@@ -49,7 +49,7 @@
   ],
   "ci-gate-tests": [
     ".",
-    "node --test scripts/ops/ci-push-gate.test.mjs"
+    "node --test scripts/ops/ci-push-gate.test.mjs scripts/ops/preflight-git-env.test.mjs"
   ],
   "installer-lint": [
     ".",
