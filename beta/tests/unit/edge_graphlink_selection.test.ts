@@ -64,7 +64,7 @@ describe('endpoint axis and state transitions',()=>{
   expect(reconcileSelection(selected,topology,links,scene([],{visibleNodeIds:['root']}),'root')).toEqual({kind:'node',nodeId:'root'});
   const edge=item('c','a','c',10,0,'parent-child');expect(reconcileSelection({...edge.ref,originNodeId:'a'},topology,{},scene([edge]),'root')).toEqual({...edge.ref,originNodeId:'a'});
  });
- it('DC40 plans only the selected group-frame parent-child guide without adding a cycle candidate',()=>{
+ it('DC51 plans only the selected group-frame parent-child guide without adding a cycle candidate',()=>{
   const first={...item('first','a','c',20,10,'parent-child'),presentation:{kind:'group-frame' as const,renderKey:'a',ownerNodeId:'a',labelAnchor:{x:20,y:10}}};
   const sibling={...item('sibling','a','d',30,20,'parent-child'),presentation:first.presentation};
   const graph=item('g'),s=scene([first,sibling,graph]);

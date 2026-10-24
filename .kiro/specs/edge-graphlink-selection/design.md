@@ -2,7 +2,7 @@
 
 ## Overview
 
-全 Surface View の Connection 選択を、描画 snapshot を入力にする pure function と既存 viewer の接続アダプターで実現する。L1 / DC35–DC38 を固定し、L2 / L3 / L4 は requirements.md の提案群として独立してレビューする。OP40 / OP41（承認済み 2026-10-20）を採用し、IS111 / IS112は解決済み。完了対象は実装済みのTree / Axial / Disperse / System / Lane down/right。IS110 / IS114 は DC39 / DC40（2026-10-24 akaghef）で解決済み。IS113のRadialは別作業へ引き継ぐ。
+全 Surface View の Connection 選択を、描画 snapshot を入力にする pure function と既存 viewer の接続アダプターで実現する。L1 / DC35–DC38 を固定し、L2 / L3 / L4 は requirements.md の提案群として独立してレビューする。OP40 / OP41（承認済み 2026-10-20）を採用し、IS111 / IS112は解決済み。完了対象は実装済みのTree / Axial / Disperse / System / Lane down/right。IS110 / IS114 は DC50 / DC51（2026-10-24 akaghef）で解決済み。IS113のRadialは別作業へ引き継ぐ。
 
 ### Goals / Non-Goals
 
@@ -12,11 +12,11 @@
 
 ### This Spec Owns
 
-選択の一時状態、キーから選択・編集要求への純粋な変換、描画された対象の snapshot 契約、強調と label editor の表示アダプター、既存 mutation 経路への接続、受入確認を所有する。製品用語は Connection（DC39、IS110 解決済み）とする。実装上の union 型名は既存のコード識別子を維持する。
+選択の一時状態、キーから選択・編集要求への純粋な変換、描画された対象の snapshot 契約、強調と label editor の表示アダプター、既存 mutation 経路への接続、受入確認を所有する。製品用語は Connection（DC50、IS110 解決済み）とする。実装上の union 型名は既存のコード識別子を維持する。
 
 ### Out of Boundary / Allowed Dependencies
 
-永続 Topology、Surface View 配置、scope authority、GraphLink 作成、sync protocol、rendererのGraphLink除外・集約規則は変更しない。Disperse のガイドは DC40 に従って選択時のみ描画する。`types.ts`、`parent_child_edge_adapter.ts` の `ParentChildEdgeRef`、`edge_port.ts` / `edge_route.ts`、既存 GraphLink 経路、`lane_navigation.ts`、node 描画、既存 Undo / Redo / autosave を依存先とする。選択のために route のコピーや最近傍 port 再計算を作らない。
+永続 Topology、Surface View 配置、scope authority、GraphLink 作成、sync protocol、rendererのGraphLink除外・集約規則は変更しない。Disperse のガイドは DC51 に従って選択時のみ描画する。`types.ts`、`parent_child_edge_adapter.ts` の `ParentChildEdgeRef`、`edge_port.ts` / `edge_route.ts`、既存 GraphLink 経路、`lane_navigation.ts`、node 描画、既存 Undo / Redo / autosave を依存先とする。選択のために route のコピーや最近傍 port 再計算を作らない。
 
 ### Revalidation Triggers
 
@@ -235,13 +235,13 @@ L2が返すNodeIdはrenderedNodeIdであり、集約線でも表示された代�
 
 node 状態では既存 `laneNavigationTarget` / `laneArrow` にそのまま渡す。Connection 状態だけ共通処理が先に消費する。Lane down/right の root / レーン名の F2 は node text 編集を維持する。
 
-### DC37 / DC40 の表示アダプター
+### DC37 / DC51 の表示アダプター
 
 親→子が root→lane の時は子 lane の帯とレーン名、lane→孫の時は親 lane の帯とレーン名を所有表現とする。両端の強調には root / lane heading も含む。Disperse は親の group frame を使い、子がさらに group の場合も両端として別に示す。共有される同じ帯 / frame だけではどの親子 edge か区別できないため、必ず両端の強調を併用する。
 
 OP41により深い非描画child、折り畳み内の端、scope外の親は選択しない。origin nodeの単一選択を維持し、「子は折り畳まれています」「Lane では孫より深い node を描きません」「親は scope の外です」と理由を示す。別childで代用せず、自動展開・scope移動・復帰lifecycleを追加しない。これはIS112の解決済み契約であり、正常な拒否結果として試験する。
 
-強調計画はSVGとWebGLの双方へ渡す。既存GraphLink選択class / projectionとnode selection presentationを使い、cache keyに選択identityを含める。Laneの前景GraphLinkと後方hitを維持する。Disperse の `scatter-guide` は shared `selectionHighlight` の `guide` に選択中の親子 edge がある場合だけ、既存 adapter が `disperseGuideEndpoints` を用いて両端を結ぶ一本を描く（DC40）。親子 edge 未選択時・Esc 後は描かない。group-frame と両端の強調を維持し、兄弟で共有する枠に加えて選択中の子を示す。guide は選択表示であり、Presentation は group-frame のままなので Alt+←/→ の候補に入らない（DC37 維持）。adapter の描画後に既存 WebGL snapshot が同じ guide を読む。viewer.ts に選択判定の分岐を追加しない。IS114 は解決済み。
+強調計画はSVGとWebGLの双方へ渡す。既存GraphLink選択class / projectionとnode selection presentationを使い、cache keyに選択identityを含める。Laneの前景GraphLinkと後方hitを維持する。Disperse の `scatter-guide` は shared `selectionHighlight` の `guide` に選択中の親子 edge がある場合だけ、既存 adapter が `disperseGuideEndpoints` を用いて両端を結ぶ一本を描く（DC51）。親子 edge 未選択時・Esc 後は描かない。group-frame と両端の強調を維持し、兄弟で共有する枠に加えて選択中の子を示す。guide は選択表示であり、Presentation は group-frame のままなので Alt+←/→ の候補に入らない（DC37 維持）。adapter の描画後に既存 WebGL snapshot が同じ guide を読む。viewer.ts に選択判定の分岐を追加しない。IS114 は解決済み。
 
 ### L3 / L4 の pure function
 
@@ -347,7 +347,7 @@ tasks.md の2回のレビューで URL と source/build を渡す。既存4187�
 
 ## Risks and Mitigations
 
-IS111 / IS112はOP40 / OP41により解決済み。IS110 / IS114 は DC39 / DC40 により解決済み。IS113（将来のRadial実装）、RK12（どのviewも描かない保存GraphLinkへの到達不可）は別の後続事項であり、本仕様完了の前提ではない。RK9–RK11のキー・履歴・build混同を試験で抑える。
+IS111 / IS112はOP40 / OP41により解決済み。IS110 / IS114 は DC50 / DC51 により解決済み。IS113（将来のRadial実装）、RK12（どのviewも描かない保存GraphLinkへの到達不可）は別の後続事項であり、本仕様完了の前提ではない。RK9–RK11のキー・履歴・build混同を試験で抑える。
 
 ## Supporting References
 

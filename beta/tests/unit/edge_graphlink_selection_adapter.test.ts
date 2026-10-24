@@ -38,7 +38,7 @@ describe('renderer registration bridge',()=>{
   session.commit('denied');expect(undo).not.toHaveBeenCalled();
   state=structuredClone(state);expect(session.anchor()).toBeNull();session.commit('denied');expect(undo).not.toHaveBeenCalled();
  });
- it('DC40 paints one guide at circle boundaries and clears it for node or GraphLink selection',()=>{
+ it('DC51 paints one guide at circle boundaries and clears it for node or GraphLink selection',()=>{
   canvas.querySelector('.edge')!.remove();
   canvas.insertAdjacentHTML('afterbegin','<g data-render-key="guides"></g><rect class="disperse-group" data-group-id="root"/>');
   adapter.begin(layout,'map:root');adapter.graph('same',state.links!.one!,'a','b');adapter.finish();

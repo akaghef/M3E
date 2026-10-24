@@ -6,7 +6,7 @@
 
 関連方針は S17 と S3（`docs/00_Home/Current_Status.md:27–47`）。本稿の current-behavior は特記しない限り**ソース静的調査**であり、ブラウザ実測ではない。既存テストの assertion は過去の成功証明として扱わない。
 
-主要な選択機能のギャップは親子edge選択状態とAlt矢印の経路。Directorレビューに基づきOP40 / OP41（承認済み 2026-10-20）を採用し、IS111 / IS112は解決済み。既存のGraphLink除外・集約は維持し、Disperse親子ガイドはDC40で選択時のみ描く契約に確定しIS114は解決済み。Radial入口不足はIS113として別作業に記録する。本仕様の完了対象は実装済みviewに限定する。
+主要な選択機能のギャップは親子edge選択状態とAlt矢印の経路。Directorレビューに基づきOP40 / OP41（承認済み 2026-10-20）を採用し、IS111 / IS112は解決済み。既存のGraphLink除外・集約は維持し、Disperse親子ガイドはDC51で選択時のみ描く契約に確定しIS114は解決済み。Radial入口不足はIS113として別作業に記録する。本仕様の完了対象は実装済みviewに限定する。
 
 ## Research Log
 
@@ -64,15 +64,15 @@
 | 親子描画はLaneでは呼ばず、scatterではchildrenを空にする | `viewer.ts:8482–8493` | Lane / Disperseの上下選択はline以外のPresentationが必要 |
 | Axial互換timelineは軸/点/stemも描く | `viewer.ts:8029–8048` | これらの装飾を候補として数えない |
 | Disperseはlayout.groupsからrectを描く | `viewer.ts:7960–7968` | group ownershipをsnapshotへ公開する |
-| scatterでは親子scatter-guide線も生成される | `viewer.ts:8015–8027` | 調査時は IS114 として記録。2026-10-24 の DC40 で選択中の親子 edge だけを描く契約に解決 |
-| guideは透明ではなくstroke設定がある | `beta/viewer.css:1329–1336`, `:1357–1360` | 調査時の実表示は未測定。DC40 では選択時だけ描画し、左右巡回の候補から引き続き除外 |
+| scatterでは親子scatter-guide線も生成される | `viewer.ts:8015–8027` | 調査時は IS114 として記録。2026-10-24 の DC51 で選択中の親子 edge だけを描く契約に解決 |
+| guideは透明ではなくstroke設定がある | `beta/viewer.css:1329–1336`, `:1357–1360` | 調査時の実表示は未測定。DC51 では選択時だけ描画し、左右巡回の候補から引き続き除外 |
 | GraphLinkは両端位置、表示・scope条件を満たすものを描く | `viewer.ts:8051–8085` | sharedで独自のvisibility判定を再実装しない |
 | 親子関係を持つ両端のGraphLinkは除外 | `viewer.ts:8074–8076`, `:8089–8091` | OP40で独立候補にしない。折込先の親子edgeが表す（IS111解決済み） |
 | 親子間GraphLinkのlabelを親子edgeのlabelへまとめる | `viewer.ts:7974–8004`, `:8401–8405` | 親子labelとGraphLink.labelの編集先を混ぜない |
 | flow/Systemで代表nodeへ写し、同じ両端とlabel/typeをdeduplicate | `viewer.ts:8066–8071`, `:8092–8100` | OP40で描画一線を一候補とし、元の保存件数を追跡して表示・編集拒否 |
 | scatter GraphLinkはline、その他はpath | `viewer.ts:8101–8126`, `:8225–8237` | SVG要素形で選択ロジックを分岐せず同一Refを使う |
 | 通常pathにはselected classとport overlayがあるがscatterのline branchには同じselected classがない | `viewer.ts:8112–8126`, `:8203–8204`, `:8225–8237` | Disperseも同じ選択表示になるようadapterで適合 |
-| WebGL snapshotはSVGの親子path/guideとGraphLink path/lineを取得 | `viewer.ts:4603–4604` | 描画snapshotにはguideがあっても選択候補から除外。DC40 では選択中の親子 edge の guide だけを SVG / WebGL とも描画 |
+| WebGL snapshotはSVGの親子path/guideとGraphLink path/lineを取得 | `viewer.ts:4603–4604` | 描画snapshotにはguideがあっても選択候補から除外。DC51 では選択中の親子 edge の guide だけを SVG / WebGL とも描画 |
 | canonicalSurfaceViewNameはTree/Axial/Disperse/System/Lane。未知名はTree | `beta/src/shared/node_draw_port.ts:155–172` | Radialを他viewで代用しない。IS113から将来のRadial実装の受入へ引継ぎ |
 | SurfaceKindにRadialがない | `beta/src/shared/types.ts:7–8`、`beta/src/shared/edge_port.ts:16–35` | 本仕様の完了を妨げない。Radial実装時に同じsnapshot契約を接続する（IS113） |
 
@@ -165,7 +165,7 @@ L1 / DC35–DC38 は依頼の確定判断としてrequirements.mdへ転記した
 
 ## Risks & Mitigations
 
-IS110 は DC39 の Connection（線要素）で解決済み。IS111 / IS112はOP40 / OP41で解決済み。IS113はRadial実装側への引継ぎ、IS114 は DC40 の選択時ガイドで解決済み。RK9は資料/キーdrift、RK10は旧node操作・履歴との接続、RK11はレビューのbuild/data混同。RK12として、どのSurface Viewも描かない保存GraphLinkはキーボードで到達できない制限を受容し、後続課題として可視化する。これらの後続事項は本仕様の完了条件・依存ではない。
+IS110 は DC50 の Connection（線要素）で解決済み。IS111 / IS112はOP40 / OP41で解決済み。IS113はRadial実装側への引継ぎ、IS114 は DC51 の選択時ガイドで解決済み。RK9は資料/キーdrift、RK10は旧node操作・履歴との接続、RK11はレビューのbuild/data混同。RK12として、どのSurface Viewも描かない保存GraphLinkはキーボードで到達できない制限を受容し、後続課題として可視化する。これらの後続事項は本仕様の完了条件・依存ではない。
 
 草案レビューでは、確定判断の網羅、L2/L3/L4の分離、pure functionの入出力、各taskのwrite scope / depends / verification、review URLとbuild、実装済みviewの受入を照合する。実装開始には仕様承認を必要とし、文書検証を製品E2E完了とは呼ばない。
 
@@ -177,7 +177,7 @@ IS110 は DC39 の Connection（線要素）で解決済み。IS111 / IS112はOP
 
 OP40により候補集合をfixtureごとの独立した期待描画集合と照合する。保存全集合との一致は要求しない。親子label折込・Lane非描画を除外し、Systemの保存三件→描画一線では一候補・件数3・F2 / brackets / Shift+S / Shift+B / Delete / Backspaceの拒否を確認する。データ・履歴を変えない。
 
-OP41の折り畳み・Lane深度外・scope外は正常な選択拒否として試験する。originは維持し、理由を人間向けに表示する。Disperse guide は候補外を維持し、DC40 に従い選択中の親子 edge の一本だけ描く。Radialの線選択確認は将来のRadial実装作業の受入に引き継ぎ、今回の完了条件から分離する（IS113）。参照先は `docs/09_Decisions/ADR_012_Radial_Surface_View_Restoration.md` とrequirements.mdのIS113行。
+OP41の折り畳み・Lane深度外・scope外は正常な選択拒否として試験する。originは維持し、理由を人間向けに表示する。Disperse guide は候補外を維持し、DC51 に従い選択中の親子 edge の一本だけ描く。Radialの線選択確認は将来のRadial実装作業の受入に引き継ぎ、今回の完了条件から分離する（IS113）。参照先は `docs/09_Decisions/ADR_012_Radial_Surface_View_Restoration.md` とrequirements.mdのIS113行。
 
 承認は実行条件へ移し、タスクは9件に再採番する。選択・移動レビューはtask 5、編集レビューはtask 8。具体的なURL・map名・ビルドの区別を維持する。今回追加する追跡IDはOP40 / OP41 / IS114 / RK12のみ。
 

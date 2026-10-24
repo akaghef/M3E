@@ -178,17 +178,17 @@ selection/editor-cancel checks repeated successfully with zero write requests
 and a matching served bundle hash. Task checkboxes reflect implementation
 evidence; human review tasks remain distinct from these automated results.
 
-## 2026-10-24 DC39 / DC40 反映
+## 2026-10-24 DC50 / DC51 反映
 
-DC39 の Connection（線要素）を Glossary に登録し、IS110 を解決済みにした。
-DC40 は shared `selectionHighlight.guide` と既存 adapter で実装。既存の
+DC50 の Connection（線要素）を Glossary に登録し、IS110 を解決済みにした。
+DC51 は shared `selectionHighlight.guide` と既存 adapter で実装。既存の
 `disperseGuideEndpoints` を再利用し、選択中の親子 edge 一組だけを描く。
 group-frame の選択 identity と左右巡回候補は維持する。adapter の描画後に
 既存 WebGL snapshot が同じ SVG guide を読み取る。GraphLink の除外・集約、
 Lane 描画、layout engine、保存形式は変更していない。
 
 タスク5・8は **2026-10-24 akaghef 受け入れ** として記録した。
-これはユーザーから与えられた受け入れ記録であり、今回の DC40 ブラウザ試験の成功とは区別する。
+これはユーザーから与えられた受け入れ記録であり、今回の DC51 ブラウザ試験の成功とは区別する。
 
 | 今回実行した検証 | 結果 |
 |---|---|
@@ -210,7 +210,7 @@ viewer.ts の機能分のみの累積: **added 47 / deleted 52 / net −5**。
 は1/16。基準 `ad1f40b` 以後の無関係な force / cache / Concreteness Axis 等の変更は合算しない。
 上限 added ≤120 / net ≤40 を満たす。viewer.ts に選択分岐の追加はない。
 
-### DC39 文書 sweep
+### DC50 文書 sweep
 
 `docs/`、`.kiro/`、`agent_instructions/`、全 README、`AGENTS.md`、`CLAUDE.md` を対象に、
 日本語・英語の edge / GraphLink 併記、線要素、選択・表示文脈を検索・確認した。

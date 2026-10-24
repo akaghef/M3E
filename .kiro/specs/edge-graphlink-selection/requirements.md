@@ -8,7 +8,7 @@ Connection をキーボードで選択・移動・編集できるようにする
 
 ## Boundary Context
 
-**In scope**: Navigate での Connection の選択、L2 の両端への移動、L3 の編集、L4 の表示、共通の pure function、既存描画・履歴への接続、専用データによる確認計画、DC40 の選択時 Disperse ガイド。
+**In scope**: Navigate での Connection の選択、L2 の両端への移動、L3 の編集、L4 の表示、共通の pure function、既存描画・履歴への接続、専用データによる確認計画、DC51 の選択時 Disperse ガイド。
 
 **Out of scope**: 親子 edge の削除による node delete / reparent、GraphLink の新規作成、relationType / attributes の編集 UI、EdgeStyle の新規編集、配置アルゴリズムの変更、renderer の GraphLink 除外・集約規則変更、Radial 本体の復元、個人 workspace の変更、Final 反映。親子 edge のポインター hit-test 追加も必須にしない。
 
@@ -33,10 +33,10 @@ Connection をキーボードで選択・移動・編集できるようにする
 | L1 | 確定 | Alt+↑ は親への親子 edge。Alt+←/→ は「描かれている線」（子への親子 edge と incoming/outgoing GraphLink）の巡回。右の初回は先頭、左の初回は末尾、両端で循環 |
 | DC35 | 確定 | Alt+↓ は `children[0]` への親子 edge。子なしは選択せず理由を表示 |
 | DC36 | 確定 | 巡回順は相手 node の画面上の上→下、同じ高さなら左→右。許容差と同順位処理を明示 |
-| DC37 | 確定 | Lane / Disperse でも Alt+↑/↓ は親子 edge を選択し、帯・レーン名 / group frame と両端を強調。Disperse は DC40 の選択ガイドを併用し、左右巡回は GraphLink のみ |
+| DC37 | 確定 | Lane / Disperse でも Alt+↑/↓ は親子 edge を選択し、帯・レーン名 / group frame と両端を強調。Disperse は DC51 の選択ガイドを併用し、左右巡回は GraphLink のみ |
 | DC38 | 確定 | 親子 edge は選択対象。全 Surface View でキー操作を共通化 |
-| DC39 | 確定（2026-10-24 akaghef） | 親子 edge と GraphLink の総称は **Connection**（線要素）。保存実体・新しいデータ型ではなく、外部接続の意味でもない（IS110 解決）。Line は EdgeStyle の `line`、Link は GraphLink / LinkStyle、Relation は関係の意味、Connector は既存の外部接続用語と衝突するため却下 |
-| DC40 | 確定（2026-10-24 akaghef） | Disperse の `scatter-guide` は現在選択中の親子 edge の両端だけを結ぶ。親子 edge 未選択時は描かない。group frame は親子表現の正本を保ち、兄弟共通の枠では区別できない選択中の子をガイドで示す。Alt+←/→ の候補は GraphLink のみ（DC37 維持、IS114 解決） |
+| DC50 | 確定（2026-10-24 akaghef） | 親子 edge と GraphLink の総称は **Connection**（線要素）。保存実体・新しいデータ型ではなく、外部接続の意味でもない（IS110 解決）。Line は EdgeStyle の `line`、Link は GraphLink / LinkStyle、Relation は関係の意味、Connector は既存の外部接続用語と衝突するため却下 |
+| DC51 | 確定（2026-10-24 akaghef） | Disperse の `scatter-guide` は現在選択中の親子 edge の両端だけを結ぶ。親子 edge 未選択時は描かない。group frame は親子表現の正本を保ち、兄弟共通の枠では区別できない選択中の子をガイドで示す。Alt+←/→ の候補は GraphLink のみ（DC37 維持、IS114 解決） |
 | L2 | 提案 | 素の矢印で画面方向にある端へ node 選択を移動、Esc で開始 node に戻る |
 | L3 | 提案 | F2 label、既存 `[` / `]` LinkPort、GraphLink のみ Delete、LinkStyle / direction の巡回、全編集の Undo / Redo |
 | L4 | 提案 | 選択対象と両端の強調、node label による関係表示、GUI に内部 ID を出さない |
@@ -60,7 +60,7 @@ OP40 と OP41 は Director 推奨の解決案（**承認済み 2026-10-20**）�
 1. When Navigate の node 選択で Alt+↑ を入力した時、viewer shall primary node と親を結ぶ親子 edge を、両端が描画される場合に選択し、その primary node を開始 node として保持する。複数 node 選択からは primary を起点とする単一対象へ切り替える。親がない場合は Connection を選択せず、開始 node の単一選択にして「親がありません」と表示する。
 2. When 同条件で Alt+↓ を入力した時、viewer shall `children[]` の先頭の子への親子 edge を、両端が描画される場合に選択する。画面上の距離や上下位置を代わりに用いない。
 3. If 子が存在しない場合、viewer shall Connection を選択せず、開始 node の選択を維持し「子がありません」と表示する（DC35）。
-4. Where Lane または Disperse が選ばれ両端 node が描画される場合、viewer shall 同じ親子 edge を選択し、Lane の所属レーン名・帯、または Disperse の当該親子を所有する group frame と両端 node を強調する。帯・枠を親子線で代用しない（DC37）。Disperse では選択経路によらず、選択中の親子 edge の両端だけを結ぶ `scatter-guide` を一本併用し、親子 edge 未選択時・Esc 後はガイドを描かない（DC40）。
+4. Where Lane または Disperse が選ばれ両端 node が描画される場合、viewer shall 同じ親子 edge を選択し、Lane の所属レーン名・帯、または Disperse の当該親子を所有する group frame と両端 node を強調する。帯・枠を親子線で代用しない（DC37）。Disperse では選択経路によらず、選択中の親子 edge の両端だけを結ぶ `scatter-guide` を一本併用し、親子 edge 未選択時・Esc 後はガイドを描かない（DC51）。
 5. While Connection が選択されている時、viewer shall Alt+↑/↓ を保持中の開始 node に対して解釈し、起点を変えず親 / 最初の子を選択し直す。対象なしの場合は開始 node 選択に戻し理由を表示する。
 6. If Alt+↑/↓ の対象端 node が現在の Surface View で描画されていない場合、viewer shall Connection を選択せず、origin node の単一選択を維持・復元する。「子は折り畳まれています」「Lane では孫より深い node を描きません」「親は scope の外です」など人間向けの理由を表示し、自動展開・scope移動・別の可視childへの置換を行わない（OP41、IS112解決済み）。
 
@@ -145,11 +145,11 @@ OP40 と OP41 は Director 推奨の解決案（**承認済み 2026-10-20**）�
 
 | ID | 状態 / 内容 | 本仕様での扱い |
 |---|---|---|
-| IS110 | 解決済み（DC39）: 総称は Connection（線要素） | Glossary に登録し、両者をまとめて扱う記述に使用。種別の対比・保存上の区別は維持 |
+| IS110 | 解決済み（DC50）: 総称は Connection（線要素） | Glossary に登録し、両者をまとめて扱う記述に使用。種別の対比・保存上の区別は維持 |
 | IS111 | 解決済み（OP40）: 描画単位と保存単位の差 | 現在描かれる線だけを候補とする。rendererの除外・集約規則は変更しない |
 | IS112 | 解決済み（OP41）: 非描画endpoint | 選択しない、origin維持、理由表示。自動展開しない |
 | IS113 | 別作業: ADR_012で正本に復帰したRadialに実装入口がない | 本仕様の完了を妨げない。Radial実装作業の受入に「同じrenderer snapshotを供給し、Radial の線選択確認（Alt巡回、上下、L2、L3、両端強調）を行う」を引き継ぐ。他viewで代用しない |
-| IS114 | 解決済み（DC40）: Disperse のガイドは親子 edge 選択時だけ描画 | group frame と両端を強調し、選択中の一組だけにガイドを表示。左右巡回の候補からは引き続き除外 |
+| IS114 | 解決済み（DC51）: Disperse のガイドは親子 edge 選択時だけ描画 | group frame と両端を強調し、選択中の一組だけにガイドを表示。左右巡回の候補からは引き続き除外 |
 | OP42 | 却下案 | 保存された全GraphLinkを個別に描く変更は今回行わない |
 | OP40 | 承認済み 2026-10-20 | 描画集合と候補集合を一致させる。集約線は一候補、件数表示、編集拒否 |
 | OP41 | 承認済み 2026-10-20 | Alt+↑/↓の対象端が非描画ならoriginを選択したまま理由表示 |
