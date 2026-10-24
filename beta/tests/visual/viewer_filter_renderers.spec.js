@@ -6,6 +6,67 @@ const {bar,choose,geometry,paint,settled,hitTargets,trackMapSaves}=require('./vi
 const open=laneServer(test);
 const {fixture,mode}=require('./viewer_filter_renderer_helpers');
 test.beforeEach(({page})=>{trackMapSaves(page);});
+async function filterLayout(page){return page.evaluate(()=>{
+ const filter=document.querySelector('.viewer-filter-bar').getBoundingClientRect();
+ const rects=selector=>Array.from(document.querySelectorAll(selector),e=>e.getBoundingClientRect()).filter(r=>r.width&&r.height);
+ const groups=rects('.wb-brand,.wb-top-actions'),inspectors=rects('.wb-right-panel,.wb-panel-tab');
+ const overlaps=r=>filter.left<r.right&&filter.right>r.left&&filter.top<r.bottom&&filter.bottom>r.top;
+ const gapCentre=(groups[0].right+groups[1].left)/2;
+ const top=Math.min(...groups.map(r=>r.top));
+ const fits=gapCentre-filter.width/2>=groups[0].right+8&&gapCentre+filter.width/2<=groups[1].left-8&&
+  !inspectors.some(r=>gapCentre-filter.width/2<r.right&&gapCentre+filter.width/2>r.left&&top<r.bottom&&top+filter.height>r.top);
+ const rowRight=Math.min(innerWidth-14,...inspectors.map(r=>r.left-8));
+ return {overlaps:[...groups,...inspectors].filter(overlaps).length,inViewport:filter.left>=0&&filter.right<=innerWidth,
+  fits,centred:Math.abs((filter.left+filter.right)/2-(fits?gapCentre:(14+rowRight)/2))<1,
+  correctRow:fits?Math.abs(filter.top-top)<1:Math.abs(filter.top-Math.max(...groups.map(r=>r.bottom))-8)<1};
+});}
+async function expectFilterLayout(page){
+ await expect.poll(()=>filterLayout(page)).toMatchObject({overlaps:0,inViewport:true,centred:true,correctRow:true});
+}
+async function clickCentre(page,selector){
+ const target=page.locator(selector);await expect(target).toBeVisible();
+ // Check browser hit routing, then deliver a real pointer click (no dispatchEvent/force).
+ const point=await target.evaluate(button=>{
+  const r=button.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+  const receives=button.contains(document.elementFromPoint(x,y));
+  button.dataset.layoutClick='pending';
+  button.addEventListener('click',()=>{button.dataset.layoutClick='received';},{once:true});
+  return {x,y,receives};
+ });
+ expect(point.receives).toBe(true);await page.mouse.click(point.x,point.y);
+ await expect(target).toHaveAttribute('data-layout-click','received');
+}
+test('Lane filter never covers top-bar controls or Inspector across window resizes',async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ await open(page,require('../fixtures/lane_asys_domains.json'));
+ await mode(page,'lane');
+ // The original regression had two disabled axes, each adding a two-line reason.
+ await expect(bar(page).locator('button:disabled')).toHaveCount(2);
+ await expect(page.locator('#viewer-filter-disabled-reason')).toBeVisible();
+ await expect(page.locator('#viewer-filter-disabled-reason')).toHaveText('この map には値がありません');
+ for(const viewport of [{width:1440,height:900},{width:1280,height:800},{width:1024,height:768},{width:1920,height:1080},{width:1440,height:900}]){
+  await page.setViewportSize(viewport);await expectFilterLayout(page);
+  // One shared line of explanation must not double the single control row's height.
+  expect(await bar(page).evaluate(e=>e.getBoundingClientRect().height)).toBeLessThan(80);
+  await clickCentre(page,'#orrery-network-toggle');
+  await expect(page.locator('#orrery-network-toggle')).toHaveAttribute('aria-pressed','true');
+  await clickCentre(page,'#orrery-network-toggle');
+  await expect(page.locator('#orrery-network-toggle')).toHaveAttribute('aria-pressed','false');
+  await clickCentre(page,'.wb-board-title');
+ }
+ await page.getByRole('button',{name:'Hide inspector',exact:true}).click();await expectFilterLayout(page);
+ await page.getByRole('button',{name:'Show inspector',exact:true}).click();await expectFilterLayout(page);
+});
+test('filter remeasures changing top-bar contents without a window resize',async({page})=>{
+ await page.setViewportSize({width:1920,height:1080});await open(page,fixture);await expectFilterLayout(page);
+ expect((await filterLayout(page)).fits).toBe(true);
+ const label=page.locator('.wb-board-title small'),original=await label.textContent();
+ // Synthetic content growth isolates the ResizeObserver/mutation boundary.
+ await label.evaluate(e=>{e.textContent='Lane / level 0 '+ 'expanded surface label '.repeat(6);});
+ await expectFilterLayout(page);expect((await filterLayout(page)).fits).toBe(false);
+ await label.evaluate((e,text)=>{e.textContent=text;},original);
+ await expectFilterLayout(page);expect((await filterLayout(page)).fits).toBe(true);
+});
 async function activeWebGL(page){await expect.poll(()=>page.evaluate(()=>Boolean(window.__m3eWebGLProjection?.getDebugState()?.active))).toBe(true);await expect(page.locator('#webgl-canvas')).toBeVisible();}
 async function region(page,id){return page.evaluate(id=>{
  const p=window.__m3eWebGLProjection,n=p.getSnapshot().nodes.find(n=>n.id===id),c=p.getDebugState().camera,r=document.querySelector('#webgl-canvas').getBoundingClientRect();
