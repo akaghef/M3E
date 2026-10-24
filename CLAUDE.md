@@ -121,6 +121,15 @@ decided, the options, the recommendation, and what each choice changes. A tracki
 (`IS90`) or a pointer to an earlier message, a spec or another session is not a question.
 IDs go after the content as labels.
 
+Ask only when the choice changes stored data or its meaning (schema, map content, Glossary
+terms, canonical decisions), has an effect outside the task (shared branches beyond the
+normal integration, other sessions, external services, published artifacts), is hard to
+undo, or genuinely depends on akaghef's intent. Decide everything else yourself — a choice
+that is reversible and confined to the task (implementation detail, test layout, naming
+inside the task, order of steps, a default akaghef can change later) — and report it after
+the fact in one line with what you chose and why. Do not stop a turn to ask for such a choice
+(akaghef 2026-10-25: 「なんでいちいち許可がひつようなん」).
+
 ## GUI design order
 
 Decide GUI in this order: (1) semantic containment of parts (what each part means and
