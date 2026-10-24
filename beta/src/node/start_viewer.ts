@@ -319,9 +319,9 @@ function deleteMapId(dbPath: string, mapId: string): void {
   }
 }
 
-function ensureMap(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
+// Initial generation only: an existing map keeps its stored state (mapLabel is user-editable).
+export function ensureMap(dbPath: string, mapId: string, mapLabel: string, legacyIds: string[] = []): void {
   if (RapidMvpModel.mapExists(dbPath, mapId)) {
-    RapidMvpModel.renameMap(dbPath, mapId, mapLabel);
     for (const legacyId of legacyIds) {
       if (legacyId !== mapId && RapidMvpModel.mapExists(dbPath, legacyId)) {
         deleteMapId(dbPath, legacyId);
