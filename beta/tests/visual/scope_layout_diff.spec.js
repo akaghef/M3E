@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { laneServer } = require('./lane_helpers');
+const { laneServer, applyLane } = require('./lane_helpers');
 const base = require('../fixtures/shortcut_test.json');
 const open = laneServer(test);
 test.use({ launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } });
@@ -77,11 +77,8 @@ test('Lane reuses placement for unrelated content and invalidates visible dimens
   const fixture = structuredClone(base);
   fixture.state.nodes['child-c'].nodeType = 'folder';
   const { url } = await open(page, fixture);
-  await page.locator('#board').focus();
-  await page.keyboard.press('Space');
-  await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toBeVisible();
-  await page.locator('[data-pn-node="lane-root"]').click();
-  await expect(page.locator('#board')).toHaveAttribute('data-lane-state', 'ready');
+  // Lane is a Surface View of the current scope (the map root here).
+  await applyLane(page);
   const before = await geometry(page);
   const unchanged = await external(page, url, 'grandchild-c1', 'Hidden Lane edit');
   expect(unchanged.every(w => w.layouts === 0 && w.measured === 0)).toBe(true);

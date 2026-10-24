@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle, LinkPort } from "../shared/types";
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
 import { isGraphLinkAttributes } from "../shared/graph_link_attributes";
-import { resolveLaneRoot, scopedLaneSettings } from "../shared/lane_view";
+import { scopedLaneSettings } from "../shared/lane_view";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -506,10 +506,6 @@ class RapidMvpModel {
       const id = key === inferred ? `surface:${remap.get(owner)!}:${surface.kind}` : newId("surface:");
       if (this.state.surfaces?.[id] || surfaces[id]) throw new Error("Copy surface identity conflicts with an existing surface.");
       const copy = { ...clone(surface), id, scopeId: scopeRemap.get(surface.scopeId)! };
-      if (surface.displayRootId) {
-        if (!remap.has(surface.displayRootId)) throw new Error("Copy surface root is outside the copied subtree.");
-        copy.displayRootId = remap.get(surface.displayRootId)!;
-      }
       if (surface.nodeViews) {
         // Viewer surfaces can cache all map nodes; only copied nodes belong here.
         copy.nodeViews = Object.fromEntries(Object.entries(surface.nodeViews)
@@ -1436,12 +1432,6 @@ class RapidMvpModel {
     }
 
     const settings = scopedLaneSettings(incomingState, incomingIds);
-    try {
-      Object.values(settings.surfaces ?? {}).filter(surface => surface.kind === "lane").forEach(surface =>
-        resolveLaneRoot(incomingState, settings.scopes![surface.scopeId].rootNodeIds[0], surface));
-    } catch {
-      return { ok: false, error: { code: "SCOPE_INVALID", message: "Lane root must belong to its stored scope." } };
-    }
     const mergedState: AppState = {
       ...stored,
       rootId: stored.rootId,

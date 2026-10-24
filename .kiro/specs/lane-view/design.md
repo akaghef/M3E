@@ -1,3 +1,5 @@
+> 2026-10-25 変更（akaghef）: B-7 と IS46（scope でない node を Lane の root にする操作、`MapSurface.displayRootId`）は取り消し。Lane の root は scope の root node。以下の B-7 の記述は経緯として残す。
+
 # Design Document
 
 ## Overview

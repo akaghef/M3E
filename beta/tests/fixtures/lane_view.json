@@ -27,7 +27,7 @@
           "development",
           "operations"
         ],
-        "nodeType": "text",
+        "nodeType": "folder",
         "collapsed": false,
         "details": "",
         "note": "",

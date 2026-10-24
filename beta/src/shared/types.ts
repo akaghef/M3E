@@ -49,7 +49,6 @@ export interface SurfaceNodeView {
 }
 
 export interface MapSurface {
-  displayRootId?: string;
   surfaceView?: { direction: "left/right" | "left" | "right" | "up/down" | "up" | "down"; space: "tight" | "normal" | "loose" };
   id: string;
   scopeId: string;
