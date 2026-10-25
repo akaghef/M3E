@@ -73,6 +73,7 @@ jobs:
           path: |
             scripts/
             .gitignore
+          include-hidden-files: true
           retention-days: 1
 
   windows-channel-entrypoints:
