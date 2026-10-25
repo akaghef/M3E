@@ -89,7 +89,8 @@ test('Final legacy checkout refuses dirty product source',()=>fixture(root=>{
 test('missing release selection has no filesystem or network effects',()=>fixture(root=>{
  const before=git(root,'status','--porcelain');assert.throws(()=>installFinal(root,undefined),/--release/);assert.equal(git(root,'status','--porcelain'),before);
 }));
-test('retired promotion commands and daily --with-final leave checkout unchanged',()=>fixture(root=>{
+// The .sh entrypoints need a POSIX bash; Windows CI checks the .bat refusals instead.
+test('retired promotion commands and daily --with-final leave checkout unchanged',{skip:process.platform==='win32'},()=>fixture(root=>{
  const before=git(root,'status','--porcelain');for(const s of ['migrate-from-beta','sync-beta-to-final']){const r=spawnSync('bash',[path.join(project,`scripts/final/${s}.sh`)],{cwd:root,encoding:'utf8'});assert.equal(r.status,2);}
  const r=spawnSync('bash',[path.join(project,'scripts/ops/daily-sync.sh'),'--with-final'],{cwd:root,encoding:'utf8'});assert.equal(r.status,2);assert.equal(git(root,'status','--porcelain'),before);
 }));

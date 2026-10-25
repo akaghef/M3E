@@ -70,7 +70,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: channel-scripts
-          path: scripts/
+          path: |
+            scripts/
+            .gitignore
           retention-days: 1
 
   windows-channel-entrypoints:
@@ -82,7 +84,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: channel-scripts
-          path: scripts
+          path: .
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -104,3 +106,7 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD "scripts/beta/launch-with-ai.ps1"), [ref]$tokens, [ref]$parseErrors) | Out-Null
           if ($parseErrors.Count) { throw $parseErrors }
           exit 0
+      # Builds and installs call npm.cmd through cmd.exe; only Windows exercises that path.
+      - name: Test channel runtime on Windows
+        shell: pwsh
+        run: node --test scripts/ops/channel-runtime.test.mjs

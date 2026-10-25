@@ -67,7 +67,8 @@ export function ensureBuild(root,channel,{force=false,install=false}={}) {
   function run(args,env=process.env) {
     const argv=args;
     const result=process.platform==='win32'
-      ? spawnSync([npm,...argv].map(a=>`"${a.replaceAll('"','')}"`).join(' '),{cwd:path.join(root,channel),stdio:'inherit',shell:true,env})
+      // cmd.exe resolves %~dp0 inside a quoted, path-less "npm.cmd" to the current directory, so only the arguments are quoted.
+      ? spawnSync([npm,...argv.map(a=>`"${a.replaceAll('"','')}"`)].join(' '),{cwd:path.join(root,channel),stdio:'inherit',shell:true,env})
       : spawnSync(npm,argv,{cwd:path.join(root,channel),stdio:'inherit',env});
     if(result.status!==0) throw Error(`npm ${args.join(' ')} failed; current server has not been stopped.`);
   }
