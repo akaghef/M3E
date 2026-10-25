@@ -88,7 +88,8 @@ export function ensureBuild(root,channel,{force=false,install=false}={}) {
   }
   if(force || !old || old.inputHash!==inputHash || !fs.existsSync(bundle) || !fs.existsSync(entry) || old.entryHash!==hash(fs.readFileSync(entry)) || old.bundleHash!==hash(fs.readFileSync(bundle)) || old.node!==process.version) {
     const python=channel==='beta'?agentIconPython():undefined;
-    run(['run','build'],python?{...process.env,M3E_AGENT_ICON_PYTHON:python}:process.env);
+    // The icon gate checks repository sources; Final builds on user machines and in release directories without them.
+    run(['run','build'],channel==='beta'?(python?{...process.env,M3E_AGENT_ICON_PYTHON:python}:process.env):{...process.env,M3E_AGENT_ICON_GATE:'off'});
     if((channel==='beta'?guardBeta(root):guardFinal(root))!==source || fingerprint(root,files)!==inputHash) throw Error('Source changed during build; refusing launch.');
     fs.writeFileSync(stampPath,JSON.stringify({channel,source,inputHash,node:process.version,entryHash:hash(fs.readFileSync(entry)),bundleHash:hash(fs.readFileSync(bundle)),builtAt:new Date().toISOString()},null,2)+'\n');
   }

@@ -163,3 +163,16 @@ test('Final builds without probing Python when icon Python is unset',{skip:proce
  assert.equal(fs.readFileSync(path.join(root,'final/dist/browser/viewer.js'),'utf8'),'built');
  assert.equal(fs.existsSync(path.join(root,'final/dist/.m3e-build.json')),true);
 })));
+// Final is built on user machines and in release directories without scripts/ops or Pillow.
+test('Final build turns the agent icon gate off; Beta keeps it on',()=>fixture(root=>{
+ for(const c of ['beta','final']) {
+  const pkg=JSON.parse(fs.readFileSync(path.join(root,c,'package.json'),'utf8'));
+  pkg.scripts.build += ` && node -e "require('fs').writeFileSync('dist/gate.txt',process.env.M3E_AGENT_ICON_GATE||'on')"`;
+  fs.writeFileSync(path.join(root,c,'package.json'),JSON.stringify(pkg));
+ }
+ git(root,'add','.');git(root,'commit','-m','gate fixture');git(root,'update-ref','refs/remotes/origin/dev-beta','HEAD');
+ deps(root,'beta');deps(root,'final');
+ ensureBuild(root,'beta');ensureBuild(root,'final');
+ assert.equal(fs.readFileSync(path.join(root,'beta/dist/gate.txt'),'utf8'),'on');
+ assert.equal(fs.readFileSync(path.join(root,'final/dist/gate.txt'),'utf8'),'off');
+}));

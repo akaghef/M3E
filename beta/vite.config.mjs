@@ -12,6 +12,7 @@ export default defineConfig({
     {
       name: "agent-node-icon-import-gate",
       buildStart() {
+        if (process.env.M3E_AGENT_ICON_GATE === "off") return;
         execFileSync(process.env.M3E_AGENT_ICON_PYTHON || "python3", [path.resolve(process.cwd(), "../scripts/ops/check-agent-node-icons.py")], { stdio: "inherit" });
       },
       handleHotUpdate(context) {
