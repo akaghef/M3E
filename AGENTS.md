@@ -142,6 +142,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 
 - Use isolated `codex/<task>` worktrees for implementation and conflicting writes.
 - The task owner reviews, tests, commits, integrates into `dev-beta`, and pushes directly. No mandatory PR or human merge queue.
+- Pushes to `dev-beta` pass `.githooks/pre-push`, which runs `scripts/ops/preflight.sh --commit <sha>` (the same checks as CI) on the pushed commit. Enable it once per checkout with `scripts/ops/install-git-hooks.sh`; never bypass it with `--no-verify`. Delivery is complete only after `scripts/ops/watch-ci.sh <integrated SHA>` succeeds; do not stack further pushes on red CI.
 - Serialize integration/build/restart using the channel policy local lock; ORRERY reservations apply only while explicitly activated. Preserve unrelated dirty work.
 - Build normal Beta only from integrated source. Never copy unmerged worktree bundles into the normal runtime.
 - `beta_update` and update-complete require applicable runtime readback / original-symptom verification after delivery, not merely commit, push, or PR creation.

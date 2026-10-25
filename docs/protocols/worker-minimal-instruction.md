@@ -17,7 +17,7 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 - update assigned task status if explicitly instructed
 - perform fully specified map operations with the six MCP tools in `docs/protocols/mcp-map-operations.md`; preserve retained context and verify authoritative results without a mandatory post-write GET
 - report concrete ambiguity with options
-- own verification, commit, direct dev-beta integration, push, and applicable runtime verification under `docs/06_Operations/Worktree_Separation_Rules.md`; `beta_update` requires delivery, not a PR
+- own verification, commit, direct dev-beta integration, push through the pre-push preflight (never `--no-verify`), CI confirmation with `scripts/ops/watch-ci.sh <integrated SHA>`, and applicable runtime verification under `docs/06_Operations/Worktree_Separation_Rules.md`; `beta_update` requires delivery, not a PR
 - use an optional PR only when requested or useful for explicit external review; a separate Director merge is not required
 
 ## Forbidden
