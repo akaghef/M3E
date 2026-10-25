@@ -29,6 +29,7 @@ beta/perf-results/
 final/node_modules/
 /final/node_modules
 final/dist/
+final/.node_version
 final/.env
 final/data/*.sqlite
 final/data/rapid-sample.json
