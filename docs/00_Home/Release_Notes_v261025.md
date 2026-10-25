@@ -40,7 +40,7 @@
 |---|---|---|
 | `npm ci` / build / typecheck | Mac、Node 26.0.0、release 作業ツリーの `final/` | 成功 |
 | unit test | 同上 | 1140 成功 / 5 失敗（上記の `beta/dist` 参照）/ 14 skip |
-| dev-beta CI | GitHub Actions（Ubuntu、Node 22、Windows の起動スクリプト拒否検査） | `68e2fbc` 全件成功 |
+| dev-beta CI | GitHub Actions（Ubuntu、Node 22、Windows の起動スクリプト拒否検査） | `2cd4fc5` 全件成功 |
 | 通常起動 `scripts/final/launch.sh` | Mac、一時 `M3E_HOME`、独立 port、`v260419-2` の seed | 起動成功。2 回目の起動も成功 |
 | 主要操作 | 同上、tutorial マップ（seed の version を一時データ上で 1 に補正） | ノード追加 → 自動保存（SQLite に反映）→ 再読込 → 再起動後も保持 |
 | 静的資産 | 同上 | KaTeX と app アイコンを配信（200） |
