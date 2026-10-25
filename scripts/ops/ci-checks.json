@@ -3,6 +3,10 @@
     ".",
     "bash scripts/ops/check-personal-path.sh"
   ],
+  "windows-filenames": [
+    ".",
+    "node scripts/ops/check-windows-filenames.mjs"
+  ],
   "typecheck": [
     "beta",
     "npm run typecheck"

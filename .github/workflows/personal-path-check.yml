@@ -8,3 +8,6 @@ jobs:
       - name: Reject retired personal identifier in tracked files
         shell: bash
         run: bash scripts/ops/check-personal-path.sh
+      - name: Reject file names Git for Windows cannot check out
+        shell: bash
+        run: node scripts/ops/check-windows-filenames.mjs
