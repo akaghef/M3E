@@ -1,0 +1,159 @@
+{
+  "lifecycleAnimationCandidates": {
+    "starting": "waving",
+    "thinking": "running",
+    "tool-running": "running",
+    "awaiting-user": "review",
+    "blocked": "waiting",
+    "idle": "idle",
+    "completed": null,
+    "failed": "failed",
+    "disconnected": null,
+    "unobservable": null
+  },
+  "pets": [
+    {
+      "id": "black-dragon-pet",
+      "displayName": "Black Dragon",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Explicit frame regions and playback reviewed.",
+      "sourceSha256": "07620934628d981b94798f7d0009c3c8ceefe0159b62aef911fa689291a8eca9",
+      "status": "verified"
+    },
+    {
+      "id": "belayer-cat",
+      "displayName": "Cat Belayer",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "6cb77cdf6c2e16324916f972a81bea05436bb8e20121f1a384cf3718b9bba6d4",
+      "status": "pending-review"
+    },
+    {
+      "id": "bilby-bird",
+      "displayName": "Bilby Bird",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "ff86954a9285116bef5fc36e510c4ee095e71ef5db08f418aba2061edc29e828",
+      "status": "pending-review"
+    },
+    {
+      "id": "blue-button-bunny",
+      "displayName": "Blue Button Bunny",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "0ea2fe1a808b653d07300fe1f3123d426d3fa18d6a59b1c9703cf21778f74564",
+      "status": "pending-review"
+    },
+    {
+      "id": "climber-cat",
+      "displayName": "Climbing Cat",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "14305969328b705bc3773a84cb6806c88b6bcd7c1278d989f82039d48cdb6a1b",
+      "status": "pending-review"
+    },
+    {
+      "id": "fat-robot",
+      "displayName": "Fat Robot",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "a8b7f750e1801e377f714d3e2b67fc7217b6d3cb0a3f4522d7507c0340ecbec2",
+      "status": "pending-review"
+    },
+    {
+      "id": "foxdungee",
+      "displayName": "Foxdungee",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "2b2aae8eae0b40362bc7803b27f4fdb9c46b10c1ab6ceb6b4a737d7e717ed6f6",
+      "status": "pending-review"
+    },
+    {
+      "id": "glaucira-blue-dragon",
+      "displayName": "Glaucira",
+      "sheet": {
+        "width": 1536,
+        "height": 2288
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "06368537d0cb5a0afc65a2b1a2181cb22b3fc5b46e978b84a4cefaa8a4f38be3",
+      "status": "pending-review"
+    },
+    {
+      "id": "green-slime-v2",
+      "displayName": "Green Slime v2",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "b50ebcb89bf5a65c5d1054611ce56c4b28b028d932e8e994d45f0a874403ae59",
+      "status": "pending-review"
+    },
+    {
+      "id": "machi-dog",
+      "displayName": "Machi Dog",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "57146aabcb1e546e728da1bf436df01dba2da544fbb68c4ded9dc16c86684343",
+      "status": "pending-review"
+    },
+    {
+      "id": "momo-bunny",
+      "displayName": "Momo Bunny",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "f477e933bcb56fc4f58f19219652514bc910abfd1f9cd34c6598ee1cd12059e5",
+      "status": "pending-review"
+    },
+    {
+      "id": "peri-the-owl",
+      "displayName": "Peri the Owl",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "d2d80d8aafd6da22ed0fa3050bc69c705dca2b7b401b4c9043ad9159dd159097",
+      "status": "pending-review"
+    },
+    {
+      "id": "white-dog",
+      "displayName": "White Dog",
+      "sheet": {
+        "width": 1536,
+        "height": 1872
+      },
+      "evidence": "Source retained for inspection; frame regions and animation order have not been verified.",
+      "sourceSha256": "4b2df199f3d25794557f1d97eed58a81e60f159a42ec6646361258f1fd637238",
+      "status": "pending-review"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "../schemas/webgl-pan-zoom-result.schema.json",
+  "schemaVersion": 1,
+  "kind": "m3e-webgl-pan-zoom-fixture",
+  "fixture": {
+    "workspaceId": "ws_REMH1Z5TFA7S93R3HA0XK58JNR",
+    "mapId": "map_1787540338048_c0hwxp",
+    "scopeId": "bp_scope_dependency",
+    "label": "PERF FIXTURE — PFR Blueprint — 2026-08-24",
+    "tags": ["performance-fixture", "webgl", "frozen", "pfr-blueprint"]
+  },
+  "integrity": {
+    "canonicalization": "recursive sorted object keys; array order preserved; SHA-256 over UTF-8 JSON scalar serialization",
+    "fixtureContentHash": "e1ee00bedca2d107e9cabfa377ede8672d4e304404daa8c3b9b77dbcd3e2e024",
+    "normalizedRootText": "PFR Blueprint",
+    "allowedMutableStatePaths": ["/nodes/bp_root/text"],
+    "counts": {
+      "nodeCount": 1144,
+      "linkCount": 9,
+      "scopeNodeCount": 219,
+      "scopeLinkCount": 9
+    }
+  },
+  "provenance": {
+    "duplicateAt": "2026-08-24T02:58:58.052Z",
+    "sourceMapId": "map_1776398058335_0vg5fs",
+    "sourceStateHash": "e1ee00bedca2d107e9cabfa377ede8672d4e304404daa8c3b9b77dbcd3e2e024",
+    "duplicateRawStateHashBeforeRename": "e1ee00bedca2d107e9cabfa377ede8672d4e304404daa8c3b9b77dbcd3e2e024",
+    "rawStateEqualityVerified": true
+  },
+  "notes": [
+    "The provenance records that the duplicate was read immediately after POST /api/maps/{sourceMapId}/duplicate and its raw state hash equalled sourceStateHash. This is historical evidence only; the runner never reads the active source map.",
+    "POST /rename persists the display label in the root node text. The runner restores that field to normalizedRootText before checking fixtureContentHash. Any other state mutation changes the normalized hash and fails closed.",
+    "Tags, pin state, archive state, and similar map-list metadata are outside the saved map state and therefore outside these state hashes. The runner separately checks the required tags from /api/maps metadata.",
+    "Any other state diff, count change, root ID change, label mismatch, or tag mismatch fails closed and produces no measurement."
+  ]
+}

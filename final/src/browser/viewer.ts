@@ -1,7 +1,37 @@
+import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
+import { viewerFilter } from "./viewer-filter-controller";
+import { filterSceneInput, ViewerFilterScene } from "./viewer-filter-scene";
+import { ConcretenessView, hasConcretenessData, concretenessSubtree, reconnectConcretenessCopies } from "../shared/concreteness_axis";
+import { EdgeGraphLinkSelectionAdapter } from "./edge_graphlink_selection_adapter";
+import { dispersePositionFrame, disperseGuideEndpoints } from "./disperse_frame";
+import type { ForceSnapshot } from "../shared/force_seam_interface";
+import { DisperseForceController } from "./disperse_force_controller";
+import { initializeViewerTheme } from "./viewer_theme";
+import { laneLinkGeometry } from "../shared/lane_layout";
+import { laneGrabMove, laneNavigationTarget, type LaneGrid } from "../shared/lane_navigation";
+import { LaneViewController } from "./lane_view_controller";
+import { laneFrames, laneLinkParts, laneNodeInput } from "./lane_scene";
+import { renderUpdateMetrics } from "../rendering/render_update_metrics";
+import { sanitizeGraphLinkAttributes } from "../shared/graph_link_attributes";
+import { readAgentNode, agentNodeMetric, agentNodeLod } from "../shared/agent_node_data";
+import { initialLifecycleAnimationMapping, petCatalog, resolvePetSprite } from "./agent_node_assets";
+import agentNodeCss from "../shared/agent_node.css?inline";
+const agentNodeStyle = document.createElement("style");
+agentNodeStyle.textContent = agentNodeCss;
+document.head.append(agentNodeStyle);
+let renderedAgentNodeLod = agentNodeLod(1);
+let agentNodeLodRenderPending = false;
+window.addEventListener("m3e:viewport-changed", () => {
+  if (agentNodeLod(viewState.zoom) === renderedAgentNodeLod || agentNodeLodRenderPending
+    || !map || !Object.values(map.state.nodes).some(node => readAgentNode(node))) return;
+  agentNodeLodRenderPending = true;
+  requestAnimationFrame(() => { agentNodeLodRenderPending = false; render(); });
+});
+import { OrreryNetwork } from "./orrery_network";
 import {
   layout as layoutPortLayout,
-  type LayoutBranchDirection,
-  type LayoutDensity,
+  TreeSpanCache,
+  type LayoutSpace,
   type LayoutMode,
   type LayoutNodeMetric,
   type LayoutOptions,
@@ -9,6 +39,12 @@ import {
   type StructuredLayoutMode,
   type VisibleLayoutGraph,
 } from "../shared/layout_port";
+import {
+  migrateSurfaceViewFromMapRead,
+  isLegacyBalancedTreeSurface,
+  sanitizeSurfaceLayoutDirection,
+  sanitizeSurfaceSpace,
+} from "../shared/surface_view_migration";
 import {
   canonicalSurfaceViewName,
   normalizeNodeDrawStyle,
@@ -18,11 +54,30 @@ import {
   type NodeDrawSurface,
   type ScopeLockDrawState,
 } from "../shared/node_draw_port";
-import { renderNode as renderNodeSvg } from "../shared/node_draw_svg";
+import { renderNode as renderNodeSvg, nodeSelectionFrameRect } from "../shared/node_draw_svg";
+import { DerivedNodeCache, RetainedSvgScene, ScopeDerivedCache } from "./incremental_scene";
+import { FrameInvalidation } from "./frame_invalidation";
+import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./webgl_scene_tiles";
+import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
+import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
+import { reorderInsertionIndex } from "../shared/reorder_insertion";
+import { treeGrabMove } from "../shared/tree_grab";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
 import { applyMarkdownLinkNodeInput, editInputForMarkdownLinkNode, isMarkdownLinkSubtype, localPathLinkToOpen, safeExternalLinkToOpen } from "../shared/markdown_link_node";
+import { resolveMarkdownFilePreviewTarget, type MarkdownFilePreviewTarget } from "../shared/markdown_file_preview";
+import { parseMmText, treeToMm } from "../shared/mm_exporter";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
+import { buildTableViewModel, directTableViewChildren, renderTableViewHtml } from "./table_view";
+import {
+  type RenderEdge,
+  type RenderGroupBoundary,
+  type RenderNode,
+  type RenderSnapshot,
+  WebGLRenderingProjection,
+  screenToWorld,
+  worldToScreen,
+} from "./webgl_projection";
 
 type PublicLayoutOptions = Pick<LayoutOptions, "spacing" | "direction" | "depthAlign" | "edge" | "link">;
 
@@ -34,12 +89,10 @@ const modeFlashBtn = document.getElementById("mode-flash");
 const modeRapidBtn = document.getElementById("mode-rapid");
 const modeDeepBtn = document.getElementById("mode-deep");
 const viewTreeBtn = document.getElementById("view-tree");
-const viewMindmapBtn = document.getElementById("view-mindmap");
 const viewLogicChartBtn = document.getElementById("view-logic-chart");
 const viewTimelineBtn = document.getElementById("view-timeline");
 const viewSystemBtn = document.getElementById("view-system");
 const viewScatterBtn = document.getElementById("view-scatter");
-const themeToggleBtn = document.getElementById("theme-toggle") as HTMLButtonElement | null;
 const scopeNavBtn = document.getElementById("scope-nav-btn") as HTMLButtonElement | null;
 const localFsToggleBtn = document.getElementById("local-fs-toggle") as HTMLButtonElement | null;
 const componentTabularToggleBtn = document.getElementById("component-tabular-toggle") as HTMLButtonElement | null;
@@ -91,7 +144,13 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const modeBadgeEl = document.getElementById("mode-badge") as HTMLElement | null;
 const visualCheckEl = document.getElementById("visual-check");
 const board = document.getElementById("board") as HTMLElement;
+const KEYBOARD_PLATFORM = keyboardPlatform(navigator.platform);
+const primaryModifier = (event: Pick<KeyboardEvent, "ctrlKey" | "metaKey">): boolean => hasPrimaryModifier(event, KEYBOARD_PLATFORM);
+// A world-positioned Linear panel can exceed the viewport. Native focus must
+// not scroll the app itself; all map movement belongs to the camera.
+document.querySelector<HTMLElement>(".app")?.style.setProperty("overflow", "clip");
 const canvas = document.getElementById("canvas") as unknown as SVGSVGElement;
+const webglCanvas = document.getElementById("webgl-canvas") as HTMLCanvasElement | null;
 const linearPanelEl = document.querySelector(".linear-panel") as HTMLElement | null;
 const linearMenuEl = document.getElementById("linear-menu") as HTMLElement | null;
 const linearMenuToggleBtn = document.getElementById("linear-menu-toggle") as HTMLButtonElement | null;
@@ -269,12 +328,55 @@ let routingScopeHoldDown = false;
 let routingWheelCarryX = 0;
 let routingWheelCarryY = 0;
 
+type MarkdownPreviewMode = "manual" | "hover" | "pinned";
+const MARKDOWN_HOVER_OPEN_DELAY_MS = 400;
+const MARKDOWN_HOVER_CLOSE_DELAY_MS = 300;
+const MARKDOWN_PREVIEW_CACHE_TTL_MS = 10_000;
+let markdownPreviewMode: MarkdownPreviewMode | null = null;
+let markdownPreviewNodeId: string | null = null;
+let markdownHoverOpenTimer: ReturnType<typeof setTimeout> | null = null;
+let markdownHoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let markdownPreviewRequestId = 0;
+let markdownPreviewAbortController: AbortController | null = null;
+const markdownPreviewCache = new Map<string, { cachedAt: number; payload: LocalFsReadResponse }>();
+
+function cancelMarkdownHoverOpen(): void {
+  if (markdownHoverOpenTimer !== null) {
+    clearTimeout(markdownHoverOpenTimer);
+    markdownHoverOpenTimer = null;
+  }
+}
+
+function cancelMarkdownHoverClose(): void {
+  if (markdownHoverCloseTimer !== null) {
+    clearTimeout(markdownHoverCloseTimer);
+    markdownHoverCloseTimer = null;
+  }
+}
+
+function syncMarkdownPreviewMode(mode: MarkdownPreviewMode | null, nodeId: string | null): void {
+  markdownPreviewMode = mode;
+  markdownPreviewNodeId = nodeId;
+  if (!markdownPreviewPanelEl) return;
+  if (mode) markdownPreviewPanelEl.dataset["previewMode"] = mode;
+  else delete markdownPreviewPanelEl.dataset["previewMode"];
+  if (nodeId) markdownPreviewPanelEl.dataset["previewNodeId"] = nodeId;
+  else delete markdownPreviewPanelEl.dataset["previewNodeId"];
+}
+
 function hideMarkdownPreview(): void {
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  markdownPreviewRequestId += 1;
+  markdownPreviewAbortController?.abort();
+  markdownPreviewAbortController = null;
+  syncMarkdownPreviewMode(null, null);
   if (markdownPreviewPanelEl) markdownPreviewPanelEl.hidden = true;
 }
 
-function showMarkdownPreview(src: string, title: string): void {
+function showMarkdownPreview(src: string, title: string, mode: MarkdownPreviewMode, nodeId: string): void {
   if (!markdownPreviewPanelEl || !markdownPreviewBodyEl) return;
+  syncMarkdownPreviewMode(mode, nodeId);
   markdownPreviewPanelEl.hidden = false;
   const titleEl = markdownPreviewPanelEl.querySelector(".markdown-preview-title") as HTMLElement | null;
   if (titleEl) titleEl.textContent = title;
@@ -304,12 +406,22 @@ function toggleMarkdownPreviewForSelectedNode(): void {
     setStatus("Selected node has no details or note.");
     return;
   }
-  showMarkdownPreview(body, `Markdown: ${node.text || "(untitled)"}`);
+  showMarkdownPreview(body, `Markdown: ${node.text || "(untitled)"}`, "manual", node.id);
 }
 
 if (markdownPreviewCloseBtn) {
   markdownPreviewCloseBtn.addEventListener("click", () => hideMarkdownPreview());
 }
+
+markdownPreviewPanelEl?.addEventListener("pointerenter", () => {
+  cancelMarkdownHoverClose();
+});
+
+markdownPreviewPanelEl?.addEventListener("pointerleave", () => {
+  if (markdownPreviewMode === "hover") {
+    scheduleMarkdownHoverClose();
+  }
+});
 
 function normalizeDocId(raw: string | null, fallback: string): string {
   const trimmed = (raw || "").trim();
@@ -334,6 +446,10 @@ function basenameFromPath(rawPath: string): string {
 }
 
 const queryParams = new URLSearchParams(window.location.search);
+const REQUESTED_RENDERER = (queryParams.get("renderer") || "webgl").trim().toLowerCase();
+const WEBGL_RENDERER_REQUESTED = REQUESTED_RENDERER === "webgl";
+const WEBGL_DEBUG_REQUESTED = queryParams.get("webglDebug") === "1";
+const REQUESTED_SURFACE = (queryParams.get("surface") || "").trim().toLowerCase();
 const LOCAL_FS_VIEW_ROOT = firstQueryParam(queryParams, ["localFsRoot", "localFsPath"]) || "";
 const LOCAL_FS_VIEW_MODE = Boolean(LOCAL_FS_VIEW_ROOT.trim());
 const LINK_ACCESS_MODE = (firstQueryParam(queryParams, ["access", "mode", "linkMode"]) || "edit").toLowerCase();
@@ -357,7 +473,6 @@ const CLOUD_MAP_ID = normalizeDocId(firstQueryParam(queryParams, ["cloud", "clou
 const MAP_LABEL = LOCAL_FS_VIEW_MODE ? `Local: ${basenameFromPath(LOCAL_FS_VIEW_ROOT)}` : (MAP_META[LOCAL_MAP_ID]?.label ?? LOCAL_MAP_ID);
 const MAP_SLUG = LOCAL_FS_VIEW_MODE ? "local-fs" : (MAP_META[LOCAL_MAP_ID]?.slug ?? LOCAL_MAP_ID);
 const COLLAB_PREFS_KEY = `m3e:collab:${WORKSPACE_ID}`;
-const THEME_PREFS_KEY = "m3e:viewer-theme";
 const AUTOSAVE_DELAY_MS = 700;
 const MAX_UNDO_STEPS = 200;
 function createTabId(): string {
@@ -408,7 +523,7 @@ function isReadOnlyAllowedKey(event: KeyboardEvent): boolean {
   if (event.altKey && !event.ctrlKey && !event.metaKey) {
     return ["h", "v", "d"].includes(event.key.toLowerCase());
   }
-  if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+  if (primaryModifier(event) && !event.altKey) {
     return ["c", "s", "o"].includes(event.key.toLowerCase());
   }
   return false;
@@ -434,7 +549,10 @@ let lastServerSavedAt: string | null = null;
 let lastServerBaseState: AppState | null = null;
 
 interface UndoSnapshot {
+  concretenessLevel?: number;
+  scopeRootId?: string;
   state: AppState;
+  collapsedIds?: string[];
   selectedNodeId: string;
   selectedNodeIds: string[];
   selectionAnchorId: string | null;
@@ -452,18 +570,87 @@ interface LinearNodeDraft {
   children: LinearNodeDraft[];
 }
 
-type ImportanceViewMode = "all" | "high-plus" | "high-only";
 
 let map: SavedMap | null = null;
+const orreryNetwork = new OrreryNetwork({ board, canvas, toolbar: toolbarEl, render: () => render(), fit: () => { fitDocument(); }, cycleFit: (reverse) => cycleFit(reverse), point: clientToCanvasPoint });
 let fatalLoadError = false;
 let visibleOrder: string[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
-let cycleViewState: "focus" | "fit" = "focus";
-let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text" } | null = null;
-let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement } | null = null;
+let localSaveFailure: string | null = null;
+let localSaveRevision = 0;
+let localSavedRevision = -1;
+const FIT_MODES = ["graph", "subtree", "graph-linear", "node"] as const;
+type FitMode = typeof FIT_MODES[number];
+let fitCycleMode: FitMode | null = null;
+let fitCycleScope = "";
+const FIT_LABELS: Record<FitMode, string> = {
+  graph: "graph全体", subtree: "選択ノード＋子孫", "graph-linear": "graph＋linear panel", node: "選択ノード",
+};
+let inlineEditor: { nodeId: string; input: HTMLTextAreaElement; mode: "node-text" | "alias-label" | "target-text"; preview?: InlineNodeEditorPreview } | null = null;
+const nodeDrawInputs = new Map<string, NodeDrawInput>();
+const nodeAuxMarkup = new Map<string, string>();
+const scopeLayoutCaches = new ScopeDerivedCache(() => ({
+  metrics: new DerivedNodeCache<LayoutNodeMetric>(),
+  spans: new TreeSpanCache(),
+  previews: new DerivedNodeCache<FlowPreviewLayout | null>(),
+  result: new DerivedNodeCache<LayoutResult>(),
+}));
+let activeLayoutCache = scopeLayoutCaches.get("");
+let layoutMetricCache = activeLayoutCache.metrics;
+const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
+const edgeSvgCache = new DerivedNodeCache<string>();
+let treeSpanCache = activeLayoutCache.spans;
+const retainedSvgScene = new RetainedSvgScene();
+const filterScene = new ViewerFilterScene();
+function applyViewFilter(): void {
+  const { result, selection } = viewerFilter.getSnapshot();
+  filterScene.apply(canvas, result, selection, map?.state.nodes || {});
+}
+let paintedFilterSelection = viewerFilter.getSnapshot().selection;
+viewerFilter.subscribe(() => {
+  const { selection } = viewerFilter.getSnapshot();
+  if (selection === paintedFilterSelection) return;
+  paintedFilterSelection = selection;
+  if (!lastLayout) return;
+  applyViewFilter();
+  if (webglSurfaceSupported()) scheduleWebGLProjectionActivation();
+});
+let incrementalProjection = false;
+let localEditBatchDepth = 0;
+let localEditBatchPending = false;
+let renderRevision = 0;
+let snapshotNodeCache = new WeakMap<SVGGraphicsElement, { key: string; value: RenderNode }>();
+let snapshotEdgeCache = new WeakMap<SVGGeometryElement, { key: string; value: RenderEdge }>();
+type LineLabelEditorOptions = { value: string; anchor: () => { x: number; y: number } | null; commit: (value: string) => void };
+let inlineEdgeLabelEditor: { nodeId: string; input: HTMLTextAreaElement; options?: LineLabelEditorOptions } | null = null;
 let contentWidth = 1600;
 let contentHeight = 900;
+let contentMinX = 0;
+let contentMinY = 0;
+let webglPaintedSelection = new Set<string>();
+let webglPaintedPrimary = "";
+let webglPaintedLink: string | null = null;
+let renderedMetaPrefix = "";
+let renderedMetaSuffix = "";
+let webglProjection: WebGLRenderingProjection | null = null;
+let webglRendererActive = false;
+let webglFallbackReason: string | null = null;
+let webglHoveredNodeId: string | null = null;
+let webglHoverFrame: number | null = null;
+let webglLastSnapshot: RenderSnapshot | null = null;
+let webglActivationFrame: number | null = null;
+let webglDragBaseSnapshot: RenderSnapshot | null = null;
+let webglGraphLinkControls: HTMLElement | null = null;
+let webglGraphLinkDragState: {
+  pointerId: number;
+  linkId: string;
+  endpoint: LinkEndpointKind;
+  handle: HTMLButtonElement;
+  startX: number;
+  startY: number;
+  dragged: boolean;
+} | null = null;
 
 type CameraTarget = { cameraX: number; cameraY: number; zoom: number };
 type CameraMoveOptions = { animate?: boolean; durationMs?: number };
@@ -493,7 +680,7 @@ let cameraMotion: {
   raf: number | null;
   from: CameraTarget;
   to: CameraTarget;
-  startedAt: number;
+  startedAt: number | null;
   durationMs: number;
 } | null = null;
 let annotationTool: AnnotationTool = "select";
@@ -514,16 +701,22 @@ let lastLayout: LayoutResult | null = null;
 let visualCheckRunId = 0;
 let undoStack: UndoSnapshot[] = [];
 let redoStack: UndoSnapshot[] = [];
+let grabSession: {
+  map: SavedMap;
+  sourceId: string;
+  before: UndoSnapshot;
+  collapsedIds: Set<string>;
+  pendingSave: boolean;
+  moved: boolean;
+} | null = null;
 let linearDirty = false;
+let linearDisplayedScopeId = "";
 let linearLineMap: LinearLineMap[] = [];
 let suppressLinearSelectionSync = false;
-let suppressInlineBlurCommit = false;
 let flowSurfaceDetailLevel = 0;
 const linearNotesByScope: Record<string, string> = {};
 let linearPanelCanvasWidth = 340;
 let linearResizeState: { pointerId: number; startClientX: number; startCanvasWidth: number } | null = null;
-let importanceViewMode: ImportanceViewMode = "all";
-let importanceVisibleNodeIds: Set<string> | null = null;
 let cloudSyncEnabled = false;
 let cloudSyncExists = false;
 let cloudSavedAt: string | null = null;
@@ -615,8 +808,6 @@ let vaultLastInboundAt: string | null = null;
 let vaultLastOutboundAt: string | null = null;
 let vaultLastError: string | null = null;
 let liveStreamVisibilityHandlerInstalled = false;
-type ViewerTheme = "light" | "dark";
-let viewerTheme: ViewerTheme = readStoredViewerTheme();
 let localFsVisible = false;
 let localFsSelectedPath: string | null = null;
 let localFsLoadingPath: string | null = null;
@@ -665,12 +856,6 @@ type ScatterToolMode = "normal" | "add-node" | "add-edge" | "colorize" | "delete
 let scatterToolMode: ScatterToolMode = "normal";
 const SCATTER_DEFAULT_EDGE_COLOR = "#2f7d6d";
 const SCATTER_REPULSION_DEFAULT = 200000;
-const SCATTER_SPRING_K = 7;
-const SCATTER_GUIDE_SPRING_WEIGHT = 0.42;
-const SCATTER_DAMPING = 0.73;
-const SCATTER_MASS = 10;
-const SCATTER_DT = 0.2;
-const SCATTER_MAX_V = 100;
 const SCATTER_EDGE_LENGTH_DEFAULT = 180;
 const SCATTER_NODE_RADIUS = 36;
 const SCATTER_MIN_RADIUS = 18;
@@ -679,11 +864,21 @@ const SCATTER_MIN_SCALE = 0.52;
 const STRUCTURED_CLIPBOARD_PREFIX = "M3E_CLIPBOARD_V1\n";
 const STRUCTURED_CLIPBOARD_STORAGE_KEY = "m3e:subtree-clipboard:v1";
 const STRUCTURED_CLIPBOARD_MAX_AGE_MS = 10 * 60 * 1000;
-let scatterAnimationEnabled = false;
+let scatterAnimationEnabled = true;
+const disperseForce = new DisperseForceController();
+let disperseForceUndoPending = false;
+let disperseForceDirty = false;
+let disperseForceSurface: MapSurface | null = null;
+let disperseForceKey = "";
+let disperseFitAfterSettle = false;
+let dispersePauseOnRestore = false;
+const disperseFrameTimes: number[] = [];
+let disperseFastFrames = 0;
+let disperseFastGate = "not started";
 let scatterAnimationFrame: number | null = null;
 let scatterRepulsion = SCATTER_REPULSION_DEFAULT;
 let scatterEdgeLength = SCATTER_EDGE_LENGTH_DEFAULT;
-const scatterVelocities = new Map<string, { x: number; y: number }>();
+
 let selectedGraphLinkId: string | null = null;
 let linkPortDragState: {
   pointerId: number;
@@ -704,13 +899,13 @@ let viewState: ViewState = {
   currentScopeId: "",
   scopeHistory: [],
   currentScopeRootId: "",
+  concretenessLevel: 0,
   thinkingMode: "rapid",
   surfaceViewMode: "tree",
-  surfaceLayoutDensity: "balanced",
-  surfaceBranchDirection: "right",
+  surfaceSpace: "normal",
   surfaceLayoutDirection: "right",
   surfaceDepthAlign: "packed",
-  surfaceEdgeRoute: "elbow",
+  surfaceEdgeRoute: "bezier",
   surfaceLinkRoute: "simple-bezier",
   zoom: 1,
   cameraX: VIEWER_TUNING.pan.initialCameraX,
@@ -748,24 +943,29 @@ function thinkingModeLabel(mode: ThinkingMode): string {
 }
 
 function surfaceViewModeLabel(mode: SurfaceViewMode): string {
+  if (mode === "lane") return "Lane";
   if (mode === "system") return "System";
-  if (mode === "scatter") return "Scatter";
-  if (mode === "mindmap") return "Mind Map";
+  if (mode === "scatter") return "Disperse";
   if (mode === "logic-chart") return "Logic Chart";
-  if (mode === "timeline") return "Timeline";
+  if (mode === "timeline") return "Axial";
   return "Tree";
 }
 
-function surfaceLayoutDensityLabel(density: SurfaceLayoutDensity): string {
-  if (density === "compact") return "Compact";
-  if (density === "spacious") return "Spacious";
-  return "Balanced";
+/** URL view selection is ephemeral: it never writes the map's primary surface. */
+function requestedSurfaceViewMode(): SurfaceViewMode | null {
+  if (REQUESTED_SURFACE === "scatter") return "scatter";
+  if (REQUESTED_SURFACE === "tree") return "tree";
+  return null;
 }
 
-function surfaceBranchDirectionLabel(direction: SurfaceBranchDirection): string {
-  if (direction === "both") return "Both";
-  if (direction === "left") return "Left";
-  return "Right";
+function surfaceSpaceLabel(space: SurfaceSpace): string {
+  if (space === "tight") return "Tight";
+  if (space === "loose") return "Loose";
+  return "Normal";
+}
+
+function surfaceLayoutDirectionLabel(direction: SurfaceLayoutDirection): string {
+  return direction;
 }
 
 function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
@@ -773,9 +973,9 @@ function surfaceKindForViewMode(mode: SurfaceViewMode): SurfaceKind {
 }
 
 function surfaceLayoutForKind(kind: SurfaceKind): SurfaceLayout {
+  if (kind === "lane") return "lane";
   if (kind === "system") return "flow-lr";
   if (kind === "scatter") return "scatter";
-  if (kind === "mindmap") return "mindmap";
   if (kind === "logic-chart") return "logic-chart";
   if (kind === "timeline") return "timeline";
   return "tree";
@@ -792,32 +992,12 @@ function inferSurfaceViewModeForScope(scopeId: string): SurfaceViewMode {
   }
   const rawLayout = rawAttr(map.state.nodes[scopeId], "m3e:layout");
   if (rawLayout === "flow-lr") return "system";
-  if (rawLayout === "mindmap") return "mindmap";
+  // Legacy persisted mode: migrate on read to the Tree two-sided preset.
+  if (rawLayout === "mindmap" || rawLayout === "balanced-tree") return "tree";
   if (rawLayout === "logic-chart") return "logic-chart";
   if (rawLayout === "timeline") return "timeline";
   if (rawLayout === "scatter") return "scatter";
   return "tree";
-}
-
-function sanitizeSurfaceLayoutDensity(value: unknown): SurfaceLayoutDensity {
-  if (value === "compact" || value === "balanced" || value === "spacious") {
-    return value;
-  }
-  return "balanced";
-}
-
-function sanitizeSurfaceBranchDirection(value: unknown): SurfaceBranchDirection {
-  if (value === "both" || value === "right" || value === "left") {
-    return value;
-  }
-  return "right";
-}
-
-function sanitizeSurfaceLayoutDirection(value: unknown): SurfaceLayoutDirection {
-  if (value === "right" || value === "left" || value === "down" || value === "up") {
-    return value;
-  }
-  return "right";
 }
 
 function sanitizeSurfaceDepthAlign(value: unknown): SurfaceDepthAlign {
@@ -828,7 +1008,7 @@ function sanitizeSurfaceEdgeRoute(value: unknown): SurfaceEdgeRoute {
   if (value === "elbow" || value === "bezier" || value === "straight") {
     return value;
   }
-  return "elbow";
+  return "bezier";
 }
 
 function sanitizeSurfaceLinkRoute(value: unknown): SurfaceLinkRoute {
@@ -838,29 +1018,35 @@ function sanitizeSurfaceLinkRoute(value: unknown): SurfaceLinkRoute {
   return "simple-bezier";
 }
 
-function inferSurfaceLayoutDensityForScope(scopeId: string, mode: SurfaceViewMode): SurfaceLayoutDensity {
+function inferSurfaceSpaceForScope(scopeId: string, mode: SurfaceViewMode): SurfaceSpace {
   if (!map || !map.state.nodes[scopeId]) {
-    return "balanced";
+    return "normal";
   }
-  const explicit = rawAttr(map.state.nodes[scopeId], "m3e:layout-density");
+  const scope = map.state.scopes?.[inferredScopeId(scopeId)];
+  const explicit = scope?.primarySurfaceId ? map.state.surfaces?.[scope.primarySurfaceId]?.surfaceView?.space : undefined;
   if (explicit) {
-    return sanitizeSurfaceLayoutDensity(explicit);
+    return sanitizeSurfaceSpace(explicit);
   }
-  return mode === "logic-chart" ? "compact" : "balanced";
+  return mode === "logic-chart" ? "tight" : "normal";
 }
 
-function inferSurfaceBranchDirectionForScope(scopeId: string, mode: SurfaceViewMode): SurfaceBranchDirection {
+function inferSurfaceLayoutDirectionForScope(scopeId: string): SurfaceLayoutDirection {
   if (!map || !map.state.nodes[scopeId]) {
     return "right";
   }
-  const explicit = rawAttr(map.state.nodes[scopeId], "m3e:branch-direction");
+  const scope = map.state.scopes?.[inferredScopeId(scopeId)];
+  const explicit = scope?.primarySurfaceId ? map.state.surfaces?.[scope.primarySurfaceId]?.surfaceView?.direction : undefined;
   if (explicit) {
-    return sanitizeSurfaceBranchDirection(explicit);
+    return sanitizeSurfaceLayoutDirection(explicit);
   }
+  const rawLayout = rawAttr(map.state.nodes[scopeId], "m3e:layout");
+  if (isLegacyBalancedTreeSurface(rawLayout)) return "left/right";
   return "right";
 }
 
 function syncThinkingModeUi(): void {
+  document.documentElement.dataset.surfaceViewMode = viewState.surfaceViewMode;
+  document.documentElement.dataset.surfaceSpace = viewState.surfaceSpace;
   const mode = viewState.thinkingMode;
   const surfaceMode = structuredSurfaceMode();
   document.body.classList.toggle("scatter-surface-active", viewState.surfaceViewMode === "scatter");
@@ -869,14 +1055,13 @@ function syncThinkingModeUi(): void {
   document.documentElement.dataset.surfaceEdgeRoute = viewState.surfaceEdgeRoute;
   document.documentElement.dataset.surfaceLinkRoute = viewState.surfaceLinkRoute;
   const layoutSuffix = surfaceMode
-    ? ` / ${surfaceLayoutDensityLabel(viewState.surfaceLayoutDensity)} / ${surfaceBranchDirectionLabel(viewState.surfaceBranchDirection)}`
+    ? ` / ${surfaceSpaceLabel(viewState.surfaceSpace)} / ${surfaceLayoutDirectionLabel(viewState.surfaceLayoutDirection)}`
     : "";
-  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix}`;
+  modeMetaEl.textContent = `mode: ${thinkingModeLabel(mode)} / ${surfaceViewModeLabel(viewState.surfaceViewMode)}${layoutSuffix} / level ${viewState.concretenessLevel}`;
   modeFlashBtn?.classList.toggle("is-active", mode === "flash");
   modeRapidBtn?.classList.toggle("is-active", mode === "rapid");
   modeDeepBtn?.classList.toggle("is-active", mode === "deep");
   viewTreeBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "tree");
-  viewMindmapBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "mindmap");
   viewLogicChartBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "logic-chart");
   viewTimelineBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "timeline");
   viewSystemBtn?.classList.toggle("is-active", viewState.surfaceViewMode === "system");
@@ -931,20 +1116,18 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   if (viewState.surfaceViewMode === "scatter" && mode !== "scatter") {
     stopScatterAnimation(true);
   }
+  try { laneView.selectSurface(mode); } catch { setStatus("Lane の root node を指定し直してください。"); return; }
   viewState.surfaceViewMode = mode;
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(currentScopeRootId(), mode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(currentScopeRootId(), mode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(currentScopeRootId(), mode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
   syncMapModelStateFromRuntime();
   if (mode === "scatter") {
-    seedMissingScatterPositions();
+    disperseForce.invalidate();
   }
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
   fitDocument();
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
   if (mode === "scatter" && scatterAnimationEnabled) {
     startScatterAnimation();
   }
@@ -952,28 +1135,26 @@ function setSurfaceViewMode(mode: SurfaceViewMode): void {
   setStatus(`View: ${surfaceViewModeLabel(mode)}`);
 }
 
-function setSurfaceLayoutDensity(density: SurfaceLayoutDensity): void {
-  viewState.surfaceLayoutDensity = density;
+function setSurfaceSpace(space: SurfaceSpace): void {
+  viewState.surfaceSpace = space;
+  syncMapModelStateFromRuntime();
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
   fitDocument();
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
-  setStatus(`Layout: ${surfaceLayoutDensityLabel(density)}`);
+  scheduleAutosave();
+  setStatus(`Space: ${surfaceSpaceLabel(space)}`);
 }
 
-function setSurfaceBranchDirection(direction: SurfaceBranchDirection): void {
-  viewState.surfaceBranchDirection = direction;
+function setSurfaceLayoutDirection(direction: SurfaceLayoutDirection): void {
+  viewState.surfaceLayoutDirection = direction;
+  syncMapModelStateFromRuntime();
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
   fitDocument();
-  requestAnimationFrame(() => {
-    fitDocument();
-  });
-  setStatus(`Depth: ${surfaceBranchDirectionLabel(direction)}`);
+  scheduleAutosave();
+  setStatus(`Direction: ${surfaceLayoutDirectionLabel(direction)}`);
 }
 
 function setPublicLayoutOptions(options: Partial<PublicLayoutOptions>): void {
@@ -989,6 +1170,7 @@ function setPublicLayoutOptions(options: Partial<PublicLayoutOptions>): void {
   if (options.link?.route) {
     viewState.surfaceLinkRoute = sanitizeSurfaceLinkRoute(options.link.route);
   }
+  if (viewState.surfaceViewMode === "lane") { syncMapModelStateFromRuntime(); scheduleAutosave(); }
   _linearPanelLayoutDirty = true;
   syncThinkingModeUi();
   render();
@@ -1036,7 +1218,7 @@ function setScatterToolMode(mode: ScatterToolMode): void {
   }
   syncScatterToolbarUi();
   scheduleRender();
-  setStatus(`Scatter: ${mode.replace("-", " ")}`);
+  setStatus(`Disperse: ${mode.replace("-", " ")}`);
 }
 
 function toggleScatterAnimation(): void {
@@ -1048,16 +1230,17 @@ function setScatterAnimationEnabled(enabled: boolean): void {
   syncScatterToolbarUi();
   if (!enabled) {
     stopScatterAnimation(true);
-    setStatus("Scatter animation stopped.");
+    setStatus("Disperse animation stopped.");
     return;
   }
   if (!currentSurfaceIsScatterMode()) {
-    setStatus("Switch to Scatter to animate layout.", true);
+    setStatus("Switch to Disperse to animate layout.", true);
     return;
   }
-  seedMissingScatterPositions();
+  disperseForce.reheat();
+  render();
   startScatterAnimation();
-  setStatus("Scatter animation running.");
+  setStatus("Disperse animation running.");
 }
 
 function syncMetaPanelToggleUi(): void {
@@ -1113,20 +1296,20 @@ function isCopyNodePathShortcut(event: KeyboardEvent): boolean {
   if (!isShortcutLetter(event, "c", "KeyC")) {
     return false;
   }
-  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+  if (primaryModifier(event) && event.altKey && !event.shiftKey) {
     return true;
   }
-  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+  return primaryModifier(event) && event.shiftKey && !event.altKey;
 }
 
 function isCopyScopeIdShortcut(event: KeyboardEvent): boolean {
   if (!isShortcutLetter(event, "i", "KeyI")) {
     return false;
   }
-  if (event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey) {
+  if (primaryModifier(event) && event.altKey && !event.shiftKey) {
     return true;
   }
-  return (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+  return primaryModifier(event) && event.shiftKey && !event.altKey;
 }
 
 function updateCloudSyncUi(): void {
@@ -1252,12 +1435,12 @@ function resetLocalFsTree(): void {
   setLocalFsPreview("Preview", "");
 }
 
-async function fetchLocalFsJson<T>(action: "list" | "read", params: Record<string, string>): Promise<T> {
+async function fetchLocalFsJson<T>(action: "list" | "read", params: Record<string, string>, init?: RequestInit): Promise<T> {
   const url = new URL(`/api/local-fs/${action}`, window.location.origin);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), init);
   const payload = await response.json().catch(() => null) as T | { error?: { message?: string } } | null;
   if (!response.ok) {
     const errorPayload = payload && typeof payload === "object" && "error" in payload ? payload : null;
@@ -1319,6 +1502,105 @@ async function readLocalFsFile(relativePath: string, title: string): Promise<voi
     setLocalFsPreview(title, "");
     setLocalFsStatus((err as Error).message, true);
   }
+}
+
+function markdownPreviewAllowedRoots(): string[] {
+  if (LOCAL_FS_VIEW_MODE) {
+    return [LOCAL_FS_VIEW_ROOT, vaultUiPrefs.vaultPath, localFsPrefs.rootPath];
+  }
+  return [vaultUiPrefs.vaultPath, localFsPrefs.rootPath];
+}
+
+function markdownPreviewTargetForNode(nodeId: string): MarkdownFilePreviewTarget | null {
+  const node = map?.state.nodes[nodeId];
+  if (!node || isAliasNode(node)) return null;
+  return resolveMarkdownFilePreviewTarget(node, {
+    allowedRootPaths: markdownPreviewAllowedRoots(),
+  });
+}
+
+function markdownPreviewCacheKey(target: MarkdownFilePreviewTarget): string {
+  return `${target.rootPath}\u0000${target.relativePath}`;
+}
+
+async function showMarkdownFilePreviewForNode(nodeId: string, mode: "hover" | "pinned"): Promise<void> {
+  const target = markdownPreviewTargetForNode(nodeId);
+  if (!target) return;
+
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  markdownPreviewRequestId += 1;
+  const requestId = markdownPreviewRequestId;
+  markdownPreviewAbortController?.abort();
+  markdownPreviewAbortController = null;
+
+  const title = `Markdown: ${target.relativePath}`;
+  const key = markdownPreviewCacheKey(target);
+  const cached = markdownPreviewCache.get(key);
+  if (cached && Date.now() - cached.cachedAt <= MARKDOWN_PREVIEW_CACHE_TTL_MS) {
+    showMarkdownPreview(cached.payload.content, title, mode, nodeId);
+    return;
+  }
+
+  showMarkdownPreview("Loading…", title, mode, nodeId);
+  const controller = new AbortController();
+  markdownPreviewAbortController = controller;
+  try {
+    const payload = await fetchLocalFsJson<LocalFsReadResponse>("read", {
+      rootPath: target.rootPath,
+      relativePath: target.relativePath,
+      maxBytes: String(256 * 1024),
+    }, { signal: controller.signal });
+    if (requestId !== markdownPreviewRequestId || markdownPreviewNodeId !== nodeId) return;
+    markdownPreviewCache.set(key, { cachedAt: Date.now(), payload });
+    const renderedTitle = `${title}${payload.truncated ? " (truncated)" : ""}`;
+    showMarkdownPreview(payload.content, renderedTitle, mode, nodeId);
+  } catch (err) {
+    if (controller.signal.aborted || requestId !== markdownPreviewRequestId) return;
+    showMarkdownPreview(`Preview unavailable.\n\n${(err as Error).message}`, title, mode, nodeId);
+  } finally {
+    if (markdownPreviewAbortController === controller) {
+      markdownPreviewAbortController = null;
+    }
+  }
+}
+
+function scheduleMarkdownHoverOpen(nodeId: string): void {
+  if (markdownPreviewMode === "manual" || markdownPreviewMode === "pinned") return;
+  const target = markdownPreviewTargetForNode(nodeId);
+  if (!target) {
+    if (markdownPreviewMode === "hover") scheduleMarkdownHoverClose();
+    return;
+  }
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  if (markdownPreviewMode === "hover" && markdownPreviewNodeId === nodeId) return;
+  markdownHoverOpenTimer = setTimeout(() => {
+    markdownHoverOpenTimer = null;
+    void showMarkdownFilePreviewForNode(nodeId, "hover");
+  }, MARKDOWN_HOVER_OPEN_DELAY_MS);
+}
+
+function scheduleMarkdownHoverClose(): void {
+  cancelMarkdownHoverOpen();
+  cancelMarkdownHoverClose();
+  if (markdownPreviewMode !== "hover") return;
+  markdownHoverCloseTimer = setTimeout(() => {
+    markdownHoverCloseTimer = null;
+    if (markdownPreviewMode === "hover") hideMarkdownPreview();
+  }, MARKDOWN_HOVER_CLOSE_DELAY_MS);
+}
+
+function pinMarkdownHoverPreviewForNode(nodeId: string): void {
+  if (markdownPreviewMode !== "hover" || markdownPreviewNodeId !== nodeId) return;
+  cancelMarkdownHoverClose();
+  syncMarkdownPreviewMode("pinned", nodeId);
+}
+
+function eventNodeId(target: EventTarget | null): string | null {
+  return target instanceof Element
+    ? target.closest("[data-node-id]")?.getAttribute("data-node-id") || null
+    : null;
 }
 
 function renderLocalFsRow(entry: LocalFsEntry, depth: number, container: HTMLElement): void {
@@ -1492,7 +1774,7 @@ function hideLocalFsPanel(): void {
   localFsPanelEl.hidden = true;
   localFsToggleBtn?.setAttribute("aria-expanded", "false");
   localFsToggleBtn?.classList.remove("is-active");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function toggleLocalFsPanel(): void {
@@ -1806,7 +2088,7 @@ function hideV4Panel(): void {
   }
   v4PanelVisible = false;
   v4PanelEl.hidden = true;
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function addV4DiscussionNode(kind: "sticky" | "decision"): void {
@@ -1840,7 +2122,7 @@ function addV4DiscussionNode(kind: "sticky" | "decision"): void {
   touchDocument();
   syncV4Panel(false);
   setStatus(`V4 ${kind} node added.`);
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function parseSseFrames(text: string): Array<{ event: string; data: unknown }> {
@@ -1986,13 +2268,14 @@ async function runVaultImport(vaultPath: string): Promise<boolean> {
   return true;
 }
 
-async function runVaultExport(vaultPath: string): Promise<boolean> {
+async function runVaultExport(vaultPath: string, nodeId?: string): Promise<boolean> {
   const response = await fetch("/api/vault/export", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
       mapId: LOCAL_MAP_ID,
       vaultPath,
+      ...(nodeId ? { nodeId, concretenessLevel: viewState.concretenessLevel, options: { skipAiTransform: true } } : {}),
     }),
   });
   if (!response.ok) {
@@ -2124,6 +2407,7 @@ function hydrateLinearNotesFromDocState(): void {
     delete linearNotesByScope[scopeId];
   });
   if (!map) {
+    deactivateWebGLProjection();
     return;
   }
   Object.assign(linearNotesByScope, sanitizeLinearNotesByScope(map.state.linearNotesByScope));
@@ -2240,9 +2524,8 @@ function sanitizeSurfaceKind(raw: unknown): SurfaceKind | null {
   return raw === "tree"
     || raw === "system"
     || raw === "scatter"
-    || raw === "mindmap"
     || raw === "logic-chart"
-    || raw === "timeline"
+    || raw === "timeline" || raw === "lane"
     ? raw
     : null;
 }
@@ -2251,9 +2534,8 @@ function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
   return raw === "tree"
     || raw === "flow-lr"
     || raw === "scatter"
-    || raw === "mindmap"
     || raw === "logic-chart"
-    || raw === "timeline"
+    || raw === "timeline" || raw === "lane"
     ? raw
     : null;
 }
@@ -2261,7 +2543,8 @@ function sanitizeSurfaceLayout(raw: unknown): SurfaceLayout | null {
 function defaultSurfaceKindForScopeNode(node: TreeNode): SurfaceKind {
   const rawLayout = rawAttr(node, "m3e:layout");
   if (rawLayout === "flow-lr") return "system";
-  if (rawLayout === "mindmap") return "mindmap";
+  // Legacy persisted layout: migrate on read to the Tree two-sided preset.
+  if (rawLayout === "mindmap" || rawLayout === "balanced-tree") return "tree";
   if (rawLayout === "logic-chart") return "logic-chart";
   if (rawLayout === "timeline") return "timeline";
   if (rawLayout === "scatter") return "scatter";
@@ -2329,6 +2612,12 @@ function sanitizeMapModelState(state: AppState): void {
       scopeId,
       kind,
       layout: sanitizeSurfaceLayout(surface.layout) || surfaceLayoutForKind(kind),
+      surfaceView: migrateSurfaceViewFromMapRead(
+        state,
+        scopeId,
+        (surface as MapSurface & { surfaceView?: unknown }).surfaceView,
+        isLegacyBalancedTreeSurface(surface.kind) || isLegacyBalancedTreeSurface(surface.layout),
+      ),
       nodeViews: sanitizeSurfaceNodeViews(surface.nodeViews, state.nodes),
     };
   });
@@ -2367,6 +2656,7 @@ function sanitizeMapModelState(state: AppState): void {
       scopeId,
       kind: existingSurface?.kind || surfaceKind,
       layout: existingSurface?.layout || surfaceLayoutForKind(existingSurface?.kind || surfaceKind),
+      surfaceView: existingSurface?.surfaceView || migrateSurfaceViewFromMapRead(state, scopeId, undefined),
       nodeViews: existingSurface?.nodeViews || {},
     };
   });
@@ -2376,6 +2666,7 @@ function sanitizeMapModelState(state: AppState): void {
 }
 
 function syncMapModelStateFromRuntime(): void {
+  if (viewState.concretenessLevel !== 0) return;
   if (!map) {
     return;
   }
@@ -2398,6 +2689,7 @@ function syncMapModelStateFromRuntime(): void {
       scopeId: modelScopeId,
       kind: surfaceKind,
       layout: surfaceLayoutForKind(surfaceKind),
+      surfaceView: { direction: viewState.surfaceLayoutDirection, space: viewState.surfaceSpace },
       nodeViews: {},
     };
   }
@@ -2405,6 +2697,7 @@ function syncMapModelStateFromRuntime(): void {
   surface.scopeId = modelScopeId;
   surface.kind = surfaceKind;
   surface.layout = surfaceLayoutForKind(surfaceKind);
+  surface.surfaceView = { direction: viewState.surfaceLayoutDirection, space: viewState.surfaceSpace };
   if (!surface.nodeViews) {
     surface.nodeViews = {};
   }
@@ -2418,7 +2711,12 @@ function syncMapModelStateFromRuntime(): void {
     if (shape === "rect" || shape === "diamond" || shape === "rounded") {
       nodeView.shape = shape;
     }
-    surface.nodeViews![node.id] = nodeView;
+    // Same rule as sanitizeSurfaceNodeViews: an empty node view carries nothing and is not stored.
+    if (Object.keys(nodeView).length > 0) {
+      surface.nodeViews![node.id] = nodeView;
+    } else {
+      delete surface.nodeViews![node.id];
+    }
   });
 }
 
@@ -2459,13 +2757,14 @@ function ensureDocShape(payload: unknown): SavedMap {
       id: record.id || linkId,
       sourceNodeId: String(record.sourceNodeId || ""),
       targetNodeId: String(record.targetNodeId || ""),
-      relationType: record.relationType || undefined,
-      label: record.label || undefined,
+      relationType: record.relationType ?? undefined,
+      label: record.label ?? undefined,
       direction: record.direction || "none",
       style: record.style || "default",
       color: sanitizeColor(record.color) || undefined,
       sourcePort: sanitizeLinkPort(record.sourcePort),
       targetPort: sanitizeLinkPort(record.targetPort),
+      attributes: sanitizeGraphLinkAttributes(record.attributes),
     };
   });
   candidate.state.annotations = sanitizeAnnotations(candidate.state.annotations);
@@ -3058,13 +3357,6 @@ interface NodeStyleAttrs {
   status: string | null;
 }
 
-const VALID_STATUSES = new Set(["placeholder", "confirmed", "contested", "frozen", "active", "review"]);
-function sanitizeStatus(raw: string | undefined): string | null {
-  if (!raw || typeof raw !== "string") return null;
-  const s = raw.trim().toLowerCase();
-  return VALID_STATUSES.has(s) ? s : null;
-}
-
 /**
  * Parse `attributes["m3e:style"]` — a V1-compatible JSON string storing
  * decoration fields under a single attribute key (keeps `attributes` as
@@ -3341,7 +3633,7 @@ function textWidth(str: string, fontSize: number): number {
   const normalized = String(str || "");
   const measureContext = getTextMeasureContext();
   if (measureContext) {
-    measureContext.font = `${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
+    measureContext.font = `450 ${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
     return Math.max(80, Math.ceil(measureContext.measureText(normalized).width));
   }
   return Math.max(80, normalized.length * fontSize * 0.62);
@@ -3367,6 +3659,40 @@ function multilineTspans(lines: string[], x: number, lineHeight: number): string
   return lines
     .map((line, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line || " ")}</tspan>`)
     .join("");
+}
+
+const NODE_LABEL_WIDTH_ATTR = "m3e:label-width";
+const WRAP_CHARACTERS_PREF = "m3e:node-wrap-characters";
+let defaultWrapCharacters = VIEWER_TUNING.typography.defaultWrapCharacters;
+try {
+  const saved = Number(localStorage.getItem(WRAP_CHARACTERS_PREF));
+  if (Number.isFinite(saved) && saved >= 8 && saved <= 80) defaultWrapCharacters = Math.round(saved);
+} catch { /* Local storage may be unavailable. */ }
+document.documentElement.dataset.nodeWrapCharacters = String(defaultWrapCharacters);
+window.addEventListener("m3e:set-node-wrap-characters", (event: Event) => {
+  const value = Number((event as CustomEvent).detail?.characters);
+  if (!Number.isFinite(value) || value < 8 || value > 80) return;
+  const anchor = nodeViewportAnchor(viewState.selectedNodeId);
+  defaultWrapCharacters = Math.round(value);
+  document.documentElement.dataset.nodeWrapCharacters = String(defaultWrapCharacters);
+  try { localStorage.setItem(WRAP_CHARACTERS_PREF, String(defaultWrapCharacters)); } catch { /* optional preference */ }
+  render();
+  preserveNodeViewportAnchor(viewState.selectedNodeId, anchor);
+});
+
+function explicitNodeLabelWidth(node: TreeNode): number | null {
+  const width = Number(node.attributes?.[NODE_LABEL_WIDTH_ATTR]);
+  return Number.isFinite(width) && width >= 120 && width <= 4000 ? width : null;
+}
+
+function measureTextNode(node: TreeNode, fontSize: number, isRoot = false): LayoutNodeMetric {
+  const explicit = explicitNodeLabelWidth(node);
+  const maxWidth = explicit ?? defaultWrapCharacters * fontSize + 20;
+  return measureWrappedNodeLabel(uiLabel(node), fontSize, maxWidth, {
+    minWidth: explicit ?? (isRoot ? 280 : 80),
+    minHeight: isRoot ? VIEWER_TUNING.layout.rootHeight : VIEWER_TUNING.layout.leafHeight,
+    padX: 20, padY: 8,
+  });
 }
 
 function measureNodeLabel(text: string, fontSize: number): { w: number; h: number } {
@@ -3482,83 +3808,6 @@ function measureLatex(text: string): { w: number; h: number } {
   } finally {
     probe.remove();
   }
-}
-
-function richContentText(element: Element, type: string): string {
-  const richNodes = Array.from(element.children).filter((child) => {
-    return child.tagName === "richcontent" && (child.getAttribute("TYPE") || "").toUpperCase() === type;
-  });
-  return richNodes
-    .map((node) => (node.textContent || "").replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-function parseMmText(xmlText: string): SavedMap {
-  const parser = new DOMParser();
-  const xml = parser.parseFromString(xmlText, "application/xml");
-  const parserError = xml.querySelector("parsererror");
-  if (parserError) {
-    throw new Error("Invalid .mm XML");
-  }
-
-  const mapNode = xml.querySelector("map > node");
-  if (!mapNode) {
-    throw new Error("No root node found in .mm file");
-  }
-
-  const state: AppState = {
-    rootId: "",
-    nodes: {},
-  };
-
-  function convertNode(mmNode: Element, parentId: string | null = null): string {
-    const id = newId();
-    const text =
-      mmNode.getAttribute("TEXT") ||
-      richContentText(mmNode, "NODE") ||
-      "(empty)";
-    const record = createNodeRecord(id, parentId, text);
-    record.collapsed = (mmNode.getAttribute("FOLDED") || "").toLowerCase() === "true";
-    record.link = mmNode.getAttribute("LINK") || "";
-    record.details = richContentText(mmNode, "DETAILS");
-    record.note = richContentText(mmNode, "NOTE");
-
-    const attributesEl = Array.from(mmNode.children).find((child) => child.tagName === "attributes");
-    if (attributesEl) {
-      Array.from(attributesEl.children)
-        .filter((child) => child.tagName === "attribute")
-        .forEach((attribute) => {
-          const key = attribute.getAttribute("NAME");
-          if (!key) {
-            return;
-          }
-          record.attributes[key] = attribute.getAttribute("VALUE") || "";
-        });
-    }
-
-    state.nodes[id] = record;
-    if (!state.rootId) {
-      state.rootId = id;
-    }
-
-    Array.from(mmNode.children)
-      .filter((child) => child.tagName === "node")
-      .forEach((childNode) => {
-        const childId = convertNode(childNode, id);
-        record.children.push(childId);
-      });
-
-    return id;
-  }
-
-  convertNode(mapNode, null);
-
-  return {
-    version: 1,
-    savedAt: nowIso(),
-    state,
-  };
 }
 
 function getNode(nodeId: string): TreeNode {
@@ -3693,13 +3942,13 @@ function enterScope(scopeNodeId: string): boolean {
   viewState.currentScopeRootId = node.id;
   viewState.currentScopeId = node.id;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(node.id);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(node.id, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(node.id, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(node.id, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(node.id);
   setSingleSelection(preferredSelectionForScope(node.id), false);
   render();
   triggerCameraMove("scope");
   setStatus(`Entered scope: ${uiLabel(node)}`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3729,8 +3978,8 @@ function exitScope(): boolean {
   viewState.currentScopeRootId = nextScopeId;
   viewState.currentScopeId = nextScopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(nextScopeId);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(nextScopeId, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(nextScopeId, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(nextScopeId, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(nextScopeId);
   const selectionAfterExit =
     map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
       ? exitedScopeId
@@ -3739,7 +3988,7 @@ function exitScope(): boolean {
   render();
   triggerCameraMove("scope");
   setStatus("Returned to parent scope.");
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3749,20 +3998,20 @@ function makeSelectedFolder(): boolean {
   }
   const node = getNode(viewState.selectedNodeId);
   if (isAliasNode(node)) {
-    setStatus("Alias nodes cannot become folders.", true);
+    setStatus("Alias nodes cannot become scopes.", true);
     return false;
   }
   pushUndoSnapshot();
   if (isFolderNode(node)) {
     node.nodeType = undefined;
     touchDocument();
-    setStatus(`Removed folder scope: ${uiLabel(node)}`);
+    setStatus(`Removed scope: ${uiLabel(node)}`);
   } else {
     node.nodeType = "folder";
     touchDocument();
-    setStatus(`Marked as folder scope: ${uiLabel(node)}`);
+    setStatus(`Marked as scope: ${uiLabel(node)}`);
   }
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3803,7 +4052,7 @@ function addAliasInCurrentScope(): boolean {
   setSingleSelection(aliasId, false);
   touchDocument();
   setStatus(`Alias added in current scope for ${uiLabel(target)}.`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3843,7 +4092,7 @@ function addAliasAsChild(): boolean {
   viewState.selectedNodeId = aliasId;
   touchDocument();
   setStatus(`Alias created as child of ${uiLabel(target)}.`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3864,12 +4113,13 @@ function jumpToAliasTarget(): boolean {
   const targetScopeId = scopeRootForNode(target.id);
   const currentScopeId = normalizedCurrentScopeId();
   if (targetScopeId !== currentScopeId) {
+    stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
     viewState.scopeHistory.push(currentScopeId);
     viewState.currentScopeId = targetScopeId;
     viewState.currentScopeRootId = targetScopeId;
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(targetScopeId);
-    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(targetScopeId, viewState.surfaceViewMode);
-    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(targetScopeId, viewState.surfaceViewMode);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(targetScopeId, viewState.surfaceViewMode);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(targetScopeId);
   }
   setSingleSelection(target.id, false);
   normalizeSelectionState();
@@ -3877,7 +4127,7 @@ function jumpToAliasTarget(): boolean {
   triggerCameraMove("scope");
   updateScopeInUrl(targetScopeId);
   setStatus(`Jumped to target: ${uiLabel(target)}`);
-  board.focus();
+  board.focus({ preventScroll: true });
   return true;
 }
 
@@ -3972,8 +4222,11 @@ function normalizeGraphLink(link: GraphLink): GraphLink {
     direction: link.direction ?? "none",
     style: link.style ?? "default",
     color: sanitizeColor(link.color) ?? undefined,
-    sourcePort: sanitizeLinkPort(link.sourcePort),
-    targetPort: sanitizeLinkPort(link.targetPort),
+    // Keep the canonical `auto` value in the model. Rendering converts it to
+    // an inferred edge port, but WebGL and SVG must observe the same saved
+    // LinkPort value.
+    sourcePort: validPort(link.sourcePort),
+    targetPort: validPort(link.targetPort),
   };
 }
 
@@ -3990,6 +4243,66 @@ function nodeBadge(node: TreeNode): string {
   return aliasBadge(node);
 }
 
+let concretenessView: ConcretenessView | null = null;
+const concretenessFrames = new Map<number, { scope: string; selected: string; collapsed: string[]; mode: SurfaceViewMode }>();
+
+function canonicalMapState(): AppState {
+  if (!map) throw new Error("No map loaded.");
+  if (concretenessView?.state === map.state) return concretenessView.commit();
+  return map.state;
+}
+
+function prepareConcretenessView(): void {
+  if (!map || concretenessView?.state === map.state) return;
+  if (viewState.concretenessLevel !== 0 || hasConcretenessData(map.state)) {
+    concretenessView = new ConcretenessView(map.state, viewState.concretenessLevel);
+    map.state = concretenessView.state;
+  } else concretenessView = null;
+}
+
+function restoreConcretenessSnapshot(snapshot: UndoSnapshot): void {
+  viewState.concretenessLevel = snapshot.concretenessLevel || 0;
+  concretenessView = null;
+  map!.state = snapshot.state;
+  prepareConcretenessView();
+  viewState.currentScopeId = viewState.currentScopeRootId = map!.state.nodes[snapshot.scopeRootId || ""] ? snapshot.scopeRootId! : map!.state.rootId;
+  viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
+}
+
+function moveConcretenessLevel(delta: -1 | 1): void {
+  if (!map) return;
+  finishGrab(true);
+  const source = canonicalMapState();
+  const level = viewState.concretenessLevel + delta;
+  const next = new ConcretenessView(source, level);
+  // Do not scroll indefinitely through identical empty or fully expanded views.
+  const topology = (state: AppState): string => JSON.stringify(Object.values(state.nodes).map(n => [n.id, n.parentId, n.children, n.nodeType]));
+  if (topology(next.state) === topology(map.state) && ((delta < 0 && level < -1) || (delta > 0 && level > 0))) {
+    setStatus(delta < 0 ? "No further scopes to collapse. Create a scope at this level to continue." : "All scopes are expanded.");
+    return;
+  }
+  concretenessFrames.set(viewState.concretenessLevel, { scope: currentScopeRootId(), selected: viewState.selectedNodeId,
+    collapsed: [...viewState.collapsedIds], mode: viewState.surfaceViewMode });
+  const previousSelection = viewState.selectedNodeId;
+  const frame = concretenessFrames.get(level);
+  stopScatterAnimation(false); disperseForce.invalidate();
+  concretenessView = next; map.state = next.state; viewState.concretenessLevel = level;
+  viewState.surfaceViewMode = level === 0 ? frame?.mode || "tree" : "tree";
+  viewState.currentScopeId = viewState.currentScopeRootId = frame && next.state.nodes[frame.scope] ? frame.scope : next.state.rootId;
+  viewState.scopeHistory = scopePathIds(viewState.currentScopeRootId).slice(0, -1);
+  let selected = frame?.selected || previousSelection;
+  while (!next.state.nodes[selected] && source.nodes[selected]?.parentId) selected = source.nodes[selected]!.parentId!;
+  if (!next.state.nodes[selected]) selected = next.state.rootId;
+  viewState.collapsedIds = new Set(frame?.collapsed || Object.values(next.state.nodes).filter(n => n.collapsed).map(n => n.id));
+  viewState.selectedNodeId = selected; viewState.selectedNodeIds = new Set([selected]); viewState.selectionAnchorId = null;
+  viewState.reparentSourceIds.clear(); viewState.linkSourceNodeId = ""; viewState.selectedLinkId = "";
+  resetFitCycle();
+  render(); fitDocument({ animate: false });
+  updateScopeInUrl(viewState.currentScopeRootId);
+  setStatus(`Concreteness level ${level} · j: inward · k: outward`);
+  board.focus({ preventScroll: true });
+}
+
 function cloneState(state: AppState): AppState {
   return JSON.parse(JSON.stringify(state)) as AppState;
 }
@@ -3999,7 +4312,9 @@ function pushUndoSnapshot(): void {
     return;
   }
   undoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
+    collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -4017,7 +4332,9 @@ function undoLastChange(): void {
   }
 
   redoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
+    collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -4027,7 +4344,9 @@ function undoLastChange(): void {
   }
 
   const snapshot = undoStack.pop()!;
-  map.state = snapshot.state;
+  stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
+  restoreConcretenessSnapshot(snapshot);
+  if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const undoState = map.state;
   viewState.selectedNodeId = undoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : undoState.rootId;
   viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(undoState.nodes[nodeId])));
@@ -4040,7 +4359,7 @@ function undoLastChange(): void {
   render();
   scheduleAutosave();
   setStatus("Undo applied.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function redoLastChange(): void {
@@ -4050,7 +4369,9 @@ function redoLastChange(): void {
   }
 
   undoStack.push({
-    state: cloneState(map.state),
+    state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(),
+    collapsedIds: Array.from(viewState.collapsedIds),
     selectedNodeId: viewState.selectedNodeId,
     selectedNodeIds: Array.from(viewState.selectedNodeIds),
     selectionAnchorId: viewState.selectionAnchorId,
@@ -4060,7 +4381,9 @@ function redoLastChange(): void {
   }
 
   const snapshot = redoStack.pop()!;
-  map.state = snapshot.state;
+  stopScatterAnimation(false); disperseForce.invalidate(); dispersePauseOnRestore = true;
+  restoreConcretenessSnapshot(snapshot);
+  if (snapshot.collapsedIds) viewState.collapsedIds = new Set(snapshot.collapsedIds);
   const redoState = map.state;
   viewState.selectedNodeId = redoState.nodes[snapshot.selectedNodeId] ? snapshot.selectedNodeId : redoState.rootId;
   viewState.selectedNodeIds = new Set(snapshot.selectedNodeIds.filter((nodeId) => Boolean(redoState.nodes[nodeId])));
@@ -4073,60 +4396,47 @@ function redoLastChange(): void {
   render();
   scheduleAutosave();
   setStatus("Redo applied.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function setStatus(message: string, isError = false): void {
   if (statusTimer !== null) clearTimeout(statusTimer);
+  if (localSaveFailure && !isError) {
+    message = localSaveFailure;
+    isError = true;
+  }
   statusEl.textContent = message;
   statusEl.style.color = isError ? "var(--danger)" : "var(--status-ink)";
-  if (message) {
+  if (message && message !== localSaveFailure) {
     statusTimer = setTimeout(() => {
-      statusEl.textContent = "";
+      statusEl.textContent = localSaveFailure || lineSelection.status();
+      if (localSaveFailure) statusEl.style.color = "var(--danger)";
     }, 2500);
   }
 }
 
-function normalizeViewerTheme(value: unknown): ViewerTheme {
-  return value === "dark" ? "dark" : "light";
+function updateLinearSaveStatus(): void {
+  if (!linearMetaEl || !map) return;
+  const scopeLabel = map.state.nodes[currentLinearMemoScopeId()]?.text || "scope";
+  const saveState = localSaveFailure || (localSaveRevision === localSavedRevision ? "saved" : "saving");
+  linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}${localSaveRevision > 0 || localSavedRevision >= 0 || localSaveFailure ? ` | ${saveState}` : ""}`;
 }
 
-function readStoredViewerTheme(): ViewerTheme {
-  try {
-    return normalizeViewerTheme(window.localStorage.getItem(THEME_PREFS_KEY));
-  } catch {
-    return "light";
-  }
+function showLocalSaveFailure(reason: string): void {
+  localSaveFailure = `Local save failed (${reason}).`;
+  setStatus(localSaveFailure, true);
+  updateLinearSaveStatus();
 }
 
-function applyViewerTheme(theme: ViewerTheme, options: { persist?: boolean; announce?: boolean } = {}): void {
-  viewerTheme = normalizeViewerTheme(theme);
-  document.documentElement.dataset.theme = viewerTheme;
-  document.documentElement.style.colorScheme = viewerTheme;
-  document.body.dataset.theme = viewerTheme;
-  if (themeToggleBtn) {
-    themeToggleBtn.textContent = viewerTheme === "dark" ? "Light" : "Dark";
-    themeToggleBtn.setAttribute("aria-pressed", viewerTheme === "dark" ? "true" : "false");
-    themeToggleBtn.title = viewerTheme === "dark" ? "Switch to light mode" : "Switch to dark mode";
-  }
-  if (options.persist) {
-    try {
-      window.localStorage.setItem(THEME_PREFS_KEY, viewerTheme);
-    } catch {
-      // Local storage may be unavailable in restricted browser contexts.
-    }
-  }
-  window.dispatchEvent(new CustomEvent("m3e:theme-changed", { detail: { theme: viewerTheme } }));
-  if (options.announce) {
-    setStatus(viewerTheme === "dark" ? "Dark mode enabled." : "Light mode enabled.");
-  }
+function markLocalSaveSucceeded(revision: number): void {
+  const hadFailure = localSaveFailure !== null;
+  localSaveFailure = null;
+  localSavedRevision = Math.max(localSavedRevision, revision);
+  updateLinearSaveStatus();
+  if (hadFailure) setStatus("Saved locally.");
 }
 
-function toggleViewerTheme(): void {
-  applyViewerTheme(viewerTheme === "dark" ? "light" : "dark", { persist: true, announce: true });
-}
-
-applyViewerTheme(viewerTheme);
+initializeViewerTheme({ redraw: scheduleRender, setStatus });
 
 function showFatalLoadError(title: string, detail: string): void {
   fatalLoadError = true;
@@ -4161,7 +4471,12 @@ function showFatalLoadError(title: string, detail: string): void {
 }
 
 function clampZoom(nextZoom: number): number {
-  return Math.min(VIEWER_TUNING.zoom.max, Math.max(VIEWER_TUNING.zoom.min, nextZoom));
+  // Nested Disperse envelopes can exceed the old 15% floor. Keep its whole
+  // geometry reachable without changing the other surfaces' zoom policy.
+  const minimum = currentSurfaceIsScatterMode()
+    ? Math.min(VIEWER_TUNING.zoom.min, Math.min(board.clientWidth / Math.max(1, contentWidth), board.clientHeight / Math.max(1, contentHeight)) * .5)
+    : VIEWER_TUNING.zoom.min;
+  return Math.min(VIEWER_TUNING.zoom.max, Math.max(minimum, nextZoom));
 }
 
 function setVisualCheckStatus(lines: string | string[]): void {
@@ -4199,6 +4514,7 @@ function refreshBoardViewportRect(): void {
 
 refreshBoardViewportRect();
 window.addEventListener("resize", refreshBoardViewportRect);
+window.addEventListener("resize", () => webglProjection?.resize());
 
 function refreshLinearPanelCanvasLayout(): boolean {
   if (!map || !lastLayout || visibleOrder.length === 0) {
@@ -4211,7 +4527,6 @@ function refreshLinearPanelCanvasLayout(): boolean {
   }
 
   const layout = lastLayout;
-  let deepestDepth = -1;
   let deepestRightEdge = VIEWER_TUNING.layout.leftPad;
   let treeMinY = Number.POSITIVE_INFINITY;
   let treeMaxY = Number.NEGATIVE_INFINITY;
@@ -4222,14 +4537,8 @@ function refreshLinearPanelCanvasLayout(): boolean {
     }
     treeMinY = Math.min(treeMinY, p.y - p.h / 2);
     treeMaxY = Math.max(treeMaxY, p.y + p.h / 2);
-    if (p.depth > deepestDepth) {
-      deepestDepth = p.depth;
-      deepestRightEdge = p.x + p.w;
-      return;
-    }
-    if (p.depth === deepestDepth) {
-      deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
-    }
+    // Wide shallow nodes must also leave room for the linear representation.
+    deepestRightEdge = Math.max(deepestRightEdge, p.x + p.w);
   });
   if (!Number.isFinite(treeMinY) || !Number.isFinite(treeMaxY)) {
     treeMinY = VIEWER_TUNING.layout.topPad;
@@ -4243,6 +4552,523 @@ function refreshLinearPanelCanvasLayout(): boolean {
   return true;
 }
 
+function webglSurfaceSupported(): boolean {
+  // Agent glyphs use the shared SVG renderer until the WebGL renderer supports them.
+  if (map && Object.values(map.state.nodes).some(node => readAgentNode(node))) return false;
+  if (orreryNetwork.enabled) return false; // NETWORK retains the existing SVG renderer until card WebGL parity.
+  return WEBGL_RENDERER_REQUESTED && !webglFallbackReason && (viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode());
+}
+
+function isWebGLRendererActive(): boolean {
+  return webglRendererActive && webglSurfaceSupported();
+}
+
+function cssColorOf(element: Element, property: "fill" | "stroke", fallback: string): string {
+  const value = getComputedStyle(element).getPropertyValue(property).trim();
+  return value && value !== "none" && value !== "transparent" ? value : fallback;
+}
+
+function sampledSvgPoints(element: SVGGeometryElement): Array<{ x: number; y: number }> {
+  if (element instanceof SVGLineElement) {
+    return [
+      { x: element.x1.baseVal.value, y: element.y1.baseVal.value },
+      { x: element.x2.baseVal.value, y: element.y2.baseVal.value },
+    ];
+  }
+  try {
+    const length = element.getTotalLength();
+    if (!Number.isFinite(length) || length <= 0) return [];
+    const count = Math.max(2, Math.min(32, Math.ceil(length / 24)));
+    return Array.from({ length: count }, (_unused, index) => {
+      const point = element.getPointAtLength((length * index) / (count - 1));
+      return { x: point.x, y: point.y };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function svgShapeBox(shape: SVGGraphicsElement): { x: number; y: number; width: number; height: number } | null {
+  const numberAttr = (name: string): number => Number.parseFloat(shape.getAttribute(name) || "NaN");
+  if (shape instanceof SVGRectElement) {
+    const x = numberAttr("x"); const y = numberAttr("y"); const width = numberAttr("width"); const height = numberAttr("height");
+    return Number.isFinite(x + y + width + height) ? { x, y, width, height } : null;
+  }
+  if (shape instanceof SVGCircleElement) {
+    const cx = numberAttr("cx"); const cy = numberAttr("cy"); const r = numberAttr("r");
+    return Number.isFinite(cx + cy + r) ? { x: cx - r, y: cy - r, width: r * 2, height: r * 2 } : null;
+  }
+  try {
+    const box = shape.getBBox();
+    return Number.isFinite(box.x + box.y + box.width + box.height) ? box : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Converts the existing canonical SVG scene into a read-only GPU projection. */
+function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
+  if (!incrementalProjection) {
+    snapshotNodeCache = new WeakMap();
+    snapshotEdgeCache = new WeakMap();
+  }
+  const paintScene = captureSvgPaintScene(canvas, undefined, incrementalProjection);
+  const labelsById = new Map<string, string[]>();
+  const labelElementsById = new Map<string, SVGTextElement>();
+  canvas.querySelectorAll<SVGTextElement>("text.label-root[data-node-id], text.label-node[data-node-id]").forEach((label) => {
+    const id = label.getAttribute("data-node-id");
+    if (!id) return;
+    const lines = Array.from(label.querySelectorAll("tspan")).map((line) => line.textContent || "").filter(Boolean);
+    labelsById.set(id, lines.length > 0 ? lines : [(label.textContent || "").trim()]);
+    labelElementsById.set(id, label);
+  });
+  const nodes: RenderNode[] = [];
+  const shapeById = new Map<string, SVGGraphicsElement>();
+  canvas.querySelectorAll<SVGGraphicsElement>("[data-node-id].node-hit, circle.scatter-node-circle[data-node-id]").forEach((element) => {
+    const id = element.getAttribute("data-node-id");
+    if (!id || shapeById.has(id)) return;
+    shapeById.set(id, element);
+  });
+  shapeById.forEach((shape, id) => {
+    const labelElement = labelElementsById.get(id);
+    const cacheKey = shape.outerHTML + (labelElement?.outerHTML || "") + filterScene.nodeOpacity(id);
+    const previous = snapshotNodeCache.get(shape);
+    if (previous?.key === cacheKey) { nodes.push(previous.value); return; }
+    const box = svgShapeBox(shape);
+    if (!box) return;
+    const visibleNode = map?.state.nodes[id];
+    if (!visibleNode || !Number.isFinite(box.x + box.y + box.width + box.height)) return;
+    const visual = canvas.querySelector<SVGGraphicsElement>(`[data-node-id="${CSS.escape(id)}"].node-shape, [data-node-id="${CSS.escape(id)}"].folder-box, [data-node-id="${CSS.escape(id)}"].root-box`) || shape;
+    const lines = labelsById.get(id) || [uiLabel(visibleNode) || "(empty)"];
+    const labelFontSize = labelElement ? Number.parseFloat(getComputedStyle(labelElement).fontSize) : Number.NaN;
+    const style = readNodeStyleAttrs(visibleNode.attributes || {});
+    const value: RenderNode = {
+      id,
+      opacity: filterScene.nodeOpacity(id),
+      x: box.x,
+      y: box.y,
+      width: Math.max(1, box.width),
+      height: Math.max(1, box.height),
+      label: lines.join(" "),
+      labelLines: lines,
+      fontSize: Number.isFinite(labelFontSize) ? labelFontSize : (id === map?.state.rootId ? 30 : 18),
+      textColor: style.color || (labelElement ? cssColorOf(labelElement, "fill", "#202124") : "#202124"),
+      shape: shape instanceof SVGCircleElement ? "circle" : "rect",
+      // The existing SVG shape is a rendering detail (and can inherit CSS
+      // effects). Prefer its canonical node style, then its resolved color.
+      fill: style.bg || cssColorOf(visual, "fill", "#ffffff"),
+      stroke: style.border || cssColorOf(visual, "stroke", "#475569"),
+    };
+    nodes.push(value);
+    snapshotNodeCache.set(shape, { key: cacheKey, value });
+  });
+  const parseEdges = (selector: string, kind: "edge" | "graph-link"): RenderEdge[] => Array.from(canvas.querySelectorAll<SVGGeometryElement>(selector))
+    .map((element, index) => {
+      const sourceNodeId = element.getAttribute("data-source-node-id") || element.getAttribute("data-parent-node-id") || "";
+      const targetNodeId = element.getAttribute("data-target-node-id") || element.getAttribute("data-child-node-id") || "";
+      const id = element.getAttribute("data-edge-id") || element.getAttribute("data-link-id") || `${kind}-${index}`;
+      const key = `${id}:${element.outerHTML}`;
+      const previous = snapshotEdgeCache.get(element);
+      if (previous?.key === key) return previous.value;
+      const value: RenderEdge = {
+        id,
+        sourceNodeId,
+        targetNodeId,
+        points: sampledSvgPoints(element),
+        color: cssColorOf(element, "stroke", kind === "graph-link" ? "#6b7280" : "#94a3b8"),
+        width: Math.max(1, Number.parseFloat(getComputedStyle(element).strokeWidth) || 2),
+        kind,
+        direction: element.getAttribute("marker-end") ? "forward" as const : "none" as const,
+      };
+      snapshotEdgeCache.set(element, { key, value });
+      return value;
+    })
+    .filter((edge) => edge.points.length >= 2);
+  const groups: RenderGroupBoundary[] = currentSurfaceIsScatterMode()
+    ? (layout.groups || [])
+      .filter((group) => Number.isFinite(group.x + group.y + group.w + group.h) && group.w > 0 && group.h > 0)
+      .map((group) => ({
+        id: group.id,
+        memberIds: [...group.memberIds],
+        x: group.x,
+        y: group.y,
+        width: group.w,
+        height: group.h,
+      }))
+    : [];
+  return {
+    revision: `${map?.savedAt || "unsaved"}:${viewState.surfaceViewMode}:${currentScopeRootId()}`,
+    paintScene,
+    nodes,
+    edges: parseEdges("path.edge[data-source-node-id][data-target-node-id], line.scatter-guide[data-parent-node-id][data-child-node-id]", "edge"),
+    graphLinks: parseEdges("path.graph-link[data-source-node-id][data-target-node-id], line.graph-link[data-source-node-id][data-target-node-id]", "graph-link"),
+    groups,
+    bounds: { minX: contentMinX, minY: contentMinY, maxX: contentMinX + contentWidth, maxY: contentMinY + contentHeight },
+  };
+}
+
+function syncWebGLInteraction(): void {
+  if (!webglProjection || !isWebGLRendererActive()) return;
+  const drag = viewState.dragState?.mode === "structure" && viewState.dragState.dragged ? viewState.dragState : null;
+  const proposal = drag?.proposal;
+  const line = proposal?.kind === "reorder" ? getReorderLineBounds(proposal.parentId, proposal.index, drag!.sourceNodeId) : null;
+  webglProjection.setInteractionState({
+    selectedNodeIds: Array.from(viewState.selectedNodeIds),
+    primarySelectedNodeId: viewState.selectedNodeId || null,
+    selectedGraphLinkId,
+    hoveredNodeId: webglHoveredNodeId,
+    editingNodeId: inlineEditor?.nodeId || null,
+    gestureActive: Boolean(viewState.panState || viewState.pinchState || viewState.dragState),
+    dragSourceNodeIds: drag?.sourceRootIds || [],
+    dropTargetNodeId: proposal?.kind === "reparent" ? proposal.parentId : null,
+    reorderLine: line && proposal?.kind === "reorder" ? { ...line, y: proposal.lineY } : null,
+  });
+  syncWebGLGraphLinkControls();
+}
+
+function webglClientToWorld(clientX: number, clientY: number): { x: number; y: number } | null {
+  if (!webglCanvas) {
+    return null;
+  }
+  const rect = webglCanvas.getBoundingClientRect();
+  return screenToWorld(
+    { x: clientX - rect.left, y: clientY - rect.top },
+    { x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom },
+  );
+}
+
+function removeWebGLGraphLinkControls(): void {
+  webglGraphLinkControls?.remove();
+  webglGraphLinkControls = null;
+}
+
+function positionWebGLGraphLinkControl(element: HTMLElement, point: { x: number; y: number }): void {
+  const screen = worldToScreen(point, {
+    x: viewState.cameraX,
+    y: viewState.cameraY,
+    zoom: viewState.zoom,
+  });
+  element.style.left = `${screen.x}px`;
+  element.style.top = `${screen.y}px`;
+}
+
+function createWebGLGraphLinkEndpointControls(
+  controls: HTMLElement,
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  node: RenderNode,
+  endpointPoint: { x: number; y: number },
+): void {
+  const rect = { x: node.x, y: node.y, w: node.width, h: node.height };
+  const portPoints: Record<EdgeAnchorSide, { x: number; y: number }> = {
+    left: { x: rect.x, y: rect.y + rect.h / 2 },
+    right: { x: rect.x + rect.w, y: rect.y + rect.h / 2 },
+    top: { x: rect.x + rect.w / 2, y: rect.y },
+    bottom: { x: rect.x + rect.w / 2, y: rect.y + rect.h },
+  };
+  const activeSide = inferBoundarySide(rect, endpointPoint);
+  (Object.keys(portPoints) as EdgeAnchorSide[]).forEach((side) => {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = `link-port-dot webgl-link-port-dot${side === activeSide ? " is-active" : ""}`;
+    dot.dataset.linkId = linkId;
+    dot.dataset.linkPortChoice = endpoint;
+    dot.dataset.linkPortSide = side;
+    dot.setAttribute("aria-label", `${endpoint} port ${side}`);
+    positionWebGLGraphLinkControl(dot, portPoints[side]);
+    dot.addEventListener("pointerdown", (event: PointerEvent) => {
+      if (event.button !== 0 || !map) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (setGraphLinkEndpointPort(linkId, endpoint, side)) {
+        touchDocument();
+        setStatus(`Link ${endpoint} port: ${side}.`);
+      }
+      board.focus({ preventScroll: true });
+    });
+    controls.appendChild(dot);
+  });
+
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = `link-port-handle webgl-link-port-handle link-port-handle-${endpoint}`;
+  handle.dataset.linkId = linkId;
+  handle.dataset.linkPortHandle = endpoint;
+  handle.setAttribute("aria-label", `Move GraphLink ${endpoint} endpoint`);
+  positionWebGLGraphLinkControl(handle, endpointPoint);
+  handle.addEventListener("pointerdown", (event: PointerEvent) => {
+    startWebGLGraphLinkDrag(event, linkId, endpoint, handle);
+  });
+  handle.addEventListener("pointermove", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    updateWebGLGraphLinkDragPreview(event);
+  });
+  handle.addEventListener("pointerup", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    finishWebGLGraphLinkDrag(event);
+  });
+  handle.addEventListener("pointercancel", (event: PointerEvent) => {
+    if (!webglGraphLinkDragState || webglGraphLinkDragState.handle !== handle || event.pointerId !== webglGraphLinkDragState.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    finishWebGLGraphLinkDrag(event);
+  });
+  controls.appendChild(handle);
+}
+
+function syncWebGLGraphLinkControls(): void {
+  if (!webglProjection || !isWebGLRendererActive() || !webglLastSnapshot || !selectedGraphLinkId || !lineSelection.portControls(selectedGraphLinkId)) {
+    removeWebGLGraphLinkControls();
+    return;
+  }
+  const link = webglLastSnapshot.graphLinks.find((edge) => edge.id === selectedGraphLinkId);
+  const sourceNode = link ? webglLastSnapshot.nodes.find((node) => node.id === link.sourceNodeId) : null;
+  const targetNode = link ? webglLastSnapshot.nodes.find((node) => node.id === link.targetNodeId) : null;
+  if (!link || link.points.length < 2 || !sourceNode || !targetNode) {
+    removeWebGLGraphLinkControls();
+    return;
+  }
+
+  removeWebGLGraphLinkControls();
+  const controls = document.createElement("div");
+  controls.className = "link-port-controls webgl-link-port-controls";
+  controls.dataset.linkId = link.id;
+  createWebGLGraphLinkEndpointControls(controls, link.id, "source", sourceNode, link.points[0]!);
+  createWebGLGraphLinkEndpointControls(controls, link.id, "target", targetNode, link.points[link.points.length - 1]!);
+  board.appendChild(controls);
+  webglGraphLinkControls = controls;
+}
+
+function startWebGLGraphLinkDrag(
+  event: PointerEvent,
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  handle: HTMLButtonElement,
+): void {
+  if (!isWebGLRendererActive() || event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  selectedGraphLinkId = linkId;
+  viewState.selectedLinkId = linkId;
+  webglGraphLinkDragState = {
+    pointerId: event.pointerId,
+    linkId,
+    endpoint,
+    handle,
+    startX: event.clientX,
+    startY: event.clientY,
+    dragged: false,
+  };
+  try {
+    handle.setPointerCapture(event.pointerId);
+  } catch {
+    // The browser may reject capture for a synthetic or already-ended pointer.
+  }
+  board.focus({ preventScroll: true });
+}
+
+function updateWebGLGraphLinkDragPreview(event: PointerEvent): void {
+  const drag = webglGraphLinkDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.dragged && distance < VIEWER_TUNING.drag.reparentThreshold) return;
+  drag.dragged = true;
+  const point = webglClientToWorld(event.clientX, event.clientY);
+  if (point) {
+    positionWebGLGraphLinkControl(drag.handle, point);
+  }
+}
+
+function finishWebGLGraphLinkDrag(event: PointerEvent): void {
+  const drag = webglGraphLinkDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  updateWebGLGraphLinkDragPreview(event);
+  webglGraphLinkDragState = null;
+  try {
+    drag.handle.releasePointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been released by the browser.
+  }
+
+  const shouldCommit = event.type !== "pointercancel" && drag.dragged;
+  if (!shouldCommit) {
+    syncWebGLGraphLinkControls();
+    board.focus({ preventScroll: true });
+    return;
+  }
+
+  const point = webglClientToWorld(event.clientX, event.clientY);
+  const hit = point ? webglProjection?.hitTest(event.clientX, event.clientY) : null;
+  const targetNode = hit?.kind === "node"
+    ? webglLastSnapshot?.nodes.find((node) => node.id === hit.nodeId)
+    : null;
+  if (!point || !targetNode) {
+    setStatus("No valid GraphLink endpoint.", true);
+    syncWebGLGraphLinkControls();
+    board.focus({ preventScroll: true });
+    return;
+  }
+
+  const side = nearestEdgePortSideForGraphLinkEdit(
+    { x: targetNode.x, y: targetNode.y, w: targetNode.width, h: targetNode.height },
+    point,
+  );
+  if (!setGraphLinkEndpointPort(drag.linkId, drag.endpoint, side, true, targetNode.id)) {
+    syncWebGLGraphLinkControls();
+    board.focus({ preventScroll: true });
+    return;
+  }
+  // The command has now been accepted. Re-render only after the WebGL-only
+  // drag preview has ended, matching the existing SVG commit boundary.
+  touchDocument();
+  setStatus(`Link ${drag.endpoint} endpoint updated.`);
+  board.focus({ preventScroll: true });
+}
+
+function updateWebGLNodeDragPreview(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!webglProjection || !webglDragBaseSnapshot || !drag || drag.pointerId !== event.pointerId || drag.mode !== "scatter") {
+    return;
+  }
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.dragged && distance < VIEWER_TUNING.drag.reparentThreshold) {
+    return;
+  }
+  if (!drag.dragged) {
+    commitDispersePositions(); pushUndoSnapshot(); disperseForce.beginDrag(drag.sourceNodeId, drag.sourceRootIds);
+  }
+  drag.dragged = true;
+  const startWorld = drag.startWorld, currentWorld = webglClientToWorld(event.clientX, event.clientY);
+  if (!startWorld || !currentWorld) return;
+  disperseForce.moveDrag(currentWorld.x - startWorld.x, currentWorld.y - startWorld.y);
+  disperseForceDirty = true;
+  const snapshot = disperseForce.snapshot();
+  if (!snapshot || !presentDispersePositionFrame(snapshot)) render(true);
+  startScatterAnimation();
+
+}
+
+function activateWebGLProjection(): void {
+  if (!webglCanvas || !webglSurfaceSupported()) return;
+  const metricStartedAt = performance.now();
+  try {
+    // Measure/capture the appearance in the same task that presents WebGL.
+    // Do not show an intermediate SVG frame between renderer updates.
+    canvas.removeAttribute("hidden");
+    applyCanvasViewportTransform();
+    // A hidden canvas reports a 0×0 box; expose it before allocating the
+    // drawing buffer so DPR sizing is based on the real viewport.
+    webglCanvas.hidden = false;
+    if (!webglProjection) {
+      webglProjection = new WebGLRenderingProjection(webglCanvas, {
+        onUnavailable: (reason) => {
+          cancelStructureNodeDrag();
+          webglFallbackReason = reason;
+          webglRendererActive = false;
+          webglCanvas.hidden = true;
+          canvas.removeAttribute("hidden");
+          canvas.style.transform = "";
+          syncInlineEditorPosition();
+          setStatus(`WebGL unavailable: ${reason} SVG fallback is active.`, true);
+        },
+        onRestored: () => {
+          // Context loss temporarily displays the canonical SVG. The projection
+          // retains its derived snapshot/camera/interaction state, so resume it
+          // without rebuilding the map or changing canonical UI selection.
+          webglFallbackReason = null;
+          const renderableSurface = viewState.surfaceViewMode === "tree" || currentSurfaceIsScatterMode();
+          if (!WEBGL_RENDERER_REQUESTED || !renderableSurface) return;
+          webglRendererActive = true;
+          webglCanvas.hidden = false;
+          canvas.setAttribute("hidden", "");
+          syncLinearPanelPosition();
+          webglProjection?.resize();
+          webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+          syncWebGLInteraction();
+          syncInlineEditorPosition();
+          setStatus("WebGL context restored.");
+        },
+      });
+      if (!webglProjection.mount()) return;
+    }
+    webglProjection.resize();
+    if (!lastLayout) return;
+    try {
+      webglLastSnapshot = buildWebGLRenderSnapshot(lastLayout);
+      webglProjection.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      webglProjection.setSnapshot(webglLastSnapshot);
+      webglPaintedSelection = new Set(viewState.selectedNodeIds);
+      webglPaintedPrimary = viewState.selectedNodeId;
+      webglPaintedLink = selectedGraphLinkId;
+    } catch (error) {
+      webglFallbackReason = error instanceof Error ? error.message : String(error);
+      deactivateWebGLProjection();
+      applyZoom();
+      setStatus(`WebGL appearance unavailable: ${webglFallbackReason}`, true);
+      return;
+    }
+    if (WEBGL_DEBUG_REQUESTED) {
+      webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      webglCanvas.dataset.snapshot = JSON.stringify({ nodes: webglLastSnapshot.nodes.length, edges: webglLastSnapshot.edges.length, graphLinks: webglLastSnapshot.graphLinks.length, groups: webglLastSnapshot.groups.length });
+    }
+    webglRendererActive = true;
+    canvas.setAttribute("hidden", "");
+    webglCanvas.dataset.renderer = "retained-vector-tiles";
+    webglCanvas.dataset.zoom = String(viewState.zoom);
+    syncLinearPanelPosition();
+    syncWebGLInteraction();
+    syncInlineEditorPosition();
+    webglProjection.present();
+    (globalThis as any).__m3eWebGLProjection = {
+      getDebugState: () => webglProjection?.getDebugState(),
+      getSnapshot: () => webglLastSnapshot,
+      forceFallback: () => {
+        webglProjection?.destroy();
+        webglProjection = null;
+        webglFallbackReason = "Forced fallback";
+        render();
+      },
+    };
+  } finally {
+    renderUpdateMetrics.record("projection", performance.now() - metricStartedAt);
+  }
+}
+
+function scheduleWebGLProjectionActivation(): void {
+  // Coalesce onto the pending presentation. Repeated physics renders must not
+  // cancel it forever and leave the animated view on its SVG fallback.
+  if (webglActivationFrame !== null) return;
+  // Keep SVG visible until same-turn camera fitting has settled. This prevents
+  // the first WebGL frame from locking in the pre-fit 100% camera.
+  webglActivationFrame = requestAnimationFrame(() => {
+    webglActivationFrame = null;
+    if (webglSurfaceSupported()) activateWebGLProjection();
+  });
+}
+
+function deactivateWebGLProjection(): void {
+  if (webglActivationFrame !== null) {
+    cancelAnimationFrame(webglActivationFrame);
+    webglActivationFrame = null;
+  }
+  webglRendererActive = false;
+  webglGraphLinkDragState = null;
+  removeWebGLGraphLinkControls();
+  if (webglCanvas) webglCanvas.hidden = true;
+  canvas.removeAttribute("hidden");
+  syncInlineEditorPosition();
+}
+
 function applyCanvasViewportTransform(): void {
   const widthValue = `${contentWidth}px`;
   if (_appliedCanvasWidth !== widthValue) {
@@ -4254,7 +5080,9 @@ function applyCanvasViewportTransform(): void {
     canvas.style.height = heightValue;
     _appliedCanvasHeight = heightValue;
   }
-  const transformValue = `translate(${viewState.cameraX}px, ${viewState.cameraY}px) scale(${viewState.zoom})`;
+  // SVG viewBox offsets its local viewport; compensate so world coordinates
+  // still map to camera + world*zoom, identically to WebGL and HTML overlays.
+  const transformValue = `translate(${viewState.cameraX + contentMinX * viewState.zoom}px, ${viewState.cameraY + contentMinY * viewState.zoom}px) scale(${viewState.zoom})`;
   if (_appliedCanvasTransform !== transformValue) {
     canvas.style.transform = transformValue;
     _appliedCanvasTransform = transformValue;
@@ -4267,6 +5095,7 @@ function syncViewportDependents(): void {
   syncInlineEdgeLabelEditorPosition();
   syncLinearPanelPosition();
   syncTemplateCompletionPlacement();
+  syncNodeResizeHandle();
   window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
 }
 
@@ -4286,13 +5115,37 @@ function applyLinearPanelViewportTransform(): void {
 }
 
 function applyZoom(options: ViewportApplyOptions = {}): void {
-  // Continuous pan/zoom only writes affine transforms; layout-dependent sync trails the gesture.
-  applyCanvasViewportTransform();
-  if (options.syncDependents === false) {
-    applyLinearPanelViewportTransform();
-    return;
+  const metricStartedAt = performance.now();
+  try {
+    syncNodeResizeHandle();
+    if (isWebGLRendererActive()) {
+      webglProjection?.setCamera({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      if (webglCanvas && webglCanvas.dataset.zoom !== String(viewState.zoom)) webglCanvas.dataset.zoom = String(viewState.zoom);
+      applyLinearPanelViewportTransform();
+      syncInlineEditorPosition();
+      syncWebGLGraphLinkControls();
+      if (WEBGL_DEBUG_REQUESTED && webglCanvas) {
+        webglCanvas.dataset.camera = JSON.stringify({ x: viewState.cameraX, y: viewState.cameraY, zoom: viewState.zoom });
+      }
+      if (options.syncDependents !== false) {
+        // Keep retained SVG geometry aligned for measurement and fallback without
+        // rebuilding the scene merely to finish a camera move.
+        applyCanvasViewportTransform();
+        refreshBoardViewportRect();
+        window.dispatchEvent(new CustomEvent("m3e:viewport-changed"));
+      }
+      return;
+    }
+    // Continuous pan/zoom only writes affine transforms; layout-dependent sync trails the gesture.
+    applyCanvasViewportTransform();
+    if (options.syncDependents === false) {
+      applyLinearPanelViewportTransform();
+      return;
+    }
+    syncViewportDependents();
+  } finally {
+    renderUpdateMetrics.record("applyZoom", performance.now() - metricStartedAt);
   }
-  syncViewportDependents();
 }
 
 function markViewportDependentSyncPending(): void {
@@ -4332,6 +5185,7 @@ function currentCameraTarget(): CameraTarget {
 }
 
 function cancelCameraMotion(): void {
+  delete board.dataset.cameraMoving;
   if (!cameraMotion) {
     return;
   }
@@ -4384,15 +5238,19 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     raf: null,
     from,
     to: clampedTarget,
-    startedAt: performance.now(),
+    startedAt: null,
     durationMs,
   };
+  board.dataset.cameraMoving = "true";
 
   const step = (now: number): void => {
     if (!cameraMotion) {
       return;
     }
     const motion = cameraMotion;
+    // Start after the pending scene presentation, not while it is being built.
+    // Otherwise a slow scope snapshot consumes the animation before its first frame.
+    if (motion.startedAt === null) motion.startedAt = performance.now();
     const rawT = Math.min(1, Math.max(0, (now - motion.startedAt) / motion.durationMs));
     const t = easeInOutCubic(rawT);
     viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
@@ -4402,6 +5260,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     if (rawT >= 1) {
       applyCameraTarget(motion.to);
       cameraMotion = null;
+      delete board.dataset.cameraMoving;
       return;
     }
     motion.raf = requestAnimationFrame(step);
@@ -4467,21 +5326,46 @@ function captureManualLinearPanelWidth(): void {
 }
 
 function syncInlineEditorPosition(): void {
-  if (!inlineEditor || !map || !lastLayout) {
+  if (!inlineEditor || !map) {
     return;
   }
 
   const nodeId = inlineEditor.nodeId;
+  if (inlineEditor.preview) {
+    inlineEditor.preview.setCamera({ x:viewState.cameraX,y:viewState.cameraY,zoom:viewState.zoom });
+    if (!isWebGLRendererActive()) setEditedSvgNodeVisibility(nodeId,false);
+    return;
+  }
+  // Placement belongs to the canonical label layout, not WebGL's hit box.
+  // Both renderers use this same HTML editor and the same world camera.
+  if (!lastLayout) {
+    return;
+  }
   const nodePos = lastLayout.pos[nodeId];
   if (!nodePos) {
     return;
   }
 
   const node = getNode(nodeId);
+  const agentTitle = canvas.querySelector<SVGTextElement>(`[data-agent-node-id="${CSS.escape(nodeId)}"] [data-field="title"]`);
+  if (readAgentNode(node) && agentTitle) {
+    const rect = agentTitle.getBoundingClientRect();
+    const boardRect = board.getBoundingClientRect();
+    const style = getComputedStyle(agentTitle);
+    const fontSize = parseFloat(style.fontSize) * viewState.zoom;
+    Object.assign(inlineEditor.input.style, {
+      left: `${rect.left - boardRect.left}px`, top: `${rect.top - boardRect.top}px`,
+      width: `${Math.max(rect.width, 180 * viewState.zoom)}px`, minWidth: "0",
+      minHeight: `${fontSize * 1.4}px`, fontSize: `${fontSize}px`, lineHeight: "1.4",
+      fontWeight: style.fontWeight, color: style.fill, padding: "0", transform: "none", textAlign: "left",
+    });
+    setEditedSvgLabelVisibility(nodeId, false);
+    return;
+  }
   const isRootLabel = nodeId === map.state.rootId;
   const nodeStyles = readNodeStyleAttrs(node.attributes || {});
   const label = isRootLabel ? uiLabel(node) : diagramLabel(node, nodeStyles);
-  const labelLines = splitLabelLines(label || "(empty)");
+  const labelLines = nodePos.labelLines || splitLabelLines(label || "(empty)");
   const fontSize = nodePos.fontSize ?? (isRootLabel ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
   const lineHeight = lineHeightForFont(fontSize);
   const labelX = isRootLabel
@@ -4491,15 +5375,17 @@ function syncInlineEditorPosition(): void {
   const textHeight = Math.max(lineHeight, labelLines.length * lineHeight);
   const left = viewState.cameraX + labelX * viewState.zoom;
   const top = viewState.cameraY + (textStartY - fontSize * 0.82) * viewState.zoom;
-  const width = Math.max(28, nodePos.w + (isRootLabel ? 0 : 12));
+  const width = Math.max(40, (explicitNodeLabelWidth(node) ?? (viewState.surfaceViewMode === "tree" ? defaultWrapCharacters * fontSize + 20 : nodePos.w)) - 20);
   const height = Math.max(lineHeight, textHeight);
 
   inlineEditor.input.style.left = `${left}px`;
   inlineEditor.input.style.top = `${top}px`;
   inlineEditor.input.style.width = `${width}px`;
-  inlineEditor.input.style.minWidth = `${width}px`;
+  inlineEditor.input.style.minWidth = "0";
   inlineEditor.input.style.minHeight = `${height}px`;
+  inlineEditor.input.style.fontFamily = TEXT_MEASURE_FONT_FAMILY;
   inlineEditor.input.style.fontSize = `${fontSize}px`;
+  inlineEditor.input.style.lineHeight = `${lineHeight}px`;
   inlineEditor.input.style.lineHeight = `${lineHeight}px`;
   inlineEditor.input.style.fontWeight = isRootLabel ? "500" : "450";
   inlineEditor.input.style.transform = isRootLabel
@@ -4507,12 +5393,18 @@ function syncInlineEditorPosition(): void {
     : `scale(${viewState.zoom})`;
   inlineEditor.input.style.transformOrigin = isRootLabel ? "top center" : "top left";
   inlineEditor.input.style.textAlign = isRootLabel ? "center" : "left";
-  setEditedSvgLabelVisibility(nodeId, false);
+  if (!isWebGLRendererActive()) setEditedSvgLabelVisibility(nodeId, false);
+}
+
+function setEditedSvgNodeVisibility(nodeId: string, visible: boolean): void {
+  canvas.querySelectorAll<SVGGraphicsElement>(`[data-node-id="${CSS.escape(nodeId)}"]`).forEach((element) => {
+    if (element.matches(".node-hit,.node-visual-box,.label-root,.label-node,foreignObject")) element.style.visibility = visible ? "" : "hidden";
+  });
 }
 
 function setEditedSvgLabelVisibility(nodeId: string, visible: boolean): void {
   canvas
-    .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"]`)
+    .querySelectorAll<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"], text.label-node[data-node-id="${CSS.escape(nodeId)}"], [data-agent-node-id="${CSS.escape(nodeId)}"] [data-field="title"]`)
     .forEach((label) => {
       label.style.visibility = visible ? "" : "hidden";
     });
@@ -4549,7 +5441,10 @@ function syncInlineEdgeLabelEditorPosition(): void {
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const edgeLabel = incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
+  const options = inlineEdgeLabelEditor.options, anchor = options?.anchor(), rect = board.getBoundingClientRect();
+  if (options && !anchor) { stopInlineEdgeLabelEdit(false, { focusBoard: false }); return; }
+  const edgeLabel = anchor ? { x: (anchor.x - rect.left - board.clientLeft - viewState.cameraX) / viewState.zoom,
+    y: (anchor.y - rect.top - board.clientTop - viewState.cameraY) / viewState.zoom, width: 180 } : incomingTreeEdgeLabelLayout(inlineEdgeLabelEditor.nodeId);
   if (!edgeLabel) {
     return;
   }
@@ -4574,7 +5469,75 @@ function setEditedEdgeLabelVisibility(nodeId: string, visible: boolean): void {
     });
 }
 
-function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
+let nodeResizeHandle: HTMLButtonElement | null = null;
+let nodeResize: { id: string; pointerId: number; x: number; width: number; changed: boolean } | null = null;
+function syncNodeResizeHandle(): void {
+  if (!nodeResizeHandle) {
+    nodeResizeHandle = document.createElement("button");
+    nodeResizeHandle.className = "node-resize-handle";
+    nodeResizeHandle.setAttribute("aria-label", "Resize node width");
+    nodeResizeHandle.title = "Drag to resize node width";
+    board.appendChild(nodeResizeHandle);
+    nodeResizeHandle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.button !== 0 || !map || !lastLayout) return;
+      stopInlineEdit(true, { focusBoard: false });
+      cancelCameraMotion();
+      const id = viewState.selectedNodeId;
+      const p = lastLayout.pos[id];
+      if (!p) return;
+      nodeResize = { id, pointerId: event.pointerId, x: event.clientX, width: p.w,
+        changed: false };
+      nodeResizeHandle!.setPointerCapture(event.pointerId);
+    });
+    nodeResizeHandle.addEventListener("pointermove", (event) => {
+      const drag = nodeResize;
+      if (!drag || event.pointerId !== drag.pointerId || !map) return;
+      const width = Math.round(Math.max(120, Math.min(4000, drag.width + (event.clientX - drag.x) / viewState.zoom)));
+      if (!drag.changed && Math.abs(width - drag.width) < 2) return;
+      if (!drag.changed) { pushUndoSnapshot(); drag.changed = true; }
+      const before = nodeViewportAnchor(drag.id);
+      const node = map.state.nodes[drag.id]!;
+      node.attributes = { ...node.attributes, [NODE_LABEL_WIDTH_ATTR]: String(width) };
+      render();
+      preserveNodeViewportAnchor(drag.id, before);
+    });
+    const finish = (event: PointerEvent) => {
+      const drag = nodeResize;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      nodeResize = null;
+      if (nodeResizeHandle!.hasPointerCapture(event.pointerId)) nodeResizeHandle!.releasePointerCapture(event.pointerId);
+      if (drag.changed) {
+        touchDocument();
+        nudgeNodeIntoView(drag.id, { animate: false });
+      }
+      board.focus({ preventScroll: true });
+    };
+    nodeResizeHandle.addEventListener("pointerup", finish);
+    nodeResizeHandle.addEventListener("pointercancel", finish);
+    nodeResizeHandle.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); });
+  }
+  const id = viewState.selectedNodeId;
+  const node = map?.state.nodes[id];
+  // Use the same retained geometry and selection state as the painted frame,
+  // rather than an independently reconstructed hit/viewport rectangle.
+  const input = nodeDrawInputs.get(id);
+  const selected = nodeSelectionView(id);
+  const p = input && (input.content.kind === "agent" ? renderNodeSvg(input).bounds : nodeSelectionFrameRect(input));
+  nodeResizeHandle.dataset.nodeId = id;
+  nodeResizeHandle.hidden = !node || !p || !selected.selected || !selected.primarySelected || isLatexNode(node) || currentSurfaceIsScatterMode() || currentSurfaceIsFlowMode() || isReadOnlyLink() || Boolean(inlineEditor) || annotationTool !== "select";
+  const rect = p && {
+    right: viewState.cameraX + (p.x + p.w) * viewState.zoom,
+    bottom: viewState.cameraY + (p.y + p.h) * viewState.zoom,
+  };
+  if (rect) {
+    nodeResizeHandle.style.left = `${rect.right - 7}px`;
+    nodeResizeHandle.style.top = `${rect.bottom - 7}px`;
+  }
+}
+
+function nodeViewportAnchor(nodeId: string): { x: number; y: number } | null {
   if (!map || !lastLayout) {
     return null;
   }
@@ -4582,18 +5545,18 @@ function nodeViewportCenter(nodeId: string): { x: number; y: number } | null {
   if (!nodePos) {
     return null;
   }
-  const centerX = nodeId === map.state.rootId ? nodePos.x + nodePos.w / 2 : nodePos.x + nodePos.w * 0.5;
+  const anchorX = nodePos.x;
   return {
-    x: viewState.cameraX + centerX * viewState.zoom,
-    y: viewState.cameraY + nodePos.y * viewState.zoom,
+    x: viewState.cameraX + anchorX * viewState.zoom,
+    y: viewState.cameraY + (nodePos.y - nodePos.h / 2) * viewState.zoom,
   };
 }
 
-function preserveNodeViewportCenter(nodeId: string, before: { x: number; y: number } | null): void {
+function preserveNodeViewportAnchor(nodeId: string, before: { x: number; y: number } | null): void {
   if (!before) {
     return;
   }
-  const after = nodeViewportCenter(nodeId);
+  const after = nodeViewportAnchor(nodeId);
   if (!after) {
     return;
   }
@@ -4601,7 +5564,7 @@ function preserveNodeViewportCenter(nodeId: string, before: { x: number; y: numb
     cameraX: viewState.cameraX + before.x - after.x,
     cameraY: viewState.cameraY + before.y - after.y,
     zoom: viewState.zoom,
-  });
+  }, { animate: false });
 }
 
 function nodeViewportRect(nodeId: string): { left: number; right: number; top: number; bottom: number } | null {
@@ -4622,15 +5585,19 @@ function nodeViewportRect(nodeId: string): { left: number; right: number; top: n
 
 function activeSafeViewport(): { left: number; right: number; top: number; bottom: number } {
   const boardRect = board.getBoundingClientRect();
-  const toolbarRect = toolbarEl?.getBoundingClientRect();
-  const toolbarBottom = toolbarRect ? Math.max(0, toolbarRect.bottom - boardRect.top) : 0;
-  const pad = 52;
-  return {
-    left: pad,
-    right: Math.max(pad, boardRect.width - pad),
-    top: Math.max(pad, toolbarBottom + 28),
-    bottom: Math.max(pad, boardRect.height - pad),
-  };
+  const safe = { left: 24, right: boardRect.width - 24, top: 24, bottom: boardRect.height - 64 };
+  // Workbench chrome is fixed in screen coordinates, outside the Surface camera.
+  for (const [selector, side] of [[".wb-left-rail", "left"], [".wb-right-panel", "right"], [".wb-topbar", "top"]] as const) {
+    const el = document.querySelector<HTMLElement>(selector);
+    if (!el || el.hidden || !el.getClientRects().length) continue;
+    const r = el.getBoundingClientRect();
+    if (side === "left") safe.left = Math.max(safe.left, r.right - boardRect.left + 20);
+    if (side === "right") safe.right = Math.min(safe.right, r.left - boardRect.left - 20);
+    if (side === "top") safe.top = Math.max(safe.top, r.bottom - boardRect.top + 20);
+  }
+  safe.right = Math.max(safe.left + 80, safe.right);
+  safe.bottom = Math.max(safe.top + 80, safe.bottom);
+  return safe;
 }
 
 function nudgeNodeIntoView(nodeId: string, options: CameraMoveOptions = {}): boolean {
@@ -4641,12 +5608,12 @@ function nudgeNodeIntoView(nodeId: string, options: CameraMoveOptions = {}): boo
   const safe = activeSafeViewport();
   let dx = 0;
   let dy = 0;
-  if (rect.left < safe.left) {
+  if (rect.right - rect.left > safe.right - safe.left || rect.left < safe.left) {
     dx = safe.left - rect.left;
   } else if (rect.right > safe.right) {
     dx = safe.right - rect.right;
   }
-  if (rect.top < safe.top) {
+  if (rect.bottom - rect.top > safe.bottom - safe.top || rect.top < safe.top) {
     dy = safe.top - rect.top;
   } else if (rect.bottom > safe.bottom) {
     dy = safe.bottom - rect.bottom;
@@ -4688,7 +5655,35 @@ function reserveActiveNodeRightSpace(requiredWidth = 520): boolean {
 }
 
 window.addEventListener("m3e:prepare-progressive-navigation", () => {
+  cancelCameraMotion();
   reserveActiveNodeRightSpace();
+});
+
+window.addEventListener("m3e:query-node-pn-anchor", (event) => {
+  if (!webglRendererActive) {
+    // Selection classes are painted on the next frame. Resolve the current
+    // selection by identity so opening immediately after a click is stable.
+    const selector = `[data-node-id="${CSS.escape(viewState.selectedNodeId)}"]`;
+    const element = canvas.querySelector(`.label-node${selector}`)
+      || canvas.querySelector(`.node-visual-box${selector}`)
+      || canvas.querySelector(`.scatter-node-circle${selector}`)
+      || canvas.querySelector(`.node-hit${selector}`);
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      (event as CustomEvent).detail.rect = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+    }
+    return;
+  }
+  if (!webglCanvas) return;
+  const node = webglLastSnapshot?.nodes.find((entry) => entry.id === viewState.selectedNodeId);
+  if (!node) return;
+  const rect = webglCanvas.getBoundingClientRect();
+  (event as CustomEvent).detail.rect = {
+    x: rect.left + viewState.cameraX + node.x * viewState.zoom,
+    y: rect.top + viewState.cameraY + node.y * viewState.zoom,
+    w: node.width * viewState.zoom,
+    h: node.height * viewState.zoom,
+  };
 });
 
 function setZoom(
@@ -4698,13 +5693,16 @@ function setZoom(
   statusMode: "immediate" | "throttled" | "silent" = "immediate",
   options: ViewportApplyOptions = {},
 ): void {
+  resetFitCycle();
   cancelCameraMotion();
   const previousZoom = viewState.zoom;
   viewState.zoom = clampZoom(nextZoom);
 
+  refreshBoardViewportRect();
   const boardRect = _boardViewportRect;
-  const pointerX = anchorClientX ?? boardRect.left + boardRect.width / 2;
-  const pointerY = anchorClientY ?? boardRect.top + boardRect.height / 2;
+  const safe = activeSafeViewport();
+  const pointerX = anchorClientX ?? boardRect.left + (safe.left + safe.right) / 2;
+  const pointerY = anchorClientY ?? boardRect.top + (safe.top + safe.bottom) / 2;
   const localViewportX = pointerX - boardRect.left;
   const localViewportY = pointerY - boardRect.top;
   const contentX = (localViewportX - viewState.cameraX) / previousZoom;
@@ -4793,6 +5791,28 @@ function currentSurfaceIsFlowMode(): boolean {
   return viewState.surfaceViewMode === "system";
 }
 
+/** Lanes and their drawn grandchildren, when the current surface is Lane. */
+function currentLaneGrid(): LaneGrid | null {
+  const lane = lastLayout?.lane;
+  if (viewState.surfaceViewMode !== "lane" || !lane || !map) return null;
+  const laneIds = lane.boundaries.map((b) => b.id);
+  return { rootId: lane.rootId, laneIds, lanes: laneIds.map((id) => (map!.state.nodes[id]?.children ?? []).filter((c) => Boolean(lastLayout!.pos[c]) && lastLayout!.order.includes(c))) };
+}
+
+/** Arrow keys in Lane follow the drawn rows/columns, not tree depth. */
+function laneArrow(key: string, extend: boolean): void {
+  const grid = currentLaneGrid();
+  if (!grid || !lastLayout?.lane) return;
+  const target = laneNavigationTarget(grid, lastLayout.pos, viewState.selectedNodeId, lastLayout.lane.direction, key);
+  if (!target) return;
+  if (!extend) { selectNode(target); return; }
+  viewState.selectionAnchorId ||= viewState.selectedNodeId;
+  viewState.selectedNodeId = target;
+  viewState.selectedNodeIds.add(target);
+  scheduleSelectionRefresh();
+  setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
+}
+
 function currentSurfaceIsScatterMode(): boolean {
   return viewState.surfaceViewMode === "scatter";
 }
@@ -4809,6 +5829,15 @@ function currentFlowSurfaceDetailLevel(): number {
 }
 
 function buildFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewLayout | null {
+  if (!map || !node || !isFolderNode(node) || currentFlowSurfaceDetailLevel() <= 0) return null;
+  const key = JSON.stringify((node.children || []).map(id => {
+    const child = map!.state.nodes[id];
+    return child ? [id, uiLabel(child), child.text, child.nodeType, child.attributes] : [id];
+  }));
+  return activeLayoutCache.previews.get(node.id, key, () => computeFlowPreviewLayout(node));
+}
+
+function computeFlowPreviewLayout(node: TreeNode | null | undefined): FlowPreviewLayout | null {
   if (!map || !node || !isFolderNode(node) || currentFlowSurfaceDetailLevel() <= 0) {
     return null;
   }
@@ -4935,7 +5964,7 @@ function isParentChildPair(source: TreeNode, target: TreeNode): boolean {
   return source.parentId === target.id || target.parentId === source.id;
 }
 
-type LinkConnectionBoundsMode = "hit" | "box" | "mindmap";
+type LinkConnectionBoundsMode = "hit" | "box" | "tree";
 
 function renderedBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
   const h = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
@@ -4955,7 +5984,7 @@ function renderedBoxRect(pos: NodePosition): { x: number; y: number; w: number; 
   };
 }
 
-function mindmapBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
+function treeBoxRect(pos: NodePosition): { x: number; y: number; w: number; h: number } {
   const h = Math.max(VIEWER_TUNING.layout.nodeHitHeight, pos.h);
   return {
     x: pos.x,
@@ -4966,7 +5995,7 @@ function mindmapBoxRect(pos: NodePosition): { x: number; y: number; w: number; h
 }
 
 function linkConnectionRect(pos: NodePosition, boundsMode: LinkConnectionBoundsMode = "hit"): { x: number; y: number; w: number; h: number } {
-  if (boundsMode === "mindmap") return mindmapBoxRect(pos);
+  if (boundsMode === "tree") return treeBoxRect(pos);
   if (boundsMode === "box") return renderedBoxRect(pos);
   return positionRect(pos);
 }
@@ -5429,78 +6458,6 @@ function scopedChildrenRaw(nodeId: string): string[] {
   return (node.children || []).filter((childId) => isNodeInScope(childId));
 }
 
-function importanceScore(nodeId: string): number {
-  if (!map) {
-    return 0;
-  }
-  const node = map.state.nodes[nodeId];
-  if (!node) {
-    return 0;
-  }
-  const attrs = node.attributes || {};
-  const raw = String(attrs["importance"] ?? attrs["priority"] ?? attrs["重要度"] ?? "").trim().toLowerCase();
-  if (!raw) {
-    return 0;
-  }
-  if (/^[0-9]+$/.test(raw)) {
-    return Math.max(0, Number(raw));
-  }
-  if (raw.includes("critical") || raw.includes("urgent") || raw.includes("highest") || raw.includes("緊急")) {
-    return 4;
-  }
-  if (raw === "h" || raw.includes("high") || raw.includes("top") || raw.includes("高")) {
-    return 3;
-  }
-  if (raw === "m" || raw.includes("medium") || raw.includes("mid") || raw.includes("中")) {
-    return 2;
-  }
-  if (raw === "l" || raw.includes("low") || raw.includes("低")) {
-    return 1;
-  }
-  return 0;
-}
-
-function isNodeVisibleByImportance(nodeId: string): boolean {
-  if (!importanceVisibleNodeIds) {
-    return true;
-  }
-  return importanceVisibleNodeIds.has(nodeId);
-}
-
-function rebuildImportanceVisibility(): void {
-  if (!map || importanceViewMode === "all") {
-    importanceVisibleNodeIds = null;
-    return;
-  }
-
-  const threshold = importanceViewMode === "high-only" ? 3 : 2;
-  const scopeRootId = normalizedCurrentScopeId();
-  const visible = new Set<string>();
-
-  function walk(nodeId: string): boolean {
-    const node = map!.state.nodes[nodeId];
-    if (!node) {
-      return false;
-    }
-    const selfMatched = importanceScore(nodeId) >= threshold;
-    let childMatched = false;
-    scopedChildrenRaw(nodeId).forEach((childId) => {
-      if (walk(childId)) {
-        childMatched = true;
-      }
-    });
-    const keep = selfMatched || childMatched;
-    if (keep) {
-      visible.add(nodeId);
-    }
-    return keep;
-  }
-
-  walk(scopeRootId);
-  visible.add(scopeRootId);
-  importanceVisibleNodeIds = visible;
-}
-
 function scopeChildren(nodeId: string): string[] {
   if (!map) {
     return [];
@@ -5509,7 +6466,7 @@ function scopeChildren(nodeId: string): string[] {
   if (!node) {
     return [];
   }
-  return scopedChildrenRaw(nodeId).filter((childId) => isNodeVisibleByImportance(childId));
+  return scopedChildrenRaw(nodeId);
 }
 
 function buildLinearFromScope(): { text: string; map: LinearLineMap[] } {
@@ -5943,7 +6900,7 @@ async function generateRelatedTopicsForSelectedNode(): Promise<void> {
     }
     setStatus(`AI suggested ${added} related topic(s).`);
     render();
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`AI topic suggestion failed (${(err as Error).message}).`, true);
   }
@@ -5974,7 +6931,7 @@ async function generateRapidActionForSelectedNode(
     const mergedSuffix = merged > 0 ? `, merged ${merged}` : "";
     setStatus(`${sourceLabel} generated ${added} node(s)${mergedSuffix}: ${label || action}`);
     render();
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`CAS generation failed: ${(err as Error).message}`, true);
   }
@@ -5996,7 +6953,7 @@ window.addEventListener("m3e:ai-append-topics", (event: Event) => {
     }
     setStatus(`AI applied ${added} topic node(s).`);
     render();
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`AI apply failed: ${(err as Error).message}`, true);
   }
@@ -6009,7 +6966,7 @@ window.addEventListener("m3e:ai-detail-active-node", () => {
 window.addEventListener("m3e:rapid-action-preview", (event: Event) => {
   const label = String((event as CustomEvent<{ label?: unknown }>).detail?.label || "").trim();
   setStatus(`Rapid: ${label || "action"}`);
-  board.focus();
+  board.focus({ preventScroll: true });
 });
 
 window.addEventListener("m3e:rapid-action-generate", (event: Event) => {
@@ -6057,13 +7014,16 @@ function syncLinearCaretToSelectedNode(): void {
   suppressLinearSelectionSync = false;
 }
 
-function renderLinearPanel(): void {
+function renderLinearPanel(action?: "load" | "reset"): void {
   if (linearPanelEl) {
     linearPanelEl.hidden = LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree";
   }
   if (LOCAL_FS_VIEW_MODE || viewState.surfaceViewMode !== "tree") {
     return;
   }
+  // Scene rendering and external updates may adjust visibility, but must never
+  // traverse the tree or rewrite the editor without an explicit panel action.
+  if (!action) return;
   if (!linearTextEl) {
     return;
   }
@@ -6079,24 +7039,22 @@ function renderLinearPanel(): void {
 
   const scopeRootId = currentLinearMemoScopeId();
   const templateText = buildLinearFromScope().text;
-  if (!(scopeRootId in linearNotesByScope)) {
+  if (action === "reset" || !(scopeRootId in linearNotesByScope)) {
     linearNotesByScope[scopeRootId] = templateText;
     syncLinearNotesToDocState();
   }
   const scopeMemo = linearNotesByScope[scopeRootId] || "";
   linearDirty = scopeMemo !== templateText;
 
-  if (document.activeElement !== linearTextEl) {
+  if (action === "reset" || linearDisplayedScopeId !== scopeRootId || document.activeElement !== linearTextEl) {
     linearTextEl.value = scopeMemo;
   }
+  linearDisplayedScopeId = scopeRootId;
   linearLineMap = [];
 
-  const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
-  if (linearMetaEl) {
-    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
-  }
+  updateLinearSaveStatus();
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
-  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = false;
 }
 
 function parseLinearText(text: string): LinearNodeDraft {
@@ -6213,6 +7171,10 @@ function applyLinearTextToScope(): void {
   if (!map) {
     return;
   }
+  if (linearDisplayedScopeId !== currentLinearMemoScopeId()) {
+    renderLinearPanel("load");
+    return;
+  }
   try {
     const parsed = parseLinearText(linearTextEl.value);
     const scopeRootId = normalizedCurrentScopeId();
@@ -6227,7 +7189,7 @@ function applyLinearTextToScope(): void {
     linearDirty = false;
     touchDocument();
     setStatus("Linear text applied to current scope.");
-    board.focus();
+    board.focus({ preventScroll: true });
   } catch (err) {
     setStatus(`Linear apply failed: ${(err as Error).message}`, true);
   }
@@ -6326,10 +7288,19 @@ function scatterSeedPositions(
   depthOf: Record<string, number>,
 ): Record<string, { x: number; y: number }> {
   const center = scatterSeedCenter();
+  const byDepth: Record<number, string[]> = {};
   const idSet = new Set(ids);
+  const peerIndices = new Map<string, number>();
+  ids.forEach((nodeId) => {
+    const depth = depthOf[nodeId] ?? 0;
+    if (!byDepth[depth]) byDepth[depth] = [];
+    peerIndices.set(nodeId, byDepth[depth]!.length);
+    byDepth[depth]!.push(nodeId);
+  });
+
+  const childLeafCount = new Map<string, number>();
   const visibleChildrenForSeed = (nodeId: string): string[] =>
     (state.nodes[nodeId]?.children || []).filter((childId) => idSet.has(childId));
-  const childLeafCount = new Map<string, number>();
   const leafCount = (nodeId: string): number => {
     const cached = childLeafCount.get(nodeId);
     if (cached != null) return cached;
@@ -6338,63 +7309,38 @@ function scatterSeedPositions(
     childLeafCount.set(nodeId, count);
     return count;
   };
-
-  const yByNode: Record<string, number> = {};
-  const assignBreadth = (nodeId: string, top: number): number => {
+  const angles: Record<string, number> = {};
+  const assignAngles = (nodeId: string, start: number, end: number): void => {
+    angles[nodeId] = (start + end) / 2;
     const children = visibleChildrenForSeed(nodeId);
-    if (!children.length) {
-      yByNode[nodeId] = top;
-      return top + scatterEdgeLength * 0.76;
-    }
-    let cursor = top;
+    if (!children.length) return;
+    const total = Math.max(1, children.reduce((sum, childId) => sum + leafCount(childId), 0));
+    let cursor = start;
     children.forEach((childId) => {
-      cursor = assignBreadth(childId, cursor);
+      const span = ((end - start) * leafCount(childId)) / total;
+      assignAngles(childId, cursor, cursor + span);
+      cursor += span;
     });
-    yByNode[nodeId] = (yByNode[children[0]!]! + yByNode[children[children.length - 1]!]!) / 2;
-    return cursor;
   };
-  const totalBreadth = leafCount(rootId) * scatterEdgeLength * 0.76;
-  assignBreadth(rootId, center.y - totalBreadth / 2);
+  assignAngles(rootId, -Math.PI * 0.96, Math.PI * 0.96);
 
-  const rankPeers: Record<number, string[]> = {};
+  const seeded: Record<string, { x: number; y: number }> = {
+    [rootId]: center,
+  };
   ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    if (!rankPeers[depth]) rankPeers[depth] = [];
-    rankPeers[depth]!.push(nodeId);
-  });
-
-  const seeded: Record<string, { x: number; y: number }> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const peers = rankPeers[depth] || [];
-    const peerIndex = Math.max(0, peers.indexOf(nodeId));
-    const siblingNudge = ((peerIndex % 3) - 1) * 12;
+    if (nodeId === rootId) return;
+    const depth = depthOf[nodeId] ?? 1;
+    const depthPeers = byDepth[depth] || [];
+    const peerIndex = peerIndices.get(nodeId) ?? 0;
+    const angle = angles[nodeId] ?? (peerIndex / Math.max(1, depthPeers.length)) * Math.PI * 2;
+    const ring = scatterEdgeLength * (1.08 + Math.max(0, depth - 1) * 0.82);
+    const stagger = ((peerIndex % 3) - 1) * 22;
     seeded[nodeId] = {
-      x: center.x + (depth - 1) * scatterEdgeLength * 1.26,
-      y: (yByNode[nodeId] ?? center.y) + siblingNudge,
+      x: center.x + Math.cos(angle) * ring,
+      y: center.y + Math.sin(angle) * ring * 0.74 + stagger,
     };
   });
-  if (ids.includes(rootId)) {
-    seeded[rootId] = {
-      x: center.x - scatterEdgeLength * 1.18,
-      y: yByNode[rootId] ?? center.y,
-    };
-  }
   return seeded;
-}
-
-function scatterApplyRankFlowSeed(state: AppState, rootId: string, ids: string[], depthOf: Record<string, number>): void {
-  const seeds = scatterSeedPositions(state, rootId, ids, depthOf);
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(nodeId, depth, ids.length);
-    const view = ensureSurfaceNodeView(nodeId);
-    const seed = seeds[nodeId];
-    if (!view || !seed) return;
-    view.x = Math.round(seed.x - radius);
-    view.y = Math.round(seed.y);
-    scatterVelocities.set(nodeId, { x: 0, y: 0 });
-  });
 }
 
 function scatterRenderNodeIdFor(state: AppState, nodeId: string, pos: Record<string, NodePosition>): string | null {
@@ -6419,25 +7365,6 @@ function scatterDisplayLabel(node: TreeNode): string {
   return label;
 }
 
-function seedMissingScatterPositions(): void {
-  if (!map || !currentSurfaceIsScatterMode()) {
-    return;
-  }
-  syncMapModelStateFromRuntime();
-  const rootId = currentScopeRootId();
-  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
-  const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const radius = scatterRadiusFor(nodeId, depth, ids.length);
-    const seed = seeds[nodeId];
-    const view = ensureSurfaceNodeView(nodeId);
-    if (!view || !seed) return;
-    if (!Number.isFinite(view.x)) view.x = Math.round(seed.x - radius);
-    if (!Number.isFinite(view.y)) view.y = Math.round(seed.y);
-  });
-}
-
 function scatterCircleGeometry(p: NodePosition): { cx: number; cy: number; r: number } {
   const r = Math.max(SCATTER_MIN_RADIUS, p.w / 2);
   return {
@@ -6451,243 +7378,98 @@ function scatterLineEndpoints(
   source: NodePosition,
   target: NodePosition,
 ): { x1: number; y1: number; x2: number; y2: number; mx: number; my: number } {
-  const s = scatterCircleGeometry(source);
-  const t = scatterCircleGeometry(target);
-  const dx = t.cx - s.cx;
-  const dy = t.cy - s.cy;
-  const len = Math.max(1, Math.hypot(dx, dy));
-  return {
-    x1: s.cx + (dx / len) * s.r,
-    y1: s.cy + (dy / len) * s.r,
-    x2: t.cx - (dx / len) * t.r,
-    y2: t.cy - (dy / len) * t.r,
-    mx: (s.cx + t.cx) / 2,
-    my: (s.cy + t.cy) / 2,
-  };
+  return disperseGuideEndpoints(source, target);
 }
 
 function scatterLabel(node: TreeNode): string {
-  return (uiLabel(node) || node.id || "").trim();
+  return (uiLabel(node) || "無題のノード").trim();
 }
 
-function collectScatterSimulationEdges(state: AppState, ids: string[]): ScatterSimEdge[] {
-  const idSet = new Set(ids);
-  const pairSeen = new Set<string>();
-  const edges: ScatterSimEdge[] = [];
-  const renderIdFor = (nodeId: string): string | null => {
-    if (idSet.has(nodeId)) return nodeId;
-    let current = state.nodes[nodeId]?.parentId ?? null;
-    while (current) {
-      if (idSet.has(current) && scatterNodeIsCollapsedGroup(state, current)) {
-        return current;
-      }
-      current = state.nodes[current]?.parentId ?? null;
-    }
-    return null;
-  };
-  const pushEdge = (sourceId: string, targetId: string, weight: number): void => {
-    if (!idSet.has(sourceId) || !idSet.has(targetId) || sourceId === targetId) return;
-    const key = `${sourceId}->${targetId}`;
-    if (pairSeen.has(key)) return;
-    pairSeen.add(key);
-    edges.push({ sourceId, targetId, weight });
-  };
-  ids.forEach((nodeId) => {
-    const parentId = state.nodes[nodeId]?.parentId;
-    if (parentId) {
-      pushEdge(parentId, nodeId, SCATTER_GUIDE_SPRING_WEIGHT);
-    }
-  });
-  Object.values(state.links || {}).forEach((rawLink) => {
-    const link = normalizeGraphLink(rawLink);
-    const sourceId = renderIdFor(link.sourceNodeId);
-    const targetId = renderIdFor(link.targetNodeId);
-    if (sourceId && targetId) {
-      pushEdge(sourceId, targetId, 1);
-    }
-  });
-  return edges;
+function commitDispersePositions(): void {
+  if (!map || !disperseForceDirty || isReadOnlyLink()) return;
+  const snapshot = disperseForce.snapshot();
+  if (!snapshot) return;
+  if (disperseForceUndoPending) { pushUndoSnapshot(); disperseForceUndoPending = false; }
+  for (const node of disperseForce.positions()) {
+    const views = disperseForceSurface?.nodeViews;
+    if (views) { const view = views[node.id] ||= {}; view.x = node.x - node.w / 2; view.y = node.y; }
+  }
+  disperseForceDirty = false;
+  map.savedAt = nowIso(); scheduleAutosave(); broadcastState();
 }
 
-function runScatterSimulation(iterations: number): boolean {
-  if (!map || !currentSurfaceIsScatterMode()) {
-    return false;
-  }
-  syncMapModelStateFromRuntime();
-  seedMissingScatterPositions();
-  const rootId = currentScopeRootId();
-  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
-  if (ids.length === 0) {
-    return false;
-  }
-  const surface = currentMapSurface();
-  const seeds = scatterSeedPositions(map.state, rootId, ids, depthOf);
-  const particles: Record<string, { cx: number; cy: number; r: number; vx: number; vy: number }> = {};
-  ids.forEach((nodeId) => {
-    const depth = depthOf[nodeId] ?? 0;
-    const r = scatterRadiusFor(nodeId, depth, ids.length);
-    const view = surface?.nodeViews?.[nodeId];
-    const seed = seeds[nodeId] || scatterSeedCenter();
-    const x = Number.isFinite(view?.x) ? Number(view!.x) : seed.x - r;
-    const y = Number.isFinite(view?.y) ? Number(view!.y) : seed.y;
-    const velocity = scatterVelocities.get(nodeId) || { x: 0, y: 0 };
-    particles[nodeId] = { cx: x + r, cy: y, r, vx: velocity.x, vy: velocity.y };
-  });
-  const simEdges = collectScatterSimulationEdges(map.state, ids);
-  const center = scatterSeedCenter();
-  let changed = false;
-  for (let step = 0; step < iterations; step += 1) {
-    const forces: Record<string, { x: number; y: number }> = {};
-    ids.forEach((nodeId) => {
-      forces[nodeId] = { x: 0, y: 0 };
-    });
-
-    for (let i = 0; i < ids.length; i += 1) {
-      for (let j = i + 1; j < ids.length; j += 1) {
-        const aId = ids[i]!;
-        const bId = ids[j]!;
-        const a = particles[aId]!;
-        const b = particles[bId]!;
-        let dx = a.cx - b.cx;
-        let dy = a.cy - b.cy;
-        let distSq = dx * dx + dy * dy;
-        if (distSq < 1) {
-          dx = seededJitter(aId, bId);
-          dy = seededJitter(bId, aId);
-          distSq = dx * dx + dy * dy;
-        }
-        const dist = Math.sqrt(Math.max(1, distSq));
-        const force = scatterRepulsion / Math.max(1600, distSq);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        forces[aId]!.x += fx;
-        forces[aId]!.y += fy;
-        forces[bId]!.x -= fx;
-        forces[bId]!.y -= fy;
-      }
-    }
-
-    simEdges.forEach((edge) => {
-      const a = particles[edge.sourceId];
-      const b = particles[edge.targetId];
-      if (!a || !b) return;
-      const dx = b.cx - a.cx;
-      const dy = b.cy - a.cy;
-      const dist = Math.max(1, Math.hypot(dx, dy));
-      const force = (dist - scatterEdgeLength) * SCATTER_SPRING_K * edge.weight;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      forces[edge.sourceId]!.x += fx;
-      forces[edge.sourceId]!.y += fy;
-      forces[edge.targetId]!.x -= fx;
-      forces[edge.targetId]!.y -= fy;
-    });
-
-    ids.forEach((nodeId) => {
-      const p = particles[nodeId]!;
-      const depth = depthOf[nodeId] ?? 0;
-      const centeringStrength = nodeId === rootId ? 0.12 : Math.max(0.012, 0.04 / (depth + 1));
-      forces[nodeId]!.x += (center.x - p.cx) * centeringStrength;
-      forces[nodeId]!.y += (center.y - p.cy) * centeringStrength;
-    });
-
-    ids.forEach((nodeId) => {
-      const p = particles[nodeId]!;
-      const f = forces[nodeId]!;
-      p.vx = (p.vx + (f.x * SCATTER_DT) / SCATTER_MASS) * SCATTER_DAMPING;
-      p.vy = (p.vy + (f.y * SCATTER_DT) / SCATTER_MASS) * SCATTER_DAMPING;
-      const speed = Math.hypot(p.vx, p.vy);
-      if (speed > SCATTER_MAX_V) {
-        p.vx = (p.vx / speed) * SCATTER_MAX_V;
-        p.vy = (p.vy / speed) * SCATTER_MAX_V;
-      }
-      const prevCx = p.cx;
-      const prevCy = p.cy;
-      p.cx = Math.max(80, p.cx + p.vx * SCATTER_DT);
-      p.cy = Math.max(80, p.cy + p.vy * SCATTER_DT);
-      if (Math.hypot(p.cx - prevCx, p.cy - prevCy) > 0.1) {
-        changed = true;
-      }
-    });
-  }
-
-  ids.forEach((nodeId) => {
-    const particle = particles[nodeId]!;
-    const view = ensureSurfaceNodeView(nodeId);
-    if (!view) return;
-    view.x = Math.round(particle.cx - particle.r);
-    view.y = Math.round(particle.cy);
-    scatterVelocities.set(nodeId, { x: particle.vx, y: particle.vy });
-  });
-  return changed;
-}
-
-function seededJitter(a: string, b: string): number {
-  let hash = 0;
-  const input = `${a}:${b}`;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash * 31 + input.charCodeAt(i)) | 0;
-  }
-  return ((hash % 200) - 100) / 10 || 1;
-}
-
-function runScatterReflow(iterations = 160, opts: { withUndo?: boolean; withTouch?: boolean } = {}): void {
-  if (!map || !currentSurfaceIsScatterMode()) {
-    return;
-  }
-  const withUndo = opts.withUndo ?? true;
-  const withTouch = opts.withTouch ?? true;
-  if (withUndo) {
-    pushUndoSnapshot();
-  }
-  syncMapModelStateFromRuntime();
-  const rootId = currentScopeRootId();
-  const { ids, depthOf } = collectScatterNodes(map.state, rootId);
-  scatterApplyRankFlowSeed(map.state, rootId, ids, depthOf);
-  runScatterSimulation(Math.min(iterations, 44));
-  if (withTouch) {
-    touchDocument();
-  } else {
-    render();
-  }
-  setStatus("Scatter rank-flow reflow applied.");
+function runScatterReflow(_iterations = 160, opts: { withUndo?: boolean; withTouch?: boolean } = {}): void {
+  if (!map || !currentSurfaceIsScatterMode() || isReadOnlyLink()) return;
+  if (opts.withUndo !== false) disperseForceUndoPending = true;
+  scatterAnimationEnabled = true; disperseFitAfterSettle = true;
+  render(); disperseForce.reheat(); startScatterAnimation(); syncScatterToolbarUi();
 }
 
 function startScatterAnimation(): void {
-  if (scatterAnimationFrame !== null || !scatterAnimationEnabled || !currentSurfaceIsScatterMode()) {
-    return;
-  }
+  if (scatterAnimationFrame !== null || !scatterAnimationEnabled || !currentSurfaceIsScatterMode() || document.hidden || isReadOnlyLink()) return;
+  if (disperseForce.snapshot()?.status !== "running") return;
   scatterAnimationFrame = requestAnimationFrame(tickScatterAnimation);
+}
+
+function presentDispersePositionFrame(snapshot: ForceSnapshot): boolean {
+  if (!isWebGLRendererActive() || !webglProjection || !webglLastSnapshot || !lastLayout || inlineEditor || orreryNetwork.enabled) {
+    disperseFastGate = `active=${isWebGLRendererActive()} snapshot=${Boolean(webglLastSnapshot)} editor=${Boolean(inlineEditor)} network=${orreryNetwork.enabled}`;
+    return false;
+  }
+  const next = dispersePositionFrame(webglLastSnapshot, lastLayout, snapshot);
+  if (!next) { disperseFastGate = `topology=${webglLastSnapshot.nodes.length}/${snapshot.nodes.length} links=${webglLastSnapshot.graphLinks.length}`; return false; }
+  disperseFastFrames++; disperseFastGate = "positions";
+  lastLayout = next.layout; webglLastSnapshot = next.scene;
+  contentMinX = next.scene.bounds.minX; contentMinY = next.scene.bounds.minY;
+  contentWidth = next.scene.bounds.maxX - contentMinX; contentHeight = next.scene.bounds.maxY - contentMinY;
+  webglProjection.setSnapshot(next.scene);
+  return true;
 }
 
 function tickScatterAnimation(): void {
   scatterAnimationFrame = null;
-  if (!scatterAnimationEnabled || !currentSurfaceIsScatterMode() || !map) {
-    return;
+  if (!scatterAnimationEnabled || !currentSurfaceIsScatterMode() || !map || document.hidden || isReadOnlyLink()) return;
+  const frameStarted = performance.now();
+  const next = disperseForce.step();
+  if (!next) return;
+  disperseForceDirty = true;
+  if (next.status !== "running" || !presentDispersePositionFrame(next)) render(true);
+  disperseFrameTimes.push(performance.now() - frameStarted);
+  if (disperseFrameTimes.length > 240) disperseFrameTimes.shift();
+  if (next.status === "running") startScatterAnimation();
+  else {
+    commitDispersePositions();
+    if (disperseFitAfterSettle) {
+      disperseFitAfterSettle = false;
+      const scope = currentScopeRootId();
+      // Fit the final painted snapshot after the retained renderer has accepted it.
+      requestAnimationFrame(() => { if (map && currentSurfaceIsScatterMode() && currentScopeRootId() === scope) fitDocument({ animate: false }); });
+    }
+    setStatus(next.status === "settled" ? "配置が安定しました。" : next.status === "blocked" ? "配置の重なりが残っています。" : "配置計算の上限で停止しました。");
   }
-  runScatterSimulation(1);
-  scheduleRender();
-  scatterAnimationFrame = requestAnimationFrame(tickScatterAnimation);
 }
 
 function stopScatterAnimation(saveCurrentPositions: boolean): void {
-  if (scatterAnimationFrame !== null) {
-    cancelAnimationFrame(scatterAnimationFrame);
-    scatterAnimationFrame = null;
-  }
-  if (saveCurrentPositions && map && currentSurfaceIsScatterMode()) {
-    map.savedAt = nowIso();
-    scheduleAutosave();
-    broadcastState();
-  }
+  if (scatterAnimationFrame !== null) cancelAnimationFrame(scatterAnimationFrame);
+  scatterAnimationFrame = null; disperseForce.pause();
+  if (saveCurrentPositions) commitDispersePositions();
+  else { disperseForceDirty = false; disperseForceUndoPending = false; }
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    releaseDisperseDrag();
+    if (scatterAnimationFrame !== null) cancelAnimationFrame(scatterAnimationFrame);
+    scatterAnimationFrame = null;
+  } else startScatterAnimation();
+});
+window.addEventListener("pagehide", () => stopScatterAnimation(true));
 
 type StructuredSurfaceMode = StructuredLayoutMode;
 
 interface StructuredLayoutConfig {
   mode: StructuredSurfaceMode;
-  density: LayoutDensity;
-  branchDirection: LayoutBranchDirection;
+  space: LayoutSpace;
   columnGap: number;
   siblingGap: number;
   sideGap: number;
@@ -6702,7 +7484,6 @@ interface StructuredLayoutConfig {
 function structuredSurfaceMode(): StructuredSurfaceMode | null {
   if (
     viewState.surfaceViewMode === "tree"
-    || viewState.surfaceViewMode === "mindmap"
     || viewState.surfaceViewMode === "logic-chart"
     || viewState.surfaceViewMode === "timeline"
   ) {
@@ -6713,25 +7494,22 @@ function structuredSurfaceMode(): StructuredSurfaceMode | null {
 
 function structuredLayoutConfig(
   mode: StructuredSurfaceMode,
-  density: LayoutDensity = viewState.surfaceLayoutDensity,
-  branchDirection: LayoutBranchDirection = viewState.surfaceBranchDirection,
+  space: LayoutSpace = viewState.surfaceSpace,
 ): StructuredLayoutConfig {
-  const compact = density === "compact";
-  const spacious = density === "spacious";
-  const mapLike = mode === "mindmap";
+  const tight = space === "tight";
+  const loose = space === "loose";
   return {
     mode,
-    density,
-    branchDirection,
-    columnGap: mapLike ? (compact ? 78 : spacious ? 148 : 112) : compact ? 48 : spacious ? 142 : 86,
-    siblingGap: mapLike ? (compact ? 18 : spacious ? 34 : 26) : compact ? 7 : spacious ? 24 : 14,
-    sideGap: mapLike ? (compact ? 64 : spacious ? 132 : 92) : compact ? 46 : spacious ? 110 : 72,
-    rootMaxWidth: mapLike ? (compact ? 220 : spacious ? 360 : 300) : compact ? 214 : spacious ? 320 : 260,
-    nodeMaxWidth: mapLike ? (compact ? 190 : spacious ? 300 : 240) : compact ? 156 : spacious ? 260 : 206,
-    leafMaxWidth: mapLike ? (compact ? 210 : spacious ? 320 : 260) : compact ? 194 : spacious ? 320 : 248,
-    rootMinWidth: mapLike ? (compact ? 112 : spacious ? 180 : 144) : compact ? 176 : spacious ? 280 : 220,
-    fontSize: mapLike ? (compact ? 16 : spacious ? 20 : 18) : compact ? 12 : spacious ? VIEWER_TUNING.typography.nodeFont : 13,
-    rootFontSize: mapLike ? (compact ? 18 : spacious ? 24 : 21) : compact ? 13 : spacious ? VIEWER_TUNING.typography.rootFont : 14,
+    space,
+    columnGap: tight ? 48 : loose ? 142 : 86,
+    siblingGap: tight ? 7 : loose ? 24 : 14,
+    sideGap: tight ? 46 : loose ? 110 : 72,
+    rootMaxWidth: tight ? 214 : loose ? 320 : 260,
+    nodeMaxWidth: tight ? 156 : loose ? 260 : 206,
+    leafMaxWidth: tight ? 194 : loose ? 320 : 248,
+    rootMinWidth: tight ? 176 : loose ? 280 : 220,
+    fontSize: tight ? 12 : loose ? VIEWER_TUNING.typography.nodeFont : 13,
+    rootFontSize: tight ? 13 : loose ? VIEWER_TUNING.typography.rootFont : 14,
   };
 }
 
@@ -6740,45 +7518,39 @@ function measureLayoutNode(state: AppState, nodeId: string, displayRootId: strin
   if (!node) {
     return { w: 120, h: VIEWER_TUNING.layout.leafHeight };
   }
-  if (nodeId === displayRootId) {
-    if (config.mode === "tree") {
-      const rootLabelMeasure = measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.rootFont);
-      return {
-        w: Math.max(280, rootLabelMeasure.w + 100),
-        h: Math.max(VIEWER_TUNING.layout.rootHeight, rootLabelMeasure.h + 8),
-      };
-    }
+  const agent = readAgentNode(node);
+  if (agent) return agentNodeMetric(agent);
+  const isRoot = nodeId === displayRootId;
+  if (!isLatexNode(node) && (config.mode === "tree" || explicitNodeLabelWidth(node) !== null)) {
+    const font = config.mode === "tree"
+      ? (isRoot ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont)
+      : (isRoot ? config.rootFontSize : config.fontSize);
+    return measureTextNode(node, font, isRoot);
+  }
+  if (isRoot) {
     return measureWrappedNodeLabel(uiLabel(node), config.rootFontSize, config.rootMaxWidth, {
       minWidth: config.rootMinWidth,
-      minHeight: config.mode === "mindmap" ? (config.density === "compact" ? 48 : config.density === "spacious" ? 66 : 56) : VIEWER_TUNING.layout.rootHeight,
-      padX: config.mode === "mindmap" ? (config.density === "compact" ? 34 : 44) : 34,
-      padY: config.mode === "mindmap" ? (config.density === "compact" ? 16 : 22) : 16,
+      minHeight: VIEWER_TUNING.layout.rootHeight,
+      padX: 34,
+      padY: 16,
     });
   }
   if (isLatexNode(node)) {
     const m = measureLatex(node.text);
     return { w: m.w, h: m.h };
   }
-  if (config.mode === "tree") {
-    return measureNodeLabel(uiLabel(node), VIEWER_TUNING.typography.nodeFont);
-  }
   const children = visibleChildren(node);
   const maxWidth = children.length === 0 ? config.leafMaxWidth : config.nodeMaxWidth;
   return measureWrappedNodeLabel(uiLabel(node), config.fontSize, maxWidth, {
-    minWidth: config.mode === "mindmap" ? (config.density === "compact" ? 72 : 88) : 78,
+    minWidth: 78,
     minHeight: compactNodeMinHeight(config),
-    padX: config.mode === "mindmap" ? (config.density === "compact" ? 28 : 36) : 18,
-    padY: config.mode === "mindmap" ? (config.density === "compact" ? 14 : 18) : 7,
+    padX: 18,
+    padY: 7,
   });
 }
 
 function compactNodeMinHeight(config: StructuredLayoutConfig): number {
-  if (config.mode === "mindmap") {
-    if (config.density === "compact") return 42;
-    if (config.density === "spacious") return 58;
-    return 50;
-  }
-  return config.density === "compact" ? 22 : VIEWER_TUNING.layout.leafHeight;
+  return config.space === "tight" ? 22 : VIEWER_TUNING.layout.leafHeight;
 }
 
 window.m3eLayout = (
@@ -6788,7 +7560,36 @@ window.m3eLayout = (
   options: LayoutOptions = {},
 ): LayoutResult => layoutPortLayout(graph, boxSizes, mode, options);
 
+const laneView = new LaneViewController({
+  state: () => map?.state ?? null, scopeRoot: currentScopeRootId, view: () => viewState,
+  measure: (id, root) => cachedLayoutNode(map!.state, id, root, structuredLayoutConfig("tree")),
+  cache: (key, compute) => activeLayoutCache.result.get("layout", key, compute),
+  render, fit: fitDocument, status: setStatus, apply: setSurfaceViewMode,
+  undo: pushUndoSnapshot, save: scheduleAutosave, writable: () => !isReadOnlyLink(),
+});
+
+const lineSelection = new EdgeGraphLinkSelectionAdapter({
+  state: () => map?.state ?? null, view: () => viewState, canvas, board, scope: currentScopeRootId, inScope: isNodeInScope,
+  label: id => map?.state.nodes[id] ? uiLabel(map.state.nodes[id]) : null,
+  single: setSingleSelection, link: id => { selectedGraphLinkId = id; viewState.selectedLinkId = id ?? ""; },
+  clearNodeActions: () => { viewState.reparentSourceIds.clear(); clearCutClipboard(); },
+  writable: () => !isReadOnlyLink(), undo: pushUndoSnapshot, touch: touchDocument,
+  port: cycleSelectedGraphLinkPort, editor: options => startIncomingEdgeLabelEdit("", options),
+  parentLabel: applyIncomingEdgeLabelEdit, deleteLink: deleteSelectedGraphLink,
+  render: scheduleRender, status: setStatus, editing: () => viewerKeyboardMode() === "edit",
+  owns: () => !grabSession && !viewState.panState && !viewState.pinchState && !linkPortDragState && !webglGraphLinkDragState && !viewState.dragState && !routingSwitcherOpen && !templateCompletionState && !entityListVisible && !conflictPanelVisible && !homeScreenVisible && !activeColorPalette && !linearAdjustMenuOpen,
+});
+
+function cachedLayoutNode(state: AppState, id: string, root: string, config: StructuredLayoutConfig): LayoutNodeMetric {
+  const node = state.nodes[id]!;
+  const key = JSON.stringify([uiLabel(node), node.text, isLatexNode(node), id === root,
+    visibleChildren(node).length === 0, explicitNodeLabelWidth(node), defaultWrapCharacters,
+    readAgentNode(node), config]);
+  return layoutMetricCache.get(id, key, () => measureLayoutNode(state, id, root, config));
+}
+
 function buildLayout(state: AppState): LayoutResult {
+  if (viewState.surfaceViewMode === "lane") return laneView.layout();
   const displayRootId = currentScopeRootId();
   const displayRootNode = state.nodes[displayRootId];
   const mode = surfaceKindForViewMode(viewState.surfaceViewMode);
@@ -6807,8 +7608,10 @@ function buildLayout(state: AppState): LayoutResult {
   collectVisible(displayRootId);
   const boxSizes: Record<string, LayoutNodeMetric> = {};
   Array.from(visibleNodeIds).forEach((nodeId) => {
-    boxSizes[nodeId] = measureLayoutNode(state, nodeId, displayRootId, structuredLayoutConfig(structuredMode));
+    if (mode === "system" && nodeId !== displayRootId) return;
+    boxSizes[nodeId] = cachedLayoutNode(state, nodeId, displayRootId, structuredLayoutConfig(structuredMode));
   });
+  layoutMetricCache.retain(visibleNodeIds);
 
   const publicOptions: PublicLayoutOptions = {
     direction: viewState.surfaceLayoutDirection,
@@ -6817,42 +7620,63 @@ function buildLayout(state: AppState): LayoutResult {
     link: { route: viewState.surfaceLinkRoute },
   };
   const options: LayoutOptions = {
+    treeCache: treeSpanCache,
     ...publicOptions,
     displayRootId,
     structuredMode,
-    density: viewState.surfaceLayoutDensity,
-    branchDirection: viewState.surfaceBranchDirection,
+    space: viewState.surfaceSpace,
   };
 
   if (mode === "scatter" && displayRootNode) {
     const surface = currentMapSurface();
-    const { ids: descendants, depthOf: scatterDepthOf } = collectScatterNodes(state, displayRootId);
-    visibleNodeIds.clear();
-    descendants.forEach((nodeId) => visibleNodeIds.add(nodeId));
-    descendants.forEach((nodeId) => {
-      const depth = scatterDepthOf[nodeId] ?? 0;
-      const radius = scatterRadiusFor(nodeId, depth, descendants.length);
-      boxSizes[nodeId] = { w: radius * 2, h: radius * 2 };
+    const all: string[] = [], collected = new Set<string>(), depthOf: Record<string, number> = {};
+    const visit = (id: string, depth: number): void => {
+      const node = state.nodes[id]; if (!node || collected.has(id)) return;
+      collected.add(id); all.push(id); depthOf[id] = depth;
+      if (id !== displayRootId && isScopePortalNode(node)) return;
+      for (const child of node.children || []) visit(child, depth + 1);
+    };
+    visit(displayRootId, 0);
+    const ids = all.filter(id => id !== displayRootId), idSet = new Set(ids);
+    const seeds = scatterSeedPositions(state, displayRootId, all, depthOf);
+    const metrics = new Map(ids.map(id => {
+      const radius = scatterRadiusFor(id, depthOf[id], ids.length), fontSize = scatterFontSizeFor(radius);
+      const agent = readAgentNode(state.nodes[id]);
+      const label = scatterDisplayLabel(state.nodes[id]);
+      const w = agent ? agentNodeMetric(agent).w : radius * 2 + 7 + textWidth(label.replace(/\n/g, " "), fontSize) + 8;
+      return [id, { radius, fontSize, w, h: agent ? agentNodeMetric(agent).h : Math.max(radius * 2, fontSize * 1.4), agent }];
+    }));
+    const nodes = ids.map(id => {
+      const m = metrics.get(id)!, saved = surface?.nodeViews?.[id], seed = seeds[id];
+      const x = Number.isFinite(saved?.x) ? Number(saved!.x) : seed.x - m.radius;
+      const y = Number.isFinite(saved?.y) ? Number(saved!.y) : seed.y;
+      return { id, label: uiLabel(state.nodes[id]), parentId: idSet.has(state.nodes[id].parentId || "") ? state.nodes[id].parentId! : undefined,
+        x: x + m.w / 2, y, w: m.w, h: m.h };
     });
-    options.surfaceNodeViews = surface?.nodeViews || {};
-    options.scatterCollapsedGroups = Object.fromEntries(descendants.map((nodeId) => [nodeId, scatterNodeIsCollapsedGroup(state, nodeId)]));
-    // Scatter layout reads persisted per-node view coordinates; scatter simulation writes them elsewhere.
-    options.scatter = { edgeLength: scatterEdgeLength };
-    return layoutPortLayout(
-      {
-        nodeIds: descendants,
-        childrenOf: (nodeId) => {
-          const node = state.nodes[nodeId];
-          return node && (nodeId === displayRootId || !viewState.collapsedIds.has(nodeId))
-            ? (node.children || []).filter((childId) => descendants.includes(childId))
-            : [];
-        },
-        graphLinks,
-      },
-      boxSizes,
-      mode,
-      options,
-    );
+    const links = Object.values(state.links || {}).filter(e => idSet.has(e.sourceNodeId) && idSet.has(e.targetNodeId))
+      .map(e => ({ id: e.id, source: e.sourceNodeId, target: e.targetNodeId }));
+    const key = `${LOCAL_MAP_ID || state.rootId}:${displayRootId}`;
+    if (key !== disperseForceKey) { commitDispersePositions(); disperseForceKey = key; disperseFitAfterSettle = true; }
+    disperseForceSurface = surface;
+    const hasSavedPositions = ids.every(id => Number.isFinite(surface?.nodeViews?.[id]?.x) && Number.isFinite(surface?.nodeViews?.[id]?.y));
+    if (hasSavedPositions) disperseFitAfterSettle = false;
+    const changed = disperseForce.sync(key, { nodes, links }, new Set([...viewState.collapsedIds].filter(id => idSet.has(id))), scatterAnimationEnabled && !isReadOnlyLink(), !hasSavedPositions && !dispersePauseOnRestore, { repulsion: scatterRepulsion / 100, length: scatterEdgeLength });
+    dispersePauseOnRestore = false;
+    const snapshot = disperseForce.snapshot()!;
+    activeLayoutCache.result.computed = changed ? 1 : 0;
+    if (changed) { disperseForceUndoPending = false; }
+    const pos: LayoutResult["pos"] = {};
+    for (const n of snapshot.nodes) {
+      const m = metrics.get(n.id)!;
+      pos[n.id] = { x: n.x - n.w / 2, y: n.y, w: m.agent ? m.w : m.radius * 2, h: m.agent ? m.h : m.radius * 2,
+        depth: depthOf[n.id], fontSize: m.fontSize, scatterCollapsedGroup: n.collapsed };
+    }
+    visibleNodeIds.clear(); snapshot.nodes.forEach(n => visibleNodeIds.add(n.id));
+    const result: LayoutResult = { pos, order: snapshot.nodes.map(n => n.id), groups: snapshot.groups.map(g => ({ ...g, memberIds: g.members })),
+      totalWidth: Math.max(800, ...snapshot.nodes.map(n => n.x + n.w / 2 + 80), ...snapshot.groups.map(g => g.x + g.w + 80)),
+      totalHeight: Math.max(600, ...snapshot.nodes.map(n => n.y + n.h / 2 + 80), ...snapshot.groups.map(g => g.y + g.h + 80)) };
+    startScatterAnimation();
+    return result;
   }
 
   if (mode === "system" && displayRootNode) {
@@ -6866,31 +7690,31 @@ function buildLayout(state: AppState): LayoutResult {
       visibleNodeIds.add(nodeId);
       const nodeStyles = effectiveNodeStyleAttrs(node);
       const label = diagramLabel(node, nodeStyles);
-      const baseMetric = isLatexNode(node)
-        ? measureLatex(node.text)
-        : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
       const previewLayout = buildFlowPreviewLayout(node);
-      boxSizes[nodeId] = previewLayout
-        ? {
-            w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
-            h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
-          }
-        : baseMetric;
+      const metricKey = JSON.stringify([label, isLatexNode(node), node.text, previewLayout?.totalWidth, previewLayout?.totalHeight]);
+      boxSizes[nodeId] = layoutMetricCache.get(nodeId, metricKey, () => {
+        const baseMetric = isLatexNode(node) ? measureLatex(node.text) : measureNodeLabel(label, VIEWER_TUNING.typography.nodeFont);
+        return previewLayout ? {
+          w: Math.max(baseMetric.w + 28, previewLayout.totalWidth),
+          h: Math.max(VIEWER_TUNING.layout.leafHeight + 18, previewLayout.totalHeight),
+        } : baseMetric;
+      });
       flowCells[nodeId] = { col: flowColOf(node, surfaceNodes.indexOf(nodeId)), row: flowRowOf(node, 0), isReference: isReferenceNode(node) };
     });
+    activeLayoutCache.previews.retain(new Set(surfaceNodes));
     options.flowCells = flowCells;
   }
 
-  return layoutPortLayout(
-    {
-      nodeIds: Array.from(visibleNodeIds),
-      childrenOf,
-      graphLinks,
-    },
-    boxSizes,
-    mode,
-    options,
-  );
+  // Compare only the visible layout inputs. Hidden scopes and unrelated links do
+  // not invalidate this result; aliases and System previews contribute metrics.
+  const nodeIds = Array.from(visibleNodeIds);
+  const localLinks = graphLinks.filter(link => visibleNodeIds.has(link.sourceNodeId) && visibleNodeIds.has(link.targetNodeId));
+  const { treeCache: _cache, ...layoutOptions } = options;
+  const key = JSON.stringify([mode, layoutOptions,
+    nodeIds.map(id => [id, childrenOf(id), boxSizes[id]]), localLinks]);
+  return activeLayoutCache.result.get("layout", key, () => layoutPortLayout(
+    { nodeIds, childrenOf, graphLinks: localLinks }, boxSizes, mode, options,
+  ));
 }
 
 function updateMapTitle(): void {
@@ -6912,9 +7736,15 @@ function scheduleRender(): void {
     return;
   }
   _renderScheduled = true;
+  board.dataset.renderPending = "true";
   requestAnimationFrame(() => {
     _renderScheduled = false;
-    render();
+    try {
+      render();
+    } finally {
+      // Preserve pending state if this render queued another frame.
+      if (!_renderScheduled) delete board.dataset.renderPending;
+    }
   });
 }
 
@@ -6936,12 +7766,12 @@ function scheduleApplyZoom(options: ViewportApplyOptions = {}): void {
 
 function layoutEdgePath(
   mode: StructuredSurfaceMode,
-  parent: NodePosition,
-  child: NodePosition,
+  parent: LayoutResult["pos"][string],
+  child: LayoutResult["pos"][string],
   route: SurfaceEdgeRoute = viewState.surfaceEdgeRoute,
 ): { d: string; labelX: number; labelY: number; sourceSide: EdgeAnchorSide; targetSide: EdgeAnchorSide } {
-  const parentRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(parent) : positionRect(parent);
-  const childRect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(child) : positionRect(child);
+  const parentRect = mode === "tree" ? treeBoxRect(parent) : positionRect(parent);
+  const childRect = mode === "tree" ? treeBoxRect(child) : positionRect(child);
   const routeStyle: EdgeRouteStyle = route === "straight" ? "line" : route === "elbow" ? "orthogonal" : "curve";
   const routed = routeParentChildEdge({
     relation: { kind: "parent-child", parentNodeId: "parent", childNodeId: "child" },
@@ -6990,7 +7820,35 @@ function graphLinkLabelPointForRoute(
   return graphLinkLabelPointWithPorts(source, target, waveOffset);
 }
 
-function render(): void {
+function render(incremental = false): void {
+  const metricStartedAt = performance.now();
+  try {
+    renderScene(incremental);
+  } finally {
+    renderUpdateMetrics.record("render", performance.now() - metricStartedAt);
+  }
+}
+
+function renderScene(incremental: boolean): void {
+  prepareConcretenessView();
+  board.dataset.concretenessLevel = String(viewState.concretenessLevel);
+  activeLayoutCache = scopeLayoutCaches.get(JSON.stringify([LOCAL_MAP_ID, map?.state.rootId, currentScopeRootId(), viewState.surfaceViewMode, viewState.concretenessLevel]));
+  layoutMetricCache = activeLayoutCache.metrics;
+  treeSpanCache = activeLayoutCache.spans;
+  layoutMetricCache.begin();
+  activeLayoutCache.result.begin();
+  treeSpanCache.computed = 0;
+  if (!laneView.prepare()) return;
+  const scope = map ? normalizedCurrentScopeId() : "";
+  if (scope !== fitCycleScope) {
+    resetFitCycle();
+    fitCycleScope = scope;
+  }
+  renderRevision++;
+  nodeSvgCache.begin(!incremental);
+  edgeSvgCache.begin(!incremental);
+  incrementalProjection = incremental;
+  renderedAgentNodeLod = agentNodeLod(viewState.zoom);
   updateModeBadge();
   if (!map) {
     syncThinkingModeUi();
@@ -7005,40 +7863,56 @@ function render(): void {
     return;
   }
 
-  rebuildImportanceVisibility();
   normalizeSelectionState();
 
-  const state = map.state;
+  const state = orreryNetwork.readView(map.state);
   if (!viewState.currentScopeRootId || !state.nodes[viewState.currentScopeRootId]) {
     viewState.currentScopeRootId = state.rootId;
   }
-  const layout = buildLayout(state);
+  const layout = orreryNetwork.extendLayout(buildLayout(map.state));
   lastLayout = layout;
-  visibleOrder = layout.order;
+  nodeDrawInputs.clear();
+  nodeAuxMarkup.clear();
+  visibleOrder = layout.order.filter((id) => !orreryNetwork.isRuntimeNode(id));
   _linearPanelLayoutDirty = true;
-  const displayRootId = currentScopeRootId();
+  const displayRootId = laneView.displayRootId();
   const displayRootNode = state.nodes[displayRootId];
   const flowSurface = currentSurfaceIsFlowMode();
   const scatterSurface = currentSurfaceIsScatterMode();
   const structuredMode = structuredSurfaceMode() || "tree";
-  const rootlessSurface = flowSurface || scatterSurface;
+  const rootlessSurface = flowSurface || scatterSurface || Boolean(layout.lane);
   const scatterNodeRenderable = (nodeId: string): boolean =>
     !scatterSurface || nodeId !== displayRootId;
 
   const pos = layout.pos;
+  lineSelection.begin(layout, `${LOCAL_MAP_ID}:${scope}:${viewState.concretenessLevel}`);
   let maxX = Math.max(VIEWER_TUNING.layout.minCanvasWidth, layout.totalWidth);
   let maxY = Math.max(
     VIEWER_TUNING.layout.minCanvasHeight,
     layout.totalHeight + VIEWER_TUNING.layout.topPad + VIEWER_TUNING.layout.canvasBottomPad
   );
   let defs = "<defs>";
-  let surfaceFrames = "";
+  let surfaceFrames = laneFrames(layout, escapeXml, viewState.selectedNodeIds);
+  let disperseGroups = "";
   let edges = "";
-  let scatterGuides = "";
   let graphLinks = "";
+  let graphLinkHits = "";
   let overlays = "";
+  const linePortOverlays: Array<{ id: string; svg: string }> = [];
   let annotations = "";
-  let nodes = "";
+  const nodeParts: Array<[string, string]> = [];
+  const edgeParts: Array<[string, string]> = [];
+
+  if (scatterSurface) {
+    layout.groups?.forEach((group) => {
+      if (!Number.isFinite(group.x + group.y + group.w + group.h) || group.w <= 0 || group.h <= 0) {
+        return;
+      }
+      disperseGroups += `<rect class="disperse-group" data-group-id="${escapeXmlAttr(group.id)}" x="${group.x}" y="${group.y}" width="${group.w}" height="${group.h}" rx="12" pointer-events="none" aria-hidden="true" />`;
+      maxX = Math.max(maxX, group.x + group.w + VIEWER_TUNING.layout.canvasRightPad);
+      maxY = Math.max(maxY, group.y + group.h + VIEWER_TUNING.layout.canvasBottomPad);
+    });
+  }
 
   let topArchCount = 0;
   let bottomArchCount = 0;
@@ -7083,20 +7957,6 @@ function render(): void {
     () => true,
     flowSurface ? PORTAL_BRACKET_ARM : 0,
   );
-
-  if (scatterSurface) {
-    visibleOrder.forEach((nodeId) => {
-      const node = state.nodes[nodeId];
-      const childPos = pos[nodeId];
-      const parentId = node?.parentId ?? null;
-      const parentPos = parentId ? pos[parentId] : null;
-      if (!node || !childPos || !parentId || !parentPos || !scatterNodeRenderable(nodeId) || !scatterNodeRenderable(parentId)) {
-        return;
-      }
-      const line = scatterLineEndpoints(parentPos, childPos);
-      scatterGuides += `<line class="scatter-guide" data-parent-node-id="${parentId}" data-child-node-id="${nodeId}" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}" />`;
-    });
-  }
 
   if (structuredMode === "timeline" && displayRootNode) {
     const rootPos = pos[displayRootId];
@@ -7146,15 +8006,14 @@ function render(): void {
     if (isParentChildPair(source, target)) {
       return;
     }
-    if (!isNodeInScope(source.id) || !isNodeInScope(target.id)) {
-      return;
-    }
-    if (!scatterSurface && (!isNodeVisibleByImportance(source.id) || !isNodeVisibleByImportance(target.id))) {
+    if ((!orreryNetwork.isRuntimeNode(source.id) && !isNodeInScope(source.id)) || (!orreryNetwork.isRuntimeNode(target.id) && !isNodeInScope(target.id))) {
       return;
     }
     if (sourceRenderId === targetRenderId) {
       return;
     }
+    // Lane draws only links between drawn grandchildren; lane names and root have positions for editing only.
+    if (layout.lane && !(layout.order.includes(sourceRenderId) && layout.order.includes(targetRenderId))) return;
     const sourceRenderNode = state.nodes[sourceRenderId] || source;
     const targetRenderNode = state.nodes[targetRenderId] || target;
     if (isParentChildPair(sourceRenderNode, targetRenderNode)) {
@@ -7163,6 +8022,7 @@ function render(): void {
     const surfaceKey = flowSurface
       ? `${sourceRenderId}->${targetRenderId}:${link.label || link.relationType || ""}`
       : link.id;
+    lineSelection.graph(surfaceKey, link, sourceRenderId, targetRenderId);
     if (renderedSurfaceLinks.has(surfaceKey)) {
       return;
     }
@@ -7198,8 +8058,8 @@ function render(): void {
     const pairOffsetIndex = renderedPairOffsets.get(pairKey) ?? 0;
     renderedPairOffsets.set(pairKey, pairOffsetIndex + 1);
 
-    const linkBoundsMode: LinkConnectionBoundsMode = structuredMode === "mindmap" ? "mindmap" : "box";
-    const { source: sourceEnd, target: targetEnd } = edgeEndsForGraphLink(sourcePos, targetPos, link, 0, linkBoundsMode);
+    const linkBoundsMode: LinkConnectionBoundsMode = structuredMode === "tree" ? "tree" : "box";
+    const { source: sourceEnd, target: targetEnd } = layout.lane ? laneLinkGeometry(layout, link) : edgeEndsForGraphLink(sourcePos, targetPos, link, 0, linkBoundsMode);
     // If the rendered node appears as a portal subsystem (`[[...]]`), push the edge end past the bracket glyph.
     const sourceIsPortal = isScopePortalNode(sourceRenderNode);
     const targetIsPortal = isScopePortalNode(targetRenderNode);
@@ -7222,7 +8082,7 @@ function render(): void {
       || (targetPos.depth === sourcePos.depth && targetY < sourceY);
     const isReverseFlow = flowSurface && !forward;
     const needsUArch = flowSurface && (depthBack || isReverseFlow);
-    const pairWaveOffset = pairOffsetIndex === 0
+    const pairWaveOffset = layout.lane || pairOffsetIndex === 0
       ? 0
       : Math.ceil(pairOffsetIndex / 2) * 26 * (pairOffsetIndex % 2 === 0 ? -1 : 1);
 
@@ -7294,17 +8154,20 @@ function render(): void {
 
     const selectedClass = viewState.selectedLinkId === link.id || selectedGraphLinkId === link.id ? " selected" : "";
     graphLinks += `<path class="graph-link${styleClass}${selectedClass}" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" stroke="${stroke}" d="${graphLinkPathD}"${markerStart}${markerEnd} />`;
-    graphLinks += `<path class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" d="${graphLinkPathD}" />`;
+    const hit = `<path class="graph-link-hit" data-link-id="${link.id}" data-edge-id="${link.id}" data-source-node-id="${sourceRenderId}" data-target-node-id="${targetRenderId}" d="${graphLinkPathD}" />`;
+    if (layout.lane) graphLinkHits += hit; else graphLinks += hit;
     if (label) {
       const labelWidth = Math.max(48, label.length * 7 + 18);
       const labelY = controlY - 10;
       graphLinks += `<rect class="graph-link-label-bg" data-link-id="${link.id}" x="${controlX - labelWidth / 2}" y="${labelY - 14}" width="${labelWidth}" height="19" rx="9.5" />`;
       graphLinks += `<text class="graph-link-label" data-link-id="${link.id}" x="${controlX}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>`;
     }
-    if (selectedGraphLinkId === link.id) {
-      overlays += renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode);
+    if (lineSelection.portControls(link.id)) {
+      linePortOverlays.push({ id: link.id, svg: renderGraphLinkPortControls(link, sourcePos, targetPos, sourceEnd, targetEnd, linkBoundsMode) });
     }
   });
+  // Later links can merge into a previously singleton presentation.
+  overlays += linePortOverlays.filter(item => lineSelection.portControls(item.id)).map(item => item.svg).join("");
   defs += "</defs>";
 
   function renderNodeComponent(
@@ -7325,55 +8188,17 @@ function render(): void {
   ): string {
     const parent = state.nodes[parentId];
     if (!parent) return "";
-
-    const childNodes = parent.children
-      .map((cid) => state.nodes[cid])
-      .filter((n): n is TreeNode => !!n);
-
-    const colSet = new Set<string>();
-    for (const child of childNodes) {
-      for (const key of Object.keys(child.attributes || {})) {
-        if (!key.startsWith("m3e:")) colSet.add(key);
-      }
-      if (child.details) colSet.add("_details");
-    }
-    const columns = Array.from(colSet).sort();
-
-    const esc = (s: string) => escapeXml(s);
+    const childNodes = directTableViewChildren(parent, state.nodes);
+    const tableModel = buildTableViewModel(childNodes);
 
     const densityClass = component.props.density === "compact"
       ? "m3e-component--density-compact"
       : "m3e-component--density-regular";
     const maxHeightClass = `m3e-component--max-${component.props.maxHeight}`;
 
-    let html = `<table class="m3e-table-view" data-component-kind="tabular"><thead><tr><th>Name</th>`;
-    for (const col of columns) {
-      html += `<th>${esc(col === "_details" ? "Details" : col)}</th>`;
-    }
-    html += `</tr></thead><tbody>`;
+    const html = renderTableViewHtml(tableModel);
 
-    if (childNodes.length === 0) {
-      html += `<tr class="m3e-table-empty-row"><td class="m3e-table-empty" colspan="${Math.max(1, columns.length + 1)}">No rows</td></tr>`;
-    } else {
-      for (const child of childNodes) {
-        const status = sanitizeStatus(child.attributes?.["m3e:status"]);
-        const statusClass = status ? ` class="status-${status}"` : "";
-        const childIdAttr = escapeXmlAttr(child.id);
-        html += `<tr data-node-id="${childIdAttr}"${statusClass}>`;
-        html += `<td class="m3e-table-name" data-node-id="${childIdAttr}">${esc(child.text || "(empty)")}</td>`;
-        for (const col of columns) {
-          if (col === "_details") {
-            html += `<td data-node-id="${childIdAttr}">${esc(child.details || "")}</td>`;
-          } else {
-            html += `<td data-node-id="${childIdAttr}">${esc(child.attributes?.[col] || "")}</td>`;
-          }
-        }
-        html += `</tr>`;
-      }
-    }
-    html += `</tbody></table>`;
-
-    const tableW = Math.max(columns.length * 150 + 200, 600);
+    const tableW = Math.max(tableModel.attributeColumns.length * 150 + (tableModel.includeDetails ? 150 : 0) + 200, 600);
     const maxHeightPx = component.props.maxHeight === "small" ? 360 : component.props.maxHeight === "large" ? 960 : 720;
     const rowHeight = component.props.density === "compact" ? 28 : 32;
     const tableH = Math.min((Math.max(1, childNodes.length) + 1) * rowHeight + 16, maxHeightPx);
@@ -7414,7 +8239,7 @@ function render(): void {
 
   function nodeDrawSurface(): NodeDrawSurface {
     return {
-      view: canonicalSurfaceViewName(scatterSurface ? "scatter" : structuredMode),
+      view: canonicalSurfaceViewName(layout.lane ? "lane" : scatterSurface ? "scatter" : structuredMode),
       structuredMode: canonicalSurfaceViewName(structuredMode),
       displayRootId,
       rootless: rootlessSurface,
@@ -7440,13 +8265,21 @@ function render(): void {
     const label = diagramLabel(node, nodeStyles);
     const aliasState = nodeDrawAliasState(node);
     const fontSize = p.fontSize ?? (treatAsRoot ? VIEWER_TUNING.typography.rootFont : VIEWER_TUNING.typography.nodeFont);
-    const content = isLatexNode(node)
+    const agent = readAgentNode(node);
+    const content: NodeDrawInput["content"] = agent ? {
+      kind: "agent", agent: {
+        card: agent, width: 320, lod: agentNodeLod(viewState.zoom), displayAt: Date.now(),
+        sprite: petCatalog.some(pet => pet.id === agent.icon)
+          ? resolvePetSprite(agent.icon, agent.lifecycleState, initialLifecycleAnimationMapping, true)
+          : undefined,
+      },
+    } : isLatexNode(node)
       ? { kind: "latexHtml" as const, ...renderLatexHtml(node.text) }
       : {
           kind: "plainLabel" as const,
           labelLines: p.labelLines || splitLabelLines(treatAsRoot ? (uiLabel(node) || "(empty)") : label),
           fontSize,
-          textAnchor: structuredMode === "mindmap" || treatAsRoot ? "middle" as const : "start" as const,
+          textAnchor: treatAsRoot ? "middle" as const : "start" as const,
         };
     return {
       node: {
@@ -7470,17 +8303,15 @@ function render(): void {
       position: p,
       style: nodeDrawStyleFromAttrs(nodeStyles),
       view: {
-        selected: viewState.selectedNodeIds.has(node.id),
-        primarySelected: node.id === viewState.selectedNodeId,
-        multiSelected: viewState.selectedNodeIds.has(node.id),
+        ...nodeSelectionView(node.id),
         linkSource: viewState.linkSourceNodeId === node.id,
         cutPending: viewState.clipboardState?.type === "cut" && viewState.clipboardState.sourceIds.has(node.id),
         reparentSource: viewState.reparentSourceIds.has(node.id),
         dragSource: Boolean(viewState.dragState && node.id === viewState.dragState.sourceNodeId),
         dropTarget: viewState.dragState?.proposal?.kind === "reparent" && node.id === viewState.dragState.proposal.parentId,
-        collapsedCount: viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
+        collapsedCount: layout.lane?.hiddenCounts[node.id] || (viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
           ? Math.max(1, countHiddenDescendants(node.id))
-          : undefined,
+          : undefined),
         lockedBy: nodeDrawLockState(node.id),
       },
       surface: nodeDrawSurface(),
@@ -7488,12 +8319,12 @@ function render(): void {
     };
   }
 
-  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: NodePosition, childIds: string[]): string {
+  function renderParentChildEdges(nodeId: string, nodeStyles: NodeStyleAttrs, p: LayoutResult["pos"][string], childIds: string[], indexOffset = 0): string {
     let result = "";
     childIds.forEach((childId, i) => {
       const child = pos[childId];
       if (!child) return;
-      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i) % VIEWER_TUNING.palette.edgeColors.length];
+      const defaultStroke = VIEWER_TUNING.palette.edgeColors[(p.depth + i + indexOffset) % VIEWER_TUNING.palette.edgeColors.length];
       const stroke = nodeStyles.edgeColor || defaultStroke;
       const edgeInline = buildEdgeStyle(nodeStyles);
       const edgePath = layoutEdgePath(structuredMode, p, child);
@@ -7512,8 +8343,8 @@ function render(): void {
   function renderFolderPreview(node: TreeNode, nodeStyles: NodeStyleAttrs, p: NodePosition): string {
     const previewLayout = buildFlowPreviewLayout(node);
     if (!previewLayout) return "";
-    const frameInsetY = structuredMode === "mindmap" ? 0 : 12;
-    const framePadX = structuredMode === "mindmap" ? 0 : 14;
+    const frameInsetY = 12;
+    const framePadX = 14;
     const frameH = Math.max(VIEWER_TUNING.layout.nodeHitHeight, p.h) - frameInsetY;
     const folderFrameX = p.x - framePadX;
     const folderFrameY = p.y - frameH / 2;
@@ -7574,30 +8405,51 @@ function render(): void {
     maxX = Math.max(maxX, p.x + p.w + VIEWER_TUNING.layout.nodeRightPad);
     maxY = Math.max(maxY, p.y + p.h + VIEWER_TUNING.layout.nodeBottomPad);
 
+    const runtimeCard = orreryNetwork.drawCard(nodeId, p);
+    if (runtimeCard !== null) {
+      nodeParts.push([`node:${nodeId}`, runtimeCard]);
+      return;
+    }
+
     const children = scatterSurface ? [] : visibleChildren(node);
     const nodeComponent = scatterSurface ? null : parseNodeComponent(node);
     const nodeStyles = effectiveNodeStyleAttrs(node);
-    if (!nodeComponent) {
-      edges += renderParentChildEdges(nodeId, nodeStyles, p, children);
+    if (!layout.lane && !nodeComponent) {
+      const geometry = (position: LayoutResult["pos"][string] | undefined) => position && [position.x, position.y, position.w, position.h, position.depth, position.branchSide, position.branchPortSide];
+      children.forEach((id, index) => {
+        lineSelection.parent(nodeId, id);
+        const edgeId = `edge:${nodeId}:${id}`;
+        const key = JSON.stringify([geometry(p), geometry(pos[id]), index, nodeStyles,
+          state.nodes[id]?.attributes, parentChildLinkLabels.get(parentChildEdgeKey(nodeId, id)), structuredMode, viewState.surfaceEdgeRoute]);
+        edgeParts.push([edgeId, edgeSvgCache.get(edgeId, key, () => renderParentChildEdges(nodeId, nodeStyles, p, [id], index))]);
+      });
     }
 
-    const output = renderNodeSvg(toNodeDrawInput(node, p, nodeStyles));
-    nodes += output.svg;
+    const drawInput = laneNodeInput(toNodeDrawInput(node, p, nodeStyles), Boolean(layout.lane));
+    nodeDrawInputs.set(node.id, drawInput);
+    const output = nodeSvgCache.get(nodeId, JSON.stringify(drawInput), () => renderNodeSvg(drawInput));
+    let nodeMarkup = output.svg;
     maxX = Math.max(maxX, output.bounds.maxX);
     maxY = Math.max(maxY, output.bounds.maxY);
 
-    if (!scatterSurface && isFolderNode(node)) {
-      nodes += renderFolderPreview(node, nodeStyles, p);
+    if (!scatterSurface && !nodeComponent && isFolderNode(node)) {
+      nodeMarkup += renderFolderPreview(node, nodeStyles, p);
     }
 
+    // In tree surfaces the display root comes through this same path, so a
+    // root-owned table is valid. Rootless surfaces intentionally omit their
+    // hidden display root and therefore cannot anchor a projection there.
     if (nodeComponent) {
-      nodes += renderNodeComponent(nodeComponent, nodeId, p);
-    } else {
-      children.forEach((cid) => drawNode(cid));
+      nodeMarkup += renderNodeComponent(nodeComponent, nodeId, p);
     }
+    nodeAuxMarkup.set(nodeId, nodeMarkup.slice(output.svg.length));
+    nodeParts.push([`node:${nodeId}`, nodeMarkup]);
+    if (!nodeComponent) children.forEach((cid) => drawNode(cid));
   }
 
-  if (scatterSurface) {
+  if (layout.lane) {
+    visibleOrder.forEach(drawNode);
+  } else if (scatterSurface) {
     visibleOrder.filter(scatterNodeRenderable).forEach((nodeId) => drawNode(nodeId));
   } else if (rootlessSurface && displayRootNode) {
     const surfaceNodeIds = visibleChildren(displayRootNode).filter((nodeId) => Boolean(pos[nodeId]));
@@ -7629,6 +8481,8 @@ function render(): void {
     drawNode(displayRootId);
   }
 
+  orreryNetwork.runtimeNodeIds.forEach(drawNode);
+
   if (viewState.surfaceViewMode === "tree" && refreshLinearPanelCanvasLayout()) {
     const panelRightPad = 640;
     const panelBottomPad = 80;
@@ -7636,11 +8490,12 @@ function render(): void {
     maxY = Math.max(maxY, _linearPanelAnchorCanvasY + _linearPanelCanvasHeight + panelBottomPad);
   }
 
+  let dragOverlay = "";
   if (viewState.dragState?.proposal?.kind === "reorder") {
     const proposal = viewState.dragState.proposal;
     const bounds = getReorderLineBounds(proposal.parentId, proposal.index, viewState.dragState.sourceNodeId);
     if (bounds) {
-      overlays += `<line class="reorder-line" x1="${bounds.x1}" y1="${proposal.lineY}" x2="${bounds.x2}" y2="${proposal.lineY}" />`;
+      dragOverlay = `<line class="reorder-line" x1="${bounds.x1}" y1="${proposal.lineY}" x2="${bounds.x2}" y2="${proposal.lineY}" />`;
     }
   }
 
@@ -7649,13 +8504,46 @@ function render(): void {
   maxX = Math.max(maxX, annotationRender.maxX);
   maxY = Math.max(maxY, annotationRender.maxY);
 
-  contentWidth = maxX;
-  contentHeight = maxY;
-  canvas.setAttribute("width", String(maxX));
-  canvas.setAttribute("height", String(maxY));
-  canvas.setAttribute("viewBox", `0 0 ${maxX} ${maxY}`);
-  (canvas as Element).innerHTML = `${defs}${surfaceFrames}${edges}${scatterGuides}${graphLinks}${overlays}${nodes}${annotations}`;
-  applyZoom();
+  const replaced = retainedSvgScene.update(canvas, [
+    ["defs", defs], ["frames", surfaceFrames], ["groups", disperseGroups],
+    ["edges", edges], ...edgeParts, ["guides", ""], ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, false),
+    ["overlays", overlays], ["drag-overlays", dragOverlay], ...nodeParts, ...laneLinkParts(Boolean(layout.lane), graphLinks, graphLinkHits, true), ["annotations", annotations],
+  ], !incremental);
+  lineSelection.finish();
+  viewerFilter.enterMap(LOCAL_MAP_ID);
+  viewerFilter.setScene(LOCAL_MAP_ID, filterSceneInput(canvas, state.nodes, state.links || {}));
+  applyViewFilter();
+  webglPaintedSelection = new Set(viewState.selectedNodeIds);
+  webglPaintedPrimary = viewState.selectedNodeId;
+  webglPaintedLink = selectedGraphLinkId;
+  paintedDragNodes.clear();
+  if (viewState.dragState) paintedDragNodes.add(viewState.dragState.sourceNodeId);
+  if (viewState.dragState?.proposal?.kind === "reparent") paintedDragNodes.add(viewState.dragState.proposal.parentId);
+  nodeSvgCache.retain(new Set(nodeDrawInputs.keys()));
+  edgeSvgCache.retain(new Set(edgeParts.map(([id]) => id)));
+  board.dataset.renderRevision = String(renderRevision);
+  board.dataset.editWork = JSON.stringify({ incremental, measured: layoutMetricCache.computed,
+    layouts: activeLayoutCache.result.computed, branches: treeSpanCache.computed, nodes: nodeSvgCache.computed, edges: edgeSvgCache.computed, fragments: replaced });
+  // Measure world geometry, including negative positions and curved paths.
+  // A hidden SVG cannot be measured reliably; it is hidden again by the
+  // projection before presentation, without changing saved node coordinates.
+  const wasHidden = canvas.hasAttribute("hidden");
+  canvas.removeAttribute("hidden");
+  const bounds = sceneWorldBounds(canvas.getBBox(), maxX, maxY);
+  if (wasHidden) canvas.setAttribute("hidden", "");
+  contentMinX = bounds.minX;
+  contentMinY = bounds.minY;
+  contentWidth = bounds.maxX - bounds.minX;
+  contentHeight = bounds.maxY - bounds.minY;
+  canvas.setAttribute("width", String(contentWidth));
+  canvas.setAttribute("height", String(contentHeight));
+  canvas.setAttribute("viewBox", `${contentMinX} ${contentMinY} ${contentWidth} ${contentHeight}`);
+  if (webglSurfaceSupported()) {
+    scheduleWebGLProjectionActivation();
+  } else {
+    deactivateWebGLProjection();
+    applyZoom();
+  }
 
   const version = map.version ?? "n/a";
   const savedAt = map.savedAt ?? "n/a";
@@ -7674,25 +8562,17 @@ function render(): void {
   const moveNodes = Array.from(viewState.reparentSourceIds)
     .map((nodeId) => state.nodes[nodeId])
     .filter((node): node is TreeNode => Boolean(node));
-  const dragProposal = viewState.dragState?.proposal;
-  let dropLabel = "none";
-  if (dragProposal?.kind === "reparent") {
-    dropLabel = `child of ${state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId}`;
-  } else if (dragProposal?.kind === "reorder") {
-    const parentText = state.nodes[dragProposal.parentId]?.text ?? dragProposal.parentId;
-    dropLabel = `reorder in ${parentText} @ ${dragProposal.index}`;
-  }
   syncThinkingModeUi();
-  syncNodeComponentUi();
   metaEl.dataset.selectedNodeId = selected?.id || "";
   metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
   metaEl.dataset.scopeId = normalizedCurrentScopeId();
   metaEl.dataset.mapId = LOCAL_MAP_ID;
-  metaEl.textContent = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()} | importance: ${importanceViewMode} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size}) | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"} | drop-target: ${dropLabel}`;
+  renderedMetaPrefix = `workspace: ${WORKSPACE_LABEL} (${WORKSPACE_ID}) | map: ${MAP_LABEL} (${LOCAL_MAP_ID}) | slug: ${MAP_SLUG} | cloud: ${CLOUD_MAP_ID} | version: ${version} | savedAt: ${savedAt} | nodes: ${nodeCount} | links: ${linkCount} | annotations: ${annotationCount} | scope: ${normalizedCurrentScopeId()}`;
+  renderedMetaSuffix = ` | link-source: ${linkSourceLabel} | move-node: ${moveNodes.length > 0 ? `${moveNodes.length} selected` : "none"}`;
+  syncNodeSelectionPresentation();
   updateScopeMeta();
   updateScopeSummary();
   updateMapTitle();
-  syncInlineEditorPosition();
   renderLinearPanel();
 }
 
@@ -7724,8 +8604,8 @@ interface LayoutDiagnosticIssue {
 interface LayoutDiagnosticResult {
   ok: boolean;
   mode: SurfaceViewMode;
-  density: SurfaceLayoutDensity;
-  direction: SurfaceBranchDirection;
+  space: SurfaceSpace;
+  direction: SurfaceLayoutDirection;
   labelCount: number;
   hitCount: number;
   issues: LayoutDiagnosticIssue[];
@@ -7842,7 +8722,7 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
   if (lastLayout && viewState.surfaceViewMode !== "scatter") {
     const mode = structuredSurfaceMode() || "tree";
     Object.entries(lastLayout.pos).forEach(([nodeId, p]) => {
-      const rect = mode === "tree" || mode === "mindmap" ? mindmapBoxRect(p) : renderedBoxRect(p);
+      const rect = mode === "tree" ? treeBoxRect(p) : renderedBoxRect(p);
       layoutEdgeAnchorBoxByNodeId.set(nodeId, {
         nodeId,
         text: map?.state.nodes[nodeId]?.text || "",
@@ -7860,11 +8740,11 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
     const sourceId = edgeEl.getAttribute("data-source-node-id") || "";
     const targetId = edgeEl.getAttribute("data-target-node-id") || "";
     const edgeId = edgeEl.getAttribute("data-edge-id") || edgeEl.getAttribute("data-link-id") || `edge-${index}`;
-    const isTreeEdge = edgeEl.classList.contains("edge-tree");
-    const sourceBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(sourceId) : null)
+    const isStructuredParentChildEdge = edgeEl.classList.contains("edge-tree");
+    const sourceBox = (isStructuredParentChildEdge ? layoutEdgeAnchorBoxByNodeId.get(sourceId) : null)
       || edgeAnchorBoxByNodeId.get(sourceId)
       || hitByNodeId.get(sourceId);
-    const targetBox = (isTreeEdge ? layoutEdgeAnchorBoxByNodeId.get(targetId) : null)
+    const targetBox = (isStructuredParentChildEdge ? layoutEdgeAnchorBoxByNodeId.get(targetId) : null)
       || edgeAnchorBoxByNodeId.get(targetId)
       || hitByNodeId.get(targetId);
     const endpoints = svgEdgeEndpoints(edgeEl);
@@ -7932,7 +8812,7 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
 
   if (map && lastLayout && viewState.surfaceViewMode !== "scatter") {
     const pos = lastLayout.pos;
-    const direction = viewState.surfaceBranchDirection;
+    const direction = viewState.surfaceLayoutDirection;
     Object.values(map.state.nodes).forEach((node) => {
       const parentId = node.parentId;
       if (!parentId) return;
@@ -7964,8 +8844,8 @@ function collectLayoutDiagnostics(): LayoutDiagnosticResult {
   return {
     ok: issues.length === 0,
     mode: viewState.surfaceViewMode,
-    density: viewState.surfaceLayoutDensity,
-    direction: viewState.surfaceBranchDirection,
+    space: viewState.surfaceSpace,
+    direction: viewState.surfaceLayoutDirection,
     labelCount: labels.length,
     hitCount: hits.length,
     issues,
@@ -8301,13 +9181,13 @@ function normalizeSelectionState(): void {
     return;
   }
 
-  if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId) || !isNodeVisibleByImportance(viewState.selectedNodeId)) {
+  if (!map.state.nodes[viewState.selectedNodeId] || !isNodeInScope(viewState.selectedNodeId)) {
     viewState.selectedNodeId = preferredSelectionForScope(normalizedCurrentScopeId());
   }
 
   const normalizedSelectedIds = new Set<string>();
   viewState.selectedNodeIds.forEach((nodeId) => {
-    if (map!.state.nodes[nodeId] && isNodeInScope(nodeId) && isNodeVisibleByImportance(nodeId)) {
+    if (map!.state.nodes[nodeId] && isNodeInScope(nodeId)) {
       normalizedSelectedIds.add(nodeId);
     }
   });
@@ -8352,19 +9232,137 @@ function normalizeSelectionState(): void {
   }
 }
 
+function syncSelectionMetadata(): void {
+  const selected = map?.state.nodes[viewState.selectedNodeId];
+  const proposal = viewState.dragState?.proposal;
+  const parentLabel = proposal ? (map?.state.nodes[proposal.parentId]?.text ?? proposal.parentId) : "";
+  const dropLabel = proposal?.kind === "reparent" ? `child of ${parentLabel}`
+    : proposal?.kind === "reorder" ? `reorder in ${parentLabel} @ ${proposal.index}` : "none";
+  metaEl.dataset.selectedNodeId = selected?.id || "";
+  metaEl.dataset.selectedNodeLabel = selected ? uiLabel(selected) : "";
+  metaEl.textContent = `${renderedMetaPrefix} | selected: ${selected ? uiLabel(selected) : "n/a"} (${viewState.selectedNodeIds.size})${renderedMetaSuffix} | drop-target: ${dropLabel}`;
+}
+
+let selectionRefreshFrame: number | null = null;
+function nodeSelectionView(id: string) {
+  return lineSelection.nodeView(id, {
+    selected: viewState.selectedNodeIds.has(id),
+    multiSelected: viewState.selectedNodeIds.has(id),
+    primarySelected: viewState.selectedNodeId === id,
+  });
+}
+
+/** Frame paint and its controls form one selection presentation transaction. */
+function syncNodeSelectionPresentation(): void {
+  syncSelectionMetadata();
+  syncNodeComponentUi();
+  syncInlineEditorPosition();
+  syncNodeResizeHandle();
+}
+
+/** Interaction state does not invalidate metrics, layout, edges or node content. */
+function refreshSvgNodeInteraction(id: string): void {
+  const previous = nodeDrawInputs.get(id);
+  // Lane names and the root heading are frame text, not node cards.
+  canvas.querySelector(`[data-lane-header][data-node-id="${CSS.escape(id)}"]`)?.classList.toggle("selected", viewState.selectedNodeIds.has(id));
+  if (!previous) return;
+  const input: NodeDrawInput = { ...previous, view: { ...previous.view,
+    ...nodeSelectionView(id),
+    dragSource: viewState.dragState?.sourceNodeId === id,
+    dropTarget: viewState.dragState?.proposal?.kind === "reparent" && viewState.dragState.proposal.parentId === id,
+  } };
+  retainedSvgScene.patch(`node:${id}`, renderNodeSvg(input).svg + (nodeAuxMarkup.get(id) || ""));
+  applyViewFilter();
+  nodeDrawInputs.set(id, input);
+}
+
+const paintedDragNodes = new Set<string>();
+const dragOverlayFrame = new FrameInvalidation(() => {
+  if (_renderScheduled) return;
+  if (isWebGLRendererActive()) {
+    syncWebGLInteraction();
+    syncSelectionMetadata();
+    return;
+  }
+  const next = new Set<string>();
+  const drag = viewState.dragState;
+  if (drag) next.add(drag.sourceNodeId);
+  if (drag?.proposal?.kind === "reparent") next.add(drag.proposal.parentId);
+  new Set([...paintedDragNodes, ...next]).forEach(refreshSvgNodeInteraction);
+  paintedDragNodes.clear(); next.forEach(id => paintedDragNodes.add(id));
+  let markup = "";
+  if (drag?.proposal?.kind === "reorder") {
+    const p = drag.proposal;
+    const bounds = getReorderLineBounds(p.parentId, p.index, drag.sourceNodeId);
+    if (bounds) markup = `<line class="reorder-line" x1="${bounds.x1}" y1="${p.lineY}" x2="${bounds.x2}" y2="${p.lineY}" />`;
+  }
+  retainedSvgScene.patch("drag-overlays", markup);
+  syncSelectionMetadata();
+});
+
+function scheduleSelectionRefresh(): void {
+  if (!lastLayout || webglPaintedLink !== selectedGraphLinkId) {
+    scheduleRender();
+    return;
+  }
+  if (selectionRefreshFrame !== null) return;
+  selectionRefreshFrame = requestAnimationFrame(() => {
+    selectionRefreshFrame = null;
+    if (_renderScheduled) return;
+    const webgl = isWebGLRendererActive() && webglProjection && webglLastSnapshot;
+    const changed = new Set<string>();
+    webglPaintedSelection.forEach((id) => { if (!viewState.selectedNodeIds.has(id)) changed.add(id); });
+    viewState.selectedNodeIds.forEach((id) => { if (!webglPaintedSelection.has(id)) changed.add(id); });
+    if (webglPaintedPrimary !== viewState.selectedNodeId) {
+      changed.add(webglPaintedPrimary); changed.add(viewState.selectedNodeId);
+    }
+    changed.delete("");
+    if (changed.size && !webgl) {
+      changed.forEach(refreshSvgNodeInteraction);
+    }
+    if (changed.size && webgl) {
+      // Retain layout, hit geometry and all unrelated GPU tiles. Only old/new
+      // selection paint changes; keep the canonical SVG's fill/font styling.
+      canvas.removeAttribute("hidden");
+      try {
+        changed.forEach((id) => {
+          retainedSvgScene.invalidate(`node:${id}`);
+          capturedNodeElements(canvas, id).forEach((element) => {
+            element.classList.toggle("selected", viewState.selectedNodeIds.has(id));
+            element.classList.toggle("multi-selected", viewState.selectedNodeIds.has(id));
+            element.classList.toggle("primary-selected", viewState.selectedNodeId === id);
+          });
+        });
+        applyViewFilter();
+        const paint = captureSvgPaintScene(canvas, changed, true);
+        const scene = webglProjection!.updateNodePaint(paint, changed);
+        if (scene) webglLastSnapshot = { ...webglLastSnapshot!, paintScene: scene };
+      } finally {
+        canvas.setAttribute("hidden", "");
+      }
+    }
+    webglPaintedSelection = new Set(viewState.selectedNodeIds);
+    webglPaintedPrimary = viewState.selectedNodeId;
+    syncWebGLInteraction();
+    syncNodeSelectionPresentation();
+    syncLinearCaretToSelectedNode();
+  });
+}
+
 function setSingleSelection(nodeId: string, renderNow = true): void {
   getNode(nodeId);
-  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+  if (!isNodeInScope(nodeId)) {
     return;
   }
   viewState.selectedLinkId = "";
   selectedGraphLinkId = null;
+  lineSelection.node(nodeId);
   viewState.selectedNodeId = nodeId;
   viewState.selectedNodeIds = new Set([nodeId]);
   viewState.selectionAnchorId = null;
   syncV4Panel(false);
   if (renderNow) {
-    scheduleRender();
+    scheduleSelectionRefresh();
   }
 }
 
@@ -8380,7 +9378,9 @@ function getVisibleRangeSelection(anchorId: string, targetId: string): Set<strin
 }
 
 function setRangeSelection(targetId: string): void {
+  lineSelection.node(targetId);
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   const anchorId = viewState.selectionAnchorId && map?.state.nodes[viewState.selectionAnchorId]
     ? viewState.selectionAnchorId
     : viewState.selectedNodeId;
@@ -8393,16 +9393,18 @@ function setRangeSelection(targetId: string): void {
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, targetId);
   viewState.selectedNodeIds.add(targetId);
   syncV4Panel(false);
-  scheduleRender();
+  scheduleSelectionRefresh();
 }
 
 function toggleNodeSelection(nodeId: string): void {
+  lineSelection.node(nodeId);
   viewState.selectedLinkId = "";
+  selectedGraphLinkId = null;
   viewState.selectionAnchorId = nodeId;
   if (viewState.selectedNodeIds.has(nodeId)) {
     if (viewState.selectedNodeIds.size === 1) {
       viewState.selectedNodeId = nodeId;
-      scheduleRender();
+      scheduleSelectionRefresh();
       return;
     }
     viewState.selectedNodeIds.delete(nodeId);
@@ -8410,14 +9412,14 @@ function toggleNodeSelection(nodeId: string): void {
       viewState.selectedNodeId = viewState.selectedNodeIds.values().next().value as string;
     }
     syncV4Panel(false);
-    scheduleRender();
+    scheduleSelectionRefresh();
     return;
   }
 
   viewState.selectedNodeIds.add(nodeId);
   viewState.selectedNodeId = nodeId;
   syncV4Panel(false);
-  scheduleRender();
+  scheduleSelectionRefresh();
 }
 
 function selectNode(nodeId: string): void {
@@ -8425,28 +9427,12 @@ function selectNode(nodeId: string): void {
 }
 
 function selectGraphLink(linkId: string, renderNow = true): void {
-  if (!map?.state.links?.[linkId]) {
-    return;
-  }
-  viewState.selectedLinkId = linkId;
-  selectedGraphLinkId = linkId;
-  viewState.selectedNodeIds = new Set();
-  viewState.selectionAnchorId = null;
-  viewState.reparentSourceIds.clear();
-  clearCutClipboard();
-  const link = map.state.links[linkId];
-  const source = map.state.nodes[link.sourceNodeId];
-  const target = map.state.nodes[link.targetNodeId];
-  setStatus(`Selected link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}. [ and ] adjust ports, Delete removes.`);
-  if (renderNow) {
-    scheduleRender();
-  }
-  board.focus();
+  lineSelection.click(linkId);
 }
 
 function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; range: boolean }): void {
   getNode(nodeId);
-  if (!isNodeInScope(nodeId) || !isNodeVisibleByImportance(nodeId)) {
+  if (!isNodeInScope(nodeId)) {
     return;
   }
   if (options.range) {
@@ -8480,12 +9466,13 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   if (scopeId === currentScopeId) {
     return;
   }
+  stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
   viewState.currentScopeRootId = scopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(scopeId);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(scopeId, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(scopeId, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(scopeId, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(scopeId);
   setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
   render();
@@ -8498,13 +9485,14 @@ function ExitScopeCommand(): void {
   if (!map || viewState.scopeHistory.length === 0) {
     return;
   }
+  stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   const exitedScopeId = normalizedCurrentScopeId();
   const previousScopeId = viewState.scopeHistory.pop()!;
   viewState.currentScopeId = map.state.nodes[previousScopeId] ? previousScopeId : map.state.rootId;
   viewState.currentScopeRootId = viewState.currentScopeId;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(viewState.currentScopeId);
-  viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(viewState.currentScopeId, viewState.surfaceViewMode);
-  viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(viewState.currentScopeId, viewState.surfaceViewMode);
+  viewState.surfaceSpace = inferSurfaceSpaceForScope(viewState.currentScopeId, viewState.surfaceViewMode);
+  viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(viewState.currentScopeId);
   const selectionAfterExit =
     map.state.nodes[exitedScopeId] && isNodeInScope(exitedScopeId)
       ? exitedScopeId
@@ -8527,48 +9515,8 @@ function escapeXmlAttr(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function mmRichContent(type: string, text: string): string {
-  return `<richcontent TYPE="${type}"><html><body>${escapeXmlAttr(text)}</body></html></richcontent>`;
-}
-
-function mmNodeToXml(node: TreeNode, state: AppState, indent: string): string {
-  if (node.nodeType === "alias") return "";
-
-  const attrs: string[] = [];
-  attrs.push(`TEXT="${escapeXmlAttr(node.text)}"`);
-  if (node.collapsed) attrs.push(`FOLDED="true"`);
-  if (node.link) attrs.push(`LINK="${escapeXmlAttr(node.link)}"`);
-
-  const parts: string[] = [];
-  if (node.details) parts.push(`${indent}  ${mmRichContent("DETAILS", node.details)}`);
-  if (node.note) parts.push(`${indent}  ${mmRichContent("NOTE", node.note)}`);
-
-  const attrEntries = Object.entries(node.attributes || {});
-  for (const [name, value] of attrEntries) {
-    parts.push(`${indent}  <attribute NAME="${escapeXmlAttr(name)}" VALUE="${escapeXmlAttr(value)}"/>`);
-  }
-
-  for (const childId of node.children) {
-    const child = state.nodes[childId];
-    if (child) {
-      const xml = mmNodeToXml(child, state, indent + "  ");
-      if (xml) parts.push(xml);
-    }
-  }
-
-  if (parts.length === 0) return `${indent}<node ${attrs.join(" ")}/>`;
-  return `${indent}<node ${attrs.join(" ")}>\n${parts.join("\n")}\n${indent}</node>`;
-}
-
-function treeToMm(state: AppState): string {
-  const root = state.nodes[state.rootId];
-  if (!root) throw new Error("Root node not found");
-  const body = mmNodeToXml(root, state, "  ");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<map version="freeplane 1.7.0">\n${body}\n</map>\n`;
-}
-
-function downloadMm(): void {
-  const state = map!.state;
+function downloadMm(rootId?: string): void {
+  const state = stateForExport(rootId);
   const xml = treeToMm(state);
   const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -8744,7 +9692,7 @@ function hideHomeScreen(): void {
   homeScreenEl.hidden = true;
   scopeNavBtn?.setAttribute("aria-expanded", "false");
   appEl?.classList.remove("home-active");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function toggleHomeScreen(): void {
@@ -8999,7 +9947,7 @@ function hideEntityListPanel(): void {
   entityListVisible = false;
   entityListPanelEl.hidden = true;
   stopPresenceWatch();
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function toggleEntityListPanel(): void {
@@ -9152,13 +10100,16 @@ function buildMapPath(nodeId: string): string | null {
 }
 
 function formatMapPath(pathNodes: TreeNode[]): string {
+  const configuredLabel = MAP_META[LOCAL_MAP_ID]?.label;
+  const rootLabel = map?.state.nodes[map.state.rootId]?.text?.trim();
+  const mapLabel = configuredLabel || rootLabel || MAP_LABEL;
   const parts = pathNodes
     .filter((node) => node.id !== map?.state.rootId)
     .map((node) => ({ label: uiLabel(node), isScopeRoot: isFolderNode(node) }));
   if (parts.length === 0) {
-    return `M:(${MAP_LABEL})> root`;
+    return `M:(${mapLabel})> root`;
   }
-  let path = `M:(${MAP_LABEL})> ${parts[0].label}`;
+  let path = `M:(${mapLabel})> ${parts[0].label}`;
   for (let i = 1; i < parts.length; i++) {
     path += parts[i].isScopeRoot ? " >> " : " > ";
     path += parts[i].label;
@@ -9168,19 +10119,15 @@ function formatMapPath(pathNodes: TreeNode[]): string {
 
 async function copyMapPathToClipboard(nodeId: string): Promise<void> {
   const path = buildMapPath(nodeId);
-  if (!path) return;
-  try {
-    await navigator.clipboard.writeText(path);
-  } catch {
-    // Fallback: textarea + execCommand for older contexts
-    const ta = document.createElement("textarea");
-    ta.value = path;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand("copy"); } finally { ta.remove(); }
+  if (!path) {
+    setStatus("Failed to copy node path: node not found.", true);
+    return;
   }
+  if (await copyTextToSystemClipboard(path)) {
+    setStatus(`Path copied: ${path}`);
+    return;
+  }
+  setStatus("Failed to copy node path to system clipboard.", true);
 }
 
 function showScopeLockContextMenu(x: number, y: number, scopeId: string): void {
@@ -9400,11 +10347,11 @@ function getOwnedScopeLock(scopeId: string): ClientScopeLock | null {
   return lock;
 }
 
-function cloneNodeForCollab(nodeId: string): TreeNode | null {
+function cloneNodeForCollab(nodeId: string, source: AppState): TreeNode | null {
   if (!map) {
     return null;
   }
-  const node = map.state.nodes[nodeId];
+  const node = source.nodes[nodeId];
   if (!node) {
     return null;
   }
@@ -9420,6 +10367,7 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
   if (!map || !map.state.nodes[scopeId]) {
     return changes;
   }
+  const source = canonicalMapState();
   const stack = [scopeId];
   const seen = new Set<string>();
   while (stack.length > 0) {
@@ -9428,7 +10376,7 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
       continue;
     }
     seen.add(nodeId);
-    const snapshot = cloneNodeForCollab(nodeId);
+    const snapshot = cloneNodeForCollab(nodeId, source);
     if (!snapshot) {
       continue;
     }
@@ -9443,13 +10391,16 @@ function collectScopeNodeChanges(scopeId: string): Record<string, TreeNode> {
 }
 
 async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
+  if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map || !collabToken || !collabEntityId) {
     return false;
   }
+  const revision = localSaveRevision;
   const mapWithVersion = map as SavedMap & { mapVersion?: number };
-  const scopeId = currentScopeRootId();
+  const scopeId = viewState.concretenessLevel === 0 ? currentScopeRootId() : canonicalMapState().rootId;
   const lock = getOwnedScopeLock(scopeId);
   if (!lock) {
+    showLocalSaveFailure("scope lock unavailable");
     return false;
   }
   const nodes = collectScopeNodeChanges(scopeId);
@@ -9512,17 +10463,22 @@ async function pushCurrentScopeToCollab(showStatus = false): Promise<boolean> {
           return false;
         }
       }
+      if (payload.error !== "Version conflict.") {
+        showLocalSaveFailure(payload.error === "Request body too large." ? "too large" : "server error");
+      }
       if (showStatus) {
         setStatus(`Collab push failed: ${payload.error || "Unknown error"}`, true);
       }
       return false;
     }
     mapWithVersion.mapVersion = payload.version;
+    markLocalSaveSucceeded(revision);
     if (showStatus) {
       setStatus(`Collab push completed (${payload.applied.length} nodes).`);
     }
     return true;
   } catch (err) {
+    showLocalSaveFailure("network error");
     if (showStatus) {
       setStatus(`Collab push failed: ${(err as Error).message}`, true);
     }
@@ -10018,7 +10974,7 @@ function hideTemplateCompletion(): void {
   document.removeEventListener("mousedown", templateCompletionState.closeHandler, true);
   templateCompletionState.root.remove();
   templateCompletionState = null;
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function cloneTemplateNodeSubtree(sourceId: string, parentId: string): number {
@@ -10197,7 +11153,7 @@ function showTemplateCompletion(): void {
   };
   renderTemplateCompletion();
   setTimeout(() => document.addEventListener("mousedown", closeHandler, true), 0);
-  input.focus();
+  input.focus({ preventScroll: true });
   input.select();
 }
 
@@ -10296,7 +11252,7 @@ function toggleSelectedTabularComponent(): void {
     delete attrs[LEGACY_VIEW_TYPE_ATTR];
     touchDocument();
     setStatus("Tabular component removed.");
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -10304,7 +11260,7 @@ function toggleSelectedTabularComponent(): void {
   delete attrs[LEGACY_VIEW_TYPE_ATTR];
   touchDocument();
   setStatus("Tabular component enabled.");
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 // ---- Context Menu ----
@@ -10331,14 +11287,7 @@ function showContextMenu(x: number, y: number, items: { label: string; danger?: 
   document.body.appendChild(menu);
   activeContextMenu = menu;
 
-  // Close on outside click
-  const closeHandler = (e: MouseEvent) => {
-    if (!menu.contains(e.target as Node)) {
-      hideContextMenu();
-      document.removeEventListener("click", closeHandler, true);
-    }
-  };
-  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
+  closeOnOutsideClick(menu, hideContextMenu);
 }
 
 function hideContextMenu(): void {
@@ -10468,7 +11417,7 @@ function editEdgeLabelForSelectedNode(): void {
     setStatus("Edge label cleared.");
   }
   touchDocument();
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function hideColorPalette(): void {
@@ -10706,7 +11655,7 @@ function hideConflictPanel(): void {
   if (conflictUseRemoteBtn) {
     conflictUseRemoteBtn.textContent = "Use Remote";
   }
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 if (conflictCloseBtn) {
@@ -10744,6 +11693,7 @@ if (conflictUseRemoteBtn) {
 
 function addChild(): void {
   const parentId = viewState.selectedNodeId;
+  const before = nodeViewportAnchor(parentId);
   const parent = getNode(parentId);
   if (isAliasNode(parent)) {
     setStatus("Alias nodes cannot own children.", true);
@@ -10756,13 +11706,15 @@ function addChild(): void {
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
   setSingleSelection(id, false);
-  touchDocument();
+  touchDocument(true);
+  preserveNodeViewportAnchor(parentId, before);
   nudgeActiveNodeIntoView({ animate: false });
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function addSibling(): void {
   const node = getNode(viewState.selectedNodeId);
+  const before = nodeViewportAnchor(node.id);
   if (node.parentId === null) {
     addChild();
     return;
@@ -10774,9 +11726,10 @@ function addSibling(): void {
   map!.state.nodes[id] = createNodeRecord(id, parent.id, "");
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
-  touchDocument();
+  touchDocument(true);
+  preserveNodeViewportAnchor(node.id, before);
   nudgeActiveNodeIntoView({ animate: false });
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function selectedLinkableNode(): TreeNode | null {
@@ -10908,7 +11861,7 @@ function applyMarkedLink(): void {
   viewState.linkSourceNodeId = "";
   touchDocument();
   setStatus(`Linked ${uiLabel(source)} -> ${uiLabel(target)}.`);
-  board.focus();
+  board.focus({ preventScroll: true });
 }
 
 function createGraphLinkBetween(sourceId: string, targetId: string): boolean {
@@ -10969,8 +11922,8 @@ function addScatterNodeAt(clientX: number, clientY: number): void {
   }
   setSingleSelection(id, false);
   touchDocument();
-  setStatus("Scatter node added.");
-  board.focus();
+  setStatus("Disperse node added.");
+  board.focus({ preventScroll: true });
 }
 
 function deleteScatterEdge(linkId: string): void {
@@ -10996,16 +11949,46 @@ function colorizeScatterEdge(linkId: string): void {
   setStatus("Edge color updated.");
 }
 
-function setGraphLinkEndpointPort(linkId: string, endpoint: LinkEndpointKind, side: EdgeAnchorSide, withUndo = true): boolean {
+function setGraphLinkEndpointPort(
+  linkId: string,
+  endpoint: LinkEndpointKind,
+  side: EdgeAnchorSide,
+  withUndo = true,
+  replacementNodeId?: string,
+): boolean {
   if (!map?.state.links?.[linkId]) {
     return false;
+  }
+  const current = normalizeGraphLink(map.state.links[linkId]!);
+  const nextSourceNodeId = endpoint === "source" ? (replacementNodeId || current.sourceNodeId) : current.sourceNodeId;
+  const nextTargetNodeId = endpoint === "target" ? (replacementNodeId || current.targetNodeId) : current.targetNodeId;
+  if (replacementNodeId) {
+    const replacementNode = map.state.nodes[replacementNodeId];
+    if (!replacementNode || isAliasNode(replacementNode)) {
+      setStatus("GraphLink endpoints must be existing non-alias nodes.", true);
+      return false;
+    }
+    if (nextSourceNodeId === nextTargetNodeId) {
+      setStatus("Graph links cannot connect a node to itself.", true);
+      return false;
+    }
+    const duplicate = Object.values(map.state.links || {}).find((candidate) =>
+      candidate.id !== linkId &&
+      candidate.sourceNodeId === nextSourceNodeId &&
+      candidate.targetNodeId === nextTargetNodeId,
+    );
+    if (duplicate) {
+      setStatus("That GraphLink already exists.", true);
+      return false;
+    }
   }
   if (withUndo) {
     pushUndoSnapshot();
   }
-  const current = normalizeGraphLink(map.state.links[linkId]!);
   map.state.links[linkId] = normalizeGraphLink({
     ...current,
+    sourceNodeId: nextSourceNodeId,
+    targetNodeId: nextTargetNodeId,
     sourcePort: endpoint === "source" ? side : current.sourcePort,
     targetPort: endpoint === "target" ? side : current.targetPort,
   });
@@ -11027,7 +12010,7 @@ function setGraphLinkEndpointPortNearPointer(linkId: string, endpoint: LinkEndpo
     return false;
   }
   const point = clientToCanvasPoint(clientX, clientY);
-  const linkBoundsMode: LinkConnectionBoundsMode = structuredSurfaceMode() === "mindmap" ? "mindmap" : "box";
+  const linkBoundsMode: LinkConnectionBoundsMode = structuredSurfaceMode() === "tree" ? "tree" : "box";
   const side = nearestEdgePortSideForGraphLinkEdit(linkConnectionRect(pos, linkBoundsMode), point);
   return setGraphLinkEndpointPort(linkId, endpoint, side, false);
 }
@@ -11041,6 +12024,12 @@ function scatterDragStartViews(nodeIds: string[]): Record<string, { x: number; y
     }
   });
   return starts;
+}
+
+function applyScatterDragDelta(
+  _sourceRootIds: string[], _startViews: Record<string, { x: number; y: number }>, delta: { x: number; y: number },
+): void {
+  disperseForce.moveDrag(delta.x, delta.y); disperseForceDirty = true; startScatterAnimation();
 }
 
 function deleteSelectedGraphLink(): boolean {
@@ -11060,7 +12049,7 @@ function deleteSelectedGraphLink(): boolean {
   selectedGraphLinkId = null;
   touchDocument();
   flushAutosaveNow();
-  setStatus(`Deleted link: ${source ? uiLabel(source) : link.sourceNodeId} -> ${target ? uiLabel(target) : link.targetNodeId}.`);
+  setStatus(`Deleted link: ${source ? uiLabel(source) || "名称未設定" : "参照先がありません"} -> ${target ? uiLabel(target) || "名称未設定" : "参照先がありません"}.`);
   return true;
 }
 
@@ -11099,7 +12088,7 @@ function cycleSelectedGraphLinkPort(endpoint: "source" | "target"): boolean {
 
 function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | "alias-label" | "target-text" = "node-text"): boolean {
   const node = getNode(nodeId);
-  const viewportCenterBefore = nodeViewportCenter(nodeId);
+  const viewportAnchorBefore = nodeViewportAnchor(nodeId);
   const next = String(nextRaw || "").trim();
   if (next === "") {
     setStatus("Node text cannot be empty.", true);
@@ -11120,8 +12109,9 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
       latexHtmlCache.delete(target.text);
       target.text = next;
       syncAliasDisplayForTarget(target.id);
-      touchDocument();
-      preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+      touchDocument(true);
+      preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+      nudgeNodeIntoView(nodeId, { animate: false });
       return true;
     }
     if ((node.aliasLabel || node.text) === next) {
@@ -11130,8 +12120,9 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     pushUndoSnapshot();
     node.aliasLabel = next;
     node.text = next;
-    touchDocument();
-    preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+    touchDocument(true);
+    preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+    nudgeNodeIntoView(nodeId, { animate: false });
     return true;
   }
   if (mode === "node-text") {
@@ -11154,8 +12145,9 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
     node.link = applied.link;
     node.attributes = applied.attributes;
     syncAliasDisplayForTarget(node.id);
-    touchDocument();
-    preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+    touchDocument(true);
+    preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+    nudgeNodeIntoView(nodeId, { animate: false });
     return true;
   }
   if (node.text === next) {
@@ -11166,8 +12158,9 @@ function applyNodeTextEdit(nodeId: string, nextRaw: string, mode: "node-text" | 
   latexHtmlCache.delete(node.text);
   node.text = next;
   syncAliasDisplayForTarget(node.id);
-  touchDocument();
-  preserveNodeViewportCenter(nodeId, viewportCenterBefore);
+  touchDocument(true);
+  preserveNodeViewportAnchor(nodeId, viewportAnchorBefore);
+  nudgeNodeIntoView(nodeId, { animate: false });
   return true;
 }
 
@@ -11180,23 +12173,110 @@ function stringRecordEquals(left: Record<string, string>, right: Record<string, 
   return leftKeys.every((key) => left[key] === right[key]);
 }
 
+function viewerKeyboardMode(): ViewerKeyboardMode {
+  // The edit session owns the mode, not activeElement or renderer readiness.
+  return inlineEditor || inlineEdgeLabelEditor ? "edit" : grabSession ? "grab" : "navigate";
+}
+
+function syncViewerKeyboardMode(): void {
+  board.dataset.keyboardMode = viewerKeyboardMode();
+}
+
+function beginGrab(): void {
+  if (!map || grabSession || isReadOnlyLink()) return;
+  const roots = getMovableSelectionRoots();
+  const laneGrid = currentLaneGrid();
+  const movable = viewState.surfaceViewMode === "tree" || Boolean(laneGrid?.lanes.some((ids) => ids.includes(viewState.selectedNodeId)));
+  if (!movable || roots.length !== 1 || roots[0] !== viewState.selectedNodeId || roots[0] === currentScopeRootId()) {
+    setStatus("Grab: select one movable subtree in Tree, or one item in Lane.", true);
+    return;
+  }
+  cancelStructureNodeDrag();
+  cancelCameraMotion();
+  grabSession = {
+    map, sourceId: roots[0],
+    before: { state: cloneState(canonicalMapState()),
+    concretenessLevel: viewState.concretenessLevel, scopeRootId: currentScopeRootId(), collapsedIds: Array.from(viewState.collapsedIds), selectedNodeId: viewState.selectedNodeId,
+      selectedNodeIds: Array.from(viewState.selectedNodeIds), selectionAnchorId: viewState.selectionAnchorId },
+    collapsedIds: new Set(viewState.collapsedIds), pendingSave: autosaveTimer !== null, moved: false,
+  };
+  if (autosaveTimer !== null) clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  syncViewerKeyboardMode();
+  setStatus("Grab · arrows move the subtree · release M to finish · Escape to cancel");
+}
+
+function moveGrab(key: string): void {
+  const grab = grabSession;
+  if (!grab || !map || map !== grab.map || !lastLayout) return;
+  const laneGrid = currentLaneGrid();
+  const proposal = laneGrid && lastLayout.lane
+    ? laneGrabMove(laneGrid, lastLayout.pos, grab.sourceId, lastLayout.lane.direction, key)
+    : treeGrabMove(map.state.nodes, lastLayout.pos, grab.sourceId, currentScopeRootId(), viewState.surfaceLayoutDirection, key);
+  if (!proposal || !applyMoveByParentAndIndex(grab.sourceId, proposal.parentId, proposal.index, true,
+    { withUndo: false, withTouch: false, withStatus: false })) return;
+  grab.moved = true;
+  viewState.selectedNodeId = grab.sourceId;
+  viewState.selectedNodeIds = new Set([grab.sourceId]);
+  render();
+  setStatus("Grab · arrows move the subtree · release M to finish · Escape to cancel");
+}
+
+function finishGrab(commit: boolean): void {
+  const grab = grabSession;
+  if (!grab) return;
+  grabSession = null;
+  syncViewerKeyboardMode();
+  if (map !== grab.map) return;
+  if (!commit) {
+    restoreConcretenessSnapshot(grab.before);
+    viewState.collapsedIds = grab.collapsedIds;
+    viewState.selectedNodeId = grab.before.selectedNodeId;
+    viewState.selectedNodeIds = new Set(grab.before.selectedNodeIds);
+    viewState.selectionAnchorId = grab.before.selectionAnchorId;
+    render();
+    if (grab.pendingSave) scheduleAutosave();
+    setStatus("Grab canceled.");
+    return;
+  }
+  if (grab.moved && JSON.stringify(canonicalMapState()) !== JSON.stringify(grab.before.state)) {
+    undoStack.push(grab.before);
+    if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
+    redoStack = [];
+    touchDocument();
+  } else if (grab.pendingSave) scheduleAutosave();
+  setStatus("Navigate · Grab finished.");
+}
+
 function stopInlineEdit(commit: boolean, options?: { focusBoard?: boolean }): void {
   if (!inlineEditor) {
     return;
   }
 
-  const { nodeId, input, mode } = inlineEditor;
+  const { nodeId, input, mode, preview } = inlineEditor;
   const next = input.value;
-  setEditedSvgLabelVisibility(nodeId, true);
-  input.remove();
+  const wasWebGL = isWebGLRendererActive();
+  if (!wasWebGL) {
+    if (preview) setEditedSvgNodeVisibility(nodeId,true);
+    else setEditedSvgLabelVisibility(nodeId, true);
+  }
   inlineEditor = null;
+  syncViewerKeyboardMode();
+  // Removing a focused input can synchronously dispatch blur. Clear ownership
+  // first, but never rely on that reentrant blur to decide whether to commit.
+  input.remove();
+  preview?.destroy();
 
   if (commit) {
     applyNodeTextEdit(nodeId, next, mode);
   }
+  if (wasWebGL) {
+    syncWebGLInteraction();
+  }
+  syncNodeResizeHandle();
 
   if (options?.focusBoard !== false) {
-    board.focus();
+    board.focus({ preventScroll: true });
   }
 }
 
@@ -11230,16 +12310,17 @@ function stopInlineEdgeLabelEdit(commit: boolean, options?: { focusBoard?: boole
   if (!inlineEdgeLabelEditor) {
     return;
   }
-  const { nodeId, input } = inlineEdgeLabelEditor;
+  const { nodeId, input, options: editorOptions } = inlineEdgeLabelEditor;
   const next = input.value;
   setEditedEdgeLabelVisibility(nodeId, true);
-  input.remove();
   inlineEdgeLabelEditor = null;
+  syncViewerKeyboardMode();
+  input.remove();
   if (commit) {
-    applyIncomingEdgeLabelEdit(nodeId, next);
+    if (editorOptions) editorOptions.commit(next); else applyIncomingEdgeLabelEdit(nodeId, next);
   }
   if (options?.focusBoard !== false) {
-    board.focus();
+    board.focus({ preventScroll: true });
   }
 }
 
@@ -11256,16 +12337,16 @@ function prepareViewportGesture(target: EventTarget | null): boolean {
   return true;
 }
 
-function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
+function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId, options?: LineLabelEditorOptions): void {
   if (!map || !lastLayout) {
     return;
   }
-  const node = getNode(nodeId);
-  if (!node.parentId) {
+  const node = options ? null : getNode(nodeId);
+  if (!options && !node?.parentId) {
     setStatus("Root has no incoming edge label.", true);
     return;
   }
-  if (!incomingTreeEdgeLabelLayout(nodeId)) {
+  if (!options && !incomingTreeEdgeLabelLayout(nodeId)) {
     return;
   }
   if (inlineEditor) {
@@ -11276,18 +12357,21 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
   }
   const input = document.createElement("textarea");
   input.rows = 1;
-  input.value = (node.attributes?.["m3e:edge-label"] || "").trim();
+  input.value = options ? options.value : (node?.attributes?.["m3e:edge-label"] || "").trim();
   input.className = "inline-edge-label-editor";
-  input.setAttribute("aria-label", "Edit incoming edge label");
+  input.setAttribute("aria-label", options ? "Edit selected line label" : "Edit incoming edge label");
   input.placeholder = "edge label";
   board.appendChild(input);
-  inlineEdgeLabelEditor = { nodeId, input };
+  inlineEdgeLabelEditor = { nodeId, input, options };
+  syncViewerKeyboardMode();
   syncInlineEdgeLabelEditorPosition();
   autoSizeInlineEdgeLabelEditor(input);
-  input.focus();
+  input.focus({ preventScroll: true });
   input.select();
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    // The originating edit session owns this entire key, even after removal.
+    event.stopPropagation();
     if (isImeComposingEvent(event)) {
       return;
     }
@@ -11302,28 +12386,33 @@ function startIncomingEdgeLabelEdit(nodeId = viewState.selectedNodeId): void {
     }
   });
   input.addEventListener("blur", () => {
-    stopInlineEdgeLabelEdit(true);
+    if (inlineEdgeLabelEditor?.input === input) stopInlineEdgeLabelEdit(true);
   });
   input.addEventListener("input", () => {
     autoSizeInlineEdgeLabelEditor(input);
   });
 }
 
-function createNodeByDirectionAndEdit(direction: "breadth" | "depth"): void {
+function createNodeByDirectionAndEdit(direction: "breadth" | "depth", commitEditor = false): void {
   if (!map) {
     return;
   }
-  if (direction === "depth") {
-    addChild();
-  } else {
-    addSibling();
+  localEditBatchDepth++;
+  try {
+    if (commitEditor) stopInlineEdit(true, { focusBoard: false });
+    // Lane hides a grandchild's children, so a new child would vanish: add in the same lane.
+    const laneItem = currentLaneGrid()?.lanes.some((ids) => ids.includes(viewState.selectedNodeId));
+    if (direction === "depth" && !laneItem) addChild();
+    else addSibling();
+  } finally {
+    localEditBatchDepth--;
+    if (!localEditBatchDepth && localEditBatchPending) {
+      localEditBatchPending = false;
+      touchDocument(true);
+    }
   }
+  nudgeActiveNodeIntoView({ animate: false });
   startInlineEdit(viewState.selectedNodeId, { nudgeIntoView: false });
-}
-
-function autoSizeInlineEditor(input: HTMLTextAreaElement): void {
-  input.style.height = "auto";
-  input.style.height = `${Math.max(44, input.scrollHeight)}px`;
 }
 
 function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
@@ -11332,7 +12421,9 @@ function autoSizeInlineEdgeLabelEditor(input: HTMLTextAreaElement): void {
 }
 
 function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeIntoView?: boolean }): void {
-  if (!map || !lastLayout || !lastLayout.pos[nodeId]) {
+  // New nodes are editable in the same task that creates them. A retained
+  // WebGL snapshot may intentionally still show the previous frame.
+  if (!map?.state.nodes[nodeId] || !lastLayout?.pos[nodeId]) {
     return;
   }
 
@@ -11359,12 +12450,36 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   board.appendChild(input);
 
   inlineEditor = { nodeId, input, mode };
+  input.dataset.nodeId = nodeId;
+  syncViewerKeyboardMode();
+  const source = nodeDrawInputs.get(nodeId);
+  if (source) {
+    let label = canvas.querySelector<SVGTextElement>(`text.label-root[data-node-id="${CSS.escape(nodeId)}"],text.label-node[data-node-id="${CSS.escape(nodeId)}"]`);
+    let probe: SVGTextElement | undefined;
+    if (!label) {
+      probe = document.createElementNS("http://www.w3.org/2000/svg","text");
+      probe.setAttribute("class","label-node selected");
+      probe.style.fontSize = `${source.position.fontSize || VIEWER_TUNING.typography.nodeFont}px`;
+      canvas.appendChild(probe); label = probe;
+    }
+    const labelClasses = label.getAttribute("class");
+    if (label.classList.contains("label-node")) label.classList.add("selected","primary-selected");
+    const preview = new InlineNodeEditorPreview(input, {
+      ...source, view:{...source.view, selected:true,multiSelected:true,primarySelected:true},
+    }, getComputedStyle(label), source.surface.structuredMode === "Tree" ? (explicitNodeLabelWidth(node) ?? defaultWrapCharacters * (source.position.fontSize || VIEWER_TUNING.typography.nodeFont) + 20) : undefined);
+    if (labelClasses !== null) label.setAttribute("class",labelClasses);
+    probe?.remove();
+    inlineEditor.preview = preview;
+    board.appendChild(preview.element);
+    preview.refresh();
+  }
   syncInlineEditorPosition();
-  autoSizeInlineEditor(input);
+  if (!inlineEditor.preview) autoSizeInlineEditor(input);
   if (options?.nudgeIntoView !== false) {
     nudgeNodeIntoView(nodeId);
   }
-  input.focus();
+  syncNodeResizeHandle();
+  input.focus({ preventScroll: true });
   if (options?.selectAll ?? true) {
     input.select();
   } else {
@@ -11373,54 +12488,52 @@ function startInlineEdit(nodeId: string, options?: { selectAll?: boolean; nudgeI
   }
 
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    // Keep native text editing/IME defaults, but never bubble into Navigate.
+    event.stopPropagation();
     if (isImeComposingEvent(event)) {
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+    const action = nodeLabelEditAction(event, KEYBOARD_PLATFORM);
+    if (action === "next") {
       event.preventDefault();
       // Equivalent to Esc -> DownArrow -> Enter while editing.
-      stopInlineEdit(false, { focusBoard: false });
+      stopInlineEdit(true, { focusBoard: false });
       selectBreadth(1);
       startInlineEdit(viewState.selectedNodeId, { selectAll: false });
       return;
     }
 
-    if (event.key === "Tab") {
+    if (action === "child") {
       event.preventDefault();
-      stopInlineEdit(true, { focusBoard: false });
-      createNodeByDirectionAndEdit("depth");
+      createNodeByDirectionAndEdit("depth", true);
       return;
     }
 
-    if (event.key === "Enter") {
-      if (event.shiftKey) {
-        // Keep default textarea behavior: Shift+Enter inserts a newline.
-        return;
-      }
+    if (action === "sibling") {
       event.preventDefault();
-      suppressInlineBlurCommit = true;
-      stopInlineEdit(true, { focusBoard: false });
-      createNodeByDirectionAndEdit("breadth");
+      createNodeByDirectionAndEdit("breadth", true);
       return;
     }
 
-    if (event.key === "Escape") {
+    if (action === "finish") {
       event.preventDefault();
-      stopInlineEdit(false);
+      // Escape ends label editing with the draft intact; it is not Undo.
+      stopInlineEdit(true);
     }
   });
 
   input.addEventListener("blur", () => {
-    if (suppressInlineBlurCommit) {
-      suppressInlineBlurCommit = false;
-      return;
-    }
-    stopInlineEdit(true);
+    // A departing editor must not commit/close a newly focused editor.
+    if (inlineEditor?.input === input) stopInlineEdit(true);
   });
 
   input.addEventListener("input", () => {
-    autoSizeInlineEditor(input);
+    if (inlineEditor?.input !== input) return;
+    // Draft-local only: do not call render, layout, touchDocument or autosave.
+    if (inlineEditor.preview) inlineEditor.preview.refresh();
+    else autoSizeInlineEditor(input);
   });
+  syncWebGLInteraction();
 }
 
 function nodeDepth(nodeId: string): number {
@@ -11551,17 +12664,67 @@ function toggleCollapse(): void {
   touchDocument();
 }
 
-function downloadJson(): void {
-  const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state: map!.state }, null, 2)], {
+function downloadJson(rootId?: string): void {
+  commitDispersePositions();
+  const state = stateForExport(rootId);
+  const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state }, null, 2)], {
     type: "application/json;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "rapid-edited.json";
+  anchor.download = rootId ? `${exportFileName(state.nodes[state.rootId]!.text)}.json` : "rapid-edited.json";
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+function exportFileName(label: string): string {
+  return label.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim().substring(0, 100) || "export";
+}
+
+function stateForExport(rootId?: string): AppState {
+  if (!map) throw new Error("No map loaded.");
+  if (!rootId) return canonicalMapState();
+  if (!map.state.nodes[rootId]) throw new Error("Export node is no longer available.");
+  const state = concretenessSubtree(canonicalMapState(), map.state, rootId);
+  const included = new Set(Object.keys(state.nodes));
+  state.links = Object.fromEntries(Object.entries(state.links || {}).filter(([, link]) => included.has(link.sourceNodeId) && included.has(link.targetNodeId)));
+  state.scopes = Object.fromEntries(Object.entries(state.scopes || {}).filter(([, scope]) => scope.rootNodeIds.length > 0 && scope.rootNodeIds.every(id => included.has(id))));
+  for (const scope of Object.values(state.scopes)) {
+    scope.relationIds = scope.relationIds.filter(id => state.links![id]);
+  }
+  state.surfaces = Object.fromEntries(Object.entries(state.surfaces || {}).filter(([, surface]) => state.scopes![surface.scopeId]));
+  for (const surface of Object.values(state.surfaces)) {
+    surface.nodeViews = Object.fromEntries(Object.entries(surface.nodeViews || {}).filter(([id]) => included.has(id)));
+  }
+  state.annotations = Object.fromEntries(Object.entries(state.annotations || {}).filter(([, annotation]) => annotation.scopeId && included.has(annotation.scopeId)));
+  state.linearNotesByScope = Object.fromEntries(Object.entries(state.linearNotesByScope || {}).filter(([id]) => included.has(id)));
+  for (const node of Object.values(state.nodes)) {
+    if (node.scopeId && !state.scopes[node.scopeId]) delete node.scopeId;
+    if (node.nodeType === "alias" && node.targetNodeId && !included.has(node.targetNodeId)) node.isBroken = true;
+  }
+  return state;
+}
+
+window.addEventListener("m3e:export-subtree", (event) => {
+  const format = (event as CustomEvent).detail?.format;
+  const nodeId = viewState.selectedNodeId;
+  if (!map?.state.nodes[nodeId]) return;
+  if (format === "json") downloadJson(nodeId);
+  else if (format === "mm") downloadMm(nodeId);
+  else if (format === "vault") {
+    void (async () => {
+      try {
+        const vaultPath = await promptVaultPath(vaultUiPrefs.vaultPath);
+        if (!vaultPath) return;
+        if (!await saveDocToLocalDb(false)) throw new Error("Save the current map before exporting to Vault.");
+        await runVaultExport(vaultPath, nodeId);
+      } catch (err) {
+        setStatus(`Vault export failed (${(err as Error).message}).`, true);
+      }
+    })();
+  }
+});
 
 function currentDocSnapshot(): SavedMap {
   syncLinearNotesToDocState();
@@ -11569,7 +12732,7 @@ function currentDocSnapshot(): SavedMap {
   return {
     version: 1,
     savedAt: nowIso(),
-    state: map!.state,
+    state: canonicalMapState(),
   };
 }
 
@@ -11583,6 +12746,8 @@ function parseCloudMapVersion(payload: { cloudMapVersion?: unknown; mapVersion?:
 }
 
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
+  if (showStatus) commitDispersePositions();
+  if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map) {
     return false;
   }
@@ -11593,26 +12758,34 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     return false;
   }
 
-  if (collabEntityId && collabToken && !force) {
-    return await pushCurrentScopeToCollab(showStatus);
-  }
-
+  const revision = localSaveRevision;
+  let saveConflict = false;
+  let failureReason = "save error";
   try {
+    if (collabEntityId && collabToken && !force) {
+      return await pushCurrentScopeToCollab(showStatus);
+    }
+    const submitted = currentDocSnapshot();
+    const submittedState = cloneStateForSave(submitted.state);
+    const body = JSON.stringify({
+      ...submitted,
+      baseSavedAt: lastServerSavedAt,
+      baseState: cloneStateForSave(lastServerBaseState),
+      force,
+    });
+    failureReason = "network error";
     const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "X-M3E-Tab-Id": TAB_ID,
       },
-      body: JSON.stringify({
-        ...currentDocSnapshot(),
-        baseSavedAt: lastServerSavedAt,
-        baseState: cloneStateForSave(lastServerBaseState),
-        force,
-      }),
+      body,
     });
+    failureReason = response.status === 413 ? "too large" : `server error (HTTP ${response.status})`;
 
     if (response.status === 409) {
+      saveConflict = true;
       const conflict = await response.json().catch(() => ({ error: "Map conflict." }));
       const remoteState = (conflict as { state?: AppState }).state;
       const conflictCode = String((conflict as { code?: unknown }).code || "");
@@ -11654,13 +12827,15 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
       throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
     }
 
+    failureReason = "save error";
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     map.savedAt = String(payload.savedAt || nowIso());
     if (typeof payload.mapVersion === "number") {
       (map as SavedMap & { mapVersion?: number }).mapVersion = Number(payload.mapVersion);
     }
     lastServerSavedAt = map.savedAt;
-    lastServerBaseState = cloneStateForSave(map.state);
+    // A held Grab may already be previewing a new state while this save returns.
+    lastServerBaseState = submittedState;
     broadcastState();
     if (collabEntityId && collabToken) {
       void pushCurrentScopeToCollab(false);
@@ -11668,12 +12843,14 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     if (cloudSyncEnabled) {
       void pushDocToCloud(false);
     }
+    markLocalSaveSucceeded(revision);
     if (showStatus) {
       setStatus("Saved locally.");
     }
     scheduleRender();
     return true;
   } catch (err) {
+    if (!saveConflict) showLocalSaveFailure(failureReason);
     if (showStatus) {
       setStatus(`Local save failed (${(err as Error).message}).`, true);
     }
@@ -11710,6 +12887,7 @@ async function fetchCloudSyncStatus(): Promise<void> {
 }
 
 async function pushDocToCloud(showStatus = false, force = false): Promise<boolean> {
+  if (grabSession) { grabSession.pendingSave = true; return false; }
   if (!map || !cloudSyncEnabled) {
     return false;
   }
@@ -11906,12 +13084,15 @@ async function loadLinearNotesFromLocalDbFallback(): Promise<void> {
 }
 
 function scheduleAutosave(): void {
+  if (grabSession) { grabSession.pendingSave = true; return; }
   if (!map) {
     return;
   }
   if (isReadOnlyLink()) {
     return;
   }
+  localSaveRevision += 1;
+  updateLinearSaveStatus();
   if (autosaveTimer !== null) {
     clearTimeout(autosaveTimer);
   }
@@ -11954,6 +13135,8 @@ function initBroadcastSync(): void {
       return;
     }
     if (ev.data.type === "STATE_UPDATE" && isValidAppState(ev.data.state)) {
+      finishGrab(false);
+      stopScatterAnimation(false); disperseForce.invalidate();
       map.state = ev.data.state;
       if (typeof ev.data.savedAt === "string" && ev.data.savedAt) {
         // BcStateMessage.savedAt carries the sender's lastServerSavedAt baseline.
@@ -11967,13 +13150,13 @@ function initBroadcastSync(): void {
 }
 
 function broadcastState(): void {
-  if (!bc || !map) {
+  if (!bc || !map || grabSession) {
     return;
   }
   const msg: BcStateMessage = {
     type: "STATE_UPDATE",
     fromTabId: TAB_ID,
-    state: map.state,
+    state: canonicalMapState(),
     savedAt: lastServerSavedAt || "",
   };
   bc.postMessage(msg);
@@ -12058,6 +13241,7 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
     const newDoc = ensureDocShape(payload);
     // Only apply if actually newer
     if (map && newDoc.savedAt <= (map.savedAt || "")) return;
+    finishGrab(false);
     lastAppliedSavedAt = savedAt;
 
     // Preserve view state
@@ -12066,6 +13250,7 @@ async function applyExternalUpdate(savedAt: string): Promise<void> {
     const prevCollapsed = new Set(viewState.collapsedIds);
     const prevScopeHistory = [...viewState.scopeHistory];
 
+    stopScatterAnimation(false); disperseForce.invalidate();
     map = newDoc;
     lastServerSavedAt = newDoc.savedAt || lastServerSavedAt;
     lastServerBaseState = cloneStateForSave(newDoc.state);
@@ -12224,13 +13409,17 @@ function toggleReviewMode(): void {
   render();
 }
 
-function touchDocument(): void {
+function touchDocument(incremental = false): void {
   if (!map) {
+    return;
+  }
+  if (incremental && localEditBatchDepth) {
+    localEditBatchPending = true;
     return;
   }
   syncMapModelStateFromRuntime();
   map.savedAt = nowIso();
-  render();
+  render(incremental);
   scheduleAutosave();
   broadcastState();
 }
@@ -12442,13 +13631,17 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   const anchorId = viewState.selectionAnchorId || viewState.selectedNodeId;
   viewState.selectedNodeIds = getVisibleRangeSelection(anchorId, target);
   viewState.selectedNodeIds.add(target);
-  scheduleRender();
+  scheduleSelectionRefresh();
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
 function loadPayload(payload: unknown): void {
+  stopScatterAnimation(false); disperseForce.invalidate(); disperseForceDirty = false; disperseForceKey = "";
+  finishGrab(false);
+  resetFitCycle();
   try {
     map = ensureDocShape(payload);
+    concretenessView = null; concretenessFrames.clear(); viewState.concretenessLevel = 0;
     lastServerSavedAt = map.savedAt || null;
     lastServerBaseState = cloneStateForSave(map.state);
     hydrateLinearNotesFromDocState();
@@ -12467,8 +13660,8 @@ function loadPayload(payload: unknown): void {
     viewState.currentScopeRootId = map.state.rootId;
     viewState.thinkingMode = "rapid";
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(map.state.rootId);
-    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(map.state.rootId, viewState.surfaceViewMode);
-    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(map.state.rootId, viewState.surfaceViewMode);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(map.state.rootId, viewState.surfaceViewMode);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(map.state.rootId);
     viewState.clipboardState = null;
     viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
@@ -12485,6 +13678,7 @@ function loadPayload(payload: unknown): void {
 }
 
 function resetCamera(): void {
+  resetFitCycle();
   cancelCameraMotion();
   applyCameraTarget({
     zoom: 1,
@@ -12498,34 +13692,116 @@ function centerOnNode(nodeId: string, zoom = viewState.zoom, options: CameraMove
     return false;
   }
   const nodePos = lastLayout.pos[nodeId]!;
-  const boardRect = board.getBoundingClientRect();
+  const safe = activeSafeViewport();
   const targetZoom = clampZoom(zoom);
   moveCameraTo({
     zoom: targetZoom,
-    cameraX: boardRect.width / 2 - (nodePos.x + nodePos.w / 2) * targetZoom,
-    cameraY: boardRect.height / 2 - nodePos.y * targetZoom,
+    cameraX: (safe.left + safe.right) / 2 - (nodePos.x + nodePos.w / 2) * targetZoom,
+    cameraY: (safe.top + safe.bottom) / 2 - nodePos.y * targetZoom,
   }, options);
   return true;
 }
 
-function fitDocument(options: CameraMoveOptions = {}): boolean {
-  if (!map) {
-    return false;
+function resetFitCycle(): void {
+  fitCycleMode = null;
+  delete board.dataset.fitMode;
+}
+
+function linearPanelAvailableForFit(): boolean {
+  return Boolean(linearPanelEl && !linearPanelEl.hidden && !LOCAL_FS_VIEW_MODE &&
+    viewState.surfaceViewMode === "tree" && lastLayout && visibleOrder.length);
+}
+
+function selectedFitNodeIds(includeDescendants: boolean): Set<string> {
+  const id = orreryNetwork.selectedNodeId ?? viewState.selectedNodeId;
+  const ids = new Set<string>();
+  if (!map || !id || !lastLayout?.pos[id]) return ids;
+  const visit = (nodeId: string): void => {
+    if (ids.has(nodeId) || !lastLayout?.pos[nodeId]) return;
+    ids.add(nodeId);
+    if (includeDescendants && map!.state.nodes[nodeId]) {
+      visibleChildren(map!.state.nodes[nodeId]).forEach(visit);
+    }
+  };
+  visit(id);
+  // Rootless surfaces have a layout root but no painted root node.
+  const painted = new Set(Array.from(canvas.children).map(el => (el as SVGElement).dataset.renderKey));
+  return new Set([...ids].filter(nodeId => painted.has(`node:${nodeId}`)));
+}
+
+function fitTarget(mode: FitMode, options: CameraMoveOptions = {}): boolean {
+  if (!map) return false;
+  if (mode === "graph-linear" && !linearPanelAvailableForFit()) return false;
+  const selected = mode === "node" || mode === "subtree" ? selectedFitNodeIds(mode === "subtree") : null;
+  if (selected && !selected.size) return false;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const include = (x: number, y: number, width: number, height: number): void => {
+    if (!Number.isFinite(x + y + width + height) || (width <= 0 && height <= 0)) return;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + width); maxY = Math.max(maxY, y + height);
+  };
+  // Measure retained graph geometry, even while WebGL presents it. Canvas extent
+  // also contains the linear panel and minimum padding, which are not graph fit.
+  const wasHidden = canvas.hasAttribute("hidden");
+  canvas.removeAttribute("hidden");
+  try {
+    for (const fragment of Array.from(canvas.children) as SVGGraphicsElement[]) {
+      const key = fragment.dataset.renderKey || "";
+      let wanted = key.startsWith("node:") || key.startsWith("edge:") ||
+        ["frames", "groups", "edges", "links"].includes(key);
+      if (selected) {
+        wanted = key.startsWith("node:") && selected.has(key.slice(5));
+        if (key.startsWith("edge:")) {
+          const edge = fragment.querySelector("[data-source-node-id][data-target-node-id]");
+          wanted = Boolean(edge && selected.has(edge.getAttribute("data-source-node-id")!) &&
+            selected.has(edge.getAttribute("data-target-node-id")!));
+        }
+      }
+      if (!wanted || !fragment.childElementCount) continue;
+      const box = fragment.getBBox();
+      include(box.x, box.y, box.width, box.height);
+    }
+  } finally {
+    if (wasHidden) canvas.setAttribute("hidden", "");
   }
-  render();
-  const boardRect = board.getBoundingClientRect();
-  if (!boardRect.width || !boardRect.height || !contentWidth || !contentHeight) {
-    return false;
+  if (mode === "graph-linear") {
+    include(_linearPanelAnchorCanvasX, _linearPanelAnchorCanvasY, linearPanelCanvasWidth, _linearPanelCanvasHeight);
   }
-  const fitX = boardRect.width / contentWidth;
-  const fitY = boardRect.height / contentHeight;
-  const zoom = clampZoom(Math.min(fitX, fitY) * 0.92);
+  if (!Number.isFinite(minX + minY + maxX + maxY)) return false;
+  const safe = activeSafeViewport();
+  const width = Math.max(1, maxX - minX), height = Math.max(1, maxY - minY);
+  // A single node stays readable without becoming a screen-sized glyph.
+  const zoom = clampZoom(Math.min(
+    Math.min((safe.right - safe.left) / width, (safe.bottom - safe.top) / height) * 0.92,
+    mode === "node" ? 1 : Infinity,
+  ));
   moveCameraTo({
     zoom,
-    cameraX: (boardRect.width - contentWidth * zoom) / 2,
-    cameraY: (boardRect.height - contentHeight * zoom) / 2,
+    cameraX: (safe.left + safe.right) / 2 - (minX + maxX) / 2 * zoom,
+    cameraY: (safe.top + safe.bottom) / 2 - (minY + maxY) / 2 * zoom,
   }, options);
+  board.dataset.fitMode = mode;
+  setStatus(`Fit：${FIT_LABELS[mode]}`);
   return true;
+}
+
+function fitDocument(options: CameraMoveOptions = {}): boolean {
+  resetFitCycle();
+  // Model/layout changes render at their owner; fitting only moves the camera.
+  return fitTarget("graph", options);
+}
+
+function cycleFit(reverse = false): void {
+  if (!map) return;
+  const direction = reverse ? -1 : 1;
+  const start = fitCycleMode === null ? (reverse ? 0 : -1) : FIT_MODES.indexOf(fitCycleMode);
+  for (let step = 1; step <= FIT_MODES.length; step++) {
+    const mode = FIT_MODES[(start + direction * step + FIT_MODES.length) % FIT_MODES.length]!;
+    if (fitTarget(mode)) {
+      fitCycleMode = mode;
+      return;
+    }
+  }
 }
 
 function syncCameraMoveUi(): void {
@@ -12552,9 +13828,6 @@ function triggerCameraMove(reason: CameraMoveTrigger): void {
   }
   if (reason === "scope" || reason === "layout" || reason === "command") {
     fitDocument({ animate: reason !== "command" });
-    requestAnimationFrame(() => {
-      fitDocument({ animate: reason !== "command" });
-    });
     return;
   }
   if (reason === "selection" && viewState.selectedNodeId) {
@@ -12893,8 +14166,8 @@ function renderRoutingScopeSurface(selectedNodeId: string | null): string {
   const layout = layoutPortLayout(routingGraph, routingBoxSizes, "Tree", {
     displayRootId: rootId,
     structuredMode: "tree",
-    density: viewState.surfaceLayoutDensity,
-    branchDirection: viewState.surfaceBranchDirection,
+    space: viewState.surfaceSpace,
+    direction: viewState.surfaceLayoutDirection,
   });
   let edges = "";
   let nodes = "";
@@ -13184,8 +14457,8 @@ function selectAllVisibleInScope(): void {
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
-function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
-  const node = getNode(nodeId);
+function toSubtreeSnapshot(nodeId: string, source = concretenessSubtree(canonicalMapState(), map!.state, nodeId)): SubtreeSnapshot {
+  const node = source.nodes[nodeId]!;
   return {
     id: node.id,
     nodeType: node.nodeType || "text",
@@ -13200,7 +14473,7 @@ function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
     access: node.nodeType === "alias" ? aliasAccess(node) : undefined,
     targetSnapshotLabel: node.targetSnapshotLabel || undefined,
     isBroken: node.nodeType === "alias" ? Boolean(node.isBroken) : undefined,
-    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId)),
+    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId, source)),
   };
 }
 
@@ -13224,8 +14497,9 @@ function collectInternalLinksForRoots(rootIds: string[]): GraphLink[] {
     return [];
   }
   const copiedNodeIds = new Set<string>();
-  rootIds.forEach((rootId) => collectSubtreeNodeIds(rootId, copiedNodeIds));
-  return Object.values(map.state.links || {})
+  const source = canonicalMapState();
+  rootIds.forEach(rootId => Object.keys(concretenessSubtree(source, map!.state, rootId).nodes).forEach(id => copiedNodeIds.add(id)));
+  return Object.values(source.links || {})
     .map((link) => normalizeGraphLink(link))
     .filter((link) => copiedNodeIds.has(link.sourceNodeId) && copiedNodeIds.has(link.targetNodeId))
     .map((link) => JSON.parse(JSON.stringify(link)) as GraphLink);
@@ -13282,10 +14556,14 @@ function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[]
     return;
   }
   pushUndoSnapshot();
+  map.state = canonicalMapState();
+  concretenessView = null;
+  const pastedRoots: string[] = [];
   const idMap = new Map<string, string>();
   let firstPastedId: string | null = null;
   snapshots.forEach((snapshot) => {
     const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot, idMap);
+    pastedRoots.push(pastedId);
     if (!firstPastedId) {
       firstPastedId = pastedId;
     }
@@ -13314,6 +14592,8 @@ function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[]
     });
     pastedLinks += 1;
   });
+  reconnectConcretenessCopies(map.state, idMap, pastedRoots, targetParentId, viewState.concretenessLevel);
+  prepareConcretenessView();
   if (firstPastedId) {
     setSingleSelection(firstPastedId, false);
   }
@@ -13570,27 +14850,9 @@ async function readTextFromSystemClipboard(): Promise<string | null> {
   return (await readTextViaLocalClipboardApi()) || (await readTextViaBrowserClipboard());
 }
 
-function buildNodePath(nodeId: string): string {
-  if (!map) return "";
-  const pathNodes: TreeNode[] = [];
-  let cursor: string | null = nodeId;
-  while (cursor) {
-    const n: TreeNode | undefined = map.state.nodes[cursor];
-    if (!n) break;
-    pathNodes.unshift(n);
-    cursor = n.parentId ?? null;
-  }
-  return formatMapPath(pathNodes);
-}
-
 async function copyNodePath(): Promise<void> {
   if (!map) return;
-  const path = buildNodePath(viewState.selectedNodeId);
-  if (await copyTextToSystemClipboard(path)) {
-    setStatus(`Path copied: ${path}`);
-    return;
-  }
-  setStatus("Failed to copy path to system clipboard.", true);
+  await copyMapPathToClipboard(viewState.selectedNodeId);
 }
 
 async function copyScopeId(): Promise<void> {
@@ -13809,10 +15071,6 @@ viewTreeBtn?.addEventListener("click", () => {
   setSurfaceViewMode("tree");
 });
 
-viewMindmapBtn?.addEventListener("click", () => {
-  setSurfaceViewMode("mindmap");
-});
-
 viewLogicChartBtn?.addEventListener("click", () => {
   setSurfaceViewMode("logic-chart");
 });
@@ -13829,47 +15087,39 @@ viewScatterBtn?.addEventListener("click", () => {
   setSurfaceViewMode("scatter");
 });
 
-themeToggleBtn?.addEventListener("click", () => {
-  toggleViewerTheme();
-});
-
 componentTabularToggleBtn?.addEventListener("click", () => {
   toggleSelectedTabularComponent();
-});
-
-window.addEventListener("m3e:set-theme", (event: Event) => {
-  const theme = normalizeViewerTheme((event as CustomEvent<{ theme?: unknown }>).detail?.theme);
-  applyViewerTheme(theme, { persist: true, announce: Boolean((event as CustomEvent<{ announce?: unknown }>).detail?.announce) });
-});
-
-window.addEventListener("m3e:toggle-theme", () => {
-  toggleViewerTheme();
 });
 
 window.addEventListener("m3e:set-surface-layout", (event: Event) => {
   const detail = (event as CustomEvent<{
     mode?: SurfaceViewMode;
-    density?: SurfaceLayoutDensity;
-    direction?: SurfaceBranchDirection;
+    space?: SurfaceSpace;
+    direction?: SurfaceLayoutDirection;
+    density?: unknown;
   }>).detail || {};
   if (detail.mode) {
     setSurfaceViewMode(detail.mode);
   }
-  if (detail.density) {
-    setSurfaceLayoutDensity(sanitizeSurfaceLayoutDensity(detail.density));
+  if (detail.space || detail.density) {
+    setSurfaceSpace(sanitizeSurfaceSpace(detail.space ?? detail.density));
   }
   if (detail.direction) {
-    setSurfaceBranchDirection(sanitizeSurfaceBranchDirection(detail.direction));
+    setSurfaceLayoutDirection(sanitizeSurfaceLayoutDirection(detail.direction));
   }
 });
 
 window.addEventListener("m3e:set-layout-options", (event: Event) => {
   const detail = (event as CustomEvent<{
     direction?: SurfaceLayoutDirection;
+    space?: SurfaceSpace;
     depthAlign?: SurfaceDepthAlign;
     edgeRoute?: SurfaceEdgeRoute;
     linkRoute?: SurfaceLinkRoute;
   }>).detail || {};
+  if (detail.space) {
+    setSurfaceSpace(sanitizeSurfaceSpace(detail.space));
+  }
   setPublicLayoutOptions({
     direction: detail.direction,
     depthAlign: detail.depthAlign,
@@ -13884,6 +15134,9 @@ scatterAddEdgeBtn?.addEventListener("click", () => setScatterToolMode("add-edge"
 scatterColorizeBtn?.addEventListener("click", () => setScatterToolMode("colorize"));
 scatterDeleteBtn?.addEventListener("click", () => setScatterToolMode("delete"));
 scatterAnimateBtn?.addEventListener("click", () => toggleScatterAnimation());
+document.getElementById("scatter-collapse")?.addEventListener("click", () => {
+  if (!isReadOnlyLink()) { commitDispersePositions(); toggleCollapse(); }
+});
 scatterReflowBtn?.addEventListener("click", () => {
   runScatterReflow(180);
   fitDocument();
@@ -13892,13 +15145,17 @@ scatterRepulsionInput?.addEventListener("input", () => {
   scatterRepulsion = Number(scatterRepulsionInput.value) || SCATTER_REPULSION_DEFAULT;
 });
 scatterRepulsionInput?.addEventListener("change", () => {
-  runScatterReflow(60);
+  scatterAnimationEnabled = true; syncScatterToolbarUi();
+  disperseForce.parameters({ repulsion: Math.max(200, Math.min(20000, scatterRepulsion / 100)), length: scatterEdgeLength });
+  startScatterAnimation();
 });
 scatterEdgeLengthInput?.addEventListener("input", () => {
   scatterEdgeLength = Number(scatterEdgeLengthInput.value) || SCATTER_EDGE_LENGTH_DEFAULT;
 });
 scatterEdgeLengthInput?.addEventListener("change", () => {
-  runScatterReflow(60);
+  scatterAnimationEnabled = true; syncScatterToolbarUi();
+  disperseForce.parameters({ repulsion: Math.max(200, Math.min(20000, scatterRepulsion / 100)), length: scatterEdgeLength });
+  startScatterAnimation();
 });
 
 penToolBtn?.addEventListener("click", () => {
@@ -13972,7 +15229,7 @@ fileInput.addEventListener("change", (event: Event) => {
         linearNotesByScope[scopeRootId] = markdownToLinearText(text);
         syncLinearNotesToDocState();
         scheduleAutosave();
-        renderLinearPanel();
+        renderLinearPanel("load");
         setStatus(`Imported .md file to Linear Text: ${file.name}`);
         return;
       }
@@ -13990,6 +15247,7 @@ fileInput.addEventListener("change", (event: Event) => {
 
 linearMenuToggleBtn?.addEventListener("click", (event: MouseEvent) => {
   event.preventDefault();
+  renderLinearPanel("load");
   linearMenuVisible = true;
   linearAdjustMenuOpen = !linearAdjustMenuOpen;
   syncLinearAdjustMenuUi();
@@ -14011,11 +15269,13 @@ linearFontResetBtn?.addEventListener("click", (event: MouseEvent) => {
 });
 
 linearTextEl?.addEventListener("pointerdown", () => {
+  if (document.activeElement === linearTextEl) renderLinearPanel("load");
   linearMenuVisible = true;
   syncLinearAdjustMenuUi();
 });
 
 linearTextEl?.addEventListener("focus", () => {
+  renderLinearPanel("load");
   linearMenuVisible = true;
   syncLinearAdjustMenuUi();
 });
@@ -14025,17 +15285,18 @@ linearTextEl?.addEventListener("input", () => {
     return;
   }
   const scopeRootId = currentLinearMemoScopeId();
+  if (linearDisplayedScopeId !== scopeRootId) {
+    renderLinearPanel("load");
+    return;
+  }
   linearNotesByScope[scopeRootId] = linearTextEl.value;
   syncLinearNotesToDocState();
   scheduleAutosave();
   const templateText = buildLinearFromScope().text;
   linearDirty = linearTextEl.value !== templateText;
-  if (linearMetaEl) {
-    const scopeLabel = map.state.nodes[scopeRootId]?.text || scopeRootId;
-    linearMetaEl.textContent = `scope memo: ${scopeLabel} | ${linearDirty ? "dirty" : "synced"}`;
-  }
+  updateLinearSaveStatus();
   if (linearApplyBtn) linearApplyBtn.disabled = !linearDirty;
-  if (linearResetBtn) linearResetBtn.disabled = !linearDirty;
+  if (linearResetBtn) linearResetBtn.disabled = false;
 });
 
 linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -14045,13 +15306,24 @@ linearTextEl?.addEventListener("keydown", (event: KeyboardEvent) => {
   if (isImeComposingEvent(event)) {
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key === "Enter") {
     event.preventDefault();
+    if (linearDisplayedScopeId !== currentLinearMemoScopeId()) {
+      renderLinearPanel("load");
+      return;
+    }
     linearNotesByScope[currentLinearMemoScopeId()] = linearTextEl.value;
     syncLinearNotesToDocState();
     scheduleAutosave();
-    setStatus("Linear memo saved in current scope.");
+    setStatus("Saving locally...");
     return;
+  }
+});
+
+linearPanelEl?.addEventListener("keydown", (event: KeyboardEvent) => {
+  // Keep native button activation inside the panel, away from map shortcuts.
+  if ((event.target as Element | null)?.closest("button") && (event.key === "Enter" || event.key === " ")) {
+    event.stopPropagation();
   }
 });
 
@@ -14115,8 +15387,8 @@ linearApplyBtn?.addEventListener("click", () => {
 });
 
 linearResetBtn?.addEventListener("click", () => {
-  linearDirty = false;
-  renderLinearPanel();
+  renderLinearPanel("reset");
+  scheduleAutosave();
   setStatus("Linear text reset to tree state.");
 });
 
@@ -14197,13 +15469,6 @@ exportVaultBtn?.addEventListener("click", () => {
 });
 
 /* ── Hamburger & Export dropdown toggle ── */
-function toggleDropdown(menu: HTMLElement | null, btn: HTMLElement | null): void {
-  if (!menu || !btn) return;
-  const open = menu.hidden;
-  menu.hidden = !open;
-  btn.setAttribute("aria-expanded", open ? "true" : "false");
-}
-
 hamburgerBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   closeToolbarMenus();
@@ -14295,6 +15560,235 @@ document.addEventListener("click", () => {
   closeToolbarMenus();
 });
 
+function performScatterNodeAction(nodeId: string): boolean {
+  if (!map || isReadOnlyLink()) return false;
+    if (scatterToolMode === "normal" && viewState.collapsedIds.has(nodeId)) {
+      const node = map.state.nodes[nodeId];
+      if (node && (node.children || []).length > 0) {
+        viewState.collapsedIds.delete(nodeId);
+        node.collapsed = false;
+        setSingleSelection(nodeId, false);
+        runScatterReflow(60, { withUndo: false, withTouch: true });
+        setStatus("Expanded scatter group.");
+        board.focus({ preventScroll: true });
+        return true;
+      }
+    }
+    if (scatterToolMode === "delete") {
+      setSingleSelection(nodeId, false);
+      deleteSelected();
+      board.focus({ preventScroll: true });
+      return true;
+    }
+    if (scatterToolMode === "colorize") {
+      setSingleSelection(nodeId, false);
+      showColorPalette();
+      board.focus({ preventScroll: true });
+      return true;
+    }
+    if (scatterToolMode === "add-edge") {
+      if (!viewState.linkSourceNodeId) {
+        setSingleSelection(nodeId, false);
+        markLinkSource();
+      } else {
+        const sourceId = viewState.linkSourceNodeId;
+        setSingleSelection(nodeId, false);
+        if (createGraphLinkBetween(sourceId, nodeId)) {
+          viewState.linkSourceNodeId = "";
+          scheduleRender();
+        }
+      }
+      board.focus({ preventScroll: true });
+      return true;
+    }
+  return false;
+}
+
+/** WebGL hit testing feeds the same structural drag commands as SVG. */
+webglCanvas?.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (!isWebGLRendererActive() || event.button !== 0 || !webglProjection || annotationTool !== "select") return;
+  const hit = webglProjection.hitTest(event.clientX, event.clientY);
+  if (!hit) {
+    if (currentSurfaceIsScatterMode() && scatterToolMode === "add-node" && !isReadOnlyLink()) {
+      event.preventDefault(); event.stopPropagation(); addScatterNodeAt(event.clientX, event.clientY);
+    }
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (hit.kind === "node") {
+    if (currentSurfaceIsScatterMode() && performScatterNodeAction(hit.nodeId)) return;
+    if (!currentSurfaceIsScatterMode() && !isReadOnlyLink()) {
+      beginStructureNodeDrag(hit.nodeId, event, webglCanvas);
+      return;
+    }
+    const canStartScatterDrag = currentSurfaceIsScatterMode() && scatterToolMode === "normal" && !isReadOnlyLink();
+    if (canStartScatterDrag && webglLastSnapshot) {
+      const wasSelected = viewState.selectedNodeIds.has(hit.nodeId);
+      const sourceRootIds = wasSelected
+        ? getMovableSelectionRoots(viewState.selectedNodeIds)
+        : getMovableSelectionRoots(new Set([hit.nodeId]));
+      const startWorld = webglClientToWorld(event.clientX, event.clientY);
+      if (sourceRootIds.length > 0 && startWorld) {
+        if (!wasSelected && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+          // Keep the current WebGL click-selection behavior without redrawing
+          // SVG before we know whether this becomes a drag. Modifier
+          // selection remains pending until pointerup, like the SVG path.
+          setSingleSelection(hit.nodeId, false);
+        }
+        viewState.dragState = {
+          mode: "scatter",
+          pointerId: event.pointerId,
+          sourceNodeId: hit.nodeId,
+          sourceRootIds,
+          proposal: null,
+          startX: event.clientX,
+          startY: event.clientY,
+          startWorld,
+          dragged: false,
+          toggleKey: event.ctrlKey || event.metaKey,
+          shiftKey: event.shiftKey,
+          startViews: scatterDragStartViews(sourceRootIds),
+        };
+        webglDragBaseSnapshot = webglLastSnapshot;
+        webglProjection.beginNodeDrag(sourceRootIds);
+        webglCanvas.setPointerCapture(event.pointerId);
+        syncWebGLInteraction();
+        board.focus({ preventScroll: true });
+        return;
+      }
+    }
+    selectByPointerModifiers(hit.nodeId, { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey });
+    board.focus({ preventScroll: true });
+    return;
+  }
+  // Link selection is read-only in Phase 1; it only mirrors existing UI state.
+  selectGraphLink(hit.edgeId, false);
+  syncWebGLInteraction();
+  scheduleRender();
+  board.focus({ preventScroll: true });
+});
+
+webglCanvas?.addEventListener("pointermove", (event: PointerEvent) => {
+  if (!isWebGLRendererActive() || !webglProjection || viewState.panState || viewState.pinchState) return;
+  if (viewState.dragState?.mode === "structure") {
+    updateStructureNodeDrag(event);
+    return;
+  }
+  if (viewState.dragState?.mode === "scatter" && viewState.dragState.pointerId === event.pointerId) {
+    pendingWebGLDragEvent = event;
+    webglDragFrame.invalidate();
+    return;
+  }
+  if (webglHoverFrame !== null) cancelAnimationFrame(webglHoverFrame);
+  webglHoverFrame = requestAnimationFrame(() => {
+    webglHoverFrame = null;
+    const hit = webglProjection?.hitTest(event.clientX, event.clientY);
+    const next = hit?.kind === "node" ? hit.nodeId : null;
+    if (next !== webglHoveredNodeId) {
+      webglHoveredNodeId = next;
+      syncWebGLInteraction();
+    }
+  });
+});
+
+webglCanvas?.addEventListener("pointerleave", () => {
+  if (viewState.dragState) {
+    return;
+  }
+  if (webglHoveredNodeId !== null) {
+    webglHoveredNodeId = null;
+    syncWebGLInteraction();
+  }
+});
+
+let pendingWebGLDragEvent: PointerEvent | null = null;
+const webglDragFrame = new FrameInvalidation(() => {
+  const event = pendingWebGLDragEvent;
+  pendingWebGLDragEvent = null;
+  if (event) updateWebGLNodeDragPreview(event);
+});
+
+function finishWebGLNodeDrag(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (drag?.mode === "scatter" && event.type === "pointercancel") { releaseDisperseDrag(event); return; }
+  if (drag?.mode === "structure") {
+    finishNodeDrag(event);
+    return;
+  }
+  if (!drag || drag.mode !== "scatter" || event.pointerId !== drag.pointerId) {
+    return;
+  }
+  webglDragFrame.clear();
+  pendingWebGLDragEvent = null;
+  updateWebGLNodeDragPreview(event);
+  const dragged = drag.dragged;
+  const startWorld = drag.startWorld;
+  const endWorld = webglClientToWorld(event.clientX, event.clientY);
+  viewState.dragState = null;
+  webglDragBaseSnapshot = null;
+  try {
+    webglCanvas?.releasePointerCapture(event.pointerId);
+  } catch {
+    // The pointer may already have been released by the browser.
+  }
+
+  if (!dragged) {
+    selectByPointerModifiers(drag.sourceNodeId, {
+      toggle: drag.toggleKey,
+      range: drag.shiftKey,
+    });
+    syncWebGLInteraction();
+    board.focus({ preventScroll: true });
+    return;
+  }
+
+  if (!startWorld || !endWorld) {
+    syncWebGLInteraction();
+    board.focus({ preventScroll: true });
+    return;
+  }
+  disperseForce.endDrag(); commitDispersePositions(); startScatterAnimation();
+  touchDocument();
+  setStatus("Disperse position updated.");
+  board.focus({ preventScroll: true });
+}
+
+webglCanvas?.addEventListener("pointerup", finishWebGLNodeDrag);
+webglCanvas?.addEventListener("pointercancel", finishWebGLNodeDrag);
+
+webglCanvas?.addEventListener("dblclick", (event: MouseEvent) => {
+  if (!isWebGLRendererActive() || !webglProjection) {
+    return;
+  }
+  const hit = webglProjection.hitTest(event.clientX, event.clientY);
+  if (hit?.kind !== "node") {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  selectNode(hit.nodeId);
+  startInlineEdit(hit.nodeId, { selectAll: false });
+});
+
+canvas.addEventListener("pointerover", (event: PointerEvent) => {
+  if (event.pointerType && event.pointerType !== "mouse") return;
+  const nodeId = eventNodeId(event.target);
+  if (!nodeId) return;
+  if (eventNodeId(event.relatedTarget) === nodeId) return;
+  scheduleMarkdownHoverOpen(nodeId);
+});
+
+canvas.addEventListener("pointerout", (event: PointerEvent) => {
+  if (event.pointerType && event.pointerType !== "mouse") return;
+  const nodeId = eventNodeId(event.target);
+  if (!nodeId || eventNodeId(event.relatedTarget) === nodeId) return;
+  cancelMarkdownHoverOpen();
+  if (markdownPreviewMode === "hover" && markdownPreviewNodeId === nodeId) {
+    scheduleMarkdownHoverClose();
+  }
+});
+
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (annotationTool !== "select") {
     return;
@@ -14316,7 +15810,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       dragged: false,
     };
     canvas.setPointerCapture(event.pointerId);
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   const linkPortChoice = targetEl?.getAttribute("data-link-port-choice") as LinkEndpointKind | null;
@@ -14328,7 +15822,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     setGraphLinkEndpointPort(choiceLinkId, linkPortChoice, linkPortSide);
     touchDocument();
     setStatus(`Link ${linkPortChoice} port: ${linkPortSide}.`);
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   const linkId = targetEl?.getAttribute("data-link-id") ?? null;
@@ -14342,7 +15836,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     } else {
       selectGraphLink(linkId);
     }
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   if (map && linkId && event.button === 0) {
@@ -14360,7 +15854,7 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
       scheduleRender();
       setStatus("Expanded collapsed branch.");
     }
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
@@ -14375,50 +15869,14 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (!map || !nodeId || event.button !== 0) {
     return;
   }
+  if ((event.target as Element).hasAttribute("data-lane-header")) {
+    event.preventDefault();
+    setSingleSelection(nodeId);
+    board.focus({ preventScroll: true });
+    return;
+  }
   if (currentSurfaceIsScatterMode()) {
-    if (scatterToolMode === "normal" && viewState.collapsedIds.has(nodeId)) {
-      const node = map.state.nodes[nodeId];
-      if (node && (node.children || []).length > 0) {
-        event.preventDefault();
-        viewState.collapsedIds.delete(nodeId);
-        node.collapsed = false;
-        setSingleSelection(nodeId, false);
-        runScatterReflow(60, { withUndo: false, withTouch: true });
-        setStatus("Expanded scatter group.");
-        board.focus();
-        return;
-      }
-    }
-    if (scatterToolMode === "delete") {
-      event.preventDefault();
-      setSingleSelection(nodeId, false);
-      deleteSelected();
-      board.focus();
-      return;
-    }
-    if (scatterToolMode === "colorize") {
-      event.preventDefault();
-      setSingleSelection(nodeId, false);
-      showColorPalette();
-      board.focus();
-      return;
-    }
-    if (scatterToolMode === "add-edge") {
-      event.preventDefault();
-      if (!viewState.linkSourceNodeId) {
-        setSingleSelection(nodeId, false);
-        markLinkSource();
-      } else {
-        const sourceId = viewState.linkSourceNodeId;
-        setSingleSelection(nodeId, false);
-        if (createGraphLinkBetween(sourceId, nodeId)) {
-          viewState.linkSourceNodeId = "";
-          scheduleRender();
-        }
-      }
-      board.focus();
-      return;
-    }
+    if (performScatterNodeAction(nodeId)) { event.preventDefault(); return; }
     const rootIds = viewState.selectedNodeIds.has(nodeId)
       ? getMovableSelectionRoots(viewState.selectedNodeIds)
       : getMovableSelectionRoots(new Set([nodeId]));
@@ -14442,10 +15900,16 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   if (isReadOnlyLink()) {
     event.preventDefault();
     setSingleSelection(nodeId, event.shiftKey);
-    board.focus();
+    pinMarkdownHoverPreviewForNode(nodeId);
+    board.focus({ preventScroll: true });
     scheduleRender();
     return;
   }
+  beginStructureNodeDrag(nodeId, event, canvas);
+});
+
+function beginStructureNodeDrag(nodeId: string, event: PointerEvent, surface: Element): void {
+  cancelCameraMotion();
   viewState.dragState = {
     mode: "structure",
     pointerId: event.pointerId,
@@ -14460,8 +15924,32 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     toggleKey: event.ctrlKey || event.metaKey,
     shiftKey: event.shiftKey,
   };
-  canvas.setPointerCapture(event.pointerId);
-});
+  surface.setPointerCapture(event.pointerId);
+  board.focus({ preventScroll: true });
+}
+
+function updateStructureNodeDrag(event: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!drag || drag.mode !== "structure" || drag.pointerId !== event.pointerId) return;
+  if (!drag.dragged && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < VIEWER_TUNING.drag.reparentThreshold) return;
+  drag.dragged = true;
+  drag.proposal = proposeDropForSources(drag.sourceRootIds, event.clientX, event.clientY);
+  dragOverlayFrame.invalidate();
+}
+
+function releaseNodeDragCapture(pointerId: number): void {
+  for (const surface of [canvas, webglCanvas]) {
+    if (surface?.hasPointerCapture(pointerId)) surface.releasePointerCapture(pointerId);
+  }
+}
+
+function cancelStructureNodeDrag(event?: PointerEvent): void {
+  const drag = viewState.dragState;
+  if (!drag || drag.mode !== "structure" || (event && drag.pointerId !== event.pointerId)) return;
+  viewState.dragState = null;
+  releaseNodeDragCapture(drag.pointerId);
+  dragOverlayFrame.invalidate();
+}
 
 canvas.addEventListener("pointermove", (event: PointerEvent) => {
   if (linkPortDragState && event.pointerId === linkPortDragState.pointerId) {
@@ -14477,6 +15965,10 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
+  if (viewState.dragState.mode === "structure") {
+    updateStructureNodeDrag(event);
+    return;
+  }
   const dx = event.clientX - viewState.dragState.startX;
   const dy = event.clientY - viewState.dragState.startY;
   const distance = Math.hypot(dx, dy);
@@ -14484,32 +15976,18 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   if (!viewState.dragState.dragged && viewState.dragState.mode === "scatter") {
-    if (scatterAnimationEnabled) {
-      scatterAnimationEnabled = false;
-      stopScatterAnimation(true);
-      syncScatterToolbarUi();
-    }
+    commitDispersePositions(); disperseForce.beginDrag(viewState.dragState.sourceNodeId, viewState.dragState.sourceRootIds);
     pushUndoSnapshot();
   }
   viewState.dragState.dragged = true;
   if (viewState.dragState.mode === "scatter") {
-    syncMapModelStateFromRuntime();
     const startViews = viewState.dragState.startViews || {};
     const canvasDx = dx / viewState.zoom;
     const canvasDy = dy / viewState.zoom;
-    viewState.dragState.sourceRootIds.forEach((nodeId) => {
-      const start = startViews[nodeId];
-      if (!start) return;
-      const view = ensureSurfaceNodeView(nodeId);
-      if (!view) return;
-      view.x = Math.round(start.x + canvasDx);
-      view.y = Math.round(start.y + canvasDy);
-    });
+    applyScatterDragDelta(viewState.dragState.sourceRootIds, startViews, { x: canvasDx, y: canvasDy });
     scheduleRender();
     return;
   }
-  viewState.dragState.proposal = proposeDropForSources(viewState.dragState.sourceRootIds, event.clientX, event.clientY);
-  scheduleRender();
 });
 
 function finishNodeDrag(event: PointerEvent): void {
@@ -14522,30 +16000,42 @@ function finishNodeDrag(event: PointerEvent): void {
     canvas.releasePointerCapture(event.pointerId);
     touchDocument();
     setStatus("Link port updated.");
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
   if (!viewState.dragState || event.pointerId !== viewState.dragState.pointerId) {
     return;
   }
+  if (viewState.dragState.mode === "structure") {
+    if (event.type === "pointercancel") {
+      cancelStructureNodeDrag(event);
+      return;
+    }
+    // Resolve the release position too: the last pointermove may be coalesced
+    // or missing. Never commit a stale preview from a previous target.
+    updateStructureNodeDrag(event);
+  }
   const { sourceNodeId, sourceRootIds, proposal, dragged, mode } = viewState.dragState;
   const { toggleKey, shiftKey } = viewState.dragState;
   viewState.dragState = null;
-  canvas.releasePointerCapture(event.pointerId);
+  releaseNodeDragCapture(event.pointerId);
+  dragOverlayFrame.invalidate();
 
   if (!dragged) {
     selectByPointerModifiers(sourceNodeId, {
       toggle: toggleKey,
       range: shiftKey,
     });
-    board.focus();
+    pinMarkdownHoverPreviewForNode(sourceNodeId);
+    board.focus({ preventScroll: true });
     return;
   }
 
   if (mode === "scatter") {
+    disperseForce.endDrag(); commitDispersePositions(); startScatterAnimation();
     touchDocument();
-    setStatus("Scatter position updated.");
-    board.focus();
+    setStatus("Disperse position updated.");
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -14567,29 +16057,35 @@ function finishNodeDrag(event: PointerEvent): void {
         setSingleSelection(proposal.parentId, false);
         touchDocument();
         setStatus(`Moved ${movedCount} node(s).`);
-        board.focus();
+        board.focus({ preventScroll: true });
         return;
       }
     } else {
       const applied = proposal.kind === "reparent"
         ? applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, getNode(proposal.parentId).children.length, false)
-        : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, proposal.index, false);
+        : applyMoveByParentAndIndex(sourceNodeId, proposal.parentId, reorderInsertionIndex(
+          getNode(proposal.parentId).children,
+          getVisibleChildrenForDrop(proposal.parentId, sourceNodeId),
+          proposal.index,
+        ), false);
       if (applied) {
         setSingleSelection(sourceNodeId, false);
         scheduleRender();
-        board.focus();
+        board.focus({ preventScroll: true });
         return;
       }
     }
   }
 
   setStatus("No valid drop target.", true);
-  scheduleRender();
-  board.focus();
+  dragOverlayFrame.invalidate();
+  board.focus({ preventScroll: true });
 }
 
 canvas.addEventListener("pointerup", finishNodeDrag);
 canvas.addEventListener("pointercancel", finishNodeDrag);
+canvas.addEventListener("lostpointercapture", cancelStructureNodeDrag);
+webglCanvas?.addEventListener("lostpointercapture", cancelStructureNodeDrag);
 canvas.addEventListener("dblclick", (event: MouseEvent) => {
   const nodeId = (event.target as Element | null)?.getAttribute("data-node-id") ??
     ((event.target as HTMLElement | null)?.dataset?.["nodeId"] ?? null);
@@ -14637,6 +16133,7 @@ board.addEventListener("wheel", (event: WheelEvent) => {
     return;
   }
   if (!event.ctrlKey && !event.metaKey) {
+    resetFitCycle();
     viewState.cameraX -= deltaX * VIEWER_TUNING.pan.wheelFactor;
     viewState.cameraY -= deltaY * VIEWER_TUNING.pan.wheelFactor;
     scheduleApplyZoom({ syncDependents: false });
@@ -14667,6 +16164,17 @@ function startPinch(): void {
   if (ids.length < 2) return;
   const a = activePointers.get(ids[0])!;
   const b = activePointers.get(ids[1])!;
+  cancelCameraMotion();
+  // A second touch takes ownership from a pending node drag. Never commit a
+  // structural drop when the fingers are being used to navigate the Surface.
+  if (viewState.dragState) {
+    if (viewState.dragState.mode === "scatter" && viewState.dragState.dragged && !webglDragBaseSnapshot) {
+      touchDocument(); // Preserve movement already completed before the pinch.
+    }
+    viewState.dragState = null;
+    webglDragBaseSnapshot = null;
+    scheduleRender();
+  }
   // Cancel single-finger pan
   if (viewState.panState) {
     viewState.panState = null;
@@ -14675,7 +16183,7 @@ function startPinch(): void {
   viewState.pinchState = {
     pointerA: { id: ids[0], x: a.x, y: a.y },
     pointerB: { id: ids[1], x: b.x, y: b.y },
-    initialDistance: pointerDistance(a, b),
+    initialDistance: Math.max(1, pointerDistance(a, b)),
     initialZoom: viewState.zoom,
     initialCameraX: viewState.cameraX,
     initialCameraY: viewState.cameraY,
@@ -14683,6 +16191,20 @@ function startPinch(): void {
     initialCenterY: (a.y + b.y) / 2,
   };
 }
+
+// Observe touches before SVG/WebGL node handlers can stop propagation. The
+// first finger keeps normal selection/drag behavior; two fingers own the camera.
+board.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (event.pointerType !== "touch" || event.button !== 0 || annotationTool !== "select") return;
+  if ((event.target as Element | null)?.closest("button, input, textarea, select, [contenteditable=true], .linear-panel")) return;
+  activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (activePointers.size < 2) return;
+  event.preventDefault();
+  event.stopPropagation();
+  prepareViewportGesture(event.target);
+  for (const id of activePointers.keys()) board.setPointerCapture(id);
+  if (!viewState.pinchState) startPinch();
+}, { capture: true });
 
 board.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) {
@@ -14710,16 +16232,6 @@ board.addEventListener("pointerdown", (event: PointerEvent) => {
   }
   if (!prepareViewportGesture(event.target)) {
     return;
-  }
-
-  // Track touch pointers for pinch
-  if (event.pointerType === "touch") {
-    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    board.setPointerCapture(event.pointerId);
-    if (activePointers.size === 2) {
-      startPinch();
-      return;
-    }
   }
 
   viewState.panState = {
@@ -14754,15 +16266,24 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     const b = activePointers.get(pointerB.id);
     if (!a || !b) return;
 
-    const currentDistance = pointerDistance(a, b);
-    const scale = currentDistance / viewState.pinchState.initialDistance;
-    const nextZoom = viewState.pinchState.initialZoom * scale;
-
-    // Zoom anchored to the current midpoint of the two fingers
-    const anchorX = (a.x + b.x) / 2;
-    const anchorY = (a.y + b.y) / 2;
-    scheduleSetZoom(nextZoom, anchorX, anchorY, { syncDependents: false });
+    resetFitCycle();
+    const pinch = viewState.pinchState;
+    viewState.zoom = clampZoom(pinch.initialZoom * pointerDistance(a, b) / pinch.initialDistance);
+    const scale = viewState.zoom / pinch.initialZoom;
+    const rect = board.getBoundingClientRect();
+    // Keep the world point under the initial midpoint under the moving midpoint.
+    // Computing from the gesture start also avoids cumulative rounding drift.
+    viewState.cameraX = (a.x + b.x) / 2 - rect.left
+      - (pinch.initialCenterX - rect.left - pinch.initialCameraX) * scale;
+    viewState.cameraY = (a.y + b.y) / 2 - rect.top
+      - (pinch.initialCenterY - rect.top - pinch.initialCameraY) * scale;
+    scheduleApplyZoom({ syncDependents: false });
     markViewportDependentSyncPending();
+    const now = performance.now();
+    if (now - _lastZoomStatusAt >= 120) {
+      _lastZoomStatusAt = now;
+      setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
+    }
     return;
   }
 
@@ -14771,6 +16292,7 @@ board.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
   cancelCameraMotion();
+  resetFitCycle();
   viewState.cameraX = viewState.panState.cameraX + (event.clientX - viewState.panState.startX);
   viewState.cameraY = viewState.panState.cameraY + (event.clientY - viewState.panState.startY);
   scheduleApplyZoom({ syncDependents: false });
@@ -14788,8 +16310,15 @@ function endPointer(event: PointerEvent): void {
   // Clean up pinch state
   if (event.pointerType === "touch") {
     activePointers.delete(event.pointerId);
-    if (viewState.pinchState) {
+    const pinch = viewState.pinchState;
+    if (pinch && (event.pointerId === pinch.pointerA.id || event.pointerId === pinch.pointerB.id)) {
       viewState.pinchState = null;
+      setStatus(`Zoom ${Math.round(viewState.zoom * 100)}%`);
+      try { board.releasePointerCapture(event.pointerId); } catch { /* already released */ }
+      if (activePointers.size >= 2) {
+        startPinch();
+        return;
+      }
       // If one finger remains, start a fresh pan from current position
       if (activePointers.size === 1) {
         const [remainingId, pos] = Array.from(activePointers.entries())[0];
@@ -14832,12 +16361,20 @@ document.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 document.addEventListener("keydown", (event: KeyboardEvent) => {
-  if (!map) {
+  if (!map || event.defaultPrevented) {
     return;
   }
   if (isImeComposingEvent(event)) {
     return;
   }
+  if (viewerKeyboardMode() === "edit") return;
+  if (event.key === "Escape" && viewState.dragState?.mode === "structure") {
+    event.preventDefault();
+    cancelStructureNodeDrag();
+    return;
+  }
+  // The other OS modifier and mixed Command+Control are not aliases.
+  if ((event.ctrlKey || event.metaKey) && !primaryModifier(event)) return;
 
   if (templateCompletionState && event.key === "Escape") {
     event.preventDefault();
@@ -14877,14 +16414,24 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (inlineEditor && document.activeElement === inlineEditor.input) {
+  if (document.activeElement === linearTextEl) {
     return;
   }
-  if (inlineEdgeLabelEditor && document.activeElement === inlineEdgeLabelEditor.input) {
+  if (isTextEntryElement(event.target)) return;
+
+  if (grabSession) {
+    event.preventDefault();
+    if (event.key === "Escape") finishGrab(false);
+    else if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.startsWith("Arrow")) moveGrab(event.key);
     return;
   }
 
-  if (document.activeElement === linearTextEl) {
+  if (lineSelection.key(event)) return;
+
+  if (markdownPreviewMode && event.key === "Escape") {
+    event.preventDefault();
+    hideMarkdownPreview();
+    board.focus({ preventScroll: true });
     return;
   }
 
@@ -15077,49 +16624,49 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
     // Arrow keys fall through to normal navigation
   }
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
     undoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && (event.shiftKey && event.key.toLowerCase() === "z")) {
+  if (primaryModifier(event) && !event.altKey && event.shiftKey && event.key.toLowerCase() === "z") {
     event.preventDefault();
     redoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "y") {
+  if (KEYBOARD_PLATFORM !== "mac" && primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "y") {
     event.preventDefault();
     redoLastChange();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
     selectAllVisibleInScope();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "c") {
     event.preventDefault();
     void copySelected();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "x") {
     event.preventDefault();
     cutSelected();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     void pasteClipboard();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "Enter") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key === "Enter") {
     event.preventDefault();
     // Equivalent to Esc -> DownArrow -> Enter in normal mode.
     clearCutClipboard();
@@ -15128,20 +16675,20 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
     if (clearCutClipboard()) {
       event.preventDefault();
     }
     return;
   }
 
-  if (event.key === "Tab") {
+  if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     createNodeByDirectionAndEdit("depth");
     return;
   }
 
-  if (event.altKey && event.key === "Enter") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === "Enter") {
     if (isTextEntryElement(event.target)) {
       return;
     }
@@ -15162,13 +16709,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "Enter") {
+  if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId, { selectAll: event.shiftKey });
     return;
   }
 
-  if (event.key === "F2") {
+  if (event.key === "F2" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
     event.preventDefault();
     startInlineEdit(viewState.selectedNodeId, { selectAll: true });
     return;
@@ -15192,7 +16739,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
     event.preventDefault();
     downloadJson();
     return;
@@ -15210,19 +16757,19 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
+  if (primaryModifier(event) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "t") {
     event.preventDefault();
     void generateRelatedTopicsForSelectedNode();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
+  if (primaryModifier(event) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     showScopeDashboard();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key === "0") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key === "0") {
     event.preventDefault();
     fitDocument();
     return;
@@ -15241,21 +16788,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     }
   }
 
-  if (!event.shiftKey && !event.altKey && event.key === "]") {
+  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "]") {
     event.preventDefault();
     EnterScopeCommand(viewState.selectedNodeId);
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
-  if (!event.shiftKey && !event.altKey && event.key === "[") {
+  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.key === "[") {
     event.preventDefault();
     ExitScopeCommand();
-    board.focus();
+    board.focus({ preventScroll: true });
     return;
   }
 
-  if (event.key === "Delete" || event.key === "Backspace") {
+  if ((event.key === "Delete" || event.key === "Backspace") && !event.ctrlKey && !event.metaKey && !event.altKey) {
         if (
           event.key === "Backspace" &&
           !inlineEditor &&
@@ -15289,83 +16836,73 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "e") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "e") {
     event.preventDefault();
     toggleEntityListPanel();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "d") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "d") {
     event.preventDefault();
     toggleMarkdownPreviewForSelectedNode();
     return;
   }
 
-  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "o") {
     event.preventDefault();
     openSelectedHyperlinkNode();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "h") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "h") {
     event.preventDefault();
     window.location.href = buildHomeHref();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "s") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "s") {
     event.preventDefault();
     toggleHomeScreen();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "v") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && (event.code === "KeyV" || event.key.toLowerCase() === "v")) {
     event.preventDefault();
-    if (cycleViewState === "focus") {
-      if (map && viewState.selectedNodeId) {
-        centerOnNode(viewState.selectedNodeId, Math.max(1, viewState.zoom));
-        setStatus("Focus: centered on selected node.");
-      }
-      cycleViewState = "fit";
-    } else {
-      fitDocument();
-      setStatus("Fit all.");
-      cycleViewState = "focus";
-    }
+    cycleFit(event.shiftKey);
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "j") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "j") {
     event.preventDefault();
     jumpToAliasTarget();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "l") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "l") {
     event.preventDefault();
     startIncomingEdgeLabelEdit();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "a") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "a") {
     event.preventDefault();
     addAliasAsChild();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "p") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
     makeSelectedFolder();
     return;
   }
 
-  if (event.altKey && event.key.toLowerCase() === "m") {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     toggleHoldReparent();
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
+  if (primaryModifier(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (!event.repeat) {
       toggleReparentSource();
@@ -15411,43 +16948,16 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && ["j", "k"].includes(event.key.toLowerCase())) {
     event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      flowSurfaceDetailLevel = Math.min(FLOW_SURFACE_PREVIEW_MAX_DETAIL, flowSurfaceDetailLevel + 1);
-      render();
-      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
-      return;
-    }
-    const selected = getNode(viewState.selectedNodeId);
-    if (isFolderNode(selected) && selected.id !== normalizedCurrentScopeId()) {
-      EnterScopeCommand(selected.id);
-      return;
-    }
-    selectChild();
+    if (!event.repeat) moveConcretenessLevel(event.key.toLowerCase() === "j" ? 1 : -1);
     return;
   }
 
-  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    if (currentSurfaceIsFlowMode()) {
-      flowSurfaceDetailLevel = Math.max(0, flowSurfaceDetailLevel - 1);
-      render();
-      setStatus(`System detail ${flowSurfaceDetailLevel}/${FLOW_SURFACE_PREVIEW_MAX_DETAIL}`);
-      return;
-    }
-    if (viewState.selectedNodeId === normalizedCurrentScopeId() && viewState.scopeHistory.length > 0) {
-      ExitScopeCommand();
-      return;
-    }
-    selectParent();
-    return;
-  }
-
-  if (event.key.toLowerCase() === "m") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "m") {
     event.preventDefault();
     if (!event.repeat) {
-      toggleReparentSource();
+      beginGrab();
     }
     return;
   }
@@ -15466,7 +16976,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key.toLowerCase() === "p") {
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
     applyReparent();
     return;
@@ -15478,7 +16988,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowUp") {
+  if (event.key.startsWith("Arrow") && !event.ctrlKey && !event.metaKey && !event.altKey && currentLaneGrid()) {
+    event.preventDefault();
+    laneArrow(event.key, event.shiftKey);
+    return;
+  }
+
+  if (event.key === "ArrowUp" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (event.shiftKey) {
       extendSelectionBreadth(-1);
@@ -15492,7 +17008,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowDown") {
+  if (event.key === "ArrowDown" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (event.shiftKey) {
       extendSelectionBreadth(1);
@@ -15506,13 +17022,13 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "g") {
+  if (primaryModifier(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "g") {
     event.preventDefault();
     groupSelected();
     return;
   }
 
-  if (event.key === "ArrowLeft") {
+  if (event.key === "ArrowLeft" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     if (currentSurfaceIsFlowMode()) {
       selectFlowHorizontal(-1);
@@ -15526,7 +17042,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     return;
   }
 
-  if (event.key === "ArrowRight") {
+  if (event.key === "ArrowRight" && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     const selected = getNode(viewState.selectedNodeId);
     if (currentSurfaceIsFlowMode()) {
@@ -15543,6 +17059,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
 
 document.addEventListener("keyup", (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
+  if (key === "m" || event.code === "KeyM") finishGrab(true);
   if (routingScopeHoldDown && (key === "r" || event.key === "Shift")) {
     if (routingSwitcherOpen) {
       const routed = applyRoutingSwitcherRoute();
@@ -15566,6 +17083,7 @@ document.addEventListener("keyup", (event: KeyboardEvent) => {
 });
 
 window.addEventListener("blur", () => {
+  finishGrab(true);
   routingPanKeyDown = false;
   routingScopeHoldDown = false;
   routingWheelCarryX = 0;
@@ -15575,8 +17093,22 @@ window.addEventListener("blur", () => {
   }
 });
 
-/* ── Shortcut cheatsheet: show on Ctrl/Alt hold ── */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") finishGrab(true);
+});
+document.addEventListener("pointerdown", () => finishGrab(true), true);
+document.addEventListener("focusin", (event) => {
+  if (event.target !== board) finishGrab(true);
+});
+
+/* ── Shortcut cheatsheet: show on primary modifier + Alt hold ── */
 {
+  const primaryLabel = KEYBOARD_PLATFORM === "mac" ? "Command" : "Ctrl";
+  cheatsheetEl?.querySelectorAll<HTMLElement>("kbd, .automaton-label").forEach((element) => {
+    element.textContent = (element.textContent || "").replace(/Mod/g, primaryLabel);
+  });
+  const historyKey = cheatsheetEl?.querySelector<HTMLElement>("[data-browser-history-key]");
+  if (historyKey && KEYBOARD_PLATFORM === "mac") historyKey.textContent = "Command+Y";
   let cheatsheetTimer: ReturnType<typeof setTimeout> | null = null;
   const HOLD_MS = 400;
 
@@ -15598,12 +17130,15 @@ window.addEventListener("blur", () => {
   }
 
   document.addEventListener("keydown", (event: KeyboardEvent) => {
-    // Only trigger on bare Ctrl or Alt (no other modifier, no repeat)
     if (event.repeat) return;
-    const isBareMod =
-      (event.key === "Control" && !event.altKey && !event.shiftKey) ||
-      (event.key === "Alt" && !event.ctrlKey && !event.metaKey && !event.shiftKey);
-    if (!isBareMod) {
+    if (event.defaultPrevented || viewerKeyboardMode() === "edit" || isTextEntryElement(event.target)) {
+      clearTimer();
+      return;
+    }
+    const isModifierChord =
+      (event.key === (KEYBOARD_PLATFORM === "mac" ? "Meta" : "Control") || event.key === "Alt") &&
+      primaryModifier(event) && event.altKey && !event.shiftKey;
+    if (!isModifierChord) {
       clearTimer();
       return;
     }
@@ -15631,6 +17166,7 @@ window.addEventListener("blur", () => {
 }
 
 setVisualCheckStatus("Visual check idle");
+syncViewerKeyboardMode();
 syncMetaPanelToggleUi();
 loadVaultUiPrefs();
 loadLocalFsPrefs();
@@ -15670,8 +17206,8 @@ void initializeDocument().then(() => {
     viewState.currentScopeId = initialScopeId;
     viewState.currentScopeRootId = initialScopeId;
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(initialScopeId);
-    viewState.surfaceLayoutDensity = inferSurfaceLayoutDensityForScope(initialScopeId, viewState.surfaceViewMode);
-    viewState.surfaceBranchDirection = inferSurfaceBranchDirectionForScope(initialScopeId, viewState.surfaceViewMode);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(initialScopeId, viewState.surfaceViewMode);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(initialScopeId);
     syncThinkingModeUi();
     setSingleSelection(initialScopeId, false);
     normalizeSelectionState();
@@ -15682,10 +17218,19 @@ void initializeDocument().then(() => {
     setStatus(`Scope not found: ${initialScopeId}. Loaded map root.`, true);
     updateScopeInUrl(map.state.rootId);
   }
+  const requestedSurface = requestedSurfaceViewMode();
+  if (requestedSurface) {
+    viewState.surfaceViewMode = requestedSurface;
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(currentScopeRootId(), requestedSurface);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(currentScopeRootId());
+    syncThinkingModeUi();
+    render();
+  }
   fitDocument({ animate: false }) || applyZoom();
 
   // Skip home screen — go straight to map root
   // To open home screen, user can press the toggle shortcut
+  board.dataset.ready = "true";
 });
 
 window.addEventListener("beforeunload", () => {
@@ -15693,3 +17238,17 @@ window.addEventListener("beforeunload", () => {
     void unregisterCollabEntity(false);
   }
 });
+
+// Read-only diagnostics for acceptance and profiling; no mutation API.
+Object.assign(window, { disperseDiagnostics: () => ({ snapshot: disperseForce.snapshot(), pendingFrame: scatterAnimationFrame !== null,
+  renderer: { requested: REQUESTED_RENDERER, active: isWebGLRendererActive(), fallback: webglFallbackReason }, fastFrames: disperseFastFrames, fastGate: disperseFastGate, frameTimes: [...disperseFrameTimes], stepMs: disperseForce.lastStepMs, engine: "ot-barnes-hut", enabled: scatterAnimationEnabled }) });
+function releaseDisperseDrag(event?: Event): void {
+  if (viewState.dragState?.mode !== "scatter") return;
+  if (event instanceof PointerEvent && event.pointerId !== viewState.dragState.pointerId) return;
+  const pointer = viewState.dragState.pointerId;
+  viewState.dragState = null; webglDragBaseSnapshot = null;
+  disperseForce.endDrag(); commitDispersePositions(); releaseNodeDragCapture(pointer); startScatterAnimation();
+}
+window.addEventListener("blur", releaseDisperseDrag);
+webglCanvas?.addEventListener("lostpointercapture", releaseDisperseDrag);
+canvas.addEventListener("lostpointercapture", releaseDisperseDrag);

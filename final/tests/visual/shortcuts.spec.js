@@ -51,7 +51,8 @@ function shortcutFixtureWithGraphLink() {
 
 function readMacClipboard() {
   if (process.platform !== "darwin") return null;
-  const result = spawnSync("pbpaste", [], { encoding: "utf8" });
+  const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" };
+  const result = spawnSync("pbpaste", [], { encoding: "utf8", env });
   if (result.status !== 0) {
     throw new Error(result.stderr || "pbpaste failed");
   }
@@ -157,8 +158,7 @@ test.describe("Shift+Arrow selection extension", () => {
     const before = await getSelectedCount(page);
 
     await pressKey(page, "Shift+ArrowDown");
-    const after = await getSelectedCount(page);
-    expect(after).toBeGreaterThan(before);
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThan(before);
   });
 
   test("Shift+ArrowDown extends further on consecutive presses from root", async ({ page }) => {
@@ -166,13 +166,12 @@ test.describe("Shift+Arrow selection extension", () => {
     await focusBoard(page);
 
     await pressKey(page, "Shift+ArrowDown");
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThanOrEqual(2);
     const afterOne = await getSelectedCount(page);
-    expect(afterOne).toBeGreaterThanOrEqual(2);
 
     await pressKey(page, "Shift+ArrowDown");
-    const afterTwo = await getSelectedCount(page);
     // Second press should keep or extend selection (layout-dependent).
-    expect(afterTwo).toBeGreaterThanOrEqual(afterOne);
+    await expect.poll(() => getSelectedCount(page)).toBeGreaterThanOrEqual(afterOne);
   });
 });
 
@@ -195,8 +194,19 @@ test.describe("Tab: add child node", () => {
     await pressKey(page, "Tab");
     await waitForRender(page);
 
-    // An inline editor should appear (input element).
-    await expect(page.locator("textarea.inline-node-editor")).toBeVisible();
+    // An inline editor should appear and keep enough width for sentence entry.
+    const editor = page.locator("textarea.inline-node-editor");
+    await expect(editor).toBeVisible();
+    const editorWidth = await editor.evaluate(element => element.getBoundingClientRect().width);
+    expect(editorWidth).toBeGreaterThan(0);
+
+    await editor.fill("あ".repeat(80));
+    expect(await editor.evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(editorWidth);
+    const wrappedLineCount = await editor.evaluate((element) => {
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      return Math.round(element.scrollHeight / lineHeight);
+    });
+    expect(wrappedLineCount).toBeLessThanOrEqual(4);
 
     // Escape to finish editing.
     await pressKey(page, "Escape");
@@ -385,11 +395,11 @@ test.describe("Undo and Redo", () => {
     await expectMetaContains(page, `nodes: ${initialCount + 1}`);
 
     // Undo.
-    await pressKey(page, "Control+z");
+    await pressKey(page, "ControlOrMeta+z");
     await expectMetaContains(page, `nodes: ${initialCount}`);
 
     // Redo with Ctrl+Y.
-    await pressKey(page, "Control+y");
+    await pressKey(page, "ControlOrMeta+Shift+z");
     await expectMetaContains(page, `nodes: ${initialCount + 1}`);
   });
 
@@ -404,10 +414,10 @@ test.describe("Undo and Redo", () => {
     await pressKey(page, "Escape");
     await waitForRender(page);
 
-    await pressKey(page, "Control+z");
+    await pressKey(page, "ControlOrMeta+z");
     await expectMetaContains(page, `nodes: ${initialCount}`);
 
-    await pressKey(page, "Control+Shift+z");
+    await pressKey(page, "ControlOrMeta+Shift+z");
     await expectMetaContains(page, `nodes: ${initialCount + 1}`);
   });
 });
@@ -429,11 +439,11 @@ test.describe("Copy and Paste", () => {
     await expectMetaContains(page, "selected: Child B");
 
     // Copy.
-    await pressKey(page, "Control+c");
+    await pressKey(page, "ControlOrMeta+c");
     await waitForRender(page);
 
     // Paste (pastes as sibling or child depending on impl).
-    await pressKey(page, "Control+v");
+    await pressKey(page, "ControlOrMeta+v");
     await waitForRender(page);
 
     const afterCount = await getNodeCount(page);
@@ -465,9 +475,9 @@ test.describe("Copy and Paste", () => {
     await expectMetaContains(page, "selected: Child A");
     expect(await getLinkCount(page)).toBe(2);
 
-    await pressKey(page, "Control+c");
+    await pressKey(page, "ControlOrMeta+c");
     await waitForRender(page);
-    await pressKey(page, "Control+v");
+    await pressKey(page, "ControlOrMeta+v");
     await waitForRender(page);
 
     expect(await getNodeCount(page)).toBe(10);
@@ -499,7 +509,7 @@ test.describe("Copy and Paste", () => {
       await focusBoard(page);
       await pressKey(page, "ArrowRight");
       await expectMetaContains(page, "selected: Child A");
-      await pressKey(page, "Control+c");
+      await pressKey(page, "ControlOrMeta+c");
       await waitForRender(page);
       expect(await getStatusText(page)).toContain("and 1 link(s)");
 
@@ -508,7 +518,7 @@ test.describe("Copy and Paste", () => {
       expect(await getNodeCount(targetPage)).toBe(7);
       expect(await getLinkCount(targetPage)).toBe(0);
 
-      await pressKey(targetPage, "Control+v");
+      await pressKey(targetPage, "ControlOrMeta+v");
       await waitForRender(targetPage);
 
       expect(await getNodeCount(targetPage)).toBe(10);
@@ -554,7 +564,7 @@ test.describe("Copy and Paste", () => {
       await focusBoard(page);
       await pressKey(page, "ArrowRight");
       await expectMetaContains(page, "selected: Child A");
-      await pressKey(page, "Control+c");
+      await pressKey(page, "ControlOrMeta+c");
       await waitForRender(page);
       expect(await getStatusText(page)).toContain("for M3E tabs");
 
@@ -563,7 +573,7 @@ test.describe("Copy and Paste", () => {
       expect(await getNodeCount(targetPage)).toBe(7);
       expect(await getLinkCount(targetPage)).toBe(0);
 
-      await pressKey(targetPage, "Control+v");
+      await pressKey(targetPage, "ControlOrMeta+v");
       await waitForRender(targetPage);
 
       expect(await getNodeCount(targetPage)).toBe(10);
@@ -582,7 +592,7 @@ test.describe("Copy and Paste", () => {
     await pressKey(page, "ArrowRight");
     await expectMetaContains(page, "selected: Grandchild A1");
 
-    await pressKey(page, "Control+Alt+c");
+    await pressKey(page, "ControlOrMeta+Alt+c");
     await waitForRender(page);
 
     expect(await getStatusText(page)).toContain("Path copied: M:(開発)> Child A > Grandchild A1");
@@ -593,7 +603,7 @@ test.describe("Copy and Paste", () => {
     await launchViewer(page);
     await focusBoard(page);
 
-    await pressKey(page, "Control+Alt+i");
+    await pressKey(page, "ControlOrMeta+Alt+i");
     await waitForRender(page);
 
     expect(await getStatusText(page)).toContain("Scope ID copied: root");
@@ -618,7 +628,7 @@ test.describe("Cut and cancel", () => {
     const initialCount = await getNodeCount(page);
 
     // Cut.
-    await pressKey(page, "Control+x");
+    await pressKey(page, "ControlOrMeta+x");
     await waitForRender(page);
 
     // Cancel with Escape.
@@ -872,7 +882,7 @@ test.describe("Ctrl+A: select all visible", () => {
     await launchViewer(page);
     await focusBoard(page);
 
-    await pressKey(page, "Control+a");
+    await pressKey(page, "ControlOrMeta+a");
     await waitForRender(page);
 
     // All 7 nodes should be selected.
@@ -928,7 +938,7 @@ test.describe("Ctrl+G: group selected", () => {
     expect(selectedCount).toBe(2);
 
     // Group.
-    await pressKey(page, "Control+g");
+    await pressKey(page, "ControlOrMeta+g");
     await waitForRender(page);
 
     // Grouping creates a new parent node, so count increases by 1.
@@ -1044,7 +1054,7 @@ test.describe("Ctrl+S: download JSON", () => {
     // Set up download listener.
     const downloadPromise = page.waitForEvent("download", { timeout: 3000 }).catch(() => null);
 
-    await pressKey(page, "Control+s");
+    await pressKey(page, "ControlOrMeta+s");
     await waitForRender(page);
 
     const download = await downloadPromise;

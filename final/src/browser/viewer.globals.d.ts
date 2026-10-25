@@ -10,16 +10,15 @@ declare const joint: any;
 type NodeType = "text" | "image" | "folder" | "alias";
 type AliasAccess = "read" | "write";
 type ThinkingMode = "flash" | "rapid" | "deep";
-type SurfaceViewMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+type SurfaceViewMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
 type GraphLinkDirection = "none" | "forward" | "backward" | "both";
 type GraphLinkStyle = "default" | "dashed" | "soft" | "emphasis";
 type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 type MapNodeClass = "entity" | "scope";
-type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-type SurfaceLayoutDensity = "compact" | "balanced" | "spacious";
-type SurfaceBranchDirection = "both" | "right" | "left";
-type SurfaceLayoutDirection = "right" | "left" | "down" | "up";
+type SurfaceKind = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
+type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "logic-chart" | "timeline" | "lane";
+type SurfaceSpace = "tight" | "normal" | "loose";
+type SurfaceLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type SurfaceDepthAlign = "aligned" | "packed";
 type SurfaceEdgeRoute = "elbow" | "bezier" | "straight";
 type SurfaceLinkRoute = "simple-bezier" | "orthogonal" | "straight";
@@ -54,6 +53,7 @@ interface GraphLink {
   color?: string;
   sourcePort?: LinkPort;
   targetPort?: LinkPort;
+  attributes?: Record<string, string>;
 }
 
 interface SurfaceNodeView {
@@ -69,7 +69,13 @@ interface MapSurface {
   scopeId: string;
   kind: SurfaceKind;
   layout: SurfaceLayout;
+  surfaceView?: SurfaceView;
   nodeViews?: Record<string, SurfaceNodeView>;
+}
+
+interface SurfaceView {
+  direction: SurfaceLayoutDirection;
+  space: SurfaceSpace;
 }
 
 interface MapScope {
@@ -260,6 +266,7 @@ interface DragState {
   toggleKey: boolean;
   shiftKey: boolean;
   startViews?: Record<string, { x: number; y: number }>;
+  startWorld?: { x: number; y: number };
 }
 
 type DragDropProposal =
@@ -330,6 +337,7 @@ type ClipboardState =
   | null;
 
 interface ViewState {
+  concretenessLevel: number;
   selectedNodeId: string;
   selectedNodeIds: Set<string>;
   selectionAnchorId: string | null;
@@ -338,8 +346,7 @@ interface ViewState {
   currentScopeRootId: string;
   thinkingMode: ThinkingMode;
   surfaceViewMode: SurfaceViewMode;
-  surfaceLayoutDensity: SurfaceLayoutDensity;
-  surfaceBranchDirection: SurfaceBranchDirection;
+  surfaceSpace: SurfaceSpace;
   surfaceLayoutDirection: SurfaceLayoutDirection;
   surfaceDepthAlign: SurfaceDepthAlign;
   surfaceEdgeRoute: SurfaceEdgeRoute;
@@ -378,9 +385,8 @@ interface Window {
       edge?: { route?: SurfaceEdgeRoute };
       link?: { route?: SurfaceLinkRoute };
       displayRootId?: string;
-      structuredMode?: "tree" | "mindmap" | "logic-chart" | "timeline";
-      density?: SurfaceLayoutDensity;
-      branchDirection?: SurfaceBranchDirection;
+      structuredMode?: "tree" | "logic-chart" | "timeline";
+      space?: SurfaceSpace;
     },
   ) => {
     pos: Record<string, NodePosition>;

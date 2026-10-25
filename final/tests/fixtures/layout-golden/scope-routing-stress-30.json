@@ -398,15 +398,15 @@
     "options": {
       "displayRootId": "route-root",
       "structuredMode": "Tree",
-      "density": "balanced",
-      "branchDirection": "both"
+      "space": "normal",
+      "direction": "left/right"
     }
   },
   "expected": {
     "pos": {
       "route-root": {
-        "x": 80,
-        "y": 442.5,
+        "x": 1580,
+        "y": 309,
         "depth": 0,
         "w": 144,
         "h": 34,
@@ -415,8 +415,190 @@
           "route root"
         ]
       },
+      "target-scope": {
+        "x": 1149,
+        "y": 115,
+        "depth": 1,
+        "w": 176,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "target scope"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "target-root": {
+        "x": 658,
+        "y": 73,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "target root"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "target-deep-a": {
+        "x": 167,
+        "y": 53,
+        "depth": 3,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "target deep a"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "target-deep-b": {
+        "x": 167,
+        "y": 92.5,
+        "depth": 3,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "target deep b"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "target-child-a": {
+        "x": 658,
+        "y": 132.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "target child a"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "target-child-b": {
+        "x": 658,
+        "y": 174.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "target child b"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "guards": {
+        "x": 1173,
+        "y": 348.5,
+        "depth": 1,
+        "w": 152,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "guards"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "scope-lock": {
+        "x": 682,
+        "y": 287,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "scope lock"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "cycle-check": {
+        "x": 682,
+        "y": 326.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "cycle check"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "permission-check": {
+        "x": 682,
+        "y": 368.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "permission check"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "conflict-backup": {
+        "x": 682,
+        "y": 410,
+        "depth": 2,
+        "w": 236,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "conflict backup"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "telemetry": {
+        "x": 1134,
+        "y": 542.5,
+        "depth": 1,
+        "w": 191,
+        "h": 34,
+        "fontSize": 13,
+        "labelLines": [
+          "telemetry"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "event-log": {
+        "x": 643,
+        "y": 520.5,
+        "depth": 2,
+        "w": 236,
+        "h": 38,
+        "fontSize": 13,
+        "labelLines": [
+          "event log"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
+      "diagnostics": {
+        "x": 643,
+        "y": 562.5,
+        "depth": 2,
+        "w": 236,
+        "h": 42,
+        "fontSize": 13,
+        "labelLines": [
+          "diagnostics"
+        ],
+        "branchSide": "left",
+        "branchPortSide": "left"
+      },
       "source-scope": {
-        "x": 479,
+        "x": 1979,
         "y": 93,
         "depth": 1,
         "w": 167,
@@ -424,10 +606,12 @@
         "fontSize": 13,
         "labelLines": [
           "source scope"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "source-root": {
-        "x": 901,
+        "x": 2401,
         "y": 51.5,
         "depth": 2,
         "w": 214,
@@ -435,10 +619,12 @@
         "fontSize": 13,
         "labelLines": [
           "source root"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "source-deep-a": {
-        "x": 1370,
+        "x": 2870,
         "y": 29.5,
         "depth": 3,
         "w": 236,
@@ -446,10 +632,12 @@
         "fontSize": 13,
         "labelLines": [
           "source deep a"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "source-deep-b": {
-        "x": 1370,
+        "x": 2870,
         "y": 71.5,
         "depth": 3,
         "w": 236,
@@ -457,10 +645,12 @@
         "fontSize": 13,
         "labelLines": [
           "source deep b"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "source-child-a": {
-        "x": 901,
+        "x": 2401,
         "y": 115.5,
         "depth": 2,
         "w": 236,
@@ -468,10 +658,12 @@
         "fontSize": 13,
         "labelLines": [
           "source child a"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "source-child-b": {
-        "x": 901,
+        "x": 2401,
         "y": 157,
         "depth": 2,
         "w": 236,
@@ -479,295 +671,161 @@
         "fontSize": 13,
         "labelLines": [
           "source child b"
-        ]
-      },
-      "target-scope": {
-        "x": 479,
-        "y": 258,
-        "depth": 1,
-        "w": 176,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "target scope"
-        ]
-      },
-      "target-root": {
-        "x": 910,
-        "y": 216,
-        "depth": 2,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "target root"
-        ]
-      },
-      "target-deep-a": {
-        "x": 1401,
-        "y": 196,
-        "depth": 3,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "target deep a"
-        ]
-      },
-      "target-deep-b": {
-        "x": 1401,
-        "y": 235.5,
-        "depth": 3,
-        "w": 236,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "target deep b"
-        ]
-      },
-      "target-child-a": {
-        "x": 910,
-        "y": 275.5,
-        "depth": 2,
-        "w": 236,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "target child a"
-        ]
-      },
-      "target-child-b": {
-        "x": 910,
-        "y": 317.5,
-        "depth": 2,
-        "w": 236,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "target child b"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "aliases": {
-        "x": 479,
-        "y": 423,
+        "x": 1979,
+        "y": 331,
         "depth": 1,
         "w": 150,
         "h": 34,
         "fontSize": 13,
         "labelLines": [
           "aliases"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "alias-entry": {
-        "x": 884,
-        "y": 361.5,
+        "x": 2384,
+        "y": 269.5,
         "depth": 2,
         "w": 236,
         "h": 42,
         "fontSize": 13,
         "labelLines": [
           "alias entry"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "alias-target": {
-        "x": 884,
-        "y": 403,
+        "x": 2384,
+        "y": 311,
         "depth": 2,
         "w": 236,
         "h": 34,
         "fontSize": 13,
         "labelLines": [
           "alias target"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "alias-preview": {
-        "x": 884,
-        "y": 442.5,
+        "x": 2384,
+        "y": 350.5,
         "depth": 2,
         "w": 236,
         "h": 38,
         "fontSize": 13,
         "labelLines": [
           "alias preview"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "alias-conflict": {
-        "x": 884,
-        "y": 484.5,
+        "x": 2384,
+        "y": 392.5,
         "depth": 2,
         "w": 236,
         "h": 42,
         "fontSize": 13,
         "labelLines": [
           "alias conflict"
-        ]
-      },
-      "guards": {
-        "x": 479,
-        "y": 587.5,
-        "depth": 1,
-        "w": 152,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "guards"
-        ]
-      },
-      "scope-lock": {
-        "x": 886,
-        "y": 526,
-        "depth": 2,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "scope lock"
-        ]
-      },
-      "cycle-check": {
-        "x": 886,
-        "y": 565.5,
-        "depth": 2,
-        "w": 236,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "cycle check"
-        ]
-      },
-      "permission-check": {
-        "x": 886,
-        "y": 607.5,
-        "depth": 2,
-        "w": 236,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "permission check"
-        ]
-      },
-      "conflict-backup": {
-        "x": 886,
-        "y": 649,
-        "depth": 2,
-        "w": 236,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "conflict backup"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "execution": {
-        "x": 479,
-        "y": 730,
+        "x": 1979,
+        "y": 547,
         "depth": 1,
         "w": 182,
         "h": 42,
         "fontSize": 13,
         "labelLines": [
           "execution"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "dispatch": {
-        "x": 916,
-        "y": 688.5,
+        "x": 2416,
+        "y": 505.5,
         "depth": 2,
         "w": 236,
         "h": 38,
         "fontSize": 13,
         "labelLines": [
           "dispatch"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "layout-port": {
-        "x": 916,
-        "y": 730.5,
+        "x": 2416,
+        "y": 547.5,
         "depth": 2,
         "w": 236,
         "h": 42,
         "fontSize": 13,
         "labelLines": [
           "layout port"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       },
       "save-result": {
-        "x": 916,
-        "y": 772,
+        "x": 2416,
+        "y": 589,
         "depth": 2,
         "w": 236,
         "h": 34,
         "fontSize": 13,
         "labelLines": [
           "save result"
-        ]
-      },
-      "telemetry": {
-        "x": 479,
-        "y": 833.5,
-        "depth": 1,
-        "w": 191,
-        "h": 34,
-        "fontSize": 13,
-        "labelLines": [
-          "telemetry"
-        ]
-      },
-      "event-log": {
-        "x": 925,
-        "y": 811.5,
-        "depth": 2,
-        "w": 236,
-        "h": 38,
-        "fontSize": 13,
-        "labelLines": [
-          "event log"
-        ]
-      },
-      "diagnostics": {
-        "x": 925,
-        "y": 853.5,
-        "depth": 2,
-        "w": 236,
-        "h": 42,
-        "fontSize": 13,
-        "labelLines": [
-          "diagnostics"
-        ]
+        ],
+        "branchSide": "right",
+        "branchPortSide": "right"
       }
     },
     "order": [
       "route-root",
-      "source-scope",
-      "source-root",
-      "source-deep-a",
-      "source-deep-b",
-      "source-child-a",
-      "source-child-b",
       "target-scope",
       "target-root",
       "target-deep-a",
       "target-deep-b",
       "target-child-a",
       "target-child-b",
-      "aliases",
-      "alias-entry",
-      "alias-target",
-      "alias-preview",
-      "alias-conflict",
       "guards",
       "scope-lock",
       "cycle-check",
       "permission-check",
       "conflict-backup",
+      "telemetry",
+      "event-log",
+      "diagnostics",
+      "source-scope",
+      "source-root",
+      "source-deep-a",
+      "source-deep-b",
+      "source-child-a",
+      "source-child-b",
+      "aliases",
+      "alias-entry",
+      "alias-target",
+      "alias-preview",
+      "alias-conflict",
       "execution",
       "dispatch",
       "layout-port",
-      "save-result",
-      "telemetry",
-      "event-log",
-      "diagnostics"
+      "save-result"
     ],
-    "totalHeight": 934.5,
-    "totalWidth": 2117
+    "totalHeight": 760,
+    "totalWidth": 3586
   }
 }

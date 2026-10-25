@@ -1,0 +1,1252 @@
+{
+ "version": 1,
+ "state": {
+  "rootId": "asys",
+  "nodes": {
+   "asys": {
+    "id": "asys",
+    "parentId": null,
+    "children": [
+     "lane_ai",
+     "lane_cloud",
+     "lane_device",
+     "lane_domain",
+     "lane_app",
+     "lane_back"
+    ],
+    "nodeType": "text",
+    "text": "Akaghef-System 構成",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "lane_ai": {
+    "id": "lane_ai",
+    "parentId": "asys",
+    "children": [
+     "item_codex",
+     "item_ha",
+     "item_akos"
+    ],
+    "nodeType": "text",
+    "text": "AI",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_codex": {
+    "id": "item_codex",
+    "parentId": "lane_ai",
+    "children": [],
+    "nodeType": "text",
+    "text": "Codex",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_ha": {
+    "id": "item_ha",
+    "parentId": "lane_ai",
+    "children": [],
+    "nodeType": "text",
+    "text": "Hermes Agent",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_akos": {
+    "id": "item_akos",
+    "parentId": "lane_ai",
+    "children": [],
+    "nodeType": "text",
+    "text": "Akaghef OS",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "lane_cloud": {
+    "id": "lane_cloud",
+    "parentId": "asys",
+    "children": [
+     "item_gh",
+     "item_gd",
+     "item_chats"
+    ],
+    "nodeType": "text",
+    "text": "Cloud",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_gh": {
+    "id": "item_gh",
+    "parentId": "lane_cloud",
+    "children": [],
+    "nodeType": "text",
+    "text": "GitHub",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_gd": {
+    "id": "item_gd",
+    "parentId": "lane_cloud",
+    "children": [],
+    "nodeType": "text",
+    "text": "Google Drive",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_chats": {
+    "id": "item_chats",
+    "parentId": "lane_cloud",
+    "children": [],
+    "nodeType": "text",
+    "text": "Communication Tools",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "lane_device": {
+    "id": "lane_device",
+    "parentId": "asys",
+    "children": [
+     "item_mac",
+     "item_dell",
+     "item_mini",
+     "item_ipad",
+     "item_iphone"
+    ],
+    "nodeType": "text",
+    "text": "Device",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_mac": {
+    "id": "item_mac",
+    "parentId": "lane_device",
+    "children": [],
+    "nodeType": "text",
+    "text": "Mac",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_dell": {
+    "id": "item_dell",
+    "parentId": "lane_device",
+    "children": [],
+    "nodeType": "text",
+    "text": "Dell",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_mini": {
+    "id": "item_mini",
+    "parentId": "lane_device",
+    "children": [],
+    "nodeType": "text",
+    "text": "Mac mini",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_ipad": {
+    "id": "item_ipad",
+    "parentId": "lane_device",
+    "children": [],
+    "nodeType": "text",
+    "text": "iPad",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_iphone": {
+    "id": "item_iphone",
+    "parentId": "lane_device",
+    "children": [],
+    "nodeType": "text",
+    "text": "iPhone",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "lane_domain": {
+    "id": "lane_domain",
+    "parentId": "asys",
+    "children": [
+     "item_dom_m3e",
+     "item_sys",
+     "item_res",
+     "item_fam",
+     "item_eng",
+     "item_biz"
+    ],
+    "nodeType": "text",
+    "text": "Domain",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_dom_m3e": {
+    "id": "item_dom_m3e",
+    "parentId": "lane_domain",
+    "children": [],
+    "nodeType": "text",
+    "text": "M3E",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_sys": {
+    "id": "item_sys",
+    "parentId": "lane_domain",
+    "children": [],
+    "nodeType": "text",
+    "text": "System",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_res": {
+    "id": "item_res",
+    "parentId": "lane_domain",
+    "children": [],
+    "nodeType": "text",
+    "text": "Research",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_fam": {
+    "id": "item_fam",
+    "parentId": "lane_domain",
+    "children": [],
+    "nodeType": "text",
+    "text": "Family",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_eng": {
+    "id": "item_eng",
+    "parentId": "lane_domain",
+    "children": [],
+    "nodeType": "text",
+    "text": "Engineering",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_biz": {
+    "id": "item_biz",
+    "parentId": "lane_domain",
+    "children": [],
+    "nodeType": "text",
+    "text": "Business",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "lane_app": {
+    "id": "lane_app",
+    "parentId": "asys",
+    "children": [
+     "item_obsidian",
+     "item_chrome",
+     "item_app_m3e",
+     "item_miro",
+     "item_ops"
+    ],
+    "nodeType": "text",
+    "text": "Apps",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_obsidian": {
+    "id": "item_obsidian",
+    "parentId": "lane_app",
+    "children": [],
+    "nodeType": "text",
+    "text": "Obsidian",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_chrome": {
+    "id": "item_chrome",
+    "parentId": "lane_app",
+    "children": [],
+    "nodeType": "text",
+    "text": "Chrome",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_app_m3e": {
+    "id": "item_app_m3e",
+    "parentId": "lane_app",
+    "children": [],
+    "nodeType": "text",
+    "text": "M3E",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_miro": {
+    "id": "item_miro",
+    "parentId": "lane_app",
+    "children": [],
+    "nodeType": "text",
+    "text": "Miro",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_ops": {
+    "id": "item_ops",
+    "parentId": "lane_app",
+    "children": [],
+    "nodeType": "text",
+    "text": "Akaghef Ops",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "lane_back": {
+    "id": "lane_back",
+    "parentId": "asys",
+    "children": [
+     "item_docker",
+     "item_n8n",
+     "item_cloudflare"
+    ],
+    "nodeType": "text",
+    "text": "Back",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_docker": {
+    "id": "item_docker",
+    "parentId": "lane_back",
+    "children": [],
+    "nodeType": "text",
+    "text": "Docker",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_n8n": {
+    "id": "item_n8n",
+    "parentId": "lane_back",
+    "children": [],
+    "nodeType": "text",
+    "text": "n8n",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   },
+   "item_cloudflare": {
+    "id": "item_cloudflare",
+    "parentId": "lane_back",
+    "children": [],
+    "nodeType": "text",
+    "text": "Cloudflare",
+    "collapsed": false,
+    "details": "",
+    "note": "",
+    "attributes": {},
+    "link": ""
+   }
+  },
+  "links": {
+   "gl1": {
+    "id": "gl1",
+    "sourceNodeId": "item_docker",
+    "targetNodeId": "item_app_m3e",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl2": {
+    "id": "gl2",
+    "sourceNodeId": "item_docker",
+    "targetNodeId": "item_ops",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl3": {
+    "id": "gl3",
+    "sourceNodeId": "item_n8n",
+    "targetNodeId": "item_ops",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl4": {
+    "id": "gl4",
+    "sourceNodeId": "item_cloudflare",
+    "targetNodeId": "item_app_m3e",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl5": {
+    "id": "gl5",
+    "sourceNodeId": "item_cloudflare",
+    "targetNodeId": "item_ops",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl6": {
+    "id": "gl6",
+    "sourceNodeId": "item_obsidian",
+    "targetNodeId": "item_dom_m3e",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl7": {
+    "id": "gl7",
+    "sourceNodeId": "item_obsidian",
+    "targetNodeId": "item_sys",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl8": {
+    "id": "gl8",
+    "sourceNodeId": "item_obsidian",
+    "targetNodeId": "item_res",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl9": {
+    "id": "gl9",
+    "sourceNodeId": "item_obsidian",
+    "targetNodeId": "item_fam",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl10": {
+    "id": "gl10",
+    "sourceNodeId": "item_obsidian",
+    "targetNodeId": "item_eng",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl11": {
+    "id": "gl11",
+    "sourceNodeId": "item_obsidian",
+    "targetNodeId": "item_biz",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl12": {
+    "id": "gl12",
+    "sourceNodeId": "item_chrome",
+    "targetNodeId": "item_dom_m3e",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl13": {
+    "id": "gl13",
+    "sourceNodeId": "item_chrome",
+    "targetNodeId": "item_sys",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl14": {
+    "id": "gl14",
+    "sourceNodeId": "item_chrome",
+    "targetNodeId": "item_res",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl15": {
+    "id": "gl15",
+    "sourceNodeId": "item_chrome",
+    "targetNodeId": "item_fam",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl16": {
+    "id": "gl16",
+    "sourceNodeId": "item_chrome",
+    "targetNodeId": "item_eng",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl17": {
+    "id": "gl17",
+    "sourceNodeId": "item_chrome",
+    "targetNodeId": "item_biz",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl18": {
+    "id": "gl18",
+    "sourceNodeId": "item_app_m3e",
+    "targetNodeId": "item_dom_m3e",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl19": {
+    "id": "gl19",
+    "sourceNodeId": "item_app_m3e",
+    "targetNodeId": "item_sys",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl20": {
+    "id": "gl20",
+    "sourceNodeId": "item_app_m3e",
+    "targetNodeId": "item_eng",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl21": {
+    "id": "gl21",
+    "sourceNodeId": "item_app_m3e",
+    "targetNodeId": "item_biz",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl22": {
+    "id": "gl22",
+    "sourceNodeId": "item_miro",
+    "targetNodeId": "item_res",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl23": {
+    "id": "gl23",
+    "sourceNodeId": "item_miro",
+    "targetNodeId": "item_eng",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl24": {
+    "id": "gl24",
+    "sourceNodeId": "item_miro",
+    "targetNodeId": "item_biz",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl25": {
+    "id": "gl25",
+    "sourceNodeId": "item_ops",
+    "targetNodeId": "item_sys",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl26": {
+    "id": "gl26",
+    "sourceNodeId": "item_ops",
+    "targetNodeId": "item_eng",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl27": {
+    "id": "gl27",
+    "sourceNodeId": "item_ops",
+    "targetNodeId": "item_biz",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl28": {
+    "id": "gl28",
+    "sourceNodeId": "item_dom_m3e",
+    "targetNodeId": "item_mac",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl29": {
+    "id": "gl29",
+    "sourceNodeId": "item_dom_m3e",
+    "targetNodeId": "item_dell",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl30": {
+    "id": "gl30",
+    "sourceNodeId": "item_dom_m3e",
+    "targetNodeId": "item_ipad",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl31": {
+    "id": "gl31",
+    "sourceNodeId": "item_sys",
+    "targetNodeId": "item_mac",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl32": {
+    "id": "gl32",
+    "sourceNodeId": "item_sys",
+    "targetNodeId": "item_dell",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl33": {
+    "id": "gl33",
+    "sourceNodeId": "item_sys",
+    "targetNodeId": "item_mini",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl34": {
+    "id": "gl34",
+    "sourceNodeId": "item_res",
+    "targetNodeId": "item_mac",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl35": {
+    "id": "gl35",
+    "sourceNodeId": "item_res",
+    "targetNodeId": "item_dell",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl36": {
+    "id": "gl36",
+    "sourceNodeId": "item_res",
+    "targetNodeId": "item_ipad",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl37": {
+    "id": "gl37",
+    "sourceNodeId": "item_fam",
+    "targetNodeId": "item_mac",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl38": {
+    "id": "gl38",
+    "sourceNodeId": "item_fam",
+    "targetNodeId": "item_dell",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl39": {
+    "id": "gl39",
+    "sourceNodeId": "item_fam",
+    "targetNodeId": "item_ipad",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl40": {
+    "id": "gl40",
+    "sourceNodeId": "item_fam",
+    "targetNodeId": "item_iphone",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl41": {
+    "id": "gl41",
+    "sourceNodeId": "item_eng",
+    "targetNodeId": "item_mac",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl42": {
+    "id": "gl42",
+    "sourceNodeId": "item_eng",
+    "targetNodeId": "item_dell",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl43": {
+    "id": "gl43",
+    "sourceNodeId": "item_eng",
+    "targetNodeId": "item_ipad",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl44": {
+    "id": "gl44",
+    "sourceNodeId": "item_eng",
+    "targetNodeId": "item_mini",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl45": {
+    "id": "gl45",
+    "sourceNodeId": "item_biz",
+    "targetNodeId": "item_dell",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl46": {
+    "id": "gl46",
+    "sourceNodeId": "item_biz",
+    "targetNodeId": "item_ipad",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl47": {
+    "id": "gl47",
+    "sourceNodeId": "item_biz",
+    "targetNodeId": "item_iphone",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl48": {
+    "id": "gl48",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_gh",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl49": {
+    "id": "gl49",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_gd",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl50": {
+    "id": "gl50",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_chats",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl51": {
+    "id": "gl51",
+    "sourceNodeId": "item_dell",
+    "targetNodeId": "item_gh",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl52": {
+    "id": "gl52",
+    "sourceNodeId": "item_dell",
+    "targetNodeId": "item_gd",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl53": {
+    "id": "gl53",
+    "sourceNodeId": "item_dell",
+    "targetNodeId": "item_chats",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl54": {
+    "id": "gl54",
+    "sourceNodeId": "item_mini",
+    "targetNodeId": "item_gh",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl55": {
+    "id": "gl55",
+    "sourceNodeId": "item_mini",
+    "targetNodeId": "item_gd",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl56": {
+    "id": "gl56",
+    "sourceNodeId": "item_ipad",
+    "targetNodeId": "item_gd",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl57": {
+    "id": "gl57",
+    "sourceNodeId": "item_ipad",
+    "targetNodeId": "item_chats",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl58": {
+    "id": "gl58",
+    "sourceNodeId": "item_iphone",
+    "targetNodeId": "item_gd",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl59": {
+    "id": "gl59",
+    "sourceNodeId": "item_iphone",
+    "targetNodeId": "item_chats",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl60": {
+    "id": "gl60",
+    "sourceNodeId": "item_gh",
+    "targetNodeId": "item_codex",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl61": {
+    "id": "gl61",
+    "sourceNodeId": "item_gh",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl62": {
+    "id": "gl62",
+    "sourceNodeId": "item_gh",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl63": {
+    "id": "gl63",
+    "sourceNodeId": "item_gd",
+    "targetNodeId": "item_codex",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl64": {
+    "id": "gl64",
+    "sourceNodeId": "item_gd",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl65": {
+    "id": "gl65",
+    "sourceNodeId": "item_gd",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl66": {
+    "id": "gl66",
+    "sourceNodeId": "item_chats",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl67": {
+    "id": "gl67",
+    "sourceNodeId": "item_chats",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl68": {
+    "id": "gl68",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_codex",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl69": {
+    "id": "gl69",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl70": {
+    "id": "gl70",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl71": {
+    "id": "gl71",
+    "sourceNodeId": "item_dell",
+    "targetNodeId": "item_codex",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl72": {
+    "id": "gl72",
+    "sourceNodeId": "item_dell",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl73": {
+    "id": "gl73",
+    "sourceNodeId": "item_dell",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl74": {
+    "id": "gl74",
+    "sourceNodeId": "item_mini",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl75": {
+    "id": "gl75",
+    "sourceNodeId": "item_mini",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl76": {
+    "id": "gl76",
+    "sourceNodeId": "item_ipad",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl77": {
+    "id": "gl77",
+    "sourceNodeId": "item_ipad",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl78": {
+    "id": "gl78",
+    "sourceNodeId": "item_iphone",
+    "targetNodeId": "item_ha",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl79": {
+    "id": "gl79",
+    "sourceNodeId": "item_iphone",
+    "targetNodeId": "item_akos",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl80": {
+    "id": "gl80",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_dell",
+    "direction": "forward",
+    "style": "emphasis",
+    "attributes": {
+     "confidence": "system-evidenced"
+    }
+   },
+   "gl81": {
+    "id": "gl81",
+    "sourceNodeId": "item_mac",
+    "targetNodeId": "item_mini",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   },
+   "gl82": {
+    "id": "gl82",
+    "sourceNodeId": "item_dell",
+    "targetNodeId": "item_mini",
+    "direction": "forward",
+    "style": "default",
+    "attributes": {
+     "confidence": "declared"
+    }
+   }
+  }
+ }
+}

@@ -10,5 +10,6 @@
     "types": []
   },
   "include": ["src/browser/**/*.ts"],
-  "exclude": ["src/browser/edge_geometry.ts", "src/browser/viewer.ts", "src/browser/edge_adapters/**/*.ts"]
+  "exclude": ["src/browser/viewer_theme.ts", "src/browser/edge_geometry.ts", "src/browser/viewer.ts", "src/browser/webgl_projection.ts", "src/browser/webgl_scene_tiles.ts", "src/browser/frame_invalidation.ts", "src/browser/agent_node_assets.ts", "src/browser/incremental_scene.ts", "src/browser/inline_node_editor.ts", "src/browser/viewer_keyboard.ts", "src/browser/orrery*.ts", "src/browser/edge_adapters/**/*.ts",
+    "src/browser/lane_*.ts", "src/browser/disperse_force_controller.ts", "src/browser/disperse_frame.ts", "src/browser/edge_graphlink_selection_adapter.ts", "src/browser/viewer-filter-*.ts"]
 }

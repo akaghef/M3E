@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "declaration": false,
+    "noEmit": true,
+    "types": []
+  },
+  "include": [
+    "src/browser/viewer_theme.ts",
+    "src/browser/webgl_projection.ts",
+    "src/browser/orrery_network.ts",
+    "src/browser/viewer-filter-scene.ts"
+  ]
+}

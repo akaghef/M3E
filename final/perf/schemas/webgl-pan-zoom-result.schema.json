@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://m3e.local/schemas/webgl-pan-zoom-result.schema.json",
+  "title": "M3E WebGL pan/zoom experiment result",
+  "type": "object",
+  "required": ["schemaVersion", "status", "createdAt", "git", "environment", "target", "runConfig", "rendererRuns"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": { "enum": ["measured", "no-measurement", "fixture-invalid"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "git": { "type": "object", "required": ["commit", "dirty"] },
+    "environment": { "type": "object", "required": ["node", "platform", "arch", "viewport", "devicePixelRatio"] },
+    "target": { "type": "object", "required": ["baseUrl", "mapId", "scopeId", "fixtureContentHash"] },
+    "runConfig": { "type": "object", "required": ["warmupIterations", "measuredRuns", "sequence"] },
+    "rendererRuns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["renderer", "status"],
+        "properties": {
+          "renderer": { "enum": ["webgl", "svg"] },
+          "status": { "enum": ["measured", "no-measurement", "failed"] },
+          "browser": { "type": "object" },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "durationMs", "frames", "longTasks"],
+              "properties": {
+                "name": { "type": "string" },
+                "durationMs": { "type": "number" },
+                "frames": { "type": "object", "required": ["count", "medianMs", "p95Ms", "maxMs", "over16_7ms", "over33_3ms"] },
+                "longTasks": { "type": "object", "required": ["supported", "count", "totalMs", "maxMs"] },
+                "webglDebug": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

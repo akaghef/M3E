@@ -36,7 +36,7 @@ body,
   height: 100dvh;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 80% 60% at 50% 40%, #152038 0%, var(--bg) 70%),
+    linear-gradient(160deg, #152038 0%, var(--bg) 70%),
     var(--bg);
 }
 

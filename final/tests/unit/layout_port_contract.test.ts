@@ -1,36 +1,168 @@
 import { describe, expect, test } from "vitest";
 import {
   layout,
-  type LayoutNodeMetric,
+  normalizeLayoutVocabulary,
+  routeLayoutEdge,
   type LayoutOptions,
-  type LayoutResult,
-  type VisibleLayoutGraph,
 } from "../../src/shared/layout_port";
+import { layoutSamples, toVisibleLayoutGraph } from "../../src/labs/layout/layout_samples";
+
+const treeStress = layoutSamples.find((sample) => sample.sample_id === "tree-stress-30")!;
+const treeGraph = toVisibleLayoutGraph(treeStress);
+
+function measured(result: ReturnType<typeof layout>) {
+  const nodes = Object.values(result.pos);
+  const left = Math.min(...nodes.map((node) => node.x));
+  const top = Math.min(...nodes.map((node) => node.y - node.h / 2));
+  const right = Math.max(...nodes.map((node) => node.x + node.w));
+  const bottom = Math.max(...nodes.map((node) => node.y + node.h / 2));
+  const overlapPairs = nodes.reduce((total, node, index) => total + nodes.slice(index + 1).filter((other) =>
+    Math.min(node.x + node.w, other.x + other.w) > Math.max(node.x, other.x)
+      && Math.min(node.y + node.h / 2, other.y + other.h / 2) > Math.max(node.y - node.h / 2, other.y - other.h / 2),
+  ).length, 0);
+  return { nodes: nodes.length, overlapPairs, bbox: `${Number((right - left).toFixed(3))}x${Number((bottom - top).toFixed(3))}` };
+}
+
+function treeLayout(options: Partial<LayoutOptions> = {}) {
+  return layout(treeGraph, treeStress.input.boxSizes, "Tree", {
+    ...treeStress.input.options,
+    ...options,
+  });
+}
 
 describe("LayoutPort contract", () => {
-  test("lays out a deterministic tree through the public port", () => {
-    const graph: VisibleLayoutGraph = {
-      nodeIds: ["root", "child"],
-      childrenOf: (id) => (id === "root" ? ["child"] : []),
-      graphLinks: [],
-    };
-    const boxSizes: Record<string, LayoutNodeMetric> = {
-      root: { w: 200, h: 64 },
-      child: { w: 120, h: 38 },
-    };
-    const options: LayoutOptions = {
-      displayRootId: "root",
-      structuredMode: "Tree",
-      density: "balanced",
-      branchDirection: "both",
-    };
+  test("migrates persisted legacy layout vocabulary to direction and space", () => {
+    expect(normalizeLayoutVocabulary({ branchDirection: "both", density: "compact" })).toEqual({ direction: "left/right", space: "tight" });
+    expect(normalizeLayoutVocabulary({ branchDirection: "left", density: "balanced" })).toEqual({ direction: "left", space: "normal" });
+    expect(normalizeLayoutVocabulary({ branchDirection: "right", density: "spacious" })).toEqual({ direction: "right", space: "loose" });
+    expect(normalizeLayoutVocabulary({ direction: "up/down", space: "loose" })).toEqual({ direction: "up/down", space: "loose" });
+  });
 
-    const result: LayoutResult = layout(graph, boxSizes, "Tree", options);
+  test("applies all Tree spacing controls", () => {
+    const base = { direction: "left/right" as const };
+    const compactSiblings = treeLayout({ ...base, spacing: { nodeGap: 1, levelGap: 112, padding: 92 } });
+    const looseSiblings = treeLayout({ ...base, spacing: { nodeGap: 60, levelGap: 112, padding: 92 } });
+    const shortLevels = treeLayout({ ...base, spacing: { nodeGap: 14, levelGap: 60, padding: 92 } });
+    const longLevels = treeLayout({ ...base, spacing: { nodeGap: 14, levelGap: 260, padding: 92 } });
+    const narrowSides = treeLayout({ ...base, spacing: { nodeGap: 14, levelGap: 112, padding: 20 } });
+    const wideSides = treeLayout({ ...base, spacing: { nodeGap: 14, levelGap: 112, padding: 200 } });
 
-    expect(result.order).toEqual(["root", "child"]);
-    expect(result.pos.root).toMatchObject({ x: 80, y: 54, depth: 0, w: 200, h: 64 });
-    expect(result.pos.child).toMatchObject({ x: 535, y: 29.5, depth: 1, w: 120, h: 38, branchSide: "right" });
-    expect(result.totalWidth).toBe(1620);
-    expect(result.totalHeight).toBe(760);
+    expect(looseSiblings.totalHeight).toBeGreaterThan(compactSiblings.totalHeight);
+    expect(longLevels.totalWidth).toBeGreaterThan(shortLevels.totalWidth);
+    expect(wideSides.totalWidth).toBeGreaterThan(narrowSides.totalWidth);
+    expect(wideSides.totalHeight).toBeGreaterThan(narrowSides.totalHeight);
+  });
+
+  test("supports every canonical Tree direction and both depth alignments", () => {
+    const spacing = { nodeGap: 14, levelGap: 112, padding: 92 };
+    const signatures = ["left/right", "left", "right", "up/down", "up", "down"].map((direction) => {
+      const result = treeLayout({ direction: direction as LayoutOptions["direction"], spacing, depthAlign: "packed" });
+      const root = result.pos[treeStress.input.options.displayRootId!]!;
+      return `${result.totalWidth}x${result.totalHeight}@${root.x},${root.y}`;
+    });
+    const packed = treeLayout({ direction: "left/right", spacing, depthAlign: "packed" });
+    const aligned = treeLayout({ direction: "left/right", spacing, depthAlign: "aligned" });
+
+    expect(new Set(signatures).size).toBe(6);
+    expect(`${packed.totalWidth}x${packed.totalHeight}`).not.toBe(`${aligned.totalWidth}x${aligned.totalHeight}`);
+  });
+
+  test.each(["logic-chart"] as const)("%s preserves six directions and valid vertical branch ports", (structuredMode) => {
+    const directions: NonNullable<LayoutOptions["direction"]>[] = ["left/right", "left", "right", "up/down", "up", "down"];
+    directions.forEach((direction) => {
+      const result = layout(treeGraph, treeStress.input.boxSizes, structuredMode, {
+        ...treeStress.input.options,
+        structuredMode,
+        direction,
+      });
+      const root = result.pos[treeStress.input.options.displayRootId!]!;
+      const child = result.pos[treeGraph.childrenOf(treeStress.input.options.displayRootId!)[0]!]!;
+      const path = routeLayoutEdge(root, child, "Tree", direction, "curve");
+      if (direction === "up/down") {
+        expect(child.branchPortSide === "up" || child.branchPortSide === "down").toBe(true);
+        expect(["top", "bottom"]).toContain(path.source.side);
+        expect(["top", "bottom"]).toContain(path.target.side);
+      }
+      console.info(JSON.stringify({ structuredMode, direction, branchPortSide: child.branchPortSide, ports: [path.source.side, path.target.side] }));
+    });
+  });
+
+  test("reads legacy mindmap layout as a Tree two-sided preset", () => {
+    const result = layout(treeGraph, treeStress.input.boxSizes, "mindmap", {
+      ...treeStress.input.options,
+      structuredMode: "balanced-tree",
+    });
+    const root = result.pos[treeStress.input.options.displayRootId!]!;
+    const rootChildren = treeGraph.childrenOf(treeStress.input.options.displayRootId!);
+    expect(rootChildren.some((id) => result.pos[id]!.x < root.x)).toBe(true);
+    expect(rootChildren.some((id) => result.pos[id]!.x > root.x)).toBe(true);
+  });
+
+  test("Axial preserves the two-sided direction axis", () => {
+    const rootId = treeStress.input.options.displayRootId!;
+    const rootChildren = treeGraph.childrenOf(rootId);
+    const horizontal = layout(treeGraph, treeStress.input.boxSizes, "Axial", {
+      ...treeStress.input.options,
+      structuredMode: "timeline",
+      direction: "left/right",
+    });
+    const vertical = layout(treeGraph, treeStress.input.boxSizes, "Axial", {
+      ...treeStress.input.options,
+      structuredMode: "timeline",
+      direction: "up/down",
+    });
+    const horizontalRoot = horizontal.pos[rootId]!;
+    const verticalRoot = vertical.pos[rootId]!;
+
+    expect(rootChildren.some((id) => horizontal.pos[id]!.x < horizontalRoot.x)).toBe(true);
+    expect(rootChildren.some((id) => horizontal.pos[id]!.x > horizontalRoot.x)).toBe(true);
+    expect(rootChildren.some((id) => vertical.pos[id]!.y < verticalRoot.y)).toBe(true);
+    expect(rootChildren.some((id) => vertical.pos[id]!.y > verticalRoot.y)).toBe(true);
+  });
+
+  test("uses space defaults in Tree when spacing is omitted", () => {
+    const tight = treeLayout({ direction: "right", space: "tight" });
+    const loose = treeLayout({ direction: "right", space: "loose" });
+
+    expect(loose.totalWidth).toBeGreaterThan(tight.totalWidth);
+    expect(loose.totalHeight).toBeGreaterThan(tight.totalHeight);
+  });
+
+  test("omits descendants of a collapsed node from structured layout while retaining that node", () => {
+    const target = treeStress.input.graph.nodeIds.find((nodeId) => {
+      const children = treeStress.input.graph.children[nodeId] || [];
+      return nodeId !== treeStress.input.options.displayRootId && children.length > 0;
+    })!;
+    const child = treeStress.input.graph.children[target]![0]!;
+    const collapsedGraph = toVisibleLayoutGraph(treeStress, [target]);
+    const result = layout(collapsedGraph, treeStress.input.boxSizes, "Tree", treeStress.input.options);
+
+    expect(collapsedGraph.childrenOf(target)).toEqual([]);
+    expect(result.pos[target]).toBeDefined();
+    expect(result.pos[child]).toBeUndefined();
+    expect(result.order.length).toBeLessThan(treeStress.input.graph.nodeIds.length);
+  });
+
+  test("reports the lab's Tree and Disperse collapse measurements", () => {
+    const target = treeStress.input.graph.nodeIds.find((nodeId) => {
+      const children = treeStress.input.graph.children[nodeId] || [];
+      return nodeId !== treeStress.input.options.displayRootId && children.length > 0;
+    })!;
+    const treeOff = treeLayout();
+    const treeOn = layout(toVisibleLayoutGraph(treeStress, [target]), treeStress.input.boxSizes, "Tree", treeStress.input.options);
+    const disperseOptions: LayoutOptions = {
+      ...treeStress.input.options,
+      disperse: { subtype: "cluster", superNodeFootprint: "descendant-area", edgeAggregation: "bundle" },
+    };
+    const disperseOff = layout(treeGraph, treeStress.input.boxSizes, "Disperse", disperseOptions);
+    const disperseOn = layout(treeGraph, treeStress.input.boxSizes, "Disperse", {
+      ...disperseOptions,
+      disperse: { ...disperseOptions.disperse, collapsedNodeIds: [target] },
+    });
+
+    console.info(`LAYOUT_LAB_COLLAPSE ${JSON.stringify({ target, tree: { off: measured(treeOff), on: measured(treeOn) }, disperse: { off: measured(disperseOff), on: measured(disperseOn) } })}`);
+    expect(treeOn.order.length).toBeLessThan(treeOff.order.length);
+    expect(disperseOn.order).toContain(`collapse:${target}`);
+    expect(disperseOn.order.length).toBeLessThan(disperseOff.order.length);
   });
 });

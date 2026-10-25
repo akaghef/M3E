@@ -5,7 +5,7 @@ import path from "path";
 import { runLinearTransform } from "./linear_agent";
 import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { RapidMvpModel } from "./rapid_mvp";
-import { extractWikilinks, parseFrontmatter, type WikilinkRef } from "./md_reader";
+import { extractWikilinks, parseFrontmatter, parseMdContent, type WikilinkRef } from "./md_reader";
 import { validateVaultPath } from "./vault_path";
 import type {
   AppState,
@@ -46,6 +46,8 @@ type ImportContext = {
   folderCount: number;
   fileLimitReached: boolean;
   nextId: () => string;
+  existingState?: AppState;
+  claimedIds: Set<string>;
 };
 
 function createIdFactory(): () => string {
@@ -105,6 +107,21 @@ function createFolderNode(id: string, parentId: string | null, text: string, kin
   };
 }
 
+function isPortableM3eAttribute(key: string): boolean {
+  return key === "m3e:provenance" || key === "m3e:agent" || key === "m3e:label-width" || key.startsWith("m3e:role.") || key.startsWith("m3e:actor.");
+}
+
+function reusableVaultNodeId(
+  state: AppState | undefined,
+  kind: "folder" | "file",
+  relativePath: string,
+): string | undefined {
+  if (!state) return undefined;
+  return Object.values(state.nodes).find((node) =>
+    node.attributes["vault:kind"] === kind && node.attributes["vault:path"] === relativePath
+  )?.id;
+}
+
 function applyFrontmatterAttributes(node: TreeNode, frontmatter: Record<string, unknown>): void {
   const attributes: Record<string, string> = { ...node.attributes };
 
@@ -117,6 +134,9 @@ function applyFrontmatterAttributes(node: TreeNode, frontmatter: Record<string, 
 
   for (const [key, value] of Object.entries(frontmatter)) {
     if (key === "m3e" || key === "tags" || key === "aliases" || value === null || value === undefined) {
+      continue;
+    }
+    if (key.startsWith("vault:") || (key.startsWith("m3e:") && !isPortableM3eAttribute(key))) {
       continue;
     }
     if (Array.isArray(value)) {
@@ -155,7 +175,11 @@ async function walkVaultDirectory(
     const relativeChild = toPosixRelative(vaultPath, absoluteChild);
 
     if (entry.isDirectory()) {
-      const folderId = ctx.nextId();
+      const folderId = reusableVaultNodeId(ctx.existingState, "folder", relativeChild) ?? ctx.nextId();
+      if (ctx.claimedIds.has(folderId)) {
+        throw new Error(`Duplicate vault node identity: ${folderId}`);
+      }
+      ctx.claimedIds.add(folderId);
       nodes[folderId] = createFolderNode(folderId, parentId, entry.name, "folder", relativeChild);
       ctx.folderCount += 1;
       appendChild(nodes, parentId, folderId);
@@ -338,12 +362,13 @@ function resolveWikilinks(
 export async function importVaultToAppState(
   request: VaultImportRequest,
   hooks?: { onProgress?: (progress: VaultImportProgress) => void },
+  existingState?: AppState,
 ): Promise<VaultImportResult> {
   const vaultPath = validateVaultPath(request.vaultPath, { mustExist: true });
 
   const mapId = request.mapId?.trim() || buildDefaultMapId(vaultPath);
   const nextId = createIdFactory();
-  const rootId = nextId();
+  const rootId = existingState?.rootId ?? nextId();
   const rootNode = createFolderNode(rootId, null, path.basename(vaultPath) || vaultPath, "folder", "");
   const nodes: Record<string, TreeNode> = { [rootId]: rootNode };
   const ctx: ImportContext = {
@@ -355,6 +380,8 @@ export async function importVaultToAppState(
     folderCount: 1,
     fileLimitReached: false,
     nextId,
+    existingState,
+    claimedIds: new Set([rootId]),
   };
 
   await walkVaultDirectory(vaultPath, vaultPath, rootId, nodes, ctx);
@@ -370,7 +397,46 @@ export async function importVaultToAppState(
   for (let index = 0; index < ctx.pendingFiles.length; index += 1) {
     const fileEntry = ctx.pendingFiles[index]!;
     const raw = await fs.promises.readFile(fileEntry.absolutePath, "utf8");
-    const { frontmatter, body } = parseFrontmatter(raw);
+    const { frontmatter, body: parsedBody } = parseFrontmatter(raw);
+    const bodyWithFileTerminator = Object.keys(frontmatter).length > 0
+      ? parsedBody.replace(/^\r?\n/, "")
+      : parsedBody;
+    const body = bodyWithFileTerminator.replace(/\r?\n$/, "");
+    const parsed = parseMdContent(raw, { id: fileEntry.nodeId, text: fileEntry.baseName });
+    const frontmatterNodeId = typeof frontmatter.m3e?.nodeId === "string"
+      ? frontmatter.m3e.nodeId.trim()
+      : "";
+    if (frontmatterNodeId) {
+      const restoredNodeId = parsed.node.id;
+      if (existingState) {
+        const existingNode = existingState.nodes[restoredNodeId];
+        if (!existingNode) {
+          throw new Error(
+            `Vault node identity ${restoredNodeId} in ${fileEntry.relativePath} does not exist in target map ${mapId}.`,
+          );
+        }
+        if (existingNode.attributes["vault:kind"] !== "file") {
+          throw new Error(
+            `Vault node identity ${restoredNodeId} in ${fileEntry.relativePath} is not a vault file node in target map ${mapId}.`,
+          );
+        }
+      }
+      if (ctx.claimedIds.has(restoredNodeId)) {
+        throw new Error(`Duplicate vault node identity ${restoredNodeId} in ${fileEntry.relativePath}.`);
+      }
+
+      const generatedNodeId = fileEntry.nodeId;
+      const nodeWithRestoredId = nodes[generatedNodeId]!;
+      const parent = nodes[nodeWithRestoredId.parentId!]!;
+      parent.children = parent.children.map((childId) => childId === generatedNodeId ? restoredNodeId : childId);
+      nodeWithRestoredId.id = restoredNodeId;
+      nodes[restoredNodeId] = nodeWithRestoredId;
+      delete nodes[generatedNodeId];
+      fileEntry.nodeId = restoredNodeId;
+      ctx.claimedIds.add(restoredNodeId);
+    } else {
+      ctx.claimedIds.add(fileEntry.nodeId);
+    }
     const wikilinks = extractWikilinks(body);
     fileEntry.wikilinks = wikilinks;
     const node = nodes[fileEntry.nodeId]!;
@@ -441,7 +507,11 @@ export async function importVaultToSqlite(
   request: VaultImportRequest,
   hooks?: { onProgress?: (progress: VaultImportProgress) => void },
 ): Promise<VaultImportResult> {
-  const result = await importVaultToAppState(request, hooks);
+  const mapId = request.mapId?.trim() || buildDefaultMapId(request.vaultPath);
+  const existingState = RapidMvpModel.mapExists(dbPath, mapId)
+    ? RapidMvpModel.loadFromSqlite(dbPath, mapId).toJSON()
+    : undefined;
+  const result = await importVaultToAppState({ ...request, mapId }, hooks, existingState);
   const model = RapidMvpModel.fromJSON(result.state);
   model.saveToSqlite(dbPath, result.mapId);
   return {

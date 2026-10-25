@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { selectPorts, type EdgeBranchDirection, type EdgePortSide, type EdgeRect } from "../../src/shared/edge_port";
+import { selectPorts, type EdgeDirection, type EdgePortSide, type EdgeRect } from "../../src/shared/edge_port";
 import { route, type EdgeRouteStyle } from "../../src/shared/edge_route";
 
 interface EdgePortGoldenSample {
@@ -10,7 +10,7 @@ interface EdgePortGoldenSample {
   input: {
     srcRect: EdgeRect;
     dstRect: EdgeRect;
-    branchDirection: EdgeBranchDirection;
+    edgeDirection: EdgeDirection;
     routeStyle: EdgeRouteStyle;
   };
   expected: {
@@ -40,7 +40,6 @@ describe("edge-port golden parity", () => {
       "tree-down-basic",
       "axial-right-sequence",
       "axial-up-sequence",
-      "radial-balanced-quadrants",
       "disperse-force-vector",
       "system-right-module",
       "system-down-containment",
@@ -48,7 +47,7 @@ describe("edge-port golden parity", () => {
   });
 
   test.each(samples)("$sample_id selected sides and route endpoints match", (sample) => {
-    const ports = selectPorts(sample.input.srcRect, sample.input.dstRect, sample.input.branchDirection);
+    const ports = selectPorts(sample.input.srcRect, sample.input.dstRect, sample.input.edgeDirection);
     expect(ports.source.side).toBe(sample.expected.ports.sourceSide);
     expect(ports.target.side).toBe(sample.expected.ports.targetSide);
     expectBoundary(sample.input.srcRect, ports.source.side, ports.source);
@@ -58,4 +57,3 @@ describe("edge-port golden parity", () => {
     expect(pathResult.commands[pathResult.commands.length - 1]).toMatchObject({ x: ports.target.x, y: ports.target.y });
   });
 });
-

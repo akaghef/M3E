@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
 async function openLab(page) {
-  await page.goto("/src/labs/node/node-lab.html");
+  await page.goto("/src/labs/node-draw/node-lab.html");
   await expect(page.locator("#sample")).toBeVisible();
 }
 
@@ -23,7 +23,7 @@ test.describe("node-lab", () => {
   test("renders samples through shared nodeDraw and loads product CSS plus KaTeX", async ({ page }) => {
     await openLab(page);
     await expectStylesheetsLoaded(page);
-    await expect(page.locator("#surface")).toHaveText(/Tree[\s\S]*Axial[\s\S]*Radial[\s\S]*Disperse[\s\S]*System/);
+    await expect(page.locator("#surface")).toHaveText(/Tree[\s\S]*Axial[\s\S]*Disperse[\s\S]*System/);
 
     await page.locator("#sample").selectOption("katex");
     await expect(page.locator("foreignObject .latex-node-content")).toBeVisible();

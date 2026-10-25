@@ -13,25 +13,27 @@ export interface EdgePortPoint {
   side: EdgePortSide;
 }
 
-export type SurfaceViewName = "Tree" | "Axial" | "Radial" | "Disperse" | "System";
+export type SurfaceViewName = "Tree" | "Axial" | "Disperse" | "System" | "Lane";
 export type PrimaryDirection = "right" | "left" | "up" | "down";
-export type TreeBranchSide = "left" | "right";
-export type RadialDirection = "clockwise" | "counterclockwise" | "balanced";
+export type TreeDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
+export type TreeBranchSide = "left" | "right" | "up" | "down";
 export type DisperseDirection = "free";
 export type SystemDirection = "right" | "down" | "free";
 
-export type EdgeBranchDirection =
-  | { view: "Tree"; direction: PrimaryDirection }
+export type EdgeDirection =
+  | { view: "Tree"; direction: TreeDirection; branchSide?: TreeBranchSide }
+  // Compatibility for existing persisted/golden inputs. New callers must use
+  // the canonical `left/right` direction instead.
   | { view: "Tree"; direction: "both"; branchSide: TreeBranchSide }
   | { view: "Axial"; direction: PrimaryDirection }
-  | { view: "Radial"; direction: RadialDirection; radialVector?: { x: number; y: number } }
   | { view: "Disperse"; direction: DisperseDirection; vector?: { x: number; y: number } }
+  | { view: "Lane"; direction: "right" | "down" }
   | { view: "System"; direction: SystemDirection; vector?: { x: number; y: number } };
 
 export interface EdgePorts {
   source: EdgePortPoint;
   target: EdgePortPoint;
-  branchDirection: EdgeBranchDirection;
+  edgeDirection: EdgeDirection;
 }
 
 function center(rect: EdgeRect): { x: number; y: number } {
@@ -69,25 +71,45 @@ function sideForVector(srcRect: EdgeRect, dstRect: EdgeRect, explicitVector?: { 
   return dy >= 0 ? "bottom" : "top";
 }
 
-function sourceSideForDirection(srcRect: EdgeRect, dstRect: EdgeRect, branchDirection: EdgeBranchDirection): EdgePortSide {
-  if (branchDirection.view === "Tree") {
-    if (branchDirection.direction === "both") return branchDirection.branchSide;
-    return sideForPrimaryDirection(branchDirection.direction);
+function sourceSideForDirection(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirection: EdgeDirection): EdgePortSide {
+  if (edgeDirection.view === "Lane") {
+    const src = center(srcRect), dst = center(dstRect);
+    return edgeDirection.direction === "down"
+      ? (dst.y < src.y ? "top" : "bottom")
+      : (dst.x < src.x ? "left" : "right");
   }
-  if (branchDirection.view === "Axial") return sideForPrimaryDirection(branchDirection.direction);
-  if (branchDirection.view === "Radial") return sideForVector(srcRect, dstRect, branchDirection.radialVector);
-  if (branchDirection.view === "Disperse") return sideForVector(srcRect, dstRect, branchDirection.vector);
-  if (branchDirection.direction === "free") return sideForVector(srcRect, dstRect, branchDirection.vector);
-  return sideForPrimaryDirection(branchDirection.direction);
+  if (edgeDirection.view === "Tree") {
+    if (edgeDirection.direction === "left/right") {
+      if (edgeDirection.branchSide !== "left" && edgeDirection.branchSide !== "right") {
+        throw new Error("Tree left/right requires LayoutResult.branchSide left or right.");
+      }
+      return edgeDirection.branchSide;
+    }
+    if (edgeDirection.direction === "up/down") {
+      if (edgeDirection.branchSide !== "up" && edgeDirection.branchSide !== "down") {
+        throw new Error("Tree up/down requires LayoutResult.branchSide up or down.");
+      }
+      return sideForPrimaryDirection(edgeDirection.branchSide);
+    }
+    if (edgeDirection.direction === "both") return sideForPrimaryDirection(edgeDirection.branchSide);
+    return sideForPrimaryDirection(edgeDirection.direction);
+  }
+  if (edgeDirection.view === "Axial") return sideForPrimaryDirection(edgeDirection.direction);
+  if (edgeDirection.view === "Disperse") return sideForVector(srcRect, dstRect, edgeDirection.vector);
+  if (edgeDirection.direction === "free") return sideForVector(srcRect, dstRect, edgeDirection.vector);
+  return sideForPrimaryDirection(edgeDirection.direction);
 }
 
-export function selectPorts(srcRect: EdgeRect, dstRect: EdgeRect, branchDirection: EdgeBranchDirection): EdgePorts {
-  const sourceSide = sourceSideForDirection(srcRect, dstRect, branchDirection);
-  const targetSide = opposite(sourceSide);
+export function selectPorts(srcRect: EdgeRect, dstRect: EdgeRect, edgeDirection: EdgeDirection,
+  explicit: { sourceSide?: EdgePortSide; targetSide?: EdgePortSide } = {}): EdgePorts {
+  const defaultSide = sourceSideForDirection(srcRect, dstRect, edgeDirection);
+  const src = center(srcRect), dst = center(dstRect);
+  const sameLane = edgeDirection.view === "Lane" && (edgeDirection.direction === "down" ? src.y === dst.y : src.x === dst.x);
+  const sourceSide = explicit.sourceSide ?? defaultSide;
+  const targetSide = explicit.targetSide ?? (sameLane ? defaultSide : opposite(defaultSide));
   return {
     source: portForSide(srcRect, sourceSide),
     target: portForSide(dstRect, targetSide),
-    branchDirection,
+    edgeDirection,
   };
 }
-

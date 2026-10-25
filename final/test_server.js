@@ -92,7 +92,10 @@ function readRequestBody(req, maxBytes = 1_000_000) {
 function writeSystemClipboard(text) {
   const input = Buffer.from(text, "utf8");
   const run = (command, args, method) => {
-    const result = spawnSync(command, args, { input, encoding: "utf8" });
+    const env = process.platform === "darwin"
+      ? { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" }
+      : process.env;
+    const result = spawnSync(command, args, { input, encoding: "utf8", env });
     if (result.status === 0) return { ok: true, method };
     const detail = result.stderr || (result.error && result.error.message) || `${command} exited with status ${result.status}`;
     return { ok: false, error: detail };
@@ -111,7 +114,10 @@ function writeSystemClipboard(text) {
 
 function readSystemClipboard() {
   const run = (command, args, method) => {
-    const result = spawnSync(command, args, { encoding: "utf8" });
+    const env = process.platform === "darwin"
+      ? { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8", LC_CTYPE: "UTF-8" }
+      : process.env;
+    const result = spawnSync(command, args, { encoding: "utf8", env });
     if (result.status === 0) return { ok: true, method, text: result.stdout || "" };
     const detail = result.stderr || (result.error && result.error.message) || `${command} exited with status ${result.status}`;
     return { ok: false, error: detail };

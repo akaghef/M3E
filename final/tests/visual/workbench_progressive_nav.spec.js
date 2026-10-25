@@ -110,8 +110,7 @@ function rapidFixture() {
   };
 }
 
-async function routeRapidFixture(page, mapId) {
-  const doc = rapidFixture();
+async function routeRapidFixture(page, mapId, doc = rapidFixture()) {
   await page.route(`**/api/maps/${mapId}`, async (route) => {
     if (route.request().method() !== "GET") {
       await route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Method not allowed." }) });
@@ -122,28 +121,108 @@ async function routeRapidFixture(page, mapId) {
 }
 
 test.describe("Workbench progressive navigation", () => {
+  test("Node Vault output passes the selected root after saving current edits", async ({ page }) => {
+    const mapId = "pn-vault-subtree";
+    const doc = rapidFixture();
+    let saved = false;
+    let exported;
+    await page.route(`**/api/maps/${mapId}`, async route => {
+      if (route.request().method() === "POST") saved = true;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(doc) });
+    });
+    await page.route("**/api/vault/export", async route => {
+      expect(saved).toBe(true);
+      exported = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: vault-export-complete\ndata: {"ok":true,"fileCount":1}\n\n' });
+    });
+    await page.goto(`/viewer.html?renderer=svg&localMapId=${mapId}&cloudMapId=${mapId}`);
+    await page.locator('.node-hit[data-node-id="background"]').click();
+    await page.keyboard.press("Space");
+    await page.locator('[data-pn-node="rapid-output"]').hover();
+    page.once("dialog", dialog => dialog.accept("/tmp/pn-export-destination"));
+    await page.locator('[data-pn-node="node-export-vault"]').click();
+    await expect(page.locator("#status")).toContainText("Exported to Vault");
+    expect(exported).toMatchObject({ mapId, nodeId: "background", vaultPath: "/tmp/pn-export-destination", options: { skipAiTransform: true } });
+  });
+  for (const format of ["json", "mm"]) {
+    test(`Node output downloads the complete selected subtree as ${format}`, async ({ page }) => {
+      const mapId = `pn-subtree-export-${format}`;
+      const doc = rapidFixture();
+      doc.state.nodes.background.children = ["hidden", "nested"];
+      doc.state.nodes.background.collapsed = true;
+      doc.state.nodes.background.details = "Selected details";
+      doc.state.nodes.background.note = "Selected note";
+      doc.state.nodes.hidden = { ...doc.state.nodes.question, id: "hidden", parentId: "background", text: "Hidden descendant" };
+      doc.state.nodes.nested = { ...doc.state.nodes.question, id: "nested", parentId: "background", nodeType: "folder", text: "Nested scope", children: ["deep"] };
+      doc.state.nodes.deep = { ...doc.state.nodes.question, id: "deep", parentId: "nested", text: "Deep descendant" };
+      doc.state.links = {
+        internal: { id: "internal", sourceNodeId: "hidden", targetNodeId: "deep", label: "Internal" },
+        external: { id: "external", sourceNodeId: "hidden", targetNodeId: "question", label: "Outside" },
+      };
+      await routeRapidFixture(page, mapId, doc);
+      await page.goto(`/viewer.html?renderer=svg&localMapId=${mapId}&cloudMapId=${mapId}`);
+      await page.locator('.node-hit[data-node-id="background"]').click();
+      await page.keyboard.press("Space");
+      await page.locator('[data-pn-node="rapid-output"]').hover();
+      await expect(page.locator('[data-pn-node="rapid-markdown"], [data-pn-node="rapid-presentation"]')).toHaveCount(0);
+      const downloadPromise = page.waitForEvent("download");
+      await page.locator(`[data-pn-node="node-export-${format}"]`).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toBe(`Background.${format}`);
+      const content = require("node:fs").readFileSync(await download.path(), "utf8");
+      if (format === "json") {
+        const state = JSON.parse(content).state;
+        expect(state.rootId).toBe("background");
+        expect(Object.keys(state.nodes).sort()).toEqual(["background", "deep", "hidden", "nested"]);
+        expect(state.nodes.background.parentId).toBeNull();
+        expect(state.nodes.background.details).toBe("Selected details");
+        expect(state.nodes.background.note).toBe("Selected note");
+        expect(state.nodes.background.children).toEqual(["hidden", "nested"]);
+        expect(Object.keys(state.links)).toEqual(["internal"]);
+      } else {
+        expect(content).toContain('TEXT="Background"');
+        expect(content).toContain('TEXT="Hidden descendant"');
+        expect(content).toContain('TEXT="Deep descendant"');
+        expect(content).toContain("Selected details");
+        expect(content).toContain("Selected note");
+        expect(content).not.toContain('TEXT="Question"');
+        expect(content).not.toContain('TEXT="Research Root"');
+      }
+      // Export detaches only the downloaded root; the working map stays intact.
+      const wholePromise = page.waitForEvent("download");
+      await page.locator("#download-btn").evaluate(element => element.click());
+      const whole = JSON.parse(require("node:fs").readFileSync(await (await wholePromise).path(), "utf8"));
+      expect(whole.state.rootId).toBe("root");
+      expect(whole.state.nodes.background.parentId).toBe("root");
+      expect(whole.state.nodes.question.text).toBe("Question");
+    });
+  }
   test("root edges attach to DOM rect boundaries", async ({ page }) => {
     const mapId = "pn-edge-root";
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').hover();
+    await page.locator('[aria-label="Surface PN root"]').hover();
     await page.waitForTimeout(250);
 
     const geometry = await progressiveNavGeometry(
       page,
-      '[aria-label="[GUI] navigation root"]',
+      '[aria-label="Surface PN root"]',
       '[data-pn-node="board"]',
       '.wb-progressive-edges path',
     );
 
-    expect(geometry.pathCount).toBeGreaterThanOrEqual(6);
+    expect(geometry.pathCount).toBe(5);
+    await expect(page.locator('[data-pn-node="add-child"], [data-pn-node="toggle-scope"], [data-pn-node="enter-scope"], [data-pn-node="exit-scope"]')).toHaveCount(0);
     await expect(page.locator('.wb-progressive-edges path').first()).toHaveAttribute("data-source-side", "right");
     await expect(page.locator('.wb-progressive-edges path').first()).toHaveAttribute("data-target-side", "left");
     expect(geometry.endpoints.sx).toBeCloseTo(geometry.fromRect.right, 1);
     expect(geometry.endpoints.sy).toBeCloseTo(geometry.fromRect.cy, 1);
     expect(geometry.endpoints.tx).toBeCloseTo(geometry.toRect.left, 1);
     expect(geometry.endpoints.ty).toBeCloseTo(geometry.toRect.cy, 1);
+    await page.locator('[data-pn-node="scatter"]').hover();
+    await expect(page.locator('[data-pn-node="scatter-reflow"]')).toBeVisible();
+    await expect(page.locator('[data-pn-node="scatter-add-node"], [data-pn-node="scatter-add-edge"], [data-pn-node="scatter-colorize"], [data-pn-node="scatter-delete"], [data-pn-node="scatter-collapse"]')).toHaveCount(0);
   });
 
   test("child edges attach to DOM rect boundaries", async ({ page }) => {
@@ -151,7 +230,7 @@ test.describe("Workbench progressive navigation", () => {
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').hover();
+    await page.locator('[aria-label="Surface PN root"]').hover();
     await page.waitForTimeout(150);
     await page.locator('[data-pn-node="board"]').evaluate((element) => element.click());
     await page.locator('[data-pn-node="import"]').evaluate((element) => element.click());
@@ -176,7 +255,7 @@ test.describe("Workbench progressive navigation", () => {
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').evaluate((element) => {
+    await page.locator('[aria-label="Surface PN root"]').evaluate((element) => {
       const nav = document.querySelector('[data-testid="progressive-navigation"]');
       if (!nav?.classList.contains("is-open")) {
         element.click();
@@ -216,12 +295,51 @@ test.describe("Workbench progressive navigation", () => {
     await expect(page.locator('[data-testid="progressive-navigation"]')).toHaveAttribute("data-pn-placement", "right-of-anchor");
   });
 
+  test("hovered View remains stable until its Logic Chart child is reached", async ({ page }) => {
+    const mapId = "pn-hover-intent";
+    await routeRapidFixture(page, mapId);
+    await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
+
+    const navigation = page.locator('[data-testid="progressive-navigation"]');
+    const view = page.locator('[data-pn-node="view"]');
+    const logicChart = page.locator('[data-pn-node="logic-chart-surface"]');
+    await page.locator('[aria-label="Surface PN root"]').click();
+    await expect(navigation).toHaveClass(/is-open/);
+    await view.hover();
+    await expect(navigation).toHaveAttribute("data-active-pn-node", "view");
+    await expect(logicChart).toBeAttached();
+
+    const route = await page.evaluate(() => {
+      const from = document.querySelector('[data-pn-node="view"]')?.getBoundingClientRect();
+      const to = document.querySelector('[data-pn-node="logic-chart-surface"]')?.getBoundingClientRect();
+      if (!from || !to) throw new Error("PN hover-intent route is missing.");
+      return {
+        from: { x: from.left + from.width / 2, y: from.top + from.height / 2 },
+        to: { x: to.left + to.width / 2, y: to.top + to.height / 2 },
+      };
+    });
+
+    for (let step = 1; step <= 6; step += 1) {
+      const ratio = step / 6;
+      await page.mouse.move(
+        route.from.x + (route.to.x - route.from.x) * ratio,
+        route.from.y + (route.to.y - route.from.y) * ratio,
+      );
+      await expect(logicChart).toBeAttached();
+      // The cursor may reach the child before the final sampled point. During
+      // the transition it must stay on this hover path, never an unrelated PN
+      // node that could replace and detach the Logic Chart child.
+      await expect(navigation).toHaveAttribute("data-active-pn-node", /^(view|logic-chart-surface)$/);
+    }
+    await expect(navigation).toHaveAttribute("data-active-pn-node", "logic-chart-surface");
+  });
+
   test("viewport fast-path events do not force PN layout recompute", async ({ page }) => {
     const mapId = "pn-viewport-fast-path";
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);
 
-    await page.locator('[aria-label="[GUI] navigation root"]').click();
+    await page.locator('[aria-label="Surface PN root"]').click();
     await expect(page.locator('[data-testid="progressive-navigation"]')).toBeVisible();
     await page.evaluate(() => {
       window.__m3ePnLayoutCount = 0;
@@ -303,6 +421,7 @@ test.describe("Workbench progressive navigation", () => {
     await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toBeVisible();
     await expect(page.locator('.wb-progressive-nav[data-pn-mode="active-node"].is-open')).toHaveAttribute("data-pn-placement", "right-of-anchor");
     await expect(page.locator('[data-pn-node="rapid"]')).toHaveCount(0);
+    await expect(page.locator('[data-pn-node="lane-root"]')).toHaveCount(0);
     await expect(page.locator('[data-pn-node="rapid-expand"]')).toContainText("N2 展開");
 
     await page.locator('[data-pn-node="rapid-expand"]').hover();
@@ -341,7 +460,7 @@ test.describe("Workbench progressive navigation", () => {
     await expect.poll(() => page.locator(".collapsed-badge").count()).toBe(0);
   });
 
-  test("Space does not open active-node PN while typing", async ({ page }) => {
+  test("Space does not open Node PN while typing", async ({ page }) => {
     const mapId = "pn-input-guard";
     await routeRapidFixture(page, mapId);
     await page.goto(`/viewer.html?localMapId=${mapId}&cloudMapId=${mapId}`);

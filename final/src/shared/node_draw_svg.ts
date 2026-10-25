@@ -1,3 +1,4 @@
+import { renderAgentCard } from "./agent_node";
 import {
   nodeDrawConfidenceColor,
   type NodeDrawInput,
@@ -22,6 +23,7 @@ const STATUS_COLORS: Record<NodeDrawStatus, string> = {
 };
 
 export function renderNode(input: NodeDrawInput): NodeDrawOutput {
+  if (input.content.kind === "agent") return renderAgentNode(input, input.content.agent);
   const svg = input.surface.view === "Disperse" ? renderScatterNode(input) : renderStructuredNode(input);
   return {
     svg,
@@ -61,8 +63,7 @@ function renderStructuredNode(input: NodeDrawInput): string {
 
 function renderRootNode(input: NodeDrawInput): string {
   const p = input.position;
-  const h = p.h;
-  const y = p.y - h / 2;
+  const { y, h } = nodeSelectionFrameRect(input);
   const rx = input.surface.structuredMode === "Tree" ? shapeRx(input.style, true) : Math.min(28, h / 2);
   const visualClasses = nodeStateClasses(input, ["root-box", "node-visual-box"]);
   const inline = visualStyle(input.style);
@@ -94,7 +95,7 @@ function renderNonRootNode(input: NodeDrawInput): string {
   if (input.content.kind === "latexHtml") {
     const y = p.y - p.h / 2;
     parts.push(`<foreignObject data-node-id="${escapeAttr(input.node.id)}" x="${fmt(p.x)}" y="${fmt(y)}" width="${fmt(p.w)}" height="${fmt(p.h)}"><div xmlns="http://www.w3.org/1999/xhtml" class="latex-node-content">${input.content.html}</div></foreignObject>`);
-  } else {
+  } else if (input.content.kind === "plainLabel") {
     const font = input.content.fontSize ?? p.fontSize ?? 14;
     const lineHeight = lineHeightForFont(font);
     const startY = multilineTextStartY(p.y, input.content.labelLines.length, font, lineHeight);
@@ -116,7 +117,13 @@ function renderScatterNode(input: NodeDrawInput): string {
   if (input.node.scatterRole) circleClasses.push(`scatter-role-${input.node.scatterRole}`);
   const inline = circleStyle(input.style);
   const label = plainLabel(input);
-  const labelText = label.labelLines.join(" ");
+  const baseLabelText = label.labelLines.join(" ");
+  const collapsedCount = input.node.isScatterGroup && input.view.collapsedCount !== undefined
+    ? Math.max(1, input.view.collapsedCount)
+    : undefined;
+  const labelText = collapsedCount === undefined
+    ? baseLabelText
+    : `${baseLabelText} ×${collapsedCount}`;
   const font = label.fontSize ?? p.fontSize ?? scatterFontSizeFor(r);
   return [
     `<circle class="${circleClasses.join(" ")}" data-node-id="${escapeAttr(input.node.id)}" cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(r)}"${inline} />`,
@@ -124,15 +131,18 @@ function renderScatterNode(input: NodeDrawInput): string {
   ].join("");
 }
 
+/** Shared visible frame geometry for selection paint and screen-sized controls. */
+export function nodeSelectionFrameRect(input: NodeDrawInput): { x: number; y: number; w: number; h: number } {
+  const p = input.position;
+  const root = input.node.isRoot && !input.surface.rootless;
+  const padX = !root && input.surface.structuredMode === "Tree" ? 14 : 0;
+  const h = root ? p.h : Math.max(NODE_HIT_HEIGHT, p.h) - (input.surface.structuredMode === "Tree" ? 12 : 0);
+  return { x: p.x - padX, y: p.y - h / 2, w: p.w + padX * 2, h };
+}
+
 function renderNodeShape(input: NodeDrawInput, classes: string[]): string {
   const p = input.position;
-  const hitH = Math.max(NODE_HIT_HEIGHT, p.h);
-  const shapePadX = input.surface.structuredMode === "Tree" ? 14 : 0;
-  const shapePadY = input.surface.structuredMode === "Tree" ? 6 : 0;
-  const x = p.x - shapePadX;
-  const y = p.y - hitH / 2 + shapePadY;
-  const w = p.w + shapePadX * 2;
-  const h = hitH - shapePadY * 2;
+  const { x, y, w, h } = nodeSelectionFrameRect(input);
   const inline = visualStyle(input.style);
   if (input.style.shape === "diamond") {
     return `<path class="node-shape ${classes.join(" ")}" data-node-id="${escapeAttr(input.node.id)}" d="${diamondPath(p.x + p.w / 2, p.y, w, h)}"${inline} />`;
@@ -142,13 +152,7 @@ function renderNodeShape(input: NodeDrawInput, classes: string[]): string {
 
 function renderFolderFrame(input: NodeDrawInput, classes: string[]): string {
   const p = input.position;
-  const frameInsetY = input.surface.structuredMode === "Tree" ? 12 : 0;
-  const framePadX = input.surface.structuredMode === "Tree" ? 14 : 0;
-  const frameH = Math.max(NODE_HIT_HEIGHT, p.h) - frameInsetY;
-  const x = p.x - framePadX;
-  const y = p.y - frameH / 2;
-  const w = p.w + framePadX * 2;
-  const h = frameH;
+  const { x, y, w, h } = nodeSelectionFrameRect(input);
   const inline = visualStyle(input.style);
   const parts: string[] = [];
   if (input.node.isScopePortal) {
@@ -314,7 +318,7 @@ function diamondPath(cx: number, cy: number, w: number, h: number): string {
   return `M ${fmt(cx)} ${fmt(cy - h / 2)} L ${fmt(cx + w / 2)} ${fmt(cy)} L ${fmt(cx)} ${fmt(cy + h / 2)} L ${fmt(cx - w / 2)} ${fmt(cy)} Z`;
 }
 
-function multilineTextStartY(centerY: number, lines: number, fontSize: number, lineHeight: number): number {
+export function multilineTextStartY(centerY: number, lines: number, fontSize: number, lineHeight: number): number {
   if (lines <= 1) return centerY + fontSize * 0.35;
   return centerY - ((lines - 1) * lineHeight) / 2 + fontSize * 0.35;
 }
@@ -327,7 +331,7 @@ function multilineTspans(lines: string[], x: number, lineHeight: number): string
   )).join("");
 }
 
-function lineHeightForFont(fontSize: number): number {
+export function lineHeightForFont(fontSize: number): number {
   return Math.max(14, Math.round(fontSize * 1.25));
 }
 
@@ -347,4 +351,17 @@ function escapeXml(value: string): string {
 
 function escapeAttr(value: string): string {
   return escapeXml(value).replace(/"/g, "&quot;");
+}
+
+function renderAgentNode(input: NodeDrawInput, agent: import("./agent_node").AgentCardRenderInput): NodeDrawOutput {
+  const output = renderAgentCard(agent);
+  const x = input.position.x + (input.position.w - output.bounds.w) / 2;
+  const y = input.position.y - output.bounds.h / 2;
+  const id = escapeAttr(input.node.id);
+  const classes = nodeStateClasses(input, ["agent-node"]);
+  const hitClasses = nodeStateClasses(input, ["node-hit", "agent-node-hit"]);
+  return {
+    svg: `<g class="${classes.join(" ")}" data-agent-node-id="${id}" data-lod="${agent.lod}" transform="translate(${fmt(x)},${fmt(y)})"><g pointer-events="none">${output.svg}</g><rect class="${hitClasses.join(" ")}" data-node-id="${id}" x="0" y="0" width="${output.bounds.w}" height="${output.bounds.h}" rx="12" fill="transparent" stroke="none" /></g>`,
+    bounds: { x, y, w: output.bounds.w, h: output.bounds.h, maxX: x + output.bounds.w, maxY: y + output.bounds.h },
+  };
 }

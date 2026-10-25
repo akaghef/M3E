@@ -1,0 +1,915 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-28T23:50:11.031Z",
+  "colorSteering": {
+    "path": ".kiro/steering/color_semantics.md",
+    "note": "Preview colors only; runtime mapping is not asserted."
+  },
+  "sourceStats": {
+    "source": "public-safe examples"
+  },
+  "selectionStats": {
+    "cards": 25,
+    "providers": {
+      "codex": 14,
+      "claude": 9,
+      "hermes": 1,
+      "human": 1
+    },
+    "lifecycleStates": {
+      "failed": 2,
+      "tool-running": 1,
+      "completed": 1,
+      "idle": 14,
+      "starting": 1,
+      "thinking": 1,
+      "awaiting-user": 1,
+      "blocked": 1,
+      "disconnected": 1,
+      "unobservable": 1,
+      "human": 1
+    },
+    "syntheticStateCards": 25,
+    "syntheticActorCountCards": 25,
+    "syntheticCards": 25,
+    "humanCards": 1,
+    "titleNonEmpty": 25,
+    "messageNonEmpty": 25,
+    "titleRegistryTruncated": 0,
+    "attentionTrue": 2
+  },
+  "cards": [
+    {
+      "id": "example-agent-1",
+      "agentKind": "ai",
+      "icon": "black-dragon-pet",
+      "role": "implementer",
+      "name": "Example 1",
+      "title": "長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。長いタイトルの折り返しと省略を確認する。",
+      "message": "長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。長い本文の表示範囲を確認する。",
+      "model": "example-model",
+      "lifecycleState": "failed",
+      "semanticColor": "error",
+      "lastActiveAt": "2026-07-14T01:28:27.273Z",
+      "attention": true,
+      "actorCount": 2,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-1",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-2",
+      "agentKind": "ai",
+      "icon": "black-dragon-pet",
+      "role": "implementer",
+      "name": "Example 2",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "failed",
+      "semanticColor": "error",
+      "lastActiveAt": "2026-07-14T01:21:05.880Z",
+      "attention": true,
+      "actorCount": 3,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-2",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-3",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 3",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "tool-running",
+      "semanticColor": "normal",
+      "lastActiveAt": "2026-07-14T01:25:20.938Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-3",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-4",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 4",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "completed",
+      "semanticColor": "done",
+      "lastActiveAt": "2026-07-14T01:15:52.106Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-4",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-5",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 5",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-07-14T01:26:09.776Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-5",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-6",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 6",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-27T00:59:00.065Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-6",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-7",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 7",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-27T00:53:57.114Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-7",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-8",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 8",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-26T14:34:41.139Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-8",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-9",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 9",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-27T04:12:19.006Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-9",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-10",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 10",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-07-14T23:44:33.144Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-10",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-11",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 11",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-20T02:36:21.817Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-11",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-12",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 12",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-06-16T03:50:00.035Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-12",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-13",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 13",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-28T23:49:58.339Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-13",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-14",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 14",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-28T23:49:48.016Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-14",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-15",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 15",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-27T04:47:28.957Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-15",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-16",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 16",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-27T04:40:19.898Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-16",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-17",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 17",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-28T23:36:16.848Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-17",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-18",
+      "agentKind": "ai",
+      "icon": "black-dragon-pet",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "idle",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-24T09:41:06.572Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "hermes",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-18",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "name": "Example 18",
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-19",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 19",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "starting",
+      "semanticColor": "normal",
+      "lastActiveAt": "2026-08-27T00:59:00.065Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-19",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-20",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 20",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "thinking",
+      "semanticColor": "normal",
+      "lastActiveAt": "2026-08-27T00:53:57.114Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-20",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-21",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 21",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "awaiting-user",
+      "semanticColor": "awaiting",
+      "lastActiveAt": "2026-08-26T14:34:41.139Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-21",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-22",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 22",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "blocked",
+      "semanticColor": "stalled",
+      "lastActiveAt": "2026-08-27T04:12:19.006Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-22",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-23",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "realm": "Mac",
+      "role": "external",
+      "name": "Example 23",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "disconnected",
+      "semanticColor": "error",
+      "lastActiveAt": "2026-08-28T23:49:58.339Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "codex",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-23",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-24",
+      "agentKind": "ai",
+      "icon": "bilby-bird",
+      "role": "external",
+      "name": "Example 24",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "example-model",
+      "lifecycleState": "unobservable",
+      "semanticColor": "unset",
+      "lastActiveAt": "2026-08-28T23:49:48.016Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "claude",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-24",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "realm": "Mac",
+      "team": "M3E"
+    },
+    {
+      "id": "example-agent-25",
+      "agentKind": "human",
+      "icon": "white-dog",
+      "realm": "Mac",
+      "role": "Owner",
+      "name": "Example 25",
+      "title": "Agent node の比較",
+      "message": "表示幅・状態・選択時のレイアウトを確認する。",
+      "model": "",
+      "lastActiveAt": "2026-08-28T23:50:11.030Z",
+      "attention": false,
+      "actorCount": 1,
+      "provider": "human",
+      "extraction": {
+        "recordKind": "synthetic-example",
+        "sourceId": "example-agent-25",
+        "sourceKinds": [
+          "Lab fixture"
+        ],
+        "reasons": [
+          "Public-safe comparison fixture."
+        ],
+        "syntheticFields": [
+          "title",
+          "message",
+          "name",
+          "lifecycleState",
+          "actorCount"
+        ]
+      },
+      "team": "M3E"
+    }
+  ]
+}

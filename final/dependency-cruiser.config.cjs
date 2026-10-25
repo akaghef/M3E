@@ -1,6 +1,24 @@
 module.exports = {
   forbidden: [
     {
+      name: "rendering-must-not-import-viewer-state-or-labs",
+      severity: "error",
+      from: { path: "^src/rendering/" },
+      to: { path: "^src/(browser|labs|node)/" },
+    },
+    {
+      name: "force-seam-must-stay-headless",
+      severity: "error",
+      from: { path: "^src/shared/(ot_force|force_seam_interface)\\.ts$" },
+      to: { path: "^src/(browser|labs)/|node_modules/" },
+    },
+    {
+      name: "force-lab-uses-only-force-seam",
+      severity: "error",
+      from: { path: "^src/labs/force/" },
+      to: { path: "^src/shared/(?!ot_force\\.ts$|force_seam_interface\\.ts$)" },
+    },
+    {
       name: "no-layout-internal-imports",
       severity: "error",
       from: { path: "^src/(browser|labs|shared)" },
@@ -13,7 +31,7 @@ module.exports = {
       name: "labs-must-not-import-browser-implementation",
       severity: "error",
       from: { path: "^src/labs/" },
-      to: { path: "^src/browser/" },
+      to: { path: "^src/browser/", pathNot: "^src/browser/markdown_renderer\\.ts$" },
     },
     {
       name: "labs-use-shared-layout-port-only",
@@ -40,7 +58,7 @@ module.exports = {
       severity: "error",
       from: { path: "^src/labs/node/" },
       to: {
-        path: "^src/shared/(?!node_draw_port\\.ts$|node_draw_svg\\.ts$|layout_port\\.ts$)",
+        path: "^src/shared/(?!node_draw_port\\.ts$|node_draw_svg\\.ts$|agent_node\\.ts$|layout_port\\.ts$)",
       },
     },
     {

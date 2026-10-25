@@ -1,5 +1,5 @@
 import samplesJson from "../../../tests/fixtures/edge-port-golden/samples.json";
-import type { EdgeBranchDirection, EdgePortSide, EdgeRect } from "../../shared/edge_port";
+import type { EdgeDirection, EdgePortSide, EdgeRect } from "../../shared/edge_port";
 import type { EdgeRouteStyle } from "../../shared/edge_route";
 
 export interface EdgePortLabSample {
@@ -10,7 +10,7 @@ export interface EdgePortLabSample {
     relation: { kind: "parent-child"; parentNodeId: string; childNodeId: string };
     srcRect: EdgeRect;
     dstRect: EdgeRect;
-    branchDirection: EdgeBranchDirection;
+    edgeDirection: EdgeDirection;
     routeStyle: EdgeRouteStyle;
   };
   expected: {

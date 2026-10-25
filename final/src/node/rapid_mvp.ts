@@ -2,9 +2,12 @@
 
 import fs from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import Database from "better-sqlite3";
 import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle, LinkPort } from "../shared/types";
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
+import { isGraphLinkAttributes } from "../shared/graph_link_attributes";
+import { scopedLaneSettings } from "../shared/lane_view";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -337,7 +340,11 @@ class RapidMvpModel {
     style?: LinkStyle;
     sourcePort?: LinkPort;
     targetPort?: LinkPort;
+    attributes?: Record<string, string>;
   }): string {
+    if (!isGraphLinkAttributes(options?.attributes)) {
+      throw new Error("GraphLink attributes must be an object with string values.");
+    }
     const source = this._requireNode(sourceNodeId);
     const target = this._requireNode(targetNodeId);
     if (source.nodeType === "alias" || target.nodeType === "alias") {
@@ -360,6 +367,7 @@ class RapidMvpModel {
       style: options?.style,
       sourcePort: options?.sourcePort,
       targetPort: options?.targetPort,
+      attributes: options?.attributes === undefined ? undefined : { ...options.attributes },
     });
     return id;
   }
@@ -389,6 +397,175 @@ class RapidMvpModel {
     const node = this._requireNode(nodeId);
     this._pushHistory();
     node.text = String(newText);
+  }
+
+  /** Explicit scope boundary command. Contents and styling are not rewritten. */
+  setScopeBoundary(nodeId: string, enabled: boolean): void {
+    const node = this._requireNode(nodeId);
+    if (node.nodeType === "alias") throw new Error("Alias nodes cannot become scopes.");
+    if (nodeId === this.state.rootId && !enabled) throw new Error("The root scope cannot be removed.");
+    this._pushHistory();
+    node.nodeType = enabled ? "folder" : "text";
+  }
+
+  /** Copy a whole subtree and its owned payloads without retaining outside ownership. */
+  copySubtree(source: AppState, sourceId: string, parentId: string): string[] {
+    // Validate and stage every addition before changing state or undo history.
+    const parent = this.state.nodes[parentId];
+    if (!parent) throw new Error(`Node not found: ${parentId}`);
+    if (parent.nodeType === "alias") throw new Error("Alias nodes cannot own children.");
+    if (!source.nodes[sourceId]) throw new Error("Copy source does not exist.");
+    const ids: string[] = [];
+    const pending = [sourceId];
+    const seen = new Set<string>();
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (seen.has(id)) throw new Error("Copy source contains duplicate ownership or a cycle.");
+      seen.add(id);
+      const node = source.nodes[id];
+      if (!node) throw new Error("Copy source has a missing child.");
+      if (id !== sourceId && (!node.parentId || !seen.has(node.parentId))) {
+        throw new Error("Copy source has inconsistent parent ownership.");
+      }
+      ids.push(id);
+      pending.push(...[...node.children].reverse());
+    }
+    const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    const occupied = new Set<string>();
+    for (const state of [source, this.state]) {
+      for (const records of [state.nodes, state.links, state.scopes, state.surfaces, state.annotations]) {
+        for (const [key, record] of Object.entries(records ?? {})) {
+          occupied.add(key);
+          occupied.add(record.id);
+        }
+      }
+    }
+    const newId = (prefix = ""): string => {
+      let id: string;
+      do { id = prefix + this._newId(); } while (occupied.has(id));
+      occupied.add(id);
+      return id;
+    };
+    const remap = new Map(ids.map((id) => [id, newId()]));
+    const scopeNodeIds = new Set(Object.values(source.nodes)
+      .filter((node) => node.id === source.rootId || node.nodeType === "folder")
+      .map((node) => node.id));
+    const copiedScopeNodeIds = new Set(ids.filter((id) => scopeNodeIds.has(id)));
+    const scopeRemap = new Map<string, string>();
+    const scopeOwner = new Map<string, string>();
+    for (const id of copiedScopeNodeIds) {
+      scopeRemap.set(id, remap.get(id)!);
+      scopeRemap.set(`scope:${id}`, `scope:${remap.get(id)!}`);
+      scopeOwner.set(id, id);
+      scopeOwner.set(`scope:${id}`, id);
+    }
+    const links: NonNullable<AppState["links"]> = {};
+    const linkRemap = new Map<string, string>();
+    for (const [key, link] of Object.entries(source.links ?? {})) {
+      if (!remap.has(link.sourceNodeId) || !remap.has(link.targetNodeId)) continue;
+      if (linkRemap.has(key) || linkRemap.has(link.id)) throw new Error("Copy source has ambiguous relation identity.");
+      const id = newId();
+      linkRemap.set(key, id);
+      linkRemap.set(link.id, id);
+      links[id] = { ...clone(link), id, sourceNodeId: remap.get(link.sourceNodeId)!, targetNodeId: remap.get(link.targetNodeId)! };
+    }
+    const scopes: NonNullable<AppState["scopes"]> = {};
+    const ownedScopes: [string, NonNullable<AppState["scopes"]>[string]][] = [];
+    const ownerFromId = (id: string): string | undefined => {
+      if (scopeNodeIds.has(id)) return id;
+      if (id.startsWith("scope:") && scopeNodeIds.has(id.slice(6))) return id.slice(6);
+      return undefined;
+    };
+    for (const [key, scope] of Object.entries(source.scopes ?? {})) {
+      // Canonical/raw identities establish ownership even if rootNodeIds is stale.
+      let owners = [...new Set([ownerFromId(key), ownerFromId(scope.id)].filter((id): id is string => Boolean(id)))];
+      if (!owners.length) owners = [...new Set(scope.rootNodeIds.filter((id) => scopeNodeIds.has(id)))];
+      if (!owners.length) owners = [...scopeNodeIds].filter((id) => source.nodes[id].scopeId === key || source.nodes[id].scopeId === scope.id);
+      if (!owners.some((id) => copiedScopeNodeIds.has(id))) continue;
+      if (owners.length !== 1 || key !== scope.id) throw new Error("Copy source has ambiguous scope ownership.");
+      if (scope.rootNodeIds.some((id) => !remap.has(id))) throw new Error("Copy scope contains a root outside the copied subtree.");
+      const owner = owners[0];
+      const id = scopeRemap.get(key) ?? newId("scope:");
+      if (this.state.scopes?.[id] || scopes[id]) throw new Error("Copy scope identity conflicts with an existing scope.");
+      scopeRemap.set(key, id);
+      scopeOwner.set(key, owner);
+      scopes[id] = {
+        ...clone(scope), id,
+        rootNodeIds: scope.rootNodeIds.map((root) => remap.get(root)!),
+        relationIds: scope.relationIds.filter((relation) => linkRemap.has(relation)).map((relation) => linkRemap.get(relation)!),
+      };
+      ownedScopes.push([key, scope]);
+    }
+    const surfaces: NonNullable<AppState["surfaces"]> = {};
+    const surfaceRemap = new Map<string, string>();
+    for (const [key, surface] of Object.entries(source.surfaces ?? {})) {
+      const owner = scopeOwner.get(surface.scopeId);
+      if (!owner) continue;
+      if (key !== surface.id) throw new Error("Copy source has ambiguous surface identity.");
+      const inferred = `surface:${owner}:${surface.kind}`;
+      const id = key === inferred ? `surface:${remap.get(owner)!}:${surface.kind}` : newId("surface:");
+      if (this.state.surfaces?.[id] || surfaces[id]) throw new Error("Copy surface identity conflicts with an existing surface.");
+      const copy = { ...clone(surface), id, scopeId: scopeRemap.get(surface.scopeId)! };
+      if (surface.nodeViews) {
+        // Viewer surfaces can cache all map nodes; only copied nodes belong here.
+        copy.nodeViews = Object.fromEntries(Object.entries(surface.nodeViews)
+          .filter(([nodeId]) => remap.has(nodeId))
+          .map(([nodeId, view]) => [remap.get(nodeId)!, clone(view)]));
+      }
+      surfaces[id] = copy;
+      surfaceRemap.set(key, id);
+    }
+    for (const [key, scope] of ownedScopes) {
+      if (!scope.primarySurfaceId) continue;
+      const surface = source.surfaces?.[scope.primarySurfaceId];
+      if (!surface || surface.scopeId !== key || !surfaceRemap.has(scope.primarySurfaceId)) {
+        throw new Error("Copy scope primary surface is missing or owned by another scope.");
+      }
+      scopes[scopeRemap.get(key)!].primarySurfaceId = surfaceRemap.get(scope.primarySurfaceId)!;
+    }
+    const annotations: NonNullable<AppState["annotations"]> = {};
+    for (const annotation of Object.values(source.annotations ?? {})) {
+      // Annotation scopeId is a scope node ID, not a model scope ID.
+      if (!annotation.scopeId || !copiedScopeNodeIds.has(annotation.scopeId)) continue;
+      const id = newId();
+      annotations[id] = { ...clone(annotation), id, scopeId: remap.get(annotation.scopeId)! };
+    }
+    const notes: NonNullable<AppState["linearNotesByScope"]> = {};
+    for (const id of copiedScopeNodeIds) {
+      if (Object.prototype.hasOwnProperty.call(source.linearNotesByScope ?? {}, id)) {
+        notes[remap.get(id)!] = source.linearNotesByScope![id];
+      }
+    }
+    const nodes: AppState["nodes"] = {};
+    const copiedIds = new Set(remap.values());
+    for (const id of ids) {
+      const node = clone(source.nodes[id]);
+      node.id = remap.get(id)!;
+      node.parentId = id === sourceId ? parentId : remap.get(node.parentId!)!;
+      node.children = node.children.map((child) => remap.get(child)!);
+      // A map root already is a scope; retain that boundary when it becomes a child.
+      if (id === source.rootId) node.nodeType = "folder";
+      if (node.scopeId) {
+        const scopeId = scopeRemap.get(node.scopeId) ?? remap.get(node.scopeId);
+        if (scopeId) node.scopeId = scopeId;
+        else delete node.scopeId; // Outside membership must be derived at the destination.
+      }
+      if (node.targetNodeId && remap.has(node.targetNodeId)) node.targetNodeId = remap.get(node.targetNodeId);
+      if (node.nodeType === "alias" && node.targetNodeId && !this.state.nodes[node.targetNodeId] && !copiedIds.has(node.targetNodeId)) {
+        node.isBroken = true;
+        node.targetSnapshotLabel = node.targetSnapshotLabel || source.nodes[node.targetNodeId]?.text || node.text || "Untitled";
+      }
+      nodes[node.id] = node;
+    }
+    this._pushHistory();
+    Object.assign(this.state.nodes, nodes);
+    parent.children.push(remap.get(sourceId)!);
+    if (Object.keys(links).length) Object.assign(this._ensureLinks(), links);
+    if (Object.keys(scopes).length) Object.assign(this.state.scopes ??= {}, scopes);
+    if (Object.keys(surfaces).length) Object.assign(this.state.surfaces ??= {}, surfaces);
+    if (Object.keys(annotations).length) Object.assign(this.state.annotations ??= {}, annotations);
+    if (Object.keys(notes).length) Object.assign(this.state.linearNotesByScope ??= {}, notes);
+    return ids.map((id) => remap.get(id)!);
   }
 
   deleteNode(nodeId: string): void {
@@ -587,6 +764,9 @@ class RapidMvpModel {
     const links = this.state.links ?? {};
     Object.values(links).forEach((link) => {
       const normalized = this._normalizeLink(link);
+      if (!isGraphLinkAttributes(link.attributes)) {
+        errors.push(`Link ${normalized.id} attributes must be an object with string values.`);
+      }
       const source = nodes[normalized.sourceNodeId];
       const target = nodes[normalized.targetNodeId];
       if (!source) {
@@ -1057,6 +1237,7 @@ class RapidMvpModel {
         rootId: scopeId,
         nodes: subNodes,
         links: subLinks,
+        ...scopedLaneSettings(state, idSet),
       },
     };
     return { ok: true, map, nodeCount: ids.length };
@@ -1250,11 +1431,13 @@ class RapidMvpModel {
       mergedLinks[linkId] = link;
     }
 
+    const settings = scopedLaneSettings(incomingState, incomingIds);
     const mergedState: AppState = {
       ...stored,
       rootId: stored.rootId,
       nodes: mergedNodes,
       links: mergedLinks,
+      ...(settings.scopes ? { scopes: { ...stored.scopes, ...settings.scopes }, surfaces: { ...stored.surfaces, ...settings.surfaces } } : {}),
     };
 
     const mergedModel = RapidMvpModel.fromJSON(mergedState);
@@ -1320,6 +1503,28 @@ class RapidMvpModel {
     } finally {
       db.close();
     }
+  }
+
+  /** Optimistic commit under the SQLite write lock, including cross-process writers. */
+  saveToSqliteIfUnchanged(dbPath: string, mapId: string, expectedRevision: string): SavedMap {
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      return db.transaction(() => {
+        const row = db.prepare("SELECT version, saved_at AS savedAt, state_json AS stateJson FROM maps WHERE id = ?").get(mapId) as SqliteMapRow | undefined;
+        if (!row || !row.savedAt || RapidMvpModel.savedRevision({ version: 1, savedAt: row.savedAt, state: JSON.parse(row.stateJson) }) !== expectedRevision) {
+          throw new Error("REVISION_CONFLICT");
+        }
+        const data: SavedMap = { version: 1, savedAt: new Date().toISOString(), state: this.toJSON() };
+        db.prepare("UPDATE maps SET version = ?, saved_at = ?, state_json = ? WHERE id = ?").run(data.version, data.savedAt, JSON.stringify(data.state), mapId);
+        return data;
+      }).immediate();
+    } finally {
+      db.close();
+    }
+  }
+
+  static savedRevision(saved: SavedMap): string {
+    return createHash("sha256").update(JSON.stringify({ version: saved.version, savedAt: saved.savedAt, state: saved.state })).digest("hex");
   }
 
   static loadFromFile(filePath: string): RapidMvpModel {

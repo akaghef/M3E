@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>try-app Navigation Prototype</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="canvas-panel" aria-label="M3E tree prototype">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">try-app</p>
+            <h1>Progressive Navigation</h1>
+          </div>
+          <div class="status-strip" aria-label="Current selection">
+            <span id="variantLabel">v1</span>
+            <span id="selectedLabel">Focus: [GUI]</span>
+            <button id="variantToggle" class="text-button secondary" type="button">v2</button>
+            <button id="resetNavigator" class="text-button" type="button">Reset</button>
+          </div>
+        </header>
+
+        <div class="canvas-wrap">
+          <svg id="treeSvg" class="tree-svg" role="img" aria-label="Mind map style tree"></svg>
+          <div id="nodeLayer" class="node-layer" aria-label="Tree nodes"></div>
+          <div id="detailSheet" class="detail-sheet" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <aside id="navigator" class="navigator is-open" aria-label="Action navigator">
+        <div class="navigator-head">
+          <div>
+            <p class="eyebrow">Overlay State</p>
+            <h2>Navigation path</h2>
+          </div>
+          <button id="closeNavigator" class="icon-button" type="button" aria-label="Close actions">x</button>
+        </div>
+
+        <label class="search-box">
+          <span>Search</span>
+          <input id="commandSearch" type="search" placeholder="filter visible UI nodes" autocomplete="off" />
+        </label>
+
+        <div class="hint-row">
+          <kbd>Up</kbd><kbd>Down</kbd><span>move</span>
+          <kbd>Enter</kbd><span>open / run</span>
+        </div>
+
+        <div id="commandList" class="command-list" role="tree" aria-label="Command groups"></div>
+      </aside>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

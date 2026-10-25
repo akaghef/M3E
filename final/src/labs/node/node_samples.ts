@@ -28,7 +28,7 @@ export interface NodeLabSample {
   input: NodeDrawInput;
 }
 
-export const surfaceViews: SurfaceViewName[] = ["Tree", "Axial", "Radial", "Disperse", "System"];
+export const surfaceViews: SurfaceViewName[] = ["Tree", "Axial", "Disperse", "System"];
 
 function renderLatex(source: string): { html: string; displayMode: boolean } {
   const displayMode = false;

@@ -1,0 +1,39 @@
+{
+  "id": "agent-node-example",
+  "agentKind": "ai",
+  "icon": "black-dragon-pet",
+  "name": "Example Agent",
+  "title": "SeamLab",
+  "message": "Agent node の表示とアイコンの取り込みを確認する。",
+  "model": "example-model",
+  "lifecycleState": "tool-running",
+  "semanticColor": "normal",
+  "lastActiveAt": "2026-10-09T02:25:25Z",
+  "attention": false,
+  "actorCount": 1,
+  "provider": "codex",
+  "extraction": {
+    "recordKind": "synthetic-example",
+    "sourceId": "agent-node-example",
+    "sourceKinds": [
+      "Lab fixture"
+    ],
+    "reasons": [
+      "Public-safe example, not a live runtime observation."
+    ],
+    "syntheticFields": [
+      "name",
+      "title",
+      "message",
+      "model",
+      "lifecycleState",
+      "realm",
+      "team",
+      "icon",
+      "attention",
+      "actorCount"
+    ]
+  },
+  "realm": "Mac",
+  "team": "M3E"
+}

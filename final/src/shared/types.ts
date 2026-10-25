@@ -4,8 +4,8 @@ export type LinkDirection = "none" | "forward" | "backward" | "both";
 export type LinkStyle = "default" | "dashed" | "soft" | "emphasis";
 export type LinkPort = "auto" | "left" | "right" | "top" | "bottom";
 export type MapNodeClass = "entity" | "scope";
-export type SurfaceKind = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "mindmap" | "logic-chart" | "timeline";
+export type SurfaceKind = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
+export type SurfaceLayout = "tree" | "flow-lr" | "scatter" | "logic-chart" | "timeline" | "lane";
 
 export interface TreeNode {
   id: string;
@@ -37,6 +37,7 @@ export interface GraphLink {
   color?: string;
   sourcePort?: LinkPort;
   targetPort?: LinkPort;
+  attributes?: Record<string, string>;
 }
 
 export interface SurfaceNodeView {
@@ -48,6 +49,7 @@ export interface SurfaceNodeView {
 }
 
 export interface MapSurface {
+  surfaceView?: { direction: "left/right" | "left" | "right" | "up/down" | "up" | "down"; space: "tight" | "normal" | "loose" };
   id: string;
   scopeId: string;
   kind: SurfaceKind;
@@ -252,6 +254,8 @@ export interface VaultExportOptions {
 }
 
 export interface VaultExportRequest {
+  /** View selection for subtree output; not part of persisted map storage. */
+  concretenessLevel?: number;
   mapId: string;
   vaultPath: string;
   nodeId?: string;

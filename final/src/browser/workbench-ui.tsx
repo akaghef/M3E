@@ -1,5 +1,8 @@
+import { ViewerFilterBar, ViewerFilterCount } from "./viewer-filter-bar";
+import { RENDER_UPDATE_KEYS, renderUpdateMetrics, renderUpdateRate } from "../rendering/render_update_metrics";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { hasPrimaryModifier, keyboardPlatform } from "./viewer_keyboard";
 import {
   Bell,
   ChevronDown,
@@ -40,11 +43,10 @@ import {
 } from "../shared/pn_layout";
 import "./workbench-ui.css";
 
-type ToolId = "select" | "mindmap" | "pen" | "highlighter" | "date" | "eraser" | "note";
+type ToolId = "select" | "nodes" | "pen" | "highlighter" | "date" | "eraser" | "note";
 type ModalId = "menu" | "settings" | "share" | "help" | "ai" | null;
-type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "mindmap" | "logic-chart" | "timeline";
-type ProgressiveBranchDirection = "both" | "right" | "left";
-type ProgressiveLayoutDirection = "right" | "left" | "down" | "up";
+type ProgressiveSurfaceMode = "tree" | "system" | "scatter" | "logic-chart" | "timeline" | "lane";
+type ProgressiveLayoutDirection = "left/right" | "left" | "right" | "up/down" | "up" | "down";
 type ProgressiveDepthAlign = "aligned" | "packed";
 type ProgressiveEdgeRoute = "elbow" | "bezier" | "straight";
 type ProgressiveLinkRoute = "simple-bezier" | "orthogonal" | "straight";
@@ -54,6 +56,14 @@ type ViewerTheme = "light" | "dark";
 type ProgressiveNodeId =
   | "gui"
   | "active-root"
+  | "lane-surface"
+  | "lane-direction"
+  | "lane-direction-right"
+  | "lane-direction-down"
+  | "lane-space"
+  | "lane-space-tight"
+  | "lane-space-normal"
+  | "lane-space-loose"
   | "rapid-expand"
   | "rapid-detail"
   | "rapid-examples"
@@ -75,22 +85,26 @@ type ProgressiveNodeId =
   | "rapid-unknowns"
   | "rapid-evidence"
   | "rapid-output"
-  | "rapid-markdown"
-  | "rapid-outline"
-  | "rapid-presentation"
-  | "rapid-export"
+  | "node-export-json"
+  | "node-export-mm"
+  | "node-export-vault"
   | "board"
   | "view"
   | "scatter"
-  | "mindmap"
   | "annotation"
   | "panel"
   | "layout"
   | "layout-direction"
+  | "layout-direction-left-right"
   | "layout-direction-right"
   | "layout-direction-left"
+  | "layout-direction-up-down"
   | "layout-direction-down"
   | "layout-direction-up"
+  | "layout-space"
+  | "layout-space-tight"
+  | "layout-space-normal"
+  | "layout-space-loose"
   | "layout-depth-align"
   | "layout-depth-aligned"
   | "layout-depth-packed"
@@ -107,37 +121,28 @@ type ProgressiveNodeId =
   | "export-mm"
   | "export-vault"
   | "tree"
-  | "mindmap-surface"
-  | "mindmap-both"
-  | "mindmap-right"
-  | "mindmap-left"
-  | "mindmap-compact"
-  | "mindmap-spacious"
-  | "mindmap-orthogonal"
   | "logic-chart-surface"
-  | "logic-chart-compact"
-  | "logic-chart-balanced"
-  | "logic-chart-spacious"
-  | "logic-chart-both"
-  | "logic-chart-right"
-  | "logic-chart-left"
+  | "logic-chart-direction"
+  | "logic-chart-direction-left-right"
+  | "logic-chart-direction-left"
+  | "logic-chart-direction-right"
+  | "logic-chart-direction-up-down"
+  | "logic-chart-direction-up"
+  | "logic-chart-direction-down"
+  | "logic-chart-space"
+  | "logic-chart-space-tight"
+  | "logic-chart-space-normal"
+  | "logic-chart-space-loose"
   | "timeline-surface"
-  | "timeline-compact"
-  | "timeline-balanced"
-  | "timeline-spacious"
+  | "timeline-space"
+  | "timeline-space-tight"
+  | "timeline-space-normal"
+  | "timeline-space-loose"
   | "system"
   | "scatter-surface"
   | "scatter-normal"
-  | "scatter-add-node"
-  | "scatter-add-edge"
-  | "scatter-colorize"
-  | "scatter-delete"
   | "scatter-animate"
   | "scatter-reflow"
-  | "add-child"
-  | "toggle-scope"
-  | "enter-scope"
-  | "exit-scope"
   | "pen"
   | "highlighter"
   | "date"
@@ -156,6 +161,7 @@ type ProgressiveNode = {
 
 type UiSnapshot = {
   mode: string;
+  keyboardMode: string;
   surface: string;
   scope: string;
   mapId: string;
@@ -183,14 +189,15 @@ function clickLegacy(id: string): void {
 
 function setSurfaceLayout(
   mode: ProgressiveSurfaceMode,
-  density: "compact" | "balanced" | "spacious",
-  direction?: ProgressiveBranchDirection,
+  space: "tight" | "normal" | "loose",
+  direction?: ProgressiveLayoutDirection,
 ): void {
-  window.dispatchEvent(new CustomEvent("m3e:set-surface-layout", { detail: { mode, density, direction } }));
+  window.dispatchEvent(new CustomEvent("m3e:set-surface-layout", { detail: { mode, space, direction } }));
 }
 
 function setLayoutOptions(detail: {
   direction?: ProgressiveLayoutDirection;
+  space?: "tight" | "normal" | "loose";
   depthAlign?: ProgressiveDepthAlign;
   edgeRoute?: ProgressiveEdgeRoute;
   linkRoute?: ProgressiveLinkRoute;
@@ -213,6 +220,10 @@ function currentEdgeRoute(): ProgressiveEdgeRoute {
 function currentLinkRoute(): ProgressiveLinkRoute {
   return document.documentElement.dataset.surfaceLinkRoute as ProgressiveLinkRoute || "simple-bezier";
 }
+
+const keyboardOs = keyboardPlatform(navigator.platform);
+const primaryKeyLabel = keyboardOs === "mac" ? "Command" : "Ctrl";
+const primaryKeyOptions = keyboardOs === "mac" ? { metaKey: true } : { ctrlKey: true };
 
 function sendKey(key: string, options: KeyboardEventInit = {}): void {
   document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...options }));
@@ -273,12 +284,15 @@ function readSnapshot(): UiSnapshot {
   const metaEl = byId("meta");
   const meta = metaEl?.textContent || "";
   const modeMeta = byId("mode-meta")?.textContent || "";
-  const zoom = q<SVGSVGElement>("#canvas")?.style.transform.match(/scale\(([^)]+)\)/)?.[1];
+  const webglCanvas = q<HTMLCanvasElement>("#webgl-canvas");
+  const zoom = webglCanvas && !webglCanvas.hidden ? webglCanvas.dataset.zoom
+    : q<SVGSVGElement>("#canvas")?.style.transform.match(/scale\(([^)]+)\)/)?.[1];
   const displayName = byId<HTMLInputElement>("collab-display-name")?.value.trim() || "Akaghef";
   const selectedNodeId = metaEl?.dataset.selectedNodeId?.trim() || "";
   const selectedNodeLabel = metaEl?.dataset.selectedNodeLabel?.trim() || "";
   return {
     mode: modeMeta.match(/mode:\s*([^/]+)/)?.[1]?.trim() || "Rapid",
+    keyboardMode: byId("board")?.dataset.keyboardMode || "navigate",
     surface: modeMeta.match(/\/\s*(.+)$/)?.[1]?.trim() || "Tree",
     scope: metaEl?.dataset.scopeId?.trim() || parseField(meta, "scope"),
     mapId: metaEl?.dataset.mapId?.trim() || meta.match(/map:\s*[^|]*\(([^)]+)\)/)?.[1]?.trim() || "local-map",
@@ -307,6 +321,8 @@ function useViewerSnapshot(): UiSnapshot {
       const el = byId(id);
       if (el) observer.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
     });
+    const board = byId("board");
+    if (board) observer.observe(board, { attributes: true, attributeFilter: ["data-keyboard-mode"] });
     const interval = window.setInterval(update, 500);
     update();
     return () => {
@@ -394,6 +410,9 @@ function TopBar({
   openModal: (id: ModalId) => void;
 }): React.ReactElement {
   const joined = snapshot.collab.includes("joined");
+  useEffect(() => {
+    window.dispatchEvent(new Event("m3e:orrery-control-slot-ready"));
+  }, []);
   return (
     <div className="wb-topbar" data-testid="workbench-topbar">
       <div className="wb-brand">
@@ -401,12 +420,16 @@ function TopBar({
           <Home size={17} />
         </button>
         <div className="wb-logo">M3E</div>
+        <span className="wb-operation-mode" aria-label="Node operation mode" aria-live="polite">
+          {snapshot.keyboardMode === "grab" ? "Grab" : snapshot.keyboardMode === "edit" ? "Edit" : "Navigate"}
+        </span>
         <button className="wb-board-title" type="button" onClick={() => openModal("menu")}>
           <small>{snapshot.surface}</small>
           <ChevronDown size={14} />
         </button>
       </div>
       <div className="wb-top-actions">
+        <span id="orrery-network-control-slot" />
         <div className="wb-status-chip" title={snapshot.status}>
           <Cloud size={14} />
           <span>{snapshot.cloud.replace("Cloud: ", "")}</span>
@@ -474,7 +497,7 @@ function LeftRail({
         <IconButton label="Select" active={tool === "select"} onClick={() => activate("select", "draw-select")}>
           <MousePointer2 size={20} />
         </IconButton>
-        <IconButton label="Mindmap" active={tool === "mindmap"} onClick={() => activate("mindmap", "view-tree")}>
+        <IconButton label="Nodes" active={tool === "nodes"} onClick={() => activate("nodes", "view-tree")}>
           <Waypoints size={20} />
         </IconButton>
         <IconButton
@@ -504,7 +527,7 @@ function LeftRail({
         </IconButton>
       </div>
       <IconButton
-        label="[GUI] navigation root"
+        label="Surface PN root"
         onClick={() => {
           setProgressiveMode("gui");
           setProgressiveOpen((current) => !current);
@@ -629,7 +652,7 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
           value={prompt}
           onChange={(event) => setPrompt(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            if (hasPrimaryModifier(event, keyboardOs) && !event.altKey && !event.shiftKey && !event.nativeEvent.isComposing && event.key === "Enter") {
               event.preventDefault();
               void runPrompt();
             }
@@ -648,6 +671,57 @@ function AiSidekickPanel({ snapshot, close }: { snapshot: UiSnapshot; close: () 
     </div>
   );
 }
+
+const RENDER_UPDATE_LABELS = {
+  render: ["シーン更新", "render() — 全体・差分のレイアウトと描画データの更新"],
+  projection: ["WebGL再構築", "activateWebGLProjection() — 描画データの再構築と反映"],
+  applyZoom: ["表示位置更新", "applyZoom() — カメラと関連表示の更新"],
+  setCamera: ["カメラ設定", "setCamera() — WebGLへのカメラ更新要求"],
+  draw: ["WebGL描画", "draw() — 描画処理の実行回数。GPU draw call数・FPSとは異なります"],
+};
+
+const RenderUpdatesPanel = React.memo(function RenderUpdatesPanel(): React.ReactElement {
+  const [sample, setSample] = useState(() => {
+    const current = renderUpdateMetrics.snapshot();
+    return { previous: current, current };
+  });
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      const current = renderUpdateMetrics.snapshot();
+      setSample(previous => ({ previous: previous.current, current }));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const webgl = q<HTMLCanvasElement>("#webgl-canvas");
+  const renderer = webgl && !webgl.hidden ? "WebGL" : "SVG";
+  return (
+    <section className="wb-panel-section wb-render-updates" data-testid="render-updates">
+      <div className="wb-render-updates-head">
+        <div className="wb-section-title">更新情報 · {renderer}</div>
+        <button type="button" onClick={() => {
+          renderUpdateMetrics.reset();
+          const current = renderUpdateMetrics.snapshot();
+          setSample({ previous: current, current });
+        }} aria-label="描画計測をリセット">リセット</button>
+      </div>
+      <table aria-label="描画更新の計測">
+        <thead><tr><th scope="col">処理</th><th scope="col">回/秒</th><th scope="col">累計</th><th scope="col">最大ms</th></tr></thead>
+        <tbody>{RENDER_UPDATE_KEYS.map(key => {
+          const metric = sample.current.metrics[key];
+          const unavailable = renderer !== "WebGL" && (key === "projection" || key === "setCamera" || key === "draw");
+          return <tr key={key} data-metric={key} title={RENDER_UPDATE_LABELS[key][1]}>
+            <th scope="row">{RENDER_UPDATE_LABELS[key][0]}</th>
+            <td data-value="rate">{unavailable ? "—" : renderUpdateRate(key, sample.previous, sample.current).toFixed(1)}</td>
+            <td data-value="count">{metric.count}</td>
+            <td data-value="max">{metric.count ? metric.maxMs.toFixed(1) : "—"}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+      <p>1秒ごとに表示。累計・最大は読込／リセット以降。msは関数の経過時間（GPU完了時間ではありません）。</p>
+    </section>
+  );
+});
 
 function RightPanel({
   snapshot,
@@ -697,7 +771,7 @@ function RightPanel({
         <div className="wb-section-title">Selected node</div>
         <div className="wb-selected-card">
           <strong>{snapshot.selected.replace(/\s*\(\d+\)$/, "")}</strong>
-          <span>scope {snapshot.scope}</span>
+          <span>{byId("scope-meta")?.textContent || "Scope"}</span>
         </div>
         <div className="wb-stats">
           <span>{snapshot.nodes} nodes</span>
@@ -705,15 +779,7 @@ function RightPanel({
           <span>{snapshot.annotations} marks</span>
         </div>
       </section>
-      <section className="wb-panel-section">
-        <div className="wb-section-title">Mindmap</div>
-        <div className="wb-action-grid">
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }))}>Add child</button>
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }))}>Toggle scope</button>
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "]", bubbles: true }))}>Enter scope</button>
-          <button type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "[", bubbles: true }))}>Exit scope</button>
-        </div>
-      </section>
+      <RenderUpdatesPanel />
       <section className="wb-panel-section">
         <div className="wb-section-title">Annotation</div>
         <div className="wb-tool-summary">
@@ -764,7 +830,7 @@ function BottomControls({ snapshot, openModal }: { snapshot: UiSnapshot; openMod
       <IconButton label="Zoom out" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "-", bubbles: true }))}>
         <ZoomOut size={18} />
       </IconButton>
-      <button className="wb-zoom" type="button" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "0", ctrlKey: true, bubbles: true }))}>
+      <button className="wb-zoom" type="button" onClick={() => sendKey("0", primaryKeyOptions)}>
         {snapshot.zoom}
       </button>
       <IconButton label="Zoom in" onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "=", bubbles: true }))}>
@@ -797,6 +863,7 @@ function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement |
       </div>
       <div className="wb-scatter-sim">
         <button type="button" onClick={() => clickLegacy("scatter-animate")}>Animate</button>
+        <button type="button" onClick={() => clickLegacy("scatter-collapse")}>折り畳み・展開</button>
         <button type="button" onClick={() => clickLegacy("scatter-reflow")}>
           <RefreshCw size={15} /> Reflow
         </button>
@@ -827,13 +894,12 @@ function ScatterToolbar({ visible }: { visible: boolean }): React.ReactElement |
   );
 }
 
-function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode[] {
-  return [
+function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): ProgressiveNode[] {
+  const nodes: ProgressiveNode[] = [
     { id: "gui", label: "[GUI]", hint: "overlay root" },
     { id: "board", label: "Board", hint: "file and board output", parentId: "gui" },
     { id: "view", label: "View", hint: "surface navigation", parentId: "gui" },
-    { id: "scatter", label: "Scatter", hint: "scatter editing tools", parentId: "gui" },
-    { id: "mindmap", label: "Mindmap", hint: "node and scope actions", parentId: "gui" },
+    { id: "scatter", label: "Disperse", hint: "Disperse layout controls", parentId: "gui" },
     { id: "annotation", label: "Annotation", hint: "drawing tools", parentId: "gui" },
     { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
     { id: "import", label: "Import file", hint: "board input", parentId: "board", action: () => clickLegacy("import-file-btn") },
@@ -841,32 +907,45 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "board", action: () => clickLegacy("download-mm-btn") },
     { id: "export-vault", label: "Export to Vault", hint: "write linear notes", parentId: "board", action: () => clickLegacy("export-vault-btn") },
     { id: "tree", label: "Tree surface", hint: "classic right tree", parentId: "view", action: () => clickLegacy("view-tree") },
-    { id: "mindmap-surface", label: "Mind Map", hint: "mapify-like map templates", parentId: "view", action: () => setSurfaceLayout("mindmap", "balanced", "both") },
-    { id: "mindmap-both", label: "Mind both", hint: "depth on both sides", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "both") },
-    { id: "mindmap-right", label: "Mind right", hint: "one-sided right depth", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "right") },
-    { id: "mindmap-left", label: "Mind left", hint: "one-sided left depth", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "balanced", "left") },
-    { id: "mindmap-compact", label: "Mind compact", hint: "dense both-side map", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "compact", "both") },
-    { id: "mindmap-spacious", label: "Mind spacious", hint: "wide both-side map", parentId: "mindmap-surface", action: () => setSurfaceLayout("mindmap", "spacious", "both") },
-    { id: "mindmap-orthogonal", label: "Mind orthogonal", hint: "both-side logic links", parentId: "mindmap-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "both") },
-    { id: "logic-chart-surface", label: "Logic Chart", hint: "logic templates", parentId: "view", action: () => setSurfaceLayout("logic-chart", "compact", "right") },
-    { id: "logic-chart-compact", label: "Logic compact", hint: "mapify-like dense ranks", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "compact", "right") },
-    { id: "logic-chart-balanced", label: "Logic balanced", hint: "readable mid-density ranks", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "right") },
-    { id: "logic-chart-spacious", label: "Logic spacious", hint: "wide review spacing", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "spacious", "right") },
-    { id: "logic-chart-both", label: "Logic both", hint: "depth on both sides", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "both") },
-    { id: "logic-chart-right", label: "Logic right", hint: "one-sided right depth", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "right") },
-    { id: "logic-chart-left", label: "Logic left", hint: "one-sided left depth", parentId: "logic-chart-surface", action: () => setSurfaceLayout("logic-chart", "balanced", "left") },
-    { id: "timeline-surface", label: "Timeline", hint: "axis-based layout", parentId: "view", action: () => clickLegacy("view-timeline") },
-    { id: "timeline-compact", label: "Timeline compact", hint: "short axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "compact") },
-    { id: "timeline-balanced", label: "Timeline balanced", hint: "standard axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "balanced") },
-    { id: "timeline-spacious", label: "Timeline spacious", hint: "wide axis spacing", parentId: "timeline-surface", action: () => setSurfaceLayout("timeline", "spacious") },
+    { id: "logic-chart-surface", label: "Logic Chart", hint: "logic templates", parentId: "view", action: () => setSurfaceLayout("logic-chart", "tight", "right") },
+    { id: "logic-chart-direction", label: "Direction", hint: "layout growth axis", parentId: "logic-chart-surface" },
+    { id: "logic-chart-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "left/right") },
+    { id: "logic-chart-direction-left", label: "Left", hint: "grow left", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "left") },
+    { id: "logic-chart-direction-right", label: "Right", hint: "grow right", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "right") },
+    { id: "logic-chart-direction-up-down", label: "Up / Down", hint: "grow on two vertical sides", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "up/down") },
+    { id: "logic-chart-direction-up", label: "Up", hint: "grow up", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "up") },
+    { id: "logic-chart-direction-down", label: "Down", hint: "grow down", parentId: "logic-chart-direction", action: () => setSurfaceLayout("logic-chart", "normal", "down") },
+    { id: "logic-chart-space", label: "Space", hint: "layout spacing", parentId: "logic-chart-surface" },
+    { id: "logic-chart-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "tight", "right") },
+    { id: "logic-chart-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "normal", "right") },
+    { id: "logic-chart-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "logic-chart-space", action: () => setSurfaceLayout("logic-chart", "loose", "right") },
+    { id: "timeline-surface", label: "Axial", hint: "axis-based layout", parentId: "view", action: () => clickLegacy("view-timeline") },
+    { id: "timeline-space", label: "Space", hint: "layout spacing", parentId: "timeline-surface" },
+    { id: "timeline-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "tight") },
+    { id: "timeline-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "normal") },
+    { id: "timeline-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "timeline-space", action: () => setSurfaceLayout("timeline", "loose") },
+    { id: "lane-surface", label: "Lane", hint: "root children in sibling order", parentId: "view" },
+    { id: "lane-direction", label: "Direction", hint: "lane order axis", parentId: "lane-surface" },
+    { id: "lane-direction-right", label: "Right", hint: "lanes from left to right", parentId: "lane-direction", action: () => setSurfaceLayout("lane", currentLayoutSpace(), "right") },
+    { id: "lane-direction-down", label: "Down", hint: "lanes from top to bottom", parentId: "lane-direction", action: () => setSurfaceLayout("lane", currentLayoutSpace(), "down") },
+    { id: "lane-space", label: "Space", hint: "within and between lanes", parentId: "lane-surface" },
+    { id: "lane-space-tight", label: "Tight", hint: "tight spacing", parentId: "lane-space", action: () => setSurfaceLayout("lane", "tight", laneDirectionForNavigation()) },
+    { id: "lane-space-normal", label: "Normal", hint: "normal spacing", parentId: "lane-space", action: () => setSurfaceLayout("lane", "normal", laneDirectionForNavigation()) },
+    { id: "lane-space-loose", label: "Loose", hint: "loose spacing", parentId: "lane-space", action: () => setSurfaceLayout("lane", "loose", laneDirectionForNavigation()) },
     { id: "system", label: "System surface", hint: "diagram canvas", parentId: "view", action: () => clickLegacy("view-system") },
-    { id: "scatter-surface", label: "Scatter surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
+    { id: "scatter-surface", label: "Disperse surface", hint: "spatial graph canvas", parentId: "view", action: () => clickLegacy("view-scatter") },
     { id: "layout", label: "Layout", hint: "surface layout options", parentId: "view" },
     { id: "layout-direction", label: "Direction", hint: "layout growth axis", parentId: "layout" },
+    { id: "layout-direction-left-right", label: "Left / Right", hint: "grow on two horizontal sides", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "left/right" }), active: () => currentLayoutDirection() === "left/right" },
     { id: "layout-direction-right", label: "Right", hint: "grow right", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "right" }), active: () => currentLayoutDirection() === "right" },
     { id: "layout-direction-left", label: "Left", hint: "grow left", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "left" }), active: () => currentLayoutDirection() === "left" },
+    { id: "layout-direction-up-down", label: "Up / Down", hint: "grow on two vertical sides", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "up/down" }), active: () => currentLayoutDirection() === "up/down" },
     { id: "layout-direction-down", label: "Down", hint: "grow down", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "down" }), active: () => currentLayoutDirection() === "down" },
     { id: "layout-direction-up", label: "Up", hint: "grow up", parentId: "layout-direction", action: () => setLayoutOptions({ direction: "up" }), active: () => currentLayoutDirection() === "up" },
+    { id: "layout-space", label: "Space", hint: "layout spacing", parentId: "layout" },
+    { id: "layout-space-tight", label: "Tight", hint: "tight layout spacing", parentId: "layout-space", action: () => setLayoutOptions({ space: "tight" }) },
+    { id: "layout-space-normal", label: "Normal", hint: "normal layout spacing", parentId: "layout-space", action: () => setLayoutOptions({ space: "normal" }) },
+    { id: "layout-space-loose", label: "Loose", hint: "loose layout spacing", parentId: "layout-space", action: () => setLayoutOptions({ space: "loose" }) },
     { id: "layout-depth-align", label: "Depth Align", hint: "rank alignment", parentId: "layout" },
     { id: "layout-depth-aligned", label: "Aligned", hint: "align depth ranks", parentId: "layout-depth-align", action: () => setLayoutOptions({ depthAlign: "aligned" }), active: () => currentDepthAlign() === "aligned" },
     { id: "layout-depth-packed", label: "Packed", hint: "pack subtrees", parentId: "layout-depth-align", action: () => setLayoutOptions({ depthAlign: "packed" }), active: () => currentDepthAlign() === "packed" },
@@ -879,16 +958,8 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "layout-link-orthogonal", label: "Orthogonal", hint: "right-angle GraphLink", parentId: "layout-link-route", action: () => setLayoutOptions({ linkRoute: "orthogonal" }), active: () => currentLinkRoute() === "orthogonal" },
     { id: "layout-link-straight", label: "Straight", hint: "direct GraphLink", parentId: "layout-link-route", action: () => setLayoutOptions({ linkRoute: "straight" }), active: () => currentLinkRoute() === "straight" },
     { id: "scatter-normal", label: "Normal", hint: "select scatter objects", parentId: "scatter", action: () => clickLegacy("scatter-normal") },
-    { id: "scatter-add-node", label: "Add node", hint: "create scatter node", parentId: "scatter", action: () => clickLegacy("scatter-add-node") },
-    { id: "scatter-add-edge", label: "Add edge", hint: "connect scatter nodes", parentId: "scatter", action: () => clickLegacy("scatter-add-edge") },
-    { id: "scatter-colorize", label: "Colorize", hint: "apply scatter color", parentId: "scatter", action: () => clickLegacy("scatter-colorize") },
-    { id: "scatter-delete", label: "Delete", hint: "remove scatter object", parentId: "scatter", action: () => clickLegacy("scatter-delete") },
     { id: "scatter-animate", label: "Animate", hint: "run force layout", parentId: "scatter", action: () => clickLegacy("scatter-animate") },
     { id: "scatter-reflow", label: "Reflow", hint: "settle force layout", parentId: "scatter", action: () => clickLegacy("scatter-reflow") },
-    { id: "add-child", label: "Add child", hint: "Tab", parentId: "mindmap", action: () => sendKey("Tab") },
-    { id: "toggle-scope", label: "Toggle scope", hint: "f", parentId: "mindmap", action: () => sendKey("f") },
-    { id: "enter-scope", label: "Enter scope", hint: "]", parentId: "mindmap", action: () => sendKey("]") },
-    { id: "exit-scope", label: "Exit scope", hint: "[", parentId: "mindmap", action: () => sendKey("[") },
     { id: "pen", label: "Pen", hint: "freehand draw", parentId: "annotation", action: () => clickLegacy("draw-pen") },
     { id: "highlighter", label: "Highlighter", hint: "wide translucent stroke", parentId: "annotation", action: () => clickLegacy("draw-highlighter") },
     { id: "date", label: "Date label", hint: "stamp date", parentId: "annotation", action: () => clickLegacy("draw-date") },
@@ -896,6 +967,18 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void): ProgressiveNode
     { id: "settings", label: "Settings", hint: "open panel settings", parentId: "panel", action: () => openModal("settings") },
     { id: "help", label: "Shortcuts", hint: "keyboard reference", parentId: "panel", action: () => openModal("help") },
   ];
+  return lane ? nodes.filter(node => !["layout-depth-align", "layout-depth-aligned", "layout-depth-packed",
+    "layout-edge-route", "layout-edge-elbow", "layout-edge-bezier", "layout-edge-straight",
+    "layout-direction-left-right", "layout-direction-left", "layout-direction-up-down", "layout-direction-up"].includes(node.id)) : nodes;
+}
+
+function laneDirectionForNavigation(): "right" | "down" {
+  return currentLayoutDirection() === "down" ? "down" : "right";
+}
+
+function currentLayoutSpace(): "tight" | "normal" | "loose" {
+  const space = document.documentElement.dataset.surfaceSpace;
+  return space === "tight" || space === "loose" ? space : "normal";
 }
 
 function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
@@ -903,6 +986,9 @@ function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
   const rapidGenerate = (action: RapidGenerateAction, label: string, instruction: string) => (
     () => dispatchRapidGenerateAction(action, label, instruction)
   );
+  const exportSubtree = (format: "json" | "mm" | "vault") => () => {
+    window.dispatchEvent(new CustomEvent("m3e:export-subtree", { detail: { format } }));
+  };
   return [
     { id: "active-root", label: rootLabel, hint: "active node" },
     { id: "rapid-expand", label: "N2 展開", hint: "node/subtree を広げる", parentId: "active-root" },
@@ -925,11 +1011,10 @@ function makeActiveNodeProgressiveNodes(rootLabel: string): ProgressiveNode[] {
     { id: "rapid-question-subtree", label: "N19 subtreeに質問", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N19 subtreeに質問") },
     { id: "rapid-unknowns", label: "N20 不明点を列挙", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N20 不明点を列挙") },
     { id: "rapid-evidence", label: "N21 根拠を確認", hint: "GUI-only", parentId: "rapid-question", action: rapidAction("N21 根拠を確認") },
-    { id: "rapid-output", label: "N22 出力", hint: "形式へ変換", parentId: "active-root" },
-    { id: "rapid-markdown", label: "N23 Markdown化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N23 Markdown化") },
-    { id: "rapid-outline", label: "N24 outline化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N24 outline化") },
-    { id: "rapid-presentation", label: "N25 presentation化", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N25 presentation化") },
-    { id: "rapid-export", label: "N26 export用に整形", hint: "GUI-only", parentId: "rapid-output", action: rapidAction("N26 export用に整形") },
+    { id: "rapid-output", label: "出力", hint: "選択ノードと全子孫", parentId: "active-root" },
+    { id: "node-export-json", label: "Export JSON", hint: "部分木をダウンロード", parentId: "rapid-output", action: exportSubtree("json") },
+    { id: "node-export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "rapid-output", action: exportSubtree("mm") },
+    { id: "node-export-vault", label: "Export to Vault", hint: "部分木を Markdown へ出力", parentId: "rapid-output", action: exportSubtree("vault") },
   ];
 }
 
@@ -943,7 +1028,7 @@ function activeNodeAnchorElement(): Element | null {
 }
 
 function fallbackProgressiveAnchorElement(): Element | null {
-  return document.querySelector('[aria-label="[GUI] navigation root"]');
+  return document.querySelector('[aria-label="Surface PN root"]');
 }
 
 const PROGRESSIVE_NODE_WIDTH = 172;
@@ -998,9 +1083,10 @@ function ProgressiveNavigation({
   activeRootLabel: string;
 }): React.ReactElement {
   const rootId: ProgressiveNodeId = mode === "active-node" ? "active-root" : "gui";
+  const lane = document.documentElement.dataset.surfaceViewMode === "lane";
   const nodes = useMemo(
-    () => (mode === "active-node" ? makeActiveNodeProgressiveNodes(activeRootLabel) : makeProgressiveNodes(openModal)),
-    [activeRootLabel, mode, openModal],
+    () => (mode === "active-node" ? makeActiveNodeProgressiveNodes(activeRootLabel) : makeProgressiveNodes(openModal, lane)),
+    [activeRootLabel, mode, openModal, lane],
   );
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const childrenByParent = useMemo(() => {
@@ -1035,7 +1121,13 @@ function ProgressiveNavigation({
     const rootAnchor = mode === "active-node"
       ? activeNodeAnchorElement() || fallbackProgressiveAnchorElement()
       : fallbackProgressiveAnchorElement();
-    const nextAnchorRect = rootAnchor ? pnRectFromDom(rootAnchor.getBoundingClientRect()) : defaultProgressiveAnchorRect();
+    // WebGL has no visible per-node DOM element. Ask the viewer for the
+    // selected node's painted bounds before falling back to SVG geometry.
+    const query: { rect?: PnRect } = {};
+    if (mode === "active-node") {
+      window.dispatchEvent(new CustomEvent("m3e:query-node-pn-anchor", { detail: query }));
+    }
+    const nextAnchorRect = query.rect || (rootAnchor ? pnRectFromDom(rootAnchor.getBoundingClientRect()) : defaultProgressiveAnchorRect());
     setAnchorRect((current) => (
       Math.abs(current.x - nextAnchorRect.x) > 0.5
         || Math.abs(current.y - nextAnchorRect.y) > 0.5
@@ -1101,7 +1193,10 @@ function ProgressiveNavigation({
   const edges = progressiveLayout.edges;
 
   useLayoutEffect(() => {
-    scheduleMeasure();
+    // This establishes the opening geometry before the overlay becomes
+    // observable.  Viewport fast-path events must not inherit a pending
+    // measurement frame and trigger a layout recompute after they fire.
+    measureRootAnchor();
     window.addEventListener("resize", scheduleMeasure);
     window.addEventListener("m3e:layout-options-changed", scheduleMeasure);
     return () => {
@@ -1112,7 +1207,7 @@ function ProgressiveNavigation({
       window.removeEventListener("resize", scheduleMeasure);
       window.removeEventListener("m3e:layout-options-changed", scheduleMeasure);
     };
-  }, [activeId, mode, open, rootId, scheduleMeasure]);
+  }, [activeId, measureRootAnchor, mode, open, rootId, scheduleMeasure]);
 
   useEffect(() => {
     setActiveId(rootId);
@@ -1236,6 +1331,7 @@ function SettingsModal({
   toggleTheme: () => void;
   close: () => void;
 }): React.ReactElement {
+  const [wrapCharacters, setWrapCharacters] = useState(() => Number(document.documentElement.dataset.nodeWrapCharacters || 24));
   const [grid, setGrid] = useState(true);
   const [objectSize, setObjectSize] = useState(true);
   const [comments, setComments] = useState(true);
@@ -1264,6 +1360,11 @@ function SettingsModal({
             <label className="wb-toggle"><span>Grid</span><input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Board comments</span><input type="checkbox" checked={comments} onChange={(e) => setComments(e.target.checked)} /></label>
             <label className="wb-toggle"><span>Object sizes</span><input type="checkbox" checked={objectSize} onChange={(e) => setObjectSize(e.target.checked)} /></label>
+            <label className="wb-field"><span>Initial node width (full-width characters)</span><input aria-label="Initial node width (full-width characters)" type="number" min="8" max="80" value={wrapCharacters} onChange={(e) => {
+              const characters = Number(e.target.value);
+              setWrapCharacters(characters);
+              window.dispatchEvent(new CustomEvent("m3e:set-node-wrap-characters", { detail: { characters } }));
+            }} /></label>
             <label className="wb-field"><span>Linear font scale</span><input type="range" min="0.8" max="1.5" step="0.05" defaultValue="1" /></label>
             <div className="wb-disabled-list">
               <button disabled type="button"><CircleUserRound size={16} /> Profile settings</button>
@@ -1285,14 +1386,21 @@ function HelpModal({ close }: { close: () => void }): React.ReactElement {
         <header><h2>Shortcuts</h2><button type="button" onClick={close}>x</button></header>
         <div className="wb-shortcuts">
           <span><kbd>Tab</kbd>Add child</span>
+          <span><kbd>Enter</kbd>Navigate: edit / Edit: keep text and add sibling</span>
+          <span><kbd>Escape</kbd>Edit: keep text and return to Navigate</span>
+          <span><kbd>M + arrows</kbd>Hold M to Grab a subtree; release to finish; Escape to cancel</span>
+          <span><kbd>{primaryKeyLabel}+M → P</kbd>Mark move source, then choose its new parent</span>
+          <span><kbd>Shift+Enter</kbd>Navigate: edit all text / Edit: newline</span>
+          <span><kbd>{primaryKeyLabel}+Enter</kbd>Keep text, next node and edit</span>
+          <span><kbd>{primaryKeyLabel}+C / X / V</kbd>Navigate: nodes / Edit: text</span>
           <span><kbd>[</kbd><kbd>]</kbd>Scope</span>
           <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>Mode</span>
           <span><kbd>-</kbd><kbd>=</kbd>Zoom</span>
-          <span><kbd>Ctrl+Alt+C</kbd>Copy node path</span>
-          <span><kbd>Ctrl+Alt+I</kbd>Copy scope ID</span>
+          <span><kbd>{primaryKeyLabel}+Alt+C</kbd>Copy node path</span>
+          <span><kbd>{primaryKeyLabel}+Alt+I</kbd>Copy scope ID</span>
           <span><kbd>Alt+E</kbd>Entity list</span>
           <span><kbd>Alt+D</kbd>Markdown preview</span>
-          <span><kbd>Cmd/Ctrl+O</kbd>Open hyperlink node</span>
+          <span><kbd>{primaryKeyLabel}+O</kbd>Open hyperlink node</span>
         </div>
       </section>
     </div>
@@ -1335,6 +1443,7 @@ function WorkbenchApp(): React.ReactElement {
   return (
     <div className="wb-shell">
       <TopBar snapshot={snapshot} theme={theme} toggleTheme={toggleTheme} openModal={setModal} />
+      <ViewerFilterBar />
       <LeftRail
         tool={tool}
         setTool={setTool}
@@ -1359,6 +1468,7 @@ function WorkbenchApp(): React.ReactElement {
       />
       <BottomControls snapshot={snapshot} openModal={setModal} />
       <div className="wb-toast">{snapshot.status}</div>
+      <ViewerFilterCount />
       {modalContent}
     </div>
   );

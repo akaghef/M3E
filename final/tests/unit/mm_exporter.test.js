@@ -1,64 +1,13 @@
+// @vitest-environment jsdom
 // @ts-check
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
+import { parseMmText, treeToMm } from "../../src/shared/mm_exporter";
 
-// Since mm_exporter.ts is a TypeScript module, we test the logic inline here
-// to validate the export format without needing a full TS build step.
-
-/** @param {string} s */
-function escapeXml(s) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/** @param {string} type @param {string} text */
-function mmRichContent(type, text) {
-  return `<richcontent TYPE="${type}"><html><body>${escapeXml(text)}</body></html></richcontent>`;
-}
-
-/**
- * @param {import("../../src/shared/types").TreeNode} node
- * @param {import("../../src/shared/types").AppState} state
- * @param {string} indent
- */
-function mmNodeToXml(node, state, indent) {
-  if (node.nodeType === "alias") return "";
-
-  const attrs = [];
-  attrs.push(`TEXT="${escapeXml(node.text)}"`);
-  if (node.collapsed) attrs.push(`FOLDED="true"`);
-  if (node.link) attrs.push(`LINK="${escapeXml(node.link)}"`);
-
-  const parts = [];
-  if (node.details) parts.push(`${indent}  ${mmRichContent("DETAILS", node.details)}`);
-  if (node.note) parts.push(`${indent}  ${mmRichContent("NOTE", node.note)}`);
-
-  const attrEntries = Object.entries(node.attributes || {});
-  for (const [name, value] of attrEntries) {
-    parts.push(`${indent}  <attribute NAME="${escapeXml(name)}" VALUE="${escapeXml(value)}"/>`);
-  }
-
-  for (const childId of node.children) {
-    const child = state.nodes[childId];
-    if (child) {
-      const xml = mmNodeToXml(child, state, indent + "  ");
-      if (xml) parts.push(xml);
-    }
-  }
-
-  if (parts.length === 0) return `${indent}<node ${attrs.join(" ")}/>`;
-  return `${indent}<node ${attrs.join(" ")}>\n${parts.join("\n")}\n${indent}</node>`;
-}
-
-/** @param {import("../../src/shared/types").AppState} state */
-function treeToMm(state) {
-  const root = state.nodes[state.rootId];
-  if (!root) throw new Error("Root node not found");
-  const body = mmNodeToXml(root, state, "  ");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<map version="freeplane 1.7.0">\n${body}\n</map>\n`;
-}
+const realFreeplaneFixture = readFileSync(
+  "tests/fixtures/freeplane-attributes.mm",
+  "utf8"
+);
 
 /** @returns {import("../../src/shared/types").TreeNode} */
 function makeNode(id, text, overrides = {}) {
@@ -76,7 +25,41 @@ function makeNode(id, text, overrides = {}) {
   };
 }
 
-describe("treeToMm", () => {
+describe(".mm I/O", () => {
+  it("preserves the current exporter bytes", () => {
+    const state = {
+      rootId: "r",
+      nodes: {
+        r: makeNode("r", 'Root & < > " 日本語', {
+          collapsed: true,
+          details: "詳細 & <details>",
+          note: '注記 "引用"',
+          link: "https://example.com?a=1&b=2",
+          attributes: {
+            "key&": '値 < & "',
+            empty: "",
+          },
+          children: ["c", "alias"],
+        }),
+        c: makeNode("c", "子", { parentId: "r" }),
+        alias: makeNode("alias", "Alias", { parentId: "r", nodeType: "alias" }),
+      },
+    };
+
+    expect(treeToMm(state)).toBe(
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<map version="freeplane 1.7.0">\n' +
+      '  <node TEXT="Root &amp; &lt; &gt; &quot; 日本語" FOLDED="true" LINK="https://example.com?a=1&amp;b=2">\n' +
+      '    <richcontent TYPE="DETAILS"><html><body>詳細 &amp; &lt;details&gt;</body></html></richcontent>\n' +
+      '    <richcontent TYPE="NOTE"><html><body>注記 &quot;引用&quot;</body></html></richcontent>\n' +
+      '    <attribute NAME="key&amp;" VALUE="値 &lt; &amp; &quot;"/>\n' +
+      '    <attribute NAME="empty" VALUE=""/>\n' +
+      '    <node TEXT="子"/>\n' +
+      '  </node>\n' +
+      '</map>\n'
+    );
+  });
+
   it("exports a single root node", () => {
     const state = {
       rootId: "r",
@@ -103,8 +86,7 @@ describe("treeToMm", () => {
       rootId: "r",
       nodes: { r: makeNode("r", "Root", { collapsed: true }) },
     };
-    const xml = treeToMm(state);
-    expect(xml).toContain('FOLDED="true"');
+    expect(treeToMm(state)).toContain('FOLDED="true"');
   });
 
   it("exports link as LINK attribute", () => {
@@ -112,8 +94,7 @@ describe("treeToMm", () => {
       rootId: "r",
       nodes: { r: makeNode("r", "Root", { link: "https://example.com" }) },
     };
-    const xml = treeToMm(state);
-    expect(xml).toContain('LINK="https://example.com"');
+    expect(treeToMm(state)).toContain('LINK="https://example.com"');
   });
 
   it("exports details as richcontent DETAILS", () => {
@@ -121,8 +102,9 @@ describe("treeToMm", () => {
       rootId: "r",
       nodes: { r: makeNode("r", "Root", { details: "Some details" }) },
     };
-    const xml = treeToMm(state);
-    expect(xml).toContain('<richcontent TYPE="DETAILS"><html><body>Some details</body></html></richcontent>');
+    expect(treeToMm(state)).toContain(
+      '<richcontent TYPE="DETAILS"><html><body>Some details</body></html></richcontent>'
+    );
   });
 
   it("exports note as richcontent NOTE", () => {
@@ -130,8 +112,9 @@ describe("treeToMm", () => {
       rootId: "r",
       nodes: { r: makeNode("r", "Root", { note: "A note" }) },
     };
-    const xml = treeToMm(state);
-    expect(xml).toContain('<richcontent TYPE="NOTE"><html><body>A note</body></html></richcontent>');
+    expect(treeToMm(state)).toContain(
+      '<richcontent TYPE="NOTE"><html><body>A note</body></html></richcontent>'
+    );
   });
 
   it("exports attributes", () => {
@@ -176,5 +159,77 @@ describe("treeToMm", () => {
   it("throws when root node is missing", () => {
     const state = { rootId: "missing", nodes: {} };
     expect(() => treeToMm(state)).toThrow("Root node not found");
+  });
+
+  it("round-trips attributes with XML-sensitive, Japanese, and empty values", () => {
+    const attributes = {
+      ampersand: "A & B",
+      lessThan: "<value>",
+      greaterThan: ">",
+      doubleQuote: '"quoted"',
+      apostrophe: "'quoted'",
+      japanese: "日本語の属性値",
+      empty: "",
+    };
+    const state = {
+      rootId: "r",
+      nodes: {
+        r: makeNode("r", "ルート", { attributes, children: ["c"] }),
+        c: makeNode("c", "子", {
+          parentId: "r",
+          attributes: { "子キー": "子の値 & < > \" '" },
+        }),
+      },
+    };
+
+    const imported = parseMmText(treeToMm(state));
+    const importedRoot = imported.state.nodes[imported.state.rootId];
+    const importedChild = imported.state.nodes[importedRoot.children[0]];
+    expect(importedRoot.attributes).toEqual(attributes);
+    expect(importedRoot.text).toBe("ルート");
+    expect(importedChild.attributes).toEqual({ "子キー": "子の値 & < > \" '" });
+  });
+
+  it("imports direct-child attributes from a real Freeplane-shaped fixture", () => {
+    const imported = parseMmText(realFreeplaneFixture);
+    const root = imported.state.nodes[imported.state.rootId];
+
+    expect(root.attributes).toEqual({ Name: "John", email: "john@gmail.com" });
+    expect(root.children).toHaveLength(1);
+    expect(imported.state.nodes[root.children[0]].text).toBe("子ノード");
+  });
+
+  it("keeps importing the legacy attributes wrapper", () => {
+    const imported = parseMmText(`
+      <map version="freeplane 1.7.0">
+        <node TEXT="Legacy">
+          <attributes>
+            <attribute NAME="owner" VALUE="Akaghef"/>
+            <attribute NAME="empty" VALUE=""/>
+          </attributes>
+        </node>
+      </map>
+    `);
+    const root = imported.state.nodes[imported.state.rootId];
+
+    expect(root.attributes).toEqual({ owner: "Akaghef", empty: "" });
+  });
+
+  it("processes direct attributes in document order and lets later duplicates win", () => {
+    const imported = parseMmText(`
+      <map version="freeplane 1.7.0">
+        <node TEXT="Ordered">
+          <attribute NAME="first" VALUE="1"/>
+          <attribute NAME="duplicate" VALUE="early"/>
+          <attribute_layout NAME_WIDTH="34" VALUE_WIDTH="92"/>
+          <attribute NAME="second" VALUE="2"/>
+          <attribute NAME="duplicate" VALUE="late"/>
+        </node>
+      </map>
+    `);
+    const root = imported.state.nodes[imported.state.rootId];
+
+    expect(Object.keys(root.attributes)).toEqual(["first", "duplicate", "second"]);
+    expect(root.attributes.duplicate).toBe("late");
   });
 });

@@ -9,15 +9,30 @@ async function fitViewer(page) {
   if (!(await page.locator("#board").isVisible())) {
     return;
   }
-  await page.click("#board");
+  await page.locator("#board").focus();
   await page.keyboard.press("Alt+v");
+  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.locator("#board")).not.toHaveAttribute("data-camera-moving", "true");
 }
 
 async function loadAndStabilize(page, buttonId) {
   const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `testRun=${encodeURIComponent(isolatedDocId)}`;
+  const qs = `testRun=${encodeURIComponent(isolatedDocId)}&renderer=svg`;
   await page.goto(`/viewer.html?${qs}`);
-  await page.click(buttonId);
+  const sample = buttonId === "#load-default" ? "rapid-sample.json" : "aircraft.mm";
+  let buffer;
+  if (sample === "aircraft.mm") {
+    // Original sample restored from 67b7cc9^ after production data cleanup.
+    buffer = require("node:fs").readFileSync(require("node:path").join(__dirname, "../fixtures/aircraft.mm"));
+  } else {
+    const response = await page.request.get(`/data/${sample}`);
+    expect(response.ok()).toBeTruthy();
+    buffer = await response.body();
+  }
+  await page.setInputFiles("#file-input", {
+    name: sample, mimeType: "application/octet-stream", buffer,
+  });
   await expect(page.locator("#meta")).toContainText("nodes:");
   await fitViewer(page);
   await page.waitForTimeout(300);
@@ -52,7 +67,7 @@ async function getLinkCount(page) {
 
 async function loadJsonDoc(page, map) {
   const isolatedDocId = `rapid-visual-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  const qs = `testRun=${encodeURIComponent(isolatedDocId)}`;
+  const qs = `testRun=${encodeURIComponent(isolatedDocId)}&renderer=svg`;
   await page.goto(`/viewer.html?${qs}`);
   await page.setInputFiles("#file-input", {
     name: "reorder-regression.json",
@@ -71,8 +86,9 @@ async function dragNodeLabel(page, sourceText, targetText) {
   await expect(source).toBeVisible();
   await expect(target).toBeVisible();
 
-  const sourceBox = await source.boundingBox();
-  const targetBox = await target.boundingBox();
+  const sourceId = await source.getAttribute("data-node-id"), targetId = await target.getAttribute("data-node-id");
+  const sourceBox = await page.locator(`.node-hit[data-node-id="${sourceId}"]`).boundingBox();
+  const targetBox = await page.locator(`.node-hit[data-node-id="${targetId}"]`).boundingBox();
   if (!sourceBox || !targetBox) {
     throw new Error("Failed to get source/target bounds for drag operation.");
   }
@@ -95,11 +111,15 @@ async function dragNodeToNode(page, sourceText, targetText) {
   await expect(source).toBeVisible();
   await expect(target).toBeVisible();
 
-  const sourceBox = await source.boundingBox();
-  const targetBox = await target.boundingBox();
-  if (!sourceBox || !targetBox) {
-    throw new Error("Failed to get source/target bounds for node-to-node drag.");
-  }
+  let sourceBox, targetBox;
+  // Selection redraw replaces the SVG; obtain both hit regions after it settles.
+  await expect.poll(async () => {
+    const sourceId = await source.getAttribute("data-node-id");
+    const targetId = await target.getAttribute("data-node-id");
+    sourceBox = await page.locator(`.node-hit[data-node-id="${sourceId}"]`).boundingBox();
+    targetBox = await page.locator(`.node-hit[data-node-id="${targetId}"]`).boundingBox();
+    return Boolean(sourceBox && targetBox);
+  }).toBe(true);
 
   const sourceX = sourceBox.x + sourceBox.width / 2;
   const sourceY = sourceBox.y + sourceBox.height / 2;
@@ -131,31 +151,35 @@ test("aircraft mm visual baseline", async ({ page }) => {
   await loadAndStabilize(page, "#load-aircraft-mm");
   await page.keyboard.press("ArrowDown");
   await expect(page.locator("#meta")).toContainText("selected: Body");
-  await page.click("#focus-selected");
+  await page.locator("#board").focus();
+  await page.keyboard.press("Alt+v");
   await page.waitForTimeout(300);
   await expect(page.locator("#board")).toHaveScreenshot("aircraft-mm-body-focus.png");
 });
 
 // 目的: viewer UI で Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y が期待通りに undo/redo できることを検証する。
-test("viewer keyboard undo redo", async ({ page }) => {
+for (const platform of ["MacIntel", "Win32"]) test(`viewer keyboard undo redo ${platform}`, async ({ page }) => {
+  await page.addInitScript(platform => Object.defineProperty(navigator, "platform", { get: () => platform }), platform);
+  const modifier = platform === "MacIntel" ? "Meta" : "Control";
   await loadAndStabilize(page, "#load-default");
-  await page.click("#board");
+  await page.locator("#board").focus();
 
   const initialCount = await getNodeCount(page);
 
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Escape");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount + 1}`);
 
-  await page.keyboard.press("Control+z");
+  await page.keyboard.press(`${modifier}+z`);
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount}`);
 
-  await page.keyboard.press("Control+Shift+z");
+  await page.keyboard.press(`${modifier}+Shift+z`);
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount + 1}`);
 
-  await page.keyboard.press("Control+z");
+  await page.keyboard.press(`${modifier}+z`);
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount}`);
 
-  await page.keyboard.press("Control+y");
+  await page.keyboard.press(platform === "MacIntel" ? "Meta+Shift+z" : "Control+y");
   await expect(page.locator("#meta")).toContainText(`nodes: ${initialCount + 1}`);
 });
 
@@ -173,12 +197,12 @@ test("viewer drag reparent to root", async ({ page }) => {
 // 目的: Shift範囲選択 -> Ctrl+M(マーク) -> target選択 -> p(一括reparent) が成立することを確認する。
 test("viewer range select multi reparent", async ({ page }) => {
   await loadAndStabilize(page, "#load-default");
-  await page.click("#board");
+  await page.locator("#board").focus();
 
   // Ensure root is selected, then create a dedicated target node under root.
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#meta")).toContainText("selected: Research Root");
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
   await nameSelectedNode(page, "Target Node");
 
   // Range-select from Question to Hypothesis.
@@ -188,7 +212,7 @@ test("viewer range select multi reparent", async ({ page }) => {
   await hypothesis.click({ modifiers: ["Shift"], force: true });
 
   // Mark selected roots.
-  await page.keyboard.press("Control+m");
+  await page.keyboard.press("ControlOrMeta+m");
 
   // Select target node and apply multi reparent.
   const target = page.locator("text.label-node", { hasText: "Target Node" }).first();
@@ -207,17 +231,17 @@ test("viewer range select multi reparent", async ({ page }) => {
 // 目的: 複数選択状態でドラッグした場合に、選択 root 全体が reparent されることを確認する。
 test("viewer multi drag reparent", async ({ page }) => {
   await loadAndStabilize(page, "#load-default");
-  await page.click("#board");
+  await page.locator("#board").focus();
 
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#meta")).toContainText("selected: Research Root");
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
   await nameSelectedNode(page, "Target Node");
 
   const question = page.locator("text.label-node", { hasText: "Question" }).first();
   const hypothesis = page.locator("text.label-node", { hasText: "Hypothesis v2" }).first();
   await question.click({ force: true });
-  await hypothesis.click({ modifiers: ["Control"], force: true });
+  await hypothesis.click({ modifiers: ["ControlOrMeta"], force: true });
 
   await dragNodeToNode(page, "Question", "Target Node");
 
@@ -228,11 +252,11 @@ test("viewer multi drag reparent", async ({ page }) => {
 // 目的: root を含む選択を reparent ソースにマークしても、非 root ノードは一括 reparent できることを確認する。
 test("viewer multi reparent ignores root in marked sources", async ({ page }) => {
   await loadAndStabilize(page, "#load-default");
-  await page.click("#board");
+  await page.locator("#board").focus();
 
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#meta")).toContainText("selected: Research Root");
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
   await nameSelectedNode(page, "Target Node");
 
   const question = page.locator("text.label-node", { hasText: "Question" }).first();
@@ -241,10 +265,10 @@ test("viewer multi reparent ignores root in marked sources", async ({ page }) =>
   const target = page.locator("text.label-node", { hasText: "Target Node" }).first();
 
   await question.click({ force: true });
-  await hypothesis.click({ modifiers: ["Control"], force: true });
-  await root.click({ modifiers: ["Control"], force: true });
+  await hypothesis.click({ modifiers: ["ControlOrMeta"], force: true });
+  await root.click({ modifiers: ["ControlOrMeta"], force: true });
 
-  await page.keyboard.press("Control+m");
+  await page.keyboard.press("ControlOrMeta+m");
   await target.click({ force: true });
   await page.keyboard.press("p");
 
@@ -260,11 +284,11 @@ test("viewer add graph link by toolbar flow", async ({ page }) => {
   const hypothesis = page.locator("text.label-node", { hasText: "Hypothesis v2" }).first();
 
   await question.click({ force: true });
-  await page.click("#mark-link");
+  await page.keyboard.press("l");
   await expect(page.locator("#meta")).toContainText("link-source: Question");
 
   await hypothesis.click({ force: true });
-  await page.click("#apply-link");
+  await page.keyboard.press("Shift+l");
 
   expect(await getLinkCount(page)).toBe(1);
   await expect(page.locator("#status")).toContainText("Linked Question -> Hypothesis v2.");
@@ -399,15 +423,17 @@ test("viewer tabular toggle writes canonical component behavior", async ({ page 
 // 目的: Shift+ArrowUp/Down で可視順に選択が拡張されることを確認する。
 test("viewer shift arrow expands selection", async ({ page }) => {
   await loadAndStabilize(page, "#load-default");
-  await page.click("#board");
+  await page.locator("#board").focus();
 
   await expect(page.locator("#meta")).toContainText("selected: Research Root (1)");
   const selectedBefore = await getSelectedCount(page);
   await page.keyboard.press("Shift+ArrowDown");
+  await expect.poll(() => getSelectedCount(page)).toBeGreaterThan(selectedBefore);
   const selectedAfterOneStep = await getSelectedCount(page);
   expect(selectedAfterOneStep).toBeGreaterThan(selectedBefore);
 
   await page.keyboard.press("Shift+ArrowDown");
+  await expect.poll(() => getSelectedCount(page)).toBeGreaterThan(selectedAfterOneStep);
   const selectedAfterTwoSteps = await getSelectedCount(page);
   expect(selectedAfterTwoSteps).toBeGreaterThan(selectedAfterOneStep);
 });

@@ -16,29 +16,24 @@ describe("parent-child edge adapter", () => {
     expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["right", "left"]);
   });
 
-  test("Tree both consumes LayoutResult branchSide and does not infer from geometry", () => {
-    const routed = routeParentChildEdge({
-      relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
-      parentRect: { x: 100, y: 100, w: 80, h: 40 },
-      childRect: { x: 300, y: 105, w: 90, h: 50 },
-      childPosition: { branchSide: "left" },
-      surfaceMode: "mindmap",
-      direction: "right",
-      routeStyle: "curve",
+  test("Tree wiring selects canonical ports for every direction", () => {
+    const expected = {
+      "left/right": ["left", "right"], left: ["left", "right"], right: ["right", "left"],
+      "up/down": ["top", "bottom"], up: ["top", "bottom"], down: ["bottom", "top"],
+    } as const;
+    (Object.keys(expected) as Array<keyof typeof expected>).forEach((direction) => {
+      const routed = routeParentChildEdge({
+        relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
+        parentRect: { x: 100, y: 100, w: 80, h: 40 },
+        childRect: { x: 300, y: 105, w: 90, h: 50 },
+        childPosition: { branchPortSide: direction === "left/right" ? "left" : direction === "up/down" ? "up" : undefined },
+        surfaceMode: "tree",
+        direction,
+        routeStyle: "orthogonal",
+      });
+      expect([routed.ports.source.side, routed.ports.target.side]).toEqual(expected[direction]);
+      console.info(JSON.stringify({ direction, sourcePort: routed.ports.source, targetPort: routed.ports.target }));
     });
-    expect(routed.branchDirection).toEqual({ view: "Tree", direction: "both", branchSide: "left" });
-    expect([routed.ports.source.side, routed.ports.target.side]).toEqual(["left", "right"]);
   });
 
-  test("Tree both fails when LayoutResult branchSide is missing", () => {
-    expect(() => routeParentChildEdge({
-      relation: { kind: "parent-child", parentNodeId: "p", childNodeId: "c" },
-      parentRect: { x: 100, y: 100, w: 80, h: 40 },
-      childRect: { x: 300, y: 105, w: 90, h: 50 },
-      surfaceMode: "mindmap",
-      direction: "right",
-      routeStyle: "curve",
-    })).toThrow(/LayoutResult\.branchSide/);
-  });
 });
-

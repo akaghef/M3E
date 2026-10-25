@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M3E Viewer Panel Seam Lab</title>
+    <script>
+      document.documentElement.dataset.theme = "light";
+      document.documentElement.style.colorScheme = "light";
+    </script>
+    <link rel="stylesheet" href="/viewer.css" data-viewer-panel-lab-stylesheet="viewer" />
+    <link rel="stylesheet" href="./viewer-panel-seam-lab.css" data-viewer-panel-lab-stylesheet="lab" />
+  </head>
+  <body>
+    <main class="viewer-panel-lab">
+      <aside class="viewer-panel-lab-controls" aria-label="Viewer panel seam lab controls">
+        <p class="lab-kicker">M3E / VIEWER</p>
+        <h1>Panel seam lab</h1>
+        <p class="lab-intro">Static viewer panel markup lifted from <code>beta/viewer.html</code>; state is a deterministic fixture.</p>
+
+        <fieldset class="lab-fieldset">
+          <legend>Panels</legend>
+          <label><input type="checkbox" data-panel-toggle="meta-panel" checked /> meta-panel</label>
+          <label><input type="checkbox" data-panel-toggle="entity-list-panel" /> entity-list-panel</label>
+          <label><input type="checkbox" data-panel-toggle="markdown-preview-panel" /> markdown-preview-panel</label>
+          <label><input type="checkbox" data-panel-toggle="local-fs-panel" /> local-fs-panel</label>
+          <label><input type="checkbox" data-panel-toggle="conflict-panel" /> conflict-panel</label>
+          <label><input type="checkbox" data-panel-toggle="v4-panel" /> v4-panel</label>
+        </fieldset>
+
+        <label class="lab-control" for="panel-lab-selection">
+          Selection
+          <select id="panel-lab-selection">
+            <option value="node:overview">node — Panel seams</option>
+            <option value="node:markdown">node — Markdown source</option>
+            <option value="node:node-b">node — Shared branch</option>
+            <option value="graph-link:link-related">GraphLink — documents</option>
+            <option value="multiple">multiple — Local + Shared branch</option>
+            <option value="none">none</option>
+          </select>
+        </label>
+
+        <label class="lab-control" for="panel-lab-conflict-state">
+          Conflict remote state
+          <select id="panel-lab-conflict-state">
+            <option value="changed">changed node</option>
+            <option value="added">remote-only node</option>
+            <option value="same">no structural diff</option>
+          </select>
+        </label>
+
+        <label class="lab-control" for="panel-lab-files-state">
+          Local filesystem fixture
+          <select id="panel-lab-files-state">
+            <option value="workspace">workspace / nested files</option>
+            <option value="notes">notes / one file</option>
+            <option value="empty">empty directory</option>
+          </select>
+        </label>
+
+        <div class="lab-status" data-testid="viewer-panel-lab-status" aria-live="polite"></div>
+        <div class="lab-check" data-testid="viewer-panel-lab-ready">fixture: ready | server: disconnected | randomness: none</div>
+
+        <section class="dependency-ledger" aria-label="Panel dependency ledger">
+          <h2>Observed dependencies</h2>
+          <details open>
+            <summary>meta-panel</summary>
+            <p>reads AppState counts/version/savedAt, current scope, ViewState selection/link-source/move/drop, workspace/map constants; writes only meta/status DOM; z5, pointer, global I shortcut.</p>
+          </details>
+          <details>
+            <summary>entity-list-panel</summary>
+            <p>reads node children/type/labels, current scope, selection, scope locks, presence and changed-node sets; writes selection and scope through viewer commands; z12, left scroll, search keyboard capture.</p>
+          </details>
+          <details>
+            <summary>markdown-preview-panel</summary>
+            <p>reads selected node text/details/note and global renderMarkdownInto; writes title/body DOM only; z13, right scroll, pointer.</p>
+          </details>
+          <details>
+            <summary>local-fs-panel</summary>
+            <p>reads root path, file entries, expansion/selected path and preview; product reads /api/local-fs/list/read and localStorage; z6, left scroll, root-input focus/Enter.</p>
+          </details>
+          <details>
+            <summary>conflict-panel</summary>
+            <p>reads local AppState plus remote AppState and compares node text/children/parent/type; product choices route to save/push/pull; z25 captures pointer and body scroll.</p>
+          </details>
+          <details>
+            <summary>v4-panel</summary>
+            <p>reads selected-node source/secret attributes, draft list, vault status and conflict visibility; product actions POST draft/map routes and mutate AppState; z24, body scroll, text input.</p>
+          </details>
+        </section>
+      </aside>
+
+      <section class="viewer-panel-lab-stage" aria-label="Lifted viewer panels">
+        <div class="app" data-testid="viewer-panel-lab-app">
+          <div class="overlay-ui">
+            <div class="viewer-panel-lab-faux-toolbar" aria-label="Fixture graph context">
+              <span>fixture graph surface</span>
+              <span id="panel-lab-selection-summary">selection: node / Panel seams</span>
+            </div>
+
+            <div class="meta-panel" aria-label="Meta panel" hidden>
+              <div id="mode-meta" class="meta">mode: Rapid</div>
+              <div id="scope-meta" class="meta">scope: root</div>
+              <div id="scope-summary" class="meta">outside: none</div>
+              <div id="meta" class="meta">No data loaded</div>
+              <div id="status" class="status"></div>
+              <div id="visual-check" class="visual-check">Visual check idle</div>
+            </div>
+
+            <div class="workspace">
+              <div id="board" class="board" tabindex="0" aria-label="Fixture graph surface">
+                <div class="panel-lab-fixture-graph" aria-label="Fixture graph nodes">
+                  <button type="button" class="panel-lab-fixture-node" data-fixture-node="overview">Panel seams</button>
+                  <button type="button" class="panel-lab-fixture-node" data-fixture-node="scope">Scope State</button>
+                  <button type="button" class="panel-lab-fixture-node" data-fixture-node="markdown">Markdown source</button>
+                  <button type="button" class="panel-lab-fixture-node" data-fixture-node="node-b">Shared branch</button>
+                </div>
+              </div>
+            </div>
+
+            <aside id="local-fs-panel" class="local-fs-panel" hidden aria-label="Local files panel">
+              <div class="local-fs-header">
+                <span class="local-fs-title">Files</span>
+                <button id="local-fs-close" class="entity-list-close" type="button" aria-label="Close local files">&times;</button>
+              </div>
+              <div class="local-fs-controls">
+                <input id="local-fs-root-input" class="local-fs-root-input" type="text" placeholder="C:\path\to\folder" spellcheck="false" />
+                <button id="local-fs-connect" type="button">Connect</button>
+                <button id="local-fs-refresh" type="button">Refresh</button>
+              </div>
+              <div id="local-fs-status" class="local-fs-status"></div>
+              <div class="local-fs-body">
+                <div id="local-fs-tree" class="local-fs-tree"></div>
+                <div class="local-fs-preview-wrap">
+                  <div id="local-fs-preview-title" class="local-fs-preview-title">Preview</div>
+                  <pre id="local-fs-preview" class="local-fs-preview"></pre>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div id="entity-list-panel" class="entity-list-panel" hidden>
+            <div class="entity-list-header">
+              <span class="entity-list-title">Entities</span>
+              <button id="entity-list-close" class="entity-list-close" type="button" aria-label="Close entity list">&times;</button>
+            </div>
+            <div id="entity-scope-list" class="entity-scope-list"></div>
+            <div class="entity-list-search-wrap">
+              <input id="entity-list-search" class="entity-list-search" type="text" placeholder="Filter nodes..." spellcheck="false" />
+            </div>
+            <div id="entity-list-tree" class="entity-list-tree"></div>
+          </div>
+
+          <div id="conflict-panel" class="conflict-panel" hidden>
+            <div class="conflict-header">
+              <span class="conflict-title">Conflict Detected</span>
+              <button id="conflict-close" class="conflict-close" type="button" aria-label="Close conflict panel">&times;</button>
+            </div>
+            <div class="conflict-body">
+              <div class="conflict-columns">
+                <div class="conflict-col">
+                  <div class="conflict-col-header">Local</div>
+                  <div id="conflict-local-tree" class="conflict-tree"></div>
+                </div>
+                <div class="conflict-col">
+                  <div class="conflict-col-header">Remote</div>
+                  <div id="conflict-remote-tree" class="conflict-tree"></div>
+                </div>
+              </div>
+              <div class="conflict-diff" id="conflict-diff-summary"></div>
+              <div class="conflict-actions">
+                <button id="conflict-use-local" class="danger" type="button">Use Local</button>
+                <button id="conflict-use-remote" class="primary" type="button">Use Remote</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="markdown-preview-panel" class="markdown-preview-panel" hidden>
+            <div class="markdown-preview-header">
+              <span class="markdown-preview-title">Markdown Preview</span>
+              <button id="markdown-preview-close" class="markdown-preview-close" type="button" aria-label="Close markdown preview">&times;</button>
+            </div>
+            <div id="markdown-preview-body" class="markdown-preview-body"></div>
+          </div>
+
+          <div id="v4-panel" class="v4-panel" hidden>
+            <div class="v4-panel-header">
+              <span class="v4-panel-title">V4 Workbench</span>
+              <button id="v4-panel-close" class="v4-panel-close" type="button" aria-label="Close V4 workbench">&times;</button>
+            </div>
+            <div class="v4-panel-body">
+              <section class="v4-card">
+                <div class="v4-card-head">
+                  <span>Flash / Mapify</span>
+                  <button id="v4-refresh-btn" type="button">Refresh</button>
+                </div>
+                <textarea id="v4-source-text" class="v4-source-text" rows="5" spellcheck="false" placeholder="Paste PDF text, markdown, or meeting notes to create a Mapify draft."></textarea>
+                <div class="v4-action-row">
+                  <button id="v4-create-draft-btn" type="button">Create Draft</button>
+                  <button id="v4-apply-draft-btn" type="button">Apply Latest Pending</button>
+                </div>
+                <div id="v4-flash-status" class="v4-status-line">Drafts: unknown</div>
+                <div id="v4-draft-list" class="v4-list"></div>
+              </section>
+              <section class="v4-card">
+                <div class="v4-card-head">
+                  <span>Discussion Surface</span>
+                </div>
+                <div class="v4-action-row">
+                  <button id="v4-add-sticky-btn" type="button">Sticky</button>
+                  <button id="v4-add-decision-btn" type="button">Decision</button>
+                </div>
+                <div class="v4-status-line">Selected node becomes the parent. These are M3E nodes with discussion attributes.</div>
+              </section>
+              <section class="v4-card">
+                <div class="v4-card-head">
+                  <span>Obsidian</span>
+                </div>
+                <div id="v4-vault-status" class="v4-status-line">Vault: unknown</div>
+                <div id="v4-vault-path" class="v4-path"></div>
+              </section>
+              <section class="v4-card">
+                <div class="v4-card-head">
+                  <span>Conflict</span>
+                </div>
+                <div id="v4-conflict-status" class="v4-status-line">No conflict panel open.</div>
+              </section>
+              <section class="v4-card">
+                <div class="v4-card-head">
+                  <span>GitHub Boundary</span>
+                </div>
+                <div id="v4-github-status" class="v4-status-line">Publish plan: design-only. Changes are treated as staged proposals; secret lock is required before remote publish.</div>
+                <div id="v4-selected-source" class="v4-path"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./viewer-panel-seam-lab.ts"></script>
+  </body>
+</html>

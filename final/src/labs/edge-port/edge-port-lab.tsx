@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { selectPorts, type EdgeBranchDirection } from "../../shared/edge_port";
+import { selectPorts, type EdgeDirection } from "../../shared/edge_port";
 import { route, type EdgeRouteStyle } from "../../shared/edge_route";
 import { edgePortSamples, type EdgePortLabSample } from "./edge_port_samples";
 import "./edge-port-lab.css";
@@ -11,7 +11,7 @@ function updatedDirection(sample: EdgePortLabSample, routeStyle: EdgeRouteStyle)
   return { ...sample, input: { ...sample.input, routeStyle } };
 }
 
-function directionLabel(direction: EdgeBranchDirection): string {
+function directionLabel(direction: EdgeDirection): string {
   if (direction.view === "Tree" && direction.direction === "both") return "Tree both " + direction.branchSide;
   return `${direction.view} ${direction.direction}`;
 }
@@ -22,7 +22,7 @@ function App(): React.ReactElement {
   const [routeStyle, setRouteStyle] = useState<EdgeRouteStyle>(sample.input.routeStyle);
   const activeSample = updatedDirection(sample, routeStyle);
   const ports = useMemo(
-    () => selectPorts(activeSample.input.srcRect, activeSample.input.dstRect, activeSample.input.branchDirection),
+    () => selectPorts(activeSample.input.srcRect, activeSample.input.dstRect, activeSample.input.edgeDirection),
     [activeSample],
   );
   const path = route(ports, activeSample.input.routeStyle);
@@ -66,7 +66,7 @@ function App(): React.ReactElement {
         <div className="check-list">
           <div className={sideMatch ? "check-pass" : "check-fail"}>side match: {String(sideMatch)}</div>
           <div className={endpointMatch ? "check-pass" : "check-fail"}>endpoint match: {String(endpointMatch)}</div>
-          <div>direction: {directionLabel(activeSample.input.branchDirection)}</div>
+          <div>direction: {directionLabel(activeSample.input.edgeDirection)}</div>
         </div>
       </aside>
       <section className="stage">
