@@ -176,3 +176,9 @@ test('Final build turns the agent icon gate off; Beta keeps it on',()=>fixture(r
  assert.equal(fs.readFileSync(path.join(root,'beta/dist/gate.txt'),'utf8'),'on');
  assert.equal(fs.readFileSync(path.join(root,'final/dist/gate.txt'),'utf8'),'off');
 }));
+// The Final launchers record the Node version they rebuilt native modules for; a tracked or
+// visible record would make the next launch refuse a dirty Final checkout.
+test('launcher Node version record is ignored and untracked',()=>{
+ assert.equal(spawnSync('git',['check-ignore','-q','final/.node_version'],{cwd:project}).status,0);
+ assert.equal(git(project,'ls-files','final/.node_version'),'');
+});
