@@ -3393,7 +3393,6 @@
         margin: 0;
         background: #fafafa;
         color: var(--ink);
-        font-family: inherit;
         min-height: 100vh;
         overflow: auto;
       }
@@ -3816,7 +3815,6 @@
         margin: 0;
         background: #fafafa;
         color: var(--ink);
-        font-family: inherit;
         min-height: 100vh;
         overflow: auto;
       }
