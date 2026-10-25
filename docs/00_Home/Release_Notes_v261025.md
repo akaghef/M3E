@@ -5,7 +5,7 @@
 
 ## 候補の出自
 
-- 元の dev-beta commit: `385765d`（`final/` の内容は `229d16b` 以降変わらず、以降は `scripts/` と CI のみ）（前回公開 `v260419-2` から非 merge commit 約 490 件）
+- 元の dev-beta commit: `b991c4d`
 - 生成方法: 独立した release 作業ツリーで、上記 commit の tracked な `beta/` を `final/` に展開
   - 除外: `Beta_Policy.md`、`prompts/`、`e2e_test_server.js`、`playwright.e2e.config.js`
   - 今回から `public/` を含める（viewer が KaTeX と app アイコンを `public/` から読むため。従来の Final には無かった）
@@ -28,6 +28,7 @@
 - launcher が書く `final/.node_version` が tracked かつ非 ignore で、checkout からの 2 回目の起動が「Final source is dirty」で止まっていた
 - 同梱 seed（`install/assets/seeds/core-seed.sqlite`）の 3 マップ（tutorial の内容を 3 つの id で保持）が保存形式 version 2 で記録されており、現行の読込処理（version 1 のみ受理）では新規利用者の tutorial が開けなかった。version 列だけを 1 に直した（id・保存日時・内容は同一）。seed の全マップが開けることを unit test で検査する
 - Windows では `channel-runtime.mjs` が `"npm.cmd" "ci"` の形で npm を呼んでいた。cmd.exe が引用符付き・パス無しのバッチ名に対して `%~dp0` を現在ディレクトリと解釈するため、npm を使う Beta / Final の build がすべて失敗していた。引数だけを引用符で囲む形に直し、`channel-runtime.test.mjs` を Windows CI でも実行するようにした
+- Home と Artifacts 画面が `.home-page` / `.artifacts-page` の `font-family: inherit` によりブラウザ既定の明朝体で表示されていた（Mac・Windows の Chrome / Edge 共通）。上書きを外し、body のフォント指定が効くようにした。ブラウザ上のテスト `tests/visual/page_fonts.spec.js` を追加
 
 ## 既知の制約
 
