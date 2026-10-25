@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 634
+- Indexed files: 636
 
 ## Reading Routes
 
@@ -27,6 +27,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [00_Home/Home.md](<./00_Home/Home.md>) | Markdown | M3E — Home | 最終更新: 2026-04-20 |
 | [00_Home/Objective.md](<./00_Home/Objective.md>) | Markdown | Objective — Planning Hierarchy | 最終更新: 2026-04-20 |
 | [00_Home/README.md](<./00_Home/README.md>) | Markdown | 00_Home/ | **役割**: LLM / 人間の入口。セッション開始時に最初に読む場所。 |
+| [00_Home/Release_Notes_v261025.md](<./00_Home/Release_Notes_v261025.md>) | Markdown | Release Notes v261025（昇格候補・未公開） | 日付: 2026-10-25 |
 
 ### 01_Vision - principles, vision, strategy
 
@@ -52,6 +53,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/Cloud_Sync.md](<./03_Spec/Cloud_Sync.md>) | Markdown | Cloud Sync | この文書は、Beta におけるクラウド同期の最小戦略を定義する。 |
 | [03_Spec/Command_API_Reference.md](<./03_Spec/Command_API_Reference.md>) | Markdown | M3E Command API Reference | 書き平面の実装リファレンス。平面構造と語彙は [Command_Language.md](./Command_Language.md) が正であり、この文書は既存 beta UI / browser console の `window... |
 | [03_Spec/Command_Language.md](<./03_Spec/Command_Language.md>) | Markdown | M3E コマンド言語仕様 | 最終更新: 2026-07-19 |
+| [03_Spec/Concreteness_Axis.md](<./03_Spec/Concreteness_Axis.md>) | Markdown | Concreteness Axis | 通常のmapをlevel 0とする仮想z軸。`j`でlevelを1増やし（奥）、`k`で1減らす（手前）。xy平面のnode移動は方向キーで行う。level移動はscopeへの出入りや親nodeへの移動とは別の操作。 |
 | [03_Spec/data_import_export.md](<./03_Spec/data_import_export.md>) | Markdown | Data & Import/Export 設計ドキュメント | 最終更新: 2026-04-09 |
 | [03_Spec/Data_Model.md](<./03_Spec/Data_Model.md>) | Markdown | Data Model | この文書は、M3E の実体モデルに関する不変条件を定義する。 |
 | [03_Spec/Data_Runtime_Layout.md](<./03_Spec/Data_Runtime_Layout.md>) | Markdown | Data Runtime Layout | 永続データ実体。`data.sqlite` だけでなく backup, audit, cloud-sync, conflict-backups を含むフォルダ単位 |
@@ -118,7 +120,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [06_Operations/Commit_Message_Rules.md](<./06_Operations/Commit_Message_Rules.md>) | Markdown | Commit Message Rules | コミット履歴を見たときに、変更の種類と意図を短時間で判別できる状態を保つ。 |
 | [06_Operations/Decision_Pool.md](<./06_Operations/Decision_Pool.md>) | Markdown | Decision Pool | 会話や作業中に出た判断を、正式文書に昇格する前にためる場所。 |
 | [06_Operations/Development_System.md](<./06_Operations/Development_System.md>) | Markdown | Development System（開発体制） | 最終更新: 2026-06-25 |
-| [06_Operations/Director_Playbook.md](<./06_Operations/Director_Playbook.md>) | Markdown | Director Playbook | The operating manual for Claude-as-Director driving Codex workers on M3E. |
+| [06_Operations/Director_Playbook.md](<./06_Operations/Director_Playbook.md>) | Markdown | Director Playbook | The operating manual for Claude working on M3E. |
 | [06_Operations/Distribution_Validation_Balanced_Plan.md](<./06_Operations/Distribution_Validation_Balanced_Plan.md>) | Markdown | Distribution Validation Balanced Plan | 個人利用フェーズでの手元運用負担を最小化しつつ、将来の企業配布へ移行可能な配布・検証導線を先に設計する。 |
 | [06_Operations/Documentation_Rules.md](<./06_Operations/Documentation_Rules.md>) | Markdown | Documentation Rules | 最終更新: 2026-06-27 |
 | [06_Operations/gates/layout-lab-gui-check.md](<./06_Operations/gates/layout-lab-gui-check.md>) | Markdown | FAIL — layout-lab G-GUI independent check | Date: 2026-06-25 |
