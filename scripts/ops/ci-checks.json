@@ -59,6 +59,10 @@
     ".",
     "node --test scripts/ops/codex-grep.test.mjs"
   ],
+  "map-loss-guard-tests": [
+    ".",
+    "node --test scripts/ops/map-loss-guard.test.mjs"
+  ],
   "installer-lint": [
     ".",
     "node scripts/ops/check-installer.mjs"
