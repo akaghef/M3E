@@ -6,7 +6,7 @@
 
 - [現行の Rapid 保存経路の事実確認](./research-current-state.md)（Codex、dev-beta `d67b834`）
 - [保存エンジン候補の外部調査](./research-engines.md)
-- 発端は akaghef と ChatGPT の会話の export（2026-10-23〜24）。非公開の Drive へのリンクを含むので、public repo には置かない。その中の FA・WA・CA などの採番は正規の接頭辞ではないので、引用しない。用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。会話中の「Move」は reparent、「Reorder」は reorder（総称は node move）に当たる。
+- 発端は akaghef と ChatGPT の会話の export（2026-10-23〜24）。非公開の Drive へのリンクを含むので、public repo には置かない。その中の FA・WA・CA などの採番は正規の接頭辞ではないので、引用しない。用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。会話の 9 操作の表のうち、TC8 の「Move」（親を変える）は reparent、TC7 の「Reorder」は reorder に当たる。ただし導出演算の Move(x,p,g) は reorder を含む一般形で（Reorder = Move(x, parent(x), g)）、node move に当たる。なお Editing_Design.md は reorder を reparent の一形態（同じ親への `ReparentNodeCommand`）として扱っており、Glossary の区別と食い違う（未整理）。
 
 ## Problem
 
