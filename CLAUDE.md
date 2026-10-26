@@ -59,14 +59,17 @@ work flows through the Kiro phases, all owned by **Claude**:
 
 ## Using Codex (only on request)
 
-When akaghef explicitly asks for Codex, invoke it through the wrapper (it forces the arm64 node):
+When akaghef explicitly asks for Codex, invoke it through the wrapper (it forces the arm64 node).
+Codex runs on **Astra with high reasoning** (akaghef 2026-10-26: 「CodexはAstra highを使う」):
+pass `-m gpt-6-astra -c model_reasoning_effort=high` on every dispatch.
 
 ```bash
 # Investigation / search (no writes)
-scripts/codex.sh exec --sandbox read-only "<handoff>" < /dev/null
+scripts/codex.sh exec -m gpt-6-astra -c model_reasoning_effort=high --sandbox read-only "<handoff>" < /dev/null
 
 # Implementation (writes allowed) — run inside the task's worktree
-( cd <worktree-path> && scripts/codex.sh exec "<handoff>" < /dev/null )
+( cd <worktree-path> && scripts/codex.sh exec -m gpt-6-astra -c model_reasoning_effort=high \
+    --sandbox workspace-write --add-dir "$(git rev-parse --git-common-dir)" "<handoff>" < /dev/null )
 ```
 
 - Always pipe `< /dev/null`; run it with `run_in_background`, never with `&`.
