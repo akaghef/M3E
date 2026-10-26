@@ -842,6 +842,48 @@ describe("M3E MCP semantic service", () => {
     expect(onSaved).toHaveBeenCalledTimes(5);
   });
 
+  test("GraphLinks are created between existing nodes, listed with a URI and deleted without touching the nodes", () => {
+    const c0 = model.addNode(model.state.rootId, "C0");
+    const c1 = model.addNode(model.state.rootId, "C1");
+    model.saveToSqlite(dbPath, mapId);
+    const context = enter();
+    const created = service.call("m3e_create", { kind: "link", context_id: context.context_id, source: nodeUri(c0), target: nodeUri(c1), label: "依存", relation_type: "depends", direction: "forward" });
+    expect(created.ok).toBe(true);
+    expect(created.changed).toEqual({ created: 1, updated: 0, deleted: 0 });
+    expect(created.created).toEqual([{ uri: expect.stringMatching(new RegExp(`^${mapUri()}/links/`)), name: "依存", kind: "link" }]);
+    const links = Object.values(loaded().state.links ?? {});
+    expect(links).toEqual([expect.objectContaining({ sourceNodeId: c0, targetNodeId: c1, label: "依存", relationType: "depends", direction: "forward" })]);
+    const read = service.call("m3e_get", { kind: "state", target: nodeUri(c0) });
+    expect(read.links).toEqual([expect.objectContaining({ uri: created.created[0].uri, sourceNodeId: c0, targetNodeId: c1 })]);
+
+    expect(service.call("m3e_delete", { context_id: context.context_id, target: created.created[0].uri }).ok).toBe(true);
+    const after = loaded();
+    expect(after.state.links ?? {}).toEqual({});
+    expect(after.state.nodes[c0]?.text).toBe("C0");
+    expect(after.state.nodes[c1]?.text).toBe("C1");
+    expect(service.call("m3e_delete", { context_id: context.context_id, target: created.created[0].uri }).error.code).toBe("TARGET_NOT_FOUND");
+  });
+
+  test("invalid GraphLink endpoints are rejected without saving", () => {
+    const a = model.addNode(model.state.rootId, "A");
+    const alias = model.addAlias(model.state.rootId, a);
+    model.saveToSqlite(dbPath, mapId);
+    const other = new RapidMvpModel("Other map");
+    const foreign = other.addNode(other.state.rootId, "Foreign");
+    other.saveToSqlite(dbPath, "mcp-service-other");
+    const before = saved();
+    const context = enter();
+    const link = (args: Record<string, unknown>) => service.call("m3e_create", { kind: "link", context_id: context.context_id, ...args });
+    expect(link({ source: nodeUri(a), target: nodeUri(a) }).error.code).toBe("INVALID_OPERATION");
+    expect(link({ source: nodeUri(a), target: nodeUri(alias) }).error.code).toBe("INVALID_OPERATION");
+    expect(link({ source: nodeUri(a), target: `m3e://maps/mcp-service-other/nodes/${foreign}` }).error.code).toBe("FOCUS_MAP_MISMATCH");
+    expect(link({ source: nodeUri(a) }).error.code).toBe("INVALID_ARGUMENT");
+    expect(link({ source: nodeUri(a), target: nodeUri("missing") }).error.code).toBe("TARGET_NOT_FOUND");
+    expect(link({ source: nodeUri(a), target: mapUri(), direction: "sideways" }).error.code).toBe("INVALID_ARGUMENT");
+    expect(saved().savedAt).toBe(before.savedAt);
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   test("attribute patches merge and remove explicit keys while preserving unrelated metadata", () => {
     const node = model.addNode(model.state.rootId, "Retain this title");
     Object.assign(model.state.nodes[node], {

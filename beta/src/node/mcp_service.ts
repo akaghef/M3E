@@ -56,6 +56,15 @@ function publicRef(ref: Ref | null): {uri: string; name: string; kind: string} |
   return ref ? { uri: ref.uri, name: ref.name, kind: ref.kind } : null;
 }
 function mapUri(id: string): string { return `m3e://maps/${encodeURIComponent(id)}`; }
+function linkUri(mapId: string, linkId: string): string { return `${mapUri(mapId)}/links/${encodeURIComponent(linkId)}`; }
+/** GraphLinks are addressed by their own URI; they are never node targets. */
+function parseLinkUri(value: unknown): { mapId: string; linkId: string } | null {
+  const match = typeof value === "string" ? /^m3e:\/\/maps\/([^/?#]+)\/links\/([^/?#]+)$/.exec(value.trim()) : null;
+  if (!match) return null;
+  try { return { mapId: decodeURIComponent(match[1]!), linkId: decodeURIComponent(match[2]!) }; }
+  catch { return fail("INVALID_TARGET", "The resource URI has invalid escaping."); }
+}
+const LINK_DIRECTIONS = ["none", "forward", "backward", "both"];
 function refFor(mapId: string, state: AppState, nodeId: string, kind?: Ref["kind"]): Ref {
   const node = state.nodes[nodeId];
   if (!node) fail("TARGET_NOT_FOUND", "The requested node no longer exists.");
@@ -354,7 +363,7 @@ export class M3eMcpService {
       return { ...publicRef(refFor(ref.mapId, doc.state, id)), text: clip(node.text), details: clip(node.details), note: clip(node.note), link: clip(node.link), node_type: node.nodeType ?? "text", attributes, content_truncated: JSON.stringify({ text: node.text, details: node.details, note: node.note, link: node.link, attributes: node.attributes }) !== JSON.stringify({ text: clip(node.text), details: clip(node.details), note: clip(node.note), link: clip(node.link), attributes }), parent_uri: node.parentId ? refFor(ref.mapId, doc.state, node.parentId).uri : null, children: node.children.slice(0, 100).map((child) => refFor(ref.mapId, doc.state, child).uri), child_count: node.children.length, ...(node.targetNodeId ? { target_uri: `${mapUri(ref.mapId)}/nodes/${encodeURIComponent(node.targetNodeId)}`, alias_access: node.access ?? "read", is_broken: Boolean(node.isBroken) } : {}) };
     });
     const selected = new Set(ids);
-    const links = Object.values(doc.state.links ?? {}).filter((link) => selected.has(link.sourceNodeId) || selected.has(link.targetNodeId)).map((link) => ({ ...link, ...(link.label ? { label: clip(link.label) } : {}), ...(link.relationType ? { relationType: clip(link.relationType) } : {}) }));
+    const links = Object.values(doc.state.links ?? {}).filter((link) => selected.has(link.sourceNodeId) || selected.has(link.targetNodeId)).map((link) => ({ uri: linkUri(ref.mapId, link.id), ...link, ...(link.label ? { label: clip(link.label) } : {}), ...(link.relationType ? { relationType: clip(link.relationType) } : {}) }));
     const linkOffset = page(args, "link_offset");
     const result = bounded(nodes, offset, limit), linkResult = bounded(links, linkOffset, limit);
     const payload = scopePayload(doc.state, selected).map((entry) => {
@@ -365,7 +374,7 @@ export class M3eMcpService {
     return { ok: true, target: publicRef(ref), revision: revision(doc), nodes: result.items, links: linkResult.items, scope_payload: payloadResult.items, payload_total: payload.length, next_payload_offset: payloadResult.next, total: nodes.length, link_total: links.length, offset, limit, next_offset: result.next, next_link_offset: linkResult.next, ...(context ? { context_id: context.id, requires_refocus: context.invalidated, event_cursor: context.cursor } : {}) };
   }
   private mutate(tool: string, args: Args, context: Context): Args {
-    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "expected_revision"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision"] : ["context_id", "target", "expected_revision"];
+    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "expected_revision"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision"] : ["context_id", "target", "expected_revision"];
     fields(args, allowed);
     if (context.invalidated || !context.focus) fail("FOCUS_INVALIDATED", "The focused boundary disappeared. Explicitly focus a surviving target before writing.");
     const mapId = context.focus.mapId;
@@ -378,19 +387,39 @@ export class M3eMcpService {
     if (expected !== revision(current)) fail("REVISION_CONFLICT", "The map changed since the retained context. Read the relevant state or explicitly refocus before retrying.");
     const blocked = this.options.canWrite?.(mapId);
     if (blocked) fail("WRITE_UNAVAILABLE", blocked);
-    const resolved = this.resolve(args.target ?? context.focus!.uri);
-    if (resolved.ref.mapId !== mapId) fail("FOCUS_MAP_MISMATCH", "Focus the destination map before editing it.");
-    const target = resolved.ref.nodeId;
     const model = rawModel(current.state);
     const created: string[] = [];
+    const createdLinks: string[] = [];
+    let deletedLinks = 0;
     const before = Object.keys(current.state.nodes).length;
     let updated = 0;
-    if (tool === "m3e_create") {
-      if (model.state.nodes[target]!.nodeType === "alias") fail("INVALID_OPERATION", "Alias nodes cannot own children.");
+    const deletedLink = tool === "m3e_delete" ? parseLinkUri(args.target) : null;
+    if (tool === "m3e_create" && args.kind === "link" && args.target === undefined) fail("INVALID_ARGUMENT", "A GraphLink needs both source and target nodes.");
+    const resolved = deletedLink ? null : this.resolve(args.target ?? context.focus!.uri);
+    if ((deletedLink?.mapId ?? resolved!.ref.mapId) !== mapId) fail("FOCUS_MAP_MISMATCH", "Focus the destination map before editing it.");
+    const target = resolved?.ref.nodeId ?? "";
+    if (deletedLink) {
+      if (!model.state.links?.[deletedLink.linkId]) fail("TARGET_NOT_FOUND", "The requested GraphLink no longer exists.");
+      model.removeLink(deletedLink.linkId); deletedLinks = 1;
+    } else if (tool === "m3e_create") {
       const kind = str(args.kind, "kind", 30);
       const common = ["kind", "context_id", "target", "expected_revision"];
-      fields(args, [...common, ...(kind === "node" ? ["text", "attributes"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : [])]);
-      if (kind === "node") {
+      fields(args, [...common, ...(kind === "node" ? ["text", "attributes"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : kind === "link" ? ["source", "label", "relation_type", "direction"] : [])]);
+      if (kind !== "link" && model.state.nodes[target]!.nodeType === "alias") fail("INVALID_OPERATION", "Alias nodes cannot own children.");
+      if (kind === "link") {
+        // A GraphLink is a non-tree relation from source to target; it never changes ownership.
+        const source = this.resolve(args.source);
+        if (source.ref.mapId !== mapId) fail("FOCUS_MAP_MISMATCH", "Both GraphLink endpoints must be in the focused map.");
+        const direction = args.direction === undefined ? undefined : str(args.direction, "direction", 20);
+        if (direction !== undefined && !LINK_DIRECTIONS.includes(direction)) fail("INVALID_ARGUMENT", "direction must be none, forward, backward or both.");
+        const label = args.label === undefined ? undefined : str(args.label, "label", 4000);
+        const relationType = args.relation_type === undefined ? undefined : str(args.relation_type, "relation_type", 200);
+        try {
+          createdLinks.push(model.addLink(source.ref.nodeId, target, { label, relationType, direction: direction as "none" | "forward" | "backward" | "both" | undefined }));
+        } catch (error) {
+          fail("INVALID_OPERATION", (error as Error).message);
+        }
+      } else if (kind === "node") {
         const id = model.addNode(target, str(args.text, "text")); created.push(id);
         if (args.attributes !== undefined) this.patchAttributes(model.state.nodes[id]!, args.attributes);
       }
@@ -479,17 +508,23 @@ export class M3eMcpService {
     if (model.validate().length) fail("INVALID_STATE", "The requested operation violates the Core invariants.");
     const result = model.saveToSqliteIfUnchanged(this.options.dbPath(), mapId, expected);
     context.baseline.set(mapId, result);
-    const changed = { created: created.length, updated, deleted: Math.max(0, before - Object.keys(result.state.nodes).length) };
+    const changed = { created: created.length + createdLinks.length, updated, deleted: Math.max(0, before - Object.keys(result.state.nodes).length) + deletedLinks };
+    const createdRefs = [...created.slice(0, 100).map((id) => publicRef(refFor(mapId, result.state, id))), ...createdLinks.map((id) => this.linkRef(mapId, result.state, id))].slice(0, 100);
+    const createdTruncated = created.length + createdLinks.length > 100;
     try {
       this.reconcile(context, mapId, result, true);
       // The shared server broadcast reaches other participants; this path also supports embedded consumers.
       this.notifyMapChanged(mapId);
       this.options.onSaved?.(mapId, result.savedAt);
-      return { ok: true, ...this.summary(context), changed, created: created.slice(0, 100).map((id) => publicRef(refFor(mapId, result.state, id))), created_truncated: created.length > 100 };
+      return { ok: true, ...this.summary(context), changed, created: createdRefs, created_truncated: createdTruncated };
     } catch {
       // Commit succeeded; downstream delivery must never invite a duplicate mutation retry.
-      return { ok: true, committed: true, context_id: context.id, revision: revision(result), focus: publicRef(context.focus), requires_refocus: context.invalidated, event_cursor: context.cursor, changed, created: created.slice(0, 100).map((id) => publicRef(refFor(mapId, result.state, id))), created_truncated: created.length > 100, warning: "The map was committed, but downstream notification failed. Read current state if a listener missed it." };
+      return { ok: true, committed: true, context_id: context.id, revision: revision(result), focus: publicRef(context.focus), requires_refocus: context.invalidated, event_cursor: context.cursor, changed, created: createdRefs, created_truncated: createdTruncated, warning: "The map was committed, but downstream notification failed. Read current state if a listener missed it." };
     }
+  }
+  private linkRef(mapId: string, state: AppState, linkId: string): { uri: string; name: string; kind: string } {
+    const link = state.links![linkId]!;
+    return { uri: linkUri(mapId, linkId), name: (link.label || `${name(state.nodes[link.sourceNodeId]!)} → ${name(state.nodes[link.targetNodeId]!)}`).slice(0, 240), kind: "link" };
   }
   private patchAttributes(node: TreeNode, input: unknown): void {
     const patch = object(input);

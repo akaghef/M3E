@@ -4,7 +4,7 @@ Basis: DP2 / TOB-E
 
 ## 実行境界
 
-M3E MCPは既存BetaサーバーとCoreへのアダプターである。Nodeの生成・コピー・編集・移動・Scope変更・削除はCoreが検証して保存する。別のMap保存先やViewerは持たない。
+M3E MCPは既存BetaサーバーとCoreへのアダプターである。Nodeの生成・コピー・編集・移動・Scope変更・削除とGraphLinkの作成・削除はCoreが検証して保存する。別のMap保存先やViewerは持たない。
 
 既知の対象に対する指定済み操作はMCP Toolsを直接利用する。未決のScope粒度、親子関係とGraphLinkの選択、Layout / Styleなどの判断では、既存の[Map Manager規約](map-manager/README.md)をResources / Promptsから参照する。判断規約の参照と、独立したAgentの起動は同義ではない。
 
@@ -12,7 +12,7 @@ M3E MCPは既存BetaサーバーとCoreへのアダプターである。Nodeの�
 
 `m3e_get` でMap一覧、検索、必要な状態を取得できる。対象が既知なら `m3e_context` の `enter` で参加し、初期状態・revision・Focus・通知開始位置を取得する。Focusは一つ、購読は複数。Resourceの読み取りやメンション選択だけでは参加しない。
 
-`m3e_create` はNode生成・部分木コピー・MF-H一括作成、`m3e_update` は内容変更・移動・scopen / unscopen、`m3e_delete` は指定対象の削除を担う。`m3e_feedback` は5W1Hの改善記録を保存する。具体的な引数・制約はToolのSchemaを正本とする。
+`m3e_create` はNode生成・部分木コピー・MF-H一括作成・GraphLink作成、`m3e_update` は内容変更・移動・scopen / unscopen、`m3e_delete` は指定対象の削除（GraphLinkのURIを指定した場合はそのGraphLinkだけ）を担う。GraphLinkは同じMap内の2 Nodeを結ぶ非木の関係で、親子の所有を変えない。既存GraphLinkの内容変更は未対応。`m3e_feedback` は5W1Hの改善記録を保存する。具体的な引数・制約はToolのSchemaを正本とする。
 
 通常の連続操作では、取得済みのContextを利用する。Agentによる全状態のRead–Modify–Write、一時書込スクリプト、Node ID生成、成功後の機械的な再GETは要求しない。Coreの成功結果が、保存された操作の完了根拠となる。表示上の受入や元症状の確認が必要なタスクでは、別途実画面を検証する。
 
