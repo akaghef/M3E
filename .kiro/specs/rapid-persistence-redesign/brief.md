@@ -107,6 +107,10 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
     - 3 歩先までの近傍は Neo4j が約 2 倍速く、1 点の読取りと map 全体の読込みは SQLite が速い。
     - 同じ Command 列を適用すると、どのエンジンの最終状態も兄弟順キーまで一致した。
 - PR17：いま実際に必要な Deep query を棚卸しする。ADR 008 の Demand Gate（3 件）が満たせるかを確かめる。
+  - → 結果は [pr17-deep-query-inventory.md](./pr17-deep-query-inventory.md)（2026-10-26）。**Demand Gate は満たしていない。**
+    - 4 条件（source をまたぐ、実際の運用から出た、固定されている、Neo4j が要る理由がある）をすべて満たす問い合わせは 0 件だった。
+    - 実需は 1〜2 歩の「探す」問いで、grep・file の読取り・LLM で答えられていた。
+    - 現在のデータには、map をまたぐ構造化された関係が 0 件しかない。Deep の制約はエンジンではなく、同一性と関係のデータが欠けていることである。
 
 ### PR14・PR15 の草案レビュー（2026-10-25、Director）
 
@@ -129,6 +133,7 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS136：attribute を独立したレコードにするか、node のレコードに含めるか（PR14 の 3）。
 - IS137：移行時の孤立データと型定義外の値。所属が解決しない linear-text（63 key、868 KB）、folder でない node を指す linear-text、孤立した surface、型定義外の key、`nodeType: "leaf"`（PR14 の 4・5・7、PR15 の 9・10）。
 - IS138：ID の一意性の範囲（map 内か workspace 内か）。実データでは map ID 3 件、node ID 1,148 件、GraphLink ID 74 件が、map や workspace をまたいで重複している。Rapid の SourceId、本文を含む node ID の扱い（PR14 の 12・15、PR15 の 11）。
+  - PR17 の実データでは、map ID・node ID・GraphLink ID が複写で引き継がれ、workspace をまたいで重複している。map をまたぐ alias は表現できず、map をまたぐ構造化された関係は 0 件だった。ID の一意性の範囲は後から変えると移行になるので、DC39 と一緒に決める必要がある。
 - IS139：delete と同時編集の規則。delete で linear-text・注釈・配置値を同じ transaction に含めるか（PR15 の 5・8・9）。
 - IS140：冪等キーを node の attribute（Flash の重複防止キー）から commandId に移すか。MCP で応答を失ったときに、確定したかをどこで確かめるか（PR15 の 7）。
 - IS141：linear-text を差分で journal に記録するか。1 値の最大は 848 KB ある（PR14 の 11）。
@@ -140,6 +145,7 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS147：エンジンを問わず、再帰や可変長の問い合わせには、実行計画を固定する試験が要る。
   - PR16 で、SQLite の再帰 CTE は結合の順序を固定しないと、16,400 node の部分木の読取りに約 9 秒かかった。
   - Neo4j の可変長の pattern は、始点を固定しないと全 node から展開して 2.6 秒かかった。
+- IS148：計画の map の `m3e:stable-id` 付き 20 node と `planning-ref` の GraphLink 32 本は、`docs/semantic` の entity と REFS の関係と同じ内容である。同じ関係が Final の map、Beta の複写、`docs/semantic` の 3 か所に別々に保存されていて、つなぐ鍵は命名規約だけである（PR17）。ADR 008 の「canonical owner は一つ」に反するので、移行でどれを正本にするかを決める。
 - 外部の変更を取り込んだ後の Undo の範囲（PR15 の 14）は IS127 に含める。起動時の書き直しをやめること（PR15 の 12）は IS132 に含める。
 
 PR15 は、IS116〜IS132 にない「成功扱いで編集が消える」危険を 19 件挙げた（[draft-write-path-commands.md](./draft-write-path-commands.md) 5.5 節）。主なものは次のとおり。
