@@ -259,7 +259,7 @@ Cloud Sync (`M3E_CLOUD_SYNC=1`) とは独立に設定可能。
 | 項目 | リスク | 暫定方針 | 要検討 |
 |------|--------|---------|--------|
 | CSRF | ブラウザから localhost への cross-origin POST | カスタムヘッダー `X-M3E-Token` を必須にする | ヘッダーチェックで十分か |
-| LAN 露出 | ポートが LAN に公開される可能性 | `127.0.0.1` にバインド（現状維持） | LAN 共有が必要になった場合の対策 |
+| LAN 露出 | ポートが LAN と tailnet に公開され、通常の map 読み書きに認証がない | 全インターフェースで待ち受ける（`server.listen` に host 指定なし）。LAN と tailnet の人からのアクセスは許可する（2026-10-26 akaghef 決定）。Tailscale Funnel でのインターネット公開は、必要なときだけ別の proxy で API を絞って行う | 公開範囲が LAN・tailnet の外へ広がる場合の認証 |
 | エージェント偽装 | 他プロセスがトークンを盗用 | トークンは登録時のみ発行、メモリ保持 | プロセス間のトークン漏洩対策 |
 | 入力バリデーション | 不正な state で DB 破壊 | 既存の `RapidMvpModel.validate()` を push 時にも実行 | scope 単位の部分 validate が必要 |
 | DoS | 100 エンティティが同時に push | scope lock で直列化される | lock 待ちキューの上限 |
