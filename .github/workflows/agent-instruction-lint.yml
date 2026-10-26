@@ -66,6 +66,11 @@ jobs:
       - name: Test CI push gate
         run: bash scripts/ops/preflight.sh --check ci-gate-tests
 
+      - name: Test Codex session search
+        run: |
+          command -v zstd >/dev/null || { sudo apt-get update && sudo apt-get install -y zstd; }
+          bash scripts/ops/preflight.sh --check codex-grep-tests
+
       - name: Package launcher checks for Windows
         uses: actions/upload-artifact@v4
         with:

@@ -55,6 +55,10 @@
     ".",
     "node --test scripts/ops/ci-push-gate.test.mjs scripts/ops/preflight-git-env.test.mjs scripts/ops/preflight-icon-python.test.mjs"
   ],
+  "codex-grep-tests": [
+    ".",
+    "node --test scripts/ops/codex-grep.test.mjs"
+  ],
   "installer-lint": [
     ".",
     "node scripts/ops/check-installer.mjs"
