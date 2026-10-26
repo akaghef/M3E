@@ -13,6 +13,8 @@
 
 ## 試作成果物
 
+- [DAG 専用の View](./261026_dag_dedicated_view.md) — System との重なり、SortedTaskView が定着しなかった理由、System subtype か新しい Surface View かの案。
+
 - [外部スコープ追加中の更新レート低下](./261021_external_scope_append_update_rate.md) — 約20Hzへの低下とスコープ外での約60Hzの利用者報告、投入状況、未検証の原因候補。
 
 - [M3E Ultimate Graphics](./260704_graphics_showcase.html) — 4種類のアニメーションテーマを比較する自己完結型HTML。
