@@ -87,6 +87,17 @@ test('GraphLinks lost after recording are reported as loss even when every node 
   assert.match(app.feedback[0].what, /GraphLink 消失 2 件/);
 });
 
+test('a node that becomes a scope boundary keeps its identity', async t => {
+  const state = {revision: 'r1', nodes: [node('m3e://maps/m/nodes/a', 'C0'), node('m3e://maps/m/nodes/b', 'C1')]};
+  const app = await fakeApp(t, state);
+  const ledger = ledgerPath(t);
+  const args = ['--target', target, '--ledger', ledger, '--base', app.base];
+  await main(['record', ...args]);
+  state.nodes = [node('m3e://maps/m/scopes/a', 'C0'), node('m3e://maps/m/nodes/b', 'C1')];
+  assert.equal(await main(['check', ...args]), 0);
+  assert.equal(app.feedback.length, 0);
+});
+
 test('an unreachable app is not mistaken for loss', async t => {
   const ledger = ledgerPath(t);
   assert.equal(await main(['check', '--target', target, '--ledger', ledger, '--base', 'http://127.0.0.1:9']), 3);

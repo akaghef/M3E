@@ -18,7 +18,13 @@ import {fileURLToPath} from 'node:url';
 
 const hash = text => crypto.createHash('sha256').update(text ?? '').digest('hex');
 
-export function diffSnapshots(previous, current) {
+// A node keeps its identity when scopen/unscopen moves its URI between /nodes/ and /scopes/.
+const nodeKey = uri => uri.replace(/\/(?:nodes|scopes)\/([^/]+)$/, '/node/$1');
+const byNodeKey = nodes => Object.fromEntries(Object.entries(nodes).map(([uri, node]) => [nodeKey(uri), node]));
+
+export function diffSnapshots(previousSnapshot, currentSnapshot) {
+  const previous = {...previousSnapshot, nodes: byNodeKey(previousSnapshot.nodes)};
+  const current = {...currentSnapshot, nodes: byNodeKey(currentSnapshot.nodes)};
   const lost = [];
   const emptied = [];
   const changed = [];
