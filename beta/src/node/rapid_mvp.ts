@@ -1014,10 +1014,19 @@ class RapidMvpModel {
   }
 
   static mapExists(dbPath: string, mapId: string): boolean {
-    assertNotLiveM3e(dbPath);
-    const response = neo4jRequest({ op: "exists", mapId }) as { ok: boolean; exists?: boolean; error?: string };
-    if (!response.ok) throw new Error(response.error || "Neo4j map lookup failed.");
-    return Boolean(response.exists);
+    if (neo4jEnabled()) {
+      const address = viewerNeo4jAddress(mapId);
+      const response = neo4jRequest({ op: "exists", mapId: address.mapId }) as { ok: boolean; exists?: boolean; error?: string };
+      if (!response.ok) throw new Error(response.error || "Neo4j map lookup failed.");
+      return Boolean(response.exists);
+    }
+    const db = RapidMvpModel.openSqlite(dbPath);
+    try {
+      const row = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(mapId) as { hit: number } | undefined;
+      return Boolean(row);
+    } finally {
+      db.close();
+    }
   }
 
   static createMap(dbPath: string, mapId: string, rootLabel = "Untitled"): void {
