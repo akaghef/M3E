@@ -1666,8 +1666,36 @@ class RapidMvpModel {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
   }
 
-  // Viewer save. Records go to Neo4j. state_json is not the source of truth.
+  // Neo4j when M3E_BETA_NEO4J_URI is set. Otherwise the existing SQLite map row.
   saveToSqlite(dbPath: string, mapId = "default", options?: { actorAccountId?: string }): void {
+    if (!neo4jEnabled()) {
+      const data: SavedMap = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        state: this.toJSON(),
+      };
+      const db = RapidMvpModel.openSqlite(dbPath);
+      try {
+        db.prepare(
+          `
+            INSERT INTO maps (id, version, saved_at, state_json)
+            VALUES (@id, @version, @savedAt, @stateJson)
+            ON CONFLICT(id) DO UPDATE SET
+              version = excluded.version,
+              saved_at = excluded.saved_at,
+              state_json = excluded.state_json
+          `,
+        ).run({
+          id: mapId,
+          version: data.version,
+          savedAt: data.savedAt,
+          stateJson: JSON.stringify(data.state),
+        });
+      } finally {
+        db.close();
+      }
+      return;
+    }
     const address = viewerNeo4jAddress(mapId);
     const response = neo4jRequest({
       op: "save",
@@ -1680,8 +1708,24 @@ class RapidMvpModel {
     if (response.revisions) this.nodeBases = response.revisions;
   }
 
-  /** Optimistic commit. The current map is read from Neo4j, not from state_json. */
+  /** Optimistic commit. Neo4j when configured; otherwise the SQLite write lock. */
   saveToSqliteIfUnchanged(dbPath: string, mapId: string, expectedRevision: string): SavedMap {
+    if (!neo4jEnabled()) {
+      const db = RapidMvpModel.openSqlite(dbPath);
+      try {
+        return db.transaction(() => {
+          const row = db.prepare("SELECT version, saved_at AS savedAt, state_json AS stateJson FROM maps WHERE id = ?").get(mapId) as SqliteMapRow | undefined;
+          if (!row || !row.savedAt || RapidMvpModel.savedRevision({ version: 1, savedAt: row.savedAt, state: JSON.parse(row.stateJson) }) !== expectedRevision) {
+            throw new Error("REVISION_CONFLICT");
+          }
+          const data: SavedMap = { version: 1, savedAt: new Date().toISOString(), state: this.toJSON() };
+          db.prepare("UPDATE maps SET version = ?, saved_at = ?, state_json = ? WHERE id = ?").run(data.version, data.savedAt, JSON.stringify(data.state), mapId);
+          return data;
+        }).immediate();
+      } finally {
+        db.close();
+      }
+    }
     const current = RapidMvpModel.loadSavedMapFromSqlite(dbPath, mapId);
     if (RapidMvpModel.savedRevision(current) !== expectedRevision) throw new Error("REVISION_CONFLICT");
     this.saveToSqlite(dbPath, mapId);
@@ -1716,12 +1760,40 @@ class RapidMvpModel {
     if (errors.length > 0) {
       throw new Error(`Invalid model after load: ${errors.join(" | ")}`);
     }
-    const revisions = neo4jRequest({ op: "revisions", mapId }) as { ok: boolean; revisions?: Record<string, string> };
-    if (revisions.ok && revisions.revisions) model.nodeBases = revisions.revisions;
+    if (neo4jEnabled()) {
+      const address = viewerNeo4jAddress(mapId);
+      const revisions = neo4jRequest({ op: "revisions", mapId: address.mapId }) as { ok: boolean; revisions?: Record<string, string> };
+      if (revisions.ok && revisions.revisions) model.nodeBases = revisions.revisions;
+    }
     return model;
   }
 
   static loadSavedMapFromSqlite(dbPath: string, mapId = "default"): SavedMap {
+    if (!neo4jEnabled()) {
+      const db = RapidMvpModel.openSqlite(dbPath);
+      try {
+        const row = db
+          .prepare(
+            `
+              SELECT version, saved_at AS savedAt, state_json AS stateJson
+              FROM maps
+              WHERE id = ?
+            `,
+          )
+          .get(mapId) as SqliteMapRow | undefined;
+        if (!row) throw new Error("Map not found.");
+        if (row.version !== 1 || !row.stateJson || !row.savedAt) {
+          throw new Error("Unsupported or invalid save format.");
+        }
+        return {
+          version: 1,
+          savedAt: row.savedAt,
+          state: JSON.parse(row.stateJson) as AppState,
+        };
+      } finally {
+        db.close();
+      }
+    }
     const address = viewerNeo4jAddress(mapId);
     const response = neo4jRequest({ op: "load", ...address, mapId: address.mapId }) as { ok: boolean; saved?: SavedMap; error?: string };
     if (!response.ok || !response.saved) throw new Error(response.error || "Map not found.");
@@ -1735,6 +1807,10 @@ function assertNotLiveM3e(dbPath: string): void {
   if (resolved === live || resolved.startsWith(live + path.sep)) {
     throw new Error("Refusing to open the live M3E database.");
   }
+}
+
+function neo4jEnabled(): boolean {
+  return Boolean(process.env.M3E_BETA_NEO4J_URI);
 }
 
 function viewerNeo4jAddress(mapId: string): { workspaceId: string; accountId: string; mapId: string } {

@@ -252,6 +252,9 @@ describe("neo4j swarm writes", () => {
   afterAll(async () => {
     await store?.close();
     store = undefined;
+    delete process.env.M3E_BETA_NEO4J_URI;
+    delete process.env.M3E_WORKSPACE_ID;
+    delete process.env.M3E_ACCOUNT_ID;
     if (ownServer) stopServer();
   }, 40000);
 

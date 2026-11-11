@@ -164,6 +164,7 @@ describe("neo4j connection guard", () => {
 
 describe("neo4j map records", () => {
   beforeAll(async () => {
+    process.env.M3E_BETA_NEO4J_URI = URI;
     ensureServer();
     ownServer = true;
     compileStore();
@@ -173,6 +174,7 @@ describe("neo4j map records", () => {
   afterAll(async () => {
     await store?.close();
     store = undefined;
+    delete process.env.M3E_BETA_NEO4J_URI;
     if (ownServer) stopServer();
   }, 40000);
 
