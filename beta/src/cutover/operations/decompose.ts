@@ -73,13 +73,18 @@ function indexNodes(nodes: readonly TopologyNode[]): Indexed<TopologyNode> {
 }
 
 function indexLinks(links: readonly TopologyLink[] | undefined): Indexed<TopologyLink> {
-  return indexNodes((links ?? []).map((link) => ({
-    id: link.id,
-    parentId: null,
-    text: "",
-    children: [],
-    ...link,
-  }))) as Indexed<TopologyLink>;
+  const byId = new Map<string, TopologyLink>();
+  const duplicates: string[] = [];
+  let empty = false;
+  for (const link of links ?? []) {
+    if (link.id.trim() === "") {
+      empty = true;
+      continue;
+    }
+    if (byId.has(link.id)) duplicates.push(link.id);
+    byId.set(link.id, link);
+  }
+  return { byId, duplicates, empty };
 }
 
 function depthOf(byId: Map<string, TopologyNode>, id: string): number {
