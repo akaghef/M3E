@@ -1,13 +1,24 @@
 "use strict";
 
 import fs from "fs";
+import os from "os";
 import path from "path";
+import { spawnSync } from "child_process";
 import { createHash } from "crypto";
 import Database from "better-sqlite3";
 import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirection, LinkStyle, LinkPort } from "../shared/types";
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
 import { isGraphLinkAttributes } from "../shared/graph_link_attributes";
 import { scopedLaneSettings } from "../shared/lane_view";
+import {
+  appendOperation,
+  createOperationJournal,
+  subject,
+  undo as undoOperation,
+  type OperationJournal,
+} from "../cutover/history/operation_journal";
+import { swarmSaveCommandId, type Neo4jMapAddress, type Neo4jMapStore, type NodeCommandResult, type ScopeChangeRecord } from "./neo4j_map_store";
+import type { ScopeSyncPeer } from "./sync";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -51,6 +62,15 @@ class RapidMvpModel {
   state: AppState;
   undoStack: AppState[];
   redoStack: AppState[];
+  /**
+   * New text edits. The subject is the node text map, not AppState.
+   * undoStack still holds older full-state copies and is not decomposed into this journal.
+   */
+  textJournal: OperationJournal<Record<string, string>> | null = null;
+  /** node ごとに、この model が読んだ revision。全体保存の base にする。 */
+  nodeBases: Record<string, string> = {};
+  /** 採否を通った text 編集。undo はこの記録があるものだけを書く。 */
+  editCommands: Record<string, { commandId: string; revision: string; actorAccountId: string }> = {};
   readonly maxHistory = 200;
 
   constructor(rootText = "Root") {
@@ -846,6 +866,7 @@ class RapidMvpModel {
   }
 
   private static openSqlite(dbPath: string): SqliteDatabase {
+    assertNotLiveM3e(dbPath);
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -993,13 +1014,10 @@ class RapidMvpModel {
   }
 
   static mapExists(dbPath: string, mapId: string): boolean {
-    const db = RapidMvpModel.openSqlite(dbPath);
-    try {
-      const row = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(mapId) as { hit: number } | undefined;
-      return Boolean(row);
-    } finally {
-      db.close();
-    }
+    assertNotLiveM3e(dbPath);
+    const response = neo4jRequest({ op: "exists", mapId }) as { ok: boolean; exists?: boolean; error?: string };
+    if (!response.ok) throw new Error(response.error || "Neo4j map lookup failed.");
+    return Boolean(response.exists);
   }
 
   static createMap(dbPath: string, mapId: string, rootLabel = "Untitled"): void {
@@ -1461,6 +1479,178 @@ class RapidMvpModel {
     };
   }
 
+  /** Record path. The caller passes an already opened temporary Neo4j store. */
+  async saveToNeo4j(store: Neo4jMapStore, address: Neo4jMapAddress): Promise<{ savedAt: string; journal: ScopeChangeRecord[] }> {
+    const saved = await store.saveMap({
+      ...address,
+      state: this.toJSON(),
+      nodeBases: this.nodeBases,
+      actorAccountId: address.accountId,
+    });
+    this.nodeBases = await store.readNodeRevisions(address.mapId);
+    return saved;
+  }
+
+  static async loadFromNeo4j(store: Neo4jMapStore, mapId: string): Promise<RapidMvpModel> {
+    const saved = await store.loadMap(mapId);
+    const model = RapidMvpModel.fromJSON(saved.state);
+    const errors = model.validate();
+    if (errors.length > 0) {
+      throw new Error(`Invalid model after load: ${errors.join(" | ")}`);
+    }
+    model.nodeBases = await store.readNodeRevisions(mapId);
+    return model;
+  }
+
+  /**
+   * One node text edit. Appends one operation and writes that node record.
+   * Does not push an AppState copy onto undoStack.
+   */
+  async editNodeTextInNeo4j(
+    store: Neo4jMapStore,
+    mapId: string,
+    nodeId: string,
+    newText: string,
+    peer?: ScopeSyncPeer,
+    command?: { commandId?: string; baseRevision?: string; actorAccountId?: string },
+  ): Promise<ScopeChangeRecord> {
+    if (!this.state.nodes[nodeId]) {
+      return {
+        seq: 0,
+        mapId,
+        scopeId: "",
+        at: new Date().toISOString(),
+        intent: "rename",
+        nodeId,
+        field: "text",
+        previousText: null,
+        nextText: newText,
+      };
+    }
+    const baseRevision = command?.baseRevision ?? this.nodeBases[nodeId] ?? "0";
+    const commandId = command?.commandId ?? swarmSaveCommandId("rename", nodeId, baseRevision, newText);
+    const actorAccountId = command?.actorAccountId || process.env.M3E_ACCOUNT_ID || "acct-beta-neo4j-test";
+    const previous = this.state.nodes[nodeId]!.text;
+    const journal = this.textJournal ?? createOperationJournal(nodeTexts(this.state));
+    const before = subject(journal);
+    const after = { ...before, [nodeId]: newText };
+    const operationId = `rename:${nodeId}:${journal.cursor + 1}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+    const result = await store.submitNodeCommand({
+      mapId,
+      nodeId,
+      text: newText,
+      commandId,
+      baseRevision,
+      actorAccountId,
+      intent: "rename",
+    });
+    if (result.outcome === "rejected") throw new Error(`Node command rejected: ${result.reason}`);
+    if (result.nodeId === nodeId) {
+      this.state.nodes[nodeId]!.text = result.text;
+      this.nodeBases[nodeId] = result.revision;
+    }
+    const scopeId = result.scopeId || memorySyncScopeId(this.state, nodeId);
+    if (result.outcome === "applied") {
+      this.textJournal = appendOperation(journal, { operationId, before, after });
+      this.editCommands[operationId] = { commandId, revision: result.revision, actorAccountId };
+      await store.recordTextOperation({
+        mapId,
+        operation: { operationId, before, after, cursor: this.textJournal.cursor },
+      });
+      if (scopeId) {
+        peer?.record({
+          scopeId,
+          mapId,
+          command: { intent: "rename", targetId: nodeId, operation: { field: "text", text: result.text } },
+        });
+      }
+    }
+    return {
+      seq: result.outcome === "applied" ? result.seq : 0,
+      mapId,
+      scopeId,
+      at: new Date().toISOString(),
+      intent: "rename",
+      nodeId,
+      field: "text",
+      previousText: previous,
+      nextText: result.text,
+    };
+  }
+
+  /**
+   * 1 node の改名を Neo4j の record へ送る。map 全体は送らない。
+   * 採否は store が commandId、node revision、scope 権限で決める。
+   * 適用と、同じ node への再送の無視では、その node の text を Neo4j の値に合わせる。拒否では合わせない。
+   */
+  async submitRenameInNeo4j(
+    store: Neo4jMapStore,
+    mapId: string,
+    input: {
+      actorAccountId: string;
+      commandId: string;
+      baseRevision: string;
+      nodeId: string;
+      text: string;
+    },
+    peer?: ScopeSyncPeer,
+  ): Promise<NodeCommandResult> {
+    const result = await store.submitNodeCommand({
+      mapId,
+      actorAccountId: input.actorAccountId,
+      commandId: input.commandId,
+      baseRevision: input.baseRevision,
+      intent: "rename",
+      nodeId: input.nodeId,
+      text: input.text,
+    });
+    const sameNode = result.outcome !== "rejected" && result.nodeId === input.nodeId;
+    if (sameNode && this.state.nodes[input.nodeId]) {
+      this.state.nodes[input.nodeId]!.text = result.text;
+    }
+    if (result.outcome === "applied") {
+      peer?.record({
+        scopeId: result.scopeId,
+        mapId,
+        command: { intent: "rename", targetId: input.nodeId, operation: { field: "text", text: result.text } },
+      });
+    }
+    return result;
+  }
+
+  /** 採否を通った text 編集だけを戻す。古い revision なら書かない。 */
+  async undoRecordedEdit(mapId: string): Promise<boolean> {
+    if (!this.textJournal || this.textJournal.cursor < 0) return false;
+    const operation = this.textJournal.operations[this.textJournal.cursor];
+    const meta = operation ? this.editCommands[operation.operationId] : undefined;
+    if (!operation || !meta) return false;
+    const nextJournal = undoOperation(this.textJournal);
+    const previous = subject(this.textJournal);
+    const next = subject(nextJournal);
+    const changes: Array<{ id: string; text: string }> = [];
+    for (const id of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+      if (previous[id] !== next[id]) changes.push({ id, text: next[id] ?? "" });
+    }
+    for (const change of changes) {
+      const response = neo4jRequest({
+        op: "submit",
+        mapId,
+        actorAccountId: meta.actorAccountId,
+        commandId: `undo:${meta.commandId}:${change.id}`,
+        baseRevision: meta.revision,
+        intent: "rename",
+        nodeId: change.id,
+        text: change.text,
+      }) as NodeCommandResult & { ok?: boolean };
+      if (!response.ok || response.outcome !== "applied") return false;
+      if (this.state.nodes[change.id]) this.state.nodes[change.id]!.text = response.text;
+      this.nodeBases[change.id] = response.revision;
+    }
+    this.textJournal = nextJournal;
+    const cursor = neo4jRequest({ op: "restore-texts", mapId, cursor: this.textJournal.cursor, restores: [] }) as { ok?: boolean };
+    return cursor.ok !== false;
+  }
+
   saveToFile(filePath: string): void {
     const data: SavedMap = {
       version: 1,
@@ -1476,51 +1666,26 @@ class RapidMvpModel {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
   }
 
-  saveToSqlite(dbPath: string, mapId = "default"): void {
-    const data: SavedMap = {
-      version: 1,
-      savedAt: new Date().toISOString(),
+  // Viewer save. Records go to Neo4j. state_json is not the source of truth.
+  saveToSqlite(dbPath: string, mapId = "default", options?: { actorAccountId?: string }): void {
+    const address = viewerNeo4jAddress(mapId);
+    const response = neo4jRequest({
+      op: "save",
+      ...address,
+      actorAccountId: options?.actorAccountId || address.accountId,
       state: this.toJSON(),
-    };
-
-    const db = RapidMvpModel.openSqlite(dbPath);
-    try {
-      db.prepare(
-        `
-          INSERT INTO maps (id, version, saved_at, state_json)
-          VALUES (@id, @version, @savedAt, @stateJson)
-          ON CONFLICT(id) DO UPDATE SET
-            version = excluded.version,
-            saved_at = excluded.saved_at,
-            state_json = excluded.state_json
-        `,
-      ).run({
-        id: mapId,
-        version: data.version,
-        savedAt: data.savedAt,
-        stateJson: JSON.stringify(data.state),
-      });
-    } finally {
-      db.close();
-    }
+      nodeBases: this.nodeBases,
+    }) as { ok: boolean; revisions?: Record<string, string>; error?: string };
+    if (!response.ok) throw new Error(response.error || "Neo4j save failed.");
+    if (response.revisions) this.nodeBases = response.revisions;
   }
 
-  /** Optimistic commit under the SQLite write lock, including cross-process writers. */
+  /** Optimistic commit. The current map is read from Neo4j, not from state_json. */
   saveToSqliteIfUnchanged(dbPath: string, mapId: string, expectedRevision: string): SavedMap {
-    const db = RapidMvpModel.openSqlite(dbPath);
-    try {
-      return db.transaction(() => {
-        const row = db.prepare("SELECT version, saved_at AS savedAt, state_json AS stateJson FROM maps WHERE id = ?").get(mapId) as SqliteMapRow | undefined;
-        if (!row || !row.savedAt || RapidMvpModel.savedRevision({ version: 1, savedAt: row.savedAt, state: JSON.parse(row.stateJson) }) !== expectedRevision) {
-          throw new Error("REVISION_CONFLICT");
-        }
-        const data: SavedMap = { version: 1, savedAt: new Date().toISOString(), state: this.toJSON() };
-        db.prepare("UPDATE maps SET version = ?, saved_at = ?, state_json = ? WHERE id = ?").run(data.version, data.savedAt, JSON.stringify(data.state), mapId);
-        return data;
-      }).immediate();
-    } finally {
-      db.close();
-    }
+    const current = RapidMvpModel.loadSavedMapFromSqlite(dbPath, mapId);
+    if (RapidMvpModel.savedRevision(current) !== expectedRevision) throw new Error("REVISION_CONFLICT");
+    this.saveToSqlite(dbPath, mapId);
+    return RapidMvpModel.loadSavedMapFromSqlite(dbPath, mapId);
   }
 
   static savedRevision(saved: SavedMap): string {
@@ -1551,40 +1716,95 @@ class RapidMvpModel {
     if (errors.length > 0) {
       throw new Error(`Invalid model after load: ${errors.join(" | ")}`);
     }
-
+    const revisions = neo4jRequest({ op: "revisions", mapId }) as { ok: boolean; revisions?: Record<string, string> };
+    if (revisions.ok && revisions.revisions) model.nodeBases = revisions.revisions;
     return model;
   }
 
   static loadSavedMapFromSqlite(dbPath: string, mapId = "default"): SavedMap {
-    const db = RapidMvpModel.openSqlite(dbPath);
-    try {
-      const row = db
-        .prepare(
-          `
-            SELECT version, saved_at AS savedAt, state_json AS stateJson
-            FROM maps
-            WHERE id = ?
-          `,
-        )
-        .get(mapId) as SqliteMapRow | undefined;
+    const address = viewerNeo4jAddress(mapId);
+    const response = neo4jRequest({ op: "load", ...address, mapId: address.mapId }) as { ok: boolean; saved?: SavedMap; error?: string };
+    if (!response.ok || !response.saved) throw new Error(response.error || "Map not found.");
+    return response.saved;
+  }
+}
 
-      if (!row) {
-        throw new Error("Map not found.");
+function assertNotLiveM3e(dbPath: string): void {
+  const live = path.join(os.homedir(), "Library", "Application Support", "M3E");
+  const resolved = path.resolve(dbPath);
+  if (resolved === live || resolved.startsWith(live + path.sep)) {
+    throw new Error("Refusing to open the live M3E database.");
+  }
+}
+
+function viewerNeo4jAddress(mapId: string): { workspaceId: string; accountId: string; mapId: string } {
+  const workspaceId = process.env.M3E_WORKSPACE_ID || "ws-beta-neo4j-test";
+  const durable = process.env.M3E_BETA_NEO4J_DATABASE === "m3ebeta";
+  return {
+    workspaceId,
+    accountId: process.env.M3E_ACCOUNT_ID || (durable ? "acct-akaghef" : "acct-beta-neo4j-test"),
+    mapId: durable ? `${workspaceId}::${mapId}` : mapId,
+  };
+}
+
+function neo4jStoreScript(): string {
+  const candidates = [
+    path.join(__dirname, "neo4j_map_store.js"),
+    path.join(__dirname, "..", "..", "dist", "node", "neo4j_map_store.js"),
+  ];
+  const found = candidates.find((item) => fs.existsSync(item));
+  if (!found) throw new Error("Neo4j store script is not compiled.");
+  return found;
+}
+
+function neo4jRequest(body: unknown): unknown {
+  const result = spawnSync(process.execPath, [neo4jStoreScript()], {
+    input: JSON.stringify(body),
+    encoding: "utf8",
+    env: { ...process.env, M3E_BETA_NEO4J_SYNC: "1", M3E_BETA_NEO4J_PROBE: "" },
+    timeout: 30000,
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "Neo4j request failed.");
+  }
+  const start = result.stdout.indexOf("{");
+  const end = result.stdout.lastIndexOf("}");
+  if (start < 0 || end < start) throw new Error(result.stderr || "Neo4j request returned no JSON.");
+  return JSON.parse(result.stdout.slice(start, end + 1)) as unknown;
+}
+
+function memorySyncScopeId(state: AppState, nodeId: string): string {
+  if (!state.nodes[nodeId]) return "";
+  let scopeRoot = state.rootId;
+  let cursor: string | null = nodeId;
+  const seen = new Set<string>();
+  while (cursor && state.nodes[cursor] && !seen.has(cursor)) {
+    seen.add(cursor);
+    const node: TreeNode = state.nodes[cursor]!;
+    if (node.nodeType === "folder") {
+      scopeRoot = cursor;
+      break;
+    }
+    cursor = node.parentId;
+    if (cursor && !state.nodes[cursor]) return "";
+  }
+  const inferred = `scope:${scopeRoot}`;
+  const direct = state.scopes?.[inferred];
+  if (direct && typeof direct.id === "string" && direct.id.length > 0) return direct.id;
+  if (state.scopes) {
+    for (const [key, scope] of Object.entries(state.scopes)) {
+      if (scope.rootNodeIds?.includes(scopeRoot)) {
+        return typeof scope.id === "string" && scope.id.length > 0 ? scope.id : key;
       }
-
-      if (row.version !== 1 || !row.stateJson || !row.savedAt) {
-        throw new Error("Unsupported or invalid save format.");
-      }
-
-      return {
-        version: 1,
-        savedAt: row.savedAt,
-        state: JSON.parse(row.stateJson) as AppState,
-      };
-    } finally {
-      db.close();
     }
   }
+  return inferred;
+}
+
+function nodeTexts(state: AppState): Record<string, string> {
+  const texts: Record<string, string> = {};
+  for (const node of Object.values(state.nodes)) texts[node.id] = node.text;
+  return texts;
 }
 
 export { RapidMvpModel };
