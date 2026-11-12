@@ -53,6 +53,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The Neo4j map store tests start their own temporary Neo4j. Keep the
+      # version in step with the one the Beta runtime uses (Homebrew neo4j).
+      - name: Setup Java for Neo4j
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install Neo4j
+        env:
+          NEO4J_VERSION: 2026.10.2
+        run: |
+          curl -fsSL "https://dist.neo4j.org/neo4j-community-${NEO4J_VERSION}-unix.tar.gz" -o "$RUNNER_TEMP/neo4j.tar.gz"
+          tar -xzf "$RUNNER_TEMP/neo4j.tar.gz" -C "$RUNNER_TEMP"
+          echo "M3E_NEO4J_HOME=$RUNNER_TEMP/neo4j-community-${NEO4J_VERSION}" >> "$GITHUB_ENV"
+
       - name: Install Agent icon validation dependency
         run: python3 -m pip install Pillow
 

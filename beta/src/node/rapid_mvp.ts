@@ -1810,7 +1810,12 @@ class RapidMvpModel {
   }
 }
 
+/**
+ * Tests and cutover experiments set M3E_FORBID_LIVE_DATA=1 so they cannot open the
+ * personal workspace. The normal runtime does not set it and opens its own data.
+ */
 function assertNotLiveM3e(dbPath: string): void {
+  if (process.env.M3E_FORBID_LIVE_DATA !== "1") return;
   const live = path.join(os.homedir(), "Library", "Application Support", "M3E");
   const resolved = path.resolve(dbPath);
   if (resolved === live || resolved.startsWith(live + path.sep)) {

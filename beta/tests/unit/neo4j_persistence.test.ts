@@ -12,7 +12,9 @@ const BETA = path.resolve(__dirname, "../..");
 const ROOT = "/tmp/m3e-beta-neo4j-test";
 const PORT = 17687;
 const URI = `bolt://127.0.0.1:${PORT}`;
-const NEO4J_BIN = "/opt/homebrew/opt/neo4j/bin/neo4j";
+// CI installs Neo4j elsewhere and points M3E_NEO4J_HOME at it.
+const NEO4J_HOME = process.env.M3E_NEO4J_HOME || "/opt/homebrew/opt/neo4j";
+const NEO4J_BIN = path.join(NEO4J_HOME, "bin", "neo4j");
 const BREW_DATA = "/opt/homebrew/var/neo4j/data";
 const ADDRESS = {
   workspaceId: "ws-beta-neo4j-test",
@@ -28,7 +30,7 @@ function neo4jEnv(): NodeJS.ProcessEnv {
 }
 
 function listenerPids(): string[] {
-  const result = spawnSync("/usr/sbin/lsof", ["-nP", `-iTCP:${PORT}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8" });
+  const result = spawnSync("lsof", ["-nP", `-iTCP:${PORT}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8" });
   if (result.status !== 0) return [];
   return result.stdout.split(/\s+/).map((item) => item.trim()).filter((item) => item.length > 0);
 }
@@ -77,7 +79,7 @@ function ensureServer(): void {
     throw new Error("Refusing to start: Homebrew Neo4j data directory exists.");
   }
   if (!fs.existsSync(NEO4J_BIN)) {
-    throw new Error("Neo4j is not installed at /opt/homebrew/opt/neo4j. The test stops instead of substituting another database.");
+    throw new Error(`Neo4j is not installed at ${NEO4J_HOME}. The test stops instead of substituting another database.`);
   }
   const listeners = listenerPids();
   const pidFile = path.join(ROOT, "run", "neo4j.pid");
