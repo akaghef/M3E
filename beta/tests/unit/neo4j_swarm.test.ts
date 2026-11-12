@@ -12,6 +12,11 @@ const BETA = path.resolve(__dirname, "../..");
 const ROOT = "/tmp/m3e-beta-neo4j-swarm";
 const PORT = 17688;
 const URI = `bolt://127.0.0.1:${PORT}`;
+// The pre-cutover backup holds personal map data and exists only on the machine
+// that took it. Where it is absent (CI, other machines) the tests that read it are
+// reported as skipped; they are not replaced by another data source.
+const BACKUP_ROOT = "/Users/akaghef/Backups/M3E/261111-pre-neo4j";
+const hasBackup = fs.existsSync(BACKUP_ROOT);
 // CI installs Neo4j elsewhere and points M3E_NEO4J_HOME at it.
 const NEO4J_HOME = process.env.M3E_NEO4J_HOME || "/opt/homebrew/opt/neo4j";
 const NEO4J_BIN = path.join(NEO4J_HOME, "bin", "neo4j");
@@ -1158,9 +1163,9 @@ describe("neo4j swarm writes", () => {
     expect(loaded.state.nodes[child]?.scopeId).toBe(scopeId);
   }, 60000);
 
-  it("退避の 8 map だけを一時 Neo4j に取り込む", async () => {
+  it.skipIf(!hasBackup)("退避の 8 map だけを一時 Neo4j に取り込む", async () => {
     const current = requireStore();
-    const root = "/Users/akaghef/Backups/M3E/261111-pre-neo4j/m3e/workspaces";
+    const root = path.join(BACKUP_ROOT, "m3e", "workspaces");
     const maps: Array<[string, string]> = [
       ["ws_A98E70JM9GAXCVXVMQBW7N0YGZ", "map_10226A7F0MEKDVNMEXC7HH4GNV"],
       ["ws_A98E70JM9GAXCVXVMQBW7N0YGZ", "map_1782530973015_o4urek"],

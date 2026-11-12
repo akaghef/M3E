@@ -12,6 +12,11 @@ const BETA = path.resolve(__dirname, "../..");
 const ROOT = "/tmp/m3e-beta-neo4j-test";
 const PORT = 17687;
 const URI = `bolt://127.0.0.1:${PORT}`;
+// The pre-cutover backup holds personal map data and exists only on the machine
+// that took it. Where it is absent (CI, other machines) the tests that read it are
+// reported as skipped; they are not replaced by another data source.
+const BACKUP_ROOT = "/Users/akaghef/Backups/M3E/261111-pre-neo4j";
+const hasBackup = fs.existsSync(BACKUP_ROOT);
 // CI installs Neo4j elsewhere and points M3E_NEO4J_HOME at it.
 const NEO4J_HOME = process.env.M3E_NEO4J_HOME || "/opt/homebrew/opt/neo4j";
 const NEO4J_BIN = path.join(NEO4J_HOME, "bin", "neo4j");
@@ -420,8 +425,8 @@ describe("neo4j map records", () => {
     }
   }, 60000);
 
-  it("saves the three core-seed maps whose nodes carry type", async () => {
-    const sqlitePath = "/Users/akaghef/Backups/M3E/261111-pre-neo4j/m3e/seeds/core-seed.sqlite";
+  it.skipIf(!hasBackup)("saves the three core-seed maps whose nodes carry type", async () => {
+    const sqlitePath = path.join(BACKUP_ROOT, "m3e", "seeds", "core-seed.sqlite");
     const liveRoot = path.join(process.env.HOME || "", "Library", "Application Support", "M3E");
     if (path.resolve(sqlitePath).startsWith(liveRoot + path.sep)) {
       throw new Error("Refusing to open the live M3E database.");
