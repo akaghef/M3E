@@ -1,6 +1,6 @@
 # Brief: rapid-persistence-redesign
 
-2026-10-24。Director による discovery。状態は**検討中**。移行先（DC39）と出し方（DC40）は akaghef の指示で保留しており、この文書は判断材料をまとめたもの。仕様の承認はまだない。
+2026-10-24。Director による discovery。2026-11-16 に移行先（DC39）と出し方（DC40）を akaghef が決定した（「決定済み」の節）。仕様の承認はまだない。
 
 根拠資料:
 
@@ -88,6 +88,12 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 
 ### 決定済み
 
+- DC39（2026-11-16、akaghef）：正本エンジンは Neo4j とし、全面の書き換えを到達形とする。SQLite は正本の並走先ではなく、export format の一つになる。復旧の正本は engine 非依存の portable snapshot と journal の replay のまま変えない（RQ26）。この範囲は OP44 を超える（Rapid に限らない到達形になる）ため、ADR 008 の Decision 3（Neo4j の role を owner concern で分ける）と Decision 6（SQLite 判断の局所化）の改訂が要る。Final を製品として配布する場合に Neo4j をどう同梱するか（JVM 同梱、組込み系への切替、export された SQLite を読む閲覧専用 mode）は製品化時の決定として保留する。
+- DC40 = OP46（2026-11-16、akaghef）：書込み経路（Command 化）を先に、現在の保存形式のまま出す。その後、data migration を workspace ごとに本番 1 回だけ行う（RQ19）。リハーサルは回数無制限で、旧 SQLite は read-only で保持する。
+- IS138（2026-11-16、akaghef）：ID は全体一意とする（map と workspace をまたいでも一意）。移行時に重複 ID（node 1,148 件ほか）を一括で振り直す。
+- IS142 の一部（2026-11-16、akaghef）：journal は workspace × 書き手端末の append-only stream とし、端末ごとに採番する。Syncthing による `data.sqlite` 全体の同期はやめる。stream の輸送は Syncthing で行う（append-only file の mirror は構造上競合しない。agent 間 messaging の経路の統一とは別の関心として扱う）。
+- 定量的な再審 trigger（commit 時間や payload 比の閾値で ADR の再審を自動起票する案）は採用しない（2026-11-16、akaghef）。過去に全体 JSON 方式が放置された原因は要件定義の重さとして扱う。
+
 - DC41 = OP48（2026-10-24、akaghef）：応急処置として、全状態を送る保存経路の受信上限を引き上げ、自動保存の失敗を画面に出す。保存形式は変えない。
   - dev-beta `a128c85` に入れた。CI の Build & Test と Personal Path Check はどちらも success。通常 Beta はこの SHA から build して再起動した。
   - 全状態を送る経路の上限は 64 MiB で、超えると 413 と JSON を返す。
@@ -95,6 +101,17 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
   - 通常 Beta 本体には、データを書かない要求で確認した。20 MB の不正な本文には 400、70 MB には 413 が返る。
   - 研究 map の画面編集が保存されるかは、利用者の次の編集で確かめる。
   - 64 MiB は全状態の約 32 MB まで（20,150 node の約 4 倍）の時間稼ぎで、RQ20 は満たさない。
+
+### 物理配置の原則（2026-11-16、akaghef）
+
+- engine store（SQLite file、Neo4j store）は端末 local に置き、同期しない。journal から再生できる使い捨ての導出物として扱う。backup の対象は journal と portable snapshot で、engine store は守らない。
+- 複数 PC の一貫性は、workspace ごとに確定者（writer）を一つに固定して得る。個人 workspace の確定者は Mac、team workspace の確定者は Beta の server process。
+- 他の PC は Command を確定者へ送り、local には楽観適用して即描画する。offline の間は確定前の Command を local に保持し（RQ22）、再接続時に確定者へ流す。長期の単独作業は writer の役割を明示操作で移譲する。自動 failover は作らない。
+- Mac mini は常時稼働の集約点とする。全 stream の mirror、portable snapshot の置き場、store-and-forward、workspace 横断の materialization を担う。
+- server・engine・viewer は同じ端末に同居させ、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
+- iPad など server を立てられない端末は、mini の server に接続する閲覧専用の client とする。編集は当面させない。portable snapshot を読み込む offline 閲覧 mode は将来の拡張とする。
+- access control の判定単位は scope、複製の単位は workspace とする。stream は workspace 粒度で運び、提供側の server が読み出し時に scope の ACL を適用する。ADR 008 の Constraints「Scope を storage / Authority boundary と同一化しない」はこの決定と衝突するので、ADR 008 の改訂で扱う。
+- 前提条件：Mac と Windows の workspace data は同期停止により分岐している（Windows 固有の map が約 13 件）。一度きりの migration の前に、Windows 固有分を Mac 系列へ統合する。統合は別作業として行う。
 
 ## 判断の前に揃える材料（提案）
 
