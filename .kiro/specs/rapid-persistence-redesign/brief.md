@@ -93,6 +93,12 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS138（2026-11-16、akaghef）：ID は全体一意とする（map と workspace をまたいでも一意）。移行時に重複 ID（node 1,148 件ほか）を一括で振り直す。
 - IS142 の一部（2026-11-16、akaghef）：journal は workspace × 書き手端末の append-only stream とし、端末ごとに採番する。Syncthing による `data.sqlite` 全体の同期はやめる。stream の輸送は Syncthing で行う（append-only file の mirror は構造上競合しない。agent 間 messaging の経路の統一とは別の関心として扱う）。
 - 定量的な再審 trigger（commit 時間や payload 比の閾値で ADR の再審を自動起票する案）は採用しない（2026-11-16、akaghef）。過去に全体 JSON 方式が放置された原因は要件定義の重さとして扱う。
+- IS126（2026-11-16、akaghef）：兄弟順は fractional index。同一キーの衝突は端末 ID と連番の suffix で決定的に順序付け、キー長が閾値を超えた兄弟列だけ再配置する。
+- IS127（2026-11-16、akaghef）：Undo は逆向きの Command とする。Undo 自体が journal に載る。外部の変更を取り込んだ後は、自端末が発行した Command だけを Undo の対象にする。
+- IS135（2026-11-16、akaghef）：親子 edge の label は edge レコードの field に置く。reparent では label を既定で保持する。
+- IS136（2026-11-16、akaghef）：attribute は独立したレコードにする。set-attribute / unset-attribute の Command 単位とレコード単位を一致させる。
+- IS143（2026-11-16、akaghef）：移行時に schema version 表を入れ、table 名も旧実装と変える。新形式の DB を旧実装が開いたら空の表を作らず即失敗させる（fail closed）。
+- IS144（2026-11-16、akaghef）：Schema v2 はこの移行に畳み込む方針。内容を精査したうえで、requirements で取り込む範囲を確定する。
 
 - DC41 = OP48（2026-10-24、akaghef）：応急処置として、全状態を送る保存経路の受信上限を引き上げ、自動保存の失敗を画面に出す。保存形式は変えない。
   - dev-beta `a128c85` に入れた。CI の Build & Test と Personal Path Check はどちらも success。通常 Beta はこの SHA から build して再起動した。
@@ -224,8 +230,8 @@ PR18：保存形式を変えずに、移行より先に直せる不具合。ど�
 
 ## 未決の論点
 
-- IS126：兄弟順の表現と、同時挿入の衝突解決規則（fractional index を使う場合の同一キー対策と再配置）
-- IS127：Undo を逆向きの Command にするか、変更前の値の保持にするか
+- IS126：決定済み（2026-11-16。「決定済み」の節）
+- IS127：決定済み（2026-11-16。「決定済み」の節）
 - IS128：Final channel、cloud 上の複製、Vault を、一度きりの移行にどう含めるか
 - IS129：書き手を 1 プロセスに限る方法（別の server や CLI は DB を直接開けてしまう）
 - IS130：Command intent と Glossary の対応。node move（reparent / reorder）、rename、delete、paste（新しい ID で複製）、scopen / unscopen は定義済み。親の挿入、親の除去、分割、統合には定義語がない
