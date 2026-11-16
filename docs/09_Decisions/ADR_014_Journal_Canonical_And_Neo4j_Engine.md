@@ -1,4 +1,4 @@
-# ADR 009: Journal Canonical Sources and Neo4j Engine for Rapid
+# ADR 014: Journal Canonical Sources and Neo4j Engine for Rapid
 
 ## Status
 

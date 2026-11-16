@@ -100,6 +100,19 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS143（2026-11-16、akaghef）：移行時に schema version 表を入れ、table 名も旧実装と変える。新形式の DB を旧実装が開いたら空の表を作らず即失敗させる（fail closed）。
 - IS144（2026-11-16、akaghef）：Schema v2 はこの移行に畳み込む方針。内容を精査したうえで、requirements で取り込む範囲を確定する。
 
+### 既存の Neo4j 実装（2026-11-11、Cursor。採否未決）
+
+dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 行、`0619824`〜`570612f` の 5 commit）が既に入っている。この brief への記載が漏れていた（2026-11-16 に別セッションからの引き継ぎで判明）。
+
+- `beta/src/node/neo4j_map_store.ts`（4,089 行）：map を node・親子・属性・GraphLink・注釈・linear-text・配置のレコードとして Neo4j に書く。commandId の重複排除、node ごとの revision による拒否、scope 権限の拒否を持つ。
+- `beta/src/cutover/`（22 ファイル、約 4,150 行）：状態の分解と組み立て、Command への対応付け、木の不変量、scope 権限判定。入出力を持たない部品。
+- `beta/src/node/sync/`：scope 単位の記録と再送の土台。
+- `beta/src/node/rapid_mvp.ts`：環境変数 `M3E_BETA_NEO4J_URI` があるときだけ保存・読込みが Neo4j に切り替わる。既定は SQLite のまま。切替は `neo4jRequest()` が保存 1 回ごとに `spawnSync` で Node の子プロセスを起動する方式で、その間サーバ全体が止まる。
+- この実装は「Command 化せずにエンジンだけ差し替え」の順序で、本 brief の決定（書込み経路の Command 化を先行）と逆。**残すか、部品（特に `cutover/`）だけ使うか、捨てるかは未決**。Command の commit 経路の実装は `rapid_mvp.ts` の同じ関数群に触れるため、この採否を決めてから着手する。
+- 2026-11-11 の push は 2 箇所の破損を含み、別セッションが修正済み（`fa42b0e`、`3c4cc85`）。稼働中の通常 Beta（2026-11-08 起動）は未再起動で、再起動後に個人 map が開けることは未確認。
+- 関連の残置物：worktree `/Users/akaghef/dev/M3E-worktrees/neo4j-cutover`（枝 `codex/neo4j-cutover`）に未コミットの `scripts/beta/neo4j-durable.sh`（専用設定・データ置き場・ポートで Neo4j を start/stop/status する script）。試行用データ置き場 `~/Library/Application Support/M3E-Neo4j-trial` は空で停止済み。退避 `~/Backups/M3E/261111-pre-neo4j/` は Windows 統合（2026-11-16）より前の時点。
+- 実装作業は本体 checkout の枝を切り替えず、作業ごとの worktree で行う（`docs/06_Operations/Worktree_Separation_Rules.md`）。
+
 - DC41 = OP48（2026-10-24、akaghef）：応急処置として、全状態を送る保存経路の受信上限を引き上げ、自動保存の失敗を画面に出す。保存形式は変えない。
   - dev-beta `a128c85` に入れた。CI の Build & Test と Personal Path Check はどちらも success。通常 Beta はこの SHA から build して再起動した。
   - 全状態を送る経路の上限は 64 MiB で、超えると 413 と JSON を返す。
