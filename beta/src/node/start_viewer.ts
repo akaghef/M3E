@@ -13,6 +13,7 @@ import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
+import { activeRecordStore, closeActiveRecordStoreOnSignal } from "./record_store/active";
 import type { MapCommand } from "../shared/map_changes";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
@@ -299,6 +300,7 @@ function refreshCloudSyncConfigFromEnv(): void {
 
 function renameMapId(dbPath: string, sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return false;
+  if (activeRecordStore()) return false; // Record store: no legacy map ids to migrate.
   const db = new Database(dbPath);
   try {
     const source = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(sourceId) as { hit: number } | undefined;
@@ -313,6 +315,7 @@ function renameMapId(dbPath: string, sourceId: string, targetId: string): boolea
 }
 
 function deleteMapId(dbPath: string, mapId: string): void {
+  if (activeRecordStore()) return; // Record store: no legacy map ids to migrate.
   const db = new Database(dbPath);
   try {
     db.prepare(`DELETE FROM maps WHERE id = ?`).run(mapId);
@@ -2109,7 +2112,7 @@ async function handleVaultApi(
             mapId,
             vaultPath: "",
             integrationMode: "off",
-            sourceOfTruth: "sqlite",
+            sourceOfTruth: mapSourceOfTruth(),
             lastInboundAt: null,
             lastOutboundAt: null,
             lastError: null,
@@ -2535,6 +2538,10 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
         sendJson(res, 404, { error: "Map not found." });
         return;
       }
+      if (result.code === "ENGINE_BEHIND") {
+        sendJson(res, 503, { ok: false, code: "ENGINE_BEHIND", error: "The storage engine is behind. Retry later." });
+        return;
+      }
       if (result.code === "CONFLICT") {
         sendJson(res, 409, {
           ok: false,
@@ -2560,7 +2567,7 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
       seq: result.seq,
       mapId,
       integrationMode: "off",
-      sourceOfTruth: "sqlite",
+      sourceOfTruth: mapSourceOfTruth(),
     });
   } catch (err) {
     if (res.headersSent) return;
@@ -2737,7 +2744,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
                 merged: true,
                 mergedNodeIds: merge.mergedNodeIds,
                 integrationMode: liveWrite?.integrationMode ?? "off",
-                sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+                sourceOfTruth: liveWrite?.sourceOfTruth ?? mapSourceOfTruth(),
                 ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
               });
               return true;
@@ -2773,7 +2780,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         savedAt,
         mapId: mapId,
         integrationMode: liveWrite?.integrationMode ?? "off",
-        sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+        sourceOfTruth: liveWrite?.sourceOfTruth ?? mapSourceOfTruth(),
         ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
       });
     } catch (err) {
@@ -3966,7 +3973,14 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
   }
 }
 
+/** Where the maps of this server are kept: the record store when M3E_STORE_DIR is set, SQLite otherwise. */
+function mapSourceOfTruth(): "records" | "sqlite" {
+  return activeRecordStore() ? "records" : "sqlite";
+}
+
 function startServer(): void {
+  // Record store (M3E_STORE_DIR): open it before anything else, so a refusal stops the start.
+  if (activeRecordStore()) closeActiveRecordStoreOnSignal();
   ensureMap(currentSqliteDbPath(), ACTIVE_MAP_ID, ACTIVE_MAP_LABEL, ["akaghef-beta", "Akaghef-Beta", "main-workspace", "rapid-main"]);
   ensureMap(currentSqliteDbPath(), SECONDARY_MAP_ID, SECONDARY_MAP_LABEL);
   // Initialize audit log file for the default map
@@ -3993,7 +4007,8 @@ function startServer(): void {
     }
     // Startup backup + periodic auto-backup
     const BACKUP_DIR = path.join(currentDataDir(), "backups");
-    if (fs.existsSync(currentSqliteDbPath())) {
+    // In store mode the backup is a copy of the record store, whether or not a SQLite file exists.
+    if (activeRecordStore() || fs.existsSync(currentSqliteDbPath())) {
       const maxGen = Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || 10;
       createBackup(currentSqliteDbPath(), BACKUP_DIR)
         .then(() => { pruneOldBackups(BACKUP_DIR, maxGen); })

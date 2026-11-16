@@ -9,6 +9,11 @@ import type { TreeNode, AppState, SavedMap, AliasAccess, GraphLink, LinkDirectio
 import type { ScopedReadResult, ScopedWriteResult } from "../shared/scope_types";
 import { isGraphLinkAttributes } from "../shared/graph_link_attributes";
 import { scopedLaneSettings } from "../shared/lane_view";
+import { activeRecordStore } from "./record_store/active";
+import {
+  storeDeleteMap, storeDuplicateMap, storeListMaps, storeLoadSavedMap, storeRenameMap, storeSaveMap,
+  storeSaveMapIfUnchanged, storeSetMapColumns,
+} from "./record_store/legacy_api";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -965,6 +970,8 @@ class RapidMvpModel {
 
   static listMaps(dbPath: string, options: ListMapsOptions = {}): MapSummaryInternal[] {
     const includeArchived = Boolean(options.includeArchived);
+    const store = activeRecordStore();
+    if (store) return storeListMaps(store, includeArchived);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const sql = includeArchived
@@ -995,6 +1002,8 @@ class RapidMvpModel {
   }
 
   static mapExists(dbPath: string, mapId: string): boolean {
+    const store = activeRecordStore();
+    if (store) return store.hasMap(mapId);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db.prepare(`SELECT 1 AS hit FROM maps WHERE id = ?`).get(mapId) as { hit: number } | undefined;
@@ -1016,6 +1025,8 @@ class RapidMvpModel {
     if (RapidMvpModel.mapExists(dbPath, newId)) {
       throw new Error("Map already exists.");
     }
+    const store = activeRecordStore();
+    if (store) return storeDuplicateMap(store, sourceId, newId);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const src = db
@@ -1044,6 +1055,8 @@ class RapidMvpModel {
     if (trimmed.length === 0) {
       throw new Error("Invalid label.");
     }
+    const store = activeRecordStore();
+    if (store) return storeRenameMap(store, mapId, trimmed);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
@@ -1074,6 +1087,8 @@ class RapidMvpModel {
       throw new Error("Invalid tags.");
     }
     const cleaned = Array.from(new Set(tags.map((t) => t.trim()).filter((t) => t.length > 0)));
+    const store = activeRecordStore();
+    if (store) return storeSetMapColumns(store, mapId, { tags: JSON.stringify(cleaned) });
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
@@ -1088,6 +1103,8 @@ class RapidMvpModel {
   }
 
   static setArchived(dbPath: string, mapId: string, archived: boolean): void {
+    const store = activeRecordStore();
+    if (store) return storeSetMapColumns(store, mapId, { archived: archived ? 1 : 0 });
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
@@ -1102,6 +1119,8 @@ class RapidMvpModel {
   }
 
   static setPinned(dbPath: string, mapId: string, pinned: boolean): void {
+    const store = activeRecordStore();
+    if (store) return storeSetMapColumns(store, mapId, { pinned: pinned ? 1 : 0 });
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const result = db
@@ -1116,6 +1135,8 @@ class RapidMvpModel {
   }
 
   static setMapSource(dbPath: string, mapId: string, source: MapSource | null): void {
+    const store = activeRecordStore();
+    if (store) return storeSetMapColumns(store, mapId, { source: source ? JSON.stringify(source) : null });
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const serialized = source ? JSON.stringify(source) : null;
@@ -1131,6 +1152,8 @@ class RapidMvpModel {
   }
 
   static deleteMap(dbPath: string, mapId: string): void {
+    const store = activeRecordStore();
+    if (store) return storeDeleteMap(store, mapId);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
@@ -1479,6 +1502,8 @@ class RapidMvpModel {
   }
 
   saveToSqlite(dbPath: string, mapId = "default"): void {
+    const store = activeRecordStore();
+    if (store) return void storeSaveMap(store, mapId, this.toJSON());
     const data: SavedMap = {
       version: 1,
       savedAt: new Date().toISOString(),
@@ -1509,6 +1534,8 @@ class RapidMvpModel {
 
   /** Optimistic commit under the SQLite write lock, including cross-process writers. */
   saveToSqliteIfUnchanged(dbPath: string, mapId: string, expectedRevision: string): SavedMap {
+    const store = activeRecordStore();
+    if (store) return storeSaveMapIfUnchanged(store, mapId, this.toJSON(), expectedRevision, RapidMvpModel.savedRevision);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       return db.transaction(() => {
@@ -1558,6 +1585,8 @@ class RapidMvpModel {
   }
 
   static loadSavedMapFromSqlite(dbPath: string, mapId = "default"): SavedMap {
+    const store = activeRecordStore();
+    if (store) return storeLoadSavedMap(store, mapId);
     const db = RapidMvpModel.openSqlite(dbPath);
     try {
       const row = db
@@ -1605,6 +1634,8 @@ function assertNotLiveM3e(dbPath: string): void {
 export { RapidMvpModel };
 
 if (require.main === module) {
+  // The sample generator writes its own sample files; it never writes into the record store of a workspace.
+  delete process.env.M3E_STORE_DIR;
   const model = new RapidMvpModel("Research Root");
   const a = model.addNode(model.state.rootId, "Question");
   const b = model.addSibling(a, "Hypothesis");
