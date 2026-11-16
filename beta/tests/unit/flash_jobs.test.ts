@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { RapidMvpModel } from "../../src/node/rapid_mvp";
 import { M3eMcpService } from "../../src/node/mcp_service";
-import { FlashJobs, FlashProvider } from "../../src/node/flash_jobs";
+import { FlashJobs, FlashProvider, FlashProviderRejection } from "../../src/node/flash_jobs";
 
 let dir: string, db: string, manager: M3eMcpService, target: string, parent: string, jobs: FlashJobs;
 const map = "flash-test";
@@ -124,4 +124,13 @@ test("provider attachment constraints fail before creating a durable job", () =>
     { ...request(), source: { ...attachment("image"), mime_type: "application/pdf" } },
   ]) expect(() => jobs.submit(body)).toThrow();
   expect(submitted).toBe(0);
+});
+
+test("a terminal provider submission rejection fails safely instead of retrying until deadline", async () => {
+  const before = state();
+  provider.call = async () => { submitted++; throw new FlashProviderRejection("private-host-secret"); };
+  const result = await completed(jobs.submit(request()).job_id);
+  expect(result.state).toBe("failed");
+  expect(JSON.stringify(result)).not.toContain("private-host-secret");
+  expect(submitted).toBe(1); expect(state()).toEqual(before);
 });

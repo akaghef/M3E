@@ -6,6 +6,7 @@ import { M3eMcpService } from "./mcp_service";
 
 type RecordValue = Record<string, any>;
 export class FlashRequestError extends Error {}
+export class FlashProviderRejection extends Error {}
 export function flashPublicError(error: unknown): string {
   return error instanceof FlashRequestError ? error.message : "Flashの処理を完了できませんでした。接続を確認して再試行してください。";
 }
@@ -33,7 +34,10 @@ export class InstalledFlashProvider implements FlashProvider {
       headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json", ...(key ? { "Idempotency-Key": key } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    if (!response.ok) throw new Error(`Flash gateway HTTP ${response.status}`);
+    if (!response.ok) {
+      if (body !== undefined && [400, 401, 403, 413, 415, 422].includes(response.status)) throw new FlashProviderRejection("Generation request rejected");
+      throw new Error("Flash unavailable");
+    }
     return response.json() as Promise<RecordValue>;
   }
 }
@@ -145,7 +149,10 @@ export class FlashJobs {
             }
             job.state = "succeeded"; job.result = { scope: result.created[0], node_count: graph.nodes.length, revision: result.revision, replayed: result.replayed === true }; delete job.error; this.save(job); return;
           }
-        } catch { job.error = "Processing interrupted; retrying the same provider request until deadline"; this.save(job); }
+        } catch (error) {
+          if (error instanceof FlashProviderRejection) { job.state = "failed"; job.error = "GENERATION_REJECTED"; this.save(job); return; }
+          job.error = "Processing interrupted; retrying the same provider request until deadline"; this.save(job);
+        }
         await new Promise<void>(resolve => { const timer = setTimeout(resolve, this.delayMs); timer.unref(); });
       }
       if (!this.closed) { job.state = "indeterminate"; job.error = "Deadline reached; inspect provider state before resubmitting"; this.save(job); }
