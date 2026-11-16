@@ -275,7 +275,7 @@
             <label>素材の種類 <select id="flash-source-type"><option value="text">テキスト</option><option value="topic">話題</option><option value="url">URL</option><option value="document">文書</option><option value="image">画像</option><option value="audio">音声</option><option value="video">動画</option></select></label>
             <textarea id="v4-source-text" class="v4-source-text" rows="5" spellcheck="false" placeholder="素材の本文"></textarea>
             <input id="flash-source-file" type="file" aria-label="素材ファイル" hidden>
-            <label>追加添付（最大10件）<input id="flash-attachments" type="file" multiple></label>
+            <label>追加添付（文書・画像、素材と合計10件まで）<input id="flash-attachments" type="file" accept="image/*,.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx" multiple></label>
             <label>生成指示<textarea id="flash-instruction" class="v4-source-text" rows="2" placeholder="任意"></textarea></label>
             <div id="flash-destination" class="v4-status-line"></div>
             <div class="v4-action-row">

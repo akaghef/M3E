@@ -96,6 +96,13 @@ export class FlashJobs {
     } else validateFile(source);
     if (body.attachments !== undefined && (!Array.isArray(body.attachments) || body.attachments.length > 10)) throw new FlashRequestError("追加添付は10件までです。");
     for (const attachment of body.attachments ?? []) validateFile(attachment);
+    if ((body.attachments?.length ?? 0) + (source.base64 ? 1 : 0) > 10) throw new FlashRequestError("素材ファイルと追加添付は合計10件までです。");
+    if ((body.attachments ?? []).some((file: RecordValue) => !["document", "image"].includes(file.type))) throw new FlashRequestError("追加添付は文書・画像に対応しています。音声・動画は素材として指定してください。");
+    if (["audio", "video"].includes(source.type) && body.attachments?.length) throw new FlashRequestError("音声・動画の素材は追加添付に対応していません。");
+    for (const file of [...(source.base64 ? [source] : []), ...(body.attachments ?? [])]) {
+      if (file.type !== "document" && !file.mime_type.startsWith(file.type + "/")) throw new FlashRequestError("素材の種類とファイル形式が一致していません。");
+      if (file.type === "image" && Buffer.byteLength(file.base64, "base64") > 15 * 1024 * 1024) throw new FlashRequestError("画像は15 MiB以下にしてください。");
+    }
     for (const k of ["title", "instruction", "language"]) if (body[k] !== undefined && typeof body[k] !== "string") throw new FlashRequestError(`Invalid ${k}`);
     const input = { source, ...(body.attachments !== undefined ? { attachments: body.attachments } : {}), language: body.language ?? "ja", ...(body.title !== undefined ? { title: body.title } : {}), ...(body.instruction !== undefined ? { instruction: body.instruction } : {}) };
     const fingerprint = createHash("sha256").update(JSON.stringify({ target: body.target, input })).digest("hex");

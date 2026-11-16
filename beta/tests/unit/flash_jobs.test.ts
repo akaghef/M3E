@@ -84,12 +84,12 @@ test("import retry refuses a provider rejection without a new generation", async
   expect(state().nodes[parent].children).toHaveLength(0);
 });
 
-const attachment = (type = "document") => ({ type, filename: "source.txt", mime_type: "text/plain", base64: "bWF0ZXJpYWw=" });
+const attachment = (type = "document") => ({ type, filename: "source.txt", mime_type: type === "document" ? "text/plain" : type + "/test", base64: "bWF0ZXJpYWw=" });
 test("multimodal sources and additional attachments reach the existing provider unchanged", async () => {
   const requests: any[] = [];
   provider.call = async (route, body) => { if (route === "/v1/jobs") { requests.push(body); return { job_id: "remote" }; } return route.endsWith("/structure") ? graph : { state: "succeeded" }; };
   for (const type of ["document", "image", "audio", "video"]) {
-    const source = attachment(type), attachments = [attachment("image"), attachment("audio")];
+    const source = attachment(type), attachments = ["audio", "video"].includes(type) ? [] : [attachment("image"), attachment("document")];
     const result = await completed(jobs.submit({ ...request(), request_id: type, source, attachments }).job_id);
     expect(result.state).toBe("succeeded");
     expect(requests.at(-1)).toMatchObject({ source, attachments });
@@ -114,4 +114,14 @@ test("provider internals are absent from public status and retry errors", async 
   const { flashPublicError } = await import("../../src/node/flash_jobs");
   try { await jobs.retryImport(id); } catch (error) { expect(flashPublicError(error)).not.toContain("private-host-and-token"); }
   expect(flashPublicError(new SyntaxError("private-host-and-token"))).not.toContain("private-host-and-token");
+});
+
+test("provider attachment constraints fail before creating a durable job", () => {
+  for (const body of [
+    { ...request(), attachments: [attachment("audio")] },
+    { ...request(), source: attachment("video"), attachments: [attachment()] },
+    { ...request(), source: attachment("image"), attachments: Array(10).fill(attachment()) },
+    { ...request(), source: { ...attachment("image"), mime_type: "application/pdf" } },
+  ]) expect(() => jobs.submit(body)).toThrow();
+  expect(submitted).toBe(0);
 });

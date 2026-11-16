@@ -27,6 +27,9 @@ export function connectFlashGeneration(options: {
   function updateType(): void {
     const file = ["document", "image", "audio", "video"].includes(type.value);
     sourceFile.hidden = !file; text.hidden = file;
+    const media = ["audio", "video"].includes(type.value);
+    if (media && attachments.files?.length) { attachments.value = ""; status.textContent = "音声・動画は素材単体で処理します。追加添付を外しました。"; }
+    attachments.disabled = media;
     sourceFile.accept = type.value === "image" ? "image/*" : type.value === "audio" ? "audio/*" : type.value === "video" ? "video/*" : ".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx";
     text.placeholder = type.value === "url" ? "資料のURL" : "話題または素材の本文";
   }
@@ -34,6 +37,8 @@ export function connectFlashGeneration(options: {
     if (!file.size || file.size > 45 * 1024 * 1024) throw new Error("ファイルは空でない45 MiB以下のものを選んでください。");
     const mime = file.type || "application/octet-stream";
     const kind = chosen || (["image", "audio", "video"].find(k => mime.startsWith(k + "/")) ?? "document");
+    if (!chosen && ["audio", "video"].includes(kind)) throw new Error("追加添付は文書・画像に対応しています。");
+    if (kind === "image" && file.size > 15 * 1024 * 1024) throw new Error("画像は15 MiB以下にしてください。");
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(",")[1]);
@@ -88,7 +93,7 @@ export function connectFlashGeneration(options: {
       const destination = options.destination();
       if (!destination) throw new Error("保存先のnodeを選択してください。");
       const files = Array.from(attachments.files ?? []);
-      if (files.length > 10) throw new Error("追加添付は10件までです。");
+      if (files.length + (sourceFile.hidden ? 0 : 1) > 10) throw new Error("素材ファイルと追加添付は合計10件までです。");
       const primary = sourceFile.hidden ? undefined : sourceFile.files?.[0];
       if (!sourceFile.hidden && !primary) throw new Error("素材ファイルを選択してください。");
       if (sourceFile.hidden && !text.value.trim()) throw new Error("素材を入力してください。");
