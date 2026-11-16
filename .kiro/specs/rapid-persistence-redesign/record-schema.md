@@ -3,6 +3,7 @@
 2026-11-16。状態: 設計中、未承認。brief の決定（Neo4j を到達形とする、data migration は workspace ごとに一度だけ）の対象になる形を定める。
 
 - 用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。
+- 本書の ID（DA は決定、IA は未決の論点）は、本書を書いた会話の中の住所である。他の文書の番号とは連番にしていない。
 - [draft-record-model.md](./draft-record-model.md)（2026-10-25 の草案）を土台にし、2026-11-16 の決定で変わった点を本書が上書きする。草案の実測値（件数）は本書でも使う。食い違う場合は本書が優先する。
 - 件数は、断りがなければ 2026-11-16 の退避コピー（3 workspace、69 map、50,706 node）を読み取り専用で数えた値。
 
@@ -20,19 +21,19 @@
 
 ## 2. 決定（2026-11-16、akaghef）
 
-- **Connection と relationType**: 線の総称 Connection をレコードの種別にする。親子 edge と GraphLink はその部分集合。`relationType` は Connection に置き、親子 edge も持つ。表示する文字列は `label` で、`relationType` とは別の欄にする。
+- **DA1 Connection と relationType**: 線の総称 Connection をレコードの種別にする。親子 edge と GraphLink はその部分集合。`relationType` は Connection に置き、親子 edge も持つ。表示する文字列は `label` で、`relationType` とは別の欄にする。
   - Glossary の改訂が要る: `Connection` の備考「保存実体ではなく、新しいデータ型は追加しない」（2026-10-24 の決定）、`relationType` の定義「tree edge の親子関係とは分ける」。スキーマの承認時に、文書の一斉置換と一緒に行う。
-- **時刻を持たない**: node に作成時刻・更新時刻を持たせない。持つのは `rev`（最後に変えた確定の通し番号）だけ。時刻は「通し番号 → 確定時刻」の対応から引く。対応は 1 回の確定につき 1 行で、node の数に比例しない。journal を圧縮してもこの対応は残す。
+- **DA2 時刻を持たない**: node に作成時刻・更新時刻を持たせない。持つのは `rev`（最後に変えた確定の通し番号）だけ。時刻は「通し番号 → 確定時刻」の対応から引く。対応は 1 回の確定につき 1 行で、node の数に比例しない。journal を圧縮してもこの対応は残す。
   - 理由: 数学の map は 100 万 node 規模を見込む。全 node に時刻を持たせると、ほぼ誰も読まない値が node の数だけ増える。
   - 手放すもの: journal を圧縮した後は「いつ作ったか」が引けない。
-- **既定値を保存しない**: 既定値と同じ欄は保存しない。欄が無ければ既定値として読む。「空の値を明示的に入れた」と「欄が無い」は区別しない。
+- **DA3 既定値を保存しない**: 既定値と同じ欄は保存しない。欄が無ければ既定値として読む。「空の値を明示的に入れた」と「欄が無い」は区別しない。
   - 帰結: 既定値は凍結する。後で変えると、保存済みの全レコードの意味が変わる。
-- **scope のレコード**: scope の境界は、scope のレコードがあることで表す。key は root になる node の ID。scopen は scope のレコードを作ること、unscopen は消すこと。node の種別は変わらない。`nodeType` から `folder` をなくし、scope の意味の「folder」を保存データ・コード・文書から払拭する（ファイルシステムのフォルダの意味は対象外）。
-- **Surface View の旧い語彙**: Surface View の旧い語彙（`scatter`・`mindmap`・`logic-chart`・`timeline`）は、migration では書き換えずに運ぶ。対応が決まった時点で Command で直す。
-- **正本の木と alias**: 正本の配置は木とする。どの node も親はちょうど一つ（root を除く）で、scope への所属、権限、削除の範囲、既定の並び順はこの木だけで決まる。別の場所から使うときは alias を置く。alias は参照先の所属を変えない。木以外のトポロジーは、この木に alias と、役割つきの GraphLink を重ねたものとして読む。
+- **DA4 scope のレコード**: scope の境界は、scope のレコードがあることで表す。key は root になる node の ID。scopen は scope のレコードを作ること、unscopen は消すこと。node の種別は変わらない。`nodeType` から `folder` をなくし、scope の意味の「folder」を保存データ・コード・文書から払拭する（ファイルシステムのフォルダの意味は対象外）。
+- **DA5 Surface View の旧い語彙**: Surface View の旧い語彙（`scatter`・`mindmap`・`logic-chart`・`timeline`）は、migration では書き換えずに運ぶ。対応が決まった時点で Command で直す。
+- **DA6 正本の木と alias**: 正本の配置は木とする。どの node も親はちょうど一つ（root を除く）で、scope への所属、権限、削除の範囲、既定の並び順はこの木だけで決まる。別の場所から使うときは alias を置く。alias は参照先の所属を変えない。木以外のトポロジーは、この木に alias と、役割つきの GraphLink を重ねたものとして読む。
   - 帰結: 親子 edge も GraphLink も自分の ID を持つ（一つの node に線が複数入るため、子の ID を線の key にできない）。
   - 使い分け: その場所に子として並べたいなら alias、関係があることだけ示すなら GraphLink。
-- **nodeType と details**: `nodeType` をスキーマの分岐にする。node のレコードは全種別で同じ最小の形にし、種別ごとの内容は details のレコードに置く。map の表示に要るのは node と Connection だけで、details は必要になったときに読む。種別を後から足すのは、details の形の定義を足すだけで、既存のデータを変換しない。
+- **DA7 nodeType と details**: `nodeType` をスキーマの分岐にする。node のレコードは全種別で同じ最小の形にし、種別ごとの内容は details のレコードに置く。map の表示に要るのは node と Connection だけで、details は必要になったときに読む。種別を後から足すのは、details の形の定義を足すだけで、既存のデータを変換しない。
 
 ## 3. レコードの種別
 
@@ -69,8 +70,8 @@ Connection  kind edge   親 root → 子 b   兄弟順キー "a1"
 
 - 導出値: `children[]`、scope の範囲、`rootNodeIds`、`relationIds`
 - 表示状態: 選択、camera、編集中の状態
-- 既定値と同じ欄
-- 作成時刻・更新時刻
+- 既定値と同じ欄（DA3）
+- 作成時刻・更新時刻（DA2）
 - 空の配置値、root の無い scope とその Surface View
 
 ### 不変条件（確定時に検査する）
@@ -143,7 +144,7 @@ details の形には版の番号を持たせる。形を変えたときに旧い
 |---|---|---|
 | `nodes[*]` の `text`・`collapsed` | node | 移す |
 | `nodes[*]` の `details` | details | 移す |
-| `nodeType: "folder"` | 種別 `text` と scope のレコード | 移す |
+| `nodeType: "folder"` | 種別 `text` と scope のレコード | 移す（DA4） |
 | `parentId` と `children[]` | edge の Connection。ID を新しく振る | 移す |
 | `attributes["m3e:edge-label"]`（15,971 件、32 種類の値） | Connection の `label`。`relationType` は未設定のまま | 移す。役割の設定は後で Command |
 | その他の `attributes[*]` | attribute | 移す |
@@ -152,10 +153,10 @@ details の形には版の番号を持たせる。形を変えたときに旧い
 | `linearNotesByScope` | linear-text。所属が解決しないものも残す | 移す |
 | `scopes[*].primarySurfaceId` | scope | 移す |
 | `surfaces[*]`、`nodeViews` の空でない値、`annotations` | それぞれのレコード | 移す |
-| 既定値と同じ欄 | — | 保存しない |
+| 既定値と同じ欄 | — | 保存しない（DA3） |
 | `scopes[*].rootNodeIds`・`relationIds` | — | 導出 |
 | 空の配置値、root の無い scope とその Surface View | — | 捨てる |
-| Surface View の旧い語彙、scope の root に置かれた Layout の設定、装飾の旧 attribute、文字列に詰めた JSON | そのまま | 値は変えない（1 節） |
+| Surface View の旧い語彙、scope の root に置かれた Layout の設定、装飾の旧 attribute、文字列に詰めた JSON | そのまま | 値は変えない（DA5 と 1 節） |
 
 第 1 段の `command_log` は旧い形（`parentId`、`children` の位置）で書かれているので、新しいレコードには再生できない。migration の時点を通し番号 0 とし、そこから新しい journal を始める。旧い記録は保管に回す。
 
@@ -165,23 +166,23 @@ details の形には版の番号を持たせる。形を変えたときに旧い
 
 形に入るので、migration の前に決めるもの。
 
-- **note と link の置き場**: `note`（907 件）と `link`（355 件）を details に入れ、node のレコードを ID・種別・ラベル・`collapsed` だけにするか。現行のコードは details と note を連結して表示しており、二つの区別は実質ない。推奨は入れること。
-- **HTML を載せる種別**: HTML を載せる種別の中身。データモデルの仕様は「raw HTML / raw CSS は node data に保存しない」「登録済みの種類だけを描画する」と定めている。推奨は、種別は立て、中身は登録済みの component の種類とその設定にすること。生の HTML を載せるなら、隔離して描画する仕組みと仕様の改訂が要る。
-- **型定義にない field**: 型定義にない field の仕分け。推奨は、仕様が保存を禁じた `scopeId`、表示状態の混入（`selectedId`）、行の保存時刻の写し、参照先と全件同値の `aliasOf` を捨て、取り込み元の時刻・`notes`・`nodeType` と食い違う `type`・取り込みの由来を「型定義にない field を入れる欄」に残すこと。`nodeType: "leaf"`（216 件）は `text` に寄せる。
-- **scope の label**: scope に保存された `label`（現在の本文と食い違うもの 408 件）。画面は読まないが、MCP が agent に返す内容に出ている。推奨は保存をやめ、root の node の本文から導出すること。
-- **Surface View の ID**: Surface View の ID に種別の名前が埋まっている（`surface:<node>:<kind>`）。種別を後で書き換えると ID と中身が食い違う。推奨は、migration で種別を含まない ID に振り直すこと。
-- **ID を振り直す範囲**: ID を全体一意にする決定の中身。推奨は、重複しているものと本文を含む ID だけを振り直し、旧 ID と新 ID の対応表を migration の成果物として残すこと。全部を振り直すと、map の外にある参照がすべて対応表頼みになる。
-- **GraphLink の port の auto**: GraphLink の port の `auto`。サーバは保存し、画面は読込み時に捨てている。推奨は「値が無い＝自動」に統一すること。
-- **Neo4j 上の持ち方**: 5 節の承認。特に attribute に `rev` を持たせない点。
-- **migration の対象範囲**（brief の未決にある）: 一度きりの migration の対象範囲。推奨は、この Mac の 3 workspace を対象にし、Final と cloud 上の複製は対象外、Vault に結び付いた map は移行するが書き込みは当面従来の全体保存を使うこと。個人の workspace に残る試験用の map は、前もって保管に回す。
+- **IA1 note と link の置き場**: `note`（907 件）と `link`（355 件）を details に入れ、node のレコードを ID・種別・ラベル・`collapsed` だけにするか。現行のコードは details と note を連結して表示しており、二つの区別は実質ない。推奨は入れること。
+- **IA2 HTML を載せる種別**: HTML を載せる種別の中身。データモデルの仕様は「raw HTML / raw CSS は node data に保存しない」「登録済みの種類だけを描画する」と定めている。推奨は、種別は立て、中身は登録済みの component の種類とその設定にすること。生の HTML を載せるなら、隔離して描画する仕組みと仕様の改訂が要る。
+- **IA3 型定義にない field**: 型定義にない field の仕分け。推奨は、仕様が保存を禁じた `scopeId`、表示状態の混入（`selectedId`）、行の保存時刻の写し、参照先と全件同値の `aliasOf` を捨て、取り込み元の時刻・`notes`・`nodeType` と食い違う `type`・取り込みの由来を「型定義にない field を入れる欄」に残すこと。`nodeType: "leaf"`（216 件）は `text` に寄せる。
+- **IA4 scope の label**: scope に保存された `label`（現在の本文と食い違うもの 408 件）。画面は読まないが、MCP が agent に返す内容に出ている。推奨は保存をやめ、root の node の本文から導出すること。
+- **IA5 Surface View の ID**: Surface View の ID に種別の名前が埋まっている（`surface:<node>:<kind>`）。種別を後で書き換えると ID と中身が食い違う。推奨は、migration で種別を含まない ID に振り直すこと。
+- **IA6 ID を振り直す範囲**: ID を全体一意にする決定の中身。推奨は、重複しているものと本文を含む ID だけを振り直し、旧 ID と新 ID の対応表を migration の成果物として残すこと。全部を振り直すと、map の外にある参照がすべて対応表頼みになる。
+- **IA7 GraphLink の port の auto**: GraphLink の port の `auto`。サーバは保存し、画面は読込み時に捨てている。推奨は「値が無い＝自動」に統一すること。
+- **IA8 Neo4j 上の持ち方**: 5 節の承認。特に attribute に `rev` を持たせない点。
+- **IA9 migration の対象範囲**（brief の未決にある）: 一度きりの migration の対象範囲。推奨は、この Mac の 3 workspace を対象にし、Final と cloud 上の複製は対象外、Vault に結び付いた map は移行するが書き込みは当面従来の全体保存を使うこと。個人の workspace に残る試験用の map は、前もって保管に回す。
 
 形に入らないので、migration の後でよいもの。
 
-- **relationType の語彙**: `relationType` の語彙（`consist-of` と `detail` から始める案）と、32 種類のラベルの対応。許される値の一覧はスキーマに焼き込まず、データとして持つ。
-- **混在を防ぐ規約**: 対象と説明の混在を防ぐ規約の強さ。新しい edge に役割を必須にするか、`detail` の下に `consist-of` を置けなくするか、scope ごとに強さを変えるか。必須にする場合、全ての書き込み経路が役割を選ぶので、既定の決め方（親の役割を引き継ぐ、取り込み元ごとに決める）を先に設計する。
-- **detail と details**: Connection の役割 `detail`、node の details、attribute `kind` の `detail`（42 件）・`subdetail`（11 件）の使い分けと名前。説明の付け方が三通り混在している。
-- **長いラベル**: 長いラベル（200 字超 1,729 件、複数行 371 件）を details へ移す整理。
-- **同じ関係の重複**（brief の未決にある）: 同じ関係が Final の map、Beta の複写、`docs/semantic` の 3 か所にある件。この migration では扱わず、map 上のものは通常の node と GraphLink として運ぶ。
+- **IA10 relationType の語彙**: `relationType` の語彙（`consist-of` と `detail` から始める案）と、32 種類のラベルの対応。許される値の一覧はスキーマに焼き込まず、データとして持つ。
+- **IA11 混在を防ぐ規約**: 対象と説明の混在を防ぐ規約の強さ。新しい edge に役割を必須にするか、`detail` の下に `consist-of` を置けなくするか、scope ごとに強さを変えるか。必須にする場合、全ての書き込み経路が役割を選ぶので、既定の決め方（親の役割を引き継ぐ、取り込み元ごとに決める）を先に設計する。
+- **IA12 detail と details**: Connection の役割 `detail`、node の details、attribute `kind` の `detail`（42 件）・`subdetail`（11 件）の使い分けと名前。説明の付け方が三通り混在している。
+- **IA13 長いラベル**: 長いラベル（200 字超 1,729 件、複数行 371 件）を details へ移す整理。
+- **IA14 同じ関係の重複**（brief の未決にある）: 同じ関係が Final の map、Beta の複写、`docs/semantic` の 3 か所にある件。この migration では扱わず、map 上のものは通常の node と GraphLink として運ぶ。
 
 ## 8. 残る問題
 

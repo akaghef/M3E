@@ -33,7 +33,7 @@ Acceptance criteria and the verdict come from independent evidence (a regression
 
 This file is the single instruction source for every AI agent in this repository. `CLAUDE.md` contains only the line `@AGENTS.md`; it holds no rules of its own, and `scripts/ops/check-persistent-rule-gate.sh` rejects anything else in it. Put a new rule here, written runtime-neutrally, or in the document this file routes to.
 
-Reference IDs follow the global rule: they are addresses inside one conversation and are not written into committed files. Do not mint tracking numbers (decision, issue, option, requirement or proposal numbers) in documents; identify a decision by its heading and date. Older documents still carry such numbers; leave them until that document is next edited, and do not extend their series.
+Reference IDs follow the global rule: `<domain><series><number>` with the domain letter chosen by content (a decision is `DA1`, an issue `IA1`, a question `QA1`), valid inside the conversation that minted them. Working documents written in that conversation may carry them; material made for other people does not. No consistency across conversations or documents is required: do not scan the repository for a maximum, and do not extend the continuous tracking series (the two-letter prefixes followed by a running number) that older documents carry. Leave those older numbers where they are.
 
 ## Spec-Driven Harness
 
