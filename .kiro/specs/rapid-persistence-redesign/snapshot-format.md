@@ -11,7 +11,7 @@
 
 ## 2. レコード
 
-`rev` は全レコードで整数。移行直後は 0。
+`rev` は、表に `rev` とあるレコードで整数。移行直後は 0。`commit`・`idMap`・`nodeView`・1 行目は `rev` を持たない。
 
 | kind | key | 欄 |
 |---|---|---|
@@ -23,7 +23,7 @@
 | `linearText` | `scopeId` または `mapId`＋`orphanKey` | `mapId`、`text`、`anchorNodeId`?、`rev` |
 | `surface` | `id` | `mapId`、`scopeId`、`surfaceKind`、`layout`、`surfaceView`?、`rev` |
 | `nodeView` | `surfaceId`＋`nodeId` | `mapId`、`x`?、`y`?、`flowCol`?、`flowRow`?、`shape`? |
-| `annotation` | `id` | `mapId`、`scopeId`?、ほか現行の欄をそのまま（`opacity`、`createdAt`、`text`、`fontSize`、`fontWeight`、`variant` を含む）、`extra`?、`rev` |
+| `annotation` | `id` | `mapId`、`scopeId`?、`annotationKind`（現行の `kind`。レコードの `kind` と衝突するため名前を変える）、ほか現行の欄をそのまま（`opacity`、`createdAt`、`text`、`fontSize`、`fontWeight`、`variant` を含む）、`extra`?、`rev` |
 | `relationTypeDef` | `name` | `label`?、`description`?、`reads`（`source-to-target` / `target-to-source`）、`rev` |
 | `prefix` | `prefix` | `uri`、`rev` |
 | `account` | `id` | `accountKind`（`ai-agent` / `human` / `system`）、`displayName`、`externalIds`?、`roles`?、`rev` |

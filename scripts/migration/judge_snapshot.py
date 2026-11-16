@@ -475,7 +475,8 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
             for key, value in ann.items():
                 if key in ("id", "scopeId") or value is None:
                     continue
-                if rec.get(key) != value:
+                # the current `kind` (pen / text) collides with the record kind
+                if rec.get("annotationKind" if key == "kind" else key) != value:
                     problems.add("annotation.field", where, key)
             if ann.get("scopeId") is not None:
                 sid = scope_id_for(ann["scopeId"])
