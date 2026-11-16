@@ -8,9 +8,8 @@
 // Row columns are kept in the form the SQLite table has (tags and source as JSON text, archived
 // and pinned as 0 / 1), which is also what a snapshot made from SQLite carries.
 
-import { randomUUID } from "crypto";
 import type { MapCommand, FieldConflict, RecordChange } from "../../shared/map_changes";
-import type { AppState, SavedMap, TreeNode } from "../../shared/types";
+import type { AppState, SavedMap } from "../../shared/types";
 import type { MapSource, MapSummaryInternal } from "../rapid_mvp";
 import type { CommitFailure as StoreCommitFailure, MapColumns, RecordWorkspaceStore } from "./store";
 
@@ -123,19 +122,14 @@ export function storeListMaps(store: RecordWorkspaceStore, includeArchived: bool
   for (const entry of store.listMaps()) {
     const archived = isSet(entry.archived);
     if (archived && !includeArchived) continue;
-    const state = store.getMapRow(entry.id).state;
-    const nodes = (state?.nodes ?? {}) as Record<string, TreeNode>;
-    let charCount = 0;
-    for (const node of Object.values(nodes)) {
-      charCount += (node.text?.length ?? 0) + (node.details?.length ?? 0) + (node.note?.length ?? 0);
-    }
-    const rootText = state?.rootId && nodes[state.rootId] && typeof nodes[state.rootId]!.text === "string" ? nodes[state.rootId]!.text.trim() : "";
+    // Counts and root text come from the store's own bookkeeping; no map state is copied for the list.
+    const rootText = entry.rootText.trim();
     const summary: MapSummaryInternal = {
       id: entry.id,
       label: rootText.length > 0 ? rootText : "Untitled",
       savedAt: entry.savedAt,
-      nodeCount: Object.keys(nodes).length,
-      charCount,
+      nodeCount: entry.nodeCount,
+      charCount: entry.charCount,
       tags: parseTags(entry.tags),
       archived,
       pinned: isSet(entry.pinned),
@@ -170,52 +164,15 @@ export function storeDeleteMap(store: RecordWorkspaceStore, mapId: string): void
 
 // ---------------------------------------------------------------- duplicate
 
-/** String fields that hold what a person wrote; never read as ids. */
-const CONTENT_FIELDS = new Set(["text", "details", "note", "label", "aliasLabel", "targetSnapshotLabel", "link", "d"]);
-
 /**
- * A copy of the state in which every node, GraphLink, annotation and surface has a new id and
- * every reference follows. The store keeps these ids unique across the maps of a workspace, so a
- * copy of a map cannot keep them. Scope keys (`scope:<root node id>`) and surface ids that are
- * built from a node id follow the node.
+ * The copy is saved with the ids of its source, as the SQLite copy is. The store keeps ids unique
+ * across the maps of a workspace: it gives every colliding id of the copy a stored id of its own
+ * and keeps answering with the ids of the source (see ./id_alias.ts).
  */
-export function stateWithFreshIds(source: AppState): AppState {
-  const ids = new Map<string, string>();
-  const stamp = Date.now();
-  const fresh = (prefix: string): string => `${prefix}_${stamp}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-  for (const id of Object.keys(source.nodes ?? {})) ids.set(id, fresh("n"));
-  for (const id of Object.keys(source.links ?? {})) if (!ids.has(id)) ids.set(id, fresh("link"));
-  for (const id of Object.keys(source.annotations ?? {})) if (!ids.has(id)) ids.set(id, fresh("ann"));
-
-  const token = (value: string): string => {
-    const direct = ids.get(value);
-    if (direct !== undefined) return direct;
-    if (!value.includes(":")) return value;
-    return value.split(":").map((part) => ids.get(part) ?? part).join(":");
-  };
-  // A surface id that names no node (and so did not change above) gets a new id of its own.
-  for (const id of Object.keys(source.surfaces ?? {})) {
-    if (!ids.has(id) && token(id) === id) ids.set(id, fresh("surface"));
-  }
-
-  const copy = (value: unknown, field: string | null): unknown => {
-    if (typeof value === "string") return field !== null && CONTENT_FIELDS.has(field) ? value : token(value);
-    if (Array.isArray(value)) return value.map((item) => copy(item, field));
-    if (typeof value !== "object" || value === null) return value;
-    const out: Dict = {};
-    for (const [key, item] of Object.entries(value as Dict)) {
-      // The values of linearNotesByScope are text; its keys are scope roots.
-      out[token(key)] = field === "linearNotesByScope" ? item : copy(item, key);
-    }
-    return out;
-  };
-  return copy(JSON.parse(JSON.stringify(source)), null) as AppState;
-}
-
 export function storeDuplicateMap(store: RecordWorkspaceStore, sourceId: string, newId: string): void {
   if (!store.hasMap(sourceId)) throw new Error("Map not found.");
   const row = store.getMapRow(sourceId);
-  const result = store.saveWholeMap(newId, stateWithFreshIds(row.state), SERVER_ISSUER, "duplicate-map");
+  const result = store.saveWholeMap(newId, row.state, SERVER_ISSUER, "duplicate-map");
   if (!result.ok) throw failed(result, "The record store refused the copy of the map.");
   // The SQLite copy carries the tags and starts neither archived nor pinned.
   if (row.tags !== undefined && row.tags !== null) store.setMapColumns(newId, { tags: row.tags }, SERVER_ISSUER);

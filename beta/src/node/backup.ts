@@ -3,7 +3,8 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import { recordStoreDir } from "./record_store/active";
+import { activeRecordStore } from "./record_store/active";
+import { COMMIT_INDEX_FILE, JOURNAL_FILE, SNAPSHOT_FILE } from "./record_store/store";
 
 /**
  * SQLite snapshot backup module.
@@ -15,6 +16,10 @@ import { recordStoreDir } from "./record_store/active";
  */
 
 const BACKUP_SUFFIX = ".sqlite";
+/** Record store backups are directories: `M3E_records_<YYYYMMDD_HHmmss>` (a `_<n>` follows when the name is taken). */
+const RECORD_BACKUP_PREFIX = "M3E_records_";
+const RECORD_BACKUP_PATTERN = /^M3E_records_\d{8}_\d{6}(_\d+)?$/;
+const RECORD_BACKUP_FILES = new Set([SNAPSHOT_FILE, JOURNAL_FILE, COMMIT_INDEX_FILE]);
 
 const DEFAULT_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const DEFAULT_MAX_GENERATIONS = 10;
@@ -43,10 +48,17 @@ function ensureDir(dir: string): void {
  * Throws only if both primary and fallback strategies fail.
  */
 export async function createBackup(dbPath: string, backupDir: string): Promise<string> {
-  if (recordStoreDir() !== null) {
-    // Record store (M3E_STORE_DIR): the maps are not in the SQLite file, so there is nothing to snapshot here.
-    console.log("[backup] Skipped: maps are in the record store, not in SQLite.");
-    return "";
+  const store = activeRecordStore();
+  if (store) {
+    // Record store (M3E_STORE_DIR): the maps are in its snapshot and journal, not in the SQLite file.
+    // The store copies the pair in one step, so the copy is one consistent commit.
+    ensureDir(backupDir);
+    const base = path.join(backupDir, `${RECORD_BACKUP_PREFIX}${formatTimestamp(new Date())}`);
+    let target = base;
+    for (let n = 2; fs.existsSync(target); n += 1) target = `${base}_${n}`;
+    const files = store.backupTo(target);
+    console.log(`[backup] Created: ${target} (${files.join(", ")}) at commit ${store.seq()}`);
+    return target;
   }
   ensureDir(backupDir);
 
@@ -93,6 +105,8 @@ export function pruneOldBackups(backupDir: string, maxGenerations: number): void
     .filter((name) => name.endsWith(BACKUP_SUFFIX) && /^.+_\d{8}_\d{6}\.sqlite$/.test(name))
     .sort(); // lexicographic sort = chronological for YYYYMMDD_HHmmss
 
+  pruneOldRecordBackups(backupDir, maxGenerations);
+
   const excess = files.length - maxGenerations;
   if (excess <= 0) {
     return;
@@ -103,6 +117,34 @@ export function pruneOldBackups(backupDir: string, maxGenerations: number): void
     const fullPath = path.join(backupDir, name);
     try {
       fs.unlinkSync(fullPath);
+      console.log(`[backup] Pruned old backup: ${name}`);
+    } catch (err) {
+      console.error(`[backup] Failed to prune ${name}: ${(err as Error).message}`);
+    }
+  }
+}
+
+/**
+ * The same for record store backups (directories). Only the files a backup is made of are
+ * removed; a directory that holds anything else is left as it is.
+ */
+function pruneOldRecordBackups(backupDir: string, maxGenerations: number): void {
+  const byTime = (name: string): string => name.replace(/^(M3E_records_\d{8}_\d{6})(?:_(\d+))?$/, (_all, stamp: string, n?: string) => `${stamp}_${(n ?? "1").padStart(6, "0")}`);
+  const dirs = fs
+    .readdirSync(backupDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && RECORD_BACKUP_PATTERN.test(entry.name))
+    .map((entry) => entry.name)
+    .sort((a, b) => (byTime(a) < byTime(b) ? -1 : byTime(a) > byTime(b) ? 1 : 0));
+  for (const name of dirs.slice(0, Math.max(0, dirs.length - maxGenerations))) {
+    const fullPath = path.join(backupDir, name);
+    try {
+      const content = fs.readdirSync(fullPath);
+      if (content.some((file) => !RECORD_BACKUP_FILES.has(file))) {
+        console.error(`[backup] Not pruned (holds other files): ${name}`);
+        continue;
+      }
+      for (const file of content) fs.unlinkSync(path.join(fullPath, file));
+      fs.rmdirSync(fullPath);
       console.log(`[backup] Pruned old backup: ${name}`);
     } catch (err) {
       console.error(`[backup] Failed to prune ${name}: ${(err as Error).message}`);
@@ -124,10 +166,6 @@ export function startAutoBackup(
   intervalMs?: number,
   maxGenerations?: number,
 ): void {
-  if (recordStoreDir() !== null) {
-    console.log("[backup] Auto-backup is off: maps are in the record store, not in SQLite.");
-    return;
-  }
   const interval = intervalMs ?? (Number(process.env.M3E_BACKUP_INTERVAL_MS) || DEFAULT_INTERVAL_MS);
   const maxGen = maxGenerations ?? (Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || DEFAULT_MAX_GENERATIONS);
 

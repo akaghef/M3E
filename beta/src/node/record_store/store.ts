@@ -21,9 +21,24 @@ import { fromSnapshot } from "../../shared/record_model/from_snapshot";
 import { checkInvariants, type InvariantProblem } from "../../shared/record_model/invariants";
 import { parseSnapshot, serializeSnapshot, sortRecords } from "../../shared/record_model/jsonl";
 import { MapProjector, recordRk, sameJson, type ProjectionResult } from "../../shared/record_model/steady";
-import type { CommitRecord, MapRecord, SnapshotHeader, SnapshotRecord, SnapshotRow } from "../../shared/record_model/types";
+import { compareStrings, type CommitRecord, type IdMapRecord, type MapRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
 import type { AppState } from "../../shared/types";
 import { applyChangesReduced } from "./apply_reduced";
+import {
+  ALIAS_KINDS,
+  aliasId,
+  emptyAliasTable,
+  idsCreatedBy,
+  idsOfState,
+  translateChanges,
+  translateConflicts,
+  translateState,
+  translatorOf,
+  type AliasKind,
+  type AliasTable,
+  type IdTranslator,
+  type IntroducedIds,
+} from "./id_alias";
 import { validationErrorCount } from "./validate";
 import {
   EngineQueue,
@@ -31,6 +46,7 @@ import {
   assertNeo4jUsable,
   type EngineApplier,
   type EngineCommit,
+  type EngineRetryOptions,
   type Neo4jOptions,
   type RecordOp,
 } from "./engine";
@@ -40,6 +56,8 @@ export const JOURNAL_FILE = "journal.jsonl";
 export const COMMIT_INDEX_FILE = "commit-index.json";
 /** Command ids kept by `compact()` for idempotent retries: the most recent ones, up to this many. */
 export const COMMAND_INDEX_RETAIN = 100000;
+/** Commits the storage engine may be behind before commits are refused with ENGINE_BEHIND. */
+export const DEFAULT_ENGINE_BACKLOG_LIMIT = 10000;
 
 export interface CommitSuccess {
   ok: true;
@@ -78,6 +96,8 @@ export interface MapListEntry extends MapColumns {
   savedAt: string;
   nodeCount: number;
   rootText: string;
+  /** Characters of every node's text, details and note together. */
+  charCount: number;
 }
 
 export interface OpenOptions {
@@ -88,6 +108,13 @@ export interface OpenOptions {
   applier?: EngineApplier;
   /** Build the state of every map while opening (default). With false, a map is built on first use. */
   warm?: boolean;
+  /**
+   * Commits the storage engine may be behind before commits are refused with ENGINE_BEHIND.
+   * Default: M3E_ENGINE_BACKLOG_LIMIT, or 10,000.
+   */
+  engineBacklogLimit?: number;
+  /** Waits between the engine's retries after a failure: first and longest, in milliseconds. */
+  engineRetry?: EngineRetryOptions;
 }
 
 /** One line of `journal.jsonl`. */
@@ -104,8 +131,8 @@ export interface JournalLine {
   changes?: RecordChange[];
   /** sha256 of the canonical JSON of `changes`; compared when the same command id comes again. */
   changesHash?: string;
-  /** Set on the commits that delete or rename a map. */
-  mapOp?: "delete" | "rename";
+  /** Set on the commits that delete or rename a map, or change only its row columns (tags, archived, pinned, source). */
+  mapOp?: "delete" | "rename" | "columns";
   newMapId?: string;
   ops: RecordOp[];
 }
@@ -122,8 +149,19 @@ interface MapEntry {
     validationErrors: number;
     problems: Set<string>;
   };
-  nodeCount?: number;
+  /** Node count and character count of the map, counted from the records; dropped by every content commit. */
+  counts?: { nodes: number; chars: number };
+  /** `idMap` records with `alias: true` as lookup tables; rebuilt when `idMaps` changes. */
+  aliases?: { size: number; in: AliasTable; out: AliasTable };
 }
+
+/** Ids a commit is about to renumber: the `idMap` records to write and the tables that include them. */
+interface AliasPlan {
+  records: IdMapRecord[];
+  in: IdTranslator;
+}
+
+const ALIAS_RECORD_RK: Record<Exclude<AliasKind, "surface">, string> = { node: "node", graphlink: "connection", annotation: "annotation" };
 
 interface CommandEntry {
   seq: number;
@@ -323,6 +361,8 @@ export class RecordWorkspaceStore {
   private journalFd: number | undefined;
   private journalSize = 0;
   private engine: EngineQueue | undefined;
+  private readonly engineBacklogLimit: number;
+  private readonly engineRetry: EngineRetryOptions | undefined;
   private closed = false;
 
   /** Writes `snapshot.jsonl` and an empty `journal.jsonl`. Refuses a directory that is not empty. */
@@ -364,6 +404,10 @@ export class RecordWorkspaceStore {
   private constructor(dir: string, options: OpenOptions) {
     this.dir = dir;
     this.now = options.now ?? (() => new Date().toISOString());
+    const envLimit = Number(process.env.M3E_ENGINE_BACKLOG_LIMIT);
+    const limit = options.engineBacklogLimit ?? (Number.isFinite(envLimit) && envLimit > 0 ? envLimit : DEFAULT_ENGINE_BACKLOG_LIMIT);
+    this.engineBacklogLimit = Math.max(1, Math.floor(limit));
+    this.engineRetry = options.engineRetry;
 
     const snapshotPath = path.join(dir, SNAPSHOT_FILE);
     const journalPath = path.join(dir, JOURNAL_FILE);
@@ -454,16 +498,12 @@ export class RecordWorkspaceStore {
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .map((entry) => {
         const map = this.mapRecord(entry);
-        if (entry.nodeCount === undefined) {
-          let count = 0;
-          for (const record of entry.records.values()) if (record.kind === "node") count += 1;
-          entry.nodeCount = count;
-        }
+        const counts = this.countsOf(entry);
         const root = map.rootNodeId !== undefined ? entry.records.get(`node|${map.rootNodeId}`) : undefined;
         const rootText = root && root.kind === "node" && typeof root.text === "string" ? root.text : "";
         const columns: MapColumns = {};
         this.copyColumns(columns, map);
-        return { id: entry.id, savedAt: this.savedAtOf(entry), ...columns, nodeCount: entry.nodeCount, rootText };
+        return { id: entry.id, savedAt: this.savedAtOf(entry), ...columns, nodeCount: counts.nodes, rootText, charCount: counts.chars };
       });
   }
 
@@ -475,12 +515,15 @@ export class RecordWorkspaceStore {
   getMapRow(mapId: string): MapRow {
     this.assertOpen();
     const entry = this.requireMap(mapId);
-    const row: MapRow = { id: mapId, state: jsonClone(this.warm(entry).state), savedAt: this.savedAtOf(entry) };
+    const row: MapRow = { id: mapId, state: this.clientState(entry), savedAt: this.savedAtOf(entry) };
     this.copyColumns(row, this.mapRecord(entry));
     return row;
   }
 
-  /** Changes on every commit that touched the map: the sequence number of the last such commit. */
+  /**
+   * Changes on every commit that changed the content of the map: the sequence number of the last
+   * such commit. A commit that only sets row columns (tags, archived, pinned, source) leaves it.
+   */
   revisionOf(mapId: string): string {
     this.requireMap(mapId);
     return String(this.mapSeq.get(mapId) ?? 0);
@@ -498,6 +541,10 @@ export class RecordWorkspaceStore {
     return readJournal(path.join(this.dir, JOURNAL_FILE)).lines.find((line) => line.seq === known.seq) ?? null;
   }
 
+  /**
+   * `appliedSeq`: the last commit the storage engine holds (the journal position when there is no
+   * engine). `error`: why the engine is behind, while it is; the applier keeps retrying.
+   */
   engineStatus(): { appliedSeq: number; error?: string } {
     if (!this.engine) return { appliedSeq: this.currentSeq };
     const status: { appliedSeq: number; error?: string } = { appliedSeq: this.engine.appliedSeq };
@@ -505,11 +552,50 @@ export class RecordWorkspaceStore {
     return status;
   }
 
+  /**
+   * Copies `snapshot.jsonl`, `journal.jsonl` and, when it exists, `commit-index.json` into
+   * `targetDir` (created; must be empty or absent). Nothing is compacted. The copy is taken in one
+   * synchronous step: commits and compaction are synchronous too, so no commit can fall between
+   * the files, and the journal copy ends at the last complete commit line. The directory can be
+   * opened with `RecordWorkspaceStore.open`. Returns the names of the files copied.
+   */
+  backupTo(targetDir: string): string[] {
+    this.assertOpen();
+    assertNotLiveM3e(targetDir);
+    if (path.resolve(targetDir) === path.resolve(this.dir)) throw new Error("The backup directory is the store directory itself.");
+    if (fs.existsSync(targetDir)) {
+      if (!fs.statSync(targetDir).isDirectory()) throw new Error(`Not a directory: ${targetDir}`);
+      if (fs.readdirSync(targetDir).length > 0) throw new Error(`Refusing to back up into a directory that is not empty: ${targetDir}`);
+    } else {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const copied: string[] = [];
+    const copy = (name: string, length?: number): void => {
+      const source = path.join(this.dir, name);
+      if (!fs.existsSync(source)) return;
+      let content = fs.readFileSync(source);
+      if (length !== undefined && content.length > length) content = content.subarray(0, length);
+      const fd = fs.openSync(path.join(targetDir, name), "wx");
+      try {
+        fs.writeSync(fd, content);
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      copied.push(name);
+    };
+    // The index may be ahead of the snapshot but never behind it, so it goes first here as well.
+    copy(COMMIT_INDEX_FILE);
+    copy(SNAPSHOT_FILE);
+    copy(JOURNAL_FILE, this.journalSize);
+    return copied;
+  }
+
   // ---------------------------------------------------------------- commits
 
   commitMapCommand(mapId: string, command: MapCommand, issuer: string, expectedRevision?: string): CommitResult {
     this.assertOpen();
-    if (this.engine?.error !== undefined) return this.engineBehind();
+    if (this.engineTooFarBehind()) return this.engineBehind();
     if (!command || typeof command !== "object" || typeof command.commandId !== "string") {
       return this.failure("INVALID_COMMAND", null, "Command must be an object with a commandId.");
     }
@@ -538,18 +624,17 @@ export class RecordWorkspaceStore {
     } catch {
       return this.failure("INVALID_COMMAND", this.currentOf(entry), "changes cannot be written as JSON.");
     }
-    return this.commitChanges(mapId, entry, changes, issuer, {
-      commandId: command.commandId,
-      intent: command.intent,
-      actor: command.actor,
-      provenance: command.provenance,
-    });
+    const meta = { commandId: command.commandId, intent: command.intent, actor: command.actor, provenance: command.provenance };
+    // The client names records by its own ids; the store may hold some of them under another id.
+    const plan = this.planAliases(entry, mapId, idsCreatedBy(changes));
+    if (plan === null) return this.commitChanges(mapId, entry, changes, issuer, meta);
+    return this.commitChanges(mapId, entry, translateChanges(changes, plan.in), issuer, meta, { aliases: plan.records, sent: changes });
   }
 
   /** Saves a whole state: the difference to the current state goes through the commit path. Creates the map if absent. */
   saveWholeMap(mapId: string, state: AppState, issuer: string, intent?: string): CommitResult {
     this.assertOpen();
-    if (this.engine?.error !== undefined) return this.engineBehind();
+    if (this.engineTooFarBehind()) return this.engineBehind();
     const entry = this.maps.get(mapId);
     let next: AppState;
     try {
@@ -560,6 +645,10 @@ export class RecordWorkspaceStore {
     if (typeof next !== "object" || next === null || Array.isArray(next)) {
       return this.failure("INVALID_STATE", entry ? this.currentOf(entry) : null, "state must be an object.");
     }
+    // Ids of this state that another map already holds get a stored id of their own; the state
+    // is committed with the stored ids, and the client keeps seeing the ids it sent.
+    const plan = this.planAliases(entry, mapId, idsOfState(next));
+    if (plan !== null) next = translateState(next, plan.in);
     const changes = diffState(entry ? this.warm(entry).state : {}, next);
     if (entry && changes.length === 0) {
       return { ok: true, savedAt: this.savedAtOf(entry), seq: this.mapSeq.get(mapId) ?? 0, replayed: false };
@@ -568,13 +657,13 @@ export class RecordWorkspaceStore {
       commandId: `save:${randomUUID()}`,
       intent: intent ?? (entry ? "save-map" : "create-map"),
       actor: { kind: "system", id: issuer },
-    });
+    }, plan !== null ? { aliases: plan.records } : undefined);
   }
 
   /** Sets the row columns of a map. A key that is present with null or undefined removes the column. */
   setMapColumns(mapId: string, columns: MapColumns, issuer: string): void {
     this.assertOpen();
-    this.assertEngineCurrent();
+    this.assertEngineNotTooFarBehind();
     const entry = this.requireMap(mapId);
     const warm = this.warm(entry);
     const row = this.rowOf(entry, warm.state) as unknown as Dict;
@@ -592,7 +681,9 @@ export class RecordWorkspaceStore {
       warm.state = result.state;
       return;
     }
-    this.append({ seq, issuer, committedAt: this.now(), mapId, intent: "set-map-columns", ops });
+    // A journal line and a commit number of its own, but not a change of the map's content:
+    // the saved-at time and the revision of the map stay as they are.
+    this.append({ seq, issuer, committedAt: this.now(), mapId, intent: "set-map-columns", mapOp: "columns", ops });
     entry.records = result.records;
     warm.state = result.state;
   }
@@ -600,7 +691,7 @@ export class RecordWorkspaceStore {
   /** Deletes the map and every record that belongs to it. */
   deleteMap(mapId: string, issuer: string): void {
     this.assertOpen();
-    this.assertEngineCurrent();
+    this.assertEngineNotTooFarBehind();
     const entry = this.requireMap(mapId);
     const ops: RecordOp[] = [];
     for (const rk of entry.records.keys()) ops.push({ op: "delete", rk });
@@ -612,7 +703,7 @@ export class RecordWorkspaceStore {
   /** Gives the map another id. Node, connection, scope and surface ids stay as they are. */
   renameMapId(oldId: string, newId: string, issuer: string): void {
     this.assertOpen();
-    this.assertEngineCurrent();
+    this.assertEngineNotTooFarBehind();
     const entry = this.requireMap(oldId);
     if (typeof newId !== "string" || newId === "") throw new Error("The new map id is empty.");
     if (newId === oldId) return;
@@ -698,7 +789,7 @@ export class RecordWorkspaceStore {
       seq: () => this.currentSeq,
       records: () => [this.header(), ...this.all.values()],
       commitsAfter: (seq) => this.commitsAfter(seq),
-    });
+    }, this.engineRetry);
     void this.engine.pump();
   }
 
@@ -712,16 +803,31 @@ export class RecordWorkspaceStore {
     if (this.closed) throw new Error("The record store is closed.");
   }
 
-  private assertEngineCurrent(): void {
-    if (this.engine?.error !== undefined) {
-      const error = new Error(`ENGINE_BEHIND: ${this.engine.error}`) as Error & { code: string };
+  /**
+   * The journal is the source of truth and the engine is derived from it, so a commit is accepted
+   * while the engine is behind. Only when it is behind by more than the limit is a commit refused:
+   * the backlog must not grow without bound while nobody notices.
+   */
+  private engineTooFarBehind(): boolean {
+    return this.engine !== undefined && this.engine.backlog(this.currentSeq) >= this.engineBacklogLimit;
+  }
+
+  private engineBehindMessage(): string {
+    const backlog = this.engine ? this.engine.backlog(this.currentSeq) : 0;
+    const why = this.engine?.error !== undefined ? `: ${this.engine.error}` : ".";
+    return `the storage engine is ${backlog} commits behind (limit ${this.engineBacklogLimit})${why}`;
+  }
+
+  private assertEngineNotTooFarBehind(): void {
+    if (this.engineTooFarBehind()) {
+      const error = new Error(`ENGINE_BEHIND: ${this.engineBehindMessage()}`) as Error & { code: string };
       error.code = "ENGINE_BEHIND";
       throw error;
     }
   }
 
   private engineBehind(): CommitFailure {
-    return this.failure("ENGINE_BEHIND", null, this.engine?.error);
+    return this.failure("ENGINE_BEHIND", null, this.engineBehindMessage());
   }
 
   private failure(code: CommitFailure["code"], current: CommitFailure["current"], message?: string, conflicts: FieldConflict[] = []): CommitFailure {
@@ -763,7 +869,87 @@ export class RecordWorkspaceStore {
   }
 
   private currentOf(entry: MapEntry): { savedAt: string; state: object } {
-    return { savedAt: this.savedAtOf(entry), state: jsonClone(this.warm(entry).state) };
+    return { savedAt: this.savedAtOf(entry), state: this.clientState(entry) };
+  }
+
+  /** A deep copy of the map's state with the ids the client uses. */
+  private clientState(entry: MapEntry): AppState {
+    const state = jsonClone(this.warm(entry).state);
+    const aliases = this.aliasesOf(entry);
+    return aliases.size === 0 ? state : translateState(state, translatorOf(aliases.out));
+  }
+
+  private countsOf(entry: MapEntry): { nodes: number; chars: number } {
+    if (entry.counts) return entry.counts;
+    let nodes = 0;
+    let chars = 0;
+    const length = (value: unknown): number => (typeof value === "string" ? value.length : 0);
+    for (const record of entry.records.values()) {
+      if (record.kind === "node") {
+        nodes += 1;
+        chars += length(record.text);
+      } else if (record.kind === "details") {
+        chars += length(record.body) + length(record.note);
+      }
+    }
+    entry.counts = { nodes, chars };
+    return entry.counts;
+  }
+
+  private aliasesOf(entry: MapEntry): NonNullable<MapEntry["aliases"]> {
+    if (entry.aliases) return entry.aliases;
+    const aliases = { size: 0, in: emptyAliasTable(), out: emptyAliasTable() };
+    for (const record of entry.idMaps.values()) {
+      if (record.kind !== "idMap" || record.alias !== true) continue;
+      aliases.in[record.recordKind].set(record.oldId, record.newId);
+      aliases.out[record.recordKind].set(record.newId, record.oldId);
+      aliases.size += 1;
+    }
+    entry.aliases = aliases;
+    return aliases;
+  }
+
+  /**
+   * Decides the stored ids for the client ids a commit brings into the map. An id keeps its
+   * alias when it has one. Otherwise it is kept as it is, unless a record of another map (or a
+   * record of another kind) already holds it; then it gets the deterministic id of the migration.
+   * Order as in the migration: nodes, GraphLinks, annotations, each in string order of the id.
+   * Returns null when the map has no alias and needs none (nothing is translated then).
+   */
+  private planAliases(entry: MapEntry | undefined, mapId: string, ids: IntroducedIds): AliasPlan | null {
+    const known = entry ? this.aliasesOf(entry) : undefined;
+    const records: IdMapRecord[] = [];
+    const table = emptyAliasTable();
+    const used = new Set<string>();
+    const taken = (id: string): boolean => used.has(id) || this.idIndex.has(id) || this.all.has(`surface|${id}`);
+    const assign = (kind: AliasKind, oldId: string): void => {
+      let attempt = 0;
+      let newId = aliasId(this.workspaceId, mapId, kind, oldId);
+      while (taken(newId)) newId = aliasId(this.workspaceId, mapId, kind, oldId, (attempt += 1));
+      used.add(newId);
+      table[kind].set(oldId, newId);
+      records.push({ kind: "idMap", recordKind: kind, mapId, oldId, newId, alias: true });
+    };
+    for (const kind of ALIAS_KINDS) {
+      for (const oldId of [...new Set(ids[kind])].sort(compareStrings)) {
+        if (known?.in[kind].has(oldId)) continue;
+        if (kind === "surface") {
+          const holder = this.all.get(`surface|${oldId}`) as { mapId?: unknown } | undefined;
+          if (holder !== undefined && holder.mapId !== mapId) assign(kind, oldId);
+          continue;
+        }
+        const ownerRk = this.idIndex.get(oldId);
+        const owner = ownerRk !== undefined ? (this.all.get(ownerRk) as { mapId?: unknown } | undefined) : undefined;
+        const heldElsewhere = owner !== undefined && (owner.mapId !== mapId || ownerRk !== `${ALIAS_RECORD_RK[kind]}|${oldId}`);
+        if (heldElsewhere || used.has(oldId)) assign(kind, oldId);
+        else used.add(oldId);
+      }
+    }
+    if (records.length === 0 && (known === undefined || known.size === 0)) return null;
+    if (known) {
+      for (const kind of ALIAS_KINDS) for (const [oldId, newId] of known.in[kind]) table[kind].set(oldId, newId);
+    }
+    return { records, in: translatorOf(table) };
   }
 
   private rowOf(entry: MapEntry, state: object): SnapshotRow {
@@ -825,9 +1011,23 @@ export class RecordWorkspaceStore {
     changes: RecordChange[],
     issuer: string,
     meta: { commandId: string; intent: string; actor?: MapCommand["actor"]; provenance?: unknown },
+    /**
+     * `changes` use stored ids. `aliases`: the `idMap` records this commit adds. `sent`: the
+     * changes with the ids the client used, kept in the journal in place of `changes`.
+     */
+    translated?: { aliases: IdMapRecord[]; sent?: RecordChange[] },
   ): CommitResult {
     const warm = entry ? this.warm(entry) : undefined;
     const current = (): CommitFailure["current"] => (entry ? this.currentOf(entry) : null);
+    const clientConflicts = (conflicts: FieldConflict[]): FieldConflict[] => {
+      const known = entry ? this.aliasesOf(entry) : undefined;
+      const added = translated?.aliases ?? [];
+      if ((known === undefined || known.size === 0) && added.length === 0) return conflicts;
+      const out = emptyAliasTable();
+      if (known) for (const kind of ALIAS_KINDS) for (const [newId, oldId] of known.out[kind]) out[kind].set(newId, oldId);
+      for (const record of added) out[record.recordKind].set(record.newId, record.oldId);
+      return translateConflicts(conflicts, translatorOf(out));
+    };
 
     // A scope's label, root list and relation list are derived from the tree and are not
     // stored, so they take no part in compare-and-set: a client holding an older derived
@@ -841,7 +1041,7 @@ export class RecordWorkspaceStore {
     } catch (error) {
       return this.failure("INVALID_COMMAND", current(), (error as Error).message);
     }
-    if (!applied.ok) return this.failure("CONFLICT", current(), undefined, applied.conflicts);
+    if (!applied.ok) return this.failure("CONFLICT", current(), undefined, clientConflicts(applied.conflicts));
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
     const validationErrors = validationErrorCount(applied.state);
@@ -908,9 +1108,14 @@ export class RecordWorkspaceStore {
     const line = { seq, commandId: meta.commandId, issuer, committedAt, mapId, intent: meta.intent } as JournalLine;
     if (meta.actor !== undefined) line.actor = meta.actor;
     if (meta.provenance !== undefined) line.provenance = meta.provenance;
-    line.changes = changes;
-    line.changesHash = hashChanges(changes);
-    line.ops = ops;
+    // The journal keeps a Command's changes as the client sent them: a repeated command id is
+    // compared with them, and a reader of the committed Command gets its own ids back.
+    line.changes = translated?.sent ?? changes;
+    line.changesHash = hashChanges(line.changes);
+    const aliasRecords = translated?.aliases ?? [];
+    line.ops = aliasRecords.length === 0
+      ? ops
+      : [...ops, ...aliasRecords.map((record): RecordOp => ({ op: "put", rk: recordRk(record), record }))];
     try {
       this.append(line);
     } catch (error) {
@@ -922,7 +1127,11 @@ export class RecordWorkspaceStore {
     const target = entry ?? { id: mapId, records: new Map<string, SnapshotRecord>(), idMaps: new Map<string, SnapshotRecord>() };
     if (!entry) this.maps.set(mapId, target);
     target.records = result.records;
-    target.nodeCount = undefined;
+    target.counts = undefined;
+    if (aliasRecords.length > 0) {
+      for (const record of aliasRecords) target.idMaps.set(recordRk(record), record);
+      target.aliases = undefined;
+    }
     target.warm = {
       projector,
       state: result.state,
@@ -996,7 +1205,9 @@ export class RecordWorkspaceStore {
         this.commands.delete(key);
         this.commands.set(commandKey(line.newMapId, key.slice(prefix.length)), value);
       }
-    } else {
+    } else if (line.mapOp !== "columns" && !(line.mapOp === undefined && line.commandId === undefined && line.intent === "set-map-columns")) {
+      // A commit that only sets row columns is not a change of the map's content. (The second
+      // test reads journals written before such lines were marked.)
       this.mapSeq.set(line.mapId, line.seq);
     }
     if (line.commandId !== undefined) {

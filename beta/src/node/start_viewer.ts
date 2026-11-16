@@ -2112,7 +2112,7 @@ async function handleVaultApi(
             mapId,
             vaultPath: "",
             integrationMode: "off",
-            sourceOfTruth: "sqlite",
+            sourceOfTruth: mapSourceOfTruth(),
             lastInboundAt: null,
             lastOutboundAt: null,
             lastError: null,
@@ -2567,7 +2567,7 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
       seq: result.seq,
       mapId,
       integrationMode: "off",
-      sourceOfTruth: "sqlite",
+      sourceOfTruth: mapSourceOfTruth(),
     });
   } catch (err) {
     if (res.headersSent) return;
@@ -2744,7 +2744,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
                 merged: true,
                 mergedNodeIds: merge.mergedNodeIds,
                 integrationMode: liveWrite?.integrationMode ?? "off",
-                sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+                sourceOfTruth: liveWrite?.sourceOfTruth ?? mapSourceOfTruth(),
                 ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
               });
               return true;
@@ -2780,7 +2780,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
         savedAt,
         mapId: mapId,
         integrationMode: liveWrite?.integrationMode ?? "off",
-        sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+        sourceOfTruth: liveWrite?.sourceOfTruth ?? mapSourceOfTruth(),
         ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
       });
     } catch (err) {
@@ -3973,6 +3973,11 @@ async function handleAiApi(req: http.IncomingMessage, res: http.ServerResponse):
   }
 }
 
+/** Where the maps of this server are kept: the record store when M3E_STORE_DIR is set, SQLite otherwise. */
+function mapSourceOfTruth(): "records" | "sqlite" {
+  return activeRecordStore() ? "records" : "sqlite";
+}
+
 function startServer(): void {
   // Record store (M3E_STORE_DIR): open it before anything else, so a refusal stops the start.
   if (activeRecordStore()) closeActiveRecordStoreOnSignal();
@@ -4002,7 +4007,8 @@ function startServer(): void {
     }
     // Startup backup + periodic auto-backup
     const BACKUP_DIR = path.join(currentDataDir(), "backups");
-    if (fs.existsSync(currentSqliteDbPath())) {
+    // In store mode the backup is a copy of the record store, whether or not a SQLite file exists.
+    if (activeRecordStore() || fs.existsSync(currentSqliteDbPath())) {
       const maxGen = Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || 10;
       createBackup(currentSqliteDbPath(), BACKUP_DIR)
         .then(() => { pruneOldBackups(BACKUP_DIR, maxGen); })

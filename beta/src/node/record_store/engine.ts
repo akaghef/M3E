@@ -186,16 +186,42 @@ export function assertNeo4jUsable(options: Neo4jOptions, source: { workspaceId: 
   if (message !== null) throw new EngineRefusal(message);
 }
 
-/** Runs the applier: start once, then one commit after another. Stops at the first failure. */
+export interface EngineRetryOptions {
+  /** Wait before the first retry after a failure, in milliseconds (default 500). Doubles up to `maxMs`. */
+  firstMs?: number;
+  /** Longest wait between two retries, in milliseconds (default 30,000). */
+  maxMs?: number;
+}
+
+/**
+ * Runs the applier: start, then one commit after another, in order.
+ *
+ * A failure does not stop the store: the journal holds every commit, so the queue lets go of what
+ * it was holding, waits (500 ms, doubling up to 30 s), and starts the applier again. Starting
+ * brings the engine from whatever commit it holds to the journal's current one, and the commits
+ * made after that follow from the queue. `error` is set from a failure until the engine has
+ * caught up again.
+ */
 export class EngineQueue {
   private pending: EngineCommit[] = [];
   private started = false;
-  private applied: number;
+  private everStarted = false;
+  private applied = 0;
+  /** The journal position when the queue was made: the backlog is counted from here until the applier has started once. */
+  private readonly baseSeq: number;
   private failure: string | undefined;
   private running: Promise<void> | undefined;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly firstDelay: number;
+  private readonly maxDelay: number;
+  private delay: number;
+  private closed = false;
 
-  constructor(private readonly applier: EngineApplier, private readonly source: EngineSource) {
-    this.applied = 0;
+  constructor(private readonly applier: EngineApplier, private readonly source: EngineSource, retry: EngineRetryOptions = {}) {
+    this.baseSeq = source.seq();
+    this.firstDelay = Math.max(1, retry.firstMs ?? 500);
+    this.maxDelay = Math.max(this.firstDelay, retry.maxMs ?? 30000);
+    this.delay = this.firstDelay;
   }
 
   get appliedSeq(): number {
@@ -206,9 +232,17 @@ export class EngineQueue {
     return this.failure;
   }
 
+  /** Commits the engine does not hold yet, given the journal's current commit. */
+  backlog(currentSeq: number): number {
+    return Math.max(0, currentSeq - (this.everStarted ? this.applied : this.baseSeq));
+  }
+
   enqueue(commit: EngineCommit): void {
-    this.pending.push(commit);
-    this.pump();
+    if (this.closed) return;
+    // While a failed engine waits for its retry nothing is held here: the journal has the commit,
+    // and the next start reads it from there.
+    if (this.started || this.running) this.pending.push(commit);
+    if (this.retryTimer === undefined) void this.pump();
   }
 
   /** Starts working through the queue unless that is already happening. */
@@ -224,8 +258,12 @@ export class EngineQueue {
   private async run(): Promise<void> {
     try {
       if (!this.started) {
+        // Everything up to now is in the journal, which `start` reads; commits made while it
+        // runs are queued behind it and skipped below when `start` already covered them.
+        this.pending = [];
         this.applied = await this.applier.start(this.source);
         this.started = true;
+        this.everStarted = true;
       }
       while (this.pending.length > 0) {
         const commit = this.pending[0];
@@ -236,13 +274,37 @@ export class EngineQueue {
         this.pending.shift();
       }
       this.failure = undefined;
+      this.delay = this.firstDelay;
     } catch (error) {
       this.failure = error instanceof Error ? error.message : String(error);
+      // What the engine holds now is not known for sure: the next attempt asks it and catches up
+      // from the journal.
+      this.started = false;
+      this.pending = [];
+      this.scheduleRetry();
     }
   }
 
-  /** Resolves when the engine holds every commit; retries after a failure; rejects when it fails again. */
+  private scheduleRetry(): void {
+    if (this.closed || this.retryTimer !== undefined) return;
+    const wait = this.delay;
+    this.delay = Math.min(this.delay * 2, this.maxDelay);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      void this.pump();
+    }, wait);
+    // A waiting retry must not keep the process alive.
+    this.retryTimer.unref?.();
+  }
+
+  private cancelRetry(): void {
+    if (this.retryTimer !== undefined) clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+  }
+
+  /** Resolves when the engine holds every commit. After a failure it tries again at once, and rejects when that fails too. */
   async flush(): Promise<void> {
+    this.cancelRetry();
     await this.pump();
     // Commits enqueued while the last run was finishing.
     while (this.failure === undefined && (this.pending.length > 0 || !this.started)) await this.pump();
@@ -250,7 +312,10 @@ export class EngineQueue {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
+    this.cancelRetry();
     if (this.running) await this.running;
+    this.cancelRetry();
     await this.applier.close();
   }
 }

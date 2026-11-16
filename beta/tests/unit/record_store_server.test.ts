@@ -43,7 +43,7 @@ interface Running {
   log: string[];
 }
 
-async function startServer(dataDir: string, storeDir: string | null, bolt?: string): Promise<Running> {
+async function startServer(dataDir: string, storeDir: string | null, bolt?: string, more: NodeJS.ProcessEnv = {}): Promise<Running> {
   const port = await freePort();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -58,6 +58,8 @@ async function startServer(dataDir: string, storeDir: string | null, bolt?: stri
   };
   delete env.M3E_STORE_DIR;
   delete env.M3E_NEO4J_BOLT;
+  delete env.M3E_ENGINE_BACKLOG_LIMIT;
+  Object.assign(env, more);
   if (storeDir !== null) env.M3E_STORE_DIR = storeDir;
   if (bolt !== undefined) env.M3E_NEO4J_BOLT = bolt;
   const child = spawn(process.execPath, [SERVER], { cwd: BETA, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -166,6 +168,8 @@ function tidy(value: unknown, generated: Map<string, string>): unknown {
   for (const key of Object.keys(source).sort()) {
     const item = source[key];
     if (key === "savedAt" || key === "createdAt") out[key] = typeof item === "string" ? "<time>" : item;
+    // Where the maps are kept is the one thing the two modes must answer differently; it is checked on its own.
+    else if (key === "sourceOfTruth" && (item === "sqlite" || item === "records")) out[key] = "<the store of this mode>";
     else if (key === "seq") out[key] = typeof item === "number" ? "<seq>" : item;
     else out[generated.get(key) ?? key] = tidy(item, generated);
   }
@@ -197,12 +201,16 @@ interface Outcome {
   duplicateIds: string[];
   sourceIds: string[];
   finalList: unknown;
+  /** Every `sourceOfTruth` an answer carried. */
+  sources: string[];
 }
 
 async function scenario(base: string): Promise<Outcome> {
   const steps: Step[] = [];
   const generated = new Map<string, string>();
+  const sources = new Set<string>();
   const record = (label: string, result: { status: number; body: any }, body: unknown = result.body): void => {
+    if (result.body && typeof result.body === "object" && typeof result.body.sourceOfTruth === "string") sources.add(result.body.sourceOfTruth);
     steps.push([label, result.status, tidy(body, generated)]);
   };
   const state = async (mapId = MAP): Promise<Json> => (await call(base, "GET", `/api/maps/${mapId}`)).body.state as Json;
@@ -319,8 +327,18 @@ async function scenario(base: string): Promise<Outcome> {
   result = await call(base, "GET", `/api/maps/${newId}`);
   record("new map state", result, shape(result.body.state));
 
+  const beforeColumns = (await call(base, "GET", `/api/maps/${MAP}`)).body as Json;
   result = await call(base, "POST", `/api/maps/${MAP}/tags`, { tags: ["x", " y ", "x"] });
   record("tags", result);
+  record("pin the map", await call(base, "PATCH", `/api/maps/${MAP}/pin`, { pinned: true }));
+  // Tags and pin are not content: the map still has the saved-at time read before them, and a
+  // whole-map save built on that time is not a conflict.
+  const afterColumns = (await call(base, "GET", `/api/maps/${MAP}`)).body as Json;
+  record("saved-at time is the same after tags and pin", { status: 200, body: null }, afterColumns.savedAt === beforeColumns.savedAt);
+  next = clone(beforeColumns.state);
+  next.nodes.pa_C.text = "Charlie after the tag change";
+  record("whole-map POST on the base read before tags and pin", await call(base, "POST", `/api/maps/${MAP}`, { state: next, baseSavedAt: beforeColumns.savedAt }));
+  record("unpin the map", await call(base, "PATCH", `/api/maps/${MAP}/pin`, { pinned: false }));
   result = await call(base, "POST", `/api/maps/${MAP}/duplicate`);
   const copyId = result.body.id as string;
   generated.set(copyId, "<copy>");
@@ -355,7 +373,7 @@ async function scenario(base: string): Promise<Outcome> {
   result = await call(base, "GET", "/api/maps?includeArchived=true");
   const finalList = summary(result.body.maps);
   record("list at the end", result, finalList);
-  return { steps, finalState: await state(), duplicateIds: Object.keys(copyState.nodes), sourceIds: Object.keys(sourceState.nodes), finalList };
+  return { steps, finalState: await state(), duplicateIds: Object.keys(copyState.nodes), sourceIds: Object.keys(sourceState.nodes), finalList, sources: [...sources].sort() };
 }
 
 describe("the server on the record store answers like the server on SQLite", () => {
@@ -409,6 +427,7 @@ describe("the server on the record store answers like the server on SQLite", () 
     expect(status.get("delete before archive")).toBe(409);
     expect(status.get("delete the archived map")).toBe(200);
     expect(status.get("link DELETE again")).toBe(404);
+    expect(status.get("whole-map POST on the base read before tags and pin")).toBe(200);
     const body = new Map(storeRun.steps.map((step) => [step[0], step[2] as Json]));
     expect(body.get("command: stale").code).toBe("DOC_NODE_CONFLICT_Q");
     expect(body.get("mcp update").ok).toBe(true);
@@ -417,12 +436,18 @@ describe("the server on the record store answers like the server on SQLite", () 
     expect(body.get("mcp update").changed).toEqual({ created: 0, updated: 1, deleted: 0 });
     expect(body.get("state after mcp").state.nodes.pa_a2.text).toBe("Alpha two from agent");
     expect(body.get("mcp update again under the same command id").ok).toBe(true);
+    expect(body.get("saved-at time is the same after tags and pin")).toBe(true);
   });
 
-  test("a copy of a map in the store has ids of its own", () => {
-    const source = new Set(storeRun.sourceIds);
-    expect(storeRun.duplicateIds.length).toBe(storeRun.sourceIds.length);
-    expect(storeRun.duplicateIds.filter((id) => source.has(id))).toEqual([]);
+  test("each mode names its own store as the source of truth", () => {
+    expect(sqliteRun.sources).toEqual(["sqlite"]);
+    expect(storeRun.sources).toEqual(["records"]);
+  });
+
+  test("a copy of a map answers with the ids of its source in both modes", () => {
+    // (In the store the copy has stored ids of its own: tests/unit/record_store_fixes.test.ts.)
+    expect([...sqliteRun.duplicateIds].sort()).toEqual([...sqliteRun.sourceIds].sort());
+    expect([...storeRun.duplicateIds].sort()).toEqual([...storeRun.sourceIds].sort());
   });
 
   test("the state is still there after the store-mode server starts again", async () => {
@@ -452,28 +477,80 @@ describe("the server on the record store answers like the server on SQLite", () 
     expect(again.body.state.nodes.pa_C.text).toBe("Charlie first");
   });
 
-  test("with the storage engine behind, a command is answered 503 and nothing is written", async () => {
+  test("maps seeded with the same ids are all created, read back with those ids, and edited apart", async () => {
+    const base = storeServer!.base;
+    const feel = (): Json => ({
+      rootId: "root",
+      nodes: {
+        root: node("root", null, ["A", "B", "C"], "Feel Root"),
+        A: node("A", "root", ["a1", "a2"], "Alpha"),
+        a1: node("a1", "A", [], "Alpha one"),
+        a2: node("a2", "A", [], "Alpha two"),
+        B: node("B", "root", [], "Bravo"),
+        C: node("C", "root", [], "Charlie"),
+      },
+    });
+    for (const mapId of ["feel-1", "feel-2", "feel-3"]) {
+      const seeded = await call(base, "POST", `/api/maps/${mapId}`, { version: 1, savedAt: new Date().toISOString(), state: feel() });
+      expect(seeded.status, JSON.stringify(seeded.body)).toBe(200);
+      expect((await call(base, "GET", `/api/maps/${mapId}`)).body.state.nodes).toEqual(feel().nodes);
+    }
+    // A Command, a whole-map save and an MCP write on the second map, all with the ids it was seeded with.
+    const before = (await call(base, "GET", "/api/maps/feel-2")).body as Json;
+    const after = clone(before.state);
+    after.nodes.A.text = "Alpha of the second map";
+    after.nodes.a3 = node("a3", "A", [], "Alpha three");
+    after.nodes.A.children.push("a3");
+    const command = { commandId: "feel-2-cmd", actor: { kind: "human", id: "parity" }, intent: "edit", changes: diffState(before.state, after) };
+    expect((await call(base, "POST", "/api/maps/feel-2/commands", command)).status).toBe(200);
+    let current = (await call(base, "GET", "/api/maps/feel-2")).body as Json;
+    expect(current.state.nodes).toEqual(after.nodes);
+    const whole = clone(current.state);
+    whole.nodes.C.text = "Charlie of the second map";
+    expect((await call(base, "POST", "/api/maps/feel-2", { state: whole, baseSavedAt: current.savedAt })).status).toBe(200);
+    const entered = await call(base, "POST", "/api/mcp/call", { name: "m3e_context", arguments: { action: "enter", target: "m3e://maps/feel-2" } });
+    const updated = await call(base, "POST", "/api/mcp/call", { name: "m3e_update", arguments: { context_id: entered.body.context_id, kind: "content", target: "m3e://maps/feel-2/nodes/B", text: "Bravo from agent" } });
+    expect(updated.body.ok, JSON.stringify(updated.body)).toBe(true);
+    current = (await call(base, "GET", "/api/maps/feel-2")).body as Json;
+    expect(Object.keys(current.state.nodes).sort()).toEqual(["A", "B", "C", "a1", "a2", "a3", "root"]);
+    expect([current.state.nodes.A.text, current.state.nodes.B.text, current.state.nodes.C.text]).toEqual(["Alpha of the second map", "Bravo from agent", "Charlie of the second map"]);
+    expect(current.state.nodes.A.children).toEqual(["a1", "a2", "a3"]);
+    // The other two maps are as they were seeded.
+    expect((await call(base, "GET", "/api/maps/feel-1")).body.state.nodes).toEqual(feel().nodes);
+    expect((await call(base, "GET", "/api/maps/feel-3")).body.state.nodes).toEqual(feel().nodes);
+  });
+
+  test("with the storage engine down commands are still stored; past the backlog limit they are answered 503 and nothing is written", async () => {
     const dir = path.join(root, "store-behind");
     RecordWorkspaceStore.create(dir, toSnapshot("ws_parity", [], { now: "2026-11-17T00:00:00.000Z" }));
-    // Nothing listens on this port: the Neo4j applier fails and the store refuses further commits.
-    const server = await startServer(path.join(root, "data-behind"), dir, `bolt://127.0.0.1:${await freePort()}`);
+    // Nothing listens on this port: the Neo4j applier fails and keeps retrying; the journal takes
+    // the commits until the engine is 6 commits behind.
+    const limit = 6;
+    const server = await startServer(path.join(root, "data-behind"), dir, `bolt://127.0.0.1:${await freePort()}`, { M3E_ENGINE_BACKLOG_LIMIT: String(limit) });
     try {
       const mapId = (await call(server.base, "GET", "/api/maps")).body.maps[0].id as string;
       const before = (await call(server.base, "GET", `/api/maps/${mapId}`)).body.state as Json;
       const after = clone(before);
       after.nodes[after.rootId].text = "never stored";
+      const statuses: number[] = [];
       let answer = { status: 0, body: null as any };
-      for (let attempt = 0; attempt < 100 && answer.status !== 503; attempt += 1) {
-        // Until the applier has failed, a commit still goes through; each try uses a new command id.
+      let lastStored = "";
+      for (let attempt = 0; attempt < limit + 2 && answer.status !== 503; attempt += 1) {
         const current = (await call(server.base, "GET", `/api/maps/${mapId}`)).body.state as Json;
         const next = clone(current);
         next.nodes[next.rootId].text = `try ${attempt}`;
         answer = await call(server.base, "POST", `/api/maps/${mapId}/commands`, { commandId: `behind-${attempt}`, actor: { kind: "human", id: "parity" }, intent: "edit-text", changes: diffState(current, next) });
-        if (answer.status !== 503) await new Promise((resolve) => setTimeout(resolve, 200));
+        statuses.push(answer.status);
+        if (answer.status === 200) lastStored = `try ${attempt}`;
       }
+      // Some commits went through with no engine to take them, then the limit was reached.
+      expect(statuses.length).toBeGreaterThan(1);
+      expect(statuses.length).toBeLessThanOrEqual(limit + 1);
+      expect(statuses.slice(0, -1).every((status) => status === 200)).toBe(true);
       expect(answer.status).toBe(503);
       expect(answer.body).toEqual({ ok: false, code: "ENGINE_BEHIND", error: "The storage engine is behind. Retry later." });
       const stored = (await call(server.base, "GET", `/api/maps/${mapId}`)).body.state as Json;
+      expect(stored.nodes[stored.rootId].text).toBe(lastStored);
       const whole = await call(server.base, "POST", `/api/maps/${mapId}`, { state: after });
       expect(whole.status).toBe(400);
       expect(String(whole.body.error)).toMatch(/^ENGINE_BEHIND/);

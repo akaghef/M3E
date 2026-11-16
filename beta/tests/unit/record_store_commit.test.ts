@@ -327,15 +327,7 @@ describe("record store: retries and conflicts", () => {
       nodes.f1.parentId = "inner";
       nodes.inner.children = ["f1"];
     })).toMatchObject({ ok: false, code: "INVALID_STATE" });
-    // A node id that another map of the workspace already uses.
-    expect(attempt((state) => {
-      nodesOf(state).b_leaf = node("b_leaf", "root");
-      (nodesOf(state).root.children as string[]).push("b_leaf");
-    })).toMatchObject({ ok: false, code: "INVALID_STATE" });
-    // An annotation id that a node already uses.
-    expect(attempt((state) => {
-      (state.annotations as Loose).leaf = { id: "leaf", kind: "text", x: 0, y: 0, text: "t" };
-    })).toMatchObject({ ok: false, code: "INVALID_STATE" });
+    // (An id another map already uses is not refused: see record_store_fixes.test.ts.)
     expect(store.seq()).toBe(0);
     expect(text(store.records())).toBe(untouched);
     expect(fs.readFileSync(path.join((store as unknown as { dir: string }).dir, JOURNAL_FILE), "utf8")).toBe("");
@@ -522,10 +514,8 @@ describe("record store: whole-map saves and map-level operations", () => {
     ]);
     expect(store.listMaps()[0]).toMatchObject({ tags: '["x"]', archived: 0, pinned: 1, source: "import" });
     expect(checkInvariants(store.records())).toEqual([]);
-    // A new map may not reuse ids of another map.
-    expect(store.saveWholeMap("map_d", richState("c_") as unknown as AppState, ISSUER)).toMatchObject({ ok: false, code: "INVALID_STATE" });
-    expect(store.hasMap("map_d")).toBe(false);
-    // Nor be created from a state the app does not accept.
+    // A map is not created from a state the app does not accept.
+    // (A new map that reuses ids of another map: see record_store_fixes.test.ts.)
     expect(store.saveWholeMap("map_e", { rootId: "missing", nodes: {} } as unknown as AppState, ISSUER)).toMatchObject({ ok: false, code: "INVALID_STATE", current: null });
   });
 
@@ -704,51 +694,155 @@ describe("record store: the storage engine behind the journal", () => {
     expect(applier.closed).toBe(true);
   });
 
-  it("stops committing with ENGINE_BEHIND after a failed write, until a flush succeeds", async () => {
+  const waitUntil = async (done: () => boolean): Promise<void> => {
+    const deadline = Date.now() + 5000;
+    while (!done()) {
+      if (Date.now() > deadline) throw new Error("the engine did not catch up in time");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  };
+
+  it("keeps committing while the engine is down, and the engine catches up from the journal by itself", async () => {
     const applier = new FakeApplier();
     const dir = newDir("engine-behind");
-    const store = openStore(dir, { applier });
+    const store = openStore(dir, { applier, engineRetry: { firstMs: 5, maxMs: 20 } });
     await store.flush();
     applier.broken = true;
-    // The journal append is the commit point: this commit stands although the engine write fails.
-    edit(store, (state) => { nodesOf(state).leaf.text = "committed"; });
-    await expect(store.flush()).rejects.toThrow(/engine write failed/);
-    expect(store.engineStatus()).toEqual({ appliedSeq: 0, error: "engine write failed" });
+    // The journal append is the commit point: every one of these commits stands.
+    edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
+    await expect(store.flush()).rejects.toThrow(/engine write failed|engine unreachable/);
+    expect(store.engineStatus().appliedSeq).toBe(0);
+    expect(store.engineStatus().error).toMatch(/engine write failed|engine unreachable/);
+    edit(store, (state) => { nodesOf(state).leaf.text = "two"; });
+    ok(store.saveWholeMap("map_b", { ...stateOf(store, "map_b"), linearPanelWidth: 111 } as unknown as AppState, ISSUER));
+    store.setMapColumns("map_a", { pinned: 0 }, ISSUER);
+    store.renameMapId("map_b", "map_y", ISSUER);
+    expect(store.seq()).toBe(5);
+    // Retries happen in the background and keep failing; the status says so.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(store.engineStatus()).toMatchObject({ appliedSeq: 0, error: "engine unreachable" });
+    expect(applier.applied).toEqual([]);
+
+    // The engine comes back. Nobody calls flush: the next retry brings it to the last commit.
+    applier.broken = false;
+    await waitUntil(() => store.engineStatus().error === undefined && store.engineStatus().appliedSeq === 5);
+    expect(store.engineStatus()).toEqual({ appliedSeq: 5 });
+    expect(applier.dump()).toBe(text(store.records()));
+    // And the commits after that go to it one by one, in order.
+    edit(store, (state) => { nodesOf(state).leaf.text = "three"; });
+    edit(store, (state) => { nodesOf(state).leaf.text = "four"; });
+    await store.flush();
+    expect(applier.applied).toEqual([6, 7]);
+    expect(applier.dump()).toBe(text(store.records()));
+  });
+
+  it("an applier that fails on a commit is started again and resumes at the commit it did not get", async () => {
+    // An engine that keeps what it has between starts, like Neo4j: it reports the commit it holds
+    // and takes the missing ones from the journal.
+    class KeepingApplier extends FakeApplier {
+      held = -1;
+      failAt: number | undefined;
+      async start(source: EngineSource): Promise<number> {
+        if (this.broken) throw new Error("engine unreachable");
+        this.started += 1;
+        if (this.held < 0) {
+          for (const record of source.records()) this.records.set(recordRk(record), record);
+          this.held = source.seq();
+          return this.held;
+        }
+        for (const commit of source.commitsAfter(this.held) ?? []) await this.apply(commit);
+        return this.held;
+      }
+      async apply(commit: EngineCommit): Promise<void> {
+        if (commit.seq === this.failAt) throw new Error(`engine write failed at ${commit.seq}`);
+        await super.apply(commit);
+        this.held = commit.seq;
+      }
+    }
+    const applier = new KeepingApplier();
+    const store = openStore(newDir("engine-resume"), { applier, engineRetry: { firstMs: 5, maxMs: 20 } });
+    await store.flush();
+    applier.failAt = 2;
+    edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
+    edit(store, (state) => { nodesOf(state).leaf.text = "two"; });
+    edit(store, (state) => { nodesOf(state).leaf.text = "three"; });
+    await waitUntil(() => store.engineStatus().error !== undefined);
+    expect(store.engineStatus()).toEqual({ appliedSeq: 1, error: "engine write failed at 2" });
+    edit(store, (state) => { nodesOf(state).leaf.text = "four"; });
+    applier.failAt = undefined;
+    await waitUntil(() => store.engineStatus().error === undefined && store.engineStatus().appliedSeq === 4);
+    expect(applier.applied).toEqual([1, 2, 3, 4]);
+    expect(applier.dump()).toBe(text(store.records()));
+  });
+
+  it("refuses commits with ENGINE_BEHIND only when the engine is behind by the limit, and accepts them again after it caught up", async () => {
+    const applier = new FakeApplier();
+    const store = openStore(newDir("engine-limit"), { applier, engineBacklogLimit: 3, engineRetry: { firstMs: 5, maxMs: 20 } });
+    await store.flush();
+    applier.broken = true;
+    edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
+    edit(store, (state) => { nodesOf(state).leaf.text = "two"; });
+    edit(store, (state) => { nodesOf(state).leaf.text = "three"; });
+    expect(store.seq()).toBe(3);
 
     const before = stateOf(store);
     const after = clone(before);
     nodesOf(after).leaf.text = "refused";
     const refused = command(diffState(before, after));
     expect(store.commitMapCommand("map_a", refused, ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND", conflicts: [], current: null });
+    expect((store.commitMapCommand("map_a", refused, ISSUER) as { message?: string }).message).toMatch(/3 commits behind \(limit 3\)/);
     expect(store.saveWholeMap("map_a", after as unknown as AppState, ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND" });
     expect(() => store.setMapColumns("map_a", { pinned: 0 }, ISSUER)).toThrow(/ENGINE_BEHIND/);
     expect(() => store.deleteMap("map_b", ISSUER)).toThrow(/ENGINE_BEHIND/);
     expect(() => store.renameMapId("map_b", "map_y", ISSUER)).toThrow(/ENGINE_BEHIND/);
-    await expect(store.flush()).rejects.toThrow(/behind/);
-    expect(store.seq()).toBe(1);
+    expect(store.seq()).toBe(3);
     // Reads keep working.
-    expect(nodesOf(stateOf(store)).leaf.text).toBe("committed");
+    expect(nodesOf(stateOf(store)).leaf.text).toBe("three");
 
+    await waitUntil(() => store.engineStatus().error !== undefined);
     applier.broken = false;
-    await store.flush();
-    expect(store.engineStatus()).toEqual({ appliedSeq: 1 });
-    expect(applier.dump()).toBe(text(store.records()));
+    await waitUntil(() => store.engineStatus().error === undefined);
+    expect(store.engineStatus()).toEqual({ appliedSeq: 3 });
     ok(store.commitMapCommand("map_a", refused, ISSUER));
     await store.flush();
-    expect(applier.applied).toEqual([1, 2]);
     expect(applier.dump()).toBe(text(store.records()));
   });
 
-  it("reports an engine that cannot be reached at open, and catches up when it can", async () => {
+  it("takes the backlog limit from M3E_ENGINE_BACKLOG_LIMIT, 10,000 when it is not set", async () => {
+    const saved = process.env.M3E_ENGINE_BACKLOG_LIMIT;
+    try {
+      process.env.M3E_ENGINE_BACKLOG_LIMIT = "1";
+      const applier = new FakeApplier();
+      const store = openStore(newDir("engine-env"), { applier, engineRetry: { firstMs: 1000, maxMs: 1000 } });
+      await store.flush();
+      applier.broken = true;
+      edit(store, (state) => { nodesOf(state).leaf.text = "one"; });
+      expect(store.commitMapCommand("map_a", command([]), ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND" });
+
+      delete process.env.M3E_ENGINE_BACKLOG_LIMIT;
+      const other = new FakeApplier();
+      const second = openStore(newDir("engine-default"), { applier: other, engineRetry: { firstMs: 1000, maxMs: 1000 } });
+      await second.flush();
+      other.broken = true;
+      for (let i = 0; i < 20; i += 1) second.setMapColumns("map_a", { pinned: i }, ISSUER);
+      expect(second.commitMapCommand("map_a", command([]), ISSUER)).toMatchObject({ ok: true });
+    } finally {
+      if (saved === undefined) delete process.env.M3E_ENGINE_BACKLOG_LIMIT; else process.env.M3E_ENGINE_BACKLOG_LIMIT = saved;
+    }
+  });
+
+  it("reports an engine that cannot be reached at open, keeps committing, and catches up when it can", async () => {
     const applier = new FakeApplier();
     applier.broken = true;
-    const store = openStore(newDir("engine-down"), { applier });
+    const store = openStore(newDir("engine-down"), { applier, engineRetry: { firstMs: 5, maxMs: 20 } });
     await expect(store.flush()).rejects.toThrow(/engine unreachable/);
-    expect(store.commitMapCommand("map_a", command([]), ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND" });
+    expect(store.engineStatus()).toEqual({ appliedSeq: 0, error: "engine unreachable" });
+    edit(store, (state) => { nodesOf(state).leaf.text = "while down"; });
     applier.broken = false;
-    await store.flush();
+    await waitUntil(() => store.engineStatus().error === undefined);
     edit(store, (state) => { nodesOf(state).leaf.text = "now"; });
     await store.flush();
+    expect(store.engineStatus()).toEqual({ appliedSeq: 2 });
     expect(applier.dump()).toBe(text(store.records()));
   });
 

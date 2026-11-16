@@ -209,6 +209,11 @@ export interface IdMapRecord {
   mapId: string;
   oldId: string;
   newId: string;
+  /**
+   * Set by the record store (not by the migration) on an id it renumbered after the migration:
+   * the client keeps using `oldId`, and the store translates both ways.
+   */
+  alias?: true;
 }
 
 export type SnapshotRecord =
