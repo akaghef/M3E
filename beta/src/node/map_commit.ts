@@ -10,6 +10,8 @@ import Database from "better-sqlite3";
 import type { AppState, SavedMap } from "../shared/types";
 import { applyChanges, type FieldConflict, type MapCommand, type RecordChange } from "../shared/map_changes";
 import { RapidMvpModel } from "./rapid_mvp";
+import { activeRecordStore } from "./record_store/active";
+import { storeCommitMapCommand, storeReadCommittedCommand } from "./record_store/legacy_api";
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -22,7 +24,8 @@ export interface CommitSuccess {
 
 export interface CommitFailure {
   ok: false;
-  code: "NOT_FOUND" | "CONFLICT" | "INVALID_STATE" | "INVALID_COMMAND";
+  /** ENGINE_BEHIND comes from the record store only (M3E_STORE_DIR): its storage engine stopped following. */
+  code: "NOT_FOUND" | "CONFLICT" | "INVALID_STATE" | "INVALID_COMMAND" | "ENGINE_BEHIND";
   conflicts: FieldConflict[];
   current: { savedAt: string; state: object } | null;
 }
@@ -101,6 +104,8 @@ function rowToStored(row: {
 }
 
 export function readCommittedCommand(dbPath: string, mapId: string, commandId: string): StoredCommand | null {
+  const store = activeRecordStore();
+  if (store) return storeReadCommittedCommand(store, mapId, commandId);
   const db = openDb(dbPath);
   try {
     const row = db.prepare(`
@@ -132,6 +137,8 @@ function commandShape(command: MapCommand): string | null {
  * The check, the state write and the journal row are one transaction.
  */
 export function commitMapCommand(dbPath: string, mapId: string, command: MapCommand, expectedRevision?: string): CommitResult {
+  const store = activeRecordStore();
+  if (store) return storeCommitMapCommand(store, mapId, command, expectedRevision, RapidMvpModel.savedRevision);
   if (!command || typeof command !== "object" || typeof command.commandId !== "string") {
     return invalid("INVALID_COMMAND", null);
   }

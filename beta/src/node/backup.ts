@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
+import { recordStoreDir } from "./record_store/active";
 
 /**
  * SQLite snapshot backup module.
@@ -42,6 +43,11 @@ function ensureDir(dir: string): void {
  * Throws only if both primary and fallback strategies fail.
  */
 export async function createBackup(dbPath: string, backupDir: string): Promise<string> {
+  if (recordStoreDir() !== null) {
+    // Record store (M3E_STORE_DIR): the maps are not in the SQLite file, so there is nothing to snapshot here.
+    console.log("[backup] Skipped: maps are in the record store, not in SQLite.");
+    return "";
+  }
   ensureDir(backupDir);
 
   const timestamp = formatTimestamp(new Date());
@@ -118,6 +124,10 @@ export function startAutoBackup(
   intervalMs?: number,
   maxGenerations?: number,
 ): void {
+  if (recordStoreDir() !== null) {
+    console.log("[backup] Auto-backup is off: maps are in the record store, not in SQLite.");
+    return;
+  }
   const interval = intervalMs ?? (Number(process.env.M3E_BACKUP_INTERVAL_MS) || DEFAULT_INTERVAL_MS);
   const maxGen = maxGenerations ?? (Number(process.env.M3E_BACKUP_MAX_GENERATIONS) || DEFAULT_MAX_GENERATIONS);
 

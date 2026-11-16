@@ -1,0 +1,270 @@
+// How the server's existing persistence calls are answered by the record store.
+//
+// `RapidMvpModel` (../rapid_mvp.ts) and ../map_commit.ts call these when `activeRecordStore()` is
+// not null. Results, error messages and thrown errors are the ones the SQLite code gives, so the
+// HTTP routes and the MCP service above them need no change. The `dbPath` of the callers is not
+// used: one process has one store.
+//
+// Row columns are kept in the form the SQLite table has (tags and source as JSON text, archived
+// and pinned as 0 / 1), which is also what a snapshot made from SQLite carries.
+
+import { randomUUID } from "crypto";
+import type { MapCommand, FieldConflict, RecordChange } from "../../shared/map_changes";
+import type { AppState, SavedMap, TreeNode } from "../../shared/types";
+import type { MapSource, MapSummaryInternal } from "../rapid_mvp";
+import type { CommitFailure as StoreCommitFailure, MapColumns, RecordWorkspaceStore } from "./store";
+
+/** Issuer of the commits that do not come from a Command with an actor. */
+const SERVER_ISSUER = "system:server";
+
+type Dict = Record<string, unknown>;
+
+export interface LegacyCommitSuccess {
+  ok: true;
+  savedAt: string;
+  seq: number;
+  replayed: boolean;
+}
+
+export interface LegacyCommitFailure {
+  ok: false;
+  code: "NOT_FOUND" | "CONFLICT" | "INVALID_STATE" | "INVALID_COMMAND" | "ENGINE_BEHIND";
+  conflicts: FieldConflict[];
+  current: { savedAt: string; state: object } | null;
+}
+
+export interface LegacyStoredCommand {
+  mapId: string;
+  seq: number;
+  commandId: string;
+  actor: MapCommand["actor"];
+  intent: string;
+  provenance: unknown;
+  changes: RecordChange[];
+  committedAt: string;
+  savedAt: string;
+}
+
+function failed(result: StoreCommitFailure, fallback: string): Error {
+  const error = new Error(result.code === "ENGINE_BEHIND" ? `ENGINE_BEHIND: ${result.message ?? "the storage engine is behind."}` : result.message ?? fallback) as Error & { code?: string };
+  error.code = result.code;
+  return error;
+}
+
+function requireMap(store: RecordWorkspaceStore, mapId: string): void {
+  if (!store.hasMap(mapId)) throw new Error("Map not found.");
+}
+
+// ---------------------------------------------------------------- loads and whole-map saves
+
+export function storeLoadSavedMap(store: RecordWorkspaceStore, mapId: string): SavedMap {
+  requireMap(store, mapId);
+  const row = store.getMapRow(mapId);
+  if (!row.savedAt) throw new Error("Unsupported or invalid save format.");
+  return { version: 1, savedAt: row.savedAt, state: row.state };
+}
+
+/** Saves the whole state (the difference to the stored state is committed) and returns the saved-at time. */
+export function storeSaveMap(store: RecordWorkspaceStore, mapId: string, state: AppState): string {
+  const result = store.saveWholeMap(mapId, state, SERVER_ISSUER);
+  if (!result.ok) throw failed(result, "The record store refused the map state.");
+  return result.savedAt;
+}
+
+/** `saveToSqliteIfUnchanged`: the save happens only when the stored map still has the revision the caller read. */
+export function storeSaveMapIfUnchanged(
+  store: RecordWorkspaceStore,
+  mapId: string,
+  state: AppState,
+  expectedRevision: string,
+  revisionOf: (saved: SavedMap) => string,
+): SavedMap {
+  if (!store.hasMap(mapId) || revisionOf(storeLoadSavedMap(store, mapId)) !== expectedRevision) {
+    throw new Error("REVISION_CONFLICT");
+  }
+  return { version: 1, savedAt: storeSaveMap(store, mapId, state), state };
+}
+
+// ---------------------------------------------------------------- map list and row columns
+
+function parseTags(raw: unknown): string[] {
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    list = undefined;
+    if (trimmed.startsWith("[")) {
+      try { list = JSON.parse(trimmed) as unknown; } catch { list = undefined; }
+    }
+    if (!Array.isArray(list)) list = trimmed.split(",");
+  }
+  if (!Array.isArray(list)) return [];
+  return list.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter((tag) => tag.length > 0);
+}
+
+function parseSource(raw: unknown): MapSource | undefined {
+  let value: unknown = raw;
+  if (typeof raw === "string") {
+    if (!raw.trim()) return undefined;
+    try { value = JSON.parse(raw) as unknown; } catch { return undefined; }
+  }
+  if (value && typeof value === "object" && (value as Dict).kind === "obsidian" && typeof (value as Dict).path === "string") {
+    return { kind: "obsidian", path: (value as { path: string }).path };
+  }
+  return undefined;
+}
+
+function isSet(raw: unknown): boolean {
+  return raw === true || Number(raw ?? 0) === 1;
+}
+
+export function storeListMaps(store: RecordWorkspaceStore, includeArchived: boolean): MapSummaryInternal[] {
+  const summaries: MapSummaryInternal[] = [];
+  for (const entry of store.listMaps()) {
+    const archived = isSet(entry.archived);
+    if (archived && !includeArchived) continue;
+    const state = store.getMapRow(entry.id).state;
+    const nodes = (state?.nodes ?? {}) as Record<string, TreeNode>;
+    let charCount = 0;
+    for (const node of Object.values(nodes)) {
+      charCount += (node.text?.length ?? 0) + (node.details?.length ?? 0) + (node.note?.length ?? 0);
+    }
+    const rootText = state?.rootId && nodes[state.rootId] && typeof nodes[state.rootId]!.text === "string" ? nodes[state.rootId]!.text.trim() : "";
+    const summary: MapSummaryInternal = {
+      id: entry.id,
+      label: rootText.length > 0 ? rootText : "Untitled",
+      savedAt: entry.savedAt,
+      nodeCount: Object.keys(nodes).length,
+      charCount,
+      tags: parseTags(entry.tags),
+      archived,
+      pinned: isSet(entry.pinned),
+    };
+    const source = parseSource(entry.source);
+    if (source) summary.source = source;
+    summaries.push(summary);
+  }
+  // The SQLite list is ordered by saved_at, newest first.
+  return summaries.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
+}
+
+export function storeSetMapColumns(store: RecordWorkspaceStore, mapId: string, columns: MapColumns): void {
+  requireMap(store, mapId);
+  store.setMapColumns(mapId, columns, SERVER_ISSUER);
+}
+
+export function storeRenameMap(store: RecordWorkspaceStore, mapId: string, label: string): void {
+  const state = storeLoadSavedMap(store, mapId).state;
+  const root = state?.nodes?.[state.rootId];
+  if (root) root.text = label;
+  const result = store.saveWholeMap(mapId, state, SERVER_ISSUER, "rename-map-label");
+  if (!result.ok) throw failed(result, "The record store refused the map state.");
+}
+
+export function storeDeleteMap(store: RecordWorkspaceStore, mapId: string): void {
+  requireMap(store, mapId);
+  const row = store.listMaps().find((entry) => entry.id === mapId);
+  if (!row || !isSet(row.archived)) throw new Error("Map is not archived.");
+  store.deleteMap(mapId, SERVER_ISSUER);
+}
+
+// ---------------------------------------------------------------- duplicate
+
+/** String fields that hold what a person wrote; never read as ids. */
+const CONTENT_FIELDS = new Set(["text", "details", "note", "label", "aliasLabel", "targetSnapshotLabel", "link", "d"]);
+
+/**
+ * A copy of the state in which every node, GraphLink, annotation and surface has a new id and
+ * every reference follows. The store keeps these ids unique across the maps of a workspace, so a
+ * copy of a map cannot keep them. Scope keys (`scope:<root node id>`) and surface ids that are
+ * built from a node id follow the node.
+ */
+export function stateWithFreshIds(source: AppState): AppState {
+  const ids = new Map<string, string>();
+  const stamp = Date.now();
+  const fresh = (prefix: string): string => `${prefix}_${stamp}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  for (const id of Object.keys(source.nodes ?? {})) ids.set(id, fresh("n"));
+  for (const id of Object.keys(source.links ?? {})) if (!ids.has(id)) ids.set(id, fresh("link"));
+  for (const id of Object.keys(source.annotations ?? {})) if (!ids.has(id)) ids.set(id, fresh("ann"));
+
+  const token = (value: string): string => {
+    const direct = ids.get(value);
+    if (direct !== undefined) return direct;
+    if (!value.includes(":")) return value;
+    return value.split(":").map((part) => ids.get(part) ?? part).join(":");
+  };
+  // A surface id that names no node (and so did not change above) gets a new id of its own.
+  for (const id of Object.keys(source.surfaces ?? {})) {
+    if (!ids.has(id) && token(id) === id) ids.set(id, fresh("surface"));
+  }
+
+  const copy = (value: unknown, field: string | null): unknown => {
+    if (typeof value === "string") return field !== null && CONTENT_FIELDS.has(field) ? value : token(value);
+    if (Array.isArray(value)) return value.map((item) => copy(item, field));
+    if (typeof value !== "object" || value === null) return value;
+    const out: Dict = {};
+    for (const [key, item] of Object.entries(value as Dict)) {
+      // The values of linearNotesByScope are text; its keys are scope roots.
+      out[token(key)] = field === "linearNotesByScope" ? item : copy(item, key);
+    }
+    return out;
+  };
+  return copy(JSON.parse(JSON.stringify(source)), null) as AppState;
+}
+
+export function storeDuplicateMap(store: RecordWorkspaceStore, sourceId: string, newId: string): void {
+  if (!store.hasMap(sourceId)) throw new Error("Map not found.");
+  const row = store.getMapRow(sourceId);
+  const result = store.saveWholeMap(newId, stateWithFreshIds(row.state), SERVER_ISSUER, "duplicate-map");
+  if (!result.ok) throw failed(result, "The record store refused the copy of the map.");
+  // The SQLite copy carries the tags and starts neither archived nor pinned.
+  if (row.tags !== undefined && row.tags !== null) store.setMapColumns(newId, { tags: row.tags }, SERVER_ISSUER);
+}
+
+// ---------------------------------------------------------------- Commands
+
+function issuerOf(command: MapCommand): string {
+  const actor = command && typeof command === "object" ? command.actor : undefined;
+  return actor && typeof actor.kind === "string" && typeof actor.id === "string" && actor.id.trim()
+    ? `${actor.kind}:${actor.id}`
+    : SERVER_ISSUER;
+}
+
+/**
+ * `expectedRevision` is the revision the callers compute from a loaded map (`revisionOf`, a hash
+ * of saved-at time and state). It is compared here and handed to the store as "matches" or "does
+ * not match", so that the store keeps its own order of checks (a repeated command id first).
+ */
+export function storeCommitMapCommand(
+  store: RecordWorkspaceStore,
+  mapId: string,
+  command: MapCommand,
+  expectedRevision: string | undefined,
+  revisionOf: (saved: SavedMap) => string,
+): LegacyCommitSuccess | LegacyCommitFailure {
+  let expected: string | undefined;
+  if (expectedRevision !== undefined && store.hasMap(mapId)) {
+    expected = revisionOf(storeLoadSavedMap(store, mapId)) === expectedRevision ? store.revisionOf(mapId) : "stale";
+  }
+  const result = store.commitMapCommand(mapId, command, issuerOf(command), expected);
+  if (result.ok) return { ok: true, savedAt: result.savedAt, seq: result.seq, replayed: result.replayed };
+  // The same command id with other changes: the callers know this as a conflict.
+  const code = result.code === "SAME_ID_DIFFERENT_CONTENT" ? "CONFLICT" : result.code;
+  return { ok: false, code, conflicts: result.conflicts, current: result.current };
+}
+
+export function storeReadCommittedCommand(store: RecordWorkspaceStore, mapId: string, commandId: string): LegacyStoredCommand | null {
+  const line = store.committedCommand(mapId, commandId);
+  if (!line || line.commandId === undefined) return null;
+  return {
+    mapId,
+    seq: line.seq,
+    commandId: line.commandId,
+    actor: line.actor as MapCommand["actor"],
+    intent: line.intent,
+    provenance: line.provenance,
+    changes: line.changes ?? [],
+    committedAt: line.committedAt,
+    savedAt: line.committedAt,
+  };
+}

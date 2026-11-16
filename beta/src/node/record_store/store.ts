@@ -491,6 +491,13 @@ export class RecordWorkspaceStore {
     return sortRecords(jsonClone([this.header(), ...this.all.values()]));
   }
 
+  /** The journal line of a Command committed under this id; null when the id is unknown or the journal no longer holds the line. */
+  committedCommand(mapId: string, commandId: string): JournalLine | null {
+    const known = this.commands.get(commandKey(mapId, commandId));
+    if (!known) return null;
+    return readJournal(path.join(this.dir, JOURNAL_FILE)).lines.find((line) => line.seq === known.seq) ?? null;
+  }
+
   engineStatus(): { appliedSeq: number; error?: string } {
     if (!this.engine) return { appliedSeq: this.currentSeq };
     const status: { appliedSeq: number; error?: string } = { appliedSeq: this.engine.appliedSeq };
