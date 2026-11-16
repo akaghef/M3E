@@ -8,6 +8,8 @@ import type { AppState, SavedMap, TreeNode } from "../shared/types";
 import { parseMapPath, resolveNodePath } from "../shared/path_resolve";
 import { parseIndentedTextToNodes } from "./indented_text_parser";
 import { RapidMvpModel } from "./rapid_mvp";
+import { commitMapCommand, readCommittedCommand, type StoredCommand } from "./map_commit";
+import { diffState } from "../shared/map_changes";
 
 const TOOLS = ["m3e_context", "m3e_get", "m3e_create", "m3e_update", "m3e_delete", "m3e_feedback"];
 const DOCUMENTS = ["glossary", "data-model", "map-manager", "operations"].map((name) => `m3e://docs/${name}`);
@@ -34,6 +36,23 @@ class McpError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
 function fail(code: string, message: string): never { throw new McpError(code, message); }
+function optionalCommandId(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim() || value.length > 200) fail("INVALID_ARGUMENT", "command_id must be nonempty text within 200 characters.");
+  return value;
+}
+function commandIntent(tool: string, args: Args): string {
+  if (tool === "m3e_delete") return "delete";
+  if (tool === "m3e_update") {
+    if (args.kind === "move") return "reparent";
+    if (args.kind === "scopen") return "scopen";
+    if (args.kind === "unscopen") return "unscopen";
+    if (args.attributes !== undefined && args.text === undefined) return "set-attribute";
+    return "rename";
+  }
+  if (args.kind === "copy") return "clone";
+  return "assert";
+}
 function object(value: unknown): Args {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("INVALID_ARGUMENT", "Arguments must be an object.");
   return value as Args;
@@ -374,10 +393,15 @@ export class M3eMcpService {
     return { ok: true, target: publicRef(ref), revision: revision(doc), nodes: result.items, links: linkResult.items, scope_payload: payloadResult.items, payload_total: payload.length, next_payload_offset: payloadResult.next, total: nodes.length, link_total: links.length, offset, limit, next_offset: result.next, next_link_offset: linkResult.next, ...(context ? { context_id: context.id, requires_refocus: context.invalidated, event_cursor: context.cursor } : {}) };
   }
   private mutate(tool: string, args: Args, context: Context): Args {
-    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "expected_revision"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision"] : ["context_id", "target", "expected_revision"];
+    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "expected_revision", "command_id"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision", "command_id"] : ["context_id", "target", "expected_revision", "command_id"];
     fields(args, allowed);
     if (context.invalidated || !context.focus) fail("FOCUS_INVALIDATED", "The focused boundary disappeared. Explicitly focus a surviving target before writing.");
     const mapId = context.focus.mapId;
+    const commandId = optionalCommandId(args.command_id);
+    if (commandId) {
+      const prior = readCommittedCommand(this.options.dbPath(), mapId, commandId);
+      if (prior) return this.replayedMutation(context, mapId, prior);
+    }
     let current: SavedMap;
     try { current = saved(this.options.dbPath(), mapId); }
     catch { this.reconcile(context, mapId, null); return fail("FOCUS_INVALIDATED", "The focused map disappeared. Enter or focus a surviving map."); }
@@ -403,7 +427,7 @@ export class M3eMcpService {
       model.removeLink(deletedLink.linkId); deletedLinks = 1;
     } else if (tool === "m3e_create") {
       const kind = str(args.kind, "kind", 30);
-      const common = ["kind", "context_id", "target", "expected_revision"];
+      const common = ["kind", "context_id", "target", "expected_revision", "command_id"];
       fields(args, [...common, ...(kind === "node" ? ["text", "attributes"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : kind === "link" ? ["source", "label", "relation_type", "direction"] : [])]);
       if (kind !== "link" && model.state.nodes[target]!.nodeType === "alias") fail("INVALID_OPERATION", "Alias nodes cannot own children.");
       if (kind === "link") {
@@ -483,7 +507,7 @@ export class M3eMcpService {
       } else fail("INVALID_ARGUMENT", "Unknown create kind.");
     } else if (tool === "m3e_update") {
       const kind = str(args.kind, "kind", 30);
-      fields(args, ["kind", "context_id", "target", "expected_revision", ...(kind === "content" ? ["text", "attributes"] : kind === "move" ? ["parent"] : [])]);
+      fields(args, ["kind", "context_id", "target", "expected_revision", "command_id", ...(kind === "content" ? ["text", "attributes"] : kind === "move" ? ["parent"] : [])]);
       if (kind === "content") {
         if (args.text === undefined && args.attributes === undefined) fail("INVALID_ARGUMENT", "Content update needs text or attributes.");
         if (args.text !== undefined) {
@@ -506,7 +530,24 @@ export class M3eMcpService {
       if (node && old.nodeType === undefined && node.nodeType === "text" && !(tool === "m3e_update" && args.kind === "unscopen" && id === target)) delete node.nodeType;
     }
     if (model.validate().length) fail("INVALID_STATE", "The requested operation violates the Core invariants.");
-    const result = model.saveToSqliteIfUnchanged(this.options.dbPath(), mapId, expected);
+    const changes = diffState(current.state, model.state);
+    const sentCommandId = commandId ?? randomUUID();
+    const committed = commitMapCommand(this.options.dbPath(), mapId, {
+      commandId: sentCommandId,
+      actor: { kind: "ai-agent", id: context.id },
+      intent: commandIntent(tool, args),
+      provenance: { contextId: context.id, tool },
+      changes,
+    }, expected);
+    if (!committed.ok) {
+      if (committed.code === "CONFLICT" || committed.code === "NOT_FOUND") fail("REVISION_CONFLICT", "The map changed since the retained context. Read the relevant state or explicitly refocus before retrying.");
+      fail("INVALID_STATE", "The requested operation violates the Core invariants.");
+    }
+    if (committed.replayed) {
+      const prior = readCommittedCommand(this.options.dbPath(), mapId, sentCommandId);
+      if (prior) return this.replayedMutation(context, mapId, prior);
+    }
+    const result = saved(this.options.dbPath(), mapId);
     context.baseline.set(mapId, result);
     const changed = { created: created.length + createdLinks.length, updated, deleted: Math.max(0, before - Object.keys(result.state.nodes).length) + deletedLinks };
     const createdRefs = [...created.slice(0, 100).map((id) => publicRef(refFor(mapId, result.state, id))), ...createdLinks.map((id) => this.linkRef(mapId, result.state, id))].slice(0, 100);
@@ -520,6 +561,33 @@ export class M3eMcpService {
     } catch {
       // Commit succeeded; downstream delivery must never invite a duplicate mutation retry.
       return { ok: true, committed: true, context_id: context.id, revision: revision(result), focus: publicRef(context.focus), requires_refocus: context.invalidated, event_cursor: context.cursor, changed, created: createdRefs, created_truncated: createdTruncated, warning: "The map was committed, but downstream notification failed. Read current state if a listener missed it." };
+    }
+  }
+  private replayedMutation(context: Context, mapId: string, prior: StoredCommand): Args {
+    const doc = saved(this.options.dbPath(), mapId);
+    context.baseline.set(mapId, doc);
+    const refs: Args[] = [];
+    for (const change of prior.changes) {
+      if (change.op !== "create") continue;
+      const id = change.key[0];
+      if (!id) continue;
+      if (change.kind === "node" && doc.state.nodes[id]) refs.push(publicRef(refFor(mapId, doc.state, id)) as Args);
+      if (change.kind === "graph-link" && doc.state.links?.[id]) refs.push(this.linkRef(mapId, doc.state, id));
+    }
+    const changed = {
+      created: prior.changes.filter((change) => change.op === "create" && (change.kind === "node" || change.kind === "graph-link")).length,
+      updated: prior.changes.some((change) => change.op === "update") ? 1 : 0,
+      deleted: prior.changes.filter((change) => change.op === "delete" && (change.kind === "node" || change.kind === "graph-link")).length,
+    };
+    const created = refs.slice(0, 100);
+    const createdTruncated = refs.length > 100;
+    try {
+      this.reconcile(context, mapId, doc, true);
+      this.notifyMapChanged(mapId);
+      this.options.onSaved?.(mapId, prior.savedAt);
+      return { ok: true, replayed: true, ...this.summary(context), changed, created, created_truncated: createdTruncated };
+    } catch {
+      return { ok: true, replayed: true, committed: true, context_id: context.id, revision: revision(doc), focus: publicRef(context.focus), requires_refocus: context.invalidated, event_cursor: context.cursor, changed, created, created_truncated: createdTruncated, warning: "The map was committed, but downstream notification failed. Read current state if a listener missed it." };
     }
   }
   private linkRef(mapId: string, state: AppState, linkId: string): { uri: string; name: string; kind: string } {

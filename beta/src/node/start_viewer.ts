@@ -12,6 +12,8 @@ import { createOrreryApi } from "./orrery_api";
 import { spawnSync, spawn, exec } from "child_process";
 import Database from "better-sqlite3";
 import { RapidMvpModel } from "./rapid_mvp";
+import { commitMapCommand } from "./map_commit";
+import type { MapCommand } from "../shared/map_changes";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
 import { parseIndentedTextToNodes } from "./indented_text_parser";
@@ -2500,6 +2502,75 @@ function handleEdgePortSnapshotApi(req: http.IncomingMessage, res: http.ServerRe
   return true;
 }
 
+function parseMapCommandRoute(urlPath: string): string | null {
+  const match = new URL(urlPath, "http://localhost").pathname.match(/^\/api\/maps\/([^/]+)\/commands$/);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<void> {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+  let saveAcquired = false;
+  try {
+    const rawBody = await readRequestBody(req, res, MAP_STATE_BODY_LIMIT_BYTES);
+    if (activeMapSaves.has(mapId)) {
+      sendJson(res, 409, { ok: false, code: "DOC_CONFLICT", error: "A map save is already in progress." });
+      return;
+    }
+    activeMapSaves.add(mapId);
+    saveAcquired = true;
+    const command = JSON.parse(rawBody) as MapCommand;
+    const result = commitMapCommand(currentSqliteDbPath(), mapId, command);
+    if (!result.ok) {
+      if (result.code === "NOT_FOUND") {
+        sendJson(res, 404, { error: "Map not found." });
+        return;
+      }
+      if (result.code === "CONFLICT") {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DOC_NODE_CONFLICT_Q",
+          conflictKind: "Q",
+          error: "Concurrent edits changed the same node differently.",
+          mapId,
+          savedAt: result.current?.savedAt ?? null,
+          state: result.current?.state ?? null,
+          conflicts: result.conflicts,
+        });
+        return;
+      }
+      sendJson(res, 400, { error: result.code === "INVALID_STATE" ? "Invalid model before save." : "Invalid Command." });
+      return;
+    }
+    const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
+    let liveWrite: Awaited<ReturnType<typeof writeMapToVaultNow>> = null;
+    if (!result.replayed) {
+      const saved = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+      liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, saved.state);
+    }
+    broadcastMapUpdate(mapId, result.savedAt, sourceTabId);
+    if (!result.replayed && !liveWrite) handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
+    sendJson(res, 200, {
+      ok: true,
+      savedAt: result.savedAt,
+      seq: result.seq,
+      mapId,
+      integrationMode: liveWrite?.integrationMode ?? "off",
+      sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
+      ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
+    });
+  } catch (err) {
+    if (res.headersSent) return;
+    const message = (err as Error).message || "Unknown error";
+    if (err instanceof SyntaxError) sendJson(res, 400, { error: "Invalid JSON body." });
+    else sendJson(res, 400, { error: message });
+  } finally {
+    if (saveAcquired) activeMapSaves.delete(mapId);
+  }
+}
+
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, mapId: string): Promise<boolean> {
   if (!mapId) {
     sendJson(res, 400, { error: "Map id is required." });
@@ -4365,6 +4436,12 @@ export function createAppServer(): http.Server {
     const linkRoute = parseLinkRoute(req.url ?? "/", req.method ?? "GET");
     if (linkRoute) {
       await handleLinkApi(req, res, linkRoute);
+      return;
+    }
+
+    const commandMapId = parseMapCommandRoute(req.url ?? "/");
+    if (commandMapId !== null) {
+      await handleMapCommandApi(req, res, commandMapId);
       return;
     }
 
