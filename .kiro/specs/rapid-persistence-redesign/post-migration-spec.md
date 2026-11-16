@@ -191,19 +191,31 @@ key: 接頭辞（例: `rdfs`）
 
 ### 3.13 profile と確定の表
 
-profile（key: 外部の ID）:
+用語は `.kiro/steering/agent_orrery_terminology.md` の Role・Actor Instance・session に従う。
+
+profile（key: profile の ID）:
 
 - 認証の単位である。書き込みの発行者になる。
+- AI agent では、Actor Instance 一つが profile 一つである。human では、その人一人が profile 一つである。
+- 登録のときに鍵を発行し、サーバはその鍵で接続を認証する。
 - 識別には、既にある外部の ID を使う。
-- 持つ欄は未定（IB44）。
+- 権限は profile に直接与えない。Role に与える。profile がどの Role を担うかの持ち方と、profile が持つ欄は未定（IB44）。
+- Team は M3E の語にしない。まとめて権限を与えたいときは Role を使う。
+
+agent の node:
+
+- `nodeType` が `agent` の node は、profile が scope に現れている姿である。details に、指す profile を持つ。
+- profile と agent の node は 1 対多である。AI agent が複数の scope に居る場合も、human が複数のタブをつないだ場合も、node は複数になる。
+- それらの node は互いに独立した実体である。alias ではない。束ねるのは profile である。
+- 発行者の識別に node の ID は使わない。
 
 確定の表（key: 通し番号）:
 
-| 欄 | 内容 |
-|---|---|
-| 確定時刻 | その確定が行われた時刻 |
-| 発行者 | profile |
-| 会話の ID | AI agent が発行した場合の、その会話の識別 |
+| 欄 | 内容 | 省略 |
+|---|---|---|
+| 確定時刻 | その確定が行われた時刻 | 必須 |
+| 発行者 | profile | 必須 |
+| session の ID | 観測の証拠として残す場合の値 | 無し |
 
 - 確定 1 回につき 1 行である。node の数に比例しない。
 - journal を圧縮しても、この表は残す。
@@ -361,6 +373,7 @@ Undo は、逆向きの Command を出すことで行う。
 | nodeType | 例から `folder` を除く |
 | scope | 別表記の「folder」を廃止する |
 | profile | 追加。認証の単位。`data profile` とは別の語 |
+| Role、Actor Instance | 用語の文書から Glossary へ上げる |
 | rev、確定の表、兄弟順キー | 追加 |
 
 ## 15. 未定の一覧
@@ -377,5 +390,5 @@ Undo は、逆向きの Command を出すことで行う。
 | IB24 | 最初に定義する relationType の名前 | 7 |
 | IB36 | AI agent が human の依頼で書いたときの記録 | 3.13 |
 | IB37 | 権限の形 | 3.6 |
-| IB44 | profile が持つ欄 | 3.13 |
+| IB44 | profile が持つ欄と、profile がどの Role を担うかの持ち方 | 3.13 |
 | IB47 | 定義の無い relationType を書けるか | 7 |
