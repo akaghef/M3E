@@ -49,12 +49,14 @@
 - **DA29 rev の粒度**: node のラベルと attribute は、node 単位の一つの `rev` で管理する。attribute ごとには分けない。Connection と details は独立したレコードで、それぞれ `rev` を持つ。
 - **DA13 作成者を別に持たない**: 「誰が作ったか」を node に持たせない。最後に変えた確定の発行者だけが引ける。
 - **DA14 発行者は必須**: 確定には必ず発行者を記録する。発行者は、サーバが認証済みの接続から決める。画面や AI agent の自己申告は使わない。
-- **DA25 profile**: 認証の単位を profile と呼ぶ（アカウントに当たる）。発行者は profile である。
-- **DA15 既にある ID を使う**: profile の識別には、既にある外部の ID（Discord の ID など）を使う。発行者の識別に node の ID は使わない（DA14 の初版の後半を改めた）。
-- **DA33 profile と Actor Instance**: AI agent では Actor Instance 一つが profile 一つ、human ではその人一人が profile 一つである。Actor Instance は登録のときに鍵を受け取り、それで認証する。session の ID は、確定の表に任意で残す。
-- **DA34 権限は Role に与える**: 権限は profile に直接与えず、Role に与える。Actor Instance が生まれる前に設定できる。Team は M3E の語にしない。
-- **DA35 profile と agent の node は 1 対多**: agent の node は、profile が scope に現れている姿である。複数の scope に居れば node も複数になる（human が複数のタブをつないだ場合も同じ）。それらは互いに独立した実体で、alias ではない。
-  - Glossary への追加が要る: profile（既にある `data profile` とは別の語）。Role と Actor Instance は用語の文書（`.kiro/steering/agent_orrery_terminology.md`）から Glossary へ上げる。
+- **DA25 アカウント**: 認証の単位を アカウント と呼ぶ（アカウントに当たる）。発行者は アカウント である。
+- **DA15 既にある ID を使う**: アカウント の識別には、既にある外部の ID（Discord の ID など）を使う。発行者の識別に node の ID は使わない（DA14 の初版の後半を改めた）。
+- **DA33 アカウント と Actor Instance**: AI agent では Actor Instance 一つが アカウント 一つ、human ではその人一人が アカウント 一つである。Actor Instance は登録のときに鍵を受け取り、それで認証する。session の ID は、確定の表に任意で残す。
+- **DA34 権限は Role に与える**: 権限は アカウント に直接与えず、Role に与える。Actor Instance が生まれる前に設定できる。Team は M3E の語にしない。
+- **DA36 agent の node の実体は一つ**: agent の一覧の map がある場合、agent の node の実体はそこに一つだけ置く。ほかの scope に現れる姿は、その実体を指す alias とする（DA6 を agent にも当てる）。初版の「互いに独立した実体」（DA35）を改めた。
+- **DA37 アカウントは map の外で管理する**: アカウントにかかわること（認証の鍵、外部の ID、担う Role）は、map ではなく専用の画面と機構で管理する。map の node が無くてもアカウントは存在する。map 上の Role への alias は表示である。
+- **DA38 語は「アカウント」**: 認証の単位を「アカウント」と呼ぶ。「アカウント」は使わない。
+  - Glossary への追加が要る: アカウント。Role と Actor Instance は用語の文書（`.kiro/steering/agent_orrery_terminology.md`）から Glossary へ上げる。
 
 ### 欄の省略
 
@@ -112,8 +114,8 @@ akaghef の個別の承認はまだ受けていない。
 | 注釈 | `annotationId` | 種別（pen / text）、scope、形状、色、太さ | `annotations` |
 | relationType の定義 | 名前（DA22） | 表示ラベル、説明、読む向き（親 → 子か、子 → 親か） | 無し（新設） |
 | 接頭辞の対応 | 接頭辞 | 指す URI | 無し（新設） |
-| profile | profile の ID | 外部の ID、表示名ほか（IB44） | 無し（新設） |
-| 確定の表 | 通し番号 | 確定時刻、発行者（profile）、session の ID（任意） | 第 1 段の `command_log` の一部 |
+| アカウント | アカウント の ID | 外部の ID、表示名ほか（IB44） | 無し（新設） |
+| 確定の表 | 通し番号 | 確定時刻、発行者（アカウント）、session の ID（任意） | 第 1 段の `command_log` の一部 |
 
 - attribute は、持ち主（node または Connection）のレコードの一部で、独立した `rev` を持たない（DA29）。portable snapshot と Command では 1 件ずつ扱う。
 - relationType の定義に「読む向き」が要る理由: 親子 edge は親から子へ向くが、`rdfs:subClassOf` は子から親へ読み、`consist-of` は親から子へ読む。この欄が無いと、RDF へ書き出すときに主語と目的語が逆になる。
@@ -159,7 +161,7 @@ Connection  kind edge   親 root → 子 b   兄弟順キー "a1"
 |---|---|---|
 | `text` | Markdown の本文 | 基本形。47,429 件（旧 `folder` 2,066 件と `leaf` 216 件を含めると 49,711 件） |
 | `alias` | 無し。参照先、`aliasLabel`、`access` を持つ | 994 件。子を持てず参照先が必須。`aliasLabel` があるのは 39 件 |
-| `agent` | agent の種類、icon、model、役割。指す profile | 現行は attribute `m3e:agent` に JSON を文字列で詰めている。11 件 |
+| `agent` | agent の種類、icon、model、役割。指す アカウント | 現行は attribute `m3e:agent` に JSON を文字列で詰めている。11 件 |
 | `image` | 画像への参照 | 仕様に定義があるが、データ 0 件、実装ほぼ無し。形は実装時に決める |
 
 種別にしないもの:
@@ -265,7 +267,8 @@ scope の大きさ（2,126 scope）:
 - **IB10 ID を振り直す範囲**: 推奨は、重複しているものと本文を含む ID だけを振り直し、旧 ID と新 ID の対応表を migration の成果物として残すこと。
 - **IB11 migration の対象範囲**: 推奨は、この Mac の 3 workspace を対象にし、Final と cloud 上の複製は対象外とすること。個人の workspace に残る試験用の map は、前もって保管に回す。
 - **IB19 scope の構造を変える操作**: unscopen したとき、その scope の linear-text と Surface View の保存設定を消すか、親の scope へ移すか。scopen・unscopen・scope をまたぐ移動は、変わっていない多数の node の所属を変えるので、旧い scope と新しい scope の両方のキャッシュを無効にする。scope どうしを「scope という役割の線」でつながったグラフと読む案（担当の読み。未確認）。
-- **IB44 profile の中身**: profile が持つ欄。一つの profile に外部の ID を複数結び付けられるか。profile がどの Role を担うかの持ち方（用語の文書は「agent の node から alias で Role を指す」としているが、node が複数あると食い違いうる）。
+- **IB44 アカウントの中身**: アカウントが持つ欄。一つのアカウントに外部の ID を複数結び付けられるか。
+- **IB48 map をまたぐ alias**: agent の一覧が別の map にあると、alias が map をまたいで実体を指す。参照先の map を消すときの扱いと、参照先を読む権限の扱い。
 - **IB36 代理**: AI agent が human の依頼で書いたとき、依頼した側を記録するか。
 - **IB37 権限の持ち方**: scope に置く権限の形。Role を単位にする（DA34）。
 - **IB47 語彙に無い relationType**: 定義のレコードが無い名前を Connection に書けるか（拒否するか、書かせて後で定義を足すか）。
@@ -296,5 +299,5 @@ scope の大きさ（2,126 scope）:
 - **規模。** 保存は変更分だけになったが、画面は map 全体を読み込む。scope 単位の木とキャッシュに変えるのは、画面の作り直しを伴う別の仕事になる（IB18）。
 - **移行の照合。** 意図して変える点（7 節）が増えるほど、想定外の欠落を見逃す余地が増える。形の変換だけを載せる原則（1 節）を守る。
 - **種別と版。** details の形を種別ごとに持つので、形の変更の規則が種別の数だけ要る。
-- **識別の寿命。** profile を消したとき、確定の表の発行者をどう表示するか。名前を変えたとき、過去の履歴の表示も変わる（レビュー）。
+- **識別の寿命。** アカウント を消したとき、確定の表の発行者をどう表示するか。名前を変えたとき、過去の履歴の表示も変わる（レビュー）。
 - **scope の意味の「folder」の払拭。** 保存データは migration で、コードは第 2 段のモデルの書き直しで、文書は一斉置換で消す。戻らないように、push 前の検査に項目を入れる。

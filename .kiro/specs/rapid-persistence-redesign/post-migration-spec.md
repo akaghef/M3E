@@ -65,7 +65,7 @@ key: `nodeId`
 |---|---|---|
 | `text` | 無し | Markdown の本文 |
 | `alias` | 子を持てない。参照先が必須 | 無し。参照先、`aliasLabel`、`access` を持つ |
-| `agent` | 無し | agent の種類、icon、model、役割、指す profile |
+| `agent` | 無し | agent の種類、icon、model、役割、指す アカウント |
 | `image` | 無し | 画像への参照（形は実装時に決める） |
 
 - 型を新しく立てるのは、details の形か構造上の拘束が他と違うときだけである。分類の違いだけなら attribute にする。
@@ -189,32 +189,33 @@ key: 接頭辞（例: `rdfs`）
 |---|---|
 | 指す URI | その接頭辞が表す名前空間 |
 
-### 3.13 profile と確定の表
+### 3.13 アカウントと確定の表
 
 用語は `.kiro/steering/agent_orrery_terminology.md` の Role・Actor Instance・session に従う。
 
-profile（key: profile の ID）:
+アカウント（key: アカウント の ID）:
 
 - 認証の単位である。書き込みの発行者になる。
-- AI agent では、Actor Instance 一つが profile 一つである。human では、その人一人が profile 一つである。
+- AI agent では、Actor Instance 一つが アカウント 一つである。human では、その人一人が アカウント 一つである。
 - 登録のときに鍵を発行し、サーバはその鍵で接続を認証する。
 - 識別には、既にある外部の ID を使う。
-- 権限は profile に直接与えない。Role に与える。profile がどの Role を担うかの持ち方と、profile が持つ欄は未定（IB44）。
+- 権限は アカウント に直接与えない。Role に与える。アカウント がどの Role を担うかは、アカウント の側で管理する。map 上の Role への alias は、それを見せるための表示である。アカウント が持つ欄は未定（IB44）。
 - Team は M3E の語にしない。まとめて権限を与えたいときは Role を使う。
 
 agent の node:
 
-- `nodeType` が `agent` の node は、profile が scope に現れている姿である。details に、指す profile を持つ。
-- profile と agent の node は 1 対多である。AI agent が複数の scope に居る場合も、human が複数のタブをつないだ場合も、node は複数になる。
-- それらの node は互いに独立した実体である。alias ではない。束ねるのは profile である。
-- 発行者の識別に node の ID は使わない。
+- アカウントは map の外にあるレコードで、専用の画面と機構で管理する。map の node が無くても、アカウントは存在する。
+- `nodeType` が `agent` の node は、アカウントを map に表したものである。details に、指すアカウントを持つ。
+- agent の一覧の map がある場合、agent の node の実体はそこに一つだけ置く。ほかの scope に現れる姿は、その実体を指す alias である。
+- 発行者の識別に node の ID は使わない。node を消しても、名前を変えても、過去の確定の発行者は変わらない。
+- map をまたぐ alias を認めるかは未定（IB48）。
 
 確定の表（key: 通し番号）:
 
 | 欄 | 内容 | 省略 |
 |---|---|---|
 | 確定時刻 | その確定が行われた時刻 | 必須 |
-| 発行者 | profile | 必須 |
+| 発行者 | アカウント | 必須 |
 | session の ID | 観測の証拠として残す場合の値 | 無し |
 
 - 確定 1 回につき 1 行である。node の数に比例しない。
@@ -372,7 +373,7 @@ Undo は、逆向きの Command を出すことで行う。
 | relationType | 「tree edge の親子関係とは分ける」を改め、edge も持つとする |
 | nodeType | 例から `folder` を除く |
 | scope | 別表記の「folder」を廃止する |
-| profile | 追加。認証の単位。`data profile` とは別の語 |
+| アカウント | 追加。認証の単位 |
 | Role、Actor Instance | 用語の文書から Glossary へ上げる |
 | rev、確定の表、兄弟順キー | 追加 |
 
@@ -390,5 +391,6 @@ Undo は、逆向きの Command を出すことで行う。
 | IB24 | 最初に定義する relationType の名前 | 7 |
 | IB36 | AI agent が human の依頼で書いたときの記録 | 3.13 |
 | IB37 | 権限の形 | 3.6 |
-| IB44 | profile が持つ欄と、profile がどの Role を担うかの持ち方 | 3.13 |
+| IB44 | アカウントが持つ欄 | 3.13 |
+| IB48 | map をまたぐ alias を認めるか | 3.13 |
 | IB47 | 定義の無い relationType を書けるか | 7 |
