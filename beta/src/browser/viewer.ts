@@ -2093,10 +2093,15 @@ function syncV4Panel(updateDrafts = false): void {
   }
 }
 
-function showV4Panel(): void {
+function showV4Panel(flashOnly = false): void {
   if (!v4PanelEl) {
     return;
   }
+  const title = v4PanelEl.querySelector(".v4-panel-title");
+  if (title) title.textContent = flashOnly ? "Flash" : "V4 Workbench";
+  v4PanelEl.querySelectorAll<HTMLElement>(".v4-panel-body > section").forEach((section, index) => {
+    section.style.display = flashOnly && index > 0 ? "none" : "";
+  });
   v4PanelVisible = true;
   v4PanelEl.hidden = false;
   syncV4Panel(true);
@@ -15074,7 +15079,7 @@ stopVisualCheckBtn?.addEventListener("click", () => {
 
 modeFlashBtn?.addEventListener("click", () => {
   setThinkingMode("flash");
-  showV4Panel();
+  showV4Panel(true);
 });
 
 modeRapidBtn?.addEventListener("click", () => {
@@ -16743,7 +16748,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "1") {
       event.preventDefault();
       setThinkingMode("flash");
-      showV4Panel();
+      showV4Panel(true);
       return;
     }
     if (event.key === "2") {
