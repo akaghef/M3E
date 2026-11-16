@@ -100,7 +100,10 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS143（2026-11-16、akaghef）：移行時に schema version 表を入れ、table 名も旧実装と変える。新形式の DB を旧実装が開いたら空の表を作らず即失敗させる（fail closed）。
 - IS144（2026-11-16、akaghef）：Schema v2 はこの移行に畳み込む方針。内容を精査したうえで、requirements で取り込む範囲を確定する。
 
-### 既存の Neo4j 実装（2026-11-11、Cursor。採否未決）
+### 既存の Neo4j 実装（2026-11-11、Cursor。2026-11-16 に採否を決定）
+
+- **採否（2026-11-16）**: `neo4j_map_store.ts`、`rapid_mvp.ts` の子プロセスによる切替、`node/sync/`、Neo4j を起動するテスト 2 本は削除した（dev-beta `73fa93a`）。兄弟順が位置の番号で重複する、ID が map ごと、journal が再生できない、既存 map の保存が map 全体の差分になる、という点が上の決定と食い違うため。`beta/src/cutover/` は素材として残し、どこからも実行されていなかったそのテストを `npm test` の対象に入れた。この節の残りは削除前の記録。
+- **第 1 段の出荷（2026-11-16）**: Command の確定経路を、保存形式を変えずに入れた。設計・受入・出荷記録は [phase1-command-commit.md](./phase1-command-commit.md)。
 
 dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 行、`0619824`〜`570612f` の 5 commit）が既に入っている。この brief への記載が漏れていた（2026-11-16 に別セッションからの引き継ぎで判明）。
 
