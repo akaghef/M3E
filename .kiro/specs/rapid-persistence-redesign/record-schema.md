@@ -85,6 +85,26 @@
 
 「居る」は agent（AI agent と human）が scope を見ていることを指す。node は scope に「属する」。
 
+### 担当の決め打ち（2026-11-17。akaghef の指示「ある程度決め打ちの仕様で進めて検証まで」による。個別の承認は未了）
+
+どれも推奨として示していた案である。承認時に見直せるよう、ここにまとめる。移行を実行する前に akaghef が確認する。
+
+- **DA39 note と link**（IB1）: `note` と `link` は details に入れる。node のレコードは ID・型・ラベル・`collapsed`・attribute だけになる。
+- **DA40 型定義に無い欄**（IB2）: 仕様が保存を禁じた `scopeId`、表示状態の混入（`selectedId`）、行の保存時刻の写し、参照先と全件同値の `aliasOf` は捨てる。それ以外は、レコードの「型定義に無い欄」の置き場（`extra`）にそのまま残す。`nodeType: "leaf"` は `text` に寄せる。
+- **DA41 HTML を載せる型**（IB3）: 型は立てる。中身は登録済みの component の種類と設定だけで、生の HTML は載せない。migration では該当データが無いので、何も作らない。
+- **DA42 agent の状態と伝言**（IB4）: details に保存しない。サーバのメモリに持つ。migration では、現行の attribute `m3e:agent` を一字も変えずに運ぶ（1 節の原則）。
+- **DA43 surfaceId**（IB8）: 種別を含まない ID に振り直す。旧 ID との対応表を残す。
+- **DA44 GraphLink の port**（IB9）: 値が無いことを自動とする。`auto` という値は保存しない。
+- **DA45 ID を振り直す範囲**（IB10）: 重複しているものと本文を含む ID だけを振り直し、旧 ID と新 ID の対応表を migration の成果物として残す。対応表の key は（workspace, map, 種別, 旧 ID）とする。
+- **DA46 migration の対象**（IB11）: この Mac の 3 workspace。Final と cloud 上の複製は対象外。
+- **DA47 unscopen**（IB19）: scope のレコードと一緒に、その linear-text と Surface View の保存設定を同じ確定で消す。Undo（逆向きの Command）で戻せる。
+- **DA48 アカウントの欄**（IB44）: ID、種別（AI agent / human）、表示名、外部の ID の一覧、担う Role の一覧。migration では、発行者が記録されていない過去の分を表す「移行」というアカウントを一つ作る。
+- **DA49 定義の無い relationType**（IB47）: 書ける。定義の無い名前の一覧は引けるようにする。
+- **DA50 map をまたぐ alias**（IB48）: 形の上では認める（参照先は workspace で一意な ID）。参照先が無い alias は、壊れた alias として残し、確定時の検査は「新しく作る・付け替える alias」にだけ掛ける。
+- **DA51 代理**（IB36）: 記録しない。必要になったら確定の表に欄を足す（欄の追加は migration にならない）。
+- **DA52 権限**（IB37）: 今回の形には入れない。scope のレコードに後から欄を足す。
+- **DA53 最初の relationType の定義**（IB24）: `consist-of`、`detail`、`rdfs:subClassOf`、`rdf:type` の四つと、接頭辞 `rdf`・`rdfs` の対応を入れる。既存の Connection には付けない。
+
 ## 3. 確定の仕組み（担当の判断。レビューを受けて初版を直した）
 
 akaghef の個別の承認はまだ受けていない。
