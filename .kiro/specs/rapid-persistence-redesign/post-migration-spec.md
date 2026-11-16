@@ -5,7 +5,7 @@
 - 本書は「移行後にこうなっている」を現在形で書く。決定の経緯、実測値、Neo4j 上の持ち方は [record-schema.md](./record-schema.md) にある。
 - 承認されたら、[Data_Model.md](../../../docs/03_Spec/Data_Model.md) と [Model_State_And_Schema_V2.md](../../../docs/03_Spec/Model_State_And_Schema_V2.md) の該当部分を本書の内容で置き換える。それまでは現行の仕様が正本である。
 - 用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。本書が Glossary に足す・改める語は 14 節にまとめた。
-- 「未定」と書いた箇所は決まっていない。括弧内の ID は record-schema.md の未決の論点を指す。
+- 担当が決め打ちした箇所は 15 節にまとめた。akaghef の個別の承認は受けていない。
 
 ## 1. 範囲
 
@@ -57,7 +57,8 @@ key: `nodeId`
 | `rev` | このレコードを最後に変えた確定の通し番号 | 必須 |
 
 - node は親・子・時刻・作成者を持たない。親子は Connection が持つ。時刻と発行者は、`rev` から確定の表（3.13）を引く。
-- `note` と `link` を node に残すか details に入れるかは未定（IB1）。
+- `note` と `link` は details に持つ。
+- 型定義に無い欄は、レコードの `extra` にそのまま持つ。
 
 `nodeType` の一覧:
 
@@ -65,12 +66,12 @@ key: `nodeId`
 |---|---|---|
 | `text` | 無し | Markdown の本文 |
 | `alias` | 子を持てない。参照先が必須 | 無し。参照先、`aliasLabel`、`access` を持つ |
-| `agent` | 無し | agent の種類、icon、model、役割、指す profile |
+| `agent` | 無し | agent の種類、icon、model、役割、指すアカウント |
 | `image` | 無し | 画像への参照（形は実装時に決める） |
 
 - 型を新しく立てるのは、details の形か構造上の拘束が他と違うときだけである。分類の違いだけなら attribute にする。
 - 型を足しても、既存のレコードは変換しない。
-- HTML を載せる型は未定（IB3）。
+- HTML を載せる型は、登録済みの component の種類と設定だけを持つ。生の HTML は持たない。
 
 ### 3.3 details
 
@@ -98,7 +99,7 @@ key: `connectionId`
 | `relationType` | 線の役割（7 節） | 役割無し |
 | `label` | 線に表示する文字列 | 6 節の規則で表示 |
 | 兄弟順キー | edge だけ。同じ親の下での並び順 | edge では必須 |
-| 向き・線種・色・port | GraphLink だけ。表示の設定 | 既定。port は「値が無い＝自動」（IB9 の推奨） |
+| 向き・線種・色・port | GraphLink だけ。表示の設定 | 既定。port は値が無ければ自動 |
 | attribute | key と値の組（3.5） | 無し |
 | `rev` | 最後に変えた確定の通し番号 | 必須 |
 
@@ -123,7 +124,6 @@ key: `scopeId`
 |---|---|---|
 | `rootNodeId` | この scope の root の node | 必須 |
 | `primarySurfaceId` | 既定の Surface View の保存設定 | 無し |
-| 権限 | 未定（IB37） | — |
 | `rev` | 最後に変えた確定の通し番号 | 必須 |
 
 - scope は名前を持たない。scope の名前は、root の node のラベルである。
@@ -149,7 +149,7 @@ key: `surfaceId`
 | `rev` | 最後に変えた確定の通し番号 |
 
 - 種別の値には、旧い語彙（`scatter`・`mindmap`・`logic-chart`・`timeline`）が残っている場合がある。対応が決まった時点で、通常の書き込みで直す。
-- `surfaceId` の形は未定（IB8）。
+- `surfaceId` は種別を含まない。
 
 ### 3.9 配置値
 
@@ -189,21 +189,34 @@ key: 接頭辞（例: `rdfs`）
 |---|---|
 | 指す URI | その接頭辞が表す名前空間 |
 
-### 3.13 profile と確定の表
+### 3.13 アカウントと確定の表
 
-profile（key: 外部の ID）:
+用語は `.kiro/steering/agent_orrery_terminology.md` の Role・Actor Instance・session に従う。
+
+アカウント（key: アカウントの ID）:
 
 - 認証の単位である。書き込みの発行者になる。
+- AI agent では、Actor Instance 一つがアカウント一つである。human では、その人一人がアカウント一つである。
+- 登録のときに鍵を発行し、サーバはその鍵で接続を認証する。
 - 識別には、既にある外部の ID を使う。
-- 持つ欄は未定（IB44）。
+- 権限はアカウントに直接与えない。Role に与える。アカウントがどの Role を担うかは、アカウントの側で管理する。map 上の Role への alias は、それを見せるための表示である。アカウントは、ID、種別（AI agent / human）、表示名、外部の ID の一覧、担う Role の一覧を持つ。
+- Team は M3E の語にしない。まとめて権限を与えたいときは Role を使う。
+
+agent の node:
+
+- アカウントは map の外にあるレコードで、専用の画面と機構で管理する。map の node が無くても、アカウントは存在する。
+- `nodeType` が `agent` の node は、アカウントを map に表したものである。details に、指すアカウントを持つ。
+- agent の一覧の map がある場合、agent の node の実体はそこに一つだけ置く。ほかの scope に現れる姿は、その実体を指す alias である。
+- 発行者の識別に node の ID は使わない。node を消しても、名前を変えても、過去の確定の発行者は変わらない。
+- alias は、別の map の node を指してよい。
 
 確定の表（key: 通し番号）:
 
-| 欄 | 内容 |
-|---|---|
-| 確定時刻 | その確定が行われた時刻 |
-| 発行者 | profile |
-| 会話の ID | AI agent が発行した場合の、その会話の識別 |
+| 欄 | 内容 | 省略 |
+|---|---|---|
+| 確定時刻 | その確定が行われた時刻 | 必須 |
+| 発行者 | アカウント | 必須 |
+| session の ID | 観測の証拠として残す場合の値 | 無し |
 
 - 確定 1 回につき 1 行である。node の数に比例しない。
 - journal を圧縮しても、この表は残す。
@@ -237,7 +250,7 @@ profile（key: 外部の ID）:
 - node の所属は、「自分自身を含む祖先のうち、最も近い scope の root」が属する scope である。所属は保存しない。
 - scope の root の node は、自分の scope に属する。親の scope には、入口として現れる。
 - map の root の node は、その map の最上位の scope の root である。
-- unscopen したとき、その scope の linear-text と Surface View の保存設定をどうするかは未定（IB19）。
+- unscopen は、scope のレコードと一緒に、その linear-text と Surface View の保存設定を同じ確定で消す。
 
 大きさの目安:
 
@@ -260,7 +273,7 @@ profile（key: 外部の ID）:
 - 接頭辞の無い名前は M3E 独自の語彙、接頭辞のある名前は借りてきた語彙である。
 - 許される名前の一覧は、スキーマに固定しない。定義のレコード（3.11）として持つ。
 - 表示を変えるときは、定義の表示ラベルを書き換える。Connection は書き換えない。
-- 定義の無い名前を Connection に書けるかは未定（IB47）。最初に定義する名前は未定（IB24）。
+- 定義の無い名前も Connection に書ける。最初に定義されているのは `consist-of`、`detail`、`rdfs:subClassOf`、`rdf:type` である。
 
 ## 8. 欄の省略
 
@@ -360,22 +373,18 @@ Undo は、逆向きの Command を出すことで行う。
 | relationType | 「tree edge の親子関係とは分ける」を改め、edge も持つとする |
 | nodeType | 例から `folder` を除く |
 | scope | 別表記の「folder」を廃止する |
-| profile | 追加。認証の単位。`data profile` とは別の語 |
+| アカウント | 追加。認証の単位 |
+| Role、Actor Instance | 用語の文書から Glossary へ上げる |
 | rev、確定の表、兄弟順キー | 追加 |
 
-## 15. 未定の一覧
+## 15. 未承認の決め打ち
 
-| ID | 内容 | 本書の箇所 |
-|---|---|---|
-| IB1 | `note` と `link` の置き場 | 3.2 |
-| IB2 | 型定義に無い欄の扱い | 3.2 |
-| IB3 | HTML を載せる型 | 3.2 |
-| IB4 | agent の details に載せる実行時の値 | 3.2 |
-| IB8 | `surfaceId` の形 | 3.8 |
-| IB9 | GraphLink の port の自動 | 3.4 |
-| IB19 | unscopen したときの linear-text と Surface View の保存設定 | 5 |
-| IB24 | 最初に定義する relationType の名前 | 7 |
-| IB36 | AI agent が human の依頼で書いたときの記録 | 3.13 |
-| IB37 | 権限の形 | 3.6 |
-| IB44 | profile が持つ欄 | 3.13 |
-| IB47 | 定義の無い relationType を書けるか | 7 |
+次の箇所は、担当が決め打ちした（record-schema.md の DA39〜DA53）。akaghef の個別の承認は受けていない。migration を実行する前に確認する。
+
+- 3.2: `note`・`link` を details に持つこと、`extra`、HTML を載せる型
+- 3.4: port の自動
+- 3.6: 権限の欄を持たないこと
+- 3.8: `surfaceId` の形
+- 3.13: アカウントの欄、map をまたぐ alias
+- 5 節: unscopen で消すもの
+- 7 節: 定義の無い名前を書けること、最初の定義
