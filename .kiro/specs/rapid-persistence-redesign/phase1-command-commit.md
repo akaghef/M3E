@@ -126,6 +126,15 @@ Director が独立に実行して判定する。実装者は次のファイル�
 7. 既存の `npm test` が全部通る。新しい失敗、テストの削除、無断の skip が無い。
 8. `npm run typecheck` と `npm run lint:deps` が通る。
 
+## 実装で確定した点（2026-11-16）
+
+- `commandId` は保存ごとに新しく発行する。変更の中身から導出しない（同じ編集をもう一度行うのは別の Command）。未確定のまま同じ変更を送り直すときだけ、同じ `commandId` を使う。
+- MCP の `expected_revision` の検査は、確定関数の同じ transaction の中で行う。状態の書込みと `command_log` の追記を分けない。
+- live の Vault に結び付いた map は、Markdown を先に書く順序を保つため、Command の経路では受けず（404、`LIVE_VAULT_WHOLE_SAVE`）、画面は既存の全体保存に切り替える。
+- 受入検査 `persistence_feel.spec.js` は、保存要求として既存の経路と Command の経路の両方を数える。`M3E_FEEL_EXPECT_COMMANDS=1` で受入 2〜4 を検査する。
+- 不変条件 1〜4 の判定は `beta/tests/unit/map_changes_invariants.test.ts`（Director 所有）で行う。入力を凍結し、乱数の編集と種データの全 map で往復を確かめる。
+- 既知の制限: 確定の応答だけが失われ、その後に別の編集を重ねて保存すると、確定済みの変更と `before` が食い違って競合 Panel が出る。Use Local（全体保存）で進められる。
+
 ## 第 2 段へ渡すもの
 
 - `changes` はレコード単位なので、保存形式がレコードになっても Command の形は変わらない。変わるのは `before` の比較が revision の比較になる点と、`edge` の `index` が兄弟順キーになる点。

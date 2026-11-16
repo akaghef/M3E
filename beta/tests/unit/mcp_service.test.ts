@@ -618,12 +618,14 @@ describe("M3E MCP semantic service", () => {
 
   test("a competing write between validation and commit cannot be overwritten", () => {
     const context = enter();
-    const commit = RapidMvpModel.prototype.saveToSqliteIfUnchanged;
-    const race = vi.spyOn(RapidMvpModel.prototype, "saveToSqliteIfUnchanged").mockImplementationOnce(function (...args) {
-      const competitor = loaded();
+    // The commit is one transaction, so the competitor writes at the last step
+    // before it: the validation of the edited copy.
+    const validate = RapidMvpModel.prototype.validate;
+    const race = vi.spyOn(RapidMvpModel.prototype, "validate").mockImplementationOnce(function (...args) {
+      const competitor = RapidMvpModel.fromJSON(saved().state);
       competitor.addNode(competitor.state.rootId, "Concurrent actor won the write lock");
       competitor.saveToSqlite(dbPath, mapId);
-      return commit.apply(this, args);
+      return validate.apply(this, args);
     });
     const result = service.call("m3e_create", { kind: "node", context_id: context.context_id, text: "Losing stale update" });
     expect(race).toHaveBeenCalledTimes(1);

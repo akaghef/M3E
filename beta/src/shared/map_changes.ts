@@ -464,9 +464,11 @@ function applyEdges(draft: Draft, changes: readonly RecordChange[]): void {
     const afterParent = typeof change.after?.parentId === "string" ? change.after.parentId : "";
     if (beforeParent) affected.add(beforeParent);
     if (afterParent) affected.add(afterParent);
+    // A reorder carries only the index, so the parent comes from the current edge.
+    const previous = assign.get(id);
+    if (previous) affected.add(previous.parentId);
     if (change.op === "delete") assign.delete(id);
     else {
-      const previous = assign.get(id);
       const parentId = typeof change.after?.parentId === "string" ? change.after.parentId : previous?.parentId;
       const index = typeof change.after?.index === "number" ? change.after.index : previous?.index;
       if (typeof parentId === "string" && typeof index === "number") assign.set(id, { parentId, index });
@@ -700,8 +702,11 @@ function applyNodeView(draft: Draft, change: RecordChange): void {
   const id = change.key[1] ?? "";
   if (change.op === "delete") delete views[id];
   else if (change.op === "create") views[id] = clone(change.after ?? {});
-  else if (isBag(views[id])) assignFields(views[id] as Bag, change.before, change.after);
-  else views[id] = clone(change.after ?? {});
+  else if (isBag(views[id])) {
+    // Copy first: the entry is still shared with the caller's state.
+    views[id] = { ...(views[id] as Bag) };
+    assignFields(views[id] as Bag, change.before, change.after);
+  } else views[id] = clone(change.after ?? {});
 }
 
 function applyMapField(draft: Draft, change: RecordChange): void {

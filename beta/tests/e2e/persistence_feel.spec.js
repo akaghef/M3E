@@ -74,16 +74,26 @@ async function open(page, mapId) {
   await page.locator("#board").focus();
 }
 
-/** Records every whole-map save the page sends: duration and request size. */
+/**
+ * Records every map save the page sends: route, duration and request size.
+ * A save is a POST to the whole-map route or to the Command route.
+ */
 function watchSaves(page, mapId) {
   const saves = [];
   const started = new Map();
-  const isSave = (request) => request.method() === "POST" && new URL(request.url()).pathname === `/api/maps/${encodeURIComponent(mapId)}`;
-  page.on("request", (request) => { if (isSave(request)) started.set(request, Date.now()); });
+  const base = `/api/maps/${encodeURIComponent(mapId)}`;
+  const routeOf = (request) => {
+    if (request.method() !== "POST") return null;
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === base) return "whole-map";
+    if (pathname === `${base}/commands`) return "commands";
+    return null;
+  };
+  page.on("request", (request) => { if (routeOf(request)) started.set(request, Date.now()); });
   page.on("response", async (response) => {
     const request = response.request();
     if (!started.has(request)) return;
-    saves.push({ ms: Date.now() - started.get(request), status: response.status(), bytes: (request.postData() || "").length });
+    saves.push({ ms: Date.now() - started.get(request), status: response.status(), bytes: (request.postData() || "").length, route: routeOf(request) });
   });
   return saves;
 }
@@ -282,6 +292,7 @@ test("save round trip on a 20,000-node map", async ({ page, request }) => {
     saveRoundTripMs: steady.map((save) => save.ms),
     saveRoundTripMedianMs: median(steady.map((save) => save.ms)),
     saveRequestBytes: steady[steady.length - 1].bytes,
+    saveRoutes: [...new Set(steady.map((save) => save.route))],
     editToStoredMs: interaction.slice(1),
     editToStoredMedianMs: median(interaction.slice(1)),
   };
@@ -291,5 +302,11 @@ test("save round trip on a 20,000-node map", async ({ page, request }) => {
 
   if (FEEL_BASELINE_MS !== null) {
     expect(metrics.saveRoundTripMedianMs).toBeLessThanOrEqual(FEEL_BASELINE_MS * 1.25);
+  }
+  // Set once the viewer is expected to send Commands instead of the whole map.
+  if (process.env.M3E_FEEL_EXPECT_COMMANDS === "1") {
+    expect(metrics.saveRoutes).toEqual(["commands"]);
+    expect(metrics.saveRequestBytes).toBeLessThanOrEqual(10_000);
+    expect(metrics.editToStoredMedianMs).toBeLessThanOrEqual(2_500);
   }
 });

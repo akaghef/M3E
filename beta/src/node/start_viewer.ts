@@ -2519,6 +2519,13 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
       sendJson(res, 409, { ok: false, code: "DOC_CONFLICT", error: "A map save is already in progress." });
       return;
     }
+    // A map bound to a live vault writes the Markdown first. That order lives in
+    // the whole-map save, so such a map is answered as "not here" and the viewer
+    // falls back to it.
+    if (getVaultWatchStatus(mapId)) {
+      sendJson(res, 404, { error: "Live vault maps are saved through the whole-map route.", code: "LIVE_VAULT_WHOLE_SAVE" });
+      return;
+    }
     activeMapSaves.add(mapId);
     saveAcquired = true;
     const command = JSON.parse(rawBody) as MapCommand;
@@ -2545,21 +2552,15 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
       return;
     }
     const sourceTabId = (req.headers["x-m3e-tab-id"] as string) || null;
-    let liveWrite: Awaited<ReturnType<typeof writeMapToVaultNow>> = null;
-    if (!result.replayed) {
-      const saved = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
-      liveWrite = await writeMapToVaultNow(currentSqliteDbPath(), mapId, saved.state);
-    }
     broadcastMapUpdate(mapId, result.savedAt, sourceTabId);
-    if (!result.replayed && !liveWrite) handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
+    if (!result.replayed) handleMapSavedForVaultWatch(currentSqliteDbPath(), mapId);
     sendJson(res, 200, {
       ok: true,
       savedAt: result.savedAt,
       seq: result.seq,
       mapId,
-      integrationMode: liveWrite?.integrationMode ?? "off",
-      sourceOfTruth: liveWrite?.sourceOfTruth ?? "sqlite",
-      ...(liveWrite ? { vaultPath: liveWrite.vaultPath } : {}),
+      integrationMode: "off",
+      sourceOfTruth: "sqlite",
     });
   } catch (err) {
     if (res.headersSent) return;

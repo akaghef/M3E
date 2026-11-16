@@ -61,7 +61,6 @@ import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
 import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
 import { reorderInsertionIndex } from "../shared/reorder_insertion";
-import { buildSaveCommand } from "./save_command";
 import { treeGrabMove } from "../shared/tree_grab";
 import { routeParentChildEdge, type ParentChildSurfaceMode } from "../shared/parent_child_edge_adapter";
 import type { EdgeRouteStyle } from "../shared/edge_route";
@@ -70,6 +69,7 @@ import { resolveMarkdownFilePreviewTarget, type MarkdownFilePreviewTarget } from
 import { parseMmText, treeToMm } from "../shared/mm_exporter";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 import { buildTableViewModel, directTableViewChildren, renderTableViewHtml } from "./table_view";
+import { postSaveCommand } from "./save_command";
 import {
   type RenderEdge,
   type RenderGroupBoundary,
@@ -12749,36 +12749,39 @@ function parseCloudMapVersion(payload: { cloudMapVersion?: unknown; mapVersion?:
 async function saveDocToLocalDb(showStatus = false, force = false): Promise<boolean> {
   if (showStatus) commitDispersePositions();
   if (grabSession) { grabSession.pendingSave = true; return false; }
-  if (!map) return false;
-  if (isReadOnlyLink()) {
-    if (showStatus) setStatus("Read-only link. Local save is disabled.", true);
+  if (!map) {
     return false;
   }
+  if (isReadOnlyLink()) {
+    if (showStatus) {
+      setStatus("Read-only link. Local save is disabled.", true);
+    }
+    return false;
+  }
+
   const revision = localSaveRevision;
   let saveConflict = false;
   let failureReason = "save error";
   try {
-    if (collabEntityId && collabToken && !force) return await pushCurrentScopeToCollab(showStatus);
+    if (collabEntityId && collabToken && !force) {
+      return await pushCurrentScopeToCollab(showStatus);
+    }
     const submitted = currentDocSnapshot();
     const submittedState = cloneStateForSave(submitted.state);
-    const fullBody = JSON.stringify({ ...submitted, baseSavedAt: lastServerSavedAt, baseState: cloneStateForSave(lastServerBaseState), force });
-    const base = lastServerBaseState;
-    const command = !force && submittedState && base && typeof base.rootId === "string" && base.nodes && typeof base.nodes === "object"
-      ? buildSaveCommand(base, submittedState, TAB_ID) : null;
-    if (command && command.changes.length === 0) {
-      markLocalSaveSucceeded(revision);
-      if (showStatus) setStatus("Saved locally.");
-      scheduleRender();
-      return true;
-    }
+    const wholeBody = (): string => JSON.stringify({
+      ...submitted,
+      baseSavedAt: lastServerSavedAt,
+      baseState: cloneStateForSave(lastServerBaseState),
+      force,
+    });
     failureReason = "network error";
-    const headers = { "Content-Type": "application/json; charset=utf-8", "X-M3E-Tab-Id": TAB_ID };
-    const fullUrl = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`;
-    let response = command
-      ? await fetch(`${fullUrl}/commands`, { method: "POST", headers, body: JSON.stringify(command) })
-      : await fetch(fullUrl, { method: "POST", headers, body: fullBody });
-    if (command && response.status === 404) response = await fetch(fullUrl, { method: "POST", headers, body: fullBody });
+    const saveUrl = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`;
+    const base = force ? null : lastServerBaseState;
+    const response = base && typeof base.rootId === "string" && base.nodes && submittedState
+      ? await postSaveCommand(saveUrl, TAB_ID, base, submittedState, lastServerSavedAt, wholeBody)
+      : await fetch(saveUrl, { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", "X-M3E-Tab-Id": TAB_ID }, body: wholeBody() });
     failureReason = response.status === 413 ? "too large" : `server error (HTTP ${response.status})`;
+
     if (response.status === 409) {
       saveConflict = true;
       const conflict = await response.json().catch(() => ({ error: "Map conflict." }));
@@ -12789,39 +12792,66 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
         showConflictPanel(remoteState, {
           localLabel: "Use Local",
           remoteLabel: isQuestionConflict ? "Use Current" : "Use Vault",
-          onUseLocal: () => { void saveDocToLocalDb(showStatus, true); },
+          onUseLocal: () => {
+            void saveDocToLocalDb(showStatus, true);
+          },
           onUseRemote: () => {
-            if (!map) return;
-            const savedAt = typeof (conflict as { savedAt?: unknown }).savedAt === "string" ? String((conflict as { savedAt?: string }).savedAt) : nowIso();
-            loadPayload({ version: 1, savedAt, state: remoteState });
+            if (!map) {
+              return;
+            }
+            const savedAt = typeof (conflict as { savedAt?: unknown }).savedAt === "string"
+              ? String((conflict as { savedAt?: string }).savedAt)
+              : nowIso();
+            loadPayload({
+              version: 1,
+              savedAt,
+              state: remoteState,
+            });
             setStatus("Loaded vault version. Local changes were kept out of the database.", true);
           },
         });
       }
-      setStatus(isQuestionConflict ? "Q conflict: same node changed differently. Choose a result." : "Vault conflict detected. Choose Use Local or Use Vault.", true);
+      setStatus(
+        isQuestionConflict
+          ? "Q conflict: same node changed differently. Choose a result."
+          : "Vault conflict detected. Choose Use Local or Use Vault.",
+        true,
+      );
       throw new Error(String((conflict as { error?: string }).error || "Map changed externally."));
     }
+
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
       throw new Error(String(errorPayload.error || `HTTP ${response.status}`));
     }
+
     failureReason = "save error";
     const payload = await response.json().catch(() => ({ savedAt: nowIso() }));
     map.savedAt = String(payload.savedAt || nowIso());
-    if (typeof payload.mapVersion === "number") (map as SavedMap & { mapVersion?: number }).mapVersion = Number(payload.mapVersion);
+    if (typeof payload.mapVersion === "number") {
+      (map as SavedMap & { mapVersion?: number }).mapVersion = Number(payload.mapVersion);
+    }
     lastServerSavedAt = map.savedAt;
     // A held Grab may already be previewing a new state while this save returns.
     lastServerBaseState = submittedState;
     broadcastState();
-    if (collabEntityId && collabToken) void pushCurrentScopeToCollab(false);
-    if (cloudSyncEnabled) void pushDocToCloud(false);
+    if (collabEntityId && collabToken) {
+      void pushCurrentScopeToCollab(false);
+    }
+    if (cloudSyncEnabled) {
+      void pushDocToCloud(false);
+    }
     markLocalSaveSucceeded(revision);
-    if (showStatus) setStatus("Saved locally.");
+    if (showStatus) {
+      setStatus("Saved locally.");
+    }
     scheduleRender();
     return true;
   } catch (err) {
     if (!saveConflict) showLocalSaveFailure(failureReason);
-    if (showStatus) setStatus(`Local save failed (${(err as Error).message}).`, true);
+    if (showStatus) {
+      setStatus(`Local save failed (${(err as Error).message}).`, true);
+    }
     return false;
   }
 }

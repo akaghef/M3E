@@ -126,14 +126,15 @@ function commandShape(command: MapCommand): string | null {
   return null;
 }
 
+/**
+ * `expectedRevision`, when given, is the whole-map revision the caller read
+ * (RapidMvpModel.savedRevision). A different stored revision rejects the Command.
+ * The check, the state write and the journal row are one transaction.
+ */
 export function commitMapCommand(dbPath: string, mapId: string, command: MapCommand, expectedRevision?: string): CommitResult {
   if (!command || typeof command !== "object" || typeof command.commandId !== "string") {
     return invalid("INVALID_COMMAND", null);
   }
-  // MCP keeps its revision check by committing through the existing conditional
-  // write. That write owns its own transaction, so the journal row is appended
-  // immediately after it. Viewer commits stay one transaction below.
-  if (expectedRevision !== undefined) return commitAtRevision(dbPath, mapId, command, expectedRevision);
   const db = openDb(dbPath);
   try {
     const run = db.transaction((): CommitResult => {
@@ -152,6 +153,10 @@ export function commitMapCommand(dbPath: string, mapId: string, command: MapComm
       catch { return invalid("INVALID_STATE", null); }
       const current = { savedAt: row.savedAt, state: currentState };
       if (shape) return invalid("INVALID_COMMAND", current);
+      if (expectedRevision !== undefined) {
+        const stored = RapidMvpModel.savedRevision({ version: 1, savedAt: row.savedAt, state: currentState as AppState });
+        if (stored !== expectedRevision) return invalid("CONFLICT", current);
+      }
 
       let applied: ReturnType<typeof applyChanges>;
       try { applied = applyChanges(currentState, command.changes); }
@@ -188,71 +193,6 @@ export function commitMapCommand(dbPath: string, mapId: string, command: MapComm
     return run.immediate();
   } finally {
     db.close();
-  }
-}
-
-function commitAtRevision(dbPath: string, mapId: string, command: MapCommand, expectedRevision: string): CommitResult {
-  const db = openDb(dbPath);
-  let appliedState: object;
-  try {
-    const existing = db.prepare(`
-      SELECT seq, saved_at AS savedAt FROM command_log WHERE map_id = ? AND command_id = ?
-    `).get(mapId, command.commandId) as { seq: number; savedAt: string } | undefined;
-    if (existing) return { ok: true, savedAt: existing.savedAt, seq: existing.seq, replayed: true };
-    const row = db.prepare(`
-      SELECT saved_at AS savedAt, state_json AS stateJson FROM maps WHERE id = ?
-    `).get(mapId) as { savedAt: string; stateJson: string } | undefined;
-    if (!row) return invalid("NOT_FOUND", null);
-    const shape = commandShape(command);
-    let currentState: object;
-    try { currentState = JSON.parse(row.stateJson) as object; }
-    catch { return invalid("INVALID_STATE", null); }
-    const current = { savedAt: row.savedAt, state: currentState };
-    if (shape) return invalid("INVALID_COMMAND", current);
-    let applied: ReturnType<typeof applyChanges>;
-    try { applied = applyChanges(currentState, command.changes); }
-    catch { return invalid("INVALID_COMMAND", current); }
-    if (!applied.ok) return invalid("CONFLICT", current, applied.conflicts);
-    try {
-      const model = RapidMvpModel.fromJSON(applied.state as AppState);
-      if (model.validate().length) return invalid("INVALID_STATE", current);
-    } catch {
-      return invalid("INVALID_STATE", current);
-    }
-    appliedState = applied.state;
-  } finally {
-    db.close();
-  }
-  const holder = new RapidMvpModel("tmp");
-  holder.state = appliedState as AppState;
-  let saved: SavedMap;
-  try {
-    saved = holder.saveToSqliteIfUnchanged(dbPath, mapId, expectedRevision);
-  } catch (err) {
-    if ((err as Error).message !== "REVISION_CONFLICT") throw err;
-    const db2 = openDb(dbPath);
-    try {
-      const row = db2.prepare(`SELECT saved_at AS savedAt, state_json AS stateJson FROM maps WHERE id = ?`).get(mapId) as { savedAt: string; stateJson: string } | undefined;
-      return invalid("CONFLICT", row ? { savedAt: row.savedAt, state: JSON.parse(row.stateJson) as object } : null);
-    } finally {
-      db2.close();
-    }
-  }
-  const logged = openDb(dbPath);
-  try {
-    const seqRow = logged.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM command_log WHERE map_id = ?`).get(mapId) as { seq: number };
-    const seq = seqRow.seq + 1;
-    logged.prepare(`
-      INSERT INTO command_log (map_id, seq, command_id, actor, intent, provenance, changes, committed_at, saved_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      mapId, seq, command.commandId, JSON.stringify(command.actor), command.intent,
-      command.provenance === undefined ? null : JSON.stringify(command.provenance),
-      JSON.stringify(command.changes), saved.savedAt, saved.savedAt,
-    );
-    return { ok: true, savedAt: saved.savedAt, seq, replayed: false };
-  } finally {
-    logged.close();
   }
 }
 
