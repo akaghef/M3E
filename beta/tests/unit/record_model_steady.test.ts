@@ -222,46 +222,71 @@ describe("projectMap: scope records follow folder nodes", () => {
 describe("MapProjector: a remembered projection gives what a fresh one gives", () => {
   it("over random edits: same records, same delta, and the state fromSnapshot gives", () => {
     for (const seed of [1, 2, 3, 4, 5, 6]) {
-      const random = rng(seed);
-      const counter = { n: 0 };
-      const projector = new MapProjector(WS);
-      let previous = new Map<string, SnapshotRecord>();
-      let state = richState();
-      let rev = 0;
-      for (let step = 0; step < 60; step += 1) {
-        const before = sortRecords([...previous.values()]);
-        const result = projector.project({ id: "m", state }, previous);
-        const fresh = projectMap(WS, { id: "m", state: clone(state) }, before);
-        expect(text(sortRecords([...result.records.values()]))).toBe(text(fresh));
+      for (const inPlace of [false, true]) {
+        const random = rng(seed);
+        const counter = { n: 0 };
+        const projector = new MapProjector(WS);
+        let previous = new Map<string, SnapshotRecord>();
+        let state = richState();
+        let rev = 0;
+        for (let step = 0; step < 60; step += 1) {
+          const snapshot = new Map(previous);
+          const before = sortRecords([...snapshot.values()]);
+          const fresh = projectMap(WS, { id: "m", state: clone(state) }, before);
+          let result = projector.project({ id: "m", state }, previous, { inPlace });
+          if (inPlace) expect(result.records).toBe(previous);
+          else expect([...previous]).toEqual([...snapshot]);
+          if (inPlace && step % 5 === 4) {
+            // Undo the projection: the table is as it was, and projecting again gives the same.
+            result.revert?.();
+            expect(new Map(previous)).toEqual(snapshot);
+            for (const [rk, record] of snapshot) expect(previous.get(rk)).toBe(record);
+            result = projector.project({ id: "m", state }, previous, { inPlace });
+          }
+          expect(text(sortRecords([...result.records.values()]))).toBe(text(fresh));
 
-        // The delta is exactly the difference between the two record sets.
-        const expectedDelta = new Map<string, SnapshotRecord | null>();
-        for (const [rk, record] of result.records) if (previous.get(rk) !== record) expectedDelta.set(rk, record);
-        for (const rk of previous.keys()) if (!result.records.has(rk)) expectedDelta.set(rk, null);
-        expect(new Map(result.delta)).toEqual(expectedDelta);
+          // The delta is exactly the difference between the two record sets.
+          const expectedDelta = new Map<string, SnapshotRecord | null>();
+          const expectedReplaced = new Map<string, SnapshotRecord>();
+          for (const [rk, record] of result.records) {
+            if (snapshot.get(rk) === record) continue;
+            expectedDelta.set(rk, record);
+            if (snapshot.has(rk)) expectedReplaced.set(rk, snapshot.get(rk) as SnapshotRecord);
+          }
+          for (const [rk, record] of snapshot) {
+            if (result.records.has(rk)) continue;
+            expectedDelta.set(rk, null);
+            expectedReplaced.set(rk, record);
+          }
+          expect(new Map(result.delta)).toEqual(expectedDelta);
+          expect(new Map(result.replaced)).toEqual(expectedReplaced);
+          for (const [rk, record] of result.replaced) expect(snapshot.get(rk)).toBe(record);
 
-        rev += 1;
-        for (const record of result.records.values()) {
-          if ("rev" in record && record.rev === undefined) (record as { rev: number }).rev = rev;
+          rev += 1;
+          for (const record of result.records.values()) {
+            if ("rev" in record && record.rev === undefined) (record as { rev: number }).rev = rev;
+          }
+          const stored = sortRecords([...result.records.values()]);
+          expect(result.state).toEqual(fromSnapshot(stored).rows[0].state);
+          // What came out is a fixed point.
+          expect(text(projectMap(WS, { id: "m", state: clone(result.state) }, stored))).toBe(text(stored));
+
+          previous = result.records;
+          // The next state is built on the returned one and shares its untouched objects.
+          const base = result.state as unknown as Loose;
+          const nodes = base.nodes as Record<string, Loose>;
+          const draft = clone(base);
+          randomEdit(draft, random, counter);
+          const draftNodes = draft.nodes as Record<string, Loose>;
+          for (const id of Object.keys(draftNodes)) {
+            if (nodes[id] !== undefined && JSON.stringify(nodes[id]) === JSON.stringify(draftNodes[id])) draftNodes[id] = nodes[id];
+          }
+          // Every other step hands in copies of all nodes, as applyChanges does after an edge change.
+          if (step % 2 === 1) {
+            for (const id of Object.keys(draftNodes)) draftNodes[id] = { ...draftNodes[id] };
+          }
+          state = draft;
         }
-        const stored = sortRecords([...result.records.values()]);
-        expect(result.state).toEqual(fromSnapshot(stored).rows[0].state);
-        // What came out is a fixed point.
-        expect(text(projectMap(WS, { id: "m", state: clone(result.state) }, stored))).toBe(text(stored));
-
-        previous = result.records;
-        // The next state is built on the returned one and shares its untouched objects.
-        const next = { ...(result.state as unknown as Loose) };
-        const nodes = { ...(next.nodes as Record<string, Loose>) };
-        next.nodes = nodes;
-        const draft = clone(next);
-        randomEdit(draft, random, counter);
-        // Keep the identity of every node the edit did not change.
-        const draftNodes = draft.nodes as Record<string, Loose>;
-        for (const id of Object.keys(draftNodes)) {
-          if (nodes[id] !== undefined && JSON.stringify(nodes[id]) === JSON.stringify(draftNodes[id])) draftNodes[id] = nodes[id];
-        }
-        state = draft;
       }
     }
   });

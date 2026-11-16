@@ -23,8 +23,8 @@ import { parseSnapshot, serializeSnapshot, sortRecords } from "../../shared/reco
 import { MapProjector, recordRk, sameJson, type ProjectionResult } from "../../shared/record_model/steady";
 import type { CommitRecord, MapRecord, SnapshotHeader, SnapshotRecord, SnapshotRow } from "../../shared/record_model/types";
 import type { AppState } from "../../shared/types";
-import { RapidMvpModel } from "../rapid_mvp";
 import { applyChangesReduced } from "./apply_reduced";
+import { validationErrorCount } from "./validate";
 import {
   EngineQueue,
   Neo4jApplier,
@@ -233,14 +233,6 @@ function problemKey(problem: InvariantProblem): string {
 
 function commandKey(mapId: string, commandId: string): string {
   return `${mapId}\u0000${commandId}`;
-}
-
-function validationErrorCount(state: object): number {
-  try {
-    return RapidMvpModel.fromJSON(state as AppState).validate().length;
-  } catch {
-    return Number.POSITIVE_INFINITY;
-  }
 }
 
 function commandShape(command: MapCommand): string | null {
@@ -852,10 +844,16 @@ export class RecordWorkspaceStore {
     const row: SnapshotRow = entry ? this.rowOf(entry, applied.state) : { id: mapId, state: applied.state };
     let result: ProjectionResult;
     try {
-      result = projector.project(row, previous);
+      // An existing map is projected in place: its record table becomes the new one, and
+      // `revert` puts it back when the commit is refused further down.
+      result = projector.project(row, previous, { inPlace: entry !== undefined });
     } catch (error) {
       return this.failure("INVALID_STATE", current(), (error as Error).message);
     }
+    const refuse = (message: string): CommitFailure => {
+      result.revert?.();
+      return this.failure("INVALID_STATE", current(), message);
+    };
     const seq = this.currentSeq + 1;
     const ops = this.opsOf(result, seq);
 
@@ -864,17 +862,17 @@ export class RecordWorkspaceStore {
     for (const op of ops) if (op.op === "delete") deleted.add(op.rk);
     const introduced = new Map<string, string>();
     for (const op of ops) {
-      if (op.op !== "put" || previous.has(op.rk)) continue;
+      if (op.op !== "put" || result.replaced.has(op.rk)) continue;
       const record = op.record as SnapshotRecord;
       const existing = this.all.get(op.rk);
       if (existing !== undefined && (existing as { mapId?: unknown }).mapId !== mapId) {
-        return this.failure("INVALID_STATE", current(), `The key ${JSON.stringify(op.rk)} is already used outside map ${mapId}.`);
+        return refuse(`The key ${JSON.stringify(op.rk)} is already used outside map ${mapId}.`);
       }
       if (!SHARED_ID_KINDS.has(record.kind)) continue;
       const id = (record as { id: string }).id;
       const owner = this.idIndex.get(id) ?? introduced.get(id);
       if (owner !== undefined && owner !== op.rk && !deleted.has(owner)) {
-        return this.failure("INVALID_STATE", current(), `The id ${JSON.stringify(id)} is already used by ${JSON.stringify(owner)}.`);
+        return refuse(`The id ${JSON.stringify(id)} is already used by ${JSON.stringify(owner)}.`);
       }
       introduced.set(id, op.rk);
     }
@@ -883,12 +881,12 @@ export class RecordWorkspaceStore {
     // The check runs on the whole final record set of the map. It is skipped only when no fact it
     // reads changed (every operation replaces a record and leaves ids, endpoints and references
     // as they were): its outcome is then the one already known.
-    if (!invariantFactsUnchanged(previous, ops)) {
+    if (!invariantFactsUnchanged(result.replaced, ops)) {
       const problems = checkInvariants([...result.records.values()]);
       const fresh = problems.filter((problem) => !baseline.has(problemKey(problem)) && !this.satisfiedElsewhere(problem));
       if (fresh.length > 0) {
         const shown = fresh.slice(0, 5).map((problem) => `rule ${problem.rule}: ${problem.kind} ${problem.key}: ${problem.message}`);
-        return this.failure("INVALID_STATE", current(), `The commit breaks an invariant (${fresh.length}): ${shown.join("; ")}`);
+        return refuse(`The commit breaks an invariant (${fresh.length}): ${shown.join("; ")}`);
       }
       problemKeys = new Set(problems.map(problemKey));
     }
@@ -901,7 +899,12 @@ export class RecordWorkspaceStore {
     line.changes = changes;
     line.changesHash = hashChanges(changes);
     line.ops = ops;
-    this.append(line);
+    try {
+      this.append(line);
+    } catch (error) {
+      result.revert?.();
+      throw error;
+    }
 
     // 7. Memory.
     const target = entry ?? { id: mapId, records: new Map<string, SnapshotRecord>(), idMaps: new Map<string, SnapshotRecord>() };

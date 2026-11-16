@@ -265,6 +265,13 @@ export interface ProjectionResult {
   records: Map<string, SnapshotRecord>;
   /** What differs from `previous`: the record to put, or null for a key that is gone. */
   delta: Map<string, SnapshotRecord | null>;
+  /** For every key of `delta` that `previous` had: the record it had. */
+  replaced: Map<string, SnapshotRecord>;
+  /**
+   * Only for a projection made in place: puts the records of `previous` back as they were.
+   * The projector then starts afresh on its next call.
+   */
+  revert?: () => void;
   /** The state `fromSnapshot` gives for `records`. Shares untouched parts with the input state. */
   state: AppState;
 }
@@ -324,7 +331,43 @@ export class MapProjector {
 
   constructor(private readonly workspaceId: string, private readonly hash: HashFn = sha256Hex) {}
 
-  project(row: SnapshotRow, previous: ReadonlyMap<string, SnapshotRecord>): ProjectionResult {
+  /**
+   * With `inPlace`, `previous` itself is changed into the result (no copy of the whole table);
+   * `revert` of the result undoes that. Without it, `previous` is left as it is.
+   */
+  project(
+    row: SnapshotRow,
+    previous: ReadonlyMap<string, SnapshotRecord>,
+    options: { inPlace?: boolean } = {},
+  ): ProjectionResult {
+    if (options.inPlace !== true) return this.run(row, previous, new Map(previous), undefined);
+    const out = previous as Map<string, SnapshotRecord>;
+    const original = new Map<string, SnapshotRecord | undefined>();
+    const revert = (): void => {
+      for (const [rk, record] of original) {
+        if (record === undefined) out.delete(rk);
+        else out.set(rk, record);
+      }
+      original.clear();
+      this.lastRecords = undefined;
+    };
+    try {
+      const result = this.run(row, previous, out, original);
+      result.revert = revert;
+      return result;
+    } catch (error) {
+      revert();
+      throw error;
+    }
+  }
+
+  /** `original`, when given, logs the first value of every key of `out` that changes (`out` is then `previous`). */
+  private run(
+    row: SnapshotRow,
+    previous: ReadonlyMap<string, SnapshotRecord>,
+    out: Map<string, SnapshotRecord>,
+    original: Map<string, SnapshotRecord | undefined> | undefined,
+  ): ProjectionResult {
     const mapId = row.id;
     const state = dictOf(row.state);
     const warm = previous === this.lastRecords;
@@ -386,8 +429,15 @@ export class MapProjector {
     const previousGen = this.gen;
     const gen = previousGen + 1;
 
-    const out = new Map(previous);
     const delta = new Map<string, SnapshotRecord | null>();
+    /** The record `previous` had under a key, also after `out` (which may be `previous`) changed. */
+    const prior = original === undefined
+      ? (rk: string): SnapshotRecord | undefined => previous.get(rk)
+      : (rk: string): SnapshotRecord | undefined => (original.has(rk) ? original.get(rk) : out.get(rk));
+    const setOut = (rk: string, record: SnapshotRecord): void => {
+      if (original !== undefined && !original.has(rk)) original.set(rk, out.get(rk));
+      out.set(rk, record);
+    };
     const produced = new Set<string>();
     const collision = (rk: string): Error => new Error(`Two records of map ${mapId} share the key ${JSON.stringify(rk)}.`);
     /** Adds a freshly built record; the previous object is used instead when the content is the same. */
@@ -397,19 +447,22 @@ export class MapProjector {
       const existing = out.get(rk);
       if (existing !== undefined && !sameIdentity(existing, record)) throw collision(rk);
       produced.add(rk);
-      const before = previous.get(rk);
+      const before = prior(rk);
       if (before !== undefined && sameRecordContent(before, record)) {
-        if (existing !== before) out.set(rk, before);
+        if (existing !== before) setOut(rk, before);
         delta.delete(rk);
         return before as T;
       }
-      out.set(rk, record);
+      setOut(rk, record);
       delta.set(rk, record);
       return record;
     };
     const remove = (rk: string): void => {
-      if (!out.delete(rk)) return;
-      if (previous.has(rk)) delta.set(rk, null);
+      if (!out.has(rk)) return;
+      const before = prior(rk);
+      if (original !== undefined && !original.has(rk)) original.set(rk, out.get(rk));
+      out.delete(rk);
+      if (before !== undefined) delta.set(rk, null);
       else delta.delete(rk);
     };
     const removeUnlessProduced = (records: readonly SnapshotRecord[]): void => {
@@ -673,7 +726,7 @@ export class MapProjector {
       if (!viewsUnchanged && surfaceRecord !== (record as unknown)) {
         // Unchanged itself, but a node view changed: the surface carries the `rev` for its node views.
         surfaceRecord = record as unknown as SnapshotRecord;
-        out.set(recordRk(surfaceRecord), surfaceRecord);
+        setOut(recordRk(surfaceRecord), surfaceRecord);
         delta.set(recordRk(surfaceRecord), surfaceRecord);
       }
       const records = [surfaceRecord, ...views];
@@ -875,7 +928,12 @@ export class MapProjector {
     this.lastRestInput = rest;
     // Remembered with the labels filled in, so that an unchanged scope keeps its object next time.
     this.lastRest = nextState.scopes !== restState.scopes ? { ...restState, scopes: nextState.scopes } : restState;
-    return { records: out, delta, state: nextState as unknown as AppState };
+    const replaced = new Map<string, SnapshotRecord>();
+    for (const rk of delta.keys()) {
+      const before = prior(rk);
+      if (before !== undefined) replaced.set(rk, before);
+    }
+    return { records: out, delta, replaced, state: nextState as unknown as AppState };
   }
 }
 

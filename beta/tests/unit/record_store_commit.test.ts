@@ -307,6 +307,7 @@ describe("record store: retries and conflicts", () => {
 
   it("rejects a state the app's validation or an invariant does not accept, and writes nothing", () => {
     const store = openStore(newDir("invalid"));
+    const untouched = text(store.records());
     const attempt = (change: (state: Loose) => void): CommitResult => {
       const before = stateOf(store);
       const after = clone(before);
@@ -336,6 +337,7 @@ describe("record store: retries and conflicts", () => {
       (state.annotations as Loose).leaf = { id: "leaf", kind: "text", x: 0, y: 0, text: "t" };
     })).toMatchObject({ ok: false, code: "INVALID_STATE" });
     expect(store.seq()).toBe(0);
+    expect(text(store.records())).toBe(untouched);
     expect(fs.readFileSync(path.join((store as unknown as { dir: string }).dir, JOURNAL_FILE), "utf8")).toBe("");
     // The store still works after the refusals.
     edit(store, (state) => { nodesOf(state).leaf.text = "fine"; });
