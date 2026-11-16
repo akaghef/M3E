@@ -418,8 +418,13 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
             rec = lin_by_scope.get(sid) if sid else lin_orphans.get((map_id, key))
             if rec is None:
                 problems.add("linear.missing", where)
-            elif rec.get("text") != text or rec.get("mapId") != map_id:
+            elif rec.get("text") != text or rec.get("mapId") != map_id or rec.get("rev") != 0:
                 problems.add("linear.content", where)
+            elif not sid:
+                bare = key[6:] if key.startswith("scope:") else key
+                want_anchor = nid(bare) if bare in nodes else None
+                if rec.get("anchorNodeId") != want_anchor:
+                    problems.add("linear.anchor", where)
 
         # ---- surfaces and node views ----
         for old_sid in kept_surfaces:

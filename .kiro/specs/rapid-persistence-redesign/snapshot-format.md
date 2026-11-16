@@ -20,7 +20,7 @@
 | `details` | `nodeId` | `mapId`、`v`（形の版。1）、`body`?、`note`?、`link`?、`rev` |
 | `connection` | `id` | `mapId`、`type`（`edge` / `graphlink`）、`source`、`target`、`relationType`?、`label`?、`attributes`?、`rev`。edge は `ord`。graphlink は `direction`?、`style`?、`color`?、`sourcePort`?、`targetPort`? |
 | `scope` | `id` | `mapId`、`rootNodeId`、`primarySurfaceId`?、`rev` |
-| `linearText` | `scopeId` または `orphanKey` | `mapId`、`text`、`rev` |
+| `linearText` | `scopeId` または `mapId`＋`orphanKey` | `mapId`、`text`、`anchorNodeId`?、`rev` |
 | `surface` | `id` | `mapId`、`scopeId`、`surfaceKind`、`layout`、`surfaceView`?、`rev` |
 | `nodeView` | `surfaceId`＋`nodeId` | `mapId`、`x`?、`y`?、`flowCol`?、`flowRow`?、`shape`? |
 | `annotation` | `id` | `mapId`、`scopeId`?、ほか現行の欄をそのまま（`opacity`、`createdAt`、`text`、`fontSize`、`fontWeight`、`variant` を含む）、`extra`?、`rev` |
@@ -83,7 +83,7 @@
 
 - scope: map の root の node と、`nodeType` が `folder` の node ごとに一つ。`primarySurfaceId` は、現行の `scopes["scope:<nodeId>"]` にあれば、その surface の新しい ID。`label`、`rootNodeIds`、`relationIds` は捨てる。
 - 現行の `scopes` のうち、root の node が実在しないもの、root が上の規則で scope にならないものは捨てる。その surface と `nodeViews` も捨てる。
-- linear-text: `linearNotesByScope` の各要素。key が scope の root の node の ID（または `scope:<nodeId>`）なら、その scope の `scopeId`。そうでなければ `orphanKey` に元の key を入れて残す。値が空文字のものは書かない。
+- linear-text: `linearNotesByScope` の各要素。key が scope の root の node の ID（または `scope:<nodeId>`）なら、その scope の `scopeId`。そうでなければ `orphanKey` に元の key を一字も変えずに入れて残す。その key（`scope:` を除いたもの）が scope の root でない実在の node を指す場合は、`anchorNodeId` にその node の（振り直し後の）ID も入れる。値が空文字のものは書かない。
 - surface: `surfaces` の各要素。`scopeId` は新しい scope の ID。`kind` → `surfaceKind`。`nodeViews` は、値が一つでもある要素だけを `nodeView` にする。実在しない node の要素は捨てる。
 - annotation: 現行の欄をそのまま。`scopeId` は新しい scope の ID に書き換える（解決しなければ欄を落とし、元の値を `extra.scopeId` に残す）。
 - map: `rootNodeId`、行の `tags`・`archived`・`pinned`・`source`（値は行の値をそのまま。文字列なら文字列のまま）、行の `version` → `legacyVersion`、`saved_at` → `legacySavedAt`、`linearTextFontScale`、`linearPanelWidth`。`state_json` の top-level のうち `selectedId`・`scopeId`・`savedAt` は捨て、それ以外の未知の欄は `map.extra` に入れる。
