@@ -822,6 +822,11 @@ export class RecordWorkspaceStore {
     const warm = entry ? this.warm(entry) : undefined;
     const current = (): CommitFailure["current"] => (entry ? this.currentOf(entry) : null);
 
+    // A scope's label, root list and relation list are derived from the tree and are not
+    // stored, so they take no part in compare-and-set: a client holding an older derived
+    // label must not be refused for it.
+    changes = withCurrentDerivedScopeFields(changes, warm ? warm.state : {});
+
     // 2. Compare-and-set on the `before` values.
     let applied: ReturnType<typeof applyChanges>;
     try {
@@ -1016,4 +1021,28 @@ export class RecordWorkspaceStore {
     this.currentSeq = line.seq;
     this.indexLine(line);
   }
+}
+
+const DERIVED_SCOPE_FIELDS = ["label", "rootNodeIds", "relationIds"];
+
+/**
+ * Makes the derived scope fields of a change agree with the current state, so that
+ * compare-and-set never refuses a command because of them.
+ */
+function withCurrentDerivedScopeFields(changes: RecordChange[], state: object): RecordChange[] {
+  const scopes = ((state as { scopes?: Record<string, Record<string, unknown>> }).scopes ?? {}) as Record<
+    string,
+    Record<string, unknown> | undefined
+  >;
+  return changes.map((change) => {
+    if (change.kind !== "scope-setting" || change.op === "create" || !change.before) return change;
+    const current = scopes[change.key[0] ?? ""];
+    if (!current) return change;
+    const before: Record<string, unknown> = { ...change.before };
+    for (const field of DERIVED_SCOPE_FIELDS) {
+      if (field in current) before[field] = current[field];
+      else delete before[field];
+    }
+    return { ...change, before };
+  });
 }
