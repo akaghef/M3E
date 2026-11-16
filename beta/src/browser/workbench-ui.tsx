@@ -117,6 +117,7 @@ type ProgressiveNodeId =
   | "layout-link-orthogonal"
   | "layout-link-straight"
   | "import"
+  | "flash-input"
   | "export-json"
   | "export-mm"
   | "export-vault"
@@ -902,6 +903,7 @@ function makeProgressiveNodes(openModal: (id: ModalId) => void, lane: boolean): 
     { id: "scatter", label: "Disperse", hint: "Disperse layout controls", parentId: "gui" },
     { id: "annotation", label: "Annotation", hint: "drawing tools", parentId: "gui" },
     { id: "panel", label: "Panel", hint: "settings and help", parentId: "gui" },
+    { id: "flash-input", label: "Flash", hint: "素材から生成して保存", parentId: "board", action: () => clickLegacy("mode-flash") },
     { id: "import", label: "Import file", hint: "board input", parentId: "board", action: () => clickLegacy("import-file-btn") },
     { id: "export-json", label: "Export JSON", hint: "download map JSON", parentId: "board", action: () => clickLegacy("download-btn") },
     { id: "export-mm", label: "Export .mm", hint: "FreeMind output", parentId: "board", action: () => clickLegacy("download-mm-btn") },

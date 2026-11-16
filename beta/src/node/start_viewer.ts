@@ -1,6 +1,6 @@
 "use strict";
 
-import { FlashJobs, InstalledFlashProvider } from "./flash_jobs";
+import { FlashJobs, InstalledFlashProvider, flashPublicError } from "./flash_jobs";
 
 import "dotenv/config";
 import fs from "fs";
@@ -221,7 +221,7 @@ async function handleFlashJobsApi(req: http.IncomingMessage, res: http.ServerRes
     } else if (req.method === "GET" && /^\/api\/flash\/jobs\/[a-f0-9]{64}$/.test(pathname)) {
       sendJson(res, 200, currentFlashJobs().get(pathname.split("/").pop()!));
     } else sendJson(res, 405, { ok: false, error: "Unsupported job operation" });
-  } catch (error) { sendJson(res, 400, { ok: false, error: (error as NodeJS.ErrnoException).code === "ENOENT" ? "Job unavailable" : (error as Error).message }); }
+  } catch (error) { sendJson(res, 400, { ok: false, error: flashPublicError(error) }); }
   return true;
 }
 

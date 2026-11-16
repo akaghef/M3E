@@ -83,3 +83,35 @@ test("import retry refuses a provider rejection without a new generation", async
   expect(submitted).toBe(1);
   expect(state().nodes[parent].children).toHaveLength(0);
 });
+
+const attachment = (type = "document") => ({ type, filename: "source.txt", mime_type: "text/plain", base64: "bWF0ZXJpYWw=" });
+test("multimodal sources and additional attachments reach the existing provider unchanged", async () => {
+  const requests: any[] = [];
+  provider.call = async (route, body) => { if (route === "/v1/jobs") { requests.push(body); return { job_id: "remote" }; } return route.endsWith("/structure") ? graph : { state: "succeeded" }; };
+  for (const type of ["document", "image", "audio", "video"]) {
+    const source = attachment(type), attachments = [attachment("image"), attachment("audio")];
+    const result = await completed(jobs.submit({ ...request(), request_id: type, source, attachments }).job_id);
+    expect(result.state).toBe("succeeded");
+    expect(requests.at(-1)).toMatchObject({ source, attachments });
+  }
+});
+test("attachments participate in retry identity; unsupported file input cannot start generation", async () => {
+  const input = { ...request(), attachments: [attachment()] };
+  const id = jobs.submit(input).job_id; await completed(id);
+  expect(jobs.submit(input).job_id).toBe(id);
+  expect(() => jobs.submit({ ...input, attachments: [attachment("image")] })).toThrow("different input");
+  expect(() => jobs.submit({ ...request(), request_id: "too-many", attachments: Array(11).fill(attachment()) })).toThrow();
+  for (const file of [{ ...attachment(), path: "/private/source" }, { ...attachment(), filename: "../source" }, { ...attachment(), base64: "invalid!" }, null]) {
+    expect(() => jobs.submit({ ...request(), request_id: "invalid", attachments: [file] })).toThrow();
+  }
+  expect(submitted).toBe(1);
+});
+test("provider internals are absent from public status and retry errors", async () => {
+  provider.call = async route => route === "/v1/jobs" ? { job_id: "private-host-and-token" } : { state: "failed", error: "private-host-and-token" };
+  const id = jobs.submit(request()).job_id;
+  expect(JSON.stringify(await completed(id))).not.toContain("private-host-and-token");
+  provider.call = async () => { throw new Error("private-host-and-token"); };
+  const { flashPublicError } = await import("../../src/node/flash_jobs");
+  try { await jobs.retryImport(id); } catch (error) { expect(flashPublicError(error)).not.toContain("private-host-and-token"); }
+  expect(flashPublicError(new SyntaxError("private-host-and-token"))).not.toContain("private-host-and-token");
+});

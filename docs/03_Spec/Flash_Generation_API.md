@@ -18,7 +18,8 @@
 ```
 
 `target` は `m3e_get` で解決した canonical URI を推奨する。表示名パスも受理するが、受付時にURIへ固定する。
-任意で `title`, `instruction` を指定できる。
+任意で `title`, `instruction`, `attachments` を指定できる。
+`attachments` は最大10件のファイル配列で、各要素はsourceと同じ `type/filename/mime_type/base64` 契約を使う。添付内容も再送時の一致判定に含む。ファイル名にパスを渡さず、正しいbase64とMIME形式を指定する。
 sourceは既存Flash契約の `topic/text` + `text`、`url/audio/video` + `url`、またはファイル種別 + `filename/mime_type/base64`。
 この入口のJSON全体は64 MiBまで（添付のbase64を含む）。生成サービス側の入力制限は別途適用される。ローカルパスの読み出しは行わない。
 
@@ -59,3 +60,11 @@ Map Managerの `m3e_create(kind=import_structure)` は明示的なscope取り込
 `POST /api/flash/jobs/<job_id>/retry-import` は、生成サービス側の成功を再確認し、同じ生成結果・同じ配置先・同じ重複防止キーで取り込みだけを再開する。
 生成未完了・生成拒否はこの操作の対象外であり、再生成を起こさない。成功済みジョブへの再送も追加を重複させない。
 ノード本文は改行を含めてそのまま保持する。改行は既存TreeNodeの本文表現であり、木構造の不正とは扱わない。単一root、所有関係、到達性、重複ID等の検証は維持する。
+
+## viewerの操作
+
+Surface Progressive NavigationのBoard → Flash（またはキー1）から既存のFlash入力を開き、素材の種類・追加添付・任意の指示を指定して「生成して保存」を実行する。送信時の選択node（未選択時は現在scope）が保存先となる。投入前にmapを保存し、保存完了後に同じmapを再読込する。未保存の編集がある場合は自動再読込しない。
+
+画面は処理状況と保存結果を表示し、ジョブ参照は既定表示に出さない。ページの再読込後も同じタブの処理状況を再確認できる。通信失敗時は同じrequest_idで再確認し、結果未確定を新しい生成へ暗黙に切り替えない。追加添付と素材の合計はviewerで45 MiBまで、APIのJSON全体は64 MiBまで。生成サービス固有の制限は別途適用される。
+
+接続設定、認証情報、実行端末、内部例外は公開応答に含めない。公開エラーは検証済み入力エラーか固定文に限定する。認証設定・生成サービスの稼働方式は既存のものを利用する。

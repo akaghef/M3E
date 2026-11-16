@@ -269,16 +269,24 @@
         <div class="v4-panel-body">
           <section class="v4-card">
             <div class="v4-card-head">
-              <span>Flash / Mapify</span>
-              <button id="v4-refresh-btn" type="button">Refresh</button>
+              <span>Flash</span>
+              <button id="v4-refresh-btn" type="button">更新</button>
             </div>
-            <textarea id="v4-source-text" class="v4-source-text" rows="5" spellcheck="false" placeholder="Paste PDF text, markdown, or meeting notes to create a Mapify draft."></textarea>
+            <label>素材の種類 <select id="flash-source-type"><option value="text">テキスト</option><option value="topic">話題</option><option value="url">URL</option><option value="document">文書</option><option value="image">画像</option><option value="audio">音声</option><option value="video">動画</option></select></label>
+            <textarea id="v4-source-text" class="v4-source-text" rows="5" spellcheck="false" placeholder="素材の本文"></textarea>
+            <input id="flash-source-file" type="file" aria-label="素材ファイル" hidden>
+            <label>追加添付（最大10件）<input id="flash-attachments" type="file" multiple></label>
+            <label>生成指示<textarea id="flash-instruction" class="v4-source-text" rows="2" placeholder="任意"></textarea></label>
+            <div id="flash-destination" class="v4-status-line"></div>
             <div class="v4-action-row">
-              <button id="v4-create-draft-btn" type="button">Create Draft</button>
-              <button id="v4-apply-draft-btn" type="button">Apply Latest Pending</button>
+              <button id="flash-generate" type="button">生成して保存</button>
+              <button id="flash-check" type="button" hidden>状態を確認</button>
             </div>
-            <div id="v4-flash-status" class="v4-status-line">Drafts: unknown</div>
-            <div id="v4-draft-list" class="v4-list"></div>
+            <div id="flash-generation-status" class="v4-status-line" role="status" aria-live="polite">素材を入力してください。</div>
+            <details><summary>既存のDraft</summary>
+            <div class="v4-action-row"><button id="v4-create-draft-btn" type="button">本文をDraftにする</button><button id="v4-apply-draft-btn" type="button">既存Draftを取り込む</button></div>
+            <div id="v4-flash-status" class="v4-status-line"></div>
+            <div id="v4-draft-list" class="v4-list"></div></details>
           </section>
           <section class="v4-card">
             <div class="v4-card-head">

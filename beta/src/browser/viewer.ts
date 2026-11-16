@@ -1,3 +1,4 @@
+import { connectFlashGeneration } from "./flash_generation";
 import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
 import { viewerFilter } from "./viewer-filter-controller";
 import { filterSceneInput, ViewerFilterScene } from "./viewer-filter-scene";
@@ -1908,6 +1909,23 @@ async function loadLocalFsMap(rootPath: string): Promise<void> {
   fitDocument();
 }
 
+const flashGeneration = connectFlashGeneration({
+  destination: () => {
+    if (!map || isReadOnlyLink()) return null;
+    const node = selectedNodeForV4() ?? map.state.nodes[viewState.currentScopeId] ?? map.state.nodes[map.state.rootId];
+    return node ? { uri: `m3e://maps/${LOCAL_MAP_ID}/nodes/${node.id}`, name: node.text || "名称なし", map: LOCAL_MAP_ID } : null;
+  },
+  prepare: () => saveDocToLocalDb(false),
+  completed: async (mapId) => {
+    if (LOCAL_MAP_ID !== mapId) return;
+    if (localSaveRevision !== localSavedRevision) {
+      setStatus("Flashの保存が完了しました。編集中の変更を保存してから再読込してください。");
+      return;
+    }
+    await loadDocFromLocalDb(false); render();
+  },
+});
+
 interface FlashDraftListItem {
   id: string;
   mapId: string;
@@ -2002,6 +2020,7 @@ function syncV4Panel(updateDrafts = false): void {
     return;
   }
 
+  flashGeneration.refresh();
   if (v4VaultStatusEl) {
     if (vaultLastError) {
       v4VaultStatusEl.textContent = `Vault: error (${vaultLastError})`;
@@ -2031,7 +2050,7 @@ function syncV4Panel(updateDrafts = false): void {
     const sourceType = selected?.attributes?.["m3e:sourceType"] || selected?.attributes?.["vault:kind"] || selected?.attributes?.["v4:service"] || "none";
     const sourceRef = selected?.attributes?.["m3e:sourceUrl"] || selected?.attributes?.["vault:path"] || "";
     v4SelectedSourceEl.textContent = selected
-      ? `Selected: ${selected.text || selected.id} | source=${sourceType}${sourceRef ? ` | ${sourceRef}` : ""}`
+      ? `Selected: ${selected.text || "名称なし"} | source=${sourceType}${sourceRef ? ` | ${sourceRef}` : ""}`
       : "No selected node.";
   }
 
@@ -2058,7 +2077,7 @@ function syncV4Panel(updateDrafts = false): void {
           visibleDrafts.forEach((draft) => {
             const item = document.createElement("div");
             item.className = "v4-list-item";
-            item.textContent = draft.title || draft.id;
+            item.textContent = draft.title || "名称なしのDraft";
             const meta = document.createElement("small");
             meta.textContent = `${draft.status} | ${draft.nodeCount} nodes | ${draft.sourceType}`;
             item.appendChild(meta);
@@ -15055,6 +15074,7 @@ stopVisualCheckBtn?.addEventListener("click", () => {
 
 modeFlashBtn?.addEventListener("click", () => {
   setThinkingMode("flash");
+  showV4Panel();
 });
 
 modeRapidBtn?.addEventListener("click", () => {
@@ -16723,6 +16743,7 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "1") {
       event.preventDefault();
       setThinkingMode("flash");
+      showV4Panel();
       return;
     }
     if (event.key === "2") {
