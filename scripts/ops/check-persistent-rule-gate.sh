@@ -26,8 +26,14 @@ require_pattern "AGENTS.md" "Persistent Rule Change Gate" "root persistent rule 
 require_pattern "AGENTS.md" "skill-creator" "skill-creator routing"
 require_pattern "AGENTS.md" "chat promise" "chat-only promise prohibition"
 require_pattern "AGENTS.md" "C8: Browser Verification Evidence" "C8 browser evidence rule"
-require_pattern "CLAUDE.md" "persistent rule gate" "Claude persistent rule gate"
-require_pattern "CLAUDE.md" "skill-creator" "Claude skill-creator routing"
+# CLAUDE.md only imports AGENTS.md. Rules written there drift apart from the
+# rules every other runtime reads, so anything else in the file is rejected.
+require_file "CLAUDE.md"
+if [[ -f "CLAUDE.md" ]] && [[ "$(grep -v '^[[:space:]]*$' CLAUDE.md)" != "@AGENTS.md" ]]; then
+  echo "CLAUDE.md must contain only the line @AGENTS.md; put rules in AGENTS.md" >&2
+  failed=1
+fi
+require_pattern "AGENTS.md" "Instruction Files" "single instruction source rule"
 require_pattern "docs/06_Operations/Director_Playbook.md" "Persistent-rule review gate" "Director persistent-rule review gate"
 require_pattern "docs/06_Operations/Director_Playbook.md" "Live beta data guard" "Director live beta data guard"
 

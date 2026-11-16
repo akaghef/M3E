@@ -1,7 +1,7 @@
 # Director Playbook
 
 The operating manual for Claude working on M3E.
-`CLAUDE.md` (repo root) is the binding contract; this file is the **how-to** and the
+Root `AGENTS.md` is the binding contract (`CLAUDE.md` only imports it); this file is the **how-to** and the
 **memory of what works**. Keep it current — improvements compound here.
 
 > **2026-10-25 — operating model changed.** akaghef: "Codex subをやめてopusにやらせよう … 全般がそう."
@@ -81,7 +81,7 @@ When akaghef asks for recurrence prevention after an agent failure, the Director
 Director obligations:
 
 1. Identify the failed instruction or missing rule path when correcting an agent failure.
-2. Ensure a durable rule-system target changes, such as `AGENTS.md`, `CLAUDE.md`, this playbook, `docs/protocols/`, `docs/protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
+2. Ensure a durable rule-system target changes, such as `AGENTS.md`, this playbook, `docs/protocols/`, `docs/protocols/contracts/`, canonical skills, checked-in hooks/guards, or CI workflows.
 3. If any skill or skill trigger changes, route through `skill-creator` and update the skill frontmatter `description`.
 4. Require Codex to run `scripts/ops/check-persistent-rule-gate.sh` when present.
 5. Do not mark recurrence prevention complete if the result is only a chat promise.

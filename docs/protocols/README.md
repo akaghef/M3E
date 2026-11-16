@@ -17,7 +17,7 @@ This directory is the canonical home for AI operating protocols in M3E / Akaghef
 - Claude is Director only.
 - Codex (`codex exec`) is the sole worker for implementation, spec writing, refactoring, and investigation.
 - Old Claude sub-agent workers (`manage` / `visual` / `data` / `team`) are superseded.
-- Claude-facing procedure lives in `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md`.
+- Operating procedure lives in root `AGENTS.md` and `docs/06_Operations/Director_Playbook.md`; `CLAUDE.md` only imports `AGENTS.md`.
 
 ## What does not belong here
 

@@ -52,9 +52,8 @@ sed -n '1,220p' docs/00_Home/Current_Status.md
 sed -n '1,220p' docs/00_Home/Glossary.md
 ```
 
-Claude Director は加えて次を読む:
+作業を始める AI agent は加えて次を読む:
 
-- `CLAUDE.md`
 - `docs/06_Operations/Director_Playbook.md`
 
 毎ステップで全ルールを再確認する運用はしない。開始時ゲート後は軽量チェックで継続する。

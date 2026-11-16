@@ -3,7 +3,7 @@
 最終更新: 2026-06-25
 
 > M3E の開発を「壊さず・独立に作って・統合する」ための体制を定義する。
-> `CLAUDE.md`（root）が拘束契約、`Director_Playbook.md` が how-to、本書は
+> root の `AGENTS.md` が拘束契約（`CLAUDE.md` はこれを import するだけ）、`Director_Playbook.md` が how-to、本書は
 > **なぜこの体制なのか（診断と原理）と、当面の進め方の決定**を保持する。
 > 関連: `Director_Playbook.md` / `AI_Instruction_Routing.md` / `Worktree_Separation_Rules.md` / `../09_Decisions/`
 
@@ -175,7 +175,7 @@ Codex 実装
 - **EN5 composition test（実際に動くか）**。実データ → 全パイプライン → snapshot を fixture(14174) でなく実 `start_viewer.ts` で。Codex が起票・実行、昇格 gate。
 - **G-GUI 独立 GUI 検証ゲート**（§3.4）。EN1-5 は CI 決定論 gate だが、視覚 lab は computer-use を要するため CI 化できない。よって第三者 Codex が GUI を駆動する手続き＋必須 PASS artifact で強制（人間承認・PR マージの前段）。EN 系を補完する agent-procedural gate。
 
-これらは durable rule-system（checked-in guard / CI workflow）として着地させる。chat 約束で済ませない（root `CLAUDE.md` の persistent-rule gate）。
+これらは durable rule-system（checked-in guard / CI workflow）として着地させる。chat 約束で済ませない（root `AGENTS.md` の persistent-rule gate）。
 
 ### 5.1 効かせ方は ratchet（壁でなく爪車）
 

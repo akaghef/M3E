@@ -5,11 +5,10 @@
 ## Precedence
 
 1. User instruction and safety constraints
-2. `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md` for Claude Director behavior
-3. Repo root `AGENTS.md` and branch/worktree policy
-4. `docs/protocols/*.md`, `docs/protocols/map-manager/`, and `docs/protocols/contracts/*.yaml`
-5. Tool skills under `.codex/skills/*` and `.claude/skills/*`
-6. Handoff packets
+2. Repo root `AGENTS.md` (`CLAUDE.md` only imports it), `docs/06_Operations/Director_Playbook.md`, and branch/worktree policy
+3. `docs/protocols/*.md`, `docs/protocols/map-manager/`, and `docs/protocols/contracts/*.yaml`
+4. Tool skills under `.codex/skills/*` and `.claude/skills/*`
+5. Handoff packets
 
 ## Editing rules
 

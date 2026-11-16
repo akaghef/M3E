@@ -23,7 +23,21 @@ Prefer small validated changes over broad refactors.
 
 The assigned AI owns delivery of the authorized task through verification, direct integration into `dev-beta`, push, and applicable normal-Beta verification. Pull Requests and a separate Director's merge are not required.
 
-The canonical workflow is [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.md). Claude may coordinate Codex workers using `CLAUDE.md` and the Director Playbook; an existing Codex session works directly without launching a replacement worker. Parallel work stays isolated. Do not start extra agents unless authorized.
+The canonical workflow is [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.md). Parallel work stays isolated. Do not start extra agents unless authorized.
+
+The AI agent that receives a task does the work itself and owns the result: it understands the request, reads the code, writes specs and code, tests, integrates into `dev-beta` and verifies on the normal Beta runtime (akaghef, 2026-10-25). It hands work to another AI agent only when akaghef asks for that in the current request; the handoff format and acceptance rules are in the [Director Playbook](docs/06_Operations/Director_Playbook.md), which every session reads before starting. An existing session works directly without launching a replacement worker.
+
+Acceptance criteria and the verdict come from independent evidence (a regression test that fails without the fix, a check on the normal runtime), not from a report, including the agent's own.
+
+## Instruction Files
+
+This file is the single instruction source for every AI agent in this repository. `CLAUDE.md` contains only the line `@AGENTS.md`; it holds no rules of its own, and `scripts/ops/check-persistent-rule-gate.sh` rejects anything else in it. Put a new rule here, written runtime-neutrally, or in the document this file routes to.
+
+Reference IDs follow the global rule: they are addresses inside one conversation and are not written into committed files. Do not mint tracking numbers (decision, issue, option, requirement or proposal numbers) in documents; identify a decision by its heading and date. Older documents still carry such numbers; leave them until that document is next edited, and do not extend their series.
+
+## Spec-Driven Harness
+
+Non-trivial work follows Kiro-style Spec-Driven Development: discovery, steering, requirements / design / tasks, implementation, review, verification (`kiro-*` skills; specs under `.kiro/specs/`, steering under `.kiro/steering/`). New feature work starts with discovery to frame scope. Trivial or mechanical changes (a typo, a one-line fix, a doc tweak) need no spec. Akaghef-System's upper boundaries (TOB / DP / credential / M3E Map Manager / Large IO / send gate) take priority when they conflict with the harness.
 
 ## Environment Structure
 
@@ -48,8 +62,8 @@ The canonical workflow is [Worktree Separation Rules](docs/06_Operations/Worktre
    - `docs/00_Home/Home.md`
 2. Current priorities and progress:
    - `docs/00_Home/Current_Status.md`
-3. Director procedure:
-   - `CLAUDE.md`
+3. Operating procedure:
+   - this file
    - `docs/06_Operations/Director_Playbook.md`
 4. Operations rules:
    - `docs/06_Operations/Documentation_Rules.md`
@@ -64,7 +78,7 @@ For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 - Product meaning of map / node / scope / edge / GraphLink / alias / path / layout lives under `docs/03_Spec/`.
 - Repository-level canon, source/artifact allocation, generated-output policy, worktree placement, and private/public-danger material routing live in `docs/protocols/repository-canon-values.md`.
 - Agent operating behavior lives under `docs/protocols/`.
-- Claude Director behavior lives in `CLAUDE.md` and `docs/06_Operations/Director_Playbook.md`.
+- Procedure detail (handoff template, review checklist, accumulated lessons) lives in `docs/06_Operations/Director_Playbook.md`.
 - Map read/write execution uses the six MCP tools under `docs/protocols/mcp-map-operations.md`: `m3e_context`, `m3e_get`, `m3e_create`, `m3e_update`, `m3e_delete`, and `m3e_feedback`. No local map skill is required.
 - Open structural map decisions use `docs/protocols/map-manager/` (with `docs/protocols/map-manager.md` as a compatibility pointer), exposed through MCP Resources / Prompts. The `map-manager` skill is an optional repository-local entry point for those decisions.
 - Codex workers must follow `docs/protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
@@ -85,7 +99,7 @@ When the user asks for recurrence prevention after an agent failure, the task is
 
 Durable rule-system changes include one or more of:
 
-- root `AGENTS.md`
+- root `AGENTS.md` (never `CLAUDE.md`, which only imports this file)
 - `docs/protocols/` or `docs/protocols/contracts/`
 - canonical skill sources under `agent_instructions/skills_canonical/`
 - checked-in hook or guard scripts under `scripts/hooks/` or `scripts/ops/`
@@ -149,7 +163,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 - Documentation-only changes need canonical/mirror/guard verification; a product restart is not required.
 - Optional PRs remain available for explicit review requests. A review-only request does not authorize merge.
 - Destructive history changes, main/release operations, and secret changes still require explicit authorization.
-- When dispatching an external Codex worker, use `scripts/codex.sh exec ... < /dev/null`. Do not redispatch the already active Codex session merely to satisfy this convention.
+- When akaghef asks for an external Codex worker, use `scripts/codex.sh exec -m gpt-6-astra -c model_reasoning_effort=high ... < /dev/null` (read-only sandbox for investigation; `workspace-write` inside the task worktree for implementation), run it in the background, and do not redispatch the already active Codex session merely to satisfy this convention.
 
 ## Development Phase Constraints
 
@@ -168,10 +182,26 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 
 ## Language Policy
 
-1. Agent-user conversation should be in English by default.
+1. Every chat reply to akaghef is in Japanese, including short replies, apologies and replies written after long tool runs.
 2. Design and development documents under `docs/` should be written in Japanese by default.
 3. Code identifiers, file names, API names, and technical tokens may remain in English where appropriate.
 4. If a document is a design/spec/architecture/ADR document, prefer Japanese prose even when the surrounding conversation is in English.
+
+## Defined Terms Only
+
+In chat, specs and handoffs, use only terms defined in `docs/00_Home/Glossary.md`, the canonical specs it links, or the `意味` nodes of the M3E map under discussion. When an undefined word appears (including akaghef's own wording), restate it with defined terms; if the mapping is ambiguous, ask which defined term is meant. Do not coin a substitute name unless akaghef asks `name?`. Tool and API field names are not terms; translate them to the Glossary term.
+
+A Glossary term change (a rename, or a new term replacing an old wording) is one unit with a sweep of every document (`docs/`, `.kiro/`, `agent_instructions/`, READMEs, this file) that replaces the old name and its prose synonyms; only former-name notes keep it. Code identifiers are out of scope unless akaghef says otherwise.
+
+## Asking akaghef to Decide
+
+A decision put to akaghef is self-contained in the message that asks it: what is being decided, the options, the recommendation, and what each choice changes. An identifier alone, or a pointer to an earlier message, a spec or another session, is not a question.
+
+Ask only when the choice changes stored data or its meaning (schema, map content, Glossary terms, canonical decisions), has an effect outside the task (shared branches beyond the normal integration, other sessions, external services, published artifacts), is hard to undo, or genuinely depends on akaghef's intent. Decide everything else yourself — a reversible choice confined to the task — and report it afterwards in one line with what you chose and why.
+
+## GUI Design Order
+
+Decide GUI in this order: (1) semantic containment of parts (what each part means and belongs to), (2) the part set, (3) on-screen placement, done in Claude Design. Do not bring placement categories (Panel / Pane placement, fixed / floating, layout plans) into steps 1–2; Glossary `Panel` and `Pane` are placement-defined terms. An inherited issue that asks where to put something during steps 1–2 is reframed as a meaning / part question or deferred to step 3.
 
 ## Preferred Task Order (Beta Phase)
 

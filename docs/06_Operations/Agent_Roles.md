@@ -14,7 +14,7 @@ M3E の AI 運用は Director to Codex model に統一する。
 
 Canonical Claude-facing sources:
 
-- `CLAUDE.md`
+- root `AGENTS.md`（`CLAUDE.md` はこれを import するだけ）
 - `docs/06_Operations/Director_Playbook.md`
 
 ## Deprecated Model

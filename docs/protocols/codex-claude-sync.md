@@ -12,7 +12,7 @@ Codex and Claude must see compatible M3E rules while preserving their different 
 Claude-facing Director contract:
 
 ```text
-CLAUDE.md
+AGENTS.md
 docs/06_Operations/Director_Playbook.md
 ```
 
@@ -40,7 +40,7 @@ Skill mirrors, when present, are compatibility surfaces:
 - Do not reintroduce Claude implementation workers.
 - Protocol changes that alter Codex behavior must update any relevant skill source or mirror in the same delivery.
 - Generated mirrors must contain a generated header when the sync tool manages them.
-- If a mirror conflicts with `CLAUDE.md` or `Director_Playbook.md`, the canonical Director sources win for Claude behavior.
+- If a mirror conflicts with root `AGENTS.md` or `Director_Playbook.md`, the canonical Director sources win for Claude behavior.
 
 ## Scoped delivery-skill sync
 

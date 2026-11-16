@@ -10,7 +10,7 @@ Codex / Claude / GPT Pro に、重複・古い・矛盾した M3E 指示が渡�
 
 Claude-facing operating authority:
 
-1. `CLAUDE.md`
+1. root `AGENTS.md`（`CLAUDE.md` はこれを import するだけ）
 2. `docs/06_Operations/Director_Playbook.md`
 
 Current execution model:
@@ -23,7 +23,7 @@ Current execution model:
 
 1. `docs/03_Spec/`: product meaning.
 2. `docs/protocols/`: operating protocols shared by handoffs and tools.
-3. `CLAUDE.md` + `Director_Playbook.md`: Director procedure.
+3. root `AGENTS.md` + `Director_Playbook.md`: operating procedure.
 4. `.codex/skills/` `.claude/skills/` `.agents/skills/`: generated or compatibility skill mirrors when present.
 5. MCP Tools / Resources / Prompts: map execution and published canonical guidance; normal operations require no local map skill.
 
@@ -31,7 +31,7 @@ Current execution model:
 
 - M3E の概念が何を意味するかを書く文は `docs/03_Spec/` に置く。
 - AI がどう動くべきかを書く文は `docs/protocols/` に置く。
-- Claude の Director 手順は `CLAUDE.md` と `Director_Playbook.md` に置く。
+- AI agent の作業手順は root `AGENTS.md` と `Director_Playbook.md` に置く。`CLAUDE.md` には規則を書かない。
 - Codex task の scope family は `docs/06_Operations/Codex_Task_Scope_Reference.md` を参照する。
 - Map Manager の operational SSOT は `docs/protocols/map-manager/` package に置く。
 - directory entry pointer だけなら `AGENTS.md` に置く。
