@@ -99,6 +99,7 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - IS136（2026-11-16、akaghef）：attribute は独立したレコードにする。set-attribute / unset-attribute の Command 単位とレコード単位を一致させる。
 - IS143（2026-11-16、akaghef）：移行時に schema version 表を入れ、table 名も旧実装と変える。新形式の DB を旧実装が開いたら空の表を作らず即失敗させる（fail closed）。
 - IS144（2026-11-16、akaghef）：Schema v2 はこの移行に畳み込む方針。内容を精査したうえで、requirements で取り込む範囲を確定する。
+- DC70〜DC76（2026-11-16、akaghef）：第 2 段のレコードの形。線の総称 Connection に `relationType` を置く、node に時刻を持たせない、既定値と同じ欄を保存しない、scope の境界を scope のレコードで表し `folder` を払拭する、Surface View の旧い語彙は移行で書き換えない、正本の配置は木で別の場所からは alias、`nodeType` をスキーマの分岐にして種別ごとの内容を details に置く。本文と未決（IS149〜IS160）は [record-schema.md](./record-schema.md)。
 
 ### 既存の Neo4j 実装（2026-11-11、Cursor。2026-11-16 に採否を決定）
 
