@@ -312,6 +312,38 @@ describe("record store: a map whose ids another map already uses", () => {
   });
 });
 
+describe("record store: ids the migration renumbered", () => {
+  it("are not treated as aliases: the client keeps seeing the stored ids, and the migration's idMap records stay", () => {
+    // Two rows with the same ids: the migration renumbers the ids of the second map.
+    const store = openStore(newDir("alias-migrated", [{ id: "m1", state: feelState() }, { id: "m2", state: feelState() }]));
+    const migrated = store.records().filter((record) => record.kind === "idMap");
+    expect(migrated.length).toBe(6);
+    expect(migrated.every((record) => record.kind === "idMap" && record.alias === undefined && record.mapId === "m2")).toBe(true);
+    const renumbered = `n_${sha256Hex(`${WS}|m2|node|B`).slice(0, 24)}`;
+    expect(Object.keys(nodesOf(stateOf(store, "m2")))).toContain(renumbered);
+    expect(nodesOf(stateOf(store, "m2")).B).toBeUndefined();
+    // Edits with the stored ids work as before.
+    edit(store, "m2", (state) => { nodesOf(state)[renumbered].text = "Bravo of m2"; });
+
+    // The old id again, in a Command: the migration's record is not replaced, the collision is refused.
+    const before = stateOf(store, "m2");
+    const after = clone(before);
+    const rootId = after.rootId as string;
+    nodesOf(after).B = node("B", rootId, [], { text: "B again" });
+    (nodesOf(after)[rootId].children as string[]).push("B");
+    expect(store.commitMapCommand("m2", command(diffState(before, after)), ISSUER)).toMatchObject({ ok: false, code: "INVALID_STATE" });
+    expect(store.saveWholeMap("m2", after as unknown as AppState, ISSUER)).toMatchObject({ ok: false, code: "INVALID_STATE" });
+    expect(store.records().filter((record) => record.kind === "idMap")).toEqual(migrated);
+    // An id the migration did not touch gets an alias like in any other map.
+    edit(store, "m1", (state) => {
+      nodesOf(state)[renumbered] = node(renumbered, "root", [], { text: "named like a stored id of m2" });
+      (nodesOf(state).root.children as string[]).push(renumbered);
+    });
+    expect(nodesOf(stateOf(store, "m2"))[renumbered].text).toBe("Bravo of m2");
+    expect(checkInvariants(store.records())).toEqual([]);
+  });
+});
+
 describe("record store: row columns and the saved-at time", () => {
   it("a column change gets a commit of its own but leaves the saved-at time and the revision of the map", async () => {
     const dir = newDir("columns");

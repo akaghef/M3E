@@ -923,6 +923,10 @@ export class RecordWorkspaceStore {
     const used = new Set<string>();
     const taken = (id: string): boolean => used.has(id) || this.idIndex.has(id) || this.all.has(`surface|${id}`);
     const assign = (kind: AliasKind, oldId: string): void => {
+      // The migration may have left an `idMap` record under the same key (it renumbered this id
+      // then, and the client has used the new id since). That record is not replaced: the id
+      // gets no alias, and the commit is refused for the collision as it always was.
+      if (entry?.idMaps.has(recordRk({ kind: "idMap", recordKind: kind, mapId, oldId, newId: "" }))) return;
       let attempt = 0;
       let newId = aliasId(this.workspaceId, mapId, kind, oldId);
       while (taken(newId)) newId = aliasId(this.workspaceId, mapId, kind, oldId, (attempt += 1));

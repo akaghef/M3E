@@ -219,7 +219,7 @@ describe.skipIf(!BOLT)("record store with Neo4j", () => {
     expect(serializeSnapshot(await dump(driver))).toBe(serializeSnapshot(reopened.records()));
   });
 
-  it("reports ENGINE_BEHIND while Neo4j cannot be reached; the journal keeps the commits for later", async () => {
+  it("keeps committing while Neo4j cannot be reached and reports why; refuses only past the backlog limit; Neo4j gets the commits later", async () => {
     const dir = newDir("unreachable");
     const first = openStore(dir);
     edit(first, "map_a", (state) => { (state.nodes as Record<string, Loose>).leaf.text = "one"; });
@@ -230,11 +230,19 @@ describe.skipIf(!BOLT)("record store with Neo4j", () => {
     stores.push(down);
     await expect(down.flush()).rejects.toThrow(/behind/);
     expect(down.engineStatus().error).toBeDefined();
-    expect(down.commitMapCommand("map_a", command([]), ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND" });
-    expect((down.getMapRow("map_a").state.nodes as unknown as Record<string, Loose>).leaf.text).toBe("one");
+    // The journal is the source of truth: the commit is taken although the engine is down.
+    edit(down, "map_a", (state) => { (state.nodes as Record<string, Loose>).leaf.text = "while down"; });
+    expect((down.getMapRow("map_a").state.nodes as unknown as Record<string, Loose>).leaf.text).toBe("while down");
     await closeStore(down);
+    const limited = RecordWorkspaceStore.open(dir, { neo4j: { uri: "bolt://127.0.0.1:1" }, engineBacklogLimit: 1 });
+    stores.push(limited);
+    edit(limited, "map_a", (state) => { (state.nodes as Record<string, Loose>).leaf.text = "the one commit the limit allows"; });
+    expect(limited.commitMapCommand("map_a", command([]), ISSUER)).toMatchObject({ ok: false, code: "ENGINE_BEHIND" });
+    await closeStore(limited);
 
     const again = openStore(dir);
+    await again.flush();
+    expect(serializeSnapshot(await dump(driver))).toBe(serializeSnapshot(again.records()));
     edit(again, "map_a", (state) => { (state.nodes as Record<string, Loose>).leaf.text = "two"; });
     await again.flush();
     expect(serializeSnapshot(await dump(driver))).toBe(serializeSnapshot(again.records()));

@@ -191,6 +191,8 @@ export interface EngineRetryOptions {
   firstMs?: number;
   /** Longest wait between two retries, in milliseconds (default 30,000). */
   maxMs?: number;
+  /** Told when the engine falls behind (once per distinct reason) and when it has caught up again. */
+  log?: (message: string) => void;
 }
 
 /**
@@ -215,6 +217,7 @@ export class EngineQueue {
   private readonly firstDelay: number;
   private readonly maxDelay: number;
   private delay: number;
+  private readonly log: ((message: string) => void) | undefined;
   private closed = false;
 
   constructor(private readonly applier: EngineApplier, private readonly source: EngineSource, retry: EngineRetryOptions = {}) {
@@ -222,6 +225,7 @@ export class EngineQueue {
     this.firstDelay = Math.max(1, retry.firstMs ?? 500);
     this.maxDelay = Math.max(this.firstDelay, retry.maxMs ?? 30000);
     this.delay = this.firstDelay;
+    this.log = retry.log;
   }
 
   get appliedSeq(): number {
@@ -273,10 +277,13 @@ export class EngineQueue {
         }
         this.pending.shift();
       }
+      if (this.failure !== undefined) this.log?.(`the storage engine caught up at commit ${this.applied}.`);
       this.failure = undefined;
       this.delay = this.firstDelay;
     } catch (error) {
-      this.failure = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== this.failure) this.log?.(`the storage engine is behind (last commit known to be applied: ${this.applied}); commits go on and it is retried: ${message}`);
+      this.failure = message;
       // What the engine holds now is not known for sure: the next attempt asks it and catches up
       // from the journal.
       this.started = false;

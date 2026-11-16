@@ -5,6 +5,8 @@
 // existing persistence calls are answered). Without it, `activeRecordStore()` is null and the
 // server uses SQLite exactly as before. With M3E_NEO4J_BOLT set as well, every commit is mirrored
 // to that Neo4j server (credentials: M3E_NEO4J_USER / M3E_NEO4J_PASSWORD, as in record_store_cli).
+// While Neo4j cannot be reached commits go on (the journal is the source of truth) and the applier
+// retries; they are refused only when Neo4j is M3E_ENGINE_BACKLOG_LIMIT commits behind (default 10,000).
 
 import os from "os";
 import path from "path";
@@ -35,7 +37,7 @@ export function activeRecordStore(): RecordWorkspaceStore | null {
   if (active !== null && activeDir === dir) return active;
   if (active !== null) throw new Error(`M3E_STORE_DIR changed while the record store of ${activeDir} is open.`);
   assertNotLiveM3e(dir);
-  const options: OpenOptions = {};
+  const options: OpenOptions = { engineRetry: { log: (message) => console.error(`[record-store] ${message}`) } };
   const bolt = process.env.M3E_NEO4J_BOLT?.trim();
   if (bolt) {
     options.neo4j = { uri: bolt };
