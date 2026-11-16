@@ -15,7 +15,7 @@
 
 | kind | key | 欄 |
 |---|---|---|
-| `map` | `id` | `rootNodeId`、`tags`?、`archived`?、`pinned`?、`source`?、`linearTextFontScale`?、`linearPanelWidth`?、`extra`? |
+| `map` | `id` | `rootNodeId`、`tags`?、`archived`?、`pinned`?、`source`?、`legacyVersion`?、`legacySavedAt`?、`linearTextFontScale`?、`linearPanelWidth`?、`extra`?、`rev` |
 | `node` | `id` | `mapId`、`nodeType`?（`text` は書かない）、`text`、`collapsed`?（false は書かない）、`attributes`?、`alias`?、`extra`?、`rev` |
 | `details` | `nodeId` | `mapId`、`v`（形の版。1）、`body`?、`note`?、`link`?、`rev` |
 | `connection` | `id` | `mapId`、`type`（`edge` / `graphlink`）、`source`、`target`、`relationType`?、`label`?、`attributes`?、`rev`。edge は `ord`。graphlink は `direction`?、`style`?、`color`?、`sourcePort`?、`targetPort`? |
@@ -23,16 +23,19 @@
 | `linearText` | `scopeId` または `orphanKey` | `mapId`、`text`、`rev` |
 | `surface` | `id` | `mapId`、`scopeId`、`surfaceKind`、`layout`、`surfaceView`?、`rev` |
 | `nodeView` | `surfaceId`＋`nodeId` | `mapId`、`x`?、`y`?、`flowCol`?、`flowRow`?、`shape`? |
-| `annotation` | `id` | `mapId`、`scopeId`?、ほか現行の欄をそのまま |
-| `relationTypeDef` | `name` | `label`?、`description`?、`reads`（`source-to-target` / `target-to-source`） |
-| `prefix` | `prefix` | `uri` |
-| `account` | `id` | `accountKind`（`ai-agent` / `human` / `system`）、`displayName`、`externalIds`?、`roles`? |
+| `annotation` | `id` | `mapId`、`scopeId`?、ほか現行の欄をそのまま（`opacity`、`createdAt`、`text`、`fontSize`、`fontWeight`、`variant` を含む）、`extra`?、`rev` |
+| `relationTypeDef` | `name` | `label`?、`description`?、`reads`（`source-to-target` / `target-to-source`）、`rev` |
+| `prefix` | `prefix` | `uri`、`rev` |
+| `account` | `id` | `accountKind`（`ai-agent` / `human` / `system`）、`displayName`、`externalIds`?、`roles`?、`rev` |
 | `commit` | `seq` | `committedAt`、`issuer`（account の `id`）、`sessionId`? |
 | `idMap` | `recordKind`＋`mapId`＋`oldId` | `newId`（ID を振り直したものだけ） |
 
 - `alias` は `{ "target": nodeId, "label"?: string, "access"?: "read"|"write", "snapshotLabel"?: string, "broken"?: true }`。
 - `attributes` は key と値の組。値は文字列・数値・真偽・配列・入れ子のいずれか。空の組は書かない。
 - `extra` は、型定義に無い欄をそのまま入れる組。空なら書かない。
+- `nodeView` は `rev` を持たない。属する surface の `rev` に従う。
+- edge の `source` と `target` は node に限る。graphlink の端点は node か connection。
+- attribute の key は、現行の文字列を一字も変えない（接頭辞の無い key もそのまま）。
 
 ## 3. 現行データからの変換
 
@@ -40,13 +43,17 @@
 
 ### 3.1 ID
 
-- 現行の ID は、次のどれかに当たるものだけ振り直す。(a) 同じ workspace の別の map に同じ ID の node がある（map の `id` の文字列順で最初の一つは元の ID を保つ）。(b) 64 文字を超える。(c) `[A-Za-z0-9_.:-]` 以外の文字を含む。
-- 振り直した ID、edge の `connectionId`、`scopeId`、`surfaceId` は新しく作る。作り方は決定的にする: 接頭辞（node `n_`、connection `c_`、scope `s_`、surface `v_`）＋ `sha256("<workspaceId>|<mapId>|<recordKind>|<旧 ID または下記の種>")` の先頭 24 桁（16 進）。
-  - edge の種: 子の node の（振り直し後の）ID。
-  - scope の種: root の node の（振り直し後の）ID。
-  - surface の種: 現行の surface の ID。
+- 対象は node、GraphLink、annotation の ID。map を `id` の文字列順に処理し、各 map の中では node、GraphLink、annotation の順、同じ種別の中では現行の ID の文字列順に見る。
+- 次のどれかに当たる ID だけ振り直す。(a) それより前に処理したレコード（種別を問わない。同じ workspace の全 map）が既に同じ ID を使っている。(b) 64 文字を超える。(c) `[A-Za-z0-9_.:-]` 以外の文字を含む。当たらないものは元の ID を保ち、「使用済み」に加える。
+- 振り直した ID、edge の `connectionId`、`scopeId`、`surfaceId` は新しく作る。作り方は決定的にする: 接頭辞 ＋ `sha256("<workspaceId>|<mapId>|<recordKind>|<種>")` の 16 進の先頭 24 桁。
+  - node: 接頭辞 `n_`、recordKind `node`、種は現行の ID。
+  - GraphLink: 接頭辞 `c_`、recordKind `graphlink`、種は現行の ID。
+  - annotation: 接頭辞 `a_`、recordKind `annotation`、種は現行の ID。
+  - edge: 接頭辞 `c_`、recordKind `edge`、種は子の node の（振り直し後の）ID。
+  - scope: 接頭辞 `s_`、recordKind `scope`、種は root の node の（振り直し後の）ID。
+  - surface: 接頭辞 `v_`、recordKind `surface`、種は現行の surface の ID。
 - 同じ入力からは、何度変換しても同じ ID になる。
-- 振り直した node・GraphLink・surface は `idMap` に記録する。参照（`parentId`、`children`、`targetNodeId`、GraphLink の端点、`nodeViews` の key、`linearNotesByScope` の key、`primarySurfaceId`、annotation の `scopeId`）は新しい ID に書き換える。
+- 振り直した node・GraphLink・annotation と、全ての surface は `idMap` に記録する（`recordKind` は `node` / `graphlink` / `annotation` / `surface`）。参照（`parentId`、`children`、`targetNodeId`、GraphLink の端点、`nodeViews` の key、`linearNotesByScope` の key、`primarySurfaceId`、annotation の `scopeId`）は新しい ID に書き換える。
 
 ### 3.2 node と details
 
@@ -79,7 +86,7 @@
 - linear-text: `linearNotesByScope` の各要素。key が scope の root の node の ID（または `scope:<nodeId>`）なら、その scope の `scopeId`。そうでなければ `orphanKey` に元の key を入れて残す。値が空文字のものは書かない。
 - surface: `surfaces` の各要素。`scopeId` は新しい scope の ID。`kind` → `surfaceKind`。`nodeViews` は、値が一つでもある要素だけを `nodeView` にする。実在しない node の要素は捨てる。
 - annotation: 現行の欄をそのまま。`scopeId` は新しい scope の ID に書き換える（解決しなければ欄を落とし、元の値を `extra.scopeId` に残す）。
-- map: `rootNodeId`、行の `tags`・`archived`・`pinned`・`source`、`linearTextFontScale`、`linearPanelWidth`。`state_json` の top-level のうち `selectedId`・`scopeId`・`savedAt` は捨て、それ以外の未知の欄は `map.extra` に入れる。
+- map: `rootNodeId`、行の `tags`・`archived`・`pinned`・`source`（値は行の値をそのまま。文字列なら文字列のまま）、行の `version` → `legacyVersion`、`saved_at` → `legacySavedAt`、`linearTextFontScale`、`linearPanelWidth`。`state_json` の top-level のうち `selectedId`・`scopeId`・`savedAt` は捨て、それ以外の未知の欄は `map.extra` に入れる。
 
 ### 3.5 最初から入れるレコード
 

@@ -118,19 +118,26 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
     if len(header) != 1 or header[0].get("format") != 1 or header[0].get("workspaceId") != ws:
         problems.add("file.header", "snapshot", json.dumps(header)[:200])
 
-    # ---- expected node id mapping (rule 3.1), computed independently ----
+    # ---- expected id mapping (rule 3.1), computed independently ----
     seen_ids: set[str] = set()
     node_new: dict[tuple[str, str], str] = {}
-    renumbered: set[tuple[str, str]] = set()
+    link_new: dict[tuple[str, str], str] = {}
+    ann_new: dict[tuple[str, str], str] = {}
+    renumbered: set[tuple[str, str, str]] = set()
     for row in maps:  # already ordered by map id
         map_id = row["id"]
-        for old in row["state"].get("nodes", {}):
-            if needs_new_id(old) or old in seen_ids:
-                node_new[(map_id, old)] = new_id("n_", ws, map_id, "node", old)
-                renumbered.add((map_id, old))
-            else:
-                node_new[(map_id, old)] = old
-                seen_ids.add(old)
+        for kind, prefix, table, source in (
+            ("node", "n_", node_new, row["state"].get("nodes") or {}),
+            ("graphlink", "c_", link_new, row["state"].get("links") or {}),
+            ("annotation", "a_", ann_new, row["state"].get("annotations") or {}),
+        ):
+            for old in sorted(source):
+                if needs_new_id(old) or old in seen_ids:
+                    table[(map_id, old)] = new_id(prefix, ws, map_id, kind, old)
+                    renumbered.add((kind, map_id, old))
+                else:
+                    table[(map_id, old)] = old
+                    seen_ids.add(old)
 
     s_nodes = {r["id"]: r for r in snap.get("node", [])}
     if len(s_nodes) != len(snap.get("node", [])):
@@ -162,7 +169,7 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
     lin_by_scope = {r["scopeId"]: r for r in snap.get("linearText", []) if "scopeId" in r}
     lin_orphans = {(r.get("mapId"), r.get("orphanKey")): r for r in snap.get("linearText", []) if "orphanKey" in r}
     views = {(r.get("surfaceId"), r.get("nodeId")): r for r in snap.get("nodeView", [])}
-    annotations = {(r.get("mapId"), r.get("id")): r for r in snap.get("annotation", [])}
+    annotations = {r.get("id"): r for r in snap.get("annotation", [])}
 
     expected_nodes = 0
     expected_edges = 0
@@ -191,17 +198,12 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
         else:
             if m.get("rootNodeId") != nid(state.get("rootId")):
                 problems.add("map.root", map_id)
-            for col in ("tags", "archived", "pinned", "source"):
-                if col in row and row[col] is not None and m.get(col) != row[col]:
-                    # tags may be stored as JSON text; accept its parsed form too
-                    parsed = None
-                    if isinstance(row[col], str):
-                        try:
-                            parsed = json.loads(row[col])
-                        except ValueError:
-                            parsed = None
-                    if m.get(col) != parsed:
-                        problems.add("map.column", map_id, col)
+            for col, field in (("tags", "tags"), ("archived", "archived"), ("pinned", "pinned"),
+                               ("source", "source"), ("version", "legacyVersion"), ("saved_at", "legacySavedAt")):
+                if col in row and row[col] is not None and m.get(field) != row[col]:
+                    problems.add("map.column", map_id, col)
+            if m.get("rev") != 0:
+                problems.add("map.rev", map_id)
             for key in ("linearTextFontScale", "linearPanelWidth"):
                 if state.get(key) is not None and m.get(key) != state.get(key):
                     problems.add("map.field", map_id, key)
@@ -225,7 +227,7 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
                 if node.get("details") or node.get("note") or node.get("link"):
                     expected_details += 1
                 continue
-            if (map_id, old) in renumbered and s_idmap.get(("node", map_id, old)) != new:
+            if ("node", map_id, old) in renumbered and s_idmap.get(("node", map_id, old)) != new:
                 problems.add("node.idmap", where)
             if rec.get("mapId") != map_id:
                 problems.add("node.mapId", where)
@@ -337,11 +339,15 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
         for old_id, link in (state.get("links") or {}).items():
             expected_links += 1
             where = f"{map_id}/link/{old_id}"
-            candidates = [old_id, s_idmap.get(("connection", map_id, old_id)), s_idmap.get(("graphlink", map_id, old_id))]
-            rec = next((links_by_map[map_id].get(c) for c in candidates if c and c in links_by_map[map_id]), None)
+            want_link_id = link_new[(map_id, old_id)]
+            rec = links_by_map[map_id].get(want_link_id)
             if rec is None:
                 problems.add("link.missing", where)
                 continue
+            if ("graphlink", map_id, old_id) in renumbered and s_idmap.get(("graphlink", map_id, old_id)) != want_link_id:
+                problems.add("link.idmap", where)
+            if rec.get("rev") != 0:
+                problems.add("link.rev", where)
             used_conn_ids.add(rec["id"])
             if rec.get("source") != (nid(link.get("sourceNodeId")) or link.get("sourceNodeId")):
                 problems.add("link.source", where)
@@ -428,6 +434,8 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
                         expected_views += 1
                 continue
             used_surface_ids.add(rec["id"])
+            if s_idmap.get(("surface", map_id, old_sid)) != rec["id"]:
+                problems.add("surface.idmap", where)
             if rec.get("scopeId") != scope_id_for(surface.get("scopeId")):
                 problems.add("surface.scope", where)
             if rec.get("surfaceKind") != surface.get("kind") or rec.get("layout") != surface.get("layout"):
@@ -453,10 +461,12 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
         for old_id, ann in (state.get("annotations") or {}).items():
             expected_ann += 1
             where = f"{map_id}/annotation/{old_id}"
-            rec = annotations.get((map_id, old_id))
+            rec = annotations.get(ann_new[(map_id, old_id)])
             if rec is None:
                 problems.add("annotation.missing", where)
                 continue
+            if rec.get("mapId") != map_id or rec.get("rev") != 0:
+                problems.add("annotation.meta", where)
             for key, value in ann.items():
                 if key in ("id", "scopeId") or value is None:
                     continue
@@ -536,7 +546,7 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
         if s.get("rootNodeId") not in s_nodes:
             problems.add("inv.scope.root-missing", s["id"])
     ids = collections.Counter()
-    for group in (s_nodes, s_conn, s_scopes, s_surfaces):
+    for group in (s_nodes, s_conn, s_scopes, s_surfaces, annotations):
         ids.update(group.keys())
     for value, n in ids.items():
         if n > 1:
