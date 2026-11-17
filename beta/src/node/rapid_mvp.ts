@@ -1,5 +1,6 @@
 "use strict";
 
+import { edgeScopeProblems } from "../shared/scope_plane";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -412,6 +413,8 @@ class RapidMvpModel {
     if (nodeId === this.state.rootId && !enabled) throw new Error("The root scope cannot be removed.");
     this._pushHistory();
     node.nodeType = enabled ? "folder" : "text";
+    // Unscopen: the edges that stayed outside the scope and those inside lie on one scope again (DA58).
+    if (!enabled) for (const childId of node.children) delete this.state.nodes[childId]?.edgeOutsideScope;
   }
 
   /** Copy a whole subtree and its owned payloads without retaining outside ownership. */
@@ -599,9 +602,20 @@ class RapidMvpModel {
     }
   }
 
-  reparentNode(nodeId: string, newParentId: string, index: number | null = null): void {
+  /**
+   * Moves a node under `newParentId`. With `outsideScope`, a node placed under a scope root
+   * stays outside that scope, on the scope the new parent lies on (record-schema DA59, DA65:
+   * moving a child between the inside and the outside of its parent's scope is a move).
+   */
+  reparentNode(nodeId: string, newParentId: string, index: number | null = null, outsideScope = false): void {
     this._requireNode(nodeId);
     this._requireNode(newParentId);
+    if (outsideScope) {
+      const parent = this.state.nodes[newParentId]!;
+      if (newParentId === this.state.rootId || parent.nodeType !== "folder") {
+        throw new Error("Only a child of a scope below the map root can stay outside that scope.");
+      }
+    }
 
     const nodeBeforeCheck = this.state.nodes[nodeId]!;
     if (nodeBeforeCheck.parentId === null) {
@@ -632,6 +646,8 @@ class RapidMvpModel {
     }
 
     node.parentId = newParentId;
+    if (outsideScope) node.edgeOutsideScope = true;
+    else delete node.edgeOutsideScope;
   }
 
   undo(): boolean {
@@ -710,6 +726,8 @@ class RapidMvpModel {
       errors.push("Root node is missing.");
       return errors;
     }
+
+    errors.push(...edgeScopeProblems(nodes, this.state.rootId));
 
     Object.values(nodes).forEach((node) => {
       const normalized = this._normalizeNode(node);

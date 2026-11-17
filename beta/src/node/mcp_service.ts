@@ -507,7 +507,7 @@ export class M3eMcpService {
       } else fail("INVALID_ARGUMENT", "Unknown create kind.");
     } else if (tool === "m3e_update") {
       const kind = str(args.kind, "kind", 30);
-      fields(args, ["kind", "context_id", "target", "expected_revision", "command_id", ...(kind === "content" ? ["text", "attributes"] : kind === "move" ? ["parent"] : [])]);
+      fields(args, ["kind", "context_id", "target", "expected_revision", "command_id", ...(kind === "content" ? ["text", "attributes"] : kind === "move" ? ["parent", "outside_scope"] : [])]);
       if (kind === "content") {
         if (args.text === undefined && args.attributes === undefined) fail("INVALID_ARGUMENT", "Content update needs text or attributes.");
         if (args.text !== undefined) {
@@ -519,7 +519,9 @@ export class M3eMcpService {
         const parent = this.resolve(args.parent);
         if (parent.ref.mapId !== mapId) fail("CROSS_MAP_MOVE", "Cross-map moves are not supported. Copy into the other map explicitly.");
         if (model.state.nodes[parent.ref.nodeId]!.nodeType === "alias") fail("INVALID_OPERATION", "Alias nodes cannot own children.");
-        model.reparentNode(target, parent.ref.nodeId);
+        if (args.outside_scope !== undefined && typeof args.outside_scope !== "boolean") fail("INVALID_ARGUMENT", "outside_scope must be true or false.");
+        try { model.reparentNode(target, parent.ref.nodeId, null, args.outside_scope === true); }
+        catch (err) { if (args.outside_scope === true) fail("INVALID_OPERATION", (err as Error).message); throw err; }
       } else if (kind === "scopen" || kind === "unscopen") model.setScopeBoundary(target, kind === "scopen");
       else fail("INVALID_ARGUMENT", "Unknown update kind.");
       updated = 1;

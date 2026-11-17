@@ -155,6 +155,13 @@ export function randomEdit(state: Loose, random: () => number, counter: { n: num
     if (links[id] && random() < 0.5) delete links[id];
     else links[id] = { id, sourceNodeId: pick(), targetNodeId: pick(), label: `l${counter.n++}` };
     state.links = links;
+  } else if (random() < 0.5) {
+    // Put a child of a scope root outside that scope, or back inside (record-schema DA59).
+    const id = nonRoot();
+    const parent = id ? nodes[nodes[id].parentId as string] : undefined;
+    if (!id || !parent || parent.nodeType !== "folder") return;
+    if (nodes[id].edgeOutsideScope === true) delete nodes[id].edgeOutsideScope;
+    else nodes[id].edgeOutsideScope = true;
   } else {
     state.linearPanelWidth = 200 + counter.n++;
   }

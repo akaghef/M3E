@@ -29,6 +29,8 @@ interface TreeNode {
   children: string[];
   nodeType?: NodeType;
   scopeId?: string;
+  /** The edge from the parent (a scope) lies outside that scope; see shared/scope_plane.ts. */
+  edgeOutsideScope?: boolean;
   text: string;
   collapsed: boolean;
   details: string;

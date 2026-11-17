@@ -71,6 +71,7 @@ import { parseMmText, treeToMm } from "../shared/mm_exporter";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 import { buildTableViewModel, directTableViewChildren, renderTableViewHtml } from "./table_view";
 import { postSaveCommand } from "./save_command";
+import { childrenOnScope, edgeScopeRootOf, isWithinScope, parentScopeRootOf } from "../shared/scope_plane";
 import { scopeView } from "./scope_view_client";
 import {
   type RenderEdge,
@@ -3849,6 +3850,39 @@ function isFolderNode(node: TreeNode | null | undefined): boolean {
   return Boolean(node && node.nodeType === "folder");
 }
 
+/**
+ * Puts the edge into `node` on the open scope (DA56, DA65): under a nested scope's entry the
+ * node stays outside that scope, beside the entry; anywhere else the mark is dropped.
+ */
+function placeEdgeOnOpenScope(node: TreeNode): void {
+  if (!map) return;
+  const parent = node.parentId ? map.state.nodes[node.parentId] : undefined;
+  if (parent && isFolderNode(parent) && parent.id !== map.state.rootId && parent.id !== currentScopeRootId()) {
+    node.edgeOutsideScope = true;
+  } else {
+    delete node.edgeOutsideScope;
+  }
+}
+
+/** Moves the selected child of a scope between the inside and the outside of that scope (DA65). */
+function moveSelectedAcrossParentScope(): boolean {
+  if (!map) return false;
+  const node = getNode(viewState.selectedNodeId);
+  const parent = node?.parentId ? map.state.nodes[node.parentId] : undefined;
+  if (!node || !parent || !isFolderNode(parent) || parent.id === map.state.rootId) {
+    setStatus("Only a child of a scope can move between the inside and the outside of that scope.", true);
+    return false;
+  }
+  pushUndoSnapshot();
+  const goingOut = node.edgeOutsideScope !== true;
+  if (goingOut) node.edgeOutsideScope = true;
+  else delete node.edgeOutsideScope;
+  touchDocument();
+  setStatus(goingOut ? `Moved outside scope ${uiLabel(parent)}: ${uiLabel(node)}` : `Moved into scope ${uiLabel(parent)}: ${uiLabel(node)}`);
+  board.focus({ preventScroll: true });
+  return true;
+}
+
 function currentScopeRootId(): string {
   if (!map) {
     return "";
@@ -3867,18 +3901,12 @@ function scopeRootForNode(nodeId: string): string {
   if (!map || !map.state.nodes[nodeId]) {
     return "";
   }
-  let cursor: string | null = nodeId;
-  while (cursor) {
-    const node: TreeNode | undefined = map.state.nodes[cursor];
-    if (!node) {
-      break;
-    }
-    if (isFolderNode(node)) {
-      return node.id;
-    }
-    cursor = node.parentId ?? null;
+  // A scope root names itself; any other node, the scope its incoming edge lies on (DA59).
+  const node = map.state.nodes[nodeId]!;
+  if (isFolderNode(node) || node.id === map.state.rootId) {
+    return node.id;
   }
-  return map.state.rootId;
+  return edgeScopeRootOf(map.state.nodes, map.state.rootId, nodeId) || map.state.rootId;
 }
 
 function scopePathIds(scopeRootId: string): string[] {
@@ -3896,18 +3924,8 @@ function scopePathIds(scopeRootId: string): string[] {
     if (cursor === map.state.rootId) {
       break;
     }
-    cursor = node.parentId ?? null;
-    while (cursor) {
-      const parent = map.state.nodes[cursor];
-      if (!parent) {
-        cursor = null;
-        break;
-      }
-      if (parent.id === map.state.rootId || isFolderNode(parent)) {
-        break;
-      }
-      cursor = parent.parentId ?? null;
-    }
+    // The scope this scope's root shows in as an entry (DA59).
+    cursor = parentScopeRootOf(map.state.nodes, map.state.rootId, cursor) || null;
   }
   return path.reverse();
 }
@@ -3988,19 +4006,8 @@ function exitScope(): boolean {
     setStatus("Already at root scope.");
     return false;
   }
-  let nextScopeId = map.state.rootId;
-  let cursor = scopeRoot.parentId;
-  while (cursor) {
-    const parent = map.state.nodes[cursor];
-    if (!parent) {
-      break;
-    }
-    if (parent.id === map.state.rootId || isFolderNode(parent)) {
-      nextScopeId = parent.id;
-      break;
-    }
-    cursor = parent.parentId ?? null;
-  }
+  // Out to the scope this scope's root shows in as an entry (DA59).
+  const nextScopeId = parentScopeRootOf(map.state.nodes, map.state.rootId, scopeRoot.id) || map.state.rootId;
   const exitedScopeId = scopeRoot.id;
   viewState.currentScopeRootId = nextScopeId;
   viewState.currentScopeId = nextScopeId;
@@ -4031,6 +4038,8 @@ function makeSelectedFolder(): boolean {
   pushUndoSnapshot();
   if (isFolderNode(node)) {
     node.nodeType = undefined;
+    // Unscopen: inside and outside lie on one scope again (DA58).
+    for (const childId of node.children) delete map.state.nodes[childId]?.edgeOutsideScope;
     touchDocument();
     setStatus(`Removed scope: ${uiLabel(node)}`);
   } else {
@@ -5810,11 +5819,12 @@ function visibleChildren(node: TreeNode): string[] {
   if (!node || isAliasNode(node) || viewState.collapsedIds.has(node.id)) {
     return [];
   }
-  // Folder nodes work as scope boundaries: hide deeper details unless that folder is the active scope root.
-  if (isFolderNode(node) && node.id !== currentScopeRootId()) {
+  // Each edge lies on one scope (DA59): show the children whose edge lies on the open scope.
+  // Under a nested scope's entry these are the children that stay outside that scope.
+  if (!map) {
     return [];
   }
-  return (node.children || []).filter((childId) => isNodeInScope(childId));
+  return childrenOnScope(map.state.nodes, map.state.rootId, node, currentScopeRootId()).filter((childId) => isNodeInScope(childId));
 }
 
 function currentSurfaceNode(): TreeNode | null {
@@ -6471,14 +6481,8 @@ function isNodeInScope(nodeId: string): boolean {
   if (!scopeId) {
     return false;
   }
-  let currentId: string | null = nodeId;
-  while (currentId) {
-    if (currentId === scopeId) {
-      return true;
-    }
-    currentId = map.state.nodes[currentId]?.parentId ?? null;
-  }
-  return false;
+  // On the open scope or on a scope nested in it (DA59).
+  return isWithinScope(map.state.nodes, map.state.rootId, nodeId, scopeId);
 }
 
 function scopedChildrenRaw(nodeId: string): string[] {
@@ -11742,6 +11746,7 @@ function addChild(): void {
   pushUndoSnapshot();
   const id = newId();
   map!.state.nodes[id] = createNodeRecord(id, parentId, "");
+  placeEdgeOnOpenScope(map!.state.nodes[id]!);
   parent.children.push(id);
   viewState.collapsedIds.delete(parentId);
   parent.collapsed = false;
@@ -11764,6 +11769,7 @@ function addSibling(): void {
   const currentIndex = parent.children.indexOf(node.id);
   const id = newId();
   map!.state.nodes[id] = createNodeRecord(id, parent.id, "");
+  placeEdgeOnOpenScope(map!.state.nodes[id]!);
   parent.children.splice(currentIndex + 1, 0, id);
   setSingleSelection(id, false);
   touchDocument(true);
@@ -15084,6 +15090,7 @@ function applyMoveByParentAndIndex(
     newParent.collapsed = false;
   }
   sourceNode.parentId = targetParentId;
+  placeEdgeOnOpenScope(sourceNode);
   viewState.reparentSourceIds.delete(sourceId);
   if (withTouch) {
     touchDocument();
@@ -16983,6 +16990,12 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
     event.preventDefault();
     makeSelectedFolder();
+    return;
+  }
+
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.shiftKey && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    moveSelectedAcrossParentScope();
     return;
   }
 

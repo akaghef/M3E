@@ -63,6 +63,14 @@ scope は、複雑な対象を一枚の面で切り出したものと読む。�
 - **DA58 unscopen**: scope C を消すと、C の ID を持つ edge は、C の root の親から来る edge の scope に付け替える。DA47 の消すもの（linear-text と Surface View の保存設定）と同じ確定で行う。
 - **DA63 scope は自分の ID で指す**: URL、Command、内部の参照は、scope を root の node の ID ではなく scope の ID で指す。root が同じ scope が複数あると、node の ID では区別できない。
 - **DA64 scopen の既定**: scopen は新しい scope を作り、X の子のうち X がふつうに属する面に載っている edge（とその下の、同じ面に載る edge）を新しい scope へ付け替える。今までの scopen と同じ結果になる。付け替える子を選んで渡すこともできる。X がすでに別の面の root でも同じ規則で作る。
+- **DA65 面をまたぐ移動は移動の一種**（akaghef、2026-11-17「移動の一種でよい」）: X の子を X の scope の内と外（X がふつうに属する面）の間で付け替えるのは、親を変えない移動として扱う。書き換わるのはその子の edge の scope だけ。
+
+アプリ側の第 1 段（2026-11-17。一つの node から開ける面は一つのまま）:
+
+- 現行の木の状態では、edge の scope を node の欄 `edgeOutsideScope: true`（親は scope の root で、edge は親がふつうに属する面に載る）で表す。親の scope の root の ID を持たせないのは、祖先を scopen・unscopen すると古くなるため。record store へは変換時に edge の `scopeId` に直す（`beta/src/shared/scope_plane.ts`）。
+- viewer: scope X に居ないとき、X の外に置いた子は X の横に見え、X に入ると見えない。X に居ないときに X へ足した子は X の外に置く（DA56）。Shift+F で選んだ子を X の内と外の間で移す（DA65）。unscopen で印を消す（DA58）。
+- MCP: `move` の `outside_scope: true` で X の外へ置く。**DA56 からの逸脱**: MCP の create は居る scope を知らないので、既定で X の内に置く。外に置くときは作ってから `move` する。
+- 一つの node から複数の面を開くこと（DA60）、scope の ID での指し方（DA63）、入口の見せ方（IB66）は第 2 段。部分的にしか子を読まない scope の表示（scope view）では、その親の edge の書き換えを断る。
 
 ### rev と時刻と発行者
 

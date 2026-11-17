@@ -13,6 +13,13 @@ export interface TreeNode {
   children: string[];
   nodeType?: NodeType;
   scopeId?: string;
+  /**
+   * True when the parent is a scope root and the edge from it lies outside the parent's
+   * scope, on the scope the parent itself lies on (the child stays beside the scope entry).
+   * Relative on purpose: it stays right when an ancestor is scoped or unscoped.
+   * Absent: the edge lies on the parent's scope. See shared/scope_plane.ts.
+   */
+  edgeOutsideScope?: boolean;
   text: string;
   collapsed: boolean;
   details: string;

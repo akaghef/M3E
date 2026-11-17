@@ -1,5 +1,6 @@
 "use strict";
 
+import { edgeScopeRootOf } from "../shared/scope_plane";
 import http from "http";
 import crypto from "crypto";
 import { RapidMvpModel } from "./rapid_mvp";
@@ -305,13 +306,11 @@ export function setMapVersion(v: number): void {
 // ---------------------------------------------------------------------------
 
 export function findScopeRoot(nodes: Record<string, TreeNode>, nodeId: string, rootId: string): string {
-  let current = nodes[nodeId];
-  while (current) {
-    if (current.nodeType === "folder") return current.id;
-    if (current.parentId === null) return rootId;
-    current = nodes[current.parentId];
-  }
-  return rootId;
+  // A scope root is named by itself; any other node by the scope its incoming edge lies on.
+  const node = nodes[nodeId];
+  if (!node) return rootId;
+  if (node.nodeType === "folder" || node.id === rootId) return node.id;
+  return edgeScopeRootOf(nodes, rootId, nodeId) || rootId;
 }
 
 export function isInScope(nodes: Record<string, TreeNode>, nodeId: string, scopeId: string, rootId: string): boolean {

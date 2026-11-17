@@ -17,7 +17,8 @@ import { fromSnapshot } from "./from_snapshot";
 import { sha256Hex, type HashFn } from "./hash";
 import { recordKeyString, sortRecords } from "./jsonl";
 import { initialKeys, isOrderKey, keyBetween } from "./order_key";
-import { makeEdgeScopeRoot } from "./edge_scope";
+import { edgeScopeRootOf } from "../scope_plane";
+import type { TreeNode } from "../types";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
   compareStrings,
@@ -35,7 +36,7 @@ type Dict = Record<string, unknown>;
 
 const SCOPE_PREFIX = "scope:";
 const NODE_FIELDS = new Set([
-  "id", "parentId", "children", "nodeType", "scopeId", "text", "collapsed", "details", "note",
+  "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
 ]);
 const LINK_FIELDS = new Set([
@@ -248,8 +249,8 @@ interface NodeMemo {
 interface ParentMemo {
   gen: number;
   parentId: string;
-  /** Scope the edges lay on when the memo was made; a change re-emits them. */
-  scopeId: string | undefined;
+  /** Scopes the edges could lie on when the memo was made; a change re-emits them. */
+  scopeSig: string;
   members: NodeMemo[];
   childIds: string[];
 }
@@ -579,21 +580,35 @@ export class MapProjector {
       const before = this.scopeByRoot.get(root);
       scopeIdByRoot.set(root, before !== undefined ? before.id : makeId("s_", "scope", root));
     }
-    // The scope each edge lies on (DA59): the nearest scope root among the parent and its ancestors.
-    const edgeScopeRoot = makeEdgeScopeRoot(
-      (id) => { const node = sourceNodes[id]; return isDict(node) && typeof node.parentId === "string" ? node.parentId : undefined; },
-      (id) => scopeIdByRoot.has(id),
-    );
+    // The scope each edge lies on (DA59), by the rule of shared/scope_plane.ts. The default for
+    // a parent is its own scope when it is a scope root, else the scope it lies on; a child of a
+    // scope root may stay outside it with `edgeOutsideScope`.
+    const planeNodes = sourceNodes as unknown as Record<string, TreeNode>;
+    const planeRootId = rootId ?? "";
+    const defaultEdgeScope = (parentId: string): string | undefined => {
+      const root = scopeIdByRoot.has(parentId) ? parentId : edgeScopeRootOf(planeNodes, planeRootId, parentId);
+      return scopeIdByRoot.get(root);
+    };
+    const childEdgeScope = (parentId: string, child: Dict, fallback: string | undefined): string | undefined =>
+      child.edgeOutsideScope === true && scopeIdByRoot.has(parentId) && parentId !== rootId
+        ? scopeIdByRoot.get(edgeScopeRootOf(planeNodes, planeRootId, parentId)) ?? fallback
+        : fallback;
 
     const edgeScopeIdByParent = new Map<string, string | undefined>();
+    const scopeSigByParent = new Map<string, string>();
     // --- connection: edge ---
     const orderedChildren = new Map<string, string[]>();
     for (const [parentId, members] of childrenByParent) {
       // `members` are indexes into nodeIds, in id order.
       const parentNode = sourceNodes[parentId];
-      const edgeScopeRootId = edgeScopeRoot(parentId);
-      const edgeScopeId = edgeScopeRootId !== undefined ? scopeIdByRoot.get(edgeScopeRootId) : undefined;
+      const edgeScopeId = defaultEdgeScope(parentId);
       edgeScopeIdByParent.set(parentId, edgeScopeId);
+      // Both scopes an edge out of this parent can lie on: its own (default) and, for a scope
+      // root, the one outside it. A change of either re-emits the edges.
+      const scopeSig = scopeIdByRoot.has(parentId) && parentId !== rootId
+        ? `${edgeScopeId ?? ""}|${scopeIdByRoot.get(edgeScopeRootOf(planeNodes, planeRootId, parentId)) ?? ""}`
+        : edgeScopeId ?? "";
+      scopeSigByParent.set(parentId, scopeSig);
       let parentMemo = warm && isDict(parentNode) ? this.parentMemo.get(parentNode) : undefined;
       if (parentMemo === undefined && warm && isDict(parentNode)) {
         // A copy of the parent the last state had, with the very same list of children.
@@ -603,7 +618,7 @@ export class MapProjector {
           if (parentMemo !== undefined) this.parentMemo.set(parentNode, parentMemo);
         }
       }
-      if (parentMemo !== undefined && (parentMemo.gen === previousGen || parentMemo.gen === gen) && parentMemo.parentId === parentId && parentMemo.scopeId === edgeScopeId && parentMemo.members.length === members.length) {
+      if (parentMemo !== undefined && (parentMemo.gen === previousGen || parentMemo.gen === gen) && parentMemo.parentId === parentId && parentMemo.scopeSig === scopeSig && parentMemo.members.length === members.length) {
         let same = true;
         for (let i = 0; same && i < members.length; i += 1) {
           if (memos[members[i]] !== parentMemo.members[i]) same = false;
@@ -652,13 +667,14 @@ export class MapProjector {
         const label = memos[ordered[i]].label;
         if (label !== undefined) record.label = label;
         record.ord = keys[i];
-        if (edgeScopeId !== undefined) record.scopeId = edgeScopeId;
+        const scopeId = childEdgeScope(parentId, nodes[ordered[i]], edgeScopeId);
+        if (scopeId !== undefined) record.scopeId = scopeId;
         record.rev = undefined;
         this.edgeByTarget.set(childId, put(record as unknown as EdgeConnectionRecord));
       }
       orderedChildren.set(parentId, childIds);
       if (isDict(parentNode)) {
-        this.parentMemo.set(parentNode, { gen, parentId, scopeId: edgeScopeId, members: members.map((index) => memos[index]), childIds });
+        this.parentMemo.set(parentNode, { gen, parentId, scopeSig, members: members.map((index) => memos[index]), childIds });
       }
     }
     if (this.edgeByTarget.size !== edgeCount) {
@@ -879,6 +895,12 @@ export class MapProjector {
         if (alias.snapshotLabel !== undefined) restored.targetSnapshotLabel = alias.snapshotLabel;
         if (alias.broken === true) restored.isBroken = true;
       }
+      if (hasParent && node.edgeOutsideScope !== undefined) {
+        // Kept only while it puts the edge on another scope than the parent's own.
+        const parentId = node.parentId as string;
+        const fallback = edgeScopeIdByParent.get(parentId);
+        if (childEdgeScope(parentId, node, fallback) !== fallback) restored.edgeOutsideScope = true;
+      }
       if (sameJson(node, restored)) {
         memo.selfNormal = true;
         restoredNodes[i] = node;
@@ -908,7 +930,7 @@ export class MapProjector {
         const parentNode = stateNodes[parentId];
         const childIds = orderedChildren.get(parentId);
         if (!isDict(parentNode) || childIds === undefined || parentNode === sourceNodes[parentId]) continue;
-        this.parentMemo.set(parentNode, { gen, parentId, scopeId: edgeScopeIdByParent.get(parentId), members: members.map((index) => memos[index]), childIds });
+        this.parentMemo.set(parentNode, { gen, parentId, scopeSig: scopeSigByParent.get(parentId) ?? "", members: members.map((index) => memos[index]), childIds });
       }
     }
 

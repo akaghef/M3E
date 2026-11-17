@@ -1,7 +1,8 @@
 // Current map rows -> snapshot records.
 // Contract: .kiro/specs/rapid-persistence-redesign/snapshot-format.md section 3.
 
-import { makeEdgeScopeRoot } from "./edge_scope";
+import { edgeScopeRootOf } from "../scope_plane";
+import type { TreeNode } from "../types";
 import { sha256Hex, type HashFn } from "./hash";
 import { initialKeys } from "./order_key";
 import {
@@ -40,7 +41,7 @@ const ID_PATTERN = /^[A-Za-z0-9_.:-]*$/;
 const SCOPE_PREFIX = "scope:";
 
 const NODE_FIELDS = new Set([
-  "id", "parentId", "children", "nodeType", "scopeId", "text", "collapsed", "details", "note",
+  "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
 ]);
 const LINK_FIELDS = new Set([
@@ -246,11 +247,9 @@ function convertMap(
       scopeIdByRoot.set(oldId, makeId("s_", mapId, "scope", nodeIds.get(oldId)!));
     }
   }
-  // The scope each edge lies on (DA59): the nearest scope root among the parent and its ancestors.
-  const edgeScopeRoot = makeEdgeScopeRoot(
-    (id) => { const parent = nodeByOldId.get(id)?.parentId; return typeof parent === "string" ? parent : undefined; },
-    (id) => scopeIdByRoot.has(id),
-  );
+  // The scope each edge lies on (DA59), by the rule of shared/scope_plane.ts.
+  const planeNodes = Object.fromEntries(context.nodes) as unknown as Record<string, TreeNode>;
+  const planeRootId = typeof state.rootId === "string" ? state.rootId : "";
 
   // --- connection: edge ---
   // Children grouped by the parent they name; order follows the parent's `children`,
@@ -290,8 +289,8 @@ function convertMap(
       const label = edgeLabels.get(childOldId);
       if (present(label) && label !== "") edge.label = label;
       edge.ord = keys[index];
-      const scopeRoot = edgeScopeRoot(parentOldId);
-      if (scopeRoot !== undefined) edge.scopeId = scopeIdByRoot.get(scopeRoot)!;
+      const scopeRoot = edgeScopeRootOf(planeNodes, planeRootId, childOldId);
+      if (scopeIdByRoot.has(scopeRoot)) edge.scopeId = scopeIdByRoot.get(scopeRoot)!;
       edge.rev = 0;
       records.push(edge as unknown as EdgeConnectionRecord);
     });

@@ -14,6 +14,7 @@
  * Pure: the input state is not modified and no object of it is shared with the result.
  */
 import type { AppState, TreeNode } from "./types";
+import { childrenOnScope } from "./scope_plane";
 import type { RecordChange } from "./map_changes";
 
 /** Header a viewer in scope view sends on every write. The whole-map routes reject it. */
@@ -57,6 +58,12 @@ export interface ScopeViewInfo {
    * loaded, or GraphLinks that were left out. Deleting such a node would leave those behind.
    */
   outsideReferences: Record<string, { aliases: number; links: number }>;
+  /**
+   * Nodes whose `children` in the view hold only the children on the opened scope: the
+   * scope root when some of its children stay outside it, and entries with children that
+   * stay outside them (record-schema DA59). Moves under them are refused in scope view.
+   */
+  partialChildren?: Record<string, true>;
 }
 
 export type ScopeViewErrorCode = "NODE_NOT_FOUND" | "NOT_A_SCOPE";
@@ -117,19 +124,32 @@ export function extractScopeView(state: AppState, scopeRootId: string): { state:
   const entries: Record<string, ScopeViewEntry> = {};
   let scopeDescendantCount = 0;
 
-  // The scope root, its own nodes, and nested scope roots as entries.
-  outNodes[scopeRootId] = copy(scopeRoot);
-  const stack = [...childrenOf(scopeRoot)];
+  // The scope root, its own nodes, and nested scope roots as entries. Each edge lies on one
+  // scope (record-schema DA59): children of the scope root that stay outside it are not
+  // loaded, and children of an entry that stay outside it are loaded with the entry.
+  const rootId = state.rootId;
+  const partialChildren: Record<string, true> = {};
+  const rootChildren = childrenOnScope(nodes, rootId, scopeRoot, scopeRootId);
+  outNodes[scopeRootId] = { ...copy(scopeRoot), children: rootChildren };
+  if (rootChildren.length !== childrenOf(scopeRoot).filter((id) => nodes[id]).length) partialChildren[scopeRootId] = true;
+  const stack = [...rootChildren];
   while (stack.length > 0) {
     const id = stack.pop()!;
     const node = nodes[id];
     if (!node || outNodes[id]) continue;
     scopeDescendantCount += 1;
     if (node.nodeType === "folder") {
+      const outside = childrenOnScope(nodes, rootId, node, scopeRootId);
       const descendantCount = countDescendants(state, id);
       entries[id] = { childCount: childrenOf(node).length, descendantCount };
       scopeDescendantCount += descendantCount;
-      outNodes[id] = { ...copy(node), children: [] };
+      outNodes[id] = { ...copy(node), children: outside };
+      if (outside.length > 0) {
+        partialChildren[id] = true;
+        stack.push(...outside);
+        // The outside children are counted as this scope's own nodes when they are walked.
+        for (const childId of outside) scopeDescendantCount -= 1 + countDescendants(state, childId);
+      }
       continue;
     }
     outNodes[id] = copy(node);
@@ -249,6 +269,7 @@ export function extractScopeView(state: AppState, scopeRootId: string): { state:
       scopeDescendantCount,
       ancestors,
       entries,
+      ...(Object.keys(partialChildren).length > 0 ? { partialChildren } : {}),
       omittedLinks,
       externalAliasTargets,
       outsideReferences,
@@ -352,6 +373,10 @@ export function scopeViewChanges(
       // A reorder carries only the index: the parent comes from the states.
       const fromEdge = change.op === "create" ? null : realEdge(before, id);
       const toEdge = change.op === "delete" ? null : realEdge(after, id);
+      const partial = view.partialChildren ?? {};
+      if ([fromEdge, toEdge].some((edge) => edge !== null && partial[String(edge.parentId)])) {
+        return { ok: false, reason: "nodes cannot be moved under a scope whose children are partly outside it in scope view yet" };
+      }
       const underEntry = [fromEdge, toEdge].some((edge) => edge !== null && Boolean(view.entries[String(edge.parentId)]));
       if (!underEntry) {
         result.push(change);
