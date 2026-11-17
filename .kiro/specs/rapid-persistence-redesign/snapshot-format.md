@@ -18,7 +18,7 @@
 | `map` | `id` | `rootNodeId`、`tags`?、`archived`?、`pinned`?、`source`?、`legacyVersion`?、`legacySavedAt`?、`linearTextFontScale`?、`linearPanelWidth`?、`extra`?、`rev` |
 | `node` | `id` | `mapId`、`nodeType`?（`text` は書かない）、`text`、`collapsed`?（false は書かない）、`attributes`?、`alias`?、`extra`?、`rev` |
 | `details` | `nodeId` | `mapId`、`v`（形の版。1）、`body`?、`note`?、`link`?、`rev` |
-| `connection` | `id` | `mapId`、`type`（`edge` / `graphlink`）、`source`、`target`、`relationType`?、`label`?、`attributes`?、`rev`。edge は `ord`。graphlink は `direction`?、`style`?、`color`?、`sourcePort`?、`targetPort`? |
+| `connection` | `id` | `mapId`、`type`（`edge` / `graphlink`）、`source`、`target`、`relationType`?、`label`?、`attributes`?、`rev`。edge は `ord` と `scopeId`。graphlink は `direction`?、`style`?、`color`?、`sourcePort`?、`targetPort`? |
 | `scope` | `id` | `mapId`、`rootNodeId`、`primarySurfaceId`?、`rev` |
 | `linearText` | `scopeId` または `mapId`＋`orphanKey` | `mapId`、`text`、`anchorNodeId`?、`rev` |
 | `surface` | `id` | `mapId`、`scopeId`、`surfaceKind`、`layout`、`surfaceView`?、`rev` |
@@ -75,6 +75,7 @@
 ### 3.3 connection
 
 - edge: `parentId` を持つ node ごとに一つ。`source` は親、`target` は子。
+  - `scopeId`: edge が載る scope（record-schema DA59）。親から祖先へたどり、最初に出会う map の root または `folder` の node の scope。今の画面の見え方（scope の root の子は全部その scope の中）と一致する。
   - `ord`: 同じ親の `children` の並び順に、文字列として厳密に増加するキー。使う文字は `0-9a-z`。末尾が `0` のキーは作らない。同じ親の下でキーは重複しない。
   - 親の `children` に載っていない子（`parentId` はあるが配列に無い）は、配列の後ろに、ID の文字列順で並べる。`children` にあるが実在しない ID は捨てる。
 - graphlink: `links` の各要素。`sourceNodeId` → `source`、`targetNodeId` → `target`。`sourcePort`・`targetPort` が `auto` なら書かない。ほかの欄はそのまま。型定義に無い欄は `attributes` ではなく `extra` に入れる。

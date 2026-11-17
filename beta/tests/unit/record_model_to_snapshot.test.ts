@@ -91,7 +91,7 @@ describe("toSnapshot: ids (3.1)", () => {
     // references follow the new ids
     expect(ofKind<MapRecord>(records, "map").find((m) => m.id === "m2")!.rootNodeId).toBe(newRoot);
     expect(edgesOf(records, "m2")).toEqual([
-      { kind: "connection", id: `c_${sha("m2", "edge", newA)}`, mapId: "m2", type: "edge", source: newRoot, target: newA, ord: "1", rev: 0 },
+      { kind: "connection", id: `c_${sha("m2", "edge", newA)}`, mapId: "m2", type: "edge", source: newRoot, target: newA, ord: "1", scopeId: `s_${sha("m2", "scope", newRoot)}`, rev: 0 },
     ]);
     expect(ofKind<ScopeRecord>(records, "scope", "m2")).toEqual([
       { kind: "scope", id: `s_${sha("m2", "scope", newRoot)}`, mapId: "m2", rootNodeId: newRoot, rev: 0 },

@@ -317,6 +317,18 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
                     ord_key = edge.get("ord")
                     if not isinstance(ord_key, str) or not ORD_OK.match(ord_key) or ord_key.endswith("0"):
                         problems.add("edge.ord.form", where, repr(ord_key))
+                    # The scope the edge lies on (record-schema DA59): walk up from the parent to the
+                    # nearest node that is the map root or a folder; the edge lies on that node's scope.
+                    walker, steps = parent, 0
+                    while walker is not None and walker in nodes and walker != state.get("rootId") \
+                            and nodes[walker].get("nodeType") != "folder" and steps <= len(nodes):
+                        walker, steps = nodes[walker].get("parentId"), steps + 1
+                    if walker is None or walker not in nodes or steps > len(nodes):
+                        want_scope = None
+                    else:
+                        want_scope = new_id("s_", ws, map_id, "scope", nid(walker))
+                    if edge.get("scopeId") != want_scope:
+                        problems.add("edge.scope", where, repr(edge.get("scopeId")))
 
         # ---- sibling order ----
         for old, node in nodes.items():

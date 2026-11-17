@@ -73,6 +73,8 @@ export interface EdgeConnectionRecord {
   target: string;
   label?: string;
   ord: string;
+  /** The scope this edge lies on (record-schema DA59). */
+  scopeId?: string;
   rev: number;
 }
 
@@ -102,6 +104,8 @@ export interface ScopeRecord {
   id: string;
   mapId: string;
   rootNodeId: string;
+  /** Own name; when absent the scope is named by its root node's label (DA61). */
+  label?: string;
   primarySurfaceId?: string;
   rev: number;
 }
