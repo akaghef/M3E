@@ -19,7 +19,7 @@
 | 対象外 | 時間・文字列、軸の動的追加、EDGE AUDIT の候補ペア導出、保存 schema / API、Inspector の再設計、独自 renderer / server、Radial の新規実装、WebGL 対応 View の拡張、Final |
 | 所有者 | 今回の担当は仕様改訂を codex/viewer-filter に commit。後続実装は別途承認する |
 
-正規語は [Glossary](../../../docs/00_Home/Glossary.md)、[Surface View](../../../docs/03_Spec/map_layout_modes.md)、[Data Model](../../../docs/03_Spec/Data_Model.md) に従う。edge は親子関係のみ。GraphLink と混同しない。scope は構造境界であり、A-sys の Domain の固定リストを持ち込まない。浮くメニューは Panel として既存の上段 UI に接続する。
+正規語は [Glossary](../../../docs/00_Home/Glossary.md)、[Surface View](../../../docs/03_Spec/map_layout_modes.md)、[Data Model](../../../docs/03_Spec/Data_Model.md) に従う。edge は親子関係のみ。GraphLink と混同しない。scope は対象を切り出す面であり、A-sys の Domain の固定リストを持ち込まない。浮くメニューは Panel として既存の上段 UI に接続する。
 
 本件は同じ map 上で関係を読み分けるための表示操作で、観測・保存・scope の所有権を追加しない。追跡 ID は IS90〜IS109 / OP30〜OP39 を使う（Director 割当）。
 

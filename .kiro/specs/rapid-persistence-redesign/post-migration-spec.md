@@ -290,7 +290,8 @@ agent の node:
 2. edge は循環しない。
 3. alias は alias でない node を指す。alias は子を持たない。
 4. Connection の端点は実在する。端点を消す書き込みは、その Connection も同じ確定で消す。
-5. scope の root は実在する node である。alias は root になれない。一つの node が root になる scope は一つまでである。
+5. scope の root は実在する node である。alias は root になれない。一つの node が複数の scope の root になってよい。
+5a. 親子 edge は実在する scope の ID を持つ。edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る edge の scope が S である（record-schema DA59）。
 6. `connectionId` は、edge と GraphLink をまたいで一意である。
 7. details、linear-text、Surface View の保存設定、配置値、注釈は、指している node または scope が実在する。
 

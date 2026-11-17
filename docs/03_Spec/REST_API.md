@@ -12,7 +12,7 @@ AI 関連 API の詳細は [./AI_Common_API.md](./AI_Common_API.md) を参照。
 - 仕様語としては **map** を使う
 - 実装・API パス・JSON フィールドには互換性のため **`doc` / `documentId` / `docId`** が残る
 - 本文中で `docId` と書く時は、「map の識別子」を意味する
-- `scope` は M3E 固有概念として維持し、map 内の階層的な構造境界を指す
+- `scope` は M3E 固有概念として維持し、map の対象を一枚の面で切り出したものを指す（[Glossary](../00_Home/Glossary.md)）
 
 ## 基盤情報
 
