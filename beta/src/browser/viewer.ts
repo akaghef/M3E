@@ -71,6 +71,7 @@ import { parseMmText, treeToMm } from "../shared/mm_exporter";
 import { nearestEdgePortSideForGraphLinkEdit } from "./edge_adapters/graphlink_endpoint_edit";
 import { buildTableViewModel, directTableViewChildren, renderTableViewHtml } from "./table_view";
 import { postSaveCommand } from "./save_command";
+import { scopeView } from "./scope_view_client";
 import {
   type RenderEdge,
   type RenderGroupBoundary,
@@ -2321,6 +2322,7 @@ async function runVaultExport(vaultPath: string, nodeId?: string): Promise<boole
 }
 
 async function startVaultLiveIntegration(vaultPath: string): Promise<void> {
+  if (scopeView.blocks("Obsidian Live Mode")) return;
   await runVaultImport(vaultPath);
   const response = await fetch("/api/vault/watch/start", {
     method: "POST",
@@ -4131,6 +4133,7 @@ function jumpToAliasTarget(): boolean {
     return false;
   }
   const target = resolveAliasTarget(node);
+  if (scopeView.isExternalTarget(node.targetNodeId) && scopeView.blocks("Jumping to an alias target outside the loaded scope")) return false;
   if (!target || isBrokenAlias(node)) {
     setStatus("Broken alias cannot jump to target.", true);
     return false;
@@ -4462,6 +4465,12 @@ function markLocalSaveSucceeded(revision: number): void {
 }
 
 initializeViewerTheme({ redraw: scheduleRender, setStatus });
+scopeView.init({
+  setStatus,
+  currentScopeId: () => currentScopeRootId(),
+  resetScope: (id, history) => { viewState.currentScopeId = viewState.currentScopeRootId = id; viewState.scopeHistory = history; setSingleSelection(id, false); },
+  flush: () => saveDocToLocalDb(false),
+});
 
 function showFatalLoadError(title: string, detail: string): void {
   fatalLoadError = true;
@@ -7200,6 +7209,7 @@ function applyLinearTextToScope(): void {
     renderLinearPanel("load");
     return;
   }
+  if (scopeView.blocksWithEntries("Applying linear text to a scope with nested scopes")) return;
   try {
     const parsed = parseLinearText(linearTextEl.value);
     const scopeRootId = normalizedCurrentScopeId();
@@ -7228,7 +7238,7 @@ function countHiddenDescendants(nodeId: string): number {
   if (!node) {
     return 0;
   }
-  let count = 0;
+  let count = scopeView.unloadedBelow(nodeId);
   const stack = [...(node.children || [])];
   while (stack.length > 0) {
     const currentId = stack.pop()!;
@@ -7236,7 +7246,7 @@ function countHiddenDescendants(nodeId: string): number {
     if (!current) {
       continue;
     }
-    count += 1;
+    count += 1 + scopeView.unloadedBelow(currentId);
     stack.push(...(current.children || []));
   }
   return count;
@@ -7855,6 +7865,7 @@ function render(incremental = false): void {
 }
 
 function renderScene(incremental: boolean): void {
+  scopeView.guardScope();
   prepareConcretenessView();
   board.dataset.concretenessLevel = String(viewState.concretenessLevel);
   activeLayoutCache = scopeLayoutCaches.get(JSON.stringify([LOCAL_MAP_ID, map?.state.rootId, currentScopeRootId(), viewState.surfaceViewMode, viewState.concretenessLevel]));
@@ -8334,7 +8345,7 @@ function renderScene(incremental: boolean): void {
         reparentSource: viewState.reparentSourceIds.has(node.id),
         dragSource: Boolean(viewState.dragState && node.id === viewState.dragState.sourceNodeId),
         dropTarget: viewState.dragState?.proposal?.kind === "reparent" && node.id === viewState.dragState.proposal.parentId,
-        collapsedCount: layout.lane?.hiddenCounts[node.id] || (viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
+        collapsedCount: layout.lane?.hiddenCounts[node.id] || scopeView.entryChildCount(node.id) || (viewState.collapsedIds.has(node.id) && (node.children || []).length > 0
           ? Math.max(1, countHiddenDescendants(node.id))
           : undefined),
         lockedBy: nodeDrawLockState(node.id),
@@ -9472,6 +9483,7 @@ function selectByPointerModifiers(nodeId: string, options: { toggle: boolean; ra
 }
 
 function updateScopeInUrl(scopeId: string): void {
+  if (scopeView.active()) return;
   const params = new URLSearchParams(window.location.search);
   if (!map || scopeId === map.state.rootId) {
     params.delete("scope");
@@ -9541,6 +9553,7 @@ function escapeXmlAttr(s: string): string {
 }
 
 function downloadMm(rootId?: string): void {
+  if (scopeView.blocks("Export from the viewer")) return;
   const state = stateForExport(rootId);
   const xml = treeToMm(state);
   const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
@@ -10580,6 +10593,7 @@ async function unregisterCollabEntity(showStatus = false): Promise<void> {
 }
 
 async function registerCollabEntity(displayName: string, joinToken: string): Promise<boolean> {
+  if (scopeView.blocks("Team collaboration")) return false;
   if (!collabConfig?.enabled) {
     setStatus("Collaboration is not enabled on this server.", true);
     return false;
@@ -11098,6 +11112,7 @@ function showTemplateCompletion(): void {
     setStatus("Select a node first.", true);
     return;
   }
+  if (scopeView.blocks("Template completion")) return;
   const candidates = collectTemplateCandidates();
   if (candidates.length === 0) {
     setStatus("No templates found at SYSTEM > TEMPLATE > cache.", true);
@@ -11193,7 +11208,7 @@ function findBrokenAliases(): { nodeId: string; label: string; targetNodeId: str
     if (node.nodeType !== "alias") {
       continue;
     }
-    if (!node.targetNodeId || !map.state.nodes[node.targetNodeId]) {
+    if (!node.targetNodeId || (!map.state.nodes[node.targetNodeId] && !scopeView.isExternalTarget(node.targetNodeId))) {
       result.push({
         nodeId: node.id,
         label: uiLabel(node),
@@ -12621,6 +12636,7 @@ function deleteSelected(): void {
     return;
   }
 
+  if (scopeView.refusesDelete(deletableRoots, map!.state.nodes)) return;
   const firstRootParentId = getNode(deletableRoots[0]!).parentId;
   const sortedRoots = [...deletableRoots].sort((a, b) => nodeDepth(b) - nodeDepth(a));
   pushUndoSnapshot();
@@ -12667,6 +12683,7 @@ function deleteSelected(): void {
 
 function toggleCollapse(): void {
   const targetIds = Array.from(viewState.selectedNodeIds);
+  if (targetIds.length === 1 && scopeView.openEntry(targetIds[0]!)) return;
   const collapsibleIds = targetIds.filter((nodeId) => {
     const node = getNode(nodeId);
     return (node.children || []).length > 0;
@@ -12690,6 +12707,7 @@ function toggleCollapse(): void {
 }
 
 function downloadJson(rootId?: string): void {
+  if (scopeView.blocks("Export from the viewer")) return;
   commitDispersePositions();
   const state = stateForExport(rootId);
   const blob = new Blob([JSON.stringify({ version: map!.version, savedAt: nowIso(), state }, null, 2)], {
@@ -12801,10 +12819,11 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
     failureReason = "network error";
     const saveUrl = `/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`;
     const base = force ? null : lastServerBaseState;
-    const response = base && typeof base.rootId === "string" && base.nodes && submittedState
+    const response = scopeView.active() ? await scopeView.save(saveUrl, TAB_ID, base, submittedState, lastServerSavedAt)
+      : base && typeof base.rootId === "string" && base.nodes && submittedState
       ? await postSaveCommand(saveUrl, TAB_ID, base, submittedState, lastServerSavedAt, wholeBody)
       : await fetch(saveUrl, { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", "X-M3E-Tab-Id": TAB_ID }, body: wholeBody() });
-    failureReason = response.status === 413 ? "too large" : `server error (HTTP ${response.status})`;
+    failureReason = response.headers?.get("X-M3E-Save-Blocked") || (response.status === 413 ? "too large" : `server error (HTTP ${response.status})`);
 
     if (response.status === 409) {
       saveConflict = true;
@@ -12830,6 +12849,7 @@ async function saveDocToLocalDb(showStatus = false, force = false): Promise<bool
               version: 1,
               savedAt,
               state: remoteState,
+              scopeView: (conflict as { scopeView?: unknown }).scopeView,
             });
             setStatus("Loaded vault version. Local changes were kept out of the database.", true);
           },
@@ -12910,7 +12930,7 @@ async function fetchCloudSyncStatus(): Promise<void> {
 
 async function pushDocToCloud(showStatus = false, force = false): Promise<boolean> {
   if (grabSession) { grabSession.pendingSave = true; return false; }
-  if (!map || !cloudSyncEnabled) {
+  if (!map || !cloudSyncEnabled || scopeView.blocks("Cloud push", showStatus)) {
     return false;
   }
   if (isReadOnlyLink()) {
@@ -13042,6 +13062,7 @@ type LocalMapLoadResult =
   | { ok: false; reason: "not-found" | "failed"; message: string };
 
 async function fetchLocalMapPayload(): Promise<LocalMapLoadResult> {
+  if (scopeView.active()) return scopeView.fetchPayload(LOCAL_MAP_ID);
   try {
     const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
     if (response.status === 404) {
@@ -13146,7 +13167,8 @@ function isValidAppState(s: unknown): s is AppState {
 }
 
 function initBroadcastSync(): void {
-  if (typeof BroadcastChannel === "undefined") return;
+  // Scope view: another tab holds a different part of the map, so tabs follow the server instead.
+  if (typeof BroadcastChannel === "undefined" || scopeView.active()) return;
   try {
     bc = new BroadcastChannel(`m3e-map-${LOCAL_MAP_ID}`);
   } catch {
@@ -13257,12 +13279,12 @@ function initVisibilityManagedLiveStreams(): void {
 
 async function applyExternalUpdate(savedAt: string): Promise<void> {
   try {
-    const response = await fetch(`/api/maps/${encodeURIComponent(LOCAL_MAP_ID)}`, { cache: "no-store" });
-    if (!response.ok) return;
-    const payload = await response.json();
-    const newDoc = ensureDocShape(payload);
+    const result = await fetchLocalMapPayload();
+    if (!result.ok) return;
+    const newDoc = ensureDocShape(result.payload);
     // Only apply if actually newer
     if (map && newDoc.savedAt <= (map.savedAt || "")) return;
+    if (!scopeView.adopt(result.payload)) return;
     finishGrab(false);
     lastAppliedSavedAt = savedAt;
 
@@ -13464,6 +13486,12 @@ async function initializeDocument(): Promise<void> {
   }
 
   const localResult = await fetchLocalMapPayload();
+  if (scopeView.active()) {
+    // Scope view has no fallback: a sample or a cloud copy is a different map.
+    if (localResult.ok) loadPayload(localResult.payload);
+    else showFatalLoadError("Scope view load failed", localResult.message);
+    return;
+  }
   if (localResult.ok) {
     loadPayload(localResult.payload);
     await fetchCloudSyncStatus();
@@ -13658,6 +13686,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
 }
 
 function loadPayload(payload: unknown): void {
+  if (!scopeView.adopt(payload)) return;
   stopScatterAnimation(false); disperseForce.invalidate(); disperseForceDirty = false; disperseForceKey = "";
   finishGrab(false);
   resetFitCycle();
@@ -13674,16 +13703,17 @@ function loadPayload(payload: unknown): void {
     undoStack = [];
     redoStack = [];
     linearDirty = false;
-    viewState.currentScopeId = map.state.rootId;
-    viewState.scopeHistory = [];
-    viewState.selectedNodeId = map.state.rootId;
-    viewState.selectedNodeIds = new Set([map.state.rootId]);
+    const home = scopeView.homeScopeId(map.state.rootId);
+    viewState.currentScopeId = home;
+    viewState.scopeHistory = scopeView.homeHistory();
+    viewState.selectedNodeId = home;
+    viewState.selectedNodeIds = new Set([home]);
     viewState.selectionAnchorId = null;
-    viewState.currentScopeRootId = map.state.rootId;
+    viewState.currentScopeRootId = home;
     viewState.thinkingMode = "rapid";
-    viewState.surfaceViewMode = inferSurfaceViewModeForScope(map.state.rootId);
-    viewState.surfaceSpace = inferSurfaceSpaceForScope(map.state.rootId, viewState.surfaceViewMode);
-    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(map.state.rootId);
+    viewState.surfaceViewMode = inferSurfaceViewModeForScope(home);
+    viewState.surfaceSpace = inferSurfaceSpaceForScope(home, viewState.surfaceViewMode);
+    viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(home);
     viewState.clipboardState = null;
     viewState.linkSourceNodeId = "";
     viewState.reparentSourceIds = new Set<string>();
@@ -14566,7 +14596,7 @@ function remapAliasTargetsInClonedSnapshots(idMap: Map<string, string>): void {
       node.isBroken = false;
       return;
     }
-    if (!map!.state.nodes[node.targetNodeId]) {
+    if (!map!.state.nodes[node.targetNodeId] && !scopeView.isExternalTarget(node.targetNodeId)) {
       node.isBroken = true;
     }
   });
@@ -17214,7 +17244,7 @@ void initializeDocument().then(() => {
       }
     });
     void fetchCollabConfig().then(() => {
-      tryCollabRegister();
+      if (!scopeView.active()) tryCollabRegister();
     });
   }
   const initialScopeId = firstQueryParam(queryParams, ["scope", "scopeId"]);
@@ -17226,7 +17256,7 @@ void initializeDocument().then(() => {
       ancestors.unshift(cur.parentId);
       cur = map.state.nodes[cur.parentId];
     }
-    viewState.scopeHistory = ancestors;
+    viewState.scopeHistory = scopeView.active() ? scopeView.homeHistory() : ancestors;
     viewState.currentScopeId = initialScopeId;
     viewState.currentScopeRootId = initialScopeId;
     viewState.surfaceViewMode = inferSurfaceViewModeForScope(initialScopeId);

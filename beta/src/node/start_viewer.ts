@@ -15,6 +15,7 @@ import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand } from "./map_commit";
 import { activeRecordStore, closeActiveRecordStoreOnSignal } from "./record_store/active";
 import type { MapCommand } from "../shared/map_changes";
+import { extractScopeView, ScopeViewError, SCOPE_VIEW_HEADER, type ScopeViewInfo } from "../shared/scope_view";
 import { M3eMcpService, mcpRequestAllowed } from "./mcp_service";
 import { loadCloudSyncConfig, pushWithConflictBackup, startAutoSync, type AutoSyncHandle } from "./cloud_sync";
 import { parseIndentedTextToNodes } from "./indented_text_parser";
@@ -2505,6 +2506,40 @@ function handleEdgePortSnapshotApi(req: http.IncomingMessage, res: http.ServerRe
   return true;
 }
 
+/** The scope root a viewer in scope view names on its writes, or null. */
+function scopeViewHeader(req: http.IncomingMessage): string | null {
+  const raw = req.headers[SCOPE_VIEW_HEADER.toLowerCase()];
+  const value = (Array.isArray(raw) ? raw[0] : raw)?.trim();
+  return value ? decodeURIComponent(value) : null;
+}
+
+/** GET /api/maps/<id>?scope=<nodeId>&view=scope: only the nodes that belong to that scope. */
+function sendScopeView(res: http.ServerResponse, mapId: string, scopeId: string): void {
+  const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
+  try {
+    const { state, view } = extractScopeView(savedDoc.state, scopeId);
+    sendJson(res, 200, { version: savedDoc.version, savedAt: savedDoc.savedAt, state, scopeView: view });
+  } catch (err) {
+    if (!(err instanceof ScopeViewError)) throw err;
+    sendJson(res, err.code === "NODE_NOT_FOUND" ? 404 : 400, {
+      ok: false,
+      error: { code: err.code === "NODE_NOT_FOUND" ? "SCOPE_NOT_FOUND" : "SCOPE_INVALID", message: err.message },
+    });
+  }
+}
+
+/** The current state for a conflict answer. A viewer in scope view gets the scope view of it, not the whole map. */
+function conflictCurrentState(req: http.IncomingMessage, state: object | null): { state: object | null; scopeView?: ScopeViewInfo } {
+  const scopeId = scopeViewHeader(req);
+  if (scopeId === null || state === null) return { state };
+  try {
+    const extracted = extractScopeView(state as AppState, scopeId);
+    return { state: extracted.state, scopeView: extracted.view };
+  } catch {
+    return { state: null };
+  }
+}
+
 function parseMapCommandRoute(urlPath: string): string | null {
   const match = new URL(urlPath, "http://localhost").pathname.match(/^\/api\/maps\/([^/]+)\/commands$/);
   return match ? decodeURIComponent(match[1]!) : null;
@@ -2550,7 +2585,7 @@ async function handleMapCommandApi(req: http.IncomingMessage, res: http.ServerRe
           error: "Concurrent edits changed the same node differently.",
           mapId,
           savedAt: result.current?.savedAt ?? null,
-          state: result.current?.state ?? null,
+          ...conflictCurrentState(req, result.current?.state ?? null),
           conflicts: result.conflicts,
         });
         return;
@@ -2591,6 +2626,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
 
   if (req.method === "GET") {
     try {
+      if (scopeParam && scopeParam.trim().length > 0 && url.searchParams.get("view") === "scope") {
+        sendScopeView(res, mapId, scopeParam.trim());
+        return true;
+      }
       if (scopeParam && scopeParam.trim().length > 0) {
         const scopeId = scopeParam.trim();
         let depth: number | undefined;
@@ -2641,6 +2680,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ma
     let saveAcquired = false;
     try {
       const rawBody = await readRequestBody(req, res, MAP_STATE_BODY_LIMIT_BYTES);
+      // A viewer in scope view holds only part of the map: its state must never replace the map or a subtree.
+      if (scopeViewHeader(req) !== null) {
+        sendJson(res, 409, {
+          ok: false,
+          code: "SCOPE_VIEW_WHOLE_SAVE",
+          error: "A viewer in scope view (partial load) cannot save the whole map. Its edits are saved as Commands.",
+        });
+        return true;
+      }
       if (activeMapSaves.has(mapId)) {
         sendJson(res, 409, { ok: false, code: "DOC_CONFLICT", error: "A map save is already in progress." });
         return true;

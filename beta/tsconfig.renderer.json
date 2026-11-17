@@ -14,6 +14,7 @@
     "src/browser/viewer_theme.ts",
     "src/browser/webgl_projection.ts",
     "src/browser/orrery_network.ts",
-    "src/browser/viewer-filter-scene.ts"
+    "src/browser/viewer-filter-scene.ts",
+    "src/browser/scope_view_client.ts"
   ]
 }

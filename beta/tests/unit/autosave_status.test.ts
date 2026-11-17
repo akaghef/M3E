@@ -22,6 +22,7 @@ function setup(fetch: ReturnType<typeof vi.fn>, snapshotError = false) {
     const grabSession = null, collabEntityId = null, collabToken = null, cloudSyncEnabled = false;
     const LOCAL_MAP_ID = "test", TAB_ID = "test-tab", AUTOSAVE_DELAY_MS = 700;
     const lineSelection = { status: () => "Ready" };
+    const scopeView = { active: () => false, blocks: () => false };
     const isReadOnlyLink = () => false, currentLinearMemoScopeId = () => "root";
     const syncLinearNotesToDocState = () => { map.state.linearNotesByScope = { ...linearNotesByScope }; };
     const syncMapModelStateFromRuntime = () => {}, commitDispersePositions = () => {};
