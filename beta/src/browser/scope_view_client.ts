@@ -47,6 +47,10 @@ export interface ScopeViewHost {
   resetScope(scopeRootId: string, history: string[]): void;
   /** Saves pending edits. False when the save failed. */
   flush(): Promise<boolean>;
+  /** The map this page shows. */
+  mapId(): string;
+  /** Shows a freshly fetched scope view in this page, without a page load. */
+  show(payload: unknown): void;
 }
 
 export type ScopeViewLoadResult =
@@ -130,7 +134,24 @@ async function leaveTo(targetId: string): Promise<void> {
     host.setStatus("Save failed. Staying in this scope so the edits are not lost.", true);
     return;
   }
-  window.location.assign(scopeView.hrefFor(targetId, window.location.href));
+  const href = scopeView.hrefFor(targetId, window.location.href);
+  if (new URL(href).searchParams.get("partial") !== "1") {
+    window.location.assign(href);
+    return;
+  }
+  // Another scope view: fetch it and swap it in. A page load would blank the screen and lose the camera move.
+  const result = await scopeView.fetchPayload(host.mapId(), targetId);
+  if (!result.ok) {
+    leaving = false;
+    host.setStatus(`Could not open the scope (${result.message}).`, true);
+    return;
+  }
+  const previous = requestedScopeId;
+  requestedScopeId = targetId;
+  window.history.pushState(null, "", href);
+  leaving = false;
+  host.show(result.payload);
+  if (info?.scopeRootId !== targetId) requestedScopeId = previous;
 }
 
 export const scopeView = {
@@ -167,18 +188,18 @@ export const scopeView = {
     return info ? info.ancestors.filter((ancestor) => ancestor.isScope).map((ancestor) => ancestor.nodeId) : [];
   },
 
-  mapUrl(mapId: string): string {
-    return `/api/maps/${encodeURIComponent(mapId)}?scope=${encodeURIComponent(requestedScopeId)}&view=scope`;
+  mapUrl(mapId: string, scopeId = requestedScopeId): string {
+    return `/api/maps/${encodeURIComponent(mapId)}?scope=${encodeURIComponent(scopeId)}&view=scope`;
   },
 
   /** Fetches the scope view. Used for the first load and for every reload after an external change. */
-  async fetchPayload(mapId: string): Promise<ScopeViewLoadResult> {
+  async fetchPayload(mapId: string, scopeId = requestedScopeId): Promise<ScopeViewLoadResult> {
     const fail = (reason: "not-found" | "failed", message: string): ScopeViewLoadResult => {
       if (info) host?.setStatus(`Scope view reload failed (${message}).`, true);
       return { ok: false, reason, message };
     };
     try {
-      const response = await fetch(scopeView.mapUrl(mapId), { cache: "no-store" });
+      const response = await fetch(scopeView.mapUrl(mapId, scopeId), { cache: "no-store" });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { error?: unknown } | null;
         const error = body?.error;
@@ -335,4 +356,8 @@ export const scopeView = {
   },
 };
 
-if (typeof window !== "undefined") scopeView.configure(window.location.search);
+if (typeof window !== "undefined") {
+  scopeView.configure(window.location.search);
+  // Back / forward across scopes opened in this page: the URL is the truth, so load it.
+  window.addEventListener("popstate", () => { if (scopeView.active()) window.location.reload(); });
+}
