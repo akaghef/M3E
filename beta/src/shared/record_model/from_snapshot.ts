@@ -93,6 +93,8 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
     const mapScopes = [...(scopesByMap.get(mapId) ?? [])].sort(byId);
     const scopeRootById = new Map(mapScopes.map((scope) => [scope.id, scope.rootNodeId]));
     const scopeRoots = new Set(scopeRootById.values());
+    const scopeIdOfRoot = new Map<string, string>();
+    for (const scope of mapScopes) if (!scopeIdOfRoot.has(scope.rootNodeId)) scopeIdOfRoot.set(scope.rootNodeId, scope.id);
 
     // tree: parent and ordered children come from the edges
     const incoming = new Map<string, EdgeConnectionRecord>();
@@ -133,6 +135,11 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
         if (alias.access !== undefined) node.access = alias.access;
         if (alias.snapshotLabel !== undefined) node.targetSnapshotLabel = alias.snapshotLabel;
         if (alias.broken === true) node.isBroken = true;
+      }
+      // An edge out of a scope root that lies on another scope: the child stays outside (DA59).
+      if (edge?.scopeId !== undefined && edge.source !== map.rootNodeId) {
+        const ownScope = scopeIdOfRoot.get(edge.source);
+        if (ownScope !== undefined && edge.scopeId !== ownScope) node.edgeOutsideScope = true;
       }
       stateNodes[record.id] = node as unknown as TreeNode;
     }
