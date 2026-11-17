@@ -53,19 +53,25 @@ export class EdgeGraphLinkSelectionAdapter {
     this.records.push({ref:{kind:'parent-child',parentNodeId:parent,childNodeId:child},source:this.endpoint(parent),target:this.endpoint(child),
       presentation:{kind:'line',renderKey:`edge:${parent}:${child}`,labelAnchor:this.endpoint(child).center}});
   }
-  private elements(id:string):SVGElement[] {
-    const escaped=CSS.escape(id);
-    return [...this.bridge.canvas.querySelectorAll<SVGElement>(`.node-hit[data-node-id="${escaped}"], [data-lane-header][data-node-id="${escaped}"]`)];
-  }
   finish():void {
     const state=this.bridge.state(),layout=this.layout;
     if(!state||!layout) return;
     // Only explicit node presentations supply visibility, including Lane's editable headings.
     const hidden=this.bridge.canvas.hasAttribute("hidden");this.bridge.canvas.removeAttribute("hidden");
-    this.visible=[...new Set([...this.bridge.canvas.querySelectorAll<SVGElement>('.node-hit[data-node-id], [data-lane-header][data-node-id]')].map(el=>el.dataset.nodeId!))];
+    // One pass over the drawn elements. A lookup per record or per node made this quadratic in the drawn size.
+    const canvas=this.bridge.canvas,firstNodeElement=new Map<string,SVGElement>();
+    for(const el of canvas.querySelectorAll<SVGElement>('.node-hit[data-node-id], [data-lane-header][data-node-id]')) if(!firstNodeElement.has(el.dataset.nodeId!)) firstNodeElement.set(el.dataset.nodeId!,el);
+    const firstBy=<T extends Element>(selector:string,key:(el:T)=>string):Map<string,T> => { const map=new Map<string,T>(); for(const el of canvas.querySelectorAll<T>(selector)) { const k=key(el); if(!map.has(k)) map.set(k,el); } return map; };
+    const pairKey=(source:string,target:string):string => JSON.stringify([source,target]);
+    const graphLabels=firstBy<Element>('.graph-link-label[data-link-id]',el=>el.getAttribute('data-link-id')!);
+    const edgeLabels=firstBy<Element>('.edge-label[data-node-id]',el=>el.getAttribute('data-node-id')!);
+    const graphLines=firstBy<SVGGeometryElement>('.graph-link[data-link-id]',el=>el.getAttribute('data-link-id')!);
+    const edgeLines=firstBy<SVGGeometryElement>('.edge[data-source-node-id][data-target-node-id]',el=>pairKey(el.getAttribute('data-source-node-id')!,el.getAttribute('data-target-node-id')!));
+    this.visible=[...firstNodeElement.keys()];
+    const visibleSet=new Set(this.visible);
     for(const id of this.visible) {
       const parent=state.nodes[id]?.parentId;
-      if(!parent||!this.visible.includes(parent)) continue;
+      if(!parent||!visibleSet.has(parent)) continue;
       const owner=layout.lane ? (parent===layout.lane.rootId?id:parent) : parent;
       const frame=layout.lane ? this.bridge.canvas.querySelector(`[data-lane-node-id="${CSS.escape(owner)}"]`)
         : this.bridge.canvas.querySelector(`.disperse-group[data-group-id="${CSS.escape(owner)}"]`);
@@ -75,16 +81,14 @@ export class EdgeGraphLinkSelectionAdapter {
     }
     this.records=this.records.map(item=>{
       const measured=(end:Endpoint):Endpoint=>{
-        const element=this.elements(end.renderedNodeId)[0] as SVGGraphicsElement|undefined;
+        const element=firstNodeElement.get(end.renderedNodeId) as SVGGraphicsElement|undefined;
         if(!element?.hasAttribute('data-lane-header'))return end;
         const box=element.getBBox();return {...end,center:{x:box.x+box.width/2,y:box.y+box.height/2}};
       };
-      const labelSelector=item.ref.kind==='graph-link'?`.graph-link-label[data-link-id="${CSS.escape(item.ref.renderKey)}"]`:`.edge-label[data-node-id="${CSS.escape(item.ref.childNodeId)}"]`;
-      const label=this.bridge.canvas.querySelector(labelSelector);
+      const label=item.ref.kind==='graph-link'?graphLabels.get(item.ref.renderKey):edgeLabels.get(item.ref.childNodeId);
       let labelAnchor=label?{x:Number(label.getAttribute('x')),y:Number(label.getAttribute('y'))}:item.presentation.labelAnchor;
       if(!label && item.presentation.kind==='line') {
-        const selector=item.ref.kind==='graph-link'?`.graph-link[data-link-id="${CSS.escape(item.ref.renderKey)}"]`:`.edge[data-source-node-id="${CSS.escape(item.ref.parentNodeId)}"][data-target-node-id="${CSS.escape(item.ref.childNodeId)}"]`;
-        const geometry=this.bridge.canvas.querySelector<SVGGeometryElement>(selector);
+        const geometry=item.ref.kind==='graph-link'?graphLines.get(item.ref.renderKey):edgeLines.get(pairKey(item.ref.parentNodeId,item.ref.childNodeId));
         if(geometry && typeof geometry.getPointAtLength==='function') {
           const midpoint=geometry.getPointAtLength(geometry.getTotalLength()/2);labelAnchor={x:midpoint.x,y:midpoint.y};
         }
@@ -94,7 +98,7 @@ export class EdgeGraphLinkSelectionAdapter {
     if(hidden)this.bridge.canvas.setAttribute("hidden", "");
     this.reasons={};
     for(const node of Object.values(state.nodes)) {
-      if(this.visible.includes(node.id)) continue;
+      if(visibleSet.has(node.id)) continue;
       let reason:NotDrawnReason='not-drawn';
       if(!this.bridge.inScope(node.id)) reason='outside-scope';
       else if(layout.lane && ![layout.lane.rootId,...(state.nodes[layout.lane.rootId]?.children??[])].includes(node.id)
