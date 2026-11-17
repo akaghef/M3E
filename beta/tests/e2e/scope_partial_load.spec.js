@@ -422,7 +422,8 @@ test("entries open in the same page and an external change reloads the scope vie
   await page.keyboard.press("[");
   await page.waitForURL((url) => url.searchParams.get("scope") === SCOPE && url.searchParams.get("partial") === "1", { timeout: 30_000 });
   await expect(page.locator("#board")).toHaveAttribute("data-ready", "true", { timeout: 60_000 });
-  await expectSelected(page, "Opened scope");
+  // The entry the user came out of stays selected.
+  await expectSelected(page, "Nested scope 0");
   expect(await page.evaluate(() => window.__samePage === true)).toBe(true);
   expect(log.wholeGets).toBe(0);
   expect(log.wholePosts).toBe(0);

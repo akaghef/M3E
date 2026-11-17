@@ -4480,7 +4480,12 @@ scopeView.init({
   resetScope: (id, history) => { viewState.currentScopeId = viewState.currentScopeRootId = id; viewState.scopeHistory = history; setSingleSelection(id, false); },
   flush: () => saveDocToLocalDb(false),
   mapId: () => LOCAL_MAP_ID,
-  show: (payload) => { loadPayload(payload); triggerCameraMove("scope"); board.focus({ preventScroll: true }); },
+  show: (payload, fromScopeId) => {
+    loadPayload(payload);
+    // Coming back out of a scope: its entry stays selected, as in the whole-map viewer.
+    if (map?.state.nodes[fromScopeId] && fromScopeId !== currentScopeRootId() && isNodeInScope(fromScopeId)) { setSingleSelection(fromScopeId, false); render(); }
+    triggerCameraMove("scope"); board.focus({ preventScroll: true });
+  },
 });
 
 function showFatalLoadError(title: string, detail: string): void {

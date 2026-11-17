@@ -49,8 +49,8 @@ export interface ScopeViewHost {
   flush(): Promise<boolean>;
   /** The map this page shows. */
   mapId(): string;
-  /** Shows a freshly fetched scope view in this page, without a page load. */
-  show(payload: unknown): void;
+  /** Shows a freshly fetched scope view in this page, without a page load. `fromScopeId` is the scope the user came from. */
+  show(payload: unknown, fromScopeId: string): void;
 }
 
 export type ScopeViewLoadResult =
@@ -150,7 +150,7 @@ async function leaveTo(targetId: string): Promise<void> {
   requestedScopeId = targetId;
   window.history.pushState(null, "", href);
   leaving = false;
-  host.show(result.payload);
+  host.show(result.payload, previous);
   if (info?.scopeRootId !== targetId) requestedScopeId = previous;
 }
 
