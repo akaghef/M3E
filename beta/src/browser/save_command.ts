@@ -3,7 +3,7 @@
  * The state transition is `changes`. `intent` is only the audit classification:
  * a viewer save may touch several record kinds at once, so it uses `assert`.
  */
-import { diffState, type MapCommand } from "../shared/map_changes";
+import { diffState, type MapCommand, type RecordChange } from "../shared/map_changes";
 
 const JSON_HEADERS = "application/json; charset=utf-8";
 
@@ -21,7 +21,11 @@ function newCommandId(): string {
  * (rename back and forth, collapse twice) is a different Command.
  */
 export function buildSaveCommand(before: object, after: object, tabId: string): MapCommand {
-  const changes = diffState(before, after);
+  return commandForChanges(diffState(before, after), tabId);
+}
+
+/** The Command for changes that are already computed (scope view). Same commandId rule as `buildSaveCommand`. */
+export function commandForChanges(changes: RecordChange[], tabId: string): MapCommand {
   const changesJson = JSON.stringify(changes);
   if (!unconfirmed || unconfirmed.changesJson !== changesJson) {
     unconfirmed = { commandId: newCommandId(), changesJson };
@@ -33,6 +37,11 @@ export function buildSaveCommand(before: object, after: object, tabId: string): 
     provenance: { tabId },
     changes,
   };
+}
+
+/** The sent Command was confirmed or rejected (any status below 500), or there was nothing to send. */
+export function settleSaveCommand(): void {
+  unconfirmed = null;
 }
 
 /**

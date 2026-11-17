@@ -185,7 +185,10 @@ const q = <T extends Element>(selector: string): T | null => document.querySelec
 const byId = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
 function clickLegacy(id: string): void {
-  byId<HTMLButtonElement>(id)?.click();
+  const control = byId<HTMLButtonElement>(id);
+  // A disabled control swallows the click. Say why (its title) instead of doing nothing.
+  if (control?.disabled && control.title) window.dispatchEvent(new CustomEvent("m3e:disabled-control", { detail: { message: control.title } }));
+  else control?.click();
 }
 
 function setSurfaceLayout(
