@@ -164,6 +164,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 - Optional PRs remain available for explicit review requests. A review-only request does not authorize merge.
 - Destructive history changes, main/release operations, and secret changes still require explicit authorization.
 - When akaghef asks for an external Codex worker, use `scripts/codex.sh exec -m gpt-6-astra -c model_reasoning_effort=high ... < /dev/null` (read-only sandbox for investigation; `workspace-write` inside the task worktree for implementation), run it in the background, and do not redispatch the already active Codex session merely to satisfy this convention.
+- A sub agent (a helper AI agent a session runs for part of its own task: investigation, a second implementation or diagnosis pass, review) runs on Grok Build with model `grok-4.7-build-fast` and reasoning effort `high` (akaghef, 2026-11-18), instead of a built-in Claude subagent: Claude Code uses the `grok-build:grok-delegate` agent with `--model grok-4.7-build-fast --effort high`; other runtimes call `grok -m grok-4.7-build-fast --effort high`. This sets the model of a sub agent and does not widen when one may be used. A runtime akaghef names in the current request (for example an external Codex worker above) wins.
 
 ## Development Phase Constraints
 
