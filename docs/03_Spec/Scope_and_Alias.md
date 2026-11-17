@@ -21,6 +21,8 @@ scope は「どこまでを 1 つの局所世界として見るか」を定め�
 - document root の直下には暗黙の root scope がある
 - 各実体ノードはちょうど 1 つの scope に属する
 
+> 移行後の定義（2026-11-17 決定、実装は移行中）: scope は map の対象を一枚の面で切り出したものと読む。親子 edge はどれか一つの scope に載り、scope の ID を持つ。node がふつうに属する scope は、親から来る edge の scope で一つに決まる。scope の root の node は、その scope にも頂点として現れる。一つの node が複数の scope の root になれ、その子は scope ごとに別に持てる（scope C_p に居ると X > Y_p、scope C_c に居ると X > Y_c が見える）。上の 3 行は、root の子が全部内側の scope に載る特殊な場合である。詳細は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) の「scope は面」。
+
 scope は以下を制御する。
 
 - 何が見えるか

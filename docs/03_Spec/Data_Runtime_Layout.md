@@ -20,7 +20,7 @@ ws > map > scope > node
 - `map`:
   workspace 内の作業単位。例: `開発`, `研究`, `tutorial`
 - `scope`:
-  map 内の階層的構造境界。見える範囲・編集範囲の基本単位
+  map の対象を一枚の面で切り出したもの。見える範囲・編集範囲の基本単位（[Glossary](../00_Home/Glossary.md)）
 - `node`:
   最小要素
 

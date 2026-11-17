@@ -26,7 +26,7 @@
 
 - **DA1 Connection と relationType**: 線の総称 Connection をレコードの種別にする。親子 edge と GraphLink はその部分集合。`relationType` は Connection に置き、親子 edge も持つ。表示する文字列は `label` で、`relationType` とは別の欄にする。
   - Glossary の改訂が要る: `Connection` の備考「保存実体ではなく、新しいデータ型は追加しない」、`relationType` の定義「tree edge の親子関係とは分ける」。スキーマの承認時に、文書の一斉置換と一緒に行う。
-- **DA6 正本の木と alias**: 正本の配置は木とする。どの node も親はちょうど一つ（root を除く）で、scope への所属、権限、削除の範囲、既定の並び順はこの木だけで決まる。別の場所から使うときは alias を置く。alias は参照先の所属を変えない。木以外のトポロジーは、この木に alias と、役割つきの GraphLink を重ねたものとして読む。
+- **DA6 正本の木と alias**: 正本の配置は木とする。どの node も親はちょうど一つ（root を除く）で、権限、削除の範囲、既定の並び順はこの木で決まる。scope への所属は、木と、親子 edge が持つ scope の ID で決まる（DA59 で改めた。初版は「この木だけで決まる」）。別の場所から使うときは alias を置く。alias は参照先の所属を変えない。木以外のトポロジーは、この木に alias と、役割つきの GraphLink を重ねたものとして読む。
   - 帰結: 親子 edge も GraphLink も自分の ID を持つ。
   - 使い分け: その場所に子として並べたいなら alias、関係があることだけ示すなら GraphLink。
 - **DA21 Connection は端点になれる**: Connection は、他の Connection の端点になれる（線そのものについて述べる要件）。
@@ -37,9 +37,32 @@
 
 - **DA4 scope のレコード**: scope の境界は、scope のレコードがあることで表す。scopen は scope のレコードを作ること、unscopen は消すこと。node の種別は変わらない。`nodeType` から `folder` をなくし、scope の意味の「folder」を保存データ・コード・文書から払拭する（ファイルシステムのフォルダの意味は対象外）。
 - **DA16 scope は自分の ID を持つ**: scope の key は root の node の ID ではなく、scope 自身の ID とする。root は scope のレコードの欄になる。権限・linear-text・Surface View の保存設定は、scope の寿命に従う。unscopen してからもう一度 scopen すると、別の scope になる（レビュー）。
-- **DA17 root の所属**: scope の root の node は、自分の scope に属する。親の scope には入口として現れる。
-- **DA26 scope 独自のラベルを持たない**: scope の名前は、常に root の node のラベルである。保存されている scope の `label` は運ばない。
+- **DA17 root の所属**: scope の root の node は、自分の scope の頂点として現れる。ふつうに属するのは親から来る edge が載る scope で、そこでは root である scope すべてへの入口になる（DA59・DA60 で読み替えた）。
+- **DA26 scope の名前**: scope の名前は、scope のレコードの欄 `label` に持てる。欄が無ければ root の node のラベルを名前とする（DA61 で改めた。初版は「常に root のラベル、欄を持たない」）。migration では、保存されている scope の `label` は運ばない（今の表示は root のラベルなので、運ぶと名前が変わる）。
 - **DA8 scope の大きさの目安**: 30 node 以下を基本とし、それが多数つながって全体を成す形を目指す。画面に収まって効率がよいのは 200 node まで。1,000 node を超えると可視性がほぼ無い。超えた scope は通知するだけで、書き込みは拒まない。
+
+### scope は面（2026-11-17、akaghef）
+
+scope は、複雑な対象を一枚の面で切り出したものと読む。木の部分木を囲う境界という初版の読みは、その特殊な場合（scope の root の子が全部その scope に載る場合）になる。
+
+例: scope C_p と C_c があり、node X が両方に現れる。X の子のうち Y_p は C_p に、Y_c は C_c に載る。C_p に居るときは X > Y_p が見え、C_c に居るときは X > Y_c が見える。
+
+- **DA59 親子 edge は scope の ID を持つ**: 親子 edge は、自分が載る scope の ID を必ず持つ。どの面に載るかは他から導く値ではなく一次の事実で、親が誰かとは別の事実である。
+  - scope を描くときは、その scope の ID を持つ edge を引き、両端の node を集める。木をたどらない。
+  - node がふつうに属する scope は、親から来る edge の scope。map の root は root の scope に属する。
+  - 子孫も、それぞれの edge の scope に従う。Y_p の下は C_p に、Y_c の下は C_c に載る（別の scope の ID を持つ edge で、さらに別の面へ移ることはある）。
+  - 書き込みの量: scopen・unscopen・面をまたぐ移動で書き換わるのは、元の面に載っている edge だけで、その下にある別の面の edge は変わらない。2026-11-17 の写し（1,877 scope）で、1 つの面に載る edge は中央値 10、99 パーセンタイル 212、最大 1,141。部分木全体（最大 20,149）にはならない。
+- **DA60 一つの node から複数の面を開ける**: 一つの node が、複数の scope の root になれる（同じ対象を別の切り口で見せる）。初版の不変条件「一つの node が root になる scope は一つまで」は撤廃した。
+- **DA61 scope の名前**: DA26 を参照。同じ node から開いた面どうしを区別するために使う。
+- **DA62 GraphLink は scope の ID を持たない**: 両端が同じ面にある GraphLink はその面に載る。両端の面が違う GraphLink はどちらの面にも載らず、両端が見えている面でだけ描く。どれも両端から導く。
+
+担当の判断（2026-11-17。上の決定の帰結として決めた。承認時に見直せる）:
+
+- **DA56 子を足す先**: X に子を足すと、足した agent が居る scope の子になる。C_p に居れば C_p に、C_c に居れば C_c に載る。
+- **DA57 兄弟順**: X の子は、どの面に載るかによらず、1 本の兄弟順キーを共有する。unscopen すると、一列に並んだ普通の子に戻る。
+- **DA58 unscopen**: scope C を消すと、C の ID を持つ edge は、C の root の親から来る edge の scope に付け替える。DA47 の消すもの（linear-text と Surface View の保存設定）と同じ確定で行う。
+- **DA63 scope は自分の ID で指す**: URL、Command、内部の参照は、scope を root の node の ID ではなく scope の ID で指す。root が同じ scope が複数あると、node の ID では区別できない。
+- **DA64 scopen の既定**: scopen は新しい scope を作り、X の子のうち X がふつうに属する面に載っている edge（とその下の、同じ面に載る edge）を新しい scope へ付け替える。今までの scopen と同じ結果になる。付け替える子を選んで渡すこともできる。X がすでに別の面の root でも同じ規則で作る。
 
 ### rev と時刻と発行者
 
@@ -126,8 +149,8 @@ akaghef の個別の承認はまだ受けていない。
 | map | `mapId` | `rootNodeId`、tag・archive・pin、Vault との結び付き、linear-text の表示設定 | `maps` の行と top-level |
 | node | `nodeId` | `nodeType`（既定 `text`）、`text`（map に載るラベル）、`collapsed`（既定 false）、attribute、`rev` | `nodes[*]` |
 | details | `nodeId` | 種別ごとの形（5 節）、形の版の番号、`rev` | `nodes[*].details` ほか |
-| Connection | `connectionId` | `kind`（edge / GraphLink）、`source`、`target`、`relationType`、`label`、attribute、`rev`。edge は兄弟順キー。GraphLink は向き・線種・色・port | `parentId` と `children[]`、`m3e:edge-label`、`links[*]` |
-| scope | `scopeId` | `rootNodeId`、`primarySurfaceId`、`rev`。権限の置き場（将来） | `nodeType: "folder"` と `scopes[*]` |
+| Connection | `connectionId` | `kind`（edge / GraphLink）、`source`、`target`、`relationType`、`label`、attribute、`rev`。edge は兄弟順キーと、載る scope の ID（DA59）。GraphLink は向き・線種・色・port | `parentId` と `children[]`、`m3e:edge-label`、`links[*]` |
+| scope | `scopeId` | `rootNodeId`、`label`（任意。DA61）、`primarySurfaceId`、`rev`。権限の置き場（将来） | `nodeType: "folder"` と `scopes[*]` |
 | linear-text | `scopeId` | `text`、`rev` | `linearNotesByScope` |
 | Surface View の保存設定 | `surfaceId` | 所属 scope、種別、Layout、向きと間隔、`rev` | `surfaces[*]` |
 | 配置値 | `surfaceId`・`nodeId` | `x`、`y`、`flowCol`、`flowRow`、`shape` | `surfaces[*].nodeViews` の空でない値 |
@@ -157,7 +180,7 @@ Connection  kind edge   親 root → 子 b   兄弟順キー "a1"
 
 ### 保存しないもの
 
-- 導出値: `children[]`、scope への所属、`rootNodeIds`、`relationIds`、scope の名前（DA26）
+- 導出値: `children[]`、node と GraphLink の scope への所属（edge の scope から導く）、`rootNodeIds`、`relationIds`、`label` が無い scope の名前（DA26）
 - 表示状態: 選択、camera、編集中の状態、どの agent がどの scope に居るか（DA10）
 - 既定値と同じ決まった欄（DA3）、null の attribute（DA12）
 - 作成時刻・更新時刻・作成者（DA2、DA13）
@@ -169,7 +192,9 @@ Connection  kind edge   親 root → 子 b   兄弟順キー "a1"
 - 同じ親の下で（兄弟順キー, `connectionId`）が全順序になる。
 - alias は実体の node だけを指す。alias は子を持たない。alias から alias は不可。
 - Connection の端点は実在する。端点を消したら、その Connection も同じ確定で消す。
-- scope の root は実在する node。alias は scope の root になれない。一つの node が root になる scope は一つまで。
+- scope の root は実在する node。alias は scope の root になれない。一つの node が複数の scope の root になってよい（DA60）。
+- 親子 edge の scope は実在する。edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る edge の scope が S である。これで、一つの scope に載る edge は、その root を頂点とする 1 本の木になる。検査は edge ごとに局所で済む。
+- root の scope の root は map の root で、この scope は消せない。
 - `connectionId` は edge と GraphLink をまたいで一意。エンジンの制約では保証できないので、確定する側で検査する（レビュー）。
 - 検査は触った周辺だけで行う（親の付け替えなら、新しい親の祖先をたどって循環を見る）。map 全体は走査しない。
 
@@ -199,7 +224,7 @@ Connection  kind edge   親 root → 子 b   兄弟順キー "a1"
 | map | node（ラベル `Map`） |
 | node | node（ラベル `M3eNode`）。`id` に一意制約。`mapId` に索引 |
 | details | 別の node（ラベル `Details`）。`M3eNode` から 1 本の線で結ぶ |
-| Connection（edge） | relationship（型 `EDGE`、親 → 子）。property に `id`、兄弟順キー、`relationType`、`label`、`rev` |
+| Connection（edge） | relationship（型 `EDGE`、親 → 子）。property に `id`、兄弟順キー、`scopeId`（索引）、`relationType`、`label`、`rev` |
 | Connection（GraphLink） | relationship（型 `LINK`）。property に `id`、`relationType`、`label`、向き・線種・色・port、`rev` |
 | alias の参照先 | relationship（型 `ALIAS_OF`、alias → 参照先）。参照先から alias を逆にたどれる（DA20 の通知先） |
 | attribute | 持ち主の node または relationship の property。key に接頭辞を付ける |
@@ -230,7 +255,7 @@ Connection  kind edge   親 root → 子 b   兄弟順キー "a1"
 | `nodes[*]` の `text`・`collapsed` | node | 移す |
 | `nodes[*]` の `details` | details | 移す |
 | `nodeType: "folder"` | 種別 `text` と scope のレコード。`scopeId` を新しく振る | 移す（DA4、DA16） |
-| `parentId` と `children[]` | edge の Connection。ID を新しく振る | 移す |
+| `parentId` と `children[]` | edge の Connection。ID を新しく振る。scope の ID は今の規則で計算して付ける: edge（a → b）の scope は、a 自身または a の祖先のうち最も近い scope の root が持つ scope（今は全部の子が内側に入るので、これで今の見え方と一致する） | 移す（DA59） |
 | `attributes["m3e:edge-label"]`（15,971 件、32 種類の値） | Connection の `label`。`relationType` は未設定のまま | 移す。役割の設定は後で Command |
 | その他の `attributes[*]` | attribute。null は落とす（DA12）。空文字は残す（DA19） | 移す |
 | alias の field | node と、参照先への線 | 移す |
@@ -286,7 +311,8 @@ scope の大きさ（2,126 scope）:
 - **IB9 GraphLink の port の auto**: 推奨は「値が無い＝自動」に統一すること。
 - **IB10 ID を振り直す範囲**: 推奨は、重複しているものと本文を含む ID だけを振り直し、旧 ID と新 ID の対応表を migration の成果物として残すこと。
 - **IB11 migration の対象範囲**: 推奨は、この Mac の 3 workspace を対象にし、Final と cloud 上の複製は対象外とすること。個人の workspace に残る試験用の map は、前もって保管に回す。
-- **IB19 scope の構造を変える操作**: unscopen したとき、その scope の linear-text と Surface View の保存設定を消すか、親の scope へ移すか。scopen・unscopen・scope をまたぐ移動は、変わっていない多数の node の所属を変えるので、旧い scope と新しい scope の両方のキャッシュを無効にする。scope どうしを「scope という役割の線」でつながったグラフと読む案（担当の読み。未確認）。
+- **IB66 入口の見せ方**: X が複数の面の root のとき（DA60）、X がふつうに属する面で入口をどう見せ、どう選ばせるか。意味は「X は自分が root である面すべてへの入口を持つ」。配置は GUI の手順の 3 段目で決める。
+- **IB19 scope の構造を変える操作**（DA58 で unscopen の付け替えを、DA47 で消すものを決めた）: unscopen したとき、その scope の linear-text と Surface View の保存設定を消すか、親の scope へ移すか。scopen・unscopen・scope をまたぐ移動は、変わっていない多数の node の所属を変えるので、旧い scope と新しい scope の両方のキャッシュを無効にする。scope どうしを「scope という役割の線」でつながったグラフと読む案（担当の読み。未確認）。
 - **IB44 アカウントの中身**: アカウントが持つ欄。一つのアカウントに外部の ID を複数結び付けられるか。
 - **IB48 map をまたぐ alias**: agent の一覧が別の map にあると、alias が map をまたいで実体を指す。参照先の map を消すときの扱いと、参照先を読む権限の扱い。
 - **IB36 代理**: AI agent が human の依頼で書いたとき、依頼した側を記録するか。

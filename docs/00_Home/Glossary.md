@@ -61,11 +61,11 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 
 | **spine** | 分散した node / alias / link 群を、人間が木または DAG として読めるようにする主骨格 | node, edge, scope, syntax tree, semantic graph | Rapid では主に親子 edge の列として保存される。個々の node が参照関係や GraphLink を持っていても、説明順序・階層・責任分解の本質を捕まえる背骨を spine と呼ぶ。Scatter などの自由配置でも、spine が決まれば木/DAG へ戻せる。表示上の線や補助関係とは混同しない |
 | **folder** | 一般向け説明で scope を直感的に伝えるために使う語。実装上は nodeType の一種でもある | scope | UI/導入説明で使ってよいが、**仕様・実装の正規語は `scope`** |
-| **scope** | map 内の階層的に管理される構造境界。見える範囲・編集範囲を制御する基本単位 | folder, scopen, root scope, facet | M3E 固有の中核概念。（別表記・併用可）folder world |
+| **scope** | map の対象を一枚の面で切り出したもの。見える範囲・編集範囲を制御する基本単位。親子 edge はどれか一つの scope に載り、node は自分につながる edge が載る scope に現れる | folder, scopen, root scope, facet | M3E 固有の中核概念。一つの node は複数の scope に現れ、複数の scope の root にもなれる（同じ node の子を、scope ごとに別に持てる）。部分木を囲う境界という旧い読みは、root の子が全部その scope に載る特殊な場合。保存の形は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) の「scope は面」（実装は移行中）。（別表記・併用可）folder world |
 | **alias** | 他ノードを参照する窓。実体を複製しない | node, scope | 実装語は alias。（仕様語）reference。**alias→alias は禁止** |
 | **root scope** | map の最上位 scope | scope, map | |
-| **scopen** | 既存 node（群）を scope として区切る操作 | scope, unscopen | 動詞。（別表記）scope 化 |
-| **unscopen** | scope の区切りを解除する操作 | scope, scopen | 動詞。境界だけ外し、中身の node は残す。（別表記）非 scope 化 |
+| **scopen** | 既存 node を root とする scope を新しく作り、その node の子（と、同じ scope に載るその下）を新しい scope に載せる操作 | scope, unscopen | 動詞。（別表記）scope 化 |
+| **unscopen** | scope の区切りを解除する操作 | scope, scopen | 動詞。scope だけを消し、その scope に載っていた edge は root の node が属する scope に載せ替える。node は残す。（別表記）非 scope 化 |
 | **scope 粒度** | scope で区切るときの分量（1 scope が抱える node 数・意味範囲のサイズ感） | scope, facet | 運用判断用の軸。粒度が粗い/細かいで議論する |
 | **scope bind** | 複数 scope / facet 上の表示要素を、同一の正本実体に結びつける操作または同期契約 | scope, facet, alias, GraphLink | 動詞表現: `scope を bind する`。射影ではない。`edge` は親子構造、`alias` は参照窓、`GraphLink` は非木構造の関係線、`scope bind` は同一性と更新伝播の契約として区別する |
 
@@ -115,7 +115,7 @@ M3E の正規語を維持し、property graph 語彙は対応先として扱う�
 | **Deep entity** | 文書横断の stable identity と typed semantics を持つ entity | Deep, Rapid occurrence, entity binding | 本文を Rapid occurrence と二重所有しない |
 | **entity binding** | Rapid occurrence と Deep entity の同一性または対応を結ぶ assertion | Rapid occurrence, Deep entity, scope bind | many-to-many を許す。`scope bind` は表示面間の同期契約であり別概念 |
 | **referential state** | materialized record の参照解決状態 | materialization, canonical source | `resolved / indexed-only / inaccessible / stale / missing / tombstoned / unresolved`。参照不能を deletion と同一視しない |
-| **journal** | Command / operation の因果と履歴をreplay可能に保存する論理記録 | portable snapshot, Recovery Gate, proposal journal | 操作の歴史。物理DB複製であるbackupと区別する |
+| **journal** | Command / operation の因果と履歴をreplay可能に保存する論理記録 | portable snapshot, Recovery Gate, proposal journal | 操作の歴史。物理DB複製であるbackupと区別する。Rapid の保存では、確定した変更を確定順に追記するだけの記録（書き換え・削除をしない）で、1 件は Command に通し番号、record ごとの基準 revision、record 単位の変更前後の値を加えたもの。単位は workspace × 書き手端末。journal への追記を確定の境界とする。Undo・復旧・同期・materialization の入力になる。詳細は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) |
 | **backup** | database engine等の物理状態を複製し、同系統のrestoreに使うartifact | journal, portable snapshot, Recovery Gate | engine依存の補助復旧経路。単独ではRecovery Gateの根拠にしない |
 | **portable snapshot** | engineに依存しない論理直列化からsemantic stateをrebuildする復旧artifact | journal, backup, Recovery Gate | M3E-owned accepted graphはportable snapshot + journal replayのみでの復旧実証を要求する |
 | **Rebuild Gate** | source-materialized recordをcanonical owner source群から再構築できることを確認するgate | canonical source, materialization, Recovery Gate | 他者が所有する正本からderived read modelを再生成するgate |
