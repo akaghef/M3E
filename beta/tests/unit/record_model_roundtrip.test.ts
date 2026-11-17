@@ -199,8 +199,8 @@ describe("record model invariants (post-migration-spec section 9)", () => {
     { kind: "node", id: "root", mapId: "m", text: "root", rev: 0 },
     { kind: "node", id: "a", mapId: "m", text: "a", rev: 0 },
     { kind: "node", id: "b", mapId: "m", text: "b", rev: 0 },
-    { kind: "connection", id: "e_a", mapId: "m", type: "edge", source: "root", target: "a", ord: "1", rev: 0 },
-    { kind: "connection", id: "e_b", mapId: "m", type: "edge", source: "a", target: "b", ord: "1", rev: 0 },
+    { kind: "connection", id: "e_a", mapId: "m", type: "edge", source: "root", target: "a", ord: "1", scopeId: "s_root", rev: 0 },
+    { kind: "connection", id: "e_b", mapId: "m", type: "edge", source: "a", target: "b", ord: "1", scopeId: "s_root", rev: 0 },
     { kind: "scope", id: "s_root", mapId: "m", rootNodeId: "root", rev: 0 },
   ];
   const rules = (records: SnapshotRecord[]) => [...new Set(checkInvariants(records).map((p) => p.rule))].sort();
@@ -211,8 +211,8 @@ describe("record model invariants (post-migration-spec section 9)", () => {
 
   it("1: a non-root node needs exactly one incoming edge and the root none", () => {
     expect(rules(base().filter((r) => !(r.kind === "connection" && r.id === "e_b")))).toEqual([1]);
-    expect(rules([...base(), { kind: "connection", id: "e_b2", mapId: "m", type: "edge", source: "root", target: "b", ord: "2", rev: 0 }])).toEqual([1]);
-    expect(rules([...base(), { kind: "connection", id: "e_r", mapId: "m", type: "edge", source: "b", target: "root", ord: "1", rev: 0 }])).toContain(1);
+    expect(rules([...base(), { kind: "connection", id: "e_b2", mapId: "m", type: "edge", source: "root", target: "b", ord: "2", scopeId: "s_root", rev: 0 }])).toEqual([1]);
+    expect(rules([...base(), { kind: "connection", id: "e_r", mapId: "m", type: "edge", source: "b", target: "root", ord: "1", scopeId: "s_root", rev: 0 }])).toContain(1);
     expect(rules(base().map((r) => (r.kind === "map" ? { ...r, rootNodeId: "nope" } : r)))).toContain(1);
   });
 
@@ -227,7 +227,7 @@ describe("record model invariants (post-migration-spec section 9)", () => {
     const alias = (id: string, target: string | undefined, more: Loose = {}): SnapshotRecord =>
       ({ kind: "node", id, mapId: "m", nodeType: "alias", text: id, alias: { ...(target ? { target } : {}), ...more }, rev: 0 }) as SnapshotRecord;
     const edge = (id: string, source: string, target: string): SnapshotRecord =>
-      ({ kind: "connection", id, mapId: "m", type: "edge", source, target, ord: "9", rev: 0 });
+      ({ kind: "connection", id, mapId: "m", type: "edge", source, target, ord: "9", scopeId: "s_root", rev: 0 });
     expect(rules([...base(), alias("al", "a"), edge("e_al", "root", "al")])).toEqual([]);
     expect(rules([...base(), alias("al", "gone"), edge("e_al", "root", "al")])).toEqual([3]);
     expect(rules([...base(), alias("al", "gone", { broken: true }), edge("e_al", "root", "al")])).toEqual([]);
@@ -246,16 +246,37 @@ describe("record model invariants (post-migration-spec section 9)", () => {
     expect(rules([...base(), link("g1", "a", "gone")])).toEqual([4]);
     expect(rules([...base(), link("g1", "g1", "a")])).toEqual([4]);
     const dangling = base().map((r) => (r.kind === "connection" && r.id === "e_b" ? { ...r, source: "gone" } : r));
-    expect(rules(dangling)).toEqual([4]);
+    // the edge also loses its place on a scope: its parent is on no scope
+    expect(rules(dangling)).toEqual([4, 5]);
   });
 
-  it("5: a scope root exists, is not an alias, and roots one scope", () => {
+  it("5: a scope root exists and is not an alias; one node may root several scopes (DA60)", () => {
     expect(rules([...base(), { kind: "scope", id: "s_x", mapId: "m", rootNodeId: "gone", rev: 0 }])).toEqual([5]);
-    expect(rules([...base(), { kind: "scope", id: "s_2", mapId: "m", rootNodeId: "root", rev: 0 }])).toEqual([5]);
+    expect(rules([...base(), { kind: "scope", id: "s_2", mapId: "m", rootNodeId: "root", rev: 0 }])).toEqual([]);
     expect(rules([
       ...base().map((r) => (r.kind === "node" && r.id === "b" ? { ...r, nodeType: "alias", alias: { target: "a" } } : r)),
       { kind: "scope", id: "s_b", mapId: "m", rootNodeId: "b", rev: 0 },
     ])).toEqual([5]);
+  });
+
+  it("5a: an edge lies on a scope whose edges form one tree under its root (DA59)", () => {
+    const edge = (id: string, source: string, target: string, scopeId: string | undefined): SnapshotRecord =>
+      ({ kind: "connection", id, mapId: "m", type: "edge", source, target, ord: "9", ...(scopeId ? { scopeId } : {}), rev: 0 }) as SnapshotRecord;
+    const node = (id: string): SnapshotRecord => ({ kind: "node", id, mapId: "m", text: id, rev: 0 });
+    const scope = (id: string, rootNodeId: string): SnapshotRecord => ({ kind: "scope", id, mapId: "m", rootNodeId, rev: 0 });
+    // X = a opens two scopes; its child b stays on the root scope with a, c and d lie on a's scopes,
+    // and e under c stays on c's scope.
+    const planes = [
+      ...base(), scope("s_a1", "a"), scope("s_a2", "a"),
+      node("c"), node("d"), node("e"),
+      edge("e_c", "a", "c", "s_a1"), edge("e_d", "a", "d", "s_a2"), edge("e_e", "c", "e", "s_a1"),
+    ];
+    expect(rules(planes)).toEqual([]);
+    // e cannot jump to the other scope of a: its parent c is neither the root of s_a2 nor on it
+    expect(rules(planes.map((r) => (r.kind === "connection" && r.id === "e_e" ? { ...r, scopeId: "s_a2" } : r)))).toEqual([5]);
+    // an edge needs a scope, and an existing one
+    expect(rules(planes.map((r) => (r.kind === "connection" && r.id === "e_e" ? { ...r, scopeId: undefined } : r)))).toEqual([5]);
+    expect(rules(planes.map((r) => (r.kind === "connection" && r.id === "e_e" ? { ...r, scopeId: "s_gone" } : r)))).toEqual([5]);
   });
 
   it("6: a connection id is unique across edge and GraphLink", () => {
@@ -296,6 +317,7 @@ describe("record model invariants (post-migration-spec section 9)", () => {
         links: { l: { id: "l", sourceNodeId: "root", targetNodeId: "nowhere" } },
       },
     }], { now: NOW });
-    expect(rules(records)).toEqual([2, 3, 4]);
+    // 5: the edges under the cycle and the orphan reach no scope root
+    expect(rules(records)).toEqual([2, 3, 4, 5]);
   });
 });

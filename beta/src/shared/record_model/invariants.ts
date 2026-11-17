@@ -127,15 +127,34 @@ export function checkInvariants(records: SnapshotRecord[]): InvariantProblem[] {
     }
   }
 
-  // 5: a scope root is an existing node, not an alias, and roots at most one scope.
-  const scopeByRoot = new Map<string, string>();
+  // 5: a scope root is an existing node and not an alias. One node may root several scopes (DA60).
   for (const scope of scopes.values()) {
     const root = nodes.get(scope.rootNodeId);
     if (!root) add(5, scope, `root node ${scope.rootNodeId ?? "(none)"} does not exist`);
     else if (isAlias(root)) add(5, scope, `root node ${scope.rootNodeId} is an alias`);
-    const other = scopeByRoot.get(scope.rootNodeId);
-    if (other !== undefined) add(5, scope, `node ${scope.rootNodeId} is already the root of scope ${other}`);
-    else scopeByRoot.set(scope.rootNodeId, scope.id);
+  }
+
+  // 5a: an edge lies on an existing scope of its map, and the edges of one scope form one tree
+  // under the scope root: the edge's parent is the root of that scope, or the parent's own
+  // incoming edge lies on the same scope (DA59). Checked edge by edge.
+  const incomingEdge = new Map<string, EdgeConnectionRecord>();
+  for (const edge of edges) if (!incomingEdge.has(edge.target)) incomingEdge.set(edge.target, edge);
+  for (const edge of edges) {
+    if (edge.scopeId === undefined) {
+      add(5, edge, "edge has no scope");
+      continue;
+    }
+    const scope = scopes.get(edge.scopeId);
+    if (!scope) {
+      add(5, edge, `scope ${edge.scopeId} does not exist`);
+      continue;
+    }
+    if (scope.mapId !== edge.mapId) add(5, edge, `scope ${edge.scopeId} belongs to another map`);
+    if (scope.rootNodeId === edge.source) continue;
+    const parentEdge = incomingEdge.get(edge.source);
+    if (parentEdge === undefined || parentEdge.scopeId !== edge.scopeId) {
+      add(5, edge, `edge lies on scope ${edge.scopeId}, but its parent ${edge.source} is neither that scope's root nor on that scope`);
+    }
   }
 
   // 7: details, linear text, surface settings, placement values and annotations point at something that exists.

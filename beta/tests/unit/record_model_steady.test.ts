@@ -208,6 +208,44 @@ describe("projectMap: scope records follow folder nodes", () => {
     expect(withoutF1.find((record) => record.kind === "annotation" && record.id === "a1")).toMatchObject({ extra: { scopeId: "f1" } });
   });
 
+  it("puts each edge on the scope of its nearest scope root, and scopen rewrites only the edges of that plane (DA59)", () => {
+    // root > x > y > z, where y is already a scope; then x becomes one.
+    const state = (xFolder: boolean): Loose => ({
+      rootId: "root",
+      nodes: {
+        root: node("root", null, ["x"]),
+        x: node("x", "root", ["y", "w"], xFolder ? { nodeType: "folder" } : {}),
+        w: node("w", "x"),
+        y: node("y", "x", ["z"], { nodeType: "folder" }),
+        z: node("z", "y"),
+      },
+    });
+    const scopeOf = (records: SnapshotRecord[], root: string) =>
+      (records.find((record) => record.kind === "scope" && record.rootNodeId === root) as { id: string }).id;
+    const before = stamp(projectMap(WS, { id: "m", state: state(false) }, []), 1);
+    const beforeEdges = edges(before);
+    expect(beforeEdges.get("x")!.scopeId).toBe(scopeOf(before, "root"));
+    expect(beforeEdges.get("y")!.scopeId).toBe(scopeOf(before, "root"));
+    expect(beforeEdges.get("w")!.scopeId).toBe(scopeOf(before, "root"));
+    expect(beforeEdges.get("z")!.scopeId).toBe(scopeOf(before, "y"));
+
+    const after = projectMap(WS, { id: "m", state: state(true) }, before);
+    const afterEdges = edges(after);
+    const sx = scopeOf(after, "x");
+    // The edges out of x move to x's scope and are rewritten; the edge into x stays where it was,
+    // and the edge on y's scope is the very same record (not rewritten).
+    expect(afterEdges.get("y")).toMatchObject({ scopeId: sx, rev: undefined });
+    expect(afterEdges.get("w")).toMatchObject({ scopeId: sx, rev: undefined });
+    expect(afterEdges.get("x")).toMatchObject({ scopeId: scopeOf(after, "root"), rev: 1 });
+    expect(afterEdges.get("z")).toMatchObject({ scopeId: scopeOf(after, "y"), rev: 1 });
+
+    // A remembered projection notices the change of scope although x's children did not change.
+    const projector = new MapProjector(WS);
+    const first = projector.project({ id: "m", state: state(false) }, new Map(before.map((record) => [recordRk(record), record])));
+    const second = projector.project({ id: "m", state: state(true) }, first.records);
+    expect(edges([...second.records.values()]).get("w")!.scopeId).toBe(sx);
+  });
+
   it("gives a scope that comes back the same deterministic id", () => {
     const base = projectMap(WS, { id: "m", state: richState() }, []);
     const scopeId = (base.find((record) => record.kind === "scope" && record.rootNodeId === "f1") as { id: string }).id;

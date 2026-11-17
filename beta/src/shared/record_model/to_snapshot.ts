@@ -1,6 +1,7 @@
 // Current map rows -> snapshot records.
 // Contract: .kiro/specs/rapid-persistence-redesign/snapshot-format.md section 3.
 
+import { makeEdgeScopeRoot } from "./edge_scope";
 import { sha256Hex, type HashFn } from "./hash";
 import { initialKeys } from "./order_key";
 import {
@@ -237,6 +238,20 @@ function convertMap(
     }
   }
 
+  // --- scope ---
+  // One per map root node and per `folder` node. Keyed here by the current node id.
+  const scopeIdByRoot = new Map<string, string>();
+  for (const [oldId, node] of context.nodes) {
+    if (oldId === state.rootId || node.nodeType === "folder") {
+      scopeIdByRoot.set(oldId, makeId("s_", mapId, "scope", nodeIds.get(oldId)!));
+    }
+  }
+  // The scope each edge lies on (DA59): the nearest scope root among the parent and its ancestors.
+  const edgeScopeRoot = makeEdgeScopeRoot(
+    (id) => { const parent = nodeByOldId.get(id)?.parentId; return typeof parent === "string" ? parent : undefined; },
+    (id) => scopeIdByRoot.has(id),
+  );
+
   // --- connection: edge ---
   // Children grouped by the parent they name; order follows the parent's `children`,
   // then the children the parent does not list, by current id.
@@ -275,6 +290,8 @@ function convertMap(
       const label = edgeLabels.get(childOldId);
       if (present(label) && label !== "") edge.label = label;
       edge.ord = keys[index];
+      const scopeRoot = edgeScopeRoot(parentOldId);
+      if (scopeRoot !== undefined) edge.scopeId = scopeIdByRoot.get(scopeRoot)!;
       edge.rev = 0;
       records.push(edge as unknown as EdgeConnectionRecord);
     });
@@ -299,14 +316,6 @@ function convertMap(
     records.push(record as unknown as GraphLinkConnectionRecord);
   }
 
-  // --- scope ---
-  // One per map root node and per `folder` node. Keyed here by the current node id.
-  const scopeIdByRoot = new Map<string, string>();
-  for (const [oldId, node] of context.nodes) {
-    if (oldId === state.rootId || node.nodeType === "folder") {
-      scopeIdByRoot.set(oldId, makeId("s_", mapId, "scope", nodeIds.get(oldId)!));
-    }
-  }
   /** Current scope reference (`<nodeId>` or `scope:<nodeId>`) -> current root node id. */
   const scopeRootOf = (ref: unknown): string | undefined => {
     if (typeof ref !== "string") return undefined;

@@ -87,7 +87,8 @@ describe("snapshot CLI", () => {
     writeDb(db, [{ id: "m1", state: { rootId: "root", nodes: { root: node("root", null), lost: node("lost", "nowhere") } } }]);
     const run = io();
     expect(main(["--db", db, "--workspace", "ws", "--out", out], run.io)).toBe(1);
-    expect(run.out).toContain("invariant problems: 1");
+    // the lost edge has no parent and reaches no scope
+    expect(run.out).toContain("invariant problems: 2");
     expect(fs.existsSync(out)).toBe(true);
   });
 

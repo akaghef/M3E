@@ -17,6 +17,7 @@ import { fromSnapshot } from "./from_snapshot";
 import { sha256Hex, type HashFn } from "./hash";
 import { recordKeyString, sortRecords } from "./jsonl";
 import { initialKeys, isOrderKey, keyBetween } from "./order_key";
+import { makeEdgeScopeRoot } from "./edge_scope";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
   compareStrings,
@@ -247,6 +248,8 @@ interface NodeMemo {
 interface ParentMemo {
   gen: number;
   parentId: string;
+  /** Scope the edges lay on when the memo was made; a change re-emits them. */
+  scopeId: string | undefined;
   members: NodeMemo[];
   childIds: string[];
 }
@@ -570,11 +573,27 @@ export class MapProjector {
       }
     }
 
+    // --- scope ids ---
+    const scopeIdByRoot = new Map<string, string>();
+    for (const root of scopeRoots) {
+      const before = this.scopeByRoot.get(root);
+      scopeIdByRoot.set(root, before !== undefined ? before.id : makeId("s_", "scope", root));
+    }
+    // The scope each edge lies on (DA59): the nearest scope root among the parent and its ancestors.
+    const edgeScopeRoot = makeEdgeScopeRoot(
+      (id) => { const node = sourceNodes[id]; return isDict(node) && typeof node.parentId === "string" ? node.parentId : undefined; },
+      (id) => scopeIdByRoot.has(id),
+    );
+
+    const edgeScopeIdByParent = new Map<string, string | undefined>();
     // --- connection: edge ---
     const orderedChildren = new Map<string, string[]>();
     for (const [parentId, members] of childrenByParent) {
       // `members` are indexes into nodeIds, in id order.
       const parentNode = sourceNodes[parentId];
+      const edgeScopeRootId = edgeScopeRoot(parentId);
+      const edgeScopeId = edgeScopeRootId !== undefined ? scopeIdByRoot.get(edgeScopeRootId) : undefined;
+      edgeScopeIdByParent.set(parentId, edgeScopeId);
       let parentMemo = warm && isDict(parentNode) ? this.parentMemo.get(parentNode) : undefined;
       if (parentMemo === undefined && warm && isDict(parentNode)) {
         // A copy of the parent the last state had, with the very same list of children.
@@ -584,7 +603,7 @@ export class MapProjector {
           if (parentMemo !== undefined) this.parentMemo.set(parentNode, parentMemo);
         }
       }
-      if (parentMemo !== undefined && (parentMemo.gen === previousGen || parentMemo.gen === gen) && parentMemo.parentId === parentId && parentMemo.members.length === members.length) {
+      if (parentMemo !== undefined && (parentMemo.gen === previousGen || parentMemo.gen === gen) && parentMemo.parentId === parentId && parentMemo.scopeId === edgeScopeId && parentMemo.members.length === members.length) {
         let same = true;
         for (let i = 0; same && i < members.length; i += 1) {
           if (memos[members[i]] !== parentMemo.members[i]) same = false;
@@ -633,12 +652,13 @@ export class MapProjector {
         const label = memos[ordered[i]].label;
         if (label !== undefined) record.label = label;
         record.ord = keys[i];
+        if (edgeScopeId !== undefined) record.scopeId = edgeScopeId;
         record.rev = undefined;
         this.edgeByTarget.set(childId, put(record as unknown as EdgeConnectionRecord));
       }
       orderedChildren.set(parentId, childIds);
       if (isDict(parentNode)) {
-        this.parentMemo.set(parentNode, { gen, parentId, members: members.map((index) => memos[index]), childIds });
+        this.parentMemo.set(parentNode, { gen, parentId, scopeId: edgeScopeId, members: members.map((index) => memos[index]), childIds });
       }
     }
     if (this.edgeByTarget.size !== edgeCount) {
@@ -671,12 +691,6 @@ export class MapProjector {
       linkRecords.push(put(record as unknown as SnapshotRecord));
     }
 
-    // --- scope ids ---
-    const scopeIdByRoot = new Map<string, string>();
-    for (const root of scopeRoots) {
-      const before = this.scopeByRoot.get(root);
-      scopeIdByRoot.set(root, before !== undefined ? before.id : makeId("s_", "scope", root));
-    }
     const scopeRootOf = (ref: unknown): string | undefined => {
       if (typeof ref !== "string") return undefined;
       if (scopeIdByRoot.has(ref)) return ref;
@@ -894,7 +908,7 @@ export class MapProjector {
         const parentNode = stateNodes[parentId];
         const childIds = orderedChildren.get(parentId);
         if (!isDict(parentNode) || childIds === undefined || parentNode === sourceNodes[parentId]) continue;
-        this.parentMemo.set(parentNode, { gen, parentId, members: members.map((index) => memos[index]), childIds });
+        this.parentMemo.set(parentNode, { gen, parentId, scopeId: edgeScopeIdByParent.get(parentId), members: members.map((index) => memos[index]), childIds });
       }
     }
 
