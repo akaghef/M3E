@@ -13731,7 +13731,7 @@ function loadPayload(payload: unknown): void {
 }
 
 let startupSequenceDone = false;
-function startupScopeDrawPending(doc: SavedDoc): boolean {
+function startupScopeDrawPending(doc: SavedMap): boolean {
   if (startupSequenceDone) return false;
   const id = firstQueryParam(queryParams, ["scope", "scopeId"]);
   return !!id && !!doc.state.nodes[id] && id !== doc.state.rootId;
