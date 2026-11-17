@@ -13722,11 +13722,19 @@ function loadPayload(payload: unknown): void {
         .filter((n) => n.collapsed === true)
         .map((n) => n.id),
     );
-    render();
+    // At startup the URL's scope is drawn by the startup sequence; drawing the home scope first would draw twice.
+    if (!startupScopeDrawPending(map)) render();
     setStatus("Loaded.");
   } catch (err) {
     setStatus((err as Error).message, true);
   }
+}
+
+let startupSequenceDone = false;
+function startupScopeDrawPending(doc: SavedDoc): boolean {
+  if (startupSequenceDone) return false;
+  const id = firstQueryParam(queryParams, ["scope", "scopeId"]);
+  return !!id && !!doc.state.nodes[id] && id !== doc.state.rootId;
 }
 
 function resetCamera(): void {
@@ -17229,6 +17237,7 @@ syncAccessModeUi();
 updateCloudSyncUi();
 
 void initializeDocument().then(() => {
+  startupSequenceDone = true;
   if (fatalLoadError || !map) {
     return;
   }
