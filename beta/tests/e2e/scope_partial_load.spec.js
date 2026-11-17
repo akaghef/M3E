@@ -383,7 +383,7 @@ test("a forced whole-map save is blocked in scope view", async ({ page, request 
   expect(log.wholePosts).toBe(0);
 });
 
-test("entries open as their own page and an external change reloads the scope view", async ({ page, request }) => {
+test("entries open in the same page and an external change reloads the scope view", async ({ page, request }) => {
   test.setTimeout(240_000);
   const mapId = uniqueMapId("nav");
   const full = largeScopedMap();
@@ -405,7 +405,8 @@ test("entries open as their own page and an external change reloads the scope vi
   expect(log.scopeViewGets.length).toBeGreaterThanOrEqual(2);
   expect(log.wholeGets).toBe(0);
 
-  // Entering an entry navigates to that scope, still as a scope view.
+  // Entering an entry moves to that scope, still as a scope view, without loading the page again.
+  await page.evaluate(() => { window.__samePage = true; });
   await page.keyboard.press("ArrowRight");
   await expectSelected(page, "Own group 0");
   await press(page, "ArrowDown", 25);
@@ -422,6 +423,7 @@ test("entries open as their own page and an external change reloads the scope vi
   await page.waitForURL((url) => url.searchParams.get("scope") === SCOPE && url.searchParams.get("partial") === "1", { timeout: 30_000 });
   await expect(page.locator("#board")).toHaveAttribute("data-ready", "true", { timeout: 60_000 });
   await expectSelected(page, "Opened scope");
+  expect(await page.evaluate(() => window.__samePage === true)).toBe(true);
   expect(log.wholeGets).toBe(0);
   expect(log.wholePosts).toBe(0);
 });

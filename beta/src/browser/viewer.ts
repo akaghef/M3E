@@ -4470,6 +4470,8 @@ scopeView.init({
   currentScopeId: () => currentScopeRootId(),
   resetScope: (id, history) => { viewState.currentScopeId = viewState.currentScopeRootId = id; viewState.scopeHistory = history; setSingleSelection(id, false); },
   flush: () => saveDocToLocalDb(false),
+  mapId: () => LOCAL_MAP_ID,
+  show: (payload) => { loadPayload(payload); triggerCameraMove("scope"); board.focus({ preventScroll: true }); },
 });
 
 function showFatalLoadError(title: string, detail: string): void {
