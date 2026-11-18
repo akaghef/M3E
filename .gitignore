@@ -115,3 +115,5 @@ projects/PJ04_MermaidSystemLangGraph/runtime/checkpoints.sqlite
 # Root-local TLS material (for example Tailscale certificates).
 /*.key
 /*.crt
+
+__pycache__/
