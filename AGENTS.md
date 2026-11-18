@@ -196,7 +196,7 @@ A Glossary term change (a rename, or a new term replacing an old wording) is one
 
 The swept text states only the current terms, as if they had always been the terms. It carries no change history: no former-name notes, no "renamed from", no "previously", no rename dates, and no warning not to use the old name. The history lives in git commit messages only. A worker's output that adds any of these is rejected.
 
-A term change to a basic term (node, edge, scope and the like) is a large decision; do not start editing when a name is picked. First settle with akaghef the whole term set (including the names derived from it) and the range (documents, agent instructions and memory, records, MCP, code, stored data). Then classify every occurrence by meaning, because a term change can change the meaning of text it does not touch. A scripted replacement may only be a draft and is never the delivery. The classification and the sweep go to an external Codex worker on `gpt-6.1-sol` at effort `high`, read-only first; the session reviews its report before any edit.
+A term change to a basic term (node, edge, scope and the like) is a large decision; do not start editing when a name is picked. First settle with akaghef the whole term set (including the names derived from it) and the range (documents, agent instructions and memory, records, MCP, code, stored data). Then classify every occurrence by meaning, because a term change can change the meaning of text it does not touch. A scripted replacement may only be a draft and is never the delivery. The classification and the rewrite go to an external Codex worker on `gpt-6.1-sol` at effort `high`, which edits the files itself in one pass; the session reviews the resulting diff.
 
 ## Asking akaghef to Decide
 
