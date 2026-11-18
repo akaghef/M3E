@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-11-18-001
+
+- Date: 2026-11-18
+- Topic: node などが表示する短い名前を label と呼ぶ（Neo4j label との区別）
+- Status: accepted
+- Decision:
+  - node、scope、relation edge、map、workspace が表示する短い名前を、M3E では label と呼ぶ。text とは呼ばない。
+  - Neo4j の分類の札を指すときは、必ず「Neo4j label」と書く。M3E の nodeType や tag は Neo4j label に写せる。
+  - tag は分類の印を指す。
+- Why: text は nodeType の既定値 `text` と同じ語になり、details や note の本文とも紛れる。relation edge・scope・map・workspace はすでに label を使っている。RDF の `rdfs:label`、Wikidata、Graphviz など、表示名を label と呼ぶ用法が主流で、分類の札を label と呼ぶ Neo4j は少数派である。
+- Next: Glossary に label と tag を載せる。node の record の欄名 `text` を `label` にそろえるかは保存データの schema の変更なので、一度きりの data migration に含めるかを別に決める。
+- Source: akaghef の 2026-11-18 の決定（「labelのままでよい」）。
+
 ## 2026-10-17-001
 
 - Date: 2026-10-17
