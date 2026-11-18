@@ -685,6 +685,7 @@ let cameraMotion: {
   from: CameraTarget;
   to: CameraTarget;
   startedAt: number | null;
+  primed: boolean;
   durationMs: number;
 } | null = null;
 let annotationTool: AnnotationTool = "select";
@@ -3975,6 +3976,27 @@ function updateScopeSummary(): void {
   scopeSummaryEl.textContent = `outside: parent ${parentLabel} | child scopes ${childSummary}`;
 }
 
+/**
+ * Where a node is on the screen. A scope change draws another scene in other coordinates;
+ * the node both scenes share (the entry, which is the root of the scope it opens) is kept
+ * at the same place and size on the screen, so the scene does not jump when it is swapped.
+ * The camera then moves from there to the fit of the new scope in one motion.
+ */
+interface ScopeAnchor { id: string; x: number; y: number; w: number }
+function captureScopeAnchor(nodeId: string): ScopeAnchor | null {
+  if (!viewState.cameraMove.toggle || viewState.cameraMove.preset === "off") return null;
+  const p = lastLayout?.pos[nodeId];
+  if (!p || !(p.w > 0) || !Number.isFinite(p.x + p.y + p.w)) return null;
+  return { id: nodeId, x: viewState.cameraX + p.x * viewState.zoom, y: viewState.cameraY + p.y * viewState.zoom, w: p.w * viewState.zoom };
+}
+function alignToScopeAnchor(anchor: ScopeAnchor | null): void {
+  const p = anchor ? lastLayout?.pos[anchor.id] : null;
+  if (!anchor || !p || !(p.w > 0) || !Number.isFinite(p.x + p.y + p.w)) return;
+  cancelCameraMotion();
+  const zoom = clampZoom(anchor.w / p.w);
+  applyCameraTarget({ zoom, cameraX: anchor.x - p.x * zoom, cameraY: anchor.y - p.y * zoom });
+}
+
 function enterScope(scopeNodeId: string): boolean {
   if (!map) {
     return false;
@@ -3984,13 +4006,16 @@ function enterScope(scopeNodeId: string): boolean {
     setStatus("Only folder nodes can open a scope.", true);
     return false;
   }
+  if (scopeView.moveTo(node.id)) return true;
   viewState.currentScopeRootId = node.id;
   viewState.currentScopeId = node.id;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(node.id);
   viewState.surfaceSpace = inferSurfaceSpaceForScope(node.id, viewState.surfaceViewMode);
   viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(node.id);
   setSingleSelection(preferredSelectionForScope(node.id), false);
+  const anchor = captureScopeAnchor(node.id);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus(`Entered scope: ${uiLabel(node)}`);
   board.focus({ preventScroll: true });
@@ -4008,6 +4033,7 @@ function exitScope(): boolean {
   }
   // Out to the scope this scope's root shows in as an entry (DA59).
   const nextScopeId = parentScopeRootOf(map.state.nodes, map.state.rootId, scopeRoot.id) || map.state.rootId;
+  if (scopeView.moveTo(nextScopeId)) return true;
   const exitedScopeId = scopeRoot.id;
   viewState.currentScopeRootId = nextScopeId;
   viewState.currentScopeId = nextScopeId;
@@ -4019,7 +4045,9 @@ function exitScope(): boolean {
       ? exitedScopeId
       : preferredSelectionForScope(nextScopeId);
   setSingleSelection(selectionAfterExit, false);
+  const anchor = captureScopeAnchor(exitedScopeId);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus("Returned to parent scope.");
   board.focus({ preventScroll: true });
@@ -4481,9 +4509,12 @@ scopeView.init({
   flush: () => saveDocToLocalDb(false),
   mapId: () => LOCAL_MAP_ID,
   show: (payload, fromScopeId) => {
-    loadPayload(payload);
+    // Entering: the entry becomes the root of the new scene. Leaving: the old root becomes an entry.
+    const targetId = (payload as { scopeView?: { scopeRootId?: string } } | null)?.scopeView?.scopeRootId ?? "";
+    const anchor = captureScopeAnchor(targetId) ?? captureScopeAnchor(fromScopeId);
     // Coming back out of a scope: its entry stays selected, as in the whole-map viewer.
-    if (map?.state.nodes[fromScopeId] && fromScopeId !== currentScopeRootId() && isNodeInScope(fromScopeId)) { setSingleSelection(fromScopeId, false); render(); }
+    loadPayload(payload, fromScopeId);
+    alignToScopeAnchor(anchor);
     triggerCameraMove("scope"); board.focus({ preventScroll: true });
   },
 });
@@ -5289,6 +5320,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     from,
     to: clampedTarget,
     startedAt: null,
+    primed: false,
     durationMs,
   };
   board.dataset.cameraMoving = "true";
@@ -5299,8 +5331,15 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     }
     const motion = cameraMotion;
     // Start after the pending scene presentation, not while it is being built.
-    // Otherwise a slow scope snapshot consumes the animation before its first frame.
-    if (motion.startedAt === null) motion.startedAt = performance.now();
+    // The first frame after a scope change also lays out and paints the new scene, and can
+    // take a large part of the motion. The clock starts on the frame after it, so that
+    // time is not counted as progress (it showed as a jump at the start of the zoom).
+    if (!motion.primed) {
+      motion.primed = true;
+      motion.raf = requestAnimationFrame(step);
+      return;
+    }
+    if (motion.startedAt === null) motion.startedAt = now;
     const rawT = Math.min(1, Math.max(0, (now - motion.startedAt) / motion.durationMs));
     const t = easeInOutCubic(rawT);
     viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
@@ -9514,6 +9553,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   if (scopeId === currentScopeId) {
     return;
   }
+  if (scopeView.moveTo(scopeId)) return;
   stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
@@ -9523,7 +9563,9 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(scopeId);
   setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
+  const anchor = captureScopeAnchor(scopeId);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
   updateScopeInUrl(scopeId);
@@ -9533,6 +9575,7 @@ function ExitScopeCommand(): void {
   if (!map || viewState.scopeHistory.length === 0) {
     return;
   }
+  if (scopeView.moveTo(viewState.scopeHistory[viewState.scopeHistory.length - 1]!)) return;
   stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   const exitedScopeId = normalizedCurrentScopeId();
   const previousScopeId = viewState.scopeHistory.pop()!;
@@ -9547,7 +9590,9 @@ function ExitScopeCommand(): void {
       : preferredSelectionForScope(viewState.currentScopeId);
   setSingleSelection(selectionAfterExit, false);
   normalizeSelectionState();
+  const anchor = captureScopeAnchor(exitedScopeId);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
   updateScopeInUrl(viewState.currentScopeId);
@@ -13698,7 +13743,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
-function loadPayload(payload: unknown): void {
+function loadPayload(payload: unknown, preferredSelectionId = ""): void {
   if (!scopeView.adopt(payload)) return;
   stopScatterAnimation(false); disperseForce.invalidate(); disperseForceDirty = false; disperseForceKey = "";
   finishGrab(false);
@@ -13735,6 +13780,11 @@ function loadPayload(payload: unknown): void {
         .filter((n) => n.collapsed === true)
         .map((n) => n.id),
     );
+    // A caller that knows which node should be selected says so before the draw, so the scope is drawn once.
+    if (preferredSelectionId && preferredSelectionId !== home && map.state.nodes[preferredSelectionId] && isNodeInScope(preferredSelectionId)) {
+      viewState.selectedNodeId = preferredSelectionId;
+      viewState.selectedNodeIds = new Set([preferredSelectionId]);
+    }
     // At startup the URL's scope is drawn by the startup sequence; drawing the home scope first would draw twice.
     if (!startupScopeDrawPending(map)) render();
     setStatus("Loaded.");

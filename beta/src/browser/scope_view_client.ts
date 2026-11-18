@@ -348,6 +348,18 @@ export const scopeView = {
     void leaveTo(current);
   },
 
+  /**
+   * Moves to a scope whose contents are not loaded (an entry or an ancestor scope). True when
+   * the move was started: the caller must not switch its own scope or draw, which would
+   * redraw the loaded scope once more for nothing before the new one arrives.
+   */
+  moveTo(scopeId: string): boolean {
+    if (!info || !host || scopeId === info.scopeRootId) return false;
+    if (!info.entries[scopeId] && !info.ancestors.some((ancestor) => ancestor.nodeId === scopeId)) return false;
+    void leaveTo(scopeId);
+    return true;
+  },
+
   /** Opens an entry as its own page. True when `nodeId` is an entry. */
   openEntry(nodeId: string): boolean {
     if (!info?.entries[nodeId]) return false;
