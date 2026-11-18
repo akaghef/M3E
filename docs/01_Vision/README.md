@@ -18,6 +18,7 @@
 - `Core_Principles.md` — 旧ファイル名からの互換案内
 - `Axes.md` — M3E の帯域軸
 - `Engine.md` — 思考の熱機関としての M3E（温度・循環・量の持ち方）
+- `LLM_Workbench.md` — LLM のワークベンチとしての M3E（否定の構造化、種別の変更、task）
 
 ## 置かないもの
 
