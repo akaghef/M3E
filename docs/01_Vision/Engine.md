@@ -80,5 +80,6 @@ LLM の温度は、出力の候補を \(p_i \propto e^{z_i/T}\) で選ぶとき�
 
 - [Principle.md](./Principle.md)
 - [Axes.md](./Axes.md)
+- [LLM_Workbench.md](./LLM_Workbench.md)
 - [../00_Home/Glossary.md](../00_Home/Glossary.md)
 - [../ideas/70_concept/thought_physics/README.md](../ideas/70_concept/thought_physics/README.md)

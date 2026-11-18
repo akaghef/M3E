@@ -21,3 +21,9 @@
 - Promoted: `docs/01_Vision/Engine.md`
 - Glossary: Engine、温度、体積、活動を追加
 - 保存の形（極性・温度の式・キャッシュの持ち方）は record schema の未決として残した
+
+## [2026-11-18] promote | LLM のワークベンチとしての M3E
+
+- Source: `docs/research/m3e_data_structure_conversations/raw_conversations/` の 2026-04-17「重要Resource管理のアプローチ」（極性）、2026-11-18 の akaghef との議論（種別の変更、task）
+- Promoted: `docs/01_Vision/LLM_Workbench.md`
+- 保存の形（task の欄、種別の変更の組み合わせ、alias の極性）は record schema の未決として残した

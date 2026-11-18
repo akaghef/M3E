@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 639
+- Indexed files: 640
 
 ## Reading Routes
 
@@ -35,6 +35,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [01_Vision/Axes.md](<./01_Vision/Axes.md>) | Markdown | M3E の帯域軸（粒度・構造・操作の連動進化） | M3E は同じ基礎データを **単位（粒度）と構造の性質が連動して変化する帯域** で扱う。 |
 | [01_Vision/Core_Principles.md](<./01_Vision/Core_Principles.md>) | Markdown | Core Principles | この文書の内容は [Principle.md](./Principle.md) に統合した。 |
 | [01_Vision/Engine.md](<./01_Vision/Engine.md>) | Markdown | Engine — 思考の熱機関としての M3E | 最終更新: 2026-11-18 |
+| [01_Vision/LLM_Workbench.md](<./01_Vision/LLM_Workbench.md>) | Markdown | M3E は LLM のワークベンチ | 最終更新: 2026-11-18 |
 | [01_Vision/Principle.md](<./01_Vision/Principle.md>) | Markdown | Principle | 最終更新: 2026-04-20 |
 | [01_Vision/README.md](<./01_Vision/README.md>) | Markdown | 01_Vision/ | **役割**: M3E の `Planning Hierarchy` 上位層を置く場所。原則・未達ギャップ・攻略方針を階層ごとに分けて管理する。 |
 | [01_Vision/Strategy.md](<./01_Vision/Strategy.md>) | Markdown | Strategy | 最終更新: 2026-09-14 |
