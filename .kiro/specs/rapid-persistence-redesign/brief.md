@@ -127,6 +127,8 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
 
 ### 物理配置の原則（2026-11-16、akaghef）
 
+複数端末の同期については、2026-11-18 の [同期の思想](./sync-principles.md) がこの節を更新する（確定者を remote に、複製の単位を scope に改めた）。
+
 - engine store（SQLite file、Neo4j store）は端末 local に置き、同期しない。journal から再生できる使い捨ての導出物として扱う。backup の対象は journal と portable snapshot で、engine store は守らない。
 - 複数 PC の一貫性は、workspace ごとに確定者（writer）を一つに固定して得る。個人 workspace の確定者は Mac、team workspace の確定者は Beta の server process。
 - 他の PC は Command を確定者へ送り、local には楽観適用して即描画する。offline の間は確定前の Command を local に保持し（RQ22）、再接続時に確定者へ流す。長期の単独作業は writer の役割を明示操作で移譲する。自動 failover は作らない。
