@@ -22,6 +22,7 @@
 
 ## 関連
 
+- DB（保存データ）: `Database_Spec.md`
 - Scope routing shortcuts: `Scope_Routing_Shortcuts.md`
 - Scope binding: `Scope_Binding.md`
 - 実装アーキテクチャ: `../04_Architecture/`
