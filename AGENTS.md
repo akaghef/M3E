@@ -25,7 +25,7 @@ The assigned AI owns delivery of the authorized task through verification, direc
 
 The canonical workflow is [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.md). Parallel work stays isolated. Do not start extra agents unless authorized.
 
-The AI agent that receives a task does the work itself and owns the result: it understands the request, reads the code, writes specs and code, tests, integrates into `dev-beta` and verifies on the normal Beta runtime (akaghef, 2026-10-25). It hands work to another AI agent only when akaghef asks for that in the current request; the handoff format and acceptance rules are in the [Director Playbook](docs/06_Operations/Director_Playbook.md), which every session reads before starting. An existing session works directly without launching a replacement worker.
+The AI agent that receives a task does the work itself and owns the result: it understands the request, reads the code, writes specs and code, tests, integrates into `dev-beta` and verifies on the normal Beta runtime (akaghef, 2026-10-25). It hands work to another AI agent only when akaghef asks for that in the current request; the handoff format and acceptance rules are in the [Director Playbook](docs/06_Operations/Director_Playbook.md), which every session reads before starting. An agent that runs sub agents for parts of its task follows [SUBAGENTS.md](SUBAGENTS.md). An existing session works directly without launching a replacement worker.
 
 Acceptance criteria and the verdict come from independent evidence (a regression test that fails without the fix, a check on the normal runtime), not from a report, including the agent's own.
 
@@ -164,7 +164,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 - Optional PRs remain available for explicit review requests. A review-only request does not authorize merge.
 - Destructive history changes, main/release operations, and secret changes still require explicit authorization.
 - When akaghef asks for an external Codex worker, use `scripts/codex.sh exec -m gpt-6-astra -c model_reasoning_effort=high ... < /dev/null` (read-only sandbox for investigation; `workspace-write` inside the task worktree for implementation), run it in the background, and do not redispatch the already active Codex session merely to satisfy this convention.
-- A sub agent (a helper AI agent a session runs for part of its own task: investigation, a second implementation or diagnosis pass, review) runs on Grok Build with model `grok-4.7-build-fast` and reasoning effort `high` (akaghef, 2026-11-18), instead of a built-in Claude subagent: Claude Code uses the `grok-build:grok-delegate` agent with `--model grok-4.7-build-fast --effort high`; other runtimes call `grok -m grok-4.7-build-fast --effort high`. This sets the model of a sub agent and does not widen when one may be used. A runtime akaghef names in the current request (for example an external Codex worker above) wins.
+- A sub agent (a helper AI agent a session runs for part of its own task) runs on Grok Build, `grok-4.7-build-fast` at effort `high`, through `scripts/ops/grok-sub.sh` (akaghef, 2026-11-18). An orchestrator follows [SUBAGENTS.md](SUBAGENTS.md) for runtime, isolation, briefs and acceptance. It does not widen when a sub agent may be used.
 
 ## Development Phase Constraints
 
