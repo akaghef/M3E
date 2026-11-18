@@ -27,3 +27,8 @@
 - Source: `docs/research/m3e_data_structure_conversations/raw_conversations/` の 2026-04-17「重要Resource管理のアプローチ」（極性）、2026-11-18 の akaghef との議論（種別の変更、task）
 - Promoted: `docs/01_Vision/LLM_Workbench.md`
 - 保存の形（task の欄、種別の変更の組み合わせ、alias の極性）は record schema の未決として残した
+
+## [2026-11-18] organize | DB 仕様書
+
+- Source: `.kiro/specs/rapid-persistence-redesign/` の record-schema・snapshot-format・post-migration-spec、ADR 014、`beta/src/node/record_store/` と `beta/src/node/neo4j_store/` の実装
+- Promoted: `docs/03_Spec/Database_Spec.md`（実装済み・決定・提案を節ごとに区別）

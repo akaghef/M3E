@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 640
+- Indexed files: 641
 
 ## Reading Routes
 
@@ -58,6 +58,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/data_import_export.md](<./03_Spec/data_import_export.md>) | Markdown | Data & Import/Export 設計ドキュメント | 最終更新: 2026-04-09 |
 | [03_Spec/Data_Model.md](<./03_Spec/Data_Model.md>) | Markdown | Data Model | この文書は、M3E の実体モデルに関する不変条件を定義する。 |
 | [03_Spec/Data_Runtime_Layout.md](<./03_Spec/Data_Runtime_Layout.md>) | Markdown | Data Runtime Layout | 永続データ実体。`data.sqlite` だけでなく backup, audit, cloud-sync, conflict-backups を含むフォルダ単位 |
+| [03_Spec/Database_Spec.md](<./03_Spec/Database_Spec.md>) | Markdown | DB 仕様書 | 最終更新: 2026-11-18 |
 | [03_Spec/Federated_Semantic_Source.md](<./03_Spec/Federated_Semantic_Source.md>) | Markdown | Federated Semantic Source | 最終更新: 2026-07-19 |
 | [03_Spec/Flash_Generation_API.md](<./03_Spec/Flash_Generation_API.md>) | Markdown | Flash 生成とスコープ追加 API | 外部エージェントは、通常 Beta のローカル API に生成入力と配置先を渡す。 |
 | [03_Spec/home_scope_navigator.md](<./03_Spec/home_scope_navigator.md>) | Markdown | Home Screen / Scope Navigator -- Design Document | Date: 2025-04-09 |
