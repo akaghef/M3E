@@ -4006,6 +4006,7 @@ function enterScope(scopeNodeId: string): boolean {
     setStatus("Only folder nodes can open a scope.", true);
     return false;
   }
+  if (scopeView.moveTo(node.id)) return true;
   viewState.currentScopeRootId = node.id;
   viewState.currentScopeId = node.id;
   viewState.surfaceViewMode = inferSurfaceViewModeForScope(node.id);
@@ -4032,6 +4033,7 @@ function exitScope(): boolean {
   }
   // Out to the scope this scope's root shows in as an entry (DA59).
   const nextScopeId = parentScopeRootOf(map.state.nodes, map.state.rootId, scopeRoot.id) || map.state.rootId;
+  if (scopeView.moveTo(nextScopeId)) return true;
   const exitedScopeId = scopeRoot.id;
   viewState.currentScopeRootId = nextScopeId;
   viewState.currentScopeId = nextScopeId;
@@ -9551,6 +9553,7 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   if (scopeId === currentScopeId) {
     return;
   }
+  if (scopeView.moveTo(scopeId)) return;
   stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   viewState.scopeHistory.push(currentScopeId);
   viewState.currentScopeId = scopeId;
@@ -9572,6 +9575,7 @@ function ExitScopeCommand(): void {
   if (!map || viewState.scopeHistory.length === 0) {
     return;
   }
+  if (scopeView.moveTo(viewState.scopeHistory[viewState.scopeHistory.length - 1]!)) return;
   stopScatterAnimation(true); disperseForce.invalidate(); disperseForceKey = "";
   const exitedScopeId = normalizedCurrentScopeId();
   const previousScopeId = viewState.scopeHistory.pop()!;
