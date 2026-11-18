@@ -3976,6 +3976,27 @@ function updateScopeSummary(): void {
   scopeSummaryEl.textContent = `outside: parent ${parentLabel} | child scopes ${childSummary}`;
 }
 
+/**
+ * Where a node is on the screen. A scope change draws another scene in other coordinates;
+ * the node both scenes share (the entry, which is the root of the scope it opens) is kept
+ * at the same place and size on the screen, so the scene does not jump when it is swapped.
+ * The camera then moves from there to the fit of the new scope in one motion.
+ */
+interface ScopeAnchor { id: string; x: number; y: number; w: number }
+function captureScopeAnchor(nodeId: string): ScopeAnchor | null {
+  if (!viewState.cameraMove.toggle || viewState.cameraMove.preset === "off") return null;
+  const p = lastLayout?.pos[nodeId];
+  if (!p || !(p.w > 0) || !Number.isFinite(p.x + p.y + p.w)) return null;
+  return { id: nodeId, x: viewState.cameraX + p.x * viewState.zoom, y: viewState.cameraY + p.y * viewState.zoom, w: p.w * viewState.zoom };
+}
+function alignToScopeAnchor(anchor: ScopeAnchor | null): void {
+  const p = anchor ? lastLayout?.pos[anchor.id] : null;
+  if (!anchor || !p || !(p.w > 0) || !Number.isFinite(p.x + p.y + p.w)) return;
+  cancelCameraMotion();
+  const zoom = clampZoom(anchor.w / p.w);
+  applyCameraTarget({ zoom, cameraX: anchor.x - p.x * zoom, cameraY: anchor.y - p.y * zoom });
+}
+
 function enterScope(scopeNodeId: string): boolean {
   if (!map) {
     return false;
@@ -3991,7 +4012,9 @@ function enterScope(scopeNodeId: string): boolean {
   viewState.surfaceSpace = inferSurfaceSpaceForScope(node.id, viewState.surfaceViewMode);
   viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(node.id);
   setSingleSelection(preferredSelectionForScope(node.id), false);
+  const anchor = captureScopeAnchor(node.id);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus(`Entered scope: ${uiLabel(node)}`);
   board.focus({ preventScroll: true });
@@ -4020,7 +4043,9 @@ function exitScope(): boolean {
       ? exitedScopeId
       : preferredSelectionForScope(nextScopeId);
   setSingleSelection(selectionAfterExit, false);
+  const anchor = captureScopeAnchor(exitedScopeId);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus("Returned to parent scope.");
   board.focus({ preventScroll: true });
@@ -4482,8 +4507,12 @@ scopeView.init({
   flush: () => saveDocToLocalDb(false),
   mapId: () => LOCAL_MAP_ID,
   show: (payload, fromScopeId) => {
+    // Entering: the entry becomes the root of the new scene. Leaving: the old root becomes an entry.
+    const targetId = (payload as { scopeView?: { scopeRootId?: string } } | null)?.scopeView?.scopeRootId ?? "";
+    const anchor = captureScopeAnchor(targetId) ?? captureScopeAnchor(fromScopeId);
     // Coming back out of a scope: its entry stays selected, as in the whole-map viewer.
     loadPayload(payload, fromScopeId);
+    alignToScopeAnchor(anchor);
     triggerCameraMove("scope"); board.focus({ preventScroll: true });
   },
 });
@@ -9531,7 +9560,9 @@ function EnterScopeCommand(scopeId = viewState.selectedNodeId): void {
   viewState.surfaceLayoutDirection = inferSurfaceLayoutDirectionForScope(scopeId);
   setSingleSelection(preferredSelectionForScope(scopeId), false);
   normalizeSelectionState();
+  const anchor = captureScopeAnchor(scopeId);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus(`Entered scope: ${getNode(scopeId).text}`);
   updateScopeInUrl(scopeId);
@@ -9555,7 +9586,9 @@ function ExitScopeCommand(): void {
       : preferredSelectionForScope(viewState.currentScopeId);
   setSingleSelection(selectionAfterExit, false);
   normalizeSelectionState();
+  const anchor = captureScopeAnchor(exitedScopeId);
   render();
+  alignToScopeAnchor(anchor);
   triggerCameraMove("scope");
   setStatus(`Exited scope: ${getNode(viewState.currentScopeId).text}`);
   updateScopeInUrl(viewState.currentScopeId);
