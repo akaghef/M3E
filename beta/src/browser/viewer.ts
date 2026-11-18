@@ -685,6 +685,7 @@ let cameraMotion: {
   from: CameraTarget;
   to: CameraTarget;
   startedAt: number | null;
+  primed: boolean;
   durationMs: number;
 } | null = null;
 let annotationTool: AnnotationTool = "select";
@@ -4481,9 +4482,8 @@ scopeView.init({
   flush: () => saveDocToLocalDb(false),
   mapId: () => LOCAL_MAP_ID,
   show: (payload, fromScopeId) => {
-    loadPayload(payload);
     // Coming back out of a scope: its entry stays selected, as in the whole-map viewer.
-    if (map?.state.nodes[fromScopeId] && fromScopeId !== currentScopeRootId() && isNodeInScope(fromScopeId)) { setSingleSelection(fromScopeId, false); render(); }
+    loadPayload(payload, fromScopeId);
     triggerCameraMove("scope"); board.focus({ preventScroll: true });
   },
 });
@@ -5289,6 +5289,7 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     from,
     to: clampedTarget,
     startedAt: null,
+    primed: false,
     durationMs,
   };
   board.dataset.cameraMoving = "true";
@@ -5299,8 +5300,15 @@ function moveCameraTo(target: CameraTarget, options: CameraMoveOptions = {}): vo
     }
     const motion = cameraMotion;
     // Start after the pending scene presentation, not while it is being built.
-    // Otherwise a slow scope snapshot consumes the animation before its first frame.
-    if (motion.startedAt === null) motion.startedAt = performance.now();
+    // The first frame after a scope change also lays out and paints the new scene, and can
+    // take a large part of the motion. The clock starts on the frame after it, so that
+    // time is not counted as progress (it showed as a jump at the start of the zoom).
+    if (!motion.primed) {
+      motion.primed = true;
+      motion.raf = requestAnimationFrame(step);
+      return;
+    }
+    if (motion.startedAt === null) motion.startedAt = now;
     const rawT = Math.min(1, Math.max(0, (now - motion.startedAt) / motion.durationMs));
     const t = easeInOutCubic(rawT);
     viewState.cameraX = lerp(motion.from.cameraX, motion.to.cameraX, t);
@@ -13698,7 +13706,7 @@ function extendSelectionBreadth(direction: -1 | 1): void {
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
-function loadPayload(payload: unknown): void {
+function loadPayload(payload: unknown, preferredSelectionId = ""): void {
   if (!scopeView.adopt(payload)) return;
   stopScatterAnimation(false); disperseForce.invalidate(); disperseForceDirty = false; disperseForceKey = "";
   finishGrab(false);
@@ -13735,6 +13743,11 @@ function loadPayload(payload: unknown): void {
         .filter((n) => n.collapsed === true)
         .map((n) => n.id),
     );
+    // A caller that knows which node should be selected says so before the draw, so the scope is drawn once.
+    if (preferredSelectionId && preferredSelectionId !== home && map.state.nodes[preferredSelectionId] && isNodeInScope(preferredSelectionId)) {
+      viewState.selectedNodeId = preferredSelectionId;
+      viewState.selectedNodeIds = new Set([preferredSelectionId]);
+    }
     // At startup the URL's scope is drawn by the startup sequence; drawing the home scope first would draw twice.
     if (!startupScopeDrawPending(map)) render();
     setStatus("Loaded.");
