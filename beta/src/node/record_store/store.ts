@@ -521,6 +521,19 @@ export class RecordWorkspaceStore {
   }
 
   /**
+   * Reads from the map's state without copying it: `read` gets the state the store itself
+   * holds and must not change it or keep a reference into it. A whole-state copy of a large
+   * map costs far more than reading one scope out of it. Returns null when the map has id
+   * aliases (the client then needs translated ids; use `getMapRow`).
+   */
+  readState<T>(mapId: string, read: (state: AppState, savedAt: string) => T): T | null {
+    this.assertOpen();
+    const entry = this.requireMap(mapId);
+    if (this.aliasesOf(entry).size !== 0) return null;
+    return read(this.warm(entry).state, this.savedAtOf(entry));
+  }
+
+  /**
    * Changes on every commit that changed the content of the map: the sequence number of the last
    * such commit. A commit that only sets row columns (tags, archived, pinned, source) leaves it.
    */

@@ -2515,8 +2515,18 @@ function scopeViewHeader(req: http.IncomingMessage): string | null {
 
 /** GET /api/maps/<id>?scope=<nodeId>&view=scope: only the nodes that belong to that scope. */
 function sendScopeView(res: http.ServerResponse, mapId: string, scopeId: string): void {
-  const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
   try {
+    // Record store: cut the scope out of the state the store holds. extractScopeView only reads
+    // its input and copies what it returns, so the whole map is not copied for one scope.
+    const store = activeRecordStore();
+    const direct = store?.hasMap(mapId)
+      ? store.readState(mapId, (held, savedAt) => (savedAt ? { savedAt, ...extractScopeView(held, scopeId) } : null))
+      : null;
+    if (direct) {
+      sendJson(res, 200, { version: 1, savedAt: direct.savedAt, state: direct.state, scopeView: direct.view });
+      return;
+    }
+    const savedDoc = RapidMvpModel.loadSavedMapFromSqlite(currentSqliteDbPath(), mapId);
     const { state, view } = extractScopeView(savedDoc.state, scopeId);
     sendJson(res, 200, { version: savedDoc.version, savedAt: savedDoc.savedAt, state, scopeView: view });
   } catch (err) {
