@@ -249,7 +249,7 @@ Acceptance requires `npm run typecheck` to cover the shared port, product import
 `viewer.ts` should retain product-specific adapter responsibilities:
 
 - choose display root from current scope,
-- normalize graph links,
+- normalize relation edges,
 - resolve visible children,
 - measure labels and boxes using existing product measuring functions,
 - translate viewState to `LayoutOptions`,
@@ -278,7 +278,7 @@ The lab app is a small inspection surface, not a product renderer.
 
 - sample selector: Tree / Radial / routing-scope for the first unit,
 - controls: mode, density, branchDirection, direction, depthAlign, spacing,
-- canvas: dummy rectangles at `LayoutResult.pos`, simple parent-child edge lines from the sample graph,
+- canvas: dummy rectangles at `LayoutResult.pos`, simple parent edge lines from the sample graph,
 - panels: input graph summary, boxSizes summary, output bounds/order, diff from golden output,
 - status: `green`, `changed`, `invalid sample`, `missing output`.
 

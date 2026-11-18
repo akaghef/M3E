@@ -21,7 +21,7 @@
 詳細と file:line は [research-current-state.md](./research-current-state.md) にある。
 
 - 保存先は SQLite の `maps` 表 1 つで、1 行が map 全体の `state_json` を持つ。journal・node ごとの revision・操作履歴はない。journal_mode は delete（WAL ではない）。同じ DB を開く複数プロセスを排他する仕組みもない。
-- 書込み経路は約 27 本（ブラウザ保存、MCP、import_structure、Flash、linear-text、GraphLink、Vault の import / watch / 保存、collab の push、cloud の push / pull、backup の restore、Home の操作、起動時の移行、CLI）。ほぼすべてが「全状態を読む → 変更する → 全置換する」。確定時に revision を確かめ直すのはブラウザ保存と MCP だけ。
+- 書込み経路は約 27 本（ブラウザ保存、MCP、import_structure、Flash、linear-text、relation edge、Vault の import / watch / 保存、collab の push、cloud の push / pull、backup の restore、Home の操作、起動時の移行、CLI）。ほぼすべてが「全状態を読む → 変更する → 全置換する」。確定時に revision を確かめ直すのはブラウザ保存と MCP だけ。
 - 消失経路として次を確認した。
   - 競合時のマージが nodes しか扱わない（IS117）
   - 自動保存の失敗が表示されない（IS116）
@@ -30,7 +30,7 @@
   - 別 tab からの受信で上書きする（IS120）
   - collab 保存が nodes しか送らない（IS121）
   - 先に全状態を読み、後で無条件に全置換する非同期処理（IS122）
-  - Vault の再 import が GraphLink と linear-text を引き継がない（IS123）
+  - Vault の再 import が relation edge と linear-text を引き継がない（IS123）
   - cloud の定期 push が基準なしで上書きする（IS124）
   - SSE の取りこぼしと、通知を出さない書込み経路（IS125）
 - Undo / Redo は全状態の複製。`import_structure` は node を 1 つ足すたびに全状態を複製する。外部更新は全体を再取得し、差分でなく全体を描き直す。
@@ -48,7 +48,7 @@
 - RQ25: 上記の全書き手が同じ確定経路を通る。移行後に map 全体を書き換える経路を残さない。
 - RQ26: portable snapshot と journal の replay だけで復旧できる（[ADR 008](../../../docs/09_Decisions/ADR_008_Federated_Canonical_Sources.md) の Recovery Gate と同じ基準）。
 - RQ27: 各 PC で offline でも編集できる。
-- RQ28: GraphLink は生成時から安定した ID を持つ。Rapid occurrence と Deep entity を結ぶ entity binding を後から足しても、二度目の data migration が要らない。
+- RQ28: relation edge は生成時から安定した ID を持つ。Rapid occurrence と Deep entity を結ぶ entity binding を後から足しても、二度目の data migration が要らない。
 
 ## Approach（未決）
 
@@ -66,7 +66,7 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 | 層 | 内容 | data migration |
 |---|---|---|
 | 書込み経路 | Command（intent・対象・対象の base revision・commandId・provenance）→ 検証 → 1 transaction で確定 → 確定した変更と revision を返す。端末は確定前の Command を保持し、保存応答・通知・再読み込みを同じ取り込み処理に通す | 不要 |
-| 論理レコードモデル | node、edge（親と兄弟順）、GraphLink、scope ごとの linear-text、属性。レコードごとの revision と、entity binding の置き場所を持つ | **この 1 回** |
+| 論理レコードモデル | node、parent edge（親と兄弟順）、relation edge、scope ごとの linear-text、属性。レコードごとの revision と、entity binding の置き場所を持つ | **この 1 回** |
 | 物理エンジン | 論理レコードモデルの保存先 | portable snapshot と journal があれば、切替は replay で済む |
 
 ### DC39 移行先の候補
@@ -95,11 +95,11 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 - 定量的な再審 trigger（commit 時間や payload 比の閾値で ADR の再審を自動起票する案）は採用しない（2026-11-16、akaghef）。過去に全体 JSON 方式が放置された原因は要件定義の重さとして扱う。
 - IS126（2026-11-16、akaghef）：兄弟順は fractional index。同一キーの衝突は端末 ID と連番の suffix で決定的に順序付け、キー長が閾値を超えた兄弟列だけ再配置する。
 - IS127（2026-11-16、akaghef）：Undo は逆向きの Command とする。Undo 自体が journal に載る。外部の変更を取り込んだ後は、自端末が発行した Command だけを Undo の対象にする。
-- IS135（2026-11-16、akaghef）：親子 edge の label は edge レコードの field に置く。reparent では label を既定で保持する。
+- IS135（2026-11-16、akaghef）：parent edge の label は parent edge レコードの field に置く。reparent では label を既定で保持する。
 - IS136（2026-11-16、akaghef）：attribute は独立したレコードにする。set-attribute / unset-attribute の Command 単位とレコード単位を一致させる。
 - IS143（2026-11-16、akaghef）：移行時に schema version 表を入れ、table 名も旧実装と変える。新形式の DB を旧実装が開いたら空の表を作らず即失敗させる（fail closed）。
 - IS144（2026-11-16、akaghef）：Schema v2 はこの移行に畳み込む方針。内容を精査したうえで、requirements で取り込む範囲を確定する。
-- 第 2 段のレコードの形（2026-11-16、akaghef。record-schema.md の DA1〜DA7）：線の総称 Connection に `relationType` を置く、node に時刻を持たせない、既定値と同じ欄を保存しない、scope の境界を scope のレコードで表し `folder` を払拭する、Surface View の旧い語彙は移行で書き換えない、正本の配置は木で別の場所からは alias、`nodeType` をスキーマの分岐にして種別ごとの内容を details に置く。本文と未決は [record-schema.md](./record-schema.md)。2026-11-17 に決定を足した（scope が自分の ID を持つ、profile、relationType の名前、兄弟順キーを端末も作る、通し番号を workspace で一本にする、journal への追記を確定の境界とする）。本書の記述と食い違う点は record-schema.md が優先する。移行後の形を現在形で書いた仕様の案は [post-migration-spec.md](./post-migration-spec.md)。
+- 第 2 段のレコードの形（2026-11-16、akaghef。record-schema.md の DA1〜DA7）：線の総称 edge に `relationType` を置く、node に時刻を持たせない、既定値と同じ欄を保存しない、scope の境界を scope のレコードで表し `folder` を払拭する、Surface View の旧い語彙は移行で書き換えない、正本の配置は木で別の場所からは alias、`nodeType` をスキーマの分岐にして種別ごとの内容を details に置く。本文と未決は [record-schema.md](./record-schema.md)。2026-11-17 に決定を足した（scope が自分の ID を持つ、profile、relationType の名前、兄弟順キーを端末も作る、通し番号を workspace で一本にする、journal への追記を確定の境界とする）。本書の記述と食い違う点は record-schema.md が優先する。移行後の形を現在形で書いた仕様の案は [post-migration-spec.md](./post-migration-spec.md)。
 
 ### 既存の Neo4j 実装（2026-11-11、Cursor。2026-11-16 に採否を決定）
 
@@ -108,7 +108,7 @@ RQ19 の制約のもとで data migration の対象になるのは 2（論理レ
 
 dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 行、`0619824`〜`570612f` の 5 commit）が既に入っている。この brief への記載が漏れていた（2026-11-16 に別セッションからの引き継ぎで判明）。
 
-- `beta/src/node/neo4j_map_store.ts`（4,089 行）：map を node・親子・属性・GraphLink・注釈・linear-text・配置のレコードとして Neo4j に書く。commandId の重複排除、node ごとの revision による拒否、scope 権限の拒否を持つ。
+- `beta/src/node/neo4j_map_store.ts`（4,089 行）：map を node・親子・属性・relation edge・注釈・linear-text・配置のレコードとして Neo4j に書く。commandId の重複排除、node ごとの revision による拒否、scope 権限の拒否を持つ。
 - `beta/src/cutover/`（22 ファイル、約 4,150 行）：状態の分解と組み立て、Command への対応付け、木の不変量、scope 権限判定。入出力を持たない部品。
 - `beta/src/node/sync/`：scope 単位の記録と再送の土台。
 - `beta/src/node/rapid_mvp.ts`：環境変数 `M3E_BETA_NEO4J_URI` があるときだけ保存・読込みが Neo4j に切り替わる。既定は SQLite のまま。切替は `neo4jRequest()` が保存 1 回ごとに `spawnSync` で Node の子プロセスを起動する方式で、その間サーバ全体が止まる。
@@ -166,14 +166,14 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
 
 - IS133：定義語がない。
   - 確定の通し番号、record 単位の変更、所属が解決しない付随レコード、型定義外の field を保持する欄（PR14 の 1）
-  - Command intent のない操作（PR14 の 10、PR15 の 3・6）。選択した node 群の上に親を挿入する、同名の子へ合流させながら追加する、部分木を差し替える、map 全体を置換・復元する、外部の canonical source から作り直す、map 行の作成・複製・削除・属性変更、canonical owner の宣言と解除、GraphLink の端点の付け替え、linear-text の更新と削除、Layout と Surface View の設定の保存、注釈の追加と削除、競合時に相手側を採る、取り込んだ内容から新しい map を作る。
+  - Command intent のない操作（PR14 の 10、PR15 の 3・6）。選択した node 群の上に親を挿入する、同名の子へ合流させながら追加する、部分木を差し替える、map 全体を置換・復元する、外部の canonical source から作り直す、map 行の作成・複製・削除・属性変更、canonical owner の宣言と解除、relation edge の端点の付け替え、linear-text の更新と削除、Layout と Surface View の設定の保存、注釈の追加と削除、競合時に相手側を採る、取り込んだ内容から新しい map を作る。
   - collapse は `view` に分類されているのに保存されている。
 - IS134：何を正本 data とし、何を導出値または表示状態とするか。対象は scopes と surfaces の記録、Layout・Surface View・collapse・linear-text の表示設定、保持された scope の label、top-level に混入した `selectedId` / `scopeId`、map 行の属性の変更を journal に通すか（PR14 の 5・6・8、PR15 の 1・2・20）。
-- IS135：親子 edge の label（研究 map の node の 78%）を edge のレコードに置くか、attribute に置くか。reparent したときの扱い（PR14 の 2、PR15 の 4）。
+- IS135：parent edge の label（研究 map の node の 78%）を parent edge のレコードに置くか、attribute に置くか。reparent したときの扱い（PR14 の 2、PR15 の 4）。
 - IS136：attribute を独立したレコードにするか、node のレコードに含めるか（PR14 の 3）。
 - IS137：移行時の孤立データと型定義外の値。所属が解決しない linear-text（63 key、868 KB）、folder でない node を指す linear-text、孤立した surface、型定義外の key、`nodeType: "leaf"`（PR14 の 4・5・7、PR15 の 9・10）。
-- IS138：ID の一意性の範囲（map 内か workspace 内か）。実データでは map ID 3 件、node ID 1,148 件、GraphLink ID 74 件が、map や workspace をまたいで重複している。Rapid の SourceId、本文を含む node ID の扱い（PR14 の 12・15、PR15 の 11）。
-  - PR17 の実データでは、map ID・node ID・GraphLink ID が複写で引き継がれ、workspace をまたいで重複している。map をまたぐ alias は表現できず、map をまたぐ構造化された関係は 0 件だった。ID の一意性の範囲は後から変えると移行になるので、DC39 と一緒に決める必要がある。
+- IS138：ID の一意性の範囲（map 内か workspace 内か）。実データでは map ID 3 件、node ID 1,148 件、relation edge ID 74 件が、map や workspace をまたいで重複している。Rapid の SourceId、本文を含む node ID の扱い（PR14 の 12・15、PR15 の 11）。
+  - PR17 の実データでは、map ID・node ID・relation edge ID が複写で引き継がれ、workspace をまたいで重複している。map をまたぐ alias は表現できず、map をまたぐ構造化された関係は 0 件だった。ID の一意性の範囲は後から変えると移行になるので、DC39 と一緒に決める必要がある。
 - IS139：delete と同時編集の規則。delete で linear-text・注釈・配置値を同じ transaction に含めるか（PR15 の 5・8・9）。
 - IS140：冪等キーを node の attribute（Flash の重複防止キー）から commandId に移すか。MCP で応答を失ったときに、確定したかをどこで確かめるか（PR15 の 7）。
 - IS141：linear-text を差分で journal に記録するか。1 値の最大は 848 KB ある（PR14 の 11）。
@@ -185,7 +185,7 @@ dev-beta には 2026-11-11 に Cursor が push した Neo4j 実装（約 13,000 
 - IS147：エンジンを問わず、再帰や可変長の問い合わせには、実行計画を固定する試験が要る。
   - PR16 で、SQLite の再帰 CTE は結合の順序を固定しないと、16,400 node の部分木の読取りに約 9 秒かかった。
   - Neo4j の可変長の pattern は、始点を固定しないと全 node から展開して 2.6 秒かかった。
-- IS148：計画の map の `m3e:stable-id` 付き 20 node と `planning-ref` の GraphLink 32 本は、`docs/semantic` の entity と REFS の関係と同じ内容である。同じ関係が Final の map、Beta の複写、`docs/semantic` の 3 か所に別々に保存されていて、つなぐ鍵は命名規約だけである（PR17）。ADR 008 の「canonical owner は一つ」に反するので、移行でどれを正本にするかを決める。
+- IS148：計画の map の `m3e:stable-id` 付き 20 node と `planning-ref` の relation edge 32 本は、`docs/semantic` の entity と REFS の関係と同じ内容である。同じ関係が Final の map、Beta の複写、`docs/semantic` の 3 か所に別々に保存されていて、つなぐ鍵は命名規約だけである（PR17）。ADR 008 の「canonical owner は一つ」に反するので、移行でどれを正本にするかを決める。
 - 外部の変更を取り込んだ後の Undo の範囲（PR15 の 14）は IS127 に含める。起動時の書き直しをやめること（PR15 の 12）は IS132 に含める。
 
 PR15 は、IS116〜IS132 にない「成功扱いで編集が消える」危険を 19 件挙げた（[draft-write-path-commands.md](./draft-write-path-commands.md) 5.5 節）。主なものは次のとおり。
@@ -194,7 +194,7 @@ PR15 は、IS116〜IS132 にない「成功扱いで編集が消える」危険�
 - Undo と Redo が、外部の変更を取り込む前の全状態に戻す。
 - linear-text の Apply が、children を位置で対応させる。
 - Vault の live 連携で、Obsidian 側の変更を捨てる。
-- GraphLink の REST 追加が、再送で重複する。
+- relation edge の REST 追加が、再送で重複する。
 - 閲覧しているだけの tab が、全 node 分の配置値を書く。
 
 PR18：保存形式を変えずに、移行より先に直せる不具合。どちらも DC39 と DC40 の結果に関係なく必要で、移行前のデータの汚れを減らす。

@@ -18,7 +18,7 @@
 
 ### Model
 
-- Node / Edge / Graph 構造
+- Node / parent edge / Graph 構造
 - 整合性検証
 - Command 適用
 - Undo / Redo

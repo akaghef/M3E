@@ -17,7 +17,7 @@ For recurrence-prevention requests, treat the task as a durable rule-system chan
 ## Forbidden without explicit handoff
 
 - redefine scope/facet/layout policy
-- create cross-facet alias or GraphLink
+- create cross-facet alias or relation edge
 - restructure outside assigned path
 - decide M3E storage shape
 - mutate M3E maps by direct API / SQLite / runtime file write
@@ -30,7 +30,7 @@ For recurrence-prevention requests, treat the task as a durable rule-system chan
 - target path is ambiguous
 - scopen/unscopen is needed
 - task crosses scope/facet
-- alias vs move vs GraphLink is unclear
+- alias vs move vs relation edge is unclear
 - layout/display intent is unclear
 - MF / WMF / Mermaid / Markdown writeback semantics are unclear
 

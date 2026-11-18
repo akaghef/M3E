@@ -29,7 +29,7 @@ DC5: 指示の送信成功は完了を意味しない。requested / accepted / s
 |---|---|---|
 | 観測契約・identity | shared の型、validator、snapshot adapter、map 用 materialization | 同名別 host、resume / fork、重複・古い snapshot・欠落・不正入力を区別。観測不能を終了と推定しない |
 | 観測供給 | server の read-only API / Server-Sent Events、設定、変更検知 | 正規ソースの更新が届く。切断・破損時は最後の正常値と状態を示す。停止時は watcher を解放 |
-| NETWORK と Viewer | 既存 Agent Card / force の接続、hover、GraphLink 詳細、調整 UI | 通常 map と同じ camera・選択面に出る。human の編集と runtime 更新が共存。DECK を取り込まない |
+| NETWORK と Viewer | 既存 Agent Card / force の接続、hover、relation edge 詳細、調整 UI | 通常 map と同じ camera・選択面に出る。human の編集と runtime 更新が共存。DECK を取り込まない |
 | 指示・履歴 | owner adapter 契約、結果状態機械、provenance、履歴表示 | 送信と完了が別。未知の結果を成功扱いしない。未知の機能は明示的に利用不能 |
 | 複数 host | host 別 source identity、単一 controller、portable な入力契約 | host ごとの状態と欠落を保つ。同名を誤結合しない。実機の到達性は別検証 |
 | 統合・引継ぎ | design、task 台帳、試験、PR | 現在の成果物と完了状態を一致させる。未実施の最終 UI / Windows 実機試験を明記 |
@@ -38,7 +38,7 @@ DC5: 指示の送信成功は完了を意味しない。requested / accepted / s
 
 - `agent = AI agent ∪ human`。human に provider runtime session を強制しない。
 - identity の鍵は source / host / external ID。表示名、cwd、Role 名からの同一視を禁止する。
-- tree edge は親子、GraphLink は非木の意味関係。メールは transport evidence。端点を確定できないメールから GraphLink を作らない。
+- parent edge は親子、relation edge は非木の意味関係。メールは transport evidence。端点を確定できないメールから relation edge を作らない。
 - attention は明示的な未解決 request。未読数、経過時間、generic blocked から推定しない。
 - 観測由来と自己申告由来を同じ field に混ぜない。本文、Role、通常属性は human 側のまま維持する。
 - 観測 actor の消失は unobservable。明示的な終了証拠がある場合だけ終了として扱う。

@@ -2,7 +2,7 @@
 
 ## Vision
 
-M3E は個人研究者の思考を木構造で管理するツール。現在、木の edge に意味情報がなく、スケール限界がある。PJ02 MathOntoBridge は edge に意味を載せるプロトコルの基盤を作るプロジェクトで、**syntax tree**（形式的な依存関係）と **semantic tree**（意味関係）の二本柱で進む。
+M3E は個人研究者の思考を木構造で管理するツール。現在、木の parent edge に意味情報がなく、スケール限界がある。PJ02 MathOntoBridge は parent edge に意味を載せるプロトコルの基盤を作るプロジェクトで、**syntax tree**（形式的な依存関係）と **semantic tree**（意味関係）の二本柱で進む。
 
 本タスクは syntax tree 側: **mathlib4 Blueprint の LaTeX ソースを解析し、M3E マップとして取り込む importer** の実装。
 
@@ -79,7 +79,7 @@ PFR の実データ（`blueprint/src/chapter/*.tex`）から確認した実際�
 - **型定義**: `beta/src/shared/types.ts` — `TreeNode`, `GraphLink`, `AppState` が核。全フィールドを読んで理解すること
 - **マップ保存形式**: `beta/src/node/rapid_mvp.ts` — `SavedMap` の読み書きロジック。JSON ファイルとして `data/maps/` に保存される
 - **既存 importer の参考**: `beta/src/node/rapid_mvp.ts` 内の Obsidian Vault import — 外部データを AppState に変換する先行例
-- **GraphLink.relationType**: 既に `string?` として存在。Blueprint の uses 依存はここに `"uses"` を入れる
+- **`GraphLink.relationType`**: 既に `string?` として存在。Blueprint の uses 依存はここに `"uses"` を入れる
 
 ### Blueprint 側（外部）
 
@@ -98,8 +98,8 @@ PFR の実データ（`blueprint/src/chapter/*.tex`）から確認した実際�
 | LaTeX 本文 | `TreeNode.details` | そのまま格納（レンダリングは viewer 側の将来課題） |
 | `\lean{Foo.bar}` | `TreeNode.attributes.lean4_decl` | カンマ区切りならそのまま |
 | `\leanok` | `TreeNode.attributes.lean_status` = `"ok"` | 未指定なら属性なし |
-| `\uses{a, b}` (statement内) | `GraphLink` with `relationType: "uses"` | |
-| `\uses{a, b}` (proof内) | `GraphLink` with `relationType: "uses"` | 同じ種別で良い |
+| `\uses{a, b}` (statement内) | `relation edge` with `relationType: "uses"` | |
+| `\uses{a, b}` (proof内) | `relation edge` with `relationType: "uses"` | 同じ種別で良い |
 | DAG 全体 | `AppState`（1マップ = 1 Blueprint プロジェクト） | |
 
 ## 実装方針
@@ -116,7 +116,7 @@ PFR の実データ（`blueprint/src/chapter/*.tex`）から確認した実際�
 3. 各環境から `\label{}`, `\lean{}`, `\leanok`, `\uses{}`, タイトル `[...]` を抽出
 4. `\begin{proof}` 〜 `\end{proof}` の `\uses{}` も抽出（直前の定理/補題に紐付け）
 5. 各環境を `TreeNode` に変換
-6. `\uses{}` の依存を `GraphLink` に変換
+6. `\uses{}` の依存を `relation edge` に変換
 7. `AppState` を組み立てて `SavedMap` として `data/maps/` に保存
 
 ### ID 生成
@@ -128,7 +128,7 @@ PFR の実データ（`blueprint/src/chapter/*.tex`）から確認した実際�
 
 - root ノード 1 つ（プロジェクト名、例: "PFR Blueprint"）
 - chapter ごとにフォルダノード（`nodeType: "folder"`）を作り、その下に各定理/補題を配置
-- DAG の依存関係は `GraphLink` で表現（親子関係ではなく）
+- DAG の依存関係は `relation edge` で表現（親子関係ではなく）
 
 ### エッジの方向
 

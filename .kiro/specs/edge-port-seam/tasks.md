@@ -4,11 +4,11 @@
 
 ## Phase 0: Baseline and Scope Lock
 
-- [ ] 1. Confirm current Connection implementation surface
+- [ ] 1. Confirm current edge implementation surface
   - **Boundary:** investigation only.
-  - Inspect `viewer.ts` edge helpers, GraphLink endpoint edit code, shared `GraphLink` / `LinkPort` types, and current layout direction state.
+  - Inspect `viewer.ts` parent edge helpers, relation edge endpoint edit code, shared `GraphLink` / `LinkPort` types, and current layout direction state.
   - Record exact current symbols and files in implementation handoff.
-  - **Acceptance:** handoff lists current port helpers, route helpers, GraphLink endpoint edit helpers, and the known right-tree-only helper.
+  - **Acceptance:** handoff lists current port helpers, route helpers, relation edge endpoint edit helpers, and the known right-tree-only helper.
 
 - [ ] 2. Add failing type contract test for future EdgePort
   - **Boundary:** `beta/tests/unit/edge_port_contract.test.ts` or equivalent.
@@ -30,7 +30,7 @@
   - Define `EdgeRect`, `EdgePortSide`, `EdgePortPoint`, `EdgePorts`, `EdgeBranchDirection`, and `selectPorts`.
   - Implement branch direction rules from design.
   - Keep helper functions module-private.
-  - Do not import `viewer.ts`, DOM, AppState, GraphLink, LinkPort, or route style.
+  - Do not import `viewer.ts`, DOM, AppState, `GraphLink`, LinkPort, or route style.
   - **Acceptance:** task 2 tests pass; `EdgePortSide` has no `"auto"`; Tree `both` cannot be constructed without explicit `branchSide`; `selectPorts` is pure.
 
 - [ ] 5. Create shared `EdgeRoute` public contract
@@ -44,43 +44,43 @@
   - Cover Tree `right / left / both / up / down`, Axial `right / left / up / down`, Radial quadrants, Disperse free vector, System `right / down / free`.
   - Include tie-break behavior for vector rules.
   - Confirm no test expects EdgePort to infer Tree `both` branch side from rectangle centers.
-  - **Acceptance:** every Surface View direction in `map_layout_modes.md` that affects edge direction has at least one pure test or an explicit non-edge note; Tree `both` tests use LayoutPort-provided `branchSide`.
+  - **Acceptance:** every Surface View direction in `map_layout_modes.md` that affects parent edge direction has at least one pure test or an explicit non-edge note; Tree `both` tests use LayoutPort-provided `branchSide`.
 
 ## Phase 2: Type Separation and Product Adapter
 
-- [ ] 7. Define parent-child edge adapter types
+- [ ] 7. Define parent edge adapter types
   - **Boundary:** shared type or browser adapter type file.
   - Add `ParentChildEdgeRef` / adapter input types that are distinct from `GraphLink`.
   - Keep route style as `EdgeRouteStyle`, not relation type.
-  - **Acceptance:** TypeScript prevents passing `GraphLink` directly to parent-child branch edge adapter without explicit adapter conversion.
+  - **Acceptance:** TypeScript prevents passing `GraphLink` directly to parent edge adapter without explicit adapter conversion.
 
 - [ ] 8. Write failing product adapter tests before migration
   - **Boundary:** adapter unit tests or snapshot tests.
   - Build sample positioned parent/child rectangles from current layout output shape.
   - For Tree `both`, assert the adapter reads `LayoutResult.branchSide` or fails with a missing-contract error.
   - Assert adapter calls `selectPorts` with correct Surface View / direction and then `route`.
-  - **Acceptance:** tests fail or are pending until product branch edge adapter uses shared contracts.
+  - **Acceptance:** tests fail or are pending until product parent edge adapter uses shared contracts.
 
-- [ ] 9. Migrate parent-child branch edge path to EdgePort / EdgeRoute
-  - **Boundary:** product branch edge adapter / renderer files; avoid unrelated render refactor.
+- [ ] 9. Migrate parent edge path to EdgePort / EdgeRoute
+  - **Boundary:** product parent edge adapter / renderer files; avoid unrelated render refactor.
   - Convert positioned parent/child rects and Surface View direction to `EdgeBranchDirection`.
   - If current `LayoutResult` lacks Tree `both` `branchSide`, add the minimal LayoutPort contract extension before completing this task.
-  - Do not infer Tree `both` branch side inside EdgePort or the edge adapter from rectangle centers.
+  - Do not infer Tree `both` branch side inside EdgePort or the parent edge adapter from rectangle centers.
   - Call `selectPorts` then `route`.
   - Preserve current Tree right output where expected.
   - **Acceptance:** adapter tests pass; Tree right visual/path snapshot remains compatible; left/up/down/both use branch-aware sides; Tree both uses `LayoutResult.branchSide`.
 
 ## Phase 3: `nearestEdgePortSide` Quarantine
 
-- [ ] 10. Extract or isolate GraphLink endpoint edit nearest helper
-  - **Boundary:** GraphLink endpoint edit module and minimal callers.
-  - Move `nearestEdgePortSide` to a GraphLink endpoint edit module, or make it private to that module.
+- [ ] 10. Extract or isolate relation edge endpoint edit nearest helper
+  - **Boundary:** relation edge endpoint edit module and minimal callers.
+  - Move `nearestEdgePortSide` to a relation edge endpoint edit module, or make it private to that module.
   - Rename if useful to `nearestEdgePortSideForGraphLinkEdit`.
-  - **Acceptance:** branch edge code cannot reference the helper by local scope; GraphLink endpoint edit tests still pass.
+  - **Acceptance:** parent edge code cannot reference the helper by local scope; relation edge endpoint edit tests still pass.
 
 - [ ] 11. Add dependency-cruiser quarantine rules
   - **Boundary:** `beta/dependency-cruiser.config.cjs` or existing depcruise config.
-  - Forbid parent-child edge adapter / renderer modules from importing GraphLink endpoint edit module.
+  - Forbid parent edge adapter / renderer modules from importing relation edge endpoint edit module.
   - Forbid shared `edge_port` / `edge_route` from importing browser implementation.
   - Forbid `src/labs/edge-port/**` from importing `src/browser/**`.
   - **Acceptance:** `npm run lint:deps` fails with a temporary bypass import and passes after removing it.
@@ -130,7 +130,7 @@
   - **Boundary:** lab files only.
   - Render source/target rectangles, selected port dots, route path, expected side markers, and mismatch state.
   - Provide controls for sample, Surface View, direction, route style, and explicit Tree both branch side as sample input.
-  - Represent GraphLink distinction for `force-link` through lab/product style tokens, not EdgeRoute contract fields.
+  - Represent relation edge distinction for `force-link` through lab/product style tokens, not EdgeRoute contract fields.
   - **Acceptance:** lab can switch every initial golden sample and recompute using shared contracts; Tree both uses explicit sample `branchSide`.
 
 - [ ] 19. Add lab mechanical checks and smoke test
@@ -151,7 +151,7 @@
 - [ ] 21. Reuse diagnostic or add narrow read-only edge-port snapshot route
   - **Boundary:** server/viewer diagnostic only as needed.
   - Prefer existing diagnostic route.
-  - If missing, add narrow read-only route that returns branch edge port/path snapshot.
+  - If missing, add narrow read-only route that returns parent edge port/path snapshot.
   - Do not add mutation APIs.
   - **Acceptance:** task 20 passes against real app server with temp data and closes server cleanly.
 
@@ -171,8 +171,8 @@
 
 - [ ] 24. Verify exclusive seam by negative inspection
   - **Boundary:** code review / grep.
-  - Confirm branch edge adapter does not import or call `nearestEdgePortSide`.
-  - Confirm `nearestEdgePortSide` lives only in GraphLink endpoint edit module or is private to that module.
+  - Confirm parent edge adapter does not import or call `nearestEdgePortSide`.
+  - Confirm `nearestEdgePortSide` lives only in relation edge endpoint edit module or is private to that module.
   - Confirm `src/labs/edge-port/**` imports shared contracts, not `src/browser/**`.
   - Confirm no copied port/route logic exists in lab/product.
   - **Acceptance:** negative inspection results are included in final handoff.

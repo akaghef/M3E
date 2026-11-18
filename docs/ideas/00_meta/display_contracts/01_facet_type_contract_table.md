@@ -14,13 +14,13 @@ M3E での **display 契約の決め打ち default** を表で揃える。
 | `fill color` | 一番見たい量 | importance / confidence / status のどれか 1 軸を優先 |
 | `border color` | fill の第2軸 | urgency / risk / certainty のような補助軸 |
 | `text color` | 例外的強調 | 通常は固定。常用しない |
-| `GraphLink` | tree 外の関係 | depth 主軸を壊さない補助線に限定する |
+| `relation edge` | tree 外の関係 | depth 主軸を壊さない補助線に限定する |
 | `scope` | 文脈の隔離 | 隔離が本質のときだけ使う。比較を優先するなら `unscoped` |
 | `collapse` | 読み込み量の制御 | 展開の既定は review 目的に合わせる |
 
 ## Facet Type ごとの決め打ち default
 
-| facet type | 何を表すか | `parent-child` の意味 | `depth` default | `row / breadth` default | `GraphLink` default | `anchor` default | `scope` default | `fill` default | `border` default | `collapse` default |
+| facet type | 何を表すか | `parent-child` の意味 | `depth` default | `row / breadth` default | `relation edge` default | `anchor` default | `scope` default | `fill` default | `border` default | `collapse` default |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 実装構造 | クラス、モジュール、ファイル内部 | 所有・内包・構成 | 外→内 | 同階層要素比較 | 実依存、参照 | fan-out が大きいとき module/prefix anchor | scoped 寄り | status / completion | risk / instability | 深い階層は folded |
 | 処理フロー | 時系列処理手順、呼出しチェーン | 主処理骨格 | **処理順 / 時間順** | 同段並列、分岐 | 補助依存、戻り、例外 | 原則 off、必要時のみ | unscoped 寄り | criticality / step importance | runtime risk | 主線は open |

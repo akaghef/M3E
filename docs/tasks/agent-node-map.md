@@ -14,7 +14,7 @@
 
 ## 新規マップの表示意図
 
-`M:(Agent nodes)`を新規作成し、root直下に10状態の表示例を横並びの行として置く。状態別の親や追加Scope、GraphLink、alias、anchorは作らない。親子関係はマップへの所属だけを表す。通常Disperseをprimary Surfaceにしてrootを非表示にする。
+`M:(Agent nodes)`を新規作成し、root直下に10状態の表示例を横並びの行として置く。状態別の親や追加Scope、relation edge、alias、anchorは作らない。親子関係はマップへの所属だけを表す。通常Disperseをprimary Surfaceにしてrootを非表示にする。
 
 これはレビュー用の静的な表示例でありruntime観測ではない。RealmはMac、teamはM3E。色は状態を表し、背景の不透明度は10%。本文にも表示例であることを記す。個人データのmap IDをソースに固定しない。
 

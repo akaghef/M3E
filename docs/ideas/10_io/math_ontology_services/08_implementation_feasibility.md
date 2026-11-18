@@ -1,6 +1,6 @@
 # 08. 実装レベルでの取込可能性検討
 
-ブレスト全般は「採否を決めない」前提だが、**P8（Deep 帯域の GraphLink を多種エッジ化して育てる）** だけ
+ブレスト全般は「採否を決めない」前提だが、**P8（Deep 帯域の relation edge を多種エッジ化して育てる）** だけ
 ユーザ要望で実装コストを事前見積もりした分析メモ。
 この文書は「何が可能か」を並べるのみ。**実装決定はしない**。
 
@@ -8,10 +8,10 @@
 
 [01_landscape.md](01_landscape.md) / [Axes.md](../../../01_Vision/Axes.md) / [Glossary](../../../00_Home/Glossary.md) より:
 
-- **Rapid**: 文書 1 つ = syntax tree。親子 `edge` で表現（M3E 既存中心）
-- **Deep**: 文書群 = semantic graph。関係線 `GraphLink` で表現（既に芽はある）
-- **Blueprint 等の外部 DAG**: Deep の「uses 1 種に痩せた形」。GraphLink 側へ流入
-- **P8 実装課題**: GraphLink を多種エッジで育て、体系化（Rapid→Deep）と射影（Deep→Rapid）の土台を作る
+- **Rapid**: 文書 1 つ = syntax tree。`parent edge` で表現（M3E 既存中心）
+- **Deep**: 文書群 = semantic graph。関係線 `relation edge` で表現（既に芽はある）
+- **Blueprint 等の外部 DAG**: Deep の「uses 1 種に痩せた形」。relation edge 側へ流入
+- **P8 実装課題**: relation edge を多種エッジで育て、体系化（Rapid→Deep）と射影（Deep→Rapid）の土台を作る
 
 つまり Phase 0-4 は **「Deep 帯域の実装を育てるロードマップ」** として読み直す。
 
@@ -104,7 +104,7 @@ interface TreeNode {
 
 ## Phase 1: kind 別レンダリング（〜150 行, 1〜2 日）
 
-**GraphLink の `relationType` ごとに色・線種を変える**。`uses` は地味（痩せた Deep の印）、意味系は派手。
+**relation edge の `relationType` ごとに色・線種を変える**。`uses` は地味（痩せた Deep の印）、意味系は派手。
 
 ### 変更点
 
@@ -131,7 +131,7 @@ interface TreeNode {
 
 ### 判断事項
 
-- 親子 edge（Rapid 骨格）との視覚的区別は既に確保済み（既存スタイル維持）
+- parent edge（Rapid 骨格）との視覚的区別は既に確保済み（既存スタイル維持）
 - kind ごとの色相ルール（semantic 系は暖色 / uses は灰 等）
 - 未知 kind（自由文字列）のフォールバック表示
 
@@ -247,7 +247,7 @@ interface TreeNode {
 
 | Phase | 行数 | 期間 | 帯域的役割 | 推し度 |
 |---|---|---|---|---|
-| 0. kind 語彙の受け皿 | 〜30 | 半日 | Deep の GraphLink 仕様を明確化 | ⭐⭐⭐ |
+| 0. kind 語彙の受け皿 | 〜30 | 半日 | Deep の relation edge 仕様を明確化 | ⭐⭐⭐ |
 | 1. kind 別レンダリング | 〜150 | 1-2日 | Deep 関係線の可視化強化 | ⭐⭐⭐ |
 | 2. kind フィルタ | 〜200 | 2-3日 | Deep の焦点切替 / 射影前処理 | ⭐⭐ |
 | 3. 外部 Deep 取込 | 〜250 | 3-5日 | 体系化（Rapid→Deep）の外部素材供給 | ⭐⭐ |
@@ -281,7 +281,7 @@ Axes.md 非目標リストとの照合:
 
 - ❌ 帯域を 4 つ以上に増やさない → P8 は Deep 内部の成熟、新帯域追加なし ✓
 - ❌ 独立複数軸に分解しない → Rapid/Deep は単一進化軸として扱う。syntax/semantic を直交軸として扱わない ✓
-- ❌ 帯域ごとに別アプリに分けない → 同じ M3E 内、edge と GraphLink の既存二分を利用 ✓
+- ❌ 帯域ごとに別アプリに分けない → 同じ M3E 内、parent edge と relation edge の既存二分を利用 ✓
 - ❌ Flash を Rapid 素材置き場に縮退させない → P8 は Flash に触れない ✓
 
 ## 実装前に確認したい未決

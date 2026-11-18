@@ -23,7 +23,7 @@
 | `parent-child` | file / namespace / declaration の所有・内包 |
 | `depth` | 外側から内側へ。project -> module -> namespace -> declaration |
 | `row / breadth` | 同じ module / namespace 配下の sibling 比較 |
-| `GraphLink` | `formalizes`, `designed_as`, `uses`, `imports` などの横断参照 |
+| `relation edge` | `formalizes`, `designed_as`, `uses`, `imports` などの横断参照 |
 | `anchor` | module / prefix / declaration kind の fan-out が大きいときだけ使う |
 | `scope` | `scoped` 寄り。Implementation scope を独立表示する |
 | `fill` | implementation status / completion |
@@ -117,7 +117,7 @@ status の例:
 原則:
 
 - design / dependency / progress を tree に混ぜない
-- cross-facet relation は GraphLink または alias で表す
+- cross-facet relation は relation edge または alias で表す
 - `uses` が主役になる場合は dependency facet に移す
 
 ## PJ02 での適用

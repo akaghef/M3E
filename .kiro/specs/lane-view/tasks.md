@@ -2,7 +2,7 @@
 
 # Implementation Plan
 
-> 2026-10-17、Director が保存先と条件7 / 8 / 10の明確化を採択し、Track A は `4327ca0`（GraphLink.attributes の保持）として統合済み。Director の指示で、この commit を基準に Track B の task 7〜16を実装・検証している。本流統合・push は Director が所有する。
+> 2026-10-17、Director が保存先と条件7 / 8 / 10の明確化を採択し、Track A は `4327ca0`（`GraphLink.attributes` の保持）として統合済み。Director の指示で、この commit を基準に Track B の task 7〜16を実装・検証している。本流統合・push は Director が所有する。
 
 ## Phase 0: Baseline and Review Gate
 
@@ -18,7 +18,7 @@
   - 下記の既存 unit / visual 回帰コマンドを実行し、既存失敗を実装後の結果と区別する。
   - **Acceptance:** baseline の結果と未実行理由がある。既存失敗で条件12を緩めない。
 
-## Phase 1: Track A — GraphLink.attributes
+## Phase 1: Track A — `GraphLink.attributes`
 
 - [x] 3. A の経路を実試験で固定する（A-1..A-4）
   - **Boundary:** `beta/tests/unit/graph_link_attributes.test.ts`、`graph_link_attributes_api.test.js`、`beta/tests/visual/graph_link_attributes.spec.js`。
@@ -46,7 +46,7 @@
 ## Phase 2: Track B — Vocabulary, Root, and 格子並べ
 
 - [x] 7. Lane の列挙・読込・設定を延長する（B-1）
-  - **Boundary:** `types.ts`、`viewer.globals.d.ts`、workbench の型、`layout_port.ts`、`layout_bridge.ts`、node / edge adapter の exhaustive cases、既存 viewer / html の列挙。
+  - **Boundary:** `types.ts`、`viewer.globals.d.ts`、workbench の型、`layout_port.ts`、`layout_bridge.ts`、node / parent edge adapter の exhaustive cases、既存 viewer / html の列挙。
   - Lane の追加だけを行い、他の保存値を改名しない。right/down、既存 space、Lane に edge option が無いことを型と読込で確認する。
   - **Acceptance:** `lane_view_state.test.ts` と既存 `surface_view_migration.test.ts`、typecheck が通る。Lane が Tree fallback に落ちない。
 
@@ -58,14 +58,14 @@
 
 - [x] 9. fixture と表示対象の試験を作る（B-3 / B-5）
   - **Boundary:** `beta/tests/fixtures/lane_view.json`、`lane_view_large.json`、`lane_asys.json`、`tests/unit/lane_view_projection.test.ts`。
-  - scope_param の root→子→孫構造を出発点にし、3つの子 node、それぞれ2〜3の孫 node、隣・飛び越し・同じレーン内の GraphLink を含める。表示名は人に読める語としコードを付けない。
+  - scope_param の root→子→孫構造を出発点にし、3つの子 node、それぞれ2〜3の孫 node、隣・飛び越し・同じレーン内の relation edge を含める。表示名は人に読める語としコードを付けない。
   - 別ケースに空レーン、空 root、長いラベル、100孫/200 link、逆向き・循環、子 node / root / 深い子孫 / 範囲外 endpoint、明示 collapse を含める。
   - **Acceptance:** fixture の Topology / 寸法 / 本数 / 期待兄弟順を人が確認できる。期待値を同じ layout 出力から生成しない。単体の内訳数と省略本数は保存されない。
 
 - [x] 10. shared の同期格子並べを実装する（B-2 / IS39の2026-10-18差し替え）
   - **Boundary:** `shared/lane_layout.ts`、`tests/unit/lane_layout.test.ts`。
-  - GraphLinkの向きで段を決めるelkjs layeredはSystemの方式として除去する。root.children[]順の帯と、孫の兄弟順による1行 / 1列だけを並べる。
-  - downの中心y一致 / rightの中心x一致、帯順、孫の兄弟順、最大実寸に基づく帯の太さ、全矩形非重複、GraphLink全除去後の全座標一致を独立に検査する。
+  - relation edgeの向きで段を決めるelkjs layeredはSystemの方式として除去する。root.children[]順の帯と、孫の兄弟順による1行 / 1列だけを並べる。
+  - downの中心y一致 / rightの中心x一致、帯順、孫の兄弟順、最大実寸に基づく帯の太さ、全矩形非重複、relation edge全除去後の全座標一致を独立に検査する。
   - **Acceptance:** 更新済み条件6の全項目をfirst-slice / A-sys×両directionで検査する。100/200とA-sysの条件13の1秒は維持する。
 
 - [x] 11. 既存の同期描画を接続し、不要な非同期経路を除去する（B-2）
@@ -76,14 +76,14 @@
 
 ## Phase 3: Track B — Existing Renderer and Navigation
 
-- [x] 12. Lane の境界・node・GraphLink を既存 SVG へ渡す（B-3）
-  - **Boundary:** `lane_view.ts` の表示対象、既存 node SVG の呼出、既存 GraphLink の1つの生成経路、必要な既存 style。
-  - 親子 edge を省き、root を箱にせず、子 node の見出し、孫 node、collapse 数、省略 GraphLink 数を表示。
+- [x] 12. Lane の境界・node・relation edge を既存 SVG へ渡す（B-3）
+  - **Boundary:** `lane_view.ts` の表示対象、既存 node SVG の呼出、既存 relation edge の1つの生成経路、必要な既存 style。
+  - parent edge を省き、root を箱にせず、子 node の見出し、孫 node、collapse 数、省略 relation edge 数を表示。
   - LinkStyle / arrows / labels / LinkPort / Link Route を保持する。属性の解釈による装飾を足さない。
   - **Acceptance:** 条件8 / 9が実 viewer の DOM と見た目で通る。未知 ID の代用表示がない。
 
 - [ ] 13. Lane だけ visible と hit の層を分ける（B-6）
-  - **Boundary:** 既存 GraphLink buffer の分離、`browser/lane_scene.ts`、既存 retainedSvgScene parts の呼出、`lane_scene.test.ts`。
+  - **Boundary:** 既存 relation edge buffer の分離、`browser/lane_scene.ts`、既存 retainedSvgScene parts の呼出、`lane_scene.test.ts`。
   - visible stroke / marker / label を nodes の後、pointer-events=none。hit を nodes の前へ置く。非 Lane の parts は元の順。
   - **Acceptance:** 条件16–18の DOM / 実クリック / drag / edit が通る。B-1から実施できるが、最終受け入れは格子並べとの結合後。renderer の fork は無い。
 
@@ -144,7 +144,7 @@ git diff --numstat "${LANE_IMPLEMENTATION_BASE:?B 実装開始時の commit を�
 | 3 | `graph_link_attributes.spec.js` / V、`graph_link_attributes.test.ts` / U | 実 JSON export→import→export と属性保持 |
 | 4 | A の unit / API / visual 3ファイル / U・V | strict 4xx、永続値不変、viewer の string entry のみ保持 |
 | 5 | R の `persistence_db_behavior` / `scope_param` / `rapid_mvp` / `data_model_integrity` / `blueprint_importer` / `blueprint_import_api_integration` / `mcp_service` | 既存 link を含む7ファイルの保存・削除・import・scope 境界の回帰。MCP機能の追加はしない |
-| 6 | `lane_layout.test.ts` / U、`lane_view.spec.js` / V | first-sliceとA-sysのdown/right中心線一致・兄弟順・帯順・GraphLink除去前後の全座標一致、矩形の独立交差判定 |
+| 6 | `lane_layout.test.ts` / U、`lane_view.spec.js` / V | first-sliceとA-sysのdown/right中心線一致・兄弟順・帯順・relation edge除去前後の全座標一致、矩形の独立交差判定 |
 | 7 | `lane_layout.test.ts`、`lane_view_state.test.ts` / U、`lane_view.spec.js` / V | root.children[] と子 node 自身の children[] を各々入替。前者でレーン順が変わり後者では変わらない事実と採択済みの条件7を検証。切替前後の nodes / links は全体の deep equality |
 | 8 | `lane_view.spec.js` / V、`lane_view_projection.test.ts` / U | 親子線ゼロ、可視孫間の全 link、4 LinkStyle / 4 direction / label、既存 Link Route |
 | 9 | `lane_view.spec.js` / V | node・境界・status・title・accessible text に raw ID / 自動コードが無い。data-* の内部参照は可 |
@@ -188,9 +188,9 @@ Playwright は変更前に `viewer.visual.spec.js` / `viewer_surface_edge_paths.
 
 ## Track B 再実装記録 — 2026-10-18
 
-旧Track Bの `d42244f` は承認されたelkjs layered + partitioningを実装したが、帯内の孫をGraphLinkで段に分けていたためSystemだった。旧条件6に「1行 / 1列」と「GraphLink全除去で全座標不変」が欠け、旧unit / visualの合格はLaneの受け入れ証拠にならなかった。Directorが `91541a1` でrevertし、`ce015e6` で正本・steering 3a・Playbookの意味境界を修正した。2026-10-18のDirector指示でIS39と条件6を差し替え、他の原条件は維持する。
+旧Track Bの `d42244f` は承認されたelkjs layered + partitioningを実装したが、帯内の孫をrelation edgeで段に分けていたためSystemだった。旧条件6に「1行 / 1列」と「relation edge全除去で全座標不変」が欠け、旧unit / visualの合格はLaneの受け入れ証拠にならなかった。Directorが `91541a1` でrevertし、`ce015e6` で正本・steering 3a・Playbookの意味境界を修正した。2026-10-18のDirector指示でIS39と条件6を差し替え、他の原条件は維持する。
 
-workerが `git revert --no-commit 91541a1` を試みると.git index.lock書込がsandboxに拒否されたため、Directorが復元しindexをresetした。その未commitの32ファイルに対してshared配置を同期の格子並べへ置換した。root保存・既存renderer・GraphLink描画・Progressive Navigation・条件7〜18の保存 / 層順 / 操作の検証は維持する。commit / 統合 / 通常BetaはDirector所有。差分の行数基準は引き続き `4327ca0`（GraphLink.attributesの保持）である。
+workerが `git revert --no-commit 91541a1` を試みると.git index.lock書込がsandboxに拒否されたため、Directorが復元しindexをresetした。その未commitの32ファイルに対してshared配置を同期の格子並べへ置換した。root保存・既存renderer・relation edge描画・Progressive Navigation・条件7〜18の保存 / 層順 / 操作の検証は維持する。commit / 統合 / 通常BetaはDirector所有。差分の行数基準は引き続き `4327ca0`（`GraphLink.attributes`の保持）である。
 
 ### 条件6の検査
 
@@ -200,9 +200,9 @@ workerが `git revert --no-commit 91541a1` を試みると.git index.lock書込�
 - 同じ帯の孫が帯の中心線に揃い、downは中心yが同じ1行、rightは中心xが同じ1列。
 - 孫の兄弟順どおりにx / yが増え、全矩形が重ならない。
 - 帯の太さは最大孫の交差方向寸法+両側12の余白。
-- 全GraphLinkを除去した前後の、全孫のpos objectが完全一致する。入力stateも変更しない。
+- 全relation edgeを除去した前後の、全孫のpos objectが完全一致する。入力stateも変更しない。
 
-A-sys fixtureはDirector指定元データを `beta/tests/fixtures/lane_asys.json` へそのまま複写した。rootは「Akaghef-System 構成」、レーンはAI / Cloud / Device / Domain / Apps / Back、孫数は3 / 3 / 5 / 6 / 5 / 3（計25）、GraphLink82。可変寸法の配置試験に加え、条件13では入力寸法140×40としてA-sysと100孫/200linkを両directionで計測する。
+A-sys fixtureはDirector指定元データを `beta/tests/fixtures/lane_asys.json` へそのまま複写した。rootは「Akaghef-System 構成」、レーンはAI / Cloud / Device / Domain / Apps / Back、孫数は3 / 3 / 5 / 6 / 5 / 3（計25）、relation edge82。可変寸法の配置試験に加え、条件13では入力寸法140×40としてA-sysと100孫/200linkを両directionで計測する。
 
 ### 今回の実行記録
 
@@ -224,14 +224,14 @@ A-sys fixtureはDirector指定元データを `beta/tests/fixtures/lane_asys.jso
 
 ログ: `/private/tmp/whiteedison-lane-grid-{red,layout,unit,build,browser-build,regression,deps,copy,visual-list}.log`。redは旧配置に新条件を当てた失敗ログであり、合格として数えない。
 
-| 条件13のfixture（実寸入力140×40） | direction | 孫 / GraphLink | 配置時間 | 帯の中心線 | 全体寸法 |
+| 条件13のfixture（実寸入力140×40） | direction | 孫 / relation edge | 配置時間 | 帯の中心線 | 全体寸法 |
 |---|---|---|---|---|---|
 | A-sys | down | 25 / 82 | 0.463ms | y=56,176,296,416,536,656 | 1316×736 |
 | A-sys | right | 25 / 82 | 0.229ms | x=106,326,546,766,986,1206 | 1312×640 |
 | large | down | 100 / 200 | 3.088ms | y=56,176,296,416,536 | 3948×616 |
 | large | right | 100 / 200 | 1.191ms | x=106,326,546,766,986 | 1092×1872 |
 
-可変寸法の条件6試験でも、A-sysの25孫は両directionとも中心線一致、各々の兄弟順、6帯の順、最大孫寸法に基づく太さ、矩形非重複、元state不変が合格。全GraphLink除去前後のpos全体が両directionで完全一致し、座標が変わった孫は0。GraphLinkを配置入力型から除き、描画用の省略本数等はcontrollerが配置後に付加する。
+可変寸法の条件6試験でも、A-sysの25孫は両directionとも中心線一致、各々の兄弟順、6帯の順、最大孫寸法に基づく太さ、矩形非重複、元state不変が合格。全relation edge除去前後のpos全体が両directionで完全一致し、座標が変わった孫は0。relation edgeを配置入力型から除き、描画用の省略本数等はcontrollerが配置後に付加する。
 
 ### 残るDirector検証
 
@@ -258,7 +258,7 @@ Directorは一度、角丸・カード寸法・弧の膨らみ等もmockに一�
 
 ### 前回のviewer.ts削除66行の内訳
 
-基準は4327ca0（Track A: GraphLink.attributes保持）。削除は5関数の移動46行と、既存行の置換20行だった。機能を66行廃止した意味ではない。
+基準は4327ca0（Track A: `GraphLink.attributes`保持）。削除は5関数の移動46行と、既存行の置換20行だった。機能を66行廃止した意味ではない。
 
 | 関数 / 行の種類 | 前回の移動先または変更 |
 | --- | --- |
@@ -288,6 +288,6 @@ Directorは一度、角丸・カード寸法・弧の膨らみ等もmockに一�
 
 初回の構造試験はjsdom下のimport.meta.urlをfsへ渡す読込エラーで未成立だった。repositoryの既存試験と同じ__dirnameからのpath解決に直し、構造とcontrollerを再実行して9件合格、その後上記20ファイル121件を再実行して合格を確認した。製品の判定や期待値を変えてこの読込エラーを回避していない。
 
-前回の削除20行の置換内訳は、列挙sanitize 2行、handleの転送4行、root / rootless / frames 3行、GraphLinkの接続辺 / pair offset / hit 3行、nodeのview / collapse / 親子edge / 入力 / 呼出6行、retained sceneの層順2行。前回のdiffは `/private/tmp/whiteedison-lane-before-cosmetic-revert.diff` に保存。移動した5関数46行と合わせて66行である。
+前回の削除20行の置換内訳は、列挙sanitize 2行、handleの転送4行、root / rootless / frames 3行、relation edgeの接続辺 / pair offset / hit 3行、nodeのview / collapse / parent edge / 入力 / 呼出6行、retained sceneの層順2行。前回のdiffは `/private/tmp/whiteedison-lane-before-cosmetic-revert.diff` に保存。移動した5関数46行と合わせて66行である。
 
 全体vitestとwatch試験は今回は再実行していない。前回EMFILEで失敗したwatch2件は未解決として残す。固定寸法と角丸 / handleの検査を撤去したことを、全体の合格やmockの視覚受け入れと読み替えない。mockの構造照合、browserでのclick / F2 / drag・保存と再読込、通常Beta条件15、commit / 統合 / pushはDirectorの次の作業。未commitで引き渡す。

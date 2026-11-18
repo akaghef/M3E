@@ -6,7 +6,7 @@ DaveJ 型の architecture-flow UI を参考に、M3E の通常ビューを壊さ
 ## 前提
 
 - node 座標は固定する。
-- step / flow に応じて変わるのは link / edge / highlight / progress。
+- step / flow に応じて変わるのは link / parent edge / highlight / progress。
 - progress bar は 1段または2段。2段の場合は上位 flow と下位 step を分ける。
 - map の見た目確認はスクリーンショットで検証する。
 - 独立 HTML が M3E と別レンダラになると edge routing が壊れやすい。

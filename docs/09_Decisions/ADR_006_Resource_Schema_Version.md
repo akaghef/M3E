@@ -29,7 +29,7 @@ Resource 概念の導入 (Resource_Design.md) により、AppState に `resource
 
 - 明確な breaking change の境界
 - `fromJSON` で version 分岐して migration 処理を書ける
-- links (GraphLink) 追加時に version を上げなかった前例とは異なる
+- links (relation edge) 追加時に version を上げなかった前例とは異なる
 
 ### Option 2: version 1 のまま optional で進める (方式 A)
 

@@ -27,8 +27,9 @@ description: Normalize official M3E human-facing map notation, including > and >
 
 ## Required distinctions
 
-- `edge` = parent-child tree relation
-- `GraphLink` = non-tree node relation
+- `edge`: any line between two nodes; includes parent edges and relation edges
+- `parent edge` = parent-child tree relation
+- `relation edge` = non-tree node relation
 - node-level `link` = URL/attribute
 - `alias` = reference window to canonical entity
 

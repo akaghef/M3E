@@ -78,7 +78,7 @@ M3Eの競争軸は基盤modelの規模ではない。超人的AIと人間が同�
 
 1. chatからtree noteへ昇格するunitはturn、summary、claim、task、concept、proof stepのどれか。
 2. parent-childは時系列、topic、abstraction、logical dependency、user intentのどれを表すか。
-3. 同一conceptの複数文脈をalias、GraphLink、複製のどれで扱うか。
+3. 同一conceptの複数文脈をalias、relation edge、複製のどれで扱うか。
 4. treeを正本とするか、typed graphへ進むか。
 5. LaTeX、Lean、binder、variable scope、proof dependencyを扱えるか。
 6. AIのsummary上書きに人間の承認とprovenanceがあるか。
@@ -88,7 +88,7 @@ M3Eの競争軸は基盤modelの規模ではない。超人的AIと人間が同�
 ## Open Questions
 
 - atomic factの境界を誰が、どの規則とapprovalで決めるか。
-- treeの親子edgeと、数学的なtyped relationをどこで分離するか。
+- treeのparent edgeと、数学的なtyped relationをどこで分離するか。
 - Bufferを永続artifact、workflow state、差分queueのどれとして実装するか。
 - projectionの各文・数式からsource node / relationへ戻れるprovenanceをどう表現するか。
 - α同値とsubstitutionをM3E Semantic Coreの責務にするか、Lean等の外部kernelへ委譲するか。

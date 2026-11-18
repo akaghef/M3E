@@ -286,7 +286,7 @@ type RollupMap = Record<string, Record<string, ResourceRollup>>;
 #### 方式 A: AppState 直接拡張 (推奨)
 
 `AppState.resources` を optional フィールドとして追加する。
-GraphLink (`links`) と同じパターンに従い、既存データとの後方互換性を維持する。
+relation edge (`links`) と同じパターンに従い、既存データとの後方互換性を維持する。
 
 ```json
 {
@@ -710,7 +710,7 @@ AppState.resources:
 2. **Resources フォルダは参照・説明用** --- ユーザーが Resource 一覧を概観する場所であり、データの正本ではない
 3. **Workstreams は配分の場所** --- 各作業ノードに allocation (参照 + 量) を設定する
 4. **ロールアップは Workstreams から上へ集計** --- Project Root で全体の使用状況が見える
-5. **Goals と Risks は allocation を持たない** --- 将来的に GraphLink で関連付ける
+5. **Goals と Risks は allocation を持たない** --- 将来的に relation edge で関連付ける
 
 ### nodeType との関係
 

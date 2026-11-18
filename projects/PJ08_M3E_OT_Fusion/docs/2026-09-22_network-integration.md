@@ -9,7 +9,7 @@
 - API / Server-Sent Events は読み取り専用。更新失敗時は最後の正常値を保持し、観測不能と明示する。消失を完了へ変換しない。
 - Agent Card / force は既存 Lab の seam を再利用し、force の NOTICE を保持する。
 - runtime の座標だけを force が更新する。authoring 座標は固定。drag の pin はページ session 内の状態。
-- GraphLink は provenance を持つ意味関係。選択すると対応する transport evidence を表示する。
+- relation edge は provenance を持つ意味関係。選択すると対応する transport evidence を表示する。
 - runtime 選択中は authoring のキー・ツール操作を遮断する。authoring ノードを選び直すと編集を再開する。
 - command controller は能力・incarnation を検証し、同一 ID の再実行と通信断後の自動再送を避ける。送信から verified への飛躍を拒否し、独立した完了証拠を必要とする。
 

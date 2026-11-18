@@ -10,7 +10,7 @@ Layout を保持して濃淡と件数だけを更新する。判定・操作・�
 
 ### Non-Goals
 
-新しい描画エンジン、server、保存 schema、npm 依存は追加しない。mock の実装 runtime、Domain の固定集合、候補 GraphLink を移植しない。未対応 Surface View の WebGL 化や Radial の実装は別件である。
+新しい描画エンジン、server、保存 schema、npm 依存は追加しない。mock の実装 runtime、Domain の固定集合、候補 relation edge を移植しない。未対応 Surface View の WebGL 化や Radial の実装は別件である。
 
 ## Existing Architecture Analysis
 
@@ -22,8 +22,8 @@ Layout を保持して濃淡と件数だけを更新する。判定・操作・�
 | score | `viewer.ts:6319`。整数文字列、緊急等=4、高等=3、中等=2、低等=1、欠落/不明=0。属性は nullish 優先で空文字を次の属性へ落とさない |
 | 旧非表示処理 | `viewer.ts:6350` の membership、`:6357` の子孫一致→先祖保持と root 強制保持、`:6391` の `scopeChildren` |
 | Layout | `viewer.ts:5639` の `visibleChildren` は重要度を使わず nested folder で止まる。`:7156` の Disperse traversal は collapse まで子孫を読む |
-| GraphLink | `viewer.ts:8049` 以降が描画選別、`:8057` 以降で Disperse / System の代表端点解決、`:8080` が旧重要度での除外。`shared/types.ts:29` の GraphLink は attributes を保持 |
-| Lane | `beta/src/shared/lane_view.ts:69` の projection、`:80` の folder 境界、`:92` の元 GraphLink 選別。`beta/tests/visual/lane_view.spec.js:59` は `lane_asys.json` を使用し、25孫 / 82 GraphLink を検査 |
+| relation edge | `viewer.ts:8049` 以降が描画選別、`:8057` 以降で Disperse / System の代表端点解決、`:8080` が旧重要度での除外。`shared/types.ts:29` の `GraphLink` は attributes を保持 |
+| Lane | `beta/src/shared/lane_view.ts:69` の projection、`:80` の folder 境界、`:92` の元 relation edge 選別。`beta/tests/visual/lane_view.spec.js:59` は `lane_asys.json` を使用し、25孫 / 82 relation edge を検査 |
 | 共通描画 | `viewer.ts:8574` の `RetainedSvgScene.update` に全 View が合流。`:9337` の `patch` は選択変更時に node markup を直接差し替える |
 | WebGL | `viewer.ts:4456` は Tree / Disperse のみ。agent node / NETWORK は SVG。`beta/src/rendering/webgl_scene_tiles.ts:176` は primitive の computed opacity、`:245` は outerHTML ベースの capture cache、`:327` は Canvas2D の alpha、`:368` 以降は paint command 比較による tile 無効化 |
 | status bar | `viewer.ts:4295` の `setStatus` は2500msで消える。`beta/src/browser/workbench-ui.tsx:315` が読む一時状態を `:1478` で表示。`:1454` が TopBar mount |
@@ -34,7 +34,7 @@ Layout を保持して濃淡と件数だけを更新する。判定・操作・�
 
 | 操作 | 所有する層 |
 |---|---|
-| KEEP | 現行の node / GraphLink / edge 描画、Layout、force、保存、選択対象、Inspector、TopBar、既存 Panel |
+| KEEP | 現行の node / relation edge / parent edge 描画、Layout、force、保存、選択対象、Inspector、TopBar、既存 Panel |
 | ADD | 純粋な判定 module、session 状態、React bar、scene の濃淡適用、status bar の独立した件数表示 |
 | REPLACE | 操作不能な旧重要度の状態と非表示・選択制限分岐。score の意味はそのまま移す |
 | FAIL | 対象 node / link を Layout 入力から間引く、opacity のために relayout、SVG ancestor の opacity だけで WebGL 完了扱い、別 renderer の作成 |
@@ -62,7 +62,7 @@ Layout を保持して濃淡と件数だけを更新する。判定・操作・�
 
 | 表示名 | 対象・attributes key(s) | 順序または複数選択 | 値：ラベル — 1行の意味 | 絞らない値 |
 |---|---|---|---|---|
-| 実現段階 | GraphLink / `confidence` | CURRENT ⊂ TO-BE | `system-evidenced`: CURRENT — 動作を確認した関係だけ。`all`: TO-BE — 採用した設計（図に書いた関係すべて） | `all` |
+| 実現段階 | relation edge / `confidence` | CURRENT ⊂ TO-BE | `system-evidenced`: CURRENT — 動作を確認した関係だけ。`all`: TO-BE — 採用した設計（図に書いた関係すべて） | `all` |
 | 重要度 | node / `importance` → `priority` → `重要度` | 高以上 ⊂ 中以上 ⊂ すべて | `high-plus`: 高以上 — score 3以上。`medium-plus`: 中以上 — score 2以上。`all`: すべて — 重要度で絞らない | `all` |
 | 緊急度 | node / `urgency` | 高以上 ⊂ 中以上 ⊂ すべて | `high-plus`: 高以上 — score 3以上。`medium-plus`: 中以上 — score 2以上。`all`: すべて — 緊急度で絞らない | `all` |
 | 所属 | node / `domain` | 複数選択、同一軸内 OR | 名前: その名前 — 所属にこの名前を含む node。空集合: すべて — 所属で絞らない | 空集合 |
@@ -88,13 +88,13 @@ map 切替では通知前に reset し、古い map の応答で上書きされ�
 
 所属は `domain` をカンマで分割し各要素を trim、空要素を捨て重複を除く。保存は string→string のまま。候補は描画 node にある名前の distinct 集合。選択なしなら全件一致、選択ありなら集合の交差が空でない node が一致する。欠落は空集合。alias は表示中の alias node 自身の attributes を使う。
 
-フィルタなしの描画 node 集合を N、GraphLink 集合を G とする。B は全有効 node 軸に一致する N の部分集合、P は実現段階に一致する G の部分集合、L は P のうち両端が B に属するもの（描画上の端点で判定）。node の一致集合 M は、CURRENT が有効なら B ∩ endpoints(L)、無効なら B。最終 GraphLink は L（両端は自動的に M に属する）、edge は両端が M に属するもの。計算は1回で、反復しない。一致集合を Layout 入力へ戻さない。CURRENT が無効なら、所属などに一致した孤立 node も一致する。
+フィルタなしの描画 node 集合を N、relation edge 集合を G とする。B は全有効 node 軸に一致する N の部分集合、P は実現段階に一致する G の部分集合、L は P のうち両端が B に属するもの（描画上の端点で判定）。node の一致集合 M は、CURRENT が有効なら B ∩ endpoints(L)、無効なら B。最終 relation edge は L（両端は自動的に M に属する）、parent edge は両端が M に属するもの。計算は1回で、反復しない。一致集合を Layout 入力へ戻さない。CURRENT が無効なら、所属などに一致した孤立 node も一致する。
 
 ### A-sys との差分と不採用（IS92）
 
 以前の「Facet は scope で絞る」は「所属 attributes で絞る」へ変更された。最も近い scope 境界・境界 node 自身・root による所有の設計は不採用。
 
-A-sys は選択 Domain 内の両端を持つ GraphLink のみを残し、node も残る GraphLink の端点だけを残す（参照 HTML:153–157）。本仕様の差分は1点だけで、CURRENT が無効のとき、所属が一致する孤立 node（GraphLink を持たない node）も一致させる（IS93、Director 決定）。CURRENT が有効なときは端点条件を L から求めるので、選択外の相手への確認済み GraphLink しかない node は薄くなり、A-sys の CURRENT × Domain と同じ結果になる。
+A-sys は選択 Domain 内の両端を持つ relation edge のみを残し、node も残る relation edge の端点だけを残す（参照 HTML:153–157）。本仕様の差分は1点だけで、CURRENT が無効のとき、所属が一致する孤立 node（relation edge を持たない node）も一致させる（IS93、Director 決定）。CURRENT が有効なときは端点条件を L から求めるので、選択外の相手への確認済み relation edge しかない node は薄くなり、A-sys の CURRENT × Domain と同じ結果になる。
 
 ### 描画対象と件数（IS96、Director 決定）
 
@@ -102,21 +102,21 @@ A-sys は選択 Domain 内の両端を持つ GraphLink のみを残し、node �
 |---|---|
 | 通常 node | 現在の scene に本体を描く node を各1件。viewport 外も含める。collapse / scope により初めから描かれない node は分母に含めない |
 | Lane | 見出し・レーン名・個数は構造を示すため保持し、node 件数は本体のある孫だけ。対応 node の見出し文字にもその node の濃淡を適用するが、飾り枠や個数は node と数えない。A-sys の分母は25 / 82 |
-| GraphLink | 実際に線を描く保存 GraphLink を1件。hit / visible / label / 矢印を重複計数しない。省略 link と候補ペアは含めない |
-| 集約された端点 | System / Disperse で代表 node に接続する線は描画上の代表端点で node 一致・端点集合を判定し、confidence は元 GraphLink から読む。元の隠れた node を分母に増やさない |
+| relation edge | 実際に線を描く保存 relation edge を1件。hit / visible / label / 矢印を重複計数しない。省略 link と候補ペアは含めない |
+| 集約された端点 | System / Disperse で代表 node に接続する線は描画上の代表端点で node 一致・端点集合を判定し、confidence は元 relation edge から読む。元の隠れた node を分母に増やさない |
 | System preview | 独立した node 本体ではない内部 preview は件数に含めず、所有する表示カードの濃淡に従う |
-| NETWORK | 現行 scene の独立した node 本体と GraphLink があれば同じ判定対象。attributes の有無と値で同じ規則を適用する。既存 SVG fallback を保持 |
+| NETWORK | 現行 scene の独立した node 本体と relation edge があれば同じ判定対象。attributes の有無と値で同じ規則を適用する。既存 SVG fallback を保持 |
 | alias | 表示中の alias node を1件。参照先を二重計数しない。表示中の alias 自身の attributes を使う |
 
 これらは scene 上の node と装飾・preview の区別であり、同じ境界を判定・分母・分子に用いる。
 
 ## Presentation and WebGL
 
-各 drawable primitive に既存 opacity と濃淡係数の積を適用する。係数は非一致で0より大きく1より小さい値とし、特定数値の mock 一致は要求しない。一致時は係数1で従来の opacity を保つ。再適用で乗算が累積しないよう無加工の scene / patch を入力とする。shape・text / tspan・badge・GraphLink label・arrow marker を含め、hit 用透明要素の値や pointer-events は維持する。共有 marker を変更して一致 link まで薄くしない。既存 marker capture に合わせ、link 側の paint alpha で合成できるかを検査する。
+各 drawable primitive に既存 opacity と濃淡係数の積を適用する。係数は非一致で0より大きく1より小さい値とし、特定数値の mock 一致は要求しない。一致時は係数1で従来の opacity を保つ。再適用で乗算が累積しないよう無加工の scene / patch を入力とする。shape・text / tspan・badge・relation edge label・arrow marker を含め、hit 用透明要素の値や pointer-events は維持する。共有 marker を変更して一致 link まで薄くしない。既存 marker capture に合わせ、link 側の paint alpha で合成できるかを検査する。
 
 primitive の paint 変更が capture に渡るよう、変更された属性を outerHTML に反映するか、既存の完全 capture を明示的に行う。CSS の祖先 class だけを変えて cache を再利用しない。新 paint commands を既存 tile 更新へ渡すことで、旧/新の bounds が invalidation されることを確認する。これは再配置ではなく再描画である。
 
-`refreshSvgNodeInteraction` の `RetainedSvgScene.patch` にも同じ関数を使う。WebGL の選択 overlay / partial capture と GraphLink 選択でも、濃淡を保持する。薄い対象の click・keyboard 選択は禁止しない。選択状態を目立たせる既存描画は残すが、フィルタ係数を打ち消さない。
+`refreshSvgNodeInteraction` の `RetainedSvgScene.patch` にも同じ関数を使う。WebGL の選択 overlay / partial capture と relation edge 選択でも、濃淡を保持する。薄い対象の click・keyboard 選択は禁止しない。選択状態を目立たせる既存描画は残すが、フィルタ係数を打ち消さない。
 
 ## UI and Accessibility
 
@@ -139,7 +139,7 @@ status bar は一時メッセージとは別に controller の件数を購読す
 | `:6350–6389` | membership、再構築、先祖/root の救済を削除 |
 | `:6399` | `scopeChildren` の importance filter を外し、既存 scope の子を返す。linear 出力に新しい間引きを入れない |
 | `:7920` | `rebuildImportanceVisibility()` 呼出を削除 |
-| `:8080–8082` | GraphLink の importance 由来の早期 return を削除。描画後の濃淡へ置換 |
+| `:8080–8082` | relation edge の importance 由来の早期 return を削除。描画後の濃淡へ置換 |
 | `:9247`, `:9253` | 選択正規化から importance guard だけを除去。scope / 存在の検査は維持 |
 | `:9415`, `:9509` | 単一選択・pointer 選択から importance guard だけを除去 |
 | `:8633` | 旧 mode の debug 表記を削除。status bar は別の件数欄 |

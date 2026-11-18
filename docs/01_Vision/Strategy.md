@@ -356,12 +356,12 @@ proposal 領域も例外にしない。AI / bot が提案した未確定 relatio
 
 M3E relation の意味は既存の区別を維持する。
 
-- `edge`: 親子の主構造。layout に参加する。
-- `GraphLink`: 非木構造の map relation。overlay であり ownership を変えない。
+- `parent edge`: 親子の主構造。layout に参加する。
+- `relation edge`: 非木構造の map relation。overlay であり ownership を変えない。
 - `alias`: 他 scope の実体を見る参照窓。実体を移動・複製しない。
 - node-level `link`: 外部 URL / attribute。graph relation ではない。
 
-Neo4j の `Relationship` は保存上の器であり、それだけでは M3E の `edge` / `GraphLink` / `alias` の意味を決めない。
+Neo4j の `Relationship` は保存上の器であり、それだけでは M3E の `parent edge` / `relation edge` / `alias` の意味を決めない。
 
 #### S16.8 scope と write authority の分離
 
@@ -383,7 +383,7 @@ owner と write route を明示的に切り替える root を `authority root` �
 | 子孫 node | 最近傍 authority root から authority を継承 |
 | nested authority root | 明示された場合だけ authority を上書き |
 | alias | alias 自身は配置先 authority、target は参照先 authority |
-| GraphLink | relation assertion の owner と endpoint の owner を分ける |
+| relation edge | relation assertion の owner と endpoint の owner を分ける |
 
 ```mermaid
 flowchart TB
@@ -554,7 +554,7 @@ SQLite と Neo4j の双方を自由に更新可能にする双方向同期は禁
 - parent-child と sibling order
 - scope 導出結果
 - alias target と broken state
-- GraphLink endpoint と relation semantics
+- relation edge endpoint と relation semantics
 - 同じ Command に対する結果または拒否
 - authority resolution と write route
 - history の解釈
@@ -571,7 +571,7 @@ Neo4j 導入を段階的に進めるため、次を gate とする。
 | Canon Gate | concern ごとの canonical owner が一意 |
 | Identity Gate | source rename・path変更後も identity を追跡可能 |
 | Scope Gate | scope が storage / authority と暗黙に同一化されていない |
-| Relation Gate | edge / GraphLink / alias / external link の区別を保持 |
+| Relation Gate | parent edge / relation edge / alias / external link の区別を保持 |
 | Write Gate | 同じ concern の write authority が一箇所 |
 | Rebuild Gate | derived record は owner source 群から再構築でき、M3E-owned canonical record は独立 backup / journal / portable snapshot から復旧可能 |
 | Fidelity Gate | Command result と invariant が旧系と同値 |

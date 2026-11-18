@@ -287,7 +287,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/10_io/math_ontology_services/05_semantic_scholarship.md](<./ideas/10_io/math_ontology_services/05_semantic_scholarship.md>) | Markdown | 05. 書誌・分類・論文意味付け（L4） | 論文・著者・分野コードを **構造化データ** として扱う層。 |
 | [ideas/10_io/math_ontology_services/06_ai_math_bridges.md](<./ideas/10_io/math_ontology_services/06_ai_math_bridges.md>) | Markdown | 06. AI × 数学 × オントロジー橋渡し（L5） | LLM / 機械学習と形式数学・数学知識を繋ぐデータセット・モデル・プロトコル群。 |
 | [ideas/10_io/math_ontology_services/07_m3e_connection.md](<./ideas/10_io/math_ontology_services/07_m3e_connection.md>) | Markdown | 07. M3E との接続候補と未決質問 | 02〜06 で並べたサービス群を、M3E 側からどう使うか / どう繋ぐか を俯瞰する。 |
-| [ideas/10_io/math_ontology_services/08_implementation_feasibility.md](<./ideas/10_io/math_ontology_services/08_implementation_feasibility.md>) | Markdown | 08. 実装レベルでの取込可能性検討 | ブレスト全般は「採否を決めない」前提だが、**P8（Deep 帯域の GraphLink を多種エッジ化して育てる）** だけ |
+| [ideas/10_io/math_ontology_services/08_implementation_feasibility.md](<./ideas/10_io/math_ontology_services/08_implementation_feasibility.md>) | Markdown | 08. 実装レベルでの取込可能性検討 | ブレスト全般は「採否を決めない」前提だが、**P8（Deep 帯域の relation edge を多種エッジ化して育てる）** だけ |
 | [ideas/10_io/math_ontology_services/09_blueprint_facets.md](<./ideas/10_io/math_ontology_services/09_blueprint_facets.md>) | Markdown | 09. Blueprint の facet 分離と相互参照 | Blueprint を M3E に取り込むとき、単なる dependency DAG として扱うだけでは情報を落とす。 |
 | [ideas/10_io/math_ontology_services/10_anchoring.md](<./ideas/10_io/math_ontology_services/10_anchoring.md>) | Markdown | Anchoring という用語の整理 | `anchoring` を、知識グラフや facet 表示において **leaf を見やすくするために synthetic node を挿入して束ねる操作** として使う案を整理する。 |
 | [ideas/10_io/math_ontology_services/README.md](<./ideas/10_io/math_ontology_services/README.md>) | Markdown | 数学 × オントロジー サービス大量収集ブレスト | 「数学的知識を **機械可読 / 意味付き / 構造化** された形で扱うサービス・プロジェクト・標準」を |
@@ -332,8 +332,8 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260402subagent.md](<./ideas/260402subagent.md>) | Markdown | AI Subagent 連携仕様（DeepSeek 含む） | 最終更新: 2026-04-02 |
 | [ideas/260407_latex_rendering.md](<./ideas/260407_latex_rendering.md>) | Markdown | LaTeX Rendering in Nodes | Math expressions in mind-map nodes are currently stored as raw LaTeX strings and displayed as plain text. Rendering t... |
 | [ideas/260407organized_ideas.md](<./ideas/260407organized_ideas.md>) | Markdown | M3E アイデア整理（2026-04-07） | 最近追加されたアイデアを分類・整理したもの。 |
-| [ideas/260409_edge_typed_attributes.md](<./ideas/260409_edge_typed_attributes.md>) | Markdown | 親子エッジに型/属性を持たせる設計案 | 現在の M3E では、親子エッジ（parentId / children[]）にはいかなるメタデータもない。 |
-| [ideas/260409_typed_edges.md](<./ideas/260409_typed_edges.md>) | Markdown | 枝（エッジ）に型・属性を持たせる設計案 | Date: 2026-04-09 |
+| [ideas/260409_edge_typed_attributes.md](<./ideas/260409_edge_typed_attributes.md>) | Markdown | parent edgeに型/属性を持たせる設計案 | 現在の M3E では、parent edge（parentId / children[]）にはいかなるメタデータもない。 |
+| [ideas/260409_typed_edges.md](<./ideas/260409_typed_edges.md>) | Markdown | parent edgeに型・属性を持たせる設計案 | Date: 2026-04-09 |
 | [ideas/260410_ai_integration_architecture.md](<./ideas/260410_ai_integration_architecture.md>) | Markdown | AI Integration Architecture -- Claude API 直接利用方式 | 作成日: 2026-04-10 |
 | [ideas/260410_confidence_testing_brainstorm.md](<./ideas/260410_confidence_testing_brainstorm.md>) | Markdown | AI Confidence テスト方法 ブレインストーミング整理 | > 作成日: 2026-04-10 |
 | [ideas/260410_flash_data_model.md](<./ideas/260410_flash_data_model.md>) | Markdown | Flash バンド: データモデルと UX フロー設計 | 最終更新: 2026-04-10 |
@@ -364,11 +364,11 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260808_agent_mapping_plugin_boundary.md](<./ideas/260808_agent_mapping_plugin_boundary.md>) | Markdown | Agent Mapping Plugin の境界 — 設計会話ログ (2026-08-08) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 決定は ADR_011 と [Decision_Pool... |
 | [ideas/260809_knowledge_workbench_slice.md](<./ideas/260809_knowledge_workbench_slice.md>) | Markdown | Knowledge Workbench Slice — 不可視多次元グラフと人間作業台 | 最終更新: 2026-08-09 |
 | [ideas/260809_s16_neo4j_differentiation.md](<./ideas/260809_s16_neo4j_differentiation.md>) | Markdown | S16 — Neo4jとの差別化からM3Eの存在理由を再定義する | 最終更新: 2026-08-09 |
-| [ideas/260824_neo4j_team_collaboration_graphlink.md](<./ideas/260824_neo4j_team_collaboration_graphlink.md>) | Markdown | Neo4j-backed Team Collaboration と GraphLink 参照 | 最終更新: 2026-08-24 |
+| [ideas/260824_neo4j_team_collaboration_graphlink.md](<./ideas/260824_neo4j_team_collaboration_graphlink.md>) | Markdown | Neo4j-backed Team Collaboration と relation edge 参照 | 最終更新: 2026-08-24 |
 | [ideas/260824_node_plugin_and_layout_contract.md](<./ideas/260824_node_plugin_and_layout_contract.md>) | Markdown | Node plugin と layout 契約 — 設計会話ログ (2026-08-24) | [ADR_011](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) の思想の出典。**会話ログであって決定ではない。** 要点は node core を最小に保つ、layout ... |
 | [ideas/260914_ot_prompt_role_agent_node_orrery_force.md](<./ideas/260914_ot_prompt_role_agent_node_orrery_force.md>) | Markdown | OT prompt-roleとAgent nodeを先行吸収する実行設計 | > Status: idea / implementation-direction memo。Role canonの完成仕様ではない。 |
 | [ideas/260914_unified_work_graph_multi_pc_resource_ot.md](<./ideas/260914_unified_work_graph_multi_pc_resource_ot.md>) | Markdown | 一枚絵としてのM3E — 個人multi-PC、常駐host、Resource、OT統合 | > Status: idea / vision memo。決定・仕様ではない。 |
-| [ideas/261017_lane_view_graphlink_reification.md](<./ideas/261017_lane_view_graphlink_reification.md>) | Markdown | Lane view と GraphLink の関係の実体化 | 最終更新: 2026-10-17 |
+| [ideas/261017_lane_view_graphlink_reification.md](<./ideas/261017_lane_view_graphlink_reification.md>) | Markdown | Lane view と relation edge の関係の実体化 | 最終更新: 2026-10-17 |
 | [ideas/261021_external_scope_append_update_rate.md](<./ideas/261021_external_scope_append_update_rate.md>) | Markdown | 外部からのスコープ追加中に画面更新レートが低下した観察 | Basis: TOB-O |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |

@@ -117,7 +117,7 @@ fan-out 制御だけを目的に、雑なルールで束ねる。
 
 ## M3E / PJ02 文脈での含意
 
-- `tree edge` や `GraphLink` の protocol とは別レイヤの話として扱える
+- `parent edge` や `relation edge` の protocol とは別レイヤの話として扱える
 - facet が複数ある場合、各 facet に別の anchoring をかけられる
 - `Implementation` facet のように原構造が薄い場所ほど anchoring の価値が高い
 - `By Chapter` のように原構造が強い facet では anchoring はほぼ自明になる

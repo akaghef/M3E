@@ -27,7 +27,7 @@ MVP では、Miro の mind map を参考にした
 
 - 各ノードの矩形サイズを受け取る
 - 各ノードの配置座標を計算する
-- 親子エッジの接続点を計算する
+- parent edgeの接続点を計算する
 - 折り畳み状態を考慮する
 - 再計算範囲を限定する
 - `auto layout` と `layout nodes` の両方を支える
@@ -259,22 +259,22 @@ M3E でも MVP でその余地を残す。
 - 編集設計: [./Editing_Design.md](./Editing_Design.md)
 - 帯域仕様: [../03_Spec/Band_Spec.md](../03_Spec/Band_Spec.md)
 
-## Edge vs Link
+## parent edge vs Link
 
-`Edge` and `Link` should be handled in different phases.
+`parent edge` and `relation edge` should be handled in different phases.
 
-### Edge
+### parent edge
 
 - generated from tree structure
 - required for structural readability
 - affects placement assumptions
 - belongs to the main layout output
 
-### Link
+### relation edge
 
 - generated after layout as an overlay pass
-- does not affect node coordinates
-- may use different routing from structural edges
+- Tree の部分木配置には寄与せず、force 配置では [Surface View 仕様](../03_Spec/map_layout_modes.md) に従って張力の入力になり得る
+- may use different routing from structural parent edges
 - may be toggled separately in the renderer
 
 ### Implementation Direction
@@ -284,4 +284,4 @@ Recommended pipeline:
 1. place nodes from the tree
 2. generate structural `EdgeLayout`
 3. generate overlay `LinkLayout`
-4. render `Edge` first, `Link` second, interaction highlights last
+4. render `parent edge` first, `relation edge` second, interaction highlights last

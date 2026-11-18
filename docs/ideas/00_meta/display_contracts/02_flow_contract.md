@@ -24,7 +24,7 @@
 | `parent-child` | 主処理骨格を表す |
 | `depth` | 処理順・時間順 |
 | `row / breadth` | 同じ stage に属する並列処理、同列比較 |
-| `GraphLink` | 補助依存、戻り、例外経路、横断参照 |
+| `relation edge` | 補助依存、戻り、例外経路、横断参照 |
 | `anchor` | 原則 off。必要なときだけ on |
 | `scope` | `unscoped` を既定にする |
 | `fill` | criticality / step importance |

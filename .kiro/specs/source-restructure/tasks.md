@@ -209,7 +209,7 @@ PR2がまだ利用できない場合は、その比較だけを未実施とし�
 | 項目 | 内容 |
 |---|---|
 | 前提 | PR8 |
-| 守る挙動 | mouse/touch/pen、wheel修飾、pinch anchor、pointer capture/cancel/lost focus、drag threshold、reparent、range選択、annotation、GraphLink端点編集、Undo |
+| 守る挙動 | mouse/touch/pen、wheel修飾、pinch anchor、pointer capture/cancel/lost focus、drag threshold、reparent、range選択、annotation、relation edge端点編集、Undo |
 | 最小検証 | 共通検証。`cd beta` で `npx playwright test tests/visual/render_interaction_updates.spec.js tests/visual/grab_tree_move.spec.js tests/visual/pen_annotations.spec.js tests/visual/viewer.visual.spec.js tests/visual/webgl_projection.spec.js` と pinch unit |
 | ゲート目標 | viewer400行以上・let3以上減少。旧 canvas pointerdown CCN 64を削除、新 handler20/100以内。cameraへの直接writer0を維持 |
 | 性能 | 必須。共通前後比較。gesture回数と geometry upload invariant を保持 |
@@ -222,9 +222,9 @@ PR2がまだ利用できない場合は、その比較だけを未実施とし�
 | 項目 | 内容 |
 |---|---|
 | 前提 | PR9 |
-| 守る挙動 | SVG/WebGL/default、layout/Connection、node種類、folder preview、annotations、LOD、selection、cache invalidation、SSE更新、fallback、fit target と scene revision |
+| 守る挙動 | SVG/WebGL/default、layout/edge、node種類、folder preview、annotations、LOD、selection、cache invalidation、SSE更新、fallback、fit target と scene revision |
 | 最小検証 | 共通検証、`npm --prefix beta run test:edge-port` / `test:layout` / `test:node`。`cd beta` で `npx playwright test tests/visual/incremental_edit.spec.js tests/visual/render_updates.spec.js tests/visual/render_interaction_updates.spec.js tests/visual/webgl_projection.spec.js tests/visual/layout_integrity.spec.js tests/visual/viewer_surface_edge_paths.spec.js` |
-| ゲート目標 | viewer500行以上・let8以上減少。旧renderScene CCN 46 / 686行を撤去し、新規pipeline/handlerは20/100以内。GraphLink描画のCCN 88の入れ子も改善対象。source copyによる二重本体0 |
+| ゲート目標 | viewer500行以上・let8以上減少。旧renderScene CCN 46 / 686行を撤去し、新規pipeline/handlerは20/100以内。relation edge描画のCCN 88の入れ子も改善対象。source copyによる二重本体0 |
 | 性能 | 必須。共通前後比較、geometry upload、描画更新/idle、通常Beta元操作 |
 | 巻き戻し | render owner、adapter wiring、旧本体削除を同一単位で戻す。既存goldenは更新しない |
 
@@ -255,7 +255,7 @@ PR2がまだ利用できない場合は、その比較だけを未実施とし�
 | 前提 | 原則PR11後。PR1で対象一覧を固定し、該当moduleの所有/renameに競合しない範囲だけ並行可能 |
 | 対象 | labsを除く製品srcの全CCN50超。viewer/server段階で既に解消したものは証拠を再利用し、未解消を残さない。Director指定の `localTopicSuggestions` も対象 |
 | 作業 | `importBlueprintToAppState` のparse/normalize/assemble、`copySubtree` の探索/複製/参照対応、MCP `mutate` / `reconcile` の入力判定/対象解決/既存更新、topic提案の規則を責任ごとに分ける。既存ライブラリとmodel命令を使う |
-| 守る挙動 | 保存algorithm・schema・入力受理条件・error code・順序・ID生成・参照/alias/GraphLink・copy結果・MCPの原子性/競合/削除時保護・提案出力。新機能や出力改善を混ぜない |
+| 守る挙動 | 保存algorithm・schema・入力受理条件・error code・順序・ID生成・参照/alias/relation edge・copy結果・MCPの原子性/競合/削除時保護・提案出力。新機能や出力改善を混ぜない |
 | 最小検証 | 共通検証。`cd beta` で `npx vitest run tests/unit/blueprint_importer.test.js tests/unit/blueprint_import_api_integration.test.js tests/unit/rapid_mvp.test.js tests/unit/data_model_integrity.test.js tests/unit/scope_structure.test.js tests/unit/mcp_service.test.ts tests/unit/mcp_hooks.test.ts`。旧版/新版の同一入力による出力・永続化比較とtopic用characterizationを追加 |
 | ゲート目標 | 小単位ごと対象のCCN/行数超過量を厳密減少。最終の対象関数・分割後関数は全てCCN≤20かつ行数≤100、製品srcのCCN50超残数0。移動・改名での対象除外禁止 |
 | 性能 | 原則不要（Nodeの純粋な責任分割でbrowser通知順序/頻度不変の場合）。描画/同期への作用が出る場合は共通性能比較も必須 |

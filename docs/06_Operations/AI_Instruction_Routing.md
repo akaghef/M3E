@@ -44,7 +44,7 @@ Current execution model:
 - scope / scopen / unscopen の目的と境界
 - scope granularity
 - layouting / display intent
-- edge vs GraphLink vs node-level link
+- parent edge vs relation edge vs node-level link
 - alias vs move
 - cross-facet operation の意味と所有範囲
 - Codex handoff involving map mutation の未確定な担当範囲

@@ -525,7 +525,7 @@ This way users can access styling via both:
 
 ## 11. Future Considerations (out of scope for v1)
 
-- Edge styling sub-panel (m3e:edge-color, edge-style, edge-width) -- could be added as additional toolbar button
+- parent edge styling sub-panel (m3e:edge-color, edge-style, edge-width) -- could be added as additional toolbar button
 - Color picker widget (HTML5 `<input type="color">`) for truly custom colors
 - Style presets/themes (save a combination of bg+color+border+shape as a named preset)
 - Copy/paste style between nodes (Ctrl+Shift+C / Ctrl+Shift+V)

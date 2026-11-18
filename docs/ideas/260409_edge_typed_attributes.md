@@ -1,12 +1,12 @@
-# 親子エッジに型/属性を持たせる設計案
+# parent edgeに型/属性を持たせる設計案
 
 ## Why
 
-現在の M3E では、親子エッジ（parentId / children[]）にはいかなるメタデータもない。
+現在の M3E では、parent edge（parentId / children[]）にはいかなるメタデータもない。
 ツリー上で「細胞 -> 幹細胞」が is-a なのか part-of なのか、データとして区別できない。
 
-一方 GraphLink には relationType, label, direction, style が既にある。
-つまり M3E には「情報を持つエッジ（GraphLink）」と「情報を持たないエッジ（親子）」の二重構造がある。
+一方 relation edge には relationType, label, direction, style が既にある。
+つまり M3E には「情報を持つエッジ（relation edge）」と「情報を持たないエッジ（親子）」の二重構造がある。
 
 オントロジーでは、エッジの種類こそが知識の本質である:
 - is-a（分類）: 犬 is-a 動物
@@ -41,15 +41,15 @@ interface TreeNode {
 - 保存/復元の整合性が parentId と一体化しているため壊れにくい
 
 **欠点**:
-- 親子エッジと GraphLink が別体系のまま（二重構造の解消にならない）
+- parent edgeと relation edge が別体系のまま（二重構造の解消にならない）
 - reparentNode() で edgeToParent の引き継ぎ/リセット判断が必要
 - 「エッジ」という独立エンティティではなく、ノードの付属情報にとどまる
 
 **影響コード**: rapid_mvp.ts の addNode(), reparentNode(), validate(), _normalizeNode()
 
-### 案 B: 親子エッジを GraphLink に統一
+### 案 B: parent edgeを `GraphLink` に統一
 
-親子関係も GraphLink で表現し、parentId / children[] は GraphLink から導出する。
+親子関係も `GraphLink` で表現し、parentId / children[] は `GraphLink` から導出する。
 
 ```typescript
 // TreeNode から parentId, children を除去し、GraphLink で表現
@@ -69,11 +69,11 @@ interface GraphLink {
 **利点**:
 - エッジの統一モデル。全エッジが同じデータ構造を持つ
 - オントロジー的に最も正しい（関係は全てエッジ）
-- GraphLink の既存機能（relationType, label, style）が親子にも適用される
+- `GraphLink` の既存機能（relationType, label, style）が親子にも適用される
 
 **欠点**:
 - **破壊的変更**: 既存の parentId / children[] に依存するコードが全面改修
-- ツリー順序（children の配列順）を GraphLink でどう表現するか（order フィールド追加が必要）
+- ツリー順序（children の配列順）を `GraphLink` でどう表現するか（order フィールド追加が必要）
 - パフォーマンス: 子ノード一覧取得が O(1) 配列参照から O(n) リンク走査になる
 - viewer.ts のツリーレイアウトが parentId / children 前提で構築されている
 - validate() の整合性チェックが根本的に再設計
@@ -82,7 +82,7 @@ interface GraphLink {
 
 ### 案 C: ハイブリッド（推奨）
 
-parentId / children[] はそのまま維持し、親子エッジの意味情報は「暗黙的 GraphLink」として自動生成/管理する。
+parentId / children[] はそのまま維持し、parent edgeの意味情報は「暗黙的 `GraphLink`」として自動生成/管理する。
 
 ```typescript
 // TreeNode: 構造は変えない
@@ -108,8 +108,8 @@ interface GraphLink {
 動作:
 1. **ツリー操作は parentId / children[] で行う**（既存コードそのまま）
 2. **Deep モードでエッジ情報が必要な場面では、TreeNode.edgeType を参照**
-3. **グラフ可視化時は、親子エッジも GraphLink として列挙する関数を提供**
-4. GraphLink に `structural: true` フラグで親子由来かどうかを区別
+3. **グラフ可視化時は、parent edgeも `GraphLink` として列挙する関数を提供**
+4. `GraphLink` に `structural: true` フラグで親子由来かどうかを区別
 
 ```typescript
 // 親子エッジを GraphLink として列挙するユーティリティ
@@ -140,7 +140,7 @@ function getAllEdges(state: AppState): GraphLink[] {
 
 **欠点**:
 - 二重構造が完全には解消されない（ただし実用上は問題ない）
-- structural な GraphLink はリアルタイム生成であり、永続化されない
+- structural な `GraphLink` はリアルタイム生成であり、永続化されない
 
 **影響コード**: types.ts に edgeType? 追加、rapid_mvp.ts に edgeType 対応、新規ユーティリティ関数
 
@@ -148,7 +148,7 @@ function getAllEdges(state: AppState): GraphLink[] {
 
 ### 理由
 
-1. **M3E の設計思想との整合**: Rapid モードは軽快な操作が命。親子構造を GraphLink に統一すると、全操作が重くなる。案 C なら Rapid は何も変わらず、Deep でだけ拡張機能が有効になる
+1. **M3E の設計思想との整合**: Rapid モードは軽快な操作が命。親子構造を `GraphLink` に統一すると、全操作が重くなる。案 C なら Rapid は何も変わらず、Deep でだけ拡張機能が有効になる
 2. **段階的導入**: edgeType はオプショナルなので、既存データとの完全な後方互換性がある
 3. **オントロジー的正しさ**: getAllEdges() を通せば、全エッジを統一的に扱える。Deep モードの「体系的知識」ビューでこれを活用する
 4. **実装コスト**: types.ts に 1 フィールド追加 + ユーティリティ関数 1 つで最小限の実装が可能
@@ -189,9 +189,9 @@ UI では自由入力も許可しつつ、候補リストとしてこれらを�
 
 ## Open Questions
 
-1. **edgeType の表示**: Deep モードでエッジラベルをどう可視化するか（線上テキスト？色分け？アイコン？）-- visual チームとの相談が必要
+1. **edgeType の表示**: Deep モードでparent edgeラベルをどう可視化するか（線上テキスト？色分け？アイコン？）-- visual チームとの相談が必要
 2. **reparentNode 時の edgeType**: 移動先でも edgeType を引き継ぐか、リセットするか
-3. **GraphLink.attributes の追加**: GraphLink にも attributes を追加するか（案 C では構造的 GraphLink は仮想的なので、実体のある GraphLink にも attributes があると統一感が出る）
+3. **`GraphLink.attributes` の追加**: `GraphLink` にも attributes を追加するか（案 C では構造的 `GraphLink` は仮想的なので、実体のある `GraphLink` にも attributes があると統一感が出る）
 4. **edgeType vs edgeToParent**: 単一の string で十分か、オブジェクト（案 A の edgeToParent）にすべきか。最初は string で始めて、必要なら拡張する方針を推奨
 
 ## Next Action

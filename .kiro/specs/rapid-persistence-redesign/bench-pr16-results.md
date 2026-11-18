@@ -8,7 +8,7 @@
 ## 判定の条件（計測の前に固定した）
 
 - 有効性: 同じ Command 列を適用した後、各方式の最終状態が参照モデルと一致すること。一致しない計測は無効とする。
-  - 構造の比較: node、親子、兄弟の並び、attribute、GraphLink、linear-text。
+  - 構造の比較: node、親子、兄弟の並び、attribute、relation edge、linear-text。
   - レコードの比較: 兄弟順キーまで含めて一致すること。全 JSON 方式にはキーがないので、構造の比較だけを行う。
 - 移行の可逆性: 実データを草案のレコードに変換した直後の構造が、元の全 JSON の構造と一致すること。一致しなければ、計測の前に止める。
 - 合否の閾値は置かない。比較の材料として、数値をそのまま記録する。
@@ -22,7 +22,7 @@
 | 全 JSON（現行） | Command ごとに `maps.state_json` を読み、変更して全置換する。MCP の経路と同じ形。journal は書かない |
 | SQLite・DELETE | 草案 9.1 節の表（node、edge、attribute、graph_link、linear_text、map、journal）。`journal_mode=DELETE`、`synchronous=FULL`（現行と同じ設定）。レコードと journal を 1 transaction で確定する（OP43） |
 | SQLite・WAL | 同じ表を `journal_mode=WAL`、`synchronous=NORMAL` で使う。Syncthing で同期している今の運用では使えない（草案 9.1 節） |
-| Neo4j | 草案 9.2 節の形。node は `:N`、edge は `CHILD_OF` の relationship（兄弟順キーを持つ）、attribute は `:A`、linear-text は `:L`。確定ごとに `:M` の通し番号を進める。journal は別の SQLite ファイルに、確定の後に追記する（OP44 の別 failure domain を単純化した形） |
+| Neo4j | 草案 9.2 節の形。node は `:N`、parent edge は `CHILD_OF` の relationship（兄弟順キーを持つ）、attribute は `:A`、linear-text は `:L`。確定ごとに `:M` の通し番号を進める。journal は別の SQLite ファイルに、確定の後に追記する（OP44 の別 failure domain を単純化した形） |
 
 兄弟順キーは `fractional-indexing` 4.0.0 で作った。キーを作るのは確定する側で、journal には作った結果のキーを残す。
 
@@ -31,11 +31,11 @@
 - Command 列の構成（2,000 件）は次のとおり。
   - rename 30%、set-attribute 15%、unset-attribute 5%
   - 子の追加 15%、兄弟の追加 10%、reorder 5%、reparent 8%（部分木は 200 node 以下）
-  - 部分木の delete 5%（30 node 以下。端点の GraphLink、attribute、linear-text も同時に消す）
-  - GraphLink の作成 4%、linear-text の更新 2%（約 20 KB）、25 node の部分木の取り込み 1%
+  - 部分木の delete 5%（30 node 以下。端点の relation edge、attribute、linear-text も同時に消す）
+  - relation edge の作成 4%、linear-text の更新 2%（約 20 KB）、25 node の部分木の取り込み 1%
 - Command 列は固定の seed から作る。どの方式にも同じ順で 1 件ずつ、1 つの書き手から適用した。
 - 規模は 2 つ。
-  - 研究 map の実データの複製（20,150 node、attribute 19,712、linear-text 15。GraphLink は 0）
+  - 研究 map の実データの複製（20,150 node、attribute 19,712、linear-text 15。relation edge は 0）
   - その 10 倍の合成（201,491 node）。root の子の部分木を複製した。
 - 全 JSON 方式は、10 倍の規模では先頭 100 件だけを適用した。1 件に約 0.8 秒かかるため。照合も、その 100 件分の参照モデルと行った。
 
@@ -72,7 +72,7 @@
 | 231 node の部分木 | 29 / 293 | 0.13 / 0.15 | 0.52 / 0.63 |
 | 646 個の子の順序付き一覧 | 27 / 551 | 0.09 / 0.09 | 0.93 / 1.37 |
 | 深さ 7 の node の祖先 | 27 / 478 | 0.008 / 0.009 | 0.39 / 0.57 |
-| 3 歩先までの近傍（親子と GraphLink、5,189 node） | 34 / 501 | 8.6 / 9.9 | 3.8 / 4.3 |
+| 3 歩先までの近傍（親子と relation edge、5,189 node） | 34 / 501 | 8.6 / 9.9 | 3.8 / 4.3 |
 
 SQLite・WAL の読取りは、SQLite・DELETE と同じ水準だった。
 
@@ -118,7 +118,7 @@ SQLite・WAL の読取りは、SQLite・DELETE と同じ水準だった。
 
 ## この計測が示さないこと
 
-- **GraphLink の多い map**：研究 map には GraphLink がない。GraphLink の多い map や、文書をまたぐ Deep の問い合わせは代表していない。それには PR17（実際に必要な Deep の問い合わせの棚卸し）の結果が要る。
+- **relation edge の多い map**：研究 map には relation edge がない。relation edge の多い map や、文書をまたぐ Deep の問い合わせは代表していない。それには PR17（実際に必要な Deep の問い合わせの棚卸し）の結果が要る。
 - **同時書込み**：書き手は 1 つで、Command を順に適用しただけ。複数の書き手が同時に書く場合や、offline からの合流は測っていない。
 - **Neo4j の adapter**：素直な書き方で、往復の回数を減らす最適化はしていない。journal の順序は、OP44 の「journal を先に書く」を「確定の後に追記する」に単純化した。時間への影響は小さいが、障害時の意味は違う。
 - **10 倍の規模**：既存の部分木の複製で作ったので、部分木の大きさの分布は実データと同じ。

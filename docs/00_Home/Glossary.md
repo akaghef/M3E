@@ -27,15 +27,16 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **node** | 思考要素の最小単位。`nodeType` を持つ | nodeType, edge, scope, alias | 型の定義と例は `nodeType` の項を参照 |
 | **nodeType** | node の型。例: `text` / `image` / `folder` / `alias` / `agent` | node, agent | 自然言語では `node type` と表記する。例示は閉じた列挙ではない。用語としての型と、現在の保存・実装で対応する型一覧は区別する。後者は [Data Model](../03_Spec/Data_Model.md#nodetype-一覧) を参照 |
 | **agent** | AI agent と human を合わせた上位集合。`agent = AI agent ∪ human` | nodeType, node | `agent` は node type の一例であり、agent を表す node に用いる。無修飾の agent を AI のみに限定しない |
-| **edge** | 親子関係のみを表す有向関係（親→子） | node, GraphLink, EdgeStyle | **3義を混同しない**: 関係線（補助線）は `GraphLink`、描画の経路スタイルは `EdgeStyle`。無修飾の `edge` は常に親子関係を指す |
-| **Connection**（線要素） | 親子 edge と GraphLink の総称。選択・表示の単位として両者をまとめて扱うときに使う。 | edge, GraphLink, LinkStyle, EdgeStyle | DC50（2026-10-24 akaghef 決定）。保存実体ではなく、新しいデータ型は追加しない。外部接続（connector / joint）の意味では使わない。 |
+| **edge** | 2つの node 間の線の総称。parent edge と relation edge を含み、選択・表示の単位として扱う | node, parent edge, relation edge, edge port | 線のレコードの形は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) に従う |
+| **parent edge** | 親から子への線。木の所有関係と兄弟順序を表し、一つの scope に載る | edge, node, scope, EdgeStyle | root 以外の node は入ってくる parent edge をちょうど1本持ち、parent edge は循環しない |
+| **relation edge** | 木の外側の関係を表す線。`relationType`、`label`、向き、描画スタイル、port を持つ | edge, node, relationType, LinkStyle, LinkPort | 木の所有関係と兄弟順序を変えない。Tree の部分木配置には寄与せず、force 配置への寄与は Surface View の仕様に従う |
 | **seam interface** | seam の**型付き契約境界**（ports and adapters の port に相当）。ファイル命名は `*_seam_interface.ts` | seam, seam contract, edge port | **`port` をこの意味で使うな**（幾何の接続点と衝突するため廃語）。`seam contract`（reads/writes/claims を宣言する yaml）とは別artifact — こちらは TypeScript の型面。spec が言う `LayoutPort` は module の通称で、その名の型は実在しない（export は `layout()` 関数）|
 | **edge port** | ノード矩形上の**接続点**。`side = left / right / top / bottom` と座標を持つ幾何要素 | edge, EdgeStyle, LinkPort | 実装 `beta/src/shared/edge_port.ts` の `EdgePortSide` / `EdgePortPoint` / `EdgePorts`。`selectPorts(srcRect, dstRect, branchDirection)` が選ぶ対象。**seam port とは無関係の別概念** |
-| **LinkPort** | GraphLink に保存される端点指定。`auto / left / right / top / bottom` | edge port, GraphLink | `edge port` をデータとして持つもの。`auto` の意味が fixed-side sanitize と齟齬あり（reconcile 対象）|
-| **EdgeStyle** | 親子 edge の**描画スタイル**。`orthogonal / line / curve / force-link`。関係ではなく描画指定 | edge, LinkStyle, Surface View | `LinkStyle`（GraphLink の描画スタイル: default/dashed/soft/emphasis）と対をなす。正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md) では Surface View の `edge` option（型名 `SurfaceViewEdge`）。Lane は親子 edge を線として描かず、`edge` option を持たない。Lane の GraphLink は既存の GraphLink 経路設定に従う（2026-10-17、akaghef 決定）。実装正本は `beta/src/shared/edge_route.ts`（現行型名 `EdgeRouteStyle`、canon 値と一致）。`layout_port.ts` の `LayoutEdgeRoute`(elbow/bezier/straight) と `LayoutLinkRoute`(simple-bezier/orthogonal/straight) は drift で reconcile 対象 |
-| **Surface View** | 同じ Topology を表示・配置する方式 | Layout, Topology, Tree, Axial, Radial, Disperse, System, Lane | 正本は `Tree / Axial / Radial / Disperse / System / Lane`。View の切替だけでは永続 Topology を変えない。`Lane` は root 直下の子 node を並行するレーンとして並べ、孫 node 間の GraphLink を主線として表示する。詳細は [map_layout_modes.md](../03_Spec/map_layout_modes.md) を参照 |
-| **先祖 (ancestor)** | ある node から親子 edge を親方向へ辿って到達する node。親、祖父母、root を含むが、起点 node 自身は含まない | node, edge, 子孫, パンくず | パンくず表示は、現在位置の node に至る**先祖 chain**を root から順に表示する |
-| **子孫 (descendant)** | ある node から親子 edge を子方向へ1段以上辿って到達する node。起点 node 自身は含まない | node, edge, 先祖, 部分木 | node copy は、選択 node を根とする部分木、すなわち選択 node とその**全子孫**を複製する仕様 |
+| **LinkPort** | relation edge に保存される端点指定。`auto / left / right / top / bottom` | edge port, relation edge | `edge port` をデータとして持つもの。`auto` の意味が fixed-side sanitize と齟齬あり（reconcile 対象）|
+| **EdgeStyle** | parent edge の**描画スタイル**。`orthogonal / line / curve / force-link` | parent edge, LinkStyle, Surface View | `LinkStyle` は relation edge の描画スタイル（default/dashed/soft/emphasis）。[map_layout_modes.md](../03_Spec/map_layout_modes.md) の Surface View の `edge` option（型名 `SurfaceViewEdge`）は parent edge に適用する。Lane は parent edge を線として描かず、この option を持たない。Lane の relation edge は既存の経路設定に従う。実装正本は `beta/src/shared/edge_route.ts`（型名 `EdgeRouteStyle`、canon 値と一致）。`layout_port.ts` の `LayoutEdgeRoute`(elbow/bezier/straight) と `LayoutLinkRoute`(simple-bezier/orthogonal/straight) は drift で reconcile 対象 |
+| **Surface View** | 同じ Topology を表示・配置する方式 | Layout, Topology, Tree, Axial, Radial, Disperse, System, Lane | 正本は `Tree / Axial / Radial / Disperse / System / Lane`。View の切替だけでは永続 Topology を変えない。`Lane` は root 直下の子 node を並行するレーンとして並べ、孫 node 間の relation edge を主線として表示する。詳細は [map_layout_modes.md](../03_Spec/map_layout_modes.md) を参照 |
+| **先祖 (ancestor)** | ある node からparent edge を親方向へ辿って到達する node。親、祖父母、root を含むが、起点 node 自身は含まない | node, parent edge, 子孫, パンくず | パンくず表示は、現在位置の node に至る**先祖 chain**を root から順に表示する |
+| **子孫 (descendant)** | ある node からparent edge を子方向へ1段以上辿って到達する node。起点 node 自身は含まない | node, parent edge, 先祖, 部分木 | node copy は、選択 node を根とする部分木、すなわち選択 node とその**全子孫**を複製する仕様 |
 
 ### ノード操作の状態と移動
 
@@ -59,15 +60,15 @@ M3E プロジェクト固有の語、および揺れがちな語を正規化す�
 | **Surface Progressive Navigation (Surface PN)** | Surface・表示・ツール群を辿る PN | Progressive Navigation, Node PN | 旧 `[GUI] navigation root`。実装識別子 `gui` は互換名として残す |
 | **Node Progressive Navigation (Node PN)** | 選択中 node を文脈として、その node と子孫に対する操作を辿る PN | Progressive Navigation, Surface PN, node, 子孫 | node 自体の階層表示ではなく、選択 node を文脈にした操作UI。旧称は `Node Context Progressive Navigation` と `active-node PN`。実装識別子 `active-node` は互換名として残す |
 
-| **spine** | 分散した node / alias / link 群を、人間が木または DAG として読めるようにする主骨格 | node, edge, scope, syntax tree, semantic graph | Rapid では主に親子 edge の列として保存される。個々の node が参照関係や GraphLink を持っていても、説明順序・階層・責任分解の本質を捕まえる背骨を spine と呼ぶ。Scatter などの自由配置でも、spine が決まれば木/DAG へ戻せる。表示上の線や補助関係とは混同しない |
+| **spine** | 分散した node / alias / link 群を、人間が木または DAG として読めるようにする主骨格 | node, parent edge, scope, syntax tree, semantic graph | Rapid では主にparent edge の列として保存される。個々の node が参照関係や relation edge を持っていても、説明順序・階層・責任分解の本質を捕まえる背骨を spine と呼ぶ。Scatter などの自由配置でも、spine が決まれば木/DAG へ戻せる。表示上の線や補助関係とは混同しない |
 | **folder** | 一般向け説明で scope を直感的に伝えるために使う語。実装上は nodeType の一種でもある | scope | UI/導入説明で使ってよいが、**仕様・実装の正規語は `scope`** |
-| **scope** | map の対象を一枚の面で切り出したもの。見える範囲・編集範囲を制御する基本単位。親子 edge はどれか一つの scope に載り、node は自分につながる edge が載る scope に現れる | folder, scopen, root scope, facet | M3E 固有の中核概念。一つの node は複数の scope に現れ、複数の scope の root にもなれる（同じ node の子を、scope ごとに別に持てる）。部分木を囲う境界という旧い読みは、root の子が全部その scope に載る特殊な場合。保存の形は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) の「scope は面」（実装は移行中）。（別表記・併用可）folder world |
+| **scope** | map の対象を一枚の面で切り出したもの。見える範囲・編集範囲を制御する基本単位。parent edge はどれか一つの scope に載り、node は自分につながる parent edge が載る scope に現れる | folder, scopen, root scope, facet | M3E 固有の中核概念。一つの node は複数の scope に現れ、複数の scope の root にもなれる（同じ node の子を、scope ごとに別に持てる）。root の子が全部その scope に載る場合には部分木を囲う面になる。保存の形は [record-schema.md](../../.kiro/specs/rapid-persistence-redesign/record-schema.md) の「scope は面」に従う。（別表記・併用可）folder world |
 | **alias** | 他ノードを参照する窓。実体を複製しない | node, scope | 実装語は alias。（仕様語）reference。**alias→alias は禁止** |
 | **root scope** | map の最上位 scope | scope, map | |
 | **scopen** | 既存 node を root とする scope を新しく作り、その node の子（と、同じ scope に載るその下）を新しい scope に載せる操作 | scope, unscopen | 動詞。（別表記）scope 化 |
-| **unscopen** | scope の区切りを解除する操作 | scope, scopen | 動詞。scope だけを消し、その scope に載っていた edge は root の node が属する scope に載せ替える。node は残す。（別表記）非 scope 化 |
+| **unscopen** | scope の区切りを解除する操作 | scope, scopen | 動詞。scope だけを消し、その scope に載っていた parent edge は root の node が属する scope に載せ替える。node は残す。（別表記）非 scope 化 |
 | **scope 粒度** | scope で区切るときの分量（1 scope が抱える node 数・意味範囲のサイズ感） | scope, facet | 運用判断用の軸。粒度が粗い/細かいで議論する |
-| **scope bind** | 複数 scope / facet 上の表示要素を、同一の正本実体に結びつける操作または同期契約 | scope, facet, alias, GraphLink | 動詞表現: `scope を bind する`。射影ではない。`edge` は親子構造、`alias` は参照窓、`GraphLink` は非木構造の関係線、`scope bind` は同一性と更新伝播の契約として区別する |
+| **scope bind** | 複数 scope / facet 上の表示要素を、同一の正本実体に結びつける操作または同期契約 | scope, facet, alias, relation edge | 動詞表現: `scope を bind する`。射影ではない。`parent edge` は親子構造、`alias` は参照窓、`relation edge` は非木構造の関係線、`scope bind` は同一性と更新伝播の契約として区別する |
 
 **現時点の整理**:
 - 概念階層は `ws > map > scope > node` を基準に考える
@@ -83,13 +84,14 @@ M3E の正規語を維持し、property graph 語彙は対応先として扱う�
 | M3E 正規語 | property graph 語彙 | 対応 | 備考 |
 |---|---|---|---|
 | **node** | Node | 対応 | M3E の思考要素。Label 相当は `nodeType` で表す |
-| **edge** | Relationship | 制約付き部分集合 | 親→子だけを表す tree edge。tree 不変条件を満たす Relationship として扱う |
-| **GraphLink** | Relationship | 対応 | 非木構造の typed relation。`edge` と混同しない |
+| **edge** | Relationship | 対応 | node 間の線の総称。parent edge と relation edge を含む |
+| **parent edge** | Relationship | 制約付き部分集合 | 親→子を表し、tree 不変条件を満たす Relationship |
+| **relation edge** | Relationship | 対応 | 木の外側の typed relation を表す Relationship |
 | **scope** | Node と Relationship の範囲 | M3E 固有概念 | property graph の標準要素名へ置換しない。認知・表示・編集境界として扱う |
 | **alias** | Relationship または Property | 参照表現 | alias node 自体は M3E node。target 参照は Relationship または Property として materialize できる |
 | **attributes** | Property | 対応 | node / Relationship の key-value property |
 | **nodeType** | Label または Property | 対応 | M3E 仕様語は `nodeType`。Neo4j Label へ materialize するか Property に置くかは adapter / schema 判断 |
-| **relationType** | Relationship type または Property | 対応 | GraphLink / Deep relation の型。tree `edge` の親子関係とは分ける |
+| **relationType** | Relationship type または Property | 対応 | edge / Deep relation の関係種別。線のレコードでは parent edge と relation edge の双方が持つ |
 | **map** | graph | 対応 | M3E の workspace 内 map。database 全体とは同一視しない |
 | **workspace (ws)** | database | 類比 | 永続データ実体の入れ物。property graph runtime の database と一対一とは限らない |
 
@@ -165,7 +167,7 @@ map を記述・設計する4区分。独立した保存層や固定の処理順
 | 正規語 | 意味 | 関連語 | 備考 |
 |---|---|---|---|
 | **Content（内容）** | What is represented? — 何を情報として表現するか。情報単位・主張・意味上の関係・根拠を含む | Topology, provenance, node | 存在論的な型付けを要求しない。Content に含まれる関係を M3E の接続構造と同一視しない。node の `nodeType` 要件は別に維持する |
-| **Topology（構造）** | How is it structured? — 情報をどのような要素・接続・順序・境界で組織するか | Content, node, edge, GraphLink, alias, scope, spine, Layout | Content の解釈・構造化結果。接続だけでなく scope の認知・編集境界と `children[]` の兄弟順序を含む。座標は含まない |
+| **Topology（構造）** | How is it structured? — 情報をどのような要素・接続・順序・境界で組織するか | Content, node, edge, parent edge, relation edge, alias, scope, spine, Layout | Content の解釈・構造化結果。接続だけでなく scope の認知・編集境界と `children[]` の兄弟順序を含む。座標は含まない |
 | **Layout（配置）** | Where is it placed? — 構造をどのように空間配置するか | Topology, Style, Surface View, depth 軸, breadth 軸 | 座標・間隔・方向・接続経路の幾何を扱う。既存 [Surface View 仕様](../03_Spec/map_layout_modes.md) を再利用する。View の切替だけでは Topology を変えない |
 | **Style（視覚表現）** | How does it appear? — 各表示要素をどのように視覚表現するか | Content, Layout, EdgeStyle, LinkStyle | 色・形状・線種・書体・文字サイズ・強調など。文字の内容は Content。既存 [視覚設計方針](../04_Architecture/Visual_Design_Guidelines.md) を再利用する。描画寸法を通じて Layout を制約する |
 | **display intent（表示目的）** | 何を先に認識し、何を比較し、どの関係を主として読ませるかという目的・要求条件 | Topology, Layout, Style, Map Manager | 第5の区分ではない。Content の忠実性と明示的な構造制約を守った上で、Topology・Layout・Style の判断を方向付ける |
@@ -266,8 +268,8 @@ map を記述・設計する4区分。独立した保存層や固定の処理順
 | **viewer** | map を描画するブラウザ UI | map, meta-panel | |
 | **Pane** | 画面のレイアウトを分割して確保した区画 | Panel, viewer | M3E リポジトリでの GUI 用語法。Inspector などの役割とは独立し、分割区画として配置する場合は `Inspector pane` と呼ぶ |
 | **Panel** | 他の領域の上に浮かせて表示する UI のまとまり | Pane, viewer | M3E リポジトリでの GUI 用語法。ドラッグで移動できることは必須としない。Inspector を浮かせて表示する場合は `Inspector panel` と呼ぶ |
-| **フィルタ** | 表示する対象を選ぶ選択 UI。外れたものは薄くし、Layout は動かさない。 | node, GraphLink, Layout | |
-| **実現段階** | GraphLink が表す関係がどこまで実現しているかの段階（CURRENT＝動作を確認した関係、TO-BE＝採用した設計）。 | GraphLink, attributes, フィルタ | 保存キーは attributes の `confidence`。 |
+| **フィルタ** | 表示する対象を選ぶ選択 UI。外れたものは薄くし、Layout は動かさない。 | node, relation edge, Layout | |
+| **実現段階** | relation edge が表す関係がどこまで実現しているかの段階（CURRENT＝動作を確認した関係、TO-BE＝採用した設計）。 | relation edge, attributes, フィルタ | 保存キーは attributes の `confidence`。 |
 | **Annotation Panel** | 注釈ツール（Pen / Highlighter / Date label / Eraser / Select）の切り替えと、色・太さ・透明度の設定をまとめた Panel | Panel, Inspector, viewer | Inspector は node 情報・Node actions・Collaboration などのメタ要素を置く場所で、注釈の色・太さ・透明度は Annotation Panel に分離した |
 | **viewport** | Viewer の描画面に表示される範囲。pan（表示範囲の位置）と zoom によって決まる | viewer, pan, zoom, ViewState, scope | ViewState のセッション状態として scope ごとに保持する。scope に入る時は fit-to-content にリセットし、戻る時は元の位置に復元する。map には保存せず、Cloud Sync 対象外 |
 | **meta-panel** | viewer 上部の UI パネル。モード / scope / ステータス等を表示 | viewer | `beta/README.md` 記載の正式名。（別表記）メタパネル |

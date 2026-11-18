@@ -84,9 +84,9 @@ Planning overlay
 ## Open questions
 
 - Web captureをFlash input、Rapid document、独立したsource-materialized scopeのどれとして導入するか
-- URL階層、DOM内link referral、手動spineのどれを親子edgeの正本にするか
+- URL階層、DOM内link referral、手動spineのどれをparent edgeの正本にするか
 - screenshot assetのcanonical ownerとretention policyをどこに置くか
-- crawl revision間のvisual differenceをmap node、GraphLink、専用QA surfaceのどこへ載せるか
+- crawl revision間のvisual differenceをmap node、relation edge、専用QA surfaceのどこへ載せるか
 - M3E viewerでscreenshot cardを大量表示する場合のvirtualization / level of detailをどう定義するか
 
 ## Next action

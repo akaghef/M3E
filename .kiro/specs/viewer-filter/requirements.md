@@ -4,9 +4,9 @@
 
 **viewer-filter — 案F2**。同じ map を読みながら、表示する対象を選ぶ選択 UI（以下フィルタ）を使い、対象外を薄くして関係を比較する。Layout と保存内容は変えない。
 
-**現状:** 専用の操作 UI はない。`ImportanceViewMode` は `all` 固定で、Inspector から操作する機能ではない。GraphLink の confidence による描画判定もない。今回の草案は既存機能の単純な移設ではなく、操作できる表示条件の追加である。
+**現状:** 専用の操作 UI はない。`ImportanceViewMode` は `all` 固定で、Inspector から操作する機能ではない。relation edge の confidence による描画判定もない。今回の草案は既存機能の単純な移設ではなく、操作できる表示条件の追加である。
 
-**変更すること:** viewer 上段の独立したグループに各軸の現在値を置き、選択肢は chip のメニューで開く。対象外の node / GraphLink / edge を opacity で薄くし、status bar に一致数を常時表示する。
+**変更すること:** viewer 上段の独立したグループに各軸の現在値を置き、選択肢は chip のメニューで開く。対象外の node / relation edge / parent edge を opacity で薄くし、status bar に一致数を常時表示する。
 
 > Status: 2026-10-20、Director レビュー済み草案（259889b）を akaghef の決定で改訂。今回の変更は3仕様文書と Glossary の2行のみ。製品実装・mock 変更は行わない。
 
@@ -19,7 +19,7 @@
 | 対象外 | 時間・文字列、軸の動的追加、EDGE AUDIT の候補ペア導出、保存 schema / API、Inspector の再設計、独自 renderer / server、Radial の新規実装、WebGL 対応 View の拡張、Final |
 | 所有者 | 今回の担当は仕様改訂を codex/viewer-filter に commit。後続実装は別途承認する |
 
-正規語は [Glossary](../../../docs/00_Home/Glossary.md)、[Surface View](../../../docs/03_Spec/map_layout_modes.md)、[Data Model](../../../docs/03_Spec/Data_Model.md) に従う。edge は親子関係のみ。GraphLink と混同しない。scope は対象を切り出す面であり、A-sys の Domain の固定リストを持ち込まない。浮くメニューは Panel として既存の上段 UI に接続する。
+正規語は [Glossary](../../../docs/00_Home/Glossary.md)、[Surface View](../../../docs/03_Spec/map_layout_modes.md)、[Data Model](../../../docs/03_Spec/Data_Model.md) に従う。parent edge は親子関係のみ。relation edge と混同しない。scope は対象を切り出す面であり、A-sys の Domain の固定リストを持ち込まない。浮くメニューは Panel として既存の上段 UI に接続する。
 
 本件は同じ map 上で関係を読み分けるための表示操作で、観測・保存・scope の所有権を追加しない。追跡 ID は IS90〜IS109 / OP30〜OP39 を使う（Director 割当）。
 
@@ -33,7 +33,7 @@ mock にある「＋ 軸を追加」（時間・文字列）は最初の実装�
 
 ### 確定した受け入れ条件
 
-**条件1:** 実装済みの全 Surface View（Tree、Axial、Logic Chart の既存実装経路、System、Disperse、Lane）で、フィルタ有無による全 node 座標と全 GraphLink / edge の経路の差はゼロである。SVG / WebGL の両経路に同じ条件を課す。現状 WebGL がない View は SVG で検証し、対応拡張をこの条件のために行わない。Logic Chart は正本上 Tree の preset であり、新しい正規分類を追加しない。
+**条件1:** 実装済みの全 Surface View（Tree、Axial、Logic Chart の既存実装経路、System、Disperse、Lane）で、フィルタ有無による全 node 座標と全 relation edge / parent edge の経路の差はゼロである。SVG / WebGL の両経路に同じ条件を課す。現状 WebGL がない View は SVG で検証し、対応拡張をこの条件のために行わない。Logic Chart は正本上 Tree の preset であり、新しい正規分類を追加しない。
 
 **条件2:** 複数の軸は AND で組み合わせる。軸を追加選択して Layout の入力、寸法、兄弟順序、collapse、force simulation を変更せず、再配置・force の起動や再起動を発生させない。
 
@@ -41,7 +41,7 @@ mock にある「＋ 軸を追加」（時間・文字列）は最初の実装�
 
 **条件4:** 案F2として bar を viewer の上段、左 top bar と右 top bar の間の水平中央に、独立したグループとして置く。`WorkbenchApp` から `TopBar` の隣に新しい browser module を mount する。
 
-**条件5:** 登録済みの全軸に常に chip を1つ置き、軸名・現在値・下向き chevron を表示する。選択肢の全体は chip から開いたメニューだけに表示する。絞らない値以外を選択した有効な chip は active と視認できる。描画対象の node / GraphLink に当該軸の attributes が一つもなければ disabled にし、理由「この map には値がありません」を常時読める形で示す（IS99）。
+**条件5:** 登録済みの全軸に常に chip を1つ置き、軸名・現在値・下向き chevron を表示する。選択肢の全体は chip から開いたメニューだけに表示する。絞らない値以外を選択した有効な chip は active と視認できる。描画対象の node / relation edge に当該軸の attributes が一つもなければ disabled にし、理由「この map には値がありません」を常時読める形で示す（IS99）。
 
 **条件6:** chip の click でその直下にメニューを開き、再 click で閉じる。同時に開くメニューは1つ。Escape で閉じる。
 
@@ -51,9 +51,9 @@ mock にある「＋ 軸を追加」（時間・文字列）は最初の実装�
 
 **条件9:** 「解除」で全軸をそれぞれの絞らない値へ戻す。
 
-**条件10:** 非一致の node / GraphLink / edge は opacity で薄くする。非表示・削除・移動しない。一致するものは従来どおり描画する。既存の色・線種・矢印・ラベル・選択・hit target を保持し、選択後の差分描画でも濃淡が失われない。
+**条件10:** 非一致の node / relation edge / parent edge は opacity で薄くする。非表示・削除・移動しない。一致するものは従来どおり描画する。既存の色・線種・矢印・ラベル・選択・hit target を保持し、選択後の差分描画でも濃淡が失われない。
 
-**条件11:** いずれかの軸が active の間、status bar に「node 一致数/描画数 · GraphLink 一致数/描画数」を永続表示する。`setStatus()` を経由せず、2.5秒後も消えない。一時メッセージの表示・消去で件数を消さない。
+**条件11:** いずれかの軸が active の間、status bar に「node 一致数/描画数 · relation edge 一致数/描画数」を永続表示する。`setStatus()` を経由せず、2.5秒後も消えない。一時メッセージの表示・消去で件数を消さない。
 
 **条件12:** 実際の button と menu の意味を持つ要素を使い、`aria-haspopup`、`aria-expanded`、`menuitemradio` / `menuitemcheckbox`、`aria-checked` を実状態と同期する。keyboard だけで開閉・選択・解除ができる。Tab / Shift+Tab、Enter / Space、上下移動、Escape と chip への focus 復帰を検証する。
 
@@ -63,13 +63,13 @@ mock にある「＋ 軸を追加」（時間・文字列）は最初の実装�
 
 ### 決定に基づく受け入れ条件
 
-**条件15:** 実現段階は GraphLink.attributes.confidence を読む。CURRENT「動作を確認した関係だけ」は `system-evidenced` のみ、TO-BE「採用した設計（図に書いた関係すべて）」は全 GraphLink を対象とする。TO-BE の値は `all`（絞らない・既定）。欠落は `declared` 相当、未知文字列も CURRENT には一致せず TO-BE には含む。保存値を書き換えない。CURRENT 中はこの軸に一致する描画 GraphLink の端点を1つも持たない node を薄くする。EDGE AUDIT は対象外。
+**条件15:** 実現段階は `GraphLink.attributes.confidence` を読む。CURRENT「動作を確認した関係だけ」は `system-evidenced` のみ、TO-BE「採用した設計（図に書いた関係すべて）」は全 relation edge を対象とする。TO-BE の値は `all`（絞らない・既定）。欠落は `declared` 相当、未知文字列も CURRENT には一致せず TO-BE には含む。保存値を書き換えない。CURRENT 中はこの軸に一致する描画 relation edge の端点を1つも持たない node を薄くする。EDGE AUDIT は対象外。
 
-**条件16:** 「attributes の値で絞る軸」を共通の仕組みとする。定義は対象（node / GraphLink）、attributes key(s)、値の順序または複数選択、表示名、各値のラベルと1行の意味、絞らない値を持つ。定義表は全 map 共通の checked-in shared module（`beta/src/shared/view_filter_axes.ts`）に置く。map 別設定・利用者の編集 UI はない。重要度は `importance` → `priority` → `重要度` の nullish 優先で既存 score を再利用し、低=1 / 中=2 / 高=3 / 緊急=4、整数文字列と既存の英語表記を維持する。空文字を次の key へ落とさず、欠落・不明は0。「すべて」（絞らない）/「中以上」（>=2）/「高以上」（>=3）とし、広い段階は狭い段階を「含む」。緊急度も同じ尺度・選択肢とし、既存設計の `attributes.urgency` を使う（design.md の調査根拠）。node 自身だけで判定し、先祖/root の救済をしない。`ImportanceViewMode` は撤去し、score を shared module へ移す。viewer.ts の正味行数を増やさない。
+**条件16:** 「attributes の値で絞る軸」を共通の仕組みとする。定義は対象（node / relation edge）、attributes key(s)、値の順序または複数選択、表示名、各値のラベルと1行の意味、絞らない値を持つ。定義表は全 map 共通の checked-in shared module（`beta/src/shared/view_filter_axes.ts`）に置く。map 別設定・利用者の編集 UI はない。重要度は `importance` → `priority` → `重要度` の nullish 優先で既存 score を再利用し、低=1 / 中=2 / 高=3 / 緊急=4、整数文字列と既存の英語表記を維持する。空文字を次の key へ落とさず、欠落・不明は0。「すべて」（絞らない）/「中以上」（>=2）/「高以上」（>=3）とし、広い段階は狭い段階を「含む」。緊急度も同じ尺度・選択肢とし、既存設計の `attributes.urgency` を使う（design.md の調査根拠）。node 自身だけで判定し、先祖/root の救済をしない。`ImportanceViewMode` は撤去し、score を shared module へ移す。viewer.ts の正味行数を増やさない。
 
-**条件17:** 所属は node の `attributes.domain` にあるカンマ区切りの名前を複数選択する。attributes は string→string とし配列を保存しない。各名前を trim し、空要素を捨て、重複を除く。候補は描画 node に存在する名前の distinct 集合。選択集合が空なら「すべて」（絞らない）、それ以外は名前が一つでも選択集合に含まれる node が一致する。欠落・空文字の node は選択中には一致しない。候補が1つでも使用可能。所属が一致していれば GraphLink のない node も一致する。
+**条件17:** 所属は node の `attributes.domain` にあるカンマ区切りの名前を複数選択する。attributes は string→string とし配列を保存しない。各名前を trim し、空要素を捨て、重複を除く。候補は描画 node に存在する名前の distinct 集合。選択集合が空なら「すべて」（絞らない）、それ以外は名前が一つでも選択集合に含まれる node が一致する。欠落・空文字の node は選択中には一致しない。候補が1つでも使用可能。所属が一致していれば relation edge のない node も一致する。
 
-**条件18:** フィルタなしの描画集合を固定する。B＝有効な全 node 軸（重要度・緊急度・所属）に一致する node。L＝実現段階に一致し、両端が B に属する GraphLink。node は B に属し、かつ CURRENT が有効なら L の端点であるときに一致する。GraphLink は L に属するときに一致する。親子 edge は両端 node の一致で判定する。計算はこの1回で終え、反復しない。CURRENT が無効なら、所属などの node 軸に一致した孤立 node も一致する。
+**条件18:** フィルタなしの描画集合を固定する。B＝有効な全 node 軸（重要度・緊急度・所属）に一致する node。L＝実現段階に一致し、両端が B に属する relation edge。node は B に属し、かつ CURRENT が有効なら L の端点であるときに一致する。relation edge は L に属するときに一致する。parent edge は両端 node の一致で判定する。計算はこの1回で終え、反復しない。CURRENT が無効なら、所属などの node 軸に一致した孤立 node も一致する。
 
 **条件19:** 状態は viewer session 限定で保存しない。map 変更で全軸を絞らない値に戻しメニューを閉じ、再読込でも既定値で始める。同一 map の scope / Surface View 切替では選択を保持し、現在の描画集合で再評価する。値のない軸は disabled の間は非適用・非 active とし、内部選択は保持する。値が戻れば再適用する。候補が変わっても選択を自動消去しない。
 
@@ -84,7 +84,7 @@ akaghef の決定には DC60〜DC69 の範囲から決定番号を振る（親 s
 | IS90 | akaghef | 表示名は「実現段階」。保存キー confidence、CURRENT / TO-BE、欠落・未知値、端点条件、EDGE AUDIT 除外は条件15 |
 | IS91 | akaghef | 重要度専用の仕組みを廃し、attributes の値で絞る共通の軸定義表と4軸を採用（条件16〜17） |
 | IS92 | akaghef | 以前の決定（元の番号20）の「Facet は scope で絞る」を「所属 attributes で絞る」へ変更。scope 軸・scope 所有の判定は不採用。既存決定の変更を本仕様の割当内の IS92 で追跡する |
-| IS93 | Director | 条件18の評価順と AND。所属だけでは「残る GraphLink の端点であること」を node に要求しない。CURRENT の端点条件は node 軸に一致した両端を持つ GraphLink から求め、A-sys の CURRENT × Domain と同じ結果にする |
+| IS93 | Director | 条件18の評価順と AND。所属だけでは「残る relation edge の端点であること」を node に要求しない。CURRENT の端点条件は node 軸に一致した両端を持つ relation edge から求め、A-sys の CURRENT × Domain と同じ結果にする |
 | IS94 | Director | session 限定、map 変更 reset、同一 map 内で選択保持（条件19） |
 | IS95 | akaghef | Glossary の GUI 表に「フィルタ」「実現段階」を指定の定義で追加 |
 | IS96 | Director | design.md の描画数・一致数の境界を採用。scope 固有の行・規則は削除 |

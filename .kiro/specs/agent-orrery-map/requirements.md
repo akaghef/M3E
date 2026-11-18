@@ -16,11 +16,11 @@ runtime の実データでは、Claude/Codex/Hermes の session records、Hermes
 
 ### 変えたいこと
 
-M3E の既存 map / scope / node / edge / GraphLink 契約上に、Role、Actor Instance、Telemetry を混同しない agent mapping requirements を定義する。初期製品は read-only とし、現在観測できる事実だけから一本化した lifecycle state、typed GraphLink、Attention Routing、day-1 provenance、field ownership、lineage-aware dedup を成立させる。Agent Card の語彙は generic viewer に埋め込まず、後に抽出可能な data-driven boundary として定義する。
+M3E の既存 map / scope / node / parent edge / relation edge 契約上に、Role、Actor Instance、Telemetry を混同しない agent mapping requirements を定義する。初期製品は read-only とし、現在観測できる事実だけから一本化した lifecycle state、typed relation edge、Attention Routing、day-1 provenance、field ownership、lineage-aware dedup を成立させる。Agent Card の語彙は generic viewer に埋め込まず、後に抽出可能な data-driven boundary として定義する。
 
 ## Boundary Context
 
-- **In scope**: Agent Orrery map data の意味、Role と Actor Instance の分離、AI agent と human の扱い、Goal Graph の同居、static map presentation / live observation / historical runtime projection、観測可能な lifecycle state、Agent Card、agmsg/A-sys 境界、未配置観測の受け皿、provenance、field ownership、typed GraphLink、Attention Routing、lineage-aware dedup、vault round-trip、read-only の受け入れ条件。
+- **In scope**: Agent Orrery map data の意味、Role と Actor Instance の分離、AI agent と human の扱い、Goal Graph の同居、static map presentation / live observation / historical runtime projection、観測可能な lifecycle state、Agent Card、agmsg/A-sys 境界、未配置観測の受け皿、provenance、field ownership、typed relation edge、Attention Routing、lineage-aware dedup、vault round-trip、read-only の受け入れ条件。
 - **Out of scope**: plugin kernel/API、runtime command や L1〜L4 intervention、trace の保存・保持期間、port / anchor、Surface View / layout / port 契約の変更、GOA 側の語彙定義、prototype code の移植、agmsg の配送・既読・監視 API の実行、M3E 外への map 配布・公開・共有経路。
 - **Binding sources**:
   - `docs/09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md` — DC1〜DC22 / IS1〜IS16 の正本
@@ -149,7 +149,7 @@ M3E の既存 map / scope / node / edge / GraphLink 契約上に、Role、Actor 
 2. If a runtime sidecar supplies an explicit, immutable correlation from an agmsg message identifier to a session identifier, the system shall use that correlation only when source and correlation evidence are both present.
 3. If the sidecar supplies only an advisory latest-session association such as `(team, agent) -> latest session`, the system shall leave the message unassigned to a session and shall not guess from recency, thread, filename, or unread state.
 4. The system shall treat the current agmsg message DB shape, which has no `session_id` and no complete message-to-session correlation, as insufficient for session resolution.
-5. When session resolution is unavailable, the system shall preserve transport-level sender, recipient, agmsg team, thread value, delivery state, and observed time, but shall not create a session-specific `conversation` GraphLink, latest-message attribution, message count, lineage link, or session-specific Attention association.
+5. When session resolution is unavailable, the system shall preserve transport-level sender, recipient, agmsg team, thread value, delivery state, and observed time, but shall not create a session-specific `conversation` relation edge, latest-message attribution, message count, lineage link, or session-specific Attention association.
 6. The system shall make loss of session-level attribution explicit in observation quality or detail presentation instead of presenting the message as if it belonged to a session.
 
 ### Requirement 7: 自機内 map に載せる session text
@@ -189,10 +189,10 @@ M3E の既存 map / scope / node / edge / GraphLink 契約上に、Role、Actor 
 4. The system shall preserve an existing provenance record and shall mark missing provenance unresolved rather than guessing origin or author.
 5. The system shall use provenance as evidence for Requirement 13's field-level ownership and shall not treat provenance as node-wide mutation authority.
 6. A vault export/edit/import round-trip shall update the same map and same node, identified by persisted `m3e.nodeId`, rather than creating a replacement map or newly numbered node.
-7. After a vault round-trip, the system shall preserve `m3e:provenance`, connector-owned fields, human-owned fields, Role aliases, parent/child identity, and GraphLinks according to their declared ownership and identity semantics.
+7. After a vault round-trip, the system shall preserve `m3e:provenance`, connector-owned fields, human-owned fields, Role aliases, parent/child identity, and relation edges according to their declared ownership and identity semantics.
 8. The system shall reject the round-trip as conforming if node identity changes, provenance is dropped, or a connector-owned / human-owned field crosses the ownership boundary.
 
-### Requirement 10: 初期 typed GraphLink 語彙と edge-type projection
+### Requirement 10: 初期 typed relation edge 語彙と edge-type projection
 
 **Objective:** DC14 に従って `relationType` を day-1 から持たせ、evidence がある最小集合だけを edge-type projection に含める。
 
@@ -207,12 +207,12 @@ M3E の既存 map / scope / node / edge / GraphLink 契約上に、Role、Actor 
 1. The system shall represent `conversation`, `attention`, and `assignment` through the existing non-tree `GraphLink.relationType` string field.
 2. The system shall recognize that `GraphLink.relationType` is a free string and that the current `validate()` checks link endpoints and self-links but does not validate a value set.
 3. The system shall treat `conversation`, `attention`, and `assignment` as new Agent Orrery relation values, not as values protected by a TypeScript union or the generic map validator.
-4. The Agent Orrery data contract and connector write boundary shall enforce an explicit allowlist for these three values before writing a GraphLink; an unsupported value shall be rejected or surfaced as invalid rather than silently accepted as Agent Orrery data.
-5. Validation of the Agent Orrery `relationType` allowlist shall be independently testable from the generic viewer and shall coexist with existing repository values such as `reference`, `uses`, `uses_in_proof`, `cond:*`, and `related` without redefining the generic GraphLink contract.
-6. The system shall keep parent-child ownership as the tree `edge` and shall not encode it as one of the three semantic GraphLink types.
-7. When no evidence satisfies a relation condition, the system shall omit that GraphLink rather than create a speculative relation.
+4. The Agent Orrery data contract and connector write boundary shall enforce an explicit allowlist for these three values before writing a relation edge; an unsupported value shall be rejected or surfaced as invalid rather than silently accepted as Agent Orrery data.
+5. Validation of the Agent Orrery `relationType` allowlist shall be independently testable from the generic viewer and shall coexist with existing repository values such as `reference`, `uses`, `uses_in_proof`, `cond:*`, and `related` without redefining the generic relation edge contract.
+6. The system shall keep parent-child ownership as the parent edge and shall not encode it as one of the three semantic relation edge types.
+7. When no evidence satisfies a relation condition, the system shall omit that relation edge rather than create a speculative relation.
 8. The system shall not include `handoff`, `spawn`, `depends-on`, `reviewing`, `conflicts-with`, or a provider-specific relation in the initial vocabulary without a separately accepted evidence contract.
-9. The system shall allow an edge-type projection to select one relation type or a declared subset and shall not display all semantic GraphLinks by default.
+9. The system shall allow an edge-type projection to select one relation type or a declared subset and shall not display all semantic relation edges by default.
 10. The system shall keep edge-type projection independent of port and anchor selection and shall not require a port contract change.
 
 ### Requirement 11: Attention Routing
@@ -320,7 +320,7 @@ The following items remain unresolved because current evidence or frozen contrac
 - **IS5**: future contract shape for immutable agmsg message identifier → provider session identifier correlation. Advisory `(team, agent) -> latest session` remains insufficient.
 - **IS8 / DC9**: durable replay trace storage, retention, and completeness. Replay remains read-only and conditional on an available event package.
 - **IS9 / DC10**: persistent ID and localized display name of the `Unplaced Observations` receiver, plus the UX by which an AI agent or human confirms placement.
-- **IS13**: evidence contracts for relation values beyond `conversation` / `attention` / `assignment`, and whether their validity should later enter a generic GraphLink schema rather than remain an Agent Orrery contract.
+- **IS13**: evidence contracts for relation values beyond `conversation` / `attention` / `assignment`, and whether their validity should later enter a generic relation edge schema rather than remain an Agent Orrery contract.
 - **IS14**: final provider-independent correlation key and resolution-event schema for Attention. Read/handled/delivered remain insufficient.
 - **DC1 extraction seam**: future plugin registration API, package boundary, versioning, discovery, lifecycle, and authentication. This slice requires only an independently testable data boundary.
 - **Surface / layout / port**: LOD thresholds and card sizing may expose pressure on existing contracts, but this requirements revision does not change them. Any contract change requires a separate decision and spec.

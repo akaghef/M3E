@@ -63,15 +63,15 @@ root直下はUIグループanchorにする。
 - 各 depth ごとに、sibling 群の中心位置を parent の中心位置と一致させる。
 - 上揃えだけで並べない。親から子へ自然にたどれる中心揃えを優先する。
 - 深くしたとき、中間層の column / node 位置を固定し、hover 先の sibling 移動で全体が揺れないようにする。
-- 縦一列だけの配置はナビゲートしにくい場合があるため、横方向の展開と edge で path を読みやすくする。
+- 縦一列だけの配置はナビゲートしにくい場合があるため、横方向の展開と parent edge で path を読みやすくする。
 - 背景は無地の白を基本にする。
 
-## Edge
+## parent edge
 
-- Progressive Navigation UI 内の node 間には edge を表示する。
-- edge は前 UI のように、親子関係を追える位置へ正しく描画する。
-- overlay 内 edge は canvas 本体の edge ではない。UI path を示す補助線である。
-- edge 描画は node の実測位置に基づける。固定座標だけで描いて node とずれないようにする。
+- Progressive Navigation UI 内の node 間には parent edge を表示する。
+- parent edge は前 UI のように、親子関係を追える位置へ正しく描画する。
+- overlay 内 parent edge は canvas 本体の parent edge ではない。UI path を示す補助線である。
+- parent edge 描画は node の実測位置に基づける。固定座標だけで描いて node とずれないようにする。
 - parent center から child center へ自然につながる線を優先する。
 
 ## 状態表現

@@ -19,15 +19,15 @@ Radial 概念そのものを消す理由にならない。
 
 akaghef が改めて Radial と Disperse の違いを与えた:
 
-> Radial は親子の edge を表示する。GraphLink も表示する。
-> 一方で Disperse は、親子同士は edge ではなく、入れ子のカテゴリとして表す。
-> ノード同士の関係性は GraphLink で記述される。
+> Radial はparent edge を表示する。relation edge も表示する。
+> 一方で Disperse は、親子同士は parent edge ではなく、入れ子のカテゴリとして表す。
+> ノード同士の関係性は relation edge で記述される。
 
 この定義により、Radial と Disperse は **同一の力学配置エンジンの上で、
-親子関係の投影方式（edge か group か）だけが異なる2つの View** として定義できる。
-角度系ではなく、この edge/group 軸こそが Radial の固有性である。
+親子関係の投影方式（parent edge か group か）だけが異なる2つの View** として定義できる。
+角度系ではなく、この parent edge/group 軸こそが Radial の固有性である。
 
-加えて、Radial・Disperse を含む全 Surface View は **同じ tree（+ GraphLink）構造**
+加えて、Radial・Disperse を含む全 Surface View は **同じ tree（+ relation edge）構造**
 の上に成立しており、View 間の違いは構造の有無ではなく **投影方式の違い**である
 （[map_layout_modes.md](../03_Spec/map_layout_modes.md) 「意味上の分離」参照）。
 
@@ -35,10 +35,10 @@ akaghef が改めて Radial と Disperse の違いを与えた:
 
 **Radial を Surface View 正本に復帰させる。正本は `Tree / Axial / Radial / Disperse / System` の5種。**
 
-- **Radial**: tree の親子関係を **edge** として描画する。GraphLink も表示する。配置は
+- **Radial**: tree の親子関係を **parent edge** として描画する。relation edge も表示する。配置は
   力学系（direction を持たない）。
 - **Disperse**: tree の親子関係を **入れ子（包含・group）** として描画する。画面に出る
-  線は GraphLink のみ。配置は力学系。
+  線は relation edge のみ。配置は力学系。
 - Radial と Disperse は同一の配置エンジン（WebCola、[Decision_Pool 2026-08-23-003](../06_Operations/Decision_Pool.md)）を共有する。差は WebCola へ親子関係を **link（バネ）として渡すか、group（包含制約）として渡すか**のみ。
 - **角度系 option（`clockwise` / `counterclockwise` / `balanced`）は正本から削除する。** ADR_010 の指摘（実装実体がない）は正しいままなので、角度系は復活させない。
 - Radial / Disperse の subtype は `scatter`（人が置いた座標をそのまま使う）/ `force`（力学配置）の2つ。**`cluster` という subtype は廃止する。** tree の group（親子の入れ子投影）は Disperse の切替可能な subtype ではなく、Disperse の既定の親子表現そのものである。
@@ -47,14 +47,14 @@ akaghef が改めて Radial と Disperse の違いを与えた:
 ## Rationale
 
 - 角度系を持たないことと、Radial という概念自体が無効であることは別の主張である。ADR_010 は前者のみを正しく指摘したが、後者まで結論してしまった。
-- Radial と Disperse を「親子の投影方式が違うだけの兄弟 View」として再定義すると、実装は WebCola の呼び出し方の違いに縮退し、Tree との混同は起きない（角度系という誤った固有性の代わりに、edge/group という正しい固有性を持つ）。
+- Radial と Disperse を「親子の投影方式が違うだけの兄弟 View」として再定義すると、実装は WebCola の呼び出し方の違いに縮退し、Tree との混同は起きない（角度系という誤った固有性の代わりに、parent edge/group という正しい固有性を持つ）。
 - 「自由配置＝構造を持たない」という誤解を解くため、意味上の分離の記述も「同じ tree 構造をどう投影するか」に統一した。
 
 ## Consequences
 
 - 正本 [map_layout_modes.md](../03_Spec/map_layout_modes.md) を5種構成に戻し、Disperse subtype 定義を `cluster` 抜きの2種に改める。
 - Radial の実装（内部 mode key、UI、seam lab）を Disperse の力学配置エンジンと共有する形で再導入する。角度系コードは復元しない。
-- 既存保存データの legacy `mindmap` は Tree の両側 preset のままでよい（ADR_010 の migration 方針を維持）。新規の Radial 選択は edge 投影の力学配置として保存する。
+- 既存保存データの legacy `mindmap` は Tree の両側 preset のままでよい（ADR_010 の migration 方針を維持）。新規の Radial 選択は parent edge 投影の力学配置として保存する。
 
 ## Follow-up
 
@@ -69,5 +69,5 @@ akaghef が改めて Radial と Disperse の違いを与えた:
 OT の距離二乗反比例・距離上限・再加熱・一時固定ドラッグ・冷却・収束停止の制御を維持する。
 この採用は旧 Viewer 独自シミュレーションを置き換える。
 既存の headless `layout_port` / WebCola と手動配置の保存形式は保持する。
-Radial / Disperse の edge と包含の意味の区別は変更しない。
+Radial / Disperse の parent edge と包含の意味の区別は変更しない。
 実装範囲・判定条件・稼働証拠は [昇格タスク](../tasks/261020_disperse_force_promotion.md)を参照。

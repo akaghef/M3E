@@ -8,13 +8,13 @@
   - **Boundary:** investigation only.
   - Inspect `workbench-ui.tsx`, `workbench-ui.css`, `viewer.ts applyZoom()`, existing PN Playwright tests, action-tree prototype, and shared EdgePort modules.
   - Record exact current symbols and lines for `makeProgressiveNodes`, `ProgressiveNavigation`, `edgePathBetweenRects`, `m3e:viewport-changed`, and CSS overlay classes.
-  - **Acceptance:** implementation handoff lists root causes for canvas overlap, PN edge bypass, viewport remeasure coupling, and 3rd-level/overflow regression.
+  - **Acceptance:** implementation handoff lists root causes for canvas overlap, PN parent edge bypass, viewport remeasure coupling, and 3rd-level/overflow regression.
 
 - [ ] 2. Add failing `pn_layout` contract test
   - **Boundary:** `beta/tests/unit/pn_layout_contract.test.ts` or equivalent.
   - Import future `layoutProgressiveNav`, `PnNode`, `PnLayoutInput`, `PnLayoutOutput`.
   - Build a minimal `[GUI] -> View -> Layout -> Direction -> Right` sample.
-  - Assert output includes overlayRect, visibleNodeIds, pathIds, node rects, focusOrder, overflow, and EdgePort side metadata on edges.
+  - Assert output includes overlayRect, visibleNodeIds, pathIds, node rects, focusOrder, overflow, and EdgePort side metadata on parent edges.
   - **Acceptance:** test fails because `pn_layout.ts` does not exist yet; no product code changed.
 
 - [ ] 3. Add failing safe-zone golden test
@@ -22,16 +22,16 @@
   - Hand-author a safe-zone collision case where `right-of-anchor` overlaps selected canvas node content and `dock-left-of-anchor` or a later fallback is the first candidate with canvas-node overlapScore `0`.
   - **Acceptance:** test fails until shared layout exists; expected output includes placement reason, fixed trial order, rejected candidate scores, and chosen placement canvas-node `overlapScore = 0`.
 
-- [ ] 4. Add failing EdgePort integration test for PN edge
+- [ ] 4. Add failing EdgePort integration test for PN parent edge
   - **Boundary:** pure unit test only.
-  - Route a PN parent-child edge and assert source `right`, target `left`, route style metadata, and endpoint coordinates through existing EdgePort output shape.
-  - **Acceptance:** test fails until PN layout edge output uses `routeParentChildEdge` or `selectPorts -> route`; no `edgePathBetweenRects` import is used in test.
+  - Route a PN parent edge and assert source `right`, target `left`, route style metadata, and endpoint coordinates through existing EdgePort output shape.
+  - **Acceptance:** test fails until PN layout parent edge output uses `routeParentChildEdge` or `selectPorts -> route`; no `edgePathBetweenRects` import is used in test.
 
 ## Phase 1: Shared `pn_layout`
 
 - [ ] 5. Create shared `pn_layout` public contract
   - **Boundary:** `beta/src/shared/pn_layout.ts`, TypeScript config only as needed.
-  - Define `PnNode`, `PnRect`, viewport/safe-zone/input/output/edge/placement/overflow types and `layoutProgressiveNav`.
+  - Define `PnNode`, `PnRect`, viewport/safe-zone/input/output/parent edge/placement/overflow types and `layoutProgressiveNav`.
   - Keep helpers module-private.
   - Do not import React, DOM, `viewer.ts`, `workbench-ui.tsx`, AppState, map storage, or browser globals.
   - **Acceptance:** task 2 type imports compile; contract contains no map-backing and no product command side effects.
@@ -66,21 +66,21 @@
 
 ## Phase 2: EdgePort Routing
 
-- [ ] 10. Add PN edge adapter inside shared layout
+- [ ] 10. Add PN parent edge adapter inside shared layout
   - **Boundary:** `pn_layout.ts` or narrow shared helper.
   - Convert parent/child PN rects to existing EdgePort `EdgeRect`.
   - Call `routeParentChildEdge` or `selectPorts` then `route`.
   - Map PN route option to EdgeRoute `orthogonal | line | curve`.
-  - **Acceptance:** task 4 passes; every output edge includes sourceSide/targetSide and path `d`.
+  - **Acceptance:** task 4 passes; every output parent edge includes sourceSide/targetSide and path `d`.
 
 - [ ] 11. Remove product PN `edgePathBetweenRects` bypass
   - **Boundary:** product PN adapter / `workbench-ui.tsx` only.
   - Stop importing `edgePathBetweenRects` in PN code.
   - Render `PnRoutedEdge.d` and metadata from `layoutProgressiveNav`.
-  - Do not change normal map Connection rendering.
-  - **Acceptance:** existing PN edge Playwright tests pass with EdgePort output; grep confirms no PN path calls `edgePathBetweenRects`.
+  - Do not change normal map parent edge rendering.
+  - **Acceptance:** existing PN parent edge Playwright tests pass with EdgePort output; grep confirms no PN path calls `edgePathBetweenRects`.
 
-- [ ] 12. Add dependency-cruiser PN edge bypass rule
+- [ ] 12. Add dependency-cruiser PN parent edge bypass rule
   - **Boundary:** `beta/dependency-cruiser.config.cjs`.
   - Forbid product PN adapter / workbench PN module from importing `src/browser/edge_geometry.ts`.
   - Forbid `src/labs/pn/**` from importing `src/browser/**`.
@@ -97,17 +97,17 @@
 
 - [ ] 14. Wire `ProgressiveNavigation` through `layoutProgressiveNav`
   - **Boundary:** `workbench-ui.tsx` and optional PN adapter.
-  - Replace component-local layout/edge computation with shared output.
+  - Replace component-local layout/parent edge computation with shared output.
   - Preserve existing PN node labels/actions and Node PN behavior.
   - Preserve current click/hover/focus activation semantics unless tests expose a visible bug.
   - **Acceptance:** existing `workbench_progressive_nav.spec.js` visible behavior passes; 3rd-level layout route group remains visible.
 
 - [ ] 15. Add explicit PN layer CSS contract
   - **Boundary:** `workbench-ui.css`.
-  - Add documented z-index/layer relation for PN overlay, PN edges, PN cards, modal/popover.
+  - Add documented z-index/layer relation for PN overlay, PN parent edges, PN cards, modal/popover.
   - Ensure PN overlay is screen-space and not a child of transformed canvas content.
   - Replace uncontrolled visible overflow with class/state based scroll/compact/side-panel behavior.
-  - **Acceptance:** screenshot/DOM checks show PN cards above PN edges, modal above PN, and no accidental clipping in narrow viewport sample.
+  - **Acceptance:** screenshot/DOM checks show PN cards above PN parent edges, modal above PN, and no accidental clipping in narrow viewport sample.
 
 ## Phase 4: Viewport Separation
 
@@ -133,7 +133,7 @@
 - [ ] 19. Add 3rd-level/4th-level PN product test
   - **Boundary:** Playwright only.
   - Exercise `View > Layout > Direction`, `View > Layout > Edge Route`, and active-node `N2 -> N3-N6`.
-  - Assert all relevant nodes are visible, non-overlapping, inside overlay scroll/side-panel region, and edges connect expected sides.
+  - Assert all relevant nodes are visible, non-overlapping, inside overlay scroll/side-panel region, and parent edges connect expected sides.
   - **Acceptance:** product test fails on the 2026-06-16 two-level collapse class of bug.
 
 - [ ] 20. Add no canvas-content overlap product test
@@ -163,14 +163,14 @@
 
 - [ ] 24. Implement PN lab visualization
   - **Boundary:** lab files only.
-  - Render simulated canvas/safe zones, overlay, node cards, EdgePort routed edges, focus order, overflow mode, and placement score.
+  - Render simulated canvas/safe zones, overlay, node cards, EdgePort routed parent edges, focus order, overflow mode, and placement score.
   - Provide controls for sample, active node, viewport preset, anchor preset, safe-zone toggle, route style, search, reset/collapse.
   - Do not pre-fix final visual approval style; expose the minimum judgment surface for akaghef動作感承認.
-  - **Acceptance:** akaghef can inspect action-tree staged expansion, parent node position retention, keyboard/search, safeZone no-overlap from `PnNode[]`, overlay placement/overflow, and edge routing in one lab.
+  - **Acceptance:** akaghef can inspect action-tree staged expansion, parent node position retention, keyboard/search, safeZone no-overlap from `PnNode[]`, overlay placement/overflow, and parent edge routing in one lab.
 
 - [ ] 25. Add PN lab Playwright checks
   - **Boundary:** `beta/tests/visual/pn_lab.spec.js` or equivalent.
-  - Check lab loads, sample switching works, keyboard/search changes focus and visible rows, 3rd-level nodes render, safe-zone placement avoids overlap with canvas-node `overlapScore = 0`, and edge side metadata is present.
+  - Check lab loads, sample switching works, keyboard/search changes focus and visible rows, 3rd-level nodes render, safe-zone placement avoids overlap with canvas-node `overlapScore = 0`, and parent edge side metadata is present.
   - **Acceptance:** Playwright test does not depend on product viewer; screenshot/DOM evidence covers EN5-Lite lab gate.
 
 ## Phase 7: Golden and Copy Ratchet
@@ -183,9 +183,9 @@
 
 - [ ] 27. Add golden parity tests
   - **Boundary:** `beta/tests/unit/pn_layout_golden.test.ts`.
-  - Compare placement trial order, placement mode, overlay rect, visibleNodeIds, pathIds, focusOrder, overflow mode, chosen canvas-node overlapScore, source/target edge side, and endpoint summary.
+  - Compare placement trial order, placement mode, overlay rect, visibleNodeIds, pathIds, focusOrder, overflow mode, chosen canvas-node overlapScore, source/target parent edge side, and endpoint summary.
   - Use exact values unless tolerance is explicitly documented for pixel rounding.
-  - **Acceptance:** changed placement/edge behavior fails with sample id and mismatched field; any chosen placement with canvas-node overlapScore > 0 fails.
+  - **Acceptance:** changed placement/parent edge behavior fails with sample id and mismatched field; any chosen placement with canvas-node overlapScore > 0 fails.
 
 - [ ] 28. Add jscpd PN ratchet
   - **Boundary:** `beta/jscpd.config.json`.

@@ -7,7 +7,7 @@
 **Demand Gate は満たしていない。** 4 つの条件をすべて満たす問い合わせは 0 件だった（3 件以上が必要）。
 
 - **実際の需要の中身**：akaghef と AI agent が実際に必要としたのは「探す」問いである（過去の session、用語の定義、決定の来歴）。どれも 1〜2 歩で、grep・file の読取り・LLM の読解で答えられていた。
-- **見つからなかった問い**：文書をまたいで GraphLink を連鎖的に辿る問いと、別の map にある同じ entity を探す問いは、1 件も見つからなかった。
+- **見つからなかった問い**：文書をまたいで relation edge を連鎖的に辿る問いと、別の map にある同じ entity を探す問いは、1 件も見つからなかった。
 - **Deep の制約になっているもの**：問い合わせのエンジンではない。map をまたぐ関係と entity binding がデータとして存在しないことである。現在のデータには、map をまたぐ構造化された関係が 0 件しかない。
 
 ## 判定の条件
@@ -62,37 +62,37 @@ M3E の中で map をまたぐだけの問い合わせ（Glossary の Deep。文
 |---|---|---|---|
 | 稼働中の agent から Actor・Role・Task・Objective・Goal を逆に辿る（Agent Orrery、S17） | ORRERY Telemetry と M3E の map | 型付きの固定 4 歩 | connector がまだなく、Goal 側の語彙も未定義。2026-09-12 に Claude が提案したもので、akaghef の実需ではない |
 | Resource（お金・機械）と agent・Task・Goal の関係、支出から判断を経て成果へ（S17.5） | 会計などの provider、ORRERY Telemetry、M3E | 1〜3 歩と集計 | Resource の node と edge の種類が未決で、データはない |
-| 定義・定理・証明の依存網を辿る | 数学の map 群。文献を入れれば source をまたぐ | 可変長の推移閉包 | PFR Blueprint の map に `uses` の GraphLink が 9 本だけ。数学の map の取込みは 2026-10-21 に始まった |
+| 定義・定理・証明の依存網を辿る | 数学の map 群。文献を入れれば source をまたぐ | 可変長の推移閉包 | PFR Blueprint の map に `uses` の relation edge が 9 本だけ。数学の map の取込みは 2026-10-21 に始まった |
 | 一般化・双対・類比・特殊化の関係を多段で探す | 数学の map 群 | relationType を指定した多段の型付き辿り。graph DB が本当に有利な形 | relationType の語彙が未確定で、データはない |
 | 複数の文献をまたいで同じ概念の同一性を解決し、文書間の同型を見分ける | 文献ごとの source | 同一性の解決（sameAs）と同型判定 | entity binding がない（下の「実データ」を参照） |
 
 ### 説明用の例（数えない）
 
-- 販売の map と返品分析の map が、同じ GraphLink を参照する。
+- 販売の map と返品分析の map が、同じ relation edge を参照する。
 - Deep の各概念が、Rapid の文書のどこに現れるか。
 - 「先週決めたことを教えて」。
 - S16 実装後の世界で想定した場面。たとえば、dispatch の前に、ある task が触る不変条件に依存する他の task を引く。
 
 ## 実データで分かったこと
 
-- **GraphLink**：675 本（48 種類の relationType）あり、**すべて 1 つの map の中にある**。
-  - 35% は親子の edge と重なっている。
-  - GraphLink だけで数えた最大の連結成分は 53 node。
+- **relation edge**：675 本（48 種類の relationType）あり、**すべて 1 つの map の中にある**。
+  - 35% はparent edge と重なっている。
+  - relation edge だけで数えた最大の連結成分は 53 node。
   - 辿れる経路の長さは、最長で計画の map が 7、workflow の map が 11（循環あり）。
 - **alias**：993 件あり、すべて同じ map の中を指す。現行の形式では、map をまたぐ alias は表現できない。MCP も `CROSS_MAP_ALIAS` と `CROSS_MAP_MOVE` で拒否する（`beta/src/node/mcp_service.ts:403`、`:467`）。
-- **型付きの関係の最大の置き場**：親子の edge の label（`m3e:edge-label`）で、15,966 件ある。その 99% は数学の map にあり、連鎖の深さは最大 3。
+- **型付きの関係の最大の置き場**：parent edge の label（`m3e:edge-label`）で、15,966 件ある。その 99% は数学の map にあり、連鎖の深さは最大 3。
 - **map や source をまたぐ参照**：構造化されたものは、他の map の node ID を値に持つ attribute が 34 件だけ。
   - `m3e://` の URI は 0 件。
   - map ID の文字列は 390 件あるが、大半は agent の記録の本文で、参照ではない。
   - Vault との構造化された結び付きは約 3 件。
   - scope bind の保存表は、稼働中の DB には存在しない。
-- **source をまたいで唯一一致する場所**：計画の map の `m3e:stable-id` 付き 20 node は、`docs/semantic` の entity と 20/20 で一致する。その間の `planning-ref` の GraphLink 32 本も、`docs/semantic` の REFS と一致する。
+- **source をまたいで唯一一致する場所**：計画の map の `m3e:stable-id` 付き 20 node は、`docs/semantic` の entity と 20/20 で一致する。その間の `planning-ref` の relation edge 32 本も、`docs/semantic` の REFS と一致する。
   - 同じ関係が、Final の map、Beta の複写、`docs/semantic` の 3 か所に別々に保存されている（IS148）。
   - つなぐ鍵は命名規約の文字列だけである。
 - **同一性の手がかりがない**：
   - 5 文字以上の固有ラベルのうち 1,852 種が、2 つ以上の map に出る。
-  - 数学の map では、447 種のラベル（1,325 node）が複数の scope に繰り返し出るが、GraphLink は 0 本、alias は 1 件しかない。
-  - map ID・node ID・GraphLink ID は、複写のたびに引き継がれるか振り直され、workspace をまたいで重複している（IS138）。
+  - 数学の map では、447 種のラベル（1,325 node）が複数の scope に繰り返し出るが、relation edge は 0 本、alias は 1 件しかない。
+  - map ID・node ID・relation edge ID は、複写のたびに引き継がれるか振り直され、workspace をまたいで重複している（IS138）。
 - **`docs/semantic`**：entity 50、assertion 47。すべて 1 つの source の中にあり、M3E の map は参照していない。使っているのは CI の validate と pilot だけで、M3E の runtime からの問い合わせはない。
 
 ## 分かったこと

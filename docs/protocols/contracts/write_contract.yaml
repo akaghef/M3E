@@ -28,12 +28,12 @@ must:
   - maintain bidirectional parent-child consistency
   - preserve root parentId null
   - preserve existing m3e:style keys when changing one style property
-  - delete GraphLinks whose endpoint nodes are deleted
+  - delete relation edges whose endpoint nodes are deleted
 must_not:
   - overwrite full state from stale context
   - write unresolved ambiguous paths
-  - convert `/` or Mermaid arrows into ownership edges by default
-  - confuse edge with GraphLink
+  - convert `/` or Mermaid arrows into parent edges by default
+  - confuse parent edge with relation edge
   - apply unsolicited coloring or layout changes
   - replace unavailable MCP operations with agent-authored REST or SQLite writes
   - leave orphan nodes or broken non-broken links
@@ -41,5 +41,5 @@ verification:
   - no orphan nodes
   - no cycles
   - all children exist
-  - all GraphLink endpoints exist and are non-alias unless product spec changes
+  - all relation edge endpoints exist and are non-alias unless product spec changes
   - intended display policy is preserved

@@ -45,8 +45,8 @@
 |---|---|
 | Tree で間隔設定が効かない | `config.mode === "tree" ? LAYOUT.columnGap : config.columnGap` のハードコード分岐 |
 | `up/down` で兄弟 box が重なる | depth=X / breadth=Y 固定で計算し座標だけ回転。box の w/h は回らないため |
-| 左枝の edge が右 port から出る | lab が `selectPorts` を通さず bezier 直書き。`edge_port.ts` も up/down 未対応 |
-| 単一子なのに edge が breadth 方向にズレる | 親 span が「自分の寸法+24」で下限を持つのに子は先頭詰めで余剰未配分 |
+| 左枝の parent edge が右 port から出る | lab が `selectPorts` を通さず bezier 直書き。`edge_port.ts` も up/down 未対応 |
+| 単一子なのに parent edge が breadth 方向にズレる | 親 span が「自分の寸法+24」で下限を持つのに子は先頭詰めで余剰未配分 |
 | Mind Map / Logic Chart で向きが効かない | `cardinalDirection()` が undefined を返し横向きのまま。`left` は再反転で右向き |
 | 既存 map の設定が失われる | 旧 attribute `m3e:layout-density` / `m3e:branch-direction` を読む経路が消えていた |
 | `branchPortSide` 欠如で描画が例外停止 | adapter が必須にしていた（Disperse / Mind Map / Axial / System / Timeline で計4回発生）|
@@ -166,7 +166,7 @@ viewer への Disperse 反映を3段で計画済み。**まだ1行も着手し�
 ## 10. 参照
 
 - [map_layout_modes.md](../03_Spec/map_layout_modes.md) — Surface View 正本、Disperse の目的 / subtype 定義 / tree との粗視化関係
-- [Glossary §1.7](../00_Home/Glossary.md) — depth 軸 / breadth 軸、edge の3義、seam interface / edge port / LinkPort
+- [Glossary](../00_Home/Glossary.md) — depth 軸 / breadth 軸、edge / parent edge / relation edge、seam interface / edge port / LinkPort
 - [Disperse_Layout_Design.md](../04_Architecture/Disperse_Layout_Design.md) — ライブラリ思想比較と WebCola 採用理由
 - [Decision_Pool](../06_Operations/Decision_Pool.md) — 2026-08-23-001（語彙）/ -002（Disperse 目的と粗視化）/ -003（WebCola 採用）
 - [UI_Seam_Integration_Contract.md](../03_Spec/UI_Seam_Integration_Contract.md) — `RenderRegistry` を含む shared resource catalog

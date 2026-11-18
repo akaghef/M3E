@@ -4,39 +4,39 @@
 
 ---
 
-## S1. edgeType-first（親子 edge から攻める）
+## S1. edgeType-first（parent edge から攻める）
 
-`TreeNode.edgeType?: string` を追加し、親子 edge に意味を載せることから始める。GraphLink はそのまま。
+`TreeNode.edgeType?: string` を追加し、parent edge に意味を載せることから始める。relation edge はそのまま。
 
 - **着手**: types.ts に edgeType 追加 → viewer で表示 → 手動で自分のマップに付与
 - **利点**: prior_art の案 C（ハイブリッド）そのまま。既存コード影響最小。Rapid 骨格に直接意味が乗る
-- **欠点**: GraphLink 側（関係線）が後回し。Deep の横断リンクは別途対応が必要
+- **欠点**: relation edge 側（関係線）が後回し。Deep の横断リンクは別途対応が必要
 - **Codex 投入**: 不要（まだ Blueprint は関係しない段階）
 - **検証**: 自分の AlgLibMove マップで is-a / part-of を付けて、意味が伝わるか体感する
 
 ---
 
-## S2. GraphLink kind-first（関係線から攻める）
+## S2. relation edge kind-first（関係線から攻める）
 
 plan.md Phase 0-1 そのまま。`GraphLink.relationType` を kind 語彙で正式運用し、kind 別描画を入れる。
 
 - **着手**: relation_kinds.ts 新設 → viewer.tuning に色マップ → 既存関係線に手動で kind 付与
-- **利点**: 08_implementation_feasibility.md の見積り済み。影響範囲が明確。既存 GraphLink の拡張
-- **欠点**: 親子 edge には手を付けない。ツリー構造自体の意味は未解決
-- **Codex 投入**: Phase 3 で Blueprint dep_graph を GraphLink として取り込む時に投入
+- **利点**: 08_implementation_feasibility.md の見積り済み。影響範囲が明確。既存 relation edge の拡張
+- **欠点**: parent edge には手を付けない。ツリー構造自体の意味は未解決
+- **Codex 投入**: Phase 3 で Blueprint dep_graph を relation edge として取り込む時に投入
 - **検証**: kind 別の色で関係線を見分けられるか
 
 ---
 
-## S3. Dual-edge 同時（親子 + GraphLink を同時に型付け）
+## S3. Dual-edge 同時（親子 + relation edge を同時に型付け）
 
-S1 と S2 を同時にやる。edgeType（親子）と relationType kind（GraphLink）の両方にプロトコルを定める。
+S1 と S2 を同時にやる。edgeType（親子）と relationType kind（relation edge）の両方にプロトコルを定める。
 
 - **着手**: types.ts に edgeType 追加 + relation_kinds.ts 新設 + getAllEdges() ユーティリティ
 - **利点**: 統一ビュー（全 edge が意味を持つ）が最速で実現。prior_art 案 C の完全形
 - **欠点**: 変更面が広い。viewer の親子線描画 + 関係線描画の両方に手を入れる
 - **Codex 投入**: getAllEdges() 完成後に Blueprint 取込を投入
-- **検証**: 親子 edge と GraphLink が同じ統一ビューで見えるか
+- **検証**: parent edge と relation edge が同じ統一ビューで見えるか
 
 ---
 
@@ -56,7 +56,7 @@ AlgLibMove マップ（1027 ノード既存）を素材に、edge protocol を d
 
 Codex に先行して Blueprint dep_graph の取込を委任し、実データが入った状態で semantic 側を設計する。
 
-- **着手**: Codex に PFR Blueprint dep_graph.json → M3E GraphLink 変換を委任 → 取込結果を見てから kind 語彙を決める
+- **着手**: Codex に PFR Blueprint dep_graph.json → M3E relation edge 変換を委任 → 取込結果を見てから kind 語彙を決める
 - **利点**: 実データ（数百ノードの数学 DAG）が手元にある状態で設計できる。机上の空論を避ける
 - **欠点**: syntax tree（uses のみ）が先に入るので、semantic 側の設計が uses に引きずられるリスク
 - **Codex 投入**: 最初期から
@@ -128,8 +128,8 @@ Claude が semantic tree（edgeType + kind protocol）を実装する間に、Co
 
 | 案 | 最初に動くもの | Codex 投入時期 | リスク | 研究価値 | 実装規模 |
 |---|---|---|---|---|---|
-| S1 edgeType-first | 親子 edge | 後 | 低 | 中 | 小 |
-| S2 GraphLink kind-first | 関係線 | 中 | 低 | 中 | 小 |
+| S1 edgeType-first | parent edge | 後 | 低 | 中 | 小 |
+| S2 relation edge kind-first | 関係線 | 中 | 低 | 中 | 小 |
 | S3 Dual-edge 同時 | 両方 | 中 | 中 | 高 | 中 |
 | S4 Dogfood-driven | 運用 | 後 | 低 | 高 | 小 |
 | S5 Blueprint-first | 実データ | 最初 | 中 | 中 | 中 |

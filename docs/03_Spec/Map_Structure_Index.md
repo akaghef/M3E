@@ -6,8 +6,8 @@
 
 - Data model: `Data_Model.md`
   - node
-  - edge
-  - GraphLink
+  - parent edge
+  - relation edge
   - alias constraints
   - invariants
 

@@ -116,11 +116,11 @@ Glossary（[docs/00_Home/Glossary.md](../../../00_Home/Glossary.md)）の通り�
 
 | 正規語 | 役割 | 対応帯域 |
 |---|---|---|
-| **edge** | 親子関係のみ（親 → 子） | **Rapid** の syntax tree 骨格 |
-| **関係線（GraphLink）** | 親子以外の補助関係 | **Deep** の semantic graph の芽 |
+| **parent edge** | 親子関係のみ（親 → 子） | **Rapid** の syntax tree 骨格 |
+| **関係線（relation edge）** | 親子以外の補助関係 | **Deep** の semantic graph の芽 |
 
-つまり私が前ファイル（07 初版）で「P8 二層エッジ」と名付けた構想は、**実は既存の edge/GraphLink の二分を Deep 側で育てる話**。
-外部 Blueprint / Stacks DAG は **GraphLink 側に流入** すべきもので、新しい層を発明する必要はない。
+P8 は、parent edge による Rapid の骨格を保ち、relation edge が担う Deep の関係種別を育てる構想である。
+外部 Blueprint / Stacks DAG は **relation edge 側に流入** すべきもので、新しい層を発明する必要はない。
 
 ## Rapid ⇄ Deep 往復（本ブレストの中心ループ）
 

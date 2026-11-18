@@ -10,7 +10,7 @@ M3E の通常 Beta で正常だった操作を保ちながら、`beta/src` の�
 
 この文書作成で書くのは `.kiro/specs/source-restructure/{requirements,design,tasks}.md` だけ。製品コード、試験、設定、既存 spec、Git の統合状態は変更しない。以下は後続の実装承認後に適用する要件である。`final/`、release、データ移行、未統合 worktree の一括回収は対象外。
 
-用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。map、scope、親子関係の edge、GraphLink の意味と保存表現を変えない。seam interface は型付き契約境界であり、幾何の edge port と区別する。
+用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。map、scope、parent edge、relation edge の意味と保存表現を変えない。seam interface は型付き契約境界であり、幾何の edge port と区別する。
 
 ## 根拠
 

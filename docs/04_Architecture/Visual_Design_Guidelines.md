@@ -125,7 +125,7 @@ For the MVP, color should be separated into these roles:
 1. Base surface color
 2. Text color
 3. Interaction accent
-4. Branch edge color
+4. parent edge color
 5. Validation/error color
 6. Optional semantic color
 
@@ -134,7 +134,7 @@ For the MVP, color should be separated into these roles:
 - Node fill should stay mostly neutral
 - Text should stay dark and high-contrast
 - Selection should use one consistent accent family
-- Branch recognition should mainly happen on edges, not full node fills
+- Branch recognition should mainly happen on parent edges, not full node fills
 - Error/destructive actions should use a separate danger color
 - Semantic node colors are deferred until node type rules are clearer
 
@@ -142,7 +142,7 @@ For the MVP, color should be separated into these roles:
 
 - Do not color every node by branch fill
 - Do not introduce per-node rainbow fills in MVP
-- Use branch color on connecting edges first
+- Use branch color on connecting parent edges first
 - Use selection fill for focus state
 - Reserve additional fills for future node typing or status, not for decoration
 
@@ -172,15 +172,15 @@ They should be considered as part of a coherent visual system.
 - node opacity
 - node shadow or no-shadow policy
 
-### 2. Edge
+### 2. parent edge
 
-- branch edge color
-- edge color variation by depth
-- edge color variation by branch
-- edge thickness
-- edge curvature
-- edge opacity
-- edge cap style
+- parent edge color
+- parent edge color variation by depth
+- parent edge color variation by branch
+- parent edge thickness
+- parent edge curvature
+- parent edge opacity
+- parent edge cap style
 - selected path emphasis
 
 ### 3. Typography
@@ -253,7 +253,7 @@ To keep the visual system manageable, these items should be grouped into stable 
 Recommended buckets:
 
 - `Node`
-- `Edge`
+- `parent edge`
 - `Typography`
 - `Surface`
 - `Interaction`
@@ -407,7 +407,7 @@ If a change is mainly decorative and does not help the first three, defer it.
 For now:
 
 - keep node bodies neutral
-- use edges for branch differentiation
+- use parent edges for branch differentiation
 - use accent fills for interaction
 - reserve semantic fills for later
 
@@ -426,7 +426,7 @@ structure, dependency flow, GraphSpec nodes, or runtime trace:
 - node type may use stronger card treatments than the default Rapid tree
 - color must be paired with badge or shape, not used alone
 - selected path emphasis should override permanent semantic color
-- GraphLink labels should be revealed on hover, selection, or replay step rather than always expanded
+- relation edge labels should be revealed on hover, selection, or replay step rather than always expanded
 - inspector / detail panel should show contract fields without mutating map state
 
 Do not import the reference wholesale into normal mind-map rendering. The
@@ -437,30 +437,30 @@ focus, right-side contract inspector, minimap, and trace replay controls.
 
 - Root is visually boxed and distinct
 - Child nodes stay text-led and light
-- Branch color lives mainly on edges
+- Branch color lives mainly on parent edges
 - Selection color is consistent and reserved for interaction
 - Semantic node colors are deferred
 - Metadata is inspectable outside the main node label
 - Tuning values must stay centralized
 - Design changes should favor clarity over decoration
 
-## Link as a Separate Visual Element
+## relation edge as a Separate Visual Element
 
-`Link` should be treated as a separate visual category from `Edge`.
+`relation edge` should be treated as a separate visual category from `parent edge`.
 
-### Edge
+### parent edge
 
 - shows structural parent-child relation
 - is part of the main reading path
 - should remain the strongest connector in the tree view
 
-### Link
+### relation edge
 
 - shows non-tree relation or semantic association
 - should read as an overlay, not as part of the skeleton
-- must be visually distinguishable from `Edge`
+- must be visually distinguishable from `parent edge`
 
-### Link Design Items
+### relation edge Design Items
 
 - link stroke color
 - link thickness
@@ -471,18 +471,18 @@ focus, right-side contract inspector, minimap, and trace replay controls.
 - link label style
 - link hover state
 - selected link state
-- rendering layer order relative to edge
+- rendering layer order relative to parent edge
 
 ### MVP Visual Policy
 
-- `Edge` keeps the main branch color system
-- `Link` should use a different visual language, preferably lighter or dashed
-- `Link` should not borrow the main selection accent by default
-- `Link` should not visually overpower structural edges
+- `parent edge` keeps the main branch color system
+- `relation edge` should use a different visual language, preferably lighter or dashed
+- `relation edge` should not borrow the main selection accent by default
+- `relation edge` should not visually overpower structural parent edges
 
 ### Development Policy
 
-- keep `edge` tuning and `link` tuning in separate buckets
-- keep `GraphLink` out of Tree subtree placement; force placement may use it as tension input under [Surface View rules](../03_Spec/map_layout_modes.md)
-- do not render `Link` exactly like `Edge`
-- prepare `viewer.tuning.js` to split `edge` and `link` when implementation starts
+- keep parent edge tuning (`edge`) and relation edge tuning (`link`) in separate buckets
+- keep `relation edge` out of Tree subtree placement; force placement may use it as tension input under [Surface View rules](../03_Spec/map_layout_modes.md)
+- do not render `relation edge` exactly like `parent edge`
+- prepare `viewer.tuning.js` to split the `edge` and `link` settings for parent edges and relation edges when implementation starts

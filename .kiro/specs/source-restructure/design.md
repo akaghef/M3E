@@ -28,7 +28,7 @@
 
 ## 現状の境界と移譲先
 
-`viewer.ts` は DOM 取得と起動だけでなく、`viewState`、map、render cache、timer、WebGL、SSE、入力 handler を直接結んでいる。例えば `applyZoom` は WebGL camera と SVG transform、linear 表示、editor、viewport event を更新し、`moveCameraTo`、wheel、pointer、fit が同じ座標を書いている。`renderScene` は layout、node、Connection、annotation と DOM/WebGL snapshot を組み立てる。factory への機械的な移動だけでは依存は解消しない。
+`viewer.ts` は DOM 取得と起動だけでなく、`viewState`、map、render cache、timer、WebGL、SSE、入力 handler を直接結んでいる。例えば `applyZoom` は WebGL camera と SVG transform、linear 表示、editor、viewport event を更新し、`moveCameraTo`、wheel、pointer、fit が同じ座標を書いている。`renderScene` は layout、node、edge、annotation と DOM/WebGL snapshot を組み立てる。factory への機械的な移動だけでは依存は解消しない。
 
 以下の module 名は実装パスの予定であり、新しい製品概念名ではない。
 
@@ -225,7 +225,7 @@ compile root / outDir、package scripts、test import、launch shell/bat、`__di
 | 既存 spec | 再利用する現行 source / 試験 | この spec が担うこと / 持ち込まないこと |
 |---|---|---|
 | `layout-seam-lab` | `layout_port.ts`、layout golden/contract/composition、依存 gate | viewer の adapter を移譲。古い「viewer 内 layout」の現状記述を現在の事実としてコピーしない |
-| `edge-port-seam` | `edge_port.ts`、`edge_route.ts`、`parent_child_edge_adapter.ts`、golden/composition | edge と GraphLink の既存分離を保持。新しい幾何 algorithm を足さない |
+| `edge-port-seam` | `edge_port.ts`、`edge_route.ts`、`parent_child_edge_adapter.ts`、golden/composition | parent edge と relation edge の既存分離を保持。新しい幾何 algorithm を足さない |
 | `node-draw-seam` | `node_draw_svg.ts` / port、fragment golden、node lab | renderScene 統合時に再利用。folder preview 等の別責任を node draw に詰め込まない |
 | `progressive-nav-seam` | `pn_layout.ts`、golden、workbench / pn lab、依存 gate | viewport event 順序を守る。旧 spec の UI 改善・layout 変更を構造整理に混ぜない |
 

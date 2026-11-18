@@ -17,8 +17,8 @@
 | 業務フォルダ | scope/root。業務単位の入れ物 |
 | Scatter | 自由配置の作業面。ノードを空間的に並べ、参照関係を見ながら編集する |
 | spine | 業務フォルダ内の主骨格。木または DAG として読み直すための正本 |
-| edge | M3E 正規語では親子関係。spine の保存実体 |
-| GraphLink | spine ではない参照、依存、補助接続 |
+| parent edge | M3E 正規語では親子関係。spine の保存実体 |
+| relation edge | spine ではない参照、依存、補助接続 |
 
 重要なのは、Scatter に見えている線をすべて spine と見なさないこと。
 spine は「この業務を構造として読むなら、この順序・階層・責任分解で把握する」という主線だけを指す。
@@ -34,7 +34,7 @@ spine は「この業務を構造として読むなら、この順序・階層�
 │   └── 成果物
 └── Scatter surface
     ├── 自由座標
-    ├── GraphLink
+    ├── relation edge
     └── 補助的な表示状態
 ```
 
@@ -44,9 +44,9 @@ Tree と Scatter は対立するビューではなく、同じ業務フォルダ
 ## 操作イメージ
 
 - 業務フォルダを開くと、既定 surface は Scatter でもよい
-- 親子 edge は spine として保存される
+- parent edge は spine として保存される
 - Scatter 上では spine を薄いガイド線として表示できる
-- GraphLink は緑点線などで、参照・依存・補助接続として表示する
+- relation edge は緑点線などで、参照・依存・補助接続として表示する
 - 「この link を spine に昇格」「この親子を link に降格」操作を用意する
 - spine をもとに Tree / Linear / Outline へ戻せる
 
@@ -58,14 +58,14 @@ Tree と Scatter は対立するビューではなく、同じ業務フォルダ
 当面は次の形で扱う。
 
 - spine の主経路は TreeNode.parentId / children で表現
-- 複数親に見える関係は GraphLink または alias で表現
-- DAG としての読み出しは「spine tree + GraphLink/alias」から派生する
+- 複数親に見える関係は relation edge または alias で表現
+- DAG としての読み出しは「spine tree + relation edge/alias」から派生する
 
 これにより、分散した Scatter データでも spine が決まれば木/DAG へ戻せる。
 
 ## 未決
 
 - spine ガイド線を常時表示するか、toggle にするか
-- GraphLink を spine に昇格する UI をどう置くか
+- relation edge を spine に昇格する UI をどう置くか
 - 業務フォルダの既定 surface を Scatter にする条件
-- Linear 表示に戻した時、GraphLink/alias をどこまで注釈化するか
+- Linear 表示に戻した時、relation edge/alias をどこまで注釈化するか

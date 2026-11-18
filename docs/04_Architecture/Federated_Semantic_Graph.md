@@ -324,7 +324,7 @@ Phase 4で M3E-owned accepted graph の Neo4j canonical runtime をactivateす�
 
 ### Equivalence tests
 
-- SQLite Rapid documentとportable source materializationでroot reachability、sibling order、Scope、Alias、GraphLinkが意味同値。
+- SQLite Rapid documentとportable source materializationでroot reachability、sibling order、Scope、Alias、relation edgeが意味同値。
 - owner sourceからrebuildしたgraphがfixture queryに同じentity / relationを返す。
 - Rapid occurrence / Deep entityのentity bindingを外してもRapid本文が変化しない。
 - source-materialized recordとM3E-owned accepted recordを同じqueryで取得してもowner / roleを識別できる。

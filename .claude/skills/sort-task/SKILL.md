@@ -111,9 +111,9 @@ PJ-01, PJ-04, PJ-06, PJ-08, PJ-00, PJ-05
 意味操作・検証を行う。`deps.py` は依存計算を担当し、Mapの全状態編集やREST保存は行わない。
 以下の表示規約は、ユーザーがこのSortedTaskViewを指定した場合に適用する。
 
-書込前に、必要な操作がMCP Schemaにあることを確認する。特にGraphLink生成が未対応なら、
+書込前に、必要な操作がMCP Schemaにあることを確認する。特にrelation edge生成が未対応なら、
 必要な非木依存を失うMapを保存せず、不足機能を報告する。旧writerや一時スクリプトへ
-切り替えたり、GraphLinkを親子関係で代用したりしない。
+切り替えたり、relation edgeを親子関係で代用したりしない。
 
 **レイアウト原則**:
 - **tree-depth = DAG layer** — 深さが依存の方向に対応
@@ -145,7 +145,7 @@ SortedTaskView
 3. なければ「既存 tree-children 数が最小」な prereq（greedy spread）
 4. 同点時は deps.py score 降順 → ID 昇順
 
-tree-parent に選ばれなかった prereq は **GraphLink** (`relationType: "depends-on"`) として残す。
+tree-parent に選ばれなかった prereq は **relation edge** (`relationType: "depends-on"`) として残す。
 critical path 上のエッジは `style: "emphasis"`。
 
 **PJ ノード attributes**: `{ pj_id, state, layer, on_critical }`

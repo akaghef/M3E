@@ -8,17 +8,17 @@
 ## 2026-10-17-001
 
 - Date: 2026-10-17
-- Topic: Lane Surface View の追加と GraphLink の任意属性
+- Topic: Lane Surface View の追加と relation edge の任意属性
 - Status: accepted
 - Decision:
-  - `Lane` を Surface View の第6種として追加する。root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンへ投影し、孫 node 間の GraphLink を主線として表示する。
+  - `Lane` を Surface View の第6種として追加する。root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンへ投影し、孫 node 間の relation edge を主線として表示する。
   - `System` はレーンに整列できないフローチャート様の構造を扱い、既存 subtype `containment / module / architecture` を維持する。
   - `GraphLink.attributes` に任意の key-value data を持たせる。実現段階などの情報は Content、`LinkStyle` への写像は Style として扱う。
-  - レーン順、孫 node の所属、GraphLink の親 node ごとの集計、レーンを飛び越す関係、GraphLink のない異なるレーンの孫 node の組は導出値とし、保存しない。選択から計算する内訳の線は GraphLink とせず、Lane view の Topology に含めない。
+  - レーン順、孫 node の所属、relation edge の親 node ごとの集計、レーンを飛び越す関係、relation edge のない異なるレーンの孫 node の組は導出値とし、保存しない。選択から計算する内訳の線は relation edge とせず、Lane view の Topology に含めない。
   - 図式内の孫 node に識別コードを付けない。
   - 2026-10-25 変更: Lane は scope の Surface View で、root はその scope の root node とする。scope でない node を root にする操作と保存は廃止した（akaghef）。
-- Why: 層状の図式を既存の tree と GraphLink で保持しながら投影する方式を定義し、フローチャート様でレーンに整列できない System view と区別するため。
-- Next: beta の GraphLink 型への属性追加と Lane view 実装は別タスク。
+- Why: 層状の図式を既存の tree と relation edge で保持しながら投影する方式を定義し、フローチャート様でレーンに整列できない System view と区別するため。
+- Next: beta の `GraphLink` 型への属性追加と Lane view 実装は別タスク。
 - Source: akaghef の 2026-10-17 の決定。
 - Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md), [../03_Spec/Data_Model.md](../03_Spec/Data_Model.md), [../09_Decisions/ADR_013_Lane_Surface_View.md](../09_Decisions/ADR_013_Lane_Surface_View.md)
 
@@ -29,12 +29,12 @@
 - Status: accepted
 - Decision:
   - **Surface View 正本を5種に戻す: `Tree / Axial / Radial / Disperse / System`。**
-  - **Radial と Disperse は同一の力学配置エンジン（WebCola）を共有し、親子関係の投影方式だけが異なる**: Radial は親子を **edge** で描画（GraphLink も表示）。Disperse は親子を **入れ子（group/包含）** で描画（画面の線は GraphLink のみ）。
+  - **Radial と Disperse は同一の力学配置エンジン（WebCola）を共有し、親子関係の投影方式だけが異なる**: Radial は親子を **parent edge** で描画（relation edge も表示）。Disperse は親子を **入れ子（group/包含）** で描画（画面の線は relation edge のみ）。
   - ADR_010 が指摘した「角度系（clockwise/counterclockwise/balanced）の実装実体が無かった」という事実認定は維持し、**角度系 option は正本から削除したまま**にする。Radial 概念自体を無効とした結論のみを撤回する。
   - Radial / Disperse の subtype は `scatter`（人が置いた座標をそのまま使う）/ `force`（力学配置）の2つに統一。**`cluster` subtype は廃止** — tree の group 投影は Disperse の切替可能な subtype ではなく、Disperse の既定の親子表現そのものであるため。
-  - **全 Surface View は同じ tree（+ GraphLink）構造の上に立つ**、という前提を正本の「意味上の分離」に明記した。View 間の違いは構造の有無ではなく投影方式の違い。「自由配置」はレイアウトアルゴリズムの性質であり、データ構造が自由という意味ではない。
+  - **全 Surface View は同じ tree（+ relation edge）構造の上に立つ**、という前提を正本の「意味上の分離」に明記した。View 間の違いは構造の有無ではなく投影方式の違い。「自由配置」はレイアウトアルゴリズムの性質であり、データ構造が自由という意味ではない。
   - Radial に group 投影は無いため、collapse した部分木は縮約されて単なる1ノードになる（Disperse と同じ「縮約」操作だが footprint を持たない）。
-- Why: ADR_010 は「Radial は Tree と実体を共有していた」という正しい観察から、「Radial 概念自体が無効」という誤った結論に踏み込んだ。akaghef が Radial(edge)/Disperse(group) という固有の意味を与えたことで、角度系に依らない正当な区別が成立する。また「木だから自由配置という説明はおかしい」という指摘により、Surface View 全体の構造記述を「構造の有無」から「同一構造の投影方式」へ訂正した。
+- Why: ADR_010 は「Radial は Tree と実体を共有していた」という正しい観察から、「Radial 概念自体が無効」という誤った結論に踏み込んだ。akaghef が Radial(parent edge)/Disperse(group) という固有の意味を与えたことで、角度系に依らない正当な区別が成立する。また「木だから自由配置という説明はおかしい」という指摘により、Surface View 全体の構造記述を「構造の有無」から「同一構造の投影方式」へ訂正した。
 - Next: seam lab（layout-lab）に Radial の scatter/force コントロールを追加。Disperse の実装（`disperse_layout.ts` 等）と配置エンジンを共有させる形で Radial を再導入する。角度系コードは復元しない。
 - Source: 2026-08-27 akaghef「radial, disperseの違いがわからないという話だったが、両者を復活させたい。ラディアルは親子のエッジを表示する。グラフリンクも表示する。一方でディスパースは、親子同士はエッジではなく、入れ子のカテゴリとして表す」+「構造としては木だから[Radial/Disperseが自由配置で構造を持たないかのような]説明は変だ」
 - Promoted: [../03_Spec/map_layout_modes.md](../03_Spec/map_layout_modes.md), [../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md)
@@ -318,7 +318,7 @@
 - Date: 2026-04-01
 - Topic: graph-level `Link` の Beta 実装前提仕様
 - Status: working-agreement
-- Decision: `Link` は `Edge` と別の overlay relation として `AppState.links` に保持し、node-level `link` 文字列とは分離する。`Link` は layout に参加せず、source/target node ID を参照し、broken endpoint を含む状態は保存時に拒否する。
+- Decision: relation edge は parent edge と別の overlay relation として `AppState.links` に保持し、node-level `link` 文字列とは分離する。relation edge は Tree の部分木配置に参加せず、force 配置への寄与は Surface View 仕様に従う。source/target node ID を参照し、broken endpoint を含む状態は保存時に拒否する。
 - Why: 構造木と非木関係線を混同せず、将来の relation line 実装を最小データ構造から始められるようにするため
 - Next: `03_Spec/Data_Model.md` と import/export 境界文書へ graph-level `Link` の型と保存制約を追加する
 - Source: このスレッドでの `Link` 実装状況確認と仕様追記依頼

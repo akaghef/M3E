@@ -270,10 +270,10 @@ const alias: TreeNode = {
 // sourceFileNode.children.push(alias.id);
 ```
 
-### なぜ GraphLink ではなく Alias か
+### なぜ relation edge ではなく Alias か
 
 - folder alias は **collapsed/expanded を選べる**。これは「リンク先に入るかどうかをユーザーが選ぶ」という Obsidian の体験と同じ
-- GraphLink はツリー外の補助線であり「眺めるだけ」。Obsidian のリンクは「入れる扉」なので alias が正しい
+- relation edge はツリー外の補助線であり「眺めるだけ」。Obsidian のリンクは「入れる扉」なので alias が正しい
 - collapsed alias は 1 行分のスペースしか取らない。量が多くても問題にならない
 
 ### alias 配置

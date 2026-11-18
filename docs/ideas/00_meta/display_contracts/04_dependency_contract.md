@@ -11,7 +11,7 @@
 
 ## 第一規約
 
-**依存関係の主方向は `depth` に沿わせ、tree には骨格だけを置き、残りは `GraphLink` に逃がす。**
+**依存関係の主方向は `depth` に沿わせ、tree には骨格だけを置き、残りは `relation edge` に逃がす。**
 
 これは M3E では `spanning tree + links` として実装する。
 
@@ -22,7 +22,7 @@
 | `parent-child` | dependency の骨格（spanning tree） |
 | `depth` | 前提 -> 帰結 の主方向 |
 | `row / breadth` | 同深度の独立前提、同段の派生 |
-| `GraphLink` | 非 tree 依存、補助依存 |
+| `relation edge` | 非 tree 依存、補助依存 |
 | `anchor` | 原則 off、fan-out / source 密集時のみ on |
 | `scope` | `unscoped` を既定にする |
 | `fill` | importance / centrality |
@@ -48,7 +48,7 @@ link:
 
 各 node は依存元のうち **1 本だけ** を structural parent に選ぶ。
 
-残りの依存は `GraphLink` にする。
+残りの依存は `relation edge` にする。
 
 ### 親選定の既定
 

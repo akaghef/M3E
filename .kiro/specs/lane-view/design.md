@@ -4,12 +4,12 @@
 
 ## Overview
 
-既存の `AppState` と viewer に、GraphLink.attributes の保存と Lane の表示を追加する草案。2026-10-17 に Director 審査済み。Track A は `4327ca0`（GraphLink.attributes の保持）として本流統合済みで、その commit を基準に Track B の実装を承認された。B-7 の保存先は MapSurface 案を採用した。
+既存の `AppState` と viewer に、`GraphLink.attributes` の保存と Lane の表示を追加する草案。2026-10-17 に Director 審査済み。Track A は `4327ca0`（`GraphLink.attributes` の保持）として本流統合済みで、その commit を基準に Track B の実装を承認された。B-7 の保存先は MapSurface 案を採用した。
 
 ### Goals
 
-- GraphLink の Content を viewer 読込・既存 API・保存の全経路で保持する。
-- 同じ tree と GraphLink を、root 直下の子 node の兄弟順序に沿って配置する。
+- relation edge の Content を viewer 読込・既存 API・保存の全経路で保持する。
+- 同じ tree と relation edge を、root 直下の子 node の兄弟順序に沿って配置する。
 - 既存の renderer、Progressive Navigation、保存経路を再利用する。
 - 最遠の目標の RQ1 / RQ5 / RQ6 に沿って既存 map 上で関係を読めるようにし、別の面への往復を減らす。RQ2 / RQ3 / RQ4 の意味を変えない。
 
@@ -25,9 +25,9 @@
 |---|---|
 | REPLACE | なし。既存 renderer の置換は行わない |
 | ADD | shared module `beta/src/shared/lane_layout.ts` の Lane layout strategy。同期の格子並べを行う。`viewer.ts` に算法を置かない |
-| KEEP | `retainedSvgScene` / `RetainedSvgScene`、既存 node SVG、GraphLink の LinkStyle classes・矢印・label・LinkPort・Link Route、Surface Progressive Navigation、既存 model / persistence / autosave |
+| KEEP | `retainedSvgScene` / `RetainedSvgScene`、既存 node SVG、relation edge の LinkStyle classes・矢印・label・LinkPort・Link Route、Surface Progressive Navigation、既存 model / persistence / autosave |
 | EXTEND | Lane の列挙、保存設定、root 解決、レーン境界、表示対象、同期の配置結果への接続、Lane だけの visible / hit 層分離 |
-| FAIL | GraphLink による段の振分け / 自作の crossing minimisation algorithm、renderer のコピー・fork、新 server / 別 page、@xyflow/react 採用 |
+| FAIL | relation edge による段の振分け / 自作の crossing minimisation algorithm、renderer のコピー・fork、新 server / 別 page、@xyflow/react 採用 |
 
 `Pipeline_UI_Reference.md` は一般的な参考であり、このタスクの明示的な層所有を上書きしない。Lane は現在の SVG path を使う。現ソースの `webglSurfaceSupported()` は Tree / Disperse だけが対象なので、Lane を追加しても既存の SVG 選択へ進む。その判定を Lane 対応として WebGL に広げない。Tree / Disperse の現在の renderer 選択は保持する。
 
@@ -57,11 +57,11 @@ A と B の意味上の依存はないが、viewer.ts の変更と保存試験�
 | A-3 / A-4 | `rapid_mvp.ts` の `_normalizeLink` は spread し、validate は attributes を検証しない。`addLink` と `start_viewer.ts:handleLinkApi` は attributes を渡さない |
 | B-1 | 保存値は `tree/system/scatter/logic-chart/timeline`、layout の正規名は Tree/Axial/Disperse/System。Lane だけを加える |
 | B-2 | `viewer.ts:buildLayout` と `shared/layout_port.ts:layout` は同期。elkjs 0.11.1 は lockfile にあるが現行配置は使っていない |
-| B-3 / B-6 | 現行 GraphLink は visible / hit / label が同じ buffer。`retainedSvgScene.update` は links → overlays → node parts の順 |
+| B-3 / B-6 | 現行 relation edge は visible / hit / label が同じ buffer。`retainedSvgScene.update` は links → overlays → node parts の順 |
 | B-7 | `currentScopeRootId()` が表示 root。`MapSurface.scopeId` と `scope.primarySurfaceId` は scope の保存に使う。surface sanitizer は既知フィールドを再構築し、新しい root field は追加だけでは残らない |
 | 型の差 | browser の MapSurface は `surfaceView?: {direction, space}` を持つが shared/types.ts には無い。実装時に既存設定の shared 型も揃える必要がある |
 
-正本文書の `Data_Model.md` には初期 Beta の GraphLink layout 非参加が残る。Lane / force の配置入力については新しい Surface View 正本と今回の決定に従う。親子関係・所有権・兄弟順序へ GraphLink を参加させる意味にはしない。文書全体の改訂は今回の範囲外。
+正本文書の `Data_Model.md` には初期 Beta の relation edge layout 非参加が残る。Lane / force の配置入力については新しい Surface View 正本と今回の決定に従う。親子関係・所有権・兄弟順序へ relation edge を参加させる意味にはしない。文書全体の改訂は今回の範囲外。
 
 ## Architecture
 
@@ -76,12 +76,12 @@ A と B の意味上の依存はないが、viewer.ts の変更と保存試験�
 | B の root / 可視入力 | `shared/lane_view.ts` | 選ばれた保存先から root を解決し、子 node / 孫 node、隠れた数、省略 link 数を導出 |
 | B の同期配置 | `shared/lane_layout.ts` | 兄弟順序・実寸・direction / space から1行または1列へ格子並べし、LayoutResult を返す。DOM・server・viewer を import しない |
 | B の同期接続 | `layout_port.ts` / `layout_bridge.ts` | Lane の列挙と、同期の配置結果を返す呼出。既存 Surface View の同期 contract は維持 |
-| B の SVG 層順 | `browser/lane_scene.ts`、既存 GraphLink 生成箇所 | 既存 markup の visible / hit 分離と parts 配列の Lane 分岐。新 renderer を作らない |
+| B の SVG 層順 | `browser/lane_scene.ts`、既存 relation edge 生成箇所 | 既存 markup の visible / hit 分離と parts 配列の Lane 分岐。新 renderer を作らない |
 | B の操作と保存 | 既存 viewer / workbench、必要なら `browser/lane_view_controller.ts` | 既存イベントを登録、root の指定、保存設定、既存の同期 render / fit。算法は持たない |
 
-viewer.ts の追加は列挙と呼出に限定し、条件14の目安80行をレビューする。計測のためだけに無関係のコードを移動して行数を減らさない。GraphLink markup は同じ生成処理から visible / hit の出力先を分け、複製した生成処理を Lane 用に置かない。
+viewer.ts の追加は列挙と呼出に限定し、条件14の目安80行をレビューする。計測のためだけに無関係のコードを移動して行数を減らさない。relation edge markup は同じ生成処理から visible / hit の出力先を分け、複製した生成処理を Lane 用に置かない。
 
-## Track A: GraphLink.attributes
+## Track A: `GraphLink.attributes`
 
 ### Contract
 
@@ -128,7 +128,7 @@ root は箱を描かず、現在の scope / map 名と同様の人に読める�
 
 孫 node より深い node はその孫 node の下で表示上 collapse し、既存の collapse 数表示を再利用する。孫 node の元の collapsed 値は書き換えない。明示的に collapse された子 node はレーンを残して中身を畳み、元の Topology を保つ。
 
-表示対象の孫 node の集合を作り、両端がこの集合に属する GraphLink を配置・描画へ渡す。root に触れる link、子 node に触れる link、範囲外 / 他 scope / 隠れた子孫へ触れる link は描かない。map.state.links のうち少なくとも片端が当該 root の部分木に入る link を検討対象とし、その中の非表示 link を link ごとに1回数える。別の無関係な部分木だけの link は本数に含めない。「表示しない GraphLink: N」および隠れた node 数は既存の表示部品に文字で載せ、ID を載せない。GraphLink の削除・集約・保存は行わない。
+表示対象の孫 node の集合を作り、両端がこの集合に属する relation edge を配置・描画へ渡す。root に触れる link、子 node に触れる link、範囲外 / 他 scope / 隠れた子孫へ触れる link は描かない。map.state.links のうち少なくとも片端が当該 root の部分木に入る link を検討対象とし、その中の非表示 link を link ごとに1回数える。別の無関係な部分木だけの link は本数に含めない。「表示しない relation edge: N」および隠れた node 数は既存の表示部品に文字で載せ、ID を載せない。relation edge の削除・集約・保存は行わない。
 
 空の root、孫 node のないレーン、全 link 省略でも人に読める空表示を保つ。空ラベルの表示は「名称未設定」などの固定文言で補い、raw ID / hash / 生成 suffix を代用しない。図式に自動コードを付けない。
 
@@ -136,28 +136,28 @@ root は箱を描かず、現在の scope / map 名と同様の人に読める�
 
 ### IS39 — Lane と System の区別（2026-10-18、Director 差し替え）
 
-2026-10-17に採用した OP16 の elkjs layered + partitioning は撤回する。layered は GraphLink の向きから段を決める System 側の方式であり、partition が別々の帯に入るだけでは Lane にならない。旧条件6は帯の分離だけを検査し、各帯での1行 / 1列と GraphLink 除去後の座標不変を欠いていた。このため承認済みの旧実装が試験を通っても、Lane の意味を満たさなかった。旧 Track B は `91541a1` で取り消され、正本更新 `ce015e6` と steering 3a に従って本節と条件6を差し替える。新しい tracking ID は割り当てない。
+2026-10-17に採用した OP16 の elkjs layered + partitioning は撤回する。layered は relation edge の向きから段を決める System 側の方式であり、partition が別々の帯に入るだけでは Lane にならない。旧条件6は帯の分離だけを検査し、各帯での1行 / 1列と relation edge 除去後の座標不変を欠いていた。このため承認済みの旧実装が試験を通っても、Lane の意味を満たさなかった。旧 Track B は `91541a1` で取り消され、正本更新 `ce015e6` と steering 3a に従って本節と条件6を差し替える。新しい tracking ID は割り当てない。
 
 ### 同期入力と1行 / 1列（2026-10-19 mock の構造）
 
-`shared/lane_layout.ts:computeLaneLayout(input): LayoutResult` の配置入力はroot、root.children[]順のレーン、各レーンの孫 node の兄弟配列、既存の文字計測による寸法、right/down、spaceだけとする。GraphLink は配置入力型に入れず、位置に関与しない。隠れた数と省略 link 数は配置後に表示 metadata として付加する。
+`shared/lane_layout.ts:computeLaneLayout(input): LayoutResult` の配置入力はroot、root.children[]順のレーン、各レーンの孫 node の兄弟配列、既存の文字計測による寸法、right/down、spaceだけとする。relation edge は配置入力型に入れず、位置に関与しない。隠れた数と省略 link 数は配置後に表示 metadata として付加する。
 
 Directorの訂正により、受け入れ条件はmockの構造に限る。カード寸法、色、角丸、弧の膨らみをgen.pyの数値と合わせる契約は取り消す。共通rendererと文字計測の既定を使い、孫 node ごとの実寸を保持する。
 
 - downは全帯を同じ高さで上から並べ、各帯の中心yに孫 node を1行で置く。見出し列の右の共通領域を孫数で等分し、区画の中央に孫 node の中心を合わせる。
 - rightは全帯を同じ幅で左から並べ、各帯の中心xに孫 node を1列で置く。見出しの下の共通領域を孫数で等分し、区画の中央に合わせる。
 - 共通領域は最大孫数と最大実寸から、全区画で文字と矩形が重ならない長さを確保する。各々のw/hを固定寸法に上書きしない。帯の太さも最大実寸と余白から求める。空レーンは帯を残し、AppStateへplaceholderを追加しない。
-- tight / normal / looseで区画と帯の余白を変える。レーン順・孫の順は兄弟配列だけから取り、GraphLinkの全除去で全座標不変を検査する。段の振分け、交差最小化、後処理の衝突解決は行わない。
+- tight / normal / looseで区画と帯の余白を変える。レーン順・孫の順は兄弟配列だけから取り、relation edgeの全除去で全座標不変を検査する。段の振分け、交差最小化、後処理の衝突解決は行わない。
 
 ### 共通描画の既定を使う（2026-10-19、Director 訂正）
 
 `lane_scene.ts:laneNodeInput` は既存NodeDrawInputへ枠を描くための通常styleと中央揃えを渡すだけで、node SVGを生成しない。既存の明示style / SurfaceNodeView.shapeは尊重する。NodeDrawStyleの角丸半径追加とshapeRxの変更は撤回し、node_draw_svg.tsを変更前と完全一致に戻す。選択やdragの強調も既存の共通CSSを使う。孫 node が帯と見分けられ、ラベルが重ならなければよく、枠の幅や角丸の数値は検査しない。
 
-`lane_scene.ts:laneFrames` は帯・root見出し・レーン名と孫数をsceneのframesへ渡す。rootの箱と親子edgeは描かない。色は見分けやすくするための表示上の選択であり、mockと一致させる条件ではない。
+`lane_scene.ts:laneFrames` は帯・root見出し・レーン名と孫数をsceneのframesへ渡す。rootの箱とparent edgeは描かない。色は見分けやすくするための表示上の選択であり、mockと一致させる条件ではない。
 
 接続辺は共通 `edge_port.ts:selectPorts` の Lane ケースで相手レーンに向ける。downで上 / 下、rightで左 / 右。同じ帯ならdownは両端bottom、rightは両端right。sourceSide / targetSide入力で保存済みLinkPortを片端ずつ優先し、autoは自動選択とする。`lane_layout.ts:laneLinkGeometry` はEdgePortsだけを返し、パスやhandleを計算しない。targetの3pxの余白も除去し、両端を辺の中央に置く。
 
-任意handle長と `shared/graph_link_geometry.ts` の新設は撤回する。edgePortNormal、graphLinkControlPoints、graphLinkPathWithPorts、graphLinkLabelPointWithPorts、cubicPointAtHalfはviewer.tsの元の場所と実装へ戻す。共通GraphLinkのSVG path / marker / LinkStyle class / labelと、straight / orthogonal / simple-bezierのroute選択も既存のまま。同じ帯の弧はsimple-bezierの既存の計算が描き、mockの膨らみ量を入力しない。Laneのvisibleはnode後・pointer-eventsなし、hitはnode前という層分離を維持する。
+任意handle長と `shared/graph_link_geometry.ts` の新設は撤回する。edgePortNormal、graphLinkControlPoints、graphLinkPathWithPorts、graphLinkLabelPointWithPorts、cubicPointAtHalfはviewer.tsの元の場所と実装へ戻す。共通relation edgeのSVG path / marker / LinkStyle class / labelと、straight / orthogonal / simple-bezierのroute選択も既存のまま。同じ帯の弧はsimple-bezierの既存の計算が描き、mockの膨らみ量を入力しない。Laneのvisibleはnode後・pointer-eventsなし、hitはnode前という層分離を維持する。
 
 ### 既存の同期 render への接続
 
@@ -167,18 +167,18 @@ root欠損や不正寸法は既存statusへ説明し、failedとして旧scene�
 
 ### 検証
 
-`lane_layout.test.ts` はfirst-sliceとA-sysをright/downで配置し、各帯の中心線一致、兄弟順序、帯順序、最大実寸に基づく帯の太さ、全矩形非重複、GraphLink全除去前後の全座標一致、入力不変を独立計算で検査する。旧ELK実装に先に当てたところ、この4ケースは失敗した。A-sysは6レーン、孫node数3/3/5/6/5/3、25孫・82link。`lane_layout_performance.test.ts` はA-sysと100孫/200linkの両directionで、表示対象生成と実配置の開始から同期結果まで1秒を検査する。mockや成功cacheを計測しない。
+`lane_layout.test.ts` はfirst-sliceとA-sysをright/downで配置し、各帯の中心線一致、兄弟順序、帯順序、最大実寸に基づく帯の太さ、全矩形非重複、relation edge全除去前後の全座標一致、入力不変を独立計算で検査する。旧ELK実装に先に当てたところ、この4ケースは失敗した。A-sysは6レーン、孫node数3/3/5/6/5/3、25孫・82link。`lane_layout_performance.test.ts` はA-sysと100孫/200linkの両directionで、表示対象生成と実配置の開始から同期結果まで1秒を検査する。mockや成功cacheを計測しない。
 
-同期controllerの試験はroot / map / directionの即時反映、不正rootで古い結果を使用しないこと、Node Progressive Navigationの既存root操作を検査する。視覚試験は既存の選択・F2編集・drag / GraphLink描画・保存の条件7〜18を維持し、A-sysの実viewer中心線検査を追加する。workerのPlaywright実行はsandbox制約により `--list` まで、Directorがheadlessと通常Betaで受け入れを確認する。
+同期controllerの試験はroot / map / directionの即時反映、不正rootで古い結果を使用しないこと、Node Progressive Navigationの既存root操作を検査する。視覚試験は既存の選択・F2編集・drag / relation edge描画・保存の条件7〜18を維持し、A-sysの実viewer中心線検査を追加する。workerのPlaywright実行はsandbox制約により `--list` まで、Directorがheadlessと通常Betaで受け入れを確認する。
 
 ## Track B: Existing SVG Rendering (B-3 / B-6)
 
-既存の GraphLink path / marker / label の1回の生成から visible と hit の2つの buffer を返す。LinkStyle classes、色、保存 direction に応じた marker、label text、既存 LinkPort / Link Route の計算を共用する。Lane の親子 edge adapter は呼ばない。B-1 の union 拡張に伴う EdgePort / node drawing の exhaustive case は Lane の「親子 edge を出さない」case として扱い、偽の EdgeDirection を作らない。
+既存の relation edge path / marker / label の1回の生成から visible と hit の2つの buffer を返す。LinkStyle classes、色、保存 direction に応じた marker、label text、既存 LinkPort / Link Route の計算を共用する。Lane では parent edge adapter を使わない。B-1 の union 拡張に伴う EdgePort / node drawing の exhaustive case は Lane の「parent edge を出さない」case として扱い、偽の EdgeDirection を作らない。
 
 ```text
 Lane:   defs -> frames / lane boundaries -> edgesなし -> guides
         -> graph-link-hit -> overlays / drag overlays -> node parts
-        -> GraphLink visible stroke / markers / label -> annotations
+        -> relation edge visible stroke / markers / label -> annotations
 Others: 現行 parts 順（links = visible + hit + label -> overlays -> node parts）
 ```
 
@@ -202,7 +202,7 @@ Lane の visible wrapper と内部の stroke / label background / text を point
 | リスク / 未決 | 対応と停止条件 |
 |---|---|
 | IS46 の保存先 | MapSurface を使う案を採用済み。Track B の go-ahead まで B-7 の保存実装を始めない |
-| LaneとSystemの混同 | 中心線1列とGraphLink全除去後の全座標一致をfirst-slice/A-sysの両directionで検査する |
+| LaneとSystemの混同 | 中心線1列とrelation edge全除去後の全座標一致をfirst-slice/A-sysの両directionで検査する |
 | root / map / directionの切替 | 同期controllerでその場の入力だけを使い、不正rootでは結果を渡さない |
 | 実測と1秒 | A-sysと100/200の両fixture・両directionで同期計算を計測する。閾値を変更しない |
 | 条件7 / 8 / 10 の読み方 | Director 採択済み。共有ノートの更新済み原文を保持する |
@@ -215,6 +215,6 @@ Lane の visible wrapper と内部の stroke / label background / text を point
 
 ## Implementation Verification Notes — 2026-10-18
 
-基準は `4327ca0`（GraphLink.attributes の保持）。Directorが `ce015e6` 上で `git revert --no-commit 91541a1` を実行し、旧Track Bを未commitで復元した。その上で配置だけを本書の格子並べへ差し替える。elkjsの呼出・worker宣言・async cache専用試験と、elkjs外部型用のskipLibCheck追加を除去した。package.json / lockfile /依存のインストール状態は変えない。実装・検証結果と未確認事項はtasks.mdに記録する。
+基準は `4327ca0`（`GraphLink.attributes` の保持）。Directorが `ce015e6` 上で `git revert --no-commit 91541a1` を実行し、旧Track Bを未commitで復元した。その上で配置だけを本書の格子並べへ差し替える。elkjsの呼出・worker宣言・async cache専用試験と、elkjs外部型用のskipLibCheck追加を除去した。package.json / lockfile /依存のインストール状態は変えない。実装・検証結果と未確認事項はtasks.mdに記録する。
 
 2026-10-19: mockの提示後、Directorは角丸とhandleを含む細部の一致も一度承認したが、akaghefの指摘で構造だけを条件にするよう訂正した。共通拡張と固定寸法の検査を撤回し、等分区画・接続辺・弧・見出しと孫数を維持する。旧合格や今回の単体試験を、Directorの画像による構造照合の代わりに扱わない。

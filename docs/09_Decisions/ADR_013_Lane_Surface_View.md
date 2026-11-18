@@ -15,20 +15,20 @@
 Surface View に `Lane` を第6種として追加する。正本は `Tree / Axial / Radial / Disperse / System / Lane` とする。ADR_012 が定めた Radial と Disperse の関係は維持する。
 
 - Lane は root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンへ投影し、各孫 node を親のレーン内に置く。
-- direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。`space` と `edge` は既存 Surface View option の値を用いる。
-- 孫 node 間の GraphLink を主線として表示し、レーン境界をまたぐ関係も表す。View の切替で永続 Topology は変わらない。
-- レーン順、親子 `edge` から導出する孫 node の所属、親 node の組ごとに集計した GraphLink、兄弟順序の差が2以上の親 node 間の関係、異なるレーンで GraphLink を持たない孫 node の組は保存しない。
-- 選択から計算する内訳の線は GraphLink ではなく、Lane view の Topology に含めない。
+- direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。`space` は既存 Surface View option の値を用いる。Lane は parent edge を描かず、parent edge 用の `edge` option を持たない。
+- 孫 node 間の relation edge を主線として表示し、レーン境界をまたぐ関係も表す。View の切替で永続 Topology は変わらない。
+- レーン順、`parent edge` から導出する孫 node の所属、親 node の組ごとに集計した relation edge、兄弟順序の差が2以上の親 node 間の関係、異なるレーンで relation edge を持たない孫 node の組は保存しない。
+- 選択から計算する内訳の線は relation edge ではなく、Lane view の Topology に含めない。
 - 図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
-- GraphLink に任意の key-value data を保持する `attributes` property を仕様として加える。関係の実現段階などが表す情報は Content とし、`LinkStyle` への写像は Style とする。
+- relation edge に任意の key-value data を保持する `attributes` property を仕様として加える。関係の実現段階などが表す情報は Content とし、`LinkStyle` への写像は Style とする。
 - System はレーンに整列できないフローチャート様の構造を扱う。既存 subtype `containment / module / architecture` は維持する。
 
 ## Rationale
 
-Lane は既存の tree と GraphLink を投影する Surface View であり、別のデータ構造を要求しない。親子階層を主線にする Tree / Axial や、力学配置を使う Radial / Disperse とも投影の目的が異なる。System の用途を非レーン型のフローチャート様構造に定めることで、層状の図式との区別を保つ。
+Lane は既存の tree と relation edge を投影する Surface View であり、別のデータ構造を要求しない。親子階層を主線にする Tree / Axial や、力学配置を使う Radial / Disperse とも投影の目的が異なる。System の用途を非レーン型のフローチャート様構造に定めることで、層状の図式との区別を保つ。
 
 ## Consequences
 
 - `map_layout_modes.md` と Glossary に6種の正本と Lane の projection / option を記載する。
-- GraphLink の `attributes` は仕様のみであり、beta 実装への追加は別タスクとする。
+- relation edge の `attributes` は仕様のみであり、beta 実装への追加は別タスクとする。
 - `System.subtype=architecture` は保持する。層状 architecture 図を Lane に割り当てると、この subtype の残る用途の境界には整理の余地がある。

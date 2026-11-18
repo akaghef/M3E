@@ -49,26 +49,26 @@
 
 ### P8. Deep 帯域の関係線を多種エッジで育てる（帯域観で再定義）
 
-**[訂正]** 以前「二層エッジモデル」と呼んだものは、M3E に既に存在する **edge（親子 = Rapid 骨格）** と **関係線 GraphLink（Deep の芽）** の二分を、Deep 側で多種エッジ化する話。新概念ではなく、既存構造の成長。
+**[訂正]** 以前「二層エッジモデル」と呼んだものは、M3E に既に存在する **parent edge（Rapid 骨格）** と **relation edge（Deep の芽）** の二分を、Deep 側で多種エッジ化する話。新概念ではなく、既存構造の成長。
 
 - **問題意識の再整理**:
-  - Rapid 帯域（M3E 現状の中心）は既に成立: 親子 edge による syntax tree
-  - Deep 帯域はまだ芽の段階: GraphLink（関係線）に `relationType?: string` があるだけ
+  - Rapid 帯域（M3E 現状の中心）は既に成立: parent edge による syntax tree
+  - Deep 帯域はまだ芽の段階: relation edge（関係線）に `relationType?: string` があるだけ
   - Blueprint / Lean / Make 依存 = **Deep の「uses 1 種に痩せた形」**（[docs/01_Vision/Axes.md](../../../01_Vision/Axes.md) 明記）
   - nLab / Wikidata / 研究者の頭 = **Deep の本来形**（多種エッジ）
-  - M3E は Deep の本来形を目指す → GraphLink の多種化・意味付与を育てる
+  - M3E は Deep の本来形を目指す → relation edge の多種化・意味付与を育てる
 
 - **方針**:
-  - **親子 edge** は Rapid の骨格として維持。変更しない
-  - **GraphLink** を Deep 帯域の本格 semantic graph の媒体として育てる:
+  - **parent edge** は Rapid の骨格として維持。変更しない
+  - **relation edge** を Deep 帯域の本格 semantic graph の媒体として育てる:
     - `relationType` を自由文字列のまま or 固定語彙化するかは未決（Q13）
     - 「一般化 / 双対 / 例 / 動機 / 類比 / 矛盾 / 先行 / uses / see_also」等を扱えるようにする
-  - **外部 DAG（Blueprint / Stacks）の取込は GraphLink に入る**（relationType = "uses" で痩せた形のまま流入）
-  - 層分割ではなく **同じ GraphLink の中に kind で分岐**
+  - **外部 DAG（Blueprint / Stacks）の取込は relation edge に入る**（relationType = "uses" で痩せた形のまま流入）
+  - 層分割ではなく **同じ relation edge の中に kind で分岐**
 
 - **表示**:
-  - Rapid 骨格（親子 edge）と Deep 関係線（GraphLink）は既存通り別スタイル
-  - GraphLink 内部で kind 別の色・線種（uses = 地味、semantic = 派手 等）
+  - Rapid 骨格（parent edge）と Deep 関係線（relation edge）は既存通り別スタイル
+  - relation edge 内部で kind 別の色・線種（uses = 地味、semantic = 派手 等）
   - kind フィルタ（後述 Phase）で「uses だけ」「意味関係だけ」切替
 
 - **実装示唆**:
@@ -77,7 +77,7 @@
   - 既存 `style` は表示ヒント用として共存
 
 - **体系化 / 射影との接続**:
-  - **体系化** (Rapid → Deep): Rapid 文書群の親子 tree から、概念レベルの関係線を引き出して Deep に取り込む → GraphLink 多種化が前提
+  - **体系化** (Rapid → Deep): Rapid 文書群の親子 tree から、概念レベルの関係線を引き出して Deep に取り込む → relation edge 多種化が前提
   - **射影** (Deep → Rapid): Deep の semantic graph から目的別の説明順序を切り出す → kind 情報を使って「引用は uses、一般化は背景、双対は対比」等のテンプレ分岐が可能
   - project_projection_vision の科研費出力はこの射影の応用
 
@@ -104,7 +104,7 @@
 
 ## 組み合わせ高効果ペア
 
-- **⭐ P8 Deep 関係線育成 × A3 Blueprint × K5 nLab**: Blueprint の痩せた Deep（uses のみ）と nLab の多種意味 Deep を同じ GraphLink 層に流入させ、kind で区別。体系化の素材として両方を活かす
+- **⭐ P8 Deep 関係線育成 × A3 Blueprint × K5 nLab**: Blueprint の痩せた Deep（uses のみ）と nLab の多種意味 Deep を同じ relation edge 層に流入させ、kind で区別。体系化の素材として両方を活かす
 - **S11 arXiv × S1 MSC × S8 OpenAlex**: 論文 → 分野コード → 引用グラフの三点セット
 - **S15 researchmap × S16 KAKEN × S11 arXiv**: 日本研究者のフルプロファイル
 - **A3 Blueprint × B1 Lean4 × M3E**: 自然言語 blueprint を M3E で書いて Lean に落とす流れ（**ただし Blueprint は syntax 層のみ、semantic は別途 M3E で付与する前提**）
@@ -158,12 +158,12 @@
 7. **世界モデル側** の素材は L2 知識ベース（OEIS, nLab, Stacks）が最も豊富
 8. **M3E は Blueprint × Wikidata × 研究者ノート** の三点を繋ぐ位置取りが面白い
 9. **帯域軸との整合が本ブレスト最重要の観点**（[Axes.md](../../../01_Vision/Axes.md)）
-   - Rapid = 文書 1 の syntax tree（親子 edge）
+   - Rapid = 文書 1 の syntax tree（parent edge）
    - Deep = 文書群の semantic graph（多種エッジの関係線）
    - Blueprint / Lean / Make 依存は **Deep の「uses 1 種に痩せた形」**。Rapid ではない
    - M3E は Deep の本来形（多種エッジ）を目指す位置取り
 10. **M3E に二層は既に存在する** — 新しく作る必要はなく育てる話
-    - **edge**（親子）= Rapid 骨格、維持
-    - **GraphLink（関係線）** = Deep の芽、多種化で育成
-    - P8 はこの既存二分の Deep 側（GraphLink）に意味種別を与える実装
+    - **parent edge**（親子）= Rapid 骨格、維持
+    - **relation edge（関係線）** = Deep の芽、多種化で育成
+    - P8 はこの既存二分の Deep 側（relation edge）に意味種別を与える実装
 11. **本ブレストの価値の焦点**: Deep 帯域の素材供給源（nLab / Stacks / Wikidata / Blueprint）を体系化の材料に、射影で科研費等の Rapid 出力を生成する project_projection_vision の地ならし

@@ -157,8 +157,8 @@ Contextが不足・失効したときだけ必要な範囲を取得する。Node
 
 ## 8. Link / Alias ルール
 
-- **scopeをまたぐrelationの意味や所有関係が未決ならMap Manager規約を参照する。** 指定済みの操作はMCPへ直接渡せる。異なるscope間の可視性はalias、非木関係はGraphLinkとして区別する
-- GraphLink はtree ownershipやTreeの部分木配置を定義しない。force配置への寄与はSurface View仕様に従う
+- **scopeをまたぐrelationの意味や所有関係が未決ならMap Manager規約を参照する。** 指定済みの操作はMCPへ直接渡せる。異なるscope間の可視性はalias、非木関係はrelation edgeとして区別する
+- relation edge はtree ownershipやTreeの部分木配置を定義しない。force配置への寄与はSurface View仕様に従う
 - alias は参照先ノードの「別の場所での出現」を表す。alias 経由で関係を可視化する
 - 詳細は `docs/03_Spec/Data_Model.md` と `docs/03_Spec/Scope_and_Alias.md` を参照。MCPで必要なrelation操作が未対応なら、その不足を報告し、別の関係型やRESTで代用しない
 

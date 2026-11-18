@@ -9,7 +9,7 @@
 - グラフ・寸法変更とパラメータ変更で現在位置から再加熱する。
 - 安定時に停止する。計算上限停止・制約未解消を安定と偽らない。
 - ドラッグ中だけ対象を固定し、他ノードの力学を止めない。解放・cancel・capture喪失で解除する。
-- 親子は包含、GraphLinkだけがばね。Lab・NETWORK・通常Disperseは同じ共有エンジンを使う。
+- 親子は包含、relation edgeだけがばね。Lab・NETWORK・通常Disperseは同じ共有エンジンを使う。
 - D3 quadtreeを用いたBarnes–Hut近似。OTの距離二乗反比例・距離上限は維持する（d3-forceの異なる力の式を無条件採用しない）。
 - RBushで矩形衝突候補を絞り、包含・固定・間隔の既存assertionを保つ。
 - 計算途中の位置は一時状態。停止・明示一時停止・View切替で既存surface座標へ確定し保存する。Undo/Redoと再読込を検証する。
@@ -45,13 +45,13 @@
 ## 計算中のWebGL経路の追加検証
 
 - 連続renderがWebGL切替のrequestAnimationFrameを毎回cancelしていた。静止後のWebGL activeだけではAnimate中のGPU経路の証拠にならない。切替予約をcoalesceし、動作中の位置更新回数を診断値で検証するよう変更した。
-- 構造・文字・スタイルが変わらないフレームは、既存WebGL paintの行列・境界・親子ガイド・包含枠だけを更新する。ガイド端点は通常SVGと同じ円境界関数を共有する。GraphLinkの曲線・ラベルがある場合は従来の完全描画へ戻り、その見た目を近似で置換しない。
+- 構造・文字・スタイルが変わらないフレームは、既存WebGL paintの行列・境界・親子ガイド・包含枠だけを更新する。ガイド端点は通常SVGと同じ円境界関数を共有する。relation edgeの曲線・ラベルがある場合は従来の完全描画へ戻り、その見た目を近似で置換しない。
 - 419ノード/112グループの元scope再現: 動作中の位置更新238回、描画込みframe p95 約36ms、240stepで計算上限停止、重なり0、WebGL active、page error0。400ノードでは約14ms。前節の64msは位置更新最適化前の診断値であり最終値ではない。
 - 最後の制約解消で生じた移動もmaxMove/有限値検査へ含める。大きな補正を「安定」と誤判定しない。
 - 停止直後のカメラfitを待たないブラウザー試験にクリック競合があった。停止後の描画完了を待ってから入力するよう修正した。停止閾値・性能目標・幾何assertionは変更していない。
-- 既存SVG DOMを座標源とするscatter_surface試験は、標準WebGL時に非表示SVGのboundingBoxを取得できず1件失敗した。試験assertionを変更していない。明示的なSVG fallback診断では同じ2件が成功。通常WebGLのドラッグ・ノード追加・GraphLink追加は別途、実サーバー/一時SQLiteのUI操作で検証する。
+- 既存SVG DOMを座標源とするscatter_surface試験は、標準WebGL時に非表示SVGのboundingBoxを取得できず1件失敗した。試験assertionを変更していない。明示的なSVG fallback診断では同じ2件が成功。通常WebGLのドラッグ・ノード追加・relation edge追加は別途、実サーバー/一時SQLiteのUI操作で検証する。
 
-Barnes–Hutは一般にO(N log N)であり、完全同座標や密な包含制約での最悪O(N)を保証しない。2000ノードの描画込み60fps、GraphLink多数時の位置専用経路、Windows実機は未検証。
+Barnes–Hutは一般にO(N log N)であり、完全同座標や密な包含制約での最悪O(N)を保証しない。2000ノードの描画込み60fps、relation edge多数時の位置専用経路、Windows実機は未検証。
 
 - 元scopeの全体fitが旧15%下限で切れたため、通常Disperseだけは実ジオメトリに応じて縮小下限を下げる。他surfaceのzoom方針は維持する。
 

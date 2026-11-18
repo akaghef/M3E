@@ -385,7 +385,7 @@
 ---
 
 - Date: 2026-04-07
-- Topic: MCP ツールに alias / GraphLink / nodeType 変更を追加
+- Topic: MCP ツールに alias / relation edge / nodeType 変更を追加
 - Owner: -
 - State: pooled
 - Link: -

@@ -20,9 +20,9 @@
 [Render]   → SVG → DOM                             (impure)
 ```
 
-**edge と link の定義（以後この区別を厳守）**：
-- `edge` = ツリー親子線
-- `link` = GraphLink（ツリー外接続線）
+**parent edge と link の定義（以後この区別を厳守）**：
+- `parent edge` = ツリー親子線
+- `link` = relation edge（ツリー外接続線）
 
 ---
 
@@ -61,7 +61,7 @@ viewState に追加したフィールド：
 PN > View > Layout > Direction      > right/left/down/up
                    > Depth Align    > aligned/packed
                    > Edge Route     > elbow/bezier/straight       ← ツリー親子線
-                   > Link Route     > simple-bezier/orthogonal/straight  ← GraphLink
+                   > Link Route     > simple-bezier/orthogonal/straight  ← relation edge
 ```
 
 各項目に `active()` で現在値ハイライト、`action()` で viewState 更新 + `m3e:layout-options-changed` イベント発火。
@@ -101,13 +101,13 @@ beta/tests/visual/workbench_progressive_nav.spec.js +37
 1. **ブラウザ目視確認**: `localhost:4173` をリロードして `View > Layout > Direction/Depth Align/Edge Route/Link Route` が正常表示されることを確認
 2. **OKなら PR 作成**: `codex/layout-refactor` → `dev-beta`
 3. **Phase D（将来）**: PN GUI 自体を `layout()` で配置する。今回は revert 済み。アーキ的には `visibleGraph = PNボタンツリー`、`layout()` で x/y 計算、absolute 配置 という方向は正しい。
-4. **Port レイヤー（将来）**: `selectPorts(srcRect, dstRect) → {srcPort, dstPort}` 純関数。GraphLink を矩形の辺中点4点（top/bottom/left/right）に正しく接続する。`LinkPort` 型は既存。
+4. **Port レイヤー（将来）**: `selectPorts(srcRect, dstRect) → {srcPort, dstPort}` 純関数。relation edge を矩形の辺中点4点（top/bottom/left/right）に正しく接続する。`LinkPort` 型は既存。
 
 ---
 
 ## コンテキスト
 
 - node = 長方形前提 → port = 辺の中点4点（固定）
-- per-link の `port`/`direction`/`style` は GraphLink 側に持つ（LayoutOptions ではない）
+- per-link の `port`/`direction`/`style` は relation edge 側に持つ（LayoutOptions ではない）
 - `window.m3eLayout` は viewer.ts が window に expose した layout() のブリッジ（workbench-ui.tsx から参照可能にするため）
 - codex-session skill の `start.sh` の MODEL が `gpt-5.2` でエラーになる → `${MODEL:-gpt-5.5}` に修正済み（`M3E/.claude/skills/claude-codex-session-pack-20260214/skills/codex-session/scripts/start.sh`）

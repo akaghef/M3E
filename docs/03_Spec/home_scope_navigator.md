@@ -148,13 +148,13 @@ Flash / Rapid / Deep はこの「日常→業務→研究」のスケーラビ�
 #### Deep — 研究の体系化
 - 階層分類、属性定義、メタデータ付き知識体系
 - ノードに **信頼度 (confidence)、証拠強度 (evidence)、温度 (temperature)** が付く
-- GraphLink の relationType で関係の意味を型付け（is-a, causes, contradicts, supports）
+- relation edge の relationType で関係の意味を型付け（is-a, causes, contradicts, supports）
 - TCL による構造↔自然言語の双方向変換
 - 人間が構造をリファクタリングし、AI が整合性を検証する協働ループ
 
 ### 3.2.1 現在の実装との関係
 
-現在の SVG ツリー + GraphLink の実装は **Deep と Rapid の両方に通用する**。
+現在の SVG ツリー + relation edge の実装は **Deep と Rapid の両方に通用する**。
 ただし Rapid が目指すのは現在のツリー構造に留まらない、**より多様なグラフレイアウト**:
 
 - フローチャート（左→右の有向グラフ）
@@ -240,7 +240,7 @@ Deep (体系化)
 |---|------|-------|------|-----------|
 | **レンダリング** | | | | |
 | 1 | SVG ツリーレイアウト | 主役。全ノードを空間配置して構造を俯瞰 | 表示するが補助的。ノード間距離を広げて詳細パネルを挟む余地を作る | Rapid は「全体を見渡す」ため密なレイアウトが有利。Deep はノード個別の情報スペースが必要 |
-| 2 | ベジェ曲線エッジ | 表示（depth カラーリング） | 表示（同様） | 両モード共通。親子関係の可視化は常に必要 |
+| 2 | ベジェ曲線の parent edge | 表示（depth カラーリング） | 表示（同様） | 両モード共通。親子関係の可視化は常に必要 |
 | 3 | folder-box フレーム | 表示（スコープ境界の視認） | 表示（同様 + スコープ内ノード数等の追加情報を検討） | 共通だが Deep ではアノテーション追加の余地 |
 | **表示情報量** | | | | |
 | 4 | ノードラベル (`text`) | 表示。truncation あり（`maxNodeTextChars: 55`） | 表示。より長いテキストを許容（truncation 緩和 or 折り返し強化） | Rapid は「見出し」レベルで十分。Deep はノード本文も重要 |
@@ -249,10 +249,10 @@ Deep (体系化)
 | 7 | `attributes` | 非表示（importance filter のみ間接利用） | ノード選択時にキーバリューエディタで表示・編集 | attributes は構造化メタデータ。Rapid では不要、Deep で初めて意味を持つ |
 | 8 | `link` フィールド | 非表示 | ノード選択時にリンクアイコン or パネルで表示。クリックで開く | URL リンクは深掘り時の参照資料 |
 | 9 | alias バッジ | 表示（read/write/broken のテキストバッジ） | 表示 + alias 対象ノードの preview を表示 | Rapid は「このノードは alias」と分かれば十分。Deep は参照先の中身が見たい |
-| **GraphLink（明示的リンク）** | | | | |
-| 10 | GraphLink 曲線描画 | 表示（ただし style=soft のみ、他は情報過多になりうる） | 全スタイル表示（default/dashed/soft/emphasis） | Rapid は構造の流れが主。Deep はリンクの種類・意味まで識別したい |
-| 11 | GraphLink ラベル | 非表示 or hover 時のみ | 常時表示（relationType, label） | ラベルは Rapid の俯瞰ビューではノイズ |
-| 12 | GraphLink 方向矢印 | 表示（方向の区別は構造理解に有用） | 表示（同様） | 共通 |
+| **relation edge（明示的リンク）** | | | | |
+| 10 | relation edge 曲線描画 | 表示（ただし style=soft のみ、他は情報過多になりうる） | 全スタイル表示（default/dashed/soft/emphasis） | Rapid は構造の流れが主。Deep はリンクの種類・意味まで識別したい |
+| 11 | relation edge ラベル | 非表示 or hover 時のみ | 常時表示（relationType, label） | ラベルは Rapid の俯瞰ビューではノイズ |
+| 12 | relation edge 方向矢印 | 表示（方向の区別は構造理解に有用） | 表示（同様） | 共通 |
 | **操作体験** | | | | |
 | 13 | キーボード ノード移動 (Arrow) | 主要操作。高速にツリーを巡回 | 同様に使用 | 共通 |
 | 14 | Inline editor | Enter でラベル編集のみ | Enter でラベル編集 + Tab で details/note/attributes 編集へ遷移 | Rapid は「ラベルだけ直す」。Deep は「ノードの全フィールドを編集する」 |
@@ -273,7 +273,7 @@ Deep (体系化)
 | 26 | Node detail panel | -- | 選択ノードの details/note/attributes/link を編集するサイドパネル | Deep の核心機能。Rapid には不要 |
 | 27 | Attribute editor | -- | key-value ペアの CRUD UI | attributes は Deep でのみ直接操作 |
 | 28 | Note editor | -- | Markdown 対応のリッチエディタ | note は Deep でインライン表示・編集 |
-| 29 | Link inspector | -- | GraphLink の一覧表示、relationType/style の編集 | リンクの詳細操作は Deep 専用 |
+| 29 | Link inspector | -- | relation edge の一覧表示、relationType/style の編集 | リンクの詳細操作は Deep 専用 |
 | 30 | Importance filter UI | toolbar にフィルタ切り替えボタン（既存ロジック流用） | 同様 + attributes パネルから直接 importance を設定 | フィルタは両方で使うが、設定は Deep |
 | **LaTeX** | | | | |
 | 31 | LaTeX レンダリング | 表示（foreignObject + KaTeX） | 表示（同様） + 数式ソース編集の専用 UI | 表示は共通。ソース編集は Deep 向け |
@@ -287,13 +287,13 @@ Deep (体系化)
 - Node detail panel (details/note/attributes/link の閲覧・編集)
 - Attribute editor
 - Note editor (インライン)
-- Link inspector (GraphLink の詳細操作)
+- Link inspector (relation edge の詳細操作)
 - LaTeX ソース編集 UI
 
 **両モード共通だがパラメータが異なる要素**:
 - `columnGap` / `siblingGap`: Deep は広め
 - `maxNodeTextChars`: Deep は緩和
-- GraphLink label: Rapid は非表示 or hover、Deep は常時表示
+- relation edge label: Rapid は非表示 or hover、Deep は常時表示
 - Linear panel: 全モードで表示（Deep では TCL 変換の主要 UI）
 - 折りたたみデフォルト: Rapid は折りたたみ気味、Deep は展開気味
 - Zoom 利用パターン: Rapid は zoom out 多用、Deep は zoom in 多用
@@ -305,7 +305,7 @@ Deep (体系化)
 | # | 問い | 判断 | 備考 |
 |---|------|------|------|
 | A1 | スコープは1つのモードに固定？ | **切り替え可能（単一ビュー）** | モードはビュー属性であり、データ属性ではない。同一スコープを F/R/D どれでも開ける |
-| A2 | Flash と Deep のノードは同じ型？ | **Flash は別型（マルチモーダル）、Rapid と Deep は同じ TreeNode 型** | Flash はメディア（画像・音声等）を扱うため専用構造が必要。Rapid はグラフ型も許可（GraphLink は全モード共通） |
+| A2 | Flash と Deep のノードは同じ型？ | **Flash は別型（マルチモーダル）、Rapid と Deep は同じ TreeNode 型** | Flash はメディア（画像・音声等）を扱うため専用構造が必要。Rapid はグラフ型も許可（relation edge は全モード共通） |
 | A3 | confidence / temperature の保存先 | **未定** | 今後他にも増えそう。attributes 予約キーか新フィールドかはもう少し要件が固まってから決める |
 | A4 | Rapid のグラフレイアウト情報の保存先 | **Deep と同じ場所** | レイアウト情報の保存方式は F/R/D で分けない。統一的に扱う |
 
@@ -323,11 +323,11 @@ Deep (体系化)
 
 | # | 問い | 判断 | 備考 |
 |---|------|------|------|
-| C1 | グラフレイアウトは表示切替 or データ構造変更？ | **表示切替。データ構造は変わらない** | ノードの位置（座標）は変わるが、中身のデータ構造（TreeNode + GraphLink）は同じ |
-| C2 | TreeNode で循環グラフ・任意グラフを扱えるか？ | **ツリーが主軸。GraphLink で補完** | データ構造としてツリーの主軸は常に存在する。循環関係は GraphLink として表現。新データ構造は不要 |
-| C3 | フローの矢印は GraphLink か親子エッジか？ | **データフローでは GraphLink も可視化** | Connection が見える。フローの文脈では GraphLink の方向・ラベルが重要 |
+| C1 | グラフレイアウトは表示切替 or データ構造変更？ | **表示切替。データ構造は変わらない** | ノードの位置（座標）は変わるが、中身のデータ構造（TreeNode + relation edge）は同じ |
+| C2 | TreeNode で循環グラフ・任意グラフを扱えるか？ | **ツリーが主軸。relation edge で補完** | データ構造としてツリーの主軸は常に存在する。循環関係は relation edge として表現。新データ構造は不要 |
+| C3 | フローの矢印は relation edge かparent edgeか？ | **データフローでは relation edge も可視化** | edge が見える。フローの文脈では relation edge の方向・ラベルが重要 |
 | C4 | 自由配置エディタか自動レイアウトか？ | **切り替え可能** | 自動レイアウト（デフォルト）と自由配置（手動ドラッグで座標固定）を切り替えられる |
-| C5 | GraphLink の意味が Rapid と Deep で混在？ | **混在しない** | GraphLink 自体は汎用。relationType で意味を区別（flow / is-a / causes 等）。モードによって表示の強弱は変わるが、データとしては統一 |
+| C5 | relation edge の意味が Rapid と Deep で混在？ | **混在しない** | relation edge 自体は汎用。relationType で意味を区別（flow / is-a / causes 等）。モードによって表示の強弱は変わるが、データとしては統一 |
 
 **D. Flash 固有**
 
@@ -344,7 +344,7 @@ Deep (体系化)
 ThinkingMode によるビュー分離を実装する場合、以下のアプローチが考えられる:
 
 1. **VIEWER_TUNING の mode 分岐**: `columnGap`, `siblingGap`, `maxNodeTextChars` を mode ごとに定義
-2. **render() 内の条件分岐**: GraphLink label の表示/非表示、linear panel の表示制御
+2. **render() 内の条件分岐**: relation edge label の表示/非表示、linear panel の表示制御
 3. **新規パネルの追加**: Node detail panel は Deep モード時のみ DOM に追加
 4. **CSS クラスによる切り替え**: `body.mode-deep`, `body.mode-rapid` でスタイルを分岐
 

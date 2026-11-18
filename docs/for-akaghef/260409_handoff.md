@@ -38,7 +38,7 @@ baf6909 feat(viewer): add Home screen with scope navigator (Phase 1)
 | docs/design/cloud_automation_strategy.md | Akaghef の手動作業最小化戦略 |
 | docs/research/ontology_scientific_research.md | 競合調査（Web検索補完済み）+ F/R/D 軸分類 |
 | docs/research/ontology_data_structure.md | NTT Data 知見 + edgeType 設計 + Graph RAG 接続 |
-| docs/ideas/260409_typed_edges.md | 親子エッジ型付け案（案2: edgeLabel + edgeAttributes） |
+| docs/ideas/260409_typed_edges.md | parent edge型付け案（案2: edgeLabel + edgeAttributes） |
 | docs/ideas/260409_edge_typed_attributes.md | 案C: edgeType + getAllEdges（推奨） |
 | docs/for-akaghef/260409_claude_managed_agents.md | Claude Managed Agents 調査 |
 | docs/for-akaghef/260409_cloud_strategy.md | Cloud 自動化 — Akaghef がやること3つだけ |
@@ -72,7 +72,7 @@ HttpTransport / SupabaseTransport の中身を埋める。インターフェー�
 
 - モード = ビュー属性（データ属性ではない）
 - Flash は別型（マルチモーダル）、Rapid/Deep は同じ TreeNode
-- ツリーが主軸、循環グラフは GraphLink で補完
+- ツリーが主軸、循環グラフは relation edge で補完
 - 昇格はグラデーション（明示的操作なし）
 - Linear panel は全モード表示（Deep の TCL が核心）
 - edgeType の導入を推奨（案C: edgeType + getAllEdges）
@@ -85,7 +85,7 @@ HttpTransport / SupabaseTransport の中身を埋める。インターフェー�
 | P1 | Cloud Sync conflict UI | visual |
 | P1 | entity list UI | visual |
 | — | Scope-based cloud sync (diff転送) | data (途中) |
-| P3 | MCP: alias/GraphLink ops | data |
+| P3 | MCP: alias/relation edge ops | data |
 | P3 | Claude Desktop integration test | manage |
 
 ## 確定事項（2026-04-09 議論）

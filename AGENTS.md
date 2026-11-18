@@ -75,7 +75,7 @@ Non-trivial work follows Kiro-style Spec-Driven Development: discovery, steering
 
 For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 
-- Product meaning of map / node / scope / edge / GraphLink / alias / path / layout lives under `docs/03_Spec/`.
+- Product meaning of map / node / scope / edge / parent edge / relation edge / alias / path / layout lives under `docs/03_Spec/`.
 - Repository-level canon, source/artifact allocation, generated-output policy, worktree placement, and private/public-danger material routing live in `docs/protocols/repository-canon-values.md`.
 - Agent operating behavior lives under `docs/protocols/`.
 - Procedure detail (handoff template, review checklist, accumulated lessons) lives in `docs/06_Operations/Director_Playbook.md`.
@@ -83,7 +83,7 @@ For M3E / Akaghef-System work, do not duplicate detailed rules in this file.
 - Open structural map decisions use `docs/protocols/map-manager/` (with `docs/protocols/map-manager.md` as a compatibility pointer), exposed through MCP Resources / Prompts. The `map-manager` skill is an optional repository-local entry point for those decisions.
 - Codex workers must follow `docs/protocols/worker-minimal-instruction.md` and must not redefine scope, layout, alias, storage, or cross-facet link policy.
 
-Consult Map Manager guidance when a map task leaves scope purpose, layouting, path resolution, edge / GraphLink / alias choice, or worker ownership undecided. A fully specified operation uses MCP directly, including an explicitly specified scopen / unscopen or cross-scope move. A guidance reference does not require a separate agent or skill invocation.
+Consult Map Manager guidance when a map task leaves scope purpose, layouting, path resolution, parent edge / relation edge / alias choice, or worker ownership undecided. A fully specified operation uses MCP directly, including an explicitly specified scopen / unscopen or cross-scope move. A guidance reference does not require a separate agent or skill invocation.
 
 ## Scope and Persistent Rule Gate
 

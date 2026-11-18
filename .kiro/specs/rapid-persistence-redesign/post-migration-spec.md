@@ -24,7 +24,7 @@ workspace > map > scope > node
 
 識別の規則:
 
-- node、Connection、scope、Surface View の保存設定、注釈の ID は、map と workspace をまたいで一意である。
+- node、edge、scope、Surface View の保存設定、注釈の ID は、map と workspace をまたいで一意である。
 - ID は作られた後に変わらない。消した ID は再利用しない。
 - ID に意味を埋め込まない（種別の名前、本文、親の ID を含めない）。
 - 保存エンジンが内部で振る ID は、外に出さない。
@@ -56,7 +56,7 @@ key: `nodeId`
 | attribute | key と値の組（3.5） | 無し |
 | `rev` | このレコードを最後に変えた確定の通し番号 | 必須 |
 
-- node は親・子・時刻・作成者を持たない。親子は Connection が持つ。時刻と発行者は、`rev` から確定の表（3.13）を引く。
+- node は親・子・時刻・作成者を持たない。親子関係は parent edge が持つ。時刻と発行者は、`rev` から確定の表（3.13）を引く。
 - `note` と `link` は details に持つ。
 - 型定義に無い欄は、レコードの `extra` にそのまま持つ。
 
@@ -84,31 +84,31 @@ key: `nodeId`
 | `rev` | 最後に変えた確定の通し番号 | 必須 |
 
 - details は node とは別のレコードである。details を変えても、node の `rev` は変わらない。
-- map の表示に要るのは node と Connection だけで、details は必要になったときに読む。
+- map の表示に要るのは node と edge だけで、details は必要になったときに読む。
 - 内容が無い node は、details のレコードを持たない。
 
-### 3.4 Connection
+### 3.4 edge
 
 key: `connectionId`
 
 | 欄 | 内容 | 省略 |
 |---|---|---|
-| `kind` | `edge`（親子）か `GraphLink`（関係線） | 必須 |
-| `source` | 始点。edge では親 | 必須 |
-| `target` | 終点。edge では子 | 必須 |
+| `kind` | `edge`（parent edge）か `GraphLink`（relation edge） | 必須 |
+| `source` | 始点。parent edge では親 | 必須 |
+| `target` | 終点。parent edge では子 | 必須 |
 | `relationType` | 線の役割（7 節） | 役割無し |
 | `label` | 線に表示する文字列 | 6 節の規則で表示 |
-| 兄弟順キー | edge だけ。同じ親の下での並び順 | edge では必須 |
-| 向き・線種・色・port | GraphLink だけ。表示の設定 | 既定。port は値が無ければ自動 |
+| 兄弟順キー | parent edge だけ。同じ親の下での並び順 | parent edge では必須 |
+| 向き・線種・色・port | relation edge だけ。表示の設定 | 既定。port は値が無ければ自動 |
 | attribute | key と値の組（3.5） | 無し |
 | `rev` | 最後に変えた確定の通し番号 | 必須 |
 
-- 端点は node か、他の Connection である。
-- edge も GraphLink も、自分の ID と `relationType` を持つ。
+- 端点は node か、他の edge である。
+- parent edge も relation edge も、自分の ID と `relationType` を持つ。
 
 ### 3.5 attribute
 
-持ち主（node または Connection）のレコードの一部である。
+持ち主（node または edge）のレコードの一部である。
 
 - key は文字列で、`x:y` の形を使う（例: `m3e:style`）。
 - 値は、文字列・数値・真偽・配列・入れ子のいずれかである。
@@ -221,18 +221,18 @@ agent の node:
 - 確定 1 回につき 1 行である。node の数に比例しない。
 - journal を圧縮しても、この表は残す。
 
-## 4. 木と alias と GraphLink
+## 4. 木と alias と relation edge
 
 - 正本の配置は木である。root 以外の node は、親をちょうど一つ持つ。
 - scope への所属、権限、削除の範囲、既定の並び順は、この木だけで決まる。
 - node を別の場所から使うときは、alias を置く。alias は参照先の所属を変えない。
-- 木以外の関係は GraphLink で表す。GraphLink は所属にも Layout にも影響しない。
-- その場所に子として並べたいなら alias、関係があることだけを示すなら GraphLink を使う。
+- 木以外の関係は relation edge で表す。relation edge は所属にも Layout にも影響しない。
+- その場所に子として並べたいなら alias、関係があることだけを示すなら relation edge を使う。
 
 親子の読み方:
 
-- ある node の子は、`source` がその node である edge を集め、兄弟順キーで並べたものである。
-- ある node の親は、`target` がその node である edge の `source` である。
+- ある node の子は、`source` がその node である parent edge を集め、兄弟順キーで並べたものである。
+- ある node の親は、`target` がその node である parent edge の `source` である。
 - 子の配列は保存しない。
 
 兄弟順キー:
@@ -262,7 +262,7 @@ agent の node:
 
 ## 6. 線の表示
 
-1. Connection に `label` があれば、それを表示する。
+1. edge に `label` があれば、それを表示する。
 2. 無ければ、`relationType` の定義の表示ラベルを表示する。
 3. それも無ければ、何も表示しない。
 
@@ -272,8 +272,8 @@ agent の node:
 - 名前は `x:y` の形（例: `rdfs:subClassOf`、`rdf:type`）か、接頭辞の無い形（例: `consist-of`、`detail`）である。
 - 接頭辞の無い名前は M3E 独自の語彙、接頭辞のある名前は借りてきた語彙である。
 - 許される名前の一覧は、スキーマに固定しない。定義のレコード（3.11）として持つ。
-- 表示を変えるときは、定義の表示ラベルを書き換える。Connection は書き換えない。
-- 定義の無い名前も Connection に書ける。最初に定義されているのは `consist-of`、`detail`、`rdfs:subClassOf`、`rdf:type` である。
+- 表示を変えるときは、定義の表示ラベルを書き換える。edge は書き換えない。
+- 定義の無い名前も edge に書ける。最初に定義されているのは `consist-of`、`detail`、`rdfs:subClassOf`、`rdf:type` である。
 
 ## 8. 欄の省略
 
@@ -286,13 +286,13 @@ agent の node:
 
 書き込みの確定時に検査する。一つでも破れる書き込みは、全体を拒否する。
 
-1. root 以外の node は、入ってくる edge をちょうど 1 本持つ。map の root は持たない。
-2. edge は循環しない。
+1. root 以外の node は、入ってくる parent edge をちょうど 1 本持つ。map の root は持たない。
+2. parent edge は循環しない。
 3. alias は alias でない node を指す。alias は子を持たない。
-4. Connection の端点は実在する。端点を消す書き込みは、その Connection も同じ確定で消す。
+4. edge の端点は実在する。端点を消す書き込みは、その edge も同じ確定で消す。
 5. scope の root は実在する node である。alias は root になれない。一つの node が複数の scope の root になってよい。
-5a. 親子 edge は実在する scope の ID を持つ。edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る edge の scope が S である（record-schema DA59）。
-6. `connectionId` は、edge と GraphLink をまたいで一意である。
+5a. parent edge は実在する scope の ID を持つ。parent edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る parent edge の scope が S である（record-schema DA59）。
+6. `connectionId` は、parent edge と relation edge をまたいで一意である。
 7. details、linear-text、Surface View の保存設定、配置値、注釈は、指している node または scope が実在する。
 
 検査は、触った周辺だけで行う。親の付け替えなら、新しい親の祖先をたどって循環を見る。
@@ -370,8 +370,8 @@ Undo は、逆向きの Command を出すことで行う。
 
 | 語 | 改訂 |
 |---|---|
-| Connection | 「保存実体ではない」を改め、レコードの種別とする |
-| relationType | 「tree edge の親子関係とは分ける」を改め、edge も持つとする |
+| edge | 線の総称であり、レコードの種別とする |
+| relationType | parent edge と relation edge の双方が持つ関係種別 |
 | nodeType | 例から `folder` を除く |
 | scope | 別表記の「folder」を廃止する |
 | アカウント | 追加。認証の単位 |

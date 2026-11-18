@@ -16,25 +16,25 @@
 
 1. **Surface View 名は canonical を使う**: `Tree / Axial / Radial / Disperse / System / Lane`。legacy 名（`tree / mindmap / logic-chart / timeline / scatter / system`）は migration 専用で、canonical へ map する。確定 map: `tree→Tree` / `timeline→Axial(timeline)` / `scatter→Disperse(scatter)` / `system→System`。**要確認**（`map_layout_modes.md` を正とする）: `mindmap→Tree(direction=left/right)?` / `logic-chart→Tree(down) か Axial?`。新規実装で canonical にない Surface View 名を増やさない。
 
-2. **`edge` の両義を分離する**: parent-child relation（tree edge）と route style（option: `orthogonal / line / curve / force-link`）と `GraphLink`（cross relation）は別物。spec/コードで混同禁止。
+2. **edge の定義**: edge は線の総称。parent edge は tree ownership、relation edge は木の外側の関係を表す。Surface View の `edge` option は parent edge の描画指定（`orthogonal / line / curve / force-link`）である。edge port は両種の線の幾何的な接続点を表す。
 
 3. **Edge port 契約（Port pure layer、2026-06-16 handoff 由来。未活用だった本体）**:
    - `selectPorts(srcRect, dstRect, branchDirection) → ports` は **branch-aware**（parent/child の相対位置と branch direction で port を選ぶ）。
    - `route(ports, style) → path`。
-   - `nearestEdgePortSide(...)` は **GraphLink 端点編集専用**。**branch edge に流用するな**（流用すると「近い方の左右 port に繋がる」誤接続になる＝akaghef 指摘の不具合）。
+   - `nearestEdgePortSide(...)` は **relation edge 端点編集専用**。**parent edge に流用するな**（流用すると「近い方の左右 port に繋がる」誤接続になる＝akaghef 指摘の不具合）。
    - `LinkPort` の `"auto"` は意味を一義化する（fixed side only の sanitize と齟齬あり、要整理）。
 
-3a. **Lane と System を取り違えない**（2026-10-18）: Lane は、同じレーンの孫 node を帯の中心線に一列（`down` は1行、`right` は1列）に兄弟順序で並べ、GraphLink を配置の入力にしない。GraphLink の向きで段を決める layered / flow 配置（elkjs `layered`、dagre など）は System の方式で、レーン枠を重ねても Lane にならない。判定は「孫 node 間の GraphLink を全て消しても孫 node の座標が変わらない」こと。詳細は `docs/03_Spec/map_layout_modes.md` の「Lane と System の区別」。
+3a. **Lane と System を取り違えない**（2026-10-18）: Lane は、同じレーンの孫 node を帯の中心線に一列（`down` は1行、`right` は1列）に兄弟順序で並べ、relation edge を配置の入力にしない。relation edge の向きで段を決める layered / flow 配置（elkjs `layered`、dagre など）は System の方式で、レーン枠を重ねても Lane にならない。判定は「孫 node 間の relation edge を全て消しても孫 node の座標が変わらない」こと。詳細は `docs/03_Spec/map_layout_modes.md` の「Lane と System の区別」。
 4. **Surface View 投資優先度（Decision_Pool 2026-07-18-002）**: **Tree = 最優先（仕上げ）、Disperse = 次点（最大エフォート）、Axial / Radial / System = 凍結**。新規 spec / 実装 / 検証投資は Tree・Disperse のみ対象。凍結 view は non-regression のみ守り、golden 表・lab では `frozen` と明示する。凍結 view に触る必要が出たら Decision_Pool で解凍判断してから着手する。
 
 ## 既知ギャップ（reconcile 対象）
 
 - `.kiro/specs/layout-seam-lab` の `LayoutMode` は legacy 混在命名。canonical へ reconcile 要。
 - branch-aware `selectPorts` 未実装（`Tree right` のみ）。left / left/right / up / down / up/down 欠如。
-- layout-lab の edge 描画は暫定 bezier で、port 契約を反映していない（本来 edge seam の領域）。
+- layout-lab の parent edge 描画は暫定 bezier で、port 契約を反映していない（本来 parent edge seam の領域）。
 - `LinkPort "auto"` の不整合。
 
 ## 適用
 
 - layout / edge / render の spec・lab・実装は本書の規則1-3を満たすこと。
-- edge/port seam を立てる際は規則3の Port pure layer 契約を出発点にする（`map_layout_modes.md` の Surface View と整合）。
+- parent edge/port seam を立てる際は規則3の Port pure layer 契約を出発点にする（`map_layout_modes.md` の Surface View と整合）。

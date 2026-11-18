@@ -24,15 +24,16 @@ requirement to launch a separate agent.
 3. Local vs scoped vs cross-scope vs cross-facet
 4. Facet and parent-child meaning
 5. Scope granularity
-6. Move vs alias vs GraphLink
+6. Move vs alias vs relation edge
 7. Remaining Layout / Style decisions under display intent and explicit constraints
 8. Bounded worker handoff or direct MCP execution under `docs/protocols/mcp-map-operations.md`
 9. Verification against received Content / provenance and explicit constraints
 
 ## Must preserve distinctions
 
-- `edge`: parent-child tree relation; participates in layout
-- `GraphLink`: non-tree relation; excluded from Tree subtree placement, but may
+- `edge`: any line between two nodes; includes parent edges and relation edges
+- `parent edge`: parent-child tree relation; participates in layout
+- `relation edge`: non-tree relation; excluded from Tree subtree placement, but may
   contribute to force placement under the existing Surface View specification
 - node-level `link`: external URL/attribute
 - `alias`: reference window; not ownership move

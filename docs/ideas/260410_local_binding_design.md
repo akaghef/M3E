@@ -476,9 +476,9 @@ m3e:
 - Obsidian でフォルダを開く → M3E の scope 表示と同等
 - scope 境界が明確（フォルダ境界 = scope 境界）
 
-### 6.4 GraphLink
+### 6.4 relation edge
 
-GraphLink はノード間の補助線であり、.md の本文には自然に対応しない。
+relation edge はノード間の補助線であり、.md の本文には自然に対応しない。
 
 ```yaml
 # _folder.md の末尾に記録

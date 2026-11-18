@@ -1,4 +1,4 @@
-# 枝（エッジ）に型・属性を持たせる設計案
+# parent edgeに型・属性を持たせる設計案
 
 Date: 2026-04-09
 Status: idea
@@ -6,7 +6,7 @@ Origin: akaghef の発想 + NTT Data オントロジー解説からの知見
 
 ## 問題
 
-現在の M3E では **親子エッジに情報がない**。
+現在の M3E では **parent edgeに情報がない**。
 
 ```
 細胞 ──(?)──> 幹細胞      ← is-a? part-of? 区別できない
@@ -14,7 +14,7 @@ Origin: akaghef の発想 + NTT Data オントロジー解説からの知見
 ```
 
 - `parentId` / `children[]` は構造のみで、関係の**意味**を持たない
-- `GraphLink` は `relationType` を持つが、親子エッジとは別物
+- `relation edge` は `relationType` を持つが、parent edgeとは別物
 - オントロジーでは is-a と part-of は根本的に異なる関係
 
 ## 設計案
@@ -37,7 +37,7 @@ interface TreeNode {
 - ツリー構造を壊さない
 
 **デメリット**:
-- エッジの属性が1つ（ラベル）だけ。将来的に不足する可能性
+- parent edgeの属性が1つ（ラベル）だけ。将来的に不足する可能性
 - 親子関係の意味を**子ノード側**に持たせるのは概念的にやや不自然
 
 ### 案 2: TreeNode に `edgeAttributes` を追加（拡張性重視）
@@ -69,9 +69,9 @@ interface TreeNode {
 - データモデルの変更がやや大きい（2フィールド追加）
 - レンダリングの複雑さが増す
 
-### 案 3: 親子エッジを暗黙の GraphLink にする（統一モデル）
+### 案 3: parent edgeを暗黙の `GraphLink` にする（統一モデル）
 
-親子関係も GraphLink として明示的に表現する。
+親子関係も `GraphLink` として明示的に表現する。
 
 ```typescript
 // 親子関係が自動的に GraphLink を生成
@@ -87,12 +87,12 @@ interface TreeNode {
 ```
 
 **メリット**:
-- エッジの型付けが GraphLink に統一される
+- エッジの型付けが `GraphLink` に統一される
 - 一貫したモデル（全エッジが同じ型）
 
 **デメリット**:
-- ツリー構造と GraphLink の二重管理になるリスク
-- 親子を変更するたびに GraphLink も同期が必要
+- ツリー構造と `GraphLink` の二重管理になるリスク
+- 親子を変更するたびに `GraphLink` も同期が必要
 - 実装の複雑さが大幅に増す
 
 ## 推奨: 案 2（edgeLabel + edgeAttributes）
@@ -110,11 +110,11 @@ interface TreeNode {
 ## 表示への影響
 
 ### Rapid モード
-- 親子エッジのラベルをベジェ曲線の中間点に小さく表示
+- parent edgeのラベルをベジェ曲線の中間点に小さく表示
 - edgeLabel がある場合のみ（ない場合は現在通り無印）
 
 ### Deep モード
-- 親子エッジのラベルを常時表示
+- parent edgeのラベルを常時表示
 - ノード選択時に edgeAttributes をパネルに表示
 - relationType に応じたエッジ色の自動割当
 

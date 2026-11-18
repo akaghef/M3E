@@ -132,7 +132,7 @@
     - "edges emerge OUTSIDE portal brackets (PORTAL_BRACKET_ARM=14 padding)"
     - "flow-preview-edge renders orthogonal"
     - "multi back-edge pairs staggered via topArchCount/bottomArchCount (no horizontal overlap)"
-    - "anchor* identifiers renamed to edgeEnd* (disambiguate against scope / selection / zoom anchors)"
+    - "line endpoint identifiers use edgeEnd* (distinct from scope / selection / zoom anchors)"
     - "automated collision validator reports 0 path-through-box hits on PJ04 system surface"
   eval_required: false
   eval_criteria: []

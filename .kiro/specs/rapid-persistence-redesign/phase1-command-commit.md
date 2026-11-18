@@ -2,7 +2,7 @@
 
 2026-11-16。brief の決定「書込み経路の Command 化を先に、現在の保存形式のまま出す」の最初の出荷単位。状態: 設計。受入基準は本書の「受入」で固定し、実装者は変更しない。
 
-用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。Command、journal、portable snapshot、canonical owner、map、scope、node、edge、GraphLink、linear-text、Surface View は定義済みの語。レコード種別は [draft-record-model.md](./draft-record-model.md) 2 節の表に従う。
+用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。Command、journal、portable snapshot、canonical owner、map、scope、node、parent edge、relation edge、linear-text、Surface View は定義済みの語。レコード種別は [draft-record-model.md](./draft-record-model.md) 2 節の表に従う。
 
 ## 目的
 
@@ -46,7 +46,7 @@ Command_Language 4.2 の envelope に、draft-record-model 5 節の「変更の�
 | `kind` | `key` | 現在の置き場 | 備考 |
 |---|---|---|---|
 | `node` | `[nodeId]` | `nodes[id]` の、下の 2 種別を除く全 field | 型定義にない field も一つの field として運ぶ |
-| `edge` | `[子の nodeId]` | `nodes[子].parentId` と、親の `children[]` の中の位置 | field は `parentId` と `index`。兄弟順キーは第 2 段 |
+| `edge`（parent edge） | `[子の nodeId]` | `nodes[子].parentId` と、親の `children[]` の中の位置 | field は `parentId` と `index`。兄弟順キーは第 2 段 |
 | `attribute` | `[持ち主の種別, 持ち主の ID, attribute の key]` | `nodes[id].attributes[k]`、`links[id].attributes[k]` | |
 | `graph-link` | `[linkId]` | `links[id]` の、`attributes` を除く全 field | |
 | `linear-text` | `[scope の key]` | `linearNotesByScope[k]` | |
@@ -56,7 +56,7 @@ Command_Language 4.2 の envelope に、draft-record-model 5 節の「変更の�
 | `annotation` | `[annotationId]` | `annotations` の 1 件 | 配列か連想かは現行の形に合わせる |
 | `map-field` | `[field 名]` | 上記以外の top-level の field | 型定義にない key を含む |
 
-`edge` の `index` は親の `children[]` の中の位置。同じ親の兄弟を並べ替える Command は、動いた子それぞれの `edge` を `update` する。適用は「全 `delete` と全 `create` / `update` を反映した後の `children[]` が、`after.index` の昇順になる」ことで定義する。実装は、変更の対象になった親ごとに `children[]` を作り直してよい。
+parent edge のレコード（kind `edge`）の `index` は親の `children[]` の中の位置。同じ親の兄弟を並べ替える Command は、動いた子それぞれのこのレコードを `update` する。適用は「全 `delete` と全 `create` / `update` を反映した後の `children[]` が、`after.index` の昇順になる」ことで定義する。実装は、変更の対象になった親ごとに `children[]` を作り直してよい。
 
 ## 純粋な部品
 
@@ -121,7 +121,7 @@ Director が独立に実行して判定する。実装者は次のファイル�
 2. 同じ検査の 20,001 node の map で、保存の往復の中央値が 121 ms 以下、編集から保存完了までの中央値が 2,500 ms 以下。変更前の実測は 90〜103 ms と約 2,000 ms（同じ端末、3 回）。
 3. 同じ検査の 20,001 node の map で、node 1 件の text を変える保存の送信量が 10,000 バイト以下。変更前は 8,454,327 バイト。
 4. 画面の保存が新しい経路を通っている。検査中の保存要求の宛先が `/api/maps/:id/commands` である。
-5. 不変条件 1〜4 の単体テストがある。忠実性と逆は、`install/assets/seeds/core-seed.sqlite` の全 map を入力に含め、乱数で作った変更（node の追加・削除・改名・親変更・並べ替え、attribute、GraphLink、linear-text、Surface View の配置値、型定義にない field）でも確かめる。
+5. 不変条件 1〜4 の単体テストがある。忠実性と逆は、`install/assets/seeds/core-seed.sqlite` の全 map を入力に含め、乱数で作った変更（node の追加・削除・改名・親変更・並べ替え、attribute、relation edge、linear-text、Surface View の配置値、型定義にない field）でも確かめる。
 6. 確定関数の単体テストがある: 再送で二重に適用しない、競合で何も書かない、検査の失敗で何も書かない、`command_log` の通し番号が連続する、`command_log` の `changes` を空の初期状態から順に適用すると保存されている状態に一致する（その map がすべて Command で作られた場合）。
 7. 既存の `npm test` が全部通る。新しい失敗、テストの削除、無断の skip が無い。
 8. `npm run typecheck` と `npm run lint:deps` が通る。
@@ -154,5 +154,5 @@ dev-beta `18e2b0a`。CI の Build & Test は success（1,231 件）。通常 Bet
 
 ## 第 2 段へ渡すもの
 
-- `changes` はレコード単位なので、保存形式がレコードになっても Command の形は変わらない。変わるのは `before` の比較が revision の比較になる点と、`edge` の `index` が兄弟順キーになる点。
+- `changes` はレコード単位なので、保存形式がレコードになっても Command の形は変わらない。変わるのは `before` の比較が revision の比較になる点と、parent edge のレコード（kind `edge`）の `index` が兄弟順キーになる点。
 - `command_log` は端末内の journal の種。workspace × 書き手端末の stream への書き出しは第 2 段で扱う。

@@ -8,7 +8,7 @@ M3E map 上の node / link / scope に付く **`m3e:kernel-*` 名前空間**の�
 ```
 ┌────────────────────────────────────────┐
 │ M3E map (authoring)                     │
-│   TreeNode / GraphLink / MapScope       │
+│   TreeNode / relation edge / MapScope       │
 │   + m3e:kernel-* attributes             │  ← この文書
 └────────────────────────────────────────┘
               │  compileFromMap()
@@ -54,7 +54,7 @@ box を map に描きたいときに使う。`m3e:kernel-node-kind="entry"` ま�
 
 ## Edge (link) 属性
 
-GraphLink に直接 attribute 欄は無いので、**link の `relationType` を以下の規約で利用する**:
+relation edge に直接 attribute 欄は無いので、**link の `relationType` を以下の規約で利用する**:
 
 | `relationType` の先頭 | 意味 |
 |---|---|

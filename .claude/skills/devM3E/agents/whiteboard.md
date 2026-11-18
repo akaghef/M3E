@@ -26,7 +26,7 @@ M:(開発)> SYSTEM > DEV
 
 ## Boundaries
 
-- scope / scopen / unscopen / layouting / alias-vs-move / GraphLink 判断は Map Manager gate を通す
+- scope / scopen / unscopen / layouting / alias-vs-move / relation edge 判断は Map Manager gate を通す
 - worker は direct API / SQLite / runtime file write をしない
 - MF / WMF / Mermaid / Markdown は projection / request format であり、M3E storage ではない
 - 旧 `_wb` ノードを新規作成しない

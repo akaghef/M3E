@@ -49,7 +49,7 @@ status: idea（Vision 再定式化候補。実装 task ではない）
 | 不可視な全体 | Deep, semantic graph, 世界モデル, M3E Semantic Source |
 | 認知境界 | scope, facet |
 | 切り出し | 射影 (Deep→Rapid), context projection, materialization（用途で使い分け） |
-| 型付き関係 | GraphLink / relationType（tree `edge` と混同しない） |
+| 型付き関係 | relation edge / relationType（parent edge と混同しない） |
 | 同一性・同期 | alias, scope bind, entity binding |
 | 書き戻し seam | Command, Semantic Command, write authority, authority root |
 | 骨格 | spine（鑑賞用 force graph ではない） |
@@ -57,7 +57,7 @@ status: idea（Vision 再定式化候補。実装 task ではない）
 候補の操作軸プール（例。固定セットではない）:
 
 - identity / node 属性
-- typed relation（GraphLink）
+- typed relation（relation edge）
 - scope / facet 境界
 - layout / 投影選択（表示配置）
 - version / semantic cut / freshness
@@ -98,7 +98,7 @@ status: idea（Vision 再定式化候補。実装 task ではない）
 
 - Principle: scope 認知境界 / 単一実体複数見え方 / AI 提案・人間確定 / Flash·Rapid·Deep 進化軸 / **常時すべてを露出するグローバル可視化を反対側に置く** — [../01_Vision/Principle.md](../01_Vision/Principle.md)
 - Strategy: S6 世界モデル正本, S7 射影の片道化防止, S8 scope, S10–S11 人間 judge, S14 寄せ集め否定, S16 連邦 semantic graph — [../01_Vision/Strategy.md](../01_Vision/Strategy.md)
-- Glossary: 射影 / Deep / scope / GraphLink / Command / materialization / context projection — [../00_Home/Glossary.md](../00_Home/Glossary.md)
+- Glossary: 射影 / Deep / scope / relation edge / Command / materialization / context projection — [../00_Home/Glossary.md](../00_Home/Glossary.md)
 - 近傍 idea: [260719_math_ontology_graphdb_thesis.md](./260719_math_ontology_graphdb_thesis.md), [260420_m3e_vision_twitter_dump.md](./260420_m3e_vision_twitter_dump.md)
 - Skill 参照: neo4j runtime と製品境界 — `m3e-project` → `references/neo4j-runtime-and-product-boundary.md`
 

@@ -167,7 +167,7 @@ Goal / Task ── assignment ── Agent
 - [gyroid-eth/orrery-telemetry](https://github.com/gyroid-eth/orrery-telemetry) — 合併吸収対象となる外部OTの正本
 - [ADR_011: Agent OrreryをM3Eのmapとして実装する](../09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md) — 外部OTの説明ではなく、M3E側の受入境界
 - [Agent Mapping Pluginの境界](./260808_agent_mapping_plugin_boundary.md)
-- [Neo4j-backed Team CollaborationとGraphLink](./260824_neo4j_team_collaboration_graphlink.md)
+- [Neo4j-backed Team Collaborationとrelation edge](./260824_neo4j_team_collaboration_graphlink.md)
 - [P2P Cloudflare snapshot sync](./260730_p2p_cloudflare_snapshot_sync.md)
 - `V2` 人間とAIが構造的に対話できる作業場
 - `V3` 世界モデルから成果物へ射影するcycle

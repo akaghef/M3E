@@ -8,7 +8,7 @@
 
 1. `pn_layout`: `PnNode[] + anchor/viewport/measurement snapshot -> overlay/node/edge/focus/overflow` の typed pure contract。
 2. overlay placement: canvas content と重ならない screen-space layer decision。
-3. EdgePort integration: PN parent-child edge を既存 `selectPorts -> route` path に乗せ、`edgePathBetweenRects` direct call を禁止。
+3. EdgePort integration: PN parent edge を既存 `selectPorts -> route` path に乗せ、`edgePathBetweenRects` direct call を禁止。
 4. viewport separation: pan/zoom fast path と PN DOM remeasure を分離。
 5. collapse / overflow / 3rd-level: action-tree prototype の段階展開を product-quality contract にする。
 6. PN lab: `src/labs/pn/` で akaghef が以前の action-tree と同じ感じを目視できる lab。
@@ -17,9 +17,9 @@ This design is a spec draft only. It defines implementation scope and tests; it 
 
 ## Current Failure Diagnosis
 
-### D1: Edge bypass
+### D1: parent edge bypass
 
-Current product PN imports `edgePathBetweenRects` directly at `beta/src/browser/workbench-ui.tsx:34`, computes PN edge paths inside `ProgressiveNavigation` at `workbench-ui.tsx:1151-1169`, and calls `edgePathBetweenRects(parentRect, childRect, 0)` at `workbench-ui.tsx:1165`.
+Current product PN imports `edgePathBetweenRects` directly at `beta/src/browser/workbench-ui.tsx:34`, computes PN parent edge paths inside `ProgressiveNavigation` at `workbench-ui.tsx:1151-1169`, and calls `edgePathBetweenRects(parentRect, childRect, 0)` at `workbench-ui.tsx:1165`.
 
 That bypasses existing EdgePort contracts:
 
@@ -27,7 +27,7 @@ That bypasses existing EdgePort contracts:
 - `beta/src/shared/edge_route.ts:75-92` - `route(...)`
 - `beta/src/shared/parent_child_edge_adapter.ts:58-67` - `routeParentChildEdge(...)`
 
-`edgePathBetweenRects` itself is a straight-line helper in `beta/src/browser/edge_geometry.ts:153-157`, not the typed EdgePort route path. Therefore PN edge cannot participate in EdgePort golden tests or branch-aware route metadata.
+`edgePathBetweenRects` itself is a straight-line helper in `beta/src/browser/edge_geometry.ts:153-157`, not the typed EdgePort route path. Therefore PN parent edge cannot participate in EdgePort golden tests or branch-aware route metadata.
 
 ### D2: Overlay/canvas overlap
 
@@ -74,7 +74,7 @@ flowchart LR
   Layout --> ProductRender["PN product render"]
   Layout --> Lab["pn-lab render"]
   Layout --> Golden["pn_layout golden tests"]
-  Layout --> Adapter["PN edge adapter"]
+  Layout --> Adapter["PN parent edge adapter"]
   Adapter --> EdgePort["EdgePort.selectPorts"]
   EdgePort --> EdgeRoute["EdgeRoute.route"]
 ```
@@ -83,7 +83,7 @@ Forbidden:
 
 ```text
 workbench-ui PN -> edgePathBetweenRects
-workbench-ui PN -> GraphLink nearest endpoint edit helper
+workbench-ui PN -> relation edge nearest endpoint edit helper
 src/labs/pn/** -> src/browser/**
 src/labs/pn/** -> copied action-tree layout logic
 pn_layout -> DOM / React / AppState / viewer globals
@@ -238,7 +238,7 @@ export function layoutProgressiveNav(input: PnLayoutInput): PnLayoutOutput;
 - `anchorRect` and `safeZones` are screen-space rectangles.
 - `overlayRect` is screen-space and independent of canvas transform.
 - `node.rect` is local to `overlayRect`, so product render can position children under `.wb-progressive-nav`.
-- Edge routing converts local node rects into EdgePort `EdgeRect` and uses `routeParentChildEdge` or `selectPorts -> route`.
+- parent edge routing converts local node rects into EdgePort `EdgeRect` and uses `routeParentChildEdge` or `selectPorts -> route`.
 - All numeric output must be deterministic for golden comparison.
 
 ## Visibility Model
@@ -299,15 +299,15 @@ Layer contract:
 |---|---|---|
 | canvas content | viewer canvas | transformed by viewport transform |
 | PN overlay | workbench overlay root | screen-space; not inside transformed canvas |
-| PN edge layer | PN overlay child | below PN cards |
-| PN node layer | PN overlay child | above PN edges |
+| PN parent edge layer | PN overlay child | below PN cards |
+| PN node layer | PN overlay child | above PN parent edges |
 | modal/popover | workbench modal layer | above PN |
 
 CSS must give PN overlay an explicit layer token or z-index. The spec does not choose the exact number; implementation must document the relation.
 
 ## EdgePort Integration
 
-PN edge route style mapping:
+PN parent edge route style mapping:
 
 | PN option | EdgeRouteStyle |
 |---|---|
@@ -328,7 +328,7 @@ routeParentChildEdge({
 });
 ```
 
-This deliberately treats PN internal tree as a parent-child edge graph, not GraphLink. Product PN must stop importing `edgePathBetweenRects`; tests and dependency-cruiser enforce this.
+This deliberately treats PN internal tree as a parent edge graph, not relation edge. Product PN must stop importing `edgePathBetweenRects`; tests and dependency-cruiser enforce this.
 
 ## Viewport Separation
 
@@ -406,7 +406,7 @@ Lab display:
 - simulated canvas content rects
 - PN overlay
 - PN node cards
-- EdgePort routed edges
+- EdgePort routed parent edges
 - focus order / output JSON summary
 - overlap score and overflow mode
 
@@ -420,7 +420,7 @@ The exact visual approval line is not fixed in this spec. Akaghef approves the P
 - parent node position retention
 - keyboard/search
 - safeZone no-overlap
-- EdgePort routed edges
+- EdgePort routed parent edges
 - placement/overflow summary visible enough to diagnose failures
 
 ## Golden Samples
@@ -483,7 +483,7 @@ Add paths:
 - `src/labs/pn`
 - `src/browser/workbench-ui.tsx` or narrow PN adapter file
 
-Do not ignore PN layout or edge routing logic. Exclude only generated fixtures/snapshots if needed.
+Do not ignore PN layout or parent edge routing logic. Exclude only generated fixtures/snapshots if needed.
 
 ### typecheck
 
@@ -560,5 +560,5 @@ The PN lab visual approval line is intentionally not pre-fixed. Akaghef approves
 
 - PN no-overlap scoring can become too clever and introduce new motion instability. Keep candidates small and deterministic.
 - Full viewer Playwright can still pass while real server path fails; this is accepted for first ratchet only because map-backing is non-goal.
-- Product PN still has action side effects in `workbench-ui.tsx`; first ratchet should isolate layout/edge behavior without refactoring command semantics.
+- Product PN still has action side effects in `workbench-ui.tsx`; first ratchet should isolate layout/parent edge behavior without refactoring command semantics.
 - If exact canvas content rects are expensive to collect, first implementation should start with selected-node rect + fixed UI safe zones, then expand.

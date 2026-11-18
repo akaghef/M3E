@@ -275,7 +275,7 @@ M3E の保存モデルは木構造を正本とする。したがって、依存�
 5. `?scope=` を使う部分読み書きでは scope 外を指す link が落ちるため、
    1つの DAG は可能な限り同一 scope 内に置く
 
-この規約により、viewer は tree edge で depth を安定して計算しつつ、
+この規約により、viewer は parent edge で depth を安定して計算しつつ、
 `state.links` を補助線として重ねて DAG の多重依存を表示できる。
 
 #### リクエスト
@@ -325,7 +325,7 @@ Body:
 - alias 制約（子なし、target は実体ノードのみ、参照連鎖禁止）
 - alias の `access` 値（`read` | `write`）
 - 破損フラグの整合（`isBroken` と target 存在）
-- GraphLink の endpoint 存在、self link 禁止、alias endpoint 禁止
+- relation edge の endpoint 存在、self link 禁止、alias endpoint 禁止
 - Link の `direction` / `style` の値域
 - ツリーの循環検出（DFS）
 - 孤立ノードの検出
@@ -1148,7 +1148,7 @@ read-modify-write の原子性は M3E 側の SQLite トランザクションに�
 ### 制限事項（現時点）
 
 - alias ノードの作成・編集は未対応（MCP ツール未実装）
-- GraphLink の操作は未対応
+- relation edge の操作は未対応
 - `nodeType` の変更（folder 化等）は未対応
 - バルク操作（複数ノード同時変更）は個別の write ツール呼び出しで対応
 - M3E 未起動時はエラーを返す（フォールバックなし）

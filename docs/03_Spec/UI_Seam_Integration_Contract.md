@@ -147,7 +147,7 @@ RQ9. Full YAML example:
 ```yaml
 id: edge-label-edit
 responsibility: >
-  Edit an existing Connection label (an incoming parent-child edge or GraphLink) without owning selection,
+  Edit an existing edge label (an incoming parent edge or relation edge) without owning selection,
   layout, render ordering, keyboard routing, or persistence scheduling.
 inputs:
   stateViews:
@@ -218,7 +218,7 @@ resourceClaims:
     - slot: overlay.edgeLabelEditor
       owner: RenderRegistry
       zBand: editor-overlay
-      orderAfter: [graphLinks, edges]
+      orderAfter: [relation edges, edges]
       orderBefore: [contextMenu]
   undo:
     - owner: CommandHistory
@@ -425,7 +425,7 @@ Phase 1. CI gates:
 
 Phase 2. Pilot seam: `edge-label-edit`.
 
-- use the Alt+Enter edge label edit feature from PR #70 as extraction material;
+- use the Alt+Enter parent edge label edit feature from PR #70 as extraction material;
 - add or sync the seam contract;
 - add minimal `CommandRegistry`, `EditModeStore`, and `RenderRegistry`
   implementations for pilot needs only: claim declaration, registration,

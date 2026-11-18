@@ -25,7 +25,7 @@ timeseries は flow と近いが、主役は「処理手順」ではなく **観
 | `parent-child` | 時間粒度の階層、または event -> evidence |
 | `depth` | 古い -> 新しい。必ず時間順 |
 | `row / breadth` | 同じ時刻 / 同じ期間に起きた並列イベント |
-| `GraphLink` | causality、trigger、result_of、evidence、related task |
+| `relation edge` | causality、trigger、result_of、evidence、related task |
 | `anchor` | day / week / run 単位の表示 grouping として使う |
 | `scope` | `unscoped` 寄り。ただし長期ログは期間 scope 可 |
 | `fill` | event importance / impact |
@@ -85,7 +85,7 @@ links:
 - 同じ evaluation cycle の pass / fail / retry
 
 breadth は「同じ時間帯に比較したいもの」であり、因果順ではない。
-因果順は GraphLink で補助する。
+因果順は relation edge で補助する。
 
 ## anchor の既定
 

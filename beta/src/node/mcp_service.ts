@@ -418,12 +418,12 @@ export class M3eMcpService {
     const before = Object.keys(current.state.nodes).length;
     let updated = 0;
     const deletedLink = tool === "m3e_delete" ? parseLinkUri(args.target) : null;
-    if (tool === "m3e_create" && args.kind === "link" && args.target === undefined) fail("INVALID_ARGUMENT", "A GraphLink needs both source and target nodes.");
+    if (tool === "m3e_create" && args.kind === "link" && args.target === undefined) fail("INVALID_ARGUMENT", "A relation edge needs both source and target nodes.");
     const resolved = deletedLink ? null : this.resolve(args.target ?? context.focus!.uri);
     if ((deletedLink?.mapId ?? resolved!.ref.mapId) !== mapId) fail("FOCUS_MAP_MISMATCH", "Focus the destination map before editing it.");
     const target = resolved?.ref.nodeId ?? "";
     if (deletedLink) {
-      if (!model.state.links?.[deletedLink.linkId]) fail("TARGET_NOT_FOUND", "The requested GraphLink no longer exists.");
+      if (!model.state.links?.[deletedLink.linkId]) fail("TARGET_NOT_FOUND", "The requested relation edge no longer exists.");
       model.removeLink(deletedLink.linkId); deletedLinks = 1;
     } else if (tool === "m3e_create") {
       const kind = str(args.kind, "kind", 30);
@@ -433,7 +433,7 @@ export class M3eMcpService {
       if (kind === "link") {
         // A GraphLink is a non-tree relation from source to target; it never changes ownership.
         const source = this.resolve(args.source);
-        if (source.ref.mapId !== mapId) fail("FOCUS_MAP_MISMATCH", "Both GraphLink endpoints must be in the focused map.");
+        if (source.ref.mapId !== mapId) fail("FOCUS_MAP_MISMATCH", "Both relation edge endpoints must be in the focused map.");
         const direction = args.direction === undefined ? undefined : str(args.direction, "direction", 20);
         if (direction !== undefined && !LINK_DIRECTIONS.includes(direction)) fail("INVALID_ARGUMENT", "direction must be none, forward, backward or both.");
         const label = args.label === undefined ? undefined : str(args.label, "label", 4000);

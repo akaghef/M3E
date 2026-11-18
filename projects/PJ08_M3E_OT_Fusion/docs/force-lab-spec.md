@@ -18,17 +18,17 @@ PJ08 の「同じmap面で全体像を把握する」目的と farthest_goal の
 
 以下はユーザーの逐語指定ではなく、仕様確定・実装の委任を受けた判断。
 
-- DC1: `Radial`と`Disperse`を同じエンジンで評価する。Radialのばねは親子edge＋GraphLink。DisperseのばねはGraphLinkのみ、親子は包含で表す。新しいSurface Viewやcluster subtypeを作らない。
+- DC1: `Radial`と`Disperse`を同じエンジンで評価する。Radialのばねはparent edge＋relation edge。Disperseのばねはrelation edgeのみ、親子は包含で表す。新しいSurface Viewやcluster subtypeを作らない。
 - DC2: 各ノードは中心座標＋可視内容全体の矩形寸法を持つ。hover overlayは衝突矩形に含めない。ズームは寸法を変えない。矩形間の最小間隔は既存normalに合わせ16 map単位。
 - DC3: Disperseのgroupは子孫を囲う自動伸縮矩形。親ノードも独立ノードとして内部に残す。見出し領域28、padding24 map単位を確保する。親子groupの包含は許可、兄弟groupと非所属ノードの侵入は禁止。手動resizeは実装しない。
-- DC4: 斥力は可視ノード間に適用し、group自身へ二重に斥力を与えない。GraphLinkのばねは実端点の距離で計算し、端点の最小共通祖先の直下にあるbranchの可視メンバーへ均等配分する（共通祖先自身が端点ならそのノードだけ）。groupごとに内部重心への弱い凝集力 `.025` を加え、外部リンクによる箱の無制限な伸長を防ぐ。親子edgeのばねではない。衝突解消時は兄弟groupを剛体移動し、内部の相対座標を保つ。pinを含むgroupはその衝突解消で動かさない。最小16単位に追加1単位の余裕を取って接触連鎖の漸近残差を防ぐ。解消不能なら制約違反を明示し、成功扱いしない。
-- DC5: collapse後は元の親ノードIDと通常寸法を維持し、子孫をsimulation対象から外す。内部リンクは隠し、外部GraphLinkは可視代表へ集約する。ばね定数は集約元の重みを加算する。親子edgeとGraphLinkは別集約。展開時は保存した相対位置へ戻し、親が移動した分を追従させてから再加熱する。元の関係・IDは書き換えない。
+- DC4: 斥力は可視ノード間に適用し、group自身へ二重に斥力を与えない。relation edgeのばねは実端点の距離で計算し、端点の最小共通祖先の直下にあるbranchの可視メンバーへ均等配分する（共通祖先自身が端点ならそのノードだけ）。groupごとに内部重心への弱い凝集力 `.025` を加え、外部リンクによる箱の無制限な伸長を防ぐ。parent edgeのばねではない。衝突解消時は兄弟groupを剛体移動し、内部の相対座標を保つ。pinを含むgroupはその衝突解消で動かさない。最小16単位に追加1単位の余裕を取って接触連鎖の漸近残差を防ぐ。解消不能なら制約違反を明示し、成功扱いしない。
+- DC5: collapse後は元の親ノードIDと通常寸法を維持し、子孫をsimulation対象から外す。内部リンクは隠し、外部relation edgeは可視代表へ集約する。ばね定数は集約元の重みを加算する。parent edgeとrelation edgeは別集約。展開時は保存した相対位置へ戻し、親が移動した分を追従させてから再加熱する。元の関係・IDは書き換えない。
 - DC6: drag中は一時固定。終了後は元のpin状態へ戻す。永続pinは別操作。group dragは可視子孫をまとめて移動し、所属変更は起こさない。Labのpinはセッション内のみ。
 - DC7: OTの斥力・ばね・中心引力・減衰・速度制限・二段冷却・5フレーム収束判定を型付き入力へ移す。60Hz固定stepで駆動し、再加熱は240stepまで。予算停止と収束停止は区別する。制約違反が残ればblocked。完全同座標には決定論的な分離方向を与える。
 - DC8: 世界の引力中心は固定 `(0,0)`。OTのviewport依存clampは移植しない。pan/zoom/resize/設定panel開閉で力学状態は変えない。fitは明示操作。非表示tabでは時計を止め、復帰後に時間を追いかけない。
 - DC9: 調整は斥力KR、リンク自然長L、ばね定数KS、中心引力GR。OT既定値2600/110/.012/.012と範囲を採用する。変更は現在位置から再加熱する。設定を戻す操作と配置をリセットする操作は別。Lab設定はlocalStorage等に保存せず、reloadでfixture既定へ戻る。
 - DC10: 一時的な折り畳み式Lab調整領域を使う。これはViewer Panelの最終デザインではない。開閉はsimulationのstart/stopに関与しない。
-- DC11（2026-09-22）: 既存M3EのWebGL2 rendererを`src/rendering/`へ共有化し、Viewerのimportは互換入口で維持する。Labはforce snapshotから直接描画snapshotを作り、SVGやViewer内部を経由しない。ノード・文字・GraphLink・親子edge・group枠と見出し・固定表示をGPUへ送る。
+- DC11（2026-09-22）: 既存M3EのWebGL2 rendererを`src/rendering/`へ共有化し、Viewerのimportは互換入口で維持する。Labはforce snapshotから直接描画snapshotを作り、SVGやViewer内部を経由しない。ノード・文字・relation edge・parent edge・group枠と見出し・固定表示をGPUへ送る。
 - DC12: 文字画像は内容・寸法・styleの変更時だけ再生成する。位置更新では再利用し、atlasは複数ページへ分割して容量超過による文字の無言欠落を避ける。pan/zoomはcamera uniformのみを更新し、位置や文字を再送しない。
 - DC13: WebGL不可・context lossではエラー表示して力学を止める。無言でSVGへ切り替えない。context復旧では同じ位置とcameraを維持する。`?renderer=svg`は明示的な比較経路であり、通常WebGLの裏にSVGを生成しない。
 - DC14: HTMLのノード選択欄とCanvas上の矢印・C・Pキーで選択・折り畳み・固定を維持する。選択欄の項目は可視ノード構成が変わったときだけ再構築する。
@@ -38,7 +38,7 @@ PJ08 の「同じmap面で全体像を把握する」目的と farthest_goal の
 `beta/src/shared/force_seam_interface.ts` が入力・出力・command契約。
 `beta/src/shared/ot_force.ts` が唯一の計算・可視縮約・制約解消実装。
 
-入力: stable ID、parentId、GraphLink、中心座標、幅・高さ、pin、mode、parameter。
+入力: stable ID、parentId、relation edge、中心座標、幅・高さ、pin、mode、parameter。
 出力: 可視ノードの座標・寸法、可視代表リンク・重み、group矩形、実行状態、step数、制約違反。
 操作: step、parameter変更、mode変更、collapse、pin、drag開始／移動／終了、pause、reheat、配置reset。
 
@@ -80,7 +80,7 @@ Seam Labs一覧からも到達できる。新規依存はない。
 | `npm run typecheck` | 全6設定成功 |
 | `npm run lint:deps` | 134 modules / 281 dependencies、違反0 |
 | `npm run build:browser` | 成功。force HTML/JS/CSS、source noticeを含む |
-| 実ブラウザ | macOS・Chromium、production previewで実施。初期12 nodes / 4 groups / 7 GraphLinks、Radialではgroupなし・親子edge9本追加。100ノード表示と停止を確認 |
+| 実ブラウザ | macOS・Chromium、production previewで実施。初期12 nodes / 4 groups / 7 relation edges、Radialではgroupなし・parent edge9本追加。100ノード表示と停止を確認 |
 | 操作 | 調整開閉で状態不変。自然長110→400で位置が変化し再停止。設定resetと配置resetの独立、pause/reheat、collapseで12→8→12、pin維持、node/group dragを確認 |
 | camera | pan/zoom/fit/760px幅へのresizeで力学snapshot不変。1280pxと760pxの画面を撮影・目視 |
 | 失敗表示 | pin同士の衝突は`blocked`・違反1。キーボードで選択してpin解除後、違反0へ復帰 |
@@ -106,7 +106,7 @@ legacy browser script用のTypeScript対象から互換exportを除外し、既�
 - 型・build: `npm run typecheck`全6設定、`npm run build:browser`成功。新規依存なし。
 - 依存境界: `npm run lint:deps`、137 modules / 285 dependencies、違反0。LabsからViewerへのimportは追加していない。
 - 実GPU: Chromiumの`ANGLE Metal Renderer: Apple M1`、WebGL activeを確認。通常経路はCanvas1・SVG0。初期12ノード＋箱見出し4件が表示され、235回のgeometry更新に対して文字atlas送信は1回だった。
-- 表示・操作: 文字・GraphLink・入れ子の箱、collapse 12→10→12、pin後のノードdrag、group見出しdrag、parameter変更と再加熱、Radialの親子edge9本＋GraphLink7本、キーボード選択・pin解除、100ノード、760px幅を実ブラウザで確認。撮影画像を目視した。
+- 表示・操作: 文字・relation edge・入れ子の箱、collapse 12→10→12、pin後のノードdrag、group見出しdrag、parameter変更と再加熱、Radialのparent edge9本＋relation edge7本、キーボード選択・pin解除、100ノード、760px幅を実ブラウザで確認。撮影画像を目視した。
 - 描画負荷: 2000ノード・1999リンク・全2000ラベルを4ページのatlasで保持。力学stepは0、予約frameなし。pan/zoomではgeometry/atlas再送なし。これは2000ノードの力学処理の合格ではない。
 - 障害: WebGL不可とcontext lossで表示エラー・力学停止・自動SVG切替なし。復旧時は位置とcameraを維持。Astraレビューで見つかった部分確保時の資源解放漏れと、復旧時に未upload bufferを描く問題を修正し、回帰テストに追加した。修正後の復旧試験はconsole error/warningとも0。
 - 比較経路: 明示SVGで2000ラベル・SVG1・Canvas0を確認。ホスト負荷が変動しているため、SVG対比のFPSや倍率はこの記録から主張しない。

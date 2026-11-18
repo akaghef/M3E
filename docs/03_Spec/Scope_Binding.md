@@ -6,7 +6,7 @@
 
 この文書は、複数の `scope` に置かれた表示要素を、同一の正本実体として同期する `scope bind` の仕様を定義する。
 
-`scope bind` は射影ではない。`alias` でも `GraphLink` でもない。別 `scope` 上の node 群に対して、同一性、更新伝播、修復、監査を与える同期契約である。
+`scope bind` は射影ではない。`alias` でも `relation edge` でもない。別 `scope` 上の node 群に対して、同一性、更新伝播、修復、監査を与える同期契約である。
 
 ## 背景
 
@@ -20,7 +20,7 @@
 ## 非目標
 
 - `alias` の置き換えではない。
-- `GraphLink` の置き換えではない。
+- `relation edge` の置き換えではない。
 - UI 操作ごとの hook ではない。
 - binding script が map を直接 mutate することは許可しない。
 - 初期仕様では template の自動 upgrade は行わない。
@@ -258,7 +258,7 @@ type BindingPatch = {
 };
 ```
 
-operation は node / GraphLink / binding metadata を対象にする。
+operation は node / relation edge / binding metadata を対象にする。
 
 ```ts
 type BindingOperation =
@@ -405,7 +405,7 @@ patch は apply 前に検証する。
 - `mapId` が一致する
 - `scopeId` が存在する
 - `nodeId` が存在する、または create 対象として妥当
-- `GraphLink` endpoint は実体 node を指す
+- `relation edge` endpoint は実体 node を指す
 - alias endpoint 禁止など既存 Data Model 制約を破らない
 - `originBindingId` による loop 防止が効いている
 
@@ -469,7 +469,7 @@ node.created in 関係図:
   create or update binding entity/member
 ```
 
-GraphLink rule:
+relation edge rule:
 
 ```text
 A -[LINE]-> E in 関係図:

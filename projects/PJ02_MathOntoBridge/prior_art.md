@@ -5,7 +5,7 @@ PJ02 MathOntoBridge のビジョン策定に使う素材。
 
 ## 収録元
 
-1. `docs/ideas/260409_typed_edges.md` — 親子エッジに型を持たせる設計案
+1. `docs/ideas/260409_typed_edges.md` — parent edgeに型を持たせる設計案
 2. `docs/ideas/260409_edge_typed_attributes.md` — edgeToParent 設計比較（案A/B/C）
 3. `docs/research/ontology_data_structure.md` — オントロジーとデータ構造（NTT Data 知見）
 4. `docs/research/ontology_scientific_research.md` — 競合調査 & M3E 差別化設計
@@ -13,7 +13,7 @@ PJ02 MathOntoBridge のビジョン策定に使う素材。
 
 ---
 
-# 1. 枝（エッジ）に型・属性を持たせる設計案
+# 1. parent edgeに型・属性を持たせる設計案
 
 Source: `docs/ideas/260409_typed_edges.md`
 
@@ -23,7 +23,7 @@ Origin: akaghef の発想 + NTT Data オントロジー解説からの知見
 
 ## 問題
 
-現在の M3E では **親子エッジに情報がない**。
+現在の M3E では **parent edgeに情報がない**。
 
 ```
 細胞 ──(?)──> 幹細胞      ← is-a? part-of? 区別できない
@@ -31,7 +31,7 @@ Origin: akaghef の発想 + NTT Data オントロジー解説からの知見
 ```
 
 - `parentId` / `children[]` は構造のみで、関係の**意味**を持たない
-- `GraphLink` は `relationType` を持つが、親子エッジとは別物
+- `relation edge` は `relationType` を持つが、parent edgeとは別物
 - オントロジーでは is-a と part-of は根本的に異なる関係
 
 ## 設計案
@@ -54,7 +54,7 @@ interface TreeNode {
 - ツリー構造を壊さない
 
 **デメリット**:
-- エッジの属性が1つ（ラベル）だけ。将来的に不足する可能性
+- parent edgeの属性が1つ（ラベル）だけ。将来的に不足する可能性
 - 親子関係の意味を**子ノード側**に持たせるのは概念的にやや不自然
 
 ### 案 2: TreeNode に `edgeAttributes` を追加（拡張性重視）
@@ -86,9 +86,9 @@ interface TreeNode {
 - データモデルの変更がやや大きい（2フィールド追加）
 - レンダリングの複雑さが増す
 
-### 案 3: 親子エッジを暗黙の GraphLink にする（統一モデル）
+### 案 3: parent edgeを暗黙の `GraphLink` にする（統一モデル）
 
-親子関係も GraphLink として明示的に表現する。
+親子関係も `GraphLink` として明示的に表現する。
 
 ```typescript
 // 親子関係が自動的に GraphLink を生成
@@ -104,12 +104,12 @@ interface TreeNode {
 ```
 
 **メリット**:
-- エッジの型付けが GraphLink に統一される
+- エッジの型付けが `GraphLink` に統一される
 - 一貫したモデル（全エッジが同じ型）
 
 **デメリット**:
-- ツリー構造と GraphLink の二重管理になるリスク
-- 親子を変更するたびに GraphLink も同期が必要
+- ツリー構造と `GraphLink` の二重管理になるリスク
+- 親子を変更するたびに `GraphLink` も同期が必要
 - 実装の複雑さが大幅に増す
 
 ## 推奨: 案 2（edgeLabel + edgeAttributes）
@@ -127,11 +127,11 @@ interface TreeNode {
 ## 表示への影響
 
 ### Rapid モード
-- 親子エッジのラベルをベジェ曲線の中間点に小さく表示
+- parent edgeのラベルをベジェ曲線の中間点に小さく表示
 - edgeLabel がある場合のみ（ない場合は現在通り無印）
 
 ### Deep モード
-- 親子エッジのラベルを常時表示
+- parent edgeのラベルを常時表示
 - ノード選択時に edgeAttributes をパネルに表示
 - relationType に応じたエッジ色の自動割当
 
@@ -159,17 +159,17 @@ example-of    例示
 
 ---
 
-# 2. 親子エッジに型/属性を持たせる設計案
+# 2. parent edgeに型/属性を持たせる設計案
 
 Source: `docs/ideas/260409_edge_typed_attributes.md`
 
 ## Why
 
-現在の M3E では、親子エッジ（parentId / children[]）にはいかなるメタデータもない。
+現在の M3E では、parent edge（parentId / children[]）にはいかなるメタデータもない。
 ツリー上で「細胞 -> 幹細胞」が is-a なのか part-of なのか、データとして区別できない。
 
-一方 GraphLink には relationType, label, direction, style が既にある。
-つまり M3E には「情報を持つエッジ（GraphLink）」と「情報を持たないエッジ（親子）」の二重構造がある。
+一方 relation edge には relationType, label, direction, style が既にある。
+つまり M3E には「情報を持つエッジ（relation edge）」と「情報を持たないエッジ（親子）」の二重構造がある。
 
 オントロジーでは、エッジの種類こそが知識の本質である:
 - is-a（分類）: 犬 is-a 動物
@@ -200,19 +200,19 @@ interface TreeNode {
 - 既存の parentId / children[] 構造を壊さない
 - TreeNode の JSON 構造にオプショナルに追加するだけ
 - validate() への影響が最小限（edgeToParent は任意フィールド）
-- ツリー描画時にエッジ情報を即座に参照できる（子ノードを読めばエッジ情報もある）
+- ツリー描画時にparent edge情報を即座に参照できる（子ノードを読めばparent edge情報もある）
 - 保存/復元の整合性が parentId と一体化しているため壊れにくい
 
 **欠点**:
-- 親子エッジと GraphLink が別体系のまま（二重構造の解消にならない）
+- parent edgeと relation edge が別体系のまま（二重構造の解消にならない）
 - reparentNode() で edgeToParent の引き継ぎ/リセット判断が必要
 - 「エッジ」という独立エンティティではなく、ノードの付属情報にとどまる
 
 **影響コード**: rapid_mvp.ts の addNode(), reparentNode(), validate(), _normalizeNode()
 
-### 案 B: 親子エッジを GraphLink に統一
+### 案 B: parent edgeを `GraphLink` に統一
 
-親子関係も GraphLink で表現し、parentId / children[] は GraphLink から導出する。
+親子関係も `GraphLink` で表現し、parentId / children[] は `GraphLink` から導出する。
 
 ```typescript
 // TreeNode から parentId, children を除去し、GraphLink で表現
@@ -232,11 +232,11 @@ interface GraphLink {
 **利点**:
 - エッジの統一モデル。全エッジが同じデータ構造を持つ
 - オントロジー的に最も正しい（関係は全てエッジ）
-- GraphLink の既存機能（relationType, label, style）が親子にも適用される
+- `GraphLink` の既存機能（relationType, label, style）が親子にも適用される
 
 **欠点**:
 - **破壊的変更**: 既存の parentId / children[] に依存するコードが全面改修
-- ツリー順序（children の配列順）を GraphLink でどう表現するか（order フィールド追加が必要）
+- ツリー順序（children の配列順）を `GraphLink` でどう表現するか（order フィールド追加が必要）
 - パフォーマンス: 子ノード一覧取得が O(1) 配列参照から O(n) リンク走査になる
 - viewer.ts のツリーレイアウトが parentId / children 前提で構築されている
 - validate() の整合性チェックが根本的に再設計
@@ -245,7 +245,7 @@ interface GraphLink {
 
 ### 案 C: ハイブリッド（推奨）
 
-parentId / children[] はそのまま維持し、親子エッジの意味情報は「暗黙的 GraphLink」として自動生成/管理する。
+parentId / children[] はそのまま維持し、parent edgeの意味情報は「暗黙的 `GraphLink`」として自動生成/管理する。
 
 ```typescript
 // TreeNode: 構造は変えない
@@ -270,9 +270,9 @@ interface GraphLink {
 
 動作:
 1. **ツリー操作は parentId / children[] で行う**（既存コードそのまま）
-2. **Deep モードでエッジ情報が必要な場面では、TreeNode.edgeType を参照**
-3. **グラフ可視化時は、親子エッジも GraphLink として列挙する関数を提供**
-4. GraphLink に `structural: true` フラグで親子由来かどうかを区別
+2. **Deep モードでparent edge情報が必要な場面では、TreeNode.edgeType を参照**
+3. **グラフ可視化時は、parent edgeも `GraphLink` として列挙する関数を提供**
+4. `GraphLink` に `structural: true` フラグで親子由来かどうかを区別
 
 ```typescript
 // 親子エッジを GraphLink として列挙するユーティリティ
@@ -303,7 +303,7 @@ function getAllEdges(state: AppState): GraphLink[] {
 
 **欠点**:
 - 二重構造が完全には解消されない（ただし実用上は問題ない）
-- structural な GraphLink はリアルタイム生成であり、永続化されない
+- structural な `GraphLink` はリアルタイム生成であり、永続化されない
 
 **影響コード**: types.ts に edgeType? 追加、rapid_mvp.ts に edgeType 対応、新規ユーティリティ関数
 
@@ -311,7 +311,7 @@ function getAllEdges(state: AppState): GraphLink[] {
 
 ### 理由
 
-1. **M3E の設計思想との整合**: Rapid モードは軽快な操作が命。親子構造を GraphLink に統一すると、全操作が重くなる。案 C なら Rapid は何も変わらず、Deep でだけ拡張機能が有効になる
+1. **M3E の設計思想との整合**: Rapid モードは軽快な操作が命。親子構造を `GraphLink` に統一すると、全操作が重くなる。案 C なら Rapid は何も変わらず、Deep でだけ拡張機能が有効になる
 2. **段階的導入**: edgeType はオプショナルなので、既存データとの完全な後方互換性がある
 3. **オントロジー的正しさ**: getAllEdges() を通せば、全エッジを統一的に扱える。Deep モードの「体系的知識」ビューでこれを活用する
 4. **実装コスト**: types.ts に 1 フィールド追加 + ユーティリティ関数 1 つで最小限の実装が可能
@@ -352,9 +352,9 @@ UI では自由入力も許可しつつ、候補リストとしてこれらを�
 
 ## Open Questions
 
-1. **edgeType の表示**: Deep モードでエッジラベルをどう可視化するか（線上テキスト？色分け？アイコン？）-- visual チームとの相談が必要
+1. **edgeType の表示**: Deep モードでparent edgeラベルをどう可視化するか（線上テキスト？色分け？アイコン？）-- visual チームとの相談が必要
 2. **reparentNode 時の edgeType**: 移動先でも edgeType を引き継ぐか、リセットするか
-3. **GraphLink.attributes の追加**: GraphLink にも attributes を追加するか（案 C では構造的 GraphLink は仮想的なので、実体のある GraphLink にも attributes があると統一感が出る）
+3. **`GraphLink.attributes` の追加**: `GraphLink` にも attributes を追加するか（案 C では構造的 `GraphLink` は仮想的なので、実体のある `GraphLink` にも attributes があると統一感が出る）
 4. **edgeType vs edgeToParent**: 単一の string で十分か、オブジェクト（案 A の edgeToParent）にすべきか。最初は string で始めて、必要なら拡張する方針を推奨
 
 ## Next Action
@@ -454,13 +454,13 @@ type ThinkingMode = "flash" | "rapid" | "deep";
 | **DatatypeProperty** | `TreeNode.attributes` (Record<string, string>) | string 値のみ。型情報（数値・日付等）がない |
 | **partOf** | 親子関係が暗黙的に part-of を兼ねる | is-a と part-of の区別がない。同じ parentId で両方を表現 |
 | **Taxonomy** | フォルダ階層（scopeId による空間分割） | スコープ内では存在するが、スコープ横断の分類体系はない |
-| **ナレッジグラフ** | `AppState.links` (GraphLink の集合) | ノードがスコープに閉じる傾向があり、グラフの横断的活用が限定的 |
+| **ナレッジグラフ** | `AppState.links` (`GraphLink` の集合) | ノードがスコープに閉じる傾向があり、グラフの横断的活用が限定的 |
 | **オントロジー（スキーマ）** | 該当なし | M3E にはメタモデル（スキーマ定義）層がない |
 | **Restriction / Rule** | 該当なし | 制約やルールの表現手段がない |
 
 ### 2.3 M3E の強みと特徴
 
-- **ツリー + グラフのハイブリッド**: 親子構造（TreeNode）と横断リンク（GraphLink）の二層構造は、オントロジーの is-a 階層とアソシエーション関係の分離に近い
+- **ツリー + グラフのハイブリッド**: 親子構造（TreeNode）と横断リンク（`GraphLink`）の二層構造は、オントロジーの is-a 階層とアソシエーション関係の分離に近い
 - **attributes の柔軟性**: Record<string, string> は DatatypeProperty の簡易版として機能している
 - **スコープによる空間分割**: folder ノードがスコープ境界を作り、関心事ごとの知識空間を分離できる
 - **ThinkingMode**: Flash/Rapid/Deep の帯域概念は、同一データを異なる密度で扱う仕組みとして独自
@@ -533,21 +533,21 @@ Deep モードでは attributes の値に意味を持たせたい場面が増え
 #### 提案 D: Deep モードでのグラフ可視化強化
 
 オントロジーの本質は「関係の可視化」にある。Deep モードでは：
-- GraphLink を第一級の可視要素として扱い、関係のラベル・方向を常に表示
+- relation edge を第一級の可視要素として扱い、関係のラベル・方向を常に表示
 - relationType に応じたビジュアル分類（色・線種の自動割当）
 - 「このノードに繋がる全関係」の俯瞰ビュー（ナレッジグラフ的視点）
 
-**実装への影響**: 主に viewer.ts の描画ロジック変更。データモデル変更は不要だが、GraphLinkStyle の拡張は検討の余地あり。
+**実装への影響**: 主に viewer.ts の描画ロジック変更。データモデル変更は不要だが、`GraphLinkStyle` の拡張は検討の余地あり。
 
-#### 提案 E: 親子エッジへの型/属性付与（追加提案）
+#### 提案 E: parent edgeへの型/属性付与（追加提案）
 
-**問題**: 現在の M3E では親子エッジ（parentId / children[]）に一切のメタデータがない。
+**問題**: 現在の M3E ではparent edge（parentId / children[]）に一切のメタデータがない。
 ツリー上で「細胞 -> 幹細胞」の関係が is-a なのか part-of なのか、データとして区別できない。
 オントロジーではエッジの種類こそが知識の本質であり、これは Deep モード実現の根本的障壁。
 
 **推奨案（ハイブリッド方式）**: TreeNode に `edgeType?: string` を追加し、親への関係種別を保持する。
 ツリー構造（parentId / children[]）はそのまま維持し、Deep モードでのみ edgeType を活用する。
-グラフ可視化時には getAllEdges() ユーティリティで親子エッジも GraphLink として統一列挙する。
+グラフ可視化時には getAllEdges() ユーティリティでparent edgeも `GraphLink` として統一列挙する。
 
 ```typescript
 interface TreeNode {
@@ -564,9 +564,9 @@ interface TreeNode {
 
 | Phase | 内容 | データモデル変更 |
 |-------|------|-----------------|
-| 0 | **親子エッジの型付け（edgeType）** | **TreeNode に edgeType?: string 追加** |
+| 0 | **parent edgeの型付け（edgeType）** | **TreeNode に edgeType?: string 追加** |
 | 1 | relationType ボキャブラリの UI 候補提示 | なし |
-| 2 | GraphLink の Deep モード可視化強化 | なし（Style 拡張は任意） |
+| 2 | relation edge の Deep モード可視化強化 | なし（Style 拡張は任意） |
 | 3 | attributes 型ヒントの解釈・表示 | なし（規約ベース） |
 | 4 | メタノード導入の設計検討 | NodeType 拡張（要判断） |
 
@@ -634,7 +634,7 @@ Phase 0 を最優先とする理由: エッジに意味がなければ、他の�
 - **AI subagent の TCL 変換** はまさに「ナレッジグラフ ↔ 自然言語」の双方向変換
 - **edgeType + relationType** があれば、M3E のデータを Graph RAG のソースとして直接利用可能
   - TreeNode のツリー = SPO トリプルの Subject-Object
-  - edgeType / GraphLink.relationType = Predicate
+  - edgeType / `GraphLink.relationType` = Predicate
   - attributes = プロパティ
 
 ### 3記事の総合的含意
@@ -751,7 +751,7 @@ Source: `docs/research/ontology_scientific_research.md`
 | **Elicit** | 138M+ 論文へのアクセス。2026年3月に Research Agents + API 公開 | Deep（文献調査） | 論文検索・要約に特化。思考の構造化機能なし |
 | **scienceOS** | 230M+ 論文ベースの AI 研究ツール。論文と対話 | Deep（文献調査） | 同上。入力（論文）の管理であり構造化出力なし |
 | **Google AI Co-Scientist** | Gemini 2.0 ベース。仮説生成、実験プロトコル設計 | Deep（仮説生成） | 強力だが Google 内部ツール。ユーザーの知識体系を構築する場ではない |
-| **NotebookLM** | Google の AI 研究パートナー。2026年: infographic 生成、cinematic video、Gemini 統合、EPUB 対応 | Flash + Deep | ソース要約に強い。しかし**構造化・階層化・グラフリンクなし**。ノートブック = フラットなソース集合 |
+| **NotebookLM** | Google の AI 研究パートナー。2026年: infographic 生成、cinematic video、Gemini 統合、EPUB 対応 | Flash + Deep | ソース要約に強い。しかし**構造化・階層化・relation edge なし**。ノートブック = フラットなソース集合 |
 | **Consensus** | 科学論文からのエビデンスベース回答エンジン | Deep（検索） | 検索ツール。思考構造化なし |
 | **SciSpace** | 280M 論文、文献検索〜原稿ドラフトまでの AI Super Agent | Deep（文献〜執筆） | ワークフロー自動化。しかし知識の永続的構造化なし |
 
@@ -814,7 +814,7 @@ Source: `docs/research/ontology_scientific_research.md`
 | **自由属性定義** | `attributes: Record<string, string>` |
 | **認知境界 (scope)** | `scopeId`, folder ノード |
 | **参照構造 (alias)** | `nodeType: "alias"`, `targetNodeId` |
-| **グラフリンク** | `GraphLink` (relationType, direction, style) |
+| **relation edge** | `GraphLink` (relationType, direction, style) |
 | **ローカルファースト** | SQLite 永続化、オフライン動作 |
 | **AI 提案モデル** | Subagent (proposal/direct-result), 人間承認フロー |
 | **Linear 変換** | Tree <-> 自然言語の双方向変換 |
@@ -847,7 +847,7 @@ Source: `docs/research/ontology_scientific_research.md`
 │   │   └── 反証条件: Y が観測されたら棄却
 │   ├── 仮説 H2 (対立仮説)
 │   │   └── ...
-│   └── 仮説 H1 vs H2 比較 [GraphLink: H1 <-> H2, relationType: "competing"]
+│   └── 仮説 H1 vs H2 比較 [relation edge: H1 <-> H2, relationType: "competing"]
 ├── 実験設計 (scope)
 │   ├── 実験 E1 → H1 を検証 [alias → H1]
 │   └── 実験 E2 → H2 を検証 [alias → H2]
@@ -890,12 +890,12 @@ Source: `docs/research/ontology_scientific_research.md`
 研究室オントロジー (root)
 ├── 概念体系 (scope)
 │   ├── 上位概念: 細胞 [attributes: {type: "class"}]
-│   │   ├── 幹細胞 [GraphLink → 細胞, relationType: "is-a"]
+│   │   ├── 幹細胞 [relation edge → 細胞, relationType: "is-a"]
 │   │   │   ├── ES細胞
 │   │   │   └── iPS細胞
 │   │   └── 体細胞
 │   └── 上位概念: 分化
-│       ├── 分化誘導 [GraphLink → 幹細胞, relationType: "acts-on"]
+│       ├── 分化誘導 [relation edge → 幹細胞, relationType: "acts-on"]
 │       └── 脱分化
 ├── 実験プロトコル (scope)
 │   ├── プロトコル P1: iPS 樹立 [alias → iPS細胞]

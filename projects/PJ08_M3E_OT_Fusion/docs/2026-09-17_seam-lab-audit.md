@@ -24,9 +24,9 @@
 | seam／責務 | 【文面】目指している境界 | 【実装】確認できた段階 | 足りない面・昇格していない部分 |
 |---|---|---|---|
 | **Layout** | 可視グラフ＋ノード寸法 → 配置結果 | 共通`layout_port`、Layout Lab、通常Viewer・routing scopeからの呼び出しがある。実サーバーを使うcomposition testも存在 | ノード寸法の測定はViewer側。**これは入力契約上ただちに違反ではない**が、測定・描画との全体整合までLayout Lab単独では保証しない |
-| **EdgePort／EdgeRoute** | 親子関係・分岐方向・矩形 → 接続点と経路 | 共通実装、Lab、Viewerの親子edge、段階ナビゲーションに接続。実サーバーcomposition testも存在 | GraphLinkの幾何処理は別途Viewerに残る。**親子edge seamの未実装というより、GraphLink側が別責務として残っている** |
+| **EdgePort／EdgeRoute** | 親子関係・分岐方向・矩形 → 接続点と経路 | 共通実装、Lab、Viewerのparent edge、段階ナビゲーションに接続。実サーバーcomposition testも存在 | relation edgeの幾何処理は別途Viewerに残る。**parent edge seamの未実装というより、relation edge側が別責務として残っている** |
 | **NodeDraw** | 位置確定済みノード → ノード単体のSVG | 共通`renderNode`をNode LabとViewerが使用 | Viewerの`drawNode()`にはedge生成、folder preview、特殊component、再帰が残る。基本fragmentの接続は済んでいるが、描画全体の責任整理は未完。現行content型ではAgent Cardの多段情報を表せない |
-| **Progressive Navigation** | ナビゲーション木＋測定値＋viewport → 配置・親子edge・overflow | 共通`pn_layout`をLabと製品Workbenchが使用 | **Lab止まりではない。製品Workbenchには接続済み。** map-backed model、名称整合、実サーバーcompositionは仕様上の後続項目 |
+| **Progressive Navigation** | ナビゲーション木＋測定値＋viewport → 配置・parent edge・overflow | 共通`pn_layout`をLabと製品Workbenchが使用 | **Lab止まりではない。製品Workbenchには接続済み。** map-backed model、名称整合、実サーバーcompositionは仕様上の後続項目 |
 | **Disperse／力学配置** | グループ・関係・寸法 → 自由配置／力学配置 | sharedにWebCola実装がある。一方、通常Viewerは`subtype: "scatter"`を指定し、アニメーションはViewer内の別シミュレーションを使う | **力学そのものは存在するが、配置計算と対話的シミュレーションが一本化されていない。** OTの調整→再加熱→収束停止も共通seamとして接続されていない |
 | **resolveVisible／deriveRenderGraph／command** | 可視範囲解決／描画用データ導出／状態変更 | 開発体制文書に独立したdata seamとして列挙されている | 文書が描く一連の独立境界・共通契約としては確認できない。処理自体が存在しない、という意味ではない |
 | **操作状態・保存のseam** | selection、drag-node、edge-label-edit、scope-navigation、keyboard-command、render-surface、persistence-bridge | 統合契約文書に責務・共有資源・目標ownerが定義されている | 現在の`dev-beta`では、そこで指定する`SelectionStore`・`InteractionArbiter`等や、契約／資源競合検査コマンドを確認できない。**設計文面が実装より先行** |
@@ -56,8 +56,8 @@ OTの現行READMEは、**旧7断片routeを削除して2責務にした**と明�
 【文面：会話】9月15日の[Claude原文](/Users/akaghef/.claude/projects/-Users-akaghef-dev-M3E/b42b2149-877f-4255-b707-0135682679d0.jsonl:431)では、主に次が整理されています。
 
 - 基本NodeDrawの語彙とAgent Cardの必要情報が合っていない。
-- GraphLinkに`relationType`欄はあるが、型ごとの表示・操作へ接続されていない。
-- 一般ノードのhover詳細、GraphLinkからmail履歴を開く製品経路がない。
+- relation edgeに`relationType`欄はあるが、型ごとの表示・操作へ接続されていない。
+- 一般ノードのhover詳細、relation edgeからmail履歴を開く製品経路がない。
 - 描画境界を先に整えるか、データ契約を先に整えるか、最小fixtureで見える機能を先に通すか、という3案が残る。
 
 これは**障壁の分析と選択肢の提示**です。その発言だけを、採用済み実装方針とは扱えません。保存予定とされた`docs/barriers.md`も、現在のPJ08には見当たりません。

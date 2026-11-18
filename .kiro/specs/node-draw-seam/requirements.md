@@ -5,10 +5,10 @@
 **node-draw-seam** — positioned node を SVG/DOM fragment に描く nodeDraw seam と node-lab
 
 **(a) 誰の課題か**
-M3E Director / Codex worker / akaghef。特に `viewer.ts` の `drawNode()` が node 描画、parent-child edge 生成、folder preview、KaTeX、badge/lock/collapsed overlay、再帰 traversal を同時に持ち、layout / EdgePort / Markdown preview と結合している問題を解く。
+M3E Director / Codex worker / akaghef。特に `viewer.ts` の `drawNode()` が node 描画、parent edge 生成、folder preview、KaTeX、badge/lock/collapsed overlay、再帰 traversal を同時に持ち、layout / EdgePort / Markdown preview と結合している問題を解く。
 
 **(b) 現状**
-`beta/src/browser/viewer.ts` は `render()` 内に `drawNode()` を閉じ込め、`LayoutResult.pos` の `LayoutNodePosition` を直接読みながら SVG 文字列を連結している。`NodeStyleAttrs` / `m3e:style`、`uiLabel()` / `diagramLabel()`、`measureNodeLabel()` / `measureLayoutNode()`、KaTeX `foreignObject`、folder / alias / status / confidence / collapsed / scope lock の描画が同居する。さらに `drawNode()` の冒頭で child edge を生成し、folder preview 内では preview edge も生成するため、node-only drawing ではない。
+`beta/src/browser/viewer.ts` は `render()` 内に `drawNode()` を閉じ込め、`LayoutResult.pos` の `LayoutNodePosition` を直接読みながら SVG 文字列を連結している。`NodeStyleAttrs` / `m3e:style`、`uiLabel()` / `diagramLabel()`、`measureNodeLabel()` / `measureLayoutNode()`、KaTeX `foreignObject`、folder / alias / status / confidence / collapsed / scope lock の描画が同居する。さらに `drawNode()` の冒頭で parent edge を生成し、folder preview 内では preview edge も生成するため、node-only drawing ではない。
 
 **(c) 変えたいこと**
 node 描画を `nodeDraw` として typed seam 化し、layout 済み node を pixels(SVG/DOM fragment) に変換する純粋層にする。layout(位置) と EdgePort(接続) と Markdown/Mermaid preview から分離する。viewer と node-lab は同一 `node_draw_svg.ts` renderer を import し、lab-only 再実装や viewer 内 SVG 直生成を ratchet で禁止する。
@@ -16,7 +16,7 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
 ## Boundary Context
 
 - **In scope**: `.kiro/specs/node-draw-seam/` の spec 草案、`NodeDrawPort` 契約、style normalize、label split、plain/latex content adapter、`node_draw_svg.ts` shared renderer、`src/labs/node/node-lab.tsx`、fragment golden、node-lab Playwright、EN1-5 / jscpd / dependency-cruiser ratchet 設計。
-- **Out of scope**: この spec 作成時点での implementation code、`beta/` source 変更、package/workflow 変更、actual lab 実装、actual golden 採取、PR 作成、Markdown/Mermaid preview、Connection / EdgePort 実装、layout algorithm 変更、RenderGraph 全体 seam、tabular node component seam、folder preview mini graph seam。
+- **Out of scope**: この spec 作成時点での implementation code、`beta/` source 変更、package/workflow 変更、actual lab 実装、actual golden 採取、PR 作成、Markdown/Mermaid preview、edge / EdgePort 実装、layout algorithm 変更、RenderGraph 全体 seam、tabular node component seam、folder preview mini graph seam。
 - **Binding sources**:
   - `.kiro/steering/ui_view_taxonomy_and_ports.md`
   - `docs/03_Spec/map_layout_modes.md`
@@ -40,7 +40,7 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
   - surface: canonical Surface View + structured mode/root。
   - view state: transient selected / linkSource / cutPending / drag/drop / collapsed / scope lock。
 - **Current failure mode**:
-  - `drawNode()` は node-only fragment ではなく child edge と traversal も持つ。
+  - `drawNode()` は node-only fragment ではなく parent edge と traversal も持つ。
   - KaTeX measure/render が viewer-local DOM / global cache に閉じており、lab と product で同一描画を検証しにくい。
   - Markdown/Mermaid preview は `markdown_renderer.ts` の panel concern だが、node content と混同されやすい。
   - `measureLayoutNode()` の boxSizes は node content/style に依存し、layout 入力境界と nodeDraw 境界の接点になっている。
@@ -57,7 +57,7 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
 2. public contract は `renderNode(input: NodeDrawInput, adapters?: NodeDrawAdapters): NodeDrawOutput` 相当を export しなければならない。
 3. `NodeDrawInput` は node data、`position: LayoutNodePosition`、normalized style、view state、surface、content を入力にしなければならない。
 4. `NodeDrawOutput` は `{ svg: string, overlays?: string, bounds: NodeDrawBounds }` 相当を返さなければならない。
-5. output `svg` は node-only fragment であり、Connection、Markdown/Mermaid preview、canvas-level surface frame を含んではならない。
+5. output `svg` は node-only fragment であり、edge、Markdown/Mermaid preview、canvas-level surface frame を含んではならない。
 6. `renderNode` は AppState、global `viewState`、DOM canvas、current scope globals、network、persistence に依存してはならない。
 7. helper は shared module 内で module-private にし、product / lab / tests は public contract だけを呼ぶ設計でなければならない。
 
@@ -100,7 +100,7 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
 4. 第一 ratchet の ViewState sample は `selected / primary / cut / link-source / collapsed / scope-locked` を含まなければならない。
 5. 第一 ratchet の style sample は `fill / color / border / urgency / importance / status / confidence` を含まなければならない。
 6. node-lab samples は `plain / long wrap / multiline / root / folder / alias(read/write/broken) / selected / multi / cut / link-source / collapsed / scope-locked / fill / color / border / status / confidence / KaTeX` を含む設計でなければならない。
-7. Disperse scatter circle など Surface View 固有 shape は `NodeDrawSurface` と `position` から決まり、layout や edge route を呼んではならない。
+7. Disperse scatter circle など Surface View 固有 shape は `NodeDrawSurface` と `position` から決まり、layout や parent edge route を呼んではならない。
 
 ### Requirement 5: KaTeX belongs to nodeDraw through adapters
 
@@ -123,9 +123,9 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
 
 1. Markdown preview panel は `markdown_renderer.ts` / preview seam の concern とし、nodeDraw output に Markdown/Mermaid rendered HTML を含めてはならない。
 2. Mermaid block rendering は nodeDraw non-goal として記録しなければならない。
-3. parent-child edge は EdgePort / EdgeRoute seam の concern とし、nodeDraw renderer から edge path を生成してはならない。
-4. GraphLink は nodeDraw non-goal とし、nodeDraw input/output に GraphLink relation を含めてはならない。
-5. `drawNode()` 内の child edge 生成は implementation phase で `renderParentChildEdges` / EdgePort adapter 相当へ移す設計でなければならない。
+3. parent edge は EdgePort / EdgeRoute seam の concern とし、nodeDraw renderer から parent edge path を生成してはならない。
+4. relation edge は nodeDraw non-goal とし、nodeDraw input/output に relation edge relation を含めてはならない。
+5. `drawNode()` 内の parent edge 生成は implementation phase で `renderParentChildEdges` / EdgePort adapter 相当へ移す設計でなければならない。
 6. folder 内 preview edge / preview mini-node は nodeDraw 第一 ratchet の非目標とし、後続 `surfaceDraw` または `folderPreview` seam として扱わなければならない。
 7. `node_draw_svg.ts` は `edgePortPairBetweenRects`, `layoutEdgePath`, `smoothGraphLinkPath`, `markdown_renderer.ts` を import してはならない。
 
@@ -176,9 +176,9 @@ node 描画を `nodeDraw` として typed seam 化し、layout 済み node を p
 
 **根拠:** current `drawNode()` は KaTeX `foreignObject` を node body として描く一方、Markdown/Mermaid は `markdown_renderer.ts` の preview panel で描く。境界が異なる。
 
-### (c) child edge generation must leave `drawNode()`
+### (c) parent edge generation must leave `drawNode()`
 
-**決定:** `drawNode()` 内の child edge 生成は nodeDraw extraction の前提分離として扱う。nodeDraw renderer は parent-child edge path を生成しない。
+**決定:** `drawNode()` 内の parent edge 生成は nodeDraw extraction の前提分離として扱う。nodeDraw renderer は parent edge path を生成しない。
 
 **根拠:** node-only fragment と edge path が同じ関数にあると EdgePort seam と nodeDraw seam が相互に bypass になる。
 

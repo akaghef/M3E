@@ -1,7 +1,7 @@
 ---
 project: MathOntoBridge
 date: 2026-04-17
-topic: MathOntoBridge — Deep 帯域の GraphLink 多種エッジ化と外部オントロジー取込
+topic: MathOntoBridge — Deep 帯域の relation edge 多種エッジ化と外部オントロジー取込
 status: active
 owner: akaghef
 kickoff: 2026-04-17
@@ -10,7 +10,7 @@ related: README.md
 
 # MathOntoBridge — 実行計画
 
-> M3E の **Deep 帯域**（関係線 GraphLink）を多種 kind エッジで育て、外部オントロジー（Blueprint / Stacks / Wikidata 等）を流入可能にし、射影（科研費方向）の substrate を作る。
+> M3E の **Deep 帯域**（関係線 relation edge）を多種 kind エッジで育て、外部オントロジー（Blueprint / Stacks / Wikidata 等）を流入可能にし、射影（科研費方向）の substrate を作る。
 
 ## TL;DR
 
@@ -27,7 +27,7 @@ related: README.md
 
 | Phase | 行数 | 期間 | 帯域的役割 | 推し度 |
 |---|---|---|---|---|
-| 0. kind 語彙の受け皿 | 〜30 | 半日 | Deep の GraphLink 仕様を明確化 | ⭐⭐⭐ |
+| 0. kind 語彙の受け皿 | 〜30 | 半日 | Deep の relation edge 仕様を明確化 | ⭐⭐⭐ |
 | 1. kind 別レンダリング | 〜150 | 1-2日 | Deep 関係線の可視化強化 | ⭐⭐⭐ |
 | 2. kind フィルタ UI | 〜200 | 2-3日 | Deep の焦点切替 / 射影前処理 | ⭐⭐ |
 | 3. 外部 Deep 取込 importer | 〜250 | 3-5日 | 体系化（Rapid→Deep）の外部素材供給 | ⭐⭐ |
@@ -91,13 +91,13 @@ related: README.md
 
 ### 完了条件
 
-- 手動で 2-3 種類の kind を持つ GraphLink を作ると視覚的に区別できる
+- 手動で 2-3 種類の kind を持つ relation edge を作ると視覚的に区別できる
 - 既存の relationType 未指定リンクはフォールバック表示で壊れない
 
 ### 判断事項
 
 - 未知 kind（自由文字列）のフォールバック表示ルール
-- 親子 edge（Rapid 骨格）との視覚的区別は既存維持
+- parent edge（Rapid 骨格）との視覚的区別は既存維持
 
 ---
 

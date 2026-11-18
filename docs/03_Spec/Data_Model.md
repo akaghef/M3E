@@ -12,7 +12,7 @@ M3E の map を扱う正規の4区分を次のように定義する。語の入�
 | 区分 | 問い・定義 | 例・既存仕様との対応 |
 |---|---|---|
 | Content | What is represented? — 何を情報として表現するか。情報単位、主張、意味上の関係、根拠を含む | `Animalia`、`Porifera`、「Porifera は Animalia に属する」、provenance。node や relation が担う内容 |
-| Topology | How is it structured? — 情報をどのような要素・接続・順序・境界で組織するか | node、親子 `edge`、非木関係 `GraphLink`、`alias`、`scope`、`spine`、`children[]` の兄弟順序。本書と [Scope and Alias](./Scope_and_Alias.md) |
+| Topology | How is it structured? — 情報をどのような要素・接続・順序・境界で組織するか | node、`parent edge`、非木関係 `relation edge`、`alias`、`scope`、`spine`、`children[]` の兄弟順序。本書と [Scope and Alias](./Scope_and_Alias.md) |
 | Layout | Where is it placed? — 構造をどのように空間配置するか | 座標、direction、depth/breadth、間隔、接続経路の幾何。[Surface View](./map_layout_modes.md) の Tree / Axial / Radial / Disperse / System / Lane |
 | Style | How does it appear? — 各表示要素をどのように視覚表現するか | 色、形状、線種、書体、文字サイズ、強調。[Visual Design Guidelines](../04_Architecture/Visual_Design_Guidelines.md)、`m3e:style`、`NodeDrawStyle` |
 
@@ -20,7 +20,7 @@ M3E の map を扱う正規の4区分を次のように定義する。語の入�
 
 Content は存在論的な型付けを要求しない。情報の入力に「分類群」等の ontology を先に定義する必要はない。一方、M3E 上で node として構造化するときの `nodeType` と本書の不変条件は維持する。
 
-「Porifera は Animalia に属する」は Content である。それを `Animalia` の子 node として表すか、別 node 間の typed `GraphLink` として表すかは Topology の選択である。Content の意味上の関係と M3E の接続構造は同一ではない。親子 `edge` の意味は facet / 文脈に従い、無条件に「属する」を意味しない。GraphLink でも、関係の意味を label / type 等で識別できる必要がある。
+「Porifera は Animalia に属する」は Content である。それを `Animalia` の子 node として表すか、別 node 間の typed `relation edge` として表すかは Topology の選択である。Content の意味上の関係と M3E の接続構造は同一ではない。`parent edge` の意味は facet / 文脈に従い、無条件に「属する」を意味しない。relation edge でも、関係の意味を label / type 等で識別できる必要がある。
 
 Topology は Content の忠実性、既存 map 規約、明示的な構造制約を満たす必要がある。構造・配置・色から、入力にない主張や根拠を確定してはならない。例えば「生物 → 界 → 門」を明示的な階層要件として受け取った場合は、Content だけでなく Topology の制約も入力されている。別の接続方式へ黙って変更しない。
 
@@ -30,7 +30,7 @@ Topology は Content の忠実性、既存 map 規約、明示的な構造制約
 
 Surface View の切替は同じ永続 Topology の表示方式を変える。`collapse` は永続的な接続・兄弟順序・scope 境界を変更せず、可視グラフを縮約する表示操作である。縮約結果は Layout の入力に影響するが、永続 Topology の編集と混同しない。collapse 状態自体を保存する場合もこの区別は変わらない。
 
-GraphLink の配置への寄与は [Surface View 仕様](./map_layout_modes.md) に従う。Tree の部分木配置には寄与せず、force 配置では張力の入力になり得る。この依存は GraphLink を親子 `edge` に変えるものではない。
+relation edge の配置への寄与は [Surface View 仕様](./map_layout_modes.md) に従う。Tree の部分木配置には寄与せず、force 配置では張力の入力になり得る。この依存は relation edge を`parent edge` に変えるものではない。
 
 ### Layout と Style
 
@@ -64,7 +64,7 @@ GraphLink の配置への寄与は [Surface View 仕様](./map_layout_modes.md) 
 
 思考要素の最小単位。型（`nodeType`）を持つ。
 
-### Edge
+### parent edge
 
 主構造を表す親子関係。  
 M3E の骨格は親から子への有向ツリーとする。
@@ -93,7 +93,7 @@ M3E のノードは **実体ノード** と **参照ノード** の 2 種に大�
 3. **scope に所属する**: 親チェーンから導出される 1 つの scope に属する
 4. **直接編集できる**: 所属 scope 内から直接編集可能
 5. **alias の target になれる**: 参照ノードの参照先として指定できる
-6. **Link の endpoint になれる**: GraphLink の source/target として指定できる
+6. **Link の endpoint になれる**: relation edge の source/target として指定できる
 
 #### 参照ノードの共通性質
 
@@ -230,29 +230,29 @@ HTML object は `nodeType` ではなく、実体ノードに付与される表�
 - MVC と command: [../04_Architecture/MVC_and_Command.md](../04_Architecture/MVC_and_Command.md)
 - Freeplane への写像: [../competitive_research/freeplane/Freeplane_Data_Model_Mapping.md](../competitive_research/freeplane/Freeplane_Data_Model_Mapping.md)
 
-## Edge and Link Separation
+## parent edge と relation edge
 
-M3E should distinguish `Edge` and `Link` as different concepts.
+M3E の edge は、木の所有関係を表す parent edge と、木の外側の関係を表す relation edge に分かれる。
 
-### Edge
+### parent edge
 
 - expresses the primary parent-child tree structure
 - is part of the structural graph
 - participates in layout
 - is always derived from ownership relation
 
-### Link
+### relation edge
 
 - expresses non-tree relation between nodes
 - is an overlay relation, not a structural ownership relation
-- does not participate in layout
+- Tree の部分木配置には寄与せず、force 配置への寄与は [Surface View 仕様](./map_layout_modes.md) に従う
 - may later support relation type, label, direction, or styling
 
-## Graph-level Link 仕様
+## relation edge 仕様
 
 ### 目的
 
-`Link` は tree の外側にある意味関係を表す。
+`relation edge` は tree の外側にある意味関係を表す。
 
 - 因果
 - 参照
@@ -260,12 +260,12 @@ M3E should distinguish `Edge` and `Link` as different concepts.
 - 対比
 - 関連
 
-`Link` は親子の `Edge` を置き換えるものではない。
-構造は `Edge`、非木関係は `Link` として分離する。
+`relation edge` は親子の `parent edge` を置き換えるものではない。
+構造は `parent edge`、非木関係は `relation edge` として分離する。
 
 ### 保存単位
 
-`Link` は node に埋め込まず、document 全体の relation 集合として持つ。
+`relation edge` は node に埋め込まず、document 全体の relation 集合として持つ。
 
 ```typescript
 interface AppState {
@@ -286,7 +286,7 @@ interface GraphLink {
 }
 ```
 
-`GraphLink.attributes` は関係に付随する任意のカスタムデータを key-value で保持する。関係の実現段階などが表す情報は Content、値を線種へ写す規則は Style として扱う。このプロパティは仕様のみで、現行 `beta/src/shared/types.ts` と `beta/src/browser/viewer.globals.d.ts` の GraphLink 型には未実装である。
+`GraphLink.attributes` は関係に付随する任意のカスタムデータを key-value で保持する。関係の実現段階などが表す情報は Content、値を線種へ写す規則は Style として扱う。このプロパティは仕様のみで、現行 `beta/src/shared/types.ts` と `beta/src/browser/viewer.globals.d.ts` の `GraphLink` 型には未実装である。
 
 Beta では `links` は optional でよい。
 未実装 viewer と既存 save data を壊さないためである。
@@ -296,11 +296,11 @@ Beta では `links` は optional でよい。
 #### 1. endpoint の存在
 
 - `sourceNodeId` と `targetNodeId` は、保存時点で実在ノードを指す必要がある
-- どちらかが欠けた `Link` は broken relation として保存しない
+- どちらかが欠けた `relation edge` は broken relation として保存しない
 
 #### 2. alias endpoint
 
-- `Link` の endpoint は実体ノードを既定対象とする
+- `relation edge` の endpoint は実体ノードを既定対象とする
 - alias ノードを endpoint として許可するかは Beta では保留とする
 - Beta 実装の既定は「alias endpoint を禁止」でよい
 
@@ -309,21 +309,21 @@ Beta では `links` は optional でよい。
 - `sourceNodeId === targetNodeId` の self link は既定では禁止する
 - 特殊用途が必要になった時だけ再検討する
 
-#### 4. layout 非参加
+#### 4. Tree の部分木配置
 
-- `Link` は node 座標決定に影響しない
-- `Link` の追加・削除だけで subtree placement を変えない
+- relation edge の配置への寄与は [Surface View 仕様](./map_layout_modes.md) に従う
+- relation edge の追加・削除だけで Tree の subtree placement を変えない
 
 #### 5. ownership 非参加
 
-- `Link` は所有権や親子順序を変えない
-- `Link` は `scope` 所属決定の根拠に使わない
-- `Link` は delete / reparent / alias 規則を上書きしない
+- `relation edge` は所有権や親子順序を変えない
+- `relation edge` は `scope` 所属決定の根拠に使わない
+- `relation edge` は delete / reparent / alias 規則を上書きしない
 
 ### node-level `link` との分離
 
 - `TreeNode.link` は URL や外部参照などの node 属性である
-- `GraphLink` は node 間の relation line である
+- `relation edge` は node 間の relation line である
 - 名前が似ていても、保存場所・意味・描画方法は別である
 
 ### 操作単位
@@ -340,13 +340,13 @@ node 編集 command と混在させない。
 
 #### node delete
 
-- endpoint node が削除されたら、接続している `Link` は同時に削除する
-- broken endpoint を持つ `Link` を残さない
+- endpoint node が削除されたら、接続している `relation edge` は同時に削除する
+- broken endpoint を持つ `relation edge` を残さない
 
 #### node move / reparent
 
-- `Link` は endpoint の ID 参照を維持する
-- node が別親や別 scope に移動しても `Link` 自体は消えない
+- `relation edge` は endpoint の ID 参照を維持する
+- node が別親や別 scope に移動しても `relation edge` 自体は消えない
 - ただし viewer は scope 表示ポリシーに応じて非表示にしてよい
 
 ### Beta 実装で先に固定すること
@@ -355,7 +355,7 @@ node 編集 command と混在させない。
 - endpoint は実体ノードのみを対象とする
 - self link は禁止する
 - layout 非参加を前提に overlay 描画とする
-- node-level `link` と graph-level `Link` を絶対に混同しない
+- node-level `link` と graph-level `relation edge` を絶対に混同しない
 
 ### Beta 実装でまだ保留にすること
 
@@ -368,10 +368,10 @@ node 編集 command と混在させない。
 
 ### Important Note
 
-Freeplane-imported node-level `link` values and future graph-level `Link` relations are not the same thing.
+Freeplane-imported node-level `link` values and future graph-level `relation edge` relations are not the same thing.
 
 - node-level `link`: external or attached link stored on a node
-- graph-level `Link`: relation line between nodes inside the map
+- graph-level `relation edge`: relation line between nodes inside the map
 
 These must remain separate in model design.
 

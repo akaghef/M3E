@@ -9,7 +9,7 @@
 ## Canonical 正本（参照先）
 
 - **決定**: `docs/09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md`（DC1〜DC17）、`ADR_009` §2/§3。
-- **既存用語**: `docs/00_Home/Glossary.md` — `scope` / `alias` / `edge` / `GraphLink` / `射影` / `facet` / `provenance` はここが正本。**再定義しない。**
+- **既存用語**: `docs/00_Home/Glossary.md` — `scope` / `alias` / `edge` / `parent edge` / `relation edge` / `射影` / `facet` / `provenance` はここが正本。**再定義しない。**
 - **Surface View / port**: `.kiro/steering/ui_view_taxonomy_and_ports.md`。
 - **思想の出典**: `docs/ideas/260808_agent_mapping_plugin_boundary.md`（会話ログであって決定ではない）。
 
@@ -43,7 +43,7 @@
 
 2. **無修飾の `projection` / `射影` を使わない。** Glossary は無修飾の「射影」を **Deep → Rapid** に予約している。agent 文脈では必ず修飾する: `runtime projection` / `observation projection` / `edge-type projection`。storage・index 側の derived read model は Glossary どおり `materialization` と呼ぶ。
 
-3. **`edge` の三義を分離する。** 親子構造は tree `edge`、非木の typed relation は `GraphLink`（`relationType` を持つ）、agmsg の message は **transport evidence** であって M3E の edge ではない。message から `GraphLink` を作るのは、evidence が endpoint を確定できる場合に限る（DC14 / DC16）。
+3. **edge の定義**: edge は線の総称で、親子構造は parent edge、非木の typed relation は relation edge とする。agmsg の message は **transport evidence** であり、endpoint を確定できる evidence から relation edge を作る（DC14 / DC16）。
 
 4. **state を混ぜない。** lifecycle / delivery / raw の3系統は別 namespace に置く。provider の raw state は M3E lifecycle state へ写像するのみで、**第二の lifecycle 語彙を作らない**。観測できない state を語彙に入れない（実装が生成しない語は ADR_010 の「実装のない予約席」に当たる）。
 

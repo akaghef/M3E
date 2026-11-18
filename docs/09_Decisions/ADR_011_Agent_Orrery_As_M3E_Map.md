@@ -35,7 +35,7 @@ Why / What / Who / Now / With-what を typed edge で接続し、Surface 側で 
 
 **1. 引き継いだ設計会話（2026-08-24）**
 node core を最小に保ち capability を積む、layout への契約は box size のみ、
-WebGL = 空間 / HTML = node UI、GraphLink は route solver で解いて freeze、という整理。
+WebGL = 空間 / HTML = node UI、relation edge は route solver で解いて freeze、という整理。
 ただしこの会話は **viewer 内 capability plugin（`plugin.register({renderNode})`）を前提**にしており、
 ADR_009 §3 の「viewer への in-process 拡張点は作らない」と正面から衝突していた。
 `plugin` という語が二義になっていた。
@@ -438,7 +438,7 @@ prototype の Claude 過剰カウントは、まさにこの層で症状とし�
 - `playground/agent-orrery` は ADR_009 で「参照実装に降格」とされたが、実際には実データで稼働している唯一の実装である。**参照であって正本ではない**という位置づけは維持しつつ、状態語彙・描画要素・観測経路は参照する。
 - plugin 契約（登録 / 発見 / 起動 / 停止 / health / version / 認証）は依然として未定だが、DC1 により **今回はその契約を作らずに進める**。out-of-process スクリプトが map に書くだけで成立する。汎用 plugin API の凍結（ADR_009 §3）を継続する。
 - `NodeDrawContent` に agent 表示要素（avatar / 状態 / 直近発言 / 経過時間）の語彙が無い。node seam lab での調整対象はここになる。
-- `drawNode()` に edge 生成・folder preview・component 描画が残っている（`beta/src/browser/viewer.ts:7551-7580`）ため、agent node の描画要素を触ると viewer 本体へ波及しうる。
+- `drawNode()` に parent edge 生成・folder preview・component 描画が残っている（`beta/src/browser/viewer.ts:7551-7580`）ため、agent node の描画要素を触ると viewer 本体へ波及しうる。
 
 ## Open
 

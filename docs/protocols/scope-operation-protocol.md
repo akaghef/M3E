@@ -32,7 +32,7 @@ A good scope:
 
 - Move when the entity's canonical ownership changes.
 - Alias when another scope needs visibility without moving ownership.
-- GraphLink when the relationship is non-tree and should not affect ownership or layout.
+- relation edge when the relationship is non-tree and should not affect ownership or Tree subtree placement; force placement follows the Surface View specification.
 
 ## Worker boundary
 

@@ -31,7 +31,7 @@ Python で root の text が「研究」の行を選び、Node.js の `Buffer.by
 | field | バイト | 比率 |
 |---|---:|---:|
 | `nodes` | 7,712,037 | 96.79513% |
-| `links`（GraphLink） | 2 | 0.00003% |
+| `links`（relation edge） | 2 | 0.00003% |
 | `linearNotesByScope` | 137,149 | 1.72138% |
 | `scopes` | 6,811 | 0.08549% |
 | `surfaces` | 111,244 | 1.39624% |
@@ -53,7 +53,7 @@ linear-text の「saved」表示は保存完了待ちではなく、自動保存
 
 `currentState` 全体を複製し、各 node 全体の変更・追加・削除だけを比較・適用します。`links`、`linearNotesByScope`、`scopes`、`surfaces`、`annotations`、表示設定、`rootId` の local 変更はマージ対象外です。[start_viewer.ts:2764–2811](../../../beta/src/node/start_viewer.ts:2764)
 node 内の `nodeType`・`scopeId`・attributes は node として扱われます。top-level の scope データとは区別が必要です。
-**読み取り専用の診断実行**として HEAD の同関数をメモリ上で実行し、GraphLink・linear-text・scope データ等を落としても `ok:true` になることを確認しました。DB 保存・ブラウザー再現ではありません。
+**読み取り専用の診断実行**として HEAD の同関数をメモリ上で実行し、relation edge・linear-text・scope データ等を落としても `ok:true` になることを確認しました。DB 保存・ブラウザー再現ではありません。
 マージ後の検証が通れば、保存して HTTP 200／`merged:true` を返します。[start_viewer.ts:2637–2662](../../../beta/src/node/start_viewer.ts:2637)
 
 ### 5. CONFIRMED：内容未適用でも保存基準時刻が進む
@@ -80,7 +80,7 @@ node 内の `nodeType`・`scopeId`・attributes は node として扱われま�
 | Flash jobs生成完了・再開・`retry-import` | `m3e_create(import_structure)`へ到達 | 上記MCPと同じ | あり。[flash_jobs.ts:35](../../../beta/src/node/flash_jobs.ts:35)、[flash_jobs.ts:54–66](../../../beta/src/node/flash_jobs.ts:54)、[flash_jobs.ts:108–119](../../../beta/src/node/flash_jobs.ts:108) |
 | 旧 Flash draft `approve` | 全状態を読み、追加後に全置換 | 単文、競合確認なし | **なし**。[start_viewer.ts:1931–1953](../../../beta/src/node/start_viewer.ts:1931) |
 | `PUT/DELETE /api/maps/:id/linear/:scope` | 全状態を読み、linear-text変更後に全置換 | PUTは**body受信前に読込**。単文、競合確認なし | あり。[start_viewer.ts:1615–1705](../../../beta/src/node/start_viewer.ts:1615) |
-| GraphLink `POST .../links`／`DELETE .../links/:link` | 全状態を読み、変更後に全置換 | 作成はbody受信前に読込。単文、競合確認なし | あり。[start_viewer.ts:2231–2320](../../../beta/src/node/start_viewer.ts:2231) |
+| relation edge `POST .../links`／`DELETE .../links/:link` | 全状態を読み、変更後に全置換 | 作成はbody受信前に読込。単文、競合確認なし | あり。[start_viewer.ts:2231–2320](../../../beta/src/node/start_viewer.ts:2231) |
 | `.../subtree/append-mf-h` | 全状態を読み、追加後に全置換 | 単文、任意の`baseSavedAt`事前確認のみ | あり。[start_viewer.ts:3209–3249](../../../beta/src/node/start_viewer.ts:3209) |
 | `.../rapid/mapify-oracle` | 同上 | 単文、任意の`baseSavedAt`事前確認のみ | あり。[start_viewer.ts:3287–3352](../../../beta/src/node/start_viewer.ts:3287) |
 | `.../cas/pn-generate` | 全状態を読み、生成待機後に全置換 | 任意の時刻確認は**生成前だけ**。確定時再確認なし | あり。[start_viewer.ts:3405–3499](../../../beta/src/node/start_viewer.ts:3405) |
@@ -134,7 +134,7 @@ auditは別JSONLで、collab経路の操作名・対象・version等を保存し
 仕様4.2の `commandId/actor/targetRef/intent/baseRevision/provenance/approvalState` を満たす共通map書込契約は確認できません。文書自身も Definition only です。[Command_Language.md:5](../../../docs/03_Spec/Command_Language.md:5)、[Command_Language.md:158–170](../../../docs/03_Spec/Command_Language.md:158)
 MCPにはtarget参照・操作・expected revision、Flash importには重複防止keyがあります。ただし、確定時は全状態置換です。[mcp_service.ts:367–480](../../../beta/src/node/mcp_service.ts:367)
 System DiagramのCommandとORRERYのCommandは別契約です。[system_diagram_command_types.ts:10–15](../../../beta/src/shared/system_diagram_command_types.ts:10)、[orrery_seam_interface.ts:104–111](../../../beta/src/shared/orrery_seam_interface.ts:104)
-**node・edge・GraphLink・linear-textを全状態置換なしで確定するAPIは確認できません。** 例外はtags等のmap列更新・map行削除で、7 節のとおり部分SQLです。
+**node・parent edge・relation edge・linear-textを全状態置換なしで確定するAPIは確認できません。** 例外はtags等のmap列更新・map行削除で、7 節のとおり部分SQLです。
 
 ### 12. PARTIAL：通常経路はapp server経由。DB全体の単一writer制約はない
 
@@ -146,16 +146,16 @@ BrowserとMCP transportはSQLiteを直接書きません。MCP serverはapp serv
 ### 13. CONFIRMED：追加の欠落経路あり。実使用での発生は未確認
 
 **別tab：** BroadcastChannel受信は未保存確認なしで状態と基準を交換し、linear-textの別保持値をhydrateしません。次の保存はその古い別保持値をstateへ戻すため、受信済みlinear-textも上書きし得ます。[viewer.ts:13156–13169](../../../beta/src/browser/viewer.ts:13156)、[viewer.ts:2399–2403](../../../beta/src/browser/viewer.ts:2399)、[viewer.ts:12763–12765](../../../beta/src/browser/viewer.ts:12763)
-**collab保存：** 通常保存がscope pushへ分岐すると送るのは `changes.nodes` だけ。linear-text・GraphLink等を送らず、node適用成功で保存成功を返し得ます。[viewer.ts:12795–12796](../../../beta/src/browser/viewer.ts:12795)、[viewer.ts:10449–10506](../../../beta/src/browser/viewer.ts:10449)
-**非同期処理：** 生成前に全状態を読んだ `cas/pn-generate`、body受信前に読んだlinear-text／GraphLink作成、非同期Vault importは、待機中の別保存を無条件全置換で落とし得ます。7 節の該当箇所が根拠です。
-**Vault再import：** 生成状態は `{rootId,nodes,links:{}}`。既存のGraphLink・linear-text・scope付属データを引き継ぐ全状態マージではありません。[vault_importer.ts:473–477](../../../beta/src/node/vault_importer.ts:473)
+**collab保存：** 通常保存がscope pushへ分岐すると送るのは `changes.nodes` だけ。linear-text・relation edge等を送らず、node適用成功で保存成功を返し得ます。[viewer.ts:12795–12796](../../../beta/src/browser/viewer.ts:12795)、[viewer.ts:10449–10506](../../../beta/src/browser/viewer.ts:10449)
+**非同期処理：** 生成前に全状態を読んだ `cas/pn-generate`、body受信前に読んだlinear-text／relation edge作成、非同期Vault importは、待機中の別保存を無条件全置換で落とし得ます。7 節の該当箇所が根拠です。
+**Vault再import：** 生成状態は `{rootId,nodes,links:{}}`。既存のrelation edge・linear-text・scope付属データを引き継ぐ全状態マージではありません。[vault_importer.ts:473–477](../../../beta/src/node/vault_importer.ts:473)
 **cloud定期push：** server側callbackはbase時刻・versionを毎回nullにし、競合判定は基準なしを非競合とします。別PCのcloud状態を上書きし得ます。現在の有効化状態は未確認です。[start_viewer.ts:3937–3939](../../../beta/src/node/start_viewer.ts:3937)、[cloud_sync.ts:25–45](../../../beta/src/node/cloud_sync.ts:25)
 **更新取りこぼし：** SSE接続開始は接続コメントのみで現状態の照合・過去通知replayがなく、非表示中は切断します。通知しないrestore／rename／旧Flash承認と合わせ、古い状態からの次回保存に注意が必要です。[start_viewer.ts:392–400](../../../beta/src/node/start_viewer.ts:392)、[viewer.ts:13233–13240](../../../beta/src/browser/viewer.ts:13233)
 履歴照会 `git log --since='2026-10-23 00:00:00 +0900' -- <対象paths>` では、保存関連の変更は「Concreteness Axis導入」と「表示・scope復帰・Vault部分木出力の補完」。canonical状態を保存・Undo・別tab通知に使う変更があります。[viewer.ts:4229–4247](../../../beta/src/browser/viewer.ts:4229)、[vault_exporter.ts:178](../../../beta/src/node/vault_exporter.ts:178)
 同期間に `rapid_mvp/start_viewer/mcp_service/flash_jobs/cloud_sync/vault_watch/vault_importer/collab` の変更はありません。外部コピーの作成時刻が不明なので、10月23日未明の変更を含むかは **UNKNOWN** です。
 
 最重大経路：外部通知で時刻だけ前進→内容未適用→古い全状態を保存→外部編集を成功応答付きで上書きし得ます（5・6 節）。  
-競合マージでは、linear-text・GraphLink等のlocal変更を反映せず成功することをメモリ上の診断で確認しました（4 節）。  
+競合マージでは、linear-text・relation edge等のlocal変更を反映せず成功することをメモリ上の診断で確認しました（4 節）。<br>
 「研究」は20,150 node・7,967,381バイトで、現在と基準を二重送信する推計要求は15,934,889バイト、上限超過です（2 節）。  
 「研究が現在、実際に編集を失っているか」は **UNKNOWN**：今回は保存要求・失敗応答・再読み込み前後を実測していません。  
 次の一手：Directorは7 節の全書込経路と、基準状態・確定応答・journal・復旧・外部保存先を、一度の移行範囲として確定してください。

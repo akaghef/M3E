@@ -6,9 +6,9 @@
 
 - [ ] 1. Confirm current node drawing implementation surface
   - **Boundary:** investigation only.
-  - Inspect `viewer.ts` `NodeStyleAttrs`, `uiLabel`, `diagramLabel`, `measureNodeLabel`, `measureLayoutNode`, KaTeX helpers, `render()`, `drawNode()`, collapsed/status/confidence/lock/alias branches, child edge generation, folder preview generation, and `markdown_renderer.ts`.
+  - Inspect `viewer.ts` `NodeStyleAttrs`, `uiLabel`, `diagramLabel`, `measureNodeLabel`, `measureLayoutNode`, KaTeX helpers, `render()`, `drawNode()`, collapsed/status/confidence/lock/alias branches, parent edge generation, folder preview generation, and `markdown_renderer.ts`.
   - Record exact current symbols and files in implementation handoff.
-  - **Acceptance:** handoff lists current node style helpers, label helpers, KaTeX helpers, node fragment branches, child edge branch, folder preview branch, and Markdown/Mermaid preview boundary.
+  - **Acceptance:** handoff lists current node style helpers, label helpers, KaTeX helpers, node fragment branches, parent edge branch, folder preview branch, and Markdown/Mermaid preview boundary.
 
 - [ ] 2. Add failing type contract test for future NodeDrawPort
   - **Boundary:** `beta/tests/unit/node_draw_contract.test.ts` or equivalent.
@@ -29,7 +29,7 @@
   - Define node input, style, transient view state, surface, content, bounds, output, and KaTeX adapter types.
   - Import or reference `LayoutNodePosition` from shared `layout_port.ts`.
   - Include canonical Surface View names only.
-  - Do not import `viewer.ts`, DOM canvas globals, `markdown_renderer.ts`, EdgePort modules, AppState, or GraphLink.
+  - Do not import `viewer.ts`, DOM canvas globals, `markdown_renderer.ts`, EdgePort modules, AppState, or `GraphLink`.
   - **Acceptance:** task 2 type imports compile; contract has no Markdown/Mermaid or edge relation fields.
 
 - [ ] 5. Implement first shared `node_draw_svg.ts` renderer for plain/root/folder basics
@@ -73,17 +73,17 @@
 
 ## Phase 3: Edge and Preview Separation Before Product Migration
 
-- [ ] 11. Write failing/product-pending test for child edge separation
+- [ ] 11. Write failing/product-pending test for parent edge separation
   - **Boundary:** product adapter or render helper tests.
-  - Assert parent-child edge path generation is outside node renderer and can run independently from `renderNode()`.
-  - **Acceptance:** test fails or is pending until child edge generation no longer lives inside the node drawing branch.
+  - Assert parent edge path generation is outside node renderer and can run independently from `renderNode()`.
+  - **Acceptance:** test fails or is pending until parent edge generation no longer lives inside the node drawing branch.
 
-- [ ] 12. Move parent-child edge generation out of `drawNode()`
+- [ ] 12. Move parent edge generation out of `drawNode()`
   - **Boundary:** `beta/src/browser/viewer.ts` or narrow browser helper file.
   - Create transitional `renderParentChildEdges(...)` helper if EdgePort migration is not complete.
-  - Preserve current Tree/Radial/etc. product behavior while ensuring node renderer does not produce edge paths.
-  - Do not move edge logic into `node_draw_svg.ts`.
-  - **Acceptance:** product output still includes parent-child edges; nodeDraw fragment output contains no `<path class="edge...">`; future EdgePort migration has a single edge adapter target.
+  - Preserve current Tree/Radial/etc. product behavior while ensuring node renderer does not produce parent edge paths.
+  - Do not move parent edge logic into `node_draw_svg.ts`.
+  - **Acceptance:** product output still includes parent edges; nodeDraw fragment output contains no `<path class="edge...">`; future EdgePort migration has a single parent edge adapter target.
 
 - [ ] 13. Isolate folder preview from nodeDraw first ratchet
   - **Boundary:** `beta/src/browser/viewer.ts` or narrow browser helper file.
@@ -109,13 +109,13 @@
 - [ ] 16. Migrate `drawNode()` node fragment generation to `node_draw_svg.renderNode`
   - **Boundary:** `beta/src/browser/viewer.ts`, adapter file only.
   - Replace root/plain/folder/alias/status/confidence/collapsed/lock/latex direct node SVG generation with shared renderer calls.
-  - Keep traversal, max bounds update, edge layers, graph links, annotations, surface frames, and preview helper orchestration in viewer.
+  - Keep traversal, max bounds update, parent edge layers, relation edges, annotations, surface frames, and preview helper orchestration in viewer.
   - **Acceptance:** browser build/typecheck pass; fragment parity tests pass; `viewer.ts` no longer directly concatenates node body/status/confidence/collapsed/lock/latex fragments except for explicitly out-of-scope node components or folder preview helpers.
 
 - [ ] 17. Tighten dependency-cruiser nodeDraw ratchet
   - **Boundary:** `beta/dependency-cruiser.config.cjs` or existing depcruise config.
   - Forbid `src/labs/node/**` from importing `src/browser/**`.
-  - Forbid `src/shared/node_draw_svg.ts` from importing browser implementation, `markdown_renderer.ts`, edge route/geometry modules, or labs.
+  - Forbid `src/shared/node_draw_svg.ts` from importing browser implementation, `markdown_renderer.ts`, parent edge route/geometry modules, or labs.
   - If renderer internals split, allow product/lab to import only the public nodeDraw entrypoint.
   - **Acceptance:** `npm run lint:deps` fails with a temporary bypass import and passes after removing it.
 
@@ -159,7 +159,7 @@
   - **Boundary:** lab files only.
   - Render fixed positioned samples with no layout or edge calls.
   - Provide sample selector, canonical Surface View selector, input summary, output bounds, and fragment diff panel.
-  - **Acceptance:** lab can switch every initial sample and recompute through shared renderer; no parent-child edge appears in lab canvas.
+  - **Acceptance:** lab can switch every initial sample and recompute through shared renderer; no parent edge appears in lab canvas.
 
 - [ ] 24. Add node-lab Playwright checks
   - **Boundary:** Playwright e2e or existing browser test fit.
@@ -208,16 +208,16 @@
 
 - [ ] 30. Verify exclusive seam by negative inspection
   - **Boundary:** code review / grep.
-  - Confirm `node_draw_svg.ts` does not import browser implementation, Markdown renderer, edge helpers, or labs.
+  - Confirm `node_draw_svg.ts` does not import browser implementation, Markdown renderer, parent edge helpers, or labs.
   - Confirm `src/labs/node/**` imports shared contracts, not `src/browser/**`.
   - Confirm viewer node fragment generation enters through `renderNode`.
-  - Confirm parent-child edge generation is outside node renderer.
+  - Confirm parent edge generation is outside node renderer.
   - Confirm folder preview remains viewer-owned helper and is not in `node_draw_svg`.
   - Confirm tabular component remains excluded from first ratchet and is documented as follow-up seam.
   - **Acceptance:** negative inspection results are included in final handoff.
 
 - [ ] 31. Director handoff
   - **Boundary:** final report / PR body.
-  - Report changed files, checks run, node-lab URL/usage, golden samples included, KaTeX adapter result, edge/preview separation result, EN5-Lite result, EN5-Full follow-up, and residual risks.
+  - Report changed files, checks run, node-lab URL/usage, golden samples included, KaTeX adapter result, parent edge/preview separation result, EN5-Lite result, EN5-Full follow-up, and residual risks.
   - Explicitly state whether skill mirrors or durable rules were changed.
   - **Acceptance:** Director can review the nodeDraw seam ratchet without reading implementation history.

@@ -94,14 +94,14 @@ Navigate はノードを選択・移動・操作する状態、Edit は選択ノ
 | Mod+C / X / V / A / Z | 部分木コピー / カット / 貼付 / 全ノード選択 / マップ Undo | Navigate |
 | 文字キー | 定義済みの操作のみ。自動で Edit に入らない | Navigate |
 
-### Connection を選択・編集中
+### edge を選択・編集中
 
-Connection 選択はnode編集とは別の対象を持つ。Alt+矢印で Connection を選択し、
-F2でそのラベルを編集する。編集開始時の対象を固定し、親子edgeはchildの
-`m3e:edge-label`、GraphLinkは`label`だけを変更する。Enter / blurで確定、Escで取消。
+edge 選択はnode編集とは別の対象を持つ。Alt+矢印で edge を選択し、
+F2でそのラベルを編集する。編集開始時の対象を固定し、parent edgeはchildの
+`m3e:edge-label`、relation edgeは`label`だけを変更する。Enter / blurで確定、Escで取消。
 node編集のEsc（変更を保持）と混同しない。
-単一GraphLinkのport・style・direction・Deleteは既存のUndo・保存経路に接続する。
-集約線の編集、親子edgeのDelete、読み取り専用の変更は拒否する。
+単一relation edgeのport・style・direction・Deleteは既存のUndo・保存経路に接続する。
+集約線の編集、parent edgeのDelete、読み取り専用の変更は拒否する。
 詳細な割当と巡回順は [Keybindings Beta](Keybindings_Beta.md#connection-の選択編集)。
 
 ### Edit：ノードの文字列を編集中

@@ -10,7 +10,7 @@
 
 4区分の意味と境界は [Data Model](./Data_Model.md#content--topology--layout--style) に従う。本書の配置アルゴリズム・direction・space・座標・接続経路の幾何は Layout、親子を線または group で読ませる視覚表現は Style に関わる。Surface View は複数区分の表示設定を束ねるもので、Layout だけと同一視しない。
 
-Surface View の切替と collapse は永続 Topology を保ったまま表示・配置入力を変える。force 配置で GraphLink を張力に使うことと、GraphLink を親子 `edge` として扱うことは区別する。以下の6種類と既存 option を用いる。
+Surface View の切替と collapse は永続 Topology を保ったまま表示・配置入力を変える。force 配置で relation edge を張力に使うことと、relation edge を`parent edge` として扱うことは区別する。以下の6種類と既存 option を用いる。
 
 ## 編集時の差分再配置（2026-10-21）
 
@@ -23,7 +23,7 @@ Tree / Axial / System / Lane は、可視ノードの配置入力が同じなら
 配置に影響する入力が変われば該当 scope を再配置する。Tree の部分木寸法は既存の差分キャッシュを使い、
 変更した枝から影響のある先祖まで更新する。同じ scope 内の整列・重なり回避に必要な座標の伝播は行う。
 別 scope の alias 参照先や System の表示中 preview が変わった場合も、その依存がある配置は更新する。
-Lane の非表示件数・GraphLink 表示情報は、配置を再利用する場合も最新にする。
+Lane の非表示件数・relation edge 表示情報は、配置を再利用する場合も最新にする。
 
 Radial / Disperse は既存の力学状態を同期し、対象 graph が変わらなければ再構築しない。
 他 scope の collapse はこの同期キーに含めない。実行中の力学シミュレーションのフレーム更新は継続する。
@@ -95,7 +95,7 @@ Radial と Disperse は同一の力学配置契約を共有し（対話的処理
 | 旧ラベル / 候補 | Surface View 正本 | 扱い |
 |---|---|---|
 | Mind Map / `balanced-tree` | Tree | 階層を左右両側へ開く見た目。`Tree direction: left/right` の preset |
-| Radial（放射配置） | Radial | 力学配置 + 親子を edge で描く見た目。[ADR_012](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md) で復活（角度系 option は実装実体なしのため削除） |
+| Radial（放射配置） | Radial | 力学配置 + 親子を parent edge で描く見た目。[ADR_012](../09_Decisions/ADR_012_Radial_Surface_View_Restoration.md) で復活（角度系 option は実装実体なしのため削除） |
 | Tree Chart / Logic Chart / `right-tree` / `down-tree` | Tree | 階層を一方向または両方向に展開する見た目。Logic Chart は Tree の preset |
 | Timeline | Axial | timeline は Surface View ではなく Axial の subtype |
 | Roadmap / Pipeline / Sequence | Axial | 軸に沿って進行・順序・段階を読む見た目 |
@@ -106,35 +106,35 @@ Radial と Disperse は同一の力学配置契約を共有し（対話的処理
 
 #### 意味上の分離
 
-> **全 Surface View は同じ tree（+ GraphLink）構造の上に立つ。View が違っても構造は増減しない。差は「同じ構造をどう投影するか」だけである。** 「自由配置」はレイアウトアルゴリズムの性質であって、データ構造が自由という意味ではない（2026-08-27 akaghef 指摘: 木という構造自体は全 View 共通であり、View ごとに構造が変わるかのような説明は誤り）。
+> **全 Surface View は同じ tree（+ relation edge）構造の上に立つ。View が違っても構造は増減しない。差は「同じ構造をどう投影するか」だけである。** 「自由配置」はレイアウトアルゴリズムの性質であって、データ構造が自由という意味ではない（2026-08-27 akaghef 指摘: 木という構造自体は全 View 共通であり、View ごとに構造が変わるかのような説明は誤り）。
 
 各 View は、tree 構造をどう **投影** するかで区別される:
 
 - **Tree**: 親子階層を **depth 軸上の位置** として投影する。主眼は分解・包含・分類。
 - **Axial**: 親子階層を **1本の軸に沿った進行** として投影する。主眼は時間・順序・進行・段階。
-- **Radial**: 親子階層を **力学配置 + edge** として投影する。関係を線で読む。
-- **Disperse**: 親子階層を **力学配置 + 入れ子（包含）** として投影する。親子表現の正本は tree の group（枠）とし、GraphLink は線で読む。選択中の親子 edge に限り、その両端 node を結ぶガイドを一本描き、親子 edge 未選択時はガイドを描かない（DC51）。
+- **Radial**: 親子階層を **力学配置 + parent edge** として投影する。関係を線で読む。
+- **Disperse**: 親子階層を **力学配置 + 入れ子（包含）** として投影する。親子表現の正本は tree の group（枠）とし、relation edge は線で読む。選択中のparent edge に限り、その両端 node を結ぶガイドを一本描き、parent edge 未選択時はガイドを描かない（DC51）。
 - **System**: レーンに整列できないフローチャート様の構造を、箱・境界・モジュール・リンクとして投影する。subtype は containment / module / architecture とし、主眼は構造、責務、接続。
-- **Lane**: root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンとして投影し、各孫 node を親のレーン内に置く。direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。Lane は scope の Surface View であり、root はその scope の root node である（図式を Lane で見るときは、その root を scope にして入る。2026-10-25、akaghef の決定）。孫 node 間の GraphLink を主線として表示し、レーン境界をまたぐ関係も表す。図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
+- **Lane**: root 直下の子 node を `children[]` の兄弟順序に従って並行するレーンとして投影し、各孫 node を親のレーン内に置く。direction `down` はレーンを行として縦に並べ、`right` は列として横に並べる。Lane は scope の Surface View であり、root はその scope の root node である（図式を Lane で見るときは、その root を scope にして入る。2026-10-25、akaghef の決定）。孫 node 間の relation edge を主線として表示し、レーン境界をまたぐ関係も表す。図式内の孫 node に `AI1` や `DEV5` のようなコードを付けない。
 
-2026-10-17、akaghef の決定により、Lane には `edge` option を設けない。`EdgeStyle` は親子 `edge` の描画指定であり、Lane は親子 `edge` を線として描かない。Lane の GraphLink の経路は、既存の GraphLink 経路設定（UI の `Link Route`、実装型 `LayoutLinkRoute`）に従う。この設定を親子 `edge` の option として読み替えない。
+Lane には `edge` option を設けない。この option は parent edge の描画指定（`EdgeStyle`）であり、Lane は parent edge を線として描かない。Lane の relation edge の経路は、既存の経路設定（UI の `Link Route`、実装型 `LayoutLinkRoute`）に従う。
 
 #### Lane と System の区別
 
 2026-10-18、akaghef の指摘により明記する。Lane と System は、レーン状の枠を描くかどうかではなく、孫 node の位置を何が決めるかで区別する。
 
-- **Lane**: 同じレーンの孫 node は、そのレーンの帯の中心線に揃って一列に並ぶ。`down` では1行、`right` では1列である。レーン内の並びは孫 node の兄弟順序で決まる。GraphLink は描画するだけで、孫 node の位置を決める入力にしない。
-- **System**: GraphLink が表す流れの向きに沿って node を段に振り分ける。同じ枠の中でも、流れに沿って node が並ぶ。
-- **判定**: 孫 node 間の GraphLink を全て取り除いても孫 node の座標が変わらないなら Lane である。座標が変わるなら、レーンの枠を重ねていても System である。
+- **Lane**: 同じレーンの孫 node は、そのレーンの帯の中心線に揃って一列に並ぶ。`down` では1行、`right` では1列である。レーン内の並びは孫 node の兄弟順序で決まる。relation edge は描画するだけで、孫 node の位置を決める入力にしない。
+- **System**: relation edge が表す流れの向きに沿って node を段に振り分ける。同じ枠の中でも、流れに沿って node が並ぶ。
+- **判定**: 孫 node 間の relation edge を全て取り除いても孫 node の座標が変わらないなら Lane である。座標が変わるなら、レーンの枠を重ねていても System である。
 - **配置方式**: layered 配置や flow 配置（elkjs の `layered`、dagre など、辺の向きから段を決める方式）は System 側の方式であり、Lane の配置に使わない。partitioning でレーン順を固定しても、レーン内では辺の向きに沿って広がるため Lane にならない。
 
-Lane の切替は永続 Topology を変えない。レーン順は `children[]` の兄弟順序から、孫 node の所属は親子 `edge` から導出する。GraphLink を両端の親 node の組ごとに集計した行列、親 node の兄弟順序の差が2以上の GraphLink、異なるレーンの孫 node の組のうち GraphLink が無い組も導出値とし、永続データに保存しない。選択に応じて計算する内訳の線は GraphLink ではなく、Lane view の Topology に含めない。
+Lane の切替は永続 Topology を変えない。レーン順は `children[]` の兄弟順序から、孫 node の所属は`parent edge` から導出する。relation edge を両端の親 node の組ごとに集計した行列、親 node の兄弟順序の差が2以上の relation edge、異なるレーンの孫 node の組のうち relation edge が無い組も導出値とし、永続データに保存しない。選択に応じて計算する内訳の線は relation edge ではなく、Lane view の Topology に含めない。
 
-検証観点: 正常系では root の子 node の順序がレーン順に保たれ、孫 node 間の GraphLink がレーンをまたいで表示されることを確認する。境界系では `right` / `down` の方向、レーンを飛び越す GraphLink を確認する。失敗系では選択から計算した内訳線が GraphLink として保存されず、View 切替で Topology が変わらないことを確認する。
+検証観点: 正常系では root の子 node の順序がレーン順に保たれ、孫 node 間の relation edge がレーンをまたいで表示されることを確認する。境界系では `right` / `down` の方向、レーンを飛び越す relation edge を確認する。失敗系では選択から計算した内訳線が relation edge として保存されず、View 切替で Topology が変わらないことを確認する。
 
-Radial と Disperse は同一の力学配置エンジンを共有し、**親子関係を edge にするか group にするかだけが異なる**。座標計算のアルゴリズムに違いはない。
+Radial と Disperse は同一の力学配置エンジンを共有し、**親子関係を parent edge にするか group にするかだけが異なる**。座標計算のアルゴリズムに違いはない。
 
-#### 親子の投影方式（edge / group）と粗視化
+#### 親子の投影方式（parent edge / group）と粗視化
 
 > **tree 構造は Disperse の「配置」ではなく「group の階層」として投影される。collapse がそのまま graph の縮約になり、粗視化のレベルを人間が選べる。**
 
@@ -150,7 +150,7 @@ Radial と Disperse は同一の力学配置エンジンを共有し、**親子�
 | subtype | 定義 | 座標の出どころ |
 |---|---|---|
 | **scatter** | **自由配置**。人が置いた位置そのものが意味を持つ（近くに置いた＝関係がある、という人間の判断を保存する）。layout は座標を計算せず、保存座標をそのまま使う。 | 人 |
-| **force** | **力学配置**。edge（Radial は親子 edge + GraphLink、Disperse は GraphLink のみ + group 拘束）の張力と斥力の釣り合いで座標を決める。 | 計算 |
+| **force** | **力学配置**。edge（Radial はparent edge + relation edge、Disperse は relation edge のみ + group 拘束）の張力と斥力の釣り合いで座標を決める。 | 計算 |
 
 `cluster` という subtype は無い。tree の group（親子の入れ子投影）は Disperse の **既定の親子表現**であり、切替可能な subtype ではない。
 
@@ -177,10 +177,10 @@ buildLayout(state) -> LayoutResult { pos, order, totalHeight, totalWidth }
 
 ### 2.2 render() のレイアウト依存部分
 
-- エッジ描画: `startX = p.x + p.w + edgeStartPad` (右方向前提)
+- parent edge描画: `startX = p.x + p.w + edgeStartPad` (右方向前提)
 - ベジェ曲線: 水平方向の cubic bezier (`C c1x,c1y c2x,c2y endX,endY`)
 - ノード配置: `pos[nodeId]` の `(x, y)` をそのまま SVG 座標に使用
-- graph-link 描画: `forward = targetPos.x >= sourcePos.x` で方向判定
+- relation edge 描画: `forward = targetPos.x >= sourcePos.x` で方向判定
 
 ### 2.3 viewer.tuning.ts のレイアウト定数
 
@@ -198,7 +198,7 @@ layout: {
 
 ### 2.4 技術的制約
 
-- `render()` 内のエッジ描画は **右方向展開を前提** としたハードコード
+- `render()` 内のparent edge描画は **右方向展開を前提** としたハードコード
 - `NodePosition` は `{ x, y, depth, w, h }` のみ -- 角度や方向情報なし
 - `applyZoom()` は `translate + scale` のみで回転なし
 - linear panel の位置計算がレイアウト右端に依存
@@ -229,7 +229,7 @@ layout: {
 | 方向 | 左から右 |
 | 適用場面 | 汎用マインドマップ、ブレインストーミング |
 | M3E モード | Flash, Rapid, Deep すべて |
-| エッジ | 水平 cubic bezier |
+| parent edge | 水平 cubic bezier |
 | 実装難易度 | -- (実装済み) |
 | 技術的影響 | なし |
 
@@ -251,9 +251,9 @@ layout: {
 | 方向 | 上から下 |
 | 適用場面 | 組織図、分類体系、上下階層 |
 | M3E モード | Deep (オントロジー、taxonomy) |
-| エッジ | 垂直 cubic bezier または直角折れ線 |
+| parent edge | 垂直 cubic bezier または直角折れ線 |
 | 実装難易度 | **中** |
-| 技術的影響 | `buildLayout` の X/Y 軸を入れ替え。`xByDepth` -> `yByDepth`。render() のエッジ描画を軸変換。drag ヒットテスト修正。 |
+| 技術的影響 | `buildLayout` の X/Y 軸を入れ替え。`xByDepth` -> `yByDepth`。render() のparent edge描画を軸変換。drag ヒットテスト修正。 |
 
 **buildLayout 変更方針**:
 - depth 軸を Y 方向 (下向き) に、breadth 軸を X 方向に変更
@@ -288,15 +288,15 @@ layout: {
 | 方向 | 左右両方向 (Freeplane のデフォルトに近い) |
 | 適用場面 | ブレインストーミング、中心テーマからの発散 |
 | M3E モード | Flash (キャプチャ)、Rapid |
-| エッジ | 左右両方向の cubic bezier |
+| parent edge | 左右両方向の cubic bezier |
 | 実装難易度 | **中** |
-| 技術的影響 | ルート直下の子を左右に振り分け (偶数/奇数 or ユーザー指定)。左側は `x` を負方向に展開。render() で左向きエッジの制御点を反転。 |
+| 技術的影響 | ルート直下の子を左右に振り分け (偶数/奇数 or ユーザー指定)。左側は `x` を負方向に展開。render() で左向きparent edgeの制御点を反転。 |
 
 **buildLayout 変更方針**:
 - ルート直下の children を2グループに分割
 - 右グループ: 現行ロジックそのまま
 - 左グループ: `xByDepth` を `rootX - columnGap * depth` で計算
-- エッジの `startX`, `endX` を左右で場合分け (render() 内の graph-link 描画は既に forward/backward 判定あり)
+- parent edgeの `startX`, `endX` を左右で場合分け (render() 内の relation edge 描画は既に forward/backward 判定あり)
 
 ---
 
@@ -317,17 +317,17 @@ layout: {
 | 方向 | 上から下、インデントで depth 表現 |
 | 適用場面 | テキスト中心のドキュメント構造、議事録、仕様書 |
 | M3E モード | Deep (体系的知識の整理)、Rapid (タスクリスト) |
-| エッジ | なし (インデント線のみ、または縦棒+横棒) |
+| parent edge | なし (インデント線のみ、または縦棒+横棒) |
 | ノード見た目 | カード型ではなくテキスト行 |
 | 実装難易度 | **中〜高** |
-| 技術的影響 | `buildLayout` を完全別実装。固定幅のインデントで Y 方向に連続配置。ノード hit area を行単位に変更。エッジ描画不要 (ガイドライン描画に置換)。 |
+| 技術的影響 | `buildLayout` を完全別実装。固定幅のインデントで Y 方向に連続配置。ノード hit area を行単位に変更。parent edge描画不要 (ガイドライン描画に置換)。 |
 
 **buildLayout 変更方針**:
 - 全ノードを DFS 順で上から下に配置
 - `x = leftPad + depth * indentWidth`
 - `y = topPad + index * lineHeight`
 - `subtreeHeight` 計算不要 (全ノードが均一高さ)
-- エッジ: 縦の接続線 + 短い水平線 (L 字型) or 単純なインデントのみ
+- parent edge: 縦の接続線 + 短い水平線 (L 字型) or 単純なインデントのみ
 
 ---
 
@@ -347,15 +347,15 @@ layout: {
 | 方向 | 左から右の中心軸 + 斜め分岐 |
 | 適用場面 | 因果分析、問題解決 (石川ダイアグラム) |
 | M3E モード | Rapid (業務の分析フロー) |
-| エッジ | 斜め直線 (45度) + 水平バックボーン |
+| parent edge | 斜め直線 (45度) + 水平バックボーン |
 | 実装難易度 | **高** |
-| 技術的影響 | 完全カスタムレイアウト。depth=1 の子を上下交互に配置、depth=2+ は斜め方向に展開。専用のエッジ描画ロジック必要。 |
+| 技術的影響 | 完全カスタムレイアウト。depth=1 の子を上下交互に配置、depth=2+ は斜め方向に展開。専用のparent edge描画ロジック必要。 |
 
 **buildLayout 変更方針**:
 - ルートは左端に配置、水平バックボーンを右に伸ばす
 - depth=1 (主要因) を上下交互に一定間隔で配置
 - depth=2+ (副要因) を主要因から斜め 45 度方向に配置
-- エッジ: 主要因→バックボーンは斜線、副要因→主要因も斜線
+- parent edge: 主要因→バックボーンは斜線、副要因→主要因も斜線
 
 ---
 
@@ -377,7 +377,7 @@ layout: {
 | 方向 | 左から右の時間軸 |
 | 適用場面 | プロジェクト計画、歴史年表、ロードマップ |
 | M3E モード | Rapid (業務の進捗管理) |
-| エッジ | 垂直接続線 + 水平タイムライン |
+| parent edge | 垂直接続線 + 水平タイムライン |
 | 実装難易度 | **高** |
 | 技術的影響 | 時系列メタデータ (日付属性) をソートキーに使用。depth=1 を時間軸上に等間隔配置、depth=2+ を上下に展開。 |
 
@@ -401,17 +401,17 @@ layout: {
 | 方向 | 行列グリッド |
 | 適用場面 | 比較表、SWOT 分析、意思決定マトリクス |
 | M3E モード | Rapid (構造化比較) |
-| エッジ | グリッド線のみ |
+| 線の表示 | グリッド線のみ |
 | 実装難易度 | **高** |
 | 技術的影響 | 2次元配置は Surface View ではなく node object として扱う。表ノード内部で行・列・セルを管理し、外側の Surface View からは 1 ノードとして配置する。 |
 
 ---
 
-## 4. エッジスタイル一覧
+## 4. parent edge の描画スタイル一覧
 
 現行はベジェ曲線のみ。レイアウトモードに応じて以下を使い分ける。
 
-| エッジスタイル | 描画 | 適用レイアウト |
+| parent edge の描画スタイル | 描画 | 適用レイアウト |
 |---------------|------|---------------|
 | `bezier` (現行) | `M sx sy C c1x c1y, c2x c2y, ex ey` | right-tree, balanced-tree |
 | `straight` | `M sx sy L ex ey` | fishbone, simple diagrams |
@@ -552,18 +552,18 @@ layout: {
 ### Phase 1: ストラテジーパターン導入
 1. `buildLayout()` を `RightTreeLayout` クラスに抽出
 2. `LayoutStrategy` インターフェース定義
-3. `render()` のエッジ描画をストラテジーから分離
+3. `render()` のparent edge描画をストラテジーから分離
 4. 既存テストが通ることを確認
 
 ### Phase 2: Down Tree (P2)
 1. `DownTreeLayout` 実装
-2. 直角折れ線エッジ描画
+2. 直角折れ線parent edge描画
 3. drag/reparent のヒットテスト修正
 4. Playwright スナップショット追加
 
 ### Phase 3: Balanced Tree (P3)
 1. 子ノードの左右振り分けロジック
-2. 左方向エッジ描画
+2. 左方向parent edge描画
 3. linear panel の位置計算修正
 
 ### Phase 4: Outline (P4)

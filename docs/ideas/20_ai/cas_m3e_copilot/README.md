@@ -79,7 +79,7 @@ OFF / WARMING / WATCHING / THINKING / READY / STALE / ERROR
 次を正確に扱う場合は JSON または同等の構造表現へ昇格する。
 
 - node ID による厳密な書き戻し
-- alias / GraphLink / 非木構造
+- alias / relation edge / 非木構造
 - 複数 scope
 - metadata を判断材料として使う操作
 - field-level mutation
@@ -137,14 +137,14 @@ YAML は意味契約、MF-H は構造 template、CAS は穴埋め、M3E は vali
 - `身体の構造 / 生命維持機能 / 感覚と運動` のように、N3 と分類・構成要素が混ざった。
 - N4 で `二足歩行する霊長類 / 言語を使う動物` のように、具体例ではなく特徴・言い換えが生成された。
 - context JSON を増やしても、操作の意味契約が弱ければ品質は上がらなかった。
-- `preserve sibling granularity` のような一般指示だけでは、親子 edge の意味を決められなかった。
+- `preserve sibling granularity` のような一般指示だけでは、parent edge の意味を決められなかった。
 
 結論: context の量ではなく、操作ごとの relation、禁止事項、slot、validation が必要である。
 
 ## 未決事項
 
 - `N4.examples` で抽象概念の instance を何とみなすか。曖昧時に clarification を返す契約。
-- `N6.related` を tree child として保存するか、GraphLink にするか。
+- `N6.related` を tree child として保存するか、relation edge にするか。
 - YAML contract の配置、schema、versioning。
 - background turn の費用・頻度・cancel policy。
 - thread 再利用時の compaction、TTL、最大 cache 数。

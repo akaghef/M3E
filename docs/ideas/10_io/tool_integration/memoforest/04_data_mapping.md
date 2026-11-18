@@ -6,7 +6,7 @@
 |---|---|---|
 | project | mapまたはartifact portal | source descriptorとrevisionが必要 |
 | node.topic | node text / label | 外部IDを別属性で保持 |
-| node.parentId | Rapid edge / spine | tree orderを保持 |
+| node.parentId | Rapid parent edge / spine | tree orderを保持 |
 | section | Markdown body facet | section IDを局所IDとして保持 |
 | annotation | annotation facet / provenance | quote、context、section IDが必要 |
 | folder | source-side grouping | M3E scopeと自動同一視しない |
@@ -20,7 +20,7 @@
 - approval state
 - operation journal
 - cross-source stable identity
-- M3E GraphLink / typed relation
+- M3E relation edge / typed relation
 
 ## Envelope proposal
 

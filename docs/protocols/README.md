@@ -21,7 +21,7 @@ This directory is the canonical home for AI operating protocols in M3E / Akaghef
 
 ## What does not belong here
 
-- Product meaning of `node`, `scope`, `edge`, `GraphLink`, node-level `link`, and `alias` → `docs/03_Spec/`
+- Product meaning of `node`, `scope`, `edge`, `parent edge`, `relation edge`, node-level `link`, and `alias` → `docs/03_Spec/`
 - Temporary conversation decisions → `docs/06_Operations/Decision_Pool.md`
 - Full raw logs → evidence archives only
 

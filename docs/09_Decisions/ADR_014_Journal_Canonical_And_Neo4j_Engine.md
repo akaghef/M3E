@@ -52,7 +52,7 @@ Proposed
 
 ### 7. ID は全体一意
 
-- node・map・GraphLink の ID は map と workspace をまたいで一意とする。既存の重複 ID は一度きりの data migration で振り直す。
+- node・map・relation edge の ID は map と workspace をまたいで一意とする。既存の重複 ID は一度きりの data migration で振り直す。
 
 ## Consequences
 

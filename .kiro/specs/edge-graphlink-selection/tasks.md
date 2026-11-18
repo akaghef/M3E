@@ -13,7 +13,7 @@ task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採
 推測せず未完了のまま保持する。継続実装は利用者の引き継ぎ・実行指示に従った。
 
 - [x] 1. 専用 map とレビュー・テスト起動手順を用意する
-  - 下記「レビュー用 map / URL」の人工 map を fixture にする。子順と画面順の違い、incoming / outgoing、同じ両端の異なる GraphLink、label / relationType、空 label、親なし / 子なし、非描画endpointの三理由、Systemの保存三件→描画一線を含める。fixtureごとに期待描画集合を手書きし、renderer outputから生成しない。
+  - 下記「レビュー用 map / URL」の人工 map を fixture にする。子順と画面順の違い、incoming / outgoing、同じ両端の異なる relation edge、label / relationType、空 label、親なし / 子なし、非描画endpointの三理由、Systemの保存三件→描画一線を含める。fixtureごとに期待描画集合を手書きし、renderer outputから生成しない。
   - `lane_helpers.js` の既存 `createAppServer` と一時データ方式を使う。テストサーバーを模倣実装しない。node / browser のビルド成功と対象 checkout を記録する。
   - 既存 A-sys は `lane.sqlite` の読み取り専用取得または既存 API export から新しい temp data profile へ複製する。稼働中 SQLite の単純ファイルコピーではなく SQLite backup または API を使う。元データの値を変更しない。
   - 4188 が空いていることを確認して既存製品サーバーを起動し、人工 map と A-sys コピーを保存する。使用中なら別ポートを選び、下記 URL を実URLへ更新する。
@@ -28,7 +28,7 @@ task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採
 - [x] 2. 共通の選択・移動 pure function を実装する
   - design.md の Selection / Scene / Presented と typed signatures を実装する。OP40の件数statusと集約線の編集拒否に必要なformatStatus / editIntentの共通部分も先に実装する（個別編集のcycleはtask 6）。
   - selectionTransition と parentChildTarget、enumerateDrawn、orderDrawn、cycleDrawn、arrowEndpoint、escapeNode、reconcileSelection、selectionHighlight を単体試験する。複数選択のprimaryを起点にする契約も含む。
-  - 6px境界、0/5/10pxの非連鎖行分け、同点、入力配列の順序差、wrap、両方向 GraphLink、親への edge の左右除外、集約一候補、OP41のorigin維持・理由表示を確認する。
+  - 6px境界、0/5/10pxの非連鎖行分け、同点、入力配列の順序差、wrap、両方向 relation edge、親への parent edge の左右除外、集約一候補、OP41のorigin維持・理由表示を確認する。
   - _Requirements: 1.1–1.6, 2.1–2.7, 3.1–3.5, 4.11, 5.1, 5.7, 6.3_
   - _Boundary: shared 選択判定_
   - _Depends: なし（仕様承認が前提）_
@@ -37,10 +37,10 @@ task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採
   - _Browser verification: 後続4・5で必要_
   - _Data safety note: pure function。永続化なし_
 
-- [x] 3. 描画 snapshot と親子 edge の強調を接続する
+- [x] 3. 描画 snapshot とparent edge の強調を接続する
   - 既存 geometry / path から元 identity、両端中心、labelAnchor、line / lane-band / group-frame を公開する。preview / hit / ガイド / 内訳線は候補に登録しない。
   - 既存 render hook、lane_scene、選択表示へ adapter を接続する。DC37 の root→lane / lane→item / Disperse の親 frame と両端が識別できることを確認する。
-  - OP40に従い既存の除外・集約結果をsnapshotへ記録する。Systemの集約線には全linkIdsを対応させ、一本だけを候補にする。Disperse の guide は候補外を維持し、DC51 に従い親子 edge 選択時の一本だけを shared highlight plan と adapter から描く。
+  - OP40に従い既存の除外・集約結果をsnapshotへ記録する。Systemの集約線には全linkIdsを対応させ、一本だけを候補にする。Disperse の guide は候補外を維持し、DC51 に従いparent edge 選択時の一本だけを shared highlight plan と adapter から描く。
   - SVG / WebGL で同じ対象が強調される。Lane の前景描画と node 優先 hit を保持する。
   - _Requirements: 1.4, 1.6, 2.1, 2.2, 2.5, 2.7, 5.1, 5.6, 5.7, 6.3, 6.4_
   - _Boundary: 既存 renderer と selection adapter の明示的な統合作業_
@@ -87,7 +87,7 @@ task 5 / 8 のレビューURLと機能は用意済み。利用者の実見・採
   - _Data safety note: mutation 自体は行わない_
 
 - [x] 7. label editor と履歴・保存を接続する
-  - 集約線で全編集キーとport操作UIを拒否し、編集可能な単一対象だけF2 を固定された Ref と Presentation.labelAnchor に結び、Enter / blur / Esc / IME の lifecycle を実装する。親子 label は child attribute、GraphLink は label のみ。
+  - 集約線で全編集キーとport操作UIを拒否し、編集可能な単一対象だけF2 を固定された Ref と Presentation.labelAnchor に結び、Enter / blur / Esc / IME の lifecycle を実装する。親子 label は child attribute、relation edge は label のみ。
   - 既存 port / Delete と新しい style / direction を共通 writable guard に通し、既存 snapshot → mutation → touchDocument を一回だけ呼ぶ。
   - node 選択へ戻るまで旧 node 変更キーを消費・拒否する。Undo / Redo 後の reconcile と status 復帰を接続する。
   - _Requirements: 3.4, 4.1–4.11, 5.1–5.7, 6.1–6.4_
@@ -154,6 +154,6 @@ node dist/node/start_viewer.js
 
 WebGL確認は同じURLの `renderer=webgl`。URL中の内部 map キーはナビゲーションに限り、GUIタイトル・statusは上記の人間向け名を表示する。公開サイトや live beta への配備は不要。
 
-人工 map の内容: root「選択確認」、子「計画」「実行」「確認」。計画の子は `children[]` 順に「整理」「調査」「相談」、実行の子は「実装」「試験」、確認の子は「記録」。整理から実装へ「引継ぎ / supports」と「参照 / references」の別GraphLink、試験から整理へ incoming「差戻し」、整理から記録へ outgoing「保存」、計画から整理へ親子間GraphLink「補足」を用意する。System用にさらに、別々の保存endpointが同じ代表nodeの組へ写され、同じlabel/typeによって三件が一線にdedupされるケースを加える。独立した期待描画集合では一線・件数3とする。Lane root/レーン名への非描画GraphLink、親子labelへ折り込むGraphLinkの非候補も明示する。図中に識別コードを表示しない。System / Disperse 用の保存座標または既存配置で上下・逆流を含ませ、順序を固定する unit fixture と動的な画面観測を区別する。
+人工 map の内容: root「選択確認」、子「計画」「実行」「確認」。計画の子は `children[]` 順に「整理」「調査」「相談」、実行の子は「実装」「試験」、確認の子は「記録」。整理から実装へ「引継ぎ / supports」と「参照 / references」の別relation edge、試験から整理へ incoming「差戻し」、整理から記録へ outgoing「保存」、計画から整理へ親子間relation edge「補足」を用意する。System用にさらに、別々の保存endpointが同じ代表nodeの組へ写され、同じlabel/typeによって三件が一線にdedupされるケースを加える。独立した期待描画集合では一線・件数3とする。Lane root/レーン名への非描画relation edge、親子labelへ折り込むrelation edgeの非候補も明示する。図中に識別コードを表示しない。System / Disperse 用の保存座標または既存配置で上下・逆流を含ませ、順序を固定する unit fixture と動的な画面観測を区別する。
 
 レビュー報告には source revision（変更意図付き）、build 時刻・成功、dirty差分の有無、map名、URL、各 Surface View の実測 / 未実施 / 前提不足、akaghef の採否を分けて記録する。ビルド情報を製品GUIの通常表示へ埋め込まない。

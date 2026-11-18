@@ -50,7 +50,7 @@ relevant items below. Already specified targets and constraints remain binding.
 - scope purpose and scope granularity
 - scopen / unscopen decisions
 - facet detection and facet-local rules
-- edge / GraphLink / alias / node-level link distinction
+- parent edge / relation edge / alias / node-level link distinction
 - Topology / Layout / Style decisions under Content and explicit constraints
 - layouting and display intent
 - cross-scope and cross-facet alias/link operations
@@ -60,7 +60,7 @@ relevant items below. Already specified targets and constraints remain binding.
 ## Worker must not own
 
 - redefining scope boundaries
-- deciding alias vs move vs GraphLink across facets
+- deciding alias vs move vs relation edge across facets
 - changing Layout / Style / display intent outside the handoff
 - restructuring outside assigned path
 - deciding M3E storage shape
@@ -83,7 +83,7 @@ complete this list. A fully specified operation proceeds directly through MCP.
 4. Decide whether the operation is local, scoped, cross-scope, or cross-facet.
 5. Decide facet and facet-local meaning of parent-child.
 6. Decide scope granularity.
-7. Choose move vs alias vs GraphLink.
+7. Choose move vs alias vs relation edge.
 8. Decide remaining Layout / Style under display intent and explicit constraints.
 9. Produce worker handoff or execute through the authorized map-write path.
 10. Verify Content fidelity, explicit constraints, structure, display intent, and invariants.
@@ -106,7 +106,7 @@ Map Manager は入力を読んだ上で、未確定の Topology・Layout・Style
 | 出力 | 確定・記録する情報 | 検証 |
 |---|---|---|
 | Content | 表現対象と根拠、および node / relation への対応 | 主張・関係・根拠が保持され、視覚上の都合で新しい主張が加わっていない |
-| Topology | node、edge / GraphLink / alias の選択、兄弟順序、scope 境界、spine | 明示制約、tree 不変条件、参照先、境界が成立する |
+| Topology | node、parent edge / relation edge / alias の選択、兄弟順序、scope 境界、spine | 明示制約、tree 不変条件、参照先、境界が成立する |
 | Layout | Surface View と option、配置条件、寸法・collapse 等の入力 | 指定配置と既存 View 仕様に整合する |
 | Style | 既存の視覚規約と必要な表示指定 | 意味を誤表示せず、寸法を Layout と整合させる |
 
@@ -131,8 +131,8 @@ When ambiguous, stop and resolve. Do not guess a target node.
 
 ## Required distinctions
 
-- `edge`: parent-child tree ownership relation; participates in layout.
-- `GraphLink`: non-tree relation; does not define tree ownership. Tree subtree
+- `parent edge`: parent-child tree ownership relation; participates in layout.
+- `relation edge`: non-tree relation; does not define tree ownership. Tree subtree
   placement excludes it; force placement may use it under Surface View rules.
 - node-level `link`: external URL or attached attribute; not a graph relation.
 - `alias`: reference window to a canonical entity; not an ownership move.
@@ -187,7 +187,7 @@ Before inserting anchors or colors, decide:
 - what colors encode
 - whether the result is scoped or unscoped
 
-Tree subtree placement excludes `GraphLink`; force placement follows the
+Tree subtree placement excludes `relation edge`; force placement follows the
 existing Surface View specification. Neither placement choice changes relation
 ownership. Collapse changes the visible graph, not persistent Topology.
 
@@ -195,7 +195,7 @@ ownership. Collapse changes the visible graph, not persistent Topology.
 
 以下は旧資料の `flow` / `dependency` / `reviews` / `timeseries` / `document` の例を、意味判断の参考として保持したもの。必須の型・テンプレート・Scope分類ではない。これらのラベルや `m3e:facet` の旧属性値だけからfacetを認定しない。正規語のfacetはGlossaryに従い、PJ直下の意味的に凝集したScopeに限定する。既存の属性値を黙って変更せず、Scopeのない文書やレビューにも必要に応じて以下の構造例を参照できる。
 
-| 文脈 | 親子edgeの意味の例 | GraphLinkの意味の例 | aliasとanchorの使い方の例 |
+| 文脈 | parent edgeの意味の例 | relation edgeの意味の例 | aliasとanchorの使い方の例 |
 |---|---|---|---|
 | 手順・処理の流れ (`flow`) | 明示された処理段階をdepth方向の骨格で表す | 追加の依存、合流、段階をまたぐ関係 | 他の文脈が正本を持つ場合にaliasで参照する。anchorを新しい処理段階に見せない |
 | 依存関係 (`dependency`) | 依存方向を追えるspine・全域木 | 木に選ばれなかった依存 | 別の章別・実装別表示はaliasで参照できる。元資料にないgroupingは表示目的であることを区別する |

@@ -36,8 +36,8 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 | 左から右の列 | Surface View の `Axial` / `Lane` | `layout=flow-lr` の候補。pipeline の進行は `Axial`、層状 architecture 図は `Lane` に対応する |
 | card node | `TreeNode` の表示 | node 本体は既存 `AppState.nodes` |
 | card type | `attributes` / `GraphSpecNode.kind` | color だけでなく badge / shape で表現 |
-| data flow line | `GraphLink` | 親子 `edge` と混同しない |
-| system spine | 親子 `edge` | scope / contract の主骨格 |
+| data flow line | `relation edge` | `parent edge` と混同しない |
+| system spine | `parent edge` | scope / contract の主骨格 |
 | right detail panel | inspector / Contract Tree preview | 選択状態は `ViewState`、正本変更は Model 経由 |
 | replay button | Run / Trace 表示 | runtime state を Authoring Map に直接書き戻さない |
 | minimap | viewport overview | `ViewState` に属する |
@@ -60,7 +60,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 | Top toolbar | view mode, fit, replay, filter | React UI shell |
 | Type legend | node/link type decoding | React UI shell; color + label + icon |
 | Flow card | node summary | rendering layer node component |
-| Port marker | edge attachment clarity | GraphLink source/target port display |
+| Port marker | edge attachment clarity | relation edge source/target port display |
 | Edge label chip | branch / condition label | hidden by default, shown on focus |
 | Inspector panel | selected node contract | React panel fed by selected `TreeNode` / `GraphSpecNode` |
 | Trace replay control | execution playback | derived from Run / Trace, not stored as node edits |
@@ -71,7 +71,7 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 実装に進む場合は、次の境界を守る。
 
 - UI shell: React component。toolbar / inspector / legend / replay control を持つ。
-- Rendering layer: graph surface。node / Connection / port / minimap を描く。
+- Rendering layer: graph surface。node / edge / port / minimap を描く。
 - Model: `AppState`、`TreeNode`、`GraphLink`、`MapSurface` を保持する。
 - ViewState: selected node, selected link, viewport, hover, replay step, dimming を保持する。
 - GraphSpec: 実行可能な system contract へ compile する derived data。map 正本ではない。
@@ -115,14 +115,14 @@ M3E の既存語彙と実装境界に落とし込み、後続の viewer / workbe
 
 ### Boundary
 
-- 100 node / 200 GraphLink 程度でも label が破綻しない。
+- 100 node / 200 relation edge 程度でも label が破綻しない。
 - 長い node label は card 内で折り返すか、省略 + tooltip になる。
 - 小さい viewport では inspector が bottom sheet に切り替わる。
 - edge label が多い graph でも常時表示で重ならない設計にする。
 
 ### Failure
 
-- endpoint 不明の GraphLink は描画しないか、明確な broken 表示にする。
+- endpoint 不明の relation edge は描画しないか、明確な broken 表示にする。
 - compile warning がある GraphSpec node は inspector で warning を出す。
 - replay trace が存在しない場合、replay control は disabled state にする。
 - runtime trace を Authoring Map の node edit として誤保存しない。

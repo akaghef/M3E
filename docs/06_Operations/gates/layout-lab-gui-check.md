@@ -86,15 +86,15 @@ No Chrome-controlled tab, DOM snapshot, screenshot, or console log was obtained.
 
 ### tree
 
-Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent-child edges, golden diff, and status were not observable.
+Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent edges, golden diff, and status were not observable.
 
 ### mindmap
 
-Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent-child edges, golden diff, and status were not observable.
+Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent edges, golden diff, and status were not observable.
 
 ### scope-routing
 
-Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent-child edges, golden diff, and status were not observable.
+Not executed. The lab endpoint was reachable, but no permitted GUI driver could open and inspect the rendered page. Dummy rectangles, parent edges, golden diff, and status were not observable.
 
 ## Controls Checked
 

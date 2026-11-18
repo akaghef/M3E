@@ -1,6 +1,6 @@
 # 草案: Rapid の論理レコードモデル
 
-> 2026-11-16: 本書の形のうち、線のレコード（Connection）、時刻、既定値、scope、node の種別と details は [record-schema.md](./record-schema.md) が上書きする。実測値と、移行の可逆性の検証（8.1 節）、revision・journal・portable snapshot の節は引き続き参照する。
+> 2026-11-16: 本書の形のうち、線のレコード（edge）、時刻、既定値、scope、node の種別と details は [record-schema.md](./record-schema.md) が上書きする。実測値と、移行の可逆性の検証（8.1 節）、revision・journal・portable snapshot の節は引き続き参照する。
 
 2026-10-25。brief の PR14 に当たる草案。Director の委任を受けた調査エージェントが起草した。**未承認**。DC39（移行先）と DC40（出し方）は未決のままとし、この草案は OP43・OP44 のどちらでも成り立つように書く。両者で形が変わる箇所は 10 節にまとめる。
 
@@ -16,12 +16,12 @@
 ## 0. 要約
 
 1. data migration の対象は「論理レコード」と、その portable snapshot の形式である。保存エンジン（SQLite / Neo4j）には依存させない。
-2. レコード種別は 10 種。map・node・edge（親と兄弟順）・attribute・GraphLink・scope の付随設定・linear-text・Surface View の保存設定・Surface View ごとの node 配置値・注釈（annotation）。alias は node の一種として扱い、scope の範囲は folder node から導出する。
+2. レコード種別は 10 種。map・node・parent edge（親と兄弟順）・attribute・relation edge・scope の付随設定・linear-text・Surface View の保存設定・Surface View ごとの node 配置値・注釈（annotation）。alias は node の一種として扱い、scope の範囲は folder node から導出する。
 3. 兄弟順は fractional index のキーで表す（`fractional-indexing` を使う）。順序は `(親, キー, 子の nodeId)` で一意に決まる。キーを割り当てるのは確定を行う側で、journal には割り当てた結果のキーを記録する。
 4. revision は record ごとに持ち、値は「その record を最後に変更した map の確定の通し番号」とする。client は通し番号の位置を基準として保持し、取りこぼした分は journal から取り寄せる。
 5. journal entry は Command envelope（Command_Language 4.2 節）に、map の通し番号、record ごとの base revision、record 単位の変更（変更前と変更後の値）を加えたもの。Undo・replay・冪等な再送・同期・materialization は、すべてこの変更を入力にする。
 6. 実データの約 2 割は、読込み時に導出または破棄される値である（1.4 節・8 節）。これを正本に持ち込まない。保存状態の合計 30.5 MB のうち、空の node 配置値だけで 5.3 MB ある。
-7. entity binding は後から足すレコード種別として扱う。node と GraphLink の ID を変えないこと、レコード種別を後から追加できる形にしておくことで、二度目の migration は要らなくなる（RQ28）。
+7. entity binding は後から足すレコード種別として扱う。node と relation edge の ID を変えないこと、レコード種別を後から追加できる形にしておくことで、二度目の migration は要らなくなる（RQ28）。
 
 ## 1. 実データの事実
 
@@ -35,8 +35,8 @@
 | うち folder / alias | 1,752 / 991 | 153 / 0 | 36 / 2 | `nodeType` |
 | 未定義の `nodeType` | 0 | `leaf` 216（うち 19 は子あり） | 欠落 1 | types.ts:1 の union 外 |
 | attribute の項目 | 63,054（key 231 種） | 9,973（56 種） | 130（16 種） | `attributes` の項目数。全体で 258 種 |
-| 親子 edge の label（`m3e:edge-label`） | 15,863 | 103 | 0 | 研究 map の node の 78% |
-| GraphLink | 505 | 152 | 18 | `links` |
+| parent edge の label（`m3e:edge-label`） | 15,863 | 103 | 0 | 研究 map の node の 78% |
+| relation edge | 505 | 152 | 18 | `links` |
 | `scopes` の記録 | 1,284 | 126 | 40 | |
 | `surfaces` の記録 | 1,307 | 133 | 50 | |
 | `nodeViews` の項目 / うち空でない | 179,529 / 1,111 | 10,197 / 1,146 | 1,303 / 121 | |
@@ -57,11 +57,11 @@
   - target はすべて存在し、target が alias のものはない
   - 子を持つ alias はない
   - access はすべて `read`、`isBroken` はすべて false
-- GraphLink: 違反 0。対象は 675 件。端点はすべて存在し、self link と alias を端点とするものはない。map 内で ID の重複はない。
+- relation edge: 違反 0。対象は 675 件。端点はすべて存在し、self link と alias を端点とするものはない。map 内で ID の重複はない。
 - 導出値の古さ（違反ではないが、正本に持ち込むと害になるもの）:
   - B の `scopes` のうち 350 件は root node が存在しない。対応する `surfaces` も 350 件あるが、空でない node 配置値は 0 件。
   - B の 61 件は、key（`scope:<存在する folder>`）と `id`（`scope:<存在しない node>`）が一致しない。
-  - `relationIds` の参照 11,108 件のうち 10,431 件は存在しない GraphLink を指す。
+  - `relationIds` の参照 11,108 件のうち 10,431 件は存在しない relation edge を指す。
   - folder なのに `scopes` の記録がないものが、B に 646、F に 34 ある。
 - linear-text の key:
   - 存在しない node を指すもの: B 27、F 33、T 3（計 868 KB）
@@ -86,7 +86,7 @@
 - `maps.source` の 1 件は `kind: "backup-json"` で、`MapSource` 型（home_types.ts:36、obsidian のみ）にない。
 - ID の衝突:
   - 同じ workspace の別々の map で node ID が重なる: B 1,148、F 150、T 84
-  - GraphLink ID の重なり: B 74
+  - relation edge ID の重なり: B 74
   - 別の workspace で map ID が重なる: 3 / 46
   - 主因は Home の複製で、JSON をそのまま複写している（rapid_mvp.ts の duplicate）。
   - node ID には自然言語の文字列を含むものがある（import 由来）。
@@ -95,7 +95,7 @@
 
 - **事実**: 読込み時の正規化（viewer.ts `sanitizeMapModelState` 2578〜）は次のように動く。
   - scope は root と folder から作り直す。
-  - `relationIds` は GraphLink から計算し直す（2635〜）。
+  - `relationIds` は relation edge から計算し直す（2635〜）。
   - root の存在しない scope と、無効な scope に属する surface は捨てる。
   - `label` は最初の値を保持し続ける（2646）。
 - **事実**: `sanitizeSurfaceNodeViews`（2554〜）は、空の配置値と、存在しない node の配置値を捨てる。
@@ -124,9 +124,9 @@
 | | | 最終確定時刻 | | |
 | node（Rapid occurrence） | `(mapId, nodeId)` | `nodeType`（開いた文字列）、`text`、`details`、`note`、`link`、`collapsed` | 同上。Vault に結び付いた map は 7.3 | `nodes[*]` |
 | | | alias の場合: `targetNodeId`、`aliasLabel`、`access`、`targetSnapshotLabel`、`isBroken` | | |
-| edge（親子＋兄弟順） | `(mapId, 子の nodeId)` | `parentId`、兄弟順キー、`label`（11 節の 2） | 同上 | `parentId` と `children[]`。`m3e:edge-label` |
-| attribute | `(mapId, 持ち主の種別, 持ち主の ID, key)` | `value`（型付きの JSON 値） | 持ち主に従う | node と GraphLink の `attributes` |
-| GraphLink | `(mapId, linkId)` | `sourceNodeId`、`targetNodeId`、`relationType`、`label`、`direction`、`style`、`color`、`sourcePort`、`targetPort` | 同上 | `links[*]` |
+| parent edge（親子＋兄弟順） | `(mapId, 子の nodeId)` | `parentId`、兄弟順キー、`label`（11 節の 2） | 同上 | `parentId` と `children[]`。`m3e:edge-label` |
+| attribute | `(mapId, 持ち主の種別, 持ち主の ID, key)` | `value`（型付きの JSON 値） | 持ち主に従う | node と relation edge の `attributes` |
+| relation edge | `(mapId, linkId)` | `sourceNodeId`、`targetNodeId`、`relationType`、`label`、`direction`、`style`、`color`、`sourcePort`、`targetPort` | 同上 | `links[*]` |
 | scope の付随設定 | `(mapId, scope の root nodeId)` | `primarySurfaceId`、保持された `label`、旧 `id`（食い違う 61 件） | 同上 | `scopes[*]` の非導出部分 |
 | linear-text | `(mapId, scope の root nodeId)` | `text` | 同上 | `linearNotesByScope` |
 | Surface View の保存設定 | `(mapId, surfaceId)` | 所属 scope の root nodeId、`kind`、`layout`、`displayRootId`、`surfaceView` | 同上 | `surfaces[*]` |
@@ -146,10 +146,10 @@
 
 ### 2.1 種別ごとの判断（提案）
 
-- **edge を node と別のレコードにする**
-  - 改名・collapse（node の変更）と reorder・reparent（edge の変更）が同時に来ても、互いを競合にしないため。
-  - key は子の nodeId と 1 対 1 に決まるので、edge 用の新しい ID は作らない。
-  - root は edge を持たない。物理的に node と同じ行に置くことは妨げない。
+- **parent edge を node と別のレコードにする**
+  - 改名・collapse（node の変更）と reorder・reparent（parent edge の変更）が同時に来ても、互いを競合にしないため。
+  - key は子の nodeId と 1 対 1 に決まるので、parent edge 用の新しい ID は作らない。
+  - root は parent edge を持たない。物理的に node と同じ行に置くことは妨げない。
 - **attribute を独立したレコードにする**
   - agent による状態値の書込み（`m3e:status`、`workflow.*`）と、human の本文編集を別の revision にするため。
   - `set-attribute` / `unset-attribute` の intent（Command_Language 4 節）が 1 行の更新に収まる。
@@ -167,10 +167,10 @@
 
 | 対象 | 規則 | 出典 |
 |---|---|---|
-| 木 | root は edge を持たない。root 以外の node は edge をちょうど 1 つ持つ。親は存在する。循環しない。root から到達できる | Model_State_And_Schema_V2 2.4 |
+| 木 | root は parent edge を持たない。root 以外の node は parent edge をちょうど 1 つ持つ。親は存在する。循環しない。root から到達できる | Model_State_And_Schema_V2 2.4 |
 | 兄弟順 | 同じ親の下で `(兄弟順キー, nodeId)` が全順序になる。キーは空でない | 3 節 |
 | alias | target は実体ノード（alias 以外）だけ。子を持たない。target が欠けたら `isBroken` と `targetSnapshotLabel` が揃う | Data_Model、Scope_and_Alias |
-| GraphLink | 端点は実在する実体ノード。self link は禁止。端点の node を delete したら GraphLink も同じ確定で delete する | Data_Model「Graph-level Link」 |
+| relation edge | 端点は実在する実体ノード。self link は禁止。端点の node を delete したら relation edge も同じ確定で delete する | Data_Model「Graph-level Link」 |
 | scope | 範囲は最も近い folder 祖先、なければ root から導出する。alias は folder にしない。scopen / unscopen は `nodeType` の変更だけで表す | Data_Model、rapid_mvp.ts `setScopeBoundary` |
 | 付随レコード | scope の付随設定・linear-text・Surface View・注釈が指す scope root は、folder か root であることが望ましい。そうでない場合は削除せず「所属未解決」として扱う（下記） | 1.2 の実測 |
 | Surface View の node 配置値 | node と Surface View が存在する。空の値は保存しない | viewer.ts `sanitizeSurfaceNodeViews` |
@@ -309,19 +309,19 @@
 
 ### 7.1 identity
 
-- **事実**: GraphLink の ID は生成時に一度だけ作られ、改名・reparent・reorder では変わらない。paste は新しい ID を作る（rapid_mvp.ts `copySubtree`）。map 内での重複は 0 件。
+- **事実**: relation edge の ID は生成時に一度だけ作られ、改名・reparent・reorder では変わらない。paste は新しい ID を作る（rapid_mvp.ts `copySubtree`）。map 内での重複は 0 件。
 - **事実**: ID は map をまたぐと衝突する（1.3）。
 - **提案**:
-  - migration では node・GraphLink・annotation・surface の ID を**一切振り直さない**。attribute の値（`sourceNodeId`、`m3e:binds-to`、`blueprint:*` など）が ID を参照しているため。
+  - migration では node・relation edge・annotation・surface の ID を**一切振り直さない**。attribute の値（`sourceNodeId`、`m3e:binds-to`、`blueprint:*` など）が ID を参照しているため。
   - 大域の identity は `SourceId + LocalEntityId`（Federated_Semantic_Source 5 節）とする。
   - Rapid 側の SourceId は「workspace と map の組」を写すものにする。具体的な表現は 11 節の 12。
-- Neo4j の relationship ID（elementId）は再構築すると変わる。GraphLink の identity は必ず `(SourceId, linkId)` の property で持つ。
+- Neo4j の relationship ID（elementId）は再構築すると変わる。relation edge の identity は必ず `(SourceId, linkId)` の property で持つ。
 
 ### 7.2 entity binding を後から足す場所
 
 - **提案**:
   - entity binding は独立したレコード種別とする。少なくとも、Rapid occurrence の参照 `(SourceId, nodeId)`、Deep entity の参照、`rev`、provenance、owner を持つ。
-  - node と GraphLink のレコードには何も足さない。多対多（Federated_Semantic_Source RQ4）なので、node の field にすると表現できない。
+  - node と relation edge のレコードには何も足さない。多対多（Federated_Semantic_Source RQ4）なので、node の field にすると表現できない。
   - この追加に migration が要らないための条件は 3 つ。
     1. journal の変更と snapshot が、レコード種別の開いた集合を受け入れる（未知の種別は読み飛ばさずに保持する）。
     2. node の delete が journal に残る。binding 側は、参照先が `tombstoned` かどうかを journal から判定できる。
@@ -335,7 +335,7 @@
 ### 7.3 Vault との対応
 
 - **事実**: Vault に結び付いた map（`MapSource.kind = "obsidian"`）では、Live の正本は Vault の Markdown である（`VaultWatchStatus.sourceOfTruth = "vault-md"`、types.ts）。
-- **事実**: 再 import は GraphLink と linear-text を引き継がない（IS123）。
+- **事実**: 再 import は relation edge と linear-text を引き継がない（IS123）。
 - **提案**: map のレコードに canonical owner（M3E-local か、Obsidian-backed か）を明示する。
   - Obsidian-backed の map の node は、source-materialized の扱いになる。
   - `source.path` は端末ごとに異なる絶対パスなので、PC 間で同期すると誤る（11 節の 13）。
@@ -352,13 +352,13 @@
 | `tags` / `archived` / `pinned` / `source` | map | そのまま。`backup-json` の 1 件も残す | 2・0・1・0 / 0・1・2・0 / 2・0・1・1 |
 | `rootId` | map の `rootNodeId` | そのまま | 全 map |
 | `nodes[*]` の本体 | node | そのまま。`nodeType` は文字列のまま | 40,108 / 4,411 / 1,199 |
-| `parentId` と `children[]` | edge（兄弟順キー） | `children[]` は書き出すときに導出する | 40,081 / 4,399 / 1,188 |
+| `parentId` と `children[]` | parent edge（兄弟順キー） | `children[]` は書き出すときに導出する | 40,081 / 4,399 / 1,188 |
 | `attributes[*]` | attribute（型付き JSON） | そのまま | 63,054 / 9,973 / 130 |
-| `attributes["m3e:edge-label"]` | edge の `label`（案）または attribute | 11 節の 2 | 15,863 / 103 / 0 |
+| `attributes["m3e:edge-label"]` | parent edge の `label`（案）または attribute | 11 節の 2 | 15,863 / 103 / 0 |
 | alias の field | node | そのまま | 991 / 0 / 2 |
 | node の `type`・`aliasOf`・`createdAt`・`updatedAt`・`notes`・`scopeId` | node の型定義外の欄 | 残す（11 節の 5） | 計 57 / 5 / 0 |
-| `links[*]` | GraphLink | そのまま | 505 / 152 / 18 |
-| `links[*].attributes` | attribute（持ち主は GraphLink） | そのまま | 14 / 0 / 0 |
+| `links[*]` | relation edge | そのまま | 505 / 152 / 18 |
+| `links[*].attributes` | attribute（持ち主は relation edge） | そのまま | 14 / 0 / 0 |
 | `scopes[*].primarySurfaceId`・`label`・食い違う `id` | scope の付随設定 | 残す | 934 / 126 / 40 |
 | `scopes[*]` で root のないもの | — | 捨てる（viewer が読込み時に捨てる。空でない配置値は 0 件） | 350 / 0 / 0 |
 | `scopes[*].rootNodeIds`・`relationIds` | — | 導出 | 1,284 / 126 / 40 |
@@ -428,10 +428,10 @@ journal(map_id, seq, command_id, intent, actor_json, provenance_json, base_json,
 - `(:Map {key, headSeq})`
 - `(:Node {key: "<SourceId>/<nodeId>", nodeType, text, …, rev})`
   - nodeType を Label にするか Property にするかは adapter の判断（Glossary 1.1）。
-- edge: `(child)-[:CHILD_OF {orderKey, label, rev}]->(parent)`
+- parent edge: `(child)-[:CHILD_OF {orderKey, label, rev}]->(parent)`
   - 子が親を 1 つだけ持つ制約は、relationship の制約では表せない。Command の検証で守る。
-- GraphLink: `(s)-[:GRAPH_LINK {key, linkId, relationType, …, rev}]->(t)`
-  - relationship の property に一意制約が使えるかは edition で異なる。使えなければ GraphLink を node として持つ。
+- relation edge: `(s)-[:GRAPH_LINK {key, linkId, relationType, …, rev}]->(t)`
+  - relationship の property に一意制約が使えるかは edition で異なる。使えなければ relation edge を node として持つ。
 - attribute:
   - Neo4j の property は null を保持できず（null を設定すると property が消える）、入れ子の配列も持てない。
   - 実データには null が 1,022 件ある。property に直接置くと可逆でなくなる。
@@ -450,7 +450,7 @@ journal(map_id, seq, command_id, intent, actor_json, provenance_json, base_json,
 | | | 3. 再起動時は `rev` を見て replay（5 節の冪等な規則） |
 | 通し番号の採番 | map の行 | `:Map` の property を transaction 内で更新する |
 | attribute の値 | `value_json` | JSON 文字列か attribute の node が要る（9.2） |
-| 親を 1 つに限る、GraphLink の一意性 | 主キー | Command の検証、または edition に依存する制約 |
+| 親を 1 つに限る、relation edge の一意性 | 主キー | Command の検証、または edition に依存する制約 |
 | Neo4j 上の Rapid レコードの役割 | source-materialized（ADR 008 の範囲内） | canonical。ADR 008 の Review trigger「M3E-owned accepted graph 以外への拡張」に当たり、改訂が要る |
 | Recovery Gate | snapshot＋journal（同じ形式） | 同じ。Community には online backup がないので、なおさら必須 |
 
@@ -462,7 +462,7 @@ journal(map_id, seq, command_id, intent, actor_json, provenance_json, base_json,
    - 「付随レコードの所属が解決しない状態」（referential state は materialized record の語）
    - 「型定義にない field の保持欄」
 2. `m3e:edge-label` の置き場所。
-   - 案 A: edge レコードの `label` に移す。GraphLink の `label` と対になり、Neo4j の relationship property とも一致する。研究 map の 15,753 件が対象。
+   - 案 A: parent edge レコードの `label` に移す。relation edge の `label` と対になり、Neo4j の relationship property とも一致する。研究 map の 15,753 件が対象。
    - 案 B: attribute に残す。viewer と selection adapter の参照を変えずに済む。
    - どちらでも可逆性は保てる。
 3. attribute を独立したレコードにする提案（2.1 節）の採否。node のレコードの一部にすると行数は減るが、agent と human の同時の書込みが同じ revision で競合する。
@@ -482,7 +482,7 @@ journal(map_id, seq, command_id, intent, actor_json, provenance_json, base_json,
     - `view` に分類されているが保存される collapse
 11. linear-text の journal を差分で記録するか。その閾値とライブラリ。
 12. Rapid 側の SourceId を何にするか。
-    - 案: workspace ID と map ID の組。ID は衝突する（map 3 件、node 1,148 件、GraphLink 74 件）。
+    - 案: workspace ID と map ID の組。ID は衝突する（map 3 件、node 1,148 件、relation edge 74 件）。
     - 移行時に新しく採番する案もあるが、既存の参照との対応表が要る。
 13. 複数の PC で使う場合（RQ27）。
     - journal を map ごとにするか workspace ごとにするか。端末ごとの番号を持つか。
@@ -499,10 +499,10 @@ journal(map_id, seq, command_id, intent, actor_json, provenance_json, base_json,
 - 研究 map より大きい map がある。4,005 node で保存状態は 9.9 MB あり、その 45% は空の node 配置値である。原因は `syncMapModelStateFromRuntime` で、現在の surface に map の全 node 分の `{}` を書く。保存形式とは関係なく、書込み経路の不具合として扱える。
 - `scopes` の記録の多くは古い。
   - B の 1,284 件のうち 350 件は root が存在しない。
-  - `relationIds` の参照の 94% は存在しない GraphLink を指す。
+  - `relationIds` の参照の 94% は存在しない relation edge を指す。
   - folder の約 4 割には記録がない（B では 1,557 件中 646 件）。
   - viewer が読込みのたびに作り直しているので、表示上は問題にならない。
-- attribute の値に null・bool・数値・配列がある。型定義と書込みの境界の検査（`isGraphLinkAttributes` は GraphLink だけ）を抜けている。
-- node ID・GraphLink ID・map ID は、map や workspace をまたぐと一意でない。
+- attribute の値に null・bool・数値・配列がある。型定義と書込みの境界の検査（`isGraphLinkAttributes` は relation edge だけ）を抜けている。
+- node ID・relation edge ID・map ID は、map や workspace をまたぐと一意でない。
 - workspace のフォルダは Syncthing の共有フォルダで、SQLite のファイルを丸ごと同期している。
 - Final の workspace には、未定義の `nodeType` `leaf` が 216 件ある。

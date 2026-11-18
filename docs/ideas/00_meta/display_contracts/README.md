@@ -29,4 +29,4 @@ M3E の map 書き込みで、AI が **人間にレビューしやすい表示**
 - 人間向けの reviewability を主目的にすると、色や anchor も表示契約に含めるべき
 - `flow` / `timeseries` 系では「主時間軸は depth」が最初の強い規約になる
 - `reviews` では unscoped + context anchoring + triage coloring が基本になる
-- `dependency` では spanning tree + GraphLink が基本になる
+- `dependency` では spanning tree + relation edge が基本になる

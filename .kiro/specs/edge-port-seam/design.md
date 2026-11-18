@@ -2,22 +2,22 @@
 
 ## Overview
 
-`edge-port-seam` は、parent-child edge の endpoint selection と route generation を `EdgePort` / `EdgeRoute` の pure typed seam として切り出すための spec である。
+`edge-port-seam` は、parent edge の endpoint selection と route generation を `EdgePort` / `EdgeRoute` の pure typed seam として切り出すための spec である。
 
 この design は implementation ではなく、最初の切り出し単位を定義する。中心は次の 5 点:
 
 1. `EdgePort.selectPorts`: `srcRect + dstRect + branchDirection -> EdgePorts` の typed pure contract。
 2. `EdgeRoute.route`: `EdgePorts + EdgeRouteStyle -> EdgePath` の typed pure contract。
-3. `nearestEdgePortSide` quarantine: GraphLink endpoint edit 専用 helper を branch edge から隔離する。
+3. `nearestEdgePortSide` quarantine: relation edge endpoint edit 専用 helper を parent edge から隔離する。
 4. `edge-port-lab`: Surface View / direction / route style ごとに port connection を見る standalone lab。
 5. `golden + EN ratchet`: 実 layout から採取した samples と dependency-cruiser / jscpd / typecheck / EN5 composition で bypass と copy を塞ぐ。
 
 ### Goals
 
-- Tree right 以外の branch direction でも parent-child edge が正しい side に接続される contract を定義する。
+- Tree right 以外の branch direction でも parent edge が正しい side に接続される contract を定義する。
 - Port selection と route path generation を分離する。
-- parent-child edge、route style、GraphLink を型で分離する。
-- `nearestEdgePortSide` を GraphLink endpoint edit 専用に隔離する。
+- parent edge、route style、relation edge を型で分離する。
+- `nearestEdgePortSide` を relation edge endpoint edit 専用に隔離する。
 - `edge-port-lab` と product が同一 shared module を import する設計にする。
 - lab green ではなく `lab + golden parity + exclusive seam + EN5 composition` を昇格条件にする。
 
@@ -25,7 +25,7 @@
 
 - この spec draft で implementation code を書かない。
 - LayoutPort algorithm を実装または変更しない。ただし Tree `both` の branch assignment を `LayoutResult` に載せる最小 contract 追加は EdgePort seam の dependency として明記する。
-- GraphLink の data model を全面変更しない。
+- relation edge の data model を全面変更しない。
 - Node drawing / label drawing / full RenderGraph seam はこの unit では所有しない。
 - Surface View の新しい分類名を増やさない。
 - `final/` へ同期しない。
@@ -45,7 +45,7 @@
 ### Out of Boundary
 
 - product node drawing style。
-- GraphLink endpoint UI の detailed interaction design。
+- relation edge endpoint UI の detailed interaction design。
 - `LinkPort "auto"` data migration。
 - Layout algorithm の配置品質。
 - app-wide command seam / render graph seam。
@@ -56,7 +56,7 @@
 - `docs/03_Spec/map_layout_modes.md` の Surface View / direction 正本が変わる。
 - `LayoutResult.branchSide` または positioned nodes の shape が変わる。
 - `GraphLink` / `LinkPort` shared type が変わる。
-- `viewer.ts` の edge / GraphLink rendering path が分割される。
+- `viewer.ts` の parent edge / relation edge rendering path が分割される。
 - dependency-cruiser / jscpd / TypeScript config が変わる。
 
 ## Dependencies
@@ -92,27 +92,27 @@ Current `dev-beta` has the relevant pieces in `beta/src/browser/viewer.ts`:
 - `edgePortPairBetweenRects(fromRect, toRect, pad, opts)` scores all port pairs when source / target side is not fixed.
 - `treeRightEdgeEndsBetween(parentPos, childPos)` calls `edgePortPairBetweenRects(...)` with source `right`, target `left`.
 - `edgeEndsForGraphLink(sourcePos, targetPos, link, ...)` uses `GraphLink.sourcePort` / `targetPort`.
-- `nearestEdgePortSide(rect, point)` chooses the nearest side to a point and is suitable for GraphLink endpoint edit, not branch edge routing.
+- `nearestEdgePortSide(rect, point)` chooses the nearest side to a point and is suitable for relation edge endpoint edit, not parent edge routing.
 
 The failure being closed is:
 
 ```text
-Tree right branch edge     -> source right / target left       OK
+Tree right parent edge     -> source right / target left       OK
 Tree left/up/down/both     -> missing branch-aware rule        broken or accidental
-GraphLink endpoint editing -> nearest side from user point     valid only for edit handle
-Branch edge using nearest  -> layout intent replaced by point  wrong port
+relation edge endpoint editing -> nearest side from user point     valid only for edit handle
+parent edge using nearest  -> layout intent replaced by point  wrong port
 ```
 
 The seam must make this invalid path impossible:
 
 ```text
-branch edge renderer -> nearestEdgePortSide(...)
+parent edge renderer -> nearestEdgePortSide(...)
 ```
 
 and replace it with:
 
 ```text
-branch edge adapter -> EdgePort.selectPorts(...) -> EdgeRoute.route(...)
+parent edge adapter -> EdgePort.selectPorts(...) -> EdgeRoute.route(...)
 ```
 
 ## Architecture
@@ -121,24 +121,24 @@ branch edge adapter -> EdgePort.selectPorts(...) -> EdgeRoute.route(...)
 
 ```mermaid
 flowchart LR
-  Layout["LayoutPort result<br/>positioned src/dst rects + branch metadata"] --> Adapter["parent-child edge adapter"]
+  Layout["LayoutPort result<br/>positioned src/dst rects + branch metadata"] --> Adapter["parent edge adapter"]
   Adapter --> Port["EdgePort.selectPorts"]
   Port --> Route["EdgeRoute.route"]
-  Route --> Draw["product edge draw"]
+  Route --> Draw["product parent edge draw"]
   Lab["edge-port-lab<br/>golden selector + controls"] --> Port
   Lab --> Route
   Golden["golden parity tests"] --> Port
   Golden --> Route
-  GraphEdit["GraphLink endpoint edit"] --> Nearest["nearestEdgePortSide"]
-  GraphDraw["GraphLink renderer"] --> GraphAdapter["GraphLink port adapter"]
+  GraphEdit["relation edge endpoint edit"] --> Nearest["nearestEdgePortSide"]
+  GraphDraw["relation edge renderer"] --> GraphAdapter["relation edge port adapter"]
 ```
 
 Forbidden:
 
 ```text
-parent-child edge adapter / renderer / lab -> nearestEdgePortSide
+parent edge adapter / renderer / lab -> nearestEdgePortSide
 edge-port-lab -> src/browser/viewer.ts
-GraphLink endpoint edit -> EdgePort.selectPorts for edit handle choice
+relation edge endpoint edit -> EdgePort.selectPorts for edit handle choice
 ```
 
 ### Module Plan
@@ -176,9 +176,9 @@ beta/
 
 Exact filenames can change during implementation, but ownership cannot:
 
-- public branch edge port selection is in shared `edge_port`.
+- public parent edge port selection is in shared `edge_port`.
 - public route generation is in shared `edge_route`.
-- GraphLink endpoint edit nearest helper is not in the branch edge module.
+- relation edge endpoint edit nearest helper is not in the parent edge module.
 - lab imports shared contracts, not product browser implementation.
 
 ## EdgePort Contract
@@ -316,7 +316,7 @@ Route generation rules:
 - `line`: `M source L target`.
 - `curve`: cubic bezier using source / target side outward normals.
 - `orthogonal`: axis-first path using the source side axis, then target axis. Rounded corners can be a later visual enhancement if commands remain testable.
-- `force-link`: direct or lightly curved path suitable for Disperse force style; it still uses selected source / target ports and does not imply GraphLink. Visual distinction from GraphLink is expressed by product/lab style tokens such as color or stroke width, not by this pure contract.
+- `force-link`: direct or lightly curved path suitable for Disperse force style; it still uses selected source / target ports and does not imply relation edge. Visual distinction from relation edge is expressed by product/lab style tokens such as color or stroke width, not by this pure contract.
 
 ### Outward Normals
 
@@ -339,7 +339,7 @@ Exact constants can be adjusted during implementation if golden is updated expli
 
 ## Type Separation
 
-### Parent-child edge
+### parent edge
 
 ```typescript
 export interface ParentChildEdgeRef {
@@ -349,7 +349,7 @@ export interface ParentChildEdgeRef {
 }
 ```
 
-This is the structure/spine relation. It is not a `GraphLink`.
+This is the structure/spine relation. It is not a `relation edge`.
 
 ### Route style
 
@@ -359,36 +359,36 @@ export type EdgeRouteStyle = "orthogonal" | "line" | "curve" | "force-link";
 
 This is visual path style. It is not relation semantics.
 
-### GraphLink
+### relation edge
 
-Existing shared `GraphLink` remains a cross relation with `sourceNodeId`, `targetNodeId`, `relationType`, `style`, `sourcePort`, `targetPort`.
+The shared type `GraphLink` represents a relation edge with `sourceNodeId`, `targetNodeId`, `relationType`, `style`, `sourcePort`, `targetPort`.
 
-GraphLink adapter rules:
+relation edge adapter rules:
 
-- GraphLink rendering may use fixed `sourcePort` / `targetPort` if present.
-- GraphLink endpoint edit may use `nearestEdgePortSide(rect, pointerPoint)`.
-- Parent-child edge adapter must not read `GraphLink.sourcePort` / `targetPort`.
-- Parent-child edge adapter must not import GraphLink endpoint edit module.
+- relation edge rendering may use fixed `sourcePort` / `targetPort` if present.
+- relation edge endpoint edit may use `nearestEdgePortSide(rect, pointerPoint)`.
+- parent edge adapter must not read `GraphLink.sourcePort` / `targetPort`.
+- parent edge adapter must not import relation edge endpoint edit module.
 
 ### `LinkPort "auto"`
 
-`LinkPort "auto"` belongs to GraphLink. The EdgePort side type does not include `"auto"`.
+`LinkPort "auto"` belongs to relation edge. The EdgePort side type does not include `"auto"`.
 
 Spec-level interpretation for first unit:
 
 ```text
-GraphLink LinkPort "auto" / undefined = endpoint is not fixed by stored data.
+relation edge LinkPort "auto" / undefined = endpoint is not fixed by stored data.
 Parent-child EdgePortSide = always concrete left/right/top/bottom after selectPorts.
 ```
 
-GraphLink `auto` -> fixed side migration is out of boundary for EdgePort seam and must be handled as a separate task if needed.
+relation edge `auto` -> fixed side migration is out of boundary for EdgePort seam and must be handled as a separate task if needed.
 
 ## `nearestEdgePortSide` Quarantine
 
 The quarantine target is explicit:
 
 ```text
-nearestEdgePortSide(rect, point) is GraphLink endpoint edit only.
+nearestEdgePortSide(rect, point) is relation edge endpoint edit only.
 ```
 
 Recommended extraction:
@@ -400,17 +400,17 @@ src/browser/edge_adapters/graphlink_endpoint_edit.ts
 
 Allowed importers:
 
-- GraphLink endpoint drag / edit controls.
-- GraphLink-specific tests.
+- relation edge endpoint drag / edit controls.
+- relation edge-specific tests.
 
 Forbidden importers:
 
-- parent-child edge adapter.
-- parent-child edge renderer.
+- parent edge adapter.
+- parent edge renderer.
 - `src/shared/edge_port.ts`.
 - `src/shared/edge_route.ts`.
 - `src/labs/edge-port/**`.
-- golden capture code for branch edge, except when capturing GraphLink edit samples in a separate GraphLink spec.
+- golden capture code for parent edge, except when capturing relation edge edit samples in a separate relation edge spec.
 
 If first implementation cannot extract `viewer.ts` immediately, the first task must at least add failing tests and then extract before marking the seam complete. Intra-file calls cannot be enforced by dependency-cruiser; completion requires module boundary or private non-export path plus grep/manual negative inspection.
 
@@ -530,7 +530,7 @@ Optional later samples:
 - `system-free-vector`
 - `radial-clockwise-ordering`
 - `radial-counterclockwise-ordering`
-- GraphLink endpoint edit samples in a separate GraphLink port spec.
+- relation edge endpoint edit samples in a separate relation edge port spec.
 
 ### Capture Mechanism
 
@@ -543,7 +543,7 @@ npm run edge-port:capture -- --sample tree-both-left-branch --surface Tree --dir
 
 Capture must:
 
-- run through product layout / edge adapter, not hand-authored geometry only;
+- run through product layout / parent edge adapter, not hand-authored geometry only;
 - capture Tree `both` `branchSide` from `LayoutResult` and fail if it is absent;
 - sanitize labels and personal content;
 - write deterministic JSON;
@@ -590,8 +590,8 @@ Rules:
 `npm run typecheck` must include:
 
 - shared `edge_port.ts` / `edge_route.ts`,
-- parent-child edge adapter,
-- GraphLink endpoint edit adapter,
+- parent edge adapter,
+- relation edge endpoint edit adapter,
 - `src/labs/edge-port/**`,
 - edge-port unit tests or type contract tests where configured.
 
@@ -659,8 +659,8 @@ Lab green alone does not imply product green. The guarantee is a chain:
 
 1. **Type contract:** lab and product compile against the same `EdgePort` / `EdgeRoute` types.
 2. **Reference composition:** lab and product import the same pure functions.
-3. **Golden parity:** real product edge adapter captures inputs/outputs; lab renders those same samples; tests compare `selectPorts` / `route` output to expected.
-4. **Exclusive seam:** dependency-cruiser and module privacy prevent branch edge from importing GraphLink nearest helper.
+3. **Golden parity:** real product parent edge adapter captures inputs/outputs; lab renders those same samples; tests compare `selectPorts` / `route` output to expected.
+4. **Exclusive seam:** dependency-cruiser and module privacy prevent parent edge from importing relation edge nearest helper.
 5. **EN5 composition:** `createAppServer()` exercises real product startup/data path and snapshots edge ports.
 
 Therefore:
@@ -695,12 +695,12 @@ edge-port-lab green
 | nearest helper remains intra-file in `viewer.ts` | dependency-cruiser cannot block calls | extraction or private quarantine is required before completion |
 | route style reselects ports | branch direction silently ignored | route contract forbids side selection and tests assert endpoint identity |
 | lab imports product browser code | lab green becomes coupled to implementation | dependency-cruiser blocks `src/labs/edge-port/** -> src/browser/**` |
-| GraphLink `auto` ambiguity leaks into EdgePort | parent-child side becomes non-concrete | `EdgePortSide` excludes `"auto"`; GraphLink auto migration is out of boundary |
-| force-link looks like GraphLink | semantic confusion in System/Disperse views | type separation remains in contract; visual distinction uses style tokens decided in edge-port-lab approval |
+| relation edge `auto` ambiguity leaks into EdgePort | parent-child side becomes non-concrete | `EdgePortSide` excludes `"auto"`; relation edge auto migration is out of boundary |
+| force-link looks like relation edge | semantic confusion in System/Disperse views | type separation remains in contract; visual distinction uses style tokens decided in edge-port-lab approval |
 | EN5 blocked locally | composition not verified in sandbox | pure tests remain runnable; report exact blocked reason; CI/non-sandbox remains gate |
 
 ## Director Resolved
 
 1. **B-Q1 Tree both branch assignment:** LayoutPort output (`LayoutResult`) must carry explicit `branchSide` for Tree `both`. EdgePort consumes it and must not rederive branch assignment from rectangle centers. If missing, add the minimal `LayoutResult.branchSide` contract before EdgePort completion.
-2. **B-Q2 force-link visual policy:** `force-link` remains a parent-child `EdgeRouteStyle`. GraphLink distinction is represented by style tokens outside the pure contract; final visual treatment is decided through `edge-port-lab` approval.
-3. **B-Q3 LinkPort auto:** `EdgePortSide` excludes `"auto"`. `auto` remains GraphLink-only. Any GraphLink auto-to-fixed migration is out of boundary and belongs to a separate task.
+2. **B-Q2 force-link visual policy:** `force-link` remains a parent-child `EdgeRouteStyle`. relation edge distinction is represented by style tokens outside the pure contract; final visual treatment is decided through `edge-port-lab` approval.
+3. **B-Q3 LinkPort auto:** `EdgePortSide` excludes `"auto"`. `auto` remains relation edge-only. Any relation edge auto-to-fixed migration is out of boundary and belongs to a separate task.

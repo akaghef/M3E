@@ -2,29 +2,29 @@
 
 ## Project Description (Input)
 
-**lane-view** — GraphLink.attributes の保存経路と Lane Surface View の最初の実装範囲。
+**lane-view** — `GraphLink.attributes` の保存経路と Lane Surface View の最初の実装範囲。
 
 **(a) 誰の課題か**
-akaghef、Director、Codex worker。同じ map の root node、root 直下の子 node、孫 node、孫 node 間の GraphLink を、既存 viewer の Lane で読みたい。root node は scope でなくてもよい（DC30）。
+akaghef、Director、Codex worker。同じ map の root node、root 直下の子 node、孫 node、孫 node 間の relation edge を、既存 viewer の Lane で読みたい。root node は scope でなくてもよい（DC30）。
 
 **(b) 現状**
-Lane と GraphLink.attributes は正本文書にあるが、対象ソースには未実装である。viewer の読込が GraphLink の既知フィールドだけを再構築するため attributes が消える。Surface View の保存と表示 root は scope 単位に結び付いており、非 scope node を Lane の root として指定・復元できない。
+Lane と `GraphLink.attributes` は正本文書にあるが、対象ソースには未実装である。viewer の読込が relation edge の既知フィールドだけを再構築するため attributes が消える。Surface View の保存と表示 root は scope 単位に結び付いており、非 scope node を Lane の root として指定・復元できない。
 
 **(c) 変えたいこと**
-Track A で任意の `Record<string, string>` を既存の GraphLink 保存経路に通す。Track B で shared 側の同期の格子並べを追加し、既存の SVG 描画、GraphLink 描画、Surface Progressive Navigation、保存経路を Lane の場合だけ拡張する。A を先に統合する。
+Track A で任意の `Record<string, string>` を既存の relation edge 保存経路に通す。Track B で shared 側の同期の格子並べを追加し、既存の SVG 描画、relation edge 描画、Surface Progressive Navigation、保存経路を Lane の場合だけ拡張する。A を先に統合する。
 
 > 2026-10-25 変更（akaghef）: Lane は scope の Surface View とし、root はその scope の root node にする。B-7（scope でない node を root にする操作と `MapSurface.displayRootId`）と IS46 の採用は取り消し、条件10の「scope でない node を root に指定した場合も…」を削除した。
 >
-> Status: 2026-10-18、Director が条件6とIS39を格子並べへ差し替え。旧 Track B `d42244f`（elkjs layered による Lane）は `91541a1` で revert 済み、正本更新 `ce015e6` に従って再実装する。2026-10-17、Director が草案を審査済み。Phase 1 の文書を commit 済み。IS46 の MapSurface 案と条件7 / 8 / 10の明確化を採用。Track A は `4327ca0`（GraphLink.attributes の保持）として本流統合済み。Track B の task 7〜16の実装 go-ahead を受領し、worker の検証と Director の独立 browser 検証を進めている。commit / 統合 / push は Director が担当する。
+> Status: 2026-10-18、Director が条件6とIS39を格子並べへ差し替え。旧 Track B `d42244f`（elkjs layered による Lane）は `91541a1` で revert 済み、正本更新 `ce015e6` に従って再実装する。2026-10-17、Director が草案を審査済み。Phase 1 の文書を commit 済み。IS46 の MapSurface 案と条件7 / 8 / 10の明確化を採用。Track A は `4327ca0`（`GraphLink.attributes` の保持）として本流統合済み。Track B の task 7〜16の実装 go-ahead を受領し、worker の検証と Director の独立 browser 検証を進めている。commit / 統合 / push は Director が担当する。
 
 ## Boundary Context
 
 | 区分 | 範囲 |
 |---|---|
 | Track A | A-1 型、A-2 viewer / JSON import 読込、A-3 サーバー検証、A-4 既存 link 作成 API |
-| Track B | B-1 種類の列挙、B-2 同期の格子並べ、B-3 表示条件、B-4 Surface Progressive Navigation、B-5 試験、B-6 GraphLink 層順、B-7 非 scope root の保存と指定操作 |
+| Track B | B-1 種類の列挙、B-2 同期の格子並べ、B-3 表示条件、B-4 Surface Progressive Navigation、B-5 試験、B-6 relation edge 層順、B-7 非 scope root の保存と指定操作 |
 | 今回の正本修正 | `docs/03_Spec/map_layout_modes.md` の Lane の edge option を除去。Glossary の EdgeStyle 説明を整合させる |
-| 対象外 | 他端末・同期、M3E MCP GraphLink 操作、attributes→LinkStyle 写像、Inspector の GraphLink 一覧、導出値の表示、selected-path focus、Radial、他の Surface View 保存値の改名、System subtype、GraphLink の実体化、.mm / Markdown GraphLink 出力、Final |
+| 対象外 | 他端末・同期、M3E MCP relation edge 操作、attributes→LinkStyle 写像、Inspector の relation edge 一覧、導出値の表示、selected-path focus、Radial、他の Surface View 保存値の改名、System subtype、relation edge の実体化、.mm / Markdown relation edge 出力、Final |
 
 Binding sources は `docs/03_Spec/map_layout_modes.md`、`Data_Model.md`、`docs/00_Home/Glossary.md`、`docs/09_Decisions/ADR_013_Lane_Surface_View.md`、`docs/04_Architecture/Pipeline_UI_Reference.md`、`.kiro/steering/*` と、Director handoff の `lane-view-first-slice.md` / `lane-view-decisions.md`（2026-10-17）である。hand-off の末尾「確定」を未決欄より優先する。
 
@@ -34,19 +34,19 @@ Binding sources は `docs/03_Spec/map_layout_modes.md`、`Data_Model.md`、`docs
 
 現在の主戦場は S17、保存の信頼性は S3。Lane は同じ map で知識・作業間の関係を読み、別の面へ移る注意を減らすための Surface View である。最遠の目標の RQ1 / RQ5 / RQ6 に寄与し、RQ2 の human / AI agent 対称性を崩さず、RQ3 / RQ4 の観測値と正本の境界を変更しない。Telemetry の保存や接続は実装しない。`.kiro/steering/product.md` に残る以前の重点より `Current_Status.md` を優先する。Lane の今回の投資は akaghef の明示指示によるもので、他の凍結 Surface View は回帰確認だけ行う。
 
-Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は親子関係、`EdgeStyle` は親子 edge の描画指定、`GraphLink` は非木の関係、`LinkStyle` はその線種として区別する。root 直下の子 node / 孫 node 以外の呼称を新設しない。View 切替は node・GraphLink・兄弟順序・scope 境界を変更しない。
+Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`parent edge` は親子関係、`EdgeStyle` はparent edge の描画指定、`relation edge` は非木の関係、`LinkStyle` はその線種として区別する。root 直下の子 node / 孫 node 以外の呼称を新設しない。View 切替は node・relation edge・兄弟順序・scope 境界を変更しない。
 
 ## Requirements
 
 以下は実装契約の分解であり、後掲の Director 所有の受け入れ条件を置換しない。
 
-### Requirement 1: GraphLink.attributes の型と保存（Track A）
+### Requirement 1: `GraphLink.attributes` の型と保存（Track A）
 
 **Objective:** 関係に付随する Content を、既存の編集・保存・JSON 往復で失わずに保持する。
 
 #### Acceptance Criteria
 
-- A-1: shared / viewer の GraphLink と `GraphLinkLike` に `attributes?: Record<string, string>` を通す。省略した旧データを受け付け、値を LinkStyle に写像しない。
+- A-1: shared / viewer の `GraphLink` 型（relation edge）と `GraphLinkLike` に `attributes?: Record<string, string>` を通す。省略した旧データを受け付け、値を LinkStyle に写像しない。
 - A-2: viewer の map 読込と JSON import は string 値だけを残す。無関係の node 編集、autosave、JSON export/import、サーバー再読込で保持する。通常の node attributes と混同しない。
 - A-3: 書込のサーバー境界では、省略または string 値だけを持つ object を受け付ける。null、配列、scalar、非 string 値を含む object を 4xx で拒否し、書込や部分保存をしない。viewer の寛容な読込による値の除外と、サーバーの厳格な書込検証は別経路とする。
 - A-4: 既存 `POST /api/maps/:mapId/links` が attributes を既存 model と保存経路へ渡す。新しい API / サーバー / MCP tool は作らない。attributes の無い link の既存挙動を保つ。
@@ -69,25 +69,25 @@ Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は
 
 #### Acceptance Criteria
 
-- shared module の格子並べは同期で LayoutResult を返す。配置入力は root / 順序付きレーンと孫 node / 実寸 / direction / space。GraphLink を配置入力にしない。
+- shared module の格子並べは同期で LayoutResult を返す。配置入力は root / 順序付きレーンと孫 node / 実寸 / direction / space。relation edge を配置入力にしない。
 - down は root.children[] の順に帯を上から並べ、各帯の全孫 node を同じ中心 y の1行に孫の兄弟順で並べる。right は帯を左から並べ、同じ中心 x の1列に兄弟順で並べる。
 - 2026-10-19 の訂正に従い、mock は構造の決まりだけを条件とする。孫 node のラベルは既存の文字計測・折返し・寸法を用い、等分区画に収まる共通の領域と帯幅を確保する。space は帯の中心線間と同じ帯の孫 node 間隔の両方を変える（IS44）。矩形を重ねない。
-- 孫 node 間の全 GraphLink を除去する前後で、全ての孫 node の座標が完全一致することを独立試験で検査する。逆向き・循環・飛び越しの関係も位置を決めない。
-- elkjs layered / flow、worker、非同期 cache、pending の仮表示を使わない。GraphLink の向きに基づく段の振分けや交差最小化を追加しない。
-- 100 孫 node / 200 GraphLink と A-sys（6レーン・25孫・82 GraphLink）の両fixtureで、right/downの同期配置を1秒以内に終える。閾値は維持する。
+- 孫 node 間の全 relation edge を除去する前後で、全ての孫 node の座標が完全一致することを独立試験で検査する。逆向き・循環・飛び越しの関係も位置を決めない。
+- elkjs layered / flow、worker、非同期 cache、pending の仮表示を使わない。relation edge の向きに基づく段の振分けや交差最小化を追加しない。
+- 100 孫 node / 200 relation edge と A-sys（6レーン・25孫・82 relation edge）の両fixtureで、right/downの同期配置を1秒以内に終える。閾値は維持する。
 
 ### Requirement 4: 既存描画と Lane の表示条件（B-3 / B-6）
 
-**Objective:** 親子線を増やさず GraphLink を読めて、線が上を通っても node を操作できるようにする。
+**Objective:** 親子線を増やさず relation edge を読めて、線が上を通っても node を操作できるようにする。
 
 #### Acceptance Criteria
 
 - root を箱として描かない。root 直下の子 node の人に読めるラベルをレーン境界に示し、孫 node をレーン内で既存の node 描画に渡す。自動生成コードや ID を表示しない。空ラベルでも raw ID を代用しない。
 - 孫 node より深い子孫は表示上 collapse し、隠れている node 数を示す（IS40=OP18）。保存済み collapsed / children[] を変更しない。
-- 両端が表示対象の孫 node である GraphLink を全て描く。その他の GraphLink は保存したまま省き、省いた本数を一度だけ数えて示す（IS41）。親子 edge を描かず、親子関係を GraphLink に変換しない。
-- GraphLink の既存 LinkStyle、色、direction の矢印、label、LinkPort と Link Route 設定を使う。格子並べで既存の Link Route を置換しない。
+- 両端が表示対象の孫 node である relation edge を全て描く。その他の relation edge は保存したまま省き、省いた本数を一度だけ数えて示す（IS41）。parent edge を描かず、親子関係を relation edge に変換しない。
+- relation edge の既存 LinkStyle、色、direction の矢印、label、LinkPort と Link Route 設定を使う。格子並べで既存の Link Route を置換しない。
 - Lane の visible stroke / arrow / label は node より後の SVG 層に置き、pointer-events を持たせない。`graph-link-hit` は node より前の層に置く（IS45）。node のない所の link 選択、node の選択・drag・編集を既存経路で行う。
-- Lane 以外の Surface View は現在の GraphLink / node 層順を保つ。
+- Lane 以外の Surface View は現在の relation edge / node 層順を保つ。
 
 ### Requirement 5: 既存の操作と検証（B-4 / B-5）
 
@@ -96,7 +96,7 @@ Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は
 #### Acceptance Criteria
 
 - Surface Progressive Navigation へ Lane、right/down、既存 space 操作を加える。Node Progressive Navigation で選んだ非 scope node に Lane を適用する操作は IS46 の選択と一体で審査する。
-- renderer の置換・コピー・fork、@xyflow/react 採用、新 server / 別 page、GraphLink による段の振分け / 自作の crossing minimisation algorithm は失敗条件である。
+- renderer の置換・コピー・fork、@xyflow/react 採用、新 server / 別 page、relation edge による段の振分け / 自作の crossing minimisation algorithm は失敗条件である。
 - 各 Director 条件の試験ファイルとコマンドを tasks.md に対応付ける。fixture、実 server での保存、通常 Beta での確認を別の証拠として残す。fixture の成功を通常 Beta の成功と読み替えない。
 
 ## Director-owned acceptance criteria (verbatim)
@@ -104,25 +104,25 @@ Surface View は `Tree / Axial / Radial / Disperse / System / Lane`。`edge` は
 出典: Director handoff `lane-view-first-slice.md`（2026-10-17）の「受け入れ条件」。以下は原文をそのまま保持する。Codex は変更提案のみ行い、Director が独立実行で合否を判定する。条件6は2026-10-18のDirector指示による更新済み原文。条件1〜5 / 7〜18は変更しない。
 
 ### A 系
-1. link 作成 API で attributes {"confidence":"declared"} 付きの GraphLink を作る → map を取得すると同じ attributes が返る。
+1. link 作成 API で attributes {"confidence":"declared"} 付きの relation edge を作る → map を取得すると同じ attributes が返る。
 2. その map を viewer で開き、無関係の node を編集して保存 → attributes が残る。
 3. JSON export → import の往復で attributes が残る。
 4. 値が文字列でない attributes はサーバーが 4xx で拒否する。viewer の読込は文字列値だけを残す。
 5. persistence_db_behavior.test.js を含む既存の link テストが通る。
 ### B 系
-6. fixture: root > 子 node 3 > 孫 node 各2〜3、隣のレーン間・レーンを飛ばす・同じレーン内の GraphLink を含む。direction down では、同じ子 node の孫 node が全て同じ中心 y の1行に兄弟順に並び、行が children[] の順に上から並ぶ。right では、同じ子 node の孫 node が全て同じ中心 x の1列に兄弟順に並び、列が左から並ぶ。孫 node の矩形は重ならない。孫 node 間の GraphLink を全て取り除いて配置し直しても、全ての孫 node の座標が変わらない（配置関数の単体テスト）。
+6. fixture: root > 子 node 3 > 孫 node 各2〜3、隣のレーン間・レーンを飛ばす・同じレーン内の relation edge を含む。direction down では、同じ子 node の孫 node が全て同じ中心 y の1行に兄弟順に並び、行が children[] の順に上から並ぶ。right では、同じ子 node の孫 node が全て同じ中心 x の1列に兄弟順に並び、列が左から並ぶ。孫 node の矩形は重ならない。孫 node 間の relation edge を全て取り除いて配置し直しても、全ての孫 node の座標が変わらない（配置関数の単体テスト）。
 7. root node の children[]（root 直下の子 node の兄弟順序）を入れ替えるとレーンの順が変わる。Tree → Lane → Tree の切替で state.nodes と state.links が変わらず、変わるのは surface の設定だけ。
-8. Lane では親子線を描かない。両端が表示中の孫 node である GraphLink はすべて描かれ、LinkStyle と direction の矢印が保存値どおり。
+8. Lane では親子線を描かない。両端が表示中の孫 node である relation edge はすべて描かれ、LinkStyle と direction の矢印が保存値どおり。
 9. 表示ラベルに自動生成のコードや ID が出ない。
 10. map を開き直すと、その scope の Lane 選択と direction が復元される。
 11. Surface PN に Lane があり、direction の選択肢は right/down だけ。
 12. 既存の種類が変わらない: layout_port_contract / layout_axis_direction / disperse_layout / viewer_surface_edge_path の単体テストと、viewer.visual / viewer_surface_edge_paths の可視テストが通る。
-13. 孫 node 100 / GraphLink 200 の fixture で、矩形が重ならず、配置が 1 秒以内に終わる。
+13. 孫 node 100 / relation edge 200 の fixture で、矩形が重ならず、配置が 1 秒以内に終わる。
 14. Lane の配置処理は shared 側の module に置き、viewer.ts の追加は種類の列挙と呼び出しだけ（目安: 追加 80 行以下）。
 15. 統合後、通常の Beta で fixture の map を開いて 6・8・10・16 を目視確認する。
-16. Lane では、レーンを飛ばす GraphLink が途中の孫 node の上に見える（DOM 上で見える線が node より後ろの要素である）。
-17. Lane で、GraphLink が上を通る孫 node をクリックすると、その孫 node が選ばれる（GraphLink は選ばれない）。node の無い所で GraphLink をクリックすると、その GraphLink が選ばれる。孫 node のドラッグと編集の開始も、上を通る線に妨げられない。
-18. Lane 以外の Surface View では、GraphLink と node の層順が現行と同じ。
+16. Lane では、レーンを飛ばす relation edge が途中の孫 node の上に見える（DOM 上で見える線が node より後ろの要素である）。
+17. Lane で、relation edge が上を通る孫 node をクリックすると、その孫 node が選ばれる（relation edge は選ばれない）。node の無い所で relation edge をクリックすると、その relation edge が選ばれる。孫 node のドラッグと編集の開始も、上を通る線に妨げられない。
+18. Lane 以外の Surface View では、relation edge と node の層順が現行と同じ。
 
 
 ## Proposed changes to acceptance criteria — 採用済み（2026-10-17）
@@ -132,7 +132,7 @@ Director が以下の3件を採択した。上の Director 条件は、共有ノ
 | 対象 | 提案 | 理由 |
 |---|---|---|
 | 条件7の children[] の所有 node | 冒頭の「子 node の children[]」を「root node の children[]」と明記する | レーン順の正本は root 直下の子 node の兄弟順序であり、その配列は root node が持つ。子 node 自身の children[] は孫 node の順序であり、その入替だけではレーン順は変わらない |
-| 条件8の表示対象 | 「両端が表示中の GraphLink」を「両端が表示中の孫 node である GraphLink」と明記する | IS41 は root / 子 node / 他 scope 等を端点とする link を省く。子 node の見出し表示を「表示中」に含める読み方と衝突し得る |
+| 条件8の表示対象 | 「両端が表示中の relation edge」を「両端が表示中の孫 node である relation edge」と明記する | IS41 は root / 子 node / 他 scope 等を端点とする link を省く。子 node の見出し表示を「表示中」に含める読み方と衝突し得る |
 | 条件10の検証追加 | scope の復元を保持した上で「非 scope root の指定・保存・再読込でも同じ root を復元し、scopen しない」を追加する | DC30 / B-7 が既存の18条件では明示的に検収されていない |
 
 node attributes を使う案を採る場合は node attributes が変わるため条件7とも衝突する。MapSurface を使う案の推奨は条件7の nodes / links 不変を維持するためでもある。nodes / links 不変の緩和は提案しない。条件7前半は root.children[] を指すことが採択済み。子 node 自身の children[] の入替ではレーン順が変わらないことも試験する。
@@ -154,18 +154,18 @@ mock の目的は、システムを構成する要素をレーンごとに一覧
 - M2 孫 node は枠のあるカードで描く: 白地、1px の枠、角丸 8、ラベルは中央揃え。寸法は全孫 node で同じ（mock: down 156×44、right 168×40）。長いラベルは折り返し、カード同士が重ならない。
 - M3 レーンは背景の帯で示す。隣り合う帯は交互に塗り分ける（mock: #ffffff / #f8f9fb、枠 #e3e5ea）。
 - M4 レーン名と孫 node の個数を帯の先頭に出す（mock: 「AI」「3 個」）。
-- M5 GraphLink は孫 node の後ろの帯の上に描き、保存された LinkStyle（default / emphasis 等）と direction の矢印に従う。IS45 により Lane では見える線を node の前に出す（クリック判定は後ろ）。
+- M5 relation edge は孫 node の後ろの帯の上に描き、保存された LinkStyle（default / emphasis 等）と direction の矢印に従う。IS45 により Lane では見える線を node の前に出す（クリック判定は後ろ）。
 
 ## direction down（LaneDown）
 - M6 レーンは children[] の順に上から行として並び、全レーン同じ高さ（mock: 132）。
 - M7 レーン名の列を左に確保する（mock: x=64〜184）。孫 node の領域はその右（mock: x=200〜1376）。
 - M8 孫 node はレーンの中心線（帯の高さの中央より 6 上。下に同じレーンの弧の余白を残す）に1行で並び、**領域の幅を孫 node の数で等分した区画の中央**に置く（mock: 中心 x = 200 + (1176/n)(j+0.5)）。左に詰めない。
-- M9 レーンをまたぐ GraphLink は、**出る側の孫 node の、相手レーンに向いた辺の中央**から、**入る側の孫 node の、元レーンに向いた辺の中央**へつなぐ（上のレーンへは上辺→下辺、下のレーンへは下辺→上辺）。左右の辺にはつながない。縦向きの滑らかな曲線（3次ベジェ、制御点は縦方向）。
-- M10 同じレーンの GraphLink は、両端の孫 node の下辺の中央から下に膨らむ弧で結ぶ。
+- M9 レーンをまたぐ relation edge は、**出る側の孫 node の、相手レーンに向いた辺の中央**から、**入る側の孫 node の、元レーンに向いた辺の中央**へつなぐ（上のレーンへは上辺→下辺、下のレーンへは下辺→上辺）。左右の辺にはつながない。縦向きの滑らかな曲線（3次ベジェ、制御点は縦方向）。
+- M10 同じレーンの relation edge は、両端の孫 node の下辺の中央から下に膨らむ弧で結ぶ。
 
 ## direction right（LaneRight）
 - M11 レーンは children[] の順に左から列として並び、全レーン同じ幅（mock: 216）。レーン名は列の上部。孫 node は列の中心線（幅の中央）に縦1列で、列の高さを等分した区画の中央に置く。
-- M12 レーンをまたぐ GraphLink は、相手レーンに向いた左右の辺の中央どうしを横向きの曲線で結ぶ。同じレーンの GraphLink は右辺の中央から右に膨らむ弧。
+- M12 レーンをまたぐ relation edge は、相手レーンに向いた左右の辺の中央どうしを横向きの曲線で結ぶ。同じレーンの relation edge は右辺の中央から右に膨らむ弧。
 
 ## 判定
 - A-sys fixture（`lane_asys.json`）を down / right で開いたスクリーンショットを、`LaneDown` / `LaneRight` と同じ縮尺で横に並べ、M1〜M12 を一つずつ照合する。単体試験では M8・M9・M11・M12 の座標（区画中央、接続辺）を検査する。

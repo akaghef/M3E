@@ -43,7 +43,7 @@ Finalは通常の開発state更新には使わない。
 次の判断が未決の場合は、更新前に `docs/protocols/map-manager/` を確認する。
 
 - scope / scopen / unscopen
-- alias vs move vs GraphLink
+- alias vs move vs relation edge
 - cross-facet relation
 - layouting / display intent
 - MF / WMF / Mermaid / Markdown からの writeback

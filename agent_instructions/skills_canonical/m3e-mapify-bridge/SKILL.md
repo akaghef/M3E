@@ -46,7 +46,7 @@ Success means all are true:
 - same max depth
 - same ordered parent-child paths
 - no missing or extra node paths
-- no missing or extra tree edges
+- no missing or extra parent edges
 
 If artifacts are on Windows-only paths, classify them as peer evidence unless
 the files are actually synced to this host.

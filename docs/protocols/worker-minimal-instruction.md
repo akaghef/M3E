@@ -23,14 +23,14 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 ## Forbidden
 
 - do not redefine scope, facet, or layout policy
-- do not create cross-facet alias or GraphLink unless explicitly instructed
+- do not create cross-facet alias or relation edge unless explicitly instructed
 - do not restructure outside assigned path
 - do not decide M3E storage shape
 - do not mutate M3E maps through direct REST API, SQLite, runtime files, or temporary write scripts; use the authorized MCP operation
 - do not create test maps, fixture maps, or temporary maps in the active beta personal workspace for verification; use Playwright fixtures, isolated `testRun` state, a separate temp workspace, or an explicit backup/restore flow
 - do not change `docs/00_Home/Current_Status.md` unless the Director explicitly scopes that operating-doc update
 - do not invent path notation
-- do not confuse tree `edge`, graph `GraphLink`, and node-level `link`
+- do not confuse parent edge, graph `relation edge`, and node-level `link`
 - do not use obsolete Claude role branches (`dev-visual`, `dev-data`, `dev-team`) for new work
 - do not report Playwright, browser, screenshot, or GUI results as this worker's measurement unless executed and observed in the current turn; when the sandbox cannot run Playwright, write exactly `未実行（Director 依頼）` and list the requested spec(s)
 
@@ -39,7 +39,7 @@ You are Codex running as a scoped worker. Do only the assigned task inside the a
 - target path is ambiguous
 - the purpose or boundary of scopen / unscopen remains undecided
 - a cross-scope or cross-facet write leaves ownership or relation semantics undecided
-- alias vs move vs GraphLink is a real choice
+- alias vs move vs relation edge is a real choice
 - layout/display intent is unclear
 - requested output is MF, WMF, Mermaid, or Markdown and writeback semantics are unclear
 - more than 3 nodes outside assigned scope would change

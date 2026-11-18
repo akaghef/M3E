@@ -4,7 +4,7 @@ M3E storage is not MF, WMF, Mermaid, Markdown, or any other exchange syntax.
 
 ## Canonical rule
 
-M3E storage is the map model: workspace, map, scope, node, edge, GraphLink,
+M3E storage is the map model: workspace, map, scope, node, edge, parent edge, relation edge,
 alias, and node attributes. External formats are projections or requests.
 
 ## Format roles
@@ -30,7 +30,7 @@ themselves.
 ## Consequences
 
 - `MF-L p="M:(開発)> A > B"` points to M3E path; it is not storage.
-- Mermaid arrows do not imply `edge`; they may represent `GraphLink`, flow, or
+- Mermaid arrows do not imply `parent edge`; they may represent `relation edge`, flow, or
   narrative relation depending on the projection contract.
 - A Markdown heading tree may be a linear projection of a scope, not the
   canonical ownership tree.

@@ -70,7 +70,7 @@ seam を彫る spec には必ず2点を入れる:
 
 > **検証対象は components × logic の直積で増える。乗算は仕様レベルでは消せないが、コストレベルでは型付き port が加算に落とす。「検証がむずかしい」のは乗算自体の性質ではなく、seam 不在の症状である。**
 
-（2026-07-18、akaghef の UI 分解マップ: logic = {style, layout} × components = {surface, graph, edge, node, link} = 10 セル。akaghef 指摘「component ごとに logic の検証が必要。乗算。」より言語化）
+（2026-07-18、akaghef の UI 分解マップ: logic = {style, layout} × components = {surface, graph, parent edge, node, link} = 10 セル。akaghef 指摘「component ごとに logic の検証が必要。乗算。」より言語化）
 
 - **素朴な形**: 各セルが viewer.ts 内の統合テストとしてしか検証できない → 検証コスト = |components| × |logic| 本の手書き E2E。軸が増えるたび掛け算で爆発する。
 - **seam 化した形**: 検証コスト = |logic| 本の契約テスト + |components| 本の adapter 適合テスト + 直積セルの **table-driven golden 表**。

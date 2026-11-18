@@ -38,12 +38,12 @@ involved.
 
 Required when a relation is created or changed.
 
-- Use `edge` for tree ownership.
-- Use `GraphLink` for non-tree map relation.
+- Use `parent edge` for tree ownership.
+- Use `relation edge` for non-tree map relation.
 - Use node-level `link` for an external URL/attribute.
 - Use `alias` for cross-scope visibility without ownership move.
 - Preserve the Content relation meaning and explicit Topology constraints.
-  A Content relation alone does not mandate a parent-child edge.
+  A Content relation alone does not mandate a parent edge.
 
 ## G4 Projection
 

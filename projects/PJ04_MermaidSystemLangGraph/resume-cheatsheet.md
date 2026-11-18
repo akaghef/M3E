@@ -172,8 +172,8 @@ M projects/PJ04_MermaidSystemLangGraph/tasks.yaml
 | 2410-2427 | `anchorPointBetweenRect` → `edgeEndBetweenRects` にリネーム |
 | 2430-2458 | `roundedOrthogonalPath` (v2 のまま。L/コ字 + 直線フォールバック) |
 | 2460-2539 | **node-avoidance helpers 追加**: `collectEdgeAvoidBoxes` / `chooseClearMidX` / `uArchTopApex` / `uArchBottomApex` / `uArchOrthogonalPath` |
-| graph-link ループ (~3600-3720) | flowSurface + isBack/isReverseFlow で分岐。forward は `edgeEndBetween` の 4-midpoint → `roundedOrthogonalPath`。back-edge は box 4 点から TOP/BOTTOM U-arch |
-| tree edge (class="edge", ~3700) | v2 から変更なし（L/コ字 維持） |
+| relation edge の描画ループ (~3600-3720) | flowSurface + isBack/isReverseFlow で分岐。forward は `edgeEndBetween` の 4-midpoint → `roundedOrthogonalPath`。back-edge は box 4 点から TOP/BOTTOM U-arch |
+| parent edge (class="parent edge", ~3700) | v2 から変更なし（L/コ字 維持） |
 | flow-preview-edge (~3870) | v2 から変更なし（orthogonal r=6） |
 
 **v3 の核心**:
@@ -260,7 +260,7 @@ http://localhost:4173/viewer.html?ws=ws_REMH1Z5TFA7S93R3HA0XK58JNR&map=map_17767
 3. 立ち上げて PJ04 map (map_1776786701079_pan0ih) を開く
 4. エッジが今どう見えているか目視 → 改善前後で比較できるようスクリーンショット
 5. [viewer.ts:3833-3847](../../beta/src/browser/viewer.ts#L3833-L3847) 周辺で Bezier → rounded orthogonal に切替を検討
-6. main graph link 側の edge path 生成箇所も同じ方式に揃える (grep で他の `<path` の edge 生成を洗う)
+6. main relation edge 側の edge path 生成箇所も同じ方式に揃える (grep で他の `<path` の edge 生成を洗う)
 7. 型チェック + ブラウザ目視 → 納得いったら user レビュー → commit 相談
 
 ---

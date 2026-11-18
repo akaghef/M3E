@@ -9,7 +9,7 @@
 ### 1.1 データモデル (`beta/src/shared/types.ts`)
 
 - **TreeNode**: `id`, `parentId`, `children[]`, `nodeType` (text/image/folder/alias), `text`, `collapsed`, `details`, `note`, `attributes`, `link`, alias 系フィールド (`targetNodeId`, `aliasLabel`, `access`, `isBroken`)
-- **GraphLink**: ノード間の補助線。`sourceNodeId`, `targetNodeId`, `relationType`, `label`, `direction`, `style`
+- **relation edge**: ノード間の補助線。`sourceNodeId`, `targetNodeId`, `relationType`, `label`, `direction`, `style`
 - **AppState**: `rootId`, `nodes`, `links`, `linearNotesByScope`, `linearTextFontScale`, `linearPanelWidth`
 - **SavedDoc**: `{ version: 1, savedAt, state: AppState }`
 
@@ -155,7 +155,7 @@ TreeNode (depth=3+) -> - bullet (with indentation)
 | `link` | `[text](link)` 形式 |
 | `nodeType: "alias"` | `[[target.text]]` (wikilink) |
 | `nodeType: "folder"` | `# text` + 子ノードを再帰 |
-| GraphLink | export しない（Markdown に自然な対応物がない） |
+| relation edge | export しない（Markdown に自然な対応物がない） |
 
 #### Markdown import 変換ルール
 
@@ -293,13 +293,13 @@ M3E ツリーを Freeplane/FreeMind 互換の `.mm` XML として書き出す。
 | `attributes` | `<attribute NAME="..." VALUE="..."/>` |
 | `children` | 子 `<node>` を再帰 |
 | `nodeType: "alias"` | スキップ or `LINK` として target ノードの text を参照 |
-| GraphLink | `.mm` に対応物なし。`<arrowlink>` として出力する案もあるが初期実装ではスキップ |
+| relation edge | `.mm` に対応物なし。`<arrowlink>` として出力する案もあるが初期実装ではスキップ |
 
 #### Freeplane 固有拡張
 
 - `<richcontent>` の `<html><body>` ラップが必要
 - Freeplane 1.12+ は `RICHCONTENT TYPE="DETAILS"` を標準サポート
-- `<arrowlink DESTINATION="ID_xxx">` で GraphLink を表現可能（将来拡張）
+- `<arrowlink DESTINATION="ID_xxx">` で relation edge を表現可能（将来拡張）
 
 #### 実装方針
 
@@ -417,5 +417,5 @@ SQLite データの自動バックアップ。データ損失防止。
 
 1. **`buildLinearFromScope` / `parseLinearText` の shared 切り出し**: browser 側のロジックを `shared/` に移動するか。round-trip test と Markdown 変換の両方に影響
 2. **Freeplane export の実行場所**: browser 側 (ダウンロード完結) vs server 側 (API エンドポイント)。import が browser 側なので export も browser 側が自然だが、data ロールのスコープ外 (`browser/`) になる
-3. **GraphLink の .mm export**: `<arrowlink>` として出力するか、スキップするか
+3. **relation edge の .mm export**: `<arrowlink>` として出力するか、スキップするか
 4. **SQLite backup の `.backup()` 利用可否**: `better-sqlite3` のバージョンが `.backup()` をサポートしているか要確認

@@ -10,7 +10,7 @@
   - **Acceptance:** Glossary の指定2行、全 map 共通の4軸、件数・session・disabled 規則を記録。未決なし。文書 commit を製品実装の承認とみなさない。
 
 - [x] Director が改訂を審査し、実装の go-ahead を出す（2026-10-20）。
-  - 条件18 の CURRENT の端点条件を「node 軸に一致した両端を持つ GraphLink から求める」に Director が訂正した（IS93）。CURRENT AND 所属=Research の期待値は node 2 / GraphLink 1 で、A-sys と一致する。
+  - 条件18 の CURRENT の端点条件を「node 軸に一致した両端を持つ relation edge から求める」に Director が訂正した（IS93）。CURRENT AND 所属=Research の期待値は node 2 / relation edge 1 で、A-sys と一致する。
   - 実装は Phase 1〜3 を Codex が担当し、Phase 4（dev-beta 統合・通常 Beta 検証）は Director が担当する。
 
 - [ ] 実装担当が基準ソースと検証環境を記録する。
@@ -23,10 +23,10 @@
 
 - [ ] 純粋 module と単体試験を追加する。
   - **Boundary:** `beta/src/shared/view_filter_axes.ts` と `beta/src/shared/view_filter.ts`、新規 `beta/tests/unit/view_filter.test.ts`。
-  - 定義表を入力として target / keys / 順序 / 複数選択 / 絞らない値を共通評価する単体試験。重要度だけを特別扱いする分岐に依存しないことを、node / GraphLink の各定義で検査する。
+  - 定義表を入力として target / keys / 順序 / 複数選択 / 絞らない値を共通評価する単体試験。重要度だけを特別扱いする分岐に依存しないことを、node / relation edge の各定義で検査する。
   - 実現段階の2値、declared、欠落、未知文字列、重要度のキー優先順・空文字・整数文字列・文字レベル・閾値前後、緊急度の同じ尺度を検証する。
   - 所属のカンマ分割、前後空白、空要素、重複、複数名の OR、候補の distinct、選択なし、属性欠落を検証する。登録済み全 chip は存在し、描画対象にキーがなければ disabled。空文字・未知値のキー存在と欠落を区別し、候補1つは有効とする。
-  - node 自身だけの score、CURRENT の孤立 node、所属一致の孤立 node、選択外の相手だけに CURRENT link がある node、軸間 AND、GraphLink の両端 AND、親子 edge、全解除を含める。最終 link 集合から node を再帰評価しない。
+  - node 自身だけの score、CURRENT の孤立 node、所属一致の孤立 node、選択外の相手だけに CURRENT link がある node、軸間 AND、relation edge の両端 AND、parent edge、全解除を含める。最終 link 集合から node を再帰評価しない。
   - 入力と geometry の非変更を deep equality で確認し、集約端点・件数は IS96 どおり検査する。
   - **Acceptance:** 条件2 / 15〜18 / IS99。期待値計算は製品の定義表・判定関数を呼ばず、テスト側の明示した入力と期待集合で検証する。
 
@@ -52,7 +52,7 @@
 
 - [ ] 旧重要度の到達不能な処理を撤去し、status bar の件数を接続する。
   - **Boundary:** design.md の撤去表と viewer の呼出、WorkbenchApp の独立した件数欄。
-  - scope / 存在の guard は残す。linear 出力、通常選択、GraphLink の元の描画選別は、旧重要度以外を変更しない。
+  - scope / 存在の guard は残す。linear 出力、通常選択、relation edge の元の描画選別は、旧重要度以外を変更しない。
   - `setStatus` の一時メッセージと独立させる。viewer.ts の正味行数を実装前と比較する。
   - **Acceptance:** 条件11 / 13 / 16。全軸絞らない場合は現在の到達可能な挙動と一致する。
 
@@ -60,17 +60,17 @@
 
 - [ ] Lane / A-sys の受け入れ試験を追加・実行する。
   - **Boundary:** 新規 `beta/tests/visual/viewer_filter.spec.js`。新規 `beta/tests/fixtures/lane_asys_domains.json` を追加する。既存 `lane_asys.json` は一切変更しない。生成手順と独立期待値は下記。
-  - 既存 Lane spec と同じ import / isolated test server 経路を使う。down / right でフィルタ前の全 node 座標、GraphLink の path、件数を採取する。
+  - 既存 Lane spec と同じ import / isolated test server 経路を使う。down / right でフィルタ前の全 node 座標、relation edge の path、件数を採取する。
   - 所属=Research と CURRENT AND 所属=Research の正確な一致/薄くする集合を下記手順で検査する。
-  - 他の軸がすべて絞らない状態で、CURRENT は fixture の `system-evidenced` 以外の GraphLink をちょうど薄くし、該当 GraphLink の端点を持たない孫 node をちょうど薄くする。期待集合は fixture の属性・端点から試験側で独立算出する。
-  - 解除前後で node / GraphLink の数、全座標、全 path が完全一致し、全軸を絞らない値へ戻すと opacity が復元する。Lane 見出しは IS96 の境界どおり検査する。
+  - 他の軸がすべて絞らない状態で、CURRENT は fixture の `system-evidenced` 以外の relation edge をちょうど薄くし、該当 relation edge の端点を持たない孫 node をちょうど薄くする。期待集合は fixture の属性・端点から試験側で独立算出する。
+  - 解除前後で node / relation edge の数、全座標、全 path が完全一致し、全軸を絞らない値へ戻すと opacity が復元する。Lane 見出しは IS96 の境界どおり検査する。
   - **Acceptance:** 条件1 / 10 / 15 / 18。SVG の属性だけでなく実際の computed opacity を確認する。
 
 - [ ] Tree の SVG / WebGL と全 View の不変条件を検証する。
   - **Boundary:** 新規 `beta/tests/visual/viewer_filter_renderers.spec.js`、専用の isolated fixture。
   - Tree を SVG と `renderer=webgl` で開き、renderer が実際に選択されていることを確認する。WebGL fallback を成功と数えない。
-  - 重要度と、既存設計キー `urgency` を持つ緊急度の各選択で非一致 node / incident GraphLink / edge の opacity が下がり、全座標・path が変わらないことを確認する。WebGL canvas の同じ対象領域で pixel が変わり、解除で戻ることを測る。HTML chip の pixel 変化を WebGL 描画の証拠にしない。
-  - Axial、Logic Chart、System、Disperse、Lane も SVG で全座標・全 GraphLink / edge path の前後一致を検証し、Disperse は WebGL も実行する。元から edge を描かない View に線を追加しない。
+  - 重要度と、既存設計キー `urgency` を持つ緊急度の各選択で非一致 node / incident relation edge / parent edge の opacity が下がり、全座標・path が変わらないことを確認する。WebGL canvas の同じ対象領域で pixel が変わり、解除で戻ることを測る。HTML chip の pixel 変化を WebGL 描画の証拠にしない。
+  - Axial、Logic Chart、System、Disperse、Lane も SVG で全座標・全 relation edge / parent edge path の前後一致を検証し、Disperse は WebGL も実行する。元から parent edge を描かない View に線を追加しない。
   - force の安定配置を比較し、操作に起因する Layout / force 呼出が増えないことを併せて検査する。
   - **Acceptance:** 条件1 / 2 / 14。未対応 View の WebGL は対象外理由を記録し、検証済みとは書かない。
 
@@ -78,7 +78,7 @@
   - **Boundary:** `viewer_filter.spec.js` / `viewer_filter_renderers.spec.js`。
   - chip 直下・再 click・単独 open・Escape、単一選択の閉鎖、複数選択の即時反映と open 維持、すべて、閉じる、解除を click と keyboard で検査する。「含む」と ARIA checked / expanded、focus 復帰、全4軸の常設と IS99 の disabled 理由も検査する。
   - status bar は一致 / 描画の両件数が独立期待値と一致すること、0件、2.5秒を超えて残ること、一時 status の表示と消去で変わらないこと、解除で件数欄だけ消えることを確認する。
-  - 薄い node を選択し、SVG patch と WebGL の選択更新後も濃淡が保持されることを確認する。GraphLink 選択、drag / 編集後の再描画も含む。
+  - 薄い node を選択し、SVG patch と WebGL の選択更新後も濃淡が保持されることを確認する。relation edge 選択、drag / 編集後の再描画も含む。
   - map 切替と reload は reset。同一 map の View / scope 切替は条件19どおり。保存内容に状態が追加されないことも検査する。
   - **Acceptance:** 条件5〜12 / 14 / 19。個人 workspace に test map を作らない。
 
@@ -101,20 +101,20 @@
 
 生成は実装時に専用 script（例 `beta/tests/fixtures/generate_lane_asys_domains.mjs`）で行う。入力は元 `lane_asys.json` と `/Users/akaghef/dev/Akaghef-System/diagrams/akaghef-system-architecture.html`。外部 HTML を実行せず、147〜152行の `m3eNodes` / `systemNodes` / `researchNodes` / `familyNodes` / `engineeringNodes` / `businessNodes` の宣言を読み、M3E / System / Research / Family / Engineering / Business へ対応づける。入力の版・digest と抽出集合を生成 script の検証資料に記録する。CI は生成済み fixture を使用し個人パスへ依存しない。
 
-元 fixture を複製し、`item_` に続く名前と HTML の node id を対応させ、所属する全 Domain 名を上記順のカンマ区切り `attributes.domain` に追加する。DOMAIN レーンの item は自身の名前も必ず含める。参照先不明は生成失敗とし、勝手に名前を推測しない。元 fixture の既存 attributes・node・GraphLink・親子構造・配置を保持する。新 fixture から追加した domain だけを除去すると元 fixture と deep equality になること、元ファイルの digest が変わらないことを検査する。
+元 fixture を複製し、`item_` に続く名前と HTML の node id を対応させ、所属する全 Domain 名を上記順のカンマ区切り `attributes.domain` に追加する。DOMAIN レーンの item は自身の名前も必ず含める。参照先不明は生成失敗とし、勝手に名前を推測しない。元 fixture の既存 attributes・node・relation edge・親子構造・配置を保持する。新 fixture から追加した domain だけを除去すると元 fixture と deep equality になること、元ファイルの digest が変わらないことを検査する。
 
 試験の期待値は、製品の軸定義表・判定関数・生成 script・新 fixture の domain を読んで計算しない。HTML の原文 `researchNodes`（149行）を別途レビューし、試験内の期待集合として固定する：`res, obsidian, chrome, miro, mac, dell, ipad, gd, chats, codex, ha, akos`。fixture との対応には `item_` を付ける。生成物の domain がこの集合と一致することも別に検査する。
 
-フィルタなしで描画される25 item を N、元 fixture の82 GraphLink を G、上記の Research 集合を R とする。期待値はテスト側で元 fixture の端点と confidence から集合演算だけで計算する。
+フィルタなしで描画される25 item を N、元 fixture の82 relation edge を G、上記の Research 集合を R とする。期待値はテスト側で元 fixture の端点と confidence から集合演算だけで計算する。
 
-| 操作 | 一致 node | 一致 GraphLink | 薄くする対象 |
+| 操作 | 一致 node | 一致 relation edge | 薄くする対象 |
 |---|---|---|---|
 | TO-BE AND 所属=Research | R | G のうち両端が R | node は N\R、link は G\一致集合 |
-| CURRENT AND 所属=Research | R ∩ endpoints(L)（L は confidence=`system-evidenced` かつ両端が R の GraphLink） | L | node は N\一致集合、link は G\L |
+| CURRENT AND 所属=Research | R ∩ endpoints(L)（L は confidence=`system-evidenced` かつ両端が R の relation edge） | L | node は N\一致集合、link は G\L |
 
-2026-10-20 に元 fixture と上記集合から静的に計算した期待値は、Research が一致 node 12 / GraphLink 26（薄くする node 13 / GraphLink 56）、CURRENT AND Research が一致 node 2（Mac、Dell）/ GraphLink 1（Mac–Dell）（薄くする node 23 / GraphLink 81）。後者は A-sys の CURRENT × Research と同じ結果である。これは browser 実測ではなく期待値の確認であり、実装担当は試験側の独立計算で再確認する。
+2026-10-20 に元 fixture と上記集合から静的に計算した期待値は、Research が一致 node 12 / relation edge 26（薄くする node 13 / relation edge 56）、CURRENT AND Research が一致 node 2（Mac、Dell）/ relation edge 1（Mac–Dell）（薄くする node 23 / relation edge 81）。後者は A-sys の CURRENT × Research と同じ結果である。これは browser 実測ではなく期待値の確認であり、実装担当は試験側の独立計算で再確認する。
 
-比較は computed opacity と件数で行う。元 fixture の confidence / 端点から直接算出し、描画後の active / dim class を期待値には使わない。別の単体入力で「CURRENT 無効時に所属一致の孤立 node が一致する」と「CURRENT 有効時に選択外への確認済み GraphLink しかない node が薄くなる」を検査し、元 fixture を差が出るように変更しない。
+比較は computed opacity と件数で行う。元 fixture の confidence / 端点から直接算出し、描画後の active / dim class を期待値には使わない。別の単体入力で「CURRENT 無効時に所属一致の孤立 node が一致する」と「CURRENT 有効時に選択外への確認済み relation edge しかない node が薄くなる」を検査し、元 fixture を差が出るように変更しない。
 
 ## Verification Commands
 

@@ -26,7 +26,7 @@ do not silently generate a full-state REST replacement script.
 - no cycles
 - alias has no children
 - alias target is not another alias
-- GraphLink endpoints exist and are non-alias unless explicitly revised by product spec
+- relation edge endpoints exist and are non-alias unless explicitly revised by product spec
 
 ## Display-governed writes
 

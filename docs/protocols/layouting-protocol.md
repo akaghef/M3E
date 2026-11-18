@@ -11,8 +11,8 @@ See `docs/03_Spec/map_layout_modes.md` for layout modes.
 
 ## Core rules
 
-- Tree `edge` participates in layout.
-- Graph-level `GraphLink` is overlay and does not participate in layout.
+- parent edge participates in layout.
+- A relation edge does not define tree ownership or Tree subtree placement. Its contribution to force placement follows `docs/03_Spec/map_layout_modes.md`.
 - node-level `link` is an attribute and has no layout meaning.
 - Synthetic anchors must be marked and must not be mistaken for semantic source nodes.
 

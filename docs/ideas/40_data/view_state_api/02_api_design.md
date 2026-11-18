@@ -9,7 +9,7 @@ Semantic state
 - map schema
 - node text
 - parent / children
-- graph links
+- relation edges
 - attributes
 - notes
 

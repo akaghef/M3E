@@ -225,7 +225,7 @@ Claude supervisor
 | **static edge** | 無条件遷移 |
 | **conditional edge** | router の branch key で分岐 |
 
-**edge の正本 = Map 上の link (GraphLink)**。router scope の `branches/` container は authoring 便宜のための**同期的 shadow view** (compile は edge list を走査、branches は cross-check のみ)。
+**edge の正本 = Map 上の link (relation edge)**。router scope の `branches/` container は authoring 便宜のための**同期的 shadow view** (compile は edge list を走査、branches は cross-check のみ)。
 
 ### 1.5 Data side
 

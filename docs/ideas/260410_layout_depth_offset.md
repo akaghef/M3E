@@ -123,7 +123,7 @@ function findNodeAtCanvasPoint(x: number, y: number): string | null {
 - `findNodeAtCanvasPoint` iterates all visible nodes.
 - **No changes needed for hit testing.**
 
-### 2.6 Edge Drawing (lines 2160-2178)
+### 2.6 parent edge Drawing (lines 2160-2178)
 
 ```typescript
 const startX = p.x + p.w + edgeStartPad;    // parent's right edge
@@ -131,10 +131,10 @@ const endX = child.x - edgeEndPad;           // child's left edge
 const curve = Math.max(48, (endX - startX) * 0.45);
 ```
 
-- Edge drawing already uses per-node `p.x` and `child.x`, not the depth table.
-- **No changes needed for edge rendering.** If child X shifts, edges will automatically follow.
+- parent edge drawing already uses per-node `p.x` and `child.x`, not the depth table.
+- **No changes needed for parent edge rendering.** If child X shifts, parent edges will automatically follow.
 
-### 2.7 Graph Link Drawing (lines 2092-2146)
+### 2.7 relation edge Drawing (lines 2092-2146)
 
 - Same pattern: uses `sourcePos.x` and `targetPos.x` from `pos[]`.
 - **No changes needed.**
@@ -296,11 +296,11 @@ Currently used only for computing `xByDepth`. With per-parent X positioning, `de
 
 **No changes required.** `getNodeHitBounds()` (line 2361) and `findNodeAtCanvasPoint()` (line 2381) already operate on per-node `pos[nodeId].x`. They do not use `xByDepth`.
 
-### 4.2 Edge Drawing
+### 4.2 parent edge Drawing
 
-**No changes required.** Edge start/end coordinates (lines 2168-2171) are computed from `p.x + p.w` (parent) and `child.x` (child), which are per-node values.
+**No changes required.** parent edge start/end coordinates (lines 2168-2171) are computed from `p.x + p.w` (parent) and `child.x` (child), which are per-node values.
 
-### 4.3 Graph Link Drawing
+### 4.3 relation edge Drawing
 
 **No changes required.** Same per-node pattern (lines 2096-2118).
 

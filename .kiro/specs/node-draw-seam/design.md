@@ -10,7 +10,7 @@
 2. `node_draw_svg.ts`: viewer / lab 共用の SVG/DOM fragment renderer。
 3. `node-lab`: layout/edge なしで固定 positioned nodes を描く standalone visual lab。
 4. KaTeX adapter: `measureLatex` / `renderLatex` を nodeDraw 内 adapter として扱い、lab で実 stylesheet を検証する。
-5. edge/preview separation: `drawNode()` 内 child edge と folder preview edge を nodeDraw から出す。
+5. parent edge/preview separation: `drawNode()` 内 parent edge と folder preview parent edge を nodeDraw から出す。
 6. `golden + EN ratchet`: fragment snapshot、node-lab Playwright、typecheck / dependency-cruiser / jscpd / composition で bypass と copy を塞ぐ。
 
 ### Goals
@@ -19,14 +19,14 @@
 - viewer と node-lab が同一 renderer を import する設計にする。
 - `NodeStyleAttrs` / `m3e:style` / label split / ViewState class 生成を typed contract にする。
 - KaTeX node を nodeDraw の supported content として固定する。
-- child edge 生成を `drawNode()` から分離する実装計画を明示する。
+- parent edge 生成を `drawNode()` から分離する実装計画を明示する。
 - lab green ではなく `fragment golden + lab Playwright + exclusive seam + composition` を昇格条件にする。
 
 ### Non-Goals
 
 - この spec draft で implementation code を書かない。
 - layout algorithm / `LayoutPort` を変更しない。
-- Connection / EdgePort を実装しない。
+- edge / EdgePort を実装しない。
 - Markdown/Mermaid preview panel を nodeDraw に統合しない。
 - tabular node component を第一 ratchet で所有しない。tabular は後続の別 seam として起票する。
 - folder preview mini graph / preview edge を第一 ratchet で所有しない。viewer-owned helper として温存し、将来 `folderPreview` または `surfaceDraw` seam として別起票する。
@@ -42,14 +42,14 @@
 - style normalize / label split / plain-vs-latex content adapter の module plan。
 - node-lab minimum inspection surface。
 - nodeDraw fragment golden schema / update / parity flow。
-- viewer `drawNode()` の node-only extraction と child edge 分離設計。
+- viewer `drawNode()` の node-only extraction と parent edge 分離設計。
 - nodeDraw boundary の dependency-cruiser / jscpd / typecheck / EN5 ratchet。
 
 ### Out of Boundary
 
 - `LayoutPort.layout` algorithm と `LayoutResult` shape の変更。
 - `EdgePort.selectPorts` / `EdgeRoute.route` の実装。
-- GraphLink endpoint edit。
+- relation edge endpoint edit。
 - Markdown/Mermaid renderer。
 - node component `tabular` の seam 化。第一 ratchet では除外し、後続で別 seam 起票する。
 - folder preview mini graph の seam 化。第一 ratchet では viewer-owned helper として温存し、後続で `folderPreview` または `surfaceDraw` seam として別起票する。
@@ -93,7 +93,7 @@ KaTeX metrics は `measureLayoutNode()` の boxSizes に必要なので `NodeDra
 
 ### D2: EdgePort separation
 
-parent-child edge は EdgePort seam が所有する。nodeDraw extraction では `drawNode()` 内の child edge generation を先に `renderParentChildEdges(...)` 相当へ出し、node renderer から `layoutEdgePath` / `edgePortPairBetweenRects` / `smoothGraphLinkPath` を参照できない状態にする。
+parent edge は EdgePort seam が所有する。nodeDraw extraction では `drawNode()` 内の parent edge generation を先に `renderParentChildEdges(...)` 相当へ出し、node renderer から `layoutEdgePath` / `edgePortPairBetweenRects` / `smoothGraphLinkPath` を参照できない状態にする。
 
 ### D3: Preview separation
 
@@ -108,7 +108,7 @@ Current `dev-beta` has:
   - `measureNodeLabel`, `measureWrappedNodeLabel`, `measureLatex`, `isLatexNode`, `latexSource`。
   - `measureLayoutNode(state, nodeId, displayRootId, config)` that produces layout `boxSizes` from node content/style.
   - `render()` obtains `layout = buildLayout(state)` and closes over `state`, `pos`, `viewState`, `scopeLockMap`, `structuredMode`, `scatterSurface`。
-  - inner `drawNode(nodeId)` appends node strings to `nodes` and child edge strings to `edges`。
+  - inner `drawNode(nodeId)` appends node strings to `nodes` and parent edge strings to `edges`。
   - KaTeX node content is emitted as `foreignObject` with `.latex-node-content`。
   - collapsed / alias / status / confidence / lock overlays are emitted inline with node fragments.
   - folder preview mini graph emits preview edges and mini child nodes inside the folder branch.
@@ -122,7 +122,7 @@ The failure being closed is:
 ```text
 drawNode(nodeId)
   -> node SVG fragment
-  -> parent-child edge path
+  -> parent edge path
   -> folder preview edge path
   -> recursive traversal
   -> KaTeX render
@@ -134,7 +134,7 @@ This gives no typed boundary for node appearance. The target is:
 ```text
 viewer adapter -> NodeDrawInput
 node_draw_svg.renderNode(input, adapters) -> NodeDrawOutput
-parent-child edge adapter -> EdgePort / EdgeRoute
+parent edge adapter -> EdgePort / EdgeRoute
 surface/folder preview adapter -> later seam
 render traversal -> orchestrates fragments only
 ```
@@ -155,7 +155,7 @@ flowchart LR
   Svg --> Product["viewer node fragments"]
   Svg --> Lab["node-lab fixed positioned nodes"]
   Svg --> Golden["fragment golden tests"]
-  Edge["parent-child edge adapter"] --> EdgePort["EdgePort / EdgeRoute"]
+  Edge["parent edge adapter"] --> EdgePort["EdgePort / EdgeRoute"]
   Markdown["markdown_renderer.ts preview panel"] --> Preview["preview surface"]
 ```
 
@@ -398,9 +398,9 @@ renderVisibleNodes(order/displayRoot traversal):
 
 Traversal order remains viewer-owned. nodeDraw does not recurse.
 
-### Step 2: Move parent-child edge generation out
+### Step 2: Move parent edge generation out
 
-Current child edge generation is at the top of `drawNode()`. It should move to:
+Current parent edge generation is at the top of `drawNode()`. It should move to:
 
 ```text
 renderParentChildEdges({
@@ -416,9 +416,9 @@ This function may be a transitional viewer helper until EdgePort seam owns it. I
 
 ### Step 3: Keep folder preview as viewer-owned helper
 
-Current folder branch can render `previewLayout`, preview GraphLinks, preview mini nodes, and preview labels. Director decision NDQ2 resolves this: first ratchet keeps folder preview rendering in viewer outside nodeDraw. Product behavior should be preserved through a `renderFolderPreview(...)` helper or equivalent viewer-owned helper.
+Current folder branch can render `previewLayout`, preview relation edges, preview mini nodes, and preview labels. Director decision NDQ2 resolves this: first ratchet keeps folder preview rendering in viewer outside nodeDraw. Product behavior should be preserved through a `renderFolderPreview(...)` helper or equivalent viewer-owned helper.
 
-It must not enter `node_draw_svg.ts`, because preview edge generation would reintroduce EdgePort / GraphLink dependencies.
+It must not enter `node_draw_svg.ts`, because preview edge generation would reintroduce EdgePort / `GraphLink` dependencies.
 
 ### Step 4: Replace node SVG direct generation
 
@@ -455,7 +455,7 @@ The lab app is a small inspection surface, not a product renderer.
   - confidence
   - KaTeX
 - Surface View selector: `Tree / Axial / Radial / Disperse / System` only.
-- canvas: fixed-position nodes, no layout recomputation, no parent-child edge.
+- canvas: fixed-position nodes, no layout recomputation, no parent edge.
 - panels: input JSON summary, output bounds, fragment preview, golden diff.
 - status: `green`, `changed`, `invalid sample`, `missing adapter`, `katex fallback`.
 
@@ -582,7 +582,7 @@ Baseline ignores may exclude generated snapshots, `dist`, `node_modules`, and fi
 Rules after extraction:
 
 - `src/labs/node/**` cannot import `src/browser/**` implementation files.
-- `src/shared/node_draw_svg.ts` cannot import `src/browser/**`, `markdown_renderer.ts`, edge route modules, or viewer globals.
+- `src/shared/node_draw_svg.ts` cannot import `src/browser/**`, `markdown_renderer.ts`, parent edge route modules, or viewer globals.
 - `src/browser/viewer.ts` may import `src/shared/node_draw_*` and optional browser adapter.
 - `src/browser/viewer.ts` must not import `src/labs/**`.
 - If renderer internals split into multiple files, product/lab can import only the public entrypoint.
@@ -629,8 +629,8 @@ EN4 acceptance is not "grep found no bypass"; it is "adding a bypass import fail
 
 **根拠:** nodeDraw pure contract is deterministic, product visual fidelity is covered by product CSS + KaTeX in node-lab, and real-server snapshot mostly tests adapter wiring while adding environment sensitivity.
 
-### D: child edge must be separated before nodeDraw completion
+### D: parent edge must be separated before nodeDraw completion
 
-**決定:** nodeDraw completion requires child edge generation to leave `drawNode()` / node renderer. A transitional viewer edge helper is acceptable until EdgePort implementation owns it.
+**決定:** nodeDraw completion requires parent edge generation to leave `drawNode()` / node renderer. A transitional viewer parent edge helper is acceptable until EdgePort implementation owns it.
 
-**根拠:** node renderer that emits edge paths is not a nodeDraw seam and would bypass EdgePort separation.
+**根拠:** node renderer that emits parent edge paths is not a nodeDraw seam and would bypass EdgePort separation.

@@ -7,16 +7,16 @@
 
 ## やること
 - markdown ファイル群を M3E の TreeNode 構造（Rapid）に変換する importer
-- md の見出し階層 → 親子 edge、段落 → ノード text
+- md の見出し階層 → parent edge、段落 → ノード text
 - Blueprint dep_graph → Rapid も同系統の変換器（Codex 委任）
 
 ## 設計上の問い
-- md の見出し階層は is-a? part-of? → edge protocol（edgeType）と直結
-- 複数 md 間の参照関係（引用・cross-ref）→ GraphLink relationType
+- md の見出し階層は is-a? part-of? → parent edge protocol（edgeType）と直結
+- 複数 md 間の参照関係（引用・cross-ref）→ relation edge relationType
 - 変換時に edgeType を自動推定するか、後付けか
 
 ## 位置づけ
-- PJ02 edge protocol の最初のユースケース
+- PJ02 parent edge protocol の最初のユースケース
 - Blueprint importer と合わせて「→ Rapid 変換器」ファミリーを形成
 - strategy S4 (dogfood) + S5 (Blueprint-first) の合流点
 

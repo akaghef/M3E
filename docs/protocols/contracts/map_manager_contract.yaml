@@ -43,7 +43,7 @@ triggers:
   - map restructuring
   - scope or scopen or unscopen
   - layouting or display intent
-  - cross-facet alias or GraphLink
+  - cross-facet alias or relation edge
   - worker handoff
   - ambiguous path or target node
   - projection or interchange writeback
@@ -53,7 +53,7 @@ must:
   - decide projection purpose before deriving storage changes
   - decide scope purpose before scope mutation
   - decide facet before non-trivial structural write
-  - distinguish edge, GraphLink, and node-level link
+  - distinguish edge, parent edge, relation edge, and node-level link
   - keep worker responsibility bounded
   - separate Content from Topology and explicit requirements from worker proposals
   - decide unresolved Topology, Layout, and Style under Content fidelity and display intent
@@ -61,7 +61,7 @@ must:
   - verify Content fidelity, provenance, explicit constraints, and structure after write
 must_not:
   - delegate scope boundary decisions to worker without explicit handoff
-  - treat GraphLink as parent-child edge
+  - treat relation edge as parent edge
   - replace explicit input constraints silently
   - add claims or provenance from structure, placement, or color alone
   - treat display intent as a fifth category
@@ -74,7 +74,7 @@ must_not:
 escalate_when:
   - path is ambiguous
   - scope granularity is unclear
-  - alias vs move vs GraphLink is undecided
+  - alias vs move vs relation edge is undecided
   - layout mode is requested but unsupported
   - worker needs to touch outside assigned scope
   - explicit constraints conflict with each other, product invariants, or supported capabilities

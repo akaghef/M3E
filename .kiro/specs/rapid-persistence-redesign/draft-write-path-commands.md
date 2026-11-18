@@ -7,9 +7,9 @@
 - 基準: dev-beta `da2cdb4`（作業中に `3503a95` から viewer filter の merge で進んだ）。サーバー側（`beta/src/node/`）は `3503a95` と同一。[research-current-state.md](./research-current-state.md) の行番号は `d67b834` 基準で、`start_viewer.ts` は `a128c85`（受信上限の変更）、`viewer.ts` は `a128c85` と viewer filter の merge でずれている。本書の行番号は `da2cdb4` 基準。
 - ファイル名だけの場合の置き場: `start_viewer.ts`・`rapid_mvp.ts`・`mcp_service.ts`・`collab.ts`・`cloud_sync.ts`・`vault_*.ts`・`flash_*.ts`・`blueprint_importer.ts`・`scope_binding.ts`・`backup.ts`・`system_diagram_runner.ts` は `beta/src/node/`。`viewer.ts`・`home.ts`・`lane_view_controller.ts`・`edge_graphlink_selection_adapter.ts` は `beta/src/browser/`。`concreteness_axis.ts` は `beta/src/shared/`。Final は `final/src/node/` と明記する。
 - 根拠の印: **確認** はコードを読んで確かめたこと、**推論** はコードからの推論（再現していない）、**実データ** は個人 workspace の DB を読み取り専用（`mode=ro`）で照会した結果。保存要求の実測・ブラウザでの再現はしていない。
-- 保存されている field と Glossary の語の対応: `nodes` = node（`parentId`・`children` が親子 edge と兄弟順、`collapsed` が collapse 状態）、`links` = GraphLink、`linearNotesByScope` = scope ごとの linear-text、`scopes` = scope の派生記録、`surfaces` = Surface View の設定と node の位置（Layout）、`annotations` = 注釈（[Annotation Panel](../../../docs/00_Home/Glossary.md) の Pen 等の描画）、`linearTextFontScale`・`linearPanelWidth` = linear-text 表示の書体倍率と幅。
+- 保存されている field と Glossary の語の対応: `nodes` = node（`parentId`・`children` がparent edge と兄弟順、`collapsed` が collapse 状態）、`links` = relation edge、`linearNotesByScope` = scope ごとの linear-text、`scopes` = scope の派生記録、`surfaces` = Surface View の設定と node の位置（Layout）、`annotations` = 注釈（[Annotation Panel](../../../docs/00_Home/Glossary.md) の Pen 等の描画）、`linearTextFontScale`・`linearPanelWidth` = linear-text 表示の書体倍率と幅。
 - Command intent の出典: Glossary の `Command`（`assert` / `rename` / `reparent` / `bind` / `transfer` / `delete` 等）、[Command_Language.md](../../../docs/03_Spec/Command_Language.md) 4 節（`set-attribute` / `unset-attribute` / `set-type` / `clone` / `replace` / `view` / `load` / `export` / `history`）、Glossary の操作語（`reorder`・`scopen`・`unscopen`・`collapse`）。intent の列で backtick のない「定義語なし（…）」は、定義済みの語がない意図を説明したもの。名前ではない。
-- 「同時に変える記録」は、brief の論理レコードモデル（node、edge＝親と兄弟順、GraphLink、scope ごとの linear-text、属性）の単位で書く。
+- 「同時に変える記録」は、brief の論理レコードモデル（node、parent edge＝親と兄弟順、relation edge、scope ごとの linear-text、属性）の単位で書く。
 
 ## 0. 数のまとめ
 
@@ -28,7 +28,7 @@
 | 2 | ブラウザ保存 | `start_viewer.ts:2617–2676`（base 不一致時のマージ）、`mergeLocalNodeChanges` `:2772` | 同上 | baseState・DB・受信 state を比べ、node 単位の変更だけを DB の状態へ適用して全置換。応答に確定 state を含まない | 同上。マージ結果は DB の revision に対して条件付き確定 | あり | 確認（IS117・IS119） |
 | 3 | ブラウザ保存 | `start_viewer.ts:2615`（`force`）→ `:2689–2692` | 競合 Panel の Use Local `viewer.ts:12810`、層 A 52・54・55 | base の確認を飛ばし、受信 state で全置換 | 要求時点に読んだ revision との条件付き確定だけ | あり | 確認 |
 | 4 | ブラウザ保存 | `start_viewer.ts:2613, 2692`（存在しない map id への POST） | 任意の POST（初回の実行で固定 id の map を作る `scripts/ops/v4_service_slice_demo.mjs:22, 358` など） | `saveToSqlite` の UPSERT で map 行を新規作成 | なし | あり | 確認 |
-| 5 | ブラウザ保存 | `start_viewer.ts:2584–2604` → `rapid_mvp.ts:1269`（POST `?scope=` の部分木置換） | repo 内は test だけ（`git grep` で確認） | map 全体を読み、部分木を受信分で置換。旧部分木に触れる GraphLink を、境界をまたぐものも含めて全部消す（`rapid_mvp.ts:1423–1436`）。全置換 | `activeMapSaves` だけ。base revision なし。単文 | あり（savedAt が保存値と別、`rapid_mvp.ts:1469`） | 確認 |
+| 5 | ブラウザ保存 | `start_viewer.ts:2584–2604` → `rapid_mvp.ts:1269`（POST `?scope=` の部分木置換） | repo 内は test だけ（`git grep` で確認） | map 全体を読み、部分木を受信分で置換。旧部分木に触れる relation edge を、境界をまたぐものも含めて全部消す（`rapid_mvp.ts:1423–1436`）。全置換 | `activeMapSaves` だけ。base revision なし。単文 | あり（savedAt が保存値と別、`rapid_mvp.ts:1469`） | 確認 |
 | 6 | ブラウザ保存 | `start_viewer.ts:2652–2653, 2690–2692` → `vault_watch.ts:205` | live Obsidian の map への層 A 1・2 | Markdown を先に書き、その後 SQLite を無条件に全置換 | 二つの保存先をまたぐ transaction なし。SQLite の revision 再確認を省く | あり | 確認 |
 | 7 | MCP | `mcp_service.ts:393`（`m3e_create` node）。共通処理 `:367–493` | MCP の agent（`mcp_server.ts:99` → `start_viewer.ts:234`） | map 全体を読み、Core で node を追加して全置換 | context の baseline か `expected_revision`（`:380`）。保存中と live Vault の map は拒否（`start_viewer.ts:180–190`）。`saveToSqliteIfUnchanged`（`:480`） | あり（`onSaved` `:487` → `start_viewer.ts:186`） | 確認 |
 | 8 | MCP | `mcp_service.ts:397`（copy）→ `rapid_mvp.ts:412` | 同上 | 部分木を新しい ID で複製。`scopes`・`surfaces`・注釈・linear-text も付け替えて複製。全置換 | 同上。1000 node まで | あり | 確認 |
@@ -37,13 +37,13 @@
 | 11 | MCP | `mcp_service.ts:458`（`m3e_update` content）、`:494`（attributes の patch） | 同上 | text・alias の表示名・attributes を変更。全置換 | 同上 | あり | 確認 |
 | 12 | MCP | `mcp_service.ts:465`（move）→ `rapid_mvp.ts:600` | 同上 | 親を変え、新しい親の末尾へ置く（順は指定できない）。全置換 | 同上。map をまたぐ移動は拒否 | あり | 確認 |
 | 13 | MCP | `mcp_service.ts:470`（scopen / unscopen）→ `rapid_mvp.ts:403` | 同上 | nodeType だけを変える。`scopes`・`surfaces` は更新しない | 同上 | あり | 確認 |
-| 14 | MCP | `mcp_service.ts:473`（`m3e_delete`）→ `rapid_mvp.ts:575` | 同上 | 部分木を削除し、接する GraphLink を消し、target を失う alias を broken にして text を書き換える。linear-text・注釈・`surfaces` の位置は残る。全置換 | 同上 | あり | 確認 |
+| 14 | MCP | `mcp_service.ts:473`（`m3e_delete`）→ `rapid_mvp.ts:575` | 同上 | 部分木を削除し、接する relation edge を消し、target を失う alias を broken にして text を書き換える。linear-text・注釈・`surfaces` の位置は残る。全置換 | 同上 | あり | 確認 |
 | 15 | Flash | `start_viewer.ts:195–224`、`flash_jobs.ts:35`（起動時の resume）、`:54`（retry-import）、`:67`（submit）、`:90`（run） | `/api/flash/jobs` の client、起動時（`start_viewer.ts:3906`） | job を JSON file に保存し、生成が終わると層 A 9 を呼ぶ | 層 A 9 と同じ。REVISION_CONFLICT などで job を failed にし、自動では再試行しない（`flash_jobs.ts:117`） | あり | 確認 |
 | 16 | Flash | `start_viewer.ts:1932–1953`（旧 draft の approve）、`flash_ingest.ts:372` | viewer の V4 Panel `viewer.ts:1963`、`v4_service_slice_demo.mjs:163` | map 全体を読み、draft の node を足して全置換。draft は process 内のメモリだけ | 単文。競合確認なし | **なし** | 確認 |
 | 17 | linear-text | `start_viewer.ts:1643–1681`（PUT `/linear/:scope`） | repo 内は test だけ | body を受け取る前に map 全体を読み（`:1619`）、linear-text 1 件を置き換えて全置換。collab の mapVersion を進める（`:1677`） | 単文。競合確認なし | あり（savedAt が保存値と別、`:1675`） | 確認 |
 | 18 | linear-text | `start_viewer.ts:1683–1709`（DELETE） | 同上 | linear-text 1 件を消して全置換 | 同上 | あり（同上、`:1702`） | 確認 |
-| 19 | GraphLink | `start_viewer.ts:2253–2311`（POST `/links`）→ `rapid_mvp.ts:336` | 同上 | body 受信前に読んだ map（`:2241`）へ GraphLink を足して全置換。同じ端点の重複を拒否しない（viewer は拒否する） | 同上 | あり（savedAt が別、`:2305`） | 確認 |
-| 20 | GraphLink | `start_viewer.ts:2313–2331`（DELETE `/links/:link`） | 同上 | GraphLink を消して全置換 | 同上 | あり（`:2326`） | 確認 |
+| 19 | relation edge | `start_viewer.ts:2253–2311`（POST `/links`）→ `rapid_mvp.ts:336` | 同上 | body 受信前に読んだ map（`:2241`）へ relation edge を足して全置換。同じ端点の重複を拒否しない（viewer は拒否する） | 同上 | あり（savedAt が別、`:2305`） | 確認 |
+| 20 | relation edge | `start_viewer.ts:2313–2331`（DELETE `/links/:link`） | 同上 | relation edge を消して全置換 | 同上 | あり（`:2326`） | 確認 |
 | 21 | agent の追加 | `start_viewer.ts:3190–3274`（append-mf-h）、合流処理 `:3091–3139` | 外部の agent（`tools/rapid_mapify_oracle/` の実行記録） | MF-H を親の下へ追加。同名（大文字小文字を無視）の既存の子には合流する。全置換し、Vault 書出しを予約 | 任意の baseSavedAt を事前に比べるだけ（`:3218`）。単文 | あり | 確認 |
 | 22 | agent の追加 | `start_viewer.ts:3276–3387`（rapid/mapify-oracle） | 同上 | 層 A 21 と同じ。opId は応答に返すだけ | 同上 | あり | 確認 |
 | 23 | agent の追加 | `start_viewer.ts:3389–3540`（cas/pn-generate） | viewer の Rapid 生成 `viewer.ts:6906` → `:6635` | 生成前に map 全体を読み、Codex App Server の生成を待ってから子を足し、provenance の属性（`m3e:pn.*`・`m3e:cas.*`）を書いて全置換 | 事前比較は生成前だけ。確定時の再確認なし（IS122） | あり | 確認 |
@@ -55,7 +55,7 @@
 | 29 | Vault | `start_viewer.ts:2049–2071` → `vault_exporter.ts:210` | viewer の書出し（部分木を含む、`viewer.ts:2271`） | Markdown を順に書く。SQLite は変えない | 全ファイルをまとめる transaction なし | なし | 確認 |
 | 30 | Blueprint | `start_viewer.ts:2145–2170` → `blueprint_importer.ts:1034`（map id の決め方 `:589`） | API の client | 生成した全状態で保存。map id が既存なら丸ごと置換 | 単文。競合確認なし | あり（savedAt が別、`:1044`） | 確認 |
 | 31 | Home | `start_viewer.ts:1180–1205` → `rapid_mvp.ts:1009`（new） | `home.ts:146`、`render_runtime_map.mjs:72` | 新しい map の全状態を保存 | 存在確認だけ | なし | 確認 |
-| 32 | Home | `start_viewer.ts:1207–1216` → `rapid_mvp.ts:1017`（duplicate） | `home.ts:185` | state_json を丸ごと複製して INSERT。node ID も GraphLink ID も同じまま | 存在確認と INSERT が別の文。transaction なし | なし | 確認 |
+| 32 | Home | `start_viewer.ts:1207–1216` → `rapid_mvp.ts:1017`（duplicate） | `home.ts:185` | state_json を丸ごと複製して INSERT。node ID も relation edge ID も同じまま | 存在確認と INSERT が別の文。transaction なし | なし | 確認 |
 | 33 | Home | `start_viewer.ts:1218–1251` → `rapid_mvp.ts:1044`（rename） | `home.ts:178`、`render_runtime_map.mjs:78` | 全状態を読み、root の text を書き換えて全置換。saved_at を更新 | SELECT と UPDATE が別の文。transaction なし | なし | 確認 |
 | 34 | Home | `start_viewer.ts:1253–1265` → `rapid_mvp.ts:1092`（archive・restore） | `home.ts:193, 197` | `archived` 列だけを UPDATE（restore は archive の解除） | 単文 | なし | 確認 |
 | 35 | Home | `start_viewer.ts:1267–1300` → `rapid_mvp.ts:1074`（tags） | API だけ（Home に UI なし） | `tags` 列だけを UPDATE | 単文 | なし | 確認 |
@@ -82,7 +82,7 @@
 | 56 | script | `scripts/beta/launch.sh:133–139`、`scripts/final/launch.sh:167–168` 以降 | 起動 script | workspace に DB がない時、seed DB を丸ごと複製 | — | なし | 確認 |
 | 57 | script | `scripts/ops/m3e-data-snapshot.sh:116, 155–156` | 手動・nightly | backup と SQL dump を作る | — | なし | 確認 |
 | 58 | Final | `final/src/node/start_viewer.ts:2348`（保存。マージ時 `:2488`、通常 `:2525`、部分木 `:2428`） | Final の viewer | Beta の層 A 1〜5 と同型だが、条件付き確定（IfUnchanged）がない | 無条件の単文 | あり | 確認 |
-| 59 | Final | `final/src/node/start_viewer.ts`: Home `:1043–1360`、restore `:1432`、linear-text `:1550, 1577`、旧 Flash `:1822`、GraphLink `:2169, 2190`、agent の追加 `:3083, 3186, 3334`、sync `:3374`、auto-sync `:3760`。`final/src/node/collab.ts:465`、`vault_importer.ts:446`、`vault_watch.ts:345`、`blueprint_importer.ts:1041` | Final | Beta の対応経路と同型（MCP と Flash job はない） | 同上 | 経路ごと | 確認 |
+| 59 | Final | `final/src/node/start_viewer.ts`: Home `:1043–1360`、restore `:1432`、linear-text `:1550, 1577`、旧 Flash `:1822`、relation edge `:2169, 2190`、agent の追加 `:3083, 3186, 3334`、sync `:3374`、auto-sync `:3760`。`final/src/node/collab.ts:465`、`vault_importer.ts:446`、`vault_watch.ts:345`、`blueprint_importer.ts:1041` | Final | Beta の対応経路と同型（MCP と Flash job はない） | 同上 | 経路ごと | 確認 |
 | 60 | Final | `final/src/node/start_viewer.ts:206–228, 3726–3727` | 起動のたび | tutorial（env 指定）と 研究 に層 A 45〜47 と同じ処理 | — | なし | 確認・実データ |
 | 61 | 休眠 | `scope_binding.ts:147–242`（同じ DB file に binding 用の表を作る）、`:661`（state へ patch を適用）、`:688`（記録） | test だけ（`beta/tests/unit/scope_binding.test.js`） | patch を state に適用（メモリ）／binding 用の表に transaction で記録。`idempotency_key` を持つ | transaction あり | なし | 確認（ライブ DB に表はない） |
 | 62 | 休眠 | `beta/legacy/rapid_mvp.js:314–316` | 通常の起動対象外 | sample JSON | — | なし | 確認 |
@@ -98,25 +98,25 @@
 | 2 | 同時編集の自動マージ | なし | — | 記録単位の base revision と Command の再検証に置き換える | なし | 削除 |
 | 3 | 端末の状態で競合を解決する | 定義語なし（map 全体の置換） | map の全記録 | なし（強制） | なし | 削除（確定前の Command を再適用するか破棄するかの選択に置き換える） |
 | 4 | 保存先の map がなければ作る | 定義語なし（map 行の作成） | map 行、root node | map id が未使用 | なし | 他経路へ統合（層 A 31） |
-| 5 | 部分木の差し替え | 定義語なし（部分木の置換） | 部分木の node と edge、内部と境界をまたぐ GraphLink | 部分木の revision | なし | 削除（呼出し元なし。要るなら Command 列に分解） |
+| 5 | 部分木の差し替え | 定義語なし（部分木の置換） | 部分木の node と parent edge、内部と境界をまたぐ relation edge | 部分木の revision | なし | 削除（呼出し元なし。要るなら Command 列に分解） |
 | 6 | canonical source が Vault の map の編集 | 層 B の各 Command（宛先が Vault） | Markdown と SQLite の両方 | Vault 側の revision | なし | owner adapter へ |
-| 7 | 子 node の追加 | `assert`、`set-attribute` | 新しい node、edge（親と兄弟順）、attributes | 親の存在と兄弟順の revision | なし（要る） | Command へ変換 |
-| 8 | 部分木の複製（新しい ID） | `clone` | 新しい node と edge、内部 GraphLink、alias の参照先の付替え、`scopes`・`surfaces`、注釈、linear-text | 複製元の部分木の revision（読取り）、複製先の親 | なし（要る） | Command へ変換 |
-| 9 | Flash の構造を scope として一括追加 | `assert`、`scopen`、`set-attribute` | 全 node と edge、root の attributes | 追加先の親の存在 | import key（node の attributes に保存） | Command へ変換（キーを commandId へ移すかは未決） |
-| 10 | MF-H を部分木として一括追加 | `assert` | 全 node と edge | 親の存在 | なし（要る） | Command へ変換 |
+| 7 | 子 node の追加 | `assert`、`set-attribute` | 新しい node、parent edge（親と兄弟順）、attributes | 親の存在と兄弟順の revision | なし（要る） | Command へ変換 |
+| 8 | 部分木の複製（新しい ID） | `clone` | 新しい node と parent edge、内部 relation edge、alias の参照先の付替え、`scopes`・`surfaces`、注釈、linear-text | 複製元の部分木の revision（読取り）、複製先の親 | なし（要る） | Command へ変換 |
+| 9 | Flash の構造を scope として一括追加 | `assert`、`scopen`、`set-attribute` | 全 node と parent edge、root の attributes | 追加先の親の存在 | import key（node の attributes に保存） | Command へ変換（キーを commandId へ移すかは未決） |
+| 10 | MF-H を部分木として一括追加 | `assert` | 全 node と parent edge | 親の存在 | なし（要る） | Command へ変換 |
 | 11 | text・alias の表示名・attributes の変更 | `rename`、`set-attribute`、`unset-attribute` | 対象 node（write alias なら target） | node か field の revision | なし（同じ値なら冪等） | Command へ変換 |
-| 12 | 親の変更 | `reparent` | node の edge、旧親と新親の兄弟順 | node・旧親・新親の revision。循環は確定時に検査 | なし（要る） | Command へ変換（MCP には `reorder` がない） |
+| 12 | 親の変更 | `reparent` | node の parent edge、旧親と新親の兄弟順 | node・旧親・新親の revision。循環は確定時に検査 | なし（要る） | Command へ変換（MCP には `reorder` がない） |
 | 13 | scope 境界の付け外し | `scopen`、`unscopen` | nodeType、`scopes`・`surfaces`（派生の扱いは未決） | node の revision | 実質冪等 | Command へ変換 |
-| 14 | 部分木の削除 | `delete` | 部分木の全 node と edge、接する GraphLink、target を失う alias（broken 化）、親の兄弟順。linear-text・注釈・位置の扱いは未決 | 部分木全体の revision（同時編集との規則は未決） | 実質冪等 | Command へ変換 |
+| 14 | 部分木の削除 | `delete` | 部分木の全 node と parent edge、接する relation edge、target を失う alias（broken 化）、親の兄弟順。linear-text・注釈・位置の扱いは未決 | 部分木全体の revision（同時編集との規則は未決） | 実質冪等 | Command へ変換 |
 | 15 | Flash の生成結果の取込み | 層 A 9 と同じ | 同左 | 同左 | request_id → job id → import key | 他経路へ統合（すでに層 A 9 を通る） |
-| 16 | Flash draft の承認 | `assert` | 足す node と edge | 親の存在 | draft の状態（process 内だけ） | 他経路へ統合（層 A 15）か削除 |
+| 16 | Flash draft の承認 | `assert` | 足す node と parent edge | 親の存在 | draft の状態（process 内だけ） | 他経路へ統合（層 A 15）か削除 |
 | 17 | scope の linear-text の書換え | 定義語なし（linear-text の書換え） | linear-text 1 件 | その linear-text の revision | なし（同じ値なら冪等） | 他経路へ統合（層 B 42 と同じ Command） |
 | 18 | scope の linear-text の削除 | 定義語なし（linear-text の削除） | 同上 | 同上 | 実質冪等 | 他経路へ統合（同上） |
-| 19 | GraphLink の追加 | `assert` | GraphLink 1 件（生成時から安定した ID、RQ28） | 両端の存在と非 alias、重複の規則 | なし（再送で 2 本目ができる） | 他経路へ統合（層 B 24・25 と同じ Command） |
-| 20 | GraphLink の削除 | `delete` | GraphLink 1 件 | GraphLink の revision | 実質冪等 | 他経路へ統合（層 B 30 と同じ Command） |
-| 21 | MF-H を親の下へ追加 | `assert`、定義語なし（同名の既存の子への合流） | 足す node と edge | 親と既存の子の text | 同名への合流で実質冪等 | Command へ変換（層 A 22 と一本化） |
+| 19 | relation edge の追加 | `assert` | relation edge 1 件（生成時から安定した ID、RQ28） | 両端の存在と非 alias、重複の規則 | なし（再送で 2 本目ができる） | 他経路へ統合（層 B 24・25 と同じ Command） |
+| 20 | relation edge の削除 | `delete` | relation edge 1 件 | relation edge の revision | 実質冪等 | 他経路へ統合（層 B 30 と同じ Command） |
+| 21 | MF-H を親の下へ追加 | `assert`、定義語なし（同名の既存の子への合流） | 足す node と parent edge | 親と既存の子の text | 同名への合流で実質冪等 | Command へ変換（層 A 22 と一本化） |
 | 22 | 同上（教師データとの比較つき） | `assert`、定義語なし（同上） | 同上 | 同上 | opId（未使用） | 他経路へ統合（層 A 21） |
-| 23 | 生成 AI による子の追加 | `assert`、`set-attribute` | 足す node と edge、provenance の属性 | 生成前に読んだ親の revision を確定時に再検査 | opId（重複の検査なし） | Command へ変換 |
+| 23 | 生成 AI による子の追加 | `assert`、`set-attribute` | 足す node と parent edge、provenance の属性 | 生成前に読んだ親の revision を確定時に再検査 | opId（重複の検査なし） | Command へ変換 |
 | 24 | Team Collaboration の scope 単位の保存 | なし（全量の送信） | — | scope lock は write authority とは別に検討 | なし | 削除（Command の経路に統合） |
 | 25 | Vault の Markdown から map を作り直す | 定義語なし（外部の canonical source による map 全体の置換） | map の全記録 | Vault 側の変更 | なし | owner adapter へ（source event を差分の Command にする） |
 | 26 | Vault 側の変更の取込み | 定義語なし（同上） | 変わったファイルに対応する node | 同上 | なし | owner adapter へ |
@@ -176,7 +176,7 @@
 | 8 | node の text の編集（startEdit 系 → 確定） | `viewer.ts:12101`（`stopInlineEdit` `:12263`） | `nodes`（text。Markdown link の形なら link と attributes も）、同じ target を持つ alias の text（`:4170`） | 1 件 | 確認 |
 | 9 | alias の表示名の編集 | `viewer.ts:12101`（alias-label） | alias の aliasLabel と text | 1 件 | 確認 |
 | 10 | write alias から target の text を編集 | `viewer.ts:12101`（target-text） | target の text、alias の text | 1 件 | 確認 |
-| 11 | delete（部分木。複数選択可） | `viewer.ts:12596` | `nodes`（部分木と親の children）、`links`（接する GraphLink、`:12068`）、alias（broken 化と text の書換え、`:4185`）。linear-text・注釈・位置は残る | 1 件 | 確認。削除後すぐ保存 |
+| 11 | delete（部分木。複数選択可） | `viewer.ts:12596` | `nodes`（部分木と親の children）、`links`（接する relation edge、`:12068`）、alias（broken 化と text の書換え、`:4185`）。linear-text・注釈・位置は残る | 1 件 | 確認。削除後すぐ保存 |
 | 12 | broken alias の削除 | `viewer.ts:11194` | `nodes` | 1 件 | 確認。別 tab へ送らない |
 | 13 | broken alias の修復（text node にする） | `viewer.ts:11221` | `nodes`（nodeType と alias の field） | 1 件 | 確認。別 tab へ送らない |
 | 14 | node move の共通処理 | `viewer.ts:15001` | `nodes`（旧親と新親の children、parentId、新親の collapsed） | 呼出し元による | 確認 |
@@ -185,31 +185,31 @@
 | 17 | markReparent → applyReparent（Mod+M → P、Alt+M） | `viewer.ts:13990`、`:14017`、`:14025` | 14 と同じ（複数） | 1 件 | 確認 |
 | 18 | cut → paste | `viewer.ts:14923`（cut の分岐） | 14 と同じ（複数） | 1 件 | 確認 |
 | 19 | groupSelected | `viewer.ts:14426` | `nodes`（新しい親を挿入し、選択 node を移す） | **移動ごとに 1 件** | 確認。途中の状態も Undo で現れ、自動保存され得る |
-| 20 | copy → paste（新しい ID） | `viewer.ts:14566`、`:14521`、`:14545`、structured clipboard `:14923` | `nodes`、`links`（部分木内の GraphLink）、alias の参照先の付替え、Concreteness Axis の付随属性。linear-text・位置・注釈は複製しない | 1 件 | 確認。MCP の copy（層 A 8）と範囲が違う |
+| 20 | copy → paste（新しい ID） | `viewer.ts:14566`、`:14521`、`:14545`、structured clipboard `:14923` | `nodes`、`links`（部分木内の relation edge）、alias の参照先の付替え、Concreteness Axis の付随属性。linear-text・位置・注釈は複製しない | 1 件 | 確認。MCP の copy（層 A 8）と範囲が違う |
 | 21 | toggleFolder（scopen / unscopen） | `viewer.ts:3992` | `nodes`（nodeType）、`scopes`・`surfaces`（次の同期で再計算。unscopen した scope の `surfaces` は消える、`:2578`） | 1 件 | 確認 |
 | 22 | alias を現在の scope root の子に作る | `viewer.ts:4015` | `nodes`（alias node、scope root の children） | 1 件 | 確認 |
 | 23 | addAliasAsChild | `viewer.ts:4056` | `nodes` | 1 件 | 確認 |
-| 24 | GraphLink の元を mark して張る | `viewer.ts:11833` | `links` | 1 件 | 確認 |
-| 25 | Disperse で GraphLink を張る | `viewer.ts:11879` | `links` | 1 件 | 確認 |
-| 26 | GraphLink の port 変更と端点の付替え | `viewer.ts:11964`（呼出し: SVG `:15805`・`:16006`・`:12013`、WebGL `:4752`・`:4889`） | `links`（sourcePort・targetPort。付替えでは同じ ID のまま sourceNodeId・targetNodeId を変える） | 1 件 | 確認 |
-| 27 | GraphLink の port の巡回（[ / ]） | `viewer.ts:12079` | `links` | 1 件 | 確認 |
-| 28 | 線の選択からの label・style・矢印の向きの変更 | `edge_graphlink_selection_adapter.ts:160–191` | `links`（label・style・矢印の向き）。親子 edge の label は 34 へ | 1 件 | 確認 |
-| 29 | Disperse の GraphLink の色 | `viewer.ts:11951` | `links`（color） | 1 件 | 確認 |
-| 30 | GraphLink の削除 | `viewer.ts:12047`、`:11941` | `links` | 1 件 | 確認。前者は直後に保存 |
+| 24 | relation edge の元を mark して張る | `viewer.ts:11833` | `links` | 1 件 | 確認 |
+| 25 | Disperse で relation edge を張る | `viewer.ts:11879` | `links` | 1 件 | 確認 |
+| 26 | relation edge の port 変更と端点の付替え | `viewer.ts:11964`（呼出し: SVG `:15805`・`:16006`・`:12013`、WebGL `:4752`・`:4889`） | `links`（sourcePort・targetPort。付替えでは同じ ID のまま sourceNodeId・targetNodeId を変える） | 1 件 | 確認 |
+| 27 | relation edge の port の巡回（[ / ]） | `viewer.ts:12079` | `links` | 1 件 | 確認 |
+| 28 | 線の選択からの label・style・矢印の向きの変更 | `edge_graphlink_selection_adapter.ts:160–191` | `links`（label・style・矢印の向き）。parent edge の label は 34 へ | 1 件 | 確認 |
+| 29 | Disperse の relation edge の色 | `viewer.ts:11951` | `links`（color） | 1 件 | 確認 |
+| 30 | relation edge の削除 | `viewer.ts:12047`、`:11941` | `links` | 1 件 | 確認。前者は直後に保存 |
 | 31 | 塗り・装飾の変更と解除 | `viewer.ts:11361`、`:11384`、`:11332` | `nodes`（attributes `m3e:style`、複数 node） | **なし** | 確認 |
 | 32 | tabular component の切替 | `viewer.ts:11248` | `nodes`（attributes `m3e:component`） | 1 件 | 確認 |
 | 33 | node 幅の変更 | `viewer.ts:5471`（resize handle） | `nodes`（attributes `m3e:label-width`） | 1 件 | 確認 |
-| 34 | 親子 edge の label | `viewer.ts:11405`、`:12295` | 子 node の attributes `m3e:edge-label` | 1 件 | 確認 |
+| 34 | parent edge の label | `viewer.ts:11405`、`:12295` | 子 node の attributes `m3e:edge-label` | 1 件 | 確認 |
 | 35 | reviews/Qn の採択と却下 | `viewer.ts:13325`、`:13358` | `nodes`（選択肢・兄弟・質問 node の attributes と `m3e:style`） | **なし** | 確認 |
 | 36 | toggleCollapse | `viewer.ts:12655` | `nodes`（collapsed） | **なし** | 確認 |
 | 37 | 他の操作に付随する collapse | 1・4〜7・14 の親の展開、`viewer.ts:15576`（Disperse の展開）、`:13385`（説明表示。保存を予約せず次の保存に乗る） | `nodes`（collapsed） | 呼出し元による | 確認 |
 | 38 | Surface View の切替・間隔・方向・Lane の線の設定 | `viewer.ts:1111`、`:1138`、`:1149`、`:1160`（event `:15107`） | `surfaces`、`scopes`（primarySurfaceId） | **なし** | 確認 |
 | 39 | Lane root の指定 | `lane_view_controller.ts:25–35` | `surfaces`（表示 root）、`scopes` | 1 件 | 確認 |
-| 40 | 状態の同期（全編集と全保存で暗黙に実行） | `viewer.ts:2670`（`touchDocument` と `currentDocSnapshot` `:12742` から） | `scopes`（全 folder から再計算。relationIds は全 GraphLink を走査）、`surfaces`（現在の scope の surface に map の全 node 分の位置記録を作り、attributes の flow 位置・形を写し、方向と間隔を書く） | — | 確認・実データ（一つの surface に 14,437 件） |
+| 40 | 状態の同期（全編集と全保存で暗黙に実行） | `viewer.ts:2670`（`touchDocument` と `currentDocSnapshot` `:12742` から） | `scopes`（全 folder から再計算。relationIds は全 relation edge を走査）、`surfaces`（現在の scope の surface に map の全 node 分の位置記録を作り、attributes の flow 位置・形を写し、方向と間隔を書く） | — | 確認・実データ（一つの surface に 14,437 件） |
 | 41 | Disperse の配置（自動配置の収束、drag、pagehide、scope の切替） | `viewer.ts:7385`、`:7449`、`:7588`（描画時）、`:15725`、`:16175` | `surfaces`（位置 x, y） | drag は 1 件、自動配置は reflow の時だけ | 確認 |
 | 42 | linear-text の入力 | `viewer.ts:15296` | `linearNotesByScope`（入力のたびに自動保存を予約） | **なし** | 確認 |
 | 43 | linear-text の Mod+Enter・Reset・Panel 表示時の初期化 | `viewer.ts:15315`、`:15402`、`:7039` | `linearNotesByScope`（Panel を開いただけで、tree から作った text を保存対象にする） | **なし** | 確認 |
-| 44 | linear-text の Apply（tree へ反映） | `viewer.ts:7167`、`:7136`、`:7120` | `nodes`（scope の部分木の text と children を位置で対応させて置き換え、余りを削除。削除時に GraphLink と alias を処理しない） | 1 件 | 確認 |
+| 44 | linear-text の Apply（tree へ反映） | `viewer.ts:7167`、`:7136`、`:7120` | `nodes`（scope の部分木の text と children を位置で対応させて置き換え、余りを削除。削除時に relation edge と alias を処理しない） | 1 件 | 確認 |
 | 45 | .md の取込み（linear-text へ） | `viewer.ts:15225`（.md の分岐 `:15246`） | `linearNotesByScope` | **なし** | 確認 |
 | 46 | linear-text の書体倍率と Panel 幅 | `viewer.ts:2501`、`:5310`、`:15343`、`:15375` | `linearTextFontScale`、`linearPanelWidth` | **なし** | 確認 |
 | 47 | 注釈（Pen・Date label・Eraser） | `viewer.ts:3043`、`:3186`、`:3123` | `annotations` | 1 件 | 確認 |
@@ -232,40 +232,40 @@
 
 | # | 意図（定義語） | 提案 intent | 同時に変える記録 | base revision・競合条件 | 冪等キー | 移行の扱い |
 |---|---|---|---|---|---|---|
-| 1 | 子 node の追加 | `assert`、`collapse` | 新しい node、edge（親と兄弟順）、親の collapse 状態（永続にするなら） | 親の存在。末尾への追加は衝突しにくい | 要る（commandId） | Command へ変換 |
-| 2 | 兄弟の追加 | `assert` | 新しい node、edge（挿入位置の兄弟順） | 親と隣の兄弟の順（IS126） | 要る | Command へ変換 |
+| 1 | 子 node の追加 | `assert`、`collapse` | 新しい node、parent edge（親と兄弟順）、親の collapse 状態（永続にするなら） | 親の存在。末尾への追加は衝突しにくい | 要る（commandId） | Command へ変換 |
+| 2 | 兄弟の追加 | `assert` | 新しい node、parent edge（挿入位置の兄弟順） | 親と隣の兄弟の順（IS126） | 要る | Command へ変換 |
 | 3 | 1・2 と同じ | `assert` | 同上 | 同上 | 要る | 他経路へ統合（1・2） |
-| 4 | Disperse 上に node を置く | `assert`、定義語なし（Layout の記録の書込み） | 新しい node、edge、位置 | 親の存在 | 要る | Command へ変換 |
-| 5 | 議論 node の追加 | `assert`、`set-attribute` | 新しい node、edge、attributes | 親の存在 | 要る | Command へ変換 |
-| 6 | 複数の子の追加（同名を除く） | `assert`、定義語なし（同名の既存の子を除く追加） | 足す node と edge | 親と既存の子の text | 要る | Command へ変換（層 A 21 と同じ形） |
-| 7 | テンプレートの子の複製 | `clone`、定義語なし（同名を除く） | 複製する node と edge | テンプレート部分木の revision、追加先の親 | 要る | Command へ変換 |
+| 4 | Disperse 上に node を置く | `assert`、定義語なし（Layout の記録の書込み） | 新しい node、parent edge、位置 | 親の存在 | 要る | Command へ変換 |
+| 5 | 議論 node の追加 | `assert`、`set-attribute` | 新しい node、parent edge、attributes | 親の存在 | 要る | Command へ変換 |
+| 6 | 複数の子の追加（同名を除く） | `assert`、定義語なし（同名の既存の子を除く追加） | 足す node と parent edge | 親と既存の子の text | 要る | Command へ変換（層 A 21 と同じ形） |
+| 7 | テンプレートの子の複製 | `clone`、定義語なし（同名を除く） | 複製する node と parent edge | テンプレート部分木の revision、追加先の親 | 要る | Command へ変換 |
 | 8 | node の text の変更 | `rename`、`set-attribute` | 対象 node の text・link・attributes。alias の表示 text は target から導ける派生値（保存するなら同時に） | node（text）の revision | 同じ値なら冪等 | Command へ変換 |
 | 9 | alias の表示名の変更 | `rename` | alias node の aliasLabel | alias の revision | 冪等 | Command へ変換 |
 | 10 | write alias を通した target の編集 | `rename` | target node（alias の access を検証） | target の revision | 冪等 | Command へ変換 |
 | 11 | 部分木の削除 | `delete` | 層 A 14 と同じ | 層 A 14 と同じ | 実質冪等 | 他経路へ統合（層 A 14 と同じ Command） |
 | 12 | broken alias の削除 | `delete` | alias node、親の兄弟順 | alias の revision | 冪等 | Command へ変換 |
 | 13 | broken alias を text node にする | `set-type` | 対象 node（alias の field を消す） | node の revision | 冪等 | Command へ変換 |
-| 14 | node move | `reparent`、`reorder` | node の edge、旧親と新親の兄弟順、展開の状態 | node と両方の親の revision、循環の検査 | 要る | Command へ変換（検証を一つにする） |
+| 14 | node move | `reparent`、`reorder` | node の parent edge、旧親と新親の兄弟順、展開の状態 | node と両方の親の revision、循環の検査 | 要る | Command へ変換（検証を一つにする） |
 | 15 | Grab による node move | `reparent`、`reorder` | 同上（保持中の連続移動を一つの Command にまとめる） | 開始時の revision | 要る | Command へ変換 |
 | 16 | drag & drop | `reparent`、`reorder` | 同上 | 同上 | 要る | Command へ変換 |
-| 17 | 移動元を指定して親を選ぶ | `reparent` | 複数の部分木の edge と兄弟順 | 各 node と新しい親の revision | 要る | Command へ変換 |
+| 17 | 移動元を指定して親を選ぶ | `reparent` | 複数の部分木の parent edge と兄弟順 | 各 node と新しい親の revision | 要る | Command へ変換 |
 | 18 | cut → paste | `reparent` | 同上 | 同上 | 要る | Command へ変換 |
-| 19 | 選択 node 群の上に新しい親を挿入 | 定義語なし（新しい親の挿入） | 新しい node、移す全 node の edge、元の親の兄弟順 | 共通の親と移す node の revision | 要る | Command へ変換（一つの Command・一つの Undo にする） |
+| 19 | 選択 node 群の上に新しい親を挿入 | 定義語なし（新しい親の挿入） | 新しい node、移す全 node の parent edge、元の親の兄弟順 | 共通の親と移す node の revision | 要る | Command へ変換（一つの Command・一つの Undo にする） |
 | 20 | 部分木の複製（新しい ID） | `clone` | 層 A 8 と同じ範囲にそろえる（いまは linear-text・位置・注釈が漏れる） | 複製元と複製先 | 要る | 他経路へ統合（層 A 8 と同じ Command） |
 | 21 | scope 境界の付け外し | `scopen`、`unscopen` | nodeType、`scopes`・`surfaces`（派生の扱いは未決） | node の revision | 冪等 | 他経路へ統合（層 A 13 と同じ Command） |
-| 22 | alias の作成（scope root の下） | `bind` | alias node、edge | target の存在と非 alias、scope root の存在 | 要る | Command へ変換 |
+| 22 | alias の作成（scope root の下） | `bind` | alias node、parent edge | target の存在と非 alias、scope root の存在 | 要る | Command へ変換 |
 | 23 | alias の作成（target の子） | `bind` | 同上 | 同上 | 要る | Command へ変換 |
-| 24 | GraphLink の追加 | `assert` | GraphLink 1 件 | 両端の存在と非 alias、重複の規則 | 要る | Command へ変換（層 A 19 と同じ Command） |
-| 25 | GraphLink の追加（Disperse） | `assert` | 同上 | 同上 | 要る | 他経路へ統合（24） |
-| 26 | port の変更と端点の付替え | `set-attribute`、定義語なし（同じ ID のまま端点を付け替える） | GraphLink 1 件 | GraphLink と新しい端点の revision | 冪等 | Command へ変換 |
-| 27 | port の巡回 | `set-attribute` | GraphLink 1 件 | GraphLink の revision | 巡回は非冪等（値を指定する Command にする） | Command へ変換 |
-| 28 | label・style・矢印の向き | `set-attribute`、`unset-attribute` | GraphLink 1 件 | 同上 | 巡回は値の指定に | Command へ変換 |
-| 29 | 色 | `set-attribute` | GraphLink 1 件 | 同上 | 冪等 | Command へ変換 |
-| 30 | GraphLink の削除 | `delete` | GraphLink 1 件 | 同上 | 冪等 | Command へ変換（層 A 20 と同じ Command） |
+| 24 | relation edge の追加 | `assert` | relation edge 1 件 | 両端の存在と非 alias、重複の規則 | 要る | Command へ変換（層 A 19 と同じ Command） |
+| 25 | relation edge の追加（Disperse） | `assert` | 同上 | 同上 | 要る | 他経路へ統合（24） |
+| 26 | port の変更と端点の付替え | `set-attribute`、定義語なし（同じ ID のまま端点を付け替える） | relation edge 1 件 | relation edge と新しい端点の revision | 冪等 | Command へ変換 |
+| 27 | port の巡回 | `set-attribute` | relation edge 1 件 | relation edge の revision | 巡回は非冪等（値を指定する Command にする） | Command へ変換 |
+| 28 | label・style・矢印の向き | `set-attribute`、`unset-attribute` | relation edge 1 件 | 同上 | 巡回は値の指定に | Command へ変換 |
+| 29 | 色 | `set-attribute` | relation edge 1 件 | 同上 | 冪等 | Command へ変換 |
+| 30 | relation edge の削除 | `delete` | relation edge 1 件 | 同上 | 冪等 | Command へ変換（層 A 20 と同じ Command） |
 | 31 | Style の変更 | `set-attribute`、`unset-attribute` | 対象 node 群の `m3e:style` | 各 node の revision（属性単位） | 冪等 | Command へ変換（Undo も付ける） |
 | 32 | registered component の付け外し | `set-attribute`、`unset-attribute` | 1 node | 同上 | 冪等 | Command へ変換 |
 | 33 | node 幅 | `set-attribute` | 1 node | 同上 | 冪等 | Command へ変換 |
-| 34 | 親子 edge の label | `set-attribute`、`unset-attribute` | 子 node | 子 node の revision | 冪等 | Command へ変換（置き場は未決） |
+| 34 | parent edge の label | `set-attribute`、`unset-attribute` | 子 node | 子 node の revision | 冪等 | Command へ変換（置き場は未決） |
 | 35 | 判断待ちの採択と却下 | `set-attribute`、`unset-attribute` | 選択肢・兄弟・質問 node の attributes と Style | 質問 node 配下の revision | 冪等 | Command へ変換（一つの Command にする） |
 | 36 | collapse | `collapse` | node の collapse 状態 | node の revision（後勝ちでよいかは未決） | 冪等 | 未決（Command で確定する正本 data か、viewer の表示状態か） |
 | 37 | 付随する collapse | `collapse` | 同上 | 同上 | 冪等 | 未決（主な操作の Command に含めるか分けるか） |
@@ -275,7 +275,7 @@
 | 41 | Disperse の位置 | 定義語なし（Layout の記録の書込み） | 複数 node の位置 | surface の revision | 冪等 | 未決（自動配置の収束で書くかを含む） |
 | 42 | linear-text の編集 | 定義語なし（linear-text の書換え） | linear-text 1 件 | その linear-text の revision（同時編集は後勝ちか未決） | 同じ値なら冪等 | Command へ変換（入力ごとではなく確定の単位で） |
 | 43 | linear-text の初期化と Reset | 定義語なし（同上） | 同上 | 同上 | 冪等 | Command へ変換（Panel を開いただけでは書かない） |
-| 44 | linear-text から scope の部分木を作り直す | 定義語なし（text による部分木の置換） | scope の部分木の node と edge、削除に伴う GraphLink と alias | 部分木の revision | 要る | Command へ変換（`rename`・`assert`・`delete`・`reorder` の列に分ける。位置での対応付けの是非は未決） |
+| 44 | linear-text から scope の部分木を作り直す | 定義語なし（text による部分木の置換） | scope の部分木の node と parent edge、削除に伴う relation edge と alias | 部分木の revision | 要る | Command へ変換（`rename`・`assert`・`delete`・`reorder` の列に分ける。位置での対応付けの是非は未決） |
 | 45 | .md を linear-text へ | 定義語なし（linear-text の書換え） | linear-text 1 件 | 同上 | 冪等 | 他経路へ統合（42） |
 | 46 | 書体倍率と Panel 幅 | 定義語なし（viewer の表示設定） | map の二つの field | なし | 冪等 | 未決（viewport と同じく map の外へ移すか） |
 | 47 | 注釈の追加と削除 | 定義語なし（注釈の追加・削除） | 注釈 1 件 | 注釈の revision | 要る（追加） | Command へ変換 |
@@ -300,18 +300,18 @@ Command の検証を一つにすると、次の差がそのまま仕様の判断
 
 | 意図 | 実装 A | 実装 B | 差 |
 |---|---|---|---|
-| 部分木の複製 | MCP の copy（`rapid_mvp.ts:412`） | viewer の paste（`viewer.ts:14566`） | MCP は `scopes`・`surfaces`・注釈・linear-text も複製する。viewer は node と内部 GraphLink だけ |
-| GraphLink の追加 | viewer（`viewer.ts:11833`、`:11879`） | REST（`rapid_mvp.ts:336`） | viewer は同じ端点の重複を拒否し、サーバーは拒否しない |
-| 部分木の削除 | Core（`rapid_mvp.ts:575`） | viewer（`viewer.ts:12596`）／linear-text の Apply（`viewer.ts:7120`） | broken alias の text の書式が違う。linear-text の Apply は GraphLink も alias も処理しない |
-| Vault からの取込み | `/api/vault/import`（`vault_importer.ts`） | Home の import-vault（`start_viewer.ts:1113`） | 後者は直下の .md だけを 1 階層で読み、GraphLink も wikilink も扱わない |
+| 部分木の複製 | MCP の copy（`rapid_mvp.ts:412`） | viewer の paste（`viewer.ts:14566`） | MCP は `scopes`・`surfaces`・注釈・linear-text も複製する。viewer は node と内部 relation edge だけ |
+| relation edge の追加 | viewer（`viewer.ts:11833`、`:11879`） | REST（`rapid_mvp.ts:336`） | viewer は同じ端点の重複を拒否し、サーバーは拒否しない |
+| 部分木の削除 | Core（`rapid_mvp.ts:575`） | viewer（`viewer.ts:12596`）／linear-text の Apply（`viewer.ts:7120`） | broken alias の text の書式が違う。linear-text の Apply は relation edge も alias も処理しない |
+| Vault からの取込み | `/api/vault/import`（`vault_importer.ts`） | Home の import-vault（`start_viewer.ts:1113`） | 後者は直下の .md だけを 1 階層で読み、relation edge も wikilink も扱わない |
 | scopen | viewer（`viewer.ts:3992`） | MCP（`rapid_mvp.ts:403`） | viewer は次の同期で `scopes`・`surfaces` を作り直す。MCP は nodeType だけで、派生記録は次に viewer が保存するまで古いまま |
 | 保存の競合確認 | Beta（条件付き確定） | Final（無条件の UPSERT） | 同じ DB を開くと、Final の書込みは Beta の確定を検出せずに上書きする |
 
 ## 4. research の 7 節からの訂正と追加
 
 - 行番号は 1 節の表に置き換える（research は `d67b834` 基準）。
-- 7 節にあって、内容を確認したもの: ブラウザ保存とマージ、`?scope=`、MCP、Flash、旧 Flash、linear-text、GraphLink、append-mf-h、mapify-oracle、cas/pn-generate、collab、Vault の import・watch・live 保存・export、Blueprint、Home の各操作、backup の restore、cloud の push・pull、起動時の `ensureMap`、schema の移行、CLI と script の一部、Final。
-- 追加したもの: `force` による全置換（層 A 3）、存在しない map id への保存による作成（4）、`?scope=` が境界をまたぐ GraphLink を消すこと（5）、MCP の種類ごとの内訳（7〜14）、Vault のファイル削除による参照先の書換え（27）、確定後の Vault 書出し（28）、PJ02 の script 2 本（52・53）、起動時の sample 生成（49）、engine backup（50）、Final に条件付き確定がないこと（58）、Final も 研究 map を作ること（60）、未追跡の配布 payload（63）、collab の `mapVersion` が全 map 共通であること（24）、ブラウザ側の操作の全体（層 B）、特に利用者の操作なしの書込み（層 B 37・40・41・43・56・58・59）。
+- 7 節にあって、内容を確認したもの: ブラウザ保存とマージ、`?scope=`、MCP、Flash、旧 Flash、linear-text、relation edge、append-mf-h、mapify-oracle、cas/pn-generate、collab、Vault の import・watch・live 保存・export、Blueprint、Home の各操作、backup の restore、cloud の push・pull、起動時の `ensureMap`、schema の移行、CLI と script の一部、Final。
+- 追加したもの: `force` による全置換（層 A 3）、存在しない map id への保存による作成（4）、`?scope=` が境界をまたぐ relation edge を消すこと（5）、MCP の種類ごとの内訳（7〜14）、Vault のファイル削除による参照先の書換え（27）、確定後の Vault 書出し（28）、PJ02 の script 2 本（52・53）、起動時の sample 生成（49）、engine backup（50）、Final に条件付き確定がないこと（58）、Final も 研究 map を作ること（60）、未追跡の配布 payload（63）、collab の `mapVersion` が全 map 共通であること（24）、ブラウザ側の操作の全体（層 B）、特に利用者の操作なしの書込み（層 B 37・40・41・43・56・58・59）。
 - 7 節の「cloud pull は SQLite へ保存しない」は正しい。加えて、browser が送った状態を conflict backup の file に保存する（層 A 42）。
 
 ## 5. まとめ
@@ -361,7 +361,7 @@ Command の検証を一つにすると、次の差がそのまま仕様の判断
 | 外部の canonical source の内容で map を作り直す・ファイル削除に合わせて node と alias を変える | 層 A 25・26・27 | Vault から全状態を作り直す。削除では missing の属性を書き、alias の参照先を書き換える | なし |
 | map 行そのものの作成・複製・削除・属性（archive・tags・pin）の変更と、file からの新しい map の作成 | 層 A 4・30・31・32・34・35・36・38・39・40 | 行単位の INSERT・UPDATE・DELETE か、全状態の保存 | なし |
 | canonical owner（Vault）の宣言と解除 | 層 A 37 | `source` 列だけを変える | なし（`transfer` に近い。推論） |
-| GraphLink の端点を同じ ID のまま別の node へ付け替える | 層 B 26 | sourceNodeId か targetNodeId を書き換える | なし |
+| relation edge の端点を同じ ID のまま別の node へ付け替える | 層 B 26 | sourceNodeId か targetNodeId を書き換える | なし |
 | scope の linear-text の書換えと削除 | 層 A 17・18、層 B 42・43・45 | `linearNotesByScope` の 1 件を置き換える | なし |
 | Layout と Surface View の設定の保存（位置、表示方式、方向、間隔、Lane root） | 層 B 4・38・39・41 | `surfaces` と `scopes` の primarySurfaceId を書く | なし（Command_Language の view は semantic write でないとする） |
 | viewer の表示設定の map への保存（linear-text の書体倍率と幅） | 層 B 46 | map の二つの field を書く | なし |
@@ -374,7 +374,7 @@ Command の検証を一つにすると、次の差がそのまま仕様の判断
 ### 5.3 消すか統合する経路
 
 - 全状態を運ぶだけの経路: 層 A 1〜3、層 B 50。層 B の各操作を Command として送る形に置き換える。
-- 使われていない部分経路: 層 A 5（`?scope=`）、17・18（linear-text の REST）、19・20（GraphLink の REST）は repo 内に test 以外の呼出し元がない。外部の agent や skill が使っていないかを確かめてから、層 B の同じ Command に統合するか削除する。
+- 使われていない部分経路: 層 A 5（`?scope=`）、17・18（linear-text の REST）、19・20（relation edge の REST）は repo 内に test 以外の呼出し元がない。外部の agent や skill が使っていないかを確かめてから、層 B の同じ Command に統合するか削除する。
 - 同じ意図の重複: 層 A 15・16（Flash の 2 経路）、21・22（MF-H の 2 経路）、25・39（Vault からの取込みの 2 実装）、層 B 20 と層 A 8（複製）、層 B 11 と層 A 14（削除）、層 B 21 と層 A 13（scopen）。3 節の差を判断してから一つにする。
 - 起動時の書込み: 層 A 45〜48、60。初回の作成以外は削除する（6 節）。
 - 利用者の操作なしの書込み: 層 B 40（派生記録の再計算）、59（読込み時の正規化）、43 のうち Panel を開いた時の初期化、41 のうち自動配置の収束時の書込み。materialization にするか、一度きりの data migration に吸収する。
@@ -395,17 +395,17 @@ Command の検証を一つにすると、次の差がそのまま仕様の判断
 1. **通知と応答の savedAt が、DB に保存した saved_at と違う経路が 8 本ある**（層 A 5・17・18・19・20・25・26・30。層 A 41 は応答だけ）。保存の後に別に `new Date()` を取って返す・通知するため。受信側（`viewer.ts:13199`）は通知の savedAt をそのまま基準時刻にするので、自動保存を待っている tab では、基準が DB のどの revision とも対応しなくなる。次の保存は必ずマージ経路に入り、nodes 以外の端末の変更が落ちる（IS117）か 409 になる。IS118 は正しい時刻だけが先に進む場合で、これは時刻そのものが DB にない。確認（時刻の計算）・推論（消失）。
 2. **Undo・Redo が、外部の変更を取り込む前の全状態に戻す**。外部更新の取込み（`viewer.ts:13249`）と別 tab からの受信（`:13146`）は Undo 履歴を消さない。取り込んだ後に Undo すると、agent や別 tab の確定済みの編集ごと戻る。基準時刻は取り込んだ後の値なので、次の保存は競合検査を通って全置換になる。確認（履歴を消さない）・推論（上書き）。
 3. **サーバーが書いた後に画面の全状態を置き換える経路が、自動保存待ちの編集を捨てる**（層 B 57）。Vault import（`viewer.ts:2243`）と V4 draft の適用（`:1963`）は全状態と Undo 履歴を置き換える。Rapid 生成（`:6906`）は外部更新の取込みを直接呼ぶので、`map_updated` の受信と違って自動保存待ちを確かめない。生成を待つ間に打った編集は、予約された自動保存ごと失われる。確認・推論。
-4. **linear-text の Apply が node の同一性をずらし、保存を止める**（層 B 44）。children を位置で対応させて text を上書きするので、途中に 1 行足すと、後ろの兄弟の node に別の text が入る。その node の attributes・GraphLink・alias・親子 edge の label は元の node に付いたまま、別の内容を指す。消した node の GraphLink と alias を処理しないため、サーバーの validate が保存を拒否し、Undo するまで以降の保存がすべて失敗する（DC41 の後は失敗が表示される）。確認（処理）・推論（影響）。
+4. **linear-text の Apply が node の同一性をずらし、保存を止める**（層 B 44）。children を位置で対応させて text を上書きするので、途中に 1 行足すと、後ろの兄弟の node に別の text が入る。その node の attributes・relation edge・alias・parent edge の label は元の node に付いたまま、別の内容を指す。消した node の relation edge と alias を処理しないため、サーバーの validate が保存を拒否し、Undo するまで以降の保存がすべて失敗する（DC41 の後は失敗が表示される）。確認（処理）・推論（影響）。
 5. **Vault の live 連携で、書出し直後に起きた Obsidian 側の変更が捨てられる**。M3E から書き出した後の 2 秒以上（`vault_watch.ts:79`）は、Vault 側の変更を記録せずに無視する（`:130–132`）。編集中は自動保存が 700 ms 間隔で続くので、ほぼ常に無視される状態になり、その間の Obsidian での編集は次の書出しで M3E の状態に上書きされる。確認（無視）・推論（上書き）。
 6. **Vault でファイルを消すと、alias の参照先が戻らない形に書き換わる**。target の alias の参照先を `missing:<id>` にする（`vault_watch.ts:337`）。ファイルが戻っても alias は元の node を指さない。確認。
-7. **部分木の置換が、境界をまたぐ GraphLink を消す**（層 A 5）。部分木の読取り（`?scope=` の GET、`rapid_mvp.ts:1189`）は両端が部分木の中にある GraphLink しか返さないので、読んでから書く client はそれを残せない。確認。
+7. **部分木の置換が、境界をまたぐ relation edge を消す**（層 A 5）。部分木の読取り（`?scope=` の GET、`rapid_mvp.ts:1189`）は両端が部分木の中にある relation edge しか返さないので、読んでから書く client はそれを残せない。確認。
 8. **起動時の `ensureMap` が root の text の変更を毎回戻し、旧 id の行を確かめずに消す**（6 節）。IS132 が扱うのは全置換と基準時刻のずれまで。確認。
 9. **viewer の paste が linear-text・位置・注釈を複製しない**（層 B 20）。MCP の copy は複製する。copy した後に元を消すと、それらは失われる。確認。
 10. **collab の全量送信が、他の書き手が足した node を消す**（層 A 24）。送信に含まれない既存の子孫を「端末で削除された」とみなして消す。基準の `mapVersion` は全 map 共通で、collab と linear-text の REST しか進めないので、MCP やブラウザ保存が同じ scope に足した node を検出できない。IS121 が扱うのは「nodes しか送らない」まで。確認（処理）・推論（消失）。
 11. **UI からの取込み・sample の読込み・読込み時の cloud pull が、確定しない状態を基準にする**（層 B 56・58）。画面の全状態を置き換え、基準もその状態にするが、DB には書かない。次の自動保存は基準と DB が食い違ってマージ経路に入り、取り込んだ内容でも DB の内容でもない状態を確定するか、親の見つからない node で 400 になる。map id を明示しない読込みに失敗すると、既定 map（開発）の id のまま sample を載せる（`viewer.ts:13488`）。推論。
 12. **利用者が操作しなくても書く処理が、閲覧中の tab を書き手にする**（層 B 40・41・43・56・59）。状態の同期は、保存のたびに全 node 分の位置記録と、その tab の Surface View の方向・間隔を書く。表示の違う tab どうしが互いの設定を上書きし、他の書き手との競合（409・マージ・IS117）の機会も増える。確認（書込み）・実データ（一つの surface に 14,437 件）・推論（競合）。
 13. **AppState の型にない key と field が、記録単位の migration で黙って落ちる**（7 節）。今の全状態保存は、それらを手を付けずに残している（`rapid_mvp.ts:88–100`、`start_viewer.ts:1101–1111`）。実データ・確認。
-14. **再送で二重に適用されるか、確定したかが分からない**。GraphLink の REST 追加（層 A 19）は同じ端点の重複を拒否せず冪等キーもないので、応答を失った再送で 2 本目ができる。MCP も commandId を持たないので、応答を失った後の再送は REVISION_CONFLICT になり、前の書込みが確定したかを client が確かめる手段がない（RQ23 の未充足）。確認。
+14. **再送で二重に適用されるか、確定したかが分からない**。relation edge の REST 追加（層 A 19）は同じ端点の重複を拒否せず冪等キーもないので、応答を失った再送で 2 本目ができる。MCP も commandId を持たないので、応答を失った後の再送は REVISION_CONFLICT になり、前の書込みが確定したかを client が確かめる手段がない（RQ23 の未充足）。確認。
 15. **validate を通さずに保存する経路がある**（層 A 27・38・39）。不正な状態が入ると、その map への viewer の保存は validate で毎回拒否される。確認（validate の有無）・推論（影響）。
 16. **cloud へ送る状態が、ローカルで確定した状態と違う**（層 A 43・44）。browser 起点の push は送信時点の画面の状態を送るので、ローカルで確定していない編集が cloud にだけ入り得る。定期 push は savedAt を毎回現在時刻にするので、cloud の savedAt と DB の saved_at は一致しない。IS124 は基準なしの上書きまで。確認・推論。
 17. **IS125 の具体的な仕組み**: map の watch 用 SSE は全 map 合わせて 4 接続まで（`start_viewer.ts:356`）で、超えると古い接続から閉じる（`:400`）。再接続までの待ちは 60 秒（`:365`）。5 つ目の tab を開くと最も古い tab が通知を受けなくなり、再接続しても現在の状態と照合しない。確認。
@@ -431,7 +431,7 @@ Command の検証を一つにすると、次の差がそのまま仕様の判断
 data のある 3 つの workspace の全 map を `mode=ro` で照会した。中身の text は読まず、key と件数だけを数えた。
 
 - 表は全 workspace で `maps` だけ。scope bind 用の表はない。
-- AppState 型にない top-level の key が 6 種類ある（`savedAt`・`sourceDb`・`exportedAt`・`sourceDocSavedAt`・`selectedId`・`scopeId`。各 1〜2 map）。node には型にない field が 5 種類ある（`type`・`aliasOf`・`updatedAt`・`notes`・`createdAt`。各 10〜13 node）。GraphLink に型外の field はない。
+- AppState 型にない top-level の key が 6 種類ある（`savedAt`・`sourceDb`・`exportedAt`・`sourceDocSavedAt`・`selectedId`・`scopeId`。各 1〜2 map）。node には型にない field が 5 種類ある（`type`・`aliasOf`・`updatedAt`・`notes`・`createdAt`。各 10〜13 node）。relation edge に型外の field はない。
 - 全 45,718 node のうち collapse 状態が true の node は 5,427。alias は 993、folder は 1,941。target が存在しない alias はない。
 - 対象の scope node がもう存在しない linear-text が 63 件、存在しない node の位置を持つ surface が 19 個ある。surface は全部で 1,490 個で、位置の記録が最も多い surface は 14,437 件を持つ（層 B 40 の全 node 分の記録による。推論）。
 - attributes の key の接頭辞では `m3e:` が最多（54,563）。import 由来の接頭辞（`blueprint:`・`source:`・`xmind:` など）も多い。key の種類が多いので、論理レコードモデルでは attributes を自由な key-value として残す必要がある（推論）。
@@ -440,9 +440,9 @@ data のある 3 つの workspace の全 map を `mode=ro` で照会した。中
 
 1. `scopes` と `surfaces` の記録を正本の論理レコードに残すか。中身は派生の値（scope の root、relation の一覧）と、作者が決めた値（主に使う Surface View、方向と間隔、node の位置、Lane の表示 root）が混ざっている。派生の値は node から作り直す materialization にし、作者の値だけを記録にするか。
 2. Layout（node の位置）、Surface View の設定、collapse 状態、linear-text の書体倍率と幅を、Command で確定する正本 data にするか、viewport と同じく viewer ごとの表示状態として map の外に置くか。特に Disperse の自動配置が収束した時の位置の書込みを残すか。
-3. 定義語のない意図（5.2 節）に Command intent を割り当てるか。とくに linear-text の書換え、注釈の追加と削除、map 行の作成・複製・削除・属性の変更、新しい親の挿入、同名の子への合流、GraphLink の端点の付替え。Glossary に語を足すのか、既存の intent（`assert`・`delete`・`set-attribute`）の組合せとして書くのか。
-4. 親子 edge の label は子 node の attributes（`m3e:edge-label`）にある。reparent した後も残して新しい親との edge の label にするか、edge の記録に移して reparent で消すか。
-5. GraphLink の端点の付替えを、同じ ID のままの属性変更とするか、削除と追加（ID が変わる）とするか。生成時からの安定 ID を求める要件との関係で決めたい。
+3. 定義語のない意図（5.2 節）に Command intent を割り当てるか。とくに linear-text の書換え、注釈の追加と削除、map 行の作成・複製・削除・属性の変更、新しい親の挿入、同名の子への合流、relation edge の端点の付替え。Glossary に語を足すのか、既存の intent（`assert`・`delete`・`set-attribute`）の組合せとして書くのか。
+4. parent edge の label は子 node の attributes（`m3e:edge-label`）にある。reparent した後も残して新しい親との parent edge の label にするか、parent edge の記録に移して reparent で消すか。
+5. relation edge の端点の付替えを、同じ ID のままの属性変更とするか、削除と追加（ID が変わる）とするか。生成時からの安定 ID を求める要件との関係で決めたい。
 6. 同名の既存の子への合流（MF-H の追加、AI の話題提案、テンプレート）の判定を、Command の検証に含めるか、呼出し元の責任にするか。
 7. 冪等キー: Flash の import key は node の attributes に保存されている。journal に commandId を置いた後も node 側に残すか。MCP で応答を失った後の再送に、前の書込みが確定したかを返す仕組みをどこに置くか。
 8. 削除と同時編集の規則: 削除する部分木の中で別の書き手が編集や追加をしていた場合、削除を拒否するか、削除を優先するか。
@@ -454,7 +454,7 @@ data のある 3 つの workspace の全 map を `mode=ro` で照会した。中
 14. Undo を逆向きの Command にする場合、外部の変更を取り込んだ後の Undo で戻すのは自分の Command だけにするか。
 15. data migration の後に旧実装（Final、Mac 配布 payload のビルド、PJ02 と ops の script）が新しい形式の workspace を開いて書くのを、どう止めるか。script は Command の送信に書き直すか、削除するか。
 16. collab（Team Collaboration）の scope lock と、process 全体で 1 つの mapVersion を、Command の write authority と base revision に置き換えるか、collab の経路を廃止するか。Team Collaboration は範囲外だが、経路は残っており、全量送信で他の書き手の node を消し得る。
-17. 部分木の置換（`?scope=`）、linear-text の REST、GraphLink の REST は、repo 内に test 以外の呼出し元がない。外部の agent や skill が使っていないかを確かめてから削除してよいか。
+17. 部分木の置換（`?scope=`）、linear-text の REST、relation edge の REST は、repo 内に test 以外の呼出し元がない。外部の agent や skill が使っていないかを確かめてから削除してよいか。
 18. UI からの file の取込み（.json・.mm）と sample の読込みは、いまは現在の map を画面上で置き換えるだけで確定しない。移行後は「新しい map として取り込む」だけにしてよいか。読込み失敗時に既定 map の id のまま sample を出す処理を消してよいか。
 19. cloud sync を一度きりの migration の範囲に含めるか。有効になっているかは未確認。含める場合、cloud 上の全状態の複製を journal ベースにするか。
 20. Home の archive・tags・pin・Vault の宣言は `maps` 行の列だけを変えており、map の状態は書かない。これらも Command と journal に通すか、map の目録の更新として別に扱うか。

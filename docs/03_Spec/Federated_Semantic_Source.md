@@ -140,7 +140,7 @@ authority resolution は次を満たす。
 2. authority marker がある場合、子孫は最近傍の authority root から owner と write route を継承できる。
 3. nested authority root は明示された場合だけ継承を上書きする。
 4. alias 自体の配置 owner と target entity の owner を別に解決する。
-5. GraphLink assertion の owner と両 endpoint の owner を別に解決する。
+5. relation edge assertion の owner と両 endpoint の owner を別に解決する。
 6. authority を跨ぐ reparent Command は通常 move として受理せず、`ownership-transfer-required` として拒否する。
 
 仕様語は `authority root` とする。authority marker の物理 field 名と serialization は未確定とする。
@@ -279,7 +279,7 @@ agent へ渡す graph context は透過的な永続 cache にしない。Directo
 ### 境界
 
 - path rename、repository rename、display label変更後もstable identityを解決できる。
-- nested authority root、alias、GraphLinkでowner resolutionを混同しない。
+- nested authority root、alias、relation edgeでowner resolutionを混同しない。
 - source未mount、stale、inaccessible、missingを区別する。
 - same assertionのreverse edgeをderivedとして扱い、二重canonical保存しない。
 
