@@ -192,7 +192,11 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 
 In chat, specs and handoffs, use only terms defined in `docs/00_Home/Glossary.md`, the canonical specs it links, or the `意味` nodes of the M3E map under discussion. When an undefined word appears (including akaghef's own wording), restate it with defined terms; if the mapping is ambiguous, ask which defined term is meant. Do not coin a substitute name unless akaghef asks `name?`. Tool and API field names are not terms; translate them to the Glossary term.
 
-A Glossary term change (a rename, or a new term replacing an old wording) is one unit with a sweep of every document (`docs/`, `.kiro/`, `agent_instructions/`, READMEs, this file) that replaces the old name and its prose synonyms; only former-name notes keep it. Code identifiers are out of scope unless akaghef says otherwise.
+A Glossary term change (a rename, or a new term replacing an old wording) is one unit with a sweep that replaces the old name and its prose synonyms everywhere agents read meaning from: every repository document (`docs/`, `.kiro/`, `agent_instructions/`, READMEs, this file), agent instructions and skills outside the repository, and agent memory. Code identifiers are out of scope unless akaghef says otherwise.
+
+The swept text states only the current terms, as if they had always been the terms. It carries no change history: no former-name notes, no "renamed from", no "previously", no rename dates, and no warning not to use the old name. The history lives in git commit messages only. A worker's output that adds any of these is rejected.
+
+A term change to a basic term (node, edge, scope and the like) is a large decision; do not start editing when a name is picked. First settle with akaghef the whole term set (including the names derived from it) and the range (documents, agent instructions and memory, records, MCP, code, stored data). Then classify every occurrence by meaning, because a term change can change the meaning of text it does not touch. A scripted replacement may only be a draft and is never the delivery. The classification and the sweep go to an external Codex worker on `gpt-6.1-sol` at effort `high`, read-only first; the session reviews its report before any edit.
 
 ## Asking akaghef to Decide
 
