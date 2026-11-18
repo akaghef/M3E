@@ -161,6 +161,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 - Build normal Beta only from integrated source. Never copy unmerged worktree bundles into the normal runtime.
 - `beta_update` and update-complete require applicable runtime readback / original-symptom verification after delivery, not merely commit, push, or PR creation.
 - Documentation-only changes need canonical/mirror/guard verification; a product restart is not required.
+- A document delivered for akaghef to read or review is delivered only when it is visible in the primary checkout (the checkout akaghef opens, normally `$HOME/dev/M3E`). After the push, fast-forward the primary checkout. If uncommitted changes there block the fast-forward, back up and regenerate generated files (such as `docs/index.md`) and never discard other work; if it still cannot be updated, say so and give a path or URL akaghef can open. Report the document by its path in the primary checkout.
 - Optional PRs remain available for explicit review requests. A review-only request does not authorize merge.
 - Destructive history changes, main/release operations, and secret changes still require explicit authorization.
 - When akaghef asks for an external Codex worker, use `scripts/codex.sh exec -m gpt-6-astra -c model_reasoning_effort=high ... < /dev/null` (read-only sandbox for investigation; `workspace-write` inside the task worktree for implementation), run it in the background, and do not redispatch the already active Codex session merely to satisfy this convention.
