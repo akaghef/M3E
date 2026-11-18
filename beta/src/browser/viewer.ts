@@ -4649,6 +4649,47 @@ function cssColorOf(element: Element, property: "fill" | "stroke", fallback: str
   return value && value !== "none" && value !== "transparent" ? value : fallback;
 }
 
+/** Points along a path made only of absolute M/L/H/V/C/Q commands; null for anything else. */
+function sampledPathData(d: string): Array<{ x: number; y: number }> | null {
+  const tokens = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g);
+  if (!tokens || tokens[0] !== "M") return null;
+  const points: Array<{ x: number; y: number }> = [];
+  let i = 0, command = "", x = 0, y = 0;
+  const next = (): number => Number(tokens[i++]);
+  const curve = (px: number[], py: number[]): void => {
+    let polygon = 0;
+    for (let k = 1; k < px.length; k++) polygon += Math.hypot(px[k]! - px[k - 1]!, py[k]! - py[k - 1]!);
+    const steps = Math.max(1, Math.min(31, Math.ceil(polygon / 24)));
+    for (let step = 1; step <= steps; step++) {
+      const t = step / steps, u = 1 - t;
+      if (px.length === 4) {
+        points.push({ x: u * u * u * px[0]! + 3 * u * u * t * px[1]! + 3 * u * t * t * px[2]! + t * t * t * px[3]!,
+          y: u * u * u * py[0]! + 3 * u * u * t * py[1]! + 3 * u * t * t * py[2]! + t * t * t * py[3]! });
+      } else {
+        points.push({ x: u * u * px[0]! + 2 * u * t * px[1]! + t * t * px[2]!, y: u * u * py[0]! + 2 * u * t * py[1]! + t * t * py[2]! });
+      }
+    }
+  };
+  while (i < tokens.length) {
+    if (/[a-zA-Z]/.test(tokens[i]!)) command = tokens[i++]!;
+    if (command === "M" || command === "L") {
+      if (command === "M" && points.length > 0) return null;
+      x = next(); y = next(); points.push({ x, y });
+      if (command === "M") command = "L";
+    } else if (command === "H") { x = next(); points.push({ x, y }); }
+    else if (command === "V") { y = next(); points.push({ x, y }); }
+    else if (command === "C") {
+      const x1 = next(), y1 = next(), x2 = next(), y2 = next(), x3 = next(), y3 = next();
+      curve([x, x1, x2, x3], [y, y1, y2, y3]); x = x3; y = y3;
+    } else if (command === "Q") {
+      const x1 = next(), y1 = next(), x2 = next(), y2 = next();
+      curve([x, x1, x2], [y, y1, y2]); x = x2; y = y2;
+    } else return null;
+    if (!Number.isFinite(x + y)) return null;
+  }
+  return points.length >= 2 ? points : null;
+}
+
 function sampledSvgPoints(element: SVGGeometryElement): Array<{ x: number; y: number }> {
   if (element instanceof SVGLineElement) {
     return [
@@ -4656,6 +4697,11 @@ function sampledSvgPoints(element: SVGGeometryElement): Array<{ x: number; y: nu
       { x: element.x2.baseVal.value, y: element.y2.baseVal.value },
     ];
   }
+  // Edge paths are generated here from absolute M/L/H/V/C/Q commands. Sampling them from
+  // the numbers avoids asking the browser for each point, which made a scope of a few
+  // hundred edges cost hundreds of milliseconds per draw.
+  const parsed = element instanceof SVGPathElement ? sampledPathData(element.getAttribute("d") || "") : null;
+  if (parsed) return parsed;
   try {
     const length = element.getTotalLength();
     if (!Number.isFinite(length) || length <= 0) return [];
@@ -4710,6 +4756,11 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     if (!id || shapeById.has(id)) return;
     shapeById.set(id, element);
   });
+  const visualById = new Map<string, SVGGraphicsElement>();
+  canvas.querySelectorAll<SVGGraphicsElement>("[data-node-id].node-shape, [data-node-id].folder-box, [data-node-id].root-box").forEach((element) => {
+    const id = element.getAttribute("data-node-id");
+    if (id && !visualById.has(id)) visualById.set(id, element);
+  });
   shapeById.forEach((shape, id) => {
     const labelElement = labelElementsById.get(id);
     const cacheKey = shape.outerHTML + (labelElement?.outerHTML || "") + filterScene.nodeOpacity(id);
@@ -4719,7 +4770,7 @@ function buildWebGLRenderSnapshot(layout: LayoutResult): RenderSnapshot {
     if (!box) return;
     const visibleNode = map?.state.nodes[id];
     if (!visibleNode || !Number.isFinite(box.x + box.y + box.width + box.height)) return;
-    const visual = canvas.querySelector<SVGGraphicsElement>(`[data-node-id="${CSS.escape(id)}"].node-shape, [data-node-id="${CSS.escape(id)}"].folder-box, [data-node-id="${CSS.escape(id)}"].root-box`) || shape;
+    const visual = visualById.get(id) || shape;
     const lines = labelsById.get(id) || [uiLabel(visibleNode) || "(empty)"];
     const labelFontSize = labelElement ? Number.parseFloat(getComputedStyle(labelElement).fontSize) : Number.NaN;
     const style = readNodeStyleAttrs(visibleNode.attributes || {});
