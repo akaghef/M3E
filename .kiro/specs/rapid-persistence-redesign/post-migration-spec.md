@@ -269,11 +269,10 @@ agent の node:
 ## 7. relationType
 
 - 値は名前であり、名前が識別子である。一度使った名前は変えない。
-- 名前は `x:y` の形（例: `rdfs:subClassOf`、`rdf:type`）か、接頭辞の無い形（例: `consist-of`、`detail`）である。
-- 接頭辞の無い名前は M3E 独自の語彙、接頭辞のある名前は借りてきた語彙である。
+- 名前には必ず接頭辞を付ける（例: `rdfs:subClassOf`、`m3e:consist-of`）。M3E の組み込みは `m3e:`、定義を用意せずにその場で作る名前は `misc:` である。移行で運んだ接頭辞の無い名前はそのまま残すが、新しくは作らない（record-schema DA28）。
 - 許される名前の一覧は、スキーマに固定しない。定義のレコード（3.11）として持つ。
 - 表示を変えるときは、定義の表示ラベルを書き換える。edge は書き換えない。
-- 定義の無い名前も edge に書ける。最初に定義されているのは `consist-of`、`detail`、`rdfs:subClassOf`、`rdf:type` である。
+- 定義の無い名前も edge に書ける。最初に定義されているのは `m3e:consist-of`、`m3e:detail`、`rdfs:subClassOf`、`rdf:type` である。
 
 ## 8. 欄の省略
 

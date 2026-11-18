@@ -91,7 +91,7 @@
 
 ### 3.5 最初から入れるレコード
 
-- `relationTypeDef`: `consist-of`（`source-to-target`）、`detail`（`source-to-target`）、`rdfs:subClassOf`（`target-to-source`）、`rdf:type`（`target-to-source`）。
+- `relationTypeDef`: `m3e:consist-of`（`source-to-target`）、`m3e:detail`（`source-to-target`）、`rdfs:subClassOf`（`target-to-source`）、`rdf:type`（`target-to-source`）。
 - `prefix`: `rdf` → `http://www.w3.org/1999/02/22-rdf-syntax-ns#`、`rdfs` → `http://www.w3.org/2000/01/rdf-schema#`。
 - `account`: `{"id":"acct_migration","accountKind":"system","displayName":"移行"}`。
 - `commit`: `{"seq":0,"committedAt":"<変換の時刻>","issuer":"acct_migration"}`。

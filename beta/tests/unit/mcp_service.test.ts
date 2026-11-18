@@ -60,7 +60,7 @@ describe("M3E MCP semantic service", () => {
     const context = enter();
     const args = { kind: "import_structure", context_id: context.context_id, import_key: "labeled-source", structure: {
       roots: ["concept"], nodes: [
-        { id: "concept", title: "群", parent: null, children: ["definition", "example"], attributes: { source: "source.mmd", "m3e:flashImportKey": "must-not-replace-key" } },
+        { id: "concept", title: "群", parent: null, children: ["definition", "example"], attributes: { "misc:source": "source.mmd", "m3e:flashImportKey": "must-not-replace-key" } },
         { id: "definition", title: "定義", parent: "concept", children: [], attributes: { "m3e:edge-label": "定義を述べる" } },
         { id: "example", title: "対称群", parent: "concept", children: [], attributes: { "m3e:edge-label": "例を挙げる" } },
       ],
@@ -71,7 +71,7 @@ describe("M3E MCP semantic service", () => {
     const state = saved().state;
     const root = state.nodes[state.nodes[state.rootId].children.at(-1)!];
     expect(root.nodeType).toBe("folder");
-    expect(root.attributes).toMatchObject({ source: "source.mmd", "m3e:flashImportKey": "labeled-source" });
+    expect(root.attributes).toMatchObject({ "misc:source": "source.mmd", "m3e:flashImportKey": "labeled-source" });
     expect(root.children.map(id => state.nodes[id].text)).toEqual(["定義", "対称群"]);
     expect(root.children.map(id => state.nodes[id].attributes["m3e:edge-label"])).toEqual(["定義を述べる", "例を挙げる"]);
     expect(state.links).toEqual(before.links);
@@ -849,12 +849,15 @@ describe("M3E MCP semantic service", () => {
     const c1 = model.addNode(model.state.rootId, "C1");
     model.saveToSqlite(dbPath, mapId);
     const context = enter();
-    const created = service.call("m3e_create", { kind: "link", context_id: context.context_id, source: nodeUri(c0), target: nodeUri(c1), label: "依存", relation_type: "depends", direction: "forward" });
+    const created = service.call("m3e_create", { kind: "link", context_id: context.context_id, source: nodeUri(c0), target: nodeUri(c1), label: "依存", relation_type: "misc:depends", direction: "forward" });
     expect(created.ok).toBe(true);
     expect(created.changed).toEqual({ created: 1, updated: 0, deleted: 0 });
     expect(created.created).toEqual([{ uri: expect.stringMatching(new RegExp(`^${mapUri()}/links/`)), name: "依存", kind: "link" }]);
+    const bare = service.call("m3e_create", { kind: "link", context_id: context.context_id, source: nodeUri(c0), target: nodeUri(c1), relation_type: "depends" });
+    expect(bare.ok).toBe(false);
+    expect(JSON.stringify(bare)).toContain("misc:depends");
     const links = Object.values(loaded().state.links ?? {});
-    expect(links).toEqual([expect.objectContaining({ sourceNodeId: c0, targetNodeId: c1, label: "依存", relationType: "depends", direction: "forward" })]);
+    expect(links).toEqual([expect.objectContaining({ sourceNodeId: c0, targetNodeId: c1, label: "依存", relationType: "misc:depends", direction: "forward" })]);
     const read = service.call("m3e_get", { kind: "state", target: nodeUri(c0) });
     expect(read.links).toEqual([expect.objectContaining({ uri: created.created[0].uri, sourceNodeId: c0, targetNodeId: c1 })]);
 
@@ -897,11 +900,11 @@ describe("M3E MCP semantic service", () => {
     const context = enter();
     const result = service.call("m3e_update", {
       kind: "content", context_id: context.context_id, target: nodeUri(node),
-      attributes: { replaced: "after", removed: null, added: "new value" },
+      attributes: { replaced: "after", removed: null, "misc:added": "new value" },
     });
     expect(result.ok).toBe(true);
     expect(loaded().state.nodes[node]).toEqual({
-      ...before, attributes: { color: "#456789", retained: "unchanged", replaced: "after", added: "new value" },
+      ...before, attributes: { color: "#456789", retained: "unchanged", replaced: "after", "misc:added": "new value" },
     });
     const after = saved();
     const invalid = service.call("m3e_update", {
@@ -912,11 +915,15 @@ describe("M3E MCP semantic service", () => {
     expect(saved()).toEqual(after);
     expect(onSaved).toHaveBeenCalledTimes(1);
     const created = service.call("m3e_create", {
-      kind: "node", context_id: context.context_id, text: "Created with metadata", attributes: { owner: "human", color: "#112233" },
+      kind: "node", context_id: context.context_id, text: "Created with metadata", attributes: { "misc:owner": "human", "m3e:color": "#112233" },
     });
     expect(created.ok).toBe(true);
     expect(Object.values(loaded().state.nodes).find((item) => item.text === "Created with metadata")?.attributes)
-      .toEqual({ owner: "human", color: "#112233" });
+      .toEqual({ "misc:owner": "human", "m3e:color": "#112233" });
+    // Database_Spec 3.8: a new attribute name without a prefix is refused; existing ones stay editable.
+    const unprefixed = service.call("m3e_create", { kind: "node", context_id: context.context_id, text: "No prefix", attributes: { owner: "human" } });
+    expect(unprefixed.ok).toBe(false);
+    expect(JSON.stringify(unprefixed)).toContain("misc:owner");
   });
 
   test("a blocked storage owner rejects writes before saving while reads remain available", () => {

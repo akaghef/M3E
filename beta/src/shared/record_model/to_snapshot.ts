@@ -169,8 +169,8 @@ export function toSnapshot(workspaceId: string, rows: SnapshotRow[], options: To
 
   // 3.5: records present from the start.
   records.push(
-    { kind: "relationTypeDef", name: "consist-of", reads: "source-to-target", rev: 0 },
-    { kind: "relationTypeDef", name: "detail", reads: "source-to-target", rev: 0 },
+    { kind: "relationTypeDef", name: "m3e:consist-of", reads: "source-to-target", rev: 0 },
+    { kind: "relationTypeDef", name: "m3e:detail", reads: "source-to-target", rev: 0 },
     { kind: "relationTypeDef", name: "rdfs:subClassOf", reads: "target-to-source", rev: 0 },
     { kind: "relationTypeDef", name: "rdf:type", reads: "target-to-source", rev: 0 },
     { kind: "prefix", prefix: "rdf", uri: "http://www.w3.org/1999/02/22-rdf-syntax-ns#", rev: 0 },

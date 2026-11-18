@@ -36,6 +36,8 @@ class McpError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
 function fail(code: string, message: string): never { throw new McpError(code, message); }
+/** A name with a prefix: `prefix:rest` (Database_Spec 3.8). Names made up on the spot use `misc:`. */
+export function hasNamePrefix(name: string): boolean { return /^[A-Za-z][A-Za-z0-9_-]*:\S/.test(name); }
 function optionalCommandId(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !value.trim() || value.length > 200) fail("INVALID_ARGUMENT", "command_id must be nonempty text within 200 characters.");
@@ -438,6 +440,7 @@ export class M3eMcpService {
         if (direction !== undefined && !LINK_DIRECTIONS.includes(direction)) fail("INVALID_ARGUMENT", "direction must be none, forward, backward or both.");
         const label = args.label === undefined ? undefined : str(args.label, "label", 4000);
         const relationType = args.relation_type === undefined ? undefined : str(args.relation_type, "relation_type", 200);
+        if (relationType !== undefined && !hasNamePrefix(relationType)) fail("INVALID_ARGUMENT", `relation_type needs a prefix, such as misc:${relationType} for a name made up on the spot or m3e: for a built-in one.`);
         try {
           createdLinks.push(model.addLink(source.ref.nodeId, target, { label, relationType, direction: direction as "none" | "forward" | "backward" | "both" | undefined }));
         } catch (error) {
@@ -602,6 +605,7 @@ export class M3eMcpService {
     node.attributes = { ...node.attributes };
     for (const [key, value] of Object.entries(patch)) {
       if (!key || key.length > 200 || ["__proto__", "prototype", "constructor"].includes(key)) fail("INVALID_ARGUMENT", "An attribute name is unsupported.");
+      if (value !== null && !hasNamePrefix(key) && !Object.prototype.hasOwnProperty.call(node.attributes, key)) fail("INVALID_ARGUMENT", `A new attribute name needs a prefix, such as misc:${key} for a name made up on the spot or m3e: for a built-in one.`);
       if (value === null) delete node.attributes[key];
       else if (typeof value === "string" && value.length <= MAX_TEXT) node.attributes[key] = value;
       else fail("INVALID_ARGUMENT", "Attribute values must be text or null to remove a key.");

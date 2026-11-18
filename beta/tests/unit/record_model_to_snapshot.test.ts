@@ -57,8 +57,8 @@ describe("toSnapshot: header and seeded records (1, 3.5)", () => {
     const records = convert([]);
     expect(records[0]).toEqual({ kind: "snapshot", format: 1, workspaceId: WS, seq: 0 });
     expect(ofKind(records, "relationTypeDef")).toEqual([
-      { kind: "relationTypeDef", name: "consist-of", reads: "source-to-target", rev: 0 },
-      { kind: "relationTypeDef", name: "detail", reads: "source-to-target", rev: 0 },
+      { kind: "relationTypeDef", name: "m3e:consist-of", reads: "source-to-target", rev: 0 },
+      { kind: "relationTypeDef", name: "m3e:detail", reads: "source-to-target", rev: 0 },
       { kind: "relationTypeDef", name: "rdfs:subClassOf", reads: "target-to-source", rev: 0 },
       { kind: "relationTypeDef", name: "rdf:type", reads: "target-to-source", rev: 0 },
     ]);

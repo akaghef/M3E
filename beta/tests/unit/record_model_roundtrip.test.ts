@@ -171,7 +171,7 @@ describe("record model JSON Lines", () => {
     const nodeIds = lines.filter((l) => l.kind === "node").map((l) => (l as { id: string }).id);
     expect(nodeIds).toEqual([...nodeIds].sort());
     const defs = lines.filter((l) => l.kind === "relationTypeDef").map((l) => (l as { name: string }).name);
-    expect(defs).toEqual(["consist-of", "detail", "rdf:type", "rdfs:subClassOf"]);
+    expect(defs).toEqual(["m3e:consist-of", "m3e:detail", "rdf:type", "rdfs:subClassOf"]);
     expect(text).not.toContain("null");
   });
 

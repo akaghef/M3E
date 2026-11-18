@@ -572,7 +572,7 @@ def judge(ws: str, maps: list[dict], snap: dict[str, list[dict]], problems: Prob
 
     # ---- seeded records ----
     names = {r.get("name") for r in snap.get("relationTypeDef", [])}
-    for name in ("consist-of", "detail", "rdfs:subClassOf", "rdf:type"):
+    for name in ("m3e:consist-of", "m3e:detail", "rdfs:subClassOf", "rdf:type"):
         if name not in names:
             problems.add("seed.relationTypeDef", name)
     if {r.get("prefix") for r in snap.get("prefix", [])} != {"rdf", "rdfs"}:

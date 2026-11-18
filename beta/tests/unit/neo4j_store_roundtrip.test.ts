@@ -107,7 +107,7 @@ function syntheticSnapshot(): SnapshotRecord[] {
     { kind: "annotation", id: "a_unknown_field", mapId: "map_a", annotationKind: "pen", "strange\u0000field": { a: 1 }, "ほかの欄": [1, "x"], rev: 0 },
 
     { kind: "relationTypeDef", name: "rdfs:subClassOf", label: "is a", description: "説明", reads: "target-to-source", rev: 0 },
-    { kind: "relationTypeDef", name: "consist-of", reads: "source-to-target", rev: 0 },
+    { kind: "relationTypeDef", name: "m3e:consist-of", reads: "source-to-target", rev: 0 },
     { kind: "prefix", prefix: "rdf", uri: "http://www.w3.org/1999/02/22-rdf-syntax-ns#", rev: 0 },
     { kind: "account", id: "acct_migration", accountKind: "system", displayName: "移行", externalIds: { github: "x" }, roles: ["owner", "editor"], rev: 0 },
     { kind: "commit", seq: 0, committedAt: "2026-11-17T00:00:00.000Z", issuer: "acct_migration", sessionId: "sess-1" },
