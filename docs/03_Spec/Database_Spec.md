@@ -351,7 +351,7 @@ task や極性のような意味を、保存の形を作り直さずに足すた
 
 ### 10.5 最初の拡張
 
-- `m3e:nodeType:task`: 状態（`open`・`in_progress`・`blocked`・`done`・`dropped`）、担当（アカウントか agent の node）、期限、優先度、完了条件。待ち合わせは relationType `blocks` の relation edge で表す。
+- `m3e:nodeType:task`: 状態（`open`・`in_progress`・`blocked`・`done`・`dropped`）、担当（アカウントか agent の node）、期限、優先度、完了条件。待ち合わせは relationType `m3e:blocks` の relation edge で表す。
 - `m3e:parentEdge:polarity`: `preserve`（既定）か `invert`。node の有効な極性はキャッシュ（9 節）。alias の有効な極性は、alias が置かれた位置の経路で決める案を推す。
 
 ## 11. 保存しないもの
