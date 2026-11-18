@@ -5,7 +5,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 - Regenerate: `node scripts/ops/check-docs-index.mjs --write`
 - Check: `node scripts/ops/check-docs-index.mjs --check`
 - Coverage: all files under `docs/`, excluding `docs/.obsidian/` and `.DS_Store`
-- Indexed files: 634
+- Indexed files: 639
 
 ## Reading Routes
 
@@ -34,6 +34,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 |---|---:|---|---|
 | [01_Vision/Axes.md](<./01_Vision/Axes.md>) | Markdown | M3E の帯域軸（粒度・構造・操作の連動進化） | M3E は同じ基礎データを **単位（粒度）と構造の性質が連動して変化する帯域** で扱う。 |
 | [01_Vision/Core_Principles.md](<./01_Vision/Core_Principles.md>) | Markdown | Core Principles | この文書の内容は [Principle.md](./Principle.md) に統合した。 |
+| [01_Vision/Engine.md](<./01_Vision/Engine.md>) | Markdown | Engine — 思考の熱機関としての M3E | 最終更新: 2026-11-18 |
 | [01_Vision/Principle.md](<./01_Vision/Principle.md>) | Markdown | Principle | 最終更新: 2026-04-20 |
 | [01_Vision/README.md](<./01_Vision/README.md>) | Markdown | 01_Vision/ | **役割**: M3E の `Planning Hierarchy` 上位層を置く場所。原則・未達ギャップ・攻略方針を階層ごとに分けて管理する。 |
 | [01_Vision/Strategy.md](<./01_Vision/Strategy.md>) | Markdown | Strategy | 最終更新: 2026-09-14 |
@@ -52,6 +53,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [03_Spec/Cloud_Sync.md](<./03_Spec/Cloud_Sync.md>) | Markdown | Cloud Sync | この文書は、Beta におけるクラウド同期の最小戦略を定義する。 |
 | [03_Spec/Command_API_Reference.md](<./03_Spec/Command_API_Reference.md>) | Markdown | M3E Command API Reference | 書き平面の実装リファレンス。平面構造と語彙は [Command_Language.md](./Command_Language.md) が正であり、この文書は既存 beta UI / browser console の `window... |
 | [03_Spec/Command_Language.md](<./03_Spec/Command_Language.md>) | Markdown | M3E コマンド言語仕様 | 最終更新: 2026-07-19 |
+| [03_Spec/Concreteness_Axis.md](<./03_Spec/Concreteness_Axis.md>) | Markdown | Concreteness Axis | 通常のmapをlevel 0とする仮想z軸。`j`でlevelを1増やし（奥）、`k`で1減らす（手前）。xy平面のnode移動は方向キーで行う。level移動はscopeへの出入りや親nodeへの移動とは別の操作。 |
 | [03_Spec/data_import_export.md](<./03_Spec/data_import_export.md>) | Markdown | Data & Import/Export 設計ドキュメント | 最終更新: 2026-04-09 |
 | [03_Spec/Data_Model.md](<./03_Spec/Data_Model.md>) | Markdown | Data Model | この文書は、M3E の実体モデルに関する不変条件を定義する。 |
 | [03_Spec/Data_Runtime_Layout.md](<./03_Spec/Data_Runtime_Layout.md>) | Markdown | Data Runtime Layout | 永続データ実体。`data.sqlite` だけでなく backup, audit, cloud-sync, conflict-backups を含むフォルダ単位 |
@@ -118,9 +120,10 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [06_Operations/Commit_Message_Rules.md](<./06_Operations/Commit_Message_Rules.md>) | Markdown | Commit Message Rules | コミット履歴を見たときに、変更の種類と意図を短時間で判別できる状態を保つ。 |
 | [06_Operations/Decision_Pool.md](<./06_Operations/Decision_Pool.md>) | Markdown | Decision Pool | 会話や作業中に出た判断を、正式文書に昇格する前にためる場所。 |
 | [06_Operations/Development_System.md](<./06_Operations/Development_System.md>) | Markdown | Development System（開発体制） | 最終更新: 2026-06-25 |
-| [06_Operations/Director_Playbook.md](<./06_Operations/Director_Playbook.md>) | Markdown | Director Playbook | The operating manual for Claude-as-Director driving Codex workers on M3E. |
+| [06_Operations/Director_Playbook.md](<./06_Operations/Director_Playbook.md>) | Markdown | Director Playbook | The operating manual for Claude working on M3E. |
 | [06_Operations/Distribution_Validation_Balanced_Plan.md](<./06_Operations/Distribution_Validation_Balanced_Plan.md>) | Markdown | Distribution Validation Balanced Plan | 個人利用フェーズでの手元運用負担を最小化しつつ、将来の企業配布へ移行可能な配布・検証導線を先に設計する。 |
 | [06_Operations/Documentation_Rules.md](<./06_Operations/Documentation_Rules.md>) | Markdown | Documentation Rules | 最終更新: 2026-06-27 |
+| [06_Operations/Dogfood_Lean_Formalization.md](<./06_Operations/Dogfood_Lean_Formalization.md>) | Markdown | Dogfood: Lean 形式化のまとめを M3E で保持する | 最終更新: 2026-10-26 |
 | [06_Operations/gates/layout-lab-gui-check.md](<./06_Operations/gates/layout-lab-gui-check.md>) | Markdown | FAIL — layout-lab G-GUI independent check | Date: 2026-06-25 |
 | [06_Operations/Integration_Handoff_260401_codex2.md](<./06_Operations/Integration_Handoff_260401_codex2.md>) | Markdown | Integration Handoff (codex2) - 2026-04-01 | This note fixes the minimum merge target from `dev-beta-data` into `dev-beta` for scope normalization and scope trans... |
 | [06_Operations/Keybindings_Beta.md](<./06_Operations/Keybindings_Beta.md>) | Markdown | キーバインド（beta） | > キー → アクション名のマッピング。リマップ時はこのファイルを編集する。 |
@@ -153,6 +156,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md](<./09_Decisions/ADR_011_Agent_Orrery_As_M3E_Map.md>) | Markdown | ADR_011: Agent Orrery を M3E の map として実装する | ADR_009 は凝集先（M3E）・Disperse 解釈・out-of-process plugin・projection を決めたが、 |
 | [09_Decisions/ADR_012_Radial_Surface_View_Restoration.md](<./09_Decisions/ADR_012_Radial_Surface_View_Restoration.md>) | Markdown | ADR_012: Radial Surface View を復活させ、Disperse と力学配置を共有する | ADR_010 は、当時の実装が canon の角度系（`clockwise / counterclockwise / balanced`）を |
 | [09_Decisions/ADR_013_Lane_Surface_View.md](<./09_Decisions/ADR_013_Lane_Surface_View.md>) | Markdown | ADR_013: Lane Surface View を追加し System と区別する | 層状の図式は、root node の直下の子 node を並列に見せ、その下の孫 node 間の関係を読む。root node は必ずしも scope ではない。この投影はレーンに整列できないフローチャート様の構造を扱う System... |
+| [09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md](<./09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md>) | Markdown | ADR 014: Journal Canonical Sources and Neo4j Engine for Rapid | Proposed |
 | [09_Decisions/README.md](<./09_Decisions/README.md>) | Markdown | 09_Decisions/ | **役割**: Architecture Decision Record (ADR)。**なぜそう決めたか**の歴史記録。 |
 
 ### _generated - generated projections
@@ -370,6 +374,7 @@ This file is the content-oriented index for `docs/`. It is generated from the cu
 | [ideas/260914_unified_work_graph_multi_pc_resource_ot.md](<./ideas/260914_unified_work_graph_multi_pc_resource_ot.md>) | Markdown | 一枚絵としてのM3E — 個人multi-PC、常駐host、Resource、OT統合 | > Status: idea / vision memo。決定・仕様ではない。 |
 | [ideas/261017_lane_view_graphlink_reification.md](<./ideas/261017_lane_view_graphlink_reification.md>) | Markdown | Lane view と GraphLink の関係の実体化 | 最終更新: 2026-10-17 |
 | [ideas/261021_external_scope_append_update_rate.md](<./ideas/261021_external_scope_append_update_rate.md>) | Markdown | 外部からのスコープ追加中に画面更新レートが低下した観察 | Basis: TOB-O |
+| [ideas/261026_dag_dedicated_view.md](<./ideas/261026_dag_dedicated_view.md>) | Markdown | DAG 専用の View | 最終更新: 2026-10-26 |
 | [ideas/30_ux/gamification/01_concept.md](<./ideas/30_ux/gamification/01_concept.md>) | Markdown | 01. コンセプト — なぜ M3E にゲーミフィケーションか | M3E は研究思考支援ツールである。 |
 | [ideas/30_ux/gamification/02_streak_and_badge.md](<./ideas/30_ux/gamification/02_streak_and_badge.md>) | Markdown | 02. K1 ストリーク と K2 バッジの選択肢 | 「日課カウンタ」と「達成バッジ」を、研究者用途で副作用を抑える方向に複数案で並べる。 |
 | [ideas/30_ux/gamification/03_quest_and_quiz.md](<./ideas/30_ux/gamification/03_quest_and_quiz.md>) | Markdown | 03. K3 クエストシステム と K5 デイリークイズ | 「やるべきことを冒険化」と「過去ノードからランダム出題」を選択肢で並べる。 |
