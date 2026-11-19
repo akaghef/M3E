@@ -247,6 +247,10 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
 
 - 開くとき、末尾の書きかけの行は切り捨てる。途中の行が壊れていれば、開くのを止める。通し番号の飛びも止める。
 - 圧縮（`compact`）は、その時点の全レコードで `snapshot.jsonl` を書き直し、journal を空にする。あわせて `commit-index.json` に、map ごとの最後の確定と、確定済みの Command の ID（直近 100,000 件）を書く。
+- 【決定】（akaghef、2026-11-19）log compaction は何も消さない。封じた journal の segment は archive へ移す。【実装済み】のものは journal を空にしている。
+- 【決定】archive の segment を手放すのは、compaction とは別の retention の操作である。v1 では実装しない。
+- 保持期間は未決（12 節）。実装の session 経由で「compaction 後 90 日」が届いているが、akaghef がこの session で直接述べた「データは消したくない」と食い違うため、確認中である。
+- 【提案】segment を手放すときも、envelope-stable な欄（`seq`・`committedAt`・`issuer`・確定ごとに触れたレコードと event kind）だけは、別の小さな列に残す。これで、書かれる頻度の集計は保持期間に縛られない。
 - 複製は、三つのファイルを一度に写す。確定と圧縮は同期処理なので、写しの途中に確定が入らない。
 
 ## 7. portable snapshot【実装済み】
@@ -397,6 +401,9 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
 ## 12. 未決
 
 保存の形に入るもの:
+
+- archive の segment の保持期間。三つの値が食い違っている。実装の session 経由の「90 日」、sync-principles の Rapid の目安「30 日」、akaghef が直接述べた「消したくない」。あわせて、scope の `retention.ms` の既定値を決める
+- journal の単位。2 節の【決定】「workspace × 書き手の端末ごと」と、sync-principles の「remote 上で workspace ごとに一本の全順序、端末は local outbox を持つ」が食い違っている
 
 - 拡張の仕組み（10 節）の承認。一つの node に拡張を重ねるか、外したときの値を残すか、誰が定義できるか
 - task の欄の正確な組と、担当の参照先
