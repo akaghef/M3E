@@ -195,6 +195,7 @@ Follow [Worktree Separation Rules](docs/06_Operations/Worktree_Separation_Rules.
 2. Design and development documents under `docs/` should be written in Japanese by default.
 3. Code identifiers, file names, API names, and technical tokens may remain in English where appropriate.
 4. If a document is a design/spec/architecture/ADR document, prefer Japanese prose even when the surrounding conversation is in English.
+5. With akaghef, use the field's established technical vocabulary (databases, distributed systems, computer science) without paraphrasing it into plain words: log compaction, tombstone, LWW register, CRDT, causal consistency, fencing token, write-ahead log and the like. Name the concept and, where it helps, the system it comes from, and explain through those terms; akaghef wants to learn them. M3E's own concepts still use the Glossary terms ("Defined Terms Only"); general technical terms are not substitutes for them.
 
 ## Defined Terms Only
 

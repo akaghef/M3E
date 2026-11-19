@@ -215,6 +215,17 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 
 Undo は、逆向きの Command を出すことで行う。
 
+### 5.4 一部だけ読んだ状態からの書き込み【仮決め】
+
+projection（10.6）で、node の attribute の一部だけを読んだ client が書き込むときの扱いである。読んでいない attribute は差分に現れないので、保存しても消えない（【実装済み】）。
+
+- 読んでいない key と同じ key の作成は、CONFLICT のままにする。expected-absent の CAS が失敗しているので、意味として正しい。
+  - そのうえで、projection の応答に、node ごとに省いた key の名前を返す。値は返さない（sparse fieldset の presence 情報）。
+  - client は、それを見て、作成ではなく更新を送る。
+- 読んでいない attribute を持つ node の削除は、attribute ごとの差分ではなく、record 単位の delete（tombstone）にする。
+  - 前提として照合するのは、node の `rev` だけである。読んでいない attribute も一緒に消える。
+  - Undo は、record の pre-image で戻す。
+
 ## 6. journal【実装済み】
 
 - UTF-8 の JSON Lines。1 行が 1 回の確定である。
@@ -328,7 +339,7 @@ task や極性のような意味を、保存の形を作り直さずに足すた
 | `parentEdge` | parent edge | `m3e:parentEdge:polarity` |
 | `relationEdge` | relation edge | （まだ例が無い） |
 
-- 定義の欄: 名前、付く先、欄の一覧（型、値の範囲、必須か、参照先）、版の番号、表示ラベル、説明。
+- 定義の欄: 名前、付く先、欄の一覧（型、値の範囲、必須か、参照先）、版の番号、表示ラベル、説明、描画の宣言（10.6）。
 - 名前は Turtle の接頭辞付きの名前として読める（接頭辞 `m3e`、名前 `nodeType:task`）。
 - relationType の名前は、外の語彙と合わせる識別子なので、三段にしない。
 - `m3e:` は M3E の組み込み、それ以外の接頭辞は利用者（agent を含む）が定義した拡張である。定義を作らずにその場で使う名前は `misc:` にする（3.8）。
@@ -353,6 +364,28 @@ task や極性のような意味を、保存の形を作り直さずに足すた
 
 - `m3e:nodeType:task`: 状態（`open`・`in_progress`・`blocked`・`done`・`dropped`）、担当（アカウントか agent の node）、期限、優先度、完了条件。待ち合わせは relationType `m3e:blocks` の relation edge で表す。
 - `m3e:parentEdge:polarity`: `preserve`（既定）か `invert`。node の有効な極性はキャッシュ（9 節）。alias の有効な極性は、alias が置かれた位置の経路で決める案を推す。
+
+### 10.6 描画の宣言【提案】
+
+node type ごとの描画を、定義済みの規約と実装に限る。node type に任せる範囲は広く取るが、触れてよい範囲は狭く決める。
+
+- 拡張の定義は、描画の宣言を持つ:
+  - 描画に読む attribute の key の一覧
+  - intrinsic size の決め方（文字の行から計算する / 固定 / attribute の値から）
+- 宣言は server も読む。scope の読み出しは、node ごとに、その node type の宣言にある attribute だけを返せる（projection）。projection した書き込みの扱いは 5.4。
+- node type が決めてよいもの:
+  - 読む attribute
+  - node の矩形の内側の内容
+  - 内容から決まる intrinsic size
+- 共通の側が持ち、node type が触れないもの:
+  - 選択の枠、畳んだ子の数、alias・lock の印、drop 先の強調、hit test、edge の接続位置
+  - 位置（layout が決める）
+- node type の実装は、pure function の measure と draw の二つである。
+  - 入力は、芯（`text`・本文）、宣言した attribute、位置、共通の状態だけである。宣言外のデータ、他の node、DOM は渡さない。
+  - measure は DOM を測らず、draw より前に答える。
+- 宣言の無い node type と、定義の無い拡張は、プレーンとして描く。値は捨てない（10.3）。
+- 【仮決め】一つの node に拡張が重なるとき、矩形の内側を描く node type は一つだけである。残りは、共通の側が印として並べる。
+- 【仮決め】`m3e:` 以外の接頭辞の node type は、宣言だけで描画を決める（用意した部品の組み合わせ）。コードは持てない。
 
 ## 11. 保存しないもの
 
