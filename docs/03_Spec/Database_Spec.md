@@ -59,7 +59,9 @@ workspace > map > scope > node
 ```
 
 - workspace は、保存データの入れ物であり、書き込みを確定する単位である。
-- 【決定】journal は、workspace × 書き手の端末ごとの追記専用の列とし、書くのはその端末だけにする。【実装済み】のものは、workspace ごとに一つの journal である。
+- 【決定】（akaghef、2026-11-18。[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)「remote と local」「データの形」）remote は workspace ごとにちょうど一つあり、確定の全順序はそこで付ける（single-leader）。確定の記録が journal で、workspace ごとに一本である。
+- local の commit は確定ではない。端末は、未確定の Command を outbox に積む。
+- 【実装済み】journal は workspace ごとに一つである。local outbox は無い。
 - node・edge・scope・Surface View の保存設定・注釈の ID は、map と workspace をまたいで一意である。
 - ID は作った後に変えない。消した ID は再利用しない。ただし Undo による復活の扱いは未決（12 節）。
 - ID に意味を埋め込まない。種別の名前、本文、親の ID を含めない。
@@ -418,7 +420,6 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
 - scope の `retention.ms` の既定値（sync-principles の Rapid の目安は 30 日。archive の segment の 90 日とは別の値）
 - node と scope のロックの欄（同期の要件 R2.6）。ロックが部分木に及ぶか、編集も止めるか
 - scope の Rapid と Deep の区分（同期の要件 R8.6）。欄を置くかは、違いと昇格の意味が決まってから
-- journal の単位。2 節の【決定】「workspace × 書き手の端末ごと」と、sync-principles の「remote 上で workspace ごとに一本の全順序、端末は local outbox を持つ」が食い違っている
 
 - 拡張の仕組み（10 節）の承認。一つの node に拡張を重ねるか、外したときの値を残すか、誰が定義できるか
 - task の欄の正確な組と、担当の参照先
@@ -434,7 +435,7 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
 - 未確定の Command を、再読込や再起動の後まで保つ方法
 - map の最終更新の出し方（確定の表は map を持たない）
 - 大きな取り込み（100 万 node）を、見えない状態で分割して作る方法
-- 書き手の端末ごとの journal と、Mac mini での集約
+- local outbox の形と、remote への送り方
 
 ## Related
 
