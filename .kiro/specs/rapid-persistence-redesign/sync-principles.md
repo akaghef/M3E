@@ -24,8 +24,10 @@ Git の cloud と local の関係に倣う。
 
 ## データの形
 
-- Neo4j は正本エンジンで、ドメインモデルそのものを担う（DC39）。他の何かの写しではない。
-- journal は確定の記録である。確定の順番、`commandId`、端末、世代、履歴 ID を持つ。復旧と push / pull に使い、engine には依存しない。
+- 権威を二つに分ける（DC39）。
+  - durability authority（system of record）は journal と portable snapshot である。replication・backup・PITR の単位はこの二つで、engine には依存しない。
+  - semantic authority は各端末の Neo4j である。ドメインモデルを保持し、invariant の検査と query を担う。Neo4j は journal と portable snapshot から replay で再構築できる。
+- journal は確定の記録である。workspace に一本で、remote が全順序を付ける。確定の順番、`commandId`、端末、世代、履歴 ID を持ち、復旧と push / pull に使う。未確定の Command は端末ごとの outbox に置く。
 - 1 件の確定は、次の順に workspace ごとに 1 件ずつ処理する：Neo4j の上で検査する → journal に追記して fsync する（ここで確定）→ 同じ内容を transaction で Neo4j に適用する → 応答する。応答は適用の後に返すので、確定の直後に読めば新しい値が返る。
 - 兄弟順キーは、parent edge（Neo4j の relationship）の property に置く。
 - journal と端末の未確定の Command（outbox）は、当面 jsonl のまま置く。書きかけの行の後始末、scope ごとの pull や重複排除の検索の遅さ、outbox の不具合が繰り返し起きたら、SQLite への切り替えを検討する。
@@ -73,6 +75,7 @@ Git の cloud と local の関係に倣う。
 - 保持の方針は権限と同じ継承と上書きの規則で解決する。
 - 複数の scope に関わる op は、関わる scope のうち最も長い保持期間で残す。
 - 重複排除の記録は scope の保持期間に連動させず、workspace 単位で再送が来うる期間より長く持つ。
+- archive に移した journal は 90 日で削除する。削除の条件は、その範囲を覆う portable snapshot の検証が通っていることである。
 - 保持期間の短縮は、過去を即座に捨てる破壊的な操作なので、確認つきの明示の操作にする。
 - 古すぎる local の判定と clone し直しは scope ごとに行う。
 
