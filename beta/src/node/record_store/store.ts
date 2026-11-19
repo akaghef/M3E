@@ -7,8 +7,9 @@
 // Neo4j asynchronously. Neo4j is derived and can always be rebuilt from snapshot + journal.
 //
 // Besides the two files, `compact()` writes `commit-index.json`: which commit last touched each
-// map, and the ids of the commands already committed (for idempotent retries). The snapshot stays
-// a plain portable snapshot.
+// map, the ids of the commands already committed (for idempotent retries) and the checksum of the
+// snapshot it wrote. The snapshot stays a plain portable snapshot. Compaction moves the replaced
+// journal and snapshot into `archive/` instead of discarding them (journal_archive.ts).
 //
 // Specs: .kiro/specs/rapid-persistence-redesign/snapshot-format.md and post-migration-spec.md 9-12.
 
@@ -39,6 +40,21 @@ import {
   type IdTranslator,
   type IntroducedIds,
 } from "./id_alias";
+import {
+  archiveFile,
+  archiveDir,
+  fsyncDir,
+  journalArchiveName,
+  pruneArchive,
+  readArchive,
+  sha256,
+  snapshotArchiveName,
+  touchedOf,
+  writeArchiveIndex,
+  type ArchiveEntry,
+  type PruneResult,
+  type TouchedRecord,
+} from "./journal_archive";
 import { validationErrorCount } from "./validate";
 import {
   EngineQueue,
@@ -56,6 +72,8 @@ export const JOURNAL_FILE = "journal.jsonl";
 export const COMMIT_INDEX_FILE = "commit-index.json";
 /** Command ids kept by `compact()` for idempotent retries: the most recent ones, up to this many. */
 export const COMMAND_INDEX_RETAIN = 100000;
+/** Journal lines after the snapshot that make the store compact (after a commit, and on open). */
+export const DEFAULT_COMPACT_AFTER_LINES = 50000;
 /** Commits the storage engine may be behind before commits are refused with ENGINE_BEHIND. */
 export const DEFAULT_ENGINE_BACKLOG_LIMIT = 10000;
 
@@ -115,6 +133,12 @@ export interface OpenOptions {
   engineBacklogLimit?: number;
   /** Waits between the engine's retries after a failure: first and longest, in milliseconds. */
   engineRetry?: EngineRetryOptions;
+  /**
+   * Journal lines after the snapshot at which the store compacts: after the commit that reaches
+   * it, and on open when the replay was that long. 0 turns automatic compaction off.
+   * Default: M3E_COMPACT_AFTER_LINES, or 50,000.
+   */
+  compactAfterLines?: number;
 }
 
 /** One line of `journal.jsonl`. */
@@ -135,6 +159,8 @@ export interface JournalLine {
   mapOp?: "delete" | "rename" | "columns";
   newMapId?: string;
   ops: RecordOp[];
+  /** Records whose canonical value the commit changed, with the kinds of change; derived by the store. */
+  touched?: TouchedRecord[];
 }
 
 interface MapEntry {
@@ -291,6 +317,7 @@ function writeFileDurably(filePath: string, content: string): void {
     fs.closeSync(fd);
   }
   fs.renameSync(tmp, filePath);
+  fsyncDir(path.dirname(filePath));
 }
 
 interface JournalRead {
@@ -360,6 +387,15 @@ export class RecordWorkspaceStore {
   private snapshotSeq = 0;
   private journalFd: number | undefined;
   private journalSize = 0;
+  /** Lines of the journal file after the snapshot: what an open would replay. */
+  private journalLines = 0;
+  /** Checksum of the snapshot file, recorded by the compaction that wrote it. */
+  private snapshotSum: { seq: number; sha256: string } | undefined;
+  /** Snapshot format of the snapshot file; archive names carry it. */
+  private snapshotFormat = 1;
+  private readonly compactAfterLines: number;
+  /** Problems of the last compaction or archive retention pass that stopped; empty when it ran. */
+  private maintenanceProblems: string[] = [];
   private engine: EngineQueue | undefined;
   private readonly engineBacklogLimit: number;
   private readonly engineRetry: EngineRetryOptions | undefined;
@@ -384,10 +420,21 @@ export class RecordWorkspaceStore {
     writeFileDurably(path.join(dir, JOURNAL_FILE), "");
   }
 
+  /** Number of journal lines after the snapshot. */
+  journalLength(): number {
+    return this.journalLines;
+  }
+
+  /** Problems that stopped the last compaction or archive retention pass; empty when it ran. */
+  maintenanceStatus(): { problems: string[] } {
+    return { problems: [...this.maintenanceProblems] };
+  }
+
   static open(dir: string, options: OpenOptions = {}): RecordWorkspaceStore {
     assertNotLiveM3e(dir);
     const store = new RecordWorkspaceStore(dir, options);
     try {
+      store.maintain();
       if (options.neo4j) {
         assertNeo4jUsable(options.neo4j, { workspaceId: store.workspaceId, seq: store.currentSeq });
         store.attachEngine(new Neo4jApplier(options.neo4j));
@@ -408,6 +455,9 @@ export class RecordWorkspaceStore {
     const limit = options.engineBacklogLimit ?? (Number.isFinite(envLimit) && envLimit > 0 ? envLimit : DEFAULT_ENGINE_BACKLOG_LIMIT);
     this.engineBacklogLimit = Math.max(1, Math.floor(limit));
     this.engineRetry = options.engineRetry;
+    const envCompact = Number(process.env.M3E_COMPACT_AFTER_LINES);
+    const compactAfter = options.compactAfterLines ?? (Number.isFinite(envCompact) && envCompact >= 0 ? envCompact : DEFAULT_COMPACT_AFTER_LINES);
+    this.compactAfterLines = Math.max(0, Math.floor(compactAfter));
 
     const snapshotPath = path.join(dir, SNAPSHOT_FILE);
     const journalPath = path.join(dir, JOURNAL_FILE);
@@ -415,6 +465,7 @@ export class RecordWorkspaceStore {
     const records = parseSnapshot(fs.readFileSync(snapshotPath, "utf8"));
     const header = records[0] as SnapshotHeader;
     this.workspaceId = header.workspaceId;
+    this.snapshotFormat = Number.isInteger(header.format) ? header.format : 1;
     let seq = Number.isInteger(header.seq) ? header.seq : 0;
     for (let i = 1; i < records.length; i += 1) {
       const record = records[i];
@@ -432,7 +483,9 @@ export class RecordWorkspaceStore {
       const index = JSON.parse(fs.readFileSync(indexPath, "utf8")) as {
         mapSeq?: Record<string, number>;
         commands?: Array<[string, string, number, string]>;
+        snapshot?: { seq: number; sha256: string };
       };
+      this.snapshotSum = index.snapshot;
       for (const [mapId, value] of Object.entries(index.mapSeq ?? {})) this.mapSeq.set(mapId, value);
       for (const [mapId, commandId, commandSeq, hash] of index.commands ?? []) {
         this.commands.set(commandKey(mapId, commandId), { seq: commandSeq, hash });
@@ -456,6 +509,7 @@ export class RecordWorkspaceStore {
         throw new Error(`The journal starts at commit ${line.seq} but the snapshot ends at ${this.currentSeq}: ${journalPath}`);
       }
       this.applyLine(line);
+      this.journalLines += 1;
     }
     if (journal.goodLength < journal.size) fs.truncateSync(journalPath, journal.goodLength);
     this.journalFd = fs.openSync(journalPath, "a");
@@ -547,11 +601,18 @@ export class RecordWorkspaceStore {
     return sortRecords(jsonClone([this.header(), ...this.all.values()]));
   }
 
-  /** The journal line of a Command committed under this id; null when the id is unknown or the journal no longer holds the line. */
+  /** The journal line of a Command committed under this id, from the journal or the archive; null when neither holds it. */
   committedCommand(mapId: string, commandId: string): JournalLine | null {
     const known = this.commands.get(commandKey(mapId, commandId));
     if (!known) return null;
-    return readJournal(path.join(this.dir, JOURNAL_FILE)).lines.find((line) => line.seq === known.seq) ?? null;
+    const inJournal = readJournal(path.join(this.dir, JOURNAL_FILE)).lines.find((line) => line.seq === known.seq);
+    if (inJournal) return inJournal;
+    for (const entry of readArchive(this.dir, this.now())) {
+      if (entry.kind !== "journal" || entry.fromSeq > known.seq || entry.toSeq < known.seq) continue;
+      const line = readJournal(path.join(archiveDir(this.dir), entry.file)).lines.find((item) => item.seq === known.seq);
+      if (line) return line;
+    }
+    return null;
   }
 
   /**
@@ -747,11 +808,43 @@ export class RecordWorkspaceStore {
   }
 
   /**
-   * Rewrites `snapshot.jsonl` from memory and empties the journal. The commit table stays in the
-   * snapshot; the last commit of each map and the command ids go to `commit-index.json`.
+   * Writes a new snapshot from memory and starts an empty journal. Nothing is discarded: the
+   * journal file and the snapshot it replaces go into `archive/` first (journal_archive.ts). The
+   * last commit of each map, the command ids and the new snapshot's checksum go to
+   * `commit-index.json`.
+   *
+   * Order, for a crash in between: the archive (links to files that no longer change), the index
+   * (it may be ahead of the snapshot), the snapshot (journal lines it already holds are skipped on
+   * open), then the journal.
    */
   compact(): void {
     this.assertOpen();
+    const journalPath = path.join(this.dir, JOURNAL_FILE);
+    const snapshotPath = path.join(this.dir, SNAPSHOT_FILE);
+    if (this.journalSize === 0 && this.currentSeq === this.snapshotSeq) return;
+    const now = this.now();
+    const archived = readArchive(this.dir, now);
+    const added: ArchiveEntry[] = [];
+    const lines = this.journalSize > 0 ? readJournal(journalPath).lines : [];
+    if (lines.length > 0) {
+      const fromSeq = lines[0].seq;
+      const toSeq = lines[lines.length - 1].seq;
+      const name = journalArchiveName(fromSeq, toSeq, this.snapshotFormat);
+      archiveFile(this.dir, journalPath, name);
+      added.push({ file: name, kind: "journal", fromSeq, toSeq, format: this.snapshotFormat, archivedAt: now });
+    }
+    if (this.currentSeq !== this.snapshotSeq) {
+      const name = snapshotArchiveName(this.snapshotSeq, this.snapshotFormat);
+      archiveFile(this.dir, snapshotPath, name);
+      added.push({ file: name, kind: "snapshot", fromSeq: this.snapshotSeq, toSeq: this.snapshotSeq, format: this.snapshotFormat, archivedAt: now });
+    }
+    if (added.length > 0) {
+      const names = new Set(added.map((entry) => entry.file));
+      writeArchiveIndex(this.dir, [...archived.filter((entry) => !names.has(entry.file)), ...added]);
+    }
+
+    const content = serializeSnapshot([this.header(), ...this.all.values()]);
+    const snapshotSum = { seq: this.currentSeq, sha256: sha256(content) };
     const commands = [...this.commands.entries()]
       .sort((a, b) => a[1].seq - b[1].seq)
       .slice(-COMMAND_INDEX_RETAIN)
@@ -759,20 +852,32 @@ export class RecordWorkspaceStore {
         const cut = key.indexOf("\u0000");
         return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash];
       });
-    // Order matters for a crash in between: the index first (it may be ahead of the snapshot),
-    // then the snapshot (journal lines it already holds are skipped on open), then the journal.
     writeFileDurably(
       path.join(this.dir, COMMIT_INDEX_FILE),
-      JSON.stringify({ format: 1, seq: this.currentSeq, mapSeq: Object.fromEntries(this.mapSeq), commands }) + "\n",
+      JSON.stringify({ format: 1, seq: this.currentSeq, mapSeq: Object.fromEntries(this.mapSeq), commands, snapshot: snapshotSum }) + "\n",
     );
-    writeFileDurably(path.join(this.dir, SNAPSHOT_FILE), serializeSnapshot([this.header(), ...this.all.values()]));
+    writeFileDurably(snapshotPath, content);
     this.snapshotSeq = this.currentSeq;
-    const journalPath = path.join(this.dir, JOURNAL_FILE);
+    this.snapshotSum = snapshotSum;
     if (this.journalFd !== undefined) fs.closeSync(this.journalFd);
     this.journalFd = undefined;
     writeFileDurably(journalPath, "");
     this.journalFd = fs.openSync(journalPath, "a");
     this.journalSize = 0;
+    this.journalLines = 0;
+  }
+
+  /**
+   * Deletes archived files older than the retention period (90 days), after checking that the
+   * current snapshot is on disk and matches its recorded checksum. With any problem, nothing is
+   * deleted and the problems are returned.
+   */
+  pruneArchive(options: { now?: string; retentionMs?: number } = {}): PruneResult {
+    this.assertOpen();
+    return pruneArchive(this.dir, path.join(this.dir, SNAPSHOT_FILE), this.snapshotSum, {
+      now: options.now ?? this.now(),
+      retentionMs: options.retentionMs,
+    });
   }
 
   /** Resolves when the storage engine holds every commit (at once when there is no engine). */
@@ -795,6 +900,23 @@ export class RecordWorkspaceStore {
   }
 
   // ---------------------------------------------------------------- internals
+
+  /** Compaction when the journal is long enough, then the archive retention pass. Never throws. */
+  private maintain(): void {
+    const problems: string[] = [];
+    try {
+      if (this.compactAfterLines > 0 && this.journalLines >= this.compactAfterLines) this.compact();
+    } catch (error) {
+      problems.push(`compaction stopped: ${(error as Error).message}`);
+    }
+    try {
+      problems.push(...this.pruneArchive().problems);
+    } catch (error) {
+      problems.push(`archive retention stopped: ${(error as Error).message}`);
+    }
+    this.maintenanceProblems = problems;
+    if (problems.length > 0) console.warn(`[record-store] maintenance of ${this.dir} stopped: ${problems.join("; ")}`);
+  }
 
   private attachEngine(applier: EngineApplier): void {
     this.engine = new EngineQueue(applier, {
@@ -1170,6 +1292,8 @@ export class RecordWorkspaceStore {
   /** Appends the journal line (the commit point), then updates memory and hands the commit to the engine. */
   private append(line: JournalLine): void {
     if (this.journalFd === undefined) throw new Error("The record store is closed.");
+    const touched = touchedOf(line.ops, (rk) => this.all.get(rk));
+    if (touched.length > 0) line.touched = touched;
     const buffer = Buffer.from(JSON.stringify(line) + "\n", "utf8");
     try {
       let written = 0;
@@ -1184,8 +1308,11 @@ export class RecordWorkspaceStore {
       throw error;
     }
     this.journalSize += buffer.length;
+    this.journalLines += 1;
     this.applyLine(line);
     this.engine?.enqueue(this.engineCommit(line));
+    // The commit has happened; compaction must not turn it into a failure.
+    if (this.compactAfterLines > 0 && this.journalLines >= this.compactAfterLines) this.maintain();
   }
 
   private engineCommit(line: JournalLine): EngineCommit {
@@ -1203,10 +1330,26 @@ export class RecordWorkspaceStore {
 
   /** Commits after `seq`, read from the journal file; null when it no longer reaches back that far. */
   private commitsAfter(seq: number): EngineCommit[] | null {
-    if (seq < this.snapshotSeq) return null;
-    return readJournal(path.join(this.dir, JOURNAL_FILE)).lines
-      .filter((line) => line.seq > seq)
-      .map((line) => this.engineCommit(line));
+    const lines = this.linesAfter(seq);
+    return lines === null ? null : lines.map((line) => this.engineCommit(line));
+  }
+
+  /**
+   * Journal lines after `seq`: from the journal file, and from the archive for the commits the
+   * snapshot already holds. Null when the archive does not hold every one of those commits.
+   */
+  private linesAfter(seq: number): JournalLine[] | null {
+    const current = readJournal(path.join(this.dir, JOURNAL_FILE)).lines.filter((line) => line.seq > Math.max(seq, this.snapshotSeq));
+    if (seq >= this.snapshotSeq) return current;
+    const found = new Map<number, JournalLine>();
+    for (const entry of readArchive(this.dir, this.now())) {
+      if (entry.kind !== "journal" || entry.toSeq <= seq || entry.fromSeq > this.snapshotSeq) continue;
+      for (const line of readJournal(path.join(archiveDir(this.dir), entry.file)).lines) {
+        if (line.seq > seq && line.seq <= this.snapshotSeq) found.set(line.seq, line);
+      }
+    }
+    for (let next = seq + 1; next <= this.snapshotSeq; next += 1) if (!found.has(next)) return null;
+    return [...[...found.values()].sort((a, b) => a.seq - b.seq), ...current];
   }
 
   /** Bookkeeping a journal line carries besides its record operations. */
