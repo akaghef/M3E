@@ -49,6 +49,15 @@
 
 ## 記録
 
+### 2026-11-19 実データの兄弟順キーに同じ値は無く、兄弟順キーを fractional-indexing に移した
+
+- 種類: 気づき
+- 書いた agent: 操作の代数の設計の session（GPT Pro との要件レビュー）
+- 対象: DB 仕様書 3.4 節・4 節、`beta/src/shared/record_model/order_key.ts`
+- 中身: 三つの workspace の最新 backup の read-only の写し（41・12・12 map、parent edge 49,923 本）を `toSnapshot` で変換して数えた。同じ map・同じ親の下で同じ `ord`：0 件。有効でない `ord`：0 件。`children[]` に同じ子が二度：0 件。並べた親と子の `parentId` の食い違い：0 件。保存データはまだ `ord` を持たず、変換のときに `children[]` の順から作るので、「移行前の等しい key」の例外は現在の実データでは起きない（守りとしてだけ残す）。兄弟順キーは `fractional-indexing` の base62 の key に移した。以前の base36 の key は無効として、読み込み時に振り直す。
+- 根拠: scratchpad の集計スクリプトで、`node:sqlite` の readOnly で写しを読んで計測。単体試験 `record_model_order_key`・`record_model_steady`・`record_model_to_snapshot`。
+- 扱い: 仕様へ反映（兄弟順の文面を DB 仕様書の担当 session へ送付済み。[操作の代数の要件](operation-algebra-requirements.md) 8 節）
+
 ### 2026-11-19 操作の代数の要件のうち、保存形式に効かない六点を推奨どおりに仮決めした
 
 - 種類: 気づき
