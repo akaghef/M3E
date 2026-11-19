@@ -58,6 +58,7 @@ import {
 import { renderNode as renderNodeSvg, nodeSelectionFrameRect } from "../shared/node_draw_svg";
 import { DerivedNodeCache, RetainedSvgScene, ScopeDerivedCache } from "./incremental_scene";
 import { FrameInvalidation } from "./frame_invalidation";
+import { markupBounds, type MarkupBox } from "./markup_bounds";
 import { captureSvgPaintScene, capturedNodeElements, sceneWorldBounds } from "./webgl_scene_tiles";
 import { autoSizeInlineEditor, InlineNodeEditorPreview } from "./inline_node_editor";
 import { hasPrimaryModifier, keyboardPlatform, nodeLabelEditAction, type ViewerKeyboardMode } from "./viewer_keyboard";
@@ -605,7 +606,7 @@ let layoutMetricCache = activeLayoutCache.metrics;
 const nodeSvgCache = new DerivedNodeCache<ReturnType<typeof renderNodeSvg>>();
 const edgeSvgCache = new DerivedNodeCache<string>();
 let treeSpanCache = activeLayoutCache.spans;
-const retainedSvgScene = new RetainedSvgScene();
+const retainedSvgScene = new RetainedSvgScene<MarkupBox>();
 const filterScene = new ViewerFilterScene();
 function applyViewFilter(): void {
   const { result, selection } = viewerFilter.getSnapshot();
@@ -3656,6 +3657,19 @@ function getTextMeasureContext(): CanvasRenderingContext2D | null {
   const measureCanvas = document.createElement("canvas");
   textMeasureContext = measureCanvas.getContext("2d");
   return textMeasureContext;
+}
+
+/** Width of drawn label text, without the layout floor `textWidth` applies. */
+function drawnTextWidth(str: string, fontSize: number, fontWeight: number): number {
+  const measureContext = getTextMeasureContext();
+  if (!measureContext) return str.length * fontSize * 0.62;
+  measureContext.font = `${fontWeight} ${fontSize}px ${TEXT_MEASURE_FONT_FAMILY}`;
+  return measureContext.measureText(str).width;
+}
+
+/** Bounding box of one retained fragment from its markup; `undefined`/`null` when it has to be measured in the DOM. */
+function fragmentBox(key: string): MarkupBox | null | undefined {
+  return retainedSvgScene.derived(key, (markup) => markupBounds(markup, drawnTextWidth));
 }
 
 function textWidth(str: string, fontSize: number): number {
@@ -8664,10 +8678,7 @@ function renderScene(incremental: boolean): void {
   // Measure world geometry, including negative positions and curved paths.
   // A hidden SVG cannot be measured reliably; it is hidden again by the
   // projection before presentation, without changing saved node coordinates.
-  const wasHidden = canvas.hasAttribute("hidden");
-  canvas.removeAttribute("hidden");
-  const bounds = sceneWorldBounds(canvas.getBBox(), maxX, maxY);
-  if (wasHidden) canvas.setAttribute("hidden", "");
+  const bounds = sceneWorldBounds(sceneBox(), maxX, maxY);
   contentMinX = bounds.minX;
   contentMinY = bounds.minY;
   contentWidth = bounds.maxX - bounds.minX;
@@ -13903,6 +13914,26 @@ function selectedFitNodeIds(includeDescendants: boolean): Set<string> {
   return new Set([...ids].filter(nodeId => painted.has(`node:${nodeId}`)));
 }
 
+/** Box of the whole drawn scene: from the markup when every fragment allows it, otherwise measured. */
+function sceneBox(): MarkupBox {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, known = true;
+  for (const fragment of Array.from(canvas.children) as SVGGraphicsElement[]) {
+    if (!fragment.childElementCount || fragment.dataset.renderKey === "defs") continue;
+    const box = fragmentBox(fragment.dataset.renderKey || "");
+    if (!box) { known = false; break; }
+    minX = Math.min(minX, box.x); minY = Math.min(minY, box.y);
+    maxX = Math.max(maxX, box.x + box.width); maxY = Math.max(maxY, box.y + box.height);
+  }
+  if (known) return Number.isFinite(minX + minY + maxX + maxY) ? { x: minX, y: minY, width: maxX - minX, height: maxY - minY } : { x: 0, y: 0, width: 0, height: 0 };
+  const wasHidden = canvas.hasAttribute("hidden");
+  canvas.removeAttribute("hidden");
+  try {
+    return canvas.getBBox();
+  } finally {
+    if (wasHidden) canvas.setAttribute("hidden", "");
+  }
+}
+
 function fitTarget(mode: FitMode, options: CameraMoveOptions = {}): boolean {
   if (!map) return false;
   if (mode === "graph-linear" && !linearPanelAvailableForFit()) return false;
@@ -13916,8 +13947,7 @@ function fitTarget(mode: FitMode, options: CameraMoveOptions = {}): boolean {
   };
   // Measure retained graph geometry, even while WebGL presents it. Canvas extent
   // also contains the linear panel and minimum padding, which are not graph fit.
-  const wasHidden = canvas.hasAttribute("hidden");
-  canvas.removeAttribute("hidden");
+  let wasHidden: boolean | null = null;
   try {
     for (const fragment of Array.from(canvas.children) as SVGGraphicsElement[]) {
       const key = fragment.dataset.renderKey || "";
@@ -13932,7 +13962,12 @@ function fitTarget(mode: FitMode, options: CameraMoveOptions = {}): boolean {
         }
       }
       if (!wanted || !fragment.childElementCount) continue;
-      const box = fragment.getBBox();
+      let box: MarkupBox | null | undefined = fragmentBox(key);
+      if (!box) {
+        // A hidden SVG cannot be measured; it is hidden again below.
+        if (wasHidden === null) { wasHidden = canvas.hasAttribute("hidden"); canvas.removeAttribute("hidden"); }
+        box = fragment.getBBox();
+      }
       include(box.x, box.y, box.width, box.height);
     }
   } finally {

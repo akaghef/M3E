@@ -1,3 +1,4 @@
+import { pathMidpoint } from "./markup_bounds";
 import type { AppState, GraphLink } from '../shared/types';
 import type { LayoutResult } from '../shared/layout_port';
 import { disperseGuideEndpoints } from './disperse_frame';
@@ -89,7 +90,10 @@ export class EdgeGraphLinkSelectionAdapter {
       let labelAnchor=label?{x:Number(label.getAttribute('x')),y:Number(label.getAttribute('y'))}:item.presentation.labelAnchor;
       if(!label && item.presentation.kind==='line') {
         const geometry=item.ref.kind==='graph-link'?graphLines.get(item.ref.renderKey):edgeLines.get(pairKey(item.ref.parentNodeId,item.ref.childNodeId));
-        if(geometry && typeof geometry.getPointAtLength==='function') {
+        // Half way along the line, from the path numbers; the browser is asked only for a path this cannot read.
+        const computed=geometry?pathMidpoint(geometry.getAttribute('d')||''):null;
+        if(computed) labelAnchor=computed;
+        else if(geometry && typeof geometry.getPointAtLength==='function') {
           const midpoint=geometry.getPointAtLength(geometry.getTotalLength()/2);labelAnchor={x:midpoint.x,y:midpoint.y};
         }
       }

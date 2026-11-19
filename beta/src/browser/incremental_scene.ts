@@ -1,6 +1,6 @@
 /** Retain SVG fragments in canonical layer/order without reparsing unchanged nodes. */
-export class RetainedSvgScene {
-  private parts = new Map<string, { element: SVGGElement; markup: string }>();
+export class RetainedSvgScene<T = unknown> {
+  private parts = new Map<string, { element: SVGGElement; markup: string; source?: string; box?: T | null }>();
   update(root: SVGSVGElement, parts: Array<[string, string]>, reset = false): number {
     if (reset) { root.replaceChildren(); this.parts.clear(); }
     const live = new Set(parts.map(([key]) => key));
@@ -20,6 +20,8 @@ export class RetainedSvgScene {
       if (part.markup !== markup) {
         part.element.innerHTML = markup;
         part.markup = markup;
+        part.source = markup;
+        part.box = undefined;
         replaced++;
       }
       if (cursor !== part.element) root.insertBefore(part.element, cursor);
@@ -39,9 +41,23 @@ export class RetainedSvgScene {
     if (part.markup !== markup) {
       part.element.innerHTML = markup;
       part.markup = markup;
+      part.source = markup;
+      part.box = undefined;
     }
     return true;
   }
+  /**
+   * A value derived from a fragment's markup (its bounding box), computed once per markup.
+   * `undefined` when there is no such fragment; whatever `derive` answered otherwise.
+   */
+  derived(key: string, derive: (markup: string) => T | null): T | null | undefined {
+    const part = this.parts.get(key);
+    if (!part || part.source === undefined) return undefined;
+    if (part.box === undefined) part.box = derive(part.source);
+    return part.box;
+  }
+  /** Keys of the retained fragments, in no particular order. */
+  keys(): IterableIterator<string> { return this.parts.keys(); }
 }
 
 /** Per-node derivation cache, owned by one viewer; never a persistent map field. */
