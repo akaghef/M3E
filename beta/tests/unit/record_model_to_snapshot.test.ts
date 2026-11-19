@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { describe, expect, it } from "vitest";
 import { checkInvariants } from "../../src/shared/record_model/invariants";
+import { isOrderKey } from "../../src/shared/record_model/order_key";
 import { toSnapshot } from "../../src/shared/record_model/to_snapshot";
 import type {
   AnnotationRecord,
@@ -91,7 +92,7 @@ describe("toSnapshot: ids (3.1)", () => {
     // references follow the new ids
     expect(ofKind<MapRecord>(records, "map").find((m) => m.id === "m2")!.rootNodeId).toBe(newRoot);
     expect(edgesOf(records, "m2")).toEqual([
-      { kind: "connection", id: `c_${sha("m2", "edge", newA)}`, mapId: "m2", type: "edge", source: newRoot, target: newA, ord: "1", scopeId: `s_${sha("m2", "scope", newRoot)}`, rev: 0 },
+      { kind: "connection", id: `c_${sha("m2", "edge", newA)}`, mapId: "m2", type: "edge", source: newRoot, target: newA, ord: "a0", scopeId: `s_${sha("m2", "scope", newRoot)}`, rev: 0 },
     ]);
     expect(ofKind<ScopeRecord>(records, "scope", "m2")).toEqual([
       { kind: "scope", id: `s_${sha("m2", "scope", newRoot)}`, mapId: "m2", rootNodeId: newRoot, rev: 0 },
@@ -279,7 +280,7 @@ describe("toSnapshot: connections (3.3)", () => {
     expect(underRoot.map((e) => e.target)).toEqual(["c", "a", "b_unlisted", "z_unlisted"]);
     const ords = underRoot.map((e) => e.ord);
     expect(new Set(ords).size).toBe(ords.length);
-    for (const ord of ords) expect(ord).toMatch(/^[0-9a-z]*[1-9a-z]$/);
+    for (const ord of ords) expect(isOrderKey(ord)).toBe(true);
     expect(edgesOf(records).filter((e) => e.source === "a").map((e) => e.target)).toEqual(["elsewhere"]);
     expect(edgesOf(records)).toHaveLength(5);
     expect(edgesOf(records).every((e) => e.id === `c_${sha("m1", "edge", e.target)}`)).toBe(true);

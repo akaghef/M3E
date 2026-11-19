@@ -16,7 +16,7 @@ import type { AppState } from "../types";
 import { fromSnapshot } from "./from_snapshot";
 import { sha256Hex, type HashFn } from "./hash";
 import { recordKeyString, sortRecords } from "./jsonl";
-import { initialKeys, isOrderKey, keyBetween } from "./order_key";
+import { initialKeys, isOrderKey, keysBetween } from "./order_key";
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
@@ -172,11 +172,8 @@ export function generatedId(
 
 function fillBetween(out: string[], lo: number, hi: number, a: string | undefined, b: string | undefined): void {
   if (lo > hi) return;
-  const mid = (lo + hi) >> 1;
-  const key = keyBetween(a, b);
-  out[mid] = key;
-  fillBetween(out, lo, mid - 1, a, key);
-  fillBetween(out, mid + 1, hi, key, b);
+  const keys = keysBetween(a, b, hi - lo + 1);
+  for (let i = 0; i < keys.length; i += 1) out[lo + i] = keys[i];
 }
 
 /**

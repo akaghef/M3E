@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialKeys, isOrderKey, keyBetween } from "../../src/shared/record_model/order_key";
+import { initialKeys, isOrderKey, keyBetween, keysBetween } from "../../src/shared/record_model/order_key";
 
 function expectStrictlyIncreasing(keys: string[]): void {
   for (let i = 0; i < keys.length; i += 1) {
@@ -18,11 +18,11 @@ function rng(seed: number): () => number {
   };
 }
 
-describe("record model order keys", () => {
-  it("initialKeys gives strictly increasing keys that never end in 0", () => {
+describe("record model order keys (fractional-indexing, base62)", () => {
+  it("initialKeys gives strictly increasing keys", () => {
     expect(initialKeys(0)).toEqual([]);
-    expect(initialKeys(1)).toEqual(["1"]);
-    for (const n of [1, 2, 35, 36, 37, 70, 71, 1260, 1261, 5000, 50000]) {
+    expect(initialKeys(1)).toEqual(["a0"]);
+    for (const n of [1, 2, 61, 62, 63, 1260, 5000, 50000]) {
       const keys = initialKeys(n);
       expect(keys).toHaveLength(n);
       expectStrictlyIncreasing(keys);
@@ -31,22 +31,38 @@ describe("record model order keys", () => {
     expect(() => initialKeys(1.5)).toThrow();
   });
 
+  it("isOrderKey accepts library keys and rejects the rest", () => {
+    for (const key of ["a0", "a1", "a0V", "Zz", "b10"]) expect(isOrderKey(key), key).toBe(true);
+    // Earlier base36 keys, a trailing zero, an empty string and non-strings are not keys.
+    for (const key of ["", "1", "h", "0001", "a10", "a0 ", 3, undefined]) expect(isOrderKey(key), String(key)).toBe(false);
+  });
+
   it("keyBetween handles open ends and adjacent keys", () => {
-    expectStrictlyIncreasing([keyBetween(undefined, "1"), "1"]);
-    expectStrictlyIncreasing(["z", keyBetween("z", undefined)]);
-    expectStrictlyIncreasing(["1", keyBetween("1", "2"), "2"]);
-    expectStrictlyIncreasing(["1", keyBetween("1", "11"), "11"]);
-    expectStrictlyIncreasing(["0001", keyBetween("0001", "0002"), "0002"]);
-    expectStrictlyIncreasing([keyBetween(undefined, "0001"), "0001"]);
+    expectStrictlyIncreasing([keyBetween(undefined, "a0"), "a0"]);
+    expectStrictlyIncreasing(["a0", keyBetween("a0", undefined)]);
+    expectStrictlyIncreasing(["a0", keyBetween("a0", "a1"), "a1"]);
+    expectStrictlyIncreasing(["a0", keyBetween("a0", "a0V"), "a0V"]);
     expect(isOrderKey(keyBetween(undefined, undefined))).toBe(true);
   });
 
-  it("keyBetween rejects malformed or unordered keys", () => {
-    expect(() => keyBetween("10", undefined)).toThrow();
-    expect(() => keyBetween("A", undefined)).toThrow();
+  it("keyBetween rejects malformed or unordered keys, so equal neighbours must be re-keyed first", () => {
+    expect(() => keyBetween("a10", undefined)).toThrow();
+    expect(() => keyBetween("1", undefined)).toThrow();
     expect(() => keyBetween("", undefined)).toThrow();
-    expect(() => keyBetween("2", "1")).toThrow();
-    expect(() => keyBetween("1", "1")).toThrow();
+    expect(() => keyBetween("a2", "a1")).toThrow();
+    expect(() => keyBetween("a1", "a1")).toThrow();
+  });
+
+  it("keysBetween gives a contiguous increasing block inside the gap", () => {
+    const block = keysBetween("a1", "a2", 5);
+    expectStrictlyIncreasing(["a1", ...block, "a2"]);
+    expect(keysBetween(undefined, undefined, 0)).toEqual([]);
+    expect(() => keysBetween("a2", "a1", 1)).toThrow();
+  });
+
+  it("keys do not depend on node IDs", () => {
+    // Generation takes only the neighbouring keys; the same gap gives the same key whatever the nodes are.
+    expect(keyBetween("a0", "a1")).toBe(keyBetween("a0", "a1"));
   });
 
   it("random insert sequences keep strict order and uniqueness", () => {
@@ -54,18 +70,16 @@ describe("record model order keys", () => {
       const random = rng(seed);
       const keys = initialKeys(Math.floor(random() * 40));
       for (let step = 0; step < 400; step += 1) {
-        // bias some runs toward one end, where keys grow fastest
         const mode = seed % 4;
         const at = mode === 0 ? 0 : mode === 1 ? keys.length : Math.floor(random() * (keys.length + 1));
-        const key = keyBetween(keys[at - 1], keys[at]);
-        keys.splice(at, 0, key);
+        keys.splice(at, 0, keyBetween(keys[at - 1], keys[at]));
       }
       expectStrictlyIncreasing(keys);
     }
   });
 
   it("repeated insertion at the same gap stays ordered", () => {
-    const keys = ["1", "2"];
+    const keys = ["a0", "a1"];
     for (let step = 0; step < 300; step += 1) keys.splice(1, 0, keyBetween(keys[0], keys[1]));
     expectStrictlyIncreasing(keys);
   });

@@ -171,18 +171,36 @@ describe("projectMap: sibling order keys", () => {
   });
 
   it("assignOrderKeys keeps a longest increasing run and fills the rest in between", () => {
-    expect(assignOrderKeys([undefined, undefined, undefined])).toEqual(["1", "2", "3"]);
-    expect(assignOrderKeys(["1", "2", "3"])).toEqual(["1", "2", "3"]);
-    const moved = assignOrderKeys(["2", "3", "1", "4"]);
-    expect([moved[0], moved[1], moved[3]]).toEqual(["2", "3", "4"]);
-    expect(moved[2] > "3" && moved[2] < "4").toBe(true);
-    const many = assignOrderKeys(["1", ...new Array(200).fill(undefined), "2"]);
+    expect(assignOrderKeys([undefined, undefined, undefined])).toEqual(["a0", "a1", "a2"]);
+    expect(assignOrderKeys(["a1", "a2", "a3"])).toEqual(["a1", "a2", "a3"]);
+    const moved = assignOrderKeys(["a2", "a3", "a1", "a4"]);
+    expect([moved[0], moved[1], moved[3]]).toEqual(["a2", "a3", "a4"]);
+    expect(moved[2] > "a3" && moved[2] < "a4").toBe(true);
+    const many = assignOrderKeys(["a1", ...new Array(200).fill(undefined), "a2"]);
     expect([...many].sort()).toEqual(many);
     expect(new Set(many).size).toBe(many.length);
     expect(Math.max(...many.map((key) => key.length))).toBeLessThan(8);
-    const duplicate = assignOrderKeys(["5", "5", "0bad", "7"]);
+    // Equal keys and malformed keys (including the earlier base36 keys) are re-keyed; the result is unique.
+    const duplicate = assignOrderKeys(["a5", "a5", "0bad", "a7"]);
     expect([...duplicate].sort()).toEqual(duplicate);
     expect(new Set(duplicate).size).toBe(4);
+    expect(duplicate.filter((key) => key === "a5")).toHaveLength(1);
+    expect(duplicate[3]).toBe("a7");
+    const legacy = assignOrderKeys(["1", "2", "h"]);
+    expect(legacy).toEqual(["a0", "a1", "a2"]);
+  });
+
+  it("assignOrderKeys keys a moved block contiguously and leaves the other siblings alone", () => {
+    // [L, R] receives the block [x, y] between L and R: only x and y get keys.
+    const keys = assignOrderKeys(["a1", undefined, undefined, "a2"]);
+    expect(keys[0]).toBe("a1");
+    expect(keys[3]).toBe("a2");
+    expect([...keys].sort()).toEqual(keys);
+    // A second block into the same gap, after the first: it does not interleave with [x, y].
+    const second = assignOrderKeys([keys[0], keys[1], keys[2], undefined, undefined, keys[3]]);
+    expect(second.slice(0, 3)).toEqual(keys.slice(0, 3));
+    expect(second[5]).toBe(keys[3]);
+    expect([...second].sort()).toEqual(second);
   });
 });
 
