@@ -1,6 +1,6 @@
 # レコードのスキーマ（第 2 段の設計）
 
-2026-11-17 更新（初版 2026-11-16）。状態: 設計中、未承認。brief の決定（Neo4j を到達形とする、data migration は workspace ごとに一度だけ）の対象になる形を定める。
+2026-11-19 更新（初版 2026-11-16）。状態: 設計中。2026-11-19 の freeze v1（format 2）で確定したものは、2 節の末尾にまとめた。brief の決定（Neo4j を到達形とする、data migration は workspace ごとに一度だけ）の対象になる形を定める。
 
 - 用語は [Glossary](../../../docs/00_Home/Glossary.md) に従う。
 - 本書の ID（DA は決定、IB は未決の論点、FA は確かめた事実）は、本書を書いた会話の中の住所である。他の文書の番号とは連番にしていない。初版の IA・PA の番号は、この版で DA・IB に置き換えた。
@@ -135,6 +135,19 @@ scope は、複雑な対象を一枚の面で切り出したものと読む。�
 - **DA51 代理**（IB36）: 記録しない。必要になったら確定の表に欄を足す（欄の追加は migration にならない）。
 - **DA52 権限**（IB37）: 今回の形には入れない。scope のレコードに後から欄を足す。
 - **DA53 最初の relationType の定義**（IB24）: `consist-of`、`detail`、`rdfs:subClassOf`、`rdf:type` の四つと、接頭辞 `rdf`・`rdfs` の対応を入れる。既存の edge には付けない。
+
+### freeze v1（2026-11-19、akaghef「全部推奨で」）
+
+on-disk format に効くものを確定し、format 2 とした。仕様の本文は [DB 仕様書](../../../docs/03_Spec/Database_Spec.md)、根拠の原稿は物理量と拡張の土台の session の freeze v1 原稿である。
+
+- authority を二つに分ける。Neo4j は各端末の正本エンジン（semantic authority: invariant の検査と query）。durability authority（replication・backup・recovery の単位）は journal と portable snapshot。Neo4j は base snapshot と log suffix の replay で再構築する。[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md) もこれに合わせて改めた。
+- journal は workspace に一本で、remote の sequencer が `seq` を振る。未確定の Command は端末ごとの outbox に積む。
+- journal の envelope に `touched`（実差分の出たレコードと event kind）と `provenance` を足す。HLC と base revision は持たない。`seq`・`committedAt`・`issuer`・`touched` は、どの format でも意味を変えない。
+- schemaVersion は snapshot の header の `format` で、journal の行には持たない。format を上げるたびに base snapshot を書き、replay はそこから後だけを保証する。upcasting はしない。
+- archive の segment は 90 日で削除する。削除は、covering snapshot の fsync と checksum の検証で gate する。減衰する量の累積 `{v[k], t}` は portable snapshot に持つ。来歴は record の側に持つ。
+- 兄弟順は fractional indexing で、同じ親の下で `ord` は一意。同時の move は `seq` の順の LWW、cycle を作る move は拒否、interleaving を防ぐ。
+- 拡張: `extensionDef` のレコード（`name` と `version` が key）、node と edge の `extensions`（`name@version` の集合）、重ねられる、外しても値を残す、agent も定義できる、意味上の分類も拡張にする。parent edge に `relationType`・`attributes`・`extensions` の欄を足す。描画の宣言を定義に持たせる。
+- 拡張の欄の型の語彙は `string`・`int`・`float`・`bool`・`enum`・`time`・`timeExp`・`nodeRef`・`accountRef`・`list<T>`。canonical な時刻は ISO 8601 の UTC 文字列（ミリ秒、末尾 `Z`）で、cache と Neo4j は epoch ミリ秒の整数も持つ。
 
 ## 3. 確定の仕組み（担当の判断。レビューを受けて初版を直した）
 

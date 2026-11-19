@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed
+Accepted（2026-11-19 改訂: freeze v1）
+
+2026-11-19 に akaghef が freeze v1 の決定（on-disk format 2）を確定し、本 ADR の Decision 1・2・4・5 をそれに合わせて改めた。改訂の中身は [DB 仕様書](../03_Spec/Database_Spec.md) の 1・2・6 節にある。
 
 2026-11-16 の akaghef の決定（[rapid-persistence-redesign の brief](../../.kiro/specs/rapid-persistence-redesign/brief.md) の「決定済み」と「物理配置の原則」）を ADR として定式化する。承認されたら、ADR 004 と ADR 008 の該当箇所に supersede の注記を入れる。
 
@@ -19,14 +21,15 @@ Proposed
 
 ## Decision
 
-### 1. 正本は journal と portable snapshot
+### 1. authority を二つに分ける
 
-- 操作の正本は Command の列を記録した journal。workspace × 書き手端末ごとの append-only stream とし、書くのはその端末自身だけにする。復旧の正本は engine 非依存の portable snapshot ＋ journal replay（ADR 008 Recovery Gate と同一基準）。
-- engine store（SQLite file、Neo4j store）は journal から再生できる導出物であり、端末 local に置き、同期せず、backup の対象にしない。
+- durability authority（replication・backup・recovery の単位）は、journal と portable snapshot である。journal は確定した Command の列を記録する redo log で、workspace に一本である。復旧は、engine 非依存の base snapshot と、それより後の journal（log suffix）の replay で行う（ADR 008 Recovery Gate と同一基準）。
+- semantic authority（invariant の検査と query）は、各端末の Neo4j である。Neo4j は端末 local に置き、同期せず、backup の対象にしない。壊れたら、base snapshot と log suffix の replay で再構築する。
+- archive へ移した journal の segment は、90 日後に削除する。削除は、その範囲を覆う snapshot の検証で gate する。
 
-### 2. Rapid の正本エンジンは Neo4j を到達形とする
+### 2. Rapid の正本エンジンは Neo4j
 
-- 全面の書き換えを到達形とし、SQLite は正本の並走先ではなく export format の一つになる。
+- 各端末の正本エンジンは Neo4j である（Decision 1 の semantic authority）。全面の書き換えを到達形とし、SQLite は並走先ではなく export format の一つになる。
 - Final を製品として配布する場合の同梱方式（JVM 同梱、組込み系への切替、export された SQLite を読む閲覧専用 mode）は製品化時に別途決定する。
 
 ### 3. 書込みは Command のみ
@@ -34,15 +37,15 @@ Proposed
 - すべての書き手は Command（intent・対象・base revision・commandId・provenance）→ 検証 → 1 transaction 確定の経路を通る。map 全体を置換する経路は移行後に残さない。
 - 冪等性の鍵は commandId に置く。
 
-### 4. workspace ごとの単一 writer
+### 4. workspace ごとの single-leader
 
-- 一貫性は workspace ごとに確定者（writer）を一つに固定して得る。個人 workspace の確定者は Mac、team workspace は Beta の server process。
-- 他端末は Command を確定者へ送り、local には楽観適用する。offline 中の Command は local に保持し、再接続時に確定者で検証する。writer の移譲は明示操作のみとし、自動 failover は作らない。
+- remote は workspace ごとにちょうど一つあり、その sequencer が `seq` を振って確定の全順序を付ける（[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)、2026-11-18）。remote の置き場所は選べ、特定の端末に固定しない。
+- local の commit は確定ではない。端末は未確定の Command を outbox に積み、local には楽観適用する。再接続したら remote で検証する。leader の移譲は明示操作のみとし、自動 failover は作らない。
 
 ### 5. 配置
 
 - server・engine・viewer は同じ端末に同居させ、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
-- Mac mini は常時稼働の集約点（全 stream の mirror、portable snapshot の置き場、store-and-forward、workspace 横断の materialization）。
+- 常時稼働の端末（Mac mini など）は remote の置き場所の候補である。
 - server を立てられない端末（iPad など）は mini の server に接続する閲覧専用 client とする。
 - stream の輸送は Syncthing で行う。`data.sqlite` 丸ごとの同期は廃止する。
 
@@ -60,7 +63,7 @@ Proposed
 
 - 1 回の編集の費用が変更の大きさに比例し、map の規模に比例しない。
 - エンジンの切替・追加・破損が migration でなく replay で済む。
-- 同期は append-only stream の mirror になり、ファイル競合が構造上起きない。
+- 同期は、remote の一本の journal と端末の outbox の間の送受信になり、ファイル競合が構造上起きない。
 - offline 編集・複数 PC・閲覧専用端末が同じ仕組みの上に載る。
 
 ### Negative

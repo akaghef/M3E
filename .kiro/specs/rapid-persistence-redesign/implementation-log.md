@@ -74,7 +74,7 @@
 - 対象: DB 仕様書 3.4 節（兄弟順キー `ord`）、4 節
 - 中身: 不変条件は、同じ親の下で兄弟順キーが一意であることを求めていない（並びは、キーと `connectionId` の組で決まる）。キー k の兄弟 a と b の間へ x を入れたいとき、x のキーだけを変えても入らない（k より小さければ a の前、k 以上なら b の後になる）。「他の兄弟のキーを変えずに、どこへでも入れられる」という前提が成り立たない。案は二つある。確定した状態でキーを一意にする（必要なら振り直しを同じ Command に含める）。または、その位置の指定を拒否する。
 - 根拠: 仕様書 3.4 節と 4 節の文から導いた。実データに同じ値のキーがあるかは未確認。
-- 扱い: akaghef の判断待ち
+- 扱い: 仕様へ反映（freeze v1。DB 仕様書 3.4 節と 4 節の不変条件 9: 同じ親の下で `ord` は一意。format 2 の base snapshot で既存の重複を振り直す）。実装は未対応
 
 ### 2026-11-19 relation edge の重複を禁じる不変条件が無い
 
@@ -146,7 +146,7 @@
 - 対象: DB 仕様書 6 節、`beta/src/node/record_store/store.ts:121`（`JournalLine`）、`store.ts:752`（`compact()`）
 - 中身: 圧縮は journal を空にし、`commit-index.json` には map ごとの最後の確定と、確定済みの Command の ID（直近 100,000 件）だけを残す。確定ごとに差分が出たレコードの一覧は残らないので、圧縮より前の書かれる頻度（DB 仕様書 9 節の提案）は作り直せない。記録を始める前の確定は、後から分類できない。akaghef は 2026-11-19 に次の方向を示した。保存期限と復元期限を分ける。journal も出来事の記録も消さず、古い journal は保管へ移す。再生を保証するのは、最後のスキーマ変更の直後に書く snapshot から後だけにする。版は journal の各行に持たせず、切り替えの時点だけを記録する（snapshot の頭の `format` と `seq` で足りる）。出来事の記録は、通し番号・時刻・触れたレコードの ID・出来事の種類だけの、スキーマに依らない形にし、再生できない区間でも数えられるようにする。
 - 根拠: DB 仕様書 6 節の圧縮の記述と、`JournalLine` と `SnapshotHeader`（`beta/src/shared/record_model/types.ts:10`）の型を読んだ。
-- 扱い: akaghef の判断待ち（復元期限をスキーマ変更だけで区切るか。決まったら DB 仕様書に「器」として書く。上の「journal の畳み込みがどこからも呼ばれていない」の契機の決定と合わせて扱う）
+- 扱い: 仕様へ反映（freeze v1。DB 仕様書 6 節の envelope の `touched`、archive の 90 日での削除、9 節の減衰する量の累積を snapshot に持つこと）。実装は未対応
 
 ### 2026-11-19 名前の接頭辞の規則は MCP でしか検査しておらず、アプリの中から接頭辞の無い名前が書かれている
 
@@ -164,7 +164,7 @@
 - 対象: DB 仕様書 3.3 節、10 節、`beta/src/shared/record_model/types.ts`（`JsonValue`）
 - 中身: attribute の値は任意の JSON 値で、JSON には整数と小数の区別が無い。拡張の欄（task の status、目標の更新間隔など）の型は、保存の形ではなく、拡張の定義に欄の型を書かせて確定のときに検査するしかない。時刻は今 `committedAt` が文字列で持っている。型の語彙（文字列・整数・小数・真偽・列挙・時刻・期間・node の参照・列）と、時刻・期間の表し方は未決。
 - 根拠: `JsonValue`、`NodeRecord`、`JournalLine` の型を読んだ。
-- 扱い: akaghef の判断待ち（拡張の仕組みの承認と合わせて決める）
+- 扱い: 仕様へ反映（freeze v1。DB 仕様書 3.3 節と 10.7 節の型の語彙。拡張の欄だけを確定時に検査する）。実装は未対応
 
 ### 2026-11-19 同期の要件に、確定の保証範囲と復旧の対象が決まっていない
 
@@ -195,7 +195,7 @@
 - 対象: DB 仕様書 6 節、`beta/src/node/record_store/store.ts:752`（`compact()`）
 - 中身: 正本は「ある時点の portable snapshot と、それより後の journal」で、journal は定期的に portable snapshot へ畳み込む前提である。畳み込みの処理 `compact()` は実装されているが、試験の外からは呼ばれていない。今のままでは journal が増え続け、起動時の再生も長くなる。いつ畳むか（件数、大きさ、時刻、起動時）が仕様で決まっていない。
 - 根拠: `git grep` で `compact()` の呼び出しを探し、`beta/src` の試験以外に無いことを確かめた。
-- 扱い: akaghef の判断待ち（畳む契機を DB 仕様書 6 節に決める）
+- 扱い: 仕様へ反映（freeze v1。契機は replay の長さで決める。DB 仕様書 6 節。値は 12 節で未決）。呼び出しの実装は未対応
 
 ### 2026-11-18 何を正本とするかの記述が、二つの文書で食い違っている
 
@@ -204,7 +204,7 @@
 - 対象: DB 仕様書 1 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、[sync-principles](sync-principles.md)（dev-beta に統合済み。2026-11-19 に同期の思想の session が確かめた）
 - 中身: DB 仕様書と ADR 014 は「正本は journal と portable snapshot、Neo4j は端末ごとの導出物で、同期も backup もしない」とする。今の実装もこの形である。一方 `sync-principles.md` は「Neo4j は正本エンジンで、他の何かの写しではない」とする。どちらも 2026-11-16 の akaghef の決定（brief の「正本エンジンは Neo4j」）を根拠にしており、「正本エンジン」の読み方が分かれている。このままでは同期・復旧・backup の設計が二通りになる。
 - 根拠: 両方の文書の該当行を読んで比べた。
-- 扱い: akaghef の判断待ち
+- 扱い: 仕様へ反映（freeze v1。Neo4j は各端末の正本エンジンで semantic authority、journal と portable snapshot は durability authority。DB 仕様書 0・1 節と ADR 014 を改めた）
 
 ### 2026-11-18 一部の attribute だけを読んだ状態からの保存は、読んでいない attribute を消さない。ただし 2 つの操作が衝突として拒否される
 
