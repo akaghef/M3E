@@ -130,9 +130,14 @@ workspace > map > scope > node
 
 - `connectionId`（edge の `id`）は、parent edge と relation edge をまたいで一意である。
 - ある node の子は、`source` がその node である parent edge を集め、`ord` で並べたものである。子の配列は保存しない。
-- `ord` は並べるためだけの文字列で、文字列として比べる（fractional indexing）。間に入れるときは前後の間のキーを作り、他の兄弟のキーは変えない。手元の端末が作ってよい。
-- 【決定】（freeze v1、akaghef、2026-11-19）同じ親の下で、`ord` は一意である（4 節の不変条件 9）。【実装済み】のものは一意を求めず、同じキーが二つあれば `connectionId` の順にしている。format 2 の base snapshot を作るときに、重複を `connectionId` の順で振り直す。
-- 【決定】（freeze v1、akaghef、2026-11-19）同じ位置への同時の挿入で、複数件の並びが交互に混ざらない（interleaving を防ぐ）。方法は未決（12 節）。
+- 【決定】（akaghef、2026-11-19、操作の代数の要件 8 節）兄弟順キー `ord` の規則:
+  - `ord` は `fractional-indexing` ライブラリの base62 の key である（`0-9A-Za-z`。整数部の長さを表す頭文字に小数部が続き、末尾は `0` にならない）。文字列として code unit の順で比べる。
+  - 間に入れるときは、前後の key の間の key を作る。複数選択のブロックは `generateNKeysBetween` で一括に作り、ブロックどうしを交互に混ぜない（non-interleaving）。
+  - key を決めるのは確定する側で、決めるのは新規と移動の対象自身の key だけである。他の兄弟の key は変えない。順序の決着（tie-break）に ID を使わない。
+  - 同じ親の下で `ord` は一意である（4 節の不変条件 9）。
+  - 等しい `ord` は移行前のデータにだけ起こりうる。その間へ入れる Command は、等しい key を持つ兄弟の振り直しを同じ Command に含める。他の兄弟の key を変えない規則の、唯一の例外である。2026-11-19 に 3 workspace の最新の退避コピー（65 map、49,923 本の parent edge）を読み取り専用で変換して数えた結果、重複は 0 件、無効な key も 0 件だった（保存データは `ord` を持たず、変換で子の並びから作るため）。この例外は防御のためだけに残す。
+  - 以前の base36 の key は有効な key ではない。読み込んだ時点で振り直す（一度だけの移行）。
+  - 同じ node への同時の move は、`seq` の順で後に確定した有効なものを採る（LWW。5.2 規則 9）。cycle を作る move は拒否する。基準にした兄弟が消えていたら、右隣の直前 → 左隣の直後 → 末尾の順で位置を決める。
 - 【決定】（同期の要件 R3.4、暫定）relation edge を可視化し配送するのは、両端が同じ scope にあるときだけである。履歴を格納する先は、source 側の scope である。
 - 線の表示: `label` があればそれを、無ければ relationType の定義の表示ラベルを、それも無ければ何も表示しない。
 
@@ -220,7 +225,7 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 6. journal への追記と fsync が成功した時点が確定である。その後に Neo4j への反映が失敗しても取り消さない。反映は再試行し、Neo4j の遅れが上限（既定 10,000 確定）を超えたら、次の確定を `ENGINE_BEHIND` で拒否する。
 7. 【決定】（同期の要件 R5.3）fsync 済みで未適用の確定があるあいだは、古い Neo4j の状態で次の Command を検査しない。
 8. 【決定】（同期の要件 R2.4）scope をまたぐ移動は、当面実装しない。remote は、未対応として拒否する。
-9. 【決定】（freeze v1、akaghef、2026-11-19）同じ node への同時の move は、`seq` の順の LWW で決める（後に確定した move が勝つ）。cycle を作る move は拒否する（不変条件 2）。
+9. 【決定】（freeze v1、akaghef、2026-11-19）同じ node への同時の move は、`seq` の順の LWW で決める（後に確定した有効な move が勝つ）。cycle を作る move は拒否する（不変条件 2）。基準にした兄弟が消えていたときの位置は 3.4。
 
 - 確定点は、remote の journal への fsync である（同期の要件の Q1 は、二媒体なしの暫定）。媒体を失ったら、復旧した地点と、欠けたかもしれない範囲を示す（R5.1）。
 - 復旧の正本から戻す対象には、権限、未解決の conflict、Command の結果、世代、端末の失効、消去の状態を含める（R5.5）。
@@ -490,8 +495,6 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
 - 計算で求まる値の定義の名前の分類
 - 接頭辞 `m3e:` と `misc:` が指す URI（Turtle へ書き出すときに要る）
 - `note`・`link` を details に持つこと、`extra`、HTML を載せる種別などの担当の決め打ち（record-schema DA39〜DA53）の承認
-- 同じ位置への同時の挿入で、並びが交互に混ざらないようにする方法（3.4）
-- format 2 の base snapshot で振り直す、既存の `ord` の重複の件数（実データで未確認）
 - compaction の契機にする replay の長さの値
 
 実装と運用に関わるもの:
