@@ -49,6 +49,42 @@
 
 ## 記録
 
+### 2026-11-19 圧縮すると、どの確定がどの node に触れたかが失われ、書かれる頻度を作り直せない
+
+- 種類: 問題
+- 書いた agent: 物理量と拡張の土台の設計の session
+- 対象: DB 仕様書 6 節、`beta/src/node/record_store/store.ts:121`（`JournalLine`）、`store.ts:752`（`compact()`）
+- 中身: 圧縮は journal を空にし、`commit-index.json` には map ごとの最後の確定と、確定済みの Command の ID（直近 100,000 件）だけを残す。確定ごとに差分が出たレコードの一覧は残らないので、圧縮より前の書かれる頻度（DB 仕様書 9 節の提案）は作り直せない。記録を始める前の確定は、後から分類できない。akaghef は 2026-11-19 に次の方向を示した。保存期限と復元期限を分ける。journal も出来事の記録も消さず、古い journal は保管へ移す。再生を保証するのは、最後のスキーマ変更の直後に書く snapshot から後だけにする。版は journal の各行に持たせず、切り替えの時点だけを記録する（snapshot の頭の `format` と `seq` で足りる）。出来事の記録は、通し番号・時刻・触れたレコードの ID・出来事の種類だけの、スキーマに依らない形にし、再生できない区間でも数えられるようにする。
+- 根拠: DB 仕様書 6 節の圧縮の記述と、`JournalLine` と `SnapshotHeader`（`beta/src/shared/record_model/types.ts:10`）の型を読んだ。
+- 扱い: akaghef の判断待ち（復元期限をスキーマ変更だけで区切るか。決まったら DB 仕様書に「器」として書く。上の「journal の畳み込みがどこからも呼ばれていない」の契機の決定と合わせて扱う）
+
+### 2026-11-19 parent edge の形に relationType と attribute の欄が無い
+
+- 種類: 問題
+- 書いた agent: 物理量と拡張の土台の設計の session
+- 対象: DB 仕様書 3 節の edge の表、`beta/src/shared/record_model/types.ts`（`EdgeConnectionRecord`）
+- 中身: 仕様は parent edge が relationType と attribute を持つと決めているが、snapshot の形の `EdgeConnectionRecord` には欄が無い（仕様の表にも注記がある）。parent edge に極性（preserve / invert）を載せる案は、この欄が前提になる。
+- 根拠: `EdgeConnectionRecord` の定義を読んだ。
+- 扱い: 未対応
+
+### 2026-11-19 名前の接頭辞の規則は MCP でしか検査しておらず、アプリの中から接頭辞の無い名前が書かれている
+
+- 種類: 問題
+- 書いた agent: 物理量と拡張の土台の設計の session
+- 対象: DB 仕様書 3.8 節、`beta/src/node/layout_capture.ts:50`
+- 中身: 新しい attribute 名と relationType に接頭辞を求める検査は、MCP の入口（`beta/src/node/mcp_service.ts`）にしか無い。`layout_capture.ts` は relationType `reference` を接頭辞なしで書く。viewer など他の書き手も検査を通らない。
+- 根拠: `git grep '"reference"'` で書き手を探した。他の書き手は網羅していない。
+- 扱い: 未対応（既存の名前の対応規則と、確定の側で検査するかを決めてから直す）
+
+### 2026-11-19 attribute の値には型の取り決めが無く、整数と小数を区別できない
+
+- 種類: 気づき
+- 書いた agent: 物理量と拡張の土台の設計の session
+- 対象: DB 仕様書 3.3 節、10 節、`beta/src/shared/record_model/types.ts`（`JsonValue`）
+- 中身: attribute の値は任意の JSON 値で、JSON には整数と小数の区別が無い。拡張の欄（task の status、目標の更新間隔など）の型は、保存の形ではなく、拡張の定義に欄の型を書かせて確定のときに検査するしかない。時刻は今 `committedAt` が文字列で持っている。型の語彙（文字列・整数・小数・真偽・列挙・時刻・期間・node の参照・列）と、時刻・期間の表し方は未決。
+- 根拠: `JsonValue`、`NodeRecord`、`JournalLine` の型を読んだ。
+- 扱い: akaghef の判断待ち（拡張の仕組みの承認と合わせて決める）
+
 ### 2026-11-19 journal の畳み込みがどこからも呼ばれていない
 
 - 種類: 問題
