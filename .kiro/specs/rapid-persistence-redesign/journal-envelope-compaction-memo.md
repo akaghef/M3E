@@ -133,7 +133,8 @@ open: `CURRENT` の checkpoint を読み、`journal/` の segment のうち `seq
 ### 4.1 決定済み
 
 - **compaction 後の古い journal の保管期間: 90 日**（akaghef、2026-11-19）。archive へ move した sealed segment は、move から 90 日は必ず残す。90 日は Undo・調査・端末間の同期の遅れを吸収する期間である。
-- compaction 自体は何も消さない（2 節）。90 日を過ぎた segment を手放すのは、compaction とは別の retention の操作で行う。この操作は v1 では実装せず、期限を過ぎた segment は archive に残り続ける（消すより残す側に倒す）。手放す前に、その区間を含む checkpoint が archive にあることを確かめる。
+- compaction 自体は何も消さない（2 節）。90 日を過ぎた segment は、compaction とは別の retention の操作で削除する（akaghef の回答は「90 日で削除」）。
+- 削除は検証の結果で gate する。segment を消す前に、その segment の最後の seq 以降を覆う checkpoint（snapshot）が fsync 済みであること、その checksum を読み直して検証済みであることを確かめる。問題が 1 件でもあれば消さずに止め、理由を報告する。format 変更直後の pin された checkpoint より後の segment は、この規則とは別に、replay の保証のために残す。
 - sync-principles の Rapid の保持期間の目安（30 日）とは別の値である。どちらを scope ごとの `retention.ms` の既定値にするかは、DB 仕様書の担当へ回す。
 
 ## 5. 実装の順序（決定が出たら codex/<task> worktree で）
