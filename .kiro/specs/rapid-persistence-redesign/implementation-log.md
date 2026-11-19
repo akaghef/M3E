@@ -115,7 +115,7 @@
 ### 2026-11-19 parent edge のレコードに、relationType と attribute の欄が無い
 
 - 種類: 問題
-- 書いた agent: Neo4j 化の fork の session（DB 仕様書を書いた担当）
+- 書いた agent: Neo4j 化の fork の session（DB 仕様書を書いた担当）、物理量と拡張の土台の設計の session
 - 対象: DB 仕様書 3.4 節、`beta/src/shared/record_model/types.ts`（`EdgeConnectionRecord`）、snapshot-format 2 節
 - 中身: 仕様では parent edge も relationType と attribute を持つ。実装の parent edge のレコードには、どちらの欄も無い。今の移行では parent edge の relationType を設定しないので問題は出ていないが、parent edge に役割（たとえば `rdfs:subClassOf`）を付ける操作を作るときに欄が要る。極性（parent edge の「保つ / 反転する」）を attribute に置く案も、この欄を前提にしている。
 - 根拠: 型定義と snapshot-format の表を読んで比べた。
@@ -147,15 +147,6 @@
 - 中身: 圧縮は journal を空にし、`commit-index.json` には map ごとの最後の確定と、確定済みの Command の ID（直近 100,000 件）だけを残す。確定ごとに差分が出たレコードの一覧は残らないので、圧縮より前の書かれる頻度（DB 仕様書 9 節の提案）は作り直せない。記録を始める前の確定は、後から分類できない。akaghef は 2026-11-19 に次の方向を示した。保存期限と復元期限を分ける。journal も出来事の記録も消さず、古い journal は保管へ移す。再生を保証するのは、最後のスキーマ変更の直後に書く snapshot から後だけにする。版は journal の各行に持たせず、切り替えの時点だけを記録する（snapshot の頭の `format` と `seq` で足りる）。出来事の記録は、通し番号・時刻・触れたレコードの ID・出来事の種類だけの、スキーマに依らない形にし、再生できない区間でも数えられるようにする。
 - 根拠: DB 仕様書 6 節の圧縮の記述と、`JournalLine` と `SnapshotHeader`（`beta/src/shared/record_model/types.ts:10`）の型を読んだ。
 - 扱い: akaghef の判断待ち（復元期限をスキーマ変更だけで区切るか。決まったら DB 仕様書に「器」として書く。上の「journal の畳み込みがどこからも呼ばれていない」の契機の決定と合わせて扱う）
-
-### 2026-11-19 parent edge の形に relationType と attribute の欄が無い
-
-- 種類: 問題
-- 書いた agent: 物理量と拡張の土台の設計の session
-- 対象: DB 仕様書 3 節の edge の表、`beta/src/shared/record_model/types.ts`（`EdgeConnectionRecord`）
-- 中身: 仕様は parent edge が relationType と attribute を持つと決めているが、snapshot の形の `EdgeConnectionRecord` には欄が無い（仕様の表にも注記がある）。parent edge に極性（preserve / invert）を載せる案は、この欄が前提になる。
-- 根拠: `EdgeConnectionRecord` の定義を読んだ。
-- 扱い: 未対応
 
 ### 2026-11-19 名前の接頭辞の規則は MCP でしか検査しておらず、アプリの中から接頭辞の無い名前が書かれている
 
