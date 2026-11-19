@@ -130,6 +130,28 @@
 - 根拠: `JsonValue`、`NodeRecord`、`JournalLine` の型を読んだ。
 - 扱い: akaghef の判断待ち（拡張の仕組みの承認と合わせて決める）
 
+### 2026-11-19 同期の要件に、確定の保証範囲と復旧の対象が決まっていない
+
+- 種類: 問題
+- 書いた agent: 同期の思想と要件の session
+- 対象: [sync-principles](sync-principles.md) 全体、DB 仕様書 6 節・8.3 節
+- 中身: 同期の要件を GPT-6 Pro と詰めた第 1 往復で、次の穴が出た。いずれも決めないと実装者が勝手に決めてしまい、後から変えにくい。
+  - remote が確定して fsync した直後に保存媒体が壊れ、どの local もまだ pull していなければ、その確定は local を集めても戻らない。媒体 1 つの喪失で確定を失ってよいかが決まっていない。
+  - 複製の単位が scope なので、どの local も持たない scope がありうる。local を集めた remote の作り直しが完全かどうかを検査する規則が無い。
+  - push の一部を確定した後で abort の条件（世代・履歴 ID・hash 鎖の不一致）が分かると、確定済みの分は取り消せない。abort の条件は確定を始める前に検査し終える必要がある。
+  - 削除と、削除した側が見ていなかった子の追加・移動の競合、scope をまたぐ移動で所属・共有範囲・保持の方針が変わるか、権限を外した後の offline clone、conflict を誰が解けるか、Rapid から Deep への昇格が同じ ID の移動か新しい ID の複製か、が決まっていない。
+- 根拠: GPT-6 Pro の回答（第 1 往復）を読んだ。実装との照合はしていない（未確認）。
+- 扱い: akaghef の判断待ち（同期の要件の対話の中で確認している。決まったものは要件の文書に書き、ここの扱いを更新する）
+
+### 2026-11-19 復旧の経路で戻すべき状態と、適用待ちの確定の扱いが仕様に無い
+
+- 種類: 問題
+- 書いた agent: 同期の思想と要件の session
+- 対象: DB 仕様書 6 節・8.3 節、`beta/src/node/neo4j_store/apply.ts:192`（`appliedSeq` の書き込み）
+- 中身: 復旧の正本が portable snapshot と journal なら、グラフの中身だけでなく、権限、未解決の conflict、Command の結果（重複排除の記録）、世代、端末の失効も、そこから戻せなければならない。Neo4j にだけ置いた状態は、指定された復旧の経路で失われる。また、journal に fsync した後、Neo4j に適用する前に止まった確定は、適用の失敗を理由に未確定へ戻せない。その確定を適用し終えるまで（`appliedSeq` が journal の末尾に追いつくまで）、古い Neo4j の状態で次の Command を検査してはいけない。どちらも今の DB 仕様書には書かれていない。
+- 根拠: GPT-6 Pro の回答（第 1 往復）の指摘を、DB 仕様書 8.3 節の「反映した位置は `appliedSeq` に持つ」と照らした。確定の処理が、検査の前に `appliedSeq` の遅れを解消しているかどうかは確かめていない（未確認）。
+- 扱い: 未対応
+
 ### 2026-11-19 journal の畳み込みがどこからも呼ばれていない
 
 - 種類: 問題
@@ -143,7 +165,7 @@
 
 - 種類: 問題
 - 書いた agent: Neo4j 化の本線の session
-- 対象: DB 仕様書 1 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、枝 `codex/sync-principles` の `sync-principles.md`（dev-beta に未統合）
+- 対象: DB 仕様書 1 節、[ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)、[sync-principles](sync-principles.md)（dev-beta に統合済み。2026-11-19 に同期の思想の session が確かめた）
 - 中身: DB 仕様書と ADR 014 は「正本は journal と portable snapshot、Neo4j は端末ごとの導出物で、同期も backup もしない」とする。今の実装もこの形である。一方 `sync-principles.md` は「Neo4j は正本エンジンで、他の何かの写しではない」とする。どちらも 2026-11-16 の akaghef の決定（brief の「正本エンジンは Neo4j」）を根拠にしており、「正本エンジン」の読み方が分かれている。このままでは同期・復旧・backup の設計が二通りになる。
 - 根拠: 両方の文書の該当行を読んで比べた。
 - 扱い: akaghef の判断待ち
