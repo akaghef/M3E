@@ -98,6 +98,7 @@ workspace > map > scope > node
 - node は、親・子・作成時刻・更新時刻・作成者を持たない。親子関係は parent edge が持つ。時刻と発行者は、`rev` から確定の表（`commit`）を引く。
 - 決まった欄（`nodeType`、`collapsed`）は、既定値（`text`、false）と同じなら保存しない。既定値は変えない。
 - `alias` は、参照先 `target`、表示名 `label`、`access`（read / write）、参照先のラベルの写し、`broken` を持つ。
+- 【決定】（同期の要件 R2.6）node と scope はロックを持つ。ロックが掛かっている間は、削除と移動の Command を確定しない。誤操作の防止のためで、権限の代わりではない。掛けた本人も外せる。状態を持つ欄と、ロックが及ぶ範囲は未決（12 節）。
 - `nodeType` の値【実装済み】は `text`、`alias`、`image` と、移行で運んだそれ以外の値である。種別の扱いは 10 節で改める【提案】。
 
 ### 3.3 attribute
@@ -122,6 +123,7 @@ workspace > map > scope > node
 - `connectionId`（edge の `id`）は、parent edge と relation edge をまたいで一意である。
 - ある node の子は、`source` がその node である parent edge を集め、`ord` で並べたものである。子の配列は保存しない。
 - `ord` は並べるためだけの文字列で、文字列として比べる。間に入れるときは前後の間のキーを作り、他の兄弟のキーは変えない。手元の端末が作ってよい。同じキーが二つあれば `connectionId` の順にする。
+- 【決定】（同期の要件 R3.4、暫定）relation edge を可視化し配送するのは、両端が同じ scope にあるときだけである。履歴を格納する先は、source 側の scope である。
 - 線の表示: `label` があればそれを、無ければ relationType の定義の表示ラベルを、それも無ければ何も表示しない。
 
 ### 3.5 scope
@@ -204,6 +206,11 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 4. 検査を通した Command は、変えた欄だけを現在のレコードに当てる。欄の削除は「変更前にあって変更後に無い」で表す。
 5. 確定のたびに、workspace で一本の通し番号が 1 増える。触ったレコードの `rev` は、その番号になる。
 6. journal への追記と fsync が成功した時点が確定である。その後に Neo4j への反映が失敗しても取り消さない。反映は再試行し、Neo4j の遅れが上限（既定 10,000 確定）を超えたら、次の確定を `ENGINE_BEHIND` で拒否する。
+7. 【決定】（同期の要件 R5.3）fsync 済みで未適用の確定があるあいだは、古い Neo4j の状態で次の Command を検査しない。
+8. 【決定】（同期の要件 R2.4）scope をまたぐ移動は、当面実装しない。remote は、未対応として拒否する。
+
+- 確定点は、remote の journal への fsync である（同期の要件の Q1 は、二媒体なしの暫定）。媒体を失ったら、復旧した地点と、欠けたかもしれない範囲を示す（R5.1）。
+- 復旧の正本から戻す対象には、権限、未解決の conflict、Command の結果、世代、端末の失効、消去の状態を含める（R5.5）。
 
 拒否の種類: `NOT_FOUND`、`CONFLICT`（欄の競合）、`INVALID_STATE`（不変条件）、`INVALID_COMMAND`、`SAME_ID_DIFFERENT_CONTENT`、`ENGINE_BEHIND`。
 
@@ -249,8 +256,13 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
 - 圧縮（`compact`）は、その時点の全レコードで `snapshot.jsonl` を書き直し、journal を空にする。あわせて `commit-index.json` に、map ごとの最後の確定と、確定済みの Command の ID（直近 100,000 件）を書く。
 - 【決定】（akaghef、2026-11-19）log compaction は何も消さない。封じた journal の segment は archive へ移す。【実装済み】のものは journal を空にしている。
 - 【決定】archive の segment を手放すのは、compaction とは別の retention の操作である。v1 では実装しない。
-- 保持期間は未決（12 節）。実装の session 経由で「compaction 後 90 日」が届いているが、akaghef がこの session で直接述べた「データは消したくない」と食い違うため、確認中である。
-- 【提案】segment を手放すときも、envelope-stable な欄（`seq`・`committedAt`・`issuer`・確定ごとに触れたレコードと event kind）だけは、別の小さな列に残す。これで、書かれる頻度の集計は保持期間に縛られない。
+- 【決定】（akaghef、2026-11-19）archive の segment は、archive へ移してから 90 日で削除する。削除できるのは、次の二つを満たす segment だけである。
+  - その範囲を覆う base snapshot か portable snapshot が fsync 済みで、checksum を検証済みである。
+  - archive へ移してから 90 日を過ぎている。
+  - 検証に失敗したら、消さずに止める。
+- PITR の窓は、最新の snapshot と 90 日分の archive である。
+- 書かれる頻度は、journal から作り直せない。そのため、減衰する量の累積は portable snapshot に状態として持つ（9 節）。envelope-stable な欄（`seq`・`committedAt`・`issuer`・確定ごとに触れたレコードと event kind）は、90 日の窓の中での集計に使う。
+- copy の来歴と provenance は、journal ではなく record の側（attribute か専用の欄）に持つ。compaction と削除で失われないようにするためである。
 - 複製は、三つのファイルを一度に写す。確定と圧縮は同期処理なので、写しの途中に確定が入らない。
 
 ## 7. portable snapshot【実装済み】
@@ -312,6 +324,7 @@ relationship は property から作る導出物で、読み戻しには使わな
 - 正本から計算で求まる値は、正本に入れない。
 - 確定のときに計算し、サーバの手元にキャッシュする。agent は読むだけで、計算を待つ必要も、計算方法を知る必要もない。Neo4j と portable snapshot にはその写しを置く。
 - 時間で減る値（活動など）は、最後に確定したときの値と時刻だけを持ち、読むときに掛け算 1 回で今の値を出す。
+- 【決定】減衰する量の累積 `{v[k], t}`（尺度 k ごとの累積と最終時刻）は、計算で求まる値ではなく、portable snapshot に持つ状態である。journal は 90 日で削除するので、作り直せないからである（6 節）。
 - 計算し直すきっかけ（親の変更、edge の変更、部分木の移動など）は、値の定義に書く。
 
 候補:
@@ -402,7 +415,9 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
 
 保存の形に入るもの:
 
-- archive の segment の保持期間。三つの値が食い違っている。実装の session 経由の「90 日」、sync-principles の Rapid の目安「30 日」、akaghef が直接述べた「消したくない」。あわせて、scope の `retention.ms` の既定値を決める
+- scope の `retention.ms` の既定値（sync-principles の Rapid の目安は 30 日。archive の segment の 90 日とは別の値）
+- node と scope のロックの欄（同期の要件 R2.6）。ロックが部分木に及ぶか、編集も止めるか
+- scope の Rapid と Deep の区分（同期の要件 R8.6）。欄を置くかは、違いと昇格の意味が決まってから
 - journal の単位。2 節の【決定】「workspace × 書き手の端末ごと」と、sync-principles の「remote 上で workspace ごとに一本の全順序、端末は local outbox を持つ」が食い違っている
 
 - 拡張の仕組み（10 節）の承認。一つの node に拡張を重ねるか、外したときの値を残すか、誰が定義できるか
