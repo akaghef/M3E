@@ -130,6 +130,12 @@ open: `CURRENT` の checkpoint を読み、`journal/` の segment のうち `seq
 
 二方向に戻せる点（閾値、時刻起動の有無、dedupe の上限、gzip の有無）は推奨で仮決めし、実装ログに残す。
 
+### 4.1 決定済み
+
+- **compaction 後の古い journal の保管期間: 90 日**（akaghef、2026-11-19）。archive へ move した sealed segment は、move から 90 日は必ず残す。90 日は Undo・調査・端末間の同期の遅れを吸収する期間である。
+- compaction 自体は何も消さない（2 節）。90 日を過ぎた segment を手放すのは、compaction とは別の retention の操作で行う。この操作は v1 では実装せず、期限を過ぎた segment は archive に残り続ける（消すより残す側に倒す）。手放す前に、その区間を含む checkpoint が archive にあることを確かめる。
+- sync-principles の Rapid の保持期間の目安（30 日）とは別の値である。どちらを scope ごとの `retention.ms` の既定値にするかは、DB 仕様書の担当へ回す。
+
 ## 5. 実装の順序（決定が出たら codex/<task> worktree で）
 
 1. 旧 layout を読める新 layout の reader（segment header、`CURRENT`）と、その round-trip 試験。
