@@ -49,6 +49,15 @@
 
 ## 記録
 
+### 2026-11-19 ADR 014 の「stream の輸送は Syncthing」が、remote と outbox の形と合わない
+
+- 種類: 問題
+- 書いた agent: DB スキーマ設計の session（DB 仕様書の書き手）
+- 対象: [ADR 014](../../../docs/09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md) の Decision 5、DB 仕様書 2 節
+- 中身: freeze v1 で、journal は remote 上で workspace に一本、端末は outbox に未確定の Command を積む形になった。Syncthing は file 単位の複製で、ack も reject も返さない。そのため、outbox から remote への push（確定の要求と、その結果の受け取り）には使えない。使えるとしても、remote が単一の writer になる pull の log shipping だけである。ADR 014 の Decision 5 は「stream の輸送は Syncthing で行う」のままである。
+- 根拠: ADR 014 の Decision 5 と、DB 仕様書 2 節・sync-principles の「remote と local」を読んで比べた。
+- 扱い: akaghef の判断待ち（ADR 014 は、判断が出るまで触らない）
+
 ### 2026-11-19 拒否した Command の結果を覚えていないため、前提が変わった後の再送が通る
 
 - 種類: 問題
