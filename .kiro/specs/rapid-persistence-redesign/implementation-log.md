@@ -49,6 +49,21 @@
 
 ## 記録
 
+### 2026-11-19 journal の畳み込みを、archive への移動と 90 日後の検証つき削除として実装した。仮決めが 5 件ある
+
+- 種類: 気づき
+- 書いた agent: Neo4j 化の実装の session
+- 対象: DB 仕様書 6 節、`beta/src/node/record_store/store.ts`（`compact()`、`append()`、`commitsAfter()`、`committedCommand()`）、`beta/src/node/record_store/journal_archive.ts`
+- 中身: 畳み込みは journal を捨てず、journal と置き換わる snapshot を `archive/` へ hard link（できない環境では複製）で移す。名前は `journal.<最初の通し番号>-<最後の通し番号>.f<snapshot の format>.jsonl` と `snapshot.<通し番号>.f<format>.jsonl`、移した時刻は `archive/index.json`。新しい snapshot の sha256 は `commit-index.json` の `snapshot` に記録する。archive の削除は移してから 90 日後で、今の snapshot を fsync して checksum を読み直し、記録と一致し、削除する範囲を覆っているときだけ行う。問題が 1 件でもあれば何も消さない。journal の各行には、確定で canonical な値に差分が出たレコードの一覧 `touched`（`rk` と出来事の種類 `ev`）を store が作って書く。Neo4j の追いつきと、確定済みの Command の読み出しは、畳み込み後も archive から行う（以前は Neo4j を全件作り直し、Command は読めなかった）。次の 5 点は二方向に戻せるので仮決めにした。
+  - 畳み込みの契機は replay の長さだけ: snapshot より後の journal の行が 50,000 行（`M3E_COMPACT_AFTER_LINES`、0 で無効）に達した確定の直後と、開いたときの replay がその長さだったとき。時刻では起動しない。
+  - 削除の判定は、開いたときと畳み込みの後に自動で行う。止まった理由は `maintenanceStatus()` と警告の log に出す。
+  - `ev` の割り当ては、`attributes` → `m3e:attribute`、`extensions` → `m3e:extension`、parent edge の `source`・`target`・`ord`・`scopeId`・`type` と scope の `rootNodeId` → `m3e:structure`、新規 → `m3e:create`、削除 → `m3e:delete`、それ以外（text、本文、surface と nodeView の位置を含む）→ `m3e:content`。位置の変更に別の種類を作るかは未決。`m3e:target` は対象の欄が決まるまで出さない。
+  - snapshot の `format` は 1 のまま。format 2 への切り替え（base snapshot の作成）は、parent edge の欄や extension 定義など他の format の変更と一緒に行う。archive の名前の `f1` はその前の区間を示す。
+  - journal の `provenance` は、今までどおり Command の provenance をそのまま書く（MCP からは `{contextId, tool}`）。DB 仕様書 6 節の【決定】の形 `{items, truncated?}` とは違う。確定済みの Command を読む既存の経路がこの値を返しているため変えていない。Command の provenance を `items` へどう写すかは未決。
+- 根拠: `beta/tests/unit/record_store_compaction.test.ts` の 9 件が通り、変更前の `store.ts` では 9 件とも落ちることを確かめた。最初の snapshot と全 journal の行から作り直したレコード、途中の snapshot とその後の行から作り直したレコード、store 自身の snapshot と後続の行から開いたレコードが、元のレコードと一字一句一致する。既存の record store の試験も実行した。
+- 扱い: 実装で解消（journal を消さない畳み込みの commit）。仮決めの 5 点は、変えるなら akaghef の判断で直す。DB 仕様書 6 節の「圧縮は journal を空にする」「journal を空にしている」「手放す操作は v1 では実装しない」の 3 文は、この実装と 90 日の決定に合わなくなったので、DB 仕様書の担当へ直しを依頼した
+
+
 ### 2026-11-19 実データの兄弟順キーに同じ値は無く、兄弟順キーを fractional-indexing に移した
 
 - 種類: 気づき
@@ -222,7 +237,7 @@
 - 対象: DB 仕様書 6 節、`beta/src/node/record_store/store.ts:752`（`compact()`）
 - 中身: 正本は「ある時点の portable snapshot と、それより後の journal」で、journal は定期的に portable snapshot へ畳み込む前提である。畳み込みの処理 `compact()` は実装されているが、試験の外からは呼ばれていない。今のままでは journal が増え続け、起動時の再生も長くなる。いつ畳むか（件数、大きさ、時刻、起動時）が仕様で決まっていない。
 - 根拠: `git grep` で `compact()` の呼び出しを探し、`beta/src` の試験以外に無いことを確かめた。
-- 扱い: 仕様へ反映（freeze v1。契機は replay の長さで決める。DB 仕様書 6 節。値は 12 節で未決）。呼び出しの実装は未対応
+- 扱い: 仕様へ反映（freeze v1。契機は replay の長さ。DB 仕様書 6 節）。実装で解消（journal の行数を契機に畳み込み、journal は archive へ移す。上の「journal の畳み込みを、archive への移動と 90 日後の検証つき削除として実装した」）
 
 ### 2026-11-18 何を正本とするかの記述が、二つの文書で食い違っている
 
