@@ -39,6 +39,13 @@ Reference IDs follow the global rule: `<domain><series><number>` with the domain
 
 Non-trivial work follows Kiro-style Spec-Driven Development: discovery, steering, requirements / design / tasks, implementation, review, verification (`kiro-*` skills; specs under `.kiro/specs/`, steering under `.kiro/steering/`). New feature work starts with discovery to frame scope. Trivial or mechanical changes (a typo, a one-line fix, a doc tweak) need no spec. Akaghef-System's upper boundaries (TOB / DP / credential / M3E Map Manager / Large IO / send gate) take priority when they conflict with the harness.
 
+An implementer does more than carry out the instruction. When the work turns up something outside it, the implementer records it:
+- what it records: a spec/implementation mismatch, a gap in the spec, a fact about real data or performance, a risk, a reusable finding;
+- a verified fact that corrects or completes a spec goes into that spec;
+- anything that needs a decision, or is not fixed in the task, goes into the work area's log.
+
+Decided content is changed only by akaghef. For storage and database work the log is [the implementation log](.kiro/specs/rapid-persistence-redesign/implementation-log.md); read its open entries before starting there and update an entry's status when the work resolves it.
+
 ## Environment Structure
 
 | Environment | Directory | Status | Purpose |

@@ -384,6 +384,7 @@ task や極性のような意味を、保存の形を作り直さずに足すた
 ## Related
 
 - [Glossary](../00_Home/Glossary.md)
+- [実装ログ](../../.kiro/specs/rapid-persistence-redesign/implementation-log.md)（実装の中で得た気づきと問題。未対応の項目を先に読む）
 - [ADR 014](../09_Decisions/ADR_014_Journal_Canonical_And_Neo4j_Engine.md)
 - [Data_Model.md](./Data_Model.md)（現行の保存の仕様）
 - [Engine.md](../01_Vision/Engine.md)、[LLM_Workbench.md](../01_Vision/LLM_Workbench.md)
