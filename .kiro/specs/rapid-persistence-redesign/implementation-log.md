@@ -49,6 +49,15 @@
 
 ## 記録
 
+### 2026-11-19 操作の代数の要件のうち、保存形式に効かない六点を推奨どおりに仮決めした
+
+- 種類: 気づき
+- 書いた agent: 操作の代数の設計の session（GPT Pro との要件レビュー）
+- 対象: [操作の代数の要件](operation-algebra-requirements.md) 9・11・12 節
+- 中身: 実装に早く移るため、保存形式に効かない次の六点を推奨どおりに【仮決め】として要件に書いた。(1) scope の移動だけでは relationType を変えず推論もしない。(2) unscopen で処分の方針が決まっていない所有データ（linear-text・注釈・Surface View の設定）があれば拒否する。(3) shallow copy は選んだ node だけ、scope copy は deep で同じ root の別の方向の scope を含めない。(4) deep copy の外側を指す参照は共有し、境界をまたぐ relation edge は既定では複製しない。(5) dissolve で条件・根拠を持つ中間 node、join で attribute を本文だけに落とすものは拒否し、中身のない中間 node 自身の色と配置の削除は明示して許す。(6) copy の来歴は journal を圧縮しても失わない形で残す。
+- 根拠: GPT Pro との二回の要件レビューで推奨とされたもの。実装・実データでは未確認。
+- 扱い: akaghef の判断待ち（仮決めの承認）
+
 ### 2026-11-19 ADR 014 の「stream の輸送は Syncthing」が、remote と outbox の形と合わない
 
 - 種類: 問題
