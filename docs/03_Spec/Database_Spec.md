@@ -282,13 +282,21 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - event kind は接頭辞の付いた名前の開いた集合で、最初の値は `m3e:create`、`m3e:delete`、`m3e:content`（`text`・本文）、`m3e:attribute`、`m3e:structure`（parent edge・`ord`・scope の付け替え）、`m3e:extension`（拡張の付け外し）、`m3e:target`（目標の更新間隔の変更）。読み手は知らない kind を無視する。
 - 【仮決め】`provenance.items` の要素は `{mode: "observed" | "declared", rk, rev}`。上限は 100 件で、超えたら `truncated: true` にする。長く残す来歴は record の側に持つ（下）。
 - 【仮決め】`changes` と `ops` の二重持ちは、format 2 では解消しない。replay の決定性を確かめる試験ができてから扱う。
+- 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 3 点ある。
+  - snapshot の `format` は、まだ 1 である。format 2 への bump は、ほかの format の変更と合わせて base snapshot で行う。
+  - `provenance` は、まだ Command の値（`{contextId, tool}`）のままで、決めた形 `{items, truncated?}` ではない。
+  - 位置の変更は、`touched` で `m3e:content` に数えている。
 
 - 開くとき、末尾の書きかけの行は切り捨てる。途中の行が壊れていれば、開くのを止める。通し番号の飛びも止める。
-- 圧縮（`compact`）は、その時点の全レコードで `snapshot.jsonl` を書き直し、journal を空にする。あわせて `commit-index.json` に、map ごとの最後の確定と、確定済みの Command の ID（直近 100,000 件）を書く。
-- 【決定】（akaghef、2026-11-19）log compaction は何も消さない。封じた journal の segment は archive へ移す。【実装済み】のものは journal を空にしている。
-- 【決定】archive の segment を手放すのは、compaction とは別の retention の操作である。v1 では実装しない。
+- 【決定】（akaghef、2026-11-19）log compaction は何も消さない。封じた journal の segment は archive へ移す。
+- 【実装済み】圧縮（`compact`）の手順（`beta/src/node/record_store/journal_archive.ts`、`store.ts`）:
+  - 今の journal と、置き換える snapshot を `archive/` へ hard link する。link が使えない場所では copy する。名前は `journal.<from>-<to>.f<format>.jsonl` と `snapshot.<seq>.f<format>.jsonl`。`archive/index.json` に、各 file を archive した時刻を残す。
+  - その時点の全レコードで `snapshot.jsonl` を書き直し、journal を空にする。
+  - `commit-index.json` に、map ごとの最後の確定、確定済みの Command の ID（直近 100,000 件）、新しい snapshot の `{seq, sha256}`（`snapshot` の欄）を書く。
+  - 圧縮した後も、Neo4j の追いつきと、確定済みの Command の読み出し（再送の判定）は archive を読む。
+- 【実装済み】契機: snapshot より後の journal が 50,000 行に達したとき（環境変数 `M3E_COMPACT_AFTER_LINES`、0 で止める）。確定の直後と、開いたときに判定する。圧縮と retention の失敗は確定を失敗にしない。
 - 【決定】（freeze v1、akaghef、2026-11-19）schemaVersion を上げるたびに、移行した直後の portable snapshot を base snapshot として書く。replay を保証するのは、最新の base snapshot から後だけである。それより前の journal を新しい format へ書き換える upcasting はしない。compaction の契機は replay の長さで決める（値は未決、12 節）。
-- 【決定】（akaghef、2026-11-19）archive の segment は、archive へ移してから 90 日で削除する。削除できるのは、次の二つを満たす segment だけである。
+- 【決定】（akaghef、2026-11-19）【実装済み】archive の segment は、archive へ移してから 90 日で削除する（retention の操作。圧縮のあとと、開いたときに走る）。削除できるのは、次の二つを満たす segment だけである。
   - その範囲を覆う base snapshot か portable snapshot が fsync 済みで、checksum を検証済みである。
   - archive へ移してから 90 日を過ぎている。
   - 検証に失敗したら、消さずに止める。
