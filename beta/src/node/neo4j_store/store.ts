@@ -16,8 +16,8 @@ import { sortRecords } from "../../shared/record_model/jsonl";
 import type { RecordKind, SnapshotRecord } from "../../shared/record_model/types";
 import {
   COMMON_LABEL,
-  KIND_LABELS,
   RELATIONSHIP_TYPES,
+  cypherLabelList,
   decodeRecord,
   encodeRecord,
   type PropertyMap,
@@ -86,6 +86,7 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
 
   // Encode everything first, so that an unstorable or duplicate record is found before any write.
   const propsByKind = new Map<RecordKind, PropertyMap[]>();
+  const propsByLabels = new Map<string, PropertyMap[]>();
   const rks = new Set<string>();
   const wishes = [];
   for (const record of records) {
@@ -95,6 +96,10 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
     const list = propsByKind.get(encoded.kind);
     if (list) list.push(encoded.props);
     else propsByKind.set(encoded.kind, [encoded.props]);
+    const clause = cypherLabelList(encoded.labels);
+    const labeled = propsByLabels.get(clause);
+    if (labeled) labeled.push(encoded.props);
+    else propsByLabels.set(clause, [encoded.props]);
     wishes.push(...encoded.relationships);
   }
   const pairsByType = new Map<RelationshipType, Array<{ a: string; b: string }>>();
@@ -119,8 +124,8 @@ export async function load(driver: Driver, records: SnapshotRecord[], options: S
     await session.run(`CREATE INDEX rec_id IF NOT EXISTS FOR (r:${COMMON_LABEL}) ON (r.id)`);
     await session.run("CALL db.awaitIndexes(600)");
 
-    for (const [kind, propsList] of propsByKind) {
-      const query = `UNWIND $rows AS row CREATE (r:${COMMON_LABEL}:${KIND_LABELS[kind]}) SET r = row`;
+    for (const [clause, propsList] of propsByLabels) {
+      const query = `UNWIND $rows AS row CREATE (r:${clause}) SET r = row`;
       for (const rows of chunks(propsList, batchSize)) {
         await session.executeWrite((tx) => tx.run(query, { rows }));
       }

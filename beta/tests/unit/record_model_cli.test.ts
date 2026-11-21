@@ -57,7 +57,7 @@ describe("snapshot CLI", () => {
     expect(run.out).toContain("idMap: 2");
     expect(run.out).toContain("invariant problems: 0");
     const lines = fs.readFileSync(out, "utf8").trimEnd().split("\n").map((line) => JSON.parse(line));
-    expect(lines[0]).toEqual({ kind: "snapshot", format: 1, workspaceId: "ws", seq: 0 });
+    expect(lines[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: "ws", seq: 0 });
     expect(lines.find((l) => l.kind === "map" && l.id === "m1")).toEqual({
       kind: "map", id: "m1", rootNodeId: "root", tags: '["t"]', archived: 0, pinned: 1, legacyVersion: 1,
       legacySavedAt: "2026-10-01T00:00:00.000Z", rev: 0,

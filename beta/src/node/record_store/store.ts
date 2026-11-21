@@ -18,11 +18,12 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { applyChanges, diffState, type FieldConflict, type MapCommand, type RecordChange } from "../../shared/map_changes";
+import { extensionDefShapeError } from "../../shared/record_model/extensions";
 import { fromSnapshot } from "../../shared/record_model/from_snapshot";
 import { checkInvariants, type InvariantProblem } from "../../shared/record_model/invariants";
-import { parseSnapshot, serializeSnapshot, sortRecords } from "../../shared/record_model/jsonl";
+import { parseSnapshot, recordKeyString, serializeSnapshot, sortRecords } from "../../shared/record_model/jsonl";
 import { MapProjector, recordRk, sameJson, type ProjectionResult } from "../../shared/record_model/steady";
-import { compareStrings, type CommitRecord, type IdMapRecord, type MapRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
+import { compareStrings, type CommitRecord, type ExtensionDefRecord, type IdMapRecord, type MapRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
 import type { AppState } from "../../shared/types";
 import { applyChangesReduced } from "./apply_reduced";
 import {
@@ -56,7 +57,7 @@ import {
   type TouchedRecord,
 } from "./journal_archive";
 import { normalizeProvenance, type Provenance } from "./provenance";
-import { validationErrorCount } from "./validate";
+import { commitValidationErrorCount } from "./validate";
 import {
   EngineQueue,
   Neo4jApplier,
@@ -263,12 +264,14 @@ function invariantFactsUnchanged(previous: ReadonlyMap<string, SnapshotRecord>, 
     switch (before.kind) {
       case "node":
         if ((a.nodeType === "alias") !== (b.nodeType === "alias") || !sameJson(a.alias, b.alias)) return false;
+        if (!sameJson(a.extensions, b.extensions) || !sameJson(a.attributes, b.attributes)) return false;
         break;
       case "details":
       case "nodeView":
         break; // only the key is read, and the key is the same
       case "connection":
         if (a.type !== b.type || a.source !== b.source || a.target !== b.target) return false;
+        if (!sameJson(a.ord, b.ord) || !sameJson(a.extensions, b.extensions) || !sameJson(a.attributes, b.attributes)) return false;
         break;
       case "scope":
         if (a.rootNodeId !== b.rootNodeId || a.primarySurfaceId !== b.primarySurfaceId) return false;
@@ -290,6 +293,15 @@ function invariantFactsUnchanged(previous: ReadonlyMap<string, SnapshotRecord>, 
     }
   }
   return true;
+}
+
+function sameExceptRev(left: SnapshotRecord, right: SnapshotRecord): boolean {
+  if (left === right) return true;
+  const a = { ...left } as Dict;
+  const b = { ...right } as Dict;
+  delete a.rev;
+  delete b.rev;
+  return sameJson(a, b);
 }
 
 function problemKey(problem: InvariantProblem): string {
@@ -378,6 +390,8 @@ export class RecordWorkspaceStore {
   private readonly now: () => string;
   /** Every record of the workspace but the snapshot header, keyed by rk. */
   private readonly all = new Map<string, SnapshotRecord>();
+  /** Workspace extensionDef records. They are not owned by a map. */
+  private readonly extensionDefs = new Map<string, SnapshotRecord>();
   private readonly maps = new Map<string, MapEntry>();
   /** Ids of node, connection and annotation records: unique across those kinds and across maps. */
   private readonly idIndex = new Map<string, string>();
@@ -393,7 +407,7 @@ export class RecordWorkspaceStore {
   /** Checksum of the snapshot file, recorded by the compaction that wrote it. */
   private snapshotSum: { seq: number; sha256: string } | undefined;
   /** Snapshot format of the snapshot file; archive names carry it. */
-  private snapshotFormat = 1;
+  private snapshotFormat: 1 | 2 = 1;
   private readonly compactAfterLines: number;
   /** Problems of the last compaction or archive retention pass that stopped; empty when it ran. */
   private maintenanceProblems: string[] = [];
@@ -466,7 +480,10 @@ export class RecordWorkspaceStore {
     const records = parseSnapshot(fs.readFileSync(snapshotPath, "utf8"));
     const header = records[0] as SnapshotHeader;
     this.workspaceId = header.workspaceId;
-    this.snapshotFormat = Number.isInteger(header.format) ? header.format : 1;
+    if (header.format !== 1 && header.format !== 2) {
+      throw new Error(`Unsupported snapshot format: ${String(header.format)}`);
+    }
+    this.snapshotFormat = header.format;
     let seq = Number.isInteger(header.seq) ? header.seq : 0;
     for (let i = 1; i < records.length; i += 1) {
       const record = records[i];
@@ -520,6 +537,7 @@ export class RecordWorkspaceStore {
       fs.fsyncSync(this.journalFd);
       this.journalSize += 1;
     }
+    if (this.snapshotFormat === 1) this.migrateToFormat2();
 
     this.idIndex.clear();
     for (const [rk, record] of this.all) {
@@ -529,6 +547,10 @@ export class RecordWorkspaceStore {
       if (record.kind === "map") this.maps.set(record.id, { id: record.id, records: new Map(), idMaps: new Map() });
     }
     for (const [rk, record] of this.all) {
+      if (record.kind === "extensionDef") {
+        this.extensionDefs.set(rk, record);
+        continue;
+      }
       const mapId = record.kind === "map" ? record.id : (record as { mapId?: unknown }).mapId;
       const entry = typeof mapId === "string" ? this.maps.get(mapId) : undefined;
       if (!entry) continue;
@@ -808,7 +830,10 @@ export class RecordWorkspaceStore {
     this.assertEngineNotTooFarBehind();
     const entry = this.requireMap(mapId);
     const ops: RecordOp[] = [];
-    for (const rk of entry.records.keys()) ops.push({ op: "delete", rk });
+    for (const [rk, record] of entry.records) {
+      if (record.kind === "extensionDef") continue;
+      ops.push({ op: "delete", rk });
+    }
     for (const rk of entry.idMaps.keys()) ops.push({ op: "delete", rk });
     this.append({ seq: this.currentSeq + 1, issuer, committedAt: this.now(), mapId, intent: "delete-map", mapOp: "delete", ops });
     this.maps.delete(mapId);
@@ -828,6 +853,7 @@ export class RecordWorkspaceStore {
     const own = new Set<string>([...entry.records.keys(), ...entry.idMaps.keys()]);
     const move = (source: Map<string, SnapshotRecord>, target: Map<string, SnapshotRecord>): void => {
       for (const [rk, record] of source) {
+        if (record.kind === "extensionDef") continue;
         const copy = (record.kind === "map" ? { ...record, id: newId } : { ...record, mapId: newId }) as SnapshotRecord;
         if (hasOwn(copy, "rev")) (copy as { rev: number }).rev = seq;
         const nextRk = recordRk(copy);
@@ -1012,7 +1038,66 @@ export class RecordWorkspaceStore {
   }
 
   private header(): SnapshotHeader {
-    return { kind: "snapshot", format: 1, workspaceId: this.workspaceId, seq: this.currentSeq };
+    return { kind: "snapshot", format: this.snapshotFormat, workspaceId: this.workspaceId, seq: this.currentSeq };
+  }
+
+  /**
+   * A format 1 snapshot is migrated once: the format 1 snapshot and journal are archived
+   * under their existing names (`f1`), and a format 2 base snapshot is written at the
+   * current seq. Journal lines are not rewritten.
+   */
+  private migrateToFormat2(): void {
+    const now = this.now();
+    const journalPath = path.join(this.dir, JOURNAL_FILE);
+    const snapshotPath = path.join(this.dir, SNAPSHOT_FILE);
+    const archived = readArchive(this.dir, now);
+    const added: ArchiveEntry[] = [];
+    if (this.journalSize > 0) {
+      const lines = readJournal(journalPath).lines;
+      if (lines.length > 0) {
+        const fromSeq = lines[0].seq;
+        const toSeq = lines[lines.length - 1].seq;
+        const name = journalArchiveName(fromSeq, toSeq, 1);
+        archiveFile(this.dir, journalPath, name);
+        added.push({ file: name, kind: "journal", fromSeq, toSeq, format: 1, archivedAt: now });
+      }
+    }
+    const snapshotName = snapshotArchiveName(this.snapshotSeq, 1);
+    archiveFile(this.dir, snapshotPath, snapshotName);
+    added.push({
+      file: snapshotName,
+      kind: "snapshot",
+      fromSeq: this.snapshotSeq,
+      toSeq: this.snapshotSeq,
+      format: 1,
+      archivedAt: now,
+    });
+    const names = new Set(added.map((entry) => entry.file));
+    writeArchiveIndex(this.dir, [...archived.filter((entry) => !names.has(entry.file)), ...added]);
+
+    this.snapshotFormat = 2;
+    const content = serializeSnapshot([this.header(), ...this.all.values()]);
+    const snapshotSum = { seq: this.currentSeq, sha256: sha256(content) };
+    const commands = [...this.commands.entries()]
+      .sort((a, b) => a[1].seq - b[1].seq)
+      .slice(-COMMAND_INDEX_RETAIN)
+      .map(([key, value]) => {
+        const cut = key.indexOf("\u0000");
+        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash];
+      });
+    writeFileDurably(
+      path.join(this.dir, COMMIT_INDEX_FILE),
+      JSON.stringify({ format: 1, seq: this.currentSeq, mapSeq: Object.fromEntries(this.mapSeq), commands, snapshot: snapshotSum }) + "\n",
+    );
+    writeFileDurably(snapshotPath, content);
+    this.snapshotSeq = this.currentSeq;
+    this.snapshotSum = snapshotSum;
+    if (this.journalFd !== undefined) fs.closeSync(this.journalFd);
+    this.journalFd = undefined;
+    writeFileDurably(journalPath, "");
+    this.journalFd = fs.openSync(journalPath, "a");
+    this.journalSize = 0;
+    this.journalLines = 0;
   }
 
   private requireMap(mapId: string): MapEntry {
@@ -1142,9 +1227,15 @@ export class RecordWorkspaceStore {
     return row;
   }
 
+  /** Puts the workspace extension definitions where the map's projection can see them. */
+  private attachExtensionDefs(entry: MapEntry): void {
+    for (const [rk, record] of this.extensionDefs) entry.records.set(rk, record);
+  }
+
   /** State, projector and check baselines of a map; built on first use. */
   private warm(entry: MapEntry): NonNullable<MapEntry["warm"]> {
     if (entry.warm) return entry.warm;
+    this.attachExtensionDefs(entry);
     const records = [...entry.records.values()];
     const restored = fromSnapshot(records).rows[0]?.state ?? ({ nodes: {} } as unknown as AppState);
     const projector = new MapProjector(this.workspaceId);
@@ -1164,7 +1255,7 @@ export class RecordWorkspaceStore {
     entry.warm = {
       projector,
       state,
-      validationErrors: validationErrorCount(state),
+      validationErrors: commitValidationErrorCount(state),
       problems: new Set(checkInvariants(records).map(problemKey)),
     };
     return entry.warm;
@@ -1223,7 +1314,7 @@ export class RecordWorkspaceStore {
     if (!applied.ok) return this.failure("CONFLICT", current(), undefined, clientConflicts(applied.conflicts));
 
     // 3. The app's own validation. A state that already had errors may not get more of them.
-    const validationErrors = validationErrorCount(applied.state);
+    const validationErrors = commitValidationErrorCount(applied.state);
     const allowedErrors = warm ? warm.validationErrors : 0;
     if (validationErrors > allowedErrors) {
       return this.failure("INVALID_STATE", current(), "The resulting state does not pass validation.");
@@ -1256,7 +1347,7 @@ export class RecordWorkspaceStore {
       if (op.op !== "put" || result.replaced.has(op.rk)) continue;
       const record = op.record as SnapshotRecord;
       const existing = this.all.get(op.rk);
-      if (existing !== undefined && (existing as { mapId?: unknown }).mapId !== mapId) {
+      if (existing !== undefined && record.kind !== "extensionDef" && (existing as { mapId?: unknown }).mapId !== mapId) {
         return refuse(`The key ${JSON.stringify(op.rk)} is already used outside map ${mapId}.`);
       }
       if (!SHARED_ID_KINDS.has(record.kind)) continue;
@@ -1267,13 +1358,31 @@ export class RecordWorkspaceStore {
       }
       introduced.set(id, op.rk);
     }
+    for (const op of ops) {
+      if (op.op !== "put" || op.record === undefined || (op.record as SnapshotRecord).kind !== "extensionDef") continue;
+      const record = op.record as ExtensionDefRecord;
+      const shape = extensionDefShapeError(record);
+      if (shape) return refuse(shape);
+      const existing = this.all.get(op.rk);
+      if (existing !== undefined && existing.kind === "extensionDef" && !sameExceptRev(existing, record)) {
+        result.revert?.();
+        return this.failure("CONFLICT", current(), `extensionDef ${recordKeyString(record)} already exists with different content.`);
+      }
+    }
+
     const baseline = warm ? warm.problems : new Set<string>();
     let problemKeys = baseline;
-    // The check runs on the whole final record set of the map. It is skipped only when no fact it
-    // reads changed (every operation replaces a record and leaves ids, endpoints and references
-    // as they were): its outcome is then the one already known.
+    // The check runs on the whole final record set of the map, plus workspace extension
+    // definitions this commit does not replace. It is skipped only when no fact it reads
+    // changed: its outcome is then the one already known.
     if (!invariantFactsUnchanged(result.replaced, ops)) {
-      const problems = checkInvariants([...result.records.values()]);
+      const deleted = new Set(ops.filter((op) => op.op === "delete").map((op) => op.rk));
+      const checkRecords = [...result.records.values()];
+      const have = new Set(checkRecords.filter((record) => record.kind === "extensionDef").map((record) => recordRk(record)));
+      for (const [rk, record] of this.extensionDefs) {
+        if (!have.has(rk) && !deleted.has(rk)) checkRecords.push(record);
+      }
+      const problems = checkInvariants(checkRecords);
       const fresh = problems.filter((problem) => !baseline.has(problemKey(problem)) && !this.satisfiedElsewhere(problem));
       if (fresh.length > 0) {
         const shown = fresh.slice(0, 5).map((problem) => `rule ${problem.rule}: ${problem.kind} ${problem.key}: ${problem.message}`);
@@ -1357,7 +1466,7 @@ export class RecordWorkspaceStore {
 
   private engineCommit(line: JournalLine): EngineCommit {
     const commit: CommitRecord = { kind: "commit", seq: line.seq, committedAt: line.committedAt, issuer: line.issuer };
-    const header: SnapshotHeader = { kind: "snapshot", format: 1, workspaceId: this.workspaceId, seq: line.seq };
+    const header: SnapshotHeader = { kind: "snapshot", format: this.snapshotFormat, workspaceId: this.workspaceId, seq: line.seq };
     return {
       seq: line.seq,
       ops: [
@@ -1426,18 +1535,39 @@ export class RecordWorkspaceStore {
         const id = (before as { id: string }).id;
         if (this.idIndex.get(id) === op.rk) this.idIndex.delete(id);
       }
+      const touchedDef = before?.kind === "extensionDef" || (op.op === "put" && (op.record as SnapshotRecord | undefined)?.kind === "extensionDef");
       if (op.op === "delete") {
         this.all.delete(op.rk);
+        if (touchedDef) {
+          this.extensionDefs.delete(op.rk);
+          this.broadcastExtensionDef(op.rk, undefined);
+        }
         continue;
       }
       const record = op.record as SnapshotRecord;
       this.all.set(op.rk, record);
       if (SHARED_ID_KINDS.has(record.kind)) this.idIndex.set((record as { id: string }).id, op.rk);
+      if (touchedDef) {
+        this.extensionDefs.set(op.rk, record);
+        this.broadcastExtensionDef(op.rk, record);
+      }
     }
     const commit: CommitRecord = { kind: "commit", seq: line.seq, committedAt: line.committedAt, issuer: line.issuer };
     this.all.set(recordRk(commit), commit);
     this.currentSeq = line.seq;
     this.indexLine(line);
+  }
+
+  /** Copies one extensionDef into every map and drops cached state, so a later save does not write the old definition back. */
+  private broadcastExtensionDef(rk: string, record: SnapshotRecord | undefined): void {
+    for (const entry of this.maps.values()) {
+      if (record === undefined) {
+        if (!entry.records.delete(rk)) continue;
+      } else {
+        entry.records.set(rk, record);
+      }
+      entry.warm = undefined;
+    }
   }
 }
 

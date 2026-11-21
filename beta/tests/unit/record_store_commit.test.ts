@@ -237,7 +237,7 @@ describe("record store: every kind of change", () => {
     expect(byRk.get("node|leaf")).toMatchObject({ rev: 1, text: "one" });
     expect(byRk.get("node|inner")).toMatchObject({ rev: 2, text: "two" });
     expect(byRk.get("node|img")).toMatchObject({ rev: 0 });
-    expect(records[0]).toEqual({ kind: "snapshot", format: 1, workspaceId: WS, seq: 2 });
+    expect(records[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, seq: 2 });
     expect(byRk.get("commit|2")).toMatchObject({ kind: "commit", seq: 2, issuer: ISSUER });
     expect(store.revisionOf("map_a")).toBe("2");
     expect(store.getMapRow("map_a").savedAt).toBe((byRk.get("commit|2") as { committedAt: string }).committedAt);

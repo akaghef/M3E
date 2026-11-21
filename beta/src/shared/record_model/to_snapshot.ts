@@ -4,9 +4,12 @@
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { sha256Hex, type HashFn } from "./hash";
+import { writtenExtensions } from "./extensions";
+import { recordKeyString } from "./jsonl";
 import { initialKeys } from "./order_key";
 import {
   compareStrings,
+  SNAPSHOT_FORMAT,
   type AliasValue,
   type AnnotationRecord,
   type DetailsRecord,
@@ -43,10 +46,11 @@ const SCOPE_PREFIX = "scope:";
 const NODE_FIELDS = new Set([
   "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
+  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions",
 ]);
 const LINK_FIELDS = new Set([
   "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",
-  "sourcePort", "targetPort", "attributes",
+  "sourcePort", "targetPort", "attributes", "extensions",
 ]);
 const ANNOTATION_COPIED_FIELDS = [
   "d", "points", "stroke", "strokeWidth", "opacity", "createdAt", "x", "y", "text", "fill",
@@ -55,7 +59,7 @@ const ANNOTATION_COPIED_FIELDS = [
 const ANNOTATION_FIELDS = new Set<string>(["id", "kind", "scopeId", ...ANNOTATION_COPIED_FIELDS]);
 const STATE_FIELDS = new Set([
   "rootId", "nodes", "links", "annotations", "scopes", "surfaces", "linearNotesByScope",
-  "linearTextFontScale", "linearPanelWidth",
+  "linearTextFontScale", "linearPanelWidth", "extensionDefs",
 ]);
 const STATE_DROPPED_FIELDS = new Set(["selectedId", "scopeId", "savedAt"]);
 const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
@@ -123,7 +127,7 @@ interface MapContext {
 export function toSnapshot(workspaceId: string, rows: SnapshotRow[], options: ToSnapshotOptions = {}): SnapshotRecord[] {
   const hash = options.hash ?? sha256Hex;
   const now = options.now ?? new Date().toISOString();
-  const records: SnapshotRecord[] = [{ kind: "snapshot", format: 1, workspaceId, seq: 0 }];
+  const records: SnapshotRecord[] = [{ kind: "snapshot", format: SNAPSHOT_FORMAT, workspaceId, seq: 0 }];
 
   const makeId = (prefix: string, mapId: string, recordKind: string, seed: string): string =>
     prefix + hash(`${workspaceId}|${mapId}|${recordKind}|${seed}`).slice(0, 24);
@@ -178,6 +182,18 @@ export function toSnapshot(workspaceId: string, rows: SnapshotRow[], options: To
     { kind: "account", id: MIGRATION_ACCOUNT_ID, accountKind: "system", displayName: "移行", rev: 0 },
     { kind: "commit", seq: 0, committedAt: now, issuer: MIGRATION_ACCOUNT_ID },
   );
+  const seenDefs = new Set<string>();
+  for (const row of rows) {
+    const defs = (row.state as Dict | undefined)?.extensionDefs;
+    if (!Array.isArray(defs)) continue;
+    for (const item of defs) {
+      if (!isDict(item) || item.kind !== "extensionDef") continue;
+      const key = recordKeyString(item as unknown as SnapshotRecord);
+      if (seenDefs.has(key)) continue;
+      seenDefs.add(key);
+      records.push(item as unknown as SnapshotRecord);
+    }
+  }
   return records;
 }
 
@@ -224,6 +240,8 @@ function convertMap(
     if (present(node.targetSnapshotLabel)) alias.snapshotLabel = node.targetSnapshotLabel;
     if (node.isBroken === true) alias.broken = true;
     if (Object.keys(alias).length > 0) record.alias = alias as AliasValue;
+    const extensions = writtenExtensions(node.extensions);
+    if (extensions) record.extensions = extensions;
     const extra = collectExtra(node, NODE_FIELDS);
     if (extra) record.extra = extra;
     record.rev = 0;
@@ -288,6 +306,14 @@ function convertMap(
       };
       const label = edgeLabels.get(childOldId);
       if (present(label) && label !== "") edge.label = label;
+      const child = nodeByOldId.get(childOldId);
+      if (child) {
+        if (typeof child.edgeRelationType === "string" && child.edgeRelationType !== "") edge.relationType = child.edgeRelationType;
+        const edgeAttributes = cleanAttributes(child.edgeAttributes);
+        if (edgeAttributes) edge.attributes = edgeAttributes;
+        const edgeExtensions = writtenExtensions(child.edgeExtensions);
+        if (edgeExtensions) edge.extensions = edgeExtensions;
+      }
       edge.ord = keys[index];
       const scopeRoot = edgeScopeRootOf(planeNodes, planeRootId, childOldId);
       if (scopeIdByRoot.has(scopeRoot)) edge.scopeId = scopeIdByRoot.get(scopeRoot)!;
@@ -309,6 +335,8 @@ function convertMap(
     copyPresent(record, link, ["direction", "style", "color"]);
     if (present(link.sourcePort) && link.sourcePort !== "auto") record.sourcePort = link.sourcePort;
     if (present(link.targetPort) && link.targetPort !== "auto") record.targetPort = link.targetPort;
+    const linkExtensions = writtenExtensions(link.extensions);
+    if (linkExtensions) record.extensions = linkExtensions;
     const extra = collectExtra(link, LINK_FIELDS);
     if (extra) record.extra = extra;
     record.rev = 0;

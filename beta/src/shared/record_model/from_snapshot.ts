@@ -2,12 +2,14 @@
 // Contract: .kiro/specs/rapid-persistence-redesign/snapshot-format.md section 4.
 
 import type { AppState, GraphLink, MapAnnotation, MapScope, MapSurface, SurfaceNodeView, TreeNode } from "../types";
+import { recordKeyString } from "./jsonl";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
   compareStrings,
   type AnnotationRecord,
   type DetailsRecord,
   type EdgeConnectionRecord,
+  type ExtensionDefRecord,
   type GraphLinkConnectionRecord,
   type LinearTextRecord,
   type MapRecord,
@@ -58,6 +60,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
   const surfaces: SurfaceRecord[] = [];
   const nodeViews: NodeViewRecord[] = [];
   const annotations: AnnotationRecord[] = [];
+  const extensionDefs: ExtensionDefRecord[] = [];
   for (const record of records) {
     switch (record.kind) {
       case "snapshot": workspaceId = record.workspaceId; break;
@@ -73,6 +76,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
       case "surface": surfaces.push(record); break;
       case "nodeView": nodeViews.push(record); break;
       case "annotation": annotations.push(record); break;
+      case "extensionDef": extensionDefs.push(record); break;
       default: break; // seeded records and idMap carry nothing of the current shape
     }
   }
@@ -136,6 +140,10 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
         if (alias.snapshotLabel !== undefined) node.targetSnapshotLabel = alias.snapshotLabel;
         if (alias.broken === true) node.isBroken = true;
       }
+      if (record.extensions !== undefined) node.extensions = record.extensions;
+      if (edge?.relationType !== undefined) node.edgeRelationType = edge.relationType;
+      if (edge?.attributes !== undefined) node.edgeAttributes = edge.attributes;
+      if (edge?.extensions !== undefined) node.edgeExtensions = edge.extensions;
       // An edge out of a scope root that lies on another scope: the child stays outside (DA59).
       if (edge?.scopeId !== undefined && edge.source !== map.rootNodeId) {
         const ownScope = scopeIdOfRoot.get(edge.source);
@@ -154,7 +162,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
       if (record.source !== undefined) link.sourceNodeId = record.source;
       if (record.target !== undefined) link.targetNodeId = record.target;
       copyDefined(link, record as unknown as Dict, [
-        "relationType", "label", "direction", "style", "color", "sourcePort", "targetPort", "attributes",
+        "relationType", "label", "direction", "style", "color", "sourcePort", "targetPort", "attributes", "extensions",
       ]);
       stateLinks[record.id] = link as unknown as GraphLink;
     }
@@ -219,6 +227,9 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
 
     if (map.linearTextFontScale !== undefined) state.linearTextFontScale = map.linearTextFontScale;
     if (map.linearPanelWidth !== undefined) state.linearPanelWidth = map.linearPanelWidth;
+    if (extensionDefs.length > 0) {
+      state.extensionDefs = [...extensionDefs].sort((a, b) => compareStrings(recordKeyString(a), recordKeyString(b)));
+    }
 
     const row: Dict = { id: mapId, state };
     copyDefined(row, map as unknown as Dict, ["tags", "archived", "pinned", "source"]);

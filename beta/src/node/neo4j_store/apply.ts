@@ -12,6 +12,7 @@ import {
   COMMON_LABEL,
   KIND_LABELS,
   RELATIONSHIP_TYPES,
+  cypherLabelList,
   encodeRecord,
   type PropertyMap,
   type RelationshipType,
@@ -92,7 +93,7 @@ export async function applyOps(tx: Runner, ops: RecordOp[]): Promise<void> {
   const last = new Map<string, RecordOp>();
   for (const op of ops) last.set(op.rk, op);
   const deletes: string[] = [];
-  const puts: Array<{ record: SnapshotRecord; rk: string; props: PropertyMap; kind: RecordKind }> = [];
+  const puts: Array<{ record: SnapshotRecord; rk: string; props: PropertyMap; kind: RecordKind; labels: string[] }> = [];
   const pairsByType = new Map<RelationshipType, Array<{ a: string; b: string }>>();
   for (const op of last.values()) {
     if (op.op === "delete") {
@@ -102,7 +103,7 @@ export async function applyOps(tx: Runner, ops: RecordOp[]): Promise<void> {
     if (op.record === undefined) throw new Error(`A put operation has no record (${op.rk}).`);
     const encoded = encodeRecord(op.record);
     if (encoded.rk !== op.rk) throw new Error(`Operation key ${JSON.stringify(op.rk)} does not match its record (${encoded.rk}).`);
-    puts.push({ record: op.record, rk: encoded.rk, props: encoded.props, kind: encoded.kind });
+    puts.push({ record: op.record, rk: encoded.rk, props: encoded.props, kind: encoded.kind, labels: encoded.labels });
     for (const wish of encoded.relationships) {
       for (const a of wish.from) {
         for (const b of wish.to) {
@@ -124,17 +125,43 @@ export async function applyOps(tx: Runner, ops: RecordOp[]): Promise<void> {
   const found = await tx.run(`UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {rk: rk}) RETURN rk`, { rks: putRks });
   for (const row of found.records) existing.add(String(row.get("rk")));
 
-  const rowsByKind = new Map<RecordKind, PropertyMap[]>();
+  const rowsByLabels = new Map<string, { labels: string[]; rows: PropertyMap[] }>();
   for (const put of puts) {
-    const list = rowsByKind.get(put.kind);
-    if (list) list.push(put.props);
-    else rowsByKind.set(put.kind, [put.props]);
+    const key = put.labels.join(":");
+    const group = rowsByLabels.get(key);
+    if (group) group.rows.push(put.props);
+    else rowsByLabels.set(key, { labels: put.labels, rows: [put.props] });
   }
-  for (const [kind, rows] of rowsByKind) {
+  for (const group of rowsByLabels.values()) {
+    const extra = group.labels.filter((label) => label !== COMMON_LABEL);
     await tx.run(
-      `UNWIND $rows AS row MERGE (r:${COMMON_LABEL} {rk: row.rk}) SET r = row SET r:${KIND_LABELS[kind]}`,
-      { rows },
+      `UNWIND $rows AS row MERGE (r:${COMMON_LABEL} {rk: row.rk}) SET r = row SET r:${cypherLabelList(extra)}`,
+      { rows: group.rows },
     );
+  }
+  const wanted = new Map(puts.map((put) => [put.rk, new Set(put.labels)]));
+  const replacedNow = putRks.filter((rk) => existing.has(rk));
+  if (replacedNow.length > 0) {
+    const labeled = await tx.run(
+      `UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {rk: rk}) RETURN r.rk AS rk, labels(r) AS labels`,
+      { rks: replacedNow },
+    );
+    const drop = new Map<string, string[]>();
+    for (const row of labeled.records) {
+      const rk = String(row.get("rk"));
+      const keep = wanted.get(rk) ?? new Set<string>();
+      const labels = row.get("labels");
+      if (!Array.isArray(labels)) continue;
+      for (const label of labels) {
+        if (typeof label !== "string" || !label.startsWith("Ext_") || keep.has(label)) continue;
+        const list = drop.get(label) ?? [];
+        list.push(rk);
+        drop.set(label, list);
+      }
+    }
+    for (const [label, rks] of drop) {
+      await tx.run(`UNWIND $rks AS rk MATCH (r:${COMMON_LABEL} {rk: rk}) REMOVE r:${cypherLabelList([label])}`, { rks });
+    }
   }
 
   // Relationships derived from the put records themselves: drop the old ones, create the current ones.

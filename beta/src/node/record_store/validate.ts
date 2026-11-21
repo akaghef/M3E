@@ -36,3 +36,27 @@ export function validationErrorCount(state: object): number {
     }
   }
 }
+
+/**
+ * Errors the viewer model still reports, and that a commit no longer counts.
+ * Database_Spec 3.2: an alias may have children. Invariant 3 rejects an alias
+ * whose target is an alias; that check is the commit's, not this model's.
+ */
+const SUPERSEDED_AT_COMMIT = [/cannot have children\./, /cannot target alias node /];
+
+function countCommitFailures(errors: string[]): number {
+  return errors.filter((error) => !SUPERSEDED_AT_COMMIT.some((pattern) => pattern.test(error))).length;
+}
+
+/** Validation errors that still refuse a commit. Infinite when the state cannot be validated. */
+export function commitValidationErrorCount(state: object): number {
+  try {
+    return countCommitFailures(validateState(state));
+  } catch {
+    try {
+      return countCommitFailures(RapidMvpModel.fromJSON(state as AppState).validate());
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  }
+}

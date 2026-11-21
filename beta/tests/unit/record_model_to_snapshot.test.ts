@@ -56,7 +56,7 @@ const idMapOf = (records: SnapshotRecord[]) => ofKind<IdMapRecord>(records, "idM
 describe("toSnapshot: header and seeded records (1, 3.5)", () => {
   it("emits the header, relation types, prefixes, account and commit", () => {
     const records = convert([]);
-    expect(records[0]).toEqual({ kind: "snapshot", format: 1, workspaceId: WS, seq: 0 });
+    expect(records[0]).toEqual({ kind: "snapshot", format: 2, workspaceId: WS, seq: 0 });
     expect(ofKind(records, "relationTypeDef")).toEqual([
       { kind: "relationTypeDef", name: "m3e:consist-of", reads: "source-to-target", rev: 0 },
       { kind: "relationTypeDef", name: "m3e:detail", reads: "source-to-target", rev: 0 },

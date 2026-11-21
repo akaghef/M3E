@@ -106,7 +106,7 @@ describe("record store compaction: nothing is discarded, replay is deterministic
     // The first snapshot and every journal line, taken from the archive and the journal.
     const archive = path.join(dir, ARCHIVE_DIR);
     const files = fs.readdirSync(archive);
-    expect(files).toContain("snapshot.0.f1.jsonl");
+    expect(files).toContain("snapshot.0.f2.jsonl");
     const bySeq = new Map<number, string>();
     for (const file of [...files.filter((name) => name.startsWith("journal.")).map((name) => path.join(archive, name)), path.join(dir, JOURNAL_FILE)]) {
       for (const line of journalLines(file)) bySeq.set(line.seq as number, JSON.stringify(line));
@@ -114,14 +114,14 @@ describe("record store compaction: nothing is discarded, replay is deterministic
     expect([...bySeq.keys()].sort((a, b) => a - b)).toEqual(Array.from({ length: seq }, (_, i) => i + 1));
     const rebuilt = path.join(tempDir("replay-rebuilt"), "store");
     fs.mkdirSync(rebuilt);
-    fs.copyFileSync(path.join(archive, "snapshot.0.f1.jsonl"), path.join(rebuilt, SNAPSHOT_FILE));
+    fs.copyFileSync(path.join(archive, "snapshot.0.f2.jsonl"), path.join(rebuilt, SNAPSHOT_FILE));
     fs.writeFileSync(path.join(rebuilt, JOURNAL_FILE), [...bySeq.entries()].sort((a, b) => a[0] - b[0]).map(([, line]) => line + "\n").join(""));
     const fromScratch = openStore(rebuilt);
     expect(fromScratch.seq()).toBe(seq);
     expect(text(fromScratch.records())).toBe(expected);
 
     // And from the middle snapshot with the lines after it.
-    const middle = files.find((name) => /^snapshot\.[1-9]\d*\.f1\.jsonl$/.test(name));
+    const middle = files.find((name) => /^snapshot\.[1-9]\d*\.f2\.jsonl$/.test(name));
     expect(middle).toBeDefined();
     const middleSeq = Number(/^snapshot\.(\d+)\./.exec(middle as string)?.[1]);
     const fromMiddle = path.join(tempDir("replay-middle"), "store");
@@ -141,15 +141,15 @@ describe("record store compaction: nothing is discarded, replay is deterministic
     const journal = fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8");
     store.compact();
     expect(fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8")).toBe("");
-    expect(fs.readFileSync(path.join(dir, ARCHIVE_DIR, "journal.1-4.f1.jsonl"), "utf8")).toBe(journal);
+    expect(fs.readFileSync(path.join(dir, ARCHIVE_DIR, "journal.1-4.f2.jsonl"), "utf8")).toBe(journal);
     const index = JSON.parse(fs.readFileSync(path.join(dir, ARCHIVE_DIR, "index.json"), "utf8")) as { entries: Loose[] };
     expect(index.entries.map((entry) => [entry.file, entry.kind, entry.fromSeq, entry.toSeq])).toEqual([
-      ["journal.1-4.f1.jsonl", "journal", 1, 4],
-      ["snapshot.0.f1.jsonl", "snapshot", 0, 0],
+      ["journal.1-4.f2.jsonl", "journal", 1, 4],
+      ["snapshot.0.f2.jsonl", "snapshot", 0, 0],
     ]);
     // A second compaction with nothing new changes nothing.
     store.compact();
-    expect(fs.readdirSync(path.join(dir, ARCHIVE_DIR)).sort()).toEqual(["index.json", "journal.1-4.f1.jsonl", "snapshot.0.f1.jsonl"]);
+    expect(fs.readdirSync(path.join(dir, ARCHIVE_DIR)).sort()).toEqual(["index.json", "journal.1-4.f2.jsonl", "snapshot.0.f2.jsonl"]);
   });
 
   it("still finds a committed Command and still catches the engine up from the archive after compaction", async () => {
@@ -193,7 +193,7 @@ describe("record store compaction: when it runs", () => {
     edit(store, (state) => { (state.nodes as Record<string, Loose>).leaf.text = "3"; });
     expect(store.journalLength()).toBe(0);
     expect(fs.readFileSync(path.join(dir, JOURNAL_FILE), "utf8")).toBe("");
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, "journal.1-3.f1.jsonl"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, "journal.1-3.f2.jsonl"))).toBe(true);
     expect(store.maintenanceStatus().problems).toEqual([]);
   });
 
@@ -206,7 +206,7 @@ describe("record store compaction: when it runs", () => {
     const again = openStore(dir, { compactAfterLines: 4 });
     expect(again.journalLength()).toBe(0);
     expect(text(again.records())).toBe(expected);
-    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, "journal.1-4.f1.jsonl"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, ARCHIVE_DIR, "journal.1-4.f2.jsonl"))).toBe(true);
   });
 });
 
@@ -226,7 +226,7 @@ describe("record store compaction: archive retention (90 days, gated on the snap
     expect(fs.readdirSync(path.join(dir, ARCHIVE_DIR))).toHaveLength(3);
     const result = store.pruneArchive({ now: new Date(archivedAt + 90 * DAY).toISOString() });
     expect(result.problems).toEqual([]);
-    expect(result.deleted.sort()).toEqual(["journal.1-4.f1.jsonl", "snapshot.0.f1.jsonl"]);
+    expect(result.deleted.sort()).toEqual(["journal.1-4.f2.jsonl", "snapshot.0.f2.jsonl"]);
     expect(fs.readdirSync(path.join(dir, ARCHIVE_DIR))).toEqual(["index.json"]);
   });
 

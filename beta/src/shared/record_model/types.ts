@@ -5,11 +5,12 @@
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
-export const SNAPSHOT_FORMAT = 1;
+export const SNAPSHOT_FORMAT = 2;
 
 export interface SnapshotHeader {
   kind: "snapshot";
-  format: 1;
+  /** 1 is read and migrated once on open. 2 is the format this store writes. */
+  format: 1 | 2;
   workspaceId: string;
   seq: number;
 }
@@ -49,6 +50,8 @@ export interface NodeRecord {
   collapsed?: true;
   attributes?: JsonObject;
   alias?: AliasValue;
+  /** `name@version`, string order, one entry per name. Omitted when empty. */
+  extensions?: string[];
   extra?: JsonObject;
   rev: number;
 }
@@ -75,6 +78,10 @@ export interface EdgeConnectionRecord {
   ord: string;
   /** The scope this edge lies on (record-schema DA59). */
   scopeId?: string;
+  relationType?: string;
+  attributes?: JsonObject;
+  /** `name@version`, string order, one entry per name. Omitted when empty. */
+  extensions?: string[];
   rev: number;
 }
 
@@ -88,6 +95,8 @@ export interface GraphLinkConnectionRecord {
   relationType?: string;
   label?: string;
   attributes?: JsonObject;
+  /** `name@version`, string order, one entry per name. Omitted when empty. */
+  extensions?: string[];
   direction?: string;
   style?: string;
   color?: string;
@@ -173,6 +182,39 @@ export interface AnnotationRecord {
   rev: number;
 }
 
+export type ExtensionTarget = "node" | "parentEdge" | "relationEdge";
+export type ExtensionRenderSize = "text" | "fixed" | "attribute";
+
+export interface ExtensionField {
+  name: string;
+  type: string;
+  required?: boolean;
+  /** Stored. Not applied and not checked (10.7 does not say how). */
+  default?: JsonValue;
+  values?: string[];
+  /** Stored. Not checked (10.7 does not say how). */
+  ref?: string;
+}
+
+export interface ExtensionRender {
+  attributes: string[];
+  size: ExtensionRenderSize;
+}
+
+/** Workspace-level. Key is `name@version` (one string, not two parts). */
+export interface ExtensionDefRecord {
+  kind: "extensionDef";
+  /** `prefix:class:name`. `class` is `nodeType`, `parentEdge`, or `relationEdge`. */
+  name: string;
+  version: number;
+  target: ExtensionTarget;
+  label?: string;
+  description?: string;
+  fields: ExtensionField[];
+  render?: ExtensionRender;
+  rev: number;
+}
+
 export interface RelationTypeDefRecord {
   kind: "relationTypeDef";
   name: string;
@@ -232,6 +274,7 @@ export type SnapshotRecord =
   | NodeViewRecord
   | AnnotationRecord
   | RelationTypeDefRecord
+  | ExtensionDefRecord
   | PrefixRecord
   | AccountRecord
   | CommitRecord
@@ -291,6 +334,8 @@ export function recordKeyParts(record: SnapshotRecord): string[] {
       return [record.surfaceId, record.nodeId];
     case "relationTypeDef":
       return [record.name];
+    case "extensionDef":
+      return [`${record.name}@${record.version}`];
     case "prefix":
       return [record.prefix];
     case "commit":

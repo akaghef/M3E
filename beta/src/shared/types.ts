@@ -31,6 +31,14 @@ export interface TreeNode {
   access?: AliasAccess;
   targetSnapshotLabel?: string;
   isBroken?: boolean;
+  /** Extensions on this node: `name@version`. Omitted when empty. */
+  extensions?: string[];
+  /** `relationType` of the parent edge that points at this node. */
+  edgeRelationType?: string;
+  /** Attributes of the parent edge that points at this node. */
+  edgeAttributes?: Record<string, unknown>;
+  /** Extensions of the parent edge that points at this node. */
+  edgeExtensions?: string[];
 }
 
 export interface GraphLink {
@@ -45,6 +53,8 @@ export interface GraphLink {
   sourcePort?: LinkPort;
   targetPort?: LinkPort;
   attributes?: Record<string, string>;
+  /** Extensions on this relation edge: `name@version`. Omitted when empty. */
+  extensions?: string[];
 }
 
 export interface SurfaceNodeView {
@@ -115,6 +125,11 @@ export interface AppState {
   linearNotesByScope?: Record<string, string>;
   linearTextFontScale?: number;
   linearPanelWidth?: number;
+  /**
+   * Workspace extensionDef records. When present, the array is the whole set.
+   * When absent, a save leaves the stored definitions as they are.
+   */
+  extensionDefs?: Array<Record<string, unknown>>;
 }
 
 export interface SavedMap {

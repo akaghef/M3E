@@ -19,6 +19,7 @@ import { recordKeyString, sortRecords } from "./jsonl";
 import { initialKeys, isOrderKey, keysBetween } from "./order_key";
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
+import { writtenExtensions } from "./extensions";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
   compareStrings,
@@ -38,10 +39,11 @@ const SCOPE_PREFIX = "scope:";
 const NODE_FIELDS = new Set([
   "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
+  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions",
 ]);
 const LINK_FIELDS = new Set([
   "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",
-  "sourcePort", "targetPort", "attributes",
+  "sourcePort", "targetPort", "attributes", "extensions",
 ]);
 const ANNOTATION_COPIED_FIELDS = [
   "d", "points", "stroke", "strokeWidth", "opacity", "createdAt", "x", "y", "text", "fill",
@@ -50,7 +52,7 @@ const ANNOTATION_COPIED_FIELDS = [
 const ANNOTATION_FIELDS = new Set<string>(["id", "kind", "scopeId", ...ANNOTATION_COPIED_FIELDS]);
 const STATE_FIELDS = new Set([
   "rootId", "nodes", "links", "annotations", "scopes", "surfaces", "linearNotesByScope",
-  "linearTextFontScale", "linearPanelWidth",
+  "linearTextFontScale", "linearPanelWidth", "extensionDefs",
 ]);
 const STATE_DROPPED_FIELDS = new Set(["selectedId", "scopeId", "savedAt"]);
 const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
@@ -523,6 +525,8 @@ export class MapProjector {
         if (present(node.targetSnapshotLabel)) alias.snapshotLabel = node.targetSnapshotLabel;
         if (node.isBroken === true) alias.broken = true;
         if (Object.keys(alias).length > 0) record.alias = alias;
+        const extensions = writtenExtensions(node.extensions);
+        if (extensions) record.extensions = extensions;
         const extra = collectExtra(node, NODE_FIELDS);
         if (extra) record.extra = extra;
         record.rev = undefined;
@@ -663,6 +667,12 @@ export class MapProjector {
         };
         const label = memos[ordered[i]].label;
         if (label !== undefined) record.label = label;
+        const child = nodes[ordered[i]];
+        if (typeof child.edgeRelationType === "string" && child.edgeRelationType !== "") record.relationType = child.edgeRelationType;
+        const edgeAttributes = cleanAttributes(child.edgeAttributes);
+        if (edgeAttributes) record.attributes = edgeAttributes;
+        const edgeExtensions = writtenExtensions(child.edgeExtensions);
+        if (edgeExtensions) record.extensions = edgeExtensions;
         record.ord = keys[i];
         const scopeId = childEdgeScope(parentId, nodes[ordered[i]], edgeScopeId);
         if (scopeId !== undefined) record.scopeId = scopeId;
@@ -698,6 +708,8 @@ export class MapProjector {
       copyPresent(record, link, ["direction", "style", "color"]);
       if (present(link.sourcePort) && link.sourcePort !== "auto") record.sourcePort = link.sourcePort;
       if (present(link.targetPort) && link.targetPort !== "auto") record.targetPort = link.targetPort;
+      const linkExtensions = writtenExtensions(link.extensions);
+      if (linkExtensions) record.extensions = linkExtensions;
       const extra = collectExtra(link, LINK_FIELDS);
       if (extra) record.extra = extra;
       record.rev = undefined;
@@ -837,12 +849,36 @@ export class MapProjector {
     mapRecord.rev = undefined;
     small.push(put(mapRecord as unknown as SnapshotRecord));
 
+    // extensionDef is workspace-level. An array on the state is the whole set.
+    // An absent property leaves the definitions already in the record set.
+    const declared = state.extensionDefs;
+    if (Array.isArray(declared)) {
+      const keep = new Set<string>();
+      for (const item of declared) {
+        if (!isDict(item) || item.kind !== "extensionDef") {
+          throw new Error("extensionDefs contains a value that is not an extensionDef record.");
+        }
+        const record = item as unknown as SnapshotRecord;
+        keep.add(recordRk(record));
+        put(record);
+      }
+      for (const [rk, record] of [...out]) {
+        if (record.kind === "extensionDef" && !keep.has(rk)) remove(rk);
+      }
+    } else {
+      for (const record of out.values()) {
+        if (record.kind === "extensionDef") produced.add(recordRk(record));
+      }
+    }
     removeUnlessProduced(this.smallRecords);
     for (const rk of stray) {
       if (!produced.has(rk)) remove(rk);
     }
     for (const record of small) rest.push(record);
     for (const record of surfaceList) rest.push(record);
+    const defRecords = [...out.values()].filter((record) => record.kind === "extensionDef");
+    defRecords.sort((a, b) => compareStrings(recordRk(a), recordRk(b)));
+    for (const record of defRecords) rest.push(record);
 
     // --- the state the reverse conversion gives ---
     // Everything but the nodes goes through `fromSnapshot` itself.
@@ -892,6 +928,11 @@ export class MapProjector {
         if (alias.snapshotLabel !== undefined) restored.targetSnapshotLabel = alias.snapshotLabel;
         if (alias.broken === true) restored.isBroken = true;
       }
+      if (record.extensions !== undefined) restored.extensions = record.extensions;
+      const incoming = this.edgeByTarget.get(id);
+      if (incoming?.relationType !== undefined) restored.edgeRelationType = incoming.relationType;
+      if (incoming?.attributes !== undefined) restored.edgeAttributes = incoming.attributes;
+      if (incoming?.extensions !== undefined) restored.edgeExtensions = incoming.extensions;
       if (hasParent && node.edgeOutsideScope !== undefined) {
         // Kept only while it puts the edge on another scope than the parent's own.
         const parentId = node.parentId as string;
@@ -980,6 +1021,7 @@ function sameStrings(left: unknown, right: readonly string[]): boolean {
 
 /** True for a record `projectMap` produces for the map `mapId` (every map-scoped kind but `idMap`). */
 export function isProjectedRecord(record: SnapshotRecord, mapId: string): boolean {
+  if (record.kind === "extensionDef") return true;
   if (record.kind === "map") return record.id === mapId;
   if (record.kind === "idMap" || record.kind === "snapshot") return false;
   return (record as { mapId?: unknown }).mapId === mapId;

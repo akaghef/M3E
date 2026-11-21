@@ -1,9 +1,13 @@
 // Invariants of post-migration-spec.md section 9, items 1-7, checked on the
 // final state of a whole record set (not on a single write).
 
+import { extensionValueErrors } from "./extensions";
 import type {
   ConnectionRecord,
   EdgeConnectionRecord,
+  ExtensionDefRecord,
+  ExtensionTarget,
+  JsonObject,
   MapRecord,
   NodeRecord,
   ScopeRecord,
@@ -11,10 +15,11 @@ import type {
   SurfaceRecord,
 } from "./types";
 import { recordKeyParts } from "./types";
+import { recordKeyString } from "./jsonl";
 
 export interface InvariantProblem {
-  /** Item number in section 9; 0 marks a record set that is malformed before any item applies. */
-  rule: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  /** Item number in Database_Spec section 4. 0 marks a record set that is malformed before any item applies. */
+  rule: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 9 | 10;
   kind: string;
   key: string;
   message: string;
@@ -70,13 +75,11 @@ export function checkInvariants(records: SnapshotRecord[]): InvariantProblem[] {
   const edges: EdgeConnectionRecord[] = [];
   const incomingCount = new Map<string, number>();
   const parentOf = new Map<string, string>();
-  const hasChildren = new Set<string>();
   for (const connection of connections.values()) {
     if (connection.type !== "edge") continue;
     edges.push(connection);
     incomingCount.set(connection.target, (incomingCount.get(connection.target) ?? 0) + 1);
     if (!parentOf.has(connection.target)) parentOf.set(connection.target, connection.source);
-    hasChildren.add(connection.source);
   }
   for (const node of nodes.values()) {
     const count = incomingCount.get(node.id) ?? 0;
@@ -105,10 +108,9 @@ export function checkInvariants(records: SnapshotRecord[]): InvariantProblem[] {
     for (const id of walk) mark.set(id, 2);
   }
 
-  // 3: an alias points to a node that is not an alias, and has no children.
+  // 3: an alias points to a node that is not an alias. An alias may have children (Database_Spec 3.2, 12.2).
   for (const node of nodes.values()) {
     if (!isAlias(node)) continue;
-    if (hasChildren.has(node.id)) add(3, node, "alias has children");
     const target = node.alias?.target;
     if (node.alias?.broken === true) continue; // a broken alias is one whose target is known to be gone
     if (target === undefined) add(3, node, "alias has no target");
@@ -194,6 +196,29 @@ export function checkInvariants(records: SnapshotRecord[]): InvariantProblem[] {
       default:
         break;
     }
+  }
+
+  // 9: under one parent, parent-edge ord values are unique. Different parents may share an ord.
+  const ords = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    const seen = ords.get(edge.source) ?? new Set<string>();
+    if (seen.has(edge.ord)) add(9, edge, `duplicate ord ${JSON.stringify(edge.ord)} under parent ${edge.source}`);
+    seen.add(edge.ord);
+    ords.set(edge.source, seen);
+  }
+
+  // 10: an extension whose definition exists has its required fields, and every present field matches its type.
+  const defs = new Map<string, ExtensionDefRecord>();
+  for (const record of records) {
+    if (record.kind === "extensionDef") defs.set(recordKeyString(record), record);
+  }
+  const checkCarrier = (record: SnapshotRecord, carrier: ExtensionTarget, extensions: unknown, attributes: JsonObject | undefined): void => {
+    for (const problem of extensionValueErrors(extensions, attributes, carrier, defs)) add(10, record, problem.message);
+  };
+  for (const node of nodes.values()) checkCarrier(node, "node", node.extensions, node.attributes);
+  for (const connection of connections.values()) {
+    if (connection.type === "edge") checkCarrier(connection, "parentEdge", connection.extensions, connection.attributes);
+    else checkCarrier(connection, "relationEdge", connection.extensions, connection.attributes);
   }
   return problems;
 }

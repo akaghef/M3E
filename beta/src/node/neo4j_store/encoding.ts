@@ -16,6 +16,14 @@
 //   a_<key> / aj_<key>, ao    one entry of `attributes` (native / JSON text) and its key order.
 //   x_<key> / xj_<key>, xo    the same for `extra`.
 //   j             the whole record as JSON text (fallback, see below).
+//   ms_<field>    epoch milliseconds of a top-level canonical time string. Not part of `o`.
+//   am_<key>      the same for a string in `attributes`.
+//   xm_<key>      the same for a string in `extra`.
+//
+// Extension labels. Each `name@version` in `extensions` becomes one extra label:
+// `Ext_` plus every character outside [A-Za-z0-9] replaced by `_`.
+// `m3e:nodeType:task@1` → `Ext_m3e_nodeType_task_1`.
+// The mapping is not injective. The record's `extensions` property is what is read back.
 //
 // Numbers: a safe integer is stored as a Neo4j Integer, any other number as a Float. JSON has
 // one number type and JavaScript parses `1.0` as `1`, so this reproduces the JSON text exactly.
@@ -33,6 +41,7 @@
 //   - a record key (and therefore `rk`) with a lone surrogate is refused.
 
 import neo4j from "neo4j-driver";
+import { canonicalTimeMs } from "../../shared/record_model/extensions";
 import { recordKeyString } from "../../shared/record_model/jsonl";
 import type { JsonObject, JsonValue, RecordKind, SnapshotRecord } from "../../shared/record_model/types";
 
@@ -50,6 +59,7 @@ export const KIND_LABELS: Record<RecordKind, string> = {
   nodeView: "NodeView",
   annotation: "Annotation",
   relationTypeDef: "RelationTypeDef",
+  extensionDef: "ExtensionDef",
   prefix: "Prefix",
   account: "Account",
   commit: "Commit",
@@ -71,8 +81,34 @@ export type PropertyMap = Record<string, unknown>;
 export interface EncodedRecord {
   kind: RecordKind;
   rk: string;
+  /** `Rec`, the kind label, then one `Ext_…` label per extension, in string order. */
+  labels: string[];
   props: PropertyMap;
   relationships: RelationshipWish[];
+}
+
+const SAFE_LABEL = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+/** Joins labels for a Cypher pattern. Refuses anything that is not a plain identifier. */
+export function cypherLabelList(labels: readonly string[]): string {
+  if (labels.length === 0) throw new Error("A record needs a Neo4j label.");
+  for (const label of labels) {
+    if (!SAFE_LABEL.test(label)) throw new Error(`Refusing a Neo4j label that is not a safe identifier: ${label}`);
+  }
+  return labels.join(":");
+}
+
+/** `name@version` → `Ext_` with every non-alphanumeric character replaced by `_`. */
+export function extensionLabel(entry: string): string {
+  return `Ext_${entry.replace(/[^A-Za-z0-9]/g, "_")}`;
+}
+
+export function labelsOf(record: SnapshotRecord): string[] {
+  const labels = [COMMON_LABEL, KIND_LABELS[record.kind]];
+  const extensions = (record as { extensions?: unknown }).extensions;
+  if (!Array.isArray(extensions)) return labels;
+  const extra = [...new Set(extensions.filter((entry): entry is string => typeof entry === "string").map(extensionLabel))].sort();
+  return [...labels, ...extra];
 }
 
 const OPEN_MAPS: Record<string, { native: string; json: string; order: string }> = {
@@ -129,6 +165,29 @@ function isPlainObject(value: unknown): value is JsonObject {
 function stringField(record: SnapshotRecord, field: string): string | undefined {
   const value = (record as unknown as Record<string, unknown>)[field];
   return typeof value === "string" ? value : undefined;
+}
+
+function addEpoch(props: PropertyMap, prefix: string, key: string, value: unknown): void {
+  if (typeof value !== "string") return;
+  if (!isSafePropertyName(prefix + key)) return;
+  const ms = canonicalTimeMs(value);
+  if (ms !== undefined) props[prefix + key] = neo4j.int(ms);
+}
+
+function addEpochProps(props: PropertyMap, record: SnapshotRecord): void {
+  const fields = record as unknown as Record<string, unknown>;
+  for (const [field, value] of Object.entries(fields)) {
+    if (field === "attributes" || field === "extra") continue;
+    addEpoch(props, "ms_", field, value);
+  }
+  const attributes = fields.attributes;
+  if (isPlainObject(attributes)) {
+    for (const [key, value] of Object.entries(attributes)) addEpoch(props, "am_", key, value);
+  }
+  const extra = fields.extra;
+  if (isPlainObject(extra)) {
+    for (const [key, value] of Object.entries(extra)) addEpoch(props, "xm_", key, value);
+  }
 }
 
 function relationshipWishes(record: SnapshotRecord, rk: string): RelationshipWish[] {
@@ -188,13 +247,15 @@ export function encodeRecord(record: SnapshotRecord): EncodedRecord {
   if (!isWellFormed(rk)) throw new Error(`Record key has a lone surrogate and cannot be stored: ${JSON.stringify(rk)}`);
 
   const props: PropertyMap = { rk, kind: record.kind };
+  const labels = labelsOf(record);
   const id = stringField(record, "id");
   if (id !== undefined) props.id = id;
 
   const entries = Object.entries(record as unknown as Record<string, JsonValue>);
   if (!entries.every(([field]) => isSafePropertyName(field))) {
     props.j = JSON.stringify(record);
-    return { kind: record.kind, rk, props, relationships: relationshipWishes(record, rk) };
+    addEpochProps(props, record);
+    return { kind: record.kind, rk, props, labels, relationships: relationshipWishes(record, rk) };
   }
 
   props.o = entries.map(([field]) => field);
@@ -209,7 +270,8 @@ export function encodeRecord(record: SnapshotRecord): EncodedRecord {
     }
     putValue(props, `f_${field}`, `j_${field}`, value);
   }
-  return { kind: record.kind, rk, props, relationships: relationshipWishes(record, rk) };
+  addEpochProps(props, record);
+  return { kind: record.kind, rk, props, labels, relationships: relationshipWishes(record, rk) };
 }
 
 function fromNative(value: unknown): JsonValue {
