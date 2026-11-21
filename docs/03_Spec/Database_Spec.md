@@ -866,7 +866,7 @@ JA1 と JA2 の組み合わせが、操作の集まりになる。
 #### 個別の決定（akaghef、2026-11-22）
 
 - **QD2**【決定】範囲の中の alias を写すときに、JA3 の引数を省いたら、alias のまま写す。写した先の alias も、同じ実体を指す。alias を写さない扱いと、参照先の実体も複製する扱いは、引数で選べる。
-- **QD5**【決定】貼り付けでは、alias と relation edge の付随情報、`collapsed` を写す。この節と operation-algebra-requirements 11 節を正とする。[Multi_Select.md](../04_Architecture/Multi_Select.md) の「貼り付けで落とす」という記述は、今の実装の説明である。実装は、まだ落とす。
+- **QD5**【決定】【実装済み】貼り付けでは、alias と relation edge の付随情報、`collapsed` を写す。範囲の中の alias は alias のまま写し、参照先の実体が同じ範囲で写されたときは写した先の実体を指す（JA4）。参照先が範囲の外にあるときは元の実体を指したままにする。範囲の中で両端が閉じた relation edge は、label、relationType、向き、線種、attributes ごと写す。実装は `beta/src/shared/clipboard_subtree.ts`。[Multi_Select.md](../04_Architecture/Multi_Select.md) はこの規則に揃えてある。
 
 ## 13. 未決
 

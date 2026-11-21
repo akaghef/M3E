@@ -165,7 +165,7 @@ interface SubtreeSnapshot {
 5. システムクリップボードにはノードのテキストラベルを改行区切りでコピー（テキストエディタへの貼り付けを容易にするため）
 
 **写すもの**（[Database_Spec](../03_Spec/Database_Spec.md) 12.8 節）：
-- 範囲の中の alias は、alias のまま写す。写した先の alias も同じ実体を指す
+- 範囲の中の alias は、alias のまま写す。参照先の実体も同じ範囲で写したときは、写した先の実体を指す。参照先が範囲の外にあるときは、元の実体を指したままにする
 - 範囲の中で両端が閉じた relation edge と、その付随情報
 - `collapsed` 状態
 
@@ -198,7 +198,7 @@ interface SubtreeSnapshot {
 4. ペースト後の選択: クローンされた最初のノードを選択
 5. `clipboardState` はそのまま維持（連続ペースト可能）
 
-貼り付けた node の ID はすべて新しい。alias は同じ実体を指したまま作る。範囲の中で閉じた relation edge は、貼り付けた node の間に、label、relationType、direction、style、attribute を保って作る。`collapsed` は保つ。範囲の外へまたがる relation edge は作らない。
+貼り付けた node の ID はすべて新しい。alias は、参照先の実体も同じ範囲で写したときは写した先の実体を指し、そうでなければ元の実体を指したまま作る。範囲の中で閉じた relation edge は、貼り付けた node の間に、label、relationType、direction、style、attribute を保って作る。`collapsed` は保つ。範囲の外へまたがる relation edge は作らない。
 
 #### カット後のペースト（`type: "cut"`）
 
