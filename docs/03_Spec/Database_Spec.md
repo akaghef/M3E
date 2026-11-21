@@ -136,7 +136,7 @@ workspace > map > scope > node
   - 許可した human がその scope を編集できなくなったら、許可は効かない。確定のときに判定する。
   - unlock の Command の `actor` が AI agent のとき、remote は、その scope の有効な許可を確かめる。`issuer` が `grantedBy` と一致することは求めない。
 - 保存の形: レコードの種類 `grant`。key は `id`、欄は `scopeId`、`principal`（`{account: accountRef}`。種類を足せる形）、`capability`（string）、`grantedBy`（accountRef）、`expiresAt?`（time。期限は確定の `committedAt` で判定する）、`rev`。scope の権限の仕組み（同期の要件 Q7）が決まったら、同じ種類のレコードに権限を足す。
-- `nodeType` の値【実装済み】は `text`、`alias`、`image` と、移行で運んだそれ以外の値である。種別の扱いは 10 節で改める（【決定】）。【仮決め】format 2 では `nodeType` を残し、描画器の選択子として使う。`extensions` との統合は、次の format の bump で行う。
+- `nodeType` の値【実装済み】は `text`、`alias`、`image` と、移行で運んだそれ以外の値である。種別の扱いは 10 節で改める（【決定】）。【決定】format 2 では `nodeType` を残し、描画器の選択子として使う。`extensions` との統合は、次の format の bump で行う。
 
 ### 3.3 attribute
 
@@ -272,7 +272,7 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 
 Undo は、逆向きの Command を出すことで行う。
 
-### 5.4 一部だけ読んだ状態からの書き込み【仮決め】
+### 5.4 一部だけ読んだ状態からの書き込み【決定】
 
 projection（10.6）で、node の attribute の一部だけを読んだ client が書き込むときの扱いである。読んでいない attribute は差分に現れないので、保存しても消えない（【実装済み】）。
 
@@ -318,7 +318,7 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - 【決定】observed: MCP の参加が見せられた record の read set（rk と、読んだ時点の `rev`）。見せられたものは、`m3e_get`（state）が返したページの node（details record を含む）と relation edge、変更の event が本文を見せた node である。参加ごとに 10,000 件まで持つ。確定のときに、読んだ後で他の発行者が書き換えた record と、消えた record は外す。自分で書き換えた record は、読んだ時点の `rev` で残す。
   - 【決定】declared: copy の出所の subtree。出所を明示する引数はまだ無い。
   - 【決定】並び: declared が先、次に observed を新しく読んだ順。SQLite の上では `items` は空になる。
-- 【仮決め】`changes` と `ops` の二重持ちは、format 2 では解消しない。replay の決定性を確かめる試験ができてから扱う。
+- 【決定】`changes` と `ops` の二重持ちは、format 2 では解消しない。replay の決定性を確かめる試験ができてから扱う。
 - 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 3 点ある。
   - snapshot の `format` は、まだ 1 である。format 2 への bump は、ほかの format の変更と合わせて base snapshot で行う。
   - 位置の変更は、`touched` で `m3e:content` に数えている。
@@ -500,8 +500,8 @@ node type ごとの描画を、定義済みの規約と実装に限る。node ty
   - 入力は、芯（`text`・本文）、宣言した attribute、位置、共通の状態だけである。宣言外のデータ、他の node、DOM は渡さない。
   - measure は DOM を測らず、draw より前に答える。
 - 宣言の無い node type と、定義の無い拡張は、プレーンとして描く。値は捨てない（10.3）。
-- 【仮決め】一つの node に拡張が重なるとき、矩形の内側を描く node type は一つだけである。残りは、共通の側が印として並べる。
-- 【仮決め】`m3e:` 以外の接頭辞の node type は、宣言だけで描画を決める（用意した部品の組み合わせ）。コードは持てない。
+- 【決定】一つの node に拡張が重なるとき、矩形の内側を描く node type は一つだけである。残りは、共通の側が印として並べる。
+- 【決定】`m3e:` 以外の接頭辞の node type は、宣言だけで描画を決める（用意した部品の組み合わせ）。コードは持てない。
 
 ### 10.7 型の語彙
 
@@ -793,8 +793,8 @@ Rapid と Deep は workload が違う。
 | **JA1** | 同一性 | 出現を増やす（同じ実体） / 実体を複製する（新しい ID） | Command の種類で決まる |
 | **JA2** | 範囲 | node 一つ / 部分木 / scope | Command の引数で決まる |
 | **JA3** | 範囲の中の alias | alias のまま写す（同じ実体を指す） / 写さない / 参照先の実体も複製する | Command の引数で決まる。省いたときは、alias のまま写す（QD2） |
-| **JA4** | 範囲の外への参照 | 範囲の中どうしは、写した先へ付け替える。外を指す alias の `target` は共有する。境界をまたぐ relation edge は写さない | 固定（11 節の仮決め） |
-| **JA5** | 範囲の中の scope | 中まで写す | 固定（11 節の仮決め） |
+| **JA4** | 範囲の外への参照 | 範囲の中どうしは、写した先へ付け替える。外を指す alias の `target` は共有する。境界をまたぐ relation edge は写さない | 固定（11 節） |
+| **JA5** | 範囲の中の scope | 中まで写す | 固定（11 節） |
 | **JA6** | 置き先 | 同じ面 / 別の面 / 別の workspace | Command の引数で決まる |
 | **JA7** | 時間 | 独立（写した後は別々に変わる） / 時点の写し（OD4） | Command の種類で決まる |
 
