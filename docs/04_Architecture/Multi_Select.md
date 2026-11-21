@@ -246,7 +246,7 @@ multi-delete / multi-reparent / group はそれぞれ N 回の undo ステップ
 
 `SubtreeSnapshot` は alias / link メタデータを含まない（MVP の割愛）。
 コピーした alias ノードは通常のテキストノードとしてペーストされる。
-alias / link を保持したコピーは将来拡張として対応する。
+決まった形は、alias と relation edge の付随情報、`collapsed` を写すことである（[Database_Spec](../03_Spec/Database_Spec.md) 12.8 節）。この文書の「落とす」という記述は、今の実装の説明である。
 
 ### Ctrl+V は複数回ペーストで ID が重複しない
 
