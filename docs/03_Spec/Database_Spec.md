@@ -282,10 +282,14 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - rk の文字列順に並べ、重複させない。
   - event kind は接頭辞の付いた名前の開いた集合で、最初の値は `m3e:create`、`m3e:delete`、`m3e:content`（`text`・本文）、`m3e:attribute`、`m3e:structure`（parent edge・`ord`・scope の付け替え）、`m3e:extension`（拡張の付け外し）、`m3e:target`（目標の更新間隔の変更）。読み手は知らない kind を無視する。
 - 【仮決め】`provenance.items` の要素は `{mode: "observed" | "declared", rk, rev}`。上限は 100 件で、超えたら `truncated: true` にする。長く残す来歴は record の側に持つ（下）。
+- 【実装済み】`provenance`（`beta/src/node/record_store/provenance.ts`、`beta/src/node/mcp_service.ts`）:
+  - store は確定のときに形を検査する。形の合わない item は `INVALID_COMMAND` で断る。同じ rk は最初の 1 件を残す。100 件を超えた分は切り、`truncated: true` を付ける。これまでの値（`{contextId, tool}`、`{tabId}`）は `actor.id` と同じ情報なので、journal に残さない。
+  - 【仮決め】observed: MCP の参加が見せられた record の read set（rk と、読んだ時点の `rev`）。見せられたものは、`m3e_get`（state）が返したページの node（details record を含む）と relation edge、変更の event が本文を見せた node である。参加ごとに 10,000 件まで持つ。確定のときに、読んだ後で他の発行者が書き換えた record と、消えた record は外す。自分で書き換えた record は、読んだ時点の `rev` で残す。
+  - 【仮決め】declared: copy の出所の subtree。出所を明示する引数はまだ無い。
+  - 【仮決め】並び: declared が先、次に observed を新しく読んだ順。SQLite の上では `items` は空になる。
 - 【仮決め】`changes` と `ops` の二重持ちは、format 2 では解消しない。replay の決定性を確かめる試験ができてから扱う。
-- 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 3 点ある。
+- 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 2 点ある。
   - snapshot の `format` は、まだ 1 である。format 2 への bump は、ほかの format の変更と合わせて base snapshot で行う。
-  - `provenance` は、まだ Command の値（`{contextId, tool}`）のままで、決めた形 `{items, truncated?}` ではない。
   - 位置の変更は、`touched` で `m3e:content` に数えている。
 
 - 開くとき、末尾の書きかけの行は切り捨てる。途中の行が壊れていれば、開くのを止める。通し番号の飛びも止める。
