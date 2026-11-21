@@ -47,7 +47,9 @@ Accepted（2026-11-19 改訂: freeze v1）
 - server・engine・viewer は同じ端末に同居させ、編集の確定 loop に network を挟まない。遠い server への接続は閲覧に限る。
 - 常時稼働の端末（Mac mini など）は remote の置き場所の候補である。
 - server を立てられない端末（iPad など）は mini の server に接続する閲覧専用 client とする。
-- stream の輸送は Syncthing で行う。`data.sqlite` 丸ごとの同期は廃止する。
+- stream の輸送は、remote の server への HTTP の push / pull の一本で行う（[sync-principles](../../.kiro/specs/rapid-persistence-redesign/sync-principles.md)「remote と local」）。push は outbox の Command を送り、`commandId` ごとの結果（確定・no-op・拒否・競合）を受け取る。pull は指定した `seq` より後の journal（log suffix）を受け取る。保持期間より遅れた端末は portable snapshot から clone し直す。
+- Syncthing と `data.sqlite` 丸ごとの同期は廃止する。Syncthing は ack も拒否も返さず、ファイルを丸ごと渡すので、確定の応答、Decision 6 の提供側での ACL、remote を作り直したときの世代の fencing のどれも成り立たない。
+- remote には、編集する各端末から LAN か VPN で届く必要がある。届く経路と認証の方式は、remote を置くときに決める。
 
 ### 6. access control は scope、複製は workspace
 
