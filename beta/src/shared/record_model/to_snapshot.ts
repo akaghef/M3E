@@ -4,6 +4,7 @@
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { sha256Hex, type HashFn } from "./hash";
+import { scopeFieldsOf } from "./scope_fields";
 import { writtenExtensions } from "./extensions";
 import { recordKeyString } from "./jsonl";
 import { initialKeys } from "./order_key";
@@ -20,7 +21,9 @@ import {
   type JsonValue,
   type LinearTextRecord,
   type MapRecord,
+  type NamedSnapshotRecord,
   type NodeRecord,
+  type ScopeProjection,
   type NodeViewRecord,
   type ScopeRecord,
   type SnapshotRecord,
@@ -59,7 +62,7 @@ const ANNOTATION_COPIED_FIELDS = [
 const ANNOTATION_FIELDS = new Set<string>(["id", "kind", "scopeId", ...ANNOTATION_COPIED_FIELDS]);
 const STATE_FIELDS = new Set([
   "rootId", "nodes", "links", "annotations", "scopes", "surfaces", "linearNotesByScope",
-  "linearTextFontScale", "linearPanelWidth", "extensionDefs",
+  "linearTextFontScale", "linearPanelWidth", "extensionDefs", "namedSnapshots",
 ]);
 const STATE_DROPPED_FIELDS = new Set(["selectedId", "scopeId", "savedAt"]);
 const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
@@ -386,8 +389,35 @@ function convertMap(
       ? surfaceIds.get(current.primarySurfaceId)
       : undefined;
     if (primary !== undefined) record.primarySurfaceId = primary;
+    if (isDict(current)) copySnapshotScopeFields(record, current, nodeIds, scopeIdByRoot);
     record.rev = 0;
     records.push(record as unknown as ScopeRecord);
+  }
+  for (const key of Object.keys(currentScopes).sort(compareStrings)) {
+    const current = currentScopes[key];
+    if (!isDict(current)) continue;
+    const fields = scopeFieldsOf(current);
+    if (fields.projection?.mode !== "observe") continue;
+    const range = fields.projection.range;
+    const rootOld = "root" in range ? range.root : undefined;
+    if (typeof rootOld !== "string") continue;
+    const root = nodeIds.get(rootOld);
+    if (root === undefined) continue;
+    const suffix = key.startsWith(SCOPE_PREFIX) ? key.slice(SCOPE_PREFIX.length) : key;
+    let id = suffix;
+    if ([...scopeIdByRoot.values()].includes(id) || id === rootOld) id = makeId("s_", mapId, "scope", `observe:${key}`);
+    const record: Dict = { kind: "scope", id, mapId, rootNodeId: root, rev: 0 };
+    copySnapshotScopeFields(record, current, nodeIds, scopeIdByRoot);
+    records.push(record as unknown as ScopeRecord);
+  }
+  const namedSnapshots = state["namedSnapshots"];
+  if (isDict(namedSnapshots)) {
+    for (const id of Object.keys(namedSnapshots).sort(compareStrings)) {
+      const item = namedSnapshots[id];
+      if (!isDict(item) || typeof item.name !== "string" || typeof item.seq !== "number" || typeof item.scopeId !== "string" || typeof item.reason !== "string") continue;
+      const scopeId = scopeIdByRoot.get(item.scopeId) ?? (item.scopeId.startsWith(SCOPE_PREFIX) ? scopeIdByRoot.get(item.scopeId.slice(SCOPE_PREFIX.length)) : undefined) ?? item.scopeId;
+      records.push({ kind: "namedSnapshot", id, mapId, name: item.name, seq: item.seq, scopeId, reason: item.reason, rev: 0 } as NamedSnapshotRecord);
+    }
   }
   records.push(...surfaceRecords);
 
@@ -432,4 +462,27 @@ function convertMap(
     record.rev = 0;
     records.push(record as unknown as AnnotationRecord);
   }
+}
+
+function copySnapshotScopeFields(record: Dict, source: Dict, nodeIds: Map<string, string>, scopeIdByRoot: Map<string, string>): void {
+  const fields = scopeFieldsOf(source);
+  if (fields.band) record.band = fields.band;
+  if (fields.retention) record.retention = fields.retention;
+  if (fields.projection) record.projection = remapProjection(fields.projection, nodeIds, scopeIdByRoot);
+}
+
+function remapProjection(projection: ScopeProjection, nodeIds: Map<string, string>, scopeIdByRoot: Map<string, string>): ScopeProjection {
+  const mapNode = (id: string): string => nodeIds.get(id) ?? id;
+  const scopeRef = (id: string): string =>
+    scopeIdByRoot.get(id) ?? (id.startsWith(SCOPE_PREFIX) ? scopeIdByRoot.get(id.slice(SCOPE_PREFIX.length)) : undefined) ?? id;
+  const from = "scopeId" in projection.from ? { scopeId: scopeRef(projection.from.scopeId) } : { relationType: projection.from.relationType };
+  const range = "entities" in projection.range
+    ? { entities: projection.range.entities.map(mapNode) }
+    : { root: mapNode(projection.range.root), ...(projection.range.depth !== undefined ? { depth: projection.range.depth } : {}) };
+  const out: ScopeProjection = { mode: projection.mode, from, range };
+  if (projection.baseSeq !== undefined) out.baseSeq = projection.baseSeq;
+  if (projection.dissolved && projection.dissolved.length > 0) {
+    out.dissolved = projection.dissolved.map((pair) => ({ parent: mapNode(pair.parent), child: mapNode(pair.child) }));
+  }
+  return out;
 }

@@ -20,6 +20,7 @@ import { initialKeys, isOrderKey, keysBetween } from "./order_key";
 import { edgeScopeRootOf } from "../scope_plane";
 import type { TreeNode } from "../types";
 import { writtenExtensions } from "./extensions";
+import { scopeFieldsOf } from "./scope_fields";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
   compareStrings,
@@ -52,7 +53,7 @@ const ANNOTATION_COPIED_FIELDS = [
 const ANNOTATION_FIELDS = new Set<string>(["id", "kind", "scopeId", ...ANNOTATION_COPIED_FIELDS]);
 const STATE_FIELDS = new Set([
   "rootId", "nodes", "links", "annotations", "scopes", "surfaces", "linearNotesByScope",
-  "linearTextFontScale", "linearPanelWidth", "extensionDefs", "locks", "grants",
+  "linearTextFontScale", "linearPanelWidth", "extensionDefs", "locks", "grants", "namedSnapshots",
 ]);
 const STATE_DROPPED_FIELDS = new Set(["selectedId", "scopeId", "savedAt"]);
 const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
@@ -403,7 +404,8 @@ export class MapProjector {
             else this.edgeByTarget.set(record.target, record);
             break;
           case "scope":
-            if (!this.scopeByRoot.has(record.rootNodeId)) this.scopeByRoot.set(record.rootNodeId, record);
+            // An observe projection shares its root with the scope that holds the entity. It must not take that scope's id.
+            if (record.projection?.mode !== "observe" && !this.scopeByRoot.has(record.rootNodeId)) this.scopeByRoot.set(record.rootNodeId, record);
             this.smallRecords.push(record);
             break;
           case "surface": {
@@ -800,9 +802,30 @@ export class MapProjector {
       if (isDict(current) && typeof current.primarySurfaceId === "string" && surfaceIds.has(current.primarySurfaceId)) {
         record.primarySurfaceId = current.primarySurfaceId;
       }
+      if (isDict(current)) copyScopeFields(record, current);
       record.rev = undefined;
       const stored = put(record as unknown as ScopeRecord);
       nextScopeByRoot.set(root, stored);
+      small.push(stored);
+    }
+    // Observe projections are not folder roots. Their state key is `scope:<record id>`, so several scopes can share a node.
+    const emittedScopeIds = new Set(scopeIdByRoot.values());
+    for (const key of sortedKeys(currentScopes)) {
+      const current = currentScopes[key];
+      if (!isDict(current)) continue;
+      const fields = scopeFieldsOf(current);
+      if (fields.projection?.mode !== "observe") continue;
+      const range = fields.projection.range;
+      const root = "root" in range ? range.root : undefined;
+      if (typeof root !== "string" || !isDict(sourceNodes[root])) continue;
+      const suffix = key.startsWith(SCOPE_PREFIX) ? key.slice(SCOPE_PREFIX.length) : "";
+      let id = suffix;
+      if (!id || id === root || emittedScopeIds.has(id)) id = makeId("s_", "scope", `observe:${key}`);
+      const record: Dict = { kind: "scope", id, mapId, rootNodeId: root };
+      copyScopeFields(record, current);
+      record.rev = undefined;
+      const stored = put(record as unknown as ScopeRecord);
+      emittedScopeIds.add(id);
       small.push(stored);
     }
     for (const record of linkRecords) small.push(record);
@@ -928,6 +951,30 @@ export class MapProjector {
       (record.kind === "lock" || record.kind === "grant") && (record as { mapId?: unknown }).mapId === mapId);
     held.sort((a, b) => compareStrings(recordRk(a), recordRk(b)));
     for (const record of held) rest.push(record);
+    // namedSnapshots: an absent property keeps the stored records; a present object is the whole set.
+    if (hasOwn(state, "namedSnapshots")) {
+      const declared = dictOf(state.namedSnapshots);
+      const keep = new Set<string>();
+      for (const key of sortedKeys(declared)) {
+        const item = declared[key];
+        if (!isDict(item) || typeof item.name !== "string" || typeof item.seq !== "number" || typeof item.scopeId !== "string" || typeof item.reason !== "string") {
+          throw new Error("A namedSnapshot record needs name, seq, scopeId and reason.");
+        }
+        const record = { kind: "namedSnapshot", id: key, mapId, name: item.name, seq: item.seq, scopeId: item.scopeId, reason: item.reason, rev: undefined } as unknown as SnapshotRecord;
+        keep.add(recordRk(record));
+        put(record);
+      }
+      for (const [rk, record] of [...out]) {
+        if (record.kind === "namedSnapshot" && (record as { mapId?: unknown }).mapId === mapId && !keep.has(rk)) remove(rk);
+      }
+    } else {
+      for (const record of out.values()) {
+        if (record.kind === "namedSnapshot" && (record as { mapId?: unknown }).mapId === mapId) produced.add(recordRk(record));
+      }
+    }
+    const named = [...out.values()].filter((record) => record.kind === "namedSnapshot" && (record as { mapId?: unknown }).mapId === mapId);
+    named.sort((a, b) => compareStrings(recordRk(a), recordRk(b)));
+    for (const record of named) rest.push(record);
 
     // --- the state the reverse conversion gives ---
     // Everything but the nodes goes through `fromSnapshot` itself.
@@ -1060,6 +1107,13 @@ export class MapProjector {
     }
     return { records: out, delta, replaced, state: nextState as unknown as AppState };
   }
+}
+
+function copyScopeFields(record: Dict, source: Dict): void {
+  const fields = scopeFieldsOf(source);
+  if (fields.band) record.band = fields.band;
+  if (fields.projection) record.projection = fields.projection;
+  if (fields.retention) record.retention = fields.retention;
 }
 
 function sameStrings(left: unknown, right: readonly string[]): boolean {

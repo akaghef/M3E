@@ -84,6 +84,17 @@ export interface MapScope {
   rootNodeIds: string[];
   relationIds: string[];
   primarySurfaceId?: string;
+  /** Absent reads as rapid. A scope with a projection is never deep. */
+  band?: "rapid" | "deep";
+  projection?: {
+    mode: "observe" | "work";
+    from: { scopeId: string } | { relationType: string };
+    range: { root: string; depth?: number } | { entities: string[] };
+    baseSeq?: number;
+    dissolved?: Array<{ parent: string; child: string }>;
+  };
+  /** Absent ms reads as 30 days. */
+  retention?: { ms?: number; bytes?: number };
 }
 
 export interface PenPoint {
@@ -150,6 +161,11 @@ export interface AppState {
     grantedBy: string;
     expiresAt?: string;
   }>;
+  /**
+   * Named portable snapshots, keyed by id. When present, the object is the whole set.
+   * When absent, a save leaves stored named snapshots.
+   */
+  namedSnapshots?: Record<string, { name: string; seq: number; scopeId: string; reason: string }>;
 }
 
 export interface SavedMap {

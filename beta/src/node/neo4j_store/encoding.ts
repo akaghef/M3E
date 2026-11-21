@@ -66,6 +66,7 @@ export const KIND_LABELS: Record<RecordKind, string> = {
   idMap: "IdMap",
   lock: "Lock",
   grant: "Grant",
+  namedSnapshot: "NamedSnapshot",
 };
 
 export const RELATIONSHIP_TYPES = ["SOURCE", "TARGET", "ROOT", "OF", "IN", "ON", "PLACES", "ALIAS_OF", "IN_MAP"] as const;

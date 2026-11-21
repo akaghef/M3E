@@ -40,6 +40,8 @@ export interface ArchiveEntry {
   /** Snapshot format the lines were written under. */
   format: number;
   archivedAt: string;
+  /** Set on a named portable snapshot. Retention and compaction do not delete the file. */
+  retain?: true;
 }
 
 export interface PruneResult {
@@ -267,7 +269,7 @@ export function pruneArchive(
   const retention = options.retentionMs ?? ARCHIVE_RETENTION_MS;
   const now = Date.parse(options.now);
   const entries = readArchive(storeDir, options.now);
-  const due = entries.filter((entry) => Date.parse(entry.archivedAt) + retention <= now);
+  const due = entries.filter((entry) => entry.retain !== true && Date.parse(entry.archivedAt) + retention <= now);
   if (due.length === 0) return { deleted: [], problems: [] };
   const checked = verifySnapshot(snapshotPath, expected);
   const problems = [...checked.problems];

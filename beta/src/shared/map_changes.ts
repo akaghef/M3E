@@ -52,6 +52,10 @@ export interface MapCommand {
   actor: MapCommandActor;
   intent: string;
   provenance?: unknown;
+  /** Written on the journal line when present. Write-back and promotion require one. */
+  reason?: string;
+  /** Required to shorten retention.ms and to delete a namedSnapshot. */
+  confirm?: boolean;
   changes: RecordChange[];
 }
 
@@ -726,7 +730,8 @@ function applyMapField(draft: Draft, change: RecordChange): void {
     return;
   }
   if (boxed || !isBag(draft.state[field])) draft.state[field] = clone(change.after?.value);
-  else assignFields(draft.state[field] as Bag, change.before, change.after);
+  // The field bag is still the caller's until ensure copies it. A refused commit must leave that state unchanged.
+  else assignFields(draft.ensure(field), change.before, change.after);
 }
 
 export function invertChanges(changes: readonly RecordChange[]): RecordChange[] {

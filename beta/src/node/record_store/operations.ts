@@ -1,7 +1,8 @@
-// Commit-time delete, copy, lock and grant checks.
-// Database_Spec 12.7 (OC1–OC4), 12.8 (copy) and 3.2 (lock, grant). OC5 and projection are not here.
+// Commit-time delete, copy, lock, grant, band and projection checks.
+// Database_Spec 12.7 (OC1–OC4), 12.8 (copy), 3.2 (lock, grant) and 12.1–12.4 (band, projection).
 
-import type { AppState, TreeNode } from "../../shared/types";
+import type { AppState, MapScope, TreeNode } from "../../shared/types";
+import { readRetentionMs } from "../../shared/record_model/scope_fields";
 import { recordRk } from "../../shared/record_model/steady";
 import type {
   EdgeConnectionRecord,
@@ -26,8 +27,10 @@ export interface DeleteOptions {
 }
 
 const OC1_NON_ALIAS = "OC1 removes an alias occurrence only. End the entity with OC3 or retract it with OC4.";
-const OC2_PROJECTED = "OC2 on a projected plane records projection.dissolved, which this store does not keep. On the canonical plane, move the node and name the destination parent.";
+const OC2_DESTINATION = "OC2 moves the node. Name the destination parent.";
+const OC2_DISSOLVE = "OC2 on a projected plane records projection.dissolved between the two entities.";
 const OC4_IS_OC1 = "OC4 retracts the entity. This removes an alias occurrence. Remove the occurrence with OC1.";
+const OBSERVE_EDIT = "An observe projection stores no alias or parent edge. Reading it computes the view.";
 
 function fail(message: string): { ok: false; message: string } {
   return { ok: false, message };
@@ -109,6 +112,25 @@ function entityId(state: AppState, nodeId: string, operation: "oc3" | "oc4"): { 
   return { ok: true, id: node.targetNodeId! };
 }
 
+function workPlaneOf(state: AppState, nodeId: string): { key: string; scope: MapScope } | "observe" | null {
+  let at: string | null | undefined = nodeId;
+  const seen = new Set<string>();
+  while (typeof at === "string" && !seen.has(at)) {
+    seen.add(at);
+    const node: TreeNode | undefined = state.nodes[at];
+    if (!node) return null;
+    if (node.nodeType === "folder" || node.parentId === null) {
+      const key = `scope:${at}`;
+      const scope = state.scopes?.[key];
+      if (scope?.projection?.mode === "observe") return "observe";
+      if (scope?.projection?.mode === "work") return { key, scope };
+      return null;
+    }
+    at = node.parentId;
+  }
+  return null;
+}
+
 function moveUnder(state: AppState, nodeId: string, parentId: string): OpResult {
   const node = state.nodes[nodeId];
   const parent = state.nodes[parentId];
@@ -139,7 +161,23 @@ export function applyDelete(state: AppState, operation: DeleteOperation, nodeId:
     return { ok: true };
   }
   if (operation === "oc2") {
-    if (!options.parentId) return fail(OC2_PROJECTED);
+    const plane = workPlaneOf(state, nodeId);
+    if (plane === "observe") return fail(OBSERVE_EDIT);
+    if (plane) {
+      if (!isAliasNode(node) || !node.targetNodeId) return fail(OC2_DISSOLVE);
+      const parent = node.parentId ? state.nodes[node.parentId] : undefined;
+      if (!parent || !isAliasNode(parent) || !parent.targetNodeId) return fail(OC2_DISSOLVE);
+      const projection = plane.scope.projection;
+      if (!projection) return fail(OC2_DISSOLVE);
+      const dissolved = [...(projection.dissolved ?? [])];
+      if (!dissolved.some((pair) => pair.parent === parent.targetNodeId && pair.child === node.targetNodeId)) {
+        dissolved.push({ parent: parent.targetNodeId, child: node.targetNodeId });
+      }
+      plane.scope.projection = { ...projection, dissolved };
+      removeNodes(state, subtree(state.nodes, nodeId));
+      return { ok: true };
+    }
+    if (!options.parentId) return fail(OC2_DESTINATION);
     return moveUnder(state, nodeId, options.parentId);
   }
   if (operation === "oc3") {
@@ -269,6 +307,7 @@ export interface CommitGuardInput {
   actor?: { kind: string; id: string };
   committedAt: string;
   mapId: string;
+  confirm?: boolean;
   ops: readonly RecordOp[];
   before: (rk: string) => SnapshotRecord | undefined;
   preimage: Iterable<SnapshotRecord>;
@@ -354,6 +393,56 @@ export function commitTimeRefusal(input: CommitGuardInput): string | null {
     }
   }
 
+  const scopeAfter = new Map(scopes);
+  const edgeAfter = new Map(edgeByTarget);
+  for (const op of input.ops) {
+    if (op.op === "delete") {
+      const prior = input.before(op.rk);
+      if (prior?.kind === "scope") scopeAfter.delete(prior.id);
+      if (prior?.kind === "connection" && prior.type === "edge") edgeAfter.delete(prior.target);
+      if (prior?.kind === "namedSnapshot" && (input.intent !== "delete-named-snapshot" || input.confirm !== true)) {
+        return "Deleting a namedSnapshot removes its archive mark and needs an explicit confirmed Command.";
+      }
+    } else if (op.record?.kind === "scope" && op.record.mapId === input.mapId) {
+      scopeAfter.set(op.record.id, op.record);
+    } else if (op.record?.kind === "connection" && op.record.type === "edge" && op.record.mapId === input.mapId) {
+      edgeAfter.set(op.record.target, op.record);
+    }
+  }
+  const observeIds = new Set<string>();
+  for (const scope of scopeAfter.values()) if (scope.projection?.mode === "observe") observeIds.add(scope.id);
+  for (const op of input.ops) {
+    const record = op.op === "delete" ? input.before(op.rk) : op.record;
+    if (record?.kind !== "connection" || record.type !== "edge" || !record.scopeId) continue;
+    if (observeIds.has(record.scopeId)) return OBSERVE_EDIT;
+  }
+  for (const scope of scopeAfter.values()) {
+    if (scope.projection && scope.band === "deep") return "A scope with a projection is rapid. It cannot become deep.";
+    const prior = input.before(`scope|${scope.id}`);
+    if (prior?.kind !== "scope") continue;
+    if (prior.band !== scope.band) {
+      if (input.intent !== "set-band" && input.intent !== "promote") return "A scope's band changes only by an explicit Command.";
+      if (scope.band === "deep" && input.intent !== "promote") return "A scope becomes deep by the promotion Command.";
+    }
+    if (readRetentionMs(scope.retention) < readRetentionMs(prior.retention) && input.confirm !== true) {
+      return "Shortening a scope's retention needs an explicit confirmed Command.";
+    }
+  }
+  const deepCreate = new Set(["create-deep", "create-map", "project", "promote", "write-back", "link-entity"]);
+  if (!deepCreate.has(input.intent)) {
+    for (const op of input.ops) {
+      if (op.op !== "put" || op.record?.kind !== "node" || op.record.mapId !== input.mapId) continue;
+      if (input.before(`node|${op.record.id}`)) continue;
+      if (aliasRecord(op.record)) continue;
+      const edge = edgeAfter.get(op.record.id);
+      if (!edge?.scopeId) continue;
+      const scope = scopeAfter.get(edge.scopeId);
+      if (scope?.band !== "deep") continue;
+      if (input.before(`scope|${scope.id}`) === undefined) continue;
+      return "Creating a node in a deep scope must say whether it is a new Deep entity or an existing Deep entity.";
+    }
+  }
+
   if (input.intent !== "oc1" && input.intent !== "oc2" && input.intent !== "oc3" && input.intent !== "oc4") return null;
   const deleted = new Set<string>();
   const putNodes = new Map<string, NodeRecord>();
@@ -384,7 +473,18 @@ export function commitTimeRefusal(input: CommitGuardInput): string | null {
     return null;
   }
   if (input.intent === "oc2") {
-    if (deleted.size > 0) return OC2_PROJECTED;
+    if (deleted.size > 0) {
+      let grew = false;
+      for (const op of input.ops) {
+        if (op.op !== "put" || op.record?.kind !== "scope") continue;
+        const prior = input.before(op.rk);
+        const beforeLen = prior?.kind === "scope" ? prior.projection?.dissolved?.length ?? 0 : 0;
+        const afterLen = op.record.projection?.dissolved?.length ?? 0;
+        if (afterLen > beforeLen) grew = true;
+      }
+      if (!grew || roots.some((id) => !aliasRecord(nodes.get(id)!))) return OC2_DISSOLVE;
+      return null;
+    }
     let moved = false;
     for (const op of input.ops) {
       if (op.op !== "put" || op.record?.kind !== "connection" || op.record.type !== "edge") continue;
@@ -392,7 +492,7 @@ export function commitTimeRefusal(input: CommitGuardInput): string | null {
       if (prior?.kind !== "connection" || prior.type !== "edge") continue;
       if (prior.source !== op.record.source || prior.scopeId !== op.record.scopeId) moved = true;
     }
-    if (!moved) return OC2_PROJECTED;
+    if (!moved) return OC2_DESTINATION;
     return null;
   }
   if (input.intent === "oc3") {

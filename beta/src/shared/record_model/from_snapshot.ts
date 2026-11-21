@@ -3,6 +3,7 @@
 
 import type { AppState, GraphLink, MapAnnotation, MapScope, MapSurface, SurfaceNodeView, TreeNode } from "../types";
 import { recordKeyString } from "./jsonl";
+import { scopeFieldsOf } from "./scope_fields";
 import { EDGE_LABEL_ATTRIBUTE } from "./to_snapshot";
 import {
   compareStrings,
@@ -15,6 +16,7 @@ import {
   type MapRecord,
   type GrantRecord,
   type LockRecord,
+  type NamedSnapshotRecord,
   type NodeRecord,
   type NodeViewRecord,
   type ScopeRecord,
@@ -65,6 +67,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
   const extensionDefs: ExtensionDefRecord[] = [];
   const locks: LockRecord[] = [];
   const grants: GrantRecord[] = [];
+  const namedSnapshots: NamedSnapshotRecord[] = [];
   for (const record of records) {
     switch (record.kind) {
       case "snapshot": workspaceId = record.workspaceId; break;
@@ -83,6 +86,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
       case "extensionDef": extensionDefs.push(record); break;
       case "lock": locks.push(record); break;
       case "grant": grants.push(record); break;
+      case "namedSnapshot": namedSnapshots.push(record); break;
       default: break; // seeded records and idMap carry nothing of the current shape
     }
   }
@@ -95,6 +99,7 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
   const surfacesByMap = group(surfaces);
   const viewsByMap = group(nodeViews);
   const annotationsByMap = group(annotations);
+  const namedByMap = group(namedSnapshots);
   const byId = (a: { id: string }, b: { id: string }): number => compareStrings(a.id, b.id);
 
   const rows: RestoredRow[] = [];
@@ -102,9 +107,14 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
     const mapId = map.id;
     const mapScopes = [...(scopesByMap.get(mapId) ?? [])].sort(byId);
     const scopeRootById = new Map(mapScopes.map((scope) => [scope.id, scope.rootNodeId]));
-    const scopeRoots = new Set(scopeRootById.values());
+    // Observe projections are not folders and must not take the scope id of a root they share.
+    const scopeRoots = new Set<string>();
     const scopeIdOfRoot = new Map<string, string>();
-    for (const scope of mapScopes) if (!scopeIdOfRoot.has(scope.rootNodeId)) scopeIdOfRoot.set(scope.rootNodeId, scope.id);
+    for (const scope of mapScopes) {
+      if (scope.projection?.mode === "observe") continue;
+      scopeRoots.add(scope.rootNodeId);
+      if (!scopeIdOfRoot.has(scope.rootNodeId)) scopeIdOfRoot.set(scope.rootNodeId, scope.id);
+    }
 
     // tree: parent and ordered children come from the edges
     const incoming = new Map<string, EdgeConnectionRecord>();
@@ -190,7 +200,8 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
 
     const stateScopes: Record<string, MapScope> = {};
     for (const record of mapScopes) {
-      const id = `scope:${record.rootNodeId}`;
+      const observe = record.projection?.mode === "observe";
+      const id = observe ? `scope:${record.id}` : `scope:${record.rootNodeId}`;
       const scope: MapScope = {
         id,
         label: stateNodes[record.rootNodeId]?.text ?? "",
@@ -198,9 +209,19 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
         relationIds: [],
       };
       if (record.primarySurfaceId !== undefined) scope.primarySurfaceId = record.primarySurfaceId;
+      const fields = scopeFieldsOf(record);
+      if (fields.band) scope.band = fields.band;
+      if (fields.projection) scope.projection = fields.projection;
+      if (fields.retention) scope.retention = fields.retention;
       stateScopes[id] = scope;
     }
     if (Object.keys(stateScopes).length > 0) state.scopes = stateScopes;
+
+    const stateNamed: NonNullable<AppState["namedSnapshots"]> = {};
+    for (const record of [...(namedByMap.get(mapId) ?? [])].sort(byId)) {
+      stateNamed[record.id] = { name: record.name, seq: record.seq, scopeId: record.scopeId, reason: record.reason };
+    }
+    if (Object.keys(stateNamed).length > 0) state.namedSnapshots = stateNamed;
 
     const viewsBySurface = new Map<string, Record<string, SurfaceNodeView>>();
     for (const view of viewsByMap.get(mapId) ?? []) {

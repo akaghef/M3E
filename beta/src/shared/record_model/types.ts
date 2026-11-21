@@ -128,6 +128,23 @@ export interface GraphLinkConnectionRecord {
 
 export type ConnectionRecord = EdgeConnectionRecord | GraphLinkConnectionRecord;
 
+export type ScopeBand = "rapid" | "deep";
+
+export interface ScopeProjection {
+  mode: "observe" | "work";
+  from: { scopeId: string } | { relationType: string };
+  range: { root: string; depth?: number } | { entities: string[] };
+  /** Work mode only: the commit that created the projection, then the last write-back. */
+  baseSeq?: number;
+  /** Entity pairs dissolved on a work plane (OC2). Omitted when empty. */
+  dissolved?: Array<{ parent: string; child: string }>;
+}
+
+export interface ScopeRetention {
+  ms?: number;
+  bytes?: number;
+}
+
 export interface ScopeRecord {
   kind: "scope";
   id: string;
@@ -136,6 +153,11 @@ export interface ScopeRecord {
   /** Own name; when absent the scope is named by its root node's label (DA61). */
   label?: string;
   primarySurfaceId?: string;
+  /** Absent reads as rapid. A scope with a projection is never deep. */
+  band?: ScopeBand;
+  projection?: ScopeProjection;
+  /** Absent ms reads as 30 days. */
+  retention?: ScopeRetention;
   rev: number;
 }
 
@@ -304,6 +326,21 @@ export interface GrantRecord {
   rev: number;
 }
 
+/**
+ * A portable snapshot kept by name. `mapId` is not in the field list of Database_Spec 3.1;
+ * the record is map-owned, so the store keeps it. Deleting the record clears the archive mark.
+ */
+export interface NamedSnapshotRecord {
+  kind: "namedSnapshot";
+  id: string;
+  mapId: string;
+  name: string;
+  seq: number;
+  scopeId: string;
+  reason: string;
+  rev: number;
+}
+
 export type SnapshotRecord =
   | SnapshotHeader
   | MapRecord
@@ -322,7 +359,8 @@ export type SnapshotRecord =
   | CommitRecord
   | IdMapRecord
   | LockRecord
-  | GrantRecord;
+  | GrantRecord
+  | NamedSnapshotRecord;
 
 export type RecordKind = SnapshotRecord["kind"];
 
@@ -389,6 +427,8 @@ export function recordKeyParts(record: SnapshotRecord): string[] {
     case "lock":
       return [record.target];
     case "grant":
+      return [record.id];
+    case "namedSnapshot":
       return [record.id];
   }
 }

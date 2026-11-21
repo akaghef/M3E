@@ -49,6 +49,114 @@
 
 ## 記録
 
+### 2026-11-22 scope ごとの履歴は、共有の journal を切らない
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: format2-requirements.md R4.14・R4.15・15 節、DB 仕様書 6 節、`beta/src/node/record_store/store.ts` の `pruneArchive`
+- 中身: `retention.ms` が無い scope は、短縮の比較では 30 日（2,592,000,000 ミリ秒）として読む。archive の削除は 90 日のままである。明示した `retention.ms` は、その 90 日より長いときだけ削除までの期間を延ばす。短い明示値は、確認つきの Command で欄に保存するが、その窓より古い履歴を journal から切らない。journal は workspace に一本で、scope ごとに切れない。欄の無い scope を 30 日で消すことはしない。
+- 根拠: `pruneArchive` は指定と、scope が明示した `retention.ms` の最長との大きい方を使う。明示が無ければ 0 を返し、90 日を縮めない。`record_store_bands.test.ts` で、40 日の明示は 90 日削除を縮めず、200 日の明示は 90 日では消さず 200 日で消す。
+- 扱い: 未対応
+
+### 2026-11-22 retention.bytes は保存するだけで、削除に使わない
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: DB 仕様書 6 節、format2-requirements.md 14 節 U14.4（容量に何を含めるか）
+- 中身: scope の `retention.bytes` は record に保存し、snapshot の書き出しと replay と Neo4j の往復で残る。何を容量として数えるかは未決なので、byte 数での削除はしない。
+- 根拠: U14.4 を読んだ。`longestExplicitRetentionMs` は `ms` だけを見る。
+- 扱い: 未対応
+
+### 2026-11-22 短縮した保持期間は、子の scope へ継承しない
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: format2-requirements.md 14 節 U14.4（継承による保持期間の短縮）、sync-requirements.md R8.4
+- 中身: 短縮の継承は未決である。store は、各 scope が明示した `retention.ms` のうち最長のものだけを使い、それを 90 日の削除より延ばすためにだけ使う。子の scope が祖先の短い期間を受け継ぐことはしない。
+- 根拠: U14.4 を読んだ。`pruneArchive` は scope の木を辿らない。
+- 扱い: 未対応
+
+### 2026-11-22 crypto-shredding の消去単位は置かない
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: format2-requirements.md 14 節 U14.4（crypto-shredding の消去単位）
+- 中身: 消去単位、鍵の共有、鍵の backup、offline 復元の条件は未決である。保持期間の実装は archive の file の期限と印だけを扱い、crypto-shredding はしない。
+- 根拠: U14.4 を読んだ。record store に鍵の単位は無い。
+- 扱い: 未対応
+
+### 2026-11-22 書き戻しの CONFLICT は Command 全体を拒否する
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: DB 仕様書 12.7 節、format2-requirements.md の一つの Command は原子であるという決定
+- 中身: 12.7 節は、ロックされた実体の書き戻し項目を拒否し、他の項目は確定する、と書く。一つの Command を原子にする決定と食い違い、15 節はこの食い違いを解いていない。実装は、baseSeq より後の変更もロックも、一件でも CONFLICT なら Command 全体を拒否する。他の項目だけを確定することはしない。
+- 根拠: `planWriteBack` は検査をすべて終えてから変更する。`record_store_bands.test.ts` は、CONFLICT のあと面の編集が残り、baseSeq が進まないことを確かめる。
+- 扱い: 未対応
+
+### 2026-11-22 昇格は、scope の一部の node を rapid のまま残すことができない
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: sync-requirements.md R8.6、`beta/src/node/record_store/bands.ts` の `planPromote`
+- 中身: 昇格は rapid の scope からだけ行い、各 node に新しい Deep entity か既存の対象かを要する。`hold` は、一つの deep の scope の中に昇格しない node を残すことができないので、確定しない。
+- 根拠: `planPromote` は `hold` を拒否する。`record_store_bands.test.ts` がその拒否を確かめる。
+- 扱い: 未対応
+
+### 2026-11-22 射影の面上の alias でない node を、scope を分けて Deep に置けない
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: format2-requirements.md R7.9、DB 仕様書 12.4 節
+- 中身: 書き戻しで `new`、`hold`、指定なしの alias でない node は、体系側を変えず、scope の band も変えない。射影を持つ scope は deep になれない。その node を Deep に置くための scope の分割はしない。node はその面の rapid のまま残る。
+- 根拠: `planWriteBack` はそれらの選択で体系側の node を作らない。射影と deep の同時指定は確定時に拒否する。
+- 扱い: 未対応
+
+### 2026-11-22 観測用の面の畳みは Surface View に保存しない
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: format2-requirements.md R7.8、DB 仕様書 12.3 節
+- 中身: 観測用の面は scope と projection だけを保存し、読むときに木を求める。畳んだ状態は実体の ID を鍵に Surface View へ置く、と決まっている。`readProjection` は木を返すだけで、畳みを保存しない。Surface View の欄は足していない。
+- 根拠: `readProjectionView` の observe 分岐を読んだ。scope の record に畳みの欄は無い。
+- 扱い: 未対応
+
+### 2026-11-22 面の中の木のエンジンは足していない
+
+- 種類: 気づき
+- 書いた agent: format 2 の band と射影の session
+- 対象: format2-requirements.md 14 節 U14.1、DB 仕様書 12.5 節
+- 中身: 面の中を扱う木のエンジンは、計測するまで要件ではない。射影は、store がすでに持つ parent edge の木を歩く。
+- 根拠: U14.1 を読んだ。`collectPlane` は parent edge を辿る。
+- 扱い: 未対応
+
+### 2026-11-22 namedSnapshot は map に属するので mapId を持つ
+
+- 種類: 気づき
+- 書いた agent: format 2 の band と射影の session
+- 対象: DB 仕様書 3.1 節、`beta/src/shared/record_model/types.ts` の namedSnapshot
+- 中身: namedSnapshot の record は map に属する。store は `mapId` を持つ。DB 仕様書 3.1 節の欄の一覧には `mapId` が無い。3.1 節のレコードの一覧に namedSnapshot、scope の band、node の valid がまだ載っていない件は、仕様の書き手への依頼のままである。仕様書は変えていない。
+- 根拠: projector が namedSnapshot に mapId を付け、`record_store_bands.test.ts` の replay が `mapId` の往復を確かめる。
+- 扱い: 実装で解消（この commit。record は mapId を持つ。仕様書の一覧は書き手へ残す）
+
+### 2026-11-22 拒否した map-field の更新が、呼び出し側の state を変えていた
+
+- 種類: 問題
+- 書いた agent: format 2 の band と射影の session
+- 対象: `beta/src/shared/map_changes.ts` の `applyMapField`
+- 中身: map-field の更新は、呼び出し側と共有した bag に直接書いていた。namedSnapshot の削除を確認なしで拒否したあと、warm state からその record が消えたままになり、次の削除は見つからない。更新の前に bag をコピーする。
+- 根拠: `record_store_bands.test.ts` の namedSnapshot の試験が、拒否のあと確認つきの削除で印を外せる。
+- 扱い: 実装で解消（この commit）
+
+### 2026-11-22 射影と書き戻しは、新しい道具ではなく既存の道具の引数で受ける
+
+- 種類: 気づき
+- 書いた agent: format 2 の band と射影の session
+- 対象: `beta/src/node/mcp_server.ts`、`beta/src/node/mcp_service.ts`
+- 中身: 既存の道具の schema は未知の引数を拒む。射影、書き戻し、既存の Deep entity への結び、band の変更、昇格、namedSnapshot の作成と削除は、`m3e_update` の kind と引数で受ける。Deep の scope で node を作るときの「新しい実体か既存の対象か」は `m3e_create` の `deep` で受ける。新しい道具は足していない。
+- 根拠: `mcp_server.ts` の schema と `record_store_bands.test.ts` の MCP の試験。
+- 扱い: 実装で解消（この commit）
+
 ### 2026-11-22 m3e:target を出す欄が node に無い
 
 - 種類: 仕様の穴
@@ -83,7 +191,7 @@
 - 対象: DB 仕様書 12.7 節、`beta/src/node/record_store/operations.ts`
 - 中身: OC2 は、実体を置く面上では行き先の親を指定した移動である。射影の面上では `projection.dissolved` を記録する。scope にその欄が無く、射影はこの作業に含まれない。node を消す OC2 は拒否し、実体を置く面上の移動を案内する。
 - 根拠: DB 仕様書 12.7 節と `ScopeRecord` の欄を読んだ。
-- 扱い: 未対応
+- 扱い: 実装で解消（この commit。射影の面上の OC2 は projection.dissolved に親子を足し、alias の部分木を面から外す）
 
 ### 2026-11-22 「正本」が少なくとも五つの意味で使われていて、どの写しに対する優先かが文書ごとに違う
 
@@ -110,7 +218,7 @@
 - 対象: DB 仕様書 12.1〜12.4・12.6〜12.8 節、`docs/04_Architecture/Multi_Select.md`
 - 中身: akaghef が 2026-11-22 に、未決をすべて案のとおりに決めた（発言は「Neo4j 化について作業を進める」session で受けた）。12 節で決定になったもの: 射影と書き戻しの形（scope の `projection` の欄 `mode`・`from`・`range`・`baseSeq`・`dissolved`）、観測用のフィルタの面は alias と parent edge のレコードを保存しない、既存の Deep entity に結ぶことは node を alias に変えて表す、名前付きの snapshot はレコードの種類 `namedSnapshot` と削減の対象から外した archive の file で持つ、作業の面は書き戻した後も残す、消す操作を四つ（面から外す、関係を解く、実体を終える、実体を取り消す）に分け、面を移す操作は今は置かない、実体を終えた状態は node の有効期間（`valid.from`・`valid.to`）で持つ、実体を取り消すと他の面の alias は `broken` で残る、コピーは同一性と範囲などの軸で定義し、範囲の中の alias は省いたとき alias のまま写す。案が無かった項目は、12 節の書き手が選んだ: scope に帯域の欄 `band` を置く（射影で作った面は必ず `rapid`）、有効期間の欄の形、`namedSnapshot` の欄の形。面の中を扱う木のエンジン（12.5 節）は、計測してから決めるので、提案のままである。語の組（facet、「正本の面」という言い方）と、鍵やメニューへの割り当ては、保留である。
 - 根拠: 「Neo4j 化について作業を進める」session の記録で、akaghef の 2026-11-22 の発言（すべて案のとおりに要件をまとめる）を読んだ。実装のコードは、この件では読み直していない。
-- 扱い: 仕様へ反映（DB 仕様書 12 節）。record store は OC1–OC4、node の valid.from / valid.to、Command のコピー（範囲の中の alias は alias のまま、来歴は node の copyOf）を持つ。射影、書き戻し、namedSnapshot、scope の band、OC5 は未対応。3.1 節のレコードの一覧に、namedSnapshot、scope の band、node の valid は、まだ載っていない（3 節の書き手へ依頼）
+- 扱い: 仕様へ反映（DB 仕様書 12 節）。record store は OC1–OC4、node の valid.from / valid.to、Command のコピー（範囲の中の alias は alias のまま、来歴は node の copyOf）を持つ。scope の band、射影、書き戻し、namedSnapshot は実装で解消（この commit。射影の面、書き戻し、昇格、既存の Deep entity への結び、名前付きの portable snapshot の印）。OC5 は未対応。3.1 節のレコードの一覧に、namedSnapshot、scope の band、node の valid は、まだ載っていない（3 節の書き手へ依頼）
 
 ### 2026-11-22 Rapid と Deep、昇格、射影のモードの決定を、DB 仕様書 12 節に反映した。保存の形で決めることが三つ出た
 

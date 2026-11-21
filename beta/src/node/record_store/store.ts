@@ -23,9 +23,21 @@ import { fromSnapshot } from "../../shared/record_model/from_snapshot";
 import { checkInvariants, type InvariantProblem } from "../../shared/record_model/invariants";
 import { parseSnapshot, recordKeyString, serializeSnapshot, sortRecords } from "../../shared/record_model/jsonl";
 import { MapProjector, recordRk, sameJson, type ProjectionResult } from "../../shared/record_model/steady";
-import { compareStrings, type CommitRecord, type ExtensionDefRecord, type IdMapRecord, type MapRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
-import type { AppState } from "../../shared/types";
+import { compareStrings, type CommitRecord, type ExtensionDefRecord, type IdMapRecord, type MapRecord, type ScopeRecord, type SnapshotHeader, type SnapshotRecord, type SnapshotRow } from "../../shared/record_model/types";
+import type { AppState, TreeNode } from "../../shared/types";
 import { applyChangesReduced } from "./apply_reduced";
+import {
+  planDeleteNamedSnapshot,
+  planLink,
+  planNamedSnapshot,
+  planProject,
+  planPromote,
+  planSetBand,
+  planWriteBack,
+  readProjectionView,
+  type NodeChoice,
+  type OccurrenceView,
+} from "./bands";
 import {
   ALIAS_KINDS,
   aliasId,
@@ -42,6 +54,7 @@ import {
   type IntroducedIds,
 } from "./id_alias";
 import {
+  ARCHIVE_RETENTION_MS,
   archiveFile,
   archiveDir,
   fsyncDir,
@@ -161,6 +174,8 @@ export interface JournalLine {
   /** Set on the commits that delete or rename a map, or change only its row columns (tags, archived, pinned, source). */
   mapOp?: "delete" | "rename" | "columns";
   newMapId?: string;
+  /** Reason carried by a promotion or a write-back. */
+  reason?: string;
   ops: RecordOp[];
   /** Records whose canonical value the commit changed, with the kinds of change; derived by the store. */
   touched?: TouchedRecord[];
@@ -767,7 +782,14 @@ export class RecordWorkspaceStore {
     } catch (error) {
       return this.failure("INVALID_COMMAND", this.currentOf(entry), (error as Error).message);
     }
-    const meta = { commandId: command.commandId, intent: command.intent, actor: command.actor, provenance };
+    const meta = {
+      commandId: command.commandId,
+      intent: command.intent,
+      actor: command.actor,
+      provenance,
+      reason: typeof command.reason === "string" ? command.reason : undefined,
+      confirm: command.confirm === true,
+    };
     // The client names records by its own ids; the store may hold some of them under another id.
     const plan = this.planAliases(entry, mapId, idsCreatedBy(changes));
     if (plan === null) return this.commitChanges(mapId, entry, changes, issuer, meta);
@@ -881,6 +903,190 @@ export class RecordWorkspaceStore {
   }
 
   /**
+   * One Command. Work mode creates a scope, one alias per entity in the range and the parent
+   * edges between those aliases. Observe mode stores only the scope.
+   */
+  project(mapId: string, issuer: string, input: {
+    commandId?: string;
+    mode: "observe" | "work";
+    scopeKey?: string;
+    relationType?: string;
+    root?: string;
+    entities?: string[];
+    depth?: number;
+    parentId?: string;
+    label?: string;
+  }): CommitResult {
+    const entry = this.maps.get(mapId);
+    if (!entry) return this.failure("NOT_FOUND", null);
+    const warm = this.warm(entry);
+    let source: ScopeRecord | undefined;
+    if (!input.relationType) {
+      const token = input.scopeKey ?? this.planeKeyOf(warm.state, input.root);
+      if (!token) return this.failure("INVALID_COMMAND", this.currentOf(entry), "A plane projection names the source scope.");
+      source = this.scopeByToken(entry, token);
+      if (!source) return this.failure("NOT_FOUND", this.currentOf(entry), "The source scope does not exist.");
+    }
+    const commandId = input.commandId ?? `project:${randomUUID()}`;
+    const reads = input.relationType ? this.readsOf(input.relationType) : undefined;
+    return this.commitPlanned(mapId, issuer, "project", (state) => planProject(state, {
+      commandId,
+      mode: input.mode,
+      workspaceId: this.workspaceId,
+      mapId,
+      seq: this.currentSeq + 1,
+      sourceScopeId: source?.id,
+      scopeRootId: source?.rootNodeId,
+      relationType: input.relationType,
+      reads,
+      root: input.root,
+      entities: input.entities,
+      depth: input.depth,
+      parentId: input.parentId,
+      label: input.label,
+    }), { commandId });
+  }
+
+  /** Diffs a work plane against `projection.baseSeq` and applies the write-back table in one Command. */
+  writeBack(mapId: string, issuer: string, input: {
+    commandId?: string;
+    scopeKey: string;
+    reason: string;
+    name?: string;
+    nodes?: Record<string, NodeChoice>;
+  }): CommitResult {
+    const entry = this.maps.get(mapId);
+    if (!entry) return this.failure("NOT_FOUND", null);
+    const scope = this.scopeFor(entry, input.scopeKey);
+    if (!scope?.projection) return this.failure("NOT_FOUND", this.currentOf(entry), "This scope has no projection.");
+    if (scope.projection.mode !== "work" || scope.projection.baseSeq === undefined) {
+      return this.failure("INVALID_COMMAND", this.currentOf(entry), "Write-back applies to a work projection.");
+    }
+    const base = this.stateAt(mapId, scope.projection.baseSeq);
+    if (!base) return this.failure("INVALID_COMMAND", this.currentOf(entry), "The projection base cannot be read.");
+    const commandId = input.commandId ?? `write-back:${randomUUID()}`;
+    const from = scope.projection.from;
+    const homeRootId = "scopeId" in from ? this.scopeRootOf(entry, from.scopeId) : undefined;
+    const reads = "relationType" in from ? this.readsOf(from.relationType) : undefined;
+    const stateKey = `scope:${scope.rootNodeId}`;
+    return this.commitPlanned(mapId, issuer, "write-back", (state) => planWriteBack(state, base, {
+      commandId,
+      workspaceId: this.workspaceId,
+      mapId,
+      seq: this.currentSeq + 1,
+      scopeKey: stateKey,
+      reason: input.reason,
+      name: input.name,
+      nodes: input.nodes,
+      reads,
+      homeRootId,
+      scopeRecordId: scope.id,
+    }), { commandId, reason: input.reason });
+  }
+
+  /** Turns a node into an alias of an existing entity. No binding record. */
+  linkToEntity(mapId: string, issuer: string, input: { commandId?: string; nodeId: string; targetId?: string; unlink?: boolean }): CommitResult {
+    const commandId = input.commandId ?? `link-entity:${randomUUID()}`;
+    return this.commitPlanned(mapId, issuer, "link-entity", (state) => planLink(state, input.nodeId, input.targetId, input.unlink === true), { commandId });
+  }
+
+  /**
+   * Sets band to rapid, or retention. Deep is refused: a scope becomes deep by promotion.
+   * Shortening retention.ms needs `confirm`.
+   */
+  setBand(mapId: string, issuer: string, input: {
+    commandId?: string;
+    scopeKey: string;
+    band?: "rapid" | "deep";
+    retentionMs?: number;
+    retentionBytes?: number;
+    confirm?: boolean;
+  }): CommitResult {
+    const entry = this.maps.get(mapId);
+    if (!entry) return this.failure("NOT_FOUND", null);
+    const scope = this.scopeFor(entry, input.scopeKey);
+    if (!scope) return this.failure("NOT_FOUND", this.currentOf(entry), "The scope does not exist.");
+    const commandId = input.commandId ?? `set-band:${randomUUID()}`;
+    const stateKey = scope.projection?.mode === "observe" ? `scope:${scope.id}` : `scope:${scope.rootNodeId}`;
+    return this.commitPlanned(mapId, issuer, "set-band", (state) => planSetBand(state, stateKey, input.band, input.retentionMs, input.retentionBytes), {
+      commandId,
+      confirm: input.confirm,
+    });
+  }
+
+  /** Promotes a rapid scope. Every node needs `new` or an existing entity. A committed promotion writes a namedSnapshot. */
+  promote(mapId: string, issuer: string, input: {
+    commandId?: string;
+    scopeKey: string;
+    nodes: Record<string, NodeChoice>;
+    reason?: string;
+  }): CommitResult {
+    const entry = this.maps.get(mapId);
+    if (!entry) return this.failure("NOT_FOUND", null);
+    const scope = this.scopeFor(entry, input.scopeKey);
+    if (!scope) return this.failure("NOT_FOUND", this.currentOf(entry), "The scope does not exist.");
+    const commandId = input.commandId ?? `promote:${randomUUID()}`;
+    const reason = input.reason?.trim() ? input.reason : "promotion";
+    const stateKey = `scope:${scope.rootNodeId}`;
+    return this.commitPlanned(mapId, issuer, "promote", (state) => planPromote(state, {
+      scopeKey: stateKey,
+      nodes: input.nodes,
+      reason,
+      workspaceId: this.workspaceId,
+      mapId,
+      commandId,
+      seq: this.currentSeq + 1,
+      scopeRecordId: scope.id,
+    }), { commandId, reason });
+  }
+
+  /** Writes a portable snapshot at the commit seq and marks it so retention and compaction keep the file. */
+  createNamedSnapshot(mapId: string, issuer: string, input: { commandId?: string; scopeKey: string; name: string; reason: string; id?: string }): CommitResult {
+    const entry = this.maps.get(mapId);
+    if (!entry) return this.failure("NOT_FOUND", null);
+    const scope = this.scopeFor(entry, input.scopeKey);
+    if (!scope) return this.failure("NOT_FOUND", this.currentOf(entry), "The scope does not exist.");
+    const commandId = input.commandId ?? `named-snapshot:${randomUUID()}`;
+    return this.commitPlanned(mapId, issuer, "named-snapshot", (state) => planNamedSnapshot(state, {
+      id: input.id,
+      name: input.name,
+      seq: this.currentSeq + 1,
+      scopeRecordId: scope.id,
+      reason: input.reason,
+      workspaceId: this.workspaceId,
+      mapId,
+      commandId,
+    }), { commandId, reason: input.reason });
+  }
+
+  /** Deletes the namedSnapshot record. `confirm` is required; the archive file loses its keep-mark. */
+  deleteNamedSnapshot(mapId: string, issuer: string, input: { commandId?: string; id: string; confirm?: boolean }): CommitResult {
+    const commandId = input.commandId ?? `delete-named-snapshot:${randomUUID()}`;
+    return this.commitPlanned(mapId, issuer, "delete-named-snapshot", (state) => planDeleteNamedSnapshot(state, input.id), {
+      commandId,
+      confirm: input.confirm === true,
+    });
+  }
+
+  /** Occurrences of a projection. Observe mode is computed; work mode is the aliases on the plane. */
+  readProjection(mapId: string, scopeKey: string): { ok: true; occurrences: OccurrenceView[] } | { ok: false; code: "NOT_FOUND" | "INVALID_COMMAND"; message: string } {
+    this.assertOpen();
+    const entry = this.maps.get(mapId);
+    if (!entry) return { ok: false, code: "NOT_FOUND", message: "The map does not exist." };
+    const scope = this.scopeFor(entry, scopeKey);
+    if (!scope?.projection) return { ok: false, code: "NOT_FOUND", message: "This scope has no projection." };
+    const warm = this.warm(entry);
+    const stateKey = scope.projection.mode === "observe" ? `scope:${scope.id}` : `scope:${scope.rootNodeId}`;
+    const view = warm.state.scopes?.[stateKey];
+    if (!view) return { ok: false, code: "NOT_FOUND", message: "This scope has no projection." };
+    const from = scope.projection.from;
+    const scopeRootId = "scopeId" in from ? this.scopeRootOf(entry, from.scopeId) : undefined;
+    const reads = "relationType" in from ? this.readsOf(from.relationType) : undefined;
+    const read = readProjectionView(warm.state, view, { scopeRootId, reads });
+    return read.ok ? read : { ok: false, code: "INVALID_COMMAND", message: read.message };
+  }
+
+  /**
    * Writes a new snapshot from memory and starts an empty journal. Nothing is discarded: the
    * journal file and the snapshot it replaces go into `archive/` first (journal_archive.ts). The
    * last commit of each map, the command ids and the new snapshot's checksum go to
@@ -912,8 +1118,14 @@ export class RecordWorkspaceStore {
       added.push({ file: name, kind: "snapshot", fromSeq: this.snapshotSeq, toSeq: this.snapshotSeq, format: this.snapshotFormat, archivedAt: now });
     }
     if (added.length > 0) {
+      const prior = new Map(archived.map((entry) => [entry.file, entry]));
       const names = new Set(added.map((entry) => entry.file));
-      writeArchiveIndex(this.dir, [...archived.filter((entry) => !names.has(entry.file)), ...added]);
+      const merged = added.map((entry) => {
+        const old = prior.get(entry.file);
+        if (old?.retain === true) return { ...entry, retain: true as const, archivedAt: old.archivedAt };
+        return entry;
+      });
+      writeArchiveIndex(this.dir, [...archived.filter((entry) => !names.has(entry.file)), ...merged]);
     }
 
     const content = serializeSnapshot([this.header(), ...this.all.values()]);
@@ -937,9 +1149,13 @@ export class RecordWorkspaceStore {
    */
   pruneArchive(options: { now?: string; retentionMs?: number } = {}): PruneResult {
     this.assertOpen();
+    // The 30-day default is not a deletion floor. An explicit scope window can only lengthen the 90-day pass.
+    // A shared journal segment cannot be cut per scope; bytes and inheritance stay undecided.
+    const requested = options.retentionMs ?? ARCHIVE_RETENTION_MS;
+    const retentionMs = Math.max(requested, this.longestExplicitRetentionMs());
     return pruneArchive(this.dir, path.join(this.dir, SNAPSHOT_FILE), this.snapshotSum, {
       now: options.now ?? this.now(),
-      retentionMs: options.retentionMs,
+      retentionMs,
     });
   }
 
@@ -1309,7 +1525,7 @@ export class RecordWorkspaceStore {
     entry: MapEntry | undefined,
     changes: RecordChange[],
     issuer: string,
-    meta: { commandId: string; intent: string; actor?: MapCommand["actor"]; provenance?: Provenance },
+    meta: { commandId: string; intent: string; actor?: MapCommand["actor"]; provenance?: Provenance; reason?: string; confirm?: boolean },
     /**
      * `changes` use stored ids. `aliases`: the `idMap` records this commit adds. `sent`: the
      * changes with the ids the client used, kept in the journal in place of `changes`.
@@ -1427,6 +1643,7 @@ export class RecordWorkspaceStore {
       actor: meta.actor,
       committedAt,
       mapId,
+      confirm: meta.confirm,
       ops,
       before: (rk) => this.all.get(rk),
       preimage: this.all.values(),
@@ -1439,6 +1656,7 @@ export class RecordWorkspaceStore {
     const line = { seq, commandId: meta.commandId, issuer, committedAt, mapId, intent: meta.intent } as JournalLine;
     if (meta.actor !== undefined) line.actor = meta.actor;
     if (meta.provenance !== undefined) line.provenance = meta.provenance;
+    if (meta.reason !== undefined && meta.reason !== "") line.reason = meta.reason;
     // The journal keeps a Command's changes as the client sent them: a repeated command id is
     // compared with them, and a reader of the committed Command gets its own ids back.
     line.changes = translated?.sent ?? changes;
@@ -1469,6 +1687,7 @@ export class RecordWorkspaceStore {
       validationErrors,
       problems: problemKeys,
     };
+    this.noteNamedSnapshots(result.replaced);
     return { ok: true, savedAt: committedAt, seq, replayed: false };
   }
 
@@ -1613,6 +1832,214 @@ export class RecordWorkspaceStore {
       }
       entry.warm = undefined;
     }
+  }
+
+  /** Clones the map, applies one planner, and commits the difference as one Command. */
+  private commitPlanned(
+    mapId: string,
+    issuer: string,
+    intent: string,
+    mutate: (state: AppState) => { ok: true } | { ok: false; code: "INVALID_COMMAND" | "CONFLICT" | "NOT_FOUND"; message: string },
+    options: { commandId: string; reason?: string; confirm?: boolean },
+  ): CommitResult {
+    this.assertOpen();
+    if (this.engineTooFarBehind()) return this.engineBehind();
+    const entry = this.maps.get(mapId);
+    if (!entry) return this.failure("NOT_FOUND", null);
+    const warm = this.warm(entry);
+    const next = jsonClone(warm.state);
+    const planned = mutate(next);
+    if (!planned.ok) return this.failure(planned.code, this.currentOf(entry), planned.message);
+    const changes = diffState(warm.state, next);
+    if (changes.length === 0) {
+      return { ok: true, savedAt: this.savedAtOf(entry), seq: this.mapSeq.get(mapId) ?? this.currentSeq, replayed: false };
+    }
+    return this.commitMapCommand(mapId, {
+      commandId: options.commandId,
+      intent,
+      actor: { kind: "system", id: issuer },
+      changes,
+      reason: options.reason,
+      confirm: options.confirm,
+    }, issuer);
+  }
+
+  /** State key of the scope that contains `nodeId`: a folder, or the map root. */
+  private planeKeyOf(state: AppState, nodeId: string | undefined): string | undefined {
+    if (!nodeId) return undefined;
+    let at: string | null | undefined = nodeId;
+    const seen = new Set<string>();
+    while (typeof at === "string" && !seen.has(at)) {
+      seen.add(at);
+      const node: TreeNode | undefined = state.nodes[at];
+      if (!node) return undefined;
+      if (node.nodeType === "folder" || node.parentId === null) return `scope:${at}`;
+      at = node.parentId;
+    }
+    return undefined;
+  }
+
+  /** Resolves a scope, walking from a node up to the folder or map root when the token is not itself a scope. */
+  private scopeFor(entry: MapEntry, token: string): ScopeRecord | undefined {
+    const found = this.scopeByToken(entry, token);
+    if (found) return found;
+    const raw = token.startsWith("scope:") ? token.slice("scope:".length) : token;
+    const plane = this.planeKeyOf(this.warm(entry).state, raw);
+    return plane ? this.scopeByToken(entry, plane) : undefined;
+  }
+
+  /** A scope record by id, state key, or root node. An observe scope does not win a root-node lookup. */
+  private scopeByToken(entry: MapEntry, token: string): ScopeRecord | undefined {
+    const raw = token.startsWith("scope:") ? token.slice("scope:".length) : token;
+    const exact = entry.records.get(`scope|${raw}`);
+    if (exact?.kind === "scope") return exact;
+    let byRoot: ScopeRecord | undefined;
+    for (const record of entry.records.values()) {
+      if (record.kind !== "scope") continue;
+      if (record.id === raw) return record;
+      if (record.projection?.mode === "observe") continue;
+      if (record.rootNodeId === raw && !byRoot) byRoot = record;
+    }
+    return byRoot;
+  }
+
+  private scopeRootOf(entry: MapEntry, scopeId: string): string | undefined {
+    const record = entry.records.get(`scope|${scopeId}`);
+    return record?.kind === "scope" ? record.rootNodeId : undefined;
+  }
+
+  private readsOf(name: string): "source-to-target" | "target-to-source" {
+    for (const record of this.all.values()) {
+      if (record.kind === "relationTypeDef" && record.name === name) return record.reads;
+    }
+    return "source-to-target";
+  }
+
+  /** Map state as of `seq`. The current seq is memory; an older seq is snapshot plus journal. */
+  private stateAt(mapId: string, seq: number): AppState | null {
+    const records = this.recordsAt(seq);
+    if (!records) return null;
+    return fromSnapshot(records).rows.find((row) => row.id === mapId)?.state ?? null;
+  }
+
+  private recordsAt(target: number): SnapshotRecord[] | null {
+    if (target === this.currentSeq) return [...this.all.values()];
+    if (!Number.isInteger(target) || target < 0 || target > this.currentSeq) return null;
+    let baseSeq = -1;
+    let base: SnapshotRecord[] | null = null;
+    if (this.snapshotSeq <= target) {
+      baseSeq = this.snapshotSeq;
+      base = parseSnapshot(fs.readFileSync(path.join(this.dir, SNAPSHOT_FILE), "utf8"));
+    } else {
+      for (const archived of readArchive(this.dir, this.now())) {
+        if (archived.kind !== "snapshot" || archived.toSeq > target || archived.toSeq < baseSeq) continue;
+        baseSeq = archived.toSeq;
+        base = parseSnapshot(fs.readFileSync(path.join(archiveDir(this.dir), archived.file), "utf8"));
+      }
+    }
+    if (!base || baseSeq < 0) return null;
+    const lines = target === baseSeq ? [] : this.linesThrough(baseSeq, target);
+    if (!lines) return null;
+    const map = new Map<string, SnapshotRecord>();
+    for (const record of base) {
+      if (record.kind === "snapshot") continue;
+      map.set(recordRk(record), record);
+    }
+    for (const line of lines) {
+      for (const op of line.ops) {
+        if (op.op === "delete") map.delete(op.rk);
+        else if (op.record) map.set(op.rk, op.record as SnapshotRecord);
+      }
+      const commit: CommitRecord = { kind: "commit", seq: line.seq, committedAt: line.committedAt, issuer: line.issuer };
+      map.set(recordRk(commit), commit);
+    }
+    return [...map.values()];
+  }
+
+  /** Journal lines with seq in (fromSeq, toSeq], from the archive and the live journal. */
+  private linesThrough(fromSeq: number, toSeq: number): JournalLine[] | null {
+    if (toSeq < fromSeq) return null;
+    const found = new Map<number, JournalLine>();
+    const consider = (line: JournalLine): void => {
+      if (line.seq > fromSeq && line.seq <= toSeq) found.set(line.seq, line);
+    };
+    for (const archived of readArchive(this.dir, this.now())) {
+      if (archived.kind !== "journal" || archived.toSeq <= fromSeq || archived.fromSeq > toSeq) continue;
+      for (const line of readJournal(path.join(archiveDir(this.dir), archived.file)).lines) consider(line);
+    }
+    const journalPath = path.join(this.dir, JOURNAL_FILE);
+    if (fs.existsSync(journalPath)) {
+      for (const line of readJournal(journalPath).lines) consider(line);
+    }
+    const lines: JournalLine[] = [];
+    for (let seq = fromSeq + 1; seq <= toSeq; seq += 1) {
+      const line = found.get(seq);
+      if (!line) return null;
+      lines.push(line);
+    }
+    return lines;
+  }
+
+  /**
+   * A namedSnapshot at this commit keeps a portable snapshot in the archive.
+   * Deleting the last record of a seq clears the keep-mark. The file stays until a later prune.
+   */
+  private noteNamedSnapshots(replaced: ReadonlyMap<string, SnapshotRecord>): void {
+    const kept = new Set<number>();
+    for (const record of this.all.values()) {
+      if (record.kind !== "namedSnapshot") continue;
+      kept.add(record.seq);
+      if (record.seq !== this.currentSeq || replaced.has(recordRk(record))) continue;
+      this.retainSnapshot(record.seq);
+    }
+    this.releaseSnapshots(kept);
+  }
+
+  private retainSnapshot(seq: number): void {
+    const name = snapshotArchiveName(seq, this.snapshotFormat);
+    const header: SnapshotHeader = { kind: "snapshot", format: this.snapshotFormat, workspaceId: this.workspaceId, seq };
+    const content = serializeSnapshot([header, ...this.all.values()]);
+    const dir = archiveDir(this.dir);
+    fs.mkdirSync(dir, { recursive: true });
+    const target = path.join(dir, name);
+    if (fs.existsSync(target)) {
+      if (sha256(fs.readFileSync(target)) !== sha256(content)) return;
+    } else {
+      writeFileDurably(target, content);
+    }
+    const archived = readArchive(this.dir, this.now());
+    if (archived.some((entry) => entry.file === name && entry.retain === true)) return;
+    const now = this.now();
+    const next = archived.some((entry) => entry.file === name)
+      ? archived.map((entry) => (entry.file === name ? { ...entry, retain: true as const } : entry))
+      : [...archived, { file: name, kind: "snapshot" as const, fromSeq: seq, toSeq: seq, format: this.snapshotFormat, archivedAt: now, retain: true as const }];
+    writeArchiveIndex(this.dir, next);
+  }
+
+  private releaseSnapshots(keptSeqs: ReadonlySet<number>): void {
+    const dir = archiveDir(this.dir);
+    if (!fs.existsSync(dir)) return;
+    const archived = readArchive(this.dir, this.now());
+    let changed = false;
+    const next = archived.map((entry) => {
+      if (entry.kind !== "snapshot" || entry.retain !== true || keptSeqs.has(entry.toSeq)) return entry;
+      changed = true;
+      const copy: ArchiveEntry = { ...entry };
+      delete copy.retain;
+      return copy;
+    });
+    if (changed) writeArchiveIndex(this.dir, next);
+  }
+
+  /** The longest retention.ms a scope states. The 30-day default is not a deletion floor. */
+  private longestExplicitRetentionMs(): number {
+    let longest = 0;
+    for (const record of this.all.values()) {
+      if (record.kind !== "scope") continue;
+      const ms = record.retention?.ms;
+      if (typeof ms === "number" && Number.isFinite(ms) && ms > longest) longest = ms;
+    }
+    return longest;
   }
 }
 

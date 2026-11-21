@@ -11,6 +11,7 @@ import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand, readCommittedCommand, type StoredCommand } from "./map_commit";
 import { diffState } from "../shared/map_changes";
 import { activeRecordStore } from "./record_store/active";
+import type { NodeChoice } from "./record_store/bands";
 import { applyDelete, type DeleteOperation } from "./record_store/operations";
 import { PROVENANCE_LIMIT, type Provenance, type ProvenanceItem } from "./record_store/provenance";
 
@@ -462,7 +463,7 @@ export class M3eMcpService {
     return { ok: true, target: publicRef(ref), revision: revision(doc), nodes: result.items, links: linkResult.items, scope_payload: payloadResult.items, payload_total: payload.length, next_payload_offset: payloadResult.next, total: nodes.length, link_total: links.length, offset, limit, next_offset: result.next, next_link_offset: linkResult.next, ...(context ? { context_id: context.id, requires_refocus: context.invalidated, event_cursor: context.cursor } : {}) };
   }
   private mutate(tool: string, args: Args, context: Context): Args {
-    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "expected_revision", "command_id"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision", "command_id"] : ["context_id", "target", "expected_revision", "command_id", "operation", "parent", "at"];
+    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "deep", "expected_revision", "command_id"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision", "command_id", "mode", "relation_type", "depth", "entities", "reason", "band", "name", "confirm", "snapshot_id", "nodes", "retention_ms", "retention_bytes", "scope_key", "entity", "unlink"] : ["context_id", "target", "expected_revision", "command_id", "operation", "parent", "at"];
     fields(args, allowed);
     if (context.invalidated || !context.focus) fail("FOCUS_INVALIDATED", "The focused boundary disappeared. Explicitly focus a surviving target before writing.");
     const mapId = context.focus.mapId;
@@ -502,7 +503,7 @@ export class M3eMcpService {
     } else if (tool === "m3e_create") {
       const kind = str(args.kind, "kind", 30);
       const common = ["kind", "context_id", "target", "expected_revision", "command_id"];
-      fields(args, [...common, ...(kind === "node" ? ["text", "attributes"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : kind === "link" ? ["source", "label", "relation_type", "direction"] : [])]);
+      fields(args, [...common, ...(kind === "node" ? ["text", "attributes", "deep"] : kind === "copy" ? ["source"] : kind === "import_mfh" ? ["mfh"] : kind === "import_structure" ? ["structure", "import_key"] : kind === "link" ? ["source", "label", "relation_type", "direction"] : [])]);
       if (kind !== "link" && model.state.nodes[target]!.nodeType === "alias") fail("INVALID_OPERATION", "Alias nodes cannot own children.");
       if (kind === "link") {
         // A GraphLink is a non-tree relation from source to target; it never changes ownership.
@@ -521,6 +522,17 @@ export class M3eMcpService {
       } else if (kind === "node") {
         const id = model.addNode(target, str(args.text, "text")); created.push(id);
         if (args.attributes !== undefined) this.patchAttributes(model.state.nodes[id]!, args.attributes);
+        if (args.deep !== undefined) {
+          if (args.deep === "new") intent = "create-deep";
+          else if (args.deep && typeof args.deep === "object" && !Array.isArray(args.deep) && typeof (args.deep as { target?: unknown }).target === "string") {
+            const entity = this.resolve((args.deep as { target: string }).target);
+            if (entity.ref.mapId !== mapId) fail("FOCUS_MAP_MISMATCH", "The existing Deep entity is in another map.");
+            const createdNode = model.state.nodes[id]!;
+            createdNode.nodeType = "alias";
+            createdNode.targetNodeId = entity.ref.nodeId;
+            createdNode.access = "write";
+          } else fail("INVALID_ARGUMENT", "deep is \"new\" or {target}.");
+        }
       }
       else if (kind === "copy") {
         const source = this.resolve(args.source);
@@ -583,7 +595,9 @@ export class M3eMcpService {
         for (const node of parsed) { model.state.nodes[node.id] = node; created.push(node.id); if (node.parentId === target) model.state.nodes[target]!.children.push(node.id); }
       } else fail("INVALID_ARGUMENT", "Unknown create kind.");
     } else if (tool === "m3e_update") {
-      const kind = str(args.kind, "kind", 30);
+      const kind = str(args.kind, "kind", 40);
+      const storeKinds = new Set(["project", "write-back", "link-entity", "set-band", "promote", "named-snapshot", "delete-named-snapshot"]);
+      if (storeKinds.has(kind)) return this.storeUpdate(context, mapId, kind, args, target, commandId);
       fields(args, ["kind", "context_id", "target", "expected_revision", "command_id", ...(kind === "content" ? ["text", "attributes"] : kind === "move" ? ["parent", "outside_scope"] : [])]);
       if (kind === "content") {
         if (args.text === undefined && args.attributes === undefined) fail("INVALID_ARGUMENT", "Content update needs text or attributes.");
@@ -605,10 +619,7 @@ export class M3eMcpService {
     } else {
       const operation = resolvedDeleteOperation(args.operation, model.state.nodes[target]);
       let parentId: string | undefined;
-      if (operation === "oc2") {
-        if (args.parent === undefined) {
-          fail("INVALID_OPERATION", "OC2 on a projected plane records projection.dissolved, which this store does not keep. On the canonical plane, move the node and name the destination parent.");
-        }
+      if (operation === "oc2" && args.parent !== undefined) {
         const parent = this.resolve(args.parent);
         if (parent.ref.mapId !== mapId) fail("CROSS_MAP_MOVE", "Cross-map moves are not supported. Copy into the other map explicitly.");
         parentId = parent.ref.nodeId;
@@ -623,7 +634,14 @@ export class M3eMcpService {
       const node = model.state.nodes[id];
       if (node && old.nodeType === undefined && node.nodeType === "text" && !(tool === "m3e_update" && args.kind === "unscopen" && id === target)) delete node.nodeType;
     }
-    if (model.validate().length) fail("INVALID_STATE", "The requested operation violates the Core invariants.");
+    // A work plane stores an alias per parent, so those aliases have children. The record store
+    // accepts that at commit; the same two messages must not block OC2 or a later edit of the plane.
+    const workPlane = Object.values(model.state.scopes ?? {}).some((scope) => scope.projection?.mode === "work");
+    const errors = model.validate().filter((error) => {
+      if (!workPlane) return true;
+      return !/cannot have children\./.test(error) && !/cannot target alias node /.test(error);
+    });
+    if (errors.length) fail("INVALID_STATE", "The requested operation violates the Core invariants.");
     const changes = diffState(current.state, model.state);
     const sentCommandId = commandId ?? randomUUID();
     const committed = commitMapCommand(this.options.dbPath(), mapId, {
@@ -658,6 +676,89 @@ export class M3eMcpService {
       // Commit succeeded; downstream delivery must never invite a duplicate mutation retry.
       return { ok: true, committed: true, context_id: context.id, revision: revision(result), focus: publicRef(context.focus), requires_refocus: context.invalidated, event_cursor: context.cursor, changed, created: createdRefs, created_truncated: createdTruncated, warning: "The map was committed, but downstream notification failed. Read current state if a listener missed it." };
     }
+  }
+  private storeUpdate(context: Context, mapId: string, kind: string, args: Args, target: string, commandId: string | undefined): Args {
+    const store = activeRecordStore();
+    if (!store) fail("INVALID_STATE", "Projection, write-back, band, promotion and namedSnapshot run on the record store.");
+    const scopeKey = args.scope_key === undefined ? `scope:${target}` : str(args.scope_key, "scope_key", 200);
+    const reason = args.reason === undefined ? undefined : str(args.reason, "reason", 4000);
+    const name = args.name === undefined ? undefined : str(args.name, "name", 400);
+    const confirm = args.confirm === undefined ? undefined : args.confirm === true ? true : args.confirm === false ? false : fail("INVALID_ARGUMENT", "confirm must be true or false.");
+    const sent = commandId ?? randomUUID();
+    let seq = 0;
+    const done = (result: { ok: boolean; code?: string; message?: string; seq?: number }): void => {
+      if (result.ok && typeof result.seq === "number") { seq = result.seq; return; }
+      const message = result.message ?? result.code ?? "The command was refused.";
+      if (result.code === "CONFLICT") fail("CONFLICT", message);
+      if (result.code === "NOT_FOUND") fail("TARGET_NOT_FOUND", message);
+      fail("INVALID_OPERATION", message);
+    };
+    if (kind === "project") {
+      if (args.mode !== "observe" && args.mode !== "work") fail("INVALID_ARGUMENT", "mode is observe or work.");
+      const relationType = args.relation_type === undefined ? undefined : str(args.relation_type, "relation_type", 200);
+      const depth = this.wholeNumber(args.depth, "depth");
+      const entities = this.entityIds(args.entities);
+      const parentId = args.parent === undefined ? undefined : this.resolve(args.parent).ref.nodeId;
+      done(store.project(mapId, context.id, {
+        commandId: sent, mode: args.mode, scopeKey: args.scope_key === undefined ? undefined : scopeKey,
+        relationType, root: entities ? undefined : target, entities, depth, parentId,
+        label: args.text === undefined ? undefined : str(args.text, "text"),
+      }));
+    } else if (kind === "write-back") {
+      done(store.writeBack(mapId, context.id, { commandId: sent, scopeKey, reason: reason ?? "", name, nodes: args.nodes === undefined ? undefined : this.nodeChoices(args.nodes) }));
+    } else if (kind === "link-entity") {
+      const entity = args.unlink === true ? undefined : this.resolve(args.entity).ref.nodeId;
+      done(store.linkToEntity(mapId, context.id, { commandId: sent, nodeId: target, targetId: entity, unlink: args.unlink === true }));
+    } else if (kind === "set-band") {
+      const band = args.band === undefined ? undefined : args.band === "rapid" || args.band === "deep" ? args.band : fail("INVALID_ARGUMENT", "band is rapid or deep.");
+      done(store.setBand(mapId, context.id, {
+        commandId: sent, scopeKey, band, confirm,
+        retentionMs: this.wholeNumber(args.retention_ms, "retention_ms"),
+        retentionBytes: this.wholeNumber(args.retention_bytes, "retention_bytes"),
+      }));
+    } else if (kind === "promote") {
+      done(store.promote(mapId, context.id, { commandId: sent, scopeKey, reason, nodes: this.nodeChoices(args.nodes) }));
+    } else if (kind === "named-snapshot") {
+      done(store.createNamedSnapshot(mapId, context.id, { commandId: sent, scopeKey, name: name ?? "", reason: reason ?? "" }));
+    } else {
+      done(store.deleteNamedSnapshot(mapId, context.id, { commandId: sent, id: str(args.snapshot_id, "snapshot_id", 200), confirm }));
+    }
+    context.ownSeqs.add(seq);
+    if (context.ownSeqs.size > READ_SET_LIMIT) context.ownSeqs.delete(context.ownSeqs.values().next().value!);
+    const result = saved(this.options.dbPath(), mapId);
+    context.baseline.set(mapId, result);
+    const changed = { created: 0, updated: 1, deleted: 0 };
+    try {
+      this.reconcile(context, mapId, result, true);
+      this.notifyMapChanged(mapId);
+      this.options.onSaved?.(mapId, result.savedAt);
+      return { ok: true, ...this.summary(context), changed, created: [], created_truncated: false };
+    } catch {
+      return { ok: true, committed: true, context_id: context.id, revision: revision(result), focus: publicRef(context.focus), requires_refocus: context.invalidated, event_cursor: context.cursor, changed, created: [], created_truncated: false, warning: "The map was committed, but downstream notification failed. Read current state if a listener missed it." };
+    }
+  }
+  private wholeNumber(value: unknown, label: string): number | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) fail("INVALID_ARGUMENT", `${label} is a non-negative integer.`);
+    return value;
+  }
+  private entityIds(value: unknown): string[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) fail("INVALID_ARGUMENT", "entities must be a list of ids.");
+    return value.map((item) => str(item, "entity", 500));
+  }
+  private nodeChoices(value: unknown): Record<string, NodeChoice> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) fail("INVALID_ARGUMENT", "nodes must be an object.");
+    const out: Record<string, NodeChoice> = {};
+    for (const [id, choice] of Object.entries(value as Record<string, unknown>)) {
+      if (!id) fail("INVALID_ARGUMENT", "A node choice needs a node id.");
+      if (choice === "new" || choice === "hold") out[id] = choice;
+      else if (choice && typeof choice === "object" && !Array.isArray(choice) && typeof (choice as { target?: unknown }).target === "string") {
+        const raw = str((choice as { target: string }).target, "target", 500);
+        out[id] = { target: raw.startsWith("m3e://") ? this.resolve(raw).ref.nodeId : raw };
+      } else fail("INVALID_ARGUMENT", "A node choice is new, hold, or {target}.");
+    }
+    return out;
   }
   private replayedMutation(context: Context, mapId: string, prior: StoredCommand): Args {
     const doc = saved(this.options.dbPath(), mapId);
