@@ -367,13 +367,16 @@
 ### R8.6　Rapid と Deep・昇格
 
 **要件：**
-1. THE remote SHALL Rapid と Deep を保持の方針ではなく構造で区別する。Deep は面が重なり合った全体の graph、Rapid は Deep から射影した一面である。scope が Rapid であるとは、その scope が射影で作られたことである。
-2. WHEN 昇格の Command を確定するとき、THE remote SHALL Command が指定する各 node について、新しい Deep entity を作るか、指定された既存の Deep entity に entity binding で結ぶかのどちらかだけを行い、既存の Deep entity と同じ実体を指す新しい node を作らない。
-3. THE remote SHALL 同じ実体かどうかを規則で推測して自動的に結び付けない。結び付けは人か AI agent が状況を総合して判断し、昇格または entity binding の Command として記録する。候補を示すことは妨げない。
-4. WHEN 射影を作る Command を確定するとき、THE remote SHALL 観測用のフィルタか作業の面かを Command から受け取って面に記録する。観測用のフィルタでは構造が Deep を即時に映し、作業の面では構造の変更が書き戻しまで下書きとして残る。  
+1. THE remote SHALL Rapid と Deep を、scope に宣言された band（rapid / deep）で区別する。band はその scope を何として扱うかの宣言（作業の文書か、体系か）であり、構造からは導かない。band の欄が無い scope は Rapid とみなし、Deep だけに印を付ける。band を変えるのは明示の Command だけである。
+2. IF `projection` を持つ scope に band を deep とする Command を受けたとき、THEN THE remote SHALL それを確定しない。射影で作った面は常に Rapid である。逆は成り立たない（Flash で取り込んだ Rapid、手で作った Rapid は射影ではない）。
+3. WHILE scope の band が rapid である間、THE remote SHALL 同じ実体を指す node が別々に現れることを許し、名寄せを昇格の時点に回す。WHILE band が deep である間、node を作ることは Deep entity を作ることであり、THE remote SHALL 作る時点で既存の Deep entity と結ぶか新しく作るかを Command に指定させる。
+4. THE remote SHALL 昇格の元として band が rapid の scope だけを受け付ける。band は保持期間の既定値も決めるが、規則ではなく既定値である（K12）。
+5. WHEN 昇格の Command を確定するとき、THE remote SHALL Command が指定する各 node について、新しい Deep entity を作るか、指定された既存の Deep entity に entity binding で結ぶかのどちらかだけを行い、既存の Deep entity と同じ実体を指す新しい node を作らない。
+6. THE remote SHALL 同じ実体かどうかを規則で推測して自動的に結び付けない。結び付けは人か AI agent が状況を総合して判断し、昇格または entity binding の Command として記録する。候補を示すことは妨げない。
+7. WHEN 射影を作る Command を確定するとき、THE remote SHALL 観測用のフィルタか作業の面かを Command から受け取って面に記録する。観測用のフィルタでは構造が Deep を即時に映し、作業の面では構造の変更が書き戻しまで下書きとして残る。  
 
-**受入条件：** alias から作った node を昇格すると、参照先の Deep entity に結ばれ、新しい Deep entity は増えない。Flash で取り込んだ node を「新規」と指定して昇格すると Deep entity が一つ増え、既存の Deep entity を指定して昇格すると増えない。Command に指定のない結び付けは起きない。誤って結んだ entity binding を外す Command の後、両者は別の実体として読める。観測用のフィルタの面では Deep での移動が即時に面の構造に現れ、作業の面では書き戻すまで面の構造が変わらない。  
-**根拠：決定**（2026-11-22 akaghef。同じ実体を指す node の重複を許さない。同一性の判断は人か AI agent が状況を総合して行うしかなく、それが昇格の本質的な費用である）。射影の二つのモードを面のどの欄に置くかは DB 仕様書で決める。値コピーで作った写しは別の実体であり、この要件の対象外。
+**受入条件：** band の欄の無い既存の scope は Rapid として読める。射影で作った面を deep にする Command は確定しない。Flash で取り込んだ scope は射影を持たずに Rapid である。deep の scope に、既存の Deep entity と同じ実体の node を指定なしで作る Command は確定しない。band が deep の scope を昇格の元にする Command は確定しない。alias から作った node を昇格すると、参照先の Deep entity に結ばれ、新しい Deep entity は増えない。Flash で取り込んだ node を「新規」と指定して昇格すると Deep entity が一つ増え、既存の Deep entity を指定して昇格すると増えない。Command に指定のない結び付けは起きない。誤って結んだ entity binding を外す Command の後、両者は別の実体として読める。観測用のフィルタの面では Deep での移動が即時に面の構造に現れ、作業の面では書き戻すまで面の構造が変わらない。  
+**根拠：決定**（2026-11-22 akaghef。band は態度の宣言で、射影の有無からは導けない。欄が無ければ Rapid。同じ実体を指す node の重複を許さない。同一性の判断は人か AI agent が状況を総合して行うしかなく、それが昇格の本質的な費用である）。射影の二つのモードを面のどの欄に置くかは DB 仕様書で決める。値コピーで作った写しは別の実体であり、この要件の対象外。
 
 ### R8.7　compaction の安全条件
 
@@ -491,7 +494,7 @@
 | Q3 | scope をまたぐ移動 | 当面は実装しない（保留） | R2.4 |
 | Q4 | 権限を外した後の offline clone | offline の継続を優先し、即時の閲覧停止は保証しない。再接続後は今の権限で判定 | R3.1, R3.5, R8.8 |
 | Q5 | conflict を解ける人 | 影響する全 scope の権限を持つ編集者。解決は独立した Command。あわせて、root の削除のような危険な操作を防ぐロックを、Miro に倣って付ける。ロックは掛けた本人も外せる | R2.6, R3.6, R4.4, R7.6 |
-| Q6 | Rapid から Deep への昇格 | Rapid か Deep かは scope ごとに決める。2026-11-22 の追加回答：違いは構造（射影した一面か全体か）で、Deep も全版を残さず昇格時に名前付き snapshot を残す。昇格で同じ実体の node を重複させない。同一性は人か AI agent が状況を総合して判断する。射影は観測用のフィルタと作業の面の二つ | R8.5, R8.6 |
+| Q6 | Rapid から Deep への昇格 | Rapid か Deep かは scope ごとに決める。2026-11-22 の追加回答：scope に band を宣言として置く（欄が無ければ Rapid、射影で作った面は Rapid）。Deep も全版を残さず昇格時に名前付き snapshot を残す。昇格で同じ実体の node を重複させない。同一性は人か AI agent が状況を総合して判断する。射影は観測用のフィルタと作業の面の二つ | R8.5, R8.6 |
 | Q7 | 入れ子の scope での拒否 | 全体を非公開にして一部を公開する使い方もあり、追加で協議する（保留） | R3.3, R8.4 |
 | Q8 | scope をまたぐ relation edge の開示 | 両端が同じ scope のときだけ可視化する。後から変える前提 | R3.4, R6.5 |
 | Q9 | 競合の判定 | 通常の代入は今の値が変更前と一致すれば通す（ABA を許す）。Undo は「その Command が作った値が残っている」証拠を要求する | R7.1, R7.2, R7.3 |
