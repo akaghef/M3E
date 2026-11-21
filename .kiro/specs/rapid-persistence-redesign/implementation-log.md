@@ -49,6 +49,24 @@
 
 ## 記録
 
+### 2026-11-22 削除した node の本文が commit-index.json に上限なく積もる
+
+- 種類: 問題
+- 書いた agent: format 2 の統合を受け入れる session
+- 対象: `beta/src/node/record_store/store.ts` の `retired` と `commit-index.json`
+- 中身: 削除した ID は、同じ本文を作り直す Undo のときだけ戻せる。そのために、store は削除した node の本文を `retired` に持ち、`commit-index.json` に書く。件数にも期間にも上限が無く、削除のたびに index が大きくなり、確定ごとに書き直す量も増える。90 日の保持期間や archive の削除とも結び付いていない。
+- 根拠: `retired` の読み書きを読んだ。消す経路は、同じ ID の作り直しだけである。
+- 扱い: 未対応
+
+### 2026-11-22 射影や書き戻しの journal の actor は、kind が常に system である
+
+- 種類: 問題
+- 書いた agent: format 2 の統合を受け入れる session
+- 対象: `beta/src/node/record_store/store.ts`（射影、書き戻し、band、昇格、namedSnapshot の Command）
+- 中身: これらの Command は、journal の `actor` を `{kind: "system", id: issuer}` と書く。MCP から来たときの issuer は AI agent の account なので、actor の kind と issuer の account の種類が食い違う。issuer は正しい。
+- 根拠: port 4192 の実データの複製で、MCP の named-snapshot と project の行が `issuer: acct_ai_…` と `actor.kind: system` を持つ。
+- 扱い: 未対応
+
 ### 2026-11-22 確定のたびに、射影と拒否の判定が map 全体を歩く
 
 - 種類: 問題
