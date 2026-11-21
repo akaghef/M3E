@@ -118,7 +118,7 @@ M3E の製品 Model を書き換える操作を、operation molecule（操作の
 2. 宣言された参照だけを remap する。
 3. 【決定】deep copy の外側を指す参照は共有する。よって独立性が保証されるのは複製した実体と構造だけで、「copy 後は何を編集しても元に影響しない」ではない。
 4. 【決定】copy の来歴は Deep KB の来歴として、journal を圧縮しても失わない形で残す。
-5. 既存の [Multi_Select.md](../../../docs/03_Spec/Multi_Select.md) の貼り付け規則（alias・link のメタデータと collapsed を落とす）はこの節と食い違っている。この節に合わせて直す（未対応）。
+5. viewer の貼り付けはこの節に従う（[Multi_Select.md](../../../docs/03_Spec/Multi_Select.md)、実装は `beta/src/shared/clipboard_subtree.ts`）。範囲内の alias は alias のまま写し、参照先の実体も同じ範囲で写したときは写した先の実体を指し、範囲の外にあるときは元の実体を指したままにする。両端が範囲内の relation edge は label・relationType・向き・線種・attributes ごと写す。collapsed も写す。
 
 ## 12. dissolve と join で失われる内容
 
