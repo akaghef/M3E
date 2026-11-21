@@ -49,6 +49,42 @@
 
 ## 記録
 
+### 2026-11-22 m3e:target を出す欄が node に無い
+
+- 種類: 仕様の穴
+- 書いた agent: format 2 の commit 時の意味の session
+- 対象: DB 仕様書 6 節（出来事の種類）、`beta/src/node/record_store/journal_archive.ts`
+- 中身: 6 節は `m3e:target` を目標の更新間隔の変更としている。node にも scope にも、その間隔を置く欄が無い。touched は `m3e:target` を出さない。
+- 根拠: DB 仕様書 6 節と、`beta/src/shared/record_model/types.ts` の node・scope の欄を読んだ。
+- 扱い: 未対応
+
+### 2026-11-22 nodeView の位置と valid.from だけの変更に、出来事の種類が無い
+
+- 種類: 仕様の穴
+- 書いた agent: format 2 の commit 時の意味の session
+- 対象: DB 仕様書 6 節、`beta/src/node/record_store/journal_archive.ts`
+- 中身: 6 節の `m3e:content` は text と本文である。nodeView の `x` と `y` には種類が割り当てられていない。位置だけの変更は touched に種類を出さない。`valid.from` だけの変更も同じである。`valid.to` を空から埋める変更は `m3e:end` である。
+- 根拠: DB 仕様書 6 節の種類の一覧と、`changeKinds` の実装を読んだ。
+- 扱い: 未対応
+
+### 2026-11-22 grant の出し手が scope を編集できるかを、store が判定できない
+
+- 種類: 仕様の穴
+- 書いた agent: format 2 の commit 時の意味の session
+- 対象: DB 仕様書 3.2 節、同期の要件 R2.7、`beta/src/node/record_store/operations.ts`
+- 中身: AI agent の unlock は、同じ scope の `m3e:unlock` で、`committedAt` より前に期限が来ていない grant を要する。出し手がその scope をまだ編集できるかは、scope の編集権が record に無いので判定しない。出し手は編集できるものとして扱う。期限の瞬間（`committedAt >= expiresAt`）は拒否する。下位の scope への継承はしない。
+- 根拠: DB 仕様書 3.2 節と record store の record の種類を読んだ。編集権の record は無い。
+- 扱い: 未対応
+
+### 2026-11-22 射影の面上の OC2 は projection.dissolved を記録できない
+
+- 種類: 仕様の穴
+- 書いた agent: format 2 の commit 時の意味の session
+- 対象: DB 仕様書 12.7 節、`beta/src/node/record_store/operations.ts`
+- 中身: OC2 は、実体を置く面上では行き先の親を指定した移動である。射影の面上では `projection.dissolved` を記録する。scope にその欄が無く、射影はこの作業に含まれない。node を消す OC2 は拒否し、実体を置く面上の移動を案内する。
+- 根拠: DB 仕様書 12.7 節と `ScopeRecord` の欄を読んだ。
+- 扱い: 未対応
+
 ### 2026-11-22 「正本」が少なくとも五つの意味で使われていて、どの写しに対する優先かが文書ごとに違う
 
 - 種類: 問題
@@ -74,7 +110,7 @@
 - 対象: DB 仕様書 12.1〜12.4・12.6〜12.8 節、`docs/04_Architecture/Multi_Select.md`
 - 中身: akaghef が 2026-11-22 に、未決をすべて案のとおりに決めた（発言は「Neo4j 化について作業を進める」session で受けた）。12 節で決定になったもの: 射影と書き戻しの形（scope の `projection` の欄 `mode`・`from`・`range`・`baseSeq`・`dissolved`）、観測用のフィルタの面は alias と parent edge のレコードを保存しない、既存の Deep entity に結ぶことは node を alias に変えて表す、名前付きの snapshot はレコードの種類 `namedSnapshot` と削減の対象から外した archive の file で持つ、作業の面は書き戻した後も残す、消す操作を四つ（面から外す、関係を解く、実体を終える、実体を取り消す）に分け、面を移す操作は今は置かない、実体を終えた状態は node の有効期間（`valid.from`・`valid.to`）で持つ、実体を取り消すと他の面の alias は `broken` で残る、コピーは同一性と範囲などの軸で定義し、範囲の中の alias は省いたとき alias のまま写す。案が無かった項目は、12 節の書き手が選んだ: scope に帯域の欄 `band` を置く（射影で作った面は必ず `rapid`）、有効期間の欄の形、`namedSnapshot` の欄の形。面の中を扱う木のエンジン（12.5 節）は、計測してから決めるので、提案のままである。語の組（facet、「正本の面」という言い方）と、鍵やメニューへの割り当ては、保留である。
 - 根拠: 「Neo4j 化について作業を進める」session の記録で、akaghef の 2026-11-22 の発言（すべて案のとおりに要件をまとめる）を読んだ。実装のコードは、この件では読み直していない。
-- 扱い: 仕様へ反映（DB 仕様書 12 節）。実装は未対応。3.1 節のレコードの一覧に、`namedSnapshot`、scope の `band`、node の `valid` が、まだ載っていない（3 節の書き手へ依頼）
+- 扱い: 仕様へ反映（DB 仕様書 12 節）。record store は OC1–OC4、node の valid.from / valid.to、Command のコピー（範囲の中の alias は alias のまま、来歴は node の copyOf）を持つ。射影、書き戻し、namedSnapshot、scope の band、OC5 は未対応。3.1 節のレコードの一覧に、namedSnapshot、scope の band、node の valid は、まだ載っていない（3 節の書き手へ依頼）
 
 ### 2026-11-22 Rapid と Deep、昇格、射影のモードの決定を、DB 仕様書 12 節に反映した。保存の形で決めることが三つ出た
 
@@ -162,7 +198,7 @@
   - snapshot の `format` は 1 のまま。format 2 への切り替え（base snapshot の作成）は、parent edge の欄や extension 定義など他の format の変更と一緒に行う。archive の名前の `f1` はその前の区間を示す。
   - journal の `provenance` は、今までどおり Command の provenance をそのまま書く（MCP からは `{contextId, tool}`）。DB 仕様書 6 節の【決定】の形 `{items, truncated?}` とは違う。確定済みの Command を読む既存の経路がこの値を返しているため変えていない。Command の provenance を `items` へどう写すかは未決。
 - 根拠: `beta/tests/unit/record_store_compaction.test.ts` の 9 件が通り、変更前の `store.ts` では 9 件とも落ちることを確かめた。最初の snapshot と全 journal の行から作り直したレコード、途中の snapshot とその後の行から作り直したレコード、store 自身の snapshot と後続の行から開いたレコードが、元のレコードと一字一句一致する。既存の record store の試験も実行した。
-- 扱い: 実装で解消（journal を消さない畳み込みの commit）。仮決めの 5 点は、変えるなら akaghef の判断で直す。DB 仕様書 6 節の「圧縮は journal を空にする」「journal を空にしている」「手放す操作は v1 では実装しない」の 3 文は、この実装と 90 日の決定に合わなくなったので、DB 仕様書の担当へ直しを依頼した
+- 扱い: 実装で解消（journal を消さない畳み込みの commit）。仮決めの 5 点は、変えるなら akaghef の判断で直す。出来事の種類の割り当ては m3e:reparent、m3e:order、m3e:end であり、位置と m3e:target は別項である。DB 仕様書 6 節の「圧縮は journal を空にする」「journal を空にしている」「手放す操作は v1 では実装しない」の 3 文は、この実装と 90 日の決定に合わなくなったので、DB 仕様書の担当へ直しを依頼した
 
 
 ### 2026-11-19 実データの兄弟順キーに同じ値は無く、兄弟順キーを fractional-indexing に移した
@@ -181,7 +217,7 @@
 - 対象: [操作の代数の要件](operation-algebra-requirements.md) 9・11・12 節
 - 中身: 【決定】(1) scope の移動だけでは relationType を変えず推論もしない。(2) unscopen で処分の方針が決まっていない所有データ（linear-text・注釈・Surface View の設定）があれば拒否する。(3) shallow copy は選んだ node だけ、scope copy は deep で同じ root の別の方向の scope を含めない。(4) deep copy の外側を指す参照は共有し、境界をまたぐ relation edge は既定では複製しない。(5) dissolve で条件・根拠を持つ中間 node、join で attribute を本文だけに落とすものは拒否し、中身のない中間 node 自身の色と配置の削除は明示して許す。(6) copy の来歴は journal を圧縮しても失わない形で残す。
 - 根拠: akaghef の決定（2026-11-22）。
-- 扱い: 仕様へ反映（[操作の代数の要件](operation-algebra-requirements.md) 9・11・12 節）。実装は未対応
+- 扱い: 仕様へ反映（[操作の代数の要件](operation-algebra-requirements.md) 9・11・12 節）。copy の来歴は node の copyOf として record store が持つ。dissolve の条件、join、unscopen の所有データの扱いは未対応
 
 ### 2026-11-19 ADR 014 の「stream の輸送は Syncthing」が、remote と outbox の形と合わない
 

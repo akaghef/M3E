@@ -39,6 +39,10 @@ export interface TreeNode {
   edgeAttributes?: Record<string, unknown>;
   /** Extensions of the parent edge that points at this node. */
   edgeExtensions?: string[];
+  /** Entity validity. Absent means the entity has no period. */
+  valid?: { from?: string; to?: string };
+  /** Copy provenance of this node (source, commit seq, arguments, id map). */
+  copyOf?: { source: string; mapId?: string; seq: number; mode: string; ids: Record<string, string> };
 }
 
 export interface GraphLink {
@@ -130,6 +134,22 @@ export interface AppState {
    * When absent, a save leaves the stored definitions as they are.
    */
   extensionDefs?: Array<Record<string, unknown>>;
+  /**
+   * Locks, keyed by the target record key. When present, the object is the whole set
+   * (an empty object unlocks every occurrence). When absent, a save leaves stored locks.
+   */
+  locks?: Record<string, { target: string }>;
+  /**
+   * Grants, keyed by id. When present, the object is the whole set.
+   * When absent, a save leaves stored grants.
+   */
+  grants?: Record<string, {
+    scopeId: string;
+    principal: { account: string };
+    capability: string;
+    grantedBy: string;
+    expiresAt?: string;
+  }>;
 }
 
 export interface SavedMap {

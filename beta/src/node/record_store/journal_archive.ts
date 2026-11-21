@@ -51,10 +51,20 @@ export interface PruneResult {
 const JOURNAL_NAME = /^journal\.(\d+)-(\d+)\.f(\d+)\.jsonl$/;
 const SNAPSHOT_NAME = /^snapshot\.(\d+)\.f(\d+)\.jsonl$/;
 
-const STRUCTURE_FIELDS: Record<string, ReadonlySet<string>> = {
-  connection: new Set(["source", "target", "ord", "scopeId", "type"]),
+/** Parent edge and scope membership. Sibling order is separate (`m3e:order`). */
+const REPARENT_FIELDS: Record<string, ReadonlySet<string>> = {
+  connection: new Set(["source", "target", "scopeId", "type"]),
   scope: new Set(["rootNodeId"]),
 };
+const ORDER_FIELDS: Record<string, ReadonlySet<string>> = {
+  connection: new Set(["ord"]),
+};
+
+function validityTo(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const to = (value as { to?: unknown }).to;
+  return typeof to === "string" && to !== "" ? to : undefined;
+}
 
 export function sha256(content: string | Buffer): string {
   return createHash("sha256").update(content).digest("hex");
@@ -82,13 +92,22 @@ function changeKinds(before: SnapshotRecord, after: SnapshotRecord): string[] {
   const a = fieldsOf(before);
   const b = fieldsOf(after);
   const kinds = new Set<string>();
-  const structure = STRUCTURE_FIELDS[after.kind];
+  const reparent = REPARENT_FIELDS[after.kind];
+  const order = ORDER_FIELDS[after.kind];
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
     if (key === "rev") continue;
     if (sameJson(a[key], b[key])) continue;
+    // Section 6 names no event kind for nodeView position. A position-only change emits nothing.
+    if (after.kind === "nodeView" && (key === "x" || key === "y")) continue;
+    if (key === "valid") {
+      // Filling valid.to ends the entity. A from-only change has no named kind.
+      if (validityTo(a[key]) === undefined && validityTo(b[key]) !== undefined) kinds.add("m3e:end");
+      continue;
+    }
     if (key === "attributes") kinds.add("m3e:attribute");
     else if (key === "extensions") kinds.add("m3e:extension");
-    else if (structure?.has(key)) kinds.add("m3e:structure");
+    else if (reparent?.has(key)) kinds.add("m3e:reparent");
+    else if (order?.has(key)) kinds.add("m3e:order");
     else kinds.add("m3e:content");
   }
   return [...kinds].sort();

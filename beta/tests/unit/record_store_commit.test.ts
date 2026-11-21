@@ -554,8 +554,13 @@ describe("record store: whole-map saves and map-level operations", () => {
     expect(() => store.getMapRow("map_a")).toThrow(/not found/);
     expect(() => store.deleteMap("map_a", ISSUER)).toThrow(/not found/);
     expect(checkInvariants(store.records())).toEqual([]);
-    // Its ids are free again.
-    ok(store.saveWholeMap("map_new", richState() as unknown as AppState, ISSUER));
+    // A deleted id stays retired. Only the Undo of that delete may put the same node record back.
+    expect(store.saveWholeMap("map_reuse", richState() as unknown as AppState, ISSUER)).toMatchObject({
+      ok: false,
+      code: "INVALID_STATE",
+      message: expect.stringMatching(/deleted id cannot be reused/),
+    });
+    ok(store.saveWholeMap("map_new", richState("n_") as unknown as AppState, ISSUER));
 
     const records = text(store.records());
     const seq = store.seq();

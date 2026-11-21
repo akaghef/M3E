@@ -56,6 +56,7 @@ import {
   type PruneResult,
   type TouchedRecord,
 } from "./journal_archive";
+import { commitTimeRefusal } from "./operations";
 import { normalizeProvenance, type Provenance } from "./provenance";
 import { commitValidationErrorCount } from "./validate";
 import {
@@ -395,6 +396,8 @@ export class RecordWorkspaceStore {
   private readonly maps = new Map<string, MapEntry>();
   /** Ids of node, connection and annotation records: unique across those kinds and across maps. */
   private readonly idIndex = new Map<string, string>();
+  /** Deleted node id -> canonical node record without `rev`. Only an equal put may use the id again. */
+  private readonly retired = new Map<string, string>();
   private readonly mapSeq = new Map<string, number>();
   private readonly commands = new Map<string, CommandEntry>();
   private currentSeq = 0;
@@ -502,8 +505,12 @@ export class RecordWorkspaceStore {
         mapSeq?: Record<string, number>;
         commands?: Array<[string, string, number, string]>;
         snapshot?: { seq: number; sha256: string };
+        retired?: Record<string, string>;
       };
       this.snapshotSum = index.snapshot;
+      for (const [id, body] of Object.entries(index.retired ?? {})) {
+        if (typeof body === "string") this.retired.set(id, body);
+      }
       for (const [mapId, value] of Object.entries(index.mapSeq ?? {})) this.mapSeq.set(mapId, value);
       for (const [mapId, commandId, commandSeq, hash] of index.commands ?? []) {
         this.commands.set(commandKey(mapId, commandId), { seq: commandSeq, hash });
@@ -911,17 +918,7 @@ export class RecordWorkspaceStore {
 
     const content = serializeSnapshot([this.header(), ...this.all.values()]);
     const snapshotSum = { seq: this.currentSeq, sha256: sha256(content) };
-    const commands = [...this.commands.entries()]
-      .sort((a, b) => a[1].seq - b[1].seq)
-      .slice(-COMMAND_INDEX_RETAIN)
-      .map(([key, value]) => {
-        const cut = key.indexOf("\u0000");
-        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash];
-      });
-    writeFileDurably(
-      path.join(this.dir, COMMIT_INDEX_FILE),
-      JSON.stringify({ format: 1, seq: this.currentSeq, mapSeq: Object.fromEntries(this.mapSeq), commands, snapshot: snapshotSum }) + "\n",
-    );
+    writeFileDurably(path.join(this.dir, COMMIT_INDEX_FILE), this.commitIndexText(snapshotSum));
     writeFileDurably(snapshotPath, content);
     this.snapshotSeq = this.currentSeq;
     this.snapshotSum = snapshotSum;
@@ -1031,6 +1028,48 @@ export class RecordWorkspaceStore {
     return this.failure("ENGINE_BEHIND", null, this.engineBehindMessage());
   }
 
+  /** `commit-index.json`. `retired` is omitted when empty, so an index without it keeps its shape. */
+  private commitIndexText(snapshot: { seq: number; sha256: string }): string {
+    const commands = [...this.commands.entries()]
+      .sort((a, b) => a[1].seq - b[1].seq)
+      .slice(-COMMAND_INDEX_RETAIN)
+      .map(([key, value]) => {
+        const cut = key.indexOf("\u0000");
+        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash];
+      });
+    const body: Dict = {
+      format: 1,
+      seq: this.currentSeq,
+      mapSeq: Object.fromEntries(this.mapSeq),
+      commands,
+      snapshot,
+    };
+    if (this.retired.size > 0) {
+      body.retired = Object.fromEntries([...this.retired.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)));
+    }
+    return JSON.stringify(body) + "\n";
+  }
+
+  /** Node record without `rev`. The Undo of a delete puts this body back; any other reuse is refused. */
+  private retiredBody(record: SnapshotRecord): string {
+    const copy = { ...(record as unknown as Dict) };
+    delete copy.rev;
+    return canonicalJson(copy);
+  }
+
+  private reuseRefusal(ops: readonly RecordOp[]): string | null {
+    for (const op of ops) {
+      if (op.op !== "put" || op.record?.kind !== "node") continue;
+      const record = op.record;
+      const prior = this.all.get(op.rk);
+      if (prior?.kind === "node") continue;
+      const retired = this.retired.get(record.id);
+      if (retired === undefined || retired === this.retiredBody(record)) continue;
+      return `A deleted id cannot be reused (${record.id}). Only the Undo of the delete may restore it.`;
+    }
+    return null;
+  }
+
   private failure(code: CommitFailure["code"], current: CommitFailure["current"], message?: string, conflicts: FieldConflict[] = []): CommitFailure {
     const result: CommitFailure = { ok: false, code, conflicts, current };
     if (message !== undefined) result.message = message;
@@ -1078,17 +1117,7 @@ export class RecordWorkspaceStore {
     this.snapshotFormat = 2;
     const content = serializeSnapshot([this.header(), ...this.all.values()]);
     const snapshotSum = { seq: this.currentSeq, sha256: sha256(content) };
-    const commands = [...this.commands.entries()]
-      .sort((a, b) => a[1].seq - b[1].seq)
-      .slice(-COMMAND_INDEX_RETAIN)
-      .map(([key, value]) => {
-        const cut = key.indexOf("\u0000");
-        return [key.slice(0, cut), key.slice(cut + 1), value.seq, value.hash];
-      });
-    writeFileDurably(
-      path.join(this.dir, COMMIT_INDEX_FILE),
-      JSON.stringify({ format: 1, seq: this.currentSeq, mapSeq: Object.fromEntries(this.mapSeq), commands, snapshot: snapshotSum }) + "\n",
-    );
+    writeFileDurably(path.join(this.dir, COMMIT_INDEX_FILE), this.commitIndexText(snapshotSum));
     writeFileDurably(snapshotPath, content);
     this.snapshotSeq = this.currentSeq;
     this.snapshotSum = snapshotSum;
@@ -1391,8 +1420,22 @@ export class RecordWorkspaceStore {
       problemKeys = new Set(problems.map(problemKey));
     }
 
-    // 6. The journal line. Once it is on disk, the commit has happened.
+    // 6. Locks, grants, operation shape and id reuse, judged on the pre-commit record set.
     const committedAt = this.now();
+    const refusal = commitTimeRefusal({
+      intent: meta.intent,
+      actor: meta.actor,
+      committedAt,
+      mapId,
+      ops,
+      before: (rk) => this.all.get(rk),
+      preimage: this.all.values(),
+    });
+    if (refusal) return refuse(refusal);
+    const reuse = this.reuseRefusal(ops);
+    if (reuse) return refuse(reuse);
+
+    // 7. The journal line. Once it is on disk, the commit has happened.
     const line = { seq, commandId: meta.commandId, issuer, committedAt, mapId, intent: meta.intent } as JournalLine;
     if (meta.actor !== undefined) line.actor = meta.actor;
     if (meta.provenance !== undefined) line.provenance = meta.provenance;
@@ -1411,7 +1454,7 @@ export class RecordWorkspaceStore {
       throw error;
     }
 
-    // 7. Memory.
+    // 8. Memory.
     const target = entry ?? { id: mapId, records: new Map<string, SnapshotRecord>(), idMaps: new Map<string, SnapshotRecord>() };
     if (!entry) this.maps.set(mapId, target);
     target.records = result.records;
@@ -1537,6 +1580,7 @@ export class RecordWorkspaceStore {
       }
       const touchedDef = before?.kind === "extensionDef" || (op.op === "put" && (op.record as SnapshotRecord | undefined)?.kind === "extensionDef");
       if (op.op === "delete") {
+        if (before?.kind === "node") this.retired.set(before.id, this.retiredBody(before));
         this.all.delete(op.rk);
         if (touchedDef) {
           this.extensionDefs.delete(op.rk);
@@ -1545,6 +1589,7 @@ export class RecordWorkspaceStore {
         continue;
       }
       const record = op.record as SnapshotRecord;
+      if (record.kind === "node" && this.retired.get(record.id) === this.retiredBody(record)) this.retired.delete(record.id);
       this.all.set(op.rk, record);
       if (SHARED_ID_KINDS.has(record.kind)) this.idIndex.set((record as { id: string }).id, op.rk);
       if (touchedDef) {

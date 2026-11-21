@@ -11,6 +11,7 @@ import { RapidMvpModel } from "./rapid_mvp";
 import { commitMapCommand, readCommittedCommand, type StoredCommand } from "./map_commit";
 import { diffState } from "../shared/map_changes";
 import { activeRecordStore } from "./record_store/active";
+import { applyDelete, type DeleteOperation } from "./record_store/operations";
 import { PROVENANCE_LIMIT, type Provenance, type ProvenanceItem } from "./record_store/provenance";
 
 const TOOLS = ["m3e_context", "m3e_get", "m3e_create", "m3e_update", "m3e_delete", "m3e_feedback"];
@@ -54,6 +55,17 @@ function optionalCommandId(value: unknown): string | undefined {
   if (typeof value !== "string" || !value.trim() || value.length > 200) fail("INVALID_ARGUMENT", "command_id must be nonempty text within 200 characters.");
   return value;
 }
+const DELETE_OPERATIONS = new Set<DeleteOperation>(["oc1", "oc2", "oc3", "oc4"]);
+
+/** Omitted operation keeps the previous meaning: an alias occurrence is OC1, anything else is OC4. */
+function resolvedDeleteOperation(value: unknown, node: TreeNode | undefined): DeleteOperation {
+  if (value === undefined) return node?.nodeType === "alias" ? "oc1" : "oc4";
+  if (typeof value !== "string" || !DELETE_OPERATIONS.has(value as DeleteOperation)) {
+    fail("INVALID_ARGUMENT", "operation must be oc1, oc2, oc3 or oc4.");
+  }
+  return value as DeleteOperation;
+}
+
 function commandIntent(tool: string, args: Args): string {
   if (tool === "m3e_delete") return "delete";
   if (tool === "m3e_update") {
@@ -450,7 +462,7 @@ export class M3eMcpService {
     return { ok: true, target: publicRef(ref), revision: revision(doc), nodes: result.items, links: linkResult.items, scope_payload: payloadResult.items, payload_total: payload.length, next_payload_offset: payloadResult.next, total: nodes.length, link_total: links.length, offset, limit, next_offset: result.next, next_link_offset: linkResult.next, ...(context ? { context_id: context.id, requires_refocus: context.invalidated, event_cursor: context.cursor } : {}) };
   }
   private mutate(tool: string, args: Args, context: Context): Args {
-    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "expected_revision", "command_id"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision", "command_id"] : ["context_id", "target", "expected_revision", "command_id"];
+    const allowed = tool === "m3e_create" ? ["kind", "context_id", "target", "text", "attributes", "source", "mfh", "structure", "import_key", "label", "relation_type", "direction", "expected_revision", "command_id"] : tool === "m3e_update" ? ["kind", "context_id", "target", "text", "attributes", "parent", "expected_revision", "command_id"] : ["context_id", "target", "expected_revision", "command_id", "operation", "parent", "at"];
     fields(args, allowed);
     if (context.invalidated || !context.focus) fail("FOCUS_INVALIDATED", "The focused boundary disappeared. Explicitly focus a surviving target before writing.");
     const mapId = context.focus.mapId;
@@ -475,12 +487,16 @@ export class M3eMcpService {
     let declared: Array<{ rk: string; rev: number }> = [];
     const before = Object.keys(current.state.nodes).length;
     let updated = 0;
+    let intent = commandIntent(tool, args);
     const deletedLink = tool === "m3e_delete" ? parseLinkUri(args.target) : null;
     if (tool === "m3e_create" && args.kind === "link" && args.target === undefined) fail("INVALID_ARGUMENT", "A relation edge needs both source and target nodes.");
     const resolved = deletedLink ? null : this.resolve(args.target ?? context.focus!.uri);
     if ((deletedLink?.mapId ?? resolved!.ref.mapId) !== mapId) fail("FOCUS_MAP_MISMATCH", "Focus the destination map before editing it.");
     const target = resolved?.ref.nodeId ?? "";
     if (deletedLink) {
+      if (args.operation !== undefined || args.parent !== undefined || args.at !== undefined) {
+        fail("INVALID_ARGUMENT", "operation applies to a node. A relation edge URI deletes only that relation edge.");
+      }
       if (!model.state.links?.[deletedLink.linkId]) fail("TARGET_NOT_FOUND", "The requested relation edge no longer exists.");
       model.removeLink(deletedLink.linkId); deletedLinks = 1;
     } else if (tool === "m3e_create") {
@@ -586,7 +602,22 @@ export class M3eMcpService {
       } else if (kind === "scopen" || kind === "unscopen") model.setScopeBoundary(target, kind === "scopen");
       else fail("INVALID_ARGUMENT", "Unknown update kind.");
       updated = 1;
-    } else model.deleteNode(target);
+    } else {
+      const operation = resolvedDeleteOperation(args.operation, model.state.nodes[target]);
+      let parentId: string | undefined;
+      if (operation === "oc2") {
+        if (args.parent === undefined) {
+          fail("INVALID_OPERATION", "OC2 on a projected plane records projection.dissolved, which this store does not keep. On the canonical plane, move the node and name the destination parent.");
+        }
+        const parent = this.resolve(args.parent);
+        if (parent.ref.mapId !== mapId) fail("CROSS_MAP_MOVE", "Cross-map moves are not supported. Copy into the other map explicitly.");
+        parentId = parent.ref.nodeId;
+      }
+      const at = operation === "oc3" && args.at !== undefined ? str(args.at, "at", 100) : undefined;
+      const applied = applyDelete(model.state, operation, target, { parentId, at });
+      if (!applied.ok) fail("INVALID_OPERATION", applied.message);
+      intent = operation;
+    }
     // Core normalization must not add defaults to unrelated existing content.
     for (const [id, old] of Object.entries(current.state.nodes)) {
       const node = model.state.nodes[id];
@@ -598,13 +629,13 @@ export class M3eMcpService {
     const committed = commitMapCommand(this.options.dbPath(), mapId, {
       commandId: sentCommandId,
       actor: { kind: "ai-agent", id: context.id },
-      intent: commandIntent(tool, args),
+      intent,
       provenance: this.provenanceOf(context, declared),
       changes,
     }, expected);
     if (!committed.ok) {
       if (committed.code === "CONFLICT" || committed.code === "NOT_FOUND") fail("REVISION_CONFLICT", "The map changed since the retained context. Read the relevant state or explicitly refocus before retrying.");
-      fail("INVALID_STATE", "The requested operation violates the Core invariants.");
+      fail("INVALID_STATE", (committed as { message?: string }).message ?? "The requested operation violates the Core invariants.");
     }
     if (committed.replayed) {
       const prior = readCommittedCommand(this.options.dbPath(), mapId, sentCommandId);

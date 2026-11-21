@@ -13,6 +13,8 @@ import {
   type GraphLinkConnectionRecord,
   type LinearTextRecord,
   type MapRecord,
+  type GrantRecord,
+  type LockRecord,
   type NodeRecord,
   type NodeViewRecord,
   type ScopeRecord,
@@ -61,6 +63,8 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
   const nodeViews: NodeViewRecord[] = [];
   const annotations: AnnotationRecord[] = [];
   const extensionDefs: ExtensionDefRecord[] = [];
+  const locks: LockRecord[] = [];
+  const grants: GrantRecord[] = [];
   for (const record of records) {
     switch (record.kind) {
       case "snapshot": workspaceId = record.workspaceId; break;
@@ -77,6 +81,8 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
       case "nodeView": nodeViews.push(record); break;
       case "annotation": annotations.push(record); break;
       case "extensionDef": extensionDefs.push(record); break;
+      case "lock": locks.push(record); break;
+      case "grant": grants.push(record); break;
       default: break; // seeded records and idMap carry nothing of the current shape
     }
   }
@@ -141,6 +147,8 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
         if (alias.broken === true) node.isBroken = true;
       }
       if (record.extensions !== undefined) node.extensions = record.extensions;
+      if (record.valid !== undefined) node.valid = record.valid;
+      if (record.copyOf !== undefined) node.copyOf = record.copyOf;
       if (edge?.relationType !== undefined) node.edgeRelationType = edge.relationType;
       if (edge?.attributes !== undefined) node.edgeAttributes = edge.attributes;
       if (edge?.extensions !== undefined) node.edgeExtensions = edge.extensions;
@@ -230,6 +238,24 @@ export function fromSnapshot(records: SnapshotRecord[]): FromSnapshotResult {
     if (extensionDefs.length > 0) {
       state.extensionDefs = [...extensionDefs].sort((a, b) => compareStrings(recordKeyString(a), recordKeyString(b)));
     }
+
+    const stateLocks: Dict = {};
+    for (const lock of locks.filter((lock) => lock.mapId === mapId).sort((a, b) => compareStrings(a.target, b.target))) {
+      stateLocks[lock.target] = { target: lock.target };
+    }
+    if (Object.keys(stateLocks).length > 0) state.locks = stateLocks;
+    const stateGrants: Dict = {};
+    for (const grant of grants.filter((grant) => grant.mapId === mapId).sort((a, b) => compareStrings(a.id, b.id))) {
+      const body: Dict = {
+        scopeId: grant.scopeId,
+        principal: { account: grant.principal.account },
+        capability: grant.capability,
+        grantedBy: grant.grantedBy,
+      };
+      if (grant.expiresAt !== undefined) body.expiresAt = grant.expiresAt;
+      stateGrants[grant.id] = body;
+    }
+    if (Object.keys(stateGrants).length > 0) state.grants = stateGrants;
 
     const row: Dict = { id: mapId, state };
     copyDefined(row, map as unknown as Dict, ["tags", "archived", "pinned", "source"]);

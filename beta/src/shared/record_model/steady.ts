@@ -39,7 +39,7 @@ const SCOPE_PREFIX = "scope:";
 const NODE_FIELDS = new Set([
   "id", "parentId", "children", "nodeType", "scopeId", "edgeOutsideScope", "text", "collapsed", "details", "note",
   "attributes", "link", "targetNodeId", "aliasLabel", "access", "targetSnapshotLabel", "isBroken", "aliasOf",
-  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions",
+  "extensions", "edgeRelationType", "edgeAttributes", "edgeExtensions", "valid", "copyOf",
 ]);
 const LINK_FIELDS = new Set([
   "id", "sourceNodeId", "targetNodeId", "relationType", "label", "direction", "style", "color",
@@ -52,7 +52,7 @@ const ANNOTATION_COPIED_FIELDS = [
 const ANNOTATION_FIELDS = new Set<string>(["id", "kind", "scopeId", ...ANNOTATION_COPIED_FIELDS]);
 const STATE_FIELDS = new Set([
   "rootId", "nodes", "links", "annotations", "scopes", "surfaces", "linearNotesByScope",
-  "linearTextFontScale", "linearPanelWidth", "extensionDefs",
+  "linearTextFontScale", "linearPanelWidth", "extensionDefs", "locks", "grants",
 ]);
 const STATE_DROPPED_FIELDS = new Set(["selectedId", "scopeId", "savedAt"]);
 const NODE_VIEW_FIELDS = ["x", "y", "flowCol", "flowRow", "shape"] as const;
@@ -527,6 +527,18 @@ export class MapProjector {
         if (Object.keys(alias).length > 0) record.alias = alias;
         const extensions = writtenExtensions(node.extensions);
         if (extensions) record.extensions = extensions;
+        if (isDict(node.valid)) {
+          const valid: Dict = {};
+          if (typeof node.valid.from === "string" && node.valid.from !== "") valid.from = node.valid.from;
+          if (typeof node.valid.to === "string" && node.valid.to !== "") valid.to = node.valid.to;
+          if (Object.keys(valid).length > 0) record.valid = valid;
+        }
+        if (isDict(node.copyOf) && typeof node.copyOf.source === "string" && typeof node.copyOf.mode === "string" && typeof node.copyOf.seq === "number") {
+          const copyOf: Dict = { source: node.copyOf.source, seq: node.copyOf.seq, mode: node.copyOf.mode };
+          if (typeof node.copyOf.mapId === "string") copyOf.mapId = node.copyOf.mapId;
+          copyOf.ids = isDict(node.copyOf.ids) ? node.copyOf.ids : {};
+          record.copyOf = copyOf;
+        }
         const extra = collectExtra(node, NODE_FIELDS);
         if (extra) record.extra = extra;
         record.rev = undefined;
@@ -870,6 +882,39 @@ export class MapProjector {
         if (record.kind === "extensionDef") produced.add(recordRk(record));
       }
     }
+    // locks and grants: an absent property keeps the stored records; a present object is the whole set.
+    const replaceHeld = (kind: "lock" | "grant", field: "locks" | "grants", build: (key: string, item: Dict) => SnapshotRecord): void => {
+      if (!hasOwn(state, field)) return;
+      const declared = dictOf(state[field]);
+      const keep = new Set<string>();
+      for (const key of sortedKeys(declared)) {
+        const item = declared[key];
+        if (!isDict(item)) throw new Error(`${field} contains a value that is not a record.`);
+        const record = build(key, item);
+        keep.add(recordRk(record));
+        put(record);
+      }
+      for (const [rk, record] of [...out]) {
+        if (record.kind === kind && (record as { mapId?: unknown }).mapId === mapId && !keep.has(rk)) remove(rk);
+      }
+    };
+    replaceHeld("lock", "locks", (key, item) => {
+      const target = typeof item.target === "string" && item.target !== "" ? item.target : key;
+      if (!target) throw new Error("A lock record needs a target.");
+      return { kind: "lock", target, mapId, rev: undefined } as unknown as SnapshotRecord;
+    });
+    replaceHeld("grant", "grants", (key, item) => {
+      const principal = item.principal;
+      if (typeof item.scopeId !== "string" || !isDict(principal) || typeof principal.account !== "string" || typeof item.capability !== "string" || typeof item.grantedBy !== "string") {
+        throw new Error("A grant record needs scopeId, principal.account, capability and grantedBy.");
+      }
+      const record: Dict = {
+        kind: "grant", id: key, mapId, scopeId: item.scopeId,
+        principal: { account: principal.account }, capability: item.capability, grantedBy: item.grantedBy, rev: undefined,
+      };
+      if (typeof item.expiresAt === "string" && item.expiresAt !== "") record.expiresAt = item.expiresAt;
+      return record as unknown as SnapshotRecord;
+    });
     removeUnlessProduced(this.smallRecords);
     for (const rk of stray) {
       if (!produced.has(rk)) remove(rk);
@@ -879,6 +924,10 @@ export class MapProjector {
     const defRecords = [...out.values()].filter((record) => record.kind === "extensionDef");
     defRecords.sort((a, b) => compareStrings(recordRk(a), recordRk(b)));
     for (const record of defRecords) rest.push(record);
+    const held = [...out.values()].filter((record) =>
+      (record.kind === "lock" || record.kind === "grant") && (record as { mapId?: unknown }).mapId === mapId);
+    held.sort((a, b) => compareStrings(recordRk(a), recordRk(b)));
+    for (const record of held) rest.push(record);
 
     // --- the state the reverse conversion gives ---
     // Everything but the nodes goes through `fromSnapshot` itself.
@@ -929,6 +978,8 @@ export class MapProjector {
         if (alias.broken === true) restored.isBroken = true;
       }
       if (record.extensions !== undefined) restored.extensions = record.extensions;
+      if (record.valid !== undefined) restored.valid = record.valid;
+      if (record.copyOf !== undefined) restored.copyOf = record.copyOf;
       const incoming = this.edgeByTarget.get(id);
       if (incoming?.relationType !== undefined) restored.edgeRelationType = incoming.relationType;
       if (incoming?.attributes !== undefined) restored.edgeAttributes = incoming.attributes;

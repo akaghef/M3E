@@ -1021,4 +1021,48 @@ describe("M3E MCP semantic service", () => {
     expect(finalBytes).toContain("New session reproduction");
     expect(onSaved).not.toHaveBeenCalled();
   });
+
+  test("m3e_delete operation keeps OC1, OC3 and OC4 distinct", () => {
+    const entity = model.addNode(model.state.rootId, "Entity");
+    const alias = model.addAlias(model.state.rootId, entity, { aliasLabel: "Window", access: "write" });
+    model.saveToSqlite(dbPath, mapId);
+    const context = enter();
+    const refused = service.call("m3e_delete", { context_id: context.context_id, target: nodeUri(entity), operation: "oc1" });
+    expect(refused.ok).toBe(false);
+    expect(refused.error.code).toBe("INVALID_OPERATION");
+    expect(refused.error.message).toMatch(/OC1/);
+    expect(refused.error.message).toMatch(/OC3/);
+    expect(refused.error.message).toMatch(/OC4/);
+    expect(loaded().state.nodes[entity].text).toBe("Entity");
+
+    const ended = service.call("m3e_delete", {
+      context_id: context.context_id, target: nodeUri(alias), operation: "oc3", at: "2026-11-17T00:00:00.000Z",
+    });
+    expect(ended.ok).toBe(true);
+    const afterEnd = loaded().state;
+    expect(afterEnd.nodes[entity].valid).toEqual({ to: "2026-11-17T00:00:00.000Z" });
+    expect(afterEnd.nodes[alias].nodeType).toBe("alias");
+    expect(afterEnd.nodes[alias].isBroken).toBeFalsy();
+    expect(loaded().validate()).toEqual([]);
+
+    const retracted = service.call("m3e_delete", { context_id: context.context_id, target: nodeUri(alias), operation: "oc4" });
+    expect(retracted.ok).toBe(true);
+    const afterRetract = loaded().state;
+    expect(afterRetract.nodes[entity]).toBeUndefined();
+    expect(afterRetract.nodes[alias].isBroken).toBe(true);
+    expect(afterRetract.nodes[alias].targetSnapshotLabel).toBeTruthy();
+    expect(loaded().validate()).toEqual([]);
+  });
+
+  test("m3e_delete without operation removes an alias occurrence and leaves the entity", () => {
+    const entity = model.addNode(model.state.rootId, "Entity");
+    const alias = model.addAlias(model.state.rootId, entity, { aliasLabel: "Window", access: "write" });
+    model.saveToSqlite(dbPath, mapId);
+    const context = enter();
+    expect(service.call("m3e_delete", { context_id: context.context_id, target: nodeUri(alias) }).ok).toBe(true);
+    const after = loaded().state;
+    expect(after.nodes[alias]).toBeUndefined();
+    expect(after.nodes[entity].text).toBe("Entity");
+    expect(loaded().validate()).toEqual([]);
+  });
 });

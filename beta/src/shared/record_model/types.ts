@@ -39,6 +39,24 @@ export interface AliasValue {
   broken?: true;
 }
 
+/** Entity validity (Database_Spec 12.7). Absent means the entity has no period. */
+export interface NodeValidity {
+  from?: string;
+  to?: string;
+}
+
+/**
+ * Copy provenance kept on the node so compaction does not drop it (Database_Spec 6).
+ * `source` is the copied node, `seq` the commit, `mode` the chosen arguments, `ids` the old-to-new map.
+ */
+export interface CopyOf {
+  source: string;
+  mapId?: string;
+  seq: number;
+  mode: string;
+  ids: { [id: string]: string };
+}
+
 export interface NodeRecord {
   kind: "node";
   id: string;
@@ -50,6 +68,8 @@ export interface NodeRecord {
   collapsed?: true;
   attributes?: JsonObject;
   alias?: AliasValue;
+  valid?: NodeValidity;
+  copyOf?: CopyOf;
   /** `name@version`, string order, one entry per name. Omitted when empty. */
   extensions?: string[];
   extra?: JsonObject;
@@ -262,6 +282,28 @@ export interface IdMapRecord {
   alias?: true;
 }
 
+/** Present only while the occurrence is locked. Key is the target record key. */
+export interface LockRecord {
+  kind: "lock";
+  /** Record key of the locked occurrence, such as `node|n1` or `scope|s1`. */
+  target: string;
+  mapId: string;
+  rev: number;
+}
+
+/** A grant of one capability in one scope. Key is `id`. Not inherited by nested scopes. */
+export interface GrantRecord {
+  kind: "grant";
+  id: string;
+  mapId: string;
+  scopeId: string;
+  principal: { account: string };
+  capability: string;
+  grantedBy: string;
+  expiresAt?: string;
+  rev: number;
+}
+
 export type SnapshotRecord =
   | SnapshotHeader
   | MapRecord
@@ -278,7 +320,9 @@ export type SnapshotRecord =
   | PrefixRecord
   | AccountRecord
   | CommitRecord
-  | IdMapRecord;
+  | IdMapRecord
+  | LockRecord
+  | GrantRecord;
 
 export type RecordKind = SnapshotRecord["kind"];
 
@@ -342,5 +386,9 @@ export function recordKeyParts(record: SnapshotRecord): string[] {
       return [String(record.seq)];
     case "idMap":
       return [record.recordKind, record.mapId, record.oldId];
+    case "lock":
+      return [record.target];
+    case "grant":
+      return [record.id];
   }
 }

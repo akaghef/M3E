@@ -64,6 +64,8 @@ export const KIND_LABELS: Record<RecordKind, string> = {
   account: "Account",
   commit: "Commit",
   idMap: "IdMap",
+  lock: "Lock",
+  grant: "Grant",
 };
 
 export const RELATIONSHIP_TYPES = ["SOURCE", "TARGET", "ROOT", "OF", "IN", "ON", "PLACES", "ALIAS_OF", "IN_MAP"] as const;
@@ -187,6 +189,13 @@ function addEpochProps(props: PropertyMap, record: SnapshotRecord): void {
   const extra = fields.extra;
   if (isPlainObject(extra)) {
     for (const [key, value] of Object.entries(extra)) addEpoch(props, "xm_", key, value);
+  }
+  if (record.kind === "node") {
+    const valid = (record as { valid?: unknown }).valid;
+    if (isPlainObject(valid)) {
+      addEpoch(props, "ms_valid_", "from", valid.from);
+      addEpoch(props, "ms_valid_", "to", valid.to);
+    }
   }
 }
 
