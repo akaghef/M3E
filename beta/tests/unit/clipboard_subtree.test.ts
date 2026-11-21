@@ -108,7 +108,7 @@ describe("clipboard subtree paste", () => {
     expect(plan.idMap.get("alias")).not.toBe("entity");
   });
 
-  test("an alias whose entity is also copied still points at the original entity", () => {
+  test("an alias whose entity is also copied points at the pasted copy of that entity (Database_Spec 12.8 JA4)", () => {
     const { nodes } = fixture();
     nodes.bundle = source({
       id: "bundle",
@@ -125,8 +125,8 @@ describe("clipboard subtree paste", () => {
     expect(inner?.nodeType).toBe("alias");
     expect(entityCopy?.nodeType).not.toBe("alias");
     expect(entityCopy?.id).not.toBe("entity");
-    expect(inner?.alias?.target).toBe("entity");
-    expect(inner?.alias?.target).not.toBe(entityCopy?.id);
+    expect(inner?.alias?.target).toBe(entityCopy?.id);
+    expect(inner?.alias?.broken).toBe(false);
     expect(inner?.alias?.target).not.toBe(inner?.id);
   });
 

@@ -270,6 +270,18 @@ export function pasteClipboard(
   indexSnapshots(snapshots, byId);
   const idMap = new Map<string, string>();
   const roots = snapshots.map((snapshot) => pasteNode(snapshot, allocateId, idMap, byId));
+  // Database_Spec 12.8 JA4: a reference between two nodes inside the range goes to the pasted copy.
+  // An alias whose entity was copied with it points at that copy; one whose entity is outside keeps the shared target.
+  const retarget = (node: PastedSnapshotNode): void => {
+    const target = node.alias?.target;
+    const copied = target ? idMap.get(target) : undefined;
+    const entity = target ? byId.get(target) : undefined;
+    if (node.alias && copied && entity && entity.nodeType !== "alias") {
+      node.alias = { ...node.alias, target: copied, broken: false };
+    }
+    node.children.forEach(retarget);
+  };
+  roots.forEach(retarget);
   const pastedLinks: PastedRelationEdge[] = [];
   for (const link of links) {
     const sourceNodeId = idMap.get(link.sourceNodeId);
