@@ -101,7 +101,7 @@
 - 対象: DB 仕様書 10.2 と 10.7、`beta/src/shared/record_model/types.ts`（`ExtensionField`）、`beta/src/shared/record_model/extensions.ts`（`extensionValueErrors`、`extensionDefShapeError`）
 - 中身: extensionDef の `fields` は `default` と `ref` を保存する。10.7 は型の検査だけを書いており、`default` をいつ埋めるか、`ref` を何と照合するかを書いていない。実装はどちらも保存するだけで、埋めず、検査しない。required の欄が attribute に無い付与は、`default` があっても拒否する。
 - 根拠: `extensionValueErrors` は required の欠落を、attribute にその key があるかどうかだけで見る。`default` は読まない。`extensionDefShapeError` は `ref` の形を検査しない。
-- 扱い: akaghef の判断待ち
+- 扱い: 仕様へ反映（DB 仕様書 10.2。default は付ける Command の中で server が埋める。ref は参照先の extensions を照合し、参照先が無ければ broken で保存を許す）。実装は未対応
 
 ### 2026-11-22 journal の provenance を決めた形にし、observed を MCP の読み取り集合から作った。6 件の選択は akaghef が決めた
 

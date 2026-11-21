@@ -154,10 +154,16 @@ interface SubtreeSnapshot {
 4. カット状態（`type: "cut"`）があれば上書きして解除
 5. システムクリップボードにはノードのテキストラベルを改行区切りでコピー（テキストエディタへの貼り付けを容易にするため）
 
-**コピーされないもの：**
+**写すもの**（[Database_Spec](../03_Spec/Database_Spec.md) 12.8 節）：
+- 範囲の中の alias は、alias のまま写す。写した先の alias も同じ実体を指す
+- 範囲の中で両端が閉じた relation edge と、その付随情報
+- `collapsed` 状態
+
+**写さないもの：**
 - ノード ID（貼り付け時に新規発行）
-- alias / link のメタデータ（MVP では割愛。コピー先では通常テキストノードになる）
-- `collapsed` 状態（貼り付け時は展開状態とする）
+- 範囲の外へまたがる relation edge
+
+今の実装は、alias / link のメタデータと `collapsed` を写していない（下の「コピー・ペーストで alias / link が失われる」）。
 
 ---
 
@@ -246,7 +252,7 @@ multi-delete / multi-reparent / group はそれぞれ N 回の undo ステップ
 
 `SubtreeSnapshot` は alias / link メタデータを含まない（MVP の割愛）。
 コピーした alias ノードは通常のテキストノードとしてペーストされる。
-決まった形は、alias と relation edge の付随情報、`collapsed` を写すことである（[Database_Spec](../03_Spec/Database_Spec.md) 12.8 節）。この文書の「落とす」という記述は、今の実装の説明である。
+貼り付けの規則（上の「写すもの」）と合っていない。実装を規則に合わせるまでの、今の実装の制約である。
 
 ### Ctrl+V は複数回ペーストで ID が重複しない
 

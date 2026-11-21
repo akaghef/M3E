@@ -98,11 +98,11 @@ workspace > map > scope > node
 | `account` | `id` | `accountKind`（`ai-agent` / `human` / `system`）、`displayName`、`externalIds`、`roles`、`rev` |
 | `commit` | `seq` | `committedAt`、`issuer`（アカウントの ID）、`sessionId` |
 | `idMap` | `recordKind` ＋ `mapId` ＋ `oldId` | `newId` |
-| `extensionDef` | `name` ＋ `version` | 【決定】`target`、`fields`、`render`、`label`、`description`、`rev`（10.2） |
+| `extensionDef` | `name` ＋ `version` | 【実装済み】`target`、`fields`、`render`、`label`、`description`、`rev`（10.2） |
 
 - `rev` は、そのレコードを最後に変えた確定の通し番号である。`commit`・`idMap`・`nodeView`・1 行目は持たない。`nodeView` は、属する Surface View の `rev` に従う。
 - `extra` は、型定義に無い欄をそのまま入れる組である。知らない欄を捨てないために使う。
-- 【決定】（freeze v1、akaghef、2026-11-19）format 2 で足すもの: `extensionDef` のレコード、node と edge の `extensions`（10.4）、parent edge の `relationType` と `attributes`（3.4）。【実装済み】のものは format 1 である。
+- 【決定】（freeze v1、akaghef、2026-11-19）format 2 で足すもの: `extensionDef` のレコード、node と edge の `extensions`（10.4）、parent edge の `relationType` と `attributes`（3.4）。【実装済み】
 
 ### 3.2 node
 
@@ -154,11 +154,11 @@ workspace > map > scope > node
 | `source` / `target` | 親 / 子。node に限る | 始点 / 終点。node か、他の edge |
 | 兄弟順キー `ord` | 必須 | 持たない |
 | `scopeId` | 必須。この parent edge が載る scope | 持たない（両端から導く） |
-| `relationType` | 【決定】持つ（format 2）。【実装済み】の形には欄が無い | 持つ |
+| `relationType` | 【実装済み】持つ（format 2） | 持つ |
 | `label` | 持つ | 持つ |
 | 向き・線種・色・port | 持たない | 持つ。port は、値が無ければ自動 |
-| `attributes` | 【決定】持つ（format 2）。【実装済み】の形には欄が無い | 持つ |
-| `extensions` | 【決定】持つ（10.4） | 【決定】持つ（10.4） |
+| `attributes` | 【実装済み】持つ（format 2） | 持つ |
+| `extensions` | 【実装済み】持つ（10.4） | 【実装済み】持つ（10.4） |
 
 - `connectionId`（edge の `id`）は、parent edge と relation edge をまたいで一意である。
 - ある node の子は、`source` がその node である parent edge を集め、`ord` で並べたものである。子の配列は保存しない。
@@ -214,20 +214,20 @@ relationType の名前、拡張の定義の名前（10 節）、attribute の ke
 - 移行で運んだ接頭辞の無い名前（attribute の key、relation edge の relationType の値）は、そのまま残す。新しく作ることだけを禁じる。整理は後で Command で行う。
 - 【実装済み】MCP では、接頭辞の無い relationType と、node にまだ無い接頭辞の無い attribute の key を拒否する。既にある key の更新と削除は受け付ける。viewer での入力には、まだ掛けていない。
 
-## 4. 不変条件【実装済み】（3 の後半・9・10 は【決定】）
+## 4. 不変条件【実装済み】
 
 確定のときに検査する。一つでも破る書き込みは、全体を拒否する。
 
 1. root 以外の node は、入ってくる parent edge をちょうど 1 本持つ。map の root は持たない。
 2. parent edge は循環しない。
-3. alias は alias でない node を指す。【決定】（akaghef、2026-11-21）alias は子を持てる（3.2、12.2）。【実装済み】の検査は、alias の子を拒否する。
+3. alias は alias でない node を指す。【決定】（akaghef、2026-11-21）alias は子を持てる（3.2、12.2）。
 4. edge の端点は実在する。端点を消す書き込みは、その edge も同じ確定で消す。
 5. scope の root は実在する node である。alias は root になれない。
 6. parent edge は実在する scope の ID を持つ。parent edge（親 a → 子 b、scope S）について、a が S の root であるか、a の親から来る parent edge の scope が S である。これで、一つの scope に載る parent edge は、その root を頂点とする 1 本の木になる。
 7. `connectionId` は、parent edge と relation edge をまたいで一意である。
 8. details、linear-text、Surface View の保存設定、配置値、注釈は、指している node または scope が実在する。
-9. 【決定】（freeze v1、akaghef、2026-11-19）同じ親の下で、parent edge の `ord` は一意である。
-10. 【決定】（freeze v1、akaghef、2026-11-19）`extensions` にある拡張は、定義の required の欄がそろい、欄の型が合う（10.4）。定義が無い拡張は検査しない。
+9. 同じ親の下で、parent edge の `ord` は一意である。
+10. `extensions` にある拡張は、定義の required の欄がそろい、欄の型が合う（10.4）。定義が無い拡張は検査しない。検査器は `beta/src/shared/record_model/extensions.ts`。
 
 - 【決定】検査は、触った周辺だけで行い、map 全体は走査しない。【実装済み】のものは、確定のたびに map 全体を検査している。
 - 【決定】一つの Command の中に複数の付け替えがあるときは、全部を当てた後の状態で循環を検査する。
@@ -319,8 +319,7 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
   - 【決定】declared: copy の出所の subtree。出所を明示する引数はまだ無い。
   - 【決定】並び: declared が先、次に observed を新しく読んだ順。SQLite の上では `items` は空になる。
 - 【決定】`changes` と `ops` の二重持ちは、format 2 では解消しない。replay の決定性を確かめる試験ができてから扱う。
-- 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 3 点ある。
-  - snapshot の `format` は、まだ 1 である。format 2 への bump は、ほかの format の変更と合わせて base snapshot で行う。
+- 【実装済み】`touched` は、サーバが `ops` と pre-image から作り、rk の順に並べ、`rev` だけの差分を除く。決定との差が 2 点ある。
   - 位置の変更は、`touched` で `m3e:content` に数えている。
   - parent edge の付け替えと兄弟順の変更を、まだ一つの `m3e:structure` として出している（`beta/src/node/record_store/journal_archive.ts`）。
 
@@ -347,8 +346,10 @@ projection（10.6）で、node の attribute の一部だけを読んだ client 
 ## 7. snapshot【実装済み】
 
 - workspace 一つにつき一つの、UTF-8 の JSON Lines。1 行が 1 レコード。
-- 1 行目は `{"kind":"snapshot","format":1,"workspaceId":"…","seq":…}`。
-- 【決定】（freeze v1、akaghef、2026-11-19）freeze v1 の形は `format: 2` である。`format` を上げた直後の snapshot が base snapshot で、header の `{format, seq}` が版の切り替え点の記録になる。
+- 1 行目は `{"kind":"snapshot","format":2,"workspaceId":"…","seq":…}`。
+- 【実装済み】freeze v1 の形は `format: 2` である。`format` を上げた直後の snapshot が base snapshot で、header の `{format, seq}` が版の切り替え点の記録になる。
+  - format 1 の workspace を開くと、一度だけ移行する（`beta/src/node/record_store/store.ts` の `migrateToFormat2`）。format 1 の portable snapshot と journal を、`f1` の名前で `archive/` へ移し、今の通し番号で format 2 の base snapshot を書く。以後の確定は format 2 で書く。
+  - format が 3 以上の snapshot は、開かずに拒否する。
 - 【決定】（freeze v1、akaghef、2026-11-19）減衰する量の累積 `{v[k], t}` は、snapshot に状態として持つ（9 節）。
 - 値の無い欄と null は書かない。
 - 並びは `kind`、次に key の文字列順。行の順序に意味は無いが、差分を安定させるために揃える。
@@ -377,8 +378,8 @@ Neo4j は各端末の正本エンジン（semantic authority）であり、durab
 | `j` | レコード全体の JSON（欄の名前が Neo4j で使えない場合だけ） |
 
 - 数値: 安全な範囲の整数は Integer、それ以外は Float にする。これで元の JSON の文字列に戻る。Neo4j の Integer は 64 bit なので、読み込みの境界で 2^53−1 以下であることを確かめて数値に変える。
-- 【決定】（freeze v1、akaghef、2026-11-19）時刻は、canonical な形（ISO 8601 の文字列）に加えて、epoch ミリ秒の整数を持つ。
-- 【決定】（freeze v1、akaghef、2026-11-19）`extensions` の名前は、node のラベルにも写す（10.4）。
+- 【実装済み】時刻は、canonical な形（ISO 8601 の文字列）に加えて、epoch ミリ秒の整数を持つ。property の名前は、最上位の欄が `ms_<欄>`、attribute が `am_<key>`、`extra` が `xm_<key>` である（`beta/src/node/neo4j_store/encoding.ts`）。
+- 【実装済み】`extensions` の名前は、node のラベルにも写す（10.4）。ラベルは `Ext_` に、`name@version` の英数字以外を `_` に置き換えたものを足した名前である（例 `m3e:nodeType:task@1` → `Ext_m3e_nodeType_task_1`）。
 - 索引: `rk` の一意制約、`id`、参照を引く欄（`f_source`、`f_target`、`f_rootNodeId`、`f_nodeId`、`f_scopeId`、`f_surfaceId`、`f_mapId`）。索引が無いと、どの問い合わせも 180〜610 ms かかる。
 - 索引に載せる値の上限は UTF-8 で 8,164 バイト（範囲索引と一意制約）、文字列索引は 32,766 バイト。
 
@@ -451,7 +452,9 @@ task や極性のような意味を、保存の形を作り直さずに足すた
 ```
 
 - key は `name` と `version` の組である。同じ名前の複数の版が並んで存在できる。
-- 同じ `name`・`version` で中身が違う定義は CONFLICT にする。`misc:` も例外にしない。
+- 【実装済み】同じ `name`・`version` で中身が違う定義は CONFLICT にする。`misc:` も例外にしない。
+- 【決定】`fields[].default`: 拡張を付ける Command の中で、required の欄の値が無ければ、server が `default` の値で埋めてから検査する。埋めた値は、その Command の ops に入る。
+- 【決定】`fields[].ref`（型が `nodeRef` の欄）: 参照先の node が、`ref` に書いた拡張を `extensions` に持つことを求める。参照先が無いときは broken として扱い、保存は許す。
 - 拡張は、agent を含む誰でも定義できる。権限の検査は後で足す。
 - 意味上の分類（Principle、Vision、Strategy、Goal、Task など）も、`m3e:nodeType:<分類>` の拡張として持つ。
 - 名前は Turtle の接頭辞付きの名前として読める（接頭辞 `m3e`、名前 `nodeType:task`）。
