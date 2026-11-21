@@ -49,7 +49,7 @@
 
 ## 記録
 
-### 2026-11-22 journal の provenance を決めた形にし、observed を MCP の読み取り集合から作った。仮決めが 6 件ある
+### 2026-11-22 journal の provenance を決めた形にし、observed を MCP の読み取り集合から作った。6 件の選択は akaghef が決めた
 
 - 種類: 気づき
 - 書いた agent: journal envelope 実装 session
@@ -57,17 +57,17 @@
 - 中身:
   - journal の行の `provenance` は `{items: [{mode, rk, rev}], truncated?}` になった。store は確定のときに形を検査する。形の合わない item を持つ Command は `INVALID_COMMAND` で断る。rk の重複は最初の 1 件だけを残す。100 件を超えた分は切り、`truncated: true` を付ける。
   - これまでの値（MCP の `{contextId, tool}`、viewer の `{tabId}`）は journal に残さない。どちらも `actor.id` と同じ値である。viewer はもう送らない。
-  - 【仮決め】observed は、MCP の参加（participation）が見せられた record の読み取り集合（read set）から作る。OCC の read set と同じ考え方で、rk ごとに読んだ時点の `rev` を持つ。参加ごとに新しい順に 10,000 件まで残す。
-  - 【仮決め】「見せられた」の範囲は次の二つである。
+  - 【決定】observed は、MCP の参加（participation）が見せられた record の読み取り集合（read set）から作る。OCC の read set と同じ考え方で、rk ごとに読んだ時点の `rev` を持つ。参加ごとに新しい順に 10,000 件まで残す。
+  - 【決定】「見せられた」の範囲は次の二つである。
     - `m3e_get`（state）が返したページの node（その details record を含む）と relation edge。
     - 変更の event が本文を見せた node（先頭 30 件）。
     - 検索の結果と、文脈の要約に出る子の名前は含めない。
-  - 【仮決め】確定のときに、読んだ後で他の発行者が書き換えた record（今の `rev` が読んだ `rev` と違い、自分の確定の seq でもないもの）は外す。読んだものが、もう今の値ではないためである。自分で書き換えた record は、読んだ時点の `rev` のまま残す。消えた record も外す。
-  - 【仮決め】declared は copy の出所の subtree だけである。agent が出所を明示する引数は、まだ作っていない。
-  - 【仮決め】並びは、declared を先に、次に observed を読んだのが新しい順に置く。上限の 100 件はこの順で埋める。
-  - 【仮決め】SQLite の上で動くときは record key が無いので、`items` は空になる。道具の名前（`tool`）は残らない（`intent` が残る）。
+  - 【決定】確定のときに、読んだ後で他の発行者が書き換えた record（今の `rev` が読んだ `rev` と違い、自分の確定の seq でもないもの）は外す。読んだものが、もう今の値ではないためである。自分で書き換えた record は、読んだ時点の `rev` のまま残す。消えた record も外す。
+  - 【決定】declared は copy の出所の subtree だけである。agent が出所を明示する引数は、まだ作っていない。
+  - 【決定】並びは、declared を先に、次に observed を読んだのが新しい順に置く。上限の 100 件はこの順で埋める。
+  - 【決定】SQLite の上で動くときは record key が無いので、`items` は空になる。道具の名前（`tool`）は残らない（`intent` が残る）。
 - 根拠: `beta/tests/unit/journal_provenance.test.ts` の 4 件。修正を外すと 4 件とも失敗する。他者の書き換えを外す条件を抜くと 1 件、自分の書き換えを残す条件を抜くと 1 件失敗することも確かめた。MCP・確定・record store・server の既存試験（151 件）は通る。
-- 扱い: 実装で解消（commit「Journal provenance takes the frozen shape」。provenance を決めた形にし、読み取り集合から observed を作った）。仕様へ反映（DB 仕様書 6 節。決定との差 3 点のうち provenance の 1 点が解消する。文面は DB スキーマ設計 session へ送る）。仮決めの 6 件は akaghef の判断待ち。
+- 扱い: 実装で解消（commit「Journal provenance takes the frozen shape」。provenance を決めた形にし、読み取り集合から observed を作った）。仕様へ反映（DB 仕様書 6 節。決定との差 3 点のうち provenance の 1 点が解消する。文面は DB スキーマ設計 session へ送る）。6 件の【決定】は、2026-11-22 に akaghef が案のとおりに決めた。
 
 ### 2026-11-21 「消す」の意味を、出現・関係・実体に分ける案を、DB 仕様書 12.7 節に【提案】として書いた
 
