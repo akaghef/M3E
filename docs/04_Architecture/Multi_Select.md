@@ -126,6 +126,7 @@ ViewState に追加：
 clipboardState: {
   type: "copy";
   snapshots: SubtreeSnapshot[];   // 部分木の直列化スナップショット
+  links: GraphLink[];             // 両端が範囲の中にある relation edge
 } | {
   type: "cut";
   sourceIds: Set<string>;         // 移動元ノードの ID（reparent に使う）
@@ -138,6 +139,15 @@ interface SubtreeSnapshot {
   details: string;
   note: string;
   attributes: Record<string, string>;
+  collapsed: boolean;
+  nodeType?: "text" | "alias" | "image";
+  alias?: {
+    target: string;               // alias でない node
+    label?: string;
+    access: "read" | "write";
+    snapshotLabel?: string;
+    broken: boolean;
+  };
   children: SubtreeSnapshot[];    // 再帰
 }
 ```
@@ -150,7 +160,7 @@ interface SubtreeSnapshot {
 
 1. `selectedNodeIds` の selection root を取得
 2. 各 root の部分木を `SubtreeSnapshot` として深くシリアライズ
-3. `clipboardState = { type: "copy", snapshots }` をセット
+3. `clipboardState = { type: "copy", snapshots, links }` をセット。`links` は、両端が範囲の中にある relation edge である
 4. カット状態（`type: "cut"`）があれば上書きして解除
 5. システムクリップボードにはノードのテキストラベルを改行区切りでコピー（テキストエディタへの貼り付けを容易にするため）
 
@@ -162,8 +172,6 @@ interface SubtreeSnapshot {
 **写さないもの：**
 - ノード ID（貼り付け時に新規発行）
 - 範囲の外へまたがる relation edge
-
-今の実装は、alias / link のメタデータと `collapsed` を写していない（下の「コピー・ペーストで alias / link が失われる」）。
 
 ---
 
@@ -189,6 +197,8 @@ interface SubtreeSnapshot {
 3. 複数 snapshot がある場合、全クローンが primary ノードの子として順番に追加
 4. ペースト後の選択: クローンされた最初のノードを選択
 5. `clipboardState` はそのまま維持（連続ペースト可能）
+
+貼り付けた node の ID はすべて新しい。alias は同じ実体を指したまま作る。範囲の中で閉じた relation edge は、貼り付けた node の間に、label、relationType、direction、style、attribute を保って作る。`collapsed` は保つ。範囲の外へまたがる relation edge は作らない。
 
 #### カット後のペースト（`type: "cut"`）
 
@@ -247,12 +257,6 @@ root ノードを選択してペーストすると「root の兄弟」になり�
 `rapid_mvp.ts` のモデルは全操作が個別にスナップショットを pushHistory するため、
 multi-delete / multi-reparent / group はそれぞれ N 回の undo ステップになる。
 まとめて一手で戻すには `model.beginBatch()` / `endBatch()` API が必要（別タスク）。
-
-### コピー・ペーストで alias / link が失われる
-
-`SubtreeSnapshot` は alias / link メタデータを含まない（MVP の割愛）。
-コピーした alias ノードは通常のテキストノードとしてペーストされる。
-貼り付けの規則（上の「写すもの」）と合っていない。実装を規則に合わせるまでの、今の実装の制約である。
 
 ### Ctrl+V は複数回ペーストで ID が重複しない
 

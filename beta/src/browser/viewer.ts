@@ -3,6 +3,13 @@ import { toggleDropdown, closeOnOutsideClick } from "./viewer-filter-menu";
 import { viewerFilter } from "./viewer-filter-controller";
 import { filterSceneInput, ViewerFilterScene } from "./viewer-filter-scene";
 import { ConcretenessView, hasConcretenessData, concretenessSubtree, reconnectConcretenessCopies } from "../shared/concreteness_axis";
+import {
+  captureClipboard,
+  closedRelationEdges,
+  pasteClipboard as planClipboardPaste,
+  type ClipboardSnapshotNode,
+  type PastedSnapshotNode,
+} from "../shared/clipboard_subtree";
 import { EdgeGraphLinkSelectionAdapter } from "./edge_graphlink_selection_adapter";
 import { dispersePositionFrame, disperseGuideEndpoints } from "./disperse_frame";
 import type { ForceSnapshot } from "../shared/force_seam_interface";
@@ -14666,24 +14673,58 @@ function selectAllVisibleInScope(): void {
   setStatus(`Selected ${viewState.selectedNodeIds.size} node(s).`);
 }
 
-function toSubtreeSnapshot(nodeId: string, source = concretenessSubtree(canonicalMapState(), map!.state, nodeId)): SubtreeSnapshot {
-  const node = source.nodes[nodeId]!;
+function subtreeSnapshotFromClipboard(node: ClipboardSnapshotNode): SubtreeSnapshot {
   return {
     id: node.id,
-    nodeType: node.nodeType || "text",
-    text: node.text || "",
+    nodeType: node.nodeType,
+    text: node.text,
     collapsed: node.collapsed === true,
-    details: node.details || "",
-    note: node.note || "",
-    attributes: JSON.parse(JSON.stringify(node.attributes || {})) as Record<string, string>,
-    link: node.link || "",
-    targetNodeId: node.targetNodeId || undefined,
-    aliasLabel: node.aliasLabel || undefined,
-    access: node.nodeType === "alias" ? aliasAccess(node) : undefined,
-    targetSnapshotLabel: node.targetSnapshotLabel || undefined,
-    isBroken: node.nodeType === "alias" ? Boolean(node.isBroken) : undefined,
-    children: (node.children || []).map((childId) => toSubtreeSnapshot(childId, source)),
+    details: node.details,
+    note: node.note,
+    attributes: node.attributes,
+    link: node.link,
+    targetNodeId: node.alias?.target || undefined,
+    aliasLabel: node.alias?.label,
+    access: node.alias?.access,
+    targetSnapshotLabel: node.alias?.snapshotLabel,
+    isBroken: node.alias ? node.alias.broken : undefined,
+    children: node.children.map(subtreeSnapshotFromClipboard),
   };
+}
+
+function clipboardNodeFromSnapshot(snapshot: SubtreeSnapshot): ClipboardSnapshotNode {
+  const nodeType = snapshot.nodeType === "image" || snapshot.nodeType === "folder" || snapshot.nodeType === "alias"
+    ? snapshot.nodeType
+    : "text";
+  return {
+    id: snapshot.id,
+    nodeType,
+    text: snapshot.text || "",
+    collapsed: snapshot.collapsed === true,
+    details: snapshot.details || "",
+    note: snapshot.note || "",
+    attributes: snapshot.attributes || {},
+    link: snapshot.link || "",
+    alias: nodeType === "alias" ? {
+      target: snapshot.targetNodeId || "",
+      label: snapshot.aliasLabel,
+      access: snapshot.access === "write" ? "write" : "read",
+      snapshotLabel: snapshot.targetSnapshotLabel,
+      broken: Boolean(snapshot.isBroken),
+    } : undefined,
+    children: (snapshot.children || []).map(clipboardNodeFromSnapshot),
+  };
+}
+
+function toSubtreeSnapshot(nodeId: string): SubtreeSnapshot {
+  const canonical = canonicalMapState();
+  const range = concretenessSubtree(canonical, map!.state, nodeId);
+  const captured = captureClipboard([nodeId], range.nodes, [], canonical.nodes);
+  const snapshot = captured.snapshots[0];
+  if (!snapshot) {
+    return { id: nodeId, text: "", details: "", note: "", attributes: {}, children: [] };
+  }
+  return subtreeSnapshotFromClipboard(snapshot);
 }
 
 function collectSnapshotNodeIds(snapshot: SubtreeSnapshot, ids: Set<string>): void {
@@ -14708,55 +14749,31 @@ function collectInternalLinksForRoots(rootIds: string[]): GraphLink[] {
   const copiedNodeIds = new Set<string>();
   const source = canonicalMapState();
   rootIds.forEach(rootId => Object.keys(concretenessSubtree(source, map!.state, rootId).nodes).forEach(id => copiedNodeIds.add(id)));
-  return Object.values(source.links || {})
-    .map((link) => normalizeGraphLink(link))
-    .filter((link) => copiedNodeIds.has(link.sourceNodeId) && copiedNodeIds.has(link.targetNodeId))
-    .map((link) => JSON.parse(JSON.stringify(link)) as GraphLink);
+  return closedRelationEdges(
+    Object.values(source.links || {}).map((link) => normalizeGraphLink(link)),
+    copiedNodeIds,
+  );
 }
 
-function cloneSnapshotUnderParent(parentId: string, snapshot: SubtreeSnapshot, idMap?: Map<string, string>): string {
+function materializePastedNode(parentId: string, node: PastedSnapshotNode): void {
   const parent = getNode(parentId);
-  const createdId = newId();
-  map!.state.nodes[createdId] = createNodeRecord(createdId, parentId, snapshot.text ?? "");
-  const created = map!.state.nodes[createdId]!;
-  created.nodeType = snapshot.nodeType || "text";
-  created.collapsed = snapshot.collapsed === true;
-  created.details = snapshot.details || "";
-  created.note = snapshot.note || "";
-  created.attributes = JSON.parse(JSON.stringify(snapshot.attributes || {})) as Record<string, string>;
-  created.link = snapshot.link || "";
-  created.targetNodeId = snapshot.targetNodeId || undefined;
-  created.aliasLabel = snapshot.aliasLabel || undefined;
-  created.access = created.nodeType === "alias" ? (snapshot.access || "read") : undefined;
-  created.targetSnapshotLabel = snapshot.targetSnapshotLabel || undefined;
-  created.isBroken = created.nodeType === "alias" ? Boolean(snapshot.isBroken) : undefined;
-  idMap?.set(snapshot.id, createdId);
-  parent.children.push(createdId);
-  (snapshot.children || []).forEach((childSnapshot) => {
-    cloneSnapshotUnderParent(createdId, childSnapshot, idMap);
-  });
-  return createdId;
-}
-
-function remapAliasTargetsInClonedSnapshots(idMap: Map<string, string>): void {
-  if (!map) {
-    return;
+  map!.state.nodes[node.id] = createNodeRecord(node.id, parentId, node.text ?? "");
+  const created = map!.state.nodes[node.id]!;
+  created.nodeType = node.nodeType;
+  created.collapsed = node.collapsed === true;
+  created.details = node.details || "";
+  created.note = node.note || "";
+  created.attributes = JSON.parse(JSON.stringify(node.attributes || {})) as Record<string, string>;
+  created.link = node.link || "";
+  if (created.nodeType === "alias" && node.alias) {
+    created.targetNodeId = node.alias.target || undefined;
+    created.aliasLabel = node.alias.label;
+    created.access = node.alias.access || "read";
+    created.targetSnapshotLabel = node.alias.snapshotLabel;
+    created.isBroken = Boolean(node.alias.broken);
   }
-  idMap.forEach((newId) => {
-    const node = map!.state.nodes[newId];
-    if (!isAliasNode(node) || !node.targetNodeId) {
-      return;
-    }
-    const remappedTargetId = idMap.get(node.targetNodeId);
-    if (remappedTargetId) {
-      node.targetNodeId = remappedTargetId;
-      node.isBroken = false;
-      return;
-    }
-    if (!map!.state.nodes[node.targetNodeId] && !scopeView.isExternalTarget(node.targetNodeId)) {
-      node.isBroken = true;
-    }
-  });
+  parent.children.push(node.id);
+  node.children.forEach((child) => materializePastedNode(node.id, child));
 }
 
 function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[], links: GraphLink[]): void {
@@ -14767,41 +14784,37 @@ function pasteCopiedPayload(targetParentId: string, snapshots: SubtreeSnapshot[]
   pushUndoSnapshot();
   map.state = canonicalMapState();
   concretenessView = null;
-  const pastedRoots: string[] = [];
-  const idMap = new Map<string, string>();
-  let firstPastedId: string | null = null;
-  snapshots.forEach((snapshot) => {
-    const pastedId = cloneSnapshotUnderParent(targetParentId, snapshot, idMap);
-    pastedRoots.push(pastedId);
-    if (!firstPastedId) {
-      firstPastedId = pastedId;
+  const plan = planClipboardPaste(snapshots.map(clipboardNodeFromSnapshot), links || [], () => newId());
+  const pastedRoots = plan.roots.map((root) => root.id);
+  const firstPastedId = pastedRoots[0] ?? null;
+  plan.roots.forEach((root) => materializePastedNode(targetParentId, root));
+  plan.idMap.forEach((newId) => {
+    const node = map!.state.nodes[newId];
+    if (!isAliasNode(node) || !node.targetNodeId) return;
+    if (!map!.state.nodes[node.targetNodeId] && !scopeView.isExternalTarget(node.targetNodeId)) {
+      node.isBroken = true;
     }
   });
-  remapAliasTargetsInClonedSnapshots(idMap);
   let pastedLinks = 0;
-  (links || []).forEach((rawLink) => {
-    const link = normalizeGraphLink(rawLink);
-    const sourceNodeId = idMap.get(link.sourceNodeId);
-    const targetNodeId = idMap.get(link.targetNodeId);
-    if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) {
-      return;
-    }
-    if (findExistingGraphLink(sourceNodeId, targetNodeId)) {
-      return;
-    }
-    const linkId = newId();
-    if (!map!.state.links) {
-      map!.state.links = {};
-    }
-    map!.state.links[linkId] = normalizeGraphLink({
-      ...link,
-      id: linkId,
-      sourceNodeId,
-      targetNodeId,
+  plan.links.forEach((link) => {
+    if (findExistingGraphLink(link.sourceNodeId, link.targetNodeId)) return;
+    if (!map!.state.links) map!.state.links = {};
+    map!.state.links[link.id] = normalizeGraphLink({
+      id: link.id,
+      sourceNodeId: link.sourceNodeId,
+      targetNodeId: link.targetNodeId,
+      relationType: link.relationType,
+      label: link.label,
+      direction: link.direction,
+      style: link.style,
+      color: link.color,
+      sourcePort: link.sourcePort,
+      targetPort: link.targetPort,
+      attributes: link.attributes,
     });
     pastedLinks += 1;
   });
-  reconnectConcretenessCopies(map.state, idMap, pastedRoots, targetParentId, viewState.concretenessLevel);
+  reconnectConcretenessCopies(map.state, plan.idMap, pastedRoots, targetParentId, viewState.concretenessLevel);
   prepareConcretenessView();
   if (firstPastedId) {
     setSingleSelection(firstPastedId, false);
